@@ -203,7 +203,7 @@ pub fn language_block(lang: Option<&str>) -> String {
     let name = language_name(&agent_language(lang));
     format!(
         "{BLOCK_START}\nLanguage: answer in the language your person writes in. Always write it with its accents and usual punctuation (routines and notes too), never an ASCII-only version. When you write first (a routine, \
-         a report, a reminder), write in {name}.\n{CONTENT_RULE}\n{SENDING_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{PROJECT_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{LONG_WORK_RULE}\n{VISUAL_RULE}\n{SPACE_RULE}\n{ACK_RULE}\n{BLOCK_END}"
+         a report, a reminder), write in {name}. The current time is at the top of each message (a bip:now line): trust it, never check it in the terminal.\n{CONTENT_RULE}\n{SENDING_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{PROJECT_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{LONG_WORK_RULE}\n{VISUAL_RULE}\n{SPACE_RULE}\n{ACK_RULE}\n{BLOCK_END}"
     )
 }
 

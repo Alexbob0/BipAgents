@@ -1294,7 +1294,10 @@ impl RunHub {
         };
         let mut started = None;
         if let Some(session) = &session {
-            let input = crate::loop_brake::rescue_input(&over, &lang);
+            let mut input = crate::loop_brake::rescue_input(&over, &lang);
+            if let Some(config) = &self.config {
+                input = crate::dates::now::stamped(&config.get(), &agent, &input);
+            }
             // Hermes may still be closing the stopped turn (the conversation busy for a moment)
             for attempt in 0..4u64 {
                 match self.hermes.start_run(&agent, &input, session, None).await {

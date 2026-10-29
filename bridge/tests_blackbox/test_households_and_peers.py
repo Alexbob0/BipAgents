@@ -10,6 +10,7 @@ import time
 from starlette.responses import JSONResponse
 
 from bbkit.common import AUTH
+from bbkit.fakes import split_now
 from conftest import managed_install, profile
 
 RECEIVED = []
@@ -87,7 +88,8 @@ def test_two_households_write_to_each_other_only_where_both_allowed(bridges, fak
     assert delivered.status_code == 200 and delivered.json() == {"ok": True, "path": "/p/cuisine/v1/runs"}
     path, _, auth, body = RECEIVED[-1]
     assert path == "/p/cuisine/v1/runs" and auth == "Bearer cuisine-key-" + "x" * 24
-    assert body["message"] == "Message from Vie (Alex) (@vie__alex): qu'est-ce qu'on mange ce soir ?"
+    now, words = split_now(body["message"])
+    assert now and words == "Message from Vie (Alex) (@vie__alex): qu'est-ce qu'on mange ce soir ?"   # the time on top
     assert body["session_id"] == "bot-1"
     # Only Cuisine's Bot Chat: not another of its conversations, nor its sessions' list or its runs' approvals.
     other = dict(message, session_id="s9")
@@ -243,7 +245,8 @@ def test_each_sending_gateway_gets_a_token_and_each_sender_learns_whom_it_may_wr
     sent = bridge.post("/peer/p/jardin/v1/runs", headers={"Authorization": f"Bearer {hub_token}"},
                        json={"session_id": "bot-1", "message": "Message from 🤖 Budget (@budget): bonjour"})
     assert sent.status_code == 200 and RECEIVED[-1][2] == "Bearer " + "j" * 32
-    assert RECEIVED[-1][3]["message"] == "Message from 🤖 Budget (@budget): bonjour"     # same household: as it is
+    now, words = split_now(RECEIVED[-1][3]["message"])
+    assert now and words == "Message from 🤖 Budget (@budget): bonjour"     # same household: as it is, the time on top
     as_maison = bridge.post("/peer/p/jardin/v1/runs", headers={"Authorization": f"Bearer {hub_token}"},
                             json={"session_id": "bot-1", "message": "Message from Maison (@maison): salut"})
     assert as_maison.status_code == 403                                              # maison → jardin: not allowed

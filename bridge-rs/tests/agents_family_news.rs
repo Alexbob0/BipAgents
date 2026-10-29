@@ -153,7 +153,8 @@ async fn told_only_after_the_person_says_so() {
     assert_eq!(received[0]["text"], "Je commande des pizzas ce midi !");
     let recap =
         b.send_json("POST", "/v1/live/recaps/take", &h, &json!({"agent": "cuisine", "session": "s1"})).await.json();
-    let note = recap["recap"].as_str().unwrap();
+    let (now, note) = common::split_now(recap["recap"].as_str().unwrap());
+    assert!(now.is_some(), "the current time first");
     assert!(
         note.starts_with("<!--bip:family")
             && note.contains("Alex (through their agent Vie): « Je commande des pizzas ce midi ! »")
@@ -161,7 +162,7 @@ async fn told_only_after_the_person_says_so() {
     // taken once
     let again =
         b.send_json("POST", "/v1/live/recaps/take", &h, &json!({"agent": "cuisine", "session": "s1"})).await.json();
-    assert_eq!(again["recap"], Value::Null);
+    assert_eq!(common::without_now(again["recap"].as_str().unwrap()), "", "only the current time");
     // the sender's agent knows it went
     let mine = a.send_json("POST", "/v1/live/recaps/take", &h, &json!({"agent": "vie", "session": "s2"})).await.json();
     assert!(mine["recap"].as_str().unwrap().contains("passed on to Léa"));

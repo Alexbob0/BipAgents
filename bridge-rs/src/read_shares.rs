@@ -383,11 +383,17 @@ pub fn images_of(message: &Dict) -> Vec<(String, Vec<u8>)> {
 }
 
 /// The person's own words in a user row, or None for rows the person didn't type (a sub-task's report, the bridge's
-/// nudges). Words added while the agent answered are unwrapped from Hermes' markers.
+/// nudges). Words added while the agent answered are unwrapped from Hermes' markers. The notes for the agent only
+/// (`<!--bip:…-->`: the current time, a call's recap, family news…) are left out, as the apps do; a row of notes only
+/// is not the person's.
 pub fn typed_words(text: &str) -> Option<String> {
     const OPEN: &str = "[OUT-OF-BAND USER MESSAGE";
     const CLOSE: &str = "[/OUT-OF-BAND USER MESSAGE]";
-    let text = text.trim();
+    let shown = crate::live_brief::visible(text);
+    if shown.is_empty() {
+        return None;
+    }
+    let text = shown.as_str();
     let text = match text.strip_prefix(OPEN).and_then(|rest| rest.strip_suffix(CLOSE)) {
         Some(inner) => inner.split_once(']').map(|(_, words)| words.trim()).unwrap_or(""),
         None => text,
@@ -1079,6 +1085,11 @@ mod tests {
         );
         assert_eq!(typed_words("[bipagents:handoff] hand it over"), None);
         assert_eq!(typed_words("[SUBAGENT report] done"), None);
+        // the agent's notes never reach a viewer
+        let now = "<!--bip:now jeudi 29 octobre 2026, 08:40, Europe/Paris (UTC+01:00)-->";
+        let typed = typed_words(&format!("{now}\n<!--bip:call\nVoice call\n-->\n\nOn part ?"));
+        assert_eq!(typed.as_deref(), Some("On part ?"));
+        assert_eq!(typed_words(&format!("{now}\n<!--bip:watch\nYour watcher\n-->")), None);
         let jpeg = vec![0xffu8, 0xd8, 0xff, 1, 2, 3];
         let message: Dict = json!({"id": 7, "role": "user", "content": [
             {"type": "text", "text": "Regarde"},

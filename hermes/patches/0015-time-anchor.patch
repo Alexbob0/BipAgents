@@ -1,0 +1,220 @@
+--- a/agent/prompt_builder.py
++++ b/agent/prompt_builder.py
+@@ -452,7 +452,6 @@
+     "NEVER answer these from memory or mental computation — ALWAYS use a tool:\n"
+     "- Arithmetic, math, calculations → use terminal or execute_code\n"
+     "- Hashes, encodings, checksums → use terminal (e.g. sha256sum, base64)\n"
+-    "- Current time, date, timezone → use terminal (e.g. date)\n"
+     "- System state: OS, CPU, memory, disk, ports, processes → use terminal\n"
+     "- File contents, sizes, line counts → use read_file, search_files, or terminal\n"
+     "- Git history, branches, diffs → use terminal\n"
+@@ -465,7 +464,6 @@
+     "Examples:\n"
+     "- 'Is port 443 open?' → check THIS machine (don't ask 'open where?')\n"
+     "- 'What OS am I running?' → check the live system (don't use user profile)\n"
+-    "- 'What time is it?' → run `date` (don't guess)\n"
+     "Only ask for clarification when the ambiguity genuinely changes what tool you would call.\n"
+     "</act_dont_ask>\n\n"
+     "<prerequisite_checks>\n"
+@@ -513,7 +511,6 @@
+ _EXECUTION_GUIDANCE_LINE_TOOLS = {
+     "- Arithmetic, math, calculations → use terminal or execute_code\n": {"terminal", "execute_code"},
+     "- Hashes, encodings, checksums → use terminal (e.g. sha256sum, base64)\n": {"terminal"},
+-    "- Current time, date, timezone → use terminal (e.g. date)\n": {"terminal"},
+     "- System state: OS, CPU, memory, disk, ports, processes → use terminal\n": {"terminal"},
+     "- File contents, sizes, line counts → use read_file, search_files, or terminal\n": {
+         "read_file",
+@@ -521,7 +518,6 @@
+         "terminal",
+     },
+     "- Git history, branches, diffs → use terminal\n": {"terminal"},
+-    "- 'What time is it?' → run `date` (don't guess)\n": {"terminal"},
+ }
+ 
+ 
+--- a/agent/system_prompt.py
++++ b/agent/system_prompt.py
+@@ -484,6 +484,12 @@
+     if _offset:
+         bits.append(f"UTC{_offset[:3]}:{_offset[3:]}")
+     return bits
++
++
++# The client (BipAgents' bridge and apps) and the cron scheduler put the current time at the top of each
++# user message, in the person's zone: ``<!--bip:now Thursday, October 29, 2026, 08:40, Europe/Paris (UTC+01:00)-->``.
++NOW_LINE_HINT = ("The current date and time are given at the top of each message (a bip:now line): trust the "
++                 "latest one over the start date, and don't check the clock with a tool.")
+ 
+ 
+ def _timestamp_line(agent: Any) -> str:
+@@ -503,9 +509,9 @@
+     # of' refreshes exactly when the cache prefix is already being invalidated (compaction), so the added
+     # line costs no extra cache churn. Same-day sessions skip the second line entirely — nothing to correct,
+     # and the single-line shape stays byte-identical for the day (prefix-cache safe).
+-    if now.strftime("%Y%m%d") != _start.strftime("%Y%m%d"):
+-        timestamp_line += (f"\nToday's date (as of the last context rebuild): {safe_strftime(now, '%A, %B %d, %Y')} "
+-                           "— trust this over the start date for what day it is now; query tools for exact time.")
++    # The current time comes with each message instead (NOW_LINE_HINT): an « as of the last rebuild » date went
++    # stale in conversations that last days (the prompt cache keeps it) and sent the model to the terminal.
++    timestamp_line += f"\n{NOW_LINE_HINT}"
+     if getattr(agent, "_bot_chat_timeless_prompt", False):
+         timestamp_line = f"Timezone: {', '.join(_bits)}" if _bits else ""
+     trailer = (("Session ID", agent.session_id if agent.pass_session_id else None), ("Model", agent.model),
+--- a/cron/scheduler_prompt.py
++++ b/cron/scheduler_prompt.py
+@@ -280,6 +280,17 @@
+ )
+ 
+ 
++def now_line(at=None) -> str:
++    """``<!--bip:now Sunday, October 25, 2026, 07:00, Europe/Paris (UTC+01:00)-->``: the run's time in the routines'
++    zone (``cron.timezone``, else the profile's), as the client puts it at the top of each conversation message."""
++    import hermes_time
++    zone = getattr(hermes_time, "get_cron_timezone", hermes_time.get_timezone)()
++    at = (at or _hermes_now()).astimezone(zone)  # zone None: the machine's
++    offset = at.strftime("%z")
++    name = getattr(zone, "key", None) or at.strftime("%Z")
++    return f"<!--bip:now {at.strftime('%A, %B %d, %Y, %H:%M')}, {name} (UTC{offset[:3]}:{offset[3:]})-->"
++
++
+ def _build_job_prompt(
+     job: dict, prerun_script: Optional[tuple] = None, extra_prompt: Optional[str] = None,
+     runtime_data_prompt: Optional[str] = None,
+@@ -333,7 +344,7 @@
+         prompt = f"{notepad_section}{prompt}"
+         has_injected_data = True
+ 
+-    prompt = _CRON_HINT + prompt
++    prompt = _CRON_HINT + now_line() + "\n" + prompt
+     skill_names = _job_skill_names(job)
+     if not skill_names:
+         return _scan_assembled_cron_prompt(
+--- a/hermes_state_common.py
++++ b/hermes_state_common.py
+@@ -57,7 +57,10 @@
+     return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+ 
+ 
+-_PREVIEW_CONTENT_SQL = "REPLACE(REPLACE(m.content, X'0A', ' '), X'0D', ' ')"
++# A leading now line (the current time a client puts at the top of each message) is not the person's words.
++_PREVIEW_CONTENT_SQL = ("REPLACE(REPLACE(CASE WHEN m.content LIKE '<!--bip:now %' AND INSTR(m.content, '-->') > 0"
++                        " THEN LTRIM(SUBSTR(m.content, INSTR(m.content, '-->') + 3), CHAR(10) || CHAR(13) || ' ')"
++                        " ELSE m.content END, X'0A', ' '), X'0D', ' ')")
+ # User-invoked and gateway auto-load scaffolds both get the head+tail excerpt window:
+ # the typed request sits at the tail (auto-load) or behind the instruction marker.
+ # No LIKE wildcards in either prefix, so no ESCAPE clause is needed.
+--- a/tests/agent/test_system_prompt.py
++++ b/tests/agent/test_system_prompt.py
+@@ -11,7 +11,7 @@
+ 
+ import pytest
+ 
+-from agent.system_prompt import build_system_prompt, build_system_prompt_parts
++from agent.system_prompt import NOW_LINE_HINT, build_system_prompt, build_system_prompt_parts
+ 
+ 
+ def _make_agent(**overrides):
+@@ -548,7 +548,7 @@
+         "WORKSPACE",
+         "Operator instructions (from config):\nOPERATOR",
+         expected_profile,
+-        "Conversation started: Friday, January 02, 2026",
++        "Conversation started: Friday, January 02, 2026\n" + NOW_LINE_HINT,
+     ))
+ 
+     with (
+@@ -952,10 +952,11 @@
+         parts = sp.build_system_prompt_parts(agent)
+         return parts["volatile"]
+ 
+-    def test_old_session_gets_rebuild_date_line(self):
++    def test_old_session_gets_the_message_time_line(self):
+         vol = self._volatile(self._agent("20200110_090000_old"))
+         assert "Conversation started:" in vol
+-        assert "as of the last context rebuild" in vol
++        assert "as of the last context rebuild" not in vol
++        assert "at the top of each message (a bip:now line)" in vol
+ 
+     def test_same_day_session_keeps_single_line(self):
+         from hermes_time import now as hermes_now
+--- /dev/null
++++ b/tests/agent/test_now_line.py
+@@ -0,0 +1,78 @@
++"""The current time comes with each message, never from the terminal: each routine run's prompt
++starts with a now line in the routines' zone (``cron.timezone``), right across clock changes, and
++the prompt no longer sends the model to ``date``; a session's preview skips the line."""
++
++from datetime import datetime
++from zoneinfo import ZoneInfo
++
++import pytest
++
++import hermes_time
++from cron import scheduler_prompt
++
++UTC = ZoneInfo("UTC")
++
++
++@pytest.fixture
++def zones(monkeypatch, tmp_path):
++    def use(profile: str, routines: str):
++        (tmp_path / "config.yaml").write_text(f"timezone: {profile}\ncron:\n  timezone: {routines}\n")
++        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
++        monkeypatch.delenv("HERMES_TIMEZONE", raising=False)
++        hermes_time.reset_cache()
++
++    yield use
++    hermes_time.reset_cache()
++
++
++def _prompt_at(monkeypatch, at: datetime) -> str:
++    monkeypatch.setattr(scheduler_prompt, "_hermes_now", lambda: at)
++    return scheduler_prompt._build_job_prompt({"id": "j1", "name": "Matin", "prompt": "Résume ma journée."})
++
++
++@pytest.mark.parametrize("at, line", [
++    # Europe/Paris, 2026-10-25: 03:00 CEST becomes 02:00 CET, the 02:xx hour is lived twice
++    (datetime(2026, 10, 25, 0, 30, tzinfo=UTC), "Sunday, October 25, 2026, 02:30, Europe/Paris (UTC+02:00)"),
++    (datetime(2026, 10, 25, 1, 30, tzinfo=UTC), "Sunday, October 25, 2026, 02:30, Europe/Paris (UTC+01:00)"),
++    (datetime(2026, 10, 25, 6, 0, tzinfo=UTC), "Sunday, October 25, 2026, 07:00, Europe/Paris (UTC+01:00)"),
++])
++def test_a_routine_run_gets_the_time_in_its_zone_across_autumn_change(zones, monkeypatch, at, line):
++    zones("Asia/Tokyo", "Europe/Paris")  # the person travels, the routines stay at home time
++    prompt = _prompt_at(monkeypatch, at)
++    assert f"<!--bip:now {line}-->\nRésume ma journée." in prompt
++    assert prompt.count("<!--bip:now ") == 1
++
++
++@pytest.mark.parametrize("at, line", [
++    # America/New_York, 2026-03-08: 02:00 EST jumps to 03:00 EDT
++    (datetime(2026, 3, 8, 6, 30, tzinfo=UTC), "Sunday, March 08, 2026, 01:30, America/New_York (UTC-05:00)"),
++    (datetime(2026, 3, 8, 7, 30, tzinfo=UTC), "Sunday, March 08, 2026, 03:30, America/New_York (UTC-04:00)"),
++])
++def test_a_routine_run_gets_the_time_in_its_zone_across_spring_change(zones, monkeypatch, at, line):
++    zones("America/New_York", "America/New_York")
++    assert f"<!--bip:now {line}-->" in _prompt_at(monkeypatch, at)
++
++
++def test_the_prompt_sends_nobody_to_the_terminal_for_the_time():
++    from agent.prompt_builder import OPENAI_MODEL_EXECUTION_GUIDANCE, execution_guidance_text
++    from agent.system_prompt import NOW_LINE_HINT
++
++    for text in (OPENAI_MODEL_EXECUTION_GUIDANCE, execution_guidance_text({"terminal", "execute_code"})):
++        assert "Current time, date, timezone" not in text
++        assert "run `date`" not in text
++        assert "use terminal" in text  # the other lines stay
++    assert "bip:now" in NOW_LINE_HINT and "don't check the clock" in NOW_LINE_HINT
++
++
++def test_a_session_preview_skips_the_now_line():
++    import sqlite3
++
++    from hermes_state_common import _PREVIEW_RAW_SELECT, _shape_preview
++
++    db = sqlite3.connect(":memory:")
++    db.execute("CREATE TABLE messages (content TEXT)")
++    now = "<!--bip:now Thursday, October 29, 2026, 08:40, Europe/Paris (UTC+01:00)-->"
++    for content in (f"{now}\nOn part à Lisbonne quand ?", "Sans heure", "<!--bip:now cut"):
++        db.execute("INSERT INTO messages VALUES (?)", (content,))
++    previews = [_shape_preview(raw) for (raw,) in db.execute(f"SELECT {_PREVIEW_RAW_SELECT} FROM messages m")]
++    assert previews == ["On part à Lisbonne quand ?", "Sans heure", "<!--bip:now cut"]

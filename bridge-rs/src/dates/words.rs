@@ -147,6 +147,23 @@ pub fn day(date: NaiveDate, lang: &str) -> String {
     capitalized(&text)
 }
 
+/// The current time as the agents read it (dates/now.rs), 24-hour clock: « jeudi 29 octobre 2026, 08:40 »,
+/// « Thursday, October 29, 2026, 08:40 », « Donnerstag, 29. Oktober 2026, 08:40 », « jueves 29 de octubre de 2026,
+/// 08:40 ».
+pub fn now_text(at: chrono::NaiveDateTime, lang: &str) -> String {
+    let (date, i) = (at.date(), index(lang));
+    let weekday = WEEKDAYS[i][date.weekday().num_days_from_monday() as usize];
+    let month = MONTHS[i][date.month0() as usize];
+    let (d, y, clock) = (date.day(), date.year(), format!("{:02}:{:02}", at.hour(), at.minute()));
+    match lang {
+        "fr" if d == 1 => format!("{weekday} 1er {month} {y}, {clock}"),
+        "fr" => format!("{weekday} {d} {month} {y}, {clock}"),
+        "de" => format!("{weekday}, {d}. {month} {y}, {clock}"),
+        "es" => format!("{weekday} {d} de {month} de {y}, {clock}"),
+        _ => format!("{weekday}, {month} {d}, {y}, {clock}"),
+    }
+}
+
 pub fn capitalized(text: &str) -> String {
     let mut chars = text.chars();
     match chars.next() {

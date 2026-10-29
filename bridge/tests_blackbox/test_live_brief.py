@@ -7,6 +7,7 @@ import time
 import pytest
 
 from bbkit.common import AUTH
+from bbkit.fakes import split_now, waiting_notes
 from bbkit.servers import wait_until
 
 
@@ -32,7 +33,8 @@ def test_a_brief_is_the_last_exchanges_without_tools_or_hidden_text(bridge, fake
     fakes.hermes.add_session("s1", messages)
     got = brief(bridge, session="s1").json()
     assert got["session"] == "s1" and got["points_at"] is None
-    text = got["text"]
+    now, text = split_now(got["text"])
+    assert now is not None   # the call's start time first (bridge-rs/src/dates/now.rs)
     assert text.startswith("This is a voice call with the person. It continues the conversation summed up below")
     assert "Its last exchanges:\n" in text and "- The person: Et demain ?" in text and "- You: Grand soleil." in text
     assert "message 11" in text and "message 5" not in text   # the last ones only
@@ -65,9 +67,9 @@ def test_routes(bridge, fakes):
     stored = bridge.state_dir / "call-recaps" / "wellness" / "api_old.txt"
     assert stored.read_text() == first + "\x1e" + second and oct(stored.stat().st_mode & 0o777) == "0o600"
     taken = bridge.post("/v1/live/recaps/take", json={"agent": "Wellness", "session": "api_old"}, headers=AUTH).json()
-    assert taken == {"recap": first + "\n" + second}
-    assert bridge.post("/v1/live/recaps/take", json={"agent": "Wellness", "session": "api_old"},
-                       headers=AUTH).json() == {"recap": None}
+    assert list(taken) == ["recap"] and waiting_notes(taken["recap"]) == first + "\n" + second
+    again = bridge.post("/v1/live/recaps/take", json={"agent": "Wellness", "session": "api_old"}, headers=AUTH).json()
+    assert waiting_notes(again["recap"]) is None   # the current time alone
     assert bridge.post("/v1/live/recaps", json={"agent": "Wellness", "session": "api_old", "recap": "x"}).status_code == 401
     assert bridge.post("/v1/live/recaps", json={"agent": "Wellness", "session": "api_old", "recap": ""},
                        headers=AUTH).status_code == 422
@@ -77,8 +79,10 @@ def test_routes(bridge, fakes):
 
 def test_no_conversation_yet_and_hermes_errors(bridge, fakes):
     # model_options: what the call's turns send (thinking off; « low » for GLM through EUrouter, test_agents_admin)
-    assert brief(bridge).json() == {"session": None, "text": "", "points_at": None,
-                                    "model_options": {"reasoning": {"enabled": False}}}
+    got = brief(bridge).json()
+    now, rest = split_now(got.pop("text"))
+    assert now is not None and rest == ""   # the call's start time alone
+    assert got == {"session": None, "points_at": None, "model_options": {"reasoning": {"enabled": False}}}
     fakes.hermes.keys[""] = "other"
     refused = brief(bridge, session="s1")
     assert refused.status_code == 401 and refused.json() == {"detail": "your agent couldn't answer this: try again in a moment"}
@@ -91,7 +95,7 @@ def test_a_call_continues_in_the_next_briefs(bridge, fakes):
                                        {"role": "user", "content": "Oui, je pars à Lyon demain."},
                                        {"role": "assistant", "content": "Bon voyage !"}], title="Live · 10:05")
     bridge.post("/v1/live/calls", json={"agent": "wellness", "session": "s1", "live_session": "live1"}, headers=AUTH)
-    text = brief(bridge, session="s1").json()["text"]
+    text = split_now(brief(bridge, session="s1").json()["text"])[1]
     assert "Earlier voice calls" in text and "je pars à Lyon demain" in text and "bip:" not in text
     # A day old at most: the bridge's own file, aged.
     path = bridge.state_dir / "briefs" / "wellness" / "s1.json"

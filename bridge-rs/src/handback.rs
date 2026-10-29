@@ -552,8 +552,8 @@ impl Handback {
             waited += self.poll;
         }
         let before = self.hermes.session(agent, &request.session).await.map(|s| tokens_of(&s)).unwrap_or(0);
-        let run_id =
-            self.hermes.start_run(agent, &request.note, &request.session, None).await.map_err(|e| match e {
+        let note = crate::dates::now::stamped(&self.config.get(), agent, &request.note);
+        let run_id = self.hermes.start_run(agent, &note, &request.session, None).await.map_err(|e| match e {
                 HermesError::Http { status: 404 | 410, .. } => (GONE.to_string(), 0),
                 e => (format!("the agent refused ({e})"), 0),
             })?;

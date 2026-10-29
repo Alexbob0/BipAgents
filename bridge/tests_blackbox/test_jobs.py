@@ -8,6 +8,7 @@ import re
 import pytest
 
 from bbkit.common import AUTH
+from bbkit.fakes import split_now
 from bbkit.mcp import call, give_token, text_of
 from bbkit.servers import wait_until
 
@@ -42,7 +43,8 @@ def test_a_task_runs_in_its_own_conversation_and_ends_with_its_report(bridges, f
     assert (job["kind"], job["proposed_by"], job["runs"], job["template"]) == ("task", "person", 1, "research")
     assert fakes.hermes.created == [("", {"title": "🧩 Écoles du quartier"})]
     run = fakes.hermes.seen("/v1/runs", "POST")[0].json()
-    assert run["session_id"] == "api_s1" and run["input"] == "Écoles du quartier\n\nCompare les trois écoles près de chez nous."
+    now, words = split_now(run["input"])
+    assert run["session_id"] == "api_s1" and now and words == "Écoles du quartier\n\nCompare les trois écoles près de chez nous."
     assert "model_options" not in run   # the agent's own thinking level (GLM through EUrouter: « medium », agents_admin)
     assert run["instructions"].startswith("This is a background task the person gave you from the app (« Tâches de fond »)")
     stored = bridge.state_dir / "jobs" / f"{job['id']}.json"

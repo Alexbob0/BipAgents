@@ -105,7 +105,8 @@ pub async fn call(http: &reqwest::Client, config: &Config, agent: &AgentConfig, 
             }
         },
     };
-    match hermes.session_chat(&target, &session, &signed(agent, &message), None, ANSWER_SECONDS).await {
+    let message = crate::dates::now::stamped(config, &target, &signed(agent, &message));
+    match hermes.session_chat(&target, &session, &message, None, ANSWER_SECONDS).await {
         Ok(reply) if !reply.trim().is_empty() => {
             tracing::info!(agent = %agent.name, target = %target.name, "message to an agent answered");
             tool_text(&format!("{shown} (bip/{}) answered:\n{}", target.name, reply.trim()), false)

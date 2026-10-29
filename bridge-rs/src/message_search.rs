@@ -225,7 +225,18 @@ pub fn snippet(text: &str, words: &[String]) -> (String, Vec<(String, bool)>) {
 }
 
 /// The text of a message: its content, or the text parts of a multimodal one (a JSON list).
+/// A row's words, without the notes for the agent only (`<!--bip:…-->`: the current time at the top of each message
+/// would match every « octobre »).
 fn message_text(content: &str) -> String {
+    let text = row_text(content);
+    if text.contains("bip:") {
+        crate::live_brief::visible(&text)
+    } else {
+        text
+    }
+}
+
+fn row_text(content: &str) -> String {
     let trimmed = content.trim_start();
     if trimmed.starts_with('[') {
         if let Ok(Value::Array(items)) = serde_json::from_str::<Value>(trimmed) {
@@ -577,6 +588,8 @@ mod tests {
             "voici la photo"
         );
         assert_eq!(message_text("[pas du json"), "[pas du json");
+        let now = "<!--bip:now jeudi 29 octobre 2026, 08:40, Europe/Paris (UTC+01:00)-->";
+        assert_eq!(message_text(&format!("{now}\nLa piscine ouvre ?")), "La piscine ouvre ?");
     }
 
     #[test]

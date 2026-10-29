@@ -400,6 +400,8 @@ pub fn framed(person: &str, household: &str, text: &str) -> String {
 }
 
 fn unframed(text: &str) -> String {
+    let shown = crate::live_brief::visible(text); // without the current time at its top (dates/now.rs)
+    let text = shown.as_str();
     match text.split_once('\n') {
         Some((first, rest)) if first.starts_with('[') && first.contains(FRAME_MARK) => rest.to_string(),
         _ => text.to_string(),
@@ -677,9 +679,10 @@ async fn served_post(
     };
     let session = str_of(&c, "session");
     let base = state.hermes.session(&agent, &session).await.map(|s| counters_of(&s)).unwrap_or((0, 0));
+    let input = crate::dates::now::stamped(&config, &agent, &framed(&person, &shown, &text));
     let run_id = state
         .hermes
-        .start_run(&agent, &framed(&person, &shown, &text), &session, Some(&rules))
+        .start_run(&agent, &input, &session, Some(&rules))
         .await
         .map_err(|_| HttpError::new(502, "the agent can't be reached"))?;
     update(&owner_path(&config), |data| {

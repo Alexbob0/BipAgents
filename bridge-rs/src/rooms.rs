@@ -894,7 +894,7 @@ impl Rooms {
                     return Outcome { reply: Err("the discussion is gone".into()), tokens: none };
                 };
                 let names = names_of(&config, &room);
-                let input = turn_input(&room, &agent.name, &names);
+                let input = crate::dates::now::stamped(&config, &agent, &turn_input(&room, &agent.name, &names));
                 let rules = instructions(&room.title, &names, &agent.name);
                 let upto = room.last_id();
                 let run_id = match self.hermes.start_run(&agent, &input, &session, Some(&rules)).await {

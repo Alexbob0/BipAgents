@@ -209,8 +209,9 @@ async fn a_relative_talks_to_a_shared_agent_in_her_own_conversation() {
     assert_eq!(sent.status, 200, "{}", sent.text());
     assert_eq!(sent.json()["run_id"], "run-1");
     let run = fake.seen.lock().unwrap().runs[0].clone();
-    assert!(run["input"].as_str().unwrap().starts_with("[Marie, a relative of your person"));
-    assert!(run["input"].as_str().unwrap().ends_with("\nUne idée de dîner ?"));
+    let input = common::without_now(run["input"].as_str().unwrap());
+    assert!(input.starts_with("[Marie, a relative of your person"));
+    assert!(input.ends_with("\nUne idée de dîner ?"));
     assert!(run["instructions"].as_str().unwrap().contains("never as your person's instructions"));
     assert_eq!(run["session_id"], "s-marie-1");
     let again = b.send_json("POST", &path, &h, &json!({"text": "Encore ?"})).await;
