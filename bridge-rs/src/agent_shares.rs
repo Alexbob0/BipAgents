@@ -70,8 +70,8 @@
 //!     conversations), memory writes, routines, messages to other agents, delegation, skills;
 //!   - the owner's profile: Hermes leaves the agent's USER.md (what it knows about its person) out of the turn's
 //!     prompt; MEMORY.md, the agent's own notes, stays (common by decision 3A), with its personality.
-//!   The instructions say it too (belt and braces). A Hermes without patch 0018 ignores the mark: then only the
-//!   bridge's closure and the instructions hold, which is what `confirm` warned about.
+//!   - the instructions say it too (belt and braces); a Hermes without patch 0018 ignores the mark: then only the
+//!     bridge's closure and the instructions hold, which is what `confirm` warned about.
 //! - Approvals belong to the person talking: the relative's are left out of the owner's Boîte and `/v1/approve`
 //!   refuses them (403); she answers through her bridge.
 //! - Only text crosses: `MEDIA:` lines are taken out of the replies (rooms.rs `room_text`).
