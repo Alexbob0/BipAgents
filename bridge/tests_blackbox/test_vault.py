@@ -144,3 +144,41 @@ def test_an_install_whose_agents_can_read_the_bridge_keeps_no_credentials(bridge
     assert bridge.patch("/v1/vault/item_x", headers=AUTH, json={}).status_code == 409
     assert not (bridge.state_dir / "vault").exists()   # nothing written, not even encrypted
     assert bridge.get("/v1/status", headers=AUTH).json()["protected"] is False
+
+
+def test_a_login_for_an_agent_other_people_talk_to_needs_the_persons_confirmation(bridges, fakes):
+    """The vault page's « Agents autorisés »: an agent shared with a relative (or linked with another household's, the
+    family's agent) gets a login only with `confirmed_others` (the app's « … parle aussi avec … Continuer ? »), as a
+    secret card; the listing says which agents need it and who else talks to them."""
+    bridge = bridges.new()
+    python = f"{bridge.fakebin}/podman exec -i hermes-vie /opt/hermes/venv/bin/python"
+    bridge.config["agents"]["Vie"] = {"hermes_url": fakes.down.url, "hermes_key": "k" * 32, "isolated": True,
+                                      "python": python, "hermes_home": "/home/hermes/.hermes"}
+    bridge.config["hermes"] = {"isolated": True, "bin": str(bridge.fakebin / "hermes"), "hub_url": fakes.hermes.url}
+    bridge.commands.rule("podman", ["exec", "-i", "hermes-vie"], stdout=ANSWER)
+    bridge.state_dir.mkdir(parents=True, exist_ok=True)
+    (bridge.state_dir / "households.json").write_text(json.dumps({"households": {"lea": {"name": "Léa"}}}))
+    (bridge.state_dir / "agent-shares.json").write_text(json.dumps({"shared": {"vie": ["lea"]}}))
+    bridge.start()
+    agents = {a["id"]: a for a in bridge.get("/v1/vault", headers=AUTH).json()["agents"]}
+    assert agents["vie"]["others"] is True and agents["vie"]["others_names"] == ["Léa"]
+    assert "others" not in agents["wellness"]
+    old_app = bridge.post("/v1/vault", headers=AUTH, json={**LOGIN, "agents": ["vie"]})
+    assert old_app.status_code == 409, old_app.text
+    detail = old_app.json()["detail"]
+    assert detail["code"] == "confirm_others" and detail["agents"] == ["vie"] and "Mets à jour l’app" in detail["message"]
+    assert "s3cret" not in old_app.text
+    assert requests_to_vie(bridge) == [] and bridge.get("/v1/vault", headers=AUTH).json()["items"] == []
+    # kept for nobody: no confirmation needed; then given to Vie: the same refusal, then confirmed
+    item = bridge.post("/v1/vault", headers=AUTH, json={**LOGIN, "agents": []}).json()
+    refused = bridge.patch(f"/v1/vault/{item['id']}", headers=AUTH, json={"agents": ["vie"]})
+    assert refused.status_code == 409 and refused.json()["detail"]["code"] == "confirm_others"
+    assert requests_to_vie(bridge) == []
+    given = bridge.patch(f"/v1/vault/{item['id']}", headers=AUTH, json={"agents": ["vie"], "confirmed_others": True})
+    assert given.status_code == 200 and given.json()["agents"] == ["vie"], given.text
+    # it holds the login now (confirmed then): a new password needs no new confirmation
+    changed = bridge.patch(f"/v1/vault/{item['id']}", headers=AUTH, json={"password": "n3w"})
+    assert changed.status_code == 200, changed.text
+    made = bridge.post("/v1/vault", headers=AUTH, json={**LOGIN, "label": "Ameli", "agents": ["vie"],
+                                                         "confirmed_others": True})
+    assert made.status_code == 201 and made.json()["agents"] == ["vie"], made.text

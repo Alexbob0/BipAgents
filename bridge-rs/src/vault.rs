@@ -78,6 +78,9 @@ pub enum VaultError {
     /// Payment cards are off on this install (`[vault] cards`).
     #[error("payment cards are off on this server")]
     CardsOff,
+    /// `ConfirmOthers(agents)`: other people talk to these agents and the person did not confirm (`confirmed_others`).
+    #[error("other people talk to these agents: the person must confirm")]
+    ConfirmOthers(Vec<String>),
 }
 
 /// A card found for an agent (`Vault::card_for`): its numbers stay in the bridge.
@@ -654,6 +657,25 @@ impl Vault {
         Ok(agents)
     }
 
+    /// An others-facing agent (`others_facing`) gets a login only once the person confirmed it (`confirmed_others`
+    /// in the body, the app's « … parle aussi avec … Continuer ? »), as for a secret card (secrets.rs `give`).
+    /// A card is left out: each of its payments already asks the person (card_pay.rs).
+    fn confirmed(config: &Config, body: &Dict, record: &Dict, agents: &[AgentConfig]) -> Result<(), VaultError> {
+        if body.get("confirmed_others").and_then(Value::as_bool) == Some(true)
+            || record.get("kind").and_then(Value::as_str) == Some(crate::cards::KIND)
+        {
+            return Ok(());
+        }
+        let others: Vec<String> =
+            agents.iter().filter(|a| others_facing(config, &a.name)).map(|a| a.name.clone()).collect();
+        if others.is_empty() {
+            Ok(())
+        } else {
+            tracing::info!(agents = ?others, "vault item not given: other people talk to the agents, not confirmed");
+            Err(VaultError::ConfirmOthers(others))
+        }
+    }
+
     fn handles(record: &mut Dict) -> &mut Dict {
         if !matches!(record.get("agents"), Some(Value::Object(_))) {
             record.insert("agents".into(), Value::Object(Dict::new()));
@@ -712,6 +734,7 @@ impl Vault {
             None => Vec::new(),
         };
         let agents = Self::check(config, &wanted)?;
+        Self::confirmed(config, body, &record, &agents)?;
         record.insert("id".into(), json!(format!("item_{}", &crate::py::uuid4_hex()[..12])));
         record.insert("agents".into(), json!({}));
         record.insert("created_at".into(), json!(now()));
@@ -756,6 +779,9 @@ impl Vault {
         // A changed item is written again everywhere (Hermes has no update): taken back, then given.
         let to_give: Vec<String> = wanted.iter().filter(|a| !had.contains(a) || changed).cloned().collect();
         let give = Self::check(config, &to_give)?;
+        // only an agent that gets this login now: one that already holds it was confirmed when it got it
+        let added: Vec<AgentConfig> = give.iter().filter(|a| !had.contains(&a.name)).cloned().collect();
+        Self::confirmed(config, body, &record, &added)?;
         let to_take: Vec<String> = had.iter().filter(|a| !wanted.contains(a) || changed).cloned().collect();
         self.take_back(config, &mut record, &to_take).await;
         self.give(config, &mut record, &give).await?;
@@ -1112,6 +1138,8 @@ fn answer(exc: anyhow::Error) -> HttpError {
             VaultError::CannotHold(reasons) => HttpError::json(409, json!({"code": "cannot_hold", "agents": reasons})),
             VaultError::Unprotected => HttpError::json(409, json!({"code": "unprotected_install"})),
             VaultError::CardsOff => HttpError::json(409, json!({"code": "cards_off"})),
+            VaultError::ConfirmOthers(agents) => HttpError::json(409, json!({"code": crate::secrets::CONFIRM_OTHERS,
+                "agents": agents, "message": crate::secrets::CONFIRM_OTHERS_TEXT})),
             VaultError::Invalid(text) => HttpError::new(400, text.clone()),
         };
     }
@@ -1153,7 +1181,13 @@ async fn listing(State(state): State<AppState>) -> ApiResult<Response> {
         .values()
         .map(|a| {
             let why = holder(&config, a);
-            json!({"id": a.name, "name": a.display_name, "can_hold": why.is_none(), "why": why})
+            let mut row = json!({"id": a.name, "name": a.display_name, "can_hold": why.is_none(), "why": why});
+            if others_facing(&config, &a.name) {
+                // the app asks one confirmation before giving it a login (`confirmed_others`)
+                row["others"] = json!(true);
+                row["others_names"] = json!(others_names(&config, &a.name));
+            }
+            row
         })
         .collect();
     let mut out = json!({"protected": config.hermes.isolated, "items": items, "agents": agents,
