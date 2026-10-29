@@ -113,10 +113,10 @@ crédit (tu peux en ajouter, section 6) ; les services que tu relies à tes agen
 
 ## 4. La semaine gratuite
 
-- Un forfait peut commencer par **une semaine gratuite**, quand le budget d'essais du mois le permet et que ton
-  appareil et ton compte du store n'en ont jamais eu. Sinon, l'app te propose le même forfait sans semaine gratuite.
+- Un forfait commence par **une semaine gratuite** si ton appareil et ton compte du store n'en ont jamais eu.
+  Sinon, l'app te propose le même forfait sans semaine gratuite.
   Avant l'achat, l'app te dit si la semaine gratuite s'applique, quand elle finit et le prix qui suivra.
-- La semaine gratuite s'applique aussi **sur le site**, avec les mêmes règles (le budget d'essais du mois) : la page de
+- La semaine gratuite s'applique aussi **sur le site**, avec la même règle (une seule par personne) : la page de
   commande te dit si elle s'applique, quand elle finit et le prix qui suivra. Ta carte est demandée au paiement, mais
   rien n'est prélevé avant la fin de la semaine ; l'e-mail de confirmation te redonne sa date de fin et ce prix.
 - Pendant la semaine gratuite, tout fonctionne comme dans le forfait ; le crédit d'IA du forfait (section 6) sert pour

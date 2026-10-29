@@ -200,7 +200,7 @@
     "inApp": "Dans l’app :",
     "cta": "S’abonner",
     "soon": "<b>L’abonnement sur le web arrive très bientôt.</b> En attendant, BipAgents arrive sur les stores, où tu pourras t’abonner dans l’app :",
-    "trial": "Une semaine gratuite pour commencer, quand il en reste ce mois-ci : on te dit avant de payer si elle s’applique, et rien n’est prélevé si tu arrêtes avant la fin.",
+    "trial": "Une semaine gratuite pour commencer, si tu n’en as jamais eu : rien n’est prélevé si tu arrêtes avant la fin.",
     "cancel": "Résiliable à tout moment : ton espace est gardé 30 jours, le temps de tout récupérer (3 jours après une semaine gratuite sans suite).",
     "includedTitle": "Compris dans chaque formule",
     "inc1": "Tes Bips, tes agents IA, prêts en une minute",
@@ -308,7 +308,7 @@
     },
     "2": {
       "q": "Il y a une semaine gratuite ?",
-      "a": "Souvent : une semaine pour commencer, quand il en reste ce mois-ci et que tu n’en as jamais eu. On te dit avant de payer si elle s’applique, quand elle finit et le prix qui suit. Arrête avant la fin et rien n’est prélevé."
+      "a": "Oui : une semaine gratuite pour commencer, si tu n’en as jamais eu. On te dit avant de payer quand elle finit et le prix qui suit. Arrête avant la fin et rien n’est prélevé."
     },
     "3": {
       "q": "Combien de messages par mois ?",

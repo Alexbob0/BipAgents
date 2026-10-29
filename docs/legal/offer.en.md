@@ -107,10 +107,9 @@ section 6); the services you connect to your agents and their own subscriptions.
 
 ## 4. The free week
 
-- A plan may start with **a free week**, when the month's trial budget allows it and your device and your store account
-  never had one. Otherwise, the app offers you the same plan without a free week. Before the purchase, the app tells
+- A plan starts with **a free week** if your device and your store account never had one. Otherwise, the app offers you the same plan without a free week. Before the purchase, the app tells
   you whether the free week applies, when it ends and the price that follows it.
-- The free week applies **on the website** too, with the same rules (the month's trial budget): the order page tells you
+- The free week applies **on the website** too, with the same rule (one per person): the order page tells you
   whether it applies, when it ends and the price that follows it. Your card is asked at payment, but nothing is charged
   before the end of the week; the confirmation email gives you its end date and that price again.
 - During the free week, everything works as in the plan; the plan's AI credit (section 6) is for the whole week.

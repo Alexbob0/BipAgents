@@ -200,7 +200,7 @@
     "inApp": "In the app:",
     "cta": "Subscribe",
     "soon": "<b>The web subscription is coming very soon.</b> Meanwhile, BipAgents is coming to the stores, where you’ll subscribe in the app:",
-    "trial": "A free week to start, while there are some left this month: we tell you before you pay whether it applies, and nothing is charged if you stop before it ends.",
+    "trial": "A free week to start, if you never had one: nothing is charged if you stop before it ends.",
     "cancel": "Cancel anytime: your space is kept 30 days so you can take everything with you (3 days after a free week you didn’t continue).",
     "includedTitle": "Included in every plan",
     "inc1": "Your Bips, your AI agents, ready in a minute",
@@ -308,7 +308,7 @@
     },
     "2": {
       "q": "Is there a free week?",
-      "a": "Often: a week to start, while there are some left this month and if you never had one. We tell you before you pay whether it applies, when it ends and the price that follows. Stop before it ends and nothing is charged."
+      "a": "Yes: a free week to start, if you never had one. We tell you before you pay when it ends and the price that follows. Stop before it ends and nothing is charged."
     },
     "3": {
       "q": "How many messages a month?",

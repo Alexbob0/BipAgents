@@ -200,7 +200,7 @@
     "inApp": "In der App:",
     "cta": "Abonnieren",
     "soon": "<b>Das Web-Abo kommt sehr bald.</b> Bis dahin kommt BipAgents in die Stores, wo du in der App abonnierst:",
-    "trial": "Eine Gratiswoche zum Start, solange es diesen Monat noch welche gibt: Wir sagen dir vor dem Bezahlen, ob sie gilt, und nichts wird abgebucht, wenn du vorher aufhörst.",
+    "trial": "Eine Gratiswoche zum Start, wenn du noch keine hattest: Nichts wird abgebucht, wenn du vorher aufhörst.",
     "cancel": "Jederzeit kündbar: Dein Bereich bleibt 30 Tage erhalten, damit du alles mitnehmen kannst (3 Tage nach einer Gratiswoche ohne Abo).",
     "includedTitle": "In jedem Tarif enthalten",
     "inc1": "Deine Bips, deine KI-Agenten, in einer Minute bereit",
@@ -308,7 +308,7 @@
     },
     "2": {
       "q": "Gibt es eine Gratiswoche?",
-      "a": "Oft: eine Woche zum Start, solange es diesen Monat noch welche gibt und du noch keine hattest. Vor dem Bezahlen sagen wir dir, ob sie gilt, wann sie endet und welcher Preis folgt. Hörst du vorher auf, wird nichts abgebucht."
+      "a": "Ja: eine Gratiswoche zum Start, wenn du noch keine hattest. Vor dem Bezahlen sagen wir dir, wann sie endet und welcher Preis folgt. Hörst du vorher auf, wird nichts abgebucht."
     },
     "3": {
       "q": "Wie viele Nachrichten im Monat?",

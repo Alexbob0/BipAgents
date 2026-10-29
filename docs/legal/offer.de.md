@@ -114,10 +114,9 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
 
 ## 4. Die kostenlose Woche
 
-- Ein Tarif kann mit **einer kostenlosen Woche** beginnen, wenn das Testbudget des Monats es erlaubt und dein Gerät und
-  dein Store-Konto noch nie eine hatten. Sonst bietet dir die App denselben Tarif ohne kostenlose Woche an. Vor dem Kauf
+- Ein Tarif beginnt mit **einer kostenlosen Woche**, wenn dein Gerät und dein Store-Konto noch nie eine hatten. Sonst bietet dir die App denselben Tarif ohne kostenlose Woche an. Vor dem Kauf
   sagt dir die App, ob die kostenlose Woche gilt, wann sie endet und welcher Preis danach folgt.
-- Die kostenlose Woche gilt auch **auf der Website**, mit denselben Regeln (das Testbudget des Monats): Die Bestellseite
+- Die kostenlose Woche gilt auch **auf der Website**, mit derselben Regel (eine pro Person): Die Bestellseite
   zeigt dir, ob sie gilt, wann sie endet und welcher Preis danach folgt. Deine Karte wird bei der Zahlung abgefragt,
   aber vor dem Ende der Woche wird nichts abgebucht; die Bestätigungs-E-Mail nennt dir ihr Enddatum und diesen Preis
   noch einmal.

@@ -113,10 +113,9 @@ enseguida. Las reglas propias de las personas que viven fuera de la Unión está
 
 ## 4. La semana gratis
 
-- Un plan puede empezar con **una semana gratis**, cuando el presupuesto de pruebas del mes lo permite y tu dispositivo
-  y tu cuenta de la tienda nunca han tenido una. Si no, la app te propone el mismo plan sin semana gratis. Antes de la
+- Un plan empieza con **una semana gratis** si tu dispositivo y tu cuenta de la tienda nunca han tenido una. Si no, la app te propone el mismo plan sin semana gratis. Antes de la
   compra, la app te dice si se aplica la semana gratis, cuándo termina y el precio que la sigue.
-- La semana gratis se aplica también **en el sitio**, con las mismas reglas (el presupuesto de pruebas del mes): la
+- La semana gratis se aplica también **en el sitio**, con la misma regla (una por persona): la
   página de pedido te dice si se aplica, cuándo termina y el precio que la sigue. Tu tarjeta se pide al pagar, pero no
   se cobra nada antes del final de la semana; el correo de confirmación te recuerda su fecha de fin y ese precio.
 - Durante la semana gratis, todo funciona como en el plan; el crédito de IA del plan (sección 6) sirve para toda la
