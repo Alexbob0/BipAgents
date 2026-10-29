@@ -90,10 +90,10 @@
         "es": "Presupuesto"
       },
       "greeting": {
-        "fr": "Bonjour ! Je suis **Budget** 💶 Je lis tes relevés, je trouve les dépenses qui fuient et je t’aide à mettre de côté. Tout reste sur ton serveur : tes comptes ne partent chez personne. Essaie 👇",
-        "en": "Hello! I’m **Budget** 💶 I read your statements, find the spending leaks and help you save. Everything stays on your server: your accounts go to no one. Try it 👇",
-        "de": "Hallo! Ich bin **Budget** 💶 Ich lese deine Kontoauszüge, finde undichte Stellen und helfe dir beim Sparen. Alles bleibt auf deinem Server: Deine Konten gehen an niemanden. Probier’s aus 👇",
-        "es": "¡Hola! Soy **Presupuesto** 💶 Leo tus extractos, encuentro las fugas de dinero y te ayudo a ahorrar. Todo se queda en tu servidor: tus cuentas no salen de ahí. Pruébalo 👇"
+        "fr": "Bonjour ! Je suis **Budget** 💶 Je lis tes relevés, je trouve les dépenses qui fuient et je t’aide à mettre de côté. Tes relevés restent sur ton serveur, en Europe ; seule l’IA les lit pour te répondre. Essaie 👇",
+        "en": "Hello! I’m **Budget** 💶 I read your statements, find the spending leaks and help you save. Your statements stay on your server, in Europe; only the AI reads them to answer you. Try it 👇",
+        "de": "Hallo! Ich bin **Budget** 💶 Ich lese deine Kontoauszüge, finde undichte Stellen und helfe dir beim Sparen. Deine Kontoauszüge bleiben auf deinem Server in Europa; nur die KI liest sie, um dir zu antworten. Probier’s aus 👇",
+        "es": "¡Hola! Soy **Presupuesto** 💶 Leo tus extractos, encuentro las fugas de dinero y te ayudo a ahorrar. Tus extractos se quedan en tu servidor, en Europa; solo la IA los lee para responderte. Pruébalo 👇"
       },
       "scheduled": {
         "minutesAgo": 300,
@@ -278,18 +278,18 @@
         },
         {
           "say": {
-            "fr": "Voilà ta journée :\n\n| Heure | Quoi |\n|---|---|\n| 9 h 30 | Point d’équipe (visio) |\n| 12 h 30 | Déjeuner avec Sam |\n| 17 h | Dentiste ☔ |\n\nPrends un **parapluie** : la pluie arrive vers 16 h 45.\n\n📬 Sur 14 mails, 2 comptent vraiment : la **facture d’électricité** (à payer avant vendredi) et la **réponse de l’agence** pour l’appartement. Le reste, c’est de la pub et des newsletters : je les ai rangées.",
-            "en": "Here’s your day:\n\n| Time | What |\n|---|---|\n| 9:30 am | Team sync (video) |\n| 12:30 pm | Lunch with Sam |\n| 5 pm | Dentist ☔ |\n\nTake an **umbrella**: rain is coming around 4:45 pm.\n\n📬 Of 14 emails, 2 really matter: the **electricity bill** (due Friday) and the **agency’s reply** about the apartment. The rest is ads and newsletters: I’ve filed them away.",
-            "de": "Hier ist dein Tag:\n\n| Uhrzeit | Was |\n|---|---|\n| 9:30 | Team-Meeting (Video) |\n| 12:30 | Mittagessen mit Sam |\n| 17:00 | Zahnarzt ☔ |\n\nNimm einen **Schirm** mit: Gegen 16:45 Uhr kommt Regen.\n\n📬 Von 14 Mails zählen nur 2: die **Stromrechnung** (fällig bis Freitag) und die **Antwort der Agentur** zur Wohnung. Der Rest ist Werbung und Newsletter: Die habe ich weggeräumt.",
-            "es": "Este es tu día:\n\n| Hora | Qué |\n|---|---|\n| 9:30 | Reunión de equipo (vídeo) |\n| 12:30 | Comida con Sam |\n| 17:00 | Dentista ☔ |\n\nLlévate **paraguas**: la lluvia llega hacia las 16:45.\n\n📬 De 14 correos, solo 2 importan: la **factura de la luz** (vence el viernes) y la **respuesta de la agencia** sobre el piso. El resto es publicidad y boletines: ya los he archivado."
+            "fr": "Voilà ta journée :\n\n| Heure | Quoi |\n|---|---|\n| 9 h 30 | Point d’équipe (visio) |\n| 12 h 30 | Déjeuner avec Sam |\n| 17 h | Foot de Léo : le sac est prêt ? ☔ |\n\nPrends un **parapluie** : la pluie arrive vers 16 h 45.\n\n📬 Sur 14 mails, 2 comptent vraiment : la **facture d’électricité** (à payer avant vendredi) et la **réponse de l’agence** pour l’appartement. Le reste, c’est de la pub et des newsletters : je les ai rangées.",
+            "en": "Here’s your day:\n\n| Time | What |\n|---|---|\n| 9:30 am | Team sync (video) |\n| 12:30 pm | Lunch with Sam |\n| 5 pm | Léo’s football: is his bag ready? ☔ |\n\nTake an **umbrella**: rain is coming around 4:45 pm.\n\n📬 Of 14 emails, 2 really matter: the **electricity bill** (due Friday) and the **agency’s reply** about the apartment. The rest is ads and newsletters: I’ve filed them away.",
+            "de": "Hier ist dein Tag:\n\n| Uhrzeit | Was |\n|---|---|\n| 9:30 | Team-Meeting (Video) |\n| 12:30 | Mittagessen mit Sam |\n| 17:00 | Léos Fußball: Ist die Tasche gepackt? ☔ |\n\nNimm einen **Schirm** mit: Gegen 16:45 Uhr kommt Regen.\n\n📬 Von 14 Mails zählen nur 2: die **Stromrechnung** (fällig bis Freitag) und die **Antwort der Agentur** zur Wohnung. Der Rest ist Werbung und Newsletter: Die habe ich weggeräumt.",
+            "es": "Este es tu día:\n\n| Hora | Qué |\n|---|---|\n| 9:30 | Reunión de equipo (vídeo) |\n| 12:30 | Comida con Sam |\n| 17:00 | Fútbol de Léo: ¿la bolsa está lista? ☔ |\n\nLlévate **paraguas**: la lluvia llega hacia las 16:45.\n\n📬 De 14 correos, solo 2 importan: la **factura de la luz** (vence el viernes) y la **respuesta de la agencia** sobre el piso. El resto es publicidad y boletines: ya los he archivado."
           }
         }
       ],
       "spoken": {
-        "fr": "Ta journée : point d’équipe à neuf heures et demie, déjeuner avec Sam à midi et demi, et dentiste à dix-sept heures. Prends un parapluie, il va pleuvoir vers seize heures quarante-cinq. Et deux mails comptent : la facture d’électricité, et la réponse de l’agence pour l’appartement.",
-        "en": "Your day: team sync at nine thirty, lunch with Sam at twelve thirty, and the dentist at five. Take an umbrella, rain is coming around a quarter to five. And two emails matter: the electricity bill, and the agency’s reply about the apartment.",
-        "de": "Dein Tag: Team-Meeting um halb zehn, Mittagessen mit Sam um halb eins und um siebzehn Uhr der Zahnarzt. Nimm einen Schirm mit, gegen Viertel vor fünf regnet es. Und zwei Mails sind wichtig: die Stromrechnung und die Antwort der Agentur zur Wohnung.",
-        "es": "Tu día: reunión de equipo a las nueve y media, comida con Sam a las doce y media y dentista a las cinco. Llévate paraguas, lloverá hacia las cinco menos cuarto. Y dos correos importan: la factura de la luz y la respuesta de la agencia sobre el piso."
+        "fr": "Ta journée : point d’équipe à neuf heures et demie, déjeuner avec Sam à midi et demi, et le foot de Léo à dix-sept heures. Prends un parapluie, il va pleuvoir vers seize heures quarante-cinq. Et deux mails comptent : la facture d’électricité, et la réponse de l’agence pour l’appartement.",
+        "en": "Your day: team sync at nine thirty, lunch with Sam at twelve thirty, and Léo’s football at five. Take an umbrella, rain is coming around a quarter to five. And two emails matter: the electricity bill, and the agency’s reply about the apartment.",
+        "de": "Dein Tag: Team-Meeting um halb zehn, Mittagessen mit Sam um halb eins und um siebzehn Uhr Léos Fußball. Nimm einen Schirm mit, gegen Viertel vor fünf regnet es. Und zwei Mails sind wichtig: die Stromrechnung und die Antwort der Agentur zur Wohnung.",
+        "es": "Tu día: reunión de equipo a las nueve y media, comida con Sam a las doce y media y el fútbol de Léo a las cinco. Llévate paraguas, lloverá hacia las cinco menos cuarto. Y dos correos importan: la factura de la luz y la respuesta de la agencia sobre el piso."
       },
       "elapsed": 95
     },
@@ -777,10 +777,10 @@
           "tool": "message_agent",
           "seconds": 1.6,
           "preview": {
-            "fr": "@budget · Il reste du budget pour des chaussures de running (~120 €) ?",
-            "en": "@budget · Any room in the budget for running shoes (~€120)?",
-            "de": "@budget · Ist noch Budget für Laufschuhe da (~120 €)?",
-            "es": "@budget · ¿Queda presupuesto para zapatillas de correr (~120 €)?"
+            "fr": "{\"target\": \"Budget\", \"message\": \"@budget · Il reste du budget pour des chaussures de running (~120 €) ?\"}",
+            "en": "{\"target\": \"Budget\", \"message\": \"@budget · Any room in the budget for running shoes (~€120)?\"}",
+            "de": "{\"target\": \"Budget\", \"message\": \"@budget · Ist noch Budget für Laufschuhe da (~120 €)?\"}",
+            "es": "{\"target\": \"Presupuesto\", \"message\": \"@budget · ¿Queda presupuesto para zapatillas de correr (~120 €)?\"}"
           }
         },
         {
@@ -1640,10 +1640,10 @@
           "tool": "message_agent",
           "seconds": 1.8,
           "preview": {
-            "fr": "Avec l’agent de Léa · 4 créneaux proposés",
-            "en": "With Léa’s agent · 4 slots offered",
-            "de": "Mit Léas Agent · 4 Termine vorgeschlagen",
-            "es": "Con el agente de Léa · 4 huecos propuestos"
+            "fr": "{\"target\": \"Léa\", \"message\": \"4 créneaux proposés\"}",
+            "en": "{\"target\": \"Léa\", \"message\": \"4 slots offered\"}",
+            "de": "{\"target\": \"Léa\", \"message\": \"4 Termine vorgeschlagen\"}",
+            "es": "{\"target\": \"Léa\", \"message\": \"4 huecos propuestos\"}"
           }
         },
         {
@@ -1690,10 +1690,10 @@
               "tool": "message_agent",
               "seconds": 1.2,
               "preview": {
-                "fr": "Léa a dit oui",
-                "en": "Léa said yes",
-                "de": "Léa hat zugesagt",
-                "es": "Léa ha dicho que sí"
+                "fr": "{\"target\": \"Léa\", \"message\": \"Jeudi 12 h 30, c’est confirmé\"}",
+                "en": "{\"target\": \"Léa\", \"message\": \"Thursday at 12:30 is confirmed\"}",
+                "de": "{\"target\": \"Léa\", \"message\": \"Donnerstag um 12:30 ist bestätigt\"}",
+                "es": "{\"target\": \"Léa\", \"message\": \"El jueves a las 12:30, confirmado\"}"
               }
             },
             {
@@ -2254,10 +2254,10 @@
           "tool": "message_agent",
           "seconds": 1.4,
           "preview": {
-            "fr": "Avec l’agent de Mamie · le mercredi",
-            "en": "With Grandma’s agent · Wednesday",
-            "de": "Mit Omas Agent · Mittwoch",
-            "es": "Con el agente de la abuela · el miércoles"
+            "fr": "{\"target\": \"l’agent de Mamie\", \"message\": \"Le mercredi\"}",
+            "en": "{\"target\": \"Grandma’s agent\", \"message\": \"Wednesday\"}",
+            "de": "{\"target\": \"Oma\", \"message\": \"Mittwoch\"}",
+            "es": "{\"target\": \"la abuela\", \"message\": \"El miércoles\"}"
           }
         },
         {
