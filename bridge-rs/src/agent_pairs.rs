@@ -21,6 +21,12 @@
 //!   household's agents never get here (family_news.rs stays their way), a relative's turn has no `message_agent`
 //!   (agent_shares.rs `RELATIVE_TOOLS`), and these routes are the person's app's only: a relative's bridge never
 //!   lists them.
+//! - **Another household's agent** writing to one of ours along a household link (peers.rs `deliver`, since
+//!   2026-10-29) talks in such a pair too: « Vie (Alex) ⇄ Cuisine », its address `vie__alex` kept in `names` with its
+//!   shown name. Its turn stays a relative's (patch 0018's mark, no USER.md, closed tools: peers.rs `guest_marked`);
+//!   only the history changes, the pair's instead of the target's Bot Chat. Hermes' peer protocol is kept (the
+//!   other side still asks for the « Bot Chat »: it gets the pair's conversation), the answer goes back the same way,
+//!   and the bridge keeps it in the thread (`keep_household_answer`).
 //!
 //! ```text
 //! GET /v1/agent-pairs?agent=<id>   {pairs: [pair]}   the pairs this agent is in, the most recent first
@@ -120,6 +126,10 @@ pub struct Pair {
     pub total: usize,
     #[serde(default)]
     pub last_id: u64,
+    /// The shown name of an agent of another household (« Vie (Alex) »), by its address here (`vie__alex`): its
+    /// messages come in through the household link (peers.rs `deliver`), never from this install.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub names: BTreeMap<String, String>,
 }
 
 impl Pair {
@@ -302,7 +312,12 @@ pub async fn ask(
 }
 
 /// The target's hidden conversation for this pair (made, and hidden, the first time).
-async fn session_for(hermes: &HermesClient, config: &Config, id: &str, target: &AgentConfig) -> Result<String, HermesError> {
+pub(crate) async fn session_for(
+    hermes: &HermesClient,
+    config: &Config,
+    id: &str,
+    target: &AgentConfig,
+) -> Result<String, HermesError> {
     if let Some(session) = get(config, id).and_then(|p| p.sessions.get(&target.name).cloned()) {
         return Ok(session);
     }
@@ -419,9 +434,131 @@ fn answer_of(output: &str) -> Answer {
     }
 }
 
+// -- another household's agent ---------------------------------------------------------------------------------------
+
+/// The pair of `remote` (another household's agent, `vie__alex`, shown « Vie (Alex) ») and `target` (ours), made the
+/// first time; its id.
+pub fn household_pair(config: &Config, remote: &str, shown: &str, target: &str) -> anyhow::Result<String> {
+    let id = pair_id(remote, target);
+    change(config, |book| {
+        let pair = book.pairs.entry(id.clone()).or_insert_with(|| {
+            let mut agents = vec![remote.to_string(), target.to_string()];
+            agents.sort();
+            Pair { id: id.clone(), agents, created: py::time_time(), ..Default::default() }
+        });
+        pair.names.insert(remote.to_string(), shown.to_string());
+    })?;
+    Ok(id)
+}
+
+/// The target's conversation with another household's agent (hidden, made the first time): where every message of
+/// that agent goes, instead of the target's « Bot Chat ».
+pub async fn household_session(
+    http: &reqwest::Client,
+    config: &Config,
+    remote: &str,
+    shown: &str,
+    target: &AgentConfig,
+) -> Result<String, HermesError> {
+    let id = household_pair(config, remote, shown, &target.name).map_err(|e| HermesError::http(500, e.to_string()))?;
+    session_for(&HermesClient::new(http.clone()), config, &id, target).await
+}
+
+/// The target's conversation with `remote` when there is one already (nothing made).
+pub fn household_session_known(config: &Config, remote: &str, target: &str) -> Option<String> {
+    get(config, &pair_id(remote, target)).and_then(|p| p.sessions.get(target).cloned())
+}
+
+/// The note the target reads above another household's message (hidden by the apps): this conversation holds only
+/// what the two agents said to each other.
+pub fn household_note(shown: &str, remote: &str) -> String {
+    let name = tk::in_note_line(shown);
+    format!(
+        "<!--bip:pair\nThis is your own conversation with {name} (@{remote}), an agent of another household: only \
+what you two said to each other is here. Your person can read it. Don't tell {name} about your person's private \
+matters unless your person asked you to. Answer here, in text.\n-->\n"
+    )
+}
+
+/// A household message's body (`message` or `input`) with the note at its top, and its text without the signature
+/// for the thread.
+pub fn household_framed(body: &[u8], shown: &str, remote: &str) -> (Vec<u8>, String) {
+    let Ok(Value::Object(mut data)) = serde_json::from_slice::<Value>(body) else {
+        return (body.to_vec(), String::new());
+    };
+    let mut said = String::new();
+    for field in ["message", "input"] {
+        if let Some(Value::String(text)) = data.get(field).cloned() {
+            if said.is_empty() {
+                said = match crate::peers::SIGNATURE.find(&text) {
+                    Some(found) => text[found.end()..].trim().to_string(),
+                    None => text.trim().to_string(),
+                };
+            }
+            data.insert(field.to_string(), Value::String(format!("{}{text}", household_note(shown, remote))));
+        }
+    }
+    (py::dumps(&Value::Object(data)).into_bytes(), said)
+}
+
+/// Keeps what the target answered another household's agent: its run followed until it ends, or (a session chat,
+/// already over; a run Hermes forgot) its last reply in the pair's conversation.
+pub async fn keep_household_answer(
+    http: reqwest::Client,
+    config: Config,
+    remote: String,
+    target: AgentConfig,
+    session: String,
+    run_id: Option<String>,
+) {
+    let hermes = HermesClient::new(http);
+    let since = py::time_time();
+    let mut output = None;
+    if let Some(run_id) = &run_id {
+        loop {
+            tokio::time::sleep(Duration::from_secs_f64(POLL_SECONDS)).await;
+            match hermes.run(&target, run_id).await {
+                Ok(run) => {
+                    let status = tk::str_or_empty(run.get("status"));
+                    if crate::jobs::TERMINAL.contains(&status.as_str()) {
+                        if status == "completed" {
+                            output = Some(run.get("output").and_then(Value::as_str).unwrap_or("").to_string());
+                        }
+                        break;
+                    }
+                }
+                Err(HermesError::Http { status: 404 | 410, .. }) => break,
+                Err(_) => {}
+            }
+            if py::time_time() - since > crate::peers::HOUSEHOLD_TURN_SECONDS + APPROVAL_WAIT {
+                break;
+            }
+        }
+    }
+    let output = match output {
+        Some(output) => output,
+        None => match hermes.session_messages(&target, &session).await {
+            Ok(messages) => crate::cronwatch::final_reply(&messages).unwrap_or_default(),
+            Err(_) => String::new(),
+        },
+    };
+    let at = py::time_time();
+    let kept = match answer_of(&output) {
+        Answer::Text(text) => record(&config, &target.name, &remote, "answer", &text, at),
+        _ => record(&config, &target.name, &remote, "notice", "answered nothing", at),
+    };
+    if let Err(exc) = kept {
+        tracing::warn!(agent = %remote, target = %target.name, error = %exc, "household pair: the answer not kept");
+    }
+}
+
 // -- what the app reads ----------------------------------------------------------------------------------------------
 
-fn agent_view(config: &Config, id: &str) -> Value {
+fn agent_view(config: &Config, pair: &Pair, id: &str) -> Value {
+    if let Some(name) = pair.names.get(id) {
+        // another household's agent: its name with its household's, no Bip of ours
+        return json!({"id": id, "name": name, "category": null, "color": null, "gone": false, "household": true});
+    }
     match config.agent(Some(id)) {
         Some(agent) => json!({"id": agent.name, "name": agent.display_name, "category": agent.category,
                               "color": agent.color, "gone": false}),
@@ -433,7 +570,7 @@ pub fn pair_view(config: &Config, pair: &Pair) -> Dict {
     let exchanges = &pair.exchanges[pair.exchanges.len().saturating_sub(EXCHANGES_LISTED)..];
     let view = json!({
         "id": pair.id,
-        "agents": pair.agents.iter().map(|a| agent_view(config, a)).collect::<Vec<_>>(),
+        "agents": pair.agents.iter().map(|a| agent_view(config, pair, a)).collect::<Vec<_>>(),
         "messages": pair.total, "created": pair.created, "updated": pair.updated,
         "last": pair.messages.last(), "exchanges": exchanges,
     });
@@ -503,5 +640,37 @@ mod tests {
         assert!(!note.contains("-->"));
         assert_eq!(ask, "Message from Quotidien --> x (@quotidien): Combien d'heures ?");
         assert_eq!(&crate::peers::SIGNATURE.captures(ask).unwrap()[1], "quotidien");
+    }
+
+    #[test]
+    fn another_households_message_gets_the_note_and_the_thread_its_bare_text() {
+        let body = br#"{"session_id": "pair-1", "input": "Message from Vie (Alex) (@vie__alex): On mange quoi ?"}"#;
+        let (framed, said) = household_framed(body, "Vie (Alex)", "vie__alex");
+        assert_eq!(said, "On mange quoi ?");
+        let framed: Value = serde_json::from_slice(&framed).unwrap();
+        let (note, ask) = framed["input"].as_str().unwrap().split_once("\n-->\n").unwrap();
+        assert!(note.starts_with("<!--bip:pair\nThis is your own conversation with Vie (Alex) (@vie__alex), an agent"));
+        assert_eq!(ask, "Message from Vie (Alex) (@vie__alex): On mange quoi ?");
+        assert_eq!(framed["session_id"], json!("pair-1"));
+    }
+
+    #[test]
+    fn another_households_agent_is_named_with_its_household() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = json!({"bridge_key": "k".repeat(40), "outbox": {"db_path": dir.path().join("bridge.db").to_string_lossy()},
+                       "agents": {"Cuisine": {"hermes_url": "http://127.0.0.1:9", "hermes_key": "k".repeat(32)}}});
+        let config = crate::config::parse_config(&d, None).unwrap();
+        let id = household_pair(&config, "vie__alex", "Vie (Alex)", "cuisine").unwrap();
+        assert_eq!(id, pair_id("cuisine", "vie__alex"));
+        record(&config, "vie__alex", "cuisine", "ask", "On mange quoi ?", 10.0).unwrap();
+        let pair = get(&config, &id).unwrap();
+        assert_eq!(pair.agents, vec!["cuisine".to_string(), "vie__alex".to_string()]);
+        let view = pair_view(&config, &pair);
+        assert_eq!(view["agents"][1]["name"], json!("Vie (Alex)"));
+        assert_eq!(view["agents"][1]["household"], json!(true));
+        assert_eq!(view["agents"][1]["gone"], json!(false));
+        assert_eq!(view["agents"][0]["gone"], json!(false));
+        assert_eq!(of_agent(&config, "cuisine").len(), 1);
+        assert_eq!(household_session_known(&config, "vie__alex", "cuisine"), None);
     }
 }

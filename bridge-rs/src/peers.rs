@@ -10,6 +10,12 @@
 //! there (`only_bot_chat`). Its other conversations, its approvals and its runs elsewhere stay out of reach, whatever
 //! an agent tricked by what it read would try with its token.
 //!
+//! Another household's agent (`deliver`, since 2026-10-29) doesn't reach the Bot Chat itself: the « Bot Chat » it
+//! finds or opens is the two agents' own conversation (« Vie (Alex) ⇄ Cuisine », agent_pairs.rs, a hidden Hermes
+//! session per pair), and a message to the real Bot Chat (an id its side kept from before) goes there too
+//! (`only_pair_session`). That turn's history is only what those two agents said to each other, never what the
+//! person told their agent; the bridge keeps the thread for the person's app, like the pairs inside a household.
+//!
 //! Hermes delivers these messages as the gateway (`hermes -p default peer dm`): the token says which gateway
 //! calls, and the message's signature (« Message from … (@agent): ») which of its agents. An agent in its own
 //! space is alone in its gateway, so it is known for sure; in the shared hub, an agent could sign as another hub
@@ -522,6 +528,96 @@ async fn only_bot_chat(
     Err(refuse())
 }
 
+/// Where a household request about the target's « Bot Chat » goes.
+enum PairRoute {
+    /// Given by the bridge itself.
+    Answer(Response),
+    /// Forwarded to the target's Hermes: this path and body, for this conversation of the pair.
+    Forward { path: String, body: Bytes, session: String },
+}
+
+/// What another household's agent may do with `agent`: the calls of `hermes peer` (dm, send, status, stop), as on
+/// the Bot Chat, but in the two agents' own conversation (agent_pairs.rs): the « Bot Chat » it finds or opens is that
+/// conversation, and a message to the real Bot Chat (an id the other side kept from before) goes there too. The
+/// person's Bot Chat and other conversations stay out of that turn's history. Anything else is refused.
+#[allow(clippy::too_many_arguments)]
+async fn only_pair_session(
+    state: &AppState,
+    agent: &AgentConfig,
+    remote: &str,
+    shown: &str,
+    method: &Method,
+    path: &str,
+    query: &QueryMap,
+    body: Bytes,
+) -> ApiResult<PairRoute> {
+    let refuse = || HttpError::new(403, format!("only {}'s Bot Chat is reachable", agent.name));
+    let config = state.config();
+    let session = || async {
+        crate::agent_pairs::household_session(&state.http, &config, remote, shown, agent).await.map_err(|exc| {
+            tracing::warn!(sender = %remote, target = %agent.name, error = %exc, "household pair: no conversation");
+            HttpError::new(502, format!("{} can't be reached", agent.display_name))
+        })
+    };
+    let row = |id: &str| json!({"id": id, "title": BOT_CHAT_TITLE});
+    if *method == Method::GET && path == "v1/capabilities" {
+        return Ok(PairRoute::Forward { path: path.to_string(), body, session: String::new() });
+    }
+    if *method == Method::GET && path == "api/sessions" {
+        if query.get("title") != Some(BOT_CHAT_TITLE) {
+            return Err(refuse());
+        }
+        let id = session().await?;
+        return Ok(PairRoute::Answer(web::ok(json!({"object": "list", "data": [row(&id)]}))));
+    }
+    if *method == Method::POST && path == "api/sessions" {
+        if json_dict(&body).get("title") != Some(&json!(BOT_CHAT_TITLE)) {
+            return Err(refuse());
+        }
+        let id = session().await?;
+        let mut made = row(&id);
+        made["session"] = row(&id);
+        return Ok(PairRoute::Answer(web::ok(made)));
+    }
+    let chat = CHAT_PATH.captures(path);
+    if *method == Method::POST && (chat.is_some() || path == "v1/runs") {
+        let mut data = json_dict(&body);
+        let wanted = match &chat {
+            Some(c) => unquote(&c[1]),
+            None => data.get("session_id").filter(|v| crate::py::truthy(v)).map(crate::py::py_str).unwrap_or_default(),
+        };
+        let id = session().await?;
+        if wanted.is_empty() || (wanted != id && bot_chat(state, agent).await.map(|r| id_of(&r)) != Some(wanted)) {
+            return Err(refuse());
+        }
+        return Ok(match chat {
+            Some(_) => PairRoute::Forward { path: format!("api/sessions/{}/chat", quote(&id)), body, session: id },
+            None => {
+                data.insert("session_id".into(), json!(id));
+                let body = Bytes::from(crate::py::dumps(&Value::Object(data)).into_bytes());
+                PairRoute::Forward { path: path.to_string(), body, session: id }
+            }
+        });
+    }
+    if let Some(run) = RUN_PATH.captures(path) {
+        if (*method == Method::GET) == run.get(2).is_none() {
+            let status = from_target(state, agent, &format!("v1/runs/{}", &run[1]), &[]).await;
+            let of_run = status.as_ref().and_then(Value::as_object).map(|s| {
+                s.get("session_id").filter(|v| crate::py::truthy(v)).map(crate::py::py_str).unwrap_or_default()
+            });
+            let Some(of_run) = of_run.filter(|s| !s.is_empty()) else { return Err(refuse()) };
+            let known = crate::agent_pairs::household_session_known(&config, remote, &agent.name);
+            // a run started in the Bot Chat before the pairs' conversations may still be followed to its end
+            if known.as_deref() == Some(of_run.as_str())
+                || bot_chat(state, agent).await.map(|r| id_of(&r)).as_deref() == Some(of_run.as_str())
+            {
+                return Ok(PairRoute::Forward { path: path.to_string(), body, session: of_run });
+            }
+        }
+    }
+    Err(refuse())
+}
+
 fn is_message(method: &Method, path: &str) -> bool {
     *method == Method::POST && (path.ends_with("/chat") || path == "v1/runs")
 }
@@ -934,23 +1030,35 @@ async fn deliver(state: AppState, target: String, path: String, request: Request
         tracing::info!(sender = %remote, target = %agent.name, "household message refused");
         return Err(HttpError::new(403, format!("{} does not take messages from {remote}", agent.display_name)));
     }
-    let mut body = axum::body::to_bytes(body, usize::MAX)
+    let body = axum::body::to_bytes(body, usize::MAX)
         .await
         .map_err(|_| HttpError::new(400, "There was an error parsing the body"))?;
     let query = QueryMap::parse(parts.uri.query());
-    if let Some(answer) = only_bot_chat(&state, &agent, &parts.method, &path, &query, &body).await? {
-        return Ok(answer);
-    }
-    if is_message(&parts.method, &path) {
-        let given = parts
-            .headers
-            .get("x-bip-sender-name")
-            .map(|v| String::from_utf8_lossy(v.as_bytes()).into_owned())
-            .unwrap_or_default();
-        let name = Some(unquote(&given)).filter(|n| !n.is_empty()).unwrap_or_else(|| sender.clone());
-        let household_name =
-            state.households.get(&household).and_then(|h| h.get("name").map(crate::py::py_str)).unwrap_or_default();
+    let given = parts
+        .headers
+        .get("x-bip-sender-name")
+        .map(|v| String::from_utf8_lossy(v.as_bytes()).into_owned())
+        .unwrap_or_default();
+    let name = Some(unquote(&given)).filter(|n| !n.is_empty()).unwrap_or_else(|| sender.clone());
+    let household_name =
+        state.households.get(&household).and_then(|h| h.get("name").map(crate::py::py_str)).unwrap_or_default();
+    let shown = if household_name.is_empty() { name.clone() } else { format!("{name} ({household_name})") };
+    // the pair's own conversation, never the person's Bot Chat (agent_pairs.rs)
+    let (path, mut body, session) =
+        match only_pair_session(&state, &agent, &remote, &shown, &parts.method, &path, &query, body).await? {
+            PairRoute::Answer(answer) => return Ok(answer),
+            PairRoute::Forward { path, body, session } => (path, body, session),
+        };
+    let message = is_message(&parts.method, &path);
+    if message {
         body = Bytes::from(resign(&body, &sender, &name, &household_name));
+        let (framed, said) = crate::agent_pairs::household_framed(&body, &shown, &remote);
+        if let Err(exc) =
+            crate::agent_pairs::record(&config, &remote, &agent.name, "ask", &said, crate::py::time_time())
+        {
+            tracing::warn!(sender = %remote, target = %agent.name, error = %exc, "household pair: the ask not kept");
+        }
+        body = Bytes::from(framed);
         body = Bytes::from(crate::dates::now::stamped_body_for(&state.config(), &agent, &body));
         body = Bytes::from(guest_marked(&body));
     }
@@ -961,12 +1069,36 @@ async fn deliver(state: AppState, target: String, path: String, request: Request
     tracing::info!(sender = %remote, target = %agent.name, "household message");
     let url = format!("{}/{path}", agent.hermes_url);
     let starts_run = parts.method == Method::POST && path == "v1/runs";
-    let turn = is_message(&parts.method, &path).then(|| household_turn_began(&agent.name));
+    let turn = message.then(|| household_turn_began(&agent.name));
     let response = forward(&state, &parts.method, &url, &query, body.clone(), headers).await;
     if let (Some(turn), false) = (turn, starts_run && response.as_ref().is_ok_and(|r| r.status().is_success())) {
         household_turn_ended(turn); // a session chat answers when its turn is over; a run refused never ran
     }
     let response = response?;
+    if !message || !response.status().is_success() {
+        return Ok(response);
+    }
+    // the answer kept in the pair's thread: the run followed to its end, or the session chat's reply once read
+    let (response_parts, response_body) = response.into_parts();
+    let Ok(bytes) = axum::body::to_bytes(response_body, 16 << 20).await else {
+        return Err(HttpError::new(502, "Hermes' answer was lost"));
+    };
+    let run_id = if starts_run {
+        let answer: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+        let answer = answer.get("run").filter(|r| r.is_object()).unwrap_or(&answer);
+        answer.get("run_id").or_else(|| answer.get("id")).and_then(Value::as_str).map(str::to_string)
+    } else {
+        None
+    };
+    state.spawn(crate::agent_pairs::keep_household_answer(
+        state.http.clone(),
+        (*config).clone(),
+        remote.clone(),
+        agent.clone(),
+        session,
+        run_id,
+    ));
+    let response = Response::from_parts(response_parts, Body::from(bytes));
     if starts_run {
         // the turn it started followed by the hub, for the brake (loop_brake.rs)
         return Ok(crate::runs::keep_started(&state.hub, &agent, &body, response).await);
