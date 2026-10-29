@@ -451,9 +451,17 @@ async fn set_up_network(config: &Config, run: &Run, podman: &str) -> Result<Stri
     // the offer's blocklist fetched now if it is due (the proxy reads it when it appears; never waited for)
     let c = config.clone();
     tokio::spawn(async move { crate::send_guard::refresh_blocklist(&c).await });
-    run(proxy_command(config, podman), none)
-        .await
-        .map_err(|e| format!("registries' proxy not started: {}", crate::agents_admin::tail(&e.to_string(), 200)))?;
+    let command = proxy_command(config, podman);
+    if let Err(first) = run(command.clone(), none.clone()).await {
+        // The proxy's monitor (conmon) lives in the bridge's unit: a stop that times out kills it, and the next start
+        // can't `--replace` a container left half-stopped (« could not be stopped… conmon exited prematurely », lab
+        // 2026-10-29: no network for the sandboxes until the retry, 10 minutes later). Removed, then started again.
+        tracing::info!(target: "bipbridge::sandbox", error = %crate::agents_admin::tail(&first.to_string(), 200), "registries' proxy not replaced: removed and started again");
+        let _ = run(args(&[podman, "rm", "-f", "--ignore", PROXY]), none.clone()).await;
+        run(command, none)
+            .await
+            .map_err(|e| format!("registries' proxy not started: {}", crate::agents_admin::tail(&e.to_string(), 200)))?;
+    }
     tracing::info!(target: "bipbridge::sandbox", proxy = PROXY, registries = %config.sandbox.registries.join(","), "registries' proxy started");
     Ok(format!("http://{ip}:{PROXY_PORT}"))
 }
