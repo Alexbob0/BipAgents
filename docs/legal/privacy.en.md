@@ -364,8 +364,9 @@ subscriptions. We keep no data of your card: it is entered at Stripe and never g
   real device) and a fingerprint of the device's Android identifier, computed on the phone (SHA-256), then hashed again
   by the guichet with a secret key before being stored. Kerfy Studio only keeps this keyed fingerprint, and only for
   this limit.
-- **The IP address** of your phone is kept for as long as a trial place is reserved (15 minutes at most), to limit the
-  number of reservations per address.
+- **The IP address** of your phone is never stored. To limit the number of reservations per address, the guichet keeps
+  only a fingerprint of it computed with a secret key, in memory only, for as long as a trial place is reserved
+  (15 minutes at most); it is lost when the guichet restarts.
 
 **Purposes and legal bases.** Providing and managing your subscription, your places and your credit: performance of the
 contract (GDPR article 6(1)(b)). Preventing the same person from chaining free weeks: Kerfy Studio's legitimate interest
@@ -378,7 +379,7 @@ payment and calculating the taxes, performance of the contract (article 6(1)(b))
 **Retention.** Subscription and purchase data, including those of a purchase on the website: during the subscription,
 then 5 years in archive, as proof of the contract (article 2224 of the French Civil Code). Invoices and payment records:
 10 years (article L123-22 of the French Commercial Code); Stripe keeps the invoices. Android device fingerprint:
-24 months. IP address: 15 minutes at most. The DeviceCheck bits are kept by Apple.
+24 months. IP address: never stored; its fingerprint, in memory, 15 minutes at most. The DeviceCheck bits are kept by Apple.
 
 ### 5.4 Your place and the AI model
 
@@ -654,7 +655,7 @@ service. You can ask us for a copy of the applicable safeguards.
 | Purchase on the website (email address given at payment, Stripe identifiers, plan and period, billing country, language) | During the subscription, then 5 years in archive |
 | Invoices and payment records of a purchase on the website | 10 years (article L123-22 of the French Commercial Code); invoices kept by Stripe |
 | Keyed fingerprint of the Android device (free week) | 24 months |
-| IP address when a free week is reserved | 15 minutes at most |
+| IP address when a free week is reserved | Never stored; in memory, as a fingerprint, 15 minutes at most |
 | Content of your place | During the subscription, then 30 days (3 days after a free week that was not continued) |
 | Backups | 48 hours (hourly), 30 days (daily), 12 weeks (weekly); erased with the place |
 | OVHcloud's daily image | One point per day, replaced within about a day after the place is reinstalled |

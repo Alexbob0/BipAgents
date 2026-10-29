@@ -381,8 +381,9 @@ Nous ne gardons aucune donnée de ta carte : elle est saisie chez Stripe et ne p
   un vrai appareil) et une empreinte de l'identifiant Android de l'appareil, calculée sur le téléphone (SHA-256), puis
   hachée à nouveau par le guichet avec une clé secrète avant d'être enregistrée. Kerfy Studio ne garde que cette
   seconde empreinte, et seulement pour cette limite.
-- **L'adresse IP** de ton téléphone est gardée le temps de la réservation d'une place d'essai (15 minutes au plus),
-  pour limiter le nombre de réservations par adresse.
+- **L'adresse IP** de ton téléphone n'est jamais enregistrée. Pour limiter le nombre de réservations par adresse, le
+  guichet n'en garde qu'une empreinte calculée avec une clé secrète, en mémoire seulement, le temps de la réservation
+  d'une place d'essai (15 minutes au plus) ; elle est perdue au redémarrage.
 
 **Finalités et bases légales.** Fournir et gérer ton abonnement, tes places et ton crédit : exécution du contrat
 (article 6.1.b du RGPD). Empêcher qu'une même personne enchaîne les semaines gratuites : intérêt légitime de Kerfy
@@ -394,8 +395,8 @@ site : encaisser le paiement et calculer les taxes, exécution du contrat (artic
 intérêt légitime (article 6.1.f) ; factures et pièces comptables, obligation légale (article 6.1.c).
 **Durée.** Données d'abonnement et d'achat, y compris celles d'un achat sur le site : pendant l'abonnement, puis 5 ans
 en archive, pour la preuve du contrat (article 2224 du Code civil). Factures et pièces de paiement : 10 ans
-(article L123-22 du Code de commerce) ; Stripe garde les factures. Empreinte de l'appareil Android : 24 mois. Adresse IP
-: 15 minutes au plus. Les bits de DeviceCheck sont gardés par Apple.
+(article L123-22 du Code de commerce) ; Stripe garde les factures. Empreinte de l'appareil Android : 24 mois. Adresse IP : jamais enregistrée ; son empreinte, en
+mémoire, 15 minutes au plus. Les bits de DeviceCheck sont gardés par Apple.
 
 ### 5.4 Ta place et le modèle d'IA
 
@@ -687,7 +688,7 @@ avant leur mise en service. Tu peux nous demander une copie des garanties applic
 | Achat sur le site (adresse e-mail donnée au paiement, identifiants Stripe, forfait et période, pays de facturation, langue) | Pendant l'abonnement, puis 5 ans en archive |
 | Factures et pièces de paiement d'un achat sur le site | 10 ans (article L123-22 du Code de commerce) ; factures gardées par Stripe |
 | Empreinte de l'appareil Android, hachée avec une clé secrète (semaine gratuite) | 24 mois |
-| Adresse IP à la réservation d'une semaine gratuite | 15 minutes au plus |
+| Adresse IP à la réservation d'une semaine gratuite | Jamais enregistrée ; en mémoire, sous forme d'empreinte, 15 minutes au plus |
 | Contenu de ta place | Pendant l'abonnement, puis 30 jours (3 jours après une semaine gratuite non poursuivie) |
 | Sauvegardes | 48 heures (horaires), 30 jours (quotidiennes), 12 semaines (hebdomadaires) ; effacées avec la place |
 | Image quotidienne d'OVHcloud | Un point par jour, remplacé dans la journée environ après la réinstallation de la place |

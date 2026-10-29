@@ -397,8 +397,9 @@ früheren Abos. Wir speichern keine Daten deiner Karte: Sie wird bei Stripe eing
   echten Gerät läuft) und einen Fingerabdruck der Android-Kennung des Geräts, auf dem Telefon berechnet (SHA-256) und
   dann vom Guichet vor dem Speichern mit einem geheimen Schlüssel erneut gehasht. Kerfy Studio bewahrt nur diesen
   zweiten Fingerabdruck auf, und nur für diese Begrenzung.
-- **Die IP-Adresse** deines Telefons wird so lange aufbewahrt, wie ein Testplatz reserviert ist (höchstens
-  15 Minuten), um die Zahl der Reservierungen pro Adresse zu begrenzen.
+- **Die IP-Adresse** deines Telefons wird nie gespeichert. Um die Zahl der Reservierungen pro Adresse zu begrenzen,
+  behält der Guichet nur einen mit einem geheimen Schlüssel berechneten Fingerabdruck davon, nur im Arbeitsspeicher, so
+  lange ein Testplatz reserviert ist (höchstens 15 Minuten); bei einem Neustart geht er verloren.
 
 **Zwecke und Rechtsgrundlagen.** Dein Abo, deine Plätze und dein Guthaben bereitstellen und verwalten: Erfüllung des
 Vertrags (Art. 6 Abs. 1 lit. b DSGVO). Verhindern, dass dieselbe Person kostenlose Wochen aneinanderreiht: berechtigtes
@@ -412,7 +413,8 @@ und die Steuern berechnen, Erfüllung des Vertrags (Art. 6 Abs. 1 lit. b DSGVO);
 **Dauer.** Abo- und Kaufdaten, auch die eines Kaufs auf der Website: während des Abos, dann 5 Jahre im Archiv, als
 Nachweis des Vertrags (Art. 2224 des französischen Zivilgesetzbuchs). Rechnungen und Zahlungsbelege: 10 Jahre
 (Art. L123-22 des französischen Handelsgesetzbuchs); die Rechnungen bewahrt Stripe auf. Fingerabdruck des
-Android-Geräts: 24 Monate. IP-Adresse: höchstens 15 Minuten. Die DeviceCheck-Bits bewahrt Apple auf.
+Android-Geräts: 24 Monate. IP-Adresse: nie gespeichert; ihr Fingerabdruck im
+Arbeitsspeicher höchstens 15 Minuten. Die DeviceCheck-Bits bewahrt Apple auf.
 
 ### 5.4 Dein Platz und das KI-Modell
 
@@ -696,7 +698,7 @@ Inbetriebnahme angegeben. Du kannst bei uns eine Kopie der geltenden Garantien a
 | Kauf auf der Website (bei der Zahlung angegebene E-Mail-Adresse, Kennungen bei Stripe, Tarif und Zeitraum, Rechnungsland, Sprache) | Während des Abos, dann 5 Jahre im Archiv |
 | Rechnungen und Zahlungsbelege eines Kaufs auf der Website | 10 Jahre (Art. L123-22 des französischen Handelsgesetzbuchs); Rechnungen bei Stripe aufbewahrt |
 | Fingerabdruck des Android-Geräts, mit einem geheimen Schlüssel gehasht (kostenlose Woche) | 24 Monate |
-| IP-Adresse bei der Reservierung einer kostenlosen Woche | Höchstens 15 Minuten |
+| IP-Adresse bei der Reservierung einer kostenlosen Woche | Nie gespeichert; im Arbeitsspeicher, als Fingerabdruck, höchstens 15 Minuten |
 | Inhalt deines Platzes | Während des Abos, dann 30 Tage (3 Tage nach einer nicht fortgesetzten kostenlosen Woche) |
 | Sicherungen | 48 Stunden (stündlich), 30 Tage (täglich), 12 Wochen (wöchentlich); mit dem Platz gelöscht |
 | Tägliches Abbild von OVHcloud | Ein Punkt pro Tag, innerhalb von etwa einem Tag nach der Neuinstallation des Platzes ersetzt |

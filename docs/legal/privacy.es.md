@@ -375,8 +375,9 @@ servidores.
   un dispositivo real) y una huella del identificador Android del dispositivo, calculada en el teléfono (SHA-256) y
   después vuelta a calcular por el guichet con una clave secreta antes de guardarla. Kerfy Studio solo conserva esta
   segunda huella, y solo para este límite.
-- **La dirección IP** de tu teléfono se conserva mientras dura la reserva de una plaza de prueba (15 minutos como
-  máximo), para limitar el número de reservas por dirección.
+- **La dirección IP** de tu teléfono nunca se guarda. Para limitar el número de reservas por dirección, el guichet solo
+  conserva una huella calculada con una clave secreta, únicamente en memoria, mientras dura la reserva de una plaza de
+  prueba (15 minutos como máximo); se pierde al reiniciarse.
 
 **Finalidades y bases jurídicas.** Prestar y gestionar tu suscripción, tus plazas y tu crédito: ejecución del contrato
 (artículo 6.1.b del RGPD). Evitar que una misma persona encadene semanas gratis: interés legítimo de Kerfy Studio en
@@ -389,7 +390,8 @@ fraude, interés legítimo (artículo 6.1.f); facturas y documentos contables, o
 **Plazo.** Datos de suscripción y de compra, incluidos los de una compra en el sitio: durante la suscripción y después
 5 años archivados, como prueba del contrato (artículo 2224 del Código Civil francés). Facturas y justificantes de pago:
 10 años (artículo L123-22 del Código de Comercio francés); Stripe guarda las facturas. Huella del dispositivo Android:
-24 meses. Dirección IP: 15 minutos como máximo. Los bits de DeviceCheck los guarda Apple.
+24 meses. Dirección IP: nunca se guarda; su huella, en memoria, 15 minutos como
+máximo. Los bits de DeviceCheck los guarda Apple.
 
 ### 5.4 Tu plaza y el modelo de IA
 
@@ -664,7 +666,7 @@ se indicarán aquí antes de su puesta en servicio. Puedes pedirnos una copia de
 | Compra en el sitio (dirección de correo dada al pagar, identificadores de Stripe, plan y periodo, país de facturación, idioma) | Durante la suscripción y después 5 años archivados |
 | Facturas y justificantes de pago de una compra en el sitio | 10 años (artículo L123-22 del Código de Comercio francés); facturas guardadas por Stripe |
 | Huella del dispositivo Android, calculada con una clave secreta (semana gratis) | 24 meses |
-| Dirección IP al reservar una semana gratis | 15 minutos como máximo |
+| Dirección IP al reservar una semana gratis | Nunca se guarda; en memoria, como huella, 15 minutos como máximo |
 | Contenido de tu plaza | Durante la suscripción y después 30 días (3 días después de una semana gratis que no continuó) |
 | Copias de seguridad | 48 horas (por hora), 30 días (diarias), 12 semanas (semanales); se borran con la plaza |
 | Imagen diaria de OVHcloud | Un punto por día, sustituido en un día aproximadamente después de reinstalar la plaza |
