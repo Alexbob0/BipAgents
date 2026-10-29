@@ -36,7 +36,9 @@
         "book_table",
         "slot_lea",
         "podcast",
-        "walk"
+        "walk",
+        "dentist",
+        "birthday_jade"
       ]
     },
     {
@@ -147,7 +149,8 @@
       "suggestions": [
         "heating",
         "dinner",
-        "bins"
+        "bins",
+        "groceries_week"
       ]
     },
     {
@@ -169,6 +172,26 @@
         "weekend_lisbon"
       ],
       "shared": 3
+    },
+    {
+      "id": "family",
+      "category": "learning",
+      "name": {
+        "fr": "Famille",
+        "en": "Family",
+        "de": "Familie",
+        "es": "Familia"
+      },
+      "greeting": {
+        "fr": "Salut ! Je suis l’agent de la **Famille** 👪 Camille, Léo, Jade et Mamie suivent ce fil : les plannings, les trajets et les anniversaires, tout le monde voit la même chose.",
+        "en": "Hi! I’m the **Family** agent 👪 Camille, Léo, Jade and Grandma follow this thread: plans, lifts and birthdays, everyone sees the same thing.",
+        "de": "Hallo! Ich bin der Agent der **Familie** 👪 Camille, Léo, Jade und Oma lesen hier mit: Wochenpläne, Fahrten und Geburtstage, alle sehen dasselbe.",
+        "es": "¡Hola! Soy el agente de la **Familia** 👪 Camille, Léo, Jade y la abuela siguen este hilo: planes, trayectos y cumpleaños, todos ven lo mismo."
+      },
+      "suggestions": [
+        "family_week"
+      ],
+      "shared": 4
     }
   ],
   "scenarios": {
@@ -946,7 +969,7 @@
               },
               "then": [
                 {
-                  "tool": "browser_navigate",
+                  "tool": "web_extract",
                   "seconds": 1.5,
                   "preview": {
                     "fr": "Espace client · {answer}",
@@ -956,7 +979,7 @@
                   }
                 },
                 {
-                  "tool": "browser_click",
+                  "tool": "send_message",
                   "seconds": 1.3,
                   "preview": {
                     "fr": "Résilier l’abonnement",
@@ -1836,6 +1859,432 @@
         "de": "Das Wochenende vom einundzwanzigsten November passt allen. Ich habe zwei Wohnungen mit Terrasse: Öffne den Chat zum Abstimmen.",
         "es": "El finde del veintiuno de noviembre les va a todos. Tengo dos pisos con terraza: abre el chat para votar."
       }
+    },
+    "dentist": {
+      "prompt": {
+        "fr": "Prends-moi un rendez-vous chez le dentiste la semaine prochaine",
+        "en": "Book me a dentist appointment next week",
+        "de": "Mach mir nächste Woche einen Termin beim Zahnarzt",
+        "es": "Pídeme cita con el dentista la semana que viene"
+      },
+      "keywords": {
+        "fr": [
+          "dentiste",
+          "rendez-vous",
+          "rdv"
+        ],
+        "en": [
+          "dentist",
+          "appointment"
+        ],
+        "de": [
+          "zahnarzt",
+          "termin"
+        ],
+        "es": [
+          "dentista",
+          "cita"
+        ]
+      },
+      "steps": [
+        {
+          "think": {
+            "fr": "Un créneau libre la semaine prochaine, chez son dentiste habituel (Dr Martin). Je croise son agenda et les disponibilités du cabinet.",
+            "en": "A free slot next week, at the usual dentist (Dr Martin). I cross the calendar with the practice’s openings.",
+            "de": "Ein freier Termin nächste Woche beim üblichen Zahnarzt (Dr. Martin). Ich gleiche den Kalender mit den freien Terminen der Praxis ab.",
+            "es": "Un hueco libre la semana que viene, con su dentista de siempre (Dr. Martin). Cruzo su agenda con la disponibilidad de la consulta."
+          }
+        },
+        {
+          "tool": "memory",
+          "seconds": 0.6,
+          "preview": {
+            "fr": "Dentiste · Dr Martin, cabinet du Parc",
+            "en": "Dentist · Dr Martin, Park practice",
+            "de": "Zahnarzt · Dr. Martin, Praxis am Park",
+            "es": "Dentista · Dr. Martin, clínica del Parque"
+          }
+        },
+        {
+          "tool": "calendar",
+          "seconds": 1.0,
+          "preview": {
+            "fr": "Tes créneaux libres · semaine prochaine",
+            "en": "Your free slots · next week",
+            "de": "Deine freien Zeiten · nächste Woche",
+            "es": "Tus huecos libres · semana que viene"
+          }
+        },
+        {
+          "tool": "web_search",
+          "seconds": 1.6,
+          "preview": {
+            "fr": "Rendez-vous en ligne · Dr Martin · semaine prochaine",
+            "en": "Online booking · Dr Martin · next week",
+            "de": "Online-Termine · Dr. Martin · nächste Woche",
+            "es": "Citas en línea · Dr. Martin · semana que viene"
+          }
+        },
+        {
+          "tool": "web_extract",
+          "seconds": 0.9,
+          "preview": {
+            "fr": "3 créneaux libres",
+            "en": "3 free slots",
+            "de": "3 freie Termine",
+            "es": "3 huecos libres"
+          }
+        },
+        {
+          "ask": {
+            "question": {
+              "fr": "Le Dr Martin a 3 créneaux qui collent avec ton agenda. Lequel je prends ?",
+              "en": "Dr Martin has 3 slots that fit your calendar. Which one shall I take?",
+              "de": "Dr. Martin hat 3 Termine, die in deinen Kalender passen. Welchen nehme ich?",
+              "es": "El Dr. Martin tiene 3 huecos que encajan con tu agenda. ¿Cuál cojo?"
+            },
+            "choices": [
+              {
+                "fr": "Mardi 9 h 30",
+                "en": "Tuesday 9:30 am",
+                "de": "Dienstag 9:30 Uhr",
+                "es": "Martes 9:30"
+              },
+              {
+                "fr": "Mercredi 18 h",
+                "en": "Wednesday 6 pm",
+                "de": "Mittwoch 18 Uhr",
+                "es": "Miércoles 18:00"
+              },
+              {
+                "fr": "Vendredi 12 h 15",
+                "en": "Friday 12:15 pm",
+                "de": "Freitag 12:15 Uhr",
+                "es": "Viernes 12:15"
+              }
+            ]
+          },
+          "then": [
+            {
+              "approve": {
+                "topic": "sendOut",
+                "description": {
+                  "fr": "Je vais réserver le rendez-vous en ton nom",
+                  "en": "I’m going to book the appointment in your name",
+                  "de": "Ich buche den Termin in deinem Namen",
+                  "es": "Voy a reservar la cita a tu nombre"
+                },
+                "command": {
+                  "fr": "Dentiste · Dr Martin · {answer}\ncabinet du Parc · confirmation par SMS",
+                  "en": "Dentist · Dr Martin · {answer}\nPark practice · confirmation by text",
+                  "de": "Zahnarzt · Dr. Martin · {answer}\nPraxis am Park · Bestätigung per SMS",
+                  "es": "Dentista · Dr. Martin · {answer}\nclínica del Parque · confirmación por SMS"
+                }
+              },
+              "then": [
+                {
+                  "tool": "mail_search",
+                  "seconds": 1.0,
+                  "preview": {
+                    "fr": "Confirmation du cabinet reçue",
+                    "en": "Confirmation from the practice received",
+                    "de": "Bestätigung der Praxis erhalten",
+                    "es": "Confirmación de la clínica recibida"
+                  }
+                },
+                {
+                  "tool": "calendar",
+                  "seconds": 0.6,
+                  "preview": {
+                    "fr": "Ajouté · {answer}",
+                    "en": "Added · {answer}",
+                    "de": "Eingetragen · {answer}",
+                    "es": "Añadida · {answer}"
+                  }
+                },
+                {
+                  "say": {
+                    "fr": "C’est réservé ✅ **{answer}**, chez le Dr Martin.\n\nC’est dans ton agenda, et je te le rappelle la veille au soir 🦷",
+                    "en": "Booked ✅ **{answer}**, with Dr Martin.\n\nIt’s in your calendar, and I’ll remind you the evening before 🦷",
+                    "de": "Gebucht ✅ **{answer}** bei Dr. Martin.\n\nDer Termin steht in deinem Kalender, und ich erinnere dich am Vorabend 🦷",
+                    "es": "Reservado ✅ **{answer}**, con el Dr. Martin.\n\nEstá en tu agenda y te lo recuerdo la noche antes 🦷"
+                  }
+                }
+              ],
+              "denied": [
+                {
+                  "say": {
+                    "fr": "D’accord, je n’ai rien réservé. Les créneaux restent ouverts jusqu’à ce soir si tu changes d’avis.",
+                    "en": "Okay, I haven’t booked anything. The slots stay open until tonight if you change your mind.",
+                    "de": "In Ordnung, ich habe nichts gebucht. Die Termine sind bis heute Abend frei, falls du es dir anders überlegst.",
+                    "es": "Vale, no he reservado nada. Los huecos siguen libres hasta esta noche si cambias de idea."
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "spoken": {
+        "fr": "Le docteur Martin a trois créneaux qui collent avec ton agenda la semaine prochaine. Ouvre la conversation : je réserve dès que tu choisis.",
+        "en": "Doctor Martin has three slots next week that fit your calendar. Open the conversation: I’ll book as soon as you pick one.",
+        "de": "Doktor Martin hat nächste Woche drei Termine, die in deinen Kalender passen. Öffne die Unterhaltung: Ich buche, sobald du einen wählst.",
+        "es": "El doctor Martin tiene tres huecos la semana que viene que encajan con tu agenda. Abre la conversación: reservo en cuanto elijas."
+      }
+    },
+    "birthday_jade": {
+      "prompt": {
+        "fr": "N’oublie pas l’anniv de Jade",
+        "en": "Don’t forget Jade’s birthday",
+        "de": "Vergiss Jades Geburtstag nicht",
+        "es": "No te olvides del cumple de Jade"
+      },
+      "keywords": {
+        "fr": [
+          "anniv",
+          "jade",
+          "cadeau"
+        ],
+        "en": [
+          "birthday",
+          "jade",
+          "gift"
+        ],
+        "de": [
+          "geburtstag",
+          "jade",
+          "geschenk"
+        ],
+        "es": [
+          "cumple",
+          "jade",
+          "regalo"
+        ]
+      },
+      "steps": [
+        {
+          "think": {
+            "fr": "Jade fête ses 9 ans samedi 7 novembre. Je le note dans le Carnet, je cherche une idée de cadeau qui lui ressemble et je pose un rappel la veille.",
+            "en": "Jade turns 9 on Saturday 7 November. I note it in the Notebook, look for a gift that suits her and set a reminder the day before.",
+            "de": "Jade wird am Samstag, 7. November, 9. Ich notiere es im Notizbuch, suche ein passendes Geschenk und stelle eine Erinnerung für den Vortag.",
+            "es": "Jade cumple 9 años el sábado 7 de noviembre. Lo anoto en el Cuaderno, busco un regalo que le pegue y pongo un recordatorio la víspera."
+          }
+        },
+        {
+          "tool": "notebook_read",
+          "seconds": 0.6,
+          "preview": {
+            "fr": "Jade",
+            "en": "Jade",
+            "de": "Jade",
+            "es": "Jade"
+          }
+        },
+        {
+          "tool": "web_search",
+          "seconds": 1.4,
+          "preview": {
+            "fr": "idée cadeau 9 ans · dessin · aquarelle",
+            "en": "gift idea age 9 · drawing · watercolour",
+            "de": "Geschenkidee 9 Jahre · Zeichnen · Aquarell",
+            "es": "idea regalo 9 años · dibujo · acuarela"
+          }
+        },
+        {
+          "tool": "notebook_note",
+          "seconds": 0.8,
+          "preview": {
+            "fr": "Carnet · anniversaire de Jade · 7 novembre",
+            "en": "Notebook · Jade’s birthday · 7 November",
+            "de": "Notizbuch · Jades Geburtstag · 7. November",
+            "es": "Cuaderno · cumple de Jade · 7 de noviembre"
+          }
+        },
+        {
+          "tool": "reminders_add",
+          "seconds": 0.7,
+          "preview": {
+            "fr": "Rappel · vendredi 6 novembre · 18 h",
+            "en": "Reminder · Friday 6 November · 6 pm",
+            "de": "Erinnerung · Freitag, 6. November · 18 Uhr",
+            "es": "Recordatorio · viernes 6 de noviembre · 18:00"
+          }
+        },
+        {
+          "say": {
+            "fr": "Noté dans ton Carnet : **anniversaire de Jade, samedi 7 novembre** 🎂 (elle aura 9 ans).\n\n🎁 Idée cadeau : un **coffret d’aquarelle** avec un carnet de croquis, elle dessine tout le temps. Environ 25 €.\n\n⏰ Je te le rappelle **la veille à 18 h**, et une semaine avant pour le cadeau.",
+            "en": "Noted in your Notebook: **Jade’s birthday, Saturday 7 November** 🎂 (she’ll be 9).\n\n🎁 Gift idea: a **watercolour set** with a sketchbook, she draws all the time. About €25.\n\n⏰ I’ll remind you **the day before at 6 pm**, and a week before for the gift.",
+            "de": "Im Notizbuch notiert: **Jades Geburtstag, Samstag, 7. November** 🎂 (sie wird 9).\n\n🎁 Geschenkidee: ein **Aquarellkasten** mit Skizzenbuch, sie zeichnet ständig. Etwa 25 €.\n\n⏰ Ich erinnere dich **am Vortag um 18 Uhr** und eine Woche vorher ans Geschenk.",
+            "es": "Anotado en tu Cuaderno: **cumpleaños de Jade, sábado 7 de noviembre** 🎂 (cumplirá 9).\n\n🎁 Idea de regalo: un **set de acuarelas** con un cuaderno de dibujo, se pasa el día dibujando. Unos 25 €.\n\n⏰ Te lo recuerdo **la víspera a las 18:00**, y una semana antes para el regalo."
+          }
+        }
+      ],
+      "spoken": {
+        "fr": "C’est noté : l’anniversaire de Jade, samedi sept novembre. Je te propose un coffret d’aquarelle, et je te le rappelle la veille.",
+        "en": "Noted: Jade’s birthday, Saturday the seventh of November. I suggest a watercolour set, and I’ll remind you the day before.",
+        "de": "Notiert: Jades Geburtstag, Samstag, der siebte November. Ich schlage einen Aquarellkasten vor und erinnere dich am Vortag.",
+        "es": "Anotado: el cumpleaños de Jade, el sábado siete de noviembre. Te propongo un set de acuarelas, y te lo recuerdo la víspera."
+      }
+    },
+    "groceries_week": {
+      "prompt": {
+        "fr": "Fais la liste des courses de la semaine",
+        "en": "Make this week’s shopping list",
+        "de": "Schreib die Einkaufsliste für die Woche",
+        "es": "Haz la lista de la compra de la semana"
+      },
+      "keywords": {
+        "fr": [
+          "courses",
+          "liste",
+          "semaine"
+        ],
+        "en": [
+          "shopping",
+          "grocer",
+          "list"
+        ],
+        "de": [
+          "einkauf",
+          "liste",
+          "woche"
+        ],
+        "es": [
+          "compra",
+          "lista",
+          "semana"
+        ]
+      },
+      "steps": [
+        {
+          "tool": "memory",
+          "seconds": 0.6,
+          "preview": {
+            "fr": "Repas de la semaine · 4 personnes",
+            "en": "This week’s meals · 4 people",
+            "de": "Mahlzeiten der Woche · 4 Personen",
+            "es": "Comidas de la semana · 4 personas"
+          }
+        },
+        {
+          "tool": "todo",
+          "seconds": 0.7,
+          "preview": {
+            "fr": "Liste partagée · Maison",
+            "en": "Shared list · Home",
+            "de": "Geteilte Liste · Zuhause",
+            "es": "Lista compartida · Casa"
+          }
+        },
+        {
+          "page": "groceries",
+          "seconds": 1.4,
+          "preview": {
+            "fr": "Liste des courses · par rayon",
+            "en": "Shopping list · by aisle",
+            "de": "Einkaufsliste · nach Regal",
+            "es": "Lista de la compra · por pasillo"
+          }
+        },
+        {
+          "say": {
+            "fr": "Voilà la liste de la semaine, rangée par rayon 🛒\n\nMEDIA:/demo/page/groceries/courses-de-la-semaine.html\n\nElle est partagée avec toute la maison : le premier qui passe au supermarché coche ce qu’il prend.",
+            "en": "Here’s this week’s list, sorted by aisle 🛒\n\nMEDIA:/demo/page/groceries/shopping-list.html\n\nIt’s shared with the whole household: whoever goes to the shop ticks what they pick up.",
+            "de": "Hier ist die Liste der Woche, nach Regal sortiert 🛒\n\nMEDIA:/demo/page/groceries/einkaufsliste.html\n\nSie ist mit dem ganzen Haushalt geteilt: Wer einkaufen geht, hakt ab, was er mitnimmt.",
+            "es": "Aquí tienes la lista de la semana, ordenada por pasillo 🛒\n\nMEDIA:/demo/page/groceries/lista-de-la-compra.html\n\nEstá compartida con toda la casa: quien vaya al súper marca lo que coge."
+          }
+        }
+      ],
+      "spoken": {
+        "fr": "La liste des courses de la semaine est prête, rangée par rayon, et partagée avec toute la maison.",
+        "en": "This week’s shopping list is ready, sorted by aisle, and shared with the whole household.",
+        "de": "Die Einkaufsliste der Woche ist fertig, nach Regal sortiert und mit dem ganzen Haushalt geteilt.",
+        "es": "La lista de la compra de la semana está lista, ordenada por pasillo y compartida con toda la casa."
+      }
+    },
+    "family_week": {
+      "prompt": {
+        "fr": "Fais le planning de la semaine prochaine pour toute la famille",
+        "en": "Plan next week for the whole family",
+        "de": "Mach den Wochenplan für nächste Woche für die ganze Familie",
+        "es": "Haz el planning de la semana que viene para toda la familia"
+      },
+      "keywords": {
+        "fr": [
+          "planning",
+          "famille",
+          "semaine"
+        ],
+        "en": [
+          "plan",
+          "family",
+          "week"
+        ],
+        "de": [
+          "plan",
+          "familie",
+          "woche"
+        ],
+        "es": [
+          "planning",
+          "familia",
+          "semana"
+        ]
+      },
+      "steps": [
+        {
+          "think": {
+            "fr": "Je croise les agendas de chacun : le foot de Léo, l’anniversaire de Jade, le dentiste. Puis je répartis les trajets entre Camille, Mamie et toi.",
+            "en": "I cross everyone’s calendars: Léo’s football, Jade’s birthday, the dentist. Then I share out the lifts between Camille, Grandma and you.",
+            "de": "Ich gleiche alle Kalender ab: Léos Fußball, Jades Geburtstag, der Zahnarzt. Dann verteile ich die Fahrten zwischen Camille, Oma und dir.",
+            "es": "Cruzo las agendas de todos: el fútbol de Léo, el cumple de Jade, el dentista. Luego reparto los trayectos entre Camille, la abuela y tú."
+          }
+        },
+        {
+          "tool": "calendar",
+          "seconds": 1.2,
+          "preview": {
+            "fr": "Agendas · Toi, Camille, Léo, Jade, Mamie",
+            "en": "Calendars · You, Camille, Léo, Jade, Grandma",
+            "de": "Kalender · Du, Camille, Léo, Jade, Oma",
+            "es": "Agendas · Tú, Camille, Léo, Jade, la abuela"
+          }
+        },
+        {
+          "tool": "message_agent",
+          "seconds": 1.4,
+          "preview": {
+            "fr": "Avec l’agent de Mamie · le mercredi",
+            "en": "With Grandma’s agent · Wednesday",
+            "de": "Mit Omas Agent · Mittwoch",
+            "es": "Con el agente de la abuela · el miércoles"
+          }
+        },
+        {
+          "page": "family_week",
+          "seconds": 1.4,
+          "preview": {
+            "fr": "Planning de la semaine",
+            "en": "The week’s plan",
+            "de": "Wochenplan",
+            "es": "Planning de la semana"
+          }
+        },
+        {
+          "say": {
+            "fr": "Voilà la semaine de la famille 👇\n\nMEDIA:/demo/page/family_week/planning-de-la-semaine.html\n\nTout le monde est au courant ✅ Camille, Léo, Jade et Mamie le voient ici, et chacun reçoit son rappel la veille.",
+            "en": "Here’s the family’s week 👇\n\nMEDIA:/demo/page/family_week/week-plan.html\n\nEveryone’s in the loop ✅ Camille, Léo, Jade and Grandma see it here, and each gets a reminder the day before.",
+            "de": "Hier ist die Woche der Familie 👇\n\nMEDIA:/demo/page/family_week/wochenplan.html\n\nAlle wissen Bescheid ✅ Camille, Léo, Jade und Oma sehen ihn hier, und jeder bekommt am Vortag eine Erinnerung.",
+            "es": "Aquí tienes la semana de la familia 👇\n\nMEDIA:/demo/page/family_week/planning-semana.html\n\nTodos están al tanto ✅ Camille, Léo, Jade y la abuela lo ven aquí, y cada uno recibe su recordatorio la víspera."
+          }
+        }
+      ],
+      "spoken": {
+        "fr": "Le planning de la semaine est prêt : les trajets du foot de Léo, le dentiste et l’anniversaire de Jade. Tout le monde est au courant.",
+        "en": "Next week’s plan is ready: the lifts to Léo’s football, the dentist and Jade’s birthday. Everyone’s in the loop.",
+        "de": "Der Wochenplan steht: die Fahrten zu Léos Fußball, der Zahnarzt und Jades Geburtstag. Alle wissen Bescheid.",
+        "es": "El planning de la semana está listo: los trayectos al fútbol de Léo, el dentista y el cumple de Jade. Todos están al tanto."
+      }
     }
   },
   "fallback": [
@@ -2458,6 +2907,226 @@
           "en": "Tap a line to tick it.",
           "de": "Tippe auf eine Zeile, um sie abzuhaken.",
           "es": "Toca una línea para marcarla."
+        }
+      }
+    },
+    "groceries": {
+      "template": "<!doctype html>\n<html lang=\"{{lang}}\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta name=\"color-scheme\" content=\"light dark\"><style id=\"bip-kit\">/* BipAgents page kit: the app's look for the pages the agents make (pages.rs puts it inline in every page).\n   Every rule is inside :where(), so the agent's own CSS always wins. Light and dark follow the phone. */\n:root{--bg:#F3F4F7;--card:#FFFFFF;--field:#F3F4F7;--ink:#16181D;--ink2:#5E6472;--muted:#6B7180;--line:rgba(22,24,29,.09);\n--accent:#7C6CF2;--deep:#5A49D6;--tint:#EDE9FF;--good:#2FB36B;--warn:#F08A24;--bad:#E5484D;\n--c1:var(--accent);--c2:#4F7CFF;--c3:#FF7B5C;--c4:#1FB2C1;--c5:#F6B826;--c6:#F2649E;\n--r:18px;--font:ui-rounded,\"SF Pro Rounded\",system-ui,-apple-system,\"Segoe UI\",Roboto,sans-serif;color-scheme:light dark}\n@media (prefers-color-scheme:dark){:root{--bg:#0F1115;--card:#1A1D24;--field:#23262F;--ink:#F2F3F7;--ink2:#A4A9B8;\n--muted:#8A90A2;--line:rgba(255,255,255,.09);--tint:color-mix(in srgb,var(--accent) 20%,#1A1D24);--deep:color-mix(in srgb,var(--accent) 70%,#fff)}}\n:root[data-tint=wellness]{--accent:#3CC37A;--deep:#1D8A4F;--tint:#E2F5EA}\n:root[data-tint=finance]{--accent:#F6B826;--deep:#9A6A00;--tint:#FFF3D1}\n:root[data-tint=daily]{--accent:#FF7B5C;--deep:#C9472A;--tint:#FFE8E0}\n:root[data-tint=work]{--accent:#4F7CFF;--deep:#2B55D4;--tint:#E4EBFF}\n:root[data-tint=learning]{--accent:#8E6CF5;--deep:#6142D2;--tint:#EDE7FF}\n:root[data-tint=home]{--accent:#1FB2C1;--deep:#0D7F8B;--tint:#DDF4F6}\n:root[data-tint=creative]{--accent:#F2649E;--deep:#C23774;--tint:#FDE4EE}\n:root[data-tint=tech]{--accent:#6B7489;--deep:#3F4659;--tint:#E7E9EE}\n@media (prefers-color-scheme:dark){:root[data-tint]{--tint:color-mix(in srgb,var(--accent) 20%,#1A1D24);\n--deep:color-mix(in srgb,var(--accent) 70%,#fff)}}\n/* In the conversation (the app sets data-bip-view=\"inline\"): no ground of its own, on the app's card. */\n:root[data-bip-view=inline]{--bg:var(--card)}\n:where(*,*::before,*::after){box-sizing:border-box}\n:where(html){height:auto;-webkit-text-size-adjust:100%}\n:where(body){margin:0;padding:16px 16px 20px;background:var(--bg);color:var(--ink);font:500 15px/1.45 var(--font);\nmax-width:760px;margin-inline:auto;-webkit-font-smoothing:antialiased}\n:where(html[data-bip-view=inline] body){padding:14px 14px 16px}\n:where(h1){font-size:23px;font-weight:900;line-height:1.15;margin:0 0 4px;letter-spacing:-.01em}\n:where(h2){font-size:17px;font-weight:800;margin:18px 0 8px}\n:where(h3){font-size:15px;font-weight:800;margin:12px 0 6px}\n:where(p){margin:6px 0}\n:where(.sub,.muted){color:var(--muted);font-size:13px;font-weight:600}\n:where(.sub){margin:0 0 14px}\n:where(.good){color:var(--good)}:where(.warn){color:var(--warn)}:where(.bad){color:var(--bad)}\n:where(.accent){color:var(--deep)}\n:where(.card){background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin:0 0 12px}\n:where(.card>h2:first-child,.card>h3:first-child){margin-top:0}\n:where(.grid){display:grid;grid-template-columns:repeat(auto-fit,minmax(min(140px,100%),1fr));gap:10px;margin:0 0 12px}\n:where(.grid.two){grid-template-columns:repeat(2,minmax(0,1fr))}\n:where(.row){display:flex;align-items:center;gap:10px;flex-wrap:wrap}\n:where(.row.between){justify-content:space-between}\n:where(.kpi){background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;min-width:0}\n:where(.kpi .l){display:block;color:var(--muted);font-size:12.5px;font-weight:700}\n:where(.kpi .v){display:block;font-size:28px;font-weight:900;line-height:1.1;margin-top:2px;letter-spacing:-.02em;\nfont-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\n:where(.kpi .v small){font-size:14px;font-weight:800;color:var(--ink2);margin-left:2px}\n:where(.kpi .d){display:inline-block;margin-top:4px;font-size:12px;font-weight:800;border-radius:99px;padding:2px 8px;\nbackground:var(--field);color:var(--ink2)}\n:where(.kpi .d.up){background:color-mix(in srgb,var(--good) 16%,transparent);color:var(--good)}\n:where(.kpi .d.down){background:color-mix(in srgb,var(--bad) 14%,transparent);color:var(--bad)}\n:where(.kpi.main){background:var(--tint);border-color:transparent}\n:where(.kpi.main .v){color:var(--deep)}\n:where(.chip){display:inline-flex;align-items:center;gap:4px;font-size:12.5px;font-weight:800;border-radius:99px;\npadding:3px 10px;background:var(--tint);color:var(--deep);white-space:nowrap}\n:where(.chip.good){background:color-mix(in srgb,var(--good) 16%,transparent);color:var(--good)}\n:where(.chip.warn){background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}\n:where(.chip.bad){background:color-mix(in srgb,var(--bad) 14%,transparent);color:var(--bad)}\n:where(.chip.plain){background:var(--field);color:var(--ink2)}\n:where(.note){background:var(--tint);color:var(--ink);border-radius:14px;padding:10px 12px;font-size:14px;margin:0 0 12px}\n:where(.note.warn){background:color-mix(in srgb,var(--warn) 15%,transparent)}\n:where(.note.bad){background:color-mix(in srgb,var(--bad) 12%,transparent)}\n:where(.big){font-size:40px;font-weight:900;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}\n/* progress: <div class=\"bar\" style=\"--v:64%\"></div> */\n:where(.bar){height:10px;border-radius:99px;background:var(--field);overflow:hidden;margin:6px 0}\n:where(.bar)::before{content:\"\";display:block;height:100%;width:var(--v,0%);max-width:100%;border-radius:inherit;\nbackground:var(--bar,var(--accent))}\n:where(.bar.good){--bar:var(--good)}:where(.bar.warn){--bar:var(--warn)}:where(.bar.bad){--bar:var(--bad)}\n/* tables: <table class=\"sort\"> sorts on a tap on a header */\n:where(.table-wrap){overflow-x:auto;margin:0 0 12px;border-radius:14px;border:1px solid var(--line)}\n:where(table){width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}\n:where(th){text-align:left;font-size:12px;font-weight:800;color:var(--muted);background:var(--field);padding:8px 10px;\nwhite-space:nowrap}\n:where(td){padding:9px 10px;border-top:1px solid var(--line);vertical-align:top}\n:where(td.n,th.n){text-align:right}\n:where(tr.best td){background:var(--tint)}\n:where(tr.best td:first-child){box-shadow:inset 3px 0 0 var(--accent)}\n:where(table.sort th){cursor:pointer;user-select:none;-webkit-user-select:none}\n:where(table.sort th[aria-sort=ascending])::after{content:\" ▲\";font-size:9px}\n:where(table.sort th[aria-sort=descending])::after{content:\" ▼\";font-size:9px}\n/* timeline: <ol class=\"timeline\"><li class=\"done\"><b>Title</b> text <span class=\"when\">date</span></li></ol> */\n:where(.timeline){list-style:none;margin:0 0 12px;padding:0 0 0 22px;position:relative}\n:where(.timeline)::before{content:\"\";position:absolute;left:6px;top:6px;bottom:6px;width:2px;background:var(--line)}\n:where(.timeline>li){position:relative;padding:0 0 14px}\n:where(.timeline>li)::before{content:\"\";position:absolute;left:-21px;top:4px;width:12px;height:12px;border-radius:50%;\nbackground:var(--card);border:2px solid var(--muted)}\n:where(.timeline>li.done)::before{background:var(--accent);border-color:var(--accent)}\n:where(.timeline>li.now)::before{background:var(--card);border:3px solid var(--accent);box-shadow:0 0 0 4px var(--tint)}\n:where(.timeline .when){display:block;color:var(--muted);font-size:12.5px;font-weight:700}\n/* checklist: <ul class=\"check\"><li class=\"done\">…</li></ul> */\n:where(.check){list-style:none;margin:0 0 12px;padding:0}\n:where(.check>li){padding:8px 0 8px 30px;position:relative;border-bottom:1px solid var(--line)}\n:where(.check>li)::before{content:\"\";position:absolute;left:0;top:8px;width:20px;height:20px;border-radius:7px;\nborder:2px solid var(--muted)}\n:where(.check>li.done)::before{background:var(--good);border-color:var(--good)}\n:where(.check>li.done)::after{content:\"✓\";position:absolute;left:5px;top:7px;color:#fff;font-weight:900;font-size:13px}\n:where(.check>li.done){color:var(--muted)}\n/* flow: <div class=\"flow\"><div>A</div><div>B</div></div>; .flow.down for a column */\n:where(.flow){display:flex;align-items:stretch;gap:22px;flex-wrap:wrap;margin:0 0 12px}\n:where(.flow>*){position:relative;flex:1 1 0;min-width:80px;background:var(--tint);color:var(--ink);border-radius:14px;\npadding:10px 12px;font-weight:700;font-size:14px;text-align:center}\n:where(.flow>*:not(:last-child))::after{content:\"→\";position:absolute;right:-18px;top:50%;transform:translateY(-50%);\ncolor:var(--muted);font-weight:900}\n:where(.flow.down){flex-direction:column;gap:20px}\n:where(.flow.down>*:not(:last-child))::after{content:\"↓\";right:auto;left:50%;top:auto;bottom:-20px;transform:translateX(-50%)}\n:where(.diagram){display:block;margin:0 0 12px;overflow-x:auto}\n:where(pre.diagram){font:inherit;white-space:pre;color:transparent}\n:where(svg .bip-axis){fill:var(--muted);font:700 10.5px var(--font)}\n:where(svg .bip-value){fill:var(--ink2);font:800 10.5px var(--font)}\n:where(svg .bip-grid){stroke:var(--line)}\n:where(svg .bip-node rect){fill:var(--tint);stroke:var(--accent);stroke-width:1.5}\n:where(svg .bip-node text){fill:var(--ink);font:700 13px var(--font)}\n:where(svg .bip-edge){stroke:var(--muted);stroke-width:1.6;fill:none}\n:where(.chart){display:block;width:100%;margin:4px 0 8px}\n:where(.legend){display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;font-weight:700;color:var(--ink2);margin:2px 0 6px}\n:where(.legend i){display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}\n/* what-ifs: sliders and switches */\n:where(input[type=range]){width:100%;accent-color:var(--accent);margin:8px 0}\n:where(.toggle){display:flex;align-items:center;justify-content:space-between;gap:10px;font-weight:700;padding:6px 0}\n:where(.toggle input){appearance:none;-webkit-appearance:none;width:46px;height:28px;border-radius:99px;background:var(--field);\nborder:1px solid var(--line);position:relative;transition:background .2s;flex:none;margin:0}\n:where(.toggle input)::after{content:\"\";position:absolute;top:2px;left:2px;width:22px;height:22px;border-radius:50%;\nbackground:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .2s}\n:where(.toggle input:checked){background:var(--accent)}\n:where(.toggle input:checked)::after{transform:translateX(18px)}\n:where(label.field){display:block;font-size:13px;font-weight:700;color:var(--ink2);margin:8px 0 2px}\n:where(output){font-weight:900;color:var(--deep);font-variant-numeric:tabular-nums}\n:where(select,input[type=number],input[type=text]){font:inherit;color:var(--ink);background:var(--field);\nborder:1px solid var(--line);border-radius:12px;padding:8px 10px;width:100%}\n:where(button){font:800 14px var(--font);color:var(--deep);background:var(--tint);border:0;border-radius:99px;padding:8px 14px}\n/* tabs: <div class=\"tabs\"><button>Week</button><button>Month</button></div> then one <section class=\"tab\"> each */\n:where(.tabs){display:flex;gap:4px;background:var(--field);border-radius:99px;padding:3px;margin:0 0 12px}\n:where(.tabs>button){flex:1;background:transparent;color:var(--ink2);padding:7px 10px}\n:where(.tabs>button[aria-selected=true]){background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}\n:where(section.tab[hidden]){display:none}\n:where(img){max-width:100%;height:auto;border-radius:14px}\n:where(.foot){color:var(--muted);font-size:12px;font-weight:600;margin-top:10px}\n/* in the conversation, last so they win over the rules above (all without weight) */\n:where(html[data-bip-view=inline]) :where(.card,.kpi){background:var(--field);border-color:transparent}\n:where(html[data-bip-view=inline]) :where(.kpi.main){background:var(--tint)}\n/* map card (map_image): <figure class=\"map-card\"><img src=\"map:…\"><ol><li data-x=\"40\" data-y=\"55\">Place</li></ol></figure> */\n:where(.map-card){margin:0 0 12px;background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}\n:where(.map-frame){position:relative;line-height:0}\n:where(.map-card img){width:100%;border-radius:0;display:block}\n:where(.map-ring){position:absolute;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;border:3px solid var(--accent);box-shadow:0 0 0 6px var(--tint);pointer-events:none;transition:left .25s,top .25s}\n:where(.map-card ol){list-style:none;margin:0;padding:6px 8px 8px;counter-reset:map}\n:where(.map-card li){counter-increment:map;display:flex;align-items:center;gap:10px;padding:8px 6px;border-radius:12px;font-weight:700;cursor:pointer}\n:where(.map-card li)::before{content:counter(map);flex:none;width:24px;height:24px;border-radius:50%;background:var(--field);color:var(--ink2);font:900 12px/24px var(--font);text-align:center}\n:where(.map-card li[aria-current=true]){background:var(--tint)}\n:where(.map-card li[aria-current=true])::before{background:var(--accent);color:#fff}\n/* the live map over the picture (inside the app only): same size, the picture kept for its height */\n:where(.map-live){position:absolute;inset:0;line-height:normal}\n:where(.map-card.live .map-frame img){visibility:hidden}\n:where(.map-pin){cursor:pointer;padding:6px}\n:where(.map-pin span){display:block;width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.35);font:900 12px/22px var(--font);text-align:center;transition:transform .2s}\n:where(.map-pin[data-current] span){transform:scale(1.3)}\n:where(.map-open){margin-left:auto;flex:none;padding:4px 10px;border-radius:99px;background:var(--tint);color:var(--deep);font-size:12px;font-weight:800;text-decoration:none;white-space:nowrap}\n:where(.map-route){display:block;margin:0 14px 12px;padding:10px 12px;border-radius:12px;background:var(--accent);color:#fff;font-weight:800;text-align:center;text-decoration:none}\n</style><script id=\"bip-kit-js\">/* BipAgents page kit (pages.rs puts it inline in every page, before the agent's own scripts): charts drawn in SVG in\n   the app's colours, a small diagram renderer, sortable tables, tabs, what-ifs, number formatting, and the app's\n   colours for Chart.js when the page uses it. No network, no storage. window.Bip is the whole API. */\n(function () {\n  \"use strict\";\n  var doc = document, root = doc.documentElement, NS = \"http://www.w3.org/2000/svg\";\n  var TINT = \"home\";\n  if (TINT && TINT.indexOf(\"__\") !== 0 && !root.getAttribute(\"data-tint\")) root.setAttribute(\"data-tint\", TINT);\n  var lang = function () { return root.lang || navigator.language || \"en\"; };\n  var css = function (name) { return getComputedStyle(root).getPropertyValue(name).trim(); };\n  var $ = function (target) { return typeof target === \"string\" ? doc.querySelector(target) : target; };\n  var esc = function (text) {\n    return String(text).replace(/[&<>\"]/g, function (c) { return { \"&\": \"&amp;\", \"<\": \"&lt;\", \">\": \"&gt;\", '\"': \"&quot;\" }[c]; });\n  };\n  var COLORS = [\"var(--c1)\", \"var(--c2)\", \"var(--c3)\", \"var(--c4)\", \"var(--c5)\", \"var(--c6)\"];\n  var color = function (spec, i) { return (spec.colors && spec.colors[i]) || COLORS[i % COLORS.length]; };\n\n  function fmt(n, digits, unit) {\n    if (typeof n !== \"number\" || !isFinite(n)) return n == null ? \"\" : String(n);\n    var d = digits == null ? (Math.round(n * 10) % 10 ? 1 : 0) : digits;\n    var text = n.toLocaleString(lang(), { minimumFractionDigits: d, maximumFractionDigits: d });\n    return unit ? text + (/^[%°]/.test(unit) ? \"\" : \" \") + unit : text;\n  }\n\n  // A <svg> filling the target (a <div>, or the element itself when it is an <svg>).\n  function canvas(target, height) {\n    var host = $(target);\n    if (!host) return null;\n    var width = Math.max(240, Math.min(720, host.clientWidth || 320));\n    var svg = host.tagName && host.tagName.toLowerCase() === \"svg\" ? host : null;\n    if (!svg) {\n      host.innerHTML = \"\";\n      svg = doc.createElementNS(NS, \"svg\");\n      host.appendChild(svg);\n    }\n    svg.setAttribute(\"viewBox\", \"0 0 \" + width + \" \" + height);\n    svg.setAttribute(\"class\", ((svg.getAttribute(\"class\") || \"\") + \" chart\").trim());\n    svg.setAttribute(\"role\", \"img\");\n    svg.style.height = \"auto\";\n    return { svg: svg, w: width, h: height, host: host };\n  }\n  function draw(svg, markup) { svg.insertAdjacentHTML(\"beforeend\", markup); }\n  function nice(max) {\n    if (max <= 0) return 1;\n    var step = Math.pow(10, Math.floor(Math.log10(max))), f = max / step;\n    return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * step;\n  }\n  function legend(c, names, spec) {\n    if (!names || names.length < 2) return;\n    var div = doc.createElement(\"div\");\n    div.className = \"legend\";\n    div.innerHTML = names.map(function (n, i) { return '<span><i style=\"background:' + color(spec, i) + '\"></i>' + esc(n) + \"</span>\"; }).join(\"\");\n    c.host.tagName.toLowerCase() === \"svg\" ? c.host.after(div) : c.host.appendChild(div);\n  }\n  function grid(c, top, bottom, left, max, unit) {\n    var out = \"\";\n    // round steps (0, 10, 20, 30 rather than 0, 16,7, 33,3)\n    var step = nice(max / 4), count = Math.round(max / step);\n    for (var k = 0; k <= count; k++) {\n      var y = bottom - (bottom - top) * k / count, v = step * k;\n      out += '<line class=\"bip-grid\" x1=\"' + left + '\" x2=\"' + c.w + '\" y1=\"' + y + '\" y2=\"' + y + '\"/>' +\n        '<text class=\"bip-axis\" x=\"' + (left - 6) + '\" y=\"' + (y + 3.5) + '\" text-anchor=\"end\">' + esc(fmt(v, v % 1 ? 1 : 0)) + \"</text>\";\n    }\n    return out;\n  }\n\n  // Bars: {labels, values | series:[{name, values}], unit, goal, highlight: index, height}\n  function bars(target, spec) {\n    var c = canvas(target, spec.height || 190);\n    if (!c) return;\n    var series = spec.series || [{ name: spec.name || \"\", values: spec.values || [] }];\n    var labels = spec.labels || [], n = Math.max(labels.length, series[0].values.length);\n    var all = [].concat.apply([], series.map(function (s) { return s.values; })).concat(spec.goal || 0);\n    var highest = Math.max.apply(null, all.map(Number).filter(isFinite)) || 1, unitStep = nice(highest / 4);\n    var max = Math.ceil(highest * 1.08 / unitStep) * unitStep;\n    var left = 34, top = 16, bottom = c.h - 22, band = (c.w - left) / n, gap = band * 0.28;\n    var width = (band - gap) / series.length, out = grid(c, top, bottom, left, max);\n    series.forEach(function (s, j) {\n      s.values.forEach(function (v, i) {\n        var h = Math.max(0, (bottom - top) * v / max), x = left + i * band + gap / 2 + j * width;\n        var fill = series.length === 1 && spec.highlight != null && spec.highlight !== i ? \"var(--tint)\" : color(spec, j);\n        out += '<rect x=\"' + x + '\" y=\"' + (bottom - h) + '\" width=\"' + Math.max(2, width - 2) + '\" height=\"' + h +\n          '\" rx=\"' + Math.min(6, width / 3) + '\" style=\"fill:' + fill + '\"><title>' + esc((labels[i] || \"\") + \" \" + fmt(v, null, spec.unit)) + \"</title></rect>\";\n        if (series.length === 1 && n <= 12)\n          out += '<text class=\"bip-value\" x=\"' + (x + width / 2 - 1) + '\" y=\"' + (bottom - h - 4) + '\" text-anchor=\"middle\">' + esc(spec.format ? spec.format(v) : fmt(v)) + \"</text>\";\n      });\n    });\n    labels.forEach(function (l, i) {\n      out += '<text class=\"bip-axis\" x=\"' + (left + i * band + band / 2) + '\" y=\"' + (c.h - 6) + '\" text-anchor=\"middle\">' + esc(l) + \"</text>\";\n    });\n    if (spec.goal != null) {\n      var gy = bottom - (bottom - top) * spec.goal / max;\n      out += '<line x1=\"' + left + '\" x2=\"' + c.w + '\" y1=\"' + gy + '\" y2=\"' + gy + '\" style=\"stroke:var(--good);stroke-width:1.5;stroke-dasharray:5 4\"/>';\n    }\n    draw(c.svg, out);\n    legend(c, series.map(function (s) { return s.name; }), spec);\n  }\n\n  // Lines: {labels, values | series:[{name, values}], unit, goal, area: true, height}\n  function line(target, spec) {\n    var c = canvas(target, spec.height || 190);\n    if (!c) return;\n    var series = spec.series || [{ name: spec.name || \"\", values: spec.values || [] }];\n    var labels = spec.labels || [], n = Math.max(labels.length, series[0].values.length);\n    var all = [].concat.apply([], series.map(function (s) { return s.values; })).map(Number).filter(isFinite);\n    if (spec.goal != null) all.push(spec.goal);\n    var lo = spec.min != null ? spec.min : Math.min.apply(null, all), hi = Math.max.apply(null, all);\n    if (spec.min == null) { var pad = (hi - lo) * 0.15 || 1; lo = lo - pad < 0 && lo >= 0 ? 0 : lo - pad; hi += pad; }\n    var left = 34, top = 14, bottom = c.h - 22, step = (c.w - left - 12) / Math.max(1, n - 1);\n    var x = function (i) { return left + 6 + i * step; }, y = function (v) { return bottom - (bottom - top) * (v - lo) / (hi - lo || 1); };\n    var out = \"\";\n    for (var k = 0; k <= 3; k++) {\n      var v = lo + (hi - lo) * k / 3, gy = y(v);\n      out += '<line class=\"bip-grid\" x1=\"' + left + '\" x2=\"' + c.w + '\" y1=\"' + gy + '\" y2=\"' + gy + '\"/>' +\n        '<text class=\"bip-axis\" x=\"' + (left - 6) + '\" y=\"' + (gy + 3.5) + '\" text-anchor=\"end\">' + esc(spec.format ? spec.format(v) : fmt(v, Math.abs(hi - lo) < 10 ? 1 : 0)) + \"</text>\";\n    }\n    if (spec.goal != null) out += '<line x1=\"' + left + '\" x2=\"' + c.w + '\" y1=\"' + y(spec.goal) + '\" y2=\"' + y(spec.goal) + '\" style=\"stroke:var(--good);stroke-width:1.5;stroke-dasharray:5 4\"/>';\n    series.forEach(function (s, j) {\n      var pts = s.values.map(function (v, i) { return v == null ? null : [x(i), y(v)]; }).filter(Boolean);\n      if (!pts.length) return;\n      var path = pts.map(function (p, i) { return (i ? \"L\" : \"M\") + p[0].toFixed(1) + \" \" + p[1].toFixed(1); }).join(\"\");\n      if (spec.area !== false && series.length === 1)\n        out += '<path d=\"' + path + \"L\" + pts[pts.length - 1][0] + \" \" + bottom + \"L\" + pts[0][0] + \" \" + bottom + 'Z\" style=\"fill:' + color(spec, j) + ';opacity:.14\"/>';\n      out += '<path d=\"' + path + '\" style=\"fill:none;stroke:' + color(spec, j) + ';stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round\"/>';\n      pts.forEach(function (p, i) {\n        var last = i === pts.length - 1;\n        out += '<circle cx=\"' + p[0] + '\" cy=\"' + p[1] + '\" r=\"' + (last ? 4.5 : 3) + '\" style=\"fill:' + (last ? color(spec, j) : \"var(--card)\") + \";stroke:\" + color(spec, j) + ';stroke-width:2\"/>';\n      });\n      if (series.length === 1) {\n        var lp = pts[pts.length - 1];\n        out += '<text class=\"bip-value\" x=\"' + Math.min(lp[0], c.w - 4) + '\" y=\"' + (lp[1] - 9) + '\" text-anchor=\"end\">' + esc(spec.format ? spec.format(s.values[s.values.length - 1]) : fmt(s.values[s.values.length - 1], null, spec.unit)) + \"</text>\";\n      }\n    });\n    var every = Math.ceil(n / 7);\n    labels.forEach(function (l, i) {\n      if (i % every === 0 || i === n - 1) out += '<text class=\"bip-axis\" x=\"' + x(i) + '\" y=\"' + (c.h - 6) + '\" text-anchor=\"middle\">' + esc(l) + \"</text>\";\n    });\n    draw(c.svg, out);\n    legend(c, series.map(function (s) { return s.name; }), spec);\n  }\n\n  // Donut: {labels, values, unit, center: \"1 748 €\", height}\n  function donut(target, spec) {\n    var c = canvas(target, spec.height || 170);\n    if (!c) return;\n    var values = spec.values || [], total = values.reduce(function (a, b) { return a + b; }, 0) || 1;\n    var r = c.h / 2 - 8, cx = r + 8, cy = c.h / 2, angle = -Math.PI / 2, out = \"\";\n    values.forEach(function (v, i) {\n      var a2 = angle + 2 * Math.PI * v / total, large = a2 - angle > Math.PI ? 1 : 0;\n      var p = function (a, rr) { return (cx + rr * Math.cos(a)).toFixed(2) + \" \" + (cy + rr * Math.sin(a)).toFixed(2); };\n      var ri = r * 0.62;\n      out += '<path d=\"M' + p(angle, r) + \"A\" + r + \" \" + r + \" 0 \" + large + \" 1 \" + p(a2 - 0.0001, r) + \"L\" + p(a2 - 0.0001, ri) +\n        \"A\" + ri + \" \" + ri + \" 0 \" + large + \" 0 \" + p(angle, ri) + 'Z\" style=\"fill:' + color(spec, i) + ';stroke:var(--card);stroke-width:2\"/>';\n      angle = a2;\n    });\n    if (spec.center) out += '<text x=\"' + cx + '\" y=\"' + (cy + 6) + '\" text-anchor=\"middle\" style=\"fill:var(--ink);font:900 17px var(--font)\">' + esc(spec.center) + \"</text>\";\n    var lx = cx + r + 22, rows = Math.min(values.length, Math.floor((c.h - 10) / 22));\n    for (var i = 0; i < rows; i++) {\n      var ly = cy - rows * 11 + i * 22 + 14;\n      out += '<rect x=\"' + lx + '\" y=\"' + (ly - 9) + '\" width=\"10\" height=\"10\" rx=\"3\" style=\"fill:' + color(spec, i) + '\"/>' +\n        '<text x=\"' + (lx + 16) + '\" y=\"' + ly + '\" style=\"fill:var(--ink2);font:700 12.5px var(--font)\">' + esc(spec.labels[i] || \"\") +\n        ' <tspan style=\"fill:var(--ink);font-weight:900\">' + esc(spec.format ? spec.format(values[i]) : fmt(values[i], null, spec.unit)) + \"</tspan></text>\";\n    }\n    draw(c.svg, out);\n  }\n\n  // A sparkline in a small element (a KPI tile): Bip.spark(\"#s\", [3, 5, 4, 7])\n  function spark(target, values, spec) {\n    spec = spec || {};\n    var c = canvas(target, spec.height || 36);\n    if (!c) return;\n    var lo = Math.min.apply(null, values), hi = Math.max.apply(null, values), step = c.w / Math.max(1, values.length - 1);\n    var path = values.map(function (v, i) { return (i ? \"L\" : \"M\") + (i * step).toFixed(1) + \" \" + (c.h - 3 - (c.h - 6) * (v - lo) / (hi - lo || 1)).toFixed(1); }).join(\"\");\n    draw(c.svg, '<path d=\"' + path + '\" style=\"fill:none;stroke:' + (spec.color || \"var(--accent)\") + ';stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round\"/>');\n  }\n\n  // Diagram: lines « A -> B » (or « A -> B: label »), drawn top-down in layers, boxes and arrows.\n  function diagram(target, text) {\n    var host = $(target);\n    if (!host) return;\n    var source = text != null ? text : host.textContent, nodes = [], edges = [], index = {};\n    var node = function (name) {\n      name = name.trim();\n      if (!(name in index)) { index[name] = nodes.length; nodes.push({ name: name, layer: 0 }); }\n      return index[name];\n    };\n    source.split(/\\n|;/).forEach(function (raw) {\n      var line = raw.trim();\n      if (!line || line.indexOf(\"//\") === 0) return;\n      var parts = line.split(/\\s*(?:-->|->|→)\\s*/);\n      if (parts.length < 2) { node(line); return; }\n      for (var i = 0; i + 1 < parts.length; i++) {\n        var to = parts[i + 1], label = \"\";\n        var colon = to.indexOf(\":\");\n        if (colon > 0 && i + 2 === parts.length) { label = to.slice(colon + 1).trim(); to = to.slice(0, colon); }\n        edges.push({ from: node(parts[i]), to: node(to), label: label });\n      }\n    });\n    for (var pass = 0; pass < nodes.length; pass++)\n      edges.forEach(function (e) { if (e.from !== e.to && nodes[e.to].layer <= nodes[e.from].layer && nodes[e.from].layer < nodes.length) nodes[e.to].layer = nodes[e.from].layer + 1; });\n    var layers = [];\n    nodes.forEach(function (n, i) { (layers[n.layer] = layers[n.layer] || []).push(i); });\n    layers = layers.filter(Boolean);\n    var width = Math.max(260, Math.min(720, host.clientWidth || 320)), boxH = 38, gapY = 34;\n    var height = layers.length * boxH + (layers.length - 1) * gapY + 8, out = \"\", pos = {};\n    var measure = function (s) { return Math.min(width - 8, Math.max(64, s.length * 7.4 + 24)); };\n    layers.forEach(function (layer, li) {\n      var slot = width / layer.length;\n      layer.forEach(function (i, k) {\n        var w = Math.min(measure(nodes[i].name), slot - 8);\n        pos[i] = { x: slot * k + slot / 2, y: 4 + li * (boxH + gapY), w: w };\n      });\n    });\n    edges.forEach(function (e) {\n      var a = pos[e.from], b = pos[e.to];\n      if (!a || !b || e.from === e.to) return;\n      var y1 = a.y + boxH, y2 = b.y - 3;\n      if (b.y <= a.y) { y1 = a.y + boxH / 2; y2 = b.y + boxH / 2; }\n      var mid = (y1 + y2) / 2;\n      out += '<path class=\"bip-edge\" marker-end=\"url(#bip-arrow)\" d=\"M' + a.x + \" \" + y1 + \"C\" + a.x + \" \" + mid + \" \" + b.x + \" \" + mid + \" \" + b.x + \" \" + y2 + '\"/>';\n      if (e.label) out += '<text class=\"bip-axis\" x=\"' + ((a.x + b.x) / 2 + 6) + '\" y=\"' + (mid + 3) + '\">' + esc(e.label) + \"</text>\";\n    });\n    nodes.forEach(function (n, i) {\n      var p = pos[i];\n      var label = n.name.length * 7.4 + 24 > p.w ? n.name.slice(0, Math.max(3, Math.floor((p.w - 24) / 7.4) - 1)) + \"…\" : n.name;\n      out += '<g class=\"bip-node\"><rect x=\"' + (p.x - p.w / 2) + '\" y=\"' + p.y + '\" width=\"' + p.w + '\" height=\"' + boxH + '\" rx=\"12\"/>' +\n        '<text x=\"' + p.x + '\" y=\"' + (p.y + boxH / 2 + 4.5) + '\" text-anchor=\"middle\"><title>' + esc(n.name) + \"</title>\" + esc(label) + \"</text></g>\";\n    });\n    var svg = '<svg class=\"diagram\" viewBox=\"0 0 ' + width + \" \" + height + '\" role=\"img\"><defs><marker id=\"bip-arrow\" viewBox=\"0 0 10 10\" refX=\"8\" refY=\"5\" ' +\n      'markerWidth=\"7\" markerHeight=\"7\" orient=\"auto-start-reverse\"><path d=\"M0 0L10 5L0 10z\" style=\"fill:var(--muted)\"/></marker></defs>' + out + \"</svg>\";\n    var wrap = doc.createElement(\"div\");\n    wrap.innerHTML = svg;\n    host.replaceWith(wrap.firstChild);\n  }\n\n  // Tables with class « sort »: a tap on a header sorts by that column (numbers as numbers).\n  function sortable(table) {\n    var heads = table.querySelectorAll(\"th\");\n    var number = function (text) {\n      var t = text.replace(/[\\s  ]/g, \"\").replace(/[^\\d,.\\-−]/g, \"\").replace(\"−\", \"-\");\n      if (/,\\d{1,2}$/.test(t)) t = t.replace(/\\./g, \"\").replace(\",\", \".\");\n      else t = t.replace(/,/g, \"\");\n      return t === \"\" || t === \"-\" ? NaN : parseFloat(t);\n    };\n    heads.forEach(function (th, col) {\n      th.addEventListener(\"click\", function () {\n        var body = table.tBodies[0];\n        if (!body) return;\n        var rows = Array.prototype.slice.call(body.rows), up = th.getAttribute(\"aria-sort\") !== \"ascending\";\n        heads.forEach(function (h) { h.removeAttribute(\"aria-sort\"); });\n        th.setAttribute(\"aria-sort\", up ? \"ascending\" : \"descending\");\n        rows.sort(function (a, b) {\n          var x = (a.cells[col] || {}).textContent || \"\", y = (b.cells[col] || {}).textContent || \"\";\n          var nx = number(x), ny = number(y);\n          var r = isNaN(nx) || isNaN(ny) ? x.localeCompare(y, lang()) : nx - ny;\n          return up ? r : -r;\n        });\n        rows.forEach(function (r) { body.appendChild(r); });\n      });\n    });\n  }\n\n  // <div class=\"tabs\"><button>…</button>…</div> followed by as many <section class=\"tab\">.\n  function tabs(bar) {\n    var buttons = Array.prototype.slice.call(bar.querySelectorAll(\"button\")), sections = [], el = bar.nextElementSibling;\n    while (el && sections.length < buttons.length) { if (el.matches(\"section.tab\")) sections.push(el); el = el.nextElementSibling; }\n    var show = function (n) {\n      buttons.forEach(function (b, i) { b.setAttribute(\"aria-selected\", i === n ? \"true\" : \"false\"); });\n      sections.forEach(function (s, i) { s.hidden = i !== n; });\n    };\n    buttons.forEach(function (b, i) { b.type = \"button\"; b.addEventListener(\"click\", function () { show(i); }); });\n    show(0);\n  }\n\n  // What-ifs: render(values) runs now and after every change of an input with an id (numbers as numbers,\n  // switches as true/false); <output for=\"id\"> elements show their input's value.\n  function whatIf(render) {\n    var run = function () {\n      var values = {};\n      doc.querySelectorAll(\"input[id],select[id]\").forEach(function (input) {\n        values[input.id] = input.type === \"checkbox\" ? input.checked : input.type === \"range\" || input.type === \"number\" ? parseFloat(input.value) : input.value;\n      });\n      doc.querySelectorAll(\"output[for]\").forEach(function (o) {\n        var v = values[o.htmlFor.value || o.getAttribute(\"for\")];\n        if (typeof v === \"number\") o.textContent = fmt(v, null, o.dataset.unit);\n      });\n      if (render) render(values);\n    };\n    doc.addEventListener(\"input\", run);\n    doc.readyState === \"loading\" ? doc.addEventListener(\"DOMContentLoaded\", run) : run();\n  }\n\n  function set(target, text) { var el = $(target); if (el) el.textContent = text; }\n\n  // The app's colours and font for Chart.js (called right after it, when the page uses it).\n  function chartDefaults() {\n    var C = window.Chart;\n    if (!C || !C.defaults) return;\n    C.defaults.color = css(\"--muted\");\n    C.defaults.borderColor = css(\"--line\");\n    C.defaults.font.family = css(\"--font\");\n    C.defaults.font.weight = \"600\";\n    C.defaults.plugins.legend.labels.boxWidth = 10;\n    C.defaults.plugins.legend.labels.boxHeight = 10;\n    C.defaults.elements.bar.borderRadius = 6;\n    C.defaults.elements.line.borderWidth = 2.5;\n    C.defaults.elements.line.tension = 0.3;\n    C.defaults.elements.point.radius = 3;\n    C.defaults.maintainAspectRatio = false;\n    var palette = [\"--c1\", \"--c2\", \"--c3\", \"--c4\", \"--c5\", \"--c6\"].map(css);\n    if (C.defaults.plugins.colors) C.defaults.plugins.colors.enabled = false;\n    C.register && C.register({\n      id: \"bipColors\",\n      beforeUpdate: function (chart) {\n        (chart.config.data.datasets || []).forEach(function (d, i) {\n          var many = chart.config.type === \"pie\" || chart.config.type === \"doughnut\" || chart.config.type === \"polarArea\";\n          if (!d.backgroundColor) d.backgroundColor = many ? palette : palette[i % palette.length];\n          if (!d.borderColor) d.borderColor = many ? css(\"--card\") : palette[i % palette.length];\n        });\n      },\n    });\n  }\n\n  // A map card (the bridge's map_image): its picture, and a list where a tap on a line rings its marker. Inside the\n  // app the picture becomes a live map (MapLibre, which the app ships; the map's files come through the bridge, never\n  // from here): pan, pinch, double tap, a tap on a line flies to its marker, and « Open in Maps » links the app\n  // answers itself (bipmaps:, only numbers and a short name). Elsewhere (a browser, an export) the picture stays.\n  var ANDROID = /Android/i.test(navigator.userAgent || \"\");\n  var MAP_BASE = ANDROID ? \"https://bipmap.invalid/\" : \"bipmap://map/\";\n  var MAP_WORDS = {\n    open: ANDROID ? { fr: \"Ouvrir dans Google Maps\", en: \"Open in Google Maps\", de: \"In Google Maps öffnen\", es: \"Abrir en Google Maps\" }\n      : { fr: \"Ouvrir dans Plans\", en: \"Open in Maps\", de: \"In Karten öffnen\", es: \"Abrir en Mapas\" },\n    route: { fr: \"Itinéraire\", en: \"Directions\", de: \"Route\", es: \"Cómo llegar\" },\n    fingers: { fr: \"Deux doigts pour déplacer la carte\", en: \"Use two fingers to move the map\",\n      de: \"Mit zwei Fingern die Karte bewegen\", es: \"Usa dos dedos para mover el mapa\" },\n  };\n  var mapWord = function (key) { var w = MAP_WORDS[key]; return w[lang().slice(0, 2).toLowerCase()] || w.en; };\n  var library = null;\n\n  function maplibre() {\n    if (library) return library;\n    library = new Promise(function (resolve, reject) {\n      if (window.maplibregl) { resolve(window.maplibregl); return; }\n      var script = doc.createElement(\"script\");\n      var timer = setTimeout(function () { reject(new Error(\"no map library\")); }, 8000);\n      script.onload = function () {\n        clearTimeout(timer);\n        window.maplibregl ? resolve(window.maplibregl) : reject(new Error(\"no map library\"));\n      };\n      script.onerror = function () { clearTimeout(timer); reject(new Error(\"no map library\")); };\n      script.src = MAP_BASE + \"lib.js\";\n      (doc.head || root).appendChild(script);\n    }).then(function (ml) {\n      // every map file asked from the page's own thread, through the app's door\n      ml.addProtocol(\"bipmap\", function (params, abort) {\n        var url = MAP_BASE + String(params.url).replace(/^bipmap:\\/\\/map\\//, \"\");\n        return fetch(url, { signal: abort && abort.signal }).then(function (r) {\n          if (r.status === 204) return { data: params.type === \"json\" ? {} : new ArrayBuffer(0) };\n          if (!r.ok) throw new Error(\"map file \" + r.status);\n          var body = params.type === \"json\" ? r.json() : params.type === \"string\" ? r.text() : r.arrayBuffer();\n          return body.then(function (data) { return { data: data }; });\n        });\n      });\n      return ml;\n    });\n    return library;\n  }\n\n  var coords = function (lat, lon) { return (+lat).toFixed(6) + \",\" + (+lon).toFixed(6); };\n  var shortName = function (text) { return encodeURIComponent(String(text || \"\").replace(/\\s+/g, \" \").trim().slice(0, 80)); };\n\n  function mapCard(card) {\n    var img = card.querySelector(\"img\");\n    if (!img) return;\n    var frame = doc.createElement(\"div\"), ring = doc.createElement(\"div\");\n    frame.className = \"map-frame\";\n    ring.className = \"map-ring\";\n    ring.hidden = true;\n    img.replaceWith(frame);\n    frame.appendChild(img);\n    frame.appendChild(ring);\n    var items = Array.prototype.slice.call(card.querySelectorAll(\"li[data-x]\"));\n    var live = null;\n    items.forEach(function (li) {\n      li.addEventListener(\"click\", function () {\n        var again = li.getAttribute(\"aria-current\") === \"true\";\n        items.forEach(function (other) { other.removeAttribute(\"aria-current\"); });\n        if (live) { live.select(again ? -1 : points.map(function (p) { return p.li; }).indexOf(li)); if (!again) li.setAttribute(\"aria-current\", \"true\"); return; }\n        ring.hidden = again;\n        if (again) return;\n        li.setAttribute(\"aria-current\", \"true\");\n        ring.style.left = li.dataset.x + \"%\";\n        ring.style.top = li.dataset.y + \"%\";\n      });\n    });\n    var points = items.map(function (li) {\n      return { lat: parseFloat(li.dataset.lat), lon: parseFloat(li.dataset.lon), color: li.dataset.color, li: li,\n        label: (li.firstChild && li.firstChild.nodeType === 3 ? li.firstChild.nodeValue : li.textContent).trim() };\n    }).filter(function (p) { return isFinite(p.lat) && isFinite(p.lon) && Math.abs(p.lat) <= 90 && Math.abs(p.lon) <= 180; });\n    var center = (card.dataset.center || \"\").split(\",\").map(parseFloat);\n    if (!points.length && !(center.length === 2 && isFinite(center[0]) && isFinite(center[1]))) return;\n    maplibre().then(function (ml) {\n      live = liveMap(ml, card, frame, img, ring, points, center);\n    }, function () { /* outside the app: the picture stays */ });\n  }\n\n  function liveMap(ml, card, frame, img, ring, points, center) {\n    var inline = root.getAttribute(\"data-bip-view\") === \"inline\";\n    var box = doc.createElement(\"div\");\n    box.className = \"map-live\";\n    box.style.cssText = \"position:absolute;inset:0\";   // over the picture (MapLibre's own CSS says relative)\n    frame.appendChild(box);\n    var options = {\n      container: box, style: \"bipmap://map/style.json\", attributionControl: { compact: true }, dragRotate: false,\n      pitchWithRotate: false, touchPitch: false, maxZoom: 18, fadeDuration: 0, cooperativeGestures: inline,\n      canvasContextAttributes: { preserveDrawingBuffer: true },\n      locale: { \"CooperativeGesturesHandler.MobileHelpText\": mapWord(\"fingers\"),\n        \"CooperativeGesturesHandler.WindowsHelpText\": mapWord(\"fingers\"), \"CooperativeGesturesHandler.MacHelpText\": mapWord(\"fingers\") },\n    };\n    var spots = points.map(function (p) { return [p.lon, p.lat]; });\n    if (spots.length > 1) {\n      options.bounds = spots.reduce(function (b, s) { return b.extend(s); }, new ml.LngLatBounds(spots[0], spots[0]));\n      options.fitBoundsOptions = { padding: { top: 40, right: 40, bottom: 56, left: 40 }, maxZoom: 16 };\n    } else {\n      options.center = spots.length ? spots[0] : [center[1], center[0]];\n      options.zoom = parseFloat(card.dataset.zoom) || 15;\n    }\n    var map, styled = false, ready = false;\n    try { map = new ml.Map(options); } catch (e) { box.remove(); return null; }\n    var giveUp = function () {\n      if (ready) return;\n      try { map.remove(); } catch (e) { /* gone already */ }\n      box.remove();\n    };\n    var timer = setTimeout(function () { if (!styled) giveUp(); }, 12000);\n    map.on(\"styledata\", function () { styled = true; });\n    map.on(\"error\", function () { if (!styled) { clearTimeout(timer); giveUp(); } });\n    map.touchZoomRotate.disableRotation();\n    var pins = points.map(function (p, i) {\n      var holder = doc.createElement(\"div\"), pin = doc.createElement(\"span\");\n      holder.className = \"map-pin\";\n      pin.textContent = String(i + 1);\n      if (p.color) pin.style.background = p.color;\n      holder.appendChild(pin);\n      holder.addEventListener(\"click\", function (event) { event.stopPropagation(); p.li.click(); });\n      new ml.Marker({ element: holder }).setLngLat([p.lon, p.lat]).addTo(map);\n      return holder;\n    });\n    map.on(\"load\", function () {\n      ready = true;\n      clearTimeout(timer);\n      if (card.dataset.line && spots.length > 1) {\n        map.addSource(\"bip-line\", { type: \"geojson\", data: { type: \"Feature\", properties: {},\n          geometry: { type: \"LineString\", coordinates: spots } } });\n        map.addLayer({ id: \"bip-line\", type: \"line\", source: \"bip-line\", layout: { \"line-cap\": \"round\", \"line-join\": \"round\" },\n          paint: { \"line-color\": css(\"--accent\") || \"#7C6CF2\", \"line-width\": 4, \"line-opacity\": 0.85 } });\n      }\n      card.classList.add(\"live\");\n      // the credits folded into their ⓘ once the map has drawn (MapLibre shows them open at first)\n      map.once(\"idle\", function () {\n        var credits = box.querySelector(\".maplibregl-ctrl-attrib\");\n        if (credits) { credits.removeAttribute(\"open\"); credits.classList.remove(\"maplibregl-compact-show\"); }\n      });\n      ring.hidden = true;\n      img.setAttribute(\"aria-hidden\", \"true\");\n      points.forEach(function (p) {\n        var open = doc.createElement(\"a\");\n        open.className = \"map-open\";\n        open.href = \"bipmaps:place?lat=\" + (+p.lat).toFixed(6) + \"&lon=\" + (+p.lon).toFixed(6) + \"&label=\" + shortName(p.label);\n        open.textContent = mapWord(\"open\");\n        open.addEventListener(\"click\", function (event) { event.stopPropagation(); });\n        p.li.appendChild(open);\n      });\n      var mode = card.dataset.directions;\n      if (mode && points.length > 1) {\n        var first = points[0], last = points[points.length - 1], route = doc.createElement(\"a\");\n        route.className = \"map-route\";\n        route.href = \"bipmaps:route?from=\" + coords(first.lat, first.lon) + \"&to=\" + coords(last.lat, last.lon) +\n          \"&mode=\" + encodeURIComponent(mode) + \"&from_label=\" + shortName(first.label) + \"&to_label=\" + shortName(last.label);\n        route.textContent = mapWord(\"route\") + \" · \" + mapWord(\"open\");\n        card.appendChild(route);\n      }\n    });\n    return {\n      select: function (i) {\n        pins.forEach(function (pin, j) { pin.toggleAttribute(\"data-current\", j === i); });\n        if (i < 0 || !points[i]) return;\n        map.easeTo({ center: [points[i].lon, points[i].lat], zoom: Math.max(map.getZoom(), 15), duration: 450 });\n      },\n    };\n  }\n\n  function enhance() {\n    doc.querySelectorAll(\".map-card\").forEach(mapCard);\n    doc.querySelectorAll(\"table.sort\").forEach(sortable);\n    doc.querySelectorAll(\".tabs\").forEach(tabs);\n    doc.querySelectorAll(\"pre.diagram,div.diagram[data-src]\").forEach(function (el) { diagram(el, el.dataset.src || null); });\n  }\n  doc.readyState === \"loading\" ? doc.addEventListener(\"DOMContentLoaded\", enhance) : enhance();\n\n  window.Bip = { fmt: fmt, bars: bars, line: line, donut: donut, spark: spark, diagram: diagram, whatIf: whatIf, set: set,\n    css: css, _chart: chartDefaults };\n})();\n</script>\n<style>.check>li{display:flex;align-items:center;gap:6px}.check>li .chip{margin-left:auto;flex:none}</style>\n<title>{{title}}</title><body>\n<h1>🛒 {{title}}</h1>\n<p class=\"sub\">{{subtitle}}</p>\n<div class=\"card\"><h3>🥦 {{veg}}</h3>\n<ul class=\"check\">\n<li>{{zucchini}} <span class=\"chip plain\">×2</span></li>\n<li>{{lemons}} <span class=\"chip plain\">×3</span></li>\n<li>{{bananas}} <span class=\"chip plain\">×6</span></li>\n<li>{{salad}}</li>\n</ul></div>\n<div class=\"card\"><h3>🧀 {{fresh}}</h3>\n<ul class=\"check\">\n<li class=\"done\">{{milk}} <span class=\"chip plain\">2 L</span></li>\n<li>{{yogurts}} <span class=\"chip plain\">×8</span></li>\n<li>{{feta}}</li>\n<li>{{eggs}} <span class=\"chip plain\">×12</span></li>\n</ul></div>\n<div class=\"card\"><h3>🍝 {{pantry}}</h3>\n<ul class=\"check\">\n<li>{{pasta}} <span class=\"chip plain\">1 kg</span></li>\n<li>{{rice}}</li>\n<li class=\"done\">{{cereal}}</li>\n</ul></div>\n<div class=\"card\"><h3>🧴 {{care}}</h3>\n<ul class=\"check\">\n<li>{{toothpaste}}</li>\n</ul></div>\n<p class=\"foot\">{{foot}}</p>\n<script>\ndocument.querySelectorAll(\".check>li\").forEach(li => li.addEventListener(\"click\", () => li.classList.toggle(\"done\")));\n</script>\n</body></html>\n",
+      "values": {
+        "title": {
+          "fr": "Courses de la semaine",
+          "en": "This week’s shopping",
+          "de": "Einkauf der Woche",
+          "es": "La compra de la semana"
+        },
+        "subtitle": {
+          "fr": "4 personnes · partagée avec la maison",
+          "en": "4 people · shared with the household",
+          "de": "4 Personen · mit dem Haushalt geteilt",
+          "es": "4 personas · compartida con la casa"
+        },
+        "veg": {
+          "fr": "Fruits et légumes",
+          "en": "Fruit and veg",
+          "de": "Obst und Gemüse",
+          "es": "Fruta y verdura"
+        },
+        "zucchini": {
+          "fr": "Courgettes",
+          "en": "Courgettes",
+          "de": "Zucchini",
+          "es": "Calabacines"
+        },
+        "lemons": {
+          "fr": "Citrons",
+          "en": "Lemons",
+          "de": "Zitronen",
+          "es": "Limones"
+        },
+        "bananas": {
+          "fr": "Bananes",
+          "en": "Bananas",
+          "de": "Bananen",
+          "es": "Plátanos"
+        },
+        "salad": {
+          "fr": "Une salade",
+          "en": "A lettuce",
+          "de": "Ein Salat",
+          "es": "Una lechuga"
+        },
+        "fresh": {
+          "fr": "Frais",
+          "en": "Chilled",
+          "de": "Kühlregal",
+          "es": "Refrigerados"
+        },
+        "milk": {
+          "fr": "Lait",
+          "en": "Milk",
+          "de": "Milch",
+          "es": "Leche"
+        },
+        "yogurts": {
+          "fr": "Yaourts",
+          "en": "Yoghurts",
+          "de": "Joghurts",
+          "es": "Yogures"
+        },
+        "feta": {
+          "fr": "Feta",
+          "en": "Feta",
+          "de": "Feta",
+          "es": "Queso feta"
+        },
+        "eggs": {
+          "fr": "Œufs",
+          "en": "Eggs",
+          "de": "Eier",
+          "es": "Huevos"
+        },
+        "pantry": {
+          "fr": "Épicerie",
+          "en": "Cupboard",
+          "de": "Vorrat",
+          "es": "Despensa"
+        },
+        "pasta": {
+          "fr": "Pâtes",
+          "en": "Pasta",
+          "de": "Nudeln",
+          "es": "Pasta"
+        },
+        "rice": {
+          "fr": "Riz",
+          "en": "Rice",
+          "de": "Reis",
+          "es": "Arroz"
+        },
+        "cereal": {
+          "fr": "Céréales de Léo",
+          "en": "Léo’s cereal",
+          "de": "Léos Müsli",
+          "es": "Cereales de Léo"
+        },
+        "care": {
+          "fr": "Hygiène",
+          "en": "Toiletries",
+          "de": "Drogerie",
+          "es": "Higiene"
+        },
+        "toothpaste": {
+          "fr": "Dentifrice",
+          "en": "Toothpaste",
+          "de": "Zahnpasta",
+          "es": "Pasta de dientes"
+        },
+        "foot": {
+          "fr": "Touche une ligne pour la cocher.",
+          "en": "Tap a line to tick it.",
+          "de": "Tippe auf eine Zeile, um sie abzuhaken.",
+          "es": "Toca una línea para marcarla."
+        }
+      }
+    },
+    "family_week": {
+      "template": "<!doctype html>\n<html lang=\"{{lang}}\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta name=\"color-scheme\" content=\"light dark\"><style id=\"bip-kit\">/* BipAgents page kit: the app's look for the pages the agents make (pages.rs puts it inline in every page).\n   Every rule is inside :where(), so the agent's own CSS always wins. Light and dark follow the phone. */\n:root{--bg:#F3F4F7;--card:#FFFFFF;--field:#F3F4F7;--ink:#16181D;--ink2:#5E6472;--muted:#6B7180;--line:rgba(22,24,29,.09);\n--accent:#7C6CF2;--deep:#5A49D6;--tint:#EDE9FF;--good:#2FB36B;--warn:#F08A24;--bad:#E5484D;\n--c1:var(--accent);--c2:#4F7CFF;--c3:#FF7B5C;--c4:#1FB2C1;--c5:#F6B826;--c6:#F2649E;\n--r:18px;--font:ui-rounded,\"SF Pro Rounded\",system-ui,-apple-system,\"Segoe UI\",Roboto,sans-serif;color-scheme:light dark}\n@media (prefers-color-scheme:dark){:root{--bg:#0F1115;--card:#1A1D24;--field:#23262F;--ink:#F2F3F7;--ink2:#A4A9B8;\n--muted:#8A90A2;--line:rgba(255,255,255,.09);--tint:color-mix(in srgb,var(--accent) 20%,#1A1D24);--deep:color-mix(in srgb,var(--accent) 70%,#fff)}}\n:root[data-tint=wellness]{--accent:#3CC37A;--deep:#1D8A4F;--tint:#E2F5EA}\n:root[data-tint=finance]{--accent:#F6B826;--deep:#9A6A00;--tint:#FFF3D1}\n:root[data-tint=daily]{--accent:#FF7B5C;--deep:#C9472A;--tint:#FFE8E0}\n:root[data-tint=work]{--accent:#4F7CFF;--deep:#2B55D4;--tint:#E4EBFF}\n:root[data-tint=learning]{--accent:#8E6CF5;--deep:#6142D2;--tint:#EDE7FF}\n:root[data-tint=home]{--accent:#1FB2C1;--deep:#0D7F8B;--tint:#DDF4F6}\n:root[data-tint=creative]{--accent:#F2649E;--deep:#C23774;--tint:#FDE4EE}\n:root[data-tint=tech]{--accent:#6B7489;--deep:#3F4659;--tint:#E7E9EE}\n@media (prefers-color-scheme:dark){:root[data-tint]{--tint:color-mix(in srgb,var(--accent) 20%,#1A1D24);\n--deep:color-mix(in srgb,var(--accent) 70%,#fff)}}\n/* In the conversation (the app sets data-bip-view=\"inline\"): no ground of its own, on the app's card. */\n:root[data-bip-view=inline]{--bg:var(--card)}\n:where(*,*::before,*::after){box-sizing:border-box}\n:where(html){height:auto;-webkit-text-size-adjust:100%}\n:where(body){margin:0;padding:16px 16px 20px;background:var(--bg);color:var(--ink);font:500 15px/1.45 var(--font);\nmax-width:760px;margin-inline:auto;-webkit-font-smoothing:antialiased}\n:where(html[data-bip-view=inline] body){padding:14px 14px 16px}\n:where(h1){font-size:23px;font-weight:900;line-height:1.15;margin:0 0 4px;letter-spacing:-.01em}\n:where(h2){font-size:17px;font-weight:800;margin:18px 0 8px}\n:where(h3){font-size:15px;font-weight:800;margin:12px 0 6px}\n:where(p){margin:6px 0}\n:where(.sub,.muted){color:var(--muted);font-size:13px;font-weight:600}\n:where(.sub){margin:0 0 14px}\n:where(.good){color:var(--good)}:where(.warn){color:var(--warn)}:where(.bad){color:var(--bad)}\n:where(.accent){color:var(--deep)}\n:where(.card){background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin:0 0 12px}\n:where(.card>h2:first-child,.card>h3:first-child){margin-top:0}\n:where(.grid){display:grid;grid-template-columns:repeat(auto-fit,minmax(min(140px,100%),1fr));gap:10px;margin:0 0 12px}\n:where(.grid.two){grid-template-columns:repeat(2,minmax(0,1fr))}\n:where(.row){display:flex;align-items:center;gap:10px;flex-wrap:wrap}\n:where(.row.between){justify-content:space-between}\n:where(.kpi){background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;min-width:0}\n:where(.kpi .l){display:block;color:var(--muted);font-size:12.5px;font-weight:700}\n:where(.kpi .v){display:block;font-size:28px;font-weight:900;line-height:1.1;margin-top:2px;letter-spacing:-.02em;\nfont-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\n:where(.kpi .v small){font-size:14px;font-weight:800;color:var(--ink2);margin-left:2px}\n:where(.kpi .d){display:inline-block;margin-top:4px;font-size:12px;font-weight:800;border-radius:99px;padding:2px 8px;\nbackground:var(--field);color:var(--ink2)}\n:where(.kpi .d.up){background:color-mix(in srgb,var(--good) 16%,transparent);color:var(--good)}\n:where(.kpi .d.down){background:color-mix(in srgb,var(--bad) 14%,transparent);color:var(--bad)}\n:where(.kpi.main){background:var(--tint);border-color:transparent}\n:where(.kpi.main .v){color:var(--deep)}\n:where(.chip){display:inline-flex;align-items:center;gap:4px;font-size:12.5px;font-weight:800;border-radius:99px;\npadding:3px 10px;background:var(--tint);color:var(--deep);white-space:nowrap}\n:where(.chip.good){background:color-mix(in srgb,var(--good) 16%,transparent);color:var(--good)}\n:where(.chip.warn){background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}\n:where(.chip.bad){background:color-mix(in srgb,var(--bad) 14%,transparent);color:var(--bad)}\n:where(.chip.plain){background:var(--field);color:var(--ink2)}\n:where(.note){background:var(--tint);color:var(--ink);border-radius:14px;padding:10px 12px;font-size:14px;margin:0 0 12px}\n:where(.note.warn){background:color-mix(in srgb,var(--warn) 15%,transparent)}\n:where(.note.bad){background:color-mix(in srgb,var(--bad) 12%,transparent)}\n:where(.big){font-size:40px;font-weight:900;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}\n/* progress: <div class=\"bar\" style=\"--v:64%\"></div> */\n:where(.bar){height:10px;border-radius:99px;background:var(--field);overflow:hidden;margin:6px 0}\n:where(.bar)::before{content:\"\";display:block;height:100%;width:var(--v,0%);max-width:100%;border-radius:inherit;\nbackground:var(--bar,var(--accent))}\n:where(.bar.good){--bar:var(--good)}:where(.bar.warn){--bar:var(--warn)}:where(.bar.bad){--bar:var(--bad)}\n/* tables: <table class=\"sort\"> sorts on a tap on a header */\n:where(.table-wrap){overflow-x:auto;margin:0 0 12px;border-radius:14px;border:1px solid var(--line)}\n:where(table){width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}\n:where(th){text-align:left;font-size:12px;font-weight:800;color:var(--muted);background:var(--field);padding:8px 10px;\nwhite-space:nowrap}\n:where(td){padding:9px 10px;border-top:1px solid var(--line);vertical-align:top}\n:where(td.n,th.n){text-align:right}\n:where(tr.best td){background:var(--tint)}\n:where(tr.best td:first-child){box-shadow:inset 3px 0 0 var(--accent)}\n:where(table.sort th){cursor:pointer;user-select:none;-webkit-user-select:none}\n:where(table.sort th[aria-sort=ascending])::after{content:\" ▲\";font-size:9px}\n:where(table.sort th[aria-sort=descending])::after{content:\" ▼\";font-size:9px}\n/* timeline: <ol class=\"timeline\"><li class=\"done\"><b>Title</b> text <span class=\"when\">date</span></li></ol> */\n:where(.timeline){list-style:none;margin:0 0 12px;padding:0 0 0 22px;position:relative}\n:where(.timeline)::before{content:\"\";position:absolute;left:6px;top:6px;bottom:6px;width:2px;background:var(--line)}\n:where(.timeline>li){position:relative;padding:0 0 14px}\n:where(.timeline>li)::before{content:\"\";position:absolute;left:-21px;top:4px;width:12px;height:12px;border-radius:50%;\nbackground:var(--card);border:2px solid var(--muted)}\n:where(.timeline>li.done)::before{background:var(--accent);border-color:var(--accent)}\n:where(.timeline>li.now)::before{background:var(--card);border:3px solid var(--accent);box-shadow:0 0 0 4px var(--tint)}\n:where(.timeline .when){display:block;color:var(--muted);font-size:12.5px;font-weight:700}\n/* checklist: <ul class=\"check\"><li class=\"done\">…</li></ul> */\n:where(.check){list-style:none;margin:0 0 12px;padding:0}\n:where(.check>li){padding:8px 0 8px 30px;position:relative;border-bottom:1px solid var(--line)}\n:where(.check>li)::before{content:\"\";position:absolute;left:0;top:8px;width:20px;height:20px;border-radius:7px;\nborder:2px solid var(--muted)}\n:where(.check>li.done)::before{background:var(--good);border-color:var(--good)}\n:where(.check>li.done)::after{content:\"✓\";position:absolute;left:5px;top:7px;color:#fff;font-weight:900;font-size:13px}\n:where(.check>li.done){color:var(--muted)}\n/* flow: <div class=\"flow\"><div>A</div><div>B</div></div>; .flow.down for a column */\n:where(.flow){display:flex;align-items:stretch;gap:22px;flex-wrap:wrap;margin:0 0 12px}\n:where(.flow>*){position:relative;flex:1 1 0;min-width:80px;background:var(--tint);color:var(--ink);border-radius:14px;\npadding:10px 12px;font-weight:700;font-size:14px;text-align:center}\n:where(.flow>*:not(:last-child))::after{content:\"→\";position:absolute;right:-18px;top:50%;transform:translateY(-50%);\ncolor:var(--muted);font-weight:900}\n:where(.flow.down){flex-direction:column;gap:20px}\n:where(.flow.down>*:not(:last-child))::after{content:\"↓\";right:auto;left:50%;top:auto;bottom:-20px;transform:translateX(-50%)}\n:where(.diagram){display:block;margin:0 0 12px;overflow-x:auto}\n:where(pre.diagram){font:inherit;white-space:pre;color:transparent}\n:where(svg .bip-axis){fill:var(--muted);font:700 10.5px var(--font)}\n:where(svg .bip-value){fill:var(--ink2);font:800 10.5px var(--font)}\n:where(svg .bip-grid){stroke:var(--line)}\n:where(svg .bip-node rect){fill:var(--tint);stroke:var(--accent);stroke-width:1.5}\n:where(svg .bip-node text){fill:var(--ink);font:700 13px var(--font)}\n:where(svg .bip-edge){stroke:var(--muted);stroke-width:1.6;fill:none}\n:where(.chart){display:block;width:100%;margin:4px 0 8px}\n:where(.legend){display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;font-weight:700;color:var(--ink2);margin:2px 0 6px}\n:where(.legend i){display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}\n/* what-ifs: sliders and switches */\n:where(input[type=range]){width:100%;accent-color:var(--accent);margin:8px 0}\n:where(.toggle){display:flex;align-items:center;justify-content:space-between;gap:10px;font-weight:700;padding:6px 0}\n:where(.toggle input){appearance:none;-webkit-appearance:none;width:46px;height:28px;border-radius:99px;background:var(--field);\nborder:1px solid var(--line);position:relative;transition:background .2s;flex:none;margin:0}\n:where(.toggle input)::after{content:\"\";position:absolute;top:2px;left:2px;width:22px;height:22px;border-radius:50%;\nbackground:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .2s}\n:where(.toggle input:checked){background:var(--accent)}\n:where(.toggle input:checked)::after{transform:translateX(18px)}\n:where(label.field){display:block;font-size:13px;font-weight:700;color:var(--ink2);margin:8px 0 2px}\n:where(output){font-weight:900;color:var(--deep);font-variant-numeric:tabular-nums}\n:where(select,input[type=number],input[type=text]){font:inherit;color:var(--ink);background:var(--field);\nborder:1px solid var(--line);border-radius:12px;padding:8px 10px;width:100%}\n:where(button){font:800 14px var(--font);color:var(--deep);background:var(--tint);border:0;border-radius:99px;padding:8px 14px}\n/* tabs: <div class=\"tabs\"><button>Week</button><button>Month</button></div> then one <section class=\"tab\"> each */\n:where(.tabs){display:flex;gap:4px;background:var(--field);border-radius:99px;padding:3px;margin:0 0 12px}\n:where(.tabs>button){flex:1;background:transparent;color:var(--ink2);padding:7px 10px}\n:where(.tabs>button[aria-selected=true]){background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}\n:where(section.tab[hidden]){display:none}\n:where(img){max-width:100%;height:auto;border-radius:14px}\n:where(.foot){color:var(--muted);font-size:12px;font-weight:600;margin-top:10px}\n/* in the conversation, last so they win over the rules above (all without weight) */\n:where(html[data-bip-view=inline]) :where(.card,.kpi){background:var(--field);border-color:transparent}\n:where(html[data-bip-view=inline]) :where(.kpi.main){background:var(--tint)}\n/* map card (map_image): <figure class=\"map-card\"><img src=\"map:…\"><ol><li data-x=\"40\" data-y=\"55\">Place</li></ol></figure> */\n:where(.map-card){margin:0 0 12px;background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}\n:where(.map-frame){position:relative;line-height:0}\n:where(.map-card img){width:100%;border-radius:0;display:block}\n:where(.map-ring){position:absolute;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;border:3px solid var(--accent);box-shadow:0 0 0 6px var(--tint);pointer-events:none;transition:left .25s,top .25s}\n:where(.map-card ol){list-style:none;margin:0;padding:6px 8px 8px;counter-reset:map}\n:where(.map-card li){counter-increment:map;display:flex;align-items:center;gap:10px;padding:8px 6px;border-radius:12px;font-weight:700;cursor:pointer}\n:where(.map-card li)::before{content:counter(map);flex:none;width:24px;height:24px;border-radius:50%;background:var(--field);color:var(--ink2);font:900 12px/24px var(--font);text-align:center}\n:where(.map-card li[aria-current=true]){background:var(--tint)}\n:where(.map-card li[aria-current=true])::before{background:var(--accent);color:#fff}\n/* the live map over the picture (inside the app only): same size, the picture kept for its height */\n:where(.map-live){position:absolute;inset:0;line-height:normal}\n:where(.map-card.live .map-frame img){visibility:hidden}\n:where(.map-pin){cursor:pointer;padding:6px}\n:where(.map-pin span){display:block;width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.35);font:900 12px/22px var(--font);text-align:center;transition:transform .2s}\n:where(.map-pin[data-current] span){transform:scale(1.3)}\n:where(.map-open){margin-left:auto;flex:none;padding:4px 10px;border-radius:99px;background:var(--tint);color:var(--deep);font-size:12px;font-weight:800;text-decoration:none;white-space:nowrap}\n:where(.map-route){display:block;margin:0 14px 12px;padding:10px 12px;border-radius:12px;background:var(--accent);color:#fff;font-weight:800;text-align:center;text-decoration:none}\n</style><script id=\"bip-kit-js\">/* BipAgents page kit (pages.rs puts it inline in every page, before the agent's own scripts): charts drawn in SVG in\n   the app's colours, a small diagram renderer, sortable tables, tabs, what-ifs, number formatting, and the app's\n   colours for Chart.js when the page uses it. No network, no storage. window.Bip is the whole API. */\n(function () {\n  \"use strict\";\n  var doc = document, root = doc.documentElement, NS = \"http://www.w3.org/2000/svg\";\n  var TINT = \"learning\";\n  if (TINT && TINT.indexOf(\"__\") !== 0 && !root.getAttribute(\"data-tint\")) root.setAttribute(\"data-tint\", TINT);\n  var lang = function () { return root.lang || navigator.language || \"en\"; };\n  var css = function (name) { return getComputedStyle(root).getPropertyValue(name).trim(); };\n  var $ = function (target) { return typeof target === \"string\" ? doc.querySelector(target) : target; };\n  var esc = function (text) {\n    return String(text).replace(/[&<>\"]/g, function (c) { return { \"&\": \"&amp;\", \"<\": \"&lt;\", \">\": \"&gt;\", '\"': \"&quot;\" }[c]; });\n  };\n  var COLORS = [\"var(--c1)\", \"var(--c2)\", \"var(--c3)\", \"var(--c4)\", \"var(--c5)\", \"var(--c6)\"];\n  var color = function (spec, i) { return (spec.colors && spec.colors[i]) || COLORS[i % COLORS.length]; };\n\n  function fmt(n, digits, unit) {\n    if (typeof n !== \"number\" || !isFinite(n)) return n == null ? \"\" : String(n);\n    var d = digits == null ? (Math.round(n * 10) % 10 ? 1 : 0) : digits;\n    var text = n.toLocaleString(lang(), { minimumFractionDigits: d, maximumFractionDigits: d });\n    return unit ? text + (/^[%°]/.test(unit) ? \"\" : \" \") + unit : text;\n  }\n\n  // A <svg> filling the target (a <div>, or the element itself when it is an <svg>).\n  function canvas(target, height) {\n    var host = $(target);\n    if (!host) return null;\n    var width = Math.max(240, Math.min(720, host.clientWidth || 320));\n    var svg = host.tagName && host.tagName.toLowerCase() === \"svg\" ? host : null;\n    if (!svg) {\n      host.innerHTML = \"\";\n      svg = doc.createElementNS(NS, \"svg\");\n      host.appendChild(svg);\n    }\n    svg.setAttribute(\"viewBox\", \"0 0 \" + width + \" \" + height);\n    svg.setAttribute(\"class\", ((svg.getAttribute(\"class\") || \"\") + \" chart\").trim());\n    svg.setAttribute(\"role\", \"img\");\n    svg.style.height = \"auto\";\n    return { svg: svg, w: width, h: height, host: host };\n  }\n  function draw(svg, markup) { svg.insertAdjacentHTML(\"beforeend\", markup); }\n  function nice(max) {\n    if (max <= 0) return 1;\n    var step = Math.pow(10, Math.floor(Math.log10(max))), f = max / step;\n    return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * step;\n  }\n  function legend(c, names, spec) {\n    if (!names || names.length < 2) return;\n    var div = doc.createElement(\"div\");\n    div.className = \"legend\";\n    div.innerHTML = names.map(function (n, i) { return '<span><i style=\"background:' + color(spec, i) + '\"></i>' + esc(n) + \"</span>\"; }).join(\"\");\n    c.host.tagName.toLowerCase() === \"svg\" ? c.host.after(div) : c.host.appendChild(div);\n  }\n  function grid(c, top, bottom, left, max, unit) {\n    var out = \"\";\n    // round steps (0, 10, 20, 30 rather than 0, 16,7, 33,3)\n    var step = nice(max / 4), count = Math.round(max / step);\n    for (var k = 0; k <= count; k++) {\n      var y = bottom - (bottom - top) * k / count, v = step * k;\n      out += '<line class=\"bip-grid\" x1=\"' + left + '\" x2=\"' + c.w + '\" y1=\"' + y + '\" y2=\"' + y + '\"/>' +\n        '<text class=\"bip-axis\" x=\"' + (left - 6) + '\" y=\"' + (y + 3.5) + '\" text-anchor=\"end\">' + esc(fmt(v, v % 1 ? 1 : 0)) + \"</text>\";\n    }\n    return out;\n  }\n\n  // Bars: {labels, values | series:[{name, values}], unit, goal, highlight: index, height}\n  function bars(target, spec) {\n    var c = canvas(target, spec.height || 190);\n    if (!c) return;\n    var series = spec.series || [{ name: spec.name || \"\", values: spec.values || [] }];\n    var labels = spec.labels || [], n = Math.max(labels.length, series[0].values.length);\n    var all = [].concat.apply([], series.map(function (s) { return s.values; })).concat(spec.goal || 0);\n    var highest = Math.max.apply(null, all.map(Number).filter(isFinite)) || 1, unitStep = nice(highest / 4);\n    var max = Math.ceil(highest * 1.08 / unitStep) * unitStep;\n    var left = 34, top = 16, bottom = c.h - 22, band = (c.w - left) / n, gap = band * 0.28;\n    var width = (band - gap) / series.length, out = grid(c, top, bottom, left, max);\n    series.forEach(function (s, j) {\n      s.values.forEach(function (v, i) {\n        var h = Math.max(0, (bottom - top) * v / max), x = left + i * band + gap / 2 + j * width;\n        var fill = series.length === 1 && spec.highlight != null && spec.highlight !== i ? \"var(--tint)\" : color(spec, j);\n        out += '<rect x=\"' + x + '\" y=\"' + (bottom - h) + '\" width=\"' + Math.max(2, width - 2) + '\" height=\"' + h +\n          '\" rx=\"' + Math.min(6, width / 3) + '\" style=\"fill:' + fill + '\"><title>' + esc((labels[i] || \"\") + \" \" + fmt(v, null, spec.unit)) + \"</title></rect>\";\n        if (series.length === 1 && n <= 12)\n          out += '<text class=\"bip-value\" x=\"' + (x + width / 2 - 1) + '\" y=\"' + (bottom - h - 4) + '\" text-anchor=\"middle\">' + esc(spec.format ? spec.format(v) : fmt(v)) + \"</text>\";\n      });\n    });\n    labels.forEach(function (l, i) {\n      out += '<text class=\"bip-axis\" x=\"' + (left + i * band + band / 2) + '\" y=\"' + (c.h - 6) + '\" text-anchor=\"middle\">' + esc(l) + \"</text>\";\n    });\n    if (spec.goal != null) {\n      var gy = bottom - (bottom - top) * spec.goal / max;\n      out += '<line x1=\"' + left + '\" x2=\"' + c.w + '\" y1=\"' + gy + '\" y2=\"' + gy + '\" style=\"stroke:var(--good);stroke-width:1.5;stroke-dasharray:5 4\"/>';\n    }\n    draw(c.svg, out);\n    legend(c, series.map(function (s) { return s.name; }), spec);\n  }\n\n  // Lines: {labels, values | series:[{name, values}], unit, goal, area: true, height}\n  function line(target, spec) {\n    var c = canvas(target, spec.height || 190);\n    if (!c) return;\n    var series = spec.series || [{ name: spec.name || \"\", values: spec.values || [] }];\n    var labels = spec.labels || [], n = Math.max(labels.length, series[0].values.length);\n    var all = [].concat.apply([], series.map(function (s) { return s.values; })).map(Number).filter(isFinite);\n    if (spec.goal != null) all.push(spec.goal);\n    var lo = spec.min != null ? spec.min : Math.min.apply(null, all), hi = Math.max.apply(null, all);\n    if (spec.min == null) { var pad = (hi - lo) * 0.15 || 1; lo = lo - pad < 0 && lo >= 0 ? 0 : lo - pad; hi += pad; }\n    var left = 34, top = 14, bottom = c.h - 22, step = (c.w - left - 12) / Math.max(1, n - 1);\n    var x = function (i) { return left + 6 + i * step; }, y = function (v) { return bottom - (bottom - top) * (v - lo) / (hi - lo || 1); };\n    var out = \"\";\n    for (var k = 0; k <= 3; k++) {\n      var v = lo + (hi - lo) * k / 3, gy = y(v);\n      out += '<line class=\"bip-grid\" x1=\"' + left + '\" x2=\"' + c.w + '\" y1=\"' + gy + '\" y2=\"' + gy + '\"/>' +\n        '<text class=\"bip-axis\" x=\"' + (left - 6) + '\" y=\"' + (gy + 3.5) + '\" text-anchor=\"end\">' + esc(spec.format ? spec.format(v) : fmt(v, Math.abs(hi - lo) < 10 ? 1 : 0)) + \"</text>\";\n    }\n    if (spec.goal != null) out += '<line x1=\"' + left + '\" x2=\"' + c.w + '\" y1=\"' + y(spec.goal) + '\" y2=\"' + y(spec.goal) + '\" style=\"stroke:var(--good);stroke-width:1.5;stroke-dasharray:5 4\"/>';\n    series.forEach(function (s, j) {\n      var pts = s.values.map(function (v, i) { return v == null ? null : [x(i), y(v)]; }).filter(Boolean);\n      if (!pts.length) return;\n      var path = pts.map(function (p, i) { return (i ? \"L\" : \"M\") + p[0].toFixed(1) + \" \" + p[1].toFixed(1); }).join(\"\");\n      if (spec.area !== false && series.length === 1)\n        out += '<path d=\"' + path + \"L\" + pts[pts.length - 1][0] + \" \" + bottom + \"L\" + pts[0][0] + \" \" + bottom + 'Z\" style=\"fill:' + color(spec, j) + ';opacity:.14\"/>';\n      out += '<path d=\"' + path + '\" style=\"fill:none;stroke:' + color(spec, j) + ';stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round\"/>';\n      pts.forEach(function (p, i) {\n        var last = i === pts.length - 1;\n        out += '<circle cx=\"' + p[0] + '\" cy=\"' + p[1] + '\" r=\"' + (last ? 4.5 : 3) + '\" style=\"fill:' + (last ? color(spec, j) : \"var(--card)\") + \";stroke:\" + color(spec, j) + ';stroke-width:2\"/>';\n      });\n      if (series.length === 1) {\n        var lp = pts[pts.length - 1];\n        out += '<text class=\"bip-value\" x=\"' + Math.min(lp[0], c.w - 4) + '\" y=\"' + (lp[1] - 9) + '\" text-anchor=\"end\">' + esc(spec.format ? spec.format(s.values[s.values.length - 1]) : fmt(s.values[s.values.length - 1], null, spec.unit)) + \"</text>\";\n      }\n    });\n    var every = Math.ceil(n / 7);\n    labels.forEach(function (l, i) {\n      if (i % every === 0 || i === n - 1) out += '<text class=\"bip-axis\" x=\"' + x(i) + '\" y=\"' + (c.h - 6) + '\" text-anchor=\"middle\">' + esc(l) + \"</text>\";\n    });\n    draw(c.svg, out);\n    legend(c, series.map(function (s) { return s.name; }), spec);\n  }\n\n  // Donut: {labels, values, unit, center: \"1 748 €\", height}\n  function donut(target, spec) {\n    var c = canvas(target, spec.height || 170);\n    if (!c) return;\n    var values = spec.values || [], total = values.reduce(function (a, b) { return a + b; }, 0) || 1;\n    var r = c.h / 2 - 8, cx = r + 8, cy = c.h / 2, angle = -Math.PI / 2, out = \"\";\n    values.forEach(function (v, i) {\n      var a2 = angle + 2 * Math.PI * v / total, large = a2 - angle > Math.PI ? 1 : 0;\n      var p = function (a, rr) { return (cx + rr * Math.cos(a)).toFixed(2) + \" \" + (cy + rr * Math.sin(a)).toFixed(2); };\n      var ri = r * 0.62;\n      out += '<path d=\"M' + p(angle, r) + \"A\" + r + \" \" + r + \" 0 \" + large + \" 1 \" + p(a2 - 0.0001, r) + \"L\" + p(a2 - 0.0001, ri) +\n        \"A\" + ri + \" \" + ri + \" 0 \" + large + \" 0 \" + p(angle, ri) + 'Z\" style=\"fill:' + color(spec, i) + ';stroke:var(--card);stroke-width:2\"/>';\n      angle = a2;\n    });\n    if (spec.center) out += '<text x=\"' + cx + '\" y=\"' + (cy + 6) + '\" text-anchor=\"middle\" style=\"fill:var(--ink);font:900 17px var(--font)\">' + esc(spec.center) + \"</text>\";\n    var lx = cx + r + 22, rows = Math.min(values.length, Math.floor((c.h - 10) / 22));\n    for (var i = 0; i < rows; i++) {\n      var ly = cy - rows * 11 + i * 22 + 14;\n      out += '<rect x=\"' + lx + '\" y=\"' + (ly - 9) + '\" width=\"10\" height=\"10\" rx=\"3\" style=\"fill:' + color(spec, i) + '\"/>' +\n        '<text x=\"' + (lx + 16) + '\" y=\"' + ly + '\" style=\"fill:var(--ink2);font:700 12.5px var(--font)\">' + esc(spec.labels[i] || \"\") +\n        ' <tspan style=\"fill:var(--ink);font-weight:900\">' + esc(spec.format ? spec.format(values[i]) : fmt(values[i], null, spec.unit)) + \"</tspan></text>\";\n    }\n    draw(c.svg, out);\n  }\n\n  // A sparkline in a small element (a KPI tile): Bip.spark(\"#s\", [3, 5, 4, 7])\n  function spark(target, values, spec) {\n    spec = spec || {};\n    var c = canvas(target, spec.height || 36);\n    if (!c) return;\n    var lo = Math.min.apply(null, values), hi = Math.max.apply(null, values), step = c.w / Math.max(1, values.length - 1);\n    var path = values.map(function (v, i) { return (i ? \"L\" : \"M\") + (i * step).toFixed(1) + \" \" + (c.h - 3 - (c.h - 6) * (v - lo) / (hi - lo || 1)).toFixed(1); }).join(\"\");\n    draw(c.svg, '<path d=\"' + path + '\" style=\"fill:none;stroke:' + (spec.color || \"var(--accent)\") + ';stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round\"/>');\n  }\n\n  // Diagram: lines « A -> B » (or « A -> B: label »), drawn top-down in layers, boxes and arrows.\n  function diagram(target, text) {\n    var host = $(target);\n    if (!host) return;\n    var source = text != null ? text : host.textContent, nodes = [], edges = [], index = {};\n    var node = function (name) {\n      name = name.trim();\n      if (!(name in index)) { index[name] = nodes.length; nodes.push({ name: name, layer: 0 }); }\n      return index[name];\n    };\n    source.split(/\\n|;/).forEach(function (raw) {\n      var line = raw.trim();\n      if (!line || line.indexOf(\"//\") === 0) return;\n      var parts = line.split(/\\s*(?:-->|->|→)\\s*/);\n      if (parts.length < 2) { node(line); return; }\n      for (var i = 0; i + 1 < parts.length; i++) {\n        var to = parts[i + 1], label = \"\";\n        var colon = to.indexOf(\":\");\n        if (colon > 0 && i + 2 === parts.length) { label = to.slice(colon + 1).trim(); to = to.slice(0, colon); }\n        edges.push({ from: node(parts[i]), to: node(to), label: label });\n      }\n    });\n    for (var pass = 0; pass < nodes.length; pass++)\n      edges.forEach(function (e) { if (e.from !== e.to && nodes[e.to].layer <= nodes[e.from].layer && nodes[e.from].layer < nodes.length) nodes[e.to].layer = nodes[e.from].layer + 1; });\n    var layers = [];\n    nodes.forEach(function (n, i) { (layers[n.layer] = layers[n.layer] || []).push(i); });\n    layers = layers.filter(Boolean);\n    var width = Math.max(260, Math.min(720, host.clientWidth || 320)), boxH = 38, gapY = 34;\n    var height = layers.length * boxH + (layers.length - 1) * gapY + 8, out = \"\", pos = {};\n    var measure = function (s) { return Math.min(width - 8, Math.max(64, s.length * 7.4 + 24)); };\n    layers.forEach(function (layer, li) {\n      var slot = width / layer.length;\n      layer.forEach(function (i, k) {\n        var w = Math.min(measure(nodes[i].name), slot - 8);\n        pos[i] = { x: slot * k + slot / 2, y: 4 + li * (boxH + gapY), w: w };\n      });\n    });\n    edges.forEach(function (e) {\n      var a = pos[e.from], b = pos[e.to];\n      if (!a || !b || e.from === e.to) return;\n      var y1 = a.y + boxH, y2 = b.y - 3;\n      if (b.y <= a.y) { y1 = a.y + boxH / 2; y2 = b.y + boxH / 2; }\n      var mid = (y1 + y2) / 2;\n      out += '<path class=\"bip-edge\" marker-end=\"url(#bip-arrow)\" d=\"M' + a.x + \" \" + y1 + \"C\" + a.x + \" \" + mid + \" \" + b.x + \" \" + mid + \" \" + b.x + \" \" + y2 + '\"/>';\n      if (e.label) out += '<text class=\"bip-axis\" x=\"' + ((a.x + b.x) / 2 + 6) + '\" y=\"' + (mid + 3) + '\">' + esc(e.label) + \"</text>\";\n    });\n    nodes.forEach(function (n, i) {\n      var p = pos[i];\n      var label = n.name.length * 7.4 + 24 > p.w ? n.name.slice(0, Math.max(3, Math.floor((p.w - 24) / 7.4) - 1)) + \"…\" : n.name;\n      out += '<g class=\"bip-node\"><rect x=\"' + (p.x - p.w / 2) + '\" y=\"' + p.y + '\" width=\"' + p.w + '\" height=\"' + boxH + '\" rx=\"12\"/>' +\n        '<text x=\"' + p.x + '\" y=\"' + (p.y + boxH / 2 + 4.5) + '\" text-anchor=\"middle\"><title>' + esc(n.name) + \"</title>\" + esc(label) + \"</text></g>\";\n    });\n    var svg = '<svg class=\"diagram\" viewBox=\"0 0 ' + width + \" \" + height + '\" role=\"img\"><defs><marker id=\"bip-arrow\" viewBox=\"0 0 10 10\" refX=\"8\" refY=\"5\" ' +\n      'markerWidth=\"7\" markerHeight=\"7\" orient=\"auto-start-reverse\"><path d=\"M0 0L10 5L0 10z\" style=\"fill:var(--muted)\"/></marker></defs>' + out + \"</svg>\";\n    var wrap = doc.createElement(\"div\");\n    wrap.innerHTML = svg;\n    host.replaceWith(wrap.firstChild);\n  }\n\n  // Tables with class « sort »: a tap on a header sorts by that column (numbers as numbers).\n  function sortable(table) {\n    var heads = table.querySelectorAll(\"th\");\n    var number = function (text) {\n      var t = text.replace(/[\\s  ]/g, \"\").replace(/[^\\d,.\\-−]/g, \"\").replace(\"−\", \"-\");\n      if (/,\\d{1,2}$/.test(t)) t = t.replace(/\\./g, \"\").replace(\",\", \".\");\n      else t = t.replace(/,/g, \"\");\n      return t === \"\" || t === \"-\" ? NaN : parseFloat(t);\n    };\n    heads.forEach(function (th, col) {\n      th.addEventListener(\"click\", function () {\n        var body = table.tBodies[0];\n        if (!body) return;\n        var rows = Array.prototype.slice.call(body.rows), up = th.getAttribute(\"aria-sort\") !== \"ascending\";\n        heads.forEach(function (h) { h.removeAttribute(\"aria-sort\"); });\n        th.setAttribute(\"aria-sort\", up ? \"ascending\" : \"descending\");\n        rows.sort(function (a, b) {\n          var x = (a.cells[col] || {}).textContent || \"\", y = (b.cells[col] || {}).textContent || \"\";\n          var nx = number(x), ny = number(y);\n          var r = isNaN(nx) || isNaN(ny) ? x.localeCompare(y, lang()) : nx - ny;\n          return up ? r : -r;\n        });\n        rows.forEach(function (r) { body.appendChild(r); });\n      });\n    });\n  }\n\n  // <div class=\"tabs\"><button>…</button>…</div> followed by as many <section class=\"tab\">.\n  function tabs(bar) {\n    var buttons = Array.prototype.slice.call(bar.querySelectorAll(\"button\")), sections = [], el = bar.nextElementSibling;\n    while (el && sections.length < buttons.length) { if (el.matches(\"section.tab\")) sections.push(el); el = el.nextElementSibling; }\n    var show = function (n) {\n      buttons.forEach(function (b, i) { b.setAttribute(\"aria-selected\", i === n ? \"true\" : \"false\"); });\n      sections.forEach(function (s, i) { s.hidden = i !== n; });\n    };\n    buttons.forEach(function (b, i) { b.type = \"button\"; b.addEventListener(\"click\", function () { show(i); }); });\n    show(0);\n  }\n\n  // What-ifs: render(values) runs now and after every change of an input with an id (numbers as numbers,\n  // switches as true/false); <output for=\"id\"> elements show their input's value.\n  function whatIf(render) {\n    var run = function () {\n      var values = {};\n      doc.querySelectorAll(\"input[id],select[id]\").forEach(function (input) {\n        values[input.id] = input.type === \"checkbox\" ? input.checked : input.type === \"range\" || input.type === \"number\" ? parseFloat(input.value) : input.value;\n      });\n      doc.querySelectorAll(\"output[for]\").forEach(function (o) {\n        var v = values[o.htmlFor.value || o.getAttribute(\"for\")];\n        if (typeof v === \"number\") o.textContent = fmt(v, null, o.dataset.unit);\n      });\n      if (render) render(values);\n    };\n    doc.addEventListener(\"input\", run);\n    doc.readyState === \"loading\" ? doc.addEventListener(\"DOMContentLoaded\", run) : run();\n  }\n\n  function set(target, text) { var el = $(target); if (el) el.textContent = text; }\n\n  // The app's colours and font for Chart.js (called right after it, when the page uses it).\n  function chartDefaults() {\n    var C = window.Chart;\n    if (!C || !C.defaults) return;\n    C.defaults.color = css(\"--muted\");\n    C.defaults.borderColor = css(\"--line\");\n    C.defaults.font.family = css(\"--font\");\n    C.defaults.font.weight = \"600\";\n    C.defaults.plugins.legend.labels.boxWidth = 10;\n    C.defaults.plugins.legend.labels.boxHeight = 10;\n    C.defaults.elements.bar.borderRadius = 6;\n    C.defaults.elements.line.borderWidth = 2.5;\n    C.defaults.elements.line.tension = 0.3;\n    C.defaults.elements.point.radius = 3;\n    C.defaults.maintainAspectRatio = false;\n    var palette = [\"--c1\", \"--c2\", \"--c3\", \"--c4\", \"--c5\", \"--c6\"].map(css);\n    if (C.defaults.plugins.colors) C.defaults.plugins.colors.enabled = false;\n    C.register && C.register({\n      id: \"bipColors\",\n      beforeUpdate: function (chart) {\n        (chart.config.data.datasets || []).forEach(function (d, i) {\n          var many = chart.config.type === \"pie\" || chart.config.type === \"doughnut\" || chart.config.type === \"polarArea\";\n          if (!d.backgroundColor) d.backgroundColor = many ? palette : palette[i % palette.length];\n          if (!d.borderColor) d.borderColor = many ? css(\"--card\") : palette[i % palette.length];\n        });\n      },\n    });\n  }\n\n  // A map card (the bridge's map_image): its picture, and a list where a tap on a line rings its marker. Inside the\n  // app the picture becomes a live map (MapLibre, which the app ships; the map's files come through the bridge, never\n  // from here): pan, pinch, double tap, a tap on a line flies to its marker, and « Open in Maps » links the app\n  // answers itself (bipmaps:, only numbers and a short name). Elsewhere (a browser, an export) the picture stays.\n  var ANDROID = /Android/i.test(navigator.userAgent || \"\");\n  var MAP_BASE = ANDROID ? \"https://bipmap.invalid/\" : \"bipmap://map/\";\n  var MAP_WORDS = {\n    open: ANDROID ? { fr: \"Ouvrir dans Google Maps\", en: \"Open in Google Maps\", de: \"In Google Maps öffnen\", es: \"Abrir en Google Maps\" }\n      : { fr: \"Ouvrir dans Plans\", en: \"Open in Maps\", de: \"In Karten öffnen\", es: \"Abrir en Mapas\" },\n    route: { fr: \"Itinéraire\", en: \"Directions\", de: \"Route\", es: \"Cómo llegar\" },\n    fingers: { fr: \"Deux doigts pour déplacer la carte\", en: \"Use two fingers to move the map\",\n      de: \"Mit zwei Fingern die Karte bewegen\", es: \"Usa dos dedos para mover el mapa\" },\n  };\n  var mapWord = function (key) { var w = MAP_WORDS[key]; return w[lang().slice(0, 2).toLowerCase()] || w.en; };\n  var library = null;\n\n  function maplibre() {\n    if (library) return library;\n    library = new Promise(function (resolve, reject) {\n      if (window.maplibregl) { resolve(window.maplibregl); return; }\n      var script = doc.createElement(\"script\");\n      var timer = setTimeout(function () { reject(new Error(\"no map library\")); }, 8000);\n      script.onload = function () {\n        clearTimeout(timer);\n        window.maplibregl ? resolve(window.maplibregl) : reject(new Error(\"no map library\"));\n      };\n      script.onerror = function () { clearTimeout(timer); reject(new Error(\"no map library\")); };\n      script.src = MAP_BASE + \"lib.js\";\n      (doc.head || root).appendChild(script);\n    }).then(function (ml) {\n      // every map file asked from the page's own thread, through the app's door\n      ml.addProtocol(\"bipmap\", function (params, abort) {\n        var url = MAP_BASE + String(params.url).replace(/^bipmap:\\/\\/map\\//, \"\");\n        return fetch(url, { signal: abort && abort.signal }).then(function (r) {\n          if (r.status === 204) return { data: params.type === \"json\" ? {} : new ArrayBuffer(0) };\n          if (!r.ok) throw new Error(\"map file \" + r.status);\n          var body = params.type === \"json\" ? r.json() : params.type === \"string\" ? r.text() : r.arrayBuffer();\n          return body.then(function (data) { return { data: data }; });\n        });\n      });\n      return ml;\n    });\n    return library;\n  }\n\n  var coords = function (lat, lon) { return (+lat).toFixed(6) + \",\" + (+lon).toFixed(6); };\n  var shortName = function (text) { return encodeURIComponent(String(text || \"\").replace(/\\s+/g, \" \").trim().slice(0, 80)); };\n\n  function mapCard(card) {\n    var img = card.querySelector(\"img\");\n    if (!img) return;\n    var frame = doc.createElement(\"div\"), ring = doc.createElement(\"div\");\n    frame.className = \"map-frame\";\n    ring.className = \"map-ring\";\n    ring.hidden = true;\n    img.replaceWith(frame);\n    frame.appendChild(img);\n    frame.appendChild(ring);\n    var items = Array.prototype.slice.call(card.querySelectorAll(\"li[data-x]\"));\n    var live = null;\n    items.forEach(function (li) {\n      li.addEventListener(\"click\", function () {\n        var again = li.getAttribute(\"aria-current\") === \"true\";\n        items.forEach(function (other) { other.removeAttribute(\"aria-current\"); });\n        if (live) { live.select(again ? -1 : points.map(function (p) { return p.li; }).indexOf(li)); if (!again) li.setAttribute(\"aria-current\", \"true\"); return; }\n        ring.hidden = again;\n        if (again) return;\n        li.setAttribute(\"aria-current\", \"true\");\n        ring.style.left = li.dataset.x + \"%\";\n        ring.style.top = li.dataset.y + \"%\";\n      });\n    });\n    var points = items.map(function (li) {\n      return { lat: parseFloat(li.dataset.lat), lon: parseFloat(li.dataset.lon), color: li.dataset.color, li: li,\n        label: (li.firstChild && li.firstChild.nodeType === 3 ? li.firstChild.nodeValue : li.textContent).trim() };\n    }).filter(function (p) { return isFinite(p.lat) && isFinite(p.lon) && Math.abs(p.lat) <= 90 && Math.abs(p.lon) <= 180; });\n    var center = (card.dataset.center || \"\").split(\",\").map(parseFloat);\n    if (!points.length && !(center.length === 2 && isFinite(center[0]) && isFinite(center[1]))) return;\n    maplibre().then(function (ml) {\n      live = liveMap(ml, card, frame, img, ring, points, center);\n    }, function () { /* outside the app: the picture stays */ });\n  }\n\n  function liveMap(ml, card, frame, img, ring, points, center) {\n    var inline = root.getAttribute(\"data-bip-view\") === \"inline\";\n    var box = doc.createElement(\"div\");\n    box.className = \"map-live\";\n    box.style.cssText = \"position:absolute;inset:0\";   // over the picture (MapLibre's own CSS says relative)\n    frame.appendChild(box);\n    var options = {\n      container: box, style: \"bipmap://map/style.json\", attributionControl: { compact: true }, dragRotate: false,\n      pitchWithRotate: false, touchPitch: false, maxZoom: 18, fadeDuration: 0, cooperativeGestures: inline,\n      canvasContextAttributes: { preserveDrawingBuffer: true },\n      locale: { \"CooperativeGesturesHandler.MobileHelpText\": mapWord(\"fingers\"),\n        \"CooperativeGesturesHandler.WindowsHelpText\": mapWord(\"fingers\"), \"CooperativeGesturesHandler.MacHelpText\": mapWord(\"fingers\") },\n    };\n    var spots = points.map(function (p) { return [p.lon, p.lat]; });\n    if (spots.length > 1) {\n      options.bounds = spots.reduce(function (b, s) { return b.extend(s); }, new ml.LngLatBounds(spots[0], spots[0]));\n      options.fitBoundsOptions = { padding: { top: 40, right: 40, bottom: 56, left: 40 }, maxZoom: 16 };\n    } else {\n      options.center = spots.length ? spots[0] : [center[1], center[0]];\n      options.zoom = parseFloat(card.dataset.zoom) || 15;\n    }\n    var map, styled = false, ready = false;\n    try { map = new ml.Map(options); } catch (e) { box.remove(); return null; }\n    var giveUp = function () {\n      if (ready) return;\n      try { map.remove(); } catch (e) { /* gone already */ }\n      box.remove();\n    };\n    var timer = setTimeout(function () { if (!styled) giveUp(); }, 12000);\n    map.on(\"styledata\", function () { styled = true; });\n    map.on(\"error\", function () { if (!styled) { clearTimeout(timer); giveUp(); } });\n    map.touchZoomRotate.disableRotation();\n    var pins = points.map(function (p, i) {\n      var holder = doc.createElement(\"div\"), pin = doc.createElement(\"span\");\n      holder.className = \"map-pin\";\n      pin.textContent = String(i + 1);\n      if (p.color) pin.style.background = p.color;\n      holder.appendChild(pin);\n      holder.addEventListener(\"click\", function (event) { event.stopPropagation(); p.li.click(); });\n      new ml.Marker({ element: holder }).setLngLat([p.lon, p.lat]).addTo(map);\n      return holder;\n    });\n    map.on(\"load\", function () {\n      ready = true;\n      clearTimeout(timer);\n      if (card.dataset.line && spots.length > 1) {\n        map.addSource(\"bip-line\", { type: \"geojson\", data: { type: \"Feature\", properties: {},\n          geometry: { type: \"LineString\", coordinates: spots } } });\n        map.addLayer({ id: \"bip-line\", type: \"line\", source: \"bip-line\", layout: { \"line-cap\": \"round\", \"line-join\": \"round\" },\n          paint: { \"line-color\": css(\"--accent\") || \"#7C6CF2\", \"line-width\": 4, \"line-opacity\": 0.85 } });\n      }\n      card.classList.add(\"live\");\n      // the credits folded into their ⓘ once the map has drawn (MapLibre shows them open at first)\n      map.once(\"idle\", function () {\n        var credits = box.querySelector(\".maplibregl-ctrl-attrib\");\n        if (credits) { credits.removeAttribute(\"open\"); credits.classList.remove(\"maplibregl-compact-show\"); }\n      });\n      ring.hidden = true;\n      img.setAttribute(\"aria-hidden\", \"true\");\n      points.forEach(function (p) {\n        var open = doc.createElement(\"a\");\n        open.className = \"map-open\";\n        open.href = \"bipmaps:place?lat=\" + (+p.lat).toFixed(6) + \"&lon=\" + (+p.lon).toFixed(6) + \"&label=\" + shortName(p.label);\n        open.textContent = mapWord(\"open\");\n        open.addEventListener(\"click\", function (event) { event.stopPropagation(); });\n        p.li.appendChild(open);\n      });\n      var mode = card.dataset.directions;\n      if (mode && points.length > 1) {\n        var first = points[0], last = points[points.length - 1], route = doc.createElement(\"a\");\n        route.className = \"map-route\";\n        route.href = \"bipmaps:route?from=\" + coords(first.lat, first.lon) + \"&to=\" + coords(last.lat, last.lon) +\n          \"&mode=\" + encodeURIComponent(mode) + \"&from_label=\" + shortName(first.label) + \"&to_label=\" + shortName(last.label);\n        route.textContent = mapWord(\"route\") + \" · \" + mapWord(\"open\");\n        card.appendChild(route);\n      }\n    });\n    return {\n      select: function (i) {\n        pins.forEach(function (pin, j) { pin.toggleAttribute(\"data-current\", j === i); });\n        if (i < 0 || !points[i]) return;\n        map.easeTo({ center: [points[i].lon, points[i].lat], zoom: Math.max(map.getZoom(), 15), duration: 450 });\n      },\n    };\n  }\n\n  function enhance() {\n    doc.querySelectorAll(\".map-card\").forEach(mapCard);\n    doc.querySelectorAll(\"table.sort\").forEach(sortable);\n    doc.querySelectorAll(\".tabs\").forEach(tabs);\n    doc.querySelectorAll(\"pre.diagram,div.diagram[data-src]\").forEach(function (el) { diagram(el, el.dataset.src || null); });\n  }\n  doc.readyState === \"loading\" ? doc.addEventListener(\"DOMContentLoaded\", enhance) : enhance();\n\n  window.Bip = { fmt: fmt, bars: bars, line: line, donut: donut, spark: spark, diagram: diagram, whatIf: whatIf, set: set,\n    css: css, _chart: chartDefaults };\n})();\n</script>\n<style>.day{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line)}\n.day:last-child{border-bottom:0}.day b{flex:0 0 3.2em;color:var(--deep)}.day div{flex:1}.day .chip{margin-top:4px}</style>\n<title>{{title}}</title><body>\n<h1>👪 {{title}}</h1>\n<p class=\"sub\">{{subtitle}}</p>\n<div class=\"card\">\n<div class=\"day\"><b>{{mon}}</b><div>⚽ 17 h · {{foot_leo}}<br><span class=\"chip plain\">{{camille_drives}}</span></div></div>\n<div class=\"day\"><b>{{tue}}</b><div>🦷 9 h 30 · {{dentist}}<br><span class=\"chip plain\">{{you}}</span></div></div>\n<div class=\"day\"><b>{{wed}}</b><div>⚽ 17 h · {{foot_leo}}<br><span class=\"chip plain\">{{grandma_drives}}</span></div></div>\n<div class=\"day\"><b>{{thu}}</b><div>🛒 {{shopping}}<br><span class=\"chip plain\">{{you}}</span></div></div>\n<div class=\"day\"><b>{{sat}}</b><div>🎂 14 h · {{birthday}}<br><span class=\"chip good\">{{all}}</span></div></div>\n</div>\n<p class=\"foot\">{{foot}}</p>\n</body></html>\n",
+      "values": {
+        "title": {
+          "fr": "La semaine de la famille",
+          "en": "The family’s week",
+          "de": "Die Woche der Familie",
+          "es": "La semana de la familia"
+        },
+        "subtitle": {
+          "fr": "Toi, Camille, Léo, Jade et Mamie",
+          "en": "You, Camille, Léo, Jade and Grandma",
+          "de": "Du, Camille, Léo, Jade und Oma",
+          "es": "Tú, Camille, Léo, Jade y la abuela"
+        },
+        "mon": {
+          "fr": "Lun.",
+          "en": "Mon",
+          "de": "Mo.",
+          "es": "Lun."
+        },
+        "tue": {
+          "fr": "Mar.",
+          "en": "Tue",
+          "de": "Di.",
+          "es": "Mar."
+        },
+        "wed": {
+          "fr": "Mer.",
+          "en": "Wed",
+          "de": "Mi.",
+          "es": "Mié."
+        },
+        "thu": {
+          "fr": "Jeu.",
+          "en": "Thu",
+          "de": "Do.",
+          "es": "Jue."
+        },
+        "sat": {
+          "fr": "Sam.",
+          "en": "Sat",
+          "de": "Sa.",
+          "es": "Sáb."
+        },
+        "foot_leo": {
+          "fr": "Foot de Léo",
+          "en": "Léo’s football",
+          "de": "Léos Fußball",
+          "es": "Fútbol de Léo"
+        },
+        "camille_drives": {
+          "fr": "Camille l’emmène",
+          "en": "Camille drives",
+          "de": "Camille fährt",
+          "es": "Lo lleva Camille"
+        },
+        "grandma_drives": {
+          "fr": "Mamie l’emmène",
+          "en": "Grandma drives",
+          "de": "Oma fährt",
+          "es": "Lo lleva la abuela"
+        },
+        "dentist": {
+          "fr": "Dentiste",
+          "en": "Dentist",
+          "de": "Zahnarzt",
+          "es": "Dentista"
+        },
+        "shopping": {
+          "fr": "Courses de la semaine",
+          "en": "Weekly shop",
+          "de": "Wocheneinkauf",
+          "es": "Compra de la semana"
+        },
+        "birthday": {
+          "fr": "Anniversaire de Jade",
+          "en": "Jade’s birthday",
+          "de": "Jades Geburtstag",
+          "es": "Cumple de Jade"
+        },
+        "you": {
+          "fr": "Toi",
+          "en": "You",
+          "de": "Du",
+          "es": "Tú"
+        },
+        "all": {
+          "fr": "Tous",
+          "en": "Everyone",
+          "de": "Alle",
+          "es": "Todos"
+        },
+        "foot": {
+          "fr": "Chacun reçoit son rappel la veille.",
+          "en": "Everyone gets a reminder the day before.",
+          "de": "Jeder bekommt am Vortag eine Erinnerung.",
+          "es": "Cada uno recibe su recordatorio la víspera."
         }
       }
     }
