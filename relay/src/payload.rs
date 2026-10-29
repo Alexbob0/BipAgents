@@ -38,6 +38,9 @@ const GUICHET_BODIES: &[&str] = &[
     "Ta semaine gratuite finit après-demain, puis ton forfait devient payant. Pour arrêter : Réglages › Offre tout compris.",
     // a beta place ends in [beta] notice_days (the guichet's beta.rs tick)
     "Ta place de bêta s’arrête bientôt : merci d’avoir testé ! Ta semaine gratuite reste à toi pour la suite.",
+    // the beta ended and the place goes on free for [beta] gift_days, then that gift month ends in [beta] notice_days
+    "La bêta est finie, merci d’avoir testé ! Ton premier mois est offert : tes agents continuent, rien à faire.",
+    "Ton mois offert finit bientôt : abonne-toi pour garder tes agents. Réglages › Offre tout compris.",
     // a conversation someone shows this person read-only (the guichet's read_shares.rs); the app names it itself
     "Nouveau message dans une conversation partagée",
 ];
