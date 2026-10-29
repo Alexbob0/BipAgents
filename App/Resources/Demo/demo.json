@@ -163,10 +163,10 @@
         "es": "Finde en Lisboa"
       },
       "greeting": {
-        "fr": "Salut ! Je suis l’agent du **Week-end Lisbonne** 🇵🇹 Léa, Sam et Inès suivent ce fil : tout ce que je propose ici, ils le voient. Donne-moi les dispos de chacun, je m’occupe du reste.",
-        "en": "Hi! I’m the **Lisbon weekend** agent 🇵🇹 Léa, Sam and Inès follow this thread: whatever I suggest here, they see. Give me everyone’s dates and I’ll handle the rest.",
-        "de": "Hallo! Ich bin der Agent fürs **Lissabon-Wochenende** 🇵🇹 Léa, Sam und Inès lesen hier mit: Alles, was ich vorschlage, sehen sie. Gib mir die Termine von allen, um den Rest kümmere ich mich.",
-        "es": "¡Hola! Soy el agente del **Finde en Lisboa** 🇵🇹 Léa, Sam e Inès siguen este hilo: todo lo que propongo aquí, lo ven. Dame las fechas de cada uno y yo me encargo del resto."
+        "fr": "Salut ! Je suis l’agent du **Week-end Lisbonne** 🇵🇹 Léa, Sam et Inès suivent ce fil et votent sur mes cartes depuis leur lien. Dis-moi ce qu’on organise, je les fais voter.",
+        "en": "Hi! I’m the **Lisbon weekend** agent 🇵🇹 Léa, Sam and Inès follow this thread and vote on my cards from their link. Tell me what we’re planning and I’ll get them voting.",
+        "de": "Hallo! Ich bin der Agent fürs **Lissabon-Wochenende** 🇵🇹 Léa, Sam und Inès lesen hier mit und stimmen über ihren Link auf meinen Karten ab. Sag mir, was wir planen, ich lasse sie abstimmen.",
+        "es": "¡Hola! Soy el agente del **Finde en Lisboa** 🇵🇹 Léa, Sam e Inès siguen este hilo y votan en mis tarjetas desde su enlace. Dime qué organizamos y les hago votar."
       },
       "suggestions": [
         "weekend_lisbon"
@@ -1750,45 +1750,72 @@
     },
     "weekend_lisbon": {
       "prompt": {
-        "fr": "Les dispos du groupe 👇\nLéa : le 14 ou le 21 !\nSam : que le 21 😅\nInès : les deux, terrasse svp ☀️",
-        "en": "Everyone’s dates 👇\nLéa: the 14th or the 21st!\nSam: only the 21st 😅\nInès: both, a terrace please ☀️",
-        "de": "Die Termine der Gruppe 👇\nLéa: der 14. oder der 21.!\nSam: nur der 21. 😅\nInès: beides, bitte mit Terrasse ☀️",
-        "es": "Las fechas del grupo 👇\nLéa: ¡el 14 o el 21!\nSam: solo el 21 😅\nInès: los dos, con terraza porfa ☀️"
+        "fr": "On part à Lisbonne avec Léa, Sam et Inès : fais-nous voter 🗳️",
+        "en": "Lisbon with Léa, Sam and Inès: get us voting 🗳️",
+        "de": "Lissabon mit Léa, Sam und Inès: lass uns abstimmen 🗳️",
+        "es": "Lisboa con Léa, Sam e Inès: haznos votar 🗳️"
       },
       "keywords": {
         "fr": [
           "dispo",
           "week-end",
           "lisbonne",
-          "appart"
+          "appart",
+          "vote",
+          "voter"
         ],
         "en": [
           "dates",
           "weekend",
           "lisbon",
-          "flat"
+          "flat",
+          "vote",
+          "voting"
         ],
         "de": [
           "termin",
           "wochenende",
           "lissabon",
-          "wohnung"
+          "wohnung",
+          "abstimmen"
         ],
         "es": [
           "fechas",
           "finde",
           "lisboa",
-          "piso"
+          "piso",
+          "votar"
         ]
       },
       "steps": [
         {
           "think": {
-            "fr": "Le 21 va à tout le monde. Je cherche un appart pour 4 du vendredi 20 au dimanche 22, avec une terrasse pour Inès.",
-            "en": "The 21st works for everyone. Looking for a flat for 4 from Friday 20th to Sunday 22nd, with a terrace for Inès.",
-            "de": "Der 21. passt allen. Ich suche eine Wohnung für 4 von Freitag, 20., bis Sonntag, 22., mit Terrasse für Inès.",
-            "es": "El 21 les va a todos. Busco un piso para 4 del viernes 20 al domingo 22, con terraza para Inès."
+            "fr": "D’abord la date, puis l’appart. Léa, Sam et Inès votent sur mes cartes depuis leur lien, sans rien écrire.",
+            "en": "First the date, then the flat. Léa, Sam and Inès vote on my cards from their link, without writing anything.",
+            "de": "Erst das Datum, dann die Wohnung. Léa, Sam und Inès stimmen über ihren Link auf meinen Karten ab, ohne etwas zu schreiben.",
+            "es": "Primero la fecha, luego el piso. Léa, Sam e Inès votan en mis tarjetas desde su enlace, sin escribir nada."
           }
+        },
+        {
+          "tool": "friends_card",
+          "seconds": 0.8,
+          "preview": {
+            "fr": "Vote · Quel week-end ?",
+            "en": "Vote · Which weekend?",
+            "de": "Abstimmung · Welches Wochenende?",
+            "es": "Votación · ¿Qué finde?"
+          }
+        },
+        {
+          "say": {
+            "fr": "C’est parti ! Votez pour le week-end 👇\n\nMEDIA:/demo/card/lisbon_dates",
+            "en": "Here we go! Vote for the weekend 👇\n\nMEDIA:/demo/card/lisbon_dates",
+            "de": "Los geht’s! Stimmt fürs Wochenende ab 👇\n\nMEDIA:/demo/card/lisbon_dates",
+            "es": "¡Vamos! Votad el finde 👇\n\nMEDIA:/demo/card/lisbon_dates"
+          }
+        },
+        {
+          "pause": 4.5
         },
         {
           "tool": "web_search",
@@ -1801,63 +1828,50 @@
           }
         },
         {
-          "say": {
-            "fr": "Le **week-end du 21 novembre** va à tout le monde ✅ Du vendredi 20 au dimanche 22.",
-            "en": "The **weekend of 21 November** works for everyone ✅ Friday 20th to Sunday 22nd.",
-            "de": "Das **Wochenende vom 21. November** passt allen ✅ Von Freitag, 20., bis Sonntag, 22.",
-            "es": "El **finde del 21 de noviembre** les va a todos ✅ Del viernes 20 al domingo 22."
+          "tool": "friends_card",
+          "seconds": 0.8,
+          "preview": {
+            "fr": "Vote · Quel appart ?",
+            "en": "Vote · Which flat?",
+            "de": "Abstimmung · Welche Wohnung?",
+            "es": "Votación · ¿Qué piso?"
           }
         },
         {
-          "ask": {
-            "question": {
-              "fr": "Deux apparts pour 4 avec terrasse. On vote ?",
-              "en": "Two flats for 4 with a terrace. Let’s vote?",
-              "de": "Zwei Wohnungen für 4 mit Terrasse. Abstimmen?",
-              "es": "Dos pisos para 4 con terraza. ¿Votamos?"
-            },
-            "choices": [
-              {
-                "fr": "Alfama · terrasse sur le Tage · 92 €/nuit · ★ 4,9",
-                "en": "Alfama · Tagus terrace · €92/night · ★ 4.9",
-                "de": "Alfama · Tejo-Terrasse · 92 €/Nacht · ★ 4,9",
-                "es": "Alfama · terraza al Tajo · 92 €/noche · ★ 4,9"
-              },
-              {
-                "fr": "Bairro Alto · rooftop · 105 €/nuit · ★ 4,7",
-                "en": "Bairro Alto · rooftop · €105/night · ★ 4.7",
-                "de": "Bairro Alto · Dachterrasse · 105 €/Nacht · ★ 4,7",
-                "es": "Bairro Alto · azotea · 105 €/noche · ★ 4,7"
-              }
-            ]
-          },
-          "then": [
-            {
-              "page": "lisbon_list",
-              "seconds": 1.4,
-              "preview": {
-                "fr": "Checklist du week-end",
-                "en": "Weekend checklist",
-                "de": "Checkliste fürs Wochenende",
-                "es": "Checklist del finde"
-              }
-            },
-            {
-              "say": {
-                "fr": "Va pour **{answer}** 🏡 Voici la liste du week-end, chacun sa part :\n\nMEDIA:/demo/page/lisbon_list/week-end-lisbonne.html\n\nLéa, Sam et Inès voient tout ici. Je vous rappelle les billets d’avion jeudi ✈️",
-                "en": "Going with **{answer}** 🏡 Here’s the weekend list, everyone has their part:\n\nMEDIA:/demo/page/lisbon_list/lisbon-weekend.html\n\nLéa, Sam and Inès see everything here. I’ll remind you all about the plane tickets on Thursday ✈️",
-                "de": "Dann nehmen wir **{answer}** 🏡 Hier die Liste fürs Wochenende, jeder hat seinen Teil:\n\nMEDIA:/demo/page/lisbon_list/lissabon-wochenende.html\n\nLéa, Sam und Inès sehen hier alles. Am Donnerstag erinnere ich euch an die Flugtickets ✈️",
-                "es": "Nos quedamos con **{answer}** 🏡 Aquí está la lista del finde, cada uno con su parte:\n\nMEDIA:/demo/page/lisbon_list/finde-lisboa.html\n\nLéa, Sam e Inès lo ven todo aquí. El jueves os recuerdo los billetes de avión ✈️"
-              }
-            }
-          ]
+          "say": {
+            "fr": "Le **week-end du 21 novembre** l’emporte ✅ Du vendredi 20 au dimanche 22.\n\nDeux apparts pour 4 avec terrasse, à vous :\n\nMEDIA:/demo/card/lisbon_flat",
+            "en": "The **weekend of 21 November** wins ✅ Friday 20th to Sunday 22nd.\n\nTwo flats for 4 with a terrace, your turn:\n\nMEDIA:/demo/card/lisbon_flat",
+            "de": "Das **Wochenende vom 21. November** gewinnt ✅ Von Freitag, 20., bis Sonntag, 22.\n\nZwei Wohnungen für 4 mit Terrasse, ihr seid dran:\n\nMEDIA:/demo/card/lisbon_flat",
+            "es": "Gana el **finde del 21 de noviembre** ✅ Del viernes 20 al domingo 22.\n\nDos pisos para 4 con terraza, os toca:\n\nMEDIA:/demo/card/lisbon_flat"
+          }
+        },
+        {
+          "pause": 4.5
+        },
+        {
+          "page": "lisbon_list",
+          "seconds": 1.4,
+          "preview": {
+            "fr": "Checklist du week-end",
+            "en": "Weekend checklist",
+            "de": "Checkliste fürs Wochenende",
+            "es": "Checklist del finde"
+          }
+        },
+        {
+          "say": {
+            "fr": "**Alfama** passe en tête 🏡 Voici la liste du week-end, chacun sa part :\n\nMEDIA:/demo/page/lisbon_list/week-end-lisbonne.html\n\nJe vous rappelle les billets d’avion jeudi ✈️",
+            "en": "**Alfama** takes the lead 🏡 Here’s the weekend list, everyone has their part:\n\nMEDIA:/demo/page/lisbon_list/lisbon-weekend.html\n\nI’ll remind you all about the plane tickets on Thursday ✈️",
+            "de": "**Alfama** liegt vorn 🏡 Hier die Liste fürs Wochenende, jeder hat seinen Teil:\n\nMEDIA:/demo/page/lisbon_list/lissabon-wochenende.html\n\nAm Donnerstag erinnere ich euch an die Flugtickets ✈️",
+            "es": "**Alfama** va en cabeza 🏡 Aquí está la lista del finde, cada uno con su parte:\n\nMEDIA:/demo/page/lisbon_list/finde-lisboa.html\n\nEl jueves os recuerdo los billetes de avión ✈️"
+          }
         }
       ],
       "spoken": {
-        "fr": "Le week-end du vingt et un novembre va à tout le monde. J’ai deux apparts avec terrasse : ouvre la conversation pour voter.",
-        "en": "The weekend of the twenty-first of November works for everyone. I found two flats with a terrace: open the chat to vote.",
-        "de": "Das Wochenende vom einundzwanzigsten November passt allen. Ich habe zwei Wohnungen mit Terrasse: Öffne den Chat zum Abstimmen.",
-        "es": "El finde del veintiuno de noviembre les va a todos. Tengo dos pisos con terraza: abre el chat para votar."
+        "fr": "Léa, Sam et Inès votent sur mes cartes : le week-end du vingt et un novembre l’emporte, et Alfama passe en tête pour l’appart.",
+        "en": "Léa, Sam and Inès are voting on my cards: the weekend of the twenty-first of November wins, and Alfama takes the lead for the flat.",
+        "de": "Léa, Sam und Inès stimmen auf meinen Karten ab: Das Wochenende vom einundzwanzigsten November gewinnt, und Alfama liegt bei der Wohnung vorn.",
+        "es": "Léa, Sam e Inès votan en mis tarjetas: gana el finde del veintiuno de noviembre, y Alfama va en cabeza para el piso."
       }
     },
     "dentist": {
@@ -3192,6 +3206,93 @@
         "de": "Schläft zurzeit schlecht, möchte morgens laufen, 3-mal pro Woche.",
         "es": "Duerme mal últimamente, quiere correr por las mañanas, 3 veces por semana."
       }
+    }
+  },
+  "cards": {
+    "lisbon_dates": {
+      "type": "vote",
+      "title": {
+        "fr": "Quel week-end ?",
+        "en": "Which weekend?",
+        "de": "Welches Wochenende?",
+        "es": "¿Qué finde?"
+      },
+      "options": [
+        {
+          "fr": "Week-end du 14 nov.",
+          "en": "Weekend of 14 Nov",
+          "de": "Wochenende vom 14. Nov.",
+          "es": "Finde del 14 nov."
+        },
+        {
+          "fr": "Week-end du 21 nov.",
+          "en": "Weekend of 21 Nov",
+          "de": "Wochenende vom 21. Nov.",
+          "es": "Finde del 21 nov."
+        }
+      ],
+      "votes": [
+        {
+          "who": "Léa",
+          "option": 0,
+          "after": 0.9
+        },
+        {
+          "who": "Sam",
+          "option": 1,
+          "after": 1.0
+        },
+        {
+          "who": "Inès",
+          "option": 1,
+          "after": 0.9
+        },
+        {
+          "who": "Léa",
+          "option": 1,
+          "after": 1.1
+        }
+      ]
+    },
+    "lisbon_flat": {
+      "type": "vote",
+      "title": {
+        "fr": "Où dormir ?",
+        "en": "Where do we stay?",
+        "de": "Wo übernachten wir?",
+        "es": "¿Dónde dormimos?"
+      },
+      "options": [
+        {
+          "fr": "Alfama · terrasse sur le Tage · 92 €/nuit · ★ 4,9",
+          "en": "Alfama · Tagus terrace · €92/night · ★ 4.9",
+          "de": "Alfama · Tejo-Terrasse · 92 €/Nacht · ★ 4,9",
+          "es": "Alfama · terraza al Tajo · 92 €/noche · ★ 4,9"
+        },
+        {
+          "fr": "Bairro Alto · rooftop · 105 €/nuit · ★ 4,7",
+          "en": "Bairro Alto · rooftop · €105/night · ★ 4.7",
+          "de": "Bairro Alto · Dachterrasse · 105 €/Nacht · ★ 4,7",
+          "es": "Bairro Alto · azotea · 105 €/noche · ★ 4,7"
+        }
+      ],
+      "votes": [
+        {
+          "who": "Inès",
+          "option": 0,
+          "after": 0.9
+        },
+        {
+          "who": "Sam",
+          "option": 1,
+          "after": 1.1
+        },
+        {
+          "who": "Léa",
+          "option": 0,
+          "after": 1.0
+        }
+      ]
     }
   }
 }

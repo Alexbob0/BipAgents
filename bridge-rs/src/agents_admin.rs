@@ -1696,6 +1696,7 @@ pub async fn delete_agent(shared: &SharedConfig, agent: &AgentConfig, run: &Run)
     crate::guide::forget(&config, &agent.name);
     crate::family_agent::forget(&config, &agent.name);
     crate::project_agent::forget(&config, &agent.name);
+    crate::friends_cards::forget(&config, &agent.name);
     tracing::info!(target: "bipbridge::agents", agent = %agent.name, "agent deleted");
     Ok(())
 }

@@ -305,6 +305,10 @@ pub fn split_media(text: &str) -> (String, Vec<String>) {
 
 /// The item a `MEDIA:` path of this agent becomes: a page (not a health one, not the Carnet's), a map picture.
 fn media_item(config: &Config, agent: &str, path: &str) -> Option<(String, Value)> {
+    if path.starts_with(crate::friends_cards::PREFIX) {
+        // a card the friends tap (friends_cards.rs): only in a project agent's thread share
+        return crate::friends_cards::media_item(config, agent, path);
+    }
     if let Some(rest) = path.strip_prefix(&format!("{}/{agent}/", crate::pages::PREFIX)) {
         let page = rest.strip_suffix(".html")?;
         if !crate::pages::ID.is_match(page) || page.contains('\n') {
@@ -638,6 +642,10 @@ pub async fn sync(state: &AppState, id: &str, notify: bool) -> Result<Option<Val
         }
     }
     share["refused"] = json!(refused_ones);
+    if is_thread(&share) {
+        // the friends' votes and ticks waiting at the guichet (friends_cards.rs): applied before the items go
+        crate::friends_cards::take_actions(state, &share, epoch, &key, &viewers, &secrets).await;
+    }
     if !wraps.is_empty() {
         let (status, body) =
             guichet(state, &share, reqwest::Method::PUT, "/keys", Some(json!({"epoch": epoch, "keys": wraps})))

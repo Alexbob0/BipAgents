@@ -1395,6 +1395,10 @@ pub async fn call_tool(
     if name == crate::maps::TOOL_NAME {
         return Ok(crate::maps::call(&config, &agent.name, arguments).await);
     }
+    if name == crate::friends_cards::TOOL_NAME {
+        let (config, agent, arguments) = (config.clone(), agent.clone(), arguments.clone());
+        return blocking(move || Ok(crate::friends_cards::call(&config, &agent, &arguments))).await;
+    }
     if name == crate::templates::FIND_TOOL {
         return Ok(crate::templates::find_call(&config, agent, arguments).await);
     }
