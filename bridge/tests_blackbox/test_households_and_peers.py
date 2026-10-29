@@ -17,9 +17,16 @@ RECEIVED = []
 
 
 def echo(seen):
-    """A Hermes whose Bot Chat is « bot-1 », answering any other call with what it received."""
+    """A Hermes whose Bot Chat is « bot-1 », answering any other call with what it received. The conversation the
+    bridge makes for two agents (agent_pairs.rs) is « pair-1 », where Cuisine answers « Des lasagnes. »."""
     if seen.method == "GET" and seen.path.endswith("/api/sessions"):
         return JSONResponse({"data": [{"id": "bot-1", "title": "Bot Chat"}, {"id": "s9", "title": "Courses"}]})
+    if seen.method == "POST" and seen.path.endswith("/api/sessions"):
+        return JSONResponse({"session": {"id": "pair-1"}})
+    if seen.method == "PATCH":
+        return JSONResponse({})
+    if seen.method == "GET" and seen.path.endswith("/api/sessions/pair-1/messages"):
+        return JSONResponse({"messages": [{"role": "assistant", "content": "Des lasagnes."}]})
     if seen.method == "GET" and "/v1/runs/" in seen.path:
         return JSONResponse({"status": "running", "session_id": "bot-1" if "run-bot" in seen.path else "s9"})
     RECEIVED.append((seen.path, seen.query, seen.header("authorization"), seen.json()))
@@ -89,8 +96,23 @@ def test_two_households_write_to_each_other_only_where_both_allowed(bridges, fak
     path, _, auth, body = RECEIVED[-1]
     assert path == "/p/cuisine/v1/runs" and auth == "Bearer cuisine-key-" + "x" * 24
     now, words = split_now(body["message"])
+    note, words = words.split("\n-->\n", 1)
+    assert note.startswith("<!--bip:pair\nThis is your own conversation with Vie (Alex) (@vie__alex)")
     assert now and words == "Message from Vie (Alex) (@vie__alex): qu'est-ce qu'on mange ce soir ?"   # the time on top
-    assert body["session_id"] == "bot-1"
+    # Into Cuisine's own conversation with Vie (Alex), not its Bot Chat (the id the other side had): what Léa said to
+    # Cuisine stays out of that turn's history.
+    assert body["session_id"] == "pair-1"
+    # Léa's app reads it as « Vie (Alex) ⇄ Cuisine »: the ask, then Cuisine's answer.
+    pair = b.get("/v1/agent-pairs", headers=AUTH, params={"agent": "cuisine"}).json()["pairs"][0]
+    assert {"id": "vie__alex", "name": "Vie (Alex)", "category": None, "color": None, "gone": False,
+            "household": True} in pair["agents"]
+    for _ in range(50):
+        thread = b.get(f"/v1/agent-pairs/{pair['id']}", headers=AUTH).json()["thread"]
+        if len(thread) == 2:
+            break
+        time.sleep(0.1)
+    assert [(m["from"], m["kind"], m["text"]) for m in thread] == [
+        ("vie__alex", "ask", "qu'est-ce qu'on mange ce soir ?"), ("cuisine", "answer", "Des lasagnes.")]
     # Another household's agent writes: the turn is closed like a relative's (patch 0018's mark)
     assert body["guest_turn"]["tools"][-1] == "web_search" and "mcp__bipagents__weather" in body["guest_turn"]["tools"]
     assert not {"terminal", "session_search", "mcp__bipagents__mail_search"} & set(body["guest_turn"]["tools"])
@@ -101,7 +123,7 @@ def test_two_households_write_to_each_other_only_where_both_allowed(bridges, fak
     assert peek.status_code == 403
     listing = a.get("/peer/p/cuisine__lea/api/sessions?title=Bot%20Chat&include_hidden=1",
                     headers={"Authorization": f"Bearer {token}"})
-    assert listing.json() == {"object": "list", "data": [{"id": "bot-1", "title": "Bot Chat"}]}
+    assert listing.json() == {"object": "list", "data": [{"id": "pair-1", "title": "Bot Chat"}]}   # the pair's
     assert a.post("/peer/p/cuisine__lea/v1/runs/run-1/approval", headers={"Authorization": f"Bearer {token}"},
                   json={"choice": "always"}).status_code == 403
     # Budget (its own gateway, not linked) cannot, nor can anything without the household's key.

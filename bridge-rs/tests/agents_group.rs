@@ -789,6 +789,12 @@ async fn two_households_write_to_each_other_only_where_both_allowed() {
                     json!({"data": [{"id": "bot-1", "title": "Bot Chat"}, {"id": "s9", "title": "Courses"}]}),
                 );
             }
+            if parts.method == "POST" && parts.uri.path().ends_with("/api/sessions") {
+                return axum::Json(json!({"session": {"id": "pair-1"}}));
+            }
+            if parts.method == "GET" && parts.uri.path().ends_with("/api/sessions/pair-1/messages") {
+                return axum::Json(json!({"messages": [{"role": "assistant", "content": "Des lasagnes."}]}));
+            }
             let bytes = axum::body::to_bytes(body, usize::MAX).await.unwrap();
             let text = if bytes.is_empty() { "{}".to_string() } else { String::from_utf8_lossy(&bytes).into_owned() };
             let auth = parts.headers.get("authorization").map(|v| v.to_str().unwrap().to_string());
@@ -816,7 +822,10 @@ async fn two_households_write_to_each_other_only_where_both_allowed() {
         .await;
     assert_eq!(joined.status, 200);
     assert_eq!(joined.json(), json!({"id": "alex", "name": "Alex"}));
-    assert_eq!(a.get("/v1/family", &h).await.json()["households"], json!([{"id": "lea", "name": "Léa", "url": b_url, "relink": false}]));
+    assert_eq!(
+        a.get("/v1/family", &h).await.json()["households"],
+        json!([{"id": "lea", "name": "Léa", "url": b_url, "relink": false}])
+    );
     // Each side lists the other's agents among its own.
     let names: BTreeMap<String, String> = a.get("/v1/agent-links", &h).await.json()["agents"]
         .as_array()
@@ -857,12 +866,55 @@ async fn two_households_write_to_each_other_only_where_both_allowed() {
         200
     );
     assert_eq!(send().await.status, 200);
-    let (path, auth_header, body) = received.lock().unwrap().last().unwrap().clone();
+    let runs =
+        || -> Vec<_> { received.lock().unwrap().iter().filter(|(p, _, _)| p.ends_with("/v1/runs")).cloned().collect() };
+    let (path, auth_header, body) = runs().last().unwrap().clone();
     assert_eq!(path, "/b/p/cuisine/v1/runs");
     assert_eq!(auth_header, Some(format!("Bearer cuisine-key-{}", "x".repeat(24))));
+    // Into Cuisine's conversation with Vie (Alex), not its Bot Chat (the id the other side had): the person's
+    // talks with Cuisine stay out of that turn's history. A relative turn: Hermes' guest mark kept.
+    assert_eq!(body["session_id"], json!("pair-1"));
+    assert!(body["guest_turn"].is_object(), "{body}");
     let (now, message_text) = common::split_now(body["message"].as_str().unwrap());
     assert!(now.is_some(), "the current time at its top");
+    let (note, message_text) = message_text.split_once("\n-->\n").unwrap();
+    assert!(note.starts_with("<!--bip:pair\nThis is your own conversation with Vie (Alex) (@vie__alex)"), "{note}");
     assert_eq!(message_text, "Message from Vie (Alex) (@vie__alex): qu'est-ce qu'on mange ce soir ?");
+    // The bridge keeps the pair's thread for Léa's app: the ask, then Cuisine's answer.
+    let pair_id = bipbridge::agent_pairs::pair_id("vie__alex", "cuisine");
+    let mut thread = Value::Null;
+    for _ in 0..50 {
+        thread = b.get(&format!("/v1/agent-pairs/{pair_id}"), &h).await.json();
+        if thread["thread"].as_array().is_some_and(|t| t.len() == 2) {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    let said: Vec<_> = thread["thread"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| {
+            (
+                m["from"].as_str().unwrap().to_string(),
+                m["kind"].as_str().unwrap().to_string(),
+                m["text"].as_str().unwrap().to_string(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        said,
+        [
+            ("vie__alex".to_string(), "ask".to_string(), "qu'est-ce qu'on mange ce soir ?".to_string()),
+            ("cuisine".to_string(), "answer".to_string(), "Des lasagnes.".to_string()),
+        ]
+    );
+    let vie = thread["agents"].as_array().unwrap().iter().find(|x| x["id"] == "vie__alex").unwrap().clone();
+    assert_eq!(
+        (vie["name"].clone(), vie["household"].clone(), vie["gone"].clone()),
+        (json!("Vie (Alex)"), json!(true), json!(false))
+    );
+    assert_eq!(b.get("/v1/agent-pairs?agent=cuisine", &h).await.json()["pairs"][0]["id"], json!(pair_id));
     // Only Cuisine's Bot Chat: not another of its conversations, nor its sessions' list or its runs' approvals.
     let mut other = message.clone();
     other["session_id"] = json!("s9");
@@ -874,7 +926,14 @@ async fn two_households_write_to_each_other_only_where_both_allowed() {
     let listing = a
         .get("/peer/p/cuisine__lea/api/sessions?title=Bot%20Chat&include_hidden=1", &[("authorization", &bearer)])
         .await;
-    assert_eq!(listing.json()["data"], json!([{"id": "bot-1", "title": "Bot Chat"}]));
+    // the « Bot Chat » it finds is the pair's conversation
+    assert_eq!(listing.json()["data"], json!([{"id": "pair-1", "title": "Bot Chat"}]));
+    let mut pair_run = message.clone();
+    pair_run["session_id"] = json!("pair-1");
+    assert_eq!(
+        a.send_json("POST", "/peer/p/cuisine__lea/v1/runs", &[("authorization", &bearer)], &pair_run).await.status,
+        200
+    );
     let approval = a
         .send_json(
             "POST",
