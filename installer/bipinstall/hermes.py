@@ -76,7 +76,12 @@ def profile_dir(name: str) -> Path:
 
 
 def new_key() -> str:
-    return secrets.token_urlsafe(32)
+    """Never starting with « - »: `hermes config set KEY <value>` would read it as an option (1 key in 64; lab
+    2026-10-29, an agent left without its key: « unrecognized arguments »)."""
+    while True:
+        key = secrets.token_urlsafe(32)
+        if not key.startswith("-"):
+            return key
 
 
 UNFINISHED = ".bipagents-unfinished"   # in HERMES_HOME while the installer sets up a Hermes of its own

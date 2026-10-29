@@ -49,7 +49,7 @@ def test_create_custom_agent(bridges, fakes):
     commands = hermes_args(bridge)
     assert commands[0] == ["profile", "create", "fougere", "--clone-from", "default", "--no-alias", "--description",
                            "suit mes plantes"]
-    assert commands[1] == ["-p", "fougere", "config", "set", "API_SERVER_KEY", key]
+    assert commands[1] == ["-p", "fougere", "config", "set", "API_SERVER_KEY", "--", key]
     # Nothing says this install's agents are isolated from the bridge: no terminal, files or code until turned on.
     assert commands[2] == ["-p", "fougere", "tools", "disable", "terminal", "file", "code_execution", "browser",
                            "--platform", "api_server"]
@@ -246,7 +246,7 @@ def test_profiles_created_on_the_server_can_be_claimed(bridges, fakes):
     bridge.commands.clear()
     cuisine = bridge.post("/v1/agents/claim", headers=AUTH, json={"id": "cuisine"}).json()
     assert cuisine["name"] == "Cuisine"
-    assert hermes_args(bridge)[0] == ["-p", "cuisine", "config", "set", "API_SERVER_KEY", cuisine["key"]]
+    assert hermes_args(bridge)[0] == ["-p", "cuisine", "config", "set", "API_SERVER_KEY", "--", cuisine["key"]]
     assert all(args[4].startswith(("mcp_servers.bipagents.", "mcp_servers.bipagents_checkout."))
                for args in hermes_args(bridge)[1:])
     assert [agent for agent, _ in fakes.hermes.created] == ["jardin", "cuisine"]   # their « Discussion »
