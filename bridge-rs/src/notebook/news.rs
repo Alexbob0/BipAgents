@@ -129,6 +129,8 @@ pub const DOMAINS: [Domain; 9] = [
             "argent", "budget", "budgets", "finances", "finance", "banque", "banques", "impots", "impot", "depenses",
             "epargne", "comptes", "credit", "pret", "money", "bank", "banking", "taxes", "savings", "spending",
             "geld", "finanzen", "steuern", "dinero", "finanzas", "banco", "impuestos", "ahorro",
+            "loyer", "loyers", "salaire", "factures", "rent", "salary", "bills", "miete", "gehalt", "alquiler",
+            "salario", "facturas",
         ],
     },
     Domain {
@@ -197,6 +199,29 @@ const DAILY: Domain = Domain { id: "daily", categories: &["daily"], words: &[] }
 fn named(text: &str, words: &[&str]) -> bool {
     let folded = format!(" {} ", fold(text));
     words.iter().any(|w| folded.contains(&format!(" {w} ")))
+}
+
+/// Whether a fact holds an amount of money: digits next to a currency sign or code (« 950 € », « €12 », « 40 EUR »,
+/// « 9,99 $ », « 30 euros »).
+pub fn mentions_money(text: &str) -> bool {
+    const SIGNS: [&str; 4] = ["€", "$", "£", "¥"];
+    const CODES: [&str; 10] = ["eur", "euro", "euros", "usd", "dollar", "dollars", "gbp", "chf", "cad", "ils"];
+    let folded = text.to_lowercase();
+    let words: Vec<&str> =
+        folded.split(|c: char| c.is_whitespace() || c == '\u{a0}').filter(|w| !w.is_empty()).collect();
+    let digit = |w: &str| w.chars().any(|c| c.is_ascii_digit());
+    for (i, w) in words.iter().enumerate() {
+        let w = w.trim_matches(|c: char| matches!(c, ',' | '.' | ';' | ':' | '(' | ')' | '!' | '?'));
+        if SIGNS.iter().any(|s| w.contains(s))
+            && (digit(w) || i > 0 && digit(words[i - 1]) || words.get(i + 1).is_some_and(|n| digit(n)))
+        {
+            return true;
+        }
+        if CODES.contains(&w) && i > 0 && digit(words[i - 1]) {
+            return true;
+        }
+    }
+    false
 }
 
 /// The domains a page belongs to, from its path (its folder) and its title. A person's page has none: the agents
@@ -311,7 +336,10 @@ pub fn queue(
     if text.is_empty() || path.is_empty() {
         return Vec::new();
     }
-    let told = concerned(config, writer, part, path, title, extra);
+    // An amount of money concerns the money agents wherever it was filed (token-lab bench 2026-10-29: the rent, filed
+    // on « Logement », never reached Budget).
+    let extra = if mentions_money(&text) { format!("{extra} argent") } else { extra.to_string() };
+    let told = concerned(config, writer, part, path, title, extra.trim());
     if told.is_empty() {
         return Vec::new();
     }
@@ -490,6 +518,23 @@ mod tests {
         assert!(ids("Sujets/Cuisine.md", "Cuisine").is_empty());
         // whole words only
         assert!(ids("Sujets/Sportif du dimanche.md", "Sportif du dimanche").is_empty());
+    }
+
+    #[test]
+    fn an_amount_of_money_is_noticed() {
+        for yes in [
+            "Loyer : 950 € à partir du 1er décembre",
+            "€12 par mois",
+            "40 EUR",
+            "9,99 $",
+            "30 euros de plus",
+            "950\u{a0}€",
+        ] {
+            assert!(mentions_money(yes), "{yes}");
+        }
+        for no in ["Rendez-vous mardi à 9 h 30", "Le code de la porte est 4512", "Euro 2028 à Londres", "3 enfants"] {
+            assert!(!mentions_money(no), "{no}");
+        }
     }
 
     #[test]
