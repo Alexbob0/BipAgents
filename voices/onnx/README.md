@@ -21,6 +21,11 @@ uv venv --python 3.12 voices/onnx/.venv && uv pip install --python voices/onnx/.
 voices/onnx/.venv/bin/python voices/onnx/build.py
 ```
 
+The apps' engine tests (PocketEngineTests on the iPhone, PocketEngineTest on Android) compare their first frames with
+`reference.py`'s on the same packages, which each build writes and names after them
+(`build/voices/samples/zero-<French package>-<decoder>.f32`): a new build is never compared with an older one's audio.
+For packages built before 2026-10-29: `voices/onnx/.venv/bin/python voices/onnx/reference.py --tests build/voices`.
+
 The apps get the packages from the App Store (upload the `.aar` files to App Store Connect with Transporter, then
 submit them with the build) and from Google Play (the publisher's upload script puts them in the bundle); the offer's
 servers get them from their guichet (copy `build/voices` to its `voices` folder). Every other install (one's own

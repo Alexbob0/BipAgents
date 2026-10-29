@@ -1,6 +1,10 @@
 """Speaking with a voice package the way the apps do (their engines follow this loop): ONNX Runtime and numpy only.
 
     voices/onnx/.venv/bin/python voices/onnx/reference.py build/voices french colibri "Bonjour !" out.wav
+    voices/onnx/.venv/bin/python voices/onnx/reference.py --tests build/voices
+
+`--tests` writes the audio the apps' engine tests compare theirs with (`engine_test_reference`): build.py does it with
+each build, this is for packages built before.
 
 For each chunk of the text (textprep.py): the voice's cache, one step of the language model over the chunk's tokens
 (its noise drawn and unused, as pocket does), then frame after frame: the previous latent (BOS first) through
@@ -109,7 +113,32 @@ def find(out: Path, language: str) -> Path:
     return out / index["languages"][language]["folder"]
 
 
+def engine_test_reference_name(index: Dict) -> str:
+    """The apps' engine tests' reference for these packages (index.json): named after the French package and the
+    decoder, so a test never compares its audio with another build's (the iPhone's did: Pocket 3.3.0's audio after
+    the 4.0.1 export). PocketEngineTests.swift and PocketEngineTest.kt name it the same way."""
+    return f"zero-{index['languages']['french']['folder']}-{index['mimi']['folder']}.f32"
+
+
+def engine_test_reference(out: Path) -> Path:
+    """What the apps' engine tests compare theirs with: « Bonjour, je suis Colibri. » without noise, one thread, raw
+    float32 little-endian, in out/samples/. Speech made frame by frame amplifies the tiniest rounding difference, so
+    the tests compare the first two frames, then unrelated (2026-10-29, Pocket 4.0.1's French): Android's engine, the
+    same ONNX Runtime (1.31), 78.5 dB from it; the iPhone's, 1.24.2, 25.5 dB (22.7 from audio made here with 1.24.2:
+    its own arithmetic counts more than the runtime); another build's audio, 1.4 dB."""
+    index = json.loads((out / "index.json").read_text(encoding="utf-8"))
+    package = Package(find(out, "french"), out / index["mimi"]["folder"], threads=1)
+    audio = np.concatenate(list(package.speak("Bonjour, je suis Colibri.", "colibri", temperature=0)))
+    path = out / "samples" / engine_test_reference_name(index)
+    path.parent.mkdir(exist_ok=True)
+    audio.astype("<f4").tofile(path)
+    return path
+
+
 def main(argv: List[str]) -> int:
+    if argv[:1] == ["--tests"]:
+        print(engine_test_reference(Path(argv[1])))
+        return 0
     out, language, voice, text, wav = Path(argv[0]), argv[1], argv[2], argv[3], Path(argv[4])
     index = json.loads((out / "index.json").read_text(encoding="utf-8"))
     package = Package(find(out, language), out / index["mimi"]["folder"])
