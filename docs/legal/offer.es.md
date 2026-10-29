@@ -61,8 +61,8 @@ condiciones.
 | Plan | Personas | Servidor | Precio en la app (App Store, Google Play), IVA incluido | Precio en el sitio bipagents.com, en euros, IVA incluido |
 |---|---|---|---|---|
 | Solo | 1 | una plaza en un servidor compartido con otros suscriptores | 7,99 € al mes o 79,90 € al año | 7,49 € al mes o 74,90 € al año |
-| Duo | 2 | dos plazas en un mismo servidor, compartido con otros suscriptores | 12,99 € al mes o 129,90 € al año | 11,99 € al mes o 119,90 € al año |
-| Familia | hasta 6 | una plaza por persona, en servidores compartidos con otros abonados | 19,99 € al mes o 199,90 € al año | 17,99 € al mes o 179,90 € al año |
+| Duo | 2 | dos plazas en un mismo servidor, compartido con otros suscriptores | 12,99 € al mes o 129,90 € al año (129,99 € en el App Store) | 11,99 € al mes o 119,90 € al año |
+| Familia | hasta 6 | una plaza por persona, en servidores compartidos con otros abonados | 19,99 € al mes o 199,90 € al año (199,99 € en el App Store) | 17,99 € al mes o 179,90 € al año |
 
 **La suscripción anual** cuesta 10 meses por 12 y se paga de una vez, por adelantado, por los 12 meses. Se renueva cada
 año al mismo precio, salvo un cambio de precio anunciado con antelación (sección 5), hasta que la canceles; antes de
