@@ -83,14 +83,17 @@ pub fn tools(health: bool) -> Vec<Value> {
             "name": EDIT,
             "description": "Correct the Carnet when something changed or was wrong: replace a fact (old: words of the fact, \
         new: the corrected fact; new empty removes it), or rewrite a whole section (section and text, e.g. a subject's status), \
-        and/or rewrite the page's « En bref » (summary). Read the page first.",
+        and/or rewrite the page's « En bref » (summary). Read the page first. split_trips: true on a page mixing several \
+        journeys (« Voyages » with flights of different years): the Carnet proposes to the person to split it into one trip \
+        page each (they answer « Séparer » in the app; nothing is moved before).",
             "inputSchema": {"type": "object", "properties": {
                 "page": {"type": "string"},
                 "old": {"type": "string", "description": "words of the fact to correct"},
                 "new": {"type": "string", "description": "the corrected fact (empty: remove it)"},
                 "section": {"type": "string", "enum": super::template::all_ids(), "description": "the section to rewrite, by its id (as in notebook_note)"},
                 "text": {"type": "string", "description": "the section's new content (list lines « - … »)"},
-                "summary": {"type": "string", "description": "the page's new « En bref », 2–3 short lines"}},
+                "summary": {"type": "string", "description": "the page's new « En bref », 2–3 short lines"},
+                "split_trips": {"type": "boolean", "description": "true: propose to the person to split this page into its journeys (one trip page each)"}},
                 "required": ["page"]},
         }),
         json!({
@@ -319,6 +322,21 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict) -> anyho
                 Err(err) => caught(err),
             }
         }
+        EDIT if arguments.get("split_trips").map(crate::py::truthy).unwrap_or(false) => {
+            use super::trip_split::Proposed;
+            match super::trip_split::propose(config, &s(arguments, "page")) {
+                Ok(Proposed::Made(_, text) | Proposed::Open(_, text)) => Ok(tool_text(
+                    &format!("Proposed to the person in the app: « {text} ». Nothing moves until they say « Séparer »; tell them in one sentence."),
+                    false,
+                )),
+                Ok(Proposed::Declined) => Ok(tool_text("The person chose to leave this page as it is.", false)),
+                Ok(Proposed::Nothing) => Ok(tool_text(
+                    "This page holds one journey at most (or isn't a trip or a list of trips): nothing to split.",
+                    false,
+                )),
+                Err(err) => caught(err),
+            }
+        }
         EDIT => {
             let text = arguments.get("text").map(|_| s(arguments, "text"));
             if s(arguments, "old").is_empty() && text.is_none() && s(arguments, "summary").is_empty() {
@@ -357,6 +375,7 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict) -> anyho
                     let waiting: Vec<String> = super::open_proposals(config)
                         .iter()
                         .filter(|p| tk::str_or_empty(p.get("agent")).is_empty())
+                        .filter(|p| tk::str_or_empty(p.get("kind")) != super::trip_split::KIND)
                         .map(|p| {
                             format!(
                                 "- proposal {} · {} · due {}",

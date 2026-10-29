@@ -42,6 +42,7 @@ pub mod tidy;
 pub mod tools;
 pub mod trip;
 pub mod trip_auto;
+pub mod trip_split;
 
 use std::collections::HashSet;
 use std::io::Write;
@@ -2212,9 +2213,11 @@ pub(crate) fn add_task_locked(
         return refuse("a task needs a title");
     }
     if origin == "accepted" {
-        let open = proposals(config)
-            .into_iter()
-            .any(|p| tk::str_or_empty(p.get("id")) == proposal.trim() && tk::str_or_empty(p.get("state")) == "open");
+        let open = proposals(config).iter().any(|p| {
+            tk::str_or_empty(p.get("id")) == proposal.trim()
+                && tk::str_or_empty(p.get("state")) == "open"
+                && tk::str_or_empty(p.get("kind")) != trip_split::KIND
+        });
         if !open {
             return refuse("an accepted task needs the id of the proposal the person said yes to (notebook_task action propose gives it)");
         }
@@ -2476,8 +2479,10 @@ pub fn propose_for(
         ));
     }
     let week_ago = chrono::Utc::now() - chrono::Duration::days(7);
+    // a split of a page (trip_split.rs) is no task: outside the budget
     let recent = proposals(config)
         .iter()
+        .filter(|p| tk::str_or_empty(p.get("kind")) != trip_split::KIND)
         .filter(|p| {
             chrono::DateTime::parse_from_rfc3339(&tk::str_or_empty(p.get("at"))).map(|d| d > week_ago).unwrap_or(false)
         })
@@ -2509,6 +2514,9 @@ pub fn accept(config: &Config, proposal: &str, who: &Who) -> anyhow::Result<(Tas
     let Some(found) = proposals(config).into_iter().find(|p| tk::str_or_empty(p.get("id")) == proposal.trim()) else {
         return refuse("unknown proposal id");
     };
+    if tk::str_or_empty(found.get("kind")) == trip_split::KIND {
+        return refuse("this proposal is a split of a page: trip_split::accept answers it");
+    }
     if tk::str_or_empty(found.get("state")) != "open" {
         return refuse("this proposal was already answered");
     }
@@ -2538,6 +2546,11 @@ pub fn open_proposals(config: &Config) -> Vec<Dict> {
 /// The person said no to a proposal: closed, and with `never` its kind is not proposed again, written as a
 /// preference on the Carnet's « Préférences » page (readable and undoable by the person).
 pub fn decline(config: &Config, proposal: &str, never: bool, who: &Who) -> anyhow::Result<Option<String>> {
+    // « Laisser comme ça » on a split (trip_split.rs): not proposed again until the page changes a lot
+    if trip_split::is_split(config, proposal) {
+        trip_split::decline(config, proposal)?;
+        return Ok(None);
+    }
     let _guard = lock();
     let Some(found) = proposals(config).into_iter().find(|p| tk::str_or_empty(p.get("id")) == proposal.trim()) else {
         return refuse("unknown proposal id");
