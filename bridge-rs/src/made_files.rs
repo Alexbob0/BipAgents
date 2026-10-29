@@ -285,11 +285,11 @@ MEDIA:/bipagents/audio/coach/20261027-seance.m4a";
     fn a_vault_entry_used_in_the_turn_gets_its_chip() {
         let mark = crate::vault_contacts::mark("item_0123456789ab", "Kerfy Studio (pro)");
         let reply = "J'ai enregistré tes coordonnées pro.";
-        assert_eq!(fix_reply(reply, "vie", &[mark.clone()]).unwrap(), format!("{reply}\n{mark}"));
+        assert_eq!(fix_reply(reply, "vie", std::slice::from_ref(&mark)).unwrap(), format!("{reply}\n{mark}"));
         // carried already, even with another label: nothing added
-        assert_eq!(fix_reply(&format!("{reply}\n{mark}"), "vie", &[mark.clone()]), None);
+        assert_eq!(fix_reply(&format!("{reply}\n{mark}"), "vie", std::slice::from_ref(&mark)), None);
         let other_label = format!("{reply}\n<!--bip:vault item_0123456789ab Kerfy-->");
-        assert_eq!(fix_reply(&other_label, "vie", &[mark.clone()]), None);
+        assert_eq!(fix_reply(&other_label, "vie", std::slice::from_ref(&mark)), None);
         // with a page made in the same turn: both, the mark last, each once
         let fixed = fix_reply(reply, "vie", &[PAGE.into(), mark.clone(), mark.clone()]).unwrap();
         assert_eq!(fixed, format!("{reply}\nMEDIA:{PAGE}\n{mark}"));

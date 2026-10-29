@@ -22,12 +22,14 @@
 //!   (agent_shares.rs `RELATIVE_TOOLS`), and these routes are the person's app's only: a relative's bridge never
 //!   lists them.
 //!
-//!     GET /v1/agent-pairs?agent=<id>   {pairs: [pair]}   the pairs this agent is in, the most recent first
-//!     GET /v1/agent-pairs/{id}         pair + {thread: [message]}   the last MESSAGES_KEPT, oldest first
+//! ```text
+//! GET /v1/agent-pairs?agent=<id>   {pairs: [pair]}   the pairs this agent is in, the most recent first
+//! GET /v1/agent-pairs/{id}         pair + {thread: [message]}   the last MESSAGES_KEPT, oldest first
 //!
-//!     pair      {id, agents: [{id, name, category, color, gone}] (sorted by id), messages: <count, all time>,
-//!                created, updated, last: message|null, exchanges: [{id, at, last, from, count}] (the last 50)}
-//!     message   {id, at, from, to, kind: "ask"|"answer"|"notice", text, exchange}
+//! pair      {id, agents: [{id, name, category, color, gone}] (sorted by id), messages: <count, all time>,
+//!            created, updated, last: message|null, exchanges: [{id, at, last, from, count}] (the last 50)}
+//! message   {id, at, from, to, kind: "ask"|"answer"|"notice", text, exchange}
+//! ```
 //!
 //! No Python counterpart.
 
