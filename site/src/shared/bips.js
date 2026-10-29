@@ -77,17 +77,6 @@ function glyph(rows) {
   return g;
 }
 const EYE = EYE_STYLES.petit;
-function eyeGlyph(shape) {
-  const open = glyph(EYE.open), w = open.w;
-  switch (shape) {
-    case "wide": return { g: glyph(EYE.wide), hl: true, solid: true };
-    case "closed": return { g: glyph(["#".repeat(Math.max(w, 2))]), dy: (open.h - 1) / 2, flat: true };
-    case "dash": return { g: glyph(["#".repeat(Math.max(w, 3))]) };
-    case "happy": return { g: glyph(w >= 4 ? [".##.", "#..#"] : [".#.", "#.#"]), flat: true };
-    case "sleep": return { g: glyph(w >= 4 ? ["#..#", ".##."] : ["#.#", ".#."]), dy: 0.5, flat: true };
-    default: return { g: open, hl: true, solid: true };
-  }
-}
 function palette(key) {
   const c = COLORS[key] || COLORS.peche;
   if (key === "charbon") return { body: c.body, deep: "#555963", eye: LIGHT, brow: "#D9DCE3", mouth: LIGHT, hl: null, outline: "#3A3D45", scan: "#FFFFFF", scanA: 0.14, fx: "#8E94A1" };
@@ -97,8 +86,34 @@ function palette(key) {
 function sq(x, y, s, fill, extra, r = 0.3) {
   return `<rect x="${fmt(x - s / 2)}" y="${fmt(y - s / 2)}" width="${fmt(s)}" height="${fmt(s)}" rx="${fmt(s * r)}" fill="${fill}"${extra || ""}/>`;
 }
+// Glyph squares that touch (« plein », 2026-10-29: u + 0.06), as the apps draw them.
 function drawGlyph(rows, x, y, pitch, fill, extra) {
-  return glyph(rows).pts.map(([gx, gy]) => sq(x + gx * pitch, y + gy * pitch, pitch * 0.9, fill, extra)).join("");
+  const s = pitch + 0.06;
+  return glyph(rows).pts.map(([gx, gy]) => sq(x + gx * pitch, y + gy * pitch, s, fill, extra, 0.12)).join("");
+}
+// The page's `mix` (each channel rounded).
+function mix(a, b, t) {
+  const pa = [1, 3, 5].map(i => parseInt(a.slice(i, i + 2), 16)), pb = [1, 3, 5].map(i => parseInt(b.slice(i, i + 2), 16));
+  return "#" + pa.map((x, k) => Math.round(x + (pb[k] - x) * t).toString(16).padStart(2, "0")).join("");
+}
+// A body block « plein » (« comme sur notre icône »): a square of pitch `s` touching its neighbours, its seam a deeper
+// tone of its own colour (the palette's outline when it has one), never the ground showing through.
+function block(x, y, s, fill, deep, outline, extra = "", rot = 0) {
+  const seam = outline || mix(fill, deep, 0.28), inner = s * 0.86;
+  const turn = rot ? ` transform="rotate(${fmt(rot)} ${fmt(x)} ${fmt(y)})"` : "";
+  return sq(x, y, s + 0.3, seam, extra + turn, 0.08 * s / (s + 0.3)) + sq(x, y, inner, fill, extra + turn, 0.12 / 0.86);
+}
+// One eye centred at (x, y): open and wide eyes one solid rounded square, closed a bar, the others pixel lines.
+function eyeShape(shape, x, y, gx, gy, fill, extra = "") {
+  const ax = x + gx * U;
+  switch (shape) {
+    case "wide": return sq(ax, y + gy * U, 2.6 * U, fill, extra, 0.25);
+    case "closed": return `<rect x="${fmt(ax - U)}" y="${fmt(y)}" width="${fmt(2 * U)}" height="${fmt(0.6 * U)}" rx="${fmt(0.3 * U)}" fill="${fill}"${extra}/>`;
+    case "happy": return drawGlyph([".#.", "#.#"], ax, y, U * 0.8, fill, extra);
+    case "sleep": return drawGlyph(["#.#", ".#."], ax, y + 0.5 * U, U * 0.8, fill, extra);
+    case "dash": return drawGlyph(["###"], ax, y + gy * U, U, fill, extra);
+    default: return sq(ax, y + gy * U, glyph(EYE.open).w * U * 0.96, fill, extra, 0.22);
+  }
 }
 const costumeOf = look => (look.costume && COSTUMES[look.costume]) || null;
 function bodyOf(CO, bf) {
@@ -174,9 +189,9 @@ function itemDyn(it, clock, m) {
 function drawPixel(look, pose, fr, ppu) {
   const CO = costumeOf(look), B = bodyOf(CO, fr ? fr.b : 0), C = paletteOf(look, CO), d = pose.d, fx = d.fx;
   const G = geom(B), { left, top, right, cx, cy } = G;
-  const cs = P - GAP, face = U * 0.92, o = [], mk = mouthScale(ppu);
-  const stroke = C.outline ? ` stroke="${C.outline}" stroke-width="1.1"` : "";
-  const cell = (x, y, fill, extra) => `<rect x="${fmt(x - cs / 2)}" y="${fmt(y - cs / 2)}" width="${fmt(cs)}" height="${fmt(cs)}" rx="${fmt(cs * 0.28)}" fill="${fill}"${extra || ""}/>`;
+  const o = [], mk = mouthScale(ppu);
+  const stroke = "";
+  const cell = (x, y, fill, extra) => block(x, y, P, fill, C.deep, C.outline, extra || "");
   const layer = name => { if (CO) CO.items.forEach((it, i) => { if ((it.layer || "top") === name) o.push(drawItem(it, i, G, d, CO, fr, mk)); }); };
   const g = d.glitch;
   layer("back");
@@ -186,27 +201,17 @@ function drawPixel(look, pose, fr, ppu) {
     const p = ch === "#" ? C.body : (CO.palette[ch] || C.body), fill = Array.isArray(p) ? p[0] : p;
     if (g && g.r === r && g.c === c) { bodyCells.push(cell(cx(c), cy(r), fill, ` fill-opacity="0.35"`)); return; }
     bodyCells.push(cell(cx(c), cy(r), fill, stroke));
-    if (fx.scan === r) bodyCells.push(cell(cx(c), cy(r), C.scan, ` fill-opacity="${C.scanA}"`));
+    if (fx.scan === r) bodyCells.push(sq(cx(c), cy(r), P * 0.86, C.scan, ` fill-opacity="${C.scanA}"`, 0.12 / 0.86));
   }));
   const op = CO && CO.body && CO.body.opacity;
   o.push(op ? `<g opacity="${op}">${bodyCells.join("")}</g>` : bodyCells.join(""));
   if (g) o.push(cell(cx(g.c) + g.dx * U, cy(g.r) + g.dy * U, C.deep));
   layer("body");
-  // Eyes: an open (or wide) eye is one solid rounded square; closed, happy, sleeping and busy eyes are pixel lines.
-  const eyeY = G.eyeY, openG = glyph(EYE.open);
+  // Eyes: an open (or wide) eye is one solid rounded square, a closed one a bar; happy, sleeping and busy eyes are lines.
+  const eyeY = G.eyeY, openG = glyph(EYE.open), face = U + 0.06;
   [0, 1].forEach(side => {
-    const e = eyeGlyph(side ? d.eyeR : d.eyeL);
-    const ax = cx(B.eyeCols[side]) + d.gaze[0] * U, ay = eyeY + ((e.dy || 0) + (e.flat ? 0 : d.gaze[1])) * U;
-    if (e.solid) {
-      const side2 = e.g.w * U * 0.96;
-      o.push(sq(ax, ay, side2, C.eye, "", 0.22));
-      if (e.hl && C.hl && !look.noHL) {
-        const s = U * 0.44, inset = U * 0.18;
-        o.push(sq(ax + side2 / 2 - s / 2 - inset, ay - side2 / 2 + s / 2 + inset, s, C.hl));
-      }
-    } else {
-      e.g.pts.forEach(([x, y]) => o.push(sq(ax + x * U, ay + y * U, face, C.eye)));
-    }
+    const shape = side ? d.eyeR : d.eyeL, flat = shape === "closed" || shape === "happy" || shape === "sleep";
+    o.push(eyeShape(shape, cx(B.eyeCols[side]), eyeY, d.gaze[0], flat ? 0 : d.gaze[1], C.eye));
   });
   layer("face");
   // Brows show when they move.
@@ -238,6 +243,202 @@ function drawPixel(look, pose, fr, ppu) {
   if (fx.bang) o.push(drawGlyph(GLYPHS.bang, right + 1.4 * U, top - 2.6 * U, U * 0.95, C.fx));
   return o.join("");
 }
+
+// -- The animations of 2026-10-29 (design page « Animations des Bips », internal/design/bip-animations-2026-10-29.html)
+// Each a pure function of time, from the page's formulas (its ANIMS and FUN), the same as the apps' BipMotions.swift and
+// BipMotions.kt. A frame lists what to draw: blocks {k:"cell", i, j, dx, dy, rot, s, op, fill?}, the face {k:"face", dx,
+// dy, op, gaze, eyes, mouth}, glyphs, rounded rects and polygons. site/check-motions.mjs compares the frames to
+// scripts/pixel/motion-frames.json (the page's own, at 0.4, 1.2 and 2.0 s).
+
+/** The thinking animations, alternating (« today » is the think state's own); the small ones read at 22–56 px. */
+export const THINKING = ["today", "chantier", "vague", "construit", "bulle", "puzzle", "jongle", "scanner", "relief", "empile"];
+export const THINKING_SMALL = ["vague", "chantier", "jongle", "scanner", "construit"];
+/** The moments played once: their length (s). */
+export const MOMENTS = { done: 2.2, oops: 3.6, wave: 1.8, born: 3.8, sent: 2.4 };
+const MOTION_STILL = { construit: 2.4, empile: 2.6, done: 0.4, oops: 0.3, born: 3.0, sent: 1.0 };
+const M_LEFT = 60 - 3 * P, M_TOP = 106 - 6 * P, CS = P - GAP, GOLD = "#FFC93C", CHEEK = "#F58BA6";
+const CELLS = [];
+BODIES.standard.rows.forEach((r, j) => [...r].forEach((c, i) => { if (c === "#") CELLS.push([i, j]); }));
+const CELLSET = new Set(CELLS.map(c => c.join()));
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const easeOut = t => 1 - Math.pow(1 - clamp(t, 0, 1), 3);
+const easeInOut = t => { t = clamp(t, 0, 1); return t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; };
+const back = t => { t = clamp(t, 0, 1); const c1 = 1.7, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); };
+function rng(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
+function plan(seed) {
+  const r = rng(seed), order = CELLS.map((c, n) => [r(), n]).sort((a, b) => a[0] - b[0]).map(x => x[1]);
+  const dirs = CELLS.map(() => { const a = r() * Math.PI * 2, d = 46 + r() * 26; return [Math.cos(a) * d, Math.sin(a) * d - 10, (r() - .5) * 260]; });
+  return { dirs, rank: order.reduce((m, n, k) => (m[n] = k, m), {}) };
+}
+const cellX = i => M_LEFT + i * P + GAP / 2, cellY = j => M_TOP + j * P + GAP / 2;
+const P_BUILD = plan(7), P_NEW = plan(21);
+const SWAPS = [[[1, 1], [4, 3]], [[2, 4], [5, 2]], [[0, 3], [3, 1]], [[4, 0], [1, 5]], [[5, 4], [2, 1]]];
+const cellM = (out, i, j, o = {}) => { const it = { k: "cell", i, j, dx: o.dx || 0, dy: o.dy || 0, rot: o.rot || 0, s: o.s ?? 1, op: o.op ?? 1 }; if (o.fill) it.fill = o.fill; out.push(it); };
+const bodyM = (out, o = {}) => CELLS.forEach(([i, j], n) => cellM(out, i, j, o.each ? o.each(i, j, n) : o));
+const faceM = (out, o = {}) => out.push({ k: "face", dx: o.dx || 0, dy: o.dy || 0, op: o.op ?? 1, gaze: o.gaze || [0, 0], eyes: o.eyes || "open", mouth: o.mouth || "smile" });
+const glyphM = (out, rows, cx, cy, u, fill, op = 1) => out.push({ k: "glyph", rows, cx, cy, u, fill, op });
+const rectM = (out, x, y, w, h, rx, fill, o = {}) => { const it = { k: "rect", x, y, w, h, rx, fill, op: o.op ?? 1, rot: o.rot || 0 }; if (o.ox !== undefined) { it.ox = o.ox; it.oy = o.oy; } if (o.stroke) it.stroke = o.stroke; out.push(it); };
+const MOTIONS = {
+  chantier(t, out) {
+    const fly = [[4, 0, 0], [5, 1, 1.1]], D = 2.2;
+    CELLS.forEach(([i, j]) => { const fl = fly.find(f => f[0] === i && f[1] === j);
+      if (!fl) return cellM(out, i, j);
+      const k = ((t + fl[2]) % D) / D, up = k < .5 ? easeOut(k / .5) : 1 - easeInOut((k - .5) / .5);
+      cellM(out, i, j, { dx: up * (10 + 4 * fl[2]), dy: -up * (16 + 6 * fl[2]), rot: up * (fl[2] ? -40 : 35), s: 1 - up * .18 }); });
+    faceM(out, { gaze: [1, -1], mouth: "hmm" });
+  },
+  vague(t, out) {
+    const lift = i => Math.max(0, Math.sin(2 * Math.PI * (t / 1.3 - i / 7))) * 3.4;
+    bodyM(out, { each: i => ({ dy: -lift(i) }) }); faceM(out, { gaze: [Math.sin(t * 2.4) > 0 ? 1 : -1, -1], mouth: "hmm", dy: -(lift(1) + lift(4)) / 2 });
+  },
+  construit(t, out) {
+    t %= 4.2;
+    CELLS.forEach(([i, j], n) => { const r = P_BUILD.rank[n], [ddx, ddy, rr] = P_BUILD.dirs[n];
+      const tin = clamp((t - r * 0.045) / .5, 0, 1), tout = clamp((t - 3.0 - (33 - r) * 0.025) / .45, 0, 1);
+      const a = back(tin) * (1 - easeInOut(tout)); if (a <= 0.001) return;
+      cellM(out, i, j, { dx: ddx * (1 - a), dy: ddy * (1 - a), rot: rr * (1 - a), s: .55 + .45 * a, op: clamp(a * 1.4, 0, 1) }); });
+    const fop = clamp((t - 1.7) / .3, 0, 1) * (1 - clamp((t - 2.95) / .2, 0, 1));
+    if (fop > 0) faceM(out, { op: fop, gaze: [0, -1], mouth: "smile" });
+  },
+  bulle(t, out) {
+    bodyM(out); faceM(out, { gaze: [1, -1], mouth: "hmm" });
+    [[90, 27, 3.2], [96, 20, 4.2]].forEach(([x, y, s]) => rectM(out, x, y, s, s, s * .3, "#C9CED9"));
+    rectM(out, 94, 0, 26, 14, 4, "#FFFFFF", { op: .96 }); rectM(out, 94, 0, 26, 14, 4, "none", { stroke: "#C9CED9" });
+    for (let k = 0; k < 3; k++) { const on = Math.floor((t * 2.6) % 4) > k; rectM(out, 94 + 5 + k * 6.5, 5, 3.6, 3.6, 1, on ? "#6B7180" : "#D9DCE3"); }
+  },
+  puzzle(t, out, body) {
+    const D = .9, n = Math.floor(t / D) % SWAPS.length, k = (t % D) / D, e = easeInOut(clamp(k / .7, 0, 1));
+    const [[ai, aj], [bi, bj]] = SWAPS[n];
+    CELLS.forEach(([i, j]) => { if (!(i === ai && j === aj) && !(i === bi && j === bj)) cellM(out, i, j); });
+    const hop = Math.sin(Math.PI * e) * 14;
+    cellM(out, ai, aj, { dx: (bi - ai) * P * e, dy: (bj - aj) * P * e - hop, rot: e * 180, fill: mix(body, "#FFFFFF", .25) });
+    cellM(out, bi, bj, { dx: (ai - bi) * P * e, dy: (aj - bj) * P * e - hop * .6, rot: -e * 180 });
+    faceM(out, { gaze: [((ai + bi) / 2 - 2.5) > 0 ? 1 : -1, -1], mouth: "hmm" });
+  },
+  jongle(t, out) {
+    const D = 1.1, k = (t % D) / D, h = 4 * k * (1 - k), y = 22 - h * 30, x = 60 + Math.sin(t * 2.9) * 10, land = k < .08 || k > .92 ? 1.2 : 0;
+    bodyM(out, { each: (i, j) => ({ dy: j <= 1 && Math.abs(cellX(i) + CS / 2 - x) < 13 ? land : 0 }) });
+    faceM(out, { gaze: [x > 60 ? 1 : -1, h > .5 ? -1 : 0], mouth: "smile" });
+    rectM(out, x - 4, y - 4, 8, 8, 2, GOLD, { rot: t * 300 });
+  },
+  scanner(t, out, body) {
+    const D = 1.8, bx = lerp(-12, 132, (t % D) / D);
+    bodyM(out, { each: (i, j) => { const cx = cellX(i) + CS / 2 + (j - 2.5) * 4; return { fill: mix(body, "#FFFFFF", clamp(1 - Math.abs(cx - bx) / 16, 0, 1) * .7) }; } });
+    faceM(out, { gaze: [bx < 60 ? -1 : 1, 0], mouth: "hmm" });
+  },
+  relief(t, out, body, deep) {
+    const top = mix(body, "#FFFFFF", .4), side = mix(body, deep, .78);
+    const k = (i, j) => 2 + 3.2 * (0.5 + 0.5 * Math.sin(2 * Math.PI * (t / 1.6 - (i + j) / 10)));
+    CELLS.slice().sort((a, b) => (a[0] - b[0]) || (b[1] - a[1])).forEach(([i, j]) => { const x = cellX(i), y = cellY(j), kk = k(i, j);
+      if (!CELLSET.has([i + 1, j].join())) out.push({ k: "poly", pts: [[x + CS, y], [x + CS + kk, y - kk], [x + CS + kk, y + CS - kk], [x + CS, y + CS]], fill: side, op: 1 });
+      if (!CELLSET.has([i, j - 1].join())) out.push({ k: "poly", pts: [[x, y], [x + kk, y - kk], [x + CS + kk, y - kk], [x + CS, y]], fill: top, op: 1 }); });
+    CELLS.forEach(([i, j]) => rectM(out, cellX(i) - .2, cellY(j) - .2, CS + .4, CS + .4, 1.2, body));
+    faceM(out, { gaze: [1, -1], mouth: "hmm" });
+  },
+  empile(t, out) {
+    t %= 3.6;
+    CELLS.forEach(([i, j]) => { const start = (5 - j) * .22 + (i % 3) * .05, k = clamp((t - start) / .45, 0, 1), fall = 1 - k * k;
+      const bounce = k >= 1 ? Math.max(0, Math.sin((t - start - .45) * 14) * 1.2 * Math.exp(-(t - start - .45) * 6)) : 0;
+      if (k <= 0) return; cellM(out, i, j, { dy: -fall * 90 - bounce, op: 1 - clamp((t - 3.05) / .4, 0, 1) }); });
+    if (t > 1.6) faceM(out, { op: clamp((t - 1.6) / .3, 0, 1) * (1 - clamp((t - 3.05) / .4, 0, 1)), gaze: [0, -1], mouth: "smile" });
+  },
+  done(t, out) {
+    t %= 2.2; const jump = t < .55 ? Math.sin(Math.PI * t / .55) * 14 : 0;
+    bodyM(out, { dy: -jump }); faceM(out, { dy: -jump, eyes: "happy", mouth: "grin" });
+    const r = rng(5), cols = [GOLD, "#FF7A59", "#8FA8FF", "#5BD46A", CHEEK];
+    for (let k = 0; k < 16; k++) { const a = r() * Math.PI * 2, v = 30 + r() * 40, tt = clamp(t - .2, 0, 2), x = 60 + Math.cos(a) * v * tt, y = 50 + Math.sin(a) * v * tt - 40 * tt + 45 * tt * tt;
+      if (t > .2) rectM(out, x, y, 4, 4, 1, cols[k % 5], { op: 1 - clamp((t - 1.4) / .6, 0, 1), rot: tt * 400 }); }
+  },
+  oops(t, out) {
+    t %= 3.6; const r = rng(9);
+    CELLS.forEach(([i, j], n) => { const jitter = (r() - .5) * 30, floor = 108 - (j % 2) * 9 - (i % 3) * 3, y0 = cellY(j);
+      let dy = 0, dx = 0, rot = 0;
+      if (t > .5 && t < 1.6) { const k = clamp((t - .5 - n * .008) / .5, 0, 1); dy = (floor - CS - y0) * k * k; dx = jitter * k; rot = jitter * 3 * k; }
+      else if (t >= 1.6 && t < 2.4) { dy = floor - CS - y0; dx = jitter; rot = jitter * 3; }
+      else if (t >= 2.4) { const k = 1 - back(clamp((t - 2.4 - n * .01) / .6, 0, 1)); dy = (floor - CS - y0) * k; dx = jitter * k; rot = jitter * 3 * k; }
+      cellM(out, i, j, { dx, dy, rot }); });
+    if (t < .5) faceM(out, { eyes: "wide", mouth: "o" }); else if (t > 3) faceM(out, { mouth: "smile", op: clamp((t - 3) / .2, 0, 1) });
+  },
+  sleep(t, out) {
+    const br = Math.sin(t * 2) * .8; bodyM(out, { dy: br }); faceM(out, { eyes: "closed", mouth: "sleep", dy: br });
+    for (let k = 0; k < 2; k++) { const kk = ((t / 2.4) + k * .5) % 1; glyphM(out, ["####", "..#.", ".#..", "####"], 94 + kk * 12, 26 - kk * 26, 1.6 + kk * 1.4, "#8C93A3", 1 - kk); }
+  },
+  wave(t, out, body) {
+    bodyM(out); faceM(out, { eyes: "happy", mouth: "smile" });
+    const a = Math.sin(t * 7) * 22 - 10, sx = M_LEFT + 6 * P - 1, sy = M_TOP + 3.2 * P;
+    [[0, 0], [1, 0], [1, -1], [1, -2], [1, -3]].forEach(([cx, cy]) => rectM(out, sx + cx * 4.6, sy + cy * 4.6, 4.6, 4.6, 1.2, body, { rot: a, ox: sx, oy: sy + 2.3 }));
+  },
+  listen(t, out, body, deep) {
+    bodyM(out); faceM(out, { eyes: "wide", mouth: "o", gaze: [1, 0] });
+    for (let k = 0; k < 4; k++) { const h = 4 + Math.abs(Math.sin(t * (5 + k * 1.7) + k)) * 18; rectM(out, 104 + k * 5.2, 60 - h / 2, 3.6, h, 1.4, deep, { op: .85 }); }
+  },
+  born(t, out) {
+    t %= 3.8; const last = [[4, 0], [5, 1]];
+    CELLS.forEach(([i, j], n) => { const isLast = last.findIndex(l => l[0] === i && l[1] === j), r = P_NEW.rank[n], [ddx, ddy, rr] = P_NEW.dirs[n];
+      const start = isLast < 0 ? r * .035 : 1.35 + isLast * .3, tin = clamp((t - start) / (isLast < 0 ? .45 : .55), 0, 1), a = back(tin);
+      if (tin <= 0) return; const fx = isLast < 0 ? ddx : 26, fy = isLast < 0 ? ddy : -34;
+      cellM(out, i, j, { dx: fx * (1 - a), dy: fy * (1 - a), rot: (isLast < 0 ? rr : 200) * (1 - a), s: .55 + .45 * a, op: clamp(tin * 1.6, 0, 1) }); });
+    if (t > 1.0) faceM(out, { op: clamp((t - 1.0) / .3, 0, 1), gaze: t < 2.2 ? [1, -1] : [0, 0], mouth: t > 2.2 ? "grin" : "smile", eyes: t > 2.3 && t < 3.2 ? "happy" : "open" });
+    if (t > 2.15 && t < 2.9) { const k = (t - 2.15) / .75; for (let q = 0; q < 4; q++) { const a = q * Math.PI / 2 + .6, d = 8 + k * 12; rectM(out, 104 + Math.cos(a) * d - 2, 22 + Math.sin(a) * d - 2, 4, 4, 1, GOLD, { op: 1 - k }); } }
+  },
+  sent(t, out) {
+    t %= 2.4; bodyM(out); const k = clamp((t - .3) / 1.4, 0, 1);
+    faceM(out, { gaze: k > 0 ? [1, -1] : [1, 0], mouth: k > 0 ? "grin" : "smile" });
+    const x = 98 + k * 40, y = 50 - k * 70, op = 1 - clamp((k - .7) / .3, 0, 1), plane = ["#...", "###.", "####", "###.", "#..."];
+    glyphM(out, plane, x, y, 2.4, "#FFFFFF", op); glyphM(out, plane, x + .4, y + .4, 2.4, "#8C93A3", op * .35);
+  },
+};
+/** A motion's frame `t` seconds in, for a body colour and its deep shade (null for an unknown id, « today »). */
+export function motionFrame(id, t, body, deep) {
+  const f = MOTIONS[id];
+  if (!f) return null;
+  const out = [];
+  f(Math.max(0, t), out, body, deep);
+  return out;
+}
+/** A thinking episode's animation: the `episode`-th of the rotation (small Bips: the ones readable small). */
+export const thinkingVariant = (episode, small) => { const l = small ? THINKING_SMALL : THINKING; return l[((episode % l.length) + l.length) % l.length]; };
+
+/** A motion frame as SVG markup, with the look's colours and costume (only on a whole Bip). */
+function drawMotion(look, items, fr, ppu, pose) {
+  const CO = costumeOf(look), B = bodyOf(CO, fr ? fr.b : 0), C = paletteOf(look, CO), G = geom(B), mk = mouthScale(ppu);
+  const cells = items.filter(it => it.k === "cell");
+  const dressed = CO && cells.length >= CELLS.length && Math.min(...cells.map(c => c.op)) >= 0.6;
+  const layer = name => dressed ? CO.items.map((it, i) => (it.layer || "top") === name ? drawItem(it, i, G, pose.d, CO, fr, mk) : "").join("") : "";
+  const op = v => v < 1 ? ` opacity="${fmt(v)}"` : "";
+  let s = items.filter(it => it.k === "poly").map(p => `<polygon points="${p.pts.map(q => fmt(q[0]) + "," + fmt(q[1])).join(" ")}" fill="${p.fill}"/>`).join("");
+  s += layer("back");
+  for (const c of cells) s += block(G.cx(c.i) + c.dx, G.cy(c.j) + c.dy, P * c.s, c.fill || C.body, C.deep, C.outline, op(c.op), c.rot);
+  s += layer("body");
+  for (const f of items) if (f.k === "face") {
+    const extra = op(f.op), ey = G.eyeY + f.dy;
+    [0, 1].forEach(side => { const flat = f.eyes === "closed" || f.eyes === "happy";
+      s += eyeShape(f.eyes, G.cx(B.eyeCols[side]) + f.dx, ey, f.gaze[0] * 0.8, flat ? 0 : f.gaze[1] * 0.8, C.eye, extra); });
+    const M = MOUTHS[f.mouth === "sleep" ? "sleepm" : f.mouth] || MOUTHS.smile;
+    s += drawGlyph(M.g, CX + f.dx + (M.dx || 0) * U * mk, G.mouthY + f.dy + (M.dy || 0) * U * mk, U * mk, C.mouth, extra);
+  }
+  s += layer("face") + layer("top");
+  for (const it of items) {
+    if (it.k === "rect") {
+      const ox = it.ox ?? it.x + it.w / 2, oy = it.oy ?? it.y + it.h / 2;
+      s += `<rect x="${fmt(it.x)}" y="${fmt(it.y)}" width="${fmt(it.w)}" height="${fmt(it.h)}" rx="${fmt(it.rx)}" fill="${it.fill}"${op(it.op)}`
+        + (it.stroke ? ` stroke="${it.stroke}" stroke-width="1"` : "") + (it.rot ? ` transform="rotate(${fmt(it.rot)} ${fmt(ox)} ${fmt(oy)})"` : "") + "/>";
+    } else if (it.k === "glyph") s += drawGlyph(it.rows, it.cx, it.cy, it.u, it.fill, op(it.op));
+  }
+  return s;
+}
+const memo = {};
+/** The next thinking episode of `key` (a category): counted and kept in this browser when it can, so the animations
+ *  vary from one visit to the next. */
+export function nextEpisode(key) {
+  let n = (memo[key] || 0) + 1;
+  try { n = (+localStorage.getItem("bips.thinking." + key) || 0) + 1; localStorage.setItem("bips.thinking." + key, String(n)); } catch { /* none */ }
+  memo[key] = n;
+  return n;
+}
+// The costumes that reshape the body (the pumpkin, the vampire, the ghost) keep the states' own animations.
+const reshapes = costume => { const ob = costume && COSTUMES[costume] && COSTUMES[costume].body; return !!(ob && (ob.rows || ob.frames)); };
 
 // The frame grows upward and sideways to hold a costume (at most 152), the ground stays at 120.
 const MAXBOX = 152, boxCache = new Map();
@@ -272,12 +473,23 @@ const figTransform = m => `translate(${fmt(m.x)} ${fmt(m.y)}) translate(60 ${BOT
 const SHADOW = `<ellipse cx="60" cy="${BOTTOM + 3}" rx="30" ry="4" fill="${INK}" fill-opacity="0.1"/>`;
 
 /** A whole Bip as SVG markup: { color | category, mood or state, t (seconds), costume, size (px, for the mouth) }. */
-export function pixelSVG({ category = "daily", color, mood = "idle", t = 0, costume = null, size = 48, still = REDUCED, shadow = true } = {}) {
+/** `motion`: one of the animations of 2026-10-29 (a thinking variant from `thinkingVariant`, a moment of MOMENTS),
+ *  `mt` seconds in; asleep and listening Bips take the page's « Dodo » and « Écoute » by themselves. */
+export function pixelSVG({ category = "daily", color, mood = "idle", t = 0, costume = null, size = 48, still = REDUCED, shadow = true,
+  motion = null, mt = t } = {}) {
   const c = CATEGORIES[category] || CATEGORIES.daily, st = stateOf(mood);
   const clock = still ? 0.6 : t, loop = ((t % st.dur) + st.dur) % st.dur;
-  const pose = poseOf(st, loop, costume, clock, still), CO = costume && COSTUMES[costume];
+  const CO = costume && COSTUMES[costume];
   const box = frameOf(costume), look = { color: color || c.color, costume };
   const fr = frameState(CO, clock);
+  const m = reshapes(costume) ? null : motion && MOTIONS[motion] ? motion : st === STATES.sleep ? "sleep" : st === STATES.listen ? "listen" : null;
+  if (m) {
+    const C = paletteOf(look, CO), pose = poseOf(STATES.idle, 0, costume, clock, true);
+    pose.m = { x: 0, y: 0, rot: 0, sx: 1, sy: 1 };
+    const inner = drawMotion(look, motionFrame(m, still ? (MOTION_STILL[m] ?? 1.2) : mt, C.body, C.deep), fr, size / box, pose);
+    return `<svg viewBox="${viewBox(box)}" aria-hidden="true" focusable="false">${shadow ? SHADOW : ""}<g>${inner}</g></svg>`;
+  }
+  const pose = poseOf(st, loop, costume, clock, still);
   let inner = drawPixel(look, pose, fr, size / box);
   if (CO) inner = inner.replace(/<g data-it="(\d+)" data-pv="([\d.\- ]+)"/g, (all, i, pv) => {
     const it = CO.items[+i];
@@ -462,7 +674,28 @@ export class Bip {
     this.render();
   }
 
-  set mood(value) { this.base = value; this.t = 0; }
+  set mood(value) {
+    const was = this.thinking;
+    this.base = value; this.t = 0;
+    if (this.thinking && !was) { this.episode = nextEpisode(this.c.id); this.mt = 0; }   // the next thinking animation
+  }
+  get thinking() { const s = stateOf(this.base); return s === STATES.think || s === STATES.work; }
+  /** Plays a moment once (« done », « oops », « wave », « born », « sent »), then back to its state. */
+  play(moment) { if (MOMENTS[moment]) { this.moment = moment; this.momentT = 0; if (REDUCED) setTimeout(() => { this.moment = null; this.render(); }, 1400); this.render(); } }
+  /** What it plays now among the animations of 2026-10-29, if any. */
+  motionNow() {
+    if (reshapes(this.costume) || this.reaction) return null;
+    if (this.moment) return [this.moment, this.momentT];
+    const st = stateOf(this.base);
+    if (this.thinking) {
+      if (this.episode == null) { this.episode = nextEpisode(this.c.id); this.mt = 0; }
+      const v = thinkingVariant(this.episode, (this.el.clientWidth || 48) <= 56);
+      return MOTIONS[v] ? [v, this.mt] : null;
+    }
+    if (st === STATES.sleep) return ["sleep", this.t];
+    if (st === STATES.listen) return ["listen", this.t];
+    return null;
+  }
   /** Stops drawing it and empties its element. */
   remove() { living.delete(this); this.el.innerHTML = ""; }
   get mood() { return this.base; }
@@ -511,7 +744,8 @@ export class Bip {
   }
 
   tick(dt) {
-    this.t += dt; this.clock += dt;
+    this.t += dt; this.clock += dt; this.mt = (this.mt || 0) + dt;
+    if (this.moment) { this.momentT += dt; if (this.momentT >= MOMENTS[this.moment]) this.moment = null; }
     if (this.reaction) {
       this.rt += dt;
       const st = this.reaction === "happyJump" ? STATES.happy : REACTIONS[this.reaction];
@@ -521,6 +755,17 @@ export class Bip {
 
   render() {
     const still = REDUCED;
+    const motion = this.motionNow();
+    if (motion) {
+      const [id, mt] = motion, CO = this.costume && COSTUMES[this.costume], clock = still ? 0.6 : this.clock;
+      const look = { color: this.c.color, costume: this.costume }, C = paletteOf(look, CO), fr = frameState(CO, clock);
+      const pose = poseOf(STATES.idle, 0, this.costume, clock, true);
+      this.fig.innerHTML = drawMotion(look, motionFrame(id, still ? (MOTION_STILL[id] ?? 1.2) : mt, C.body, C.deep), fr,
+        (this.el.clientWidth || 48) / frameOf(this.costume), pose);
+      this.fig.removeAttribute("transform");
+      this.items = []; this.key = still ? "motion:" + id : "";
+      return;
+    }
     let st, t;
     if (this.reaction) { st = this.reaction === "happyJump" ? STATES.happy : REACTIONS[this.reaction]; t = still ? st.still : this.rt; }
     else { st = stateOf(this.base); t = still ? st.still : ((this.t % st.dur) + st.dur) % st.dur; }
@@ -555,11 +800,13 @@ export class Bip {
 if (W) {
   let last = 0;
   const frame = now => {
+    // At most 30 frames a second; nothing for Bips off screen (the browser stops frames in a hidden tab).
+    if (last && now - last < 32) { requestAnimationFrame(frame); return; }
     const dt = last ? Math.min(0.1, (now - last) / 1000) : 0;
     last = now;
     for (const bip of living) {
       if (!bip.visible) continue;
-      if (!REDUCED) bip.tick(dt); else if (bip.reaction) bip.tick(dt);
+      if (!REDUCED) bip.tick(dt); else if (bip.reaction || bip.moment) bip.tick(dt);
       if (!REDUCED || bip.reaction || !bip.key) bip.render();
     }
     requestAnimationFrame(frame);

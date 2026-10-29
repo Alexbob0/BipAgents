@@ -1,7 +1,7 @@
 // bipagents.com: the hero's results and its « See more » on privacy, the agents' cards, the comparison, the
 // two ways and the plan picker; on their own pages, the agent at work (the app's own demo scenarios, with its map and its pages) and the
 // install. One script for every page: each part runs where its elements are. No framework, no network but this site.
-import { Bip, CATEGORIES, REDUCED, iconSVG, pixelSVG, staticBip } from "./bips.js";
+import { Bip, CATEGORIES, REDUCED, iconSVG, nextEpisode, pixelSVG, staticBip, thinkingVariant } from "./bips.js";
 
 const data = JSON.parse(document.getElementById("site-data").textContent);
 const $ = (s, root = document) => root.querySelector(s);
@@ -209,7 +209,13 @@ async function play(id) {
   function bip(now) {
     if (!alive() || !workingLine?.isConnected) { bipFrame = null; return; }
     // Busy with a tool: the apps' « work » state (eyes scanning, a light passing); else « think ».
-    $(".av", workingLine).innerHTML = pixelSVG({ category, mood: busy ? "work" : "think", t: now / 1000, size: 30 });
+    // Each turn the next thinking animation of the rotation, among those readable small (at most 30 frames a second).
+    if (now - (workingLine.drawnAt || 0) >= 32) {
+      workingLine.drawnAt = now;
+      workingLine.variantAt ??= now;
+      $(".av", workingLine).innerHTML = pixelSVG({ category, mood: busy ? "work" : "think", t: now / 1000, size: 30,
+        motion: workingLine.variant, mt: (now - workingLine.variantAt) / 1000 });
+    }
     bipFrame = requestAnimationFrame(bip);
   }
   let clock = null;
@@ -224,6 +230,8 @@ async function play(id) {
     if (!workingLine?.isConnected) {
       workingLine = add(`<span class="av">${staticBip(category, "thinking")}</span><span class="ph"></span><span class="el"></span>`, "working");
       workingLine.setAttribute("role", "status");
+      workingLine.variant = thinkingVariant(nextEpisode(category), true);
+      if (REDUCED) $(".av", workingLine).innerHTML = pixelSVG({ category, mood: "think", size: 30, motion: workingLine.variant });
     }
     elapsed();
     if (!clock) clock = setInterval(elapsed, 1000);
