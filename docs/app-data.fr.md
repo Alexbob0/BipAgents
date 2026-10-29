@@ -25,10 +25,13 @@ d’après le contrat d’interface du bridge, avant le code des apps qui s’en
 
 - **iOS** (`BipAgents.xcodeproj/.../Package.resolved`, `Packages/*/Package.swift`) : un seul paquet externe,
   `onnxruntime-swift-package-manager` 1.24.2, qui fait tourner les voix des Bips sur le téléphone. Aucun SDK de mesure
-  d’audience, de plantage, de publicité ou d’attribution. Ni MetricKit, ni AdSupport, ni AppTrackingTransparency.
+  d’audience, de plantage, de publicité ou d’attribution. Ni MetricKit, ni AdSupport, ni AppTrackingTransparency (pas
+  d’IDFA, pas de question « Autoriser le suivi ? »). L’app utilise une fois le framework AdServices d’Apple
+  (`AAAttribution.attributionToken()`, ci-dessous).
 - **Android** (`android/app/build.gradle.kts`, `android/gradle/libs.versions.toml`) : AndroidX/Compose, OkHttp,
   kotlinx-serialization, CameraX, Media3, Glance, ZXing, ONNX Runtime, le client Health Connect, et ces bibliothèques
-  Google : Play Billing, Play Asset Delivery, Play Integrity, Credential Manager + Google ID, le scanner de documents
+  Google : Play Billing, Play Asset Delivery, Play Integrity, Play Install Referrer (`installreferrer`, lu une fois,
+  ci-dessous), Credential Manager + Google ID, le scanner de documents
   ML Kit (services Play) et **Firebase Cloud Messaging seul** (`firebase-messaging` ; ni Analytics, ni Crashlytics, ni
   plugin `google-services`).
 - La télémétrie d’usage d’ONNX Runtime vers Microsoft est coupée deux fois sur Android : son `TelemetryInitializer` est
@@ -157,9 +160,23 @@ C’est le service de l’offre tout compris, avec les comptes et les liens fami
 | Invitation à une place partagée (Duo, Famille) | `POST /v1/account/invitations` | le numéro de la place, l’e-mail de la personne invitée, le prénom de celle qui invite (`who`), la langue de l’app. Rien sur la place elle-même : l’e-mail du guichet dit seulement d’ouvrir l’app et de se connecter avec cette adresse |
 | Invitations reçues (compte connecté et approuvé) | `GET /v1/account/invitations/received` | le jeton du compte. La réponse contient les places offertes à cette adresse et encore prêtes à être appairées, avec ce qu’il faut pour l’appairage (adresse, port, empreinte du certificat, secret d’appairage, clé d’IA créée par le guichet, jeton de la place), en HTTPS. Une fois la place appairée, `POST /v1/account/places` avec ce jeton la rattache au compte |
 | Liens familiaux | `POST /v1/account/family/devices` (corps `{email, siblings}`), `POST /v1/account/family/invitations` | l’e-mail de l’autre personne (dans le corps de la requête, pas dans l’URL), le nom du foyer (`from`), un **paquet scellé** par appareil de cette personne |
+| D’où vient la personne (une fois ; `App/Features/Cloud/Attribution.swift`, `android/.../cloud/Attribution.kt`) | `POST /v1/attribution` | le jeton de l’abonnement ou du compte et **un seul** de : Android, le nom de la campagne publicitaire tiré du referrer d’installation de Google Play (`utm_campaign` seulement) ; iPhone, le jeton d’attribution d’AdServices (le guichet interroge Apple et ne garde que « asa- » + le numéro de la campagne Apple Search Ads, jamais le jeton) ; la réponse à « Comment nous as-tu connus ? » (Instagram, X, un ami ou la famille, un article ou un podcast, une recherche, autre) si la personne a répondu. Envoyé une fois, seulement quand le téléphone a l’offre ou un compte ; rien pour une installation chez soi sans compte |
 | « Partager en lecture » : la personne commence à partager une conversation | `POST /v1/rshares` | le jeton du compte, la date de fin. La réponse : l’identifiant du partage et un jeton que l’app confie au bridge de la personne, qui fait le reste (ci-dessous) |
 | « Partager en lecture » : quelqu’un ouvre son invitation | `POST /v1/rshares/look`, `/v1/rshares/redeem` | le jeton du compte, l’identifiant de l’invitation, une **clé publique P-256 faite pour ce partage** et une **preuve** (un HMAC de cette clé avec le secret placé après « # » dans le lien, qui lui n’est jamais envoyé) |
 | « Partager en lecture » : la lecture | `GET /v1/rshares/shared`, `/v1/rshares/{id}/items`, `POST …/mute`, `DELETE …/me` | le jeton du compte ; les réponses sont du **texte chiffré** et la clé du contenu **scellée pour cet appareil**, ouverts sur le téléphone seulement |
+
+**Campagnes publicitaires (décidé le 2026-10-29).** Kerfy Studio compte lui-même, au guichet, quelles publicités
+amènent des abonnés : aucun SDK publicitaire (ni SDK Meta, ni pixel, ni Conversions API), pas d’IDFA, pas de question
+ATT, rien n’est envoyé à Meta. Un abonnement et un compte gardent au plus **un nom de campagne** (une étiquette courte
+comme `insta-nov-a`, ou `asa-542370539` pour Apple Search Ads), sa provenance (le lien du site, le referrer de Google
+Play, Apple Search Ads, le lot d’un code bêta, ou la réponse de la personne) et sa date ; le premier reçu est gardé,
+jamais remplacé. Jamais d’identifiant de clic, d’identifiant publicitaire, de jeton Apple ni rien d’autre du referrer.
+Pourquoi : savoir quelles campagnes se remboursent et arrêter les autres. Le rapport hebdomadaire que lit Kerfy Studio
+ne contient que des comptes par campagne et par semaine, jamais une personne. Le nom de campagne disparaît avec le
+compte ou l’abonnement (5 ans après la fin d’un abonnement, comme ses autres données de contrat). Les boutiques
+comptent elles-mêmes les installations venues de publicités dans leurs tableaux de bord (App Store Connect, Google
+Play Console), comme pour toute app ; le lien du site transmet la campagne à Stripe Checkout (`metadata`) pour qu’elle
+arrive au guichet avec l’achat.
 
 **Ce qui est chiffré de bout en bout (code public) :** `AccountCrypto`. Un paquet est scellé sur un
 appareil pour la clé P-256 d’un autre : clé ECDH éphémère, HKDF-SHA256 (info `bipagents-box-v1`), puis AES-256-GCM.
@@ -217,6 +234,10 @@ Il n’est utilisé que si la version de l’app définit un hôte de relais (`B
 
 - **Boutiques :** StoreKit 2 (produits, achats, `Transaction.updates`, codes d’offre, `Storefront`), Play Billing
   (achats, pays de la configuration de facturation). Les boutiques voient l’achat. Le guichet reçoit la preuve (§2).
+- **D’où vient une installation :** iOS demande à AdServices un jeton d’attribution (`AAAttribution.attributionToken()`,
+  sans ATT ni IDFA) pendant les 30 premiers jours, jusqu’à ce que le guichet l’ait ; le jeton va au guichet, qui
+  interroge Apple (`api-adservices.apple.com`). Android lit une fois, au premier lancement, le referrer d’installation
+  de Google Play (`InstallReferrerClient`) et n’en garde que `utm_campaign` sur le téléphone jusqu’à l’envoi (§2).
 - **Contrôle de la semaine offerte :** DeviceCheck (`DCDevice.generateToken`, `CloudOffer.swift`) ; Play Integrity
   (`DeviceProof.kt`, seulement si `play.cloudProject` est défini).
 - **Connexion :** Sign in with Apple (portée : e-mail) (`AccountSignIn.swift`). Sur iOS, Google passe par le flux avec
@@ -296,6 +317,9 @@ fournisseur des agents (ou `[notebook] base_url`), sous un plafond mensuel. Jama
   transférables vers un autre appareil.
 - Android : les mêmes secrets dans les préférences privées de l’app, chiffrés avec une clé AES qui reste dans
   l’Android Keystore (`model/Secrets.kt`). `allowBackup="false"`.
+- Jusqu’à ce que le guichet les ait : le nom de campagne du referrer d’installation et la réponse à « Comment nous
+  as-tu connus ? » (SharedPreferences / UserDefaults `attribution*`), puis effacés. Le jeton AdServices n’est jamais
+  stocké.
 - Les caches de conversation, les enregistrements des notes vocales et les voix téléchargées restent dans le stockage
   propre à l’app. Le cache du jeton de relais et les empreintes de santé sont dans UserDefaults ou SharedPreferences.
 
