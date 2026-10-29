@@ -477,17 +477,23 @@ pub fn decline(config: &Config, id: &str) -> anyhow::Result<()> {
     let _guard = super::lock();
     let found = find_proposal(config, id)?;
     let key = tk::str_or_empty(found.get("page_key"));
-    let measure = found.get("measure").cloned().unwrap_or(json!({}));
+    remember_locked(config, &[key], found.get("measure").cloned().unwrap_or(json!({})))?;
+    set_state(config, id.trim(), "declined", None)?;
+    Ok(())
+}
+
+/// A page answered (left as it is, or split and maybe undone since): not proposed again until it changes a lot.
+fn remember_locked(config: &Config, keys: &[String], measure: Value) -> std::io::Result<Dict> {
     super::update_state(config, |s| {
         let mut declined = match s.get("split_declined") {
             Some(Value::Object(m)) => m.clone(),
             _ => Dict::new(),
         };
-        declined.insert(key.clone(), measure.clone());
+        for key in keys.iter().filter(|k| !k.is_empty()) {
+            declined.insert(key.clone(), measure.clone());
+        }
         s.insert("split_declined".into(), Value::Object(declined));
-    })?;
-    set_state(config, id.trim(), "declined", None)?;
-    Ok(())
+    })
 }
 
 /// The day range of a trip in its link line (« 18 – 22 déc. 2021 »).
@@ -570,6 +576,18 @@ fn split_locked(config: &Config, path: &str, page: &Page, trips: &[Trip], who: &
     let lines: Vec<(usize, Option<String>, String)> = lines_of(page, &lang);
     let heading_of = |i: usize| lines.iter().find(|(n, _, _)| *n == i).and_then(|(_, h, _)| h.clone());
     let raw: Vec<&str> = page.body.lines().collect();
+    let (count, dated) = measure(config, page, trips);
+    // the page as it is now in the history first (written in Obsidian, or by hand): the split can be undone there
+    if let Some(now) = super::read_page_text(config, Part::Main, path) {
+        let logged = super::history(config, Some(Part::Main), Some(path), 1)
+            .first()
+            .and_then(|e| e.get("after").and_then(Value::as_str).map(str::to_string))
+            .and_then(|v| super::version_text(config, &v));
+        if logged.as_deref() != Some(now.as_str()) {
+            let summary = format!("« {} »", page.title);
+            super::commit(config, Part::Main, path, Some(&now), Some(&now), who, "before_split", &summary)?;
+        }
+    }
     let mut made: Vec<Value> = Vec::new();
     let mut new_ids: Vec<String> = Vec::new();
     for trip in trips {
@@ -647,8 +665,10 @@ fn split_locked(config: &Config, path: &str, page: &Page, trips: &[Trip], who: &
     rest.touch();
     let summary = format!("« {} » → {}", page.title, trips.iter().map(|t| t.title.as_str()).collect::<Vec<_>>().join(" · "));
     super::commit(config, Part::Main, path, Some(&before), Some(&rest.render()), who, "split", &summary)?;
-    // neither made a trip again at night, nor taken by the extraction's own trips
+    // not proposed again (an undo from the history brings the page back as it was), neither made a trip again at
+    // night, nor taken by the extraction's own trips
     let id = rest.id();
+    remember_locked(config, &[key_of(path, page), id.clone()], json!({"trips": count, "items": dated}))?;
     super::update_state(config, |s| {
         let mut seen = super::strings(s.get("trips_seen"));
         if !seen.contains(&id) {
