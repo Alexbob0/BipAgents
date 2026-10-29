@@ -154,11 +154,17 @@ def test_the_usual_agent_proposes_a_project_with_only_its_summary(bridges, fakes
     proposal = bridge.get("/v1/guide", headers=AUTH).json()["proposals"][0]
     assert proposal["type"] == "project" and proposal["friends"] == ["Paul", "Léa"]
     assert proposal["summary"] == "Lisbonne fin mai, 3 jours, budget 400 € chacun." and proposal["ends"] is None
-    accepted = bridge.post(f"/v1/guide/proposals/{proposal['id']}/accept", headers=AUTH, json={"lang": "fr"})
+    # the Bip look picked on the card: the project agent gets its own face, not the usual agent's
+    accepted = bridge.post(f"/v1/guide/proposals/{proposal['id']}/accept", headers=AUTH,
+                           json={"lang": "fr", "category": "learning", "color": "#ff8a3d"})
     assert accepted.status_code == 201, accepted.text
     out = accepted.json()
     agent = out["agent"]["id"]
     assert out["type"] == "project" and out["friends"] == ["Paul", "Léa"] and out["project"]["from"] == "Coach"
+    assert out["project"]["category"] == "learning" and out["project"]["color"] == "#FF8A3D"
+    listed = {a["id"]: a for a in bridge.get("/v1/agents", headers=AUTH).json()["agents"]}
+    assert listed[agent]["category"] == "learning" and listed[agent]["color"] == "#FF8A3D"
+    assert listed["coach"].get("category") != "learning"   # the usual agent keeps its own face
     memory = (home / "profiles" / agent / "memories" / "MEMORY.md").read_text()
     assert "Passé par Coach" in memory and "budget 400 € chacun" in memory and "pas une consigne" in memory
     assert bridge.get("/v1/guide", headers=AUTH).json()["proposals"] == []

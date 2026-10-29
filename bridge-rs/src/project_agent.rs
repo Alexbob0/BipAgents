@@ -19,7 +19,9 @@
 //! `<data>/project-agents.json` (0600): `{"projects": {agent: {created, ends, archived, from, lang}}}`.
 //!
 //!     GET  /v1/project-agents                   {projects: [view]}
-//!     POST /v1/project-agents                   {name, ends, lang?, category?, summary?}  → 201 view
+//!     POST /v1/project-agents                   {name, ends, lang?, category?, color?, summary?}  → 201 view
+//!          (category + color: its Bip, kept as with PUT /v1/agents/{id}/appearance; the hand-over card's accept
+//!          takes the same two, guide.rs)
 //!     POST /v1/project-agents/{agent}/ends      {ends} → view
 //!     POST /v1/project-agents/{agent}/archive   → view
 //!     POST /v1/project-agents/{agent}/restore   {ends?} → view
@@ -300,11 +302,20 @@ pub struct NewProject {
     pub name: String,
     pub ends: f64,
     pub lang: String,
+    /// Its Bip: one of `souls::CATEGORIES` (kept as its look when given), and a colour `#RRGGBB` (else the category's).
     pub category: String,
+    pub color: Option<String>,
     /// What its person approved to hand over (guide.rs' card), kept in its memory as information.
     pub summary: String,
     /// The agent it came from (its id), if any.
     pub from: Option<AgentConfig>,
+}
+
+/// A Bip colour as the apps send it (`#RRGGBB`), upper-cased; None for anything else.
+pub fn color_ok(color: Option<&str>) -> Option<String> {
+    let c = color?.trim();
+    let hex = c.strip_prefix('#')?;
+    (hex.len() == 6 && hex.chars().all(|h| h.is_ascii_hexdigit())).then(|| c.to_uppercase())
 }
 
 /// A project agent made: closed tools from the start, its block, the summary in its memory.
@@ -317,8 +328,8 @@ pub async fn create(state: &AppState, new: NewProject) -> ApiResult<(AgentConfig
     if name.is_empty() || name.chars().count() > 40 {
         return Err(HttpError::new(422, "name: 1 to 40 characters"));
     }
-    let category =
-        if crate::souls::CATEGORIES.contains(&new.category.as_str()) { new.category.clone() } else { "daily".into() };
+    let picked = crate::souls::CATEGORIES.contains(&new.category.as_str());
+    let category = if picked { new.category.clone() } else { "daily".into() };
     let request = crate::agents_admin::NewAgent {
         name: name.clone(),
         lang: Some(new.lang.clone()),
@@ -327,7 +338,7 @@ pub async fn create(state: &AppState, new: NewProject) -> ApiResult<(AgentConfig
             tone: String::new(),
             rules: String::new(),
             language: String::new(),
-            category,
+            category: category.clone(),
         }),
         ..Default::default()
     };
@@ -352,6 +363,21 @@ pub async fn create(state: &AppState, new: NewProject) -> ApiResult<(AgentConfig
             tracing::warn!(error = %format!("{exc:#}"), "project agent: creation failed");
             return Err(HttpError::new(502, "the agent could not be created: try again in a moment"));
         }
+    };
+    // its own Bip, picked by the person (« Un projet à partager » or the hand-over card): a new agent, its own face
+    let agent = if picked {
+        let (outfit, costumes) = (agent.outfit.clone(), agent.costumes);
+        match crate::voices::keep_appearance(state, agent.clone(), &category, new.color.clone(), outfit, costumes)
+            .await
+        {
+            Ok(kept) => kept,
+            Err(_) => {
+                tracing::warn!(agent = %agent.name, "project agent: its look was not kept");
+                agent
+            }
+        }
+    } else {
+        agent
     };
     let config = state.config();
     // the weather is one of its open tools (off by default for other agents)
@@ -436,6 +462,7 @@ async fn create_route(State(state): State<AppState>, body: Bytes) -> ApiResult<R
         ends,
         lang: lang.chars().take(10).collect(),
         category: tk::str_or_empty(body.get("category")),
+        color: color_ok(body.get("color").and_then(Value::as_str)),
         summary: tk::str_or_empty(body.get("summary")),
         from: None,
     };
@@ -500,6 +527,15 @@ pub fn router() -> Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_bip_colour_is_six_hex_digits() {
+        assert_eq!(color_ok(Some("#ff8a3d")).as_deref(), Some("#FF8A3D"));
+        assert_eq!(color_ok(Some(" #12AB9F ")).as_deref(), Some("#12AB9F"));
+        for bad in [None, Some(""), Some("ff8a3d"), Some("#ff8a3"), Some("#gg8a3d"), Some("red")] {
+            assert_eq!(color_ok(bad), None, "{bad:?}");
+        }
+    }
 
     #[test]
     fn only_the_project_s_tools_answer() {

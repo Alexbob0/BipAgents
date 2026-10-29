@@ -258,6 +258,22 @@ pub(crate) async fn set_agent_appearance(
         None => agent.outfit.clone(),
     };
     let costumes = body.costumes.or(agent.costumes).filter(|on| !on);
+    keep_appearance(&state, agent, &category, color.clone(), outfit.clone(), costumes).await?;
+    Ok(web::ok(json!({"category": category, "color": opt_json(&color), "outfit": outfit.unwrap_or_default(),
+                      "costumes": costumes.unwrap_or(true)})))
+}
+
+/// An agent's Bip kept (its config section and the live config), its tools in view following its category. Also
+/// used when a project agent is made with the look picked on the hand-over card (project_agent.rs).
+pub(crate) async fn keep_appearance(
+    state: &AppState,
+    agent: crate::config::AgentConfig,
+    category: &str,
+    color: Option<String>,
+    outfit: Option<String>,
+    costumes: Option<bool>,
+) -> ApiResult<crate::config::AgentConfig> {
+    let config = state.config();
     if let Some(source) = &config.source_path {
         let values = vec![
             ("category".to_string(), Some(json!(category))),
@@ -269,17 +285,16 @@ pub(crate) async fn set_agent_appearance(
         blocking(move || set_section_keys(&source, &header, &values)).await?;
     }
     let mut changed = agent;
-    changed.category = Some(category.clone());
-    changed.color = color.clone();
-    changed.outfit = outfit.clone();
+    changed.category = Some(category.to_string());
+    changed.color = color;
+    changed.outfit = outfit;
     changed.costumes = costumes;
     state.config.put_agent(changed.clone());
     // an agent of no kind of ours (« Autre ») keeps in view what its category's agents do (tool_diet.rs)
     if let Err(exc) = crate::tool_diet::apply(&state.config(), &changed) {
         tracing::warn!(agent = %changed.name, error = %exc, "tools in view not set");
     }
-    Ok(web::ok(json!({"category": category, "color": opt_json(&color), "outfit": outfit.unwrap_or_default(),
-                      "costumes": costumes.unwrap_or(true)})))
+    Ok(changed)
 }
 
 async fn blocking(work: impl FnOnce() -> anyhow::Result<()> + Send + 'static) -> ApiResult<()> {
