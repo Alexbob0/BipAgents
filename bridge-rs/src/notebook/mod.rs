@@ -3112,37 +3112,56 @@ pub fn reminders_synced(config: &Config, items: &[Value]) {
 
 // -- search --------------------------------------------------------------------------------------------------------
 
-/// Pages matching `words` (all of them, folded) in their title, aliases or lines: (part, path, page, matching lines).
-pub fn search(config: &Config, parts: &[Part], words_text: &str, kind: &str) -> Vec<(Part, String, Page, Vec<String>)> {
+/// A page found: (part, path, page, its matching lines).
+pub type Hit = (Part, String, Page, Vec<String>);
+
+/// Pages matching `words` (folded) in their title, aliases or lines: (part, path, page, matching lines). A page
+/// matches when it has ANY of the words, and the pages with the most of them come first (all the words first): the
+/// real-day bench (2026-10-29) searched « déménagement logement » and missed « Sujets/Déménagement Nantes », which
+/// lacked « logement », when every word was required. Words of one or two letters (« le », « de ») only rank: alone
+/// they would match nearly every page. Each page's lines: those with the most words first, 8 at most.
+pub fn search(config: &Config, parts: &[Part], words_text: &str, kind: &str) -> Vec<Hit> {
     let wanted: Vec<String> =
         fold(words_text).split(' ').filter(|w| !w.is_empty()).map(str::to_string).take(8).collect();
-    let mut out = Vec::new();
+    let strong: Vec<&str> = wanted.iter().filter(|w| w.chars().count() >= 3).map(String::as_str).collect();
+    let decisive: Vec<&str> = if strong.is_empty() { wanted.iter().map(String::as_str).collect() } else { strong };
+    let mut out: Vec<(usize, Hit)> = Vec::new();
     for part in parts {
         for (path, page) in all_pages(config, *part) {
             if !kind.is_empty() && page.kind() != kind {
                 continue;
             }
+            if wanted.is_empty() {
+                out.push((0, (*part, path, page, Vec::new())));
+                continue;
+            }
             let names = fold(&format!("{} {} {}", page.title, page.aliases().join(" "), page.contact()));
-            let mut lines: Vec<String> = Vec::new();
+            let mut found: Vec<&str> = wanted.iter().map(String::as_str).filter(|w| names.contains(w)).collect();
+            let mut lines: Vec<(usize, String)> = Vec::new();
             for line in page.body.lines() {
                 let folded = fold(line);
-                if !wanted.is_empty()
-                    && wanted.iter().all(|w| folded.contains(w.as_str()) || names.contains(w.as_str()))
-                {
-                    lines.push(tk::head(line.trim(), 240).to_string());
+                let hits: Vec<&str> = wanted.iter().map(String::as_str).filter(|w| folded.contains(w)).collect();
+                if hits.iter().any(|h| decisive.contains(h)) {
+                    for h in &hits {
+                        if !found.contains(h) {
+                            found.push(h);
+                        }
+                    }
+                    lines.push((hits.len(), tk::head(line.trim(), 240).to_string()));
                 }
             }
-            let by_name = wanted.iter().all(|w| names.contains(w.as_str()));
-            if wanted.is_empty() || by_name || !lines.is_empty() {
-                if by_name {
-                    lines.retain(|l| wanted.iter().any(|w| fold(l).contains(w.as_str())));
-                }
-                lines.truncate(8);
-                out.push((*part, path, page, lines));
+            if !decisive.iter().any(|d| found.contains(d)) {
+                continue;
             }
+            // the lines with the most words first (the page's order kept among equals)
+            lines.sort_by_key(|l| std::cmp::Reverse(l.0));
+            let lines: Vec<String> = lines.into_iter().take(8).map(|(_, l)| l).collect();
+            out.push((found.len(), (*part, path, page, lines)));
         }
     }
-    out
+    // the pages with the most words first (stable: the pages' order kept among equals)
+    out.sort_by_key(|f| std::cmp::Reverse(f.0));
+    out.into_iter().map(|(_, found)| found).collect()
 }
 
 // -- documents -----------------------------------------------------------------------------------------------------
@@ -3891,5 +3910,33 @@ mod tests {
         assert!(checked("../x.md").is_err() && checked("a/b/c/d.md").is_err() && checked("Personnes/x.txt").is_err());
         assert_eq!(words("de").tasks_path(), "Aufgaben/Aufgaben.md");
         assert_eq!(words("it").lang, "en");
+    }
+
+    #[test]
+    fn search_finds_any_word_and_ranks_by_how_many() {
+        // the real-day bench (2026-10-29): « déménagement logement » missed « Déménagement Nantes »
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(dir.path());
+        update_state(&config, |s| {
+            s.insert("language".into(), json!("fr"));
+        })
+        .unwrap();
+        let who = lea();
+        let facts = vec!["Départ de Lyon en janvier".to_string()];
+        note(&config, Part::Main, "subject", "Déménagement Nantes", "", &facts, &[], "", "", &who).unwrap();
+        let facts = vec!["Cherche un logement près de la gare".to_string(), "Déménagement prévu en janvier".into()];
+        note(&config, Part::Main, "subject", "Appartement", "", &facts, &[], "", "", &who).unwrap();
+        note(&config, Part::Main, "person", "Marc", "", &["Aime le jazz".to_string()], &[], "", "", &who).unwrap();
+        let titles = |q: &str| search(&config, &[Part::Main], q, "").into_iter().map(|f| f.2.title).collect::<Vec<_>>();
+        // both words first, then one; accents and case folded as before
+        assert_eq!(titles("DEMENAGEMENT logement"), ["Appartement", "Déménagement Nantes"]);
+        assert_eq!(titles("nantes"), ["Déménagement Nantes"]);
+        // a short word only ranks: « le » alone in a query with other words finds nothing more
+        assert_eq!(titles("le jazz"), ["Marc"]);
+        assert!(titles("piscine").is_empty());
+        // the lines with the most words first
+        let found = search(&config, &[Part::Main], "logement gare janvier", "");
+        assert_eq!(found[0].2.title, "Appartement");
+        assert!(found[0].3[0].starts_with("- Cherche un logement près de la gare"), "{:?}", found[0].3);
     }
 }

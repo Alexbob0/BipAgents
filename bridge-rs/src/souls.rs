@@ -280,8 +280,10 @@ pub const NOTEBOOK_RULE: &str = concat!(
     "may), and never again a kind they declined. Don't file small talk, one-off questions, passwords or codes (the vault ",
     "keeps those), what your person told you in confidence, or anything they ask you not to keep. ",
     "Search first and update the page that exists rather than making another; file each fact under the right section of ",
-    "the page's fixed outline, one short fact per line (facts about your person themself go to their « Toi » page); ",
-    "correct facts that changed, and refresh ",
+    "the page's fixed outline, one short fact per line. Facts about your person themself go to their « Toi » page, and ",
+    "so does any change in their own life (a move, a new job, a birth, an allergy, how they want their agents to talk ",
+    "to them): note it on « Toi », and on the subject's page too when it is also a project; correct facts that changed, ",
+    "and refresh ",
     "the page's « En bref » summary when what matters most changes. Each journey gets its own trip page (kind trip, ",
     "named by place and month, « Amsterdam, déc. 2021 », with its start and end): its days, flights and trains with times and booking numbers, where they stay, papers, what to ",
     "pack. Precise facts go in records (notebook_record): a purchase and its warranty, a subscription and its renewal, ",
@@ -466,7 +468,9 @@ pub fn language_block_compact(lang: Option<&str>) -> String {
 pub const COMPACT_NOTEBOOK_RULE: &str = concat!(
     "You keep your person's Carnet (their notebook, shared by their agents) with the notebook tools. Without being ",
     "asked, file what will still matter: about a person (birthday, family, preferences, what was agreed) or a subject ",
-    "(decisions, status, next steps); facts about your person go to their « Toi » page. Search first and update the ",
+    "(decisions, status, next steps); facts about your person, and any change in their own life (a move, a new job, a ",
+    "birth, an allergy, how they want to be spoken to), go to their « Toi » page (and to the subject's too if it is ",
+    "also a project). Search first and update the ",
     "existing page; one short fact per line in the right section; correct what changed and refresh « En bref ». A ",
     "journey gets its own trip page (kind trip, named by place and month, start and end). Purchases, warranties, subscriptions, contracts, papers and ",
     "bookings go in records (notebook_record). A fact is not a task: add a task only when your person asks or commits ",
@@ -673,6 +677,18 @@ mod tests {
             assert!(COMPACT_NOTEBOOK_RULE.contains(needed), "missing {needed}");
         }
         assert!(COMPACT_NOTEBOOK_RULE.len() * 10 < NOTEBOOK_RULE.len() * 8);
+    }
+
+    #[test]
+    fn a_change_in_the_person_s_life_goes_to_toi() {
+        // the real-day bench (2026-10-29): « je déménage à Nantes » filed only on a subject page, the common memory
+        // never saw it
+        for rule in [NOTEBOOK_RULE, COMPACT_NOTEBOOK_RULE] {
+            for needed in ["change in their own life", "a move", "a new job", "an allergy", "« Toi »", "also a project"]
+            {
+                assert!(rule.contains(needed), "missing {needed}");
+            }
+        }
     }
 
     #[test]

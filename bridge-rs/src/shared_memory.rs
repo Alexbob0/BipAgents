@@ -29,14 +29,27 @@
 //!   self: the section guessed by the outline's words, no model), attributed to the agent that learnt it (to the
 //!   person for an edit in the app), and queued as « Nouvelles du Carnet » (notebook/news.rs) for the other agents:
 //!   Hermes takes a USER.md change only into its next conversation, the news line reaches the ongoing ones. A removal
-//!   is not mirrored (the page keeps its history; the person corrects it there).
+//!   is not mirrored (the page keeps its history; the person corrects it there);
+//! - **« Toi » → USER.md** (the real-day bench, 2026-10-29: told « je déménage à Nantes », GLM and DeepSeek filed it in
+//!   the Carnet with notebook_note, never with Hermes' memory tool, so the common memory never saw it): a fact that
+//!   appears on the person's « Toi » page (the main part only: the private health part is never read) joins the
+//!   common list too, and so every agent's USER.md, under the same limit and headroom. Only the sections of short,
+//!   lasting facts about the person count (`TOI_SECTIONS`: « Qui tu es », « Famille », « Travail », « Goûts et
+//!   habitudes », « Objectifs », « Ce que tes agents doivent savoir »): not « En bref » (a summary rewritten as facts
+//!   change, it would replace entries all the time), not « Autres » (what the bridge could not place: the nightly
+//!   pass sorts it, and once sorted it counts), never a paragraph, nor a line over `TOI_FACT_MAX` characters. « New »
+//!   means a key not on the page at the last look (`toi`): a fact the bridge itself mirrored to « Toi » is recorded
+//!   there when it is mirrored, and a fact already in a common entry (the same folded words, or contained in one: the
+//!   Carnet splits « a ; b » into two facts) is not added again, so nothing goes round. An entry removed from USER.md
+//!   stays out even though the page keeps it; written on the page again later, it counts again. The first look takes
+//!   the page as it is, once (what was removed stays out). Not queued as news: notebook_note already did that;
 //!
 //! When: `run_forever` looks every `INTERVAL_SECONDS` at the circle's files (their size and time only, nothing read
 //! when nothing changed) and syncs on a change; the app's memory editor (PUT /v1/agents/{id}/memory/user) syncs at
 //! once, so an edit of « what it knows about you » applies to all the person's own agents.
 //!
 //! `<data>/notebook/shared-user.json` (0600): `{"merged", "common": [{text, by, at}], "removed": [[key, at]],
-//! "agents": {agent: {"last": [entry], "seen": [key]}}}`.
+//! "agents": {agent: {"last": [entry], "seen": [key]}}, "toi": [key], "toi_read"}`.
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;
@@ -48,7 +61,7 @@ use serde::{Deserialize, Serialize};
 use crate::app::AppState;
 use crate::config::Config;
 use crate::memory_edit::{self, DELIMITER};
-use crate::notebook::{self, Part, Who};
+use crate::notebook::{self, Page, Part, Who};
 use crate::{py, tools_knowledge as tk};
 
 /// How often the circle's files are looked at.
@@ -59,6 +72,12 @@ pub const COMMON_MAX: usize = 300;
 pub const HEADROOM: usize = 5;
 /// Removed keys remembered at most.
 pub const REMOVED_MAX: usize = 300;
+/// The « Toi » sections whose facts join the common memory (module doc).
+pub const TOI_SECTIONS: [&str; 6] = ["about", "family", "work", "habits", "goals", "agents"];
+/// A « Toi » line longer than this is not a short fact: it stays on the page only.
+pub const TOI_FACT_MAX: usize = 200;
+/// `by` of a common entry taken from the « Toi » page.
+pub const TOI_BY: &str = "toi";
 
 static LOCK: Mutex<()> = Mutex::new(());
 /// One agent's file as looked at: (agent, gives, size, time in nanoseconds).
@@ -98,6 +117,12 @@ pub struct Stored {
     pub removed: Vec<(String, f64)>,
     #[serde(default)]
     pub agents: BTreeMap<String, Seen>,
+    /// The keys on the « Toi » page at the last look, and those the bridge mirrored there.
+    #[serde(default)]
+    pub toi: Vec<String>,
+    /// Whether the « Toi » page was looked at once.
+    #[serde(default)]
+    pub toi_read: bool,
 }
 
 /// An agent of the circle.
@@ -207,6 +232,10 @@ pub fn plan(stored: &mut Stored, members: &[Member], current: &BTreeMap<String, 
                             stored.common.push(Common { text: entry.clone(), by: m.name.clone(), at: now });
                             if !first {
                                 round.learnt.push((m.name.clone(), entry.clone()));
+                                // mirrored to « Toi »: never taken back from there as new
+                                if !stored.toi.contains(&k) {
+                                    stored.toi.push(k.clone());
+                                }
                             }
                         }
                     }
@@ -291,6 +320,73 @@ pub fn plan(stored: &mut Stored, members: &[Member], current: &BTreeMap<String, 
     round
 }
 
+/// The facts of a « Toi » page that may join the common memory (module doc): the list lines of `TOI_SECTIONS`, short.
+pub fn toi_facts(page: &Page) -> Vec<String> {
+    let mut out = Vec::new();
+    for (title, facts) in page.sections() {
+        let Some(id) = notebook::template::resolve("self", &title) else { continue };
+        if !TOI_SECTIONS.contains(&id) {
+            continue;
+        }
+        for f in facts {
+            let text = tk::squeeze(f.text.trim());
+            if f.item && !text.is_empty() && tk::chars(&text) <= TOI_FACT_MAX {
+                out.push(text);
+            }
+        }
+    }
+    out
+}
+
+/// Whether `k` is a common entry's key, or its words are inside one.
+fn in_common(stored: &Stored, k: &str) -> bool {
+    let padded = format!(" {k} ");
+    stored.common.iter().any(|c| format!(" {} ", key(&c.text)).contains(&padded))
+}
+
+/// The facts on « Toi » now: those new since the last look join the common list (not mirrored: they are on the page
+/// already). Returns how many joined.
+pub fn take_toi(stored: &mut Stored, facts: &[String], now: f64) -> usize {
+    let first = !stored.toi_read;
+    let mut keys: Vec<String> = Vec::new();
+    let mut added = 0;
+    for fact in facts {
+        let k = key(fact);
+        if k.is_empty() || keys.contains(&k) {
+            continue;
+        }
+        keys.push(k.clone());
+        if stored.toi.contains(&k) {
+            continue;
+        }
+        if first {
+            // the page as it is: what was removed from the memory stays out
+            if stored.removed.iter().any(|(r, _)| *r == k) {
+                continue;
+            }
+        } else {
+            // written on the page again after a removal: it counts again
+            stored.removed.retain(|(r, _)| *r != k);
+        }
+        if !in_common(stored, &k) {
+            stored.common.push(Common { text: fact.clone(), by: TOI_BY.into(), at: now });
+            added += 1;
+        }
+    }
+    stored.toi = keys;
+    stored.toi_read = true;
+    added
+}
+
+/// The person's « Toi » page's facts that may join the common memory (none when there is no page).
+fn read_toi(config: &Config) -> Vec<String> {
+    let w = notebook::words(&notebook::language(config));
+    match notebook::read_page_text(config, Part::Main, &w.self_path()) {
+        Some(text) => toi_facts(&Page::parse(&text, w.me)),
+        None => Vec::new(),
+    }
+}
+
 /// An agent whose write did not happen (Hermes wrote in between): as if the bridge had only read it.
 pub fn undo(stored: &mut Stored, agent: &str, before: &[String], given: &[String]) {
     if let Some(seen) = stored.agents.get_mut(agent) {
@@ -316,6 +412,7 @@ pub fn sync(config: &Config, now: f64, edited: Option<&str>) -> usize {
             }
         }
         let mut stored = load(config);
+        take_toi(&mut stored, &read_toi(config), now);
         let round = plan(&mut stored, &members, &current, now);
         let mut written = 0;
         for (agent, before, after, given) in &round.writes {
@@ -375,21 +472,33 @@ fn mirror(config: &Config, agent: &str, entry: &str, by_person: bool, now: f64) 
     }
 }
 
-/// The circle's files, by size and time (no read).
+/// A file's size and time in nanoseconds (0 when missing).
+fn stamp(file: &std::path::Path) -> (u64, u128) {
+    let meta = std::fs::metadata(file).ok();
+    let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+    let time = meta
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    (size, time)
+}
+
+/// The circle's files and the « Toi » page, by size and time (no read).
 fn fingerprint(config: &Config) -> Vec<Print> {
-    circle(config)
+    let mut print: Vec<Print> = circle(config)
         .into_iter()
         .map(|m| {
-            let meta = std::fs::metadata(m.folder.join("memories").join("USER.md")).ok();
-            let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
-            let time = meta
-                .and_then(|m| m.modified().ok())
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_nanos())
-                .unwrap_or(0);
+            let (size, time) = stamp(&m.folder.join("memories").join("USER.md"));
             (m.name, m.gives, size, time)
         })
-        .collect()
+        .collect();
+    if !print.is_empty() {
+        let w = notebook::words(&notebook::language(config));
+        let (size, time) = stamp(&notebook::part_root(config, Part::Main).join(w.self_path()));
+        print.push((String::new(), false, size, time));
+    }
+    print
 }
 
 /// A round when a file of the circle (or the circle itself) changed since the last look.
@@ -548,6 +657,66 @@ mod tests {
         assert_eq!(now["budget"], ["A.", "B."]);
     }
 
+    fn toi(stored: &mut Stored, facts: &[&str], now: f64) -> usize {
+        take_toi(stored, &facts.iter().map(|f| f.to_string()).collect::<Vec<_>>(), now)
+    }
+
+    #[test]
+    fn a_fact_on_toi_joins_the_common_memory_once() {
+        let members = [member("budget", true, 1375), member("coach", true, 1375)];
+        let mut stored = Stored::default();
+        let mut now = files(&[("budget", &[]), ("coach", &[])]);
+        assert_eq!(toi(&mut stored, &["Travaille de nuit"], 1.0), 1, "the first look takes the page");
+        let r = plan(&mut stored, &members, &now, 1.0);
+        apply(&mut now, &r);
+        assert!(r.learnt.is_empty(), "not mirrored back to « Toi »");
+        // an agent files a move on « Toi »: every USER.md gets it, nothing goes back to the page
+        assert_eq!(toi(&mut stored, &["Travaille de nuit", "Déménage à Nantes en janvier"], 2.0), 1);
+        let r = plan(&mut stored, &members, &now, 2.0);
+        assert!(r.learnt.is_empty(), "{r:?}");
+        apply(&mut now, &r);
+        for agent in ["budget", "coach"] {
+            assert_eq!(now[agent], ["Travaille de nuit", "Déménage à Nantes en janvier"], "{agent}");
+        }
+        assert_eq!(toi(&mut stored, &["Travaille de nuit", "Déménage à Nantes en janvier"], 3.0), 0);
+        assert!(plan(&mut stored, &members, &now, 3.0).writes.is_empty(), "no ping-pong");
+        // an entry an agent learns is mirrored to « Toi » (split by the Carnet): it does not come back as new
+        now.get_mut("coach").unwrap().push("Alex court le dimanche ; Alex aime le jazz".into());
+        let r = plan(&mut stored, &members, &now, 4.0);
+        assert_eq!(r.learnt.len(), 1);
+        apply(&mut now, &r);
+        let page = ["Travaille de nuit", "Déménage à Nantes en janvier", "Alex court le dimanche", "Alex aime le jazz"];
+        assert_eq!(toi(&mut stored, &page, 5.0), 0);
+        assert!(plan(&mut stored, &members, &now, 5.0).writes.is_empty());
+        // removed from the memory: stays out although the page keeps it
+        now.get_mut("budget").unwrap().retain(|e| e != "Travaille de nuit");
+        let r = plan(&mut stored, &members, &now, 6.0);
+        apply(&mut now, &r);
+        assert!(now.values().all(|e| !e.contains(&"Travaille de nuit".to_string())));
+        assert_eq!(toi(&mut stored, &page, 7.0), 0);
+        assert!(plan(&mut stored, &members, &now, 7.0).writes.is_empty());
+        // taken off the page and written there again: it counts again
+        toi(&mut stored, &page[1..], 8.0);
+        assert_eq!(toi(&mut stored, &page, 9.0), 1);
+        let r = plan(&mut stored, &members, &now, 9.0);
+        apply(&mut now, &r);
+        assert!(now["coach"].contains(&"Travaille de nuit".to_string()));
+    }
+
+    #[test]
+    fn only_short_facts_of_the_lasting_sections_count() {
+        let page = Page::parse(
+            "---\ntype: self\n---\n# Toi\n\n## En bref\nAlex, 41 ans, Lyon.\n\n## Qui tu es\n- Habite Lyon — *Budget, \
+             2026-10-29*\n\n## Travail\nUn paragraphe.\n- Travaille de nuit\n\n## Ce que tes agents doivent savoir\n\
+             - Tutoie-moi\n\n## Autres\n- Pas encore rangé\n",
+            "Toi",
+        );
+        let facts = toi_facts(&page);
+        assert_eq!(facts, ["Habite Lyon", "Travaille de nuit", "Tutoie-moi"]);
+        let long = format!("---\ntype: self\n---\n# Toi\n\n## Objectifs\n- {}\n", "mot ".repeat(60));
+        assert!(toi_facts(&Page::parse(&long, "Toi")).is_empty(), "a long line stays on the page");
+    }
+
     fn place() -> (tempfile::TempDir, Config) {
         let dir = tempfile::tempdir().unwrap();
         let mut config = Config::with_key("k".repeat(40));
@@ -618,6 +787,40 @@ mod tests {
         let news = notebook::news::take(&config, "coach", 4.0).unwrap();
         assert!(news.contains("Nantes"), "{news}");
         assert!(notebook::news::take(&config, "budget", 4.0).is_none(), "not to the one that learnt it");
+        assert_eq!(sync(&config, 5.0, None), 0, "the mirrored entry does not come back from « Toi »");
+    }
+
+    #[test]
+    fn a_fact_filed_on_toi_reaches_every_user_md() {
+        let (_dir, config) = place();
+        assert_eq!(sync(&config, 1.0, None), 0);
+        // what the real-day bench's agents do: notebook_note, not the memory tool
+        let who = Who::agent(&config, "budget");
+        let fact = vec!["Déménage à Nantes en janvier".to_string()];
+        notebook::note(&config, Part::Main, "self", "Toi", "", &fact, &[], "", "", &who).unwrap();
+        assert_eq!(sync(&config, 2.0, None), 4);
+        for agent in ["quotidien", "budget", "coach", "sante"] {
+            assert_eq!(std::fs::read_to_string(user_md(&config, agent)).unwrap(), "Déménage à Nantes en janvier");
+        }
+        assert_eq!(sync(&config, 3.0, None), 0, "no ping-pong");
+        // the private health part is never read
+        crate::health::set_enabled(&config, "sante", true).unwrap();
+        let who = Who::agent(&config, "sante");
+        notebook::note(
+            &config,
+            Part::Health,
+            "self",
+            "Toi",
+            "",
+            &["Allergique aux noix".to_string()],
+            &[],
+            "",
+            "",
+            &who,
+        )
+        .unwrap();
+        sync(&config, 4.0, None);
+        assert!(!std::fs::read_to_string(user_md(&config, "coach")).unwrap().contains("noix"));
     }
 
     #[test]
