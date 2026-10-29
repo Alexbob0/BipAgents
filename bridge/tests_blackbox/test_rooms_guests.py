@@ -37,5 +37,8 @@ def test_a_relatives_agent_answers_in_the_room(bridges, fakes):
     runs = [r for r in fakes.hermes.started.values() if r["agent"] == "cuisine"]
     assert len(runs) == 1 and "a relative of your person" in runs[0]["input"]
     assert "Alex is not your person" in runs[0]["instructions"]
+    # Alex's words drive Cuisine's turn on Marie's place: the run is closed like a relative's (patch 0018's mark)
+    from test_shared_agents import RELATIVE_RUN_TOOLS
+    assert runs[0]["guest_turn"] == {"tools": RELATIVE_RUN_TOOLS}
     assert a.get(f"/v1/rooms/{rid}", headers=AUTH).json()["tokens"] == {"input": 0, "output": 0}
     assert b.post("/family/r/cuisine/turn", headers={"Authorization": "Bearer nope"}, json={}).status_code == 401

@@ -1732,8 +1732,12 @@ async fn mcp(
             return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(closed))));
         }
     }
-    if crate::agent_shares::relative_turn(&state.config(), &agent.name) {
-        // a relative talks to this agent: the person's own data stays closed (agent_shares.rs)
+    if crate::agent_shares::relative_turn(&state.config(), &agent.name)
+        || crate::rooms_remote::guest_turn_going(&state.config(), &agent.name)
+        || crate::peers::household_turn(&agent.name)
+    {
+        // a relative (or a relative's discussion, or another household's agent) talks to this agent: the person's own
+        // data stays closed (agent_shares.rs; Hermes closes its own tools for that run, patch 0018)
         if let Some(closed) = crate::agent_shares::closed_tool(&name) {
             tracing::info!(agent = %agent.name, tool = %name, "tool closed during a relative's turn");
             return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(closed))));

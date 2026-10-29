@@ -347,7 +347,7 @@ class FakeHermes(Fake):
                 run_id = f"r{len(self.started) + 1}"
                 self.started[run_id] = {"status": "running", "polls": 0, "input": text, "now": now,
                                         "session_id": body.get("session_id"), "instructions": body.get("instructions"),
-                                        "agent": agent}
+                                        "agent": agent, "guest_turn": body.get("guest_turn")}
             return JSONResponse({"run_id": run_id, "status": "started"}, status_code=202)
         run_id = parts[2] if len(parts) > 2 else ""
         if len(parts) == 4 and parts[3] == "events":

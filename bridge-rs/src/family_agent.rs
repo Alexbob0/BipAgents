@@ -17,8 +17,10 @@
 //! drive a browser with someone's logins (`agents_admin::DISK_TOOLS`: terminal, file, code_execution, browser) are
 //! turned off when it is made, isolated install or not, its visible browser is not set up, and the settings refuse to
 //! turn them (or Santé, the Carnet, the browser) back on: with them, the agent could read its creator's files on a
-//! shared machine, and closing them per turn is not possible (agent_shares.rs's caveat). Web search stays (it reads
-//! nothing of anyone). Its personality carries a block saying all this (`souls`-style, `with_family`).
+//! shared machine. A member's turn is moreover marked for Hermes (patch 0018, agent_shares.rs Safety): only `TOOLS`
+//! and web search, no `session_search` over the creator's own conversations with it, no memory writes, no USER.md.
+//! Web search stays (it reads nothing of anyone). Its personality carries a block saying all this (`souls`-style,
+//! `with_family`).
 //!
 //! **The family Carnet** (`<data>/family-notebook.json` on the creator's place): pages, lists (« Courses »), shared
 //! tasks and the family's dates (members add the ones they choose to share), readable and editable from every member's

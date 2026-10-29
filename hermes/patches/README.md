@@ -39,6 +39,7 @@ image, which is swept after 24 h); 0004 goes once a Hermes update brings it.
 | 0015 time anchor: the time with each message | applies (after 0009) | applies (`8acb7f6580`, `patch --dry-run`, checked 2026-10-29) |
 | 0016 `message_agent`: the bridge's, Bot Chat included | applies (after 0012) | not checked yet |
 | 0017 address items with name, phone, e-mail | applies | applies (`0b4481ad9c`, `patch --dry-run`, checked 2026-10-29) |
+| 0018 guest turns: closed tools, no USER.md | applies (after 0001–0017) | `agent/` applies; `gateway/platforms/api_server*.py` **does not** on `d050956633` (context moved): redo the two gateway files at the next update |
 
 ## 0001 — `clarify` in the Runs API
 
@@ -440,3 +441,57 @@ each) and the country as its ISO code (a country `<select>` matches it by its op
 patch touches these files; `patch --dry-run` passes on `517b5e10f`, `97a9ae8ee` and upstream `main` (`0b4481ad9c`).
 Without it, the bridge still keeps and reads the entry (its handle `bridge` when Hermes refuses it), and the browser
 fills the address fields only.
+
+## 0018 — guest turns: only the guest's tools, no USER.md
+
+**Problem.** BipAgents lets someone other than an agent's person talk to it: a relative with an agent shared with
+them, a member with the family's agent, another household's agent, a relative's agent in a discussion
+(bridge-rs/src/agent_shares.rs, family_agent.rs, peers.rs, rooms_remote.rs). The bridge refuses its own MCP tools that
+reach the person's data during such a turn, but Hermes' own tools (terminal, files, browser and its vault fill, code
+execution, `session_search` over the person's past conversations, memory writes, routines, `send_message` /
+`message_agent`, delegation, skills) were closed by instructions only, and Hermes put the person's profile (USER.md)
+in every turn's system prompt. « Pas tes secrets » has to hold by permissions.
+
+**What the patch does.** A `POST /v1/runs` or `POST /api/sessions/{id}/chat[/stream]` body may carry
+`guest_turn: {"tools": [names]}` (new `agent/guest_turn.py`). For that turn only:
+- **tools**: the agent built for the turn keeps the listed MCP tools (`mcp__<server>__<tool>`) and the listed Hermes
+  tools of `NATIVE_TOOLS` (`web_search` only), each in view even when the tool search defers it (raw catalog,
+  `skip_tool_search_assembly`); any other name in the mark is dropped, never opened. The list is put back after the
+  per-turn `message_agent` injection and before the system prompt is built (`narrow`), and every model request sends
+  only those tools (`build_api_kwargs`), whatever a pinned `tools[]` merge or an MCP refresh added;
+- **dispatcher**: any other tool a model names anyway is refused (`{"error": …closed during this turn…}`) in Hermes'
+  policy gate (`tool_executor._dispatch_authorized_once`, before plugin hooks, guardrails and dispatch: both the
+  sequential and the concurrent path) and in `invoke_tool`;
+- **prompt**: USER.md is left out (`_user_profile_enabled = False`), the working directory's context files too
+  (`skip_context_files`, with `load_soul_identity` so SOUL.md, the personality, stays); MEMORY.md stays. The prompt
+  is built for the turn and never stored on the session, nor the session's tool pin restored or written: the
+  person's own next turn in that session gets their usual prompt and tools back;
+- **memory**: no memory or skill nudge, no background review, no external memory provider (not checked out for the
+  session, shut down if the config built one): nothing the guest says is written into the agent's memory or skills;
+- a guest turn runs in this process, never handed to a Desktop holding the Bot Chat live;
+- a malformed mark fails the request (400 `invalid_guest_turn`): a client asking for a closed turn never gets an
+  open one. Without the mark nothing changes.
+
+**Limits.** The turn still sees its session's history (a relative's own conversation; for another household's agent,
+the target's Bot Chat, which is how Hermes peers talk) and MEMORY.md, common by decision 3A (2026-10-25). A compaction
+during a guest turn stores the guest's prompt on the rotated session until its next rebuild (only the household Bot
+Chat case mixes guest and owner turns). `/v1/chat/completions` and `/v1/responses` ignore the mark (the bridge never
+sends guest turns there).
+
+**Files.** `agent/guest_turn.py` (new), `agent/chat_completion_helpers.py`, `agent/tool_executor.py`,
+`agent/agent_runtime_helpers.py`, `agent/conversation_loop.py`, `agent/turn_context.py`,
+`gateway/platforms/api_server.py`, `gateway/platforms/api_server_runs.py`; new `tests/agent/test_guest_turn.py`
+(17 tests) and `tests/gateway/test_api_server_guest_turn.py` (9 tests).
+
+**Tests.** Run on the Mac (2026-10-29, Python 3.14, `uv sync --frozen --group dev --extra messaging` on `517b5e10f`
+with 0001–0018): the two new files, 26 passed; with `test_system_prompt*.py`, `test_turn_context*.py`,
+`test_tool_executor_checkpoint_paths.py`, `test_inline_tool_executors_memory_args.py`,
+`test_chat_completion_helpers_provider_sort.py`, `tests/gateway/test_api_server_runs.py`,
+`test_session_chat_approval.py`: 241 passed; the dispatch and Bot Mode suites (`test_interrupt.py`,
+`test_concurrent_interrupt.py`, `test_sequential_tool_timeout.py`, `test_start_order_gate.py`, `test_shell_hooks.py`,
+`test_memory_provider.py`, `test_tool_call_incremental_persistence.py`, `test_tool_result_memory_trim.py`,
+`test_interrupt_issuer_attribution.py`, `test_bot_mode_dm*.py` incl. 0016's, `test_refresh_agent_mcp_tools.py`,
+`test_bot_mode_probe.py`): 264 passed, 15 skipped, the same with and without the patch. The bridge's side:
+`agent_shares.rs`, `peers.rs` unit tests and the black-box `test_shared_agents.py`, `test_family_agent.py`,
+`test_rooms_guests.py`, `test_households_and_peers.py` (the mark on each path). The real-model check is in
+internal/next/relative-turns.md.

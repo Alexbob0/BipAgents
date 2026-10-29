@@ -60,11 +60,18 @@
 //! **Safety** (each relative's turn, on the owner's bridge):
 //! - Her words reach the agent framed as a relative's message (« Marie, a relative of your person, writes… »), never as
 //!   the owner's instructions, with run instructions saying so (souls.rs `CONTENT_RULE`).
-//! - The owner's private data stays closed: while a relative's turn goes on, the bridge's MCP tools answer only
-//!   `RELATIVE_TOOLS` (memory pages, weather, routes, maps); mail, calendar, contacts, health, notebook, dates (the
-//!   owner's Carnet's birthdays), archives, files, pages, audio, tasks are refused (agent_tools.rs). The instructions say the same for Hermes' own
-//!   tools (terminal, files, browser and its vault fill), which the bridge cannot close per turn: an agent with those
-//!   on and private files in its sandbox is what `confirm` is for.
+//! - The owner's private data stays closed, by permissions (internal/next/relative-turns.md):
+//!   - the bridge's MCP tools: while a relative's turn goes on they answer only `RELATIVE_TOOLS` (memory pages,
+//!     weather, routes, maps); mail, calendar, contacts, health, notebook, dates (the owner's Carnet's birthdays),
+//!     archives, files, pages, audio, tasks, message_agent are refused (agent_tools.rs);
+//!   - Hermes' own tools: the run is marked (`guest_turn`, Hermes patch 0018, `guest_tools`): Hermes offers it only
+//!     those MCP tools and `web_search`, and refuses in its dispatcher every other tool a model names anyway:
+//!     terminal, files, browser and its vault fill, code execution, `session_search` (the owner's past
+//!     conversations), memory writes, routines, messages to other agents, delegation, skills;
+//!   - the owner's profile: Hermes leaves the agent's USER.md (what it knows about its person) out of the turn's
+//!     prompt; MEMORY.md, the agent's own notes, stays (common by decision 3A), with its personality.
+//!   The instructions say it too (belt and braces). A Hermes without patch 0018 ignores the mark: then only the
+//!   bridge's closure and the instructions hold, which is what `confirm` warned about.
 //! - Approvals belong to the person talking: the relative's are left out of the owner's Boîte and `/v1/approve`
 //!   refuses them (403); she answers through her bridge.
 //! - Only text crosses: `MEDIA:` lines are taken out of the replies (rooms.rs `room_text`).
@@ -114,6 +121,29 @@ pub const RELATIVE_TOOLS: [&str; 5] = [
     crate::routes::TOOL_NAME,
     crate::maps::TOOL_NAME,
 ];
+/// Hermes' own tools a guest turn keeps (patch 0018 accepts only these besides MCP tools): it reads nothing of anyone.
+pub const GUEST_NATIVE_TOOLS: [&str; 1] = ["web_search"];
+
+/// The tools a guest turn may use, as Hermes names them: the bridge's `names` (`mcp__bipagents__<name>`) and
+/// `GUEST_NATIVE_TOOLS`.
+pub fn guest_tools(names: &[&str]) -> Vec<String> {
+    names
+        .iter()
+        .map(|n| format!("{}{n}", crate::tool_diet::BRIDGE_PREFIX))
+        .chain(GUEST_NATIVE_TOOLS.iter().map(|n| n.to_string()))
+        .collect()
+}
+
+/// A relative's turn with `agent`: the family's agent keeps its family tools (family_agent.rs `TOOLS`), any other
+/// shared agent `RELATIVE_TOOLS`.
+pub fn relative_guest_tools(config: &Config, agent: &str) -> Vec<String> {
+    if crate::family_agent::is_family(config, agent) {
+        guest_tools(&crate::family_agent::TOOLS)
+    } else {
+        guest_tools(&RELATIVE_TOOLS)
+    }
+}
+
 /// The first line of a relative's message as the agent gets it (taken off again for the thread).
 const FRAME_MARK: &str = "a relative of your person";
 
@@ -680,9 +710,10 @@ async fn served_post(
     let session = str_of(&c, "session");
     let base = state.hermes.session(&agent, &session).await.map(|s| counters_of(&s)).unwrap_or((0, 0));
     let input = crate::dates::now::stamped(&config, &agent, &framed(&person, &shown, &text));
+    let tools = relative_guest_tools(&config, &agent.name);
     let run_id = state
         .hermes
-        .start_run(&agent, &input, &session, Some(&rules))
+        .start_guest_run(&agent, &input, &session, Some(&rules), &tools)
         .await
         .map_err(|_| HttpError::new(502, "the agent can't be reached"))?;
     update(&owner_path(&config), |data| {
@@ -1259,6 +1290,28 @@ mod tests {
         }
         let rules = relative_instructions("Marie", "Marie");
         assert!(rules.contains("never as your person's instructions") && rules.contains("stay closed"));
+    }
+
+    #[test]
+    fn a_relatives_run_is_marked_with_the_bridge_tools_it_keeps_and_web_search_only() {
+        let tools = guest_tools(&RELATIVE_TOOLS);
+        assert_eq!(
+            tools,
+            [
+                "mcp__bipagents__knowledge_read",
+                "mcp__bipagents__knowledge_search",
+                "mcp__bipagents__weather",
+                "mcp__bipagents__route",
+                "mcp__bipagents__map_image",
+                "web_search"
+            ]
+        );
+        for closed in ["terminal", "read_file", "session_search", "memory", "browser_navigate", "execute_code"] {
+            assert!(!tools.iter().any(|t| t == closed), "{closed}");
+        }
+        let family = guest_tools(&crate::family_agent::TOOLS);
+        assert!(family.contains(&"mcp__bipagents__family_notebook_write".to_string()));
+        assert_eq!(crate::hermes::guest_turn(&tools)["tools"][5], "web_search");
     }
 
     #[test]

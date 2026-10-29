@@ -14,6 +14,12 @@
 //! of her agents' runs; Léa answers it, never Alex. Léa doesn't see the room (only her agent's part in it, through her
 //! approvals): a relative sees a room only when it is theirs.
 //!
+//! **Léa's things stay closed** during that turn, by permissions, as during a relative's turn with a shared agent
+//! (agent_shares.rs, Safety): Alex's words drive it. Léa's bridge marks the run (`guest_turn`, Hermes patch 0018:
+//! only the bridge tools of `agent_shares::RELATIVE_TOOLS` and `web_search`, no Hermes tool that reaches Léa's data
+//! or acts, no USER.md in the prompt) and its MCP tools answer only `RELATIVE_TOOLS` while the turn goes on
+//! (`guest_turn_going`, agent_tools.rs).
+//!
 //! **Credit**: each side's own. Cuisine's turn runs on Léa's model and key; Alex's room counts no tokens for it.
 //!
 //! **In the room**: a guest's messages have `from: "cuisine__lea"`; the room's participants list it with
@@ -321,9 +327,10 @@ async fn guest_turn(
     };
     let rules = guest_instructions(&title, &host, &roster);
     let input = crate::dates::now::stamped(&config, &agent, &input);
+    let tools = crate::agent_shares::guest_tools(&crate::agent_shares::RELATIVE_TOOLS);
     let run_id = state
         .hermes
-        .start_run(&agent, &input, &session, Some(&rules))
+        .start_guest_run(&agent, &input, &session, Some(&rules), &tools)
         .await
         .map_err(|_| HttpError::new(502, "the agent can't be reached"))?;
     // approvals and questions are pushed to this person and listed in her Boîte, as for any of her agents' runs
@@ -336,6 +343,21 @@ async fn guest_turn(
     })?;
     tracing::info!(household = %household, agent = %agent.name, "rooms: a turn in a relative's discussion");
     Ok(web::ok(json!({"run_id": run_id})))
+}
+
+/// Whether a relative's discussion has a turn of `agent` going on (its MCP tools are then closed as during a
+/// relative's turn, agent_tools.rs). A turn is forgotten when its host reads its end, else after
+/// `agent_shares::TURN_MAX_SECONDS`.
+pub fn guest_turn_going(config: &Config, agent: &str) -> bool {
+    let Ok(data) = std::fs::read_to_string(guest_path(config)) else { return false };
+    let data: Value = serde_json::from_str(&data).unwrap_or(Value::Null);
+    let at = py::time_time();
+    data.get("runs").and_then(Value::as_object).is_some_and(|runs| {
+        runs.values().any(|r| {
+            str_of(r, "agent") == agent
+                && r.get("at").and_then(Value::as_f64).is_some_and(|t| at - t < crate::agent_shares::TURN_MAX_SECONDS)
+        })
+    })
 }
 
 /// The run this household started with our agent (404 for any other).

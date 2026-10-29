@@ -1,11 +1,24 @@
 """Agents shared with relatives (agent_shares.rs), over two linked bridges: Alex shares Cuisine with Marie, she adds
 it and talks to it in her own conversation (hidden in Alex's Hermes); her turn's approval is hers (her Boîte, her
 answer relayed), never in Alex's; the owner's private tools are closed during her turn; her tokens are counted."""
+import json
 import threading
 import time
 
 from bbkit.common import AUTH, sse
+from bbkit.mcp import TOKEN, call, give_token
 from test_households_and_peers import household
+
+# A relative's run as Hermes gets it (patch 0018's mark): the bridge tools of RELATIVE_TOOLS and web search, nothing else.
+RELATIVE_RUN_TOOLS = ["mcp__bipagents__knowledge_read", "mcp__bipagents__knowledge_search", "mcp__bipagents__weather",
+                      "mcp__bipagents__route", "mcp__bipagents__map_image", "web_search"]
+# Hermes' own tools that reach the owner's data or act: never in a relative's run.
+HERMES_CLOSED = ["terminal", "read_file", "write_file", "patch", "search_files", "execute_code", "browser_navigate",
+                 "browser_vault_fill", "session_search", "memory", "cronjob", "send_message", "message_agent",
+                 "delegate_task", "skill_view", "skill_manage", "tool_search"]
+# The bridge's tools reaching the owner's data: refused while a relative's turn goes on.
+OWNER_TOOLS = ["mail_search", "mail_read", "calendar_list", "contacts_search", "notebook_search", "archive_search",
+               "send_files_to_agent", "health", "dates", "message_agent", "create_page"]
 
 
 def wait(predicate, timeout=10.0):
@@ -61,6 +74,16 @@ def test_a_relative_talks_to_a_shared_agent(bridges, fakes):
     run = fakes.hermes.started["r1"]
     assert run["agent"] == "cuisine" and run["input"].startswith("[Marie, a relative of your person")
     assert "never as your person's instructions" in run["instructions"]
+    # The run is marked for Hermes: only these tools, none of Hermes' own that reach Alex's data or act.
+    assert run["guest_turn"] == {"tools": RELATIVE_RUN_TOOLS}
+    assert not set(HERMES_CLOSED) & set(run["guest_turn"]["tools"])
+    # While her turn goes on, the bridge refuses Cuisine's calls reaching Alex's data, and answers the harmless ones.
+    give_token(a, "cuisine", TOKEN)
+    for name in OWNER_TOOLS:
+        refused = call(a, name, {"query": "x"}, token=TOKEN)
+        assert refused["isError"] is True and "closed during their turn" in refused["content"][0]["text"], name
+    assert "closed during their turn" not in call(a, "knowledge_search", {"words": "dîner"}, token=TOKEN)["content"][0]["text"]
+    assert "closed during their turn" not in json.dumps(call(a, "weather", {"place": "Lisbonne"}, token=TOKEN))
     assert b.post(path, headers=AUTH, json={"text": "Encore ?"}).status_code == 409
 
     assert wait(lambda: b.get(path, headers=AUTH).json()["approvals"] != [])
