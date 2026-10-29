@@ -4,6 +4,7 @@
 moi » never again; the page `/v1/tips` with each feature's state, the costumes, the counts; a switch to turn it off."""
 import json
 
+from bbkit.fakes import waiting_notes
 from bbkit.common import AUTH
 
 
@@ -30,7 +31,7 @@ def say(bridge, text, kinds=None, session="s1"):
         body["kinds"] = kinds
     response = bridge.post("/v1/live/recaps/take", headers=AUTH, json=body)
     assert response.status_code == 200, response.text
-    return response.json()["recap"]
+    return waiting_notes(response.json()["recap"])
 
 
 def tip_cards(bridge):
@@ -138,6 +139,6 @@ def test_adoption_the_page_and_the_switch(bridge):
 def test_an_older_app_without_text(bridge):
     daytime(bridge)
     response = bridge.post("/v1/live/recaps/take", headers=AUTH, json={"agent": "wellness", "session": "s1"})
-    assert response.status_code == 200 and response.json()["recap"] is None   # day 0: nothing from the calendar
+    assert response.status_code == 200 and waiting_notes(response.json()["recap"]) is None   # day 0: nothing from the calendar
     view = bridge.get("/v1/tips", headers=AUTH).json()
     assert view["day"] == 0 and view["enabled"] is True and len(view["features"]) == 13

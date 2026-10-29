@@ -6,6 +6,7 @@ import json
 import os
 import time
 
+from bbkit.fakes import waiting_notes
 from bbkit.common import AUTH
 from bbkit.mcp import call, give_token, text_of
 
@@ -70,9 +71,9 @@ def test_80_percent_one_card_one_note_and_keep_the_last(bridge):
     # measured again: no second card, no second note this month
     bridge.post("/v1/storage/measure", headers=AUTH)
     assert len(space_cards(bridge)) == 1
-    note = bridge.post("/v1/live/recaps/take", headers=AUTH, json={"agent": "wellness", "session": "s1"}).json()["recap"]
+    note = waiting_notes(bridge.post("/v1/live/recaps/take", headers=AUTH, json={"agent": "wellness", "session": "s1"}).json()["recap"])
     assert note.startswith("<!--bip:space\n") and "80 % full" in note and "podcasts" in note
-    assert bridge.post("/v1/live/recaps/take", headers=AUTH, json={"agent": "wellness", "session": "s1"}).json()["recap"] is None
+    assert waiting_notes(bridge.post("/v1/live/recaps/take", headers=AUTH, json={"agent": "wellness", "session": "s1"}).json()["recap"]) is None
     done = approve(bridge, card, "keep_last:5")
     assert done.status_code == 200 and done.json() == {"ok": True, "choice": "keep_last", "removed": 15, "freed": 15000}
     assert len(list((bridge.state_dir / "agent-audio" / "wellness").iterdir())) == 5

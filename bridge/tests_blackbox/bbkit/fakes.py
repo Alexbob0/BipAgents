@@ -11,6 +11,7 @@ import array
 import asyncio
 import json
 import math
+import re
 import struct
 import threading
 import time
@@ -236,6 +237,23 @@ class FakeVoiceServer(Fake):
 
 # -- Hermes --------------------------------------------------------------------------------------------------------
 
+NOW_LINE = re.compile(r"\A<!--bip:now ([^\n]*?)-->(?:\n|\Z)")
+
+
+def split_now(text: Any) -> Tuple[Optional[str], Any]:
+    """The current time the bridge puts at the top of the turns it starts (bridge-rs/src/dates/now.rs): (what it says,
+    the rest); (None, the text) without one. The fake keeps them apart so tests read a turn's own words."""
+    found = NOW_LINE.match(text) if isinstance(text, str) else None
+    return (found.group(1), text[found.end():]) if found else (None, text)
+
+
+def waiting_notes(recap: Optional[str]) -> Optional[str]:
+    """`POST /v1/live/recaps/take`'s `recap` without the current time at its top: None when only the time was there."""
+    now, rest = split_now(recap)
+    assert recap is None or now is not None, f"no current time first: {recap!r}"
+    return rest or None
+
+
 def split_agent(path: str) -> Tuple[str, str]:
     """`/p/<agent>/rest` (a profile of the hub) -> (agent, /rest); anything else is the root agent ("")."""
     parts = path.split("/")
@@ -324,9 +342,10 @@ class FakeHermes(Fake):
     async def _runs(self, seen: Seen, agent: str, parts: List[str], method: str) -> Response:
         if len(parts) == 2 and method == "POST":
             body = seen.json() or {}
+            now, text = split_now(body.get("input"))
             with self.lock:
                 run_id = f"r{len(self.started) + 1}"
-                self.started[run_id] = {"status": "running", "polls": 0, "input": body.get("input"),
+                self.started[run_id] = {"status": "running", "polls": 0, "input": text, "now": now,
                                         "session_id": body.get("session_id"), "instructions": body.get("instructions"),
                                         "agent": agent}
             return JSONResponse({"run_id": run_id, "status": "started"}, status_code=202)
@@ -425,7 +444,9 @@ class FakeHermes(Fake):
         if len(parts) == 4 and parts[3] == "messages":
             return JSONResponse({"messages": self.messages.get((agent, session_id), [])})
         if len(parts) == 4 and parts[3] == "chat" and method == "POST":
-            self.chats.append({"agent": agent, "session": session_id, **(seen.json() or {})})
+            body = seen.json() or {}
+            now, body["message"] = split_now(body.get("message"))
+            self.chats.append({"agent": agent, "session": session_id, **body, "now": now})
             return JSONResponse({"message": {"role": "assistant", "content": self.chat_reply}})
         return JSONResponse({"error": "no route"}, status_code=404)
 
