@@ -10,7 +10,8 @@
 //!     PUT    /v1/agents/{id}/memory/pages/{path}      {text}
 //!     DELETE /v1/agents/{id}/memory/pages/{path}
 //!
-//! Only an agent this install manages (agents_admin.editable).
+//! Only an agent this install manages (agents_admin.editable). `USER.md` is common to the person's own agents
+//! (shared_memory.rs): an edit of « what it knows about you » goes to all of them at once.
 //!
 //! Port of `bridge/bipbridge/memory_edit.py` (owner group: tools-knowledge).
 
@@ -70,7 +71,7 @@ fn file_of(which: &str) -> Option<(&'static str, usize)> {
 }
 
 /// The profile's own limit when its config sets one, else Hermes' default.
-fn limit(folder: &Path, which: &str) -> usize {
+pub fn limit(folder: &Path, which: &str) -> usize {
     let default = file_of(which).map(|(_, l)| l).unwrap_or(0);
     let key = LIMIT_KEYS.iter().find(|(w, _)| *w == which).map(|(_, k)| *k).unwrap_or("");
     let Ok(text) = tk::read_text(&folder.join("config.yaml")) else { return default };
@@ -167,6 +168,52 @@ pub fn write_entries(folder: &Path, which: &str, entries: &[String]) -> anyhow::
         tk::replace_with(&path.with_file_name(format!("{file}.bipagents")), &path, text.as_bytes())?;
     }
     read_entries(folder, which)
+}
+
+/// The entries of a file as they are on disk (no limit, no count), `None` when it cannot be read.
+fn entries_on_disk(path: &Path) -> Option<Vec<String>> {
+    let text = match tk::read_text(path) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(_) => return None,
+    };
+    Some(text.split(DELIMITER).map(|e| tk::strip(e).to_string()).filter(|e| !e.is_empty()).collect())
+}
+
+/// Read, change and write `which` under Hermes' lock in one go (the shared memory, shared_memory.rs): `change` gets
+/// the entries as they are now and returns the new ones, or `None` to leave the file alone. Returns whether it wrote.
+/// The new entries are cleaned as `write_entries` cleans them; no limit is checked (the caller keeps within it).
+pub fn update_entries(
+    folder: &Path,
+    which: &str,
+    change: impl FnOnce(&[String]) -> Option<Vec<String>>,
+) -> anyhow::Result<bool> {
+    let (file, _) = file_of(which).ok_or_else(|| anyhow::anyhow!("KeyError: '{which}'"))?;
+    let path = folder.join("memories").join(file);
+    let _lock = Locked::take(&path)?;
+    let now = entries_on_disk(&path).ok_or_else(|| anyhow::anyhow!("{} cannot be read", path.display()))?;
+    let Some(next) = change(&now) else { return Ok(false) };
+    let cleaned: Vec<String> = next
+        .iter()
+        .map(|e| tk::strip(&SEPARATORS.replace_all(tk::strip(e), "")).to_string())
+        .filter(|e| !e.is_empty())
+        .collect();
+    if cleaned == now {
+        return Ok(false);
+    }
+    tk::replace_with(&path.with_file_name(format!("{file}.bipagents")), &path, cleaned.join(DELIMITER).as_bytes())?;
+    Ok(true)
+}
+
+/// The entries of `which` read under Hermes' lock (never half a write), `None` when the file cannot be read.
+pub fn read_locked(folder: &Path, which: &str) -> Option<Vec<String>> {
+    let (file, _) = file_of(which)?;
+    let path = folder.join("memories").join(file);
+    if !path.exists() {
+        return Some(Vec::new());
+    }
+    let _lock = Locked::take(&path).ok()?;
+    entries_on_disk(&path)
 }
 
 /// A path's part still to resolve.
@@ -312,10 +359,19 @@ pub async fn put_entries(
         return Err(HttpError::new(404, "notes or user"));
     }
     let folder = folder_of(&state, &agent_id)?;
-    let out = tokio::task::spawn_blocking(move || write_entries(&folder, &which, &body.entries))
-        .await
-        .map_err(anyhow::Error::from)?
-        .map_err(http_error)?;
+    let config = state.config();
+    let out = tokio::task::spawn_blocking(move || -> anyhow::Result<Dict> {
+        let written = write_entries(&folder, &which, &body.entries)?;
+        if which != "user" {
+            return Ok(written);
+        }
+        // « what it knows about you » is common to the person's own agents: the edit goes to all of them
+        crate::shared_memory::sync(&config, crate::py::time_time(), Some(&agent_id));
+        read_entries(&folder, &which)
+    })
+    .await
+    .map_err(anyhow::Error::from)?
+    .map_err(http_error)?;
     Ok(web::ok(Value::Object(out)))
 }
 

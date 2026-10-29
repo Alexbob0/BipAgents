@@ -364,6 +364,8 @@ impl AppState {
             self.spawn(crate::sandbox::isolate_all(self.config.clone(), agents_admin::default_run()));
             self.spawn(crate::sandbox_sites::watch(self.clone()));
             self.spawn(crate::send_guard::watch(self.clone()));
+            // « what my agents know about me » common to the person's own agents (shared_memory.rs)
+            self.spawn(crate::shared_memory::run_forever(self.clone()));
             self.spawn(crate::shares::mirror_forever(self.config.clone()));
             self.spawn(crate::agent_tools::register_all(self.config.clone(), agents_admin::default_run()));
             let shared = self.config.clone();
