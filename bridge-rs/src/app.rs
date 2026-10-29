@@ -338,6 +338,7 @@ impl AppState {
         self.spawn(crate::credit::run_forever(self.clone()));
         // an agent's Hermes restarted when there is a reason, once idle (agent_restart.rs)
         self.spawn(crate::agent_restart::run_forever(self.clone()));
+        self.spawn(crate::own_space::tidy_at_start(self.clone())); // others-facing agents left in the hub: out, once
         if self.sleep.enabled() {
             // a server of the offer: the guichet's seat agent reads whether a run goes on (runs.rs BUSY_MARKER)
             self.spawn(self.hub.clone().mark_busy_forever(self.sleep.home.clone(), 60.0));

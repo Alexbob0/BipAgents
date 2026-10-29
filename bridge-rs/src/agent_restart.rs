@@ -456,7 +456,7 @@ async fn activity_hours(state: &AppState, agents: &[AgentConfig], zone: chrono_t
     hours
 }
 
-async fn activity(state: &AppState, config: &Config, agent: &AgentConfig, now: f64) -> Activity {
+pub(crate) async fn activity(state: &AppState, config: &Config, agent: &AgentConfig, now: f64) -> Activity {
     let name = agent.name.as_str();
     let job = crate::jobs::tasks(config).iter().any(|j| {
         py::py_str(j.get("agent").unwrap_or(&Value::Null)) == name
