@@ -708,6 +708,7 @@ async fn create(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> anyh
         Err(say) => return Ok(refusal(&say)),
     };
     tracing::info!(agent = %agent.name, site = %host, fields = filled, item = %item.id, retry = granted, "account password typed and kept");
+    crate::vault_contacts::note_mark(state, &agent.name, CREATE, &crate::vault_contacts::mark(&item.id, &item.label));
     let fields = if filled > 1 { "the password field and its confirmation" } else { "the password field" };
     Ok(text(&format!(
         "Filled {fields} and saved as « {} » in the vault (waiting for confirmation). You never see the password: \

@@ -22,7 +22,8 @@
 //!   made.
 //! - **The chip**: each entry an agent saves or uses (read by its label) adds `<!--bip:vault <id> <label>-->` to the
 //!   reply that ends the turn (made_files.rs, as the files the bridge made), the apps' hidden marks: they draw
-//!   « 🔒 <label> », which opens the vault on that entry. The id and label only, never a field.
+//!   « 🔒 <label> », which opens the vault on that entry. The id and label only, never a field. A login an agent created
+//!   (vault_logins.rs) and a card it paid with (card_pay.rs) get the same chip.
 //!
 //! No Python counterpart (owner group: browsers-places).
 
@@ -351,8 +352,9 @@ fn closed_now(state: &crate::app::AppState, agent: &str) -> bool {
 const CLOSED: &str = "Your person's own data, the vault included, is closed in this conversation: other people read it. \
 Answer from what you know.";
 
-/// The entry's mark noted for the reply that ends the agent's turn (made_files.rs).
-fn note_mark(state: &crate::app::AppState, agent: &str, tool: &str, mark: &str) {
+/// The entry's mark noted for the reply that ends the agent's turn (made_files.rs): « Coordonnées » saved or used, a
+/// login an agent created (vault_logins.rs), a card it paid with (card_pay.rs).
+pub fn note_mark(state: &crate::app::AppState, agent: &str, tool: &str, mark: &str) {
     let run = state.hub.turn_of(agent, tool).map(|t| t.run_id);
     crate::made_files::MADE.note(agent, mark, run.as_deref(), py::time_time());
 }

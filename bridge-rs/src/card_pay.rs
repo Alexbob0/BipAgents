@@ -667,6 +667,7 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
     let payment = json!({"at": entry.since_text, "site": host, "cents": cents, "amount": cards::format_cents(cents),
                          "currency": currency, "agent": agent.name, "for": merchant});
     state.vault.record_card_payment(&card.id, payment).await?;
+    crate::vault_contacts::note_mark(state, &agent.name, PAY, &crate::vault_contacts::mark(&card.id, &card.label));
     journal(&config, &entry, &agent.name, "typed");
     tracing::info!(agent = %agent.name, site = %host, fields = %filled.join(","), "card payment: card typed");
     watch(state.clone(), agent.name.clone());
