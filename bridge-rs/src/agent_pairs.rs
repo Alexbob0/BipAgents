@@ -460,7 +460,7 @@ pub async fn household_session(
     shown: &str,
     target: &AgentConfig,
 ) -> Result<String, HermesError> {
-    let id = household_pair(config, remote, shown, &target.name).map_err(|e| HermesError::http(500, &e.to_string()))?;
+    let id = household_pair(config, remote, shown, &target.name).map_err(|e| HermesError::http(500, e.to_string()))?;
     session_for(&HermesClient::new(http.clone()), config, &id, target).await
 }
 
