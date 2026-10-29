@@ -160,9 +160,15 @@ subscription and an account keep at most **one campaign name** (a short label su
 for Apple Search Ads), where it came from (the website's link, Google Play's referrer, Apple Search Ads, a beta code's
 batch, or the person's own answer) and when; the first one told is kept, never replaced. Never a click id, an
 advertising id, Apple's token or anything else from the referrer. Why: to know which campaigns pay for themselves and
-stop the others. The weekly report Kerfy Studio reads holds counts per campaign and week only, never a person. The
-campaign name goes when the account or the subscription is deleted (5 years after a subscription's end, like its other
-contract data). The stores themselves count installs from ads in their own dashboards (App Store Connect, Google Play
+stop the others. Legal basis: Kerfy Studio's legitimate interest (Art. 6(1)(f) GDPR). The rule, also written in the
+guichet's code: **counts only, never another use, 13 months.** Reading the Play install referrer and asking AdServices
+for a token use the phone, which the ePrivacy rules (Art. 82 of the French Data Protection Act) allow without consent
+only as pure audience measurement: the attribution is read by the weekly report only, which holds counts per campaign
+and week and never a person; it is never used for anything else (no e-mail, no offer, no profile, never sent to
+anyone). Each campaign name is erased **13 months after it was recorded** (the guichet's daily purge), or earlier with
+the account or the subscription; the report's older weeks then simply count fewer attributed subscriptions. Anyone
+can object by writing to privacy@bipagents.com: Kerfy Studio erases theirs and marks the account and its
+subscriptions so that nothing is recorded for them again. The stores themselves count installs from ads in their own dashboards (App Store Connect, Google Play
 Console), as for any app; the website's link passes the campaign to Stripe Checkout (`metadata`) so it reaches the
 guichet with the purchase.
 
