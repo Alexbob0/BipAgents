@@ -190,3 +190,146 @@ async fn an_install_whose_agents_can_read_the_bridge_keeps_no_credentials() {
     assert!(app.app.state.vault.items().is_empty() && !app.app.state.vault.path.exists()); // nothing written
     assert_eq!(app.get("/v1/status", &headers).await.json()["protected"], false);
 }
+
+fn contact(extra: Value) -> Dict {
+    let mut body = json!({"kind": "address", "label": "Kerfy Studio (pro)", "hint": "pour la société",
+        "full_name": "Camille Exemple", "address_line1": "1 rue de l'Essai", "city": "Testville", "postal_code": "00100",
+        "country": "fr", "phones": ["+33 6 00 00 00 01", "01 00 00 00 02"], "emails": ["camille@example.org"]});
+    for (k, v) in extra.as_object().unwrap() {
+        body[k] = v.clone();
+    }
+    body.as_object().unwrap().clone()
+}
+
+fn dict(v: Value) -> Dict {
+    v.as_object().unwrap().clone()
+}
+
+#[tokio::test]
+async fn contact_details_are_read_back_and_given_to_the_agents_browser() {
+    let dir = tempfile::tempdir().unwrap();
+    let (config, vault, calls) = setup(dir.path());
+    let item = vault.create(&config, &contact(json!({"agents": ["vie"]}))).await.unwrap();
+    let public = item.public();
+    assert_eq!(public["kind"], "address");
+    assert_eq!(public["hint"], "pour la société");
+    assert_eq!(public["contact"]["country"], "FR");
+    assert_eq!(public["contact"]["phones"], json!(["+33 6 00 00 00 01", "01 00 00 00 02"]));
+    assert_eq!(public["agents"], json!(["vie"]));
+    // Hermes keeps strings: the first phone and e-mail, for its browser fill
+    let (_, request) = calls.lock().unwrap()[0].clone();
+    assert_eq!(request["kind"], "address");
+    assert_eq!(
+        request["secret"],
+        json!({"full_name": "Camille Exemple", "address_line1": "1 rue de l'Essai", "city": "Testville",
+               "postal_code": "00100", "country": "FR", "phone": "+33 6 00 00 00 01", "email": "camille@example.org"})
+    );
+    // an edit: one field changed, the rest kept, written again into Hermes
+    calls.lock().unwrap().clear();
+    let edited = vault.update(&config, &item.id, &dict(json!({"emails": [], "address_line2": "Bât. B"}))).await.unwrap();
+    assert_eq!(edited.public()["contact"]["emails"], json!([]));
+    assert_eq!(edited.public()["contact"]["address_line2"], "Bât. B");
+    assert_eq!(edited.public()["contact"]["full_name"], "Camille Exemple");
+    assert_eq!(ops(&calls), vec![("vie".into(), "remove".into()), ("vie".into(), "add".into())]);
+    // only the hint: nothing to rewrite
+    calls.lock().unwrap().clear();
+    let hinted = vault.update(&config, &item.id, &dict(json!({"hint": "factures"}))).await.unwrap();
+    assert_eq!(hinted.hint.as_deref(), Some("factures"));
+    assert!(calls.lock().unwrap().is_empty());
+    // the agent reads it, an agent without access does not
+    let entries = vault.contacts_for(&config, "vie").unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].label, "Kerfy Studio (pro)");
+    assert!(vault.contacts_for(&config, "budget").unwrap().is_empty());
+    for bad in [json!({"country": "Francia"}), json!({"phones": ["call me"]}), json!({"emails": ["x@y"]})] {
+        let err = vault.update(&config, &item.id, &dict(bad.clone())).await.unwrap_err();
+        assert!(matches!(err.downcast_ref::<VaultError>(), Some(VaultError::Invalid(_))), "{bad}");
+    }
+}
+
+#[tokio::test]
+async fn an_old_address_item_stays_valid() {
+    let dir = tempfile::tempdir().unwrap();
+    let (config, vault, _) = setup(dir.path());
+    let old = json!({"kind": "address", "label": "Maison", "address_line1": "2 allée Test", "city": "Lyon",
+                     "postal_code": "69001", "country": "FR", "agents": []});
+    let item = vault.create(&config, &dict(old)).await.unwrap();
+    assert_eq!(item.public()["contact"]["city"], "Lyon");
+    assert_eq!(item.public()["hint"], "");
+    let renamed = vault.update(&config, &item.id, &dict(json!({"label": "Domicile"}))).await.unwrap();
+    assert_eq!(renamed.public()["contact"]["postal_code"], "69001");
+}
+
+#[tokio::test]
+async fn a_hermes_that_refuses_an_incomplete_address_leaves_it_to_the_bridge() {
+    let dir = tempfile::tempdir().unwrap();
+    let (config, _, _) = setup(dir.path());
+    let run: VaultRun = Arc::new(|_, _| {
+        Box::pin(async {
+            Err(VaultError::Invalid("vie: Hermes refused the item (VaultError: address items require city)".into()).into())
+        })
+    });
+    let vault = Vault::with_run(&dir.path().join("vault2").to_string_lossy(), run);
+    let body = json!({"kind": "address", "label": "Pro", "emails": ["pro@example.org"], "agents": ["vie"]});
+    let item = vault.create(&config, &dict(body)).await.unwrap();
+    assert_eq!(item.agents.get("vie").map(String::as_str), Some("bridge"));
+    assert_eq!(vault.contacts_for(&config, "vie").unwrap().len(), 1);
+    // a login is still refused as before
+    assert!(vault.create(&config, &login(json!({"agents": ["vie"]}))).await.is_err());
+}
+
+#[tokio::test]
+async fn an_agent_saves_what_the_person_gave_it_and_never_changes_the_persons_entries() {
+    let dir = tempfile::tempdir().unwrap();
+    let (config, vault, _) = setup(dir.path());
+    let vie = config.agent(Some("vie")).unwrap().clone();
+    let args = json!({"label": "Adresse pro", "hint": "factures", "address_line1": "3 rue Test", "city": "Testville",
+                      "postal_code": "00100", "country": "FR", "emails": ["pro@example.org"]});
+    let saved = vault.save_contact(&config, &vie, &dict(args)).await.unwrap();
+    assert_eq!(saved.created_by.as_deref(), Some("vie"));
+    assert_eq!(saved.public()["created_by"], "vie");
+    assert_eq!(saved.public()["agents"], json!(["vie"]));
+    // the same label: its own entry changed
+    let again =
+        vault.save_contact(&config, &vie, &dict(json!({"label": "adresse PRO", "phones": ["06 00 00 00 03"]}))).await.unwrap();
+    assert_eq!(again.id, saved.id);
+    assert_eq!(again.public()["contact"]["phones"], json!(["06 00 00 00 03"]));
+    assert_eq!(again.public()["contact"]["city"], "Testville");
+    assert_eq!(again.public()["created_by"], "vie");
+    // the person's own entry: never changed by an agent
+    let mine = vault.create(&config, &contact(json!({"agents": ["vie"]}))).await.unwrap();
+    let err = vault
+        .save_contact(&config, &vie, &dict(json!({"label": "Kerfy Studio (pro)", "city": "Ailleurs"})))
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("only the person changes it"), "{err}");
+    assert_eq!(vault.items().iter().find(|i| i.id == mine.id).unwrap().public()["contact"]["city"], "Testville");
+    // an agent that can't hold vault items: nothing kept
+    let budget = config.agent(Some("budget")).unwrap().clone();
+    let err = vault.save_contact(&config, &budget, &dict(json!({"label": "X", "city": "Y"}))).await.unwrap_err();
+    assert!(matches!(err.downcast_ref::<VaultError>(), Some(VaultError::CannotHold(_))));
+    let err = vault.save_contact(&config, &vie, &dict(json!({"label": " "}))).await.unwrap_err();
+    assert_eq!(err.to_string(), "give the entry a label");
+}
+
+#[tokio::test]
+async fn an_agent_other_people_talk_to_reads_only_what_the_person_confirmed_for_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let (config, vault, _) = setup(dir.path());
+    // given while Vie was the person's alone
+    vault.create(&config, &contact(json!({"agents": ["vie"]}))).await.unwrap();
+    assert_eq!(vault.contacts_for(&config, "vie").unwrap().len(), 1);
+    // then Vie is shared with a relative: it reads nothing it wasn't confirmed for
+    let data = config.data_dir();
+    std::fs::create_dir_all(&data).unwrap();
+    std::fs::write(format!("{data}/households.json"), r#"{"households": {"lea": {"name": "Léa"}}}"#).unwrap();
+    std::fs::write(format!("{data}/agent-shares.json"), r#"{"shared": {"vie": ["lea"]}}"#).unwrap();
+    assert!(bipbridge::vault::others_facing(&config, "vie"));
+    assert!(vault.contacts_for(&config, "vie").unwrap().is_empty());
+    // a new entry for Vie: refused without the confirmation, read once confirmed
+    let err = vault.create(&config, &contact(json!({"label": "Maison", "agents": ["vie"]}))).await.unwrap_err();
+    assert!(matches!(err.downcast_ref::<VaultError>(), Some(VaultError::ConfirmOthers(_))));
+    vault.create(&config, &contact(json!({"label": "Maison", "agents": ["vie"], "confirmed_others": true}))).await.unwrap();
+    let read: Vec<String> = vault.contacts_for(&config, "vie").unwrap().into_iter().map(|e| e.label).collect();
+    assert_eq!(read, vec!["Maison".to_string()]);
+}

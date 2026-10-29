@@ -1450,7 +1450,7 @@ impl RunHub {
         flag: &str,
     ) -> SSEEvent {
         if !said.trim().is_empty() && !unseen.is_empty() {
-            let lines: String = unseen.iter().map(|path| format!("\n\nMEDIA:{path}")).collect();
+            let lines: String = unseen.iter().map(|path| format!("\n\n{}", crate::made_files::line_of(path))).collect();
             let mut delta = Map::new();
             delta.insert("event".into(), json!("message.delta"));
             delta.insert("run_id".into(), event.data.get("run_id").cloned().unwrap_or_else(|| json!(sub.run_id)));

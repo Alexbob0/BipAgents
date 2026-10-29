@@ -194,7 +194,8 @@ def test_hermes_is_pinned_and_patched(tmp_path, monkeypatch):
                                                                 "0013-mcp-results-vault-scrub.patch",
                                                                 "0014-cron-results-plain-utf8.patch",
                                                                 "0015-time-anchor.patch",
-                                                                "0016-message-agent-the-bridges-everywhere.patch"]
+                                                                "0016-message-agent-the-bridges-everywhere.patch",
+                                                                "0017-vault-address-contact-fields.patch"]
 
 
 def test_bot_mode_marker(tmp_path):

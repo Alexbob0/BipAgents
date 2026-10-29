@@ -120,6 +120,9 @@ pub fn tools() -> Vec<Value> {
             "annotations": {"readOnlyHint": false, "destructiveHint": false, "openWorldHint": false},
         }),
     ]
+    .into_iter()
+    .chain(crate::vault_contacts::tools()) // « Coordonnées » (vault_contacts.rs)
+    .collect()
 }
 
 /// Where the agent's Hermes reaches these tools (the bridge's tools' base, `?v=` their version).
@@ -705,6 +708,7 @@ async fn create(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> anyh
         Err(say) => return Ok(refusal(&say)),
     };
     tracing::info!(agent = %agent.name, site = %host, fields = filled, item = %item.id, retry = granted, "account password typed and kept");
+    crate::vault_contacts::note_mark(state, &agent.name, CREATE, &crate::vault_contacts::mark(&item.id, &item.label));
     let fields = if filled > 1 { "the password field and its confirmation" } else { "the password field" };
     Ok(text(&format!(
         "Filled {fields} and saved as « {} » in the vault (waiting for confirmation). You never see the password: \
@@ -747,6 +751,9 @@ pub async fn call(
     match name {
         CREATE => create(state, agent, arguments).await,
         CONFIRM => confirm(state, agent, arguments).await,
+        crate::vault_contacts::READ | crate::vault_contacts::SAVE => {
+            Ok(crate::vault_contacts::call(state, agent, name, arguments).await)
+        }
         other => Ok(refusal(&format!("unknown tool: {other}"))),
     }
 }
@@ -755,7 +762,8 @@ pub async fn call(
 
 const INSTRUCTIONS: &str = "BipAgents vault: vault_create_login creates an account on a website with a password the \
 person's vault makes and types into your browser (you never see it), once the person approves; vault_confirm_login \
-once the site has accepted it. Only for accounts the person asked for.";
+once the site has accepted it. Only for accounts the person asked for. vault_contact_details reads the contact details \
+(coordonnées) the person keeps for you; vault_save_contact_details keeps ones they give you.";
 
 fn call_boxed<'a>(
     state: &'a AppState,

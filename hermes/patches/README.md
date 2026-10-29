@@ -38,6 +38,7 @@ image, which is swept after 24 h); 0004 goes once a Hermes update brings it.
 | 0014 routine tool results in plain UTF-8 | applies | applies (`8acb7f6580`, `patch --dry-run`, checked 2026-10-28) |
 | 0015 time anchor: the time with each message | applies (after 0009) | applies (`8acb7f6580`, `patch --dry-run`, checked 2026-10-29) |
 | 0016 `message_agent`: the bridge's, Bot Chat included | applies (after 0012) | not checked yet |
+| 0017 address items with name, phone, e-mail | applies | applies (`0b4481ad9c`, `patch --dry-run`, checked 2026-10-29) |
 
 ## 0001 — `clarify` in the Runs API
 
@@ -417,3 +418,25 @@ rewritten for the new rule (7 tests).
 not run on the Mac (no Hermes test environment there): run it with `tests/tools/test_bot_mode_dm.py`,
 `test_bot_mode_dm_sync_peer.py`, `test_refresh_agent_mcp_tools.py` and `test_bot_mode_probe.py` before the release.
 The bridge's side: black-box `test_agent_messages.py` and `test_agent_pairs.py`.
+## 0017 — address items carry a name, a phone and an e-mail
+
+**Problem.** BipAgents keeps « Coordonnées » in its vault (bridge-rs/src/vault_contacts.rs): a full name, a postal
+address, phones and e-mails. Hermes' `address` items keep the six address fields only, drop any other, and refuse an item
+without street, city, postal code and country: a form's name, phone and e-mail fields stayed empty, and an entry with
+a name and an e-mail only could not reach the agent's browser at all.
+
+**What the patch does.** `ADDRESS_FIELDS` also maps `full_name` → `name`, `phone` → `tel` and `email` → `email`
+(WHATWG autocomplete tokens); an address item needs at least one field, none in particular. The checkout classifier
+targets those tokens (by autocomplete, an `<input type=email>`, labels such as « E-mail », « Téléphone », « Nom
+complet », and an `<input type=tel>` after the other heuristics, since a card number is often one). A payment item has
+none of these fields, so a card fill never types into them. The bridge sends one phone and one e-mail (the first of
+each) and the country as its ISO code (a country `<select>` matches it by its option values).
+
+**Files.** `agent/vault_store.py`, `agent/vault_login_classifier.py`; 2 tests in `tests/tools/test_browser_vault.py`.
+
+**Tests.** `tests/tools/test_browser_vault.py` and `tests/agent/test_vault_store.py` on the three files of
+`517b5e10f` with the patch, Python 3.12: the 2 new tests pass, the other results are the same as without the patch
+(22 failures for modules missing from that minimal test tree: `tools.registry`, `agent.vault_backends`…). No other
+patch touches these files; `patch --dry-run` passes on `517b5e10f`, `97a9ae8ee` and upstream `main` (`0b4481ad9c`).
+Without it, the bridge still keeps and reads the entry (its handle `bridge` when Hermes refuses it), and the browser
+fills the address fields only.

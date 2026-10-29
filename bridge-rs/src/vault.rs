@@ -133,6 +133,12 @@ pub struct Item {
     /// used. Never its value.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub secret_info: Option<Value>,
+    /// « Coordonnées » (vault_contacts.rs): when the agent should use the entry.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hint: Option<String>,
+    /// « Coordonnées »: the fields, read back by the app (personal data, not secrets). Filled from the record's secret.
+    #[serde(skip)]
+    pub contact: Option<Value>,
 }
 
 impl Item {
@@ -145,6 +151,14 @@ impl Item {
                "agents": agents, "created_at": self.created_at, "updated_at": self.updated_at});
         if let (Some(card), Value::Object(map)) = (&self.card, &mut out) {
             map.insert("card".into(), crate::cards::public(card));
+        }
+        if let (Some(contact), Value::Object(map)) = (&self.contact, &mut out) {
+            map.insert("hint".into(), json!(self.hint.clone().unwrap_or_default()));
+            map.insert("contact".into(), contact.clone());
+            if let Some(agent) = &self.created_by {
+                map.insert("created_by".into(), json!(agent));
+            }
+            return out;
         }
         if let (Some(info), Value::Object(map)) = (&self.secret_info, &mut out) {
             map.insert("created_by".into(), json!(self.created_by));
@@ -501,7 +515,15 @@ impl Vault {
     fn item(record: &Dict) -> Item {
         let meta: Map<String, Value> =
             record.iter().filter(|(k, _)| k.as_str() != "secret").map(|(k, v)| (k.clone(), v.clone())).collect();
-        serde_json::from_value(Value::Object(meta)).unwrap_or_default()
+        let mut item: Item = serde_json::from_value(Value::Object(meta)).unwrap_or_default();
+        if item.kind == crate::vault_contacts::KIND {
+            let secret = match record.get("secret") {
+                Some(Value::Object(map)) => map.clone(),
+                _ => Dict::new(),
+            };
+            item.contact = Some(crate::vault_contacts::public(&secret));
+        }
+        item
     }
 
     /// The items, or what kept them from being read.
@@ -599,10 +621,13 @@ impl Vault {
                 None => crate::cards::parse(body, &mut record, &mut secret)?,
             }
         } else {
-            let allowed = if kind == "payment" { PAYMENT_FIELDS } else { ADDRESS_FIELDS };
+            if kind == crate::vault_contacts::KIND {
+                crate::vault_contacts::parse(body, &mut record, &mut secret)?;
+            }
+            let allowed: &[&str] = if kind == "payment" { &PAYMENT_FIELDS } else { &[] };
             for name in allowed {
                 if let Some(v) = given(body, name) {
-                    secret.insert(name.into(), json!(pyx::strip(&crate::py::py_str(v))));
+                    secret.insert((*name).into(), json!(pyx::strip(&crate::py::py_str(v))));
                 }
             }
             let origin = if truthy(body, "site") {
@@ -627,6 +652,9 @@ impl Vault {
         if record.get("kind").and_then(Value::as_str) == Some("login") {
             secret.insert("identifier_type".into(), record.get("identifier_type").cloned().unwrap_or(Value::Null));
             secret.insert("identifier".into(), record.get("identifier").cloned().unwrap_or(Value::Null));
+        }
+        if record.get("kind").and_then(Value::as_str) == Some(crate::vault_contacts::KIND) {
+            secret = crate::vault_contacts::hermes_secret(&secret);
         }
         let mut out = Dict::new();
         out.insert("op".into(), json!("add"));
@@ -676,6 +704,26 @@ impl Vault {
         }
     }
 
+    /// The others-facing agents given the item now, which the person confirmed (`confirmed` passed): kept on the item
+    /// (`confirmed_for`), so an agent that becomes others-facing later reads no « Coordonnées » it got before.
+    fn keep_confirmed(config: &Config, record: &mut Dict, agents: &[AgentConfig]) {
+        let facing: Vec<Value> =
+            agents.iter().filter(|a| others_facing(config, &a.name)).map(|a| json!(a.name)).collect();
+        if facing.is_empty() {
+            return;
+        }
+        let mut kept = match record.get("confirmed_for") {
+            Some(Value::Array(items)) => items.clone(),
+            _ => Vec::new(),
+        };
+        for agent in facing {
+            if !kept.contains(&agent) {
+                kept.push(agent);
+            }
+        }
+        record.insert("confirmed_for".into(), Value::Array(kept));
+    }
+
     fn handles(record: &mut Dict) -> &mut Dict {
         if !matches!(record.get("agents"), Some(Value::Object(_))) {
             record.insert("agents".into(), Value::Object(Dict::new()));
@@ -694,7 +742,18 @@ impl Vault {
                 Self::handles(record).insert(agent.name.clone(), json!(CARD_HANDLE));
                 continue;
             }
-            let answer = (self.run)(vault_target(config, agent), Self::to_hermes(record)).await?;
+            let answer = match (self.run)(vault_target(config, agent), Self::to_hermes(record)).await {
+                Ok(answer) => answer,
+                Err(exc) if record.get("kind").and_then(Value::as_str) == Some(crate::vault_contacts::KIND) => {
+                    // A Hermes without patch 0017 refuses an address without street, city, postal code and country:
+                    // the entry stays the bridge's (the agent reads it), without its browser fill.
+                    tracing::warn!(agent = %agent.name, error = %exc, "contact details not written into the agent's \
+                        Hermes vault: its browser won't fill them");
+                    Self::handles(record).insert(agent.name.clone(), json!(CARD_HANDLE));
+                    continue;
+                }
+                Err(exc) => return Err(exc),
+            };
             let handle = answer.get("id").ok_or_else(|| anyhow::anyhow!("KeyError: 'id'"))?;
             Self::handles(record).insert(agent.name.clone(), json!(crate::py::py_str(handle)));
             let item = record.get("id").map(crate::py::py_str).unwrap_or_default();
@@ -735,6 +794,7 @@ impl Vault {
         };
         let agents = Self::check(config, &wanted)?;
         Self::confirmed(config, body, &record, &agents)?;
+        Self::keep_confirmed(config, &mut record, &agents);
         record.insert("id".into(), json!(format!("item_{}", &crate::py::uuid4_hex()[..12])));
         record.insert("agents".into(), json!({}));
         record.insert("created_at".into(), json!(now()));
@@ -782,6 +842,10 @@ impl Vault {
         // only an agent that gets this login now: one that already holds it was confirmed when it got it
         let added: Vec<AgentConfig> = give.iter().filter(|a| !had.contains(&a.name)).cloned().collect();
         Self::confirmed(config, body, &record, &added)?;
+        Self::keep_confirmed(config, &mut record, &added);
+        if let Some(Value::Array(confirmed)) = record.get_mut("confirmed_for") {
+            confirmed.retain(|a| a.as_str().is_some_and(|a| wanted.iter().any(|w| w == a)));
+        }
         let to_take: Vec<String> = had.iter().filter(|a| !wanted.contains(a) || changed).cloned().collect();
         self.take_back(config, &mut record, &to_take).await;
         self.give(config, &mut record, &give).await?;
@@ -872,6 +936,69 @@ impl Vault {
         crate::cards::record_payment(&mut meta, payment);
         record.insert("card".into(), Value::Object(meta));
         self.write(&records)
+    }
+
+    // -- « Coordonnées » (vault_contacts.rs) ------------------------------------------------------------------
+
+    /// The « Coordonnées » entries `agent` may read (`vault_contacts::readable_by`), fields included.
+    pub fn contacts_for(&self, config: &Config, agent: &str) -> anyhow::Result<Vec<crate::vault_contacts::Entry>> {
+        Ok(crate::vault_contacts::entries_for(config, &self.read()?, agent))
+    }
+
+    /// Details the person gave `agent` in a conversation, kept as an entry of theirs (`created_by`) given to that agent
+    /// only; the same label again changes an entry that agent saved, never one the person made.
+    pub async fn save_contact(&self, config: &Config, agent: &AgentConfig, arguments: &Dict) -> anyhow::Result<Item> {
+        if !config.hermes.isolated {
+            return Err(VaultError::Unprotected.into());
+        }
+        let mut body = Dict::new();
+        for (name, _) in crate::vault_contacts::TEXT_FIELDS {
+            if let Some(v) = given(arguments, name) {
+                body.insert(name.into(), v.clone());
+            }
+        }
+        for key in [crate::vault_contacts::PHONES, crate::vault_contacts::EMAILS, "label", "hint"] {
+            if let Some(v) = given(arguments, key) {
+                body.insert(key.into(), v.clone());
+            }
+        }
+        let label = body.get("label").map(crate::py::py_str).unwrap_or_default();
+        let label = crate::cards::quoted(&label, 120);
+        if label.is_empty() {
+            return Err(invalid("give the entry a label").into());
+        }
+        body.insert("label".into(), json!(label));
+        body.insert("kind".into(), json!(crate::vault_contacts::KIND));
+        let same = self.items().into_iter().find(|i| {
+            i.kind == crate::vault_contacts::KIND && pyx::strip(&i.label).to_lowercase() == label.to_lowercase()
+        });
+        if let Some(existing) = same {
+            if existing.created_by.as_deref() != Some(agent.name.as_str()) {
+                return Err(VaultError::Invalid(format!(
+                    "an entry « {} » is already in the vault and only the person changes it: use another label, or \
+                     tell them to edit it in the vault",
+                    existing.label
+                ))
+                .into());
+            }
+            body.shift_remove("label"); // its name as the person last saw it
+            return self.update(config, &existing.id, &body).await;
+        }
+        if let Some(why) = holder(config, agent) {
+            return Err(VaultError::CannotHold([(agent.name.clone(), why)].into_iter().collect()).into());
+        }
+        body.insert("agents".into(), json!([agent.name]));
+        let item = self.create(config, &body).await?;
+        let _lock = self.lock.lock().await;
+        let mut records = self.read()?;
+        let Some(record) = records.iter_mut().find(|r| r.get("id").and_then(Value::as_str) == Some(item.id.as_str()))
+        else {
+            return Err(NoSuchItem(item.id).into());
+        };
+        record.insert("created_by".into(), json!(agent.name));
+        let item = Self::item(record);
+        self.write(&records)?;
+        Ok(item)
     }
 
     // -- logins created by an agent (vault_logins.rs) ---------------------------------------------------------

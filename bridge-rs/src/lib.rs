@@ -169,6 +169,7 @@ pub mod place_backup;
 pub mod place_move;
 pub mod place_import;
 pub mod vault;
+pub mod vault_contacts;
 pub mod vault_logins;
 // connectors an agent makes on request (2026-10-28): their secrets, their store and approval, their runs
 pub mod connectors;
