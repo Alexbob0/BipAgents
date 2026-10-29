@@ -53,10 +53,15 @@ pub fn line(config: &Config, agent: &AgentConfig) -> String {
 /// What starts a turn of the agent: its time line, then what waits for it in the Carnet (notebook/news.rs, taken
 /// here: given once).
 pub fn head(config: &Config, agent: &AgentConfig) -> String {
-    match crate::notebook::news::take_now(config, &agent.name) {
-        Some(news) => format!("{}\n{news}", line(config, agent)),
-        None => line(config, agent),
+    let mut out = line(config, agent);
+    if let Some(news) = crate::notebook::news::take_now(config, &agent.name) {
+        out = format!("{out}\n{news}");
     }
+    // the friends' votes and ticks on a project agent's cards (friends_cards.rs), as information
+    if let Some(taps) = crate::friends_cards::take_note(config, &agent.name) {
+        out = format!("{out}\n{taps}");
+    }
+    out
 }
 
 /// `text` with the agent's line (and its Carnet news) at its top (as it is when it already starts with one).

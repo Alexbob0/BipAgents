@@ -48,13 +48,14 @@ use crate::web::{self, ApiResult, HttpError};
 use crate::{py, Dict};
 
 /// The bridge's MCP tools a project agent may use, in every turn.
-pub const TOOLS: [&str; 6] = [
+pub const TOOLS: [&str; 7] = [
     crate::agent_tools::KNOWLEDGE_READ,
     crate::agent_tools::KNOWLEDGE_SEARCH,
     crate::weather::TOOL_NAME,
     crate::routes::TOOL_NAME,
     crate::maps::TOOL_NAME,
     crate::agent_tools::CREATE_PAGE,
+    crate::friends_cards::TOOL_NAME,
 ];
 /// The default length of a project (and of a restored one).
 pub const DEFAULT_DAYS: f64 = 30.0;
@@ -72,7 +73,8 @@ make, they see. Keep to the project. You reach nobody's mail, calendar, contacts
 files, vault or logins, not even your person's: if asked, say kindly that a project agent has no access to them, and \
 never write private details about anyone here. Your memory is only what is said here. Web search, weather, routes, \
 maps and pages are open to you: show plans, budgets, lists and places as pages (create_page, with map_image for \
-places), so the friends see them too.";
+places), so the friends see them too. Friends can't write here, but they can tap your friends_card cards: use a \
+vote when the group has to choose, a checklist to share tasks; you hear of their taps at your next turn.";
 
 static LOCK: Mutex<()> = Mutex::new(());
 
@@ -209,6 +211,7 @@ pub fn tools(config: &Config) -> Vec<Value> {
     if !out.iter().any(|t| t.get("name").and_then(Value::as_str) == Some(crate::weather::TOOL_NAME)) {
         out.push(crate::weather::weather_tool());
     }
+    out.push(crate::friends_cards::tool()); // the friends' votes and checklists (friends_cards.rs)
     out
 }
 

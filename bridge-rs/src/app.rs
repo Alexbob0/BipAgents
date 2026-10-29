@@ -1743,6 +1743,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::family_agent::router())
         .merge(crate::read_shares::router())
         .merge(crate::project_agent::router())
+        .merge(crate::friends_cards::router())
         .merge(crate::desktop::desktop_admin_router());
     // Under /v1 without the bridge key: a computer sending its agents (the app's one-time code instead), and a
     // server the app created until the app claims it (its own proofs).

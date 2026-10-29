@@ -26,6 +26,7 @@ class FakeGuichet(Fake):
         super().reset()
         self.epoch, self.ends = 1, time.time() + 30 * 86400
         self.viewers, self.invites, self.items, self.notified = [], {}, {}, []
+        self.actions, self.seq = [], 0   # friends' taps waiting for the bridge (friends_cards.rs)
         self.gone = False
 
     async def handle(self, seen):
@@ -65,11 +66,17 @@ class FakeGuichet(Fake):
             if seen.method == "DELETE" and rest[:1] == ["viewers"]:
                 self.viewers = [v for v in self.viewers if v["viewer"] != rest[1]]
                 self.epoch += 1
-                self.items = {}
+                self.items, self.actions = {}, []
                 for v in self.viewers:
                     v.pop("wrapped", None)
                     v.pop("wrapped_epoch", None)
                 return JSONResponse({"epoch": self.epoch})
+            if seen.method == "GET" and rest == ["actions"]:
+                return JSONResponse({"actions": list(self.actions)})
+            if seen.method == "POST" and rest == ["actions", "taken"]:
+                before = len(self.actions)
+                self.actions = [a for a in self.actions if a["seq"] > body["through"]]
+                return JSONResponse({"taken": before - len(self.actions)})
             if seen.method == "POST" and rest == ["ends"]:
                 self.ends = body["ends"]
                 return JSONResponse({"ends": self.ends})
@@ -77,6 +84,12 @@ class FakeGuichet(Fake):
                 self.gone = True
                 return JSONResponse({"ok": True})
         return JSONResponse({"detail": "no route"}, status_code=404)
+
+    def act(self, viewer: str, data: str, tag: str) -> None:
+        """A viewer's device posted a sealed tap (the guichet's `POST /v1/rshares/{id}/actions`)."""
+        with self.lock:
+            self.seq += 1
+            self.actions.append({"seq": self.seq, "viewer": viewer, "data": data, "tag": tag, "at": time.time()})
 
     def redeem(self, invite: str, public_key: bytes, proof: str, viewer: str) -> None:
         with self.lock:
