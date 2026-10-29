@@ -667,7 +667,7 @@ async fn relay(state: AppState, target: String, path: String, request: Request) 
         return Ok(answer);
     }
     let body = if is_message(&parts.method, &path) {
-        Bytes::from(crate::dates::now::stamped_body(&body, &crate::dates::now::line(&config, &agent)))
+        Bytes::from(crate::dates::now::stamped_body_for(&config, &agent, &body))
     } else {
         body
     };
@@ -914,7 +914,7 @@ async fn deliver(state: AppState, target: String, path: String, request: Request
         let household_name =
             state.households.get(&household).and_then(|h| h.get("name").map(crate::py::py_str)).unwrap_or_default();
         body = Bytes::from(resign(&body, &sender, &name, &household_name));
-        body = Bytes::from(crate::dates::now::stamped_body(&body, &crate::dates::now::line(&state.config(), &agent)));
+        body = Bytes::from(crate::dates::now::stamped_body_for(&state.config(), &agent, &body));
     }
     let mut headers = forwarded_headers(&parts.headers, true);
     if let Ok(value) = HeaderValue::from_str(&format!("Bearer {}", agent.hermes_key)) {

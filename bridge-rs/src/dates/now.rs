@@ -50,12 +50,37 @@ pub fn line(config: &Config, agent: &AgentConfig) -> String {
     line_at(Utc::now(), zone_of(config, agent), &crate::handback::language_of(config, agent))
 }
 
-/// `text` with the agent's line at its top (as it is when it already starts with one).
+/// What starts a turn of the agent: its time line, then what waits for it in the Carnet (notebook/news.rs, taken
+/// here: given once).
+pub fn head(config: &Config, agent: &AgentConfig) -> String {
+    match crate::notebook::news::take_now(config, &agent.name) {
+        Some(news) => format!("{}\n{news}", line(config, agent)),
+        None => line(config, agent),
+    }
+}
+
+/// `text` with the agent's line (and its Carnet news) at its top (as it is when it already starts with one).
 pub fn stamped(config: &Config, agent: &AgentConfig, text: &str) -> String {
     if text.trim_start().starts_with(OPEN) {
         return text.to_string();
     }
-    format!("{}\n{text}", line(config, agent))
+    format!("{}\n{text}", head(config, agent))
+}
+
+/// Whether a Hermes request's JSON body has a text without the line (`stamped_body` would change it).
+pub fn wants_line(body: &[u8]) -> bool {
+    let Ok(Value::Object(data)) = serde_json::from_slice::<Value>(body) else { return false };
+    ["input", "message"]
+        .iter()
+        .any(|f| matches!(data.get(*f), Some(Value::String(text)) if !text.trim_start().starts_with(OPEN)))
+}
+
+/// `stamped_body` with the agent's `head` (its Carnet news taken only when the body gets it).
+pub fn stamped_body_for(config: &Config, agent: &AgentConfig, body: &[u8]) -> Vec<u8> {
+    if !wants_line(body) {
+        return body.to_vec();
+    }
+    stamped_body(body, &head(config, agent))
 }
 
 /// A Hermes request's JSON body (`/v1/runs`' `input`, a session chat's `message`) with the line at the top of its

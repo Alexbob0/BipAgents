@@ -38,6 +38,7 @@ pub mod archive;
 pub mod fill;
 pub mod records;
 pub mod template;
+pub mod news;
 pub mod tidy;
 pub mod tools;
 pub mod trip;
@@ -470,6 +471,7 @@ pub fn set_enabled(config: &Config, agent: &str, on: bool) -> std::io::Result<bo
 
 /// A deleted agent: its switch and cursors go (what it wrote stays: it is the person's).
 pub fn forget(config: &Config, agent: &str) {
+    news::forget(config, agent); // what waited for it (news.rs)
     let _guard = lock();
     if !state_path(config).exists() {
         return;

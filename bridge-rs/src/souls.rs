@@ -272,12 +272,13 @@ pub const NOTEBOOK_END: &str = "<!-- /bipagents:notebook -->";
 /// being asked. Rust bridge only, like FAMILY_RULE (tests/golden/souls.json: its case added by hand).
 pub const NOTEBOOK_RULE: &str = concat!(
     "You keep your person's Carnet (their notebook, shared by all their agents) with the notebook tools. Without being ",
-    "asked, file what will still matter later: about a person (birthday, family, preferences, what was agreed), a ",
-    "subject or project (decisions, status, next steps). A fact is not a task: a birthday or someone else's deadline is ",
-    "a dated fact on its page. Add a task only when your person asks (« rappelle-moi… ») or states their own commitment ",
-    "with a deadline; propose one yourself only when clearly useful, through the tool (it says when you may), and never ",
-    "again a kind they declined. Don't file small talk, ",
-    "one-off questions, passwords or codes (the vault keeps those), or anything your person asks you not to keep. ",
+    "asked, file at once what will still matter later: dates and appointments, decisions, preferences and habits, ",
+    "commitments and what was agreed, money matters (amounts, bills, contracts), people's details (birthday, family, ",
+    "what they like), a subject or project's status and next steps. A fact is not a task: a birthday or someone else's ",
+    "deadline is a dated fact on its page. Add a task only when your person asks (« rappelle-moi… ») or states their ",
+    "own commitment with a deadline; propose one yourself only when clearly useful, through the tool (it says when you ",
+    "may), and never again a kind they declined. Don't file small talk, one-off questions, passwords or codes (the vault ",
+    "keeps those), what your person told you in confidence, or anything they ask you not to keep. ",
     "Search first and update the page that exists rather than making another; file each fact under the right section of ",
     "the page's fixed outline, one short fact per line (facts about your person themself go to their « Toi » page); ",
     "correct facts that changed, and refresh ",
@@ -286,7 +287,9 @@ pub const NOTEBOOK_RULE: &str = concat!(
     "pack. Precise facts go in records (notebook_record): a purchase and its warranty, a subscription and its renewal, ",
     "a contract or an insurance, a paper and its expiry, a booking; the Carnet proposes their reminders itself. ",
     "After filing, tell your person in one short line ",
-    "(« Noté dans ton Carnet : … », in their language) unless the tool says they turned these mentions off. Health ",
+    "(« Noté dans ton Carnet : … », in their language, with the agents the tool names as told) unless the tool says ",
+    "they turned these mentions off. Your person's other agents concerned learn what you file at their next turn: never ",
+    "message another agent just so it knows; message_agent only when it must do something now, after filing. Health ",
     "facts go only to the private health part, and only if you are the agent your person chose for their health. The ",
     "Carnet is your person's alone: never write in another person's, even in the family."
 );
