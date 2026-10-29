@@ -191,7 +191,7 @@
     "famille": {
       "name": "Familie",
       "who": "bis zu 6 Personen",
-      "blurb": "Ein Server nur für euch, ein Bereich für jeden.",
+      "blurb": "Ein gemeinsames KI-Guthaben, ein Bereich für jeden.",
       "flag": "Bester Preis pro Person"
     },
     "perYear": "/Jahr",
@@ -320,7 +320,7 @@
     },
     "5": {
       "q": "Wie funktionieren Duo und Familie?",
-      "a": "Jede eingeladene Person hat ihr eigenes Konto, ihren Bereich und ihre Agenten; das KI-Guthaben des Tarifs ist gemeinsam. Weder die zahlende Person noch wir lesen die Unterhaltungen der anderen: Die zahlende Person sieht nur, wie viel Guthaben jede Person verbraucht. Mit Familie teilen sich bis zu sechs Personen einen Server nur für euch."
+      "a": "Jede eingeladene Person hat ihr eigenes Konto, ihren Bereich und ihre Agenten; das KI-Guthaben des Tarifs ist gemeinsam. Weder die zahlende Person noch wir lesen die Unterhaltungen der anderen: Die zahlende Person sieht nur, wie viel Guthaben jede Person verbraucht. Mit Familie teilen sich bis zu sechs Personen denselben Tarif und sein Guthaben."
     },
     "6": {
       "q": "Kann ich jederzeit aufhören?",

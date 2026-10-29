@@ -191,7 +191,7 @@
     "famille": {
       "name": "Familia",
       "who": "hasta 6 personas",
-      "blurb": "Un servidor solo para vosotros, un espacio para cada uno.",
+      "blurb": "Un crédito de IA compartido, un espacio para cada uno.",
       "flag": "El mejor precio por persona"
     },
     "perYear": "/año",
@@ -320,7 +320,7 @@
     },
     "5": {
       "q": "¿Cómo funcionan Dúo y Familia?",
-      "a": "Cada persona invitada tiene su propia cuenta, su espacio y sus agentes; el crédito de IA del plan es común. Ni la persona que paga ni nosotros leemos las conversaciones de los demás: la persona que paga solo ve cuánto crédito usa cada persona. Con Familia, hasta seis personas comparten un servidor solo para vosotros."
+      "a": "Cada persona invitada tiene su propia cuenta, su espacio y sus agentes; el crédito de IA del plan es común. Ni la persona que paga ni nosotros leemos las conversaciones de los demás: la persona que paga solo ve cuánto crédito usa cada persona. Con Familia, hasta seis personas comparten el mismo plan y su crédito."
     },
     "6": {
       "q": "¿Puedo dejarlo cuando quiera?",

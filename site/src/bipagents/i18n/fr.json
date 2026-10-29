@@ -191,7 +191,7 @@
     "famille": {
       "name": "Famille",
       "who": "jusqu’à 6 personnes",
-      "blurb": "Un serveur rien qu’à vous, chacun son espace.",
+      "blurb": "Un crédit d’IA commun, chacun son espace.",
       "flag": "Le meilleur prix par personne"
     },
     "perYear": "/an",
@@ -320,7 +320,7 @@
     },
     "5": {
       "q": "Comment marchent Duo et Famille ?",
-      "a": "Chaque personne invitée a son propre compte, son espace et ses agents ; le crédit d’IA du forfait est commun. Ni la personne qui paie ni nous ne lisons les conversations des autres : la personne qui paie voit seulement combien de crédit chacun utilise. Avec Famille, jusqu’à six personnes partagent un serveur rien qu’à vous."
+      "a": "Chaque personne invitée a son propre compte, son espace et ses agents ; le crédit d’IA du forfait est commun. Ni la personne qui paie ni nous ne lisons les conversations des autres : la personne qui paie voit seulement combien de crédit chacun utilise. Avec Famille, jusqu’à six personnes partagent le même forfait et son crédit."
     },
     "6": {
       "q": "Je peux arrêter quand je veux ?",

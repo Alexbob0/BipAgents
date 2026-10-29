@@ -191,7 +191,7 @@
     "famille": {
       "name": "Family",
       "who": "up to 6 people",
-      "blurb": "A server just for you, a space for each.",
+      "blurb": "One shared AI credit, a space for each.",
       "flag": "Best price per person"
     },
     "perYear": "/year",
@@ -320,7 +320,7 @@
     },
     "5": {
       "q": "How do Duo and Family work?",
-      "a": "Each invited person has their own account, space and agents; the plan’s AI credit is shared. Neither the person who pays nor we read anyone else’s conversations: the person who pays only sees how much credit each person uses. With Family, up to six people share a server that’s yours alone."
+      "a": "Each invited person has their own account, space and agents; the plan’s AI credit is shared. Neither the person who pays nor we read anyone else’s conversations: the person who pays only sees how much credit each person uses. With Family, up to six people share the same plan and its credit."
     },
     "6": {
       "q": "Can I stop whenever I want?",
