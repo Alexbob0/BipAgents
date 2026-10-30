@@ -190,6 +190,17 @@ impl Sessions {
         }
     }
 
+    /// Whether `agent`'s Hermes has listed the bridge's tools in a session this bridge knows: it has them.
+    pub fn has_listed(&self, agent: &str) -> bool {
+        lock(&self.sessions).values().any(|s| s.agent == agent && s.listed.is_some())
+    }
+
+    /// Whether an agent other than `agent` has listed the bridge's tools: this bridge's Hermes connect to it as
+    /// soon as they load a profile, so one that hasn't for `agent` did not load its entry.
+    pub fn others_listed(&self, agent: &str) -> bool {
+        lock(&self.sessions).values().any(|s| s.agent != agent && s.listed.is_some())
+    }
+
     /// The agents whose tools now (`current(agent)`, None: no such agent any more) differ from what their latest
     /// listing session listed, each with since when (Unix time: the first time this bridge saw the difference, at
     /// the latest `now`). An agent with no session that listed isn't stale.
@@ -245,6 +256,21 @@ mod tests {
         s.listed(&id, "ccc");
         assert!(!s.due(&id, "ccc"));
         assert!(!s.due("nope", "ccc"));
+    }
+
+    #[test]
+    fn a_new_agent_has_its_tools_once_its_hermes_listed_them() {
+        // agents_admin.rs `tools_loaded`: waited for only where another agent listed already
+        let s = Sessions::default();
+        assert!(!s.others_listed("lea") && !s.has_listed("lea"));
+        let vie = s.open("vie");
+        assert!(!s.others_listed("lea"), "opened but not listed: no proof yet");
+        s.listed(&vie, "aaa");
+        assert!(s.others_listed("lea") && !s.others_listed("vie"));
+        let lea = s.open("lea");
+        assert!(!s.has_listed("lea"));
+        s.listed(&lea, "aaa");
+        assert!(s.has_listed("lea"));
     }
 
     #[test]
