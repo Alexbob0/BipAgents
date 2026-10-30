@@ -1378,6 +1378,7 @@ pub fn set_model(config: &Config, agent: &AgentConfig, name: &str, vision: Optio
 /// agent set up by hand too, like Vie); an agent without any personality keeps Hermes' own.
 pub fn heal_souls(config: &Config) {
     let mut place_language: Option<String> = None;
+    let offer = crate::handover::on_offer();
     for name in config.agents.keys() {
         let Ok(agent) = editable(config, name) else { continue };
         let Ok(soul) = read_soul(config, &agent) else { continue };
@@ -1396,6 +1397,8 @@ pub fn heal_souls(config: &Config) {
         // The payments rule at start too (registration adds it later, after the first turns could be answered).
         if !agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
             text = crate::souls::with_payments(&text);
+            // the offer's places: big toolchains don't fit there (souls.rs, 2026-10-30)
+            text = crate::souls::with_server(&text, offer);
         }
         if text != soul {
             let healed = std::fs::write(profile_folder(config, &agent).join("SOUL.md"), text);
@@ -1484,7 +1487,7 @@ pub async fn read_settings(config: &Config, agent: &AgentConfig, http: &reqwest:
     let (soul, _) = crate::souls::split_health(&soul);
     let (soul, _) = crate::souls::split_notebook(&soul);
     let (soul, _) = crate::souls::split_archives(&soul);
-    let soul = crate::souls::split_payments(&soul);
+    let soul = crate::souls::split_server(&crate::souls::split_payments(&soul));
     let (soul, _) = crate::dates::split_dates(&soul);
     let soul = crate::guide::split_blocks(&soul);
     let guide = json!({"on": crate::guide::is_guide(config, &agent.name)});
@@ -1683,7 +1686,7 @@ pub fn write_soul(config: &Config, agent: &AgentConfig, soul: &str) -> std::io::
     let text = if closed || agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
         text
     } else {
-        crate::souls::with_payments(&text)
+        crate::souls::with_server(&crate::souls::with_payments(&text), crate::handover::on_offer())
     };
     std::fs::write(profile_folder(config, agent).join("SOUL.md"), text)
 }
@@ -1694,7 +1697,7 @@ pub fn editable_soul(config: &Config, agent: &AgentConfig) -> std::io::Result<St
     let (soul, _) = crate::souls::split_health(&soul);
     let (soul, _) = crate::souls::split_notebook(&soul);
     let (soul, _) = crate::souls::split_archives(&soul);
-    let soul = crate::souls::split_payments(&soul);
+    let soul = crate::souls::split_server(&crate::souls::split_payments(&soul));
     let (soul, _) = crate::dates::split_dates(&soul);
     let (soul, _) = crate::family_agent::split_family(&soul);
     let (soul, _) = crate::project_agent::split_project(&soul);

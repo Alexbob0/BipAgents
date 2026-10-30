@@ -520,6 +520,7 @@ pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow
     crate::notebook::sync_soul(config, agent);
     crate::archives::sync_soul(config, agent);
     crate::souls::sync_payments(config, agent);
+    crate::souls::sync_server(config, agent); // the offer's places: big toolchains don't fit (souls.rs)
     let tools = tools_for(config, agent);
     let url = if tools.as_slice() != install_tools(config) {
         url_with(config, &version_of(&tools))
