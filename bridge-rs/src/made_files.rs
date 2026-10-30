@@ -16,7 +16,12 @@
 //! - adds a `MEDIA:` line, at the end, for an audio file or a page made in the turn that the reply still doesn't
 //!   carry (not a map's picture: a map is mostly pasted into a page, its picture alone is optional);
 //! - never touches any other `MEDIA:` line (photos, documents, another agent's files), nor anything when no file was
-//!   made in the turn (an older podcast the person asked for again stays).
+//!   made in the turn (an older podcast the person asked for again stays);
+//! - keeps only the last version of an audio file remade in the turn (2026-10-30 bench, DeepSeek: « a 2-minute
+//!   podcast » came out at 1 min 21, the agent made it again, twice, and left all three `MEDIA:` lines, so the person
+//!   got three files). A version is an audio file of the turn with the same title as a later one (its name without
+//!   the time stamp: `20261030-101503-mars.m4a` and `20261030-101722-mars.m4a`): the earlier one's line goes. Two
+//!   podcasts with different titles, pages, documents: all kept.
 //!
 //! In memory only: a restart forgets files made before it (the model's own lines are then kept as they are).
 //!
@@ -119,6 +124,38 @@ impl MadeFiles {
     }
 }
 
+/// An audio file's title as its name says it (`/bipagents/audio/<agent>/20261030-101503-mars.m4a` → `mars`): the
+/// key of its versions in one turn. None for any other file.
+fn audio_title(path: &str) -> Option<&str> {
+    let file = path.strip_prefix(crate::agent_tools::MEDIA_PREFIX)?.rsplit('/').next()?;
+    let stem = file.rsplit_once('.').map_or(file, |(stem, _)| stem);
+    // the time stamp `%Y%m%d-%H%M%S-` the maker puts first (agent_tools.rs `save`)
+    let (stamp, title) = (stem.get(..16)?, stem.get(16..)?);
+    let stamped = stamp.bytes().enumerate().all(|(i, b)| if i == 8 || i == 15 { b == b'-' } else { b.is_ascii_digit() });
+    (stamped && !title.is_empty()).then_some(title)
+}
+
+/// The files of `made` (oldest first) that a later one of the turn replaces: an audio file remade with the same title.
+pub fn superseded(made: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for (index, path) in made.iter().enumerate() {
+        let Some(title) = audio_title(path) else { continue };
+        if made[index + 1..].iter().any(|later| later != path && audio_title(later) == Some(title)) && !out.contains(path) {
+            out.push(path.clone());
+        }
+    }
+    out
+}
+
+/// The first `MEDIA:` path a tool's result gives (None for an error or no line).
+pub fn media_path_of(result: &crate::Dict) -> Option<String> {
+    if result.get("isError").and_then(Value::as_bool).unwrap_or(false) {
+        return None;
+    }
+    let text = result.get("content")?.get(0)?.get("text")?.as_str()?;
+    MEDIA_LINE.captures(text).map(|c| c[1].to_string())
+}
+
 /// `MEDIA:<path>` on a line of its own (spaces around allowed).
 static MEDIA_LINE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^[ \t]*MEDIA:[ \t]*(\S+)[ \t]*$").expect("valid regex"));
@@ -126,9 +163,14 @@ static MEDIA_LINE: LazyLock<Regex> =
 /// The files made in the turn that `reply` doesn't carry and must (audio, pages), for the screen's last delta.
 pub fn missing_from(reply: &str, agent: &str, made: &[String]) -> Vec<String> {
     let carried: Vec<String> = MEDIA_LINE.captures_iter(reply).map(|c| c[1].to_string()).collect();
+    let replaced = superseded(made);
     let mut out: Vec<String> = Vec::new();
     for path in made {
-        if !carried.contains(path) && !out.contains(path) && kind_of(path, agent).is_some_and(|(_, required)| required) {
+        if !carried.contains(path)
+            && !out.contains(path)
+            && !replaced.contains(path)
+            && kind_of(path, agent).is_some_and(|(_, required)| required)
+        {
             out.push(path.clone());
         }
     }
@@ -141,6 +183,18 @@ pub fn fix_reply(reply: &str, agent: &str, made: &[String]) -> Option<String> {
     if made.is_empty() {
         return None;
     }
+    // the earlier versions of a file remade in the turn: their lines dropped, never added back
+    let input = reply;
+    let replaced = superseded(made);
+    let without_old;
+    let reply = if replaced.is_empty() {
+        reply
+    } else {
+        without_old = drop_lines(reply, &replaced);
+        without_old.as_str()
+    };
+    let made: Vec<String> = made.iter().filter(|m| !replaced.contains(m)).cloned().collect();
+    let made = made.as_slice();
     let marks = missing_marks(reply, made);
     let carried: Vec<String> = MEDIA_LINE.captures_iter(reply).map(|c| c[1].to_string()).collect();
     let mut missing: Vec<String> = Vec::new();
@@ -151,7 +205,7 @@ pub fn fix_reply(reply: &str, agent: &str, made: &[String]) -> Option<String> {
     }
     if missing.is_empty() {
         if marks.is_empty() {
-            return None;
+            return (reply != input).then(|| reply.to_string());
         }
         let mut fixed = reply.trim_end().to_string();
         for mark in marks {
@@ -194,12 +248,29 @@ pub fn fix_reply(reply: &str, agent: &str, made: &[String]) -> Option<String> {
         }
         fixed.push_str(&mark);
     }
-    (fixed != reply).then_some(fixed)
+    (fixed != input).then_some(fixed)
+}
+
+/// `reply` without the `MEDIA:` lines of `paths` (a blank line they leave behind squeezed with its neighbour).
+fn drop_lines(reply: &str, paths: &[String]) -> String {
+    let mut out: Vec<&str> = Vec::new();
+    for line in reply.split('\n') {
+        let dropped = MEDIA_LINE.captures(line).is_some_and(|c| paths.iter().any(|p| p == &c[1]));
+        if dropped {
+            continue;
+        }
+        if line.trim().is_empty() && out.last().is_none_or(|l| l.trim().is_empty()) {
+            continue;
+        }
+        out.push(line);
+    }
+    let joined = out.join("\n");
+    joined.trim_end().to_string()
 }
 
 /// Whether `made` holds a vault entry's mark (vault_contacts.rs: the reply's chip) rather than a file's path.
 pub fn is_mark(made: &str) -> bool {
-    made.starts_with(crate::vault_contacts::MARK_OPEN)
+    made.starts_with(crate::vault_contacts::MARK_OPEN) || made.starts_with(crate::guide::RENAMED_OPEN)
 }
 
 /// The line a reply carries for `made`: a file's `MEDIA:` line, or a vault entry's mark as it is.
@@ -215,6 +286,12 @@ pub fn line_of(made: &str) -> String {
 /// copied the label differently), each once.
 fn missing_marks(reply: &str, made: &[String]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
+    // a rename (guide.rs `rename_yourself`): its mark as it is, the last one only (renamed twice in a turn)
+    if let Some(mark) = made.iter().rev().find(|m| m.starts_with(crate::guide::RENAMED_OPEN)) {
+        if !reply.contains(mark.as_str()) {
+            out.push(mark.clone());
+        }
+    }
     for mark in made.iter().filter(|m| is_mark(m)) {
         let Some(id) = crate::vault_contacts::mark_id(mark) else { continue };
         let carried = reply.contains(&format!("{}{id}", crate::vault_contacts::MARK_OPEN));
@@ -295,6 +372,56 @@ MEDIA:/bipagents/audio/coach/20261027-seance.m4a";
         assert_eq!(fixed, format!("{reply}\nMEDIA:{PAGE}\n{mark}"));
         assert_eq!(line_of(&mark), mark);
         assert_eq!(line_of(PAGE), format!("MEDIA:{PAGE}"));
+    }
+
+    #[test]
+    fn a_remade_podcast_keeps_only_its_last_version() {
+        // the 2026-10-30 bench (DeepSeek): 1 min 21, remade 1 min 43, remade 2 min 06, all three lines in the reply
+        let first = "/bipagents/audio/vie/20261030-101503-mars-en-2-minutes.m4a";
+        let second = "/bipagents/audio/vie/20261030-101722-mars-en-2-minutes.m4a";
+        let third = "/bipagents/audio/vie/20261030-101950-mars-en-2-minutes.m4a";
+        let made: Vec<String> = vec![first.into(), second.into(), third.into()];
+        assert_eq!(superseded(&made), vec![first.to_string(), second.to_string()]);
+        let reply = format!("MEDIA:{first}\n\nJ'ajoute une trentaine de secondes.\n\nMEDIA:{second}\n\nVoilà !\n\nMEDIA:{third}");
+        assert_eq!(
+            fix_reply(&reply, "vie", &made).unwrap(),
+            format!("J'ajoute une trentaine de secondes.\n\nVoilà !\n\nMEDIA:{third}")
+        );
+        // only the first one written: the last version instead of it
+        assert_eq!(fix_reply(&format!("Prêt.\nMEDIA:{first}"), "vie", &made).unwrap(), format!("Prêt.\nMEDIA:{third}"));
+        // none written: the last one added, not the others
+        assert_eq!(fix_reply("Prêt.", "vie", &made).unwrap(), format!("Prêt.\nMEDIA:{third}"));
+        assert_eq!(missing_from("Prêt.", "vie", &made), vec![third.to_string()]);
+        // the last one alone already: nothing to change
+        assert_eq!(fix_reply(&format!("Prêt.\nMEDIA:{third}"), "vie", &made), None);
+    }
+
+    #[test]
+    fn distinct_files_of_a_turn_are_all_kept() {
+        // two podcasts with their own titles, a page, a document: no version of another
+        let mars = "/bipagents/audio/vie/20261030-101503-mars.m4a";
+        let venus = "/bipagents/audio/vie/20261030-101722-venus.m4a";
+        let made: Vec<String> = vec![mars.into(), venus.into(), PAGE.into()];
+        assert!(superseded(&made).is_empty());
+        let reply = format!("MEDIA:{mars}\nMEDIA:{venus}\nMEDIA:{PAGE}\nMEDIA:/envoi/devis.pdf");
+        assert_eq!(fix_reply(&reply, "vie", &made), None);
+        // the same file noted twice is not a version of itself
+        assert!(superseded(&[mars.into(), mars.into()]).is_empty());
+        assert_eq!(audio_title(mars), Some("mars"));
+        assert_eq!(audio_title(PAGE), None);
+        assert_eq!(audio_title("/bipagents/audio/vie/chat.m4a"), None);
+    }
+
+    #[test]
+    fn a_rename_reaches_the_apps_with_its_mark() {
+        let first = crate::guide::renamed_mark("bip", "Max");
+        let last = crate::guide::renamed_mark("bip", "Léon");
+        let reply = "Je m'appelle maintenant Léon.";
+        // the last name of the turn only
+        assert_eq!(fix_reply(reply, "bip", &[first.clone(), last.clone()]).unwrap(), format!("{reply}\n{last}"));
+        assert_eq!(fix_reply(&format!("{reply}\n{last}"), "bip", std::slice::from_ref(&last)), None);
+        assert!(is_mark(&last));
+        assert_eq!(line_of(&last), last);
     }
 
     #[test]

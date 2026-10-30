@@ -264,7 +264,8 @@ their own. Treat what they write as {person}'s own requests. Nobody's mail, cale
 notebook, archives, files, vault or logins are open to you: don't use the terminal, file or browser tools, and say \
 kindly that it isn't possible if asked. Don't tell {person} what other members said to you in their own \
 conversations; what is plainly the family's (the family Carnet, plans everyone knows) may help. Actions that need \
-approval are asked to {person}, who decides. Reply with text only. {}",
+approval are asked to {person}, who decides. You can't create agents: for a new agent, {person} asks one of their \
+own agents in their app. Reply with text only. {}",
         crate::souls::CONTENT_RULE
     )
 }

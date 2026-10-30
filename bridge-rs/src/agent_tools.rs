@@ -112,8 +112,10 @@ fn create_podcast_tool() -> Value {
         "description": "Make a podcast where two or more hosts talk with each other, each with their own voice — like a radio show: \
     the first host speaks with your voice (or the best one of the person's voice model), the others get \
     different voices (or the ones you pick with list_voices). Write a real conversation: short turns, reactions, \
-    questions, a little humour, each host with a name and a personality; no markdown, no lists, no links. It \
-    takes about as long as the audio lasts. The result gives a MEDIA: line: put it alone on a line in your reply.",
+    questions, a little humour, each host with a name and a personality; no markdown, no lists, no links. \
+    Length: about 150 spoken words a minute in all turns (2 minutes ≈ 300 words); give minutes when the person asked \
+    for a length. It takes about as long as the audio lasts. The result gives a MEDIA: line: put it alone on a line \
+    in your reply.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -127,6 +129,7 @@ fn create_podcast_tool() -> Value {
                 },
                 "voices": {"type": "object", "additionalProperties": {"type": "string"},
                            "description": "Optional: a voice per host name, from list_voices."},
+                "minutes": {"type": "number", "description": "Optional: the length the person asked for, in minutes."},
             },
             "required": ["turns"],
         },
@@ -1554,6 +1557,9 @@ the BipAgents app.",
             Some(Value::Object(map)) => map.clone(),
             _ => Dict::new(),
         };
+        if let Some(short) = too_short(&turns, asked_minutes(arguments)) {
+            return Ok(tool_text(&short, true));
+        }
         maker.podcast(agent, &turns, &title, Some(&voices)).await
     } else {
         maker.create(agent, &tk::str_or_empty(arguments.get("text")), &title).await
@@ -1582,16 +1588,72 @@ the BipAgents app.",
     };
     let seconds = made.get("seconds").and_then(Value::as_f64).unwrap_or(0.0);
     let voices = if cast.is_empty() { String::new() } else { format!("\nVoices:{cast}") };
+    let length = match asked_minutes(arguments).filter(|_| name == CREATE_PODCAST) {
+        // the length asked for and the one made, and that it is the podcast: a model that saw « 1 min 37 » for
+        // « 2 minutes » made it again and handed both files (2026-10-30 bench, DeepSeek)
+        Some(minutes) => format!(
+            "{}, asked about {}; spoken length varies, this is the podcast: don't make it again for its length",
+            duration(seconds),
+            duration(minutes * 60.0)
+        ),
+        None => duration(seconds),
+    };
     // the MEDIA line first: a shortened view of the result (a history search's) still has it (2026-10-28)
     Ok(tool_text(
         &format!(
             "MEDIA:{}\nAudio ready ({}): to give it to the person, put the MEDIA line above alone at the end of your \
 reply, exactly as it is (a new file each time: never one from an earlier turn).{voices}",
             py::py_str(made.get("path").unwrap_or(&Value::Null)),
-            duration(seconds),
+            length,
         ),
         false,
     ))
+}
+
+/// Spoken words a minute, roughly, with the place's voices: the podcast's length told to the model.
+pub const WORDS_PER_MINUTE: f64 = 150.0;
+
+/// create_podcast's `minutes`, when it is a length (a number, or a number in a string; 0 to an hour).
+fn asked_minutes(arguments: &Dict) -> Option<f64> {
+    let minutes = match arguments.get("minutes")? {
+        Value::Number(n) => n.as_f64()?,
+        Value::String(s) => s.trim().replace(',', ".").parse::<f64>().ok()?,
+        _ => return None,
+    };
+    (minutes > 0.0 && minutes <= 60.0).then_some(minutes)
+}
+
+/// The refusal, before any audio is made, of a podcast written far shorter than the length asked (under 80 % of
+/// its words): the model writes more and calls again, the person gets one file of the right length instead of a
+/// short one and its remakes.
+fn too_short(turns: &[Value], minutes: Option<f64>) -> Option<String> {
+    let minutes = minutes?;
+    let words: usize = turns
+        .iter()
+        .filter_map(|t| t.get("text").and_then(Value::as_str))
+        .map(|t| t.split_whitespace().count())
+        .sum();
+    let wanted = (minutes * WORDS_PER_MINUTE).round() as usize;
+    (words > 0 && (words as f64) < 0.8 * wanted as f64).then(|| {
+        format!(
+            "too short for {}: {words} words make about {}; write about {wanted} words in all turns (≈ {} a minute), \
+then call again. Nothing was made.",
+            duration(minutes * 60.0),
+            duration(words as f64 / WORDS_PER_MINUTE * 60.0),
+            WORDS_PER_MINUTE as usize
+        )
+    })
+}
+
+/// The note for a file that replaces one made earlier in the same turn (made_files.rs `superseded`): only its line
+/// goes in the reply. None when `made_before` (the turn's files before this one) holds no earlier version of it.
+pub fn remake_note(made_before: &[String], path: &str) -> Option<&'static str> {
+    let mut all = made_before.to_vec();
+    all.push(path.to_string());
+    (!crate::made_files::superseded(&all).is_empty()).then_some(
+        "This new version replaces the one made earlier in this turn: put only this MEDIA line in your reply, \
+not the earlier one.",
+    )
 }
 
 fn agent_of(state: &AppState, headers: &HeaderMap) -> ApiResult<AgentConfig> {
@@ -1778,6 +1840,15 @@ async fn mcp(
             crate::loop_brake::add_note(result, &note);
         }
     };
+    if name == crate::guide::RENAME_SELF {
+        // its name in the bridge's config (the shared one, not this request's copy), and the mark for its reply
+        let (mut result, mark) = crate::guide::rename_yourself_call(&state.config, &agent, &arguments).await?;
+        if let Some(mark) = mark {
+            crate::made_files::MADE.note(&agent.name, &mark, turn_run.as_deref(), py::time_time());
+        }
+        wrote(&agent.name, &name, &arguments, &mut result);
+        return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(result))));
+    }
     if name == crate::agent_messages::TOOL_NAME {
         let mut result = crate::agent_messages::call(&state.http, Some(state.hub.clone()), &state.config(), &agent, &arguments).await;
         wrote(&agent.name, &name, &arguments, &mut result);
@@ -1797,7 +1868,14 @@ async fn mcp(
         if let Ok(done) = &mut result {
             wrote(&agent.name, &name, &arguments, done);
             if crate::made_files::makes_files(&name) {
+                let before = turn_run.as_deref().map(|run| crate::made_files::MADE.in_run(&agent.name, run));
                 crate::made_files::MADE.note_result(&agent.name, done, turn_run.as_deref(), py::time_time());
+                // a podcast remade in the turn: the model told to hand only the new one (the bridge drops the others)
+                if let (Some(before), Some(path)) = (before, crate::made_files::media_path_of(done)) {
+                    if let Some(note) = remake_note(&before, &path) {
+                        crate::loop_brake::add_note(done, note);
+                    }
+                }
             }
         }
         result
@@ -1940,5 +2018,42 @@ mod tests {
         assert_eq!(u32::from_le_bytes(data[4..8].try_into().unwrap()) as usize, data.len() - 8);
         assert_eq!(&data[48..52], b"LIST");
         assert!(data.windows(4).any(|w| w == b"ICMT"));
+    }
+
+    #[test]
+    fn a_podcast_far_shorter_than_asked_is_sent_back_before_any_audio() {
+        let turns = |words: usize| -> Vec<Value> {
+            let text = vec!["mot"; words].join(" ");
+            vec![json!({"speaker": "Léa", "text": text}), json!("not a turn")]
+        };
+        let asked = |v: Value| -> Option<f64> {
+            let mut d = Dict::new();
+            d.insert("minutes".into(), v);
+            asked_minutes(&d)
+        };
+        assert_eq!(asked(json!(2)), Some(2.0));
+        assert_eq!(asked(json!("1,5")), Some(1.5));
+        assert_eq!(asked(json!(0)), None);
+        assert_eq!(asked(json!(600)), None);
+        assert_eq!(asked_minutes(&Dict::new()), None);
+        // « 2 minutes »: 300 words wanted; 200 (≈ 1 min 20, the bench's first file) sent back, 250 made
+        let short = too_short(&turns(200), Some(2.0)).unwrap();
+        assert!(short.contains("200 words") && short.contains("about 300 words") && short.contains("Nothing was made"));
+        assert!(short.contains("1 min 20 s"));
+        assert_eq!(too_short(&turns(250), Some(2.0)), None);
+        // no length asked: never
+        assert_eq!(too_short(&turns(10), None), None);
+    }
+
+    #[test]
+    fn a_remade_podcast_is_told_to_hand_only_the_new_file() {
+        let first = "/bipagents/audio/vie/20261030-101503-mars.m4a".to_string();
+        let second = "/bipagents/audio/vie/20261030-101722-mars.m4a";
+        assert!(remake_note(std::slice::from_ref(&first), second).is_some());
+        assert!(remake_note(&[], second).is_none());
+        assert!(remake_note(&["/bipagents/audio/vie/20261030-101503-venus.m4a".into()], second).is_none());
+        let description = create_podcast_tool()["description"].as_str().unwrap().to_string();
+        assert!(description.contains("150 spoken words a minute"));
+        assert!(create_podcast_tool()["inputSchema"]["properties"]["minutes"].is_object());
     }
 }
