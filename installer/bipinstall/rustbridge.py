@@ -29,6 +29,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 import urllib.request
 from pathlib import Path
 from typing import Callable, List, Optional
@@ -191,10 +192,33 @@ def newest_released(repo: Path = REPO, opener: Opener = _download, look_back: in
     return None
 
 
-def pick_released(repo: Path = REPO, opener: Opener = _download) -> str:
+# A server of the offer (install.sh --cloud) installed just after a public push waits this long for the bridge of
+# its version before moving back: the workflow takes ~29 min after a push (2026-10-30). Moving back there would give
+# the place another version than the server's shared Hermes, built by root from the same push
+# (installer/bipinstall/shared_hermes.py): it would then install a Hermes of its own, past the guichet's install time.
+WAIT_MINUTES = 35
+WAIT_EVERY = 60
+
+
+def _waited(release: str, minutes: float, opener: Opener, sleep: Callable[[float], None],
+            clock: Callable[[], float]) -> bool:
+    """Whether the release of this key comes out within `minutes`, asked every `WAIT_EVERY` s."""
+    until = clock() + minutes * 60
+    print(f"The bridge of this version ({release}) isn't out yet: GitHub Actions is most likely building it, waiting "
+          f"up to {minutes:.0f} min.", flush=True)
+    while clock() + WAIT_EVERY <= until:
+        sleep(WAIT_EVERY)
+        if released(release, opener):
+            return True
+    return False
+
+
+def pick_released(repo: Path = REPO, opener: Opener = _download, wait: float = 0,
+                  sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic) -> str:
     """Before a new install (install.sh): this checkout moved back to the newest version whose bridge is out, when the
     one it has isn't (never for an update, a developer's clone, a changed checkout, a machine with no build of ours or
-    with its own build). Says what it did ("" when nothing). Never fails the install: at worst nothing changes."""
+    with its own build). With `wait` (minutes, a server of the offer), the bridge of this version is waited for that
+    long first. Says what it did ("" when nothing). Never fails the install: at worst nothing changes."""
     from .checkout import is_install_clone
     if os.environ.get(BUILD) or not asset() or not is_install_clone(repo):
         return ""
@@ -203,6 +227,8 @@ def pick_released(repo: Path = REPO, opener: Opener = _download) -> str:
         return ""
     if _git(repo, "diff", "--quiet", "HEAD", "--").returncode != 0:
         return ""
+    if wait and _waited(release, wait, opener, sleep, clock):
+        return f"The bridge of this version ({release}) is out."
     head = _git(repo, "rev-parse", "HEAD").stdout.strip()
     found = newest_released(repo, opener)
     if not found or found == head:
@@ -365,7 +391,7 @@ def main(argv: List[str]) -> int:
             rest += ["--config", str(find_config(None))]
         return subprocess.run(cli(home) + rest, check=False).returncode
     if choice == "released-version":   # install.sh, before a new install (pick_released)
-        said = pick_released()
+        said = pick_released(wait=WAIT_MINUTES if "--wait" in argv[1:] else 0)
         if said:
             print(ui.note(said))
         return 0

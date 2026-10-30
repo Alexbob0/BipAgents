@@ -260,3 +260,35 @@ def test_an_update_keeps_the_current_bridge_or_waits_for_the_new_one(tmp_path, m
     said = rustbridge.keep_in_step(tmp_path, tmp_path, wait=300, sleep=slept.append)
     assert said == "Bridge new000000000 in place." and slept == [30, 30]
     assert rewritten == [[str(rustbridge.binary(tmp_path, "new000000000")), "serve"]]
+
+
+def test_a_server_of_the_offer_waits_for_its_bridge_before_moving_back(tmp_path, monkeypatch):
+    """2026-10-30: a server bootstrapped 4 min after a public push, 25 min before the workflow published its bridge.
+    Moving back would give the place another version than the shared Hermes root made from the same push."""
+    from bipinstall import checkout
+    repo, (v1, v2, v3), git = history(tmp_path)
+    keys = {c: rustbridge.key_at(repo, c) for c in (v1, v2, v3)}
+    monkeypatch.delenv(rustbridge.BUILD, raising=False)
+    monkeypatch.setattr(rustbridge, "asset", lambda: "bipbridge-linux-x86_64.tar.gz")
+    monkeypatch.setattr(checkout, "is_install_clone", lambda repo: True)
+    now = [0.0]
+
+    def sleep(seconds):
+        now[0] += seconds
+
+    def opener(url):
+        if f"bridge-{keys[v1]}/" in url or (f"bridge-{keys[v3]}/" in url and now[0] >= 25 * 60):
+            return b""
+        raise OSError("404")
+    said = rustbridge.pick_released(repo, opener, wait=35, sleep=sleep, clock=lambda: now[0])
+    assert "is out" in said and now[0] == 25 * 60 and git("rev-parse", "HEAD").strip() == v3
+    # never out within the wait: moved back as before
+    now[0] = 0.0
+
+    def only_v1(url):
+        if f"bridge-{keys[v1]}/" in url:
+            return b""
+        raise OSError("404")
+    said = rustbridge.pick_released(repo, only_v1, wait=35, sleep=sleep, clock=lambda: now[0])
+    assert "installing the one before" in said and git("rev-parse", "HEAD").strip() == v1
+    assert now[0] == 35 * 60
