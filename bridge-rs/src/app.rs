@@ -648,7 +648,7 @@ async fn tts_sentence(State(state): State<AppState>, Json(body): Json<TtsRequest
             Some(&voice),
             &body.format,
             INTERACTIVE,
-            SynthOptions { relay: relay_for(agent.as_ref()), ..Default::default() },
+            SynthOptions { relay: relay_for(&config, agent.as_ref()), ..Default::default() },
         )
         .await
         .map_err(tts_error)?;
@@ -715,7 +715,7 @@ async fn tts_message(State(state): State<AppState>, Json(body): Json<TtsRequest>
             Some(&voice),
             &fmt,
             INTERACTIVE,
-            SynthOptions { max_chars: Some(MESSAGE_MAX_CHARS), relay: relay_for(agent.as_ref()), ..Default::default() },
+            SynthOptions { max_chars: Some(MESSAGE_MAX_CHARS), relay: relay_for(&config, agent.as_ref()), ..Default::default() },
         )
         .await
         .map_err(tts_error)?;
@@ -736,7 +736,7 @@ async fn tts_stream(State(state): State<AppState>, Json(body): Json<TtsRequest>)
         .clone()
         .filter(|v| !v.is_empty())
         .unwrap_or_else(|| voice_for(&config, agent.as_ref(), body.use_.as_deref()));
-    let relay = relay_for(agent.as_ref());
+    let relay = relay_for(&config, agent.as_ref());
     let mut chunks = state.tts.stream(&body.text, Some(&voice), INTERACTIVE, Some(MESSAGE_MAX_CHARS), relay.as_deref());
     let first = match chunks.next().await {
         None => bytes::Bytes::new(),

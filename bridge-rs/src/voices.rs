@@ -103,9 +103,11 @@ pub fn heal_defaults(shared: &crate::config::SharedConfig) {
     }
 }
 
-/// The Bip standing in for the agent's server voice when the server fails or is too slow.
-pub fn relay_for(agent: Option<&AgentConfig>) -> Option<String> {
-    agent.and_then(|a| a.voice.clone()).filter(|v| v.starts_with("pocket:"))
+/// The Bip standing in for the agent's server voice when the server fails or is too slow: its own, else its
+/// category's in its language (`default_for`), never the install's French one for an English agent.
+pub fn relay_for(config: &Config, agent: Option<&AgentConfig>) -> Option<String> {
+    let agent = agent?;
+    agent.voice.clone().filter(|v| !v.is_empty()).or_else(|| Some(default_for(config, agent))).filter(|v| v.starts_with("pocket:"))
 }
 
 /// `values` written in the `[header]` table of a TOML file (replaced where they are, else added at its end; the

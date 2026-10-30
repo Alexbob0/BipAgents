@@ -820,6 +820,7 @@ async fn an_english_claim_makes_the_whole_place_english_in_the_persons_zone() {
     assert!(line.contains(", America/New_York (UTC-0") && !line.contains("country"), "{line}"); // the zone says it
     // the voices: the agents' Bips in English, for whatever the bridge reads aloud itself
     assert_eq!(bipbridge::voices::voice_for(&config, Some(&agent), Some("reading")), "pocket:en/ours");
+    assert_eq!(bipbridge::voices::relay_for(&config, Some(&agent)).as_deref(), Some("pocket:en/ours"));
     let mut maison = config.agents["maison"].clone();
     maison.category = Some("wellness".into());
     assert_eq!(bipbridge::voices::voice_for(&config, Some(&maison), Some("live")), "pocket:en/mousse");
