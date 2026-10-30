@@ -975,3 +975,150 @@ async fn the_answer_style_is_kept_and_switches_one_paragraph_of_the_soul() {
     assert!(soul().contains(souls::DETAILED_STYLE_RULE) && !soul().contains(souls::BALANCED_STYLE_RULE));
     assert_eq!(app.app.state.config().agents["wellness"].answer_style.as_deref(), Some("detailed"));
 }
+
+/// The place's agents at most (Alex, 2026-10-30, « sans le dire »): 20 on a place of the offer unless its bridge.toml
+/// says otherwise, none on a self-install; only new agents are refused, nothing is told before.
+#[test]
+fn the_place_limit_is_twenty_on_the_offer_only() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = common::config(dir.path(), &Urls::default());
+    assert_eq!(config.place_agents_max, None);
+    assert_eq!(agents_admin::agents_max_on(&config, true), Some(agents_admin::OFFER_AGENTS_MAX));
+    assert_eq!(agents_admin::OFFER_AGENTS_MAX, 20);
+    assert_eq!(agents_admin::agents_max_on(&config, false), None); // a self-install: no limit
+    assert!(agents_admin::room_for_on(&config, 1000, false));
+    config.place_agents_max = Some(0); // written as 0: none, even on the offer
+    assert_eq!(agents_admin::agents_max_on(&config, true), None);
+    config.place_agents_max = Some(3);
+    assert_eq!(
+        (agents_admin::agents_max_on(&config, true), agents_admin::agents_max_on(&config, false)),
+        (Some(3), Some(3))
+    );
+    // every agent the place runs counts (here: wellness)
+    assert_eq!(agents_admin::agents_count(&config), 1);
+    assert!(agents_admin::room_for_on(&config, 2, true) && !agents_admin::room_for_on(&config, 3, true));
+    // at 20 on the offer: the 21st is refused
+    config.place_agents_max = None;
+    for n in 0..19 {
+        let name = format!("a{n}");
+        config.agents.insert(name.clone(), bipbridge::config::AgentConfig { name, ..Default::default() });
+    }
+    assert!(!agents_admin::room_for_on(&config, 1, true) && agents_admin::room_for_on(&config, 1, false));
+}
+
+fn capped(config: &SharedConfig, most: usize) {
+    config.update(|c| c.place_agents_max = Some(most));
+}
+
+#[tokio::test]
+async fn a_new_agent_past_the_limit_is_refused_and_nothing_is_made() {
+    let (hub, _) = fake_gateway().await;
+    let dir = tempfile::tempdir().unwrap();
+    let (config, path) = managed_config(dir.path(), &hub);
+    let (run, commands) = recorder();
+    let http = reqwest::Client::new();
+    let had = config.get().agents.len();
+    capped(&config, had + 1);
+    let body = new_agent(json!({"name": "Coach", "kind": "wellness"}));
+    create_agent(&config, &body, &http, &run).await.unwrap();
+    commands.lock().unwrap().clear();
+    let err =
+        create_agent(&config, &new_agent(json!({"name": "Chef", "kind": "home"})), &http, &run).await.unwrap_err();
+    assert!(agents_admin::too_many(&err), "{err:#}");
+    assert!(commands.lock().unwrap().is_empty(), "no profile made");
+    assert_eq!(config.get().agents.len(), had + 1);
+    assert!(!profiles(dir.path()).join("chef").exists() && !std::fs::read_to_string(&path).unwrap().contains("chef"));
+    // a limit lowered below the agents there: none removed, new ones still refused
+    capped(&config, 1);
+    assert_eq!(config.get().agents.len(), had + 1);
+    assert!(agents_admin::too_many(&create_agent(&config, &body, &http, &run).await.unwrap_err()));
+    // a profile made on the server and claimed: an agent too
+    std::fs::create_dir_all(profiles(dir.path()).join("jardin")).unwrap();
+    std::fs::write(profiles(dir.path()).join("jardin/SOUL.md"), "Tu es Jardin.").unwrap();
+    assert!(agents_admin::too_many(&claim_profile(&config, "jardin", None, &http, &run).await.unwrap_err()));
+    // no limit (0): made again
+    capped(&config, 0);
+    create_agent(&config, &new_agent(json!({"name": "Chef", "kind": "home"})), &http, &run).await.unwrap();
+}
+
+/// Each way an agent is made answers the same plain refusal (409, a code, no number); the model's tools refuse
+/// before any card.
+#[tokio::test]
+async fn every_way_to_make_an_agent_refuses_past_the_limit() {
+    let (hub, _) = fake_gateway().await;
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = common::config(dir.path(), &Urls::default());
+    config.hermes.bin = "/opt/hermes".into();
+    config.hermes.hub_url = hub.clone();
+    config.hermes.home = dir.path().join(".hermes").to_string_lossy().into_owned();
+    let mut wellness = config.agents["wellness"].clone();
+    wellness.hermes_url = format!("{hub}/p/wellness");
+    wellness.host_home = Some(dir.path().to_string_lossy().into_owned());
+    config.agents.insert("wellness".into(), wellness);
+    config.place_agents_max = Some(1); // wellness is there: full
+    let app = TestApp::new(config);
+    let (k, v) = auth();
+    let h = [(k, v.as_str())];
+    let refused = json!({"detail": {"code": agents_admin::TOO_MANY_AGENTS}});
+    std::fs::create_dir_all(profiles(dir.path()).join("jardin")).unwrap();
+    std::fs::write(profiles(dir.path()).join("jardin/SOUL.md"), "Tu es Jardin.").unwrap();
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64();
+    let in_ten_days = now + 10.0 * 86400.0;
+    let routes: [(&str, Value); 5] = [
+        ("/v1/agents", json!({"name": "Chef", "kind": "home"})),
+        ("/v1/agents/claim", json!({"id": "jardin"})),
+        ("/v1/project-agents", json!({"name": "Voyage", "summary": "Le voyage à Rome", "ends": in_ten_days})),
+        ("/v1/family-agent", json!({"name": "Famille"})),
+        ("/v1/assistant-import/apply", json!({"agent": "", "name": "Grok", "soul": "Tu aides.", "source": "Grok"})),
+    ];
+    for (path, body) in routes {
+        let got = app.send_json("POST", path, &h, &body).await;
+        assert_eq!((got.status.as_u16(), got.json()), (409, refused.clone()), "{path}: {}", got.text());
+    }
+    assert_eq!(app.app.state.config().agents.len(), 1);
+
+    // the model's tools: an error for it, and no card
+    let c = app.app.state.config();
+    let agent = c.agents["wellness"].clone();
+    bipbridge::guide::change(&c, |s| s.guide = Some("wellness".into())).unwrap();
+    let args = |v: Value| v.as_object().unwrap().clone();
+    let member = |name: &str| {
+        json!({"name": name, "kind": "work", "role": "Suit les ventes", "brief": "Le plan vise 200 abonnés.",
+               "actions": ["Lister les prospects", "Préparer un mail"]})
+    };
+    let team = json!({"subject": "Plan", "agents": [member("Ventes"), member("Compta")]});
+    let coach = json!({"kind": "wellness", "name": "Coach", "role": "Suit mes séances"});
+    let project = json!({"name": "Voyage", "summary": "Rome en mai"});
+    for (tool, given) in [
+        (bipbridge::guide::PROPOSE_AGENT, coach.clone()),
+        (bipbridge::guide_team::PROPOSE_TEAM, team.clone()),
+        (bipbridge::guide::CREATE_PROJECT, project.clone()),
+    ] {
+        let result = bipbridge::guide::call(&c, &agent, tool, &args(given)).unwrap();
+        assert_eq!(result["isError"], true, "{tool}");
+        assert_eq!(result["content"][0]["text"], agents_admin::TOO_MANY_AGENTS_TOOL, "{tool}");
+    }
+    assert!(bipbridge::guide::load(&c).proposals.is_empty(), "no card past the limit");
+
+    // cards made while there was room, tapped once the place is full: refused, the cards kept
+    app.app.state.config.update(|c| c.place_agents_max = Some(3));
+    let c = app.app.state.config();
+    for (tool, given) in [
+        (bipbridge::guide::PROPOSE_AGENT, coach),
+        (bipbridge::guide_team::PROPOSE_TEAM, team),
+        (bipbridge::guide::CREATE_PROJECT, project),
+    ] {
+        let result = bipbridge::guide::call(&c, &agent, tool, &args(given)).unwrap();
+        assert_eq!(result["isError"], false, "{tool}: {result:?}");
+    }
+    app.app.state.config.update(|c| c.place_agents_max = Some(1));
+    let cards = bipbridge::guide::load(&app.app.state.config()).proposals;
+    assert_eq!(cards.len(), 3);
+    for card in &cards {
+        let id = card["id"].as_str().unwrap();
+        let got = app.request("POST", &format!("/v1/guide/proposals/{id}/accept"), &h, None).await;
+        assert_eq!((got.status.as_u16(), got.json()), (409, refused.clone()), "{}: {}", card["type"], got.text());
+    }
+    assert_eq!(bipbridge::guide::load(&app.app.state.config()).proposals.len(), 3);
+    assert_eq!(app.app.state.config().agents.len(), 1);
+}

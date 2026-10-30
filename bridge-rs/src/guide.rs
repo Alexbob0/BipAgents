@@ -724,6 +724,9 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
         CREATE_PROJECT if !may_propose_project(config, agent) => {
             return Ok(tool_text("Only your person's own agents propose project agents.", true));
         }
+        CREATE_PROJECT if !crate::agents_admin::room_for(config, 1) => {
+            return Ok(tool_text(crate::agents_admin::TOO_MANY_AGENTS_TOOL, true));
+        }
         CREATE_PROJECT => {
             let project = arg(arguments, "name", 40);
             let summary = arg(arguments, "summary", crate::project_agent::SUMMARY_MAX);
@@ -784,6 +787,9 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
         }
         SUGGEST_SWITCH if !is_the_guide => {
             return Ok(tool_text("Only the agent the person chose as their guide proposes agents.", true));
+        }
+        PROPOSE_AGENT if !crate::agents_admin::room_for(config, 1) => {
+            return Ok(tool_text(crate::agents_admin::TOO_MANY_AGENTS_TOOL, true));
         }
         PROPOSE_AGENT => {
             let kind = arg(arguments, "kind", 20);
@@ -1194,7 +1200,7 @@ fn creation_failed(exc: anyhow::Error) -> HttpError {
     if let Some(e) = exc.downcast_ref::<crate::agents_admin::AgentError>() {
         return HttpError::new(400, e.0.clone());
     }
-    if crate::agents_admin::is_os_error(&exc) {
+    if crate::agents_admin::is_os_error(&exc) || crate::agents_admin::too_many(&exc) {
         return exc.into();
     }
     tracing::warn!(target: "bipbridge::guide", error = %tk::head(&exc.to_string(), 200), "agent creation failed");

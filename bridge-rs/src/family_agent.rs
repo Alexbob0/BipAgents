@@ -742,6 +742,7 @@ async fn create(State(state): State<AppState>, body: Bytes) -> ApiResult<Respons
         }),
         ..Default::default()
     };
+    crate::agents_admin::check_room(&config)?;
     let planned = crate::agents_admin::plan_agent(&config, &request).map_err(|e| HttpError::new(400, e.to_string()))?;
     mark(&config, &planned.profile, &lang)?;
     let made =
@@ -756,6 +757,9 @@ async fn create(State(state): State<AppState>, body: Bytes) -> ApiResult<Respons
         }
         Err(exc) => {
             forget(&state.config(), &planned.profile);
+            if crate::agents_admin::too_many(&exc) {
+                return Err(exc.into());
+            }
             tracing::warn!(error = %format!("{exc:#}"), "family agent: creation failed");
             return Err(HttpError::new(502, "the agent could not be created: try again in a moment"));
         }

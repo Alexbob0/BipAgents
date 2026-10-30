@@ -73,6 +73,78 @@ pub fn is_os_error(exc: &anyhow::Error) -> bool {
     exc.chain().any(|e| e.downcast_ref::<std::io::Error>().is_some())
 }
 
+/// The agents of a place of the all-included offer at most, when its bridge.toml says nothing (`[place] agents_max`).
+/// Alex, 2026-10-30: « Mettons une limite de nombre d'agents, sans le dire. Pour éviter les abus. Au-delà de 20 ça n'a
+/// aucun sens dans tous les cas. » Never shown nor told (no counter, no number in the apps, the souls or the tools'
+/// descriptions): only a creation past it is refused.
+pub const OFFER_AGENTS_MAX: usize = 20;
+
+/// The code of the refusal (409 `{"detail": {"code": "too_many_agents"}}`): the apps say it in plain words, no number.
+pub const TOO_MANY_AGENTS: &str = "too_many_agents";
+
+/// What a model's tool says when the place is full (a tool error, nothing in the souls: no word on every call).
+pub const TOO_MANY_AGENTS_TOOL: &str =
+    "This place already has many agents: suggest reusing or removing one the person no longer uses; don't create another.";
+
+/// A new agent refused: the place already has its agents at most (`agents_max`). Routes answer 409 with
+/// `TOO_MANY_AGENTS` (web.rs turns it into that answer wherever it ends up).
+#[derive(Debug, Clone, thiserror::Error)]
+#[error("this place already has many agents")]
+pub struct TooManyAgents;
+
+/// The place's agents at most (None: no limit): `[place] agents_max` when written (0: none), else
+/// `OFFER_AGENTS_MAX` on a place of the offer (its guichet token, handover::on_offer) and no limit on a self-install.
+pub fn agents_max(config: &Config) -> Option<usize> {
+    agents_max_on(config, crate::handover::on_offer())
+}
+
+/// `agents_max`, with whether this is a place of the offer given.
+pub fn agents_max_on(config: &Config, offer: bool) -> Option<usize> {
+    match config.place_agents_max {
+        Some(0) => None,
+        Some(most) => Some(most),
+        None => offer.then_some(OFFER_AGENTS_MAX),
+    }
+}
+
+/// Every agent the place runs counts: the person's own, the guide, the project agents, the family's agent, and the
+/// one prepared at install (it becomes the first agent). Agents of relatives shared with this person live on their
+/// places, not in this bridge's list, so they don't.
+pub fn agents_count(config: &Config) -> usize {
+    config.agents.len()
+}
+
+/// Whether `more` new agents fit on the place. Agents already above the limit (none expected) are kept: only new
+/// ones are refused.
+pub fn room_for(config: &Config, more: usize) -> bool {
+    room_for_on(config, more, crate::handover::on_offer())
+}
+
+pub fn room_for_on(config: &Config, more: usize, offer: bool) -> bool {
+    agents_max_on(config, offer).is_none_or(|most| agents_count(config) + more <= most)
+}
+
+/// Err(TooManyAgents) when one more agent doesn't fit.
+pub fn check_room(config: &Config) -> Result<(), TooManyAgents> {
+    if room_for(config, 1) {
+        Ok(())
+    } else {
+        tracing::info!(target: "bipbridge::agents", agents = agents_count(config), "new agent refused: the place is full");
+        Err(TooManyAgents)
+    }
+}
+
+impl From<TooManyAgents> for HttpError {
+    fn from(refused: TooManyAgents) -> Self {
+        anyhow::Error::from(refused).into()
+    }
+}
+
+/// Whether a creation failed for that reason.
+pub fn too_many(exc: &anyhow::Error) -> bool {
+    exc.downcast_ref::<TooManyAgents>().is_some()
+}
+
 /// Python's `text[-n:]` (characters).
 pub fn tail(text: &str, n: usize) -> String {
     let count = text.chars().count();
@@ -537,6 +609,7 @@ pub async fn create_agent(
     run: &Run,
 ) -> anyhow::Result<AgentConfig> {
     let config = shared.get();
+    check_room(&config)?;
     let planned = plan_agent(&config, body)?;
     let roleless = body.custom.as_ref().is_some_and(|c| c.role.trim().is_empty());
     if roleless {
@@ -799,6 +872,7 @@ pub async fn claim_profile(
     if !unclaimed_profiles(&config).iter().any(|p| p.get("id").and_then(Value::as_str) == Some(name)) {
         return Err(LookupError(name.to_string()).into());
     }
+    check_room(&config)?;
     let install = &config.hermes;
     let env = hermes_env(&config);
     let folder = PathBuf::from(install_home(&config)).join("profiles").join(name);
@@ -1851,7 +1925,7 @@ async fn new_agent(State(state): State<AppState>, Json(body): Json<NewAgent>) ->
             if let Some(e) = exc.downcast_ref::<AgentError>() {
                 return Err(HttpError::new(400, e.0.clone()));
             }
-            if is_os_error(&exc) {
+            if is_os_error(&exc) || too_many(&exc) {
                 return Err(exc.into());
             }
             tracing::warn!(target: "bipbridge::agents", error = %head(&exc.to_string(), 200), "agent creation failed");
@@ -1873,7 +1947,7 @@ async fn claim(State(state): State<AppState>, Json(body): Json<Claim>) -> ApiRes
             if exc.downcast_ref::<LookupError>().is_some() {
                 return Err(HttpError::new(404, "no such profile waiting on the server"));
             }
-            if is_os_error(&exc) {
+            if is_os_error(&exc) || too_many(&exc) {
                 return Err(exc.into());
             }
             tracing::warn!(target: "bipbridge::agents", agent = %body.id, error = %tail(&exc.to_string(), 200), "claim failed");

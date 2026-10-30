@@ -694,6 +694,11 @@ pub struct Config {
     /// `[guide]` (guide_team.rs): not in the serialized form either.
     #[serde(skip)]
     pub guide: GuideConfig,
+    /// `[place] agents_max` (agents_admin::agents_max): the place's agents at most, never told to anyone (Alex,
+    /// 2026-10-30, « sans le dire »). None (not written): 20 on a place of the all-included offer, no limit elsewhere;
+    /// Some(0): no limit. Not in the serialized form either.
+    #[serde(skip)]
+    pub place_agents_max: Option<usize>,
     /// `[connections]` (connections.rs): not in the serialized form either.
     #[serde(skip)]
     pub connections: crate::connections::Settings,
@@ -808,6 +813,7 @@ impl Config {
             brake: crate::loop_brake::Settings::default(),
             rooms: RoomsConfig::default(),
             guide: GuideConfig::default(),
+            place_agents_max: None,
             connections: crate::connections::Settings::default(),
             watchers: crate::watchers::Settings::default(),
             agent_restart: crate::agent_restart::Settings::default(),
@@ -1716,6 +1722,14 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         first_turns: b(guide_t, "first_turns", gd.first_turns),
     };
 
+    let place_t = table(data, "place");
+    // written as 0 (no limit) is kept apart from not written (the offer's default)
+    let place_agents_max = if get(place_t, "agents_max").is_some() {
+        Some(i(place_t, "agents_max", 0)?.clamp(0, 1000) as usize)
+    } else {
+        None
+    };
+
     let records_t = table(data, "archive_records");
     let rd = ArchiveRecordsConfig::default();
     let mut extract_models = Vec::new();
@@ -1808,6 +1822,7 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         brake: crate::loop_brake::Settings::from_table(table(data, "brake")),
         rooms,
         guide,
+        place_agents_max,
         connections: crate::connections::Settings::from_table(table(data, "connections")),
         watchers: crate::watchers::Settings::from_table(table(data, "watchers")),
         agent_restart: crate::agent_restart::Settings::from_table(table(data, "agent_restart")),
@@ -1921,6 +1936,18 @@ mod tests {
         assert_eq!(c.apns.host("sandbox"), "https://api.sandbox.push.apple.com");
         assert_eq!(c.apns.host("production"), "https://api.push.apple.com");
         assert_eq!(c.fcm_base_url, FCM_BASE_URL);
+    }
+
+    #[test]
+    fn place_agents_max_kept_apart_from_not_written() {
+        assert_eq!(parse_config(&base(), None).unwrap().place_agents_max, None);
+        let mut data = base();
+        data["place"] = json!({"agents_max": 20});
+        assert_eq!(parse_config(&data, None).unwrap().place_agents_max, Some(20));
+        data["place"] = json!({"agents_max": 0});
+        assert_eq!(parse_config(&data, None).unwrap().place_agents_max, Some(0));
+        data["place"] = json!({"agents_max": 5000});
+        assert_eq!(parse_config(&data, None).unwrap().place_agents_max, Some(1000));
     }
 
     #[test]

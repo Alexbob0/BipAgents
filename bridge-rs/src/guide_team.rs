@@ -151,6 +151,10 @@ pub fn build(config: &Config, arguments: &Dict) -> Result<Dict, String> {
             return Err(format!("only {left} more agent(s) fit on their place: propose fewer"));
         }
     }
+    // the place's own limit, never told (agents_admin::agents_max)
+    if !crate::agents_admin::room_for(config, given.len()) {
+        return Err(crate::agents_admin::TOO_MANY_AGENTS_TOOL.into());
+    }
     let allowed = services();
     let mut names: Vec<String> = Vec::new();
     let mut members: Vec<Value> = Vec::new();
@@ -353,6 +357,7 @@ async fn finish(state: &AppState, agent: &AgentConfig, member: &Value, from: &st
 fn failed_reason(exc: &anyhow::Error) -> String {
     match exc.downcast_ref::<crate::agents_admin::AgentError>() {
         Some(e) => e.0.clone(),
+        None if crate::agents_admin::too_many(exc) => crate::agents_admin::TOO_MANY_AGENTS.into(),
         None => "it could not be created: try again in a moment".into(),
     }
 }
@@ -398,6 +403,9 @@ pub async fn accept(
         if missing > left {
             return Err(HttpError::new(409, format!("only {left} more agent(s) fit on this place")));
         }
+    }
+    if !crate::agents_admin::room_for(&config, missing) {
+        return Err(crate::agents_admin::TooManyAgents.into());
     }
     let mut failed: Vec<Value> = Vec::new();
     for mid in &wanted {

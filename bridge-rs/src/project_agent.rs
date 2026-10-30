@@ -347,6 +347,7 @@ pub async fn create(state: &AppState, new: NewProject) -> ApiResult<(AgentConfig
     };
     let from = new.from.as_ref().map(|a| a.name.clone());
     let _guard = crate::agents_admin::LOCK.lock().await;
+    crate::agents_admin::check_room(&config)?;
     let planned = crate::agents_admin::plan_agent(&config, &request).map_err(|e| HttpError::new(400, e.to_string()))?;
     mark(&config, &planned.profile, new.ends, &new.lang, from.as_deref())?;
     let made =
@@ -363,6 +364,9 @@ pub async fn create(state: &AppState, new: NewProject) -> ApiResult<(AgentConfig
         }
         Err(exc) => {
             forget(&state.config(), &planned.profile);
+            if crate::agents_admin::too_many(&exc) {
+                return Err(exc.into());
+            }
             tracing::warn!(error = %format!("{exc:#}"), "project agent: creation failed");
             return Err(HttpError::new(502, "the agent could not be created: try again in a moment"));
         }
