@@ -23,6 +23,7 @@ use axum::response::Response;
 use axum::routing::{get, post, put};
 use axum::Router;
 use futures::future::BoxFuture;
+use futures::StreamExt;
 use indexmap::IndexMap;
 use regex::Regex;
 use serde::{Deserialize, Deserializer};
@@ -633,6 +634,64 @@ pub async fn create_agent(
     Ok(agent)
 }
 
+/// Several new agents at once (a team card, guide_team.rs): planned one after the other (distinct profiles), made as
+/// one batch (`make_profiles`: the gateways' waits side by side, one restart at most for their tools). One result per
+/// body, in order: a failed agent never undoes the others.
+pub async fn create_agents(
+    shared: &SharedConfig,
+    bodies: &[NewAgent],
+    http: &reqwest::Client,
+    run: &Run,
+) -> Vec<anyhow::Result<AgentConfig>> {
+    let mut planned_config: Config = Config::clone(&shared.get());
+    let mut out: Vec<Option<anyhow::Result<AgentConfig>>> = Vec::new();
+    let mut batch: Vec<(usize, PlannedAgent, AgentConfig, bool)> = Vec::new();
+    for (i, body) in bodies.iter().enumerate() {
+        let planned = match plan_agent(&planned_config, body) {
+            Ok(p) => p,
+            Err(exc) => {
+                out.push(Some(Err(exc)));
+                continue;
+            }
+        };
+        let roleless = body.custom.as_ref().is_some_and(|c| c.role.trim().is_empty());
+        if roleless {
+            if let Err(exc) = crate::guide::mark_roleless(&planned_config, &planned.profile) {
+                out.push(Some(Err(exc)));
+                continue;
+            }
+        }
+        let agent = hub_agent(&planned_config, &planned.profile, &planned.name, &crate::py::token_urlsafe(32));
+        // the next body's plan sees this one's name and profile as taken
+        planned_config.agents.insert(planned.profile.clone(), agent.clone());
+        batch.push((i, planned, agent, roleless));
+        out.push(None);
+    }
+    let items: Vec<(PlannedAgent, AgentConfig)> = batch.iter().map(|(_, p, a, _)| (p.clone(), a.clone())).collect();
+    let made = make_profiles(shared, items, http, run).await;
+    for ((i, planned, _, roleless), result) in batch.into_iter().zip(made) {
+        let result = match result {
+            Ok(agent) => {
+                if let Some(group) = bodies[i].group.as_deref().filter(|g| !g.trim().is_empty()) {
+                    if let Err(exc) = crate::agent_groups::set_group(&shared.get(), &agent.name, group) {
+                        tracing::warn!(target: "bipbridge::agents", agent = %agent.name, error = %exc, "group not set");
+                    }
+                }
+                tracing::info!(target: "bipbridge::agents", agent = %agent.name, kind = %bodies[i].kind.as_deref().filter(|k| !k.is_empty()).unwrap_or("custom"), "agent created");
+                Ok(agent)
+            }
+            Err(exc) => {
+                if roleless {
+                    crate::guide::forget(&shared.get(), &planned.profile);
+                }
+                Err(exc)
+            }
+        };
+        out[i] = Some(result);
+    }
+    out.into_iter().map(|r| r.unwrap_or_else(|| Err(anyhow::anyhow!("not made")))).collect()
+}
+
 /// The hub profile of a planned agent: made, given its key and personality, served, then saved in the bridge's
 /// config (its section rewritten when it was reserved there first). `resume`: a profile already made by an attempt
 /// cut short is kept, not made again.
@@ -644,6 +703,62 @@ pub async fn make_profile(
     run: &Run,
     resume: bool,
 ) -> anyhow::Result<AgentConfig> {
+    prepare_profile(shared, planned, &agent, run, resume).await?;
+    // The gateway picks new profiles up within 30 s; its permanent « Bot Chat » is opened as soon as it answers.
+    wait_served(http, &agent, true).await?;
+    let agent = finish_profile(shared, planned, agent, run).await?;
+    tools_loaded(shared, std::slice::from_ref(&agent), http, run).await;
+    Ok(agent)
+}
+
+/// Profiles prepared at the same time in a batch.
+const PREPARED_TOGETHER: usize = 3;
+
+/// Several planned agents made as one batch (a team): their profiles a few at a time (`PREPARED_TOGETHER`), then the gateway's pick-up of all of them waited for side by side (up to 30 s each when
+/// waited one after the other), then their saving, and one wait for their tools (at most one restart of the hub's
+/// gateway for all of them, `tools_loaded`). One result per item, in order.
+pub async fn make_profiles(
+    shared: &SharedConfig,
+    items: Vec<(PlannedAgent, AgentConfig)>,
+    http: &reqwest::Client,
+    run: &Run,
+) -> Vec<anyhow::Result<AgentConfig>> {
+    // the `hermes` commands of a few profiles side by side (each its own folder; `--no-alias` writes no shared file)
+    let mut preparing: Vec<BoxFuture<'_, anyhow::Result<()>>> = Vec::new();
+    for (planned, agent) in &items {
+        preparing.push(Box::pin(prepare_profile(shared, planned, agent, run, false)));
+    }
+    let prepared: Vec<anyhow::Result<()>> =
+        futures::stream::iter(preparing).buffered(PREPARED_TOGETHER).collect().await;
+    let mut serving: Vec<BoxFuture<'_, anyhow::Result<()>>> = Vec::new();
+    for ((_, agent), ready) in items.iter().zip(prepared) {
+        serving.push(Box::pin(async move {
+            ready?;
+            wait_served(http, agent, true).await
+        }));
+    }
+    let served = futures::future::join_all(serving).await;
+    let mut out = Vec::new();
+    for ((planned, agent), served) in items.into_iter().zip(served) {
+        out.push(match served {
+            Ok(()) => finish_profile(shared, &planned, agent, run).await,
+            Err(exc) => Err(exc),
+        });
+    }
+    let made: Vec<AgentConfig> = out.iter().filter_map(|r| r.as_ref().ok().cloned()).collect();
+    tools_loaded(shared, &made, http, run).await;
+    out
+}
+
+/// A profile made for `agent` (`resume`: kept when an attempt cut short made it), its key, its tools' entry and its
+/// personality written: ready for the gateway to pick up.
+async fn prepare_profile(
+    shared: &SharedConfig,
+    planned: &PlannedAgent,
+    agent: &AgentConfig,
+    run: &Run,
+    resume: bool,
+) -> anyhow::Result<()> {
     let config = shared.get();
     let install = &config.hermes;
     let profile = planned.profile.clone();
@@ -688,11 +803,23 @@ pub async fn make_profile(
     // servers when it loads it, and an entry written after that is only read at its next restart (2026-10-30 bench:
     // a new agent answered its first messages with Hermes' tools only, and wrote « call me Max » into the shared
     // memory instead of using propose_profile). Given again below, once it is saved (its guide blocks, its browser).
-    give_tools(&shared.get(), &agent, run).await?;
+    give_tools(&shared.get(), agent, run).await?;
     std::fs::write(folder.join("SOUL.md"), &planned.soul)?;
     mark_as_bot(&folder)?;
-    // The gateway picks new profiles up within 30 s; its permanent « Bot Chat » is opened as soon as it answers.
-    wait_served(http, &agent, true).await?;
+    Ok(())
+}
+
+/// A served profile finished: its browser, uploads, section in the bridge's config, guide blocks and tools.
+async fn finish_profile(
+    shared: &SharedConfig,
+    planned: &PlannedAgent,
+    agent: AgentConfig,
+    run: &Run,
+) -> anyhow::Result<AgentConfig> {
+    let config = shared.get();
+    let profile = planned.profile.clone();
+    let family =
+        crate::family_agent::is_family(&config, &profile) || crate::project_agent::is_project(&config, &profile);
     let mut agent = if family { agent } else { with_browser(&config, agent, run).await };
     agent = mount_uploads(shared, &agent, run, false).await?;
     if shared.get().agents.contains_key(&profile) {
@@ -702,7 +829,6 @@ pub async fn make_profile(
     }
     crate::guide::refresh(&shared.get()); // its blocks, and the guide's list of agents
     give_tools(&shared.get(), &agent, run).await?;
-    tools_loaded(&shared.get(), &agent, http, run).await;
     Ok(agent)
 }
 
@@ -710,38 +836,114 @@ pub async fn make_profile(
 pub const TOOLS_LISTED_SECONDS: f64 = 20.0;
 
 /// A new agent's first turn has the bridge's tools (propose_profile, create_podcast…): when its Hermes hasn't listed
-/// them within `TOOLS_LISTED_SECONDS` (it loaded the profile before its entry was written), its gateway is restarted
-/// now when the agent has one of its own (its space: nothing else runs there, and it has not spoken yet), else (the
-/// hub's gateway, shared with agents that may be talking) asked for once they are all idle (agent_restart.rs).
+/// them within `TOOLS_LISTED_SECONDS` (it loaded the profile before its entry was written), its gateway is restarted:
+/// - its own (its space): now, nothing else runs there and it has not spoken yet;
+/// - the hub's, shared with the person's other agents: now when they are all idle (`agent_restart::group_calm`), before
+///   the answer to its creation; else its first turn waits for its tools (`mcp_sessions` `first_turn`, at most
+///   `FIRST_TURN_WAIT`) while the bridge restarts the gateway at the first calm moment (`CALM_WATCH`, then the
+///   restart loop's request, never held back by its one-hour gap). 2026-10-30 bench: on the hub the restart was only
+///   asked for, the first message came first, and a second agent made within the hour got no restart at all.
+///
 /// Only where other agents have listed them already: proof this bridge's Hermes connect at once (a Hermes that
 /// lists lazily, or the first agent of an install, is never waited for).
-async fn tools_loaded(config: &Config, agent: &AgentConfig, http: &reqwest::Client, run: &Run) {
+async fn tools_loaded(shared: &SharedConfig, agents: &[AgentConfig], http: &reqwest::Client, run: &Run) {
     let sessions = &crate::mcp_sessions::SESSIONS;
-    if !sessions.others_listed(&agent.name) {
+    let Some(first) = agents.first() else { return };
+    if !sessions.others_listed(&first.name) {
         return;
     }
+    // one wait for the whole batch
     let started = std::time::Instant::now();
-    while !sessions.has_listed(&agent.name) {
-        if started.elapsed().as_secs_f64() >= TOOLS_LISTED_SECONDS {
-            if agent.space.as_deref().is_some_and(|s| !s.is_empty()) {
-                tracing::info!(target: "bipbridge::agents", agent = %agent.name, "new agent without its tools: its gateway restarted");
-                match restart_gateway(config, agent, run).await {
-                    // served again before the app's first message
-                    Ok(()) => {
-                        let _ = wait_served(http, agent, false).await;
-                    }
-                    Err(exc) => {
-                        tracing::warn!(target: "bipbridge::agents", agent = %agent.name, error = %tail(&exc.to_string(), 200), "gateway not restarted");
-                        crate::agent_restart::request_restart(&agent.name, "new agent without its tools");
-                    }
-                }
-            } else {
-                crate::agent_restart::request_restart(&agent.name, "new agent without its tools");
-            }
-            return;
-        }
+    while agents.iter().any(|a| !sessions.has_listed(&a.name)) && started.elapsed().as_secs_f64() < TOOLS_LISTED_SECONDS {
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
+    let missing: Vec<&AgentConfig> = agents.iter().filter(|a| !sessions.has_listed(&a.name)).collect();
+    let config = shared.get();
+    let (spaced, hub): (Vec<&AgentConfig>, Vec<&AgentConfig>) =
+        missing.into_iter().partition(|a| a.space.as_deref().is_some_and(|s| !s.is_empty()));
+    for agent in spaced {
+        tracing::info!(target: "bipbridge::agents", agent = %agent.name, "new agent without its tools: its gateway restarted");
+        match restart_gateway(&config, agent, run).await {
+            // served again before the app's first message
+            Ok(()) => {
+                let _ = wait_served(http, agent, false).await;
+            }
+            Err(exc) => {
+                tracing::warn!(target: "bipbridge::agents", agent = %agent.name, error = %tail(&exc.to_string(), 200), "gateway not restarted");
+                crate::agent_restart::request_restart(&agent.name, crate::agent_restart::NEW_AGENT_TOOLS);
+            }
+        }
+    }
+    let hub: Vec<AgentConfig> = hub.into_iter().cloned().collect();
+    if hub.is_empty() {
+        return;
+    }
+    hub.iter().for_each(|a| sessions.hold_first_turn(&a.name));
+    if restart_hub_when_calm(shared, &hub, http, run).await {
+        return;
+    }
+    if !crate::agent_restart::enabled(&config) {
+        return; // an existing Hermes the person brought: their first turns wait a little, then go
+    }
+    let names: Vec<&str> = hub.iter().map(|a| a.name.as_str()).collect();
+    tracing::info!(target: "bipbridge::agents", agents = %names.join(","), "new agents without their tools: first turns wait, gateway restarted once calm");
+    let (shared, http, run) = (shared.clone(), http.clone(), run.clone());
+    tokio::spawn(async move {
+        let started = std::time::Instant::now();
+        loop {
+            tokio::time::sleep(CALM_CHECK).await;
+            let config = shared.get();
+            let waiting: Vec<AgentConfig> = hub
+                .iter()
+                .filter(|a| config.agents.contains_key(&a.name) && !sessions.has_listed(&a.name))
+                .cloned()
+                .collect();
+            hub.iter().filter(|a| !waiting.iter().any(|w| w.name == a.name)).for_each(|a| sessions.release_first_turn(&a.name));
+            if waiting.is_empty() || restart_hub_when_calm(&shared, &waiting, &http, &run).await {
+                return;
+            }
+            if started.elapsed() >= CALM_WATCH {
+                for agent in &waiting {
+                    crate::agent_restart::request_restart(&agent.name, crate::agent_restart::NEW_AGENT_TOOLS);
+                }
+                return;
+            }
+        }
+    });
+}
+
+/// How often a new agent's tools wait for a calm moment of the hub's gateway, and how long before the restart loop
+/// takes it over.
+const CALM_CHECK: Duration = Duration::from_secs(3);
+const CALM_WATCH: Duration = Duration::from_secs(600);
+
+/// The hub's gateway restarted once for new agents' tools when every agent on it is idle: served again, their tools
+/// listed (or `TOOLS_LISTED_SECONDS` passed). Whether it was restarted.
+async fn restart_hub_when_calm(
+    shared: &SharedConfig,
+    agents: &[AgentConfig],
+    http: &reqwest::Client,
+    run: &Run,
+) -> bool {
+    let sessions = &crate::mcp_sessions::SESSIONS;
+    let config = shared.get();
+    let Some(first) = agents.first() else { return false };
+    let Some(names) = crate::agent_restart::group_calm(&config, first).await else { return false };
+    let new: Vec<&str> = agents.iter().map(|a| a.name.as_str()).collect();
+    tracing::info!(target: "bipbridge::agents", agents = %new.join(","), "new agents without their tools: the hub's gateway restarted, all calm");
+    if let Err(exc) = restart_gateway(&config, first, run).await {
+        tracing::warn!(target: "bipbridge::agents", agent = %first.name, error = %tail(&exc.to_string(), 200), "gateway not restarted");
+        return false;
+    }
+    crate::agent_restart::restarted(&config, &names, crate::agent_restart::NEW_AGENT_TOOLS);
+    futures::future::join_all(agents.iter().map(|a| wait_served(http, a, false))).await;
+    // their first turns still wait for the listing if it comes later (mcp_sessions `first_turn`)
+    let started = std::time::Instant::now();
+    while agents.iter().any(|a| !sessions.has_listed(&a.name)) && started.elapsed().as_secs_f64() < TOOLS_LISTED_SECONDS {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+    agents.iter().filter(|a| sessions.has_listed(&a.name)).for_each(|a| sessions.release_first_turn(&a.name));
+    true
 }
 
 /// Its visible browser when the install gives one; the agent works without it (`bipbridge browser add <agent>` sets

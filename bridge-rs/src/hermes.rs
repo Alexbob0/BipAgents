@@ -418,6 +418,11 @@ async fn ready(agent: &AgentConfig) {
     crate::cloud_setup::READINESS.wait(&agent.name, crate::cloud_setup::READY_WAIT).await;
 }
 
+/// Before a turn: a new agent's first one waits for its tools (agents_admin.rs `tools_loaded`).
+async fn turn_ready(agent: &AgentConfig) {
+    crate::mcp_sessions::SESSIONS.first_turn(&agent.name, crate::mcp_sessions::FIRST_TURN_WAIT).await;
+}
+
 pub fn head(text: &str, n: usize) -> String {
     text.chars().take(n).collect()
 }
@@ -666,6 +671,7 @@ impl HermesClient {
         extra: Option<Map<String, Value>>,
         timeout: f64,
     ) -> Result<String, HermesError> {
+        turn_ready(agent).await;
         let mut body = Map::new();
         body.insert("message".into(), Value::String(message.to_string()));
         for (k, v) in extra.unwrap_or_default() {
@@ -730,6 +736,7 @@ impl HermesClient {
         model_options: Option<Value>,
         guest_tools: Option<&[String]>,
     ) -> Result<String, HermesError> {
+        turn_ready(agent).await;
         let mut body = Map::new();
         if let Some(tools) = guest_tools {
             body.insert("guest_turn".into(), guest_turn(tools));

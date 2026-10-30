@@ -113,7 +113,7 @@ fn create_podcast_tool() -> Value {
     the first host speaks with your voice (or the best one of the person's voice model), the others get \
     different voices (or the ones you pick with list_voices). Write a real conversation: short turns, reactions, \
     questions, a little humour, each host with a name and a personality; no markdown, no lists, no links. \
-    Length: about 150 spoken words a minute in all turns (2 minutes ≈ 300 words); give minutes when the person asked \
+    Length: about 180 spoken words a minute in all turns (2 minutes ≈ 360 words); give minutes when the person asked \
     for a length. It takes about as long as the audio lasts. The result gives a MEDIA: line: put it alone on a line \
     in your reply.",
         "inputSchema": {
@@ -1591,10 +1591,12 @@ the BipAgents app.",
     let length = match asked_minutes(arguments).filter(|_| name == CREATE_PODCAST) {
         // the length asked for and the one made, and that it is the podcast: a model that saw « 1 min 37 » for
         // « 2 minutes » made it again and handed both files (2026-10-30 bench, DeepSeek)
+        // and its real length said, not the one asked (« deux minutes » for 1 min 22, 2026-10-30 bench)
         Some(minutes) => format!(
-            "{}, asked about {}; spoken length varies, this is the podcast: don't make it again for its length",
-            duration(seconds),
-            duration(minutes * 60.0)
+            "{real}, asked about {}; spoken length varies, this is the podcast: don't make it again for its length, \
+and if you tell its length, say {real}",
+            duration(minutes * 60.0),
+            real = duration(seconds),
         ),
         None => duration(seconds),
     };
@@ -1610,8 +1612,13 @@ reply, exactly as it is (a new file each time: never one from an earlier turn).{
     ))
 }
 
-/// Spoken words a minute, roughly, with the place's voices: the podcast's length told to the model.
-pub const WORDS_PER_MINUTE: f64 = 150.0;
+/// Spoken words a minute, roughly, with the place's voices: the podcast's length told to the model. Measured on
+/// 2026-10-30 (Pocket voices, DeepSeek scripts): 302 words → 1 min 36, 249 → 1 min 22, ≈ 185 a minute (was 150).
+pub const WORDS_PER_MINUTE: f64 = 180.0;
+
+/// A script under this share of the words asked for is sent back before any audio (was 0.8: 1 min 22 for « 2
+/// minutes » went through).
+pub const SHORT_SHARE: f64 = 0.9;
 
 /// create_podcast's `minutes`, when it is a length (a number, or a number in a string; 0 to an hour).
 fn asked_minutes(arguments: &Dict) -> Option<f64> {
@@ -1623,8 +1630,8 @@ fn asked_minutes(arguments: &Dict) -> Option<f64> {
     (minutes > 0.0 && minutes <= 60.0).then_some(minutes)
 }
 
-/// The refusal, before any audio is made, of a podcast written far shorter than the length asked (under 80 % of
-/// its words): the model writes more and calls again, the person gets one file of the right length instead of a
+/// The refusal, before any audio is made, of a podcast written far shorter than the length asked (under
+/// `SHORT_SHARE` of its words): the model writes more and calls again, the person gets one file of the right length instead of a
 /// short one and its remakes.
 fn too_short(turns: &[Value], minutes: Option<f64>) -> Option<String> {
     let minutes = minutes?;
@@ -1634,7 +1641,7 @@ fn too_short(turns: &[Value], minutes: Option<f64>) -> Option<String> {
         .map(|t| t.split_whitespace().count())
         .sum();
     let wanted = (minutes * WORDS_PER_MINUTE).round() as usize;
-    (words > 0 && (words as f64) < 0.8 * wanted as f64).then(|| {
+    (words > 0 && (words as f64) < SHORT_SHARE * wanted as f64).then(|| {
         format!(
             "too short for {}: {words} words make about {}; write about {wanted} words in all turns (≈ {} a minute), \
 then call again. Nothing was made.",
@@ -2036,11 +2043,12 @@ mod tests {
         assert_eq!(asked(json!(0)), None);
         assert_eq!(asked(json!(600)), None);
         assert_eq!(asked_minutes(&Dict::new()), None);
-        // « 2 minutes »: 300 words wanted; 200 (≈ 1 min 20, the bench's first file) sent back, 250 made
-        let short = too_short(&turns(200), Some(2.0)).unwrap();
-        assert!(short.contains("200 words") && short.contains("about 300 words") && short.contains("Nothing was made"));
-        assert!(short.contains("1 min 20 s"));
-        assert_eq!(too_short(&turns(250), Some(2.0)), None);
+        // « 2 minutes »: 360 words wanted; 249 (1 min 22 on the 2026-10-30 bench) and 320 sent back, 324 made
+        let short = too_short(&turns(249), Some(2.0)).unwrap();
+        assert!(short.contains("249 words") && short.contains("about 360 words") && short.contains("Nothing was made"));
+        assert!(short.contains("1 min 23 s") && short.contains("≈ 180 a minute"), "{short}");
+        assert!(too_short(&turns(320), Some(2.0)).is_some());
+        assert_eq!(too_short(&turns(324), Some(2.0)), None);
         // no length asked: never
         assert_eq!(too_short(&turns(10), None), None);
     }
@@ -2053,7 +2061,7 @@ mod tests {
         assert!(remake_note(&[], second).is_none());
         assert!(remake_note(&["/bipagents/audio/vie/20261030-101503-venus.m4a".into()], second).is_none());
         let description = create_podcast_tool()["description"].as_str().unwrap().to_string();
-        assert!(description.contains("150 spoken words a minute"));
+        assert!(description.contains("180 spoken words a minute") && description.contains("≈ 360 words"));
         assert!(create_podcast_tool()["inputSchema"]["properties"]["minutes"].is_object());
     }
 }

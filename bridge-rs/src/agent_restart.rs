@@ -8,7 +8,9 @@
 //! - **requested**: other code called [`request_restart`] (e.g. tools changed and this Hermes did not list them again).
 //!   Acted on soon.
 //!
-//! « Soon » reasons: at most once per `gap_minutes` (an hour) per agent. Without a reason: no restart.
+//! « Soon » reasons: at most once per `gap_minutes` (an hour) per agent, except a new agent's tools
+//! ([`NEW_AGENT_TOOLS`]: agents_admin.rs `tools_loaded` restarts the hub's gateway itself as soon as it is calm, and
+//! hands it here only when it stays busy). Without a reason: no restart.
 //!
 //! Only when the agent does nothing: no turn going on (conversations, rooms, Live calls: the run hub), no Live call in
 //! the last 15 minutes, no background task or archive extraction (jobs.rs), no mail scan (mail_scan.rs), no watcher
@@ -144,6 +146,13 @@ static REQUESTS: LazyLock<Mutex<HashMap<String, String>>> = LazyLock::new(Defaul
 static LIVE: LazyLock<Mutex<HashMap<String, f64>>> = LazyLock::new(Default::default);
 /// A Live call this recent: the agent is not idle.
 pub const LIVE_SECONDS: f64 = 900.0;
+
+/// A new agent on the hub's gateway whose Hermes did not load the bridge's tools: never held back by `gap_minutes`
+/// (2026-10-30 bench: two agents made within the hour, the second never restarted, its first turns without tools).
+pub const NEW_AGENT_TOOLS: &str = "new agent without its tools";
+
+/// The bridge's state, for [`group_calm`] (set when the loop starts; None in tests and before).
+static APP: std::sync::OnceLock<AppState> = std::sync::OnceLock::new();
 
 /// Asks for the agent's Hermes to be restarted soon, once it is idle (at most once per `gap_minutes`).
 pub fn request_restart(agent: &str, reason: &str) {
@@ -291,7 +300,7 @@ pub fn reason(
     s: &Settings,
 ) -> Option<Reason> {
     let gap_ok = since_last.is_none_or(|t| t >= s.gap_minutes as f64 * 60.0);
-    if gap_ok {
+    if gap_ok || requested == Some(NEW_AGENT_TOOLS) {
         if let Some(why) = requested {
             return Some(Reason::Requested(why.to_string()));
         }
@@ -322,6 +331,12 @@ pub fn records(config: &Config) -> Map<String, Value> {
 /// The agent's last restart `{at, reason}`, if any.
 pub fn last_restart(config: &Config, agent: &str) -> Option<Value> {
     records(config).get(agent).cloned()
+}
+
+/// A restart other code did (agents_admin.rs `tools_loaded`): recorded and the agents' requests done, as the loop's.
+pub fn restarted(config: &Config, agents: &[String], reason: &str) {
+    record(config, agents, &format!("requested: {reason}"), py::time_time());
+    agents.iter().for_each(|a| clear_request(a));
 }
 
 fn record(config: &Config, agents: &[String], reason: &str, at: f64) {
@@ -495,8 +510,28 @@ async fn restart(config: &Config, agents: &[AgentConfig]) -> anyhow::Result<()> 
     Ok(())
 }
 
+/// The agents sharing `agent`'s gateway, when they are all idle (`activity`) and restarts are on here: Some(names).
+/// None when one of them is busy, restarts are off (an existing Hermes the person brought), the place sleeps, or the
+/// loop isn't running (tests).
+pub async fn group_calm(config: &Config, agent: &AgentConfig) -> Option<Vec<String>> {
+    let state = APP.get()?;
+    if !enabled(config) || (state.sleep.enabled() && state.sleep.asleep()) {
+        return None;
+    }
+    let key = agent.space.clone().filter(|s| !s.is_empty()).unwrap_or_default();
+    let agents = groups(config).swap_remove(&key).unwrap_or_default();
+    let now = py::time_time();
+    for other in &agents {
+        if activity(state, config, other, now).await.busy().is_some() {
+            return None;
+        }
+    }
+    Some(agents.iter().map(|a| a.name.clone()).collect())
+}
+
 /// The loop (app.rs): every `tick_seconds`, each gateway looked at.
 pub async fn run_forever(state: AppState) {
+    let _ = APP.set(state.clone());
     let mut memory: HashMap<String, Group> = HashMap::new();
     loop {
         let config = state.config();
@@ -685,6 +720,11 @@ mod tests {
         // requested: soon, at most once an hour
         assert_eq!(reason(Some("tools changed"), 0, false, &small, None, &s), Some(Reason::Requested("tools changed".into())));
         assert_eq!(reason(Some("tools changed"), 0, false, &small, Some(600.0), &s), None);
+        // a new agent's tools: whatever the last restart (two agents made within the hour, 2026-10-30)
+        assert_eq!(
+            reason(Some(NEW_AGENT_TOOLS), 0, false, &small, Some(60.0), &s),
+            Some(Reason::Requested(NEW_AGENT_TOOLS.into()))
+        );
         assert!(Reason::Unhealthy.soon() && !Reason::Memory(String::new()).soon());
     }
 

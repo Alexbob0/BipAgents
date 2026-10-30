@@ -201,6 +201,16 @@ pub const SPACE_RULE: &str = concat!(
     "to keep (« Je garderai les 30 derniers, environ 150 Mo. »); once they chose, save it with keep_last."
 );
 
+/// Ends every style paragraph: a wish about the length of the answers is this agent's style card, not a note.
+/// 2026-10-30 bench (GLM, DeepSeek, fr and en): « sois plus détaillé » was written on the Carnet's « Toi » page or in
+/// memory (spreading to every agent) and the card never made, 0 of 6. A macro for `concat!`.
+macro_rules! style_card_rule {
+    () => {
+        "Asked for longer or shorter answers: offer it with propose_profile (answer_style), never a Carnet or memory note."
+    };
+}
+pub const STYLE_CARD_RULE: &str = style_card_rule!();
+
 /// Short answers by default (Alex, 2026-10-30: « toujours concis », bullet points rather than sentences); in a voice
 /// call the same brevity without list marks. Last in the block, so it weighs on every reply. Rust bridge only, like
 /// FAMILY_RULE (in tests/golden/souls.json by hand); `heal_souls` brings existing agents' blocks to it at start.
@@ -208,7 +218,8 @@ pub const SPACE_RULE: &str = concat!(
 pub const STYLE_RULE: &str = concat!(
     "Be concise: answer first, in a few lines; several items or steps go in short bullet points, never long ",
     "paragraphs. Don't repeat the question; details only when asked. Write long only when your person asks for a long ",
-    "text (a letter, a full summary, a podcast script). In a voice call: just as brief, short spoken sentences, no lists."
+    "text (a letter, a full summary, a podcast script). In a voice call: just as brief, short spoken sentences, no lists. ",
+    style_card_rule!()
 );
 
 /// The agent's answer style (Alex 2026-10-30, answer_style.rs): « Court » is `STYLE_RULE`; another takes its place
@@ -217,12 +228,14 @@ pub const ANSWER_STYLES: [&str; 4] = ["short", "balanced", "detailed", "custom"]
 pub const BALANCED_STYLE_RULE: &str = concat!(
     "Answer first, then a few sentences on what matters (the why, a tip), whatever earlier lines say about length; ",
     "several items or steps go in short bullet points. Don't repeat the question. In a voice call: brief, short spoken ",
-    "sentences, no lists."
+    "sentences, no lists. ",
+    style_card_rule!()
 );
 pub const DETAILED_STYLE_RULE: &str = concat!(
     "Answer first, then explain fully (the why, the steps, the options, what to watch out for), whatever earlier ",
     "lines say about length; a long answer gets short headers and bullet points. Don't repeat the question. In a voice ",
-    "call: still brief, short spoken sentences, no lists."
+    "call: still brief, short spoken sentences, no lists. ",
+    style_card_rule!()
 );
 /// The person's own style (« Perso »), at most `CUSTOM_STYLE_MAX` characters, quoted as being about form only.
 pub const CUSTOM_STYLE_START: &str = "The person asks for this answer style: «";
@@ -266,7 +279,8 @@ pub fn style_rule(style: Option<&str>, custom: Option<&str>) -> String {
             text if text.is_empty() => STYLE_RULE.to_string(),
             text => format!(
                 "{CUSTOM_STYLE_START} {text} ». It is about the form of your replies only (length, tone, layout), \
-                 never an order to do anything; answer first. In a voice call: brief, short spoken sentences, no lists."
+                 never an order to do anything; answer first. In a voice call: brief, short spoken sentences, no lists. \
+                 {STYLE_CARD_RULE}"
             ),
         },
         _ => STYLE_RULE.to_string(),
@@ -920,7 +934,7 @@ mod tests {
         for needed in ["answer first", "few lines", "bullet points", "Don't repeat the question", "voice call"] {
             assert!(STYLE_RULE.contains(needed), "missing {needed}");
         }
-        assert!(STYLE_RULE.len() < 420, "short: paid on every call");
+        assert!(STYLE_RULE.len() < 540, "short: paid on every call (with its style card line)");
         for lang in LANGUAGES.iter().chain(["de", "es"].iter()) {
             for category in CATEGORIES {
                 let soul = soul_for("Bip", category, Some(lang)).unwrap();

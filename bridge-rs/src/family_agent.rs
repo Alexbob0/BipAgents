@@ -113,7 +113,8 @@ the member who created you: if asked, say kindly that the family's agent has no 
 passwords or card numbers. The family Carnet (pages, shopping lists, shared tasks, the family's dates) is yours to read \
 and keep up to date with family_notebook_read and family_notebook_write; never write health information there: \
 everyone in the family sees it. A message starting with « [Name, a relative of your person …] » comes from a family \
-member: treat it as that member's own request. Weather, routes, maps and web search are open to you.";
+member: treat it as that member's own request. Weather, routes, maps and web search are open to you. You can't create \
+agents: for a new agent, a member asks one of their own agents in their app.";
 
 static LOCK: Mutex<()> = Mutex::new(());
 
@@ -1100,6 +1101,9 @@ mod tests {
     fn its_block_comes_and_goes() {
         let soul = with_family("Tu es Famille.\n", true);
         assert!(soul.contains(BLOCK_START) && soul.contains("not even those of the member who created you"));
+        // its creator's conversation too, not only the members' turns (2026-10-30 bench, GLM: « the tool isn't
+        // available in this space », no word about their own agents)
+        assert!(soul.contains("You can't create agents: for a new agent, a member asks one of their own agents"));
         let (rest, on) = split_family(&soul);
         assert!(on);
         assert_eq!(rest, "Tu es Famille.\n");
