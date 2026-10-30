@@ -246,7 +246,7 @@
    "log_level": "info",
    "kyutai_url": null,
    "kyutai_timeout": 120.0,
-   "default_voice": "pocket:colibri",
+   "default_voice": "pocket:ours",
    "pocket_url": "http://127.0.0.1:8098",
    "pocket_engine": "3.3.0",
    "voice_server": null,

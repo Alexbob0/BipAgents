@@ -377,7 +377,7 @@ pub fn server_voice_id(voice: &str) -> String {
 /// otherwise, in the voice's language.
 pub fn server_fallback(voice: &str) -> String {
     let lang = voice_language(voice);
-    let name = if voice.contains("mascotte") || voice.contains("mascot") { "colibri" } else { "galet" };
+    let name = if voice.contains("mascotte") || voice.contains("mascot") { "ours" } else { "galet" };
     if lang == "fr" {
         format!("{POCKET_PREFIX}{name}")
     } else {

@@ -1406,7 +1406,7 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
     let default_voice = if !kyutai_url.is_empty() {
         s(kyutai, "default_voice", "5476")
     } else {
-        s(pocket, "default_voice", "pocket:colibri")
+        s(pocket, "default_voice", "pocket:ours")
     };
     let limits_t = table(data, "limits");
 
