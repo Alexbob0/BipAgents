@@ -46,6 +46,15 @@ def test_the_user_data_the_apps_send_sets_up_the_server_and_runs_the_cloud_insta
     clone = next(c for c in commands if "git clone" in c)
     assert "/usr/local/lib/bipagents/repo" in clone   # where the seat agent keeps root's checkout (SHARED_REPO)
     assert commands.index(clone) < commands.index(shared) < commands.index(install)
+    # Root's checkout at main's latest, in words a guichet replaces when its update wave pins a commit
+    # (guichet-rs/src/bootstrap.rs, SHARED_AT): the shared Hermes of the version the places install, once, right
+    # after the clone. Its install line keeps the guichet's other marker (INSTALL).
+    at = "checkout --quiet --force origin/main"
+    checkout = next(c for c in commands if at in c)
+    assert checkout.startswith("git -C /usr/local/lib/bipagents/repo ")
+    assert render("x" * 43).count(at) == 1
+    assert commands.index(checkout) == commands.index(clone) + 1 and commands.index(checkout) < commands.index(shared)
+    assert install.count("| bash -s -- --cloud") == 1
     assert {"zstd", "python3-yaml"} <= set(data["packages"])
     assert commands.index(install) < next(i for i, c in enumerate(commands) if c.startswith("shred"))
     assert commands.index("loginctl enable-linger bip") < commands.index(install)
