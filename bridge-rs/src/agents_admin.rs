@@ -1791,6 +1791,9 @@ async fn new_agent(State(state): State<AppState>, Json(body): Json<NewAgent>) ->
             return Err(HttpError::new(502, "the agent could not be created: try again in a moment"));
         }
     };
+    // its first conversation opens with its welcome (welcome.rs): a kind's own, or the one of an agent with its role
+    let kind = if body.custom.is_some() { "custom" } else { body.kind.as_deref().unwrap_or("custom") };
+    crate::welcome::wait_for(&state.config(), &agent, kind, body.lang.as_deref().unwrap_or("fr"));
     Ok(web::json_response(201, &created(&state.config(), &agent)))
 }
 

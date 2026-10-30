@@ -307,6 +307,14 @@ function Conversation({ agent, sessionId, onSessionChange, onMood }) {
   const following = useRef(null);
   const stick = useRef(true);
   const sending = useRef(false);
+  // A new agent's first message, written by the bridge (welcome.rs): a new conversation until the person writes, then
+  // that conversation only.
+  const [welcome, setWelcome] = useState(null);
+  useEffect(() => {
+    setWelcome(null);
+    call("/v1/guide").then(r => setWelcome((r.welcome || {})[agent.id] || null)).catch(() => {});
+  }, [agent.id, sessionId]);
+  const greeting = welcome && (!welcome.session || welcome.session === sessionId) ? welcome : null;
 
   const load = useCallback(async () => {
     if (!sessionId) { setItems([]); return; }
@@ -504,7 +512,9 @@ function Conversation({ agent, sessionId, onSessionChange, onMood }) {
   return html`<section class="conversation">
     <div class="thread" ref=${scroller} onScroll=${onScroll}>
       ${items === null && !error && html`<p class="muted pad">${T.loading}</p>`}
-      ${items && items.length === 0 && !live && html`<div class="empty"><${Bip} agent=${agent} size=${96} mood="content"/><p>${T.emptyThread(agent.name)}</p></div>`}
+      ${items && greeting && html`<div class="msg agent"><div class="bubble md">${markdown(greeting.text)}</div></div>`}
+      ${items && greeting && !greeting.session && items.length === 0 && !live && html`<div class="row wrap">${(greeting.suggestions || []).map(s => html`<button key=${s} onClick=${() => setDraft(s)}>${s}</button>`)}</div>`}
+      ${items && items.length === 0 && !live && !greeting && html`<div class="empty"><${Bip} agent=${agent} size=${96} mood="content"/><p>${T.emptyThread(agent.name)}</p></div>`}
       ${items && items.map(bubble)}
       ${live && live.sent && html`<div class="msg user"><div class="bubble">${live.sent}</div></div>`}
       ${live && html`<div class="msg agent">

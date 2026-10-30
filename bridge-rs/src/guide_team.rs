@@ -130,7 +130,7 @@ fn color_of(v: Option<&Value>) -> Result<Option<String>, ()> {
 pub fn places_left(config: &Config) -> Option<usize> {
     let most = config.guide.agents_max;
     (most > 0).then(|| {
-        let have = config.agents.values().filter(|a| a.display_name.trim() != crate::cloud_setup::PREPARED_NAME).count();
+        let have = config.agents.values().filter(|a| a.display_name.trim() != crate::cloud_setup::PLACEHOLDER_NAME).count();
         most.saturating_sub(have)
     })
 }

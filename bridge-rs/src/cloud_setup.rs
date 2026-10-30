@@ -646,15 +646,23 @@ pub async fn claim_server(
         if created.contains_key(&index.to_string()) {
             continue;
         }
+        let kind = choice.kind.clone().filter(|k| !k.is_empty()).unwrap_or_else(|| "daily".into());
+        let name = if index == 0 { first_agent_name(&choice.name) } else { choice.name.clone() };
         let body = NewAgent {
-            name: choice.name.clone(),
-            kind: Some(choice.kind.clone().filter(|k| !k.is_empty()).unwrap_or_else(|| "daily".into())),
+            name,
+            kind: Some(kind.clone()),
             lang: request.language.clone(),
             custom: None,
             group: None,
             ..Default::default()
         };
         let agent = create_agent(config, &body, http, &run).await?;
+        let lang = request.language.clone().unwrap_or_default();
+        if index == 0 {
+            become_guide(config, &agent.name, &lang)?;
+        } else {
+            crate::welcome::wait_for(&config.get(), &agent, &kind, &lang);
+        }
         created.insert(index.to_string(), json!(agent.name));
         remember(&config.get(), &[("created", Value::Object(created.clone()))])?;
     }
@@ -676,9 +684,25 @@ pub async fn claim_server(
 // app's requests through the door wait meanwhile (`READINESS`). Other agents asked for are listed at once and made
 // right after, in the background (`claim-pending.json` next to the secret, finished at the next start if need be).
 
-/// The name of the agent made before the claim (the claim renames it); its profile id is neutral (`agent`).
-pub const PREPARED_NAME: &str = "Agent";
+/// The name of the agent made before the claim: « Bip », the guide that is always there (Alex, 2026-10-30;
+/// internal/next/bip-default-agent.md). Its profile id stays neutral (`PREPARED_ID`): a claim may rename it.
+pub const PREPARED_NAME: &str = crate::guide::GUIDE_NAME;
+pub const PREPARED_ID: &str = "agent";
 pub const PREPARED_KIND: &str = "daily";
+/// The name the apps send for the place's first agent (OfferFlow.firstAgents, Android FIRST_AGENT), and the one
+/// places prepared before 2026-10-30 still carry: it means « Bip » at the claim, and it marks an agent still
+/// waiting for the first choice on an older place (guide.rs).
+pub const PLACEHOLDER_NAME: &str = "Agent";
+
+/// The name the place's first agent gets at the claim: the app's, or « Bip » for the placeholder (or none).
+pub fn first_agent_name(asked: &str) -> String {
+    let asked = asked.trim();
+    if asked.is_empty() || asked.eq_ignore_ascii_case(PLACEHOLDER_NAME) || asked.eq_ignore_ascii_case(PREPARED_NAME) {
+        PREPARED_NAME.to_string()
+    } else {
+        asked.to_string()
+    }
+}
 /// How long a request through the door waits for an agent the claim is still making ready.
 pub const READY_WAIT: std::time::Duration = std::time::Duration::from_secs(45);
 
@@ -779,7 +803,7 @@ pub async fn prepare_place(
     if let Ok(entries) = std::fs::read_dir(&profiles) {
         taken.extend(entries.flatten().map(|e| e.file_name().to_string_lossy().into_owned()));
     }
-    planned.profile = crate::souls::profile_name(PREPARED_NAME, &taken);
+    planned.profile = crate::souls::profile_name(PREPARED_ID, &taken);
     let agent = hub_agent(&snapshot, &planned.profile, &planned.name, &crate::py::token_urlsafe(32));
     let agent = make_profile(config, &planned, agent, http, &run, false).await?;
     if let Err(exc) = warm_browser(&config.get(), &agent.name, &run).await {
@@ -968,7 +992,7 @@ fn rename_prepared(config: &SharedConfig, prepared: &str, choice: &AgentChoice, 
     use crate::agents_admin::pyyaml::Yaml;
     let snapshot = config.get();
     let mut agent = snapshot.agents.get(prepared).cloned().ok_or_else(|| anyhow::anyhow!("no agent {prepared}"))?;
-    let name = choice.name.trim();
+    let name = &first_agent_name(&choice.name);
     let kind = choice.kind.clone().filter(|k| !k.is_empty()).unwrap_or_else(|| PREPARED_KIND.into());
     let (soul, kind) = match crate::souls::soul_for(name, &kind, Some(lang)) {
         Ok(soul) => (soul, kind),
@@ -990,6 +1014,16 @@ fn rename_prepared(config: &SharedConfig, prepared: &str, choice: &AgentChoice, 
     }
     agent.display_name = name.to_string();
     crate::agents_admin::save_agent(config, &agent)
+}
+
+/// The place's first agent becomes the guide (whatever name the app gave it), its blocks written in its personality;
+/// its first conversation opens with its welcome.
+fn become_guide(config: &SharedConfig, id: &str, lang: &str) -> anyhow::Result<()> {
+    let snapshot = config.get();
+    let agent = snapshot.agents.get(id).ok_or_else(|| anyhow::anyhow!("no agent {id}"))?;
+    crate::guide::guide_from_claim(&snapshot, agent, lang)?;
+    crate::guide::sync_soul(&snapshot, agent);
+    Ok(())
 }
 
 /// The claim of a prepared place: files only, then the gateway restarted and the other agents made after the answer.
@@ -1020,6 +1054,7 @@ async fn claim_prepared(
     };
     if !created.contains_key("0") {
         rename_prepared(config, prepared, &request.agents[0], &lang)?;
+        become_guide(config, prepared, &lang)?;
         created.insert("0".into(), json!(prepared));
         remember(&config.get(), &[("created", Value::Object(created.clone()))])?;
     }
@@ -1040,6 +1075,7 @@ async fn claim_prepared(
         let planned = plan_agent(&config.get(), &body)?;
         let agent = hub_agent(&config.get(), &planned.profile, &planned.name, &crate::py::token_urlsafe(32));
         reserve_agent(config, &agent)?;
+        crate::welcome::wait_for(&config.get(), &agent, &kind, &lang);
         pending.push(json!({"id": planned.profile, "name": planned.name, "kind": kind, "lang": lang}));
         write_pending(&config.get(), &pending)?;
         created.insert(index.to_string(), json!(planned.profile));

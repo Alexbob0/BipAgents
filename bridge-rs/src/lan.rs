@@ -311,6 +311,13 @@ async fn relay(
     *response.status_mut() = status;
     *response.headers_mut() = response_headers;
     if starts_run {
+        if status.is_success() {
+            // the person wrote to the agent: its welcome stays in that conversation only (welcome.rs)
+            let session = serde_json::from_slice::<serde_json::Value>(&request_body)
+                .ok()
+                .and_then(|b| b.get("session_id").and_then(serde_json::Value::as_str).map(str::to_string));
+            crate::welcome::done(&state.config(), &target.name, session.as_deref());
+        }
         // the run it started followed by the hub whoever looks at it (the brake, loop_brake.rs)
         return Ok(crate::runs::keep_started(&state.hub, &target, &request_body, response).await);
     }

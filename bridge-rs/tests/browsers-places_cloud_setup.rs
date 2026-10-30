@@ -555,7 +555,7 @@ async fn a_prepared_place_is_claimed_with_file_writes_and_its_other_agents_made_
         .unwrap()
         .iter()
         .any(|c| c.get(1..4) == Some(&["profile".to_string(), "create".to_string(), "agent".to_string()][..])));
-    assert_eq!(shared.get().agents["agent"].display_name, "Agent");
+    assert_eq!(shared.get().agents["agent"].display_name, "Bip");
     commands.lock().unwrap().clear();
 
     // The claim: files written, no `hermes` command before the answer.
@@ -567,6 +567,18 @@ async fn a_prepared_place_is_claimed_with_file_writes_and_its_other_agents_made_
     let agents = cloud_setup::claim_server(&shared, &wanted, &http, Some(run.clone())).await.unwrap();
     assert!(started.elapsed() < std::time::Duration::from_secs(2), "{:?}", started.elapsed());
     assert_eq!(agents, vec![json!({"id": "agent", "name": "Quotidien"}), json!({"id": "maison", "name": "Maison"})]);
+    // A name of its own given by the app: kept, and that first agent is the guide all the same (no first choice).
+    let guide = bipbridge::guide::load(&shared.get());
+    assert_eq!(guide.guide.as_deref(), Some("agent"));
+    assert_eq!(guide.first_run.as_deref(), Some("guide"));
+    assert!(guide.intro.contains(&"agent".to_string()));
+    let view = bipbridge::guide::view(&shared.get());
+    assert_eq!(view["first_run"], false);
+    let hello = view["welcome"]["agent"]["text"].as_str().unwrap();
+    assert!(hello.starts_with("Hello, I'm Quotidien!") && hello.contains("call me something else"), "{hello}");
+    let maison = view["welcome"]["maison"]["text"].as_str().unwrap();
+    assert!(maison.starts_with("Hello, I'm Maison! I look after the home"), "{maison}");
+    assert_eq!(view["welcome"]["maison"]["suggestions"].as_array().unwrap().len(), 3);
     for folder in [home.clone(), home.join("profiles/agent")] {
         let yaml = std::fs::read_to_string(folder.join("config.yaml")).unwrap();
         let data = bipbridge::agents_admin::pyyaml::to_json(&bipbridge::agents_admin::pyyaml::load(&yaml).unwrap());
@@ -633,6 +645,84 @@ async fn a_prepared_place_is_claimed_with_file_writes_and_its_other_agents_made_
         .contains(&format!("API_SERVER_KEY={key}")));
     assert_eq!(shared.get().model_health_key.as_deref(), Some("sk-eu-the-new-key-42"));
     assert_eq!(commands.lock().unwrap().len(), 1); // the restart
+}
+
+/// Alex, 2026-10-30: the place's first agent is « Bip », the guide, and it greets the person first.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_apps_placeholder_claims_bip_the_guide_with_its_welcome() {
+    use axum::routing::{any, get};
+    let gateway = common::spawn_fake(
+        Router::new()
+            .route("/p/{profile}/v1/capabilities", get(|| async { axum::Json(json!({})) }))
+            .fallback(any(|| async { (axum::http::StatusCode::CREATED, axum::Json(json!({"id": "s1"}))) })),
+    )
+    .await;
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = cloud(dir.path());
+    config.hermes.hub_url = gateway.clone();
+    config.agents.clear();
+    let home = dir.path().join(".hermes");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(home.join("config.yaml"), "model:\n  provider: openrouter\n  default: openrouter/auto\n").unwrap();
+    std::fs::write(home.join(".env"), "# Hermes\nAPI_SERVER_ENABLED=true\n").unwrap();
+    let shared = bipbridge::config::SharedConfig::new(config.clone());
+    let run = fake_hermes(home.clone(), Arc::default());
+    let http = reqwest::Client::new();
+    done(&config, false);
+    assert_eq!(cloud_setup::prepare_place(&shared, &http, Some(run.clone())).await.unwrap(), Some("agent".into()));
+    // nothing to greet before the claim
+    assert_eq!(bipbridge::guide::view(&shared.get())["welcome"], json!({}));
+
+    // What the apps send today (OfferFlow.firstAgents, Android FIRST_AGENT): the placeholder means Bip.
+    let wanted = ClaimRequest::from_value(&json!({
+        "model": {"provider": "custom", "name": "glm-5.3", "key": "sk-eu-0123456789", "base_url": "https://api.eurouter.example/v1"},
+        "agents": [{"name": "Agent", "kind": "daily"}], "language": "fr"}))
+    .unwrap();
+    let agents = cloud_setup::claim_server(&shared, &wanted, &http, Some(run.clone())).await.unwrap();
+    assert_eq!(agents, vec![json!({"id": "agent", "name": "Bip"})]);
+    assert!(std::fs::read_to_string(home.join("profiles/agent/SOUL.md"))
+        .unwrap()
+        .contains(bipbridge::guide::GUIDE_START));
+    let view = bipbridge::guide::view(&shared.get());
+    assert_eq!((view["guide"].as_str(), view["first_run"].as_bool()), (Some("agent"), Some(false)));
+    let hello = view["welcome"]["agent"]["text"].as_str().unwrap();
+    assert!(hello.starts_with("Bonjour, je suis Bip !"), "{hello}");
+    assert!(hello.contains("Tu préfères m'appeler autrement ?"), "{hello}");
+    assert!(hello.contains("qu'est-ce qui te prend du temps en ce moment ?"), "{hello}");
+    // the guide may rename itself while it is still « Bip »
+    let agent = shared.get().agents["agent"].clone();
+    let tools = bipbridge::guide::tools(&shared.get(), &agent);
+    assert!(tools.iter().any(|t| t["name"] == bipbridge::guide::PROPOSE_PROFILE), "{tools:?}");
+
+    assert_eq!(view["welcome"]["agent"]["session"], Value::Null); // any empty conversation opens with it
+
+    // The person's first message: the welcome stays at the top of that conversation only, the later ones change nothing.
+    bipbridge::welcome::done(&shared.get(), "agent", Some("s-first"));
+    bipbridge::welcome::done(&shared.get(), "agent", Some("s-other"));
+    let view = bipbridge::guide::view(&shared.get());
+    assert_eq!(view["welcome"]["agent"]["session"], "s-first");
+    // A claim answered again (its answer lost) doesn't bring it back to empty conversations.
+    cloud_setup::claim_server(&shared, &wanted, &http, Some(run)).await.unwrap();
+    assert_eq!(bipbridge::guide::view(&shared.get())["welcome"]["agent"]["session"], "s-first");
+    // Written to where the bridge couldn't see the conversation: shown nowhere.
+    let maison = shared.get().agents["agent"].clone();
+    bipbridge::guide::change(&shared.get(), |s| s.welcome.clear()).unwrap();
+    bipbridge::welcome::wait_for(&shared.get(), &maison, "home", "de");
+    assert!(bipbridge::guide::view(&shared.get())["welcome"]["agent"]["text"]
+        .as_str()
+        .unwrap()
+        .starts_with("Hallo, ich bin Bip! Ich bin für deinen Alltag da")); // the guide's own, in its language
+    bipbridge::welcome::done(&shared.get(), "agent", None);
+    assert_eq!(bipbridge::guide::view(&shared.get())["welcome"], json!({}));
+}
+
+#[test]
+fn the_first_agents_name_at_the_claim() {
+    assert_eq!(cloud_setup::first_agent_name("Agent"), "Bip");
+    assert_eq!(cloud_setup::first_agent_name(" agent "), "Bip");
+    assert_eq!(cloud_setup::first_agent_name(""), "Bip");
+    assert_eq!(cloud_setup::first_agent_name("Bip"), "Bip");
+    assert_eq!(cloud_setup::first_agent_name("Quotidien"), "Quotidien");
 }
 
 #[tokio::test]
