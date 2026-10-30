@@ -594,6 +594,13 @@ impl CronWatcher {
     ) -> anyhow::Result<bool> {
         let reply = with_audio_made(&agent.name, sid, started, reply);
         let reply = self.with_cited_files(agent, reply).await;
+        // its files kept now, as at the end of a run the app follows (runs.rs): one the person can't get is a warning
+        // (« the agent pointed to a file the person can't get »), not a silent gap in the app
+        if reply.contains("MEDIA:") {
+            let (config, agent_c, text) = (self.config.clone(), agent.clone(), reply.clone());
+            let _ = tokio::task::spawn_blocking(move || crate::sent_files::capture_reply(&config.get(), &agent_c, &text))
+                .await;
+        }
         let mut title = match session.get("title") {
             Some(Value::String(t)) => Some(t.clone()),
             _ => None,

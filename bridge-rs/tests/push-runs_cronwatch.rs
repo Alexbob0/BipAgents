@@ -681,3 +681,69 @@ async fn a_conversation_hermes_cannot_read_never_holds_a_routine_back() {
     assert_eq!(w.outbox().await.len(), 1);
     w.app.shutdown().await;
 }
+
+/// A routine whose final reply is `reply`, started 3 minutes ago; stored after three rounds. Its Boîte item.
+async fn routine_stored(w: &World, reply: &str) -> Value {
+    let cron = production_watcher(w);
+    let started = chrono::Local::now() - chrono::Duration::minutes(3);
+    let sid = format!("cron_5d1c0f2a9b3e_{}", started.format("%Y%m%d_%H%M%S"));
+    w.hermes.with(|s| {
+        s.sessions = vec![json!({"id": sid, "title": "Routine du matin", "source": "cron"})];
+        s.messages.insert(
+            sid.clone(),
+            vec![json!({"role": "user", "content": "Le podcast du matin"}), json!({"role": "assistant", "content": reply})],
+        );
+    });
+    let now = chrono::Local::now().naive_local();
+    let mut stored = 0;
+    for _ in 0..3 {
+        stored += cron.poll(&w.agent, Some(now)).await.unwrap();
+    }
+    assert_eq!(stored, 1);
+    let items = w.outbox().await;
+    assert_eq!(items.len(), 1, "{items:?}");
+    items[0].clone()
+}
+
+#[tokio::test]
+async fn a_routines_m4a_podcast_is_its_audio_not_a_reading_of_its_text() {
+    // aibox 2026-10-30: the routine's text arrived, its podcast didn't. The bridge read the text aloud as the message's
+    // audio (`has_audio`), and the iPhone, taking that reading for the podcast, left the podcast's MEDIA line out.
+    let w = world(false).await;
+    let audio = podcast_made(&w, chrono::Local::now() - chrono::Duration::minutes(2));
+    let item = routine_stored(&w, &format!("🎙️ Ta nuit en deux voix.\n\nMEDIA:{audio}")).await;
+    assert_eq!(item["text"], json!(format!("🎙️ Ta nuit en deux voix.\n\nMEDIA:{audio}")));
+    let (k, v) = auth();
+    let id = item["id"].as_str().unwrap();
+    // no reading made on top of the podcast: the message has no audio of its own, the app plays the file
+    let resp = w.app.get(&format!("/v1/outbox/{id}/audio"), &[(k, v.as_str())]).await;
+    assert_eq!(resp.status, StatusCode::NOT_FOUND);
+    assert_eq!(w.outbox().await[0]["has_audio"], false);
+    // and the file is served to the app
+    let resp = w.app.get(&format!("/v1/media?path={audio}&agent=wellness"), &[(k, v.as_str())]).await;
+    assert_eq!(resp.status, StatusCode::OK);
+    assert_eq!(resp.body, b"m4a");
+    w.app.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_routines_mp3_from_the_bridges_folder_becomes_its_audio() {
+    // an mp3 the bridge made (its audio folder, outside `[media] roots`) was taken out of the text and never attached
+    let w = world(false).await;
+    let config = w.app.app.state.config.get();
+    let folder = bipbridge::agent_tools::audio_root(&config).join("wellness");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("20261030-075500-podcast.mp3"), b"ID3 podcast").unwrap();
+    let item = routine_stored(&w, "Ton podcast.\nMEDIA:/bipagents/audio/wellness/20261030-075500-podcast.mp3").await;
+    assert_eq!(item["text"], "Ton podcast.");
+    assert_eq!(item["has_audio"], true);
+    let (k, v) = auth();
+    let resp = w.app.get(&format!("/v1/outbox/{}/audio", item["id"].as_str().unwrap()), &[(k, v.as_str())]).await;
+    assert_eq!(resp.body, b"ID3 podcast");
+    w.app.shutdown().await;
+    // an mp3 nobody can reach keeps its line (the app says it's missing) instead of vanishing
+    let w = world(false).await;
+    let item = routine_stored(&w, "Ton podcast.\nMEDIA:/nulle/part/podcast.mp3").await;
+    assert_eq!(item["text"], "Ton podcast.\nMEDIA:/nulle/part/podcast.mp3");
+    w.app.shutdown().await;
+}
