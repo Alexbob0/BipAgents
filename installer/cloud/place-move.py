@@ -21,6 +21,9 @@ The data goes from server to server inside that SSH channel, never through the g
            each agent's gateway and the routines, and resumes the tasks and routines (those whose time passed run
            now). Any failure: the target stops its copy, the source starts again as it was.
         5. the source's copy is kept, stopped, seven days, then its account goes (`cleanup`)
+        A place whose bridge is down (the order's `"drain": false`, 2026-10-30): no copies while it runs, no window,
+        no drain: its services stopped (what still runs of its bridge or gateways killed), its files copied as they
+        are, then the same switch. Any failure, at any step, ends in `failed` with a short reason (`out`).
     place-move.py serve <id>           (target, the forced command of the move's SSH key)
     place-move.py cancel <id>          either side: the move called off (the source resumes if it had stopped)
     place-move.py close <id>           (target) the listener gone: sshd stopped, firewall rule and keys removed
@@ -640,7 +643,8 @@ def move_out(order_path, root=MOVES):
     start = float(window.get("start") or now)
     end = float(window.get("end") or start + AUTO_WINDOW)
     back_in = int(move.get("back_in") or 60)
-    save(move_id, root, role="out", seat=seat, phase="connecting", started=int(now), round=0)
+    save(move_id, root, role="out", seat=seat, phase="connecting", started=int(now), round=0,
+         drain=move.get("drain") is not False)
     target = move["target"]
     channel = Channel(base, str(target["address"]), int(target.get("port") or 2222), move["key"])
     deadline = min(end, now + 3600)
@@ -658,6 +662,8 @@ def move_out(order_path, root=MOVES):
     for path in plan["roots"].values():
         rehome(path, plan["home"], info["home"])   # all under the home, or stop now
     channel.ask("prepare", timeout=300)
+    if move.get("drain") is False:
+        return stopped_out(move_id, root, base, entry, channel, plan, info, back_in)
     save(move_id, root, phase="copying")
     # 1. Copies while the agents work, until little changes between two.
     total, rounds, delta = 0, 0, None
@@ -679,31 +685,45 @@ def move_out(order_path, root=MOVES):
     save(move_id, root, phase="waiting")
     before = quiet_moment(home, start, end, keep_copying)
     routines = len([r for r in before.get("routines", []) if r.get("enabled") and r.get("next_run_at")])
-    # 3. Drain.
+    # 3. Drain. A bridge that stops answering here (it went down meanwhile) fails the move: the place resumes.
     t_drain = time.time()
     save(move_id, root, phase="draining")
-    bridge(home, "POST", "/v1/place/move/drain", {"until": time.time() + 900, "back_in": back_in}, timeout=120)
-    copy_round(channel, plan, info["home"])
-    drained(home)
-    bridge(home, "POST", "/v1/place/move/drain", {"switching": True, "back_in": back_in}, timeout=120)
+    try:
+        bridge(home, "POST", "/v1/place/move/drain", {"until": time.time() + 900, "back_in": back_in}, timeout=120)
+        copy_round(channel, plan, info["home"])
+        drained(home)
+        bridge(home, "POST", "/v1/place/move/drain", {"switching": True, "back_in": back_in}, timeout=120)
+    except Exception as exc:
+        given_up(move_id, root, channel, entry, exc, stopped=False)
+        raise
     # 4. Switch.
     t_switch = time.time()
     save(move_id, root, phase="switching", drain_seconds=round(t_switch - t_drain, 1))
-    stopped = False
+    result = switch(move_id, root, channel, entry, plan, info, routines, back_in)
+    return moved(move_id, root, base, home, t_switch, result)
+
+
+def switch(move_id, root, channel, entry, plan, info, routines, back_in, stopped=False, drained_first=True):
+    """Step 4: the place stopped (unless it already is), its last changes copied with checksums, the target asked to
+    start it. Any failure rolls back (the target's copy stopped, the source as it was) and is raised again."""
     try:
-        as_user(entry, ["move-out", "stop"], timeout=300)
-        stopped = True
+        if not stopped:
+            as_user(entry, ["move-out", "stop"], timeout=300)
+            stopped = True
         copy_round(channel, plan, info["home"], checksum=True, with_stage=True)
         source = {"uid": entry.pw_uid, "gid": entry.pw_gid, "sub_uid": subids(entry.pw_name),
                   "sub_gid": subids(entry.pw_name, "/etc/subgid")}
         paths = [rehome(p, plan["home"], info["home"]) for p in plan["roots"].values()]
         asked = base64.b64encode(json.dumps({"source": source, "paths": paths, "routines": routines,
                                              "back_in": back_in}).encode()).decode()
-        result = channel.ask("finish", asked, timeout=1200)
-    except (MoveError, OSError, ValueError, subprocess.SubprocessError) as exc:
-        rollback(channel, entry, stopped)
-        save(move_id, root, phase="failed", error=str(exc)[:300], result="rolled back")
+        return channel.ask("finish", asked, timeout=1200)
+    except Exception as exc:
+        given_up(move_id, root, channel, entry, exc, stopped, drained_first)
         raise
+
+
+def moved(move_id, root, base, home, t_switch, result):
+    """Step 5: the place runs on the target; this copy is marked moved away and kept, stopped, seven days."""
     downtime = round(time.time() - t_switch, 1)
     write_private(os.path.join(home, MOVED_AWAY), json.dumps({"move": move_id, "at": int(time.time())}))
     save(move_id, root, phase="done", result="moved", downtime_seconds=downtime, verified=result.get("verified"),
@@ -717,17 +737,101 @@ def move_out(order_path, root=MOVES):
     return 0
 
 
-def rollback(channel, entry, stopped):
+# What runs a place and writes its files: its bridge, its agents' Hermes gateways (words of their command lines).
+PLACE_PROGRAMS = (("bipbridge",), ("hermes", "gateway"))
+
+
+def still_running(uid, proc="/proc"):
+    """Which of PLACE_PROGRAMS still run as the place's account (their names, nothing more)."""
+    found = []
+    try:
+        pids = os.listdir(proc)
+    except OSError:
+        return found
+    for pid in pids:
+        if not pid.isdigit():
+            continue
+        try:
+            if os.stat(os.path.join(proc, pid)).st_uid != uid:
+                continue
+            with open(os.path.join(proc, pid, "cmdline"), "rb") as fh:
+                command = fh.read().replace(b"\0", b" ").decode("utf-8", "replace")
+        except OSError:
+            continue
+        for words in PLACE_PROGRAMS:
+            if all(word in command for word in words) and " ".join(words) not in found:
+                found.append(" ".join(words))
+    return found
+
+
+def made_stopped(entry, proc="/proc", run=subprocess.run, sleep=time.sleep, wait=10):
+    """The place's bridge and gateways not running any more: what `move-out stop` left running is killed (its
+    services are disabled by then: nothing starts them again). Raises when something still runs."""
+    left = still_running(entry.pw_uid, proc)
+    if left:
+        for words in PLACE_PROGRAMS:
+            if " ".join(words) in left:
+                run(["pkill", "-KILL", "-u", entry.pw_name, "-f", ".*".join(words)], stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL)
+        waited = 0
+        while left and waited < wait:
+            sleep(1)
+            waited += 1
+            left = still_running(entry.pw_uid, proc)
+    if left:
+        raise MoveError("the place still runs: %s" % ", ".join(left))
+
+
+def stopped_out(move_id, root, base, entry, channel, plan, info, back_in, proc="/proc", run=subprocess.run):
+    """`"drain": false`, a place whose bridge is down (nothing to drain, nobody to ask): the place made sure to be
+    stopped, its files copied as they are, then the same switch as a drained move. No window, no quiet moment: it is
+    down already. Its routines aren't counted (its bridge can't say them): the target checks its bridge and agents."""
+    t_switch = time.time()
+    save(move_id, root, phase="stopping")
+    stopped = False
+    try:
+        as_user(entry, ["move-out", "stop"], timeout=300)
+        stopped = True
+        made_stopped(entry, proc, run)
+        save(move_id, root, phase="copying")
+        sent, files = copy_round(channel, plan, info["home"])
+        save(move_id, root, round=1, copied_bytes=sent, delta_bytes=sent, files=files)
+        log("move %s: the stopped place copied, %d bytes in %d files" % (move_id, sent, files))
+    except Exception as exc:
+        given_up(move_id, root, channel, entry, exc, stopped, drained_first=False)
+        raise
+    save(move_id, root, phase="switching", drain_seconds=0)
+    result = switch(move_id, root, channel, entry, plan, info, 0, back_in, stopped=True, drained_first=False)
+    return moved(move_id, root, base, entry.pw_dir, t_switch, result)
+
+
+def reason(exc):
+    """A failure's words for the beat: the move's own, else the error's kind and first words (urllib and subprocess
+    errors say a code, an address, a command's name: no key, nothing of the person)."""
+    if isinstance(exc, MoveError):
+        return str(exc)[:300]
+    return ("%s: %s" % (type(exc).__name__, exc))[:300]
+
+
+def given_up(move_id, root, channel, entry, exc, stopped, drained_first=True):
+    """The move failed once the place was touched: rolled back, then said `failed`."""
+    rollback(channel, entry, stopped, drained_first)
+    save(move_id, root, phase="failed", error=reason(exc), result="rolled back")
+
+
+def rollback(channel, entry, stopped, drained_first=True):
     """The switch failed: the target's copy stopped, the source as it was (its services, its tasks, its routines)."""
     try:
         channel.ask("abort", timeout=300)
-    except (MoveError, OSError, ValueError, subprocess.SubprocessError):
+    except Exception:
         pass
     if stopped:
         try:
             as_user(entry, ["resume"], timeout=300)
-        except MoveError:
+        except Exception:
             pass   # `bipinstall resume` prints words, not JSON: it ran
+    if not drained_first:
+        return   # nothing drained: no bridge to resume (it was down)
     deadline = time.time() + 120
     while time.time() < deadline:
         try:
@@ -735,6 +839,25 @@ def rollback(channel, entry, stopped):
             return
         except (OSError, ValueError):
             time.sleep(2)
+
+
+FINAL = ("done", "failed", "cancelled", "removed")
+
+
+def out(order_path, root=MOVES, mover=None):
+    """`out`, the unit's whole run: any failure (a bridge gone down, the target gone, a bug) ends in `failed` with a
+    short reason in the beat, never in a phase the guichet waits on, and the unit exits cleanly."""
+    try:
+        return (mover or move_out)(order_path, root)
+    except Exception as exc:
+        log("move failed: %s" % reason(exc))
+        try:
+            move_id = order_of(order_path)[1]["id"]
+            if read_json(os.path.join(folder(move_id, root), "state.json")).get("phase") not in FINAL:
+                save(move_id, root, phase="failed", error=reason(exc), result="not moved")
+        except Exception as again:   # no move to say it of (the order unreadable)
+            log("move state not written: %s" % reason(again))
+        return 1
 
 
 def cancel(move_id, root=MOVES):
@@ -746,7 +869,8 @@ def cancel(move_id, root=MOVES):
         return close(move_id, root)
     if state.get("role") == "out" and state.get("phase") not in ("done", "failed"):
         entry = place(int(state["seat"]))
-        if state.get("phase") in ("draining", "switching"):
+        stopped_here = state.get("drain") is False and state.get("phase") in ("stopping", "copying")
+        if state.get("phase") in ("draining", "switching") or stopped_here:
             try:
                 as_user(entry, ["resume"], timeout=300)
             except MoveError:
@@ -792,11 +916,7 @@ def main(argv):
         if what == "in" and rest:
             return listen(rest[0])
         if what == "out" and rest:
-            try:
-                return move_out(rest[0])
-            except MoveError as exc:
-                log("move failed: %s" % exc)
-                return 1
+            return out(rest[0])
         if what == "serve" and rest:
             return serve(rest[0])
         if what == "cancel" and rest:
