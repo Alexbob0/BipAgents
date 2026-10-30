@@ -36,6 +36,8 @@ jobs:
       - name: Installer
         run: PYTHONPATH=installer python -m pytest -q installer/tests
       - name: Demo voices (every reply the demo shows has its recording)
+        # scripts/ stays private (scripts/public-paths.txt): the public repository has no such test to run
+        if: hashFiles('scripts/test_demo_voices.py') != ''
         run: python scripts/test_demo_voices.py
       - name: Bridge (black-box suite, the HTTP contract)
         working-directory: bridge
