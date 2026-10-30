@@ -572,7 +572,8 @@ mod tests {
         let catalog = drive_catalog();
         let mut stored = Stored::default();
         assert!(drive_for(&catalog, &stored, "bip").is_none());
-        let conn = |state: &str| Connection { agents: vec!["bip".into()], state: state.into(), ..Connection::default() };
+        let conn =
+            |state: &str| Connection { agents: vec!["bip".into()], state: state.into(), ..Connection::default() };
         stored.connections.insert("notion".into(), conn("connected")); // not a drive
         stored.connections.insert("testdrive".into(), conn("expired"));
         assert!(drive_for(&catalog, &stored, "bip").is_none());
@@ -616,11 +617,10 @@ mod tests {
 
     #[test]
     fn placeholders_filled_deep() {
-        let filled = fill(&json!({"a": "{name} in {folder}", "b": ["{mime_type}"], "n": 3}), &[
-            ("name", "x.pdf"),
-            ("folder", "BipAgents"),
-            ("mime_type", "application/pdf"),
-        ]);
+        let filled = fill(
+            &json!({"a": "{name} in {folder}", "b": ["{mime_type}"], "n": 3}),
+            &[("name", "x.pdf"), ("folder", "BipAgents"), ("mime_type", "application/pdf")],
+        );
         assert_eq!(filled, json!({"a": "x.pdf in BipAgents", "b": ["application/pdf"], "n": 3}));
     }
 }
