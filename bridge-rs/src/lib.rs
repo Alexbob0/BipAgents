@@ -148,6 +148,7 @@ pub mod pages;
 pub mod phone_asks;
 pub mod reminders;
 pub mod rooms;
+pub mod rooms_memory;
 pub mod rooms_remote;
 pub mod routes;
 #[doc(hidden)]

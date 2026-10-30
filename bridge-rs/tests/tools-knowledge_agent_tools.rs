@@ -323,7 +323,7 @@ fn the_tools_version_is_the_pythons() {
     // (2026-10-22, the Python bridge doesn't have them), start_task, the page kit and map_image (2026-10-22), map_image's
     // live map, line and directions (2026-10-23), upcoming_dates (2026-10-24), mail_attachment and space_estimate (2026-10-28),
     // space_estimate in plain words (2026-10-28), create_podcast's length in minutes (2026-10-30), its 180 words a
-    // minute (2026-10-30, release bench), give_file (2026-10-30).
+    // minute (2026-10-30, release bench), give_file and room_history (2026-10-30).
     let expected = include_str!("golden/agent_tools_version.txt").trim();
     assert_eq!(agent_tools::tools_version(), expected);
 }

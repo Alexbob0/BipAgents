@@ -931,6 +931,7 @@ async fn take_recap(State(state): State<AppState>, Json(body): Json<RecapTaken>)
                 briefs.take_recap(&agent.name, &body.session),
                 crate::family_news::take_notes(&config, &agent.name),
                 crate::notebook::news::take_now(&config, &agent.name), // the Carnet's news (notebook/news.rs)
+                crate::rooms_memory::take_note(&config, &agent.name), // what's new in its rooms (rooms_memory.rs)
                 crate::friends_cards::take_note(&config, &agent.name), // friends' taps on its cards (friends_cards.rs)
                 crate::storage_watch::take_note(&config, &agent.name), // the place's space (storage_watch.rs)
                 crate::feature_tips::on_message(

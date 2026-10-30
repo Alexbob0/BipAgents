@@ -271,6 +271,7 @@ static TOOL_LIST: LazyLock<Vec<Value>> = LazyLock::new(|| {
     tools.push(crate::dates::tool());
     tools.push(crate::storage_watch::tool()); // the space a recurring production takes, and what to keep
     tools.push(crate::give_file::tool()); // a file it made, to the person's drive or the conversation (give_file.rs)
+    tools.push(crate::rooms_memory::tool()); // its group discussions, read from a one-to-one turn
     tools
 });
 
@@ -1376,6 +1377,10 @@ pub async fn call_tool(
     if name == crate::storage_watch::TOOL_NAME {
         let (c, agent_name, arguments) = (config.clone(), agent.name.clone(), arguments.clone());
         return blocking(move || Ok(crate::storage_watch::call(&c, &agent_name, &arguments))).await;
+    }
+    if name == crate::rooms_memory::TOOL_NAME {
+        let (c, agent_name, arguments) = (config.clone(), agent.name.clone(), arguments.clone());
+        return blocking(move || Ok(crate::rooms_memory::call(&c, &agent_name, &arguments))).await;
     }
     if name == crate::archives::records_fill::TOOL {
         if !crate::archives::enabled(&config, &agent.name) {
