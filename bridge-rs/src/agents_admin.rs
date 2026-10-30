@@ -735,7 +735,9 @@ pub async fn create_agents(
 /// A spare for a planned agent (agent_pool.rs), out of the pool: never for the family's agent nor a project agent
 /// (marked before they are made: their tools differ from their creation on).
 fn spare_for(config: &Config, planned_profile: &str) -> Option<crate::agent_pool::Spare> {
-    if crate::family_agent::is_family(config, planned_profile) || crate::project_agent::is_project(config, planned_profile)
+    if crate::agent_pool::wanted(config) == 0
+        || crate::family_agent::is_family(config, planned_profile)
+        || crate::project_agent::is_project(config, planned_profile)
     {
         return None;
     }
