@@ -35,6 +35,8 @@ jobs:
         run: cargo build --release --locked
       - name: Installer
         run: PYTHONPATH=installer python -m pytest -q installer/tests
+      - name: Demo voices (every reply the demo shows has its recording)
+        run: python scripts/test_demo_voices.py
       - name: Bridge (black-box suite, the HTTP contract)
         working-directory: bridge
         # The runner's /usr/bin/chromium is a bare snapshot without a setuid sandbox (« No usable sandbox! », the VM
