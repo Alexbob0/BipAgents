@@ -38,6 +38,12 @@ zstd, as the release `hermes-<version>` (`hermes-<version>-linux-<x86_64|aarch64
 fetches it first: checked against SHA256SUMS, unpacked beside its place, moved in, given to root, `.complete` last. No
 release for this version or this processor, a checksum that differs, no zstd, another folder than /opt/bipagents/hermes
 (the tree holds its own absolute paths): it is built here as before.
+
+A server of the offer installed just after a public push (2026-10-30: bootstrapped 4 minutes after the push, the
+workflow published 3 minutes later) asks before the workflow is done: a 404 there meant building everything on the
+server, past the guichet's install time. While a server of the offer installs (`cloud_install`), a missing release
+is waited for (every `RELEASE_EVERY` s, up to `RELEASE_WAIT_MINUTES`) before building here. A machine whose owner
+turned the shared Hermes on builds at once, as before.
 """
 from __future__ import annotations
 
@@ -74,8 +80,53 @@ SLUG = "Alexbob0/BipAgents"
 RELEASES = f"https://github.com/{SLUG}/releases/download"
 SUMS = "SHA256SUMS"
 ZSTD_LEVEL = "-15"   # the pack: several times smaller than the tree, unpacked in seconds whatever the level
+# A missing release waited for on a server of the offer: the bridge's workflow takes ~29 min after a push, Hermes'
+# ~7 (2026-10-30), both started by the same push; past this, it is built here.
+RELEASE_WAIT_MINUTES = 35
+RELEASE_EVERY = 60
+CLOUD_SETUPS = Path(os.environ.get("BIPAGENTS_CLOUD_SETUPS", "/etc/bipagents"))
 
 Fetch = Callable[[str, Path], None]   # (url, file): the file written, or an exception
+
+
+def cloud_install(setups: Optional[Path] = None) -> bool:
+    """A server of the offer installing places: its first-boot script wrote their setups (/etc/bipagents/cloud.json,
+    cloud-<n>.json from add-seat.sh), deleted once the place is installed. Never on a machine of someone's own."""
+    folder = setups or CLOUD_SETUPS
+    try:
+        return any(folder.glob("cloud*.json"))
+    except OSError:
+        return False
+
+
+def wait_minutes() -> float:
+    """How long a missing release is waited for here: `RELEASE_WAIT_MINUTES` on a server of the offer, else 0."""
+    return RELEASE_WAIT_MINUTES if cloud_install() else 0
+
+
+def _published(version: str, fetch: Fetch, minutes: float, sleep: Optional[Callable[[float], None]] = None,
+               clock: Optional[Callable[[], float]] = None) -> bool:
+    """Whether the release of `version` is out (its SHA256SUMS answers), asked every `RELEASE_EVERY` s for up to
+    `minutes` (0: once). Any refusal counts as not yet: a 404 while the workflow publishes it, a network blip."""
+    sleep, clock = sleep or time.sleep, clock or time.monotonic
+    until = clock() + minutes * 60
+    told = False
+    while True:
+        with tempfile.TemporaryDirectory() as folder:
+            try:
+                fetch(f"{release_url(version)}/{SUMS}", Path(folder) / SUMS)
+                return True
+            except Exception as exc:   # noqa: BLE001 - not out yet, or no network: asked again below
+                why = f"{type(exc).__name__}: {str(exc)[:120]}"
+        if clock() + RELEASE_EVERY > until:
+            if told:
+                say(f"Ready-made Hermes {version} still not out after {minutes:.0f} min ({why}).")
+            return False
+        if not told:
+            say(f"Ready-made Hermes {version} not out yet ({why}): GitHub Actions is most likely publishing it, "
+                f"waiting up to {minutes:.0f} min.")
+            told = True
+        sleep(RELEASE_EVERY)
 
 
 def say(text: str = "") -> None:
@@ -145,9 +196,11 @@ def _sha256(path: Path) -> str:
 
 
 def prebuilt(runner: hermes.Runner, base: Path, version: str, *, fetch: Fetch = _download,
-             machine: Optional[str] = None) -> bool:
+             machine: Optional[str] = None, wait: float = 0,
+             sleep: Optional[Callable[[float], None]] = None) -> bool:
     """The version from its release instead of a build: True once it is in place (sealed by the workflow, given to
-    root here, `.complete` last); False, and why said, when it is to be built here instead. Never raises."""
+    root here, `.complete` last); False, and why said, when it is to be built here instead. With `wait` (minutes, a
+    server of the offer), a release not out yet is waited for that long first. Never raises."""
     name = asset(version, machine)
     if name is None:
         say(f"No ready-made Hermes for this processor ({platform.machine()}): building it here.")
@@ -163,6 +216,9 @@ def prebuilt(runner: hermes.Runner, base: Path, version: str, *, fetch: Fetch = 
     runner.log.append(f"fetch {url} (checked against its {SUMS}) and unpack it into {target}")
     if runner.dry:
         return True
+    if wait and not _published(version, fetch, wait, sleep):
+        say(f"Ready-made Hermes {version} not used (no release): building it here.")
+        return False
     started = time.monotonic()
     fetched = started
     work: Optional[Path] = None
@@ -233,14 +289,16 @@ def pack(base: Path, version: str, out: Path, machine: Optional[str] = None) -> 
 # -- building a version (as root) ---------------------------------------------------------------------------------
 
 def build(runner: hermes.Runner, base: Path, version: str, *, browser: bool = True, patches: Path = PATCHES,
-          commit: str = hermes.HERMES_COMMIT, ready_made: bool = False, fetch: Fetch = _download) -> Path:
+          commit: str = hermes.HERMES_COMMIT, ready_made: bool = False, fetch: Fetch = _download,
+          wait: float = 0) -> Path:
     """The version made once for this server: Hermes' official installer run by an account of its own (not root)
     into its folder, BipAgents' patches put on, then sealed and handed to root, read-only for everyone else. With
-    `ready_made`, its release is tried first (the workflow builds it with Hermes' browser, at the pinned commit)."""
+    `ready_made`, its release is tried first (the workflow builds it with Hermes' browser, at the pinned commit),
+    waited for `wait` minutes when it isn't out yet (`wait_minutes`)."""
     target = base / version
     if ready(base, version):
         return target
-    if ready_made and browser and commit == hermes.HERMES_COMMIT and prebuilt(runner, base, version, fetch=fetch):
+    if ready_made and browser and commit == hermes.HERMES_COMMIT and prebuilt(runner, base, version, fetch=fetch, wait=wait):
         return target
     started = time.monotonic()
     home = target / ".build-home"
@@ -608,7 +666,8 @@ def main(argv: List[str]) -> int:
     if base is None:
         say(f"Not turned on here ({SETTING}): `bipinstall shared-hermes enable` first.")
         return 1
-    target = build(runner, base, version_id(), browser=not args.no_browser, ready_made=not args.no_prebuilt)
+    target = build(runner, base, version_id(), browser=not args.no_browser, ready_made=not args.no_prebuilt,
+                   wait=wait_minutes())
     if runner.dry:
         for line in runner.log:
             say(f"  $ {line}")

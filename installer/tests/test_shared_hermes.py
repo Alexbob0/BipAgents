@@ -296,3 +296,51 @@ def test_a_dry_run_says_it_would_fetch_the_ready_made_version(tmp_path, monkeypa
     runner = hermes.Runner(dry=True)
     shared_hermes.build(runner, base, "v1", ready_made=True, browser=False)   # the release has Hermes' browser
     assert any("install.sh" in line for line in runner.log)
+
+
+def test_a_server_of_the_offer_waits_for_a_release_not_out_yet(tmp_path, monkeypatch):
+    """2026-10-30: a server bootstrapped 4 min after a public push asked for the ready-made Hermes 3 min before the
+    workflow published it, and built everything here instead. On a server of the offer it is waited for."""
+    base = tmp_path / "opt"
+    monkeypatch.setattr(shared_hermes, "DEFAULT_ROOT", base)
+    monkeypatch.setattr(shared_hermes.platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(shared_hermes.shutil, "which", lambda name: "/usr/bin/" + name)
+    said = []
+    monkeypatch.setattr(shared_hermes, "say", said.append)
+    now = [0.0]
+    slept = []
+
+    def sleep(seconds):
+        slept.append(seconds)
+        now[0] += seconds
+    monkeypatch.setattr(shared_hermes.time, "monotonic", lambda: now[0])
+    asked = []
+
+    def out_after_3_minutes(url, path):
+        asked.append(url)
+        if now[0] < 180:
+            raise OSError("HTTP Error 404: Not Found")
+        path.write_text("")   # published (empty sums: the usual checks stop it below)
+    assert not shared_hermes.prebuilt(OnlyRemoves(), base, "v1", fetch=out_after_3_minutes, wait=35, sleep=sleep)
+    assert slept == [60, 60, 60] and "waiting up to 35 min" in said[0]
+    assert len(asked) == 5 and "not in the release's SHA256SUMS" in said[-1]   # once out, the usual download
+    # never out: given up after the wait, then built here
+    said.clear(), slept.clear()
+    now[0] = 0.0
+
+    def missing(url, path):
+        raise OSError("HTTP Error 404: Not Found")
+    assert not shared_hermes.prebuilt(OnlyRemoves(), base, "v1", fetch=missing, wait=35, sleep=sleep)
+    assert len(slept) == 35 and "still not out after 35 min" in said[-2] and "building it here" in said[-1]
+    # without a wait (a machine of someone's own): asked once, built here at once
+    slept.clear()
+    assert not shared_hermes.prebuilt(OnlyRemoves(), base, "v1", fetch=missing, sleep=sleep)
+    assert slept == [] and "404" in said[-1]
+
+
+def test_only_a_server_of_the_offer_waits(tmp_path, monkeypatch):
+    monkeypatch.setattr(shared_hermes, "CLOUD_SETUPS", tmp_path)
+    assert not shared_hermes.cloud_install() and shared_hermes.wait_minutes() == 0
+    (tmp_path / "cloud-3.json").write_text("{}")   # add-seat.sh's setup, there while the place installs
+    assert shared_hermes.cloud_install() and shared_hermes.wait_minutes() == shared_hermes.RELEASE_WAIT_MINUTES
+    assert not shared_hermes.cloud_install(tmp_path / "missing")

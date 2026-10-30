@@ -71,11 +71,15 @@ uv pip install --quiet --python "$VENV/bin/python" -r "$DIR/installer/requiremen
 run() { env PYTHONPATH="$DIR/installer" "$VENV/bin/python" -m bipinstall "$@"; }
 # A new install (no subcommand): when the bridge of this version isn't out yet (GitHub Actions builds it after each
 # change, or its build failed), the version before whose bridge is out (installer/bipinstall/rustbridge.py
-# pick_released). An update keeps its current bridge instead (rustbridge.keep_in_step).
+# pick_released). An update keeps its current bridge instead (rustbridge.keep_in_step). A server of the offer
+# (--cloud) installed just after a public push waits for its version's bridge first (up to 35 min): the server's
+# shared Hermes was made from that same version.
 case "${1:-}" in
   ""|-*)
     picked="$(git -C "$DIR" rev-parse HEAD)"
-    run bridge released-version || true
+    bridge_wait=""
+    for arg in "$@"; do case "$arg" in --cloud) bridge_wait="--wait" ;; esac; done
+    run bridge released-version $bridge_wait || true
     if [ "$(git -C "$DIR" rev-parse HEAD)" != "$picked" ]; then
       uv pip install --quiet --python "$VENV/bin/python" -r "$DIR/installer/requirements.txt"
     fi
