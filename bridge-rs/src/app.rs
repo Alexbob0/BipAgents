@@ -592,6 +592,8 @@ fn bytes_response(data: bytes::Bytes, content_type: &str, headers: &[(&'static s
 
 async fn list_agents(State(state): State<AppState>, caller: Caller) -> ApiResult<Response> {
     let config = state.config();
+    // made on the person's request (a card accepted): their apps add these at once, in this order
+    let requested = crate::guide::load(&config).requested;
     let agents: Vec<Value> = config
         .agents
         .values()
@@ -607,6 +609,7 @@ async fn list_agents(State(state): State<AppState>, caller: Caller) -> ApiResult
                 "url": a.public_url,
                 "family": crate::family_agent::is_family(&config, &a.name),
                 "project": crate::project_agent::listing_mark(&config, &a.name),
+                "requested": requested.get(&a.name),
                 // Never to a web console: it reaches Hermes through the bridge, which adds the key.
                 "key": if url.is_some() && !caller.console { Some(a.hermes_key.clone()) } else { None },
             })

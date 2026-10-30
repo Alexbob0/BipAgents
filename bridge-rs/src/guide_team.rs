@@ -430,6 +430,8 @@ pub async fn accept(
                     }
                 })?;
                 finish(state, &agent, &member, &from.display_name, lang).await;
+                // with its look now: the person's apps add it to their home by themselves, in the card's order
+                crate::guide::note_requested(&state.config(), &agent.name);
             }
             Err(exc) => {
                 tracing::warn!(target: "bipbridge::guide", member = %mid, error = %tk::head(&exc.to_string(), 200), "team agent not created");

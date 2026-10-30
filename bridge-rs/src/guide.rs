@@ -150,7 +150,14 @@ pub struct GuideState {
     /// (welcome.rs).
     #[serde(default)]
     pub welcome: BTreeMap<String, crate::welcome::Waiting>,
+    /// Agents made on the person's own request (a card accepted) → when: every app of theirs adds them to its home
+    /// at once, in that order, instead of offering « Ajouter » (`requested` in GET /v1/agents).
+    #[serde(default)]
+    pub requested: BTreeMap<String, f64>,
 }
+
+/// How many requested agents are remembered (the newest kept).
+const REQUESTED_KEPT: usize = 64;
 
 fn path(config: &Config) -> PathBuf {
     PathBuf::from(config.data_dir()).join("guide.json")
@@ -178,6 +185,23 @@ pub fn change<T>(config: &Config, edit: impl FnOnce(&mut GuideState) -> T) -> an
     let out = edit(&mut state);
     save(config, &state)?;
     Ok(out)
+}
+
+/// `agent` was made because the person accepted a card: their apps add it to their home by themselves.
+pub(crate) fn note_requested(config: &Config, agent: &str) {
+    let when = now();
+    let result = change(config, |s| {
+        s.requested.insert(agent.to_string(), when);
+        while s.requested.len() > REQUESTED_KEPT {
+            let Some(oldest) = s.requested.iter().min_by(|a, b| a.1.total_cmp(b.1)).map(|(k, _)| k.clone()) else {
+                break;
+            };
+            s.requested.remove(&oldest);
+        }
+    });
+    if let Err(err) = result {
+        tracing::warn!(target: "bipbridge::guide", agent = %agent, error = %err, "requested agent not kept");
+    }
 }
 
 fn now() -> f64 {
@@ -1381,6 +1405,7 @@ async fn accept(
                 .await
                 .map_err(creation_failed)?
             };
+            note_requested(&state.config(), &agent.name);
             take_proposal(&state.config(), &id)?;
             let config = state.config();
             crate::beta_measures::card_accepted(&config, None, now());
@@ -1413,6 +1438,7 @@ async fn accept(
                 from: Some(from.clone()),
             };
             let (agent, project) = crate::project_agent::create(&state, new).await?;
+            note_requested(&state.config(), &agent.name);
             take_proposal(&state.config(), &id)?;
             let config = state.config();
             Ok(web::json_response(
@@ -1645,6 +1671,29 @@ mod tests {
 
     fn text_of(result: &Dict) -> String {
         result["content"][0]["text"].as_str().unwrap_or_default().to_string()
+    }
+
+    #[test]
+    fn agents_made_from_a_card_are_kept_as_requested_newest_first() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = managed_place(dir.path(), &[("bip", "Bip")]);
+        assert!(load(&config).requested.is_empty());
+        note_requested(&config, "coach");
+        note_requested(&config, "budget");
+        let state = load(&config);
+        assert!(state.requested["coach"] <= state.requested["budget"]);
+        // only the newest are remembered
+        change(&config, |s| {
+            for i in 0..REQUESTED_KEPT {
+                s.requested.insert(format!("old{i}"), i as f64);
+            }
+        })
+        .unwrap();
+        note_requested(&config, "last");
+        let state = load(&config);
+        assert_eq!(state.requested.len(), REQUESTED_KEPT);
+        assert!(state.requested.contains_key("last") && state.requested.contains_key("coach"));
+        assert!(!state.requested.contains_key("old0") && !state.requested.contains_key("old1"));
     }
 
     #[test]

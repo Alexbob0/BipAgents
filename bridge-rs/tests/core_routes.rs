@@ -70,7 +70,7 @@ async fn wrong_keys_block_an_address_for_a_while() {
 
 #[tokio::test]
 async fn agents_listing() {
-    let (_dir, app) = app();
+    let (dir, app) = app();
     let (k, v) = auth();
     let resp = app.get("/v1/agents", &[(k, &v)]).await;
     assert_eq!(resp.status, StatusCode::OK);
@@ -78,14 +78,19 @@ async fn agents_listing() {
         resp.json(),
         json!({"bridge": {"url": null, "lan": null},
                "agents": [{"id": "wellness", "name": "Wellness", "voice": "4193", "server_voice": null, "category": null,
-                           "color": null, "outfit": "", "costumes": true, "uploads": true, "inbox": true, "url": null, "family": false, "project": null, "key": null,
-                           "group": ""}],
+                           "color": null, "outfit": "", "costumes": true, "uploads": true, "inbox": true, "url": null, "family": false, "project": null,
+                           "requested": null, "key": null, "group": ""}],
                "unclaimed": []})
     );
     // FastAPI's JSON: compact, keys in the dict's order.
     assert!(resp
         .text()
         .starts_with("{\"bridge\":{\"url\":null,\"lan\":null},\"agents\":[{\"id\":\"wellness\",\"name\":\"Wellness\""));
+    // made from a card the person accepted: when, so their apps add it at once
+    std::fs::create_dir_all(dir.path().join("data")).unwrap();
+    std::fs::write(dir.path().join("data/guide.json"), r#"{"requested": {"wellness": 1793000000.5}}"#).unwrap();
+    let resp = app.get("/v1/agents", &[(k, &v)]).await;
+    assert_eq!(resp.json()["agents"][0]["requested"], json!(1793000000.5));
 }
 
 #[tokio::test]
