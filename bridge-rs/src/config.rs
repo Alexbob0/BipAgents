@@ -70,6 +70,13 @@ pub struct AgentConfig {
     pub outfit: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub costumes: Option<bool>,
+    /// How it answers (answer_style.rs, Alex 2026-10-30): `balanced`, `detailed` or `custom` (None: short, the
+    /// default), and the person's own style kept for « Perso » (kept when another choice is made). Left out of the
+    /// serialized config when unset, like the costumes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub answer_style: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub answer_style_custom: Option<String>,
     /// The agent's Hermes address as the app reaches it on the tailnet (`tailscale serve`), for the pairing QR code.
     pub public_url: Option<String>,
     /// The agent has its own space (container, sandbox): it may hold credentials from the vault. Agents of the
@@ -1485,6 +1492,8 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
                 color: opt_s(t, "color"),
                 outfit: opt_s(t, "outfit"),
                 costumes: get(t, "costumes").map(py::truthy),
+                answer_style: opt_s(t, "answer_style"),
+                answer_style_custom: opt_s(t, "answer_style_custom"),
                 public_url: opt_s(t, "public_url").map(|p| py::rstrip_slash(&p)),
                 isolated: b(t, "isolated", false),
                 python: command(get(t, "python")),

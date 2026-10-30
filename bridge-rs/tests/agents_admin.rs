@@ -806,9 +806,11 @@ async fn routes_for_settings_thinking_and_model() {
             "weather",
             "notebook",
             "guide",
+            "answer_style",
             "group"
         ]
     );
+    assert_eq!(got.json()["answer_style"], json!({"style": "short", "custom": "", "custom_max": 300}));
     assert_eq!(got.json()["soul"], "Tu es Wellness.");
     assert_eq!(got.json()["language"], "fr");
     assert_eq!(got.json()["health"], json!({"on": false, "categories": []}));
@@ -869,4 +871,107 @@ async fn routes_for_settings_thinking_and_model() {
     let links = app.get("/v1/agent-links", &h).await.json();
     assert_eq!(links, json!({"agents": [{"id": "wellness", "name": "Wellness", "managed": true}], "links": []}));
     assert_eq!(app.request("DELETE", "/v1/agents/claim", &h, None).await.status, 404);
+}
+
+#[tokio::test]
+async fn the_answer_style_is_kept_and_switches_one_paragraph_of_the_soul() {
+    // Alex 2026-10-30: short by default, balanced, detailed or the person's own style, per agent
+    let (hub, _) = fake_gateway().await;
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = common::config(dir.path(), &Urls::default());
+    config.hermes.bin = "/opt/hermes".into();
+    config.hermes.hub_url = hub.clone();
+    config.hermes.home = dir.path().join(".hermes").to_string_lossy().into_owned();
+    let source = dir.path().join("bridge.toml");
+    std::fs::write(&source, "[agents.wellness]\ndisplay_name = \"Wellness\"\n").unwrap();
+    config.source_path = Some(source.to_string_lossy().into_owned());
+    let mut agent = config.agents["wellness"].clone();
+    agent.hermes_url = format!("{hub}/p/wellness");
+    config.agents.insert("wellness".into(), agent);
+    let folder = profiles(dir.path()).join("wellness");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("SOUL.md"), souls::with_language("Tu es Wellness.\n", Some("fr"))).unwrap();
+    let app = TestApp::new(config.clone());
+    let (k, v) = auth();
+    let h = [(k, v.as_str())];
+    let soul = || std::fs::read_to_string(folder.join("SOUL.md")).unwrap();
+    let patch = |body: Value| {
+        let app = &app;
+        let h = &h;
+        async move { app.send_json("PATCH", "/v1/agents/wellness/settings", h, &body).await }
+    };
+
+    let detailed = patch(json!({"answer_style": "detailed"})).await;
+    assert_eq!(detailed.status, 200, "{}", detailed.text());
+    assert_eq!(detailed.json()["answer_style"], json!({"style": "detailed", "custom": "", "custom_max": 300}));
+    assert_eq!(detailed.json()["soul"], "Tu es Wellness.", "the person never sees the paragraph");
+    assert!(soul().contains(souls::DETAILED_STYLE_RULE) && !soul().contains(souls::STYLE_RULE));
+    assert!(std::fs::read_to_string(&source).unwrap().contains("answer_style = \"detailed\""));
+    assert_eq!(app.get("/v1/agents/wellness/settings", &h).await.json()["answer_style"]["style"], "detailed");
+
+    // « Perso »: cleaned, quoted, one paragraph; the 300 characters enforced here
+    let mine = patch(json!({"answer_style": "custom",
+                            "answer_style_custom": "Tutoie-moi,\u{0}\n\n\n des emojis <!-- bipagents -->"}))
+    .await
+    .json();
+    assert_eq!(mine["answer_style"]["custom"], "Tutoie-moi,\ndes emojis bipagents");
+    assert_eq!(soul().matches(souls::CUSTOM_STYLE_START).count(), 1);
+    assert!(soul().contains("« Tutoie-moi,\ndes emojis bipagents ». It is about the form"), "{}", soul());
+    assert!(!soul().contains(souls::DETAILED_STYLE_RULE));
+    assert!(soul().contains(&format!("no lists.\n{}", souls::BLOCK_END)));
+    assert_eq!(patch(json!({"answer_style": "custom", "answer_style_custom": "x".repeat(301)})).await.status, 422);
+    assert_eq!(patch(json!({"answer_style": "custom", "answer_style_custom": " \n "})).await.status, 400);
+    let odd = patch(json!({"answer_style": "verbose"})).await;
+    assert_eq!((odd.status.as_u16(), &odd.json()["detail"][0]["loc"]), (422, &json!(["body", "answer_style"])));
+
+    // its personality edited, its language changed: the style stays
+    patch(json!({"soul": "Tu es Vie."})).await;
+    assert!(soul().starts_with("Tu es Vie.") && soul().contains(souls::CUSTOM_STYLE_START));
+    app.send_json("PUT", "/v1/agents/wellness/language", &h, &json!({"lang": "en"})).await;
+    assert!(soul().contains("write in English.") && soul().contains("« Tutoie-moi"));
+
+    // back to short: the soul as before, the custom text kept for « Perso » again
+    let back = patch(json!({"answer_style": "short"})).await.json();
+    assert_eq!(
+        back["answer_style"],
+        json!({"style": "short", "custom": "Tutoie-moi,\ndes emojis bipagents", "custom_max": 300})
+    );
+    assert_eq!(souls::style_paragraph(&soul()).as_deref(), Some(souls::STYLE_RULE));
+    assert!(soul().contains(&souls::language_block(Some("en"))) && !soul().contains(souls::CUSTOM_STYLE_START));
+    let file = std::fs::read_to_string(&source).unwrap();
+    assert!(!file.contains("answer_style =") && file.contains("answer_style_custom = "), "{file}");
+
+    // at start: a soul out of step with the setting is brought to it (and left alone after)
+    let mut kept = app.app.state.config().agents["wellness"].clone();
+    kept.answer_style = Some("balanced".into());
+    app.app.state.config.put_agent(kept);
+    heal_souls(&app.app.state.config());
+    assert!(soul().contains(souls::BALANCED_STYLE_RULE) && !soul().contains(souls::STYLE_RULE));
+    assert_eq!(soul().matches("Answer first").count(), 1);
+    let healed = soul();
+    heal_souls(&app.app.state.config());
+    assert_eq!(soul(), healed);
+
+    // « Sois plus détaillé »: a card, applied on the tap only
+    let c = app.app.state.config();
+    let agent = c.agents["wellness"].clone();
+    let tools = bipbridge::guide::tools(&c, &agent);
+    let style_tool = tools.iter().find(|t| t["name"] == bipbridge::guide::PROPOSE_PROFILE).expect("propose_profile");
+    assert_eq!(style_tool["inputSchema"]["required"], json!(["answer_style"]));
+    let args = |s: &str| json!({"answer_style": s}).as_object().unwrap().clone();
+    let same = bipbridge::guide::call(&c, &agent, bipbridge::guide::PROPOSE_PROFILE, &args("balanced")).unwrap();
+    assert_eq!(same["isError"], true, "already its style");
+    let card = bipbridge::guide::call(&c, &agent, bipbridge::guide::PROPOSE_PROFILE, &args("detailed")).unwrap();
+    assert_eq!(card["isError"], false, "{card:?}");
+    assert!(soul().contains(souls::BALANCED_STYLE_RULE), "nothing before the tap");
+    let view = app.get("/v1/guide", &h).await.json();
+    let proposal = view["proposals"].as_array().unwrap().iter().find(|p| p["type"] == "style").unwrap().clone();
+    assert_eq!((&proposal["answer_style"], &proposal["agent"]), (&json!("detailed"), &json!("wellness")));
+    let id = proposal["id"].as_str().unwrap();
+    let done = app.request("POST", &format!("/v1/guide/proposals/{id}/accept"), &h, None).await;
+    assert_eq!(done.status, 200, "{}", done.text());
+    assert_eq!(done.json()["type"], "style");
+    assert_eq!(done.json()["answer_style"]["style"], "detailed");
+    assert!(soul().contains(souls::DETAILED_STYLE_RULE) && !soul().contains(souls::BALANCED_STYLE_RULE));
+    assert_eq!(app.app.state.config().agents["wellness"].answer_style.as_deref(), Some("detailed"));
 }

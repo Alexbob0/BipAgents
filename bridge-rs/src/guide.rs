@@ -230,8 +230,10 @@ pub fn tools(config: &Config, agent: &AgentConfig) -> Vec<Value> {
     } else if may_propose_agent_when_asked(config, agent) {
         out.push(asked_agent_tool());
     }
-    if needs_role(&state, agent) || needs_name(&state, agent) || may_rename_guide(&state, agent) {
+    if needs_profile(&state, agent) {
         out.push(propose_profile_tool());
+    } else {
+        out.push(propose_style_tool()); // its answer style only (answer_style.rs)
     }
     if may_propose_project(config, agent) {
         out.push(create_project_tool());
@@ -342,13 +344,40 @@ fn propose_room_tool() -> Value {
     })
 }
 
+/// Its role, tone or name still to be set (or the guide's default name to change).
+fn needs_profile(state: &GuideState, agent: &AgentConfig) -> bool {
+    needs_role(state, agent) || needs_name(state, agent) || may_rename_guide(state, agent)
+}
+
+/// The styles a card proposes (« Perso » is written by the person in the app).
+const CARD_STYLES: [&str; 3] = ["short", "balanced", "detailed"];
+
+/// The words a person uses for it (fr/en/de/es), for Hermes' tool search: `propose_profile` is behind it for every
+/// kind (tool_diet.rs), a catalog line instead of its schema on each call.
+const STYLE_KEYWORDS: &str = "answer style, answers, more detail, detailed, shorter, longer, concise, réponses, \
+    plus détaillé, plus court, plus long, concis, développe, Antworten, ausführlicher, kürzer, länger, respuestas, \
+    más detallado, más corto, más largo";
+
 fn propose_profile_tool() -> Value {
     json!({
         "name": PROPOSE_PROFILE,
-        "description": "Propose your role and tone, or a better name, as a card your person confirms. A name they ask you \
-    to take: rename_yourself instead. Keywords: role, profile, rename, agent name, rôle, nom, Rolle, Name, rol, nombre.",
+        "description": format!("Propose your role and tone, or a better name, as a card your person confirms; or, only \
+    when they ask for shorter or longer answers, answer_style alone. A name they ask you to take: rename_yourself \
+    instead. Keywords: role, profile, rename, agent name, rôle, nom, Rolle, Name, rol, nombre, {STYLE_KEYWORDS}."),
         "inputSchema": {"type": "object", "properties": {
-            "role": {"type": "string"}, "tone": {"type": "string"}, "name": {"type": "string"}}},
+            "role": {"type": "string"}, "tone": {"type": "string"}, "name": {"type": "string"},
+            "answer_style": {"type": "string", "enum": CARD_STYLES}}},
+    })
+}
+
+/// `propose_profile` once the role and name are set: the answer style only (Alex 2026-10-30, answer_style.rs).
+fn propose_style_tool() -> Value {
+    json!({
+        "name": PROPOSE_PROFILE,
+        "description": format!("Only when your person asks for shorter or more detailed answers: propose that answer \
+    style as a card they confirm. Keywords: {STYLE_KEYWORDS}."),
+        "inputSchema": {"type": "object", "properties": {"answer_style": {"type": "string", "enum": CARD_STYLES}},
+            "required": ["answer_style"]},
     })
 }
 
@@ -614,6 +643,7 @@ fn key_of(p: &Dict) -> String {
     match p.get("type").and_then(Value::as_str) {
         Some("agent") => format!("agent:{}", str_of(p, "kind")),
         Some("switch") => format!("switch:{}", str_of(p, "target")),
+        Some("style") => format!("style:{}:{}", str_of(p, "agent"), str_of(p, "answer_style")),
         Some("project") => format!("project:{}", tk::squeeze(&str_of(p, "name")).to_lowercase()),
         Some("team") => crate::guide_team::key(p),
         Some("room") => {
@@ -792,8 +822,20 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
             proposal.insert("target".into(), json!(target.name));
             proposal.insert("summary".into(), json!(summary));
         }
+        PROPOSE_PROFILE if !arg(arguments, "answer_style", 20).is_empty() => {
+            // « sois plus détaillé »: a card of its own, the role and name untouched
+            let style = arg(arguments, "answer_style", 20);
+            if !CARD_STYLES.contains(&style.as_str()) {
+                return Ok(tool_text("answer_style is short, balanced or detailed", true));
+            }
+            if crate::answer_style::style_of(agent) == style {
+                return Ok(tool_text("that is already your answer style: just answer that way", true));
+            }
+            proposal.insert("type".into(), json!("style"));
+            proposal.insert("answer_style".into(), json!(style));
+        }
         PROPOSE_PROFILE => {
-            if !(needs_role(&state, agent) || needs_name(&state, agent) || may_rename_guide(&state, agent)) {
+            if !needs_profile(&state, agent) {
                 return Ok(tool_text("your role and name are already set", true));
             }
             let (role, tone, new_name) =
@@ -824,8 +866,10 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
     if name == PROPOSE_TEAM && !replaces {
         crate::beta_measures::team_proposed(config);
     }
+    let style_of_agent = format!("style:{}:", agent.name);
     change(config, |s| {
-        s.proposals.retain(|p| key_of(p) != key);
+        // one style card at a time: the latest wish wins
+        s.proposals.retain(|p| key_of(p) != key && !(key.starts_with(&style_of_agent) && key_of(p).starts_with(&style_of_agent)));
         s.proposals.push(proposal.clone());
         if first {
             s.intro.retain(|a| a != &agent.name);
@@ -1404,6 +1448,16 @@ async fn accept(
             Ok(web::ok(json!({"type": "switch", "agent": {"id": target.name, "name": target.display_name},
                               "from": {"id": from.name, "name": from.display_name}, "summary": summary})))
         }
+        Some("style") => {
+            // its answer style (answer_style.rs): its section, then its soul's paragraph at once
+            let changed = {
+                let _guard = crate::agents_admin::LOCK.lock().await;
+                crate::answer_style::set(&state.config, &from, &str_of(&proposal, "answer_style"), None)?
+            };
+            take_proposal(&state.config(), &id)?;
+            Ok(web::ok(json!({"type": "style", "agent": {"id": changed.name, "name": changed.display_name},
+                              "answer_style": crate::answer_style::view(&changed)})))
+        }
         _ => {
             let role = body
                 .role
@@ -1706,6 +1760,35 @@ mod tests {
         }
         // renaming isn't creating, and the other way round
         assert!(!found(&rename, "create agent") && !found(&agent_tool, "renommer"));
+    }
+
+    #[test]
+    fn tool_search_finds_the_answer_style_card_and_no_kind_keeps_it_in_view() {
+        for tool in [propose_style_tool(), propose_profile_tool()] {
+            for query in [
+                "answer style",
+                "shorter answers",
+                "more detail",
+                "longer",
+                "plus détaillé",
+                "plus court",
+                "réponses",
+                "concis",
+                "développe",
+                "ausführlicher",
+                "kürzer",
+                "más detallado",
+                "más corto",
+            ] {
+                assert!(found(&tool, query), "{} for « {query} »", tool["name"]);
+            }
+        }
+        assert!(!found(&propose_style_tool(), "rename") && !found(&propose_style_tool(), "create agent"));
+        // behind the search for every kind (a catalog line, not its schema on each call)
+        for kind in crate::souls::CATEGORIES.iter().copied().chain(["guide", "custom"]) {
+            let direct = crate::tool_diet::kind_diet(kind).direct;
+            assert!(!direct.contains(&PROPOSE_PROFILE) && !direct.contains(&RENAME_SELF), "{kind}");
+        }
     }
 
     #[test]
