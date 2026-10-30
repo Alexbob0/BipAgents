@@ -69,6 +69,7 @@ struct Client {
     router: Router,
     claims: Arc<Mutex<Vec<ClaimRequest>>>,
     restores: Arc<Mutex<Vec<String>>>,
+    rekeys: Arc<Mutex<Vec<String>>>,
 }
 
 impl Client {
@@ -77,7 +78,8 @@ impl Client {
         let state: AppState = app.app.state.clone();
         let claims: Arc<Mutex<Vec<ClaimRequest>>> = Arc::default();
         let restores: Arc<Mutex<Vec<String>>> = Arc::default();
-        let (c, r) = (claims.clone(), restores.clone());
+        let rekeys: Arc<Mutex<Vec<String>>> = Arc::default();
+        let (c, r, k) = (claims.clone(), restores.clone(), rekeys.clone());
         let hooks = Hooks {
             claim: Arc::new(move |_state, request: ClaimRequest| {
                 let name = request.agents[0].name.clone();
@@ -88,9 +90,13 @@ impl Client {
                 r.lock().unwrap().push(key.to_string());
                 Ok(())
             }),
+            rekey: Arc::new(move |_state, model: cloud_setup::ModelChoice| {
+                k.lock().unwrap().push(model.key);
+                Box::pin(async { Ok(()) })
+            }),
         };
         let router = v1(&state, Router::new(), cloud_setup::router_with(hooks));
-        Client { app, router, claims, restores }
+        Client { app, router, claims, restores, rekeys }
     }
 
     async fn setup(&self) -> Value {
@@ -152,9 +158,113 @@ async fn a_claim_with_the_secret_pairs_the_app_once() {
                "agents": [{"id": "quotidien", "name": "Quotidien"}]})
     );
     assert_eq!(client.claims.lock().unwrap()[0].model.key, "sk-eu-0123456789");
-    // The secret is gone: the server says so, and a second claim, even with the same proof, is refused.
+    assert!(!dir.path().join("setup.json").exists());
+    // The app uses its key: the secret is gone for good, the server says so, and a second claim, even with the same
+    // proof, is refused.
+    let key = format!("Bearer {BRIDGE_KEY}");
+    assert_eq!(client.app.get("/v1/agents", &[("authorization", &key)]).await.status, 200);
+    assert!(!dir.path().join("claim-recovery.json").exists());
     assert_eq!(client.setup().await, json!({"state": "claimed"}));
     assert_eq!(client.claim(&claim_body(&challenge, None, &secret())).await.status, 410);
+}
+
+fn claim_with_id(claim_id: &str, model_key: &str) -> String {
+    json!({"model": {"provider": "custom", "name": "glm-5.3", "key": model_key, "base_url": "https://api.eurouter.example/v1"},
+           "agents": [{"name": "Quotidien", "kind": "daily"}], "language": "fr", "claim_id": claim_id})
+    .to_string()
+}
+
+#[tokio::test]
+async fn a_claim_whose_answer_was_lost_is_recovered_by_its_claimer_only() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = cloud(dir.path());
+    let client = Client::new(config.clone());
+    done(&config, true);
+    let id = "app-made-claim-id-0123456789abcdef";
+    let first = client
+        .claim(&claim_body(&client.challenge().await, Some(&claim_with_id(id, "sk-eu-first-key")), &secret()))
+        .await;
+    assert_eq!(first.status, 200, "{}", first.text());
+    assert_eq!(first.json()["bridgeKey"], BRIDGE_KEY);
+    let record = std::fs::read_to_string(dir.path().join("claim-recovery.json")).unwrap();
+    assert!(!record.contains(id) && !record.contains(BRIDGE_KEY) && !record.contains("sk-eu-first-key")); // hashes only
+    use std::os::unix::fs::PermissionsExt;
+    assert_eq!(std::fs::metadata(dir.path().join("claim-recovery.json")).unwrap().permissions().mode() & 0o777, 0o600);
+
+    // The answer never reached the app. Its retry starts over: the place still proves its certificate and says ready.
+    let state = client.setup().await;
+    assert_eq!(state["state"], "ready");
+    assert_eq!(state["claimed"], true);
+    let print = bipbridge::lan::fingerprint(&config).unwrap();
+    let challenge = state["challenge"].as_str().unwrap();
+    assert_eq!(state["proof"], cloud_setup::proof(&secret(), &[SETUP_CONTEXT, NONCE, &print, challenge]));
+
+    // Someone else (another secret, or the secret without the claim id): refused as before.
+    let wrong = client.claim(&claim_body(challenge, Some(&claim_with_id(id, "sk-eu-first-key")), &[b'y'; 32])).await;
+    assert_eq!(wrong.status, 401);
+    let other = claim_with_id("someone-elses-id-0123456789abcdef", "sk-eu-first-key");
+    assert_eq!(client.claim(&claim_body(&client.challenge().await, Some(&other), &secret())).await.status, 410);
+    let without = json!({"model": {"provider": "custom", "name": "glm-5.3", "key": "sk-eu-first-key", "base_url": "https://x/v1"},
+                         "agents": [{"name": "Quotidien"}]}).to_string();
+    assert_eq!(client.claim(&claim_body(&client.challenge().await, Some(&without), &secret())).await.status, 410);
+    let reopen = json!({"reopen": {"name": "iPhone"}}).to_string();
+    assert_eq!(client.claim(&claim_body(&client.challenge().await, Some(&reopen), &secret())).await.status, 410);
+
+    // The claimer, with a new AI key (the guichet made another one): a fresh bridge key, the same agents, the new
+    // AI key written; the place isn't claimed a second time.
+    let again = client
+        .claim(&claim_body(&client.challenge().await, Some(&claim_with_id(id, "sk-eu-second-key")), &secret()))
+        .await;
+    assert_eq!(again.status, 200, "{}", again.text());
+    let again = again.json();
+    assert_eq!(again["recovered"], true);
+    assert_eq!(again["fingerprint"], json!(print));
+    assert_eq!(again["bridgeURL"], "https://203.0.113.7");
+    assert_eq!(again["agents"], json!([{"id": "quotidien", "name": "Quotidien"}]));
+    let new_key = again["bridgeKey"].as_str().unwrap().to_string();
+    assert_ne!(new_key, BRIDGE_KEY);
+    assert_eq!(client.claims.lock().unwrap().len(), 1);
+    assert_eq!(*client.rekeys.lock().unwrap(), vec!["sk-eu-second-key".to_string()]);
+    let toml = std::fs::read_to_string(config.source_path.clone().unwrap()).unwrap();
+    assert!(toml.contains(&new_key));
+    let old = format!("Bearer {BRIDGE_KEY}");
+    assert_eq!(client.app.get("/v1/agents", &[("authorization", &old)]).await.status, 401); // the lost key: revoked
+
+    // Lost again, the same AI key this time: recovered without writing the model again.
+    let third = client
+        .claim(&claim_body(&client.challenge().await, Some(&claim_with_id(id, "sk-eu-second-key")), &secret()))
+        .await;
+    assert_eq!(third.status, 200, "{}", third.text());
+    assert_eq!(client.rekeys.lock().unwrap().len(), 1);
+    let kept = format!("Bearer {}", third.json()["bridgeKey"].as_str().unwrap());
+
+    // The app uses its key: no recovery any more.
+    assert_eq!(client.app.get("/v1/agents", &[("authorization", &kept)]).await.status, 200);
+    assert_eq!(client.setup().await, json!({"state": "claimed"}));
+    let late = claim_with_id(id, "sk-eu-second-key");
+    assert_eq!(client.claim(&claim_body(&"0".repeat(32), Some(&late), &secret())).await.status, 410);
+}
+
+#[tokio::test]
+async fn an_app_without_claim_id_recovers_with_the_secret_within_a_day() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = cloud(dir.path());
+    let client = Client::new(config.clone());
+    done(&config, true);
+    assert_eq!(client.claim(&claim_body(&client.challenge().await, None, &secret())).await.status, 200);
+    // the apps out before claim_id: the same proof of the secret is enough (the same AI key: nothing rewritten)
+    let again = client.claim(&claim_body(&client.challenge().await, None, &secret())).await;
+    assert_eq!(again.status, 200, "{}", again.text());
+    assert_eq!(again.json()["recovered"], true);
+    assert!(client.rekeys.lock().unwrap().is_empty());
+    // A day later (the bridge key still unused): claimed, the record gone.
+    let path = dir.path().join("claim-recovery.json");
+    let mut record: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    record["at"] = json!(record["at"].as_f64().unwrap() - cloud_setup::RECOVERY_SECONDS - 1.0);
+    std::fs::write(&path, record.to_string()).unwrap();
+    assert_eq!(client.setup().await, json!({"state": "claimed"}));
+    assert!(!path.exists());
+    assert_eq!(client.claim(&claim_body(&"0".repeat(32), None, &secret())).await.status, 410);
 }
 
 #[tokio::test]
@@ -405,7 +515,8 @@ fn fake_hermes(home: std::path::PathBuf, commands: Arc<Mutex<Vec<Vec<String>>>>)
             8 if args[6] == "--" => Some(&args[7]),
             _ => None,
         };
-        if let (Some(value), true) = (value, args[1] == "-p" && args[3..5] == ["config".to_string(), "set".to_string()]) {
+        if let (Some(value), true) = (value, args[1] == "-p" && args[3..5] == ["config".to_string(), "set".to_string()])
+        {
             let env = home.join("profiles").join(&args[2]).join(".env");
             let text = std::fs::read_to_string(&env).unwrap_or_default();
             std::fs::write(&env, format!("{text}{}={}\n", args[5], value)).unwrap();
@@ -504,6 +615,24 @@ async fn a_prepared_place_is_claimed_with_file_writes_and_its_other_agents_made_
     let started = std::time::Instant::now();
     cloud_setup::READINESS.wait("maison", std::time::Duration::from_secs(5)).await;
     assert!(started.elapsed() < std::time::Duration::from_secs(1));
+
+    // A recovered claim with another AI key: written in the hub and every profile, the gateway restarted.
+    commands.lock().unwrap().clear();
+    let mut model = wanted.model.clone();
+    model.key = "sk-eu-the-new-key-42".into();
+    cloud_setup::rekey_model(&shared, &model, run.clone()).await.unwrap();
+    for folder in [home.clone(), home.join("profiles/agent"), home.join("profiles/maison")] {
+        let env = std::fs::read_to_string(folder.join(".env")).unwrap();
+        assert!(
+            env.contains("CUSTOM_MODEL_API_KEY=sk-eu-the-new-key-42\n") && !env.contains("sk-eu-0123456789"),
+            "{env}"
+        );
+    }
+    assert!(std::fs::read_to_string(home.join("profiles/agent/.env"))
+        .unwrap()
+        .contains(&format!("API_SERVER_KEY={key}")));
+    assert_eq!(shared.get().model_health_key.as_deref(), Some("sk-eu-the-new-key-42"));
+    assert_eq!(commands.lock().unwrap().len(), 1); // the restart
 }
 
 #[tokio::test]

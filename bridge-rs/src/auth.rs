@@ -209,6 +209,10 @@ pub async fn require_bridge_key(State(state): State<AppState>, request: Request,
     let presented = bearer_of(&parts.headers);
     let matched = key_matches(&config.bridge_key, presented.as_deref());
     let device = if matched { None } else { device(&state, presented.as_deref()) };
+    if matched {
+        // a place of the offer: its app has the claim's answer, the claim can't be recovered any more
+        crate::cloud_setup::bridge_key_used(&config);
+    }
     if matched || device.is_some() {
         parts.extensions.insert(Caller { console: false, device });
         // A request from an app: a place asleep (sleep.py) wakes its Hermes first.
@@ -231,7 +235,12 @@ pub fn websocket_authorized(state: &AppState, address: Option<&str>, headers: &H
         return false;
     }
     let presented = bearer_of(headers);
-    if key_matches(&state.config().bridge_key, presented.as_deref()) || device(state, presented.as_deref()).is_some() {
+    let config = state.config();
+    if key_matches(&config.bridge_key, presented.as_deref()) {
+        crate::cloud_setup::bridge_key_used(&config);
+        return true;
+    }
+    if device(state, presented.as_deref()).is_some() {
         return true;
     }
     if presented.is_some() {

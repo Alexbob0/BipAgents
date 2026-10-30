@@ -7,11 +7,14 @@
 //! `pair` with an HMAC over the app's nonce and the certificate's fingerprint, which nobody in between can forge, and the
 //! app pins it. Then the app claims the server over that pinned connection: it proves it knows `pair` too (an HMAC over
 //! the bridge's one-time challenge and the exact request), sends the model key and the agents to create, and receives the
-//! bridge key. The secret is then deleted: any later claim is refused.
+//! bridge key. The secret is then deleted: any later claim is refused, but its claimer's own retry while the bridge
+//! key was never used, within a day (« a claim whose answer was lost » below, internal/next/claim-recovery.md).
 //!
 //!     GET  /v1/setup?nonce=<hex>   {state: installing | ready | restoring | claimed, step, total, label, error?,
-//!                                   fingerprint, challenge, proof}
-//!     POST /v1/setup/claim         {challenge, mac, request: "<JSON>"}  ->  {bridgeURL, bridgeKey, fingerprint, agents}
+//!                                   fingerprint, challenge, proof, prepared, claimed?}
+//!     POST /v1/setup/claim         {challenge, mac, request: "<JSON>"}  ->  {bridgeURL, bridgeKey, fingerprint, agents,
+//!                                                                            recovered?}
+//!     request (a claim): {model, agents, language, claim_id?}
 //!
 //! A place whose person recovered their account without any of their devices (guichet/bipguichet/accounts.py) gets a
 //! new secret from the guichet's signed order and is claimed with `{"reopen": {"name": …}}`: the bridge key changes and
@@ -69,7 +72,11 @@ fn read_json(path: Option<&str>) -> Dict {
 /// The pairing secret while the server waits for its app; None once claimed (the file is gone).
 pub fn secret_of(config: &Config) -> Option<Vec<u8>> {
     let data = read_json(config.setup_file.as_deref());
-    let value = data.get("pair")?.as_str()?;
+    decode_pair(data.get("pair")?.as_str()?)
+}
+
+/// The guichet's `pair` (urlsafe base64) as bytes; None when it is not a usable secret.
+fn decode_pair(value: &str) -> Option<Vec<u8>> {
     // Python's urlsafe_b64decode (non-strict): characters outside the alphabet dropped, the padding added.
     let clean: String = value.chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')).collect();
     if clean.len() % 4 == 1 {
@@ -141,12 +148,25 @@ pub fn start_restore(config: &Config, key: &str) -> std::io::Result<()> {
 /// secret here): every device key and web console goes, the bridge key changes (nobody has the new one), and the
 /// device that proved the secret gets a key of its own. Returns it.
 pub fn reopen(state: &AppState, name: &str) -> anyhow::Result<String> {
-    static BRIDGE_KEY_LINE: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"(?m)^bridge_key\s*=.*$").expect("valid regex"));
     let config = state.config();
     let keys = crate::device_keys::of(&config);
     keys.clear();
     let (_, key) = keys.mint(name)?;
+    rotate_bridge_key(state)?;
+    // the web consoles opened from the old devices too
+    for session in state.console.devices() {
+        if let Some(id) = session.get("id") {
+            state.console.revoke(&crate::py::py_str(id));
+        }
+    }
+    Ok(key)
+}
+
+/// A new bridge key, in bridge.toml and in the running config: the old one opens nothing any more. Returns it.
+fn rotate_bridge_key(state: &AppState) -> anyhow::Result<String> {
+    static BRIDGE_KEY_LINE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"(?m)^bridge_key\s*=.*$").expect("valid regex"));
+    let config = state.config();
     let new = crate::py::token_urlsafe(32);
     if let Some(source) = config.source_path.as_deref().filter(|p| !p.is_empty()) {
         let line = format!("bridge_key = {}", crate::py::dumps(&json!(new)));
@@ -160,13 +180,100 @@ pub fn reopen(state: &AppState, name: &str) -> anyhow::Result<String> {
         })?;
     }
     state.config.update(|c| c.bridge_key = new.clone());
-    // the web consoles opened from the old devices too
-    for session in state.console.devices() {
-        if let Some(id) = session.get("id") {
-            state.console.revoke(&crate::py::py_str(id));
+    Ok(new)
+}
+
+// -- a claim whose answer was lost -------------------------------------------------------------------
+//
+// The claim's answer carries the bridge key, and nothing else ever gives it. An app that loses it (the person left
+// the screen, the network dropped, the app was killed while the gateway restarted) used to find a place that says
+// `claimed` to it as to anyone: stuck for its rightful owner. So the bridge keeps, next to where the secret was, a
+// record of the claim (`claim-recovery.json`, chmod 600): the pairing secret, when, the claim id's and the bridge
+// key's SHA-256. While it holds, `GET /v1/setup` still proves the certificate with the secret and says `ready` (with
+// `claimed: true`), so an app retrying from the start reaches the claim again, and a claim proved with the same
+// secret gets the place back: a fresh bridge key (the lost one revoked: whoever saw it holds nothing), the same
+// agents, the new AI key written if the app brought another one (the guichet deletes the previous one when it makes
+// a new one). Its answer has the first one's shape, plus `recovered: true`.
+//
+// The record goes, and `claimed` is the only answer again, at the first of:
+// - the bridge key used once (any request authenticated with it, auth.rs): the app has its answer, nobody may take
+//   the place from it any more;
+// - 24 hours after the claim;
+// - the bridge key changed by something else (a reopen), or a new pairing secret written (setup.json).
+//
+// Who can recover: only a holder of the pairing secret, as for the first claim (the app and the guichet that made
+// it: the guichet could have claimed first anyway). The proof is the same HMAC over a fresh one-time challenge, and
+// wrong proofs count towards the address' block as before. When the first claim carried a `claim_id` (a random id
+// the app made, kept on the phone before sending, never given to the guichet), the retry must carry the same one:
+// then even a holder of the secret cannot recover in the owner's place. Apps that send none (the ones out before
+// this) recover with the secret alone, within the bounds above. Only a plain claim is recovered: a reopen or a
+// restore after a claim gets `410` as before.
+//
+// The secret on disk for at most a day after the claim is no more than what setup.json held before it (the
+// backups, installer/bipinstall/backup.py, start once setup.json is gone, and bridge.toml with the key itself is in
+// them anyway).
+
+/// How long after its claim a place can be recovered by its claimer (if its bridge key was never used).
+pub const RECOVERY_SECONDS: f64 = 24.0 * 3600.0;
+
+fn recovery_path(config: &Config) -> PathBuf {
+    setup_folder(config).join("claim-recovery.json")
+}
+
+fn sha256_hex(text: &str) -> String {
+    hex::encode(<sha2::Sha256 as sha2::Digest>::digest(text.as_bytes()))
+}
+
+/// `claim_id` in a claim's request: 16 to 128 characters of [A-Za-z0-9_-]; Ok(None) when absent.
+fn claim_id_of(asked: &Value) -> Result<Option<String>, String> {
+    check_str(asked.get("claim_id"), &Str { min: Some(16), max: Some(128), pattern: Some(r"^[A-Za-z0-9_\-]+$") }, true)
+}
+
+/// The record a plain claim leaves (written before setup.json goes).
+fn write_recovery(config: &Config, claim_id: Option<&str>, model_key: &str, agents: &[Value]) -> anyhow::Result<()> {
+    let data = read_json(config.setup_file.as_deref());
+    let Some(pair) = data.get("pair").and_then(Value::as_str) else { return Ok(()) };
+    let record = json!({
+        "pair": pair, "at": crate::py::time_time(), "claim_id": claim_id.map(sha256_hex),
+        "key": sha256_hex(&config.bridge_key), "model_key": sha256_hex(model_key), "agents": agents,
+    });
+    let path = recovery_path(config);
+    crate::py::write_with_mode(&path.to_string_lossy(), crate::py::dumps(&record).as_bytes(), 0o600)?;
+    Ok(())
+}
+
+/// The record of a claim still recoverable, with its secret; an expired or stale one is deleted.
+fn recovery_of(config: &Config) -> Option<(Vec<u8>, Dict)> {
+    if config.setup_file.as_deref().map(str::is_empty).unwrap_or(true) {
+        return None;
+    }
+    let path = recovery_path(config);
+    let data = read_json(Some(&path.to_string_lossy()));
+    if data.is_empty() {
+        return None;
+    }
+    let at = data.get("at").and_then(Value::as_f64).unwrap_or(0.0);
+    let fresh = (0.0..RECOVERY_SECONDS).contains(&(crate::py::time_time() - at));
+    let same_key = data.get("key").and_then(Value::as_str) == Some(sha256_hex(&config.bridge_key).as_str());
+    let secret = data.get("pair").and_then(Value::as_str).and_then(decode_pair);
+    match secret {
+        Some(secret) if fresh && same_key => Some((secret, data)),
+        _ => {
+            let _ = std::fs::remove_file(&path);
+            None
         }
     }
-    Ok(key)
+}
+
+/// The bridge key was used (auth.rs): its app has the claim's answer, the claim can't be recovered any more.
+pub fn bridge_key_used(config: &Config) {
+    if config.setup_file.as_deref().map(str::is_empty).unwrap_or(true) {
+        return;
+    }
+    let path = recovery_path(config);
+    if path.exists() && std::fs::remove_file(&path).is_ok() {
+        tracing::info!("the claim's bridge key used: no recovery any more");
+    }
 }
 
 /// The bridge's one-time challenges for a claim: each one used once, within ten minutes.
@@ -979,6 +1086,30 @@ async fn after_claim(config: SharedConfig, http: reqwest::Client, run: Run, prep
     finish_pending(&config, &http, &run).await;
 }
 
+/// A recovered claim that brought another AI key (the guichet deleted the first one when it made this one): the
+/// model written again in the hub and in every agent's profile, the health check's key, the gateway restarted.
+pub async fn rekey_model(config: &SharedConfig, model: &ModelChoice, run: Run) -> anyhow::Result<()> {
+    let snapshot = config.get();
+    let home = PathBuf::from(crate::agents_admin::install_home(&snapshot));
+    let order = &snapshot.model_provider_order;
+    write_model_files(&home, model, order)?;
+    for agent in snapshot.agents.values() {
+        let folder = crate::agents_admin::profile_folder(&snapshot, agent);
+        if folder != home && folder.is_dir() {
+            write_model_files(&folder, model, order)?;
+        }
+    }
+    let base_url = model_base_url(model).unwrap_or_else(|| "https://openrouter.ai/api/v1".into());
+    write_model_health(config, &base_url, &model.key)?;
+    let mut env = BTreeMap::new();
+    if !snapshot.hermes.home.is_empty() {
+        env.insert("HERMES_HOME".to_string(), snapshot.hermes.home.clone());
+    }
+    let units = pyx::home().join(".config").join("systemd").join("user");
+    run(restart_command(&snapshot, &units), env).await?;
+    Ok(())
+}
+
 /// The agents a claim listed before making them: their profiles made now (after the claim, or at the next start).
 pub async fn finish_pending(config: &SharedConfig, http: &reqwest::Client, run: &Run) {
     use crate::agents_admin::{make_profile, plan_agent, NewAgent};
@@ -1028,11 +1159,14 @@ pub fn has_pending(config: &Config) -> bool {
 /// What the routes call to claim a server and to start a restore (tests give their own, as Python's monkeypatch).
 pub type ClaimFn = Arc<dyn Fn(AppState, ClaimRequest) -> BoxFuture<'static, anyhow::Result<Vec<Value>>> + Send + Sync>;
 pub type RestoreFn = Arc<dyn Fn(&Config, &str) -> std::io::Result<()> + Send + Sync>;
+pub type RekeyFn = Arc<dyn Fn(AppState, ModelChoice) -> BoxFuture<'static, anyhow::Result<()>> + Send + Sync>;
 
 #[derive(Clone)]
 pub struct Hooks {
     pub claim: ClaimFn,
     pub restore: RestoreFn,
+    /// A recovered claim's new AI key written ([`rekey_model`]).
+    pub rekey: RekeyFn,
 }
 
 impl Default for Hooks {
@@ -1042,6 +1176,9 @@ impl Default for Hooks {
                 Box::pin(async move { claim_server(&state.config, &request, &state.http, None).await })
             }),
             restore: Arc::new(start_restore),
+            rekey: Arc::new(|state: AppState, model: ModelChoice| {
+                Box::pin(async move { rekey_model(&state.config, &model, crate::agents_admin::default_run()).await })
+            }),
         }
     }
 }
@@ -1097,7 +1234,19 @@ async fn setup_state(
     let nonce = nonce_query(&q)?;
     let config = guarded(&state, address.as_deref())?;
     let Some(secret) = secret_of(&config) else {
-        return Ok(web::ok(json!({"state": "claimed"})));
+        let Some((secret, _)) = recovery_of(&config) else {
+            return Ok(web::ok(json!({"state": "claimed"})));
+        };
+        // claimed, but its answer may have been lost: the claimer may claim again (« a claim whose answer was lost »)
+        let print_fp = crate::lan::fingerprint(&config).unwrap_or_default();
+        let step = progress_of(&config)?;
+        let challenge = shared.challenges.issue();
+        return Ok(web::ok(json!({
+            "state": "ready", "step": step.step, "total": step.total, "label": step.label,
+            "fingerprint": print_fp, "challenge": challenge,
+            "proof": proof(&secret, &[SETUP_CONTEXT, &nonce.to_lowercase(), &print_fp, &challenge]),
+            "prepared": true, "claimed": true,
+        })));
     };
     let print_fp = crate::lan::fingerprint(&config).unwrap_or_default();
     let step = progress_of(&config)?;
@@ -1127,7 +1276,7 @@ async fn claim(shared: Arc<Shared>, state: AppState, address: Option<String>, bo
     let agents = {
         let _lock = shared.lock.lock().await;
         let Some(secret) = secret_of(&config) else {
-            return Err(HttpError::new(410, "these agents are already linked to an app"));
+            return recover(&shared, &state, &config, address.as_deref(), &body).await;
         };
         if !shared.challenges.take(&body.challenge) {
             return Err(HttpError::new(400, "challenge unknown or expired: ask /v1/setup again"));
@@ -1159,6 +1308,7 @@ async fn claim(shared: Arc<Shared>, state: AppState, address: Option<String>, bo
             let (s, n) = (state.clone(), name.clone());
             let key = tokio::task::spawn_blocking(move || reopen(&s, &n)).await.map_err(anyhow::Error::from)??;
             let _ = std::fs::remove_file(&setup_file);
+            let _ = std::fs::remove_file(recovery_path(&config)); // an earlier claim's: nothing to recover any more
             tracing::info!(address = ?J(&address), "pairing reopened");
             let now = state.config();
             let agents: Vec<Value> =
@@ -1193,6 +1343,11 @@ async fn claim(shared: Arc<Shared>, state: AppState, address: Option<String>, bo
         if wanted.model.provider == "custom" && wanted.model.base_url.as_deref().map(str::is_empty).unwrap_or(true) {
             return Err(HttpError::new(400, "a custom model needs its base_url"));
         }
+        let claim_id = match claim_id_of(&asked) {
+            Ok(id) => id,
+            Err(msg) => return Err(HttpError::new(400, format!("invalid request: {msg}"))),
+        };
+        let model_key = wanted.model.key.clone();
         let agents = match (shared.hooks.claim)(state.clone(), wanted).await {
             Ok(a) => a,
             Err(exc) => {
@@ -1200,13 +1355,100 @@ async fn claim(shared: Arc<Shared>, state: AppState, address: Option<String>, bo
                 return Err(HttpError::new(502, "the setup could not finish: try again"));
             }
         };
-        let _ = std::fs::remove_file(&setup_file); // paired: the secret is gone for good
+        if let Err(exc) = write_recovery(&state.config(), claim_id.as_deref(), &model_key, &agents) {
+            tracing::warn!(error = %exc, "claim-recovery.json not written: a lost answer can't be recovered");
+        }
+        let _ = std::fs::remove_file(&setup_file); // paired: the secret is gone (but for its claimer's recovery)
         tracing::info!(agents = agents.len(), address = ?J(&address), "server claimed");
         agents
     };
     let config = state.config();
     Ok(web::ok(json!({"bridgeURL": config.public_url, "bridgeKey": config.bridge_key,
                       "fingerprint": crate::lan::fingerprint(&config), "agents": agents})))
+}
+
+/// A claim on a place already claimed: its claimer whose answer was lost gets the place back (« a claim whose answer
+/// was lost »), anyone else `410`. Called with the claims' lock held.
+async fn recover(
+    shared: &Shared,
+    state: &AppState,
+    config: &Config,
+    address: Option<&str>,
+    body: &Claim,
+) -> ApiResult<Response> {
+    let gone = || HttpError::new(410, "these agents are already linked to an app");
+    let Some((secret, mut record)) = recovery_of(config) else { return Err(gone()) };
+    if !shared.challenges.take(&body.challenge) {
+        return Err(HttpError::new(400, "challenge unknown or expired: ask /v1/setup again"));
+    }
+    let expected = proof(&secret, &[CLAIM_CONTEXT, &body.challenge, &body.request]);
+    match pyx::compare_digest(&expected, &body.mac.to_lowercase()) {
+        None => return Err(HttpError::internal()),
+        Some(false) => {
+            state.guard.fail(address, "pairing proof");
+            return Err(HttpError::new(401, "wrong pairing proof"));
+        }
+        Some(true) => {}
+    }
+    let Ok(asked) = serde_json::from_str::<Value>(&body.request) else {
+        return Err(HttpError::new(400, "invalid request"));
+    };
+    if asked.as_object().is_some_and(|o| o.contains_key("reopen") || o.contains_key("restore")) {
+        return Err(gone()); // only a plain claim is recovered
+    }
+    let wanted = match ClaimRequest::from_value(&asked) {
+        Ok(w) => w,
+        Err(msg) => return Err(HttpError::new(400, format!("invalid request: {msg}"))),
+    };
+    if wanted.model.provider == "custom" && wanted.model.base_url.as_deref().map(str::is_empty).unwrap_or(true) {
+        return Err(HttpError::new(400, "a custom model needs its base_url"));
+    }
+    let claim_id = match claim_id_of(&asked) {
+        Ok(id) => id.map(|id| sha256_hex(&id)),
+        Err(msg) => return Err(HttpError::new(400, format!("invalid request: {msg}"))),
+    };
+    if let Some(first) = record.get("claim_id").and_then(Value::as_str) {
+        if claim_id.as_deref() != Some(first) {
+            tracing::warn!(address = ?J(&address), "claim recovery refused: not the first claim's id");
+            return Err(gone());
+        }
+    }
+    let model_key = sha256_hex(&wanted.model.key);
+    if record.get("model_key").and_then(Value::as_str) != Some(model_key.as_str()) {
+        if let Err(exc) = (shared.hooks.rekey)(state.clone(), wanted.model.clone()).await {
+            tracing::warn!(error = %pyx::tail(&format!("{exc:#}"), 300), "recovered claim's AI key not written");
+            return Err(HttpError::new(502, "the setup could not finish: try again"));
+        }
+    }
+    let s = state.clone();
+    let key = tokio::task::spawn_blocking(move || rotate_bridge_key(&s)).await.map_err(anyhow::Error::from)??;
+    record.insert("key".into(), json!(sha256_hex(&key)));
+    record.insert("model_key".into(), json!(model_key));
+    if let Some(id) = claim_id {
+        record.insert("claim_id".into(), json!(id)); // a retry that brought one: the next ones need it too
+    }
+    let path = recovery_path(config);
+    crate::py::write_with_mode(
+        &path.to_string_lossy(),
+        crate::py::dumps(&Value::Object(record.clone())).as_bytes(),
+        0o600,
+    )
+    .map_err(anyhow::Error::from)?;
+    let now = state.config();
+    let agents: Vec<Value> = match record.get("agents") {
+        Some(Value::Array(items)) => items
+            .iter()
+            // the first answer's agents (none can have been removed: that takes the bridge key), names as they are now
+            .map(|a| match a.get("id").and_then(Value::as_str).and_then(|id| now.agents.get(id)) {
+                Some(agent) => json!({"id": agent.name, "name": agent.display_name}),
+                None => a.clone(),
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    tracing::info!(agents = agents.len(), address = ?J(&address), "claim recovered: a new bridge key for its claimer");
+    Ok(web::ok(json!({"bridgeURL": now.public_url, "bridgeKey": key, "fingerprint": crate::lan::fingerprint(&now),
+                      "agents": agents, "recovered": true})))
 }
 
 /// `cloud_setup_router()` with the routes' own claim and restore (tests).
