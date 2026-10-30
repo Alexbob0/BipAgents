@@ -129,7 +129,9 @@ fn profile_folder(config: &Config, id: &str) -> PathBuf {
 
 /// Whether a kept spare can still be taken: its profile is there and no agent has its id.
 fn usable(config: &Config, spare: &Spare) -> bool {
-    is_spare_id(&spare.id) && !config.agents.contains_key(&spare.id) && profile_folder(config, &spare.id).join("config.yaml").is_file()
+    is_spare_id(&spare.id)
+        && !config.agents.contains_key(&spare.id)
+        && profile_folder(config, &spare.id).join("config.yaml").is_file()
 }
 
 /// The spares ready to be taken.
@@ -375,8 +377,10 @@ mod tests {
         let env: BTreeMap<String, String> =
             [("HERMES_HOME".to_string(), dir.path().to_string_lossy().into_owned())].into_iter().collect();
         let set = |key: &str, value: &str| {
-            let args: Vec<String> =
-                ["/opt/hermes", "-p", "agent_00000001", "config", "set", key, value].iter().map(|s| s.to_string()).collect();
+            let args: Vec<String> = ["/opt/hermes", "-p", "agent_00000001", "config", "set", key, value]
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
             written_directly(&args, &env).unwrap().unwrap();
         };
         set("mcp_servers.bipagents.url", "http://127.0.0.1:8643/v1/agent-tools/mcp?v=2");
@@ -391,8 +395,10 @@ mod tests {
                                "headers": {"Authorization": "Bearer abc"}, "timeout": 120})
         );
         // anything else goes to Hermes
-        let other: Vec<String> =
-            ["/opt/hermes", "-p", "agent_00000001", "config", "set", "API_SERVER_KEY", "k"].iter().map(|s| s.to_string()).collect();
+        let other: Vec<String> = ["/opt/hermes", "-p", "agent_00000001", "config", "set", "API_SERVER_KEY", "k"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         assert!(written_directly(&other, &env).is_none());
     }
 }
