@@ -125,8 +125,7 @@ impl Imap for Fake {
                 if !s.folders.contains_key(&dest) {
                     return Ok(("NO".into(), vec![]));
                 }
-                let chosen: Vec<Msg> =
-                    s.folders[&selected].iter().filter(|m| uids.contains(&m.uid)).cloned().collect();
+                let chosen: Vec<Msg> = s.folders[&selected].iter().filter(|m| uids.contains(&m.uid)).cloned().collect();
                 if command == "MOVE" {
                     s.folders.get_mut(&selected).unwrap().retain(|m| !uids.contains(&m.uid));
                 }
@@ -176,7 +175,12 @@ fn message(uid: u32, from: &str, list: Option<&str>, subject: &str, flags: &[&st
         header += &format!("List-Id: News <{list}>\r\nList-Unsubscribe: <mailto:u@{list}>\r\n");
     }
     header += &format!("Message-ID: <m{uid}@test>\r\n\r\n");
-    Msg { uid, flags: flags.iter().map(|f| f.to_string()).collect(), header: header.into_bytes(), message_id: format!("<m{uid}@test>") }
+    Msg {
+        uid,
+        flags: flags.iter().map(|f| f.to_string()).collect(),
+        header: header.into_bytes(),
+        message_id: format!("<m{uid}@test>"),
+    }
 }
 
 /// 450 newsletters of a shop (one starred), 5 of the person's own, 5 from a friend.
@@ -256,18 +260,27 @@ fn overview_card_batches_and_undo() {
     assert!(!srv.lock().unwrap().log.iter().any(|l| l.contains("BODY.PEEK[]") || l.contains("TEXT")));
 
     // no criterion, a sender built from nothing, a delete: refused before any card
-    for bad in [json!({"action": "archive"}), json!({"action": "archive", "subject_contains": "soldes"}),
-                json!({"action": "delete", "domain": "shop.example"}),
-                json!({"action": "archive", "groups": ["domain:nowhere.example"]}),
-                json!({"action": "archive", "everything": true, "folder": "Sent"})] {
+    for bad in [
+        json!({"action": "archive"}),
+        json!({"action": "archive", "subject_contains": "soldes"}),
+        json!({"action": "delete", "domain": "shop.example"}),
+        json!({"action": "archive", "groups": ["domain:nowhere.example"]}),
+        json!({"action": "archive", "everything": true, "folder": "Sent"}),
+    ] {
         let (error, said) = text(&mail_tidy::call(&config, "coach", "mail_bulk", &args(bad.clone()), &open).unwrap());
         assert!(error, "{bad}: {said}");
     }
     assert!(mail_tidy::pending_items(&config, None).is_empty());
 
     // a card: nothing moves before the person's « Oui »
-    let called = mail_tidy::call(&config, "coach", "mail_bulk",
-        &args(json!({"action": "archive", "groups": ["domain:shop.example"]})), &open).unwrap();
+    let called = mail_tidy::call(
+        &config,
+        "coach",
+        "mail_bulk",
+        &args(json!({"action": "archive", "groups": ["domain:shop.example"]})),
+        &open,
+    )
+    .unwrap();
     assert!(!text(&called).0, "{}", text(&called).1);
     let card = called.card.unwrap();
     assert_eq!(card.uids.len(), 449, "the starred one is left out");
@@ -291,7 +304,16 @@ fn overview_card_batches_and_undo() {
     assert_eq!((kept[0].status.as_str(), kept[0].done), ("running", mail_tidy::ACT_BATCH));
     assert_eq!(count(&srv, ARCHIVE_FOLDER), mail_tidy::ACT_BATCH);
     // a message starred in the meantime is left alone
-    srv.lock().unwrap().folders.get_mut("INBOX").unwrap().iter_mut().find(|m| m.uid == 10).unwrap().flags.push("\\Flagged".into());
+    srv.lock()
+        .unwrap()
+        .folders
+        .get_mut("INBOX")
+        .unwrap()
+        .iter_mut()
+        .find(|m| m.uid == 10)
+        .unwrap()
+        .flags
+        .push("\\Flagged".into());
     assert_eq!(mail_tidy::resume(&config, &open), 1);
     for _ in 0..200 {
         if mail_tidy::jobs_of(&config, "coach")[0].status != "running" {
@@ -308,8 +330,10 @@ fn overview_card_batches_and_undo() {
     assert!(srv.lock().unwrap().log.iter().any(|l| l == &format!("CREATE \"{ARCHIVE_FOLDER}\"")));
 
     // the undo: back in the inbox, found by Message-ID
-    let (error, said) = text(&mail_tidy::call(&config, "coach", "mail_bulk",
-        &args(json!({"action": "undo", "job": done.id})), &open).unwrap());
+    let (error, said) = text(
+        &mail_tidy::call(&config, "coach", "mail_bulk", &args(json!({"action": "undo", "job": done.id})), &open)
+            .unwrap(),
+    );
     assert!(!error, "{said}");
     for _ in 0..200 {
         if mail_tidy::jobs_of(&config, "coach").iter().all(|j| j.status != "running") {
@@ -319,7 +343,8 @@ fn overview_card_batches_and_undo() {
     }
     assert_eq!(count(&srv, ARCHIVE_FOLDER), 0);
     assert_eq!(count(&srv, "INBOX"), 460);
-    let (_, status) = text(&mail_tidy::call(&config, "coach", "mail_bulk", &args(json!({"action": "status"})), &open).unwrap());
+    let (_, status) =
+        text(&mail_tidy::call(&config, "coach", "mail_bulk", &args(json!({"action": "status"})), &open).unwrap());
     assert!(status.contains(&format!("undo of {}", done.id)), "{status}");
     // only once
     assert!(mail_tidy::undo(&config, "coach", &done.id).is_err());
@@ -333,8 +358,14 @@ fn refused_cards_go_and_other_agents_see_nothing() {
     let open = opener(&srv);
     let (error, said) = text(&mail_tidy::call(&config, "vie", "mail_overview", &args(json!({})), &open).unwrap());
     assert!(error && said.contains("No mailbox"), "{said}");
-    let called = mail_tidy::call(&config, "coach", "mail_bulk",
-        &args(json!({"action": "mark_read", "list_id": "<news.shop.example>"})), &open).unwrap();
+    let called = mail_tidy::call(
+        &config,
+        "coach",
+        "mail_bulk",
+        &args(json!({"action": "mark_read", "list_id": "<news.shop.example>"})),
+        &open,
+    )
+    .unwrap();
     let card = called.card.unwrap();
     assert_eq!(card.uids.len(), 449);
     assert!(mail_tidy::answer(&config, "vie", &card.id, true, "app").unwrap().is_none(), "another agent's card");
@@ -350,11 +381,27 @@ fn gmail_archives_to_all_mail_and_trash_is_its_trash() {
     let config = setup(dir.path(), "t3");
     let srv = server(true);
     let open = opener(&srv);
-    let card = mail_tidy::call(&config, "coach", "mail_bulk",
-        &args(json!({"action": "archive", "from": "news@mail.shop.example"})), &open).unwrap().card.unwrap();
+    let card = mail_tidy::call(
+        &config,
+        "coach",
+        "mail_bulk",
+        &args(json!({"action": "archive", "from": "news@mail.shop.example"})),
+        &open,
+    )
+    .unwrap()
+    .card
+    .unwrap();
     assert_eq!((card.dest.as_str(), card.make_dest), ("[Gmail]/All Mail", false));
-    let trash = mail_tidy::call(&config, "coach", "mail_bulk",
-        &args(json!({"action": "trash", "domain": "friends.example"})), &open).unwrap().card.unwrap();
+    let trash = mail_tidy::call(
+        &config,
+        "coach",
+        "mail_bulk",
+        &args(json!({"action": "trash", "domain": "friends.example"})),
+        &open,
+    )
+    .unwrap()
+    .card
+    .unwrap();
     assert_eq!(trash.dest, "[Gmail]/Trash");
     assert_eq!(trash.uids.len(), 5);
     let job = mail_tidy::answer(&config, "coach", &card.id, true, "app").unwrap().unwrap();

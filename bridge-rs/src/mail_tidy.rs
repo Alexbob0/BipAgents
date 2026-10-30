@@ -138,7 +138,8 @@ pub fn registrable(host: &str) -> String {
     }
     let n = labels.len();
     let second = labels[n - 2];
-    let keep = if labels[n - 1].len() == 2 && ["co", "com", "org", "net", "gov", "ac", "gouv", "edu"].contains(&second) {
+    let keep = if labels[n - 1].len() == 2 && ["co", "com", "org", "net", "gov", "ac", "gouv", "edu"].contains(&second)
+    {
         3
     } else {
         2
@@ -537,7 +538,8 @@ impl Selector {
         if !self.groups.is_empty() && !self.groups.iter().any(|g| row.in_group(g)) {
             return false;
         }
-        if !self.from.is_empty() && !(row.from == self.from || (!self.from.contains('@') && row.from.contains(&self.from)))
+        if !self.from.is_empty()
+            && !(row.from == self.from || (!self.from.contains('@') && row.from.contains(&self.from)))
         {
             return false;
         }
@@ -571,7 +573,7 @@ impl Selector {
 
 /// Never touched: starred/flagged, drafts, the person's own mails.
 pub fn protected(row: &Row, own: &[String]) -> bool {
-    row.flagged || row.draft || own.iter().any(|o| *o == row.from)
+    row.flagged || row.draft || own.contains(&row.from)
 }
 
 /// The account's own addresses.
@@ -935,11 +937,15 @@ pub fn make_card(
     if chosen.is_empty() {
         return Err("no message matches (starred ones, drafts and the person's own mails are left out)".into());
     }
-    chosen.sort_by(|a, b| b.uid.cmp(&a.uid));
+    chosen.sort_by_key(|r| std::cmp::Reverse(r.uid));
     let mut by_group: BTreeMap<String, usize> = BTreeMap::new();
     for row in &chosen {
         let label = if !selector.list_id.is_empty() || selector.groups.iter().any(|g| g.starts_with("list:")) {
-            if row.list_id.is_empty() { row.domain() } else { row.list_id.clone() }
+            if row.list_id.is_empty() {
+                row.domain()
+            } else {
+                row.list_id.clone()
+            }
         } else {
             row.domain()
         };
@@ -947,11 +953,8 @@ pub fn make_card(
     }
     let mut groups: Vec<(String, usize)> = by_group.into_iter().collect();
     groups.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
-    let sample = chosen
-        .iter()
-        .take(SAMPLE)
-        .map(|r| format!("{} · {} · {}", r.date, r.from, tk::head(&r.subject, 70)))
-        .collect();
+    let sample =
+        chosen.iter().take(SAMPLE).map(|r| format!("{} · {} · {}", r.date, r.from, tk::head(&r.subject, 70))).collect();
     Ok(Job {
         id: py::token_hex(6),
         agent: agent.to_string(),
@@ -981,7 +984,7 @@ pub fn tools() -> Vec<Value> {
         json!({
             "name": "mail_overview",
             "description": "For a big mailbox: counts by sender domain, list, promotions, unread, from the headers only \
-(no reading, free). Gives group ids for mail_bulk.",
+        (no reading, free). Gives group ids for mail_bulk.",
             "inputSchema": {"type": "object", "properties": {
                 "mailbox": {"type": "string", "description": "a mailbox's label when there are several"},
                 "folder": {"type": "string", "description": "default INBOX"},
@@ -990,7 +993,7 @@ pub fn tools() -> Vec<Value> {
         json!({
             "name": "mail_bulk",
             "description": "Tidy many e-mails at once: archive, mark_read, move:<folder> or trash, by groups from \
-mail_overview or criteria. Makes a card the person approves; nothing happens before. Also status, undo (job).",
+        mail_overview or criteria. Makes a card the person approves; nothing happens before. Also status, undo (job).",
             "inputSchema": {"type": "object", "properties": {
                 "action": {"type": "string", "description": "archive | mark_read | move:<folder> | trash | status | undo"},
                 "groups": {"type": "array", "items": {"type": "string"}, "description": "ids from mail_overview"},
@@ -1025,7 +1028,8 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict, opener: 
         ));
     }
     let arg = |k: &str| tk::str_or_empty(arguments.get(k));
-    let folder = Some(tk::strip(&arg("folder")).to_string()).filter(|f| !f.is_empty()).unwrap_or_else(|| "INBOX".into());
+    let folder =
+        Some(tk::strip(&arg("folder")).to_string()).filter(|f| !f.is_empty()).unwrap_or_else(|| "INBOX".into());
     let account = match mailbox::pick(&accounts, &arg("mailbox")) {
         Ok(a) => a,
         Err(e) => return Ok(said(&e.0, true)),
@@ -1037,7 +1041,14 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict, opener: 
             let cards = cards_of(config, Some(agent));
             let mut lines: Vec<String> = cards
                 .iter()
-                .map(|c| format!("Card {} · {} · {} e-mails · waiting for the person", c.id, c.action.as_ref().map(Action::word).unwrap_or_default(), c.uids.len()))
+                .map(|c| {
+                    format!(
+                        "Card {} · {} · {} e-mails · waiting for the person",
+                        c.id,
+                        c.action.as_ref().map(Action::word).unwrap_or_default(),
+                        c.uids.len()
+                    )
+                })
                 .collect();
             lines.extend(jobs.iter().rev().take(5).map(job_line));
             if lines.is_empty() {
@@ -1111,7 +1122,8 @@ Oui. Tell them in one sentence.",
                 None => return Err(exc),
             },
         };
-        let jobs: Vec<Job> = jobs_of(config, agent).into_iter().filter(|j| j.account == mailbox::field(account, "id")).collect();
+        let jobs: Vec<Job> =
+            jobs_of(config, agent).into_iter().filter(|j| j.account == mailbox::field(account, "id")).collect();
         return Ok(said(&overview_text(&mailbox::shown_name(account), &scan, &own_addresses(account), &jobs), false));
     }
     Ok(said(&format!("unknown tool: {name}"), true))
@@ -1188,7 +1200,8 @@ pub fn undo(config: &Config, agent: &str, job_id: &str) -> Result<Job, String> {
             back.uids = job.acted.clone();
         } else {
             back.folder = job.dest.clone();
-            back.find_ids = job.acted.iter().filter_map(|u| ids.get(u)).filter(|m| !m.is_empty()).map(|m| m.to_string()).collect();
+            back.find_ids =
+                job.acted.iter().filter_map(|u| ids.get(u)).filter(|m| !m.is_empty()).map(|m| m.to_string()).collect();
             let gmail_archive = action == Action::Archive && job.dest.contains("]/");
             back.action =
                 Some(if gmail_archive { Action::Copy(job.folder.clone()) } else { Action::Move(job.folder.clone()) });
@@ -1340,8 +1353,7 @@ pub fn run_job(config: &Config, id: &str, opener: &Connect) -> anyhow::Result<()
             } else {
                 let (status, data) = conn.uid("FETCH", &[&uid_set(&batch), "(UID FLAGS)"])?;
                 let rows = if status == "OK" { parse_fetch(&data) } else { Vec::new() };
-                let fine: HashSet<u32> =
-                    rows.iter().filter(|r| !r.flagged && !r.draft).map(|r| r.uid).collect();
+                let fine: HashSet<u32> = rows.iter().filter(|r| !r.flagged && !r.draft).map(|r| r.uid).collect();
                 batch.iter().copied().filter(|u| fine.contains(u)).collect()
             };
             job.skipped += batch.len() - keep.len();
@@ -1455,7 +1467,8 @@ mod tests {
         let mine = row(2, "me@example.com", "b");
         let other = row(3, "news@shop.example", "c");
         let scan = Scan { folder: "INBOX".into(), total: 3, rows: vec![starred, mine, other], ..Scan::default() };
-        let account: Dict = json!({"id": "a1", "username": "me@example.com", "label": "Box"}).as_object().cloned().unwrap();
+        let account: Dict =
+            json!({"id": "a1", "username": "me@example.com", "label": "Box"}).as_object().cloned().unwrap();
         let folders = Folders(vec![("\\HasNoChildren \\Trash".into(), "Trash".into())]);
         let everything = Selector { everything: true, ..Selector::default() };
         let card = make_card("vie", &account, &scan, &folders, Action::Trash, &everything, &own).unwrap();

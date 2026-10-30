@@ -1233,7 +1233,9 @@ async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>
         .await
         .map_err(anyhow::Error::from)??;
         return match job {
-            Some(job) => Ok(web::ok(json!({"ok": true, "choice": if allow { "once" } else { "deny" }, "count": job.uids.len()}))),
+            Some(job) => {
+                Ok(web::ok(json!({"ok": true, "choice": if allow { "once" } else { "deny" }, "count": job.uids.len()})))
+            }
             None => Err(HttpError::new(404, "no such request (answered already?)")),
         };
     }

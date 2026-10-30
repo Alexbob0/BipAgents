@@ -1380,7 +1380,8 @@ pub async fn call_tool(
         return blocking(move || Ok(crate::storage_watch::call(&c, &agent_name, &arguments))).await;
     }
     if crate::mail_tidy::TOOL_NAMES.contains(&name) {
-        let (c, agent_name, name_c, arguments) = (config.clone(), agent.name.clone(), name.to_string(), arguments.clone());
+        let (c, agent_name, name_c, arguments) =
+            (config.clone(), agent.name.clone(), name.to_string(), arguments.clone());
         let called = tokio::task::spawn_blocking(move || {
             crate::mail_tidy::call(&c, &agent_name, &name_c, &arguments, &mailbox::default_connect())
         })
