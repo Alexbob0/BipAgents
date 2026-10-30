@@ -15,7 +15,9 @@
 //! by hand in the golden file too); and long work goes to a background task, never inline (2026-10-22,
 //! `LONG_WORK_RULE`, by hand in the golden file too); and answers with numbers, a plan or a comparison come with a
 //! live page placed in the reply (2026-10-22, `VISUAL_RULE`, by hand in the golden file too); and slow work starts with
-//! one short sentence saying what it understood and will do (2026-10-25, `ACK_RULE`, by hand in the golden too). `heal_souls` brings existing agents' blocks up to date. An agent given the person's
+//! one short sentence saying what it understood and will do (2026-10-25, `ACK_RULE`, by hand in the golden too); and
+//! it answers short, in bullet points when there are several items (2026-10-30, `STYLE_RULE`, by hand in the golden
+//! too). `heal_souls` brings existing agents' blocks up to date. An agent given the person's
 //! health data has a second block (`with_health`): use it to help, never to diagnose.
 //!
 //! Port of `bridge/bipbridge/souls.py` (owner group: agents).
@@ -195,6 +197,16 @@ pub const SPACE_RULE: &str = concat!(
     "to keep (« Je garderai les 30 derniers, environ 150 Mo. »); once they chose, save it with keep_last."
 );
 
+/// Short answers by default (Alex, 2026-10-30: « toujours concis », bullet points rather than sentences); in a voice
+/// call the same brevity without list marks. Last in the block, so it weighs on every reply. Rust bridge only, like
+/// FAMILY_RULE (in tests/golden/souls.json by hand); `heal_souls` brings existing agents' blocks to it at start.
+/// Short: it is paid on every call.
+pub const STYLE_RULE: &str = concat!(
+    "Be concise: answer first, in a few lines; several items or steps go in short bullet points, never long ",
+    "paragraphs. Don't repeat the question; details only when asked. Write long only when your person asks for a long ",
+    "text (a letter, a full summary, a podcast script). In a voice call: just as brief, short spoken sentences, no lists."
+);
+
 pub fn language_name(code: &str) -> &'static str {
     LANGUAGE_NAMES.iter().find(|(k, _)| *k == code).map(|(_, n)| *n).unwrap_or("English")
 }
@@ -203,7 +215,7 @@ pub fn language_block(lang: Option<&str>) -> String {
     let name = language_name(&agent_language(lang));
     format!(
         "{BLOCK_START}\nLanguage: answer in the language your person writes in. Always write it with its accents and usual punctuation (routines and notes too), never an ASCII-only version. When you write first (a routine, \
-         a report, a reminder), write in {name}. The current time is at the top of each message (a bip:now line): trust it, never check it in the terminal.\n{CONTENT_RULE}\n{SENDING_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{PROJECT_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{LONG_WORK_RULE}\n{VISUAL_RULE}\n{SPACE_RULE}\n{ACK_RULE}\n{BLOCK_END}"
+         a report, a reminder), write in {name}. The current time is at the top of each message (a bip:now line): trust it, never check it in the terminal.\n{CONTENT_RULE}\n{SENDING_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{PROJECT_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{LONG_WORK_RULE}\n{VISUAL_RULE}\n{SPACE_RULE}\n{ACK_RULE}\n{STYLE_RULE}\n{BLOCK_END}"
     )
 }
 
@@ -475,7 +487,7 @@ pub fn language_block_compact(lang: Option<&str>) -> String {
     let name = language_name(&agent_language(lang));
     format!(
         "{BLOCK_START}\nLanguage: answer in the language your person writes in. When you write first (a routine, \
-         a report, a reminder), write in {name}.\n{COMPACT_RULES}\n{ACK_RULE}\n{BLOCK_END}"
+         a report, a reminder), write in {name}.\n{COMPACT_RULES}\n{ACK_RULE}\n{STYLE_RULE}\n{BLOCK_END}"
     )
 }
 
@@ -725,6 +737,31 @@ mod tests {
         assert!(fresh.find(HEALTH_START) < fresh.find(NOTEBOOK_START), "in place");
         assert_eq!(refresh_health(&fresh), fresh);
         assert_eq!(refresh_health("Tu es Prof.\n"), "Tu es Prof.\n");
+    }
+
+    #[test]
+    fn every_agent_answers_short() {
+        // Alex 2026-10-30: concise by default, bullet points rather than paragraphs; spoken: no list marks
+        for needed in ["answer first", "few lines", "bullet points", "Don't repeat the question", "voice call"] {
+            assert!(STYLE_RULE.contains(needed), "missing {needed}");
+        }
+        assert!(STYLE_RULE.len() < 420, "short: paid on every call");
+        for lang in LANGUAGES.iter().chain(["de", "es"].iter()) {
+            for category in CATEGORIES {
+                let soul = soul_for("Bip", category, Some(lang)).unwrap();
+                assert_eq!(soul.matches(STYLE_RULE).count(), 1, "{category} {lang}");
+            }
+            let custom = custom_soul("Bip", "jardinier", "doux", "", Some(lang));
+            assert_eq!(custom.matches(STYLE_RULE).count(), 1, "custom {lang}");
+            assert!(language_block_compact(Some(lang)).contains(STYLE_RULE));
+        }
+        // an older block (before the rule) is brought to it in place, once
+        let old = with_language("Tu es Prof.\n", Some("fr")).replace(&format!("\n{STYLE_RULE}"), "");
+        assert!(!old.contains(STYLE_RULE));
+        let fresh = with_language(&old, Some("fr"));
+        assert_eq!(fresh.matches(STYLE_RULE).count(), 1);
+        assert!(fresh.starts_with("Tu es Prof.\n\n") && fresh.contains("write in French."));
+        assert_eq!(with_language(&fresh, Some("fr")), fresh);
     }
 
     #[test]

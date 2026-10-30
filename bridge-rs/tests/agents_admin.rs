@@ -718,6 +718,7 @@ fn an_earlier_bridge_block_gets_the_rule_about_what_agents_read() {
     let soul = read_soul(&c, &agent).unwrap();
     assert!(soul.starts_with("Tu es Vie, ma personnalité à moi.") && soul.contains(souls::CONTENT_RULE));
     assert!(soul.contains("write in French.") && soul.matches(souls::BLOCK_START).count() == 1);
+    assert_eq!(soul.matches(souls::STYLE_RULE).count(), 1); // short answers (2026-10-30), without recreating it
     heal_souls(&c);
     assert_eq!(read_soul(&c, &agent).unwrap(), soul); // once
                                                       // A personality written by hand gets the block too (owner 2026-10-22: every agent talks plainly), in the place's
