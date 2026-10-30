@@ -918,7 +918,7 @@ async fn the_answer_style_is_kept_and_switches_one_paragraph_of_the_soul() {
     assert_eq!(soul().matches(souls::CUSTOM_STYLE_START).count(), 1);
     assert!(soul().contains("« Tutoie-moi,\ndes emojis bipagents ». It is about the form"), "{}", soul());
     assert!(!soul().contains(souls::DETAILED_STYLE_RULE));
-    assert!(soul().contains(&format!("no lists.\n{}", souls::BLOCK_END)));
+    assert!(soul().contains(&format!("no lists. {}\n{}", souls::STYLE_CARD_RULE, souls::BLOCK_END)));
     assert_eq!(patch(json!({"answer_style": "custom", "answer_style_custom": "x".repeat(301)})).await.status, 422);
     assert_eq!(patch(json!({"answer_style": "custom", "answer_style_custom": " \n "})).await.status, 400);
     let odd = patch(json!({"answer_style": "verbose"})).await;
@@ -974,4 +974,95 @@ async fn the_answer_style_is_kept_and_switches_one_paragraph_of_the_soul() {
     assert_eq!(done.json()["answer_style"]["style"], "detailed");
     assert!(soul().contains(souls::DETAILED_STYLE_RULE) && !soul().contains(souls::BALANCED_STYLE_RULE));
     assert_eq!(app.app.state.config().agents["wellness"].answer_style.as_deref(), Some("detailed"));
+}
+
+/// A hub's gateway that serves a new profile only `pickup` after its first poll (the real one picks new profiles up
+/// within 30 s).
+async fn slow_gateway(pickup: std::time::Duration) -> String {
+    let seen: Arc<Mutex<BTreeMap<String, std::time::Instant>>> = Arc::default();
+    common::spawn_fake(Router::new().fallback(any(move |request: Request| {
+        let seen = seen.clone();
+        async move {
+            let path = request.uri().path().to_string();
+            let profile = path.split('/').nth(2).unwrap_or("").to_string();
+            let first = *seen.lock().unwrap().entry(profile).or_insert_with(std::time::Instant::now);
+            if first.elapsed() < pickup {
+                return (axum::http::StatusCode::NOT_FOUND, axum::Json(json!({})));
+            }
+            if path.ends_with("/api/sessions") {
+                return (axum::http::StatusCode::CREATED, axum::Json(json!({"id": "api_1", "title": "Bot Chat"})));
+            }
+            (axum::http::StatusCode::OK, axum::Json(json!({"runs": true})))
+        }
+    })))
+    .await
+}
+
+static SLOW_RUNS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// A `run` whose every `hermes` command takes `command` (the CLI's start-up).
+fn slow_run(command: std::time::Duration) -> Run {
+    Arc::new(move |_args: Vec<String>, _env: BTreeMap<String, String>| {
+        SLOW_RUNS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        Box::pin(async move {
+            tokio::time::sleep(command).await;
+            Ok(String::new())
+        })
+    })
+}
+
+#[tokio::test]
+async fn a_team_is_made_as_one_batch() {
+    // 2026-10-30: a 6-agent team made one agent after the other took minutes, past the app's wait. Scaled down: the
+    // gateway serves a profile 1.2 s after its first poll (up to 30 s for real), each `hermes` command takes 40 ms.
+    use std::time::{Duration, Instant};
+    let team: Vec<NewAgent> = ["Courses", "Jardin", "Budget", "Sport", "Voyages", "Devoirs"]
+        .iter()
+        .map(|n| new_agent(json!({"name": n, "kind": "daily", "lang": "en"})))
+        .collect();
+    let http = reqwest::Client::new();
+    let (pickup, command) = (Duration::from_millis(1200), Duration::from_millis(40));
+
+    let dir = tempfile::tempdir().unwrap();
+    let (config, _) = managed_config(dir.path(), &slow_gateway(pickup).await);
+    let started = Instant::now();
+    for body in &team[..3] {
+        create_agent(&config, body, &http, &slow_run(command)).await.unwrap();
+    }
+    let three_one_by_one = started.elapsed();
+    for body in &team[3..] {
+        create_agent(&config, body, &http, &slow_run(command)).await.unwrap();
+    }
+    let one_by_one = started.elapsed();
+
+    let dir = tempfile::tempdir().unwrap();
+    let (config, path) = managed_config(dir.path(), &slow_gateway(pickup).await);
+    let started = Instant::now();
+    let made = agents_admin::create_agents(&config, &team[..3], &http, &slow_run(command)).await;
+    let three_batch = started.elapsed();
+    assert!(made.iter().all(Result::is_ok));
+    let made = agents_admin::create_agents(&config, &team[3..], &http, &slow_run(command)).await;
+    assert!(made.iter().all(Result::is_ok));
+    let dir6 = tempfile::tempdir().unwrap();
+    let (config6, path6) = managed_config(dir6.path(), &slow_gateway(pickup).await);
+    let started6 = Instant::now();
+    let made6 = agents_admin::create_agents(&config6, &team, &http, &slow_run(command)).await;
+    let batch = started6.elapsed();
+    eprintln!(
+        "team timing: 3 agents one by one {three_one_by_one:?}, as one batch {three_batch:?}; \
+         6 agents one by one {one_by_one:?}, as one batch {batch:?}; {} commands in all",
+        SLOW_RUNS.load(std::sync::atomic::Ordering::Relaxed)
+    );
+    let names: Vec<String> = made6.into_iter().map(|r| r.unwrap().name).collect();
+    assert_eq!(names, ["courses", "jardin", "budget", "sport", "voyages", "devoirs"]);
+    let kept = reread(&path6);
+    assert!(names.iter().all(|n| kept.agent(Some(n)).is_some()), "all six in the bridge's config");
+    assert!(reread(&path).agent(Some("devoirs")).is_some());
+    assert!(one_by_one >= pickup * 6);
+    assert!(batch * 3 < one_by_one * 2, "the gateway's pick-ups waited for side by side: {batch:?}");
+    // the same name twice in one batch: two distinct profiles
+    let twice = [new_agent(json!({"name": "Léo", "kind": "daily"})), new_agent(json!({"name": "Léo", "kind": "home"}))];
+    let made = agents_admin::create_agents(&config6, &twice, &http, &slow_run(Duration::ZERO)).await;
+    let ids: Vec<String> = made.iter().map(|r| r.as_ref().map(|a| a.name.clone()).unwrap_or_default()).collect();
+    assert!(!ids[0].is_empty() && ids[0] != ids[1], "{ids:?}");
 }

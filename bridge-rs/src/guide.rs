@@ -92,6 +92,11 @@ pub const PENDING_MAX: usize = 3;
 pub const GUIDE_NAME: &str = "Bip";
 /// Handovers kept in an agent's memory (the older ones go).
 pub const HANDOVERS_KEPT: usize = 3;
+/// How long « Créer l'équipe » waits for its team before answering where it stands (202, guide_team.rs): under the
+/// apps' request timeout (300 s, BridgeClient.acceptTeam). 2026-10-30: a 6-agent team made one after the other went
+/// past it, and the app showed « Ça n'a pas pu être fait » (its guide notice, under every conversation) although the
+/// six were made.
+pub const TEAM_ANSWER_WAIT: std::time::Duration = std::time::Duration::from_secs(240);
 const HANDOVER_MARK: &str = "↪ ";
 
 /// Names that say nothing about the agent (lowercase, accents kept).
@@ -890,7 +895,10 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
         _ => "Your card is".to_string(),
     };
     Ok(tool_text(
-        &format!("{card} shown under your reply. Say so in one sentence; nothing happens until they tap it."),
+        &format!(
+            "{card} shown under your reply. Say so in one sentence, in the language they wrote in; nothing \
+             happens until they tap it."
+        ),
         false,
     ))
 }
@@ -1338,12 +1346,16 @@ async fn accept(
     match proposal.get("type").and_then(Value::as_str) {
         Some("team") => {
             // in a task of its own: an app that gives up waiting (several agents take a while) doesn't cut the team
-            // in half; its retry gets the kept answer
+            // in half; past TEAM_ANSWER_WAIT the answer is where it stands (202), the team made on in the background
             let (members, room, group) = (body.members.clone(), body.room, body.group.clone());
-            let work = tokio::spawn(async move {
+            let (card, shared) = (id.clone(), state.config.clone());
+            let mut work = tokio::spawn(async move {
                 crate::guide_team::accept(&state, &id, &from, members, room, group, &lang).await
             });
-            work.await.map_err(|e| HttpError::from(anyhow::Error::from(e)))?
+            match tokio::time::timeout(TEAM_ANSWER_WAIT, &mut work).await {
+                Ok(joined) => joined.map_err(|e| HttpError::from(anyhow::Error::from(e)))?,
+                Err(_) => Ok(web::json_response(202, &crate::guide_team::progress(&shared.get(), &card))),
+            }
         }
         Some("agent") => {
             if !config.hermes.enabled() {
