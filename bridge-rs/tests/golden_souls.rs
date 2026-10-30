@@ -32,6 +32,8 @@ fn souls_match_python() {
             // Rust only (the health agent's rule, 2026-10-30: the body stays off « Toi »): its cases added by hand
             "with_health" => json!(souls::with_health(input[0].as_str().unwrap(), input[1].as_bool().unwrap())),
             "with_language" => json!(souls::with_language(input[0].as_str().unwrap(), opt(&input[1]))),
+            // Rust only (the answer styles, 2026-10-30): its cases added by hand
+            "with_style" => json!(souls::with_style(input[0].as_str().unwrap(), opt(&input[1]), opt(&input[2]))),
             "soul_for" => match souls::soul_for(input[0].as_str().unwrap(), input[1].as_str().unwrap(), opt(&input[2]))
             {
                 Ok(s) => json!(s),

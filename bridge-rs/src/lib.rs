@@ -78,6 +78,8 @@ pub mod read_shares;
 pub mod templates;
 pub mod templates_scrub;
 pub mod agents_admin;
+/// How each agent answers: short, balanced, detailed or the person's own style (no Python counterpart).
+pub mod answer_style;
 /// The person's time zone and standard dates (no Python counterpart).
 pub mod dates;
 pub mod device_keys;
