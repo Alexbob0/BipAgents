@@ -27,8 +27,9 @@ pub const RECORD: &str = "notebook_record";
 pub const TOOL_NAMES: [&str; 6] = [SEARCH, READ, NOTE, EDIT, TASK, RECORD];
 
 fn private_property() -> Value {
-    json!({"type": "boolean", "description": "true for health facts: they go to the person's private health part, \
-which only you (the agent they chose for health) and they can read. Never put health facts anywhere else."})
+    json!({"type": "boolean", "description": "true for health facts, which means anything about their body (sport \
+and training, sleep, weight, treatments, symptoms, measurements): they go to the person's private health part, which \
+only you (the agent they chose for health) and they can read. Never put them anywhere else, not on « Toi » either."})
 }
 
 /// The tools' definitions; `health`: the agent may use the private health part.
