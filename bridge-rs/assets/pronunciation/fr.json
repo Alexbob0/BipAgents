@@ -21,10 +21,11 @@
     "Bolt": "Bolte",
     "Nest": "Nèste"
   },
-  "always_about": "Words Pocket 4.x still says wrong from the raw text, applied whatever the engine; only filled from listening tests (bench of 2026-10-25: Garmin read « Garmain », deadline heard « dette ligne »).",
+  "always_about": "Words Pocket 4.x still says wrong from the raw text, applied whatever the engine; only filled from listening tests (bench of 2026-10-25: Garmin read « Garmain », deadline heard « dette ligne »; Live call of 2026-10-30: « IA » spelled « i a » heard « aya », its two vowels run together).",
   "always": {
     "garmin": "Garmine",
-    "deadline": "dèd-laïne"
+    "deadline": "dèd-laïne",
+    "ia": "i-a"
   },
   "words": {
     "whatsapp": "WhatsApp",

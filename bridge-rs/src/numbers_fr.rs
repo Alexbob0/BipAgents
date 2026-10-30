@@ -482,7 +482,7 @@ pub fn prepare_for_synthesis(text: &str) -> String {
 
 /// The same for a given engine: `Respelled` for Pocket 3.3.0 (« Spotifaï »), `Raw` for Pocket 4 and the others.
 pub fn prepare_for_synthesis_with(text: &str, spelling: pronounce::Spelling) -> String {
-    let mut text = text.to_string();
+    let mut text = pronounce::without_hesitations(text, "fr"); // « Hmm, voyons » -> « Voyons »
     for (pattern, words) in LEXICON.iter() {
         text = pattern.replace(&text, words);
     }
