@@ -152,6 +152,21 @@ pub struct Service {
     #[serde(default)]
     pub icon: String,
     pub texts: IndexMap<String, Texts>,
+    /// A cloud drive: how give_file puts a file there (give_file.rs). None for the other services.
+    #[serde(default)]
+    pub drive: Option<Drive>,
+}
+
+/// A cloud drive's upload through the service's own MCP server (give_file.rs): its tool, the tool's arguments with
+/// `{name}`, `{folder}`, `{mime_type}` and `{content_base64}` filled in, and where its answer gives the file's link.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Drive {
+    pub tool: String,
+    #[serde(default)]
+    pub arguments: IndexMap<String, Value>,
+    /// The key of the answer's `structuredContent` holding the link (empty: the first web address of its text).
+    #[serde(default)]
+    pub link: String,
 }
 
 static CATALOG: LazyLock<Vec<Service>> = LazyLock::new(|| serde_yaml::from_str(CATALOG_YAML).unwrap_or_default());
@@ -170,7 +185,7 @@ impl Service {
         &self.id
     }
 
-    fn label(&self) -> String {
+    pub(crate) fn label(&self) -> String {
         self.texts.get("fr").or_else(|| self.texts.values().next()).map(|t| t.label.clone()).unwrap_or(self.id.clone())
     }
 

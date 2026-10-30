@@ -48,7 +48,7 @@ use crate::web::{self, ApiResult, HttpError};
 use crate::{py, Dict};
 
 /// The bridge's MCP tools a project agent may use, in every turn.
-pub const TOOLS: [&str; 7] = [
+pub const TOOLS: [&str; 8] = [
     crate::agent_tools::KNOWLEDGE_READ,
     crate::agent_tools::KNOWLEDGE_SEARCH,
     crate::weather::TOOL_NAME,
@@ -56,6 +56,7 @@ pub const TOOLS: [&str; 7] = [
     crate::maps::TOOL_NAME,
     crate::agent_tools::CREATE_PAGE,
     crate::friends_cards::TOOL_NAME,
+    crate::give_file::TOOL_NAME,
 ];
 /// The default length of a project (and of a restored one).
 pub const DEFAULT_DAYS: f64 = 30.0;

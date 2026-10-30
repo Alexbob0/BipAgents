@@ -1323,7 +1323,7 @@ folders between agents, where the person set them up: yours at /partage (write t
 ones shared with you at /lecture/<agent> (read-only). shared_files_list, shared_files_get and shared_files_write reach \
 them too; the person approves each shared_files_delete. To give files to one of your \
 other agents, put them in /envoi then use send_files_to_agent (bipagents tools). To give a file to your person, \
-put it in /envoi and end your reply with a line MEDIA:/envoi/<name>; a page goes through create_page. Your \
+save it in /envoi and give it with give_file; a page goes through create_page. Your \
 sandbox reaches the package registries (pip, npm…) and the sites your person allowed (sandbox_sites lists them); \
 another site your programs need: sandbox_sites_request asks your person (a site refused to your programs is asked \
 about by itself). Read web pages with your web tools or your browser, never curl or a script; programs only for an \

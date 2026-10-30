@@ -6,6 +6,10 @@
 # scope:     what the bridge asks for ("" = the service's default)
 # read_only: the service itself can't change anything (Finary); otherwise each tool that writes asks the person first
 # texts:     what the app shows, per language (fr is the default)
+# drive:     a cloud drive only: how give_file uploads a file the agent made (give_file.rs), e.g.
+#              drive: {tool: upload_file, link: webViewLink,
+#                      arguments: {name: "{name}", parent: "{folder}", mimeType: "{mime_type}", content: "{content_base64}"}}
+#            The first drive connected for an agent (in this order) gets its files, in a « BipAgents » folder.
 - id: notion
   url: https://mcp.notion.com/mcp
   issuer: https://mcp.notion.com
