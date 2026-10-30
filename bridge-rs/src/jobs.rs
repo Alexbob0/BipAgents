@@ -562,6 +562,10 @@ impl Jobs {
         if self.credit_used() {
             return Err(JobError(crate::credit::JOBS_REFUSED.into()));
         }
+        // the place's space full and its workspaces paused by the seat agent (storage_watch.rs)
+        if crate::storage_watch::seat_paused() {
+            return Err(JobError("your person's space is full: background tasks start again once room is made".into()));
+        }
         let running: Vec<Dict> = tasks(&self.config.get())
             .into_iter()
             .filter(|j| ["running", "stopping"].contains(&state_of(j).as_str()))
