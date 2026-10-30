@@ -1055,7 +1055,9 @@ def test_a_server_the_app_created_installs_without_a_question(monkeypatch, tmp_p
     assert 'cloud = true\npublic_url = "https://164.90.10.20"' in out
     assert '[lan]\nenabled = true\nport = 443\naddress = "164.90.10.20"' in out
     assert f'[setup]\nfile = "{tmp_path}/.config/bipagents/setup.json"' in out
-    assert "config set model.provider openrouter" in out and "OPENROUTER_API_KEY" not in out
+    # the offer's model from the start, with a placeholder key until the claim writes the person's
+    assert "config set model.provider custom" in out and "config set model.default glm-5.3-flash" in out
+    assert "CUSTOM_MODEL_API_KEY reserve-no-key-yet" in out and "OPENROUTER_API_KEY" not in out
     assert "profile create" not in out   # the agents come with the app's claim
     # The phones' 8-bit voices, without PyTorch, loaded only while they speak.
     assert languages == [("de,fr,en,es,nl", tmp_path / ".local/share/bipagents/voices")]

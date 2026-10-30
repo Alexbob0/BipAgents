@@ -85,8 +85,11 @@ space = "{data}/spaces/coach"
     os.symlink(hub / "media" / "photo.jpg", hub / "profiles" / "vie" / "last-photo.jpg")
     # What is not moved: Hermes' code and runtimes, caches, logs, a running gateway's files.
     for skipped in ("hermes-agent/run_agent.py", "tools/python-3.11/bin/python3", "cache/x", "logs/gateway.log",
-                    "gateway.pid", "profiles/vie/sandboxes/box/x", "profiles/vie/state.db-wal-copy"):
+                    "gateway.pid", "profiles/vie/sandboxes/box/x", "profiles/vie/state.db-wal-copy",
+                    "profiles/agent_0a1b2c3d/config.yaml"):
         write(hub / skipped, "runtime")
+    # a spare agent the bridge keeps ready (agent_pool.rs): made again over there, never moved
+    write(config.parent / "spare-agents.json", json.dumps([{"id": "agent_0a1b2c3d", "key": "k"}]), 0o600)
     # The bridge's data, a space, a browser.
     database(data / "bridge.db", ["device-token"])
     write(data / "vault" / "vault.key", "fernet", 0o600)
@@ -148,7 +151,8 @@ def test_an_install_moves_to_another_home_name_and_ports(source, tmp_path):
     assert os.readlink(hub / "profiles" / "vie" / "last-photo.jpg") == str(hub / "media" / "photo.jpg")
     assert (data / "spaces" / "coach" / "profiles" / "coach" / "SOUL.md").exists()
     # Not what the machine makes again, nor its caches.
-    for gone in ("hermes-agent", "tools", "cache", "logs", "gateway.pid", "profiles/vie/sandboxes"):
+    for gone in ("hermes-agent", "tools", "cache", "logs", "gateway.pid", "profiles/vie/sandboxes",
+                 "profiles/agent_0a1b2c3d"):
         assert not (hub / gone).exists(), gone
     assert not (data / "spaces" / "coach" / "hermes-agent").exists()
     assert (data / "archives.json").exists() and not (data / "archive-index").exists()

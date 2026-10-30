@@ -65,6 +65,8 @@ TEXT_SUFFIXES = {".toml", ".yaml", ".yml", ".json", ".env", ".conf", ".txt", ".s
 TEXT_NAMES = {".env", "relay-clients"}
 # The bridge's derived data, made again after a restore or a move: the archives' search indexes (bridge-rs/src/archives/).
 DATA_SKIP = {"archive-index"}
+# The bridge's spare agents (bridge-rs/src/agent_pool.rs POOL_FILE), next to bridge.toml.
+SPARES_FILE = "spare-agents.json"
 NOT_SETTINGS = {"profile", "uploads", "media", "audio", "agent-audio", "image_store", "image_cache", "audio_cache",
                 "shares", "sessions", "output", "skills", "memories"}
 
@@ -81,6 +83,21 @@ class Inventory:
     config: Path
     toml: Dict[str, Any]
     home: Path
+
+    def spares(self) -> frozenset:
+        """The ids of the spare agents the bridge keeps ready (`spare-agents.json` next to bridge.toml): never moved
+        nor backed up until one is taken (it is then an agent of `[agents]`). Read once per inventory."""
+        cached = self.__dict__.get("_spares")
+        if cached is not None:
+            return cached
+        try:
+            data = json.loads((self.config.parent / SPARES_FILE).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            data = []
+        found = frozenset(str(s.get("id")) for s in data if isinstance(s, dict) and s.get("id")) \
+            if isinstance(data, list) else frozenset()
+        self.__dict__["_spares"] = found
+        return found
 
     @property
     def data_dir(self) -> Path:
@@ -142,6 +159,8 @@ class Inventory:
                 return True
             if len(parts) >= 3 and parts[0] == "profiles" and parts[2] in HERMES_SKIP_PROFILE:
                 return True
+            if len(parts) >= 2 and parts[0] == "profiles" and parts[1] in self.spares():
+                return True   # blank agents the bridge keeps ready (bridge-rs/src/agent_pool.rs), made again
         parts = _relative(path, self.data_dir)
         if parts and parts[0] in DATA_SKIP:
             return True
