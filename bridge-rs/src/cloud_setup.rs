@@ -14,7 +14,12 @@
 //!                                   fingerprint, challenge, proof, prepared, claimed?}
 //!     POST /v1/setup/claim         {challenge, mac, request: "<JSON>"}  ->  {bridgeURL, bridgeKey, fingerprint, agents,
 //!                                                                            recovered?}
-//!     request (a claim): {model, agents, language, claim_id?}
+//!     request (a claim): {model, agents, language, claim_id?, timezone?, country?}
+//!
+//! The claim's language, the phone's time zone (IANA) and country (ISO 3166 alpha-2) are the place's from then on
+//! (`apply_locale`): every agent's personality, the Carnet's language and later agents' default, Hermes' `timezone`
+//! (dates/), the country the agents are told when it isn't the zone's. Older apps send no zone nor country: the
+//! server's zone stays until the app reports the phone's (`PUT /v1/time/device`).
 //!
 //! A place whose person recovered their account without any of their devices (guichet/bipguichet/accounts.py) gets a
 //! new secret from the guichet's signed order and is claimed with `{"reopen": {"name": …}}`: the bridge key changes and
@@ -342,6 +347,10 @@ pub struct ClaimRequest {
     pub model: ModelChoice,
     pub agents: Vec<AgentChoice>,
     pub language: Option<String>,
+    /// The phone's IANA time zone (« America/New_York »); one this bridge doesn't know is left out.
+    pub timezone: Option<String>,
+    /// The phone's region (« US »), upper-cased.
+    pub country: Option<String>,
 }
 
 /// A str field's constraints, checked as pydantic does (type, then min, max, pattern).
@@ -472,6 +481,21 @@ impl ClaimRequest {
             Some(_) => return Err("Input should be a valid array".into()),
         }
         let language = check_str(root.get("language"), &Str { min: None, max: Some(20), pattern: None }, true)?;
+        let timezone = check_str(
+            root.get("timezone"),
+            &Str { min: Some(1), max: Some(64), pattern: Some(r"^[A-Za-z0-9_+\-]+(/[A-Za-z0-9_+\-]+)*$") },
+            true,
+        )?
+        .filter(|zone| {
+            // a zone newer than this bridge's database: the claim goes on, the server's zone stays
+            let known = crate::dates::parse_zone(zone).is_some();
+            if !known {
+                tracing::warn!(zone = %zone, "claim: time zone unknown here, left out");
+            }
+            known
+        });
+        let country = check_str(root.get("country"), &Str { min: None, max: Some(2), pattern: Some(r"^[A-Za-z]{2}$") }, true)?
+            .map(|c| c.to_uppercase());
         Ok(ClaimRequest {
             model: ModelChoice {
                 provider: provider.unwrap_or_default(),
@@ -482,6 +506,8 @@ impl ClaimRequest {
             },
             agents,
             language,
+            timezone,
+            country,
         })
     }
 }
@@ -601,6 +627,53 @@ fn remember(config: &Config, values: &[(&str, Value)]) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// The person's language, time zone and country, from the claim, made the place's (before its agents are named):
+/// - the Carnet's language, while it has no page (a place's fallback for every text and later agent: notebook.rs);
+/// - the phone's zone as the person's (dates/: « Fuseau horaire automatique »), written in the hub's Hermes config
+///   (agents made later are cloned from it) and every profile's (`timezone`, `cron.timezone`);
+/// - the phone's country, when it is one the offer is sold in (holidays, and the agents' bip:now line).
+///
+/// Wife's place, 2026-10-30: the claim's « en » named the agents, but nothing else of the place knew it.
+pub fn apply_locale(config: &Config, request: &ClaimRequest) -> anyhow::Result<()> {
+    if let Some(lang) = request.language.as_deref().filter(|l| !l.is_empty()) {
+        let code = crate::souls::agent_language(Some(lang));
+        let known = crate::notebook::WORDS.iter().any(|w| w.lang == code);
+        let _guard = crate::notebook::lock();
+        let empty = crate::notebook::all_pages(config, crate::notebook::Part::Main).is_empty()
+            && crate::notebook::all_pages(config, crate::notebook::Part::Health).is_empty();
+        if known && empty {
+            crate::notebook::update_state(config, |s| {
+                s.insert("language".into(), json!(code));
+            })?;
+        }
+    }
+    let zone = request.timezone.clone().filter(|z| crate::dates::parse_zone(z).is_some());
+    let country =
+        request.country.clone().filter(|c| crate::dates::words::country_name(c, "en").is_some());
+    if zone.is_none() && country.is_none() {
+        return Ok(()); // an older app: the server's zone until the app reports the phone's
+    }
+    let person = crate::dates::change(config, |p| {
+        if let Some(zone) = &zone {
+            p.device_zone(zone, false);
+        }
+        if let Some(country) = &country {
+            if *country != p.country {
+                p.region.clear();
+                p.school_zone.clear();
+            }
+            p.country = country.clone();
+        }
+    })?;
+    if crate::dates::parse_zone(&person.time_zone).is_some() {
+        let hub = PathBuf::from(crate::agents_admin::install_home(config)).join("config.yaml");
+        crate::dates::write_profile(&hub, &person.zone_name(), &person.routines_zone())?;
+        crate::dates::write_profiles(config, &person);
+    }
+    tracing::info!(zone = %person.zone_name(), country = %person.country, "claim: the person's time zone and country");
+    Ok(())
+}
+
 /// The model set, the gateway restarted to read its key, the agents created. Returns the agents (id, name).
 pub async fn claim_server(
     config: &SharedConfig,
@@ -611,6 +684,9 @@ pub async fn claim_server(
     use crate::agents_admin::{create_agent, default_run, NewAgent};
     let run = run.unwrap_or_else(default_run);
     let _preparing = PREPARING.lock().await; // a first agent being prepared is waited for
+    if let Err(exc) = apply_locale(&config.get(), request) {
+        tracing::warn!(error = %pyx::tail(&format!("{exc:#}"), 300), "claim: language, time zone or country not kept");
+    }
     if let Some(prepared) = prepared_of(&config.get()).filter(|_| !request.agents.is_empty()) {
         return claim_prepared(config, request, http, run, &prepared).await;
     }
@@ -651,13 +727,13 @@ pub async fn claim_server(
         let body = NewAgent {
             name,
             kind: Some(kind.clone()),
-            lang: request.language.clone(),
+            lang: request.language.clone().filter(|l| !l.is_empty()),
             custom: None,
             group: None,
             ..Default::default()
         };
         let agent = create_agent(config, &body, http, &run).await?;
-        let lang = request.language.clone().unwrap_or_default();
+        let lang = request.language.clone().filter(|l| !l.is_empty()).unwrap_or_else(|| crate::notebook::place_language(&config.get()).unwrap_or_default());
         if index == 0 {
             become_guide(config, &agent.name, &lang)?;
         } else {
@@ -1038,7 +1114,8 @@ async fn claim_prepared(
     let started = crate::py::monotonic();
     let snapshot = config.get();
     let state = read_json(snapshot.setup_file.as_deref());
-    let lang = request.language.clone().filter(|l| !l.is_empty()).unwrap_or_else(|| "fr".into());
+    let lang =
+        request.language.clone().filter(|l| !l.is_empty()).unwrap_or_else(|| crate::notebook::place_language(&snapshot).unwrap_or_else(|| "fr".into()));
     if !state.get("model_set").map(crate::py::truthy).unwrap_or(false) {
         let home = PathBuf::from(install_home(&snapshot));
         let order = &snapshot.model_provider_order;

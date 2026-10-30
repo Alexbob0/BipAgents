@@ -398,6 +398,12 @@ fn strings(value: Option<&Value>) -> Vec<String> {
 }
 
 /// The Carnet's language: set once (its folders are named in it), from the first agent's language, else English.
+/// The place's language when it is set (`state.json`'s: an offer place's from its claim, cloud_setup.rs, or the
+/// Carnet's first write): the default of an agent made without one.
+pub fn place_language(config: &Config) -> Option<String> {
+    read_state(config).get("language").and_then(Value::as_str).filter(|l| WORDS.iter().any(|w| w.lang == *l)).map(str::to_string)
+}
+
 pub fn language(config: &Config) -> String {
     let state = read_state(config);
     if let Some(lang) = state.get("language").and_then(Value::as_str).filter(|l| WORDS.iter().any(|w| w.lang == *l)) {

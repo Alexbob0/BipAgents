@@ -464,7 +464,9 @@ async fn list(State(state): State<AppState>) -> ApiResult<Response> {
 async fn create_route(State(state): State<AppState>, body: Bytes) -> ApiResult<Response> {
     let body = body_json(&body)?;
     let ends = ends_ok(body.get("ends").and_then(Value::as_f64))?;
-    let lang = Some(tk::str_or_empty(body.get("lang"))).filter(|l| !l.is_empty()).unwrap_or_else(|| "fr".into());
+    let lang = Some(tk::str_or_empty(body.get("lang")))
+        .filter(|l| !l.is_empty())
+        .unwrap_or_else(|| crate::notebook::place_language(&state.config()).unwrap_or_else(|| "fr".into()));
     let new = NewProject {
         name: tk::str_or_empty(body.get("name")),
         ends,

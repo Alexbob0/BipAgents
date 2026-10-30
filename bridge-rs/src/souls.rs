@@ -322,11 +322,83 @@ pub fn language_name(code: &str) -> &'static str {
 }
 
 pub fn language_block(lang: Option<&str>) -> String {
-    let name = language_name(&agent_language(lang));
-    format!(
-        "{BLOCK_START}\nLanguage: answer in the language your person writes in. Always write it with its accents and usual punctuation (routines and notes too), never an ASCII-only version. When you write first (a routine, \
-         a report, a reminder), write in {name}. The current time is at the top of each message (a bip:now line): trust it, never check it in the terminal.\n{CONTENT_RULE}\n{SENDING_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{PROJECT_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{LONG_WORK_RULE}\n{VISUAL_RULE}\n{SPACE_RULE}\n{ACK_RULE}\n{STYLE_RULE}\n{BLOCK_END}"
+    let code = agent_language(lang);
+    let name = language_name(&code);
+    for_language(
+        &format!(
+            "{BLOCK_START}\nLanguage: answer in the language your person writes in. Always write it with its accents and usual punctuation (routines and notes too), never an ASCII-only version. When you write first (a routine, \
+             a report, a reminder), write in {name}. The current time is at the top of each message (a bip:now line): trust it, never check it in the terminal.\n{CONTENT_RULE}\n{SENDING_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{PROJECT_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{LONG_WORK_RULE}\n{VISUAL_RULE}\n{SPACE_RULE}\n{ACK_RULE}\n{STYLE_RULE}\n{BLOCK_END}"
+        ),
+        Some(&code),
     )
+}
+
+/// The rules' examples of what to say, in English for an agent that writes in another language than French. They
+/// were French for every agent (Alex, 2026-10-30: his wife's place, iPhone and app in English, had a reply in
+/// French): « Je m'en occupe en arrière-plan… », « Noté dans ton Carnet : … » or « un veilleur » were the very
+/// words its rules gave it to say. The Carnet's « Toi » and « En bref » take the agent's language's names.
+const ENGLISH_EXAMPLES: [(&str, &str); 22] = [
+    ("« Je m'en occupe en arrière-plan, je te préviens quand c'est fini. »", "« I'm on it in the background, I'll tell you when it's done. »"),
+    ("« remplis mon Carnet »", "« fill my Carnet »"),
+    ("« trie mes mails »", "« sort my e-mails »"),
+    ("« fais une recherche approfondie sur les mutuelles »", "« research health insurers in depth »"),
+    ("« compare 10 appartements »", "« compare 10 flats »"),
+    ("« Je compare les prix… »", "« Comparing prices… »"),
+    ("« Je garderai les 30 derniers, environ 150 Mo. »", "« I'll keep the last 30, about 150 MB. »"),
+    ("« Coach sportif »", "« Sports coach »"),
+    ("« rappelle-moi… »", "« remind me… »"),
+    ("« Amsterdam, déc. 2021 »", "« Amsterdam, Dec 2021 »"),
+    ("« Noté dans ton Carnet : … »", "« Noted in your Carnet: … »"),
+    ("« quand ai-je acheté… »", "« when did I buy… »"),
+    ("« qui m'avait écrit pour… »", "« who wrote to me about… »"),
+    ("|voir le document]]", "|see the document]]"),
+    ("« tape-le dans le navigateur »", "« type it in the browser »"),
+    ("« l'accès à ce site »", "« access to this site »"),
+    ("« ton accord »", "« your OK »"),
+    ("« ton mot de passe »", "« your password »"),
+    ("« préviens-moi quand… »", "« tell me when… »"),
+    ("« un veilleur »", "« a watcher »"),
+    ("« Toi »", "« {me} »"),
+    ("« En bref »", "« {brief} »"),
+];
+
+/// A rule's text for an agent writing first in `lang`: as it is in French (or when the language isn't known: a
+/// personality without a language block), its examples in English otherwise (`ENGLISH_EXAMPLES`).
+pub fn for_language(rule: &str, lang: Option<&str>) -> String {
+    let Some(code) = lang.map(|l| agent_language(Some(l))).filter(|c| c != "fr") else { return rule.to_string() };
+    let w = crate::notebook::words(&code);
+    let mut text = rule.to_string();
+    for (french, other) in ENGLISH_EXAMPLES {
+        if text.contains(french) {
+            text = text.replace(french, &other.replace("{me}", w.me).replace("{brief}", w.brief));
+        }
+    }
+    text
+}
+
+/// The language a personality writes first in (its language block's), for the blocks placed after it.
+fn soul_language(soul: &str) -> Option<String> {
+    split_language(soul).1
+}
+
+/// The blocks placed after the language block, written again in its language (an agent whose language changed).
+pub fn relanguage_blocks(soul: &str) -> String {
+    let mut text = refresh_health(soul);
+    if text.contains(NOTEBOOK_START) {
+        text = with_notebook(&text, true);
+    }
+    if text.contains(ARCHIVES_START) {
+        text = with_archives(&text, true);
+    }
+    if text.contains(PAYMENTS_START) {
+        text = with_payments(&text);
+    }
+    if text.contains(SHARED_MEMORY_START) {
+        // the health agent's variant starts with its own words (both rules start in English)
+        let receives = text.contains(&format!("{SHARED_MEMORY_START}\nWhat your person's other agents"));
+        text = with_shared_memory(&text, Some(!receives));
+    }
+    text
 }
 
 /// The personality without its language block, and the block's language (None when it has none).
@@ -391,7 +463,8 @@ pub fn with_health(soul: &str, on: bool) -> String {
     if !on {
         return body;
     }
-    format!("{}\n\n{HEALTH_START}\n{HEALTH_RULE}\n{HEALTH_END}\n", body.trim_end())
+    let rule = for_language(HEALTH_RULE, soul_language(soul).as_deref());
+    format!("{}\n\n{HEALTH_START}\n{rule}\n{HEALTH_END}\n", body.trim_end())
 }
 
 /// The health block, where it is, brought to the current `HEALTH_RULE` (an agent whose switch was on before the rule
@@ -403,7 +476,8 @@ pub fn refresh_health(soul: &str) -> String {
     if end < start {
         return soul.to_string();
     }
-    format!("{}{HEALTH_START}\n{HEALTH_RULE}\n{}", &soul[..start], &soul[end..])
+    let rule = for_language(HEALTH_RULE, soul_language(soul).as_deref());
+    format!("{}{HEALTH_START}\n{rule}\n{}", &soul[..start], &soul[end..])
 }
 
 pub const SHARED_MEMORY_START: &str = "<!-- bipagents:shared-memory -->";
@@ -444,6 +518,7 @@ pub fn with_shared_memory(soul: &str, circle: Option<bool>) -> String {
         Some(false) => SHARED_MEMORY_HEALTH_RULE,
         None => return split_shared_memory(soul).0,
     };
+    let rule = for_language(rule, soul_language(soul).as_deref());
     let block = format!("{SHARED_MEMORY_START}\n{rule}\n{SHARED_MEMORY_END}");
     if soul.contains(&block) {
         return soul.to_string();
@@ -501,7 +576,8 @@ pub fn with_notebook(soul: &str, on: bool) -> String {
     if !on {
         return body;
     }
-    format!("{}\n\n{NOTEBOOK_START}\n{NOTEBOOK_RULE}\n{NOTEBOOK_END}\n", body.trim_end())
+    let rule = for_language(NOTEBOOK_RULE, soul_language(soul).as_deref());
+    format!("{}\n\n{NOTEBOOK_START}\n{rule}\n{NOTEBOOK_END}\n", body.trim_end())
 }
 
 pub const ARCHIVES_START: &str = "<!-- bipagents:archives -->";
@@ -537,7 +613,8 @@ pub fn with_archives(soul: &str, on: bool) -> String {
     if !on {
         return body;
     }
-    format!("{}\n\n{ARCHIVES_START}\n{ARCHIVES_RULE}\n{ARCHIVES_END}\n", body.trim_end())
+    let rule = for_language(ARCHIVES_RULE, soul_language(soul).as_deref());
+    format!("{}\n\n{ARCHIVES_START}\n{rule}\n{ARCHIVES_END}\n", body.trim_end())
 }
 
 pub const PAYMENTS_START: &str = "<!-- bipagents:payments -->";
@@ -586,11 +663,12 @@ pub fn split_payments(soul: &str) -> String {
 
 /// The personality with the payments block (at its end when it had none or an older one).
 pub fn with_payments(soul: &str) -> String {
-    if soul.contains(&format!("{PAYMENTS_START}\n{PAYMENTS_RULE}\n{PAYMENTS_END}")) {
+    let rule = for_language(PAYMENTS_RULE, soul_language(soul).as_deref());
+    if soul.contains(&format!("{PAYMENTS_START}\n{rule}\n{PAYMENTS_END}")) {
         return soul.to_string(); // already there, wherever the other blocks put it
     }
     let body = split_payments(soul);
-    format!("{}\n\n{PAYMENTS_START}\n{PAYMENTS_RULE}\n{PAYMENTS_END}\n", body.trim_end())
+    format!("{}\n\n{PAYMENTS_START}\n{rule}\n{PAYMENTS_END}\n", body.trim_end())
 }
 
 /// The agent's SOUL.md gets the payments block (written only when it changes; agents set up by hand are left alone).
@@ -645,10 +723,14 @@ pub const COMPACT_RULES: &str = concat!(
 
 /// `language_block` with `COMPACT_RULES` in place of the nine rules.
 pub fn language_block_compact(lang: Option<&str>) -> String {
-    let name = language_name(&agent_language(lang));
-    format!(
-        "{BLOCK_START}\nLanguage: answer in the language your person writes in. When you write first (a routine, \
-         a report, a reminder), write in {name}.\n{COMPACT_RULES}\n{ACK_RULE}\n{STYLE_RULE}\n{BLOCK_END}"
+    let code = agent_language(lang);
+    let name = language_name(&code);
+    for_language(
+        &format!(
+            "{BLOCK_START}\nLanguage: answer in the language your person writes in. When you write first (a routine, \
+             a report, a reminder), write in {name}.\n{COMPACT_RULES}\n{ACK_RULE}\n{STYLE_RULE}\n{BLOCK_END}"
+        ),
+        Some(&code),
     )
 }
 
@@ -807,6 +889,16 @@ pub fn profile_name(display_name: &str, taken: &[String]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_language_change_brings_the_blocks_examples_along() {
+        let soul = with_notebook(&with_language("Tu es Vie.\n", Some("fr")), true);
+        assert!(soul.contains("« Noté dans ton Carnet : … »"));
+        let english = relanguage_blocks(&with_language(&soul, Some("en")));
+        assert!(english.contains("« Noted in your Carnet: … »") && !english.contains("Noté dans"), "{english}");
+        let back = relanguage_blocks(&with_language(&english, Some("fr")));
+        assert!(back.contains("« Noté dans ton Carnet : … »") && !back.contains("Noted in"), "{back}");
+    }
 
     #[test]
     fn names_become_profile_ids() {

@@ -601,7 +601,7 @@ async fn list_agents(State(state): State<AppState>, caller: Caller) -> ApiResult
             let url = a.public_url.clone().filter(|u| !u.is_empty());
             json!({
                 "id": a.name, "name": a.display_name,
-                "voice": a.voice.clone().filter(|v| !v.is_empty()).unwrap_or_else(|| config.default_voice.clone()),
+                "voice": crate::voices::voice_for(&config, Some(a), None),
                 "server_voice": a.server_voice, "category": a.category, "color": a.color,
                 "outfit": a.outfit.clone().unwrap_or_default(), "costumes": a.costumes.unwrap_or(true),
                 "uploads": a.upload_dir_host.as_deref().map(|u| !u.is_empty()).unwrap_or(false),
@@ -648,7 +648,7 @@ async fn tts_sentence(State(state): State<AppState>, Json(body): Json<TtsRequest
             Some(&voice),
             &body.format,
             INTERACTIVE,
-            SynthOptions { relay: relay_for(agent.as_ref()), ..Default::default() },
+            SynthOptions { relay: relay_for(&config, agent.as_ref()), ..Default::default() },
         )
         .await
         .map_err(tts_error)?;
@@ -715,7 +715,7 @@ async fn tts_message(State(state): State<AppState>, Json(body): Json<TtsRequest>
             Some(&voice),
             &fmt,
             INTERACTIVE,
-            SynthOptions { max_chars: Some(MESSAGE_MAX_CHARS), relay: relay_for(agent.as_ref()), ..Default::default() },
+            SynthOptions { max_chars: Some(MESSAGE_MAX_CHARS), relay: relay_for(&config, agent.as_ref()), ..Default::default() },
         )
         .await
         .map_err(tts_error)?;
@@ -736,7 +736,7 @@ async fn tts_stream(State(state): State<AppState>, Json(body): Json<TtsRequest>)
         .clone()
         .filter(|v| !v.is_empty())
         .unwrap_or_else(|| voice_for(&config, agent.as_ref(), body.use_.as_deref()));
-    let relay = relay_for(agent.as_ref());
+    let relay = relay_for(&config, agent.as_ref());
     let mut chunks = state.tts.stream(&body.text, Some(&voice), INTERACTIVE, Some(MESSAGE_MAX_CHARS), relay.as_deref());
     let first = match chunks.next().await {
         None => bytes::Bytes::new(),
@@ -1670,6 +1670,8 @@ pub fn create_app(config: Config, options: AppOptions) -> anyhow::Result<App> {
     agents_admin::heal_thinking(&config);
     agents_admin::heal_browser_proxy(&config);
     agents_admin::heal_souls(&config);
+    crate::voices::heal_defaults(&state.config); // after the souls: their language says the Bip's
+    let config = state.config();
     crate::guide::refresh(&config); // the guide's list of agents and the setup blocks, as this bridge writes them
                                     // The skills about other agents as this bridge writes them (an update may have changed their words).
     crate::peers::write_contacts(&config, &crate::peers::links_of(&state.links.load()), Some(&state.households));

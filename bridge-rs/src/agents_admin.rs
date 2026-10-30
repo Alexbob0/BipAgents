@@ -542,7 +542,8 @@ pub fn plan_agent(config: &Config, body: &NewAgent) -> anyhow::Result<PlannedAge
         Some(lang) => lang.to_string(),
         None => match body.custom.as_ref().filter(|c| !c.language.is_empty()) {
             Some(c) => c.language.clone(),
-            None => "fr".to_string(),
+            // the place's language when set (its person's, from the claim: cloud_setup.rs), else French as before
+            None => crate::notebook::place_language(config).unwrap_or_else(|| "fr".into()),
         },
     };
     let (soul, description) = if let Some(custom) = &body.custom {
@@ -1376,7 +1377,9 @@ pub fn read_soul(config: &Config, agent: &AgentConfig) -> std::io::Result<String
 pub fn set_language(config: &Config, agent: &AgentConfig, lang: &str) -> std::io::Result<String> {
     let code = crate::souls::agent_language(Some(lang));
     let soul = read_soul(config, agent)?;
-    std::fs::write(profile_folder(config, agent).join("SOUL.md"), crate::souls::with_language(&soul, Some(&code)))?;
+    // its other blocks' examples follow (souls::for_language): no French phrase left for an English agent
+    let text = crate::souls::relanguage_blocks(&crate::souls::with_language(&soul, Some(&code)));
+    std::fs::write(profile_folder(config, agent).join("SOUL.md"), text)?;
     Ok(code)
 }
 
@@ -2147,7 +2150,8 @@ async fn new_agent(State(state): State<AppState>, Json(body): Json<NewAgent>) ->
     };
     // its first conversation opens with its welcome (welcome.rs): a kind's own, or the one of an agent with its role
     let kind = if body.custom.is_some() { "custom" } else { body.kind.as_deref().unwrap_or("custom") };
-    crate::welcome::wait_for(&state.config(), &agent, kind, body.lang.as_deref().unwrap_or("fr"));
+    let lang = body.lang.clone().filter(|l| !l.is_empty()).unwrap_or_else(|| crate::notebook::place_language(&state.config()).unwrap_or_else(|| "fr".into()));
+    crate::welcome::wait_for(&state.config(), &agent, kind, &lang);
     Ok(web::json_response(201, &created(&state.config(), &agent)))
 }
 

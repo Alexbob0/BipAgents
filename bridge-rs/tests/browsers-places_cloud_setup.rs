@@ -745,3 +745,152 @@ async fn requests_through_the_door_wait_for_an_agent_the_claim_makes_ready() {
     readiness.wait("other", std::time::Duration::from_millis(200)).await;
     assert!(started.elapsed() >= std::time::Duration::from_millis(200));
 }
+
+/// Alex's wife, 2026-10-30 (iPhone and app in English, a place of the EU reserve): the claim's language, the phone's
+/// zone and country are the whole place's, nothing French left in what its agents read.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_english_claim_makes_the_whole_place_english_in_the_persons_zone() {
+    use axum::routing::{any, get};
+    let gateway = common::spawn_fake(
+        Router::new()
+            .route("/p/{profile}/v1/capabilities", get(|| async { axum::Json(json!({})) }))
+            .fallback(any(|| async { (axum::http::StatusCode::CREATED, axum::Json(json!({"id": "s1"}))) })),
+    )
+    .await;
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = cloud(dir.path());
+    config.hermes.hub_url = gateway.clone();
+    config.agents.clear();
+    config.default_voice = "pocket:ours".into(); // an offer place: the Bips, no Kyutai
+    let home = dir.path().join(".hermes");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(home.join("config.yaml"), "model:\n  provider: openrouter\n  default: openrouter/auto\n").unwrap();
+    std::fs::write(home.join(".env"), "# Hermes\nAPI_SERVER_ENABLED=true\n").unwrap();
+    let shared = bipbridge::config::SharedConfig::new(config.clone());
+    let run = fake_hermes(home.clone(), Arc::default());
+    let http = reqwest::Client::new();
+    done(&config, false);
+    cloud_setup::prepare_place(&shared, &http, Some(run.clone())).await.unwrap();
+    let wanted = ClaimRequest::from_value(&json!({
+        "model": {"provider": "custom", "name": "glm-5.3", "key": "sk-eu-0123456789", "base_url": "https://api.eurouter.example/v1"},
+        "agents": [{"name": "Agent", "kind": "daily"}, {"name": "Maison", "kind": "home"}], "language": "en",
+        "timezone": "America/New_York", "country": "us"}))
+    .unwrap();
+    assert_eq!((wanted.timezone.as_deref(), wanted.country.as_deref()), (Some("America/New_York"), Some("US")));
+    cloud_setup::claim_server(&shared, &wanted, &http, Some(run.clone())).await.unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+    while std::fs::read_dir(dir.path()).unwrap().flatten().any(|e| e.file_name() == "claim-pending.json") {
+        assert!(std::time::Instant::now() < deadline, "Maison not made");
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    let config = shared.get();
+    bipbridge::agents_admin::heal_souls(&config);
+    // every personality and every block placed after it: English, with no French example to copy
+    for id in ["agent", "maison"] {
+        let soul = std::fs::read_to_string(home.join("profiles").join(id).join("SOUL.md")).unwrap();
+        let soul = bipbridge::souls::with_notebook(&soul, true);
+        let soul = bipbridge::souls::with_archives(&bipbridge::souls::with_health(&soul, true), true);
+        assert!(soul.contains("write in English.") && soul.contains("« I'm on it in the background"), "{soul}");
+        assert!(soul.contains("« Noted in your Carnet: … »") && soul.contains("their « You » page"), "{soul}");
+        for french in ["Je m'en occupe", "Je compare", "Je garderai", "Noté dans", "« Toi »", "En bref", "veilleur",
+                       "ton accord", "rappelle-moi", "quand ai-je", "Coach sportif"] {
+            assert!(!soul.contains(french), "{id}: {french}");
+        }
+    }
+    let hello = bipbridge::guide::view(&config)["welcome"]["agent"]["text"].as_str().unwrap().to_string();
+    assert!(hello.starts_with("Hello, I'm Bip!"), "{hello}");
+    // the Carnet, and every later agent made without a language, in the person's
+    assert_eq!(bipbridge::notebook::language(&config), "en");
+    let later = bipbridge::agents_admin::plan_agent(
+        &config,
+        &bipbridge::agents_admin::NewAgent { name: "Budget".into(), kind: Some("finance".into()), ..Default::default() },
+    )
+    .unwrap();
+    assert!(later.soul.contains("write in English."), "{}", later.soul);
+    // the zone: the person's, in the hub's Hermes config (later agents are cloned from it) and every profile's
+    for folder in [home.clone(), home.join("profiles/agent"), home.join("profiles/maison")] {
+        let yaml = std::fs::read_to_string(folder.join("config.yaml")).unwrap();
+        assert!(yaml.contains("timezone: America/New_York"), "{}: {yaml}", folder.display());
+    }
+    let person = bipbridge::dates::load(&config);
+    assert_eq!((person.time_zone.as_str(), person.routines.as_str(), person.country.as_str()),
+               ("America/New_York", "America/New_York", "US"));
+    let agent = config.agents["agent"].clone();
+    let line = bipbridge::dates::now::line(&config, &agent);
+    assert!(line.contains(", America/New_York (UTC-0") && !line.contains("country"), "{line}"); // the zone says it
+    // the voices: the agents' Bips in English, for whatever the bridge reads aloud itself
+    assert_eq!(bipbridge::voices::voice_for(&config, Some(&agent), Some("reading")), "pocket:en/ours");
+    assert_eq!(bipbridge::voices::relay_for(&config, Some(&agent)).as_deref(), Some("pocket:en/ours"));
+    let mut maison = config.agents["maison"].clone();
+    maison.category = Some("wellness".into());
+    assert_eq!(bipbridge::voices::voice_for(&config, Some(&maison), Some("live")), "pocket:en/mousse");
+
+    // At start: a voice still the untouched French default follows the agent's language; one the person picked
+    // (always told with its language by the apps) or a French agent's stays.
+    let toml = config.source_path.clone().unwrap();
+    for (id, voice) in [("agent", "pocket:ours"), ("maison", "pocket:en/lumen")] {
+        let mut changed = shared.get().agents[id].clone();
+        changed.voice = Some(voice.into());
+        shared.put_agent(changed);
+        bipbridge::voices::set_section_keys(&toml, &format!("agents.{id}"), &[("voice".into(), Some(json!(voice)))]).unwrap();
+    }
+    bipbridge::voices::heal_defaults(&shared);
+    assert_eq!(shared.get().agents["agent"].voice.as_deref(), Some("pocket:en/ours"));
+    assert_eq!(shared.get().agents["maison"].voice.as_deref(), Some("pocket:en/lumen"));
+    assert!(std::fs::read_to_string(&toml).unwrap().contains("voice = \"pocket:en/ours\""));
+    let set_language = |lang: &str| {
+        let agent = shared.get().agents["agent"].clone();
+        bipbridge::agents_admin::set_language(&shared.get(), &agent, lang).unwrap();
+    };
+    set_language("fr");
+    let mut changed = shared.get().agents["agent"].clone();
+    changed.voice = Some("pocket:ours".into());
+    shared.put_agent(changed);
+    bipbridge::voices::heal_defaults(&shared);
+    assert_eq!(shared.get().agents["agent"].voice.as_deref(), Some("pocket:ours")); // French: its own
+    set_language("en");
+
+    // an American in Paris: the country said in the line, since the zone doesn't
+    bipbridge::dates::change(&config, |p| p.time_zone = "Europe/Paris".into()).unwrap();
+    let line = bipbridge::dates::now::line(&config, &agent);
+    assert!(line.ends_with(", Europe/Paris (UTC+01:00), country: United States-->")
+            || line.ends_with(", Europe/Paris (UTC+02:00), country: United States-->"), "{line}");
+}
+
+/// An older app's claim (no zone, no country): the server's zone stays until the app reports the phone's, and the
+/// language still makes the place's.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_claim_without_zone_nor_country_keeps_the_servers() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = cloud(dir.path());
+    let wanted = ClaimRequest::from_value(&json!({
+        "model": {"provider": "custom", "name": "glm-5.3", "key": "sk-eu-0123456789"},
+        "agents": [{"name": "Agent"}], "language": "de"}))
+    .unwrap();
+    cloud_setup::apply_locale(&config, &wanted).unwrap();
+    assert!(!dir.path().join("data/time.json").exists());
+    assert_eq!(bipbridge::dates::load(&config), bipbridge::dates::Person::default());
+    assert_eq!(bipbridge::notebook::language(&config), "de");
+    // a zone this bridge doesn't know: the claim goes on without it
+    let wanted = ClaimRequest::from_value(&json!({
+        "model": {"provider": "custom", "name": "glm-5.3", "key": "sk-eu-0123456789"},
+        "agents": [], "timezone": "Mars/Olympus"}))
+    .unwrap();
+    assert_eq!(wanted.timezone, None);
+}
+
+#[test]
+fn the_claims_zone_and_country_are_checked() {
+    let claim = |extra: Value| {
+        let mut body = json!({"model": {"provider": "custom", "name": "glm-5.3", "key": "sk-eu-0123456789"}, "agents": []});
+        body.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+        ClaimRequest::from_value(&body)
+    };
+    assert_eq!(claim(json!({"timezone": 5})).unwrap_err(), "Input should be a valid string");
+    assert!(claim(json!({"timezone": "Europe/Paris; rm -rf"})).unwrap_err().starts_with("String should match pattern"));
+    assert!(claim(json!({"timezone": "A".repeat(65)})).unwrap_err().starts_with("String should have at most 64"));
+    assert!(claim(json!({"country": "USA"})).unwrap_err().starts_with("String should have at most 2"));
+    assert!(claim(json!({"country": "1F"})).unwrap_err().starts_with("String should match pattern"));
+    let ok = claim(json!({"timezone": null, "country": "gb"})).unwrap();
+    assert_eq!((ok.timezone, ok.country.as_deref()), (None, Some("GB")));
+}

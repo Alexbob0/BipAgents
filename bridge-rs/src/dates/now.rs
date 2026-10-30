@@ -47,7 +47,29 @@ pub fn zone_of(config: &Config, agent: &AgentConfig) -> Tz {
 
 /// The agent's line now, in its language.
 pub fn line(config: &Config, agent: &AgentConfig) -> String {
-    line_at(Utc::now(), zone_of(config, agent), &crate::handback::language_of(config, agent))
+    let (zone, lang) = (zone_of(config, agent), crate::handback::language_of(config, agent));
+    with_country(&line_at(Utc::now(), zone, &lang), &super::load(config), zone, &lang)
+}
+
+/// The line with the person's country when their zone doesn't say it (2026-10-30, from the claim or their pick: an
+/// American in Paris): `<!--bip:now …, Europe/Paris (UTC+01:00), country: United States-->`. Nothing otherwise.
+pub fn with_country(line: &str, person: &super::Person, zone: Tz, lang: &str) -> String {
+    let code = person.country.as_str();
+    if code.is_empty() || super::guess_country(zone.name()) == Some(code) {
+        return line.to_string();
+    }
+    let lang = super::words::lang(lang);
+    let Some(name) = super::words::country_name(code, lang) else { return line.to_string() };
+    let label = match lang {
+        "fr" => "pays :",
+        "de" => "Land:",
+        "es" => "país:",
+        _ => "country:",
+    };
+    match line.strip_suffix("-->") {
+        Some(head) => format!("{head}, {label} {name}-->"),
+        None => line.to_string(),
+    }
 }
 
 /// What starts a turn of the agent: its time line, then what waits for it in the Carnet (notebook/news.rs, taken
@@ -139,6 +161,23 @@ mod tests {
         assert!(
             line_at(utc(2026, 11, 1, 9, 5), paris, "fr").starts_with("<!--bip:now dimanche 1er novembre 2026, 10:05")
         );
+    }
+
+    #[test]
+    fn the_country_only_when_the_zone_does_not_say_it() {
+        let line = "<!--bip:now jeudi 29 octobre 2026, 08:40, Europe/Paris (UTC+01:00)-->";
+        let paris: Tz = "Europe/Paris".parse().unwrap();
+        let mut person = super::super::Person::default();
+        assert_eq!(with_country(line, &person, paris, "fr"), line); // not known
+        person.country = "FR".into();
+        assert_eq!(with_country(line, &person, paris, "fr"), line); // the zone's
+        person.country = "US".into();
+        assert_eq!(
+            with_country(line, &person, paris, "fr"),
+            "<!--bip:now jeudi 29 octobre 2026, 08:40, Europe/Paris (UTC+01:00), pays : États-Unis-->"
+        );
+        assert!(with_country(line, &person, paris, "en").ends_with(", country: United States-->"));
+        assert!(with_country(line, &person, paris, "de").ends_with(", Land: Vereinigte Staaten-->"));
     }
 
     #[test]

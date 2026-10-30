@@ -1089,7 +1089,7 @@ impl AudioMaker {
         let lock = self.lock_of(&agent.name);
         let guard = lock.lock().await;
         let started = Instant::now();
-        let pcm = self.speak(text, &voice, relay_for(Some(agent))).await?;
+        let pcm = self.speak(text, &voice, relay_for(&self.config.get(), Some(agent))).await?;
         let title = if title.is_empty() { tk::head(text, 40) } else { title };
         let made = self.save(agent, &pcm, title).await?;
         drop(guard);
@@ -1144,7 +1144,7 @@ impl AudioMaker {
             .map(|v| v.iter().filter(|(k, _)| speakers.contains(k)).map(|(k, v)| (k.clone(), py::py_str(v))).collect())
             .unwrap_or_default();
         let cast = self.cast(agent, &speakers, &wanted).await?;
-        let relay = relay_for(Some(agent));
+        let relay = relay_for(&self.config.get(), Some(agent));
         let lock = self.lock_of(&agent.name);
         let guard = lock.lock().await;
         let started = Instant::now();

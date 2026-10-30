@@ -31,12 +31,83 @@ pub fn voice_for(config: &Config, agent: Option<&AgentConfig>, r#use: Option<&st
             }
         }
     }
-    agent.and_then(|a| a.voice.clone()).filter(|v| !v.is_empty()).unwrap_or_else(|| config.default_voice.clone())
+    match agent {
+        Some(agent) => agent.voice.clone().filter(|v| !v.is_empty()).unwrap_or_else(|| default_for(config, agent)),
+        None => config.default_voice.clone(),
+    }
 }
 
-/// The Bip standing in for the agent's server voice when the server fails or is too slow.
-pub fn relay_for(agent: Option<&AgentConfig>) -> Option<String> {
-    agent.and_then(|a| a.voice.clone()).filter(|v| v.starts_with("pocket:"))
+/// The Bip an agent of the apps' `category` gets until one is picked (iOS `AgentCategory.defaultVoice`, Android
+/// `defaultVoice`): the same five Bips speak every language (voices/<language>/).
+pub fn category_bip(category: Option<&str>) -> &'static str {
+    match category.unwrap_or("") {
+        "wellness" => "mousse",
+        "creative" | "learning" => "lumen",
+        "work" | "tech" => "galet",
+        _ => "ours",
+    }
+}
+
+/// A French Bip's id (`pocket:ours`) for `lang`: `pocket:en/ours` (`pocket:ours` in French); another voice, or one
+/// already named with its language, as it is.
+pub fn bip_in(voice: &str, lang: &str) -> String {
+    let Some(name) = voice.strip_prefix(crate::tts::POCKET_PREFIX) else { return voice.to_string() };
+    let lang = crate::souls::agent_language(Some(lang));
+    if name.contains('/') || lang == "fr" {
+        voice.to_string()
+    } else {
+        format!("{}{lang}/{name}", crate::tts::POCKET_PREFIX)
+    }
+}
+
+/// The voice of an agent nobody picked one for: its category's Bip in the language it writes in (2026-10-30: the
+/// agents of an English place spoke with the French Bips, the default `pocket:ours`). An install whose default is
+/// not a Bip (a Kyutai voice) keeps it.
+pub fn default_for(config: &Config, agent: &AgentConfig) -> String {
+    if !config.default_voice.starts_with(crate::tts::POCKET_PREFIX) {
+        return config.default_voice.clone();
+    }
+    let bip = format!("{}{}", crate::tts::POCKET_PREFIX, category_bip(agent.category.as_deref()));
+    bip_in(&bip, &crate::handback::language_of(config, agent))
+}
+
+/// At start: an agent whose voice is still the untouched French default (the install's, or its category's Bip
+/// without a language) while it writes in another language gets that Bip in its language. A voice the person
+/// picked in the app always carries its language (`pocket:en/...`, AgentVoices.spoken), so it is never changed.
+pub fn heal_defaults(shared: &crate::config::SharedConfig) {
+    let config = shared.get();
+    for agent in config.agents.values() {
+        if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
+            continue;
+        }
+        let Some(voice) = agent.voice.clone().filter(|v| !v.is_empty()) else { continue };
+        let category = format!("{}{}", crate::tts::POCKET_PREFIX, category_bip(agent.category.as_deref()));
+        if voice != config.default_voice && voice != category {
+            continue;
+        }
+        let healed = bip_in(&voice, &crate::handback::language_of(&config, agent));
+        if healed == voice {
+            continue;
+        }
+        if let Some(source) = &config.source_path {
+            let values = [("voice".to_string(), Some(Value::String(healed.clone())))];
+            if let Err(exc) = set_section_keys(source, &format!("agents.{}", agent.name), &values) {
+                tracing::warn!(agent = %agent.name, error = %exc, "default voice not brought to its language");
+                continue;
+            }
+        }
+        let mut changed = agent.clone();
+        changed.voice = Some(healed.clone());
+        shared.put_agent(changed);
+        tracing::info!(agent = %agent.name, voice = %healed, "default voice brought to the agent's language");
+    }
+}
+
+/// The Bip standing in for the agent's server voice when the server fails or is too slow: its own, else its
+/// category's in its language (`default_for`), never the install's French one for an English agent.
+pub fn relay_for(config: &Config, agent: Option<&AgentConfig>) -> Option<String> {
+    let agent = agent?;
+    agent.voice.clone().filter(|v| !v.is_empty()).or_else(|| Some(default_for(config, agent))).filter(|v| v.starts_with("pocket:"))
 }
 
 /// `values` written in the `[header]` table of a TOML file (replaced where they are, else added at its end; the
@@ -313,6 +384,19 @@ pub fn router() -> Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_bips_in_the_agents_language() {
+        assert_eq!(bip_in("pocket:ours", "en"), "pocket:en/ours");
+        assert_eq!(bip_in("pocket:ours", "en-US"), "pocket:en/ours");
+        assert_eq!(bip_in("pocket:galet", "nl"), "pocket:nl/galet");
+        assert_eq!(bip_in("pocket:ours", "fr"), "pocket:ours");
+        assert_eq!(bip_in("pocket:es/ours", "en"), "pocket:es/ours"); // already named with its language
+        assert_eq!(bip_in("5476", "en"), "5476");
+        assert_eq!(category_bip(Some("wellness")), "mousse");
+        assert_eq!(category_bip(Some("tech")), "galet");
+        assert_eq!(category_bip(None), "ours");
+    }
 
     #[test]
     fn section_keys_replaced_added_removed() {
