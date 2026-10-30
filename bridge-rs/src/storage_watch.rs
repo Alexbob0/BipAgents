@@ -729,6 +729,15 @@ fn add_note(store: &mut Store, agent: &str, line: String) {
     }
 }
 
+/// One note to every agent of the place for its next turn (heavy_work.rs's backstop).
+pub fn note_all(config: &Config, line: &str) {
+    let _ = change(config, |store| {
+        for agent in config.agents.keys() {
+            add_note(store, agent, line.to_string());
+        }
+    });
+}
+
 /// What waits for `agent`'s next turn with the person (forgotten here), as a part the apps hide.
 pub fn take_note(config: &Config, agent: &str) -> Option<String> {
     let lines = change(config, |store| store.notes.remove(agent)).ok().flatten()?;
@@ -1237,6 +1246,8 @@ pub async fn run_forever(state: AppState) {
             tick(state.config()).await;
             last = py::time_time();
         }
+        // the place's memory and disk sampled each minute: background tasks paused when too full (heavy_work.rs)
+        crate::heavy_work::backstop(&state).await;
         tokio::time::sleep(Duration::from_secs(60)).await;
     }
 }

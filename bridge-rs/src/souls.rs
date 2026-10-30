@@ -605,9 +605,10 @@ pub const SERVER_END: &str = "<!-- /bipagents:server -->";
 /// people (installer/cloud/seat-agent.py), and a « DevOps » agent had planned to install Flutter and the Android SDK
 /// there. Never numbers (Alex: the agent must not talk about memory, only know that it doesn't fit). Rust bridge
 /// only; `heal_souls` adds it at start, and takes it away from a place that isn't the offer's. Short: paid on every
-/// call.
-pub const SERVER_RULE: &str = "Your space is small: large toolchains (SDKs, emulators, heavy builds) don't fit here; \
-suggest GitHub Actions or an online service instead.";
+/// call. Since the same day it points to the green light (`heavy_work`, heavy_work.rs), which answers from the place's
+/// room and says what to propose instead (an online service, GitHub Actions, a bigger plan coming).
+pub const SERVER_RULE: &str = "Before installing, building or downloading anything big, ask heavy_work; if it says it \
+doesn't fit, say so simply and suggest another way.";
 
 /// The personality without the server block (the person never sees it).
 pub fn split_server(soul: &str) -> String {
@@ -1026,9 +1027,10 @@ mod tests {
         assert_eq!(split_server(&on).trim_end(), "You are Max.");
         assert_eq!(with_server(&on, false), soul); // a place that isn't the offer's: taken away
         assert_eq!(with_server(soul, false), soul);
-        // no numbers (Alex, 2026-10-30), and short: under 25 tokens (about 4 characters each)
+        // no numbers, nothing about memory (Alex, 2026-10-30), and short: at most 30 tokens (about 4.5 characters each)
         assert!(!SERVER_RULE.chars().any(|c| c.is_ascii_digit()));
+        assert!(!SERVER_RULE.contains("RAM") && !SERVER_RULE.to_lowercase().contains("memory"));
         assert!(SERVER_RULE.len() <= 140, "{}", SERVER_RULE.len());
-        assert!(SERVER_RULE.contains("GitHub Actions") && SERVER_RULE.contains("SDKs"));
+        assert!(SERVER_RULE.contains(crate::heavy_work::HEAVY_WORK) && SERVER_RULE.contains("another way"));
     }
 }

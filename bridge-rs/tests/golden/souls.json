@@ -2609,5 +2609,45 @@
    null
   ],
   "output": "Tu es Budget.\n\n<!-- bipagents:notebook -->\nx\n<!-- /bipagents:notebook -->\n"
+ },
+ {
+  "fn": "with_server",
+  "input": [
+   "Tu es Dev.\n",
+   true
+  ],
+  "output": "Tu es Dev.\n\n<!-- bipagents:server -->\nBefore installing, building or downloading anything big, ask heavy_work; if it says it doesn't fit, say so simply and suggest another way.\n<!-- /bipagents:server -->\n"
+ },
+ {
+  "fn": "with_server",
+  "input": [
+   "Tu es Dev.\n\n<!-- bipagents:server -->\nBefore installing, building or downloading anything big, ask heavy_work; if it says it doesn't fit, say so simply and suggest another way.\n<!-- /bipagents:server -->\n",
+   true
+  ],
+  "output": "Tu es Dev.\n\n<!-- bipagents:server -->\nBefore installing, building or downloading anything big, ask heavy_work; if it says it doesn't fit, say so simply and suggest another way.\n<!-- /bipagents:server -->\n"
+ },
+ {
+  "fn": "with_server",
+  "input": [
+   "Tu es Dev.\n\n<!-- bipagents:server -->\nYour space is small: large toolchains (SDKs, emulators, heavy builds) don't fit here; suggest GitHub Actions or an online service instead.\n<!-- /bipagents:server -->\n",
+   true
+  ],
+  "output": "Tu es Dev.\n\n<!-- bipagents:server -->\nBefore installing, building or downloading anything big, ask heavy_work; if it says it doesn't fit, say so simply and suggest another way.\n<!-- /bipagents:server -->\n"
+ },
+ {
+  "fn": "with_server",
+  "input": [
+   "Tu es Dev.\n\n<!-- bipagents:server -->\nBefore installing, building or downloading anything big, ask heavy_work; if it says it doesn't fit, say so simply and suggest another way.\n<!-- /bipagents:server -->\n",
+   false
+  ],
+  "output": "Tu es Dev.\n"
+ },
+ {
+  "fn": "with_server",
+  "input": [
+   "Tu es Dev.\n",
+   false
+  ],
+  "output": "Tu es Dev.\n"
  }
 ]
