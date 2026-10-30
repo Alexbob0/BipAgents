@@ -266,7 +266,7 @@ async fn drama_down_speaks_with_a_pocket_bip_of_the_same_language() {
     let backend = FakeBackend::start().await;
     let tts = drama_service(&backend, drama_config("http://127.0.0.1:9")); // refused
     let out = collect(&tts, "Bonjour.", "drama:fr-mascotte-s17", None).await;
-    assert_eq!(last_pocket_voice(&backend), "colibri");
+    assert_eq!(last_pocket_voice(&backend), "ours");
     assert!(!out.is_empty());
     let audio =
         tts.synthesize("Hello there.", Some("drama:en-naturelle-s47"), "pcm16", INTERACTIVE, opts()).await.unwrap();
@@ -321,7 +321,7 @@ async fn drama_voices_without_drama_go_to_pocket() {
     let backend = FakeBackend::start().await;
     let tts = service(&backend, TtsOptions { pocket_url: Some(backend.pocket_url.clone()), ..Default::default() });
     tts.synthesize("Salut.", Some("drama:fr-mascotte-s28"), "pcm16", INTERACTIVE, opts()).await.unwrap();
-    assert_eq!(last_pocket_voice(&backend), "colibri");
+    assert_eq!(last_pocket_voice(&backend), "ours");
 }
 
 #[tokio::test]
