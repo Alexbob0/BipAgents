@@ -18,7 +18,9 @@
 //! one short sentence saying what it understood and will do (2026-10-25, `ACK_RULE`, by hand in the golden too); and
 //! it answers short, in bullet points when there are several items (2026-10-30, `STYLE_RULE`, by hand in the golden
 //! too). `heal_souls` brings existing agents' blocks up to date. An agent given the person's
-//! health data has a second block (`with_health`): use it to help, never to diagnose.
+//! health data has a second block (`with_health`): use it to help, never to diagnose. An agent in the person's
+//! circle (shared_memory.rs) knows that what it remembers of them is common to their own agents
+//! (`with_shared_memory`, 2026-10-30).
 //!
 //! Port of `bridge/bipbridge/souls.py` (owner group: agents).
 
@@ -392,6 +394,52 @@ pub fn refresh_health(soul: &str) -> String {
         return soul.to_string();
     }
     format!("{}{HEALTH_START}\n{HEALTH_RULE}\n{}", &soul[..start], &soul[end..])
+}
+
+pub const SHARED_MEMORY_START: &str = "<!-- bipagents:shared-memory -->";
+pub const SHARED_MEMORY_END: &str = "<!-- /bipagents:shared-memory -->";
+
+/// For an agent in the person's circle (shared_memory.rs, Alex 2026-10-30: « le Bip ne sait pas qu'il y a une mémoire
+/// commune »): what it remembers of its person is common to the person's own agents. Rust bridge only (golden cases
+/// added by hand).
+pub const SHARED_MEMORY_RULE: &str = concat!(
+    "What you remember about your person (user memory) is shared with their other agents, and theirs with you; their ",
+    "« Toi » page keeps it all. Your other notes stay yours."
+);
+
+/// `SHARED_MEMORY_RULE` for the agent the person gave their health to: it receives, never gives.
+pub const SHARED_MEMORY_HEALTH_RULE: &str = concat!(
+    "What your person's other agents remember about them (user memory) reaches you too; their « Toi » page keeps it ",
+    "all. What you learn stays yours only (it may be health), like your other notes."
+);
+
+/// The personality without the shared-memory block (the person never sees it), and whether it had one.
+pub fn split_shared_memory(soul: &str) -> (String, bool) {
+    let (Some(start), Some(end)) = (soul.find(SHARED_MEMORY_START), soul.find(SHARED_MEMORY_END)) else {
+        return (soul.to_string(), false);
+    };
+    if end < start {
+        return (soul.to_string(), false);
+    }
+    let rest = format!("{}{}", soul[..start].trim_end(), &soul[end + SHARED_MEMORY_END.len()..]);
+    (rest, true)
+}
+
+/// The personality with the shared-memory block when the agent is in the circle (`circle`: `Some(gives)`, false for
+/// the health agent, shared_memory::membership), without it otherwise. The current block stays where it is (the other
+/// blocks are put back at the end); an older or the other variant is replaced at the end.
+pub fn with_shared_memory(soul: &str, circle: Option<bool>) -> String {
+    let rule = match circle {
+        Some(true) => SHARED_MEMORY_RULE,
+        Some(false) => SHARED_MEMORY_HEALTH_RULE,
+        None => return split_shared_memory(soul).0,
+    };
+    let block = format!("{SHARED_MEMORY_START}\n{rule}\n{SHARED_MEMORY_END}");
+    if soul.contains(&block) {
+        return soul.to_string();
+    }
+    let (body, _) = split_shared_memory(soul);
+    format!("{}\n\n{block}\n", body.trim_end())
 }
 
 pub const NOTEBOOK_START: &str = "<!-- bipagents:notebook -->";
@@ -840,6 +888,30 @@ mod tests {
         assert!(fresh.find(HEALTH_START) < fresh.find(NOTEBOOK_START), "in place");
         assert_eq!(refresh_health(&fresh), fresh);
         assert_eq!(refresh_health("Tu es Prof.\n"), "Tu es Prof.\n");
+    }
+
+    #[test]
+    fn a_circle_agent_knows_its_memory_is_shared() {
+        for rule in [SHARED_MEMORY_RULE, SHARED_MEMORY_HEALTH_RULE] {
+            for needed in ["user memory", "other agents", "« Toi » page", "other notes"] {
+                assert!(rule.contains(needed), "missing {needed}");
+            }
+            assert!(rule.len() < 200, "short: paid on every call");
+        }
+        assert!(SHARED_MEMORY_HEALTH_RULE.contains("stays yours only (it may be health)"));
+        let own = with_shared_memory("Tu es Budget.\n", Some(true));
+        assert!(own.starts_with("Tu es Budget.\n\n") && own.contains(SHARED_MEMORY_RULE));
+        assert_eq!(with_shared_memory(&own, Some(true)), own, "once");
+        // the health agent's variant takes the place of the plain one, and back
+        let health = with_shared_memory(&own, Some(false));
+        assert!(health.contains(SHARED_MEMORY_HEALTH_RULE) && !health.contains(SHARED_MEMORY_RULE));
+        assert_eq!(with_shared_memory(&health, Some(true)), own);
+        assert_eq!(with_shared_memory(&health, None), "Tu es Budget.\n");
+        // in place among the other blocks: the notebook's put back after it changes nothing
+        let both = with_notebook(&own, true);
+        assert_eq!(with_shared_memory(&both, Some(true)), both);
+        assert_eq!(with_notebook(&with_shared_memory(&both, Some(true)), true), both);
+        assert_eq!(split_shared_memory(&both).0, with_notebook("Tu es Budget.\n", true));
     }
 
     #[test]

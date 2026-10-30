@@ -50,6 +50,12 @@
 //!   a new entry that clearly updates an older one of the same section replaces it (`updates`: 70 % of their
 //!   significant words in both, 4 words each at least; a false merge is worse than a duplicate);
 //!
+//! - **the agents know it** (Alex 2026-10-30: « le Bip ne sait pas qu'il y a une mémoire commune »): each agent of
+//!   the circle has a short block in its personality (souls::with_shared_memory; the health agent's variant: what it
+//!   learns stays its own), the others none. `sync_souls` puts it in or takes it out: at start (agents_admin::
+//!   heal_souls), when its tools are registered (notebook::sync_soul), and whenever the circle changes (an agent
+//!   shared with a relative, the Carnet or the health switched), at the next look;
+//!
 //! When: `run_forever` looks every `INTERVAL_SECONDS` at the circle's files (their size and time only, nothing read
 //! when nothing changed) and syncs on a change; the app's memory editor (PUT /v1/agents/{id}/memory/user) syncs at
 //! once, so an edit of « what it knows about you » applies to all the person's own agents.
@@ -93,6 +99,8 @@ type Print = (String, bool, u64, u128);
 pub type Write = (String, Vec<String>, Vec<String>, Vec<String>);
 /// The circle's files as last seen: nothing is read while it stays the same.
 static FINGERPRINT: Mutex<Option<Vec<Print>>> = Mutex::new(None);
+/// The circle as last seen (agent, gives): the personalities are synced when it changes.
+static CIRCLE: Mutex<Option<Vec<(String, bool)>>> = Mutex::new(None);
 
 /// One entry of the common list.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -326,6 +334,46 @@ pub fn circle(config: &Config) -> Vec<Member> {
         })
         .filter(|m| m.folder.is_dir())
         .collect()
+}
+
+/// `Some(gives)` when `agent` is in the circle (false for the health agent), None otherwise.
+pub fn membership(config: &Config, agent: &str) -> Option<bool> {
+    circle(config).into_iter().find(|m| m.name == agent).map(|m| m.gives)
+}
+
+/// The agent's personality has the shared-memory block exactly when it is in the circle (`members`), with the health
+/// agent's variant for one that does not give (an agent set up by hand is left as it is). Whether it was written.
+pub fn sync_soul(config: &Config, agent: &crate::config::AgentConfig, members: &[Member]) -> bool {
+    if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
+        return false;
+    }
+    let path = crate::agents_admin::profile_folder(config, agent).join("SOUL.md");
+    let Ok(soul) = std::fs::read_to_string(&path) else { return false };
+    if soul.trim().is_empty() {
+        return false; // Hermes' own personality: nothing of the bridge's
+    }
+    let gives = members.iter().find(|m| m.name == agent.name).map(|m| m.gives);
+    let changed = crate::souls::with_shared_memory(&soul, gives);
+    if changed == soul {
+        return false;
+    }
+    match std::fs::write(&path, changed) {
+        Ok(()) => true,
+        Err(err) => {
+            tracing::warn!(agent = %agent.name, error = %err, "shared memory rule not written");
+            false
+        }
+    }
+}
+
+/// `sync_soul` for every agent of the place; how many personalities were written.
+pub fn sync_souls(config: &Config) -> usize {
+    let members = circle(config);
+    let written = config.agents.values().filter(|a| sync_soul(config, a, &members)).count();
+    if written > 0 {
+        tracing::info!(agents = written, "shared memory rule brought to the circle");
+    }
+    written
 }
 
 fn chars_of(entries: &[String]) -> usize {
@@ -681,8 +729,8 @@ fn stamp(file: &std::path::Path) -> (u64, u128) {
 }
 
 /// The circle's files and the « Toi » page, by size and time (no read).
-fn fingerprint(config: &Config) -> Vec<Print> {
-    let mut print: Vec<Print> = circle(config)
+fn fingerprint(config: &Config, members: Vec<Member>) -> Vec<Print> {
+    let mut print: Vec<Print> = members
         .into_iter()
         .map(|m| {
             let (size, time) = stamp(&m.folder.join("memories").join("USER.md"));
@@ -698,8 +746,20 @@ fn fingerprint(config: &Config) -> Vec<Print> {
 }
 
 /// A round when a file of the circle (or the circle itself) changed since the last look.
+/// The personalities synced when the circle changed since the last look (`sync_souls`).
 pub fn sync_if_changed(config: &Config) -> usize {
-    let print = fingerprint(config);
+    let members = circle(config);
+    let now: Vec<(String, bool)> = members.iter().map(|m| (m.name.clone(), m.gives)).collect();
+    let moved = {
+        let mut last = CIRCLE.lock().unwrap_or_else(|e| e.into_inner());
+        let moved = last.as_ref() != Some(&now);
+        *last = Some(now);
+        moved
+    };
+    if moved {
+        sync_souls(config);
+    }
+    let print = fingerprint(config, members);
     {
         let last = FINGERPRINT.lock().unwrap_or_else(|e| e.into_inner());
         if last.as_ref() == Some(&print) {
@@ -707,7 +767,7 @@ pub fn sync_if_changed(config: &Config) -> usize {
         }
     }
     let written = sync(config, py::time_time(), None);
-    *FINGERPRINT.lock().unwrap_or_else(|e| e.into_inner()) = Some(fingerprint(config));
+    *FINGERPRINT.lock().unwrap_or_else(|e| e.into_inner()) = Some(fingerprint(config, circle(config)));
     written
 }
 
@@ -1101,6 +1161,80 @@ mod tests {
         // set up by hand with its own HERMES_HOME: out
         config.agents.get_mut("budget").unwrap().host_home = Some(dir.path().to_string_lossy().into_owned());
         assert!(!names(&config).iter().any(|(n, _)| n == "budget"), "host_home");
+    }
+
+    fn soul(config: &Config, agent: &str) -> String {
+        let a = config.agent(Some(agent)).unwrap();
+        std::fs::read_to_string(crate::agents_admin::profile_folder(config, a).join("SOUL.md")).unwrap_or_default()
+    }
+
+    fn write_souls(config: &Config) {
+        for name in ["quotidien", "budget", "coach", "sante"] {
+            let a = config.agent(Some(name)).unwrap();
+            let file = crate::agents_admin::profile_folder(config, a).join("SOUL.md");
+            std::fs::write(file, format!("Tu es {name}.\n")).unwrap();
+        }
+    }
+
+    /// Each agent's personality says whether its memory of the person is common (Alex 2026-10-30).
+    #[test]
+    fn the_circle_s_agents_know_their_memory_is_shared() {
+        use crate::souls::{SHARED_MEMORY_HEALTH_RULE as HEALTH, SHARED_MEMORY_RULE as OWN, SHARED_MEMORY_START};
+        let (dir, mut config) = place();
+        write_souls(&config);
+        crate::health::set_enabled(&config, "sante", true).unwrap();
+        assert_eq!(sync_souls(&config), 4);
+        for own in ["quotidien", "budget", "coach"] {
+            assert!(soul(&config, own).contains(OWN) && !soul(&config, own).contains(HEALTH), "{own}");
+        }
+        assert!(soul(&config, "sante").contains(HEALTH) && !soul(&config, "sante").contains(OWN), "health variant");
+        assert_eq!(membership(&config, "sante"), Some(false));
+        assert_eq!(sync_souls(&config), 0, "once");
+
+        // leaving the circle takes it out, the person's words kept
+        let data = PathBuf::from(config.data_dir());
+        std::fs::create_dir_all(&data).unwrap();
+        std::fs::write(data.join("family-agent.json"), r#"{"agent": "quotidien", "created": 1.0, "lang": "fr"}"#)
+            .unwrap();
+        std::fs::write(data.join("project-agents.json"), r#"{"projects": {"budget": {"created": 1.0, "ends": 9e9}}}"#)
+            .unwrap();
+        let households = r#"{"households": {"mamie": {"name": "Mamie", "url": "http://x"}}}"#;
+        std::fs::write(data.join("households.json"), households).unwrap();
+        std::fs::write(data.join("agent-shares.json"), r#"{"shared": {"coach": ["mamie"]}}"#).unwrap();
+        assert_eq!(sync_souls(&config), 3);
+        for out in ["quotidien", "budget", "coach"] {
+            assert_eq!(soul(&config, out), format!("Tu es {out}.\n"), "{out}: family, project, shared");
+            assert_eq!(membership(&config, out), None);
+        }
+        assert!(soul(&config, "sante").contains(HEALTH));
+
+        // the health switched off: the plain rule; the Carnet off: none
+        crate::health::set_enabled(&config, "sante", false).unwrap();
+        sync_souls(&config);
+        assert!(soul(&config, "sante").contains(OWN) && !soul(&config, "sante").contains(HEALTH));
+        assert_eq!(soul(&config, "sante").matches(SHARED_MEMORY_START).count(), 1);
+        notebook::set_enabled(&config, "sante", false).unwrap();
+        sync_souls(&config);
+        assert_eq!(soul(&config, "sante"), "Tu es sante.\n", "Carnet off");
+
+        // set up by hand: left as it is
+        std::fs::write(data.join("agent-shares.json"), r#"{"shared": {}}"#).unwrap();
+        config.agents.get_mut("coach").unwrap().host_home = Some(dir.path().to_string_lossy().into_owned());
+        assert_eq!(sync_souls(&config), 0);
+        assert_eq!(soul(&config, "coach"), "Tu es coach.\n");
+    }
+
+    /// The look every few seconds syncs the personalities when the circle changed (a share, a switch).
+    #[test]
+    fn a_changed_circle_reaches_the_personalities() {
+        let (_dir, config) = place();
+        write_souls(&config);
+        sync_if_changed(&config);
+        assert!(soul(&config, "coach").contains(crate::souls::SHARED_MEMORY_RULE));
+        notebook::set_enabled(&config, "coach", false).unwrap();
+        sync_if_changed(&config);
+        assert_eq!(soul(&config, "coach"), "Tu es coach.\n");
+        assert!(soul(&config, "budget").contains(crate::souls::SHARED_MEMORY_RULE));
     }
 
     #[test]

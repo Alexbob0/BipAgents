@@ -500,6 +500,8 @@ pub fn sync_soul(config: &Config, agent: &crate::config::AgentConfig) {
     // the health agent's rule brought to its current text (2026-10-30: the body stays off « Toi »); on or off is
     // agents_admin::set_health's
     let changed = crate::souls::refresh_health(&changed);
+    // what it remembers of its person is common to the circle, and it knows it (shared_memory.rs)
+    let changed = crate::souls::with_shared_memory(&changed, crate::shared_memory::membership(config, &agent.name));
     if changed != soul {
         if let Err(err) = std::fs::write(&path, changed) {
             tracing::warn!(agent = %agent.name, error = %err, "notebook rule not written");

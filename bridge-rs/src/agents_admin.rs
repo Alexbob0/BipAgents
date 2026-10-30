@@ -1452,6 +1452,7 @@ pub fn set_model(config: &Config, agent: &AgentConfig, name: &str, vision: Optio
 /// agent set up by hand too, like Vie); an agent without any personality keeps Hermes' own.
 pub fn heal_souls(config: &Config) {
     let mut place_language: Option<String> = None;
+    let circle = crate::shared_memory::circle(config);
     for name in config.agents.keys() {
         let Ok(agent) = editable(config, name) else { continue };
         let Ok(soul) = read_soul(config, &agent) else { continue };
@@ -1470,6 +1471,9 @@ pub fn heal_souls(config: &Config) {
         // The payments rule at start too (registration adds it later, after the first turns could be answered).
         if !agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
             text = crate::souls::with_payments(&text);
+            // in the person's circle or not (shared_memory.rs): it knows whether its memory of them is common
+            let gives = circle.iter().find(|m| m.name == agent.name).map(|m| m.gives);
+            text = crate::souls::with_shared_memory(&text, gives);
         }
         if text != soul {
             let healed = std::fs::write(profile_folder(config, &agent).join("SOUL.md"), text);
@@ -1557,6 +1561,7 @@ pub async fn read_settings(config: &Config, agent: &AgentConfig, http: &reqwest:
     let (soul, lang) = crate::souls::split_language(&read_soul(config, agent)?);
     let (soul, _) = crate::souls::split_health(&soul);
     let (soul, _) = crate::souls::split_notebook(&soul);
+    let (soul, _) = crate::souls::split_shared_memory(&soul);
     let (soul, _) = crate::souls::split_archives(&soul);
     let soul = crate::souls::split_payments(&soul);
     let (soul, _) = crate::dates::split_dates(&soul);
@@ -1748,6 +1753,8 @@ pub fn write_soul(config: &Config, agent: &AgentConfig, soul: &str) -> std::io::
     let closed = family || project;
     let text = crate::souls::with_health(&text, !closed && crate::health::enabled(config, &agent.name));
     let text = crate::souls::with_notebook(&text, !closed && crate::notebook::enabled(config, &agent.name));
+    let circle = if closed { None } else { crate::shared_memory::membership(config, &agent.name) };
+    let text = crate::souls::with_shared_memory(&text, circle);
     let text = crate::souls::with_archives(&text, !closed && crate::archives::enabled(config, &agent.name));
     let line = crate::dates::agent_line(config, &crate::dates::load(config), &text);
     let text = crate::dates::with_dates(&text, line.as_deref());
@@ -1767,6 +1774,7 @@ pub fn editable_soul(config: &Config, agent: &AgentConfig) -> std::io::Result<St
     let (soul, _) = crate::souls::split_language(&read_soul(config, agent)?);
     let (soul, _) = crate::souls::split_health(&soul);
     let (soul, _) = crate::souls::split_notebook(&soul);
+    let (soul, _) = crate::souls::split_shared_memory(&soul);
     let (soul, _) = crate::souls::split_archives(&soul);
     let soul = crate::souls::split_payments(&soul);
     let (soul, _) = crate::dates::split_dates(&soul);
