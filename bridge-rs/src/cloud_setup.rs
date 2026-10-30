@@ -1100,16 +1100,24 @@ async fn claim_prepared(
             ..Default::default()
         };
         crate::agents_admin::check_room(&config.get())?;
-        let mut planned = plan_agent(&config.get(), &body)?;
-        // a spare made ahead (agent_pool.rs): ready now, files only
+        let planned = plan_agent(&config.get(), &body)?;
+        // a spare made ahead (agent_pool.rs): ready now, files only; made after as before if that fails
         if let Some(spare) = crate::agent_pool::take(&config.get()) {
-            planned.profile = spare.id.clone();
-            crate::notebook::news::start(&config.get(), &planned.profile, crate::py::time_time());
-            let agent = crate::agents_admin::from_spare(config, &planned, spare, http, &run).await?;
-            crate::welcome::wait_for(&config.get(), &agent, &kind, &lang);
-            created.insert(index.to_string(), json!(agent.name));
-            remember(&config.get(), &[("created", Value::Object(created.clone()))])?;
-            continue;
+            let mut taken = planned.clone();
+            taken.profile = spare.id.clone();
+            crate::notebook::news::start(&config.get(), &taken.profile, crate::py::time_time());
+            match crate::agents_admin::from_spare(config, &taken, spare, http, &run).await {
+                Ok(agent) => {
+                    crate::welcome::wait_for(&config.get(), &agent, &kind, &lang);
+                    created.insert(index.to_string(), json!(agent.name));
+                    remember(&config.get(), &[("created", Value::Object(created.clone()))])?;
+                    continue;
+                }
+                Err(exc) => {
+                    crate::notebook::news::forget(&config.get(), &taken.profile);
+                    tracing::warn!(agent = %taken.profile, error = %pyx::tail(&format!("{exc:#}"), 300), "spare agent not taken at the claim");
+                }
+            }
         }
         let agent = hub_agent(&config.get(), &planned.profile, &planned.name, &crate::py::token_urlsafe(32));
         reserve_agent(config, &agent)?;
