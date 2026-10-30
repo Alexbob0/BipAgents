@@ -514,6 +514,15 @@ impl HermesClient {
         Ok(Self::items(data, ["sessions", "data", "items"]))
     }
 
+    /// `GET /api/sessions?source=cron&include_children=1`: the routines' sessions, most recent first, with the sessions
+    /// Hermes continued them in after compressing their context (`parent_session_id`, which the plain list leaves out).
+    /// A Hermes that ignores the filters gives its plain list (cronwatch.rs keeps only the cron sessions).
+    pub async fn cron_sessions(&self, agent: &AgentConfig, limit: i64) -> Result<Vec<Map<String, Value>>, HermesError> {
+        let params = [("limit", limit.to_string()), ("source", "cron".to_string()), ("include_children", "1".into())];
+        let data = self.get_json(agent, "/api/sessions", &params).await?;
+        Ok(Self::items(data, ["sessions", "data", "items"]))
+    }
+
     /// The agent's « Bot Chat » session(s) (its single thread), hidden ones included, oldest first (read_shares.rs:
     /// a project agent's whole thread shared).
     pub async fn bot_chat_sessions(&self, agent: &AgentConfig) -> Result<Vec<Map<String, Value>>, HermesError> {

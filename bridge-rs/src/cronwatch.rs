@@ -10,6 +10,12 @@
 //! - `[SILENT]` (nothing new to report) is skipped.
 //! - Only runs from the last `window_hours` count, so a first start does not replay old history;
 //!   each session is stored once (`ntfy_id = hermes-session:<id>`), so restarts never duplicate.
+//! - The routines are read from their own list (`source=cron`, continuations included) as well as the recent one: a
+//!   run whose context Hermes compressed ends in a continuation session the plain list leaves out
+//!   ([`continuation_tip`]); its reply is stored under the routine's own session.
+//! - Nothing is dropped without a log line: a conversation that can't be read is skipped (warning) without holding
+//!   the routines back, a delivery that fails is tried again next round, a routine still without a final reply 20 min
+//!   after its start is logged once.
 //!
 //! Bot Chat (Hermes Bot Mode): a new final reply that the app did not follow (`RunHub.followed_recently`)
 //! and that nobody is looking at (`Presence`, refreshed by the open conversation) is pushed as « reply
@@ -84,6 +90,50 @@ fn lowered(map: &Dict, key: &str) -> String {
 
 pub fn is_cron_session(session: &Dict) -> bool {
     session_key(session).starts_with("cron_") || lowered(session, "source") == "cron"
+}
+
+/// The session Hermes started this one from (a context compression's continuation, a sub-agent's run, a branch).
+fn parent_of(session: &Dict) -> Option<String> {
+    let parent = session.get("parent_session_id").filter(|v| crate::py::truthy(v)).map(crate::py::py_str)?;
+    Some(parent).filter(|p| !p.is_empty())
+}
+
+fn started_seconds(session: &Dict) -> f64 {
+    ["started_at", "created_at", "created"].iter().find_map(|k| session.get(*k).and_then(Value::as_f64)).unwrap_or(0.0)
+}
+
+/// The session a routine's run ends in: `root`, or the last one Hermes continued it in after compressing its context
+/// (the parent ends with `end_reason = compression`, its run goes on in a new session whose `parent_session_id` is
+/// the parent; Hermes' plain list leaves such sessions out). 2026-10-29/30, aibox: the morning routine read the sleep
+/// data, wrote the podcast's script, made it… its session stopped on a tool's result and never got its final reply,
+/// which went to the continuation: nothing reached the app. Among several sessions started from a compressed one (a
+/// sub-agent's run started before the compression), the latest.
+pub fn continuation_tip(root: &str, rows: &[Dict]) -> String {
+    let mut current = root.to_string();
+    for _ in 0..16 {
+        let Some(row) = rows.iter().find(|r| session_key(r) == current) else { break };
+        if lowered(row, "end_reason") != "compression" {
+            break;
+        }
+        let next = rows
+            .iter()
+            .filter(|r| parent_of(r).as_deref() == Some(current.as_str()))
+            .max_by(|a, b| started_seconds(a).total_cmp(&started_seconds(b)));
+        match next {
+            Some(next) => current = session_key(next),
+            None => break,
+        }
+    }
+    current
+}
+
+/// The last message's role and whether it calls a tool, for the log of a routine left without a final reply.
+fn last_step(messages: &[Dict]) -> String {
+    match messages.last() {
+        None => "none".into(),
+        Some(m) if m.get("tool_calls").map(crate::py::truthy).unwrap_or(false) => format!("{} (tool call)", lowered(m, "role")),
+        Some(m) => lowered(m, "role"),
+    }
 }
 
 /// `datetime.fromtimestamp(value)`: local time, naive.
@@ -341,7 +391,17 @@ struct WatchState {
     done: HashSet<String>,
     /// Session id -> reply seen at the previous poll.
     candidate: HashMap<String, String>,
+    /// Routines already logged as still without a final reply (one warning each).
+    unfinished: HashSet<String>,
+    /// Agents whose routines' own list failed (one warning each).
+    unlisted: HashSet<String>,
 }
+
+/// A routine still without a final reply this long after its start is logged (a warning, once): a podcast routine
+/// takes a few minutes.
+const UNFINISHED_WARN_MINUTES: i64 = 20;
+/// How many of the routines' sessions are read each round (with their continuations).
+const CRON_LIST_LIMIT: i64 = 50;
 
 pub struct CronWatcher {
     pub config: SharedConfig,
@@ -419,65 +479,145 @@ impl CronWatcher {
     pub async fn poll(&self, agent: &AgentConfig, now: Option<NaiveDateTime>) -> anyhow::Result<usize> {
         let now = now.unwrap_or_else(|| Local::now().naive_local());
         let window = chrono::Duration::microseconds((self.window_hours * 3600.0 * 1e6) as i64);
+        let listed = self.hermes.list_sessions(agent, 20).await?;
+        // the routines' own list, with the sessions Hermes continued them in (the plain one has neither when other
+        // conversations are busier, nor continuations)
+        let mut routines: Vec<Dict> = match self.hermes.cron_sessions(agent, CRON_LIST_LIMIT).await {
+            Ok(rows) => rows, // a continuation may not say `source: cron`: the roots are picked below
+            Err(exc) => {
+                if lock(&self.state).unlisted.insert(agent.name.clone()) {
+                    tracing::warn!(agent = %agent.name, error = %exc,
+                        "routine sessions not listed: only the recent conversations' list is read");
+                }
+                Vec::new()
+            }
+        };
+        for session in &listed {
+            let sid = session_key(session);
+            if sid.is_empty() {
+                continue;
+            }
+            // one conversation that can't be read never holds the routines' delivery back
+            if is_bot_chat(session) {
+                if let Err(exc) = self.poll_bot_chat(agent, &sid, session).await {
+                    tracing::warn!(agent = %agent.name, session = %sid, error = %exc, "bot chat poll failed");
+                }
+            } else if !is_cron_session(session) {
+                if let Err(exc) = self.poll_thread(agent, &sid, session).await {
+                    tracing::warn!(agent = %agent.name, session = %sid, error = %exc, "thread poll failed");
+                }
+            } else if !routines.iter().any(|r| session_key(r) == sid) {
+                routines.push(session.clone());
+            }
+        }
         let mut stored = 0;
-        for session in self.hermes.list_sessions(agent, 20).await? {
-            let sid = session_key(&session);
-            let key = format!("{}/{sid}", agent.name);
-            if !sid.is_empty() && is_bot_chat(&session) {
-                self.poll_bot_chat(agent, &sid, &session).await?;
-                continue;
-            }
-            if !sid.is_empty() && !is_cron_session(&session) {
-                self.poll_thread(agent, &sid, &session).await?;
-                continue;
-            }
-            if sid.is_empty() || lock(&self.state).done.contains(&key) || !is_cron_session(&session) {
-                continue;
-            }
-            let started = session_started(&session);
-            if started.map(|s| now - s > window).unwrap_or(true) {
-                lock(&self.state).done.insert(key);
-                continue;
-            }
-            let Some(reply) = final_reply(&self.hermes.session_messages(agent, &sid).await?) else { continue };
-            {
-                let mut st = lock(&self.state);
-                if pyx::strip(&reply) == SILENT {
-                    st.done.insert(key);
-                    continue;
+        // a session started from another one is read through its first session (a continuation), never on its own (a
+        // sub-agent's run)
+        for session in routines.iter().filter(|s| is_cron_session(s) && parent_of(s).is_none()) {
+            match self.poll_routine(agent, session, &routines, now, window).await {
+                Ok(true) => stored += 1,
+                Ok(false) => {}
+                Err(exc) => {
+                    tracing::warn!(agent = %agent.name, session = %session_key(session), error = %exc,
+                        "routine reply not delivered yet: tried again next round")
                 }
-                if st.candidate.get(&key) != Some(&reply) {
-                    st.candidate.insert(key, reply); // take it once it stops changing
-                    continue;
-                }
-                st.candidate.remove(&key);
-                st.done.insert(key);
-            }
-            let reply = with_audio_made(&agent.name, &sid, started, reply);
-            let reply = self.with_cited_files(agent, reply).await;
-            let mut title = match session.get("title") {
-                Some(Value::String(t)) => Some(t.clone()),
-                _ => None,
-            };
-            let notify = self.note_job(agent, &sid, title.as_deref()).await?;
-            if let (None, Some(store), Some(job)) =
-                (title.as_deref().filter(|t| !t.is_empty()), &self.store, job_id(&sid))
-            {
-                title = store.cron_job_name(&agent.name, &job).await?;
-            }
-            // replace: a reply stored too early (older bridge) is corrected instead of dropped as a duplicate
-            let mut message = Map::new();
-            message.insert("message".into(), json!(reply));
-            message.insert("title".into(), json!(title));
-            message.insert("id".into(), json!(format!("hermes-session:{sid}")));
-            message.insert("tags".into(), json!([format!("session:{sid}")]));
-            if self.outbox.ingest(agent, &message, notify, true).await?.is_some() {
-                stored += 1;
-                crate::beta_measures::routine_delivered(&self.config.get(), crate::py::time_time());
-                tracing::info!(agent = %agent.name, session = %sid, chars = pyx::len(&reply), "cron reply stored");
             }
         }
         Ok(stored)
+    }
+
+    /// One routine's run (`session`, a cron session); true when its reply was stored.
+    async fn poll_routine(
+        &self,
+        agent: &AgentConfig,
+        session: &Dict,
+        rows: &[Dict],
+        now: NaiveDateTime,
+        window: chrono::Duration,
+    ) -> anyhow::Result<bool> {
+        let sid = session_key(session);
+        let key = format!("{}/{sid}", agent.name);
+        if sid.is_empty() || lock(&self.state).done.contains(&key) {
+            return Ok(false);
+        }
+        let started = session_started(session);
+        if started.map(|s| now - s > window).unwrap_or(true) {
+            lock(&self.state).done.insert(key);
+            return Ok(false);
+        }
+        let tip = continuation_tip(&sid, rows);
+        let messages = self.hermes.session_messages(agent, &tip).await?;
+        let Some(reply) = final_reply(&messages) else {
+            let late = started.is_some_and(|s| now - s > chrono::Duration::minutes(UNFINISHED_WARN_MINUTES));
+            if late && lock(&self.state).unfinished.insert(key) {
+                let row = rows.iter().find(|r| session_key(r) == tip).unwrap_or(session);
+                tracing::warn!(agent = %agent.name, session = %sid, read = %tip, last = %last_step(&messages),
+                    end_reason = %lowered(row, "end_reason"), minutes = UNFINISHED_WARN_MINUTES,
+                    "routine still without a final reply: nothing delivered (still running, or continued in a session \
+                     Hermes doesn't list)");
+            }
+            return Ok(false);
+        };
+        {
+            let mut st = lock(&self.state);
+            if pyx::strip(&reply) == SILENT {
+                tracing::info!(agent = %agent.name, session = %sid, "routine reply [SILENT]: nothing to deliver");
+                st.done.insert(key);
+                return Ok(false);
+            }
+            if st.candidate.get(&key) != Some(&reply) {
+                st.candidate.insert(key, reply); // take it once it stops changing
+                return Ok(false);
+            }
+            st.candidate.remove(&key);
+            st.done.insert(key.clone());
+        }
+        if tip != sid {
+            tracing::info!(agent = %agent.name, session = %sid, read = %tip,
+                "routine reply read from the session Hermes continued it in (context compressed)");
+        }
+        let delivered = self.deliver_routine(agent, session, &sid, started, reply).await;
+        if delivered.is_err() {
+            lock(&self.state).done.remove(&key); // read again next round (the Boîte keeps one copy)
+        }
+        delivered
+    }
+
+    /// A routine's final reply into the Boîte, pushed unless the job is muted; true when stored.
+    async fn deliver_routine(
+        &self,
+        agent: &AgentConfig,
+        session: &Dict,
+        sid: &str,
+        started: Option<NaiveDateTime>,
+        reply: String,
+    ) -> anyhow::Result<bool> {
+        let reply = with_audio_made(&agent.name, sid, started, reply);
+        let reply = self.with_cited_files(agent, reply).await;
+        let mut title = match session.get("title") {
+            Some(Value::String(t)) => Some(t.clone()),
+            _ => None,
+        };
+        let notify = self.note_job(agent, sid, title.as_deref()).await?;
+        if !notify {
+            tracing::info!(agent = %agent.name, session = %sid, "routine muted in the app: stored without a push");
+        }
+        if let (None, Some(store), Some(job)) = (title.as_deref().filter(|t| !t.is_empty()), &self.store, job_id(sid)) {
+            title = store.cron_job_name(&agent.name, &job).await?;
+        }
+        // replace: a reply stored too early (older bridge) is corrected instead of dropped as a duplicate
+        let mut message = Map::new();
+        message.insert("message".into(), json!(reply));
+        message.insert("title".into(), json!(title));
+        message.insert("id".into(), json!(format!("hermes-session:{sid}")));
+        message.insert("tags".into(), json!([format!("session:{sid}")]));
+        if self.outbox.ingest(agent, &message, notify, true).await?.is_none() {
+            tracing::info!(agent = %agent.name, session = %sid, "routine reply not stored: empty, or already in the Boîte");
+            return Ok(false);
+        }
+        crate::beta_measures::routine_delivered(&self.config.get(), crate::py::time_time());
+        tracing::info!(agent = %agent.name, session = %sid, chars = pyx::len(&reply), "cron reply stored");
+        Ok(true)
     }
 
     async fn poll_bot_chat(&self, agent: &AgentConfig, sid: &str, session: &Dict) -> anyhow::Result<()> {
@@ -694,6 +834,25 @@ mod tests {
         assert_eq!(with_audio_made("autre", sid, Some(started), "Rien.".into()), "Rien.");
     }
 
+
+    #[test]
+    fn a_routine_ends_in_the_session_hermes_continued_it_in() {
+        let rows = msgs(json!([
+            {"id": "cron_j_20261030_075300", "source": "cron", "end_reason": "compression", "started_at": 100.0},
+            {"id": "sub", "source": "cron", "parent_session_id": "cron_j_20261030_075300", "started_at": 150.0},
+            {"id": "next", "source": "cron", "parent_session_id": "cron_j_20261030_075300", "started_at": 200.0,
+             "end_reason": "compression"},
+            {"id": "last", "source": "cron", "parent_session_id": "next", "started_at": 300.0},
+            {"id": "cron_k_20261030_080000", "source": "cron", "started_at": 400.0},
+            {"id": "helper", "source": "cron", "parent_session_id": "cron_k_20261030_080000", "started_at": 450.0}
+        ]));
+        assert_eq!(continuation_tip("cron_j_20261030_075300", &rows), "last");
+        // not compressed: its sub-agent's run is not where it ends
+        assert_eq!(continuation_tip("cron_k_20261030_080000", &rows), "cron_k_20261030_080000");
+        assert_eq!(continuation_tip("cron_unknown_20261030_080000", &rows), "cron_unknown_20261030_080000");
+        assert_eq!(last_step(&msgs(json!([{"role": "tool", "content": "{}"}]))), "tool");
+        assert_eq!(last_step(&msgs(json!([{"role": "assistant", "tool_calls": [{"id": "c"}]}]))), "assistant (tool call)");
+    }
 
     #[test]
     fn cron_session_helpers() {
