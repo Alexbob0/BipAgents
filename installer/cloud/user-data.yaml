@@ -261,6 +261,11 @@ runcmd:
   # Each phase's time goes to /var/log/bipagents-timeline.log (installer/README.md, measuring an install).
   - echo "$(date -u +%FT%TZ) shared start" >> /var/log/bipagents-timeline.log
   - test -d /usr/local/lib/bipagents/repo/.git || git clone --quiet --filter=blob:none https://github.com/Alexbob0/BipAgents.git /usr/local/lib/bipagents/repo
+  # Root's checkout at the BipAgents commit the places install: main's latest here. A guichet whose update wave pins
+  # a commit writes that commit in place of origin/main, as it does in the install line below (BIPAGENTS_TO;
+  # guichet-rs/src/bootstrap.rs, SHARED_AT): the shared Hermes is then the version the places look for, not main's,
+  # which each place would otherwise install for itself. If it fails, root's BipAgents stays on main: time lost only.
+  - git -C /usr/local/lib/bipagents/repo -c advice.detachedHead=false checkout --quiet --force origin/main
   - cd /usr/local/lib/bipagents/repo && { PYTHONPATH=installer python3 -m bipinstall.shared_hermes enable > /var/log/bipagents-shared-hermes.log 2>&1 & PYTHONPATH=installer python3 -m bipinstall.shared_images pull --timer > /var/log/bipagents-images.log 2>&1 & wait; }; cd /
   - echo "$(date -u +%FT%TZ) shared done, install start" >> /var/log/bipagents-timeline.log
   - sudo -iu bip bash -c 'curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash -s -- --cloud /etc/bipagents/cloud.json' > /var/log/bipagents-install.log 2>&1
