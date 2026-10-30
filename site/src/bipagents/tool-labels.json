@@ -787,9 +787,9 @@
      "now": "J’utilise le navigateur…"
     },
     "terminal": {
-     "one": "Lance une commande",
-     "many": "Lance {n} commandes",
-     "now": "Je lance une commande…"
+     "one": "Travaille en coulisses",
+     "many": "Travaille en coulisses ({n} étapes)",
+     "now": "Je m’en occupe en coulisses…"
     },
     "compute": {
      "one": "Fait un calcul",
@@ -1081,9 +1081,9 @@
      "now": "Using the browser…"
     },
     "terminal": {
-     "one": "Runs a command",
-     "many": "Runs {n} commands",
-     "now": "Running a command…"
+     "one": "Works behind the scenes",
+     "many": "Works behind the scenes ({n} steps)",
+     "now": "Working on it behind the scenes…"
     },
     "compute": {
      "one": "Does a calculation",
@@ -1375,9 +1375,9 @@
      "now": "Ich benutze den Browser…"
     },
     "terminal": {
-     "one": "Führt einen Befehl aus",
-     "many": "Führt {n} Befehle aus",
-     "now": "Ich führe einen Befehl aus…"
+     "one": "Arbeitet hinter den Kulissen",
+     "many": "Arbeitet hinter den Kulissen ({n} Schritte)",
+     "now": "Ich kümmere mich hinter den Kulissen darum…"
     },
     "compute": {
      "one": "Rechnet etwas aus",
@@ -1669,9 +1669,9 @@
      "now": "Usando el navegador…"
     },
     "terminal": {
-     "one": "Ejecuta un comando",
-     "many": "Ejecuta {n} comandos",
-     "now": "Ejecutando un comando…"
+     "one": "Trabaja entre bastidores",
+     "many": "Trabaja entre bastidores ({n} pasos)",
+     "now": "Me encargo entre bastidores…"
     },
     "compute": {
      "one": "Hace un cálculo",
