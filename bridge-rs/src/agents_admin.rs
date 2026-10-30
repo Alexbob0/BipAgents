@@ -543,6 +543,8 @@ pub async fn create_agent(
         // before its tools are given: `propose_profile` is listed for it
         crate::guide::mark_roleless(&config, &planned.profile)?;
     }
+    // no Carnet news before its first turn: what was learnt before reaches it through the common memory
+    crate::notebook::news::start(&config, &planned.profile, crate::py::time_time());
     let agent = hub_agent(&config, &planned.profile, &planned.name, &crate::py::token_urlsafe(32));
     let agent = match make_profile(shared, &planned, agent, http, run, false).await {
         Ok(agent) => agent,
@@ -550,6 +552,7 @@ pub async fn create_agent(
             if roleless {
                 crate::guide::forget(&shared.get(), &planned.profile);
             }
+            crate::notebook::news::forget(&shared.get(), &planned.profile);
             return Err(exc);
         }
     };

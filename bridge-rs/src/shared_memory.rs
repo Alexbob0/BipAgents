@@ -18,7 +18,8 @@
 //!   itself, or one left out for the limit, is not given again;
 //! - **the first run** merges what every giver already knew, once (deduplicated), without mirroring it: notebook::seed
 //!   already copied those memories to the Carnet. An agent joining the circle later (a new agent, the Carnet switched
-//!   back on) gets the common list the same way;
+//!   back on) gets the common list the same way, silently: no news of what was learnt before it took part (a new
+//!   agent gets none before its first turn, notebook/news.rs `start`), and what it brings is not news for the others;
 //! - **the limit**: when an agent's USER.md would pass its limit (memory_edit::limit, its profile's
 //!   `user_char_limit`) less a fifth kept free (`HEADROOM`: Hermes refuses an add past the limit, and the agent would
 //!   spend calls making room, its removals then removed everywhere), the oldest common entries are left out of it (the
@@ -1125,6 +1126,44 @@ mod tests {
         assert!(news.contains("Nantes"), "{news}");
         assert!(notebook::news::take(&config, "budget", 4.0).is_none(), "not to the one that learnt it");
         assert_eq!(sync(&config, 5.0, None), 0, "the mirrored entry does not come back from « Toi »");
+    }
+
+    #[test]
+    fn a_new_agent_gets_the_common_memory_silently() {
+        let (dir, mut config) = place();
+        std::fs::write(user_md(&config, "budget"), "Alex habite Lyon.").unwrap();
+        sync(&config, 1.0, None);
+        std::fs::write(user_md(&config, "budget"), "Alex habite Lyon.\n§\nAlex a dit « je t'aime » à Budget.").unwrap();
+        sync(&config, 2.0, None);
+        assert!(notebook::news::pending(&config, "coach", 2.0) > 0, "learnt after the others existed: news");
+        // a team agent is made later (agents_admin::create_agent marks it before its profile exists)
+        let space = dir.path().join("spaces/qa");
+        std::fs::create_dir_all(space.join("profiles/qa/memories")).unwrap();
+        notebook::news::start(&config, "qa", 3.0);
+        config.agents.insert(
+            "qa".into(),
+            AgentConfig {
+                name: "qa".into(),
+                display_name: "QA Testeur".into(),
+                space: Some(space.to_string_lossy().into_owned()),
+                ..Default::default()
+            },
+        );
+        for agent in ["quotidien", "coach", "sante"] {
+            notebook::news::take(&config, agent, 3.5);
+        }
+        sync(&config, 4.0, None);
+        // the whole common list in its USER.md…
+        assert_eq!(
+            std::fs::read_to_string(user_md(&config, "qa")).unwrap(),
+            "Alex habite Lyon.\n§\nAlex a dit « je t'aime » à Budget."
+        );
+        // …and no backlog as news at its first turn, nothing new for the others either
+        assert_eq!(notebook::news::take(&config, "qa", 5.0), None);
+        for agent in ["quotidien", "budget", "coach", "sante"] {
+            assert_eq!(notebook::news::take(&config, agent, 5.0), None, "{agent}");
+        }
+        assert_eq!(sync(&config, 6.0, None), 0);
     }
 
     #[test]
