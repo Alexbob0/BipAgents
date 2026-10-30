@@ -10,6 +10,12 @@
 //!     POST /v1/guide/proposals/{id}/accept   {members?: ["m1", "m3"], room?: bool, lang?, group?}
 //!          → 201 {type: "team", agents: [{id, name, url, key, group, member, kind, color, suggested}],
 //!                 failed: [{member, name, reason}], room: room view | null, first_turns: bool}
+//!          → 202 {…the same, creating: true, pending: [{member, name}]}: still being made after
+//!                 `guide::TEAM_ANSWER_WAIT` (the agents made so far in `agents`); a tap again answers the same until done
+//!
+//! The team is made as one batch (agents_admin::create_agents, 2026-10-30: a 6-agent team made one after the other
+//! took minutes and the app gave up): their profiles one after the other, the gateway's pick-up of all of them
+//! waited for side by side, one wait for their tools and at most one restart of the hub's gateway.
 //!
 //! Each agent is made as a single proposal's (agents_admin::create_agent: name, role, group, language), its Bip set
 //! (kind and colour), the tiles that need no permission switched on (the others, and the services, only come back as
@@ -63,6 +69,45 @@ pub const ANSWERS_KEPT: usize = 10;
 
 /// One team accepted at a time (two phones, a double tap).
 static ACCEPTING: LazyLock<tokio::sync::Mutex<()>> = LazyLock::new(|| tokio::sync::Mutex::new(()));
+/// The cards whose team is being made now, with the members asked for.
+static CREATING: LazyLock<std::sync::Mutex<std::collections::HashMap<String, Vec<String>>>> =
+    LazyLock::new(Default::default);
+
+/// Whether card `id`'s team is being made now.
+pub fn creating(id: &str) -> bool {
+    CREATING.lock().unwrap_or_else(|e| e.into_inner()).contains_key(id)
+}
+
+/// The answer while card `id`'s team is being made: the agents made so far, the members still to come (202).
+pub fn progress(config: &Config, id: &str) -> Value {
+    let wanted = CREATING.lock().unwrap_or_else(|e| e.into_inner()).get(id).cloned().unwrap_or_default();
+    let proposal = crate::guide::load(config).proposals.into_iter().find(|p| tk::str_or_empty(p.get("id")) == id);
+    let done: Dict =
+        proposal.as_ref().and_then(|p| p.get("done")).and_then(Value::as_object).cloned().unwrap_or_default();
+    let mut agents = Vec::new();
+    let mut pending = Vec::new();
+    for mid in &wanted {
+        match done.get(mid).and_then(Value::as_str).and_then(|a| config.agents.get(a)) {
+            Some(agent) => agents.push(crate::guide::created_json(config, agent)),
+            None => {
+                let name = proposal.as_ref().and_then(|p| member_of(p, mid)).map(|m| tk::str_or_empty(m.get("name")));
+                pending.push(json!({"member": mid, "name": name.unwrap_or_default()}));
+            }
+        }
+    }
+    json!({"type": "team", "creating": true, "agents": agents, "pending": pending, "failed": [], "room": null,
+           "first_turns": config.guide.first_turns})
+}
+
+/// Card `id` out of `CREATING` when its making ends, however it ends.
+struct Creating(String);
+
+impl Drop for Creating {
+    fn drop(&mut self) {
+        CREATING.lock().unwrap_or_else(|e| e.into_inner()).remove(&self.0);
+    }
+}
+
 /// One first turn at a time on the whole place.
 static TURNS: LazyLock<tokio::sync::Mutex<()>> = LazyLock::new(|| tokio::sync::Mutex::new(()));
 
@@ -150,6 +195,10 @@ pub fn build(config: &Config, arguments: &Dict) -> Result<Dict, String> {
         if given.len() > left {
             return Err(format!("only {left} more agent(s) fit on their place: propose fewer"));
         }
+    }
+    // the place's own limit, never told (agents_admin::agents_max)
+    if !crate::agents_admin::room_for(config, given.len()) {
+        return Err(crate::agents_admin::TOO_MANY_AGENTS_TOOL.into());
     }
     let allowed = services();
     let mut names: Vec<String> = Vec::new();
@@ -353,6 +402,7 @@ async fn finish(state: &AppState, agent: &AgentConfig, member: &Value, from: &st
 fn failed_reason(exc: &anyhow::Error) -> String {
     match exc.downcast_ref::<crate::agents_admin::AgentError>() {
         Some(e) => e.0.clone(),
+        None if crate::agents_admin::too_many(exc) => crate::agents_admin::TOO_MANY_AGENTS.into(),
         None => "it could not be created: try again in a moment".into(),
     }
 }
@@ -368,6 +418,10 @@ pub async fn accept(
     lang: &str,
 ) -> crate::web::ApiResult<axum::response::Response> {
     use crate::web::HttpError;
+    if creating(id) {
+        // a tap again while it is being made: where it stands, nothing made twice
+        return Ok(crate::web::json_response(202, &progress(&state.config(), id)));
+    }
     let _turn = ACCEPTING.lock().await;
     let config = state.config();
     let guide_state = crate::guide::load(&config);
@@ -399,26 +453,37 @@ pub async fn accept(
             return Err(HttpError::new(409, format!("only {left} more agent(s) fit on this place")));
         }
     }
+    if !crate::agents_admin::room_for(&config, missing) {
+        return Err(crate::agents_admin::TooManyAgents.into());
+    }
+    CREATING.lock().unwrap_or_else(|e| e.into_inner()).insert(id.to_string(), wanted.clone());
+    let _creating = Creating(id.to_string());
     let mut failed: Vec<Value> = Vec::new();
+    let mut batch: Vec<(String, Value, String)> = Vec::new();
+    let mut requests: Vec<crate::agents_admin::NewAgent> = Vec::new();
     for mid in &wanted {
         if done.contains_key(mid) {
             continue;
         }
         let Some(member) = member_of(&proposal, mid).cloned() else { continue };
         let name = tk::str_or_empty(member.get("name"));
-        let request = crate::agents_admin::NewAgent {
+        requests.push(crate::agents_admin::NewAgent {
             name: name.clone(),
             kind: Some(tk::str_or_empty(member.get("kind"))),
             lang: Some(lang.to_string()),
             group: group.clone(),
             role: Some(tk::str_or_empty(member.get("role"))),
             ..Default::default()
-        };
-        let made = {
-            let _guard = crate::agents_admin::LOCK.lock().await;
-            crate::agents_admin::create_agent(&state.config, &request, &state.http, &crate::agents_admin::default_run())
-                .await
-        };
+        });
+        batch.push((mid.clone(), member, name));
+    }
+    let results = {
+        let _guard = crate::agents_admin::LOCK.lock().await;
+        crate::agents_admin::create_agents(&state.config, &requests, &state.http, &crate::agents_admin::default_run())
+            .await
+    };
+    for ((mid, member, name), made) in batch.into_iter().zip(results) {
+        let mid = &mid;
         match made {
             Ok(agent) => {
                 done.insert(mid.clone(), json!(agent.name));
@@ -430,6 +495,8 @@ pub async fn accept(
                     }
                 })?;
                 finish(state, &agent, &member, &from.display_name, lang).await;
+                // with its look now: the person's apps add it to their home by themselves, in the card's order
+                crate::guide::note_requested(&state.config(), &agent.name);
             }
             Err(exc) => {
                 tracing::warn!(target: "bipbridge::guide", member = %mid, error = %tk::head(&exc.to_string(), 200), "team agent not created");

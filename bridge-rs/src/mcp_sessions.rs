@@ -63,7 +63,15 @@ impl Session {
 pub struct Sessions {
     sessions: Mutex<HashMap<String, Session>>,
     changed: Notify,
+    /// New agents whose first turn waits for their tools (agents_admin.rs `tools_loaded`).
+    first_turns: Mutex<std::collections::HashSet<String>>,
+    /// A session listed its tools.
+    listing: Notify,
 }
+
+/// How long a new agent's first turn waits for its Hermes to list the bridge's tools (its gateway restarting once the
+/// hub is calm); then it goes on without them.
+pub const FIRST_TURN_WAIT: Duration = Duration::from_secs(20);
 
 pub static SESSIONS: LazyLock<Sessions> = LazyLock::new(Sessions::default);
 
@@ -147,6 +155,41 @@ impl Sessions {
             session.differs = None;
             session.notified = None;
         }
+        self.listing.notify_waiters();
+    }
+
+    /// `agent`'s first turn waits for its tools ([`Self::first_turn`]).
+    pub fn hold_first_turn(&self, agent: &str) {
+        lock(&self.first_turns).insert(agent.to_string());
+    }
+
+    /// No turn of `agent` waits any more (its tools listed, or its gateway restarted).
+    pub fn release_first_turn(&self, agent: &str) {
+        lock(&self.first_turns).remove(agent);
+        self.listing.notify_waiters();
+    }
+
+    /// Before a turn of `agent` starts: a new agent held by `hold_first_turn` waits until its Hermes has listed the
+    /// bridge's tools, at most `limit`, once (the turns after it never wait). Whether it waited.
+    pub async fn first_turn(&self, agent: &str, limit: Duration) -> bool {
+        if !lock(&self.first_turns).contains(agent) {
+            return false;
+        }
+        let deadline = tokio::time::Instant::now() + limit;
+        loop {
+            let listed = self.listing.notified();
+            tokio::pin!(listed);
+            listed.as_mut().enable();
+            if self.has_listed(agent) || !lock(&self.first_turns).contains(agent) {
+                break;
+            }
+            if tokio::time::timeout_at(deadline, listed).await.is_err() {
+                tracing::info!(target: "bipbridge::agents", agent, "first turn without its tools: waited long enough");
+                break;
+            }
+        }
+        lock(&self.first_turns).remove(agent);
+        true
     }
 
     /// Whether session `id` should be told its tools changed (`fingerprint`: the set now). True once per new set,
@@ -271,6 +314,38 @@ mod tests {
         assert!(!s.has_listed("lea"));
         s.listed(&lea, "aaa");
         assert!(s.has_listed("lea"));
+    }
+
+    #[tokio::test]
+    async fn a_new_agents_first_turn_waits_for_its_tools() {
+        let s = std::sync::Arc::new(Sessions::default());
+        // not held: never waits
+        assert!(!s.first_turn("lea", Duration::from_secs(5)).await);
+        // held: goes as soon as its Hermes lists the tools
+        s.hold_first_turn("lea");
+        let id = s.open("lea");
+        let (waiter, started) = (s.clone(), Instant::now());
+        let turn = tokio::spawn(async move { waiter.first_turn("lea", Duration::from_secs(10)).await });
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(!turn.is_finished(), "still waiting");
+        s.listed(&id, "aaa");
+        assert!(turn.await.unwrap());
+        assert!(started.elapsed() < Duration::from_secs(5));
+        // once: the next turn doesn't wait
+        assert!(!s.first_turn("lea", Duration::from_secs(5)).await);
+        // never listed: it goes after the limit, once
+        s.hold_first_turn("max");
+        let started = Instant::now();
+        assert!(s.first_turn("max", Duration::from_millis(200)).await);
+        assert!(started.elapsed() >= Duration::from_millis(200));
+        assert!(!s.first_turn("max", Duration::from_secs(5)).await);
+        // released (its gateway restarted): goes at once
+        s.hold_first_turn("zoe");
+        let waiter = s.clone();
+        let turn = tokio::spawn(async move { waiter.first_turn("zoe", Duration::from_secs(10)).await });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        s.release_first_turn("zoe");
+        assert!(turn.await.unwrap());
     }
 
     #[test]

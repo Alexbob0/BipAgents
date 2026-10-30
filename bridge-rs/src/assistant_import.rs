@@ -1054,7 +1054,7 @@ async fn create(state: &AppState, body: &Apply, source: &str) -> ApiResult<Agent
             if let Some(e) = exc.downcast_ref::<crate::agents_admin::AgentError>() {
                 return Err(HttpError::new(400, e.0.clone()));
             }
-            if crate::agents_admin::is_os_error(&exc) {
+            if crate::agents_admin::is_os_error(&exc) || crate::agents_admin::too_many(&exc) {
                 return Err(exc.into());
             }
             tracing::warn!(target: "bipbridge::import", error = %tk::head(&exc.to_string(), 200), "agent creation failed");

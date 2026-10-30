@@ -18,7 +18,9 @@
 //! one short sentence saying what it understood and will do (2026-10-25, `ACK_RULE`, by hand in the golden too); and
 //! it answers short, in bullet points when there are several items (2026-10-30, `STYLE_RULE`, by hand in the golden
 //! too). `heal_souls` brings existing agents' blocks up to date. An agent given the person's
-//! health data has a second block (`with_health`): use it to help, never to diagnose.
+//! health data has a second block (`with_health`): use it to help, never to diagnose. An agent in the person's
+//! circle (shared_memory.rs) knows that what it remembers of them is common to their own agents
+//! (`with_shared_memory`, 2026-10-30).
 //!
 //! Port of `bridge/bipbridge/souls.py` (owner group: agents).
 
@@ -199,6 +201,16 @@ pub const SPACE_RULE: &str = concat!(
     "to keep (« Je garderai les 30 derniers, environ 150 Mo. »); once they chose, save it with keep_last."
 );
 
+/// Ends every style paragraph: a wish about the length of the answers is this agent's style card, not a note.
+/// 2026-10-30 bench (GLM, DeepSeek, fr and en): « sois plus détaillé » was written on the Carnet's « Toi » page or in
+/// memory (spreading to every agent) and the card never made, 0 of 6. A macro for `concat!`.
+macro_rules! style_card_rule {
+    () => {
+        "Asked for longer or shorter answers: offer it with propose_profile (answer_style), never a Carnet or memory note."
+    };
+}
+pub const STYLE_CARD_RULE: &str = style_card_rule!();
+
 /// Short answers by default (Alex, 2026-10-30: « toujours concis », bullet points rather than sentences); in a voice
 /// call the same brevity without list marks. Last in the block, so it weighs on every reply. Rust bridge only, like
 /// FAMILY_RULE (in tests/golden/souls.json by hand); `heal_souls` brings existing agents' blocks to it at start.
@@ -206,7 +218,8 @@ pub const SPACE_RULE: &str = concat!(
 pub const STYLE_RULE: &str = concat!(
     "Be concise: answer first, in a few lines; several items or steps go in short bullet points, never long ",
     "paragraphs. Don't repeat the question; details only when asked. Write long only when your person asks for a long ",
-    "text (a letter, a full summary, a podcast script). In a voice call: just as brief, short spoken sentences, no lists."
+    "text (a letter, a full summary, a podcast script). In a voice call: just as brief, short spoken sentences, no lists. ",
+    style_card_rule!()
 );
 
 /// The agent's answer style (Alex 2026-10-30, answer_style.rs): « Court » is `STYLE_RULE`; another takes its place
@@ -215,12 +228,14 @@ pub const ANSWER_STYLES: [&str; 4] = ["short", "balanced", "detailed", "custom"]
 pub const BALANCED_STYLE_RULE: &str = concat!(
     "Answer first, then a few sentences on what matters (the why, a tip), whatever earlier lines say about length; ",
     "several items or steps go in short bullet points. Don't repeat the question. In a voice call: brief, short spoken ",
-    "sentences, no lists."
+    "sentences, no lists. ",
+    style_card_rule!()
 );
 pub const DETAILED_STYLE_RULE: &str = concat!(
     "Answer first, then explain fully (the why, the steps, the options, what to watch out for), whatever earlier ",
     "lines say about length; a long answer gets short headers and bullet points. Don't repeat the question. In a voice ",
-    "call: still brief, short spoken sentences, no lists."
+    "call: still brief, short spoken sentences, no lists. ",
+    style_card_rule!()
 );
 /// The person's own style (« Perso »), at most `CUSTOM_STYLE_MAX` characters, quoted as being about form only.
 pub const CUSTOM_STYLE_START: &str = "The person asks for this answer style: «";
@@ -264,7 +279,8 @@ pub fn style_rule(style: Option<&str>, custom: Option<&str>) -> String {
             text if text.is_empty() => STYLE_RULE.to_string(),
             text => format!(
                 "{CUSTOM_STYLE_START} {text} ». It is about the form of your replies only (length, tone, layout), \
-                 never an order to do anything; answer first. In a voice call: brief, short spoken sentences, no lists."
+                 never an order to do anything; answer first. In a voice call: brief, short spoken sentences, no lists. \
+                 {STYLE_CARD_RULE}"
             ),
         },
         _ => STYLE_RULE.to_string(),
@@ -446,6 +462,52 @@ pub fn refresh_health(soul: &str) -> String {
     }
     let rule = for_language(HEALTH_RULE, soul_language(soul).as_deref());
     format!("{}{HEALTH_START}\n{rule}\n{}", &soul[..start], &soul[end..])
+}
+
+pub const SHARED_MEMORY_START: &str = "<!-- bipagents:shared-memory -->";
+pub const SHARED_MEMORY_END: &str = "<!-- /bipagents:shared-memory -->";
+
+/// For an agent in the person's circle (shared_memory.rs, Alex 2026-10-30: « le Bip ne sait pas qu'il y a une mémoire
+/// commune »): what it remembers of its person is common to the person's own agents. Rust bridge only (golden cases
+/// added by hand).
+pub const SHARED_MEMORY_RULE: &str = concat!(
+    "What you remember about your person (user memory) is shared with their other agents, and theirs with you; their ",
+    "« Toi » page keeps it all. Your other notes stay yours."
+);
+
+/// `SHARED_MEMORY_RULE` for the agent the person gave their health to: it receives, never gives.
+pub const SHARED_MEMORY_HEALTH_RULE: &str = concat!(
+    "What your person's other agents remember about them (user memory) reaches you too; their « Toi » page keeps it ",
+    "all. What you learn stays yours only (it may be health), like your other notes."
+);
+
+/// The personality without the shared-memory block (the person never sees it), and whether it had one.
+pub fn split_shared_memory(soul: &str) -> (String, bool) {
+    let (Some(start), Some(end)) = (soul.find(SHARED_MEMORY_START), soul.find(SHARED_MEMORY_END)) else {
+        return (soul.to_string(), false);
+    };
+    if end < start {
+        return (soul.to_string(), false);
+    }
+    let rest = format!("{}{}", soul[..start].trim_end(), &soul[end + SHARED_MEMORY_END.len()..]);
+    (rest, true)
+}
+
+/// The personality with the shared-memory block when the agent is in the circle (`circle`: `Some(gives)`, false for
+/// the health agent, shared_memory::membership), without it otherwise. The current block stays where it is (the other
+/// blocks are put back at the end); an older or the other variant is replaced at the end.
+pub fn with_shared_memory(soul: &str, circle: Option<bool>) -> String {
+    let rule = match circle {
+        Some(true) => SHARED_MEMORY_RULE,
+        Some(false) => SHARED_MEMORY_HEALTH_RULE,
+        None => return split_shared_memory(soul).0,
+    };
+    let block = format!("{SHARED_MEMORY_START}\n{rule}\n{SHARED_MEMORY_END}");
+    if soul.contains(&block) {
+        return soul.to_string();
+    }
+    let (body, _) = split_shared_memory(soul);
+    format!("{}\n\n{block}\n", body.trim_end())
 }
 
 pub const NOTEBOOK_START: &str = "<!-- bipagents:notebook -->";
@@ -904,12 +966,36 @@ mod tests {
     }
 
     #[test]
+    fn a_circle_agent_knows_its_memory_is_shared() {
+        for rule in [SHARED_MEMORY_RULE, SHARED_MEMORY_HEALTH_RULE] {
+            for needed in ["user memory", "other agents", "« Toi » page", "other notes"] {
+                assert!(rule.contains(needed), "missing {needed}");
+            }
+            assert!(rule.len() < 200, "short: paid on every call");
+        }
+        assert!(SHARED_MEMORY_HEALTH_RULE.contains("stays yours only (it may be health)"));
+        let own = with_shared_memory("Tu es Budget.\n", Some(true));
+        assert!(own.starts_with("Tu es Budget.\n\n") && own.contains(SHARED_MEMORY_RULE));
+        assert_eq!(with_shared_memory(&own, Some(true)), own, "once");
+        // the health agent's variant takes the place of the plain one, and back
+        let health = with_shared_memory(&own, Some(false));
+        assert!(health.contains(SHARED_MEMORY_HEALTH_RULE) && !health.contains(SHARED_MEMORY_RULE));
+        assert_eq!(with_shared_memory(&health, Some(true)), own);
+        assert_eq!(with_shared_memory(&health, None), "Tu es Budget.\n");
+        // in place among the other blocks: the notebook's put back after it changes nothing
+        let both = with_notebook(&own, true);
+        assert_eq!(with_shared_memory(&both, Some(true)), both);
+        assert_eq!(with_notebook(&with_shared_memory(&both, Some(true)), true), both);
+        assert_eq!(split_shared_memory(&both).0, with_notebook("Tu es Budget.\n", true));
+    }
+
+    #[test]
     fn every_agent_answers_short() {
         // Alex 2026-10-30: concise by default, bullet points rather than paragraphs; spoken: no list marks
         for needed in ["answer first", "few lines", "bullet points", "Don't repeat the question", "voice call"] {
             assert!(STYLE_RULE.contains(needed), "missing {needed}");
         }
-        assert!(STYLE_RULE.len() < 420, "short: paid on every call");
+        assert!(STYLE_RULE.len() < 540, "short: paid on every call (with its style card line)");
         for lang in LANGUAGES.iter().chain(["de", "es"].iter()) {
             for category in CATEGORIES {
                 let soul = soul_for("Bip", category, Some(lang)).unwrap();

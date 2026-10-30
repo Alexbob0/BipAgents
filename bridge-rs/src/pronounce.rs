@@ -688,7 +688,13 @@ pub fn without_hesitations(text: &str, lang: &str) -> String {
         rest = after;
     }
     out.push_str(rest);
-    out.trim().to_string()
+    if out == text {
+        return out; // nothing removed: the text as it came, its spaces and line ends included (the golden cases)
+    }
+    // a hesitation went: the text's own leading and trailing whitespace kept around what is left
+    let lead = &text[..text.len() - text.trim_start().len()];
+    let trail = &text[text.trim_end().len()..];
+    format!("{lead}{}{trail}", out.trim())
 }
 
 /// The text with names, acronyms and English words written for `lang`'s voice (see the module doc). Languages

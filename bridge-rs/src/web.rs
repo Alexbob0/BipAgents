@@ -98,6 +98,10 @@ impl IntoResponse for HttpError {
 /// Any internal error (Python: an exception the route does not catch) → 500, logged.
 impl From<anyhow::Error> for HttpError {
     fn from(err: anyhow::Error) -> Self {
+        // a new agent past the place's limit (agents_admin::agents_max): a plain refusal the apps say in their words
+        if crate::agents_admin::too_many(&err) {
+            return HttpError::json(409, serde_json::json!({"code": crate::agents_admin::TOO_MANY_AGENTS}));
+        }
         tracing::error!(exc = %format!("{err:#}"), "Exception in ASGI application");
         HttpError::internal()
     }

@@ -217,6 +217,10 @@ async fn relay(
     };
     // Just claimed: its gateway restarting, or the agent still being made (cloud_setup.rs). Waited for, not failed.
     crate::cloud_setup::READINESS.wait(&target.name, crate::cloud_setup::READY_WAIT).await;
+    if method == Method::POST && path == "v1/runs" {
+        // a new agent's first turn, with its tools (agents_admin.rs `tools_loaded`)
+        crate::mcp_sessions::SESSIONS.first_turn(&target.name, crate::mcp_sessions::FIRST_TURN_WAIT).await;
+    }
     // dict(request.headers): one value per name (the last), hop-by-hop ones dropped. Accept-Encoding is left to
     // the client here, which decodes the body (httpx does too: content-encoding is not passed on).
     let mut forwarded: Vec<(HeaderName, HeaderValue)> = Vec::new();

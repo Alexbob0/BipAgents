@@ -875,6 +875,9 @@ pub async fn import(state: &AppState, body: &Value) -> ApiResult<Value> {
                 if let Some(e) = exc.downcast_ref::<agents_admin::AgentError>() {
                     return Err(HttpError::new(400, e.0.clone()));
                 }
+                if agents_admin::too_many(&exc) {
+                    return Err(exc.into());
+                }
                 tracing::warn!(target: "bipbridge::templates", error = %head(&exc.to_string(), 200), "agent from a model not created");
                 return Err(HttpError::new(502, "Hermes could not create the agent"));
             }

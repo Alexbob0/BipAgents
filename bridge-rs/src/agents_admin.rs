@@ -23,6 +23,7 @@ use axum::response::Response;
 use axum::routing::{get, post, put};
 use axum::Router;
 use futures::future::BoxFuture;
+use futures::StreamExt;
 use indexmap::IndexMap;
 use regex::Regex;
 use serde::{Deserialize, Deserializer};
@@ -71,6 +72,78 @@ pub struct GatewayError(pub String);
 /// those through as a 500, where a `RuntimeError` (a command that failed) is their 502.
 pub fn is_os_error(exc: &anyhow::Error) -> bool {
     exc.chain().any(|e| e.downcast_ref::<std::io::Error>().is_some())
+}
+
+/// The agents of a place of the all-included offer at most, when its bridge.toml says nothing (`[place] agents_max`).
+/// Alex, 2026-10-30: « Mettons une limite de nombre d'agents, sans le dire. Pour éviter les abus. Au-delà de 20 ça n'a
+/// aucun sens dans tous les cas. » Never shown nor told (no counter, no number in the apps, the souls or the tools'
+/// descriptions): only a creation past it is refused.
+pub const OFFER_AGENTS_MAX: usize = 20;
+
+/// The code of the refusal (409 `{"detail": {"code": "too_many_agents"}}`): the apps say it in plain words, no number.
+pub const TOO_MANY_AGENTS: &str = "too_many_agents";
+
+/// What a model's tool says when the place is full (a tool error, nothing in the souls: no word on every call).
+pub const TOO_MANY_AGENTS_TOOL: &str =
+    "This place already has many agents: suggest reusing or removing one the person no longer uses; don't create another.";
+
+/// A new agent refused: the place already has its agents at most (`agents_max`). Routes answer 409 with
+/// `TOO_MANY_AGENTS` (web.rs turns it into that answer wherever it ends up).
+#[derive(Debug, Clone, thiserror::Error)]
+#[error("this place already has many agents")]
+pub struct TooManyAgents;
+
+/// The place's agents at most (None: no limit): `[place] agents_max` when written (0: none), else
+/// `OFFER_AGENTS_MAX` on a place of the offer (its guichet token, handover::on_offer) and no limit on a self-install.
+pub fn agents_max(config: &Config) -> Option<usize> {
+    agents_max_on(config, crate::handover::on_offer())
+}
+
+/// `agents_max`, with whether this is a place of the offer given.
+pub fn agents_max_on(config: &Config, offer: bool) -> Option<usize> {
+    match config.place_agents_max {
+        Some(0) => None,
+        Some(most) => Some(most),
+        None => offer.then_some(OFFER_AGENTS_MAX),
+    }
+}
+
+/// Every agent the place runs counts: the person's own, the guide, the project agents, the family's agent, and the
+/// one prepared at install (it becomes the first agent). Agents of relatives shared with this person live on their
+/// places, not in this bridge's list, so they don't.
+pub fn agents_count(config: &Config) -> usize {
+    config.agents.len()
+}
+
+/// Whether `more` new agents fit on the place. Agents already above the limit (none expected) are kept: only new
+/// ones are refused.
+pub fn room_for(config: &Config, more: usize) -> bool {
+    room_for_on(config, more, crate::handover::on_offer())
+}
+
+pub fn room_for_on(config: &Config, more: usize, offer: bool) -> bool {
+    agents_max_on(config, offer).is_none_or(|most| agents_count(config) + more <= most)
+}
+
+/// Err(TooManyAgents) when one more agent doesn't fit.
+pub fn check_room(config: &Config) -> Result<(), TooManyAgents> {
+    if room_for(config, 1) {
+        Ok(())
+    } else {
+        tracing::info!(target: "bipbridge::agents", agents = agents_count(config), "new agent refused: the place is full");
+        Err(TooManyAgents)
+    }
+}
+
+impl From<TooManyAgents> for HttpError {
+    fn from(refused: TooManyAgents) -> Self {
+        anyhow::Error::from(refused).into()
+    }
+}
+
+/// Whether a creation failed for that reason.
+pub fn too_many(exc: &anyhow::Error) -> bool {
+    exc.downcast_ref::<TooManyAgents>().is_some()
 }
 
 /// Python's `text[-n:]` (characters).
@@ -538,12 +611,15 @@ pub async fn create_agent(
     run: &Run,
 ) -> anyhow::Result<AgentConfig> {
     let config = shared.get();
+    check_room(&config)?;
     let planned = plan_agent(&config, body)?;
     let roleless = body.custom.as_ref().is_some_and(|c| c.role.trim().is_empty());
     if roleless {
         // before its tools are given: `propose_profile` is listed for it
         crate::guide::mark_roleless(&config, &planned.profile)?;
     }
+    // no Carnet news before its first turn: what was learnt before reaches it through the common memory
+    crate::notebook::news::start(&config, &planned.profile, crate::py::time_time());
     let agent = hub_agent(&config, &planned.profile, &planned.name, &crate::py::token_urlsafe(32));
     let agent = match make_profile(shared, &planned, agent, http, run, false).await {
         Ok(agent) => agent,
@@ -551,6 +627,7 @@ pub async fn create_agent(
             if roleless {
                 crate::guide::forget(&shared.get(), &planned.profile);
             }
+            crate::notebook::news::forget(&shared.get(), &planned.profile);
             return Err(exc);
         }
     };
@@ -559,6 +636,64 @@ pub async fn create_agent(
     }
     tracing::info!(target: "bipbridge::agents", agent = %agent.name, kind = %body.kind.as_deref().filter(|k| !k.is_empty()).unwrap_or("custom"), "agent created");
     Ok(agent)
+}
+
+/// Several new agents at once (a team card, guide_team.rs): planned one after the other (distinct profiles), made as
+/// one batch (`make_profiles`: the gateways' waits side by side, one restart at most for their tools). One result per
+/// body, in order: a failed agent never undoes the others.
+pub async fn create_agents(
+    shared: &SharedConfig,
+    bodies: &[NewAgent],
+    http: &reqwest::Client,
+    run: &Run,
+) -> Vec<anyhow::Result<AgentConfig>> {
+    let mut planned_config: Config = Config::clone(&shared.get());
+    let mut out: Vec<Option<anyhow::Result<AgentConfig>>> = Vec::new();
+    let mut batch: Vec<(usize, PlannedAgent, AgentConfig, bool)> = Vec::new();
+    for (i, body) in bodies.iter().enumerate() {
+        let planned = match plan_agent(&planned_config, body) {
+            Ok(p) => p,
+            Err(exc) => {
+                out.push(Some(Err(exc)));
+                continue;
+            }
+        };
+        let roleless = body.custom.as_ref().is_some_and(|c| c.role.trim().is_empty());
+        if roleless {
+            if let Err(exc) = crate::guide::mark_roleless(&planned_config, &planned.profile) {
+                out.push(Some(Err(exc)));
+                continue;
+            }
+        }
+        let agent = hub_agent(&planned_config, &planned.profile, &planned.name, &crate::py::token_urlsafe(32));
+        // the next body's plan sees this one's name and profile as taken
+        planned_config.agents.insert(planned.profile.clone(), agent.clone());
+        batch.push((i, planned, agent, roleless));
+        out.push(None);
+    }
+    let items: Vec<(PlannedAgent, AgentConfig)> = batch.iter().map(|(_, p, a, _)| (p.clone(), a.clone())).collect();
+    let made = make_profiles(shared, items, http, run).await;
+    for ((i, planned, _, roleless), result) in batch.into_iter().zip(made) {
+        let result = match result {
+            Ok(agent) => {
+                if let Some(group) = bodies[i].group.as_deref().filter(|g| !g.trim().is_empty()) {
+                    if let Err(exc) = crate::agent_groups::set_group(&shared.get(), &agent.name, group) {
+                        tracing::warn!(target: "bipbridge::agents", agent = %agent.name, error = %exc, "group not set");
+                    }
+                }
+                tracing::info!(target: "bipbridge::agents", agent = %agent.name, kind = %bodies[i].kind.as_deref().filter(|k| !k.is_empty()).unwrap_or("custom"), "agent created");
+                Ok(agent)
+            }
+            Err(exc) => {
+                if roleless {
+                    crate::guide::forget(&shared.get(), &planned.profile);
+                }
+                Err(exc)
+            }
+        };
+        out[i] = Some(result);
+    }
+    out.into_iter().map(|r| r.unwrap_or_else(|| Err(anyhow::anyhow!("not made")))).collect()
 }
 
 /// The hub profile of a planned agent: made, given its key and personality, served, then saved in the bridge's
@@ -572,6 +707,62 @@ pub async fn make_profile(
     run: &Run,
     resume: bool,
 ) -> anyhow::Result<AgentConfig> {
+    prepare_profile(shared, planned, &agent, run, resume).await?;
+    // The gateway picks new profiles up within 30 s; its permanent « Bot Chat » is opened as soon as it answers.
+    wait_served(http, &agent, true).await?;
+    let agent = finish_profile(shared, planned, agent, run).await?;
+    tools_loaded(shared, std::slice::from_ref(&agent), http, run).await;
+    Ok(agent)
+}
+
+/// Profiles prepared at the same time in a batch.
+const PREPARED_TOGETHER: usize = 3;
+
+/// Several planned agents made as one batch (a team): their profiles a few at a time (`PREPARED_TOGETHER`), then the gateway's pick-up of all of them waited for side by side (up to 30 s each when
+/// waited one after the other), then their saving, and one wait for their tools (at most one restart of the hub's
+/// gateway for all of them, `tools_loaded`). One result per item, in order.
+pub async fn make_profiles(
+    shared: &SharedConfig,
+    items: Vec<(PlannedAgent, AgentConfig)>,
+    http: &reqwest::Client,
+    run: &Run,
+) -> Vec<anyhow::Result<AgentConfig>> {
+    // the `hermes` commands of a few profiles side by side (each its own folder; `--no-alias` writes no shared file)
+    let mut preparing: Vec<BoxFuture<'_, anyhow::Result<()>>> = Vec::new();
+    for (planned, agent) in &items {
+        preparing.push(Box::pin(prepare_profile(shared, planned, agent, run, false)));
+    }
+    let prepared: Vec<anyhow::Result<()>> =
+        futures::stream::iter(preparing).buffered(PREPARED_TOGETHER).collect().await;
+    let mut serving: Vec<BoxFuture<'_, anyhow::Result<()>>> = Vec::new();
+    for ((_, agent), ready) in items.iter().zip(prepared) {
+        serving.push(Box::pin(async move {
+            ready?;
+            wait_served(http, agent, true).await
+        }));
+    }
+    let served = futures::future::join_all(serving).await;
+    let mut out = Vec::new();
+    for ((planned, agent), served) in items.into_iter().zip(served) {
+        out.push(match served {
+            Ok(()) => finish_profile(shared, &planned, agent, run).await,
+            Err(exc) => Err(exc),
+        });
+    }
+    let made: Vec<AgentConfig> = out.iter().filter_map(|r| r.as_ref().ok().cloned()).collect();
+    tools_loaded(shared, &made, http, run).await;
+    out
+}
+
+/// A profile made for `agent` (`resume`: kept when an attempt cut short made it), its key, its tools' entry and its
+/// personality written: ready for the gateway to pick up.
+async fn prepare_profile(
+    shared: &SharedConfig,
+    planned: &PlannedAgent,
+    agent: &AgentConfig,
+    run: &Run,
+    resume: bool,
+) -> anyhow::Result<()> {
     let config = shared.get();
     let install = &config.hermes;
     let profile = planned.profile.clone();
@@ -616,11 +807,23 @@ pub async fn make_profile(
     // servers when it loads it, and an entry written after that is only read at its next restart (2026-10-30 bench:
     // a new agent answered its first messages with Hermes' tools only, and wrote « call me Max » into the shared
     // memory instead of using propose_profile). Given again below, once it is saved (its guide blocks, its browser).
-    give_tools(&shared.get(), &agent, run).await?;
+    give_tools(&shared.get(), agent, run).await?;
     std::fs::write(folder.join("SOUL.md"), &planned.soul)?;
     mark_as_bot(&folder)?;
-    // The gateway picks new profiles up within 30 s; its permanent « Bot Chat » is opened as soon as it answers.
-    wait_served(http, &agent, true).await?;
+    Ok(())
+}
+
+/// A served profile finished: its browser, uploads, section in the bridge's config, guide blocks and tools.
+async fn finish_profile(
+    shared: &SharedConfig,
+    planned: &PlannedAgent,
+    agent: AgentConfig,
+    run: &Run,
+) -> anyhow::Result<AgentConfig> {
+    let config = shared.get();
+    let profile = planned.profile.clone();
+    let family =
+        crate::family_agent::is_family(&config, &profile) || crate::project_agent::is_project(&config, &profile);
     let mut agent = if family { agent } else { with_browser(&config, agent, run).await };
     agent = mount_uploads(shared, &agent, run, false).await?;
     if shared.get().agents.contains_key(&profile) {
@@ -630,7 +833,6 @@ pub async fn make_profile(
     }
     crate::guide::refresh(&shared.get()); // its blocks, and the guide's list of agents
     give_tools(&shared.get(), &agent, run).await?;
-    tools_loaded(&shared.get(), &agent, http, run).await;
     Ok(agent)
 }
 
@@ -638,38 +840,114 @@ pub async fn make_profile(
 pub const TOOLS_LISTED_SECONDS: f64 = 20.0;
 
 /// A new agent's first turn has the bridge's tools (propose_profile, create_podcast…): when its Hermes hasn't listed
-/// them within `TOOLS_LISTED_SECONDS` (it loaded the profile before its entry was written), its gateway is restarted
-/// now when the agent has one of its own (its space: nothing else runs there, and it has not spoken yet), else (the
-/// hub's gateway, shared with agents that may be talking) asked for once they are all idle (agent_restart.rs).
+/// them within `TOOLS_LISTED_SECONDS` (it loaded the profile before its entry was written), its gateway is restarted:
+/// - its own (its space): now, nothing else runs there and it has not spoken yet;
+/// - the hub's, shared with the person's other agents: now when they are all idle (`agent_restart::group_calm`), before
+///   the answer to its creation; else its first turn waits for its tools (`mcp_sessions` `first_turn`, at most
+///   `FIRST_TURN_WAIT`) while the bridge restarts the gateway at the first calm moment (`CALM_WATCH`, then the
+///   restart loop's request, never held back by its one-hour gap). 2026-10-30 bench: on the hub the restart was only
+///   asked for, the first message came first, and a second agent made within the hour got no restart at all.
+///
 /// Only where other agents have listed them already: proof this bridge's Hermes connect at once (a Hermes that
 /// lists lazily, or the first agent of an install, is never waited for).
-async fn tools_loaded(config: &Config, agent: &AgentConfig, http: &reqwest::Client, run: &Run) {
+async fn tools_loaded(shared: &SharedConfig, agents: &[AgentConfig], http: &reqwest::Client, run: &Run) {
     let sessions = &crate::mcp_sessions::SESSIONS;
-    if !sessions.others_listed(&agent.name) {
+    let Some(first) = agents.first() else { return };
+    if !sessions.others_listed(&first.name) {
         return;
     }
+    // one wait for the whole batch
     let started = std::time::Instant::now();
-    while !sessions.has_listed(&agent.name) {
-        if started.elapsed().as_secs_f64() >= TOOLS_LISTED_SECONDS {
-            if agent.space.as_deref().is_some_and(|s| !s.is_empty()) {
-                tracing::info!(target: "bipbridge::agents", agent = %agent.name, "new agent without its tools: its gateway restarted");
-                match restart_gateway(config, agent, run).await {
-                    // served again before the app's first message
-                    Ok(()) => {
-                        let _ = wait_served(http, agent, false).await;
-                    }
-                    Err(exc) => {
-                        tracing::warn!(target: "bipbridge::agents", agent = %agent.name, error = %tail(&exc.to_string(), 200), "gateway not restarted");
-                        crate::agent_restart::request_restart(&agent.name, "new agent without its tools");
-                    }
-                }
-            } else {
-                crate::agent_restart::request_restart(&agent.name, "new agent without its tools");
-            }
-            return;
-        }
+    while agents.iter().any(|a| !sessions.has_listed(&a.name)) && started.elapsed().as_secs_f64() < TOOLS_LISTED_SECONDS {
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
+    let missing: Vec<&AgentConfig> = agents.iter().filter(|a| !sessions.has_listed(&a.name)).collect();
+    let config = shared.get();
+    let (spaced, hub): (Vec<&AgentConfig>, Vec<&AgentConfig>) =
+        missing.into_iter().partition(|a| a.space.as_deref().is_some_and(|s| !s.is_empty()));
+    for agent in spaced {
+        tracing::info!(target: "bipbridge::agents", agent = %agent.name, "new agent without its tools: its gateway restarted");
+        match restart_gateway(&config, agent, run).await {
+            // served again before the app's first message
+            Ok(()) => {
+                let _ = wait_served(http, agent, false).await;
+            }
+            Err(exc) => {
+                tracing::warn!(target: "bipbridge::agents", agent = %agent.name, error = %tail(&exc.to_string(), 200), "gateway not restarted");
+                crate::agent_restart::request_restart(&agent.name, crate::agent_restart::NEW_AGENT_TOOLS);
+            }
+        }
+    }
+    let hub: Vec<AgentConfig> = hub.into_iter().cloned().collect();
+    if hub.is_empty() {
+        return;
+    }
+    hub.iter().for_each(|a| sessions.hold_first_turn(&a.name));
+    if restart_hub_when_calm(shared, &hub, http, run).await {
+        return;
+    }
+    if !crate::agent_restart::enabled(&config) {
+        return; // an existing Hermes the person brought: their first turns wait a little, then go
+    }
+    let names: Vec<&str> = hub.iter().map(|a| a.name.as_str()).collect();
+    tracing::info!(target: "bipbridge::agents", agents = %names.join(","), "new agents without their tools: first turns wait, gateway restarted once calm");
+    let (shared, http, run) = (shared.clone(), http.clone(), run.clone());
+    tokio::spawn(async move {
+        let started = std::time::Instant::now();
+        loop {
+            tokio::time::sleep(CALM_CHECK).await;
+            let config = shared.get();
+            let waiting: Vec<AgentConfig> = hub
+                .iter()
+                .filter(|a| config.agents.contains_key(&a.name) && !sessions.has_listed(&a.name))
+                .cloned()
+                .collect();
+            hub.iter().filter(|a| !waiting.iter().any(|w| w.name == a.name)).for_each(|a| sessions.release_first_turn(&a.name));
+            if waiting.is_empty() || restart_hub_when_calm(&shared, &waiting, &http, &run).await {
+                return;
+            }
+            if started.elapsed() >= CALM_WATCH {
+                for agent in &waiting {
+                    crate::agent_restart::request_restart(&agent.name, crate::agent_restart::NEW_AGENT_TOOLS);
+                }
+                return;
+            }
+        }
+    });
+}
+
+/// How often a new agent's tools wait for a calm moment of the hub's gateway, and how long before the restart loop
+/// takes it over.
+const CALM_CHECK: Duration = Duration::from_secs(3);
+const CALM_WATCH: Duration = Duration::from_secs(600);
+
+/// The hub's gateway restarted once for new agents' tools when every agent on it is idle: served again, their tools
+/// listed (or `TOOLS_LISTED_SECONDS` passed). Whether it was restarted.
+async fn restart_hub_when_calm(
+    shared: &SharedConfig,
+    agents: &[AgentConfig],
+    http: &reqwest::Client,
+    run: &Run,
+) -> bool {
+    let sessions = &crate::mcp_sessions::SESSIONS;
+    let config = shared.get();
+    let Some(first) = agents.first() else { return false };
+    let Some(names) = crate::agent_restart::group_calm(&config, first).await else { return false };
+    let new: Vec<&str> = agents.iter().map(|a| a.name.as_str()).collect();
+    tracing::info!(target: "bipbridge::agents", agents = %new.join(","), "new agents without their tools: the hub's gateway restarted, all calm");
+    if let Err(exc) = restart_gateway(&config, first, run).await {
+        tracing::warn!(target: "bipbridge::agents", agent = %first.name, error = %tail(&exc.to_string(), 200), "gateway not restarted");
+        return false;
+    }
+    crate::agent_restart::restarted(&config, &names, crate::agent_restart::NEW_AGENT_TOOLS);
+    futures::future::join_all(agents.iter().map(|a| wait_served(http, a, false))).await;
+    // their first turns still wait for the listing if it comes later (mcp_sessions `first_turn`)
+    let started = std::time::Instant::now();
+    while agents.iter().any(|a| !sessions.has_listed(&a.name)) && started.elapsed().as_secs_f64() < TOOLS_LISTED_SECONDS {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+    agents.iter().filter(|a| sessions.has_listed(&a.name)).for_each(|a| sessions.release_first_turn(&a.name));
+    true
 }
 
 /// Its visible browser when the install gives one; the agent works without it (`bipbridge browser add <agent>` sets
@@ -800,6 +1078,7 @@ pub async fn claim_profile(
     if !unclaimed_profiles(&config).iter().any(|p| p.get("id").and_then(Value::as_str) == Some(name)) {
         return Err(LookupError(name.to_string()).into());
     }
+    check_room(&config)?;
     let install = &config.hermes;
     let env = hermes_env(&config);
     let folder = PathBuf::from(install_home(&config)).join("profiles").join(name);
@@ -1379,6 +1658,7 @@ pub fn set_model(config: &Config, agent: &AgentConfig, name: &str, vision: Optio
 /// agent set up by hand too, like Vie); an agent without any personality keeps Hermes' own.
 pub fn heal_souls(config: &Config) {
     let mut place_language: Option<String> = None;
+    let circle = crate::shared_memory::circle(config);
     for name in config.agents.keys() {
         let Ok(agent) = editable(config, name) else { continue };
         let Ok(soul) = read_soul(config, &agent) else { continue };
@@ -1397,6 +1677,9 @@ pub fn heal_souls(config: &Config) {
         // The payments rule at start too (registration adds it later, after the first turns could be answered).
         if !agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
             text = crate::souls::with_payments(&text);
+            // in the person's circle or not (shared_memory.rs): it knows whether its memory of them is common
+            let gives = circle.iter().find(|m| m.name == agent.name).map(|m| m.gives);
+            text = crate::souls::with_shared_memory(&text, gives);
         }
         if text != soul {
             let healed = std::fs::write(profile_folder(config, &agent).join("SOUL.md"), text);
@@ -1484,6 +1767,7 @@ pub async fn read_settings(config: &Config, agent: &AgentConfig, http: &reqwest:
     let (soul, lang) = crate::souls::split_language(&read_soul(config, agent)?);
     let (soul, _) = crate::souls::split_health(&soul);
     let (soul, _) = crate::souls::split_notebook(&soul);
+    let (soul, _) = crate::souls::split_shared_memory(&soul);
     let (soul, _) = crate::souls::split_archives(&soul);
     let soul = crate::souls::split_payments(&soul);
     let (soul, _) = crate::dates::split_dates(&soul);
@@ -1675,6 +1959,8 @@ pub fn write_soul(config: &Config, agent: &AgentConfig, soul: &str) -> std::io::
     let closed = family || project;
     let text = crate::souls::with_health(&text, !closed && crate::health::enabled(config, &agent.name));
     let text = crate::souls::with_notebook(&text, !closed && crate::notebook::enabled(config, &agent.name));
+    let circle = if closed { None } else { crate::shared_memory::membership(config, &agent.name) };
+    let text = crate::souls::with_shared_memory(&text, circle);
     let text = crate::souls::with_archives(&text, !closed && crate::archives::enabled(config, &agent.name));
     let line = crate::dates::agent_line(config, &crate::dates::load(config), &text);
     let text = crate::dates::with_dates(&text, line.as_deref());
@@ -1694,6 +1980,7 @@ pub fn editable_soul(config: &Config, agent: &AgentConfig) -> std::io::Result<St
     let (soul, _) = crate::souls::split_language(&read_soul(config, agent)?);
     let (soul, _) = crate::souls::split_health(&soul);
     let (soul, _) = crate::souls::split_notebook(&soul);
+    let (soul, _) = crate::souls::split_shared_memory(&soul);
     let (soul, _) = crate::souls::split_archives(&soul);
     let soul = crate::souls::split_payments(&soul);
     let (soul, _) = crate::dates::split_dates(&soul);
@@ -1852,7 +2139,7 @@ async fn new_agent(State(state): State<AppState>, Json(body): Json<NewAgent>) ->
             if let Some(e) = exc.downcast_ref::<AgentError>() {
                 return Err(HttpError::new(400, e.0.clone()));
             }
-            if is_os_error(&exc) {
+            if is_os_error(&exc) || too_many(&exc) {
                 return Err(exc.into());
             }
             tracing::warn!(target: "bipbridge::agents", error = %head(&exc.to_string(), 200), "agent creation failed");
@@ -1875,7 +2162,7 @@ async fn claim(State(state): State<AppState>, Json(body): Json<Claim>) -> ApiRes
             if exc.downcast_ref::<LookupError>().is_some() {
                 return Err(HttpError::new(404, "no such profile waiting on the server"));
             }
-            if is_os_error(&exc) {
+            if is_os_error(&exc) || too_many(&exc) {
                 return Err(exc.into());
             }
             tracing::warn!(target: "bipbridge::agents", agent = %body.id, error = %tail(&exc.to_string(), 200), "claim failed");

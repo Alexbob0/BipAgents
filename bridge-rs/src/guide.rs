@@ -92,6 +92,11 @@ pub const PENDING_MAX: usize = 3;
 pub const GUIDE_NAME: &str = "Bip";
 /// Handovers kept in an agent's memory (the older ones go).
 pub const HANDOVERS_KEPT: usize = 3;
+/// How long « Créer l'équipe » waits for its team before answering where it stands (202, guide_team.rs): under the
+/// apps' request timeout (300 s, BridgeClient.acceptTeam). 2026-10-30: a 6-agent team made one after the other went
+/// past it, and the app showed « Ça n'a pas pu être fait » (its guide notice, under every conversation) although the
+/// six were made.
+pub const TEAM_ANSWER_WAIT: std::time::Duration = std::time::Duration::from_secs(240);
 const HANDOVER_MARK: &str = "↪ ";
 
 /// Names that say nothing about the agent (lowercase, accents kept).
@@ -150,7 +155,14 @@ pub struct GuideState {
     /// (welcome.rs).
     #[serde(default)]
     pub welcome: BTreeMap<String, crate::welcome::Waiting>,
+    /// Agents made on the person's own request (a card accepted) → when: every app of theirs adds them to its home
+    /// at once, in that order, instead of offering « Ajouter » (`requested` in GET /v1/agents).
+    #[serde(default)]
+    pub requested: BTreeMap<String, f64>,
 }
+
+/// How many requested agents are remembered (the newest kept).
+const REQUESTED_KEPT: usize = 64;
 
 fn path(config: &Config) -> PathBuf {
     PathBuf::from(config.data_dir()).join("guide.json")
@@ -178,6 +190,23 @@ pub fn change<T>(config: &Config, edit: impl FnOnce(&mut GuideState) -> T) -> an
     let out = edit(&mut state);
     save(config, &state)?;
     Ok(out)
+}
+
+/// `agent` was made because the person accepted a card: their apps add it to their home by themselves.
+pub(crate) fn note_requested(config: &Config, agent: &str) {
+    let when = now();
+    let result = change(config, |s| {
+        s.requested.insert(agent.to_string(), when);
+        while s.requested.len() > REQUESTED_KEPT {
+            let Some(oldest) = s.requested.iter().min_by(|a, b| a.1.total_cmp(b.1)).map(|(k, _)| k.clone()) else {
+                break;
+            };
+            s.requested.remove(&oldest);
+        }
+    });
+    if let Err(err) = result {
+        tracing::warn!(target: "bipbridge::guide", agent = %agent, error = %err, "requested agent not kept");
+    }
 }
 
 fn now() -> f64 {
@@ -724,6 +753,9 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
         CREATE_PROJECT if !may_propose_project(config, agent) => {
             return Ok(tool_text("Only your person's own agents propose project agents.", true));
         }
+        CREATE_PROJECT if !crate::agents_admin::room_for(config, 1) => {
+            return Ok(tool_text(crate::agents_admin::TOO_MANY_AGENTS_TOOL, true));
+        }
         CREATE_PROJECT => {
             let project = arg(arguments, "name", 40);
             let summary = arg(arguments, "summary", crate::project_agent::SUMMARY_MAX);
@@ -784,6 +816,9 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
         }
         SUGGEST_SWITCH if !is_the_guide => {
             return Ok(tool_text("Only the agent the person chose as their guide proposes agents.", true));
+        }
+        PROPOSE_AGENT if !crate::agents_admin::room_for(config, 1) => {
+            return Ok(tool_text(crate::agents_admin::TOO_MANY_AGENTS_TOOL, true));
         }
         PROPOSE_AGENT => {
             let kind = arg(arguments, "kind", 20);
@@ -890,7 +925,10 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
         _ => "Your card is".to_string(),
     };
     Ok(tool_text(
-        &format!("{card} shown under your reply. Say so in one sentence; nothing happens until they tap it."),
+        &format!(
+            "{card} shown under your reply. Say so in one sentence, in the language they wrote in; nothing \
+             happens until they tap it."
+        ),
         false,
     ))
 }
@@ -1194,7 +1232,7 @@ fn creation_failed(exc: anyhow::Error) -> HttpError {
     if let Some(e) = exc.downcast_ref::<crate::agents_admin::AgentError>() {
         return HttpError::new(400, e.0.clone());
     }
-    if crate::agents_admin::is_os_error(&exc) {
+    if crate::agents_admin::is_os_error(&exc) || crate::agents_admin::too_many(&exc) {
         return exc.into();
     }
     tracing::warn!(target: "bipbridge::guide", error = %tk::head(&exc.to_string(), 200), "agent creation failed");
@@ -1338,12 +1376,16 @@ async fn accept(
     match proposal.get("type").and_then(Value::as_str) {
         Some("team") => {
             // in a task of its own: an app that gives up waiting (several agents take a while) doesn't cut the team
-            // in half; its retry gets the kept answer
+            // in half; past TEAM_ANSWER_WAIT the answer is where it stands (202), the team made on in the background
             let (members, room, group) = (body.members.clone(), body.room, body.group.clone());
-            let work = tokio::spawn(async move {
+            let (card, shared) = (id.clone(), state.config.clone());
+            let mut work = tokio::spawn(async move {
                 crate::guide_team::accept(&state, &id, &from, members, room, group, &lang).await
             });
-            work.await.map_err(|e| HttpError::from(anyhow::Error::from(e)))?
+            match tokio::time::timeout(TEAM_ANSWER_WAIT, &mut work).await {
+                Ok(joined) => joined.map_err(|e| HttpError::from(anyhow::Error::from(e)))?,
+                Err(_) => Ok(web::json_response(202, &crate::guide_team::progress(&shared.get(), &card))),
+            }
         }
         Some("agent") => {
             if !config.hermes.enabled() {
@@ -1381,6 +1423,7 @@ async fn accept(
                 .await
                 .map_err(creation_failed)?
             };
+            note_requested(&state.config(), &agent.name);
             take_proposal(&state.config(), &id)?;
             let config = state.config();
             crate::beta_measures::card_accepted(&config, None, now());
@@ -1413,6 +1456,7 @@ async fn accept(
                 from: Some(from.clone()),
             };
             let (agent, project) = crate::project_agent::create(&state, new).await?;
+            note_requested(&state.config(), &agent.name);
             take_proposal(&state.config(), &id)?;
             let config = state.config();
             Ok(web::json_response(
@@ -1645,6 +1689,29 @@ mod tests {
 
     fn text_of(result: &Dict) -> String {
         result["content"][0]["text"].as_str().unwrap_or_default().to_string()
+    }
+
+    #[test]
+    fn agents_made_from_a_card_are_kept_as_requested_newest_first() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = managed_place(dir.path(), &[("bip", "Bip")]);
+        assert!(load(&config).requested.is_empty());
+        note_requested(&config, "coach");
+        note_requested(&config, "budget");
+        let state = load(&config);
+        assert!(state.requested["coach"] <= state.requested["budget"]);
+        // only the newest are remembered
+        change(&config, |s| {
+            for i in 0..REQUESTED_KEPT {
+                s.requested.insert(format!("old{i}"), i as f64);
+            }
+        })
+        .unwrap();
+        note_requested(&config, "last");
+        let state = load(&config);
+        assert_eq!(state.requested.len(), REQUESTED_KEPT);
+        assert!(state.requested.contains_key("last") && state.requested.contains_key("coach"));
+        assert!(!state.requested.contains_key("old0") && !state.requested.contains_key("old1"));
     }
 
     #[test]

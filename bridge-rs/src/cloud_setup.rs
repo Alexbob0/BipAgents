@@ -1149,6 +1149,7 @@ async fn claim_prepared(
             group: None,
             ..Default::default()
         };
+        crate::agents_admin::check_room(&config.get())?;
         let planned = plan_agent(&config.get(), &body)?;
         let agent = hub_agent(&config.get(), &planned.profile, &planned.name, &crate::py::token_urlsafe(32));
         reserve_agent(config, &agent)?;

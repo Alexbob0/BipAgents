@@ -735,6 +735,34 @@ fn an_earlier_bridge_block_gets_the_rule_about_what_agents_read() {
 }
 
 #[test]
+fn healing_tells_an_agent_whether_its_memory_is_shared() {
+    let dir = tempfile::tempdir().unwrap();
+    let (config, _) = managed_config(dir.path(), "http://127.0.0.1:8642");
+    let agent = hub_agent(&config);
+    let c = config.get();
+    let folder = profiles(dir.path()).join(&agent.name);
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("SOUL.md"), format!("Tu es Vie.\n\n{}\n", souls::language_block(Some("fr")))).unwrap();
+    // in the circle (the Carnet on by default): what it remembers of the person is common, and it knows it
+    heal_souls(&c);
+    let soul = read_soul(&c, &agent).unwrap();
+    assert_eq!(soul.matches(souls::SHARED_MEMORY_RULE).count(), 1, "{soul}");
+    heal_souls(&c);
+    assert_eq!(read_soul(&c, &agent).unwrap(), soul, "once");
+    assert!(!agents_admin::editable_soul(&c, &agent).unwrap().contains(souls::SHARED_MEMORY_START), "never shown");
+    // the health given to it: the variant (what it learns stays its own)
+    bipbridge::health::set_enabled(&c, &agent.name, true).unwrap();
+    heal_souls(&c);
+    let soul = read_soul(&c, &agent).unwrap();
+    assert!(soul.contains(souls::SHARED_MEMORY_HEALTH_RULE) && !soul.contains(souls::SHARED_MEMORY_RULE));
+    // the Carnet off: out of the circle, the block goes
+    bipbridge::notebook::set_enabled(&c, &agent.name, false).unwrap();
+    heal_souls(&c);
+    let soul = read_soul(&c, &agent).unwrap();
+    assert!(!soul.contains(souls::SHARED_MEMORY_START) && soul.starts_with("Tu es Vie.\n\n"), "{soul}");
+}
+
+#[test]
 fn the_agents_model_is_switched_in_its_config() {
     let dir = tempfile::tempdir().unwrap();
     let (config, _) = managed_config(dir.path(), "http://127.0.0.1:8642");
@@ -918,7 +946,7 @@ async fn the_answer_style_is_kept_and_switches_one_paragraph_of_the_soul() {
     assert_eq!(soul().matches(souls::CUSTOM_STYLE_START).count(), 1);
     assert!(soul().contains("« Tutoie-moi,\ndes emojis bipagents ». It is about the form"), "{}", soul());
     assert!(!soul().contains(souls::DETAILED_STYLE_RULE));
-    assert!(soul().contains(&format!("no lists.\n{}", souls::BLOCK_END)));
+    assert!(soul().contains(&format!("no lists. {}\n{}", souls::STYLE_CARD_RULE, souls::BLOCK_END)));
     assert_eq!(patch(json!({"answer_style": "custom", "answer_style_custom": "x".repeat(301)})).await.status, 422);
     assert_eq!(patch(json!({"answer_style": "custom", "answer_style_custom": " \n "})).await.status, 400);
     let odd = patch(json!({"answer_style": "verbose"})).await;
@@ -974,4 +1002,242 @@ async fn the_answer_style_is_kept_and_switches_one_paragraph_of_the_soul() {
     assert_eq!(done.json()["answer_style"]["style"], "detailed");
     assert!(soul().contains(souls::DETAILED_STYLE_RULE) && !soul().contains(souls::BALANCED_STYLE_RULE));
     assert_eq!(app.app.state.config().agents["wellness"].answer_style.as_deref(), Some("detailed"));
+}
+
+/// The place's agents at most (Alex, 2026-10-30, « sans le dire »): 20 on a place of the offer unless its bridge.toml
+/// says otherwise, none on a self-install; only new agents are refused, nothing is told before.
+#[test]
+fn the_place_limit_is_twenty_on_the_offer_only() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = common::config(dir.path(), &Urls::default());
+    assert_eq!(config.place_agents_max, None);
+    assert_eq!(agents_admin::agents_max_on(&config, true), Some(agents_admin::OFFER_AGENTS_MAX));
+    assert_eq!(agents_admin::OFFER_AGENTS_MAX, 20);
+    assert_eq!(agents_admin::agents_max_on(&config, false), None); // a self-install: no limit
+    assert!(agents_admin::room_for_on(&config, 1000, false));
+    config.place_agents_max = Some(0); // written as 0: none, even on the offer
+    assert_eq!(agents_admin::agents_max_on(&config, true), None);
+    config.place_agents_max = Some(3);
+    assert_eq!(
+        (agents_admin::agents_max_on(&config, true), agents_admin::agents_max_on(&config, false)),
+        (Some(3), Some(3))
+    );
+    // every agent the place runs counts (here: wellness)
+    assert_eq!(agents_admin::agents_count(&config), 1);
+    assert!(agents_admin::room_for_on(&config, 2, true) && !agents_admin::room_for_on(&config, 3, true));
+    // at 20 on the offer: the 21st is refused
+    config.place_agents_max = None;
+    for n in 0..19 {
+        let name = format!("a{n}");
+        config.agents.insert(name.clone(), bipbridge::config::AgentConfig { name, ..Default::default() });
+    }
+    assert!(!agents_admin::room_for_on(&config, 1, true) && agents_admin::room_for_on(&config, 1, false));
+}
+
+fn capped(config: &SharedConfig, most: usize) {
+    config.update(|c| c.place_agents_max = Some(most));
+}
+
+#[tokio::test]
+async fn a_new_agent_past_the_limit_is_refused_and_nothing_is_made() {
+    let (hub, _) = fake_gateway().await;
+    let dir = tempfile::tempdir().unwrap();
+    let (config, path) = managed_config(dir.path(), &hub);
+    let (run, commands) = recorder();
+    let http = reqwest::Client::new();
+    let had = config.get().agents.len();
+    capped(&config, had + 1);
+    let body = new_agent(json!({"name": "Coach", "kind": "wellness"}));
+    create_agent(&config, &body, &http, &run).await.unwrap();
+    commands.lock().unwrap().clear();
+    let err =
+        create_agent(&config, &new_agent(json!({"name": "Chef", "kind": "home"})), &http, &run).await.unwrap_err();
+    assert!(agents_admin::too_many(&err), "{err:#}");
+    assert!(commands.lock().unwrap().is_empty(), "no profile made");
+    assert_eq!(config.get().agents.len(), had + 1);
+    assert!(!profiles(dir.path()).join("chef").exists() && !std::fs::read_to_string(&path).unwrap().contains("chef"));
+    // a limit lowered below the agents there: none removed, new ones still refused
+    capped(&config, 1);
+    assert_eq!(config.get().agents.len(), had + 1);
+    assert!(agents_admin::too_many(&create_agent(&config, &body, &http, &run).await.unwrap_err()));
+    // a profile made on the server and claimed: an agent too
+    std::fs::create_dir_all(profiles(dir.path()).join("jardin")).unwrap();
+    std::fs::write(profiles(dir.path()).join("jardin/SOUL.md"), "Tu es Jardin.").unwrap();
+    assert!(agents_admin::too_many(&claim_profile(&config, "jardin", None, &http, &run).await.unwrap_err()));
+    // no limit (0): made again
+    capped(&config, 0);
+    create_agent(&config, &new_agent(json!({"name": "Chef", "kind": "home"})), &http, &run).await.unwrap();
+}
+
+/// Each way an agent is made answers the same plain refusal (409, a code, no number); the model's tools refuse
+/// before any card.
+#[tokio::test]
+async fn every_way_to_make_an_agent_refuses_past_the_limit() {
+    let (hub, _) = fake_gateway().await;
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = common::config(dir.path(), &Urls::default());
+    config.hermes.bin = "/opt/hermes".into();
+    config.hermes.hub_url = hub.clone();
+    config.hermes.home = dir.path().join(".hermes").to_string_lossy().into_owned();
+    let mut wellness = config.agents["wellness"].clone();
+    wellness.hermes_url = format!("{hub}/p/wellness");
+    wellness.host_home = Some(dir.path().to_string_lossy().into_owned());
+    config.agents.insert("wellness".into(), wellness);
+    config.place_agents_max = Some(1); // wellness is there: full
+    let app = TestApp::new(config);
+    let (k, v) = auth();
+    let h = [(k, v.as_str())];
+    let refused = json!({"detail": {"code": agents_admin::TOO_MANY_AGENTS}});
+    std::fs::create_dir_all(profiles(dir.path()).join("jardin")).unwrap();
+    std::fs::write(profiles(dir.path()).join("jardin/SOUL.md"), "Tu es Jardin.").unwrap();
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64();
+    let in_ten_days = now + 10.0 * 86400.0;
+    let routes: [(&str, Value); 5] = [
+        ("/v1/agents", json!({"name": "Chef", "kind": "home"})),
+        ("/v1/agents/claim", json!({"id": "jardin"})),
+        ("/v1/project-agents", json!({"name": "Voyage", "summary": "Le voyage à Rome", "ends": in_ten_days})),
+        ("/v1/family-agent", json!({"name": "Famille"})),
+        ("/v1/assistant-import/apply", json!({"agent": "", "name": "Grok", "soul": "Tu aides.", "source": "Grok"})),
+    ];
+    for (path, body) in routes {
+        let got = app.send_json("POST", path, &h, &body).await;
+        assert_eq!((got.status.as_u16(), got.json()), (409, refused.clone()), "{path}: {}", got.text());
+    }
+    assert_eq!(app.app.state.config().agents.len(), 1);
+
+    // the model's tools: an error for it, and no card
+    let c = app.app.state.config();
+    let agent = c.agents["wellness"].clone();
+    bipbridge::guide::change(&c, |s| s.guide = Some("wellness".into())).unwrap();
+    let args = |v: Value| v.as_object().unwrap().clone();
+    let member = |name: &str| {
+        json!({"name": name, "kind": "work", "role": "Suit les ventes", "brief": "Le plan vise 200 abonnés.",
+               "actions": ["Lister les prospects", "Préparer un mail"]})
+    };
+    let team = json!({"subject": "Plan", "agents": [member("Ventes"), member("Compta")]});
+    let coach = json!({"kind": "wellness", "name": "Coach", "role": "Suit mes séances"});
+    let project = json!({"name": "Voyage", "summary": "Rome en mai"});
+    for (tool, given) in [
+        (bipbridge::guide::PROPOSE_AGENT, coach.clone()),
+        (bipbridge::guide_team::PROPOSE_TEAM, team.clone()),
+        (bipbridge::guide::CREATE_PROJECT, project.clone()),
+    ] {
+        let result = bipbridge::guide::call(&c, &agent, tool, &args(given)).unwrap();
+        assert_eq!(result["isError"], true, "{tool}");
+        assert_eq!(result["content"][0]["text"], agents_admin::TOO_MANY_AGENTS_TOOL, "{tool}");
+    }
+    assert!(bipbridge::guide::load(&c).proposals.is_empty(), "no card past the limit");
+
+    // cards made while there was room, tapped once the place is full: refused, the cards kept
+    app.app.state.config.update(|c| c.place_agents_max = Some(3));
+    let c = app.app.state.config();
+    for (tool, given) in [
+        (bipbridge::guide::PROPOSE_AGENT, coach),
+        (bipbridge::guide_team::PROPOSE_TEAM, team),
+        (bipbridge::guide::CREATE_PROJECT, project),
+    ] {
+        let result = bipbridge::guide::call(&c, &agent, tool, &args(given)).unwrap();
+        assert_eq!(result["isError"], false, "{tool}: {result:?}");
+    }
+    app.app.state.config.update(|c| c.place_agents_max = Some(1));
+    let cards = bipbridge::guide::load(&app.app.state.config()).proposals;
+    assert_eq!(cards.len(), 3);
+    for card in &cards {
+        let id = card["id"].as_str().unwrap();
+        let got = app.request("POST", &format!("/v1/guide/proposals/{id}/accept"), &h, None).await;
+        assert_eq!((got.status.as_u16(), got.json()), (409, refused.clone()), "{}: {}", card["type"], got.text());
+    }
+    assert_eq!(bipbridge::guide::load(&app.app.state.config()).proposals.len(), 3);
+    assert_eq!(app.app.state.config().agents.len(), 1);
+}
+
+/// A hub's gateway that serves a new profile only `pickup` after its first poll (the real one picks new profiles up
+/// within 30 s).
+async fn slow_gateway(pickup: std::time::Duration) -> String {
+    let seen: Arc<Mutex<BTreeMap<String, std::time::Instant>>> = Arc::default();
+    common::spawn_fake(Router::new().fallback(any(move |request: Request| {
+        let seen = seen.clone();
+        async move {
+            let path = request.uri().path().to_string();
+            let profile = path.split('/').nth(2).unwrap_or("").to_string();
+            let first = *seen.lock().unwrap().entry(profile).or_insert_with(std::time::Instant::now);
+            if first.elapsed() < pickup {
+                return (axum::http::StatusCode::NOT_FOUND, axum::Json(json!({})));
+            }
+            if path.ends_with("/api/sessions") {
+                return (axum::http::StatusCode::CREATED, axum::Json(json!({"id": "api_1", "title": "Bot Chat"})));
+            }
+            (axum::http::StatusCode::OK, axum::Json(json!({"runs": true})))
+        }
+    })))
+    .await
+}
+
+static SLOW_RUNS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// A `run` whose every `hermes` command takes `command` (the CLI's start-up).
+fn slow_run(command: std::time::Duration) -> Run {
+    Arc::new(move |_args: Vec<String>, _env: BTreeMap<String, String>| {
+        SLOW_RUNS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        Box::pin(async move {
+            tokio::time::sleep(command).await;
+            Ok(String::new())
+        })
+    })
+}
+
+#[tokio::test]
+async fn a_team_is_made_as_one_batch() {
+    // 2026-10-30: a 6-agent team made one agent after the other took minutes, past the app's wait. Scaled down: the
+    // gateway serves a profile 1.2 s after its first poll (up to 30 s for real), each `hermes` command takes 40 ms.
+    use std::time::{Duration, Instant};
+    let team: Vec<NewAgent> = ["Courses", "Jardin", "Budget", "Sport", "Voyages", "Devoirs"]
+        .iter()
+        .map(|n| new_agent(json!({"name": n, "kind": "daily", "lang": "en"})))
+        .collect();
+    let http = reqwest::Client::new();
+    let (pickup, command) = (Duration::from_millis(1200), Duration::from_millis(40));
+
+    let dir = tempfile::tempdir().unwrap();
+    let (config, _) = managed_config(dir.path(), &slow_gateway(pickup).await);
+    let started = Instant::now();
+    for body in &team[..3] {
+        create_agent(&config, body, &http, &slow_run(command)).await.unwrap();
+    }
+    let three_one_by_one = started.elapsed();
+    for body in &team[3..] {
+        create_agent(&config, body, &http, &slow_run(command)).await.unwrap();
+    }
+    let one_by_one = started.elapsed();
+
+    let dir = tempfile::tempdir().unwrap();
+    let (config, path) = managed_config(dir.path(), &slow_gateway(pickup).await);
+    let started = Instant::now();
+    let made = agents_admin::create_agents(&config, &team[..3], &http, &slow_run(command)).await;
+    let three_batch = started.elapsed();
+    assert!(made.iter().all(Result::is_ok));
+    let made = agents_admin::create_agents(&config, &team[3..], &http, &slow_run(command)).await;
+    assert!(made.iter().all(Result::is_ok));
+    let dir6 = tempfile::tempdir().unwrap();
+    let (config6, path6) = managed_config(dir6.path(), &slow_gateway(pickup).await);
+    let started6 = Instant::now();
+    let made6 = agents_admin::create_agents(&config6, &team, &http, &slow_run(command)).await;
+    let batch = started6.elapsed();
+    eprintln!(
+        "team timing: 3 agents one by one {three_one_by_one:?}, as one batch {three_batch:?}; \
+         6 agents one by one {one_by_one:?}, as one batch {batch:?}; {} commands in all",
+        SLOW_RUNS.load(std::sync::atomic::Ordering::Relaxed)
+    );
+    let names: Vec<String> = made6.into_iter().map(|r| r.unwrap().name).collect();
+    assert_eq!(names, ["courses", "jardin", "budget", "sport", "voyages", "devoirs"]);
+    let kept = reread(&path6);
+    assert!(names.iter().all(|n| kept.agent(Some(n)).is_some()), "all six in the bridge's config");
+    assert!(reread(&path).agent(Some("devoirs")).is_some());
+    assert!(one_by_one >= pickup * 6);
+    assert!(batch * 3 < one_by_one * 2, "the gateway's pick-ups waited for side by side: {batch:?}");
+    // the same name twice in one batch: two distinct profiles
+    let twice = [new_agent(json!({"name": "Léo", "kind": "daily"})), new_agent(json!({"name": "Léo", "kind": "home"}))];
+    let made = agents_admin::create_agents(&config6, &twice, &http, &slow_run(Duration::ZERO)).await;
+    let ids: Vec<String> = made.iter().map(|r| r.as_ref().map(|a| a.name.clone()).unwrap_or_default()).collect();
+    assert!(!ids[0].is_empty() && ids[0] != ids[1], "{ids:?}");
 }

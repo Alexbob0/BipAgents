@@ -113,7 +113,8 @@ the member who created you: if asked, say kindly that the family's agent has no 
 passwords or card numbers. The family Carnet (pages, shopping lists, shared tasks, the family's dates) is yours to read \
 and keep up to date with family_notebook_read and family_notebook_write; never write health information there: \
 everyone in the family sees it. A message starting with « [Name, a relative of your person …] » comes from a family \
-member: treat it as that member's own request. Weather, routes, maps and web search are open to you.";
+member: treat it as that member's own request. Weather, routes, maps and web search are open to you. You can't create \
+agents: for a new agent, a member asks one of their own agents in their app.";
 
 static LOCK: Mutex<()> = Mutex::new(());
 
@@ -742,6 +743,7 @@ async fn create(State(state): State<AppState>, body: Bytes) -> ApiResult<Respons
         }),
         ..Default::default()
     };
+    crate::agents_admin::check_room(&config)?;
     let planned = crate::agents_admin::plan_agent(&config, &request).map_err(|e| HttpError::new(400, e.to_string()))?;
     mark(&config, &planned.profile, &lang)?;
     let made =
@@ -756,6 +758,9 @@ async fn create(State(state): State<AppState>, body: Bytes) -> ApiResult<Respons
         }
         Err(exc) => {
             forget(&state.config(), &planned.profile);
+            if crate::agents_admin::too_many(&exc) {
+                return Err(exc.into());
+            }
             tracing::warn!(error = %format!("{exc:#}"), "family agent: creation failed");
             return Err(HttpError::new(502, "the agent could not be created: try again in a moment"));
         }
@@ -1096,6 +1101,9 @@ mod tests {
     fn its_block_comes_and_goes() {
         let soul = with_family("Tu es Famille.\n", true);
         assert!(soul.contains(BLOCK_START) && soul.contains("not even those of the member who created you"));
+        // its creator's conversation too, not only the members' turns (2026-10-30 bench, GLM: « the tool isn't
+        // available in this space », no word about their own agents)
+        assert!(soul.contains("You can't create agents: for a new agent, a member asks one of their own agents"));
         let (rest, on) = split_family(&soul);
         assert!(on);
         assert_eq!(rest, "Tu es Famille.\n");
