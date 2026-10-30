@@ -429,7 +429,7 @@ impl Briefs {
         }
         let mut parts = vec![
             "This is a voice call with the person. It continues the conversation summed up below: speak as in that \
-             conversation, briefly, as one does on the phone."
+             conversation, briefly, as one does on the phone: short spoken sentences, no lists."
                 .to_string(),
         ];
         if let Some(points) = state.get("points").filter(|v| py::truthy(v)) {
