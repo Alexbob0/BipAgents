@@ -50,10 +50,14 @@ grep -q "^$user:" /etc/subuid || usermod --add-subuids "$first-$((first + 65535)
 chown "$user:$user" "$setup"
 chmod 600 "$setup"
 ufw allow "$port/tcp" >/dev/null
+# Its own disk of 5 GB (an ext4 image mounted at its home, seat-agent.py --own-disk): all it writes stays in it, and
+# what it sees of the disk is that size. If it can't be made, the place installs on the server's disk as before (the
+# seat agent then watches it with a hard line).
+[ -f "$here/seat-agent.py" ] && python3 "$here/seat-agent.py" --own-disk "$n" >> /var/log/bipagents-disk.log 2>&1
 # Its services run when nobody is logged in.
 loginctl enable-linger "$user"
 systemctl start "user@$(id -u "$user").service"
-# Its soft memory ceiling (MemoryHigh on its slice, a share of the server's memory) before its install's heavy steps;
+# Its share of the server (its slice: MemoryHigh, a last-resort MemoryMax, CPUWeight, TasksMax) before its heavy steps;
 # the seat agent keeps it set every two minutes after.
 [ -f "$here/seat-agent.py" ] && python3 "$here/seat-agent.py" --ceiling >/dev/null 2>&1
 # Hermes and the agents' images of the version it installs, ready-made and shared by the server's places (usually

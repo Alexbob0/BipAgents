@@ -29,9 +29,10 @@ update, user-data.yaml), it only tells the guichet the server is rebooting when 
 then waits a quarter of an hour before taking its silence, or its places not answering yet, for an outage. The beat
 says how long the server has been up for the same reason.
 
-It also keeps each place's memory soft-capped (MemoryHigh on its user slice, never a hard limit: below), samples
-each place's memory every 15 s between beats (--sample, bipagents-memory.timer, which it sets up), and sets up zram
-on a server that has none.
+It also keeps each place's memory and CPU soft-capped (its user slice's MemoryHigh and CPUWeight, a MemoryMax only as a
+last-resort safety: below), gives each place a disk of its own of 5 GB and watches it (below), samples each place's
+memory every 15 s between beats (--sample, bipagents-memory.timer, which it sets up), and sets up zram on a server
+that has none.
 
 ASCII only, like user-data.yaml and add-seat.sh (installer/tests/test_cloud_init.py checks it).
 """
@@ -138,6 +139,7 @@ def wipe(user):
     run("systemctl", "stop", "user@%d.service" % uid)
     run("pkill", "-KILL", "-u", user)
     time.sleep(2)
+    drop_disk(user)
     run("userdel", "--remove", "--force", user)
     for path in ("/etc/subuid", "/etc/subgid"):
         try:
@@ -209,6 +211,34 @@ def prepare_shared(commit):
     log("shared images for %s: %s" % (commit[:12], "ready" if done.returncode == 0 else "not all pulled"))
 
 
+TOOLS = ("seat-agent.py", "add-seat.sh", "place-move.py")
+
+
+def refresh_tools(repo=SHARED_REPO, lib=LIB):
+    """This agent and the seat scripts taken from root's checkout once it is at the version the guichet's wave pins
+    (`prepare_shared`): servers installed before get the new ones with their next update, as their places do. Root
+    already runs that checkout's own code (shared_hermes build), so nothing new is trusted. The new agent runs from
+    the next round."""
+    for name in TOOLS:
+        source, target = os.path.join(repo, "installer", "cloud", name), os.path.join(lib, name)
+        try:
+            with open(source, "rb") as fh:
+                new = fh.read()
+        except OSError:
+            continue
+        try:
+            with open(target, "rb") as fh:
+                if fh.read() == new:
+                    continue
+        except OSError:
+            pass
+        with open(target + ".tmp", "wb") as fh:
+            fh.write(new)
+        os.chmod(target + ".tmp", 0o755)
+        os.replace(target + ".tmp", target)
+        log("%s taken from BipAgents' checkout" % name)
+
+
 def shared_gc():
     """The shared versions no place points at and no process runs any more, deleted."""
     if not shared_on() or not os.path.isdir(os.path.join(SHARED_REPO, "installer")):
@@ -229,6 +259,12 @@ def update(number, commit):
         prepare_shared(commit)
     except (OSError, subprocess.SubprocessError) as exc:
         log("shared Hermes for %s not built: %s" % (commit[:12], exc))
+    refresh_tools()
+    # a place installed before its own disk existed moves into one now (its services restart for the update anyway)
+    try:
+        own_disk(user, read_json(SETTINGS))
+    except OSError as exc:
+        log("place %d: own disk not made: %s" % (number, exc))
     log("place %d (%s): BipAgents %s" % (number, user, commit[:12]))
     with open("/var/log/bipagents-update%d.log" % number, "a") as out:
         subprocess.run(["sudo", "-iu", user, "env", "XDG_RUNTIME_DIR=/run/user/%d" % uid,
@@ -480,20 +516,36 @@ def health():
     return seats
 
 
-# -- memory: each place's soft ceiling, compressed swap, and what each place holds ------------------------------------
+# -- memory and CPU: each place's soft share, compressed swap, and what each place holds -------------------------------
 #
-# A place is one account; systemd keeps all its processes in user-<uid>.slice (its Hermes, its bridge, its rootless
-# podman containers, the agents' browsers among them). Its MemoryHigh (never MemoryMax: nothing is ever killed or
-# refused) is a share of the server's memory, 35 % unless the guichet sends another (`memory_high_share` in the beat's
-# answer): above it the kernel reclaims that place's own memory first (into zram) and slows its allocations, so a place
-# opening four or five browsers at once slows itself, not its neighbours. Set with systemctl set-property: a drop-in
-# in /etc/systemd/system.control that survives reboots.
+# A place is one account; systemd keeps all its processes in user-<uid>.slice: its bridge and Hermes (user services
+# under user@<uid>.service), its rootless podman containers (the agents' sandboxes and browsers: podman's systemd
+# cgroup manager puts them under user@<uid>.service too, through the user bus dbus-user-session gives) and whatever
+# its agents start in their terminals (inside those containers). Each slice gets (`limits`), with systemctl
+# set-property (a drop-in in /etc/systemd/system.control that survives reboots), set again when one differs:
+# - MemoryHigh: its share of the server's memory, 80 % of it divided among the server's places, never under
+#   PLACE_FLOOR_MB (about 320 MB a person measured, plus an agent's browser), or the share the guichet sends
+#   (`memory_high_share` in the beat's answer). Above it the kernel reclaims that place's own memory first (into zram)
+#   and slows its allocations, so a place opening four or five browsers at once slows itself, not its neighbours.
+#   Nothing is killed or refused there (Alex, 2026-10-21: no limits that block people).
+# - MemoryMax: only a last-resort safety well above it (1.5x, at least 1 GB more, never above the memory less the
+#   system's part), so that one place can't run the whole server out of memory; swap still comes first.
+# - CPUWeight 100, the same for every place (an equal share when the processors are busy, all of them when not), and
+#   TasksMax 8192 (a runaway fork stays in its place; a browser or Node takes a few hundred threads).
+# The agents are never told numbers (Alex, 2026-10-30): their souls only say that big toolchains don't fit
+# (bridge-rs/src/souls.rs, SERVER_RULE). A place still reads the server's total memory in /proc/meminfo, as any
+# Linux account does; its own ceiling shows only in its slice (memory.high).
 
 CGROUP_USERS = "/sys/fs/cgroup/user.slice"
 SETTINGS = "/var/lib/bipagents/settings.json"   # what the guichet's beat answer set (`settings`)
 SAMPLES = "/run/bipagents/memory.json"           # each place's highest memory since the last beat (--sample)
 ZRAM_TRIED = "/var/lib/bipagents/zram-tried"
-MEMORY_HIGH_SHARE = 0.35
+MEMORY_FOR_PLACES = 0.8      # of the server's memory, shared among its places (MemoryHigh)
+PLACE_FLOOR_MB = 768         # never less a place: ~320 MB a person (measured 2026-10-19) and an agent's browser
+SYSTEM_MB = 384              # the system's own part (sshd, journald, this agent): never in a place's MemoryMax
+MEMORY_MAX_FACTOR = 1.5
+CPU_WEIGHT = 100
+TASKS_MAX = 8192
 MB = 1024 * 1024
 # The same text as user-data.yaml's (installer/tests/test_cloud_init.py): half the memory, zstd, before the disk swap.
 ZRAM_CONF = "[zram0]\nzram-size = ram / 2\ncompression-algorithm = zstd\nswap-priority = 100\n"
@@ -540,13 +592,17 @@ def good_share(value):
 def keep_settings(answer, path=None):
     """The settings in the guichet's answer, kept when they are ones this agent knows and within reason."""
     settings = answer.get("settings") if isinstance(answer, dict) else None
-    if not isinstance(settings, dict) or not good_share(settings.get("memory_high_share")):
+    if not isinstance(settings, dict):
         return
     path = path or SETTINGS
     kept = read_json(path)
-    if kept.get("memory_high_share") != float(settings["memory_high_share"]):
-        kept["memory_high_share"] = float(settings["memory_high_share"])
-        write_json(path, kept)
+    changed = dict(kept)
+    if good_share(settings.get("memory_high_share")):
+        changed["memory_high_share"] = float(settings["memory_high_share"])
+    if "place_disk_gib" in settings and disk_gib(settings) == settings["place_disk_gib"]:
+        changed["place_disk_gib"] = settings["place_disk_gib"]
+    if changed != kept:
+        write_json(path, changed)
 
 
 def write_credit(path, value, uid, gid, home):
@@ -625,23 +681,48 @@ def slice_file(uid, name, root=CGROUP_USERS):
         return None
 
 
-def ceiling_mb(memory_mb, settings):
+def limits(memory_mb, count, settings):
+    """A place's slice settings on a server with `memory_mb` of memory and `count` places: MemoryHigh and MemoryMax in
+    MB, CPUWeight, TasksMax."""
     share = settings.get("memory_high_share")
-    return int(memory_mb * (share if good_share(share) else MEMORY_HIGH_SHARE))
+    if good_share(share):
+        high = int(memory_mb * share)
+    else:
+        high = max(PLACE_FLOOR_MB, int(memory_mb * MEMORY_FOR_PLACES / max(1, count)))
+    top = max(high, memory_mb - SYSTEM_MB)
+    return {"MemoryHigh": high, "MemoryMax": min(max(int(high * MEMORY_MAX_FACTOR), high + 1024), top),
+            "CPUWeight": CPU_WEIGHT, "TasksMax": TASKS_MAX}
+
+
+def ceiling_mb(memory_mb, settings, count=1):
+    return limits(memory_mb, count, settings)["MemoryHigh"]
+
+
+def slice_now(uid, root=CGROUP_USERS):
+    """The slice's settings as the kernel has them, in the units of `limits` (None: not set, "max")."""
+    def mb(value):
+        return None if value is None else value // MB
+    return {"MemoryHigh": mb(slice_file(uid, "memory.high", root)), "MemoryMax": mb(slice_file(uid, "memory.max", root)),
+            "CPUWeight": slice_file(uid, "cpu.weight", root), "TasksMax": slice_file(uid, "pids.max", root)}
 
 
 def ceiling(memory_mb, settings, root=CGROUP_USERS, setter=None):
-    """Each running place's slice gets its MemoryHigh when it has another one (a place started, the share changed)."""
+    """Each running place's slice gets its limits when one of them differs (a place started or left, the share
+    changed)."""
     if not memory_mb:
         return
-    high = ceiling_mb(memory_mb, settings)
-    for number, uid in places().items():
+    found = places()
+    wanted = limits(memory_mb, len(found), settings)
+    for number, uid in found.items():
         if not os.path.isdir(os.path.join(root, "user-%d.slice" % uid)):
             continue
-        if slice_file(uid, "memory.high", root) == high * MB:
+        if slice_now(uid, root) == wanted:
             continue
-        log("place %s: memory ceiling %d MB" % (number, high))
-        (setter or run)("systemctl", "set-property", "user-%d.slice" % uid, "MemoryHigh=%dM" % high)
+        log("place %s: memory %d MB (at most %d MB), CPU weight %d" % (number, wanted["MemoryHigh"],
+                                                                        wanted["MemoryMax"], wanted["CPUWeight"]))
+        (setter or run)("systemctl", "set-property", "user-%d.slice" % uid, "MemoryHigh=%dM" % wanted["MemoryHigh"],
+                        "MemoryMax=%dM" % wanted["MemoryMax"], "CPUWeight=%d" % wanted["CPUWeight"],
+                        "TasksMax=%d" % wanted["TasksMax"])
 
 
 def sample(root=CGROUP_USERS, path=SAMPLES):
@@ -678,6 +759,273 @@ def places_memory(root=CGROUP_USERS, path=SAMPLES):
     except OSError:
         pass
     return out
+
+
+# -- disk: each place on a disk of its own (5 GB), watched ------------------------------------------------------------
+#
+# Alex, 2026-10-30: "5 Go par personne max", and the place sees that size, not the server's disk. Each place's home is
+# a filesystem of its own: an ext4 image of PLACE_DISK_GIB (5 GiB, or `place_disk_gib` in the guichet's settings),
+# sparse, at /var/lib/bipagents/places/<account>.img (on the server it takes only what the place wrote, given back as
+# it deletes: mounted with discard), loop-mounted at /home/<account> by a mount unit at every boot, before the
+# account's services (a drop-in on user@<uid>.service: RequiresMountsFor). Everything the place writes is in it: its
+# bridge's and Hermes' data, its podman storage (its containers' layers: what an agent installs in its sandbox), its
+# browsers' profiles, its encrypted space (gocryptfs keeps its files in the home). So `df` in the place, in its
+# terminal or its containers says 5 GB, and a place that fills it gets "no space left" inside it only, never the
+# server. No blocks kept for root (-m 0), one inode every 8 KB (node_modules, venvs), nosuid and nodev.
+# A new place gets its disk before its install (add-seat.sh; user-data.yaml for place 1: --own-disk). A place
+# installed before moves into one when the guichet next updates it (`update`, so the update waves pace it): its
+# services stop for the copy (a minute or two), its old home is kept aside OLD_HOME_DAYS, then removed. A place whose
+# files don't fit, or whose copy fails, stays as it was (logged; the beat says "own_disk": false) and is watched below
+# with a hard line instead.
+#
+# Every DISK_EVERY (`disk_watch`), each place's use: its own filesystem's (statvfs, nothing walked), else du -sx of its
+# home against the same 5 GB. From 80 % "low": its bridge tells its agents once (a short note: clean up or ask for
+# room); from 95 % "full": the beat says so and the guichet alerts Kerfy once (watch.rs), and for a place without its
+# own disk only, its bridge pauses its agents' workspaces (never deleting anything) until it is back under 90 %.
+# Written for its bridge at ~/.local/state/bipagents/disk.json (bridge-rs/src/storage_watch.rs), which ignores it after
+# 30 minutes (a stopped seat agent never keeps a place paused). The server as a whole: the guichet's own alert under
+# 10 % free and its placement rules (weights.rs, grow_disk_gb) already count it; the images being sparse, 5 GB a
+# place is what a place may take, not what it takes.
+
+PLACES_DISKS = "/var/lib/bipagents/places"
+PLACE_DISK_GIB = 5
+GIB = 1024 * 1024 * 1024
+DISK_STATE = "/var/lib/bipagents/disk.json"            # each place's last measure and level (root's)
+PLACE_DISK_FILE = ".local/state/bipagents/disk.json"   # what its bridge reads
+DISK_EVERY = 300
+DISK_LOW, DISK_FULL = 0.80, 0.95
+DISK_LOW_BACK, DISK_FULL_BACK = 0.75, 0.90            # left only below these (no flapping)
+OLD_HOME_DAYS = 7
+MOUNT_UNIT = """[Unit]
+Description=BipAgents: the own disk of the place %(user)s
+Before=user@%(uid)d.service
+
+[Mount]
+What=%(image)s
+Where=%(home)s
+Type=ext4
+Options=loop,discard,nosuid,nodev
+
+[Install]
+WantedBy=local-fs.target
+"""
+USER_DROP_IN = "[Unit]\nRequiresMountsFor=%s\n"
+
+
+def disk_gib(settings):
+    size = settings.get("place_disk_gib")
+    return size if isinstance(size, int) and not isinstance(size, bool) and 1 <= size <= 100 else PLACE_DISK_GIB
+
+
+def mount_unit(home):
+    """The mount unit's name for a home: /home/bip2 -> home-bip2.mount (the accounts' names need no escaping)."""
+    return home.strip("/").replace("/", "-") + ".mount"
+
+
+def mounted_at(path, mountinfo="/proc/self/mountinfo"):
+    """What is mounted at `path` or under it (the mount points), in the order of mountinfo."""
+    path = os.path.normpath(path)
+    found = []
+    try:
+        with open(mountinfo) as fh:
+            for line in fh:
+                fields = line.split()
+                if len(fields) > 4:
+                    point = fields[4].replace("\\040", " ")
+                    if point == path or point.startswith(path + "/"):
+                        found.append(point)
+    except OSError:
+        pass
+    return found
+
+
+def du_bytes(path, runner=None):
+    """The space the files under `path` take on its filesystem (du -sx), 0 when it can't be told."""
+    try:
+        out = (runner or subprocess.run)(["nice", "-n", "19", "du", "-sxk", path], capture_output=True, text=True,
+                                         timeout=900).stdout
+        return int(out.split()[0]) * 1024
+    except (OSError, subprocess.SubprocessError, ValueError, IndexError):
+        return 0
+
+
+def own_disk(user, settings=None, folder=PLACES_DISKS, units="/etc/systemd/system", mountinfo="/proc/self/mountinfo",
+             runner=None, du=None, now=None, staging_root="/run/bipagents"):
+    """The place `user` on a disk of its own (above): made, its files copied in when it had some, mounted at its home
+    and at every boot. True when its home is its own disk (now or before); False when it stays as it was."""
+    runner = runner or quietly
+    try:
+        entry = pwd.getpwnam(user)
+    except KeyError:
+        return False
+    home, uid, gid = entry.pw_dir, entry.pw_uid, entry.pw_gid
+    if home in mounted_at(home, mountinfo):
+        return True
+    size = disk_gib(settings or {}) * GIB
+    used = (du or du_bytes)(home)
+    if used > 0.9 * size:
+        log("place %s: its files (%d MB) don't fit a disk of its own (%d MB): left as it is" % (user, used // MB,
+                                                                                              size // MB))
+        return False
+    os.makedirs(folder, mode=0o700, exist_ok=True)
+    image = os.path.join(folder, user + ".img")
+    stamp = int(time.time() if now is None else now)
+    if not os.path.exists(image):
+        with open(image, "wb") as fh:
+            fh.truncate(size)   # sparse: nothing taken yet
+        os.chmod(image, 0o600)
+        if runner("mkfs.ext4", "-q", "-F", "-m", "0", "-i", "8192", "-E", "root_owner=%d:%d" % (uid, gid),
+                  image) != 0:
+            log("place %s: its own disk not made (mkfs)" % user)
+            os.unlink(image)
+            return False
+    # Its services stop while its files are copied (none run yet for a new place): nothing writes meanwhile.
+    runner("systemctl", "stop", "user@%d.service" % uid)
+    runner("pkill", "-KILL", "-u", user)
+    for point in reversed(mounted_at(home, mountinfo)):   # its encrypted space, its containers' layers
+        runner("umount", "-l", point)
+    staging = os.path.join(staging_root, "disk-" + user)
+    os.makedirs(staging, exist_ok=True)
+    copied = runner("mount", "-o", "loop,nosuid,nodev", image, staging) == 0 \
+        and runner("cp", "-a", "--sparse=always", home + "/.", staging + "/") == 0
+    runner("umount", staging)
+    old = os.path.join(folder, "%s.before-%d" % (user, stamp))
+    if copied:
+        try:
+            os.rename(home, old)
+        except OSError:
+            copied = False
+    if not copied:
+        log("place %s: its files not copied to its own disk: left as it is" % user)
+        os.unlink(image)
+        runner("systemctl", "start", "user@%d.service" % uid)
+        return False
+    os.mkdir(home, 0o700)
+    os.chown(home, uid, gid)
+    unit = mount_unit(home)
+    with open(os.path.join(units, unit), "w") as fh:
+        fh.write(MOUNT_UNIT % {"user": user, "uid": uid, "image": image, "home": home})
+    drop_in = os.path.join(units, "user@%d.service.d" % uid)
+    os.makedirs(drop_in, exist_ok=True)
+    with open(os.path.join(drop_in, "50-bipagents-disk.conf"), "w") as fh:
+        fh.write(USER_DROP_IN % home)
+    runner("systemctl", "daemon-reload")
+    if runner("systemctl", "enable", "--now", unit) != 0 or home not in mounted_at(home, mountinfo):
+        log("place %s: its own disk not mounted: its files back where they were" % user)
+        runner("systemctl", "disable", unit)
+        for path in (os.path.join(units, unit), os.path.join(drop_in, "50-bipagents-disk.conf")):
+            with contextlib.suppress(OSError):
+                os.unlink(path)
+        runner("systemctl", "daemon-reload")
+        os.rmdir(home)
+        os.rename(old, home)
+        os.unlink(image)
+        runner("systemctl", "start", "user@%d.service" % uid)
+        return False
+    if os.path.exists("/var/lib/systemd/linger/" + user):
+        runner("systemctl", "start", "user@%d.service" % uid)
+    log("place %s: on its own disk (%d GB), its old home kept until %s" % (user, size // GIB,
+                                                                          iso(stamp + OLD_HOME_DAYS * 86400)))
+    return True
+
+
+def drop_disk(user, folder=PLACES_DISKS, units="/etc/systemd/system", runner=None):
+    """The place's own disk goes with its account (`wipe`): unmounted, its units and its image removed."""
+    runner = runner or quietly
+    try:
+        entry = pwd.getpwnam(user)
+    except KeyError:
+        return
+    unit = mount_unit(entry.pw_dir)
+    runner("systemctl", "disable", "--now", unit)
+    for path in (os.path.join(units, unit), os.path.join(units, "user@%d.service.d" % entry.pw_uid,
+                                                          "50-bipagents-disk.conf"),
+                 os.path.join(folder, user + ".img")):
+        with contextlib.suppress(OSError):
+            os.unlink(path)
+    runner("systemctl", "daemon-reload")
+
+
+def old_homes(folder=PLACES_DISKS, now=None):
+    """The homes kept aside by a move to an own disk, removed after OLD_HOME_DAYS."""
+    now = time.time() if now is None else now
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        return
+    for name in names:
+        stamp = name.rpartition(".before-")[2]
+        if ".before-" in name and stamp.isdigit() and now - int(stamp) > OLD_HOME_DAYS * 86400:
+            shutil.rmtree(os.path.join(folder, name), ignore_errors=True)
+            log("old home %s removed" % name)
+
+
+def disk_level(used, size, before):
+    """ok, low or full for `used` of `size`, leaving a level only once clearly under it."""
+    ratio = used / size if size else 0.0
+    if ratio >= DISK_FULL or (before == "full" and ratio >= DISK_FULL_BACK):
+        return "full"
+    if ratio >= DISK_LOW or (before in ("low", "full") and ratio >= DISK_LOW_BACK):
+        return "low"
+    return "ok"
+
+
+def place_homes():
+    """number -> (home, uid, gid) of each place's account."""
+    homes = {}
+    for number in range(1, MAX_SEATS + 1):
+        try:
+            entry = pwd.getpwnam(account(number))
+        except KeyError:
+            continue
+        homes[str(number)] = (entry.pw_dir, entry.pw_uid, entry.pw_gid)
+    return homes
+
+
+def disk_watch(settings, now=None, homes=None, path=DISK_STATE, mountinfo="/proc/self/mountinfo", statvfs=None,
+               du=None):
+    """Each place's disk, measured every DISK_EVERY (above): its level written for its bridge, and for the beat
+    {number: {disk_mb, disk_size_mb, disk, own_disk}}. A place entering "full" is logged once."""
+    now = time.time() if now is None else now
+    kept = read_json(path)
+    if now - (kept.get("at") or 0) < DISK_EVERY and isinstance(kept.get("places"), dict):
+        return kept["places"]
+    before = kept.get("places") if isinstance(kept.get("places"), dict) else {}
+    out = {}
+    for number, (home, uid, gid) in sorted((homes if homes is not None else place_homes()).items()):
+        own = home in mounted_at(home, mountinfo)
+        if own:
+            fs = (statvfs or os.statvfs)(home)
+            size = fs.f_blocks * fs.f_frsize
+            used = size - fs.f_bfree * fs.f_frsize
+        else:
+            size, used = disk_gib(settings) * GIB, (du or du_bytes)(home)
+        was = (before.get(number) or {}).get("disk")
+        level = disk_level(used, size, was)
+        pause = level == "full" and not own
+        if level == "full" and was != "full":
+            log("place %s: disk full (%d of %d MB)%s" % (number, used // MB, size // MB,
+                                                         ", its agents' workspaces paused" if pause else ""))
+        elif level != "full" and was == "full":
+            log("place %s: room on its disk again" % number)
+        try:
+            write_credit(os.path.join(home, PLACE_DISK_FILE), {"state": level, "pause": pause, "at": int(now)},
+                         uid, gid, home)
+        except OSError as exc:
+            log("place %s: disk state not written: %s" % (number, exc))
+        out[number] = {"disk_mb": used // MB, "disk_size_mb": size // MB, "disk": level, "own_disk": own}
+    try:
+        write_json(path, {"at": now, "places": out})
+    except OSError as exc:
+        log("disk state not kept: %s" % exc)
+    return out
+
+
+def with_disk(places_now, disk):
+    """The beat's places with each one's disk."""
+    for number, entry in disk.items():
+        places_now.setdefault(number, {}).update(entry)
+    return places_now
 
 
 BUSY = ".local/state/bipagents/busy"                 # a run goes on (bridge-rs/src/runs.rs, rewritten every minute)
@@ -1040,6 +1388,16 @@ def rebooting(conf):
     return 0
 
 
+def disk_settled():
+    """Each place's disk watched (and the old homes past their days removed), whatever the guichet answers."""
+    try:
+        old_homes()
+        return disk_watch(read_json(SETTINGS))
+    except OSError as exc:
+        log("disks not watched: %s" % exc)
+        return {}
+
+
 def memory_settled(server):
     """Each place's memory ceiling and the sampler between beats, whatever the guichet answers."""
     try:
@@ -1052,6 +1410,12 @@ def memory_settled(server):
 def main(argv=()):
     if "--sample" in argv:
         return sample()
+    if "--own-disk" in argv:   # add-seat.sh and user-data.yaml, before a place's install: its own 5 GB disk
+        at = list(argv).index("--own-disk")
+        number = int(argv[at + 1]) if len(argv) > at + 1 and argv[at + 1].isdigit() else 0
+        if not 1 <= number <= MAX_SEATS:
+            return 2
+        return 0 if own_disk(account(number), read_json(SETTINGS)) else 1
     if "--ceiling" in argv:   # add-seat.sh, as soon as a place's account starts
         ceiling(vitals().get("memory_mb"), read_json(SETTINGS))
         return 0
@@ -1075,8 +1439,9 @@ def main(argv=()):
     metadata_block()
     server = vitals()
     memory_settled(server)
+    disk = disk_settled()
     try:
-        beat = {"seats": health(), "server": server, "places": places_activity(places_memory())}
+        beat = {"seats": health(), "server": server, "places": with_disk(places_activity(places_memory()), disk)}
         add_moves(beat)
         answer = call(conf, "POST", "/v1/server/beat", beat)
         orders = answer.get("orders") or []
