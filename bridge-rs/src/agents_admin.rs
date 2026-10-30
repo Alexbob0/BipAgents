@@ -1377,7 +1377,9 @@ pub fn read_soul(config: &Config, agent: &AgentConfig) -> std::io::Result<String
 pub fn set_language(config: &Config, agent: &AgentConfig, lang: &str) -> std::io::Result<String> {
     let code = crate::souls::agent_language(Some(lang));
     let soul = read_soul(config, agent)?;
-    std::fs::write(profile_folder(config, agent).join("SOUL.md"), crate::souls::with_language(&soul, Some(&code)))?;
+    // its other blocks' examples follow (souls::for_language): no French phrase left for an English agent
+    let text = crate::souls::relanguage_blocks(&crate::souls::with_language(&soul, Some(&code)));
+    std::fs::write(profile_folder(config, agent).join("SOUL.md"), text)?;
     Ok(code)
 }
 

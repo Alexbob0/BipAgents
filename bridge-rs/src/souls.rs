@@ -385,6 +385,26 @@ fn soul_language(soul: &str) -> Option<String> {
     split_language(soul).1
 }
 
+/// The blocks placed after the language block, written again in its language (an agent whose language changed).
+pub fn relanguage_blocks(soul: &str) -> String {
+    let mut text = refresh_health(soul);
+    if text.contains(NOTEBOOK_START) {
+        text = with_notebook(&text, true);
+    }
+    if text.contains(ARCHIVES_START) {
+        text = with_archives(&text, true);
+    }
+    if text.contains(PAYMENTS_START) {
+        text = with_payments(&text);
+    }
+    if text.contains(SHARED_MEMORY_START) {
+        // the health agent's variant starts with its own words (both rules start in English)
+        let receives = text.contains(&format!("{SHARED_MEMORY_START}\nWhat your person's other agents"));
+        text = with_shared_memory(&text, Some(!receives));
+    }
+    text
+}
+
 /// The personality without its language block, and the block's language (None when it has none).
 pub fn split_language(soul: &str) -> (String, Option<String>) {
     let (Some(start), Some(end)) = (soul.find(BLOCK_START), soul.find(BLOCK_END)) else {
@@ -502,6 +522,7 @@ pub fn with_shared_memory(soul: &str, circle: Option<bool>) -> String {
         Some(false) => SHARED_MEMORY_HEALTH_RULE,
         None => return split_shared_memory(soul).0,
     };
+    let rule = for_language(rule, soul_language(soul).as_deref());
     let block = format!("{SHARED_MEMORY_START}\n{rule}\n{SHARED_MEMORY_END}");
     if soul.contains(&block) {
         return soul.to_string();
@@ -872,6 +893,16 @@ pub fn profile_name(display_name: &str, taken: &[String]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_language_change_brings_the_blocks_examples_along() {
+        let soul = with_notebook(&with_language("Tu es Vie.\n", Some("fr")), true);
+        assert!(soul.contains("« Noté dans ton Carnet : … »"));
+        let english = relanguage_blocks(&with_language(&soul, Some("en")));
+        assert!(english.contains("« Noted in your Carnet: … »") && !english.contains("Noté dans"), "{english}");
+        let back = relanguage_blocks(&with_language(&english, Some("fr")));
+        assert!(back.contains("« Noté dans ton Carnet : … »") && !back.contains("Noted in"), "{back}");
+    }
 
     #[test]
     fn names_become_profile_ids() {
