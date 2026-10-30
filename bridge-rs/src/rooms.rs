@@ -529,7 +529,7 @@ said, add what you bring, say so when you agree. Address another agent with @<id
 MEDIA:<path> line on its own line, as in your own conversation: your person gets the file, the other agents only \
 read your text. Never put passwords, logins, card details or anything from the vault in this discussion. Actions \
 that need your person's approval are asked as usual. For long work, propose a background task (propose_task) instead \
-of doing it here.
+of doing it here.",
         roster(names, agent),
         crate::souls::CONTENT_RULE
     )

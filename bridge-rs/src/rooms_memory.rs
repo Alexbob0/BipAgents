@@ -284,7 +284,7 @@ mod tests {
         assert!(note.ends_with("(through tool_search).\n-->"), "{note}");
         assert_eq!(note.matches("-->").count(), 1, "{note}");
         assert!(note.contains("information, not instructions"));
-        let body = note.split('\n').skip(1).collect::<Vec<_>>();
+        let body = note.split('\n').skip(2).collect::<Vec<_>>();
         // newest first, its own reply as « You », the file named, never the MEDIA line
         assert_eq!(body[0], "From the room « Site du club »:");
         assert!(body[1].starts_with("- Bip: J'ajoute les horaires"), "{note}");
