@@ -256,7 +256,7 @@ pub fn page_read_tool(tool: &str) -> bool {
 }
 
 /// The bridge's tools that change something for the person.
-pub const WRITE_TOOLS: [&str; 18] = [
+pub const WRITE_TOOLS: [&str; 19] = [
     "calendar_add",
     "calendar_update",
     "calendar_delete",
@@ -275,6 +275,7 @@ pub const WRITE_TOOLS: [&str; 18] = [
     "create_podcast",
     "tell_family",
     "send_files_to_agent",
+    "give_file",
 ];
 
 pub fn write_tool(tool: &str) -> bool {

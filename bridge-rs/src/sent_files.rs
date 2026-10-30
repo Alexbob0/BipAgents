@@ -313,6 +313,20 @@ fn meant(path: &str) -> Vec<String> {
     }
 }
 
+/// The agent's file behind `path` in its places on this machine (a relative path in its working folders): the path
+/// it is at, as the agent sees it, and the file opened (give_file.rs). Err(why): none there (its sandbox may have it).
+pub(crate) fn open_own(config: &Config, agent: &AgentConfig, path: &str) -> Result<(String, std::fs::File), String> {
+    let mut why = "not a plain path";
+    for candidate in meant(path) {
+        match open_source(config, agent, &candidate) {
+            Ok(file) => return Ok((candidate, file)),
+            Err(NotHere::Refused(reason)) => return Err(reason.into()),
+            Err(NotHere::Missing(reason)) => why = reason,
+        }
+    }
+    Err(why.into())
+}
+
 /// The copy of the agent's file behind `path`, made or refreshed now: Err(why) when there is none.
 pub fn capture(config: &Config, agent: &AgentConfig, path: &str) -> Result<PathBuf, String> {
     capture_with(config, agent, path, false)

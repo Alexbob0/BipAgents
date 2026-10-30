@@ -82,7 +82,7 @@ pub const NOTEBOOK_READ: &str = "family_notebook_read";
 pub const NOTEBOOK_WRITE: &str = "family_notebook_write";
 pub const TOOL_NAMES: [&str; 2] = [NOTEBOOK_READ, NOTEBOOK_WRITE];
 /// The bridge's MCP tools the family's agent may use, in every turn (its creator's too).
-pub const TOOLS: [&str; 7] = [
+pub const TOOLS: [&str; 8] = [
     crate::agent_tools::KNOWLEDGE_READ,
     crate::agent_tools::KNOWLEDGE_SEARCH,
     crate::weather::TOOL_NAME,
@@ -90,6 +90,7 @@ pub const TOOLS: [&str; 7] = [
     crate::maps::TOOL_NAME,
     NOTEBOOK_READ,
     NOTEBOOK_WRITE,
+    crate::give_file::TOOL_NAME,
 ];
 /// The kinds of tools of an agent's settings that stay off for it.
 pub const CLOSED_SETTINGS: [&str; 4] = crate::agents_admin::DISK_TOOLS;

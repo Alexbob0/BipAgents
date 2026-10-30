@@ -270,6 +270,7 @@ static TOOL_LIST: LazyLock<Vec<Value>> = LazyLock::new(|| {
     tools.push(crate::maps::tool());
     tools.push(crate::dates::tool());
     tools.push(crate::storage_watch::tool()); // the space a recurring production takes, and what to keep
+    tools.push(crate::give_file::tool()); // a file it made, to the person's drive or the conversation (give_file.rs)
     tools
 });
 
@@ -1361,13 +1362,16 @@ pub async fn call_tool(
         return crate::notebook::fill::tool_call(jobs.as_ref(), agent).await;
     }
     let config = maker.config.get();
-    if WRITING_TOOLS.contains(&name) || name == crate::agent_files::TOOL_NAME {
+    if WRITING_TOOLS.contains(&name) || name == crate::agent_files::TOOL_NAME || name == crate::give_file::TOOL_NAME {
         // the place full, or this agent's work paused for space: said plainly, and a card for the person
         let (c, agent_name) = (config.clone(), agent.name.clone());
         let refused = tokio::task::spawn_blocking(move || crate::storage_watch::refuse_tool(&c, &agent_name)).await?;
         if let Some(refused) = refused {
             return Ok(refused);
         }
+    }
+    if name == crate::give_file::TOOL_NAME {
+        return Ok(crate::give_file::call(&config, agent, arguments).await);
     }
     if name == crate::storage_watch::TOOL_NAME {
         let (c, agent_name, arguments) = (config.clone(), agent.name.clone(), arguments.clone());
@@ -1689,8 +1693,7 @@ const INSTRUCTIONS: &str = "BipAgents: create_audio reads a text aloud with your
 conversation between hosts with different voices; create_page makes a small web page \
 (a dashboard, a tracker, a chart, a tool) on any subject, shown in the app; each \
 gives a MEDIA: line for your reply. Any other file you made (a spreadsheet, a document, a picture) reaches \
-the person when you save it in /envoi (or /workspace when your sandbox has no /envoi) and end your reply with a \
-line MEDIA:/envoi/<name>. mail_search, mail_read, mail_attachment and mail_draft reach the \
+the person with give_file: their cloud drive's link, or a MEDIA: line for your reply. mail_search, mail_read, mail_attachment and mail_draft reach the \
 mailboxes the person connected for you (drafts only: you never send). send_files_to_agent gives files to \
 another of your person's agents (it can't see your files); message_agent asks one of them and brings back its answer.";
 

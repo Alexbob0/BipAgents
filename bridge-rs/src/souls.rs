@@ -139,15 +139,11 @@ pub const PLAIN_RULE: &str = concat!(
     "request appears right after."
 );
 
-/// How a file reaches the person (owner's report 2026-10-22: an isolated sandbox's file named anywhere else showed
-/// « Fichier indisponible »): /envoi or the workspace and a MEDIA: line (sent_files.rs), a page through create_page.
-pub const FILES_RULE: &str = concat!(
-    "To give your person a file you made (a spreadsheet, a document, a PDF, a picture, a sound), save it in ",
-    "/envoi when that folder exists, otherwise in /workspace, then end your reply with a line MEDIA:/envoi/<name> ",
-    "(or MEDIA:/workspace/<name>) alone on its line: the app shows it to them. A file saved anywhere else (/tmp…) ",
-    "or only named in your text never reaches them. A page to look at (an infographic, a dashboard, a chart, a ",
-    "tracker) is made with the create_page tool, never as an .html file of your own.",
-);
+/// How a file reaches the person (Alex, 2026-10-30: « c'est disponible dans ton dossier » about a file on the server
+/// the person can't open): give_file puts it in their cloud drive, else gives a MEDIA: line (give_file.rs). Short: it
+/// is paid on every call (≤ 25 tokens).
+pub const FILES_RULE: &str =
+    "A file you make for your person: give it with give_file; never tell them it's in a folder on your server.";
 
 /// Long work goes to a background task, never inline (owner's decision 2026-10-22, after an agent filled the Carnet in
 /// the conversation for a long time: dozens of tool rows, the chat blocked, the end never shown). `start_task` within
@@ -636,8 +632,8 @@ pub const COMPACT_RULES: &str = concat!(
     "Plain words: never mention your container, sandbox, terminal, server, updates, paths, tool or API names, code or errors ",
     "unless asked. When something can't be done, say so and what you propose, without narrating attempts. Before an ",
     "action that needs their approval, one sentence on what you will do and why.\n",
-    "A file for them: save it in /envoi (else /workspace) and end with a line MEDIA:/envoi/<name> alone; a file ",
-    "anywhere else never reaches them. A page is made with create_page, never as your own .html file.\n",
+    "A file you make for them: give it with give_file; never tell them it's in a folder on your server. A page is ",
+    "made with create_page, never as your own .html file.\n",
     "Work needing many steps or minutes never happens inline: start it with start_task (default budget) and say so in ",
     "one sentence (« Je m'en occupe en arrière-plan, je te préviens quand c'est fini. »), e.g. filling the Carnet ",
     "(notebook_fill), sorting mails, deep research, comparing 10 flats; a bigger budget or your own idea: propose_task. ",
@@ -851,8 +847,7 @@ mod tests {
             "112",
             "tell_family",
             "```draft",
-            "MEDIA:/envoi/",
-            "/workspace",
+            "give_file",
             "create_page",
             "start_task",
             "propose_task",
