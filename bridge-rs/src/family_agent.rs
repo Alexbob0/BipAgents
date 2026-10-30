@@ -720,7 +720,7 @@ async fn create(State(state): State<AppState>, body: Bytes) -> ApiResult<Respons
     let lang = Some(tk::str_or_empty(body.get("lang")))
         .filter(|l| !l.is_empty())
         .or_else(|| handover.as_ref().map(|h| tk::str_or_empty(h.get("lang"))).filter(|l| !l.is_empty()))
-        .unwrap_or_else(|| "fr".into());
+        .unwrap_or_else(|| crate::notebook::place_language(&config).unwrap_or_else(|| "fr".into()));
     let tone: String = tk::str_or_empty(body.get("tone")).chars().take(200).collect();
     let _guard = crate::agents_admin::LOCK.lock().await;
     if own_agent(&config).is_some() {
