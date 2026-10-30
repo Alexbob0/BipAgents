@@ -597,6 +597,11 @@ pub async fn make_profile(
         run(args, env.clone()).await?;
     }
     std::fs::create_dir_all(&folder)?;
+    // The bridge's tools in its config.yaml before the gateway loads the profile: Hermes connects a profile's MCP
+    // servers when it loads it, and an entry written after that is only read at its next restart (2026-10-30 bench:
+    // a new agent answered its first messages with Hermes' tools only, and wrote « call me Max » into the shared
+    // memory instead of using propose_profile). Given again below, once it is saved (its guide blocks, its browser).
+    give_tools(&shared.get(), &agent, run).await?;
     std::fs::write(folder.join("SOUL.md"), &planned.soul)?;
     mark_as_bot(&folder)?;
     // The gateway picks new profiles up within 30 s; its permanent « Bot Chat » is opened as soon as it answers.
@@ -610,7 +615,46 @@ pub async fn make_profile(
     }
     crate::guide::refresh(&shared.get()); // its blocks, and the guide's list of agents
     give_tools(&shared.get(), &agent, run).await?;
+    tools_loaded(&shared.get(), &agent, http, run).await;
     Ok(agent)
+}
+
+/// How long a new agent's Hermes gets to list the bridge's tools before its gateway is restarted for them.
+pub const TOOLS_LISTED_SECONDS: f64 = 20.0;
+
+/// A new agent's first turn has the bridge's tools (propose_profile, create_podcast…): when its Hermes hasn't listed
+/// them within `TOOLS_LISTED_SECONDS` (it loaded the profile before its entry was written), its gateway is restarted
+/// now when the agent has one of its own (its space: nothing else runs there, and it has not spoken yet), else (the
+/// hub's gateway, shared with agents that may be talking) asked for once they are all idle (agent_restart.rs).
+/// Only where other agents have listed them already: proof this bridge's Hermes connect at once (a Hermes that
+/// lists lazily, or the first agent of an install, is never waited for).
+async fn tools_loaded(config: &Config, agent: &AgentConfig, http: &reqwest::Client, run: &Run) {
+    let sessions = &crate::mcp_sessions::SESSIONS;
+    if !sessions.others_listed(&agent.name) {
+        return;
+    }
+    let started = std::time::Instant::now();
+    while !sessions.has_listed(&agent.name) {
+        if started.elapsed().as_secs_f64() >= TOOLS_LISTED_SECONDS {
+            if agent.space.as_deref().is_some_and(|s| !s.is_empty()) {
+                tracing::info!(target: "bipbridge::agents", agent = %agent.name, "new agent without its tools: its gateway restarted");
+                match restart_gateway(config, agent, run).await {
+                    // served again before the app's first message
+                    Ok(()) => {
+                        let _ = wait_served(http, agent, false).await;
+                    }
+                    Err(exc) => {
+                        tracing::warn!(target: "bipbridge::agents", agent = %agent.name, error = %tail(&exc.to_string(), 200), "gateway not restarted");
+                        crate::agent_restart::request_restart(&agent.name, "new agent without its tools");
+                    }
+                }
+            } else {
+                crate::agent_restart::request_restart(&agent.name, "new agent without its tools");
+            }
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
 }
 
 /// Its visible browser when the install gives one; the agent works without it (`bipbridge browser add <agent>` sets
