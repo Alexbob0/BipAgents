@@ -322,6 +322,7 @@ impl AppState {
         self.spawn(purge_loop(self.clone()));
         // what takes the place's space, measured; the 80/95 % cards, the pause when full (storage_watch.rs)
         self.spawn(crate::storage_watch::run_forever(self.clone()));
+        self.spawn(crate::mail_tidy::run_forever(self.clone())); // mail tidy jobs a restart left behind
         self.spawn(crate::door_tls::announce_forever(self.clone())); // our door's certificate to linked households
         self.spawn(crate::notebook::tidy::scheduler(self.clone()));
         self.spawn(crate::dates::run_forever(self.clone()));
@@ -1218,6 +1219,24 @@ async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>
     if let Some(id) = run_id.strip_prefix(crate::feature_tips::RUN_PREFIX) {
         return crate::feature_tips::approve(&state, &agent.name, id, &body.choice).await;
     }
+    // a mail tidy card (archive, mark read, move or trash many e-mails, mail_tidy.rs): done by the bridge on « Oui »
+    if let Some(id) = run_id.strip_prefix(crate::mail_tidy::RUN_PREFIX) {
+        let allow = body.choice.trim().to_lowercase() != "deny";
+        let (config, name, id) = (state.config(), agent.name.clone(), id.to_string());
+        let job = tokio::task::spawn_blocking(move || -> anyhow::Result<Option<crate::mail_tidy::Job>> {
+            let job = crate::mail_tidy::answer(&config, &name, &id, allow, "app")?;
+            if let Some(job) = job.as_ref().filter(|_| allow) {
+                crate::mail_tidy::start(&config, &job.id, crate::mailbox::default_connect());
+            }
+            Ok(job)
+        })
+        .await
+        .map_err(anyhow::Error::from)??;
+        return match job {
+            Some(job) => Ok(web::ok(json!({"ok": true, "choice": if allow { "once" } else { "deny" }, "count": job.uids.len()}))),
+            None => Err(HttpError::new(404, "no such request (answered already?)")),
+        };
+    }
     // a space card (what to keep when the place fills up, storage_watch.rs), answered here
     if let Some(id) = run_id.strip_prefix(crate::storage_watch::RUN_PREFIX) {
         return crate::storage_watch::approve(&state, &agent, id, &body.choice).await;
@@ -1300,6 +1319,7 @@ async fn approvals(State(state): State<AppState>, q: QueryMap) -> ApiResult<Resp
         items.extend(crate::secrets::pending_items(&config, name.as_deref()));
         items.extend(crate::connectors::pending_items(&state, &config, name.as_deref()));
         items.extend(crate::storage_watch::pending_items(&config, name.as_deref()));
+        items.extend(crate::mail_tidy::pending_items(&config, name.as_deref()));
         items.extend(crate::feature_tips::pending_items(&config, name.as_deref()));
     }
     for item in items.iter_mut() {

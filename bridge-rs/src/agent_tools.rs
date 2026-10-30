@@ -262,6 +262,7 @@ static TOOL_LIST: LazyLock<Vec<Value>> = LazyLock::new(|| {
         delete_page_tool(),
     ];
     tools.extend(mailbox::mail_tools());
+    tools.extend(crate::mail_tidy::tools()); // a big mailbox tidied by headers and approved cards (mail_tidy.rs)
     tools.extend([knowledge_read_tool(), knowledge_search_tool()]);
     tools.extend(reminders::reminder_tools());
     tools.push(propose_task_tool());
@@ -1377,6 +1378,22 @@ pub async fn call_tool(
     if name == crate::storage_watch::TOOL_NAME {
         let (c, agent_name, arguments) = (config.clone(), agent.name.clone(), arguments.clone());
         return blocking(move || Ok(crate::storage_watch::call(&c, &agent_name, &arguments))).await;
+    }
+    if crate::mail_tidy::TOOL_NAMES.contains(&name) {
+        let (c, agent_name, name_c, arguments) = (config.clone(), agent.name.clone(), name.to_string(), arguments.clone());
+        let called = tokio::task::spawn_blocking(move || {
+            crate::mail_tidy::call(&c, &agent_name, &name_c, &arguments, &mailbox::default_connect())
+        })
+        .await??;
+        if let (Some(card), Some(push)) = (&called.card, push.as_ref()) {
+            let line = crate::mail_tidy::item_of(&config, card)
+                .get("bip_summary")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            push.notify_bridge_card(&agent.name, &line, "mail_request", &card.id).await;
+        }
+        return Ok(called.result);
     }
     if name == crate::rooms_memory::TOOL_NAME {
         let (c, agent_name, arguments) = (config.clone(), agent.name.clone(), arguments.clone());

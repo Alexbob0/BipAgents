@@ -68,6 +68,10 @@ pub trait Imap: Send {
     fn uid(&mut self, command: &str, args: &[&str]) -> Result<Reply, ImapError>;
     fn list(&mut self) -> Result<Reply, ImapError>;
     fn append(&mut self, mailbox: &str, flags: &str, date_time: &str, message: &[u8]) -> Result<Reply, ImapError>;
+    /// `CREATE mailbox` (mail_tidy.rs: the folder archived mail goes to). A fake without it refuses.
+    fn create(&mut self, _mailbox: &str) -> Result<Reply, ImapError> {
+        Ok(("NO".into(), Vec::new()))
+    }
     /// `conn._encoding = "utf-8"`.
     fn use_utf8(&mut self) {}
     /// The selected folder's UIDVALIDITY (its `* OK [UIDVALIDITY n]` answer to the last `select`), when it gave one.
@@ -539,6 +543,10 @@ impl Imap for Client {
 
     fn use_utf8(&mut self) {
         self.utf8 = true;
+    }
+
+    fn create(&mut self, mailbox: &str) -> Result<Reply, ImapError> {
+        self.simple("CREATE", &[mailbox])
     }
 
     fn uid_validity(&mut self) -> Option<u64> {

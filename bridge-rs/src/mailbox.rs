@@ -196,7 +196,7 @@ pub type Connection = Box<dyn Imap>;
 /// How a mailbox is opened (replaceable in tests, as Python's `opener=`).
 pub type Connect = Arc<dyn Fn(&Dict) -> Result<Connection, MailError> + Send + Sync>;
 
-fn field(account: &Dict, key: &str) -> String {
+pub(crate) fn field(account: &Dict, key: &str) -> String {
     py::py_str(account.get(key).unwrap_or(&Value::Null))
 }
 
@@ -722,7 +722,7 @@ pub fn mail_tools() -> Vec<Value> {
 
 pub const MAIL_TOOL_NAMES: [&str; 4] = ["mail_search", "mail_read", "mail_attachment", "mail_draft"];
 
-fn pick<'a>(accounts: &'a [Dict], label: &str) -> Result<&'a Dict, MailError> {
+pub(crate) fn pick<'a>(accounts: &'a [Dict], label: &str) -> Result<&'a Dict, MailError> {
     if !label.is_empty() {
         let wanted = label.to_lowercase();
         let text = |a: &Dict, k: &str| py::py_str(a.get(k).unwrap_or(&json!(""))).to_lowercase();
@@ -738,7 +738,7 @@ fn pick<'a>(accounts: &'a [Dict], label: &str) -> Result<&'a Dict, MailError> {
 }
 
 /// `account.get("label") or account["username"]`.
-fn shown_name(account: &Dict) -> String {
+pub(crate) fn shown_name(account: &Dict) -> String {
     match account.get("label") {
         Some(v) if py::truthy(v) => py::py_str(v),
         _ => field(account, "username"),
