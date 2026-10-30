@@ -1304,6 +1304,9 @@ async fn setup_state(
     if let Some(error) = step.error {
         out["error"] = error; // a restore that failed (a wrong key): the app may claim again
     }
+    if let Some(held) = crate::place_cert::held_for(&config) {
+        out["host"] = json!(held.host); // its bipagents.com name, once its certificate came (place_cert.rs)
+    }
     Ok(web::ok(out))
 }
 

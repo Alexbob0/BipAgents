@@ -869,8 +869,19 @@ pub async fn serve(config: Config) -> i32 {
         axum::serve(listener, service).with_graceful_shutdown(main_stop.cancelled_owned()).await
     });
     let door = match tls {
-        Some((cert, key)) => match serve_door(router.clone(), &lan.host, lan.port, &cert, &key, stop.clone()).await {
-            Ok(task) => Some(task),
+        Some((cert, key)) => match crate::place_cert::DoorCerts::load(&cert, &key) {
+            Ok(certs) => {
+                // a place of the offer: its bipagents.com certificate, asked of the guichet and swapped in when it
+                // comes (place_cert.rs); a self-install's task returns at once
+                tokio::spawn(crate::place_cert::run_for_place(certs.clone(), stop.clone()));
+                match serve_door(router.clone(), &lan.host, lan.port, certs, stop.clone()).await {
+                    Ok(task) => Some(task),
+                    Err(e) => {
+                        tracing::error!(target: UVICORN, "{e:#}");
+                        None
+                    }
+                }
+            }
             Err(e) => {
                 tracing::error!(target: UVICORN, "{e:#}");
                 None
@@ -911,11 +922,10 @@ pub async fn serve_door(
     router: Router,
     host: &str,
     port: u16,
-    cert: &str,
-    key: &str,
+    certs: Arc<crate::place_cert::DoorCerts>,
     stop: CancellationToken,
 ) -> anyhow::Result<tokio::task::JoinHandle<()>> {
-    let acceptor = tls_acceptor(cert, key)?;
+    let acceptor = door_acceptor(certs)?;
     let pid = std::process::id();
     tracing::info!(target: UVICORN, color_message = "Started server process [\u{1b}[36m%d\u{1b}[0m]", "Started server process [{pid}]");
     let listener = tokio::net::TcpListener::bind((host, port)).await?;
@@ -967,22 +977,19 @@ pub fn serve_door_on(
     })
 }
 
+/// The door's TLS: its self-signed certificate (`cert` / `key`), and the place's bipagents.com one beside it when it
+/// holds one, picked per connection by the name the client asks for (place_cert.rs). The locked door (space.rs)
+/// serves both too: the files live outside the encrypted folder.
 pub fn tls_acceptor(cert: &str, key: &str) -> anyhow::Result<tokio_rustls::TlsAcceptor> {
-    use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
-    let certs: Vec<CertificateDer<'static>> = pem::parse_many(std::fs::read(cert)?)?
-        .into_iter()
-        .filter(|p| p.tag() == "CERTIFICATE")
-        .map(|p| CertificateDer::from(p.contents().to_vec()))
-        .collect();
-    let key_pem = pem::parse_many(std::fs::read(key)?)?
-        .into_iter()
-        .find(|p| p.tag() == "PRIVATE KEY")
-        .ok_or_else(|| anyhow::anyhow!("no PKCS#8 private key in {key}"))?;
-    let key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key_pem.contents().to_vec()));
+    door_acceptor(crate::place_cert::DoorCerts::load(cert, key)?)
+}
+
+/// The door's TLS over certificates that may change while it runs ([`crate::place_cert::DoorCerts::reload`]).
+pub fn door_acceptor(certs: Arc<crate::place_cert::DoorCerts>) -> anyhow::Result<tokio_rustls::TlsAcceptor> {
     let mut config = rustls::ServerConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
         .with_safe_default_protocol_versions()?
         .with_no_client_auth()
-        .with_single_cert(certs, key)?;
+        .with_cert_resolver(certs);
     config.alpn_protocols = vec![b"http/1.1".to_vec()];
     Ok(tokio_rustls::TlsAcceptor::from(Arc::new(config)))
 }

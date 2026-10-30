@@ -104,14 +104,21 @@ pub fn detect_address() -> Option<String> {
     None
 }
 
-/// {"url", "fingerprint"} for the app, or None when the door is off or not ready.
+/// {"url", "fingerprint"} for the app, or None when the door is off or not ready. A place of the offer holding its
+/// bipagents.com certificate (place_cert.rs) adds `host` and `host_expires` (unix seconds): the same door reached as
+/// `https://<host>:<port>` is trusted by any client, iPhones included, without pinning.
 pub fn lan_info(config: &Config) -> Option<Value> {
     if !config.lan.enabled {
         return None;
     }
     let address = config.lan.address.clone().filter(|a| !a.is_empty()).or_else(detect_address)?;
     let print = fingerprint(config)?;
-    Some(json!({"url": format!("https://{address}:{}", config.lan.port), "fingerprint": print}))
+    let mut info = json!({"url": format!("https://{address}:{}", config.lan.port), "fingerprint": print});
+    if let Some(held) = crate::place_cert::held_for(config) {
+        info["host"] = json!(held.host);
+        info["host_expires"] = json!(held.expires);
+    }
+    Some(info)
 }
 
 /// What the pairing QR code carries (the app's « Scanner le QR code »): tailnet addresses, keys, voice, and the
@@ -383,6 +390,23 @@ mod tests {
         assert!(pairing_payload(&config, &agent).unwrap_err().contains("public_url"));
         let install = install_payload(&config).unwrap();
         assert_eq!(install["v"], 2);
+    }
+
+    #[test]
+    fn a_place_certificate_adds_its_host() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = lan_config(dir.path());
+        ensure_certificate(&config).unwrap();
+        assert!(lan_info(&config).unwrap().get("host").is_none());
+        let lan = std::path::Path::new(&config.lan.cert_dir);
+        std::fs::write(lan.join(crate::place_cert::CERT_NAME), "chain").unwrap();
+        std::fs::write(lan.join(crate::place_cert::KEY_NAME), "key").unwrap();
+        let meta = json!({"host": "k3x9q2.p.bipagents.com", "expires": 1_900_000_000});
+        std::fs::write(lan.join(crate::place_cert::META_NAME), meta.to_string()).unwrap();
+        let info = lan_info(&config).unwrap();
+        assert_eq!(info["host"], "k3x9q2.p.bipagents.com");
+        assert_eq!(info["host_expires"], 1_900_000_000);
+        assert_eq!(info["url"], "https://192.168.1.177:8650");
     }
 
     #[test]
