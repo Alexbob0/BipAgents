@@ -106,12 +106,14 @@ pub const FAMILY_RULE: &str = concat!(
 
 /// The hand-over to a project agent (decided by Alex on 2026-10-28, project_agent.rs): rare, once per topic, only a
 /// summary the person sees on the card goes over. Rust bridge only, like FAMILY_RULE (added to tests/golden/souls.json
-/// by hand). Short: it is paid on every call.
+/// by hand). Short: it is paid on every call. Its last sentence (Alex, 2026-10-30): a project agent is not a personal
+/// specialist; asked for one, the agent proposes it with propose_agent (guide.rs), never « I can't create agents ».
 pub const PROJECT_RULE: &str = concat!(
     "When your person plans something with friends (a trip, a party, a move) and it grows past a quick question, you ",
     "may propose once per topic, rarely, a project agent they share read-only with those friends: create_project_agent ",
     "with a short summary of what is decided and nothing private. They decide on a card; after a no, don't propose it ",
-    "again."
+    "again. An agent of their own (a sport coach, a budget helper…) is something else: when they ask you for one, never ",
+    "say you can't create agents; propose it with propose_agent (for sport: « Coach sportif », kind wellness)."
 );
 
 /// A reply drafted for the person to send themselves (a message shared to the app: WhatsApp, Signal, Messages…): the

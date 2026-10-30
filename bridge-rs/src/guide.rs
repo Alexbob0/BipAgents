@@ -5,7 +5,9 @@
 //! PROPOSES: a card the person taps (`propose_agent`: « Créer <name> »; `suggest_switch`: « Continuer avec <agent> »
 //! with a summary handed over). Nothing is created without that tap, which also keeps a page or an e-mail from making
 //! it create agents. One guide per person at most; the agent page's « Peut proposer de nouveaux agents » gives or takes
-//! the role.
+//! the role. Any other of the person's own agents proposes an agent too, with the same card, but only when the person
+//! asks it for one (« crée-moi un agent de sport », Alex 2026-10-30); never the agents other people talk to
+//! (vault::others_facing_agents).
 //!
 //! Any agent without a role (created without one), and any agent with a generic name (Agent, Assistant, Test…), gets a
 //! short setup block and `propose_profile`: it asks a few questions on its first open, then proposes its role and tone,
@@ -212,6 +214,8 @@ pub fn tools(config: &Config, agent: &AgentConfig) -> Vec<Value> {
         out.push(suggest_switch_tool());
         out.push(propose_room_tool());
         out.push(crate::guide_team::tool(config));
+    } else if may_propose_agent_when_asked(config, agent) {
+        out.push(asked_agent_tool());
     }
     if needs_role(&state, agent) || needs_name(&state, agent) || may_rename_guide(&state, agent) {
         out.push(propose_profile_tool());
@@ -227,6 +231,14 @@ fn may_propose_project(config: &Config, agent: &AgentConfig) -> bool {
     config.hermes.enabled()
         && !crate::family_agent::is_family(config, &agent.name)
         && !crate::project_agent::is_project(config, &agent.name)
+}
+
+/// Whether `agent`, not the guide, may propose a new agent its person asked it for (Alex, 2026-10-30: « crée-moi un
+/// agent de sport » got « je ne crée que des projets »): the person's own agents, not the family's, a project agent,
+/// one shared with relatives or linked with another household's agents (vault::others_facing_agents): other people
+/// talk to those, and their wishes don't make agents in this person's place.
+fn may_propose_agent_when_asked(config: &Config, agent: &AgentConfig) -> bool {
+    config.hermes.enabled() && !crate::vault::others_facing(config, &agent.name)
 }
 
 fn create_project_tool() -> Value {
@@ -255,6 +267,17 @@ fn propose_agent_tool() -> Value {
             "handover": {"type": "string", "description": "what they told you that it should know"}},
             "required": ["kind", "name", "role"]},
     })
+}
+
+/// `propose_agent` for an agent that is not the guide: the same card, only when the person asks for an agent (the
+/// guide alone proposes on its own).
+fn asked_agent_tool() -> Value {
+    let mut tool = propose_agent_tool();
+    tool["description"] = json!(
+        "When your person asks you for a new agent of their own (a sport coach, a budget helper…), propose it: they \
+    see a card and create it with one tap (nothing is created otherwise). Only when they ask."
+    );
+    tool
 }
 
 fn suggest_switch_tool() -> Value {
@@ -682,7 +705,13 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
             Ok(card) => proposal.extend(card),
             Err(why) => return Ok(tool_text(&why, true)),
         },
-        PROPOSE_AGENT | SUGGEST_SWITCH if !is_the_guide => {
+        PROPOSE_AGENT if !is_the_guide && !may_propose_agent_when_asked(config, agent) => {
+            return Ok(tool_text(
+                "Other people talk to you here: new agents are proposed by your person's own agents, in their app.",
+                true,
+            ));
+        }
+        SUGGEST_SWITCH if !is_the_guide => {
             return Ok(tool_text("Only the agent the person chose as their guide proposes agents.", true));
         }
         PROPOSE_AGENT => {
@@ -693,10 +722,8 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
                 return Ok(tool_text("give a kind from the list, a name and a one-line role", true));
             }
             if find_agent(config, &new_name).is_some() {
-                return Ok(tool_text(
-                    &format!("they already have an agent named {new_name}: suggest_switch to it"),
-                    true,
-                ));
+                let next = if is_the_guide { "suggest_switch to it" } else { "tell them to open it" };
+                return Ok(tool_text(&format!("they already have an agent named {new_name}: {next}"), true));
             }
             proposal.insert("type".into(), json!("agent"));
             proposal.insert("kind".into(), json!(kind));
@@ -1397,6 +1424,94 @@ mod tests {
         q.insert("participants".into(), json!(["budget", "vie"]));
         assert_eq!(key_of(&p), "room:budget,vie");
         assert_eq!(key_of(&p), key_of(&q));
+    }
+
+    /// A place whose agents are managed (Hermes set up), with these agents.
+    fn managed_place(dir: &std::path::Path, agents: &[(&str, &str)]) -> Config {
+        let mut config = crate::config::parse_config(
+            &json!({"bridge_key": "k".repeat(32), "data_dir": dir.to_string_lossy()}),
+            None,
+        )
+        .unwrap();
+        config.hermes.bin = "/usr/bin/hermes".into();
+        config.hermes.hub_url = "http://127.0.0.1:9".into();
+        for (id, name) in agents {
+            config.agents.insert(id.to_string(), agent(id, name));
+        }
+        config
+    }
+
+    fn sport_card() -> Dict {
+        let mut args = Dict::new();
+        args.insert("kind".into(), json!("wellness"));
+        args.insert("name".into(), json!("Coach sportif"));
+        args.insert("role".into(), json!("Programme mes séances et suit mes progrès"));
+        args
+    }
+
+    fn refused(result: &Dict) -> bool {
+        result.get("isError").and_then(Value::as_bool).unwrap_or(false)
+    }
+
+    fn text_of(result: &Dict) -> String {
+        result["content"][0]["text"].as_str().unwrap_or_default().to_string()
+    }
+
+    #[test]
+    fn an_own_agent_asked_for_an_agent_proposes_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = managed_place(dir.path(), &[("agent", "Agent"), ("famille", "Famille")]);
+        let mine = config.agents["agent"].clone();
+        let result = call(&config, &mine, PROPOSE_AGENT, &sport_card()).unwrap();
+        assert!(!refused(&result), "{result:?}");
+        let state = load(&config);
+        let card = state.proposals.iter().find(|p| str_of(p, "agent") == "agent").expect("a card");
+        assert_eq!((str_of(card, "type"), str_of(card, "kind")), ("agent".into(), "wellness".into()));
+        assert_eq!(str_of(card, "name"), "Coach sportif");
+        // an agent it already has: told to open it, not to switch (it has no suggest_switch)
+        let mut again = sport_card();
+        again.insert("name".into(), json!("Famille"));
+        let text = text_of(&call(&config, &mine, PROPOSE_AGENT, &again).unwrap());
+        assert!(text.contains("open it") && !text.contains("suggest_switch"), "{text}");
+        // still the guide's alone: switching, rooms, teams
+        let mut args = Dict::new();
+        args.insert("agent".into(), json!("famille"));
+        args.insert("summary".into(), json!("x"));
+        assert!(refused(&call(&config, &mine, SUGGEST_SWITCH, &args).unwrap()));
+        assert!(refused(&call(&config, &mine, PROPOSE_TEAM, &Dict::new()).unwrap()));
+        assert!(refused(&call(&config, &mine, PROPOSE_ROOM, &Dict::new()).unwrap()));
+    }
+
+    #[test]
+    fn agents_other_people_talk_to_never_propose_agents() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = managed_place(dir.path(), &[("agent", "Agent"), ("famille", "Famille")]);
+        std::fs::write(dir.path().join("family-agent.json"), r#"{"agent": "famille"}"#).unwrap();
+        let family = config.agents["famille"].clone();
+        let result = call(&config, &family, PROPOSE_AGENT, &sport_card()).unwrap();
+        assert!(refused(&result), "{result:?}");
+        assert!(load(&config).proposals.is_empty());
+        // and not without managed agents (nothing could be created)
+        let mut by_hand = config.clone();
+        by_hand.hermes.bin.clear();
+        let mine = by_hand.agents["agent"].clone();
+        assert!(refused(&call(&by_hand, &mine, PROPOSE_AGENT, &sport_card()).unwrap()));
+    }
+
+    #[test]
+    fn the_guide_still_proposes_on_its_own() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = managed_place(dir.path(), &[("bip", "Bip"), ("famille", "Famille")]);
+        change(&config, |s| s.guide = Some("bip".into())).unwrap();
+        let guide = config.agents["bip"].clone();
+        assert!(!refused(&call(&config, &guide, PROPOSE_AGENT, &sport_card()).unwrap()));
+        let mut again = sport_card();
+        again.insert("name".into(), json!("Famille"));
+        let text = text_of(&call(&config, &guide, PROPOSE_AGENT, &again).unwrap());
+        assert!(text.contains("suggest_switch"), "{text}");
+        assert!(guide_block(&config, &load(&config), &guide).unwrap().contains("propose_agent"));
+        assert!(asked_agent_tool()["description"].as_str().unwrap().contains("Only when they ask"));
+        assert_eq!(asked_agent_tool()["inputSchema"], propose_agent_tool()["inputSchema"]);
     }
 
     #[test]

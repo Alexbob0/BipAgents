@@ -430,7 +430,8 @@ pub fn tools_for(config: &Config, agent: &AgentConfig) -> Vec<Value> {
     if crate::archives::enabled(config, &agent.name) {
         tools.extend(crate::archives::tools(config, &agent.name));
     }
-    // the guide's (propose_agent, suggest_switch), or propose_profile while it has no role or a generic name
+    // the guide's (propose_agent, suggest_switch), propose_agent when asked for the person's other own agents, or
+    // propose_profile while it has no role or a generic name
     tools.extend(crate::guide::tools(config, agent));
     // the guide's search of ready-made models (templates.rs)
     tools.extend(crate::templates::tools(config, agent));
