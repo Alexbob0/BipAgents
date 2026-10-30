@@ -312,11 +312,25 @@ pub struct AgentSettings {
     /// « Carnet »: the notebook tools and their rule (notebook/), on by default.
     #[serde(default, deserialize_with = "web::lax::opt_bool")]
     pub notebook: Option<bool>,
+    /// How it answers (answer_style.rs): short, balanced, detailed or custom, and the person's own style.
+    #[serde(default)]
+    pub answer_style: Option<String>,
+    #[serde(default)]
+    pub answer_style_custom: Option<String>,
 }
 
 impl Validate for AgentSettings {
     fn validate(&self, errors: &mut Vec<FieldError>) {
         check_max_len(errors, "soul", self.soul.as_deref(), 8000);
+        check_max_len(errors, "answer_style_custom", self.answer_style_custom.as_deref(), crate::souls::CUSTOM_STYLE_MAX);
+        if let Some(style) = self.answer_style.as_deref().filter(|s| !crate::souls::ANSWER_STYLES.contains(s)) {
+            errors.push(FieldError::new(
+                "value_error",
+                web::body_loc("answer_style"),
+                format!("Value error, one of {}", crate::souls::ANSWER_STYLES.join(", ")),
+                json!(style),
+            ));
+        }
         for (n, name) in self.health_categories.iter().flatten().enumerate() {
             if !crate::health::CATEGORIES.contains(&name.as_str()) {
                 errors.push(FieldError::new(
@@ -597,6 +611,11 @@ pub async fn make_profile(
         run(args, env.clone()).await?;
     }
     std::fs::create_dir_all(&folder)?;
+    // The bridge's tools in its config.yaml before the gateway loads the profile: Hermes connects a profile's MCP
+    // servers when it loads it, and an entry written after that is only read at its next restart (2026-10-30 bench:
+    // a new agent answered its first messages with Hermes' tools only, and wrote « call me Max » into the shared
+    // memory instead of using propose_profile). Given again below, once it is saved (its guide blocks, its browser).
+    give_tools(&shared.get(), &agent, run).await?;
     std::fs::write(folder.join("SOUL.md"), &planned.soul)?;
     mark_as_bot(&folder)?;
     // The gateway picks new profiles up within 30 s; its permanent « Bot Chat » is opened as soon as it answers.
@@ -610,7 +629,46 @@ pub async fn make_profile(
     }
     crate::guide::refresh(&shared.get()); // its blocks, and the guide's list of agents
     give_tools(&shared.get(), &agent, run).await?;
+    tools_loaded(&shared.get(), &agent, http, run).await;
     Ok(agent)
+}
+
+/// How long a new agent's Hermes gets to list the bridge's tools before its gateway is restarted for them.
+pub const TOOLS_LISTED_SECONDS: f64 = 20.0;
+
+/// A new agent's first turn has the bridge's tools (propose_profile, create_podcast…): when its Hermes hasn't listed
+/// them within `TOOLS_LISTED_SECONDS` (it loaded the profile before its entry was written), its gateway is restarted
+/// now when the agent has one of its own (its space: nothing else runs there, and it has not spoken yet), else (the
+/// hub's gateway, shared with agents that may be talking) asked for once they are all idle (agent_restart.rs).
+/// Only where other agents have listed them already: proof this bridge's Hermes connect at once (a Hermes that
+/// lists lazily, or the first agent of an install, is never waited for).
+async fn tools_loaded(config: &Config, agent: &AgentConfig, http: &reqwest::Client, run: &Run) {
+    let sessions = &crate::mcp_sessions::SESSIONS;
+    if !sessions.others_listed(&agent.name) {
+        return;
+    }
+    let started = std::time::Instant::now();
+    while !sessions.has_listed(&agent.name) {
+        if started.elapsed().as_secs_f64() >= TOOLS_LISTED_SECONDS {
+            if agent.space.as_deref().is_some_and(|s| !s.is_empty()) {
+                tracing::info!(target: "bipbridge::agents", agent = %agent.name, "new agent without its tools: its gateway restarted");
+                match restart_gateway(config, agent, run).await {
+                    // served again before the app's first message
+                    Ok(()) => {
+                        let _ = wait_served(http, agent, false).await;
+                    }
+                    Err(exc) => {
+                        tracing::warn!(target: "bipbridge::agents", agent = %agent.name, error = %tail(&exc.to_string(), 200), "gateway not restarted");
+                        crate::agent_restart::request_restart(&agent.name, "new agent without its tools");
+                    }
+                }
+            } else {
+                crate::agent_restart::request_restart(&agent.name, "new agent without its tools");
+            }
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
 }
 
 /// Its visible browser when the install gives one; the agent works without it (`bipbridge browser add <agent>` sets
@@ -1328,10 +1386,12 @@ pub fn heal_souls(config: &Config) {
             None if soul.trim().is_empty() => continue,
             None => place_language.get_or_insert_with(|| crate::notebook::language(config)).clone(),
         };
-        let mut text = if soul.contains(&crate::souls::language_block(Some(&lang))) {
+        // its block with its answer style (answer_style.rs): the one paragraph switched when the setting changed
+        let block = crate::answer_style::apply(&crate::souls::language_block(Some(&lang)), &agent);
+        let mut text = if soul.contains(&block) {
             soul.clone()
         } else {
-            crate::souls::with_language(&soul, Some(&lang))
+            crate::answer_style::apply(&crate::souls::with_language(&soul, Some(&lang)), &agent)
         };
         // The payments rule at start too (registration adds it later, after the first turns could be answered).
         if !agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
@@ -1433,6 +1493,7 @@ pub async fn read_settings(config: &Config, agent: &AgentConfig, http: &reqwest:
         return Ok(json!({"id": agent.name, "name": agent.display_name, "soul": soul.trim(), "language": lang,
                          "thinking": read_thinking(config, agent), "model": null, "by_hand": true, "toolsets": [],
                          "isolated": agent.isolated, "guide": guide,
+                         "answer_style": crate::answer_style::view(agent),
                          "protected": true, "services": []}));
     }
     let resp = http
@@ -1474,6 +1535,7 @@ pub async fn read_settings(config: &Config, agent: &AgentConfig, http: &reqwest:
               "weather": {"on": crate::weather::enabled(config, agent.name.as_str())},
               "notebook": {"on": crate::notebook::enabled(config, agent.name.as_str())},
               "guide": guide,
+              "answer_style": crate::answer_style::view(agent),
               "group": crate::agent_groups::group_of(config, &agent.name)}))
 }
 
@@ -1550,6 +1612,11 @@ pub async fn write_settings(
     if let Some(soul) = &body.soul {
         write_soul(&config, agent, soul)?;
     }
+    if body.answer_style.is_some() || body.answer_style_custom.is_some() {
+        // the soul's style paragraph follows at once (an agent set up by hand too: its soul is the bridge's to write)
+        let style = body.answer_style.clone().unwrap_or_else(|| crate::answer_style::style_of(agent).to_string());
+        crate::answer_style::set(shared, agent, &style, body.answer_style_custom.as_deref())?;
+    }
     if let Some(on) = body.health {
         set_health(&config, agent, on, run).await?;
     }
@@ -1598,7 +1665,7 @@ pub fn write_soul(config: &Config, agent: &AgentConfig, soul: &str) -> std::io::
     let (_, lang) = crate::souls::split_language(&read_soul(config, agent)?);
     let text = format!("{}\n", soul.trim());
     let text = match lang.as_deref() {
-        Some(lang) if !lang.is_empty() => crate::souls::with_language(&text, Some(lang)),
+        Some(lang) if !lang.is_empty() => crate::answer_style::apply(&crate::souls::with_language(&text, Some(lang)), agent),
         _ => text,
     };
     // the family's agent: none of its creator's private tools, its own block instead (family_agent.rs)
@@ -1919,10 +1986,13 @@ async fn patch_settings(
                 "contact details not matched to its browser"),
         }
     }
+    // as it is now (its answer style may have changed)
+    let agent = state.config().agent(Some(&agent.name)).cloned().unwrap_or(agent);
     match read_settings(&state.config(), &agent, &state.http).await {
         Ok(settings) => Ok(web::ok(settings)),
         Err(exc) if exc.downcast_ref::<GatewayError>().is_some() => {
-            Ok(web::ok(json!({"id": agent.name, "name": agent.display_name})))
+            Ok(web::ok(json!({"id": agent.name, "name": agent.display_name,
+                              "answer_style": crate::answer_style::view(&agent)})))
         }
         Err(exc) => Err(exc.into()),
     }

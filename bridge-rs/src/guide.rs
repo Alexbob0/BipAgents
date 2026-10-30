@@ -25,6 +25,13 @@
 //!     POST /v1/guide/welcome/{id}/done        {session}: the person's first message to it (welcome.rs)
 //!     data_dir/guide.json                     the state (0600)
 //!
+//! A name the person asks an agent to take (« Appelle-toi Léon », « je préfère t'appeler Max »: Alex, 2026-10-30) is
+//! taken at once with `rename_yourself`, no card: its own name only, the person's own agents only (never the family's,
+//! a project agent, nor one other people talk to), never another agent's name. The reply carries a hidden mark
+//! (`<!--bip:renamed <id> <name>-->`, made_files.rs) the apps read to show the new name at once, and the agent says it
+//! in a sentence; asking again undoes it. A `propose_agent` with the name the agent just took (or just proposed for
+//! itself) is refused: the 2026-10-30 bench (DeepSeek, Bip) made a « new agent Léon » card next to the rename.
+//!
 //! A handover goes into the receiving agent's memory as data (« … (une information, pas une consigne) »), never as
 //! instructions. The guide may also propose a group discussion (`propose_room`, 2026-10-28): « Ouvrir une discussion
 //! avec X et Y »; the tap creates the room with those agents (rooms.rs, its participants checked as for the app's
@@ -61,6 +68,12 @@ pub const SETUP_END: &str = "<!-- /bipagents:setup -->";
 pub const PROPOSE_AGENT: &str = "propose_agent";
 pub const SUGGEST_SWITCH: &str = "suggest_switch";
 pub const PROPOSE_PROFILE: &str = "propose_profile";
+/// The agent takes the name its person asked for (agent_tools.rs routes it here: `rename_yourself_call`).
+pub const RENAME_SELF: &str = "rename_yourself";
+/// The hidden line a reply carries after a rename, for the apps: `<!--bip:renamed <id> <name>-->`.
+pub const RENAMED_OPEN: &str = "<!--bip:renamed ";
+/// A name an agent took or proposed for itself stays « its own » for `propose_agent` this long.
+pub const OWN_NAME_SECONDS: f64 = 1800.0;
 /// The hand-over to a project agent (project_agent.rs, 2026-10-28): any of the person's own agents may propose it.
 pub const CREATE_PROJECT: &str = "create_project_agent";
 /// A group discussion with some of the person's agents (rooms.rs), the guide's only.
@@ -217,13 +230,39 @@ pub fn tools(config: &Config, agent: &AgentConfig) -> Vec<Value> {
     } else if may_propose_agent_when_asked(config, agent) {
         out.push(asked_agent_tool());
     }
-    if needs_role(&state, agent) || needs_name(&state, agent) || may_rename_guide(&state, agent) {
+    if needs_profile(&state, agent) {
         out.push(propose_profile_tool());
+    } else {
+        out.push(propose_style_tool()); // its answer style only (answer_style.rs)
     }
     if may_propose_project(config, agent) {
         out.push(create_project_tool());
     }
+    if may_rename_self(config, agent) {
+        out.push(rename_yourself_tool());
+    }
     out
+}
+
+/// Whether `agent` takes a name its person asks for: the person's own agents (as for `propose_agent` when asked),
+/// not the family's nor a project agent (the household or friends talk to those).
+fn may_rename_self(config: &Config, agent: &AgentConfig) -> bool {
+    may_propose_agent_when_asked(config, agent)
+        && !crate::family_agent::is_family(config, &agent.name)
+        && !crate::project_agent::is_project(config, &agent.name)
+}
+
+fn rename_yourself_tool() -> Value {
+    json!({
+        "name": RENAME_SELF,
+        "description": "When your person asks you to take another name (« appelle-toi Léon », « je préfère t'appeler \
+    Max »), take it: your own name changes at once in their app. Only your own name, only when they ask; not a new \
+    agent. Keywords: rename, change your name, call you, renommer, changer de nom, t'appeler, umbenennen, Namen \
+    ändern, cambiar de nombre, llamarte.",
+        "inputSchema": {"type": "object", "properties": {
+            "name": {"type": "string", "description": "the name they asked for, as they wrote it"}},
+            "required": ["name"]},
+    })
 }
 
 /// Whether `agent` may propose a project agent: the person's own agents, not the family's nor a project agent.
@@ -275,7 +314,9 @@ fn asked_agent_tool() -> Value {
     let mut tool = propose_agent_tool();
     tool["description"] = json!(
         "When your person asks you for a new agent of their own (a sport coach, a budget helper…), propose it: they \
-    see a card and create it with one tap (nothing is created otherwise). Only when they ask."
+    see a card and create it with one tap (nothing is created otherwise). Only when they ask; not for a new name of \
+    your own. Keywords: create an agent, agent creation, new agent, new assistant, coach, création, créer un agent, nouvel agent, crée-moi un \
+    agent, nouvel assistant, neuen Agenten erstellen, neuer Assistent, crear un agente, nuevo asistente."
     );
     tool
 }
@@ -303,12 +344,40 @@ fn propose_room_tool() -> Value {
     })
 }
 
+/// Its role, tone or name still to be set (or the guide's default name to change).
+fn needs_profile(state: &GuideState, agent: &AgentConfig) -> bool {
+    needs_role(state, agent) || needs_name(state, agent) || may_rename_guide(state, agent)
+}
+
+/// The styles a card proposes (« Perso » is written by the person in the app).
+const CARD_STYLES: [&str; 3] = ["short", "balanced", "detailed"];
+
+/// The words a person uses for it (fr/en/de/es), for Hermes' tool search: `propose_profile` is behind it for every
+/// kind (tool_diet.rs), a catalog line instead of its schema on each call.
+const STYLE_KEYWORDS: &str = "answer style, answers, more detail, detailed, shorter, longer, concise, réponses, \
+    plus détaillé, plus court, plus long, concis, développe, Antworten, ausführlicher, kürzer, länger, respuestas, \
+    más detallado, más corto, más largo";
+
 fn propose_profile_tool() -> Value {
     json!({
         "name": PROPOSE_PROFILE,
-        "description": "Propose your role and tone, or a better name, as a card your person confirms.",
+        "description": format!("Propose your role and tone, or a better name, as a card your person confirms; or, only \
+    when they ask for shorter or longer answers, answer_style alone. A name they ask you to take: rename_yourself \
+    instead. Keywords: role, profile, rename, agent name, rôle, nom, Rolle, Name, rol, nombre, {STYLE_KEYWORDS}."),
         "inputSchema": {"type": "object", "properties": {
-            "role": {"type": "string"}, "tone": {"type": "string"}, "name": {"type": "string"}}},
+            "role": {"type": "string"}, "tone": {"type": "string"}, "name": {"type": "string"},
+            "answer_style": {"type": "string", "enum": CARD_STYLES}}},
+    })
+}
+
+/// `propose_profile` once the role and name are set: the answer style only (Alex 2026-10-30, answer_style.rs).
+fn propose_style_tool() -> Value {
+    json!({
+        "name": PROPOSE_PROFILE,
+        "description": format!("Only when your person asks for shorter or more detailed answers: propose that answer \
+    style as a card they confirm. Keywords: {STYLE_KEYWORDS}."),
+        "inputSchema": {"type": "object", "properties": {"answer_style": {"type": "string", "enum": CARD_STYLES}},
+            "required": ["answer_style"]},
     })
 }
 
@@ -354,8 +423,8 @@ pub fn guide_block(config: &Config, state: &GuideState, agent: &AgentConfig) -> 
     );
     if may_rename_guide(state, agent) {
         text.push_str(&format!(
-            "\n« {GUIDE_NAME} » is your default name: if they want to call you otherwise, propose_profile with that \
-             name (only when they ask)."
+            "\n« {GUIDE_NAME} » is your default name: if they want to call you otherwise, rename_yourself with that \
+             name (only when they ask; not propose_agent)."
         ));
     }
     if state.intro.contains(&agent.name) {
@@ -574,6 +643,7 @@ fn key_of(p: &Dict) -> String {
     match p.get("type").and_then(Value::as_str) {
         Some("agent") => format!("agent:{}", str_of(p, "kind")),
         Some("switch") => format!("switch:{}", str_of(p, "target")),
+        Some("style") => format!("style:{}:{}", str_of(p, "agent"), str_of(p, "answer_style")),
         Some("project") => format!("project:{}", tk::squeeze(&str_of(p, "name")).to_lowercase()),
         Some("team") => crate::guide_team::key(p),
         Some("room") => {
@@ -707,7 +777,8 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
         },
         PROPOSE_AGENT if !is_the_guide && !may_propose_agent_when_asked(config, agent) => {
             return Ok(tool_text(
-                "Other people talk to you here: new agents are proposed by your person's own agents, in their app.",
+                "You can't create agents: other people talk to you here. For a new agent, your person asks one of their own \
+             agents in their app.",
                 true,
             ));
         }
@@ -720,6 +791,14 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
             let role = arg(arguments, "role", 200);
             if !crate::souls::CATEGORIES.contains(&kind.as_str()) || new_name.is_empty() || role.is_empty() {
                 return Ok(tool_text("give a kind from the list, a name and a one-line role", true));
+            }
+            if is_own_name(config, agent, &new_name) {
+                return Ok(tool_text(
+                    &format!(
+                        "{new_name} is the name you take yourself: no new agent for it (rename_yourself renames you)."
+                    ),
+                    true,
+                ));
             }
             if find_agent(config, &new_name).is_some() {
                 let next = if is_the_guide { "suggest_switch to it" } else { "tell them to open it" };
@@ -743,8 +822,20 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
             proposal.insert("target".into(), json!(target.name));
             proposal.insert("summary".into(), json!(summary));
         }
+        PROPOSE_PROFILE if !arg(arguments, "answer_style", 20).is_empty() => {
+            // « sois plus détaillé »: a card of its own, the role and name untouched
+            let style = arg(arguments, "answer_style", 20);
+            if !CARD_STYLES.contains(&style.as_str()) {
+                return Ok(tool_text("answer_style is short, balanced or detailed", true));
+            }
+            if crate::answer_style::style_of(agent) == style {
+                return Ok(tool_text("that is already your answer style: just answer that way", true));
+            }
+            proposal.insert("type".into(), json!("style"));
+            proposal.insert("answer_style".into(), json!(style));
+        }
         PROPOSE_PROFILE => {
-            if !(needs_role(&state, agent) || needs_name(&state, agent) || may_rename_guide(&state, agent)) {
+            if !needs_profile(&state, agent) {
                 return Ok(tool_text("your role and name are already set", true));
             }
             let (role, tone, new_name) =
@@ -753,6 +844,9 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
                 return Ok(tool_text("give a role or a name", true));
             }
             proposal.insert("type".into(), json!("profile"));
+            if !new_name.is_empty() {
+                note_own_name(&agent.name, &new_name);
+            }
             for (key, value) in [("role", role), ("tone", tone), ("name", new_name)] {
                 proposal.insert(key.into(), if value.is_empty() { Value::Null } else { json!(value) });
             }
@@ -772,8 +866,10 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
     if name == PROPOSE_TEAM && !replaces {
         crate::beta_measures::team_proposed(config);
     }
+    let style_of_agent = format!("style:{}:", agent.name);
     change(config, |s| {
-        s.proposals.retain(|p| key_of(p) != key);
+        // one style card at a time: the latest wish wins
+        s.proposals.retain(|p| key_of(p) != key && !(key.starts_with(&style_of_agent) && key_of(p).starts_with(&style_of_agent)));
         s.proposals.push(proposal.clone());
         if first {
             s.intro.retain(|a| a != &agent.name);
@@ -868,6 +964,90 @@ pub(crate) fn hand_over(
     let all: Vec<String> = kept.into_iter().chain(handovers).collect();
     crate::memory_edit::write_entries(&folder, "notes", &all)?;
     Ok(())
+}
+
+/// The names agents took or proposed for themselves lately: (agent, lowercased name, when).
+static OWN_NAMES: Mutex<Vec<(String, String, f64)>> = Mutex::new(Vec::new());
+
+fn note_own_name(agent: &str, name: &str) {
+    let mut names = OWN_NAMES.lock().unwrap_or_else(|e| e.into_inner());
+    let at = now();
+    names.retain(|(_, _, when)| at - when < OWN_NAME_SECONDS);
+    names.push((agent.to_string(), tk::squeeze(name).to_lowercase(), at));
+}
+
+/// Whether `name` is `agent`'s own: its name now, or one it took or proposed for itself in the last half hour.
+fn is_own_name(config: &Config, agent: &AgentConfig, name: &str) -> bool {
+    let wanted = tk::squeeze(name).to_lowercase();
+    let current = config.agents.get(&agent.name).map(|a| a.display_name.as_str()).unwrap_or(&agent.display_name);
+    if tk::squeeze(current).to_lowercase() == wanted {
+        return true;
+    }
+    let at = now();
+    OWN_NAMES
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .any(|(a, n, when)| a == &agent.name && *n == wanted && at - when < OWN_NAME_SECONDS)
+}
+
+/// The mark a reply carries after `agent` (its id) took `name`: the apps show the new name at once.
+pub fn renamed_mark(agent: &str, name: &str) -> String {
+    let name: String = name.replace("--", "—").chars().filter(|c| !c.is_control() && *c != '>').collect();
+    format!("{RENAMED_OPEN}{agent} {}-->", tk::head(name.trim(), 40))
+}
+
+/// `rename_yourself` (its result for the agent, and the mark for its reply when it renamed). Err: a write failed.
+pub async fn rename_yourself_call(
+    shared: &SharedConfig,
+    agent: &AgentConfig,
+    arguments: &Dict,
+) -> anyhow::Result<(Dict, Option<String>)> {
+    let config = shared.get();
+    let agent = config.agents.get(&agent.name).cloned().unwrap_or_else(|| agent.clone());
+    if !writable(&config, &agent) || !may_rename_self(&config, &agent) {
+        return Ok((tool_text("Your name is set by your person, in their app.", true), None));
+    }
+    let wanted = arg(arguments, "name", 40);
+    let wanted = wanted.trim_matches(|c: char| "«»\"'“”‘’ .!".contains(c)).to_string();
+    if wanted.is_empty() {
+        return Ok((tool_text("give the name they asked for", true), None));
+    }
+    let old = agent.display_name.clone();
+    if tk::squeeze(&old).to_lowercase() == wanted.to_lowercase() {
+        return Ok((tool_text(&format!("{old} is already your name."), true), None));
+    }
+    if find_agent(&config, &wanted).is_some_and(|other| other.name != agent.name) {
+        return Ok((
+            tool_text(&format!("another of their agents is named {wanted}: ask them for another name"), true),
+            None,
+        ));
+    }
+    let renamed = {
+        let _guard = crate::agents_admin::LOCK.lock().await;
+        rename(shared, &agent, &wanted)?
+    };
+    let config = shared.get();
+    change(&config, |s| {
+        if !s.named.contains(&renamed.name) {
+            s.named.push(renamed.name.clone());
+        }
+        // a name card of its own waiting: moot now
+        s.proposals.retain(|p| {
+            !(str_of(p, "agent") == renamed.name
+                && p.get("type") == Some(&json!("profile"))
+                && p.get("role").is_none_or(Value::is_null))
+        });
+    })?;
+    note_own_name(&renamed.name, &renamed.display_name);
+    apply(&config, &renamed).await;
+    tracing::info!(target: "bipbridge::guide", agent = %renamed.name, "agent renamed itself at its person's request");
+    let text = format!(
+        "Done: your name is now {new} (their app shows it). Say it in one short sentence in their language, e.g. « Je \
+m'appelle maintenant {new}. »; they can ask again to change it (before: {old}). Nothing to save in memory.",
+        new = renamed.display_name
+    );
+    Ok((tool_text(&text, false), Some(renamed_mark(&renamed.name, &renamed.display_name))))
 }
 
 /// The agent renamed: its name in the bridge's config and in its personality.
@@ -1268,6 +1448,16 @@ async fn accept(
             Ok(web::ok(json!({"type": "switch", "agent": {"id": target.name, "name": target.display_name},
                               "from": {"id": from.name, "name": from.display_name}, "summary": summary})))
         }
+        Some("style") => {
+            // its answer style (answer_style.rs): its section, then its soul's paragraph at once
+            let changed = {
+                let _guard = crate::agents_admin::LOCK.lock().await;
+                crate::answer_style::set(&state.config, &from, &str_of(&proposal, "answer_style"), None)?
+            };
+            take_proposal(&state.config(), &id)?;
+            Ok(web::ok(json!({"type": "style", "agent": {"id": changed.name, "name": changed.display_name},
+                              "answer_style": crate::answer_style::view(&changed)})))
+        }
         _ => {
             let role = body
                 .role
@@ -1532,5 +1722,142 @@ mod tests {
         assert!(room_participants(&config, &guide, &names(&["vie", "ghost"])).unwrap_err().contains("ghost"));
         // a relative's agent without the links: refused
         assert!(room_participants(&config, &guide, &names(&["vie", "cuisine@lea"])).unwrap_err().contains("Qui peut"));
+    }
+
+    /// Hermes' tool search, roughly: a tool matches a query when every word of the query is in its name or
+    /// description (lowercased, `_` and punctuation as spaces). The bench's misses (2026-10-30) must match now.
+    fn found(tool: &Value, query: &str) -> bool {
+        let words = |t: &str| -> Vec<String> {
+            t.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).map(str::to_string).collect()
+        };
+        let text = words(&format!("{} {}", tool["name"].as_str().unwrap_or(""), tool["description"].as_str().unwrap_or("")));
+        words(query).iter().all(|w| text.contains(w))
+    }
+
+    #[test]
+    fn tool_search_finds_agent_creation_and_renaming_with_the_words_people_use() {
+        let agent_tool = asked_agent_tool();
+        for query in [
+            "propose agent creation new agent",
+            "create agent",
+            "new assistant",
+            "créer un agent",
+            "nouvel agent",
+            "coach",
+            "neuen Agenten erstellen",
+            "crear un agente",
+            "nuevo asistente",
+        ] {
+            assert!(found(&agent_tool, query), "propose_agent for « {query} »");
+        }
+        let rename = rename_yourself_tool();
+        for query in ["rename", "change your name", "renommer", "changer de nom", "umbenennen", "cambiar de nombre"] {
+            assert!(found(&rename, query), "rename_yourself for « {query} »");
+        }
+        let profile = propose_profile_tool();
+        for query in ["propose_profile rename agent name", "rename", "profile role"] {
+            assert!(found(&profile, query) || found(&rename, query), "a name tool for « {query} »");
+        }
+        // renaming isn't creating, and the other way round
+        assert!(!found(&rename, "create agent") && !found(&agent_tool, "renommer"));
+    }
+
+    #[test]
+    fn tool_search_finds_the_answer_style_card_and_no_kind_keeps_it_in_view() {
+        for tool in [propose_style_tool(), propose_profile_tool()] {
+            for query in [
+                "answer style",
+                "shorter answers",
+                "more detail",
+                "longer",
+                "plus détaillé",
+                "plus court",
+                "réponses",
+                "concis",
+                "développe",
+                "ausführlicher",
+                "kürzer",
+                "más detallado",
+                "más corto",
+            ] {
+                assert!(found(&tool, query), "{} for « {query} »", tool["name"]);
+            }
+        }
+        assert!(!found(&propose_style_tool(), "rename") && !found(&propose_style_tool(), "create agent"));
+        // behind the search for every kind (a catalog line, not its schema on each call)
+        for kind in crate::souls::CATEGORIES.iter().copied().chain(["guide", "custom"]) {
+            let direct = crate::tool_diet::kind_diet(kind).direct;
+            assert!(!direct.contains(&PROPOSE_PROFILE) && !direct.contains(&RENAME_SELF), "{kind}");
+        }
+    }
+
+    #[test]
+    fn propose_agent_refuses_the_agents_own_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = managed_place(dir.path(), &[("bip", "Bip"), ("vie", "Vie")]);
+        change(&config, |s| s.guide = Some("bip".into())).unwrap();
+        let guide = config.agents["bip"].clone();
+        let named = |name: &str| {
+            let mut args = sport_card();
+            args.insert("name".into(), json!(name));
+            args
+        };
+        // its name now
+        let text = text_of(&call(&config, &guide, PROPOSE_AGENT, &named("bip")).unwrap());
+        assert!(text.contains("the name you take yourself"), "{text}");
+        // the name it just proposed for itself (the bench: a profile card « Léon », then an agent card « Léon »)
+        let mut profile = Dict::new();
+        profile.insert("name".into(), json!("Léon"));
+        assert!(!refused(&call(&config, &guide, PROPOSE_PROFILE, &profile).unwrap()));
+        let result = call(&config, &guide, PROPOSE_AGENT, &named("léon")).unwrap();
+        assert!(refused(&result) && text_of(&result).contains("rename_yourself"), "{result:?}");
+        assert!(!load(&config).proposals.iter().any(|p| str_of(p, "type") == "agent"));
+        // another agent's own name doesn't count: Vie may propose « Léon »
+        assert!(!refused(&call(&config, &config.agents["vie"].clone(), PROPOSE_AGENT, &named("Léon")).unwrap()));
+    }
+
+    #[tokio::test]
+    async fn an_agent_takes_the_name_its_person_asks_for() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = managed_place(dir.path(), &[("bip", "Bip"), ("vie", "Vie")]);
+        for a in config.agents.values_mut() {
+            a.host_home = Some(dir.path().to_string_lossy().into_owned()); // writable (agents_admin::editable)
+        }
+        change(&config, |s| s.guide = Some("bip".into())).unwrap();
+        let shared = SharedConfig::new(config.clone());
+        let bip = config.agents["bip"].clone();
+        assert!(tools(&config, &bip).iter().any(|t| t["name"] == RENAME_SELF));
+        assert!(guide_block(&config, &load(&config), &bip).unwrap().contains("rename_yourself"));
+        let asked = |name: &str| {
+            let mut args = Dict::new();
+            args.insert("name".into(), json!(name));
+            args
+        };
+        // another agent's name: refused, nothing changed
+        let (result, mark) = rename_yourself_call(&shared, &bip, &asked("Vie")).await.unwrap();
+        assert!(refused(&result) && mark.is_none());
+        // « Appelle-toi Léon »: done at once, the mark for the apps, no card
+        let (result, mark) = rename_yourself_call(&shared, &bip, &asked("« Léon »")).await.unwrap();
+        assert!(!refused(&result), "{result:?}");
+        assert!(text_of(&result).contains("Je m'appelle maintenant Léon"));
+        assert_eq!(mark.as_deref(), Some("<!--bip:renamed bip Léon-->"));
+        assert_eq!(shared.get().agents["bip"].display_name, "Léon");
+        assert!(load(&shared.get()).proposals.is_empty());
+        assert!(load(&shared.get()).named.contains(&"bip".to_string()));
+        // a « new agent Léon » after it: refused
+        let mut card = sport_card();
+        card.insert("name".into(), json!("Léon"));
+        let now_bip = shared.get().agents["bip"].clone();
+        assert!(refused(&call(&shared.get(), &now_bip, PROPOSE_AGENT, &card).unwrap()));
+        // asking again undoes it
+        let (result, _) = rename_yourself_call(&shared, &now_bip, &asked("Bip")).await.unwrap();
+        assert!(!refused(&result));
+        assert_eq!(shared.get().agents["bip"].display_name, "Bip");
+        // the family's agent never renames itself
+        std::fs::write(dir.path().join("family-agent.json"), r#"{"agent": "vie"}"#).unwrap();
+        let vie = shared.get().agents["vie"].clone();
+        assert!(!tools(&shared.get(), &vie).iter().any(|t| t["name"] == RENAME_SELF));
+        let (result, mark) = rename_yourself_call(&shared, &vie, &asked("Max")).await.unwrap();
+        assert!(refused(&result) && mark.is_none());
     }
 }
