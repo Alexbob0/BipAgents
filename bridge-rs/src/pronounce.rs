@@ -625,6 +625,72 @@ pub fn francise(phones: &str, spelling: &str, lang: &str) -> String {
     out
 }
 
+/// Sounds that are a word in none of the languages (« euh », « hmm », « äh »…), as the apps' Hesitations take them
+/// out of a transcript; « hum » is an English word and « um » a German one, so each only outside that language.
+static HESITATION: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r"^(?:e+u+h+|h+e+u+|h+u+m+|h+m+|m+h+|m{3,}|u+h+m*|u+m+|e+r+m+|ä+h+m*|ö+h+m*|e+h+m+)$")
+        .expect("hesitation pattern")
+});
+
+fn hesitation(word: &str, lang: &str) -> bool {
+    let lower = word.to_lowercase();
+    if !HESITATION.is_match(&lower) {
+        return false;
+    }
+    let hum = lower.starts_with('h') && lower.contains('u');
+    let um = lower.starts_with('u') && !lower.contains('h');
+    !(hum && lang == "en" || um && lang != "en")
+}
+
+/// The text without the hesitations a model writes (« Hmm, voyons… », « Euh, je crois »): a voice reads them as a
+/// word (« Hmm » heard « am » in a Live call, 2026-10-30). The comma or ellipsis after one goes with it, and a
+/// sentence that started with one starts with a capital again.
+pub fn without_hesitations(text: &str, lang: &str) -> String {
+    let in_word = |c: char| c.is_alphanumeric() || matches!(c, '\'' | '’' | '-');
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    let mut capitalize = false;
+    while let Some(start) = rest.find(in_word) {
+        let end = rest[start..].find(|c: char| !in_word(c)).map_or(rest.len(), |e| start + e);
+        let word = &rest[start..end];
+        if !hesitation(word, lang) {
+            let before = &rest[..start];
+            out.push_str(before);
+            if capitalize {
+                let mut chars = word.chars();
+                if let Some(first) = chars.next() {
+                    out.extend(first.to_uppercase());
+                    out.push_str(chars.as_str());
+                }
+            } else {
+                out.push_str(word);
+            }
+            capitalize = false;
+            rest = &rest[end..];
+            continue;
+        }
+        // the comma before it, and what follows it: spaces, an ellipsis, a comma (a full stop too at a sentence start)
+        let before = rest[..start].trim_end_matches([' ', '\t']);
+        out.push_str(before.strip_suffix(',').unwrap_or(before).trim_end_matches([' ', '\t']));
+        let opens = out.trim_end().chars().last().is_none_or(|c| ".!?…:\n".contains(c));
+        let mut after = rest[end..].trim_start_matches([' ', '\t']);
+        after = after.strip_prefix("...").or_else(|| after.strip_prefix('…')).unwrap_or(after);
+        after = after.trim_start_matches([' ', '\t']);
+        after = after.strip_prefix(',').unwrap_or(after);
+        if opens {
+            after = after.strip_prefix(['.', '!']).unwrap_or(after);
+            capitalize = true;
+        }
+        let after = after.trim_start_matches([' ', '\t']);
+        if !out.is_empty() && !out.ends_with(char::is_whitespace) && after.starts_with(in_word) {
+            out.push(' ');
+        }
+        rest = after;
+    }
+    out.push_str(rest);
+    out.trim().to_string()
+}
+
 /// The text with names, acronyms and English words written for `lang`'s voice (see the module doc). Languages
 /// without a lexicon are returned as they are.
 pub fn respell(text: &str, lang: &str, spelling: Spelling) -> String {
@@ -1005,5 +1071,42 @@ mod tests {
         let per_sentence = start.elapsed().as_secs_f64() * 1000.0 / (rounds * sentences.len() * 2) as f64;
         eprintln!("respell: {per_sentence:.4} ms per sentence");
         assert!(per_sentence < 5.0, "{per_sentence} ms");
+    }
+
+    /// The Live greeting and waiting lines as the phone's Bip says them (/v1/tts/prepare, Pocket 4: `Raw`). « IA »
+    /// spelled « i a » was heard « aya » (2026-10-30): one hyphenated word, the letters one after the other.
+    #[test]
+    fn live_lines_as_spoken() {
+        for spelling in [Spelling::Raw, Spelling::Respelled] {
+            let fr = |text: &str| crate::numbers_fr::prepare_for_synthesis_with(text, spelling);
+            let intl = |text: &str, lang: &str| crate::speech_intl::prepare_for_synthesis_with(text, lang, spelling);
+            assert_eq!(fr("Coucou, c'est Vie, ton agent IA. Ça va ?"), "Coucou, c'est Vie, ton agent I-a. Ça va ?");
+            assert_eq!(fr("L'IA de la maison et l'ia."), "L'I-a de la maison et l'i-a.");
+            assert_eq!(intl("¡Hola! Soy Vie, tu agente de IA. ¿Qué tal?", "es"), "¡Hola! Soy Vie, tu agente de I-a. ¿Qué tal?");
+            assert_eq!(intl("Hallo, hier ist Vie, dein KI-Agent.", "de"), "Hallo, hier ist Vie, dein Kah Ih-Agent.");
+            assert_eq!(intl("Hoi, met Vie, je AI-agent.", "nl"), "Hoi, met Vie, je aa ie-agent.");
+            assert_eq!(intl("Hi, it's Vie, your AI agent.", "en"), "Hi, it's Vie, your AI agent.");
+            assert_eq!(fr("Hmm, voyons… Demain il pleut."), "Voyons… Demain il pleut.");
+        }
+    }
+
+    #[test]
+    fn hesitations_are_not_read() {
+        for (lang, text, spoken) in [
+            ("fr", "Hmm, voyons…", "Voyons…"),
+            ("fr", "Hmm… je crois que oui.", "Je crois que oui."),
+            ("fr", "Euh. Bon, demain.", "Bon, demain."),
+            ("fr", "C'est, euh, assez bien, hum, je crois.", "C'est assez bien je crois."),
+            ("fr", "Bon. Euh… on part demain ?", "Bon. On part demain ?"),
+            ("fr", "Une heure d'humour avec Humbert, son album, ah !", "Une heure d'humour avec Humbert, son album, ah !"),
+            ("en", "Hmm, let me see… Um, it's sunny.", "Let me see… It's sunny."),
+            ("en", "Hum a tune, uh, for me.", "Hum a tune for me."),
+            ("de", "Hm, mal sehen… Um 10 Uhr, ähm, kommt er.", "Mal sehen… Um 10 Uhr kommt er."),
+            ("nl", "Hm, even kijken…", "Even kijken…"),
+            ("es", "Ehm, mañana vamos.", "Mañana vamos."),
+            ("fr", "Hmm", ""),
+        ] {
+            assert_eq!(without_hesitations(text, lang), spoken, "{lang}: {text}");
+        }
     }
 }

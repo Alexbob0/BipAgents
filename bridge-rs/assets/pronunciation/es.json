@@ -20,6 +20,10 @@
     "SEAT": "Seat",
     "Nest": "Nest"
   },
+  "always_about": "Words Pocket 4.x still says wrong from the raw text, applied whatever the engine (see fr.json). « IA » spelled « i a » runs its two vowels together, as in French (Live call of 2026-10-30): one hyphenated word, the letters said one after the other.",
+  "always": {
+    "ia": "i-a"
+  },
   "words": {
     "whatsapp": "Guasap",
     "youtube": "Yutub",

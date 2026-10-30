@@ -677,7 +677,7 @@ pub fn prepare_for_synthesis(text: &str, lang: &str) -> String {
 
 /// The same for a given engine (see `numbers_fr::prepare_for_synthesis_with`).
 pub fn prepare_for_synthesis_with(text: &str, lang: &str, spelling: crate::pronounce::Spelling) -> String {
-    let mut text = text.to_string();
+    let mut text = crate::pronounce::without_hesitations(text, lang); // « Hmm, let me see » -> « Let me see »
     if let Some(rules) = LEXICON.get(lang) {
         for (pattern, words) in rules {
             text = pattern.replace(&text, words);
