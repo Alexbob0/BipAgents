@@ -55,6 +55,15 @@ The target answers "done" at once. The listener then waits for the source.
   moment with no turn running, and no later than 5 minutes before the window ends. Without a window, the switch
   happens within the next 30 minutes.
 - `back_in`: the number of seconds the apps are told to wait (`Retry-After`, « de retour dans une minute »).
+- `drain` (optional, default `true`): `false` moves a place whose bridge is down (added 2026-10-30). Nothing is
+  copied while it runs, there is no window and no drain, and its bridge is never asked anything. The source stops the
+  place's services, kills what still runs of its bridge (`bipbridge`) or its gateways (`hermes gateway`), and fails
+  the move if anything is still running. It then copies the files as they are and makes the same switch. The
+  routines aren't counted, because a down bridge can't list them. The target still checks that its bridge and every
+  agent's gateway answer. A place that fails there stays where it was, stopped as before.
+
+The source writes `failed` with a short `error` for any failure at any step. For example, a bridge that stops
+answering during the drain gives `URLError: ...`. Since 2026-10-30 the source never stays in `draining`.
 
 The order runs in a unit of its own (`bipagents-move-<id>`), so it can last from minutes to hours. The seat agent
 answers "done" once the unit has started. The move's progress comes in the beats.
@@ -89,7 +98,8 @@ The seat agent accepts the order in two cases.
   installed again for someone else in the meantime, the order is refused and logged. The move's state then becomes
   `removed`.
 - **With `removed: true`.** The guichet marks the seat as removed, so the seat agent trusts the order without a move
-  (an operator's decision).
+  (an operator's decision). The seat agent also accepts `remove: true`, which the guichet's `orders::remove` signed
+  until 2026-10-30.
 
 The order is idempotent: if the account is already gone, the order still counts as done and nothing else happens.
 Without a `remove` order, the seat agent deletes the source copy itself 7 days after `done` (`cleanup`), under the
@@ -112,6 +122,7 @@ On the source (`role` = `"out"`):
 | Phase | Meaning |
 |---|---|
 | `connecting` | waiting for the target's listener |
+| `stopping` | (`drain: false` only) the place's services are stopped, and the source makes sure nothing of it still runs |
 | `copying` | rsync rounds while the place runs |
 | `waiting` | waiting for the window and a quiet moment (a new round every 2 minutes) |
 | `draining` | the apps' writes are refused, tasks are pausing, routines are postponed |
@@ -160,13 +171,18 @@ The seat agent does not put these in the beat yet, because asking would wake sle
    - Point the person's place at the target: `seats` row, door address and port. The backup repository and its token
      stay the person's: the target place keeps its own seat token and has the person's key, which came over with
      the files.
-   - Tell the phones MOVED through the push relay, as for an outage move. The apps follow the new door with the same
-     key and pin.
+   - Send no push. MOVED (« ouvre l'app pour les y remettre ») is for an outage move, where the app has to give back
+     the backup key. In a planned move nothing is asked of the person: the apps follow the new door on their own,
+     with the same key and pin.
    - Free the source seat after `kept_until`, when its account is deleted. Do not send it a `reset` before then if
      the copy should stay as a way back.
 6. On `failed`: nothing moved, and the person is still on the source. Reset the target seat, then try again later or
    on another server.
-7. If the target server dies during the move, the source is unaffected unless it is in `switching`. In that case the
+7. Send no `update` to a place while it moves, on either side: skip it in the waves. The seat agent holds such an
+   order: it doesn't do it and doesn't report it done, so the order comes back at each beat until the move ends. The
+   seat agent drops an update for the stopped copy that a completed move left behind (`moved-away.json`), because
+   the update would start that copy again.
+8. If the target server dies during the move, the source is unaffected unless it is in `switching`. In that case the
    source rolls back on its own when `finish` fails.
 
 ## Choices

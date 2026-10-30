@@ -361,3 +361,215 @@ def test_the_switch_never_waits_systemd_s_90_seconds_for_a_hanging_service():
     assert ["systemctl", "--user", "kill", "--signal=SIGKILL", "bipagents-bridge"] in runner.log
     assert ["systemctl", "--user", "stop", "--no-block", "hermes-gateway"] in runner.log
     assert placemove.quick_stop(Fake(set()), ["hermes-gateway"], sleep=lambda s: None) == []
+
+
+# -- failures and a stopped place (2026-10-30) ----------------------------------------------------------------------------
+
+class _Channel:
+    """The source's end of the SSH channel, faked: what was asked, what was copied."""
+    asked, copied = [], []
+
+    def __init__(self, base, address, port, key):
+        type(self).asked, type(self).copied = [], []
+
+    def ask(self, *words, timeout=900):
+        type(self).asked.append(words[0])
+        if words[0] == "info":
+            return {"home": "/home/bip3"}
+        if words[0] == "finish":
+            return {"ok": True, "verified": {"bridge": True}}
+        return {}
+
+    def rsync(self, source, dest, rules=None, checksum=False, timeout=0):
+        type(self).copied.append((os.path.basename(source.rstrip("/")), checksum))
+        return 10, 1
+
+
+def _a_move_out(tmp_path, monkeypatch, drain=True):
+    """A move_out order for place 2, its account and its own steps faked: (order file, moves root, home, the
+    place's own steps asked)."""
+    home = tmp_path / "bip2"
+    (home / ".hermes").mkdir(parents=True)
+    (home / ".config" / "bipagents").mkdir(parents=True)
+    stage = home / "stage"
+    stage.mkdir()
+    entry = type("E", (), {"pw_dir": str(home), "pw_name": "bip2", "pw_uid": 4242, "pw_gid": 4242})
+    monkeypatch.setattr(pm, "place", lambda n: entry)
+    monkeypatch.setattr(pm, "Channel", _Channel)
+    steps = []
+
+    def as_user(e, args, timeout=0):
+        steps.append(" ".join(args))
+        if args == ["move-out", "plan"]:
+            return {"home": str(home), "stage": str(stage), "roots": {"hermes": str(home / ".hermes")}, "rules": {}}
+        return {}
+    monkeypatch.setattr(pm, "as_user", as_user)
+    monkeypatch.setattr(pm, "quiet_moment", lambda *a, **k: {"turns_running": 0, "routines": []})
+    move = {"id": "m-0123456", "key": KEY, "target": {"address": "203.0.113.9", "port": 2222}, "back_in": 60}
+    if not drain:
+        move["drain"] = False
+    order = tmp_path / "order.json"
+    order.write_text(json.dumps({"seat": 2, "action": "move_out", "move": move}))
+    return str(order), str(tmp_path / "moves"), home, steps
+
+
+def test_a_bridge_down_at_the_drain_ends_the_move_in_failed_and_the_place_resumed(tmp_path, monkeypatch):
+    """The drain's call raised urllib's error (not a MoveError): the move used to stay « draining » until the guichet
+    gave up 20 minutes later. Now: rolled back (the target's copy stopped, the bridge resumed), `failed`, exit 1."""
+    import urllib.error
+    order, root, home, steps = _a_move_out(tmp_path, monkeypatch)
+    calls = []
+
+    def bridge(h, method, path, body=None, timeout=30):
+        calls.append(path)
+        if path == "/v1/place/move/drain":
+            raise urllib.error.URLError(ConnectionRefusedError(111, "Connection refused"))
+        return {}
+    monkeypatch.setattr(pm, "bridge", bridge)
+    assert pm.out(order, root) == 1
+    state = pm.states(root)[0]
+    assert state["phase"] == "failed" and state["result"] == "rolled back"
+    assert state["error"].startswith("URLError") and KEY not in json.dumps(state)
+    assert "abort" in _Channel.asked and "finish" not in _Channel.asked
+    assert calls[-1] == "/v1/place/move/resume"            # the drain undone
+    assert "move-out stop" not in steps                      # never stopped
+    assert not (home / pm.MOVED_AWAY).exists()
+
+
+def test_any_failure_of_the_unit_is_said_failed_never_left_in_its_phase(tmp_path):
+    root = str(tmp_path / "moves")
+    order = tmp_path / "order.json"
+    order.write_text(json.dumps({"seat": 2, "move": {"id": "m-0123456", "key": KEY}}))
+
+    def broken(path, moves):
+        pm.save("m-0123456", moves, role="out", seat=2, phase="waiting")
+        raise KeyError("routines")
+    assert pm.out(str(order), root, mover=broken) == 1
+    state = pm.states(root)[0]
+    assert (state["phase"], state["result"], state["error"]) == ("failed", "not moved", "KeyError: 'routines'")
+
+    def cancelled_then_broken(path, moves):   # a final phase is kept as it is
+        pm.save("m-0123456", moves, phase="cancelled", result=None)
+        raise RuntimeError("late")
+    assert pm.out(str(order), root, mover=cancelled_then_broken) == 1
+    assert pm.states(root)[0]["phase"] == "cancelled"
+    order.write_text("not json")                              # nothing to say it of: still a clean exit
+    assert pm.out(str(order), root, mover=broken) == 1
+
+
+def test_a_stopped_place_moves_without_its_bridge(tmp_path, monkeypatch):
+    """`"drain": false`: no copies while it runs, no window, no drain, nothing asked of its bridge: stopped (made
+    sure), copied as it is, then the same switch, checksums and the stage included."""
+    order, root, home, steps = _a_move_out(tmp_path, monkeypatch, drain=False)
+
+    def never(*a, **k):
+        raise AssertionError("the bridge is never asked")
+    monkeypatch.setattr(pm, "bridge", never)
+    monkeypatch.setattr(pm, "quiet_moment", never)
+    checked = []
+    monkeypatch.setattr(pm, "made_stopped", lambda entry, proc="/proc", run=None: checked.append(entry.pw_uid))
+    assert pm.out(order, root) == 0
+    state = pm.states(root)[0]
+    assert state["phase"] == "done" and state["drain_seconds"] == 0 and state["round"] == 1
+    assert steps == ["move-out plan", "move-out stop"] and checked == [4242]
+    assert _Channel.asked == ["info", "prepare", "finish"]
+    assert _Channel.copied == [(".hermes", False), (".hermes", True), ("stage", True)]
+    assert json.loads((home / pm.MOVED_AWAY).read_text())["move"] == "m-0123456"
+
+
+def test_a_stopped_place_that_still_runs_is_not_moved(tmp_path, monkeypatch):
+    order, root, home, steps = _a_move_out(tmp_path, monkeypatch, drain=False)
+    monkeypatch.setattr(pm, "bridge", lambda *a, **k: {})
+
+    def still(entry, proc="/proc", run=None):
+        raise pm.MoveError("the place still runs: bipbridge")
+    monkeypatch.setattr(pm, "made_stopped", still)
+    assert pm.out(order, root) == 1
+    state = pm.states(root)[0]
+    assert (state["phase"], state["error"]) == ("failed", "the place still runs: bipbridge")
+    assert steps[-1] == "resume" and "abort" in _Channel.asked and "finish" not in _Channel.asked
+    assert _Channel.copied == []
+
+
+def test_what_still_runs_of_the_place_is_killed_or_the_move_refused(tmp_path):
+    proc = tmp_path / "proc"
+    for number, command in enumerate(("/home/bip2/.local/share/bipagents/bridge/abc/bipbridge serve",
+                                      "/opt/bipagents/hermes/bin/python -m hermes gateway run", "sleep 10"), 100):
+        (proc / str(number)).mkdir(parents=True)
+        (proc / str(number) / "cmdline").write_bytes(b"\0".join(w.encode() for w in command.split()) + b"\0")
+    uid = os.stat(proc / "100").st_uid
+    assert pm.still_running(uid, str(proc)) == ["bipbridge", "hermes gateway"]
+    assert pm.still_running(uid + 1, str(proc)) == []        # another account's
+    entry = type("E", (), {"pw_uid": uid, "pw_name": "bip2"})
+    killed = []
+
+    def pkill(args, **kw):
+        killed.append(args)
+        if args[-1] == "bipbridge":
+            shutil.rmtree(proc / "100")
+    with pytest.raises(pm.MoveError, match="hermes gateway"):
+        pm.made_stopped(entry, str(proc), pkill, sleep=lambda s: None, wait=3)
+    assert ["pkill", "-KILL", "-u", "bip2", "-f", "bipbridge"] in killed
+    assert ["pkill", "-KILL", "-u", "bip2", "-f", "hermes.*gateway"] in killed
+    shutil.rmtree(proc / "101")
+    killed.clear()
+    pm.made_stopped(entry, str(proc), pkill, sleep=lambda s: None)   # nothing left: nothing killed
+    assert killed == []
+
+
+def test_a_cancel_starts_again_a_stopped_place_being_copied(tmp_path, monkeypatch):
+    root = str(tmp_path / "moves")
+    entry = type("E", (), {"pw_dir": str(tmp_path), "pw_name": "bip2"})
+    monkeypatch.setattr(pm, "place", lambda n: entry)
+    monkeypatch.setattr(pm.subprocess, "run", lambda *a, **k: None)
+    monkeypatch.setattr(pm, "bridge", lambda *a, **k: {})
+    steps = []
+    monkeypatch.setattr(pm, "as_user", lambda e, args, timeout=0: steps.append(args) or {})
+    pm.save("m-0123456", root, role="out", seat=2, phase="copying", drain=True)
+    pm.cancel("m-0123456", root)
+    assert steps == []                                        # a running place being copied: nothing to resume
+    pm.save("m-0123456", root, phase="copying", drain=False)
+    pm.cancel("m-0123456", root)
+    assert steps == [["resume"]] and pm.states(root)[0]["phase"] == "cancelled"
+
+
+def test_the_seat_agent_takes_a_stopped_place_s_move_and_both_remove_keys(tmp_path):
+    agent = _load("seat_agent_drain", "seat-agent.py")
+    out = {"order": 3, "server": "vps-1", "seat": 2, "action": "move_out", "expires": 9_999_999_999,
+           "move": {"id": "m-0123456", "key": KEY, "target": {"address": "203.0.113.9", "port": 2222},
+                    "back_in": 60, "drain": False}}
+    assert agent.move_valid(out)
+    assert not agent.move_valid({**out, "move": {**out["move"], "drain": "no"}})
+    # what the guichet's orders::remove signed until 2026-10-30, and what it signs now
+    for body in ({"remove": True}, {"removed": True}):
+        order = {"order": 5, "server": "vps-1", "seat": 2, "action": "remove", "expires": 9_999_999_999, **body}
+        assert agent.accepted({"id": 5, "body": json.dumps(order)}, "vps-1", set(), 1000) == order
+    assert not agent.remove_valid({"remove": "yes"}) and not agent.remove_valid({"removed": 1})
+    wiped = []
+    assert agent.remove(3, {"remove": True}, str(tmp_path), wiped.append, lambda *a, **k: None) and wiped == ["bip3"]
+
+
+def test_an_update_waits_while_the_place_moves_and_never_starts_a_moved_copy(tmp_path):
+    import time
+    agent = _load("seat_agent_update", "seat-agent.py")
+    moves = str(tmp_path / "moves")
+    home = tmp_path / "bip2"
+    (home / ".config" / "bipagents").mkdir(parents=True)
+    done = []
+
+    def updater(number, commit):
+        done.append(number)
+    commit = "a" * 40
+    assert agent.update_order(2, commit, moves, str(home), updater) and done == [2]   # no move: updated
+    for role, phase in (("out", "copying"), ("out", "draining"), ("out", "switching"), ("in", "receiving")):
+        pm.save("m-0123456", moves, role=role, seat=2, phase=phase)
+        assert agent.moving(2, moves) == "m-0123456" and agent.moving(3, moves) is None
+        assert not agent.update_order(2, commit, moves, str(home), updater)   # held: served again next beat
+    assert done == [2]
+    pm.save("m-0123456", moves, role="out", phase="failed")
+    assert agent.update_order(2, commit, moves, str(home), updater) and done == [2, 2]   # it stayed: updated
+    pm.save("m-0123456", moves, phase="copying")
+    assert agent.moving(2, moves, now=time.time() + agent.MOVE_STALE + 1) is None   # a move long silent is over
+    pm.save("m-0123456", moves, phase="done")
+    (home / agent.MOVED_AWAY).write_text(json.dumps({"move": "m-0123456"}))
+    assert agent.update_order(2, commit, moves, str(home), updater) and done == [2, 2]   # dropped, never started

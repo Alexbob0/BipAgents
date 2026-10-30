@@ -885,6 +885,8 @@ def move_valid(body):
         return False
     port = (other.get("port") if body["action"] == "move_out" else move.get("port")) or 2222
     window = move.get("window")
+    if "drain" in move and not isinstance(move["drain"], bool):   # false: a place whose bridge is down, not drained
+        return False
     return isinstance(port, int) and 1024 <= port <= 65535 and (window is None or (
         isinstance(window, dict) and all(isinstance(window.get(k), (int, float)) for k in ("start", "end"))))
 
@@ -928,12 +930,18 @@ def move(body, moves=MOVES, lib=LIB, run=subprocess.run):
              "/usr/bin/python3", script, "out", path])
 
 
+def marked_removed(body):
+    """The guichet marks the place removed: `"removed": true` (place-moves.md), or `"remove": true`, what its
+    orders::remove signed until 2026-10-30 (orders signed then are still served for two days)."""
+    return body.get("removed") is True or body.get("remove") is True
+
+
 def remove_valid(body):
     """`remove`: the place left behind by a move, named by that move's id, or marked removed by the guichet."""
     move = body.get("move")
     if isinstance(move, dict):
         return move_valid({"action": "move_cancel", "move": move})
-    return body.get("removed") is True
+    return marked_removed(body)
 
 
 def moved_out(number, move_id, moves=MOVES):
@@ -945,6 +953,52 @@ def moved_out(number, move_id, moves=MOVES):
         return False
     return (state.get("role") == "out" and int(state.get("seat", 0)) == number
             and state.get("phase") in ("done", "removed"))
+
+
+MOVE_OVER = ("done", "failed", "cancelled", "closed", "removed")
+MOVE_STALE = 8 * 3600   # a move silent this long is over (its listener closes after 6 h, the guichet gives up then)
+MOVED_AWAY = ".config/bipagents/moved-away.json"   # the place's copy left by a move that completed (place-move.py)
+
+
+def moving(number, moves=MOVES, now=None):
+    """The id of a move under way here for place n (leaving or arriving), else None."""
+    now = time.time() if now is None else now
+    try:
+        names = sorted(os.listdir(moves))
+    except OSError:
+        return None
+    for name in names:
+        state = read_json(os.path.join(moves, name, "state.json"))
+        try:
+            same = int(state.get("seat", 0)) == number and now - float(state.get("updated") or 0) < MOVE_STALE
+        except (TypeError, ValueError):
+            continue
+        if same and state.get("role") in ("out", "in") and state.get("phase") not in MOVE_OVER:
+            return name
+    return None
+
+
+def update_order(number, commit, moves=MOVES, home=None, updater=None):
+    """An update order while place n moves: held (False: not done, the guichet serves it again at the next beat, and
+    it applies if the move fails or is called off); for the stopped copy a completed move left, dropped (True: an
+    update would start it again beside the place that moved). Else done. True when the order is done with."""
+    under_way = moving(number, moves)
+    if under_way:
+        log("update of place %d held: its move %s is under way" % (number, under_way))
+        return False
+    if home is None:
+        try:
+            home = pwd.getpwnam(account(number)).pw_dir
+        except KeyError:
+            home = None
+    if home and os.path.exists(os.path.join(home, MOVED_AWAY)):
+        log("update of place %d dropped: the place moved away (its copy stays stopped)" % number)
+        return True
+    try:
+        (updater or update)(number, commit)
+    except (OSError, subprocess.SubprocessError) as exc:
+        log("update of place %s stopped: %s" % (number, exc))
+    return True
 
 
 def remove(number, body, moves=MOVES, wipe_account=None, run=subprocess.run):
@@ -970,7 +1024,7 @@ def remove(number, body, moves=MOVES, wipe_account=None, run=subprocess.run):
         if mark != move_id:
             log("place %d: remove refused, the account is not the one moved by %s" % (number, move_id))
             return False
-    elif body.get("removed") is not True:
+    elif not marked_removed(body):
         return False
     log("place %d (%s): removed" % (number, user))
     (wipe_account or wipe)(user)
@@ -1102,10 +1156,8 @@ def main(argv=()):
             if body is None:
                 continue
             if body["action"] == "update":
-                try:
-                    update(int(body["seat"]), body["commit"])
-                except (OSError, subprocess.SubprocessError) as exc:
-                    log("update of place %s stopped: %s" % (body["seat"], exc))
+                if not update_order(int(body["seat"]), body["commit"]):
+                    continue   # held while the place moves: neither noted nor told done
             elif body["action"] in MOVE_ACTIONS:
                 try:
                     move(body)
