@@ -100,7 +100,10 @@ async fn the_phone_sends_its_days_only_once_an_agent_has_health_on() {
     assert!(soul.contains(souls::HEALTH_RULE) && soul.contains("Tu es Coach."));
     assert!(soul.contains(souls::NOTEBOOK_RULE)); // the Carnet, on by default
     assert!(soul.contains(souls::PAYMENTS_RULE)); // every agent's (handover.rs)
+    let health_variant = soul.contains(souls::SHARED_MEMORY_HEALTH_RULE) && !soul.contains(souls::SHARED_MEMORY_RULE);
+    assert!(health_variant, "in the circle as the health agent: what it learns stays its own");
     let plain = souls::split_notebook(&souls::split_health(&souls::split_payments(&soul)).0).0;
+    let plain = souls::split_shared_memory(&plain).0;
     assert_eq!(souls::split_language(&plain).0.trim(), "Tu es Coach.");
     let urls: Vec<String> = commands.lock().unwrap().iter().map(|a: &Vec<String>| a[6].clone()).collect();
     assert!(urls[0].ends_with(&format!(

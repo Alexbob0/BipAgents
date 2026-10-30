@@ -2545,5 +2545,69 @@
    null
   ],
   "output": "Tu es Coach.\n"
+ },
+ {
+  "fn": "with_shared_memory",
+  "input": [
+   "Tu es Budget.\n",
+   true
+  ],
+  "output": "Tu es Budget.\n\n<!-- bipagents:shared-memory -->\nWhat you remember about your person (user memory) is shared with their other agents, and theirs with you; their « Toi » page keeps it all. Your other notes stay yours.\n<!-- /bipagents:shared-memory -->\n"
+ },
+ {
+  "fn": "with_shared_memory",
+  "input": [
+   "Tu es Coach.\n",
+   false
+  ],
+  "output": "Tu es Coach.\n\n<!-- bipagents:shared-memory -->\nWhat your person's other agents remember about them (user memory) reaches you too; their « Toi » page keeps it all. What you learn stays yours only (it may be health), like your other notes.\n<!-- /bipagents:shared-memory -->\n"
+ },
+ {
+  "fn": "with_shared_memory",
+  "input": [
+   "Tu es Budget.\n",
+   null
+  ],
+  "output": "Tu es Budget.\n"
+ },
+ {
+  "fn": "with_shared_memory",
+  "input": [
+   "Tu es Budget.\n\n<!-- bipagents:shared-memory -->\nWhat you remember about your person (user memory) is shared with their other agents, and theirs with you; their « Toi » page keeps it all. Your other notes stay yours.\n<!-- /bipagents:shared-memory -->\n",
+   true
+  ],
+  "output": "Tu es Budget.\n\n<!-- bipagents:shared-memory -->\nWhat you remember about your person (user memory) is shared with their other agents, and theirs with you; their « Toi » page keeps it all. Your other notes stay yours.\n<!-- /bipagents:shared-memory -->\n"
+ },
+ {
+  "fn": "with_shared_memory",
+  "input": [
+   "Tu es Budget.\n\n<!-- bipagents:shared-memory -->\nWhat you remember about your person (user memory) is shared with their other agents, and theirs with you; their « Toi » page keeps it all. Your other notes stay yours.\n<!-- /bipagents:shared-memory -->\n",
+   null
+  ],
+  "output": "Tu es Budget.\n"
+ },
+ {
+  "fn": "with_shared_memory",
+  "input": [
+   "Tu es Budget.\n\n<!-- bipagents:shared-memory -->\nWhat your person's other agents remember about them (user memory) reaches you too; their « Toi » page keeps it all. What you learn stays yours only (it may be health), like your other notes.\n<!-- /bipagents:shared-memory -->\n",
+   true
+  ],
+  "output": "Tu es Budget.\n\n<!-- bipagents:shared-memory -->\nWhat you remember about your person (user memory) is shared with their other agents, and theirs with you; their « Toi » page keeps it all. Your other notes stay yours.\n<!-- /bipagents:shared-memory -->\n"
+ },
+ {
+  "fn": "with_shared_memory",
+  "input": [
+   "Tu es Budget.\n\n<!-- bipagents:shared-memory -->\nWhat you remember about your person (user memory) is shared with their other agents, and theirs with you; their « Toi » page keeps it all. Your other notes stay yours.\n<!-- /bipagents:shared-memory -->\n\n<!-- bipagents:notebook -->\nx\n<!-- /bipagents:notebook -->\n",
+   true
+  ],
+  "output": "Tu es Budget.\n\n<!-- bipagents:shared-memory -->\nWhat you remember about your person (user memory) is shared with their other agents, and theirs with you; their « Toi » page keeps it all. Your other notes stay yours.\n<!-- /bipagents:shared-memory -->\n\n<!-- bipagents:notebook -->\nx\n<!-- /bipagents:notebook -->\n"
+ },
+ {
+  "fn": "with_shared_memory",
+  "input": [
+   "Tu es Budget.\n\n<!-- bipagents:shared-memory -->\nWhat you remember about your person (user memory) is shared with their other agents, and theirs with you; their « Toi » page keeps it all. Your other notes stay yours.\n<!-- /bipagents:shared-memory -->\n\n<!-- bipagents:notebook -->\nx\n<!-- /bipagents:notebook -->\n",
+   null
+  ],
+  "output": "Tu es Budget.\n\n<!-- bipagents:notebook -->\nx\n<!-- /bipagents:notebook -->\n"
  }
 ]

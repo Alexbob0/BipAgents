@@ -25,8 +25,10 @@ fn dump_the_bridge_share_of_a_prompt() {
     for lang in ["fr", "en"] {
         for category in souls::CATEGORIES {
             let base = souls::soul_for("Léa", category, Some(lang)).unwrap();
-            let with_notebook = souls::with_notebook(&base, true);
+            // the Carnet on: in the person's circle, its memory of them common (shared_memory.rs)
+            let with_notebook = souls::with_shared_memory(&souls::with_notebook(&base, true), Some(true));
             let with_all = souls::with_health(&souls::with_archives(&with_notebook, true), true);
+            let with_all = souls::with_shared_memory(&with_all, Some(false)); // the health agent's variant
             souls_out.insert(
                 format!("{lang}/{category}"),
                 json!({"base": base, "notebook": with_notebook, "all": with_all}),
@@ -39,6 +41,7 @@ fn dump_the_bridge_share_of_a_prompt() {
         "FAMILY_RULE": souls::FAMILY_RULE, "DRAFT_RULE": souls::DRAFT_RULE, "PLAIN_RULE": souls::PLAIN_RULE,
         "FILES_RULE": souls::FILES_RULE, "LONG_WORK_RULE": souls::LONG_WORK_RULE, "VISUAL_RULE": souls::VISUAL_RULE,
         "NOTEBOOK_RULE": souls::NOTEBOOK_RULE, "ARCHIVES_RULE": souls::ARCHIVES_RULE, "HEALTH_RULE": souls::HEALTH_RULE,
+        "SHARED_MEMORY_RULE": souls::SHARED_MEMORY_RULE, "SHARED_MEMORY_HEALTH_RULE": souls::SHARED_MEMORY_HEALTH_RULE,
         "prototype/language_block_compact_en": souls::language_block_compact(Some("en")),
         "prototype/COMPACT_NOTEBOOK_RULE": souls::COMPACT_NOTEBOOK_RULE,
     });

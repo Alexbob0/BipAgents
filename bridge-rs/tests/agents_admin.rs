@@ -735,6 +735,34 @@ fn an_earlier_bridge_block_gets_the_rule_about_what_agents_read() {
 }
 
 #[test]
+fn healing_tells_an_agent_whether_its_memory_is_shared() {
+    let dir = tempfile::tempdir().unwrap();
+    let (config, _) = managed_config(dir.path(), "http://127.0.0.1:8642");
+    let agent = hub_agent(&config);
+    let c = config.get();
+    let folder = profiles(dir.path()).join(&agent.name);
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("SOUL.md"), format!("Tu es Vie.\n\n{}\n", souls::language_block(Some("fr")))).unwrap();
+    // in the circle (the Carnet on by default): what it remembers of the person is common, and it knows it
+    heal_souls(&c);
+    let soul = read_soul(&c, &agent).unwrap();
+    assert_eq!(soul.matches(souls::SHARED_MEMORY_RULE).count(), 1, "{soul}");
+    heal_souls(&c);
+    assert_eq!(read_soul(&c, &agent).unwrap(), soul, "once");
+    assert!(!agents_admin::editable_soul(&c, &agent).unwrap().contains(souls::SHARED_MEMORY_START), "never shown");
+    // the health given to it: the variant (what it learns stays its own)
+    bipbridge::health::set_enabled(&c, &agent.name, true).unwrap();
+    heal_souls(&c);
+    let soul = read_soul(&c, &agent).unwrap();
+    assert!(soul.contains(souls::SHARED_MEMORY_HEALTH_RULE) && !soul.contains(souls::SHARED_MEMORY_RULE));
+    // the Carnet off: out of the circle, the block goes
+    bipbridge::notebook::set_enabled(&c, &agent.name, false).unwrap();
+    heal_souls(&c);
+    let soul = read_soul(&c, &agent).unwrap();
+    assert!(!soul.contains(souls::SHARED_MEMORY_START) && soul.starts_with("Tu es Vie.\n\n"), "{soul}");
+}
+
+#[test]
 fn the_agents_model_is_switched_in_its_config() {
     let dir = tempfile::tempdir().unwrap();
     let (config, _) = managed_config(dir.path(), "http://127.0.0.1:8642");
