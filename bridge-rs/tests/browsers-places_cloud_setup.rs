@@ -590,7 +590,9 @@ async fn spare_agents_make_new_agents_files_only() {
     let run = fake_hermes_slow(home.clone(), commands.clone(), delay);
     let http = reqwest::Client::new();
     done(&config, true);
-    assert_eq!(cloud_setup::prepare_place(&shared, &http, Some(run.clone())).await.unwrap(), Some("agent".into()));
+    // without delay: a preparation holds the claims' lock, which the other tests of this file share
+    let fast = fake_hermes(home.clone(), commands.clone());
+    assert_eq!(cloud_setup::prepare_place(&shared, &http, Some(fast)).await.unwrap(), Some("agent".into()));
 
     // The pool: two spares, made ahead, served, hidden everywhere.
     let started = std::time::Instant::now();
@@ -778,7 +780,7 @@ async fn a_prepared_place_is_claimed_with_file_writes_and_its_other_agents_made_
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
     let ran = commands.lock().unwrap().clone();
-    assert!(!ran.iter().any(is_restart), "{ran:?}");
+    assert!(!ran.iter().any(|c| is_restart(c)), "{ran:?}");
     assert!(ran.iter().any(|c| is_create(c, "maison")), "{ran:?}");
     assert!(!ran.iter().any(|c| c.len() > 4 && c[1..3] == ["config", "set"]));
     let maison = shared.get().agents["maison"].clone();
