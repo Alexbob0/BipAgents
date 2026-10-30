@@ -241,7 +241,9 @@ pub const HEALTH_RULE: &str = concat!(
     "yours). It is theirs: use it only to help them, with their sleep, activity, training and habits, and never share ",
     "it. Never ",
     "diagnose: when something looks worrying (an unusual heart rate, a sudden change, pain or a symptom they mention), ",
-    "say so gently and suggest they see a doctor."
+    "say so gently and suggest they see a doctor. Everything about their body that they tell you (sport and training, ",
+    "sleep, weight, treatments, symptoms, measurements) goes to the private health part of the Carnet (private: true), ",
+    "never on their « Toi » page, which all their agents read."
 );
 
 /// The personality without the health block (the person never sees it), and whether it had one.
@@ -263,6 +265,18 @@ pub fn with_health(soul: &str, on: bool) -> String {
         return body;
     }
     format!("{}\n\n{HEALTH_START}\n{HEALTH_RULE}\n{HEALTH_END}\n", body.trim_end())
+}
+
+/// The health block, where it is, brought to the current `HEALTH_RULE` (an agent whose switch was on before the rule
+/// changed); a personality without one is unchanged.
+pub fn refresh_health(soul: &str) -> String {
+    let (Some(start), Some(end)) = (soul.find(HEALTH_START), soul.find(HEALTH_END)) else {
+        return soul.to_string();
+    };
+    if end < start {
+        return soul.to_string();
+    }
+    format!("{}{HEALTH_START}\n{HEALTH_RULE}\n{}", &soul[..start], &soul[end..])
 }
 
 pub const NOTEBOOK_START: &str = "<!-- bipagents:notebook -->";
@@ -689,6 +703,28 @@ mod tests {
                 assert!(rule.contains(needed), "missing {needed}");
             }
         }
+    }
+
+    #[test]
+    fn the_health_agent_keeps_the_body_off_toi() {
+        // the night bench (2026-10-29): Coach filed running, wake-up time and yoga on « Toi », so every agent's USER.md
+        // had them; Alex chose « Toi » common and this rule for the health agent
+        for needed in ["sport", "sleep", "weight", "treatments", "symptoms", "measurements", "private health part"] {
+            assert!(HEALTH_RULE.contains(needed), "missing {needed}");
+        }
+        assert!(HEALTH_RULE.contains("never on their « Toi » page"));
+        let soul = with_health("Tu es Coach.\n", true);
+        assert!(soul.contains("never on their « Toi » page") && soul.contains(HEALTH_START));
+        assert!(!with_health(&soul, false).contains("« Toi »"), "only for the health agent");
+        // an agent switched on before: its block brought up to date where it is, then left alone
+        let old = format!(
+            "Tu es Coach.\n\n{HEALTH_START}\nNever diagnose.\n{HEALTH_END}\n\n{NOTEBOOK_START}\nx\n{NOTEBOOK_END}\n"
+        );
+        let fresh = refresh_health(&old);
+        assert!(fresh.contains("never on their « Toi » page") && !fresh.contains("Never diagnose.\n"));
+        assert!(fresh.find(HEALTH_START) < fresh.find(NOTEBOOK_START), "in place");
+        assert_eq!(refresh_health(&fresh), fresh);
+        assert_eq!(refresh_health("Tu es Prof.\n"), "Tu es Prof.\n");
     }
 
     #[test]

@@ -43,19 +43,26 @@
 //!   Carnet splits « a ; b » into two facts) is not added again, so nothing goes round. An entry removed from USER.md
 //!   stays out even though the page keeps it; written on the page again later, it counts again. The first look takes
 //!   the page as it is, once (what was removed stays out). Not queued as news: notebook_note already did that;
+//! - **one version of a fact** (the night bench, 2026-10-29: with DeepSeek the old version of a fact stayed next to
+//!   the new one and « (noté le 29/10/2026) » ended most entries, so USER.md was full and the oldest facts fell out),
+//!   still without a model: date and attribution stamps are left out of the key and of what is given
+//!   (`strip_stamps`); a fact edited or replaced on « Toi » takes its old version out of every USER.md (`edited`);
+//!   a new entry that clearly updates an older one of the same section replaces it (`updates`: 70 % of their
+//!   significant words in both, 4 words each at least; a false merge is worse than a duplicate);
 //!
 //! When: `run_forever` looks every `INTERVAL_SECONDS` at the circle's files (their size and time only, nothing read
 //! when nothing changed) and syncs on a change; the app's memory editor (PUT /v1/agents/{id}/memory/user) syncs at
 //! once, so an edit of « what it knows about you » applies to all the person's own agents.
 //!
 //! `<data>/notebook/shared-user.json` (0600): `{"merged", "common": [{text, by, at}], "removed": [[key, at]],
-//! "agents": {agent: {"last": [entry], "seen": [key]}}, "toi": [key], "toi_read"}`.
+//! "agents": {agent: {"last": [entry], "seen": [key]}}, "toi": [key], "toi_read", "toi_page": [fact]}`.
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use crate::app::AppState;
@@ -123,6 +130,10 @@ pub struct Stored {
     /// Whether the « Toi » page was looked at once.
     #[serde(default)]
     pub toi_read: bool,
+    /// The facts on the « Toi » page at the last look (without stamps), in the page's order (to tell an edited fact:
+    /// `edited`).
+    #[serde(default)]
+    pub toi_page: Vec<String>,
 }
 
 /// An agent of the circle.
@@ -145,9 +156,138 @@ pub struct Round {
     pub learnt: Vec<(String, String)>,
 }
 
-/// « The same entry »: its folded text.
+/// What a date stamp says before its date (« noté le », « annoncé le », « added on »…), folded or not.
+const STAMP_VERB: &str = r"(?:not[ée]e?s?|annonc[ée]e?s?|dite?s?|ajout[ée]e?s?|mise? à jour|mise? a jour|maj|enregistr[ée]e?s?|apprise?s?|signal[ée]e?s?|pr[ée]cis[ée]e?s?|confirm[ée]e?s?|indiqu[ée]e?s?|mentionn[ée]e?s?|rapport[ée]e?s?|[ée]crite?s?|communiqu[ée]e?s?|partag[ée]e?s?|noted|added|said|saved|told|mentioned|recorded|announced|updated|shared|reported)";
+const STAMP_MONTH: &str = r"(?:janvier|f[ée]vrier|mars|avril|mai|juin|juillet|ao[ûu]t|septembre|octobre|novembre|d[ée]cembre|january|february|march|april|may|june|july|august|september|october|november|december)";
+
+/// A date stamp: « noté le 29/10/2026 », « annoncé le 29 octobre », « added on 2026-10-29 by Coach ».
+static STAMP: LazyLock<String> = LazyLock::new(|| {
+    let date = format!(
+        r"(?:\d{{4}}-\d{{1,2}}-\d{{1,2}}|\d{{1,2}}[/.]\d{{1,2}}(?:[/.]\d{{2,4}})?|\d{{1,2}}(?:er)?\s+{STAMP_MONTH}(?:\s+\d{{4}})?|{STAMP_MONTH}\s+\d{{1,2}}(?:st|nd|rd|th)?(?:,?\s+\d{{4}})?)"
+    );
+    format!(r"{STAMP_VERB}\s+(?:(?:le|la|du|au|en date du|on|the)\s+)?{date}(?:\s+(?:par|by)\s+[\p{{L}}'’-]+)?")
+});
+
+/// The stamps' places in an entry, each with what it leaves (module doc of `strip_stamps`).
+static STAMPS: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
+    let s = STAMP.as_str();
+    [
+        // « (noté le 29/10/2026) »
+        (format!(r"(?i)\s*\(\s*{s}\s*\)"), ""),
+        // « (reporté depuis mars, annoncé le 29/10/2026) »
+        (format!(r"(?i)\s*[,;]\s*{s}\s*\)"), ")"),
+        // « (annoncé le 29/10/2026, reporté depuis mars) »
+        (format!(r"(?i)\(\s*{s}\s*[,;]\s*"), "("),
+        // « … — annoncé le 29/10/2026 »
+        (format!(r"(?i)\s*[—–]\s*{s}"), ""),
+        // « …, noté le 29/10/2026. » at the end
+        (format!(r"(?i)\s*(?:[,;]|\s-)\s*{s}\s*\.?\s*$"), ""),
+        // « Noté le 29/10/2026 : … » at the start
+        (format!(r"(?i)^\s*{s}\s*[:,—–-]\s*"), ""),
+    ]
+    .into_iter()
+    .map(|(pattern, with)| (Regex::new(&pattern).expect("valid regex"), with))
+    .collect()
+});
+
+/// An entry without the date or attribution stamps a model adds to it (the night bench, 2026-10-29: DeepSeek ended
+/// most entries with « (noté le 29/10/2026) », « — annoncé le 29/10/2026 », « (dit le …) »): they say nothing about
+/// the person, cost room in every USER.md, and made two copies of one fact look different. A stamp needs its verb
+/// (« noté », « annoncé », « dit », « ajouté », « mis à jour »…, `STAMP_VERB`) and a date: « (née le 3 juin) » or
+/// « (3 juin) » stay. Neither in the key nor in what is given.
+pub fn strip_stamps(entry: &str) -> String {
+    let mut text = entry.to_string();
+    for (re, with) in STAMPS.iter() {
+        text = re.replace_all(&text, *with).into_owned();
+    }
+    let text = tk::squeeze(&text);
+    let text = text.trim().trim_end_matches([',', ';', ':', '—', '–', '-', ' ']).trim_end();
+    if text.is_empty() {
+        entry.trim().to_string()
+    } else {
+        text.to_string()
+    }
+}
+
+/// « The same entry »: its folded text, stamps left out.
 pub fn key(entry: &str) -> String {
-    notebook::fold(entry)
+    notebook::fold(&strip_stamps(entry))
+}
+
+/// Words that say nothing of what a fact is about (folded, 3 letters and more: shorter ones are skipped anyway).
+const SMALL_WORDS: &[&str] = &[
+    "les", "des", "une", "est", "pour", "avec", "dans", "sur", "pas", "que", "qui", "par", "son", "ses", "mes", "mon",
+    "aux", "elle", "ils", "elles", "nous", "vous", "leur", "leurs", "sont", "ont", "sans", "tout", "tous", "toute",
+    "plus", "tres", "aussi", "mais", "donc", "depuis", "chez", "cette", "ces", "quand", "lors", "the", "and", "for",
+    "with", "his", "her", "its", "are", "was", "has", "have", "this", "that", "from", "but", "not", "their", "they",
+    "since", "when", "will", "also", "who",
+];
+/// An entry updates an older one when, of their significant words together, this share at least is in both
+/// (`UPDATE_SHARE_NUM / UPDATE_SHARE_DEN`, Jaccard on folded words of 3 letters and more, small words left out)…
+pub const UPDATE_SHARE_NUM: usize = 7;
+pub const UPDATE_SHARE_DEN: usize = 10;
+/// …and each has this many significant words at least (two short facts of the same kind look alike: « Chat :
+/// Biscotte » and « Chat : Moka » are two cats).
+pub const UPDATE_MIN_WORDS: usize = 4;
+
+/// A fact's significant words (`SMALL_WORDS` and words under 3 letters left out; stamps too).
+fn significant(entry: &str) -> HashSet<String> {
+    key(entry).split(' ').filter(|w| w.chars().count() >= 3 && !SMALL_WORDS.contains(w)).map(str::to_string).collect()
+}
+
+/// The words written with a capital in an entry (names: « Tiago », « Annecy »), folded. Its first word too: « Tiago
+/// fait du judo » starts with a name; a plain first word that differs only makes the entries less alike (a duplicate,
+/// never a lost fact).
+fn names(entry: &str) -> HashSet<String> {
+    strip_stamps(entry)
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .filter(|w| w.chars().next().is_some_and(char::is_uppercase))
+        .map(notebook::fold)
+        .collect()
+}
+
+/// Whether `new` clearly updates `old` (the night bench: « Déménagement prévu à Annecy en mars 2027, avec son
+/// compagnon Ilyès » then « … en mai 2027 (repoussé depuis mars) … »; « À faire garder … (déménagement à Annecy en mars
+/// 2027…) » then « … mai 2027 … »): not the same key, the same section of « Toi » as the outline guesses it
+/// (template::guess, None for both counts as the same), and at least 70 % of their significant words together in both,
+/// with 4 significant words each at least. Conservative on purpose (Alex, 2026-10-29): a false merge loses a fact, a
+/// missed one leaves a duplicate. Changed words count against it: « prévu en mars » / « repoussé à mai » alone share too
+/// little and stay two entries (the « Toi » page's edit path catches the person's or an agent's correction there); a
+/// name that differs (a word with a capital: « Tiago » / « Maëlle ») makes it another fact.
+pub fn updates(new: &str, old: &str) -> bool {
+    let (a, b) = (significant(new), significant(old));
+    if a.len() < UPDATE_MIN_WORDS || b.len() < UPDATE_MIN_WORDS || key(new) == key(old) {
+        return false;
+    }
+    let both = a.intersection(&b).count();
+    let any = a.union(&b).count();
+    if both * UPDATE_SHARE_DEN < any * UPDATE_SHARE_NUM {
+        return false;
+    }
+    // a name that differs makes it another fact (« Tiago fait du judo le mercredi » / « Maëlle … »): a date, a number
+    // or a plain word may change in an update, a person or a place does not
+    let named: HashSet<String> = names(new).into_iter().chain(names(old)).collect();
+    if a.symmetric_difference(&b).any(|w| named.contains(w)) {
+        return false;
+    }
+    notebook::template::guess("self", &strip_stamps(new)) == notebook::template::guess("self", &strip_stamps(old))
+}
+
+/// The common entries `entry` updates go (recorded as removed, so every USER.md drops them). Returns how many.
+fn replace_older(stored: &mut Stored, entry: &str, now: f64) -> usize {
+    let older: Vec<String> = stored.common.iter().filter(|c| updates(entry, &c.text)).map(|c| key(&c.text)).collect();
+    for k in &older {
+        drop_common(stored, k, now);
+    }
+    older.len()
+}
+
+/// A key out of the common list, recorded as removed (every USER.md that has it drops it).
+fn drop_common(stored: &mut Stored, k: &str, now: f64) {
+    stored.common.retain(|c| key(&c.text) != k);
+    stored.removed.retain(|(r, _)| r != k);
+    stored.removed.push((k.to_string(), now));
 }
 
 fn path(config: &Config) -> PathBuf {
@@ -229,9 +369,12 @@ pub fn plan(stored: &mut Stored, members: &[Member], current: &BTreeMap<String, 
                         // said again after a removal: it counts again
                         stored.removed.retain(|(r, _)| *r != k);
                         if !stored.common.iter().any(|c| key(&c.text) == k) {
-                            stored.common.push(Common { text: entry.clone(), by: m.name.clone(), at: now });
+                            let text = strip_stamps(entry);
+                            // a clear update of an older entry replaces it (`updates`)
+                            replace_older(stored, &text, now);
+                            stored.common.push(Common { text: text.clone(), by: m.name.clone(), at: now });
                             if !first {
-                                round.learnt.push((m.name.clone(), entry.clone()));
+                                round.learnt.push((m.name.clone(), text));
                                 // mirrored to « Toi »: never taken back from there as new
                                 if !stored.toi.contains(&k) {
                                     stored.toi.push(k.clone());
@@ -250,7 +393,7 @@ pub fn plan(stored: &mut Stored, members: &[Member], current: &BTreeMap<String, 
                         {
                             continue;
                         }
-                        stored.common.push(Common { text: entry.clone(), by: m.name.clone(), at: now });
+                        stored.common.push(Common { text: strip_stamps(entry), by: m.name.clone(), at: now });
                     }
                 }
             }
@@ -262,6 +405,9 @@ pub fn plan(stored: &mut Stored, members: &[Member], current: &BTreeMap<String, 
             }
         }
     }
+    // one entry a key (a list kept before stamps were left out of the key may hold two)
+    let mut keys_seen: HashSet<String> = HashSet::new();
+    stored.common.retain(|c| keys_seen.insert(key(&c.text)));
     let extra = stored.common.len().saturating_sub(COMMON_MAX);
     stored.common.drain(..extra);
     let extra = stored.removed.len().saturating_sub(REMOVED_MAX);
@@ -281,13 +427,20 @@ pub fn plan(stored: &mut Stored, members: &[Member], current: &BTreeMap<String, 
             })
             .cloned()
             .collect();
+        // two copies of a common entry (the same once stamps are left out): the first stays
+        let mut keys_here: HashSet<String> = HashSet::new();
+        after.retain(|e| {
+            let k = key(e);
+            !rank.contains_key(&k) || keys_here.insert(k)
+        });
         let mut given: Vec<String> = Vec::new();
         for c in &stored.common {
             let k = key(&c.text);
             if seen.seen.contains(&k) || after.iter().any(|e| key(e) == k) {
                 continue;
             }
-            after.push(c.text.clone());
+            // given without its stamps
+            after.push(strip_stamps(&c.text));
             given.push(k);
         }
         // the limit: the oldest common entries left out first, never an entry that is not common; when entries are
@@ -344,36 +497,79 @@ fn in_common(stored: &Stored, k: &str) -> bool {
     stored.common.iter().any(|c| format!(" {} ", key(&c.text)).contains(&padded))
 }
 
+/// The keys gone from the « Toi » page since the last look that were edited or replaced there (notebook_edit's
+/// correction, the person's edit in the app, a section rewritten): a new fact took their place (the same kept fact
+/// before both, in the page's order) or clearly updates them (`updates`). A fact only taken off the page is not one:
+/// the memory keeps it, as before.
+pub fn edited(before: &[String], after: &[String]) -> Vec<String> {
+    let before_keys: Vec<String> = before.iter().map(|t| key(t)).collect();
+    let after_keys: Vec<String> = after.iter().map(|t| key(t)).collect();
+    let kept: HashSet<&String> = before_keys.iter().filter(|k| after_keys.contains(k)).collect();
+    // each fact not kept (its key, its text), with the kept key just before it (None at the top)
+    let slots = |texts: &[String], keys: &[String], other: &[String]| -> Vec<(String, String, Option<String>)> {
+        let mut anchor: Option<String> = None;
+        let mut out = Vec::new();
+        for (text, k) in texts.iter().zip(keys) {
+            if kept.contains(k) {
+                anchor = Some(k.clone());
+            } else if !other.contains(k) {
+                out.push((k.clone(), text.clone(), anchor.clone()));
+            }
+        }
+        out
+    };
+    let gone = slots(before, &before_keys, &after_keys);
+    let new = slots(after, &after_keys, &before_keys);
+    gone.into_iter()
+        .filter(|(_, g, at)| new.iter().any(|(_, n, there)| there == at || updates(n, g)))
+        .map(|(k, _, _)| k)
+        .collect()
+}
+
 /// The facts on « Toi » now: those new since the last look join the common list (not mirrored: they are on the page
-/// already). Returns how many joined.
+/// already), a clear update of an older common entry replacing it; a fact edited or replaced on the page takes its old
+/// version out of the common list (`edited`). Returns how many joined.
 pub fn take_toi(stored: &mut Stored, facts: &[String], now: f64) -> usize {
     let first = !stored.toi_read;
-    let mut keys: Vec<String> = Vec::new();
-    let mut added = 0;
+    // the page now, one fact a key, in its order, without stamps
+    let mut page: Vec<(String, String)> = Vec::new();
     for fact in facts {
         let k = key(fact);
-        if k.is_empty() || keys.contains(&k) {
-            continue;
+        if !k.is_empty() && !page.iter().any(|(p, _)| *p == k) {
+            page.push((k, strip_stamps(fact)));
         }
-        keys.push(k.clone());
-        if stored.toi.contains(&k) {
+    }
+    let keys: Vec<String> = page.iter().map(|(k, _)| k.clone()).collect();
+    let texts: Vec<String> = page.iter().map(|(_, t)| t.clone()).collect();
+    if !first {
+        for gone in edited(&stored.toi_page, &texts) {
+            drop_common(stored, &gone, now);
+        }
+    }
+    let mut added = 0;
+    for (k, text) in &page {
+        if stored.toi.contains(k) {
             continue;
         }
         if first {
             // the page as it is: what was removed from the memory stays out
-            if stored.removed.iter().any(|(r, _)| *r == k) {
+            if stored.removed.iter().any(|(r, _)| r == k) {
                 continue;
             }
         } else {
             // written on the page again after a removal: it counts again
-            stored.removed.retain(|(r, _)| *r != k);
+            stored.removed.retain(|(r, _)| r != k);
         }
-        if !in_common(stored, &k) {
-            stored.common.push(Common { text: fact.clone(), by: TOI_BY.into(), at: now });
+        if !in_common(stored, k) {
+            if !first {
+                replace_older(stored, text, now);
+            }
+            stored.common.push(Common { text: text.clone(), by: TOI_BY.into(), at: now });
             added += 1;
         }
     }
-    stored.toi = keys;
+    stored.toi = keys.clone();
+    stored.toi_page = texts;
     stored.toi_read = true;
     added
 }
@@ -715,6 +911,147 @@ mod tests {
         assert_eq!(facts, ["Habite Lyon", "Travaille de nuit", "Tutoie-moi"]);
         let long = format!("---\ntype: self\n---\n# Toi\n\n## Objectifs\n- {}\n", "mot ".repeat(60));
         assert!(toi_facts(&Page::parse(&long, "Toi")).is_empty(), "a long line stays on the page");
+    }
+
+    #[test]
+    fn stamps_are_left_out_of_the_key_and_of_what_is_given() {
+        // the night bench's DeepSeek entries (2026-10-29)
+        let run = "Court le dimanche matin, en général 10 km";
+        let part = "Part de Villeurbanne pour Annecy en mai 2027 (reporté depuis mars), avec son compagnon Ilyès";
+        let cases = [
+            ("Court le dimanche matin, en général 10 km (noté le 29/10/2026)", run),
+            ("Objectif : semi-marathon de Lyon, avril 2027 (annoncé le 29/10/2026)", "Objectif : semi-marathon de Lyon, avril 2027"),
+            ("Se fait appeler Cam par tout le monde (dit le 29/10/2026)", "Se fait appeler Cam par tout le monde"),
+            (
+                "Part de Villeurbanne pour Annecy en mai 2027 (reporté depuis mars), avec son compagnon Ilyès — annoncé le \
+                 29/10/2026",
+                part,
+            ),
+            (
+                "Part de Villeurbanne pour Annecy en mai 2027 (reporté depuis mars, annoncé le 29/10/2026), avec son \
+                 compagnon Ilyès",
+                part,
+            ),
+            ("Noté le 29 octobre 2026 : végétarienne.", "végétarienne."),
+            ("Runs on Sundays, added on 2026-10-29 by Coach", "Runs on Sundays"),
+            // not stamps: a date that is the fact itself
+            ("Deux enfants : Maëlle (née le 3 juin) et Tiago (9 ans)", "Deux enfants : Maëlle (née le 3 juin) et Tiago (9 ans)"),
+            ("Mère : Odile, anniversaire le 17 novembre", "Mère : Odile, anniversaire le 17 novembre"),
+            ("Mariage (12/06/2015)", "Mariage (12/06/2015)"),
+            ("Yoga le mardi soir — pas de course ce soir-là", "Yoga le mardi soir — pas de course ce soir-là"),
+        ];
+        for (entry, want) in cases {
+            assert_eq!(strip_stamps(entry), want, "{entry}");
+        }
+        assert_eq!(key(cases[3].0), key(cases[4].0), "one fact, two stamps");
+        // given without the stamp, not given back to the agent that wrote it with one
+        let members = [member("budget", true, 1375), member("coach", true, 1375)];
+        let mut stored = Stored::default();
+        let mut now = files(&[("budget", &[]), ("coach", &[])]);
+        let r = plan(&mut stored, &members, &now, 1.0);
+        apply(&mut now, &r);
+        now.get_mut("coach").unwrap().push(cases[0].0.into());
+        let r = plan(&mut stored, &members, &now, 2.0);
+        assert_eq!(r.learnt, [("coach".to_string(), run.to_string())], "filed on « Toi » without it");
+        apply(&mut now, &r);
+        assert_eq!(now["budget"], [run]);
+        assert_eq!(now["coach"], [cases[0].0], "the agent's own line is not rewritten");
+        // the same fact written again with another stamp: nothing new, the second copy goes
+        now.get_mut("budget").unwrap().push(format!("{run} (précisé le 30/10/2026)"));
+        let r = plan(&mut stored, &members, &now, 3.0);
+        assert!(r.learnt.is_empty(), "{r:?}");
+        apply(&mut now, &r);
+        assert_eq!(now["budget"], [run]);
+        assert!(plan(&mut stored, &members, &now, 4.0).writes.is_empty(), "no ping-pong");
+    }
+
+    #[test]
+    fn a_clear_update_replaces_the_older_entry() {
+        // the night bench's pairs (GLM at 2000, DeepSeek at 1375)
+        let moved = "Déménagement prévu à Annecy en mars 2027, avec son compagnon Ilyès";
+        let moved_again = "Déménagement prévu à Annecy en mai 2027 (repoussé depuis mars), avec son compagnon Ilyès";
+        let cat =
+            "À faire garder quand ils partent (déménagement à Annecy en mars 2027, voyages) — à prévoir à l'avance";
+        let cat_again =
+            "À faire garder quand ils partent (déménagement à Annecy en mai 2027, voyages) — à prévoir à l'avance";
+        assert!(updates(moved_again, moved));
+        assert!(updates(cat_again, cat));
+        // conservative: different facts that look alike stay two
+        for (a, b) in [
+            ("Chat : Biscotte", "Chat : Moka"),
+            ("Enfant : Maëlle, 6 ans", "Enfant : Tiago, 9 ans"),
+            ("Court le dimanche matin", "Court le mardi soir"),
+            ("Se lève à 6 h 15 en semaine", "Se lève à 9 h le week-end"),
+            ("Rendez-vous chez le dentiste le 12 novembre", "Rendez-vous chez le dentiste le 3 décembre"),
+            ("Tiago fait du judo le mercredi après-midi", "Maëlle fait du judo le mercredi après-midi"),
+            (
+                "Tiago fait du judo le mercredi après-midi au gymnase de Villeurbanne",
+                "Maëlle fait du judo le mercredi après-midi au gymnase de Villeurbanne",
+            ),
+            (moved_again, "Chat : Biscotte, à faire garder lors du déménagement à Annecy (mars 2027)"),
+            (moved_again, cat),
+            // too few shared words without a model: a duplicate is better than a lost fact
+            ("Déménagement repoussé à mai 2027", "Déménagement prévu en mars 2027"),
+        ] {
+            assert!(!updates(a, b) && !updates(b, a), "{a} / {b}");
+        }
+        let members = [member("budget", true, 1375), member("coach", true, 1375)];
+        let mut stored = Stored::default();
+        let mut now = files(&[("budget", &[moved, cat]), ("coach", &[])]);
+        let r = plan(&mut stored, &members, &now, 1.0);
+        apply(&mut now, &r);
+        assert_eq!(now["coach"], [moved, cat]);
+        // DeepSeek adds the new versions without removing the old ones
+        now.get_mut("budget").unwrap().extend([moved_again.to_string(), cat_again.to_string()]);
+        let r = plan(&mut stored, &members, &now, 2.0);
+        assert_eq!(r.learnt.len(), 2);
+        apply(&mut now, &r);
+        for agent in ["budget", "coach"] {
+            assert_eq!(now[agent], [moved_again, cat_again], "{agent}");
+        }
+        assert_eq!(stored.common.iter().map(|c| c.text.as_str()).collect::<Vec<_>>(), [moved_again, cat_again]);
+        assert!(plan(&mut stored, &members, &now, 3.0).writes.is_empty(), "no ping-pong");
+    }
+
+    #[test]
+    fn a_fact_edited_on_toi_takes_its_old_version_out() {
+        let members = [member("budget", true, 1375), member("coach", true, 1375)];
+        let mut stored = Stored::default();
+        let mut now = files(&[("budget", &[]), ("coach", &[])]);
+        let page = ["Habite à Villeurbanne", "Déménagement prévu en mars 2027", "Chat : Biscotte"];
+        toi(&mut stored, &page, 1.0);
+        let r = plan(&mut stored, &members, &now, 1.0);
+        apply(&mut now, &r);
+        assert_eq!(now["coach"], page);
+        // corrected in place (notebook_edit, or the person in the app): too different for `updates`, same place
+        let edited_page = ["Habite à Villeurbanne", "Déménagement repoussé à mai 2027", "Chat : Biscotte"];
+        assert_eq!(toi(&mut stored, &edited_page, 2.0), 1);
+        let r = plan(&mut stored, &members, &now, 2.0);
+        apply(&mut now, &r);
+        for agent in ["budget", "coach"] {
+            assert_eq!(now[agent], ["Habite à Villeurbanne", "Chat : Biscotte", "Déménagement repoussé à mai 2027"]);
+        }
+        assert!(plan(&mut stored, &members, &now, 3.0).writes.is_empty());
+        // only taken off the page: the memory keeps it (as before)
+        assert_eq!(toi(&mut stored, &["Habite à Villeurbanne", "Déménagement repoussé à mai 2027"], 4.0), 0);
+        assert!(plan(&mut stored, &members, &now, 4.0).writes.is_empty());
+        assert!(now["coach"].contains(&"Chat : Biscotte".to_string()));
+        // an agent's entry mirrored to « Toi », then corrected there: the old one leaves every USER.md
+        now.get_mut("coach").unwrap().push("Travaille dans un atelier de lutherie (noté le 29/10/2026)".into());
+        let r = plan(&mut stored, &members, &now, 5.0);
+        apply(&mut now, &r);
+        let mirrored =
+            ["Habite à Villeurbanne", "Déménagement repoussé à mai 2027", "Travaille dans un atelier de lutherie"];
+        assert_eq!(toi(&mut stored, &mirrored, 6.0), 0);
+        let corrected = ["Habite à Villeurbanne", "Déménagement repoussé à mai 2027", "Luthière à son compte"];
+        assert_eq!(toi(&mut stored, &corrected, 7.0), 1);
+        let r = plan(&mut stored, &members, &now, 7.0);
+        apply(&mut now, &r);
+        for agent in ["budget", "coach"] {
+            assert!(now[agent].iter().all(|e| !e.contains("atelier")), "{agent}: {:?}", now[agent]);
+            assert!(now[agent].contains(&"Luthière à son compte".to_string()), "{agent}");
+        }
+        assert!(edited(&["A".into(), "B".into()], &["A".into()]).is_empty(), "a removal is no edit");
     }
 
     fn place() -> (tempfile::TempDir, Config) {

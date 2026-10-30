@@ -497,6 +497,9 @@ pub fn sync_soul(config: &Config, agent: &crate::config::AgentConfig) {
     let path = crate::agents_admin::profile_folder(config, agent).join("SOUL.md");
     let Ok(soul) = std::fs::read_to_string(&path) else { return };
     let changed = crate::souls::with_notebook(&soul, enabled(config, &agent.name));
+    // the health agent's rule brought to its current text (2026-10-30: the body stays off « Toi »); on or off is
+    // agents_admin::set_health's
+    let changed = crate::souls::refresh_health(&changed);
     if changed != soul {
         if let Err(err) = std::fs::write(&path, changed) {
             tracing::warn!(agent = %agent.name, error = %err, "notebook rule not written");
