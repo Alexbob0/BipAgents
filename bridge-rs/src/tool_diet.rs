@@ -103,6 +103,12 @@ pub const BROWSER_DIRECT: [&str; 6] =
 /// called `mail_search` again with the same arguments 14 to 17 times, never `tool_call`, until the brake refused.
 pub const DIRECT_PAIRS: [(&str, &str); 1] = [("mail_search", "mail_read")];
 
+/// The guide's own tools in view, besides its daily regime (beyond `MAX_DIRECT`). Its earlier regime of its own (these
+/// and `notebook_search` only, mail, notes, calendar, reminders, pages and tasks behind the search) cost the real-day
+/// bench of 2026-10-30 (GLM-5.3 Flash, the offer's first agent made the guide): 11/16 and two loops on
+/// `notebook_search`, against 13/16 for the same agent on the daily regime.
+pub const GUIDE_DIRECT: [&str; 3] = ["propose_agent", "propose_team", "suggest_switch"];
+
 /// Hermes' iteration cap (`agent.max_turns`) written in a profile that has none: model calls in one turn.
 pub const MAX_TURNS: u32 = 150;
 
@@ -130,7 +136,9 @@ const NOT_CODING: &[&str] = &["autonomous-ai-agents", "software-development", "s
 /// The kinds (souls::CATEGORIES), the guide and « custom ».
 pub fn kind_diet(kind: &str) -> KindDiet {
     match kind {
-        "daily" => KindDiet {
+        // the guide is also its person's everyday agent (the offer's first agent, « Bip »): the daily regime, plus
+        // its own cards in view (`GUIDE_DIRECT`, in `diet`)
+        "daily" | "guide" => KindDiet {
             deferred: CODE_AND_EDITS,
             direct: &[
                 "notebook_search",
@@ -280,21 +288,6 @@ pub fn kind_diet(kind: &str) -> KindDiet {
             ],
             compact_skills: &["social-media", "creative", "media"],
         },
-        "guide" => KindDiet {
-            deferred: &["terminal", "execute_code", "write_file", "patch", "search_files", "web_extract"],
-            direct: &["propose_agent", "propose_team", "suggest_switch", "notebook_search"],
-            compact_skills: &[
-                "autonomous-ai-agents",
-                "software-development",
-                "social-media",
-                "creative",
-                "media",
-                "research",
-                "email",
-                "productivity",
-                "note-taking",
-            ],
-        },
         _ => KindDiet {
             deferred: CODE_AND_EDITS,
             direct: &[
@@ -394,6 +387,12 @@ pub fn diet(
         if bridge_tools.iter().any(|t| t == crate::agent_messages::TOOL_NAME) {
             add(&format!("!{BRIDGE_PREFIX}{}", crate::agent_messages::TOOL_NAME));
         }
+        if kind == "guide" {
+            GUIDE_DIRECT
+                .iter()
+                .filter(|name| bridge_tools.iter().any(|t| t == *name))
+                .for_each(|name| add(&format!("!{BRIDGE_PREFIX}{name}")));
+        }
     }
     if browser {
         BROWSER_DIRECT.iter().for_each(|name| add(&format!("!mcp__{BROWSER_SERVER}__{name}")));
@@ -431,6 +430,22 @@ pub fn fits(tool: &Value, arguments: &crate::Dict) -> bool {
     all_known && none_missing
 }
 
+/// Tools that act or propose a card for the person: a call with another tool's arguments is never run as that other
+/// tool when either is one of these (2026-10-30 bench, DeepSeek: `propose_task` written with `propose_agent`'s
+/// arguments made an agent card). The call then fails on its own tool's arguments and the model calls the right one.
+pub const NEVER_REROUTED: [&str; 10] = [
+    "propose_agent",
+    "propose_team",
+    "propose_room",
+    "propose_profile",
+    "suggest_switch",
+    "create_project_agent",
+    "rename_yourself",
+    "propose_task",
+    "start_task",
+    "tell_family",
+];
+
 /// The tool a call was meant for, among `tools`: `name` when its arguments fit it (or fit nothing better), else the
 /// only other tool they fit. With some bridge tools in view and the others behind the search, a model whose tool names
 /// are constrained to the request's ends a deferred tool's name on the in-view one sharing its longest prefix
@@ -442,7 +457,10 @@ pub fn meant<'a>(tools: &'a [Value], name: &'a str, arguments: &crate::Dict) -> 
     }
     let mut others = tools.iter().filter(|t| t.get("name").and_then(Value::as_str) != Some(name) && fits(t, arguments));
     match (others.next(), others.next()) {
-        (Some(only), None) => only.get("name").and_then(Value::as_str).unwrap_or(name),
+        (Some(only), None) => match only.get("name").and_then(Value::as_str) {
+            Some(other) if !NEVER_REROUTED.contains(&other) && !NEVER_REROUTED.contains(&name) => other,
+            _ => name,
+        },
         _ => name,
     }
 }
@@ -662,6 +680,29 @@ mod tests {
     }
 
     #[test]
+    fn the_guide_keeps_the_daily_regime_plus_its_cards() {
+        // 2026-10-30: the offer's first agent made the guide lost mail, notes, calendar… (real day 11/16)
+        let mut tools: Vec<String> = kind_diet("daily").direct.iter().map(|s| s.to_string()).collect();
+        tools.retain(|t| t != "tell_family"); // an install without family: the daily kind's twelve
+        tools.push("mail_read".into());
+        let daily = diet("daily", &tools, false, false, false, &[]);
+        tools.extend(names(&["propose_agent", "propose_team", "suggest_switch", "propose_room", "propose_profile"]));
+        let guide = diet("guide", &tools, false, false, false, &[]);
+        assert_eq!(guide.compact_skills, daily.compact_skills);
+        let extra: Vec<&String> = guide.defer.iter().filter(|d| !daily.defer.contains(d)).collect();
+        let expected: Vec<String> = GUIDE_DIRECT.iter().map(|n| format!("!{BRIDGE_PREFIX}{n}")).collect();
+        assert_eq!(extra, expected.iter().collect::<Vec<_>>(), "only its cards on top of the daily regime");
+        assert!(daily.defer.iter().all(|d| guide.defer.contains(d)));
+        for name in ["mail_search", "mail_read", "notebook_note", "calendar_list", "reminders_add", "create_page", "start_task"] {
+            assert!(guide.defer.contains(&format!("!{BRIDGE_PREFIX}{name}")), "{name}");
+        }
+        // the rare ones stay behind the search
+        assert!(!guide.defer.iter().any(|d| d.ends_with("propose_room") || d.ends_with("propose_profile")));
+        // another agent with the same tools doesn't get the cards in view
+        assert!(!diet("daily", &tools, false, false, false, &[]).defer.iter().any(|d| d.ends_with("propose_agent")));
+    }
+
+    #[test]
     fn the_visible_browser_in_view_for_an_agent_that_has_it() {
         // 2026-10-27: « open this page in your browser », no browser tool in view, a call ending on calendar_add
         let tools = names(&["calendar_add", "calendar_list"]);
@@ -768,6 +809,14 @@ mod tests {
         assert_eq!(meant(&tools, "map_image", &args(&["words"])), "map_image");
         assert_eq!(meant(&tools, "start_task", &crate::Dict::new()), "start_task");
         assert_eq!(meant(&tools, "other", &args(&["page"])), "other");
+        // a card tool's arguments under another card tool's name: left as called, it fails on its own arguments
+        let cards = vec![
+            tool("propose_task", &["title", "brief", "budget"], &["title", "brief"]),
+            tool("propose_agent", &["kind", "name", "role", "handover"], &["kind", "name", "role"]),
+            tool("notebook_read", &["page"], &["page"]),
+        ];
+        assert_eq!(meant(&cards, "propose_task", &args(&["kind", "name", "role"])), "propose_task");
+        assert_eq!(meant(&cards, "notebook_read", &args(&["kind", "name", "role"])), "notebook_read");
     }
 
     #[test]
