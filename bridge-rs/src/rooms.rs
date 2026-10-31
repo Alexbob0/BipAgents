@@ -823,7 +823,8 @@ pub fn router_keeps(room: &Room, text: &str) -> usize {
     }
 }
 
-/// A run's tokens so far from its tool calls (`calls`): one model call before each and one after the last, each
+/// A run's tokens so far from its tool steps (`calls`; calls made together count once): one model call before each
+/// step and one after the last, each
 /// reading the turn's prompt (`CALL_TOKENS`) and what the steps before it added (`STEP_TOKENS` each).
 pub fn estimated_tokens(calls: u32) -> i64 {
     let n = calls as i64 + 1;
@@ -1341,6 +1342,7 @@ impl Rooms {
         // 60 %, stopped at the cap (Back took 749k in one turn on the lab, 2026-10-31)
         let cap = load(&config, id).filter(|r| config.rooms.handoff && r.team()).map(|r| turn_cap(&config, &r, turn.cause));
         let (mut steered, mut capped, mut braked, mut looks, mut calls) = (false, false, false, 0u32, 0u32);
+        let mut used_at_stop = 0i64;
         let (status, output, usage) = loop {
             tokio::time::sleep(Duration::from_secs_f64(self.poll)).await;
             if !self.still(id, turn) {
@@ -1364,6 +1366,7 @@ impl Rooms {
                         if used >= cap {
                             tracing::info!(room = %id, agent = %agent.name, used = used, cap = cap, "rooms: a turn at its cap, stopped");
                             capped = true;
+                            used_at_stop = used;
                             let _ = self.hermes.stop_run(&agent, &run_id).await;
                             break self.ended_run(&agent, &run_id, "capped").await;
                         }
@@ -1415,7 +1418,11 @@ impl Rooms {
                 Tokens { input: (after.input - base.input).max(0), output: (after.output - base.output).max(0) }
             }
         };
-        tracing::info!(room = %id, agent = %agent.name, status = %status, tool_calls = calls, braked = braked, capped = capped,
+        if capped && tokens.input + tokens.output < used_at_stop {
+            // a stopped run may come back without its usage: what it was estimated at, so the budget counts it
+            tokens.input = used_at_stop - tokens.output;
+        }
+        tracing::info!(room = %id, agent = %agent.name, status = %status, tool_steps = calls, braked = braked, capped = capped,
             steered = steered, tokens = tokens.input + tokens.output, "rooms: run ended");
         let mut text = hand_over_files(&config, &agent, &run_id, tk::strip(&output)).await;
         let mut status = status;
@@ -2444,7 +2451,7 @@ mod tests {
         assert!(told.contains("limit of tokens") && told.contains("Do not call any tool") && told.contains("DONE and NEXT"));
         assert!(wrap_input("cancelled", false).contains("the NEXT line"));
         assert_eq!(capped_text("fr", "Back"), "Back a atteint la limite de son tour et passe la main.");
-        // a turn's tokens from its tool calls: one call 20k, 8 tool calls ≈ 288k (past the 200k cap)
+        // a turn's tokens from its tool steps: one call 20k, 8 steps ≈ 264k (past the 200k cap)
         assert_eq!(estimated_tokens(0), 20_000);
         assert_eq!(estimated_tokens(4), 130_000);
         assert!(estimated_tokens(8) > 200_000 && estimated_tokens(5) < 200_000);
