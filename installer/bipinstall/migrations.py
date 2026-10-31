@@ -566,6 +566,35 @@ def clean_own_packages(runner: hermes.Runner, earlier: Optional[List[str]] = Non
 
 # What a fresh install sets only once the services it set up answer (finish() in __main__): left pending when it
 # couldn't, the first update does it.
+# The gateway's units on Linux: Hermes' own (`hermes gateway install`) or ours (stack.hermes_service); a place has one.
+GATEWAY_UNITS = ("hermes-gateway.service", "bipagents-hermes.service")
+SANDBOXES_DROPIN = "60-bipagents-sandboxes.conf"
+SANDBOXES_TEXT = """# BipAgents (installer/bipinstall/migrations.py): the agents' sandboxes this gateway started die with it (their
+# fuse-overlayfs mounts live in its cgroup) and Hermes would keep the dead containers: every terminal and file tool then
+# fails (« transport endpoint is not connected », bench of 2026-10-31). Removed before it starts; Hermes makes them
+# again at their next use (the agents' files are in their volumes, kept).
+[Service]
+ExecStartPre=-/bin/sh -c 'podman ps -a --format "{{.Names}}" | grep "^hermes-" | xargs -r podman rm -f >/dev/null 2>&1; exit 0'
+"""
+
+
+def sandboxes_at_gateway_start(runner: hermes.Runner, home: Path) -> str:
+    """The gateway removes the agents' dead sandboxes before it starts (2026-10-31): a drop-in for each name its unit
+    may have (written even before the unit exists: systemd reads it when it does). Linux only."""
+    import sys
+    if sys.platform == "darwin":
+        return "macOS: the gateway's sandboxes left as they are"
+    units = home / ".config" / "systemd" / "user"
+    for unit in GATEWAY_UNITS:
+        path = units / (unit + ".d") / SANDBOXES_DROPIN
+        runner.log.append(f"write {path}")
+        if not runner.dry:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(SANDBOXES_TEXT, encoding="utf-8")
+    runner.run(["systemctl", "--user", "daemon-reload"], check=False)
+    return "the gateway removes the agents' dead sandboxes before it starts (from its next start)"
+
+
 AFTER_INSTALL = {POCKET_ENGINE}
 
 # In order; an id never changes once released. rust-bridge comes first: the others run the bridge's command line.
@@ -585,6 +614,7 @@ MIGRATIONS: List[Tuple[str, Callable[[hermes.Runner, Path], str]]] = [
     ("2026-10-26-provider-routing", provider_routing),
     ("2026-10-26-app-identifier", app_identifier),
     ("2026-10-27-bridge-stop-timeout", bridge_stop_timeout),
+    ("2026-10-31-sandboxes-at-gateway-start", sandboxes_at_gateway_start),
 ]
 
 
