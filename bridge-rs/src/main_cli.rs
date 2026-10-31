@@ -955,6 +955,9 @@ pub fn serve_door_on(
             };
             let (acceptor, router, stop) = (acceptor.clone(), router.clone(), stop.clone());
             tokio::spawn(async move {
+                let mut stream = stream;
+                // through root's router on 443: the client's own address, from its PROXY header (proxy_header.rs)
+                let Ok(peer) = crate::proxy_header::peer_of(&mut stream, peer).await else { return };
                 let Ok(Ok(tls)) = tokio::time::timeout(Duration::from_secs(10), acceptor.accept(stream)).await else {
                     return;
                 };
