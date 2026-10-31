@@ -177,6 +177,7 @@ pub mod login_fill;
 pub mod place_backup;
 /// A bipagents.com hostname and its Let's Encrypt certificate for a place of the offer (no Python counterpart).
 pub mod place_cert;
+pub mod proxy_header;
 pub mod place_move;
 pub mod place_import;
 pub mod vault;

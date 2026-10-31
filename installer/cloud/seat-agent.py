@@ -206,6 +206,7 @@ def prepare_shared(commit):
     with open("/var/log/bipagents-images.log", "a") as out:
         done = subprocess.run(["python3", "-m", "bipinstall.shared_images", "pull"] + timer, env=env, stdout=out,
                               stderr=out, timeout=3600, cwd=SHARED_REPO)
+    # (that pull also brings this agent and its scripts to the version, never back: bipinstall/server_tools.py)
     log("shared images for %s: %s" % (commit[:12], "ready" if done.returncode == 0 else "not all pulled"))
 
 
@@ -1103,6 +1104,258 @@ def memory_settled(server):
         log("memory settings not applied: %s" % exc)
 
 
+# -- every place's door on 443 ----------------------------------------------------------------------------------------
+#
+# Many networks let out only port 443 (offices, hotels, schools, home boxes with a strict firewall: Alex's own on
+# 2026-10-30), so a place on door 444 and up looked offline from there. Each place keeps its own door (444, 445...),
+# and root's router (HAProxy, its own unit bipagents-doors.service, nothing decrypted) also gives every place 443:
+# the server's 443 is redirected to the router (an nftables table of its own, so ufw's rules are never touched), which
+# reads the name the client asks for in its TLS hello (`<label>.p.bipagents.com`, the place's certificate: the
+# guichet sends each place's name in its beat answer, "hosts") and passes the connection to that place's door on
+# 127.0.0.1, after a PROXY v2 header with the client's real address (bridge-rs/src/proxy_header.rs: without it, every
+# client would look like 127.0.0.1 to the bridge, which never counts wrong keys from there). A hello without a name
+# (an app paired before the places had names, by the address) goes to place 1, whose door 443 was.
+#
+# A place's door is routed only once it understands the header (asked each round: a PROXY LOCAL header, then a TLS
+# handshake; an older bridge fails it), and the redirect is on only while place 1's does, since all of 443 then goes
+# through the router. The beat says which places 443 reaches ("door443"): the guichet then gives the apps 443 for
+# them, and their old door again if that stops (an update's way back to an older bridge). The router's port is below
+# 443, so no place's account can take it first (net.ipv4.ip_unprivileged_port_start = 443). It logs nothing.
+
+DOORS_PORT = 440
+DOORS_CONF = "/etc/bipagents/doors.cfg"
+DOORS_NFT = "/etc/bipagents/doors.nft"
+DOORS_STATE = "/var/lib/bipagents/doors.json"
+DOORS_UNIT = "/etc/systemd/system/bipagents-doors.service"
+DOORS_TABLE = "bipagents_doors"
+HAPROXY = "/usr/sbin/haproxy"
+HOST_CHARS = frozenset("abcdefghijklmnopqrstuvwxyz0123456789-.")
+PROXY_LOCAL = b"\r\n\r\n\x00\r\nQUIT\n\x20\x00\x00\x00"   # a PROXY v2 header, command LOCAL, no address
+
+DOORS_SERVICE = """[Unit]
+Description=BipAgents: every place's door on 443 (HAProxy by the names asked, nothing decrypted)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+ExecStartPre=%(haproxy)s -c -q -f %(conf)s
+ExecStart=%(haproxy)s -Ws -f %(conf)s -p /run/bipagents-doors.pid
+ExecStartPost=-/usr/sbin/nft -f %(nft)s
+ExecReload=%(haproxy)s -c -q -f %(conf)s
+ExecReload=/bin/kill -USR2 $MAINPID
+ExecStopPost=-/bin/sh -c 'nft delete table inet %(table)s 2>/dev/null || true'
+KillMode=mixed
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+""" % {"haproxy": HAPROXY, "conf": DOORS_CONF, "nft": DOORS_NFT, "table": DOORS_TABLE}
+
+
+def good_host(host):
+    """A place's name as the guichet gives it: a lowercase DNS name (anything else never reaches the router's
+    text)."""
+    return (isinstance(host, str) and 4 <= len(host) <= 253 and "." in host and set(host) <= HOST_CHARS
+            and ".." not in host and host[0] not in ".-" and host[-1] not in ".-")
+
+
+def door_hosts(answer):
+    """{number: name} of the beat answer's "hosts": valid names only, and none given to two places."""
+    given = answer.get("hosts") if isinstance(answer, dict) else None
+    if not isinstance(given, dict):
+        return {}
+    hosts = {}
+    for key, host in given.items():
+        try:
+            number = int(key)
+        except (TypeError, ValueError):
+            continue
+        if 1 <= number <= MAX_SEATS and good_host(host):
+            hosts[number] = host
+    counts = {}
+    for host in hosts.values():
+        counts[host] = counts.get(host, 0) + 1
+    return {n: h for n, h in hosts.items() if counts[h] == 1}
+
+
+def proxy_probe(port, timeout=4):
+    """Whether the door on `port` understands a PROXY header: True (a TLS handshake after a LOCAL header), False (it
+    refuses that one but takes a plain handshake: an older bridge), None (no answer either way: down, starting)."""
+    import ssl
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+
+    def handshake(header):
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=timeout) as sock:
+                if header:
+                    sock.sendall(PROXY_LOCAL)
+                with context.wrap_socket(sock) as tls:
+                    tls.do_handshake()
+            return True
+        except (OSError, ValueError):
+            return False
+
+    if handshake(True):
+        return True
+    return False if handshake(False) else None
+
+
+def doors_config(routes, default, ipv6):
+    """The router's text: each name to its place's door, a hello without a name to `default` (a number or None)."""
+    lines = [
+        "# BipAgents: every place's door on 443 (installer/cloud/seat-agent.py writes it, each round)",
+        "global",
+        "    user haproxy",
+        "    group haproxy",
+        "    maxconn 8000",
+        "    nbthread 2",
+        "",
+        "defaults",
+        "    mode tcp",
+        "    timeout connect 5s",
+        "    timeout client 6h",
+        "    timeout server 6h",
+        "    timeout client-fin 30s",
+        "    timeout server-fin 30s",
+        "",
+        "frontend doors",
+        "    bind 0.0.0.0:%d" % DOORS_PORT,
+    ]
+    if ipv6:
+        lines.append("    bind [::]:%d v6only" % DOORS_PORT)
+    lines += [
+        "    tcp-request inspect-delay 5s",
+        "    tcp-request content accept if { req.ssl_hello_type 1 }",
+    ]
+    for host, number in sorted(routes.items()):
+        lines.append("    use_backend place%d if { req.ssl_sni -i %s }" % (number, host))
+    if default:
+        lines.append("    use_backend place%d if !{ req.ssl_sni -m found }" % default)
+    for number in sorted(set(routes.values()) | ({default} if default else set())):
+        lines += ["", "backend place%d" % number,
+                  "    server door 127.0.0.1:%d send-proxy-v2" % (442 + number)]
+    return "\n".join(lines) + "\n"
+
+
+def doors_nft(active):
+    """The redirect of 443 to the router, as a file `nft -f` loads (the table replaced at once; only removed when
+    off)."""
+    text = "table inet %s\ndelete table inet %s\n" % (DOORS_TABLE, DOORS_TABLE)
+    if active:
+        text += ("table inet %s {\n"
+                 "  chain prerouting {\n"
+                 "    type nat hook prerouting priority dstnat; policy accept;\n"
+                 "    tcp dport 443 redirect to :%d\n"
+                 "  }\n"
+                 "}\n") % (DOORS_TABLE, DOORS_PORT)
+    return text
+
+
+def write_if_changed(path, text, mode=0o644):
+    try:
+        with open(path) as fh:
+            if fh.read() == text:
+                return False
+    except OSError:
+        pass
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path + ".tmp", "w") as fh:
+        fh.write(text)
+    os.chmod(path + ".tmp", mode)
+    os.replace(path + ".tmp", path)
+    return True
+
+
+def haproxy_ready(runner=quietly, binary=HAPROXY):
+    """HAProxy installed (once; the distribution's own service, unused, off)."""
+    if os.path.exists(binary):
+        return True
+    if shutil.which("apt-get"):
+        runner("apt-get", "install", "-y", "--no-install-recommends", "haproxy")
+    elif shutil.which("dnf"):
+        runner("dnf", "install", "-y", "haproxy")
+    if not os.path.exists(binary):
+        log("doors on 443: HAProxy not installed yet")
+        return False
+    runner("systemctl", "disable", "--now", "haproxy.service")
+    return True
+
+
+def has_ipv6(path="/proc/net/if_inet6"):
+    try:
+        with open(path) as fh:
+            return any(line.split()[-1] != "lo" for line in fh if line.strip())
+    except OSError:
+        return False
+
+
+def doors(answer, state_path=DOORS_STATE, runner=quietly, probe=proxy_probe, exists=None, ready=None):
+    """The router and the redirect as this round's answer and the places' doors say; returns the numbers 443 reaches
+    (kept for the next beat)."""
+    exists = exists or (lambda n: _account_exists(account(n)))
+    state = read_json(state_path)
+    capable = state.get("proxy") if isinstance(state.get("proxy"), dict) else {}
+    for number in range(1, MAX_SEATS + 1):
+        if not exists(number):
+            capable.pop(str(number), None)
+            continue
+        seen = probe(442 + number)
+        if seen is not None:   # down or starting: what it said last time stays
+            capable[str(number)] = seen
+    hosts = door_hosts(answer)
+    routes = {host: n for n, host in hosts.items() if capable.get(str(n)) is True}
+    # all of 443 goes through the router once the redirect is on: only while place 1, whose door it was, takes it
+    active = capable.get("1") is True
+    if not active:
+        reached = []
+        if state.get("on"):
+            write_if_changed(DOORS_NFT, doors_nft(False))
+            runner("nft", "-f", DOORS_NFT)
+            runner("systemctl", "disable", "--now", "bipagents-doors.service")
+            log("doors on 443: off (place 1's door does not take the router's header)")
+        write_json(state_path, {"proxy": capable, "on": False, "reached": reached})
+        return reached
+    if not (ready or haproxy_ready)(runner=runner):
+        write_json(state_path, {"proxy": capable, "on": False, "reached": []})
+        return []
+    if write_if_changed(DOORS_UNIT, DOORS_SERVICE):
+        runner("systemctl", "daemon-reload")
+        runner("systemctl", "enable", "bipagents-doors.service")
+    if runner("ufw", "status") == 0:
+        runner("ufw", "allow", "%d/tcp" % DOORS_PORT)
+    config_changed = write_if_changed(DOORS_CONF, doors_config(routes, 1, has_ipv6()))
+    nft_changed = write_if_changed(DOORS_NFT, doors_nft(True))
+    if runner("systemctl", "is-active", "--quiet", "bipagents-doors.service") != 0:
+        started = runner("systemctl", "start", "bipagents-doors.service") == 0
+    else:
+        started = (runner("systemctl", "reload", "bipagents-doors.service") == 0) if config_changed else True
+    if started and (nft_changed or runner("nft", "list", "table", "inet", DOORS_TABLE) != 0):
+        runner("nft", "-f", DOORS_NFT)
+    reached = sorted(set(routes.values()) | {1}) if started else []
+    if config_changed or nft_changed:
+        log("doors on 443: on, places %s" % (reached or "none"))
+    write_json(state_path, {"proxy": capable, "on": bool(started), "reached": reached})
+    return reached
+
+
+def doors_reached(state_path=DOORS_STATE):
+    """The places 443 reached at the last round (the beat tells the guichet)."""
+    reached = read_json(state_path).get("reached")
+    return {int(n) for n in reached if isinstance(n, int)} if isinstance(reached, list) else set()
+
+
+def _account_exists(user):
+    try:
+        pwd.getpwnam(user)
+        return True
+    except KeyError:
+        return False
+
+
 def main(argv=()):
     if "--sample" in argv:
         return sample()
@@ -1130,7 +1383,11 @@ def main(argv=()):
     server = vitals()
     memory_settled(server)
     try:
-        beat = {"seats": health(), "server": server, "places": places_activity(places_memory())}
+        seats = health()
+        for number in doors_reached():
+            if str(number) in seats:
+                seats[str(number)]["door443"] = True
+        beat = {"seats": seats, "server": server, "places": places_activity(places_memory())}
         add_moves(beat)
         answer = call(conf, "POST", "/v1/server/beat", beat)
         orders = answer.get("orders") or []
@@ -1143,6 +1400,10 @@ def main(argv=()):
     except OSError as exc:
         log("settings not kept: %s" % exc)
     keep_credit(answer)
+    try:
+        doors(answer)
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        log("doors on 443 not set: %s" % exc)
     memory_settled(server)
     done = read_done()
     for order in orders:

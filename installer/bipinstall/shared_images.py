@@ -447,6 +447,14 @@ def main(argv: List[str]) -> int:
         return 0
     if args.timer:
         install_timer()
+    # root's checkout at a new version: the seat agent and its scripts follow it (server_tools.py)
+    try:
+        from bipinstall import server_tools
+        replaced = server_tools.refresh_here()
+        if replaced:
+            say("server tools refreshed: " + ", ".join(replaced))
+    except OSError as exc:
+        say("server tools not refreshed: %s" % exc)
     return pull()
 
 
