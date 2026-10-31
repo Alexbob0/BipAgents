@@ -23,6 +23,14 @@
 //!   are paused (`podman pause`), its bridge tools answer « ton espace est plein », the person gets the card; resumed
 //!   (`podman unpause`) once back under. Each pause and resume is logged.
 //!
+//! - **The place's own disk** (the offer, 2026-10-30): each place is a 5 GB disk of its own on a server shared with
+//!   other people; root's seat agent (installer/cloud/seat-agent.py) measures it every 5 minutes and writes
+//!   `~/.local/state/bipagents/disk.json` {state: ok | low | full, pause, at}. « low » (80 %) and « full » (95 %): ONE
+//!   note to every agent for its next turn (clean up its own things, tell the person, room can be asked in the app's
+//!   help), never figures. `pause` (a place still on the server's disk past 95 %, no disk of its own yet): every
+//!   agent's sandbox paused and new background tasks refused (jobs.rs) until the seat agent says otherwise; nothing is
+//!   ever deleted. A file older than 30 minutes is ignored (a stopped seat agent never keeps a place paused).
+//!
 //! The routes (bridge key):
 //!
 //!     GET   /v1/storage            {used, allowance, percent, measured_at, by_agent, other, kept_rules, rule_kinds,
@@ -136,6 +144,9 @@ struct Store {
     paused: BTreeMap<String, Paused>,
     #[serde(default)]
     full_at: BTreeMap<String, f64>,
+    /// the seat agent's last level told to the agents (« low », « full »; empty: none)
+    #[serde(default)]
+    seat_told: String,
     #[serde(default)]
     history: Vec<Value>,
 }
@@ -718,6 +729,15 @@ fn add_note(store: &mut Store, agent: &str, line: String) {
     }
 }
 
+/// One note to every agent of the place for its next turn (heavy_work.rs's backstop).
+pub fn note_all(config: &Config, line: &str) {
+    let _ = change(config, |store| {
+        for agent in config.agents.keys() {
+            add_note(store, agent, line.to_string());
+        }
+    });
+}
+
 /// What waits for `agent`'s next turn with the person (forgotten here), as a part the apps hide.
 pub fn take_note(config: &Config, agent: &str) -> Option<String> {
     let lines = change(config, |store| store.notes.remove(agent)).ok().flatten()?;
@@ -1006,6 +1026,81 @@ pub fn send_message(config: &Config, agent: &AgentConfig, paths: &[String]) -> D
     message
 }
 
+// --- the place's own disk, as the seat agent tells it -----------------------------------------------------------------
+
+/// Written by root's seat agent on the offer's servers, under the place's home.
+pub const SEAT_FILE: &str = ".local/state/bipagents/disk.json";
+/// Ignored after this long (the seat agent writes it every 5 minutes).
+pub const SEAT_FRESH: f64 = 1800.0;
+/// The notes: never figures (Alex, 2026-10-30).
+pub const SEAT_LOW_NOTE: &str = "Your person's space is nearly full. Remove what you no longer need of your own \
+(installs, builds, downloads; never their files without asking) and tell them in one plain sentence; if they need \
+more room, they can ask in the app's help.";
+pub const SEAT_FULL_NOTE: &str = "Your person's space is full: nothing new can be saved until room is made. Tell them \
+in one plain sentence and propose what of your own to remove (installs, builds, downloads; never their files without \
+asking); they can also ask for more room in the app's help.";
+pub const SEAT_PAUSED_NOTE: &str = "Your person's space is full: your workspace (terminal, installs, builds) is \
+paused until room is made; nothing was deleted. Tell them simply if they ask for such work.";
+
+/// What the seat agent says of the place's disk.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SeatDisk {
+    /// « ok », « low » or « full »
+    pub state: String,
+    /// its agents' workspaces paused
+    pub pause: bool,
+}
+
+impl Default for SeatDisk {
+    fn default() -> Self {
+        SeatDisk { state: "ok".into(), pause: false }
+    }
+}
+
+/// The seat agent's word in `home` (`ok` when there is none, it can't be read, or it is stale).
+pub fn seat_disk(home: &Path, now: f64) -> SeatDisk {
+    let Ok(text) = std::fs::read_to_string(home.join(SEAT_FILE)) else { return SeatDisk::default() };
+    let Ok(Value::Object(data)) = serde_json::from_str::<Value>(&text) else { return SeatDisk::default() };
+    if data.get("at").and_then(Value::as_f64).is_none_or(|at| now - at > SEAT_FRESH) {
+        return SeatDisk::default();
+    }
+    let state = match data.get("state").and_then(Value::as_str) {
+        Some(s @ ("low" | "full")) => s.to_string(),
+        _ => "ok".to_string(),
+    };
+    SeatDisk { state, pause: data.get("pause").and_then(Value::as_bool).unwrap_or(false) }
+}
+
+/// The place's agents' heavy work paused by the seat agent (new background tasks refused: jobs.rs).
+pub fn seat_paused() -> bool {
+    seat_disk(&crate::place_backup::home(), py::time_time()).pause
+}
+
+/// The seat agent's level told once to every agent (on the way up; nothing new on the way down to « low »).
+pub fn seat_check(config: &Config, seat: &SeatDisk) -> bool {
+    change(config, |store| {
+        let level = seat.state.as_str();
+        if level == "ok" {
+            store.seat_told.clear();
+            return false;
+        }
+        if store.seat_told == level || (level == "low" && store.seat_told == "full") {
+            store.seat_told = level.to_string();
+            return false;
+        }
+        let note = if level == "low" { SEAT_LOW_NOTE } else { SEAT_FULL_NOTE };
+        for agent in config.agents.keys() {
+            if !(seat.pause && level == "full") {
+                add_note(store, agent, note.to_string());
+            }
+        }
+        store.seat_told = level.to_string();
+        event(store, "seat", "", json!({"state": level, "pause": seat.pause}));
+        true
+    })
+    .unwrap_or(false)
+}
+
 // --- pausing the biggest agent's sandbox ---------------------------------------------------------------------------
 
 fn disk_low(home: &Path) -> bool {
@@ -1040,9 +1135,72 @@ async fn containers_of(agent: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// An agent's sandbox paused (`why`: « place », « disk » or « share »), its tools then refusing plainly.
+async fn pause_agent(config: &Config, agent: &str, why: &str, used: u64) {
+    let containers = containers_of(agent).await;
+    if !containers.is_empty() {
+        let mut args = vec!["pause"];
+        args.extend(containers.iter().map(String::as_str));
+        if podman(&args).await.is_none() {
+            tracing::warn!(target: "bipbridge::storage", agent, "sandbox not paused (podman refused)");
+        }
+    }
+    let _ = change(config, |store| {
+        store.paused.insert(
+            agent.to_string(),
+            Paused { since: py::time_time(), why: why.into(), containers: containers.clone() },
+        );
+        if why == "share" {
+            add_note(store, agent, SEAT_PAUSED_NOTE.into());
+        }
+        event(store, "pause", agent, json!({"why": why, "used": used, "containers": containers}));
+    });
+    tracing::warn!(target: "bipbridge::storage", agent, why, used, "space full: the agent's sandbox paused");
+}
+
+/// An agent's sandbox resumed.
+async fn resume_agent(config: &Config, agent: &str, pause: Paused, used: u64) {
+    let mut ids = containers_of(agent).await;
+    for id in pause.containers {
+        if !ids.contains(&id) {
+            ids.push(id);
+        }
+    }
+    if !ids.is_empty() {
+        let mut args = vec!["unpause"];
+        args.extend(ids.iter().map(String::as_str));
+        let _ = podman(&args).await;
+    }
+    let _ = change(config, |store| {
+        store.paused.remove(agent);
+        for card in store.cards.iter_mut().filter(|c| c.agent == agent) {
+            card.paused = false;
+        }
+        add_note(store, agent, "There is room again in your person's space: your workspace works again.".into());
+        event(store, "resume", agent, json!({"used": used}));
+    });
+    tracing::info!(target: "bipbridge::storage", agent, used, "space back under: the agent's sandbox resumed");
+}
+
 /// The place over its allowance (or, on the offer, the server's disk nearly full): the biggest agent's sandbox paused,
-/// its tools refusing plainly, a card for the person; resumed once back under.
+/// its tools refusing plainly, a card for the person; resumed once back under. The seat agent's pause (its own disk
+/// not made yet and past 95 %): every agent's sandbox, until it says otherwise.
 pub async fn enforce(config: &Config, usage: &Usage) {
+    let seat = seat_disk(&crate::place_backup::home(), py::time_time());
+    enforce_with(config, usage, &seat).await
+}
+
+pub async fn enforce_with(config: &Config, usage: &Usage, seat: &SeatDisk) {
+    if seat.pause {
+        let paused = load(config).paused;
+        for agent in config.agents.keys().filter(|a| !paused.contains_key(*a)) {
+            pause_agent(config, agent, "share", usage.used).await;
+        }
+        return;
+    }
+    for (agent, pause) in load(config).paused.into_iter().filter(|(_, p)| p.why == "share") {
+        resume_agent(config, &agent, pause, usage.used).await;
+    }
     let over = usage.allowance.is_some_and(|a| usage.used >= a);
     let disk = config.cloud && usage.allowance.is_some() && {
         let home = crate::place_backup::home();
@@ -1054,48 +1212,12 @@ pub async fn enforce(config: &Config, usage: &Usage) {
             return;
         }
         let Some(top) = usage.agents.first() else { return };
-        let containers = containers_of(&top.agent).await;
-        if !containers.is_empty() {
-            let mut args = vec!["pause"];
-            args.extend(containers.iter().map(String::as_str));
-            if podman(&args).await.is_none() {
-                tracing::warn!(target: "bipbridge::storage", agent = %top.agent, "sandbox not paused (podman refused)");
-            }
-        }
-        let why = if over { "place" } else { "disk" };
-        let agent = top.agent.clone();
-        let _ = change(config, |store| {
-            store.paused.insert(
-                agent.clone(),
-                Paused { since: py::time_time(), why: why.into(), containers: containers.clone() },
-            );
-            event(store, "pause", &agent, json!({"why": why, "used": usage.used, "containers": containers}));
-        });
-        tracing::warn!(target: "bipbridge::storage", agent = %top.agent, why, used = usage.used, "space full: the agent's sandbox paused");
+        pause_agent(config, &top.agent, if over { "place" } else { "disk" }, usage.used).await;
         full_card(config, &top.agent, true);
         return;
     }
     for (agent, pause) in paused {
-        let mut ids = containers_of(&agent).await;
-        for id in pause.containers {
-            if !ids.contains(&id) {
-                ids.push(id);
-            }
-        }
-        if !ids.is_empty() {
-            let mut args = vec!["unpause"];
-            args.extend(ids.iter().map(String::as_str));
-            let _ = podman(&args).await;
-        }
-        let _ = change(config, |store| {
-            store.paused.remove(&agent);
-            for card in store.cards.iter_mut().filter(|c| c.agent == agent) {
-                card.paused = false;
-            }
-            add_note(store, &agent, "There is room again in your person's space: your workspace works again.".into());
-            event(store, "resume", &agent, json!({"used": usage.used}));
-        });
-        tracing::info!(target: "bipbridge::storage", agent = %agent, used = usage.used, "space back under: the agent's sandbox resumed");
+        resume_agent(config, &agent, pause, usage.used).await;
     }
 }
 
@@ -1106,6 +1228,7 @@ pub async fn tick(config: std::sync::Arc<Config>) -> Usage {
     let measured = tokio::task::spawn_blocking(move || {
         let measured = usage(&c, true);
         check(&c, &measured, py::time_time());
+        seat_check(&c, &seat_disk(&crate::place_backup::home(), py::time_time()));
         measured
     })
     .await
@@ -1123,6 +1246,8 @@ pub async fn run_forever(state: AppState) {
             tick(state.config()).await;
             last = py::time_time();
         }
+        // the place's memory and disk sampled each minute: background tasks paused when too full (heavy_work.rs)
+        crate::heavy_work::backstop(&state).await;
         tokio::time::sleep(Duration::from_secs(60)).await;
     }
 }
@@ -1450,5 +1575,52 @@ mod tests {
         assert_eq!(size_fr(1_200_000_000), "1,2 Go");
         assert_eq!(size_fr(45_000), "45 Ko");
         assert_eq!(size_en(1_200_000_000), "1.2 GB");
+    }
+
+    #[test]
+    fn the_seat_agent_s_word_read_and_told_once() {
+        let (dir, config) = setup();
+        let home = dir.path();
+        assert_eq!(seat_disk(home, 1000.0), SeatDisk::default());
+        std::fs::create_dir_all(home.join(".local/state/bipagents")).unwrap();
+        std::fs::write(home.join(SEAT_FILE), r#"{"state": "low", "pause": false, "at": 1000}"#).unwrap();
+        let low = seat_disk(home, 1100.0);
+        assert_eq!(low, SeatDisk { state: "low".into(), pause: false });
+        assert_eq!(seat_disk(home, 1000.0 + SEAT_FRESH + 1.0), SeatDisk::default()); // stale: nothing kept
+        std::fs::write(home.join(SEAT_FILE), r#"{"state": "full", "pause": true}"#).unwrap();
+        assert_eq!(seat_disk(home, 1100.0), SeatDisk::default()); // no time: not trusted
+
+        // « low »: one note to every agent, once, without figures
+        assert!(seat_check(&config, &low));
+        assert!(!seat_check(&config, &low));
+        let note = take_note(&config, "vie").unwrap();
+        assert!(note.contains(SEAT_LOW_NOTE) && !note.chars().any(|c| c.is_ascii_digit()));
+        assert!(take_note(&config, "max").is_some());
+        // « full » on its own disk: told again; back down to « low »: nothing new; « ok » then « low »: told again
+        let full = SeatDisk { state: "full".into(), pause: false };
+        assert!(seat_check(&config, &full));
+        assert!(take_note(&config, "vie").unwrap().contains(SEAT_FULL_NOTE));
+        assert!(!seat_check(&config, &low));
+        assert!(!seat_check(&config, &SeatDisk::default()));
+        assert!(seat_check(&config, &low));
+    }
+
+    #[tokio::test]
+    async fn the_seat_agent_s_pause_holds_every_agent_until_it_lifts() {
+        let (_dir, config) = setup();
+        let u = usage_at(&config, 10);
+        let pause = SeatDisk { state: "full".into(), pause: true };
+        assert!(seat_check(&config, &pause));
+        enforce_with(&config, &u, &pause).await;
+        assert!(is_paused(&config, "vie") && is_paused(&config, "max"));
+        assert!(load(&config).paused.values().all(|p| p.why == "share"));
+        let note = take_note(&config, "vie").unwrap();
+        assert!(note.contains(SEAT_PAUSED_NOTE) && !note.contains(SEAT_FULL_NOTE));
+        assert!(refuse_tool(&config, "max").is_some());
+        // still paused: nothing more; lifted: both resumed, told
+        enforce_with(&config, &u, &pause).await;
+        enforce_with(&config, &u, &SeatDisk { state: "low".into(), pause: false }).await;
+        assert!(!is_paused(&config, "vie") && !is_paused(&config, "max"));
+        assert!(take_note(&config, "max").unwrap().contains("room again"));
     }
 }

@@ -401,6 +401,11 @@ pub fn version_of(tools: &[Value]) -> String {
 /// The tools of `agent`: the install's, the Carnet's (on by default), `health` when the person gave it their health data, the calendar's when they
 /// shared their calendar with it, the address book's when they shared that, `weather` when its « Météo » is on.
 pub fn tools_for(config: &Config, agent: &AgentConfig) -> Vec<Value> {
+    tools_for_at(config, agent, crate::handover::on_offer())
+}
+
+/// `tools_for`, `offer` saying whether this place is one of the offer's.
+pub fn tools_for_at(config: &Config, agent: &AgentConfig, offer: bool) -> Vec<Value> {
     if crate::family_agent::is_family(config, &agent.name) {
         return crate::family_agent::tools(config); // nobody's private data (family_agent.rs)
     }
@@ -441,6 +446,10 @@ pub fn tools_for(config: &Config, agent: &AgentConfig) -> Vec<Value> {
     tools.extend(crate::guide::tools(config, agent));
     // the guide's search of ready-made models (templates.rs)
     tools.extend(crate::templates::tools(config, agent));
+    // the offer's places: a green light before heavy work, behind the tool search (heavy_work.rs)
+    if crate::heavy_work::offered(agent, offer) {
+        tools.extend(crate::heavy_work::tools());
+    }
     tools
 }
 
@@ -523,6 +532,7 @@ pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow
     crate::notebook::sync_soul(config, agent);
     crate::archives::sync_soul(config, agent);
     crate::souls::sync_payments(config, agent);
+    crate::souls::sync_server(config, agent); // the offer's places: big toolchains don't fit (souls.rs)
     let tools = tools_for(config, agent);
     let url = if tools.as_slice() != install_tools(config) {
         url_with(config, &version_of(&tools))
@@ -1399,6 +1409,11 @@ pub async fn call_tool(
     if name == crate::rooms_memory::TOOL_NAME {
         let (c, agent_name, arguments) = (config.clone(), agent.name.clone(), arguments.clone());
         return blocking(move || Ok(crate::rooms_memory::call(&c, &agent_name, &arguments))).await;
+    }
+    if crate::heavy_work::TOOL_NAMES.contains(&name) {
+        // the green light before heavy work (heavy_work.rs): the place's room, one heavy job at a time
+        let (c, agent, name, arguments) = (config.clone(), agent.clone(), name.to_string(), arguments.clone());
+        return blocking(move || Ok(crate::heavy_work::call(&c, &agent, &name, &arguments))).await;
     }
     if name == crate::archives::records_fill::TOOL {
         if !crate::archives::enabled(&config, &agent.name) {

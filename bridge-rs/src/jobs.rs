@@ -62,6 +62,8 @@ pub const MAX_STEP_SECONDS: f64 = 3.0 * 3600.0;
 pub const RUNNING_MAX: usize = 3;
 /// An agent's proposals waiting for the person.
 pub const PROPOSALS_MAX: usize = 5;
+/// A task paused because the place was too full (heavy_work.rs).
+pub const SPACE_REASON: &str = "space";
 /// Seconds a stop may take before the task is counted as paused anyway.
 pub const STOP_GRACE: f64 = 120.0;
 /// Finished tasks kept in the list, per agent.
@@ -562,6 +564,14 @@ impl Jobs {
         if self.credit_used() {
             return Err(JobError(crate::credit::JOBS_REFUSED.into()));
         }
+        // the place's space full and its workspaces paused by the seat agent (storage_watch.rs)
+        if crate::storage_watch::seat_paused() {
+            return Err(JobError("your person's space is full: background tasks start again once room is made".into()));
+        }
+        // the place too full for a while: running ones paused until there is room (heavy_work.rs's backstop)
+        if crate::heavy_work::holding() {
+            return Err(JobError("your person's space is too full: tasks start again once there is room".into()));
+        }
         let running: Vec<Dict> = tasks(&self.config.get())
             .into_iter()
             .filter(|j| ["running", "stopping"].contains(&state_of(j).as_str()))
@@ -579,6 +589,33 @@ impl Jobs {
     /// The month's AI credit used (credit.rs): what runs by itself pauses.
     pub fn credit_used(&self) -> bool {
         crate::credit::now_at(self.credit_file.as_deref()).paused()
+    }
+
+    /// The place too full (heavy_work.rs's backstop): every running task stopped at its next step, paused with the
+    /// reason « space ». How many.
+    pub async fn pause_for_space(&self) -> usize {
+        let mut count = 0;
+        for mut job in tasks(&self.config.get()) {
+            if state_of(&job) != "running" || crate::archives::records_fill::is_extract(&job) {
+                continue;
+            }
+            let Ok(agent) = self.agent(&agent_of(&job)) else { continue };
+            self.stop(&agent, &mut job, SPACE_REASON).await;
+            count += 1;
+        }
+        count
+    }
+
+    /// Room again: the tasks paused for it go on by themselves.
+    pub async fn resume_after_space(self: &Arc<Self>, config: &crate::config::Config) {
+        for job in tasks(config) {
+            if state_of(&job) == "paused" && job.get("reason") == Some(&json!(SPACE_REASON)) {
+                let id = tk::str_or_empty(job.get("id"));
+                if let Err(e) = self.resume(&id, None, None).await {
+                    tracing::warn!(job = %id, error = %format!("{e:#}"), "task not resumed after the space");
+                }
+            }
+        }
     }
 
     /// The credit back (a pack, the new month): the tasks and mail scans paused for it go on by themselves.

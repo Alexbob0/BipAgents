@@ -34,6 +34,8 @@ fn souls_match_python() {
             // Rust only (the circle's common memory, 2026-10-30): its cases added by hand; input[1] null (not in the
             // circle), true (gives) or false (the health agent)
             "with_shared_memory" => json!(souls::with_shared_memory(input[0].as_str().unwrap(), input[1].as_bool())),
+            // Rust only (the offer's green light before heavy work, 2026-10-30): its cases added by hand
+            "with_server" => json!(souls::with_server(input[0].as_str().unwrap(), input[1].as_bool().unwrap())),
             "with_language" => json!(souls::with_language(input[0].as_str().unwrap(), opt(&input[1]))),
             // Rust only (the answer styles, 2026-10-30): its cases added by hand
             "with_style" => json!(souls::with_style(input[0].as_str().unwrap(), opt(&input[1]), opt(&input[2]))),

@@ -269,6 +269,27 @@ a read-only idmapped bind mount that shows the store's ids as that account's roo
 places. A new place on the same server fetches nothing (`add-seat.sh` → `seat-agent.py --prepare`). The voices were already shared
 (the server's one Pocket). root pulls the images again each night at 00:50 (`bipagents-images.timer`).
 
+### Places kept from each other on a shared server
+
+Several people share one server; one place filling its disk or its memory must never take the others down
+(`installer/cloud/seat-agent.py`, 2026-10-30):
+
+- **Disk: 5 GB a place, as its own disk.** Each place's home is an ext4 image of 5 GB (`/var/lib/bipagents/places/<account>.img`,
+  sparse: it takes on the server what the place wrote), mounted at `/home/<account>` before its services start.
+  Everything the place writes is inside (its podman storage, so what an agent installs in its sandbox, its browsers,
+  its encrypted space), so `df` shows 5 GB there and a full place gets « no space left » on its own disk only. New
+  places get it before their install (`add-seat.sh`, `user-data.yaml` → `seat-agent.py --own-disk <n>`); places
+  installed before move into one at their next update order (the copy stops their services a minute or two; their
+  old home is kept 7 days). Every 5 minutes the seat agent reads each place's level: 80 % → its agents get one note
+  (clean up, or room can be asked for); 95 % → the guichet alerts Kerfy once; a place not yet on its own disk is
+  measured with `du` against the same 5 GB and, past 95 %, its agents' workspaces are paused by its bridge (nothing
+  deleted) until it is back under 90 %.
+- **Memory and CPU: soft shares.** Each place's `user-<uid>.slice` (its bridge, Hermes, containers, terminals):
+  `MemoryHigh` = 80 % of the memory ÷ the places (at least 768 MB; above it the place slows down, nothing is killed),
+  `MemoryMax` only as a safety at 1.5× that, `CPUWeight` equal, `TasksMax` 8192.
+- **The agents know** (offer places only): « Your space is small: large toolchains don't fit here », with GitHub
+  Actions or an online service suggested instead; never figures.
+
 ### Measuring an install (a throwaway server)
 
 Before and after, on the same provider and size, a fresh server each time:
