@@ -1255,6 +1255,27 @@ pub async fn tick(config: std::sync::Arc<Config>) -> Usage {
 }
 
 /// Measured every 30 minutes, or within a minute after a big write.
+/// The seat agent's level told to the agents once, and its pause of the workspaces applied or lifted, as soon as
+/// it changes.
+pub async fn seat_minute(config: std::sync::Arc<Config>) {
+    let c = config.clone();
+    let Ok(seat) = tokio::task::spawn_blocking(move || {
+        let seat = seat_disk(&crate::place_backup::home(), py::time_time());
+        seat_check(&c, &seat);
+        seat
+    })
+    .await
+    else {
+        return;
+    };
+    let paused = load(&config).paused;
+    let held = paused.values().any(|p| p.why == "share");
+    let all = config.agents.keys().all(|a| paused.contains_key(a));
+    if (seat.pause && !all) || (!seat.pause && held) {
+        enforce_with(&config, &usage(&config, false), &seat).await;
+    }
+}
+
 pub async fn run_forever(state: AppState) {
     tokio::time::sleep(Duration::from_secs(20)).await;
     let mut last = 0.0;
@@ -1263,6 +1284,9 @@ pub async fn run_forever(state: AppState) {
             tick(state.config()).await;
             last = py::time_time();
         }
+        // the seat agent's word read each minute (it tells a new level within 15 s): the agents' notes and the
+        // workspaces' pause follow at once, not at the next measure, half an hour later
+        seat_minute(state.config()).await;
         // the place's memory and disk sampled each minute: background tasks paused when too full (heavy_work.rs)
         crate::heavy_work::backstop(&state).await;
         tokio::time::sleep(Duration::from_secs(60)).await;
