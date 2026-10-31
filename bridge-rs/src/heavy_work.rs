@@ -6,7 +6,8 @@
 //! - `go` with a short lease id: one heavy job at a time per place, kept 30 minutes (asked again by the same agent:
 //!   renewed), freed by `heavy_work_done`;
 //! - `wait` with seconds: another agent of the place holds the lease, or the place's memory is pressed (its user
-//!   slice's `memory.current` near `memory.high`, or the kernel's PSI `memory.pressure` « some avg10 » high);
+//!   slice's `memory.current` near `memory.high` with mostly the programs' own memory in it, not files the kernel
+//!   keeps in cache, or the kernel's PSI `memory.pressure` « some avg10 » high);
 //! - `too_big`: the estimate (+ a margin) is more than the place's free disk (statvfs of its home), or the seat agent
 //!   says its disk is full (storage_watch.rs, `disk.json`). The agent says so plainly and proposes another way (an
 //!   online service, GitHub Actions; a bigger plan is coming — no price).
@@ -14,10 +15,14 @@
 //! Per place only: the seat agent (installer/cloud/seat-agent.py) writes each place's disk level and sets its slice's
 //! limits, but exposes nothing to share a lease between places; each slice's MemoryHigh keeps a place to its share.
 //!
-//! The backstop needs no model: on the offer, a place over its slice's `memory.high` for five minutes, or whose disk
-//! passes 90 % (its reserve left out: seat-agent.py) or that the seat agent says is full, gets its running background
-//! tasks paused (jobs.rs, reason « space »; nothing is killed) and a note to its agents; they go on by themselves once
-//! there is room again.
+//! The backstop needs no model: on the offer, a place held at its slice's `memory.high` for three minutes, or whose
+//! disk passes 90 % (its reserve left out: seat-agent.py) or that the seat agent says is full, gets its running
+//! background tasks paused (jobs.rs, reason « space »; nothing is killed) and a note to its agents; they go on by
+//! themselves once there is room again. « Held at » is what the kernel does: it keeps the slice just under its
+//! `memory.high` (1 547 of 1 549 MB for seven minutes on the real server, 2026-10-31: waiting to be over it never
+//! fired), so it counts as held when `memory.current` is within 3 % of it or the kernel's `high` count in
+//! `memory.events` (each time it had to hold the slice back) grew since the last sample, with mostly programs' memory
+//! in it or the slice stalled on memory (PSI).
 //!
 //! Self-installs: the tools aren't offered, and a call answers `go`. Family, project and shared agents never get them
 //! (agent_tools.rs `tools_for`; a relative's or shared turn closes them as any other own tool).
@@ -43,13 +48,20 @@ pub const LEASE_SECONDS: f64 = 1800.0;
 pub const MARGIN_BYTES: u64 = 512 * 1024 * 1024;
 /// The slice's memory this close to its `memory.high`: pressed.
 pub const PRESSED_RATIO: f64 = 0.9;
+/// The slice's memory this close to its `memory.high`: the kernel holds it there (the backstop).
+pub const HELD_RATIO: f64 = 0.97;
+/// At least this share of `memory.high` is the programs' own memory (anon), not files kept in cache, for « near » to
+/// count: a slice reading many files fills to its `memory.high` with cache the kernel drops at no cost.
+pub const ANON_RATIO: f64 = 0.6;
+/// PSI « some avg10 » at which a slice held at its `memory.high` counts for the backstop.
+pub const PSI_HELD: f64 = 10.0;
 /// PSI « some avg10 » (percent of time stalled on memory) at which the place is pressed.
 pub const PSI_PRESSED: f64 = 20.0;
 /// Seconds to wait when the place is pressed.
 pub const WAIT_PRESSED: u64 = 120;
-/// The backstop: disk used past this, or the slice over its `memory.high` for `OVER_FOR` seconds.
+/// The backstop: disk used past this, or the slice held at its `memory.high` for `OVER_FOR` seconds.
 pub const DISK_STOP: f64 = 0.9;
-pub const OVER_FOR: f64 = 300.0;
+pub const OVER_FOR: f64 = 180.0;
 /// Root's reserve in the place's own disk (seat-agent.py): not the place's to use, left out of its levels.
 pub const RESERVE_FILE: &str = ".bipagents-reserve";
 /// Lifted under these.
@@ -104,18 +116,34 @@ pub struct Memory {
     pub high: Option<u64>,
     /// PSI « some avg10 »
     pub stalled: Option<f64>,
+    /// `memory.events` « high »: how many times the kernel held the slice back at its `memory.high`
+    pub high_events: Option<u64>,
+    /// `memory.stat` « anon »: the programs' own memory (not files kept in cache)
+    pub anon: Option<u64>,
 }
 
 impl Memory {
-    /// Close to its ceiling, or stalled on memory.
-    pub fn pressed(&self) -> bool {
-        let near =
-            matches!((self.current, self.high), (Some(c), Some(h)) if h > 0 && c as f64 >= h as f64 * PRESSED_RATIO);
-        near || self.stalled.is_some_and(|s| s >= PSI_PRESSED)
+    fn near(&self, ratio: f64) -> bool {
+        matches!((self.current, self.high), (Some(c), Some(h)) if h > 0 && c as f64 >= h as f64 * ratio)
     }
 
-    pub fn over_high(&self) -> bool {
-        matches!((self.current, self.high), (Some(c), Some(h)) if h > 0 && c >= h)
+    /// Mostly the programs' own memory (unknown: counted as such).
+    fn programs(&self) -> bool {
+        match (self.anon, self.high) {
+            (Some(a), Some(h)) if h > 0 => a as f64 >= h as f64 * ANON_RATIO,
+            _ => true,
+        }
+    }
+
+    /// Close to its ceiling with programs' memory, or stalled on memory.
+    pub fn pressed(&self) -> bool {
+        (self.near(PRESSED_RATIO) && self.programs()) || self.stalled.is_some_and(|s| s >= PSI_PRESSED)
+    }
+
+    /// Held at its `memory.high` by the kernel (within 3 %, or its `high` count grew since the last sample: `grew`),
+    /// with programs' memory or stalled.
+    pub fn held(&self, grew: bool) -> bool {
+        (self.near(HELD_RATIO) || grew) && (self.programs() || self.stalled.is_some_and(|s| s >= PSI_HELD))
     }
 }
 
@@ -177,11 +205,19 @@ pub fn slice_dir() -> PathBuf {
     Path::new(CGROUP_USERS).join(format!("user-{uid}.slice"))
 }
 
+/// The value of `key` in a cgroup's « key value » lines (memory.events, memory.stat).
+pub fn keyed(text: &str, key: &str) -> Option<u64> {
+    text.lines().find_map(|l| l.strip_prefix(key)?.strip_prefix(' ')?.trim().parse().ok())
+}
+
 pub fn memory_of(slice: &Path) -> Memory {
+    let read = |name: &str| std::fs::read_to_string(slice.join(name)).ok();
     Memory {
         current: number(&slice.join("memory.current")),
         high: number(&slice.join("memory.high")),
-        stalled: std::fs::read_to_string(slice.join("memory.pressure")).ok().as_deref().and_then(psi_some),
+        stalled: read("memory.pressure").as_deref().and_then(psi_some),
+        high_events: read("memory.events").as_deref().and_then(|t| keyed(t, "high")),
+        anon: read("memory.stat").as_deref().and_then(|t| keyed(t, "anon")),
     }
 }
 
@@ -371,11 +407,13 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
 
 // --- the backstop ------------------------------------------------------------------------------------------------
 
-/// The backstop's state: since when the slice is over its `memory.high`, and whether the pause holds.
+/// The backstop's state: since when the slice is held at its `memory.high`, whether the pause holds, and the
+/// kernel's `high` count at the last sample.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Backstop {
     pub over_since: Option<f64>,
     pub holding: bool,
+    pub high_events: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -387,7 +425,9 @@ pub enum Step {
 impl Backstop {
     /// One sample: a step when the pause starts or lifts.
     pub fn sample(&mut self, room: &Room, now: f64) -> Option<Step> {
-        if room.memory.over_high() {
+        let grew = matches!((self.high_events, room.memory.high_events), (Some(a), Some(b)) if b > a);
+        self.high_events = room.memory.high_events;
+        if room.memory.held(grew) {
             self.over_since.get_or_insert(now);
         } else {
             self.over_since = None;
@@ -399,10 +439,11 @@ impl Backstop {
             self.holding = true;
             return Some(Step::Pause);
         }
-        let memory_ok = match (room.memory.current, room.memory.high) {
-            (Some(c), Some(h)) if h > 0 => (c as f64) < h as f64 * MEMORY_LIFT,
-            _ => true,
-        };
+        let memory_ok = !grew
+            && match (room.memory.current, room.memory.high) {
+                (Some(c), Some(h)) if h > 0 => (c as f64) < h as f64 * MEMORY_LIFT,
+                _ => true,
+            };
         if self.holding && disk < DISK_LIFT && !full && memory_ok {
             self.holding = false;
             return Some(Step::Lift);
@@ -411,7 +452,7 @@ impl Backstop {
     }
 }
 
-static BACKSTOP: Mutex<Backstop> = Mutex::new(Backstop { over_since: None, holding: false });
+static BACKSTOP: Mutex<Backstop> = Mutex::new(Backstop { over_since: None, holding: false, high_events: None });
 
 /// The backstop's pause holds: no new background task (jobs.rs).
 pub fn holding() -> bool {
@@ -431,7 +472,8 @@ pub async fn backstop(state: &crate::app::AppState) {
         Some(Step::Pause) => {
             let paused = jobs.pause_for_space().await;
             crate::storage_watch::note_all(&state.config(), BACKSTOP_NOTE);
-            tracing::warn!(target: "bipbridge::heavy", paused, "place too full: background tasks paused");
+            tracing::warn!(target: "bipbridge::heavy", paused, current = ?room.memory.current, high = ?room.memory.high,
+                stalled = ?room.memory.stalled, disk = ?room.disk_used_ratio(), "place too full: background tasks paused");
         }
         Some(Step::Lift) => {
             jobs.resume_after_space(&state.config()).await;
@@ -531,11 +573,23 @@ mod tests {
     #[test]
     fn memory_pressure_waits() {
         let gb = 1_000_000_000;
-        let near = Room { memory: Memory { current: Some(950 * gb / 1000), high: Some(gb), stalled: None }, ..roomy() };
+        let near = Room {
+            memory: Memory { current: Some(950 * gb / 1000), high: Some(gb), ..Memory::default() },
+            ..roomy()
+        };
         assert_eq!(decide(&near, None, "dev", "build", Some(0.5), 0.0), Decision::Wait(false, WAIT_PRESSED));
-        let stalled = Room { memory: Memory { current: None, high: None, stalled: Some(35.0) }, ..roomy() };
+        let stalled = Room { memory: Memory { stalled: Some(35.0), ..Memory::default() }, ..roomy() };
         assert_eq!(decide(&stalled, None, "dev", "build", Some(0.5), 0.0), Decision::Wait(false, WAIT_PRESSED));
-        let fine = Room { memory: Memory { current: Some(gb / 2), high: Some(gb), stalled: Some(1.0) }, ..roomy() };
+        let fine = Room {
+            memory: Memory { current: Some(gb / 2), high: Some(gb), stalled: Some(1.0), ..Memory::default() },
+            ..roomy()
+        };
+        // near its ceiling with files the kernel keeps in cache, not programs: not pressed
+        let cache = Room {
+            memory: Memory { current: Some(950 * gb / 1000), high: Some(gb), anon: Some(gb / 5), ..Memory::default() },
+            ..roomy()
+        };
+        assert_eq!(decide(&cache, None, "dev", "build", Some(0.5), 0.0), Decision::Go(None));
         assert_eq!(decide(&fine, None, "dev", "build", Some(0.5), 0.0), Decision::Go(None));
         let (_dir, config) = setup();
         let wait = ask(&config, "dev", &args("build", None), true, &near, 0.0);
@@ -599,7 +653,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("memory.current"), "800\n").unwrap();
         std::fs::write(dir.path().join("memory.high"), "max\n").unwrap();
-        assert_eq!(memory_of(dir.path()), Memory { current: Some(800), high: None, stalled: None });
+        assert_eq!(memory_of(dir.path()), Memory { current: Some(800), ..Memory::default() });
+        std::fs::write(dir.path().join("memory.events"), "low 0\nhigh 1234\nmax 0\noom 0\noom_kill 0\n").unwrap();
+        std::fs::write(dir.path().join("memory.stat"), "anon 700\nfile 100\nanon_thp 0\n").unwrap();
+        let read = memory_of(dir.path());
+        assert_eq!((read.high_events, read.anon), (Some(1234), Some(700)));
     }
 
     #[test]
@@ -613,11 +671,11 @@ mod tests {
         assert_eq!(b.sample(&between, 120.0), None);
         assert_eq!(b.sample(&roomy(), 180.0), Some(Step::Lift));
         // over its memory.high: only after five minutes
-        let over = Room { memory: Memory { current: Some(gb + 1), high: Some(gb), stalled: None }, ..roomy() };
+        let over = Room { memory: Memory { current: Some(gb + 1), high: Some(gb), ..Memory::default() }, ..roomy() };
         assert_eq!(b.sample(&over, 1000.0), None);
         assert_eq!(b.sample(&over, 1000.0 + OVER_FOR - 1.0), None);
         assert_eq!(b.sample(&over, 1000.0 + OVER_FOR), Some(Step::Pause));
-        let under = Room { memory: Memory { current: Some(gb / 2), high: Some(gb), stalled: None }, ..roomy() };
+        let under = Room { memory: Memory { current: Some(gb / 2), high: Some(gb), ..Memory::default() }, ..roomy() };
         assert_eq!(b.sample(&under, 2000.0), Some(Step::Lift));
         // a dip resets the clock
         b.sample(&over, 3000.0);
@@ -626,7 +684,58 @@ mod tests {
     }
 
     #[test]
-    fn the_seat_agent_s_full_pauses_at_once_and_the_reserve_is_left_out() {
+    fn the_backstop_fires_when_the_kernel_holds_the_slice_just_under_its_ceiling() {
+        // the real server, 2026-10-31: 1 547 of 1 549 MB for seven minutes, never over it
+        let mb = 1_048_576u64;
+        let held = |events: u64| Room {
+            memory: Memory {
+                current: Some(1547 * mb),
+                high: Some(1549 * mb),
+                stalled: Some(30.0),
+                high_events: Some(events),
+                anon: Some(1400 * mb),
+            },
+            ..roomy()
+        };
+        let mut b = Backstop::default();
+        assert_eq!(b.sample(&held(10), 0.0), None);
+        assert_eq!(b.sample(&held(400), 60.0), None);
+        assert_eq!(b.sample(&held(900), 120.0), None);
+        assert_eq!(b.sample(&held(1500), OVER_FOR), Some(Step::Pause));
+        // still held back by the kernel (its count grows) though a little under: not lifted
+        let lower = |events: u64| Room {
+            memory: Memory { current: Some(1300 * mb), high_events: Some(events), ..held(0).memory },
+            ..roomy()
+        };
+        assert_eq!(b.sample(&lower(1600), 300.0), None);
+        // let go: lifted
+        let calm = Room {
+            memory: Memory { current: Some(600 * mb), stalled: Some(0.0), high_events: Some(1600), ..held(0).memory },
+            ..roomy()
+        };
+        assert_eq!(b.sample(&calm, 360.0), Some(Step::Lift));
+        // the count alone, growing each minute under 97 %, holds it too
+        let mut b = Backstop::default();
+        for (i, events) in [100u64, 200, 300, 400, 500].iter().enumerate() {
+            let step = b.sample(&lower(*events), i as f64 * 60.0);
+            assert_eq!(step, if i == 4 { Some(Step::Pause) } else { None }, "{i}");
+        }
+        // a slice full of files kept in cache (little anon, not stalled), the count growing: not held
+        let cache = |events: u64| Room {
+            memory: Memory {
+                current: Some(1548 * mb),
+                high: Some(1549 * mb),
+                stalled: Some(0.5),
+                high_events: Some(events),
+                anon: Some(200 * mb),
+            },
+            ..roomy()
+        };
+        let mut b = Backstop::default();
+        for i in 0..10u64 {
+            assert_eq!(b.sample(&cache(i * 100), i as f64 * 60.0), None);
+        }
+        // the seat agent's « full » pauses at once; its reserve is left out of the disk's share
         let mut b = Backstop::default();
         let full = Room { seat: SeatDisk { state: "full".into(), pause: false }, ..roomy() };
         assert_eq!(b.sample(&full, 0.0), Some(Step::Pause));
