@@ -1113,8 +1113,8 @@ def memory_settled(server):
 # reads the name the client asks for in its TLS hello (`<label>.p.bipagents.com`, the place's certificate: the
 # guichet sends each place's name in its beat answer, "hosts") and passes the connection to that place's door on
 # 127.0.0.1, after a PROXY v2 header with the client's real address (bridge-rs/src/proxy_header.rs: without it, every
-# client would look like 127.0.0.1 to the bridge, which never counts wrong keys from there). A hello without a name
-# (an app paired before the places had names, by the address) goes to place 1, whose door 443 was.
+# client would look like 127.0.0.1 to the bridge, which never counts wrong keys from there). Anything else (a hello
+# without a name, from an app paired by the address; a name not routed) goes to place 1, whose door 443 was.
 #
 # A place's door is routed only once it understands the header (asked each round: a PROXY LOCAL header, then a TLS
 # handshake; an older bridge fails it), and the redirect is on only while place 1's does, since all of 443 then goes
@@ -1205,7 +1205,7 @@ def proxy_probe(port, timeout=4):
 
 
 def doors_config(routes, default, ipv6):
-    """The router's text: each name to its place's door, a hello without a name to `default` (a number or None)."""
+    """The router's text: each name to its place's door, anything else to `default` (a number or None)."""
     lines = [
         "# BipAgents: every place's door on 443 (installer/cloud/seat-agent.py writes it, each round)",
         "global",
@@ -1234,7 +1234,10 @@ def doors_config(routes, default, ipv6):
     for host, number in sorted(routes.items()):
         lines.append("    use_backend place%d if { req.ssl_sni -i %s }" % (number, host))
     if default:
-        lines.append("    use_backend place%d if !{ req.ssl_sni -m found }" % default)
+        # everything else to place 1, as 443 did before the router: a hello without a name, a name not routed (yet:
+        # a guichet that gives no names, a place whose bridge is older); a name of another place lands on place 1's
+        # certificate there, which the client refuses, as before
+        lines.append("    default_backend place%d" % default)
     for number in sorted(set(routes.values()) | ({default} if default else set())):
         lines += ["", "backend place%d" % number,
                   "    server door 127.0.0.1:%d send-proxy-v2" % (442 + number)]

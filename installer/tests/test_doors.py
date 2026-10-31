@@ -54,9 +54,9 @@ def test_the_router_text_sends_each_name_to_its_place_with_the_clients_address()
     text = agent.doors_config({"aaaa.p.bipagents.com": 1, "bbbb.p.bipagents.com": 3}, 1, True)
     assert "bind 0.0.0.0:440" in text and "bind [::]:440 v6only" in text
     assert "use_backend place3 if { req.ssl_sni -i bbbb.p.bipagents.com }" in text
-    assert "use_backend place1 if !{ req.ssl_sni -m found }" in text
+    # anything not routed to place 1, as 443 was before the router (never to another place)
+    assert text.count("default_backend") == 1 and "    default_backend place1" in text
     assert "server door 127.0.0.1:445 send-proxy-v2" in text and "server door 127.0.0.1:443 send-proxy-v2" in text
-    assert "default_backend" not in text   # a name nobody has: closed, never another place's
     assert "log" not in text.replace("global", "")   # nothing of anyone kept
     assert "[::]" not in agent.doors_config({}, 1, False)
     text.encode("ascii")
