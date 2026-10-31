@@ -231,6 +231,47 @@ def test_root_mounts_one_read_only_view_per_account_once(tmp_path, monkeypatch):
     assert shared_images.views(tmp_path / "empty", folder, run=lambda a, t=0: (0, "")) == []   # nothing pulled yet
 
 
+def test_a_view_left_by_an_earlier_account_of_the_same_name_is_mounted_again(tmp_path, monkeypatch):
+    """A place installed again (seat-agent.py's reset): its account made anew, another uid; the view the old one had
+    showed the images as nobody's to it, and its install copied its own (2.3 GB, real-server test 2026-10-31)."""
+    store, folder = tmp_path / "lib" / "images", tmp_path / "lib" / "views"
+    (store / "overlay-images").mkdir(parents=True)
+    subuid, subgid = tmp_path / "subuid", tmp_path / "subgid"
+    subuid.write_text("bip:300000:65536\nbip2:400000:65536\n")
+    subgid.write_text("bip:300000:65536\nbip2:400000:65536\n")
+    accounts = {"bip": 1000, "bip2": 1003}
+
+    def account(name):
+        return type("P", (), {"pw_uid": accounts[name], "pw_gid": accounts[name]})()
+    monkeypatch.setattr(shared_images, "say", lambda text: None)
+    ran = []
+    run = lambda a, t=0: ran.append(a) or (0, "")   # noqa: E731
+    mounted = {str(folder / "bip"), str(folder / "bip2")}
+    # bip2's view still shows the store's root as its old uid 1001: unmounted, mounted with the new account's ids
+    shown = {str(folder / "bip"): 1000, str(folder / "bip2"): 1001}
+    got = shared_images.views(store, folder, run=run, files=(subuid, subgid), account=account,
+                              mounted_at=lambda p: str(p) in mounted, owner_of=lambda p: shown[str(p)])
+    assert got == ["bip", "bip2"]
+    assert ran[0] == ["umount", "-l", str(folder / "bip2")]
+    assert ran[1][:3] == ["mount", "--bind", "-o"] and "u:0:1003:1 u:1:400000:65536" in ran[1][3] and len(ran) == 2
+    maps = json.loads((folder / shared_images.MAPS).read_text())
+    assert maps == {"bip2": "u:0:1003:1 u:1:400000:65536 g:0:1003:1 g:1:400000:65536"}
+    # place 1 installed again keeps uid 1000 but gets other subordinate ids: its recorded mapping differs
+    maps["bip"] = "u:0:1000:1 u:1:200000:65536 g:0:1000:1 g:1:200000:65536"
+    (folder / shared_images.MAPS).write_text(json.dumps(maps))
+    shown[str(folder / "bip2")] = 1003
+    ran.clear()
+    shared_images.views(store, folder, run=run, files=(subuid, subgid), account=account,
+                        mounted_at=lambda p: str(p) in mounted, owner_of=lambda p: shown[str(p)])
+    assert [a[0] for a in ran] == ["umount", "mount"] and ran[0][2] == str(folder / "bip")
+    assert "u:1:300000:65536" in ran[1][3]
+    # all right: nothing touched
+    ran.clear()
+    shared_images.views(store, folder, run=run, files=(subuid, subgid), account=account,
+                        mounted_at=lambda p: str(p) in mounted, owner_of=lambda p: shown[str(p)])
+    assert ran == []
+
+
 class Engine(hermes.Runner):
     """A real-looking run of the account's podman: a pull that fails when asked to, everything noted."""
 

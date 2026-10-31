@@ -198,12 +198,26 @@ def skeleton(view: Path) -> None:
             lock.touch(mode=0o644)
 
 
+MAPS = ".maps.json"   # in the views' folder (root's): the mapping each view was mounted with
+
+
+def owner(path: Path) -> Optional[int]:
+    try:
+        return path.stat().st_uid
+    except OSError:
+        return None
+
+
 def views(store: Path = STORE, folder: Path = VIEWS, run: Run = browser_refresh.run,
           files: Sequence[Path] = SUBIDS, account: Callable[[str], "pwd.struct_passwd"] = pwd.getpwnam,
-          mounted_at: Optional[Callable[[Path], bool]] = None) -> List[str]:
+          mounted_at: Optional[Callable[[Path], bool]] = None,
+          owner_of: Callable[[Path], Optional[int]] = owner) -> List[str]:
     """(root) Each account that has subordinate ids (a place, or anyone set up for rootless podman) gets its
-    read-only idmapped view of the store, once (a mounted view is left as it is: running containers read it).
-    Returns the accounts whose view is mounted."""
+    read-only idmapped view of the store, once (a mounted view is left as it is: running containers read it), unless
+    it is an earlier account's: a place installed again gets a new account of the same name (another uid, place 1
+    other subordinate ids), which the old view shows the images as nobody's; its install then fell back to its own
+    copy, 2.3 GB of its 5 (real-server test, 2026-10-31). Such a view (its root not the account's, or mounted with
+    another mapping than this account's) is unmounted and mounted again. Returns the accounts whose view is mounted."""
     if not (store / "overlay-images").is_dir():
         return []
     store.chmod(0o700)                    # root's own: the places go through their views
@@ -211,7 +225,12 @@ def views(store: Path = STORE, folder: Path = VIEWS, run: Run = browser_refresh.
     folder.mkdir(mode=0o711, parents=True, exist_ok=True)
     folder.chmod(0o711)
     mounted_at = mounted_at or is_mounted
-    mounted = []
+    try:
+        maps = json.loads((folder / MAPS).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        maps = {}
+    maps = maps if isinstance(maps, dict) else {}
+    mounted, kept = [], {}
     for name, (uids, gids) in sorted(subids(files).items()):
         try:
             found = account(name)
@@ -220,16 +239,28 @@ def views(store: Path = STORE, folder: Path = VIEWS, run: Run = browser_refresh.
         if found.pw_uid < 1000 or not uids or not gids:
             continue
         view = folder / name
+        wanted = idmap(found.pw_uid, found.pw_gid, uids, gids)
         if mounted_at(view):
-            mounted.append(name)
-            continue
+            shown = owner_of(view)
+            if maps.get(name, wanted) == wanted and shown in (None, found.pw_uid):
+                mounted.append(name)
+                if name in maps:
+                    kept[name] = wanted
+                continue
+            run(["umount", "-l", str(view)], 60)
+            say(f"{name}'s view of the shared images was an earlier account's: mounted again")
         skeleton(view)
-        code, out = run(["mount", "--bind", "-o", "ro,X-mount.idmap=" + idmap(found.pw_uid, found.pw_gid, uids, gids),
-                          str(store), str(view)], 60)
+        code, out = run(["mount", "--bind", "-o", "ro,X-mount.idmap=" + wanted, str(store), str(view)], 60)
         if code == 0:
             mounted.append(name)
+            kept[name] = wanted
         else:
             say(f"no view of the shared images for {name}: {out.strip()[-200:]}")
+    try:
+        (folder / MAPS).write_text(json.dumps(kept) + "\n", encoding="utf-8")
+        (folder / MAPS).chmod(0o600)
+    except OSError:
+        pass
     return mounted
 
 

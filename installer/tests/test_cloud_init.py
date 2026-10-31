@@ -314,36 +314,45 @@ def _places(agent, monkeypatch, uids):
     monkeypatch.setattr(agent.pwd, "getpwnam", getpwnam)
 
 
-def test_each_place_gets_a_soft_memory_ceiling_from_the_server_s_memory(tmp_path, monkeypatch):
-    """MemoryHigh (never MemoryMax) on each running place's user slice: 35 % of the server's memory, or the share the
-    guichet sent; set again only when it differs."""
+def test_each_place_gets_a_soft_share_of_the_server_s_memory_and_cpu(tmp_path, monkeypatch):
+    """Each running place's user slice: MemoryHigh = 80 % of the memory shared among the places (never under a
+    place's floor) or the guichet's share, a MemoryMax only well above it, CPUWeight equal, TasksMax generous; set
+    again only when one differs."""
     agent = _seat_agent()
     _places(agent, monkeypatch, {"bip": 1000, "bip2": 1001, "bip3": 1002})
     root = tmp_path / "user.slice"
     (root / "user-1000.slice").mkdir(parents=True)
     (root / "user-1000.slice" / "memory.high").write_text("max\n")
     (root / "user-1001.slice").mkdir()
-    (root / "user-1001.slice" / "memory.high").write_text("%d\n" % (2800 * 1024 * 1024))
+    for name, value in (("memory.high", 2133 * 1024 * 1024), ("memory.max", 3199 * 1024 * 1024), ("cpu.weight", 100),
+                        ("pids.max", 8192)):
+        (root / "user-1001.slice" / name).write_text("%d\n" % value)
     # bip3: no slice (its services not started): nothing set for it
     calls = []
     agent.ceiling(8000, {}, str(root), lambda *args: calls.append(args))
-    assert calls == [("systemctl", "set-property", "user-1000.slice", "MemoryHigh=2800M")]
+    assert calls == [("systemctl", "set-property", "user-1000.slice", "MemoryHigh=2133M", "MemoryMax=3199M",
+                      "CPUWeight=100", "TasksMax=8192")]
     calls.clear()
     agent.ceiling(8000, {"memory_high_share": 0.5}, str(root), lambda *args: calls.append(args))
-    assert calls == [("systemctl", "set-property", "user-1000.slice", "MemoryHigh=4000M"),
-                     ("systemctl", "set-property", "user-1001.slice", "MemoryHigh=4000M")]
+    assert [c[3] for c in calls] == ["MemoryHigh=4000M", "MemoryHigh=4000M"]
+    # the shares: two places on a 4 GB server, one alone, many on a small one (the floor, MemoryMax never above
+    # the memory less the system's part)
+    assert agent.limits(3900, 2, {}) == {"MemoryHigh": 1560, "MemoryMax": 2584, "CPUWeight": 100, "TasksMax": 8192}
+    assert agent.limits(3900, 1, {})["MemoryMax"] == 3900 - agent.SYSTEM_MB
+    assert agent.limits(3900, 8, {})["MemoryHigh"] == agent.PLACE_FLOOR_MB
+    assert agent.limits(3900, 0, {}) == agent.limits(3900, 1, {})
     assert agent.ceiling_mb(8000, {"memory_high_share": 5}) == agent.ceiling_mb(8000, {"memory_high_share": True}) \
-        == 2800
-    text = (ROOT / "installer" / "cloud" / "seat-agent.py").read_text(encoding="utf-8")
-    assert "MemoryMax" not in text.replace("never MemoryMax", "")
+        == 6400
     # The guichet's answer: a known setting within reason is kept, anything else is not.
     settings = tmp_path / "settings.json"
     agent.keep_settings({"orders": []}, str(settings))
     agent.keep_settings({"settings": {"memory_high_share": 0.02}}, str(settings))
-    agent.keep_settings({"settings": {"memory_max": 1}}, str(settings))
+    agent.keep_settings({"settings": {"memory_max": 1, "place_disk_gib": 500}}, str(settings))
     assert not settings.exists()
     agent.keep_settings({"settings": {"memory_high_share": 0.4}}, str(settings))
     assert json.loads(settings.read_text()) == {"memory_high_share": 0.4}
+    agent.keep_settings({"settings": {"place_disk_gib": 8}}, str(settings))
+    assert json.loads(settings.read_text()) == {"memory_high_share": 0.4, "place_disk_gib": 8}
 
 
 def test_the_beat_says_each_place_s_memory_now_and_its_peak_since_the_last_beat(tmp_path, monkeypatch):
@@ -405,6 +414,7 @@ def test_the_beat_s_body_and_its_order(tmp_path, monkeypatch):
     monkeypatch.setattr(agent, "places_memory", lambda: {"1": {"mem_mb": 812, "mem_peak_mb": 1630}})
     monkeypatch.setattr(agent, "places_activity", lambda memory: memory)
     monkeypatch.setattr(agent, "memory_settled", lambda server: steps.append(("settled", server["memory_mb"])))
+    monkeypatch.setattr(agent, "disk_settled", lambda: {"1": {"disk_mb": 900, "disk": "ok"}})
     monkeypatch.setattr(agent, "zram", lambda: steps.append("zram"))
 
     def call(conf, method, path, body=None):
@@ -414,7 +424,8 @@ def test_the_beat_s_body_and_its_order(tmp_path, monkeypatch):
     monkeypatch.setattr(agent, "call", call)
     assert agent.main([]) == 0
     assert sent == [("/v1/server/beat", {"seats": {"1": {"up": True}}, "server": {"memory_mb": 7812},
-                                         "places": {"1": {"mem_mb": 812, "mem_peak_mb": 1630}}})]
+                                         "places": {"1": {"mem_mb": 812, "mem_peak_mb": 1630, "disk_mb": 900,
+                                                          "disk": "ok"}}})]
     assert steps == [("settled", 7812), ("settled", 7812), "zram"]
     assert json.loads((tmp_path / "settings.json").read_text()) == {"memory_high_share": 0.3}
 

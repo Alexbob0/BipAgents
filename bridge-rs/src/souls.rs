@@ -686,7 +686,60 @@ pub fn sync_payments(config: &crate::config::Config, agent: &crate::config::Agen
     }
 }
 
-// --- token diet prototype (2026-10-24, not wired in) -------------------------------------------------------------
+pub const SERVER_START: &str = "<!-- bipagents:server -->";
+pub const SERVER_END: &str = "<!-- /bipagents:server -->";
+
+/// The offer's places only (`handover::on_offer`, 2026-10-30): the place is a 5 GB disk on a server shared with other
+/// people (installer/cloud/seat-agent.py), and a « DevOps » agent had planned to install Flutter and the Android SDK
+/// there. Never numbers (Alex: the agent must not talk about memory, only know that it doesn't fit). Rust bridge
+/// only; `heal_souls` adds it at start, and takes it away from a place that isn't the offer's. Short: paid on every
+/// call. Since the same day it points to the green light (`heavy_work`, heavy_work.rs), which answers from the place's
+/// room and says what to propose instead (an online service, GitHub Actions, a bigger plan coming).
+pub const SERVER_RULE: &str = "Before installing, building or downloading anything big, ask heavy_work; if it says it \
+doesn't fit, say so simply and suggest another way.";
+
+/// The personality without the server block (the person never sees it).
+pub fn split_server(soul: &str) -> String {
+    let (Some(start), Some(end)) = (soul.find(SERVER_START), soul.find(SERVER_END)) else {
+        return soul.to_string();
+    };
+    if end < start {
+        return soul.to_string();
+    }
+    format!("{}{}", soul[..start].trim_end(), &soul[end + SERVER_END.len()..])
+}
+
+/// The personality with the server block when `on` (at its end when it had none or an older one), without it
+/// otherwise.
+pub fn with_server(soul: &str, on: bool) -> String {
+    let block = format!("{SERVER_START}\n{SERVER_RULE}\n{SERVER_END}");
+    if on && soul.contains(&block) {
+        return soul.to_string(); // already there, wherever the other blocks put it
+    }
+    let body = split_server(soul);
+    if !on {
+        return if soul.contains(SERVER_START) { format!("{}\n", body.trim_end()) } else { soul.to_string() };
+    }
+    format!("{}\n\n{block}\n", body.trim_end())
+}
+
+/// The agent's SOUL.md gets the server block on the offer's places (written only when it changes; agents set up by
+/// hand are left alone).
+pub fn sync_server(config: &crate::config::Config, agent: &crate::config::AgentConfig) {
+    if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
+        return;
+    }
+    let path = crate::agents_admin::profile_folder(config, agent).join("SOUL.md");
+    let Ok(soul) = std::fs::read_to_string(&path) else { return };
+    let changed = with_server(&soul, crate::handover::on_offer());
+    if changed != soul {
+        if let Err(err) = std::fs::write(&path, changed) {
+            tracing::warn!(agent = %agent.name, error = %err, "server rule not written");
+        }
+    }
+}
+
+// --- token diet prototype (2026-10-24, not wired in)-------------------------------------------------------------
 //
 // The same commitments as the language block and the notebook rule, in about half the tokens (scripts/token-anatomy.py
 // counts both). Nothing uses them yet: switching `language_block` / `with_notebook` to them waits for Alex's go and a
@@ -1065,5 +1118,21 @@ mod tests {
         assert_eq!(template("custom", None).unwrap()["soul"], "");
         assert!(soul_for("Max", "finance", Some("en")).unwrap().starts_with("You are Max, your user's money agent"));
         assert!(soul_for("Max", "custom", Some("en")).is_err());
+    }
+
+    #[test]
+    fn an_offer_place_s_agent_knows_big_toolchains_don_t_fit() {
+        let soul = "You are Max.\n";
+        let on = with_server(soul, true);
+        assert!(on.ends_with(&format!("{SERVER_START}\n{SERVER_RULE}\n{SERVER_END}\n")));
+        assert_eq!(with_server(&on, true), on); // once
+        assert_eq!(split_server(&on).trim_end(), "You are Max.");
+        assert_eq!(with_server(&on, false), soul); // a place that isn't the offer's: taken away
+        assert_eq!(with_server(soul, false), soul);
+        // no numbers, nothing about memory (Alex, 2026-10-30), and short: at most 30 tokens (about 4.5 characters each)
+        assert!(!SERVER_RULE.chars().any(|c| c.is_ascii_digit()));
+        assert!(!SERVER_RULE.contains("RAM") && !SERVER_RULE.to_lowercase().contains("memory"));
+        assert!(SERVER_RULE.len() <= 140, "{}", SERVER_RULE.len());
+        assert!(SERVER_RULE.contains(crate::heavy_work::HEAVY_WORK) && SERVER_RULE.contains("another way"));
     }
 }
