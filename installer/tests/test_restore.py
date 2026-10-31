@@ -88,3 +88,13 @@ def test_the_restore_says_its_steps_and_its_failure(tmp_path):
     backup.progress(tmp_path, 0, error="this key doesn't open these backups")
     state = json.loads((tmp_path / ".config" / "bipagents" / "setup-progress.json").read_text())
     assert state["error"] == state["label"] == "this key doesn't open these backups" and not state["done"]
+
+
+def test_the_bridge_is_told_when_the_place_was_restored_and_from_which_backup(tmp_path):
+    home = make_home(tmp_path, "bip", 8643, 443, "198.51.100.7", 9600)
+    path = backup.note_restored({"created": "2026-10-30T13:00:00+00:00"}, home, now=T)
+    assert path == home / "data" / "restored.json"
+    assert json.loads(path.read_text()) == {"restored_at": T, "backup_at": 1_793_365_200.0}
+    assert oct(path.stat().st_mode & 0o777) == "0o600"
+    backup.note_restored({}, home, now=T)   # an older backup's manifest without its time
+    assert json.loads(path.read_text()) == {"restored_at": T, "backup_at": None}
