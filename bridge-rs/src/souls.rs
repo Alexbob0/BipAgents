@@ -17,7 +17,8 @@
 //! live page placed in the reply (2026-10-22, `VISUAL_RULE`, by hand in the golden file too); and slow work starts with
 //! one short sentence saying what it understood and will do (2026-10-25, `ACK_RULE`, by hand in the golden too); and
 //! it answers short, in bullet points when there are several items (2026-10-30, `STYLE_RULE`, by hand in the golden
-//! too). `heal_souls` brings existing agents' blocks up to date. An agent given the person's
+//! too); and a place it recommends by name is checked first (2026-10-31, `PLACES_RULE`, by hand in the golden too).
+//! `heal_souls` brings existing agents' blocks up to date. An agent given the person's
 //! health data has a second block (`with_health`): use it to help, never to diagnose. An agent in the person's
 //! circle (shared_memory.rs) knows that what it remembers of them is common to their own agents
 //! (`with_shared_memory`, 2026-10-30).
@@ -174,6 +175,18 @@ pub const VISUAL_RULE: &str = concat!(
     "Carnet page of its subject (create_page's notebook). A map, places to go, a tour or a way somewhere: map_image ",
     "(the places by name or address, it finds them; its result is a live map), never a picture or coordinates of ",
     "your own. A quick answer, a single number or small talk stays plain text."
+);
+
+/// A place recommended by name must exist where the agent says (Alex, 2026-10-31: « Vie » named Kervarrec, a starred
+/// table near Rennes, for one near the Pyla on the Bassin d'Arcachon; « il faut qu'il y ait une vérification qui soit
+/// faite sur ce genre de fait important »). Measured on the token lab before it went in (scripts/quality-bench
+/// real-day.json, `realday_places_*`). Rust bridge only, like FAMILY_RULE (in tests/golden/souls.json by hand).
+/// Short: it is paid on every call.
+pub const PLACES_RULE: &str = concat!(
+    "A place you recommend by name (restaurant, hotel, shop, venue, practitioner) must exist where you say: unless ",
+    "your person named it, check it first with a quick web search (its own site, a guide, a map listing), and the ",
+    "address, hours, prices or awards you give with it. Name only places you checked, in the area asked; one you ",
+    "could not check, say so in a few words. Never guess a name. Checking a few places is quick: do it here."
 );
 
 /// A quick word before slow work (owner's request 2026-10-25, like Grok's app: « Bonne idée, je lance une recherche… »
@@ -337,7 +350,7 @@ pub fn language_block(lang: Option<&str>) -> String {
     for_language(
         &format!(
             "{BLOCK_START}\nLanguage: answer in the language your person writes in. Always write it with its accents and usual punctuation (routines and notes too), never an ASCII-only version. When you write first (a routine, \
-             a report, a reminder), write in {name}.{names} The current time is at the top of each message (a bip:now line): trust it, never check it in the terminal.\n{CONTENT_RULE}\n{SENDING_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{PROJECT_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{LONG_WORK_RULE}\n{VISUAL_RULE}\n{SPACE_RULE}\n{ACK_RULE}\n{STYLE_RULE}\n{BLOCK_END}"
+             a report, a reminder), write in {name}.{names} The current time is at the top of each message (a bip:now line): trust it, never check it in the terminal.\n{CONTENT_RULE}\n{SENDING_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{PROJECT_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{LONG_WORK_RULE}\n{VISUAL_RULE}\n{PLACES_RULE}\n{SPACE_RULE}\n{ACK_RULE}\n{STYLE_RULE}\n{BLOCK_END}"
         ),
         Some(&code),
     )

@@ -1037,7 +1037,8 @@ impl Jobs {
     }
 
     /// The task's result told in the conversation it came from: the agent's own message there (or the template), the
-    /// full report kept as one of its pages and linked, the turn's tokens counted in the task's.
+    /// full report kept as one of its pages and linked — unless the task made a page of its own, which is then the one
+    /// page shown —, the turn's tokens counted in the task's.
     async fn hand_back(
         &self,
         handback: &crate::background_turn::Pipeline,
@@ -1054,7 +1055,9 @@ impl Jobs {
         let (_, mut links) = crate::media::extract_media(report);
         links.dedup();
         links.truncate(hb::LINKS_MAX - 1);
-        if !tk::strip(report).is_empty() {
+        // a task that made its own page delivers it: no « Rapport — » page beside it saying the same (2026-10-31, the
+        // Pyla's starred tables shown three times in one message)
+        if !tk::strip(report).is_empty() && !links.iter().any(|l| hb::is_page(l)) {
             let page_title = hb::report_title(&lang, &title);
             let html = hb::report_html(&page_title, report);
             match crate::pages::save(&config, &agent.name, &html, &page_title, Some(&format!("rapport-{id}"))) {

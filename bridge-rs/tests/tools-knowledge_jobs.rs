@@ -412,7 +412,8 @@ async fn a_finished_task_is_handed_back_to_the_conversation_it_came_from() {
     // its rules in the note, the system prompt (and the conversation's prompt cache) untouched
     assert!(turn.get("instructions").is_none(), "{turn}");
     let note = &common::without_now(turn["input"].as_str().unwrap());
-    assert!(note.contains(bipbridge::handback::INSTRUCTIONS));
+    // the report's page holds the points: the message introduces it
+    assert!(note.contains(bipbridge::handback::PAGE_INSTRUCTIONS));
     let page = format!("/bipagents/pages/coach/rapport-{id}.html");
     assert!(note.starts_with("<!--bip:task\nYour background work « Écoles » is finished."), "{note}");
     assert!(
@@ -430,6 +431,34 @@ async fn a_finished_task_is_handed_back_to_the_conversation_it_came_from() {
     assert_eq!(done["tokens"]["input"], 205_000);
     // no « Tâche de fond terminée » push towards the task's own conversation: the message is the news
     assert!(told.lock().unwrap().is_empty());
+}
+
+/// 2026-10-31 (Alex's « Vérifier restaurants étoilés près du Pyla »): a task that made its own page delivers that page
+/// alone — no « Rapport — » page beside it — and the agent's message only introduces it (one message, one version).
+#[tokio::test]
+async fn a_task_that_made_its_page_is_handed_back_with_that_page_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    let (fake, url) = gateway(3, 40_000).await;
+    fake.lock().unwrap().output = "Vérification terminée : 3 tables étoilées.\n\n- Le Patio, Arcachon\n- Nacre, Arès\n\
+MEDIA:/bipagents/pages/coach/tables-etoilees.html"
+        .into();
+    let (config, agent) = setup(dir.path(), &url);
+    let told: Told = Default::default();
+    let board = with_handback(&config, &told);
+    let job = board
+        .create_from(&agent, "Vérifier les tables", "Vérifie.", 1_000_000, None, "asked", Some("api_c"))
+        .await
+        .unwrap();
+    let id = id_of(&job);
+    board.wait(&id).await;
+    let runs = posted_runs(&fake);
+    let note = &common::without_now(runs[1]["input"].as_str().unwrap());
+    assert!(note.contains(bipbridge::handback::PAGE_INSTRUCTIONS), "{note}");
+    assert!(note.contains("End your message with these lines:\nMEDIA:/bipagents/pages/coach/tables-etoilees.html\n-->"));
+    assert!(!note.contains("rapport-"), "{note}");
+    assert!(!dir.path().join(format!("data/agent-pages/coach/rapport-{id}.html")).exists());
+    let done = jobs::load(&config, &id).unwrap();
+    assert_eq!(done["handed_back"]["links"], json!(["/bipagents/pages/coach/tables-etoilees.html"]));
 }
 
 /// 2026-10-26: a task that ended with its budget (nearly) spent still gets the agent's own message (it used to get the
