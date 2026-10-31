@@ -362,6 +362,38 @@ static RUN_EVENTS: std::sync::LazyLock<regex::Regex> =
 mod tests {
     use super::*;
 
+    /// Hermes' JSON gzipped for a client that asks; never an event stream, never a client that doesn't ask.
+    #[tokio::test]
+    async fn json_is_gzipped_streams_are_not() {
+        use tower::ServiceExt;
+        let big = "x".repeat(4000);
+        let app = Router::new()
+            .route("/json", axum::routing::get(move || async move { axum::Json(json!({"data": big})) }))
+            .route(
+                "/sse",
+                axum::routing::get(|| async {
+                    ([(axum::http::header::CONTENT_TYPE, "text/event-stream")], "data: 1\n\n".repeat(200))
+                }),
+            )
+            .layer(compressed_json());
+        let ask = |path: &str, gzip: bool| {
+            let mut request = axum::http::Request::builder().uri(path);
+            if gzip {
+                request = request.header("accept-encoding", "gzip, deflate, br");
+            }
+            request.body(Body::empty()).unwrap()
+        };
+        let encoding = |r: &Response| r.headers().get("content-encoding").map(|v| v.to_str().unwrap().to_string());
+        let json = app.clone().oneshot(ask("/json", true)).await.unwrap();
+        assert_eq!(encoding(&json).as_deref(), Some("gzip"));
+        let bytes = axum::body::to_bytes(json.into_body(), usize::MAX).await.unwrap();
+        let mut plain = String::new();
+        std::io::Read::read_to_string(&mut flate2::read::GzDecoder::new(&bytes[..]), &mut plain).unwrap();
+        assert!(bytes.len() < 200 && plain.contains(&"x".repeat(4000)));
+        assert_eq!(encoding(&app.clone().oneshot(ask("/json", false)).await.unwrap()), None);
+        assert_eq!(encoding(&app.oneshot(ask("/sse", true)).await.unwrap()), None);
+    }
+
     fn lan_config(dir: &std::path::Path) -> Config {
         let mut config = Config::with_key("k".repeat(40));
         config.lan.enabled = true;
