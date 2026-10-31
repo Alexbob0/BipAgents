@@ -3369,6 +3369,8 @@
   "maps": {
     "lisbon_spots": {
       "type": "map",
+      "version": 1,
+      "id": "m-demo-lisbon",
       "title": {
         "fr": "Lisbonne : 5 lieux à ne pas rater",
         "en": "Lisbon: 5 places not to miss",
@@ -3379,65 +3381,78 @@
       "points": [
         {
           "name": "Castelo de São Jorge",
+          "address": "R. de Santa Cruz do Castelo, 1100-129 Lisboa",
           "lat": 38.7139,
           "lon": -9.1334,
-          "address": "R. de Santa Cruz do Castelo, 1100-129 Lisboa",
+          "source": "osm",
           "note": {
             "fr": "Les remparts et la plus belle vue sur la ville : à faire le matin, avant la foule.",
             "en": "The ramparts and the best view of the city: go in the morning, before the crowds.",
             "de": "Die Mauern und der schönste Blick auf die Stadt: am besten morgens, vor dem Andrang.",
             "es": "Las murallas y la mejor vista de la ciudad: mejor por la mañana, antes de la multitud."
-          }
+          },
+          "color": "#e5484d"
         },
         {
           "name": "Miradouro de Santa Luzia",
+          "address": "Largo Santa Luzia, 1100-487 Lisboa",
           "lat": 38.71182,
           "lon": -9.13001,
-          "address": "Largo Santa Luzia, 1100-487 Lisboa",
+          "source": "osm",
           "note": {
             "fr": "Azulejos et terrasse sur l’Alfama, parfait au coucher du soleil.",
             "en": "Azulejos and a terrace over the Alfama, perfect at sunset.",
             "de": "Azulejos und eine Terrasse über der Alfama, perfekt bei Sonnenuntergang.",
             "es": "Azulejos y una terraza sobre la Alfama, perfecto al atardecer."
-          }
+          },
+          "color": "#4f7cff"
         },
         {
           "name": "Praça do Comércio",
+          "address": "Praça do Comércio, 1100-148 Lisboa",
           "lat": 38.70763,
           "lon": -9.13652,
-          "address": "Praça do Comércio, 1100-148 Lisboa",
+          "source": "osm",
           "note": {
             "fr": "La grande place au bord du Tage, avec l’arc de la Rua Augusta.",
             "en": "The great square on the Tagus, with the Rua Augusta arch.",
             "de": "Der große Platz am Tejo, mit dem Bogen der Rua Augusta.",
             "es": "La gran plaza junto al Tajo, con el arco de la Rua Augusta."
-          }
+          },
+          "color": "#1d8a4f"
         },
         {
           "name": "Time Out Market",
+          "address": "Av. 24 de Julho 49, 1200-479 Lisboa",
           "lat": 38.707,
           "lon": -9.1459,
-          "address": "Av. 24 de Julho 49, 1200-479 Lisboa",
+          "source": "osm",
           "note": {
             "fr": "Pour déjeuner : des dizaines de stands de chefs de la ville.",
             "en": "For lunch: dozens of stalls from the city’s chefs.",
             "de": "Zum Mittagessen: Dutzende Stände von Köchen der Stadt.",
             "es": "Para comer: decenas de puestos de chefs de la ciudad."
-          }
+          },
+          "color": "#ff7b5c"
         },
         {
           "name": "Torre de Belém",
+          "address": "Av. Brasília, 1400-038 Lisboa",
           "lat": 38.69158,
           "lon": -9.21598,
-          "address": "Av. Brasília, 1400-038 Lisboa",
+          "source": "osm",
           "note": {
             "fr": "La tour du XVIᵉ siècle au bord de l’eau. Un pastel de nata à côté, chez Pastéis de Belém.",
             "en": "The 16th-century tower by the water. A pastel de nata next door, at Pastéis de Belém.",
             "de": "Der Turm aus dem 16. Jahrhundert am Wasser. Ein Pastel de Nata gleich nebenan, bei Pastéis de Belém.",
             "es": "La torre del siglo XVI junto al agua. Un pastel de nata al lado, en Pastéis de Belém."
-          }
+          },
+          "color": "#8e6cf5"
         }
-      ]
+      ],
+      "route": null,
+      "center": null,
+      "attribution": "© OpenStreetMap contributors"
     }
   }
 }
