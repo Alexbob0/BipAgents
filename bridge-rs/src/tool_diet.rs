@@ -387,6 +387,11 @@ pub fn diet(
         if bridge_tools.iter().any(|t| t == crate::agent_messages::TOOL_NAME) {
             add(&format!("!{BRIDGE_PREFIX}{}", crate::agent_messages::TOOL_NAME));
         }
+        // giving the person a file it made (give_file.rs), whatever the kind: behind the search, GLM often stopped at
+        // tool_describe and made a page instead, or looped (release bench of 31/10: 2/5 files given, 4/4 before)
+        if bridge_tools.iter().any(|t| t == crate::give_file::TOOL_NAME) {
+            add(&format!("!{BRIDGE_PREFIX}{}", crate::give_file::TOOL_NAME));
+        }
         if kind == "guide" {
             GUIDE_DIRECT
                 .iter()

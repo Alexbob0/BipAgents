@@ -1716,7 +1716,8 @@ const INSTRUCTIONS: &str = "BipAgents: create_audio reads a text aloud with your
 conversation between hosts with different voices; create_page makes a small web page \
 (a dashboard, a tracker, a chart, a tool) on any subject, shown in the app; each \
 gives a MEDIA: line for your reply. Any other file you made (a spreadsheet, a document, a picture) reaches \
-the person with give_file: their cloud drive's link, or a MEDIA: line for your reply. mail_search, mail_read, mail_attachment and mail_draft reach the \
+the person with give_file: their cloud drive's link, or a MEDIA: line for your reply (without it: save the file in \
+/envoi and end your reply with MEDIA:/envoi/<name>). mail_search, mail_read, mail_attachment and mail_draft reach the \
 mailboxes the person connected for you (drafts only: you never send). send_files_to_agent gives files to \
 another of your person's agents (it can't see your files); message_agent asks one of them and brings back its answer.";
 
