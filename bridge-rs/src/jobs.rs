@@ -564,14 +564,7 @@ impl Jobs {
         if self.credit_used() {
             return Err(JobError(crate::credit::JOBS_REFUSED.into()));
         }
-        // the place's space full and its workspaces paused by the seat agent (storage_watch.rs)
-        if crate::storage_watch::seat_paused() {
-            return Err(JobError("your person's space is full: background tasks start again once room is made".into()));
-        }
-        // the place too full for a while: running ones paused until there is room (heavy_work.rs's backstop)
-        if crate::heavy_work::holding() {
-            return Err(JobError("your person's space is too full: tasks start again once there is room".into()));
-        }
+        // (a place too full or pressed doesn't refuse: the task is queued at its start, `launch`, heavy_work.rs)
         let running: Vec<Dict> = tasks(&self.config.get())
             .into_iter()
             .filter(|j| ["running", "stopping"].contains(&state_of(j).as_str()))
@@ -606,16 +599,38 @@ impl Jobs {
         count
     }
 
-    /// Room again: the tasks paused for it go on by themselves.
+    /// Room again: the tasks paused or queued for it go on by themselves, each once its agent's check clears
+    /// (heavy_work.rs `task_gate`; checked each minute).
     pub async fn resume_after_space(self: &Arc<Self>, config: &crate::config::Config) {
         for job in tasks(config) {
             if state_of(&job) == "paused" && job.get("reason") == Some(&json!(SPACE_REASON)) {
-                let id = tk::str_or_empty(job.get("id"));
-                if let Err(e) = self.resume(&id, None, None).await {
-                    tracing::warn!(job = %id, error = %format!("{e:#}"), "task not resumed after the space");
+                let (id, agent) = (tk::str_or_empty(job.get("id")), agent_of(&job));
+                let c = self.config.get();
+                let waits = tokio::task::spawn_blocking(move || crate::heavy_work::task_waits(&c, &agent))
+                    .await
+                    .unwrap_or(Some("busy"));
+                if waits.is_some() {
+                    continue;
+                }
+                match self.resume(&id, None, None).await {
+                    Ok(_) => tracing::info!(job = %id, "task started again: there is room"),
+                    Err(e) => tracing::debug!(job = %id, error = %format!("{e:#}"), "task not resumed after the space"),
                 }
             }
         }
+    }
+
+    /// `heavy_work` answered « later » to the agent's own background task: that task stopped at its next step,
+    /// paused for room (started again by `resume_after_space`). False when the agent has none running.
+    pub async fn pause_running_for_space(&self, agent: &str) -> bool {
+        let Some(mut job) = tasks(&self.config.get()).into_iter().find(|j| {
+            state_of(j) == "running" && agent_of(j) == agent && !crate::archives::records_fill::is_extract(j)
+        }) else {
+            return false;
+        };
+        let Ok(agent) = self.agent(agent) else { return false };
+        self.stop(&agent, &mut job, SPACE_REASON).await;
+        true
     }
 
     /// The credit back (a pack, the new month): the tasks and mail scans paused for it go on by themselves.
@@ -673,6 +688,16 @@ impl Jobs {
             job.insert("queued_text".into(), json!(text));
             save(&self.config.get(), job)?;
             tracing::info!(agent = %agent.name, job = %tk::str_or_empty(job.get("id")), "job queued: place moving");
+            return Ok(());
+        }
+        let (c, name) = (self.config.get(), agent.name.clone());
+        if let Some(why) = tokio::task::spawn_blocking(move || crate::heavy_work::task_waits(&c, &name)).await? {
+            // The place's room as heavy_work reads it (heavy_work.rs): queued, started by itself once there is room.
+            job.insert("state".into(), json!("paused"));
+            job.insert("reason".into(), json!(SPACE_REASON));
+            job.insert("queued_text".into(), json!(text));
+            save(&self.config.get(), job)?;
+            tracing::info!(agent = %agent.name, job = %tk::str_or_empty(job.get("id")), why, "job queued: no room now");
             return Ok(());
         }
         let refused = |err: HermesError| -> anyhow::Error {
@@ -1071,7 +1096,12 @@ impl Jobs {
             None => {}
         }
         let words = tk::head(tk::strip(message.unwrap_or("")), 2000).to_string();
-        let text = if words.is_empty() { CONTINUE.to_string() } else { words };
+        // a task queued before its first run (no room then: `launch`) starts with its own words
+        let queued = match job.remove("queued_text") {
+            Some(Value::String(text)) if !text.is_empty() => Some(text),
+            _ => None,
+        };
+        let text = if !words.is_empty() { words } else { queued.unwrap_or_else(|| CONTINUE.to_string()) };
         self.launch(&mut job, &text).await?;
         Ok(task_view(&job))
     }
@@ -1313,6 +1343,15 @@ pub fn started(
     agent: &AgentConfig,
 ) -> anyhow::Result<Dict> {
     match outcome {
+        Ok(job) if job.get("reason") == Some(&json!(SPACE_REASON)) => {
+            tracing::info!(agent = %agent.name, job = %tk::str_or_empty(job.get("id")), "job queued by the agent");
+            Ok(tool_text(
+                "Queued in the background: this space is busy right now, so it starts by itself as soon as there is \
+room, and your person gets your report when it ends; they follow it in « Tâches de fond ». Tell them in one plain \
+sentence that it will be done a bit later in the background, and stop here: don't do the work in this turn.",
+                false,
+            ))
+        }
         Ok(job) => {
             let tokens = int_of(job.get("max_tokens"));
             tracing::info!(agent = %agent.name, job = %tk::str_or_empty(job.get("id")), budget = tokens,

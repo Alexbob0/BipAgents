@@ -5,9 +5,12 @@
 //!
 //! - `go` with a short lease id: one heavy job at a time per place, kept 30 minutes (asked again by the same agent:
 //!   renewed), freed by `heavy_work_done`;
-//! - `wait` with seconds: another agent of the place holds the lease, or the place's memory is pressed (its user
-//!   slice's `memory.current` near `memory.high` with mostly the programs' own memory in it, not files the kernel
-//!   keeps in cache, or the kernel's PSI `memory.pressure` « some avg10 » high);
+//! - `later`: another agent of the place holds the lease, or the place's memory is pressed (its user slice's
+//!   `memory.current` near `memory.high` with mostly the programs' own memory in it, not files the kernel keeps in
+//!   cache, or the kernel's PSI `memory.pressure` « some avg10 » high). Never « ask again in N s »: GLM then slept in
+//!   its terminal and held the person's turn (2 × 120 s, real-server test 2026-10-31). In a person's turn the agent
+//!   hands the work to a background task, which starts by itself once there is room; asked from its own background
+//!   task, that task is paused and goes on by itself the same way (`call_with`);
 //! - `too_big`: the estimate (+ a margin) is more than the place's free disk (statvfs of its home), or the seat agent
 //!   says its disk is full (storage_watch.rs, `disk.json`). The agent says so plainly and proposes another way (an
 //!   online service, GitHub Actions; a bigger plan is coming — no price).
@@ -24,11 +27,15 @@
 //! `memory.events` (each time it had to hold the slice back) grew since the last sample, with mostly programs' memory
 //! in it or the slice stalled on memory (PSI).
 //!
+//! Background tasks pass the same check before each start (jobs.rs `launch`, `task_gate`): a place pressed, full, or
+//! with another agent's heavy job on gets the task queued (paused, reason « space »), started by itself once the check
+//! clears (`backstop`, each minute).
+//!
 //! Self-installs: the tools aren't offered, and a call answers `go`. Family, project and shared agents never get them
 //! (agent_tools.rs `tools_for`; a relative's or shared turn closes them as any other own tool).
 
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -57,7 +64,7 @@ pub const ANON_RATIO: f64 = 0.6;
 pub const PSI_HELD: f64 = 10.0;
 /// PSI « some avg10 » (percent of time stalled on memory) at which the place is pressed.
 pub const PSI_PRESSED: f64 = 20.0;
-/// Seconds to wait when the place is pressed.
+/// Seconds before it is worth asking again when the place is pressed (structured only: never told to the model).
 pub const WAIT_PRESSED: u64 = 120;
 /// The backstop: disk used past this, or the slice held at its `memory.high` for `OVER_FOR` seconds.
 pub const DISK_STOP: f64 = 0.9;
@@ -72,8 +79,16 @@ pub const CGROUP_USERS: &str = "/sys/fs/cgroup/user.slice";
 const GB: f64 = 1_000_000_000.0;
 
 pub const GO_TEXT: &str = "go. When it's finished, call heavy_work_done with this lease; past 30 minutes, ask again.";
-pub const WAIT_BUSY: &str = "wait: another big job is running in this space. Ask again in {s} s.";
-pub const WAIT_PRESSED_TEXT: &str = "wait: this space is busy right now. Ask again in {s} s.";
+pub const WAIT_BUSY: &str = "later: another big job is running in this space. Don't wait for it in this turn (no \
+sleep, no retry loop).";
+pub const WAIT_PRESSED_TEXT: &str = "later: this space is busy right now. Don't wait for it in this turn (no sleep, no \
+retry loop).";
+/// After `later`, in a person's turn.
+pub const LATER_TURN: &str = " Tell your person in one plain sentence that it will be done a bit later, and hand it \
+to a background task (start_task): it starts by itself once there is room.";
+/// After `later`, asked from the agent's own background task (paused by `call_with`).
+pub const LATER_TASK: &str = " This background task is paused now and goes on by itself once there is room: end \
+this step with one line saying where you stopped.";
 pub const TOO_BIG_TEXT: &str = "too_big: this doesn't fit in this space. Don't start it. Tell your person so simply \
 and suggest another way: a free online service, or GitHub Actions for builds; a bigger plan is coming.";
 /// The backstop's note (storage_watch.rs notes, read on the agents' next turn).
@@ -86,7 +101,7 @@ pub fn tools() -> Vec<Value> {
         json!({
             "name": HEAVY_WORK,
             "description": "Ask before anything big: installing (SDK, toolchain, packages), building, compiling, \
-        downloading or crunching data. Answers go (with a lease), wait or too_big. Keywords: install, build, compile, \
+        downloading or crunching data. Answers go (with a lease), later or too_big. Keywords: install, build, compile, \
         download, SDK, installer, compiler, télécharger, installieren, kompilieren, herunterladen, instalar, compilar, descargar.",
             "inputSchema": {"type": "object", "properties": {
                 "kind": {"type": "string", "enum": KINDS},
@@ -366,10 +381,9 @@ pub fn ask(config: &Config, agent: &str, arguments: &Dict, offer: bool, room: &R
             out
         }
         Decision::Wait(busy, seconds) => {
-            tracing::info!(target: "bipbridge::heavy", agent, kind = %kind, busy, seconds, "heavy work: wait");
-            let text = if busy { WAIT_BUSY } else { WAIT_PRESSED_TEXT }.replace("{s}", &seconds.to_string());
-            let mut out = tool_text(&text, false);
-            out.insert("structuredContent".into(), json!({"answer": "wait", "retry_after": seconds}));
+            tracing::info!(target: "bipbridge::heavy", agent, kind = %kind, busy, seconds, "heavy work: later");
+            let mut out = tool_text(&later_text(busy, false), false);
+            out.insert("structuredContent".into(), json!({"answer": "later", "busy": busy, "retry_after": seconds}));
             out
         }
         Decision::TooBig => {
@@ -394,6 +408,11 @@ pub fn done(config: &Config, agent: &str, arguments: &Dict) -> Dict {
     tool_text("done.", false)
 }
 
+/// What `later` says: never a number of seconds (the model waited them out in its turn).
+pub fn later_text(busy: bool, in_task: bool) -> String {
+    format!("{}{}", if busy { WAIT_BUSY } else { WAIT_PRESSED_TEXT }, if in_task { LATER_TASK } else { LATER_TURN })
+}
+
 /// One call of either tool, measured now.
 pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) -> Dict {
     let now = py::time_time();
@@ -403,6 +422,53 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
     let offer = offered(agent, crate::handover::on_offer());
     let room = if offer { room_now(now) } else { Room::default() };
     ask(config, &agent.name, arguments, offer, &room, now)
+}
+
+/// `call`, and for a `later` asked from the agent's own background task (no person's turn of it going on, one of
+/// its tasks running): that task paused for room (jobs.rs, reason « space »), started again by `backstop` once there
+/// is, and the agent told to end its step instead of waiting.
+pub async fn call_with(
+    config: Arc<Config>,
+    agent: AgentConfig,
+    name: String,
+    arguments: Dict,
+    jobs: Option<Arc<crate::jobs::Jobs>>,
+) -> anyhow::Result<Dict> {
+    let (c, a) = (config.clone(), agent.clone());
+    let mut out = tokio::task::spawn_blocking(move || call(&c, &a, &name, &arguments)).await?;
+    let later = out.get("structuredContent").and_then(|v| v.get("answer")) == Some(&json!("later"));
+    let Some(jobs) = jobs.filter(|_| later) else { return Ok(out) };
+    let in_turn = jobs.hub.as_ref().and_then(|hub| hub.asking_session(&agent.name)).is_some();
+    if in_turn || !jobs.pause_running_for_space(&agent.name).await {
+        return Ok(out);
+    }
+    let busy = out["structuredContent"]["busy"] == json!(true);
+    tracing::info!(target: "bipbridge::heavy", agent = %agent.name, "heavy work later: its background task paused");
+    let structured = out.remove("structuredContent").unwrap_or(json!({}));
+    out = tool_text(&later_text(busy, true), false);
+    out.insert("structuredContent".into(), structured);
+    Ok(out)
+}
+
+/// Whether a background task of `agent` may start now (jobs.rs `launch`): None, or why not (« space »: the place
+/// full; « busy »: its memory pressed, or another agent's heavy job on). The same room `heavy_work` reads.
+pub fn task_gate(config: &Config, agent: &str, room: &Room, now: f64) -> Option<&'static str> {
+    if room.seat.pause || room.seat.state == "full" || room.disk_used_ratio().is_some_and(|r| r >= DISK_STOP) {
+        return Some("space");
+    }
+    if room.memory.pressed() || held(config, now).is_some_and(|l| l.agent != agent) {
+        return Some("busy");
+    }
+    None
+}
+
+/// `task_gate` measured now, on the offer only (a self-install's tasks always start).
+pub fn task_waits(config: &Config, agent: &str) -> Option<&'static str> {
+    if !crate::handover::on_offer() {
+        return None;
+    }
+    let now = py::time_time();
+    task_gate(config, agent, &room_now(now), now)
 }
 
 // --- the backstop ------------------------------------------------------------------------------------------------
@@ -479,6 +545,8 @@ pub async fn backstop(state: &crate::app::AppState) {
             jobs.resume_after_space(&state.config()).await;
             tracing::info!(target: "bipbridge::heavy", "room again: background tasks go on");
         }
+        // tasks queued for room (their start waited: jobs.rs `launch`) start once the check clears for them
+        None if !holding() => jobs.resume_after_space(&state.config()).await,
         None => {}
     }
 }
@@ -521,7 +589,7 @@ mod tests {
         assert!(lease.starts_with("hw-") && lease.len() == 9);
         // another agent waits, told when to ask again
         let wait = ask(&config, "vie", &args("download", Some(0.1)), true, &roomy(), 1100.0);
-        assert_eq!(answer(&wait), "wait");
+        assert_eq!(answer(&wait), "later");
         assert_eq!(wait["structuredContent"]["retry_after"], json!(600));
         // the holder asks again: the same lease, renewed
         let again = ask(&config, "dev", &args("build", Some(1.0)), true, &roomy(), 1500.0);
@@ -594,8 +662,29 @@ mod tests {
         let (_dir, config) = setup();
         let wait = ask(&config, "dev", &args("build", None), true, &near, 0.0);
         let text = wait["content"][0]["text"].as_str().unwrap();
-        assert!(text.starts_with("wait") && !text.to_lowercase().contains("memory") && !text.contains("RAM"));
+        assert!(text.starts_with("later") && !text.to_lowercase().contains("memory") && !text.contains("RAM"));
+        // never a number of seconds to wait out in the turn: a background task instead
+        assert!(!text.chars().any(|c| c.is_ascii_digit()) && text.contains("start_task") && text.contains("no sleep"));
+        assert!(later_text(true, true).contains("paused now") && !later_text(true, true).contains("start_task"));
         assert!(held(&config, 1.0).is_none());
+    }
+
+    #[test]
+    fn a_task_waits_for_the_same_room_as_heavy_work() {
+        let (_dir, config) = setup();
+        assert_eq!(task_gate(&config, "dev", &roomy(), 0.0), None);
+        let gb = 1_000_000_000;
+        let pressed = Room {
+            memory: Memory { current: Some(950 * gb / 1000), high: Some(gb), ..Memory::default() },
+            ..roomy()
+        };
+        assert_eq!(task_gate(&config, "dev", &pressed, 0.0), Some("busy"));
+        let full = Room { seat: SeatDisk { state: "full".into(), pause: false }, ..roomy() };
+        assert_eq!(task_gate(&config, "dev", &full, 0.0), Some("space"));
+        // another agent's heavy job: later; its own: no
+        assert_eq!(answer(&ask(&config, "vie", &args("install", Some(1.0)), true, &roomy(), 0.0)), "go");
+        assert_eq!(task_gate(&config, "dev", &roomy(), 10.0), Some("busy"));
+        assert_eq!(task_gate(&config, "vie", &roomy(), 10.0), None);
     }
 
     #[test]

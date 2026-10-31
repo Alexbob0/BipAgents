@@ -1412,9 +1412,10 @@ pub async fn call_tool(
         return blocking(move || Ok(crate::rooms_memory::call(&c, &agent_name, &arguments))).await;
     }
     if crate::heavy_work::TOOL_NAMES.contains(&name) {
-        // the green light before heavy work (heavy_work.rs): the place's room, one heavy job at a time
-        let (c, agent, name, arguments) = (config.clone(), agent.clone(), name.to_string(), arguments.clone());
-        return blocking(move || Ok(crate::heavy_work::call(&c, &agent, &name, &arguments))).await;
+        // the green light before heavy work (heavy_work.rs): the place's room, one heavy job at a time; « later »
+        // from the agent's own background task pauses that task until there is room
+        return crate::heavy_work::call_with(config.clone(), agent.clone(), name.to_string(), arguments.clone(), jobs)
+            .await;
     }
     if name == crate::archives::records_fill::TOOL {
         if !crate::archives::enabled(&config, &agent.name) {
