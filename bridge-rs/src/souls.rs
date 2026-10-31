@@ -173,8 +173,9 @@ pub const VISUAL_RULE: &str = concat!(
     "show it: make a page with create_page (its kit makes a clean one in a few lines) and put its MEDIA: line inside ",
     "your reply, alone on its line where it belongs, with a sentence or two before it and the rest after. Keep your text ",
     "around it short: the page holds the details. Never send a picture of a chart or a table. Link the page to the ",
-    "Carnet page of its subject (create_page's notebook). Places to go, a tour or a way somewhere: a map from ",
-    "map_image in the page. A quick answer, a single number or small talk stays plain text."
+    "Carnet page of its subject (create_page's notebook). A map, places to go, a tour or a way somewhere: map_image ",
+    "(the places by name or address, it finds them; its result is a live map), never a picture or coordinates of ",
+    "your own. A quick answer, a single number or small talk stays plain text."
 );
 
 /// A quick word before slow work (owner's request 2026-10-25, like Grok's app: « Bonne idée, je lance une recherche… »
@@ -771,8 +772,8 @@ pub const COMPACT_RULES: &str = concat!(
     "(notebook_fill), sorting mails, deep research, comparing 10 flats; a bigger budget or your own idea: propose_task. ",
     "Never give browsing to delegate_task: browse yourself in your visible browser, or in a background task.\n",
     "Numbers to compare, a plan, a budget, a routine or linked steps: show them in a create_page page, its MEDIA: line ",
-    "inside your reply with short text around, linked to its Carnet page; places: map_image in the page. Never a ",
-    "picture of a chart. A quick answer stays plain text."
+    "inside your reply with short text around, linked to its Carnet page; a map or places: map_image (names, not ",
+    "coordinates). Never a picture of a chart or a map. A quick answer stays plain text."
 );
 
 /// `language_block` with `COMPACT_RULES` in place of the nine rules.

@@ -392,6 +392,11 @@ pub fn diet(
         if bridge_tools.iter().any(|t| t == crate::give_file::TOOL_NAME) {
             add(&format!("!{BRIDGE_PREFIX}{}", crate::give_file::TOOL_NAME));
         }
+        // maps (maps.rs), whatever the kind: behind the search, asked for « une carte », the agent made a picture or a
+        // page with coordinates of its own, which fell in the sea (2026-10-31)
+        if bridge_tools.iter().any(|t| t == crate::maps::TOOL_NAME) {
+            add(&format!("!{BRIDGE_PREFIX}{}", crate::maps::TOOL_NAME));
+        }
         if kind == "guide" {
             GUIDE_DIRECT
                 .iter()
@@ -682,6 +687,19 @@ mod tests {
         // an agent holding a vault item, or writing skills, keeps those tools
         let d = diet("daily", &tools, false, true, true, &[]);
         assert!(!d.defer.iter().any(|n| n.starts_with("browser_vault") || n == "skill_manage"));
+    }
+
+    #[test]
+    fn the_map_tool_is_in_view_for_every_kind() {
+        // 2026-10-31: asked for « une carte », an agent with map_image behind the search made a picture, then a page
+        // with its own coordinates (in the sea)
+        let tools = names(&["notebook_search", "create_page", "map_image"]);
+        for kind in crate::souls::CATEGORIES.iter().chain(["guide", "custom"].iter()) {
+            let d = diet(kind, &tools, false, false, false, &[]);
+            assert!(d.defer.contains(&"!mcp__bipagents__map_image".to_string()), "{kind}");
+        }
+        let without = diet("finance", &names(&["create_page"]), false, false, false, &[]);
+        assert!(!without.defer.iter().any(|n| n.ends_with("map_image")));
     }
 
     #[test]

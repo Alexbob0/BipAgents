@@ -12,7 +12,7 @@
 //!   `If-Modified-Since` after it, slow down on 429. Open-Meteo is free for non-commercial use only; Météo-France's
 //!   API needs an account and a token per application on its portal, so MET Norway is used everywhere.
 //! - **OpenStreetMap's Nominatim** for place names. Its usage policy: at most 1 request per second (one at a time
-//!   here, `GEOCODER_GAP` apart), a User-Agent identifying the application, results cached (`PLACES`), no bulk or
+//!   here, `GEOCODER_GAP` apart), a User-Agent identifying the application, results cached (`ANSWERS`), no bulk or
 //!   autocomplete use, « © OpenStreetMap contributors » (ODbL). Each place's server makes its own few requests; an
 //!   install that outgrows the public service points `[weather] geocoder_url` at its own or a paid Nominatim.
 //!   Coordinates (« 48.85,2.35 ») skip the geocoder.
@@ -151,10 +151,6 @@ pub struct Place {
     pub country: String,
 }
 
-/// A name looked up: the place found (or none), and when.
-type Looked = (Option<Place>, Instant);
-
-static PLACES: LazyLock<Mutex<IndexMap<String, Looked>>> = LazyLock::new(|| Mutex::new(IndexMap::new()));
 /// The last request to the geocoder: one at a time, `GEOCODER_GAP` apart.
 static GEOCODER_TURN: LazyLock<tokio::sync::Mutex<Option<Instant>>> = LazyLock::new(|| tokio::sync::Mutex::new(None));
 
@@ -200,12 +196,31 @@ pub fn place_of(answer: &Value) -> Option<Place> {
 
 /// The place a name stands for, from the cache or the geocoder. Ok(None): nothing found. Err: the geocoder failed.
 pub async fn geocode(config: &Config, query: &str) -> Result<Option<Place>, String> {
-    let key = query.trim().to_lowercase();
+    let params = [("q", query.trim()), ("format", "jsonv2"), ("limit", "1"), ("addressdetails", "1")];
+    let answer = nominatim(config, "search", &params).await?;
+    Ok(place_of(&answer))
+}
+
+/// Answers already asked of Nominatim (any endpoint), with when.
+static ANSWERS: LazyLock<Mutex<IndexMap<String, (Value, Instant)>>> = LazyLock::new(|| Mutex::new(IndexMap::new()));
+
+/// One request to the geocoder (`search` or `reverse`, `[weather] geocoder_url` with its last part swapped), within
+/// its usage policy: the cache first (`PLACE_DAYS`), one request at a time `GEOCODER_GAP` apart, the application's
+/// User-Agent. The answer as JSON.
+pub async fn nominatim(config: &Config, endpoint: &str, params: &[(&str, &str)]) -> Result<Value, String> {
+    let base = &config.weather.geocoder_url;
+    let url = match base.rsplit_once('/') {
+        Some((head, last)) if last == "search" || last == "reverse" => format!("{head}/{endpoint}"),
+        _ => format!("{base}/{endpoint}"),
+    };
+    let key = std::iter::once(format!("{url}?"))
+        .chain(params.iter().map(|(k, v)| format!("{k}={}&", v.trim().to_lowercase())))
+        .collect::<String>();
     {
-        let places = PLACES.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some((place, at)) = places.get(&key) {
+        let answers = ANSWERS.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((answer, at)) = answers.get(&key) {
             if at.elapsed() < StdDuration::from_secs(PLACE_DAYS * 86400) {
-                return Ok(place.clone());
+                return Ok(answer.clone());
             }
         }
     }
@@ -216,11 +231,8 @@ pub async fn geocode(config: &Config, query: &str) -> Result<Option<Place>, Stri
             tokio::time::sleep(GEOCODER_GAP - since).await;
         }
     }
-    let answer = HTTP
-        .get(&config.weather.geocoder_url)
-        .query(&[("q", query.trim()), ("format", "jsonv2"), ("limit", "1"), ("addressdetails", "1")])
-        .send()
-        .await;
+    let trimmed: Vec<(&str, &str)> = params.iter().map(|(k, v)| (*k, v.trim())).collect();
+    let answer = HTTP.get(&url).query(&trimmed).send().await;
     *turn = Some(Instant::now());
     drop(turn);
     let response = answer.map_err(|e| format!("the place search did not answer ({})", short_error(&e)))?;
@@ -230,14 +242,13 @@ pub async fn geocode(config: &Config, query: &str) -> Result<Option<Place>, Stri
     }
     let answer: Value =
         response.json().await.map_err(|_| "the place search answered something unreadable".to_string())?;
-    let place = place_of(&answer);
-    let mut places = PLACES.lock().unwrap_or_else(|e| e.into_inner());
-    places.shift_remove(&key);
-    places.insert(key, (place.clone(), Instant::now()));
-    while places.len() > PLACES_KEPT {
-        places.shift_remove_index(0);
+    let mut answers = ANSWERS.lock().unwrap_or_else(|e| e.into_inner());
+    answers.shift_remove(&key);
+    answers.insert(key, (answer.clone(), Instant::now()));
+    while answers.len() > PLACES_KEPT {
+        answers.shift_remove_index(0);
     }
-    Ok(place)
+    Ok(answer)
 }
 
 fn short_error(err: &reqwest::Error) -> &'static str {

@@ -673,7 +673,7 @@ VECTOR_TILE = b"\x1a\x0bfake-vector-tile" * 8   # what a tile's bytes are does n
 class FakeMaps(Fake):
     """MET Norway's Locationforecast (`/weatherapi/locationforecast/2.0/complete`: hourly from the current hour for
     48 hours, rain in the 3rd and 4th, `Expires` an hour on), OpenStreetMap's Nominatim (`/search`: « Lyon », nothing
-    for a query with « Nowhere »), Google's Routes API (`/directions/v2:computeRoutes`, key `test-maps-key`),
+    for a query with « Nowhere »; `/reverse`: land around Lyon only), Google's Routes API (`/directions/v2:computeRoutes`, key `test-maps-key`),
     OpenStreetMap's raster tiles (`/osm/{z}/{x}/{y}.png`) and OpenFreeMap's vector maps under `/vector` (the positron
     style with a raster source and a source on another host, which the bridge leaves out; its TileJSON; gzip tiles up
     to zoom 14; glyphs; the sprite). `vector_down`: every `/vector` answer a 500."""
@@ -743,6 +743,13 @@ class FakeMaps(Fake):
             return JSONResponse([{"lat": "45.7578", "lon": "4.8320", "name": "Lyon", "display_name": "Lyon, France",
                                   "address": {"state": "Auvergne-Rhône-Alpes", "country": "France",
                                               "country_code": "fr"}}])
+        if seen.path == "/reverse":
+            # land around Lyon only: anywhere else is the sea
+            lat, lon = float(seen.params.get("lat", 0)), float(seen.params.get("lon", 0))
+            if 45.5 < lat < 46.0 and 4.6 < lon < 5.1:
+                return JSONResponse({"lat": str(lat), "lon": str(lon), "display_name": "Lyon, France",
+                                     "address": {"city": "Lyon", "country": "France"}})
+            return JSONResponse({"error": "Unable to geocode"})
         if seen.path == "/directions/v2:computeRoutes":
             if seen.header("x-goog-api-key") != "test-maps-key":
                 return JSONResponse({"error": {"status": "PERMISSION_DENIED"}}, status_code=403)
