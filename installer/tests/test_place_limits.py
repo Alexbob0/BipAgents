@@ -56,7 +56,8 @@ def test_each_place_s_disk_is_watched_and_its_bridge_told(tmp_path, capsys):
     state = tmp_path / "disk.json"
 
     def watch(now):
-        return agent.disk_watch({}, now, homes, str(state), str(mountinfo), statvfs, lambda home: used["2"])
+        return agent.disk_watch({}, now, homes, str(state), str(mountinfo), statvfs, lambda home: used["2"],
+                                folder=str(tmp_path / "run"), make_one=lambda home: False)
 
     found = watch(1000)
     assert found["1"]["disk"] == "low" and found["1"]["own_disk"] is True and found["1"]["disk_size_mb"] == 5120
@@ -198,3 +199,106 @@ def test_new_places_get_their_own_disk_before_their_install():
     assert seat.index("--own-disk") < seat.index("enable-linger") < seat.index("install.sh")
     data = (ROOT / "installer" / "cloud" / "user-data.yaml").read_text(encoding="utf-8")
     assert data.index("--own-disk 1") < data.index("loginctl enable-linger bip") < data.index("--cloud /etc/bipagents")
+
+
+MB = 1024 ** 2
+
+
+class Disk:
+    """A place's own disk as statvfs tells it, with root's reserve in it."""
+
+    def __init__(self, size, used, reserve):
+        self.size, self.used, self.reserve = size, used, reserve
+
+    def statvfs(self, path):
+        taken = self.used + self.reserve
+        free = (self.size - taken) // 4096
+        return SimpleNamespace(f_blocks=self.size // 4096, f_frsize=4096, f_bfree=free, f_bavail=free)
+
+
+def test_a_full_own_disk_gives_its_reserve_back_and_says_so_at_once(tmp_path, capsys):
+    """Real-server test of 2026-10-31: at 100 % Hermes answered 500 and the bridge stayed on « low » (the seat agent
+    could not write « full » in the place). The reserve is given back within 15 s, the level is told in memory as well,
+    and a place that fills that room too has its workspaces paused before Hermes runs dry."""
+    agent = _seat_agent()
+    home = tmp_path / "bip"
+    home.mkdir()
+    mountinfo = tmp_path / "mountinfo"
+    mountinfo.write_text("90 22 7:0 / %s rw - ext4 /dev/loop0 rw\n" % home)
+    homes = {"1": (str(home), os.getuid(), os.getgid())}
+    run, state = tmp_path / "run", tmp_path / "disk.json"
+    disk = Disk(5 * GB, 3 * GB, 0)
+    agent.reserve_bytes = lambda path, owner=0: disk.reserve   # root's file, as statvfs counts it
+    made, given = [], []
+
+    def make_one(path):
+        made.append(path)
+        disk.reserve = agent.RESERVE_MB * MB
+        return True
+
+    def release(path):
+        held, disk.reserve = disk.reserve, 0
+        given.append(path)
+        return held
+
+    def watch(now):
+        return agent.disk_watch({}, now, homes, str(state), str(mountinfo), disk.statvfs, None, folder=str(run),
+                                release=release, make_one=make_one)
+
+    def quick(now):
+        agent.disk_quick(now, homes, str(state), str(mountinfo), disk.statvfs, folder=str(run), release=release)
+
+    def told():
+        return json.loads((run / ("%d.json" % os.getuid())).read_text())
+
+    # the round takes the reserve once there is room for it twice; the levels leave it out
+    assert watch(1000)["1"]["disk"] == "ok" and made == [str(home)]
+    assert watch(1400)["1"]["disk_mb"] == 3 * 1024
+    assert told() == {"state": "ok", "pause": False, "at": 1400}
+    # filled to the brim between two rounds: the next 15 s sample gives the reserve back and tells « full » at once
+    disk.used = 5 * GB - agent.RESERVE_MB * MB
+    quick(1410)
+    assert given == [str(home)] and disk.reserve == 0
+    assert told() == {"state": "full", "pause": False, "at": 1410}
+    assert json.loads((home / ".local/state/bipagents/disk.json").read_text())["state"] == "full"
+    assert json.loads(state.read_text())["places"]["1"]["disk"] == "full"
+    out = capsys.readouterr().out
+    assert "reserve given back (192 MB)" in out and "disk full" in out
+    # the same again: nothing new said, the in-memory word kept fresh
+    quick(1425)
+    assert told()["at"] == 1425 and capsys.readouterr().out == ""
+    # it fills that room too: its workspaces paused while Hermes keeps the rest; no reserve taken while full
+    disk.used = 5 * GB - 50 * MB
+    quick(1440)
+    assert told() == {"state": "full", "pause": True, "at": 1440}
+    assert watch(1800)["1"]["disk"] == "full" and len(made) == 1 and told()["pause"] is True
+    # some room made: still paused until it holds more than a reserve's worth, then lifted
+    disk.used = 5 * GB - 150 * MB
+    quick(1815)
+    assert told()["pause"] is True
+    disk.used = 5 * GB - 250 * MB
+    quick(1830)
+    assert told() == {"state": "full", "pause": False, "at": 1830}
+    # under 90 %: out of « full », and the round takes the reserve again
+    disk.used = 4 * GB
+    assert watch(2200)["1"]["disk"] == "low" and len(made) == 2 and disk.reserve
+
+
+def test_the_reserve_is_root_s_and_given_back_only_as_root_s(tmp_path):
+    agent = _seat_agent()
+    home = tmp_path / "bip"
+    home.mkdir()
+    reserve = home / agent.RESERVE
+    reserve.write_bytes(b"\0" * 8192)
+    # not root's (a file of the place under that name): neither counted nor removed
+    assert agent.reserve_bytes(str(home)) == 0 and agent.release_reserve(str(home)) == 0 and reserve.exists()
+    owner = os.getuid()
+    assert agent.reserve_bytes(str(home), owner) >= 8192
+    assert agent.release_reserve(str(home), owner) >= 8192 and not reserve.exists()
+    assert agent.release_reserve(str(home), owner) == 0
+    # a link under that name is never followed
+    target = tmp_path / "elsewhere"
+    target.write_bytes(b"x" * 4096)
+    reserve.symlink_to(target)
+    assert agent.release_reserve(str(home), owner) == 0 and target.read_bytes() == b"x" * 4096
+    assert not agent.make_reserve(str(home))   # the name taken: not made

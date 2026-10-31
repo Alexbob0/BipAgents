@@ -737,6 +737,10 @@ def sample(root=CGROUP_USERS, path=SAMPLES):
         entry["max"] = max(int(entry.get("max") or 0), current)
         samples[number] = entry
     write_json(path, samples)
+    try:
+        disk_quick()   # the own disks too: a reserve given back and a new level told within 15 s
+    except OSError as exc:
+        log("disks not checked: %s" % exc)
     return 0
 
 
@@ -782,11 +786,22 @@ def places_memory(root=CGROUP_USERS, path=SAMPLES):
 # Every DISK_EVERY (`disk_watch`), each place's use: its own filesystem's (statvfs, nothing walked), else du -sx of its
 # home against the same 5 GB. From 80 % "low": its bridge tells its agents once (a short note: clean up or ask for
 # room); from 95 % "full": the beat says so and the guichet alerts Kerfy once (watch.rs), and for a place without its
-# own disk only, its bridge pauses its agents' workspaces (never deleting anything) until it is back under 90 %.
-# Written for its bridge at ~/.local/state/bipagents/disk.json (bridge-rs/src/storage_watch.rs), which ignores it after
-# 30 minutes (a stopped seat agent never keeps a place paused). The server as a whole: the guichet's own alert under
-# 10 % free and its placement rules (weights.rs, grow_disk_gb) already count it; the images being sparse, 5 GB a
-# place is what a place may take, not what it takes.
+# own disk, its bridge pauses its agents' workspaces (never deleting anything) until it is back under 90 %.
+# Written for its bridge at ~/.local/state/bipagents/disk.json (bridge-rs/src/storage_watch.rs), and in memory at
+# /run/bipagents/disk/<uid>.json (root's, the place's group may read it): a full disk can't take the file that says
+# so (real-server test, 2026-10-31: the bridge stayed on "low"). The bridge reads the newer of the two and ignores
+# them after 30 minutes (a stopped seat agent never keeps a place paused). The server as a whole: the guichet's own
+# alert under 10 % free and its placement rules (weights.rs, grow_disk_gb) already count it; the images being sparse,
+# 5 GB a place is what a place may take, not what it takes.
+#
+# A reserve in each own disk (same test: at 100 % Hermes could not open a conversation, error 500, and the agents went
+# silent, unable to help their person make room): RESERVE_MB taken by root at the disk's root, a file the place can't
+# remove (immutable), not counted in its levels. When the place's free room falls under RELEASE_MB the reserve is given
+# back at once, so Hermes and the bridge go on writing and the agents answer; checked every 15 s with the memory
+# samples (`disk_quick`, statvfs only), which also tell the bridge a new level at once instead of at the next round.
+# If the place fills that room too, its agents' workspaces (their terminals: where a runaway install or download
+# runs) are paused under PAUSE_MB, keeping the rest for Hermes and the bridge, until it is back over the reserve's
+# size. The reserve is taken again once the place is out of "full" with room for it twice.
 
 PLACES_DISKS = "/var/lib/bipagents/places"
 PLACE_DISK_GIB = 5
@@ -796,6 +811,10 @@ PLACE_DISK_FILE = ".local/state/bipagents/disk.json"   # what its bridge reads
 DISK_EVERY = 300
 DISK_LOW, DISK_FULL = 0.80, 0.95
 DISK_LOW_BACK, DISK_FULL_BACK = 0.75, 0.90            # left only below these (no flapping)
+RUN_DISK = "/run/bipagents/disk"                      # each place's level in memory: <uid>.json (above)
+RESERVE = ".bipagents-reserve"                         # root's reserve at the root of each own disk (above)
+RESERVE_MB, RELEASE_MB, PAUSE_MB = 192, 64, 96
+FS_IOC_GETFLAGS, FS_IOC_SETFLAGS, FS_IMMUTABLE_FL = 0x80086601, 0x40086602, 0x10
 OLD_HOME_DAYS = 7
 MOUNT_UNIT = """[Unit]
 Description=BipAgents: the own disk of the place %(user)s
@@ -941,7 +960,7 @@ def drop_disk(user, folder=PLACES_DISKS, units="/etc/systemd/system", runner=Non
     runner("systemctl", "disable", "--now", unit)
     for path in (os.path.join(units, unit), os.path.join(units, "user@%d.service.d" % entry.pw_uid,
                                                           "50-bipagents-disk.conf"),
-                 os.path.join(folder, user + ".img")):
+                 os.path.join(folder, user + ".img"), os.path.join(RUN_DISK, "%d.json" % entry.pw_uid)):
         with contextlib.suppress(OSError):
             os.unlink(path)
     runner("systemctl", "daemon-reload")
@@ -983,43 +1002,226 @@ def place_homes():
     return homes
 
 
+@contextlib.contextmanager
+def state_lock(path):
+    """The disk state's read-modify-write, one at a time (the round and the 15 s samples both write it)."""
+    import fcntl
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path + ".lock", "a") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+
+
+def reserve_bytes(home, owner=0):
+    """The room the place's reserve holds now (0: none, or not root's)."""
+    import stat as stat_mod
+    try:
+        found = os.lstat(os.path.join(home, RESERVE))
+    except OSError:
+        return 0
+    if not stat_mod.S_ISREG(found.st_mode) or found.st_uid != owner:
+        return 0
+    return found.st_blocks * 512
+
+
+def immutable(fd, on):
+    """The file's immutable flag set or cleared, through its open descriptor (never a name the place could swap)."""
+    import fcntl
+    import struct
+    flags = bytearray(struct.pack("i", 0))
+    fcntl.ioctl(fd, FS_IOC_GETFLAGS, flags, True)
+    value = struct.unpack("i", bytes(flags))[0]
+    value = value | FS_IMMUTABLE_FL if on else value & ~FS_IMMUTABLE_FL
+    fcntl.ioctl(fd, FS_IOC_SETFLAGS, struct.pack("i", value))
+
+
+def make_reserve(home, size=RESERVE_MB * MB):
+    """The reserve taken in the place's own disk: allocated (nothing written: the server's image stays sparse), root's,
+    immutable. False when it could not be (no room, a file of the place under that name)."""
+    path = os.path.join(home, RESERVE)
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    except OSError:
+        return False
+    try:
+        os.posix_fallocate(fd, 0, size)
+    except (OSError, AttributeError):   # (no posix_fallocate: not Linux)
+        os.close(fd)
+        with contextlib.suppress(OSError):
+            os.unlink(path)
+        return False
+    with contextlib.suppress(OSError):
+        immutable(fd, True)
+    os.close(fd)
+    return True
+
+
+def release_reserve(home, owner=0):
+    """The reserve given back to the place: emptied and removed. Returns the room it held (0: there was none)."""
+    import stat as stat_mod
+    path = os.path.join(home, RESERVE)
+    try:
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except OSError:
+        return 0
+    try:
+        found = os.fstat(fd)
+        if not stat_mod.S_ISREG(found.st_mode) or found.st_uid != owner:
+            return 0
+        with contextlib.suppress(OSError):
+            immutable(fd, False)
+        held = found.st_blocks * 512
+        try:
+            writer = os.open(path, os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0))
+        except OSError:
+            return 0
+        try:
+            again = os.fstat(writer)
+            if (again.st_dev, again.st_ino) != (found.st_dev, found.st_ino):
+                return 0
+            os.ftruncate(writer, 0)   # the room back at once, whatever happens to the name
+        finally:
+            os.close(writer)
+        with contextlib.suppress(OSError):
+            if os.lstat(path).st_ino == found.st_ino:
+                os.unlink(path)
+        return held
+    finally:
+        os.close(fd)
+
+
+def measure_disk(home, own, settings, statvfs=None, du=None):
+    """(size, used, free, reserve) of the place in bytes: on its own disk, used leaves its reserve out and free is
+    what its account may still write (free None without its own disk)."""
+    if not own:
+        return disk_gib(settings) * GIB, (du or du_bytes)(home), None, 0
+    fs = (statvfs or os.statvfs)(home)
+    size = fs.f_blocks * fs.f_frsize
+    used = size - fs.f_bfree * fs.f_frsize
+    free = getattr(fs, "f_bavail", fs.f_bfree) * fs.f_frsize
+    reserve = reserve_bytes(home)
+    return size, max(0, used - reserve), free, reserve
+
+
+def disk_step(number, home, own, measured, told, make, release=None, make_one=None):
+    """One place's level and pause from its measure, the reserve given back when its room runs out and taken again
+    (`make`: the round's, not the 15 s samples') once it is out of "full" with room for it twice."""
+    size, used, free, reserve = measured
+    if own and reserve and free <= RELEASE_MB * MB:
+        given = (release or release_reserve)(home)
+        if given:
+            log("place %s: its disk is full: its reserve given back (%d MB) so that its agents still answer"
+                % (number, given // MB))
+            free, reserve = free + given, 0
+    level = disk_level(used, size, told.get("state"))
+    if own:
+        pause = level == "full" and not reserve and (free <= PAUSE_MB * MB
+                                                      or (told.get("pause") is True and free < RESERVE_MB * MB))
+        if make and not reserve and level != "full" and free >= 2 * RESERVE_MB * MB:
+            if (make_one or make_reserve)(home):
+                log("place %s: its disk's reserve taken again" % number)
+    else:
+        pause = level == "full"
+    return level, pause, used, size
+
+
+def tell_place(home, uid, gid, value, home_too=True, folder=RUN_DISK):
+    """The place's level for its bridge: in memory first (always room there), then in its home."""
+    try:
+        os.makedirs(folder, mode=0o755, exist_ok=True)
+        path = os.path.join(folder, "%d.json" % uid)
+        fd = os.open(path + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0), 0o640)
+        with os.fdopen(fd, "w") as fh:
+            json.dump(value, fh)
+            os.fchown(fh.fileno(), -1, gid)
+            os.fchmod(fh.fileno(), 0o640)
+        os.replace(path + ".tmp", path)
+    except OSError as exc:
+        log("disk state not kept in memory for %s: %s" % (home, exc))
+    if home_too:
+        try:
+            write_credit(os.path.join(home, PLACE_DISK_FILE), value, uid, gid, home)
+        except OSError as exc:
+            log("disk state not written in %s: %s" % (home, exc))
+
+
 def disk_watch(settings, now=None, homes=None, path=DISK_STATE, mountinfo="/proc/self/mountinfo", statvfs=None,
-               du=None):
+               du=None, folder=RUN_DISK, release=None, make_one=None):
     """Each place's disk, measured every DISK_EVERY (above): its level written for its bridge, and for the beat
     {number: {disk_mb, disk_size_mb, disk, own_disk}}. A place entering "full" is logged once."""
     now = time.time() if now is None else now
-    kept = read_json(path)
-    if now - (kept.get("at") or 0) < DISK_EVERY and isinstance(kept.get("places"), dict):
-        return kept["places"]
-    before = kept.get("places") if isinstance(kept.get("places"), dict) else {}
-    out = {}
-    for number, (home, uid, gid) in sorted((homes if homes is not None else place_homes()).items()):
-        own = home in mounted_at(home, mountinfo)
-        if own:
-            fs = (statvfs or os.statvfs)(home)
-            size = fs.f_blocks * fs.f_frsize
-            used = size - fs.f_bfree * fs.f_frsize
-        else:
-            size, used = disk_gib(settings) * GIB, (du or du_bytes)(home)
-        was = (before.get(number) or {}).get("disk")
-        level = disk_level(used, size, was)
-        pause = level == "full" and not own
-        if level == "full" and was != "full":
-            log("place %s: disk full (%d of %d MB)%s" % (number, used // MB, size // MB,
-                                                         ", its agents' workspaces paused" if pause else ""))
-        elif level != "full" and was == "full":
-            log("place %s: room on its disk again" % number)
+    with state_lock(path):
+        kept = read_json(path)
+        if now - (kept.get("at") or 0) < DISK_EVERY and isinstance(kept.get("places"), dict):
+            return kept["places"]
+        before = kept.get("places") if isinstance(kept.get("places"), dict) else {}
+        told_all = kept.get("told") if isinstance(kept.get("told"), dict) else {}
+        out, told_now = {}, {}
+        for number, (home, uid, gid) in sorted((homes if homes is not None else place_homes()).items()):
+            own = home in mounted_at(home, mountinfo)
+            told = told_all.get(number) if isinstance(told_all.get(number), dict) else {}
+            told = dict(told, state=told.get("state") or (before.get(number) or {}).get("disk"))
+            level, pause, used, size = disk_step(number, home, own, measure_disk(home, own, settings, statvfs, du),
+                                                 told, True, release, make_one)
+            was = told.get("state")
+            if level == "full" and was != "full":
+                log("place %s: disk full (%d of %d MB)%s" % (number, used // MB, size // MB,
+                                                             ", its agents' workspaces paused" if pause else ""))
+            elif level != "full" and was == "full":
+                log("place %s: room on its disk again" % number)
+            tell_place(home, uid, gid, {"state": level, "pause": pause, "at": int(now)}, folder=folder)
+            out[number] = {"disk_mb": used // MB, "disk_size_mb": size // MB, "disk": level, "own_disk": own}
+            told_now[number] = {"state": level, "pause": pause}
         try:
-            write_credit(os.path.join(home, PLACE_DISK_FILE), {"state": level, "pause": pause, "at": int(now)},
-                         uid, gid, home)
+            write_json(path, {"at": now, "places": out, "told": told_now})
         except OSError as exc:
-            log("place %s: disk state not written: %s" % (number, exc))
-        out[number] = {"disk_mb": used // MB, "disk_size_mb": size // MB, "disk": level, "own_disk": own}
-    try:
-        write_json(path, {"at": now, "places": out})
-    except OSError as exc:
-        log("disk state not kept: %s" % exc)
+            log("disk state not kept: %s" % exc)
     return out
+
+
+def disk_quick(now=None, homes=None, path=DISK_STATE, mountinfo="/proc/self/mountinfo", statvfs=None,
+               folder=RUN_DISK, release=None):
+    """--sample (every 15 s): the places on their own disk measured (statvfs only), the reserve given back as soon as
+    their room runs out, a new level or pause told at once (its home's file only then), the in-memory one kept fresh.
+    The round's measure (`disk_watch`) keeps its own pace."""
+    now = time.time() if now is None else now
+    homes = homes if homes is not None else place_homes()
+    if not homes:
+        return 0
+    with state_lock(path):
+        kept = read_json(path)
+        places_now = kept.get("places") if isinstance(kept.get("places"), dict) else {}
+        told_all = kept.get("told") if isinstance(kept.get("told"), dict) else {}
+        changed = False
+        for number, (home, uid, gid) in sorted(homes.items()):
+            if home not in mounted_at(home, mountinfo):
+                continue
+            told = told_all.get(number) if isinstance(told_all.get(number), dict) else {}
+            try:
+                measured = measure_disk(home, True, {}, statvfs)
+            except OSError:
+                continue
+            level, pause, used, size = disk_step(number, home, True, measured, told, False, release)
+            new = {"state": level, "pause": pause}
+            fresh = new != {"state": told.get("state"), "pause": told.get("pause")}
+            if fresh:
+                log("place %s: disk %s%s (%d of %d MB, told at once)" % (number, level, ", workspaces paused"
+                                                                         if pause else "", used // MB, size // MB))
+                told_all[number] = new
+                entry = places_now.get(number) if isinstance(places_now.get(number), dict) else {}
+                places_now[number] = dict(entry, disk_mb=used // MB, disk_size_mb=size // MB, disk=level,
+                                          own_disk=True)
+                changed = True
+            tell_place(home, uid, gid, dict(new, at=int(now)), home_too=fresh, folder=folder)
+        if changed:
+            try:
+                write_json(path, dict(kept, places=places_now, told=told_all))
+            except OSError as exc:
+                log("disk state not kept: %s" % exc)
+    return 0
 
 
 def with_disk(places_now, disk):

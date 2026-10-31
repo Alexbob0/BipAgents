@@ -15,8 +15,9 @@
 //! limits, but exposes nothing to share a lease between places; each slice's MemoryHigh keeps a place to its share.
 //!
 //! The backstop needs no model: on the offer, a place over its slice's `memory.high` for five minutes, or whose disk
-//! passes 90 %, gets its running background tasks paused (jobs.rs, reason « space »; nothing is killed) and a note to
-//! its agents; they go on by themselves once there is room again.
+//! passes 90 % (its reserve left out: seat-agent.py) or that the seat agent says is full, gets its running background
+//! tasks paused (jobs.rs, reason « space »; nothing is killed) and a note to its agents; they go on by themselves once
+//! there is room again.
 //!
 //! Self-installs: the tools aren't offered, and a call answers `go`. Family, project and shared agents never get them
 //! (agent_tools.rs `tools_for`; a relative's or shared turn closes them as any other own tool).
@@ -49,6 +50,8 @@ pub const WAIT_PRESSED: u64 = 120;
 /// The backstop: disk used past this, or the slice over its `memory.high` for `OVER_FOR` seconds.
 pub const DISK_STOP: f64 = 0.9;
 pub const OVER_FOR: f64 = 300.0;
+/// Root's reserve in the place's own disk (seat-agent.py): not the place's to use, left out of its levels.
+pub const RESERVE_FILE: &str = ".bipagents-reserve";
 /// Lifted under these.
 pub const DISK_LIFT: f64 = 0.85;
 pub const MEMORY_LIFT: f64 = 0.9;
@@ -121,16 +124,28 @@ impl Memory {
 pub struct Room {
     pub disk_total: Option<u64>,
     pub disk_free: Option<u64>,
+    /// root's reserve in it (counted as used by the disk, not the place's)
+    pub reserve: u64,
     pub seat: SeatDisk,
     pub memory: Memory,
 }
 
 impl Room {
+    /// The share of the disk the place uses, its reserve left out.
     pub fn disk_used_ratio(&self) -> Option<f64> {
         match (self.disk_total, self.disk_free) {
-            (Some(t), Some(f)) if t > 0 => Some(1.0 - f as f64 / t as f64),
+            (Some(t), Some(f)) if t > 0 => Some(1.0 - (f + self.reserve).min(t) as f64 / t as f64),
             _ => None,
         }
+    }
+}
+
+/// The room root's reserve holds in the place's own disk (0: none, or not root's).
+pub fn reserve_of(home: &Path) -> u64 {
+    use std::os::unix::fs::MetadataExt;
+    match std::fs::symlink_metadata(home.join(RESERVE_FILE)) {
+        Ok(m) if m.is_file() && m.uid() == 0 => m.blocks() * 512,
+        _ => 0,
     }
 }
 
@@ -175,9 +190,15 @@ pub fn measure(home: &Path, slice: &Path, now: f64) -> Room {
     Room {
         disk_total: disk.map(|d| d.0),
         disk_free: disk.map(|d| d.1),
+        reserve: reserve_of(home),
         seat: crate::storage_watch::seat_disk(home, now),
         memory: memory_of(slice),
     }
+}
+
+/// The place's room now (its home, its slice).
+pub fn room_now(now: f64) -> Room {
+    measure(&crate::place_backup::home(), &slice_dir(), now)
 }
 
 // --- the lease ---------------------------------------------------------------------------------------------------
@@ -344,7 +365,7 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
         return done(config, &agent.name, arguments);
     }
     let offer = offered(agent, crate::handover::on_offer());
-    let room = if offer { measure(&crate::place_backup::home(), &slice_dir(), now) } else { Room::default() };
+    let room = if offer { room_now(now) } else { Room::default() };
     ask(config, &agent.name, arguments, offer, &room, now)
 }
 
@@ -372,8 +393,9 @@ impl Backstop {
             self.over_since = None;
         }
         let disk = room.disk_used_ratio().unwrap_or(0.0);
+        let full = room.seat.state == "full" || room.seat.pause;
         let memory_long = self.over_since.is_some_and(|since| now - since >= OVER_FOR);
-        if !self.holding && (disk >= DISK_STOP || memory_long) {
+        if !self.holding && (disk >= DISK_STOP || full || memory_long) {
             self.holding = true;
             return Some(Step::Pause);
         }
@@ -381,7 +403,7 @@ impl Backstop {
             (Some(c), Some(h)) if h > 0 => (c as f64) < h as f64 * MEMORY_LIFT,
             _ => true,
         };
-        if self.holding && disk < DISK_LIFT && memory_ok {
+        if self.holding && disk < DISK_LIFT && !full && memory_ok {
             self.holding = false;
             return Some(Step::Lift);
         }
@@ -402,9 +424,7 @@ pub async fn backstop(state: &crate::app::AppState) {
         return;
     }
     let now = py::time_time();
-    let room = tokio::task::spawn_blocking(move || measure(&crate::place_backup::home(), &slice_dir(), now))
-        .await
-        .unwrap_or_default();
+    let room = tokio::task::spawn_blocking(move || room_now(now)).await.unwrap_or_default();
     let step = BACKSTOP.lock().unwrap_or_else(|e| e.into_inner()).sample(&room, now);
     let jobs = crate::jobs::jobs_of(state);
     match step {
@@ -603,5 +623,16 @@ mod tests {
         b.sample(&over, 3000.0);
         b.sample(&under, 3100.0);
         assert_eq!(b.sample(&over, 3000.0 + OVER_FOR), None);
+    }
+
+    #[test]
+    fn the_seat_agent_s_full_pauses_at_once_and_the_reserve_is_left_out() {
+        let mut b = Backstop::default();
+        let full = Room { seat: SeatDisk { state: "full".into(), pause: false }, ..roomy() };
+        assert_eq!(b.sample(&full, 0.0), Some(Step::Pause));
+        assert_eq!(b.sample(&roomy(), 60.0), Some(Step::Lift));
+        let gb = 1_000_000_000u64;
+        let reserved = Room { disk_total: Some(5 * gb), disk_free: Some(gb / 5), reserve: gb / 5, ..Room::default() };
+        assert!((reserved.disk_used_ratio().unwrap() - 0.92).abs() < 1e-9);
     }
 }

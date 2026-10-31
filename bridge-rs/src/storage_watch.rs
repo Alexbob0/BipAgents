@@ -1030,7 +1030,10 @@ pub fn send_message(config: &Config, agent: &AgentConfig, paths: &[String]) -> D
 
 /// Written by root's seat agent on the offer's servers, under the place's home.
 pub const SEAT_FILE: &str = ".local/state/bipagents/disk.json";
-/// Ignored after this long (the seat agent writes it every 5 minutes).
+/// The same, kept by root in memory (`<uid>.json`): a full disk can't take the file that says so (real-server test,
+/// 2026-10-31: the bridge stayed on « low »). Written every 15 s; the newer of the two counts.
+pub const SEAT_RUN: &str = "/run/bipagents/disk";
+/// Ignored after this long (the seat agent writes it every 5 minutes, in memory every 15 s).
 pub const SEAT_FRESH: f64 = 1800.0;
 /// The notes: never figures (Alex, 2026-10-30).
 pub const SEAT_LOW_NOTE: &str = "Your person's space is nearly full. Remove what you no longer need of your own \
@@ -1057,21 +1060,34 @@ impl Default for SeatDisk {
     }
 }
 
-/// The seat agent's word in `home` (`ok` when there is none, it can't be read, or it is stale).
+/// The seat agent's word for this account: in memory and in `home` (`ok` when there is none, it can't be read, or
+/// it is stale).
 pub fn seat_disk(home: &Path, now: f64) -> SeatDisk {
-    let Ok(text) = std::fs::read_to_string(home.join(SEAT_FILE)) else { return SeatDisk::default() };
-    let Ok(Value::Object(data)) = serde_json::from_str::<Value>(&text) else { return SeatDisk::default() };
-    if data.get("at").and_then(Value::as_f64).is_none_or(|at| now - at > SEAT_FRESH) {
-        return SeatDisk::default();
-    }
-    let state = match data.get("state").and_then(Value::as_str) {
-        Some(s @ ("low" | "full")) => s.to_string(),
-        _ => "ok".to_string(),
-    };
-    SeatDisk { state, pause: data.get("pause").and_then(Value::as_bool).unwrap_or(false) }
+    // SAFETY: getuid never fails.
+    let uid = unsafe { libc::getuid() };
+    seat_disk_from(&[Path::new(SEAT_RUN).join(format!("{uid}.json")), home.join(SEAT_FILE)], now)
 }
 
-/// The place's agents' heavy work paused by the seat agent (new background tasks refused: jobs.rs).
+/// The newest fresh word of these files.
+pub fn seat_disk_from(files: &[PathBuf], now: f64) -> SeatDisk {
+    let mut best: Option<(f64, SeatDisk)> = None;
+    for file in files {
+        let Ok(text) = std::fs::read_to_string(file) else { continue };
+        let Ok(Value::Object(data)) = serde_json::from_str::<Value>(&text) else { continue };
+        let Some(at) = data.get("at").and_then(Value::as_f64).filter(|at| now - at <= SEAT_FRESH) else { continue };
+        let state = match data.get("state").and_then(Value::as_str) {
+            Some(s @ ("low" | "full")) => s.to_string(),
+            _ => "ok".to_string(),
+        };
+        let seat = SeatDisk { state, pause: data.get("pause").and_then(Value::as_bool).unwrap_or(false) };
+        if best.as_ref().is_none_or(|(t, _)| at > *t) {
+            best = Some((at, seat));
+        }
+    }
+    best.map(|(_, seat)| seat).unwrap_or_default()
+}
+
+/// The place's agents' heavy work paused by the seat agent.
 pub fn seat_paused() -> bool {
     seat_disk(&crate::place_backup::home(), py::time_time()).pause
 }
@@ -1104,6 +1120,7 @@ pub fn seat_check(config: &Config, seat: &SeatDisk) -> bool {
 // --- pausing the biggest agent's sandbox ---------------------------------------------------------------------------
 
 fn disk_low(home: &Path) -> bool {
+    let reserve = crate::heavy_work::reserve_of(home) as f64; // root's, not the place's
     let Ok(c) = std::ffi::CString::new(home.to_string_lossy().as_bytes()) else { return false };
     // SAFETY: statvfs fills the struct it is given; the path is a valid C string.
     let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
@@ -1111,7 +1128,7 @@ fn disk_low(home: &Path) -> bool {
         return false;
     }
     let total = stat.f_blocks as f64 * stat.f_frsize as f64;
-    let free = stat.f_bavail as f64 * stat.f_frsize as f64;
+    let free = stat.f_bavail as f64 * stat.f_frsize as f64 + reserve;
     total > 0.0 && free / total < DISK_MARGIN
 }
 
@@ -1603,6 +1620,25 @@ mod tests {
         assert!(!seat_check(&config, &low));
         assert!(!seat_check(&config, &SeatDisk::default()));
         assert!(seat_check(&config, &low));
+    }
+
+    #[test]
+    fn the_seat_agent_s_word_in_memory_counts_when_the_full_disk_kept_the_old_one() {
+        // real server, 2026-10-31: at 100 % the seat agent could not write « full » in the place, the bridge stayed
+        // on « low »; root's copy in memory is newer
+        let dir = tempfile::tempdir().unwrap();
+        let (run, home) = (dir.path().join("1000.json"), dir.path().join("disk.json"));
+        std::fs::write(&home, r#"{"state": "low", "pause": false, "at": 1000}"#).unwrap();
+        std::fs::write(&run, r#"{"state": "full", "pause": false, "at": 1300}"#).unwrap();
+        let files = [run.clone(), home.clone()];
+        assert_eq!(seat_disk_from(&files, 1310.0), SeatDisk { state: "full".into(), pause: false });
+        // the newer wins whichever it is; a stale one is never taken; none: ok
+        std::fs::write(&home, r#"{"state": "ok", "pause": false, "at": 1400}"#).unwrap();
+        assert_eq!(seat_disk_from(&files, 1410.0), SeatDisk::default());
+        std::fs::write(&home, "not json").unwrap();
+        assert_eq!(seat_disk_from(&files, 1310.0).state, "full");
+        assert_eq!(seat_disk_from(&files, 1300.0 + SEAT_FRESH + 1.0), SeatDisk::default());
+        assert_eq!(seat_disk_from(&[dir.path().join("missing.json")], 0.0), SeatDisk::default());
     }
 
     #[tokio::test]
