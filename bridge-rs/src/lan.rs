@@ -176,7 +176,26 @@ pub fn hermes_proxy() -> Router<AppState> {
             .on(axum::routing::MethodFilter::PATCH, relay)
             .on(axum::routing::MethodFilter::DELETE, relay)
     };
-    Router::new().route("/hermes/{agent}/{*path}", methods()).route("/hermes/{agent}/", methods_empty())
+    Router::new()
+        .route("/hermes/{agent}/{*path}", methods())
+        .route("/hermes/{agent}/", methods_empty())
+        .layer(compressed_json())
+}
+
+/// Hermes' JSON answers gzipped for a client that asks for it (every app does: URLSession and OkHttp send
+/// `Accept-Encoding: gzip` and decode it on their own). A long conversation's history is megabytes of plain JSON (its
+/// tools' results) and shrinks about tenfold, which is most of the time it takes to open it on a phone's network. JSON
+/// only: an event stream (a run's, a turn's) is never held back in a compressor's buffer. Hermes itself answers
+/// uncompressed (the client's Accept-Encoding is not passed on).
+fn compressed_json() -> tower_http::compression::CompressionLayer<impl tower_http::compression::Predicate> {
+    use tower_http::compression::predicate::{DefaultPredicate, Predicate};
+    let json = |_: axum::http::StatusCode, _: axum::http::Version, headers: &HeaderMap, _: &axum::http::Extensions| {
+        headers
+            .get(axum::http::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|v| v.trim_start().to_ascii_lowercase().starts_with("application/json"))
+    };
+    tower_http::compression::CompressionLayer::new().gzip(true).compress_when(DefaultPredicate::new().and(json))
 }
 
 fn methods_empty() -> axum::routing::MethodRouter<AppState> {
