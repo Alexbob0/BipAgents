@@ -57,6 +57,10 @@ LIB = "/usr/local/lib/bipagents"
 # comes from its size, decided by the guichet (pool.rs: its density rule, at most 40).
 MAX_SEATS = 40
 BACKUP_STATE = ".local/state/bipagents/backup.json"
+BACKUP_CHECK = ".local/state/bipagents/backup-check.json"   # its backup timer's looks (backup.py: check)
+# Every place of this server locks it around its backups: one at a time (backup.py: one_at_a_time). Root's, readable
+# by all (flock needs no more).
+BACKUP_LOCK = "/var/lib/bipagents/backup.lock"
 ASLEEP = ".local/state/bipagents/asleep"   # its bridge put its Hermes to sleep (bridge-rs/src/sleep.rs)
 SETUP = ".config/bipagents/setup.json"     # its bridge's pairing secret while it waits for an app (cloud_setup.py)
 LOCKED = ".local/share/bipagents/space/locked.json"   # its encrypted space not open yet, and why (space.rs)
@@ -376,14 +380,35 @@ def door_open(port):
 
 
 def last_backup(user):
-    """The time of the place's last backup that worked (installer/bipinstall/backup.py writes it), else None."""
+    """Until when the place's data is known to be in a backup that worked (installer/bipinstall/backup.py writes
+    it), else None: its last backup's time, or later, the last time its timer looked and found nothing changed since
+    (`current_at`: a place nobody uses backs up once a day only, and the guichet warns after 3 hours without)."""
     try:
         home = pwd.getpwnam(user).pw_dir
-        with open(os.path.join(home, BACKUP_STATE)) as fh:
-            value = json.load(fh).get("last_ok")
-        return float(value) if isinstance(value, (int, float)) else None
-    except (KeyError, OSError, ValueError, AttributeError):
+    except KeyError:
         return None
+    found = None
+    for name, key in ((BACKUP_STATE, "last_ok"), (BACKUP_CHECK, "current_at")):
+        try:
+            with open(os.path.join(home, name)) as fh:
+                value = json.load(fh).get(key)
+        except (OSError, ValueError, AttributeError):
+            continue
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and (key == "last_ok" or found):
+            found = max(found or 0.0, float(value))   # `current_at` only beside a backup that worked
+    return found
+
+
+def backup_lock(path=BACKUP_LOCK):
+    """The server's backup lock, made once (a server installed before it: at its next beat)."""
+    if os.path.exists(path):
+        return
+    folder = os.path.dirname(path)
+    if not os.path.isdir(folder):
+        os.makedirs(folder, mode=0o711)   # crossed by the places, never listed (shared_images.py does the same)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT, 0o644)
+    os.close(fd)
+    os.chmod(path, 0o644)
 
 
 def locked(home):
@@ -1383,6 +1408,10 @@ def main(argv=()):
     if "--rebooting" in argv:
         return rebooting(conf)
     metadata_block()
+    try:
+        backup_lock()
+    except OSError as exc:
+        log("backup lock not made: %s" % exc)
     server = vitals()
     memory_settled(server)
     try:

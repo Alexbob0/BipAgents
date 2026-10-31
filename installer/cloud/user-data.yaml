@@ -40,7 +40,7 @@ packages:
   - unattended-upgrades
   # Hermes' Node.js links libatomic (its installer would ask for sudo, which `bip` hasn't got).
   - libatomic1
-  # Each place's hourly backup to the guichet, encrypted on the place (installer/bipinstall/backup.py).
+  # Each place's backups to the guichet, encrypted on the place (installer/bipinstall/backup.py).
   - restic
   # Each place's space encrypted at rest when its setup asks for it (installer/bipinstall/space.py; then also run
   # space-hardening.sh as root: swap encrypted, no core dumps, logs in memory).

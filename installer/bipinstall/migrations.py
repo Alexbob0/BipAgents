@@ -595,6 +595,21 @@ def sandboxes_at_gateway_start(runner: hermes.Runner, home: Path) -> str:
     return "the gateway removes the agents' dead sandboxes before it starts (from its next start)"
 
 
+def backup_on_activity(runner: hermes.Runner, home: Path) -> str:
+    """Backups as the place is used (2026-10-31, backup.py): the hourly timer becomes a look every 5 minutes that
+    backs up only when something changed (a quarter of an hour behind at most) and once a day all the same; its
+    units written again and the timer restarted on that schedule. A place without backups: nothing."""
+    if not (home / ".config" / "systemd" / "user" / "bipagents-backup.service").is_file():
+        return "no backups here"
+    if not os.environ.get("XDG_RUNTIME_DIR"):   # from `sudo -u`: the account's own systemd is still reachable
+        from .account import session_env
+        os.environ.update(session_env(os.getuid()))
+    from . import backup
+    from .__main__ import INSTALLER_PYTHON
+    backup.install_timer(runner, REPO, INSTALLER_PYTHON, home)
+    return "backups now follow the activity: a few minutes after a change, none while nothing changes, one a day"
+
+
 AFTER_INSTALL = {POCKET_ENGINE}
 
 # In order; an id never changes once released. rust-bridge comes first: the others run the bridge's command line.
@@ -615,6 +630,7 @@ MIGRATIONS: List[Tuple[str, Callable[[hermes.Runner, Path], str]]] = [
     ("2026-10-26-app-identifier", app_identifier),
     ("2026-10-27-bridge-stop-timeout", bridge_stop_timeout),
     ("2026-10-31-sandboxes-at-gateway-start", sandboxes_at_gateway_start),
+    ("2026-10-31-backup-on-activity", backup_on_activity),
 ]
 
 

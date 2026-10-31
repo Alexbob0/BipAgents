@@ -1,4 +1,5 @@
-"""Hourly backups of a place of the all-included offer, to the guichet (guichet/bipguichet/backups.py), with restic.
+"""Backups of a place of the all-included offer, to the guichet (guichet/bipguichet/backups.py), with restic, as
+the place is used (2026-10-31, Alex: often while the person talks with their agents, none while nothing moves).
 
 Everything `bipagents export` would take (moving.py's inventory: Hermes' settings and keys, each agent's memory,
 conversations, skills and files, the bridge's settings and the phones' keys, the browsers' logins, without caches),
@@ -9,18 +10,33 @@ app: GET /v1/backup). The guichet only stores what it can't read; restic sends w
                                             place's token (from its setup), the key
     ~/.local/state/bipagents/backup.json    {last_ok, last_error, snapshot, files, bytes, pruned}: the seat agent
                                             tells the guichet `last_ok` only
+    ~/.local/state/bipagents/backup-check.json  the timer's looks: what the place looked like at its last backup that
+                                            worked (`backed`), at the last look, when it last changed, and when a look
+                                            last found it all in that backup (`current_at`, also told the guichet)
+
+When: a timer looks every 5 minutes (each place at its own minute of the five, `FixedRandomDelay`) whether anything
+changed since the last backup that worked: the files' sizes and times, without reading them (`fingerprint`). Nothing
+changed, nothing done, but one backup a day all the same in case the look missed something; something changed, a
+backup once nothing more changed for 5 minutes, or when the last one is 15 minutes old while the person goes on
+(`decide`). `bipagents backup` and the app's « Sauvegarder maintenant » (the bridge starts bipagents-backup.service)
+back up at once. One backup at a time per server, all places together (`one_at_a_time`), at the lowest priority.
 
 Nothing is backed up before the app has claimed the place (nothing of anyone is here yet). SQLite databases are
 copied consistently first (a gateway may be writing), into the stage folder, and the copies go instead of the live
-files. Each day, the history is thinned: every hour for two days, every day for a month, every week for three
-months. A place moved after an outage gets the same repository and its phone gives it the key back (restore)."""
+files. Each day, the history is thinned: everything of the last two hours, then every hour for two days, every day for
+a month, every week for three months. A place moved after an outage gets the same repository and its phone gives it
+the key back (restore)."""
 from __future__ import annotations
 
+import contextlib
+import copy
+import hashlib
 import json
 import os
 import secrets
 import sqlite3
 import subprocess
+import sys
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -30,10 +46,19 @@ SETTINGS = Path(".config") / "bipagents" / "backup.json"
 STATE = Path(".local") / "state" / "bipagents" / "backup.json"
 STAGE = Path(".local") / "state" / "bipagents" / "backup-stage"
 HOST = "place"                      # the same on every server the place lives on: restic finds its last backup
-KEEP = ["--keep-hourly", "48", "--keep-daily", "30", "--keep-weekly", "12"]
-PRUNE_EVERY = 86400
+KEEP = ["--keep-within", "2h", "--keep-hourly", "48", "--keep-daily", "30", "--keep-weekly", "12"]
+PRUNE_EVERY = 23 * 3600            # once a day: a quiet place's daily backup comes a minute early, never a day late
 SQLITE = b"SQLite format 3\x00"
-UNIT = "bipagents-backup"
+UNIT = "bipagents-backup"          # .service: a backup now (the app's button, `bipagents backup`)
+CHECK_UNIT = "bipagents-backup-check"   # .service: the timer's look, a backup only when one is due
+CHECK = Path(".local") / "state" / "bipagents" / "backup-check.json"
+
+EVERY = "5min"                     # the timer's looks
+QUIET = 5 * 60                     # a backup once nothing changed for this long...
+LATEST = 15 * 60                   # ...or once the last one is this old while the person goes on
+SAFETY = 24 * 3600                 # one a day even when no change is seen
+RETRY = 15 * 60                    # after a backup that failed, the next try (the button: at once)
+SLACK = 60                         # the timer's own lateness: a look 4 min 30 s after the last change counts as 5
 
 
 class BackupError(Exception):
@@ -157,6 +182,7 @@ def files(inv, stage: Path, seen: Dict[str, List[int]]) -> Iterator[Path]:
     of the databases, the agents' own podman volumes as `podman volume export` writes them (volumes.py: counted in
     the place's used space like the rest), and the manifest."""
     from . import volumes
+    inv = quick(inv)
     yield stage / "manifest.json"
     yield from volumes.export_all(volumes.kept(inv.data_dir), stage / "volumes", volumes.podman())
     for root in inv.roots().values():
@@ -204,6 +230,254 @@ def _walk(inv, root: Path) -> Iterator[Path]:
             path = here / name
             if not inv.skipped(path) and os.access(path, os.R_OK, follow_symlinks=False):
                 yield path
+
+
+# -- whether anything changed: the files' sizes and times, never their content ----------------------------------------
+
+# Rewritten while nothing of anyone changes: Hermes' cron opens its tick lock for writing every minute
+# (cron/scheduler.py), the bridge notes the app's last request (sleep.json, every ten minutes while an app is open).
+# Still backed up; only their changes alone don't call for a backup.
+NOISE = {".tick.lock", "sleep.json"}
+NOISE_SUFFIXES = (".lock", ".pid", "-shm")
+
+
+def quick(inv):
+    """The inventory, its agents' homes listed once: `skipped` lists the spaces' folder at each call otherwise."""
+    fast = copy.copy(inv)
+    homes = inv.hermes_homes()
+    fast.hermes_homes = lambda: homes
+    return fast
+
+
+def _graphroot(base: Path) -> Path:
+    """Where this account's podman keeps its volumes (its storage.conf's graphroot, else podman's default)."""
+    import re
+    try:
+        text = (base / ".config" / "containers" / "storage.conf").read_text(encoding="utf-8")
+        found = re.search(r'^\s*graphroot\s*=\s*"([^"]+)"', text, re.M)
+        if found:
+            return Path(found.group(1).replace("$HOME", str(base))).expanduser()
+    except OSError:
+        pass
+    return base / ".local" / "share" / "containers" / "storage"
+
+
+def _entry(path: str, st: os.stat_result) -> int:
+    """One file's mark: its path, size, time and inode (an empty file: only that it is there, a lock rewritten)."""
+    if st.st_size == 0 and not os.path.islink(path):
+        text = f"{path}\0empty"
+    else:
+        text = f"{path}\0{st.st_size}\0{st.st_mtime_ns}\0{st.st_ino}"
+    return int.from_bytes(hashlib.blake2b(text.encode("utf-8", "surrogateescape"), digest_size=8).digest(), "big")
+
+
+class _Area:
+    __slots__ = ("total", "count")
+
+    def __init__(self) -> None:
+        self.total = 0
+        self.count = 0
+
+    def add(self, mark: int) -> None:
+        self.total = (self.total + mark) % (1 << 64)   # the order files are listed in doesn't matter
+        self.count += 1
+
+
+def _may_skip():
+    """The names `Inventory.skipped` may skip. Its rules look at a path's components at given places under its roots;
+    a walk that never enters a skipped folder has checked every component of a path but its last, so only a path
+    whose name is one of these (or a socket, a SQLite sidecar, a bridge.toml copy) can be skipped: the others aren't
+    asked (pathlib's work, once per file, was most of a look's time). test_backup_activity.py checks the two agree."""
+    from . import moving
+    names = (set(moving.RUNTIME_FILES) | moving.HERMES_SKIP_ROOT | moving.HERMES_SKIP_PROFILE | moving.DATA_SKIP
+             | moving.CHROME_SKIP)
+    return lambda name: name in names or name.endswith((".sock", *moving.SIDECARS)) or name.startswith("bridge.toml.")
+
+
+def stat_walk(inv, root: Path, rules: bool = True) -> Iterator[Tuple[str, str, os.stat_result]]:
+    """(path, its first component under `root`, lstat) of each file and link under `root` that `files` would take,
+    plus the SQLite write-ahead logs (`files` takes a database's copy, made from it). A folder this account can't
+    list (a sandbox's own) is given by its own lstat."""
+    maybe = _may_skip()
+    stack: List[Tuple[str, str]] = [(str(root), "")]
+    while stack:
+        folder, top = stack.pop()
+        try:
+            listing = os.scandir(folder)
+        except OSError:
+            try:
+                yield folder, top, os.stat(folder, follow_symlinks=False)
+            except OSError:
+                pass
+            continue
+        with listing:
+            for entry in listing:
+                name = entry.name
+                checked = name[:-4] if name.endswith("-wal") else name
+                if rules and maybe(checked) and inv.skipped(Path(folder) / checked):
+                    continue
+                try:
+                    if entry.is_dir(follow_symlinks=False):
+                        stack.append((entry.path, top or name))
+                    elif entry.is_file(follow_symlinks=False) or entry.is_symlink():
+                        yield entry.path, top or name, entry.stat(follow_symlinks=False)
+                except OSError:
+                    continue
+
+
+def fingerprint(inv, base: Path) -> Dict:
+    """What a backup would take, by its files' sizes, times and inodes (stat only: nothing is read), `NOISE` apart.
+    Returns {"sum": one hex for all, "areas": {area: hex} (a root and its first folder, e.g. "hermes/sessions": which
+    ones changed, to tell why a backup came), "newest": the latest change seen, "files": how many}."""
+    from . import volumes
+    inv = quick(inv)
+    areas: Dict[str, _Area] = {}
+    newest = 0.0
+
+    def note(area: str, path: str, st: os.stat_result) -> None:
+        nonlocal newest
+        name = path.rpartition("/")[2]
+        if name in NOISE or name.endswith(NOISE_SUFFIXES):
+            return
+        found = areas.get(area)
+        if found is None:
+            found = areas[area] = _Area()
+        found.add(_entry(path, st))
+        if st.st_size and st.st_mtime > newest:
+            newest = st.st_mtime
+
+    for label, root in inv.roots().items():
+        try:
+            if root.is_dir() and not root.is_symlink():
+                for path, top, st in stat_walk(inv, root):
+                    note(f"{label}/{top}" if top else label, path, st)
+            elif root.exists() or root.is_symlink():
+                note(label, str(root), root.lstat())
+        except OSError:
+            continue
+    storage = _graphroot(base) / "volumes"
+    for name in volumes.kept(inv.data_dir):
+        if (storage / name / "_data").is_dir():
+            for path, _, st in stat_walk(inv, storage / name / "_data", rules=False):
+                note(f"volume/{name}", path, st)
+    marks = {area: f"{a.total:016x}{a.count:x}" for area, a in sorted(areas.items())}
+    whole = hashlib.blake2b(json.dumps(marks, sort_keys=True).encode(), digest_size=16).hexdigest()
+    return {"sum": whole, "areas": marks, "newest": newest, "files": sum(a.count for a in areas.values())}
+
+
+def decide(now: float, changed: bool, last_change: float, last_ok: Optional[float],
+           failed_at: Optional[float] = None) -> Tuple[bool, str]:
+    """Whether the timer's look backs up now, and why (or why not)."""
+    if not last_ok:
+        return True, "first backup"
+    since_ok = now - last_ok
+    if failed_at and failed_at > last_ok and now - failed_at < RETRY - SLACK:
+        return False, "the last backup failed: tried again a quarter of an hour later"
+    if not changed:
+        if since_ok >= SAFETY - SLACK:
+            return True, "the day's backup (nothing changed)"
+        return False, "nothing changed since the last backup"
+    if now - last_change >= QUIET - SLACK:
+        return True, "nothing more changed for 5 minutes"
+    if since_ok >= LATEST - SLACK:
+        return True, "still changing, the last backup is 15 minutes old"
+    return False, "still changing"
+
+
+# -- one backup at a time per server ---------------------------------------------------------------------------------
+
+# Made by the seat agent (root, installer/cloud/seat-agent.py), readable by every place of the server: each one locks
+# it (flock needs no write access) around its backup. Elsewhere (a machine without it) only the account's own lock.
+SERVER_LOCK = Path("/var/lib/bipagents/backup.lock")
+OWN_LOCK = Path(".local") / "state" / "bipagents" / "backup.lock"
+
+
+def _take(fd: int, until: float) -> bool:
+    import fcntl
+    while True:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except BlockingIOError:
+            if time.monotonic() >= until:
+                return False
+            time.sleep(1)
+
+
+@contextlib.contextmanager
+def one_at_a_time(base: Path, wait: float, server: Optional[Path] = None) -> Iterator[Optional[str]]:
+    """This place's lock (its button's backup and its timer's never together), then the server's (one place backing
+    up at a time). Yields None once both are held, else why not: "this place" (its other backup is running: nothing
+    to add), "server" (another place's took longer than `wait` s: the server's lock is then let go, the caller
+    decides)."""
+    server = SERVER_LOCK if server is None else server
+    until = time.monotonic() + wait
+    own = base / OWN_LOCK
+    own.parent.mkdir(parents=True, exist_ok=True)
+    fds = [os.open(own, os.O_RDWR | os.O_CREAT, 0o600)]
+    try:
+        if not _take(fds[0], until):
+            yield "this place"
+            return
+        try:
+            fds.append(os.open(server, os.O_RDONLY))
+        except OSError:
+            yield None   # no server lock here (not a server of the offer, or its seat agent not updated yet)
+            return
+        yield None if _take(fds[1], until) else "server"
+    finally:
+        for fd in fds:
+            os.close(fd)   # closing lets the lock go
+
+
+def check(base: Optional[Path] = None, config: Optional[Path] = None, now: Optional[float] = None,
+          server: Optional[Path] = None, wait: float = 240) -> Dict:
+    """The timer's look: a backup only when `decide` says so. Returns {"backup": bool, "why": ...} (and the state the
+    backup wrote). Says nothing, does nothing, on a place without backups or not paired yet."""
+    from . import moving
+    base = base or home()
+    data = settings(base)
+    if not data.get("url") or not data.get("token") or not data.get("password"):
+        return {"backup": False, "why": "no backups set up here"}
+    if not claimed(base):
+        return {"backup": False, "why": "not paired yet"}
+    if (base / MARKER).exists():
+        return {"backup": False, "why": "restoring"}
+    clock = now is None
+    now = time.time() if clock else now
+    state = read_json(base / STATE)
+    looked = read_json(base / CHECK)
+    inv = moving.read_inventory(config or base / ".config" / "bipagents" / "bridge.toml", base)
+    found = fingerprint(inv, base)
+    if found["sum"] != looked.get("sum"):   # it changed since the last look: after it, when the files say
+        change = max(min(found["newest"], now), float(looked.get("at") or 0))
+    else:
+        change = float(looked.get("change") or min(found["newest"], now))
+    backed = looked.get("backed") or {}
+    changed = backed.get("sum") != found["sum"]
+    last_ok = state.get("last_ok") if isinstance(state.get("last_ok"), (int, float)) else None
+    failed_at = state.get("failed_at") if isinstance(state.get("failed_at"), (int, float)) else None
+    go, why = decide(now, changed, change, last_ok, failed_at)
+    was = backed.get("areas") or {}
+    seen = {"sum": found["sum"], "at": now, "change": change, "files": found["files"], "why": why,
+            "changed": sorted(k for k in set(found["areas"]) | set(was) if found["areas"].get(k) != was.get(k))[:20]}
+    if not changed and last_ok and not (failed_at and failed_at > last_ok):
+        seen["current_at"] = now   # all of it is in the last backup that worked (the seat agent tells the guichet)
+    write_private(base / CHECK, {**read_json(base / CHECK), **seen})   # read again: a backup may have just ended
+    if not go:
+        return {"backup": False, "why": why}
+    overdue = last_ok is None or now - last_ok >= 2 * 3600
+    with one_at_a_time(base, wait, server) as busy:
+        if busy == "this place":
+            return {"backup": False, "why": "this place's other backup is running"}
+        if busy == "server" and not overdue:
+            return {"backup": False, "why": "another place of this server is backing up"}
+        # A backup may have ended while this one waited (the button's): nothing to add then.
+        if (read_json(base / CHECK).get("backed") or {}).get("sum") == found["sum"] and \
+                read_json(base / STATE).get("last_ok") != last_ok:
+            return {"backup": False, "why": "backed up meanwhile"}
+        done = run(base, config, now=time.time() if clock else now)
+    return {"backup": True, "why": why, **done}
 
 
 def restic(args: List[str], env: Dict[str, str], timeout: float = 3600) -> subprocess.CompletedProcess:
@@ -254,6 +528,7 @@ def run(base: Optional[Path] = None, config: Optional[Path] = None, now: Optiona
         from . import volumes
         manifest["volumes"] = volumes.kept(inv.data_dir)
         write_private(stage / "manifest.json", manifest)
+        found = fingerprint(inv, base)   # before the files go: a change while they do calls for another backup
         listed = list(files(inv, stage, seen))
         write_private(stage / "seen.json", seen)
         listing = stage / "files"
@@ -274,6 +549,9 @@ def run(base: Optional[Path] = None, config: Optional[Path] = None, now: Optiona
                       "bytes": (backed + runtimes) if isinstance(backed, int) else backed,
                       "backed_bytes": backed, "runtime_bytes": runtimes, "added": summary.get("data_added")})
         state.pop("last_error", None)
+        looked = read_json(base / CHECK)
+        looked["backed"] = {"sum": found["sum"], "areas": found["areas"], "at": now}
+        write_private(base / CHECK, looked)
         if now - float(state.get("pruned") or 0) >= PRUNE_EVERY:
             thinned = restic(["forget", "--host", HOST, "--prune", *KEEP], env)
             if thinned.returncode == 0:
@@ -299,26 +577,42 @@ def _summary(output: str) -> Dict:
 
 
 def units(repo: Path, python: Path) -> List[Tuple[str, str]]:
-    """The systemd user service and its hourly timer (spread over the hour: four places on a server don't all back
-    up at once), at the lowest priority."""
-    service = ("[Unit]\nDescription=BipAgents: this place's backup to the guichet\nAfter=network-online.target\n\n"
-               "[Service]\nType=oneshot\nNice=19\nIOSchedulingClass=idle\n"
-               f"Environment=PYTHONPATH={repo / 'installer'}\nWorkingDirectory={repo}\n"
-               f"ExecStart={python} -m bipinstall backup --quiet\n")
-    timer = ("[Unit]\nDescription=BipAgents: back this place up every hour\n\n[Timer]\nOnCalendar=hourly\n"
-             "RandomizedDelaySec=50min\nPersistent=true\n\n[Install]\nWantedBy=timers.target\n")
-    return [(f"{UNIT}.service", service), (f"{UNIT}.timer", timer)]
+    """The systemd user services, at the lowest priority: a backup now (the app's button: the bridge starts it), the
+    timer's look (`check`, without the installer's command line: lighter every 5 minutes), and its timer, each place
+    of a server at its own minute of the five (FixedRandomDelay: the same delay every time for this account)."""
+    head = ("[Unit]\nDescription=BipAgents: {what}\nAfter=network-online.target\n\n"
+            "[Service]\nType=oneshot\nNice=19\nIOSchedulingClass=idle\n"
+            f"Environment=PYTHONPATH={repo / 'installer'}\nWorkingDirectory={repo}\n")
+    service = head.format(what="this place's backup to the guichet, now") + \
+        f"ExecStart={python} -m bipinstall backup --quiet\n"
+    looking = head.format(what="back this place up when something changed") + \
+        f"ExecStart={python} -m bipinstall.backup --quiet --if-needed\n"
+    timer = ("[Unit]\nDescription=BipAgents: look every 5 minutes whether this place has something to back up\n\n"
+             f"[Timer]\nOnCalendar=*:0/5\nRandomizedDelaySec=4min\nFixedRandomDelay=true\nAccuracySec=10s\n"
+             f"Unit={CHECK_UNIT}.service\n\n[Install]\nWantedBy=timers.target\n")
+    return [(f"{UNIT}.service", service), (f"{CHECK_UNIT}.service", looking), (f"{UNIT}.timer", timer)]
 
 
 def install_timer(runner, repo: Path, python: Path, base: Optional[Path] = None) -> None:
+    """The units written (again: an update rewrites the hourly timer of before), the timer restarted on its new
+    schedule. A place whose space is encrypted (space.py) has its backup wait for the open folder: its look too."""
+    from .space import DROP_IN
     folder = (base or home()) / ".config" / "systemd" / "user"
     for name, text in units(repo, python):
         runner.log.append(f"write {folder / name}")
         if not runner.dry:
             folder.mkdir(parents=True, exist_ok=True)
             (folder / name).write_text(text, encoding="utf-8")
+    gate = folder / f"{UNIT}.service.d" / DROP_IN
+    if gate.is_file():
+        runner.log.append(f"write {folder / f'{CHECK_UNIT}.service.d' / DROP_IN}")
+        if not runner.dry:
+            (folder / f"{CHECK_UNIT}.service.d").mkdir(parents=True, exist_ok=True)
+            (folder / f"{CHECK_UNIT}.service.d" / DROP_IN).write_text(gate.read_text(encoding="utf-8"),
+                                                                     encoding="utf-8")
     runner.run(["systemctl", "--user", "daemon-reload"], check=False)
-    runner.run(["systemctl", "--user", "enable", "--now", f"{UNIT}.timer"], check=False)
+    runner.run(["systemctl", "--user", "enable", f"{UNIT}.timer"], check=False)
+    runner.run(["systemctl", "--user", "restart", f"{UNIT}.timer"], check=False)
 
 
 # -- restore: a place moved after an outage gets its person's last backup back ---------------------------------------
@@ -563,13 +857,25 @@ def restore_main(argv: List[str]) -> int:
 def main(argv: List[str]) -> int:
     import argparse
     parser = argparse.ArgumentParser(prog="bipinstall backup", description="Back this place up to the guichet now "
-                                     "(the hourly timer runs it)")
+                                     "(its timer does when something changed)")
     parser.add_argument("--quiet", action="store_true", help="say nothing when it worked (the timer)")
+    parser.add_argument("--if-needed", action="store_true",
+                        help="only when something changed (the timer's look, every 5 minutes): see `decide`")
     args = parser.parse_args(argv)
     try:
-        state = run()
+        if args.if_needed:
+            looked = check()
+            if looked.get("backup") or not args.quiet:
+                print(("Backed up: " if looked.get("backup") else "Nothing backed up: ") + looked["why"] + ".",
+                      flush=True)
+            return 0
+        with one_at_a_time(home(), 1800):   # after another place's backup, but never more than half an hour later
+            state = run()
     except BackupError as exc:
         print(f"Backup failed: {exc}", flush=True)
+        return 1
+    except (OSError, ValueError) as exc:   # the bridge's config unreadable: the place isn't whole
+        print(f"Backup failed: {type(exc).__name__}: {exc}", flush=True)
         return 1
     if not args.quiet:
         if state.get("skipped"):
@@ -577,3 +883,7 @@ def main(argv: List[str]) -> int:
         else:
             print(f"Backed up: {state.get('files')} files, {(state.get('added') or 0) / 2**20:.1f} MB new.")
     return 0
+
+
+if __name__ == "__main__":   # the timer's look: `python -m bipinstall.backup --if-needed`, without the installer's imports
+    sys.exit(main(sys.argv[1:]))

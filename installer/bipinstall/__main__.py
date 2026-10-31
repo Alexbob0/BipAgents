@@ -269,7 +269,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if argv and argv[0] == "shared-images":   # shared_images.py: the agents' images once for the server's places
         from . import shared_images
         return shared_images.main(argv[1:])
-    if argv and argv[0] == "backup":   # backup.py: this place to the guichet, every hour
+    if argv and argv[0] == "backup":   # backup.py: this place to the guichet, now
         from .backup import main as backup_main
         return backup_main(argv[1:])
     if argv and argv[0] in ("move-out", "move-in"):   # placemove.py: a planned move, run by the seat agents
@@ -473,7 +473,7 @@ def cloud_install(args, runner: hermes.Runner, machine: Machine) -> int:
     runner.log.append(f"write {inst.setup_file}")
     if not runner.dry:
         cloud.write_setup(inst.setup_file, setup)
-    if setup.backup:   # every hour once the app has paired it, to the guichet, encrypted with a key made here
+    if setup.backup:   # as it is used once the app has paired it, to the guichet, encrypted with a key made here
         from . import backup
         runner.log.append(f"write {Path.home() / backup.SETTINGS}")
         if not runner.dry:

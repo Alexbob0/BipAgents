@@ -64,8 +64,9 @@ The installer recognises a rented server (Hetzner, OVH, Scaleway, AWS…): no do
 in the cloud offered first. The server is prepared in advance with a cloud-init file: see
 [BipAgents on a rented server](../docs/vps.md).
 
-On a place of the all-included offer (`--cloud` with the guichet's setup), the place backs itself up every hour
-(`bipagents backup`, restic): encrypted with a key made on the place and kept by the person's phones, sent to the
+On a place of the all-included offer (`--cloud` with the guichet's setup), the place backs itself up as it is used
+(restic): a timer looks every 5 minutes, backs up a few minutes after a change (at most 15 minutes behind while the
+person goes on), nothing while nothing changes, once a day all the same; `bipagents backup` backs up now. Encrypted with a key made on the place and kept by the person's phones, sent to the
 guichet, which can't read it. After an outage the place moves to another server and the phone gives it its key back.
 
 ## On Windows

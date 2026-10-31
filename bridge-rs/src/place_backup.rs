@@ -1,8 +1,10 @@
-//! This place's backups (installer/bipinstall/backup.py, every hour to the guichet), for its app: the key its phones
-//! keep, to give it back to a new place after an outage (cloud_setup.py's restore), and when the last backup worked.
+//! This place's backups (installer/bipinstall/backup.py, to the guichet as the place changes), for its app: the key
+//! its phones keep, to give it back to a new place after an outage (cloud_setup.py's restore), and when the last
+//! backup worked.
 //!
 //!     GET  /v1/backup        {enabled, key?, last_ok?, last_error?, failed_at?, used_bytes?, allowance_bytes}
-//!     POST /v1/backup/now    one now (the hourly timer's service), e.g. before the person moves their agents
+//!     POST /v1/backup/now    one now (bipagents-backup.service; the timer starts another unit), e.g. before the
+//!                            person moves their agents
 //!
 //! Only on a place of the all-included offer (its settings exist); elsewhere `enabled` is false.
 //!

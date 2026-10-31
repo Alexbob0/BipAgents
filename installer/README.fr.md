@@ -58,8 +58,10 @@ L'installateur reconnaît un serveur loué (Hetzner, OVH, Scaleway, AWS…) : pa
 modèle dans le cloud proposé en premier. Le serveur se prépare d'avance avec un fichier cloud-init : voir
 [BipAgents sur un serveur loué](../docs/vps.fr.md).
 
-Sur une place de l'offre tout compris (`--cloud` avec les réglages du guichet), la place se sauvegarde toutes les
-heures (`bipagents backup`, restic) : chiffrée avec une clé faite sur la place et gardée par les téléphones de la
+Sur une place de l'offre tout compris (`--cloud` avec les réglages du guichet), la place se sauvegarde selon
+l'activité (restic) : un minuteur regarde toutes les 5 minutes, sauvegarde quelques minutes après un changement (au plus
+15 minutes de retard tant que la personne continue), rien tant que rien ne bouge, une fois par jour quand même ;
+`bipagents backup` sauvegarde tout de suite. Chiffrée avec une clé faite sur la place et gardée par les téléphones de la
 personne, envoyée au guichet, qui ne peut pas la lire. Après une panne, la place déménage sur un autre serveur et le
 téléphone lui redonne sa clé.
 

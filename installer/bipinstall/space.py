@@ -31,7 +31,7 @@ MARKER = ".bipagents-space"
 DROP_IN = "50-bipagents-space.conf"
 # The services that read or write someone's data: they wait for the open folder. Not the bridge (its locked door
 # opens the folder) nor the voices (no one's data).
-GATED = ("hermes-gateway*.service", "bipagents-hermes.service", "bipagents-backup.service",
+GATED = ("hermes-gateway*.service", "bipagents-hermes.service", "bipagents-backup*.service",
          "bipagents-refresh-browser.service", "bipagents-update.service", "bipagents-browser-*.service")
 # Among them, those running all the time: started by the bridge once the folder is open (the others are timers' or
 # started when needed).

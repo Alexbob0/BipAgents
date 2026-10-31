@@ -73,15 +73,16 @@ def test_a_paired_place_is_backed_up_encrypted_without_caches(tmp_path, monkeypa
     assert state["last_ok"] == T + 3600 and state["last_error"] and "not the key" not in state["last_error"]
 
 
-def test_the_guichet_s_address_carries_the_token_and_the_units_run_hourly_at_low_priority(tmp_path):
+def test_the_guichet_s_address_carries_the_token_and_the_units_run_at_low_priority(tmp_path):
     data = {"url": "https://guichet.test/v1/backup/", "token": "tok", "password": "pw"}
     assert backup.repository(data) == "rest:https://place:tok@guichet.test/v1/backup/"
     env = backup.environment(data, tmp_path)
     assert env["RESTIC_PASSWORD"] == "pw" and "tok" in env["RESTIC_REPOSITORY"]
-    (service, unit), (timer, text) = backup.units(tmp_path / "repo", tmp_path / "python")
+    (service, unit), (looking, look), (timer, text) = backup.units(tmp_path / "repo", tmp_path / "python")
     assert "Nice=19" in unit and "IOSchedulingClass=idle" in unit and "-m bipinstall backup --quiet" in unit
-    assert "pw" not in unit and "tok" not in unit                                     # no secret in the unit
-    assert "OnCalendar=hourly" in text and "RandomizedDelaySec=50min" in text
+    for made in (unit, look, text):
+        assert "pw" not in made and "tok" not in made                                 # no secret in the units
+    assert "OnCalendar=*:0/5" in text and "FixedRandomDelay=true" in text   # test_backup_activity.py: the rest
 
 
 def test_the_setup_s_backup_must_be_https_with_a_token(tmp_path):

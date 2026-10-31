@@ -2,7 +2,7 @@
 
 `bipagents sandbox adopt` (bridge-rs/src/sandbox_adopt.rs) moves an agent's working folders (its data, scripts,
 plans…) out of this machine's folders into named volumes, `bipagents-<agent>-<name>`: from then on the agent writes
-there only, so the hourly backup (backup.py) and `bipagents export` (moving.py) must take them. The bridge lists them
+there only, so the place's backups (backup.py) and `bipagents export` (moving.py) must take them. The bridge lists them
 in `<data>/sandbox.json` (`adopted.<agent>.volumes`, `kind: "work"`). Its « linked » folders too (`kind: "link"`,
 2026-10-23: a folder programs of this machine keep writing, moved into a volume with a symbolic link left at its path):
 the volume is taken here, and the link, at its path, as a link (backup.py and moving.py never follow one), so its
