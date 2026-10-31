@@ -56,8 +56,9 @@ one with nothing new to bring; avoid back-and-forth between the same two agents.
 the discussion.";
 
 pub const ROUTER_ONE_INSTRUCTIONS: &str = "You route a message of a group chat to the agent who should answer it. \
-Reply with only the id of the one most concerned agent. Two ids, comma-separated, only if the message clearly asks \
-for two different skills at once.";
+Reply with only the id of the one most concerned agent. A piece of work to do (build, write, plan, organise…) \
+goes to one agent only, who will hand over to colleagues itself. Two ids, comma-separated, only if the message asks \
+two separate questions for two different skills.";
 
 pub const GOAL_INSTRUCTIONS: &str = "Decide whether this message asks a team for a real piece of work with a result \
 to deliver (an app, a plan, a document, an event to organise…). If it does, write its goal in one short line (at \

@@ -138,6 +138,17 @@ pub const OTHER_CHARS: usize = 2000;
 pub const INPUT_CHARS: usize = 12_000;
 /// A turn waiting for the person's approval (or answer) is waited for this long.
 pub const APPROVAL_WAIT: f64 = 1800.0;
+/// Team work: a turn's tokens looked at every this many looks at its run (`poll` seconds each).
+pub const CAP_LOOK_EVERY: u32 = 2;
+/// The last turns of a message's budget still get this much (a turn that can say something).
+pub const TURN_TOKENS_FLOOR: i64 = 40_000;
+/// A run the bridge stopped: its end waited for this long.
+pub const STOP_WAIT: f64 = 30.0;
+/// The wrap-up turn after a turn that ended without an answer, at most.
+pub const WRAP_SECONDS: f64 = 90.0;
+/// Told to a team turn past 60 % of its cap (Hermes delivers it after the current tool calls).
+pub const WRAP_STEER: &str = "[BipAgents] This turn is close to its limit. Stop the work here: do not start anything \
+new. Reply now, briefly: what you did and what is left, then the DONE and NEXT lines.";
 /// The router model's prompt: the message cut to this, each agent's line to `ROLE_CHARS`.
 pub const ROUTER_MESSAGE_CHARS: usize = 600;
 pub const ROLE_CHARS: usize = 160;
@@ -217,6 +228,9 @@ pub struct Message {
     /// by: "agent"|"conductor"|"budget"}.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub handoff: Option<Value>,
+    /// Team work: this agent's turn reached `[rooms] team_turn_tokens` and was stopped; the text is its short wrap-up.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub capped: bool,
 }
 
 /// One agent's turn, queued or going on.
@@ -792,6 +806,38 @@ pub fn decide(config: &Config, room: &Room, turn: &Turn, marks: &relay::Marks, m
     }
 }
 
+/// How many agents the small model's pick keeps under the relay: one for a piece of work (a message that looks like
+/// a task, or any message in team work: the others come in when handed the turn; 2026-10-31 the router sent « Faites-
+/// moi une petite app web… » to Back and Front at once), two for a question that clearly asks two skills.
+pub fn router_keeps(room: &Room, text: &str) -> usize {
+    if room.team() || relay::looks_like_task(text) {
+        1
+    } else {
+        2
+    }
+}
+
+/// A team turn's cap: `team_turn_tokens`, or what the person's message's budget has left (`TURN_TOKENS_FLOOR` at least).
+pub fn turn_cap(config: &Config, room: &Room, cause: u64) -> i64 {
+    let left = config.rooms.team_tokens - room.tokens_for(cause);
+    config.rooms.team_turn_tokens.min(left.max(TURN_TOKENS_FLOOR))
+}
+
+/// What the wrap-up turn is told (out of the person's sight): why its turn ended without an answer.
+pub fn wrap_input(why: &str, team: bool) -> String {
+    let what = match why {
+        "capped" => "Your turn reached its limit of tokens and was stopped.",
+        "timeout" => "Your turn reached its time limit and was stopped.",
+        "cancelled" => "Your turn was stopped before you answered (too many tool calls, or the same call again).",
+        _ => "Your turn ended without an answer.",
+    };
+    let end = if team { "then end with the DONE and NEXT lines" } else { "then end with the NEXT line" };
+    format!(
+        "[BipAgents] {what} Do not call any tool now. In two to four short lines, tell the discussion what you did and \
+what is left (or what stopped you), {end}."
+    )
+}
+
 /// « Tests n'a rien à ajouter. » in the agent's language (a pass: the agent stays silent).
 pub fn pass_text(lang: &str, name: &str) -> String {
     match lang {
@@ -800,6 +846,17 @@ pub fn pass_text(lang: &str, name: &str) -> String {
         "es" => format!("{name} no tiene nada que añadir."),
         "nl" => format!("{name} heeft niets toe te voegen."),
         _ => format!("{name} has nothing to add."),
+    }
+}
+
+/// « Back a atteint la limite de son tour et passe la main. » in the agent's language.
+pub fn capped_text(lang: &str, name: &str) -> String {
+    match lang {
+        "fr" => format!("{name} a atteint la limite de son tour et passe la main."),
+        "de" => format!("{name} hat das Limit seines Zuges erreicht und gibt weiter."),
+        "es" => format!("{name} ha llegado al límite de su turno y pasa el relevo."),
+        "nl" => format!("{name} heeft de limiet van zijn beurt bereikt en geeft het stokje door."),
+        _ => format!("{name} reached the limit of its turn and hands over."),
     }
 }
 
@@ -820,6 +877,8 @@ pub fn failed_text(lang: &str, name: &str) -> String {
 pub struct Outcome {
     pub reply: Result<String, String>,
     pub tokens: Tokens,
+    /// Stopped at `[rooms] team_turn_tokens` (the reply, if any, is its wrap-up).
+    pub capped: bool,
 }
 
 pub struct Rooms {
@@ -926,7 +985,7 @@ impl Rooms {
             let prompt = format!("{context}{}", router_prompt(text, &candidates));
             if let Some(answer) = self.ask_model(config, Some(&room.id), relay::ROUTER_ONE_INSTRUCTIONS, &prompt, ROUTER_MAX_TOKENS).await {
                 let mut picked = parse_router_answer(&answer, &candidates);
-                picked.truncate(2);
+                picked.truncate(router_keeps(room, text));
                 if !picked.is_empty() {
                     return (picked, "model");
                 }
@@ -1051,6 +1110,7 @@ impl Rooms {
             route: Some(route.clone()),
             error: None,
             handoff: None,
+            capped: false,
         };
         let propose = config.rooms.handoff
             && config.rooms.goal_model
@@ -1208,18 +1268,18 @@ impl Rooms {
             return self.guest_turn(id, turn).await;
         }
         let Some(agent) = config.agent(Some(&turn.agent)).cloned() else {
-            return Outcome { reply: Err("this agent isn't on this install any more".into()), tokens: none };
+            return Outcome { reply: Err("this agent isn't on this install any more".into()), tokens: none, capped: false };
         };
         let session = match self.session_for(id, &agent).await {
             Ok(session) => session,
-            Err(why) => return Outcome { reply: Err(why), tokens: none },
+            Err(why) => return Outcome { reply: Err(why), tokens: none, capped: false },
         };
         let (run_id, base) = match &turn.run_id {
             Some(run_id) => (run_id.clone(), turn.base.clone()), // after a restart: the same run followed again
             None => {
                 let base = self.hermes.session(&agent, &session).await.map(|s| tokens_of(&s)).unwrap_or_default();
                 let Some(room) = load(&config, id) else {
-                    return Outcome { reply: Err("the discussion is gone".into()), tokens: none };
+                    return Outcome { reply: Err("the discussion is gone".into()), tokens: none, capped: false };
                 };
                 let names = names_of(&config, &room);
                 let (text, rules) = if config.rooms.handoff {
@@ -1233,9 +1293,9 @@ impl Rooms {
                 let run_id = match self.hermes.start_run(&agent, &input, &session, Some(&rules)).await {
                     Ok(run_id) => run_id,
                     Err(HermesError::Http { status, .. }) => {
-                        return Outcome { reply: Err(format!("the agent refused ({status})")), tokens: none }
+                        return Outcome { reply: Err(format!("the agent refused ({status})")), tokens: none, capped: false }
                     }
-                    Err(_) => return Outcome { reply: Err("the agent can't be reached".into()), tokens: none },
+                    Err(_) => return Outcome { reply: Err("the agent can't be reached".into()), tokens: none, capped: false },
                 };
                 // what it was given counts as seen once its run started (else the next turn gives it again)
                 let _ = change(&config, id, |room| {
@@ -1254,11 +1314,36 @@ impl Rooms {
             hub.set_room(&agent.name, &run_id, id);
         }
         let started = turn.started.unwrap_or_else(now);
+        // team work: one turn at most `team_turn_tokens` (and what the message's budget has left), told to wrap up at
+        // 60 %, stopped at the cap (Back took 749k in one turn on the lab, 2026-10-31)
+        let cap = load(&config, id).filter(|r| config.rooms.handoff && r.team()).map(|r| turn_cap(&config, &r, turn.cause));
+        let (mut steered, mut capped, mut looks) = (false, false, 0u32);
         let (status, output, usage) = loop {
             tokio::time::sleep(Duration::from_secs_f64(self.poll)).await;
             if !self.still(id, turn) {
                 let _ = self.hermes.stop_run(&agent, &run_id).await;
                 break ("stopped".to_string(), String::new(), None);
+            }
+            if let Some(cap) = cap {
+                looks += 1;
+                if looks % CAP_LOOK_EVERY == 0 {
+                    if let Ok(now_at) = self.hermes.session(&agent, &session).await.map(|s| tokens_of(&s)) {
+                        let used = (now_at.input - base.input).max(0) + (now_at.output - base.output).max(0);
+                        if used >= cap {
+                            tracing::info!(room = %id, agent = %agent.name, used = used, cap = cap, "rooms: a turn at its cap, stopped");
+                            capped = true;
+                            let _ = self.hermes.stop_run(&agent, &run_id).await;
+                            break self.ended_run(&agent, &run_id, "capped").await;
+                        }
+                        if !steered && used * 10 >= cap * 6 {
+                            steered = true;
+                            tracing::info!(room = %id, agent = %agent.name, used = used, cap = cap, "rooms: a turn near its cap, told to wrap up");
+                            if let Err(err) = self.hermes.steer_run(&agent, &run_id, WRAP_STEER).await {
+                                tracing::info!(room = %id, agent = %agent.name, error = %err, "rooms: the wrap-up steer refused");
+                            }
+                        }
+                    }
+                }
             }
             match self.hermes.run(&agent, &run_id).await {
                 Ok(run) => {
@@ -1288,17 +1373,32 @@ impl Rooms {
             let limit = if waiting { APPROVAL_WAIT } else { config.rooms.turn_seconds };
             if now() - started >= limit {
                 let _ = self.hermes.stop_run(&agent, &run_id).await;
-                break ("timeout".into(), String::new(), None);
+                break self.ended_run(&agent, &run_id, "timeout").await;
             }
         };
-        let tokens = match usage_tokens(usage.as_ref()) {
+        let mut tokens = match usage_tokens(usage.as_ref()) {
             Some(tokens) => tokens,
             None => {
                 let after = self.hermes.session(&agent, &session).await.map(|s| tokens_of(&s)).unwrap_or(base.clone());
                 Tokens { input: (after.input - base.input).max(0), output: (after.output - base.output).max(0) }
             }
         };
-        let text = hand_over_files(&config, &agent, &run_id, tk::strip(&output)).await;
+        let mut text = hand_over_files(&config, &agent, &run_id, tk::strip(&output)).await;
+        let mut status = status;
+        let answered = (status == "completed" || status == "gone") && !text.is_empty();
+        if !answered && status != "stopped" && config.rooms.handoff && self.still(id, turn) {
+            // never an empty turn (2026-10-31: Front's last turn ended « cancelled », nothing said): stopped at its
+            // cap, by the brake or the time limit, or ended without a word, the agent says in one short turn without
+            // tools what it did and what is left, and hands over
+            let why = if capped { "capped".to_string() } else { status.clone() };
+            let (said, more) = self.wrap_up(&config, &agent, &session, id, turn, &why).await;
+            tokens.add(&more);
+            if !said.is_empty() {
+                tracing::info!(room = %id, agent = %agent.name, why = %why, "rooms: a turn wrapped up");
+                text = said;
+                status = "completed".into();
+            }
+        }
         let reply = if (status == "completed" || status == "gone") && !text.is_empty() {
             Ok(text)
         } else if status == "stopped" {
@@ -1308,7 +1408,79 @@ impl Rooms {
         } else {
             Err(format!("the turn ended {status}"))
         };
-        Outcome { reply, tokens }
+        Outcome { reply, tokens, capped }
+    }
+
+    /// A run the bridge just stopped (cap, time limit): its end waited for (`STOP_WAIT`), so the wrap-up turn never
+    /// runs beside it in the same conversation. `why` unless it completed meanwhile.
+    async fn ended_run(&self, agent: &AgentConfig, run_id: &str, why: &str) -> (String, String, Option<Value>) {
+        let t0 = now();
+        while now() - t0 < STOP_WAIT {
+            if let Ok(run) = self.hermes.run(agent, run_id).await {
+                let status = tk::str_or_empty(run.get("status"));
+                if crate::jobs::TERMINAL.contains(&status.as_str()) {
+                    let output = run.get("output").and_then(Value::as_str).unwrap_or("").to_string();
+                    let status = if status == "completed" && !output.trim().is_empty() { status } else { why.to_string() };
+                    let output = if status == "completed" { output } else { String::new() };
+                    return (status, output, run.get("usage").cloned());
+                }
+            }
+            tokio::time::sleep(Duration::from_secs_f64(self.poll.min(1.0))).await;
+        }
+        (why.to_string(), String::new(), None)
+    }
+
+    /// One short turn of the same agent in the room's conversation, told why its turn ended without an answer
+    /// (`why`: capped, cancelled, timeout, failed, completed with nothing), without tools, at most `WRAP_SECONDS`: its
+    /// words (empty: none) and its tokens.
+    async fn wrap_up(
+        &self,
+        config: &Config,
+        agent: &AgentConfig,
+        session: &str,
+        id: &str,
+        turn: &Turn,
+        why: &str,
+    ) -> (String, Tokens) {
+        let none = (String::new(), Tokens::default());
+        let Some(room) = load(config, id) else { return none };
+        let names = names_of(config, &room);
+        let rules = relay_instructions(&room.title, &names, &agent.name, room.team());
+        let base = self.hermes.session(agent, session).await.map(|s| tokens_of(&s)).unwrap_or_default();
+        let Ok(run_id) = self.hermes.start_run(agent, &wrap_input(why, room.team()), session, Some(&rules)).await else {
+            return none;
+        };
+        let t0 = now();
+        let (output, usage) = loop {
+            tokio::time::sleep(Duration::from_secs_f64(self.poll)).await;
+            if !self.still(id, turn) || now() - t0 >= WRAP_SECONDS {
+                let _ = self.hermes.stop_run(agent, &run_id).await;
+                break (String::new(), None);
+            }
+            match self.hermes.run(agent, &run_id).await {
+                Ok(run) => {
+                    let status = tk::str_or_empty(run.get("status"));
+                    if crate::jobs::TERMINAL.contains(&status.as_str()) {
+                        let output = if status == "completed" {
+                            run.get("output").and_then(Value::as_str).unwrap_or("").to_string()
+                        } else {
+                            String::new()
+                        };
+                        break (output, run.get("usage").cloned());
+                    }
+                }
+                Err(HermesError::Http { status: 404 | 410, .. }) => break (String::new(), None),
+                Err(_) => {}
+            }
+        };
+        let tokens = match usage_tokens(usage.as_ref()) {
+            Some(tokens) => tokens,
+            None => {
+                let after = self.hermes.session(agent, session).await.map(|s| tokens_of(&s)).unwrap_or(base.clone());
+                Tokens { input: (after.input - base.input).max(0), output: (after.output - base.output).max(0) }
+            }
+        };
+        (tk::strip(&output).to_string(), tokens)
     }
 
     /// A relative's agent's turn, run by its own bridge (rooms_remote.rs) and followed from here. Its tokens are on
@@ -1317,13 +1489,13 @@ impl Rooms {
         let none = Tokens::default();
         let config = self.config.get();
         if !crate::rooms_remote::allowed_here(&config, &turn.agent) {
-            return Outcome { reply: Err("this relative's agent is no longer allowed here".into()), tokens: none };
+            return Outcome { reply: Err("this relative's agent is no longer allowed here".into()), tokens: none, capped: false };
         }
         let run_id = match &turn.run_id {
             Some(run_id) => run_id.clone(),
             None => {
                 let Some(room) = load(&config, id) else {
-                    return Outcome { reply: Err("the discussion is gone".into()), tokens: none };
+                    return Outcome { reply: Err("the discussion is gone".into()), tokens: none, capped: false };
                 };
                 let names = names_of(&config, &room);
                 let host = crate::households::Households::new(&crate::households::path_for(&config)).name();
@@ -1345,7 +1517,7 @@ impl Rooms {
                 .await;
                 let run_id = match started {
                     Ok(run_id) => run_id,
-                    Err(why) => return Outcome { reply: Err(why), tokens: none },
+                    Err(why) => return Outcome { reply: Err(why), tokens: none, capped: false },
                 };
                 let _ = change(&config, id, |room| {
                     room.seen.insert(turn.agent.clone(), upto);
@@ -1362,7 +1534,7 @@ impl Rooms {
             tokio::time::sleep(Duration::from_secs_f64(self.poll)).await;
             if !self.still(id, turn) {
                 crate::rooms_remote::stop(&self.http, &config, &turn.agent, &run_id).await;
-                return Outcome { reply: Err("stopped".into()), tokens: none };
+                return Outcome { reply: Err("stopped".into()), tokens: none, capped: false };
             }
             let waiting = match crate::rooms_remote::look(&self.http, &config, &turn.agent, &run_id).await {
                 Ok(Ok(Some((status, output)))) => {
@@ -1374,7 +1546,7 @@ impl Rooms {
                     } else {
                         Err(format!("the turn ended {status}"))
                     };
-                    return Outcome { reply, tokens: none };
+                    return Outcome { reply, tokens: none, capped: false };
                 }
                 Ok(Ok(None)) | Ok(Err(false)) | Err(_) => false, // going on, or their bridge restarting
                 Ok(Err(true)) => true,
@@ -1382,7 +1554,7 @@ impl Rooms {
             let limit = if waiting { APPROVAL_WAIT } else { config.rooms.turn_seconds };
             if now() - started >= limit {
                 crate::rooms_remote::stop(&self.http, &config, &turn.agent, &run_id).await;
-                return Outcome { reply: Err("the turn ended timeout".into()), tokens: none };
+                return Outcome { reply: Err("the turn ended timeout".into()), tokens: none, capped: false };
             }
         }
     }
@@ -1419,9 +1591,22 @@ impl Rooms {
                 route: None,
                 error,
                 handoff: None,
+                capped: false,
             };
             let reply = match &outcome.reply {
                 Ok(reply) => reply,
+                Err(why) if outcome.capped && relay_on => {
+                    // stopped at its cap and no wrap-up came: said plainly, the conductor picks who goes on
+                    let mut said = notice(capped_text(&lang, &name), Some(why.clone()));
+                    said.capped = true;
+                    room.push_message(said);
+                    let step = if room.team() {
+                        Step::Conduct(Some("The last agent's turn was stopped at its limit of tokens".into()))
+                    } else {
+                        Step::Stop
+                    };
+                    return (step, Vec::new());
+                }
                 Err(why) => {
                     room.push_message(notice(failed_text(&lang, &name), Some(why.clone())));
                     return (Step::Stop, Vec::new());
@@ -1441,6 +1626,7 @@ impl Rooms {
                 route: None,
                 error: None,
                 handoff: None,
+                capped: outcome.capped,
             };
             if !relay_on {
                 let others: Vec<Candidate> = names
@@ -2120,6 +2306,7 @@ mod tests {
             route: None,
             error: None,
             handoff: None,
+            capped: false,
         }
     }
 
