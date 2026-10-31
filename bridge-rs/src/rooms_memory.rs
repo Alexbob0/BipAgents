@@ -254,6 +254,7 @@ mod tests {
             tokens: None,
             route: None,
             error: None,
+            handoff: None,
         };
         rooms::change(config, id, |room| room.push_message(message)).unwrap();
     }
