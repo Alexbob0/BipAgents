@@ -316,3 +316,28 @@ def test_the_reserve_is_root_s_and_given_back_only_as_root_s(tmp_path):
     reserve.symlink_to(target)
     assert agent.release_reserve(str(home), owner) == 0 and target.read_bytes() == b"x" * 4096
     assert not agent.make_reserve(str(home))   # the name taken: not made
+
+
+def test_the_disk_level_s_folders_in_a_new_place_are_its_own(tmp_path, monkeypatch):
+    """Real-server test of 2026-10-31: the seat agent told a new place its level (~/.local/state/bipagents/disk.json)
+    before its install, making ~/.local root's; the install then could not make ~/.local/bin. Each missing folder is
+    the place's account's, and nothing is made outside its home."""
+    agent = _seat_agent()
+    home = tmp_path / "bip2"
+    home.mkdir()
+    owned = []
+    monkeypatch.setattr(agent.os, "chown", lambda path, uid, gid, **kw: owned.append((os.path.relpath(path, home),
+                                                                                         uid, gid, kw)))
+    monkeypatch.setattr(agent.os, "fchown", lambda fd, uid, gid: None)
+    agent.write_credit(str(home / ".local/state/bipagents/disk.json"), {"state": "ok"}, 1002, 1002, str(home))
+    assert json.loads((home / ".local/state/bipagents/disk.json").read_text()) == {"state": "ok"}
+    kw = {"follow_symlinks": False}
+    assert owned == [(".local", 1002, 1002, kw), (".local/state", 1002, 1002, kw),
+                     (".local/state/bipagents", 1002, 1002, kw)]
+    # there already: nothing made again
+    owned.clear()
+    agent.write_credit(str(home / ".local/state/bipagents/credit.json"), {"state": "ok"}, 1002, 1002, str(home))
+    assert owned == []
+    # never outside the home
+    agent.make_folders(str(tmp_path / "elsewhere" / "deep"), 1002, 1002, str(home))
+    assert not (tmp_path / "elsewhere").exists()

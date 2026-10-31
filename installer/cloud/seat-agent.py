@@ -631,12 +631,25 @@ def keep_settings(answer, path=None):
         write_json(path, changed)
 
 
+def make_folders(folder, uid, gid, home):
+    """Each folder missing between the place's home and `folder` made as the place's account's, not root's: the seat
+    agent tells a new place its disk level within 15 s of its own disk's mount, before its install, and making
+    ~/.local/state/bipagents in one go left ~/.local root's, so the install could not make ~/.local/bin (real-server
+    test, 2026-10-31). Never through a link."""
+    missing, at = [], os.path.normpath(folder)
+    top = os.path.normpath(home)
+    while not os.path.isdir(at) and at != top and at.startswith(top + os.sep):
+        missing.append(at)
+        at = os.path.dirname(at)
+    for at in reversed(missing):
+        os.mkdir(at, 0o755)
+        os.chown(at, uid, gid, follow_symlinks=False)
+
+
 def write_credit(path, value, uid, gid, home):
     """`value` written at `path` for the place's account: never through a link, never outside its home."""
     folder = os.path.dirname(path)
-    if not os.path.isdir(folder):
-        os.makedirs(folder, mode=0o755)
-        os.chown(folder, uid, gid)
+    make_folders(folder, uid, gid, home)
     real_home = os.path.realpath(home)
     if not os.path.realpath(folder).startswith(real_home + os.sep):
         raise OSError("the credit's folder leads out of the place's home")
