@@ -220,7 +220,7 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
 /* The hero, on the right: one asks, the agent answers with something useful — three cards of the app's own demo (the
    walk's map, big, on the left; the booking and the subscriptions on the right). One column on a phone; each
    exchange fades in once, quickly, one after another; with reduced motion they are simply there. */
-.show { position: relative; z-index: 2; width: min(680px, 100%); display: grid; grid-template-columns: 1.15fr 1fr; gap: 18px; align-items: center; }
+.hero-show { position: relative; z-index: 2; width: min(680px, 100%); display: grid; grid-template-columns: 1.15fr 1fr; gap: 18px; align-items: center; }
 .ex-col { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; }
 .ex { display: flex; flex-direction: column; gap: 6px; min-width: 0; animation: pop-in .4s ease-out both; animation-delay: calc(var(--i, 0) * 200ms + 100ms); }
 .ex-ask { align-self: flex-end; max-width: 92%; background: var(--ink); color: var(--ground); padding: 8px 13px; border-radius: 18px 18px 5px 18px;
@@ -273,7 +273,7 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
 .show-more { position: relative; z-index: 2; margin-top: 18px; text-align: center; font-weight: 900; font-size: 14.5px; }
 .show-more a { color: var(--ink); }
 @media (max-width: 640px) {   /* a phone: one column, in the order they come in */
-  .show { display: flex; flex-direction: column; gap: 14px; width: 100%; }
+  .hero-show { display: flex; flex-direction: column; gap: 14px; width: 100%; }
   .ex-col { display: contents; }
   .ex { order: var(--i, 0); }
   .ex-say { font-size: 14.5px; }
@@ -283,19 +283,19 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
 /* On a computer, the three cards as a loose stack (Alex's pick « Pile », 2026-10-27), slightly turned: the map big
    behind, the booking in front, the subscriptions small on top; the one under the pointer straightens and comes to the front. */
 @media (min-width: 1040px) {
-  .show { display: block; position: relative; width: min(560px, 100%); height: 620px; margin-inline: auto; }
-  .show .ex-col { display: contents; }
-  .show .ex { position: absolute; transition: rotate .25s ease, translate .25s ease; }
-  .show .ex--map { left: 0; top: 0; width: 66%; rotate: -3deg; z-index: 1; }
-  .show .ex--approve { right: 0; top: 6%; width: 49%; rotate: 2.5deg; z-index: 2; }
-  .show .ex--subs { left: 6%; bottom: 0; width: 46%; rotate: -1.5deg; z-index: 3; }
-  .show .ex .ex-card { box-shadow: 0 0 0 1px var(--line), 0 18px 40px -18px rgba(29, 31, 36, .28); }
+  .hero-show { display: block; position: relative; width: min(560px, 100%); height: 620px; margin-inline: auto; }
+  .hero-show .ex-col { display: contents; }
+  .hero-show .ex { position: absolute; transition: rotate .25s ease, translate .25s ease; }
+  .hero-show .ex--map { left: 0; top: 0; width: 66%; rotate: -3deg; z-index: 1; }
+  .hero-show .ex--approve { right: 0; top: 6%; width: 49%; rotate: 2.5deg; z-index: 2; }
+  .hero-show .ex--subs { left: 6%; bottom: 0; width: 46%; rotate: -1.5deg; z-index: 3; }
+  .hero-show .ex .ex-card { box-shadow: 0 0 0 1px var(--line), 0 18px 40px -18px rgba(29, 31, 36, .28); }
 }
 @media (min-width: 1040px) and (hover: hover) {
-  .show .ex:hover { rotate: 0deg; translate: 0 -4px; z-index: 4; }
-  .show .ex:hover .ex-card { translate: none; }
+  .hero-show .ex:hover { rotate: 0deg; translate: 0 -4px; z-index: 4; }
+  .hero-show .ex:hover .ex-card { translate: none; }
 }
-@media (min-width: 1040px) and (prefers-reduced-motion: reduce) { .show .ex { transition: none; } }
+@media (min-width: 1040px) and (prefers-reduced-motion: reduce) { .hero-show .ex { transition: none; } }
 
 /* -- Compared: Muse, dots, Grok Bot, BipAgents. A face-off (one product against BipAgents) picked in a segmented
    control, or the whole table; without the script, the whole table. Marks (check, cross, half, dash) always sit next
@@ -580,7 +580,7 @@ a.store:hover { transform: translateY(-2px); }
 .currency { position: relative; display: inline-flex; }
 .currency-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .currency select {
-  appearance: none; -webkit-appearance: none; font: inherit; font-weight: 900; font-size: 15.5px; color: var(--ink); height: 56px;
+  appearance: none; -webkit-appearance: none; font: inherit; font-weight: 900; font-size: 16px; color: var(--ink); height: 56px;
   padding: 0 42px 0 20px; border: 0; border-radius: 999px; cursor: pointer; background: var(--card);
   box-shadow: var(--shadow), inset 0 0 0 1.5px var(--line);
 }
@@ -680,16 +680,21 @@ a.store:hover { transform: translateY(-2px); }
 /* -- End, footer, sticky buy bar ---------------------------------------------------------------------------------- */
 .foot-company { font-size: 13.5px !important; color: var(--muted) !important; max-width: 520px !important; }
 .foot-company a { color: var(--ink2); font-weight: 900; }
+/* The phone's bar: one line inside the screen, 16 px from each edge and above the home bar; the words may wrap, the
+   button never shrinks. Its state class is « on » (a bare « .show » belongs to the hero's demo cards). */
 .sticky-buy {
-  position: fixed; left: 10px; right: 10px; bottom: max(10px, env(safe-area-inset-bottom)); z-index: 60; display: flex; align-items: center; gap: 12px;
-  padding: 8px 8px 8px 18px; border-radius: 999px; background: color-mix(in srgb, var(--card) 88%, transparent);
+  position: fixed; left: max(16px, env(safe-area-inset-left)); right: max(16px, env(safe-area-inset-right));
+  bottom: max(12px, env(safe-area-inset-bottom)); z-index: 60; max-width: 560px; margin-inline: auto;
+  display: flex; flex-direction: row; align-items: center; gap: 10px; padding: 6px 6px 6px 16px; border-radius: 999px;
+  background: color-mix(in srgb, var(--card) 88%, transparent);
   backdrop-filter: blur(20px) saturate(1.8); -webkit-backdrop-filter: blur(20px) saturate(1.8); box-shadow: var(--shadow-big), inset 0 0 0 1px var(--line);
-  transform: translateY(140%); transition: transform .45s cubic-bezier(.3, 1.3, .5, 1), visibility 0s .45s; visibility: hidden;
+  transform: translateY(calc(100% + 40px)); transition: transform .45s cubic-bezier(.3, 1.3, .5, 1), visibility 0s .45s; visibility: hidden;
 }
-.sticky-buy.show { transform: none; visibility: visible; transition: transform .45s cubic-bezier(.3, 1.3, .5, 1); }
-.sb-copy { display: grid; line-height: 1.2; min-width: 0; }
-.sb-plan { font-weight: 1000; } .sb-price { font-size: 13.5px; font-weight: 800; color: var(--ink2); }
-.sticky-buy .pill { margin-left: auto; }
+.sticky-buy.on { transform: none; visibility: visible; transition: transform .45s cubic-bezier(.3, 1.3, .5, 1); }
+.sb-copy { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; line-height: 1.15; text-align: start; }
+.sb-plan { font-weight: 1000; font-size: 15px; } .sb-price { font-size: 12.5px; font-weight: 800; color: var(--ink2); }
+.sticky-buy .pill { flex: none; margin-left: auto; }
+@media (max-width: 359px) { .sticky-buy { gap: 8px; padding-left: 14px; } .sb-plan { font-size: 14px; } .sb-price { font-size: 12px; } .sticky-buy .pill { padding: 0 14px; } }
 @media (min-width: 900px) { .sticky-buy { display: none; } }
 @media (max-width: 899px) { .foot { padding-bottom: 100px; } }
 

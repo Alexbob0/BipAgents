@@ -586,7 +586,7 @@ const region = (function () {
   const seen = new Set(), section = $("#pricing");
   const showSticky = () => {
     const show = scrollY > 300 && !seen.size;
-    sticky.classList.toggle("show", show);
+    sticky.classList.toggle("on", show);
     sticky.setAttribute("aria-hidden", String(!show));
     $("a", sticky).tabIndex = show ? 0 : -1;
   };
