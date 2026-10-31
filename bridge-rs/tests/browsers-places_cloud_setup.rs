@@ -44,7 +44,8 @@ fn cloud(dir: &std::path::Path) -> Config {
         json!({"file": setup.to_string_lossy(), "progress": dir.join("progress.json").to_string_lossy()}),
     );
     map.insert("hermes".into(), json!({"bin": "/opt/hermes", "home": dir.join(".hermes").to_string_lossy(), "hub_url": "http://127.0.0.1:8642"}));
-    let config = parse_config(&d, Some(&path.to_string_lossy())).unwrap();
+    let mut config = parse_config(&d, Some(&path.to_string_lossy())).unwrap();
+    config.place_spare_agents = Some(0); // no spare agents unless a test asks for some
     bipbridge::lan::ensure_certificate(&config).unwrap();
     config
 }
@@ -499,8 +500,26 @@ async fn claiming_sets_the_model_and_creates_agents_reached_through_the_door() {
     );
 }
 
+fn is_restart(c: &[String]) -> bool {
+    c.ends_with(&["gateway".into(), "restart".into()])
+        || c.get(..3) == Some(&["systemctl".to_string(), "--user".to_string(), "restart".to_string()][..])
+}
+
+fn is_create(c: &[String], profile: &str) -> bool {
+    c.get(1..4) == Some(&["profile".to_string(), "create".to_string(), profile.to_string()][..])
+}
+
 /// A fake `hermes`: `profile create` clones the hub's folder, `config set` of a variable writes the profile's .env.
 fn fake_hermes(home: std::path::PathBuf, commands: Arc<Mutex<Vec<Vec<String>>>>) -> bipbridge::agents_admin::Run {
+    fake_hermes_slow(home, commands, std::time::Duration::ZERO)
+}
+
+/// The same, each command taking `delay` (a real `hermes` command is a Python start: ≈ 1 s on a place's server).
+fn fake_hermes_slow(
+    home: std::path::PathBuf,
+    commands: Arc<Mutex<Vec<Vec<String>>>>,
+    delay: std::time::Duration,
+) -> bipbridge::agents_admin::Run {
     Arc::new(move |args: Vec<String>, _env| {
         commands.lock().unwrap().push(args.clone());
         if args.get(1..3) == Some(&["profile".to_string(), "create".to_string()][..]) {
@@ -521,8 +540,164 @@ fn fake_hermes(home: std::path::PathBuf, commands: Arc<Mutex<Vec<Vec<String>>>>)
             let text = std::fs::read_to_string(&env).unwrap_or_default();
             std::fs::write(&env, format!("{text}{}={}\n", args[5], value)).unwrap();
         }
-        Box::pin(async { Ok(String::new()) })
+        Box::pin(async move {
+            tokio::time::sleep(delay).await;
+            Ok(String::new())
+        })
     })
+}
+
+/// Waits until `check` holds (15 s at most).
+async fn until(what: &str, check: impl Fn() -> bool) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+    while !check() {
+        assert!(std::time::Instant::now() < deadline, "{what}");
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+}
+
+/// 2026-10-30 (Alex: « créer un agent devrait prendre ~2 s ») — a place keeps spare agents made ahead: a claim, the
+/// app's new agent and a team take them with file writes only (no `profile create`, no restart); spares are never
+/// listed, counted nor in the circle; the pool refills in the background; a team bigger than the pool gets the rest
+/// made as before. Each `hermes` command of the fake takes 300 ms, to measure.
+#[tokio::test(flavor = "multi_thread")]
+async fn spare_agents_make_new_agents_files_only() {
+    use axum::routing::{any, get};
+    use bipbridge::agent_pool;
+    use bipbridge::agents_admin::{self, NewAgent};
+    let gateway = common::spawn_fake(
+        Router::new()
+            .route("/p/{profile}/v1/capabilities", get(|| async { axum::Json(json!({})) }))
+            .fallback(any(|| async { (axum::http::StatusCode::CREATED, axum::Json(json!({"id": "s1"}))) })),
+    )
+    .await;
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = cloud(dir.path());
+    config.hermes.hub_url = gateway.clone();
+    config.agents.clear();
+    config.place_spare_agents = Some(2);
+    let home = dir.path().join(".hermes");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(
+        home.join("config.yaml"),
+        "model:\n  provider: custom\n  default: glm-5.3-flash\n  base_url: https://api.eurouter.example/v1\n  key_env: CUSTOM_MODEL_API_KEY\n",
+    )
+    .unwrap();
+    std::fs::write(home.join(".env"), "API_SERVER_ENABLED=true\nCUSTOM_MODEL_API_KEY=reserve-no-key-yet\n").unwrap();
+    let shared = bipbridge::config::SharedConfig::new(config.clone());
+    let commands: Arc<Mutex<Vec<Vec<String>>>> = Arc::default();
+    let delay = std::time::Duration::from_millis(300);
+    let run = fake_hermes_slow(home.clone(), commands.clone(), delay);
+    let http = reqwest::Client::new();
+    done(&config, true);
+    // without delay: a preparation holds the claims' lock, which the other tests of this file share
+    let fast = fake_hermes(home.clone(), commands.clone());
+    assert_eq!(cloud_setup::prepare_place(&shared, &http, Some(fast)).await.unwrap(), Some("agent".into()));
+
+    // The pool: two spares, made ahead, served, hidden everywhere.
+    let started = std::time::Instant::now();
+    let made = agent_pool::refill(&shared, &http, &run).await;
+    let refill_time = started.elapsed();
+    assert_eq!(made.len(), 2, "{made:?}");
+    let snapshot = shared.get();
+    for id in &made {
+        assert!(agent_pool::is_spare_id(id));
+        assert!(commands.lock().unwrap().iter().any(|c| is_create(c, id)));
+        assert!(!snapshot.agents.contains_key(id)); // not in the apps' list
+        assert!(home.join("profiles").join(id).join("config.yaml").is_file());
+        // never in another agent's roster before it is taken
+        assert!(!std::fs::read_to_string(home.join("profiles").join(id).join("profile.yaml"))
+            .unwrap_or_default()
+            .contains("hermes-bots"));
+        // the bridge's MCP endpoint knows it: its Hermes lists the tools before it is taken
+        assert_eq!(agent_pool::agent(&snapshot, id).unwrap().name, *id);
+    }
+    assert!(agents_admin::unclaimed_profiles(&snapshot).is_empty(), "{:?}", agents_admin::unclaimed_profiles(&snapshot));
+    assert_eq!(agents_admin::agents_count(&snapshot), 1); // the cap counts the prepared agent only
+    let circle: Vec<String> = bipbridge::shared_memory::circle(&snapshot).into_iter().map(|m| m.name).collect();
+    assert!(circle.iter().all(|n| !agent_pool::is_spare_id(n)), "{circle:?}");
+    assert_eq!(agent_pool::refill(&shared, &http, &run).await, Vec::<String>::new()); // full: nothing more
+
+    // The claim, four agents asked for: the first is the prepared one, two take spares, the last is made after.
+    commands.lock().unwrap().clear();
+    let wanted = ClaimRequest::from_value(&json!({
+        "model": {"provider": "custom", "name": "glm-5.3-flash", "key": "sk-eu-person", "base_url": "https://api.eurouter.example/v1"},
+        "agents": [{"name": "Quotidien", "kind": "daily"}, {"name": "Maison", "kind": "home"},
+                   {"name": "Sport", "kind": "daily"}, {"name": "Cuisine", "kind": "daily"}], "language": "fr"}))
+    .unwrap();
+    let started = std::time::Instant::now();
+    let agents = cloud_setup::claim_server(&shared, &wanted, &http, Some(run.clone())).await.unwrap();
+    let claim_time = started.elapsed();
+    let ids: Vec<String> = agents.iter().map(|a| a["id"].as_str().unwrap().to_string()).collect();
+    assert_eq!(ids[0], "agent");
+    assert!(made.contains(&ids[1]) && made.contains(&ids[2]), "{ids:?}");
+    assert_eq!(ids[3], "cuisine");
+    assert_eq!(agents[1]["name"], "Maison");
+    let ran = commands.lock().unwrap().clone();
+    assert!(!ran.iter().any(|c| is_restart(c) || c.get(1) == Some(&"profile".to_string())), "{ran:?}");
+    // the agent answers at once: nothing held for a restart
+    let started = std::time::Instant::now();
+    cloud_setup::READINESS.wait("agent", std::time::Duration::from_secs(5)).await;
+    assert!(started.elapsed() < std::time::Duration::from_millis(100));
+    // a spare taken follows the claim's model and key; it is the person's agent now
+    let maison = home.join("profiles").join(&ids[1]);
+    assert!(std::fs::read_to_string(maison.join(".env")).unwrap().contains("CUSTOM_MODEL_API_KEY=sk-eu-person\n"));
+    assert!(std::fs::read_to_string(maison.join("SOUL.md")).unwrap().contains("Maison"));
+    assert!(std::fs::read_to_string(maison.join("profile.yaml")).unwrap().contains("hermes-bots"));
+    let toml = std::fs::read_to_string(config.source_path.clone().unwrap()).unwrap();
+    assert!(toml.contains(&format!("[agents.{}]", ids[1])) && toml.contains("display_name = \"Maison\""), "{toml}");
+    // Cuisine made after, the pool refilled after it, in the background
+    until("pool refilled after the claim", || agent_pool::spares(&shared.get()).len() == 2).await;
+    until("cuisine made", || !commands.lock().unwrap().iter().all(|c| !is_create(c, "cuisine"))).await;
+    assert!(!commands.lock().unwrap().iter().any(|c| is_restart(c)));
+
+    // The app's new agent: a spare, files only.
+    commands.lock().unwrap().clear();
+    let body = NewAgent { name: "Léa".into(), kind: Some("daily".into()), lang: Some("fr".into()), ..Default::default() };
+    let started = std::time::Instant::now();
+    let lea = agents_admin::create_agent(&shared, &body, &http, &run).await.unwrap();
+    let spare_time = started.elapsed();
+    assert!(agent_pool::is_spare_id(&lea.name) && lea.display_name == "Léa");
+    let during: Vec<Vec<String>> = commands.lock().unwrap().clone();
+    assert!(!during.iter().any(|c| is_restart(c) || c.get(1) == Some(&"profile".to_string())), "{during:?}");
+    assert!(spare_time < std::time::Duration::from_millis(1500), "{spare_time:?} {during:?}");
+    assert_eq!(agents_admin::agents_count(&shared.get()), 5);
+    until("pool refilled after a creation", || agent_pool::spares(&shared.get()).len() == 2).await;
+
+    // A team of three with two spares: two taken, one made in the batch path.
+    commands.lock().unwrap().clear();
+    let team: Vec<NewAgent> = ["Budget", "Voyages", "Jardin"]
+        .iter()
+        .map(|n| NewAgent { name: n.to_string(), kind: Some("daily".into()), lang: Some("fr".into()), ..Default::default() })
+        .collect();
+    let started = std::time::Instant::now();
+    let results = agents_admin::create_agents(&shared, &team, &http, &run).await;
+    let team_time = started.elapsed();
+    let names: Vec<String> = results.iter().map(|r| r.as_ref().unwrap().name.clone()).collect();
+    assert_eq!(names.iter().filter(|n| agent_pool::is_spare_id(n)).count(), 2, "{names:?}");
+    assert_eq!(names[2], "jardin");
+    assert!(commands.lock().unwrap().iter().any(|c| is_create(c, "jardin")));
+
+    // Without spares (as before): the batch path for one agent, to compare.
+    let snapshot = shared.get();
+    let mut none = Config::clone(&snapshot);
+    none.place_spare_agents = Some(0);
+    let plain = bipbridge::config::SharedConfig::new(none); // the pool off: spares never taken
+    let body = NewAgent { name: "Zoé".into(), kind: Some("daily".into()), lang: Some("fr".into()), ..Default::default() };
+    let started = std::time::Instant::now();
+    let zoe = agents_admin::create_agent(&plain, &body, &http, &run).await.unwrap();
+    let plain_time = started.elapsed();
+    assert_eq!(zoe.name, "zoe");
+    eprintln!(
+        "MEASURE (fake hermes, {} ms per command): refill of 2 spares {:?}; claim with 4 agents {:?}; new agent from a \
+         spare {:?}; team of 3 (2 spares) {:?}; new agent without spare {:?}",
+        delay.as_millis(),
+        refill_time,
+        claim_time,
+        spare_time,
+        team_time,
+        plain_time
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -597,21 +772,16 @@ async fn a_prepared_place_is_claimed_with_file_writes_and_its_other_agents_made_
     assert!(std::fs::read_to_string(home.join("profiles/agent/SOUL.md")).unwrap().contains("Quotidien"));
     let toml = std::fs::read_to_string(config.source_path.clone().unwrap()).unwrap();
     assert!(toml.contains("display_name = \"Quotidien\"") && toml.contains("[agents.maison]"), "{toml}");
-    // Maison is listed at once (the app adds it), made right after: once the gateway restarted directly.
+    // Maison is listed at once (the app adds it), made right after; the gateway is never restarted (Hermes reads the
+    // model and key files at each turn).
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
     while std::fs::read_dir(dir.path()).unwrap().flatten().any(|e| e.file_name() == "claim-pending.json") {
         assert!(std::time::Instant::now() < deadline, "Maison not made");
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
     let ran = commands.lock().unwrap().clone();
-    let restart = ran.iter().position(|c| {
-        c.ends_with(&["gateway".into(), "restart".into()])
-            || c.get(..3) == Some(&["systemctl".to_string(), "--user".to_string(), "restart".to_string()][..])
-    });
-    let create = ran
-        .iter()
-        .position(|c| c.get(1..4) == Some(&["profile".to_string(), "create".to_string(), "maison".to_string()][..]));
-    assert!(restart.unwrap() < create.unwrap(), "{ran:?}");
+    assert!(!ran.iter().any(|c| is_restart(c)), "{ran:?}");
+    assert!(ran.iter().any(|c| is_create(c, "maison")), "{ran:?}");
     assert!(!ran.iter().any(|c| c.len() > 4 && c[1..3] == ["config", "set"]));
     let maison = shared.get().agents["maison"].clone();
     assert!(ran.contains(&vec![

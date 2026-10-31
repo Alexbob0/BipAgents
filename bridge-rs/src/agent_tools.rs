@@ -509,7 +509,8 @@ pub fn agent_for(config: &Config, token: &str) -> Option<AgentConfig> {
     let wanted = digest(token);
     for (name, known) in load_tokens(config) {
         if crate::auth::constant_time_eq(known.as_bytes(), wanted.as_bytes()) {
-            return config.agent(Some(&name)).cloned();
+            // a spare (agent_pool.rs) lists its tools before it is taken
+            return config.agent(Some(&name)).cloned().or_else(|| crate::agent_pool::agent(config, &name));
         }
     }
     None

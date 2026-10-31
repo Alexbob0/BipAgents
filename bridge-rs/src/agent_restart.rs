@@ -154,6 +154,11 @@ pub const NEW_AGENT_TOOLS: &str = "new agent without its tools";
 /// The bridge's state, for [`group_calm`] (set when the loop starts; None in tests and before).
 static APP: std::sync::OnceLock<AppState> = std::sync::OnceLock::new();
 
+/// Whether the restart loop runs (false in tests and before it starts): [`group_calm`] can then answer.
+pub fn loop_running() -> bool {
+    APP.get().is_some()
+}
+
 /// Asks for the agent's Hermes to be restarted soon, once it is idle (at most once per `gap_minutes`).
 pub fn request_restart(agent: &str, reason: &str) {
     tracing::info!(target: "bipbridge::restart", agent, reason, "restart requested");
