@@ -36,7 +36,7 @@ your mail, keep your calendar, browse the web in a real browser you can watch, a
 ### ☁️ All included, by Kerfy Studio — *coming soon*
 
 Nothing to install: download the app, pick a plan, your Bips say hello. Each person gets **a private space of their
-own on a server in the European Union**, looked after by Kerfy Studio (updates, hourly encrypted backups, support).
+own on a server in the European Union**, looked after by Kerfy Studio (updates, encrypted backups after each activity, support).
 
 - **Solo**, **Duo** or **Famille** (up to 6 people, each with their own space, agents and privacy).
 - **AI credit included every month**, shared by everyone in the plan; the app shows it as an estimated number of

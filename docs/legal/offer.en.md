@@ -84,7 +84,7 @@ For each person in the plan:
   agents run. The agents are built on Hermes Agent, open-source software by Nous Research
   (https://github.com/NousResearch/hermes-agent); BipAgents is not published, endorsed or sponsored by Nous Research.
 - **The Bips' voices**, on their phone when it can, otherwise from their place.
-- **An encrypted backup every hour** (section 9).
+- **An encrypted backup a few minutes after each activity, and at least once a day** (section 9).
 - **SSH access** to their place's account, from a computer whose key was added in the app (Settings › All-included plan
   › SSH access), without administrator (root) rights.
 
@@ -256,16 +256,16 @@ section 6); the services you connect to your agents and their own subscriptions.
   Studio's accounts at the hosting providers is restricted to the company. The content of a place would only be
   accessed to meet a legal obligation, and you would be told when the law allows it. Like any hosting provider,
   OVHcloud and Hetzner have physical access to their servers.
-- **Backups**: your place backs itself up every hour, encrypted on the place with a key that only your devices hold
+- **Backups**: your place backs itself up a few minutes after each activity, and at least once a day, encrypted on the place with a key that only your devices hold
   (plus the encrypted copy that your recovery code opens, section 7). Kerfy Studio keeps these backups without being
-  able to read them: one per hour for 48 hours, one per day for 30 days, one per week for 12 weeks. Settings ›
+  able to read them: those of the last 2 hours, then one per hour for 48 hours, one per day for 30 days, one per week for 12 weeks. Settings ›
   All-included plan › Backups shows the latest one and starts one at once.
 - **OVHcloud's daily image**: on its servers, OVHcloud also makes, on its side, a daily image of the whole server,
   which it keeps on its premises (one restore point per day, not encrypted by Kerfy Studio). When a place is
   reinstalled for someone else, the image that held it is replaced within about a day.
 - **Outages**: if your place's server stays unreachable for about 40 minutes, your place is moved to another server,
-  sometimes at another hosting provider, and restored from its latest backup: **you lose at most about one hour of
-  data**. The app tells you and completes the restore with the backup key on your phone: open it. When a whole hosting
+  sometimes at another hosting provider, and restored from its latest backup: **you lose at most about 20 minutes of
+  activity**. The app tells you and completes the restore with the backup key on your phone: open it. When a whole hosting
   provider is down at once, Kerfy Studio may wait for it to come back rather than move everyone.
 - **Sleep**: a place with no request from the app for 14 days and no scheduled routine goes to sleep; it wakes up when
   you open the app, in a few moments. Nothing is lost.

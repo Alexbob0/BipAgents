@@ -89,7 +89,7 @@ Para cada persona del plan:
   la que funcionan sus agentes de IA. Están construidos sobre Hermes Agent, software libre de Nous Research
   (https://github.com/NousResearch/hermes-agent); BipAgents no está editada, aprobada ni patrocinada por Nous Research.
 - **Las voces de los Bips**, en su teléfono cuando este lo permite; si no, desde su plaza.
-- **Una copia de seguridad cifrada cada hora** (sección 9).
+- **Una copia de seguridad cifrada unos minutos después de cada actividad, y al menos una vez al día** (sección 9).
 - **Un acceso SSH** a la cuenta de su plaza, desde un ordenador cuya clave se haya añadido en la app (Ajustes › Plan
   todo incluido › Acceso SSH), sin derechos de administrador (root).
 
@@ -266,16 +266,16 @@ enseguida. Las reglas propias de las personas que viven fuera de la Unión está
   acceso a las cuentas de Kerfy Studio en los proveedores de alojamiento está reservado a la sociedad. Solo se
   accedería al contenido de una plaza para cumplir una obligación legal, y se te informaría cuando la ley lo permita.
   Como todo proveedor de alojamiento, OVHcloud y Hetzner tienen acceso físico a sus servidores.
-- **Copias de seguridad**: tu plaza hace una copia de seguridad cada hora, cifrada en la plaza con una clave que solo
+- **Copias de seguridad**: tu plaza hace una copia de seguridad unos minutos después de cada actividad, y al menos una vez al día, cifrada en la plaza con una clave que solo
   tienen tus dispositivos (más la copia cifrada que abre tu código de recuperación, sección 7). Kerfy Studio guarda
-  estas copias sin poder leerlas: una por hora durante 48 horas, una por día durante 30 días, una por semana durante
+  estas copias sin poder leerlas: las de las 2 últimas horas, luego una por hora durante 48 horas, una por día durante 30 días, una por semana durante
   12 semanas. Ajustes › Plan todo incluido › Copias de seguridad muestra la última y lanza una enseguida.
 - **La imagen diaria de OVHcloud**: en sus servidores, OVHcloud hace además, por su parte, una imagen diaria del
   servidor entero, que guarda en sus instalaciones (un punto de restauración por día, no cifrado por Kerfy Studio).
   Cuando una plaza se reinstala para otra persona, la imagen que la contenía se sustituye en un día aproximadamente.
 - **Averías**: si el servidor de tu plaza sigue inaccesible unos 40 minutos, tu plaza se traslada a otro servidor, a veces
-  en otro proveedor de alojamiento, y se restaura desde su última copia de seguridad: **pierdes como mucho una hora de
-  datos, aproximadamente**. La app te avisa y termina la restauración con la clave de copia de seguridad de tu
+  en otro proveedor de alojamiento, y se restaura desde su última copia de seguridad: **pierdes como mucho unos 20 minutos de
+  actividad**. La app te avisa y termina la restauración con la clave de copia de seguridad de tu
   teléfono: ábrela. Cuando todo un proveedor de alojamiento falla a la vez, Kerfy Studio puede esperar a que vuelva en
   lugar de trasladar a todo el mundo.
 - **Reposo**: una plaza sin ninguna solicitud de la app desde hace 14 días y sin rutina programada se duerme; se

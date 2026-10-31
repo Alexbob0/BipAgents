@@ -419,7 +419,7 @@ se borran 30 días después de detenerse.
 
 ### 5.5 Las copias de seguridad
 
-Tu plaza hace una copia de seguridad cada hora. La copia se **cifra en la plaza**, antes de salir, con una clave que
+Tu plaza hace una copia de seguridad unos minutos después de cada actividad, y al menos una vez al día. La copia se **cifra en la plaza**, antes de salir, con una clave que
 se queda en la plaza y en tus dispositivos, más una copia de esa clave cifrada con tu código de recuperación (sección
 5.2), que Kerfy Studio no puede abrir. En la oferta todo incluido, la plaza está en un servidor que alquila Kerfy
 Studio: la clave también está allí y,
@@ -427,7 +427,7 @@ técnicamente, el proveedor y Kerfy Studio podrían acceder a ella; nuestro soft
 solo lo haríamos si la ley nos obligara. Kerfy
 Studio guarda estas copias en un proveedor de alojamiento de copias de seguridad (todavía no en servicio; se indicará aquí antes de su puesta en
 servicio) sin poder leerlas:
-una por hora durante 48 horas, una por día durante 30 días, una por semana durante 12 semanas. Se borran con tu plaza.
+las de las 2 últimas horas, luego una por hora durante 48 horas, una por día durante 30 días, una por semana durante 12 semanas. Se borran con tu plaza.
 
 **La imagen diaria de OVHcloud.** En sus servidores, OVHcloud hace además una imagen diaria del servidor entero, que
 guarda en sus instalaciones: un punto de restauración por día, no cifrado por Kerfy Studio. Cuando una plaza se
@@ -668,7 +668,7 @@ se indicarán aquí antes de su puesta en servicio. Puedes pedirnos una copia de
 | Huella del dispositivo Android, calculada con una clave secreta (semana gratis) | 24 meses |
 | Dirección IP al reservar una semana gratis | Nunca se guarda; en memoria, como huella, 15 minutos como máximo |
 | Contenido de tu plaza | Durante la suscripción y después 30 días (3 días después de una semana gratis que no continuó) |
-| Copias de seguridad | 48 horas (por hora), 30 días (diarias), 12 semanas (semanales); se borran con la plaza |
+| Copias de seguridad | 2 horas (todas), luego 48 horas (por hora), 30 días (diarias), 12 semanas (semanales); se borran con la plaza |
 | Imagen diaria de OVHcloud | Un punto por día, sustituido en un día aproximadamente después de reinstalar la plaza |
 | Datos técnicos de los servidores | Solo los últimos valores |
 | Registro de eventos del guichet | 12 meses |

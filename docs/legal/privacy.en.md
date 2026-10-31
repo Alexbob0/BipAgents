@@ -407,13 +407,13 @@ are erased 30 days after they stopped.
 
 ### 5.5 Backups
 
-Your place backs itself up every hour. The backup is **encrypted on the place**, before it leaves, with a key that stays
+Your place backs itself up a few minutes after each activity, and at least once a day. The backup is **encrypted on the place**, before it leaves, with a key that stays
 on the place and on your devices, plus a copy of this key encrypted with your recovery code (section 5.2), which Kerfy
 Studio cannot open. On the all-included offer the place is on a server Kerfy Studio rents, so the key is there too, and
 technically the host as well as Kerfy Studio could access it; our software reads neither your place nor its backups,
 and we would only do so if the law required it. Kerfy Studio keeps these
 backups at a backup hosting provider (not in service yet; it will be named here before it goes into service) without
-being able to read them: one per hour for 48 hours, one
+being able to read them: those of the last 2 hours, then one per hour for 48 hours, one
 per day for 30 days, one per week for 12 weeks. They are erased with your place.
 
 **OVHcloud's daily image.** On its servers, OVHcloud also makes a daily image of the whole server, which it keeps on
@@ -657,7 +657,7 @@ service. You can ask us for a copy of the applicable safeguards.
 | Keyed fingerprint of the Android device (free week) | 24 months |
 | IP address when a free week is reserved | Never stored; in memory, as a fingerprint, 15 minutes at most |
 | Content of your place | During the subscription, then 30 days (3 days after a free week that was not continued) |
-| Backups | 48 hours (hourly), 30 days (daily), 12 weeks (weekly); erased with the place |
+| Backups | 2 hours (all), then 48 hours (hourly), 30 days (daily), 12 weeks (weekly); erased with the place |
 | OVHcloud's daily image | One point per day, replaced within about a day after the place is reinstalled |
 | Servers' technical data | Latest values only |
 | The guichet's event log | 12 months |

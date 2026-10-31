@@ -424,14 +424,14 @@ réduit sont effacées 30 jours après s'être arrêtées.
 
 ### 5.5 Les sauvegardes
 
-Ta place se sauvegarde toutes les heures. La sauvegarde est **chiffrée sur la place**, avant de partir, avec une clé
+Ta place se sauvegarde quelques minutes après chaque activité, et au moins une fois par jour. La sauvegarde est **chiffrée sur la place**, avant de partir, avec une clé
 qui reste sur la place et sur tes appareils, plus une copie de cette clé chiffrée par ton code de récupération
 (section 5.2), que Kerfy Studio ne peut pas ouvrir. Sur l'offre tout compris, la place est sur un serveur loué par
 Kerfy Studio : la clé y est donc présente, et
 techniquement l'hébergeur comme Kerfy Studio pourraient y accéder ; notre logiciel ne lit ni ta place ni ses
 sauvegardes, et nous ne le ferions que si la loi nous y oblige.
 Kerfy Studio garde ces sauvegardes chez un hébergeur de sauvegardes (pas encore en service ; il sera indiqué ici avant sa mise en service) sans pouvoir
-les lire : une par heure
+les lire : celles des 2 dernières heures, puis une par heure
 pendant 48 heures, une par jour pendant 30 jours, une par semaine pendant 12 semaines. Elles sont effacées avec ta
 place.
 
@@ -690,7 +690,7 @@ avant leur mise en service. Tu peux nous demander une copie des garanties applic
 | Empreinte de l'appareil Android, hachée avec une clé secrète (semaine gratuite) | 24 mois |
 | Adresse IP à la réservation d'une semaine gratuite | Jamais enregistrée ; en mémoire, sous forme d'empreinte, 15 minutes au plus |
 | Contenu de ta place | Pendant l'abonnement, puis 30 jours (3 jours après une semaine gratuite non poursuivie) |
-| Sauvegardes | 48 heures (horaires), 30 jours (quotidiennes), 12 semaines (hebdomadaires) ; effacées avec la place |
+| Sauvegardes | 2 heures (toutes), puis 48 heures (horaires), 30 jours (quotidiennes), 12 semaines (hebdomadaires) ; effacées avec la place |
 | Image quotidienne d'OVHcloud | Un point par jour, remplacé dans la journée environ après la réinstallation de la place |
 | Données techniques des serveurs | Dernières valeurs seulement |
 | Journal des événements du guichet | 12 mois |

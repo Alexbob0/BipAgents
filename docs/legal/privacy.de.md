@@ -442,13 +442,13 @@ Plätze eines verkleinerten Tarifs werden 30 Tage nach ihrem Anhalten gelöscht.
 
 ### 5.5 Die Sicherungen
 
-Dein Platz sichert sich jede Stunde. Die Sicherung wird **auf dem Platz verschlüsselt**, bevor sie ihn verlässt, mit
+Dein Platz sichert sich wenige Minuten nach jeder Aktivität und mindestens einmal am Tag. Die Sicherung wird **auf dem Platz verschlüsselt**, bevor sie ihn verlässt, mit
 einem Schlüssel, der auf dem Platz und auf deinen Geräten bleibt, plus einer Kopie dieses Schlüssels, die mit deinem
 Wiederherstellungscode verschlüsselt ist (Abschnitt 5.2) und die Kerfy Studio nicht öffnen kann. Beim Komplettangebot
 liegt der Platz auf einem von Kerfy Studio gemieteten Server: Der Schlüssel ist also auch dort, und
 technisch könnten der Hoster wie Kerfy Studio darauf zugreifen; unsere Software liest weder deinen Platz noch seine
 Sicherungen, und wir täten es nur, wenn das Gesetz uns dazu verpflichtet. Kerfy Studio bewahrt diese Sicherungen bei einem Hoster für Sicherungen auf (noch nicht in Betrieb; er wird hier vor der Inbetriebnahme genannt), ohne sie
-lesen zu können: eine pro Stunde für 48 Stunden, eine pro Tag für 30 Tage, eine pro Woche für 12 Wochen.
+lesen zu können: die der letzten 2 Stunden, dann eine pro Stunde für 48 Stunden, eine pro Tag für 30 Tage, eine pro Woche für 12 Wochen.
 Sie werden mit deinem Platz gelöscht.
 
 **Das tägliche Abbild von OVHcloud.** Auf seinen Servern erstellt OVHcloud außerdem ein tägliches Abbild des ganzen
@@ -700,7 +700,7 @@ Inbetriebnahme angegeben. Du kannst bei uns eine Kopie der geltenden Garantien a
 | Fingerabdruck des Android-Geräts, mit einem geheimen Schlüssel gehasht (kostenlose Woche) | 24 Monate |
 | IP-Adresse bei der Reservierung einer kostenlosen Woche | Nie gespeichert; im Arbeitsspeicher, als Fingerabdruck, höchstens 15 Minuten |
 | Inhalt deines Platzes | Während des Abos, dann 30 Tage (3 Tage nach einer nicht fortgesetzten kostenlosen Woche) |
-| Sicherungen | 48 Stunden (stündlich), 30 Tage (täglich), 12 Wochen (wöchentlich); mit dem Platz gelöscht |
+| Sicherungen | 2 Stunden (alle), dann 48 Stunden (stündlich), 30 Tage (täglich), 12 Wochen (wöchentlich); mit dem Platz gelöscht |
 | Tägliches Abbild von OVHcloud | Ein Punkt pro Tag, innerhalb von etwa einem Tag nach der Neuinstallation des Platzes ersetzt |
 | Technische Daten der Server | Nur die letzten Werte |
 | Ereignisprotokoll des Guichet | 12 Monate |

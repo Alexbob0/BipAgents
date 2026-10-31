@@ -38,7 +38,7 @@ tu peux regarder, et **te demandent avant d'agir**.
 
 Rien à installer : tu télécharges l'app, tu choisis une formule, tes Bips te disent bonjour. Chaque personne a **son
 propre espace privé sur un serveur dans l'Union européenne**, entretenu par Kerfy Studio (mises à jour, sauvegardes
-chiffrées toutes les heures, assistance).
+chiffrées après chaque activité, assistance).
 
 - **Solo**, **Duo** ou **Famille** (jusqu'à 6 personnes, chacune avec son espace, ses agents et sa vie privée).
 - **Crédit IA inclus chaque mois**, partagé par toute la formule ; l'app l'affiche en nombre estimé de messages (une

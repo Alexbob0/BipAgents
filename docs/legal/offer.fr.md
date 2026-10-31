@@ -89,7 +89,7 @@ Pour chaque personne du forfait :
   (https://github.com/NousResearch/hermes-agent) ; BipAgents n'est ni édité, ni approuvé, ni sponsorisé par Nous
   Research.
 - **Les voix des Bips**, sur son téléphone quand il le permet, sinon par sa place.
-- **Une sauvegarde chiffrée toutes les heures** (section 9).
+- **Une sauvegarde chiffrée quelques minutes après chaque activité, et au moins une fois par jour** (section 9).
 - **Un accès SSH** au compte de sa place, depuis un ordinateur dont la clé a été ajoutée dans l'app (Réglages › Offre
   tout compris › Accès SSH), sans droits d'administrateur (root).
 
@@ -271,16 +271,16 @@ crédit (tu peux en ajouter, section 6) ; les services que tu relies à tes agen
   L'accès aux comptes de Kerfy Studio chez les hébergeurs est réservé à la société. Un accès au contenu d'une place
   n'aurait lieu que pour répondre à une obligation légale, et tu en serais informé quand la loi le permet. Comme tout
   hébergeur, OVHcloud et Hetzner ont un accès physique à leurs serveurs.
-- **Sauvegardes** : ta place se sauvegarde toutes les heures, chiffrée sur la place avec une clé que seuls tes
+- **Sauvegardes** : ta place se sauvegarde quelques minutes après chaque activité, et au moins une fois par jour, chiffrée sur la place avec une clé que seuls tes
   appareils détiennent (plus la copie chiffrée que ton code de récupération ouvre, section 7). Kerfy Studio garde ces
-  sauvegardes sans pouvoir les lire : une par heure pendant 48 heures, une par jour pendant 30 jours, une par semaine
+  sauvegardes sans pouvoir les lire : celles des 2 dernières heures, puis une par heure pendant 48 heures, une par jour pendant 30 jours, une par semaine
   pendant 12 semaines. Réglages › Offre tout compris › Sauvegardes montre la dernière et en lance une tout de suite.
 - **L'image quotidienne d'OVHcloud** : sur ses serveurs, OVHcloud fait aussi, de son côté, une image quotidienne du
   serveur entier, qu'il garde chez lui (un point de restauration par jour, non chiffré par Kerfy Studio). Quand une
   place est réinstallée pour quelqu'un d'autre, l'image qui la contenait est remplacée dans la journée environ.
 - **Pannes** : si le serveur de ta place reste injoignable environ 40 minutes, ta place est déplacée sur un autre serveur,
-  parfois chez un autre hébergeur, et restaurée depuis sa dernière sauvegarde : **tu perds au plus environ une heure de
-  données**. L'app te prévient et termine la remise en place avec la clé de sauvegarde de ton téléphone : ouvre-la.
+  parfois chez un autre hébergeur, et restaurée depuis sa dernière sauvegarde : **tu perds au plus environ 20 minutes
+  d'activité**. L'app te prévient et termine la remise en place avec la clé de sauvegarde de ton téléphone : ouvre-la.
   Quand tout un hébergeur est en panne en même temps, Kerfy Studio peut attendre son retour plutôt que de déplacer tout
   le monde.
 - **Mise en veille** : une place sans demande de l'app depuis 14 jours et sans routine planifiée s'endort ; elle se

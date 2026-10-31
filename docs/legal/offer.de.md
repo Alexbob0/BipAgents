@@ -91,7 +91,7 @@ Für jede Person des Tarifs:
   (https://github.com/NousResearch/hermes-agent); BipAgents wird von Nous Research weder herausgegeben noch gebilligt
   noch gesponsert.
 - **Die Stimmen der Bips**, auf ihrem Telefon, wenn es das kann, sonst von ihrem Platz.
-- **Eine verschlüsselte Sicherung jede Stunde** (Abschnitt 9).
+- **Eine verschlüsselte Sicherung wenige Minuten nach jeder Aktivität und mindestens einmal am Tag** (Abschnitt 9).
 - **Ein SSH-Zugang** zum Konto ihres Platzes, von einem Computer aus, dessen Schlüssel in der App hinzugefügt wurde
   (Einstellungen › Alles-inklusive-Angebot › SSH-Zugang), ohne Administratorrechte (root).
 
@@ -276,9 +276,9 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
   Unternehmen vorbehalten. Auf den Inhalt eines Platzes würde nur zugegriffen, um eine gesetzliche Pflicht zu erfüllen,
   und du würdest informiert, wenn das Gesetz es erlaubt. Wie jeder Hoster haben OVHcloud und Hetzner physischen Zugang
   zu ihren Servern.
-- **Sicherungen**: Dein Platz sichert sich jede Stunde, verschlüsselt auf dem Platz mit einem Schlüssel, den nur deine
+- **Sicherungen**: Dein Platz sichert sich wenige Minuten nach jeder Aktivität und mindestens einmal am Tag, verschlüsselt auf dem Platz mit einem Schlüssel, den nur deine
   Geräte haben (plus die verschlüsselte Kopie, die dein Wiederherstellungscode öffnet, Abschnitt 7). Kerfy Studio
-  bewahrt diese Sicherungen auf, ohne sie lesen zu können: eine pro Stunde für 48 Stunden, eine pro Tag für 30 Tage,
+  bewahrt diese Sicherungen auf, ohne sie lesen zu können: die der letzten 2 Stunden, dann eine pro Stunde für 48 Stunden, eine pro Tag für 30 Tage,
   eine pro Woche für 12 Wochen. Einstellungen › Alles-inklusive-Angebot › Sicherungen zeigt die letzte und startet
   sofort eine.
 - **Das tägliche Abbild von OVHcloud**: Auf seinen Servern erstellt OVHcloud außerdem selbst ein tägliches Abbild des
@@ -287,7 +287,7 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
   etwa einem Tag ersetzt.
 - **Ausfälle**: Bleibt der Server deines Platzes etwa 40 Minuten lang unerreichbar, wird dein Platz auf einen anderen
   Server verlegt, manchmal bei einem anderen Hoster, und aus seiner letzten Sicherung wiederhergestellt: **Du verlierst
-  höchstens etwa eine Stunde an Daten.** Die App informiert dich und schließt die Wiederherstellung mit dem
+  höchstens etwa 20 Minuten Aktivität.** Die App informiert dich und schließt die Wiederherstellung mit dem
   Sicherungsschlüssel auf deinem Telefon ab: Öffne sie. Fällt ein ganzer Hoster auf einmal aus, kann Kerfy Studio auf
   seine Rückkehr warten, statt alle zu verlegen.
 - **Ruhezustand**: Ein Platz ohne Anfrage der App seit 14 Tagen und ohne geplante Routine schläft ein; er wacht auf,
