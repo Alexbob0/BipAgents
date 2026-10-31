@@ -27,6 +27,8 @@ struct Fake {
     /// The small model's answers to the conductor, in order.
     conductor: Arc<Mutex<VecDeque<String>>>,
     asked: Arc<Mutex<Vec<String>>>,
+    /// The small model's route (default: pm).
+    router: Arc<Mutex<Option<String>>>,
 }
 
 async fn backend(State(fake): State<Fake>, request: Request) -> Response {
@@ -41,7 +43,7 @@ async fn backend(State(fake): State<Fake>, request: Request) -> Response {
         let answer = if system.contains("coordinate a team") {
             fake.conductor.lock().unwrap().pop_front().unwrap_or_else(|| "none — done".into())
         } else if system.contains("route a message") {
-            "pm".into()
+            fake.router.lock().unwrap().clone().unwrap_or_else(|| "pm".into())
         } else if system.contains("real piece of work") {
             "App web de liste de courses".into()
         } else {
@@ -282,4 +284,33 @@ async fn team_work_stops_at_its_budget_and_breaks_a_back_and_forth() {
     assert_eq!(m[4]["handoff"], json!({"to": "person", "why": "", "by": "budget"}));
     let refused = fake.asked.lock().unwrap().len();
     assert_eq!(refused, 1, "one conductor call");
+}
+
+#[tokio::test]
+async fn a_task_goes_to_one_agent_and_a_turn_without_words_is_wrapped_up() {
+    let fake = Fake::default();
+    let (app, _dir) = app_with(&fake, json!({})).await;
+    let (k, v) = auth();
+    let h = [(k, v.as_str())];
+    let made = app
+        .send_json("POST", "/v1/rooms", &h, &json!({"participants": ["pm", "design", "front", "back", "qa"]}))
+        .await
+        .json();
+    let id = made["id"].as_str().unwrap().to_string();
+    let path = format!("/v1/rooms/{id}/messages");
+
+    // the small model names two agents for a piece of work: one only (2026-10-31: Back and Front at once)
+    *fake.router.lock().unwrap() = Some("back, front".into());
+    // its run ends without a word: one short turn without tools says what it did, never an empty turn
+    script(&fake, "back", &["", "J'ai posé le schéma de la base, il reste l'API.\nNEXT: person"]);
+    let sent = app.send_json("POST", &path, &h, &json!({"text": "Faites-moi une petite app web de liste de courses"})).await.json();
+    assert_eq!(sent["route"], json!({"by": "model", "agents": ["back"]}), "{sent}");
+    let page = settled(&app, &id, 2).await;
+    assert_eq!(speakers(&page), vec!["person", "back"], "{page}");
+    assert_eq!(page["messages"][1]["kind"], "agent");
+    assert_eq!(page["messages"][1]["text"], "J'ai posé le schéma de la base, il reste l'API.");
+    let runs = fake.runs.lock().unwrap();
+    assert_eq!(runs.len(), 2);
+    let wrap = runs[1].1["input"].as_str().unwrap();
+    assert!(wrap.contains("ended without an answer") && wrap.contains("Do not call any tool"), "{wrap}");
 }

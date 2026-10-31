@@ -2381,6 +2381,32 @@ mod tests {
     }
 
     #[test]
+    fn a_team_turn_is_capped_and_a_task_goes_to_one_agent() {
+        let config = Config::with_key("k");
+        let mut room = Room { id: "g000000000001".into(), title: "T".into(), next_id: 1, ..Default::default() };
+        let cause = room.push_message(message(0, "person", "Faites-moi une app web de liste de courses"));
+        assert_eq!(turn_cap(&config, &room, cause), 200_000);
+        let mut big = message(0, "back", "API livrée");
+        big.reply_to = Some(cause);
+        big.tokens = Some(Tokens { input: 540_000, output: 5_000 });
+        room.push_message(big);
+        // what the message's budget has left (55k), never under the floor
+        assert_eq!(turn_cap(&config, &room, cause), 55_000);
+        room.messages.last_mut().unwrap().tokens = Some(Tokens { input: 700_000, output: 0 });
+        assert_eq!(turn_cap(&config, &room, cause), TURN_TOKENS_FLOOR);
+        // the small model's two picks: one for a task, or in team work; two for two questions
+        assert_eq!(router_keeps(&room, "Faites-moi une petite app web de liste de courses"), 1);
+        assert_eq!(router_keeps(&room, "Il fait quel temps demain, et j'ai combien sur mon compte ?"), 2);
+        room.goal = "Une app de courses".into();
+        assert_eq!(router_keeps(&room, "Il fait quel temps demain, et j'ai combien sur mon compte ?"), 1);
+        // the wrap-up turn: no tools, why, the relay lines
+        let told = wrap_input("capped", true);
+        assert!(told.contains("limit of tokens") && told.contains("Do not call any tool") && told.contains("DONE and NEXT"));
+        assert!(wrap_input("cancelled", false).contains("the NEXT line"));
+        assert_eq!(capped_text("fr", "Back"), "Back a atteint la limite de son tour et passe la main.");
+    }
+
+    #[test]
     fn rooms_are_kept_private_and_listed_newest_first() {
         let dir = tempfile::tempdir().unwrap();
         let mut config = Config::with_key("k");
