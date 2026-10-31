@@ -1057,7 +1057,9 @@ def test_a_server_the_app_created_installs_without_a_question(monkeypatch, tmp_p
     assert f'[setup]\nfile = "{tmp_path}/.config/bipagents/setup.json"' in out
     # the offer's model from the start, with a placeholder key until the claim writes the person's
     assert "config set model.provider custom" in out and "config set model.default glm-5.3-flash" in out
-    assert "CUSTOM_MODEL_API_KEY reserve-no-key-yet" in out and "OPENROUTER_API_KEY" not in out
+    # (the dry run hides every *_KEY value as <key>; the value itself is the installer's placeholder)
+    assert "config set CUSTOM_MODEL_API_KEY <key>" in out and "OPENROUTER_API_KEY" not in out
+    assert cli.CLOUD_KEY_PLACEHOLDER == "reserve-no-key-yet"
     assert "profile create" not in out   # the agents come with the app's claim
     # The phones' 8-bit voices, without PyTorch, loaded only while they speak.
     assert languages == [("de,fr,en,es,nl", tmp_path / ".local/share/bipagents/voices")]
@@ -1123,7 +1125,7 @@ def test_the_bridge_s_service_stops_within_15_seconds(tmp_path, monkeypatch):
     install's unit and plist say 15 s, and an update adds it to the units installed before (once)."""
     import sys
     from bipinstall import migrations, stack
-    assert "2026-10-27-bridge-stop-timeout" == migrations.MIGRATIONS[-1][0]
+    assert "2026-10-27-bridge-stop-timeout" in [name for name, *_ in migrations.MIGRATIONS]
     inst = Install(repo=tmp_path, home=tmp_path, ports=Ports(8640), tailnet_name=None, lan_address=None)
     _, _, unit = stack.bridge_service(inst, "linux")
     assert "\nTimeoutStopSec=15\n" in unit
