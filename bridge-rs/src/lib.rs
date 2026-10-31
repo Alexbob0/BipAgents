@@ -60,6 +60,7 @@ pub mod sleep;
 // -- voice-speech ----------------------------------------------------------------------------------
 pub mod durations;
 pub mod live_brief;
+pub mod live_calls;
 pub mod numbers_fr;
 pub mod pronounce;
 pub mod pronunciations;

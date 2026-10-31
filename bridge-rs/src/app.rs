@@ -335,6 +335,7 @@ impl AppState {
         crate::agent_email::start(self);
         self.spawn(self.briefs.clone().run());
         self.spawn(self.briefs.clone().sweep_forever());
+        self.spawn(crate::live_calls::run_forever(self.clone())); // Live calls the app never ended (live_calls.rs)
         // the plan's AI credit used (a server of the offer): routines, the browser and background tasks pause
         self.spawn(crate::credit::run_forever(self.clone()));
         // an agent's Hermes restarted when there is a reason, once idle (agent_restart.rs)
@@ -1023,7 +1024,14 @@ async fn session_state(
     // the agent's Boîte messages (a hand-back, a routine's report): they show in the conversation too (Bot Chat, all
     // of them) without changing its message count; the app reloads when this changes
     let outbox = state.store.outbox_marker(&agent_cfg.name).await.ok();
-    Ok(web::ok(json!({"session_id": session_id, "message_count": count, "updated_at": updated, "outbox": outbox})))
+    let mut out = json!({"session_id": session_id, "message_count": count, "updated_at": updated, "outbox": outbox});
+    // a Live call put in it (live_calls.rs): shown at its time, the app reloads when this changes; absent without any
+    let calls = crate::live_calls::LiveCalls::of(&state.briefs);
+    let (name, id) = (agent_cfg.name.clone(), session_id.clone());
+    if let Ok(Some(marker)) = tokio::task::spawn_blocking(move || calls.marker(&name, &id)).await {
+        out["calls"] = json!(marker);
+    }
+    Ok(web::ok(out))
 }
 
 /// Is each agent's Hermes up, and does the model answer? Lets the app tell « server down » from « model
@@ -1591,7 +1599,8 @@ const FIRST_ROUTE_METHODS: &[(&str, &str)] = &[
     ("/v1/agents/{agent_id}/voices", "PUT"),
     ("/v1/agents/{agent_id}/appearance", "PUT"),
     ("/v1/live/brief", "GET"),
-    ("/v1/live/calls", "POST"),
+    ("/v1/live/calls", ""),
+    ("/v1/live/calls/start", "POST"),
     ("/v1/live/recaps", "POST"),
     ("/v1/live/recaps/take", "POST"),
     ("/v1/favicon/{host}", "GET"),
