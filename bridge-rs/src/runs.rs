@@ -588,6 +588,16 @@ impl RunHub {
         }
     }
 
+    /// A run the hub follows (a room's turn, rooms.rs): its tool calls so far and whether the brake stopped it. None
+    /// once the hub let it go.
+    pub fn run_progress(&self, agent: &str, run_id: &str) -> Option<(u32, bool)> {
+        let inner = lock(&self.inner);
+        inner.subs.get(&(agent.to_string(), run_id.to_string())).map(|sub| {
+            let st = lock(&sub.state);
+            (st.tool_calls, st.braked)
+        })
+    }
+
     /// Follow the run for the brake (loop_brake.rs) whoever looks at it, without the pushes of `watch`: a run started
     /// or followed through the door's Hermes relay (lan.rs), a peer's message (peers.rs). Before 2026-10-27 evening
     /// those runs were invisible to the hub: never counted nor stopped, their writes counted per agent.

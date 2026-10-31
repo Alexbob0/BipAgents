@@ -415,6 +415,10 @@ pub fn parse_goal(answer: &str) -> Option<String> {
     if line.is_empty() || folded == "none" || folded.starts_with("none ") || folded == "aucun" || folded == "rien" {
         return None;
     }
+    // asked for 12 words at most: a long line or a question is the model thinking aloud, not a goal
+    if line.split_whitespace().count() > 20 || line.contains('?') {
+        return None;
+    }
     Some(tk::head(line, GOAL_CHARS).to_string())
 }
 
@@ -585,6 +589,8 @@ mod tests {
         );
         assert_eq!(parse_goal("\"Livrer le site du club.\""), Some("Livrer le site du club".into()));
         assert_eq!(parse_goal("none"), None);
+        // a thinking model's thoughts are no goal (DeepSeek on the lab, 2026-10-31)
+        assert_eq!(parse_goal("We need answer in French? The user asks: « Faites-moi une petite app web »"), None);
         assert_eq!(parse_goal("None."), None);
         assert_eq!(parse_goal(""), None);
     }

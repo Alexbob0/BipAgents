@@ -140,6 +140,10 @@ pub const INPUT_CHARS: usize = 12_000;
 pub const APPROVAL_WAIT: f64 = 1800.0;
 /// Team work: a turn's tokens looked at every this many looks at its run (`poll` seconds each).
 pub const CAP_LOOK_EVERY: u32 = 2;
+/// A model call of an agent's turn reads about this much (its instructions, tools and the room's lines: 19-20k on the
+/// lab), and each step before it adds about `STEP_TOKENS` (a tool's result, the model's words).
+pub const CALL_TOKENS: i64 = 20_000;
+pub const STEP_TOKENS: i64 = 3_000;
 /// The last turns of a message's budget still get this much (a turn that can say something).
 pub const TURN_TOKENS_FLOOR: i64 = 40_000;
 /// A run the bridge stopped: its end waited for this long.
@@ -153,6 +157,8 @@ new. Reply now, briefly: what you did and what is left, then the DONE and NEXT l
 pub const ROUTER_MESSAGE_CHARS: usize = 600;
 pub const ROLE_CHARS: usize = 160;
 pub const ROUTER_MAX_TOKENS: i64 = 20;
+/// The small calls to a model that may think anyway (not GLM through EUrouter), at least this many tokens.
+pub const SMALL_THINKING_TOKENS: i64 = 600;
 pub const SESSION_TITLE: &str = "BipAgents · discussion";
 pub const ROUTER_INSTRUCTIONS: &str = "You route a message of a group chat to the agents who should answer it. Reply \
 with only the ids of 1 to 3 agents, comma-separated, the most concerned first.";
@@ -817,6 +823,13 @@ pub fn router_keeps(room: &Room, text: &str) -> usize {
     }
 }
 
+/// A run's tokens so far from its tool calls (`calls`): one model call before each and one after the last, each
+/// reading the turn's prompt (`CALL_TOKENS`) and what the steps before it added (`STEP_TOKENS` each).
+pub fn estimated_tokens(calls: u32) -> i64 {
+    let n = calls as i64 + 1;
+    n * CALL_TOKENS + STEP_TOKENS * n * (n - 1) / 2
+}
+
 /// A team turn's cap: `team_turn_tokens`, or what the person's message's budget has left (`TURN_TOKENS_FLOOR` at least).
 pub fn turn_cap(config: &Config, room: &Room, cause: u64) -> i64 {
     let left = config.rooms.team_tokens - room.tokens_for(cause);
@@ -828,7 +841,8 @@ pub fn wrap_input(why: &str, team: bool) -> String {
     let what = match why {
         "capped" => "Your turn reached its limit of tokens and was stopped.",
         "timeout" => "Your turn reached its time limit and was stopped.",
-        "cancelled" => "Your turn was stopped before you answered (too many tool calls, or the same call again).",
+        "braked" => "Your turn was stopped before you answered: too many tool calls, or the same call again and again.",
+        "cancelled" => "Your turn was stopped before you answered.",
         _ => "Your turn ended without an answer.",
     };
     let end = if team { "then end with the DONE and NEXT lines" } else { "then end with the NEXT line" };
@@ -1041,6 +1055,13 @@ impl Rooms {
         let mut body = json!({"model": model, "temperature": 0, "max_tokens": max_tokens,
                               "messages": [{"role": "system", "content": system},
                                            {"role": "user", "content": user}]});
+        if !crate::agents_admin::keeps_thinking_on(&model, &base) {
+            // a thinking model (DeepSeek, a local server) spent the few tokens thinking and answered nothing, or its
+            // thoughts became the goal (lab, 2026-10-31): asked not to think, as Hermes' patch 0010 does, with room
+            // to answer if it thinks anyway
+            body["chat_template_kwargs"] = json!({"enable_thinking": false, "thinking": false});
+            body["max_tokens"] = json!(max_tokens.max(SMALL_THINKING_TOKENS));
+        }
         crate::model_route::add_to_body(&config.model_provider_order, &base, &mut body);
         let mut request = self.http.post(format!("{base}/chat/completions")).json(&body).timeout(Duration::from_secs(20));
         if !key.is_empty() {
@@ -1061,8 +1082,10 @@ impl Rooms {
         }
         let message = data.get("choices").and_then(|c| c.get(0)).and_then(|c| c.get("message"));
         let mut answer = message.and_then(|m| m.get("content")).and_then(Value::as_str).unwrap_or("").to_string();
-        if answer.trim().is_empty() {
-            // a thinking model that spent its tokens thinking: its reasoning's last line may still name someone
+        let router = system == relay::ROUTER_ONE_INSTRUCTIONS || system == ROUTER_INSTRUCTIONS;
+        if answer.trim().is_empty() && router {
+            // a thinking model that spent its tokens thinking: its reasoning's last line may still name someone (the
+            // router only: its answer must be ids; a goal or the conductor's why taken from thoughts was nonsense)
             answer = message
                 .and_then(|m| m.get("reasoning_content").or_else(|| m.get("reasoning")))
                 .and_then(Value::as_str)
@@ -1317,18 +1340,27 @@ impl Rooms {
         // team work: one turn at most `team_turn_tokens` (and what the message's budget has left), told to wrap up at
         // 60 %, stopped at the cap (Back took 749k in one turn on the lab, 2026-10-31)
         let cap = load(&config, id).filter(|r| config.rooms.handoff && r.team()).map(|r| turn_cap(&config, &r, turn.cause));
-        let (mut steered, mut capped, mut looks) = (false, false, 0u32);
+        let (mut steered, mut capped, mut braked, mut looks, mut calls) = (false, false, false, 0u32, 0u32);
         let (status, output, usage) = loop {
             tokio::time::sleep(Duration::from_secs_f64(self.poll)).await;
             if !self.still(id, turn) {
                 let _ = self.hermes.stop_run(&agent, &run_id).await;
                 break ("stopped".to_string(), String::new(), None);
             }
+            // the hub follows the run (its tool calls, the brake): Hermes writes a run's tokens in its conversation
+            // only at its end (the lab, 2026-10-31), so a turn's tokens are estimated from its model calls
+            let progress = self.hub.as_ref().and_then(|hub| hub.run_progress(&agent.name, &run_id));
+            braked |= progress.is_some_and(|(_, b)| b);
+            calls = calls.max(progress.map(|(c, _)| c).unwrap_or(0));
             if let Some(cap) = cap {
                 looks += 1;
                 if looks % CAP_LOOK_EVERY == 0 {
-                    if let Ok(now_at) = self.hermes.session(&agent, &session).await.map(|s| tokens_of(&s)) {
-                        let used = (now_at.input - base.input).max(0) + (now_at.output - base.output).max(0);
+                    let counted = match self.hermes.session(&agent, &session).await.map(|s| tokens_of(&s)) {
+                        Ok(now_at) => (now_at.input - base.input).max(0) + (now_at.output - base.output).max(0),
+                        Err(_) => 0,
+                    };
+                    {
+                        let used = counted.max(estimated_tokens(progress.map(|(calls, _)| calls).unwrap_or(0)));
                         if used >= cap {
                             tracing::info!(room = %id, agent = %agent.name, used = used, cap = cap, "rooms: a turn at its cap, stopped");
                             capped = true;
@@ -1383,6 +1415,8 @@ impl Rooms {
                 Tokens { input: (after.input - base.input).max(0), output: (after.output - base.output).max(0) }
             }
         };
+        tracing::info!(room = %id, agent = %agent.name, status = %status, tool_calls = calls, braked = braked, capped = capped,
+            steered = steered, tokens = tokens.input + tokens.output, "rooms: run ended");
         let mut text = hand_over_files(&config, &agent, &run_id, tk::strip(&output)).await;
         let mut status = status;
         let answered = (status == "completed" || status == "gone") && !text.is_empty();
@@ -1390,7 +1424,13 @@ impl Rooms {
             // never an empty turn (2026-10-31: Front's last turn ended « cancelled », nothing said): stopped at its
             // cap, by the brake or the time limit, or ended without a word, the agent says in one short turn without
             // tools what it did and what is left, and hands over
-            let why = if capped { "capped".to_string() } else { status.clone() };
+            let why = if capped {
+                "capped".to_string()
+            } else if braked {
+                "braked".to_string()
+            } else {
+                status.clone()
+            };
             let (said, more) = self.wrap_up(&config, &agent, &session, id, turn, &why).await;
             tokens.add(&more);
             if !said.is_empty() {
@@ -2404,6 +2444,11 @@ mod tests {
         assert!(told.contains("limit of tokens") && told.contains("Do not call any tool") && told.contains("DONE and NEXT"));
         assert!(wrap_input("cancelled", false).contains("the NEXT line"));
         assert_eq!(capped_text("fr", "Back"), "Back a atteint la limite de son tour et passe la main.");
+        // a turn's tokens from its tool calls: one call 20k, 8 tool calls ≈ 288k (past the 200k cap)
+        assert_eq!(estimated_tokens(0), 20_000);
+        assert_eq!(estimated_tokens(4), 130_000);
+        assert!(estimated_tokens(8) > 200_000 && estimated_tokens(5) < 200_000);
+        assert!(wrap_input("braked", true).contains("the same call again"));
     }
 
     #[test]
