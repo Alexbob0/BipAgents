@@ -34,11 +34,13 @@
   .card p { margin: 10px 0 0; font-weight: 900; font-size: 17px; }
   .bip { position: relative; display: block; user-select: none; -webkit-user-select: none; touch-action: manipulation; cursor: pointer; }
   .bip-svg, .bip-svg svg { width: 100%; height: 100%; display: block; overflow: visible; }
-  .bip-bubble { position: absolute; left: 50%; top: -8px; transform: translate(-50%, -100%) scale(.6); opacity: 0; background: var(--chip); color: var(--ink);
+  .bip-bubble { position: absolute; z-index: 3; left: 50%; top: -8px; transform: translate(-50%, -100%) scale(.6); opacity: 0; background: var(--chip); color: var(--ink);
     font-weight: 900; font-size: 15px; padding: 6px 12px; border-radius: 999px; white-space: nowrap; pointer-events: none; transition: transform .25s cubic-bezier(.3, 1.6, .5, 1), opacity .2s; }
   .bip-bubble.show { opacity: 1; transform: translate(-50%, -100%) scale(1); }
   :focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; border-radius: 12px; }
-  @media (max-width: 520px) { .grid { grid-template-columns: 1fr 1fr; gap: 10px; } .stage { width: 112px; height: 112px; } .card { padding: 12px; border-radius: 20px; } }
+  @media (max-width: 520px) { .grid { grid-template-columns: 1fr 1fr; gap: 10px; } .stage { width: 112px; height: 112px; } .card { padding: 12px; border-radius: 20px; }
+    /* a long word (« Everything’s spinning… ») on two lines rather than over the next card */
+    .bip-bubble { white-space: normal; width: max-content; max-width: 140px; text-align: center; border-radius: 16px; } }
 </style>
 </head>
 <body>
@@ -54,16 +56,16 @@ import { Bip, CATEGORIES, COSTUMES, iconSVG } from "/assets/bips.js?v={{version}
 const T = {
   en: { title: "The Bips", lede: "Tap a Bip to see it react. Pick what they are doing:", idle: "Resting", think: "Thinking", talk: "Talking", listen: "Listening", work: "Working", happy: "Happy", sleep: "Asleep", error: "Oops", dress: "Dress up", plain: "No costume",
         names: { daily: "Daily life", wellness: "Well-being", finance: "Money", home: "Home", work: "Work", learning: "Learning", creative: "Creative", tech: "Tech" },
-        lines: { hop: ["Bip!", "Hi there!"], wink: ["Hehe", "Psst!"], giggle: ["Hihihi!", "That tickles!"], surprised: ["Oh!", "Whoa!"], boing: ["Boing!"], thanks: ["Thank you!", "♡"] } },
+        lines: { hop: ["Bip!", "Hi there!"], wink: ["Hehe", "Psst!"], giggle: ["Hihihi!", "That tickles!"], surprised: ["Oh!", "Whoa!"], boing: ["Boing!"], thanks: ["Thank you!", "♡"], dizzy: ["Everything’s spinning…"] } },
   fr: { title: "Les Bips", lede: "Touchez un Bip pour le voir réagir. Choisissez ce qu’ils font :", idle: "Au repos", think: "Réfléchit", talk: "Parle", listen: "Écoute", work: "Travaille", happy: "Content", sleep: "Dort", error: "Oups", dress: "Déguiser", plain: "Sans costume",
         names: { daily: "Quotidien", wellness: "Bien-être", finance: "Argent", home: "Maison", work: "Travail", learning: "Apprendre", creative: "Création", tech: "Technique" },
-        lines: { hop: ["Bip !", "Coucou !"], wink: ["Hihi", "Psst !"], giggle: ["Hihihi !", "Ça chatouille !"], surprised: ["Oh !", "Ouah !"], boing: ["Boing !"], thanks: ["Merci !", "♡"] } },
+        lines: { hop: ["Bip !", "Coucou !"], wink: ["Hihi", "Psst !"], giggle: ["Hihihi !", "Ça chatouille !"], surprised: ["Oh !", "Ouah !"], boing: ["Boing !"], thanks: ["Merci !", "♡"], dizzy: ["Tout tourne…"] } },
   de: { title: "Die Bips", lede: "Tippe einen Bip an und sieh, wie er reagiert. Wähle, was sie tun:", idle: "Ruhig", think: "Denkt nach", talk: "Spricht", listen: "Hört zu", work: "Arbeitet", happy: "Froh", sleep: "Schläft", error: "Hoppla", dress: "Verkleiden", plain: "Ohne Kostüm",
         names: { daily: "Alltag", wellness: "Wohlbefinden", finance: "Geld", home: "Zuhause", work: "Arbeit", learning: "Lernen", creative: "Kreativ", tech: "Technik" },
-        lines: { hop: ["Bip!", "Hallo!"], wink: ["Hehe", "Psst!"], giggle: ["Hihihi!", "Das kitzelt!"], surprised: ["Oh!", "Huch!"], boing: ["Boing!"], thanks: ["Danke!", "♡"] } },
+        lines: { hop: ["Bip!", "Hallo!"], wink: ["Hehe", "Psst!"], giggle: ["Hihihi!", "Das kitzelt!"], surprised: ["Oh!", "Huch!"], boing: ["Boing!"], thanks: ["Danke!", "♡"], dizzy: ["Alles dreht sich…"] } },
   es: { title: "Los Bips", lede: "Toca un Bip para ver cómo reacciona. Elige qué hacen:", idle: "En reposo", think: "Piensa", talk: "Habla", listen: "Escucha", work: "Trabaja", happy: "Contento", sleep: "Duerme", error: "Uy", dress: "Disfrazar", plain: "Sin disfraz",
         names: { daily: "Día a día", wellness: "Bienestar", finance: "Dinero", home: "Hogar", work: "Trabajo", learning: "Aprender", creative: "Creativo", tech: "Técnica" },
-        lines: { hop: ["¡Bip!", "¡Hola!"], wink: ["Jeje", "¡Psst!"], giggle: ["¡Jijiji!", "¡Cosquillas!"], surprised: ["¡Oh!", "¡Uy!"], boing: ["¡Boing!"], thanks: ["¡Gracias!", "♡"] } },
+        lines: { hop: ["¡Bip!", "¡Hola!"], wink: ["Jeje", "¡Psst!"], giggle: ["¡Jijiji!", "¡Cosquillas!"], surprised: ["¡Oh!", "¡Uy!"], boing: ["¡Boing!"], thanks: ["¡Gracias!", "♡"], dizzy: ["Todo da vueltas…"] } },
 };
 const pick = new URLSearchParams(location.search).get("lang") || (navigator.language || "en").slice(0, 2);
 const lang = T[pick] ? pick : "en", L = T[lang];
