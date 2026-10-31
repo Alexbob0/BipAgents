@@ -736,7 +736,7 @@ pub struct Config {
     pub model_health_url: Option<String>,
     pub model_health_key: Option<String>,
     /// `[model] provider_order`: the providers EUrouter tries first for every model call, so their prompt cache works
-    /// (model_route.rs; default entrim, melious; `[]`: EUrouter picks per call).
+    /// (model_route.rs; default entrim, greenpt, inceptron; `[]`: EUrouter picks per call).
     pub model_provider_order: Vec<String>,
     /// The bridge's address on the tailnet (`tailscale serve`), for the pairing QR code.
     pub public_url: Option<String>,

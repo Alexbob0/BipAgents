@@ -1,8 +1,20 @@
 //! Provider routing at EUrouter (2026-10-26): every model call names the providers to try first, so the provider's
 //! prompt cache works. Unpinned, EUrouter picks one of seven EU providers per call: the agent's instructions and tools
 //! (≈ 17k tokens) were never read from a cache and calls cost ≈ $0.20/M input. Pinned (Entrim), the next calls with the
-//! same prefix read ≈ 99 % of it from the cache at 17.5 % of the input price. `allow_fallbacks`: when the providers
-//! named are down, EUrouter still picks another one (availability wins).
+//! same prefix read ≈ 99 % of it from the cache at 17.5 % of the input price. A person must stay with ONE provider:
+//! the cache is the provider's, so every call served elsewhere pays its prefix in full (up to 2.5× the price).
+//!
+//! The order, GLM-5.3 Flash per provider (2026-10-31, `allow_fallbacks: false`, two calls on a 9.7k-token prefix,
+//! reasoning « low »; uncached input, then the cached part of the second call):
+//! - Entrim: $0.10/M, cache 9 664/9 702 billed ≈ 17.5 % of that ($0.0175/M), the best;
+//! - GreenPT: ≈ €0.11/M, cache 9 472 at ≈ 20 % (€0.022/M), the second;
+//! - Inceptron: $0.15/M, cache 8 960 at ≈ 47 % ($0.07/M), the third;
+//! - left out: Lyceum ($0.20/M, partial cache), Tensorix ($0.20/M, no cache), Berget (€0.25/M, reports a cache but
+//!   bills it in full), and Melious, which refuses GLM with a reasoning field (HTTP 400 « does not support
+//!   reasoning ») when the bridge always sends one (agents_admin::keeps_thinking_on): it was second until then, so
+//!   when Entrim failed the calls spread over any provider, with no cache.
+//!
+//! `allow_fallbacks`: when the three named are all down, EUrouter still picks another one (availability wins).
 //!
 //! The order is the bridge's setting `[model] provider_order` (default [`DEFAULT_ORDER`]; `[]` turns pinning off).
 //! It reaches:
@@ -10,7 +22,8 @@
 //!   custom endpoint's `extra_body` into every request to it, the auxiliary ones included: no patch needed). Hermes
 //!   uses the FIRST entry whose address matches, so the thinking entry (agents_admin.rs, `THINKING_PROVIDER`) carries
 //!   the routing too and the routing entry is then left out. Written at each start for every agent (`agent_tools::
-//!   register`), at a claim, and when the person changes the model or the thinking level;
+//!   register`, which also routes an agent just cloned), at a claim, and when the person changes the model or the
+//!   thinking level. The hub's own config.yaml (agents are cloned from it) only at a claim or a new AI key;
 //! - the bridge's own calls (Carnet, rooms' router, records, mail scan, WhatsApp import): [`add_to_body`].
 
 use serde_json::{json, Value};
@@ -18,8 +31,8 @@ use serde_json::{json, Value};
 use crate::agents_admin::pyyaml::Yaml;
 use crate::config::{AgentConfig, Config};
 
-/// Entrim first, Melious second (measured 2026-10-26, see the module's doc).
-pub const DEFAULT_ORDER: [&str; 2] = ["entrim", "melious"];
+/// Entrim, then GreenPT, then Inceptron: the three that cache GLM best (measured 2026-10-31, see the module's doc).
+pub const DEFAULT_ORDER: [&str; 3] = ["entrim", "greenpt", "inceptron"];
 
 /// The `providers:` entry holding the routing when the thinking entry doesn't.
 pub const ROUTE_PROVIDER: &str = "bipagents-route";
@@ -158,7 +171,7 @@ mod tests {
         assert_eq!(routing(&[], "https://api.eurouter.ai/api/v1"), None);
         let mut body = json!({"model": "m"});
         add_to_body(&order(), "https://api.eurouter.ai/api/v1", &mut body);
-        assert_eq!(body["provider"], json!({"order": ["entrim", "melious"], "allow_fallbacks": true}));
+        assert_eq!(body["provider"], json!({"order": ["entrim", "greenpt", "inceptron"], "allow_fallbacks": true}));
         let mut other = json!({"model": "m"});
         add_to_body(&order(), "http://gpu:8888/v1", &mut other);
         assert!(other.get("provider").is_none());
@@ -174,10 +187,14 @@ mod tests {
         assert_eq!(
             pyyaml::dump(&routed),
             format!(
-                "{EU}{LOW}providers:\n  bipagents-route:\n    api: https://api.eurouter.ai/api/v1\n    extra_body:\n      provider:\n        order:\n        - entrim\n        - melious\n        allow_fallbacks: true\n"
+                "{EU}{LOW}providers:\n  bipagents-route:\n    api: https://api.eurouter.ai/api/v1\n    extra_body:\n      provider:\n        order:\n        - entrim\n        - greenpt\n        - inceptron\n        allow_fallbacks: true\n"
             )
         );
         assert_eq!(with_routing(&routed, &order(), None), None); // nothing more to do
+        // a profile routed with the old order (entrim, melious, before 2026-10-31) gets the new one at the next start
+        let old = pyyaml::dump(&routed).replace("- greenpt\n        - inceptron\n", "- melious\n");
+        let again = with_routing(&pyyaml::load(&old).unwrap(), &order(), None).unwrap();
+        assert_eq!(pyyaml::dump(&again), pyyaml::dump(&routed));
         // turned off: the entry goes, and `providers` with it; GLM's floor stays
         assert_eq!(pyyaml::dump(&with_routing(&routed, &[], None).unwrap()), format!("{EU}{LOW}"));
     }
@@ -215,7 +232,7 @@ mod tests {
         let mut body = json!({"model": "glm-5.3-flash", "max_tokens": 20});
         add_to_body(&order(), "https://api.eurouter.ai/api/v1", &mut body);
         assert_eq!(body["reasoning_effort"], "low");
-        assert_eq!(body["provider"]["allow_fallbacks"], true); // Melious, which refuses the field, is skipped
+        assert_eq!(body["provider"]["allow_fallbacks"], true); // all three down: EUrouter still answers
         let mut set = json!({"model": "GLM-5.3", "reasoning_effort": "high"});
         add_thinking_floor("https://api.eurouter.ai/api/v1", &mut set);
         assert_eq!(set["reasoning_effort"], "high");
