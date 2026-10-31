@@ -1725,6 +1725,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(build_router())
         .merge(agents_admin::router())
         .merge(crate::agent_groups::router())
+        .merge(crate::model_choice::router())
         .merge(crate::files_kept::router())
         .merge(crate::storage_watch::router())
         .merge(crate::feature_tips::router())

@@ -117,6 +117,7 @@ pub mod ssh_keys;
 pub mod tool_diet;
 /// The providers EUrouter tries first, for its prompt cache.
 pub mod model_route;
+pub mod model_choice;
 
 // -- tools-knowledge -------------------------------------------------------------------------------
 pub mod agent_email;
