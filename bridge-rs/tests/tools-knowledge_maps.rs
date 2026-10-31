@@ -154,6 +154,17 @@ async fn fake_nominatim(asked: Arc<std::sync::Mutex<Vec<String>>>) -> String {
                 "Belém" if bounded => json!([spot(38.6976, -9.2063, "Belém", "Belém, Lisboa, Portugal")]),
                 "Belém" => json!([spot(-1.4558, -48.5044, "Belém", "Belém, Pará, Brasil")]),
                 "Tour Eiffel" => json!([spot(48.8582599, 2.2945006, "Tour Eiffel", "Tour Eiffel, Paris, France")]),
+                // an address: Nominatim names it by its number
+                "12 rue de Rivoli, Paris" => {
+                    json!([spot(48.8556009, 2.3599124, "12", "12, Rue de Rivoli, Paris 4e, France")])
+                }
+                // a day out of Lisbon (25 km)
+                "Palácio da Pena, Sintra" => {
+                    json!([spot(38.7875680, -9.3905650, "Palácio da Pena", "Palácio da Pena, Sintra, Portugal")])
+                }
+                "Monte Saint-Michel" => {
+                    json!([spot(48.6359, -1.5115, "Mont-Saint-Michel", "Mont-Saint-Michel, France")])
+                }
                 _ => json!([]),
             };
             axum::Json(found)
@@ -334,4 +345,37 @@ data-lat=\"-9.2160\" data-lon=\"38.6916\">Torre de Belém</li></ol></figure><p>B
     }
     // a page merely speaking of a leaflet is not a map
     pages::save(&config, "home", "<p>Le leaflet du musée</p>", "Musée", None).unwrap();
+}
+
+#[tokio::test]
+async fn names_inside_an_area_are_found_by_their_first_part_a_day_out_and_addresses_keep_their_words() {
+    let asked = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let geocoder = fake_nominatim(asked.clone()).await;
+    let dir = tempfile::tempdir().unwrap();
+    let config = map_config(dir.path(), &geocoder).await;
+    let arguments = json!({"area": "Lisboa, Portugal", "markers": [
+        {"place": "Torre de Belém, Avenida da Índia, 1400-206 Lisboa"}, // a wrong address after the name
+        {"place": "Palácio da Pena, Sintra"},                            // outside the town, 25 km away
+        {"place": "Monte Saint-Michel"}]}); // far away: left out, said
+    let result = maps::call(&config, "daily", arguments.as_object().unwrap()).await;
+    let said = text(&result);
+    assert_eq!(result["isError"], json!(false), "{said}");
+    let map = kept_map(&config, "daily", &said);
+    let points = map["points"].as_array().unwrap();
+    assert_eq!((points[0]["lat"].as_f64(), points[0]["source"].as_str()), (Some(38.691584), Some("osm")));
+    assert_eq!((points[1]["lat"].as_f64(), points[1]["lon"].as_f64()), (Some(38.787568), Some(-9.390565)));
+    assert!(said.contains("« Palácio da Pena, Sintra » is outside « Lisboa, Portugal » (2"), "{said}");
+    // a place not found: in the data without coordinates (the apps may look it up), said to the agent
+    assert_eq!(points[2], json!({"name": "Monte Saint-Michel", "source": "none", "area": "Lisboa, Portugal"}));
+    assert!(said.contains("left out: no place found for « Monte Saint-Michel » in « Lisboa, Portugal »"), "{said}");
+    // an address keeps its words, not the number the geocoder names it by
+    let paris = maps::call(
+        &config,
+        "daily",
+        json!({"markers": [{"place": "12 rue de Rivoli, Paris"}, {"place": "Tour Eiffel"}]}).as_object().unwrap(),
+    )
+    .await;
+    let map = kept_map(&config, "daily", &text(&paris));
+    assert_eq!(map["points"][0]["name"], "12 rue de Rivoli");
+    assert_eq!(map["points"][1]["name"], "Tour Eiffel");
 }

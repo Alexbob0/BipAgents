@@ -42,7 +42,8 @@ pub fn tool() -> Value {
         "name": TOOL_NAME,
         "description": "A live map in the app (move, zoom, « Open in Maps » per place): use it whenever the person asks \
     for a map, a « carte », places to see, a tour or a way somewhere; never generate an image of a map, never draw one \
-    in a page. Give each place by its NAME or ADDRESS (« Torre de Belém », « 12 rue de Rivoli »), and area (the town): \
+    in a page. Give each place by its NAME (in the local language when you know it: « Castelo de São Jorge ») or its \
+    ADDRESS (« 12 rue de Rivoli »), and area (the town): \
     the bridge finds the exact spots itself. Never write coordinates from memory (they land in the sea); « lat, lon » \
     only when the person or a tool gave them (they are checked). The result gives a MEDIA: line (the map, shown in your \
     reply) and a short card to put in a bigger create_page page. line: a line through the markers in order (a walk). \
@@ -392,6 +393,8 @@ pub fn found_of(answer: &Value) -> Option<Found> {
             .to_string()
     };
     let town = part(&["city", "town", "village", "municipality", "suburb", "county", "state"]);
+    // « Sintra (Santa Maria e São Miguel, …) »: the town alone
+    let town = town.split(" (").next().unwrap_or("").trim().to_string();
     let land = part(&["country"]);
     let area = [town, land].into_iter().filter(|p| !p.is_empty()).collect::<Vec<_>>().join(", ");
     Some(Found { name, address, lat, lon, bbox, area })
@@ -431,6 +434,11 @@ impl Area {
         Area { name: String::new(), bbox: [s - dy, n + dy, w - dx, e + dx] }
     }
 
+    pub fn middle(&self) -> (f64, f64) {
+        let [s, n, w, e] = self.bbox;
+        ((s + n) / 2.0, (w + e) / 2.0)
+    }
+
     pub fn holds(&self, (lat, lon): (f64, f64)) -> bool {
         let [s, n, w, e] = self.bbox;
         (s..=n).contains(&lat) && (w..=e).contains(&lon)
@@ -468,19 +476,42 @@ async fn reverse(config: &Config, (lat, lon): (f64, f64)) -> Result<Option<Found
     Ok(found_of(&crate::weather::nominatim(config, "reverse", &params).await?))
 }
 
-/// A name inside the area: bounded to it, then with the area's name added (still inside it).
-async fn search_in(config: &Config, name: &str, area: Option<&Area>) -> Result<Option<Found>, String> {
-    let Some(area) = area else { return search(config, name, None).await };
+/// A name inside the area: bounded to it, as given then its first part alone (« Torre de Belém, Avenida da Índia »:
+/// the address was wrong), then with the area's name added (still inside it); last, anywhere within `AROUND_KM` of
+/// the area (a day out of town: Sintra from Lisbon), said in the result. Some((place, a word on it)).
+async fn search_in(
+    config: &Config,
+    name: &str,
+    area: Option<&Area>,
+) -> Result<Option<(Found, Option<String>)>, String> {
+    let Some(area) = area else { return Ok(search(config, name, None).await?.map(|f| (f, None))) };
     if let Some(found) = search(config, name, Some(area)).await? {
-        return Ok(Some(found));
+        return Ok(Some((found, None)));
+    }
+    let first = name.split(',').next().unwrap_or("").trim();
+    if first.len() > 2 && first != name.trim() {
+        if let Some(found) = search(config, first, Some(area)).await? {
+            return Ok(Some((found, None)));
+        }
     }
     let town = area.name.split(',').next().unwrap_or("").trim().to_lowercase();
-    if town.is_empty() || name.to_lowercase().contains(&town) {
+    if !town.is_empty() && !name.to_lowercase().contains(&town) {
+        let found = search(config, &format!("{name}, {}", area.name), None).await?;
+        if let Some(found) = found.filter(|f| area.holds((f.lat, f.lon))) {
+            return Ok(Some((found, None)));
+        }
+    }
+    let Some(found) = search(config, name, None).await? else { return Ok(None) };
+    let far = km(area.middle(), (found.lat, found.lon));
+    if far > AROUND_KM {
         return Ok(None);
     }
-    let found = search(config, &format!("{name}, {}", area.name), None).await?;
-    Ok(found.filter(|f| area.holds((f.lat, f.lon))))
+    let said = format!("« {name} » is outside « {} » ({far:.0} km from it)", area.name);
+    Ok(Some((found, Some(said))))
 }
+
+/// How far from the area a place found outside it is still taken.
+const AROUND_KM: f64 = 60.0;
 
 /// Coordinates the model gave, checked: as given, then the other way round. Some((point, swapped, its town)).
 async fn check_given(
@@ -538,9 +569,9 @@ async fn locate(
             }
             None if !label.trim().is_empty() => {
                 return match search_in(config, label, area).await? {
-                    Some(found) => {
+                    Some((found, also)) => {
                         let said = format!("« {place} » was not on land: « {label} » looked up instead");
-                        Ok((found, Some(said), FROM_OSM))
+                        Ok((found, Some(also.map(|a| format!("{said}; {a}")).unwrap_or(said)), FROM_OSM))
                     }
                     None => Err(format!("« {place} » is not on land{} and « {label} » was not found", within(area))),
                 }
@@ -551,8 +582,11 @@ async fn locate(
         }
     }
     match search_in(config, place, area).await? {
-        Some(found) => Ok((found, None, FROM_OSM)),
-        None => Err(format!("no place found for « {place} »{}", within(area))),
+        Some((found, said)) => Ok((found, said, FROM_OSM)),
+        None => Err(format!(
+            "no place found for « {place} »{} (try its name in the local language, or its address)",
+            within(area)
+        )),
     }
 }
 
@@ -661,9 +695,17 @@ pub async fn draw(config: &Config, arguments: &Dict) -> Result<Drawn, String> {
         };
         notes.extend(said);
         let paint = color(&text(item.get("color")), i);
-        asked.push((markers.len(), place, label.clone()));
+        let shown = if !label.is_empty() {
+            label.clone()
+        } else if place.starts_with(|c: char| c.is_ascii_digit()) || !found.name.chars().any(char::is_alphabetic) {
+            // an address: its own words (the geocoder names it by its number: « 12 »)
+            place.split(',').next().unwrap_or(&place).trim().to_string()
+        } else {
+            found.name.clone()
+        };
+        asked.push((markers.len(), place, label));
         markers.push(Marker {
-            label: if label.is_empty() { found.name.clone() } else { label },
+            label: shown,
             address: found.address,
             area: if found.area.is_empty() {
                 area.as_ref().map(|a| a.name.clone()).unwrap_or_default()
