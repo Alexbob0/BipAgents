@@ -1413,9 +1413,9 @@ fn record_thinking(folder: &Path, level: &str) -> std::io::Result<()> {
 /// token-diet-step3-2026-10-27.md). There `reasoning_effort: none` makes GLM think ~400 tokens and answer NOTHING
 /// (Entrim), `chat_template_kwargs.enable_thinking` is ignored, and « low » cuts its thinking to ~1 token on an
 /// easy question: −74 % cost, 3× faster, same quality as « medium » (Hermes' default). So « low » is their default
-/// and their floor: « none » is sent as « low ». Melious, the router's second provider, refuses any reasoning field
-/// for GLM (400), but EUrouter skips it by itself when the request carries one and fallbacks are allowed (they
-/// always are, model_route.rs): measured 2026-10-28. Hermes also retries a turn once without the field on that 400.
+/// and their floor: « none » is sent as « low ». Melious refuses any reasoning field for GLM (400, measured 2026-10-28
+/// and 2026-10-31), so it is out of the router's order (model_route.rs); Hermes also retries a turn once without the
+/// field on that 400.
 pub fn keeps_thinking_on(model: &str, base_url: &str) -> bool {
     model.to_lowercase().contains("glm") && crate::model_route::pins(base_url)
 }

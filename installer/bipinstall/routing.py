@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 
 import yaml
 
-DEFAULT_ORDER = ["entrim", "melious"]   # bridge-rs/src/model_route.rs DEFAULT_ORDER
+DEFAULT_ORDER = ["entrim", "greenpt", "inceptron"]   # bridge-rs/src/model_route.rs DEFAULT_ORDER (2026-10-31)
 ROUTE_ENTRY = "bipagents-route"
 THINKING_ENTRY = "bipagents-thinking"
 
