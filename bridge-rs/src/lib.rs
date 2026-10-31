@@ -175,6 +175,7 @@ pub mod desktop_page;
 pub mod desktop_read;
 pub mod login_fill;
 pub mod place_backup;
+pub mod restore_reconcile;
 /// A bipagents.com hostname and its Let's Encrypt certificate for a place of the offer (no Python counterpart).
 pub mod place_cert;
 pub mod proxy_header;
