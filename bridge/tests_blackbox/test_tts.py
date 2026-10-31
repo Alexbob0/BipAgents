@@ -88,7 +88,9 @@ def test_pocket_only_routes_everything_to_pocket_and_never_to_kyutai(bridges, fa
     bridge = bridges.new(change=change).start()
     sentence(bridge, text="Bonjour.", voice="5476")  # a Kyutai voice: the default Bip speaks instead
     assert fakes.pocket.inputs[-1]["voice"] == "loutre" and fakes.kyutai.inputs == []
-    assert bridge.get("/v1/agents", headers=AUTH).json()["agents"][0]["voice"] == "pocket:loutre"
+    # an agent nobody picked a voice for gets its category's Bip in the language it writes in (place-locale, 2026-10-30),
+    # not the install's default Bip
+    assert bridge.get("/v1/agents", headers=AUTH).json()["agents"][0]["voice"] == "pocket:en/ours"
     fakes.pocket.status = 503
     assert sentence(bridge, text="Encore.", voice="pocket:loutre").status_code >= 500
     assert fakes.kyutai.inputs == []
@@ -145,7 +147,7 @@ def test_drama_down_speaks_with_a_pocket_bip_of_the_same_language(bridges, fakes
     bridge = bridges.new(change=lambda c: c.update(voice_server={"url": f"http://127.0.0.1:{free_port()}",
                                                                  "model": "drama-3", "stream_rate": 44100})).start()
     out = stream(bridge, text="Bonjour.", voice="drama:fr-mascotte-s17")
-    assert fakes.pocket.inputs[-1]["voice"] == "colibri" and out
+    assert fakes.pocket.inputs[-1]["voice"] == "ours" and out      # the mascot's stand-in is Ours (2026-10-30)
     audio = sentence(bridge, text="Hello there.", voice="drama:en-naturelle-s47")
     assert fakes.pocket.inputs[-1]["voice"] == "en/galet" and audio.content
     health = bridge.get("/health").json()
@@ -173,7 +175,7 @@ def test_drama_whole_files_and_formats_it_cannot_make(bridges, fakes):
 
 def test_drama_voices_without_drama_go_to_pocket(bridge, fakes):
     sentence(bridge, text="Salut.", voice="drama:fr-mascotte-s28")
-    assert fakes.pocket.inputs[-1]["voice"] == "colibri"
+    assert fakes.pocket.inputs[-1]["voice"] == "ours"              # the mascot's stand-in is Ours (2026-10-30)
 
 
 def test_a_server_that_does_not_stream_gives_whole_wav_files_in_its_language(bridges, fakes):
