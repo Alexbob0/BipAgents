@@ -171,6 +171,52 @@ pub fn inline_maps(config: &Config, agent: &str, html: &str) -> String {
         .into_owned()
 }
 
+static MAP_CARD: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?is)<figure\b[^>]*\bclass\s*=\s*["'][^"']*\bmap-card\b[^"']*["'][^>]*>.*?</figure\s*>"#)
+        .expect("valid regex")
+});
+static MAP_ID: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?:\bsrc\s*=\s*["']map:|\bdata-map\s*=\s*["'])([A-Za-z0-9-]{1,40})["']"#).expect("valid regex")
+});
+/// A map drawn by the page itself: its places would be the model's guesses (2026-10-31, Lisbon's monuments in the sea).
+static OWN_MAP: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\bmaplibregl\b|leaflet(?:\.js|\.css|@|/dist)|\bL\.(?:map|marker|tileLayer)\s*\(|bipmap:")
+        .expect("valid regex")
+});
+
+pub const OWN_MAP_REFUSED: &str = "No page: it draws a map of its own (or a map card map_image did not make), with \
+places guessed. Call map_image with the places' names or addresses (and area: the town), then put the card it gives \
+in the page as it is.";
+
+/// The maps of a page as `map_image` made them: each map card (`<figure class="map-card">` with `map:<id>`) rebuilt
+/// from the map's kept data, whatever the agent wrote in it (positions come from the geocoder only); a card of an
+/// older map without data stays as written. Err: a map the page draws itself, or a card of no known map.
+pub fn expand_maps(config: &Config, agent: &str, html: &str) -> Result<String, ValueError> {
+    let outside_cards = MAP_CARD.replace_all(html, "");
+    if OWN_MAP.is_match(&outside_cards) {
+        return Err(ValueError(OWN_MAP_REFUSED.into()));
+    }
+    let mut refused = false;
+    let expanded = MAP_CARD.replace_all(html, |c: &regex::Captures| {
+        let card = &c[0];
+        let id = MAP_ID.captures(card).map(|m| m[1].to_string()).unwrap_or_default();
+        match crate::maps::kept(config, agent, &id) {
+            Some(map) => crate::maps::figure_of(&map),
+            None if !id.is_empty() && crate::maps::file(config, agent, &id).is_some() && !OWN_MAP.is_match(card) => {
+                card.to_string()
+            }
+            None => {
+                refused = true;
+                card.to_string()
+            }
+        }
+    });
+    if refused {
+        return Err(ValueError(OWN_MAP_REFUSED.into()));
+    }
+    Ok(expanded.into_owned())
+}
+
 fn meta_path(folder: &Path, page: &str) -> PathBuf {
     folder.join(format!("{page}.json"))
 }
@@ -248,7 +294,8 @@ pub fn save(config: &Config, agent: &str, html: &str, title: &str, page: Option<
         title = tk::capitalize(&page.replace('-', " "));
     }
     let tint = config.agent(Some(agent)).and_then(|a| a.category.clone());
-    let (locked, outside) = lock_with(html, &title, tint.as_deref());
+    let with_maps = expand_maps(config, agent, html)?;
+    let (locked, outside) = lock_with(&with_maps, &title, tint.as_deref());
     let locked = inline_maps(config, agent, &locked);
     std::fs::create_dir_all(&folder)?;
     let now = tk::now_iso_seconds();
