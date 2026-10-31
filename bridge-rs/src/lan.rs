@@ -176,7 +176,26 @@ pub fn hermes_proxy() -> Router<AppState> {
             .on(axum::routing::MethodFilter::PATCH, relay)
             .on(axum::routing::MethodFilter::DELETE, relay)
     };
-    Router::new().route("/hermes/{agent}/{*path}", methods()).route("/hermes/{agent}/", methods_empty())
+    Router::new()
+        .route("/hermes/{agent}/{*path}", methods())
+        .route("/hermes/{agent}/", methods_empty())
+        .layer(compressed_json())
+}
+
+/// Hermes' JSON answers gzipped for a client that asks for it (every app does: URLSession and OkHttp send
+/// `Accept-Encoding: gzip` and decode it on their own). A long conversation's history is megabytes of plain JSON (its
+/// tools' results) and shrinks about tenfold, which is most of the time it takes to open it on a phone's network. JSON
+/// only: an event stream (a run's, a turn's) is never held back in a compressor's buffer. Hermes itself answers
+/// uncompressed (the client's Accept-Encoding is not passed on).
+fn compressed_json() -> tower_http::compression::CompressionLayer<impl tower_http::compression::Predicate> {
+    use tower_http::compression::predicate::{DefaultPredicate, Predicate};
+    let json = |_: axum::http::StatusCode, _: axum::http::Version, headers: &HeaderMap, _: &axum::http::Extensions| {
+        headers
+            .get(axum::http::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|v| v.trim_start().to_ascii_lowercase().starts_with("application/json"))
+    };
+    tower_http::compression::CompressionLayer::new().gzip(true).compress_when(DefaultPredicate::new().and(json))
 }
 
 fn methods_empty() -> axum::routing::MethodRouter<AppState> {
@@ -342,6 +361,38 @@ static RUN_EVENTS: std::sync::LazyLock<regex::Regex> =
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Hermes' JSON gzipped for a client that asks; never an event stream, never a client that doesn't ask.
+    #[tokio::test]
+    async fn json_is_gzipped_streams_are_not() {
+        use tower::ServiceExt;
+        let big = "x".repeat(4000);
+        let app = Router::new()
+            .route("/json", axum::routing::get(move || async move { axum::Json(json!({"data": big})) }))
+            .route(
+                "/sse",
+                axum::routing::get(|| async {
+                    ([(axum::http::header::CONTENT_TYPE, "text/event-stream")], "data: 1\n\n".repeat(200))
+                }),
+            )
+            .layer(compressed_json());
+        let ask = |path: &str, gzip: bool| {
+            let mut request = axum::http::Request::builder().uri(path);
+            if gzip {
+                request = request.header("accept-encoding", "gzip, deflate, br");
+            }
+            request.body(Body::empty()).unwrap()
+        };
+        let encoding = |r: &Response| r.headers().get("content-encoding").map(|v| v.to_str().unwrap().to_string());
+        let json = app.clone().oneshot(ask("/json", true)).await.unwrap();
+        assert_eq!(encoding(&json).as_deref(), Some("gzip"));
+        let bytes = axum::body::to_bytes(json.into_body(), usize::MAX).await.unwrap();
+        let mut plain = String::new();
+        std::io::Read::read_to_string(&mut flate2::read::GzDecoder::new(&bytes[..]), &mut plain).unwrap();
+        assert!(bytes.len() < 200 && plain.contains(&"x".repeat(4000)));
+        assert_eq!(encoding(&app.clone().oneshot(ask("/json", false)).await.unwrap()), None);
+        assert_eq!(encoding(&app.oneshot(ask("/sse", true)).await.unwrap()), None);
+    }
 
     fn lan_config(dir: &std::path::Path) -> Config {
         let mut config = Config::with_key("k".repeat(40));

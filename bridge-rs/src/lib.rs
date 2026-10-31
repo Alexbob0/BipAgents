@@ -34,6 +34,7 @@ pub mod logs;
 pub mod loop_brake;
 pub mod main_cli;
 pub mod storage_watch;
+pub mod heavy_work;
 pub mod feature_tips;
 pub mod beta_measures;
 pub mod store;
@@ -60,6 +61,7 @@ pub mod sleep;
 // -- voice-speech ----------------------------------------------------------------------------------
 pub mod durations;
 pub mod live_brief;
+pub mod live_calls;
 pub mod numbers_fr;
 pub mod pronounce;
 pub mod pronunciations;
@@ -78,6 +80,8 @@ pub mod read_shares;
 pub mod templates;
 pub mod templates_scrub;
 pub mod agents_admin;
+/// Spare agents made ahead, so a new agent is files only (no Python counterpart).
+pub mod agent_pool;
 /// How each agent answers: short, balanced, detailed or the person's own style (no Python counterpart).
 pub mod answer_style;
 /// The person's time zone and standard dates (no Python counterpart).
@@ -176,6 +180,7 @@ pub mod desktop_page;
 pub mod desktop_read;
 pub mod login_fill;
 pub mod place_backup;
+pub mod restore_reconcile;
 /// A bipagents.com hostname and its Let's Encrypt certificate for a place of the offer (no Python counterpart).
 pub mod place_cert;
 pub mod proxy_header;

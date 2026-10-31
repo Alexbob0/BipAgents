@@ -100,16 +100,22 @@ def test_map_image_gives_a_card_for_the_live_map_with_its_picture(bridge, fakes)
                                       "line": True, "directions": "walking"})
     text = text_of(made)
     assert made["isError"] is False, text
+    # the map shown at once as a page of its own; a short card for a bigger page, filled in by the bridge
+    assert text.startswith("MEDIA:/bipagents/pages/wellness/carte-"), text
     card = re.search(r'<figure class="map-card".*?</figure>', text).group(0)
-    assert card.startswith('<figure class="map-card" data-line="1" data-directions="walking"><img src="map:m-')
-    assert '<li data-x="' in card and 'data-lat="45.771800" data-lon="4.852700" data-color="#e5484d">Porte &lt;1&gt;</li>' in card
-    assert 'data-lat="45.780200" data-lon="4.852100" data-color="#4f7cff">Lac</li>' in card
-    assert len(fakes.maps.seen("/osm/")) > 0 and not fakes.maps.seen("/search")   # coordinates: no geocoder
+    assert re.fullmatch(r'<figure class="map-card"><img src="map:m-[0-9a-f]{10}" alt="Carte"></figure>', card), card
+    assert len(fakes.maps.seen("/osm/")) > 0 and not fakes.maps.seen("/search")   # coordinates: checked, not searched
+    assert fakes.maps.seen("/reverse")
     # in a page: the picture inline (the fallback anywhere the live map cannot open), the places kept for the kit
     page = call(bridge, "create_page", {"html": "<h1>Balade</h1>" + card, "title": "Balade"})
     assert page["isError"] is False, text_of(page)
     kept = (bridge.state_dir / "agent-pages" / "wellness" / "balade.html").read_text()
-    assert '<figure class="map-card" data-line="1" data-directions="walking"><img src="data:image/png;base64,' in kept
+    assert re.search(r'<figure class="map-card" data-map="m-[0-9a-f]{10}" data-line="1" data-directions="walking">'
+                     r'<img src="data:image/png;base64,', kept)
+    assert '<li data-x="' in kept and 'data-lat="45.771800" data-lon="4.852700" data-color="#e5484d">Porte &lt;1&gt;</li>' in kept
+    assert 'data-lat="45.780200" data-lon="4.852100" data-color="#4f7cff">Lac</li>' in kept
+    data = json.loads(re.search(r'<script type="application/json" class="map-data">(.*?)</script>', kept).group(1))
+    assert data["type"] == "map" and [p["source"] for p in data["points"]] == ["model", "model"]
     assert '<img src="map:m-' not in kept
     assert 'data-directions="walking"' in kept and 'data-lat="45.780200"' in kept
     policy = re.search(r'Content-Security-Policy" content="([^"]+)"', kept).group(1)

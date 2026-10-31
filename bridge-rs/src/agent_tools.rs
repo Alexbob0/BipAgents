@@ -159,7 +159,7 @@ THE KIT is always there (no link needed), in the app's look, light and dark, in 
 B -> C: label</pre> (boxes and arrows drawn for you)
 - charts in SVG: <div id="c"></div><script>Bip.bars("#c",{labels:["L","M"],values:[5,8],unit:"km",goal:6})</script>; Bip.line(el,{labels,values|series:[{name,values}],unit,goal}); Bip.donut(el,{labels,values,unit,center:"1 748 €"}); Bip.spark(el,[3,5,4]); colours var(--c1)…var(--c6)
 - what-ifs: <label class="field">Budget <output for="b" data-unit="€"></output></label><input type="range" id="b" min="0" max="500" value="200">, <label class="toggle">Bio <input type="checkbox" id="bio"></label>, then Bip.whatIf(v => Bip.set("#total", Bip.fmt(v.b*12,0,"€"))); .tabs: <div class="tabs"><button>Week</button><button>Month</button></div><section class="tab">…</section><section class="tab">…</section>
-- maps: call map_image first (places as names or « lat, lon », numbered markers; line: true for a walk or a tour, directions: "walking" for a way there), then paste the <figure class="map-card"> it gives as it is: a live map in the app (move, zoom, « Open in Maps » on each place), its picture elsewhere
+- maps: never draw one yourself (no coordinates, no SVG map, no map library): call map_image with the places' names or addresses (and area: the town), then paste the short <figure class="map-card"> it gives as it is; the bridge fills in the places (a live map in the app, « Open in Maps » on each place, its picture elsewhere)
 - Bip.fmt(n, digits, unit) formats in the person's language. Chart.js 4 too if you need more: <script src="chart.js"></script> (already in the app's colours).
 EXAMPLES (whole pages):
 1 dashboard: <h1>🏃 Tes sorties</h1><p class="sub">Santé · 4 dernières semaines</p><div class="grid"><div class="kpi main"><span class="l">Distance</span><span class="v">86<small>km</small></span><span class="d up">+14 %</span></div><div class="kpi"><span class="l">Allure</span><span class="v">5:42<small>/km</small></span></div></div><div class="card"><h3>Km par semaine</h3><div id="w"></div></div><script>Bip.bars("#w",{labels:["S1","S2","S3","S4"],values:[18,21,22,25],unit:"km"})</script>
@@ -401,6 +401,11 @@ pub fn version_of(tools: &[Value]) -> String {
 /// The tools of `agent`: the install's, the Carnet's (on by default), `health` when the person gave it their health data, the calendar's when they
 /// shared their calendar with it, the address book's when they shared that, `weather` when its « Météo » is on.
 pub fn tools_for(config: &Config, agent: &AgentConfig) -> Vec<Value> {
+    tools_for_at(config, agent, crate::handover::on_offer())
+}
+
+/// `tools_for`, `offer` saying whether this place is one of the offer's.
+pub fn tools_for_at(config: &Config, agent: &AgentConfig, offer: bool) -> Vec<Value> {
     if crate::family_agent::is_family(config, &agent.name) {
         return crate::family_agent::tools(config); // nobody's private data (family_agent.rs)
     }
@@ -441,6 +446,10 @@ pub fn tools_for(config: &Config, agent: &AgentConfig) -> Vec<Value> {
     tools.extend(crate::guide::tools(config, agent));
     // the guide's search of ready-made models (templates.rs)
     tools.extend(crate::templates::tools(config, agent));
+    // the offer's places: a green light before heavy work, behind the tool search (heavy_work.rs)
+    if crate::heavy_work::offered(agent, offer) {
+        tools.extend(crate::heavy_work::tools());
+    }
     tools
 }
 
@@ -509,7 +518,8 @@ pub fn agent_for(config: &Config, token: &str) -> Option<AgentConfig> {
     let wanted = digest(token);
     for (name, known) in load_tokens(config) {
         if crate::auth::constant_time_eq(known.as_bytes(), wanted.as_bytes()) {
-            return config.agent(Some(&name)).cloned();
+            // a spare (agent_pool.rs) lists its tools before it is taken
+            return config.agent(Some(&name)).cloned().or_else(|| crate::agent_pool::agent(config, &name));
         }
     }
     None
@@ -523,6 +533,7 @@ pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow
     crate::notebook::sync_soul(config, agent);
     crate::archives::sync_soul(config, agent);
     crate::souls::sync_payments(config, agent);
+    crate::souls::sync_server(config, agent); // the offer's places: big toolchains don't fit (souls.rs)
     let tools = tools_for(config, agent);
     let url = if tools.as_slice() != install_tools(config) {
         url_with(config, &version_of(&tools))
@@ -1399,6 +1410,12 @@ pub async fn call_tool(
     if name == crate::rooms_memory::TOOL_NAME {
         let (c, agent_name, arguments) = (config.clone(), agent.name.clone(), arguments.clone());
         return blocking(move || Ok(crate::rooms_memory::call(&c, &agent_name, &arguments))).await;
+    }
+    if crate::heavy_work::TOOL_NAMES.contains(&name) {
+        // the green light before heavy work (heavy_work.rs): the place's room, one heavy job at a time; « later »
+        // from the agent's own background task pauses that task until there is room
+        return crate::heavy_work::call_with(config.clone(), agent.clone(), name.to_string(), arguments.clone(), jobs)
+            .await;
     }
     if name == crate::archives::records_fill::TOOL {
         if !crate::archives::enabled(&config, &agent.name) {

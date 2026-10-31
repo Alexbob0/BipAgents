@@ -30,11 +30,15 @@ def tool_names(bridge, token):
     return {t["name"] for t in tools}
 
 
+def tool(bridge, token, name):
+    return next(t for t in rpc(bridge, "tools/list", token=token).json()["result"]["tools"] if t["name"] == name)
+
+
 def test_the_first_choice_myself_is_asked_once(bridges, fakes):
     bridge, _ = place(bridges, fakes, agents=())
     view = bridge.get("/v1/guide", headers=AUTH).json()
     assert view == {"can_create": True, "first_run": True, "candidate": None, "guide": None, "intro": [],
-                    "proposals": []}
+                    "proposals": [], "welcome": {}}   # no new agent's first message to show (welcome.rs)
     assert bridge.post("/v1/guide/first-run", headers=AUTH, json={"choice": "myself"}).json() == {"ok": True}
     assert bridge.get("/v1/guide", headers=AUTH).json()["first_run"] is False
     again = bridge.post("/v1/guide/first-run", headers=AUTH, json={"choice": "guide"})
@@ -62,7 +66,9 @@ def test_the_placeholder_becomes_the_guide_that_proposes_and_hands_over(bridges,
     assert view["guide"] == "agent" and view["intro"] == ["agent"] and view["first_run"] is False
     give_token(bridge, "agent", GUIDE_TOKEN)
     names = tool_names(bridge, GUIDE_TOKEN)
-    assert {"propose_agent", "suggest_switch"} <= names and "propose_profile" not in names
+    assert {"propose_agent", "suggest_switch"} <= names
+    # still called Bip, the guide may propose another name when asked (2026-10-30): the whole propose_profile
+    assert "name" in tool(bridge, GUIDE_TOKEN, "propose_profile")["inputSchema"]["properties"]
     # a card, declined: the same subject isn't proposed again
     card = call(bridge, "propose_agent", {"kind": "wellness", "name": "Coach", "role": "Sommeil et sport",
                                           "handover": "Dort mal, veut courir le matin."}, token=GUIDE_TOKEN)
@@ -104,12 +110,17 @@ def test_the_placeholder_becomes_the_guide_that_proposes_and_hands_over(bridges,
 def test_only_the_guide_proposes_and_the_switch_moves_the_role(bridges, fakes):
     bridge, home = place(bridges, fakes, agents=("coach", "maison"))
     give_token(bridge, "coach", COACH_TOKEN)
-    assert "propose_agent" not in tool_names(bridge, COACH_TOKEN)
-    refused = call(bridge, "propose_agent", {"kind": "home", "name": "X", "role": "y"}, token=COACH_TOKEN)
+    # any own agent proposes an agent its person asks for (2026-10-30), with the « only when asked » description;
+    # switches stay the guide's
+    names = tool_names(bridge, COACH_TOKEN)
+    assert "propose_agent" in names and "suggest_switch" not in names
+    assert "Only when they ask" in tool(bridge, COACH_TOKEN, "propose_agent")["description"]
+    refused = call(bridge, "suggest_switch", {"agent": "Maison", "summary": "y"}, token=COACH_TOKEN)
     assert refused["isError"]
     assert bridge.put("/v1/agents/coach/guide", headers=AUTH, json={"on": True}).json() == {"guide": "coach"}
     give_token(bridge, "coach", COACH_TOKEN)   # its entry was registered again (another tools list)
-    assert "propose_agent" in tool_names(bridge, COACH_TOKEN)
+    assert "suggest_switch" in tool_names(bridge, COACH_TOKEN)
+    assert "Only when they ask" not in tool(bridge, COACH_TOKEN, "propose_agent")["description"]
     assert "- Maison (daily): Le quotidien" in (home / "profiles" / "coach" / "SOUL.md").read_text()
     assert bridge.put("/v1/agents/maison/guide", headers=AUTH, json={"on": True}).json() == {"guide": "maison"}
     assert "bipagents:guide" not in (home / "profiles" / "coach" / "SOUL.md").read_text()

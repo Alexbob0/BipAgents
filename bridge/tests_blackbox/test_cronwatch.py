@@ -181,7 +181,9 @@ def test_a_subtask_report_left_without_a_reply_is_told_by_the_agent(bridges, fak
 
     assert wait_until(items, timeout=15)
     item = items()[0]
-    assert item["session_id"] == "api_7" and item["text"] == "Ton podcast de jeudi est prêt :\n- 12 minutes\n- deux voix"
+    # An mp3 the bridge can't serve keeps its line: the app shows it as a file (2026-10-30, ntfy.rs own_mp3).
+    assert item["session_id"] == "api_7" and item["text"] == ("Ton podcast de jeudi est prêt :\n- 12 minutes\n- deux voix\n"
+                                                              "MEDIA:/home/hermes/.hermes/media/podcast_jeudi.mp3")
     assert wait_until(lambda: fakes.apns.pushes())
     time.sleep(1.5)
     payloads = fakes.apns.payloads()

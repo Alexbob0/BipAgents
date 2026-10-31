@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from bipinstall import hermes, migrations, routing  # noqa: E402
 
 EU = {"model": {"provider": "custom", "default": "glm-5.3-flash", "base_url": "https://api.eurouter.ai/api/v1"}}
-ROUTE = {"order": ["entrim", "melious"], "allow_fallbacks": True}
+ROUTE = {"order": ["entrim", "greenpt", "inceptron"], "allow_fallbacks": True}
 
 
 def test_only_eurouter_is_routed():
