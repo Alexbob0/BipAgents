@@ -699,6 +699,10 @@ pub struct Config {
     /// Some(0): no limit. Not in the serialized form either.
     #[serde(skip)]
     pub place_agents_max: Option<usize>,
+    /// `[place] spare_agents` (agent_pool.rs): blank agents kept ready. None (not written): 3 on a place of the
+    /// offer, none on a self-install. Not in the serialized form either.
+    #[serde(skip)]
+    pub place_spare_agents: Option<usize>,
     /// `[connections]` (connections.rs): not in the serialized form either.
     #[serde(skip)]
     pub connections: crate::connections::Settings,
@@ -814,6 +818,7 @@ impl Config {
             rooms: RoomsConfig::default(),
             guide: GuideConfig::default(),
             place_agents_max: None,
+            place_spare_agents: None,
             connections: crate::connections::Settings::default(),
             watchers: crate::watchers::Settings::default(),
             agent_restart: crate::agent_restart::Settings::default(),
@@ -1730,6 +1735,12 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         None
     };
 
+    let place_spare_agents = if get(place_t, "spare_agents").is_some() {
+        Some(i(place_t, "spare_agents", 0)?.clamp(0, 10) as usize)
+    } else {
+        None
+    };
+
     let records_t = table(data, "archive_records");
     let rd = ArchiveRecordsConfig::default();
     let mut extract_models = Vec::new();
@@ -1823,6 +1834,7 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         rooms,
         guide,
         place_agents_max,
+        place_spare_agents,
         connections: crate::connections::Settings::from_table(table(data, "connections")),
         watchers: crate::watchers::Settings::from_table(table(data, "watchers")),
         agent_restart: crate::agent_restart::Settings::from_table(table(data, "agent_restart")),

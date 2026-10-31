@@ -756,9 +756,10 @@ pub async fn claim_server(
 //
 // A place of the reserve waits for its app with its first agent already made (its profile, key, uploads, tools and
 // browser settings: the 40-odd seconds of `hermes` commands). The claim then only writes files (the model and its
-// key, the agent's name, personality and language), answers the app, and restarts the gateway once, directly; the
-// app's requests through the door wait meanwhile (`READINESS`). Other agents asked for are listed at once and made
-// right after, in the background (`claim-pending.json` next to the secret, finished at the next start if need be).
+// key, the agent's name, personality and language) and answers the app; Hermes reads those files at the agent's
+// first turn, no restart (2026-10-30). Other agents asked for take spare agents (agent_pool.rs) when there are some;
+// the rest are listed at once and made right after, in the background (`claim-pending.json` next to the secret,
+// finished at the next start if need be; the app's requests through the door wait for them, `READINESS`).
 
 /// The name of the agent made before the claim: « Bip », the guide that is always there (Alex, 2026-10-30;
 /// internal/next/bip-default-agent.md). Its profile id stays neutral (`PREPARED_ID`): a claim may rename it.
@@ -950,11 +951,14 @@ async fn warm_browser(config: &Config, agent: &str, run: &Run) -> anyhow::Result
 }
 
 /// At start: once the installer is done, a place of the reserve prepares its first agent.
+/// Then its spare agents (agent_pool.rs), on any place of the offer once installed.
 pub async fn prepare_when_installed(config: SharedConfig, http: reqwest::Client) {
+    let mut prepare = true;
     loop {
         let snapshot = config.get();
         if !preparable(&snapshot) || prepared_of(&snapshot).is_some() {
-            return;
+            prepare = false;
+            break;
         }
         match progress_of(&snapshot) {
             Ok(step) if step.done => break,
@@ -963,9 +967,32 @@ pub async fn prepare_when_installed(config: SharedConfig, http: reqwest::Client)
         }
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     }
-    if let Err(exc) = prepare_place(&config, &http, None).await {
-        tracing::warn!(error = %pyx::tail(&format!("{exc:#}"), 300), "place not prepared: its claim makes its agents");
+    if prepare {
+        if let Err(exc) = prepare_place(&config, &http, None).await {
+            tracing::warn!(error = %pyx::tail(&format!("{exc:#}"), 300), "place not prepared: its claim makes its agents");
+        }
     }
+    spares_when_installed(config, http).await;
+}
+
+/// The spare agents made once the installer is done (not while a moved place restores its backup).
+async fn spares_when_installed(config: SharedConfig, http: reqwest::Client) {
+    loop {
+        let snapshot = config.get();
+        if crate::agent_pool::wanted(&snapshot) == 0 || restoring(&snapshot) {
+            return;
+        }
+        let no_progress =
+            snapshot.setup_progress.as_deref().is_none_or(|p| p.is_empty() || !Path::new(p).exists());
+        match progress_of(&snapshot) {
+            _ if no_progress => break,
+            Ok(step) if step.done => break,
+            Ok(step) if step.error.is_some() => return,
+            _ => {}
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    }
+    crate::agent_pool::refill_soon(&config, &http, &crate::agents_admin::default_run());
 }
 
 /// The model in a Hermes home or profile folder, as `hermes config set` writes it: `model` in config.yaml, the key in
@@ -1102,7 +1129,7 @@ fn become_guide(config: &SharedConfig, id: &str, lang: &str) -> anyhow::Result<(
     Ok(())
 }
 
-/// The claim of a prepared place: files only, then the gateway restarted and the other agents made after the answer.
+/// The claim of a prepared place: files only (no restart), spares taken, the other agents made after the answer.
 async fn claim_prepared(
     config: &SharedConfig,
     request: &ClaimRequest,
@@ -1151,6 +1178,24 @@ async fn claim_prepared(
         };
         crate::agents_admin::check_room(&config.get())?;
         let planned = plan_agent(&config.get(), &body)?;
+        // a spare made ahead (agent_pool.rs): ready now, files only; made after as before if that fails
+        if let Some(spare) = crate::agent_pool::take(&config.get()) {
+            let mut taken = planned.clone();
+            taken.profile = spare.id.clone();
+            crate::notebook::news::start(&config.get(), &taken.profile, crate::py::time_time());
+            match crate::agents_admin::from_spare(config, &taken, spare, http, &run).await {
+                Ok(agent) => {
+                    crate::welcome::wait_for(&config.get(), &agent, &kind, &lang);
+                    created.insert(index.to_string(), json!(agent.name));
+                    remember(&config.get(), &[("created", Value::Object(created.clone()))])?;
+                    continue;
+                }
+                Err(exc) => {
+                    crate::notebook::news::forget(&config.get(), &taken.profile);
+                    tracing::warn!(agent = %taken.profile, error = %pyx::tail(&format!("{exc:#}"), 300), "spare agent not taken at the claim");
+                }
+            }
+        }
         let agent = hub_agent(&config.get(), &planned.profile, &planned.name, &crate::py::token_urlsafe(32));
         reserve_agent(config, &agent)?;
         crate::welcome::wait_for(&config.get(), &agent, &kind, &lang);
@@ -1159,7 +1204,6 @@ async fn claim_prepared(
         created.insert(index.to_string(), json!(planned.profile));
         remember(&config.get(), &[("created", Value::Object(created.clone()))])?;
     }
-    READINESS.hold(GATEWAY);
     for entry in &pending {
         READINESS.hold(entry["id"].as_str().unwrap_or(""));
     }
@@ -1176,19 +1220,13 @@ async fn claim_prepared(
         .collect())
 }
 
-/// After the claim's answer: the gateway restarted once to read the model and its key, then the other agents made.
+/// After the claim's answer: the other agents made, then the spares refilled. No gateway restart: Hermes' multiplex
+/// gateway reads a routed profile's `.env` and config.yaml at each turn (`_profile_runtime_scope`, and its agent
+/// cache is keyed on the key's hash), so the model and key the claim wrote are used from the first message
+/// (internal/notes/instant-agents.md; before 2026-10-30 a restart here cost ≈ 6.7 s before the agent answered).
 async fn after_claim(config: SharedConfig, http: reqwest::Client, run: Run, prepared: String) {
     let started = crate::py::monotonic();
-    let snapshot = config.get();
-    let mut env = BTreeMap::new();
-    if !snapshot.hermes.home.is_empty() {
-        env.insert("HERMES_HOME".to_string(), snapshot.hermes.home.clone());
-    }
-    let units = pyx::home().join(".config").join("systemd").join("user");
-    if let Err(exc) = run(restart_command(&snapshot, &units), env).await {
-        tracing::warn!(error = %pyx::tail(&format!("{exc:#}"), 300), "gateway not restarted after the claim");
-    }
-    if let Some(agent) = snapshot.agents.get(&prepared) {
+    if let Some(agent) = config.get().agents.get(&prepared) {
         match crate::agents_admin::wait_served(&http, agent, false).await {
             Ok(()) => {
                 tracing::info!(agent = %prepared, seconds = format!("{:.1}", crate::py::monotonic() - started), "agent ready after the claim")
@@ -1196,8 +1234,8 @@ async fn after_claim(config: SharedConfig, http: reqwest::Client, run: Run, prep
             Err(exc) => tracing::warn!(agent = %prepared, error = %exc, "agent not ready after the claim"),
         }
     }
-    READINESS.release(GATEWAY);
     finish_pending(&config, &http, &run).await;
+    crate::agent_pool::refill_soon(&config, &http, &run);
 }
 
 /// A recovered claim that brought another AI key (the guichet deleted the first one when it made this one): the
