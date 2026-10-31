@@ -15,28 +15,37 @@ def _rgb(r: int, g: int, b: int, fallback: int) -> str:
     return f"\033[38;2;{r};{g};{b}m" if _TRUE else f"\033[38;5;{fallback}m"
 
 
-CORAL = _rgb(255, 122, 92, 209)      # the Bip's colour (« Quotidien »)
-DEEP = _rgb(201, 74, 46, 166)
+CORAL = _rgb(255, 122, 92, 209)      # the steps' and questions' accent
 GREEN = _rgb(59, 196, 120, 78)
 GREY = _rgb(140, 145, 160, 245)
 RED = _rgb(229, 72, 77, 167)
 BOLD = "\033[1m" if _COLOR else ""
 RESET = "\033[0m" if _COLOR else ""
 
-# A Bip, as on the app's cards: round body, two eyes, little feet. One face per mood.
-_FACES = {"hello": "•ᴗ•", "busy": "•_•", "happy": "^ᴗ^", "sad": "•︵•"}
+# A Bip, as the apps draw it: the body's grid in scripts/pixel/pixel.json (BODIES.standard, 6 × 6), one cell = two
+# terminal columns, the eyes on row 2, columns 1 and 4, in the « Quotidien » colour (COLORS.peche.body, #F4B5A3) and
+# INK (#16181D). Without colour the eyes are holes.
+_BODY = ('.####.', '######', '######', '######', '######', '.####.')
+_EYES = (2, (1, 4))
+_PECHE = _rgb(244, 181, 163, 217)
+_INK = _rgb(22, 24, 29, 234)
 
 
 def bip(mood: str = "hello", says: str = "") -> str:
-    face = _FACES.get(mood, _FACES["hello"])
+    """The Bip, saying `says` (the mood is kept for the callers: the apps' still Bip has one face)."""
+    del mood
     bubble = f"  {BOLD}{says}{RESET}" if says else ""
-    lines = [
-        f"   {CORAL}▄▄▄▄▄{RESET}",
-        f" {CORAL}▄███████▄{RESET}",
-        f" {CORAL}██{RESET} {face} {CORAL}██{RESET}{bubble}",
-        f" {CORAL}▀███████▀{RESET}",
-        f"   {DEEP}▀▀ ▀▀{RESET}",
-    ]
+    lines = []
+    for row, cells in enumerate(_BODY):
+        line = ""
+        for col, cell in enumerate(cells):
+            if cell != "#":
+                line += "  "
+            elif row == _EYES[0] and col in _EYES[1]:
+                line += f"{_INK}██{RESET}" if _COLOR else "  "
+            else:
+                line += f"{_PECHE}██{RESET}"
+        lines.append(" " + line + (bubble if row == _EYES[0] else ""))
     return "\n".join(lines)
 
 
