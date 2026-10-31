@@ -88,6 +88,20 @@ def test_each_place_s_disk_is_watched_and_its_bridge_told(tmp_path, capsys):
         {"1": {"mem_mb": 3, "disk": "ok"}, "2": {"disk": "low"}}
 
 
+def test_a_place_installed_again_drops_its_view_of_the_shared_images(tmp_path):
+    agent = _seat_agent()
+    mountinfo = tmp_path / "mountinfo"
+    mountinfo.write_text("22 1 8:1 / / rw - ext4 /dev/sda1 rw\n"
+                         "95 22 8:1 /var/lib/bipagents/images /var/lib/bipagents/views/bip2 ro,idmapped - ext4 x ro\n"
+                         "96 22 8:1 /var/lib/bipagents/images /var/lib/bipagents/views/bip20 ro,idmapped - ext4 x ro\n")
+    calls = []
+    agent.drop_view("bip2", "/var/lib/bipagents/views", str(mountinfo), lambda *a: calls.append(a) or 0)
+    assert calls == [("umount", "-l", "/var/lib/bipagents/views/bip2")]
+    source = (ROOT / "installer" / "cloud" / "seat-agent.py").read_text(encoding="utf-8")
+    wipe = source[source.index("def wipe(user)"):source.index("def reset(number")]
+    assert wipe.index("drop_view(user)") < wipe.index("userdel")
+
+
 class Root:
     """The commands own_disk runs, a mount as a line in mountinfo, and the copy done by hand."""
 

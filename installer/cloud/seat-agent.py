@@ -139,6 +139,7 @@ def wipe(user):
     run("systemctl", "stop", "user@%d.service" % uid)
     run("pkill", "-KILL", "-u", user)
     time.sleep(2)
+    drop_view(user)
     drop_disk(user)
     run("userdel", "--remove", "--force", user)
     for path in ("/etc/subuid", "/etc/subgid"):
@@ -150,6 +151,30 @@ def wipe(user):
         except OSError:
             pass
     run("rm", "-rf", "/home/" + user)
+
+
+IMAGE_VIEWS = "/var/lib/bipagents/views"   # each account's view of the server's shared images (shared_images.py)
+
+
+def drop_view(user, views=IMAGE_VIEWS, mountinfo="/proc/self/mountinfo", runner=None):
+    """The account's view of the server's shared images unmounted with it: it maps the store to this account's ids,
+    and a place installed again under the same name gets a new account (another uid), which an old view shows the
+    images as nobody's (its install then fell back to its own copy, 2.3 GB of its 5: real-server test, 2026-10-31).
+    The next `shared_images views` (the place's --prepare) mounts the new account's."""
+    for point in reversed(mounted_at(os.path.join(views, user), mountinfo)):
+        (runner or quietly)("umount", "-l", point)
+
+
+def views_again(repo=None):
+    """Each account's view of the shared images mounted (or mounted again when it is an earlier account's), by root's
+    checkout: after a place's --prepare, whatever its pull did."""
+    repo = repo or SHARED_REPO
+    if not os.path.isdir(os.path.join(repo, "installer", "bipinstall")):
+        return
+    env = dict(os.environ, PYTHONPATH=os.path.join(repo, "installer"))
+    with open("/var/log/bipagents-images.log", "a") as out:
+        subprocess.run(["python3", "-m", "bipinstall.shared_images", "views"], env=env, stdout=out, stderr=out,
+                       timeout=600, cwd=repo)
 
 
 def reset(number, setup):
@@ -1938,6 +1963,10 @@ def main(argv=()):
             prepare_shared(commit)
         except (OSError, subprocess.SubprocessError) as exc:
             log("shared Hermes and images for %s not ready: %s" % (commit[:12], exc))
+        try:
+            views_again()   # a place installed again: its new account's view, whatever the pull did
+        except (OSError, subprocess.SubprocessError) as exc:
+            log("views of the shared images not mounted: %s" % exc)
         return 0
     if "--bootstrap" in argv:   # the first-boot script, before any place is installed
         return bootstrap()
