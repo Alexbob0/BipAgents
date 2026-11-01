@@ -501,6 +501,25 @@ pub fn load_tokens(config: &Config) -> IndexMap<String, String> {
     }
 }
 
+/// The token store is read, changed and written whole, one change at a time: at start the bridge registers several
+/// agents at once (its own, the spares), and a write from a read made before another agent's lost that agent's token
+/// (its tools refused until the next start).
+static STORE: Mutex<()> = Mutex::new(());
+
+/// `name`'s digest kept in the store (None: removed).
+fn keep_token(config: &Config, name: &str, digest: Option<String>) -> std::io::Result<()> {
+    let _store = STORE.lock().unwrap_or_else(|e| e.into_inner());
+    let mut tokens = load_tokens(config);
+    let changed = match digest {
+        Some(digest) => tokens.insert(name.to_string(), digest.clone()).as_ref() != Some(&digest),
+        None => tokens.shift_remove(name).is_some(),
+    };
+    if changed {
+        save_tokens(config, &tokens)?;
+    }
+    Ok(())
+}
+
 pub fn save_tokens(config: &Config, tokens: &IndexMap<String, String>) -> std::io::Result<()> {
     let path = store_path(config);
     if let Some(parent) = path.parent() {
@@ -591,7 +610,7 @@ pub async fn register_at(config: &Config, agent: &AgentConfig, run: &Run, url: &
     let profile = shares::profile_config(&folder);
     let servers = profile.get("mcp_servers").filter(|v| py::truthy(v));
     let entry = servers.and_then(|s| s.get(SERVER_NAME)).filter(|v| py::truthy(v)).cloned().unwrap_or(json!({}));
-    let mut tokens = load_tokens(config);
+    let tokens = load_tokens(config);
     let header = match &entry {
         Value::Object(map) => match map.get("headers").filter(|v| py::truthy(v)).and_then(|h| h.get("Authorization")) {
             Some(v) => py::py_str(v),
@@ -641,8 +660,7 @@ pub async fn register_at(config: &Config, agent: &AgentConfig, run: &Run, url: &
     run(with(format!("mcp_servers.{SERVER_NAME}.headers.Authorization"), format!("Bearer {token}")), env.clone())
         .await?;
     run(with(format!("mcp_servers.{SERVER_NAME}.timeout"), TOOL_TIMEOUT.to_string()), env).await?;
-    tokens.insert(agent.name.clone(), digest(&token));
-    save_tokens(config, &tokens)?;
+    keep_token(config, &agent.name, Some(digest(&token)))?;
     tracing::info!(agent = %agent.name, "agent tools registered");
     Ok(true)
 }
@@ -670,11 +688,8 @@ pub fn forget(config: &Config, name: &str) {
     crate::maps::forget(config, name);
     crate::notebook::forget(config, name);
     crate::archives::forget(config, name);
-    let mut tokens = load_tokens(config);
-    if tokens.shift_remove(name).is_some() {
-        if let Err(err) = save_tokens(config, &tokens) {
-            tracing::warn!(agent = %name, error = %err, "agent tools token not removed");
-        }
+    if let Err(err) = keep_token(config, name, None) {
+        tracing::warn!(agent = %name, error = %err, "agent tools token not removed");
     }
 }
 

@@ -157,7 +157,11 @@ def hermes():
                 node[part] = {}
             node = node[part]
         node[parts[-1]] = scalar(value)
-        path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
+        # Written next to it then moved over it, as Hermes does: the bridge's own edits (tool_diet.rs…) read the file
+        # meanwhile, and one that read it half-written wrote it back without the rest (its `mcp_servers` gone).
+        part = folder / ".config.yaml.part"
+        part.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
+        os.replace(part, path)
 
 def ffmpeg():
     if "-i" in ARGS and ARGS:
