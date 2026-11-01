@@ -835,6 +835,7 @@ async fn routes_for_settings_thinking_and_model() {
             "notebook",
             "guide",
             "answer_style",
+            "model_choice",
             "group"
         ]
     );

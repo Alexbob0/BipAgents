@@ -586,6 +586,18 @@ mod tests {
     }
 
     #[test]
+    fn a_custom_server_s_address_is_http_with_a_host() {
+        let custom = preset("custom").unwrap();
+        assert_eq!(address(custom, Some(" http://192.168.1.20:11434/v1/ ")).ok().as_deref(), Some("http://192.168.1.20:11434/v1"));
+        assert_eq!(address(custom, Some("https://llm.example.org/v1")).ok().as_deref(), Some("https://llm.example.org/v1"));
+        for wrong in ["", "192.168.1.20:11434/v1", "localhost:11434", "ftp://example.org/v1", "http://", "file:///etc/passwd"] {
+            assert!(address(custom, Some(wrong)).is_err(), "{wrong}");
+        }
+        // a connector of the whitelist: its own address, whatever is sent
+        assert_eq!(address(preset("mistral").unwrap(), Some("http://elsewhere/v1")).ok().as_deref(), Some("https://api.mistral.ai/v1"));
+    }
+
+    #[test]
     fn the_whitelist_is_closed() {
         assert!(preset("openrouter").is_some() && preset("custom").is_some());
         for hidden in ["openai-codex", "nous", "copilot", "claude-subscription", ""] {
