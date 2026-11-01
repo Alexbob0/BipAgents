@@ -56,9 +56,6 @@ pub const BACKOFF_MAX: f64 = 8.0;
 pub const GIVE_UP_AFTER: u32 = 40;
 /// Consecutive connection failures before voice listeners are told.
 pub const UNREACHABLE_AFTER: u32 = 3;
-/// A question answered or gone: BipAgents' patch (`clarify.responded` / `clarify.cancelled`, `request_id`) or Hermes'
-/// upstream contract (`clarify.retired`, one question per `clarify_id`).
-pub const CLARIFY_DONE: [&str; 3] = ["clarify.responded", "clarify.cancelled", "clarify.retired"];
 /// The safety net's steer starts with this (the apps hide such rows: HermesKit SteerMarker, Android Hermes.kt).
 pub const HANDOFF_MARK: &str = "[bipagents:handoff]";
 pub const HANDOFF_TEXT: &str = "This is long: hand the rest over to a background task now (start_task, within the \
@@ -144,7 +141,7 @@ fn handoff_tool(tool: &str) -> bool {
 }
 
 /// The agent's visible browser (skill visible-browser: the `stealth` MCP server's tools, `mcp_stealth_*`; the vault's
-/// `browser_vault_*` and `vault_*_login` on that same browser; Hermes' own `browser_*`).
+/// `browser_vault` and `vault_*_login` on that same browser; Hermes' own `browser_*`).
 pub fn browser_tool(tool: &str) -> bool {
     let tool = tool.to_ascii_lowercase();
     tool.contains("stealth")
@@ -292,7 +289,7 @@ pub fn append_to_backlog(backlog: &mut VecDeque<SSEEvent>, event: &SSEEvent) {
     backlog.push_back(event.clone());
 }
 
-/// `_clarify_id(data)`: a question's id (`request_id`, or upstream's `clarify_id`).
+/// `_clarify_id(data)`: a question's id (`request_id`: its prompt's, hermes_prompts.rs `named`; or `clarify_id`).
 pub fn clarify_id(data: &Map<String, Value>) -> Option<String> {
     for key in ["request_id", "clarify_id"] {
         if let Some(Value::String(id)) = data.get(key) {
@@ -702,7 +699,8 @@ impl RunHub {
     }
 
     /// After a restart: watch again the runs that were watched, and rebuild what Hermes still waits for (an
-    /// approval asked before the restart is not replayed by its event stream, but kept in the run's status).
+    /// approval or a question asked before the restart is not replayed by its event stream, but kept in the run's
+    /// status: hermes_prompts.rs `pending_requests`).
     pub async fn resume(self: Arc<Self>, agents: IndexMap<String, AgentConfig>) -> usize {
         let Some(store) = self.store.clone() else { return 0 };
         let mut resumed = 0;
@@ -733,11 +731,8 @@ impl RunHub {
                 let session =
                     as_str(row.get("session_id")).filter(|s| !s.is_empty()).or_else(|| as_str(run.get("session_id")));
                 let sub = self.watch(agent, &run_id, session.as_deref(), true);
-                if let (true, Some(Value::Object(approval))) = (status == "waiting_for_approval", run.get("approval")) {
-                    let mut data = approval.clone();
-                    data.insert("run_id".into(), json!(run_id));
-                    let raw = crate::py::Dumps::new().sort_keys().dumps(&Value::Object(data.clone()));
-                    self.dispatch(&sub, SSEEvent::new("approval.request", data, raw));
+                for asked in crate::hermes_prompts::pending_requests(&run_id, &run) {
+                    self.dispatch(&sub, asked);
                 }
                 resumed += 1;
                 tracing::info!(agent = %agent.name, run_id = %run_id, status = %status, "run watch resumed");
@@ -991,7 +986,7 @@ impl RunHub {
         let answered: HashSet<Option<String>> = st
             .backlog
             .iter()
-            .filter(|e| CLARIFY_DONE.contains(&e.r#type.as_str()))
+            .filter(|e| e.r#type == crate::hermes_prompts::CLARIFY_SETTLED)
             .map(|e| clarify_id(&e.data))
             .collect();
         let questions: Vec<SSEEvent> = st
@@ -1192,7 +1187,7 @@ impl RunHub {
             self.on_approval(&mut inner, sub, &mut st, &event);
         } else if kind == "clarify.request" {
             self.on_clarify(sub, &mut st, &event);
-        } else if kind == "approval.responded" {
+        } else if kind == crate::hermes_prompts::APPROVAL_SETTLED {
             Self::forget_pending(&mut inner, &sub.agent.name, &sub.run_id, event.data.get("request_id"));
         } else if is_terminal(kind) {
             st.terminal = Some(kind.to_string());
@@ -2032,6 +2027,10 @@ touche « Démarrer » pour reprendre."
         if let Some(room) = &st.room_id {
             item.insert("room_id".into(), json!(room));
         }
+        // the prompt's generation: its answer names it (hermes_prompts.rs)
+        if let Some(generation) = crate::hermes_prompts::generation(data) {
+            item.insert("execution_generation".into(), json!(generation));
+        }
         // the apps' own reading needs Hermes' pattern key; the plain words (in_plain_words) go with it
         for key in ["pattern_key", "bip_summary", "bip_detail"] {
             if let Some(value) = data.get(key).filter(|v| v.is_string()) {
@@ -2387,9 +2386,7 @@ mod tests {
 
     #[test]
     fn the_safety_nets_kinds_of_tools() {
-        for tool in
-            ["mcp_stealth_navigate", "stealth_spawn_browser", "mcp__stealth__click_element", "browser_vault_fill"]
-        {
+        for tool in ["mcp_stealth_navigate", "stealth_spawn_browser", "mcp__stealth__click_element", "browser_vault"] {
             assert!(browser_tool(tool), "{tool}");
         }
         assert!(browser_tool("mcp_bipagents_vault_create_login"));

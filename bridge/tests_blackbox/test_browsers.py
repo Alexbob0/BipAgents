@@ -85,4 +85,4 @@ def test_an_agent_with_its_browser_keeps_only_the_vault_of_hermes_browser_tools(
     assert wait_until(lambda: vault_only() is True)
     data = yaml.safe_load((folder / "config.yaml").read_text())
     assert data["mcp_servers"]["stealth"]["enabled"] is True          # the rest as it was
-    assert "browser_vault_" in skill.read_text() and "An earlier skill" not in skill.read_text()
+    assert "`browser_vault`" in skill.read_text() and "An earlier skill" not in skill.read_text()

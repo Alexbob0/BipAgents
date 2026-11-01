@@ -8,7 +8,7 @@
 //!   unreadable by the model.
 //! - **Browser**: written into the agent's own Hermes vault as an `address` item (`hermes_secret`) while its browser
 //!   is on, and only then (vault.rs `follow_browser`: an item there shows Hermes' five vault tools on every call), so
-//!   `browser_vault_fill` fills a form's name, address, phone and e-mail (Hermes patch 0017 maps the name, phone and
+//!   `browser_vault` (`fill`) fills a form's name, address, phone and e-mail (Hermes patch 0017 maps the name, phone and
 //!   e-mail fields; an unpatched Hermes fills the address only, and one that refuses an incomplete address leaves the
 //!   entry to the bridge's own read: handle `bridge`).
 //! - **Others-facing agents** (vault.rs `others_facing`: the family's, project, shared agents, agents linked to another
@@ -331,8 +331,8 @@ pub fn tools() -> Vec<Value> {
             "name": READ,
             "description": "The person's contact details (coordonnées) kept in their vault for you: name, postal \
         address, phones, e-mails, each entry with its label and when to use it. Use them to write a letter, an e-mail \
-        or a message, or to fill a form outside your browser; in your browser, browser_vault_fill fills them itself. \
-        When the person names one (« mon adresse pro »), call with its label. Personal data: use it only for what the \
+        or a message, or to fill a form outside your browser; in your browser, the vault's fill (browser_vault) fills \
+        them itself. When the person names one (« mon adresse pro »), call with its label. Personal data: use it only for what the \
         person asked.",
             "inputSchema": {"type": "object", "properties": {
                 "label": {"type": "string", "description": "the entry to use, as the person names it (« mon adresse \
@@ -431,7 +431,8 @@ pub async fn call(state: &crate::app::AppState, agent: &AgentConfig, name: &str,
                 tool_text(
                     &format!(
                         "Saved as « {} » in the person's vault (« Coordonnées »); you can use it now (in your browser, \
-                         if you have it on, browser_vault_fill fills it). Tell the person in a few words.\n{}",
+                         if you have it on, the vault's fill (browser_vault) fills it). Tell the person in a few \
+                         words.\n{}",
                         item.label,
                         chip_line(&mark)
                     ),

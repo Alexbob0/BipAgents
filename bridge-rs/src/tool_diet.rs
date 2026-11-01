@@ -33,8 +33,8 @@ use serde_json::Value;
 use crate::agents_admin::pyyaml::Yaml;
 use crate::config::{AgentConfig, Config};
 
-/// Hermes 517b5e10f's `tools.tool_search.defer` default (hermes_cli/config_defaults.py): kept, since an explicit list
-/// replaces it wholesale.
+/// Hermes 0.22.5's `tools.tool_search.defer` default (hermes_cli/config_defaults.py): kept, since an explicit list
+/// replaces it wholesale. Its `browser_vault` is a `VAULT_TOOLS` entry here.
 pub const HERMES_DEFAULT_DEFERRED: [&str; 18] = [
     "computer_use",
     "session_search",
@@ -50,7 +50,7 @@ pub const HERMES_DEFAULT_DEFERRED: [&str; 18] = [
     "show_tip",
     "desktop_project",
     "close_terminal",
-    "apply_layout",
+    "set_theme",
     "read_terminal",
     "read_window_below",
     "focus_pane",
@@ -63,14 +63,9 @@ pub const MARK: &str = "!bipagents";
 /// speech (the bridge's `create_audio` speaks with the agent's voice).
 pub const ALWAYS_DEFERRED: [&str; 2] = ["delegate_task", "text_to_speech"];
 
-/// Hermes' vault tools (patch 0007): direct only for an agent that holds an item of the vault.
-pub const VAULT_TOOLS: [&str; 5] = [
-    "browser_vault_list",
-    "browser_vault_unlock",
-    "browser_vault_fill",
-    "browser_vault_save_login",
-    "browser_vault_enter_code",
-];
+/// Hermes' vault tool (one `browser_vault` with an `action`, patch 0007): direct only for an agent that holds an item
+/// of the vault.
+pub const VAULT_TOOLS: [&str; 1] = ["browser_vault"];
 
 /// Writing skills: direct only for an agent that has written some (it keeps doing so).
 pub const SKILL_WRITING: &str = "skill_manage";
@@ -694,6 +689,10 @@ mod tests {
         // an agent holding a vault item, or writing skills, keeps those tools
         let d = diet("daily", &tools, false, true, true, &[]);
         assert!(!d.defer.iter().any(|n| n.starts_with("browser_vault") || n == "skill_manage"));
+        // Hermes 0.22.5's own deferred ones kept, its vault tool among them for an agent holding nothing
+        let d = diet("daily", &tools, false, false, false, &[]);
+        assert!(["set_theme", "browser_vault"].iter().all(|n| d.defer.contains(&n.to_string())));
+        assert!(!d.defer.iter().any(|n| n == "apply_layout" || n.starts_with("browser_vault_")));
     }
 
     #[test]

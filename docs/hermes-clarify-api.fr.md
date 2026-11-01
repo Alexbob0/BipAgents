@@ -59,3 +59,23 @@ data: {"type": "clarify.cancelled", "run_id": "run_…", "request_id": "clr_…"
   simple ; « Autre… » ouvre un champ si `allow_other`), et répond par la route ci-dessus.
 - Le bridge relaie ces événements comme les autres et, quand l'app ne suit pas le run, envoie une
   notification « <agent> a une question » qui rouvre la conversation.
+
+## Depuis Hermes 0.22.5 (clarify d'upstream)
+
+Depuis le 2026-11-01 BipAgents tourne sur Hermes 0.22.5, dont l'« autorité de session » mène chaque tour de l'API et
+a son propre clarify : le patch 0001 est abandonné, et ce qui précède reste comme sa trace. Le contrat désormais :
+
+- `clarify.request` porte une seule question au premier niveau (`question`, `choices`, `multi_select`) avec son
+  `prompt_id` et son `execution_generation`. Un lot de l'outil arrive une question après l'autre. Le bridge ajoute
+  `request_id` (le `prompt_id`), l'identifiant que lisent les apps et les notifications.
+- La réponse est `POST /v1/runs/{run_id}/clarify` avec exactement
+  `{"request_id": "<prompt_id>", "execution_generation": <n>, "answer": "<texte>"}`.
+- Pas d'abandon : « pas de réponse » part comme une `answer` vide, que l'agent lit comme une question passée
+  (le `cancel` de 0001 finissait tout le lot ; ici la question suivante du lot arrive quand même).
+- `clarify.settled` et `approval.settled` terminent une invite (répondue, expirée ou disparue) ; ils ne portent pas
+  les réponses.
+- Les approbations prennent exactement `{"request_id": "<prompt_id>", "execution_generation": <n>, "choice": …}`.
+  Sans la génération (le bouton d'une notification), les apps et le bridge lisent d'abord l'invite dans
+  `GET /v1/runs/{id}` (`pending_controls`).
+- Le `clarify_batch` d'upstream (toutes les questions d'un coup) n'est offert en 0.22.5 qu'aux affichages locaux,
+  pas sur la Runs API.

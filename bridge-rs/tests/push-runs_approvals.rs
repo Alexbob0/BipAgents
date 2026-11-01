@@ -190,26 +190,94 @@ async fn unwatched_run_never_pushes() {
     c.close().await;
 }
 
+/// The approval forwarded as the exact prompt its run's status shows waiting (hermes_prompts.rs),
+/// `{request_id, execution_generation, choice}` and nothing else.
 #[tokio::test]
 async fn approve_forwards_to_hermes() {
     let c = client().await;
+    c.backend.with(|s| {
+        s.run_info.insert(
+            "run_9".into(),
+            json!({"run_id": "run_9", "status": "waiting_for_approval", "admission_id": "adm_9",
+                   "execution_generation": 5, "pending_controls": [
+                       {"kind": "approval", "prompt_id": "p9", "execution_generation": 5, "command": "ls",
+                        "choices": ["once", "deny"]}]}),
+        );
+    });
     let resp = c
-        .post("/v1/approve", json!({"agent": "wellness", "run_id": "run_9", "request_id": "req_9", "choice": "Once"}))
+        .post("/v1/approve", json!({"agent": "wellness", "run_id": "run_9", "request_id": "p9", "choice": "Once"}))
         .await;
     assert_eq!(resp.status, StatusCode::OK);
-    assert_eq!(resp.json()["resolved"], 1);
+    let resp = c.post("/v1/approve", json!({"agent": "wellness", "run_id": "run_9", "choice": "deny"})).await;
+    assert_eq!(resp.status, StatusCode::OK);
     assert_eq!(
         c.backend.with(|s| s.approvals.clone()),
-        [json!({"run_id": "run_9", "body": {"choice": "once", "request_id": "req_9"}})]
+        [
+            json!({"run_id": "run_9", "body": {"request_id": "p9", "execution_generation": 5, "choice": "once"}}),
+            json!({"run_id": "run_9", "body": {"request_id": "p9", "execution_generation": 5, "choice": "deny"}}),
+        ]
     );
-    c.backend.with(|s| s.approval_response = (409, json!({"error": {"code": "approval_not_pending"}})));
+    c.backend.with(|s| s.approval_response = (409, json!({"error": {"code": "stale_generation"}})));
     let resp = c.post("/v1/approve", json!({"agent": "wellness", "run_id": "run_9", "choice": "deny"})).await;
     assert_eq!(resp.status, StatusCode::CONFLICT);
-    assert_eq!(c.backend.with(|s| s.approvals.last().unwrap()["body"].clone()), json!({"choice": "deny"}));
+    // no approval waiting there, or no such run: nothing sent
+    c.backend.with(|s| s.run_info.insert("run_8".into(), json!({"run_id": "run_8", "status": "running"})));
+    let resp = c.post("/v1/approve", json!({"agent": "wellness", "run_id": "run_8", "choice": "once"})).await;
+    assert_eq!(resp.status, StatusCode::CONFLICT);
+    let resp = c.post("/v1/approve", json!({"agent": "wellness", "run_id": "run_gone", "choice": "once"})).await;
+    assert_eq!(resp.status, StatusCode::NOT_FOUND);
+    assert_eq!(c.backend.with(|s| s.approvals.len()), 3);
     let resp = c.post("/v1/approve", json!({"agent": "wellness", "run_id": "../x", "choice": "once"})).await;
     assert_eq!(resp.status, StatusCode::BAD_REQUEST);
     let resp = c.post("/v1/approve", json!({"agent": "ghost", "run_id": "r", "choice": "once"})).await;
     assert_eq!(resp.status, StatusCode::NOT_FOUND);
+    c.close().await;
+}
+
+/// A prompt's events reach the app with the `request_id` it reads, and `approval.settled` ends the approval waiting in
+/// the bridge (the Boîte, the push of an unseen one).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_runs_prompts_reach_the_app_with_their_request_id() {
+    let c = client().await;
+    let (asked, settle) = (Flag::new(), Flag::new());
+    c.script(
+        "run_c",
+        vec![
+            RunItem::Wait(asked.clone()),
+            text(sse(
+                "approval.request",
+                json!({"run_id": "run_c", "kind": "approval", "prompt_id": "p3", "execution_generation": 2,
+                       "command": "rm -rf build/", "choices": ["once", "deny"]}),
+            )),
+            RunItem::Wait(settle.clone()),
+            text(sse("approval.settled", json!({"run_id": "run_c", "prompt_id": "p3", "execution_generation": 2}))),
+            text(sse(
+                "clarify.request",
+                json!({"run_id": "run_c", "kind": "clarify", "prompt_id": "c4", "execution_generation": 2,
+                       "question": "Quel train ?", "choices": ["9h", "14h"], "multi_select": false}),
+            )),
+            text(sse("clarify.settled", json!({"run_id": "run_c", "prompt_id": "c4", "execution_generation": 2}))),
+            text(sse("run.completed", json!({"run_id": "run_c", "output": "Fini"}))),
+        ],
+    );
+    let mut listener = c.state().hub.subscribe(&c.agent(), "run_c", "app", true);
+    asked.set();
+    let event = listener.next().await.unwrap();
+    assert_eq!((event.r#type.as_str(), &event.data["request_id"]), ("approval.request", &json!("p3")));
+    assert_eq!(event.data["execution_generation"], 2);
+    let pending = c.get("/v1/approvals").await.json()["items"].clone();
+    assert_eq!(pending.as_array().unwrap().len(), 1);
+    assert_eq!(pending[0]["request_id"], "p3");
+    settle.set();
+    let mut rest = Vec::new();
+    while let Ok(Some(event)) = tokio::time::timeout(Duration::from_secs(10), listener.next()).await {
+        rest.push(event);
+    }
+    let kinds: Vec<&str> = rest.iter().map(|e| e.r#type.as_str()).collect();
+    assert_eq!(kinds, ["approval.settled", "clarify.request", "clarify.settled", "run.completed"]);
+    assert_eq!(rest[1].data["request_id"], "c4");
+    assert_eq!(rest[1].data["question"], "Quel train ?");
+    assert!(c.get("/v1/approvals").await.json()["items"].as_array().unwrap().is_empty());
     c.close().await;
 }
 
@@ -349,8 +417,8 @@ async fn question_pushed_when_the_app_left() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn upstream_question_contract_is_pushed_too() {
-    // Hermes' upstream clarify (one question per `clarify_id`) is pushed like ours.
+async fn a_prompts_question_is_pushed_with_its_id() {
+    // Hermes' clarify prompt (one question, its `prompt_id`) is pushed with it as `request_id`.
     let c = client().await;
     c.register().await;
     let gate = Flag::new();
@@ -360,8 +428,8 @@ async fn upstream_question_contract_is_pushed_too() {
             RunItem::Wait(gate.clone()),
             text(sse(
                 "clarify.request",
-                json!({"run_id": "run_u", "clarify_id": "cq_9", "question": "Quel train ?",
-                                               "choices": ["9h", "14h"], "multi_select": false}),
+                json!({"run_id": "run_u", "kind": "clarify", "prompt_id": "cq_9", "execution_generation": 1,
+                       "question": "Quel train ?", "choices": ["9h", "14h"], "multi_select": false}),
             )),
             RunItem::Wait(Flag::new()),
         ],
@@ -460,10 +528,13 @@ async fn watched_runs_resume_after_a_restart_with_their_pending_approval() {
     before.close().await;
     {
         let mut r = runs.0.lock().unwrap();
+        // the prompts a parked run waits for, in its status
         r.insert(
             "run_wait".into(),
-            json!({"status": "waiting_for_approval", "session_id": "api_bot",
-                   "approval": {"request_id": "req_x", "command": "python3 -c 'tts health'", "choices": ["once", "session", "deny"]}}),
+            json!({"status": "waiting_for_approval", "session_id": "api_bot", "admission_id": "adm_1",
+                   "execution_generation": 4, "pending_controls": [
+                       {"kind": "approval", "prompt_id": "req_x", "execution_generation": 4,
+                        "command": "python3 -c 'tts health'", "choices": ["once", "session", "deny"]}]}),
         );
         r.insert("run_done".into(), json!({"status": "completed"}));
     }
@@ -481,12 +552,14 @@ async fn watched_runs_resume_after_a_restart_with_their_pending_approval() {
     let mut agents = IndexMap::new();
     agents.insert("vie".to_string(), agent.clone());
     assert_eq!(after.clone().resume(agents).await, 1);
-    let pending: Vec<(Value, Value, Value)> = after
+    let pending: Vec<(Value, Value, Value, Value)> = after
         .pending_approvals(Some("vie"))
         .iter()
-        .map(|p| (p["run_id"].clone(), p["request_id"].clone(), p["session_id"].clone()))
+        .map(|p| {
+            (p["run_id"].clone(), p["request_id"].clone(), p["session_id"].clone(), p["execution_generation"].clone())
+        })
         .collect();
-    assert_eq!(pending, [(json!("run_wait"), json!("req_x"), json!("api_bot"))]);
+    assert_eq!(pending, [(json!("run_wait"), json!("req_x"), json!("api_bot"), json!(4))]);
     // nobody follows: pushed, with its session
     assert!(wait_until(|| count(&apns) >= 1, Duration::from_secs(5)).await);
     let payload = apns.payloads()[0].clone();

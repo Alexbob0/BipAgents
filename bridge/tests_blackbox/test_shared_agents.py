@@ -14,8 +14,8 @@ RELATIVE_RUN_TOOLS = ["mcp__bipagents__knowledge_read", "mcp__bipagents__knowled
                       "mcp__bipagents__route", "mcp__bipagents__map_image", "web_search"]
 # Hermes' own tools that reach the owner's data or act: never in a relative's run.
 HERMES_CLOSED = ["terminal", "read_file", "write_file", "patch", "search_files", "execute_code", "browser_navigate",
-                 "browser_vault_fill", "session_search", "memory", "cronjob", "send_message", "message_agent",
-                 "delegate_task", "skill_view", "skill_manage", "tool_search"]
+                 "browser_vault_fill", "browser_vault", "session_search", "memory", "cronjob", "send_message",
+                 "message_agent", "delegate_task", "skill_view", "skill_manage", "tool_search"]
 # The bridge's tools reaching the owner's data: refused while a relative's turn goes on.
 OWNER_TOOLS = ["mail_search", "mail_read", "calendar_list", "contacts_search", "notebook_search", "archive_search",
                "send_files_to_agent", "health", "dates", "message_agent", "create_page"]

@@ -263,15 +263,31 @@ async fn relay(
     // here. Hermes still checks the key, and says first whether the run is there (its own 404).
     let events_of = RUN_EVENTS.captures(&path).map(|c| c[1].to_string()).filter(|r| crate::app::RUN_ID.is_match(r));
     if let (true, Some(run_id)) = (method == Method::GET, events_of) {
-        let mut check = state.http.get(format!("{}/v1/runs/{run_id}", target.hermes_url));
-        for (name, value) in forwarded.iter().filter(|(n, _)| !matches!(n.as_str(), "accept" | "content-length")) {
-            check = check.header(name.clone(), value.clone());
-        }
-        let status = match check.timeout(std::time::Duration::from_secs(30)).send().await {
-            Ok(r) => r.status().as_u16(),
-            Err(exc) => {
-                tracing::info!(agent = %target.name, error = crate::hermes::httpx_error_name(&exc), "LAN relay failed");
-                return Err(HttpError::new(502, "your agent isn't answering right now: try again in a moment"));
+        let check = || {
+            let mut check = state.http.get(format!("{}/v1/runs/{run_id}", target.hermes_url));
+            for (name, value) in forwarded.iter().filter(|(n, _)| !matches!(n.as_str(), "accept" | "content-length")) {
+                check = check.header(name.clone(), value.clone());
+            }
+            check.timeout(std::time::Duration::from_secs(30))
+        };
+        let mut waited = 0;
+        let status = loop {
+            match check().send().await {
+                Ok(r) => {
+                    let status = r.status().as_u16();
+                    // Hermes asking for a moment (its store busy, the profile draining or parked): asked again
+                    match crate::hermes::retry_after(status, r.headers()).filter(|_| waited < CHECK_RETRIES) {
+                        Some(wait) => {
+                            waited += 1;
+                            tokio::time::sleep(std::time::Duration::from_secs_f64(wait.min(CHECK_WAIT_MAX))).await;
+                        }
+                        None => break status,
+                    }
+                }
+                Err(exc) => {
+                    tracing::info!(agent = %target.name, error = crate::hermes::httpx_error_name(&exc), "LAN relay failed");
+                    return Err(HttpError::new(502, "your agent isn't answering right now: try again in a moment"));
+                }
             }
         };
         if status == 401 {
@@ -353,6 +369,11 @@ async fn relay(
     }
     Ok(response)
 }
+
+/// A run's status asked again at most this many times when Hermes asks for a moment (503 and `Retry-After`) before its
+/// events are followed, at most `CHECK_WAIT_MAX` seconds apart.
+const CHECK_RETRIES: u32 = 2;
+const CHECK_WAIT_MAX: f64 = 5.0;
 
 /// `v1/runs/<id>/events`.
 static RUN_EVENTS: std::sync::LazyLock<regex::Regex> =
