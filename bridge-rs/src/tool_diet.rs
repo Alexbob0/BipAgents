@@ -595,6 +595,13 @@ pub fn with_diet(data: &Yaml, diet: &Diet) -> Option<Yaml> {
     if agent.get("max_turns").is_none_or(|v| *v == Yaml::Null) {
         agent.insert("max_turns", Yaml::Int(MAX_TURNS as i128));
     }
+    // A routine the agent makes in a conversation reports there (cronwatch.rs): Hermes (patch 0019) keeps the
+    // conversation on the job and tells the model so, instead of « local-only: set deliver='telegram' », unless the
+    // profile says otherwise.
+    let cron = map_at(&mut data, "cron")?;
+    if cron.get("session_reports").is_none_or(|v| *v == Yaml::Null) {
+        cron.insert("session_reports", Yaml::Bool(true));
+    }
     if let Some(Yaml::Map(_)) = data.get("mcp_servers").and_then(|s| s.get(BROWSER_SERVER)) {
         let entry = data.get_mut("mcp_servers").and_then(|s| s.get_mut(BROWSER_SERVER))?;
         let filter = map_at(entry, "tools")?;
@@ -873,6 +880,11 @@ mod tests {
   max_turns: 40
 ").unwrap();
         assert_eq!(cap(&with_diet(&own, &d).unwrap()), Some(Yaml::Int(40)), "its own cap kept");
+        // routines report to the conversation they were made in, unless the profile says otherwise
+        let reports = |data: &Yaml| data.get("cron").and_then(|c| c.get("session_reports")).cloned();
+        assert_eq!(reports(&changed), Some(Yaml::Bool(true)));
+        let off = pyyaml::load("cron:\n  session_reports: false\n").unwrap();
+        assert_eq!(reports(&with_diet(&off, &d).unwrap()), Some(Yaml::Bool(false)), "its own choice kept");
         // the person's own list
         let theirs = pyyaml::load("tools:\n  tool_search:\n    defer: [todo_list]\n").unwrap();
         let kept = with_diet(&theirs, &d).expect("skills still written");

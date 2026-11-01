@@ -16,6 +16,9 @@
 //! - Nothing is dropped without a log line: a conversation that can't be read is skipped (warning) without holding
 //!   the routines back, a delivery that fails is tried again next round, a routine still without a final reply 20 min
 //!   after its start is logged once.
+//! - A routine the agent made in a conversation (2026-10-31, Alex: « mets un schedule ce soir à 23h pour corriger tout
+//!   le carnet ») reports in that conversation, as a background task does: its message tagged with it (Hermes patch
+//!   0019 keeps the conversation on the job, [`origin_session`]), the report waiting as a note for the agent.
 //!
 //! Bot Chat (Hermes Bot Mode): a new final reply that the app did not follow (`RunHub.followed_recently`)
 //! and that nobody is looking at (`Presence`, refreshed by the open conversation) is pushed as « reply
@@ -36,8 +39,9 @@ use chrono::{Local, NaiveDateTime, TimeZone};
 use regex::Regex;
 use serde_json::{json, Map, Value};
 
-use crate::config::{AgentConfig, SharedConfig};
-use crate::hermes::HermesClient;
+use crate::config::{AgentConfig, Config, SharedConfig};
+use crate::hermes::{HermesClient, HermesError};
+use crate::live_brief::Briefs;
 use crate::ntfy::OutboxService;
 use crate::push::pyx;
 use crate::push::PushService;
@@ -202,6 +206,22 @@ pub fn with_audio_made(agent: &str, session_id: &str, started: Option<NaiveDateT
 
 pub fn job_id(session_id: &str) -> Option<String> {
     CRON_ID.captures(session_id).map(|c| c["job"].to_string())
+}
+
+/// The conversation a routine was made in: `origin_session_id` on its job in the agent's `cron/jobs.json` (Hermes
+/// patch 0019 stamps it when the agent's profile has `cron.session_reports`, tool_diet.rs); None for a routine made
+/// elsewhere (the apps' Routines, a template's, an older Hermes). A finished one-shot stays in the file for days.
+pub fn origin_session(config: &Config, agent: &AgentConfig, job: &str) -> Option<String> {
+    let file = crate::agents_admin::profile_folder(config, agent).join("cron").join("jobs.json");
+    let data: Value = serde_json::from_str(&std::fs::read_to_string(file).ok()?).ok()?;
+    let jobs = match &data {
+        Value::Array(items) => items,
+        Value::Object(map) => map.get("jobs")?.as_array()?,
+        _ => return None,
+    };
+    let found = jobs.iter().find(|j| j.get("id").and_then(Value::as_str) == Some(job))?;
+    let session = found.get("origin_session_id")?.as_str()?.trim();
+    (!session.is_empty()).then(|| session.to_string())
 }
 
 /// « Podcast du matin · Oct 05 07:53 » → « Podcast du matin ».
@@ -413,6 +433,8 @@ pub struct CronWatcher {
     pub hub: Option<Arc<RunHub>>,
     pub push: Option<Arc<PushService>>,
     pub presence: Option<Arc<Presence>>,
+    /// Where a routine's report waits for the next message of the conversation it was made in (the agent knows it).
+    pub briefs: Option<Arc<Briefs>>,
     state: Mutex<WatchState>,
 }
 
@@ -439,6 +461,7 @@ impl CronWatcher {
             hub,
             push,
             presence,
+            briefs: None,
             state: Mutex::new(WatchState::default()),
         }
     }
@@ -612,15 +635,34 @@ impl CronWatcher {
         if let (None, Some(store), Some(job)) = (title.as_deref().filter(|t| !t.is_empty()), &self.store, job_id(sid)) {
             title = store.cron_job_name(&agent.name, &job).await?;
         }
+        // A routine made in a conversation reports there, like a background task (handback.rs): its message in that
+        // conversation (the Boîte row opens it, no push while it is on screen) and, with the person's next message
+        // there, a note so the agent knows what it said. Else, or that conversation gone, under its own run.
+        let origin = match job_id(sid).and_then(|job| origin_session(&self.config.get(), agent, &job)) {
+            Some(origin) => match self.hermes.session(agent, &origin).await {
+                Err(HermesError::Http { status: 404 | 410, .. }) => None,
+                _ => Some(origin),
+            },
+            None => None,
+        };
+        let conversation = origin.as_deref().unwrap_or(sid);
+        let on_screen = origin.is_some() && self.presence.as_ref().is_some_and(|p| p.viewing(&agent.name, conversation));
         // replace: a reply stored too early (older bridge) is corrected instead of dropped as a duplicate
         let mut message = Map::new();
         message.insert("message".into(), json!(reply));
         message.insert("title".into(), json!(title));
         message.insert("id".into(), json!(format!("hermes-session:{sid}")));
-        message.insert("tags".into(), json!([format!("session:{sid}")]));
-        if self.outbox.ingest(agent, &message, notify, true).await?.is_none() {
+        message.insert("tags".into(), json!([format!("session:{conversation}")]));
+        if self.outbox.ingest(agent, &message, notify && !on_screen, true).await?.is_none() {
             tracing::info!(agent = %agent.name, session = %sid, "routine reply not stored: empty, or already in the Boîte");
             return Ok(false);
+        }
+        if let (Some(origin), Some(briefs)) = (&origin, &self.briefs) {
+            let recap = crate::handback::routine_recap(&job_name(title.as_deref()).unwrap_or_default(), &reply);
+            if let Err(err) = briefs.keep_recap(&agent.name, origin, &recap) {
+                tracing::warn!(agent = %agent.name, session = %origin, error = %err, "routine report not kept for the agent");
+            }
+            tracing::info!(agent = %agent.name, session = %sid, conversation = %origin, "routine reply in its conversation");
         }
         crate::beta_measures::routine_delivered(&self.config.get(), crate::py::time_time());
         tracing::info!(agent = %agent.name, session = %sid, chars = pyx::len(&reply), "cron reply stored");
