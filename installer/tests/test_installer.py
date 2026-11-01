@@ -196,7 +196,8 @@ def test_hermes_is_pinned_and_patched(tmp_path, monkeypatch):
                                                                 "0015-time-anchor.patch",
                                                                 "0016-message-agent-the-bridges-everywhere.patch",
                                                                 "0017-vault-address-contact-fields.patch",
-                                                                "0018-guest-turns-closed-tools-no-user-profile.patch"]
+                                                                "0018-guest-turns-closed-tools-no-user-profile.patch",
+                                                                "0019-routines-report-to-their-conversation.patch"]
 
 
 def test_bot_mode_marker(tmp_path):
