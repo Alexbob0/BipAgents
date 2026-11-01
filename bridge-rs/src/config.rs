@@ -562,8 +562,10 @@ impl Default for JobsConfig {
 /// 2026-10-31 (rooms.rs, « passage de relais »): `handoff` (on by default; off: the router and hops as before), and
 /// for a room with a goal the person accepted, at most `team_turns` turns and `team_tokens` tokens per message of the
 /// person; `goal_model`: a message that looks like a task gets a goal proposed by the small model. `team_turn_tokens`:
-/// one turn of team work at most (one agent's run; Back's took 749k on the lab): told to wrap up at 60 %, stopped at
-/// the cap, then one short turn without tools says what it did and hands over (never an empty turn).
+/// one turn of team work at most (one agent's run; Back's took 749k on the lab), its wrap-up included: told to wrap up
+/// at 60 %, stopped 30k before the cap (rooms.rs `turn_limit`; on each model call's real tokens with Hermes patch
+/// 0020, before a call that would pass it), then one short turn without tools says what it did and hands over (never
+/// an empty turn).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct RoomsConfig {
     pub router_model: bool,

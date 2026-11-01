@@ -4,7 +4,8 @@
 //!
 //!     mail_scan   a mailbox read through by steps (mail_scan.py): listed and paused here, run there
 //!     task        a long task in the agent's own Hermes, with all its tools, in a conversation of its own (« 🧩 <title> »):
-//!                 the bridge starts the run, reads the conversation's token counters every few seconds and stops the run
+//!                 the bridge starts the run, reads its tokens every few seconds (each model call's, Hermes patch 0020;
+//!                 else the conversation's counters) and stops the run
 //!                 once the budget is reached (paused: the person may give more and resume) or after three hours; the
 //!                 agent ends with a report, which the notification opens
 //!
@@ -440,6 +441,14 @@ impl Jobs {
         Value::Null
     }
 
+    /// The task's run's real tokens so far, as its model calls end (Hermes patch 0020, followed by the hub), in the
+    /// shape of a run's usage: its budget then counts them, not the conversation's counters, which Hermes writes only
+    /// at a run's end. None from an older Hermes.
+    fn live_usage(&self, agent: &AgentConfig, run_id: &str) -> Option<Dict> {
+        let progress = self.hub.as_ref()?.run_progress(&agent.name, run_id)?;
+        progress.usage.filter(|u| u.total() > 0).map(|u| u.as_usage())
+    }
+
     fn agent(&self, name: &str) -> Result<AgentConfig, JobError> {
         self.config
             .get()
@@ -856,7 +865,7 @@ impl Jobs {
             };
             let session_id = tk::str_or_empty(job.get("session_id"));
             match self.hermes.session(&agent, &session_id).await {
-                Ok(session) => count(&mut job, &session, None),
+                Ok(session) => count(&mut job, &session, self.live_usage(&agent, &run_id).as_ref()),
                 Err(HermesError::Decode(err)) => {
                     tracing::error!(job = %job_id, exc = %err, "Task exception was never retrieved");
                     return;
@@ -915,7 +924,8 @@ impl Jobs {
         let mut status = tk::str_or_empty(run.get("status"));
         let usage = match run.get("usage") {
             Some(Value::Object(u)) => Some(u.clone()),
-            _ => None,
+            // a run stopped (its budget, a pause) comes back without its usage: its calls' real tokens
+            _ => self.live_usage(agent, &tk::str_or_empty(job.get("run_id"))),
         };
         let session_id = tk::str_or_empty(job.get("session_id"));
         let session = self.hermes.session(agent, &session_id).await.unwrap_or_default();
