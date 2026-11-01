@@ -214,3 +214,9 @@ def test_the_iphone_shares_its_reminders_and_does_what_the_agents_ask(bridges, f
     assert oct(os.stat(stored).st_mode & 0o777) == "0o600"
     give_token(bridge)
     assert call(bridge, "reminders_add", {"title": "x"})["isError"]   # another agent (wellness): not shared
+
+    # Shared with no agent any more: the copy goes (the requests stay their 14 days).
+    assert bridge.put("/v1/reminders/agents", json={"agents": []}, headers=AUTH).json() == {"agents": []}
+    seen = bridge.get("/v1/reminders", headers=AUTH).json()
+    assert seen["items"] == 0 and seen["lists"] == 0 and seen["at"] is None and seen["pending"] == 1
+    assert "Lait" not in stored.read_text() and "plombier" not in stored.read_text()

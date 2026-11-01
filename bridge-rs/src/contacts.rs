@@ -899,6 +899,37 @@ async fn set_scope(State(state): State<AppState>, Json(body): Json<Scope>) -> Ap
     Ok(web::ok(json!({"scope": dump(&scope)})))
 }
 
+/// The agents allowed now. Shared with no agent any more, the copy goes too (the phone stops sending it); otherwise
+/// the details no agent here sees any more go at once.
+fn set_agents_in(data: &mut Dict, names: &[String]) {
+    data.insert("agents".into(), json!(names));
+    if names.is_empty() {
+        data.remove("contacts");
+        data.remove("groups");
+        data.remove("at");
+    } else if data.contains_key("contacts") {
+        let contacts = read_by_someone(data, list_of(data, "contacts"));
+        data.insert("contacts".into(), Value::Array(contacts));
+    }
+}
+/// A deleted agent: no longer among the agents allowed (the copy goes with the last one, `set_agents_in`).
+pub fn forget(config: &Config, agent: &str) {
+    let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut data = read(config);
+    let names: Vec<String> = match data.get("agents") {
+        Some(Value::Array(v)) => v.iter().filter_map(Value::as_str).map(str::to_string).collect(),
+        _ => return,
+    };
+    if !names.iter().any(|n| n == agent) {
+        return;
+    }
+    let kept: Vec<String> = names.into_iter().filter(|n| n != agent).collect();
+    set_agents_in(&mut data, &kept);
+    if let Err(err) = write(config, &data) {
+        tracing::warn!(agent = %agent, error = %err, "contacts share not updated for a deleted agent");
+    }
+}
+
 async fn set_agents(State(state): State<AppState>, Json(body): Json<Agents>) -> ApiResult<Response> {
     let config = state.config();
     let mut names: Vec<String> = Vec::new();
@@ -920,17 +951,7 @@ async fn set_agents(State(state): State<AppState>, Json(body): Json<Agents>) -> 
             Some(Value::Array(v)) => v.iter().filter_map(|n| n.as_str().map(str::to_string)).collect(),
             _ => Vec::<String>::new(),
         };
-        data.insert("agents".into(), json!(names));
-        if names.is_empty() {
-            // Shared with no agent any more: the copy goes too (the phone stops sending it).
-            data.remove("contacts");
-            data.remove("groups");
-            data.remove("at");
-        } else if data.contains_key("contacts") {
-            // The details no agent here sees any more go at once.
-            let contacts = read_by_someone(&data, list_of(&data, "contacts"));
-            data.insert("contacts".into(), Value::Array(contacts));
-        }
+        set_agents_in(&mut data, &names);
         write(&config_c, &data)?;
         Ok((before, names))
     })
@@ -1029,6 +1050,17 @@ pub fn router() -> Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_copy_goes_with_the_last_agent() {
+        let mut data: Dict = serde_json::from_value(json!({
+            "agents": ["coach", "vie"], "groups": [{"id": "g1", "title": "Famille"}],
+            "contacts": [{"id": "a", "name": "Anne", "phones": [{"value": "06"}]}], "at": 1.0, "queue": []})).unwrap();
+        set_agents_in(&mut data, &["coach".to_string()]);
+        assert_eq!(data["contacts"][0]["phones"], json!([{"value": "06"}])); // still seen by someone: kept
+        set_agents_in(&mut data, &[]);
+        assert_eq!(Value::Object(data), json!({"agents": [], "queue": []}));
+    }
 
     #[test]
     fn birthdays_as_written() {

@@ -2209,6 +2209,10 @@ pub async fn delete_agent(shared: &SharedConfig, agent: &AgentConfig, run: &Run)
     crate::sent_files::forget(&config, &agent.name);
     crate::agent_tools::forget(&config, &agent.name);
     crate::health::forget(&config, &agent.name);
+    // the phone's calendar, reminders and address book: their copy goes with the last agent allowed (2026-11-01)
+    crate::calendar::forget(&config, &agent.name);
+    crate::reminders::forget(&config, &agent.name);
+    crate::contacts::forget(&config, &agent.name);
     crate::weather::forget(&config, &agent.name);
     crate::guide::forget(&config, &agent.name);
     crate::family_agent::forget(&config, &agent.name);
