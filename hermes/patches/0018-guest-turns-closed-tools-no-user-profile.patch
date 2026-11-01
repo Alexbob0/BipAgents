@@ -1,12 +1,45 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Alexbob0 <190955252+Alexbob0@users.noreply.github.com>
+Date: Sun, 1 Nov 2026 10:07:40 +0100
+Subject: Guest turns: only the guest's tools, no USER.md
+
 BipAgents guest turns: a run or a session chat marked guest_turn {tools} (someone other than the agent's person
 writes it) gets only those tools (MCP names + web_search), hidden from the list and refused in the dispatcher,
 no USER.md, no context files, no memory writes or background review; its prompt is never stored.
 
+Under the session authority the mark rides the durable api_turn_v1 admission (guest_turn, per admission, never a
+session setting, part of the exact-retry identity) to the TurnRunner, which builds that turn an agent of its own,
+never taken from nor put in the session's agent cache, and releases it after the turn.
+
+BipAgents patch, documented in hermes/patches/README.md of the BipAgents repository.
+
+Bip-Patch: 0018-guest-turns-closed-tools-no-user-profile
+---
+ agent/agent_runtime_helpers.py                |   5 +
+ agent/chat_completion_helpers.py              |   3 +
+ agent/conversation_loop.py                    |   7 +
+ agent/guest_turn.py                           | 139 ++++++++++++++
+ agent/tool_executor.py                        |   4 +
+ agent/turn_context.py                         |   3 +
+ gateway/platforms/api_server.py               |  30 ++-
+ gateway/platforms/api_server_runs.py          |  10 +-
+ gateway/run_turn_runner.py                    |   9 +-
+ gateway/session_api_turn.py                   |  26 ++-
+ gateway/session_execution.py                  |  14 ++
+ tests/agent/test_guest_turn.py                | 172 ++++++++++++++++++
+ .../gateway/test_api_guest_turn_admission.py  |  96 ++++++++++
+ tests/gateway/test_api_server_guest_turn.py   | 143 +++++++++++++++
+ 14 files changed, 651 insertions(+), 10 deletions(-)
+ create mode 100644 agent/guest_turn.py
+ create mode 100644 tests/agent/test_guest_turn.py
+ create mode 100644 tests/gateway/test_api_guest_turn_admission.py
+ create mode 100644 tests/gateway/test_api_server_guest_turn.py
+
 diff --git a/agent/agent_runtime_helpers.py b/agent/agent_runtime_helpers.py
-index 4a67918ab5..6aa038eec1 100644
+index 1d8e485170d5da132a6a8ab3017cade1e2dc09a9..45300b6a50d5f999f8ccee6b6206d93afd4449a9 100644
 --- a/agent/agent_runtime_helpers.py
 +++ b/agent/agent_runtime_helpers.py
-@@ -2559,6 +2559,11 @@ def invoke_tool(agent, function_name: str, function_args: dict, effective_task_i
+@@ -2518,6 +2518,11 @@ def invoke_tool(agent, function_name: str, function_args: dict, effective_task_i
      )
      if not isinstance(function_args, dict):
          function_args = {}
@@ -19,10 +52,10 @@ index 4a67918ab5..6aa038eec1 100644
      _tool_middleware_trace = list(tool_request_middleware_trace or [])
      try:
 diff --git a/agent/chat_completion_helpers.py b/agent/chat_completion_helpers.py
-index 5f0cf4c631..39c1725ffa 100644
+index 77c982632cf41a7715b6ac922506dd4c35555f85..c355355cc23b2874351d5f6b98767b9adb56d903 100644
 --- a/agent/chat_completion_helpers.py
 +++ b/agent/chat_completion_helpers.py
-@@ -1571,6 +1571,9 @@ def _build_api_kwargs_for_mode(agent, api_messages: list, tools_for_api: list |
+@@ -1540,6 +1540,9 @@ def _build_api_kwargs_for_mode(agent, api_messages: list, tools_for_api: list |
      reasoning_config = _reasoning_config_for_wire(agent)
      if tools_for_api is None:
          tools_for_api = agent.tools
@@ -33,10 +66,10 @@ index 5f0cf4c631..39c1725ffa 100644
      # in agent.request_overrides; auto/cold windows layer the fast override per request.
      request_overrides = effective_request_overrides(agent)
 diff --git a/agent/conversation_loop.py b/agent/conversation_loop.py
-index 6404de28b8..8c27e2cb64 100644
+index a16c43669c6c44188fd470f5271e35acd38b5553..97be43f733e7a02ca250fe6569df380094c89403 100644
 --- a/agent/conversation_loop.py
 +++ b/agent/conversation_loop.py
-@@ -744,6 +744,13 @@ def _restore_or_build_system_prompt(agent, system_message, conversation_history)
+@@ -820,6 +820,13 @@ def _restore_or_build_system_prompt(agent, system_message, conversation_history)
      Mutates ``agent._cached_system_prompt`` and persists a freshly-built prompt on first
      build. Row states ``missing``/``null``/``empty``/``present`` are logged and DB
      failures log at WARNING so silent prefix-cache misses show in ``agent.log``."""
@@ -52,7 +85,7 @@ index 6404de28b8..8c27e2cb64 100644
      session_row = None
 diff --git a/agent/guest_turn.py b/agent/guest_turn.py
 new file mode 100644
-index 0000000000..bc4860215b
+index 0000000000000000000000000000000000000000..bc4860215b225a99b25d9ba1748f78cc22ab9498
 --- /dev/null
 +++ b/agent/guest_turn.py
 @@ -0,0 +1,139 @@
@@ -196,10 +229,10 @@ index 0000000000..bc4860215b
 +    message = refusal(agent, name)
 +    return None if message is None else json.dumps({"error": message}, ensure_ascii=False)
 diff --git a/agent/tool_executor.py b/agent/tool_executor.py
-index ca8ab97c85..d875dba5bc 100644
+index cb58137a2aced3a76da570c0eb9f3a0aab625bf7..e9666fc5e49673ebe4e8ac292c6949ca7dbffd3d 100644
 --- a/agent/tool_executor.py
 +++ b/agent/tool_executor.py
-@@ -707,6 +707,10 @@ def _dispatch_authorized_once(
+@@ -709,6 +709,10 @@ def _dispatch_authorized_once(
              callback()
  
      block_message, block_error_type = scope_block, "tool_scope_block"
@@ -211,10 +244,10 @@ index ca8ab97c85..d875dba5bc 100644
          block_error_type = "plugin_block"
          resolve = lambda: _pre_tool_block(agent, ref)
 diff --git a/agent/turn_context.py b/agent/turn_context.py
-index 47a6870c21..1177fac3a3 100644
+index 03e47a17d64f505853b869baa5f2d1b7c3559a19..c2786a27fc1aa7a57264993e4d4dc31e99f9ecd9 100644
 --- a/agent/turn_context.py
 +++ b/agent/turn_context.py
-@@ -1138,6 +1138,9 @@ def build_turn_context(
+@@ -1152,6 +1152,9 @@ def build_turn_context(
          ensure_message_agent_tool(agent)
      except Exception:
          logger.debug("message_agent injection skipped", exc_info=True)
@@ -225,10 +258,10 @@ index 47a6870c21..1177fac3a3 100644
      _ensure_session_row(agent, pending_cli_message)
  
 diff --git a/gateway/platforms/api_server.py b/gateway/platforms/api_server.py
-index 097a601872..54b5ecce0b 100644
+index f8160def3de65aa3a26d61196ca1e080e0d1c4f8..52ff6b2fccb1276a43f243c95f86650372a67b44 100644
 --- a/gateway/platforms/api_server.py
 +++ b/gateway/platforms/api_server.py
-@@ -2344,8 +2344,11 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
+@@ -2285,8 +2285,11 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
          model_options: Optional[dict[str, Any]] = None, route: Optional[dict[str, Any]] = None,
          session_model: Optional[str] = None, confirmed_runtime_lock: bool = False,
          room_dispatch: Optional[dict[str, Any]] = None,
@@ -236,12 +269,12 @@ index 097a601872..54b5ecce0b 100644
 +        room_execution_policy: Optional[dict[str, Any]] = None,
 +        guest_tools: Optional[frozenset] = None) -> Any:
          """Create an AIAgent from the gateway runtime config + platform toolsets.
-+        ``guest_tools`` (patch 0018, ``agent/guest_turn.py``): someone other than the agent's person writes
-+        this turn, which gets only these tools, no USER.md and no memory provider.
++        ``guest_tools`` (BipAgents patch 0018, ``agent/guest_turn.py``): someone other than the agent's person
++        writes this turn, which gets only these tools, no USER.md and no memory provider.
          ``gateway_session_key`` persists across transcripts (memory scope), unlike ``session_id``;
          ``route`` / ``session_model`` are mutually exclusive; ``confirmed_runtime_lock`` beats the
          session ``/model`` override, disables the fallback chain and fails closed."""
-@@ -2407,10 +2410,13 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
+@@ -2348,10 +2351,13 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
              "gateway_session_key": gateway_session_key,
              # The session's provider from the previous request, so its queued recall reaches this turn
              # (#120116); checked back in by the turn's finally.
@@ -256,7 +289,7 @@ index 097a601872..54b5ecce0b 100644
          route_source = (
              "session_model_lock" if confirmed_runtime_lock
              else "session_model_override" if session_override
-@@ -3373,6 +3379,11 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
+@@ -3324,6 +3330,11 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
          system_prompt = body.get("system_message") or body.get("instructions")
          if system_prompt is not None and not isinstance(system_prompt, str):
              return None, _error_response("system_message must be a string", 400, code="invalid_system_message")
@@ -268,7 +301,7 @@ index 097a601872..54b5ecce0b 100644
          runtime_request = self._effective_session_runtime_request(session=session, body=body)
          lock_error = self._runtime_lock_error(runtime_request)
          if lock_error is not None:
-@@ -3412,7 +3423,7 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
+@@ -3363,7 +3374,7 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
              # #98619: the client addresses this session by construction — the id is in the
              # request path (/api/sessions/{session_id}/chat) — so a wake self-post lands where
              # the client will read it. The audited native-session opt-in.
@@ -277,34 +310,45 @@ index 097a601872..54b5ecce0b 100644
          return {
              "gateway_session_key": gateway_session_key, "session_id": session_id, "body": body,
              "user_message": user_message, "runtime_request": runtime_request,
-@@ -3495,6 +3506,8 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
+@@ -3455,6 +3466,8 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
+         (``tools/bot_mode_dm.py``, ``tui_gateway/methods_bot_relay.py``). This waits for the owner's
          receipt on the same budget as the local path, so the peer still gets the reply on this call.
          """
-         session_id = ctx["session_id"]
 +        if ctx["run_kwargs"].get("guest_tools") is not None:
-+            return None  # a guest turn runs here, closed (patch 0018), never in a live owner's open session
-         admitted = await self._admit_to_live_bot_chat(session_id, ctx["user_message"], ctx["run_kwargs"]["turn_author"])
++            return None  # a guest turn runs here, closed (BipAgents 0018), never in a live owner's open session
+         admitted = await self._admit_to_live_bot_chat(ctx["session_id"], ctx["user_message"], ctx["run_kwargs"].get("turn_author"))
          if admitted is None:
              return None
-@@ -3536,6 +3549,8 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
+@@ -3496,6 +3509,8 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
+         """``_answer_through_live_bot_chat`` for the SSE sibling route: the owner's settled receipt is
          the run's single ``assistant.completed`` event; a receipt still open at the budget is a
          ``run.queued`` event (the 202 shape), a failed one an ``error`` event carrying the reason."""
-         session_id = ctx["session_id"]
 +        if ctx["run_kwargs"].get("guest_tools") is not None:
-+            return None  # a guest turn runs here, closed (patch 0018), never in a live owner's open session
-         admitted = await self._admit_to_live_bot_chat(session_id, ctx["user_message"], ctx["run_kwargs"]["turn_author"])
++            return None  # a guest turn runs here, closed (BipAgents 0018), never in a live owner's open session
+         admitted = await self._admit_to_live_bot_chat(ctx["session_id"], ctx["user_message"], ctx["run_kwargs"].get("turn_author"))
          if admitted is None:
              return None
-@@ -4200,7 +4215,7 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
+@@ -4165,7 +4180,8 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
          session_history_delivery: str = "", turn_author: Optional[dict[str, Any]] = None,
          relay_metadata: Optional[dict[str, Any]] = None, notification_category: str = "result",
          resume_unanswered_turn: bool = False, approval_notify_callback=None,
--        approval_session_key: Optional[str] = None) -> tuple:
-+        approval_session_key: Optional[str] = None, guest_tools: Optional[frozenset] = None) -> tuple:
+-        approval_session_key: Optional[str] = None, walked_from: Optional[str] = None) -> tuple:
++        approval_session_key: Optional[str] = None, walked_from: Optional[str] = None,
++        guest_tools: Optional[frozenset] = None) -> tuple:
          """Create an agent and run one turn in a thread executor -> ``(result, usage)``.
          ``approval_notify_callback`` (with ``approval_session_key``) routes dangerous-command
          approval requests to the caller's stream, keyed like ``/v1/runs`` approvals (#51871).
-@@ -4243,7 +4258,8 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
+@@ -4195,7 +4211,8 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
+                 bind_declared_conversation=bind_declared_conversation, request_id=request_id, run_owner_scope=run_owner_scope,
+                 history_from_session=history_from_session, session_history_delivery=session_history_delivery,
+                 turn_author=turn_author, resume_unanswered_turn=resume_unanswered_turn, relay_metadata=relay_metadata,
+-                approval_notify_callback=approval_notify_callback, approval_session_key=approval_session_key)
++                approval_notify_callback=approval_notify_callback, approval_session_key=approval_session_key,
++                guest_tools=guest_tools)
+         loop = asyncio.get_running_loop()
+         # ContextVars do not follow run_in_executor threads: capture here, re-enter in _run().
+         request_profile = _api_request_profile.get()
+@@ -4224,7 +4241,8 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
                          reasoning_callback=reasoning_callback, status_callback=status_callback,
                          gateway_session_key=gateway_session_key, requested_model=requested_model,
                          requested_provider=requested_provider, model_options=model_options, route=route,
@@ -315,10 +359,10 @@ index 097a601872..54b5ecce0b 100644
                          agent_ref[0] = agent
                      if resume_unanswered_turn:
 diff --git a/gateway/platforms/api_server_runs.py b/gateway/platforms/api_server_runs.py
-index e4b5dd1e3e..4e53f49df4 100644
+index c7296d95cc01445479ce8b21e43c8ac716a662dd..075bd30a439b78d44f64bf3955d836457a2ff532 100644
 --- a/gateway/platforms/api_server_runs.py
 +++ b/gateway/platforms/api_server_runs.py
-@@ -669,6 +669,11 @@ async def _handle_runs(self, request: "web.Request", *, _api_server) -> "web.Res
+@@ -750,6 +750,11 @@ async def _handle_runs(self, request: web.Request, *, _api_server) -> web.Respon
          turn_author = _api_server._request_turn_author(body)
      except ValueError as exc:
          return _json_error(_openai_error, str(exc), code="invalid_author", status=400)
@@ -327,10 +371,10 @@ index e4b5dd1e3e..4e53f49df4 100644
 +        guest_tools = _parse_guest_turn(body.get(_GUEST_FIELD))
 +    except GuestTurnError as exc:
 +        return _json_error(_openai_error, str(exc), code="invalid_guest_turn", status=400)
-     conversation_history, instructions, stored_session_id, history_err = (
-         _resolve_conversation_history(self, body, raw_input, _openai_error=_openai_error))
+     conversation_history, instructions, stored_session_id, history_err, walked_from = await _resolve_chained_history(
+         self, body, raw_input, _openai_error=_openai_error)
      if history_err is not None:
-@@ -743,6 +748,7 @@ async def _handle_runs(self, request: "web.Request", *, _api_server) -> "web.Res
+@@ -824,6 +829,7 @@ async def _handle_runs(self, request: web.Request, *, _api_server) -> web.Respon
          agent_kwargs=dict(
              ephemeral_system_prompt=instructions, session_id=session_id, gateway_session_key=gateway_session_key,
              route=route, room_dispatch=room_dispatch, room_execution_policy=room_execution_policy,
@@ -338,20 +382,132 @@ index e4b5dd1e3e..4e53f49df4 100644
              **{k: agent_overrides.get(k) for k in ("requested_model", "requested_provider", "model_options")}),
          request_profile=_api_server._api_request_profile.get(),
          browser_control_principal=_api_server._api_request_browser_control_principal.get(),
-@@ -752,7 +758,9 @@ async def _handle_runs(self, request: "web.Request", *, _api_server) -> "web.Res
-     # A canonical Bot Chat that a Desktop holds live is that Desktop's to run: executing here would
-     # be a second writer beside its lease (#114959). The owner's mailbox takes the turn and its
+@@ -834,7 +840,9 @@ async def _handle_runs(self, request: web.Request, *, _api_server) -> web.Respon
      # receipt drives this run's status, so `peer run` keeps its run_id and `peer status` still works.
+     # Under session authority the same call admits the turn to the Bot Chat's own FIFO, which is
+     # why it is decided BEFORE ``admit_api_turn`` would bind the chat as an API conversation.
 -    admitted = await self._admit_to_live_bot_chat(session_id, user_message, turn_author) if selected_session_id else None
-+    # A guest turn runs here, closed (patch 0018), never in a live owner's open session.
++    # A guest turn runs here, closed (BipAgents 0018), never in a live owner's open session.
 +    admitted = (await self._admit_to_live_bot_chat(session_id, user_message, turn_author)
 +                if selected_session_id and guest_tools is None else None)
-     if admitted is not None:
-         task = self._active_run_tasks[run_id] = asyncio.create_task(
-             _execute_run_via_live_owner(self, launch, *admitted, _api_server=_api_server))
+     _retarget_to_delivered_chat(self, launch, admitted)
+     if admitted is None and getattr(self.gateway_runner, 'session_authority', None) is not None:
+         refused = await _admit_run_to_authority(
+diff --git a/gateway/run_turn_runner.py b/gateway/run_turn_runner.py
+index c5a6d6de541f842e79b639684545ec07357f1d1a..4de4a5ae33f72d16e90d30bb2abcb3ecf9bcd301 100644
+--- a/gateway/run_turn_runner.py
++++ b/gateway/run_turn_runner.py
+@@ -1187,7 +1187,14 @@ class TurnRunner(GatewayTurnProgressMixin, GatewaySessionAgentMixin):
+             else:
+                 scope.enter_context(api_policy_scope())
+                 bind_turn_workspace(policy, self._ctx.session_id)
+-                result = self._run_sync_scoped()
++                try:
++                    result = self._run_sync_scoped()
++                finally:
++                    guest = self.__dict__.pop("_guest_agent", None)
++                    if guest is not None:
++                        # BipAgents 0018: the guest turn's own agent, never cached: released like an evicted
++                        # one (the session's sandbox, browser and background processes stay).
++                        self._release_evicted_agent(guest)
+             from gateway.session_results import execution_result
+             captured = execution_result.get()
+             if captured is not None:
+diff --git a/gateway/session_api_turn.py b/gateway/session_api_turn.py
+index a0d78f5ca31a0920257c4af6f94fc7d3984467bd..f36146351b4b71e30b37563cf97b7881c3afeed1 100644
+--- a/gateway/session_api_turn.py
++++ b/gateway/session_api_turn.py
+@@ -55,7 +55,7 @@ def check_api_turn(authority, ref, payload):
+     if 'api_turn_v1' in payload:
+         data = payload['api_turn_v1']
+         if (set(data) - {'history', 'settings', 'turn_author', 'media', 'run_owner_scope', 'browser_control',
+-                         'relay_metadata', 'resume_unanswered'}
++                         'relay_metadata', 'resume_unanswered', 'guest_turn'}
+                 or data.get('resume_unanswered', True) is not True
+                 or not {'history', 'settings'} <= set(data)
+                 or not isinstance(data.get('relay_metadata', {}), dict)
+@@ -65,11 +65,22 @@ def check_api_turn(authority, ref, payload):
+             raise RuntimeStoreError('invalid_params')
+         if set(data['settings']) - set(_SETTING_KEYS):
+             raise RuntimeStoreError('invalid_params')
++        _guest_tools(data)  # BipAgents 0018: a malformed guest mark never runs (open or closed)
+     settings = payload.get('api_turn_v1', {}).get('settings') or api_settings(authority, ref)
+     check_api_settings(adapter, settings)
+     return adapter
+ 
+ 
++def _guest_tools(data):
++    """The admitted turn's guest tools (BipAgents patch 0018, ``agent/guest_turn.py``), ``None`` for the
++    person's own turn. Per admission, never a session setting: the person's next turn is theirs again."""
++    from agent.guest_turn import GuestTurnError, parse
++    try:
++        return parse((data or {}).get('guest_turn'))
++    except GuestTurnError as exc:
++        raise RuntimeStoreError('invalid_params') from exc
++
++
+ def _valid_owner_scope(value):
+     return isinstance(value, str) and _OWNER_SCOPE_RE.fullmatch(value) is not None
+ 
+@@ -224,6 +235,10 @@ def admit_api_steps(adapter, **kwargs):
+         # The session-chat door's one policy-gated re-run (#115325): its failed attempt left this text as
+         # the transcript's unanswered tail, which the turn adopts instead of appending it again.
+         payload['api_turn_v1']['resume_unanswered'] = True
++    if kwargs.get('guest_tools') is not None:
++        # BipAgents 0018: someone other than the agent's person writes this turn. The closed tool list rides
++        # the durable admission (part of its exact-retry identity) to the TurnRunner that builds its agent.
++        payload['api_turn_v1']['guest_turn'] = {'tools': sorted(kwargs['guest_tools'])}
+     if kwargs.get('relay_metadata'):
+         # The request's Relay metadata rides the admission to the turn it describes (main passed it
+         # to ``run_conversation``); it is client JSON, so it is part of the exact-retry identity.
+@@ -483,7 +498,8 @@ def prepare_api_execution(authority, ref, payload):
+             'content': content, 'turn_author': data.get('turn_author') if data else None,
+             'relay_metadata': data.get('relay_metadata') if data else None,
+             'resume_unanswered': bool(data and data.get('resume_unanswered')),
+-            'browser_control': _rebind_browser_control(adapter, data)}
++            'browser_control': _rebind_browser_control(adapter, data),
++            'guest_tools': _guest_tools(data)}
+ 
+ 
+ def _api_observers(authority, session_id):
+@@ -604,3 +620,9 @@ def prepare_api_runtime(model, runtime_kwargs):
+         confirmed_runtime_lock=bool(options.get('confirmed_runtime_lock')),
+         gateway_session_key=None, session_id=None)
+     return model, runtime_kwargs
++
++
++def api_guest_tools():
++    """The executing API admission's guest tools (BipAgents patch 0018), ``None`` for the person's own turn."""
++    current = api_execution.get()
++    return current.get('guest_tools') if current else None
+diff --git a/gateway/session_execution.py b/gateway/session_execution.py
+index 3277a93230a31b27fa7b6063999d369eb8e86f05..d941019d21eda98145b0787771517bca5df5e3ef 100644
+--- a/gateway/session_execution.py
++++ b/gateway/session_execution.py
+@@ -194,6 +194,20 @@ class GatewaySessionAgentMixin:
+         ctx = self._ctx
+         runner = self._runner
+         skip_context_files = self._skip_context_files(platform_key)
++        from gateway.session_api_turn import api_guest_tools
++        guest_tools = api_guest_tools()
++        if guest_tools is not None:
++            # BipAgents 0018: a guest turn gets an agent of its own, closed to the guest's tools, never taken
++            # from nor put in the session's cache: the person's cached agent (its prompt, tools, memory
++            # provider) is neither used nor changed, and the guest's is released once the turn is over.
++            from agent.guest_turn import apply as _apply_guest_turn
++            agent = self._build_fresh_agent(
++                turn_route, platform_key, combined_ephemeral, max_iterations, reasoning_config, pr, skip_context_files,
++            )
++            _apply_guest_turn(agent, guest_tools)
++            self._guest_agent = agent
++            logger.debug("Built a guest-turn agent for session %s", ctx.session_key)
++            return agent, False
+         sig = runner._agent_config_signature(
+             turn_route["model"], turn_route["runtime"], ctx.enabled_toolsets, combined_ephemeral,
+             cache_keys=runner._extract_cache_busting_config(ctx.user_config),
 diff --git a/tests/agent/test_guest_turn.py b/tests/agent/test_guest_turn.py
 new file mode 100644
-index 0000000000..0c4709075c
+index 0000000000000000000000000000000000000000..0c4709075c0c6e6b5788cb0b2ae4822e338ce9eb
 --- /dev/null
 +++ b/tests/agent/test_guest_turn.py
 @@ -0,0 +1,172 @@
@@ -527,9 +683,111 @@ index 0000000000..0c4709075c
 +    assert seen["tools"] == set(ALLOWED)  # the prompt describes the guest's tools only
 +    agent._session_db.get_session.assert_not_called()
 +    agent._session_db.update_system_prompt.assert_not_called()
+diff --git a/tests/gateway/test_api_guest_turn_admission.py b/tests/gateway/test_api_guest_turn_admission.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..b478b693d6e6e7da3b2ca1c290ef11ee2296418c
+--- /dev/null
++++ b/tests/gateway/test_api_guest_turn_admission.py
+@@ -0,0 +1,96 @@
++"""BipAgents patch 0018 under the session authority: a run's or a session chat's ``guest_turn`` mark rides the
++durable ``api_turn_v1`` admission to the TurnRunner, which builds that turn its own closed agent, never the
++session's cached one."""
++from types import SimpleNamespace
++
++import pytest
++
++from gateway.session_api_turn import admit_api_turn, api_execution, prepare_api_execution
++from hermes_state_runtime import RuntimeStoreError
++
++GUESTS = frozenset({"mcp__bipagents__weather", "web_search"})
++
++
++def test_the_mark_rides_the_admission_and_stays_with_that_turn(api, owner):
++    authority, ref, row = admit_api_turn(api, session_id="shared", request_id="guest-1", user_message="Bonjour",
++                                         conversation_history=[], guest_tools=GUESTS)
++    data = row["payload"]["api_turn_v1"]
++    assert data["guest_turn"] == {"tools": sorted(GUESTS)}
++    assert "guest_tools" not in data["settings"] and "guest_turn" not in data["settings"]
++    assert prepare_api_execution(authority, ref, row["payload"])["guest_tools"] == GUESTS
++    # The person's next turn in the same session is theirs: the mark is per admission, never a session setting.
++    _, ref2, own = admit_api_turn(api, session_id=ref.session_id, request_id="own-1", user_message="Merci",
++                                  conversation_history=[])
++    assert "guest_turn" not in own["payload"]["api_turn_v1"]
++    assert prepare_api_execution(authority, ref2, own["payload"])["guest_tools"] is None
++    # A payload-less internal turn of that session is the person's too.
++    assert prepare_api_execution(authority, ref2, {"text": "wake"})["guest_tools"] is None
++
++
++def test_an_exact_retry_cannot_drop_or_change_the_mark(api, owner):
++    args = dict(session_id="retry", request_id="same-key", user_message="Salut", conversation_history=[])
++    admit_api_turn(api, guest_tools=GUESTS, **args)
++    with pytest.raises(RuntimeStoreError, match="admission_conflict"):
++        admit_api_turn(api, **args)
++    with pytest.raises(RuntimeStoreError, match="admission_conflict"):
++        admit_api_turn(api, guest_tools=frozenset({"web_search"}), **args)
++
++
++def test_a_malformed_stored_mark_never_runs(api, owner):
++    from gateway.session_api_turn import check_api_turn
++    _, ref, row = admit_api_turn(api, session_id="bad", user_message="x", conversation_history=[], guest_tools=GUESTS)
++    for bad in ({"tools": "web_search"}, {"tools": ["web_search"], "extra": 1}, ["web_search"]):
++        payload = {**row["payload"], "api_turn_v1": {**row["payload"]["api_turn_v1"], "guest_turn": bad}}
++        with pytest.raises(RuntimeStoreError, match="invalid_params"):
++            check_api_turn(owner, ref, payload)
++        with pytest.raises(RuntimeStoreError, match="invalid_params"):
++            prepare_api_execution(owner, ref, payload)
++
++
++def _turn(cache, built):
++    from gateway.run_turn_runner import TurnRunner
++    turn = object.__new__(TurnRunner)
++    turn._ctx = SimpleNamespace(session_key="agent:main:api_server:dm:shared", session_id="shared",
++                                user_config={}, source=SimpleNamespace(user_id="u", user_id_alt=None))
++    turn._runner = SimpleNamespace(_agent_cache=cache, _agent_cache_lock=__import__("threading").Lock(),
++                                   _agent_config_signature=lambda *a, **k: "sig")
++    turn._skip_context_files = lambda platform_key: False
++    turn._build_fresh_agent = lambda *a: built.append(SimpleNamespace(tools=[], valid_tool_names=set())) or built[-1]
++    return turn
++
++
++def test_a_guest_turn_gets_its_own_closed_agent_and_leaves_the_cached_one_alone(monkeypatch):
++    applied = []
++    monkeypatch.setattr("agent.guest_turn.apply", lambda agent, tools: applied.append((agent, tools)))
++    owners_agent = object()
++    cache = {"agent:main:api_server:dm:shared": (owners_agent, "sig", 3, "shared")}
++    built = []
++    turn = _turn(cache, built)
++    token = api_execution.set({"settings": {}, "guest_tools": GUESTS})
++    try:
++        agent, reused = turn._resolve_turn_agent({"model": "m", "runtime": {}}, "api_server", "", 10, None, {})
++    finally:
++        api_execution.reset(token)
++    assert agent is built[0] and agent is not owners_agent and reused is False
++    assert applied == [(agent, GUESTS)]
++    assert cache == {"agent:main:api_server:dm:shared": (owners_agent, "sig", 3, "shared")}   # untouched
++    assert turn._guest_agent is agent
++
++
++def test_the_guest_agent_is_released_after_the_turn(monkeypatch):
++    from gateway.run_turn_runner import TurnRunner
++    turn = object.__new__(TurnRunner)
++    turn._runner = SimpleNamespace()
++    turn._ctx = SimpleNamespace(source=None, session_id="shared")
++    guest = object()
++    released = []
++    monkeypatch.setattr("gateway.session_policy.policy_for_source", lambda runner, source: None)
++    monkeypatch.setattr("gateway.session_authorities.active_authority", lambda runner: None)
++    turn._release_evicted_agent = released.append
++
++    def run():
++        turn._guest_agent = guest
++        return {"final_response": "ok"}
++    turn._run_sync_scoped = run
++    assert turn.run_sync() == {"final_response": "ok"}
++    assert released == [guest] and "_guest_agent" not in turn.__dict__
 diff --git a/tests/gateway/test_api_server_guest_turn.py b/tests/gateway/test_api_server_guest_turn.py
 new file mode 100644
-index 0000000000..7cf561372f
+index 0000000000000000000000000000000000000000..7cf561372fd9bb0435366ab9924dc59cf12c00be
 --- /dev/null
 +++ b/tests/gateway/test_api_server_guest_turn.py
 @@ -0,0 +1,143 @@

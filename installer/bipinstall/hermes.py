@@ -19,9 +19,9 @@ import yaml  # PyYAML, installed with the installer
 from . import routing
 
 INSTALL_URL = "https://hermes-agent.nousresearch.com/install.sh"
-# The Hermes version BipAgents is tested with: its patches (hermes/patches/) apply cleanly there. Override with
-# BIPAGENTS_HERMES_COMMIT (empty = Hermes' own default, without guarantee for the patches).
-HERMES_COMMIT = os.environ.get("BIPAGENTS_HERMES_COMMIT", "517b5e10f")
+# The Hermes version BipAgents is tested with, v0.22.5: its patches (hermes/patches/, base in hermes/patches/BASE) apply
+# cleanly there. Override with BIPAGENTS_HERMES_COMMIT (empty = Hermes' own default, without guarantee for the patches).
+HERMES_COMMIT = os.environ.get("BIPAGENTS_HERMES_COMMIT", "bf0203a794")
 HUB_PROFILE = "default"
 
 
@@ -111,36 +111,82 @@ def hermes_checkout() -> Path:
 
 
 def patch_variants(patch: Path) -> List[Path]:
-    """A patch, then its version for a newer Hermes (hermes/patches/next/), for someone who updated Hermes past the
-    version BipAgents pins."""
+    """A patch, then its version for a newer Hermes (next/ beside it, when one is kept), for someone who updated
+    Hermes past the base of the patches."""
     newer = patch.parent / "next" / patch.name
     return [patch] + ([newer] if newer.exists() else [])
 
 
+def set_patches(folder: Path) -> List[Path]:
+    """BipAgents' Hermes patches in ``folder``, in order."""
+    return sorted(p for p in folder.glob("*.patch") if not p.name.startswith("."))
+
+
+def apply_fitting(runner: Runner, checkout: Path, variants: Sequence[Path]) -> Optional[str]:
+    """Put on the first version of a patch that fits this Hermes: as is (`git apply`), else merged with its context
+    (`apply_3way`). Returns the file applied, None when none fits (nothing changed then)."""
+    for variant in variants:
+        try:
+            runner.run(["git", "-C", str(checkout), "apply", "--check", str(variant)])
+            runner.run(["git", "-C", str(checkout), "apply", str(variant)])
+        except RuntimeError:
+            continue
+        return str(variant)
+    if runner.dry:
+        return None
+    return next((str(v) for v in variants if apply_3way(runner, checkout, v)), None)
+
+
+def apply_3way(runner: Runner, checkout: Path, patch: Path) -> bool:
+    """A patch whose context moved (a Hermes past the patches' base), merged with `git apply --3way` from the blobs its
+    full index lines name, when the checkout has them. Only as a fallback, and guarded: `--3way --check` passes a merge
+    with conflicts, and `--3way` works on the index; so the touched files are staged, merged for real, put back as
+    they were on a conflict or when nothing changed (already there), and the index is left as a plain `git apply`
+    leaves it (those paths as in HEAD)."""
+    git = lambda *a: subprocess.run(["git", "-C", str(checkout), *a], capture_output=True, text=True)
+    listed = git("apply", "--numstat", str(patch))
+    paths = [line.split("\t", 2)[2] for line in listed.stdout.splitlines() if line.count("\t") >= 2]
+    if listed.returncode != 0 or not paths:
+        return False
+    before = {p: (checkout / p).read_bytes() if (checkout / p).is_file() else None for p in paths}
+    merged = False
+    try:
+        present = [p for p, data in before.items() if data is not None]
+        if not present or git("add", "--", *present).returncode == 0:
+            runner.run(["git", "-C", str(checkout), "apply", "--3way", str(patch)])
+            merged = any(((checkout / p).read_bytes() if (checkout / p).is_file() else None) != data
+                         for p, data in before.items())
+    except (RuntimeError, OSError):
+        merged = False
+    finally:
+        git("reset", "--quiet", "--", *paths)
+    if not merged:
+        for path, data in before.items():
+            target = checkout / path
+            if data is None:
+                target.unlink(missing_ok=True)
+            else:
+                target.write_bytes(data)
+    return merged
+
+
 def apply_patches(runner: Runner, patches: Path, applied: Optional[List[str]] = None) -> List[str]:
-    """BipAgents' Hermes patches (questions from the agent in the app, photos kept for follow-up questions), applied
-    once, before the gateway first starts; each in the version that fits this Hermes. Returns the patches that could
-    not be applied (the app then works without those features)."""
+    """BipAgents' Hermes patches, applied once, before the gateway first starts, each in the version that fits this
+    Hermes. Returns the patches that could not be applied (the app then works without those features)."""
     checkout = hermes_checkout()
     skipped: List[str] = []
     if (hermes_home() / "shared").is_symlink():
         return skipped   # a shared Hermes was built with them (shared_hermes.py)
-    for patch in sorted(p for p in patches.glob("*.patch") if not p.name.startswith(".")):
+    for patch in set_patches(patches):
         variants = patch_variants(patch)
         if not runner.dry and any(subprocess.run(["git", "-C", str(checkout), "apply", "--reverse", "--check", str(v)],
                                                  capture_output=True).returncode == 0 for v in variants):
             continue   # already there (a second run of the installer)
-        for variant in variants:
-            try:
-                runner.run(["git", "-C", str(checkout), "apply", "--check", str(variant)])
-                runner.run(["git", "-C", str(checkout), "apply", str(variant)])
-            except RuntimeError:
-                continue
-            if applied is not None:
-                applied.append(str(variant))   # by us: an uninstall takes it back off a Hermes that was there before
-            break
-        else:
+        fit = apply_fitting(runner, checkout, variants)
+        if fit is None:
             skipped.append(patch.name)
+        elif applied is not None:
+            applied.append(fit)   # by us: an uninstall takes it back off a Hermes that was there before
     return skipped
 
 

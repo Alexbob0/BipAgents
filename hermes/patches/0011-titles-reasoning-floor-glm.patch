@@ -1,5 +1,22 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Alexbob0 <190955252+Alexbob0@users.noreply.github.com>
+Date: Sun, 1 Nov 2026 10:07:39 +0100
+Subject: =?UTF-8?q?Conversation=20titles=20with=20GLM:=20never=20thinking?=
+ =?UTF-8?q?=20=C2=AB=20none=20=C2=BB?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+BipAgents patch, documented in hermes/patches/README.md of the BipAgents repository.
+
+Bip-Patch: 0011-titles-reasoning-floor-glm
+---
+ agent/auxiliary_reasoning_floor.py            | 13 +++++++++++--
+ tests/agent/test_auxiliary_reasoning_floor.py | 15 +++++++++++++++
+ 2 files changed, 26 insertions(+), 2 deletions(-)
+
 diff --git a/agent/auxiliary_reasoning_floor.py b/agent/auxiliary_reasoning_floor.py
-index 748003e179..3e5759c75d 100644
+index 748003e17989cbbde7fcb54a36fd401820bc92cc..3e5759c75d912fdc141b207981a0b7c60c11ac8d 100644
 --- a/agent/auxiliary_reasoning_floor.py
 +++ b/agent/auxiliary_reasoning_floor.py
 @@ -30,6 +30,13 @@ _FLOORED_ROUTES: set[tuple[str, str]] = set()
@@ -30,13 +47,13 @@ index 748003e179..3e5759c75d 100644
          return reasoning_config
      logger.info(
 diff --git a/tests/agent/test_auxiliary_reasoning_floor.py b/tests/agent/test_auxiliary_reasoning_floor.py
-index 2eefef4a6c..b2021df121 100644
+index a30cd2cf6da998fbea2b0288ec6ee01f4c0df239..ac33563eb61b160aae2158f92cc1b6574973ef2e 100644
 --- a/tests/agent/test_auxiliary_reasoning_floor.py
 +++ b/tests/agent/test_auxiliary_reasoning_floor.py
-@@ -74,3 +74,18 @@ def test_field_rejection_still_strips_instead_of_stepping_up():
-     retry = client.chat.completions.create.call_args_list[1].kwargs
-     assert "reasoning_effort" not in retry
-     assert not auxiliary_reasoning_floor._FLOORED_ROUTES
+@@ -114,3 +114,18 @@ def test_tokenplan_level_rejection_steps_up_to_the_floor_and_remembers_the_route
+     assert _call(client) == {"ok": True}
+     upfront = client.chat.completions.create.call_args_list[2].kwargs
+     assert upfront["reasoning_effort"] == auxiliary_reasoning_floor.REASONING_FLOOR_EFFORT
 +
 +
 +def test_glm_is_floored_up_front_because_it_answers_empty_when_disabled():
