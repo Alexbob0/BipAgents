@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import struct
+import time
 from typing import Any
 
 BRIDGE_KEY = "test-bridge-key-0123456789abcdef0123456789"
@@ -31,10 +32,15 @@ def sse(event_type: str, **data: Any) -> str:
     return f"event: {event_type}\ndata: {json.dumps(payload)}\n\n"
 
 
-def read_sse(resp) -> list:
-    """(event, data) pairs of an SSE response (httpx streaming response) until it ends; keepalives skipped."""
+def read_sse(resp, timeout: float = 120.0) -> list:
+    """(event, data) pairs of an SSE response (httpx streaming response) until it ends; keepalives skipped. A stream
+    that never ends fails after `timeout` s: its keepalives (every 10 s) would keep the client's read timeout from ever
+    firing, and the run would hang instead of failing."""
     events, name = [], None
+    deadline = time.monotonic() + timeout
     for line in resp.iter_lines():
+        if time.monotonic() > deadline:
+            raise AssertionError(f"the event stream did not end within {timeout:g} s; read so far: {events}")
         if line.startswith("event: "):
             name = line[len("event: "):]
         elif line.startswith("data: "):

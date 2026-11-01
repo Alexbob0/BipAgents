@@ -43,7 +43,13 @@ written from a dict), `data/`, `home/` and `bridge.log`. The process runs with a
 - `TZ=UTC`
 - `LANG=en_US.UTF-8`
 - `NO_PROXY=*`
+- `BIPAGENTS_MAIL_GUARD_PORT=<a free port>` (a place of the offer's e-mail guard otherwise listens on a port fixed by
+  the account's uid, which another run's bridges hold)
 - stdin `/dev/null`
+
+No wait is unbounded: `wait_until` takes a timeout, the HTTP client 60 s, `read_sse` 120 s for a stream that never
+ends (its keepalives would keep the read timeout from firing). Read a run's progress from a log file, not through
+`| tail`: the tail shows nothing until pytest ends, so a run looks stalled while it goes on.
 
 The suite waits for `GET /health` to answer 200, then sends SIGTERM at the end of the test. The default config is
 `tests/conftest.py`'s `config_dict`, pointed at the fakes, with `[cron] watch = false`. Tests that need the cron

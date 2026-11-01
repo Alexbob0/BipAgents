@@ -106,7 +106,10 @@ def test_a_folder_is_indexed_and_searched_by_its_agent_only(bridges):
     read = text_of(call(bridge, "archive_read", {"ref": contract}))
     assert read.startswith(UNTRUSTED) and "Title: Votre contrat habitation" in read and "Date: 2023-03-14" in read
     assert read.count("<<<") == 1 and read.count(">>>") == 1 and "›››" in read
-    assert f"[[archive:{contract}|voir le document]]" in read
+    # the link's words in the agent's language (names.rs): English for Wellness (none set); French on a French place
+    assert f"[[archive:{contract}|see the document]]" in read
+    assert bridge.patch("/v1/notebook/settings", json={"language": "fr"}, headers=AUTH).status_code == 200
+    assert f"[[archive:{contract}|voir le document]]" in text_of(call(bridge, "archive_read", {"ref": contract}))
 
     # long documents by pages
     journal = re.search(r"ref: (\S+)", text_of(call(bridge, "archive_search", {"query": "journal"}))).group(1)

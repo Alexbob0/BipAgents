@@ -18,7 +18,8 @@
 //!    bridge's blocks) and a small lexicon per kind: the agent that stands out answers, ONE.
 //! 5. Else one call to a small model (`[rooms] router_model`, the install's model as the Carnet's nightly pass finds
 //!    it, `notebook::tidy::model`), with a tiny prompt (one line per agent, the message cut to 600 characters, 20
-//!    tokens out): one agent, two only when the message clearly needs two skills. All the small calls (router,
+//!    tokens out; 600 and asked not to think for any model but GLM through EUrouter, `ask_model`): one agent, two
+//!    only when the message clearly needs two skills. All the small calls (router,
 //!    conductor, goal) count in `[rooms] router_daily_max` a day, and on the room's tokens (`small_tokens`).
 //! 6. Still nobody: the rule's best, the agent that spoke last, else the first participant. One always answers.
 //!

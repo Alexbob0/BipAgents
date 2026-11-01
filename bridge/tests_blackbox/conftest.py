@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import sys
 import time
 from pathlib import Path
@@ -22,6 +23,13 @@ from bbkit.fakes import Fakes  # noqa: E402
 
 def pytest_configure(config):
     config.addinivalue_line("markers", "slow: waits for the bridge's own timers (10 s and more); -m 'not slow' skips them")
+    # A run stopped with `kill` ends like Ctrl-C: the test's bridges are stopped. They run in a session of their own
+    # (`start_new_session`), so a run killed plainly left its bridge running on, timers and ports (2026-11-01).
+    signal.signal(signal.SIGTERM, _interrupted)
+
+
+def _interrupted(signum, frame):
+    raise KeyboardInterrupt(f"signal {signum}")
 
 
 @pytest.fixture(scope="session")
