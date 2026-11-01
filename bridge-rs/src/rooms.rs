@@ -36,7 +36,9 @@
 //! **Turns** go one after another (one worker per room), so each agent sees the replies given before its turn,
 //! including this round's. At most `TURNS_PER_MESSAGE` turns per message of the person in a discussion. A message
 //! written while the agents answer queues its own turns (an agent already waiting in the queue isn't queued twice: it
-//! reads the new message in its turn), and the relay of the older message stops there.
+//! reads the new message in its turn), and the relay of the older message stops there. Every turn has a cap of
+//! tokens (`turn_cap`, `[rooms] team_turn_tokens`): team work's since 2026-10-31, a discussion's (before a goal) since
+//! 2026-11-01, its wrap-up within it; a relative's agent's on its own bridge (rooms_remote.rs).
 //!
 //! **What an agent gets**: the person's words, and the other agents' replies marked as information, not instructions
 //! (the content rule of souls.rs, as for Bot Chat in peers.rs), in its run's instructions and in each message. Only
@@ -156,6 +158,9 @@ pub const WRAP_SECONDS: f64 = 90.0;
 /// Told to a team turn past 60 % of its cap (Hermes delivers it after the current tool calls).
 pub const WRAP_STEER: &str = "[BipAgents] This turn is close to its limit. Stop the work here: do not start anything \
 new. Reply now, briefly: what you did and what is left, then the DONE and NEXT lines.";
+/// The same, to a turn before a goal (a discussion: no DONE line there).
+pub const WRAP_STEER_DISCUSSION: &str = "[BipAgents] This turn is close to its limit. Stop the work here: do not \
+start anything new. Reply now, briefly: what you did and what is left, then the NEXT line.";
 /// The router model's prompt: the message cut to this, each agent's line to `ROLE_CHARS`.
 pub const ROUTER_MESSAGE_CHARS: usize = 600;
 pub const ROLE_CHARS: usize = 160;
@@ -889,7 +894,18 @@ pub fn call_tokens(room: &Room, agent: &str) -> i64 {
 }
 
 /// A team turn's cap: `team_turn_tokens`, or what the person's message's budget has left (`TURN_TOKENS_FLOOR` at least).
+///
+/// A turn before a goal (a discussion: the room's first answer, a colleague's hop, the turn whose message gets a goal
+/// proposed) has `team_turn_tokens` too, the same rule (Alex, 2026-11-01: « Mettre un plafond aussi au premier tour
+/// d'un salon, avant l'objectif »; Front's hop in the bench of that day, before the goal was accepted, took 587k).
+/// Not smaller: such a turn is any discussion's answer, with tools like a one-to-one reply (a search, the mail), its
+/// first answers read 20-44k on the lab; the only smaller number here, `TURN_TOKENS_FLOOR` (40k, so 30k once its
+/// wrap-up's room is set aside), would stop it at its first tool call (each call reads ~20k, `CALL_TOKENS`). No
+/// message budget either (`team_tokens` is team work's): a discussion's turns are few (`max_hops`, once each).
 pub fn turn_cap(config: &Config, room: &Room, cause: u64) -> i64 {
+    if !room.team() {
+        return config.rooms.team_turn_tokens;
+    }
     let left = config.rooms.team_tokens - room.tokens_for(cause);
     config.rooms.team_turn_tokens.min(left.max(TURN_TOKENS_FLOOR))
 }
@@ -1403,10 +1419,12 @@ impl Rooms {
         let started = turn.started.unwrap_or_else(now);
         // team work: one turn at most `team_turn_tokens` (and what the message's budget has left), its wrap-up's room
         // left aside (`turn_limit`), told to wrap up at 60 %, stopped at the limit (Back took 749k in one turn on the
-        // lab, 2026-10-31) (its own calls' cost in this room: `call_tokens`)
+        // lab, 2026-10-31) (its own calls' cost in this room: `call_tokens`). A turn before a goal too (2026-11-01:
+        // Front's took 587k before the goal was accepted), `turn_cap`. Also when followed again after a restart.
         let room = load(&config, id);
-        let cap = room.as_ref().filter(|r| config.rooms.handoff && r.team()).map(|r| turn_cap(&config, r, turn.cause));
+        let cap = room.as_ref().filter(|_| config.rooms.handoff).map(|r| turn_cap(&config, r, turn.cause));
         let limit = cap.map(turn_limit);
+        let steer = if room.as_ref().is_some_and(|r| r.team()) { WRAP_STEER } else { WRAP_STEER_DISCUSSION };
         if let (Some(hub), Some(limit)) = (&self.hub, limit) {
             // on Hermes' real tokens (patch 0020), the hub stops the turn before a model call that would pass it
             hub.limit_tokens(&agent.name, &run_id, limit);
@@ -1453,7 +1471,7 @@ impl Rooms {
                     if !steered && used * 10 >= limit * 6 {
                         steered = true;
                         tracing::info!(room = %id, agent = %agent.name, used = used, limit = limit, "rooms: a turn near its cap, told to wrap up");
-                        if let Err(err) = self.hermes.steer_run(&agent, &run_id, WRAP_STEER).await {
+                        if let Err(err) = self.hermes.steer_run(&agent, &run_id, steer).await {
                             tracing::info!(room = %id, agent = %agent.name, error = %err, "rooms: the wrap-up steer refused");
                         }
                     }
@@ -1529,7 +1547,7 @@ impl Rooms {
             } else {
                 status.clone()
             };
-            let (said, more) = self.wrap_up(&config, &agent, &session, id, turn, &why).await;
+            let (said, more) = self.wrap_up(&config, &agent, &session, id, turn, &why, cap).await;
             tokens.add(&more);
             if !said.is_empty() {
                 tracing::info!(room = %id, agent = %agent.name, why = %why, "rooms: a turn wrapped up");
@@ -1570,7 +1588,10 @@ impl Rooms {
 
     /// One short turn of the same agent in the room's conversation, told why its turn ended without an answer
     /// (`why`: capped, cancelled, timeout, failed, completed with nothing), without tools, at most `WRAP_SECONDS`: its
-    /// words (empty: none) and its tokens.
+    /// words (empty: none) and its tokens. Within the room its turn's cap kept for it (`cap - turn_limit(cap)`, 30k at
+    /// most): the hub stops it before a second call (2026-11-01: one call reads 22-31k, so a wrap-up that asks for a
+    /// tool anyway is stopped there).
+    #[allow(clippy::too_many_arguments)]
     async fn wrap_up(
         &self,
         config: &Config,
@@ -1579,6 +1600,7 @@ impl Rooms {
         id: &str,
         turn: &Turn,
         why: &str,
+        cap: Option<i64>,
     ) -> (String, Tokens) {
         let none = (String::new(), Tokens::default());
         let Some(room) = load(config, id) else { return none };
@@ -1588,6 +1610,11 @@ impl Rooms {
         let Ok(run_id) = self.hermes.start_run(agent, &wrap_input(why, room.team()), session, Some(&rules)).await else {
             return none;
         };
+        if let (Some(hub), Some(cap)) = (&self.hub, cap) {
+            hub.watch(agent, &run_id, Some(session), false);
+            hub.set_room(&agent.name, &run_id, id);
+            hub.limit_tokens(&agent.name, &run_id, cap - turn_limit(cap));
+        }
         let t0 = now();
         let (output, usage) = loop {
             tokio::time::sleep(Duration::from_secs_f64(self.poll)).await;
@@ -1611,9 +1638,12 @@ impl Rooms {
                 Err(_) => {}
             }
         };
-        let tokens = match usage_tokens(usage.as_ref()) {
-            Some(tokens) => tokens,
-            None => {
+        // a wrap-up the hub stopped comes back without its usage: its calls' real tokens
+        let real = self.hub.as_ref().and_then(|hub| hub.run_progress(&agent.name, &run_id)).and_then(|p| p.usage);
+        let tokens = match (usage_tokens(usage.as_ref()), real.filter(|u| u.total() > 0)) {
+            (Some(tokens), _) => tokens,
+            (None, Some(real)) => Tokens { input: real.input, output: real.output },
+            (None, None) => {
                 let after = self.hermes.session(agent, session).await.map(|s| tokens_of(&s)).unwrap_or(base.clone());
                 Tokens { input: (after.input - base.input).max(0), output: (after.output - base.output).max(0) }
             }
@@ -1684,7 +1714,8 @@ impl Rooms {
                     } else {
                         Err(format!("the turn ended {status}"))
                     };
-                    return Outcome { reply, tokens: none, capped: false };
+                    // stopped at its cap by its own bridge (rooms_remote.rs `cap_turn`): said as a turn at its limit
+                    return Outcome { reply, tokens: none, capped: status == "capped" };
                 }
                 Ok(Ok(None)) | Ok(Err(false)) | Err(_) => false, // going on, or their bridge restarting
                 Ok(Err(true)) => true,
@@ -2530,10 +2561,15 @@ mod tests {
         big.reply_to = Some(cause);
         big.tokens = Some(Tokens { input: 540_000, output: 5_000 });
         room.push_message(big);
-        // what the message's budget has left (55k), never under the floor
+        // before a goal (a discussion, the turn whose message gets a goal proposed): the same cap, no message budget
+        // (2026-11-01: Front's hop took 587k before the goal was accepted)
+        assert_eq!(turn_cap(&config, &room, cause), 200_000);
+        // team work: what the message's budget has left (55k), never under the floor
+        room.goal = "Une app de courses".into();
         assert_eq!(turn_cap(&config, &room, cause), 55_000);
         room.messages.last_mut().unwrap().tokens = Some(Tokens { input: 700_000, output: 0 });
         assert_eq!(turn_cap(&config, &room, cause), TURN_TOKENS_FLOOR);
+        room.goal.clear();
         // stopped early enough for its wrap-up within the cap (22-31k after a stop at 203k, 2026-11-01): 30k aside,
         // a quarter of the cap at most (a turn at the floor still works)
         assert_eq!(turn_limit(200_000), 170_000);
@@ -2548,6 +2584,8 @@ mod tests {
         let told = wrap_input("capped", true);
         assert!(told.contains("limit of tokens") && told.contains("Do not call any tool") && told.contains("DONE and NEXT"));
         assert!(wrap_input("cancelled", false).contains("the NEXT line"));
+        // told to wrap up near its cap: a discussion's turn has no DONE line
+        assert!(WRAP_STEER.contains("DONE and NEXT") && !WRAP_STEER_DISCUSSION.contains("DONE"));
         assert_eq!(capped_text("fr", "Back"), "Back a atteint la limite de son tour et passe la main.");
         // a turn's tokens from its tool steps: one call 20k, 8 steps ≈ 264k (past the 200k cap)
         assert_eq!(estimated_tokens(0, CALL_TOKENS), 20_000);

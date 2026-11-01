@@ -440,3 +440,101 @@ async fn a_team_turn_without_real_tokens_is_stopped_on_its_estimate() {
     assert_eq!(said["tokens"], json!({"input": 204_000, "output": 50}), "{said}");
     assert!(fake.stopped.lock().unwrap().iter().all(|r| r == "run-1"));
 }
+
+/// Each model call's real tokens (Hermes patch 0020): the call's `input_tokens`, the run's `totals`.
+fn usage(call: u32, input: i64, total_in: i64, total_out: i64) -> Value {
+    json!({"event": "model.usage", "call": call, "input_tokens": input, "output_tokens": 300,
+           "totals": {"input_tokens": total_in, "output_tokens": total_out, "total_tokens": total_in + total_out}})
+}
+
+/// A room without a goal (a discussion) with pm and front; front's next runs stream `streams`.
+async fn discussion(fake: &Fake, streams: Vec<Vec<Value>>) -> (TestApp, tempfile::TempDir, String) {
+    let (app, dir) = app_with(fake, json!({})).await;
+    let (k, v) = auth();
+    let made = app.send_json("POST", "/v1/rooms", &[(k, v.as_str())], &json!({"participants": ["pm", "front"]})).await.json();
+    fake.streams.lock().unwrap().entry("front".into()).or_default().extend(streams);
+    (app, dir, made["id"].as_str().unwrap().to_string())
+}
+
+#[tokio::test]
+async fn a_turn_before_the_goal_is_capped_too_and_the_room_goes_on() {
+    // 2026-11-01, the rooms bench: the room's first turns, before a goal was accepted, had no cap; Front's took 587k.
+    // Alex: « Mettre un plafond aussi au premier tour d'un salon, avant l'objectif ». The same cap as a team turn's
+    // (200k, 170k once the wrap-up's 30k are set aside), on each call's real tokens.
+    let mut events = vec![usage(1, 20_000, 20_000, 300)];
+    events.extend(step("app.js"));
+    events.push(usage(2, 60_000, 80_000, 600));
+    events.extend(step("api.js"));
+    events.push(usage(3, 70_000, 150_000, 900));
+    events.extend(step("style.css"));
+    let fake = Fake::default();
+    let (app, dir, id) = discussion(&fake, vec![events]).await;
+    let (k, v) = auth();
+    let h = [(k, v.as_str())];
+    let path = format!("/v1/rooms/{id}/messages");
+    script(&fake, "front", &["", "J'ai commencé l'app, il reste le partage.\nNEXT: person — valider le partage par lien"]);
+    app.send_json("POST", &path, &h, &json!({"text": "@front faites-moi une petite app web de liste de courses"})).await;
+    let page = settled(&app, &id, 2).await;
+    assert_eq!(page["goal"], "", "still a discussion: {page}");
+    assert_eq!(speakers(&page), vec!["person", "front"], "{page}");
+    let said = &page["messages"][1];
+    assert_eq!(said["kind"], "agent");
+    assert_eq!(said["text"], "J'ai commencé l'app, il reste le partage.");
+    assert_eq!(said["capped"], true, "{said}");
+    // stopped as it asked for tools after its 3rd call (150.9k, a 4th reading 70k at least: past 170k)
+    let stopped = fake.stopped.lock().unwrap().clone();
+    assert!(!stopped.is_empty() && stopped.iter().all(|r| r == "run-1"), "{stopped:?}");
+    assert_eq!(said["tokens"], json!({"input": 151_000, "output": 950}), "{said}");
+    // told to wrap up the discussion's way (the NEXT line, no DONE), then the hand back to the person
+    {
+        let runs = fake.runs.lock().unwrap();
+        assert_eq!(runs.len(), 2);
+        let wrap = runs[1].1["input"].as_str().unwrap();
+        assert!(wrap.contains("reached its limit of tokens") && wrap.contains("the NEXT line") && !wrap.contains("DONE"));
+    }
+    assert_eq!(said["handoff"]["to"], "person", "{said}");
+    let kept: Value =
+        serde_json::from_slice(&std::fs::read(dir.path().join(format!("data/rooms/{id}.json"))).unwrap()).unwrap();
+    assert!(kept["current"].is_null() && kept["queue"] == json!([]), "{kept}");
+
+    // the room goes on: the next message is answered as usual
+    script(&fake, "pm", &["Le partage par lien suffit.\nNEXT: person"]);
+    app.send_json("POST", &path, &h, &json!({"text": "@pm le partage par lien suffit ?"})).await;
+    let page = settled(&app, &id, 4).await;
+    assert_eq!(speakers(&page), vec!["person", "front", "person", "pm"], "{page}");
+    assert_eq!(page["messages"][3]["text"], "Le partage par lien suffit.");
+}
+
+#[tokio::test]
+async fn a_capped_turn_whose_wrap_up_reaches_for_a_tool_is_said_plainly() {
+    // a turn before a goal stopped at its cap, then its wrap-up (one short call, told not to call any tool) asks for
+    // one anyway: the hub stops it within the room kept for it (30k), and the room says so in plain words
+    let mut events = vec![usage(1, 20_000, 20_000, 300)];
+    events.extend(step("app.js"));
+    events.push(usage(2, 160_000, 180_000, 600));
+    events.extend(step("api.js"));
+    let mut wrap = vec![usage(1, 25_000, 25_000, 200)];
+    wrap.extend(step("notes.md"));
+    let fake = Fake::default();
+    let (app, _dir, id) = discussion(&fake, vec![events, wrap]).await;
+    let (k, v) = auth();
+    let h = [(k, v.as_str())];
+    let path = format!("/v1/rooms/{id}/messages");
+    app.send_json("POST", &path, &h, &json!({"text": "@front faites-moi une petite app web de liste de courses"})).await;
+    let page = settled(&app, &id, 2).await;
+    assert_eq!(speakers(&page), vec!["person", "front"], "{page}");
+    let said = &page["messages"][1];
+    assert_eq!(said["kind"], "notice");
+    assert_eq!(said["text"], "Front reached the limit of its turn and hands over.");
+    assert_eq!(said["capped"], true, "{said}");
+    // both stopped: the turn past 170k, its wrap-up before a 2nd call past 30k; their real tokens counted
+    let stopped = fake.stopped.lock().unwrap().clone();
+    assert!(stopped.contains(&"run-1".to_string()) && stopped.contains(&"run-2".to_string()), "{stopped:?}");
+    assert_eq!(said["tokens"], json!({"input": 205_000, "output": 800}), "{said}");
+
+    // nothing hangs: the next message is answered
+    script(&fake, "pm", &["On reprend demain.\nNEXT: person"]);
+    app.send_json("POST", &path, &h, &json!({"text": "@pm on fait quoi ?"})).await;
+    let page = settled(&app, &id, 4).await;
+    assert_eq!(speakers(&page), vec!["person", "front", "person", "pm"], "{page}");
+}
