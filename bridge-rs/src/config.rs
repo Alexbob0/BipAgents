@@ -764,6 +764,10 @@ pub struct Config {
     /// `[model] provider_order`: the providers EUrouter tries first for every model call, so their prompt cache works
     /// (model_route.rs; default entrim, greenpt, inceptron; `[]`: EUrouter picks per call).
     pub model_provider_order: Vec<String>,
+    /// `[model] eu_hosted`: on the offer's places, the models (their router id, as an agent's profile names it) that
+    /// run in the Union, as the guichet marks them `eu_hosted`. Only an agent on one of them reads « Santé » there
+    /// (health.rs, 2026-11-01); empty (the default): none does.
+    pub model_eu_hosted: Vec<String>,
     /// The bridge's address on the tailnet (`tailscale serve`), for the pairing QR code.
     pub public_url: Option<String>,
     /// The bridge as the agents reach it, for messages between agents (peers.py). Default:
@@ -855,6 +859,7 @@ impl Config {
             model_health_url: None,
             model_health_key: None,
             model_provider_order: crate::model_route::DEFAULT_ORDER.iter().map(|s| s.to_string()).collect(),
+            model_eu_hosted: Vec::new(),
             public_url: None,
             peer_url: None,
             cloud: false,
@@ -1883,6 +1888,12 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
                 items.iter().map(|p| py::py_str(p).trim().to_lowercase()).filter(|p| !p.is_empty()).collect()
             }
             _ => crate::model_route::DEFAULT_ORDER.iter().map(|s| s.to_string()).collect(),
+        },
+        model_eu_hosted: match get(model_t, "eu_hosted") {
+            Some(Value::Array(items)) => {
+                items.iter().map(|m| py::py_str(m).trim().to_lowercase()).filter(|m| !m.is_empty()).collect()
+            }
+            _ => Vec::new(),
         },
         public_url: opt_s(data, "public_url").map(|u| py::rstrip_slash(&u)),
         peer_url: opt_s(data, "peer_url").map(|u| py::rstrip_slash(&u)),

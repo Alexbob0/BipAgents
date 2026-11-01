@@ -115,3 +115,35 @@ def test_the_new_figures_are_checked_not_refused(bridges, fakes):
     assert bridge.put("/v1/health-data/days", headers=AUTH, json={"days": [odd]}).json()["stored"] == 1
     text = text_of(call(bridge, "health", {"detail": "days"}, token=COACH))
     assert f"{today}: HR 70 bpm" in text and "oxygen" not in text and "flow" not in text and "steps" not in text
+
+
+def test_on_the_offer_only_a_model_run_in_the_union_reads_health(bridges, fakes):
+    # A place of the offer (its backup settings name the guichet): « Santé » only through a model the place marks as
+    # run in the European Union (`[model] eu_hosted`), checked at each call, whatever the app checked before.
+    bridge = bridges.new()
+    home = managed_install(bridge, fakes, agents=("coach",))
+    folder = profile(home, "coach")
+    model = "model:\n  provider: custom\n  default: {}\n  base_url: https://api.eurouter.ai/api/v1\n"
+    (folder / "config.yaml").write_text(model.format("deepseek/deepseek-v4.1-flash"))
+    bridge.config["model"] = {"eu_hosted": ["GLM-5.3-Flash"]}
+    backup = bridge.home / ".config" / "bipagents" / "backup.json"
+    backup.parent.mkdir(parents=True, exist_ok=True)
+    backup.write_text(json.dumps({"url": "https://guichet.example/v1/backup", "token": "place-token"}))
+    bridge.start()
+    if "health_categories" not in bridge.get("/health").json().get("features", []):
+        pytest.skip("this bridge has no health categories")
+    wait_registered(bridge, ["coach"])
+    assert settings(bridge, "coach", health=True)["on"] is True
+    today = datetime.date.today().isoformat()
+    sent = bridge.put("/v1/health-data/days", headers=AUTH, json={"days": [{"date": today, "steps": 9000}]})
+    assert sent.json()["stored"] == 1
+
+    give_token(bridge, "coach", COACH)
+    refused = mcp_call(bridge, "health", {"detail": "days"}, token=COACH)
+    assert refused["isError"] and "hosted in the European Union" in text_of(refused)
+    assert "(deepseek/deepseek-v4.1-flash)" in text_of(refused) and "9000 steps" not in text_of(refused)
+
+    # Its model changed to one run in the Union: read again.
+    (folder / "config.yaml").write_text(model.format("glm-5.3-flash"))
+    read = mcp_call(bridge, "health", {"detail": "days"}, token=COACH)
+    assert not read["isError"] and "9000 steps" in text_of(read)
