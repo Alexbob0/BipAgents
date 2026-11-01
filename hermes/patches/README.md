@@ -41,6 +41,7 @@ image, which is swept after 24 h); 0004 goes once a Hermes update brings it.
 | 0017 address items with name, phone, e-mail | applies | applies (`0b4481ad9c`, `patch --dry-run`, checked 2026-10-29) |
 | 0018 guest turns: closed tools, no USER.md | applies (after 0001–0017) | `agent/` applies; `gateway/platforms/api_server*.py` **does not** on `d050956633` (context moved): redo the two gateway files at the next update |
 | 0019 routines report to their conversation | applies (after 0001–0018) | not checked yet |
+| 0020 Runs API: each model call's usage (`model.usage`) | applies (after 0001–0019) | not checked yet |
 
 ## 0001 — `clarify` in the Runs API
 
@@ -538,3 +539,44 @@ characters); new `tests/tools/test_cronjob_session_reports.py` (12 tests; 6 fail
 `tests/tools/test_cron*.py`, `test_cronjob*.py`, `test_delegate_cron_sync_fallback.py`, `tests/agent/test_display.py`,
 `tests/gateway/test_api_server_jobs.py` and `tests/cron/`: 1688 passed, 11 skipped. The bridge's side: `push-runs_cronwatch.rs`
 (a routine's report in the conversation it was made in, or under its run when that one is gone) and `tool_diet.rs`.
+
+## 0020 — the Runs API reports each model call's usage as it ends (`model.usage`)
+
+**Problem.** A run on the Runs API gives its token usage once, in `run.completed` (and the run's status), and none at
+all for a run stopped before its end. The bridge caps each agent's turn in a room's team work at `[rooms]
+team_turn_tokens` (200k), so it estimated a turn's tokens from its tool steps (its earlier turns' tokens per call, 20k
+at least). In the rooms bench of 2026-11-01 a DeepSeek turn reached 249k in 5 tool steps: after big file reads each
+call read about 41k, and the estimate never reached the cap.
+
+**What the patch does.**
+- `agent/turn_usage.py` (`record_response_usage`, the one place every model call's usage goes through): once the
+  session counters hold a call, its provider usage (the dict already built for the context engines) goes to
+  `agent.call_usage_callback` when one is set. A response without usage reports nothing (no guess); a failing
+  callback is logged at debug level and never touches the turn. Nothing else sets the callback: other surfaces see
+  no change.
+- `gateway/platforms/api_server_runs.py`: a run of `POST /v1/runs` sets that callback, and each call becomes a
+  `model.usage` event on the run's stream, before the tool events of that call:
+
+  ```json
+  {"event": "model.usage", "run_id": "…", "timestamp": 1793000000.0, "call": 3,
+   "input_tokens": 43500, "output_tokens": 1200, "cache_read_tokens": 40900, "cache_write_tokens": 0,
+   "reasoning_tokens": 0,
+   "totals": {"input_tokens": 125000, "output_tokens": 2100, "total_tokens": 127100,
+              "cache_read_tokens": 110000, "cache_write_tokens": 0, "reasoning_tokens": 700}}
+  ```
+
+  `call` is the agent's API call count (`API call #n` of its log line, usage-less calls included); `input_tokens` is
+  the whole prompt, cache reads included, as in the terminal `usage`; `totals` are the run's so far, in the terminal
+  `usage` shape plus `reasoning_tokens` (the run's agent is made for the run, so they start at 0). The apps ignore
+  the event; the bridge's run hub (runs.rs) keeps the latest totals and the last call's input.
+
+**Files.** `agent/turn_usage.py`, `gateway/platforms/api_server_runs.py`; new
+`tests/gateway/test_api_server_runs_model_usage.py` (7 tests: the callback after the counters, nothing without usage,
+a failing callback, the payload, the run event, a run streaming two `model.usage` before `run.completed` with
+matching totals).
+
+**Tests.** On the Mac (2026-11-01, Python 3.14, `517b5e10f` with 0001–0020): the new file, every
+`tests/gateway/test_api_server*.py` and the agent tests that touch usage or the conversation loop (95 files): 1998
+passed, 6 skipped, 1 failed (`tests/agent/test_plugin_prompt_sections.py`, order-dependent: it passes alone, with and
+without 0020). The bridge's side: rooms.rs (`turn_limit`, the turn loop), runs.rs (`RunUsage`, `cap`), jobs.rs
+(`live_usage`) and `tests/agents_rooms_relay.rs`.

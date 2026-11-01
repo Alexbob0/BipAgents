@@ -1,0 +1,255 @@
+--- a/agent/turn_usage.py
++++ b/agent/turn_usage.py
+@@ -70,6 +70,20 @@
+     return _moa_client, canonical_usage, _moa_ref_cost
+ 
+ 
++def _report_call_usage(agent: Any, usage: Dict[str, int]) -> None:
++    """One call's provider usage, once the session counters hold it, to ``agent.call_usage_callback`` when one is
++    set (the Runs API's ``model.usage`` event, BipAgents patch 0020): a client capping a run's tokens sees each
++    call as it ends, not only the run's total at its end. A call without usage reports nothing. A failing
++    callback never touches the turn."""
++    callback = getattr(agent, "call_usage_callback", None)
++    if not callable(callback):
++        return
++    try:
++        callback(dict(usage))
++    except Exception as exc:
++        logger.debug("call_usage_callback failed: %s", exc)
++
++
+ def record_response_usage(
+     agent: Any, response: Any, *, messages: list[dict[str, Any]], api_call_count: int,
+     api_duration: float, compression_attempts: int, max_compression_attempts: int,
+@@ -179,6 +193,7 @@
+     agent.session_cache_read_tokens += canonical_usage.cache_read_tokens
+     agent.session_cache_write_tokens += canonical_usage.cache_write_tokens
+     agent.session_reasoning_tokens += canonical_usage.reasoning_tokens
++    _report_call_usage(agent, usage_dict)
+     # Rolling history for status-bar averages (last 10).
+     with suppress(Exception):
+         hist = getattr(agent, "_api_latency_history", None)
+--- a/gateway/platforms/api_server_runs.py
++++ b/gateway/platforms/api_server_runs.py
+@@ -343,6 +343,8 @@
+                 event_fields["preview"] = _tool_completed_preview(
+                     kwargs.get("result"), redact_sensitive_text)
+             _push(_run_event(run_id, event_type, **event_fields))
++        elif event_type == "model.usage":
++            _push(_run_event(run_id, event_type, **kwargs["usage"]))
+         elif event_type in {"subagent.start", "subagent.complete"}:
+             event = _run_event(run_id, event_type)
+             if preview is not None:
+@@ -781,8 +783,24 @@
+         value = getattr(agent, attr, 0)
+         usage[key] = int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0
+     return usage
++
+ 
++def _model_usage_fields(usage: dict[str, Any], agent) -> dict[str, Any]:
++    """``model.usage`` payload (BipAgents patch 0020): the call's number, its provider usage, then the run's totals
++    so far in the terminal ``usage`` shape plus reasoning. ``input_tokens`` is the whole prompt, cache reads
++    included, as in the terminal ``usage``."""
++    def n(value: Any) -> int:
++        return int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0
+ 
++    totals = _run_usage(agent)
++    totals["reasoning_tokens"] = n(getattr(agent, "session_reasoning_tokens", 0))
++    return {"call": n(getattr(agent, "session_api_calls", 0)),
++            "input_tokens": n(usage.get("prompt_tokens")), "output_tokens": n(usage.get("output_tokens")),
++            "cache_read_tokens": n(usage.get("cache_read_tokens")),
++            "cache_write_tokens": n(usage.get("cache_write_tokens")),
++            "reasoning_tokens": n(usage.get("reasoning_tokens")), "totals": totals}
++
++
+ def _served_runtime(agent) -> dict[str, str]:
+     """The ``{provider, model}`` pair that actually served the turn. After a ``fallback_providers``
+     switch the agent keeps the fallback runtime until the NEXT turn restores the primary, so when
+@@ -1060,11 +1078,16 @@
+         if run_id in self._stopping_run_ids:
+             _finish("cancelled")
+             return
++        run_events = self._make_run_event_callback(run_id, loop)
+         with self._profile_scope(run.request_profile):
+             agent = self._create_agent(
+-                stream_delta_callback=_text_cb, tool_progress_callback=self._make_run_event_callback(run_id, loop),
++                stream_delta_callback=_text_cb, tool_progress_callback=run_events,
+                 interim_assistant_callback=_interim_cb, **run.agent_kwargs)
+         self._active_run_agents[run_id] = agent
++        # Each model call's real usage as it ends (``model.usage``, patch 0020): the terminal ``usage`` comes only
++        # with the run's end, none for a run stopped before it, too late for a client capping a run's tokens.
++        agent.call_usage_callback = lambda usage: run_events(
++            "model.usage", usage=_model_usage_fields(usage, agent))
+         # Same contract as gateway/run_turn_runner.py for messaging platforms: without it the clarify
+         # tool answers "not available in this execution context".
+         agent.clarify_callback = _make_clarify_callback(self, run, _api_server=_api_server)
+--- /dev/null
++++ b/tests/gateway/test_api_server_runs_model_usage.py
+@@ -0,0 +1,167 @@
++"""``model.usage`` on the Runs API (BipAgents patch 0020): each model call's real usage as it ends.
++
++The terminal ``usage`` arrives with ``run.completed`` only, none for a run stopped before its end, so a client
++capping a run's tokens (the BipAgents bridge's rooms) had to guess while the run ran. Each completed call that
++carries provider usage now reaches ``agent.call_usage_callback`` once the session counters hold it, and the Runs
++API turns it into a ``model.usage`` event: the call's usage, then the run's totals so far. A call without usage
++reports nothing (no guess).
++"""
++import asyncio
++import json
++from types import SimpleNamespace
++from unittest.mock import MagicMock, patch
++
++import pytest
++from aiohttp import web
++from aiohttp.test_utils import TestClient, TestServer
++
++from gateway.config import PlatformConfig
++from gateway.platforms.api_server import APIServerAdapter
++from gateway.platforms.api_server_runs import _RunStream, _model_usage_fields
++
++
++def _agent(tmp_path, monkeypatch):
++    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
++    from run_agent import AIAgent
++    return AIAgent(api_key="k", base_url="https://api.deepseek.com/v1", provider="deepseek",
++                   api_mode="chat_completions", model="deepseek-v4-flash", session_id="t", platform="api_server",
++                   quiet_mode=True, skip_context_files=True, skip_memory=True, save_trajectories=False, enabled_toolsets=["file"])
++
++
++def _response(prompt, cached, completion, reasoning=0):
++    usage = SimpleNamespace(prompt_tokens=prompt, completion_tokens=completion, total_tokens=prompt + completion,
++                            prompt_tokens_details=SimpleNamespace(cached_tokens=cached),
++                            completion_tokens_details=SimpleNamespace(reasoning_tokens=reasoning))
++    return SimpleNamespace(usage=usage, id="r", model="deepseek-v4-flash")
++
++
++def _record(agent, response, call=1):
++    from agent import turn_usage
++    turn_usage.record_response_usage(agent, response, messages=[{"role": "user", "content": "hi"}], api_call_count=call,
++                                     api_duration=0.2, compression_attempts=0, max_compression_attempts=3)
++
++
++def test_each_call_with_usage_reaches_the_callback_after_the_counters(tmp_path, monkeypatch):
++    agent = _agent(tmp_path, monkeypatch)
++    seen = []
++    agent.call_usage_callback = lambda usage: seen.append((usage, agent.session_prompt_tokens))
++    try:
++        _record(agent, _response(41_000, 38_000, 900, reasoning=300))
++        _record(agent, _response(43_500, 40_900, 1_200), call=2)
++    finally:
++        agent.close()
++    assert [u["prompt_tokens"] for u, _ in seen] == [41_000, 43_500]
++    assert seen[0][0]["cache_read_tokens"] == 38_000 and seen[0][0]["output_tokens"] == 900
++    assert seen[0][0]["reasoning_tokens"] == 300
++    # the session counters already hold the call when the callback runs (the event's totals read them)
++    assert [counted for _, counted in seen] == [41_000, 84_500]
++
++
++def test_a_call_without_usage_reports_nothing(tmp_path, monkeypatch):
++    agent = _agent(tmp_path, monkeypatch)
++    seen = []
++    agent.call_usage_callback = seen.append
++    try:
++        _record(agent, SimpleNamespace(usage=None, id="r"))
++    finally:
++        agent.close()
++    assert seen == []
++    assert agent.session_api_calls == 1
++
++
++def test_a_failing_callback_never_touches_the_turn(tmp_path, monkeypatch):
++    agent = _agent(tmp_path, monkeypatch)
++
++    def broken(usage):
++        raise RuntimeError("client gone")
++
++    agent.call_usage_callback = broken
++    try:
++        _record(agent, _response(20_000, 0, 50))
++    finally:
++        agent.close()
++    assert agent.session_prompt_tokens == 20_000
++
++
++def test_no_callback_no_change(tmp_path, monkeypatch):
++    agent = _agent(tmp_path, monkeypatch)
++    try:
++        _record(agent, _response(20_000, 0, 50))
++    finally:
++        agent.close()
++    assert agent.session_prompt_tokens == 20_000 and agent.session_completion_tokens == 50
++
++
++def test_payload_has_the_call_then_the_run_totals():
++    agent = SimpleNamespace(session_api_calls=3, session_prompt_tokens=125_000, session_completion_tokens=2_100,
++                            session_total_tokens=127_100, session_cache_read_tokens=110_000,
++                            session_cache_write_tokens=0, session_reasoning_tokens=700)
++    usage = {"prompt_tokens": 43_500, "completion_tokens": 1_200, "total_tokens": 44_700, "input_tokens": 2_600,
++             "output_tokens": 1_200, "cache_read_tokens": 40_900, "cache_write_tokens": 0, "reasoning_tokens": 0}
++    assert _model_usage_fields(usage, agent) == {
++        "call": 3, "input_tokens": 43_500, "output_tokens": 1_200, "cache_read_tokens": 40_900,
++        "cache_write_tokens": 0, "reasoning_tokens": 0,
++        "totals": {"input_tokens": 125_000, "output_tokens": 2_100, "total_tokens": 127_100,
++                   "cache_read_tokens": 110_000, "cache_write_tokens": 0, "reasoning_tokens": 700}}
++    # test doubles (no counters) read as 0
++    assert _model_usage_fields({}, SimpleNamespace())["totals"]["input_tokens"] == 0
++
++
++@pytest.fixture
++def adapter():
++    return APIServerAdapter(PlatformConfig(enabled=True, extra={}))
++
++
++@pytest.mark.asyncio
++async def test_run_event_callback_pushes_model_usage(adapter):
++    loop = asyncio.get_running_loop()
++    adapter._run_streams["run_u"] = _RunStream()
++    callback = adapter._make_run_event_callback("run_u", loop)
++    callback("model.usage", usage={"call": 1, "input_tokens": 20_000, "totals": {"input_tokens": 20_000}})
++    await asyncio.sleep(0)  # the callback hops onto the loop via call_soon_threadsafe
++    _, event = adapter._run_streams["run_u"].backlog[-1]
++    assert event["event"] == "model.usage" and event["run_id"] == "run_u"
++    assert event["call"] == 1 and event["input_tokens"] == 20_000 and event["totals"] == {"input_tokens": 20_000}
++
++
++def _runs_app(adapter):
++    app = web.Application()
++    app["api_server_adapter"] = adapter
++    app.router.add_post("/v1/runs", adapter._handle_runs)
++    app.router.add_get("/v1/runs/{run_id}/events", adapter._handle_run_events)
++    return app
++
++
++@pytest.mark.asyncio
++async def test_a_run_streams_model_usage_before_its_end(adapter):
++    agent = MagicMock()
++    for name in ("session_prompt_tokens", "session_completion_tokens", "session_total_tokens",
++                 "session_cache_read_tokens", "session_cache_write_tokens", "session_reasoning_tokens",
++                 "session_api_calls"):
++        setattr(agent, name, 0)
++
++    def run_conversation(**kwargs):
++        # what record_response_usage does after each call: counters first, then the callback
++        for prompt, out in ((20_000, 300), (41_000, 500)):
++            agent.session_api_calls += 1
++            agent.session_prompt_tokens += prompt
++            agent.session_completion_tokens += out
++            agent.session_total_tokens += prompt + out
++            agent.call_usage_callback({"prompt_tokens": prompt, "output_tokens": out, "cache_read_tokens": 0,
++                                       "cache_write_tokens": 0, "reasoning_tokens": 0})
++        return {"final_response": "done"}
++
++    agent.run_conversation.side_effect = run_conversation
++    async with TestClient(TestServer(_runs_app(adapter))) as cli:
++        with patch.object(adapter, "_create_agent", return_value=agent):
++            run_id = (await (await cli.post("/v1/runs", json={"input": "hello"})).json())["run_id"]
++            body = await (await cli.get(f"/v1/runs/{run_id}/events")).text()
++    events = [json.loads(line[len("data: "):]) for line in body.split("\n") if line.startswith("data: {")]
++    names = [e["event"] for e in events]
++    assert names.count("model.usage") == 2 and names.index("model.usage") < names.index("run.completed")
++    usage = [e for e in events if e["event"] == "model.usage"]
++    assert [(e["call"], e["input_tokens"], e["totals"]["input_tokens"]) for e in usage] == [(1, 20_000, 20_000),
++                                                                                          (2, 41_000, 61_000)]
++    assert usage[-1]["totals"]["output_tokens"] == 800
++    completed = next(e for e in events if e["event"] == "run.completed")
++    assert completed["usage"]["input_tokens"] == usage[-1]["totals"]["input_tokens"]
