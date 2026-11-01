@@ -7,7 +7,10 @@
 //!                 the bridge starts the run, reads its tokens every few seconds (each model call's, Hermes patch 0020;
 //!                 else the conversation's counters) and stops the run
 //!                 once the budget is reached (paused: the person may give more and resume) or after three hours; the
-//!                 agent ends with a report, which the notification opens
+//!                 agent ends with a report, which the notification opens. With patch 0020 the run hub also stops it
+//!                 before a model call that would pass what is left of its budget (runs.rs `cap`): the conversation's
+//!                 counters move only at a run's end, so before that a run went on to its end whatever it took (Alex's
+//!                 task of 2026-10-31: about twice its budget)
 //!
 //! An agent may propose a task (MCP `propose_task` in agent_tools.py, for work too long for a reply): it waits, budget and all, until the
 //! person starts it in the app. Since 2026-10-22 (owner's decision: long work never inline) an agent also starts a task
@@ -203,6 +206,14 @@ fn int_of(value: Option<&Value>) -> i64 {
 pub fn spent(job: &Dict) -> i64 {
     let tokens = job.get("tokens");
     int_of(tokens.and_then(|t| t.get("input"))) + int_of(tokens.and_then(|t| t.get("output")))
+}
+
+/// What the task's current run may take: its budget less what its earlier runs took.
+fn left_for_run(job: &Dict) -> i64 {
+    let before = job.get("before");
+    int_of(job.get("max_tokens"))
+        - int_of(before.and_then(|t| t.get("input")))
+        - int_of(before.and_then(|t| t.get("output")))
 }
 
 /// A mailbox scan (mail_scan.py) in the common shape.
@@ -447,6 +458,11 @@ impl Jobs {
     fn live_usage(&self, agent: &AgentConfig, run_id: &str) -> Option<Dict> {
         let progress = self.hub.as_ref()?.run_progress(&agent.name, run_id)?;
         progress.usage.filter(|u| u.total() > 0).map(|u| u.as_usage())
+    }
+
+    /// The hub stopped the task's run before a model call that would have passed its budget (`limit_tokens`).
+    fn capped(&self, agent: &AgentConfig, run_id: &str) -> bool {
+        self.hub.as_ref().and_then(|hub| hub.run_progress(&agent.name, run_id)).is_some_and(|p| p.capped)
     }
 
     fn agent(&self, name: &str) -> Result<AgentConfig, JobError> {
@@ -783,6 +799,7 @@ impl Jobs {
         if let Some(hub) = &self.hub {
             hub.watch(&agent, &run_id, Some(&session_id), false); // approvals and questions still pushed
             hub.mark_background(&agent.name, &run_id); // the brake's higher limits (loop_brake.rs)
+            hub.limit_tokens(&agent.name, &run_id, left_for_run(job)); // stopped before a call past its budget
         }
         let id = tk::str_or_empty(job.get("id"));
         self.follow(&id);
@@ -814,6 +831,7 @@ impl Jobs {
                     let session = job.get("session_id").filter(|v| !v.is_null()).map(py::py_str);
                     hub.watch(agent, &run_id, session.as_deref(), false);
                     hub.mark_background(&agent.name, &run_id);
+                    hub.limit_tokens(&agent.name, &run_id, left_for_run(&job));
                 }
             }
             self.follow(&tk::str_or_empty(job.get("id")));
@@ -880,7 +898,7 @@ impl Jobs {
             let now = py::time_time();
             if state_of(&job) == "running" {
                 let step_started = job.get("step_started").map(|v| py::py_float(v).unwrap_or(now)).unwrap_or(now);
-                if spent(&job) >= int_of(job.get("max_tokens")) {
+                if spent(&job) >= int_of(job.get("max_tokens")) || self.capped(&agent, &run_id) {
                     self.stop(&agent, &mut job, "budget").await;
                 } else if now - step_started >= self.max_seconds {
                     self.stop(&agent, &mut job, "time").await;
@@ -944,7 +962,11 @@ impl Jobs {
         }
         let now = py::time_time();
         let mut full = String::new();
-        let stopping = job.get("stopping").filter(|v| py::truthy(v)).cloned();
+        // the hub stopped it before a call past its budget, before this watch did (a run that still ended with its
+        // answer is done)
+        let capped = (status != "completed" && self.capped(agent, &tk::str_or_empty(job.get("run_id"))))
+            .then(|| json!("budget"));
+        let stopping = job.get("stopping").filter(|v| py::truthy(v)).cloned().or(capped);
         if stopping.is_some() || ["cancelled", "canceled", "interrupted"].contains(&status.as_str()) {
             job.insert("state".into(), json!("paused"));
             job.insert("reason".into(), stopping.unwrap_or(json!("interrupted")));
@@ -1355,7 +1377,11 @@ pub async fn start_tool(jobs: Option<&Arc<Jobs>>, agent: &AgentConfig, arguments
                 &format!(
                     "That is more than the {} a task may take without your person's go. Propose it with propose_task \
 instead (they start it with one tap) and tell them so in one plain sentence.",
-                    euros_text(config.jobs.direct_budget_eur)
+                    if crate::handover::on_offer() {
+                        euros_text(config.jobs.direct_budget_eur)
+                    } else {
+                        budget_text(&config, default, false)
+                    }
                 ),
                 true,
             ));
@@ -1369,11 +1395,32 @@ instead (they start it with one tap) and tell them so in one plain sentence.",
     started(made, &config, agent)
 }
 
+/// A task's budget as the agent may tell its person: in euros on a place of the offer (« 0.20 €, 363,636 tokens »),
+/// in tokens only on a home install (« 363,636 tokens »), whose model is the person's own (their provider's prices,
+/// or none: a model on their computer), never the `[notebook]` prices the euros are counted at.
+pub fn budget_text(config: &crate::config::Config, tokens: i64, offer: bool) -> String {
+    if offer {
+        format!("{}, {} tokens", euros_text(euros_for(config, tokens)), thousands(tokens))
+    } else {
+        format!("{} tokens", thousands(tokens))
+    }
+}
+
 /// What the agent is told once its task started (or why it could not).
 pub fn started(
     outcome: anyhow::Result<Dict>,
     config: &crate::config::Config,
     agent: &AgentConfig,
+) -> anyhow::Result<Dict> {
+    started_on(outcome, config, agent, crate::handover::on_offer())
+}
+
+/// `started`, on a place of the offer or not.
+pub fn started_on(
+    outcome: anyhow::Result<Dict>,
+    config: &crate::config::Config,
+    agent: &AgentConfig,
+    offer: bool,
 ) -> anyhow::Result<Dict> {
     match outcome {
         Ok(job) if job.get("reason") == Some(&json!(SPACE_REASON)) => {
@@ -1391,11 +1438,10 @@ sentence that it will be done a bit later in the background, and stop here: don'
                 "job started by the agent");
             Ok(tool_text(
                 &format!(
-                    "Started in the background (budget about {}, {} tokens): it works on its own and your person gets \
+                    "Started in the background (budget about {}): it works on its own and your person gets \
 your report when it ends; they follow it in « Tâches de fond ». Tell them in one plain sentence that you're on it in \
 the background (e.g. « Je m'en occupe en arrière-plan, je te préviens quand c'est fini. »), and stop here.",
-                    euros_text(euros_for(config, tokens)),
-                    thousands(tokens)
+                    budget_text(config, tokens, offer)
                 ),
                 false,
             ))
@@ -1608,5 +1654,31 @@ mod tests {
         config.notebook.price_in = 0.0;
         config.notebook.price_out = 0.0;
         assert_eq!(tokens_for(&config, 1.0), 300_000);
+    }
+
+    #[test]
+    fn a_budget_in_euros_on_the_offer_in_tokens_at_home() {
+        // 2026-10-31, Alex's home install (his own model): a task's card said « 0,071 € dépensés · au plus 0,037 € »,
+        // euros nobody pays there. At home the agent hears its budget in tokens only.
+        let config = crate::config::Config::with_key("k");
+        assert_eq!(budget_text(&config, 363_636, true), "0.20 €, 363,636 tokens");
+        assert_eq!(budget_text(&config, 363_636, false), "363,636 tokens");
+        let agent = AgentConfig { name: "vie".into(), ..Default::default() };
+        let job = || -> anyhow::Result<Dict> { Ok(json!({"id": "t000000000001", "max_tokens": 363_636}).as_object().cloned().unwrap()) };
+        let said = |offer: bool| {
+            let out = started_on(job(), &config, &agent, offer).unwrap();
+            out["content"][0]["text"].as_str().unwrap().to_string()
+        };
+        assert!(said(true).starts_with("Started in the background (budget about 0.20 €, 363,636 tokens):"), "{}", said(true));
+        assert!(said(false).starts_with("Started in the background (budget about 363,636 tokens):"), "{}", said(false));
+        assert!(!said(false).contains('€'));
+    }
+
+    #[test]
+    fn a_run_may_take_its_budget_less_the_earlier_runs() {
+        let job = json!({"max_tokens": 300_000, "before": {"input": 90_000, "output": 10_000, "cached": 50_000},
+                         "tokens": {"input": 150_000, "output": 12_000}});
+        assert_eq!(left_for_run(job.as_object().unwrap()), 200_000);
+        assert_eq!(left_for_run(json!({"max_tokens": 300_000}).as_object().unwrap()), 300_000, "its first run");
     }
 }

@@ -423,8 +423,8 @@ pub struct SubscriptionState {
     pub last_tool_at: f64,
     /// The run's real tokens so far (`model.usage`): None from a Hermes without patch 0020.
     pub usage: Option<RunUsage>,
-    /// A room's turn (rooms.rs): the tokens it may take. Once its real ones and its next call would pass them, the
-    /// hub stops it as that call's tool step starts (`capped`).
+    /// A room's turn (rooms.rs), a background task's run (jobs.rs): the tokens it may take. Once its real ones and its
+    /// next call would pass them, the hub stops it as that call's tool step starts (`capped`).
     pub token_limit: Option<i64>,
     pub capped: bool,
     listeners: Vec<Slot>,
@@ -675,8 +675,8 @@ impl RunHub {
         })
     }
 
-    /// A room's turn may take `limit` tokens (rooms.rs): stopped by the hub before a model call that would pass them
-    /// (`cap`), on its real tokens (Hermes patch 0020).
+    /// A room's turn (rooms.rs) or a background task's run (jobs.rs) may take `limit` tokens: stopped by the hub before
+    /// a model call that would pass them (`cap`), on its real tokens (Hermes patch 0020).
     pub fn limit_tokens(&self, agent: &str, run_id: &str, limit: i64) {
         let inner = lock(&self.inner);
         if let Some(sub) = inner.subs.get(&(agent.to_string(), run_id.to_string())) {
@@ -1290,9 +1290,9 @@ impl RunHub {
     /// many tools is stopped, and the conversation told in plain words (a `bridge.notice` with code `loop_stopped`, in
     /// the stream before the run's end; a push when nobody follows it). Not while a sub-agent works for the run (its
     /// calls are its own); a background task's run (`mark_background`) and a browsing one get the higher limits.
-    /// A room's turn whose last model call asked for tools (`tool.started`): stopped now, before its next call, once
-    /// its real tokens and that call (reading at least what the last one did) would pass its limit. A call that
-    /// answered asks for none: the turn ends on its own. In the bench of 2026-11-01 a DeepSeek turn reached 249k for
+    /// A room's turn or a background task's run whose last model call asked for tools (`tool.started`): stopped now,
+    /// before its next call, once its real tokens and that call (reading at least what the last one did) would pass its
+    /// limit. A call that answered asks for none: the turn ends on its own. In the bench of 2026-11-01 a DeepSeek turn reached 249k for
     /// a 200k cap, its calls reading 41k each after big file reads, on an estimate of 20k a call.
     fn cap(&self, sub: &RunSubscription, st: &mut SubscriptionState) {
         let (Some(limit), Some(usage)) = (st.token_limit, st.usage) else { return };
@@ -1301,11 +1301,11 @@ impl RunHub {
         }
         st.capped = true;
         tracing::info!(agent = %sub.agent.name, run_id = %sub.run_id, used = usage.total(), next_call = usage.last_input,
-            limit = limit, "rooms: a turn's next call would pass its cap, stopped");
+            limit = limit, "a run's next call would pass its token limit, stopped");
         let (hermes, agent, run_id) = (self.hermes.clone(), sub.agent.clone(), sub.run_id.clone());
         self.spawn(async move {
             if let Err(err) = hermes.stop_run(&agent, &run_id).await {
-                tracing::info!(agent = %agent.name, run_id = %run_id, error = %err, "rooms: the cap's stop refused");
+                tracing::info!(agent = %agent.name, run_id = %run_id, error = %err, "the token limit's stop refused");
             }
         });
     }

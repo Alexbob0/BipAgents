@@ -16,6 +16,7 @@ use bipbridge::config::{parse_config, AgentConfig, Config, SharedConfig};
 use bipbridge::hermes::HermesClient;
 use bipbridge::jobs::{self, Jobs, TellJob};
 use bipbridge::mail_scan::{self, Scans};
+use bipbridge::runs::RunHub;
 use bipbridge::Dict;
 use common::{config_dict, spawn_fake, Urls};
 use serde_json::{json, Map, Value};
@@ -32,6 +33,8 @@ struct Gateway {
     counters: [i64; 3],
     messages: Vec<Value>,
     forget_runs: bool,
+    /// What each run streams on `/events` (`model.usage`, `tool.started`…), then `run.cancelled` once stopped.
+    events: Vec<Value>,
 }
 
 type Fake = Arc<Mutex<Gateway>>;
@@ -66,6 +69,28 @@ async fn handle(State(fake): State<Fake>, request: Request) -> Response {
         let run_id = format!("r{}", g.runs.len() + 1);
         g.runs.insert(run_id.clone(), json!({"status": "running", "polls": 0, "input": body.unwrap()["input"]}));
         return (StatusCode::ACCEPTED, Json(json!({"run_id": run_id, "status": "started"}))).into_response();
+    }
+    if method == "GET" && path.ends_with("/events") {
+        let (id, events) = (parts[3].to_string(), g.events.clone());
+        drop(g);
+        let fake = fake.clone();
+        let stream = async_stream::stream! {
+            for event in events {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                yield Ok::<_, std::io::Error>(Bytes::from(format!("data: {event}\n\n")));
+            }
+            for _ in 0..300 {
+                if fake.lock().unwrap().runs[&id]["status"] != "running" {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+            yield Ok(Bytes::from(format!("data: {}\n\n", json!({"event": "run.cancelled", "run_id": id}))));
+        };
+        return Response::builder()
+            .header("content-type", "text/event-stream")
+            .body(axum::body::Body::from_stream(stream))
+            .unwrap();
     }
     if method == "POST" && path.ends_with("/stop") {
         g.runs[parts[3]]["status"] = json!("cancelled");
@@ -452,4 +477,64 @@ async fn the_month_s_credit_used_stops_a_task_after_its_step_refuses_new_ones_an
     assert_eq!(common::without_now(fake.lock().unwrap().runs["r2"]["input"].as_str().unwrap()), jobs::CONTINUE);
     assert_eq!(board.view(&id).unwrap()["state"], "running");
     board.forget(&id).await.unwrap();
+}
+
+/// 2026-10-31, Alex's home install: a task spent about twice its budget (« 0,071 € dépensés · au plus 0,037 € »).
+/// Hermes writes a conversation's counters only at a run's end (its token counts are queued and drained when the turn
+/// is saved), so the bridge, reading them every few seconds, saw nothing move and the run went on to its end. With
+/// Hermes patch 0020 each model call's real tokens come on the run's stream: the hub stops the run before a call that
+/// would pass what is left of the budget, and the task pauses at its budget with those tokens.
+#[tokio::test]
+async fn a_task_is_stopped_on_its_real_tokens_before_a_call_past_its_budget() {
+    let usage = |call: u32, input: i64, total_in: i64, total_out: i64| {
+        json!({"event": "model.usage", "call": call, "input_tokens": input, "output_tokens": 300,
+               "totals": {"input_tokens": total_in, "output_tokens": total_out, "cache_read_tokens": 1_000}})
+    };
+    let step = |file: &str| json!({"event": "tool.started", "tool": "read_file", "preview": file});
+    let dir = tempfile::tempdir().unwrap();
+    // counters that never move while the run goes on, as Hermes' own; the run would go on for ever
+    let (fake, url) = gateway(10_000, 0).await;
+    fake.lock().unwrap().events = vec![
+        usage(1, 20_000, 20_000, 300),
+        step("a.md"),
+        usage(2, 35_000, 55_000, 600),
+        step("b.md"),
+        usage(3, 40_000, 95_000, 900),
+        step("c.md"),
+    ];
+    let (config, agent) = setup(dir.path(), &url);
+    let hub = Arc::new(RunHub::new(HermesClient::new(reqwest::Client::new()), None, 7200, None));
+    let mut board =
+        Jobs::new(SharedConfig::new(config.clone()), HermesClient::new(reqwest::Client::new()), Some(hub), None, None);
+    board.poll = 0.05;
+    let board = Arc::new(board);
+    let job = board.create(&agent, "Analyse interview", "Résume l'interview.", 100_000, None).await.unwrap();
+    let id = id_of(&job);
+    tokio::time::timeout(std::time::Duration::from_secs(20), board.wait(&id)).await.expect("the task stopped");
+    let paused = board.view(&id).unwrap();
+    assert_eq!((paused["state"].as_str(), paused["reason"].as_str()), (Some("paused"), Some("budget")), "{paused:?}");
+    // after its 2nd call (55.6k, the next reading 35k at least) it goes on; after its 3rd (95.9k, the next 40k) a 4th
+    // would pass 100k: stopped as it asks for tools, within its budget
+    assert_eq!(paused["tokens"], json!({"input": 95_000, "output": 900, "cached": 1_000}));
+    assert!(jobs::spent(&paused) <= 100_000);
+    let g = fake.lock().unwrap();
+    assert!(g.requests.iter().any(|(m, p, _)| m == "POST" && p == "/p/coach/v1/runs/r1/stop"));
+    assert_eq!(g.runs.len(), 1);
+}
+
+/// Without patch 0020 (no `model.usage`) and with Hermes' counters still until the run's end, nothing tells the bridge
+/// a run's tokens before it ends: it is counted at its end, with its own usage, past its budget. Kept to say why the
+/// stop needs Hermes 0020 (the installer's patches).
+#[tokio::test]
+async fn without_real_tokens_a_run_is_counted_at_its_end() {
+    let dir = tempfile::tempdir().unwrap();
+    let (fake, url) = gateway(4, 0).await;
+    let (config, agent) = setup(dir.path(), &url);
+    let board = board(&config, None);
+    let job = board.create(&agent, "Analyse interview", "Résume l'interview.", 50_000, None).await.unwrap();
+    board.wait(&id_of(&job)).await;
+    let done = board.view(&id_of(&job)).unwrap();
+    assert_eq!(done["state"], "done");
+    assert_eq!(jobs::spent(&done), 105_000, "its usage at the end, twice its budget");
+    assert!(!fake.lock().unwrap().requests.iter().any(|(_, p, _)| p.ends_with("/stop")));
 }
