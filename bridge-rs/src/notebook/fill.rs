@@ -40,14 +40,9 @@ passwords or codes. Add no task unless your person clearly committed to somethin
 Don't ask questions. End with a short report in your person's language: how many pages you made or completed, \
 which ones, and what you weren't sure about.";
 
-/// The task's title in the Carnet's language.
-pub fn title(config: &Config) -> &'static str {
-    match super::language(config).as_str() {
-        "fr" => "Remplir le Carnet",
-        "de" => "Notizbuch füllen",
-        "es" => "Rellenar el Cuaderno",
-        _ => "Fill the Notebook",
-    }
+/// The task's title in the agent's language (what the person reads in « Tâches de fond »; names.rs).
+pub fn title(config: &Config, agent: &str) -> &'static str {
+    crate::names::names(&crate::names::agent_language(config, agent)).fill_notebook
 }
 
 pub fn tool() -> Value {
@@ -66,7 +61,8 @@ pub fn tool() -> Value {
 pub async fn start(jobs: &Arc<Jobs>, agent: &AgentConfig, by: &str) -> anyhow::Result<Dict> {
     let config = jobs.config.get();
     let budget = jobs::direct_budget(&config);
-    jobs.create_by(agent, title(&config), PROMPT, budget, Some(TEMPLATE), by).await
+    let prompt = crate::names::localize(PROMPT, &crate::names::agent_language(&config, &agent.name));
+    jobs.create_by(agent, title(&config, &agent.name), &prompt, budget, Some(TEMPLATE), by).await
 }
 
 /// The `notebook_fill` MCP tool.

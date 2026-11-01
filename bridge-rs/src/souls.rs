@@ -315,7 +315,16 @@ fn with_style_paragraph(soul: &str, paragraph: &str) -> String {
 
 /// The soul with the answer style `style` (one of `ANSWER_STYLES`; the person's own text for « custom »).
 pub fn with_style(soul: &str, style: Option<&str>, custom: Option<&str>) -> String {
-    with_style_paragraph(soul, &style_rule(style, custom))
+    with_style_paragraph(soul, &style_in(&style_rule(style, custom), soul_language(soul).as_deref()))
+}
+
+/// A style paragraph for an agent writing in `lang`: its closing `STYLE_CARD_RULE` through `for_language` (« never a
+/// Notebook or memory note »), the person's own words before it untouched.
+fn style_in(paragraph: &str, lang: Option<&str>) -> String {
+    match paragraph.find(&STYLE_CARD_RULE[..36]) {
+        Some(at) => format!("{}{}", &paragraph[..at], for_language(STYLE_CARD_RULE, lang)),
+        None => paragraph.to_string(),
+    }
 }
 
 pub fn language_name(code: &str) -> &'static str {
@@ -325,10 +334,12 @@ pub fn language_name(code: &str) -> &'static str {
 pub fn language_block(lang: Option<&str>) -> String {
     let code = agent_language(lang);
     let name = language_name(&code);
+    // the app's parts by their names in that language (names.rs; none for French: the texts name them so)
+    let names = crate::names::rule(&code).map(|rule| format!(" {rule}")).unwrap_or_default();
     for_language(
         &format!(
             "{BLOCK_START}\nLanguage: answer in the language your person writes in. Always write it with its accents and usual punctuation (routines and notes too), never an ASCII-only version. When you write first (a routine, \
-             a report, a reminder), write in {name}. The current time is at the top of each message (a bip:now line): trust it, never check it in the terminal.\n{CONTENT_RULE}\n{SENDING_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{PROJECT_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{LONG_WORK_RULE}\n{VISUAL_RULE}\n{SPACE_RULE}\n{ACK_RULE}\n{STYLE_RULE}\n{BLOCK_END}"
+             a report, a reminder), write in {name}.{names} The current time is at the top of each message (a bip:now line): trust it, never check it in the terminal.\n{CONTENT_RULE}\n{SENDING_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{PROJECT_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{LONG_WORK_RULE}\n{VISUAL_RULE}\n{SPACE_RULE}\n{ACK_RULE}\n{STYLE_RULE}\n{BLOCK_END}"
         ),
         Some(&code),
     )
@@ -364,7 +375,8 @@ const ENGLISH_EXAMPLES: [(&str, &str); 22] = [
 ];
 
 /// A rule's text for an agent writing first in `lang`: as it is in French (or when the language isn't known: a
-/// personality without a language block), its examples in English otherwise (`ENGLISH_EXAMPLES`).
+/// personality without a language block), its examples in English otherwise (`ENGLISH_EXAMPLES`) and the app's parts
+/// by their names in that language (« Notebook », not « Carnet »: names.rs, Alex 2026-11-01).
 pub fn for_language(rule: &str, lang: Option<&str>) -> String {
     let Some(code) = lang.map(|l| agent_language(Some(l))).filter(|c| c != "fr") else { return rule.to_string() };
     let w = crate::notebook::words(&code);
@@ -374,7 +386,7 @@ pub fn for_language(rule: &str, lang: Option<&str>) -> String {
             text = text.replace(french, &other.replace("{me}", w.me).replace("{brief}", w.brief));
         }
     }
-    text
+    crate::names::localize(&text, &code)
 }
 
 /// The language a personality writes first in (its language block's), for the blocks placed after it.
@@ -424,9 +436,11 @@ pub fn split_language(soul: &str) -> (String, Option<String>) {
 pub fn with_language(soul: &str, lang: Option<&str>) -> String {
     let (body, _) = split_language(soul);
     let fresh = format!("{}\n\n{}\n", body.trim_end(), language_block(lang));
-    // the agent's answer style stays (answer_style.rs)
+    // the agent's answer style stays (answer_style.rs), in the new language
     match style_paragraph(soul) {
-        Some(kept) if kept != STYLE_RULE => with_style_paragraph(&fresh, &kept),
+        Some(kept) if !kept.starts_with(&STYLE_RULE[..24]) => {
+            with_style_paragraph(&fresh, &style_in(&kept, Some(&agent_language(lang))))
+        }
         _ => fresh,
     }
 }
@@ -950,7 +964,11 @@ mod tests {
         let soul = with_notebook(&with_language("Tu es Vie.\n", Some("fr")), true);
         assert!(soul.contains("« Noté dans ton Carnet : … »"));
         let english = relanguage_blocks(&with_language(&soul, Some("en")));
-        assert!(english.contains("« Noted in your Carnet: … »") && !english.contains("Noté dans"), "{english}");
+        assert!(english.contains("« Noted in your Notebook: … »") && !english.contains("Noté dans"), "{english}");
+        // the app's parts by their names in the agent's language (names.rs), never the French ones
+        assert!(!english.contains("Carnet") && english.contains("the Notebook, the Inbox"), "{english}");
+        let german = relanguage_blocks(&with_language(&english, Some("de")));
+        assert!(german.contains("Notizbuch") && !german.contains("Notebook") && !german.contains("Carnet"), "{german}");
         let back = relanguage_blocks(&with_language(&english, Some("fr")));
         assert!(back.contains("« Noté dans ton Carnet : … »") && !back.contains("Noted in"), "{back}");
     }
@@ -1078,13 +1096,15 @@ mod tests {
         }
         assert!(STYLE_RULE.len() < 540, "short: paid on every call (with its style card line)");
         for lang in LANGUAGES.iter().chain(["de", "es"].iter()) {
+            // its closing line names the Carnet in the agent's language (names.rs)
+            let rule = for_language(STYLE_RULE, Some(lang));
             for category in CATEGORIES {
                 let soul = soul_for("Bip", category, Some(lang)).unwrap();
-                assert_eq!(soul.matches(STYLE_RULE).count(), 1, "{category} {lang}");
+                assert_eq!(soul.matches(&rule).count(), 1, "{category} {lang}");
             }
             let custom = custom_soul("Bip", "jardinier", "doux", "", Some(lang));
-            assert_eq!(custom.matches(STYLE_RULE).count(), 1, "custom {lang}");
-            assert!(language_block_compact(Some(lang)).contains(STYLE_RULE));
+            assert_eq!(custom.matches(&rule).count(), 1, "custom {lang}");
+            assert!(language_block_compact(Some(lang)).contains(&rule));
         }
         // an older block (before the rule) is brought to it in place, once
         let old = with_language("Tu es Prof.\n", Some("fr")).replace(&format!("\n{STYLE_RULE}"), "");

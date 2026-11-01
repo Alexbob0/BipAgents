@@ -413,7 +413,8 @@ async fn the_route_takes_a_phone_s_copy_and_says_what_it_put_back() {
     let hermes_home = dir.path().join("hermes");
     let mut data = config_dict(dir.path(), &Urls::default());
     data["agents"]["Wellness"]["host_home"] = json!(hermes_home.to_string_lossy());
-    let config = parse_config(&data, None).unwrap();
+    let mut config = parse_config(&data, None).unwrap();
+    config.browser.language = "fr-FR".into(); // a French place: the sentence in French
     let agent = config.agents.values().next().unwrap().clone();
     let profile = bipbridge::agents_admin::profile_folder(&config, &agent);
     std::fs::create_dir_all(&profile).unwrap();
