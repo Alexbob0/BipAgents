@@ -1,0 +1,55 @@
+# Known vulnerabilities in the dependencies we ship: the Rust crates (Cargo.lock) and the Python packages the servers
+# install. Weekly and by hand; a failed run is GitHub's e-mail to the repository's owner, nothing is changed here.
+# Python files resolved without pins would download their whole tree: pocket/requirements.txt pulls torch, so the
+# voices' light set (requirements-onnx.txt, what most servers run) stands for it. Hermes (hermes/) follows upstream.
+name: Dependency audit
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"   # Monday morning, Paris time
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    name: Rust crates
+    if: github.repository == 'Alexbob0/BipAgents'   # free there; the private copy would count minutes
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: [bridge-rs, relay]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install stable --profile minimal && rustup default stable
+      - run: cargo install cargo-audit --locked
+      - name: cargo audit
+        working-directory: ${{ matrix.crate }}
+        run: cargo audit
+
+  python:
+    name: Python packages
+    if: github.repository == 'Alexbob0/BipAgents'   # free there; the private copy would count minutes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install pip-audit
+      - name: Pinned files (checked as written)
+        run: |
+          for req in installer/requirements.txt browser/requirements.txt bridge/tests_blackbox/requirements.txt; do
+            echo "::group::$req"
+            pip-audit --strict --no-deps --disable-pip -r "$req" || failed=1
+            echo "::endgroup::"
+          done
+          exit "${failed:-0}"
+      - name: Voices, light set (resolved)
+        run: pip-audit --strict -r pocket/requirements-onnx.txt
