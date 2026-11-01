@@ -41,7 +41,7 @@ openapi-pydantic==0.6.0
 openapi-schema-validator==0.8.1
 openapi-spec-validator==0.8.5
 pathable==0.5.0
-pillow==11.3.0
+pillow==13.0.0
 pip==26.2.1
 psutil==7.0.0
 py2js==1.2.1
@@ -52,7 +52,7 @@ pydantic-settings==2.15.0
 Pygments==2.21.0
 PyJWT==2.15.1
 pyperclip==1.11.0
-python-dotenv==1.1.1
+python-dotenv==1.2.2
 python-multipart==0.0.32
 PyYAML==6.0.3
 referencing==0.37.0
@@ -61,7 +61,7 @@ rfc3339-validator==0.1.4
 rich==15.0.0
 rich-rst==2.2.0
 rpds-py==2026.6.3
-setuptools==78.1.1
+setuptools==84.1.0
 six==1.17.0
 sse-starlette==3.5.0
 starlette==1.7.0
