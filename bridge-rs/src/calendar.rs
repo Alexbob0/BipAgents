@@ -19,11 +19,14 @@
 //!
 //! App routes (the bridge key):
 //!
-//!     GET  /v1/calendar                  {agents, at, from, to, calendars: n, events: n, pending}
+//!     GET  /v1/calendar                  {agents, rights: {agent: {read, write}}, at, from, to, calendars: n,
+//!                                        events: n, pending}
 //!     PUT  /v1/calendar                  {from, to, calendars: [{id, title, color?}],
 //!                                        events: [{id, calendar, title, start, end, all_day, location?, notes?,
 //!                                        recurring?}]}
 //!     PUT  /v1/calendar/agents           {agents}
+//!     PUT  /v1/calendar/rights           {agent, rights: {read?, write?}}: what that agent may do with the phone's
+//!                                        calendar (phone_rights.rs; a mailbox's calendar follows its mailbox)
 //!     GET  /v1/calendar/queue            the agents' requests waiting for the phone
 //!     POST /v1/calendar/queue/{id}       {done: bool, error?}
 //!
@@ -47,6 +50,7 @@ use serde_json::{json, Value};
 
 use crate::app::AppState;
 use crate::config::Config;
+use crate::phone_rights::{self, Rights};
 use crate::tools_knowledge::{self as tk, tool_text};
 use crate::web::{self, check_max_items, ApiResult, FieldError, HttpError, Json, Validate};
 use crate::{py, Dict};
@@ -136,6 +140,13 @@ pub fn agents(config: &Config) -> Vec<String> {
 /// Whether `agent` may use the calendar (and gets its tools).
 pub fn enabled(config: &Config, agent: &str) -> bool {
     agents(config).iter().any(|a| a == agent)
+}
+
+/// Whether `agent` may read the phone's calendar (allowed, and the person didn't take reading back: phone_rights.rs).
+pub fn reads(config: &Config, agent: &str) -> bool {
+    let data = read(config);
+    tk::py_in(agent, data.get("agents").unwrap_or(&json!([])))
+        && crate::phone_rights::allows(&data, agent, crate::phone_rights::READ)
 }
 
 /// « 12 min », « 3 h », « 2 days ».
@@ -322,6 +333,12 @@ BipAgents app.",
             true,
         ));
     }
+    // What the person lets this agent do with the phone's calendar (phone_rights.rs).
+    let reads = phone && crate::phone_rights::allows(&data, agent, crate::phone_rights::READ);
+    let writes = phone && crate::phone_rights::allows(&data, agent, crate::phone_rights::WRITE);
+    if name == "calendar_list" && !reads && !remote.any {
+        return Ok(tool_text(&crate::phone_rights::refused("read their phone calendar"), true));
+    }
     let mut calendars: Vec<Value> = if phone {
         list_of(&data, "calendars")
             .into_iter()
@@ -348,7 +365,7 @@ BipAgents app.",
             (title, source) => format!("{title} ({source})"),
         }
     };
-    let events = if phone { list_of(&data, "events") } else { Vec::new() };
+    let events = if reads { list_of(&data, "events") } else { Vec::new() };
     let queue = list_of(&data, "queue");
     let at = data.get("at").and_then(Value::as_f64);
     let arg = |k: &str| tk::strip(&tk::str_or_empty(arguments.get(k))).to_string();
@@ -408,7 +425,9 @@ BipAgents app.",
             .collect();
         rows.sort_by_key(|e| Moment::parse(&text(e, "start")).map(Moment::wall));
         let mut sources = Vec::new();
-        if phone {
+        if phone && !reads {
+            sources.push("not the phone's calendar (the person doesn't let you read it)".to_string());
+        } else if phone {
             let at = data.get("at").and_then(Value::as_f64);
             let held = match (data.get("from").and_then(Value::as_str), data.get("to").and_then(Value::as_str)) {
                 (Some(f), Some(t)) if !f.is_empty() && !t.is_empty() => format!(", for {f} to {t}"),
@@ -475,6 +494,10 @@ BipAgents app.",
             }
             _ => tool_text(&format!("unknown tool: {name}"), true),
         });
+    }
+    if !writes && TOOL_NAMES.contains(&name) {
+        let why = crate::phone_rights::refused("add, move or delete events in their phone calendar");
+        return Ok(tool_text(&why, true));
     }
     let known = |id: &str| events.iter().find(|e| text(e, "id") == id);
     let op = match name {
@@ -775,6 +798,7 @@ async fn status(State(state): State<AppState>) -> ApiResult<Response> {
     let get = |k: &str| data.get(k).cloned().unwrap_or(Value::Null);
     Ok(web::ok(json!({
         "agents": data.get("agents").cloned().unwrap_or(json!([])), "at": get("at"), "from": get("from"), "to": get("to"),
+        "rights": crate::phone_rights::listed(&data, &crate::phone_rights::CALENDAR),
         "calendars": list_of(&data, "calendars").len(), "events": list_of(&data, "events").len(),
         "pending": list_of(&data, "queue").iter().filter(|op| pending(op)).count(),
     })))
@@ -845,6 +869,31 @@ async fn set_agents(State(state): State<AppState>, Json(body): Json<Agents>) -> 
     Ok(web::ok(json!({"agents": agents})))
 }
 
+/// What one agent may do with the phone's calendar (phone_rights.rs): its requests waiting are cancelled when it may
+/// no longer change it, and its tools' entry follows (meet.rs's tool needs reading).
+async fn set_rights(State(state): State<AppState>, Json(body): Json<Rights>) -> ApiResult<Response> {
+    let config = state.config();
+    let Some(agent) = config.agent(Some(&body.agent)).cloned() else {
+        return Err(HttpError::new(400, "unknown agent"));
+    };
+    let (config_c, name) = (config.clone(), agent.name.clone());
+    let rights = blocking(move || {
+        let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let mut data = read(&config_c);
+        let (rights, stopped) = phone_rights::set(&mut data, &name, &phone_rights::CALENDAR, &body.rights);
+        if stopped {
+            crate::phone_rights::cancel_requests(&mut data, &name);
+        }
+        write(&config_c, &data)?;
+        Ok(rights)
+    })
+    .await?;
+    if let Err(exc) = crate::agent_tools::register(&config, &agent, &crate::agents_admin::default_run()).await {
+        tracing::warn!(agent = %agent.name, error = %exc, "agent tools not registered");
+    }
+    Ok(web::ok(json!({"agent": agent.name, "rights": rights})))
+}
+
 async fn queue(State(state): State<AppState>) -> ApiResult<Response> {
     let config = state.config();
     let data = blocking(move || Ok(read(&config))).await?;
@@ -889,6 +938,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/calendar", get(status).put(snapshot))
         .route("/calendar/agents", put(set_agents))
+        .route("/calendar/rights", put(set_rights))
         .route("/calendar/queue", get(queue))
         .route("/calendar/queue/{op_id}", post(done))
 }

@@ -244,7 +244,9 @@ pub fn with_family(soul: &str, on: bool) -> String {
     if !on {
         return rest;
     }
-    format!("{}\n\n{BLOCK_START}\n{RULE}\n{BLOCK_END}\n", rest.trim_end())
+    // the family Carnet by its name in the agent's language (names.rs)
+    let rule = crate::souls::for_language(RULE, crate::souls::split_language(&rest).1.as_deref());
+    format!("{}\n\n{BLOCK_START}\n{rule}\n{BLOCK_END}\n", rest.trim_end())
 }
 
 pub fn split_family(soul: &str) -> (String, bool) {

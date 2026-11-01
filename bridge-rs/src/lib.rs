@@ -109,6 +109,7 @@ pub mod send_guard;
 pub mod sent_files;
 pub mod services;
 pub mod shares;
+pub mod names; // the app's things by their names in the person's language
 pub mod souls;
 pub mod space;
 pub mod spaces;
@@ -152,8 +153,10 @@ pub mod notebook;
 pub mod notes_import;
 pub mod pages;
 pub mod phone_asks;
+pub mod phone_rights;
 pub mod reminders;
 pub mod rooms;
+pub mod rooms_handoff;
 pub mod rooms_memory;
 pub mod rooms_remote;
 pub mod routes;

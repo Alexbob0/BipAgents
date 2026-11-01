@@ -40,6 +40,7 @@ image, which is swept after 24 h); 0004 goes once a Hermes update brings it.
 | 0016 `message_agent`: the bridge's, Bot Chat included | applies (after 0012) | not checked yet |
 | 0017 address items with name, phone, e-mail | applies | applies (`0b4481ad9c`, `patch --dry-run`, checked 2026-10-29) |
 | 0018 guest turns: closed tools, no USER.md | applies (after 0001–0017) | `agent/` applies; `gateway/platforms/api_server*.py` **does not** on `d050956633` (context moved): redo the two gateway files at the next update |
+| 0019 routines report to their conversation | applies (after 0001–0018) | not checked yet |
 
 ## 0001 — `clarify` in the Runs API
 
@@ -495,3 +496,45 @@ with 0001–0018): the two new files, 26 passed; with `test_system_prompt*.py`, 
 `agent_shares.rs`, `peers.rs` unit tests and the black-box `test_shared_agents.py`, `test_family_agent.py`,
 `test_rooms_guests.py`, `test_households_and_peers.py` (the mark on each path). The real-model check is in
 internal/next/relative-turns.md.
+
+## 0019 — routines made in a conversation report to it; plain results; longer instructions; labels for `calls` as text
+
+**Problem.** Seen 2026-10-31: Alex asked his agent, in the app, « mets un schedule ce soir à 23h pour corriger tout le
+carnet ». Three things went wrong on Hermes' side.
+- The routine tool (`cronjob_manage`, behind the tool search) went through `tool_call`. The dispatcher runs a `calls`
+  sent as a JSON string or as one object (`normalize_tool_call_entries`), but `tools/tool_labels.py` read only a list:
+  the `tool.started` preview, which the apps show, was « Unnamed call ».
+- A Runs API session has no push channel, so `_origin_from_env` drops its origin and an omitted `deliver` makes a
+  local-only job. The create result then told the model « This is a local-only cron job … recreate or update the job
+  with deliver set to … deliver='telegram' or deliver='all' ». The model did so and told Alex about it (« Le job est
+  créé mais en livraison locale uniquement »), though the bridge delivers every routine's report anyway.
+- A job's instructions had two limits: none in the tool, 5 000 characters in the Jobs API (`/api/jobs`, which the
+  apps' Routines use to edit a job the agent made). 5 000 is short for a long multi-step instruction.
+
+**What the patch does.**
+- `labels_for_call` reads a `tool_call`'s entries in every shape the dispatcher runs: a list, a JSON string of one, a
+  single object, the legacy `{name, arguments}`, with `arguments` as a JSON string too. An entry with no name keeps
+  « Unnamed call » (the apps word that as a plain tool call).
+- `_origin_session_from_env`: in an api_server session that resumes server history
+  (`session_history_delivery_supported()`, the declaration async `delegate_task` results rely on), with
+  `cron.session_reports: true` in the profile's config (the bridge writes it, tool_diet.rs), a job created with no
+  `deliver` or with `origin` gets the session id as `origin_session_id`. `deliver` stays `local`: Hermes posts
+  nothing, the bridge's cron watcher posts the run's report in that conversation. The create result says « Its report
+  comes back to this conversation each time it runs. », and `deliver` reads `this conversation` in the create, update
+  and list results, with no « local-only » notice; an update asking for `origin` again keeps it so. Without the
+  config key, or in any other session, nothing changes.
+- One limit for a job's instructions, `cron.jobs.MAX_PROMPT_CHARS = 20_000` characters. A long multi-step instruction
+  (what to go through, the rules, what to check, how to report) is 2 000 to 8 000 characters; 20 000 (about 5 000
+  tokens) leaves room for that and more, and still refuses a pasted document, which belongs in a file the job reads.
+  The cronjob tool now checks it on create and update, with a plain error (« These instructions are too long for a
+  scheduled task (N characters, at most 20,000) … Nothing was saved. »); the Jobs API checks the same number.
+
+**Files.** `tools/tool_labels.py`, `cron/jobs.py`, `tools/cronjob_job_args.py`, `tools/cronjob_tools.py`,
+`gateway/platforms/api_server.py`; `tests/gateway/test_api_server_jobs.py` (the API's limit tests at 20 001
+characters); new `tests/tools/test_cronjob_session_reports.py` (12 tests; 6 fail without the patch: a stringified
+`calls` labelled « Unnamed call », no origin session, a 20 001-character prompt accepted).
+
+**Tests.** On the Mac (2026-11-01, Python 3.14, `517b5e10f` with 0001–0019): the new file with
+`tests/tools/test_cron*.py`, `test_cronjob*.py`, `test_delegate_cron_sync_fallback.py`, `tests/agent/test_display.py`,
+`tests/gateway/test_api_server_jobs.py` and `tests/cron/`: 1688 passed, 11 skipped. The bridge's side: `push-runs_cronwatch.rs`
+(a routine's report in the conversation it was made in, or under its run when that one is gone) and `tool_diet.rs`.

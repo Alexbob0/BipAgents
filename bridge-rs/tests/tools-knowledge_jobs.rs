@@ -105,7 +105,8 @@ fn setup(dir: &std::path::Path, url: &str) -> (Config, AgentConfig) {
     let mut dict = config_dict(dir, &Urls::default());
     dict["agents"]["coach"] =
         json!({"display_name": "Coach", "hermes_url": format!("{url}/p/coach"), "hermes_key": "k"});
-    let config = parse_config(&dict, None).unwrap();
+    let mut config = parse_config(&dict, None).unwrap();
+    config.browser.language = "fr-FR".into(); // a French place: its pushes in French (names.rs)
     let agent = config.agent(Some("coach")).unwrap().clone();
     (config, agent)
 }

@@ -1012,8 +1012,14 @@ pub async fn serve(
             ))
         }
         "ping" => Ok(web::json_response(200, &rpc(&id, json!({})))),
-        "tools/list" => Ok(web::json_response(200, &rpc(&id, json!({"tools": (server.tools)()})))),
+        "tools/list" => {
+            // the app's parts by their names in the agent's language (names.rs)
+            let mut tools = (server.tools)();
+            crate::names::localize_tools(&mut tools, &crate::handback::language_of(&config, &agent));
+            Ok(web::json_response(200, &rpc(&id, json!({"tools": tools}))))
+        }
         "tools/call" => {
+            let lang = crate::handback::language_of(&config, &agent);
             let name = params.get("name").and_then(Value::as_str).unwrap_or("").to_string();
             let arguments = match params.get("arguments") {
                 Some(Value::Object(map)) => map.clone(),
@@ -1024,8 +1030,13 @@ pub async fn serve(
             let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Value>();
             let asker = Asker { agent: agent.name.clone(), out: stream.then_some(out_tx) };
             let worker_state = state.clone();
-            let mut work =
-                tokio::spawn(async move { (server.call)(&worker_state, &agent, &name, &arguments, &asker).await });
+            let mut work = tokio::spawn(async move {
+                let mut result = (server.call)(&worker_state, &agent, &name, &arguments, &asker).await;
+                if let Ok(done) = &mut result {
+                    crate::names::localize_result(done, &lang);
+                }
+                result
+            });
             if !stream {
                 let result = (&mut work).await.map_err(anyhow::Error::from)??;
                 return Ok(web::json_response(200, &rpc(&id, Value::Object(result))));

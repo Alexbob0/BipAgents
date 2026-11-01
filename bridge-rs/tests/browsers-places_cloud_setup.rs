@@ -961,9 +961,11 @@ async fn an_english_claim_makes_the_whole_place_english_in_the_persons_zone() {
         let soul = bipbridge::souls::with_notebook(&soul, true);
         let soul = bipbridge::souls::with_archives(&bipbridge::souls::with_health(&soul, true), true);
         assert!(soul.contains("write in English.") && soul.contains("« I'm on it in the background"), "{soul}");
-        assert!(soul.contains("« Noted in your Carnet: … »") && soul.contains("their « You » page"), "{soul}");
+        assert!(soul.contains("« Noted in your Notebook: … »") && soul.contains("their « You » page"), "{soul}");
+        // the app's parts by their English names (names.rs, 2026-11-01: « in your Carnet (Notebook) »)
         for french in ["Je m'en occupe", "Je compare", "Je garderai", "Noté dans", "« Toi »", "En bref", "veilleur",
-                       "ton accord", "rappelle-moi", "quand ai-je", "Coach sportif"] {
+                       "ton accord", "rappelle-moi", "quand ai-je", "Coach sportif", "Carnet", "Boîte",
+                       "Tâches de fond"] {
             assert!(!soul.contains(french), "{id}: {french}");
         }
     }

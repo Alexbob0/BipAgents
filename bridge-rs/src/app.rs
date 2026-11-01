@@ -306,7 +306,7 @@ impl AppState {
             }
         }
         if config.cron_watch {
-            let watcher = Arc::new(CronWatcher::new(
+            let mut watcher = CronWatcher::new(
                 self.config.clone(),
                 self.hermes.clone(),
                 self.outbox.clone(),
@@ -316,8 +316,9 @@ impl AppState {
                 Some(self.hub.clone()),
                 Some(self.push.clone()),
                 Some(self.presence.clone()),
-            ));
-            self.spawn(watcher.run());
+            );
+            watcher.briefs = Some(self.briefs.clone());
+            self.spawn(Arc::new(watcher).run());
         }
         self.spawn(purge_loop(self.clone()));
         // what takes the place's space, measured; the 80/95 % cards, the pause when full (storage_watch.rs)

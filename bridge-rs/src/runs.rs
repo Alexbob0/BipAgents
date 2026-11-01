@@ -317,6 +317,10 @@ pub struct SubscriptionState {
     /// agent already handed work over (start_task, propose_task, notebook_fill), and whether the bridge steered.
     pub followed_since: f64,
     pub tool_calls: u32,
+    /// The run's tool steps (the calls started together before any ended count once: one model answer each), and
+    /// the calls started and not ended yet (rooms.rs estimates a turn's tokens from the steps).
+    pub tool_steps: u32,
+    pub tools_open: u32,
     pub handed_off: bool,
     pub steered: bool,
     /// The tool calls that count for the safety net (neither browsing nor during a sub-agent's work; from 0 again
@@ -374,6 +378,8 @@ impl Default for SubscriptionState {
             pushed: HashSet::new(),
             followed_since: crate::py::time_time(),
             tool_calls: 0,
+            tool_steps: 0,
+            tools_open: 0,
             handed_off: false,
             steered: false,
             counted_calls: 0,
@@ -586,6 +592,16 @@ impl RunHub {
                 item.insert("room_id".into(), json!(room_id));
             }
         }
+    }
+
+    /// A run the hub follows (a room's turn, rooms.rs): its tool steps so far and whether the brake stopped it. None
+    /// once the hub let it go.
+    pub fn run_progress(&self, agent: &str, run_id: &str) -> Option<(u32, bool)> {
+        let inner = lock(&self.inner);
+        inner.subs.get(&(agent.to_string(), run_id.to_string())).map(|sub| {
+            let st = lock(&sub.state);
+            (st.tool_steps, st.braked)
+        })
     }
 
     /// Follow the run for the brake (loop_brake.rs) whoever looks at it, without the pushes of `watch`: a run started
@@ -1557,9 +1573,16 @@ impl RunHub {
     fn handoff(&self, sub: &RunSubscription, st: &mut SubscriptionState, event: &SSEEvent) {
         let tool = event.data.get("tool").or_else(|| event.data.get("name")).and_then(Value::as_str).unwrap_or("");
         let now = crate::py::time_time();
+        if matches!(event.r#type.as_str(), "tool.completed" | "tool.failed") {
+            st.tools_open = st.tools_open.saturating_sub(1);
+        }
         match event.r#type.as_str() {
             "tool.started" => {
                 st.tool_calls += 1;
+                if st.tools_open == 0 {
+                    st.tool_steps += 1;
+                }
+                st.tools_open += 1;
                 if st.recent_tools.len() >= 100 {
                     st.recent_tools.pop_front();
                 }

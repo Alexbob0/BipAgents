@@ -69,7 +69,8 @@ def test_the_brake_switched_off(bridges, fakes):
 
 def test_writes_in_a_turn_are_capped(bridges, fakes):
     bridge = bridges.new()
-    bridge.config["brake"] = {"writes": 2}
+    # no run followed here: a routine's calls, scheduled work held to the task's writes
+    bridge.config["brake"] = {"task_writes": 2}
     bridge.start()
     give_token(bridge)
     page = {"title": "Plan", "html": "<h1>Plan</h1>"}
@@ -79,7 +80,9 @@ def test_writes_in_a_turn_are_capped(bridges, fakes):
     # (the same write twice within a run: the Rust unit tests, loop_brake.rs)
     assert not call(bridge, "create_page", page)["isError"]
     refused = call(bridge, "create_page", {**page, "title": "Plan 3"})
-    assert refused["isError"] and "you already made 2 changes" in text_of(refused)
+    assert refused["isError"] and "this run has made 2 changes" in text_of(refused)
+    # the reason, for the person, in plain words (2026-10-31: « le bridge a refusé la suite »)
+    assert "so that a mistake can never spread to everything" in text_of(refused)
     # reading is never capped
     assert not call(bridge, "list_pages", {})["isError"]
 
@@ -189,9 +192,9 @@ def test_two_reminders_in_a_fresh_conversation_are_accepted(bridges, fakes):
     assert bridge.put("/v1/reminders/agents", json={"agents": ["Wellness"]}, headers=AUTH).status_code == 200
     assert bridge.put("/v1/reminders", json={"lists": [{"id": "L1", "title": "Maison"}], "items": []},
                       headers=AUTH).status_code == 200
-    for i in range(10):   # a routine before (no run): its 10 pages, its cap reached
+    for i in range(40):   # a routine before (no run): its 40 pages (scheduled work, a task's writes), its cap reached
         assert not call(bridge, "create_page", {"title": f"Brief {i}", "html": f"<h1>{i}</h1>"})["isError"]
-    assert call(bridge, "create_page", {"title": "Brief 11", "html": "<h1>11</h1>"})["isError"]
+    assert call(bridge, "create_page", {"title": "Brief 41", "html": "<h1>41</h1>"})["isError"]
     # the person's new conversation: its turn started through the door, still going on
     gate = threading.Event()
     fakes.hermes.runs["r1"] = [sse("tool.started", run_id="r1", tool="mcp__bipagents__reminders_add", preview="{}"),

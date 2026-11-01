@@ -750,10 +750,47 @@ using it, and say simply if it is gone.\n-->",
     )
 }
 
-/// The one sentence the app shows the person under the recovered messages.
-pub fn sentence(count: usize, restore: &Restore, zone: Tz) -> String {
+/// The one sentence the app shows the person under the recovered messages, in the agent's language `lang`.
+pub fn sentence(count: usize, restore: &Restore, zone: Tz, lang: &str) -> String {
     if count == 0 {
         return String::new();
+    }
+    let n = crate::names::names(lang);
+    if n.lang != "fr" {
+        let at = restore.backup_at.map(|at| local(at, zone));
+        let (day, time) = at.map(|at| (at.format("%d/%m").to_string(), at.format("%H:%M").to_string())).unzip();
+        return match (n.lang, day, time) {
+            ("de", Some(day), Some(time)) => format!(
+                "{count} Nachricht(en) von deinem Telefon wiederhergestellt; was deine Agenten nach dem {day} um {time} \
+erstellt oder notiert haben (Dateien, {}, Gedächtnis), ließ sich nicht wiederherstellen.",
+                n.notebook
+            ),
+            ("de", ..) => format!(
+                "{count} Nachricht(en) von deinem Telefon wiederhergestellt; was deine Agenten nach der letzten \
+Sicherung erstellt oder notiert haben (Dateien, {}, Gedächtnis), ließ sich nicht wiederherstellen.",
+                n.notebook
+            ),
+            ("es", Some(day), Some(time)) => format!(
+                "{count} mensaje(s) recuperado(s) de tu teléfono; lo que tus agentes crearon o anotaron después del \
+{day} a las {time} (archivos, {}, memoria) no se pudo recuperar.",
+                n.notebook
+            ),
+            ("es", ..) => format!(
+                "{count} mensaje(s) recuperado(s) de tu teléfono; lo que tus agentes crearon o anotaron después de la \
+última copia (archivos, {}, memoria) no se pudo recuperar.",
+                n.notebook
+            ),
+            (_, Some(day), Some(time)) => format!(
+                "{count} message(s) recovered from your phone; what your agents made or noted after {day} at {time} \
+(files, {}, memory) couldn't be recovered.",
+                n.notebook
+            ),
+            _ => format!(
+                "{count} message(s) recovered from your phone; what your agents made or noted after the last backup \
+(files, {}, memory) couldn't be recovered.",
+                n.notebook
+            ),
+        };
     }
     let messages =
         if count == 1 { "1 message récupéré".to_string() } else { format!("{count} messages récupérés") };
@@ -944,6 +981,6 @@ async fn reconcile_route(State(state): State<AppState>, Json(body): Json<Reconci
         "ignored": outcome.ignored,
         "moved": outcome.moved,
         "recovered": recovered,
-        "sentence": sentence(outcome.inserted.len(), &restore, zone),
+        "sentence": sentence(outcome.inserted.len(), &restore, zone, &crate::handback::language_of(&config, &agent)),
     })))
 }

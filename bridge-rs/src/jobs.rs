@@ -81,9 +81,26 @@ page (create_page) for a table, a comparison or a dashboard, a file in your work
 has a budget; if you are told to continue, pick up where you stopped instead of starting again. End with a short
 report in the person's language: what you did, what you found or made and where it is, what is left or uncertain.";
 pub const CONTINUE: &str = "Continue the task where you stopped (don't start again), then end with your report.";
+/// The pushes' bodies in French; in the agent's language they come from names.rs (`push_body`).
 pub const DONE_BODY: &str = "Tâche de fond terminée";
 pub const PAUSED_BODY: &str = "Tâche de fond en pause";
 pub const PROPOSED_BODY: &str = "Tâche de fond proposée";
+
+/// A push's body (`DONE_BODY`…) in `agent`'s language: what the phone shows, as it is (Android), or when the iOS
+/// catalog has no such key.
+fn push_body(config: &crate::config::Config, agent: &AgentConfig, body: &str) -> &'static str {
+    let n = crate::names::names(&crate::handback::language_of(config, agent));
+    match body {
+        DONE_BODY => n.task_done,
+        PAUSED_BODY => n.task_paused,
+        _ => n.task_proposed,
+    }
+}
+
+/// French puts a space before a colon.
+fn colon(body: &str) -> &'static str {
+    if body.starts_with("Tâche") { " :" } else { ":" }
+}
 
 /// Python's `JobError` (safe to show).
 #[derive(Debug, Clone, thiserror::Error)]
@@ -534,8 +551,9 @@ impl Jobs {
         let max_tokens = budget_of(budget).unwrap_or(1_000_000);
         let job = self.new_task(agent, title, prompt, max_tokens, None, "agent", from_session)?;
         if let Some(tell) = &self.tell {
-            let line = format!("{PROPOSED_BODY} : {}", tk::str_or_empty(job.get("title")));
-            tell(agent.name.clone(), None, line, tk::str_or_empty(job.get("id")), PROPOSED_BODY.into()).await;
+            let body = push_body(&self.config.get(), agent, PROPOSED_BODY);
+            let line = format!("{body}{} {}", colon(body), tk::str_or_empty(job.get("title")));
+            tell(agent.name.clone(), None, line, tk::str_or_empty(job.get("id")), body.into()).await;
         }
         Ok(job)
     }
@@ -726,8 +744,13 @@ impl Jobs {
         // GLM through EUrouter thinks at « low » in chat since 2026-10-28; tasks stay at « medium » until measured.
         let options = crate::agents_admin::task_turn_options(&self.config.get(), &agent);
         let text = &crate::dates::now::stamped(&self.config.get(), &agent, text);
-        let run_id =
-            self.hermes.start_run_with(&agent, text, &session_id, Some(INSTRUCTIONS), options).await.map_err(refused)?;
+        // « Tâches de fond » by its name in the agent's language (names.rs)
+        let instructions = crate::names::localize(INSTRUCTIONS, &crate::handback::language_of(&self.config.get(), &agent));
+        let run_id = self
+            .hermes
+            .start_run_with(&agent, text, &session_id, Some(&instructions), options)
+            .await
+            .map_err(refused)?;
         let now = py::time_time();
         let before = job.get("tokens").cloned().unwrap_or(json!({}));
         let started = job.get("started").filter(|v| py::truthy(v)).cloned().unwrap_or(json!(now));
@@ -1008,8 +1031,8 @@ impl Jobs {
 
     async fn tell_end(&self, agent: &AgentConfig, job: &Dict) {
         let Some(tell) = &self.tell else { return };
-        let body = if state_of(job) == "done" { DONE_BODY } else { PAUSED_BODY };
-        let line = format!("{body} : {}", tk::str_or_empty(job.get("title")));
+        let body = push_body(&self.config.get(), agent, if state_of(job) == "done" { DONE_BODY } else { PAUSED_BODY });
+        let line = format!("{body}{} {}", colon(body), tk::str_or_empty(job.get("title")));
         let session = job.get("session_id").filter(|v| !v.is_null()).map(py::py_str);
         tell(agent.name.clone(), session, line, tk::str_or_empty(job.get("id")), body.into()).await;
     }

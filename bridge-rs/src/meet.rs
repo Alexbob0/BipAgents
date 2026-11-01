@@ -830,9 +830,10 @@ pub fn router() -> Router<AppState> {
 
 // -- the agents' tool -----------------------------------------------------------------------------------------------
 
-/// Listed for an agent that reads the phone's calendar, on an install with a linked household.
+/// Listed for an agent that reads the phone's calendar (its free slots come from it), on an install with a linked
+/// household.
 pub fn offered(config: &Config, agent: &str) -> bool {
-    crate::calendar::enabled(config, agent) && crate::family_news::has_family(config)
+    crate::calendar::reads(config, agent) && crate::family_news::has_family(config)
 }
 
 pub fn tool() -> Value {

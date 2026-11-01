@@ -379,3 +379,166 @@ async fn names_inside_an_area_are_found_by_their_first_part_a_day_out_and_addres
     assert_eq!(map["points"][0]["name"], "12 rue de Rivoli");
     assert_eq!(map["points"][1]["name"], "Tour Eiffel");
 }
+
+/// A fake Nominatim for one map's places kept together: several answers per name, in the geocoder's order, and
+/// `viewbox` + `bounded=1` honoured (only what is inside the box). Coordinates as OpenStreetMap had them on 2026-11-01.
+async fn fake_towns(asked: Arc<std::sync::Mutex<Vec<String>>>) -> String {
+    use std::collections::HashMap;
+    fn spot(lat: f64, lon: f64, name: &str, kind: &str, town: &str) -> Value {
+        json!({"lat": lat.to_string(), "lon": lon.to_string(), "name": name, "category": kind,
+               "display_name": format!("{name}, {town}"), "address": {"town": town, "country": "France"}})
+    }
+    let search = move |Query(q): Query<HashMap<String, String>>| {
+        let a = asked.clone();
+        async move {
+            let query = q.get("q").cloned().unwrap_or_default();
+            let viewbox = q.get("viewbox").cloned().unwrap_or_default();
+            a.lock().unwrap().push(format!("search {query} {viewbox}"));
+            let all = match query.as_str() {
+                "Arcachon" => json!([{"lat": "44.6616428", "lon": "-1.1700018", "name": "Arcachon",
+                    "display_name": "Arcachon, Gironde, France", "address": {"town": "Arcachon", "country": "France"},
+                    "boundingbox": ["44.6387675", "44.6646925", "-1.2051148", "-1.1390026"]}]),
+                "Église Notre-Dame-des-Passes" => {
+                    json!([spot(44.6412126, -1.1990896, "Église Notre-Dame-des-Passes", "amenity", "Arcachon")])
+                }
+                "Jetée du Moulleau" => {
+                    json!([spot(44.6417176, -1.2043897, "Jetée du Moulleau", "man_made", "Arcachon")])
+                }
+                "Plage du Moulleau" => json!([spot(44.6432, -1.2020, "Plage du Moulleau", "natural", "Arcachon")]),
+                // the only one in Arcachon: downtown, 3 km from Le Moulleau
+                "Avenue Gambetta, Camicas, Arcachon" => {
+                    json!([spot(44.6577791, -1.1681525, "Avenue Gambetta", "highway", "Arcachon")])
+                }
+                "8 Avenue Gambetta, Arcachon" => json!([spot(44.6580, -1.1682, "8", "place", "Arcachon")]),
+                // one downtown (the first answer), one in Le Moulleau
+                "Rue des Pins" => json!([
+                    spot(44.6605, -1.1750, "Rue des Pins", "highway", "Arcachon"),
+                    spot(44.6401, -1.1979, "Rue des Pins", "highway", "Arcachon")
+                ]),
+                "Torre de Belém" => json!([spot(38.6915837, -9.2159767, "Torre de Belém", "man_made", "Lisboa")]),
+                "Mosteiro dos Jerónimos" => {
+                    json!([spot(38.6978, -9.2067, "Mosteiro dos Jerónimos", "amenity", "Lisboa")])
+                }
+                "Castelo de São Jorge" => {
+                    json!([spot(38.7139, -9.1334, "Castelo de São Jorge", "historic", "Lisboa")])
+                }
+                "Universidade de Coimbra" => {
+                    json!([spot(40.2073, -8.4260, "Universidade de Coimbra", "amenity", "Coimbra")])
+                }
+                "Torre dos Clérigos" => json!([spot(41.1458, -8.6139, "Torre dos Clérigos", "man_made", "Porto")]),
+                "Rua das Flores, Porto" => json!([spot(41.1435, -8.6130, "Rua das Flores", "highway", "Porto")]),
+                // in Coimbra first, in Lisbon too
+                "Rua da Prata" => json!([
+                    spot(40.2100, -8.4290, "Rua da Prata", "highway", "Coimbra"),
+                    spot(38.7105, -9.1370, "Rua da Prata", "highway", "Lisboa")
+                ]),
+                _ => json!([]),
+            };
+            let bounded = q.get("bounded").is_some_and(|b| b == "1");
+            // west, north, east, south
+            let b: Vec<f64> = viewbox.split(',').filter_map(|v| v.parse().ok()).collect();
+            let inside = |p: &Value| {
+                let (lat, lon): (f64, f64) =
+                    (p["lat"].as_str().unwrap().parse().unwrap(), p["lon"].as_str().unwrap().parse().unwrap());
+                !bounded || (b.len() == 4 && (b[0]..=b[2]).contains(&lon) && (b[3]..=b[1]).contains(&lat))
+            };
+            axum::Json(Value::Array(all.as_array().unwrap().iter().filter(|p| inside(p)).cloned().collect()))
+        }
+    };
+    spawn_fake(Router::new().route("/search", get(search))).await
+}
+
+/// The searches the fake was asked since the last time (and forgets them).
+fn searches(asked: &Arc<std::sync::Mutex<Vec<String>>>) -> Vec<String> {
+    std::mem::take(&mut *asked.lock().unwrap())
+}
+
+#[tokio::test]
+async fn a_street_far_from_the_map_s_other_places_is_left_out_and_said_not_drawn_across_town() {
+    let asked = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let geocoder = fake_towns(asked.clone()).await;
+    let dir = tempfile::tempdir().unwrap();
+    let config = map_config(dir.path(), &geocoder).await;
+    // Alex, 2026-11-01: « Le Moulleau, le tour complet », its 4th stop downtown Arcachon, the line across the town
+    let stops = |last: &str| {
+        json!({"title": "Le Moulleau, le tour complet", "area": "Arcachon", "line": true, "markers": [
+            {"place": "Église Notre-Dame-des-Passes"}, {"place": "Jetée du Moulleau"}, {"place": "Plage du Moulleau"},
+            {"place": last}]})
+    };
+    let result = maps::call(&config, "daily", stops("Avenue Gambetta, Camicas, Arcachon").as_object().unwrap()).await;
+    let said = text(&result);
+    assert_eq!(result["isError"], json!(false), "{said}");
+    assert!(said.contains("Map ready (3 markers"), "{said}");
+    assert!(
+        said.contains(
+            "left out: could not place « Avenue Gambetta, Camicas, Arcachon » near the other places: the one found is 3."
+        ),
+        "{said}"
+    );
+    let map = kept_map(&config, "daily", &said);
+    let points = map["points"].as_array().unwrap();
+    for p in &points[..3] {
+        assert!(p["lon"].as_f64().unwrap() < -1.19, "{p} in Le Moulleau");
+    }
+    assert_eq!(points[3], json!({"name": "Avenue Gambetta, Camicas, Arcachon", "source": "none", "area": "Arcachon"}));
+    assert_eq!(map["route"]["line"], json!(true), "the line through the three stops only");
+    // few requests: the area, the three names, the street near them then in the town (no second look near them)
+    let done = searches(&asked);
+    assert_eq!(done.len(), 6, "{done:?}");
+    // the same without an area: the same answer
+    let mut alone = stops("Avenue Gambetta, Camicas, Arcachon");
+    alone.as_object_mut().unwrap().remove("area");
+    let said = text(&maps::call(&config, "daily", alone.as_object().unwrap()).await);
+    assert!(said.contains("Map ready (3 markers") && said.contains("left out: could not place"), "{said}");
+    // the agent insists with the address's number: drawn where it is, with a word
+    let said = text(&maps::call(&config, "daily", stops("8 Avenue Gambetta, Arcachon").as_object().unwrap()).await);
+    assert!(said.contains("Map ready (4 markers") && !said.contains("left out"), "{said}");
+    assert!(said.contains("« 8 Avenue Gambetta, Arcachon » is 3.") && said.contains("check it"), "{said}");
+}
+
+#[tokio::test]
+async fn an_ambiguous_street_on_a_tour_is_taken_near_the_tour_s_other_places() {
+    let asked = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let geocoder = fake_towns(asked.clone()).await;
+    let dir = tempfile::tempdir().unwrap();
+    let config = map_config(dir.path(), &geocoder).await;
+    // « Rue des Pins »: the geocoder's first is downtown, inside the town's box; the one of the tour is in Le Moulleau
+    let arguments = json!({"area": "Arcachon", "markers": [{"place": "Église Notre-Dame-des-Passes"},
+        {"place": "Rue des Pins", "label": "Déjeuner rue des Pins"}, {"place": "Jetée du Moulleau"}]});
+    let said = text(&maps::call(&config, "daily", arguments.as_object().unwrap()).await);
+    assert!(said.contains("Map ready (3 markers") && !said.contains("Check:"), "{said}");
+    let map = kept_map(&config, "daily", &said);
+    assert_eq!((map["points"][1]["lat"].as_f64(), map["points"][1]["lon"].as_f64()), (Some(44.6401), Some(-1.1979)));
+    assert_eq!(map["points"][1]["name"], "Déjeuner rue des Pins");
+    // a Lisbon walk without an area, « Rua da Prata » first found in Coimbra
+    let arguments = json!({"markers": [{"place": "Torre de Belém"}, {"place": "Castelo de São Jorge"},
+        {"place": "Rua da Prata"}]});
+    let said = text(&maps::call(&config, "daily", arguments.as_object().unwrap()).await);
+    let map = kept_map(&config, "daily", &said);
+    assert_eq!((map["points"][2]["lat"].as_f64(), map["points"][2]["lon"].as_f64()), (Some(38.7105), Some(-9.137)));
+}
+
+#[tokio::test]
+async fn a_trip_far_apart_on_purpose_and_a_single_place_stay_as_found() {
+    let asked = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let geocoder = fake_towns(asked.clone()).await;
+    let dir = tempfile::tempdir().unwrap();
+    let config = map_config(dir.path(), &geocoder).await;
+    // Lisbon → Coimbra → Porto, a street in Porto named with its town
+    let arguments = json!({"line": true, "directions": "driving", "markers": [{"place": "Torre de Belém"},
+        {"place": "Mosteiro dos Jerónimos"}, {"place": "Universidade de Coimbra"}, {"place": "Torre dos Clérigos"},
+        {"place": "Rua das Flores, Porto"}]});
+    let said = text(&maps::call(&config, "daily", arguments.as_object().unwrap()).await);
+    assert!(said.contains("Map ready (5 markers") && !said.contains("Check:"), "{said}");
+    let map = kept_map(&config, "daily", &said);
+    assert_eq!((map["points"][4]["lat"].as_f64(), map["points"][4]["lon"].as_f64()), (Some(41.1435), Some(-8.613)));
+    assert_eq!((map["points"][2]["lat"].as_f64(), map["points"][2]["lon"].as_f64()), (Some(40.2073), Some(-8.426)));
+    // one place: as found, one request
+    searches(&asked);
+    let one = json!({"markers": [{"place": "Avenue Gambetta, Camicas, Arcachon"}]});
+    let said = text(&maps::call(&config, "daily", one.as_object().unwrap()).await);
+    assert!(said.contains("Map ready (1 markers") && !said.contains("Check:"), "{said}");
+    let map = kept_map(&config, "daily", &said);
+    assert_eq!((map["points"][0]["lat"].as_f64(), map["points"][0]["source"].as_str()), (Some(44.657779), Some("osm")));
+    assert_eq!(searches(&asked).len(), 1);
+}

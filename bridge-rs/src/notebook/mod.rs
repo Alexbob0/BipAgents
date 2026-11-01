@@ -37,6 +37,7 @@ pub mod api;
 pub mod archive;
 pub mod fill;
 pub mod records;
+pub mod repair;
 pub mod template;
 pub mod news;
 pub mod tidy;
@@ -619,6 +620,13 @@ pub fn file_name(title: &str) -> String {
     }
 }
 
+/// Quoted as JSON, its accents as they are: `notebook_read` gives the agents the page's raw text, and an alias written
+/// « Copropriété » reads to a model as a broken encoding it then tries to « repair » (as Hermes' routine
+/// results did, patch 0014). YAML reads both the same.
+fn json_quoted(value: &Value) -> String {
+    py::Dumps::new().unicode().dumps(value)
+}
+
 /// A YAML scalar: plain when that reads back as the same string, else JSON-quoted (valid YAML).
 fn yaml_scalar(text: &str) -> String {
     let plain = !text.is_empty()
@@ -630,7 +638,7 @@ fn yaml_scalar(text: &str) -> String {
     if plain {
         text.to_string()
     } else {
-        py::dumps(&Value::String(text.to_string()))
+        json_quoted(&Value::String(text.to_string()))
     }
 }
 
@@ -642,7 +650,7 @@ fn yaml_value(key: &str, value: &Value) -> String {
             for item in items {
                 let text = match item {
                     Value::String(s) => yaml_scalar(s),
-                    other => py::dumps(other),
+                    other => json_quoted(other),
                 };
                 out.push_str(&format!("  - {text}\n"));
             }
@@ -651,7 +659,7 @@ fn yaml_value(key: &str, value: &Value) -> String {
         Value::String(s) if key == "updated" && s.len() == 10 => format!("{key}: {s}\n"),
         Value::String(s) => format!("{key}: {}\n", yaml_scalar(s)),
         Value::Null => format!("{key}:\n"),
-        other => format!("{key}: {}\n", py::dumps(other)),
+        other => format!("{key}: {}\n", json_quoted(other)),
     }
 }
 

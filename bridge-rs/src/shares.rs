@@ -127,7 +127,7 @@ pub fn load(config: &Config) -> Vec<(String, String)> {
         .collect()
 }
 
-fn save(config: &Config, reads: &[(String, String)]) -> std::io::Result<()> {
+pub(crate) fn save(config: &Config, reads: &[(String, String)]) -> std::io::Result<()> {
     let path = store_path(config);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;

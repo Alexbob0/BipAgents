@@ -457,6 +457,28 @@ pub fn schedule_text(schedule: &Option<Schedule>) -> String {
     }
 }
 
+/// The card's sentence, in `lang` for its push (the card's own is French: the apps rebuild it in theirs).
+pub fn sentence_in(lang: &str, shown: &str, conn: &Connector, change: &str) -> String {
+    let n = crate::names::names(lang);
+    let what = if conn.watch.is_some() { n.watcher } else { n.connector };
+    let name = &conn.name;
+    match (n.lang, change) {
+        ("fr", _) => sentence(shown, conn, change),
+        ("de", "new") => format!("{shown} hat den {what} {name} erstellt"),
+        ("de", "update") => format!("{shown} hat den {what} {name} geändert"),
+        ("de", "template") => format!("{shown}: Der {what} {name} kommt aus einer Vorlage, bitte bestätigen"),
+        ("de", _) => format!("Der {what} {name} von {shown} hat sich geändert: Gib erneut dein OK"),
+        ("es", "new") => format!("{shown} ha creado el {what} {name}"),
+        ("es", "update") => format!("{shown} ha cambiado el {what} {name}"),
+        ("es", "template") => format!("{shown}: el {what} {name} viene de una plantilla, por aprobar"),
+        ("es", _) => format!("El {what} {name} de {shown} ha cambiado: vuelve a dar tu permiso"),
+        (_, "new") => format!("{shown} created the {what} {name}"),
+        (_, "update") => format!("{shown} changed the {what} {name}"),
+        (_, "template") => format!("{shown}: the {what} {name} comes from a template, to approve"),
+        _ => format!("{shown}'s {what} {name} changed: give your OK again"),
+    }
+}
+
 /// The card's sentence.
 pub fn sentence(shown: &str, conn: &Connector, change: &str) -> String {
     let what = if conn.watch.is_some() { "veilleur" } else { "connecteur" };
@@ -567,7 +589,7 @@ pub(crate) fn new_card(change: &str) -> CardInfo {
 
 pub(crate) async fn announce(state: &AppState, agent: &str, conn: &Connector, card: &CardInfo) {
     let config = state.config();
-    let line = sentence(&shown_name(&config, agent), conn, &card.change);
+    let line = sentence_in(&crate::names::agent_language(&config, agent), &shown_name(&config, agent), conn, &card.change);
     tracing::info!(target: "bipbridge::connectors", agent, connector = %conn.id, change = %card.change, card = %card.id, "connector card raised");
     waiters().insert(card.id.clone(), (Arc::new(Notify::new()), None));
     state.push.notify_bridge_card(agent, &line, "connector_request", &card.id).await;

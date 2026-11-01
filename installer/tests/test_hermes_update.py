@@ -60,3 +60,43 @@ def test_a_fix_that_does_not_fit_changes_nothing(tmp_path, monkeypatch):
     code = update.fixes_only(SimpleNamespace(yes=True), [], mine, update.missing_fixes(update.patches(), mine), None)
     assert code == 1
     assert (checkout / "cron.py").read_text() == "b = 7\n"
+
+
+def held_update(tmp_path, monkeypatch, argv):
+    """`hermes-update` on a Hermes 12 commits behind, with what it would run recorded instead of run."""
+    checkout, patches = repo_with_patches(tmp_path)
+    monkeypatch.setenv("HERMES_INSTALL_DIR", str(checkout))
+    monkeypatch.setattr(update, "PATCHES", patches)
+    bin_ = tmp_path / "hermes"
+    bin_.write_text("")
+    monkeypatch.setattr(hermes, "hermes_bin", lambda: str(bin_))
+    monkeypatch.setattr(hermes, "hermes_home", lambda: tmp_path / "home")
+    monkeypatch.setattr(update, "find_config", lambda path: None)
+    monkeypatch.setattr(update, "agents_of", lambda config: [])
+    monkeypatch.setattr(update, "preflight", lambda branch, wanted: ("abc", {}))
+    ran = []
+    real_run = subprocess.run
+
+    def run(cmd, *a, **kw):
+        if cmd[0] == str(bin_):
+            ran.append(cmd[1:])
+            return SimpleNamespace(stdout="Update channel: stable\n12 commits behind\n", returncode=0)
+        return real_run(cmd, *a, **kw)
+    monkeypatch.setattr(update.subprocess, "run", run)
+    monkeypatch.setattr(hermes.Runner, "run", lambda self, cmd, **kw: ran.append(cmd))
+    return update.main(argv), ran
+
+
+def test_an_update_past_the_supported_hermes_is_held(tmp_path, monkeypatch, capsys):
+    """2026-11-01: Hermes 0.22.3+ changed approvals; even a scheduled update (--yes) stays on the pinned version."""
+    code, ran = held_update(tmp_path, monkeypatch, ["--yes"])
+    assert code == 0
+    assert [c for c in ran if c[:1] == ["update"] and "--check" not in c] == []
+    assert "Nothing was changed" in capsys.readouterr().out
+
+
+def test_any_version_goes_past_the_hold(tmp_path, monkeypatch):
+    asked = []
+    monkeypatch.setattr(update, "confirm", lambda question: asked.append(question) or False)
+    code, ran = held_update(tmp_path, monkeypatch, ["--any-version"])
+    assert code == 1 and len(asked) == 1   # past the hold: the usual question, answered no
