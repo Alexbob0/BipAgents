@@ -11,9 +11,10 @@
 //!
 //! App routes (the bridge key):
 //!
-//!     GET  /v1/reminders                 {agents, at, lists: n, items: n}
+//!     GET  /v1/reminders                 {agents, rights: {agent: {read, write}}, at, lists: n, items: n}
 //!     PUT  /v1/reminders                 {lists: [{id, title}], items: [{id, list, title, notes, due, completed}]}
 //!     PUT  /v1/reminders/agents          {agents}
+//!     PUT  /v1/reminders/rights          {agent, rights: {read?, write?}}: what that agent may do (phone_rights.rs)
 //!     GET  /v1/reminders/queue           the agents' requests waiting for the iPhone
 //!     POST /v1/reminders/queue/{id}      {done: bool, error?} (error « unknown request », from an app older than the
 //!                                        request's op: it stays waiting for the app's update)
@@ -34,6 +35,7 @@ use serde_json::{json, Value};
 
 use crate::app::AppState;
 use crate::config::Config;
+use crate::phone_rights::{self, Rights};
 use crate::tools_knowledge::{self as tk, tool_text};
 use crate::web::{self, check_max_items, ApiResult, FieldError, HttpError, Json, Validate};
 use crate::{py, Dict};
@@ -141,6 +143,15 @@ pub fn call(
                  Rappels; on Android: your « Rappels » tool, for reminders by place).",
                 true,
             ));
+        }
+        // What the person lets this agent do (phone_rights.rs): reading them, adding and ticking them off.
+        let (right, what) = if name == "reminders_list" {
+            (crate::phone_rights::READ, "read their reminders")
+        } else {
+            (crate::phone_rights::WRITE, "add or tick off their reminders")
+        };
+        if REMINDER_TOOL_NAMES.contains(&name) && !crate::phone_rights::allows(&data, agent, right) {
+            return Ok(tool_text(&crate::phone_rights::refused(what), true));
         }
         let lists: Vec<(Value, Value)> = list_of(&data, "lists")
             .iter()
@@ -506,6 +517,7 @@ async fn status(State(state): State<AppState>) -> ApiResult<Response> {
         .count();
     Ok(web::ok(json!({
         "agents": data.get("agents").cloned().unwrap_or(json!([])), "at": data.get("at").cloned().unwrap_or(Value::Null),
+        "rights": crate::phone_rights::listed(&data, &crate::phone_rights::REMINDERS),
         "lists": count("lists"), "items": count("items"), "pending": pending,
     })))
 }
@@ -561,6 +573,28 @@ async fn set_agents(State(state): State<AppState>, Json(body): Json<Agents>) -> 
     })
     .await?;
     Ok(web::ok(json!({"agents": agents})))
+}
+
+/// What one agent may do with the reminders (phone_rights.rs); its requests waiting are cancelled when it may no
+/// longer change them.
+async fn set_rights(State(state): State<AppState>, Json(body): Json<Rights>) -> ApiResult<Response> {
+    let config = state.config();
+    let Some(agent) = config.agent(Some(&body.agent)).map(|a| a.name.clone()) else {
+        return Err(HttpError::new(400, "unknown agent"));
+    };
+    let name = agent.clone();
+    let rights = blocking(move || {
+        let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let mut data = read(&config);
+        let (rights, stopped) = phone_rights::set(&mut data, &name, &phone_rights::REMINDERS, &body.rights);
+        if stopped {
+            crate::phone_rights::cancel_requests(&mut data, &name);
+        }
+        write(&config, &data)?;
+        Ok(rights)
+    })
+    .await?;
+    Ok(web::ok(json!({"agent": agent, "rights": rights})))
 }
 
 async fn queue(State(state): State<AppState>) -> ApiResult<Response> {
@@ -622,6 +656,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/reminders", get(status).put(snapshot))
         .route("/reminders/agents", put(set_agents))
+        .route("/reminders/rights", put(set_rights))
         .route("/reminders/queue", get(queue))
         .route("/reminders/queue/{op_id}", post(done))
 }

@@ -4,6 +4,10 @@
 //! applies what the agents asked for. The person shares the whole address book or only some of its groups (labels),
 //! with or without the contacts' notes (off unless ticked): the choice is kept here, per server (`scope`), the phone
 //! sends only what it covers and the bridge keeps only that too. No photos.
+//! Per agent, the person also chooses which details it sees (phones, e-mails, birthdays, postal addresses) and whether
+//! it may add and change contacts (phone_rights.rs): a detail taken back is never shown to it nor searched in for it,
+//! and one no agent here sees any more isn't sent by the phone (`shared` in the status) nor kept here, the way Health's
+//! categories are (health.rs).
 //!
 //!     contacts_search       contacts by name, nickname, company, e-mail, phone or group
 //!     contacts_birthdays    the birthdays of the next N days
@@ -19,12 +23,15 @@
 //!
 //! App routes (the bridge key):
 //!
-//!     GET  /v1/contacts                  {agents, at, scope, groups: n, contacts: n, pending}
+//!     GET  /v1/contacts                  {agents, rights: {agent: {phones, emails, birthdays, addresses, write}},
+//!                                        shared: {phones, emails, birthdays, addresses}, at, scope, groups: n,
+//!                                        contacts: n, pending}
 //!     PUT  /v1/contacts                  {groups: [{id, title}], contacts: [{id, name, nickname?, phones?, emails?,
 //!                                        addresses?: [{label?, value}], birthday?, organization?, job?, notes?,
 //!                                        relations?: [{label?, name}], groups?: [group ids]}]}
 //!     PUT  /v1/contacts/scope            {all, groups: [group ids], notes}: what the phone shares with this server
 //!     PUT  /v1/contacts/agents           {agents}
+//!     PUT  /v1/contacts/rights           {agent, rights: {phones?, emails?, birthdays?, addresses?, write?}}
 //!     GET  /v1/contacts/queue            the agents' requests waiting for the phone
 //!     POST /v1/contacts/queue/{id}       {done: bool, error?}
 //!
@@ -34,6 +41,7 @@
 //!
 //! No Python counterpart (owner group: tools-knowledge).
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -47,6 +55,7 @@ use serde_json::{json, Value};
 
 use crate::app::AppState;
 use crate::config::Config;
+use crate::phone_rights::{self as rights, ADDRESSES, BIRTHDAYS, EMAILS, PHONES, WRITE};
 use crate::tools_knowledge::{self as tk, tool_text};
 use crate::web::{self, check_max_items, ApiResult, FieldError, HttpError, Json, Validate};
 use crate::{py, Dict};
@@ -124,6 +133,39 @@ pub fn tools() -> Vec<Value> {
                 "required": ["id"]},
         }),
     ]
+}
+
+/// The tools of `agent`, as the person lets it use the address book: without `contacts_birthdays` when it doesn't see
+/// the birthdays, without `contacts_add` and `contacts_update` when it may not change contacts.
+pub fn tools_of(config: &Config, agent: &str) -> Vec<Value> {
+    let given = rights::of(&read(config), agent, &rights::CONTACTS);
+    tools()
+        .into_iter()
+        .filter(|t| match t["name"].as_str().unwrap_or("") {
+            "contacts_birthdays" => given[BIRTHDAYS],
+            "contacts_add" | "contacts_update" => given[WRITE],
+            _ => true,
+        })
+        .collect()
+}
+
+/// A contact without the details `given` leaves out (an agent's rights, or what some agent here reads).
+fn without(mut contact: Value, given: &BTreeMap<&'static str, bool>) -> Value {
+    if let Some(map) = contact.as_object_mut() {
+        let details = [(PHONES, "phones"), (EMAILS, "emails"), (ADDRESSES, "addresses"), (BIRTHDAYS, "birthday")];
+        for (right, key) in details {
+            if given.get(right) == Some(&false) {
+                map.remove(key);
+            }
+        }
+    }
+    contact
+}
+
+/// The copy without the details no agent allowed here sees: they are not kept.
+fn read_by_someone(data: &Dict, contacts: Vec<Value>) -> Vec<Value> {
+    let shared = rights::shared(data, &rights::CONTACT_FIELDS);
+    contacts.into_iter().map(|c| without(c, &shared)).collect()
 }
 
 fn path_of(config: &Config) -> PathBuf {
@@ -326,6 +368,9 @@ BipAgents app.",
             true,
         ));
     }
+    // What the person lets this agent see and do (phone_rights.rs): the details taken back are gone from its copy,
+    // so they are neither shown nor searched in.
+    let given = rights::of(&data, agent, &rights::CONTACTS);
     let groups = list_of(&data, "groups");
     let group_title = |id: &str| groups.iter().rev().find(|g| text(g, "id") == id).map(|g| text(g, "title"));
     // A group's id from its name (or its id).
@@ -333,7 +378,7 @@ BipAgents app.",
         let wanted = folded(wanted);
         groups.iter().find(|g| folded(&text(g, "title")) == wanted || text(g, "id") == wanted).map(|g| text(g, "id"))
     };
-    let contacts = list_of(&data, "contacts");
+    let contacts: Vec<Value> = list_of(&data, "contacts").into_iter().map(|c| without(c, &given)).collect();
     let arg = |k: &str| tk::strip(&tk::str_or_empty(arguments.get(k))).to_string();
     let since = match data.get("at").and_then(Value::as_f64) {
         Some(at) => format!("as the phone shared it {} ago", age(now - at)),
@@ -388,6 +433,12 @@ BipAgents app.",
                 String::new()
             };
             Ok(tool_text(&format!("{} found, {since}:\n{}{more}", found.len(), lines.join("\n")), false))
+        }
+        "contacts_birthdays" if !given[BIRTHDAYS] => {
+            Ok(tool_text(&rights::refused("see their contacts' birthdays"), true))
+        }
+        "contacts_add" | "contacts_update" if !given[WRITE] => {
+            Ok(tool_text(&rights::refused("add or change their contacts"), true))
         }
         "contacts_birthdays" => {
             let days = match arguments.get("days").map(|v| py::py_float(v).map(|d| d as i64)) {
@@ -486,6 +537,13 @@ BipAgents app.",
                 return Ok(tool_text("a contact keeps a name", true));
             }
             let value = arg("birthday");
+            if !adding && !value.is_empty() && !given[BIRTHDAYS] {
+                // Its birthday isn't shown to this agent: written over without being seen, it would be lost.
+                return Ok(tool_text(
+                    "the person doesn't show you their contacts' birthdays: a birthday can't be changed",
+                    true,
+                ));
+            }
             if !value.is_empty() {
                 let Some(day) = birthday(&value) else {
                     return Ok(tool_text("birthday: YYYY-MM-DD, or --MM-DD without the year", true));
@@ -789,6 +847,7 @@ async fn status(State(state): State<AppState>) -> ApiResult<Response> {
     let data = blocking(move || Ok(read(&config))).await?;
     Ok(web::ok(json!({
         "agents": data.get("agents").cloned().unwrap_or(json!([])), "at": data.get("at").cloned().unwrap_or(Value::Null),
+        "rights": rights::listed(&data, &rights::CONTACTS), "shared": rights::shared(&data, &rights::CONTACT_FIELDS),
         "scope": dump(&scope_of(&data)),
         "groups": list_of(&data, "groups").len(), "contacts": list_of(&data, "contacts").len(),
         "pending": list_of(&data, "queue").iter().filter(|op| pending(op)).count(),
@@ -805,6 +864,7 @@ async fn snapshot(State(state): State<AppState>, Json(body): Json<Snapshot>) -> 
             body.groups.iter().map(dump).collect(),
             body.contacts.iter().map(dump).collect(),
         );
+        let contacts = read_by_someone(&data, contacts);
         let kept = contacts.len();
         data.insert("groups".into(), Value::Array(groups));
         data.insert("contacts".into(), Value::Array(contacts));
@@ -866,6 +926,10 @@ async fn set_agents(State(state): State<AppState>, Json(body): Json<Agents>) -> 
             data.remove("contacts");
             data.remove("groups");
             data.remove("at");
+        } else if data.contains_key("contacts") {
+            // The details no agent here sees any more go at once.
+            let contacts = read_by_someone(&data, list_of(&data, "contacts"));
+            data.insert("contacts".into(), Value::Array(contacts));
         }
         write(&config_c, &data)?;
         Ok((before, names))
@@ -881,6 +945,35 @@ async fn set_agents(State(state): State<AppState>, Json(body): Json<Agents>) -> 
         }
     }
     Ok(web::ok(json!({"agents": agents})))
+}
+
+/// What one agent may see and do in the address book (phone_rights.rs): the details no agent sees any more leave the
+/// copy at once, its requests waiting are cancelled when it may no longer change contacts, and its tools follow.
+async fn set_rights(State(state): State<AppState>, Json(body): Json<rights::Rights>) -> ApiResult<Response> {
+    let config = state.config();
+    let Some(agent) = config.agent(Some(&body.agent)).cloned() else {
+        return Err(HttpError::new(400, "unknown agent"));
+    };
+    let (config_c, name) = (config.clone(), agent.name.clone());
+    let given = blocking(move || {
+        let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let mut data = read(&config_c);
+        let (given, stopped) = rights::set(&mut data, &name, &rights::CONTACTS, &body.rights);
+        if stopped {
+            rights::cancel_requests(&mut data, &name);
+        }
+        if data.contains_key("contacts") {
+            let contacts = read_by_someone(&data, list_of(&data, "contacts"));
+            data.insert("contacts".into(), Value::Array(contacts));
+        }
+        write(&config_c, &data)?;
+        Ok(given)
+    })
+    .await?;
+    if let Err(exc) = crate::agent_tools::register(&config, &agent, &crate::agents_admin::default_run()).await {
+        tracing::warn!(agent = %agent.name, error = %exc, "agent tools not registered");
+    }
+    Ok(web::ok(json!({"agent": agent.name, "rights": given})))
 }
 
 async fn queue(State(state): State<AppState>) -> ApiResult<Response> {
@@ -928,6 +1021,7 @@ pub fn router() -> Router<AppState> {
         .route("/contacts", get(status).put(snapshot))
         .route("/contacts/scope", put(set_scope))
         .route("/contacts/agents", put(set_agents))
+        .route("/contacts/rights", put(set_rights))
         .route("/contacts/queue", get(queue))
         .route("/contacts/queue/{op_id}", post(done))
 }
@@ -971,5 +1065,20 @@ mod tests {
         let (_, c) = narrowed(&Scope { notes: true, ..Scope::default() }, groups, contacts);
         assert_eq!(c.len(), 3);
         assert_eq!(c[0]["notes"], "allergique");
+    }
+
+    #[test]
+    fn the_details_taken_back_leave_the_contact() {
+        let anne = json!({"id": "a", "name": "Anne", "phones": [{"value": "06"}], "emails": [{"value": "a@x.org"}],
+                          "addresses": [{"value": "Lyon"}], "birthday": "--05-12", "organization": "Acme"});
+        let mut given = rights::of(&Dict::new(), "coach", &rights::CONTACTS);
+        assert_eq!(without(anne.clone(), &given), anne); // nothing chosen: everything, as before
+        given.insert(PHONES, false);
+        given.insert(BIRTHDAYS, false);
+        assert_eq!(
+            without(anne, &given),
+            json!({"id": "a", "name": "Anne", "emails": [{"value": "a@x.org"}], "addresses": [{"value": "Lyon"}],
+                   "organization": "Acme"})
+        );
     }
 }

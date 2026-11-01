@@ -151,6 +151,7 @@ pub mod notebook;
 pub mod notes_import;
 pub mod pages;
 pub mod phone_asks;
+pub mod phone_rights;
 pub mod reminders;
 pub mod rooms;
 pub mod rooms_handoff;
