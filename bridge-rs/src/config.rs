@@ -559,17 +559,37 @@ impl Default for JobsConfig {
 /// (`router_model`, the install's model as the Carnet finds it) only when the @names and the rule found nobody, at
 /// most `router_daily_max` times a day; an agent's @ in a reply gives another agent a turn, up to `max_hops` hops past
 /// the person's message (at most 2); a turn not done after `turn_seconds` is stopped (unless it waits for an approval).
+/// 2026-10-31 (rooms.rs, « passage de relais »): `handoff` (on by default; off: the router and hops as before), and
+/// for a room with a goal the person accepted, at most `team_turns` turns and `team_tokens` tokens per message of the
+/// person; `goal_model`: a message that looks like a task gets a goal proposed by the small model. `team_turn_tokens`:
+/// one turn of team work at most (one agent's run; Back's took 749k on the lab): told to wrap up at 60 %, stopped at
+/// the cap, then one short turn without tools says what it did and hands over (never an empty turn).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct RoomsConfig {
     pub router_model: bool,
     pub router_daily_max: u32,
     pub max_hops: u32,
     pub turn_seconds: f64,
+    pub handoff: bool,
+    pub team_turns: u32,
+    pub team_tokens: i64,
+    pub team_turn_tokens: i64,
+    pub goal_model: bool,
 }
 
 impl Default for RoomsConfig {
     fn default() -> Self {
-        RoomsConfig { router_model: true, router_daily_max: 300, max_hops: 1, turn_seconds: 300.0 }
+        RoomsConfig {
+            router_model: true,
+            router_daily_max: 300,
+            max_hops: 1,
+            turn_seconds: 300.0,
+            handoff: true,
+            team_turns: 8,
+            team_tokens: 600_000,
+            team_turn_tokens: 200_000,
+            goal_model: true,
+        }
     }
 }
 
@@ -1717,6 +1737,11 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         router_daily_max: i(rooms_t, "router_daily_max", rmd.router_daily_max as i64)?.clamp(0, 100_000) as u32,
         max_hops: i(rooms_t, "max_hops", rmd.max_hops as i64)?.clamp(0, 2) as u32,
         turn_seconds: f(rooms_t, "turn_seconds", rmd.turn_seconds)?.clamp(10.0, 3600.0),
+        handoff: b(rooms_t, "handoff", rmd.handoff),
+        team_turns: i(rooms_t, "team_turns", rmd.team_turns as i64)?.clamp(1, 12) as u32,
+        team_tokens: i(rooms_t, "team_tokens", rmd.team_tokens)?.clamp(10_000, 5_000_000),
+        team_turn_tokens: i(rooms_t, "team_turn_tokens", rmd.team_turn_tokens)?.clamp(10_000, 5_000_000),
+        goal_model: b(rooms_t, "goal_model", rmd.goal_model),
     };
 
     let guide_t = table(data, "guide");
