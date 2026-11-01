@@ -534,6 +534,10 @@ class FakeModel(Fake):
         if seen.path.endswith("/chat/completions"):
             body = seen.json()
             self.chats.append({"body": body, "authorization": seen.header("authorization")})
+            if len(body["messages"]) == 1:
+                # a model tried once before an agent uses it (model_choice.rs): a word, or a word about an image
+                return JSONResponse({"choices": [{"message": {"content": "OK"}}],
+                                     "usage": {"prompt_tokens": 12, "completion_tokens": 1}}, status_code=self.status)
             if body["messages"][0]["content"].startswith("You extract precise records"):
                 return JSONResponse({"choices": [{"message": {"content": self.records_answer(body["messages"][1]["content"])}}],
                                      "usage": {"prompt_tokens": 2000, "completion_tokens": 200}},

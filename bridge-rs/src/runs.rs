@@ -1142,6 +1142,7 @@ impl RunHub {
         let mut st = lock(&sub.state);
         let event = if event.r#type == "approval.request" { self.in_plain_words(sub, &st, event) } else { event };
         let event = if event.r#type == "run.completed" { self.no_reply_in_plain_words(sub, event) } else { event };
+        let event = if event.r#type == "run.failed" { self.account_failure_in_plain_words(sub, event) } else { event };
         append_to_backlog(&mut st.backlog, &event);
         st.send_all(Some(&event));
         let kind = event.r#type.as_str();
@@ -1987,6 +1988,20 @@ touche « Démarrer » pour reprendre."
         let mut data = event.data;
         data.insert("output".into(), json!(crate::no_reply::plain(name, &lang)));
         data.insert("bip_no_reply".into(), json!(true));
+        let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(data.clone()));
+        SSEEvent::new(event.r#type, data, raw)
+    }
+
+    /// A turn that failed on a model chosen for this agent at home (model_choice.rs): one plain sentence (check the
+    /// model, or go back to the install's default), never the provider's words nor the plan's credit notice.
+    fn account_failure_in_plain_words(&self, sub: &RunSubscription, event: SSEEvent) -> SSEEvent {
+        let Some(shared) = &self.config else { return event };
+        let config = shared.get();
+        let agent = config.agent(Some(&sub.agent.name)).cloned().unwrap_or_else(|| sub.agent.clone());
+        let Some(line) = crate::model_choice::failure_line(&config, &agent) else { return event };
+        let mut data = event.data;
+        data.insert("error".into(), json!(line));
+        data.insert("own_model".into(), json!(true));
         let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(data.clone()));
         SSEEvent::new(event.r#type, data, raw)
     }

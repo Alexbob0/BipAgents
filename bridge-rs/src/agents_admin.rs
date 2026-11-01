@@ -1981,6 +1981,8 @@ pub async fn read_settings(config: &Config, agent: &AgentConfig, http: &reqwest:
               "notebook": {"on": crate::notebook::enabled(config, agent.name.as_str())},
               "guide": guide,
               "answer_style": crate::answer_style::view(agent),
+              // the per-agent model at home (model_choice.rs): its presence tells the apps this bridge offers it
+              "model_choice": crate::model_choice::view(config, agent),
               "group": crate::agent_groups::group_of(config, &agent.name)}))
 }
 

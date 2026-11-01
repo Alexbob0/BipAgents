@@ -171,7 +171,9 @@ def test_settings_and_delete(bridges, fakes):
     assert data["isolated"] is False and data["protected"] is False and data["skills"] == []
     assert set(data) - {"health", "weather", "notebook", "group", "guide"} == {"id", "name", "soul", "language", "thinking", "model", "toolsets",
                                                "isolated", "protected", "services", "skills", "browser",
-                                               "answer_style"}   # Rust: +3
+                                               "answer_style", "model_choice"}   # Rust: +3
+    # its model chosen at home (model_choice.rs): its install's default (test_model_choice.py)
+    assert data["model_choice"]["choice"] == "default"
     # its answer style (answer_style.rs, 2026-10-30): short until the person picks another
     assert data["answer_style"] == {"style": "short", "custom": "", "custom_max": 300}
     assert fakes.hermes.seen("/p/budget/v1/toolsets")
