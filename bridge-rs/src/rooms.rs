@@ -110,7 +110,7 @@ use crate::cronwatch::Presence;
 use crate::hermes::{HermesClient, HermesError};
 use crate::push::PushService;
 use crate::rooms_handoff::{self as relay, GoalProposal, Next, Progress};
-use crate::runs::RunHub;
+use crate::runs::{RunHub, RunUsage};
 use crate::tools_knowledge as tk;
 use crate::web::{self, check_max_len, check_min_len, ApiResult, FieldError, HttpError, Json, Validate};
 use crate::{py, Dict};
@@ -146,6 +146,9 @@ pub const CALL_TOKENS: i64 = 20_000;
 pub const STEP_TOKENS: i64 = 3_000;
 /// The last turns of a message's budget still get this much (a turn that can say something).
 pub const TURN_TOKENS_FLOOR: i64 = 40_000;
+/// Team work: a stopped turn's wrap-up, kept inside its cap (one short call reading the conversation: 22-31k after
+/// turns stopped at 203k on the lab, 2026-11-01), a quarter of the cap at most.
+pub const WRAP_TOKENS: i64 = 30_000;
 /// A run the bridge stopped: its end waited for this long.
 pub const STOP_WAIT: f64 = 30.0;
 /// The wrap-up turn after a turn that ended without an answer, at most.
@@ -891,6 +894,12 @@ pub fn turn_cap(config: &Config, room: &Room, cause: u64) -> i64 {
     config.rooms.team_turn_tokens.min(left.max(TURN_TOKENS_FLOOR))
 }
 
+/// What a team turn may take before it is stopped: its cap less its wrap-up's room (`WRAP_TOKENS`, a quarter of the
+/// cap at most), so the turn and the wrap-up that follows a stop stay within the cap.
+pub fn turn_limit(cap: i64) -> i64 {
+    cap - WRAP_TOKENS.min(cap / 4)
+}
+
 /// What the wrap-up turn is told (out of the person's sight): why its turn ended without an answer.
 pub fn wrap_input(why: &str, team: bool) -> String {
     let what = match why {
@@ -1392,13 +1401,19 @@ impl Rooms {
             hub.set_room(&agent.name, &run_id, id);
         }
         let started = turn.started.unwrap_or_else(now);
-        // team work: one turn at most `team_turn_tokens` (and what the message's budget has left), told to wrap up at
-        // 60 %, stopped at the cap (Back took 749k in one turn on the lab, 2026-10-31)
-        // (its own calls' cost in this room: `call_tokens`)
+        // team work: one turn at most `team_turn_tokens` (and what the message's budget has left), its wrap-up's room
+        // left aside (`turn_limit`), told to wrap up at 60 %, stopped at the limit (Back took 749k in one turn on the
+        // lab, 2026-10-31) (its own calls' cost in this room: `call_tokens`)
         let room = load(&config, id);
         let cap = room.as_ref().filter(|r| config.rooms.handoff && r.team()).map(|r| turn_cap(&config, r, turn.cause));
+        let limit = cap.map(turn_limit);
+        if let (Some(hub), Some(limit)) = (&self.hub, limit) {
+            // on Hermes' real tokens (patch 0020), the hub stops the turn before a model call that would pass it
+            hub.limit_tokens(&agent.name, &run_id, limit);
+        }
         let per_call = room.as_ref().map(|r| call_tokens(r, &agent.name)).unwrap_or(CALL_TOKENS);
         let (mut steered, mut capped, mut braked, mut looks, mut calls) = (false, false, false, 0u32, 0u32);
+        let mut real: Option<RunUsage> = None;
         let mut used_at_stop = 0i64;
         let (status, output, usage) = loop {
             tokio::time::sleep(Duration::from_secs_f64(self.poll)).await;
@@ -1406,33 +1421,40 @@ impl Rooms {
                 let _ = self.hermes.stop_run(&agent, &run_id).await;
                 break ("stopped".to_string(), String::new(), None);
             }
-            // the hub follows the run (its tool calls, the brake): Hermes writes a run's tokens in its conversation
-            // only at its end (the lab, 2026-10-31), so a turn's tokens are estimated from its model calls
+            // the hub follows the run (its tool calls, the brake, its real tokens: Hermes reports each model call's as
+            // it ends, patch 0020). An older Hermes writes a run's tokens in its conversation only at its end (the lab,
+            // 2026-10-31): a turn's tokens are estimated from its model calls then.
             let progress = self.hub.as_ref().and_then(|hub| hub.run_progress(&agent.name, &run_id));
-            braked |= progress.is_some_and(|(_, b)| b);
-            calls = calls.max(progress.map(|(c, _)| c).unwrap_or(0));
-            if let Some(cap) = cap {
+            braked |= progress.is_some_and(|p| p.braked);
+            calls = calls.max(progress.map(|p| p.tool_steps).unwrap_or(0));
+            real = progress.and_then(|p| p.usage).or(real);
+            if let Some(limit) = limit {
                 looks += 1;
-                if looks % CAP_LOOK_EVERY == 0 {
-                    let counted = match self.hermes.session(&agent, &session).await.map(|s| tokens_of(&s)) {
-                        Ok(now_at) => (now_at.input - base.input).max(0) + (now_at.output - base.output).max(0),
-                        Err(_) => 0,
-                    };
-                    {
-                        let used = counted.max(estimated_tokens(progress.map(|(calls, _)| calls).unwrap_or(0), per_call));
-                        if used >= cap {
-                            tracing::info!(room = %id, agent = %agent.name, used = used, cap = cap, "rooms: a turn at its cap, stopped");
-                            capped = true;
-                            used_at_stop = used;
-                            let _ = self.hermes.stop_run(&agent, &run_id).await;
-                            break self.ended_run(&agent, &run_id, "capped").await;
-                        }
-                        if !steered && used * 10 >= cap * 6 {
-                            steered = true;
-                            tracing::info!(room = %id, agent = %agent.name, used = used, cap = cap, "rooms: a turn near its cap, told to wrap up");
-                            if let Err(err) = self.hermes.steer_run(&agent, &run_id, WRAP_STEER).await {
-                                tracing::info!(room = %id, agent = %agent.name, error = %err, "rooms: the wrap-up steer refused");
-                            }
+                let used = match real {
+                    Some(usage) => Some(usage.total()),
+                    None if looks % CAP_LOOK_EVERY == 0 => {
+                        let counted = match self.hermes.session(&agent, &session).await.map(|s| tokens_of(&s)) {
+                            Ok(now_at) => (now_at.input - base.input).max(0) + (now_at.output - base.output).max(0),
+                            Err(_) => 0,
+                        };
+                        Some(counted.max(estimated_tokens(calls, per_call)))
+                    }
+                    None => None,
+                };
+                if let Some(used) = used {
+                    if used >= limit || progress.is_some_and(|p| p.capped) {
+                        tracing::info!(room = %id, agent = %agent.name, used = used, limit = limit, real = real.is_some(),
+                            "rooms: a turn at its cap, stopped");
+                        capped = true;
+                        used_at_stop = used;
+                        let _ = self.hermes.stop_run(&agent, &run_id).await;
+                        break self.ended_run(&agent, &run_id, "capped").await;
+                    }
+                    if !steered && used * 10 >= limit * 6 {
+                        steered = true;
+                        tracing::info!(room = %id, agent = %agent.name, used = used, limit = limit, "rooms: a turn near its cap, told to wrap up");
+                        if let Err(err) = self.hermes.steer_run(&agent, &run_id, WRAP_STEER).await {
+                            tracing::info!(room = %id, agent = %agent.name, error = %err, "rooms: the wrap-up steer refused");
                         }
                     }
                 }
@@ -1468,9 +1490,12 @@ impl Rooms {
                 break self.ended_run(&agent, &run_id, "timeout").await;
             }
         };
-        let mut tokens = match usage_tokens(usage.as_ref()) {
-            Some(tokens) => tokens,
-            None => {
+        // its calls' real tokens up to its end (a stopped run comes back without its usage)
+        real = self.hub.as_ref().and_then(|hub| hub.run_progress(&agent.name, &run_id)).and_then(|p| p.usage).or(real);
+        let mut tokens = match (usage_tokens(usage.as_ref()), real.filter(|u| u.total() > 0)) {
+            (Some(tokens), _) => tokens,
+            (None, Some(real)) => Tokens { input: real.input, output: real.output },
+            (None, None) => {
                 let after = self.hermes.session(&agent, &session).await.map(|s| tokens_of(&s)).unwrap_or(base.clone());
                 Tokens { input: (after.input - base.input).max(0), output: (after.output - base.output).max(0) }
             }
@@ -1483,12 +1508,13 @@ impl Rooms {
             let spent = tokens.input + tokens.output;
             let _ = change(&config, id, |room| {
                 let c = room.calls.entry(agent.name.clone()).or_default();
-                c.calls += calls + 1;
+                c.calls += real.map(|u| u.calls).filter(|n| *n > 0).unwrap_or(calls + 1);
                 c.tokens += spent;
             });
         }
         tracing::info!(room = %id, agent = %agent.name, status = %status, tool_steps = calls, braked = braked, capped = capped,
-            steered = steered, tokens = tokens.input + tokens.output, per_call = per_call, "rooms: run ended");
+            steered = steered, tokens = tokens.input + tokens.output, real = real.is_some(), per_call = per_call,
+            "rooms: run ended");
         let mut text = hand_over_files(&config, &agent, &run_id, tk::strip(&output)).await;
         let mut status = status;
         let answered = (status == "completed" || status == "gone") && !text.is_empty();
@@ -2508,6 +2534,11 @@ mod tests {
         assert_eq!(turn_cap(&config, &room, cause), 55_000);
         room.messages.last_mut().unwrap().tokens = Some(Tokens { input: 700_000, output: 0 });
         assert_eq!(turn_cap(&config, &room, cause), TURN_TOKENS_FLOOR);
+        // stopped early enough for its wrap-up within the cap (22-31k after a stop at 203k, 2026-11-01): 30k aside,
+        // a quarter of the cap at most (a turn at the floor still works)
+        assert_eq!(turn_limit(200_000), 170_000);
+        assert_eq!(turn_limit(55_000), 41_250);
+        assert_eq!(turn_limit(TURN_TOKENS_FLOOR), 30_000);
         // the small model's two picks: one for a task, or in team work; two for two questions
         assert_eq!(router_keeps(&room, "Faites-moi une petite app web de liste de courses"), 1);
         assert_eq!(router_keeps(&room, "Il fait quel temps demain, et j'ai combien sur mon compte ?"), 2);

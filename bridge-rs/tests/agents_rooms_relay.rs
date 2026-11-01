@@ -29,6 +29,13 @@ struct Fake {
     asked: Arc<Mutex<Vec<String>>>,
     /// The small model's route (default: pm).
     router: Arc<Mutex<Option<String>>>,
+    /// Agent → the events its next run streams (`model.usage`, `tool.started`…); such a run goes on until stopped,
+    /// then ends `cancelled` with no usage, as Hermes' runs do.
+    streams: Arc<Mutex<HashMap<String, VecDeque<Vec<Value>>>>>,
+    /// Run id → its events, while it goes on.
+    live: Arc<Mutex<HashMap<String, Vec<Value>>>>,
+    /// The runs stopped, in order.
+    stopped: Arc<Mutex<Vec<String>>>,
 }
 
 async fn backend(State(fake): State<Fake>, request: Request) -> Response {
@@ -62,7 +69,45 @@ async fn backend(State(fake): State<Fake>, request: Request) -> Response {
         runs.push((agent.clone(), body));
         let id = format!("run-{}", runs.len());
         fake.outputs.lock().unwrap().insert(id.clone(), reply);
+        if let Some(events) = fake.streams.lock().unwrap().get_mut(&agent).and_then(|q| q.pop_front()) {
+            fake.live.lock().unwrap().insert(id.clone(), events);
+        }
         return out(json!({"run_id": id}));
+    }
+    if method == "POST" && path.ends_with("/stop") {
+        let id = path.trim_end_matches("/stop").rsplit('/').next().unwrap_or("").to_string();
+        fake.stopped.lock().unwrap().push(id);
+        return out(json!({"status": "stopping"}));
+    }
+    let run_of = |path: &str| path.trim_end_matches("/events").rsplit('/').next().unwrap_or("").to_string();
+    let live = |id: &str| fake.live.lock().unwrap().get(id).cloned();
+    let stopped = |id: &str| fake.stopped.lock().unwrap().iter().any(|s| s == id);
+    if method == "GET" && path.ends_with("/events") {
+        let id = run_of(&path);
+        if let Some(events) = live(&id) {
+            let fake = fake.clone();
+            let stream = async_stream::stream! {
+                tokio::time::sleep(Duration::from_millis(200)).await;
+                for event in events {
+                    yield Ok::<_, std::io::Error>(axum::body::Bytes::from(format!("data: {event}\n\n")));
+                }
+                for _ in 0..300 {
+                    if fake.stopped.lock().unwrap().contains(&id) {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                }
+                yield Ok(axum::body::Bytes::from(format!("data: {}\n\n", json!({"event": "run.cancelled", "run_id": id}))));
+            };
+            return Response::builder()
+                .header("content-type", "text/event-stream")
+                .body(axum::body::Body::from_stream(stream))
+                .unwrap();
+        }
+    }
+    if method == "GET" && path.contains("/v1/runs/") && live(&run_of(&path)).is_some() {
+        let id = run_of(&path);
+        return out(if stopped(&id) { json!({"status": "cancelled", "output": ""}) } else { json!({"status": "running"}) });
     }
     if method == "GET" && path.contains("/v1/runs/") {
         let id = path.rsplit('/').next().unwrap_or("").to_string();
@@ -318,4 +363,80 @@ async fn a_task_goes_to_one_agent_and_a_turn_without_words_is_wrapped_up() {
     assert_eq!(runs.len(), 2);
     let wrap = runs[1].1["input"].as_str().unwrap();
     assert!(wrap.contains("ended without an answer") && wrap.contains("Do not call any tool"), "{wrap}");
+}
+
+/// A team room where `front` speaks first; its first run streams `events` and goes on until stopped.
+async fn team_turn(fake: &Fake, events: Vec<Value>) -> (TestApp, tempfile::TempDir, String) {
+    let (app, dir) = app_with(fake, json!({})).await;
+    let (k, v) = auth();
+    let h = [(k, v.as_str())];
+    let made = app
+        .send_json("POST", "/v1/rooms", &h, &json!({"participants": ["pm", "front"], "goal": "Une app de courses"}))
+        .await
+        .json();
+    let id = made["id"].as_str().unwrap().to_string();
+    fake.streams.lock().unwrap().entry("front".into()).or_default().push_back(events);
+    script(fake, "front", &["", "J'ai lu le code, il reste le formulaire.\nNEXT: person"]);
+    app.send_json("POST", &format!("/v1/rooms/{id}/messages"), &h, &json!({"text": "@front on y va"})).await;
+    (app, dir, id)
+}
+
+/// A tool step's events (each file its own: the brake never sees the same call again).
+fn step(file: &str) -> [Value; 2] {
+    [json!({"event": "tool.started", "tool": "read_file", "preview": file}),
+     json!({"event": "tool.completed", "tool": "read_file", "duration": 0.01, "error": false})]
+}
+
+#[tokio::test]
+async fn a_team_turn_is_stopped_on_its_real_tokens_before_a_call_past_its_cap() {
+    // 2026-11-01, the rooms bench: a DeepSeek turn read ~41k a call after big file reads and reached 249k for a 200k
+    // cap, the bridge guessing 20k a call (Hermes gave no tokens before the run's end). Hermes patch 0020 reports
+    // each call's (`model.usage`): 20k, 60k, 70k here.
+    let usage = |call: u32, input: i64, total_in: i64, total_out: i64| {
+        json!({"event": "model.usage", "call": call, "input_tokens": input, "output_tokens": 300,
+               "totals": {"input_tokens": total_in, "output_tokens": total_out, "total_tokens": total_in + total_out}})
+    };
+    let mut events = vec![usage(1, 20_000, 20_000, 300)];
+    events.extend(step("app.js"));
+    events.push(usage(2, 60_000, 80_000, 600));
+    events.extend(step("api.js"));
+    events.push(usage(3, 70_000, 150_000, 900));
+    events.extend(step("style.css"));
+    let fake = Fake::default();
+    let (app, dir, id) = team_turn(&fake, events).await;
+    let page = settled(&app, &id, 2).await;
+    assert_eq!(speakers(&page), vec!["person", "front"], "{page}");
+    let said = &page["messages"][1];
+    assert_eq!(said["text"], "J'ai lu le code, il reste le formulaire.");
+    assert_eq!(said["capped"], true, "{said}");
+    // after its 2nd call (80.6k, the next reading 60k at least) it goes on; after its 3rd (150.9k, the next 70k) a
+    // 4th would pass 170k (the 200k cap less 30k for the wrap-up): stopped as it asked for tools, though under 200k
+    let stopped = fake.stopped.lock().unwrap().clone();
+    assert!(!stopped.is_empty() && stopped.iter().all(|r| r == "run-1"), "{stopped:?}");
+    // its real tokens (the stopped run comes back without its usage) and its wrap-up's: within the cap
+    assert_eq!(said["tokens"], json!({"input": 151_000, "output": 950}), "{said}");
+    let runs = fake.runs.lock().unwrap();
+    assert_eq!(runs.len(), 2);
+    assert!(runs[1].1["input"].as_str().unwrap().contains("reached its limit of tokens"));
+    // its real calls and tokens kept, for its next turns' cap
+    let kept: Value =
+        serde_json::from_slice(&std::fs::read(dir.path().join(format!("data/rooms/{id}.json"))).unwrap()).unwrap();
+    assert_eq!(kept["calls"]["front"], json!({"calls": 3, "tokens": 150_900}), "{kept}");
+}
+
+#[tokio::test]
+async fn a_team_turn_without_real_tokens_is_stopped_on_its_estimate() {
+    // a Hermes without patch 0020: no `model.usage`, 20k a call and 3k a step estimated from the tool steps; 6 steps
+    // ≈ 203k, past the 170k limit
+    let events: Vec<Value> = ["a", "b", "c", "d", "e", "f"].iter().flat_map(|f| step(&format!("{f}.js"))).collect();
+    let fake = Fake::default();
+    let (app, _dir, id) = team_turn(&fake, events).await;
+    let page = settled(&app, &id, 2).await;
+    assert_eq!(speakers(&page), vec!["person", "front"], "{page}");
+    let said = &page["messages"][1];
+    assert_eq!(said["capped"], true, "{said}");
+    assert_eq!(said["text"], "J'ai lu le code, il reste le formulaire.");
+    // the stopped run's tokens are what it was estimated at, then the wrap-up's
+    assert_eq!(said["tokens"], json!({"input": 204_000, "output": 50}), "{said}");
+    assert!(fake.stopped.lock().unwrap().iter().all(|r| r == "run-1"));
 }
