@@ -24,6 +24,12 @@
 //!   (a routine, Hermes' cron) is the agent's calls until it has been quiet `idle_seconds`: there, the cap applies,
 //!   one bridge tool more than `same_tool` times or more than `routine_tool_calls` bridge calls in all are refused
 //!   with « stop and answer with what you have » (the bridge can't stop a cron turn: Hermes has no stop for it).
+//!   A routine is work the person scheduled, like a background task: it is held to the task's limits (`task_*`), not
+//!   a conversation's (2026-10-31, Alex's 23:00 « corrige tout le Carnet » stopped at 10 changes), except that one
+//!   tool that writes nothing still goes to a conversation's `same_tool` (searching again and again is a loop whatever
+//!   the job), and its calls in all go to `routine_tool_calls` (120, a task's). Past its writes, a
+//!   routine or a task is told to end with a plain report: why it stopped (a cap on changes made at once, so that a
+//!   mistake can't spread everywhere), what it changed, what is left, what happens next; never « the bridge » or a turn.
 //!
 //! Every run the bridge starts or relays is followed by the hub, whoever looks at it (2026-10-27 evening, the token
 //! lab's bench): the app's runs through the bridge's `GET /v1/runs/{id}/events`, but also those started and followed
@@ -42,7 +48,7 @@
 //!     browser_calls = 40      page_reads = 15        discovery_same = 5   discovery_calls = 8
 //!     task_same_tool = 40     task_tool_calls = 120  task_same_call = 5   task_same_lookup = 8 task_writes = 40
 //!     task_browser_calls = 80 task_page_reads = 30   task_discovery_same = 5 task_discovery_calls = 15
-//!     routine_tool_calls = 40 idle_seconds = 120
+//!     routine_tool_calls = 120 idle_seconds = 120
 //!     rescue = true           rescue_tool_calls = 5  rescue_seconds = 180
 //!
 //! Searching its own tools (2026-10-28, real-day bench: 9 `tool_search` and 2 `tool_describe`, all different, in 3
@@ -147,7 +153,8 @@ impl Default for Settings {
                 discovery_same: 5,
                 discovery_calls: 15,
             },
-            routine_tool_calls: 40,
+            // a routine is scheduled work (the task's limits): as many bridge calls as a task, under Hermes' cap of 150
+            routine_tool_calls: 120,
             idle_seconds: 120.0,
             warn: true,
             rescue: true,
@@ -477,7 +484,7 @@ you found, or tell the person plainly what you can't do"
             ),
         };
         format!(
-            "{WARN_MARK} A note from the bridge, not from your person: {what}. Change approach (other words, another \
+            "{WARN_MARK} A note from the app, not from your person: {what}. Change approach (other words, another \
 source, another tool), or answer the person now with what you have and say what is missing."
         )
     }
@@ -816,7 +823,7 @@ pub fn rescue_input(over: &Over, lang: &str) -> String {
         }
     };
     format!(
-        "{RESCUE_MARK} {head}\n\n(A note from the bridge, not from your person.) You were stopped because you {what}. \
+        "{RESCUE_MARK} {head}\n\n(A note from the app, not from your person.) You were stopped because you {what}. \
 {dont} With what you already have, answer the person in their language: what you were trying to do, what you found \
 so far, what blocked you, and propose one or two concrete ways forward (or ask one precise question). Use another \
 tool only if it is really needed, two at most.",
@@ -922,7 +929,9 @@ turn. Answer the person now with what you already have."
                 true,
             ));
         }
-        let limits = settings.limits(turn.is_some_and(|t| t.background));
+        // a background task's run, or a routine (no run followed): scheduled work, the task's limits
+        let scheduled = turn.is_none_or(|t| t.background);
+        let limits = settings.limits(scheduled);
         let mut turns = self.turns.lock().unwrap_or_else(|e| e.into_inner());
         if turns.len() > 2_000 {
             turns.retain(|_, t| now - t.last < 86_400.0);
@@ -935,12 +944,17 @@ turn. Answer the person now with what you already have."
         if turn.is_none() {
             // a routine: Hermes can't stop it, so its calls of the bridge's tools are held here
             entry.calls += 1;
-            let key = if item_read(tool) { signature_of(tool, arguments) } else { bare(tool).to_string() };
+            let item = item_read(tool);
+            let key = if item { signature_of(tool, arguments) } else { bare(tool).to_string() };
+            // a big job writes with one tool many times (40 pages corrected: the task's limit), but searching or
+            // reading the same thing again and again is going round in circles whatever the job (the morning brief's
+            // 35 Carnet searches): a conversation's limit for those
+            let same_tool = if write_tool(tool) { limits.same_tool } else { settings.conversation.same_tool };
             let same = entry.per_tool.entry(key).or_insert(0);
             *same += 1;
             let (same, calls) = (*same, entry.calls);
             // getting close (about two thirds): told in the call's result, once per limit (a routine can't be steered)
-            let close = if same == soft_limit(limits.same_tool) {
+            let close = if same == soft_limit(same_tool) {
                 Some((format!("tool:{}", bare(tool)), format!("you have called {} {same} times", bare(tool))))
             } else if calls == soft_limit(settings.routine_tool_calls) {
                 Some(("total".to_string(), format!("you have made {calls} calls")))
@@ -952,18 +966,18 @@ turn. Answer the person now with what you already have."
                     tracing::info!(agent = %agent, tool = %tool, calls = calls, same = same,
                         "brake_warned: a routine told it is going round in circles");
                     entry.note = Some(format!(
-                        "{WARN_MARK} Note from the bridge: {what} in this turn, close to the limit. Change approach, or finish with what you have."
+                        "{WARN_MARK} Note from the app: {what} in this run, close to the limit. Change approach, or finish with what you have."
                     ));
                 }
             }
-            if same > limits.same_tool || calls > settings.routine_tool_calls {
+            if same > same_tool || calls > settings.routine_tool_calls {
                 tracing::info!(agent = %agent, tool = %tool, calls = calls, same = same,
                     "going round in circles in a turn no run carries: tool refused");
                 return Some(tool_text(
                     &format!(
-                        "Refused: {} in this turn already, too many. Stop calling tools now: answer the person with \
-what you have, and say plainly what you couldn't find or do.",
-                        if same > limits.same_tool {
+                        "Refused: {} in this run already, too many. Stop calling tools now: answer the person with \
+what you have, and say plainly what you couldn't find or do (no limits or tools named).",
+                        if same > same_tool {
                             format!("you called {} {} times", bare(tool), same - 1)
                         } else {
                             format!("you made {} calls", calls - 1)
@@ -987,15 +1001,9 @@ it; tell the person what you did.",
             ));
         }
         if entry.writes >= limits.writes {
-            tracing::info!(agent = %agent, tool = %tool, writes = entry.writes, "too many writes in this turn: refused");
-            return Some(tool_text(
-                &format!(
-                    "Refused: you already made {} changes for the person in this turn, the most allowed at once. Stop \
-here: tell the person what you did and ask them before doing more.",
-                    entry.writes
-                ),
-                true,
-            ));
+            tracing::info!(agent = %agent, tool = %tool, writes = entry.writes, scheduled = scheduled,
+                "too many writes in this turn: refused");
+            return Some(tool_text(&writes_refused(entry.writes, scheduled), true));
         }
         None
     }
@@ -1016,6 +1024,33 @@ here: tell the person what you did and ask them before doing more.",
         let entry = turns.entry(turn_key(agent, turn)).or_default();
         entry.writes += 1;
         entry.seen.insert(signature_of(tool, arguments));
+    }
+}
+
+/// What a write past the turn's writes gets. The model words its message from it, so it carries what the person must
+/// hear in plain words: why it stopped (a cap on changes made at once, so that a mistake can't spread everywhere), how
+/// many it changed, what is left, and what happens next; never « the bridge », a « turn » or a tool's name (2026-10-31:
+/// « Bloqué par la limite du Carnet : 10 modifications par tour maximum — le bridge a refusé la suite »). `scheduled`: a
+/// routine or a background task, whose person is not there to answer: it ends with its report, the rest for next time.
+pub fn writes_refused(writes: u32, scheduled: bool) -> String {
+    let why = "you make at most this many changes at once, so that a mistake can never spread to everything";
+    let words = "Say it in plain words, in the person's language, with the reason; never mention the bridge, \
+a turn, a tool's name or anything technical";
+    if scheduled {
+        format!(
+            "Not done: this run has made {writes} changes, the most it makes at once ({why}). Make no more changes \
+now. End with your report to the person: that you stopped at {writes} changes because of this cap and why, what is \
+still left (how many, if you know: « {writes} sur N »), and that the rest is done at the next run if this task runs \
+again, else that they can ask you to go on. {words}, e.g. « J'ai une limite sur le nombre de changements d'un coup, pour éviter de tout casser : \
+j'ai corrigé {writes} notes sur N, je reprends au prochain passage. »"
+        )
+    } else {
+        format!(
+            "Not done: you have made {writes} changes, the most you make at once ({why}). Stop here: tell the person \
+that you stopped because of this cap and why, what you changed and what is left, and ask whether you should go on. \
+{words}, e.g. « J'ai une limite sur le nombre de changements d'un coup, pour éviter de tout casser : j'ai corrigé \
+{writes} notes sur N. Dis-moi si je continue. »"
+        )
     }
 }
 
@@ -1168,6 +1203,24 @@ mod tests {
     }
 
     #[test]
+    fn a_refused_write_says_why_how_many_and_what_next_in_plain_words() {
+        // 2026-10-31, Alex: « Bloqué par la limite du Carnet : 10 modifications par tour maximum — le bridge a refusé
+        // la suite ». The model words its message from this text: the reason, the count, what is left, what next.
+        for (scheduled, next) in [(true, "je reprends au prochain passage"), (false, "Dis-moi si je continue")] {
+            let text = writes_refused(40, scheduled);
+            assert!(text.contains("40 changes") && text.contains("a mistake can never spread to everything"), "{text}");
+            assert!(text.contains("pour éviter de tout casser") && text.contains("40 notes sur N") && text.contains(next));
+            assert!(text.contains("what is") && text.contains("left"), "{text}");
+            // nothing for the person to repeat that only the app's people understand
+            let example = text.rsplit('«').next().unwrap();
+            for jargon in ["bridge", "tour", "turn", "notebook_", "limite du Carnet"] {
+                assert!(!example.contains(jargon), "{jargon} in the example: {example}");
+            }
+            assert!(!text.contains("Refused") && !text.contains("this turn"), "{text}");
+        }
+    }
+
+    #[test]
     fn background_tasks_go_further() {
         let settings = Settings::default();
         let mut turn = TurnCount::default();
@@ -1239,10 +1292,13 @@ mod tests {
         // and the first turn is still its own (two runs at once: each its count)
         assert!(call(&settings, "coach", run("run_1"), "calendar_add", &add(77), 4.0).is_some());
         // no run followed: one turn until quiet for idle_seconds
-        for n in 0..10 {
-            assert!(call(&settings, "solo", None, "create_audio", &add(0), n as f64).is_none(), "the same, no run: {n}");
+        // (a routine: scheduled work, the task's 40 writes)
+        for n in 0..40 {
+            let tool = if n % 2 == 0 { "create_audio" } else { "create_page" };
+            assert!(call(&settings, "solo", None, tool, &add(0), n as f64).is_none(), "the same, no run: {n}");
         }
-        assert!(call(&settings, "solo", None, "calendar_add", &add(1), 100.0).is_some());
+        let refused = call(&settings, "solo", None, "calendar_add", &add(1), 100.0).expect("the 41st write");
+        assert_eq!(refused["content"][0]["text"].as_str().unwrap(), writes_refused(40, true));
         assert!(call(&settings, "solo", None, "calendar_add", &add(1), 100.0 + 121.0).is_none());
         // off
         let off = Settings { enabled: false, ..Settings::default() };
@@ -1394,7 +1450,8 @@ autre lien."
         assert!(call("quotidien", run("run_map_walk"), "mcp__bipagents__create_page", &page, 180.0).is_none());
         // the morning brief (a routine, no run): its page, after the bench's turns
         assert!(call("quotidien", None, "mcp__bipagents__create_page", &page, 240.0).is_none());
-        // a routine's search loop (35 Carnet searches in the bench): refused from the 11th, in plain words
+        // a routine's search loop (35 Carnet searches in the bench): refused from the 11th, in plain words (a routine
+        // writes like a task, it doesn't search more than a conversation)
         let mut refused = None;
         for i in 0..35 {
             if let Some(r) = call("budget", None, SEARCH, &args(&[("query", &format!("ville {i}"))]), 1000.0 + i as f64) {
@@ -1407,14 +1464,14 @@ autre lien."
         assert!(r["content"][0]["text"].as_str().unwrap().contains("answer the person with what you have"));
         // and a routine's calls of many tools: at routine_tool_calls
         let mut at = None;
-        for i in 0..50 {
-            let tool = format!("mcp__bipagents__tool_{}", i % 8);
+        for i in 0..150 {
+            let tool = format!("mcp__bipagents__tool_{}", i % 16);
             if call("coach", None, &tool, &Dict::new(), 5000.0 + i as f64).is_some() {
                 at = Some(i);
                 break;
             }
         }
-        assert_eq!(at, Some(40));
+        assert_eq!(at, Some(120));
     }
 
     #[test]
@@ -1566,7 +1623,7 @@ réessaie autrement."
         assert_eq!(turn.note(SESSIONS, Some(NIGHT_Q), false, &limits), None);
         let warning = turn.take_warning().unwrap();
         assert_eq!(warning, Warning::SameCall(SESSIONS.into(), 3, 5));
-        assert!(warning.text().starts_with("[bipagents:brake] A note from the bridge, not from your person: you have made \
+        assert!(warning.text().starts_with("[bipagents:brake] A note from the app, not from your person: you have made \
 exactly the same session_search call 3 times in this turn; at 5 the turn is stopped. Change approach"));
         // it changes approach: other searches, other tools; never stopped, told once more when the total gets close
         let mut told = Vec::new();
@@ -1626,7 +1683,7 @@ exactly the same session_search call 3 times in this turn; at 5 the turn is stop
             i += 1;
         }
         assert!(refused.is_empty(), "{refused:?}");
-        assert!(notes.is_empty(), "20 calls: under the total's two thirds (27 of 40): {notes:?}");
+        assert!(notes.is_empty(), "20 calls: under the total's two thirds (80 of 120): {notes:?}");
         // the same mail read again and again: told at the 7th, refused at the 11th
         let turns = Turns::default();
         let mut told = None;
@@ -1641,7 +1698,7 @@ exactly the same session_search call 3 times in this turn; at 5 the turn is stop
         assert_eq!(refused_at, Some(10));
         let (at, note) = told.unwrap();
         assert_eq!(at, 6);
-        assert!(note.starts_with("[bipagents:brake] Note from the bridge: you have called mail_read 7 times"));
+        assert!(note.starts_with("[bipagents:brake] Note from the app: you have called mail_read 7 times"));
         let mut result = crate::tools_knowledge::tool_text("Mail 1", false);
         add_note(&mut result, &note);
         assert!(result["content"][0]["text"].as_str().unwrap().starts_with("Mail 1\n\n[bipagents:brake]"));
