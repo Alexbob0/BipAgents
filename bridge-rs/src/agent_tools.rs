@@ -430,7 +430,7 @@ pub fn tools_for_at(config: &Config, agent: &AgentConfig, offer: bool) -> Vec<Va
         tools.push(crate::meet::tool()); // a date to find with a relative's household (meet.rs)
     }
     if crate::contacts::enabled(config, &agent.name) {
-        tools.extend(crate::contacts::tools());
+        tools.extend(crate::contacts::tools_of(config, &agent.name));
     }
     if crate::agent_files::offered(config, &agent.name) {
         tools.push(crate::agent_files::tool());
