@@ -40,6 +40,36 @@ pub const LOGIN_BODY: &str = "Veut créer un compte sur un site : ton accord est
 pub const CARD_BODY: &str = "Un connecteur attend ton accord";
 pub const MEET_BODY: &str = "Une date à trouver ensemble";
 
+/// The lines a push shows when previews are on, written here: in the language of the agent it comes from (« fr »,
+/// « en », « de », « es »; Alex, 2026-11-01: « Veut écrire à … » reached an English person). The bodies above stay
+/// French: they are keys the phones translate (iOS `loc-key`, Android BipMessagingService `pushBody`).
+pub fn approval_line(lang: &str, command: &str) -> String {
+    use crate::approval_text::{colon, pick};
+    let said = pick(lang, APPROVAL_BODY, "Approval needed", "Freigabe nötig", "Se necesita tu permiso");
+    format!("{said}{}{}", colon(lang), preview(command, 120))
+}
+
+/// « Veut écrire à x@y » (an e-mail held for a new address, agent_email.rs).
+pub fn email_held_line(lang: &str, to: &str) -> String {
+    match lang {
+        "fr" => format!("Veut écrire à {to}"),
+        "de" => format!("Will {to} schreiben"),
+        "es" => format!("Quiere escribir a {to}"),
+        _ => format!("Wants to write to {to}"),
+    }
+}
+
+/// « Veut créer un compte sur x avec un mot de passe du coffre » (vault_logins.rs).
+pub fn login_line(lang: &str, host: &str) -> String {
+    let n = crate::names::names(lang);
+    match lang {
+        "fr" => format!("Veut créer un compte sur {host} avec un mot de passe du coffre"),
+        "de" => format!("Will ein Konto auf {host} mit einem Passwort aus dem {} erstellen", n.vault),
+        "es" => format!("Quiere crear una cuenta en {host} con una contraseña de la {}", n.vault.to_lowercase()),
+        _ => format!("Wants to create an account on {host} with a password from the {}", n.vault.to_lowercase()),
+    }
+}
+
 /// Python's truthiness of an optional str (`if x:`).
 fn given(value: Option<&str>) -> Option<&str> {
     value.filter(|v| !v.is_empty())
@@ -310,6 +340,11 @@ impl PushService {
         self.config.get().push_previews
     }
 
+    /// The language `agent` writes in (« fr », « en », « de », « es »), for the lines written here.
+    fn lang(&self, agent: &str) -> &'static str {
+        crate::names::names(&crate::names::agent_language(&self.config.get(), agent)).lang
+    }
+
     pub(crate) fn sender(&self, device: &Row) -> Option<Sender> {
         match device.get("environment").and_then(Value::as_str) {
             Some("relay") => self.service.clone().map(Sender::Relay),
@@ -414,7 +449,7 @@ impl PushService {
         let mut preview_text = None;
         if self.previews() {
             if let Some(command) = given(command) {
-                preview_text = Some(format!("{APPROVAL_BODY} : {}", preview(command, 120)));
+                preview_text = Some(approval_line(self.lang(agent), command));
             }
         }
         let mut payload = approval_payload(
@@ -551,7 +586,7 @@ impl PushService {
     /// The agent's e-mail to an address not allowed yet waits for the person (agent_email.rs): « Veut écrire à
     /// x@y » when previews are on; tapping opens the agent's e-mail screen (`email_held`: the held mail's id).
     pub async fn notify_email_held(&self, agent: &str, to: &str, held_id: &str) -> usize {
-        let line = format!("Veut écrire à {to}");
+        let line = email_held_line(self.lang(agent), to);
         let preview = if self.previews() { Some(line.as_str()) } else { None };
         let mut payload =
             reply_payload(agent, &self.title(agent), "session:email", None, preview, None, EMAIL_HELD_BODY);
@@ -571,7 +606,7 @@ impl PushService {
     /// An agent wants to create an account on a website with a password of the vault (vault_logins.rs): tapping opens
     /// the app's Boîte, where the card is.
     pub async fn notify_login_request(&self, agent: &str, host: &str, id: &str) -> usize {
-        let line = format!("Veut créer un compte sur {host} avec un mot de passe du coffre");
+        let line = login_line(self.lang(agent), host);
         let preview = if self.previews() { Some(line.as_str()) } else { None };
         let mut payload = reply_payload(agent, &self.title(agent), "session:vault", None, preview, None, LOGIN_BODY);
         payload.insert("login_request".into(), json!(id));
@@ -626,5 +661,23 @@ mod tests {
         assert_eq!(preview("  a \n b  ", 160), "a b");
         assert_eq!(preview(&"x".repeat(200), 10), format!("{}…", "x".repeat(9)));
         assert_eq!(preview("abcd efgh", 6), "abcd…");
+    }
+
+    #[test]
+    fn the_lines_in_the_agents_language() {
+        // French as it was
+        assert_eq!(approval_line("fr", "rm -rf  x"), "Approbation requise : rm -rf x");
+        assert_eq!(email_held_line("fr", "a@b.fr"), "Veut écrire à a@b.fr");
+        assert_eq!(login_line("fr", "x.com"), "Veut créer un compte sur x.com avec un mot de passe du coffre");
+        assert_eq!(approval_line("en", "rm x"), "Approval needed: rm x");
+        assert_eq!(email_held_line("en", "a@b.fr"), "Wants to write to a@b.fr");
+        assert_eq!(login_line("en", "x.com"), "Wants to create an account on x.com with a password from the vault");
+        assert_eq!(login_line("de", "x.com"), "Will ein Konto auf x.com mit einem Passwort aus dem Tresor erstellen");
+        assert_eq!(login_line("es", "x.com"), "Quiere crear una cuenta en x.com con una contraseña de la caja fuerte");
+        for lang in ["en", "de", "es"] {
+            for line in [approval_line(lang, "ls"), email_held_line(lang, "a@b.fr"), login_line(lang, "x.com")] {
+                assert!(!line.contains("Veut") && !line.contains("requise") && !line.contains("coffre"), "{line}");
+            }
+        }
     }
 }
