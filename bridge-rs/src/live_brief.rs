@@ -995,16 +995,19 @@ async fn take_recap(State(state): State<AppState>, Json(body): Json<RecapTaken>)
             crate::beta_measures::person_message(&config, to_guide, crate::py::time_time());
         }
         // The family news waiting for the agent (family_news.rs) joins the same message, the same way.
-        // The current time first (dates/now.rs), then what waited for this message.
+        // The current time first (dates/now.rs), then what waited for this message. The bridge's own notes name the
+        // app's parts in the agent's language (names.rs); the others carry people's words, left as they are.
+        let lang = crate::handback::language_of(&config, &agent);
+        let named = |note: Option<String>| note.map(|n| crate::names::localize(&n, &lang));
         let parts: Vec<String> =
             [
                 Some(crate::dates::now::line(&config, &agent)),
                 briefs.take_recap(&agent.name, &body.session),
                 crate::family_news::take_notes(&config, &agent.name),
-                crate::notebook::news::take_now(&config, &agent.name), // the Carnet's news (notebook/news.rs)
+                named(crate::notebook::news::take_now(&config, &agent.name)), // the Carnet's news (notebook/news.rs)
                 crate::rooms_memory::take_note(&config, &agent.name), // what's new in its rooms (rooms_memory.rs)
                 crate::friends_cards::take_note(&config, &agent.name), // friends' taps on its cards (friends_cards.rs)
-                crate::storage_watch::take_note(&config, &agent.name), // the place's space (storage_watch.rs)
+                named(crate::storage_watch::take_note(&config, &agent.name)), // the place's space (storage_watch.rs)
                 crate::feature_tips::on_message(
                     &config,
                     &agent.name,

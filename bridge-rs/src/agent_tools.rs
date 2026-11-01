@@ -404,8 +404,15 @@ pub fn tools_for(config: &Config, agent: &AgentConfig) -> Vec<Value> {
     tools_for_at(config, agent, crate::handover::on_offer())
 }
 
-/// `tools_for`, `offer` saying whether this place is one of the offer's.
+/// `tools_for`, `offer` saying whether this place is one of the offer's. The descriptions name the app's parts in the
+/// agent's language (names.rs: « Notebook », not « Carnet »).
 pub fn tools_for_at(config: &Config, agent: &AgentConfig, offer: bool) -> Vec<Value> {
+    let mut tools = own_tools(config, agent, offer);
+    crate::names::localize_tools(&mut tools, &crate::handback::language_of(config, agent));
+    tools
+}
+
+fn own_tools(config: &Config, agent: &AgentConfig, offer: bool) -> Vec<Value> {
     if crate::family_agent::is_family(config, &agent.name) {
         return crate::family_agent::tools(config); // nobody's private data (family_agent.rs)
     }
@@ -1840,6 +1847,12 @@ async fn mcp(
             &rpc_error(&request_id, -32601, &format!("method not found: {shown}")),
         ));
     }
+    // its results name the app's parts in its language (names.rs: « Notebook », not « Carnet »)
+    let lang = crate::names::agent_language(&state.config(), &agent.name);
+    let answer = |mut result: Dict| {
+        crate::names::localize_result(&mut result, &lang);
+        crate::web::json_response(200, &rpc_result(&request_id, Value::Object(result)))
+    };
     let name = tk::str_or_empty(params.get("name"));
     let arguments = match params.get("arguments") {
         Some(Value::Object(map)) => map.clone(),
@@ -1851,18 +1864,18 @@ async fn mcp(
         // the family's agent: only the family's tools, in every turn, its creator's too (family_agent.rs)
         if let Some(closed) = crate::family_agent::closed_tool(&name) {
             tracing::info!(agent = %agent.name, tool = %name, "tool closed for the family's agent");
-            return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(closed))));
+            return Ok(answer(closed));
         }
         if crate::family_agent::TOOL_NAMES.contains(&name.as_str()) {
             let result = crate::family_agent::call_tool(&state.config(), &agent, &name, &arguments)?;
-            return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(result))));
+            return Ok(answer(result));
         }
     }
     if crate::project_agent::is_project(&state.config(), &agent.name) {
         // a project agent: only its few tools, in every turn (project_agent.rs)
         if let Some(closed) = crate::project_agent::closed_tool(&name) {
             tracing::info!(agent = %agent.name, tool = %name, "tool closed for a project agent");
-            return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(closed))));
+            return Ok(answer(closed));
         }
     }
     if crate::agent_shares::relative_turn(&state.config(), &agent.name)
@@ -1873,13 +1886,13 @@ async fn mcp(
         // data stays closed (agent_shares.rs; Hermes closes its own tools for that run, patch 0018)
         if let Some(closed) = crate::agent_shares::closed_tool(&name) {
             tracing::info!(agent = %agent.name, tool = %name, "tool closed during a relative's turn");
-            return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(closed))));
+            return Ok(answer(closed));
         }
     } else if crate::read_shares::shared_turn(&state, &agent.name) {
         // a conversation shown to people the person invited: the same doors closed (read_shares.rs)
         if let Some(closed) = crate::read_shares::closed_tool(&name) {
             tracing::info!(agent = %agent.name, tool = %name, "tool closed in a shared conversation");
-            return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(closed))));
+            return Ok(answer(closed));
         }
     }
     // The brake (loop_brake.rs), per turn (the run the hub follows, else the routine's): the same write twice, too many
@@ -1895,7 +1908,7 @@ async fn mcp(
         &arguments,
         py::time_time(),
     ) {
-        return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(refused))));
+        return Ok(answer(refused));
     }
     let wrote = move |agent: &str, name: &str, arguments: &Dict, result: &mut Dict| {
         if !result.get("isError").map(py::truthy).unwrap_or(false) {
@@ -1913,25 +1926,27 @@ async fn mcp(
             crate::made_files::MADE.note(&agent.name, &mark, turn_run.as_deref(), py::time_time());
         }
         wrote(&agent.name, &name, &arguments, &mut result);
-        return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(result))));
+        return Ok(answer(result));
     }
     if name == crate::agent_messages::TOOL_NAME {
         let mut result = crate::agent_messages::call(&state.http, Some(state.hub.clone()), &state.config(), &agent, &arguments).await;
         wrote(&agent.name, &name, &arguments, &mut result);
-        return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(result))));
+        return Ok(answer(result));
     }
     if crate::family_news::TOOL_NAMES.contains(&name.as_str()) {
         let mut result = crate::family_news::call_tool(&state.http, &state.config(), &agent, &name, &arguments).await?;
         wrote(&agent.name, &name, &arguments, &mut result);
-        return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(result))));
+        return Ok(answer(result));
     }
     let agent_name = agent.name.clone();
     let jobs = crate::jobs::jobs_of(&state);
     let push = state.push.clone();
     let maker = state.audio_maker.clone();
+    let work_lang = lang.clone();
     let work = tokio::spawn(async move {
         let mut result = call_tool(&maker, &agent, &name, &arguments, Some(push), Some(jobs)).await;
         if let Ok(done) = &mut result {
+            crate::names::localize_result(done, &work_lang);
             wrote(&agent.name, &name, &arguments, done);
             if crate::made_files::makes_files(&name) {
                 let before = turn_run.as_deref().map(|run| crate::made_files::MADE.in_run(&agent.name, run));
@@ -1949,7 +1964,7 @@ async fn mcp(
     let accept = headers.get("accept").and_then(|v| v.to_str().ok()).unwrap_or("");
     if !accept.contains("text/event-stream") {
         let result = work.await.map_err(anyhow::Error::from)??;
-        return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(result))));
+        return Ok(answer(result));
     }
     let guard = AbortOnDrop(work.abort_handle());
     let tools_of = (state.clone(), agent_name.clone());
@@ -2047,6 +2062,68 @@ pub fn router() -> Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Alex, 2026-11-01: an English person's agents said « in your Carnet (Notebook) ». What an agent writing in
+    /// English, German or Spanish reads — its personality's blocks, its tools' descriptions, their answers, a
+    /// background task's instructions — names the app's parts in its language (names.rs); a French agent's are as
+    /// they were.
+    #[test]
+    fn an_agent_in_another_language_reads_no_french_product_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::with_key("k".repeat(40));
+        config.hermes.home = dir.path().join("hermes").to_string_lossy().into_owned();
+        config.outbox.db_path = dir.path().join("data/outbox.db").to_string_lossy().into_owned();
+        for lang in ["en", "de", "es", "fr"] {
+            let agent = AgentConfig { name: format!("coach-{lang}"), display_name: "Coach".into(), ..Default::default() };
+            let mut soul = crate::souls::with_language("You are Coach.\n", Some(lang));
+            soul = crate::souls::with_notebook(&soul, true);
+            soul = crate::souls::with_archives(&soul, true);
+            soul = crate::souls::with_health(&soul, true);
+            soul = crate::souls::with_payments(&soul);
+            soul = crate::souls::with_shared_memory(&soul, Some(true));
+            soul = crate::souls::with_server(&soul, true);
+            soul = crate::souls::with_style(&soul, Some("detailed"), None);
+            let folder = crate::agents_admin::profile_folder(&config, &agent);
+            std::fs::create_dir_all(&folder).unwrap();
+            std::fs::write(folder.join("SOUL.md"), &soul).unwrap();
+            config.agents.insert(agent.name.clone(), agent.clone());
+
+            let tools = tools_for_at(&config, &agent, true);
+            let family = crate::souls::split_language(&soul).1;
+            let mut texts = vec![
+                ("soul", soul.clone()),
+                ("compact", crate::souls::language_block_compact(Some(lang))),
+                ("tools", serde_json::to_string(&tools).unwrap()),
+                ("task", crate::names::localize(crate::jobs::INSTRUCTIONS, lang)),
+                ("fill", crate::names::localize(crate::notebook::fill::PROMPT, lang)),
+                ("family", crate::family_agent::with_family(&soul, true)),
+                ("member", crate::names::localize(&crate::family_agent::member_instructions("Léa"), lang)),
+            ];
+            assert_eq!(family.as_deref(), Some(lang));
+            // the Carnet's answers: an empty search, then a fact filed (with its one-line mention)
+            for (name, arguments) in [
+                (crate::notebook::tools::SEARCH, json!({})),
+                (crate::notebook::tools::NOTE, json!({"page": "Marc", "kind": "person", "facts": ["Likes jazz"]})),
+            ] {
+                let Value::Object(arguments) = arguments else { unreachable!() };
+                let mut result = crate::notebook::tools::call(&config, &agent.name, name, &arguments).unwrap();
+                crate::names::localize_result(&mut result, &crate::names::agent_language(&config, &agent.name));
+                texts.push((name, result["content"][0]["text"].as_str().unwrap().to_string()));
+            }
+            for (what, text) in texts {
+                let found = crate::names::french_in(&text);
+                if lang == "fr" {
+                    assert!(what != "soul" || found.contains(&"Carnet"), "French as it was: {text}");
+                } else {
+                    assert_eq!(found, Vec::<&str>::new(), "{lang} {what}: {text}");
+                }
+            }
+            if lang != "fr" {
+                let notebook = crate::names::names(lang).notebook;
+                assert!(soul.contains("never by another language's names") && soul.contains(notebook), "{soul}");
+            }
+        }
+    }
 
     #[test]
     fn a_long_text_is_read_in_short_pieces_paragraph_by_paragraph() {

@@ -335,12 +335,20 @@ fn connector_bundle(state: &AppState, config: &Config, agent: &AgentConfig, conn
     }))
 }
 
-fn tool_label(name: &str) -> String {
+/// A tool's name on the review, in the agent's language `lang`.
+fn tool_label(name: &str, lang: &str) -> String {
+    let n = crate::names::names(lang);
+    let (browser, weather, web) = match n.lang {
+        "fr" => ("Navigateur", "Météo", "Recherche web"),
+        "de" => ("Browser", "Wetter", "Websuche"),
+        "es" => ("Navegador", "Tiempo", "Búsqueda web"),
+        _ => ("Browser", "Weather", "Web search"),
+    };
     match name {
-        "browser" => "Navigateur".into(),
-        "weather" => "Météo".into(),
-        "notebook" => "Carnet".into(),
-        "web" => "Recherche web".into(),
+        "browser" => browser.into(),
+        "weather" => weather.into(),
+        "notebook" => n.notebook.into(),
+        "web" => web.into(),
         other => other.to_string(),
     }
 }
@@ -429,11 +437,12 @@ pub async fn review(state: &AppState, agent: &AgentConfig, body: &Value) -> (u16
     let browser = settings.get("browser").and_then(|b| b.get("on")).and_then(Value::as_bool);
     let weather = crate::weather::enabled(&config, &agent.name);
     let notebook = crate::notebook::enabled(&config, &agent.name);
+    let lang = crate::handback::language_of(&config, agent);
     let mut on: Vec<String> =
-        toolsets.iter().filter(|(_, v)| v.as_bool() == Some(true)).map(|(k, _)| tool_label(k)).collect();
+        toolsets.iter().filter(|(_, v)| v.as_bool() == Some(true)).map(|(k, _)| tool_label(k, &lang)).collect();
     for (flag, label) in [(browser == Some(true), "browser"), (weather, "weather"), (notebook, "notebook")] {
         if flag {
-            on.push(tool_label(label));
+            on.push(tool_label(label, &lang));
         }
     }
     if !leave_out.contains("tools") {

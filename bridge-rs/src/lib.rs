@@ -109,6 +109,7 @@ pub mod send_guard;
 pub mod sent_files;
 pub mod services;
 pub mod shares;
+pub mod names; // the app's things by their names in the person's language
 pub mod souls;
 pub mod space;
 pub mod spaces;
