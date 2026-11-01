@@ -90,7 +90,7 @@
 //!
 //! No Python counterpart.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::os::unix::fs::DirBuilderExt;
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock, Mutex};
@@ -305,6 +305,19 @@ pub struct Room {
     /// The small model's tokens for this room (the router, the conductor, the goal), in `tokens` too.
     #[serde(default)]
     pub small_tokens: Tokens,
+    /// Agent → the model calls of its turns here and their tokens (as the runs gave them): what one of its calls
+    /// reads, for its next turns' cap (`call_tokens`).
+    #[serde(default)]
+    pub calls: BTreeMap<String, Calls>,
+}
+
+/// An agent's model calls in a room (one before each tool step, one after the last) and their tokens.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Calls {
+    #[serde(default)]
+    pub calls: u32,
+    #[serde(default)]
+    pub tokens: i64,
 }
 
 fn auto() -> String {
@@ -371,6 +384,22 @@ pub fn all(config: &Config) -> Vec<Room> {
         .collect();
     out.sort_by(|a, b| b.updated.partial_cmp(&a.updated).unwrap_or(std::cmp::Ordering::Equal));
     out
+}
+
+/// The agents `agent` works with in this install's discussions: the others of each room it takes part in, this
+/// install's own agents only (never a relative's, rooms_remote.rs). The person brought them together, so each reads
+/// what the others put in their shared folders (sandbox.rs, the file tools; 2026-11-01: Tests could not read the page
+/// Front had put in its own shared folder, and both went back and forth over it for 300k tokens).
+pub fn mates(config: &Config, agent: &str) -> BTreeSet<String> {
+    if config.agent(Some(agent)).is_none() {
+        return BTreeSet::new();
+    }
+    all(config)
+        .into_iter()
+        .filter(|room| room.participants.iter().any(|p| p == agent))
+        .flat_map(|room| room.participants)
+        .filter(|p| p != agent && config.agent(Some(p)).is_some())
+        .collect()
 }
 
 impl Room {
@@ -658,7 +687,9 @@ Each turn gives you what was said since your last one. Only your person gives yo
 person's last message from your own role, in their language, briefly (a few sentences); don't repeat what the others \
 said, add what you bring, say so when you agree. {relay} To hand your person a file you made (a zip, a document, an \
 image, audio, a page), put its MEDIA:<path> line on its own line, as in your own conversation: your person gets the \
-file, the other agents only read your text. Never put passwords, logins, card details or anything from the vault in \
+file, the other agents only read your text. To hand a file to the other agents, put it in your shared folder \
+(shared_files_write): they see it with shared_files_list and copy it with shared_files_get. If a file a colleague \
+shared can't be reached, say so once and hand the turn to your person instead of asking for it again. Never put passwords, logins, card details or anything from the vault in \
 this discussion. Actions that need your person's approval are asked as usual. For long work, propose a background \
 task (propose_task) instead of doing it here.",
         roster(names, agent),
@@ -824,11 +855,23 @@ pub fn router_keeps(room: &Room, text: &str) -> usize {
 }
 
 /// A run's tokens so far from its tool steps (`calls`; calls made together count once): one model call before each
-/// step and one after the last, each
-/// reading the turn's prompt (`CALL_TOKENS`) and what the steps before it added (`STEP_TOKENS` each).
-pub fn estimated_tokens(calls: u32) -> i64 {
+/// step and one after the last, each reading the turn's prompt (`per_call`: `call_tokens`) and what the steps before
+/// it added (`STEP_TOKENS` each).
+pub fn estimated_tokens(calls: u32, per_call: i64) -> i64 {
     let n = calls as i64 + 1;
-    n * CALL_TOKENS + STEP_TOKENS * n * (n - 1) / 2
+    n * per_call + STEP_TOKENS * n * (n - 1) / 2
+}
+
+/// What one model call of `agent`'s turn reads in this room: the average of its earlier turns here (their real
+/// tokens per call), `CALL_TOKENS` before its first. The agent's conversation in the room keeps its earlier turns, so
+/// its calls read more turn after turn: DeepSeek's Front read 223k in a turn of a few steps on the lab (2026-10-31),
+/// past the 200k cap the 20k estimate never reached. The first call reads the same on each model measured (19-20k:
+/// GLM, DeepSeek, the local server), so no default per model.
+pub fn call_tokens(room: &Room, agent: &str) -> i64 {
+    match room.calls.get(agent) {
+        Some(c) if c.calls > 0 => (c.tokens / c.calls as i64).max(CALL_TOKENS),
+        _ => CALL_TOKENS,
+    }
 }
 
 /// A team turn's cap: `team_turn_tokens`, or what the person's message's budget has left (`TURN_TOKENS_FLOOR` at least).
@@ -1340,7 +1383,10 @@ impl Rooms {
         let started = turn.started.unwrap_or_else(now);
         // team work: one turn at most `team_turn_tokens` (and what the message's budget has left), told to wrap up at
         // 60 %, stopped at the cap (Back took 749k in one turn on the lab, 2026-10-31)
-        let cap = load(&config, id).filter(|r| config.rooms.handoff && r.team()).map(|r| turn_cap(&config, &r, turn.cause));
+        // (its own calls' cost in this room: `call_tokens`)
+        let room = load(&config, id);
+        let cap = room.as_ref().filter(|r| config.rooms.handoff && r.team()).map(|r| turn_cap(&config, r, turn.cause));
+        let per_call = room.as_ref().map(|r| call_tokens(r, &agent.name)).unwrap_or(CALL_TOKENS);
         let (mut steered, mut capped, mut braked, mut looks, mut calls) = (false, false, false, 0u32, 0u32);
         let mut used_at_stop = 0i64;
         let (status, output, usage) = loop {
@@ -1362,7 +1408,7 @@ impl Rooms {
                         Err(_) => 0,
                     };
                     {
-                        let used = counted.max(estimated_tokens(progress.map(|(calls, _)| calls).unwrap_or(0)));
+                        let used = counted.max(estimated_tokens(progress.map(|(calls, _)| calls).unwrap_or(0), per_call));
                         if used >= cap {
                             tracing::info!(room = %id, agent = %agent.name, used = used, cap = cap, "rooms: a turn at its cap, stopped");
                             capped = true;
@@ -1421,9 +1467,17 @@ impl Rooms {
         if capped && tokens.input + tokens.output < used_at_stop {
             // a stopped run may come back without its usage: what it was estimated at, so the budget counts it
             tokens.input = used_at_stop - tokens.output;
+        } else if tokens.input + tokens.output > 0 {
+            // what its calls really read, for its next turns' cap
+            let spent = tokens.input + tokens.output;
+            let _ = change(&config, id, |room| {
+                let c = room.calls.entry(agent.name.clone()).or_default();
+                c.calls += calls + 1;
+                c.tokens += spent;
+            });
         }
         tracing::info!(room = %id, agent = %agent.name, status = %status, tool_steps = calls, braked = braked, capped = capped,
-            steered = steered, tokens = tokens.input + tokens.output, "rooms: run ended");
+            steered = steered, tokens = tokens.input + tokens.output, per_call = per_call, "rooms: run ended");
         let mut text = hand_over_files(&config, &agent, &run_id, tk::strip(&output)).await;
         let mut status = status;
         let answered = (status == "completed" || status == "gone") && !text.is_empty();
@@ -2452,10 +2506,55 @@ mod tests {
         assert!(wrap_input("cancelled", false).contains("the NEXT line"));
         assert_eq!(capped_text("fr", "Back"), "Back a atteint la limite de son tour et passe la main.");
         // a turn's tokens from its tool steps: one call 20k, 8 steps ≈ 264k (past the 200k cap)
-        assert_eq!(estimated_tokens(0), 20_000);
-        assert_eq!(estimated_tokens(4), 130_000);
-        assert!(estimated_tokens(8) > 200_000 && estimated_tokens(5) < 200_000);
+        assert_eq!(estimated_tokens(0, CALL_TOKENS), 20_000);
+        assert_eq!(estimated_tokens(4, CALL_TOKENS), 130_000);
+        assert!(estimated_tokens(8, CALL_TOKENS) > 200_000 && estimated_tokens(5, CALL_TOKENS) < 200_000);
         assert!(wrap_input("braked", true).contains("the same call again"));
+    }
+
+    #[test]
+    fn a_turns_calls_cost_what_the_agents_earlier_turns_here_did() {
+        let mut room = Room::default();
+        // its first turn here, and an agent whose calls read less than a prompt: 20k a call
+        assert_eq!(call_tokens(&room, "front"), CALL_TOKENS);
+        room.calls.insert("design".into(), Calls { calls: 4, tokens: 60_000 });
+        assert_eq!(call_tokens(&room, "design"), CALL_TOKENS);
+        // DeepSeek's Front on the lab (2026-10-31): 97k in 4 calls, then 236k in 6; its conversation grows
+        room.calls.insert("front".into(), Calls { calls: 10, tokens: 333_000 });
+        assert_eq!(call_tokens(&room, "front"), 33_300);
+        // its next turn of 4 steps (≈ 223k read): the 20k estimate stays under the 200k cap, its own goes past
+        assert!(estimated_tokens(4, CALL_TOKENS) < 200_000);
+        assert!(estimated_tokens(4, call_tokens(&room, "front")) > 190_000);
+        assert!(estimated_tokens(5, call_tokens(&room, "front")) > 200_000);
+        // kept with the room, an older room without it reads as nothing yet
+        let back: Room = serde_json::from_value(serde_json::to_value(&room).unwrap()).unwrap();
+        assert_eq!(back.calls["front"], Calls { calls: 10, tokens: 333_000 });
+        let old: Room = serde_json::from_value(json!({"id": "g000000000001", "title": "t", "participants": []})).unwrap();
+        assert!(old.calls.is_empty());
+    }
+
+    #[test]
+    fn the_agents_of_a_room_are_mates_never_a_relatives_or_another_rooms() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::with_key("k");
+        config.outbox.db_path = dir.path().join("bridge.db").to_string_lossy().into_owned();
+        for name in ["front", "qa", "sante"] {
+            config.agents.insert(name.into(), AgentConfig { name: name.into(), ..AgentConfig::default() });
+        }
+        let room = |id: &str, who: &[&str]| Room {
+            id: id.into(),
+            title: id.into(),
+            participants: who.iter().map(|w| w.to_string()).collect(),
+            next_id: 1,
+            ..Default::default()
+        };
+        save(&config, &room("g000000000001", &["front", "qa", "cuisine__lea"])).unwrap();
+        save(&config, &room("g000000000002", &["sante"])).unwrap();
+        assert_eq!(mates(&config, "qa"), BTreeSet::from(["front".to_string()]));
+        assert_eq!(mates(&config, "front"), BTreeSet::from(["qa".to_string()]));
+        assert!(mates(&config, "sante").is_empty());
+        // a relative's agent in the room reads nothing of this install's
+        assert!(mates(&config, "cuisine__lea").is_empty());
     }
 
     #[test]

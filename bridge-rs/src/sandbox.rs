@@ -1039,9 +1039,10 @@ pub fn sync_agent(config: &Config, agent: &str) -> std::io::Result<(usize, usize
 pub fn drop_stale_copies(config: &Config, agent: &str, reads: &[(String, String)]) {
     let Some((files, _)) = volumes_of(config, agent) else { return };
     let Ok(entries) = std::fs::read_dir(files.join(COPIES)) else { return };
+    let mates = crate::rooms::mates(config, agent);
     for entry in entries.flatten() {
         let source = entry.file_name().to_string_lossy().into_owned();
-        if !may_read(agent, &source, reads) {
+        if !may_read(agent, &source, reads, &mates) {
             let _ = std::fs::remove_dir_all(entry.path());
         }
     }
@@ -1054,8 +1055,10 @@ pub const GET: &str = "shared_files_get";
 pub const WRITE: &str = "shared_files_write";
 pub const DELETE: &str = "shared_files_delete";
 
-fn may_read(agent: &str, source: &str, reads: &[(String, String)]) -> bool {
-    source == agent || reads.iter().any(|(r, s)| r == agent && s == source)
+/// `agent` reads `source`'s shared folder: its own, one the person linked it to (shares.rs), or a colleague's of one
+/// of its discussions (`mates`, rooms.rs; through these tools only, not mounted in its sandbox).
+fn may_read(agent: &str, source: &str, reads: &[(String, String)], mates: &BTreeSet<String>) -> bool {
+    source == agent || reads.iter().any(|(r, s)| r == agent && s == source) || mates.contains(source)
 }
 
 /// The tools' definitions. Reads are marked read-only: on this « untrusted » entry, Hermes asks the person before the
@@ -1065,8 +1068,9 @@ pub fn tools() -> Vec<Value> {
     vec![
         json!({
             "name": LIST,
-            "description": "List the shared folders you can use: yours (the agents the person allowed read it) and \
-        those other agents share with you. The files the person sends you are already in /fichiers (read-only).",
+            "description": "List the shared folders you can use: yours (the agents the person allowed read it, and \
+        those of your group discussions) and those other agents share with you, or the agents of your group discussions \
+        put in theirs. The files the person sends you are already in /fichiers (read-only).",
             "inputSchema": {"type": "object", "properties": {}},
             "annotations": read_only,
         }),
@@ -1085,7 +1089,7 @@ pub fn tools() -> Vec<Value> {
         json!({
             "name": WRITE,
             "description": format!("Put a file in your shared folder (/partage), for the agents the person allowed \
-        (they only read it). Copy the file right into {OUTBOX} (no folder) and give its path as `from`, or give a short text as \
+        and those of your group discussions (they only read it). Copy the file right into {OUTBOX} (no folder) and give its path as `from`, or give a short text as \
         `content`. No approval needed."),
             "inputSchema": {"type": "object", "properties": {
                 "path": {"type": "string", "description": "where in your shared folder, e.g. resume/semaine.md"},
@@ -1168,11 +1172,13 @@ fn error(text: &str) -> Dict {
 /// One call of a file tool, for `agent` (blocking: files only).
 pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) -> Dict {
     let reads = shares::load(config);
+    let mates = crate::rooms::mates(config, &agent.name);
     let text = |key: &str| arguments.get(key).and_then(Value::as_str).unwrap_or("").to_string();
     match name {
         LIST => {
             let mut out = vec![format!("Files the person sent you: in {RECEIVED} (read-only).")];
-            let readers: Vec<&str> = reads.iter().filter(|(_, s)| s == &agent.name).map(|(r, _)| r.as_str()).collect();
+            let mut readers: Vec<&str> = reads.iter().filter(|(_, s)| s == &agent.name).map(|(r, _)| r.as_str()).collect();
+            readers.extend(mates.iter().map(String::as_str).filter(|m| !readers.contains(m)).collect::<Vec<_>>());
             let own = listing(&shares::share_dir(config, &agent.name));
             out.push(format!(
                 "\nYour shared folder (agent `{}`){}: {}",
@@ -1195,12 +1201,24 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
                 ));
                 out.extend(files);
             }
+            let linked: Vec<&str> = reads.iter().filter(|(r, _)| r == &agent.name).map(|(_, s)| s.as_str()).collect();
+            for source in mates.iter().filter(|m| !linked.contains(&m.as_str())) {
+                let shown =
+                    config.agent(Some(source)).map(|a| a.display_name.clone()).unwrap_or_else(|| source.clone());
+                let files = listing(&shares::share_dir(config, source));
+                out.push(format!(
+                    "\nShared with you in a group discussion by {shown} (agent `{source}`, read-only: copy a file with \
+{GET}): {}",
+                    if files.is_empty() { "empty".to_string() } else { format!("{} file(s)", files.len()) }
+                ));
+                out.extend(files);
+            }
             tool_text(&out.join("\n"), false)
         }
         GET => {
             let source = Some(text("agent")).filter(|s| !s.trim().is_empty()).unwrap_or_else(|| agent.name.clone());
             let source = source.trim().to_lowercase();
-            if !may_read(&agent.name, &source, &reads) {
+            if !may_read(&agent.name, &source, &reads, &mates) {
                 return error(&format!("{source} shares nothing with you (the person decides in the app)."));
             }
             let Some(relative) = plain_relative(&text("path")) else {
@@ -1592,6 +1610,54 @@ mod tests {
         assert!(tool(&config, &agent, GET, json!({"path": "ok.txt"})).0);
         home_untouched(&home);
         nothing_leaked(&files);
+    }
+
+    /// What an agent puts in its shared folder, its colleagues of a group discussion read (2026-11-01, the lab: Tests
+    /// could not read the page Front had shared, both went back and forth over it); nobody else, never a relative's
+    /// agent, and no more once the discussion is gone.
+    #[test]
+    fn the_agents_of_a_discussion_read_each_others_shared_folders() {
+        let (dir, mut config, front, _share, _home) = tools_setup();
+        let mut agent = |name: &str| {
+            let agent = AgentConfig { name: name.into(), shares: "external".into(), ..AgentConfig::default() };
+            config.agents.insert(name.into(), agent.clone());
+            agent
+        };
+        let (qa, sante) = (agent("qa"), agent("sante"));
+        let qa_files = dir.path().join("qa-files");
+        std::fs::create_dir_all(&qa_files).unwrap();
+        save_state(&config, |state| {
+            state["agents"]["qa"] = json!({"files": qa_files.to_string_lossy(), "outbox": dir.path().join("qa-envoi").to_string_lossy()});
+        })
+        .unwrap();
+        assert!(!tool(&config, &front, WRITE, json!({"path": "front/courses.html", "content": "<html>"})).0);
+        let fetch = json!({"agent": "vie", "path": "front/courses.html"});
+        // no discussion together, no link: nothing to read
+        assert!(!tool(&config, &qa, LIST, json!({})).1.contains("courses.html"));
+        assert!(tool(&config, &qa, GET, fetch.clone()).0);
+
+        let room = crate::rooms::Room {
+            id: "g000000000001".into(),
+            title: "Courses".into(),
+            participants: vec!["vie".into(), "qa".into(), "cuisine__lea".into()],
+            next_id: 1,
+            ..Default::default()
+        };
+        crate::rooms::save(&config, &room).unwrap();
+        let (failed, listed) = tool(&config, &qa, LIST, json!({}));
+        assert!(!failed && listed.contains("in a group discussion by") && listed.contains("- front/courses.html"), "{listed}");
+        assert!(tool(&config, &front, LIST, json!({})).1.contains("read by qa"));
+        let (failed, said) = tool(&config, &qa, GET, fetch.clone());
+        assert!(!failed, "{said}");
+        assert_eq!(std::fs::read_to_string(qa_files.join("partages/vie/front/courses.html")).unwrap(), "<html>");
+        // an agent of no discussion with it still reads nothing
+        assert!(!tool(&config, &sante, LIST, json!({})).1.contains("courses.html"));
+
+        // the discussion deleted: no more reading, its copies go
+        std::fs::remove_file(dir.path().join("data/rooms/g000000000001.json")).unwrap();
+        assert!(tool(&config, &qa, GET, fetch).0);
+        drop_stale_copies(&config, "qa", &[]);
+        assert!(!qa_files.join("partages/vie").exists());
     }
 
     /// The race itself: a thread swaps a folder of the shared folder for a link to home and back, in one step each

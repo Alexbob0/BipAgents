@@ -261,7 +261,7 @@ async fn a_task_gets_a_goal_proposed_then_the_team_relays_toward_it() {
 #[tokio::test]
 async fn team_work_stops_at_its_budget_and_breaks_a_back_and_forth() {
     let fake = Fake::default();
-    let (app, _dir) = app_with(&fake, json!({"team_turns": 4})).await;
+    let (app, dir) = app_with(&fake, json!({"team_turns": 4})).await;
     let (k, v) = auth();
     let h = [(k, v.as_str())];
     let made = app
@@ -284,6 +284,11 @@ async fn team_work_stops_at_its_budget_and_breaks_a_back_and_forth() {
     assert_eq!(m[4]["handoff"], json!({"to": "person", "why": "", "by": "budget"}));
     let refused = fake.asked.lock().unwrap().len();
     assert_eq!(refused, 1, "one conductor call");
+    // each agent's calls and their tokens kept, for its next turns' cap (no tool step: one call a turn)
+    let kept: Value =
+        serde_json::from_slice(&std::fs::read(dir.path().join(format!("data/rooms/{id}.json"))).unwrap()).unwrap();
+    assert_eq!(kept["calls"]["pm"], json!({"calls": 2, "tokens": 2100}), "{kept}");
+    assert_eq!(kept["calls"]["front"], json!({"calls": 1, "tokens": 1050}));
 }
 
 #[tokio::test]
