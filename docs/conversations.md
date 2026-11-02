@@ -166,7 +166,14 @@ GET  /v1/threads/resolve?agent=<id>&c=<pointer>          (c: thread id, `main`, 
   → {thread: Thread, tip: <session id>}
 POST /v1/threads/{thread}/segments  {session_id, agent?}  (migrations, tests)
   → Thread
+PATCH  /v1/threads/{thread}  {title, agent?}   renamed (the bridge's title; a side thread's Hermes session too, never
+                                                the main one's: Bot Mode reads it) → Thread
+DELETE /v1/threads/{thread}[?agent=]           its Hermes sessions and journal rows deleted → 204; the main thread
+                                                keeps its id and starts again empty
 ```
+
+A shared agent (`agent=<agent>__<household>`): `GET /v1/threads` and `GET /v1/threads/{cid}/timeline` are relayed to
+the owner's bridge (§6.6).
 
 `Thread`:
 
@@ -252,6 +259,13 @@ turn; the first item's own id before any) and `segment` (Hermes session id, for 
 | `call` | `call`: the Live call's record as `GET /v1/live/calls` gives it | live_calls.rs |
 | (role `peer`) | a `message` with `role: peer`, `from: <agent>`: another agent's message in Bot Mode's conversation | « Message from … (@x): » rows |
 
+**Drawing order: the items' order** (no ordering logic in the apps). Each assistant row gives its words first, then
+its own tool calls (their results folded in); the next row's words come after those calls; the final answer last.
+`items_come_in_the_order_the_apps_draw_them` (threads/timeline.rs) pins it.
+
+An agent message may carry `renamed: [{agent, name}]` (the agent renamed itself in that turn, guide.rs): the app
+updates the name at once, whenever it reads the item.
+
 Never items: hidden rows (`display_kind` hidden, inactive rows unless compacted, compression summaries), the bridge's
 own steers (`[bipagents:…]`), restore notes (`<!--bip:restore…-->`), user rows made only of `<!--bip:…-->` notes.
 
@@ -291,8 +305,9 @@ GET /v1/threads/{thread}/attachments/{id}?agent=  → the bytes (image parts of 
 
 ### 6.4b Search hits
 
-`GET /v1/search/messages` (message_search.rs) gives each result its `thread` and `item` (`m_…`): the app opens
-`timeline?around=<item>` on that thread, never by words or dates.
+`GET /v1/search/messages` (message_search.rs) gives each result its `thread` (the thread's id, `t_…`, the main
+thread's too: the app knows it from `GET /v1/threads/main`) and `item` (`m_…`): the app opens
+`timeline?around=<item>` on that thread, never by words or dates. One shape for both apps; no `m`, no `main` flag.
 
 ### 6.5 Events
 
@@ -308,6 +323,10 @@ event: lagged         data: {}                    (the app missed events: refetc
 (`boite`) and Hermes continued it in a new session (`segment`). The agent's queue keeps its own stream
 (`/v1/agents/{id}/queue/events`, msg_queue.rs); the timeline's `pending.queue` gives its state at each read.
 
+**Presence**: `GET /v1/threads/events?agent=<a>&thread=<id|main>` means « this conversation is on screen » for as
+long as the stream is open: a notification for that thread is journaled, marked read, and not pushed
+(`push: skipped:on_screen`). This replaces the `session_state` poll every 5–8 s.
+
 On `thread`, an app showing that thread asks `timeline?after=<its last cursor>`; a list screen refetches
 `/v1/threads`. Events are hints: an app that missed some (asleep, offline) compares `version` and refetches. The live
 text of a run still comes from `/v1/runs/{run_id}/events` (unchanged).
@@ -316,8 +335,12 @@ text of a run still comes from `/v1/runs/{run_id}/events` (unchanged).
 
 - **Rooms** keep rooms.rs' store and routes for now; their pointer is `room:<id>` (resolve answers it, notifications
   carry it). Moving rooms onto the same item model is a later step.
-- **Shared agents**: the relative's bridge owns the thread; the person's app reaches it through the existing
-  household proxy with `agent = <agent>__<household>`. Same API, same ids, minted by the owner bridge.
+- **Shared agents** (agent_shares.rs): the relative's app asks its own bridge with `agent=<agent>__<household>`;
+  `GET /v1/threads` lists her conversations with that agent (`kind: shared`, `id` = the conversation's id) and
+  `GET /v1/threads/{cid}/timeline` (same parameters, same answer shape) is relayed to the owner's bridge
+  (`GET /family/s/{agent}/conversations/{cid}/timeline`, the household key, her own conversations only), which
+  serves only words and notices (no attachment, tool step or Boîte item: only text crosses). Sending, stopping and
+  approvals keep `/v1/shared-agents/{id}/conversations/…` until step 4.
 
 ## 7. How the apps use it (target)
 
@@ -416,7 +439,9 @@ One table (`notifications::RULES`, served by `GET /v1/notifications/rules`), not
 | `boite` other (credit, storage, imports, watchers) | no | their sources decide |
 | `family` | no | |
 
-Presence (the conversation on screen) is still decided by the producers, as today.
+Two more rules, in `emit`: a notification for a thread on screen (§6.5) is read and not pushed; a reply the person
+heard through a voice follow (the home screen's quick voice, voice_ws.rs) is journaled unread for the Boîte and not
+pushed (`skipped:heard`).
 
 ### 9.3 The push: a pointer, nothing else
 
@@ -461,8 +486,8 @@ GET    /v1/notifications/rules                                           the tab
 ```
 
 - Opening a conversation sends `POST /v1/notifications/read {agent, thread}`: every row of that thread is read.
-- After a read the bridge sends a silent push `reason=read` with `{agent, n: [ids] (always an array), unread: <total>}`
-  to the person's devices
+- After a read the bridge sends a silent push `reason=read` with `{agent, n: "<id>,<id>,…" (one comma-separated
+  string, the same in APNs and FCM data), unread: <total>}` to the person's devices
   (they remove those delivered notifications and set the badge) and a `read` event (§6.5).
 - `unread.total` is the badge.
 
@@ -548,15 +573,17 @@ typically 50–150 ms, so the count of requests is what the person feels).
 
 ### Lines of code
 
-What this branch adds and removes in the bridge (`git diff --stat` against its base):
+What this branch adds and removes in the bridge (`git diff --numstat` against its base, 2026-11-02 evening):
 
 | Area | Added | Removed | Note |
 |---|---:|---:|---|
-| `threads/` (registry, lineage, timeline, routes) | ~1,980 | 0 | of which ~330 unit tests |
-| `notifications.rs` (journal, rules, routes) | ~440 | 0 | of which ~45 unit tests |
-| `push.rs` | 219 | 141 | 17 `notify_*` now build one event each; the in-memory reply texts (`remember`, `TEXTS_KEPT`, `TEXT_TTL`) and the seven « Me prévenir » checks are gone (one rules table) |
-| Wiring (app, runs, ntfy, store, config, hermes, lib) | 101 | 5 | |
-| Black-box tests and the fake Hermes | ~520 | ~10 | |
+| `threads/` (registry, lineage, timeline, routes) | 2,185 | 0 | of which ~380 unit tests |
+| `notifications.rs` (journal, rules, routes) | 444 | 0 | of which ~45 unit tests |
+| `push.rs` | 325 | 317 | **deleted**: the four legacy payload builders (`message_payload`, `approval_payload`, `reply_payload`, `question_payload`), every legacy field (`run_id` pseudo-ids, `session_id`, `outbox_id`, `reply_id`, `kind`, `room_id`, `email_held`, `site_request`, `login_request`, `*_request`, `meet`, `family`, `job_id`), the in-memory reply texts (`remember`, `TEXTS_KEPT`, `TEXT_TTL`) and the seven « Me prévenir » checks; one `payload` builder and one `emit` instead |
+| `app.rs` | 8 | 9 | **deleted**: `GET /v1/replies/{id}` |
+| `agent_shares.rs`, `message_search.rs`, `voice_ws.rs`, wiring | ~210 | ~10 | shared agents' threads, search ids, voice replies in the Boîte |
+| Tests: golden payload cases | 0 | 531 | **deleted** with the builders (`push_runs.json` 494 lines, the test's arms 37) |
+| Tests: black-box and fakes | ~540 | ~100 | the suite asserts the pointer only |
 
 The bridge grows because it now does what each app did twice. The code this makes deletable:
 

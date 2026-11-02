@@ -157,23 +157,16 @@ impl World {
         let mut out = Vec::new();
         for p in self.apns.payloads() {
             // the journal row's text (GET /v1/notifications/{n}, what the extension shows)
-            let text = match p["n"].as_str() {
-                Some(id) => {
-                    let (k, v) = auth();
-                    let row = self.app.get(&format!("/v1/notifications/{id}"), &[(k, v.as_str())]).await.json();
-                    row["preview"].as_str().map(str::to_string)
-                }
-                None => None,
-            };
+            let (k, v) = auth();
+            let row = self.app.get(&format!("/v1/notifications/{}", p["n"].as_str().unwrap()), &[(k, v.as_str())]).await.json();
+            let text = row["preview"].as_str().map(str::to_string);
             out.push({
-                let shown = if p["run_id"].as_str().unwrap().starts_with("session:")
-                    && p["aps"]["alert"]["body"] == "Sous-tâche terminée"
-                {
+                let shown = if row["type"] == "subtask" && p["aps"]["alert"]["body"] == "Sous-tâche terminée" {
                     format!("subtask:{}", text.unwrap_or_else(|| "None".into()))
                 } else {
                     text.unwrap_or_default()
                 };
-                (p["agent"].as_str().unwrap().to_string(), shown, p["session_id"].as_str().unwrap_or("").to_string())
+                (p["agent"].as_str().unwrap().to_string(), shown, row["session_id"].as_str().unwrap_or("").to_string())
             });
         }
         out
@@ -362,8 +355,8 @@ async fn bot_chat_turn_taken_alone_is_pushed_once() {
     w.poll(now()).await;
     assert_eq!(w.replies().await, [reply("wellness", "Wellness dit que ta nuit était bonne.", "api_bot")]);
     let payload = w.apns.payloads()[0].clone();
-    assert_eq!(payload["run_id"], "session:api_bot");
-    assert_eq!(payload["kind"], "reply");
+    assert_eq!(payload["r"], "session:api_bot");
+    assert_eq!(payload["t"], "reply");
     assert_eq!(w.apns.requests.lock().unwrap()[0].header("apns-collapse-id").as_deref(), None); // a reply never replaces another (one journal row each)
     w.poll(now()).await;
     assert_eq!(w.replies().await.len(), 1);
@@ -510,7 +503,7 @@ async fn a_report_left_without_a_reply_is_pushed_once() {
     w.poll(now()).await; // still last: nobody will reply
     assert_eq!(w.replies().await, [reply("wellness", "subtask:🎧 Podcast jeudi0810", "api_bot")]);
     let payload = w.apns.payloads()[0].clone();
-    assert_eq!(payload["run_id"], "session:api_bot");
+    assert_eq!(payload["t"], "subtask");
     assert_eq!(
         payload["aps"]["alert"],
         json!({"title": "Wellness", "body": "Sous-tâche terminée", "loc-key": "Sous-tâche terminée"})

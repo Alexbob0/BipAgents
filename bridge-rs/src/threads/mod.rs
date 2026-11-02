@@ -6,13 +6,18 @@
 //! ```text
 //! GET  /v1/threads?agent=[&include_hidden=1]                    {threads: [Thread]}
 //! GET  /v1/threads/resolve?agent=&session_id= | &c=             {thread, tip}
-//! GET  /v1/threads/events[?agent=]                              SSE: thread, notification, read
+//! GET  /v1/threads/events[?agent=&thread=]                      SSE: thread, notification, read; `thread`: on screen
 //! GET  /v1/threads/{thread}[?agent=]                            Thread with its segments (`main` needs agent)
+//! PATCH /v1/threads/{thread} {title, agent?}                    renamed
+//! DELETE /v1/threads/{thread}[?agent=]                          its sessions deleted (the main thread stays, empty)
 //! POST /v1/threads/{thread}/segments {session_id, agent?}       a session appended (migrations)
 //! GET  /v1/threads/{thread}/timeline?agent=&limit=&before=&after=&around=&before_count=&after_count=
 //! GET  /v1/threads/{thread}/items/{item}
 //! GET  /v1/threads/{thread}/attachments/{attachment}
 //! ```
+//!
+//! A shared agent's (`agent=<agent>__<household>`): the list and timeline pages relayed to the owner's bridge
+//! (agent_shares.rs).
 //!
 //! Tables in bridge.db (store.rs): `threads`, `thread_segments`, `thread_messages`. Reads Hermes through
 //! [`source::Source`]: the agent's `state.db` (no call to Hermes) or its API (cached).
