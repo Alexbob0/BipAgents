@@ -1074,6 +1074,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_country_from_the_choice_then_the_phone_then_the_zone() {
+        let mut p = Person { time_zone: "Europe/Paris".into(), ..Person::default() };
+        assert_eq!(p.country_code().as_deref(), Some("FR"));
+        p.device_region = "BE".into(); // a Belgian phone in the Paris zone
+        assert_eq!(p.country_code().as_deref(), Some("BE"));
+        p.device_region = "ZZ".into(); // not a country BipAgents is offered in: the zone's guess
+        assert_eq!(p.country_code().as_deref(), Some("FR"));
+        p.device_region = "US".into();
+        p.country = "DE".into(); // the person's own choice first
+        assert_eq!(p.country_code().as_deref(), Some("DE"));
+    }
+
+    #[test]
     fn the_phone_moves_the_agents_and_asks_for_the_routines() {
         let mut p = Person::default();
         // first zone ever: everything follows, nothing to ask

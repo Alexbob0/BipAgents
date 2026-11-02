@@ -110,11 +110,11 @@ fn retitled(old: &Words, new: &Words, path: &str, text: &str) -> String {
     };
     if let Some(title) = renamed.filter(|t| *t != page.title) {
         let mut aliases = page.aliases();
-        if !aliases.iter().any(|a| super::fold(a) == super::fold(&page.title)) {
-            aliases.push(page.title.clone());
+        let old_title = std::mem::replace(&mut page.title, title);
+        if !aliases.iter().any(|a| super::fold(a) == super::fold(&old_title)) {
+            aliases.push(old_title);
         }
         page.set_aliases(&aliases);
-        page.title = title;
     }
     page.render()
 }
