@@ -113,8 +113,17 @@ pub fn new_id(prefix: &str) -> String {
     format!("{prefix}{millis:013x}{}", &crate::py::uuid4_hex()[..13])
 }
 
+/// The legacy main title (case and spaces aside).
+fn titled_main(session: &Session) -> bool {
+    session.title.as_deref().map(str::trim).is_some_and(|t| t.eq_ignore_ascii_case(LEGACY_MAIN_TITLE))
+}
+
+/// A routine's run: `cron_<job>_<date>_<time>`, or a `local-<sha256>` session on v0.22.5 that is not a peer's own
+/// « Bot Chat » (patch 0021 makes those `local-…` too).
 fn routine_session(session: &Session) -> bool {
-    session.id.starts_with("cron_") || session.id.starts_with("local-") || session.source.as_deref() == Some("cron")
+    session.id.starts_with("cron_")
+        || session.source.as_deref() == Some("cron")
+        || (session.id.starts_with("local-") && !titled_main(session))
 }
 
 /// The service: the registry, the timelines, the events.
@@ -283,7 +292,8 @@ impl Threads {
             .sessions(LISTED)
             .await?
             .into_iter()
-            .filter(|s| s.title.as_deref().map(str::trim).is_some_and(|t| t.eq_ignore_ascii_case(LEGACY_MAIN_TITLE)))
+            // a peer's own « Bot Chat » (patch 0021: a hidden local- session) is never the person's
+            .filter(|s| titled_main(s) && !s.id.starts_with("local-"))
             .collect();
         Ok(titled.iter().find(|s| !s.hidden).or(titled.first()).cloned())
     }
@@ -356,6 +366,8 @@ impl Threads {
         let root = &line[0];
         let (kind, hidden) = if routine_session(root) {
             ("routine", true)
+        } else if root.id.starts_with("local-") || (titled_main(root) && root.hidden) {
+            ("pair", true) // the agents' own conversation (Bot Mode's peers)
         } else {
             ("side", root.hidden)
         };
@@ -782,7 +794,8 @@ async fn timeline_route(State(state): State<AppState>, UrlPath(id): UrlPath<Stri
     let queue = tip.as_deref().map(|t| crate::msg_queue::queues_of(&state).get(&agent.name).snapshot_of(&agent.name, t));
     let mut out_thread = thread.to_json();
     out_thread["tip"] = json!(tip);
-    let items: Vec<Value> = page.items.iter().map(|i| i.to_json(&thread.id)).collect();
+    let debug = q.get("debug").is_some_and(|d| d == "1");
+    let items: Vec<Value> = page.items.iter().map(|i| i.to_json(&thread.id, debug)).collect();
     Ok(web::ok(json!({
         "thread": out_thread,
         "items": items,
@@ -802,7 +815,7 @@ async fn item_route(State(state): State<AppState>, UrlPath((id, item)): UrlPath<
     let segments = threads.line(&agent, &thread).await.map_err(unavailable)?;
     let items = threads.items(&agent, &thread, &segments).await.map_err(unavailable)?;
     let found = items.iter().find(|i| i.id == item).ok_or_else(HttpError::not_found)?;
-    Ok(web::ok(found.to_json(&thread.id)))
+    Ok(web::ok(found.to_json(&thread.id, q.get("debug").is_some_and(|d| d == "1"))))
 }
 
 async fn attachment_route(
@@ -821,7 +834,8 @@ async fn attachment_route(
     if let Some(path) = att.get("path").and_then(Value::as_str) {
         let mut response = Response::new(Body::empty());
         *response.status_mut() = axum::http::StatusCode::TEMPORARY_REDIRECT;
-        let target = format!("/v1/files?path={}", percent_encoding::utf8_percent_encode(path, percent_encoding::NON_ALPHANUMERIC));
+        let enc = |v: &str| percent_encoding::utf8_percent_encode(v, percent_encoding::NON_ALPHANUMERIC).to_string();
+        let target = format!("/v1/media?path={}&agent={}", enc(path), enc(&agent.name));
         response.headers_mut().insert("location", axum::http::HeaderValue::from_str(&target).map_err(anyhow::Error::from)?);
         return Ok(response);
     }

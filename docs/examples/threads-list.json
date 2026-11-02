@@ -1,0 +1,32 @@
+{
+  "threads": [
+    {
+      "id": "t_001a19ca71643700ab24e8d7f4",
+      "agent": "wellness",
+      "kind": "main",
+      "title": null,
+      "hidden": false,
+      "origin": null,
+      "version": 0,
+      "created_at": "2026-11-02T14:25:58.339Z",
+      "updated_at": "2026-11-02T14:25:58.339Z",
+      "tip": "api_new",
+      "last_active": 20.0,
+      "unread": 0
+    },
+    {
+      "id": "t_001a19ca71647112c4865db584",
+      "agent": "wellness",
+      "kind": "side",
+      "title": "Vacances",
+      "hidden": false,
+      "origin": null,
+      "version": 0,
+      "created_at": "2026-11-02T14:25:58.343Z",
+      "updated_at": "2026-11-02T14:25:58.343Z",
+      "tip": "api_side",
+      "last_active": 5.0,
+      "unread": 0
+    }
+  ]
+}

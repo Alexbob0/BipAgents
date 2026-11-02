@@ -1,8 +1,8 @@
 """The conversations the bridge owns (docs/conversations.md): one stable thread per conversation whatever Hermes does
 with titles and session ids, a thread = the chain of sessions Hermes continued it in after compressing it, one
 timeline with stable ids, the Boîte's messages among them, `around` a message with everything after it. The fake
-Hermes plays v0.22.5 (`v0225`): continuations listed only with `include_children=1`, `message_uid` on every row, a
-text run on the session titled « Bot Chat » diverted to the peer FIFO."""
+Hermes plays v0.22.5 (`v0225`): continuations listed only with `include_children=1`, `message_uid` on every row; a
+peer's own « Bot Chat » is a hidden `local-…` session (patch 0021, branch botchat-v0225)."""
 import hashlib
 import json
 import sqlite3
@@ -54,7 +54,7 @@ def test_the_main_thread_is_adopted_with_its_whole_line(bridges, fakes):
     assert main["kind"] == "main" and main["id"].startswith("t_") and len(main["id"]) == 28
     assert main["tip"] == "api_new"
     assert [t["kind"] for t in listed] == ["main", "side"] and listed[1]["title"] == "Vacances"
-    page = get(bridge, f"/v1/threads/{main['id']}/timeline", agent="wellness")
+    page = get(bridge, f"/v1/threads/{main['id']}/timeline", agent="wellness", debug=1)
     assert texts(page) == ["Bonjour", "Salut", "Et demain ?", "Il pleut."]
     assert [i["id"] for i in page["items"]] == [uid("api_old", 0), uid("api_old", 1), uid("api_new", 0), uid("api_new", 1)]
     assert [i["role"] for i in page["items"]] == ["person", "agent", "person", "agent"]
@@ -62,7 +62,9 @@ def test_the_main_thread_is_adopted_with_its_whole_line(bridges, fakes):
     assert page["more_before"] is False and page["more_after"] is False and page["anchor"] is None
     # the same thread by its alias and by id, the same ids on a second read
     assert get(bridge, "/v1/threads/main", agent="wellness")["id"] == main["id"]
-    assert get(bridge, f"/v1/threads/{main['id']}/timeline")["items"] == page["items"]
+    assert get(bridge, f"/v1/threads/{main['id']}/timeline", debug=1)["items"] == page["items"]
+    plain = get(bridge, f"/v1/threads/{main['id']}/timeline")["items"]
+    assert "segment" not in plain[0] and "turn" not in plain[0] and "attachments" not in plain[0]
     # nothing after the last cursor; the older page before the first of the last two
     assert get(bridge, f"/v1/threads/{main['id']}/timeline", after=page["last"])["items"] == []
     last_two = get(bridge, f"/v1/threads/{main['id']}/timeline", limit=2)
@@ -119,8 +121,8 @@ def test_the_main_thread_never_depends_on_the_bot_chat_title(bridges, fakes):
     """botchat-v0225 moves the person's conversation off « Bot Chat » (Hermes v0.22.5's peer FIFO takes text runs
     there): its record wins over the title, and a later move keeps the thread's id."""
     fakes.hermes.v0225 = True
-    fakes.hermes.add_session("api_peer", [user("Message from bip/vie (@vie): le train ?")], title="Bot Chat",
-                             last_active=50, started_at=1)
+    fakes.hermes.add_session("local-peer", [user("Message from bip/vie (@vie): le train ?")], title="Bot Chat",
+                             last_active=50, started_at=1, hidden=True, source="cli", chat_id="local-peer")
     fakes.hermes.add_session("api_person", [user("Coucou"), agent("Bonjour !")], title="Discussion", last_active=40,
                              started_at=2)
     bridge = bridges.new()
@@ -131,8 +133,8 @@ def test_the_main_thread_never_depends_on_the_bot_chat_title(bridges, fakes):
     assert main["tip"] == "api_person"
     assert texts(get(bridge, "/v1/threads/main/timeline", agent="wellness")) == ["Coucou", "Bonjour !"]
     # the peer conversation is a thread of its own; a peer's words read as the peer's
-    peer = get(bridge, "/v1/threads/resolve", agent="wellness", session_id="api_peer")["thread"]
-    assert peer["id"] != main["id"]
+    peer = get(bridge, "/v1/threads/resolve", agent="wellness", session_id="local-peer")["thread"]
+    assert peer["id"] != main["id"] and peer["kind"] == "pair" and peer["hidden"] is True
     item = get(bridge, f"/v1/threads/{peer['id']}/timeline")["items"][0]
     assert item["role"] == "peer" and item["from"] == "vie"
     # a migration moves the conversation to a new session: same thread, both segments read
@@ -141,8 +143,6 @@ def test_the_main_thread_never_depends_on_the_bot_chat_title(bridges, fakes):
     assert moved["id"] == main["id"] and moved["tip"] == "api_moved"
     assert [s["linked"] for s in moved["segments"]] == ["adopted", "moved"]
     assert texts(get(bridge, "/v1/threads/main/timeline", agent="wellness")) == ["Coucou", "Bonjour !", "On continue ici"]
-    # and a text run on the « Bot Chat » session would have gone to the peer FIFO, not to the person's thread
-    assert fakes.hermes.peer_fifo == []
 
 
 def test_markers_attachments_tools_and_boite_messages(bridges, fakes):

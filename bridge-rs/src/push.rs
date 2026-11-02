@@ -299,7 +299,7 @@ pub struct Event {
     pub from: Option<BoiteFrom>,
     /// The legacy payload (every field older apps read); `reply_id` is set to the journal id when `text` is.
     pub payload: Dict,
-    /// None: one per journal row.
+    /// The collapse id of a notification that replaces an earlier one (an approval's request); None for the others.
     pub collapse: Option<String>,
 }
 
@@ -450,7 +450,9 @@ impl PushService {
         let (sent, push) = if quiet {
             (0, "skipped:switch".to_string())
         } else {
-            let sent = self.fanout(&event.agent, payload.clone(), "alert", 10, Some(event.collapse.unwrap_or_else(|| id.clone()))).await;
+            // collapsed only where one notification replaces another (an approval's, a card's); a reply never
+            // replaces an earlier one (each is its own journal row)
+            let sent = self.fanout(&event.agent, payload.clone(), "alert", 10, event.collapse.clone()).await;
             (sent, if sent > 0 { format!("sent:{sent}") } else { "skipped:no_device".into() })
         };
         if let Err(exc) = crate::notifications::set_push(&self.store, &id, &push, &payload).await {

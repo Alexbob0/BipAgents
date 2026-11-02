@@ -303,10 +303,8 @@ class FakeHermes(Fake):
         self.default_session = {"title": "Bot Chat", "message_count": 7}
         self.unique_titles = False   # as Hermes: a title another conversation holds is refused (400)
         # Hermes v0.22.5 as the threads see it (test_threads.py): a session continued after a compression (one with a
-        # `parent_session_id`) is listed only with `include_children=1`; every row has a stable `message_uid`; a text
-        # run on the session titled « Bot Chat » goes to the peer FIFO (`peer_fifo`) and never runs as a turn.
+        # `parent_session_id`) is listed only with `include_children=1`; every row has a stable `message_uid`.
         self.v0225 = False
-        self.peer_fifo: List[Dict[str, Any]] = []
 
     # what the tests set up
     def add_session(self, session_id: str, messages: List[Dict[str, Any]], title: str = "Discussion",
@@ -350,10 +348,6 @@ class FakeHermes(Fake):
         if len(parts) == 2 and method == "POST":
             body = seen.json() or {}
             now, text = split_now(body.get("input"))
-            titled = self.sessions.get(agent, {}).get(body.get("session_id") or "", {}).get("title")
-            if self.v0225 and titled == "Bot Chat" and isinstance(text, str):
-                self.peer_fifo.append({"agent": agent, "session_id": body.get("session_id"), "input": text})
-                return JSONResponse({"run_id": f"peer{len(self.peer_fifo)}", "status": "queued"}, status_code=202)
             with self.lock:
                 run_id = f"r{len(self.started) + 1}"
                 self.started[run_id] = {"status": "running", "polls": 0, "input": text, "now": now,

@@ -65,7 +65,7 @@ pub struct Item {
 
 impl Item {
     pub fn cursor(&self) -> String {
-        cursor_of(self.pos, &self.id)
+        cursor_of(self.pos)
     }
 
     pub fn kind(&self) -> &str {
@@ -76,8 +76,9 @@ impl Item {
         self.body.get("text").and_then(Value::as_str).unwrap_or("")
     }
 
-    /// As served (docs/conversations.md §6.3).
-    pub fn to_json(&self, thread: &str) -> Value {
+    /// As served (docs/conversations.md §6.3): `turn` only when another item's, no empty `attachments`, `segment`
+    /// with `debug` only (every byte goes to a phone, often on a mobile network).
+    pub fn to_json(&self, thread: &str, debug: bool) -> Value {
         let mut out = Map::new();
         out.insert("id".into(), json!(self.id));
         for (k, v) in &self.body {
@@ -91,21 +92,29 @@ impl Item {
                 }
             }
         }
+        if out.get("attachments").and_then(Value::as_array).is_some_and(Vec::is_empty) {
+            out.remove("attachments");
+        }
         out.insert("at".into(), json!(iso(self.at)));
         out.insert("cursor".into(), json!(self.cursor()));
-        out.insert("turn".into(), json!(self.turn));
-        out.insert("segment".into(), json!(self.segment));
+        if self.turn != self.id {
+            out.insert("turn".into(), json!(self.turn));
+        }
+        if debug {
+            out.insert("segment".into(), json!(self.segment));
+        }
         Value::Object(out)
     }
 }
 
-pub fn cursor_of(pos: (u32, i64, u32), id: &str) -> String {
-    format!("{:04}.{:012}.{:03}.{id}", pos.0, pos.1.max(0), pos.2)
+/// A cursor: where the item reads (segment, display order, sub-position). Opaque to the apps.
+pub fn cursor_of(pos: (u32, i64, u32)) -> String {
+    format!("{}.{}.{}", pos.0, pos.1.max(0), pos.2)
 }
 
 /// A cursor's position (its item may be gone).
 pub fn cursor_pos(cursor: &str) -> Option<(u32, i64, u32)> {
-    let mut parts = cursor.splitn(4, '.');
+    let mut parts = cursor.splitn(3, '.');
     Some((parts.next()?.parse().ok()?, parts.next()?.parse().ok()?, parts.next()?.parse().ok()?))
 }
 
@@ -437,12 +446,11 @@ pub struct Want {
 
 /// The index of the first item at or after a cursor's position (the item itself, or where it was).
 fn at_cursor(items: &[Item], cursor: &str) -> (usize, bool) {
-    let id = cursor.splitn(4, '.').nth(3).unwrap_or("");
-    if let Some(i) = items.iter().position(|it| it.id == id) {
-        return (i, true);
-    }
     let pos = cursor_pos(cursor).unwrap_or((0, 0, 0));
-    (items.iter().position(|it| it.pos > pos).unwrap_or(items.len()), false)
+    match items.iter().position(|it| it.pos >= pos) {
+        Some(i) => (i, items[i].pos == pos),
+        None => (items.len(), false),
+    }
 }
 
 pub fn page(items: Vec<Item>, want: &Want) -> Page {
@@ -499,11 +507,13 @@ mod tests {
         let raw = "<!--bip:now lundi 9 h-->Voici le plan.\nMEDIA:/bipagents/pages/vie/plan.html\nLa suite.\n[Pièce jointe : devis.pdf (application/pdf, 12 Ko) → /home/x/uploads/devis.pdf]";
         let (text, atts) = visible(raw, "m_1", 0);
         assert_eq!(text, "Voici le plan.\nLa suite.");
-        assert_eq!(atts[0]["kind"], "page");
+        // photos first, then documents, then the agent's files in their order
+        assert_eq!(atts[0]["kind"], "document");
         assert_eq!(atts[0]["id"], "m_1.a0");
-        assert_eq!(atts[0]["offset"], 15);
-        assert_eq!(atts[1]["kind"], "document");
-        assert_eq!(atts[1]["path"], "/home/x/uploads/devis.pdf");
+        assert_eq!(atts[0]["path"], "/home/x/uploads/devis.pdf");
+        assert_eq!(atts[1]["kind"], "page");
+        assert_eq!(atts[1]["id"], "m_1.a1");
+        assert_eq!(atts[1]["offset"], 15);
         let (text, atts) = visible("[screenshot]\nYes", "m_2", 1);
         assert_eq!(text, "Yes");
         assert_eq!(atts.len(), 1);
@@ -591,10 +601,10 @@ mod tests {
         let all = merge(items(&rows), vec![boite("o_a", 1003.5), boite("o_z", 5000.0), boite("o_0", 10.0)]);
         let ids: Vec<&str> = all.iter().map(|i| i.id.as_str()).collect();
         assert_eq!(ids, ["o_0", "m_u1", "m_u2", "m_u3", "o_a", "m_u4", "m_u5", "m_u6", "o_z"]);
-        let cursors: Vec<String> = all.iter().map(Item::cursor).collect();
-        let mut sorted = cursors.clone();
+        let positions: Vec<_> = all.iter().map(|i| cursor_pos(&i.cursor()).unwrap()).collect();
+        let mut sorted = positions.clone();
         sorted.sort();
-        assert_eq!(cursors, sorted, "cursors sort as the timeline reads");
+        assert_eq!(positions, sorted, "cursors follow the timeline");
         // latest page, then older
         let p = page(all.clone(), &Want { limit: 3, ..Default::default() });
         assert_eq!(p.items.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), ["m_u5", "m_u6", "o_z"]);
@@ -610,7 +620,7 @@ mod tests {
         assert_eq!(around.items.first().unwrap().id, "m_u1");
         assert_eq!(around.items.last().unwrap().id, "o_z");
         // a cursor whose item is gone still pages from where it was
-        let gone = cursor_of(all[3].pos, "m_gone");
+        let gone = cursor_of((all[3].pos.0, all[3].pos.1, all[3].pos.2 + 50));
         let after_gone = page(all.clone(), &Want { limit: 50, after: Some(gone), ..Default::default() });
         assert_eq!(after_gone.items.first().unwrap().id, "o_a");
     }

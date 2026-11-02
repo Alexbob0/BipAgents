@@ -66,6 +66,9 @@ def test_ntfy_message_lands_in_outbox_with_audio_and_push(bridges, fakes):
     # Push: MESSAGE payload, sandbox host for the sandbox device, generic body (no preview).
     sandbox = [r for r in apns.pushes() if apns.environment(r) == "sandbox"]
     payload = sandbox[0].json()
+    # the journal's pointer (docs/conversations.md §9.3) beside the legacy fields
+    v2 = {k: payload.pop(k) for k in ("v", "n", "t", "c", "m")}
+    assert v2["v"] == 2 and v2["t"] == "boite" and v2["m"] == f"o_{payload['outbox_id']}" and v2["n"].startswith("n_")
     assert payload == {"aps": {"alert": {"title": "Wellness", "body": "Nouveau message", "loc-key": "Nouveau message"},
                                "thread-id": "wellness", "mutable-content": 1, "category": "MESSAGE",
                                "sound": "default"},

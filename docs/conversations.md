@@ -284,7 +284,7 @@ Example (`docs/examples/timeline-main.json` has a full page):
 ```text
 GET /v1/threads/{thread}/items/{item}?agent=   → Item (404 when gone)
 GET /v1/threads/{thread}/attachments/{id}?agent=  → the bytes (image parts of a Hermes row, decoded); a path
-                                                    attachment redirects (307) to the file route that serves it
+                                                    attachment redirects (307) to GET /v1/media?path=&agent=
 ```
 
 ### 6.5 Events
@@ -473,3 +473,66 @@ Journal row as served:
 ## 12. Status
 
 Kept up to date in `internal/notes/conv-core.md`.
+
+## 13. Faster, lighter, less code (Alex: « plus rapide et plus optimisé, moins de lignes de code »)
+
+### Requests and bytes per screen
+
+Measured by `bridge/tests_blackbox/test_threads_bench.py` (`-s` prints the table): a main conversation of 400
+messages over three segments (two compressions) and 30 other conversations, the bridge's debug build, the fake Hermes
+on the same Mac, each screen's requests sent one after the other, mean of 20 rounds. Counts and bytes are exact;
+times only give the order of magnitude (on a phone each request is a round trip over the tailnet or the door,
+typically 50–150 ms, so the count of requests is what the person feels).
+
+| Screen | Before: requests | Before: bytes | After: requests | After: bytes |
+|---|---:|---:|---:|---:|
+| Open the main conversation | 7 (3 to Hermes, 4 to the bridge) + `session_state` every 5–8 s | 42,127 (only the tip segment: older segments unreachable) | **1** | 22,728 (latest 50 items of the whole line) |
+| Open around a message (notification, search hit) | 7 (the old segment fetched whole) | 41,723 | **1** | 25,355 (20 before, 50 after) |
+
+- Server time of one timeline page (400-message line rebuilt, debug build): ~5 ms; release builds are several
+  times faster. The old screen's 7 requests took ~2.6 ms in all on localhost, i.e. 7 round trips on a phone.
+- Per item, the timeline sends visible text, an id and a short cursor only: `segment` with `debug=1`, `turn` when it
+  is another item's, `attachments` when there are some. 133 items: 59.5 kB (old: 42 kB for the same 133 Hermes rows,
+  but with neither tool steps, attachments, Boîte, approvals nor calls merged: those were 4 more requests).
+- Live updates: one SSE connection (`/v1/threads/events`) replaces polling: `session_state` (every 5–8 s per open
+  conversation), the home screen's previews, the Boîte's refresh.
+
+### Hermes load
+
+- A store read (`state.db`, managed installs: every offer place) costs Hermes **no call at all**: checked by
+  `test_the_hermes_store_is_read_without_calling_hermes`.
+- Through Hermes' API (an existing Hermes elsewhere): closed segments are read once (Hermes never writes into a
+  compressed session again), the tip again only after a run's end, a Boîte message or a notification touched the
+  thread, or 30 s later; the line's continuations likewise. The bench's 60 new screens made **0** Hermes calls.
+- The old screens made 3 Hermes calls each, plus the session-list pages to find « Bot Chat ».
+
+### Bridge memory and CPU
+
+- No copy of the conversations is kept in the bridge: the timeline is computed from Hermes' rows per request. The
+  API source's cache is bounded (50,000 rows in all, oldest segments dropped first).
+- Bridge RSS in the bench: 45.7 MB before, 45.8 MB after 100 screens (+0.1 MB).
+
+### Lines of code
+
+What this branch adds and removes in the bridge (`git diff --stat` against its base):
+
+| Area | Added | Removed | Note |
+|---|---:|---:|---|
+| `threads/` (registry, lineage, timeline, routes) | ~1,980 | 0 | of which ~330 unit tests |
+| `notifications.rs` (journal, rules, routes) | ~440 | 0 | of which ~45 unit tests |
+| `push.rs` | 219 | 141 | 17 `notify_*` now build one event each; the in-memory reply texts (`remember`, `TEXTS_KEPT`, `TEXT_TTL`) and the seven « Me prévenir » checks are gone (one rules table) |
+| Wiring (app, runs, ntfy, store, config, hermes, lib) | 101 | 5 | |
+| Black-box tests and the fake Hermes | ~520 | ~10 | |
+
+The bridge grows because it now does what each app did twice. The code this makes deletable:
+
+| Where | What goes once the apps read the timeline | Size today (estimate; the app agents confirm) |
+|---|---|---:|
+| iOS `ConversationModel.swift` | the 9-source merge (`show`, `loadOnce`, `restoreAttachments`, outbox/approvals/calls merging, id keeping, `ThreadCache` fallbacks), `findThread` | ~1,200 of 3,034 lines |
+| iOS | `AnsweredApprovals.swift`, `MessageFocus.swift`/`MessageLocator` (except a legacy adapter), `StoppedTurn`, `SteerMarker`, `MessageText` marker stripping, `SentFiles` matching | ~700 |
+| iOS | `isBotChat` / `"Bot Chat"` comparisons | 24 sites |
+| Android `ChatModel.kt` | `thread()`, `restore()`, `keepAnswer()`, `showPendingApproval()`, outbox merge | ~600 of 1,633 lines |
+| Android | `net/Hermes.kt` message parsing (`unwrap`, `isHandoff`, `rescueLine`, `asNotice`, `tidy`), `MessageFocus.kt` | ~350 |
+| Android | `"Bot Chat"` comparisons | 18 sites |
+| Bridge, after the minimum app version | `GET /v1/replies/{id}`, the legacy push fields, `/hermes/<agent>/…` conversation calls (kept for older apps) | — |
+| Bridge, with botchat-v0225 merged | the four `"Bot Chat"` constants become `threads::LEGACY_MAIN_TITLE` (adoption only) | 6 sites |
