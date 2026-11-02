@@ -808,6 +808,7 @@ async fn register_device(State(state): State<AppState>, Json(body): Json<DeviceR
     }
     let push_key = match body.push_key.as_deref().map(str::trim).filter(|k| !k.is_empty()) {
         Some(given) => {
+            use base64::Engine as _;
             let raw = crate::push::seal::push_key(given).map_err(|e| HttpError::new(400, e))?;
             Some(base64::engine::general_purpose::STANDARD.encode(raw))
         }

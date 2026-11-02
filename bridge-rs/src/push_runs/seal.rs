@@ -39,6 +39,8 @@ pub const PAYLOAD_MAX: usize = 3800;
 /// The sealed body at most (characters): what the notifications show (iOS cuts after about 4 lines, Android's big text
 /// a little more).
 pub const BODY_MAX: usize = 1000;
+/// The sealed title at most (characters): an agent's name, a group discussion's after it.
+pub const TITLE_MAX: usize = 120;
 /// Bytes a box adds to its plaintext: ephemeral key, nonce, tag.
 pub const OVERHEAD: usize = 65 + 12 + 16;
 
@@ -83,7 +85,7 @@ pub struct Sealed {
 
 impl Sealed {
     pub fn new(kind: &'static str, title: &str, body: &str) -> Self {
-        Sealed { kind, title: title.to_string(), body: clean(body), sub: None }
+        Sealed { kind, title: short(title, TITLE_MAX), body: clean(body), sub: None }
     }
 
     /// The plaintext inside the box, its body cut to `chars` characters at most.
@@ -104,16 +106,20 @@ impl Sealed {
     }
 }
 
+fn short(text: &str, max: usize) -> String {
+    let text = text.trim();
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    format!("{}…", text.chars().take(max - 1).collect::<String>().trim_end())
+}
+
 /// The words a notification shows: `MEDIA:` lines (files the app shows in the conversation) left out, spaces at the
 /// ends trimmed, cut at `BODY_MAX` characters.
 pub fn clean(text: &str) -> String {
     let kept: Vec<&str> = text.lines().filter(|l| !l.trim_start().starts_with("MEDIA:")).collect();
     let text = kept.join("\n");
-    let text = text.trim();
-    if text.chars().count() <= BODY_MAX {
-        return text.to_string();
-    }
-    format!("{}…", text.chars().take(BODY_MAX - 1).collect::<String>().trim_end())
+    short(&text, BODY_MAX)
 }
 
 /// A device's key as `POST /v1/devices` gives it: base64 (standard or URL-safe, padding optional) of a P-256 public
@@ -195,15 +201,23 @@ pub fn for_device(payload: &Dict, sealed: &Sealed, agent: &str, key: &[u8]) -> a
     let room = size(&out) + r#","enc":"""#.len();
     let budget_b64 = ENC_MAX.min(PAYLOAD_MAX.saturating_sub(room));
     let budget = (budget_b64 / 4 * 3).saturating_sub(OVERHEAD);
-    let mut chars = BODY_MAX;
-    let mut plaintext = sealed.plaintext(chars);
-    while plaintext.len() > budget {
-        if chars == 0 {
+    // the longest body that fits (a character is 1 to 4 bytes, more once escaped in JSON): searched by halves
+    let total = sealed.body.chars().count();
+    let mut plaintext = sealed.plaintext(total);
+    if plaintext.len() > budget {
+        let (mut fits, mut over) = (0usize, total);
+        while over - fits > 1 {
+            let mid = (fits + over) / 2;
+            if sealed.plaintext(mid).len() <= budget {
+                fits = mid;
+            } else {
+                over = mid;
+            }
+        }
+        plaintext = sealed.plaintext(fits);
+        if plaintext.len() > budget {
             anyhow::bail!("no room for the sealed text");
         }
-        // at least one character less; a long way over, as many as bytes over (a character is ≥ 1 byte)
-        chars = chars.saturating_sub((plaintext.len() - budget).max(1)).min(sealed.body.chars().count().saturating_sub(1));
-        plaintext = sealed.plaintext(chars);
     }
     out.insert("enc".into(), json!(seal(&plaintext, key, agent.as_bytes())?));
     Ok(out)

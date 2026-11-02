@@ -410,7 +410,11 @@ Every alert push gets, next to its legacy fields (unchanged, for apps that don't
 - Collapse id: one per journal row (`n`) for replies, sub-task reports, tasks and Boîte messages (an autonomous reply
   no longer replaces the previous one); approvals and questions keep their request id.
 - The deep link the apps build from it: `bipagents://open?agent=<a>&c=<c>&m=<m>&n=<n>&t=<t>`.
-- Later (phase 5 of the refonte): `enc`, the sealed text per device; neutral `loc-key` codes.
+- Sealed text (phase 5 of the refonte, `bridge-rs/src/push_runs/seal.rs`): a device registered with its key
+  (`POST /v1/devices {push_key}`, P-256 public key, base64) gets the words only in `enc` (`{v, t, title, body, sub?}`
+  sealed for it: ECDH P-256 + HKDF-SHA256 « bipagents-notif-v1 » + AES-256-GCM, AAD = `agent`) and, in clear, the
+  neutral `loc-key` `notif.<type>` (contracts/notifications/loc-keys.json), no title. Its phone opens it offline.
+  Devices without a key get the legacy alert. Vectors: contracts/notifications/sealed.json.
 
 ### 9.4 Read state
 

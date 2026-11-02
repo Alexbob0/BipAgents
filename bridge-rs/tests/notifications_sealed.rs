@@ -43,10 +43,10 @@ fn test_public() -> Vec<u8> {
 }
 
 fn hkdf(ikm: &[u8], salt: &[u8], info: &[u8]) -> [u8; 32] {
-    let mut extract = Hmac::<Sha256>::new_from_slice(salt).unwrap();
+    let mut extract = <Hmac<Sha256> as Mac>::new_from_slice(salt).unwrap();
     extract.update(ikm);
     let prk = extract.finalize().into_bytes();
-    let mut expand = Hmac::<Sha256>::new_from_slice(&prk).unwrap();
+    let mut expand = <Hmac<Sha256> as Mac>::new_from_slice(&prk).unwrap();
     expand.update(info);
     expand.update(&[1]);
     expand.finalize().into_bytes().into()
@@ -99,7 +99,10 @@ fn sealed_push(bridge: &Value) -> (String, notices::Built, Option<(Sealed, Map<S
     let built = notices::build(&agent, &context, &notice);
     let sealed = notices::sealed(&context, &notice)
         .map(|s| {
-            let out = seal::for_device(&built.payload, &s, &agent, &test_public()).unwrap();
+            let out = seal::for_device(&built.payload, &s, &agent, &test_public()).unwrap_or_else(|e| {
+                panic!("{e}: clear push {} bytes: {}", serde_json::to_vec(&built.payload).unwrap().len(),
+                    serde_json::to_string(&built.payload).unwrap().chars().take(400).collect::<String>())
+            });
             (s, out)
         });
     (agent, built, sealed)
@@ -131,6 +134,9 @@ fn every_type_has_its_neutral_line() {
 
 #[test]
 fn the_vectors_open_and_the_bad_ones_dont() {
+    if update() {
+        return; // being written by every_variant_is_sealed_as_the_contract_says
+    }
     let doc = read("sealed.json");
     let key = test_key();
     assert_eq!(doc["test_key"]["public"].as_str().unwrap(), STD.encode(test_public()));
@@ -158,7 +164,7 @@ fn a_box_made_now_opens_with_the_test_key_only() {
 
 #[test]
 fn every_variant_is_sealed_as_the_contract_says() {
-    let doc = read("sealed.json");
+    let doc = if update() { json!({"payloads": []}) } else { read("sealed.json") };
     let stored: Map<String, Value> = doc["payloads"]
         .as_array()
         .unwrap()
