@@ -678,6 +678,7 @@ pub fn prepare_for_synthesis(text: &str, lang: &str) -> String {
 /// The same for a given engine (see `numbers_fr::prepare_for_synthesis_with`).
 pub fn prepare_for_synthesis_with(text: &str, lang: &str, spelling: crate::pronounce::Spelling) -> String {
     let mut text = crate::pronounce::without_hesitations(text, lang); // « Hmm, let me see » -> « Let me see »
+    text = fr::separators(&text); // « sleep 84 · readiness 84 » -> « sleep 84, readiness 84 »
     if let Some(rules) = LEXICON.get(lang) {
         for (pattern, words) in rules {
             text = pattern.replace(&text, words);
@@ -694,6 +695,19 @@ pub fn prepare_for_synthesis_with(text: &str, lang: &str, spelling: crate::prono
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The English twin of numbers_fr's Oura line (Alex 2026-11-02): « · » a comma, each label and value once.
+    #[test]
+    fn list_separators_are_pauses() {
+        let line = "**Oura**: sleep **84** · readiness **84** · HRV balance **85** · recovery index **76** · temperature deviation **−0.02 °C**";
+        let shown = crate::textproc::normalize_for_speech(line, 180, true);
+        assert_eq!(
+            prepare_for_synthesis(&shown, "en"),
+            "Oura: sleep eighty-four, readiness eighty-four, HRV balance eighty-five, recovery index seventy-six, \
+             temperature deviation minus zero point zero two degrees Celsius."
+        );
+        assert_eq!(prepare_for_synthesis("Montag · Dienstag", "de"), "Montag, Dienstag");
+    }
 
     #[test]
     fn prepare_for_synthesis_cases() {
