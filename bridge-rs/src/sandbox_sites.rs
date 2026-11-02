@@ -376,21 +376,32 @@ pub fn validated(config: &Config, agent: &str, host: &str) -> bool {
 
 /// « environ 2 Mo », « environ 300 Ko ».
 pub fn about(bytes: u64) -> String {
+    about_in("fr", bytes)
+}
+
+/// `about` in `lang` (« fr », « en », « de », « es »): « about 2.1 MB », « etwa 2,1 MB », « unos 2,1 MB ».
+pub fn about_in(lang: &str, bytes: u64) -> String {
     const KB: f64 = 1024.0;
     let b = bytes as f64;
     let (value, unit) = if b >= KB * KB * KB {
-        (b / (KB * KB * KB), "Go")
+        (b / (KB * KB * KB), "G")
     } else if b >= KB * KB {
-        (b / (KB * KB), "Mo")
+        (b / (KB * KB), "M")
     } else {
-        ((b / KB).max(1.0), "Ko")
+        ((b / KB).max(1.0), "K")
     };
-    let shown = if value < 10.0 && unit != "Ko" {
-        format!("{:.1}", value).trim_end_matches(".0").replace('.', ",")
+    let shown = if value < 10.0 && unit != "K" {
+        let one = format!("{:.1}", value).trim_end_matches(".0").to_string();
+        if lang == "en" { one } else { one.replace('.', ",") }
     } else {
         format!("{}", value.round() as u64)
     };
-    format!("environ {shown} {unit}")
+    match lang {
+        "fr" => format!("environ {shown} {unit}o"),
+        "de" => format!("etwa {shown} {unit}B"),
+        "es" => format!("unos {shown} {unit}B"),
+        _ => format!("about {shown} {unit}B"),
+    }
 }
 
 // --- an agent's token ----------------------------------------------------------------------------------------------
@@ -834,9 +845,21 @@ pub async fn watch(state: AppState) {
 
 /// The person told (a notification that opens the app's Boîte, where the card is).
 pub async fn notify(state: &AppState, agent: &AgentConfig, card: &Pending) {
-    let size = if card.bytes > 0 { format!(" ({})", about(card.bytes)) } else { String::new() };
-    let line = format!("Veut envoyer des données à {}{size}", card.host);
-    state.push.notify_site_request(&agent.name, &line, &card.id).await;
+    let lang = crate::handback::language_of(&state.config(), agent);
+    state.push.notify_site_request(&agent.name, &push_line(&lang, &card.host, card.bytes), &card.id).await;
+}
+
+/// The notification's line in the agent's language (Alex, 2026-11-01: French reached an English person): « Veut
+/// envoyer des données à exemple.com (environ 2 Mo) ».
+pub fn push_line(lang: &str, host: &str, bytes: u64) -> String {
+    let lang = crate::names::names(lang).lang;
+    let size = if bytes > 0 { format!(" ({})", about_in(lang, bytes)) } else { String::new() };
+    match lang {
+        "fr" => format!("Veut envoyer des données à {host}{size}"),
+        "de" => format!("Will Daten an {host} senden{size}"),
+        "es" => format!("Quiere enviar datos a {host}{size}"),
+        _ => format!("Wants to send data to {host}{size}"),
+    }
 }
 
 // --- the routes ----------------------------------------------------------------------------------------------------
@@ -1101,6 +1124,13 @@ mod tests {
         assert_eq!(about(10), "environ 1 Ko");
         assert_eq!(about(25 * 1024 * 1024), "environ 25 Mo");
         assert_eq!(about(3 * 1024 * 1024 * 1024), "environ 3 Go");
+        assert_eq!(about_in("en", 2 * 1024 * 1024 + 100_000), "about 2.1 MB");
+        assert_eq!(about_in("de", 300 * 1024), "etwa 300 KB");
+        let french = push_line("fr", "exemple.com", 2 * 1024 * 1024);
+        assert_eq!(french, "Veut envoyer des données à exemple.com (environ 2 Mo)");
+        assert_eq!(push_line("en", "example.com", 2 * 1024 * 1024), "Wants to send data to example.com (about 2 MB)");
+        assert_eq!(push_line("es", "example.com", 0), "Quiere enviar datos a example.com");
+        assert_eq!(push_line("de", "example.com", 10), "Will Daten an example.com senden (etwa 1 KB)");
     }
 
     #[test]

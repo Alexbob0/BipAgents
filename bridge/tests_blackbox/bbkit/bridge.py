@@ -117,7 +117,9 @@ def default_config(root: Path, fakes: Any, p8_path: str) -> Dict[str, Any]:
         "weather": {"met_url": fakes.maps.url + "/weatherapi/locationforecast/2.0/complete",
                     "geocoder_url": fakes.maps.url + "/search"},
         "maps": {"routes_url": fakes.maps.url + "/directions/v2:computeRoutes",
-                 "tile_url": fakes.maps.url + "/osm/{z}/{x}/{y}.png", "vector_url": fakes.maps.url + "/vector"},
+                 "tile_url": fakes.maps.url + "/osm/{z}/{x}/{y}.png", "vector_url": fakes.maps.url + "/vector",
+                 # an itinerary's way along the streets (map_route.rs): never FOSSGIS's router from the tests
+                 "streets": "off"},
         # Never isolated by default: `auto` would isolate the sandboxes on Linux with podman (CI); test_sandbox says on.
         "sandbox": {"isolate": "off"},
         "agents": {

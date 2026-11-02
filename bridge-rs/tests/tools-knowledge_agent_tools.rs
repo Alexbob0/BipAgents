@@ -365,7 +365,8 @@ fn the_tools_version_is_the_pythons() {
     // live map, line and directions (2026-10-23), upcoming_dates (2026-10-24), mail_attachment and space_estimate (2026-10-28),
     // space_estimate in plain words (2026-10-28), create_podcast's length in minutes (2026-10-30), its 180 words a
     // minute (2026-10-30, release bench), give_file and room_history (2026-10-30), mail_overview and mail_bulk
-    // (2026-10-30), map_image finding the places itself (names, area, title, notes; 2026-10-31).
+    // (2026-10-30), map_image finding the places itself (names, area, title, notes; 2026-10-31), map_image's travel and
+    // reorder (the way along the streets, 2026-11-01).
     let expected = include_str!("golden/agent_tools_version.txt").trim();
     assert_eq!(agent_tools::tools_version(), expected);
 }

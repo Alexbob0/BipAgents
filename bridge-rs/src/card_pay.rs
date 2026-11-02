@@ -787,7 +787,7 @@ async fn confirm(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> any
     Ok(text(&format!(
         "Clicked « {clicked} »; the page has not moved on yet. Your browser stays paused until it does (5 minutes at \
          most, then the card is erased from the page). If the bank asks the person to confirm in their banking app, \
-         tell them « Confirme le paiement dans ton app bancaire »."
+         tell them « Confirme le paiement dans ton app bancaire » (in their language)."
     )))
 }
 
