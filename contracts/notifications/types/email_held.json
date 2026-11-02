@@ -21,7 +21,7 @@
   "variants": [
     {
       "name": "default",
-      "about": "Held e-mail, previews off.",
+      "about": "Held e-mail.",
       "bridge": {
         "agent": "vie",
         "context": {
@@ -42,16 +42,34 @@
           "badge": 1
         }
       },
-      "payload": {},
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.email_held",
+            "body": "notif.email_held"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "email_held",
+        "agent": "vie",
+        "c": "t_contract",
+        "r": "held_1"
+      },
       "push": {
         "push_type": "alert",
         "priority": 10,
-        "collapse_id": "email:held_1"
+        "collapse_id": "email_held:held_1"
       }
     },
     {
       "name": "previews_on_en",
-      "about": "Held e-mail, previews on, an English agent.",
+      "about": "Held e-mail, an English agent.",
       "bridge": {
         "agent": "vie",
         "context": {
@@ -72,11 +90,29 @@
           "badge": 1
         }
       },
-      "payload": {},
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.email_held",
+            "body": "notif.email_held"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "email_held",
+        "agent": "vie",
+        "c": "t_contract",
+        "r": "held_1"
+      },
       "push": {
         "push_type": "alert",
         "priority": 10,
-        "collapse_id": "email:held_1"
+        "collapse_id": "email_held:held_1"
       }
     }
   ]

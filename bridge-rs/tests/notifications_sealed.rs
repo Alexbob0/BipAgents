@@ -91,8 +91,12 @@ fn variants() -> Vec<(String, Value)> {
     out
 }
 
-/// The variant's clear push, what it says, and the push for the test device (`None`: a silent push, never sealed).
-fn sealed_push(bridge: &Value) -> (String, notices::Built, Option<(Sealed, Map<String, Value>)>) {
+/// What a variant gives: its agent, its clear push, and what it says with the push for the test device (`None`: a
+/// silent push, never sealed).
+type Pushed = (String, notices::Built, Option<(Sealed, Map<String, Value>)>);
+
+/// The variant's clear push, what it says, and the push for the test device.
+fn sealed_push(bridge: &Value) -> Pushed {
     let notice: Notice = serde_json::from_value(bridge["input"].clone()).unwrap();
     let context: Context = serde_json::from_value(bridge["context"].clone()).unwrap();
     let pointer: Pointer = serde_json::from_value(bridge["pointer"].clone()).unwrap();
@@ -268,7 +272,7 @@ fn every_variant_fits_with_a_huge_text() {
             assert!(size <= seal::PAYLOAD_MAX, "{label} {filler:?}: {size} bytes");
             assert!(enc <= seal::ENC_MAX, "{label} {filler:?}: enc {enc}");
             assert!(fcm_size <= 4000, "{label} {filler:?}: Firebase data {fcm_size} bytes");
-            let plain: Value = serde_json::from_slice(&open(&out["enc"].as_str().unwrap(), &agent, &test_key()).unwrap()).unwrap();
+            let plain: Value = serde_json::from_slice(&open(out["enc"].as_str().unwrap(), &agent, &test_key()).unwrap()).unwrap();
             if !sealed.body.is_empty() {
                 assert!(plain["body"].as_str().unwrap().chars().count() >= 100, "{label} {filler:?}: body cut too short");
             }

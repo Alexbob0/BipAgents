@@ -45,16 +45,34 @@
           "badge": 1
         }
       },
-      "payload": {},
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.connector",
+            "body": "notif.connector"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "CARD",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "connector",
+        "agent": "vie",
+        "c": "t_contract",
+        "r": "card_1"
+      },
       "push": {
         "push_type": "alert",
         "priority": 10,
-        "collapse_id": "connector_request:card_1"
+        "collapse_id": "connector:card_1"
       }
     },
     {
       "name": "secret",
-      "about": "A secret card (previews on).",
+      "about": "A secret card.",
       "bridge": {
         "agent": "vie",
         "context": {
@@ -76,11 +94,29 @@
           "badge": 1
         }
       },
-      "payload": {},
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.secret",
+            "body": "notif.secret"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "secret",
+        "agent": "vie",
+        "c": "t_contract",
+        "r": "card_2"
+      },
       "push": {
         "push_type": "alert",
         "priority": 10,
-        "collapse_id": "secret_request:card_2"
+        "collapse_id": "secret:card_2"
       }
     },
     {
@@ -107,11 +143,29 @@
           "badge": 1
         }
       },
-      "payload": {},
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.mail_card",
+            "body": "notif.mail_card"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "CARD",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "mail_card",
+        "agent": "vie",
+        "c": "t_contract",
+        "r": "card_3"
+      },
       "push": {
         "push_type": "alert",
         "priority": 10,
-        "collapse_id": "mail_request:card_3"
+        "collapse_id": "mail_card:card_3"
       }
     }
   ]

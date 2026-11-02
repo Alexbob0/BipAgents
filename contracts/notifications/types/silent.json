@@ -47,7 +47,15 @@
           "badge": 1
         }
       },
-      "payload": {},
+      "payload": {
+        "aps": {
+          "content-available": 1
+        },
+        "agent": "vie",
+        "reason": "run_finished",
+        "run_id": "run_1",
+        "session_id": "sess_1"
+      },
       "push": {
         "push_type": "background",
         "priority": 5,
@@ -77,7 +85,13 @@
           "badge": 1
         }
       },
-      "payload": {},
+      "payload": {
+        "aps": {
+          "content-available": 1
+        },
+        "agent": "vie",
+        "reason": "reminders"
+      },
       "push": {
         "push_type": "background",
         "priority": 5,
@@ -107,7 +121,13 @@
           "badge": 1
         }
       },
-      "payload": {},
+      "payload": {
+        "aps": {
+          "content-available": 1
+        },
+        "agent": "vie",
+        "reason": "calendar"
+      },
       "push": {
         "push_type": "background",
         "priority": 5,
@@ -137,7 +157,13 @@
           "badge": 1
         }
       },
-      "payload": {},
+      "payload": {
+        "aps": {
+          "content-available": 1
+        },
+        "agent": "vie",
+        "reason": "contacts"
+      },
       "push": {
         "push_type": "background",
         "priority": 5,

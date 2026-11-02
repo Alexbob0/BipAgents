@@ -260,22 +260,25 @@ mod tests {
 
     #[test]
     fn the_clear_part_says_nothing() {
+        use crate::notifications::Kind;
+        use crate::Dict;
         let raw = device();
-        let payload = crate::push::reply_payload("vie", "Vie", "run_1", Some("s1"), Some("Le secret"), None, "x");
+        let payload = crate::push::payload(Kind::Reply, "vie", "n_1", Some("t_1"), None, Some("run_1"), 0, &Dict::new());
         let sealed = Sealed::new("reply", "Vie", "Le secret\nMEDIA:/tmp/a.png");
         assert_eq!(sealed.body, "Le secret");
         let out = for_device(&payload, &sealed, "vie", &raw).unwrap();
         assert_eq!(out["aps"]["alert"], json!({"loc-key": "notif.reply", "body": "notif.reply"}));
-        assert_eq!(out["run_id"], "run_1");
-        assert_eq!(out["session_id"], "s1");
+        assert_eq!((out["r"].as_str(), out["c"].as_str(), out["n"].as_str()), (Some("run_1"), Some("t_1"), Some("n_1")));
         let text = serde_json::to_string(&out).unwrap();
         assert!(!text.contains("secret") && !text.contains("\"Vie\""), "{text}");
     }
 
     #[test]
     fn long_texts_fit() {
+        use crate::notifications::Kind;
+        use crate::Dict;
         let raw = device();
-        let payload = crate::push::reply_payload("vie", "Vie", "run_1", Some("s1"), None, Some(&"r".repeat(32)), "x");
+        let payload = crate::push::payload(Kind::Reply, "vie", &"n".repeat(28), Some(&"t".repeat(28)), Some(&"m".repeat(40)), Some("run_1"), 99, &Dict::new());
         for body in ["é".repeat(5000), "👋".repeat(3000), "\"\\\n".repeat(2000), "a".repeat(999)] {
             let out = for_device(&payload, &Sealed::new("reply", "Vie", &body), "vie", &raw).unwrap();
             assert!(size(&out) <= PAYLOAD_MAX, "{}", size(&out));

@@ -43,7 +43,25 @@
           "badge": 1
         }
       },
-      "payload": {},
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.room_reply",
+            "body": "notif.room_reply"
+          },
+          "thread-id": "vie/room:room_1",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "room_reply",
+        "agent": "vie",
+        "c": "room:room_1",
+        "r": "room_1"
+      },
       "push": {
         "push_type": "alert",
         "priority": 10,

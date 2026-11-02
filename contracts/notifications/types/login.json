@@ -42,7 +42,25 @@
           "badge": 1
         }
       },
-      "payload": {},
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.login",
+            "body": "notif.login"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "login",
+        "agent": "vie",
+        "c": "t_contract",
+        "r": "login_1"
+      },
       "push": {
         "push_type": "alert",
         "priority": 10,
@@ -51,7 +69,7 @@
     },
     {
       "name": "previews_on_de",
-      "about": "Login request, previews on, a German agent.",
+      "about": "Login request, a German agent.",
       "bridge": {
         "agent": "vie",
         "context": {
@@ -72,7 +90,25 @@
           "badge": 1
         }
       },
-      "payload": {},
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.login",
+            "body": "notif.login"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "login",
+        "agent": "vie",
+        "c": "t_contract",
+        "r": "login_1"
+      },
       "push": {
         "push_type": "alert",
         "priority": 10,

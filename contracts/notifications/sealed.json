@@ -22,53 +22,53 @@
       "name": "reply",
       "agent": "vie",
       "plaintext": "{\"v\":1,\"t\":\"reply\",\"title\":\"Vie\",\"body\":\"Le train de 9 h part du quai 3.\"}",
-      "enc": "BAG02+PFitm+sXpqenealU/te4zOBn+KpktP7Z4Zyaz9kzyiayF7/3AFVAi4EigmKnyxeg74xdPEmUPlu/P+olQmJLHoZo71nuVNfKs96nd9mP+OF0cU0mz2nsFNPHPkgGzkNE6KlCLBKSapo4sLB/sFjTbGLHOW5GTCDf/8gkZj7BlIdtVTScdS9I+rkXShxgXZ/aDO1M8l/bP9cxU8K+1ojP16N3o="
+      "enc": "BHjfM3/VVyh/YiWGiaLIDGc68SHQMH1XF+be8zkLCmk6JPAz0ArMJx6ctgI8CiER4wI81bNV/gppxFG3/JXB4n1Rp5eqC8DKylxQjdW9kqB/xC3vlPs4vc+j4fNp9k6or9sZtrecFT12fbyVEMR1lI0ZtE5riRjcmJvemA0fmzn6k7PmFWKnyseA7pW4m3K86NDfbn/ix1x7741WvTA8uG6N94nqy4U="
     },
     {
       "name": "accents_emoji",
       "agent": "wellness",
       "plaintext": "{\"v\":1,\"t\":\"question\",\"title\":\"Bien-être\",\"body\":\"Tu préfères 7 h ou 8 h ? 🌅\"}",
-      "enc": "BIHOh83LCiYSFxR55rE7FDkmJX9WMEGYGCIefDagbyxb8GgHnzkbQIM8Y+Z9KGemON1M0wILCMpsqwflU2VJ6M45LwDBGc/mMHzYhP6oUHT1OgYVoiRhwRqiYgmlFhJizc5jdo0q2MSgjGLIx6OsE+c59g4a7CA90XRJZmexbGJKext6OLJlH5XqCfHMfMJWIhWn6xKTDtiSh1uD9HHjPcXnhgyh9fywzbqa6WUILX3Y"
+      "enc": "BG8XQclqMukcg9PnVxSSlyRCOfXsW5l2cgplyADnMtwR1B6y+kaK7Wo8okYdLxRp1nhrEl6rZAC245bbiw4Bha0Bn3yFuUbgcU1UawjeV344hdxp5mLkUKxEq2EJ+Nb1czFQDuHHV6YlABui4PEQom4McXG9b3biYCZt6bMTplgKWJJBOR7fIu/F/g84QE0BDvVH35VoeHJr0eCY3utlhfPJbbsrGkZ/6bX5jmQFQODN"
     },
     {
       "name": "shared_agent",
       "agent": "cuisine__alex",
       "plaintext": "{\"v\":1,\"t\":\"approval\",\"title\":\"Cuisine (Alex)\",\"body\":\"Cuisine veut commander les courses (32 €).\"}",
-      "enc": "BKlv2W0noParCKBtQvwIYrZ50JYHLFEDIfizDqXW0TmFjLySjzAVXO6a5i+2S4Ek/olVul+9z9Oc2HLdIhqklbTQufevmsnY/98/NX1A1B/5xJDVRb0/Bkw0udkWzmDOiXwaVNaOPcRBde8lBY8Kvc+Ks31KPo+w08HNWDtIvnzjMw7W771oLcVe1+b9/4TmOdCYNt7B0fa+qfe7REgYka00NVMkv/liGlqc+e2gaIa3VcnMlqrcF7QKVe8MlTUpUYU="
+      "enc": "BAnTbHHB0tzFVpJPUjBjw3DHPud51mckF9PmvjJ27jfWUNOBOuMnyD3v/rTS4jofY0mn8JQsp/ZcrBwAHPIS4egmjM/mME8/J+xu9uAg7KCQw2/kiT7U61/P6PP0Z4c2uCElWyIq6LaJa3t83Zj36EFeLRRquIxHyzT8uHuoVkI/QBLoVMX5A77+ZEY7RqPVRXXcYX7Li5uCAEfjcJ/1/u086UMv8FmKx2PZQbqRpFB+svwioxhdRPLS2JwZ4wPqhwU="
     },
     {
       "name": "boite_sub",
       "agent": "vie",
       "plaintext": "{\"v\":1,\"t\":\"boite\",\"title\":\"Vie\",\"body\":\"Ton point du matin est prêt.\",\"sub\":\"Point du matin\"}",
-      "enc": "BDM5uRGNAq9itfO9ueSjgQpscQ1qyQYw8Y+PDjjCJphVH4Bc8LqsPXoQPqFc342E68XYSw4nsuw8yD1tK+JdyHP5uKUL2yJxNvooHfymgtmxc4X2ttE6+rHSQvhqT6grVWgfuLCk2C235HUghh3qBTeH56U3Js7VMv9rsanbGWyGUER2/6oZ4kprHVQiAiXbZHR/8Xcs2BlWX+5WqK6Y9VRjKloOB7+//+qNMmNvj5qZV9VH4kR2Cog/ZBo="
+      "enc": "BNX7RF6zTPXNBSgg8D68++XhdgEFi6JHtdsrzgSWw7QOVIEMuH9Xf3wn/B5yd3v0+7FoKzjuPxwiNGjaJ3QpzrtgIllDkzdQmAQC2dEuoncMtnpl0qxuryD1REyY/msOxSnDgYKZMDBn5xFuKQxlhtM+L3iDlRkQ6tZY20ZW7t1OAp8FQJ9tTpSYR7Yk+BE2eKFke+i2TlhPCcWdP8qZOUaZG8IOPitqUk859ISjGU7sjt1eCfOuqfuXpGM="
     },
     {
       "name": "empty",
       "agent": "vie",
       "plaintext": "",
-      "enc": "BEWPGlJTAhll8tGIGtqgFeYr+aB3kgwrHHDomLNT8C/CbbPP4jllt9NTMh7cIgOwVR2iGeE5gBxsyV+bd5mdanSGkHqXqIIdIALLwh0seMJWpjC3fm68ny8nIxsV"
+      "enc": "BOgacFUcZ9XaHVAAlpkQo5vI3lKK6B9h7SUmblLPBzYLBA9lKsnvYYqMFGsk3dtUz/fuNAkc1tCu0wwBmH321Fcsi8mbo5dK1D8Nha8+1PPKmFuczGZsCa/q6WWK"
     }
   ],
   "bad": [
     {
       "name": "tag_changed",
       "agent": "vie",
-      "enc": "BAG02+PFitm+sXpqenealU/te4zOBn+KpktP7Z4Zyaz9kzyiayF7/3AFVAi4EigmKnyxeg74xdPEmUPlu/P+olQmJLHoZo71nuVNfKs96nd9mP+OF0cU0mz2nsFNPHPkgGzkNE6KlCLBKSapo4sLB/sFjTbGLHOW5GTCDf/8gkZj7BlIdtVTScdS9I+rkXShxgXZ/aDO1M8l/bP9cxU8K+1ojP16N3s="
+      "enc": "BHjfM3/VVyh/YiWGiaLIDGc68SHQMH1XF+be8zkLCmk6JPAz0ArMJx6ctgI8CiER4wI81bNV/gppxFG3/JXB4n1Rp5eqC8DKylxQjdW9kqB/xC3vlPs4vc+j4fNp9k6or9sZtrecFT12fbyVEMR1lI0ZtE5riRjcmJvemA0fmzn6k7PmFWKnyseA7pW4m3K86NDfbn/ix1x7741WvTA8uG6N94nqy4Q="
     },
     {
       "name": "ciphertext_changed",
       "agent": "vie",
-      "enc": "BAG02+PFitm+sXpqenealU/te4zOBn+KpktP7Z4Zyaz9kzyiayF7/3AFVAi4EigmKnyxeg74xdPEmUPlu/P+olQmJLHoZo71nuVNfKs96nd8mP+OF0cU0mz2nsFNPHPkgGzkNE6KlCLBKSapo4sLB/sFjTbGLHOW5GTCDf/8gkZj7BlIdtVTScdS9I+rkXShxgXZ/aDO1M8l/bP9cxU8K+1ojP16N3o="
+      "enc": "BHjfM3/VVyh/YiWGiaLIDGc68SHQMH1XF+be8zkLCmk6JPAz0ArMJx6ctgI8CiER4wI81bNV/gppxFG3/JXB4n1Rp5eqC8DKylxQjdW9kqB+xC3vlPs4vc+j4fNp9k6or9sZtrecFT12fbyVEMR1lI0ZtE5riRjcmJvemA0fmzn6k7PmFWKnyseA7pW4m3K86NDfbn/ix1x7741WvTA8uG6N94nqy4U="
     },
     {
       "name": "other_agent",
       "agent": "wellness",
-      "enc": "BAG02+PFitm+sXpqenealU/te4zOBn+KpktP7Z4Zyaz9kzyiayF7/3AFVAi4EigmKnyxeg74xdPEmUPlu/P+olQmJLHoZo71nuVNfKs96nd9mP+OF0cU0mz2nsFNPHPkgGzkNE6KlCLBKSapo4sLB/sFjTbGLHOW5GTCDf/8gkZj7BlIdtVTScdS9I+rkXShxgXZ/aDO1M8l/bP9cxU8K+1ojP16N3o="
+      "enc": "BHjfM3/VVyh/YiWGiaLIDGc68SHQMH1XF+be8zkLCmk6JPAz0ArMJx6ctgI8CiER4wI81bNV/gppxFG3/JXB4n1Rp5eqC8DKylxQjdW9kqB/xC3vlPs4vc+j4fNp9k6or9sZtrecFT12fbyVEMR1lI0ZtE5riRjcmJvemA0fmzn6k7PmFWKnyseA7pW4m3K86NDfbn/ix1x7741WvTA8uG6N94nqy4U="
     },
     {
       "name": "other_device",
       "agent": "vie",
-      "enc": "BF5/sr4lWl88R44wSCk3nBNnbRI7FlCGDpk4j85VvUEBLY0SG3ZxO3hrN+eGcjKMNWV8roAIx2ZUvYJF/P61aq4sOIPmSkhwzHWNZd/nG1riyDEeZ8PNOx+Lae5ewOgwOsi1BQ=="
+      "enc": "BDBEpI90gs8MK62hL4YxWrCowuHJ/+bsqqgMnIlwuY0tPWteKMyrG8DnQxsu3I3piG/sM0peBnB0w79zxkwzOiM2WFG+zNg533cyuPh/jWa6+foKsqCi/AE8RLORmkaam8myew=="
     },
     {
       "name": "too_short",
@@ -78,7 +78,7 @@
   ],
   "payloads": [
     {
-      "variant": "approval/previews_off",
+      "variant": "approval/default",
       "agent": "vie",
       "payload": {
         "aps": {
@@ -86,12 +86,18 @@
             "loc-key": "notif.approval",
             "body": "notif.approval"
           },
-          "thread-id": "vie",
+          "thread-id": "vie/t_contract",
           "mutable-content": 1,
           "category": "APPROVAL",
-          "sound": "default"
+          "sound": "default",
+          "badge": 1
         },
+        "v": 2,
+        "n": "n_contract",
+        "t": "approval",
         "agent": "vie",
+        "c": "t_contract",
+        "r": "req_1",
         "run_id": "run_5",
         "request_id": "req_1",
         "choices": [
@@ -100,14 +106,13 @@
           "always",
           "deny"
         ],
-        "session_id": "sess_1",
-        "enc": "BBVdMkhC+yjBHPAeGpotiPwnGRO62Z8H7m1XBlMQbwzpM05DC7g7pKUtDaq0QnLPyt+ZTBY66ETlY5rqkii5UPV2LjtnSmRJVQvlgUErGEDLxLzteX0XPb9Ni0MXqm5xmvnSH0CRa4ed3Sy4o7JEIyth/hFUbHv5PNHehusL85b9Hy/xU3DZQcdbDypXxgtWJxOOtyJjQGAgqLnGEr8N"
+        "enc": "BFCeD2SYcml5qJO3Xa002Nm+zwxvaHDlqoh8zTOILNSEOlvO8Rtl20DAOe//WFxrSoacekrkHJ5L+i3jXYT7BjwclobSVyoTQTmNokHXHQBidr5Y+lCHO/NfhUIeT25vksHLO8OpO/EbyMkp1uhGOhLOCn6N6jCDsSnlzDH+8Q4+4GVEU9sa/Pj5yh5n3LGE3jPeyho28brY+LItWaAPLJ0b9uvVXF3XkdSFcm1CEr9B/LKLPQ=="
       },
       "shown": {
         "v": 1,
         "t": "approval",
         "title": "Vie",
-        "body": "pip install openpyxl"
+        "body": "Approbation requise : pip install openpyxl"
       }
     },
     {
@@ -119,26 +124,31 @@
             "loc-key": "notif.approval",
             "body": "notif.approval"
           },
-          "thread-id": "vie",
+          "thread-id": "vie/t_contract",
           "mutable-content": 1,
           "category": "APPROVAL",
-          "sound": "default"
+          "sound": "default",
+          "badge": 1
         },
+        "v": 2,
+        "n": "n_contract",
+        "t": "approval",
         "agent": "vie",
+        "c": "t_contract",
+        "r": "req_1",
         "run_id": "run_5",
         "request_id": "req_1",
         "choices": [
           "once",
           "deny"
         ],
-        "session_id": "sess_1",
-        "enc": "BBWOhIMLkbb6R2XHGRuj0VuUbmdxOImcARzya5cPbXGMnPw9Rg46fD3Q/2KvvF8nNOGGMRyDXepU147E5aYdtH7jQrV2ErmXw3jex3Xo8my0qCJPcWNtWyghNNFK5MRE/ieyfBzMy19aHzIgb01BFa8TIO23BapKRNH+aemjvHvIHOAKt1xlKqzhAgnpJqcJMrLR0GeNoPHiXwCItzQy"
+        "enc": "BAi6aFw53IGUTdYKVv1fmuPBgkvdIRr99fd40NwzyTqkz9RKj79n9XGcaoBvd02he3IdJT5o0NC46s2zBMufhfA89PbcW5OWS2RTmOTcRGJFug+0XQAAwtWayHVLM7hf80z/imJeeK6ADzEV6TcX7oev5dpRa63tXbmg/pwFLyDDFXt1U6mfqCAkJx01O14fbMF0CtMcY5GRWS1jpKvo9hrA/t0qm0KeU3P5qXuLv+U="
       },
       "shown": {
         "v": 1,
         "t": "approval",
         "title": "Vie",
-        "body": "pip install openpyxl"
+        "body": "Approval needed: pip install openpyxl"
       }
     },
     {
@@ -150,16 +160,21 @@
             "loc-key": "notif.approval",
             "body": "notif.approval"
           },
-          "thread-id": "vie",
+          "thread-id": "vie/room:room_1",
           "mutable-content": 1,
           "category": "APPROVAL",
-          "sound": "default"
+          "sound": "default",
+          "badge": 1
         },
+        "v": 2,
+        "n": "n_contract",
+        "t": "approval",
         "agent": "vie",
+        "c": "room:room_1",
+        "r": "req_2",
         "run_id": "run_5",
         "request_id": "req_2",
-        "room_id": "room_1",
-        "enc": "BJ2TCw6A7GsRVhV2c1OqFMzFiMgmlkMTU54E5I6CODrZl1Y9Hgmeyc8P2YEE7Sj0OEGGV7H4FlyQHjoPM3VxM7GitBlvWnWNfBJH5+BYyasJwuQZ26qmQ3B3wi1wwnso4/UeOIw+beffJaWqe9dZkJFs2kje7d7YQOX+AOhatXwnSKacArTGi/Izdw=="
+        "enc": "BGjvK/8hjVZ0naqyc4wbbD2Qp5FQSiKw0BpgRSMLnWxafhSDPdqbO9NxU8B+Fed9tYz5E4qGOYGvw0DAHi+LFu7pPdXbQYqTsJWkT7kucXtcgiNki93SLNS0KKK0m9sfatLntBo1N76AKiPu4kjcUw4VoGvWjl+6utzKUOglQ4HfuCvSEVeIZiQPPA=="
       },
       "shown": {
         "v": 1,
@@ -177,14 +192,20 @@
             "loc-key": "notif.approval",
             "body": "notif.approval"
           },
-          "thread-id": "vie",
+          "thread-id": "vie/t_contract",
           "mutable-content": 1,
           "category": "APPROVAL",
-          "sound": "default"
+          "sound": "default",
+          "badge": 1
         },
+        "v": 2,
+        "n": "n_contract",
+        "t": "approval",
         "agent": "vie",
+        "c": "t_contract",
+        "r": "run_5",
         "run_id": "run_5",
-        "enc": "BFgCYT3YCdnmKG46ijbgUdtwkC3XWm7Vb964SzBAA+HEBCt+do9a1pUN+NGSGX0JiNikJFIR0h0AkUR2udk/DvpoyhTdnrJA9YezfhBeXJSl4PO7ITGZOFRuuWAlbDC9HaZJFP2BLzf72Tj8wQEFYqb9uvaEeR6J9B0l+oacJIXAd/QAvRlNOJf+oQ=="
+        "enc": "BA9Fk4E9yBb11+axTg+vLQ3YDqdE5cbFsGZDg0pnshmdgs1IWbLAPxZrXTQXA25zRT51QToKe3FaZ9qfoYtxC1xIya/SS3K4yyavzRyVzrO71LmjN0bbPyYNnuTw5OhGwzFzRadB+dDKA5GnTXj4oIwEiF/wPT9lW8m7fFVi7hE0r6W17qAg/mHQlw=="
       },
       "shown": {
         "v": 1,
@@ -202,20 +223,25 @@
             "loc-key": "notif.approval",
             "body": "notif.approval"
           },
-          "thread-id": "cuisine__alex",
+          "thread-id": "cuisine__alex/t_contract",
           "mutable-content": 1,
           "category": "APPROVAL",
-          "sound": "default"
+          "sound": "default",
+          "badge": 1
         },
+        "v": 2,
+        "n": "n_contract",
+        "t": "approval",
         "agent": "cuisine__alex",
+        "c": "t_contract",
+        "r": "req_9",
         "run_id": "run_9",
         "request_id": "req_9",
         "choices": [
           "once",
           "deny"
         ],
-        "session_id": "conv_1",
-        "enc": "BAN5DLKWePNPlQT6ErUsKGjfw1nFuSNzDT8BOmjuw2onwsacHWsesuukT8+lfK+cRpsX4PKbQ7SuK2IcX0PCaUmYuj6qoUR5cG79BQSMFL0i42AToA3HEkbReoYVCWPL77ztIH2tGCSq+OCh1ccYOE0AyawD/c5xGI9ttGm7qT4oqJxVvmrIMwNwzQ=="
+        "enc": "BPrbRe50Jgvlw7TT6Yh/N4TmSu3xZPuTfPB0kvohsT+qKr0Tws6yM5AXtwUd1HaOi1Zd5PpQtC8wiAuqVJPahiV9HrjTGuIxQ4IOdwFbUyiKAZwBnWD3MVYFhsZhQ9kf+air9uCbh/Y++Z/VCS5Ah8ggmtiFRxXB6zvGoPZOQRloURA2gJ9bnF631A=="
       },
       "shown": {
         "v": 1,
@@ -233,14 +259,20 @@
             "loc-key": "notif.boite",
             "body": "notif.boite"
           },
-          "thread-id": "vie",
+          "thread-id": "vie/t_contract",
           "mutable-content": 1,
           "category": "MESSAGE",
-          "sound": "default"
+          "sound": "default",
+          "badge": 1
         },
-        "outbox_id": "o1",
+        "v": 2,
+        "n": "n_contract",
+        "t": "boite",
         "agent": "vie",
-        "enc": "BANhjCfRj8MRyOYrRQm8+06GdiNZFguZdkJMp+CsKIOTN1fVRBvSKE6E9fgQkL+RID/uKMpmW1weMid18MC6kFC7n+SMiVl3VAkkcEuh5FdDdqKbSCkvNGlWOI/r6PpZ2uJM029ddIS0VoQ+wLVN0C+98noRKltYaP0RfeCtVmB0jGH2zPkAJZ5moGe6SeFz9sXqmkqywCqWSuIguw4Eey8X0qu+g7Zo+DMe8SObqeN6uog0CUOW"
+        "c": "t_contract",
+        "m": "o_o1",
+        "r": "o1",
+        "enc": "BE6AtHM6+8tL/fCR+CETtQIlFdVqlR0am1spGC3Tnhyh9YGiE/+qeQ6mdn44zqZAtUcwKOb62IKXslnr/mQfxLMc6tIQc1nYASg75TU1C+sti6Vnz4CSz7rjWBzj2TJ1RBcLBhcoaBeiaWAEIN4kdE3/eQEIW1B7nuYpEalGn7ZNzOSuhAwL3rwcbcshNQkAR780ynX5ISGS8WbqHzye40oyz2bfImF9RgxwbkwZQZXfo8NLWm1c"
       },
       "shown": {
         "v": 1,
@@ -258,15 +290,20 @@
             "loc-key": "notif.boite",
             "body": "notif.boite"
           },
-          "thread-id": "vie",
+          "thread-id": "vie/t_contract",
           "mutable-content": 1,
           "category": "MESSAGE",
-          "sound": "default"
+          "sound": "default",
+          "badge": 1
         },
-        "outbox_id": "o2",
+        "v": 2,
+        "n": "n_contract",
+        "t": "boite",
         "agent": "vie",
-        "session_id": "sess_h",
-        "enc": "BFTpXr3aZzY80bkVxnzJXWM7qN+kYfS95COgqlla9ndpaTq9lkqnPVYBLRnu/fBoq8QuA7zto6KQWUE3o+6iYYGJNIzrHJI1v6CDgLmxW3TQ0boCFx2ppY2RAGy6+aw6xrW0dBrkSD90kPcZv6yennzq82T82ZueRxtFpYCTJF6B9HSAE/euL5fwE6AR3wqk7JWvV6InrlqiMBUoJoNC"
+        "c": "t_contract",
+        "m": "o_o2",
+        "r": "o2",
+        "enc": "BJW0UtQcdlBjPurhd6M02XKj9fLcPdo1JvG4TZFihvwGPhSU3GBIRHhxX1Bp9Vl8+Td+TraqfcvS5XXVppjaocP/vj/2bXmcaEmFSxkYyYz2l/mwLTNiZdA1UxMyaLifQFeZimrAqQe9+wsbSUf1el02Bkdn32aPzyN5SKN6WMKOl64rZhL74UNXBSH4oSLJhz4P4LeL7S1Dsq2K2p5H"
       },
       "shown": {
         "v": 1,
@@ -276,7 +313,7 @@
       }
     },
     {
-      "variant": "bot_chat_turn/previews_off",
+      "variant": "bot_chat_turn/default",
       "agent": "vie",
       "payload": {
         "aps": {
@@ -284,17 +321,20 @@
             "loc-key": "notif.reply",
             "body": "notif.reply"
           },
-          "thread-id": "vie",
+          "thread-id": "vie/t_contract",
           "mutable-content": 1,
           "category": "MESSAGE",
-          "sound": "default"
+          "sound": "default",
+          "badge": 1
         },
+        "v": 2,
+        "n": "n_contract",
+        "t": "reply",
         "agent": "vie",
-        "run_id": "session:sess_bot",
-        "kind": "reply",
-        "session_id": "sess_bot",
-        "reply_id": "r4",
-        "enc": "BPLspT8mN3qVhCkpsfjYu241BKeFzNeJH7PeHPU2ID9888OHL9Jno7um2hkNnhJ21GUuiMko9Bh9khnBxENkUmuwBDcvBh9s4BkNeUQLjwA2ElVr0eFn83e3C/+FDr2OZ+K8l0TinsZxRxafbqQi0rLkqFoxEmDk6UsYc/JYdiNABd1LJPxnYTJyRs+wTlFUc466FZK7RrX9aSDC+/rbkiNoR128Wug1G65HnKhePg=="
+        "c": "t_contract",
+        "m": "m_contract",
+        "r": "session:sess_bot",
+        "enc": "BBRMcrgjsKWznnsx/MckNL44yM9aYV6dubARK2AtOdcg44e2EvKy3UikGxSA9YvtjK8PA9kSsobmYMSDUNrcd3bp+N2w4MMNenWDUSMhXv8H/OXd0acy3lh9mw5RryMslqagAokwnKLQoXAsA+m/uxLduqoIrs1sA5YPVCG/k4z9SwEi09tIUI0sNsoyNiW1nhBkbugyJTu6lIRLBsqgKn3Uc5n01Cdi4DKlQPkZ7A=="
       },
       "shown": {
         "v": 1,
@@ -312,16 +352,19 @@
             "loc-key": "notif.connector",
             "body": "notif.connector"
           },
-          "thread-id": "vie",
+          "thread-id": "vie/t_contract",
           "mutable-content": 1,
-          "category": "MESSAGE",
-          "sound": "default"
+          "category": "CARD",
+          "sound": "default",
+          "badge": 1
         },
+        "v": 2,
+        "n": "n_contract",
+        "t": "connector",
         "agent": "vie",
-        "run_id": "session:vault",
-        "kind": "reply",
-        "connector_request": "card_1",
-        "enc": "BD6p2qrz8DFm0fYGyGMDEbBB7XUz330j9ZJvSrgcUmjmpxSCUseJI40D9kxpcg8yeL2aGkaZjMd3PhKc3jlmXguVd5VB3JcXsKAJLKvYluwuQsu3G84cFqgBb4pCWOdMqXZkiXKxCRt6aC0ph/bf2KljUhO7uCGeHQlWiQcwjciYN5Xy0fG3PZcjW5B0p4GMbSJV8nq2n8zc5mQdOk+XctQoU4k="
+        "c": "t_contract",
+        "r": "card_1",
+        "enc": "BF40T78gIzXshXi7ZdtmN0AhHnb7iKIOnFWhVpxqQTaHDBYZIbZ5+FirpKzNYTdS0beD29/jQMUv625rVN75TD/E5uFpCLcDJodEaSyzlTJJe5byJ2fwf0Pl1y5g6emzJ/XFoO1aFRBcxxx+fTFQRViT05nTy2bXmNvk88fo6Va4NMXDkfaTGOEu0X2W+wQjCLvk+p0D3n5f9hVghqVNQAA5ZmA="
       },
       "shown": {
         "v": 1,
@@ -339,16 +382,19 @@
             "loc-key": "notif.secret",
             "body": "notif.secret"
           },
-          "thread-id": "vie",
+          "thread-id": "vie/t_contract",
           "mutable-content": 1,
           "category": "MESSAGE",
-          "sound": "default"
+          "sound": "default",
+          "badge": 1
         },
+        "v": 2,
+        "n": "n_contract",
+        "t": "secret",
         "agent": "vie",
-        "run_id": "session:vault",
-        "kind": "reply",
-        "secret_request": "card_2",
-        "enc": "BPWi7fj4kXjNBHMuibx0jMS0WpyLRFBnyoFjTnBwbTqw5/gfTmyLLKb0cJc3KsKqzjR2T8iYfPMG4lhshXwYC4qkujewhWgiluQkm3h8ZU/51za+o+/VM5rsxIU4v6ifatDxEFqqlFrvKGYfO/UHgFP1QAtU48L9oY55lUOG1+nnrO97zPLDq+0zlIg+1RsN8uSmonFscZTqsmUZDEvwG4S7xC6QWEs6sA=="
+        "c": "t_contract",
+        "r": "card_2",
+        "enc": "BK+WNhja700omv5Ly3pnkI4OuWtcJxIM3JucAPOCFtwd9JvVLsTe3BPBG28yp+XF2HI+DQsN99t3jy+fFeWPX4aqJFNFP1pel5hFUuHEzM1S652ISzUNgIUlH0hASNWdjLh0+Ori1KhO0dlq6GfdNN90gnewdfMi72x4DUVvZTUEwq+O2/RH0Fm66fC1kL63s+UbJMaD0eRPNXJrwNA0Gb2I2ylFprDYQg=="
       },
       "shown": {
         "v": 1,
@@ -366,16 +412,19 @@
             "loc-key": "notif.mail_card",
             "body": "notif.mail_card"
           },
-          "thread-id": "vie",
+          "thread-id": "vie/t_contract",
           "mutable-content": 1,
-          "category": "MESSAGE",
-          "sound": "default"
+          "category": "CARD",
+          "sound": "default",
+          "badge": 1
         },
+        "v": 2,
+        "n": "n_contract",
+        "t": "mail_card",
         "agent": "vie",
-        "run_id": "session:vault",
-        "kind": "reply",
-        "mail_request": "card_3",
-        "enc": "BKgINKQFeWvgPUApjgjoYTP06w1Nq4Jypv+Lff1u2/+5Ocuv2gNinjyPJGJBhV132rQImKSm9x363co2Ksui6WhijUAwDqdD4CI0zYFCBG4tjQmYQgVdw+xWc5rxODg78EbRhxw48NrVxy2nwCdTOaRdw0NJ2DuRmwj4gHJuSWGlj4RgKaBvnPCk+j7+nIJ5iRulrrXt98hV2Oi4i8JEYODTgk8="
+        "c": "t_contract",
+        "r": "card_3",
+        "enc": "BMj6LxXvmQO/sZy7Uv0gFpLe/pC3xaadiC013xLG0aAldO8JcoeQ5PuKX0GMAakPNONmO2BiCeMv4iBZfAk7tHPnN59/Eng2OjBfsY6/S0DIwLZ5F9Jx0GdhvQ6zqBVZpDE49tQX6YD3S4ftz0H8JYKyYtBes4p5tmB12wPJhzoknNiQD3uTeGSd9GPO/xJakLavhnVTIO2kyS9nCK9TUcovtCk="
       },
       "shown": {
         "v": 1,
@@ -385,7 +434,7 @@
       }
     },
     {
-      "variant": "email_held/previews_off",
+      "variant": "email_held/default",
       "agent": "vie",
       "payload": {
         "aps": {
@@ -393,16 +442,19 @@
             "loc-key": "notif.email_held",
             "body": "notif.email_held"
           },
-          "thread-id": "vie",
+          "thread-id": "vie/t_contract",
           "mutable-content": 1,
           "category": "MESSAGE",
-          "sound": "default"
+          "sound": "default",
+          "badge": 1
         },
+        "v": 2,
+        "n": "n_contract",
+        "t": "email_held",
         "agent": "vie",
-        "run_id": "session:email",
-        "kind": "reply",
-        "email_held": "held_1",
-        "enc": "BGr5euT3kbxfwpziPmBDOAr2v1Oc/3heGjziEINaINIB6VgHBkz0jr/9IDfvGiLa+4jFIeGSSFma0yR7TtnLyJfKi5TNLZTjnhizqAGy+xufzloa3gSrynbI0xV8EwjUtQHZBXLzxUsbMFUHwwf6/ht+5cY55Ne3TcKK5T+a2wVNgO9gDkO18VlSVtjMtPIrNoaViZ6MxcXC++XEnBmkJ3A83oBnvWZBE1nsZA=="
+        "c": "t_contract",
+        "r": "held_1",
+        "enc": "BM9tBRhFjUqKj6ef7xDkBhf5fGCXl99w62v+lvVaXfTHm2OSOOZIOR3anFgR5uCU3aZnfY0PJWSgp+cbdxJAhFPM7qCn4kIZoDu6lUDGp/bPPVyiZ8g81F4g2wtZabSCQn9P6CWjKksdmQPhqILOWHu8d6HxnGO4xhV7ONjSeiBqvaqv+pXUAZV3BWP8hcLFnk1PGdudVK5aiCTOdTCyQmYgWayiS7j+EVOOjQ=="
       },
       "shown": {
         "v": 1,
@@ -420,16 +472,19 @@
             "loc-key": "notif.email_held",
             "body": "notif.email_held"
           },
-          "thread-id": "vie",
+          "thread-id": "vie/t_contract",
           "mutable-content": 1,
           "category": "MESSAGE",
-          "sound": "default"
+          "sound": "default",
+          "badge": 1
         },
+        "v": 2,
+        "n": "n_contract",
+        "t": "email_held",
         "agent": "vie",
-        "run_id": "session:email",
-        "kind": "reply",
-        "email_held": "held_1",
-        "enc": "BOHPtbGxN+vvaJdqQnlkYCTU0jZzbqj7m7YUFXAokb1SpJhzVQi3XIi4z1LetALC12dmIzCW83Ve0R47FNMpcWNaPZ47HLTENwOu+vDCDft3m6OGufrov66BR7+H5VYpigmutZCdS34P6bWK35nJ5ll4X/h5hjpwqmCCsneZs3+Yr/fb5MM8jrYuC0Jalz7XM89Qo6BpuCKD1gMAIowKKatsWiXtA1l8/KKo4Klv"
+        "c": "t_contract",
+        "r": "held_1",
+        "enc": "BKbRt/mmK+GPiu4oFSHJJ2ghUqe1xmIkzs4eMznV1wfkzxDEfFP9WQqsoorJNpKfDWcTE3OUl5THQQBBd+cLajWf4c4yqjkbb0Eia409ySbXiu1mknLbJQ9oRP94yD3xbyXgRMff5rn2ci/2le1CXxuc9g1Kl7L1DgYRTb0DSkzTWZxTxx9PWmjjjICDq5nGqdNwy6ah862FA0K+7p2rT2tmMPCOGV3vJH8xFnND"
       },
       "shown": {
         "v": 1,
@@ -439,7 +494,7 @@
       }
     },
     {
-      "variant": "family/previews_off",
+      "variant": "family/default",
       "agent": "vie",
       "payload": {
         "aps": {
@@ -447,17 +502,19 @@
             "loc-key": "notif.family",
             "body": "notif.family"
           },
-          "thread-id": "vie",
+          "thread-id": "vie/t_contract",
           "mutable-content": 1,
           "category": "MESSAGE",
-          "sound": "default"
+          "sound": "default",
+          "badge": 1
         },
+        "v": 2,
+        "n": "n_contract",
+        "t": "family",
         "agent": "vie",
-        "run_id": "session:family",
-        "kind": "reply",
-        "reply_id": "r9",
-        "family": "note_1",
-        "enc": "BOavEViw8Fg8jrRHbbvPC84CTcfpVYQ7Qb6KxJ+PiZkUv/aRz2IQpKy6LCk6qZ0AdqHuXknoBQVOOX4bFQL1Vbs+5UgueepWdTTECWZHu9ed3kfdrLJ8ShkmzFabGNwzEhQ7OUDafs4pR5TYFjZtiOvCbg185PlQFvgEOjih/ltfvaXqkw4wv659tkplSN9XQYl7vR4HPIXOpzP1hl8LHQLqas2auA=="
+        "c": "t_contract",
+        "r": "note_1",
+        "enc": "BESF6eMZ+7SKZFnnLFGwDnGm3yclTlG/1+2+42EZnc0kZg7I3n5XiQTxAz/8SItL9p8Bkgn/F2MsTGS9MrKt9CSH4EBybfdMwiHPkfaHkwlIgb8qC+O2BX3Mb5exFkRK5D4jU8qGH3EO4c4f1PJkqhszuZ0KaWY/HcvUMagvu7At2Sig/lryP/N/0sx3pTdPW/D2DpV86DXVUfupZhhy4aIbcHFcxg=="
       },
       "shown": {
         "v": 1,
@@ -467,35 +524,7 @@
       }
     },
     {
-      "variant": "family/previews_on",
-      "agent": "vie",
-      "payload": {
-        "aps": {
-          "alert": {
-            "loc-key": "notif.family",
-            "body": "notif.family"
-          },
-          "thread-id": "vie",
-          "mutable-content": 1,
-          "category": "MESSAGE",
-          "sound": "default"
-        },
-        "agent": "vie",
-        "run_id": "session:family",
-        "kind": "reply",
-        "reply_id": "r9",
-        "family": "note_1",
-        "enc": "BM8rsflP+6tMxOgMHUFCxy98/sNLt0o9tcpRtDgNXs0oPPZavlAVAg4kS6v3R6ExTtWm6AqKwMEZ8qNNx8IeXERDCiug4iUKlm+BX8E8TZ4WGkULqlB5Z3+BTsgy2BMeBSUvLkcKItscWS3esvrcqDev1pRani8I7MXCoI9yFOjBIl7bS4IEc8Zky02799XdvdmrCRMLRKiSWzEFD1poNKbTQAT5lw=="
-      },
-      "shown": {
-        "v": 1,
-        "t": "family",
-        "title": "Vie",
-        "body": "Alex : je rentre tard ce soir"
-      }
-    },
-    {
-      "variant": "handback/previews_off",
+      "variant": "handback/default",
       "agent": "vie",
       "payload": {
         "aps": {
@@ -503,17 +532,20 @@
             "loc-key": "notif.reply",
             "body": "notif.reply"
           },
-          "thread-id": "vie",
+          "thread-id": "vie/t_contract",
           "mutable-content": 1,
           "category": "MESSAGE",
-          "sound": "default"
+          "sound": "default",
+          "badge": 1
         },
+        "v": 2,
+        "n": "n_contract",
+        "t": "reply",
         "agent": "vie",
-        "run_id": "session:sess_main",
-        "kind": "reply",
-        "session_id": "sess_main",
-        "reply_id": "r5",
-        "enc": "BKATFg0Pc5kLCv751sJKqxyAtiR9qVmNCcjaiJ6GWd65BAlcLAmdi1CqN6AaDMEvzGi7lZrTsBpaAWQ1vzTTSTBhScRL9cjGNJO6Bel0JUYmjoFoZj1pgrS9SqPyHqI64G9u0JgMt/wuqOLinvceyKuHoOGB2V4mJs+IIiROwT+EuP2aGK4J4MCizTjR3J7eL2WYZhE4MDsKU1ebAtIZ12Ecw8hd0LTAPnubBxYiRHSO/1/rWnFjUGmf7mcD2niM"
+        "c": "t_contract",
+        "m": "m_contract",
+        "r": "session:sess_main",
+        "enc": "BAWRqmykgN89oW5NH24XwJM6tw0Dn/k/yp2XxrJJf/LD0GIwMpGMSzfMbhmWRczUXh6LsAorwSvk8/xpCMyn6TIKnrG8qFrXEAcfzTbjlv28aG6QqlPh5nmJbGYlH1R9IUG7YQVfzv+rifz/fS+bCfniFbgxZBccKR6W4l1YUK3pk6XRRMGt83XVoYm1vTX+tIS96sxO9RG8m1LCLSrtex45JZFoTEwsS02okiVGSJUNMKO+M8hNxgGbWAAwOZ3b"
       },
       "shown": {
         "v": 1,
@@ -523,7 +555,7 @@
       }
     },
     {
-      "variant": "login/previews_off",
+      "variant": "login/default",
       "agent": "vie",
       "payload": {
         "aps": {
@@ -531,16 +563,19 @@
             "loc-key": "notif.login",
             "body": "notif.login"
           },
-          "thread-id": "vie",
+          "thread-id": "vie/t_contract",
           "mutable-content": 1,
           "category": "MESSAGE",
-          "sound": "default"
+          "sound": "default",
+          "badge": 1
         },
+        "v": 2,
+        "n": "n_contract",
+        "t": "login",
         "agent": "vie",
-        "run_id": "session:vault",
-        "kind": "reply",
-        "login_request": "login_1",
-        "enc": "BLc9ZVbI6MUcQ+ZZ3Dft//8a3+jhgXgL8s0hx4BsDHL58OM69Ie2cNTLvQlHDk1o61foSb4O9nyX/BG1eKNJEdAoTxLXSnQm5OXd+5pogjiE3BAhlIj0nvn5lkOtZeo8FrzMYsx08B7zkJ8LvTCfwdOzH1TLAF5xUwXZzx9LCybonDiToqqwzWiYZqvmLVG/y83GwoRAiBiVYIOkT9L1FCx3mM1dBkJSdegiMd3+t8/srYhfX7jcAWy+uSDb4pcXjbbQKCL/HJWAN+w5"
+        "c": "t_contract",
+        "r": "login_1",
+        "enc": "BAS6i7O4yGFDL+WMy/Vq32Fu6VNKnrzqTpD/JZBHqAYHKv+DoeM+bGUnmkxDJgH3j9eXCy26GJG9GGhXUPnVWal8vlj6ZLN/LWXY748DRxGJoud5BfkN06Tkmr9ULqe1vl+RfvMO5jUGwFZ+rdP5VJnHfZCr7JMQRc0ZfvNNhDrcaWpQ9kGD3Jj9vhUy5ym27uYEGPEjuTMl9+RyjYOINDBSo4eASrF5e08ck1OMIrUOJxlq/GbOQyOnNT2hvXs+7FQohs21KYvI0Byc"
       },
       "shown": {
         "v": 1,
@@ -558,16 +593,19 @@
             "loc-key": "notif.login",
             "body": "notif.login"
           },
-          "thread-id": "vie",
+          "thread-id": "vie/t_contract",
           "mutable-content": 1,
           "category": "MESSAGE",
-          "sound": "default"
+          "sound": "default",
+          "badge": 1
         },
+        "v": 2,
+        "n": "n_contract",
+        "t": "login",
         "agent": "vie",
-        "run_id": "session:vault",
-        "kind": "reply",
-        "login_request": "login_1",
-        "enc": "BByFlIMpB/VQoy6nn/YSgrsOUYb7VStAT7/B4qlkz6SDjp4DoFmqDCSUppSnxXw6Iyy+EGgJjT5FFbXIpi3mbWKkraBcYLivx8+J0IPlXsZGsKm8tyYywliVoBfj85fYiz7llClOEZngJn0HN+zsVe+0W+D+gdhhf041FM+XpLiwGYcQ0CxTiKm38bciyLxctM+j69a0unzAeKB4X1TCeTnI2JO00tKVlwpw77wpLplwnhktqwjX6edP2HWZ1DGgCL2s+c3VCuFVd0P0TCgB6vDV"
+        "c": "t_contract",
+        "r": "login_1",
+        "enc": "BBR1njlG13EYKtkKwIhp4mi8Wj3VlQyb0nvaaTz5onQrxdW4vpVXk+XC76eCFCHb8wwvTDbsfC/ipaLg2dPbgG1RTna+loa75xNDTKJ2QVwiy/UUpggn5SSZd26o76YxmZZIQCGhgAO2KiwQk4cY1CZzg6042mFERWKdNY7twbP+8bhX+eP4kD4oee+HfybJD8BYQ7mWjBIVknSJzqQgxoMdXyIE2f8pmATzh8ymZB5L2ww5sK1oXv9s6IPhSz17aGObw4tBBYMY6yGLDoSNJQmA"
       },
       "shown": {
         "v": 1,
@@ -577,7 +615,7 @@
       }
     },
     {
-      "variant": "meet/previews_off",
+      "variant": "meet/default",
       "agent": "vie",
       "payload": {
         "aps": {
@@ -585,16 +623,19 @@
             "loc-key": "notif.meet",
             "body": "notif.meet"
           },
-          "thread-id": "vie",
+          "thread-id": "vie/t_contract",
           "mutable-content": 1,
           "category": "MESSAGE",
-          "sound": "default"
+          "sound": "default",
+          "badge": 1
         },
+        "v": 2,
+        "n": "n_contract",
+        "t": "meet",
         "agent": "vie",
-        "run_id": "session:meet",
-        "kind": "reply",
-        "meet": "meet_1",
-        "enc": "BGNIxNjvmYx/wWzypLoZ49+9nlF5HQ7f+zuNiH2TYpfGin54MRoPioZlS1kiYRnAmtz+XkbYJBOBRNFYxOeWe46QhTtZ+MYKuunF52rTsrAb/6m9zOzuU4tvsxnXxINDiazTq447q++n7W3pD7Ia3nq0m2xEdI/marerhzQGmmr4zEIBe8QqgSgFBf+xENqWNdug+N8zGwjaIAbG5RI11xhPWH39"
+        "c": "t_contract",
+        "r": "meet_1",
+        "enc": "BOdY2rZrMA5L5ao4MiInQwShT6bFzUmLnaZrrAjhsc2CUPL7qovmsT5Rd/VyCCdBqFJZ6TXnrPIJKRuYbpy8Y8xoO0DsQzs8lIFluFfzCU4s/6t8MeNADOT5KDAFgI/k31OzkdY4MHb5MkI+SExWGwbEH9BjQlOhKW5nxsXR/OfY0bWj4MAnuaBnrONADZc9xpv7MURIXvIdTEVGBvt89zNe0ZRs"
       },
       "shown": {
         "v": 1,
@@ -604,7 +645,7 @@
       }
     },
     {
-      "variant": "question/previews_off",
+      "variant": "question/default",
       "agent": "vie",
       "payload": {
         "aps": {
@@ -612,18 +653,21 @@
             "loc-key": "notif.question",
             "body": "notif.question"
           },
-          "thread-id": "vie",
+          "thread-id": "vie/t_contract",
           "mutable-content": 1,
           "category": "MESSAGE",
-          "sound": "default"
+          "sound": "default",
+          "badge": 1
         },
+        "v": 2,
+        "n": "n_contract",
+        "t": "question",
         "agent": "vie",
+        "c": "t_contract",
+        "r": "clr_1",
         "run_id": "run_4",
-        "kind": "question",
         "request_id": "clr_1",
-        "session_id": "sess_1",
-        "reply_id": "r7",
-        "enc": "BKxWQHEi2GJ5THeS565gVq/rGvPa0FcbJyy+kbsmCWCCa0jxkOzSw4LVHZjaZXTuxU8TdWNxSPqlBIVpiybrFrRBqyyDiXlKdsSGbX1hh2nrdVONZe27FrZt+YcSfH+sAyIGAsb1hbhMWcRaTFJTlj91nDziCR7l3i62Lhh8NbdslUixZVUNa3TtlOBgmuiA2nU/ByKkebsF5BrDsUy7psvKb4E8"
+        "enc": "BFvkF8rUtmMcrtjJdHAJR8XDHj4eEELhwqzM7M89U+8sQ6ZxhcsYeoayyDOdXVmIUNddUDKDI2xCi0/b0Y/FdQ7QUxMtTPLs+i8ZynNPCZFSw/UOO4f62BnIaUIciHSbNYXGUxfEhvl7AOim6tiz5ulclLnQZiEvELiof+vFxiWwlSWdgF2zCbCXz12Ge01Cqm3YrNeuxy+D5rGP8u+w4JXByio4"
       },
       "shown": {
         "v": 1,
@@ -633,36 +677,7 @@
       }
     },
     {
-      "variant": "question/previews_on",
-      "agent": "vie",
-      "payload": {
-        "aps": {
-          "alert": {
-            "loc-key": "notif.question",
-            "body": "notif.question"
-          },
-          "thread-id": "vie",
-          "mutable-content": 1,
-          "category": "MESSAGE",
-          "sound": "default"
-        },
-        "agent": "vie",
-        "run_id": "run_4",
-        "kind": "question",
-        "request_id": "clr_1",
-        "session_id": "sess_1",
-        "reply_id": "r7",
-        "enc": "BMNeGKVXd2SQQizRkKMbvF5IAAXLipWEVHPCqYOxsXaUMmLUCC9wd2MzOF+fnWPE2BgqG/mBl1qH01B9d/QvyecO2Q8fr61pOuv3T51AFNHBV0G3zzNXC8bJwW49Z9mX4UJg3VWs+H6cysiTgEA9JDkitabXt8VuN/hWToB9TRNQHhQ6g/bWTkRv8s3QpE3Fgi1RsLAdVi+KDvrZtk0FezfaCyxc"
-      },
-      "shown": {
-        "v": 1,
-        "t": "question",
-        "title": "Vie",
-        "body": "Quel train pour Bordeaux ?"
-      }
-    },
-    {
-      "variant": "reply/previews_off",
+      "variant": "reply/default",
       "agent": "vie",
       "payload": {
         "aps": {
@@ -670,45 +685,20 @@
             "loc-key": "notif.reply",
             "body": "notif.reply"
           },
-          "thread-id": "vie",
+          "thread-id": "vie/t_contract",
           "mutable-content": 1,
           "category": "MESSAGE",
-          "sound": "default"
+          "sound": "default",
+          "badge": 1
         },
-        "agent": "vie",
-        "run_id": "run_1",
-        "kind": "reply",
-        "session_id": "sess_1",
-        "reply_id": "r1",
-        "enc": "BMJbhG3mw1u3QLPOOG2r/MmjW71vGHX72TvGATNwVWTUbVvAOJybSzsiIR77gJp01Utwkf14fn/PSLsfskWiWraB1JEoiRCW47eB6ey6PXahj3bvD6oSb3a4J8EpCNu93EJWfI+CagmullSjX5Egw9ybF3Ib/bYD5TgBUYqB7IDDRV+BvjjC9NV8ZRnOVHIHMpXlGPwGMJtoYsUYeybaoBZ6/IwMRgmqAaA="
-      },
-      "shown": {
-        "v": 1,
+        "v": 2,
+        "n": "n_contract",
         "t": "reply",
-        "title": "Vie",
-        "body": "Voilà le résumé de ta journée."
-      }
-    },
-    {
-      "variant": "reply/previews_on",
-      "agent": "vie",
-      "payload": {
-        "aps": {
-          "alert": {
-            "loc-key": "notif.reply",
-            "body": "notif.reply"
-          },
-          "thread-id": "vie",
-          "mutable-content": 1,
-          "category": "MESSAGE",
-          "sound": "default"
-        },
         "agent": "vie",
-        "run_id": "run_1",
-        "kind": "reply",
-        "session_id": "sess_1",
-        "reply_id": "r1",
-        "enc": "BNdW0wcBVhzbDHxVD3dQeymcHeY94HJOJH7DStDI5rkDZwwtGVRtm61g0uHLp0PJlqjGPh3wsEfTKNzy41nbAhFjkbmuKNtcUSuCOx14oi/BfzuQ6To/xNvMofSM9pWlDTJcAauV6cUvjEHlLQWtATY6Ok3b234Hy9qJWsr/qRNhV2m4BANolHWBzZQ442BXzfNk+AnJ2AiY1ON6w8fYkXLZD/TGSOd4Zdk="
+        "c": "t_contract",
+        "m": "m_contract",
+        "r": "run_1",
+        "enc": "BFZyvXoTR2aHuH89ROloeCBOGdpBimfQ9+RR0jwAfDSsEmlmVbvqkW09HYm6VIG1ArV4Kvtemw4hiA6NPcF74MblmUcSFlCUXRKYUTtU3lOC0Tai7QffaYurBgERWqcsMm5APJq7QJBy2e3qCj4qtj4JpQNYmxqF1DoDiYNe+JWTdpuBVGvsg+GyaAVGKe/MM0CxYGAocGVfSpeGH6JeDTrsPXaRYD9ixAM="
       },
       "shown": {
         "v": 1,
@@ -726,16 +716,20 @@
             "loc-key": "notif.reply",
             "body": "notif.reply"
           },
-          "thread-id": "vie",
+          "thread-id": "vie/t_contract",
           "mutable-content": 1,
           "category": "MESSAGE",
-          "sound": "default"
+          "sound": "default",
+          "badge": 1
         },
+        "v": 2,
+        "n": "n_contract",
+        "t": "reply",
         "agent": "vie",
-        "run_id": "run_2",
-        "kind": "reply",
-        "reply_id": "r2",
-        "enc": "BEH0PoBMj1YxXLFP5ss9yQfr0YrXsD7eUbS+2bXdBZydS4klPlXHFtSmUKiYclracuK3OLfefk01x+Lu+/S9KAhjfopa+gB23S5IUKAhhMJDQ5rIUEfq5j2ibvw6k2+uobyzbPdfhrCCogFNfHga2s5x8pq8Lr7zlgxixcjx+hlbtbLHu21vIxuB3Ss18r4blq+h"
+        "c": "t_contract",
+        "m": "m_contract",
+        "r": "run_2",
+        "enc": "BAndWTF5favixMvtJBnSF5MvIIf1lXmRe9ob1tiJS4USqVza7hP8x4rtZlLDPCHobbiRV7qMOiJ0iiyt9udrmyik7r7Ccgj65UwGVmOe7SdFGImIfFnFipjGXQ+LGiKcrRrXAN6f4TBCDkSUixQKABFlp/5HkBBsY8UeDWIuGWyAI3uWOXdxJBG8Z4SjdoMuE/Kv"
       },
       "shown": {
         "v": 1,
@@ -753,17 +747,20 @@
             "loc-key": "notif.reply",
             "body": "notif.reply"
           },
-          "thread-id": "cuisine__alex",
+          "thread-id": "cuisine__alex/t_contract",
           "mutable-content": 1,
           "category": "MESSAGE",
-          "sound": "default"
+          "sound": "default",
+          "badge": 1
         },
+        "v": 2,
+        "n": "n_contract",
+        "t": "reply",
         "agent": "cuisine__alex",
-        "run_id": "run_3",
-        "kind": "reply",
-        "session_id": "conv_1",
-        "reply_id": "r3",
-        "enc": "BIo9CNru/ku6hstRytX4pacu70cLU5++lqqsfM6ALaD4eWwUVvincZoLHVvriE7sxSsEcciEZ622uINhNEFIWIhj7Qc0S2gg3Id6jo/kwBVwSFSODnYV9afc1nfZxwA6McvpGmKcqos2HnOXynkd9AO33TVWeWeZiGabBIQyATUVBYV/jwma8eTW9QX/s6WVDD0AEd3WxfbjH5IH"
+        "c": "t_contract",
+        "m": "m_contract",
+        "r": "run_3",
+        "enc": "BByhOrcMLVXvOBF6ogvfBddak7SHgFjc3dE0U13bIz/TF/GDgYcSzQdTxNyY3GPDKWwVK+0FYSboBxzw/hM463WB/9Jwtxx6s6x8f2gNdkygMMRT/i0pFMG7Xw94rPR0ipnJoAd0OjSNyp3hsY1PdH1lRs0UKyZKP7+ATdjnyHLFPXc1x1oyUtkooOnxQTMQeKu4IJytrnh4Fi2w"
       },
       "shown": {
         "v": 1,
@@ -773,7 +770,7 @@
       }
     },
     {
-      "variant": "room_reply/previews_off",
+      "variant": "room_reply/default",
       "agent": "vie",
       "payload": {
         "aps": {
@@ -781,17 +778,19 @@
             "loc-key": "notif.room_reply",
             "body": "notif.room_reply"
           },
-          "thread-id": "room:room_1",
+          "thread-id": "vie/room:room_1",
           "mutable-content": 1,
           "category": "MESSAGE",
-          "sound": "default"
+          "sound": "default",
+          "badge": 1
         },
+        "v": 2,
+        "n": "n_contract",
+        "t": "room_reply",
         "agent": "vie",
-        "run_id": "room:room_1",
-        "kind": "reply",
-        "reply_id": "r8",
-        "room_id": "room_1",
-        "enc": "BInCUB1Xp8+VJLjxDlo+wJ/AkWMQ0Yjx6aW1+dW7EbccUrAq8hd2uJGzrqMk1cquQ4bmNgjugSYN7vohgPpleQwg2LA3o0LCvhail/fjOZWsC/uS8kW3/b2yJMYNs9Za5iYUXy7amGNz5Scyh1fcp5tVLyruzjRlIODHo2N/Fe+xbAadhudKjWS1xPyyxK1kQmozu9Gbb3A24EmyuwVkJP+ftCCf5DGj6gVZbwo="
+        "c": "room:room_1",
+        "r": "room_1",
+        "enc": "BMQeAyR+XXQd9FxQEGOXELFG9TFJza4yutSNMFIK8VcWpa4AQsROHY+EJDSSnK/CaPGsw2Q5aKrofVu5IMLkO7jrFw/ZEdC7DvE6PABhf7pXcMdi3QKNGBxsozgTw0vYp+QmyLwBdsWI28h/2c+l08vHOkdC3Uu4/iob28G4o/IurXu9ZZPk0f/zOf32TZMSoqfkjxPVxKG+WmxT4kiyf8qvgeLBF5nj1X7H2C8="
       },
       "shown": {
         "v": 1,
@@ -801,7 +800,7 @@
       }
     },
     {
-      "variant": "scan/previews_off",
+      "variant": "scan/default",
       "agent": "vie",
       "payload": {
         "aps": {
@@ -809,15 +808,18 @@
             "loc-key": "notif.scan",
             "body": "notif.scan"
           },
-          "thread-id": "vie",
+          "thread-id": "vie/t_contract",
           "mutable-content": 1,
           "category": "MESSAGE",
-          "sound": "default"
+          "sound": "default",
+          "badge": 1
         },
+        "v": 2,
+        "n": "n_contract",
+        "t": "scan",
         "agent": "vie",
-        "run_id": "session:scan",
-        "kind": "reply",
-        "enc": "BDf3ImdzoRri308qFiXPL/dvsrRB5WnXphQiKbJ3KDw3GPc3ldXLeGugEEbcsHGFytpg61lax/+vWlUi+RwQGv+dz65B9OY7xgXx8pvh4+q3Pba+iKvS5rSjYOKEdZuaNJGECcdbq1tMGxYLfUE75d9878v/fBGkS7oR2qu472tCunN/RnjQ/1k/JuA4+wYhYZR3bU6jzuKNcbpH0H3yV8yUVaZ5xkw="
+        "c": "t_contract",
+        "enc": "BL5Xy9nvKa7jXqKQuZeI24+/muIhzR2J5/TJysac04poUOgpoKxwQvleqP2X7NXRJjm3lGq9//u3QGs2raa9pOgrxp4GpB6g2IwlAJnArtd/u10Hmxj2sdw0z67GzBao12VWPT/QwkNjs3i5c41D4/lup4PxLj0WBF6DMfcwmzWjmMe1V9OYE6IZnVgLRAabrvXtToyhtFTpdcCOW6mpKCOj+JvKjB0="
       },
       "shown": {
         "v": 1,
@@ -827,7 +829,7 @@
       }
     },
     {
-      "variant": "site/previews_off",
+      "variant": "site/default",
       "agent": "vie",
       "payload": {
         "aps": {
@@ -835,16 +837,19 @@
             "loc-key": "notif.site",
             "body": "notif.site"
           },
-          "thread-id": "vie",
+          "thread-id": "vie/t_contract",
           "mutable-content": 1,
           "category": "MESSAGE",
-          "sound": "default"
+          "sound": "default",
+          "badge": 1
         },
+        "v": 2,
+        "n": "n_contract",
+        "t": "site",
         "agent": "vie",
-        "run_id": "session:sites",
-        "kind": "reply",
-        "site_request": "site_1",
-        "enc": "BEPmDrsJrrFTBT8Fgdag9DKSqGAwMWuqj0PcgOvDzV9K5ra1PcyO1+b4oRtQXWbLvr6eJqtS9bt9eLMIJkE/fuc0vV2baBw8+gKALDVSqHGIJI0Ho6i8CUOtu/vMrGlaG1vQkOmAFdIpDU2gMDncUZuZgFPyr0kkMXQa2zy0z2gSkIk4DfH0aGdCmekaSM9Hj21MGLgWx2yag8cRQ7ftUKVB2KqpxoZEUQG5TqPJIKl52RW0t9+pztV6s3Q0WQ=="
+        "c": "t_contract",
+        "r": "site_1",
+        "enc": "BEXzOaOR4Q/z079DUk1nSIUN0PqBI4IoZv1/5nVnYX+t7KigoH+Wgq8t2GpfDyB7tq+/D/Ik5VxWNLB4YFXuy8IhUPFj12EWMV7QqI2y2MSBdo9ObM4nMizK//FRm5Uqq9ME32V0ZQFIybR5iXLlRlef0ex7gYH7RkSCp+Oje2sRYs9ZU14h14GkRKzYi41bse2ORQdcpeTLmKB8aNF8eyIRgGQQE7t4jHOsgr+7oA4x1Ef23j/anBSwU/eFYA=="
       },
       "shown": {
         "v": 1,
@@ -862,17 +867,18 @@
             "loc-key": "notif.subtask",
             "body": "notif.subtask"
           },
-          "thread-id": "vie",
+          "thread-id": "vie/t_contract",
           "mutable-content": 1,
           "category": "MESSAGE",
-          "sound": "default"
+          "sound": "default",
+          "badge": 1
         },
+        "v": 2,
+        "n": "n_contract",
+        "t": "subtask",
         "agent": "vie",
-        "run_id": "session:sess_2",
-        "kind": "reply",
-        "session_id": "sess_2",
-        "reply_id": "r6",
-        "enc": "BGv0WrUwgp46bmRG8I/6iJJTzVCu7fz1KyBI68+5zTYjab1J7bgfygBhEA5IcIRPAHDHLNqD0lkIOpFw4jGvzl1Zp14t5OAClWzFDyC2X0wj3BXvO4xRARiG8s73PEnnufzAXfXKVScf2c9T7LlLYsOde99T41IxdWpAmhT+Spto5pNtnrfnH5lk1vxus2LeLb/CdGs3DNKOqzJW"
+        "c": "t_contract",
+        "enc": "BFSsFzYkANXPgV9JtnCZTD0jhviwX1WhKmafMynnKbXfJj1PKGnXegUON98MvUxWF6/7fNZKQzAS+KuTlFxiRzlMv6sLeKSkWFIQMAJw87qxOISipwYPw6l3cSQ0WcGNAYTHKZmAxuA00bsiuP4m2dW+sA+Ac7Q9Mny2zOdagKLhgJrr8P0R2cfjnaxqzkw8KlSlz9iz5mCckFem"
       },
       "shown": {
         "v": 1,
@@ -890,16 +896,18 @@
             "loc-key": "notif.subtask",
             "body": "notif.subtask"
           },
-          "thread-id": "vie",
+          "thread-id": "vie/t_contract",
           "mutable-content": 1,
           "category": "MESSAGE",
-          "sound": "default"
+          "sound": "default",
+          "badge": 1
         },
+        "v": 2,
+        "n": "n_contract",
+        "t": "subtask",
         "agent": "vie",
-        "run_id": "session:sess_2",
-        "kind": "reply",
-        "session_id": "sess_2",
-        "enc": "BO/pM/4VM0KNt/2QBgovVSH1MhxCpuQcjT/S7gWSG5WMD9beRHUfbdzYDlWq2KfxaBrmou23xzhUWd5/ylYQWrZ8uw2q/6kW17cSOhgkmcD9Mw2eN6Ic8cK78pes3tvEhRyqoy/wfnt93NSa6jsLrghZ+WbZiLeSJSDfHegmrQJnaYTXZPZEQQQl"
+        "c": "t_contract",
+        "enc": "BA7is87eA+SUb4qukbCTrqGfuXwdV39NE5z4s/9bWZIHVs/r9EllJfevsKiGT8C5ZckQG7VQF8LE73Dtgh9FIy44pcBbWhR1bUGDSLgNPyEuduWKPhAxmnJFOsa7DpJszxngtV8/7cCs2QD/jr3wG+qw2OhSeNXSSHU8GDRLsYN3ttiXiSm5WrFn"
       },
       "shown": {
         "v": 1,
@@ -917,17 +925,19 @@
             "loc-key": "notif.task",
             "body": "notif.task"
           },
-          "thread-id": "vie",
+          "thread-id": "vie/t_contract",
           "mutable-content": 1,
           "category": "MESSAGE",
-          "sound": "default"
+          "sound": "default",
+          "badge": 1
         },
+        "v": 2,
+        "n": "n_contract",
+        "t": "task",
         "agent": "vie",
-        "run_id": "session:sess_3",
-        "kind": "reply",
-        "session_id": "sess_3",
-        "job_id": "job_1",
-        "enc": "BMcLCFskIrfLtdGGWdtZ/jq1Rs+bF+4zfDzBVlvMET3Tqg8b6rbmn4VvaDUl4eO5RWK8ptf1eGsOfHrbudcMtqh1xTdvHItSl9cxz1ts+b+RN4PnW56HJVR0kYpPJT+H3P8QyrM8Wq2ZU1meAA0BaGThY+5TKZllQJ23ZTTeAkJENNxfLhJ0D1J5NdYUZ086gjYpFMrDsWoXrTuA3/Sfqeq3z6+2sJbPEw=="
+        "c": "t_contract",
+        "r": "job_1",
+        "enc": "BDFdxBrdO+8Uc0DoovaXZdrLhlbaaOWtN+LGNyQyNLkb8i8X82Q8GzIqzBN0tbdqhLq66ec3iaCt6I9GUWSQjGT1eFEHxm6O3RO2KmkjWH7KHQ+VyH1Gwwqdiz7PmawcaNhOtdQ2ZyCNwY81rCxGKPoZ0TcDmsPR9ywGPZ8b4iz7mGiRhyWKewswvV7UvB1QImh1NVydU8/xZh6nBiAUZLE1tsKSWoi0fw=="
       },
       "shown": {
         "v": 1,
@@ -945,17 +955,19 @@
             "loc-key": "notif.task",
             "body": "notif.task"
           },
-          "thread-id": "vie",
+          "thread-id": "vie/t_contract",
           "mutable-content": 1,
           "category": "MESSAGE",
-          "sound": "default"
+          "sound": "default",
+          "badge": 1
         },
+        "v": 2,
+        "n": "n_contract",
+        "t": "task",
         "agent": "vie",
-        "run_id": "session:sess_3",
-        "kind": "reply",
-        "session_id": "sess_3",
-        "job_id": "job_1",
-        "enc": "BG4bbsSx5HfhkIMAvYjQLmNH8jaGRSjGat27OyypMIs2v6opIdabwuGIGxB6Z8SU6y1U7VR39LQRZvtja5cDxx2veGTEm/z9cGKNAIRK8v2nC2JWQqFR9RosIjHMBBPY8P8GNbZZOI/of5Yg8riTsEeHQfLWB4HpdKcIYZxvxpYSd0qMM7hjLs6QmzVI9GkMA5VVgajBqx9z2j6j2CITrLgpi2LepIIN"
+        "c": "t_contract",
+        "r": "job_1",
+        "enc": "BB+Ho0Fy0L3c9V03YkVzojz1JovqyMhGojfVeBfKzgEwawonk/9HESISV4o5Sin8kPGSRvwkOqxp4U3fkhGtaw7NSsQXVlceoryRsag1GMUPvKh/F4w7E9CAYumaWOneSpggldMUO4GI/k3G8v6whlhjEENDgPGvdhg2BMlF7B5PQk23mtwR2XuLUbe0Rt1kdva7mHGRJMghCtVPBSIMTiE+zURnBrIQ"
       },
       "shown": {
         "v": 1,
@@ -973,16 +985,19 @@
             "loc-key": "notif.task",
             "body": "notif.task"
           },
-          "thread-id": "vie",
+          "thread-id": "vie/t_contract",
           "mutable-content": 1,
           "category": "MESSAGE",
-          "sound": "default"
+          "sound": "default",
+          "badge": 1
         },
+        "v": 2,
+        "n": "n_contract",
+        "t": "task",
         "agent": "vie",
-        "run_id": "session:job",
-        "kind": "reply",
-        "job_id": "job_2",
-        "enc": "BCtf46sK5WQUTpG41haRc9kObD6iBbpKsDbmP76QGmD/lzzYxE4Lqmdq4L2hNzs0i3Z4Cjf6Ip4Wx9+twRYzXAwGWRkcPxCzUOv2tm5AsbMJB+Ctyxa3nGRCDyd+D+deLyeaJ2e/UNZ+WTEag8yQXbjSXiy4MnswIXdI82ledvStEChqSYqBYtR2bqmRaw/iPCu9hCkM7dWTu2d1Rn4NgqD901AlW5yzH6ReUSyY3zNegl6o201YWUE="
+        "c": "t_contract",
+        "r": "job_2",
+        "enc": "BBFSz+bBfznZdglXC9lN/y+QI/T19oo1OTIMAWl0F6TLwoQFoESe92Pvhsr/hbSafrFMkC8jICepEI0PCgJd6uyNtoKMOXqTp2sYqTH44a4gmDgjsHe7g4FhIDTmQ/Eh4MhFRAJMsmyZ+qZjbAHOJMG1pGLSnlhuLAgGYFoa4T0XGQJQ72DjjM2UOTnNyo/qgI/tWKQfMsopJ7YyTw4dAn7o1lq0e3esSicRMdxQWxbPzqCTFk6MIfU="
       },
       "shown": {
         "v": 1,
@@ -1000,17 +1015,19 @@
             "loc-key": "notif.task",
             "body": "notif.task"
           },
-          "thread-id": "vie",
+          "thread-id": "vie/t_contract",
           "mutable-content": 1,
           "category": "MESSAGE",
-          "sound": "default"
+          "sound": "default",
+          "badge": 1
         },
+        "v": 2,
+        "n": "n_contract",
+        "t": "task",
         "agent": "vie",
-        "run_id": "session:sess_4",
-        "kind": "reply",
-        "session_id": "sess_4",
-        "job_id": "job_3",
-        "enc": "BNbUK9HOBY9RrdMJIwYDLWyIx3QW7uzjijL6ygMc0U1zsHsyttTDSoqzD4UpoYLQk/D6PPOD6lkSjlIL+lNxiZt9h3SaP/ChjuUV6aGTuXIQAwHLuB8JdeyDuVO2M2HqhAuLZwwI+gAafqHOtyg+niMTXMtsdS9q5zWWJEi/prGV83g9LeaMu9Ciqh1On+w+LPaZnFnWr5pA2bXPNcwWGijDO4l0iZg05+hv"
+        "c": "t_contract",
+        "r": "job_3",
+        "enc": "BPwIT3Mjhv2ZvOolZuM5wSwRdUXgrVOw4+S7zUsFNkWHg0NHryy/9NySRTsa/F+Hh1LLb9Jfp1mVRCgGOAAAqH9mD5SvJCiypuldA6Nm2sRkLAF49eYqREC/zKojXNGMdbutErCSvMPp0uMhjDlfvs3ZUaSDx5kkWGxq1wTVCa4SUdHWmG46s2pV4maopJsngj5C3KW4m+ubmsyuLzm8P7yEvD/H6hjrvHoq"
       },
       "shown": {
         "v": 1,

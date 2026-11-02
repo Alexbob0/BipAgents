@@ -45,7 +45,25 @@
           "badge": 1
         }
       },
-      "payload": {},
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.task",
+            "body": "notif.task"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "task",
+        "agent": "vie",
+        "c": "t_contract",
+        "r": "job_1"
+      },
       "push": {
         "push_type": "alert",
         "priority": 10,
@@ -54,7 +72,7 @@
     },
     {
       "name": "paused",
-      "about": "A task paused at its budget (previews on).",
+      "about": "A task paused at its budget.",
       "bridge": {
         "agent": "vie",
         "context": {
@@ -77,7 +95,25 @@
           "badge": 1
         }
       },
-      "payload": {},
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.task",
+            "body": "notif.task"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "task",
+        "agent": "vie",
+        "c": "t_contract",
+        "r": "job_1"
+      },
       "push": {
         "push_type": "alert",
         "priority": 10,
@@ -109,7 +145,25 @@
           "badge": 1
         }
       },
-      "payload": {},
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.task",
+            "body": "notif.task"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "task",
+        "agent": "vie",
+        "c": "t_contract",
+        "r": "job_2"
+      },
       "push": {
         "push_type": "alert",
         "priority": 10,
@@ -141,7 +195,25 @@
           "badge": 1
         }
       },
-      "payload": {},
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.task",
+            "body": "notif.task"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "task",
+        "agent": "vie",
+        "c": "t_contract",
+        "r": "job_3"
+      },
       "push": {
         "push_type": "alert",
         "priority": 10,

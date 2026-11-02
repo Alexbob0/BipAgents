@@ -25,7 +25,7 @@
   "variants": [
     {
       "name": "default",
-      "about": "Default install: generic body, the text is fetched by the phone.",
+      "about": "A reply: neutral line in clear, the words sealed.",
       "bridge": {
         "agent": "vie",
         "context": {
@@ -47,7 +47,26 @@
           "badge": 1
         }
       },
-      "payload": {},
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.reply",
+            "body": "notif.reply"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "reply",
+        "agent": "vie",
+        "c": "t_contract",
+        "m": "m_contract",
+        "r": "run_1"
+      },
       "push": {
         "push_type": "alert",
         "priority": 10,
@@ -78,7 +97,26 @@
           "badge": 1
         }
       },
-      "payload": {},
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.reply",
+            "body": "notif.reply"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "reply",
+        "agent": "vie",
+        "c": "t_contract",
+        "m": "m_contract",
+        "r": "run_2"
+      },
       "push": {
         "push_type": "alert",
         "priority": 10,
@@ -109,7 +147,26 @@
           "badge": 1
         }
       },
-      "payload": {},
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.reply",
+            "body": "notif.reply"
+          },
+          "thread-id": "cuisine__alex/t_contract",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "reply",
+        "agent": "cuisine__alex",
+        "c": "t_contract",
+        "m": "m_contract",
+        "r": "run_3"
+      },
       "push": {
         "push_type": "alert",
         "priority": 10,
