@@ -11,11 +11,12 @@
   },
   "v2": {
     "t": "reply",
-    "c": "main or s:<root of the origin conversation>",
-    "m": "<Hermes message id>",
+    "c": "main or t_<thread>",
+    "m": "m_<message id>",
     "loc_key": "notif.reply",
     "collapse": "n",
-    "link": "bipagents://open?agent=vie&c=main&m=<id>&t=reply"
+    "link": "bipagents://open?agent=vie&c=main&m=m_<message id>&t=reply",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
   },
   "known_bugs": [
     "Same as bot_chat_turn (collapse per session)."
@@ -41,9 +42,39 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "alert": {
+            "title": "Vie",
+            "body": "Ta réponse est prête.",
+            "loc-key": "Ta réponse est prête."
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:sess_main",
+        "kind": "reply",
+        "session_id": "sess_main",
+        "reply_id": "r5"
+      },
+      "fcm_data": {
+        "title": "Vie",
+        "body": "Ta réponse est prête.",
+        "category": "MESSAGE",
+        "agent": "vie",
+        "run_id": "session:sess_main",
+        "kind": "reply",
+        "session_id": "sess_main",
+        "reply_id": "r5"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "session:sess_main"
+      },
       "relay": {
         "body": "Ta réponse est prête."
       },

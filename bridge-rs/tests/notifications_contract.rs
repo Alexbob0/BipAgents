@@ -36,8 +36,8 @@ fn type_files() -> Vec<(PathBuf, Value)> {
 
 fn built(variant: &Value) -> (Notice, notices::Built) {
     let bridge = &variant["bridge"];
-    let notice: Notice = serde_json::from_value(bridge["input"].clone())
-        .unwrap_or_else(|e| panic!("{}: input: {e}", variant["name"]));
+    let notice: Notice =
+        serde_json::from_value(bridge["input"].clone()).unwrap_or_else(|e| panic!("{}: input: {e}", variant["name"]));
     let context: Context = serde_json::from_value(bridge["context"].clone()).unwrap();
     let agent = bridge["agent"].as_str().unwrap();
     let built = notices::build(agent, &context, &notice);
@@ -57,7 +57,8 @@ fn every_variant_gives_its_payload() {
             assert_eq!(notice.follows_switch(), switch, "{label}: policy.per_agent_switch");
             let payload = Value::Object(built.payload.clone());
             let fcm = Value::Object(fcm::data_message(&payload));
-            let push = json!({"push_type": built.push_type, "priority": built.priority, "collapse_id": built.collapse_id});
+            let push =
+                json!({"push_type": built.push_type, "priority": built.priority, "collapse_id": built.collapse_id});
             if update {
                 variant["payload_v1"] = payload;
                 variant["fcm_data"] = fcm;
@@ -129,7 +130,8 @@ fn the_audit_rows_are_all_there() {
 
 #[test]
 fn the_files_follow_the_schema() {
-    let schema: Value = serde_json::from_str(&std::fs::read_to_string(contracts().join("schema.json")).unwrap()).unwrap();
+    let schema: Value =
+        serde_json::from_str(&std::fs::read_to_string(contracts().join("schema.json")).unwrap()).unwrap();
     for (path, doc) in type_files() {
         let mut errors = Vec::new();
         validate(&schema, &schema, &doc, "$", &mut errors);

@@ -11,11 +11,12 @@
   },
   "v2": {
     "t": "boite",
-    "c": "main or s:<root of the origin conversation> (never the bare routine run)",
-    "m": "outbox:<id>",
+    "c": "main or t_<thread> (never the bare routine run)",
+    "m": "outbox:<outbox id>",
     "loc_key": "notif.boite",
     "collapse": "n",
-    "link": "bipagents://open?agent=vie&c=main&m=outbox:o1&t=boite"
+    "link": "bipagents://open?agent=vie&c=main&m=outbox:o1&t=boite",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
   },
   "known_bugs": [
     "iOS always opens the main Bot Chat (ignores session_id); Android opens session_id: platforms diverge.",
@@ -42,9 +43,33 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "alert": {
+            "title": "Vie",
+            "body": "Nouveau message",
+            "loc-key": "Nouveau message"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "outbox_id": "o1",
+        "agent": "vie"
+      },
+      "fcm_data": {
+        "title": "Vie",
+        "body": "Nouveau message",
+        "category": "MESSAGE",
+        "outbox_id": "o1",
+        "agent": "vie"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": null
+      },
       "relay": {
         "body": "Nouveau message"
       },
@@ -100,9 +125,34 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "alert": {
+            "title": "Vie",
+            "body": "La recherche est finie."
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "outbox_id": "o2",
+        "agent": "vie",
+        "session_id": "sess_h"
+      },
+      "fcm_data": {
+        "title": "Vie",
+        "body": "La recherche est finie.",
+        "category": "MESSAGE",
+        "outbox_id": "o2",
+        "agent": "vie",
+        "session_id": "sess_h"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": null
+      },
       "relay": {
         "body": "Nouveau message"
       },

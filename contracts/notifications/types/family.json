@@ -12,10 +12,11 @@
   "v2": {
     "t": "family",
     "c": "main",
-    "m": "<message id of the note>",
+    "m": "m_<message id>",
     "loc_key": "notif.family",
     "collapse": "n",
-    "link": "bipagents://open?agent=vie&c=main&m=<id>&t=family"
+    "link": "bipagents://open?agent=vie&c=main&m=m_<message id>&t=family",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
   },
   "known_bugs": [
     "`family` is read by neither app: opens a new conversation (iOS) / the main one (Android)."
@@ -40,9 +41,39 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "alert": {
+            "title": "Vie",
+            "body": "Message de ta famille",
+            "loc-key": "Message de ta famille"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:family",
+        "kind": "reply",
+        "reply_id": "r9",
+        "family": "note_1"
+      },
+      "fcm_data": {
+        "title": "Vie",
+        "body": "Message de ta famille",
+        "category": "MESSAGE",
+        "agent": "vie",
+        "run_id": "session:family",
+        "kind": "reply",
+        "reply_id": "r9",
+        "family": "note_1"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "family:note_1"
+      },
       "relay": {
         "body": "Message de ta famille"
       },
@@ -98,9 +129,38 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "alert": {
+            "title": "Vie",
+            "body": "Alex : je rentre tard ce soir"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:family",
+        "kind": "reply",
+        "reply_id": "r9",
+        "family": "note_1"
+      },
+      "fcm_data": {
+        "title": "Vie",
+        "body": "Alex : je rentre tard ce soir",
+        "category": "MESSAGE",
+        "agent": "vie",
+        "run_id": "session:family",
+        "kind": "reply",
+        "reply_id": "r9",
+        "family": "note_1"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "family:note_1"
+      },
       "relay": {
         "body": "Nouveau message"
       },

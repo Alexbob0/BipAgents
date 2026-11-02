@@ -12,11 +12,12 @@
   },
   "v2": {
     "t": "task",
-    "c": "s:<root of the task's conversation> | none (proposal: Boîte › En cours)",
-    "m": "<Hermes message id> | null",
+    "c": "t_<thread> | none (proposal: Boîte › En cours)",
+    "m": "m_<message id> | null",
     "loc_key": "notif.task.<done|paused|proposed|rescued>",
     "collapse": "n",
-    "link": "bipagents://open?agent=vie&c=s:<root>&t=task (proposal: Boîte)"
+    "link": "bipagents://open?agent=vie&c=t_<thread>&t=task (proposal: Boîte)",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
   },
   "known_bugs": [
     "job_id is read by neither app; a proposal (no session) opens a conversation without a session instead of the Boîte card.",
@@ -43,9 +44,39 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "alert": {
+            "title": "Vie",
+            "body": "Tâche de fond terminée",
+            "loc-key": "Tâche de fond terminée"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:sess_3",
+        "kind": "reply",
+        "session_id": "sess_3",
+        "job_id": "job_1"
+      },
+      "fcm_data": {
+        "title": "Vie",
+        "body": "Tâche de fond terminée",
+        "category": "MESSAGE",
+        "agent": "vie",
+        "run_id": "session:sess_3",
+        "kind": "reply",
+        "session_id": "sess_3",
+        "job_id": "job_1"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "job:job_1"
+      },
       "relay": {
         "body": "Nouveau message"
       },
@@ -102,9 +133,38 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "alert": {
+            "title": "Vie",
+            "body": "Tâche de fond en pause : Billets"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:sess_3",
+        "kind": "reply",
+        "session_id": "sess_3",
+        "job_id": "job_1"
+      },
+      "fcm_data": {
+        "title": "Vie",
+        "body": "Tâche de fond en pause : Billets",
+        "category": "MESSAGE",
+        "agent": "vie",
+        "run_id": "session:sess_3",
+        "kind": "reply",
+        "session_id": "sess_3",
+        "job_id": "job_1"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "job:job_1"
+      },
       "relay": {
         "body": "Nouveau message"
       },
@@ -161,9 +221,37 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "alert": {
+            "title": "Vie",
+            "body": "Tâche de fond proposée",
+            "loc-key": "Tâche de fond proposée"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:job",
+        "kind": "reply",
+        "job_id": "job_2"
+      },
+      "fcm_data": {
+        "title": "Vie",
+        "body": "Tâche de fond proposée",
+        "category": "MESSAGE",
+        "agent": "vie",
+        "run_id": "session:job",
+        "kind": "reply",
+        "job_id": "job_2"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "job:job_2"
+      },
       "relay": {
         "body": "Nouveau message"
       },
@@ -220,9 +308,39 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "alert": {
+            "title": "Vie",
+            "body": "Continue en tâche de fond",
+            "loc-key": "Continue en tâche de fond"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:sess_4",
+        "kind": "reply",
+        "session_id": "sess_4",
+        "job_id": "job_3"
+      },
+      "fcm_data": {
+        "title": "Vie",
+        "body": "Continue en tâche de fond",
+        "category": "MESSAGE",
+        "agent": "vie",
+        "run_id": "session:sess_4",
+        "kind": "reply",
+        "session_id": "sess_4",
+        "job_id": "job_3"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "job:job_3"
+      },
       "relay": {
         "body": "Nouveau message"
       },

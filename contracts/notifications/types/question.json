@@ -11,11 +11,12 @@
   },
   "v2": {
     "t": "question",
-    "c": "s:<lineage root>",
-    "m": "<Hermes message id of the question>",
+    "c": "t_<thread>",
+    "m": "m_<message id>",
     "loc_key": "notif.question",
     "collapse": "n",
-    "link": "bipagents://open?agent=vie&c=s:<root>&m=<id>&t=question"
+    "link": "bipagents://open?agent=vie&c=t_<thread>&m=m_<message id>&t=question",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
   },
   "known_bugs": [
     "The per-agent switch off silences questions: the agent waits unseen (policy decision for Alex)."
@@ -42,9 +43,41 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "alert": {
+            "title": "Vie",
+            "body": "Une question pour toi",
+            "loc-key": "Une question pour toi"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "run_4",
+        "kind": "question",
+        "request_id": "clr_1",
+        "session_id": "sess_1",
+        "reply_id": "r7"
+      },
+      "fcm_data": {
+        "title": "Vie",
+        "body": "Une question pour toi",
+        "category": "MESSAGE",
+        "agent": "vie",
+        "run_id": "run_4",
+        "kind": "question",
+        "request_id": "clr_1",
+        "session_id": "sess_1",
+        "reply_id": "r7"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "clr_1"
+      },
       "relay": {
         "body": "Une question pour toi"
       },
@@ -102,9 +135,40 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "alert": {
+            "title": "Vie",
+            "body": "Quel train pour Bordeaux ?"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "run_4",
+        "kind": "question",
+        "request_id": "clr_1",
+        "session_id": "sess_1",
+        "reply_id": "r7"
+      },
+      "fcm_data": {
+        "title": "Vie",
+        "body": "Quel train pour Bordeaux ?",
+        "category": "MESSAGE",
+        "agent": "vie",
+        "run_id": "run_4",
+        "kind": "question",
+        "request_id": "clr_1",
+        "session_id": "sess_1",
+        "reply_id": "r7"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "clr_1"
+      },
       "relay": {
         "body": "Nouveau message"
       },

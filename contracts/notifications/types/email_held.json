@@ -15,7 +15,8 @@
     "m": null,
     "loc_key": "notif.email_held",
     "collapse": "n",
-    "link": "bipagents://open?agent=vie&n=<journal id>&t=email_held"
+    "link": "bipagents://open?agent=vie&n=<journal id>&t=email_held",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
   },
   "known_bugs": [
     "The relay drops the body (« Nouveau message »)."
@@ -39,9 +40,37 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "alert": {
+            "title": "Vie",
+            "body": "Veut écrire à quelqu'un de nouveau : ton accord est demandé",
+            "loc-key": "Veut écrire à quelqu'un de nouveau : ton accord est demandé"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:email",
+        "kind": "reply",
+        "email_held": "held_1"
+      },
+      "fcm_data": {
+        "title": "Vie",
+        "body": "Veut écrire à quelqu'un de nouveau : ton accord est demandé",
+        "category": "MESSAGE",
+        "agent": "vie",
+        "run_id": "session:email",
+        "kind": "reply",
+        "email_held": "held_1"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "email:held_1"
+      },
       "relay": {
         "body": "Nouveau message"
       },
@@ -92,9 +121,36 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "alert": {
+            "title": "Vie",
+            "body": "Wants to write to lea@example.com"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:email",
+        "kind": "reply",
+        "email_held": "held_1"
+      },
+      "fcm_data": {
+        "title": "Vie",
+        "body": "Wants to write to lea@example.com",
+        "category": "MESSAGE",
+        "agent": "vie",
+        "run_id": "session:email",
+        "kind": "reply",
+        "email_held": "held_1"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "email:held_1"
+      },
       "relay": {
         "body": "Nouveau message"
       },

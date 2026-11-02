@@ -12,10 +12,11 @@
   "v2": {
     "t": "reply",
     "c": "main",
-    "m": "<Hermes message id>",
+    "m": "m_<message id>",
     "loc_key": "notif.reply",
     "collapse": "n",
-    "link": "bipagents://open?agent=vie&c=main&m=<id>&t=reply"
+    "link": "bipagents://open?agent=vie&c=main&m=m_<message id>&t=reply",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
   },
   "known_bugs": [
     "Same collapse id (session:<sid>) and same Android notification id: each autonomous reply replaces the previous one.",
@@ -42,9 +43,39 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "alert": {
+            "title": "Vie",
+            "body": "Ta réponse est prête.",
+            "loc-key": "Ta réponse est prête."
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:sess_bot",
+        "kind": "reply",
+        "session_id": "sess_bot",
+        "reply_id": "r4"
+      },
+      "fcm_data": {
+        "title": "Vie",
+        "body": "Ta réponse est prête.",
+        "category": "MESSAGE",
+        "agent": "vie",
+        "run_id": "session:sess_bot",
+        "kind": "reply",
+        "session_id": "sess_bot",
+        "reply_id": "r4"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "session:sess_bot"
+      },
       "relay": {
         "body": "Ta réponse est prête."
       },

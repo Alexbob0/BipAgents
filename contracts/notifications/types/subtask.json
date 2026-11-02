@@ -11,11 +11,12 @@
   },
   "v2": {
     "t": "subtask",
-    "c": "s:<lineage root>",
-    "m": "<Hermes message id of the report>",
+    "c": "t_<thread>",
+    "m": "m_<message id>",
     "loc_key": "notif.subtask",
     "collapse": "n",
-    "link": "bipagents://open?agent=vie&c=s:<root>&m=<id>&t=subtask"
+    "link": "bipagents://open?agent=vie&c=t_<thread>&m=m_<message id>&t=subtask",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
   },
   "known_bugs": [
     "Collapse per session (subtask:<sid>): reports overwrite each other."
@@ -40,9 +41,39 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "alert": {
+            "title": "Vie",
+            "body": "Sous-tâche terminée",
+            "loc-key": "Sous-tâche terminée"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:sess_2",
+        "kind": "reply",
+        "session_id": "sess_2",
+        "reply_id": "r6"
+      },
+      "fcm_data": {
+        "title": "Vie",
+        "body": "Sous-tâche terminée",
+        "category": "MESSAGE",
+        "agent": "vie",
+        "run_id": "session:sess_2",
+        "kind": "reply",
+        "session_id": "sess_2",
+        "reply_id": "r6"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "subtask:sess_2"
+      },
       "relay": {
         "body": "Sous-tâche terminée"
       },
@@ -98,9 +129,37 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "alert": {
+            "title": "Vie",
+            "body": "Sous-tâche terminée",
+            "loc-key": "Sous-tâche terminée"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:sess_2",
+        "kind": "reply",
+        "session_id": "sess_2"
+      },
+      "fcm_data": {
+        "title": "Vie",
+        "body": "Sous-tâche terminée",
+        "category": "MESSAGE",
+        "agent": "vie",
+        "run_id": "session:sess_2",
+        "kind": "reply",
+        "session_id": "sess_2"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "subtask:sess_2"
+      },
       "relay": {
         "body": "Sous-tâche terminée"
       },
