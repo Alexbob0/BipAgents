@@ -1,0 +1,141 @@
+{
+  "$schema": "../schema.json",
+  "type": "family",
+  "audit_row": 11,
+  "summary": "Someone of the family passed something on to this agent.",
+  "producers": [
+    "family_news.rs:~891 -> notify_family"
+  ],
+  "policy": {
+    "per_agent_switch": false
+  },
+  "v2": {
+    "t": "family",
+    "c": "main",
+    "m": "<message id of the note>",
+    "loc_key": "notif.family",
+    "collapse": "n",
+    "link": "bipagents://open?agent=vie&c=main&m=<id>&t=family"
+  },
+  "known_bugs": [
+    "`family` is read by neither app: opens a new conversation (iOS) / the main one (Android)."
+  ],
+  "variants": [
+    {
+      "name": "previews_off",
+      "about": "A family note.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "previews": false,
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_family",
+          "args": {
+            "line": "Alex : je rentre tard ce soir",
+            "note_id": "note_1",
+            "reply_id": "r9"
+          }
+        }
+      },
+      "payload_v1": null,
+      "fcm_data": null,
+      "push": null,
+      "relay": {
+        "body": "Message de ta famille"
+      },
+      "expect": {
+        "screen": "new conversation",
+        "conversation": null,
+        "message": "none",
+        "ios": {
+          "shared_agent": false,
+          "needs_run_session": false,
+          "route": {
+            "route": "conversation",
+            "session": null,
+            "focus": false
+          },
+          "nse_fetch": "reply",
+          "presents_as_message": true
+        },
+        "android": {
+          "kind": "agent",
+          "open": {
+            "page": "conversation",
+            "session": null,
+            "focus": true
+          },
+          "channel": "messages",
+          "notification_key": "session:family",
+          "actions": [
+            "reply"
+          ],
+          "missed_reply": true,
+          "presents_as_message": true,
+          "fetch": "reply"
+        }
+      }
+    },
+    {
+      "name": "previews_on",
+      "about": "A family note with previews.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "previews": true,
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_family",
+          "args": {
+            "line": "Alex : je rentre tard ce soir",
+            "note_id": "note_1",
+            "reply_id": "r9"
+          }
+        }
+      },
+      "payload_v1": null,
+      "fcm_data": null,
+      "push": null,
+      "relay": {
+        "body": "Nouveau message"
+      },
+      "expect": {
+        "screen": "new conversation",
+        "conversation": null,
+        "message": "none",
+        "ios": {
+          "shared_agent": false,
+          "needs_run_session": false,
+          "route": {
+            "route": "conversation",
+            "session": null,
+            "focus": false
+          },
+          "nse_fetch": "reply",
+          "presents_as_message": true
+        },
+        "android": {
+          "kind": "agent",
+          "open": {
+            "page": "conversation",
+            "session": null,
+            "focus": true
+          },
+          "channel": "messages",
+          "notification_key": "session:family",
+          "actions": [
+            "reply"
+          ],
+          "missed_reply": true,
+          "presents_as_message": true,
+          "fetch": "reply"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,143 @@
+{
+  "$schema": "../schema.json",
+  "type": "boite",
+  "audit_row": 8,
+  "summary": "A Boîte message (outbox): routine report, urgent watcher, hand-back outside Bot Chat, credit note, storage card, imports.",
+  "producers": [
+    "ntfy.rs ingest -> deliver -> notify_message; callers cronwatch.rs:691, watchers.rs:616, handback.rs:656, credit.rs:309, storage_watch.rs:1388, assistant_import.rs, whatsapp_import"
+  ],
+  "policy": {
+    "per_agent_switch": false
+  },
+  "v2": {
+    "t": "boite",
+    "c": "main or s:<root of the origin conversation> (never the bare routine run)",
+    "m": "outbox:<id>",
+    "loc_key": "notif.boite",
+    "collapse": "n",
+    "link": "bipagents://open?agent=vie&c=main&m=outbox:o1&t=boite"
+  },
+  "known_bugs": [
+    "iOS always opens the main Bot Chat (ignores session_id); Android opens session_id: platforms diverge.",
+    "A routine without origin tags its run session (cron_… / local-<sha256>): Android opens the bare routine run.",
+    "Ignores the per-agent switch (muted per routine only)."
+  ],
+  "variants": [
+    {
+      "name": "main",
+      "about": "A routine's report, no session tag.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "previews": false,
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_message",
+          "args": {
+            "outbox_id": "o1",
+            "text": "Ton point du matin : 3 rendez-vous aujourd'hui.",
+            "session_id": null
+          }
+        }
+      },
+      "payload_v1": null,
+      "fcm_data": null,
+      "push": null,
+      "relay": {
+        "body": "Nouveau message"
+      },
+      "expect": {
+        "screen": "main_thread",
+        "conversation": "the agent's Bot Chat",
+        "message": "outbox:o1",
+        "ios": {
+          "shared_agent": false,
+          "needs_run_session": false,
+          "route": {
+            "route": "main_thread",
+            "focus": true,
+            "or_inbox": true
+          },
+          "nse_fetch": "outbox",
+          "presents_as_message": true
+        },
+        "android": {
+          "kind": "agent",
+          "open": {
+            "page": "conversation",
+            "session": null,
+            "focus": true
+          },
+          "channel": "messages",
+          "notification_key": "o1",
+          "actions": [
+            "reply"
+          ],
+          "missed_reply": false,
+          "presents_as_message": true,
+          "fetch": "outbox"
+        }
+      }
+    },
+    {
+      "name": "with_session",
+      "about": "A hand-back into an Historique conversation (session tag).",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "previews": true,
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_message",
+          "args": {
+            "outbox_id": "o2",
+            "text": "La recherche est finie.",
+            "session_id": "sess_h"
+          }
+        }
+      },
+      "payload_v1": null,
+      "fcm_data": null,
+      "push": null,
+      "relay": {
+        "body": "Nouveau message"
+      },
+      "expect": {
+        "screen": "main_thread (iOS) / conversation sess_h (Android)",
+        "conversation": "iOS: Bot Chat; Android: sess_h",
+        "message": "outbox:o2",
+        "ios": {
+          "shared_agent": false,
+          "needs_run_session": false,
+          "route": {
+            "route": "main_thread",
+            "focus": true,
+            "or_inbox": true
+          },
+          "nse_fetch": "outbox",
+          "presents_as_message": true
+        },
+        "android": {
+          "kind": "agent",
+          "open": {
+            "page": "conversation",
+            "session": "sess_h",
+            "focus": true
+          },
+          "channel": "messages",
+          "notification_key": "o2",
+          "actions": [
+            "reply"
+          ],
+          "missed_reply": false,
+          "presents_as_message": true,
+          "fetch": "outbox"
+        }
+      }
+    }
+  ]
+}

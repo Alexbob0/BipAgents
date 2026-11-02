@@ -1,0 +1,141 @@
+{
+  "$schema": "../schema.json",
+  "type": "subtask",
+  "audit_row": 4,
+  "summary": "A background sub-task's report Hermes left in the conversation (hand-back off).",
+  "producers": [
+    "cronwatch.rs push_report -> notify_subtask"
+  ],
+  "policy": {
+    "per_agent_switch": true
+  },
+  "v2": {
+    "t": "subtask",
+    "c": "s:<lineage root>",
+    "m": "<Hermes message id of the report>",
+    "loc_key": "notif.subtask",
+    "collapse": "n",
+    "link": "bipagents://open?agent=vie&c=s:<root>&m=<id>&t=subtask"
+  },
+  "known_bugs": [
+    "Collapse per session (subtask:<sid>): reports overwrite each other."
+  ],
+  "variants": [
+    {
+      "name": "with_line",
+      "about": "A report that made a file: its line.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "previews": false,
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_subtask",
+          "args": {
+            "session_id": "sess_2",
+            "line": "🎧 Podcast jeudi",
+            "reply_id": "r6"
+          }
+        }
+      },
+      "payload_v1": null,
+      "fcm_data": null,
+      "push": null,
+      "relay": {
+        "body": "Sous-tâche terminée"
+      },
+      "expect": {
+        "screen": "conversation",
+        "conversation": "sess_2",
+        "message": "focus by text / date",
+        "ios": {
+          "shared_agent": false,
+          "needs_run_session": false,
+          "route": {
+            "route": "conversation",
+            "session": "sess_2",
+            "focus": true
+          },
+          "nse_fetch": "reply",
+          "presents_as_message": true
+        },
+        "android": {
+          "kind": "agent",
+          "open": {
+            "page": "conversation",
+            "session": "sess_2",
+            "focus": true
+          },
+          "channel": "messages",
+          "notification_key": "session:sess_2",
+          "actions": [
+            "reply"
+          ],
+          "missed_reply": true,
+          "presents_as_message": true,
+          "fetch": "reply"
+        }
+      }
+    },
+    {
+      "name": "previews_on_no_line",
+      "about": "No line: the generic body even with previews on.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "previews": true,
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_subtask",
+          "args": {
+            "session_id": "sess_2",
+            "line": null,
+            "reply_id": null
+          }
+        }
+      },
+      "payload_v1": null,
+      "fcm_data": null,
+      "push": null,
+      "relay": {
+        "body": "Sous-tâche terminée"
+      },
+      "expect": {
+        "screen": "conversation",
+        "conversation": "sess_2",
+        "message": "focus by date only",
+        "ios": {
+          "shared_agent": false,
+          "needs_run_session": false,
+          "route": {
+            "route": "conversation",
+            "session": "sess_2",
+            "focus": true
+          },
+          "nse_fetch": "none",
+          "presents_as_message": true
+        },
+        "android": {
+          "kind": "agent",
+          "open": {
+            "page": "conversation",
+            "session": "sess_2",
+            "focus": true
+          },
+          "channel": "messages",
+          "notification_key": "session:sess_2",
+          "actions": [
+            "reply"
+          ],
+          "missed_reply": false,
+          "presents_as_message": true,
+          "fetch": "none"
+        }
+      }
+    }
+  ]
+}
