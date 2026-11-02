@@ -31,6 +31,26 @@ your mail, keep your calendar, browse the web in a real browser you can watch, a
   <img src="docs/screenshots/live.jpg" width="24%" alt="Live: hands-free voice conversation">
 </p>
 
+## 🧱 What BipAgents adds to Hermes Agent
+
+Hermes does the thinking. Between it and the apps sits the **bridge**, which turns it into agents for everyday life:
+
+- **Made for the phone**: apps instead of a terminal, a voice for each agent, hands-free Live calls, notifications
+  whose text never passes through Apple or Google, approvals answered from the lock screen.
+- **Several agents per person**, each with its own sandbox, its own real browser you can watch and take over, its
+  own tools and voice.
+- **Asks before it acts**: plain-language approvals, a vault whose passwords agents never see, capped cards with
+  every payment approved, limits on what leaves for unknown sites, a brake on runaway loops.
+- **Remembers in the open**: a Notebook you can read and edit, group chats between agents, family agents.
+- **Works with your life**: mail, calendars, contacts, reminders, health, maps, pages and files that really reach you.
+- **Works on its own, on a budget**: background tasks, watchers and routines with their cost shown and capped.
+- **Cheap to run**: fewer tokens per call, a pinned provider for the cache, sleep when unused.
+- **Easy to keep**: one-command install, updates, backups and moves; or the all-included offer, a place per person.
+
+Details, module by module, and the Hermes patches we carry: [what the bridge adds](docs/what-the-bridge-adds.md)
+([FR](docs/what-the-bridge-adds.fr.md) · [DE](docs/what-the-bridge-adds.de.md) ·
+[ES](docs/what-the-bridge-adds.es.md) · [NL](docs/what-the-bridge-adds.nl.md)).
+
 ## Two ways to use BipAgents
 
 ### ☁️ All included, by Kerfy Studio — *coming soon*
@@ -144,30 +164,6 @@ flowchart LR
 What leaves your space: each message goes to the AI model you chose, to be answered; the services an agent uses for
 you (web search, maps, weather) see its requests. Details: [what the apps send, and to whom](docs/app-data.md) ·
 [how this compares with ChatGPT and others](docs/privacy-compare.md).
-
-## 🧱 What BipAgents adds to Hermes
-
-| | Hermes alone | With BipAgents |
-|---|---|---|
-| Talking to it | terminal, chat platforms, web UI | apps for iPhone, iPad and Android: voice notes, Live calls, a web console |
-| Voices | none | a voice per agent, on the phone or the CPU (4 languages), or your own voice model |
-| Away from the app | | notifications with the reply, approvals and questions from the lock screen |
-| What it remembers for you | memory, skills | a Notebook you can read: people, tasks, records, trips, archives |
-| Browsing | a browser tool | each agent's own Chrome, watched in the conversation and taken over from the phone, with a vault |
-| Installing, updating | Hermes' installer, then config by hand | one command; `bipagents update` (the family's installs too, nightly) |
-| Several people | | one isolated space per person; households linked on purpose |
-| Prompt injection | approvals | approvals always asked, what agents read treated as data, peers limited to a chat, sandboxes without your folders or network |
-
-A few changes BipAgents needs aren't in Hermes yet: the installer applies them, and each one is offered upstream
-([`hermes/patches/`](hermes/patches/README.md)).
-
-| Patch | Why | Upstream |
-|---|---|---|
-| 0001 `clarify` in the Runs API | the agent can ask you a question with choices from the app | offered to #116259 |
-| 0004 images kept in the conversation | a follow-up question about a photo still sees the photo | replaced by #139873 (open) |
-| 0005 vault fills after the browser restarted | logins keep working when the agent's browser was closed and reopened | #136660 |
-| 0006 a peer's reply comes back to the app | when an agent asks another one, its answer reaches your conversation | local |
-| 0007 browsing only in the visible browser | agents with their own browser use it, and keep the vault | local |
 
 ## 🗂️ The repository
 

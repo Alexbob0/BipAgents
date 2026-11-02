@@ -32,6 +32,30 @@ tu peux regarder, et **te demandent avant d'agir**.
   <img src="docs/screenshots/fr/live.jpg" width="24%" alt="Live : conversation vocale mains libres">
 </p>
 
+## 🧱 Ce que BipAgents ajoute à Hermes Agent
+
+Hermes fait la réflexion. Entre lui et les apps, le **bridge** en fait des agents pour la vie de tous les jours :
+
+- **Fait pour le téléphone** : des apps au lieu d'un terminal, une voix pour chaque agent, des appels Live mains
+  libres, des notifications dont le texte ne passe jamais par Apple ou Google, des approbations depuis l'écran
+  verrouillé.
+- **Plusieurs agents par personne**, chacun avec son bac à sable, son vrai navigateur que tu peux regarder et
+  reprendre en main, ses outils et sa voix.
+- **Demande avant d'agir** : des approbations en mots simples, un coffre dont les agents ne voient jamais les mots de
+  passe, des cartes plafonnées et chaque paiement approuvé, des limites sur ce qui part vers des sites inconnus, un
+  frein contre les boucles.
+- **Une mémoire à livre ouvert** : un Carnet que tu peux lire et corriger, des discussions de groupe entre agents, des
+  agents de la famille.
+- **Branché sur ta vie** : mail, agendas, contacts, rappels, santé, cartes, pages et fichiers qui t'arrivent vraiment.
+- **Travaille seul, avec un budget** : tâches de fond, veilleurs et routines, leur coût montré et plafonné.
+- **Économe** : moins de jetons par appel, un fournisseur fixé pour le cache, mise en veille quand personne ne s'en sert.
+- **Facile à garder** : installation en une commande, mises à jour, sauvegardes et déménagements ; ou l'offre tout
+  compris, un espace par personne.
+
+Le détail, module par module, et les patches Hermes que nous portons : [ce que le bridge ajoute](docs/what-the-bridge-adds.fr.md)
+([EN](docs/what-the-bridge-adds.md) · [DE](docs/what-the-bridge-adds.de.md) ·
+[ES](docs/what-the-bridge-adds.es.md) · [NL](docs/what-the-bridge-adds.nl.md)).
+
 ## Deux façons d'utiliser BipAgents
 
 ### ☁️ Tout compris, par Kerfy Studio — *bientôt*
@@ -156,30 +180,6 @@ Ce qui sort de ton espace : chaque message part au modèle d'IA que tu as choisi
 qu'un agent utilise pour toi (recherche web, cartes, météo) voient ses requêtes. Détails :
 [ce que les apps envoient, et à qui](docs/app-data.fr.md) · [la comparaison avec ChatGPT et les
 autres](docs/privacy-compare.fr.md).
-
-## 🧱 Ce que BipAgents ajoute à Hermes
-
-| | Hermes seul | Avec BipAgents |
-|---|---|---|
-| Lui parler | terminal, plateformes de discussion, interface web | apps iPhone, iPad et Android : notes vocales, appels Live, console web |
-| Voix | aucune | une voix par agent, sur le téléphone ou le CPU (4 langues), ou ton propre modèle de voix |
-| Hors de l'app | | notifications avec la réponse, accords et questions depuis l'écran verrouillé |
-| Ce qu'il retient pour toi | mémoire, compétences | un Carnet lisible : personnes, tâches, fiches, voyages, archives |
-| Naviguer | un outil de navigation | le Chrome de chaque agent, suivi dans la conversation et repris depuis le téléphone, avec un coffre |
-| Installer, mettre à jour | l'installateur d'Hermes, puis la config à la main | une commande ; `bipagents update` (les installations de la famille aussi, chaque nuit) |
-| Plusieurs personnes | | un espace isolé par personne ; des foyers reliés exprès |
-| Injection de prompt | accords | accords toujours demandés, ce que lisent les agents traité comme des données, pairs limités à une discussion, bacs à sable sans tes dossiers ni ton réseau |
-
-Quelques changements dont BipAgents a besoin ne sont pas encore dans Hermes : l'installateur les applique, et chacun
-est proposé en amont ([`hermes/patches/`](hermes/patches/README.md)).
-
-| Patch | Pourquoi | En amont |
-|---|---|---|
-| 0001 `clarify` dans l'API Runs | l'agent peut te poser une question à choix depuis l'app | proposé à #116259 |
-| 0004 images gardées dans la conversation | une question de suite sur une photo voit encore la photo | remplacé par #139873 (ouvert) |
-| 0005 le coffre remplit après un redémarrage du navigateur | les connexions marchent encore quand le navigateur de l'agent a été fermé puis rouvert | #136660 |
-| 0006 la réponse d'un pair revient dans l'app | quand un agent en consulte un autre, sa réponse arrive dans ta conversation | local |
-| 0007 naviguer seulement dans le navigateur visible | les agents qui ont leur navigateur s'en servent, et gardent le coffre | local |
 
 ## 🗂️ Le dépôt
 
