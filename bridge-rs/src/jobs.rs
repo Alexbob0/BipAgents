@@ -941,8 +941,10 @@ impl Jobs {
     async fn ended(&self, agent: &AgentConfig, job: &mut Dict, run: &Dict) {
         let mut status = tk::str_or_empty(run.get("status"));
         let usage = match run.get("usage") {
-            Some(Value::Object(u)) => Some(u.clone()),
-            // a run stopped (its budget, a pause) comes back without its usage: its calls' real tokens
+            Some(Value::Object(u)) if !u.is_empty() => Some(u.clone()),
+            // a run stopped (its budget, a pause) comes back without its usage, one lost in a Hermes restart with an
+            // empty one (`{}`, hermes.rs `resolve_unknown`; lab 2026-11-01: its 21.9k counted as the conversation's
+            // 1.4k): its calls' real tokens
             _ => self.live_usage(agent, &tk::str_or_empty(job.get("run_id"))),
         };
         let session_id = tk::str_or_empty(job.get("session_id"));

@@ -208,6 +208,40 @@ pub fn job_id(session_id: &str) -> Option<String> {
     CRON_ID.captures(session_id).map(|c| c["job"].to_string())
 }
 
+/// The routine a run's session belongs to. Hermes 0.22.5 names a routine's run `local-<sha256>` of its creation
+/// receipt (hermes_state_keys.py `local_identity`: the profile's home, `cron-owner`, `cron:<job>:<execution>`), the
+/// execution a row of the profile's `cron/executions.db`; the older `cron_<job>_<date>_<time>` names it outright
+/// (`job_id`). Lab 2026-11-01: without it a routine's run had no job, so no mute, title nor report to its conversation.
+pub fn routine_of(config: &Config, agent: &AgentConfig, session_id: &str) -> Option<String> {
+    if let Some(job) = job_id(session_id) {
+        return Some(job);
+    }
+    if !session_id.starts_with("local-") {
+        return None;
+    }
+    let home = crate::agents_admin::profile_folder(config, agent);
+    let homes: Vec<String> = [Some(home.clone()), std::fs::canonicalize(&home).ok()]
+        .into_iter()
+        .flatten()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    let db = home.join("cron").join("executions.db");
+    let conn = rusqlite::Connection::open_with_flags(&db, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
+    let mut rows = conn.prepare("SELECT job_id, id FROM executions ORDER BY claimed_at DESC LIMIT 500").ok()?;
+    let found = rows
+        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+        .ok()?
+        .flatten()
+        .find(|(job, execution)| homes.iter().any(|h| cron_run_session(h, job, execution) == session_id));
+    found.map(|(job, _)| job)
+}
+
+/// Hermes 0.22.5's session id of a routine's run (`local_identity(profile_home, "cron-owner", "cron:<job>:<exec>")`).
+fn cron_run_session(home: &str, job: &str, execution: &str) -> String {
+    let identity = serde_json::to_string(&[home, "cron-owner", &format!("cron:{job}:{execution}")]).unwrap_or_default();
+    format!("local-{}", hex::encode(<sha2::Sha256 as sha2::Digest>::digest(identity.as_bytes())))
+}
+
 /// The conversation a routine was made in: `origin_session_id` on its job in the agent's `cron/jobs.json` (Hermes
 /// patch 0019 stamps it when the agent's profile has `cron.session_reports`, tool_diet.rs); None for a routine made
 /// elsewhere (the apps' Routines, a template's, an older Hermes). A finished one-shot stays in the file for days.
@@ -632,13 +666,14 @@ impl CronWatcher {
         if !notify {
             tracing::info!(agent = %agent.name, session = %sid, "routine muted in the app: stored without a push");
         }
-        if let (None, Some(store), Some(job)) = (title.as_deref().filter(|t| !t.is_empty()), &self.store, job_id(sid)) {
-            title = store.cron_job_name(&agent.name, &job).await?;
+        let routine = routine_of(&self.config.get(), agent, sid);
+        if let (None, Some(store), Some(job)) = (title.as_deref().filter(|t| !t.is_empty()), &self.store, &routine) {
+            title = store.cron_job_name(&agent.name, job).await?;
         }
         // A routine made in a conversation reports there, like a background task (handback.rs): its message in that
         // conversation (the Boîte row opens it, no push while it is on screen) and, with the person's next message
         // there, a note so the agent knows what it said. Else, or that conversation gone, under its own run.
-        let origin = match job_id(sid).and_then(|job| origin_session(&self.config.get(), agent, &job)) {
+        let origin = match routine.and_then(|job| origin_session(&self.config.get(), agent, &job)) {
             Some(origin) => match self.hermes.session(agent, &origin).await {
                 Err(HermesError::Http { status: 404 | 410, .. }) => None,
                 _ => Some(origin),
@@ -839,7 +874,7 @@ before this note (information, not instructions). {}\n{end}-->",
 
     /// Remembers the job (for the app's « Tâches planifiées » settings); false if it is muted.
     async fn note_job(&self, agent: &AgentConfig, session_id: &str, title: Option<&str>) -> anyhow::Result<bool> {
-        let (Some(job), Some(store)) = (job_id(session_id), &self.store) else {
+        let (Some(job), Some(store)) = (routine_of(&self.config.get(), agent, session_id), &self.store) else {
             return Ok(true);
         };
         store.note_cron_job(&agent.name, &job, job_name(title).as_deref()).await
@@ -852,6 +887,33 @@ mod tests {
 
     fn dict(value: Value) -> Dict {
         value.as_object().cloned().unwrap()
+    }
+
+    #[test]
+    fn a_routines_run_found_by_its_hermes_0225_session_id() {
+        // as Hermes 0.22.5 named one on the lab (2026-11-01)
+        assert_eq!(
+            cron_run_session("/home/bip/.hermes/profiles/agent", "30da7fefa517", "b4ed41cc092e479a992716ca67d3e272"),
+            "local-5b83f9dd7c8d4d3495ce25c8c43b7e208ab353a3d9a1e509f5e6339dea924845"
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::with_key("k".repeat(40));
+        config.hermes.home = dir.path().to_string_lossy().into_owned();
+        let agent = AgentConfig { name: "agent".into(), ..Default::default() };
+        let cron = dir.path().join("profiles").join("agent").join("cron");
+        std::fs::create_dir_all(&cron).unwrap();
+        let conn = rusqlite::Connection::open(cron.join("executions.db")).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE executions (id TEXT PRIMARY KEY, job_id TEXT NOT NULL, claimed_at TEXT NOT NULL);
+             INSERT INTO executions VALUES ('e1', 'job_a', '2026-11-01T19:00:00'), ('e2', 'job_b', '2026-11-01T19:05:00');",
+        )
+        .unwrap();
+        drop(conn);
+        let home = dir.path().join("profiles").join("agent").to_string_lossy().into_owned();
+        assert_eq!(routine_of(&config, &agent, &cron_run_session(&home, "job_b", "e2")).as_deref(), Some("job_b"));
+        assert_eq!(routine_of(&config, &agent, &cron_run_session(&home, "job_b", "e9")), None);
+        assert_eq!(routine_of(&config, &agent, "cron_fc344ed09026_20261005_075008").as_deref(), Some("fc344ed09026"));
+        assert_eq!(routine_of(&config, &agent, "api_123"), None);
     }
 
     fn msgs(value: Value) -> Vec<Dict> {

@@ -1,6 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Alexbob0 <190955252+Alexbob0@users.noreply.github.com>
+Date: Sun, 1 Nov 2026 12:44:00 +0100
+Subject: The Runs API reports each model call's usage as it ends (model.usage)
+
+Each model call's provider usage goes to agent.call_usage_callback once the session counters hold it; a run of
+POST /v1/runs turns it into a model.usage event (the call, then the run's totals so far). On v0.22.5 both run
+paths emit it: the direct one (the run's own agent) and the session authority's (wire_api_observers, totals counted
+from the turn's start since that agent is the session's cached one). The authority's run.completed usage keeps the
+turn's cache_read_tokens / cache_write_tokens beside input and output.
+
+BipAgents patch, documented in hermes/patches/README.md of the BipAgents repository.
+
+Bip-Patch: 0020-runs-model-usage-per-call
+---
+ agent/turn_usage.py                           |  15 ++
+ gateway/platforms/api_server_runs.py          |  41 ++-
+ gateway/run_turn_runner.py                    |   9 +-
+ gateway/session_api_turn.py                   |   7 +-
+ .../test_api_server_runs_model_usage.py       | 234 ++++++++++++++++++
+ 5 files changed, 302 insertions(+), 4 deletions(-)
+ create mode 100644 tests/gateway/test_api_server_runs_model_usage.py
+
+diff --git a/agent/turn_usage.py b/agent/turn_usage.py
+index 6fd993664bed79232cd57a9102cb17f9562e6a67..6bf5687664c7696d8019e32b0693c0321d1b2c55 100644
 --- a/agent/turn_usage.py
 +++ b/agent/turn_usage.py
-@@ -70,6 +70,20 @@
+@@ -70,6 +70,20 @@ def _fold_moa_usage(agent, canonical_usage):
      return _moa_client, canonical_usage, _moa_ref_cost
  
  
@@ -21,7 +46,7 @@
  def record_response_usage(
      agent: Any, response: Any, *, messages: list[dict[str, Any]], api_call_count: int,
      api_duration: float, compression_attempts: int, max_compression_attempts: int,
-@@ -179,6 +193,7 @@
+@@ -186,6 +200,7 @@ def record_response_usage(
      agent.session_cache_read_tokens += canonical_usage.cache_read_tokens
      agent.session_cache_write_tokens += canonical_usage.cache_write_tokens
      agent.session_reasoning_tokens += canonical_usage.reasoning_tokens
@@ -29,9 +54,11 @@
      # Rolling history for status-bar averages (last 10).
      with suppress(Exception):
          hist = getattr(agent, "_api_latency_history", None)
+diff --git a/gateway/platforms/api_server_runs.py b/gateway/platforms/api_server_runs.py
+index 075bd30a439b78d44f64bf3955d836457a2ff532..d3de00fced04f99f83c01602e7c21a7e5f1e061e 100644
 --- a/gateway/platforms/api_server_runs.py
 +++ b/gateway/platforms/api_server_runs.py
-@@ -343,6 +343,8 @@
+@@ -343,6 +343,8 @@ def _make_run_event_callback(self, run_id: str, loop: asyncio.AbstractEventLoop,
                  event_fields["preview"] = _tool_completed_preview(
                      kwargs.get("result"), redact_sensitive_text)
              _push(_run_event(run_id, event_type, **event_fields))
@@ -40,22 +67,32 @@
          elif event_type in {"subagent.start", "subagent.complete"}:
              event = _run_event(run_id, event_type)
              if preview is not None:
-@@ -781,8 +783,24 @@
-         value = getattr(agent, attr, 0)
-         usage[key] = int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0
+@@ -882,6 +884,34 @@ def _run_usage(agent) -> dict[str, int]:
      return usage
-+
  
-+def _model_usage_fields(usage: dict[str, Any], agent) -> dict[str, Any]:
+ 
++def _usage_counters(agent) -> dict[str, int]:
++    """The agent's session counters in the terminal ``usage`` shape plus ``reasoning_tokens`` and ``call`` (its API
++    call count); a missing or non-numeric counter reads as ``0``."""
++    counters = _run_usage(agent)
++    for key, attr in (("reasoning_tokens", "session_reasoning_tokens"), ("call", "session_api_calls")):
++        value = getattr(agent, attr, 0)
++        counters[key] = int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0
++    return counters
++
++
++def _model_usage_fields(usage: dict[str, Any], agent, base: Optional[dict[str, int]] = None) -> dict[str, Any]:
 +    """``model.usage`` payload (BipAgents patch 0020): the call's number, its provider usage, then the run's totals
 +    so far in the terminal ``usage`` shape plus reasoning. ``input_tokens`` is the whole prompt, cache reads
-+    included, as in the terminal ``usage``."""
++    included, as in the terminal ``usage``. ``base``: the counters when the run's turn started (``_usage_counters``),
++    for an agent that lives across turns (the session authority's cached agent); without it they start at 0."""
 +    def n(value: Any) -> int:
 +        return int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0
- 
-+    totals = _run_usage(agent)
-+    totals["reasoning_tokens"] = n(getattr(agent, "session_reasoning_tokens", 0))
-+    return {"call": n(getattr(agent, "session_api_calls", 0)),
++
++    now = _usage_counters(agent)
++    totals = {key: max(0, value - (base or {}).get(key, 0)) for key, value in now.items()}
++    call = totals.pop("call")
++    return {"call": call,
 +            "input_tokens": n(usage.get("prompt_tokens")), "output_tokens": n(usage.get("output_tokens")),
 +            "cache_read_tokens": n(usage.get("cache_read_tokens")),
 +            "cache_write_tokens": n(usage.get("cache_write_tokens")),
@@ -65,27 +102,104 @@
  def _served_runtime(agent) -> dict[str, str]:
      """The ``{provider, model}`` pair that actually served the turn. After a ``fallback_providers``
      switch the agent keeps the fallback runtime until the NEXT turn restores the primary, so when
-@@ -1060,11 +1078,16 @@
-         if run_id in self._stopping_run_ids:
-             _finish("cancelled")
-             return
-+        run_events = self._make_run_event_callback(run_id, loop)
-         with self._profile_scope(run.request_profile):
-             agent = self._create_agent(
--                stream_delta_callback=_text_cb, tool_progress_callback=self._make_run_event_callback(run_id, loop),
-+                stream_delta_callback=_text_cb, tool_progress_callback=run_events,
-                 interim_assistant_callback=_interim_cb, **run.agent_kwargs)
-         self._active_run_agents[run_id] = agent
-+        # Each model call's real usage as it ends (``model.usage``, patch 0020): the terminal ``usage`` comes only
-+        # with the run's end, none for a run stopped before it, too late for a client capping a run's tokens.
-+        agent.call_usage_callback = lambda usage: run_events(
-+            "model.usage", usage=_model_usage_fields(usage, agent))
-         # Same contract as gateway/run_turn_runner.py for messaging platforms: without it the clarify
-         # tool answers "not available in this execution context".
-         agent.clarify_callback = _make_clarify_callback(self, run, _api_server=_api_server)
+@@ -1095,17 +1125,24 @@ async def _execute_run(self, run: _RunLaunch, *, _api_server) -> None:
+             with observe_api_controls(run.admission, _control_cb):
+                 result, usage = await observe_api_turn(
+                     run.admission, stream_delta_callback=_text_cb,
+-                    tool_start_callback=_tool_start, tool_complete_callback=_tool_complete)
++                    tool_start_callback=_tool_start, tool_complete_callback=_tool_complete,
++                    # BipAgents 0020: each model call's usage, from the canonical turn's agent (wire_api_observers).
++                    call_usage_callback=lambda fields: tool_cb("model.usage", usage=fields))
+             # The canonical turn has no agent object here; the served pair rides on the
+             # committed usage/result runtime metadata when the turn recorded one.
+             served_runtime = ((usage or {}).get("runtime") if isinstance(usage, dict) else None) or (
+                 result.get("runtime") if isinstance(result, dict) else None) or {}
+         else:
++            run_events = self._make_run_event_callback(run_id, loop)
+             with self._profile_scope(run.request_profile):
+                 agent = self._create_agent(
+-                    stream_delta_callback=_text_cb, tool_progress_callback=self._make_run_event_callback(run_id, loop),
++                    stream_delta_callback=_text_cb, tool_progress_callback=run_events,
+                     interim_assistant_callback=_interim_cb, **run.agent_kwargs)
+             self._active_run_agents[run_id] = agent
++            # Each model call's real usage as it ends (``model.usage``, patch 0020): the terminal ``usage`` comes
++            # only with the run's end, none for a run stopped before it, too late for a client capping its tokens.
++            agent.call_usage_callback = lambda usage: run_events(
++                "model.usage", usage=_model_usage_fields(usage, agent))
+             approval_notify = _make_approval_notify(self, run, _api_server=_api_server)
+             result, usage, served_runtime = await _submit_api_worker(
+                 loop, lambda: _run_agent_sync(self, run, agent, approval_notify, _api_server=_api_server))
+diff --git a/gateway/run_turn_runner.py b/gateway/run_turn_runner.py
+index 4de4a5ae33f72d16e90d30bb2abcb3ecf9bcd301..ddf2476adb58f5bc96c400a7164f64042756062c 100644
+--- a/gateway/run_turn_runner.py
++++ b/gateway/run_turn_runner.py
+@@ -74,6 +74,8 @@ _LEDGER_PASSTHROUGH_KEYS = (
+ # Beside ``failure_reason`` and ``error``: what ``agent.error_surface.build_error_surface_from_result`` reads,
+ # so the authority's ``message.complete`` carries the same error card the TUI path builds;
+ # ``usage_window_message`` also marks a window-plan refusal for the chat rewording.
++# BipAgents 0020: the turn's cache counters kept in an API admission's usage (run.completed), beside input/output.
++_TURN_CACHE_USAGE = ("cache_read_tokens", "cache_write_tokens")
+ _FAILURE_DESCRIPTOR_KEYS = ("free_tier", "failure_retryable", "failure_resets_at", "usage_window_message")
+ 
+ 
+@@ -455,6 +457,7 @@ class TurnRunner(GatewayTurnProgressMixin, GatewaySessionAgentMixin):
+         agent.status_callback, agent.notice_callback = ctx._status_callback_sync, (
+             self._local_notice_callback_sync if local_viewer_turn(self) else self._notice_callback_sync)
+         agent.reasoning_callback = None  # per turn: a reused agent never keeps an earlier API turn's sink
++        agent.call_usage_callback = None  # likewise (BipAgents 0020: set by wire_api_observers for an API turn)
+         if self._approval_owner is not None:
+             from gateway.session_api_turn import api_execution, wire_api_observers
+             if api_execution.get() is not None:
+@@ -994,13 +997,17 @@ class TurnRunner(GatewayTurnProgressMixin, GatewaySessionAgentMixin):
+             captured = execution_result.get()
+             before = (getattr(agent, 'session_prompt_tokens', 0) or 0,
+                       getattr(agent, 'session_completion_tokens', 0) or 0)
++            cache_before = {key: getattr(agent, f'session_{key}', 0) or 0 for key in _TURN_CACHE_USAGE}
+             with notification_turn(agent, muted=ctx.mute_notification_reply, session_id=ctx.session_id or ""):
+                 result = agent.run_conversation(api_message, **kwargs)
+             if captured is not None:
+                 incoming = max(0, (getattr(agent, 'session_prompt_tokens', 0) or 0) - before[0])
+                 outgoing = max(0, (getattr(agent, 'session_completion_tokens', 0) or 0) - before[1])
+                 captured['usage'] = {'input_tokens': incoming, 'output_tokens': outgoing,
+-                                     'total_tokens': incoming + outgoing}
++                                     'total_tokens': incoming + outgoing,
++                                     # BipAgents 0020: the turn's cache reads/writes, as the direct Runs path gave.
++                                     **{key: max(0, (getattr(agent, f'session_{key}', 0) or 0) - cache_before[key])
++                                        for key in _TURN_CACHE_USAGE}}
+                 _settle_api_runtime_lock(agent, result, captured)
+             return result
+         finally:
+diff --git a/gateway/session_api_turn.py b/gateway/session_api_turn.py
+index f36146351b4b71e30b37563cf97b7881c3afeed1..27b8a3d9a8f1814dcb739b1b13d97ddfe74565e2 100644
+--- a/gateway/session_api_turn.py
++++ b/gateway/session_api_turn.py
+@@ -17,7 +17,8 @@ api_execution: ContextVar[dict | None] = ContextVar('api_execution', default=Non
+ _SETTINGS_PREFIX = 'gateway.api.settings.v1.'
+ # Request-owned sinks an API observer may register for its admission's execution.
+ _OBSERVER_KEYS = ('stream_delta_callback', 'tool_start_callback', 'tool_complete_callback',
+-                  'reasoning_callback', 'status_callback', 'interim_assistant_callback')
++                  'reasoning_callback', 'status_callback', 'interim_assistant_callback',
++                  'call_usage_callback')  # BipAgents 0020: ``model.usage`` fields of each model call
+ _TOOL_SINKS = {'tool_start_callback', 'tool_complete_callback'}
+ _SETTING_KEYS = ('ephemeral_system_prompt', 'requested_model', 'requested_provider',
+                  'model_options', 'route', 'session_model', 'confirmed_runtime_lock',
+@@ -559,6 +560,10 @@ def wire_api_observers(agent, owner, want_interim):
+         if progress is not None:
+             return progress(event_type, *args, **kwargs)
+     agent.reasoning_callback = lambda text: publish('reasoning_callback', text)
++    # BipAgents 0020: each model call's usage, with this turn's totals (the cached agent's counters run across turns).
++    from gateway.platforms.api_server_runs import _model_usage_fields, _usage_counters
++    base = _usage_counters(agent)
++    agent.call_usage_callback = lambda usage: publish('call_usage_callback', _model_usage_fields(usage, agent, base))
+     agent.status_callback = status_callback
+     agent.tool_progress_callback = tool_progress_callback
+     if want_interim:
+diff --git a/tests/gateway/test_api_server_runs_model_usage.py b/tests/gateway/test_api_server_runs_model_usage.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..c4d628f8f61308237e0824c214d5c78935506329
 --- /dev/null
 +++ b/tests/gateway/test_api_server_runs_model_usage.py
-@@ -0,0 +1,167 @@
+@@ -0,0 +1,234 @@
 +"""``model.usage`` on the Runs API (BipAgents patch 0020): each model call's real usage as it ends.
 +
 +The terminal ``usage`` arrives with ``run.completed`` only, none for a run stopped before its end, so a client
@@ -253,3 +367,70 @@
 +    assert usage[-1]["totals"]["output_tokens"] == 800
 +    completed = next(e for e in events if e["event"] == "run.completed")
 +    assert completed["usage"]["input_tokens"] == usage[-1]["totals"]["input_tokens"]
++
++
++def _counters(**values):
++    names = ("session_prompt_tokens", "session_completion_tokens", "session_total_tokens", "session_cache_read_tokens",
++             "session_cache_write_tokens", "session_reasoning_tokens", "session_api_calls")
++    return {name: values.get(name, 0) for name in names}
++
++
++def test_the_canonical_turn_reports_each_call_with_this_turns_totals():
++    """Under the session authority the run's agent is the session's cached one, whose counters run across turns:
++    ``wire_api_observers`` hands each call to the run's observer with totals counted from this turn's start."""
++    import threading
++    from gateway.session_api_turn import wire_api_observers
++
++    seen = []
++    authority = SimpleNamespace(
++        sessions={"s": SimpleNamespace(event_stream=SimpleNamespace(lock=threading.Lock(),
++                                                                    execution={"admission_id": "a1"}))},
++        check_approval_generation=lambda session_id, generation: None,
++        api_observers={"a1": [{"call_usage_callback": seen.append}]})
++    # An earlier turn of the same session already counted 100k in, 2 calls.
++    agent = SimpleNamespace(status_callback=None, interim_assistant_callback=None, tool_progress_callback=None,
++                            **_counters(session_prompt_tokens=100_000, session_completion_tokens=900,
++                                        session_total_tokens=100_900, session_cache_read_tokens=90_000,
++                                        session_api_calls=2))
++    wire_api_observers(agent, (authority, "s", 7), False)
++    agent.session_api_calls += 1
++    agent.session_prompt_tokens += 41_000
++    agent.session_completion_tokens += 500
++    agent.session_total_tokens += 41_500
++    agent.session_cache_read_tokens += 38_000
++    agent.call_usage_callback({"prompt_tokens": 41_000, "output_tokens": 500, "cache_read_tokens": 38_000,
++                               "cache_write_tokens": 0, "reasoning_tokens": 0})
++    assert seen == [{"call": 1, "input_tokens": 41_000, "output_tokens": 500, "cache_read_tokens": 38_000,
++                     "cache_write_tokens": 0, "reasoning_tokens": 0,
++                     "totals": {"input_tokens": 41_000, "output_tokens": 500, "total_tokens": 41_500,
++                                "cache_read_tokens": 38_000, "cache_write_tokens": 0, "reasoning_tokens": 0}}]
++
++
++def test_a_canonical_turns_usage_keeps_its_cache_tokens():
++    """``run.completed`` under the session authority takes the turn's usage from the admission result: input and
++    output only on v0.22.5; the turn's cache reads and writes are kept beside them (patch 0020)."""
++    from gateway.run_turn_runner import TurnRunner
++    from gateway.session_results import execution_result
++    from gateway.turn_context import TurnContext
++
++    agent = SimpleNamespace(**_counters(session_prompt_tokens=10_000, session_cache_read_tokens=8_000))
++
++    def run_conversation(message, **kwargs):
++        agent.session_prompt_tokens += 30_000
++        agent.session_completion_tokens += 400
++        agent.session_cache_read_tokens += 27_000
++        agent.session_cache_write_tokens += 1_000
++        return {"final_response": "ok"}
++
++    agent.run_conversation = run_conversation
++    turn = TurnRunner(SimpleNamespace(session_authority=None, _consume_pending_native_image_paths=lambda key: []),
++                      TurnContext(message="hello", session_id="s", session_key="api",
++                                  source=SimpleNamespace(user_id="authenticated", user_name="Owner", is_bot=False)))
++    captured = {}
++    token = execution_result.set(captured)
++    try:
++        turn._run_conversation_with_approval(agent, [], None, None, None)
++    finally:
++        execution_result.reset(token)
++    assert captured["usage"] == {"input_tokens": 30_000, "output_tokens": 400, "total_tokens": 30_400,
++                                 "cache_read_tokens": 27_000, "cache_write_tokens": 1_000}

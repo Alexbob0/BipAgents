@@ -130,7 +130,8 @@ def test_an_install_switches_implementation_and_back(bridges, fakes):
                                b"\r\nOn mange ?")
     fakes.hermes.runs["run_wait"] = [__import__("threading").Event()]
     fakes.hermes.run_info["run_wait"] = {"status": "waiting_for_approval", "session_id": "api_bot",
-                                         "approval": {"request_id": "req_x", "command": "ls", "choices": ["once", "deny"]}}
+                                         "pending_controls": [{"kind": "approval", "prompt_id": "req_x", "execution_generation": 1,
+                                                               "command": "ls", "choices": ["once", "deny"]}]}
     fakes.hermes.add_session("s1", [{"role": "user", "content": "Bonjour"}, {"role": "assistant", "content": "Salut !"}])
     fakes.hermes.add_session("live1", [{"role": "user", "content": "Je pars."}, {"role": "assistant", "content": "Bon voyage."}])
     bridge.start()

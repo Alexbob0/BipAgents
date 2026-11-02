@@ -2,10 +2,10 @@
 //! 2026-10-23). The agents' `vault_create_login` and `vault_confirm_login`, on an MCP entry of their own,
 //! `bipagents_vault` (same token as the bridge's other tools), for the agents that may hold credentials.
 //!
-//! Why the bridge and not Hermes' `browser_vault_*`: the bridge keeps the vault's master copy, reaches the agent's
+//! Why the bridge and not Hermes' `browser_vault`: the bridge keeps the vault's master copy, reaches the agent's
 //! visible browser over DevTools (card_fill.rs) and raises its own approval cards; the password is made, typed and
 //! kept here, so it never crosses the agent's Hermes, its model or its conversation. Once kept, it is written into the
-//! agent's own Hermes vault like any login, so `browser_vault_fill` logs in with it later.
+//! agent's own Hermes vault like any login, so `browser_vault` (`fill`) logs in with it later.
 //!
 //! An account, step by step:
 //!
@@ -112,7 +112,8 @@ pub fn tools() -> Vec<Value> {
         json!({
             "name": CONFIRM,
             "description": format!("After {CREATE}: the site has accepted the account (you saw its confirmation \
-        page or message). The login stops waiting for confirmation in the vault; log in later with browser_vault_fill."),
+        page or message). The login stops waiting for confirmation in the vault; log in later with the vault's fill \
+        (browser_vault)."),
             "inputSchema": {"type": "object", "properties": {
                 "site": {"type": "string"},
                 "username": {"type": "string"},
@@ -664,8 +665,8 @@ async fn create(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> anyh
     if let Some(item) = state.vault.login_for(&origin, &username)? {
         if !(item.created_by.as_deref() == Some(agent.name.as_str()) && item.pending) {
             return Ok(refusal(&format!(
-                "A login for {username} on {host} is already in the vault: log in with browser_vault_list and \
-                 browser_vault_fill instead of creating an account."
+                "A login for {username} on {host} is already in the vault: log in with the vault (browser_vault: list, \
+                 then fill) instead of creating an account."
             )));
         }
     }
@@ -736,7 +737,7 @@ async fn confirm(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> any
     state.vault.confirm_login(&item.id, Some(&agent.name)).await?;
     tracing::info!(agent = %agent.name, item = %item.id, "created login confirmed by the agent");
     Ok(text(&format!(
-        "Confirmed: « {} » is kept in the vault. Log in later with browser_vault_list and browser_vault_fill.",
+        "Confirmed: « {} » is kept in the vault. Log in later with the vault (browser_vault: list, then fill).",
         item.label
     )))
 }

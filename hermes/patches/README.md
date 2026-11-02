@@ -3,102 +3,62 @@
 Patches for [Hermes Agent](https://github.com/NousResearch/hermes-agent) that the BipAgents app relies on,
 until equivalent changes land upstream.
 
-- **Hermes base commit:** `517b5e10f` (upstream `main` of 2026-10-08, v0.21.6+140). Every patch applies
-  cleanly there.
-- **Apply** from the root of a Hermes checkout at that commit: `git apply hermes/patches/<patch>`.
-- **Upstream check:** `git apply --check` against upstream `main` at `a62979dc36` (2026-10-10, 380 commits
-  after the base). It was run on a temporary index, without installing anything.
+- **Hermes base:** the stable release **v0.22.5** (`bf0203a794`, 2026-10-22), in `BASE`; the installer pins it
+  (`HERMES_COMMIT`, installer/bipinstall/hermes.py). Every patch applies cleanly there, in order.
+- **Apply** from the root of a Hermes checkout at that commit: `git apply hermes/patches/<patch>`, in order.
+- Until 2026-11-01 the base was `517b5e10f` (upstream `main` of 2026-10-08): that set, its `next/` variants and the
+  sections of the patches dropped since (0001, 0004, 0012) are in git history (`git show 7618e0a1:hermes/patches/`).
 
-Numbers 0002 and 0003 were local patches of an install set up by hand: 0003's synchronous peer reply became
-0006, 0002 is no longer needed (Hermes filters the roster agents see on its own).
+**Upstream.** 0005 is proposed as NousResearch/hermes-agent#136660 (its head is written for main's later browser
+modules; the patch here is the same behaviour on v0.22.5's). Candidates for small upstream PRs: 0014, 0011, 0019's
+labels, 0008's fall-back fix, 0017, 0009's `!name`, 0013.
 
-**`next/`: the same patches for a newer Hermes.** People update Hermes whenever they want
-(`install.sh hermes-update`). When a patch no longer applies there, the installer tries its version in `next/`,
-rebased on upstream `main` at `97a9ae8ee` (2026-10-11): 0001 and 0004 (0005 applies as is). Same behaviour and
-wire contract as the base patches; refreshed when upstream moves past them.
+| Patch | Files touched (v0.22.5) |
+|---|---|
+| 0005 vault fills after the browser restarted | `tools/browser_vault_tool.py` |
+| 0006 synchronous peer reply | `tools/bot_mode_dm.py` |
+| 0007 `browser.vault_only` | `model_tools.py` |
+| 0008 time zone, routines, wall clock | `hermes_time.py`, `cron/jobs.py`, `tools/environments/base.py`, `hermes_cli/config_defaults.py` |
+| 0009 tool search `!name`, compact skill categories | `tools/tool_search.py`, `agent/prompt_builder.py` |
+| 0010 empty replies: changed retries, tool calls written as text | `agent/leaked_tool_calls.py` (new), `agent/turn_*.py`, `agent/chat_completion_helpers.py` |
+| 0011 titles with GLM: thinking floored to low | `agent/auxiliary_reasoning_floor.py` |
+| 0013 MCP results: vault passwords scrubbed | `tools/mcp_tool_handlers.py` |
+| 0014 routine tool results in plain UTF-8 | `tools/cronjob_tools.py` |
+| 0015 time anchor: the time with each message | `agent/prompt_builder.py`, `agent/system_prompt.py`, `cron/scheduler_prompt.py`, `hermes_state_common.py` |
+| 0016 one `message_agent`, the bridge's (0012 folded in) | `tools/bot_mode_dm.py`, `tools/mcp_tool_agent.py` |
+| 0017 address items with name, phone, e-mail | `agent/vault_store.py`, `agent/vault_login_classifier.py` |
+| 0018 guest turns: closed tools, no USER.md | `agent/guest_turn.py` (new), `agent/*`, `gateway/platforms/api_server*.py`, `gateway/session_api_turn.py`, `gateway/session_execution.py`, `gateway/run_turn_runner.py` |
+| 0019 routines report to their conversation | `tools/tool_labels.py`, `cron/jobs.py`, `tools/cronjob_*.py`, `gateway/platforms/api_server.py` |
+| 0020 Runs API: each model call's usage (`model.usage`) | `agent/turn_usage.py`, `gateway/platforms/api_server_runs.py`, `gateway/session_api_turn.py`, `gateway/run_turn_runner.py` |
 
-**Upstream.** 0005 is proposed as NousResearch/hermes-agent#136660. 0001 is offered to the open #116259 (branch
-`Alexbob0:feat/runs-api-clarify`, rebased on `97a9ae8ee`, 80 tests passing) rather than as a competing PR. 0004 is
-replaced upstream by NousResearch/hermes-agent#139873 (same replay window, using the copy Hermes already keeps of each
-image, which is swept after 24 h); 0004 goes once a Hermes update brings it.
+## How the patches are kept
 
-| Patch | On `517b5e10f` | On upstream `main` (`a62979dc36`) |
-|---|---|---|
-| 0001 api_server clarify | applies | **does not apply as is**: context conflict in `gateway/platforms/api_server_runs.py` (upstream switched `"web.Request"` annotations to `web.Request`); `git apply --3way` applies `api_server.py` cleanly and only needs that conflict resolved. Upstream has no clarify support in the Runs API yet. |
-| 0004 image store | applies | applies |
-| 0005 vault fill re-attach | applies | not checked yet |
-| 0006 synchronous peer reply | applies | applies (`f86276d2eb`, 2026-10-13) |
-| 0007 browser vault only | applies | applies (`97a9ae8ee`, checked 2026-10-22) |
-| 0008 time zone, routines, wall clock | applies | applies (`97a9ae8ee`, checked 2026-10-24) |
-| 0009 tool search: tools kept direct, skills by name | applies | `tool_search.py` applies; `prompt_builder.py` does not on `97a9ae8ee` (the skills index moved): redo at the next update |
-| 0010 empty replies: changed retries, tool calls written as text | applies | applies (`97a9ae8ee`, `patch --dry-run`, checked 2026-10-27) |
-| 0011 titles with GLM: thinking floored to low | applies | applies (`97a9ae8ee`, checked 2026-10-28) |
-| 0012 Bot Chat: one `message_agent` | applies (after 0006) | not checked yet |
-| 0013 MCP results: vault passwords scrubbed | applies | applies (`97a9ae8ee`: the file is the same, checked 2026-10-28) |
-| 0014 routine tool results in plain UTF-8 | applies | applies (`8acb7f6580`, `patch --dry-run`, checked 2026-10-28) |
-| 0015 time anchor: the time with each message | applies (after 0009) | applies (`8acb7f6580`, `patch --dry-run`, checked 2026-10-29) |
-| 0016 `message_agent`: the bridge's, Bot Chat included | applies (after 0012) | not checked yet |
-| 0017 address items with name, phone, e-mail | applies | applies (`0b4481ad9c`, `patch --dry-run`, checked 2026-10-29) |
-| 0018 guest turns: closed tools, no USER.md | applies (after 0001–0017) | `agent/` applies; `gateway/platforms/api_server*.py` **does not** on `d050956633` (context moved): redo the two gateway files at the next update |
-| 0019 routines report to their conversation | applies (after 0001–0018) | not checked yet |
-| 0020 Runs API: each model call's usage (`model.usage`) | applies (after 0001–0019) | not checked yet |
+**They are exported from a git branch** (`scripts/hermes-patches.sh`), not edited by hand: the series is a branch of
+commits on upstream Hermes at `BASE`, one commit per patch, its message the patch's title and a `Bip-Patch: <file
+name>` trailer, which names the file (stable numbers: a dropped patch leaves a gap). In any clone of
+NousResearch/hermes-agent (`git clone --filter=blob:none` is enough):
 
-## 0001 — `clarify` in the Runs API
+```sh
+scripts/hermes-patches.sh branch  ~/src/hermes hermes/patches                    # bip/patches-v0.22.5 from the files
+# … fix, test, commit (git commit --fixup=<commit> + git rebase -i --autosquash for a change to one patch) …
+scripts/hermes-patches.sh export  ~/src/hermes bip/patches-v0.22.5 hermes/patches
+scripts/hermes-patches.sh check   ~/src/hermes hermes/patches                    # the installer's own apply, on BASE
+```
 
-**Problem.** `platform_toolsets.api_server` can enable the `clarify` tool, but the api_server adapter never
-gives the agent a clarify callback. An agent driven through `POST /v1/runs` that asks a question gets
-"Clarify tool is not available in this execution context", so an app cannot show the agent's question
-with its choices. Approvals already work end to end.
+A move to a newer Hermes: `branch`, `git rebase --onto <new base> <old base> <branch>` (resolve, run the touched
+modules' tests), `export <hermes> <branch> hermes/patches <new base>` (BASE rewritten, files of dropped patches
+removed), the installer's `HERMES_COMMIT` moved, and this README. `export` writes `git format-patch` files with fixed
+settings (`--full-index`, `--zero-commit`, no signature): the same commits give the same bytes (the hash of these files
+is the version id of the servers' shared Hermes).
 
-**What the patch does.** It mirrors the approval bridge:
-- a per-run clarify callback sends a `clarify.request` event on the run's SSE stream, sets the run status
-  to `waiting_for_input` and waits for the answer, a stop or `agent.clarify_timeout`; batches of
-  questions are supported;
-- `POST /v1/runs/{run_id}/clarify` answers (`{"request_id", "answers": {qid: text | [texts] | null}}`) or
-  dismisses (`{"request_id", "cancel": true}`); 404 when nothing is pending, 409 when already resolved,
-  400 on incomplete answers;
-- the run emits `clarify.responded` and `clarify.cancelled` (reason `timeout`, `stopped` or `cancelled`),
-  and `/stop`, run retirement and the orphan sweep release a waiting question;
-- `GET /v1/capabilities` advertises `"run_clarify": true`.
-
-Clients that never receive `clarify.request` see no change.
-
-**Files.** `gateway/platforms/api_server.py`, `gateway/platforms/api_server_runs.py`.
-
-**Tests.** No dedicated test file. The existing `tests/gateway/test_api_server_runs*.py` pass, and the
-flow was checked end to end against a live gateway.
-
-## 0004 — keep images in the conversation for follow-up questions
-
-**Problem.** The session database stores user messages as text only: an attached image becomes
-`[screenshot]`. Each new run rebuilds its history from that database, so after the first turn the model
-no longer sees the photo and cannot answer a follow-up question about it.
-
-**What the patch does.**
-- When a user message is saved, its `data:` images are written once to
-  `<HERMES_HOME>/image_store/<sha256>.<ext>`, with a small reference file per message under
-  `image_store/refs/`. The database row and the session messages API stay text only, with no base64.
-  A remote URL is not kept for replay: the provider would fetch it again on every request, and an
-  expired link would break every later turn. It reads as an older image, and keeps its position so
-  the next images stay on their own markers.
-- Writes go through `mkdir_under_hermes_home`, so a save that lands after `hermes profile delete`
-  never brings a deleted agent's folder back.
-- When a request is built, and only for a model that sees images natively, the 3 most recent images
-  of the conversation are put back as `image_url` parts where their `[screenshot]` marker was. Older
-  markers read `[image envoyée plus tôt]` ("image sent earlier"). The result depends only on the
-  history, so the server's prefix cache stays valid from one turn to the next.
-- Cleanup: each session keeps references to its 3 newest images only; deleting a session drops its
-  references; a sweep at gateway startup drops references whose message is gone (deleted session,
-  compaction). A file is removed once no reference points to it.
-
-**Files.** `agent/image_store.py` (new), `agent/session_persistence.py`, `agent/turn_context.py`,
-`gateway/run.py`, `hermes_state_sessions.py`, `tests/agent/test_image_store_local.py` (new, 13 tests).
-
-The remote-URL, marker-position and deleted-profile fixes come from the maintainer's review of the
-upstream PR (NousResearch/hermes-agent#136217, commit `28dd115949d`).
-
-**Upstream note.** The placeholder text for older images is in French; an upstream version would use
-English or make it configurable.
+**How the installer puts them on.** Each patch as is (`git apply`); one that no longer applies (a Hermes updated past
+`BASE` with `hermes-update`) is merged with `git apply --3way` from the full blob ids its index lines carry, guarded
+(`hermes.apply_3way`): `--3way --check` reports success on a merge with conflicts, and `--3way` works through the
+index, so the installer stages the touched files, merges for real, puts them back as they were on a conflict or when
+nothing changed, and leaves the index as a plain `git apply` does. On `BASE` the fallback never runs. A patch also
+reverse-checks alone on the fully patched tree, so a second run sees it as already there. `hermes-update` runs
+`hermes update --keep-stash`: whatever is still changed in Hermes' code after our patches came off (a patch of an
+older BipAgents) stays parked in `git stash` instead of coming back on the new version.
 
 ## 0005 — vault fills after the browser restarted
 
@@ -296,27 +256,6 @@ failed with and without the patch (`test_marker_prefix_matches_gateway_constant`
 environment). `git apply --check` passes on `517b5e10f` (no other patch touches these files) and on `97a9ae8ee`.
 Not yet run end to end against EUrouter.
 
-## 0012 — the Bot Chat shows one `message_agent`
-
-**Problem.** Since 2026-10-28 the bridge offers its own `message_agent` (`mcp__bipagents__message_agent`,
-bridge-rs/src/agent_messages.rs) to an agent linked to another one, kept direct by the token diet, because Hermes'
-built-in reaches only the agent's « Bot Chat ». In that Bot Chat the model then saw both. The bridge can't hide its
-tool there: Hermes lists an MCP server's tools once per connection, with nothing about the session.
-
-**What the patch does.** Where the built-in is injected (`ensure_message_agent_tool`, once per turn, and
-`_reinject_authorized_dynamic_tools` on an MCP rebuild), any MCP tool named `mcp__<server>__message_agent` leaves the
-tool list and `valid_tool_names`: one way to write to an agent in the Bot Chat (the built-in, with the peer routes),
-the bridge's everywhere else. Deterministic for the session, so the prompt cache holds. A tool behind the tool search
-is not touched (the diet keeps this one direct).
-
-**Files.** `tools/bot_mode_dm.py`, `tools/mcp_tool_agent.py`; new `tests/tools/test_bot_mode_dm_one_message_agent.py`
-(4 tests). Applies after 0006 (same file).
-
-**Tests.** The new file, `tests/tools/test_bot_mode_dm.py`, `test_bot_mode_dm_sync_peer.py`, `test_bot_relay.py`,
-`test_refresh_agent_mcp_tools.py`, `test_bot_mode_probe.py`, `test_bot_mode_dm_entry.py`: 167 passed, 3 skipped
-(Python 3.12). The series 0001…0012 applies in order on `517b5e10f`. The bridge's side is unchanged (its black-box
-`test_agent_messages.py` still covers the tool's name and its direct entry).
-
 ## 0013 — MCP tool results: vault passwords scrubbed
 
 **Problem.** Hermes registers a password with its redaction boundary when `browser_vault_fill` types it, and scrubs
@@ -397,6 +336,9 @@ marker would be neutral (`bip:` is BipAgents' notes prefix) and the hint shown o
 messages.
 
 ## 0016 — `message_agent`: the bridge's, even in the Bot Chat
+
+*0012 (« the Bot Chat shows one `message_agent` »: the MCP one dropped where the built-in is offered) is folded in
+since v0.22.5: what is left is 0016's rule, and 0012's unused `drop_mcp_message_agent` is gone.*
 
 **Problem.** Since 2026-10-29 the bridge's `message_agent` (`mcp__bipagents__message_agent`) asks the other agent in
 the two agents' own conversation « A ⇄ B » (bridge-rs/src/agent_pairs.rs), not in the target's « Bot Chat », the
@@ -580,3 +522,80 @@ matching totals).
 passed, 6 skipped, 1 failed (`tests/agent/test_plugin_prompt_sections.py`, order-dependent: it passes alone, with and
 without 0020). The bridge's side: rooms.rs (`turn_limit`, the turn loop), runs.rs (`RunUsage`, `cap`), jobs.rs
 (`live_usage`) and `tests/agents_rooms_relay.rs`.
+
+## Moving to v0.22.5 (2026-11-01)
+
+The series rebased from `517b5e10f` on v0.22.5 (`bf0203a794`), branch `bip/patches-v0.22.5`; the installer pins
+v0.22.5 and `hermes-update` is no longer held. Every patch applies with `git apply` on `bf0203a794`, in order, and with
+`git apply --3way` (same tree); each reverse-checks alone on the patched tree (0012 did not, under 0016, which is why
+`lab.py local` said « 0012 NOT applied (neither way) »). Its « 0010 NOT applied » had another cause: 0010 reverse-checks
+on `517b5e10f` with the whole series, so the lab's Hermes carried an older text of 0010 (before the 2026-10-28
+restriction), applied when that Hermes was built.
+
+| Patch | On v0.22.5 |
+|---|---|
+| 0001 clarify in the Runs API | **dropped**: v0.22.5 has its own (`POST /v1/runs/{id}/clarify`, `clarify.request` / `clarify.settled` events, one `answer` string, no batch or cancel). The bridge moves to that contract. |
+| 0004 images kept for follow-up questions | **dropped**: upstream #139873 (in v0.22.3: replayed from Hermes' own media copy, swept after 24 h). |
+| 0005 vault fills after the browser restarted | **kept** (applies as is). The head of #136660 does not apply: it is written for main's later browser modules (`browser_session*`). Same behaviour as the PR (the configured browser first, resolved afresh); its three tests, adapted to v0.22.5's module names, added to `tests/tools/test_browser_vault.py` (2 fail without the patch). |
+| 0006 synchronous peer reply | kept (applies as is). |
+| 0007 `browser.vault_only` | kept; v0.22.5 has one vault tool, `browser_vault`, which the filter keeps (`browser_vault*`). New `tests/tools/test_browser_vault_only.py` (3 tests, 2 fail without the patch). |
+| 0008 time zone, routines, wall clock | kept (applies as is; v0.22.5 has no per-job time zone yet). |
+| 0009 tool search `!name`, compact skill categories | kept (applies as is). New `tests/agent/test_tool_search_keep_direct_compact_skills.py` (3 tests, all fail without the patch). |
+| 0010 empty replies | kept (applies as is). |
+| 0011 titles with GLM | kept; its test merged beside v0.22.5's new token-plan tests. |
+| 0012 + 0016 one `message_agent`, the bridge's | **folded** into `0016-message-agent-the-bridges-everywhere` (0016's behaviour; 0012's unused `drop_mcp_message_agent` removed). No `0012` file. |
+| 0013 MCP results: vault passwords scrubbed | kept; docstring names `browser_vault`; its handler test follows v0.22.5's `_call_tool_racing_stdio_death` signature. |
+| 0014 routine results in plain UTF-8 | kept (applies as is). |
+| 0015 time anchor | kept **whole, part (c) included**: `[CURRENT RUN TIME]` in routine prompts is on upstream `main`, not in v0.22.5, so part (c) goes at the next base that has it. |
+| 0017 address items with name, phone, e-mail | kept (applies as is). |
+| 0018 guest turns | **rewritten** for the session authority (below). |
+| 0019 routines report to their conversation | kept; one conflict (`NO_AGENT_WITHOUT_SCRIPT_ERROR` moved to `cron/jobs_invariants.py`). Its tests patch `hermes_cli.config` through `sys.modules` (an upstream test swaps the module; they failed in the full run, not alone). |
+| 0020 `model.usage` per model call | **ported** (below). |
+
+**0018 on v0.22.5.** A Runs API or session-chat turn no longer builds its agent in the request: it is admitted to the
+session's durable FIFO (`admit_api_turn_async` → `session_admissions` row with an `api_turn_v1` payload) and run by
+the session authority's `TurnRunner`, which reuses the session's cached agent. So:
+- the doors (`POST /v1/runs`, `POST /api/sessions/{id}/chat[/stream]`) parse `guest_turn` as before (400
+  `invalid_guest_turn`) and pass the tools to the admission, which stores them in the payload as
+  `api_turn_v1.guest_turn = {"tools": [sorted names]}`: per admission, never in the session's saved settings (the
+  person's next turn and the session's internal turns are theirs), and part of the exact-retry identity (the same
+  Idempotency-Key without the mark, or with other tools, is `admission_conflict`). `check_api_turn` refuses a
+  malformed stored mark (`invalid_params`), so a recovered turn never runs open;
+- `prepare_api_execution` hands `guest_tools` to the execution; `_resolve_turn_agent` then builds that turn an agent
+  of its own (`_build_fresh_agent` + `guest_turn.apply`), never taken from nor put in the session's agent cache (the
+  person's cached agent, its prompt, tools and memory provider, are untouched), and `run_sync` releases it after the
+  turn like an evicted agent (the session's sandbox, browser and background processes stay);
+- the agent-side parts (tool list, dispatcher refusal, prompt without USER.md never stored, no memory writes) are
+  unchanged; the direct path (no session authority) keeps the old `_create_agent(guest_tools=…)`; a guest turn is
+  never handed to a live Bot Chat owner.
+New `tests/gateway/test_api_guest_turn_admission.py` (5 tests: the mark in the admission and only there, retries,
+a malformed stored mark, the fresh uncached agent, its release).
+
+**0020 on v0.22.5.** `agent/turn_usage.py` applies as is. A run takes one of two paths on v0.22.5: the direct one
+(no session authority: the run's own agent, `_create_agent`), where the callback is set as on `517b5e10f`; and the
+session authority's (the canonical path of a running gateway), where the turn's agent is the session's cached one:
+`wire_api_observers` sets `call_usage_callback` per turn and publishes `model.usage` fields to the run's observer
+(a new `call_usage_callback` observer key, fenced to the running generation like the other sinks), with `totals`
+counted from the turn's start (that agent's counters run across turns); `TurnRunner` clears the callback on every
+turn. `run.completed`'s `usage` on that path had only `input_tokens`, `output_tokens`, `total_tokens` (the turn's
+deltas): it carries the turn's `cache_read_tokens` and `cache_write_tokens` again. 2 new tests in
+`tests/gateway/test_api_server_runs_model_usage.py` (both fail without the port).
+
+**Tests** (2026-11-01, Python 3.14, `uv sync --frozen --group dev --extra messaging` on `bf0203a794` with the set):
+- each patch's own tests, the new ones above included, and upstream's suites of the modules the set touches:
+  `tests/agent`, `tests/tools`, `tests/cron` (one run: 23 240 passed; its 476 failures and 38 errors rerun alone:
+  116 fail, the same 116 on unpatched v0.22.5 — missing optional SDKs (fal, Anthropic, Bedrock…), provider snapshots,
+  network; the rest were order effects of the long run, `test_fal_sdk.py` does not collect without its SDK); the
+  Runs API, session-authority, admission, TurnRunner and agent-cache suites of `tests/gateway` (`test_api_*`,
+  `test_session_authority*`, `test_session_api*`, `test_session_ingress*`, `test_session_execution*`,
+  `test_run_turn*`, `test_agent_cache*`, `test_bot_authority*`, 101 files): 672 passed, 4 skipped; the rest of
+  `tests/gateway` and `tests/hermes_state` (two runs, the first stopped at an upstream test that hangs only in the
+  long run, `test_discord_voice_stale_binding.py`, which passes alone with and without the set; the first without
+  0020): 3 544 + 10 217 passed; their 17 + 59 failures rerun alone: 2 and 29 fail, the same on unpatched v0.22.5;
+- `scripts/hermes-patches.sh check` (the installer's `apply_patches` on a clean worktree at `BASE`), `branch` then
+  `export` giving the same bytes, and `git apply --3way` of the whole set on a clean v0.22.5: same tree as the branch;
+- `installer/tests`: 304 passed, 3 skipped (new `test_hermes_patches.py`: the patches made on the pinned Hermes, a
+  moved context merged with the index left alone, a conflict leaving nothing; `test_installer.py` pins `bf0203a794`
+  and puts on the 15 patches; `test_hermes_update.py`: the update runs, with `--keep-stash`, no hold).
+Not run end to end against a live gateway and a real model yet: the bridge's side of v0.22.5 and the lab bench come
+first.
