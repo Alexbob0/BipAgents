@@ -29,7 +29,7 @@
 //!
 //! Not a Python module: Rust bridge only (owner group: tools-knowledge).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use std::time::{Duration, Instant, SystemTime};
 
@@ -210,13 +210,13 @@ fn cache_file(config: &Config, kind: &str, travel: &str, stops: &[(f64, f64)]) -
     PathBuf::from(config.data_dir()).join("map-routes").join(format!("{}.json", &hash[..24]))
 }
 
-fn cached(path: &PathBuf) -> Option<Value> {
+fn cached(path: &Path) -> Option<Value> {
     let age = std::fs::metadata(path).and_then(|m| m.modified()).ok()?;
     let fresh = SystemTime::now().duration_since(age).ok()? < Duration::from_secs(CACHE_DAYS * 86400);
     fresh.then(|| std::fs::read_to_string(path).ok()).flatten().and_then(|t| serde_json::from_str(&t).ok())
 }
 
-fn keep(path: &PathBuf, value: &Value) {
+fn keep(path: &Path, value: &Value) {
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
         let _ = tk::replace_with(&path.with_extension("part"), path, value.to_string().as_bytes());
