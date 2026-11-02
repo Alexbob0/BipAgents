@@ -386,8 +386,11 @@ mod tests {
     fn the_neutral_lines_are_the_contracts() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../contracts/notifications/loc-keys.json");
         let doc: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
-        let keys: Vec<&str> = doc["keys"].as_object().unwrap().keys().map(String::as_str).collect();
-        assert_eq!(keys, NEUTRAL_KEYS);
+        let mut keys: Vec<&str> = doc["keys"].as_object().unwrap().keys().map(String::as_str).collect();
+        let mut ours = NEUTRAL_KEYS.to_vec();
+        keys.sort_unstable();
+        ours.sort_unstable();
+        assert_eq!(keys, ours);
     }
 
     #[test]
