@@ -188,7 +188,8 @@ def test_hermes_is_pinned_and_patched(tmp_path, monkeypatch):
         "0011-titles-reasoning-floor-glm.patch", "0013-mcp-results-vault-scrub.patch",
         "0014-cron-results-plain-utf8.patch", "0015-time-anchor.patch", "0016-message-agent-the-bridges-everywhere.patch",
         "0017-vault-address-contact-fields.patch", "0018-guest-turns-closed-tools-no-user-profile.patch",
-        "0019-routines-report-to-their-conversation.patch", "0020-runs-model-usage-per-call.patch"]
+        "0019-routines-report-to-their-conversation.patch", "0020-runs-model-usage-per-call.patch",
+        "0021-api-bot-chat-stays-api.patch"]
 
 
 def test_bot_mode_marker(tmp_path):

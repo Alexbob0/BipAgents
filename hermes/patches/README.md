@@ -30,6 +30,7 @@ labels, 0008's fall-back fix, 0017, 0009's `!name`, 0013.
 | 0018 guest turns: closed tools, no USER.md | `agent/guest_turn.py` (new), `agent/*`, `gateway/platforms/api_server*.py`, `gateway/session_api_turn.py`, `gateway/session_execution.py`, `gateway/run_turn_runner.py` |
 | 0019 routines report to their conversation | `tools/tool_labels.py`, `cron/jobs.py`, `tools/cronjob_*.py`, `gateway/platforms/api_server.py` |
 | 0020 Runs API: each model call's usage (`model.usage`) | `agent/turn_usage.py`, `gateway/platforms/api_server_runs.py`, `gateway/session_api_turn.py`, `gateway/run_turn_runner.py` |
+| 0021 an API client's own Bot Chat stays an API conversation | `gateway/platforms/api_server_bot_chat.py`, `gateway/session_bot.py` |
 
 ## How the patches are kept
 
@@ -522,6 +523,52 @@ matching totals).
 passed, 6 skipped, 1 failed (`tests/agent/test_plugin_prompt_sections.py`, order-dependent: it passes alone, with and
 without 0020). The bridge's side: rooms.rs (`turn_limit`, the turn loop), runs.rs (`RunUsage`, `cap`), jobs.rs
 (`live_usage`) and `tests/agents_rooms_relay.rs`.
+
+## 0021 — an API client's own « Bot Chat » stays an API conversation
+
+**Problem.** v0.22.5 (session authority) treats the profile's conversation titled « Bot Chat » as Bot Mode's canonical
+chat, a LOCAL session whose only writer is the authority FIFO. Every text turn into it through the API doors
+(`POST /v1/runs`, `POST /api/sessions/{id}/chat[/stream]`, `_admit_to_live_bot_chat` → `admit_peer_turn`) is admitted
+to that FIFO as a peer's message, and a Bot Chat made by a plain `POST /api/sessions` (an `api_` row) is « a
+conversation no FIFO can own »: the first such turn moves it aside as « Bot Chat (API <id>) », history included, and
+mints a new empty local Bot Chat (`displaceable_bot_chat`, `_create_bot_chat`). The bridge makes each agent's main
+conversation exactly that way and runs it through the Runs API. Found by the 2026-11-02 release bench: after the
+update every agent's main conversation restarted empty; the run's stream carried only `run.completed` (no text, no
+tool events, no `model.usage`); a clarify failed (« la destination a refusé »). A `POST /api/sessions {"title":
+"Bot Chat"}` (the installer's, `agents_admin.rs`') even minted the local chat directly (`create_peer_bot_chat`), so a
+fresh agent's main conversation was the FIFO's from the start. Side conversations and photo turns (a non-string
+`input`) were not affected.
+
+**What the patch does.** A Bot Chat made by a plain API create (`source` `api_server`, no local chat in its lineage:
+`session_bot.api_bot_chat`) is the API client's conversation:
+- `create_peer_bot_chat` leaves a create without a source (or `api_server`) to the ordinary handler: an API row. A
+  peer's own create (`hermes peer dm` sends `source: bot_peer_dm`) still mints the local chat;
+- `displaceable_bot_chat` never names it: no door moves it aside;
+- `admit_peer_turn` leaves its turns to the API doors (None), which run them as API turns, as before session
+  authority: streamed text, tool events, `model.usage`, approvals, clarify. A peer's turn sent through those doors
+  runs there too (BipAgents sends agent-to-agent messages to the pairs' own conversations anyway: agent_pairs.rs);
+- the local doors (`bot_relay.deliver`, a cron `bot-chat` delivery) are refused for it instead of moving it.
+Every other Bot Chat (local, CLI/Desktop history, messaging rows, rows a peer minted through the API) is unchanged.
+
+**Upstream.** Worth proposing as a profile setting (an API client that owns its Bot Chat, e.g.
+`bot_mode.api_owned_bot_chat`), since upstream moves API rows aside on purpose (MSG-21, #140769) for Desktop users.
+
+**Files.** `gateway/platforms/api_server_bot_chat.py`, `gateway/session_bot.py`; new
+`tests/gateway/test_api_bot_chat_stays_api.py` (6 tests, 5 fail without the patch); in
+`tests/gateway/test_peer_dm_bot_chat_headless.py` the moved-aside rows are a peer's (`bot_peer_dm`).
+
+**Tests** (2026-11-02, Python 3.12, `uv sync --frozen --group dev` on `bf0203a794` with the set): the new file, every
+Bot Chat / peer DM / authority-runs suite of `tests/gateway` (`test_peer_dm_*`, `test_bot_authority`,
+`test_bot_chat_*`, `test_*bot_chat*`, `test_api_authority_runs`, `test_api_runs_native_session_refusal`,
+`test_owner_loop_writes_*`), `tests/tui_gateway/test_profiles_list_canonical_session.py`,
+`tests/hermes_cli/test_peer_cmd.py`: all pass. The bridge's black-box suite fakes it (`bbkit/fakes.py`: a local
+Bot Chat's turns go to a FIFO, an API one's stream). End to end on a lab place (Hetzner cax21, GLM-5.3 Flash,
+2026-11-02): installed on the old pin (public 827274a, Hermes 517b5e10f), two turns in an agent's main conversation,
+then moved to v0.22.5 with this set and the branch's bridge: the same conversation (same id, 8 messages) kept its
+history and answered from it, streamed `message.delta`, `model.usage`, tool events, a clarify (`clarify.request` →
+answer → `clarify.settled`), an approval (`approval.request` → once → `approval.settled`) and an agent-to-agent
+`message_agent`; no « Bot Chat (API …) » anywhere. A new agent made afterwards got an API Bot Chat (`api_…`,
+`api_server`) that streams, runs tools and approvals the same way.
 
 ## Moving to v0.22.5 (2026-11-01)
 
