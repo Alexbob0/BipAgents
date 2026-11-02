@@ -1,0 +1,84 @@
+{
+  "$schema": "../schema.json",
+  "type": "handback",
+  "audit_row": 3,
+  "summary": "A task's or sub-task's result handed back into the agent's Bot Chat.",
+  "producers": [
+    "handback.rs:645 -> notify_reply with run_id session:<request.session>"
+  ],
+  "policy": {
+    "per_agent_switch": true
+  },
+  "v2": {
+    "t": "reply",
+    "c": "main or s:<root of the origin conversation>",
+    "m": "<Hermes message id>",
+    "loc_key": "notif.reply",
+    "collapse": "n",
+    "link": "bipagents://open?agent=vie&c=main&m=<id>&t=reply"
+  },
+  "known_bugs": [
+    "Same as bot_chat_turn (collapse per session)."
+  ],
+  "variants": [
+    {
+      "name": "previews_off",
+      "about": "Hand-back in Bot Chat.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "previews": false,
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_reply",
+          "args": {
+            "run_id": "session:sess_main",
+            "text": "La tâche « Billets » est finie : 2 options trouvées.",
+            "session_id": "sess_main",
+            "reply_id": "r5"
+          }
+        }
+      },
+      "payload_v1": null,
+      "fcm_data": null,
+      "push": null,
+      "relay": {
+        "body": "Ta réponse est prête."
+      },
+      "expect": {
+        "screen": "conversation",
+        "conversation": "sess_main",
+        "message": "focus by reply text / date",
+        "ios": {
+          "shared_agent": false,
+          "needs_run_session": false,
+          "route": {
+            "route": "conversation",
+            "session": "sess_main",
+            "focus": true
+          },
+          "nse_fetch": "reply",
+          "presents_as_message": true
+        },
+        "android": {
+          "kind": "agent",
+          "open": {
+            "page": "conversation",
+            "session": "sess_main",
+            "focus": true
+          },
+          "channel": "messages",
+          "notification_key": "session:sess_main",
+          "actions": [
+            "reply"
+          ],
+          "missed_reply": true,
+          "presents_as_message": true,
+          "fetch": "reply"
+        }
+      }
+    }
+  ]
+}

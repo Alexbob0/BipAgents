@@ -1,0 +1,263 @@
+{
+  "$schema": "../schema.json",
+  "type": "task",
+  "audit_row": 9,
+  "summary": "A background task ended, paused at its budget, was proposed by the agent, or a run was rescued into one.",
+  "producers": [
+    "jobs.rs:339 -> notify_job (DONE/PAUSED/PROPOSED)",
+    "runs.rs:~1896 rescue -> notify_job (RESCUE)"
+  ],
+  "policy": {
+    "per_agent_switch": true
+  },
+  "v2": {
+    "t": "task",
+    "c": "s:<root of the task's conversation> | none (proposal: Boîte › En cours)",
+    "m": "<Hermes message id> | null",
+    "loc_key": "notif.task.<done|paused|proposed|rescued>",
+    "collapse": "n",
+    "link": "bipagents://open?agent=vie&c=s:<root>&t=task (proposal: Boîte)"
+  },
+  "known_bugs": [
+    "job_id is read by neither app; a proposal (no session) opens a conversation without a session instead of the Boîte card.",
+    "The relay turns these 4 bodies into « Nouveau message » (not in BRIDGE_BODIES)."
+  ],
+  "variants": [
+    {
+      "name": "done",
+      "about": "A task ended.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "previews": false,
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_job",
+          "args": {
+            "session_id": "sess_3",
+            "line": "Tâche de fond terminée : Billets",
+            "job_id": "job_1",
+            "body": "Tâche de fond terminée"
+          }
+        }
+      },
+      "payload_v1": null,
+      "fcm_data": null,
+      "push": null,
+      "relay": {
+        "body": "Nouveau message"
+      },
+      "expect": {
+        "screen": "conversation",
+        "conversation": "sess_3",
+        "message": "focus by text / date",
+        "ios": {
+          "shared_agent": false,
+          "needs_run_session": false,
+          "route": {
+            "route": "conversation",
+            "session": "sess_3",
+            "focus": true
+          },
+          "nse_fetch": "none",
+          "presents_as_message": true
+        },
+        "android": {
+          "kind": "agent",
+          "open": {
+            "page": "conversation",
+            "session": "sess_3",
+            "focus": true
+          },
+          "channel": "messages",
+          "notification_key": "session:sess_3",
+          "actions": [
+            "reply"
+          ],
+          "missed_reply": false,
+          "presents_as_message": true,
+          "fetch": "none"
+        }
+      }
+    },
+    {
+      "name": "paused",
+      "about": "A task paused at its budget (previews on).",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "previews": true,
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_job",
+          "args": {
+            "session_id": "sess_3",
+            "line": "Tâche de fond en pause : Billets",
+            "job_id": "job_1",
+            "body": "Tâche de fond en pause"
+          }
+        }
+      },
+      "payload_v1": null,
+      "fcm_data": null,
+      "push": null,
+      "relay": {
+        "body": "Nouveau message"
+      },
+      "expect": {
+        "screen": "conversation",
+        "conversation": "sess_3",
+        "message": "focus by text / date",
+        "ios": {
+          "shared_agent": false,
+          "needs_run_session": false,
+          "route": {
+            "route": "conversation",
+            "session": "sess_3",
+            "focus": true
+          },
+          "nse_fetch": "none",
+          "presents_as_message": true
+        },
+        "android": {
+          "kind": "agent",
+          "open": {
+            "page": "conversation",
+            "session": "sess_3",
+            "focus": true
+          },
+          "channel": "messages",
+          "notification_key": "session:sess_3",
+          "actions": [
+            "reply"
+          ],
+          "missed_reply": false,
+          "presents_as_message": true,
+          "fetch": "none"
+        }
+      }
+    },
+    {
+      "name": "proposed",
+      "about": "The agent proposes a task (no conversation yet).",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "previews": false,
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_job",
+          "args": {
+            "session_id": null,
+            "line": "Tâche de fond proposée : Comparer les assurances",
+            "job_id": "job_2",
+            "body": "Tâche de fond proposée"
+          }
+        }
+      },
+      "payload_v1": null,
+      "fcm_data": null,
+      "push": null,
+      "relay": {
+        "body": "Nouveau message"
+      },
+      "expect": {
+        "screen": "new conversation (should be the Boîte card)",
+        "conversation": null,
+        "message": "focus by text / date",
+        "ios": {
+          "shared_agent": false,
+          "needs_run_session": false,
+          "route": {
+            "route": "conversation",
+            "session": null,
+            "focus": false
+          },
+          "nse_fetch": "none",
+          "presents_as_message": true
+        },
+        "android": {
+          "kind": "agent",
+          "open": {
+            "page": "conversation",
+            "session": null,
+            "focus": true
+          },
+          "channel": "messages",
+          "notification_key": "session:job",
+          "actions": [
+            "reply"
+          ],
+          "missed_reply": false,
+          "presents_as_message": true,
+          "fetch": "none"
+        }
+      }
+    },
+    {
+      "name": "rescued",
+      "about": "A run continues as a background task.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "previews": false,
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_job",
+          "args": {
+            "session_id": "sess_4",
+            "line": "Continue en tâche de fond : Billets",
+            "job_id": "job_3",
+            "body": "Continue en tâche de fond"
+          }
+        }
+      },
+      "payload_v1": null,
+      "fcm_data": null,
+      "push": null,
+      "relay": {
+        "body": "Nouveau message"
+      },
+      "expect": {
+        "screen": "conversation",
+        "conversation": "sess_4",
+        "message": "focus by text / date",
+        "ios": {
+          "shared_agent": false,
+          "needs_run_session": false,
+          "route": {
+            "route": "conversation",
+            "session": "sess_4",
+            "focus": true
+          },
+          "nse_fetch": "none",
+          "presents_as_message": true
+        },
+        "android": {
+          "kind": "agent",
+          "open": {
+            "page": "conversation",
+            "session": "sess_4",
+            "focus": true
+          },
+          "channel": "messages",
+          "notification_key": "session:sess_4",
+          "actions": [
+            "reply"
+          ],
+          "missed_reply": false,
+          "presents_as_message": true,
+          "fetch": "none"
+        }
+      }
+    }
+  ]
+}

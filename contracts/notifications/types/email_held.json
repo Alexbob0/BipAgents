@@ -1,0 +1,131 @@
+{
+  "$schema": "../schema.json",
+  "type": "email_held",
+  "audit_row": 12,
+  "summary": "The agent's e-mail to an address not allowed yet waits for the person.",
+  "producers": [
+    "agent_email.rs:~911 -> notify_email_held"
+  ],
+  "policy": {
+    "per_agent_switch": false
+  },
+  "v2": {
+    "t": "email_held",
+    "c": "none",
+    "m": null,
+    "loc_key": "notif.email_held",
+    "collapse": "n",
+    "link": "bipagents://open?agent=vie&n=<journal id>&t=email_held"
+  },
+  "known_bugs": [
+    "The relay drops the body (« Nouveau message »)."
+  ],
+  "variants": [
+    {
+      "name": "previews_off",
+      "about": "Held e-mail, previews off.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "previews": false,
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_email_held",
+          "args": {
+            "to": "lea@example.com",
+            "held_id": "held_1"
+          }
+        }
+      },
+      "payload_v1": null,
+      "fcm_data": null,
+      "push": null,
+      "relay": {
+        "body": "Nouveau message"
+      },
+      "expect": {
+        "screen": "email",
+        "conversation": null,
+        "message": "the card",
+        "ios": {
+          "shared_agent": false,
+          "needs_run_session": false,
+          "route": {
+            "route": "email"
+          },
+          "nse_fetch": "none",
+          "presents_as_message": true
+        },
+        "android": {
+          "kind": "agent",
+          "open": {
+            "page": "email"
+          },
+          "channel": "messages",
+          "notification_key": "session:email",
+          "actions": [
+            "reply"
+          ],
+          "missed_reply": false,
+          "presents_as_message": true,
+          "fetch": "none"
+        }
+      }
+    },
+    {
+      "name": "previews_on_en",
+      "about": "Held e-mail, previews on, an English agent.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "previews": true,
+          "lang": "en"
+        },
+        "input": {
+          "fn": "notify_email_held",
+          "args": {
+            "to": "lea@example.com",
+            "held_id": "held_1"
+          }
+        }
+      },
+      "payload_v1": null,
+      "fcm_data": null,
+      "push": null,
+      "relay": {
+        "body": "Nouveau message"
+      },
+      "expect": {
+        "screen": "email",
+        "conversation": null,
+        "message": "the card",
+        "ios": {
+          "shared_agent": false,
+          "needs_run_session": false,
+          "route": {
+            "route": "email"
+          },
+          "nse_fetch": "none",
+          "presents_as_message": true
+        },
+        "android": {
+          "kind": "agent",
+          "open": {
+            "page": "email"
+          },
+          "channel": "messages",
+          "notification_key": "session:email",
+          "actions": [
+            "reply"
+          ],
+          "missed_reply": false,
+          "presents_as_message": true,
+          "fetch": "none"
+        }
+      }
+    }
+  ]
+}
