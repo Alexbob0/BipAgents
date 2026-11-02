@@ -371,6 +371,8 @@ impl AppState {
             self.spawn(crate::shared_memory::run_forever(self.clone()));
             self.spawn(crate::shares::mirror_forever(self.config.clone()));
             self.spawn(crate::agent_tools::register_all(self.config.clone(), agents_admin::default_run()));
+            // an agent's thread that an unpatched Hermes v0.22.5 moved aside, put back (welcome.rs)
+            self.spawn(crate::welcome::restore_moved_aside_all(self.clone()));
             let shared = self.config.clone();
             self.spawn(async move { crate::browsers::vault_only_all(&shared.get()).await });
             if config.hermes.isolated {
