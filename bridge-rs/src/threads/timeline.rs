@@ -261,7 +261,8 @@ fn calls_of(row: &Row) -> Vec<(Option<String>, String, String)> {
         .filter_map(Value::as_object)
         .map(|c| {
             let f = c.get("function").and_then(Value::as_object);
-            let name = f.and_then(|f| f.get("name")).or_else(|| c.get("name")).and_then(Value::as_str).unwrap_or("tool");
+            let name =
+                f.and_then(|f| f.get("name")).or_else(|| c.get("name")).and_then(Value::as_str).unwrap_or("tool");
             let args = f.and_then(|f| f.get("arguments")).or_else(|| c.get("arguments"));
             let args = match args {
                 Some(Value::String(s)) => s.clone(),
@@ -321,11 +322,18 @@ pub fn segment_items(
                 if let Some(rest) = words.trim().strip_prefix(RESCUE_MARK) {
                     let line = rest.trim().split("\n\n").next().unwrap_or("").trim().to_string();
                     // Hermes' failed-turn row just before is replaced by this notice
-                    if items.last().is_some_and(|i: &Item| i.body.get("notice").and_then(|n| n.get("code")) == Some(&json!("failed_turn"))) {
+                    if items.last().is_some_and(|i: &Item| {
+                        i.body.get("notice").and_then(|n| n.get("code")) == Some(&json!("failed_turn"))
+                    }) {
                         items.pop();
                     }
                     if !line.is_empty() {
-                        items.push(item(id, 0, turn, json!({"kind": "notice", "notice": {"code": "loop_rescue", "text": line}})));
+                        items.push(item(
+                            id,
+                            0,
+                            turn,
+                            json!({"kind": "notice", "notice": {"code": "loop_rescue", "text": line}}),
+                        ));
                     }
                     continue;
                 }
@@ -352,13 +360,19 @@ pub fn segment_items(
                         || trimmed == FAILED_PARTIAL
                         || trimmed == FAILED_NOT_PROCESSED)
                 {
-                    items.push(item(id, 0, turn, json!({"kind": "notice", "notice": {"code": "failed_turn", "text": trimmed}})));
+                    items.push(item(
+                        id,
+                        0,
+                        turn,
+                        json!({"kind": "notice", "notice": {"code": "failed_turn", "text": trimmed}}),
+                    ));
                     continue;
                 }
                 let (text, attachments) = visible(&raw, &id, images);
                 let renamed = renamed_in(&raw);
                 if !text.is_empty() || !attachments.is_empty() || !renamed.is_empty() {
-                    let mut body = json!({"kind": "message", "role": "agent", "text": text, "attachments": attachments});
+                    let mut body =
+                        json!({"kind": "message", "role": "agent", "text": text, "attachments": attachments});
                     if !renamed.is_empty() {
                         body["renamed"] = Value::Array(renamed);
                     }
@@ -368,7 +382,8 @@ pub fn segment_items(
                     items.push(item(id.clone(), 0, turn, body));
                 }
                 for (n, (call_id, name, args)) in calls.into_iter().enumerate() {
-                    let result = call_id.as_deref().and_then(|c| results.get(c)).map(|r| words_and_images(&r.content).0);
+                    let result =
+                        call_id.as_deref().and_then(|c| results.get(c)).map(|r| words_and_images(&r.content).0);
                     let status = match &result {
                         None => "running",
                         Some(r) if r.trim_start().starts_with("{\"error\"") => "failed",
@@ -558,7 +573,8 @@ mod tests {
             row(8, "system", json!("x")),
         ];
         let mut rows = rows;
-        rows[1].tool_calls = Some(json!([{"id": "c1", "function": {"name": "web_search", "arguments": "{\"q\":\"train\"}"}}]));
+        rows[1].tool_calls =
+            Some(json!([{"id": "c1", "function": {"name": "web_search", "arguments": "{\"q\":\"train\"}"}}]));
         rows[2].tool_call_id = Some("c1".into());
         let mut hidden = row(9, "assistant", json!("caché"));
         hidden.shown = false;
@@ -609,8 +625,18 @@ mod tests {
                 _ => i.text().to_string(),
             })
             .collect();
-        assert_eq!(got, ["Compare trois écoles", "Je cherche d'abord.", "tool:r1", "tool:r2",
-                         "Deux trouvées, je vérifie la troisième.", "tool:r3", "Voici le comparatif."]);
+        assert_eq!(
+            got,
+            [
+                "Compare trois écoles",
+                "Je cherche d'abord.",
+                "tool:r1",
+                "tool:r2",
+                "Deux trouvées, je vérifie la troisième.",
+                "tool:r3",
+                "Voici le comparatif."
+            ]
+        );
     }
 
     #[test]
@@ -632,7 +658,8 @@ mod tests {
     #[test]
     fn a_copied_tail_is_shown_once() {
         let parent = vec![row(1, "user", json!("A")), row(2, "assistant", json!("B"))];
-        let mut child = vec![row(10, "user", json!("A")), row(11, "assistant", json!("B")), row(12, "user", json!("C"))];
+        let mut child =
+            vec![row(10, "user", json!("A")), row(11, "assistant", json!("B")), row(12, "user", json!("C"))];
         child[0].uid = Some("x10".into());
         child[1].uid = Some("u2".into());
         let skip = copied_tail("vie", "s2", &child, &parent);
@@ -643,13 +670,21 @@ mod tests {
     }
 
     fn boite(id: &str, at: f64) -> Item {
-        Item { id: id.into(), pos: (0, 0, 0), at, turn: String::new(), segment: String::new(), row: 0,
-               body: json!({"kind": "boite", "text": id}).as_object().unwrap().clone() }
+        Item {
+            id: id.into(),
+            pos: (0, 0, 0),
+            at,
+            turn: String::new(),
+            segment: String::new(),
+            row: 0,
+            body: json!({"kind": "boite", "text": id}).as_object().unwrap().clone(),
+        }
     }
 
     #[test]
     fn boite_messages_by_time_and_pages() {
-        let rows: Vec<Row> = (1..=6).map(|i| row(i, if i % 2 == 1 { "user" } else { "assistant" }, json!(format!("t{i}")))).collect();
+        let rows: Vec<Row> =
+            (1..=6).map(|i| row(i, if i % 2 == 1 { "user" } else { "assistant" }, json!(format!("t{i}")))).collect();
         let all = merge(items(&rows), vec![boite("o_a", 1003.5), boite("o_z", 5000.0), boite("o_0", 10.0)]);
         let ids: Vec<&str> = all.iter().map(|i| i.id.as_str()).collect();
         assert_eq!(ids, ["o_0", "m_u1", "m_u2", "m_u3", "o_a", "m_u4", "m_u5", "m_u6", "o_z"]);
@@ -667,7 +702,8 @@ mod tests {
         let newer = page(all.clone(), &Want { limit: 50, after: Some(all[4].cursor()), ..Default::default() });
         assert_eq!(newer.items.len(), 4);
         // around: the anchor, two before, all after
-        let around = page(all.clone(), &Want { limit: 50, around: Some("m_u3".into()), before_count: 2, ..Default::default() });
+        let around =
+            page(all.clone(), &Want { limit: 50, around: Some("m_u3".into()), before_count: 2, ..Default::default() });
         assert_eq!(around.anchor.as_deref(), Some("m_u3"));
         assert_eq!(around.items.first().unwrap().id, "m_u1");
         assert_eq!(around.items.last().unwrap().id, "o_z");

@@ -37,9 +37,9 @@ use axum::response::Response;
 use axum::routing::{get, post};
 use axum::Router;
 use base64::Engine;
-use sha2::Digest;
 use serde::Deserialize;
 use serde_json::{json, Value};
+use sha2::Digest;
 use tokio::sync::broadcast;
 
 use crate::app::AppState;
@@ -83,7 +83,11 @@ impl Thread {
             agent: s("agent"),
             kind: s("kind"),
             title: row.get("title").and_then(Value::as_str).map(str::to_string),
-            origin: row.get("origin").and_then(Value::as_str).and_then(|o| serde_json::from_str(o).ok()).unwrap_or(Value::Null),
+            origin: row
+                .get("origin")
+                .and_then(Value::as_str)
+                .and_then(|o| serde_json::from_str(o).ok())
+                .unwrap_or(Value::Null),
             hidden: row.get("hidden").and_then(Value::as_i64).unwrap_or(0) != 0,
             version: row.get("version").and_then(Value::as_i64).unwrap_or(0),
             created_at: s("created_at"),
@@ -235,7 +239,10 @@ impl Threads {
     pub async fn segments(&self, thread: &str) -> anyhow::Result<Vec<Segment>> {
         let rows = self
             .store
-            .run("SELECT session_id, position, linked FROM thread_segments WHERE thread_id = ? ORDER BY position", vec![text(thread)])
+            .run(
+                "SELECT session_id, position, linked FROM thread_segments WHERE thread_id = ? ORDER BY position",
+                vec![text(thread)],
+            )
             .await?;
         Ok(rows
             .iter()
@@ -250,12 +257,22 @@ impl Threads {
     async fn thread_of_session(&self, agent: &str, session: &str) -> anyhow::Result<Option<String>> {
         let rows = self
             .store
-            .run("SELECT thread_id FROM thread_segments WHERE agent = ? AND session_id = ?", vec![text(agent), text(session)])
+            .run(
+                "SELECT thread_id FROM thread_segments WHERE agent = ? AND session_id = ?",
+                vec![text(agent), text(session)],
+            )
             .await?;
         Ok(rows.first().and_then(|r| r["thread_id"].as_str()).map(str::to_string))
     }
 
-    async fn create(&self, agent: &str, kind: &str, title: Option<&str>, origin: Value, hidden: bool) -> anyhow::Result<Thread> {
+    async fn create(
+        &self,
+        agent: &str,
+        kind: &str,
+        title: Option<&str>,
+        origin: Value,
+        hidden: bool,
+    ) -> anyhow::Result<Thread> {
         let now = iso(utcnow());
         let id = new_id("t_");
         let origin = if origin.is_null() { Param::Null } else { text(&origin.to_string()) };
@@ -264,7 +281,16 @@ impl Threads {
             .run(
                 "INSERT INTO threads (id, agent, kind, title, origin, hidden, version, created_at, updated_at) \
                  VALUES (?,?,?,?,?,?,0,?,?)",
-                vec![text(&id), text(agent), text(kind), title, origin, Param::Integer(hidden as i64), text(&now), text(&now)],
+                vec![
+                    text(&id),
+                    text(agent),
+                    text(kind),
+                    title,
+                    origin,
+                    Param::Integer(hidden as i64),
+                    text(&now),
+                    text(&now),
+                ],
             )
             .await?;
         Ok(self.get(&id).await?.expect("just inserted"))
@@ -285,10 +311,17 @@ impl Threads {
     pub async fn bump(&self, thread: &Thread, reason: &str) -> anyhow::Result<i64> {
         let now = iso(utcnow());
         self.store
-            .run("UPDATE threads SET version = version + 1, updated_at = ? WHERE id = ?", vec![text(&now), text(&thread.id)])
+            .run(
+                "UPDATE threads SET version = version + 1, updated_at = ? WHERE id = ?",
+                vec![text(&now), text(&thread.id)],
+            )
             .await?;
         let version = self.get(&thread.id).await?.map(|t| t.version).unwrap_or(thread.version + 1);
-        self.publish(&thread.agent, "thread", json!({"thread": thread.id, "agent": thread.agent, "version": version, "reason": reason}));
+        self.publish(
+            &thread.agent,
+            "thread",
+            json!({"thread": thread.id, "agent": thread.agent, "version": version, "reason": reason}),
+        );
         Ok(version)
     }
 
@@ -299,7 +332,9 @@ impl Threads {
             let first = &line[0];
             let Some(parent_id) = first.parent.clone() else { break };
             match source.session(&parent_id).await? {
-                Some(parent) if first.continues(&parent) && !line.iter().any(|s| s.id == parent.id) => line.insert(0, parent),
+                Some(parent) if first.continues(&parent) && !line.iter().any(|s| s.id == parent.id) => {
+                    line.insert(0, parent)
+                }
                 _ => break,
             }
         }
@@ -363,7 +398,8 @@ impl Threads {
             checked.insert(key, now);
         }
         // Hermes asleep or down: an error, tried again at the next request (nothing half made)
-        let session = self.main_session(agent, &source).await.map_err(|e| e.context("main conversation not adopted yet"))?;
+        let session =
+            self.main_session(agent, &source).await.map_err(|e| e.context("main conversation not adopted yet"))?;
         let line = match session {
             Some(s) => self.line_of(&source, s).await?,
             None => Vec::new(),
@@ -372,7 +408,10 @@ impl Threads {
         for s in &line {
             if let Some(other) = self.thread_of_session(&agent.name, &s.id).await? {
                 self.store
-                    .run("DELETE FROM thread_segments WHERE agent = ? AND session_id = ?", vec![text(&agent.name), text(&s.id)])
+                    .run(
+                        "DELETE FROM thread_segments WHERE agent = ? AND session_id = ?",
+                        vec![text(&agent.name), text(&s.id)],
+                    )
                     .await?;
                 if self.segments(&other).await?.is_empty() {
                     self.store.run("DELETE FROM threads WHERE id = ?", vec![text(&other)]).await?;
@@ -419,7 +458,11 @@ impl Threads {
         }
         let root = &line[0];
         // the person's conversation appearing while the main thread is still empty: it is the main thread's
-        if titled_main(root) && !root.hidden && !root.id.starts_with("local-") && self.segments(&main.id).await?.is_empty() {
+        if titled_main(root)
+            && !root.hidden
+            && !root.id.starts_with("local-")
+            && self.segments(&main.id).await?.is_empty()
+        {
             for (i, s) in line.iter().enumerate() {
                 self.append(&agent.name, &main.id, &s.id, if i == 0 { "adopted" } else { "compression" }).await?;
             }
@@ -478,7 +521,10 @@ impl Threads {
             match source.continuation(&current).await? {
                 Some(child) if !segments.iter().any(|s| s.session_id == child.id) => {
                     self.store
-                        .run("DELETE FROM thread_segments WHERE agent = ? AND session_id = ?", vec![text(&agent.name), text(&child.id)])
+                        .run(
+                            "DELETE FROM thread_segments WHERE agent = ? AND session_id = ?",
+                            vec![text(&agent.name), text(&child.id)],
+                        )
                         .await?;
                     self.append(&agent.name, &thread.id, &child.id, "compression").await?;
                     current = child;
@@ -499,7 +545,10 @@ impl Threads {
     pub async fn link(&self, agent: &AgentConfig, thread: &Thread, session: &str) -> anyhow::Result<()> {
         let _guard = self.registry.lock().await;
         self.store
-            .run("DELETE FROM thread_segments WHERE agent = ? AND session_id = ?", vec![text(&agent.name), text(session)])
+            .run(
+                "DELETE FROM thread_segments WHERE agent = ? AND session_id = ?",
+                vec![text(&agent.name), text(session)],
+            )
             .await?;
         let linked = if self.segments(&thread.id).await?.is_empty() { "root" } else { "moved" };
         self.append(&agent.name, &thread.id, session, linked).await?;
@@ -543,7 +592,14 @@ impl Threads {
                 (Some(parent), "compression") => timeline::copied_tail(&agent.name, &segment.session_id, &rows, parent),
                 _ => HashSet::new(),
             };
-            items.extend(timeline::segment_items(&agent.name, segment.position, &segment.session_id, &rows, &skip, &mut turn));
+            items.extend(timeline::segment_items(
+                &agent.name,
+                segment.position,
+                &segment.session_id,
+                &rows,
+                &skip,
+                &mut turn,
+            ));
             previous = Some(rows);
         }
         self.with_client_ids(agent, &mut items).await?;
@@ -556,7 +612,10 @@ impl Threads {
     async fn with_client_ids(&self, agent: &AgentConfig, items: &mut [Item]) -> anyhow::Result<()> {
         let rows = self
             .store
-            .run("SELECT message_id, client_id, attachments FROM thread_messages WHERE agent = ?", vec![text(&agent.name)])
+            .run(
+                "SELECT message_id, client_id, attachments FROM thread_messages WHERE agent = ?",
+                vec![text(&agent.name)],
+            )
             .await?;
         if rows.is_empty() {
             return Ok(());
@@ -612,7 +671,11 @@ impl Threads {
                 continue;
             }
             let id = format!("o_{}", row["id"].as_str().unwrap_or(""));
-            let at = row["created_at"].as_str().and_then(|c| crate::store::parse_since(c).ok()).map(|d| d.timestamp_micros() as f64 / 1e6).unwrap_or(0.0);
+            let at = row["created_at"]
+                .as_str()
+                .and_then(|c| crate::store::parse_since(c).ok())
+                .map(|d| d.timestamp_micros() as f64 / 1e6)
+                .unwrap_or(0.0);
             let (words, attachments) = timeline::visible(row["text"].as_str().unwrap_or(""), &id, 0);
             let body = json!({"kind": "boite", "text": words, "title": row["title"], "attachments": attachments,
                               "boite": {"outbox_id": row["id"], "audio": !row["audio_path"].is_null()}});
@@ -674,7 +737,13 @@ impl Threads {
 
     /// The message a notification is about, once stored: the last agent message of the thread whose words are the
     /// reply's (or start like them), else, without words, the last agent message. Waits `wait` seconds at most.
-    pub async fn find_message(&self, agent: &AgentConfig, session: &str, words: Option<&str>, wait: f64) -> Option<(String, String)> {
+    pub async fn find_message(
+        &self,
+        agent: &AgentConfig,
+        session: &str,
+        words: Option<&str>,
+        wait: f64,
+    ) -> Option<(String, String)> {
         let thread = self.resolve(agent, session).await.ok().flatten()?;
         let wanted = words.map(|w| timeline::visible(w, "x", 0).0).filter(|w| !w.is_empty());
         let head: Option<String> = wanted.as_ref().map(|w| w.chars().take(40).collect());
@@ -685,12 +754,14 @@ impl Threads {
                 self.source(agent).forget(&tip.session_id);
             }
             if let Ok(items) = self.items(agent, &thread, &segments).await {
-                let found = items.iter().rev().filter(|i| i.kind() == "message" && i.body.get("role") == Some(&json!("agent"))).find(|i| {
-                    match (&wanted, &head) {
+                let found = items
+                    .iter()
+                    .rev()
+                    .filter(|i| i.kind() == "message" && i.body.get("role") == Some(&json!("agent")))
+                    .find(|i| match (&wanted, &head) {
                         (Some(w), Some(h)) => i.text() == w || i.text().starts_with(h.as_str()),
                         _ => true,
-                    }
-                });
+                    });
                 if let Some(item) = found {
                     return Some((thread.id.clone(), item.id.clone()));
                 }
@@ -737,7 +808,8 @@ async fn served(threads: &Threads, agent: &AgentConfig, thread: &Thread, with_se
     let mut out = thread.to_json();
     out["tip"] = json!(segments.last().map(|s| s.session_id.clone()));
     if with_segments {
-        out["segments"] = json!(segments.iter().map(|s| json!({"session_id": s.session_id, "linked": s.linked})).collect::<Vec<_>>());
+        out["segments"] =
+            json!(segments.iter().map(|s| json!({"session_id": s.session_id, "linked": s.linked})).collect::<Vec<_>>());
     }
     out["unread"] = json!(crate::notifications::unread_in(&threads.store, &thread.id).await.unwrap_or(0));
     Ok(out)
@@ -798,7 +870,9 @@ async fn resolve(State(state): State<AppState>, q: QueryMap) -> ApiResult<Respon
     let agent = agent_param(&state, &q)?.ok_or_else(|| HttpError::new(422, "agent is required"))?;
     let threads = threads_of(&state);
     let thread = match (q.get("session_id").filter(|s| !s.is_empty()), q.get("c").filter(|s| !s.is_empty())) {
-        (Some(session), _) => threads.resolve(&agent, session).await.map_err(unavailable)?.ok_or_else(HttpError::not_found)?,
+        (Some(session), _) => {
+            threads.resolve(&agent, session).await.map_err(unavailable)?.ok_or_else(HttpError::not_found)?
+        }
         (None, Some(c)) if c.starts_with("room:") => {
             return Ok(web::ok(json!({"thread": {"id": c, "agent": agent.name, "kind": "room"}, "tip": null})))
         }
@@ -820,12 +894,21 @@ pub struct LinkBody {
 impl Validate for LinkBody {
     fn validate(&self, errors: &mut Vec<FieldError>) {
         if !crate::app::SESSION_ID.is_match(&self.session_id) {
-            errors.push(FieldError::new("value_error", vec![json!("body"), json!("session_id")], "invalid session id", json!(self.session_id)));
+            errors.push(FieldError::new(
+                "value_error",
+                vec![json!("body"), json!("session_id")],
+                "invalid session id",
+                json!(self.session_id),
+            ));
         }
     }
 }
 
-async fn link(State(state): State<AppState>, UrlPath(id): UrlPath<String>, Json(body): Json<LinkBody>) -> ApiResult<Response> {
+async fn link(
+    State(state): State<AppState>,
+    UrlPath(id): UrlPath<String>,
+    Json(body): Json<LinkBody>,
+) -> ApiResult<Response> {
     let threads = threads_of(&state);
     let agent = match body.agent.as_deref() {
         Some(a) => Some(crate::app::agent_or_404(&state.config(), Some(a))?),
@@ -848,13 +931,22 @@ pub struct ThreadPatch {
 impl Validate for ThreadPatch {
     fn validate(&self, errors: &mut Vec<FieldError>) {
         if self.title.as_ref().is_some_and(|t| t.chars().count() > 200) {
-            errors.push(FieldError::new("too_long", vec![json!("body"), json!("title")], "200 characters at most", Value::Null));
+            errors.push(FieldError::new(
+                "too_long",
+                vec![json!("body"), json!("title")],
+                "200 characters at most",
+                Value::Null,
+            ));
         }
     }
 }
 
 /// Renames a thread: the bridge's title (the main thread's Hermes session keeps its own, Bot Mode reads it).
-async fn rename(State(state): State<AppState>, UrlPath(id): UrlPath<String>, Json(body): Json<ThreadPatch>) -> ApiResult<Response> {
+async fn rename(
+    State(state): State<AppState>,
+    UrlPath(id): UrlPath<String>,
+    Json(body): Json<ThreadPatch>,
+) -> ApiResult<Response> {
     let threads = threads_of(&state);
     let agent = match body.agent.as_deref() {
         Some(a) => Some(crate::app::agent_or_404(&state.config(), Some(a))?),
@@ -864,7 +956,10 @@ async fn rename(State(state): State<AppState>, UrlPath(id): UrlPath<String>, Jso
     let title = body.title.as_deref().map(str::trim).filter(|t| !t.is_empty());
     threads
         .store
-        .run("UPDATE threads SET title = ? WHERE id = ?", vec![title.map(text).unwrap_or(Param::Null), text(&thread.id)])
+        .run(
+            "UPDATE threads SET title = ? WHERE id = ?",
+            vec![title.map(text).unwrap_or(Param::Null), text(&thread.id)],
+        )
         .await?;
     if thread.kind != "main" {
         // the Historique's other readers (Hermes' own list, an older tool) see the same name
@@ -882,7 +977,11 @@ async fn rename(State(state): State<AppState>, UrlPath(id): UrlPath<String>, Jso
 
 /// Deletes a thread: its Hermes sessions and its journal rows. The main thread keeps its id and starts again empty
 /// (its next conversation becomes its first segment).
-async fn delete_thread(State(state): State<AppState>, UrlPath(id): UrlPath<String>, q: QueryMap) -> ApiResult<Response> {
+async fn delete_thread(
+    State(state): State<AppState>,
+    UrlPath(id): UrlPath<String>,
+    q: QueryMap,
+) -> ApiResult<Response> {
     let threads = threads_of(&state);
     let (agent, thread) = threads.named(agent_param(&state, &q)?.as_ref(), &id).await?;
     let _guard = threads.registry.lock().await;
@@ -917,7 +1016,11 @@ pub fn want_of(q: &QueryMap) -> ApiResult<Want> {
     })
 }
 
-async fn timeline_route(State(state): State<AppState>, UrlPath(id): UrlPath<String>, q: QueryMap) -> ApiResult<Response> {
+async fn timeline_route(
+    State(state): State<AppState>,
+    UrlPath(id): UrlPath<String>,
+    q: QueryMap,
+) -> ApiResult<Response> {
     if let Some(relayed) = shared(&state, &q, &format!("{id}/timeline")).await {
         return relayed;
     }
@@ -938,7 +1041,8 @@ async fn timeline_route(State(state): State<AppState>, UrlPath(id): UrlPath<Stri
         .map(Value::Object)
         .collect();
     let run = tip.as_deref().and_then(|t| state.hub.session_run(&agent.name, t));
-    let queue = tip.as_deref().map(|t| crate::msg_queue::queues_of(&state).get(&agent.name).snapshot_of(&agent.name, t));
+    let queue =
+        tip.as_deref().map(|t| crate::msg_queue::queues_of(&state).get(&agent.name).snapshot_of(&agent.name, t));
     let mut out_thread = thread.to_json();
     out_thread["tip"] = json!(tip);
     let debug = q.get("debug").is_some_and(|d| d == "1");
@@ -956,7 +1060,11 @@ async fn timeline_route(State(state): State<AppState>, UrlPath(id): UrlPath<Stri
     })))
 }
 
-async fn item_route(State(state): State<AppState>, UrlPath((id, item)): UrlPath<(String, String)>, q: QueryMap) -> ApiResult<Response> {
+async fn item_route(
+    State(state): State<AppState>,
+    UrlPath((id, item)): UrlPath<(String, String)>,
+    q: QueryMap,
+) -> ApiResult<Response> {
     let threads = threads_of(&state);
     let (agent, thread) = threads.named(agent_param(&state, &q)?.as_ref(), &id).await?;
     let segments = threads.line(&agent, &thread).await.map_err(unavailable)?;
@@ -983,7 +1091,9 @@ async fn attachment_route(
         *response.status_mut() = axum::http::StatusCode::TEMPORARY_REDIRECT;
         let enc = |v: &str| percent_encoding::utf8_percent_encode(v, percent_encoding::NON_ALPHANUMERIC).to_string();
         let target = format!("/v1/media?path={}&agent={}", enc(path), enc(&agent.name));
-        response.headers_mut().insert("location", axum::http::HeaderValue::from_str(&target).map_err(anyhow::Error::from)?);
+        response
+            .headers_mut()
+            .insert("location", axum::http::HeaderValue::from_str(&target).map_err(anyhow::Error::from)?);
         return Ok(response);
     }
     // a photo of the message: the n-th image part of its row, decoded
@@ -993,7 +1103,11 @@ async fn attachment_route(
             .iter()
             .filter(|p| matches!(p.get("type").and_then(Value::as_str), Some("image_url" | "input_image" | "image")))
             .filter_map(|p| {
-                p.get("image_url").and_then(|u| u.get("url").or(Some(u))).or_else(|| p.get("url")).and_then(Value::as_str).map(str::to_string)
+                p.get("image_url")
+                    .and_then(|u| u.get("url").or(Some(u)))
+                    .or_else(|| p.get("url"))
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
             })
             .collect(),
         _ => Vec::new(),
@@ -1003,8 +1117,12 @@ async fn attachment_route(
     let mime = head.split(';').next().unwrap_or("application/octet-stream").to_string();
     let bytes = base64::engine::general_purpose::STANDARD.decode(b64.trim()).map_err(|_| HttpError::not_found())?;
     let mut response = Response::new(Body::from(bytes));
-    response.headers_mut().insert("content-type", axum::http::HeaderValue::from_str(&mime).map_err(anyhow::Error::from)?);
-    response.headers_mut().insert("cache-control", axum::http::HeaderValue::from_static("private, max-age=31536000, immutable"));
+    response
+        .headers_mut()
+        .insert("content-type", axum::http::HeaderValue::from_str(&mime).map_err(anyhow::Error::from)?);
+    response
+        .headers_mut()
+        .insert("cache-control", axum::http::HeaderValue::from_static("private, max-age=31536000, immutable"));
     Ok(response)
 }
 
@@ -1018,7 +1136,8 @@ async fn events(State(state): State<AppState>, q: QueryMap) -> ApiResult<Respons
     };
     let only = agent.map(|a| a.name);
     let mut events = threads.subscribe();
-    let line = |kind: &str, data: &Value| bytes::Bytes::from(format!("event: {kind}\ndata: {}\n\n", crate::py::dumps(data)));
+    let line =
+        |kind: &str, data: &Value| bytes::Bytes::from(format!("event: {kind}\ndata: {}\n\n", crate::py::dumps(data)));
     let stream = async_stream::stream! {
         let _shown = shown;   // held as long as the app reads the stream
         yield Ok::<_, std::io::Error>(bytes::Bytes::from_static(b": threads\n\n"));

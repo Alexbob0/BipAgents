@@ -116,7 +116,10 @@ impl Row {
             tool_calls: row.get("tool_calls").filter(|v| !v.is_null()).cloned(),
             tool_call_id: s("tool_call_id"),
             tool_name: s("tool_name").or_else(|| s("name")),
-            timestamp: ["timestamp", "created_at", "ts"].iter().find_map(|k| row.get(*k).and_then(Value::as_f64)).unwrap_or(0.0),
+            timestamp: ["timestamp", "created_at", "ts"]
+                .iter()
+                .find_map(|k| row.get(*k).and_then(Value::as_f64))
+                .unwrap_or(0.0),
             display_kind: s("display_kind"),
             reasoning: s("reasoning").or_else(|| s("reasoning_content")),
             shown: active || compacted,
@@ -129,13 +132,16 @@ impl Row {
 #[derive(Clone)]
 pub enum Source {
     Db(PathBuf),
-    Api(HermesClient, AgentConfig, Arc<ApiCache>),
+    Api(HermesClient, Box<AgentConfig>, Arc<ApiCache>),
 }
 
-/// The API source's rows per (agent, session): (when read, still the tip then, rows).
+/// When a segment's rows were read, and the rows.
+type Cached = (f64, Arc<Vec<Row>>);
+
+/// The API source's rows per (agent, session).
 #[derive(Default)]
 pub struct ApiCache {
-    rows: Mutex<HashMap<(String, String), (f64, Arc<Vec<Row>>)>>,
+    rows: Mutex<HashMap<(String, String), Cached>>,
 }
 
 impl ApiCache {
@@ -167,7 +173,7 @@ impl Source {
     pub fn of(config: &Config, agent: &AgentConfig, hermes: &HermesClient, cache: &Arc<ApiCache>) -> Source {
         match crate::message_search::store_path(config, &agent.name) {
             Some(path) => Source::Db(path),
-            None => Source::Api(hermes.clone(), agent.clone(), cache.clone()),
+            None => Source::Api(hermes.clone(), Box::new(agent.clone()), cache.clone()),
         }
     }
 
@@ -179,7 +185,11 @@ impl Source {
                 tokio::task::spawn_blocking(move || db_sessions(&path, None, limit)).await?
             }
             Source::Api(hermes, agent, _) => {
-                let params = [("limit", limit.min(200).to_string()), ("include_children", "1".into()), ("include_hidden", "1".into())];
+                let params = [
+                    ("limit", limit.min(200).to_string()),
+                    ("include_children", "1".into()),
+                    ("include_hidden", "1".into()),
+                ];
                 let rows = hermes.list_sessions_with(agent, &params).await?;
                 let mut out: Vec<Session> = rows.iter().filter_map(Session::of_api).collect();
                 out.sort_by(|a, b| b.last_active.total_cmp(&a.last_active));
@@ -210,7 +220,9 @@ impl Source {
                 let (path, id) = (path.clone(), parent.id.clone());
                 tokio::task::spawn_blocking(move || db_children(&path, &id)).await??
             }
-            Source::Api(..) => self.sessions(200).await?.into_iter().filter(|s| s.parent.as_deref() == Some(&parent.id)).collect(),
+            Source::Api(..) => {
+                self.sessions(200).await?.into_iter().filter(|s| s.parent.as_deref() == Some(&parent.id)).collect()
+            }
         };
         Ok(children.into_iter().filter(|c| c.continues(parent)).max_by(|a, b| a.started_at.total_cmp(&b.started_at)))
     }

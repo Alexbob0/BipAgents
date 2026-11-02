@@ -214,13 +214,19 @@ pub async fn set_push(store: &Store, id: &str, push: &str, legacy: &Dict) -> any
 
 /// One row read now.
 pub async fn mark_read(store: &Store, id: &str) -> anyhow::Result<()> {
-    store.run("UPDATE notifications SET read_at = ? WHERE id = ? AND read_at IS NULL", vec![text(&iso(utcnow())), text(id)]).await?;
+    store
+        .run(
+            "UPDATE notifications SET read_at = ? WHERE id = ? AND read_at IS NULL",
+            vec![text(&iso(utcnow())), text(id)],
+        )
+        .await?;
     Ok(())
 }
 
 /// Unread rows in all (the app icon's badge).
 pub async fn unread_total(store: &Store) -> anyhow::Result<i64> {
-    let rows = store.run("SELECT COUNT(*) AS n FROM notifications WHERE read_at IS NULL AND hidden = 0", vec![]).await?;
+    let rows =
+        store.run("SELECT COUNT(*) AS n FROM notifications WHERE read_at IS NULL AND hidden = 0", vec![]).await?;
     Ok(rows.first().and_then(|r| r["n"].as_i64()).unwrap_or(0))
 }
 
@@ -236,13 +242,16 @@ pub async fn unread_in(store: &Store, thread: &str) -> anyhow::Result<i64> {
 }
 
 fn served(row: &crate::store::Row, full: bool) -> Value {
-    let preview = row.get("preview").and_then(Value::as_str).map(|p| {
-        if full {
-            p.to_string()
-        } else {
-            crate::push::preview(p, 160)
-        }
-    });
+    let preview =
+        row.get("preview").and_then(Value::as_str).map(
+            |p| {
+                if full {
+                    p.to_string()
+                } else {
+                    crate::push::preview(p, 160)
+                }
+            },
+        );
     json!({
         "id": row["id"], "agent": row["agent"], "type": row["type"], "c": row["thread_id"], "m": row["message_id"],
         "ref": row["ref_id"], "session_id": row["session_id"], "title": row["title"], "body": row["body_key"],
@@ -375,14 +384,20 @@ async fn read(State(state): State<AppState>, Json(body): Json<ReadBody>) -> ApiR
         params.extend(ids.iter().map(|i| text(i)));
         state
             .store
-            .run(&format!("UPDATE notifications SET read_at = ? WHERE id IN ({})", vec!["?"; ids.len()].join(",")), params)
+            .run(
+                &format!("UPDATE notifications SET read_at = ? WHERE id IN ({})", vec!["?"; ids.len()].join(",")),
+                params,
+            )
             .await?;
     }
     let unread = counts(&state.store).await?;
     // tell the devices, per agent
     let mut by_agent: std::collections::BTreeMap<String, Vec<String>> = Default::default();
     for r in &rows {
-        by_agent.entry(r["agent"].as_str().unwrap_or("").to_string()).or_default().push(r["id"].as_str().unwrap_or("").to_string());
+        by_agent
+            .entry(r["agent"].as_str().unwrap_or("").to_string())
+            .or_default()
+            .push(r["id"].as_str().unwrap_or("").to_string());
     }
     let threads = crate::threads::threads_of(&state);
     for (agent, read) in by_agent {
@@ -415,7 +430,18 @@ mod tests {
     #[test]
     fn the_rules() {
         // approvals, security asks and questions always notify
-        for k in [Kind::Approval, Kind::Question, Kind::EmailHeld, Kind::Site, Kind::Login, Kind::Connector, Kind::Secret, Kind::MailCard, Kind::Meet, Kind::Family] {
+        for k in [
+            Kind::Approval,
+            Kind::Question,
+            Kind::EmailHeld,
+            Kind::Site,
+            Kind::Login,
+            Kind::Connector,
+            Kind::Secret,
+            Kind::MailCard,
+            Kind::Meet,
+            Kind::Family,
+        ] {
             assert!(!k.follows_switch(None), "{k:?}");
         }
         for k in [Kind::Reply, Kind::RoomReply, Kind::Subtask, Kind::Scan, Kind::Task] {
@@ -433,7 +459,16 @@ mod tests {
     #[tokio::test]
     async fn one_row_per_dedupe_key() {
         let store = Store::open(":memory:").unwrap();
-        let row = NewRow { id: "n_1", agent: "vie", kind: "reply", title: "Vie", state: "open", dedupe: "reply:vie:m_1", text: Some("Bonjour"), ..Default::default() };
+        let row = NewRow {
+            id: "n_1",
+            agent: "vie",
+            kind: "reply",
+            title: "Vie",
+            state: "open",
+            dedupe: "reply:vie:m_1",
+            text: Some("Bonjour"),
+            ..Default::default()
+        };
         assert!(insert(&store, &row).await.unwrap());
         assert!(!insert(&store, &NewRow { id: "n_2", ..row.clone() }).await.unwrap());
         let thread = NewRow { id: "n_3", thread: Some("t_1"), dedupe: "reply:vie:m_2", ..row };

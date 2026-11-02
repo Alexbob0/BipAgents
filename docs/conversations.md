@@ -554,13 +554,14 @@ typically 50–150 ms, so the count of requests is what the person feels).
 
 | Screen | Before: requests | Before: bytes | After: requests | After: bytes |
 |---|---:|---:|---:|---:|
-| Open the main conversation | 7 (3 to Hermes, 4 to the bridge) + `session_state` every 5–8 s | 42,127 (only the tip segment: older segments unreachable) | **1** | 22,728 (latest 50 items of the whole line) |
-| Open around a message (notification, search hit) | 7 (the old segment fetched whole) | 41,723 | **1** | 25,355 (20 before, 50 after) |
+| Open the main conversation | 7 (3 to Hermes, 4 to the bridge) + `session_state` every 5–8 s | 42,127 (only the tip segment: older segments unreachable) | **1** | 17,463 (latest 50 items of the whole line) |
+| Open around a message (notification, search hit) | 7 (the old segment fetched whole) | 41,723 | **1** | 19,420 (20 before, 50 after) |
 
-- Server time of one timeline page (400-message line rebuilt, debug build): ~5 ms; release builds are several
+- Server time of one timeline page (400-message line rebuilt, debug build): ~4.5 ms; on the real lab place (Hermes
+  v0.22.5, the door over the internet) a timeline page answered in ~125 ms end to end; release builds are several
   times faster. The old screen's 7 requests took ~2.6 ms in all on localhost, i.e. 7 round trips on a phone.
 - Per item, the timeline sends visible text, an id and a short cursor only: `segment` with `debug=1`, `turn` when it
-  is another item's, `attachments` when there are some. 133 items: 59.5 kB (old: 42 kB for the same 133 Hermes rows,
+  is another item's, `attachments` when there are some. 133 items: 45.7 kB (old: 42 kB for the same 133 Hermes rows,
   but with neither tool steps, attachments, Boîte, approvals nor calls merged: those were 4 more requests).
 - Live updates: one SSE connection (`/v1/threads/events`) replaces polling: `session_state` (every 5–8 s per open
   conversation), the home screen's previews, the Boîte's refresh.
