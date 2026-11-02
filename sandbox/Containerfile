@@ -1,0 +1,14 @@
+# The agents' sandbox: Hermes' own sandbox image plus the Python libraries of the styled documents skills (decks and
+# Word documents: bridge-rs/assets/skills/slides-styles, docs-styles), pinned in requirements.txt. Built by
+# .github/workflows/server-images.yml as ghcr.io/alexbob0/bipagents-sandbox:<key> (<key>: a hash of this folder) and
+# pulled by the servers as localhost/bipagents-sandbox:latest (installer/bipinstall/shared_images.py); the bridge
+# gives it to the agents it isolates when it is there (bridge-rs/src/sandbox.rs `agent_image`).
+ARG BASE=docker.io/nousresearch/hermes-sandbox:desktop
+FROM ${BASE}
+COPY requirements.txt /tmp/bipagents-requirements.txt
+RUN python3 -m pip install --no-cache-dir --disable-pip-version-check --root-user-action=ignore \
+        -r /tmp/bipagents-requirements.txt \
+    && rm /tmp/bipagents-requirements.txt \
+    && python3 -c "import pptx, docx, lxml, PIL, xlsxwriter; print('styled documents libraries ok')"
+LABEL org.opencontainers.image.title="bipagents-sandbox" \
+      org.opencontainers.image.description="Hermes' sandbox with the BipAgents styled documents libraries"

@@ -1,0 +1,30 @@
+{
+  "kind": "compte_rendu",
+  "style": "rapport",
+  "title": "Compte rendu — Réunion d'équipe",
+  "subtitle": "Boutique · Lundi 2 novembre 2026, 9 h – 10 h",
+  "meta": [["Date", "2 novembre 2026"], ["Lieu", "Boutique"], ["Rédaction", "Quotidien, agent IA"]],
+  "blocks": [
+    {"heading": "Présences", "level": 1},
+    {"table": [["Présents", "Léa, Karim, Julie"], ["Absents", "Tom"]]},
+    {"heading": "Ventes d'octobre", "level": 1},
+    {"text": "Chiffre d'affaires d'octobre : **14 200 €**, en hausse de **8 %** par rapport à septembre. La progression est portée par les viennoiseries du week-end."},
+    {"heading": "Préparation de Noël", "level": 1},
+    {"bullets": [
+      "**Gamme :** 3 bûches au programme.",
+      "**Précommandes :** ouverture dès le 20 novembre.",
+      "**Horaires élargis :** du 22 au 31 décembre."
+    ]},
+    {"heading": "Décision", "level": 1},
+    {"callout": "Recrutement d'un apprenti boulanger pour janvier."},
+    {"heading": "Actions à mener", "level": 1},
+    {"actions": [
+      ["Action", "Qui", "Pour quand"],
+      ["Publier l'offre d'apprentissage", "Léa", "Avant le 10 novembre"],
+      ["Imprimer les bons de précommande", "Julie", "Avant le 15 novembre"],
+      ["Tester la bûche praliné", "Karim", "Avant le 18 novembre"]
+    ]},
+    {"heading": "Prochaine réunion", "level": 1},
+    {"text": "À convenir. Suivi des actions en tête de la prochaine réunion."}
+  ]
+}

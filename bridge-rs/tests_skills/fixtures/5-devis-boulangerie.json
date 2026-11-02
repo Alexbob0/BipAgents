@@ -1,0 +1,25 @@
+{
+  "kind": "devis",
+  "title": "Devis",
+  "subtitle": "Buffet du mariage de M. et Mme Durand — 14 juin 2027",
+  "from": {"name": "Le Fournil de Léa", "lines": ["12 rue des Boulangers", "44000 Nantes", "SIRET 912 345 678 00012"]},
+  "to": {"name": "M. et Mme Durand", "lines": ["8 allée des Tilleuls", "44300 Nantes"]},
+  "meta": [["Date", "2 novembre 2026"], ["Validité", "Devis valable 3 mois"], ["Prestation", "Buffet de mariage — livraison le 14 juin 2027"]],
+  "blocks": [
+    {"items": [
+      ["Désignation", "Qté", "Prix unitaire HT"],
+      ["Pain de campagne au levain", 12, 6.5],
+      ["Mini-viennoiseries", 150, 0.9],
+      ["Pièce montée de choux (60 parts)", 1, 210.0],
+      ["Livraison sur Nantes", 1, 45.0]
+    ], "vat": 5.5},
+    {"heading": "Conditions", "level": 2},
+    {"bullets": [
+      "Acompte de 30 % du montant TTC à la commande, solde à la livraison.",
+      "TVA au taux réduit de 5,5 % applicable aux denrées alimentaires.",
+      "Prix exprimés en euros, en euros HT sauf mention contraire."
+    ]},
+    {"signature": ["Fait à Nantes, le 2 novembre 2026", "Léa — Le Fournil de Léa"]}
+  ],
+  "footer": "Le Fournil de Léa · 12 rue des Boulangers, 44000 Nantes · SIRET 912 345 678 00012"
+}

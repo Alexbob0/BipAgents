@@ -1,0 +1,21 @@
+{
+  "kind": "cv",
+  "style": "suisse",
+  "cv": {
+    "name": "Léa Martin",
+    "headline": "Boulangère-pâtissière",
+    "contact": ["06 12 34 56 78", "lea.martin@exemple.fr", "Nantes"]
+  },
+  "blocks": [
+    {"heading": "Expérience", "level": 1},
+    {"entry": {"title": "Cheffe boulangère", "org": "Maison Pichon, Nantes", "dates": "2021 – 2026", "bullets": ["Encadrement d'une équipe de 6 personnes", "Développement de la gamme au levain : +25 % de ventes"]}},
+    {"entry": {"title": "Boulangère", "org": "Boulangerie Ducasse, Lyon", "dates": "2016 – 2021", "bullets": ["Fournil et viennoiserie", "Formation des apprentis"]}},
+    {"entry": {"title": "Apprentie puis ouvrière", "org": "Au Pain d'Autrefois, Angers", "dates": "2012 – 2016", "text": "Formation en alternance puis poste d'ouvrière au fournil."}},
+    {"heading": "Diplômes", "level": 1},
+    {"bullets": ["BP Boulanger — 2014", "CAP Pâtissier — 2012"]},
+    {"heading": "Compétences", "level": 1},
+    {"bullets": ["Levain", "Viennoiserie fine", "Gestion d'équipe", "Achats et marges"]},
+    {"heading": "Langues", "level": 1},
+    {"bullets": ["Français : langue maternelle", "Anglais : courant"]}
+  ]
+}

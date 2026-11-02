@@ -56,8 +56,9 @@ const GONE: &str = "the conversation is gone";
 pub const NOTE_CHARS: usize = 6000;
 /// Key points in a templated message.
 pub const POINTS_MAX: usize = 3;
-/// Files and pages of the work linked in the message, at most.
-pub const LINKS_MAX: usize = 4;
+/// Files and pages of the work linked in the message, at most (6 since 2026-11-02: a trip's deck in three styles, its
+/// Word version and its map came back short of one at 4).
+pub const LINKS_MAX: usize = 6;
 
 /// What the agent is told for its turn, inside the note (not as run instructions: those change the system prompt and
 /// the conversation's prompt cache with it).

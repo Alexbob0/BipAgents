@@ -81,7 +81,8 @@ pub const INSTRUCTIONS: &str =
     "This is a background task the person gave you from the app (« Tâches de fond »): they are not following
 this conversation. Work through it on your own, step by step, with your tools. Don't ask questions unless you truly
 cannot go on: choose sensible defaults and say which in your report. Keep what you make where the person finds it: a
-page (create_page) for a table, a comparison or a dashboard, a file in your workspace for a longer document. Your work
+page (create_page) for a table, a comparison or a dashboard; a file you make (a deck, a Word document, a spreadsheet, a
+PDF, each version or style asked) given with give_file, and the MEDIA line it gives you put in your report. Your work
 has a budget; if you are told to continue, pick up where you stopped instead of starting again. End with a short
 report in the person's language: what you did, what you found or made and where it is, what is left or uncertain.";
 pub const CONTINUE: &str = "Continue the task where you stopped (don't start again), then end with your report.";

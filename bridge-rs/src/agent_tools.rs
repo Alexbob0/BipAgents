@@ -598,6 +598,11 @@ pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow
         tracing::warn!(agent = %agent.name, error = %last_chars(&exc.to_string(), 200), "tools in view not set");
         false
     });
+    // The styled decks and Word documents (style_skills.rs), in place of Hermes' `powerpoint` and `docx`.
+    let styled = crate::style_skills::apply(config, agent).unwrap_or_else(|exc| {
+        tracing::warn!(agent = %agent.name, error = %last_chars(&exc.to_string(), 200), "styled documents skills not set");
+        false
+    });
     // The providers EUrouter tries first (model_route.rs): at each start, the migration of existing agents too.
     let routed = crate::model_route::apply(config, agent).unwrap_or_else(|exc| {
         tracing::warn!(agent = %agent.name, error = %last_chars(&exc.to_string(), 200), "model provider routing not set");
@@ -605,7 +610,7 @@ pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow
     });
     // The thinking level the person chose, or GLM's « low », after the `hermes config set` above (agents_admin.rs).
     let thinking = crate::agents_admin::heal_thinking_of(config, agent);
-    Ok(changed || paying || accounts || connecting || handing || link || diet || routed || thinking)
+    Ok(changed || paying || accounts || connecting || handing || link || diet || styled || routed || thinking)
 }
 
 /// `register` with the tools' URL given (tests: a later version of the tools).

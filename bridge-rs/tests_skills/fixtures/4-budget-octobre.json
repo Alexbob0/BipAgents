@@ -1,0 +1,35 @@
+{
+  "style": "rapport",
+  "title": "Bilan budget — Octobre 2026",
+  "slides": [
+    {"layout": "cover", "title": "Bilan budget", "subtitle": "Octobre 2026 · Comparaison avec septembre"},
+    {"layout": "stats", "title": "L'essentiel", "stats": [
+      {"value": "2 080 €", "label": "Dépenses octobre"},
+      {"value": "1 020 €", "label": "Épargné en octobre"},
+      {"value": "+40 €", "label": "vs septembre (2 040 €)"}
+    ], "takeaway": "Revenus : 3 100 € chaque mois. Le mois reste bien équilibré."},
+    {"layout": "big_number", "value": "1 020 €", "label": "mis de côté en octobre", "context": "Soit 33 % des revenus (3 100 €). En septembre : 1 060 €, soit 34 %. L'écart vient surtout des loisirs et des courses."},
+    {"layout": "chart", "title": "Dépenses par catégorie — octobre vs septembre", "chart": {
+      "type": "bar",
+      "categories": ["Logement", "Courses", "Transport", "Loisirs", "Santé", "Divers"],
+      "series": {"Septembre": [950, 480, 210, 160, 90, 150], "Octobre": [950, 520, 180, 240, 60, 130]},
+      "unit": "€"
+    }, "takeaway": "Les loisirs montent de +50 %, la santé baisse de moitié."},
+    {"layout": "chart", "title": "Évolution par catégorie (€)", "chart": {
+      "type": "bar",
+      "categories": ["Courses", "Transport", "Loisirs", "Santé", "Divers"],
+      "series": {"Variation vs sept.": [40, -30, 80, -30, -20]},
+      "unit": "€"
+    }, "takeaway": "Les loisirs expliquent la hausse du total ; tout le reste baisse ou reste stable."},
+    {"layout": "table", "title": "Le détail", "headers": ["Catégorie", "Septembre", "Octobre", "Écart"], "rows": [
+      ["Logement", "950 €", "950 €", "0 €"],
+      ["Courses", "480 €", "520 €", "+40 €"],
+      ["Transport", "210 €", "180 €", "−30 €"],
+      ["Loisirs", "160 €", "240 €", "+80 €"],
+      ["Santé", "90 €", "60 €", "−30 €"],
+      ["Divers", "150 €", "130 €", "−20 €"],
+      ["Total", "2 040 €", "2 080 €", "+40 €"]
+    ], "takeaway": "Revenus 3 100 € · Épargne : 1 060 € en septembre, 1 020 € en octobre."},
+    {"layout": "closing", "title": "À retenir", "contact": "Mois équilibré : 1 020 € épargnés (33 % des revenus). Seule vraie dérive : les loisirs (+80 €)."}
+  ]
+}
