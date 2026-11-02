@@ -135,18 +135,21 @@ pub fn edit_text(path: &Path, change: impl FnOnce(Option<&str>) -> Option<String
 
 /// Hermes' own command on the profile in `folder` (`config set` of a key with side effects: `terminal.*` mirrored
 /// in `.env`, a credential written there; `tools enable/disable`), run under the profile's lock so no edit of this
-/// bridge reads the file meanwhile. A profile not made yet runs it without the lock.
+/// bridge reads the file meanwhile. The lock is never held across an `.await`: the bridge runs on one thread, where a
+/// sync edit waiting for it would stop the task holding it. So the command runs to its end on a blocking thread
+/// (`blocking`), the lock taken there.
 pub async fn hermes(
     folder: &Path,
-    run: &Run,
+    blocking: fn(&[String], &BTreeMap<String, String>) -> anyhow::Result<String>,
     args: Vec<String>,
     env: BTreeMap<String, String>,
 ) -> anyhow::Result<String> {
     let folder = folder.to_path_buf();
-    let held = tokio::task::spawn_blocking(move || lock(&folder)).await??;
-    let out = run(args, env).await;
-    drop(held);
-    out
+    tokio::task::spawn_blocking(move || {
+        let _held = lock(&folder)?;
+        blocking(&args, &env)
+    })
+    .await?
 }
 
 /// The profile folder a Hermes command writes, for the commands that write one: `[bin, (-p <profile>)?, config
@@ -176,15 +179,15 @@ pub fn written_by(args: &[String], env: &BTreeMap<String, String>) -> Option<Pat
     })
 }
 
-/// `inner` with every Hermes command that writes a profile run under that profile's lock ([`hermes`]): Hermes' own
-/// `config set` (keys with side effects: `terminal.*` mirrored in `.env`, credentials) and `tools enable/disable`
-/// never interleave with this bridge's edits. The bridge's [`Run`] (agents_admin::default_run).
-pub fn locked(inner: Run) -> Run {
+/// `inner` with every Hermes command that writes a profile run by `blocking` under that profile's lock
+/// ([`hermes`]): Hermes' own `config set` (keys with side effects: `terminal.*` mirrored in `.env`, credentials) and
+/// `tools enable/disable` never interleave with this bridge's edits. The bridge's [`Run`] (agents_admin::default_run).
+pub fn locked(inner: Run, blocking: fn(&[String], &BTreeMap<String, String>) -> anyhow::Result<String>) -> Run {
     std::sync::Arc::new(move |args: Vec<String>, env: BTreeMap<String, String>| {
         let inner = inner.clone();
         Box::pin(async move {
             match written_by(&args, &env) {
-                Some(folder) => hermes(&folder, &inner, args, env).await,
+                Some(folder) => hermes(&folder, blocking, args, env).await,
                 None => inner(args, env).await,
             }
         })
@@ -450,25 +453,29 @@ mod tests {
         assert_eq!(written_by(&args("hermes -p"), &env), None);
     }
 
+    static RAN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
     #[tokio::test]
-    async fn a_hermes_command_waits_for_an_edit() {
+    async fn a_hermes_command_waits_for_an_edit_and_never_holds_the_lock_across_an_await() {
         let dir = folder();
         let held = lock(&dir).unwrap();
-        let ran = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let seen = ran.clone();
-        let run: Run = std::sync::Arc::new(move |_, _| {
-            seen.store(true, std::sync::atomic::Ordering::SeqCst);
-            Box::pin(async { Ok(String::new()) })
-        });
+        fn blocking(_: &[String], _: &BTreeMap<String, String>) -> anyhow::Result<String> {
+            RAN.store(true, std::sync::atomic::Ordering::SeqCst);
+            std::thread::sleep(Duration::from_millis(50));
+            Ok("done".into())
+        }
         let task = tokio::spawn({
             let dir = dir.clone();
-            async move { hermes(&dir, &run, vec![], BTreeMap::new()).await }
+            async move { hermes(&dir, blocking, vec![], BTreeMap::new()).await }
         });
         tokio::time::sleep(Duration::from_millis(100)).await;
-        assert!(!ran.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!RAN.load(std::sync::atomic::Ordering::SeqCst));
         drop(held);
-        task.await.unwrap().unwrap();
-        assert!(ran.load(std::sync::atomic::Ordering::SeqCst));
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        // a sync edit on this (only) thread meanwhile: it waits for the command, which goes on without this thread
+        assert!(edit(&dir.join("config.yaml"), |d| d.insert("a", Yaml::Int(1))).unwrap());
+        assert_eq!(task.await.unwrap().unwrap(), "done");
+        assert!(RAN.load(std::sync::atomic::Ordering::SeqCst));
     }
 
     #[test]

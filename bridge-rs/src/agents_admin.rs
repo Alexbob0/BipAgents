@@ -45,7 +45,7 @@ pub type Run =
 
 /// `run_hermes` as a [`Run`], the commands that write a profile under its lock (profile_files::locked).
 pub fn default_run() -> Run {
-    crate::profile_files::locked(Arc::new(|args, env| Box::pin(run_hermes(args, env))))
+    crate::profile_files::locked(Arc::new(|args, env| Box::pin(run_hermes(args, env))), run_hermes_blocking)
 }
 
 /// Python's `LookupError` (`managed`, `editable`: not an agent the bridge may change).
@@ -436,6 +436,46 @@ pub async fn run_hermes(args: Vec<String>, env: BTreeMap<String, String>) -> any
         anyhow::bail!("{shown} failed: {}", tail(err.trim(), 300));
     }
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// [`run_hermes`] on a blocking thread (the commands that write a profile, under its lock: profile_files::hermes).
+pub fn run_hermes_blocking(args: &[String], env: &BTreeMap<String, String>) -> anyhow::Result<String> {
+    use std::io::Read;
+    let Some(program) = args.first() else { anyhow::bail!("no command") };
+    let mut child = std::process::Command::new(program)
+        .args(&args[1..])
+        .envs(env)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()?;
+    let pipe = |mut from: Box<dyn Read + Send>| {
+        std::thread::spawn(move || {
+            let mut bytes = Vec::new();
+            let _ = from.read_to_end(&mut bytes);
+            bytes
+        })
+    };
+    let stdout = pipe(Box::new(child.stdout.take().expect("piped")));
+    let stderr = pipe(Box::new(child.stderr.take().expect("piped")));
+    let deadline = std::time::Instant::now() + Duration::from_secs(120);
+    let status = loop {
+        if let Some(status) = child.try_wait()? {
+            break status;
+        }
+        if std::time::Instant::now() > deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(CommandTimeout.into());
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    let (stdout, stderr) = (stdout.join().unwrap_or_default(), stderr.join().unwrap_or_default());
+    if !status.success() {
+        let shown = args.iter().take(4).cloned().collect::<Vec<_>>().join(" ");
+        anyhow::bail!("{shown} failed: {}", tail(String::from_utf8_lossy(&stderr).trim(), 300));
+    }
+    Ok(String::from_utf8_lossy(&stdout).into_owned())
 }
 
 /// Tools that read this machine's files: off by default where the agents are not isolated from the bridge. The

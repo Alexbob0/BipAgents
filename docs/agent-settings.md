@@ -11,7 +11,9 @@ the drift.
    It also runs Hermes' own commands that write the profile (`hermes config set` with side effects, `hermes tools
    enable/disable`). Every write:
    - holds the profile's lock: `flock` on `<profile>/.bipagents-profile.lock`, from the read to the rename. Other
-     processes can take it too, and threads of this bridge take it on their own descriptor;
+     processes can take it too, and threads of this bridge take it on their own descriptor. The bridge runs on one
+     thread, so the lock is never held across an `.await`: a Hermes command that writes runs to its end on a
+     blocking thread, with the lock taken there;
    - is a read-modify-write of the whole document. When the change leaves it equal, nothing is written: the bytes
      on disk stay the same, including Hermes' own formatting and comments;
    - writes to a temporary file in the same folder and renames it over the old one, keeping its mode. A gateway
@@ -19,8 +21,10 @@ the drift.
 2. **One record per agent.** `<profile>/bipagents-settings.json` (`AgentSettings`) holds the choices that today
    live only in the profile: version 1 has the thinking level the person chose. The bridge owns it and Hermes never
    reads it. It stays in the profile folder so it moves with the agent (moves, exports, restic backups). Version 1
-   replaces the `.bipagents-thinking-chosen` and `.bipagents-thinking-off` mark files: `migrate` reads them once
-   and removes them. A record with a higher version than this bridge knows is left alone (a downgrade keeps it).
+   replaces the `.bipagents-thinking-chosen` and `.bipagents-thinking-off` mark files. There is no compatibility
+   window (only beta installs, owner 2026-11-02): `migrate` runs once in the start-time reconcile of the bridge
+   that brings the record, moves the marks in and removes them, and nothing reads the marks afterwards. A record
+   with a higher version than this bridge knows is left alone (a downgrade keeps it).
 3. **One reconcile pass.** `profile_files::reconcile(config, agent)` computes the profile's desired `config.yaml`
    from the record and the place's policy. That covers the thinking level and its GLM floor, the router's provider
    order, the tool diet (`tools.tool_search.defer`, compact skill categories, `max_turns`, routine reports,
@@ -32,10 +36,11 @@ the drift.
    - after a vault change.
    It is idempotent: a second run writes nothing (tested).
 4. **Features ask the writer.** A module that changes something either changes the record and calls `reconcile`, or
-   calls `profile_files::edit(path, |doc| …)` for its own slice (an MCP server entry, `skills.disabled`, the time
-   zone). For keys where Hermes' command has side effects, it calls `profile_files::hermes(folder, run, args, env)`,
-   which runs the command under the same lock. Those keys are `terminal.*` (mirrored into `.env` as `TERMINAL_*`),
-   credentials (`API_SERVER_KEY` goes to `.env`), and `tools enable/disable`.
+   calls `profile_files::edit(path, |doc| …)` for its own slice: an MCP server entry (`set_server`, the way `hermes
+   config set mcp_servers.<…>` would write it, with no Python process per key), `skills.disabled`, the time zone.
+   Keys where Hermes' command has side effects still go through Hermes. `agents_admin::default_run` runs those
+   commands under the same lock (`profile_files::locked`). They are `terminal.*` (mirrored into `.env` as
+   `TERMINAL_*`), credentials (`API_SERVER_KEY` goes to `.env`), and `tools enable/disable`.
 
 ## Where each setting lives (after this change)
 

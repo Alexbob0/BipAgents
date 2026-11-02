@@ -2,7 +2,7 @@
 (a link to open the maps app, Google's travel time with `[maps] google_key`), over HTTP against bbkit's FakeMaps."""
 from bbkit.common import AUTH
 from bbkit.mcp import call, give_token, rpc, text_of
-from conftest import managed_install, profile, wait_registered
+from conftest import managed_install, profile, servers, wait_registered
 
 
 def names(bridge):
@@ -13,7 +13,7 @@ def names(bridge):
 
 def test_weather_follows_the_agents_switch(bridges, fakes):
     bridge = bridges.new("managed")
-    profile(managed_install(bridge, fakes), "coach")   # its profile: the tools are registered at start
+    coach = profile(managed_install(bridge, fakes), "coach")   # its profile: the tools are registered at start
     bridge.start()
     wait_registered(bridge, ["coach"])
     give_token(bridge, "coach")
@@ -22,10 +22,11 @@ def test_weather_follows_the_agents_switch(bridges, fakes):
     assert off["isError"] is True and "« Weather »" in text_of(off)  # the switch named in the agent's language
     assert fakes.maps.requests == []
 
+    before = servers(coach)["bipagents"]["url"]
     settings = bridge.patch("/v1/agents/coach/settings", headers=AUTH, json={"weather": True})
     assert settings.status_code == 200 and settings.json()["weather"] == {"on": True}
     # Its tools' entry changed (a new version): registered again, with a token of its own; ours given back.
-    assert sum(1 for a in bridge.commands.of("hermes") if len(a) > 4 and a[4] == "mcp_servers.bipagents.url") == 2
+    assert servers(coach)["bipagents"]["url"] != before
     give_token(bridge, "coach")
     assert "weather" in names(bridge)
     result = call(bridge, "weather", {"place": "Lyon", "days": 2})
