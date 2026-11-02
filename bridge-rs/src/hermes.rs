@@ -466,13 +466,51 @@ impl HermesClient {
         serde_json::from_str(&body).map_err(|e| HermesError::Decode(e.to_string()))
     }
 
-    /// `GET /v1/runs/{id}`: status, session, and the pending `approval` of a run parked on one.
+    /// `GET /v1/runs/{id}`: status (`queued`, `running`, `waiting_for_approval`, then its end), session, and the
+    /// prompts a parked run waits for (`pending_controls`, hermes_prompts.rs). A run Hermes reports `unknown` comes back
+    /// settled (`resolve_unknown`).
     pub async fn run(&self, agent: &AgentConfig, run_id: &str) -> Result<Map<String, Value>, HermesError> {
         let data = self.get_json(agent, &format!("/v1/runs/{run_id}"), &[]).await?;
-        Ok(match data {
+        let run = match data {
             Value::Object(m) => m,
             _ => Map::new(),
-        })
+        };
+        if run.get("status").and_then(Value::as_str) == Some("unknown") {
+            if let Some(settled) = self.resolve_unknown(agent, run_id, &run).await {
+                return Ok(settled);
+            }
+        }
+        Ok(run)
+    }
+
+    /// A run whose gateway restarted mid-turn (`unknown`): whether its turn finished is unknown, and the
+    /// conversation's next turns wait until someone says it won't. The bridge never sends such a turn again: it
+    /// acknowledges the loss (`POST /v1/runs/{id}/resolve-unknown` with the exact admission and generation the status
+    /// gives), which settles the run `interrupted`. The run as settled; None when Hermes refused (asked again at the
+    /// next poll).
+    async fn resolve_unknown(
+        &self,
+        agent: &AgentConfig,
+        run_id: &str,
+        run: &Map<String, Value>,
+    ) -> Option<Map<String, Value>> {
+        let admission = run.get("admission_id").and_then(Value::as_str)?;
+        let generation = crate::hermes_prompts::generation(run)?;
+        let body = json!({"admission_id": admission, "execution_generation": generation});
+        let path = format!("/v1/runs/{run_id}/resolve-unknown");
+        match self.send(agent, reqwest::Method::POST, &path, Some(body), 15.0).await {
+            Ok(_) => {
+                tracing::info!(agent = %agent.name, run_id = %run_id, "run lost in a Hermes restart, settled interrupted");
+                let mut settled = run.clone();
+                settled.insert("status".into(), json!("interrupted"));
+                settled.insert("error".into(), json!(LOST_IN_RESTART));
+                Some(settled)
+            }
+            Err(exc) => {
+                tracing::warn!(agent = %agent.name, run_id = %run_id, error = %exc, "unknown run not settled");
+                None
+            }
+        }
     }
 
     /// `GET /v1/capabilities`: answers when the agent's gateway is up.
@@ -750,7 +788,50 @@ impl HermesClient {
             // Hermes adds them to its system prompt for this run only
             body.insert("instructions".into(), Value::String(instructions.to_string()));
         }
-        let data = self.send(agent, reqwest::Method::POST, "/v1/runs", Some(Value::Object(body)), 15.0).await?;
+        let body = Value::Object(body);
+        // One key for every try: Hermes reserves it before the turn starts, and a try it already took answers its run
+        // (202, `Idempotency-Replayed`) instead of starting another.
+        let key = format!("bip-{}", crate::py::token_urlsafe(24));
+        let url = format!("{}/v1/runs", agent.hermes_url);
+        let mut attempt = 1;
+        let data = loop {
+            ready(agent).await;
+            let sent = self
+                .client
+                .post(&url)
+                .headers(Self::headers(agent, "application/json"))
+                .header("Idempotency-Key", &key)
+                .json(&body)
+                .timeout(Duration::from_secs(15))
+                .send()
+                .await;
+            let wait = match sent {
+                // refused outright: Hermes is down, nothing reached it
+                Err(exc) if exc.is_connect() || attempt >= START_ATTEMPTS => return Err(exc.into()),
+                Err(exc) => {
+                    tracing::info!(agent = %agent.name, error = httpx_error_name(&exc), "run start lost, tried again");
+                    1.0
+                }
+                Ok(resp) => {
+                    let status = resp.status().as_u16();
+                    let retry = retry_after(status, resp.headers());
+                    let queued = admission_queued(status, resp.headers());
+                    let text = resp.text().await?;
+                    if [200, 201, 202].contains(&status) {
+                        break serde_json::from_str::<Value>(&text).unwrap_or_else(|_| json!({}));
+                    }
+                    if queued {
+                        tracing::warn!(agent = %agent.name, "run accepted while its gateway restarts: not sent again");
+                    }
+                    match retry.filter(|_| attempt < START_ATTEMPTS) {
+                        Some(wait) => wait,
+                        None => return Err(HermesError::http(status, head(&text, 500))),
+                    }
+                }
+            };
+            attempt += 1;
+            tokio::time::sleep(Duration::from_secs_f64(wait)).await;
+        };
         match data.get("run_id") {
             Some(Value::String(id)) => Ok(id.clone()),
             _ => Err(HermesError::http(502, "no run id")),
@@ -787,10 +868,13 @@ impl HermesClient {
             return Err(HermesError::http(status, head(&body, 500)));
         }
         let chunks = read_with_timeout(resp.bytes_stream(), Duration::from_secs(60));
-        Ok(Box::pin(iter_sse(lines_of(chunks))))
+        // a prompt's events with the `request_id` the bridge and the apps read (hermes_prompts.rs)
+        Ok(Box::pin(iter_sse(lines_of(chunks)).map(|event| event.map(crate::hermes_prompts::named))))
     }
 
-    /// `POST /v1/runs/{id}/approval`: Hermes' status and its JSON answer (or `{"detail": <text>}`).
+    /// `POST /v1/runs/{id}/approval`: Hermes' status and its JSON answer (or `{"detail": <text>}`). Hermes takes the
+    /// exact prompt, `{request_id, execution_generation, choice}` and nothing else: the one `request_id` names (else the
+    /// run's only approval), as the run's status shows it waiting (hermes_prompts.rs). None waiting: 409, nothing sent.
     pub async fn approve(
         &self,
         agent: &AgentConfig,
@@ -798,16 +882,23 @@ impl HermesClient {
         choice: &str,
         request_id: Option<&str>,
     ) -> Result<(u16, Value), HermesError> {
+        let run = match self.run(agent, run_id).await {
+            Ok(run) => run,
+            // the run Hermes does not know (404), or refuses to show: its answer, as an answer's would be
+            Err(HermesError::Http { status, body }) => {
+                return Ok((status, serde_json::from_str(&body).unwrap_or_else(|_| json!({"detail": body}))));
+            }
+            Err(exc) => return Err(exc),
+        };
+        let Some((prompt, generation)) = crate::hermes_prompts::pending_identity(&run, "approval", request_id) else {
+            return Ok((409, json!({"detail": "no approval of this run waits for this answer"})));
+        };
+        let body = json!({"request_id": prompt, "execution_generation": generation, "choice": choice});
         ready(agent).await;
-        let mut body = Map::new();
-        body.insert("choice".into(), Value::String(choice.to_string()));
-        if let Some(rid) = request_id.filter(|r| !r.is_empty()) {
-            body.insert("request_id".into(), Value::String(rid.to_string()));
-        }
         let resp = self
             .client
             .post(format!("{}/v1/runs/{run_id}/approval", agent.hermes_url))
-            .json(&Value::Object(body))
+            .json(&body)
             .headers(Self::headers(agent, "application/json"))
             .timeout(Duration::from_secs(15))
             .send()
@@ -817,6 +908,31 @@ impl HermesClient {
         let payload = serde_json::from_str(&text).unwrap_or_else(|_| json!({"detail": head(&text, 500)}));
         Ok((status, payload))
     }
+}
+
+/// A run start is tried at most this many times (one `Idempotency-Key`: Hermes runs it once).
+pub const START_ATTEMPTS: u32 = 4;
+/// The longest wait between two tries, in seconds (a parked profile asks 30).
+pub const START_WAIT_MAX: f64 = 10.0;
+/// The error of a run Hermes lost in a restart (`resolve_unknown`).
+pub const LOST_IN_RESTART: &str = "Hermes restarted during this turn";
+
+/// Hermes' « accepted, still queued for the gateway's next owner » (`admission_queued`): a 503 marked
+/// `x-should-retry: false`. The turn runs once that gateway is up; sending it again would run it twice.
+pub fn admission_queued(status: u16, headers: &reqwest::header::HeaderMap) -> bool {
+    status == 503
+        && headers.get("x-should-retry").and_then(|v| v.to_str().ok()).is_some_and(|v| v.eq_ignore_ascii_case("false"))
+}
+
+/// The wait Hermes asks for before a request is sent again (seconds): a 503 with `Retry-After` (its store busy, the
+/// profile draining or parked, a chain moved, a gateway restarting), within `[0.2, START_WAIT_MAX]`. Never for an
+/// accepted turn (`admission_queued`).
+pub fn retry_after(status: u16, headers: &reqwest::header::HeaderMap) -> Option<f64> {
+    if status != 503 || admission_queued(status, headers) {
+        return None;
+    }
+    let seconds = headers.get("retry-after")?.to_str().ok()?.trim().parse::<f64>().ok()?;
+    Some(seconds.clamp(0.2, START_WAIT_MAX))
 }
 
 /// A body's chunks, each read within `timeout` (httpx's read timeout): a silent stream ends with `ReadTimeout`.

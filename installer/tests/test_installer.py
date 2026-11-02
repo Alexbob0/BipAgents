@@ -178,27 +178,17 @@ def test_hermes_is_pinned_and_patched(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))   # no Hermes installed there
     runner = hermes.Runner(dry=True)
     hermes.install(runner, browser=False)
-    assert "--commit 517b5e10f" in runner.log[0] and "--skip-browser" in runner.log[0]
+    assert "--commit bf0203a794" in runner.log[0] and "--skip-browser" in runner.log[0]   # v0.22.5
     hermes.apply_patches(runner, ROOT / "hermes" / "patches")
     applied = [line for line in runner.log if " apply " in line and "--check" not in line]
-    assert [line.rsplit("/", 1)[-1].strip("'") for line in applied] == ["0001-api-server-clarify.patch",
-                                                            "0004-image-store-replay-recent-images.patch",
-                                                            "0005-vault-fill-reattach-supervisor.patch",
-                                                            "0006-bot-mode-sync-peer-reply.patch",
-                                                            "0007-browser-vault-only.patch",
-                                                            "0008-timezone-routines-wall-clock.patch",
-                                                                "0009-tool-search-keep-direct-compact-skills.patch",
-                                                                "0010-empty-replies-changed-retries-leaked-tool-calls.patch",
-                                                                "0011-titles-reasoning-floor-glm.patch",
-                                                                "0012-bot-chat-one-message-agent.patch",
-                                                                "0013-mcp-results-vault-scrub.patch",
-                                                                "0014-cron-results-plain-utf8.patch",
-                                                                "0015-time-anchor.patch",
-                                                                "0016-message-agent-the-bridges-everywhere.patch",
-                                                                "0017-vault-address-contact-fields.patch",
-                                                                "0018-guest-turns-closed-tools-no-user-profile.patch",
-                                                                "0019-routines-report-to-their-conversation.patch",
-                                                                "0020-runs-model-usage-per-call.patch"]
+    assert [line.rsplit("/", 1)[-1].strip("'") for line in applied] == [
+        "0005-vault-fill-reattach-supervisor.patch", "0006-bot-mode-sync-peer-reply.patch",
+        "0007-browser-vault-only.patch", "0008-timezone-routines-wall-clock.patch",
+        "0009-tool-search-keep-direct-compact-skills.patch", "0010-empty-replies-changed-retries-leaked-tool-calls.patch",
+        "0011-titles-reasoning-floor-glm.patch", "0013-mcp-results-vault-scrub.patch",
+        "0014-cron-results-plain-utf8.patch", "0015-time-anchor.patch", "0016-message-agent-the-bridges-everywhere.patch",
+        "0017-vault-address-contact-fields.patch", "0018-guest-turns-closed-tools-no-user-profile.patch",
+        "0019-routines-report-to-their-conversation.patch", "0020-runs-model-usage-per-call.patch"]
 
 
 def test_bot_mode_marker(tmp_path):

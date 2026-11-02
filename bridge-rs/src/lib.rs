@@ -29,6 +29,7 @@ pub mod auth;
 pub mod config;
 pub mod guard;
 pub mod hermes;
+pub mod hermes_prompts;
 pub mod lan;
 pub mod logs;
 pub mod loop_brake;
@@ -75,6 +76,7 @@ pub mod voices;
 
 // -- agents ----------------------------------------------------------------------------------------
 pub mod agent_groups;
+pub mod agent_notify;
 pub mod agent_shares;
 pub mod read_shares;
 pub mod templates;
@@ -142,6 +144,7 @@ pub mod jobs;
 pub mod mail_scan;
 pub mod mail_tidy;
 pub mod mailbox;
+pub mod map_route;
 pub mod map_tiles;
 pub mod meet;
 pub mod maps;

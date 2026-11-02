@@ -1,57 +1,104 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Alexbob0 <190955252+Alexbob0@users.noreply.github.com>
+Date: Sun, 1 Nov 2026 10:14:53 +0100
+Subject: message_agent: the bridge's, even in the Bot Chat
+
+Where an MCP server offers its own message_agent (mcp__<server>__message_agent, BipAgents' bridge), the
+built-in is not injected, even in a Bot Chat, and a copy added before the MCP tools were listed leaves the
+tool list and valid_tool_names: one way to write to an agent. Without such an MCP tool the built-in is
+injected as upstream. Patches 0012 and 0016 of the 517b5e10f set, folded.
+
+BipAgents patch, documented in hermes/patches/README.md of the BipAgents repository.
+
+Bip-Patch: 0016-message-agent-the-bridges-everywhere
+---
+ .../test_bot_mode_dm_one_message_agent.py     | 119 ++++++++++++++++++
+ tools/bot_mode_dm.py                          |  36 ++++++
+ tools/mcp_tool_agent.py                       |   7 +-
+ 3 files changed, 160 insertions(+), 2 deletions(-)
+ create mode 100644 tests/tools/test_bot_mode_dm_one_message_agent.py
+
 diff --git a/tests/tools/test_bot_mode_dm_one_message_agent.py b/tests/tools/test_bot_mode_dm_one_message_agent.py
-index 635c951..6a462e8 100644
---- a/tests/tools/test_bot_mode_dm_one_message_agent.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..6a462e82230f8157fbb774df14ec1f425cabbea3
+--- /dev/null
 +++ b/tests/tools/test_bot_mode_dm_one_message_agent.py
-@@ -1,6 +1,7 @@
--"""BipAgents 0012: where the built-in ``message_agent`` is offered (a Bot Chat), an MCP server's tool of
--the same name (``mcp__bipagents__message_agent``, offered by BipAgents' bridge in every conversation) is
--taken out, so the model sees one way to write to an agent. Elsewhere the MCP one stays."""
+@@ -0,0 +1,119 @@
 +"""BipAgents 0012 + 0016: where an MCP server offers its own ``message_agent`` (``mcp__bipagents__message_agent``,
 +BipAgents' bridge, in every conversation: it answers in the two agents' own conversation, not in the
 +target's Bot Chat), the built-in is not injected, even in a Bot Chat, so the model sees one way to write to
 +an agent. Without such an MCP tool the built-in behaves as upstream."""
- 
- import textwrap
- from pathlib import Path
-@@ -11,6 +12,7 @@ from tools import bot_mode_dm, bot_mode_probe
- from tools.mcp_tool_agent import _reinject_authorized_dynamic_tools
- 
- BRIDGE = "mcp__bipagents__message_agent"
++
++import textwrap
++from pathlib import Path
++
++import pytest
++
++from tools import bot_mode_dm, bot_mode_probe
++from tools.mcp_tool_agent import _reinject_authorized_dynamic_tools
++
++BRIDGE = "mcp__bipagents__message_agent"
 +BUILTIN = bot_mode_dm.MESSAGE_AGENT_TOOL_NAME
- 
- 
- @pytest.fixture(autouse=True)
-@@ -48,13 +50,13 @@ class _FakeDB:
- 
- 
- class _FakeAgent:
--    def __init__(self, home: Path, title: str):
++
++
++@pytest.fixture(autouse=True)
++def _fresh_probe_cache():
++    bot_mode_probe._reset_cache_for_tests()
++    yield
++    bot_mode_probe._reset_cache_for_tests()
++
++
++def _managed_home(tmp_path) -> Path:
++    home = tmp_path / ".hermes"
++    d = home / "profiles" / "coach"
++    d.mkdir(parents=True)
++    (d / "profile.yaml").write_text(
++        textwrap.dedent(
++            """\
++            description: teammate
++            ui_meta:
++              hermes-bots:
++                shape: cloud
++            """
++        ),
++        encoding="utf-8",
++    )
++    return home
++
++
++class _FakeDB:
++    def __init__(self, home: Path, title: str):
++        self.db_path = str(home / "state.db")
++        self._title = title
++
++    def get_session_title(self, _sid):
++        return self._title
++
++
++class _FakeAgent:
 +    def __init__(self, home: Path, title: str, names=(BRIDGE, "mcp__bipagents__health")):
-         self._session_db = _FakeDB(home, title)
-         self.session_id = "sess-1"
-         self._session_title_hint = None
-         self._bot_mode_protocol = True
--        self.tools = [_schema(BRIDGE), _schema("mcp__bipagents__health")]
--        self.valid_tool_names = {BRIDGE, "mcp__bipagents__health"}
++        self._session_db = _FakeDB(home, title)
++        self.session_id = "sess-1"
++        self._session_title_hint = None
++        self._bot_mode_protocol = True
 +        self.tools = [_schema(n) for n in names]
 +        self.valid_tool_names = set(names)
- 
- 
- def _schema(name: str) -> dict:
-@@ -65,14 +67,28 @@ def _names(tools) -> list:
-     return [t["function"]["name"] for t in tools]
- 
- 
--def test_bot_chat_keeps_only_the_builtin(tmp_path):
++
++
++def _schema(name: str) -> dict:
++    return {"type": "function", "function": {"name": name, "parameters": {"type": "object"}}}
++
++
++def _names(tools) -> list:
++    return [t["function"]["name"] for t in tools]
++
++
 +def test_bot_chat_keeps_only_the_bridges(tmp_path):
-     agent = _FakeAgent(_managed_home(tmp_path), "Bot Chat")
--    assert bot_mode_dm.ensure_message_agent_tool(agent) is True
--    assert _names(agent.tools) == ["mcp__bipagents__health", bot_mode_dm.MESSAGE_AGENT_TOOL_NAME]
--    assert agent.valid_tool_names == {"mcp__bipagents__health", bot_mode_dm.MESSAGE_AGENT_TOOL_NAME}
++    agent = _FakeAgent(_managed_home(tmp_path), "Bot Chat")
 +    assert bot_mode_dm.ensure_message_agent_tool(agent) is False
 +    assert _names(agent.tools) == [BRIDGE, "mcp__bipagents__health"]
 +    assert BUILTIN not in agent.valid_tool_names
-     # the next turn changes nothing (prompt-cache stable)
++    # the next turn changes nothing (prompt-cache stable)
 +    assert bot_mode_dm.ensure_message_agent_tool(agent) is False
 +    assert _names(agent.tools) == [BRIDGE, "mcp__bipagents__health"]
 +
@@ -65,24 +112,22 @@ index 635c951..6a462e8 100644
 +
 +def test_without_the_bridges_the_builtin_is_injected(tmp_path):
 +    agent = _FakeAgent(_managed_home(tmp_path), "Bot Chat", names=("mcp__bipagents__health",))
-     assert bot_mode_dm.ensure_message_agent_tool(agent) is True
--    assert _names(agent.tools) == ["mcp__bipagents__health", bot_mode_dm.MESSAGE_AGENT_TOOL_NAME]
++    assert bot_mode_dm.ensure_message_agent_tool(agent) is True
 +    assert _names(agent.tools) == ["mcp__bipagents__health", BUILTIN]
 +    assert BUILTIN in agent.valid_tool_names
- 
- 
- def test_other_conversations_keep_the_mcp_one(tmp_path):
-@@ -82,15 +98,22 @@ def test_other_conversations_keep_the_mcp_one(tmp_path):
-     assert BRIDGE in agent.valid_tool_names
- 
- 
--def test_an_mcp_rebuild_in_the_bot_chat_drops_it_again(tmp_path):
++
++
++def test_other_conversations_keep_the_mcp_one(tmp_path):
++    agent = _FakeAgent(_managed_home(tmp_path), "Courses de la semaine")
++    assert bot_mode_dm.ensure_message_agent_tool(agent) is False
++    assert _names(agent.tools) == [BRIDGE, "mcp__bipagents__health"]
++    assert BRIDGE in agent.valid_tool_names
++
++
 +def test_an_mcp_rebuild_in_the_bot_chat_does_not_bring_the_builtin_back(tmp_path):
-     agent = _FakeAgent(_managed_home(tmp_path), "Bot Chat")
-     staged, names = [_schema(BRIDGE), _schema("mcp__bipagents__health")], {BRIDGE, "mcp__bipagents__health"}
-     _reinject_authorized_dynamic_tools(agent, staged, names)
--    assert _names(staged) == ["mcp__bipagents__health", bot_mode_dm.MESSAGE_AGENT_TOOL_NAME]
--    assert BRIDGE not in names
++    agent = _FakeAgent(_managed_home(tmp_path), "Bot Chat")
++    staged, names = [_schema(BRIDGE), _schema("mcp__bipagents__health")], {BRIDGE, "mcp__bipagents__health"}
++    _reinject_authorized_dynamic_tools(agent, staged, names)
 +    assert _names(staged) == [BRIDGE, "mcp__bipagents__health"]
 +    assert BUILTIN not in names
 +
@@ -92,24 +137,26 @@ index 635c951..6a462e8 100644
 +    staged, names = [_schema("mcp__bipagents__health")], {"mcp__bipagents__health"}
 +    _reinject_authorized_dynamic_tools(agent, staged, names)
 +    assert _names(staged) == ["mcp__bipagents__health", BUILTIN]
- 
- 
--def test_only_mcp_tools_named_message_agent_go():
--    tools = [_schema("mcp__x__message_agent"), _schema("message_agent_log"), _schema("mcp__x__message_agents")]
--    bot_mode_dm.drop_mcp_message_agent(tools)
--    assert _names(tools) == ["message_agent_log", "mcp__x__message_agents"]
++
++
 +def test_only_mcp_tools_named_message_agent_count():
 +    assert bot_mode_dm.has_mcp_message_agent([_schema("mcp__x__message_agent")])
 +    assert not bot_mode_dm.has_mcp_message_agent([_schema("message_agent_log"), _schema("mcp__x__message_agents")])
 +    assert not bot_mode_dm.has_mcp_message_agent(None)
 diff --git a/tools/bot_mode_dm.py b/tools/bot_mode_dm.py
-index 8289b7b..05c7a54 100644
+index 18abf2bf851b6d23b4954b09b4c1adad360a2c3b..3a79e1dde07a69e049630c8ebf7a056f5c7abbe3 100644
 --- a/tools/bot_mode_dm.py
 +++ b/tools/bot_mode_dm.py
-@@ -143,6 +143,32 @@ def _is_mcp_message_agent(name: Any) -> bool:
-     return isinstance(name, str) and name.startswith("mcp__") and name.endswith("__message_agent")
+@@ -137,6 +137,38 @@ def message_agent_authorized(agent: Any) -> bool:
+         return False
  
  
++def _is_mcp_message_agent(name: Any) -> bool:
++    """An MCP server's own ``message_agent`` (``mcp__<server>__message_agent``: BipAgents' bridge offers
++    one in every conversation, since the built-in reaches the Bot Chat only)."""
++    return isinstance(name, str) and name.startswith("mcp__") and name.endswith("__message_agent")
++
++
 +def has_mcp_message_agent(tools: Any) -> bool:
 +    """Whether an MCP server offers its own ``message_agent`` among ``tools``. Never raises."""
 +    try:
@@ -136,10 +183,10 @@ index 8289b7b..05c7a54 100644
 +        logger.debug("drop_builtin_message_agent failed", exc_info=True)
 +
 +
- def drop_mcp_message_agent(tools: Any, names: Optional[set] = None) -> None:
-     """Where the built-in ``message_agent`` is offered, an MCP server's tool of the same name goes from
-     the staged ``tools`` (and ``names``), so the model sees one way to write to an agent, not two.
-@@ -172,6 +198,10 @@ def ensure_message_agent_tool(agent: Any) -> bool:
+ def ensure_message_agent_tool(agent: Any) -> bool:
+     """Inject the ``message_agent`` schema into a Bot Chat agent's tool list (once per turn).
+     Idempotent and deterministic for the session's life (the gate is stable from the
+@@ -145,6 +177,10 @@ def ensure_message_agent_tool(agent: Any) -> bool:
          if not getattr(agent, "_bot_mode_protocol", True):
              return False
          tools = getattr(agent, "tools", None)
@@ -150,25 +197,18 @@ index 8289b7b..05c7a54 100644
          present = bool(tools) and any(
              isinstance(t, dict) and t.get("function", {}).get("name") == MESSAGE_AGENT_TOOL_NAME
              for t in tools
-@@ -188,7 +218,6 @@ def ensure_message_agent_tool(agent: Any) -> bool:
-         valid = getattr(agent, "valid_tool_names", None)
-         if isinstance(valid, set):
-             valid.add(MESSAGE_AGENT_TOOL_NAME)
--        drop_mcp_message_agent(agent.tools, valid if isinstance(valid, set) else None)
-         return True
-     except Exception:  # pragma: no cover — must never break a turn
-         logger.debug("ensure_message_agent_tool failed", exc_info=True)
 diff --git a/tools/mcp_tool_agent.py b/tools/mcp_tool_agent.py
-index ed06751..520be84 100644
+index e74f1510b57f110aa7069409398fb4a15677730d..3d298839462e5fe26684985f5bc0bb5ff664a4b0 100644
 --- a/tools/mcp_tool_agent.py
 +++ b/tools/mcp_tool_agent.py
-@@ -271,15 +271,15 @@ def _reinject_authorized_dynamic_tools(agent, tools_list: list, name_set: set) -
+@@ -299,11 +299,14 @@ def _reinject_authorized_dynamic_tools(agent, tools_list: list, name_set: set) -
+     """``message_agent`` is injected by an auth gate, never registered, so a registry-derived
      rebuild drops it. Scrub any stale copy from the STAGED pair and re-add it only when the live
      gate re-authorizes, so the publisher exposes a coherent ``(tools, valid_tool_names)``."""
-     from tools.bot_mode_dm import (
--        MESSAGE_AGENT_TOOL_NAME, drop_mcp_message_agent, message_agent_authorized, message_agent_tool_schema,
+-    from tools.bot_mode_dm import MESSAGE_AGENT_TOOL_NAME, message_agent_authorized, message_agent_tool_schema
++    from tools.bot_mode_dm import (
 +        MESSAGE_AGENT_TOOL_NAME, has_mcp_message_agent, message_agent_authorized, message_agent_tool_schema,
-     )
++    )
  
      tools_list[:] = [entry for entry in tools_list if _def_name(entry) != MESSAGE_AGENT_TOOL_NAME]
      name_set.discard(MESSAGE_AGENT_TOOL_NAME)
@@ -177,7 +217,4 @@ index ed06751..520be84 100644
 +    if message_agent_authorized(agent) and not has_mcp_message_agent(tools_list):
          tools_list.append(message_agent_tool_schema())
          name_set.add(MESSAGE_AGENT_TOOL_NAME)
--        drop_mcp_message_agent(tools_list, name_set)
  
- 
- def _reinject_post_build_tools(agent, tools_list: list, name_set: set) -> set:

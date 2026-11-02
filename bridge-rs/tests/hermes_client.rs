@@ -39,7 +39,13 @@ async fn fake() -> (String, Seen) {
     let s = seen.clone();
     let router = Router::new()
         .route("/v1/capabilities", get(|| async { Json(json!({"runs": true})) }))
-        .route("/v1/runs/{id}", get(|Path(id): Path<String>| async move { Json(json!({"run_id": id, "status": "running"})) }))
+        .route(
+            "/v1/runs/{id}",
+            get(|Path(id): Path<String>| async move {
+                Json(json!({"run_id": id, "status": "running", "pending_controls": [
+                    {"kind": "approval", "prompt_id": "req-1", "execution_generation": 2}]}))
+            }),
+        )
         .route(
             "/api/sessions",
             get(|Query(q): Query<std::collections::HashMap<String, String>>| async move {
@@ -211,7 +217,11 @@ async fn calls_and_answers() {
                 json!({"input": "Bonjour", "session_id": "s1", "instructions": "be brief"})
             ),
             ("POST".into(), "/v1/runs".into(), json!({"input": "Bonjour", "session_id": "s1"})),
-            ("POST".into(), "/v1/runs/run_7/approval".into(), json!({"choice": "once", "request_id": "req-1"})),
+            (
+                "POST".into(),
+                "/v1/runs/run_7/approval".into(),
+                json!({"request_id": "req-1", "execution_generation": 2, "choice": "once"})
+            ),
         ]
     );
     assert!(seen.iter().all(|(_, _, _, auth)| auth == &format!("Bearer {HERMES_KEY} | application/json")));

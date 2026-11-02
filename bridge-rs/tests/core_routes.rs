@@ -264,6 +264,13 @@ async fn fake_hermes() -> (String, std::sync::Arc<std::sync::Mutex<Vec<String>>>
             }),
         )
         .route(
+            "/v1/runs/run_9",
+            get(|| async {
+                Json(json!({"run_id": "run_9", "status": "waiting_for_approval", "pending_controls": [
+                    {"kind": "approval", "prompt_id": "p9", "execution_generation": 2}]}))
+            }),
+        )
+        .route(
             "/v1/runs/{id}/approval",
             post(|Json(body): Json<Value>| async move {
                 (StatusCode::CONFLICT, Json(json!({"error": "nothing pending", "got": body})))
@@ -323,7 +330,10 @@ async fn session_state_status_and_approvals_through_hermes() {
         .send_json("POST", "/v1/approve", &h, &json!({"agent": "wellness", "run_id": "run_9", "choice": " ONCE "}))
         .await;
     assert_eq!(resp.status, StatusCode::CONFLICT);
-    assert_eq!(resp.json(), json!({"error": "nothing pending", "got": {"choice": "once"}}));
+    assert_eq!(
+        resp.json(),
+        json!({"error": "nothing pending", "got": {"request_id": "p9", "execution_generation": 2, "choice": "once"}})
+    );
     let resp = app
         .send_json("POST", "/v1/approve", &h, &json!({"agent": "wellness", "run_id": "bad id", "choice": "once"}))
         .await;

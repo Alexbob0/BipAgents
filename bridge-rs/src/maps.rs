@@ -46,8 +46,10 @@ pub fn tool() -> Value {
     ADDRESS (« 12 rue de Rivoli »), and area (the town): \
     the bridge finds the exact spots itself. Never write coordinates from memory (they land in the sea); « lat, lon » \
     only when the person or a tool gave them (they are checked). The result gives a MEDIA: line (the map, shown in your \
-    reply) and a short card to put in a bigger create_page page. line: a line through the markers in order (a walk). \
-    directions: a button for the way from the first marker to the last. To move a place, call again.",
+    reply) and a short card to put in a bigger create_page page. line: a walk, a ride or a trip: the markers are its \
+    stops in your order, joined by the way along the streets with its length and time (travel: how; reorder: only \
+    when the person wants the shortest order). Not for places that do not follow each other. directions: a button for \
+    the way from the first marker to the last. To move a place, call again.",
         "inputSchema": {"type": "object", "properties": {
             "markers": {"type": "array", "maxItems": MAX_MARKERS, "items": {"type": "object", "properties": {
                 "place": {"type": "string", "description": "its name or address as typed in a map search; not coordinates"},
@@ -59,7 +61,12 @@ pub fn tool() -> Value {
             "title": {"type": "string", "description": "the map's title (« Lisbonne en 5 monuments »)"},
             "center": {"type": "string", "description": "without markers: the place the map shows"},
             "zoom": {"type": "integer", "minimum": 3, "maximum": 18, "description": "default: what fits the markers"},
-            "line": {"type": "boolean", "description": "a line through the markers, in their order"},
+            "line": {"type": "boolean", "description": "an itinerary: the way through the markers along the streets, in \
+    their order"},
+            "travel": {"type": "string", "enum": crate::map_route::TRAVELS, "description": "with line: on foot \
+    (walking: the default for a walk in a town), by bike or by car (default: on foot under ~3 km, else by car)"},
+            "reorder": {"type": "boolean", "description": "with line: put the stops between the first and the last in \
+    the shortest order (only when asked; default: your order)"},
             "directions": {"type": "string", "enum": MODES, "description": "a directions button, first marker to last"},
             "width": {"type": "integer", "minimum": 200, "maximum": 800},
             "height": {"type": "integer", "minimum": 150, "maximum": 800}}},
@@ -227,6 +234,33 @@ impl Canvas {
             let t = i as f64 / steps as f64;
             self.disc(from.0 + (to.0 - from.0) * t, from.1 + (to.1 - from.1) * t, r, c);
         }
+    }
+
+    /// The same, in dashes (`dash` px drawn, `gap` px left) carried on from `phase` (where the last segment's dash
+    /// stopped); the new phase.
+    fn dashed(
+        &mut self,
+        from: (f64, f64),
+        to: (f64, f64),
+        r: f64,
+        c: [u8; 3],
+        (dash, gap): (f64, f64),
+        phase: f64,
+    ) -> f64 {
+        let length = ((to.0 - from.0).powi(2) + (to.1 - from.1).powi(2)).sqrt();
+        let mut at = 0.0;
+        let mut phase = phase % (dash + gap);
+        while at < length {
+            let (on, left) = if phase < dash { (true, dash - phase) } else { (false, dash + gap - phase) };
+            let end = (at + left).min(length);
+            if on {
+                let point = |t: f64| (from.0 + (to.0 - from.0) * t / length, from.1 + (to.1 - from.1) * t / length);
+                self.segment(point(at), point(end), r, c);
+            }
+            phase = (phase + end - at) % (dash + gap);
+            at = end;
+        }
+        phase
     }
 
     fn rect(&mut self, x: i64, y: i64, w: i64, h: i64, c: [u8; 3], alpha: f64) {
@@ -743,6 +777,8 @@ pub struct Drawn {
     /// The places not found (their names), for the apps to look up themselves; the map's area.
     pub unfound: Vec<String>,
     pub area: String,
+    /// An itinerary's way (`line`, map_route.rs, 2026-11-01): along the streets, or why it is the straight line.
+    pub route: Option<crate::map_route::Planned>,
 }
 
 /// The map: its PNG and its markers.
@@ -905,7 +941,24 @@ the street of that stop near the others or a place beside it (if it really is th
         return Err(missing.join("; "));
     }
     notes.extend(missing.into_iter().map(|why| format!("left out: {why}")));
-    let points: Vec<(f64, f64)> = markers.iter().map(|m| (m.lat, m.lon)).collect();
+    // an itinerary (2026-11-01): its stops joined along the streets, in the agent's order unless it asked for the
+    // shortest; the map is framed on the way too (it may round a block beyond the stops)
+    let line = arguments.get("line").and_then(Value::as_bool).unwrap_or(false);
+    let route = if line && markers.len() > 1 {
+        let stops: Vec<(f64, f64)> = markers.iter().map(|m| (m.lat, m.lon)).collect();
+        let word = |key: &str| arguments.get(key).and_then(Value::as_str);
+        let reorder = arguments.get("reorder").and_then(Value::as_bool).unwrap_or(false);
+        let planned = crate::map_route::plan(config, word("travel"), word("directions"), reorder, &stops).await;
+        if let Some(order) = &planned.order {
+            let mut taken: Vec<Option<Marker>> = markers.into_iter().map(Some).collect();
+            markers = order.iter().filter_map(|i| taken[*i].take()).collect();
+        }
+        Some(planned)
+    } else {
+        None
+    };
+    let way: &[(f64, f64)] = route.as_ref().and_then(|r| r.way.as_ref()).map(|w| w.path.as_slice()).unwrap_or(&[]);
+    let points: Vec<(f64, f64)> = markers.iter().map(|m| (m.lat, m.lon)).chain(way.iter().copied()).collect();
     let mut asked_center = None;
     let center = match arguments.get("center").and_then(Value::as_str).map(str::trim).filter(|c| !c.is_empty()) {
         Some(c) => {
@@ -958,20 +1011,31 @@ the street of that stop near the others or a place beside it (if it really is th
             }
         }
     }
-    let line = arguments.get("line").and_then(Value::as_bool).unwrap_or(false);
     if line {
-        let path: Vec<(f64, f64)> = markers
-            .iter()
-            .map(|m| {
-                let (px, py) = pixel(m.lat, m.lon, z);
-                (px - left, py - top)
-            })
-            .collect();
-        for pair in path.windows(2) {
-            canvas.segment(pair[0], pair[1], 3.5, [0xFF, 0xFF, 0xFF]);
-        }
-        for pair in path.windows(2) {
-            canvas.segment(pair[0], pair[1], 2.2, [0x7C, 0x6C, 0xF2]);
+        // the way along the streets when there is one; else the straight line, dashed (not a way to follow)
+        let on_picture = |(lat, lon): (f64, f64)| {
+            let (px, py) = pixel(lat, lon, z);
+            (px - left, py - top)
+        };
+        let path: Vec<(f64, f64)> = if way.len() >= 2 {
+            way.iter().copied().map(on_picture).collect()
+        } else {
+            markers.iter().map(|m| on_picture((m.lat, m.lon))).collect()
+        };
+        let (white, ink) = ([0xFF, 0xFF, 0xFF], [0x7C, 0x6C, 0xF2]);
+        if way.len() >= 2 || route.is_none() {
+            for (r, c) in [(3.5, white), (2.2, ink)] {
+                for pair in path.windows(2) {
+                    canvas.segment(pair[0], pair[1], r, c);
+                }
+            }
+        } else {
+            for (r, c) in [(3.5, white), (2.2, ink)] {
+                let mut phase = 0.0;
+                for pair in path.windows(2) {
+                    phase = canvas.dashed(pair[0], pair[1], r, c, (12.0, 8.0), phase);
+                }
+            }
         }
     }
     let mut places = Vec::new();
@@ -1003,7 +1067,7 @@ the street of that stop near the others or a place beside it (if it really is th
     canvas.rect(bx, by, text_w + 14, 24, [255, 255, 255], 0.85);
     canvas.text(bx + 7, by + 5, ATTRIBUTION, 2, [0x33, 0x33, 0x33]);
     let center = asked_center.filter(|_| markers.is_empty());
-    Ok(Drawn { png: canvas.png(), places, center, zoom: z, notes, unfound, area: area_name })
+    Ok(Drawn { png: canvas.png(), places, center, zoom: z, notes, unfound, area: area_name, route })
 }
 
 fn unproject(x: f64, y: f64, z: u32) -> (f64, f64) {
@@ -1018,7 +1082,10 @@ fn unproject(x: f64, y: f64, z: u32) -> (f64, f64) {
 ///
 /// `{"type": "map", "version": 1, "id", "title", "area"?, "points": [{"name", "address"?, "area"?, "lat"?, "lon"?,
 /// "source": "osm"|"model"|"none", "note"?, "color", "x", "y"}] (no lat/lon when "none"),
-/// "route": {"line": bool, "mode": "walking"|"driving"|"transit"|"bicycling"|null} | null,
+/// "route": {"line": bool, "mode": "walking"|"driving"|"transit"|"bicycling"|null, and with a line since 2026-11-01
+/// (map_route.rs): "travel": "walking"|"bicycling"|"driving"|"transit", "streets": bool (false: the straight line,
+/// dashed), "meters" (along the streets, or straight), with the streets "path": [[lat, lon], …] (simplified),
+/// "seconds", "attribution"} | null,
 /// "center": {"lat", "lon", "zoom"} | null (a map without markers), "attribution"}`
 pub fn data(id: &str, title: &str, drawn: &Drawn, line: bool, directions: Option<&str>) -> Value {
     let points: Vec<Value> = drawn
@@ -1048,6 +1115,24 @@ pub fn data(id: &str, title: &str, drawn: &Drawn, line: bool, directions: Option
         .collect();
     let line = line && drawn.places.len() > 1;
     let mode = directions.filter(|m| MODES.contains(m)).filter(|_| drawn.places.len() > 1);
+    let mut route = if line || mode.is_some() { json!({"line": line, "mode": mode}) } else { Value::Null };
+    if let Some(planned) = drawn.route.as_ref().filter(|_| line) {
+        route["travel"] = json!(planned.travel);
+        match &planned.way {
+            Some(way) => {
+                route["streets"] = json!(true);
+                route["path"] = json!(way.path.iter().map(|(a, b)| [*a, *b]).collect::<Vec<_>>());
+                route["meters"] = json!(way.meters.round() as u64);
+                route["seconds"] = json!(way.seconds.round() as u64);
+                route["attribution"] = json!(crate::map_route::ATTRIBUTION);
+            }
+            None => {
+                let stops: Vec<(f64, f64)> = drawn.places.iter().map(|p| (p.lat, p.lon)).collect();
+                route["streets"] = json!(false);
+                route["meters"] = json!((crate::map_route::straight_km(&stops) * 1000.0).round() as u64);
+            }
+        }
+    }
     json!({
         "type": "map",
         "version": 1,
@@ -1055,7 +1140,7 @@ pub fn data(id: &str, title: &str, drawn: &Drawn, line: bool, directions: Option
         "title": title,
         "area": if drawn.area.is_empty() { Value::Null } else { json!(drawn.area) },
         "points": points,
-        "route": if line || mode.is_some() { json!({"line": line, "mode": mode}) } else { Value::Null },
+        "route": route,
         "center": drawn.center.map(|(lat, lon)| json!({"lat": round6(lat), "lon": round6(lon), "zoom": drawn.zoom})),
         "attribution": ATTRIBUTION,
     })
@@ -1164,7 +1249,26 @@ pub async fn call(config: &Config, agent: &str, arguments: &Dict) -> Dict {
             format!("{}. {}{at}", i + 1, p.label)
         })
         .collect();
-    let checks = if drawn.notes.is_empty() { String::new() } else { format!("\nCheck: {}.", drawn.notes.join("; ")) };
+    let mut checks =
+        if drawn.notes.is_empty() { String::new() } else { format!("\nCheck: {}.", drawn.notes.join("; ")) };
+    // the itinerary's way, as the card shows it (2026-11-01): what the agent may say of it
+    if let Some(planned) = drawn.route.as_ref().filter(|_| line && drawn.places.len() > 1) {
+        let order = if planned.order.is_some() {
+            "stops reordered for the shortest way, first and last kept: the list above is the new order"
+        } else {
+            "stops in your order"
+        };
+        checks.push_str(&match &planned.way {
+            Some(way) => format!(
+                "\nWay: {} along the streets ({order}; OpenStreetMap, OSRM). The card shows it.",
+                crate::map_route::summary(planned.travel, way)
+            ),
+            None => format!(
+                "\nWay: a dashed straight line, not along the streets ({}); give no walking or driving time for it.",
+                planned.why.as_deref().unwrap_or("no route")
+            ),
+        });
+    }
     let show = match shown {
         Some(path) => format!(
             "MEDIA:{path}\nMap ready ({} markers, placed by the bridge from the places' names):\n{}{checks}\nTo show it, put \
@@ -1230,6 +1334,7 @@ mod tests {
             notes: Vec::new(),
             unfound: vec!["Nulle part".into()],
             area: "Lyon".into(),
+            route: None,
         };
         let card = figure("m-1", &drawn, true, Some("walking"));
         assert!(card.starts_with(
@@ -1263,10 +1368,59 @@ alt=\"Carte\"><ol>\
             notes: Vec::new(),
             unfound: Vec::new(),
             area: String::new(),
+            route: None,
         };
         assert!(figure("m-2", &empty, false, Some("teleport")).starts_with(
             "<figure class=\"map-card\" data-map=\"m-2\" data-center=\"45.500000,4.250000\" data-zoom=\"12\"><img"
         ));
+    }
+
+    #[test]
+    fn an_itinerary_s_card_carries_its_way_along_the_streets_or_says_it_is_straight() {
+        use crate::map_route::{Planned, Way};
+        let place = |lat: f64, lon: f64| Placed {
+            label: "A".into(),
+            address: String::new(),
+            area: String::new(),
+            source: FROM_OSM,
+            note: String::new(),
+            x: 1.0,
+            y: 2.0,
+            lat,
+            lon,
+            color: [0, 0, 0],
+        };
+        let way = Way {
+            path: vec![(44.64121, -1.19909), (44.6415, -1.2), (44.64172, -1.20439)],
+            meters: 423.6,
+            seconds: 338.8,
+        };
+        let mut drawn = Drawn {
+            png: Vec::new(),
+            places: vec![place(44.64121, -1.19909), place(44.64172, -1.20439)],
+            center: None,
+            zoom: 16,
+            notes: Vec::new(),
+            unfound: Vec::new(),
+            area: String::new(),
+            route: Some(Planned { travel: "walking", order: None, way: Some(way), why: None }),
+        };
+        let map = data("m-1", "", &drawn, true, None);
+        assert_eq!(
+            map["route"],
+            json!({"line": true, "mode": null, "travel": "walking", "streets": true, "meters": 424, "seconds": 339,
+                   "path": [[44.64121, -1.19909], [44.6415, -1.2], [44.64172, -1.20439]],
+                   "attribution": crate::map_route::ATTRIBUTION})
+        );
+        // no way: the straight line, its length as the crow flies, no time
+        drawn.route = Some(Planned { travel: "walking", order: None, way: None, why: Some("timed out".into()) });
+        let map = data("m-1", "", &drawn, true, Some("walking"));
+        assert_eq!(
+            map["route"],
+            json!({"line": true, "mode": "walking", "travel": "walking", "streets": false, "meters": 423})
+        );
+        // not an itinerary: nothing of a way
+        assert_eq!(data("m-1", "", &drawn, false, None)["route"], Value::Null);
     }
 
     #[test]

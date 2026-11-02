@@ -207,14 +207,45 @@ static FRENCH: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!(r"{}|\bCarnet\b(\s+(?:del?\b|d['’])|\s*\^)?", words.join("|"))).expect("valid regex")
 });
 
-/// `text`, written for a model, with the app's names in `lang` (French: as it is).
+/// The app's buttons and switches a text for the model quotes (« Essayer », « Qui peut écrire à qui »…), as each app
+/// shows them (Localizable.xcstrings, values*/strings.xml), in `NAMES`' order: fr, en, de, es (Alex, 2026-11-01: an
+/// English agent told of the card « Essayer / Plus tard / Pas pour moi » said it so). Only a whole quote changes:
+/// « Santé » the switch, not « Domaines/Santé » a Carnet page.
+pub const LABELS: [[&str; 4]; 10] = [
+    ["Essayer / Plus tard / Pas pour moi", "Try it / Later / Not for me", "Ausprobieren / Später / Nichts für mich",
+        "Probar / Más tarde / No es para mí"],
+    ["Essayer", "Try it", "Ausprobieren", "Probar"],
+    ["Plus tard", "Later", "Später", "Más tarde"],
+    ["Pas pour moi", "Not for me", "Nichts für mich", "No es para mí"],
+    ["Qui peut écrire à qui", "Who can write to whom", "Wer wem schreiben darf", "Quién puede escribir a quién"],
+    ["Météo", "Weather", "Wetter", "Tiempo"],
+    ["Santé", "Health", "Gesundheit", "Salud"],
+    ["Envoyer", "Send", "Senden", "Enviar"],
+    ["Modifier le mot de passe", "Change the password", "Passwort ändern", "Cambiar la contraseña"],
+    ["Payer dans le navigateur de l'agent", "Pay in the agent’s browser", "Im Browser des Agenten bezahlen",
+        "Pagar en el navegador del agente"],
+];
+
+/// A quoted label of `LABELS` (its spaces kept).
+static QUOTED: LazyLock<Regex> = LazyLock::new(|| {
+    let labels: Vec<String> = LABELS.iter().map(|l| regex::escape(l[0])).collect();
+    Regex::new(&format!(r"«([\s\u{{a0}}\u{{202f}}]*)({})([\s\u{{a0}}\u{{202f}}]*)»", labels.join("|")))
+        .expect("valid regex")
+});
+
+/// `text`, written for a model, with the app's names and quoted labels in `lang` (French: as it is).
 pub fn localize(text: &str, lang: &str) -> String {
     let n = names(lang);
-    if n.lang == "fr" || !FRENCH.is_match(text) {
+    if n.lang == "fr" || !(FRENCH.is_match(text) || QUOTED.is_match(text)) {
         return text.to_string();
     }
+    let column = NAMES.iter().position(|x| x.lang == n.lang).unwrap_or(1);
+    let text = QUOTED.replace_all(text, |c: &Captures| {
+        let label = LABELS.iter().find(|l| l[0] == &c[2]).map_or(&c[2], |l| l[column]);
+        format!("«{}{label}{}»", &c[1], &c[3])
+    });
     FRENCH
-        .replace_all(text, |c: &Captures| {
+        .replace_all(&text, |c: &Captures| {
             let found = &c[0];
             if c.get(1).is_some() {
                 return found.to_string(); // « Carnet de … », the reminders' mark
@@ -362,6 +393,30 @@ mod tests {
             assert_eq!(localize(kept, "en"), kept);
         }
         assert_eq!(localize("Carnets, Carnet's page, MonCarnet", "en"), "Carnets, Notebook's page, MonCarnet");
+    }
+
+    #[test]
+    fn the_quoted_labels() {
+        let text = "A card « Essayer » / « Plus tard » / « Pas pour moi » waits. Allow it under « Qui peut écrire à \
+                    qui »; switch « Météo » or « Santé » on; it waits for their « Envoyer » (« Modifier le mot de \
+                    passe », « Payer dans le navigateur de l'agent »). Their page « Domaines/Santé », « Envoyer \
+                    avec… ».";
+        assert_eq!(
+            localize(text, "en"),
+            "A card « Try it » / « Later » / « Not for me » waits. Allow it under « Who can write to whom »; switch \
+             « Weather » or « Health » on; it waits for their « Send » (« Change the password », « Pay in the agent’s \
+             browser »). Their page « Domaines/Santé », « Envoyer avec… »."
+        );
+        let german = localize(text, "de");
+        assert!(german.contains("« Ausprobieren » / « Später » / « Nichts für mich »"), "{german}");
+        assert!(german.contains("« Wer wem schreiben darf »"), "{german}");
+        assert!(localize(text, "es").contains("« Probar » / « Más tarde » / « No es para mí »"));
+        assert_eq!(localize(text, "fr"), text);
+        assert_eq!(localize("«\u{a0}Essayer\u{a0}»", "en"), "«\u{a0}Try it\u{a0}»", "its spaces kept");
+        assert_eq!(
+            localize("A card « Essayer / Plus tard / Pas pour moi » waits.", "es"),
+            "A card « Probar / Más tarde / No es para mí » waits."
+        );
     }
 
     #[test]

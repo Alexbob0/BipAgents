@@ -1,6 +1,107 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Alexbob0 <190955252+Alexbob0@users.noreply.github.com>
+Date: Sun, 1 Nov 2026 10:07:39 +0100
+Subject: Tool search: some MCP tools kept direct, rarely needed skill
+ categories by name only
+
+BipAgents patch, documented in hermes/patches/README.md of the BipAgents repository.
+
+Bip-Patch: 0009-tool-search-keep-direct-compact-skills
+---
+ agent/prompt_builder.py                       | 14 ++++++
+ ..._tool_search_keep_direct_compact_skills.py | 48 +++++++++++++++++++
+ tools/tool_search.py                          |  5 +-
+ 3 files changed, 66 insertions(+), 1 deletion(-)
+ create mode 100644 tests/agent/test_tool_search_keep_direct_compact_skills.py
+
+diff --git a/agent/prompt_builder.py b/agent/prompt_builder.py
+index 68375dea3d4367653c787fc810e89e0a83e356c1..4ba0650b51531b6a5825dc00eb961e07b6f892f2 100644
+--- a/agent/prompt_builder.py
++++ b/agent/prompt_builder.py
+@@ -1387,10 +1387,24 @@ def _oneshot_prompt_variant() -> bool:
+     return is_single_query_session()
+ 
+ 
++def _configured_compact_categories() -> frozenset:
++    """``skills.compact_categories`` of this profile's config (a list of top-level category names)."""
++    skills_cfg = _config_readonly("skills.compact_categories").get("skills")
++    raw = skills_cfg.get("compact_categories") if isinstance(skills_cfg, dict) else None
++    if not isinstance(raw, (list, tuple, set)):
++        return frozenset()
++    return frozenset(str(c).strip() for c in raw if str(c).strip())
++
++
+ def _build_skills_system_prompt_inner(
+     skills_dir: Path, extra_roots: list[tuple[int, Path]], available_tools: set[str] | None,
+     available_toolsets: set[str] | None, compact_categories: frozenset[str] | None,
+ ) -> str:
++    # ``skills.compact_categories`` (BipAgents): categories this profile rarely needs, listed by name only
++    # like the coding posture's — their skills still load with skill_view.
++    configured = _configured_compact_categories()
++    if configured:
++        compact_categories = frozenset(compact_categories or ()) | configured
+     # The resolved platform is part of the key: per-platform disabled-skill lists need distinct cache entries.
+     _platform_hint = _current_session_platform_hint()
+     disabled = get_disabled_skill_names(_platform_hint or None)
+diff --git a/tests/agent/test_tool_search_keep_direct_compact_skills.py b/tests/agent/test_tool_search_keep_direct_compact_skills.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..cadde375ff73f0dea1b7a7bda99a9c468945be52
+--- /dev/null
++++ b/tests/agent/test_tool_search_keep_direct_compact_skills.py
+@@ -0,0 +1,48 @@
++"""BipAgents patch 0009: ``!<name>`` in ``tools.tool_search.defer`` keeps a tool direct (an MCP tool
++included), and ``skills.compact_categories`` lists those categories by name only in the skills index."""
++
++import pytest
++
++from agent import prompt_builder
++from agent.prompt_builder import build_skills_system_prompt
++from tools import tool_search
++from tools.tool_search import is_deferrable_tool_name
++
++
++@pytest.fixture
++def mcp_tools(monkeypatch):
++    """Every ``mcp__<server>__<tool>`` name registered under its server's ``mcp-<server>`` toolset."""
++    monkeypatch.setattr(tool_search, "_registry_toolset",
++                        lambda name: "mcp-" + name.split("__")[1] if name.startswith("mcp__") else None)
++
++
++def test_bang_entry_keeps_an_mcp_tool_direct(mcp_tools):
++    name = "mcp__bipagents__notes_search"
++    assert is_deferrable_tool_name(name, frozenset()) is True   # an MCP tool defers by default
++    assert is_deferrable_tool_name(name, frozenset({"!" + name})) is False
++    # Only that tool: another MCP tool of the same server still defers.
++    assert is_deferrable_tool_name("mcp__bipagents__other", frozenset({"!" + name})) is True
++
++
++def test_a_list_without_bang_entries_behaves_as_before(mcp_tools):
++    assert is_deferrable_tool_name("mcp__x__y", frozenset({"web_search"})) is True
++    assert is_deferrable_tool_name("web_search", frozenset({"web_search"})) is True
++    assert is_deferrable_tool_name("web_search", frozenset({"!web_search"})) is False
++
++
++def test_configured_compact_categories_list_skills_by_name_only(monkeypatch, tmp_path):
++    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
++    for category, name, description in (("music", "song-maker", "Compose a song"),
++                                        ("notes", "note-taker", "Take careful notes")):
++        folder = tmp_path / "skills" / category / name
++        folder.mkdir(parents=True)
++        (folder / "SKILL.md").write_text(f"---\nname: {name}\ndescription: {description}\n---\n")
++    prompt_builder.clear_skills_system_prompt_cache(clear_snapshot=True)
++    full = build_skills_system_prompt()
++    assert "Compose a song" in full and "Take careful notes" in full
++
++    monkeypatch.setattr(prompt_builder, "_config_readonly",
++                        lambda what: {"skills": {"compact_categories": ["music"]}})
++    compact = build_skills_system_prompt()
++    assert "song-maker" in compact and "Compose a song" not in compact   # name only, still loadable
++    assert "Take careful notes" in compact                                # other categories whole
+diff --git a/tools/tool_search.py b/tools/tool_search.py
+index 90631843bcf5edebf9bd5ab322f9ee6eba900c2f..89f56ab836039d62c6de0cc0518bf9ba20aac0a9 100644
 --- a/tools/tool_search.py
 +++ b/tools/tool_search.py
-@@ -149,9 +149,12 @@
+@@ -150,9 +150,12 @@ _DEFAULT_DEFERRED_TOOLS = frozenset(DEFAULT_CONFIG["tools"]["tool_search"]["defe
  def is_deferrable_tool_name(name: str, defer_tools: Optional[frozenset] = None) -> bool:
      """True if a tool is *eligible* for deferral: named in ``defer_tools`` (curated set or
      user override), OR an MCP tool, OR neither core nor a session-gated GUI surface (i.e. a
@@ -14,32 +115,3 @@
      if defer_tools is not None and name in defer_tools:
          return True
      if name in _core_tool_names():
---- a/agent/prompt_builder.py
-+++ b/agent/prompt_builder.py
-@@ -1499,12 +1499,26 @@
- def _oneshot_prompt_variant() -> bool:
-     from agent.oneshot_footprint import is_single_query_session
-     return is_single_query_session()
-+
-+
-+def _configured_compact_categories() -> frozenset:
-+    """``skills.compact_categories`` of this profile's config (a list of top-level category names)."""
-+    skills_cfg = _config_readonly("skills.compact_categories").get("skills")
-+    raw = skills_cfg.get("compact_categories") if isinstance(skills_cfg, dict) else None
-+    if not isinstance(raw, (list, tuple, set)):
-+        return frozenset()
-+    return frozenset(str(c).strip() for c in raw if str(c).strip())
- 
- 
- def _build_skills_system_prompt_inner(
-     skills_dir: "Path", extra_roots: "list[tuple[int, Path]]", available_tools: "set[str] | None",
-     available_toolsets: "set[str] | None", compact_categories: "frozenset[str] | None",
- ) -> str:
-+    # ``skills.compact_categories`` (BipAgents): categories this profile rarely needs, listed by name only
-+    # like the coding posture's — their skills still load with skill_view.
-+    configured = _configured_compact_categories()
-+    if configured:
-+        compact_categories = frozenset(compact_categories or ()) | configured
-     # The resolved platform is part of the key: per-platform disabled-skill lists need distinct cache entries.
-     _platform_hint = _current_session_platform_hint()
-     disabled = get_disabled_skill_names(_platform_hint or None)

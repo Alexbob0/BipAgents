@@ -2,7 +2,7 @@ English · [Français](privacy.fr.md) · [Deutsch](privacy.de.md) · [Español](
 
 # BipAgents privacy policy
 
-> Last updated: 24 October 2026.
+> Last updated: 1 November 2026.
 
 ## In short
 
@@ -118,26 +118,47 @@ figures exist only on an iPhone (stand hours, wrist temperature, BMI, moods). It
 then the days that changed, **only to your server** (or to your place with the all-included offer), where they are
 kept one file per day, 400 days at most, with only the categories some agent there reads (a category no agent reads
 any more is deleted from the days kept). Each agent reads only its own categories, to help you with your sleep,
-activity, training and habits; they do not diagnose. The agent's AI model receives what the agent reads to answer you: with the all-included offer, Health is
-only possible with a model that runs in the European Union. The phone keeps only the dates and a fingerprint of what it
-already sent, never the values, and nothing in iCloud. Kerfy Studio does not receive them; nothing is sold or used for
-advertising. **Legal basis**: your explicit consent (GDPR articles 6.1.a and 9.2.a), which you give by turning Health
-on and allowing it in Apple Health or Health Connect. **Stopping**: turn Health off; once no agent has it, the days
-kept on your server are deleted. They also go with the agent, with your place, or when you withdraw the permission in
-Apple Health or Health Connect (nothing more is sent).
+activity, training and habits; they do not diagnose. The agent's AI model receives what the agent reads to answer
+you. With the all-included offer, you can turn Health on only with a model that runs in the European Union, and your
+place checks it at every reading: if the agent's model is no longer one that runs in the Union, the agent reads
+nothing more of your health and tells you so. The phone keeps only the dates and a fingerprint of what it already
+sent, never the values, and nothing in iCloud. Kerfy Studio does not read them (with the offer, it hosts your place
+without accessing it, section 5.1); nothing is sold or used for advertising. **Legal basis**: your explicit consent
+(GDPR articles 6.1.a and 9.2.a). You give it for each agent in the « Share your health with …? » window, which says
+where your data goes, how long it is kept and which AI reads it, then by allowing the categories in Apple Health or
+Health Connect; your phone keeps the date of that consent. **Stopping**: turn Health off for the agent, which
+withdraws your consent for it (the window comes back if you turn it on again); once no agent has it, the days kept on
+your server are deleted. They also go with the agent, with your place, or when you withdraw the permission in Apple
+Health or Health Connect (nothing more is sent).
 
 **Your calendar, if you share it (« Calendrier », Calendar).** For each agent, you can turn on Calendar in its
 tools. With your permission (Calendars on the iPhone, Calendar on Android), the app reads your phone's calendars,
 including the accounts added to it (Google, Outlook…), and sends a copy of their events, from a week before to two
 months after today (title, times, place, notes), **only to your server** (or to your place with the all-included
-offer), when the app opens. The copy stays there, replaced at each sending. Only the agents you chose read it; when
-they ask to add, change or delete an event, your phone does it. The agent's AI model receives the events the agent
-reads to answer you. Kerfy Studio does not receive them. **Legal basis**: your consent (GDPR article 6.1.a), which you
-give by turning Calendar on and allowing it on your phone. **Stopping**: turn Calendar off for the agent, or remove the
-permission in the phone's settings (nothing more is sent). For a mailbox you connected, you can also turn on « Use its
-calendar too »: your server then reads that account's calendars (CalDAV, with the mailbox's credentials, which stay
-encrypted on your server) when one of the mailbox's agents looks at them, and adds or deletes the events it asks for;
-nothing of them is kept apart from the list of those calendars. Turn it off to stop.
+offer), when the app opens. The copy stays there, replaced at each sending, and it is deleted once no agent may read
+it any more. Only the agents you chose read it. For each agent, you choose whether it may read your calendar, and
+whether it may add, move and delete events (under Calendar's small arrow); at first it may do both, without asking
+you again. When an agent allowed to do so adds, changes or deletes an event, your phone does it; a right you take back
+cancels its requests still waiting. The agent's AI model receives the events the agent reads to answer you. Kerfy
+Studio does not read them (with the offer, it hosts your place without accessing it, section 5.1). **Legal basis**:
+your consent (GDPR article 6.1.a), which you give by turning Calendar on for an agent (on Android, after a window that
+says what is copied and who reads it) and allowing it on your phone. **Stopping**: turn Calendar off for the agent, or
+remove the permission in the phone's settings (nothing more is sent). For a mailbox you connected, you can also turn
+on « Use its calendar too »: your server then reads that account's calendars (CalDAV, with the mailbox's credentials,
+which stay encrypted on your server) when one of the mailbox's agents looks at them, and adds or deletes the events it
+asks for; nothing of them is kept apart from the list of those calendars. Turn it off to stop.
+
+**Your reminders, if you share them (« Rappels », Reminders, iPhone).** For each agent, you can turn on Reminders in
+its tools. With your permission (Reminders on the iPhone), the app sends a copy of your lists and reminders, the open
+ones and those ticked off in the last 30 days (title, notes, due date, list), **only to your server** (or to your
+place with the all-included offer), when the app opens. The copy stays there, replaced at each sending, and it is
+deleted once no agent may read it any more. For each agent, you choose whether it may read them, and whether it may
+add and tick off reminders (under Reminders' small arrow); at first it may do both, without asking you again. Your
+phone then adds or ticks off the reminder. The agent's AI model receives the reminders the agent reads to answer you.
+Kerfy Studio does not read them (with the offer, it hosts your place without accessing it, section 5.1). **Legal
+basis**: your consent (GDPR article 6.1.a), which you give by turning Reminders on and allowing it on your iPhone.
+**Stopping**: turn Reminders off for the agent, or remove the permission in the iPhone's settings (nothing more is
+sent). On Android, which has no Reminders app, only reminders by place exist (below).
 
 **Your Carnet (Notebook).** Your agents keep a notebook of what you tell them that will still matter (the people
 in your life, your projects, important dates, the tasks you ask for), as text pages **only on your server** (or your
@@ -154,16 +175,21 @@ delete pages in the app; it all goes with your place.
 permission (Contacts on the iPhone and on Android), the app reads your phone's address book, including the accounts
 added to it (iCloud, Google…), and sends a copy, **only to your server** (or to your place with the all-included
 offer), when the app opens: the whole address book or only the groups (labels) you choose for that server, with for
-each contact their name, nickname, phone numbers, e-mail and postal addresses, birthday, company and job, the people
-they are related to, the groups they are in, and their notes only if you tick « notes » (off by default). Photos are
-never sent. The copy stays there, replaced at each sending; whatever your choice no longer covers is removed at once,
-and the whole copy is removed when no agent may read it any more. Only the agents you chose read it; when they ask to
-add a contact or change one, your phone does it (nothing is deleted this way). The agent's AI model receives the
-contacts the agent reads to answer you. Kerfy Studio does not receive them. **Your contacts are other people**: the
-agents are told never to write to them, call them or pass on their details without your approval, and you remain
-responsible for what you do with them. **Legal basis**: your consent (GDPR article 6.1.a), which you give by turning
-Contacts on and allowing it on your phone. **Stopping**: turn Contacts off for the agent, or remove the permission in
-the phone's settings (nothing more is sent).
+each contact their name, nickname, company and job, the people they are related to and the groups they are in, and,
+only if at least one agent of that server may see them, their phone numbers, e-mail addresses, postal addresses and
+birthday; their notes only if you tick « notes » (off by default). Photos are never sent. The copy stays there,
+replaced at each sending; whatever your choice no longer covers is removed at once, and the whole copy is removed when
+no agent may read it any more. Only the agents you chose read it. For each agent, you choose these details one by one,
+and whether it may add and complete contacts (under Contacts' small arrow); at first it sees everything and may add
+and complete contacts. A detail you take back is no longer shown to it nor searched for it; once no agent sees it, it
+is removed from the copy at once and your phone no longer sends it. When an agent allowed to do so adds or changes a
+contact, your phone does it (nothing is deleted this way). The agent's AI model receives the contacts the agent reads
+to answer you. Kerfy Studio does not read them (with the offer, it hosts your place without accessing it,
+section 5.1). **Your contacts are other people**: the agents are told never to write to them, call them or pass on
+their details without your approval, and you remain responsible for what you do with them. **Legal basis**: your
+consent (GDPR article 6.1.a), which you give by turning Contacts on for an agent (on Android, after a window that says
+what is copied and who reads it) and allowing it on your phone. **Stopping**: turn Contacts off for the agent, or
+remove the permission in the phone's settings (nothing more is sent).
 
 **Reminders by place, and your position.** When you ask an agent « remind me of the milk when I get to the
 supermarket », it asks for a reminder with the place's name (or its coordinates). On the iPhone, Apple's Reminders app
@@ -286,8 +312,12 @@ subscriptions and places is called the guichet.
   provide you with the service (GDPR article 6(1)(b)), **without accessing it**: its software does not read it
   (the only orders a server carries out are to reinstall a place, update it to a published version of BipAgents' open source code, or reopen it, and none of them reads its content). Access to Kerfy Studio's accounts at the hosting providers is restricted to the company. The content of a
   place would only be accessed to meet a legal obligation (a court order, for instance), and you would be told when
-  the law allows it. Like any hosting provider, OVHcloud and Hetzner have physical access to their servers. If you put
-  sensitive data there (your health, for instance), it is only processed to carry out what you ask your agents to do.
+  the law allows it. Like any hosting provider, OVHcloud and Hetzner have physical access to their servers. If your
+  place holds health data, Health's or what you tell your agents about your health, Kerfy Studio hosts it and has it
+  processed by the AI model only with your explicit consent (GDPR article 9(2)(a)): for Health, the one you give when
+  you turn it on for an agent (section 3), and only with a model that runs in the European Union; for your
+  conversations, [to be completed with the lawyer: the article 9 basis for what you tell your agents about your
+  health].
 - **Apple and Google** are responsible for their own processing when you sign in with them and when you pay in their
   store.
 - **Stripe** (Stripe Payments Europe, Ltd., Ireland) processes the payment when you buy on the bipagents.com website
@@ -396,7 +426,8 @@ that runs the chosen model: [to be completed: providers of the models offered an
 EUrouter states that by default it keeps neither the requests nor the replies, and keeps their metadata (time, model,
 number of tokens, cost, IP address) for up to 12 months. They act on Kerfy Studio's behalf. **Before the first
 message, the app names the router and the model's maker and asks for your agreement**; the list of models shows each
-one's maker.
+one's maker. **For Health**, only a model that runs in the European Union: your place refuses to give your health data
+to an agent whose model is not marked as such, even if the model changed after you turned Health on (section 3).
 
 **Sleep.** Your place itself notes the app's latest request; the guichet only knows that it is asleep.
 
@@ -412,9 +443,12 @@ on the place and on your devices, plus a copy of this key encrypted with your re
 Studio cannot open. On the all-included offer the place is on a server Kerfy Studio rents, so the key is there too, and
 technically the host as well as Kerfy Studio could access it; our software reads neither your place nor its backups,
 and we would only do so if the law required it. Kerfy Studio keeps these
-backups at a backup hosting provider (not in service yet; it will be named here before it goes into service) without
-being able to read them: those of the last 2 hours, then one per hour for 48 hours, one
-per day for 30 days, one per week for 12 weeks. They are erased with your place.
+backups at **Scaleway** (Scaleway SAS, France; object storage in Paris, region fr-par) without being able to read them:
+those of the last 2 hours, then one per hour for 48 hours, one per day for 30 days, one per week for 12 weeks. They are erased with your place. At
+Scaleway, a replaced or deleted version of a file is kept 30 days, then erased. The data stays in the European Union.
+
+**The guichet's backups.** The guichet (your account, your subscription, the places' technical data) is backed up at
+Scaleway too, in copies Kerfy Studio encrypts before they leave; old versions are erased after 30 days.
 
 **OVHcloud's daily image.** On its servers, OVHcloud also makes a daily image of the whole server, which it keeps on
 its premises: one restore point per day, not encrypted by Kerfy Studio. When a place is reinstalled for someone else,
@@ -498,7 +532,7 @@ Kerfy Studio keeps nothing of it.
 | Hetzner Online GmbH (Gunzenhausen, Germany) | Hosts some of the places' servers and the agents' mail server | Content of the places; the agents' mailboxes and the mail server's security logs | Germany, Finland |
 | EUrouter B.V. (Amsterdam, Netherlands) | AI router | Messages sent to the model, metadata | European Union |
 | Model providers: [to be completed] | Run the chosen model | Messages sent to the model | [to be completed] |
-| Backup hosting provider: not in service yet; it will be named here before it goes into service | Keeps the backups | Encrypted backups, unreadable for it and for Kerfy Studio | Stated with it |
+| Scaleway SAS (Paris, France) | Object storage for the backups (region fr-par, Paris) | The places' encrypted backups, unreadable for it and for Kerfy Studio; encrypted copies of the guichet's database; a replaced or deleted version is kept 30 days | European Union (France) |
 | Hosting provider of the guichet and the relay: not in service yet; it will be named here before it goes into service | Hosts the guichet and the relay | Account, subscription, technical data | European Union |
 | Email sending provider: not in service yet; it will be named here before it goes into service | Sends the codes, the security notices, the invitations, the purchase confirmation, the withdrawal acknowledgement and the deletion notices | Email address, content of these emails | Stated with it |
 | Stripe Payments Europe, Ltd. (Dublin, Ireland) | Payment of purchases on the bipagents.com website, tax calculation, fraud checks, invoices | Email address, billing address or country, card details, IP address | European Union; possibly outside the Union (section 11) |
@@ -609,8 +643,8 @@ Google may process the token and the notification outside the European Union, no
 - Apple states that it covers transfers from the European Economic Area with the standard contractual clauses adopted
   by the European Commission.
 
-**The all-included offer.** The places' servers and the agents' mail server are in the European Union, for everyone in
-the offer. EUrouter processes the messages in the European Union
+**The all-included offer.** The places' servers, the agents' mail server and the backups (Scaleway, France) are in
+the European Union, for everyone in the offer. EUrouter processes the messages in the European Union
 [to be completed: countries where the models offered run, and the safeguard if one is outside the Union]. Apple and
 Google (sign-in, stores, DeviceCheck, Play Integrity) may process data in the United States, with the safeguards stated
 above. For a purchase on the website, Stripe may process data outside the European Union, notably in the United States,
@@ -632,9 +666,9 @@ protection (section 17 of the Act respecting the protection of personal informat
 ask us for a summary of this assessment.
 
 Email provider: Proton AG, in Switzerland, a country the European Commission recognises as providing adequate
-protection (decision 2000/518/EC, kept in force by GDPR article 45(9)). Email sending provider and backup hosting
-provider: not in service yet; their country and the applicable safeguard will be stated here before they go into
-service. You can ask us for a copy of the applicable safeguards.
+protection (decision 2000/518/EC, kept in force by GDPR article 45(9)). Backup hosting provider: Scaleway, in France,
+with no transfer outside the Union. Email sending provider: not in service yet; its country and the applicable
+safeguard will be stated here before it goes into service. You can ask us for a copy of the applicable safeguards.
 
 ## 12. Retention periods
 
@@ -642,6 +676,9 @@ service. You can ask us for a copy of the applicable safeguards.
 |---|---|
 | The app's data on your phone | Until you remove the agent or the app |
 | Health data (« Santé ») on your server or place | 400 days at most; deleted once no agent has Health, with the agent or with the place |
+| Your consent for Health (and, on Android, for contacts and the calendar), with its date, on your phone | Until you delete the app; marked withdrawn, with its date, when you turn the tool off for the agent |
+| Copy of the calendar, the reminders and the contacts on your server or place | Replaced each time the app opens; deleted once no agent may read it (including when the last one is deleted) or with the place |
+| The agents' requests to your phone (events, reminders, contacts) | Until your phone carries them out or they are cancelled, then deleted at the next copy once 14 days old; at the latest with the place |
 | Device token at the relay | Not kept: it only exists sealed, on your phone and your server (and at the guichet with the all-included offer, as long as the device is linked to your place) |
 | IP address at the relay | In memory, one hour at most, as a fingerprint |
 | Relay technical logs | 6 months at most |
@@ -658,6 +695,7 @@ service. You can ask us for a copy of the applicable safeguards.
 | IP address when a free week is reserved | Never stored; in memory, as a fingerprint, 15 minutes at most |
 | Content of your place | During the subscription, then 30 days (3 days after a free week that was not continued) |
 | Backups | 2 hours (all), then 48 hours (hourly), 30 days (daily), 12 weeks (weekly); erased with the place |
+| Replaced or deleted versions at Scaleway (the places' backups, encrypted copies of the guichet's database) | 30 days |
 | OVHcloud's daily image | One point per day, replaced within about a day after the place is reinstalled |
 | Servers' technical data | Latest values only |
 | The guichet's event log | 12 months |
@@ -694,6 +732,11 @@ portability, and give instructions about your data after your death (French law)
 
 **Right to object.** You can object at any time, on grounds relating to your particular situation, to processing
 based on our legitimate interest (limiting abuse, emails, reports, crash reports, limiting free weeks).
+
+**Withdrawing your consent.** For Health, Calendar, Contacts, Reminders, the location of reminders by place and
+Android's document scanner, you withdraw your consent whenever you like, as easily as you gave it: turn the tool off on
+the agent's page, or remove the permission in the phone's settings (or in Apple Health or Health Connect). Nothing more
+is sent, and the copies are deleted as section 3 says. What was done before stays lawful (GDPR article 7(3)).
 
 Write to **privacy@bipagents.com**. We answer within one month, which can be extended by two months for a complex
 request; we may ask for what we need to check your identity.
@@ -736,9 +779,10 @@ your model provider's minimum age (often 18). **Under 16, the app may only be us
 supervised by a parent or an adult in charge of the child** (the family feature): that adult chooses the agents,
 their access and the model, accepts the terms of use for the child and remains responsible for their use.
 
-Kerfy Studio does not ask for anyone's age and none of its processing relies on consent. Only Android's document
-scanner asks for an agreement, for what Google receives from it (section 7): for a child under 15, the adult who set
-up the install gives it together with the child. If a child wrote to us, a parent can ask us to delete the message.
+Kerfy Studio does not ask for anyone's age. Some features rely on your consent: Health, Calendar, Contacts, Reminders,
+the location of reminders by place (section 3) and Android's document scanner, for what Google receives from it
+(section 7). Under 15, the adult who set up the install gives it together with the child (article 45 of the French
+Data Protection Act). If a child wrote to us, a parent can ask us to delete the message.
 
 **All-included offer**: it is subscribed by an adult, or with a parent's agreement. An invited person must be at least
 16; under 16, a place may only be used if a parent or an adult in charge of the child has set it up and supervises it

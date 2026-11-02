@@ -1,13 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Alexbob0 <190955252+Alexbob0@users.noreply.github.com>
+Date: Sun, 1 Nov 2026 10:07:39 +0100
+Subject: browser.vault_only: the vault without Hermes' own browser
+
+BipAgents patch, documented in hermes/patches/README.md of the BipAgents repository.
+
+Bip-Patch: 0007-browser-vault-only
+---
+ model_tools.py                         | 15 +++++++++++++
+ tests/tools/test_browser_vault_only.py | 30 ++++++++++++++++++++++++++
+ 2 files changed, 45 insertions(+)
+ create mode 100644 tests/tools/test_browser_vault_only.py
+
 diff --git a/model_tools.py b/model_tools.py
+index 011d32dc90c4bb24ac10d722aa98bba897177b17..1a4d469891223591757aa8c664c8cb073ab62114 100644
 --- a/model_tools.py
 +++ b/model_tools.py
-@@ -312,6 +312,19 @@
+@@ -313,6 +313,19 @@ def _apply_toolset_selection(tools: set, names: list[str], quiet_mode: bool, *,
              print(f"{icon} {label} '{name}': {', '.join(resolved) if resolved else 'no tools'}")
-
-
+ 
+ 
 +def _browser_vault_only() -> bool:
 +    """``browser.vault_only``: the profile browses with a browser of its own (an MCP server's tools); of the
-+    ``browser`` toolset it keeps only the vault (``browser_vault``/``browser_vault_*``, which fills that same browser through
++    ``browser`` toolset it keeps only the vault (``browser_vault``, which fills that same browser through
 +    ``browser.cdp_url``)."""
 +    try:
 +        from hermes_cli.config import read_raw_config
@@ -21,12 +36,48 @@ diff --git a/model_tools.py b/model_tools.py
  def _select_tool_names(enabled_toolsets: Optional[list[str]], disabled_toolsets: Optional[list[str]], quiet_mode: bool) -> set:
      """Tool names requested by the toolset selection (before check_fn filtering)."""
      tools: set = set()
-@@ -334,6 +347,8 @@
+@@ -335,6 +348,8 @@ def _select_tool_names(enabled_toolsets: Optional[list[str]], disabled_toolsets:
      # disabled toolset are strictly stripped out. See issue #17309.
      if disabled_toolsets:
          _apply_toolset_selection(tools, disabled_toolsets, quiet_mode, disable=True)
 +    if any(t.startswith("browser_") for t in tools) and _browser_vault_only():
 +        tools = {t for t in tools if not t.startswith("browser_") or t.startswith("browser_vault")}
      return tools
-
-
+ 
+ 
+diff --git a/tests/tools/test_browser_vault_only.py b/tests/tools/test_browser_vault_only.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..1b9a63acd3de62154648d78cf6cb3ea6464702cb
+--- /dev/null
++++ b/tests/tools/test_browser_vault_only.py
+@@ -0,0 +1,30 @@
++"""``browser.vault_only`` (BipAgents patch 0007): of the ``browser`` toolset only the vault stays, for a profile
++that browses with an MCP server's browser and fills that same browser through ``browser.cdp_url``."""
++
++import importlib
++
++import model_tools
++
++
++def _select(monkeypatch, browser_cfg):
++    # The module the code imports at call time (sys.modules), even if another test swapped it in.
++    monkeypatch.setattr(importlib.import_module("hermes_cli.config"), "read_raw_config",
++                        lambda: {"browser": browser_cfg})
++    return model_tools._select_tool_names(["browser", "web"], None, quiet_mode=True)
++
++
++def test_vault_only_keeps_the_vault_and_drops_the_other_browser_tools(monkeypatch):
++    tools = _select(monkeypatch, {"vault_only": True})
++    assert "browser_vault" in tools
++    assert not [t for t in tools if t.startswith("browser_") and t != "browser_vault"]
++    assert "web_search" in tools   # other toolsets are untouched
++
++
++def test_without_the_key_the_browser_toolset_is_whole(monkeypatch):
++    for cfg in ({}, {"vault_only": False}, {"vault_only": "off"}):
++        tools = _select(monkeypatch, cfg)
++        assert {"browser_vault", "browser_navigate", "browser_snapshot"} <= tools
++
++
++def test_a_string_true_counts(monkeypatch):
++    assert "browser_navigate" not in _select(monkeypatch, {"vault_only": "true"})

@@ -149,7 +149,7 @@ def root() -> Optional[Path]:
 def version_id(commit: str = hermes.HERMES_COMMIT, patches: Path = PATCHES) -> str:
     """A version: Hermes' commit and BipAgents' patches (two BipAgents commits with the same pair share a build)."""
     digest = hashlib.sha256()
-    for patch in sorted(p for p in patches.glob("*.patch") if not p.name.startswith(".")):
+    for patch in hermes.set_patches(patches):
         digest.update(patch.name.encode() + b"\0" + patch.read_bytes() + b"\0")
     return f"{commit or 'default'}-{digest.hexdigest()[:10]}"
 
@@ -316,7 +316,7 @@ def build(runner: hermes.Runner, base: Path, version: str, *, browser: bool = Tr
         flags += ["--commit", commit]
     runner.run(as_builder + ["bash", str(script), *flags], cwd=target)
     checkout = target / "hermes-agent"
-    for patch in sorted(p for p in patches.glob("*.patch") if not p.name.startswith(".")):
+    for patch in hermes.set_patches(patches):
         runner.run(as_builder + ["git", "-C", str(checkout), "apply", str(patch)])
     python = store_python(target) if not runner.dry else target / "tools" / "python" / "bin" / "python3"
     # Hermes' package manager, resident in the payload (as its Dockerfile stages it): a sealed tree has no

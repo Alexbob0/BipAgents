@@ -454,6 +454,14 @@ pub struct MapsConfig {
     /// The vector provider's address (its style at `<url>/styles/<vector_style>`); tests point it at a fake.
     pub vector_url: String,
     pub vector_style: String,
+    /// An itinerary map's way along the streets (map_route.rs, 2026-11-01): « osrm » (FOSSGIS's OSRM servers, free,
+    /// no key) or « off » (the dashed straight line).
+    pub streets: String,
+    /// The router's address (`<url>/routed-foot/route/v1/…`); tests point it at a fake.
+    pub streets_url: String,
+    /// How long one request may take before the map keeps the straight line (`streets_timeout`, seconds).
+    #[serde(skip)]
+    pub streets_timeout: std::time::Duration,
 }
 
 impl Default for MapsConfig {
@@ -466,6 +474,9 @@ impl Default for MapsConfig {
             vector: "openfreemap".into(),
             vector_url: OPENFREEMAP_URL.into(),
             vector_style: "positron".into(),
+            streets: "osrm".into(),
+            streets_url: crate::map_route::FOSSGIS_URL.into(),
+            streets_timeout: std::time::Duration::from_secs(6),
         }
     }
 }
@@ -766,6 +777,12 @@ pub struct Config {
     /// `[model] provider_order`: the providers EUrouter tries first for every model call, so their prompt cache works
     /// (model_route.rs; default entrim, greenpt, inceptron; `[]`: EUrouter picks per call).
     pub model_provider_order: Vec<String>,
+    /// `[model] eu_hosted`: on the offer's places, the models (their router id, as an agent's profile names it) that
+    /// run in the Union, as the guichet marks them `eu_hosted`. Only an agent on one of them reads « Santé » there
+    /// (health.rs, 2026-11-01); empty (the default): none does. Not in the serialized form (the Python's has no such
+    /// key: the golden config).
+    #[serde(skip)]
+    pub model_eu_hosted: Vec<String>,
     /// The bridge's address on the tailnet (`tailscale serve`), for the pairing QR code.
     pub public_url: Option<String>,
     /// The bridge as the agents reach it, for messages between agents (peers.py). Default:
@@ -857,6 +874,7 @@ impl Config {
             model_health_url: None,
             model_health_key: None,
             model_provider_order: crate::model_route::DEFAULT_ORDER.iter().map(|s| s.to_string()).collect(),
+            model_eu_hosted: Vec::new(),
             public_url: None,
             peer_url: None,
             cloud: false,
@@ -1703,6 +1721,9 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
                 "positron".into()
             }
         },
+        streets: s(maps_t, "streets", "osrm").trim().to_lowercase(),
+        streets_url: py::rstrip_slash(&s(maps_t, "streets_url", crate::map_route::FOSSGIS_URL)),
+        streets_timeout: std::time::Duration::from_secs_f64(f(maps_t, "streets_timeout", 6.0)?.clamp(0.1, 30.0)),
     };
 
     let notebook_t = table(data, "notebook");
@@ -1885,6 +1906,12 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
                 items.iter().map(|p| py::py_str(p).trim().to_lowercase()).filter(|p| !p.is_empty()).collect()
             }
             _ => crate::model_route::DEFAULT_ORDER.iter().map(|s| s.to_string()).collect(),
+        },
+        model_eu_hosted: match get(model_t, "eu_hosted") {
+            Some(Value::Array(items)) => {
+                items.iter().map(|m| py::py_str(m).trim().to_lowercase()).filter(|m| !m.is_empty()).collect()
+            }
+            _ => Vec::new(),
         },
         public_url: opt_s(data, "public_url").map(|u| py::rstrip_slash(&u)),
         peer_url: opt_s(data, "peer_url").map(|u| py::rstrip_slash(&u)),

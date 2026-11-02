@@ -100,8 +100,8 @@ async fn hermes(State(fake): State<Fake>, request: Request) -> Response {
     if method == "GET" && path.ends_with("/v1/runs/run-1/events") {
         let approved = fake.approved.clone();
         let events = async_stream::stream! {
-            yield Ok::<_, std::io::Error>(sse("approval.request", json!({"request_id": "req-1", "command": "rm -rf /tmp/x",
-                "description": "delete a folder", "choices": ["once", "deny"]})));
+            yield Ok::<_, std::io::Error>(sse("approval.request", json!({"prompt_id": "req-1", "execution_generation": 1,
+                "command": "rm -rf /tmp/x", "description": "delete a folder", "choices": ["once", "deny"]})));
             approved.wait(Duration::from_secs(20)).await;
             yield Ok(sse("run.completed", json!({"output": "Une fondue !"})));
         };
@@ -110,9 +110,12 @@ async fn hermes(State(fake): State<Fake>, request: Request) -> Response {
         return response;
     }
     if method == "GET" && path.ends_with("/v1/runs/run-1") {
-        let status = if fake.approved.is_set() { "completed" } else { "running" };
-        return json(json!({"status": status, "session_id": "s-marie-1",
-                           "usage": {"input_tokens": 1200, "output_tokens": 80}}));
+        if fake.approved.is_set() {
+            return json(json!({"status": "completed", "session_id": "s-marie-1",
+                               "usage": {"input_tokens": 1200, "output_tokens": 80}}));
+        }
+        return json(json!({"status": "waiting_for_approval", "session_id": "s-marie-1", "pending_controls": [
+            {"kind": "approval", "prompt_id": "req-1", "execution_generation": 1, "choices": ["once", "deny"]}]}));
     }
     json(json!({"ok": true}))
 }

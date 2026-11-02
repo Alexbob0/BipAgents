@@ -418,8 +418,16 @@
         "CooperativeGesturesHandler.WindowsHelpText": mapWord("fingers"), "CooperativeGesturesHandler.MacHelpText": mapWord("fingers") },
     };
     var spots = points.map(function (p) { return [p.lon, p.lat]; });
+    // an itinerary's way along the streets (the map's data, map_route.rs, 2026-11-01), else the straight line, dashed
+    // when the way was not found (`streets: false`), solid on an older map
+    var route = {};
+    try { route = (JSON.parse((card.querySelector("script.map-data") || {}).textContent || "{}").route) || {}; } catch (e) { route = {}; }
+    var way = route.streets === true && Array.isArray(route.path) ? route.path.filter(function (p) {
+      return Array.isArray(p) && isFinite(p[0]) && isFinite(p[1]) && Math.abs(p[0]) <= 90 && Math.abs(p[1]) <= 180;
+    }).map(function (p) { return [+p[1], +p[0]]; }) : [];
+    if (way.length < 2) way = null;
     if (spots.length > 1) {
-      options.bounds = spots.reduce(function (b, s) { return b.extend(s); }, new ml.LngLatBounds(spots[0], spots[0]));
+      options.bounds = spots.concat(way || []).reduce(function (b, s) { return b.extend(s); }, new ml.LngLatBounds(spots[0], spots[0]));
       options.fitBoundsOptions = { padding: { top: 40, right: 40, bottom: 56, left: 40 }, maxZoom: 16 };
     } else {
       options.center = spots.length ? spots[0] : [center[1], center[0]];
@@ -451,9 +459,11 @@
       clearTimeout(timer);
       if (card.dataset.line && spots.length > 1) {
         map.addSource("bip-line", { type: "geojson", data: { type: "Feature", properties: {},
-          geometry: { type: "LineString", coordinates: spots } } });
-        map.addLayer({ id: "bip-line", type: "line", source: "bip-line", layout: { "line-cap": "round", "line-join": "round" },
-          paint: { "line-color": css("--accent") || "#7C6CF2", "line-width": 4, "line-opacity": 0.85 } });
+          geometry: { type: "LineString", coordinates: way || spots } } });
+        var paint = { "line-color": css("--accent") || "#7C6CF2", "line-width": 4, "line-opacity": 0.85 };
+        if (route.streets === false) paint["line-dasharray"] = [1.5, 1.5];
+        map.addLayer({ id: "bip-line", type: "line", source: "bip-line",
+          layout: { "line-cap": route.streets === false ? "butt" : "round", "line-join": "round" }, paint: paint });
       }
       card.classList.add("live");
       // the credits folded into their ⓘ once the map has drawn (MapLibre shows them open at first)

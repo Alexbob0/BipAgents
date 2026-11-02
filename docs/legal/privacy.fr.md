@@ -2,7 +2,7 @@
 
 # Politique de confidentialité de BipAgents
 
-> Dernière mise à jour : 24 octobre 2026.
+> Dernière mise à jour : 1er novembre 2026.
 
 ## En bref
 
@@ -124,28 +124,49 @@ sur iPhone (heures debout, température du poignet, IMC, humeurs). Elle envoie l
 puis les jours qui ont changé, **uniquement à ton serveur** (ou à ta place avec l'offre tout compris), où ils sont
 gardés un fichier par jour, 400 jours au plus, avec seulement les catégories qu'au moins un agent y lit (une catégorie
 que plus aucun agent ne lit est effacée des journées gardées). Chaque agent ne lit que ses catégories, pour t'aider sur
-ton sommeil, ton activité, ton entraînement et tes habitudes ; ils ne posent pas de diagnostic. Le modèle d'IA de l'agent reçoit ce que l'agent lit pour te répondre : avec l'offre tout compris, « Santé »
-n'est possible qu'avec un modèle qui tourne dans l'Union européenne. Le téléphone ne garde que les dates et une
-empreinte de ce qu'il a déjà envoyé, jamais les valeurs, et rien dans iCloud. Kerfy Studio ne les reçoit pas ; rien
-n'est vendu ni utilisé pour de la publicité. **Base légale** : ton consentement explicite (articles 6.1.a et 9.2.a du
-RGPD), que tu donnes en activant « Santé » et en l'autorisant dans Apple Santé ou Health Connect. **Arrêter** :
-désactive « Santé » ; quand plus aucun agent ne l'a, les journées gardées sur ton serveur sont effacées. Elles le sont
-aussi avec l'agent, avec ta place, ou en retirant l'autorisation dans Apple Santé ou Health Connect (plus rien n'est
+ton sommeil, ton activité, ton entraînement et tes habitudes ; ils ne posent pas de diagnostic. Le modèle d'IA de
+l'agent reçoit ce que l'agent lit pour te répondre. Avec l'offre tout compris, tu ne peux activer « Santé » qu'avec un
+modèle qui tourne dans l'Union européenne, et ta place le vérifie à chaque lecture : si le modèle de l'agent n'est plus
+un modèle qui tourne dans l'Union, l'agent ne lit plus rien de ta santé et te le dit. Le téléphone ne garde que les
+dates et une empreinte de ce qu'il a déjà envoyé, jamais les valeurs, et rien dans iCloud. Kerfy Studio ne les lit pas
+(avec l'offre, il héberge ta place sans y accéder, section 5.1) ; rien n'est vendu ni utilisé pour de la publicité.
+**Base légale** : ton consentement explicite (articles 6.1.a et 9.2.a du RGPD). Tu le donnes pour chaque agent dans la
+fenêtre « Partager ta santé avec … ? », qui dit où vont tes données, combien de temps elles sont gardées et quelle IA
+les lit, puis en autorisant les catégories dans Apple Santé ou Health Connect ; ton téléphone garde la date de cet
+accord. **Arrêter** : désactive « Santé » pour l'agent, ce qui retire ton accord pour lui (la fenêtre revient si tu le
+réactives) ; quand plus aucun agent ne l'a, les journées gardées sur ton serveur sont effacées. Elles le sont aussi
+avec l'agent, avec ta place, ou en retirant l'autorisation dans Apple Santé ou Health Connect (plus rien n'est
 envoyé).
 
 **Ton agenda, si tu le partages (« Calendrier »).** Pour chaque agent, tu peux activer « Calendrier » dans ses
 outils. Avec ton autorisation (Calendriers sur l'iPhone, Agenda sur Android), l'app lit les agendas de ton téléphone,
 y compris les comptes ajoutés dessus (Google, Outlook…), et envoie une copie de leurs rendez-vous, d'une semaine avant
 à deux mois après aujourd'hui (titre, horaires, lieu, notes), **uniquement à ton serveur** (ou à ta place avec l'offre
-tout compris), quand l'app s'ouvre. Cette copie y reste, remplacée à chaque envoi. Seuls les agents que tu as choisis
-la lisent ; quand ils te demandent d'ajouter, de modifier ou de supprimer un rendez-vous, c'est ton téléphone qui le
-fait. Le modèle d'IA de l'agent reçoit les rendez-vous que l'agent lit pour te répondre. Kerfy Studio ne les reçoit
-pas. **Base légale** : ton consentement (article 6.1.a du RGPD), que tu donnes en activant « Calendrier » et en
-l'autorisant sur ton téléphone. **Arrêter** : désactive « Calendrier » pour l'agent, ou retire l'autorisation dans les
-réglages du téléphone (plus rien n'est envoyé). Pour une boîte mail que tu as connectée, tu peux aussi activer
+tout compris), quand l'app s'ouvre. Cette copie y reste, remplacée à chaque envoi, et elle est effacée quand plus aucun
+agent ne peut la lire. Seuls les agents que tu as choisis la lisent. Pour chaque agent, tu choisis s'il peut lire ton
+agenda, et s'il peut ajouter, déplacer et supprimer des rendez-vous (sous la petite flèche de « Calendrier ») ; au
+départ, il peut faire les deux, sans te redemander. Quand un agent qui en a le droit ajoute, modifie ou supprime un
+rendez-vous, c'est ton téléphone qui le fait ; un droit que tu lui retires annule ses demandes en attente. Le modèle
+d'IA de l'agent reçoit les rendez-vous que l'agent lit pour te répondre. Kerfy Studio ne les lit pas (avec l'offre, il
+héberge ta place sans y accéder, section 5.1). **Base légale** : ton consentement (article 6.1.a du RGPD), que tu
+donnes en activant « Calendrier » pour un agent (sur Android, après une fenêtre qui dit ce qui est copié et qui le lit)
+et en l'autorisant sur ton téléphone. **Arrêter** : désactive « Calendrier » pour l'agent, ou retire l'autorisation
+dans les réglages du téléphone (plus rien n'est envoyé). Pour une boîte mail que tu as connectée, tu peux aussi activer
 « Utiliser aussi son agenda » : ton serveur lit alors les agendas de ce compte (CalDAV, avec les identifiants de la
 boîte, qui restent chiffrés sur ton serveur) quand un agent de cette boîte les consulte, et y ajoute ou supprime les
 rendez-vous qu'il demande ; rien n'en est gardé à part la liste de ces agendas. Désactive-le pour arrêter.
+
+**Tes rappels, si tu les partages (« Rappels », iPhone).** Pour chaque agent, tu peux activer « Rappels » dans ses
+outils. Avec ton autorisation (Rappels sur l'iPhone), l'app envoie une copie de tes listes et de tes rappels, ceux à
+faire et ceux cochés ces 30 derniers jours (titre, notes, échéance, liste), **uniquement à ton serveur** (ou à ta place
+avec l'offre tout compris), quand l'app s'ouvre. Cette copie y reste, remplacée à chaque envoi, et elle est effacée
+quand plus aucun agent ne peut la lire. Pour chaque agent, tu choisis s'il peut les lire, et s'il peut en ajouter et
+en cocher (sous la petite flèche de « Rappels ») ; au départ, il peut faire les deux, sans te redemander. C'est alors
+ton téléphone qui ajoute ou coche le rappel. Le modèle d'IA de l'agent reçoit les rappels que l'agent lit pour te
+répondre. Kerfy Studio ne les lit pas (avec l'offre, il héberge ta place sans y accéder, section 5.1). **Base
+légale** : ton consentement (article 6.1.a du RGPD), que tu donnes en activant « Rappels » et en l'autorisant sur ton
+iPhone. **Arrêter** : désactive « Rappels » pour l'agent, ou retire l'autorisation dans les réglages de l'iPhone (plus
+rien n'est envoyé). Sur Android, qui n'a pas d'app Rappels, seuls les rappels par lieu existent (ci-dessous).
 
 **Ton Carnet.** Tes agents tiennent un carnet de ce que tu leur dis qui comptera encore (les personnes de ta vie,
 tes projets, les dates importantes, les tâches que tu demandes), en pages de texte **uniquement sur ton serveur** (ou
@@ -163,17 +184,23 @@ part avec ta place.
 Avec ton autorisation (Contacts sur l'iPhone et sur Android), l'app lit le carnet d'adresses de ton téléphone, y
 compris les comptes ajoutés dessus (iCloud, Google…), et en envoie une copie **uniquement à ton serveur** (ou à ta
 place avec l'offre tout compris), quand l'app s'ouvre : tout le carnet ou seulement les groupes (libellés) que tu
-choisis pour ce serveur, avec pour chaque contact son nom, son surnom, ses numéros, ses adresses e-mail et postales,
-son anniversaire, son entreprise et son poste, les personnes qui lui sont liées, ses groupes, et ses notes seulement si
-tu coches « notes » (désactivé par défaut). Les photos ne sont jamais envoyées. Cette copie y reste, remplacée à chaque
-envoi ; ce que ton choix ne couvre plus en est retiré aussitôt, et toute la copie est effacée quand plus aucun agent ne
-peut la lire. Seuls les agents que tu as choisis la lisent ; quand ils te demandent d'ajouter ou de modifier un
-contact, c'est ton téléphone qui le fait (rien n'est supprimé de cette façon). Le modèle d'IA de l'agent reçoit les
-contacts que l'agent lit pour te répondre. Kerfy Studio ne les reçoit pas. **Tes contacts sont d'autres personnes** :
-les agents ont pour consigne de ne jamais leur écrire, les appeler ou transmettre leurs coordonnées sans ton accord, et
-tu restes responsable de l'usage que tu en fais. **Base légale** : ton consentement (article 6.1.a du RGPD), que tu
-donnes en activant « Contacts » et en l'autorisant sur ton téléphone. **Arrêter** : désactive « Contacts » pour
-l'agent, ou retire l'autorisation dans les réglages du téléphone (plus rien n'est envoyé).
+choisis pour ce serveur, avec pour chaque contact son nom, son surnom, son entreprise et son poste, les personnes qui
+lui sont liées et ses groupes, et, seulement si au moins un agent de ce serveur peut les voir, ses numéros, ses
+adresses e-mail, ses adresses postales et son anniversaire ; ses notes seulement si tu coches « notes » (désactivé par
+défaut). Les photos ne sont jamais envoyées. Cette copie y reste, remplacée à chaque envoi ; ce que ton choix ne couvre
+plus en est retiré aussitôt, et toute la copie est effacée quand plus aucun agent ne peut la lire. Seuls les agents
+que tu as choisis la lisent. Pour chaque agent, tu choisis ces détails un par un, et s'il peut ajouter et compléter
+des fiches (sous la petite flèche de « Contacts ») ; au départ, il voit tout et peut ajouter et compléter des fiches.
+Un détail que tu lui retires ne lui est plus montré et ne sert plus à chercher ; quand plus aucun agent ne le voit, il
+est retiré de la copie aussitôt et ton téléphone ne l'envoie plus. Quand un agent qui en a le droit ajoute ou modifie
+un contact, c'est ton téléphone qui le fait (rien n'est supprimé de cette façon). Le modèle d'IA de l'agent reçoit les
+contacts que l'agent lit pour te répondre. Kerfy Studio ne les lit pas (avec l'offre, il héberge ta place sans y
+accéder, section 5.1). **Tes contacts sont d'autres personnes** : les agents ont pour consigne de ne jamais leur
+écrire, les appeler ou transmettre leurs coordonnées sans ton accord, et tu restes responsable de l'usage que tu en
+fais. **Base légale** : ton consentement (article 6.1.a du RGPD), que tu donnes en activant « Contacts » pour un agent
+(sur Android, après une fenêtre qui dit ce qui est copié et qui le lit) et en l'autorisant sur ton téléphone.
+**Arrêter** : désactive « Contacts » pour l'agent, ou retire l'autorisation dans les réglages du téléphone (plus rien
+n'est envoyé).
 
 **Les rappels par lieu et ta position.** Quand tu demandes à un agent « rappelle-moi le lait en arrivant au
 supermarché », il demande un rappel avec le nom du lieu (ou ses coordonnées). Sur l'iPhone, c'est l'app Rappels
@@ -301,8 +328,11 @@ Kerfy Studio qui gère les comptes, les abonnements et les places s'appelle le g
   d'IA uniquement pour te fournir le service (article 6.1.b du RGPD), **sans y accéder** : son logiciel ne le lit pas (les seuls ordres qu'un serveur exécute sont réinstaller une place, la mettre à jour vers une version publiée du code source ouvert de BipAgents, ou la rouvrir, et aucun ne lit son contenu). L'accès aux comptes de Kerfy Studio chez les hébergeurs est réservé à la société. Un
   accès au contenu d'une place n'aurait lieu que pour répondre à une obligation légale (une réquisition judiciaire, par
   exemple), et tu en serais informé quand la loi le permet. Comme tout hébergeur, OVHcloud et Hetzner ont un accès
-  physique à leurs serveurs. Si tu y mets des données sensibles (ta santé, par exemple), elles ne sont traitées que pour
-  exécuter ce que tu demandes à tes agents.
+  physique à leurs serveurs. Si ta place contient des données de santé, celles de « Santé » ou ce que tu dis de ta
+  santé à tes agents, Kerfy Studio ne les héberge et ne les fait traiter par le modèle d'IA qu'avec ton consentement
+  explicite (article 9.2.a du RGPD) : pour « Santé », celui que tu donnes en l'activant pour un agent (section 3), et
+  seulement avec un modèle qui tourne dans l'Union européenne ; pour tes conversations, [à compléter avec l'avocat : la
+  base de l'article 9 pour ce que tu dis de ta santé à tes agents].
 - **Apple et Google** sont responsables de leurs propres traitements quand tu te connectes avec eux et quand tu paies
   dans leur store.
 - **Stripe** (Stripe Payments Europe, Ltd., Irlande) traite le paiement quand tu achètes sur le site bipagents.com
@@ -413,7 +443,9 @@ l'offre, puis par le fournisseur qui fait tourner le modèle choisi : [à compl�
 pays où ils tournent]. EUrouter indique ne garder par défaut ni les requêtes ni les réponses, et garder leurs
 métadonnées (heure, modèle, nombre de jetons, coût, adresse IP) jusqu'à 12 mois. Ils agissent pour le compte de Kerfy
 Studio. **Avant le premier message, l'app nomme le routeur et le fabricant du modèle et te demande ton accord** ; la
-liste des modèles indique le fabricant de chacun.
+liste des modèles indique le fabricant de chacun. **Pour « Santé »**, seulement un modèle qui tourne dans l'Union
+européenne : ta place refuse de donner tes données de santé à un agent dont le modèle n'est pas marqué comme tel, même
+si le modèle a changé après que tu as activé « Santé » (section 3).
 
 **La mise en veille.** Ta place note elle-même la dernière demande de l'app ; le guichet sait seulement qu'elle dort.
 
@@ -430,10 +462,14 @@ qui reste sur la place et sur tes appareils, plus une copie de cette clé chiffr
 Kerfy Studio : la clé y est donc présente, et
 techniquement l'hébergeur comme Kerfy Studio pourraient y accéder ; notre logiciel ne lit ni ta place ni ses
 sauvegardes, et nous ne le ferions que si la loi nous y oblige.
-Kerfy Studio garde ces sauvegardes chez un hébergeur de sauvegardes (pas encore en service ; il sera indiqué ici avant sa mise en service) sans pouvoir
-les lire : celles des 2 dernières heures, puis une par heure
-pendant 48 heures, une par jour pendant 30 jours, une par semaine pendant 12 semaines. Elles sont effacées avec ta
-place.
+Kerfy Studio garde ces sauvegardes chez **Scaleway** (Scaleway SAS, France ; stockage objet à Paris, région fr-par)
+sans pouvoir les lire : celles des 2 dernières heures, puis une par heure pendant 48 heures, une par jour pendant 30 jours, une par semaine pendant
+12 semaines. Elles sont effacées avec ta place. Chez Scaleway, une version remplacée ou effacée d'un fichier est
+gardée 30 jours, puis effacée. Les données restent dans l'Union européenne.
+
+**Les sauvegardes du guichet.** Le guichet (ton compte, ton abonnement, les données techniques des places) est
+sauvegardé lui aussi chez Scaleway, en copies chiffrées par Kerfy Studio avant de partir ; les anciennes versions sont
+effacées au bout de 30 jours.
 
 **L'image quotidienne d'OVHcloud.** Sur ses serveurs, OVHcloud fait aussi une image quotidienne du serveur entier,
 qu'il garde chez lui : un point de restauration par jour, qui n'est pas chiffré par Kerfy Studio. Quand une place est
@@ -522,7 +558,7 @@ BipAgents n'y efface rien et Kerfy Studio n'en garde rien.
 | Hetzner Online GmbH (Gunzenhausen, Allemagne) | Héberge des serveurs de places et le serveur de messagerie des agents | Contenu des places ; boîtes e-mail des agents et journaux de sécurité du serveur de messagerie | Allemagne, Finlande |
 | EUrouter B.V. (Amsterdam, Pays-Bas) | Routeur d'IA | Messages envoyés au modèle, métadonnées | Union européenne |
 | Fournisseurs des modèles : [à compléter] | Font tourner le modèle choisi | Messages envoyés au modèle | [à compléter] |
-| Hébergeur des sauvegardes : pas encore en service ; il sera indiqué ici avant sa mise en service | Garde les sauvegardes | Sauvegardes chiffrées, illisibles pour lui et pour Kerfy Studio | Indiqué avec lui |
+| Scaleway SAS (Paris, France) | Stockage objet des sauvegardes (région fr-par, Paris) | Sauvegardes chiffrées des places, illisibles pour lui et pour Kerfy Studio ; copies chiffrées de la base du guichet ; une version remplacée ou effacée est gardée 30 jours | Union européenne (France) |
 | Hébergeur du guichet et du relais : pas encore en service ; il sera indiqué ici avant sa mise en service | Héberge le guichet et le relais | Compte, abonnement, données techniques | Union européenne |
 | Prestataire d'envoi des e-mails : pas encore en service ; il sera indiqué ici avant sa mise en service | Envoie les codes, les avis de sécurité, les invitations, la confirmation d'achat, l'accusé de rétractation et les avis de suppression | Adresse e-mail, contenu de ces e-mails | Indiqué avec lui |
 | Stripe Payments Europe, Ltd. (Dublin, Irlande) | Paiement des achats sur le site bipagents.com, calcul des taxes, contrôles contre la fraude, factures | Adresse e-mail, adresse ou pays de facturation, données de carte, adresse IP | Union européenne ; possiblement hors de l'Union (section 11) |
@@ -641,8 +677,8 @@ notifications, Apple et Google peuvent traiter le jeton et la notification hors 
 - Apple indique encadrer les transferts depuis l'Espace économique européen par les clauses contractuelles types
   adoptées par la Commission européenne.
 
-**L'offre tout compris.** Les serveurs des places et le serveur de messagerie des agents sont dans l'Union européenne,
-pour toutes les personnes de l'offre. EUrouter traite les messages dans l'Union européenne
+**L'offre tout compris.** Les serveurs des places, le serveur de messagerie des agents et les sauvegardes (Scaleway,
+France) sont dans l'Union européenne, pour toutes les personnes de l'offre. EUrouter traite les messages dans l'Union européenne
 [à compléter : pays où tournent les modèles proposés, et garantie si l'un est hors de l'Union]. Apple et Google
 (connexion, stores, DeviceCheck, Play Integrity) peuvent traiter des données aux États-Unis, avec les garanties
 indiquées ci-dessus. Pour un achat sur le site, Stripe peut traiter des données hors de l'Union européenne, notamment
@@ -665,9 +701,9 @@ protection adéquate (article 17 de la Loi sur la protection des renseignements 
 peux nous demander un résumé de cette évaluation.
 
 Prestataire de messagerie : Proton AG, en Suisse, pays que la Commission européenne reconnaît comme offrant une
-protection adéquate (décision 2000/518/CE, maintenue par l'article 45, paragraphe 9, du RGPD). Prestataire d'envoi des
-e-mails et hébergeur des sauvegardes : pas encore en service ; leur pays et la garantie applicable seront indiqués ici
-avant leur mise en service. Tu peux nous demander une copie des garanties applicables.
+protection adéquate (décision 2000/518/CE, maintenue par l'article 45, paragraphe 9, du RGPD). Hébergeur des
+sauvegardes : Scaleway, en France, sans transfert hors de l'Union. Prestataire d'envoi des e-mails : pas encore en
+service ; son pays et la garantie applicable seront indiqués ici avant sa mise en service. Tu peux nous demander une copie des garanties applicables.
 
 ## 12. Durées de conservation
 
@@ -675,6 +711,9 @@ avant leur mise en service. Tu peux nous demander une copie des garanties applic
 |---|---|
 | Données de l'app sur ton téléphone | Jusqu'à ce que tu supprimes l'agent ou l'app |
 | Données de santé (« Santé ») sur ton serveur ou ta place | 400 jours au plus ; effacées quand plus aucun agent n'a « Santé », avec l'agent ou avec la place |
+| Ton accord pour « Santé » (et, sur Android, pour les contacts et l'agenda), avec sa date, sur ton téléphone | Jusqu'à ce que tu supprimes l'app ; marqué retiré, avec sa date, quand tu désactives l'outil pour l'agent |
+| Copie de l'agenda, des rappels et des contacts sur ton serveur ou ta place | Remplacée à chaque ouverture de l'app ; effacée quand plus aucun agent ne peut la lire (y compris quand le dernier est supprimé) ou avec la place |
+| Demandes des agents à ton téléphone (rendez-vous, rappels, contacts) | Jusqu'à ce que ton téléphone les fasse ou qu'elles soient annulées, puis effacées à la copie suivante une fois vieilles de 14 jours ; au plus tard avec la place |
 | Jeton d'appareil au relais | Aucune conservation : il n'existe que scellé, sur ton téléphone et ton serveur (et au guichet avec l'offre tout compris, tant que l'appareil est relié à ta place) |
 | Adresse IP au relais | En mémoire, une heure au plus, sous forme d'empreinte |
 | Journaux techniques du relais | 6 mois au plus |
@@ -691,6 +730,7 @@ avant leur mise en service. Tu peux nous demander une copie des garanties applic
 | Adresse IP à la réservation d'une semaine gratuite | Jamais enregistrée ; en mémoire, sous forme d'empreinte, 15 minutes au plus |
 | Contenu de ta place | Pendant l'abonnement, puis 30 jours (3 jours après une semaine gratuite non poursuivie) |
 | Sauvegardes | 2 heures (toutes), puis 48 heures (horaires), 30 jours (quotidiennes), 12 semaines (hebdomadaires) ; effacées avec la place |
+| Versions remplacées ou effacées chez Scaleway (sauvegardes des places, copies chiffrées de la base du guichet) | 30 jours |
 | Image quotidienne d'OVHcloud | Un point par jour, remplacé dans la journée environ après la réinstallation de la place |
 | Données techniques des serveurs | Dernières valeurs seulement |
 | Journal des événements du guichet | 12 mois |
@@ -730,6 +770,12 @@ portabilité, et donner des directives sur le sort de tes données après ton d�
 **Droit d'opposition.** Tu peux t'opposer à tout moment, pour des raisons tenant à ta situation particulière, aux
 traitements fondés sur notre intérêt légitime (limitation des abus, e-mails, signalements, rapports de plantage,
 limite des semaines gratuites).
+
+**Retirer ton consentement.** Pour Santé, Calendrier, Contacts, Rappels, la localisation des rappels par lieu et le
+scanner de documents d'Android, tu retires ton accord quand tu veux, aussi simplement que tu l'as donné : désactive
+l'outil sur la page de l'agent, ou retire l'autorisation dans les réglages du téléphone (ou dans Apple Santé ou Health
+Connect). Plus rien n'est envoyé, et les copies sont effacées comme le dit la section 3. Ce qui a été fait avant reste
+valable (article 7.3 du RGPD).
 
 Écris à **privacy@bipagents.com**. Nous répondons dans un délai d'un mois, prolongeable de deux mois pour une
 demande complexe ; nous pouvons te demander de quoi vérifier ton identité.
@@ -774,10 +820,10 @@ sur une installation préparée et supervisée par un parent ou un adulte qui en
 adulte choisit les agents, leurs accès et le modèle, accepte les conditions d'utilisation pour l'enfant et reste
 responsable de son usage.
 
-Kerfy Studio ne demande pas l'âge et aucun de ses traitements ne repose sur le consentement. Seul le scanner de
-documents d'Android demande un accord, pour ce que Google en reçoit (section 7) : pour un enfant de moins de 15 ans,
-l'adulte qui a préparé l'installation le donne avec lui. Si un enfant nous a écrit, un parent peut nous demander
-d'effacer son message.
+Kerfy Studio ne demande pas l'âge. Certaines fonctions reposent sur ton consentement : Santé, Calendrier, Contacts,
+Rappels, la localisation des rappels par lieu (section 3) et le scanner de documents d'Android, pour ce que Google en
+reçoit (section 7). Avant 15 ans, l'adulte qui a préparé l'installation le donne avec l'enfant (article 45 de la loi
+Informatique et Libertés). Si un enfant nous a écrit, un parent peut nous demander d'effacer son message.
 
 **Offre tout compris** : elle est souscrite par un adulte, ou avec l'accord d'un parent. Une personne invitée doit
 avoir au moins 16 ans ; avant 16 ans, une place ne peut être utilisée que préparée et supervisée par un parent ou un

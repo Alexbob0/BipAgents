@@ -1,7 +1,8 @@
 //! The person's iPhone Reminders, for the agents they choose (decided 2026-10-20). No server reaches them (Apple has no
 //! API for them), so the iPhone app shares them: it sends its lists and reminders here when it opens (and when woken by
 //! a silent push), and applies what the agents asked for, through EventKit. An agent reads the last copy and asks for
-//! a reminder to be added or ticked off; the request waits here until the iPhone has done it.
+//! a reminder to be added or ticked off; the request waits here until the iPhone has done it. When no agent may use
+//! them any more, the copy is deleted (as the address book's).
 //!
 //!     reminders_list       the reminders as the iPhone last sent them (not done, and done in the last 30 days)
 //!     reminders_add        a new reminder (a title, a date, a list, or a place: « when I get to… »), done by the phone
@@ -555,6 +556,36 @@ async fn snapshot(State(state): State<AppState>, Json(body): Json<Snapshot>) -> 
     Ok(web::ok(json!({"items": items})))
 }
 
+/// A deleted agent: no longer among the agents allowed (the copy goes with the last one, `set_agents_in`).
+pub fn forget(config: &Config, agent: &str) {
+    let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut data = read(config);
+    let names: Vec<String> = match data.get("agents") {
+        Some(Value::Array(v)) => v.iter().filter_map(Value::as_str).map(str::to_string).collect(),
+        _ => return,
+    };
+    if !names.iter().any(|n| n == agent) {
+        return;
+    }
+    let kept: Vec<String> = names.into_iter().filter(|n| n != agent).collect();
+    set_agents_in(&mut data, &kept);
+    if let Err(err) = write(config, &data) {
+        tracing::warn!(agent = %agent, error = %err, "reminders share not updated for a deleted agent");
+    }
+}
+
+/// The agents allowed now. Shared with no agent any more, the copy goes too, as the address book's (contacts.rs): the
+/// lists and reminders with their notes are not kept once nobody may read them (legal review of 2026-11-01, C4); the
+/// requests stay their 14 days (the Carnet's own included). The phone stops sending it.
+fn set_agents_in(data: &mut Dict, names: &[String]) {
+    data.insert("agents".into(), json!(names));
+    if names.is_empty() {
+        for key in ["lists", "items", "at"] {
+            data.remove(key);
+        }
+    }
+}
+
 async fn set_agents(State(state): State<AppState>, Json(body): Json<Agents>) -> ApiResult<Response> {
     let config = state.config();
     let mut names = Vec::new();
@@ -567,7 +598,7 @@ async fn set_agents(State(state): State<AppState>, Json(body): Json<Agents>) -> 
     let agents = blocking(move || {
         let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut data = read(&config);
-        data.insert("agents".into(), json!(names));
+        set_agents_in(&mut data, &names);
         write(&config, &data)?;
         Ok(data["agents"].clone())
     })
@@ -686,6 +717,18 @@ mod tests {
         assert!(place(json!({"latitude": 98.0, "longitude": 2.0})).is_err());
         assert!(place(json!({"place": "home", "when": "tomorrow"})).is_err());
         assert!(place(json!({"when": "arriving"})).is_err());
+    }
+
+    #[test]
+    fn the_copy_goes_with_the_last_agent() {
+        let mut data: Dict = serde_json::from_value(json!({
+            "agents": ["coach"], "lists": [{"id": "L1", "title": "Courses"}],
+            "items": [{"id": "r1", "list": "L1", "title": "Lait", "notes": "demi-écrémé"}], "at": 1.0,
+            "queue": [{"id": "q1", "op": "add", "state": "pending"}]})).unwrap();
+        set_agents_in(&mut data, &["coach".to_string()]);
+        assert_eq!(data["items"].as_array().map(Vec::len), Some(1));
+        set_agents_in(&mut data, &[]);
+        assert_eq!(Value::Object(data), json!({"agents": [], "queue": [{"id": "q1", "op": "add", "state": "pending"}]}));
     }
 
     #[test]

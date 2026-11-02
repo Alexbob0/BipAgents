@@ -151,6 +151,8 @@ pub struct BackendState {
     pub run_requests: Vec<Seen>,
     pub approvals: Vec<Value>,
     pub approval_response: (u16, Value),
+    /// run_id -> `GET /v1/runs/{id}`.
+    pub run_info: HashMap<String, Value>,
     pub ntfy_lines: HashMap<String, Vec<String>>,
     pub ntfy_requests: Vec<Seen>,
 }
@@ -169,6 +171,7 @@ impl Default for BackendState {
             run_requests: Vec::new(),
             approvals: Vec::new(),
             approval_response: (200, json!({"object": "hermes.run.approval_response", "resolved": 1})),
+            run_info: HashMap::new(),
             ntfy_lines: HashMap::new(),
             ntfy_requests: Vec::new(),
         }
@@ -339,6 +342,11 @@ async fn hermes(State(fake): State<FakeBackend>, request: Request) -> Response {
             .header("content-type", "text/event-stream")
             .body(Body::from_stream(stream))
             .unwrap();
+    }
+    if parts.len() == 3 && parts[0] == "v1" && parts[1] == "runs" {
+        if let Some(run) = fake.with(|s| s.run_info.get(&parts[2]).cloned()) {
+            return Json(run).into_response();
+        }
     }
     if parts.len() == 3 && parts[0] == "api" && parts[1] == "sessions" {
         return Json(json!({"id": parts[2], "title": "Bot Chat", "message_count": 7})).into_response();

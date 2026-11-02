@@ -67,6 +67,8 @@ pub struct Feature {
     pub id: &'static str,
     /// The card's title and line (French, like the bridge's other cards: the apps rebuild them in their language).
     pub title: &'static str,
+    /// The title in the agent's notes for an agent writing in another language than French (the apps' English one).
+    pub title_en: &'static str,
     pub line: &'static str,
     /// For the agent's note (English, like the bridge's other notes).
     pub hint: &'static str,
@@ -87,6 +89,7 @@ pub const FEATURES: [Feature; 13] = [
     Feature {
         id: "voice",
         title: "Les réponses à voix haute",
+        title_en: "Replies read aloud",
         line: "Tes agents peuvent te lire leurs réponses, avec leur propre voix.",
         hint: "you can read your replies aloud, with your own voice (in the app: the speaker on a reply, or the voice settings)",
         example: "Au fait, je peux aussi te lire mes réponses à voix haute, si tu veux.",
@@ -98,6 +101,7 @@ pub const FEATURES: [Feature; 13] = [
     Feature {
         id: "morning_brief",
         title: "Le point du matin",
+        title_en: "The morning brief",
         line: "Chaque matin, un petit point : météo, agenda et ce qui t'attend.",
         hint: "a short brief every morning (weather, agenda, what's coming), set up as a routine",
         example: "Si tu veux, je peux te faire un petit point chaque matin : météo, agenda et ce qui t'attend.",
@@ -109,6 +113,7 @@ pub const FEATURES: [Feature; 13] = [
     Feature {
         id: "carnet",
         title: "Le Carnet",
+        title_en: "The Notebook",
         line: "Je range les personnes, les sujets et les choses à retenir, faciles à retrouver.",
         hint: "the Carnet: people, subjects and things to remember, kept tidy and easy to find",
         example: "Je peux noter ça dans ton Carnet, pour qu'on le retrouve facilement.",
@@ -120,6 +125,7 @@ pub const FEATURES: [Feature; 13] = [
     Feature {
         id: "connectors",
         title: "Les connecteurs",
+        title_en: "Connectors",
         line: "Je peux relier un service que tu utilises, pour m'en occuper directement.",
         hint: "you can make a connector to a service they use, to work with it directly",
         example: "Je peux te faire un connecteur pour que je m'en occupe directement.",
@@ -131,6 +137,7 @@ pub const FEATURES: [Feature; 13] = [
     Feature {
         id: "family",
         title: "L'agent de la famille",
+        title_en: "The family agent",
         line: "Un agent commun à la famille, et les invitations pour tes proches.",
         hint: "a family agent shared with their household, and invitations for their close ones",
         example: "On peut aussi créer un agent pour toute la famille et inviter tes proches.",
@@ -142,6 +149,7 @@ pub const FEATURES: [Feature; 13] = [
     Feature {
         id: "project",
         title: "Un agent pour un projet",
+        title_en: "An agent for a project",
         line: "Un voyage, une fête entre amis : un agent rien que pour l'organiser, avec eux.",
         hint: "a project agent (create_project_agent) to organise a trip or a party, shared with their friends",
         example: "Pour organiser ça avec tes amis, je peux créer un agent rien que pour ce projet.",
@@ -153,6 +161,7 @@ pub const FEATURES: [Feature; 13] = [
     Feature {
         id: "archives",
         title: "Les Archives",
+        title_en: "The Archives",
         line: "Tes documents rangés et retrouvés en un mot : factures, ordonnances, contrats…",
         hint: "the Archives: their documents (bills, prescriptions, contracts) kept, sorted and found in a word",
         example: "Je peux ranger ce document dans tes Archives, pour le retrouver en un mot.",
@@ -164,6 +173,7 @@ pub const FEATURES: [Feature; 13] = [
     Feature {
         id: "routine",
         title: "Les routines",
+        title_en: "Routines",
         line: "Ce que tu me demandes souvent, je peux le faire tout seul au bon moment.",
         hint: "a routine: what they ask regularly, done by itself at the right time",
         example: "Si tu veux, je peux le faire tout seul, chaque fois au bon moment.",
@@ -175,6 +185,7 @@ pub const FEATURES: [Feature; 13] = [
     Feature {
         id: "podcast",
         title: "Le podcast de la semaine",
+        title_en: "The weekly podcast",
         line: "Chaque vendredi, un petit podcast sur ta semaine ou un sujet qui te plaît.",
         hint: "a weekly podcast every Friday (create_podcast), about their week or a topic they like",
         example: "C'est vendredi : je peux te préparer un petit podcast de la semaine, si ça te dit.",
@@ -186,6 +197,7 @@ pub const FEATURES: [Feature; 13] = [
     Feature {
         id: "vault",
         title: "Le coffre",
+        title_en: "The vault",
         line: "Tes mots de passe gardés dans ton coffre, jamais montrés aux agents.",
         hint: "the vault: their passwords kept safe, filled in for them, never shown to the agents (never ask for a password in the chat)",
         example: "Pour tes mots de passe, il y a ton coffre : ils y sont gardés et je ne les vois jamais.",
@@ -197,6 +209,7 @@ pub const FEATURES: [Feature; 13] = [
     Feature {
         id: "live",
         title: "Les appels Live",
+        title_en: "Live calls",
         line: "Parle avec ton agent comme au téléphone, sans rien taper.",
         hint: "Live calls: talking with you like on the phone, hands free",
         example: "Tu peux aussi m'appeler en Live : on parle comme au téléphone.",
@@ -208,6 +221,7 @@ pub const FEATURES: [Feature; 13] = [
     Feature {
         id: "jobs",
         title: "Les tâches de fond",
+        title_en: "Background tasks",
         line: "Une longue recherche se fait en arrière-plan, je te préviens quand c'est prêt.",
         hint: "background tasks: a long search done in the background, they get told when it's ready",
         example: "Pour une recherche plus longue, je peux m'en occuper en arrière-plan et te prévenir.",
@@ -220,6 +234,7 @@ pub const FEATURES: [Feature; 13] = [
     Feature {
         id: "watchers",
         title: "Les veilleurs",
+        title_en: "Watchers",
         line: "Je surveille un site pour toi et je te préviens dès que ça change : un créneau, un prix, un colis.",
         hint: "a watcher: you check a site for them on your own (a slot, a price, a parcel, a grade) and tell them only when it changes, without a routine",
         example: "Si tu veux, je peux surveiller ça pour toi et te prévenir dès que ça bouge.",
@@ -856,6 +871,14 @@ fn example_for(f: &Feature, service: Option<&str>, lang: &str) -> String {
     }
 }
 
+/// A feature's title in the agent's notes: French for a French agent, else the apps' English one (Alex, 2026-11-01:
+/// « Le point du matin » reached an English person).
+fn title_for(f: &Feature, lang: &str) -> &'static str {
+    if crate::names::names(lang).lang == "fr" { f.title } else { f.title_en }
+}
+
+// The card « Essayer / Plus tard / Pas pour moi », « Essayer », « Pas pour moi »: in the person's language through
+// names.rs `localize` (`LABELS`), as their app shows them.
 fn tip_note(f: &Feature, service: Option<&str>, lang: &str) -> String {
     format!(
         "A tip for your person, at a good moment (the bridge picked it): {}. After answering what they asked, add ONE short, \
@@ -873,14 +896,16 @@ fn week_note(store: &Store, f: &Feature, now: f64, lang: &str) -> String {
     let used: Vec<&str> = FEATURES
         .iter()
         .filter(|x| store.features.get(x.id).is_some_and(|s| s.tried_at.is_some()))
-        .map(|x| x.title)
+        .map(|x| title_for(x, lang))
         .collect();
     let used = if used.is_empty() { String::new() } else { format!("; they used: {}", used.join(", ")) };
+    let french = crate::names::names(lang).lang == "fr";
+    let recap = if french { "« ta première semaine » recap" } else { "first-week recap" };
     format!(
         "Your person started with their agents one week ago ({messages} messages this week{used}). After answering what \
-they asked, give them a short, warm « ta première semaine » recap in their language (2 or 3 sentences): what you did \
-together this week, from your conversation. Then offer ONE thing to try: {} (e.g. « {} »). A card « Essayer / Plus \
-tard / Pas pour moi » waits for them in the app: don't explain it, don't insist.",
+they asked, give them a short, warm {recap} in their language (2 or 3 sentences): what you did together this week, \
+from your conversation. Then offer ONE thing to try: {} (e.g. « {} »). A card « Essayer / Plus tard / Pas pour moi » \
+waits for them in the app: don't explain it, don't insist.",
         f.hint,
         example_for(f, None, lang)
     )
@@ -1016,17 +1041,17 @@ fn try_body(f: &Feature, service: Option<&str>, costume: Option<&str>) -> Value 
     out
 }
 
-/// « Essayer » (from the card or the page): tried, the last try kept, the agent told. Returns the costume unlocked.
-fn tried(store: &mut Store, f: &Feature, agent: Option<&str>, now: f64) -> Option<&'static str> {
+/// « Essayer » (from the card or the page): tried, the last try kept, the agent (writing in `lang`) told. Returns the
+/// costume unlocked.
+fn tried(store: &mut Store, f: &Feature, agent: Option<(&str, &str)>, now: f64) -> Option<&'static str> {
     store.stat(f.id).accepted += 1;
     store.last_try = Some((f.id.to_string(), now));
     let costume = record_use(store, f.id, now, false);
-    if let Some(agent) = agent {
+    if let Some((agent, lang)) = agent {
+        let title = title_for(f, lang);
         let line = match f.open {
-            Some(_) => format!("Your person tapped « Essayer » on your tip ({}): the app opened it for them.", f.title),
-            None => {
-                format!("Your person tapped « Essayer » on your tip ({}): their next message asks for it.", f.title)
-            }
+            Some(_) => format!("Your person tapped « Essayer » on your tip ({title}): the app opened it for them."),
+            None => format!("Your person tapped « Essayer » on your tip ({title}): their next message asks for it."),
         };
         store.notes.entry(agent.to_string()).or_default().push(line);
     }
@@ -1046,13 +1071,14 @@ pub fn answer(config: &Config, agent: &str, id: &str, choice: &str, via: &str) -
         return Err("choice: one of try, later, never".into());
     }
     let now = py::time_time();
+    let lang = crate::names::agent_language(config, agent);
     let done = change(config, |store| {
         let card = store.cards.iter().find(|c| c.id == id && c.agent == agent).cloned()?;
         store.cards.retain(|c| c.id != id);
         let f = feature(&card.feature)?;
         let out = match choice.as_str() {
             "try" => {
-                let costume = tried(store, f, Some(agent), now);
+                let costume = tried(store, f, Some((agent, &lang)), now);
                 try_body(f, card.service.as_deref(), costume)
             }
             "later" => {
@@ -1068,7 +1094,10 @@ pub fn answer(config: &Config, agent: &str, id: &str, choice: &str, via: &str) -
                     .notes
                     .entry(agent.to_string())
                     .or_default()
-                    .push(format!("Your person doesn't want {} (« Pas pour moi »): never propose it again.", f.title));
+                    .push(format!(
+                        "Your person doesn't want {} (« Pas pour moi »): never propose it again.",
+                        title_for(f, &lang)
+                    ));
                 json!({"ok": true, "choice": "never", "feature": f.id})
             }
         };
@@ -1323,6 +1352,32 @@ mod tests {
     }
 
     #[test]
+    fn the_notes_in_the_agents_language() {
+        // Alex, 2026-11-01: an English agent spoke of « Essayer / Plus tard » (setup's place has no language: English)
+        let (_dir, config) = setup();
+        no_podcast_day(&config);
+        let note = say(&config, "vie", "j'ai oublié mon mot de passe", &[], at(0, 10)).unwrap();
+        assert!(note.contains("A card « Try it / Later / Not for me » waits"), "{note}");
+        let id = pending_items(&config, None)[0]["request_id"].as_str().unwrap().to_string();
+        answer(&config, "vie", &id, "try", "app").unwrap().unwrap();
+        let note = say(&config, "vie", "merci", &[], at(0, 11)).unwrap();
+        assert!(note.contains("tapped « Try it » on your tip (The vault)"), "{note}");
+        for french in ["Essayer", "Plus tard", "Pas pour moi", "Le coffre", "Carnet"] {
+            assert!(!note.contains(french), "{french}: {note}");
+        }
+        // French: as it was
+        let (_dir, mut config) = setup();
+        config.browser.language = "fr".into();
+        no_podcast_day(&config);
+        let note = say(&config, "vie", "j'ai oublié mon mot de passe", &[], at(0, 10)).unwrap();
+        assert!(note.contains("A card « Essayer / Plus tard / Pas pour moi » waits"), "{note}");
+        let id = pending_items(&config, None)[0]["request_id"].as_str().unwrap().to_string();
+        answer(&config, "vie", &id, "never", "app").unwrap().unwrap();
+        let note = say(&config, "vie", "merci", &[], at(1, 10)).unwrap();
+        assert!(note.contains("doesn't want Le coffre (« Pas pour moi »)"), "{note}");
+    }
+
+    #[test]
     fn tell_me_when_hints_at_a_watcher() {
         let ids = |t: &str| signals(t, &[], 12).into_iter().map(|(id, _)| id).collect::<Vec<_>>();
         assert!(ids("Préviens-moi quand un créneau se libère chez le dentiste").contains(&"watchers"));
@@ -1419,7 +1474,8 @@ mod tests {
         let mut week = None;
         for d in 2..=7 {
             if let Some(n) = say(&config, "vie", "salut", &[], at(d, 10)) {
-                if n.contains("ta première semaine") {
+                if n.contains("first-week recap") {
+                    // the place has no language: English (« ta première semaine » for a French agent only)
                     week = Some(d);
                 }
             }

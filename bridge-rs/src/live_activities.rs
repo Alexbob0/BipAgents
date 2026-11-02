@@ -154,7 +154,8 @@ impl LiveState {
             }
             "approval.request" => self.phase = "approval".into(),
             "clarify.request" => self.phase = "question".into(),
-            "approval.responded" | "clarify.responded" | "clarify.cancelled" | "clarify.retired" => back_to_work(self),
+            // an approval or a question answered or gone (hermes_prompts.rs)
+            crate::hermes_prompts::APPROVAL_SETTLED | crate::hermes_prompts::CLARIFY_SETTLED => back_to_work(self),
             _ if crate::hermes::is_terminal(kind) => {
                 if room {
                     self.tool = None;
@@ -764,9 +765,15 @@ mod tests {
         assert_eq!(s.apply("subagent.start", &data(json!({"goal": "h"})), false), Change::Step);
         assert_eq!(s.apply("subagent.complete", &data(json!({})), false), Change::Step);
         assert_eq!((s.subtasks, s.subtasks_done, s.tool.as_deref()), (2, 1, Some("delegate_task")));
-        assert_eq!(s.apply("approval.request", &data(json!({"request_id": "r"})), false), Change::Phase);
+        assert_eq!(
+            s.apply("approval.request", &data(json!({"prompt_id": "p1", "execution_generation": 2})), false),
+            Change::Phase
+        );
         assert_eq!(s.phase, "approval");
-        assert_eq!(s.apply("approval.responded", &data(json!({})), false), Change::Phase);
+        assert_eq!(s.apply("approval.settled", &data(json!({"prompt_id": "p1"})), false), Change::Phase);
+        assert_eq!(s.apply("clarify.request", &data(json!({"prompt_id": "c1"})), false), Change::Phase);
+        assert_eq!(s.apply("clarify.settled", &data(json!({"prompt_id": "c1"})), false), Change::Phase);
+        assert_eq!(s.phase, "working");
         assert_eq!(s.apply("clarify.request", &data(json!({})), false), Change::Phase);
         assert_eq!(s.apply("tool.started", &data(json!({"tool": "web_search"})), false), Change::Phase);
         assert_eq!(s.phase, "working");

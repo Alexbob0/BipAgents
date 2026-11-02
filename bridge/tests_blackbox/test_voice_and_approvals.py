@@ -235,17 +235,32 @@ def test_unwatched_run_never_pushes(bridges, fakes):
     assert fakes.apns.pushes() == []
 
 
+def waiting(prompt_id, generation=5):
+    """A run's status as Hermes keeps it while an approval prompt waits."""
+    return {"status": "waiting_for_approval", "admission_id": "adm_9", "execution_generation": generation,
+            "pending_controls": [{"kind": "approval", "prompt_id": prompt_id, "execution_generation": generation,
+                                  "command": "ls", "choices": ["once", "deny"]}]}
+
+
 def test_approve_forwards_to_hermes(bridge, fakes):
+    """An approval goes as exactly the prompt its run's status shows waiting: {request_id, execution_generation,
+    choice}."""
     hermes = fakes.hermes
+    hermes.run_info["run_9"] = waiting("req_9")
     resp = bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": "run_9",
                                                            "request_id": "req_9", "choice": "Once"})
     assert resp.status_code == 200 and resp.json() == {"object": "hermes.run.approval_response", "resolved": 1}
-    assert [(a["run_id"], a["body"]) for a in hermes.approvals] == [("run_9", {"choice": "once", "request_id": "req_9"})]
+    assert [(a["run_id"], a["body"]) for a in hermes.approvals] == [
+        ("run_9", {"request_id": "req_9", "execution_generation": 5, "choice": "once"})]
     assert hermes.seen("/v1/runs/run_9/approval")[0].header("authorization") == f"Bearer {HERMES_KEY}"
-    hermes.approval_response = (409, {"error": {"code": "approval_not_pending"}})
+    hermes.approval_response = (409, {"error": {"code": "stale_generation"}})
     resp = bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": "run_9", "choice": "deny"})
-    assert resp.status_code == 409 and resp.json() == {"error": {"code": "approval_not_pending"}}
-    assert hermes.approvals[-1]["body"] == {"choice": "deny"}
+    assert resp.status_code == 409 and resp.json() == {"error": {"code": "stale_generation"}}
+    assert hermes.approvals[-1]["body"] == {"request_id": "req_9", "execution_generation": 5, "choice": "deny"}
+    # no such run: Hermes' 404, nothing sent
+    assert bridge.post("/v1/approve", headers=AUTH,
+                       json={"agent": "wellness", "run_id": "run_gone", "choice": "once"}).status_code == 404
+    assert len(hermes.approvals) == 2
     assert bridge.post("/v1/approve", headers=AUTH,
                        json={"agent": "wellness", "run_id": "../x", "choice": "once"}).status_code == 400
     assert bridge.post("/v1/approve", headers=AUTH,
@@ -254,9 +269,31 @@ def test_approve_forwards_to_hermes(bridge, fakes):
                        json={"agent": "wellness", "run_id": "r", "choice": "x" * 33}).status_code == 422
 
 
+def test_a_runs_prompts_reach_the_app_with_their_request_id(bridge, fakes):
+    """Hermes' prompts (`prompt_id`, `execution_generation`) reach the app with the `request_id` it reads, and
+    `approval.settled` ends the approval waiting in the bridge."""
+    fakes.hermes.runs["run_c"] = [
+        sse("approval.request", run_id="run_c", kind="approval", prompt_id="p3", execution_generation=2,
+            command="rm -rf build/", choices=["once", "deny"]),
+        sse("approval.settled", run_id="run_c", prompt_id="p3", execution_generation=2),
+        sse("clarify.request", run_id="run_c", kind="clarify", prompt_id="c4", execution_generation=2,
+            question="Quel train ?", choices=["9h", "14h"], multi_select=False),
+        sse("clarify.settled", run_id="run_c", prompt_id="c4", execution_generation=2),
+        sse("run.completed", run_id="run_c", output="Fini"),
+    ]
+    with bridge.stream("GET", "/v1/runs/run_c/events?agent=wellness", headers=AUTH) as resp:
+        events = read_sse(resp)
+    assert [name for name, _ in events] == ["approval.request", "approval.settled", "clarify.request",
+                                            "clarify.settled", "run.completed"]
+    assert [data.get("request_id") for _, data in events[:4]] == ["p3", "p3", "c4", "c4"]
+    assert events[0][1]["execution_generation"] == 2 and events[2][1]["question"] == "Quel train ?"
+    assert bridge.get("/v1/approvals", headers=AUTH).json()["items"] == []
+
+
 def test_answered_approvals_stay_in_the_conversation(bridge, fakes):
     """Hermes' history has no approval rows (owner 2026-10-22): the bridge keeps each decision, the one it relayed from
     a notification and the ones an app reports, per conversation, for the apps to put back in the thread."""
+    fakes.hermes.run_info["run_9"] = waiting("req_9")
     assert bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": "run_9", "request_id": "req_9",
                                                           "choice": "Once"}).status_code == 200
     reported = bridge.post("/v1/approvals/answered", headers=AUTH, json={
@@ -381,6 +418,40 @@ def test_reply_ready_pushed_when_the_app_left(bridge, fakes):
     assert bridge.get(f"/v1/replies/{payload['reply_id']}").status_code == 401
 
 
+def test_an_agent_told_not_to_notify_stays_quiet_until_turned_back_on(bridge, fakes):
+    """« Me prévenir quand il a fini ou qu'il t'attend » off on its page: its reply waits in the app, silent."""
+    register(bridge)
+    assert bridge.put("/v1/agents/wellness/notify", headers=AUTH, json={"on": False}).json() == {"id": "wellness", "on": False}
+    assert bridge.put("/v1/agents/nope/notify", headers=AUTH, json={"on": False}).status_code == 404
+    for run_id, session in (("run_quiet", "api_q1"), ("run_loud", "api_q2")):
+        gate = threading.Event()
+        fakes.hermes.runs[run_id] = [gate, sse("run.completed", run_id=run_id, output="Fini.")]
+        follow_then_leave(bridge, run_id, session)
+        gate.set()
+        if run_id == "run_quiet":
+            # its end is seen by the bridge (the run's replay is over), then the switch goes back on
+            with bridge.stream("GET", f"/v1/runs/{run_id}/events?agent=wellness", headers=AUTH) as resp:
+                assert read_sse(resp)[-1][0] == "run.completed"
+            time.sleep(0.5)
+            assert bridge.put("/v1/agents/wellness/notify", headers=AUTH, json={"on": True}).json()["on"] is True
+    apns = fakes.apns
+    assert wait_until(lambda: len(apns.pushes()) >= 1)
+    time.sleep(0.5)
+    assert [p["run_id"] for p in apns.payloads()] == ["run_loud"]
+
+
+def test_an_approval_is_pushed_even_when_the_agent_is_told_not_to_notify(bridge, fakes):
+    """The switch never hides what the agent is stuck on: an approval always notifies (Alex, 2026-11-02)."""
+    register(bridge)
+    assert bridge.put("/v1/agents/wellness/notify", headers=AUTH, json={"on": False}).json()["on"] is False
+    gate = threading.Event()
+    fakes.hermes.runs["run_ap"] = [gate, approval_event("run_ap", "req_ap"), threading.Event()]
+    follow_then_leave(bridge, "run_ap", "api_ap")
+    gate.set()
+    assert wait_until(lambda: any(p["aps"].get("category") == "APPROVAL" for p in fakes.apns.payloads()))
+    assert [p["request_id"] for p in fakes.apns.payloads()] == ["req_ap"]
+
+
 def test_replay_backlog_merges_deltas_so_long_replies_keep_their_start(bridge, fakes):
     words = [f"mot{i} " for i in range(5000 + 500)]   # runs.BACKLOG_EVENTS + 500
     fakes.hermes.runs["run_long"] = [sse("message.delta", run_id="run_long", delta="Début : ")] + [
@@ -475,9 +546,9 @@ def test_watched_runs_resume_after_a_restart_with_their_pending_approval(bridge,
     assert rows()[2] == ("wellness", "run_wait", "api_bot")
     bridge.stop()
     fakes.hermes.run_info = {
-        "run_wait": {"status": "waiting_for_approval", "session_id": "api_bot",
-                     "approval": {"request_id": "req_x", "command": "python3 -c 'tts health'",
-                                  "choices": ["once", "session", "deny"]}},
+        "run_wait": {"status": "waiting_for_approval", "session_id": "api_bot", "pending_controls": [
+            {"kind": "approval", "prompt_id": "req_x", "execution_generation": 1, "command": "python3 -c 'tts health'",
+             "choices": ["once", "session", "deny"]}]},
         "run_done": {"status": "completed"},
     }
     bridge.start()

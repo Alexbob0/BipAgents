@@ -77,7 +77,7 @@ def test_isolated_agents_give_files_along_the_links_the_person_allowed(bridges, 
     # By its display name too; the person's link is checked each time.
     assert send(bridge, vie, agent="Wellness", text="ok")[1] is False
     text, failed = send(bridge, budget, agent="wellness", text="x")
-    assert failed and "hasn't let you write to Wellness" in text and "Qui peut écrire à qui" in text
+    assert failed and "hasn't let you write to Wellness" in text and "« Who can write to whom »" in text  # the app's label in the agent's language (English: no language set)
     text, failed = send(bridge, wellness, agent="vie", text="x")
     assert failed and "hasn't let you" in text
     # Never a file of this machine: outside its folders, through a link, in a sub-folder of /envoi, up the tree.
