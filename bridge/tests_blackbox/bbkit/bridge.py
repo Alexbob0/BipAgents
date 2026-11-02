@@ -193,6 +193,9 @@ class Bridge:
             "PYTHONUNBUFFERED": "1",
             "PYTHONDONTWRITEBYTECODE": "1",
             "NO_PROXY": "*",
+            # A place of the offer's e-mail guard listens on a port fixed by the account's uid (agent_email_smtp.rs):
+            # one of its own, so a bridge of another run (or a real place) never holds it.
+            "BIPAGENTS_MAIL_GUARD_PORT": str(free_port()),
         }
         env.update(self.env_extra)
         return env
