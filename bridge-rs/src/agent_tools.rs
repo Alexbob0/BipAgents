@@ -273,6 +273,7 @@ static TOOL_LIST: LazyLock<Vec<Value>> = LazyLock::new(|| {
     tools.push(crate::storage_watch::tool()); // the space a recurring production takes, and what to keep
     tools.push(crate::give_file::tool()); // a file it made, to the person's drive or the conversation (give_file.rs)
     tools.push(crate::rooms_memory::tool()); // its group discussions, read from a one-to-one turn
+    tools.push(crate::triggers::tool()); // routines started by an e-mail or a link (triggers.rs)
     tools
 });
 
@@ -1428,6 +1429,14 @@ pub async fn call_tool(
             push.notify_bridge_card(&agent.name, &line, "mail_request", &card.id).await;
         }
         return Ok(called.result);
+    }
+    if name == crate::triggers::TOOL_NAME {
+        let (c, agent_name, arguments) = (config.clone(), agent.name.clone(), arguments.clone());
+        let (result, card) = tokio::task::spawn_blocking(move || crate::triggers::call(&c, &agent_name, &arguments)).await?;
+        if let (Some((line, id)), Some(push)) = (card, push.as_ref()) {
+            push.notify_bridge_card(&agent.name, &line, "trigger_request", &id).await;
+        }
+        return Ok(result);
     }
     if name == crate::rooms_memory::TOOL_NAME {
         let (c, agent_name, arguments) = (config.clone(), agent.name.clone(), arguments.clone());

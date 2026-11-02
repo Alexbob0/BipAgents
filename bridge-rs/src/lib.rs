@@ -200,6 +200,8 @@ pub mod vault_logins;
 // connectors an agent makes on request (2026-10-28): their secrets, their store and approval, their runs
 pub mod connectors;
 pub mod connectors_run;
+pub mod triggers;
+pub mod triggers_mail;
 pub mod watchers;
 /// An agent's Hermes restarted when there is a reason (memory, unhealthy, requested), only when idle (2026-10-28).
 pub mod agent_restart;
