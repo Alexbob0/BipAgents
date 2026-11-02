@@ -42,9 +42,41 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "alert": {
+            "title": "Vie",
+            "body": "Une question pour toi",
+            "loc-key": "Une question pour toi"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "run_4",
+        "kind": "question",
+        "request_id": "clr_1",
+        "session_id": "sess_1",
+        "reply_id": "r7"
+      },
+      "fcm_data": {
+        "title": "Vie",
+        "body": "Une question pour toi",
+        "category": "MESSAGE",
+        "agent": "vie",
+        "run_id": "run_4",
+        "kind": "question",
+        "request_id": "clr_1",
+        "session_id": "sess_1",
+        "reply_id": "r7"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "clr_1"
+      },
       "relay": {
         "body": "Une question pour toi"
       },
@@ -102,9 +134,40 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "alert": {
+            "title": "Vie",
+            "body": "Quel train pour Bordeaux ?"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "run_4",
+        "kind": "question",
+        "request_id": "clr_1",
+        "session_id": "sess_1",
+        "reply_id": "r7"
+      },
+      "fcm_data": {
+        "title": "Vie",
+        "body": "Quel train pour Bordeaux ?",
+        "category": "MESSAGE",
+        "agent": "vie",
+        "run_id": "run_4",
+        "kind": "question",
+        "request_id": "clr_1",
+        "session_id": "sess_1",
+        "reply_id": "r7"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "clr_1"
+      },
       "relay": {
         "body": "Nouveau message"
       },
