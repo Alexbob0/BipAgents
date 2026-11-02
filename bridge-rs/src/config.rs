@@ -768,7 +768,9 @@ pub struct Config {
     pub model_provider_order: Vec<String>,
     /// `[model] eu_hosted`: on the offer's places, the models (their router id, as an agent's profile names it) that
     /// run in the Union, as the guichet marks them `eu_hosted`. Only an agent on one of them reads « Santé » there
-    /// (health.rs, 2026-11-01); empty (the default): none does.
+    /// (health.rs, 2026-11-01); empty (the default): none does. Not in the serialized form (the Python's has no such
+    /// key: the golden config).
+    #[serde(skip)]
     pub model_eu_hosted: Vec<String>,
     /// The bridge's address on the tailnet (`tailscale serve`), for the pairing QR code.
     pub public_url: Option<String>,
