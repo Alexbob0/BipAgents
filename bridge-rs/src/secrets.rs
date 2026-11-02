@@ -332,6 +332,29 @@ pub fn sentence(shown: &str, request: &Request) -> String {
     }
 }
 
+/// The card's sentence in `lang`, for its push (the card's own is French: the apps rebuild it in theirs; Alex,
+/// 2026-11-01: « Vie a besoin de ton accès » reached an English person).
+pub fn sentence_in(lang: &str, shown: &str, request: &Request) -> String {
+    let lang = crate::names::names(lang).lang;
+    if lang == "fr" {
+        return sentence(shown, request);
+    }
+    let service = service_of(request);
+    let host = request.host();
+    let site = if host.is_empty() { String::new() } else { format!(" ({host})") };
+    match (lang, request.kind.as_str()) {
+        ("de", "code") => format!("{shown} braucht den Code, den du für {service} erhalten hast{site}"),
+        ("de", "token") => format!("{shown} braucht deinen Zugangsschlüssel für {service}{site}"),
+        ("de", _) => format!("{shown} braucht deinen Zugang zu {service}{site}"),
+        ("es", "code") => format!("{shown} necesita el código recibido para {service}{site}"),
+        ("es", "token") => format!("{shown} necesita tu clave de acceso de {service}{site}"),
+        ("es", _) => format!("{shown} necesita tu acceso a {service}{site}"),
+        (_, "code") => format!("{shown} needs the code you received for {service}{site}"),
+        (_, "token") => format!("{shown} needs your access key for {service}{site}"),
+        _ => format!("{shown} needs your access to {service}{site}"),
+    }
+}
+
 /// A new card, or why not (the agent is told). `edit`: opened by the person, no rate limit.
 pub fn open(agent: &str, request: Request) -> Result<String, String> {
     let mut table = cards();
@@ -654,5 +677,10 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(sentence("Vie", &r), "Vie a besoin de ton accès Garmin (connect.garmin.com)");
+        assert_eq!(sentence_in("fr", "Vie", &r), sentence("Vie", &r));
+        assert_eq!(sentence_in("en", "Vie", &r), "Vie needs your access to Garmin (connect.garmin.com)");
+        assert_eq!(sentence_in("de", "Vie", &r), "Vie braucht deinen Zugang zu Garmin (connect.garmin.com)");
+        let code = Request { name: "bank".into(), kind: "code".into(), ..Default::default() };
+        assert_eq!(sentence_in("es", "Vie", &code), "Vie necesita el código recibido para Bank");
     }
 }
