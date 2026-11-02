@@ -1066,3 +1066,124 @@ fn the_claims_zone_and_country_are_checked() {
     let ok = claim(json!({"timezone": null, "country": "gb"})).unwrap();
     assert_eq!((ok.timezone, ok.country.as_deref()), (None, Some("GB")));
 }
+
+/// A Hermes keeping the sessions of one agent as Hermes does for this: titles unique (400), `?title=` filtered,
+/// `PATCH` of title and hidden, a session gone answering 404.
+async fn sessions_hermes(rows: Arc<Mutex<Vec<Value>>>, patched: Arc<Mutex<Vec<Value>>>) -> String {
+    use axum::extract::{Request, State};
+    use axum::http::{Method, StatusCode};
+    type Book = (Arc<Mutex<Vec<Value>>>, Arc<Mutex<Vec<Value>>>);
+    async fn handle(State((rows, patched)): State<Book>, request: Request) -> (StatusCode, axum::Json<Value>) {
+        let path = request.uri().path().trim_start_matches("/p/coach/api/sessions").to_string();
+        let query = request.uri().query().unwrap_or_default().to_string();
+        let method = request.method().clone();
+        let body = axum::body::to_bytes(request.into_body(), 1 << 20).await.unwrap();
+        let mut rows = rows.lock().unwrap();
+        let id = path.trim_start_matches('/').split('/').next().unwrap_or_default().to_string();
+        match (method, path.as_str()) {
+            (Method::GET, "") => {
+                let title = query
+                    .split('&')
+                    .find_map(|p| p.strip_prefix("title="))
+                    .map(|t| t.replace('+', " ").replace("%20", " "));
+                let listed: Vec<Value> =
+                    rows.iter().filter(|r| title.as_deref().is_none_or(|t| r["title"] == t)).cloned().collect();
+                (StatusCode::OK, axum::Json(json!({"sessions": listed})))
+            }
+            (Method::GET, p) if p.ends_with("/messages") => (StatusCode::OK, axum::Json(json!({"messages": []}))),
+            (Method::GET, _) => match rows.iter().find(|r| r["id"] == id.as_str()) {
+                Some(row) => (StatusCode::OK, axum::Json(json!({"session": row}))),
+                None => (StatusCode::NOT_FOUND, axum::Json(json!({"error": "Session not found"}))),
+            },
+            (Method::PATCH, _) => {
+                let fields: Value = serde_json::from_slice(&body).unwrap();
+                if rows.iter().any(|r| r["id"] != id.as_str() && fields.get("title").is_some_and(|t| &r["title"] == t)) {
+                    return (StatusCode::BAD_REQUEST, axum::Json(json!({"error": "title already in use"})));
+                }
+                patched.lock().unwrap().push(json!({"id": id, "fields": fields}));
+                if let Some(row) = rows.iter_mut().find(|r| r["id"] == id.as_str()) {
+                    for (k, v) in fields.as_object().unwrap() {
+                        row[k] = v.clone();
+                    }
+                }
+                (StatusCode::OK, axum::Json(json!({})))
+            }
+            _ => (StatusCode::NOT_FOUND, axum::Json(json!({"error": "no route"}))),
+        }
+    }
+    common::spawn_fake(Router::new().fallback(handle).with_state((rows, patched))).await
+}
+
+/// Alex, 2026-11-01 (his wife's agent made with the guide): « c'est allé dans une discussion séparée, pas celle
+/// principale … c'est dans les discussions historiques ». The person's first conversation with a new agent becomes its
+/// thread when its Bot Chat is still empty; a Bot Chat written in, or that conversation being the Bot Chat, is left.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_new_agents_first_conversation_becomes_its_thread_when_its_bot_chat_is_empty() {
+    use bipbridge::welcome::{adopt, Adopted};
+    let rows = Arc::new(Mutex::new(vec![
+        json!({"id": "s_first", "title": "Bonjour, aide-moi pour le sport", "message_count": 4, "source": "api_server"}),
+        json!({"id": "s_botchat", "title": "Bot Chat", "message_count": 0}),
+    ]));
+    let patched = Arc::new(Mutex::new(Vec::new()));
+    let hermes_url = sessions_hermes(rows.clone(), patched.clone()).await;
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = cloud(dir.path());
+    let coach = bipbridge::config::AgentConfig {
+        name: "coach".into(),
+        display_name: "Coach".into(),
+        hermes_url: format!("{hermes_url}/p/coach"),
+        hermes_key: "k".into(),
+        ..Default::default()
+    };
+    config.agents.insert("coach".into(), coach.clone());
+    let hermes = bipbridge::hermes::HermesClient::new(reqwest::Client::new());
+    let unchecked = |config: &Config| bipbridge::welcome::unchecked(&bipbridge::guide::load(config));
+    let again = |config: &Config, session: &str| {
+        bipbridge::guide::change(config, |s| s.welcome.clear()).unwrap();
+        bipbridge::welcome::wait_for(config, &config.agents["coach"], "wellness", "fr");
+        bipbridge::welcome::done(config, "coach", Some(session));
+    };
+
+    // made, not written to yet: nothing to look at
+    bipbridge::welcome::wait_for(&config, &coach, "wellness", "fr");
+    assert_eq!(adopt(&hermes, &config, &coach).await, Adopted::Nothing);
+    // written to from an iPhone that didn't know its Bot Chat yet: that conversation becomes its Bot Chat
+    bipbridge::welcome::done(&config, "coach", Some("s_first"));
+    assert_eq!(unchecked(&config), vec!["coach".to_string()]);
+    assert_eq!(adopt(&hermes, &config, &coach).await, Adopted::Made);
+    let now = rows.lock().unwrap().clone();
+    assert_eq!(now[0]["title"], "Bot Chat");
+    assert_eq!((now[1]["title"].as_str(), &now[1]["hidden"]), (Some("Fil vide mis de côté · _botchat"), &json!(true)));
+    // checked once: the welcome stays at the top of that conversation, nothing asked of Hermes again
+    assert_eq!(bipbridge::guide::view(&config)["welcome"]["coach"]["session"], "s_first");
+    assert!(unchecked(&config).is_empty());
+    let count = patched.lock().unwrap().len();
+    assert_eq!(adopt(&hermes, &config, &coach).await, Adopted::Nothing);
+    assert_eq!(patched.lock().unwrap().len(), count);
+
+    // The person writes in the Bot Chat too: left as it is.
+    *rows.lock().unwrap() = vec![
+        json!({"id": "s_first", "title": "Bonjour", "message_count": 2}),
+        json!({"id": "s_botchat", "title": "Bot Chat", "message_count": 6}),
+    ];
+    patched.lock().unwrap().clear();
+    again(&config, "s_first");
+    assert_eq!(adopt(&hermes, &config, &coach).await, Adopted::Kept);
+    assert!(patched.lock().unwrap().is_empty() && unchecked(&config).is_empty());
+
+    // Written to in its Bot Chat (the apps from now on): nothing to change.
+    *rows.lock().unwrap() = vec![json!({"id": "s_botchat", "title": "Bot Chat", "message_count": 0})];
+    again(&config, "s_botchat");
+    assert_eq!(adopt(&hermes, &config, &coach).await, Adopted::Kept);
+    // A first conversation gone (deleted): left.
+    again(&config, "s_gone");
+    assert_eq!(adopt(&hermes, &config, &coach).await, Adopted::Kept);
+    assert!(patched.lock().unwrap().is_empty());
+
+    // Hermes out of reach: tried again at the next look.
+    let mut away = coach.clone();
+    away.hermes_url = "http://127.0.0.1:9/p/coach".into();
+    again(&config, "s_first");
+    assert_eq!(adopt(&hermes, &config, &away).await, Adopted::Later);
+    assert_eq!(unchecked(&config), vec!["coach".to_string()]);
+}

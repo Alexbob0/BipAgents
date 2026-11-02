@@ -1,13 +1,14 @@
 //! « Me prévenir quand il a fini ou qu'il t'attend », per agent (its page in the apps): off, the agent's work ends
-//! and its questions and approvals wait in the app without a notification. On by default.
+//! and its questions wait in the app without a notification. On by default.
 //!
 //!     PUT  /v1/agents/{agent_id}/notify    {on} → {id, on}   (404 for an unknown agent)
 //!     data_dir/agent_notify.json           {"quiet": ["<agent id>", …]}
 //!
 //! `GET /v1/agents/{agent_id}/settings` gives `notify: {on}` (its presence tells the apps this bridge has it).
-//! What stays silent is decided in push.rs: a reply ready, a sub-task, a background task or a mailbox scan ended,
-//! a question, an approval (also the e-mail, site, login and connector requests). The Boîte's scheduled messages
-//! (each muted on its own, cronwatch.rs), the family's messages and the Live Activities are not this switch's.
+//! What stays silent is decided in push.rs: a reply ready, a room turn, a sub-task, a background task or a mailbox
+//! scan ended, a question. Approvals and accord requests (site, login, held e-mail, connector, vault) always notify,
+//! so an agent is never stuck without the person knowing (Alex, 2026-11-02). The Boîte's scheduled messages (each
+//! muted on its own, cronwatch.rs), the family's messages and the Live Activities are not this switch's either.
 //!
 //! No Python counterpart.
 

@@ -311,15 +311,11 @@ impl PushService {
     }
 
     /// « Me prévenir quand il a fini ou qu'il t'attend » is on for this agent (agent_notify.rs): off, its replies,
-    /// ended work, questions and approvals wait in the app without a notification.
+    /// ended work and questions wait in the app without a notification. Approvals and accord requests (site, login,
+    /// held e-mail, connector, vault) always notify: an agent is never stuck without the person knowing (Alex,
+    /// 2026-11-02).
     fn notifies(&self, agent: &str) -> bool {
         crate::agent_notify::notifies(&self.config.get(), agent)
-    }
-
-    /// The same switch for what asks the person's accord (approvals; e-mail, site, login, connector requests). To keep
-    /// those always notified, make this `true` (one line; Alex to decide, 2026-11-02).
-    fn notifies_requests(&self, agent: &str) -> bool {
-        self.notifies(agent)
     }
 
     pub(crate) fn sender(&self, device: &Row) -> Option<Sender> {
@@ -423,9 +419,6 @@ impl PushService {
         session_id: Option<&str>,
         room_id: Option<&str>,
     ) -> usize {
-        if !self.notifies_requests(agent) {
-            return 0;
-        }
         let mut preview_text = None;
         if self.previews() {
             if let Some(command) = given(command) {
@@ -584,9 +577,6 @@ impl PushService {
     /// The agent's e-mail to an address not allowed yet waits for the person (agent_email.rs): « Veut écrire à
     /// x@y » when previews are on; tapping opens the agent's e-mail screen (`email_held`: the held mail's id).
     pub async fn notify_email_held(&self, agent: &str, to: &str, held_id: &str) -> usize {
-        if !self.notifies_requests(agent) {
-            return 0;
-        }
         let line = format!("Veut écrire à {to}");
         let preview = if self.previews() { Some(line.as_str()) } else { None };
         let mut payload =
@@ -598,9 +588,6 @@ impl PushService {
     /// The agent wants to send data to a site (sandbox_sites.rs; `line`: « Veut envoyer des données à exemple.com
     /// (environ 2 Mo) »): tapping opens the app's Boîte, where the card is.
     pub async fn notify_site_request(&self, agent: &str, line: &str, id: &str) -> usize {
-        if !self.notifies_requests(agent) {
-            return 0;
-        }
         let preview = if self.previews() { Some(line) } else { None };
         let mut payload = reply_payload(agent, &self.title(agent), "session:sites", None, preview, None, SITE_BODY);
         payload.insert("site_request".into(), json!(id));
@@ -610,9 +597,6 @@ impl PushService {
     /// An agent wants to create an account on a website with a password of the vault (vault_logins.rs): tapping opens
     /// the app's Boîte, where the card is.
     pub async fn notify_login_request(&self, agent: &str, host: &str, id: &str) -> usize {
-        if !self.notifies_requests(agent) {
-            return 0;
-        }
         let line = format!("Veut créer un compte sur {host} avec un mot de passe du coffre");
         let preview = if self.previews() { Some(line.as_str()) } else { None };
         let mut payload = reply_payload(agent, &self.title(agent), "session:vault", None, preview, None, LOGIN_BODY);
@@ -623,9 +607,6 @@ impl PushService {
     /// A secret card or a connector's approval card (secrets.rs, connectors.rs): tapping opens the app's Boîte, where
     /// the card is. `key`: `secret_request` or `connector_request`, with the card's request id.
     pub async fn notify_bridge_card(&self, agent: &str, line: &str, key: &str, id: &str) -> usize {
-        if !self.notifies_requests(agent) {
-            return 0;
-        }
         let preview = if self.previews() { Some(line) } else { None };
         let mut payload = reply_payload(agent, &self.title(agent), "session:vault", None, preview, None, CARD_BODY);
         payload.insert(key.into(), json!(id));

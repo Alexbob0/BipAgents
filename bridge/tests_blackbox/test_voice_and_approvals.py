@@ -403,6 +403,18 @@ def test_an_agent_told_not_to_notify_stays_quiet_until_turned_back_on(bridge, fa
     assert [p["run_id"] for p in apns.payloads()] == ["run_loud"]
 
 
+def test_an_approval_is_pushed_even_when_the_agent_is_told_not_to_notify(bridge, fakes):
+    """The switch never hides what the agent is stuck on: an approval always notifies (Alex, 2026-11-02)."""
+    register(bridge)
+    assert bridge.put("/v1/agents/wellness/notify", headers=AUTH, json={"on": False}).json()["on"] is False
+    gate = threading.Event()
+    fakes.hermes.runs["run_ap"] = [gate, approval_event("run_ap", "req_ap"), threading.Event()]
+    follow_then_leave(bridge, "run_ap", "api_ap")
+    gate.set()
+    assert wait_until(lambda: any(p["aps"].get("category") == "APPROVAL" for p in fakes.apns.payloads()))
+    assert [p["request_id"] for p in fakes.apns.payloads()] == ["req_ap"]
+
+
 def test_replay_backlog_merges_deltas_so_long_replies_keep_their_start(bridge, fakes):
     words = [f"mot{i} " for i in range(5000 + 500)]   # runs.BACKLOG_EVENTS + 500
     fakes.hermes.runs["run_long"] = [sse("message.delta", run_id="run_long", delta="Début : ")] + [
