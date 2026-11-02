@@ -1,0 +1,28 @@
+{
+  "notfound": {
+    "title": "Page not found · BipAgents",
+    "line": "Oops… a Bip ate this page.",
+    "hint": "Shake it (drag it, or tap it) to get the page back.",
+    "back": "Back to home",
+    "bip": "The Bip that ate the page: shake it",
+    "lang": "Language",
+    "digits": "The Bip spat out: {d}",
+    "done": "Ahh, much better.",
+    "noscript": "This page doesn’t exist. It may have moved: the home page has everything.",
+    "hmm": [
+      "Hmpf…",
+      "Not me!",
+      "What page?",
+      "*gulp*",
+      "Mmmh…"
+    ],
+    "hic": [
+      "Hic!",
+      "Boing!",
+      "Ptoo!"
+    ],
+    "burp": [
+      "Buuurp!"
+    ]
+  }
+}

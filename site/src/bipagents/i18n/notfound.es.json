@@ -1,0 +1,28 @@
+{
+  "notfound": {
+    "title": "Página no encontrada · BipAgents",
+    "line": "Uy… un Bip se ha comido esta página.",
+    "hint": "Sacúdelo (arrástralo o tócalo) para recuperar la página.",
+    "back": "Volver al inicio",
+    "bip": "El Bip que se comió la página: sacúdelo",
+    "lang": "Idioma",
+    "digits": "El Bip ha escupido: {d}",
+    "done": "Ahh, mucho mejor.",
+    "noscript": "Esta página no existe. Quizá cambió de dirección: en el inicio está todo.",
+    "hmm": [
+      "Hmpf…",
+      "¡Yo no he sido!",
+      "¿Qué página?",
+      "*glups*",
+      "Mmmh…"
+    ],
+    "hic": [
+      "¡Hip!",
+      "¡Boing!",
+      "¡Ptu!"
+    ],
+    "burp": [
+      "¡Buuurp!"
+    ]
+  }
+}
