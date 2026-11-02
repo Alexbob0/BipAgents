@@ -10,7 +10,8 @@ use serde_json::Value;
 
 fn variants() -> Vec<(String, Value)> {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../contracts/notifications/types");
-    let mut files: Vec<_> = std::fs::read_dir(&dir).expect("contracts/notifications/types").map(|e| e.unwrap().path()).collect();
+    let mut files: Vec<_> =
+        std::fs::read_dir(&dir).expect("contracts/notifications/types").map(|e| e.unwrap().path()).collect();
     files.sort();
     let mut out = Vec::new();
     for path in files.into_iter().filter(|p| p.extension().is_some_and(|e| e == "json")) {

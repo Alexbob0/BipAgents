@@ -10,8 +10,9 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use super::{
-    approval_line, approval_payload, email_held_line, given, login_line, message_payload, preview, question_payload, reply_payload, silent_payload, CARD_BODY, EMAIL_HELD_BODY, FAMILY_BODY, LOGIN_BODY, MEET_BODY,
-    REPLY_BODY, SITE_BODY, SUBTASK_BODY,
+    approval_line, approval_payload, email_held_line, given, login_line, message_payload, preview, question_payload,
+    reply_payload, silent_payload, CARD_BODY, EMAIL_HELD_BODY, FAMILY_BODY, LOGIN_BODY, MEET_BODY, REPLY_BODY,
+    SITE_BODY, SUBTASK_BODY,
 };
 use super::seal::Sealed;
 use crate::Dict;
@@ -90,7 +91,11 @@ pub enum Notice {
     Meet { line: String, id: String },
     /// A silent push (`run_finished`, `reminders`, `calendar`, `contacts`).
     #[serde(rename = "notify_silent")]
-    Silent { reason: String, #[serde(default)] extra: Dict },
+    Silent {
+        reason: String,
+        #[serde(default)]
+        extra: Dict,
+    },
 }
 
 /// The `notify_*` names `Notice` stands for, one per variant: each must have a contract file.
@@ -237,8 +242,15 @@ pub fn build(agent: &str, context: &Context, notice: &Notice) -> Built {
                     line = Some(approval_line(&context.lang, command));
                 }
             }
-            let mut payload =
-                approval_payload(agent, title, run_id, opt(request_id), choices.as_deref(), line.as_deref(), opt(session_id));
+            let mut payload = approval_payload(
+                agent,
+                title,
+                run_id,
+                opt(request_id),
+                choices.as_deref(),
+                line.as_deref(),
+                opt(session_id),
+            );
             if let Some(room) = opt(room_id) {
                 payload.insert("room_id".into(), json!(room)); // tapping opens the room, where its card is
             }
@@ -322,7 +334,8 @@ pub fn build(agent: &str, context: &Context, notice: &Notice) -> Built {
         }
         Notice::Login { host, id } => {
             let line = login_line(&context.lang, host);
-            let mut payload = reply_payload(agent, title, "session:vault", None, shown(context, &line), None, LOGIN_BODY);
+            let mut payload =
+                reply_payload(agent, title, "session:vault", None, shown(context, &line), None, LOGIN_BODY);
             payload.insert("login_request".into(), json!(id));
             alert_push(payload, Some(format!("login:{id}")))
         }

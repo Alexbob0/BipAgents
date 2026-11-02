@@ -51,9 +51,44 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "alert": {
+            "title": "Vie",
+            "body": "Approbation requise",
+            "loc-key": "Approbation requise"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "APPROVAL",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "run_5",
+        "request_id": "req_1",
+        "choices": [
+          "once",
+          "session",
+          "always",
+          "deny"
+        ],
+        "session_id": "sess_1"
+      },
+      "fcm_data": {
+        "title": "Vie",
+        "body": "Approbation requise",
+        "category": "APPROVAL",
+        "agent": "vie",
+        "run_id": "run_5",
+        "request_id": "req_1",
+        "choices": "[\"once\", \"session\", \"always\", \"deny\"]",
+        "session_id": "sess_1"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "req_1"
+      },
       "relay": {
         "body": "Approbation requise"
       },
@@ -128,9 +163,41 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "alert": {
+            "title": "Vie",
+            "body": "Approval needed: pip install openpyxl"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "APPROVAL",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "run_5",
+        "request_id": "req_1",
+        "choices": [
+          "once",
+          "deny"
+        ],
+        "session_id": "sess_1"
+      },
+      "fcm_data": {
+        "title": "Vie",
+        "body": "Approval needed: pip install openpyxl",
+        "category": "APPROVAL",
+        "agent": "vie",
+        "run_id": "run_5",
+        "request_id": "req_1",
+        "choices": "[\"once\", \"deny\"]",
+        "session_id": "sess_1"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "req_1"
+      },
       "relay": {
         "body": "Nouveau message"
       },
@@ -202,9 +269,37 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "alert": {
+            "title": "Vie",
+            "body": "Approbation requise",
+            "loc-key": "Approbation requise"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "APPROVAL",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "run_5",
+        "request_id": "req_2",
+        "room_id": "room_1"
+      },
+      "fcm_data": {
+        "title": "Vie",
+        "body": "Approbation requise",
+        "category": "APPROVAL",
+        "agent": "vie",
+        "run_id": "run_5",
+        "request_id": "req_2",
+        "room_id": "room_1"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "req_2"
+      },
       "relay": {
         "body": "Approbation requise"
       },
@@ -274,9 +369,33 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "alert": {
+            "title": "Vie",
+            "body": "Approbation requise",
+            "loc-key": "Approbation requise"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "APPROVAL",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "run_5"
+      },
+      "fcm_data": {
+        "title": "Vie",
+        "body": "Approbation requise",
+        "category": "APPROVAL",
+        "agent": "vie",
+        "run_id": "run_5"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "run_5"
+      },
       "relay": {
         "body": "Approbation requise"
       },
@@ -351,9 +470,42 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "alert": {
+            "title": "Vie",
+            "body": "Approbation requise",
+            "loc-key": "Approbation requise"
+          },
+          "thread-id": "cuisine__alex",
+          "mutable-content": 1,
+          "category": "APPROVAL",
+          "sound": "default"
+        },
+        "agent": "cuisine__alex",
+        "run_id": "run_9",
+        "request_id": "req_9",
+        "choices": [
+          "once",
+          "deny"
+        ],
+        "session_id": "conv_1"
+      },
+      "fcm_data": {
+        "title": "Vie",
+        "body": "Approbation requise",
+        "category": "APPROVAL",
+        "agent": "cuisine__alex",
+        "run_id": "run_9",
+        "request_id": "req_9",
+        "choices": "[\"once\", \"deny\"]",
+        "session_id": "conv_1"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "req_9"
+      },
       "relay": {
         "body": "Approbation requise"
       },

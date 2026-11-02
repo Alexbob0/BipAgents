@@ -38,9 +38,35 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "alert": {
+            "title": "Vie",
+            "body": "Sous-tâche terminée",
+            "loc-key": "Sous-tâche terminée"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:scan",
+        "kind": "reply"
+      },
+      "fcm_data": {
+        "title": "Vie",
+        "body": "Sous-tâche terminée",
+        "category": "MESSAGE",
+        "agent": "vie",
+        "run_id": "session:scan",
+        "kind": "reply"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "scan:vie"
+      },
       "relay": {
         "body": "Sous-tâche terminée"
       },

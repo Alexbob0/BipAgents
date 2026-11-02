@@ -41,9 +41,39 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "alert": {
+            "title": "Vie",
+            "body": "Ta réponse est prête.",
+            "loc-key": "Ta réponse est prête."
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:sess_main",
+        "kind": "reply",
+        "session_id": "sess_main",
+        "reply_id": "r5"
+      },
+      "fcm_data": {
+        "title": "Vie",
+        "body": "Ta réponse est prête.",
+        "category": "MESSAGE",
+        "agent": "vie",
+        "run_id": "session:sess_main",
+        "kind": "reply",
+        "session_id": "sess_main",
+        "reply_id": "r5"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "session:sess_main"
+      },
       "relay": {
         "body": "Ta réponse est prête."
       },
