@@ -10,6 +10,7 @@ import datetime
 import email
 import email.policy
 import re
+import select
 import socket
 import ssl
 import tempfile
@@ -183,24 +184,22 @@ class FakeImap:
             folder = state["folder"] or "INBOX"
             start = len(self.folders.get(folder, []))
             self._send(state, b"+ idling\r\n")
-            done = threading.Event()
-
-            def wait_done():
-                try:
-                    state["stream"].readline()
-                finally:
-                    done.set()
-
-            threading.Thread(target=wait_done, daemon=True).start()
             self.idles += 1
             self.idling += 1
             told = False
+            conn = state["conn"]
             try:
-                while not done.wait(0.05):
+                while True:
                     count = len(self.folders.get(folder, []))
                     if not told and count > start:
                         self._send(state, f"* {count} EXISTS\r\n".encode())
                         told = True
+                    # the client says nothing until DONE: nothing waits in the file's buffer meanwhile
+                    readable, _, _ = select.select([conn], [], [], 0.05)
+                    if readable or (hasattr(conn, "pending") and conn.pending()):
+                        if not state["stream"].readline():
+                            return False
+                        break
             finally:
                 self.idling -= 1
             self._ok(state, tag, "IDLE terminated")

@@ -176,6 +176,12 @@ def test_a_link_starts_the_routine_with_its_body_as_data(bridges, fakes):
     assert bridge.post("/hook/" + "x" * 43, content=b"hi").status_code == 404
     assert bridge.post("/hook/short", content=b"hi").status_code == 404
 
+    # « Essayer » from the app: one event now
+    before = len(turns(fakes))
+    assert bridge.post(f"/v1/triggers/{made['id']}/run", headers=AUTH, json={"text": "essai"}).status_code == 200
+    assert wait_until(lambda: any(", from the app ===\nessai" in t["input"] for t in turns(fakes)), timeout=20)
+    assert len(turns(fakes)) > before
+
     # « Changer le lien »: the old one stops at once
     rotated = bridge.post(f"/v1/triggers/{made['id']}/link", headers=AUTH).json()
     assert rotated["link"]["path"] != path

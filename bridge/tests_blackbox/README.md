@@ -70,7 +70,7 @@ reset before each test. Each one records every request it gets.
 | Publisher's push relay | `relay/` | `POST /v1/relay/push` |
 | Another bridge's relay | `[push] relay_url` | |
 | A model | The model's API | `/v1/models` and `/v1/chat/completions` (the mailbox scan's facts). |
-| IMAP server | A mailbox | Reached like Proton Mail Bridge on this machine: plain IMAP, then STARTTLS with a self-signed certificate. |
+| IMAP server | A mailbox | Reached like Proton Mail Bridge on this machine: plain IMAP, then STARTTLS with a self-signed certificate. IDLE tells new mail while the bridge waits (`idling` counts the connections in IDLE). |
 | Dropper | An unreachable host | Accepts each connection and closes it at once. |
 
 **The fake executables** (`bbkit/fakebin.py`). These are first on the bridge's `PATH`, and `[hermes] bin` names the
@@ -211,6 +211,13 @@ The suite makes about 800 requests in 28 files.
 | `POST /v1/jobs/{job_id}/pause` | jobs | jobs (3) |
 | `POST /v1/jobs/{job_id}/resume` | jobs | jobs (3) |
 | `DELETE /v1/jobs/{job_id}` | jobs | jobs (4) |
+| `GET /v1/triggers` | triggers | triggers (5) |
+| `POST /v1/agents/{agent}/triggers` | triggers | triggers (5) |
+| `PATCH /v1/triggers/{id}` | triggers | triggers (2) |
+| `DELETE /v1/triggers/{id}` | triggers | triggers (1) |
+| `POST /v1/triggers/{id}/link` | triggers | triggers (1) |
+| `POST /v1/triggers/{id}/run` | triggers | triggers (1) |
+| `POST /hook/{token}` (no key: the token is the key) | triggers | triggers (2) |
 | `GET POST PUT PATCH DELETE /hermes/{agent}/{path:path}` | lan | lan (4), console (1) |
 | `GET /v1/live/brief` | live_brief | live_brief (2) |
 | `POST /v1/live/calls` | live_brief | live_brief (2) |
