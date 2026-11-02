@@ -17,6 +17,23 @@ use serde_json::{json, Value};
 
 type Commands = Arc<Mutex<Vec<(Vec<String>, BTreeMap<String, String>)>>>;
 
+/// The bridge's tools entry in a profile's config.yaml, as `mcp_servers.bipagents.<key>` → value.
+fn registered(profile: &std::path::Path) -> BTreeMap<String, String> {
+    let text = std::fs::read_to_string(profile.join("config.yaml")).unwrap_or_default();
+    let data: Value = serde_yaml::from_str(&text).unwrap_or(Value::Null);
+    let entry = &data["mcp_servers"]["bipagents"];
+    let mut out = BTreeMap::new();
+    for (key, value) in [("url", &entry["url"]), ("headers.Authorization", &entry["headers"]["Authorization"]), ("timeout", &entry["timeout"])] {
+        let text = match value {
+            Value::String(s) => s.clone(),
+            Value::Null => continue,
+            other => other.to_string(),
+        };
+        out.insert(format!("mcp_servers.bipagents.{key}"), text);
+    }
+    out
+}
+
 fn recording_run(commands: &Commands) -> Run {
     let commands = commands.clone();
     Arc::new(move |args, env| {
@@ -38,13 +55,9 @@ async fn each_agent_of_the_install_gets_the_tools_with_a_token_of_its_own() {
     let commands: Commands = Default::default();
     let run = recording_run(&commands);
     agent_tools::register_all(SharedConfig::new(config.clone()), run.clone()).await;
-    let seen = commands.lock().unwrap().clone();
-    // Only the agents this install manages (Wellness is set up by hand): its Hermes, its profile, its HERMES_HOME.
-    assert!(!seen.is_empty() && seen.iter().all(|(args, _)| args[2] == "vie" && args[0] == "/opt/hermes"));
-    assert!(seen
-        .iter()
-        .all(|(_, env)| env.get("HERMES_HOME").map(String::as_str) == Some(&*hub.to_string_lossy()) && env.len() == 1));
-    let values: BTreeMap<String, String> = seen.iter().map(|(a, _)| (a[5].clone(), a[6].clone())).collect();
+    // Only the agents this install manages (Wellness is set up by hand), written straight into its profile.
+    assert!(commands.lock().unwrap().is_empty());
+    let values = registered(&hub.join("profiles/vie"));
     assert_eq!(
         values["mcp_servers.bipagents.url"],
         // the Carnet's tools are on by default: the install's tools and those
@@ -74,15 +87,13 @@ async fn each_agent_of_the_install_gets_the_tools_with_a_token_of_its_own() {
         ),
     )
     .unwrap();
-    commands.lock().unwrap().clear();
     agent_tools::register_all(SharedConfig::new(config.clone()), run.clone()).await;
-    assert!(commands.lock().unwrap().is_empty());
+    assert_eq!(registered(&hub.join("profiles/vie")), values);
     // New tools in a later version: a new entry, so Hermes fetches the list again (the token stays).
     let vie = config.agent(Some("vie")).unwrap().clone();
     let later = agent_tools::url_with(&config, "later12345");
     assert!(agent_tools::register_at(&config, &vie, &run, &later).await.unwrap());
-    let changed: BTreeMap<String, String> =
-        commands.lock().unwrap().iter().map(|(a, _)| (a[5].clone(), a[6].clone())).collect();
+    let changed = registered(&hub.join("profiles/vie"));
     assert_ne!(changed["mcp_servers.bipagents.url"], values["mcp_servers.bipagents.url"]);
     assert_eq!(changed["mcp_servers.bipagents.headers.Authorization"], format!("Bearer {token}"));
     // A deleted agent's token no longer opens anything.
@@ -160,10 +171,10 @@ async fn agents_registered_at_once_all_keep_their_token() {
         agent_tools::register_at(&config, &agents[2], &run, &url),
     );
     assert!(a.unwrap() && b.unwrap() && c.unwrap());
-    let seen = commands.lock().unwrap().clone();
-    for (args, _) in seen.iter().filter(|(a, _)| a[5] == "mcp_servers.bipagents.headers.Authorization") {
-        let token = args[6].strip_prefix("Bearer ").unwrap();
-        assert_eq!(agent_tools::agent_for(&config, token).map(|a| a.name), Some(args[2].clone()));
+    for name in ["vie", "coach", "budget"] {
+        let values = registered(&hub.join("profiles").join(name));
+        let token = values["mcp_servers.bipagents.headers.Authorization"].strip_prefix("Bearer ").unwrap();
+        assert_eq!(agent_tools::agent_for(&config, token).map(|a| a.name), Some(name.to_string()));
     }
     assert_eq!(agent_tools::load_tokens(&config).len(), 3);
 }

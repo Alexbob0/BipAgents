@@ -16,10 +16,9 @@
 //! internal/notes/instant-agents.md): the model and key a spare was cloned with are brought in line with the hub's
 //! when it is taken (`follow_hub_model`), without a restart.
 
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
@@ -227,59 +226,6 @@ pub fn follow_hub_model(config: &Config, folder: &Path) -> anyhow::Result<bool> 
     Ok(changed)
 }
 
-/// `hermes -p <profile> config set mcp_servers.<…> <value>` written straight into the profile's config.yaml, as
-/// Hermes would (a number or a boolean as such, else a string): taking a spare runs no Python CLI (≈ 1 s each).
-/// Every other command goes to `inner`.
-pub fn files_run(inner: Run) -> Run {
-    Arc::new(move |args: Vec<String>, env: BTreeMap<String, String>| {
-        let inner = inner.clone();
-        Box::pin(async move {
-            match written_directly(&args, &env) {
-                Some(Ok(())) => Ok(String::new()),
-                Some(Err(exc)) => Err(exc),
-                None => inner(args, env).await,
-            }
-        })
-    })
-}
-
-fn written_directly(args: &[String], env: &BTreeMap<String, String>) -> Option<anyhow::Result<()>> {
-    // [bin, -p, profile, config, set, key, (--)? value]
-    if args.len() < 7 || args[1] != "-p" || args[3] != "config" || args[4] != "set" {
-        return None;
-    }
-    let key = &args[5];
-    let value = match (args.len(), args[6].as_str()) {
-        (7, _) => &args[6],
-        (8, "--") => &args[7],
-        _ => return None,
-    };
-    if !key.starts_with("mcp_servers.") || key.split('.').count() < 3 || key.split('.').any(str::is_empty) {
-        return None;
-    }
-    let home = env.get("HERMES_HOME").filter(|h| !h.is_empty())?;
-    let path = Path::new(home).join("profiles").join(&args[2]).join("config.yaml");
-    if !path.is_file() {
-        return None;
-    }
-    Some(set_dotted(&path, key, value))
-}
-
-fn set_dotted(path: &Path, key: &str, value: &str) -> anyhow::Result<()> {
-    let parsed = if let Ok(n) = value.parse::<i64>() {
-        Yaml::Int(n as i128)
-    } else if value == "true" || value == "false" {
-        Yaml::Bool(value == "true")
-    } else {
-        Yaml::str(value)
-    };
-    let Some((name, rest)) = key.strip_prefix("mcp_servers.").and_then(|k| k.split_once('.')) else {
-        anyhow::bail!("{key}: not a server's key");
-    };
-    crate::profile_files::edit(path, |data| crate::profile_files::set_server(data, name, Some(&[(rest, parsed)])))?;
-    Ok(())
-}
-
 /// A refill running (one at a time).
 static REFILLING: AtomicBool = AtomicBool::new(false);
 
@@ -348,39 +294,5 @@ mod tests {
         }
         assert!(!is_spare_id(&crate::souls::profile_name("Agent 0a1b2c3d", &[])));
         assert!(!is_spare_id(&crate::souls::profile_name("agent_0a1b2c3d", &[])));
-    }
-
-    #[test]
-    fn mcp_settings_are_written_into_the_profile_without_hermes() {
-        let dir = tempfile::tempdir().unwrap();
-        let folder = dir.path().join("profiles").join("agent_00000001");
-        std::fs::create_dir_all(&folder).unwrap();
-        std::fs::write(folder.join("config.yaml"), "model:\n  default: glm\n").unwrap();
-        let env: BTreeMap<String, String> =
-            [("HERMES_HOME".to_string(), dir.path().to_string_lossy().into_owned())].into_iter().collect();
-        let set = |key: &str, value: &str| {
-            let args: Vec<String> = ["/opt/hermes", "-p", "agent_00000001", "config", "set", key, value]
-                .iter()
-                .map(|s| s.to_string())
-                .collect();
-            written_directly(&args, &env).unwrap().unwrap();
-        };
-        set("mcp_servers.bipagents.url", "http://127.0.0.1:8643/v1/agent-tools/mcp?v=2");
-        set("mcp_servers.bipagents.headers.Authorization", "Bearer abc");
-        set("mcp_servers.bipagents.timeout", "120");
-        let text = std::fs::read_to_string(folder.join("config.yaml")).unwrap();
-        let data = crate::agents_admin::pyyaml::to_json(&crate::agents_admin::pyyaml::load(&text).unwrap());
-        assert_eq!(data["model"]["default"], "glm");
-        assert_eq!(
-            data["mcp_servers"]["bipagents"],
-            serde_json::json!({"url": "http://127.0.0.1:8643/v1/agent-tools/mcp?v=2",
-                               "headers": {"Authorization": "Bearer abc"}, "timeout": 120})
-        );
-        // anything else goes to Hermes
-        let other: Vec<String> = ["/opt/hermes", "-p", "agent_00000001", "config", "set", "API_SERVER_KEY", "k"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        assert!(written_directly(&other, &env).is_none());
     }
 }

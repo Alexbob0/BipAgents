@@ -339,16 +339,14 @@ async fn profiles_created_on_the_server_can_be_claimed() {
     let (run, commands) = recorder();
     let http = reqwest::Client::new();
     let jardin = claim_profile(&config, "jardin", Some("Mon jardin"), &http, &run).await.unwrap();
-    // Its key kept; the only thing written is the bridge's tools (create_audio) in its profile.
+    // Its key kept; the only thing written is the bridge's tools (create_audio) in its profile, by the bridge itself.
     assert_eq!(jardin.hermes_key, "own-key");
-    let keys: std::collections::BTreeSet<String> = commands.lock().unwrap().iter().map(|a| a[5].clone()).collect();
-    assert_eq!(
-        keys,
-        ["mcp_servers.bipagents.url", "mcp_servers.bipagents.headers.Authorization", "mcp_servers.bipagents.timeout"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect()
-    );
+    assert!(commands.lock().unwrap().is_empty());
+    let profile = load(&root.join("jardin/config.yaml"));
+    let entry = &profile["mcp_servers"]["bipagents"];
+    assert!(entry["url"].as_str().unwrap().contains("/v1/agent-tools/mcp"), "{entry}");
+    assert!(entry["headers"]["Authorization"].as_str().unwrap().starts_with("Bearer "));
+    assert_eq!(entry["timeout"], 1800);
     commands.lock().unwrap().clear();
     assert_eq!(jardin.display_name, "Mon jardin");
     assert_eq!(jardin.public_url.as_deref(), Some("https://mini.ts.net:8642/p/jardin"));

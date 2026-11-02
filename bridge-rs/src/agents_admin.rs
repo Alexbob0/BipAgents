@@ -769,7 +769,7 @@ pub async fn from_spare(
     wait_served(http, &agent, true).await?;
     reserve_agent(shared, &agent)?;
     crate::guide::refresh(&shared.get()); // its blocks, and the guide's list of agents
-    give_tools(&shared.get(), &agent, &crate::agent_pool::files_run(run.clone())).await?;
+    give_tools(&shared.get(), &agent, run).await?;
     tools_loaded(shared, std::slice::from_ref(&agent), http, run).await;
     tracing::info!(target: "bipbridge::agents", agent = %agent.name, ms = started.elapsed().as_millis() as u64, "spare agent taken");
     Ok(agent)
@@ -1845,10 +1845,8 @@ pub fn heal_souls(config: &Config) {
             // the offer's places: big toolchains don't fit there (souls.rs, 2026-10-30)
             text = crate::souls::with_server(&text, offer);
         }
-        if text != soul {
-            if edit_soul(config, &agent, false, |_| text).unwrap_or(false) {
-                tracing::info!(target: "bipbridge::agents", agent = %agent.name, "personality's bridge rules brought up to date");
-            }
+        if text != soul && edit_soul(config, &agent, false, |_| text).unwrap_or(false) {
+            tracing::info!(target: "bipbridge::agents", agent = %agent.name, "personality's bridge rules brought up to date");
         }
     }
 }
