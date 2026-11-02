@@ -2,7 +2,7 @@
 
 # Datenschutzerklärung von BipAgents
 
-> Zuletzt aktualisiert: 24. Oktober 2026.
+> Zuletzt aktualisiert: 1. November 2026.
 
 ## Kurz gesagt
 
@@ -125,30 +125,54 @@ Stimmungen). Sie sendet beim ersten Mal die letzten 30 Tage, danach die Tage, di
 Server** (oder an deinen Platz beim Komplettangebot), wo sie als eine Datei pro Tag gespeichert werden, höchstens 400
 Tage, nur mit den Kategorien, die dort mindestens ein Agent liest (eine Kategorie, die kein Agent mehr liest, wird aus
 den gespeicherten Tagen gelöscht). Jeder Agent liest nur seine Kategorien, um dir bei Schlaf, Aktivität, Training und
-Gewohnheiten zu helfen; sie stellen keine Diagnosen. Das KI-Modell des Agenten erhält, was der Agent liest, um dir zu antworten:
-beim Komplettangebot ist Gesundheit nur mit einem Modell möglich, das in der Europäischen Union läuft. Das Telefon
-speichert nur die Daten und einen Fingerabdruck dessen, was es schon gesendet hat, nie die Werte, und nichts in
-iCloud. Kerfy Studio erhält sie nicht; nichts wird verkauft oder für Werbung genutzt. **Rechtsgrundlage**: deine
-ausdrückliche Einwilligung (Art. 6 Abs. 1 lit. a und Art. 9 Abs. 2 lit. a DSGVO), die du gibst, indem du Gesundheit
-einschaltest und es in Apple Health oder Health Connect erlaubst. **Beenden**: schalte Gesundheit aus; sobald kein
-Agent es mehr hat, werden die auf deinem Server gespeicherten Tage gelöscht. Sie gehen auch mit dem Agenten, mit
-deinem Platz, oder wenn du die Erlaubnis in Apple Health oder Health Connect entziehst (dann wird nichts mehr
-gesendet).
+Gewohnheiten zu helfen; sie stellen keine Diagnosen. Das KI-Modell des Agenten erhält, was der Agent liest, um dir zu
+antworten. Beim Komplettangebot kannst du Gesundheit nur mit einem Modell einschalten, das in der Europäischen Union
+läuft, und dein Platz prüft das bei jedem Lesen: Ist das Modell des Agenten keines mehr, das in der Union läuft, liest
+der Agent nichts mehr von deiner Gesundheit und sagt es dir. Das Telefon speichert nur die Daten und einen
+Fingerabdruck dessen, was es schon gesendet hat, nie die Werte, und nichts in iCloud. Kerfy Studio liest sie nicht
+(beim Angebot hostet es deinen Platz, ohne darauf zuzugreifen, Abschnitt 5.1); nichts wird verkauft oder für Werbung
+genutzt. **Rechtsgrundlage**: deine ausdrückliche Einwilligung (Art. 6 Abs. 1 lit. a und Art. 9 Abs. 2 lit. a DSGVO).
+Du gibst sie für jeden Agenten im Fenster „Deine Gesundheit mit … teilen?“, das sagt, wohin deine Daten gehen, wie
+lange sie gespeichert werden und welche KI sie liest, und dann, indem du die Kategorien in Apple Health oder Health
+Connect erlaubst; dein Telefon speichert das Datum dieser Einwilligung. **Beenden**: schalte Gesundheit für den
+Agenten aus, womit deine Einwilligung für ihn widerrufen ist (das Fenster erscheint wieder, wenn du es erneut
+einschaltest); sobald kein Agent es mehr hat, werden die auf deinem Server gespeicherten Tage gelöscht. Sie gehen auch
+mit dem Agenten, mit deinem Platz, oder wenn du die Erlaubnis in Apple Health oder Health Connect entziehst (dann wird
+nichts mehr gesendet).
 
 **Dein Kalender, wenn du ihn teilst (« Calendrier », Kalender).** Für jeden Agenten kannst du Kalender in seinen
 Werkzeugen einschalten. Mit deiner Erlaubnis (Kalender auf dem iPhone und auf Android) liest die App die Kalender
 deines Telefons, auch die darauf hinzugefügten Konten (Google, Outlook…), und sendet eine Kopie ihrer Termine, von
 einer Woche vor bis zwei Monate nach heute (Titel, Zeiten, Ort, Notizen), **nur an deinen Server** (oder an deinen
-Platz beim Rundum-Angebot), wenn die App geöffnet wird. Die Kopie bleibt dort und wird bei jedem Senden ersetzt. Nur
-die Agenten, die du gewählt hast, lesen sie; wenn sie einen Termin eintragen, ändern oder löschen möchten, erledigt
-das dein Telefon. Das KI-Modell des Agenten erhält die Termine, die der Agent liest, um dir zu antworten. Kerfy Studio
-erhält sie nicht. **Rechtsgrundlage**: deine Einwilligung (Art. 6 Abs. 1 lit. a DSGVO), die du gibst, indem du Kalender
-einschaltest und es auf deinem Telefon erlaubst. **Beenden**: schalte Kalender für den Agenten aus oder entziehe die
-Erlaubnis in den Einstellungen des Telefons (dann wird nichts mehr gesendet). Für ein verbundenes Postfach kannst du
-auch « Auch seinen Kalender nutzen » einschalten: Dein Server liest dann die Kalender dieses Kontos (CalDAV, mit den
-Zugangsdaten des Postfachs, die verschlüsselt auf deinem Server bleiben), wenn ein Agent dieses Postfachs sie abruft,
-und trägt die Termine ein oder löscht sie, um die er bittet; davon wird nichts behalten außer der Liste dieser
-Kalender. Schalte es aus, um aufzuhören.
+Platz beim Rundum-Angebot), wenn die App geöffnet wird. Die Kopie bleibt dort, wird bei jedem Senden ersetzt und
+gelöscht, sobald kein Agent sie mehr lesen darf. Nur die Agenten, die du gewählt hast, lesen sie. Für jeden Agenten
+wählst du, ob er deinen Kalender lesen darf und ob er Termine eintragen, verschieben und löschen darf (unter dem
+kleinen Pfeil von „Kalender“); anfangs darf er beides, ohne dich noch einmal zu fragen. Wenn ein Agent, der das darf,
+einen Termin einträgt, ändert oder löscht, erledigt das dein Telefon; ein Recht, das du ihm entziehst, storniert
+seine noch wartenden Anfragen. Das KI-Modell des Agenten erhält die Termine, die der Agent liest, um dir zu antworten.
+Kerfy Studio liest sie nicht (beim Angebot hostet es deinen Platz, ohne darauf zuzugreifen, Abschnitt 5.1).
+**Rechtsgrundlage**: deine Einwilligung (Art. 6 Abs. 1 lit. a DSGVO), die du gibst, indem du Kalender für einen
+Agenten einschaltest (auf Android nach einem Fenster, das sagt, was kopiert wird und wer es liest) und es auf deinem
+Telefon erlaubst. **Beenden**: schalte Kalender für den Agenten aus oder entziehe die Erlaubnis in den Einstellungen
+des Telefons (dann wird nichts mehr gesendet). Für ein verbundenes Postfach kannst du auch « Auch seinen Kalender
+nutzen » einschalten: Dein Server liest dann die Kalender dieses Kontos (CalDAV, mit den Zugangsdaten des Postfachs,
+die verschlüsselt auf deinem Server bleiben), wenn ein Agent dieses Postfachs sie abruft, und trägt die Termine ein
+oder löscht sie, um die er bittet; davon wird nichts behalten außer der Liste dieser Kalender. Schalte es aus, um
+aufzuhören.
+
+**Deine Erinnerungen, wenn du sie teilst (« Rappels », Erinnerungen, iPhone).** Für jeden Agenten kannst du
+Erinnerungen in seinen Werkzeugen einschalten. Mit deiner Erlaubnis (Erinnerungen auf dem iPhone) sendet die App eine
+Kopie deiner Listen und Erinnerungen, der offenen und der in den letzten 30 Tagen abgehakten (Titel, Notizen,
+Fälligkeit, Liste), **nur an deinen Server** (oder an deinen Platz beim Rundum-Angebot), wenn die App geöffnet wird.
+Die Kopie bleibt dort, wird bei jedem Senden ersetzt und gelöscht, sobald kein Agent sie mehr lesen darf. Für jeden
+Agenten wählst du, ob er sie lesen darf und ob er Erinnerungen hinzufügen und abhaken darf (unter dem kleinen Pfeil
+von „Erinnerungen“); anfangs darf er beides, ohne dich noch einmal zu fragen. Dein Telefon fügt die Erinnerung dann
+hinzu oder hakt sie ab. Das KI-Modell des Agenten erhält die Erinnerungen, die der Agent liest, um dir zu antworten.
+Kerfy Studio liest sie nicht (beim Angebot hostet es deinen Platz, ohne darauf zuzugreifen, Abschnitt 5.1).
+**Rechtsgrundlage**: deine Einwilligung (Art. 6 Abs. 1 lit. a DSGVO), die du gibst, indem du Erinnerungen einschaltest
+und es auf deinem iPhone erlaubst. **Beenden**: schalte Erinnerungen für den Agenten aus oder entziehe die Erlaubnis in
+den Einstellungen des iPhones (dann wird nichts mehr gesendet). Auf Android, das keine Erinnerungen-App hat, gibt es
+nur Erinnerungen an Orten (unten).
 
 **Dein Notizbuch (« Carnet »).** Deine Agenten führen ein Notizbuch mit dem, was du ihnen sagst und was wichtig
 bleibt (die Menschen in deinem Leben, deine Projekte, wichtige Daten, die Aufgaben, um die du bittest), als Textseiten
@@ -166,17 +190,23 @@ das nächtliche Einordnen wählen, Seiten in der App löschen; alles geht mit de
 Werkzeugen einschalten. Mit deiner Erlaubnis (Kontakte auf dem iPhone und auf Android) liest die App das Adressbuch
 deines Telefons, auch die darauf hinzugefügten Konten (iCloud, Google…), und sendet eine Kopie **nur an deinen
 Server** (oder an deinen Platz beim Rundum-Angebot), wenn die App geöffnet wird: das ganze Adressbuch oder nur die
-Gruppen (Labels), die du für diesen Server wählst, mit Name, Spitzname, Telefonnummern, E-Mail- und Postadressen,
-Geburtstag, Firma und Position, den verbundenen Personen und den Gruppen jedes Kontakts, und seinen Notizen nur, wenn
-du « Notizen » ankreuzt (standardmäßig aus). Fotos werden nie gesendet. Die Kopie bleibt dort und wird bei jedem
-Senden ersetzt; was deine Wahl nicht mehr umfasst, wird sofort entfernt, und die ganze Kopie wird gelöscht, wenn kein
-Agent sie mehr lesen darf. Nur die Agenten, die du gewählt hast, lesen sie; wenn sie einen Kontakt hinzufügen oder
-ändern möchten, erledigt das dein Telefon (so wird nichts gelöscht). Das KI-Modell des Agenten erhält die Kontakte,
-die der Agent liest, um dir zu antworten. Kerfy Studio erhält sie nicht. **Deine Kontakte sind andere Menschen**: Die
-Agenten haben die Anweisung, ihnen nie ohne dein Okay zu schreiben, sie anzurufen oder ihre Daten weiterzugeben, und
-du bleibst für deren Nutzung verantwortlich. **Rechtsgrundlage**: deine Einwilligung (Art. 6 Abs. 1 lit. a DSGVO),
-die du gibst, indem du Kontakte einschaltest und es auf deinem Telefon erlaubst. **Beenden**: schalte Kontakte für den
-Agenten aus oder entziehe die Erlaubnis in den Einstellungen des Telefons (dann wird nichts mehr gesendet).
+Gruppen (Labels), die du für diesen Server wählst, mit Name, Spitzname, Firma und Position, den verbundenen Personen
+und den Gruppen jedes Kontakts und, nur wenn mindestens ein Agent dieses Servers sie sehen darf, seinen
+Telefonnummern, E-Mail-Adressen, Postadressen und seinem Geburtstag; seine Notizen nur, wenn du « Notizen » ankreuzt
+(standardmäßig aus). Fotos werden nie gesendet. Die Kopie bleibt dort und wird bei jedem Senden ersetzt; was deine
+Wahl nicht mehr umfasst, wird sofort entfernt, und die ganze Kopie wird gelöscht, wenn kein Agent sie mehr lesen
+darf. Nur die Agenten, die du gewählt hast, lesen sie. Für jeden Agenten wählst du diese Details einzeln und ob er
+Kontakte hinzufügen und ergänzen darf (unter dem kleinen Pfeil von „Kontakte“); anfangs sieht er alles und darf
+Kontakte hinzufügen und ergänzen. Ein Detail, das du ihm entziehst, wird ihm nicht mehr gezeigt und nicht mehr für ihn
+durchsucht; sieht es kein Agent mehr, wird es sofort aus der Kopie entfernt und dein Telefon sendet es nicht mehr.
+Wenn ein Agent, der das darf, einen Kontakt hinzufügt oder ändert, erledigt das dein Telefon (so wird nichts
+gelöscht). Das KI-Modell des Agenten erhält die Kontakte, die der Agent liest, um dir zu antworten. Kerfy Studio liest
+sie nicht (beim Angebot hostet es deinen Platz, ohne darauf zuzugreifen, Abschnitt 5.1). **Deine Kontakte sind andere
+Menschen**: Die Agenten haben die Anweisung, ihnen nie ohne dein Okay zu schreiben, sie anzurufen oder ihre Daten
+weiterzugeben, und du bleibst für deren Nutzung verantwortlich. **Rechtsgrundlage**: deine Einwilligung (Art. 6
+Abs. 1 lit. a DSGVO), die du gibst, indem du Kontakte für einen Agenten einschaltest (auf Android nach einem Fenster,
+das sagt, was kopiert wird und wer es liest) und es auf deinem Telefon erlaubst. **Beenden**: schalte Kontakte für
+den Agenten aus oder entziehe die Erlaubnis in den Einstellungen des Telefons (dann wird nichts mehr gesendet).
 
 **Erinnerungen an Orten und dein Standort.** Wenn du einen Agenten bittest „erinnere mich an die Milch, wenn ich im
 Supermarkt bin“, fordert er eine Erinnerung mit dem Namen des Ortes (oder seinen Koordinaten) an. Auf dem iPhone
@@ -312,8 +342,11 @@ Support). Der Dienst von Kerfy Studio, der Konten, Abos und Plätze verwaltet, h
   Konten von Kerfy Studio bei den Hostern ist dem Unternehmen vorbehalten. Auf den Inhalt eines Platzes würde nur
   zugegriffen, um eine gesetzliche Pflicht zu erfüllen (zum Beispiel eine gerichtliche Anordnung), und du würdest
   informiert, wenn das Gesetz es erlaubt. Wie jeder Hoster haben OVHcloud und Hetzner physischen Zugang zu ihren
-  Servern. Wenn du dort sensible Daten ablegst (zum Beispiel zu deiner Gesundheit), werden sie nur verarbeitet, um
-  auszuführen, worum du deine Agenten bittest.
+  Servern. Enthält dein Platz Gesundheitsdaten, die von Gesundheit oder das, was du deinen Agenten über deine
+  Gesundheit sagst, hostet Kerfy Studio sie und lässt sie vom KI-Modell nur mit deiner ausdrücklichen Einwilligung
+  verarbeiten (Art. 9 Abs. 2 lit. a DSGVO): für Gesundheit die, die du beim Einschalten für einen Agenten gibst
+  (Abschnitt 3), und nur mit einem Modell, das in der Europäischen Union läuft; für deine Gespräche [mit dem Anwalt zu
+  ergänzen: die Grundlage nach Art. 9 für das, was du deinen Agenten über deine Gesundheit sagst].
 - **Apple und Google** sind für ihre eigenen Verarbeitungen verantwortlich, wenn du dich bei ihnen anmeldest und wenn
   du in ihrem Store bezahlst.
 - **Stripe** (Stripe Payments Europe, Ltd., Irland) wickelt die Zahlung ab, wenn du auf der Website bipagents.com kaufst
@@ -431,7 +464,10 @@ Angebots, dann über den Anbieter, der das gewählte Modell betreibt: [zu ergän
 Länder, in denen sie laufen]. EUrouter gibt an, standardmäßig weder die Anfragen noch die Antworten aufzubewahren und
 ihre Metadaten (Uhrzeit, Modell, Zahl der Tokens, Kosten, IP-Adresse) bis zu 12 Monate aufzubewahren. Sie handeln im
 Auftrag von Kerfy Studio. **Vor der ersten Nachricht nennt dir die App den Router und den Hersteller des Modells und
-fragt nach deinem Einverständnis**; die Liste der Modelle nennt den Hersteller jedes Modells.
+fragt nach deinem Einverständnis**; die Liste der Modelle nennt den Hersteller jedes Modells. **Für Gesundheit** nur
+ein Modell, das in der Europäischen Union läuft: Dein Platz gibt deine Gesundheitsdaten keinem Agenten, dessen Modell
+nicht so gekennzeichnet ist, auch wenn sich das Modell geändert hat, nachdem du Gesundheit eingeschaltet hast
+(Abschnitt 3).
 
 **Der Ruhezustand.** Dein Platz notiert selbst die letzte Anfrage der App; der Guichet weiß nur, dass er schläft.
 
@@ -447,9 +483,15 @@ einem Schlüssel, der auf dem Platz und auf deinen Geräten bleibt, plus einer K
 Wiederherstellungscode verschlüsselt ist (Abschnitt 5.2) und die Kerfy Studio nicht öffnen kann. Beim Komplettangebot
 liegt der Platz auf einem von Kerfy Studio gemieteten Server: Der Schlüssel ist also auch dort, und
 technisch könnten der Hoster wie Kerfy Studio darauf zugreifen; unsere Software liest weder deinen Platz noch seine
-Sicherungen, und wir täten es nur, wenn das Gesetz uns dazu verpflichtet. Kerfy Studio bewahrt diese Sicherungen bei einem Hoster für Sicherungen auf (noch nicht in Betrieb; er wird hier vor der Inbetriebnahme genannt), ohne sie
-lesen zu können: eine pro Stunde für 48 Stunden, eine pro Tag für 30 Tage, eine pro Woche für 12 Wochen.
-Sie werden mit deinem Platz gelöscht.
+Sicherungen, und wir täten es nur, wenn das Gesetz uns dazu verpflichtet. Kerfy Studio bewahrt diese Sicherungen bei
+**Scaleway** auf (Scaleway SAS, Frankreich; Objektspeicher in Paris, Region fr-par), ohne sie lesen zu können: eine pro
+Stunde für 48 Stunden, eine pro Tag für 30 Tage, eine pro Woche für 12 Wochen. Sie werden mit deinem Platz gelöscht.
+Bei Scaleway wird eine ersetzte oder gelöschte Version einer Datei 30 Tage aufbewahrt und dann gelöscht. Die Daten
+bleiben in der Europäischen Union.
+
+**Die Sicherungen des Guichets.** Der Guichet (dein Konto, dein Abo, die technischen Daten der Plätze) wird ebenfalls
+bei Scaleway gesichert, in Kopien, die Kerfy Studio vor dem Versand verschlüsselt; alte Versionen werden nach 30 Tagen
+gelöscht.
 
 **Das tägliche Abbild von OVHcloud.** Auf seinen Servern erstellt OVHcloud außerdem ein tägliches Abbild des ganzen
 Servers, das es bei sich aufbewahrt: ein Wiederherstellungspunkt pro Tag, nicht von Kerfy Studio verschlüsselt. Wird
@@ -538,7 +580,7 @@ dieses Anbieters, BipAgents löscht darin nichts, und Kerfy Studio bewahrt nicht
 | Hetzner Online GmbH (Gunzenhausen, Deutschland) | Hostet einen Teil der Server der Plätze und den Mailserver der Agenten | Inhalt der Plätze; Postfächer der Agenten und Sicherheitsprotokolle des Mailservers | Deutschland, Finnland |
 | EUrouter B.V. (Amsterdam, Niederlande) | KI-Router | An das Modell geschickte Nachrichten, Metadaten | Europäische Union |
 | Anbieter der Modelle: [zu ergänzen] | Betreiben das gewählte Modell | An das Modell geschickte Nachrichten | [zu ergänzen] |
-| Hoster der Sicherungen: noch nicht in Betrieb; er wird hier vor der Inbetriebnahme genannt | Bewahrt die Sicherungen auf | Verschlüsselte Sicherungen, für ihn und für Kerfy Studio unlesbar | Mit ihm angegeben |
+| Scaleway SAS (Paris, Frankreich) | Objektspeicher für die Sicherungen (Region fr-par, Paris) | Verschlüsselte Sicherungen der Plätze, für ihn und für Kerfy Studio unlesbar; verschlüsselte Kopien der Datenbank des Guichets; eine ersetzte oder gelöschte Version wird 30 Tage aufbewahrt | Europäische Union (Frankreich) |
 | Hoster des Guichets und des Relays: noch nicht in Betrieb; er wird hier vor der Inbetriebnahme genannt | Hostet den Guichet und das Relay | Konto, Abo, technische Daten | Europäische Union |
 | Anbieter für den E-Mail-Versand: noch nicht in Betrieb; er wird hier vor der Inbetriebnahme genannt | Verschickt die Codes, die Sicherheitshinweise, die Einladungen, die Kaufbestätigung, die Eingangsbestätigung eines Widerrufs und die Hinweise zur Löschung | E-Mail-Adresse, Inhalt dieser E-Mails | Mit ihm angegeben |
 | Stripe Payments Europe, Ltd. (Dublin, Irland) | Zahlung der Käufe auf der Website bipagents.com, Steuerberechnung, Betrugsprüfung, Rechnungen | E-Mail-Adresse, Rechnungsadresse oder -land, Kartendaten, IP-Adresse | Europäische Union; möglicherweise außerhalb der Union (Abschnitt 11) |
@@ -661,8 +703,8 @@ insbesondere in den USA:
 - Apple gibt an, Übermittlungen aus dem Europäischen Wirtschaftsraum durch die von der Europäischen Kommission
   erlassenen Standardvertragsklauseln abzusichern.
 
-**Das Alles-inklusive-Angebot.** Die Server der Plätze und der Mailserver der Agenten stehen in der Europäischen Union,
-für alle Personen des Angebots. EUrouter verarbeitet die Nachrichten in der Europäischen Union
+**Das Alles-inklusive-Angebot.** Die Server der Plätze, der Mailserver der Agenten und die Sicherungen (Scaleway,
+Frankreich) stehen in der Europäischen Union, für alle Personen des Angebots. EUrouter verarbeitet die Nachrichten in der Europäischen Union
 [zu ergänzen: Länder, in denen die angebotenen Modelle laufen, und die Garantie, falls eines außerhalb der Union liegt].
 Apple und Google (Anmeldung, Stores, DeviceCheck, Play Integrity) können Daten in den USA verarbeiten, mit den oben
 genannten Garantien. Bei einem Kauf auf der Website kann Stripe Daten außerhalb der Europäischen Union verarbeiten,
@@ -675,9 +717,9 @@ Singapur sorgen dieses Schutzniveau und unsere Verträge mit unseren Dienstleist
 das Recht von Singapur verlangt.
 
 E-Mail-Anbieter: Proton AG, in der Schweiz, einem Land, dem die Europäische Kommission ein angemessenes Schutzniveau
-bescheinigt (Entscheidung 2000/518/EG, nach Art. 45 Abs. 9 DSGVO weiter in Kraft). Anbieter für den E-Mail-Versand
-und Hoster der Sicherungen: noch nicht in Betrieb; ihr Land und die geltende Garantie werden hier vor der
-Inbetriebnahme angegeben. Du kannst bei uns eine Kopie der geltenden Garantien anfordern.
+bescheinigt (Entscheidung 2000/518/EG, nach Art. 45 Abs. 9 DSGVO weiter in Kraft). Hoster der Sicherungen: Scaleway, in
+Frankreich, ohne Übermittlung außerhalb der Union. Anbieter für den E-Mail-Versand: noch nicht in Betrieb; sein Land
+und die geltende Garantie werden hier vor der Inbetriebnahme angegeben. Du kannst bei uns eine Kopie der geltenden Garantien anfordern.
 
 ## 12. Speicherdauer
 
@@ -685,6 +727,9 @@ Inbetriebnahme angegeben. Du kannst bei uns eine Kopie der geltenden Garantien a
 |---|---|
 | Daten der App auf deinem Telefon | Bis du den Agenten oder die App löschst |
 | Gesundheitsdaten (« Santé ») auf deinem Server oder Platz | Höchstens 400 Tage; gelöscht, sobald kein Agent Gesundheit mehr hat, mit dem Agenten oder mit dem Platz |
+| Deine Einwilligung für Gesundheit (und auf Android für Kontakte und Kalender), mit ihrem Datum, auf deinem Telefon | Bis du die App löschst; als widerrufen markiert, mit Datum, wenn du das Werkzeug für den Agenten ausschaltest |
+| Kopie von Kalender, Erinnerungen und Kontakten auf deinem Server oder Platz | Bei jedem Öffnen der App ersetzt; gelöscht, sobald kein Agent sie mehr lesen darf (auch wenn der letzte gelöscht wird), oder mit dem Platz |
+| Anfragen der Agenten an dein Telefon (Termine, Erinnerungen, Kontakte) | Bis dein Telefon sie ausführt oder sie storniert werden, dann bei der nächsten Kopie gelöscht, sobald sie 14 Tage alt sind; spätestens mit dem Platz |
 | Gerätetoken beim Relay | Keine Speicherung: Es existiert nur versiegelt, auf deinem Telefon und deinem Server (und beim Guichet mit dem Alles-inklusive-Angebot, solange das Gerät mit deinem Platz verbunden ist) |
 | IP-Adresse beim Relay | Im Arbeitsspeicher, höchstens eine Stunde, als Fingerabdruck |
 | Technische Protokolle des Relays | Höchstens 6 Monate |
@@ -701,6 +746,7 @@ Inbetriebnahme angegeben. Du kannst bei uns eine Kopie der geltenden Garantien a
 | IP-Adresse bei der Reservierung einer kostenlosen Woche | Nie gespeichert; im Arbeitsspeicher, als Fingerabdruck, höchstens 15 Minuten |
 | Inhalt deines Platzes | Während des Abos, dann 30 Tage (3 Tage nach einer nicht fortgesetzten kostenlosen Woche) |
 | Sicherungen | 48 Stunden (stündlich), 30 Tage (täglich), 12 Wochen (wöchentlich); mit dem Platz gelöscht |
+| Ersetzte oder gelöschte Versionen bei Scaleway (Sicherungen der Plätze, verschlüsselte Kopien der Datenbank des Guichets) | 30 Tage |
 | Tägliches Abbild von OVHcloud | Ein Punkt pro Tag, innerhalb von etwa einem Tag nach der Neuinstallation des Platzes ersetzt |
 | Technische Daten der Server | Nur die letzten Werte |
 | Ereignisprotokoll des Guichet | 12 Monate |
@@ -739,6 +785,12 @@ Recht).
 Verarbeitungen widersprechen, die auf unserem berechtigten Interesse beruhen (Begrenzung von Missbrauch, E-Mails,
 Meldungen, Absturzberichte, Begrenzung der kostenlosen Wochen).
 
+**Deine Einwilligung widerrufen.** Für Gesundheit, Kalender, Kontakte, Erinnerungen, den Standort der Erinnerungen an
+Orten und den Dokumentenscanner unter Android widerrufst du deine Einwilligung jederzeit, so einfach, wie du sie
+gegeben hast: Schalte das Werkzeug auf der Seite des Agenten aus oder entziehe die Erlaubnis in den Einstellungen des
+Telefons (oder in Apple Health oder Health Connect). Es wird nichts mehr gesendet, und die Kopien werden gelöscht, wie
+Abschnitt 3 sagt. Was vorher geschehen ist, bleibt rechtmäßig (Art. 7 Abs. 3 DSGVO).
+
 Schreib an **privacy@bipagents.com**. Wir antworten innerhalb eines Monats; bei einem komplexen Antrag kann sich die
 Frist um zwei Monate verlängern. Wir können dich um Angaben bitten, um deine Identität zu prüfen.
 
@@ -774,10 +826,11 @@ nur auf einer Installation genutzt werden, die ein Elternteil oder ein für das 
 eingerichtet hat und beaufsichtigt** (Familienfunktion): Dieser Erwachsene wählt die Agenten, ihre Zugänge und das
 Modell, akzeptiert die Nutzungsbedingungen für das Kind und bleibt für dessen Nutzung verantwortlich.
 
-Kerfy Studio fragt nicht nach dem Alter, und keine seiner Verarbeitungen beruht auf einer Einwilligung. Nur der
-Dokumentenscanner unter Android fragt nach einem Einverständnis, für das, was Google davon erhält (Abschnitt 7): Für
-ein Kind unter 15 Jahren gibt es der Erwachsene, der die Installation eingerichtet hat, gemeinsam mit dem Kind. Wenn
-ein Kind uns geschrieben hat, kann ein Elternteil verlangen, dass wir die Nachricht löschen.
+Kerfy Studio fragt nicht nach dem Alter. Manche Funktionen beruhen auf deiner Einwilligung: Gesundheit, Kalender,
+Kontakte, Erinnerungen, der Standort der Erinnerungen an Orten (Abschnitt 3) und der Dokumentenscanner unter Android,
+für das, was Google davon erhält (Abschnitt 7). Unter 15 Jahren gibt sie der Erwachsene, der die Installation
+eingerichtet hat, gemeinsam mit dem Kind (Art. 45 des französischen Datenschutzgesetzes). Wenn ein Kind uns
+geschrieben hat, kann ein Elternteil verlangen, dass wir die Nachricht löschen.
 
 **Alles-inklusive-Angebot**: Es wird von einem Erwachsenen abgeschlossen oder mit dem Einverständnis eines Elternteils.
 Eine eingeladene Person muss mindestens 16 Jahre alt sein; unter 16 Jahren darf ein Platz nur genutzt werden, wenn ein

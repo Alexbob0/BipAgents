@@ -288,9 +288,11 @@ Il n’est utilisé que si la version de l’app définit un hôte de relais (`B
 autre n’apparaît dans le code des apps. Les messages arrivent au modèle par l’Hermes de la personne. Le fournisseur
 voit ce que l’agent met dans sa requête : la conversation, les fichiers et les résultats de ses outils, y compris **les
 résumés de santé quand un agent qui a « Santé » utilise son outil `health`**. Sur l’offre, l’app ne permet d’activer
-« Santé » qu’avec un modèle que le guichet marque `eu_hosted`, et quand le modèle de l’agent est changé dans l’app pour
-un modèle qui ne l’est pas, elle désactive aussitôt « Santé » sur le bridge et le dit (`AgentSettingsView.swift`,
-`AgentSettingsScreen.kt`, `health/HealthSync.kt`).
+« Santé » qu’avec un modèle que le guichet marque `eu_hosted` (`ToolStates.swift`, `AppsTools.kt`), et le bridge de la
+place refuse l’outil `health` à un agent dont le modèle n’est pas dans `[model] eu_hosted` de sa configuration, à
+chaque appel : un modèle changé après coup (le guichet, le catalogue, SSH) ne lit plus rien de la santé, et l’agent dit
+pourquoi (`bridge-rs/src/health.rs`, `eu_refusal`; 2026-11-01). Depuis `c7535789`, l’offre n’a plus de choix de modèle
+dans l’app.
 La clé d’IA d’une place de l’offre est créée par le guichet et passe par le téléphone pour aller au bridge (§1).
 
 **Le rangement de nuit du Carnet** (bridge, `notebook/tidy.rs`) : une fois par nuit au plus, le bridge de la personne
@@ -374,9 +376,10 @@ téléphone).
   ne peut pas vérifier la reconnaissance sur l’appareil : la dictée n’y fonctionne qu’avec ce oui.
 - **Le scanner de documents ML Kit** sur Android peut envoyer des données d’usage et de diagnostic à Google, selon
   Google. L’app ne modifie pas ce comportement.
-- **« Santé » et le modèle :** la vérification « hébergé dans l’UE » est faite par les apps et repose sur la marque
-  `eu_hosted` du guichet. Elle a lieu quand on active l’interrupteur et quand on change le modèle dans l’app ; le bridge
-  ne la fait pas, donc un modèle changé autrement ne désactive pas « Santé ».
+- **« Santé » et le modèle :** la vérification « hébergé dans l’UE » est faite par les apps quand on active
+  l’interrupteur (la marque `eu_hosted` du guichet) et par le bridge de la place à chaque appel de l’outil `health`
+  (`[model] eu_hosted` de sa configuration, vide par défaut : aucun modèle). Les deux listes doivent dire la même chose :
+  marquer un modèle `eu_hosted` au guichet sans l’ajouter aux places laisse « Santé » activable mais muet.
 - **L’adresse e-mail de Kerfy Studio d’un agent** garde ses e-mails sur le serveur de messagerie de Kerfy Studio (un
   serveur chez Hetzner, à part des places), stockés comme sur tout serveur de messagerie, sans chiffrement pour la
   personne : celui qui exploite ce serveur peut les lire. Les e-mails sont effacés au bout de 90 jours, et la boîte

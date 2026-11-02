@@ -88,6 +88,34 @@ def test_the_phone_shares_its_calendar_and_does_what_the_agents_ask(bridges, fak
     give_token(bridge, "coach", TOKEN)
     assert not any(n.startswith("calendar_") for n in names(bridge))
     assert call(bridge, "calendar_list", {}, token=TOKEN)["isError"]
+    # Shared with no agent any more: the copy goes, as the address book's (the requests stay their 14 days).
+    seen = bridge.get("/v1/calendar", headers=AUTH).json()
+    assert seen["events"] == 0 and seen["calendars"] == 0 and seen["at"] is None and seen["from"] is None
+    assert seen["pending"] == 1
+
+
+def test_the_phones_copies_go_with_the_last_agent_deleted(bridges, fakes):
+    # The calendar, the reminders and the address book shared with one agent only, then that agent deleted: the
+    # copies go, as when its switches are turned off.
+    bridge = coach(bridges, fakes)
+    for share in ("calendar", "reminders", "contacts"):
+        assert bridge.put(f"/v1/{share}/agents", json={"agents": ["coach"]}, headers=AUTH).status_code == 200
+    assert bridge.put("/v1/calendar", json=COPY, headers=AUTH).json() == {"events": 3}
+    assert bridge.put("/v1/reminders", json={"lists": [{"id": "L1", "title": "Courses"}],
+                                             "items": [{"id": "r1", "list": "L1", "title": "Lait"}]},
+                      headers=AUTH).json() == {"items": 1}
+    assert bridge.put("/v1/contacts", json={"contacts": [{"id": "c1", "name": "Hélène Martin"}]},
+                      headers=AUTH).json() == {"contacts": 1}
+    assert bridge.delete("/v1/agents/coach", headers=AUTH).status_code == 204
+    calendar = bridge.get("/v1/calendar", headers=AUTH).json()
+    assert calendar["agents"] == [] and calendar["events"] == 0 and calendar["calendars"] == 0
+    reminders = bridge.get("/v1/reminders", headers=AUTH).json()
+    assert reminders["agents"] == [] and reminders["items"] == 0 and reminders["lists"] == 0
+    contacts = bridge.get("/v1/contacts", headers=AUTH).json()
+    assert contacts["agents"] == [] and contacts["contacts"] == 0
+    for name in ("calendar.json", "reminders.json", "contacts.json"):
+        kept = (bridge.state_dir / name).read_text()
+        assert "Dentiste" not in kept and "Lait" not in kept and "Hélène" not in kept
 
 
 def test_what_the_agent_asked_shows_until_the_phone_shares_again(bridges, fakes):

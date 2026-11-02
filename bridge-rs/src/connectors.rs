@@ -1227,7 +1227,8 @@ async fn ask_secret_tool(state: &AppState, agent: &AgentConfig, arguments: &Dict
         edit: false,
         connector,
     };
-    let line = secrets::sentence(&shown_name(&config, &agent.name), &request);
+    let lang = crate::names::agent_language(&config, &agent.name);
+    let line = secrets::sentence_in(&lang, &shown_name(&config, &agent.name), &request);
     let id = match secrets::open(&agent.name, request) {
         Ok(id) => id,
         Err(why) => return Ok(refusal(&why)),
