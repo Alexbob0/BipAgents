@@ -1774,7 +1774,8 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::map_tiles::router())
         .merge(crate::message_search::router())
         .merge(crate::connections::router())
-        .merge(crate::live_activities::router());
+        .merge(crate::live_activities::router())
+        .merge(crate::skill_library::router());
     if !config.cloud {
         authed = authed.merge(crate::console::console_admin_router());
     }

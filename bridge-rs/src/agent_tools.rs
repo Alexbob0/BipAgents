@@ -451,6 +451,10 @@ fn own_tools(config: &Config, agent: &AgentConfig, offer: bool) -> Vec<Value> {
     // the guide's (propose_agent, suggest_switch), propose_agent when asked for the person's other own agents, or
     // propose_profile while it has no role or a generic name
     tools.extend(crate::guide::tools(config, agent));
+    // the person's library of shared skills (skill_library.rs): for an agent that has one or writes its own
+    if crate::skill_library::offered(config, agent) {
+        tools.push(crate::skill_library::tool());
+    }
     // the guide's search of ready-made models (templates.rs)
     tools.extend(crate::templates::tools(config, agent));
     // the offer's places: a green light before heavy work, behind the tool search (heavy_work.rs)
@@ -558,6 +562,7 @@ pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow
     crate::mcp_sessions::poke(); // its tools may have changed: its open MCP streams check now (mcp_sessions.rs)
     crate::notebook::sync_soul(config, agent);
     crate::archives::sync_soul(config, agent);
+    crate::skill_library::sync_soul(config, agent); // the short block of an agent with a shared skill
     crate::souls::sync_payments(config, agent);
     crate::souls::sync_server(config, agent); // the offer's places: big toolchains don't fit (souls.rs)
     let tools = tools_for(config, agent);
@@ -1468,6 +1473,10 @@ pub async fn call_tool(
     if name == crate::friends_cards::TOOL_NAME {
         let (config, agent, arguments) = (config.clone(), agent.clone(), arguments.clone());
         return blocking(move || Ok(crate::friends_cards::call(&config, &agent, &arguments))).await;
+    }
+    if name == crate::skill_library::TOOL_NAME {
+        let (config, agent, arguments) = (config.clone(), agent.clone(), arguments.clone());
+        return blocking(move || Ok(crate::skill_library::call(&config, &agent, &arguments))).await;
     }
     if name == crate::templates::FIND_TOOL {
         return Ok(crate::templates::find_call(&config, agent, arguments).await);
