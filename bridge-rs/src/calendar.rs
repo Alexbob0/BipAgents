@@ -4,7 +4,7 @@
 //! calendars and their events from a week back to two months ahead — and applies what the agents asked for. An agent
 //! reads the last copy and asks for an event to be added, changed or deleted; the request waits here until the phone
 //! has done it. Like the reminders, an agent's request needs no approval of its own: the person chose the agents that
-//! may use the calendar.
+//! may use the calendar. When no agent may use it any more, the copy is deleted (as the address book's).
 //!
 //!     calendar_list     the events of a period, as the phone last shared them (and when)
 //!     calendar_add      a new event (a title, a start, an end or a duration, a calendar…), done by the phone
@@ -831,6 +831,36 @@ fn dump<T: Serialize>(value: &T) -> Value {
     serde_json::to_value(value).unwrap_or(Value::Null)
 }
 
+/// A deleted agent: no longer among the agents allowed (the copy goes with the last one, `set_agents_in`).
+pub fn forget(config: &Config, agent: &str) {
+    let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut data = read(config);
+    let names: Vec<String> = match data.get("agents") {
+        Some(Value::Array(v)) => v.iter().filter_map(Value::as_str).map(str::to_string).collect(),
+        _ => return,
+    };
+    if !names.iter().any(|n| n == agent) {
+        return;
+    }
+    let kept: Vec<String> = names.into_iter().filter(|n| n != agent).collect();
+    set_agents_in(&mut data, &kept);
+    if let Err(err) = write(config, &data) {
+        tracing::warn!(agent = %agent, error = %err, "calendar share not updated for a deleted agent");
+    }
+}
+
+/// The agents allowed now. Shared with no agent any more, the copy goes too, as the address book's (contacts.rs): the
+/// events with their places and notes are not kept once nobody may read them (legal review of 2026-11-01, C4); the
+/// agents' requests stay their 14 days. The phone stops sending it.
+fn set_agents_in(data: &mut Dict, names: &[String]) {
+    data.insert("agents".into(), json!(names));
+    if names.is_empty() {
+        for key in ["calendars", "events", "from", "to", "at"] {
+            data.remove(key);
+        }
+    }
+}
+
 async fn set_agents(State(state): State<AppState>, Json(body): Json<Agents>) -> ApiResult<Response> {
     let config = state.config();
     let mut names: Vec<String> = Vec::new();
@@ -852,7 +882,7 @@ async fn set_agents(State(state): State<AppState>, Json(body): Json<Agents>) -> 
             Some(Value::Array(v)) => v.iter().filter_map(|n| n.as_str().map(str::to_string)).collect(),
             _ => Vec::<String>::new(),
         };
-        data.insert("agents".into(), json!(names));
+        set_agents_in(&mut data, &names);
         write(&config_c, &data)?;
         Ok((before, names))
     })
@@ -960,6 +990,18 @@ mod tests {
         );
         assert_eq!(Moment::parse("2026-10-30T23:30Z").map(|m| m.write()).as_deref(), Some("2026-10-30T23:30:00+00:00"));
         assert!(Moment::parse("demain").is_none());
+    }
+
+    #[test]
+    fn the_copy_goes_with_the_last_agent() {
+        let mut data: Dict = serde_json::from_value(json!({
+            "agents": ["coach"], "calendars": [{"id": "c1", "title": "Perso"}],
+            "events": [{"id": "e1", "title": "Dentiste", "notes": "carie"}], "from": "2026-10-25", "to": "2026-12-31",
+            "at": 1.0, "queue": [{"id": "q1", "op": "add", "state": "done"}]})).unwrap();
+        set_agents_in(&mut data, &["coach".to_string(), "vie".to_string()]);
+        assert_eq!(data["events"].as_array().map(Vec::len), Some(1)); // still read by someone: kept
+        set_agents_in(&mut data, &[]);
+        assert_eq!(Value::Object(data), json!({"agents": [], "queue": [{"id": "q1", "op": "add", "state": "done"}]}));
     }
 
     #[test]

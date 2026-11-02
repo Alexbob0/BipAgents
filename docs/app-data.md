@@ -266,8 +266,10 @@ Used only when the build sets a relay host (`BIPPushRelayHost` / `push.relayHost
 code). Messages reach the model through the person's Hermes. What the provider sees is whatever the agent puts in its
 request: the conversation, the files, and the results of its tools, including **health summaries when an agent with
 "Santé" uses its `health` tool**. On the offer, the app allows turning "Santé" on only with a model the guichet marks
-as `eu_hosted`, and when the agent's model is changed in the app to one that is not, it turns "Santé" off on the
-bridge at once and says so (`AgentSettingsView.swift`, `AgentSettingsScreen.kt`, `health/HealthSync.kt`). The AI key of an offer place is created by the
+as `eu_hosted` (`ToolStates.swift`, `AppsTools.kt`), and the place's bridge refuses the `health` tool to an agent whose
+model is not in its config's `[model] eu_hosted`, at every call: a model changed afterwards (the guichet, the catalog,
+SSH) reads nothing more of the person's health, and the agent says why (`bridge-rs/src/health.rs`, `eu_refusal`;
+2026-11-01). Since `c7535789`, the offer has no model choice in the app. The AI key of an offer place is created by the
 guichet and goes through the phone to the bridge (§1).
 
 **The Carnet's nightly sorting** (bridge, `notebook/tidy.rs`): once a night at most, the person's own bridge sends
@@ -340,9 +342,10 @@ store alone (StoreKit products and storefront, Play Billing products and country
   support, so dictation there works only with that yes.
 - **ML Kit's document scanner** on Android may send usage and diagnostic data to Google, according to Google. The app
   does not change this.
-- **"Santé" and the model:** the EU-hosted check is in the apps and relies on the guichet's `eu_hosted` mark. It runs
-  when the switch is turned on and when the model is changed in the app; the bridge does not check it, so a model
-  changed another way does not turn "Santé" off.
+- **"Santé" and the model:** the EU-hosted check is done by the apps when the switch is turned on (the guichet's
+  `eu_hosted` mark) and by the place's bridge at every call of the `health` tool (its config's `[model] eu_hosted`,
+  empty by default: no model). The two lists must agree: a model marked `eu_hosted` at the guichet but not added to the
+  places leaves "Santé" switchable but silent.
 - **An agent's Kerfy Studio e-mail address** keeps its mail on Kerfy Studio's mail server (a Hetzner server, apart
   from the places), stored as any mail server stores mail, not encrypted for the person: whoever runs that server can
   read it. Mails are deleted after 90 days, and the whole mailbox when the address goes. Between mail servers, mail is

@@ -10,6 +10,7 @@
 //! agent here reads (`shared` in the status), never more; the bridge keeps only those (a category no agent reads any
 //! more is wiped from the days kept) and serves each agent only its own categories: the tool reads each day through
 //! `Day::restricted`, whatever else the file holds.
+//! On the offer's places, the tool answers only an agent whose model runs in the European Union (`eu_refusal`).
 //!
 //!     health    the person's days for a period: summaries by default, or one line per day
 //!
@@ -978,6 +979,47 @@ on an iPhone).",
     )
 }
 
+// -- the offer: a model run in the Union -------------------------------------------------------------------------------
+
+/// On the offer's places, « Santé » is read only through a model run in the European Union (the privacy policy,
+/// section 3; legal review of 2026-11-01, B4). The apps check it when the switch is turned on (the guichet's
+/// `eu_hosted`), but the model may change afterwards (the guichet's default, its catalog, a change by SSH): the place
+/// checks it again at each call, against `[model] eu_hosted` (config.rs). Since 2026-11-01 (c7535789) the offer has
+/// no model choice: a safety net. On the person's own server, always (their choice, A3 in the review).
+pub fn eu_refusal(config: &Config, agent: &crate::config::AgentConfig) -> Option<String> {
+    eu_refusal_at(crate::handover::on_offer(), model_of(config, agent).as_deref(), &config.model_eu_hosted)
+}
+
+/// `eu_refusal`, `offer` saying whether this place is one of the offer's and `model` the agent's model (None:
+/// unknown). Some(what the agent tells the person) when it may not read « Santé ».
+pub fn eu_refusal_at(offer: bool, model: Option<&str>, eu_hosted: &[String]) -> Option<String> {
+    if !offer {
+        return None;
+    }
+    let model = model.map(|m| m.trim().to_lowercase()).filter(|m| !m.is_empty());
+    if model.as_ref().is_some_and(|m| eu_hosted.iter().any(|e| e == m)) {
+        return None;
+    }
+    let which = model.map(|m| format!(" ({m})")).unwrap_or_default();
+    Some(format!(
+        "You can't read the person's health data now: on the all-included offer, « Santé » is read only by an AI model hosted in the European Union, and your model{which} isn't one of them. Nothing of their health was read or sent to it. Tell the person simply, in their language: « I can't read your health data at the moment: my AI model isn't hosted in Europe, and on this offer your health data only goes to an AI hosted in Europe. Your data stays in your space. » Don't guess their figures."
+    ))
+}
+
+/// The agent's model as its Hermes profile names it (`model.default`), else the install's (the hub's config).
+fn model_of(config: &Config, agent: &crate::config::AgentConfig) -> Option<String> {
+    let named = |folder: PathBuf| {
+        let data = crate::shares::profile_config(&folder);
+        match data.get("model") {
+            Some(Value::String(name)) => Some(name.clone()), // `model: <name>`, Hermes' short form
+            Some(model) => model.get("default").and_then(Value::as_str).map(str::to_string),
+            None => None,
+        }
+    };
+    named(crate::agents_admin::profile_folder(config, agent))
+        .or_else(|| named(PathBuf::from(crate::agents_admin::install_home(config))))
+}
+
 // -- the app's routes --------------------------------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
@@ -1044,6 +1086,23 @@ pub fn router() -> Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn on_the_offer_only_a_model_run_in_the_union_reads_health() {
+        let eu = vec!["glm-5.3-flash".to_string()];
+        // the person's own server: their choice
+        assert_eq!(eu_refusal_at(false, Some("gpt-5"), &[]), None);
+        assert_eq!(eu_refusal_at(false, None, &[]), None);
+        // the offer: a model the place marks as run in the Union (as its profile names it, any case)
+        assert_eq!(eu_refusal_at(true, Some("glm-5.3-flash"), &eu), None);
+        assert_eq!(eu_refusal_at(true, Some(" GLM-5.3-Flash "), &eu), None);
+        // another model, no model known, or none marked: refused, and said why in plain words
+        let why = eu_refusal_at(true, Some("deepseek/deepseek-v4.1-flash"), &eu).unwrap();
+        assert!(why.contains("hosted in the European Union") && why.contains("(deepseek/deepseek-v4.1-flash)"));
+        assert!(why.contains("Nothing of their health was read"));
+        assert!(eu_refusal_at(true, None, &eu).unwrap().contains("your model isn't one of them"));
+        assert!(eu_refusal_at(true, Some("glm-5.3-flash"), &[]).is_some());
+    }
 
     #[test]
     fn implausible_values_are_dropped_not_refused() {

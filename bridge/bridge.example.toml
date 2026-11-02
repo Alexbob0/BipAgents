@@ -86,6 +86,9 @@ window_hours = 12        # on first start, only tasks from the last N hours are 
 # (model_route.rs). [] lets EUrouter pick a provider per call.
 # [model]
 # provider_order = ["entrim", "greenpt", "inceptron"]
+# On the offer's places only: the models run in the European Union (the guichet's `eu_hosted`), the only ones that
+# may read « Santé » there. Empty (the default): the health tool refuses on every model of a place.
+# eu_hosted = ["glm-5.3-flash"]
 
 [apns]
 # Leave team_id/key_id empty to disable push.
