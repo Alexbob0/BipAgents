@@ -171,6 +171,7 @@ top of the pinned stable release (`BASE`: v0.22.5), and the installer applies th
 | 0018 guest turns | a relative's turn gets only the guest's tools and no USER.md |
 | 0019 routines report to their conversation | a routine made in a conversation answers there |
 | 0020 per-call usage in the Runs API | real cost per model call, for budgets |
+| 0021 the main conversation stays the app's | each agent's main conversation keeps streaming and its history on v0.22.5 |
 
 **How we upstream them.** The series is kept as a git branch on upstream Hermes and exported with
 `scripts/hermes-patches.sh` (`branch`, `export`, `check`): one commit per patch, stable names, the same bytes every

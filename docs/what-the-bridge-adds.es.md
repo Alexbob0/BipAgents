@@ -183,6 +183,7 @@ los aplica.
 | 0018 turnos de invitados | el turno de un familiar solo tiene las herramientas del invitado y ningún USER.md |
 | 0019 las rutinas informan en su conversación | una rutina creada en una conversación responde allí |
 | 0020 consumo por llamada en la API Runs | el coste real de cada llamada al modelo, para los presupuestos |
+| 0021 la conversación principal sigue siendo la de la app | la conversación principal de cada agente conserva la respuesta en directo y su historial en v0.22.5 |
 
 **Cómo los llevamos upstream.** La serie es una rama git sobre Hermes, exportada con `scripts/hermes-patches.sh`
 (`branch`, `export`, `check`): un commit por parche, nombres estables, los mismos bytes cada vez. Pasar a un Hermes

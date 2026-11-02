@@ -187,6 +187,7 @@ Installer wendet sie an.
 | 0018 Gast-Runden | die Runde eines Angehörigen bekommt nur die Werkzeuge des Gastes und keine USER.md |
 | 0019 Routinen berichten in ihr Gespräch | eine Routine, die in einem Gespräch entstand, antwortet dort |
 | 0020 Verbrauch pro Aufruf in der Runs-API | echte Kosten pro Modellaufruf, für Budgets |
+| 0021 das Hauptgespräch bleibt das der App | das Hauptgespräch jedes Agenten behält Live-Anzeige und Verlauf auf v0.22.5 |
 
 **Wie wir sie upstream bringen.** Die Serie ist ein Git-Branch auf Hermes, exportiert mit `scripts/hermes-patches.sh`
 (`branch`, `export`, `check`): ein Commit pro Patch, stabile Namen, jedes Mal dieselben Bytes. Der Wechsel auf ein
