@@ -162,6 +162,7 @@ pub mod rooms;
 pub mod rooms_handoff;
 pub mod rooms_memory;
 pub mod rooms_remote;
+pub mod rooms_tasks;
 pub mod routes;
 #[doc(hidden)]
 pub mod tools_knowledge; // the group's private helpers (pub for its golden tests)
