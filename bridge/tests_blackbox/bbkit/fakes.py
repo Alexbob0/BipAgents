@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import array
 import asyncio
+import hashlib
 import json
 import math
 import re
@@ -301,6 +302,11 @@ class FakeHermes(Fake):
         self.forget_runs = False
         self.default_session = {"title": "Bot Chat", "message_count": 7}
         self.unique_titles = False   # as Hermes: a title another conversation holds is refused (400)
+        # Hermes v0.22.5 as the threads see it (test_threads.py): a session continued after a compression (one with a
+        # `parent_session_id`) is listed only with `include_children=1`; every row has a stable `message_uid`; a text
+        # run on the session titled « Bot Chat » goes to the peer FIFO (`peer_fifo`) and never runs as a turn.
+        self.v0225 = False
+        self.peer_fifo: List[Dict[str, Any]] = []
 
     # what the tests set up
     def add_session(self, session_id: str, messages: List[Dict[str, Any]], title: str = "Discussion",
@@ -344,6 +350,10 @@ class FakeHermes(Fake):
         if len(parts) == 2 and method == "POST":
             body = seen.json() or {}
             now, text = split_now(body.get("input"))
+            titled = self.sessions.get(agent, {}).get(body.get("session_id") or "", {}).get("title")
+            if self.v0225 and titled == "Bot Chat" and isinstance(text, str):
+                self.peer_fifo.append({"agent": agent, "session_id": body.get("session_id"), "input": text})
+                return JSONResponse({"run_id": f"peer{len(self.peer_fifo)}", "status": "queued"}, status_code=202)
             with self.lock:
                 run_id = f"r{len(self.started) + 1}"
                 self.started[run_id] = {"status": "running", "polls": 0, "input": text, "now": now,
@@ -424,6 +434,8 @@ class FakeHermes(Fake):
         mine = self.sessions.setdefault(agent, {})
         if len(parts) == 2 and method == "GET":
             listed = sorted(mine.values(), key=lambda s: -float(s.get("last_active") or 0))
+            if self.v0225 and "include_children=1" not in seen.query:
+                listed = [s for s in listed if not s.get("parent_session_id")]
             return JSONResponse({"sessions": listed})
         if len(parts) == 2 and method == "POST":
             body = seen.json() or {}
@@ -466,7 +478,15 @@ class FakeHermes(Fake):
                 timer.start()
             return JSONResponse({})
         if len(parts) == 4 and parts[3] == "messages":
-            return JSONResponse({"messages": self.messages.get((agent, session_id), [])})
+            rows = self.messages.get((agent, session_id), [])
+            if self.v0225:
+                rows = [{"id": i + 1, "message_uid": r.get("message_uid") or hashlib.md5(f"{agent}/{session_id}/{i}".encode()).hexdigest(), **r}
+                        for i, r in enumerate(rows)]
+                if "inline_images=false" in seen.query:   # photos as placeholders, as Hermes without inline images
+                    rows = [{**r, "content": [{"type": "text", "text": "[image]"} if p.get("type") == "image_url" else p
+                                              for p in r["content"]]} if isinstance(r.get("content"), list) else r
+                            for r in rows]
+            return JSONResponse({"messages": rows})
         if len(parts) == 4 and parts[3] == "chat" and method == "POST":
             body = seen.json() or {}
             now, body["message"] = split_now(body.get("message"))
