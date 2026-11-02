@@ -12,7 +12,10 @@
 //! the same text at every turn of the call so that the model server's cache holds.
 //!
 //!     GET  /v1/live/brief?agent=&session=   {session, text, points_at}   (without a session: the agent's latest one)
-//!     POST /v1/live/calls                   {agent, session, live_session}   a call that just ended
+//!     POST /v1/live/calls                   {agent, session, live_session, deposit?, run_id?, started_at?}   a call
+//!                                           that just ended (`deposit`: put into its conversation, live_calls.rs)
+//!     POST /v1/live/calls/start             {agent, session, live_session}   a call that starts (live_calls.rs)
+//!     GET  /v1/live/calls?agent=&session=   {calls}   the calls shown in a conversation (live_calls.rs)
 //!     POST /v1/live/recaps                  {agent, session, recap}   what the call said, for the next written message
 //!     POST /v1/live/recaps/take             {agent, session} -> {recap}   taken by the device that writes it (any of
 //!                                           the person's: the recap waits here, not on the phone that made the call)
@@ -796,12 +799,39 @@ pub struct CallEnded {
     pub agent: String,
     pub session: String,
     pub live_session: String,
+    /// The apps since 2026-10-31: the bridge puts the call into the conversation (live_calls.rs), not the phone.
+    #[serde(default)]
+    pub deposit: bool,
+    /// The turn going on at the hang-up, left to end (live_calls.rs).
+    #[serde(default)]
+    pub run_id: Option<String>,
+    /// When the call started (Unix seconds), when its start notice did not reach the bridge.
+    #[serde(default)]
+    pub started_at: Option<f64>,
 }
 
 impl Validate for CallEnded {
     fn validate(&self, errors: &mut Vec<FieldError>) {
         web::check_max_len(errors, "agent", Some(&self.agent), 200);
         web::check_max_len(errors, "session", Some(&self.session), 300);
+        web::check_max_len(errors, "live_session", Some(&self.live_session), 300);
+        web::check_max_len(errors, "run_id", self.run_id.as_deref(), 256);
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CallStarted {
+    pub agent: String,
+    pub session: String,
+    pub live_session: String,
+}
+
+impl Validate for CallStarted {
+    fn validate(&self, errors: &mut Vec<FieldError>) {
+        web::check_max_len(errors, "agent", Some(&self.agent), 200);
+        web::check_min_len(errors, "session", Some(&self.session), 1);
+        web::check_max_len(errors, "session", Some(&self.session), 300);
+        web::check_min_len(errors, "live_session", Some(&self.live_session), 1);
         web::check_max_len(errors, "live_session", Some(&self.live_session), 300);
     }
 }
@@ -893,12 +923,53 @@ async fn live_call(State(state): State<AppState>, Json(body): Json<CallEnded>) -
     crate::agent_restart::note_live(&agent.name); // not restarted for a while (agent_restart.rs)
     let briefs = state.briefs.clone();
     let config = state.config();
+    let (name, session, live) = (agent.name.clone(), body.session.clone(), body.live_session.clone());
     blocking(move || {
         let _ = crate::feature_tips::used(&config, "live", crate::py::time_time()); // a Live call (feature_tips.rs)
-        briefs.note_call(&agent.name, &body.session, &body.live_session)
+        briefs.note_call(&name, &session, &live)
     })
     .await?;
-    Ok(web::ok(json!({"ok": true})))
+    if !body.deposit {
+        return Ok(web::ok(json!({"ok": true}))); // an older app keeps the recap itself
+    }
+    // The call lands in its conversation (live_calls.rs), its last turn waited for: in the background.
+    let mut ending = crate::live_calls::Ending::hangup(
+        agent,
+        &body.session,
+        &body.live_session,
+        body.run_id.filter(|r| !r.is_empty()),
+    );
+    ending.started_at = body.started_at.filter(|t| *t > 0.0);
+    let background = state.clone();
+    state.spawn(async move {
+        crate::live_calls::end_call(&background, ending).await;
+    });
+    Ok(web::ok(json!({"ok": true, "deposit": true})))
+}
+
+/// A call starts (the apps since 2026-10-31): the bridge ends it by itself if the app never says (live_calls.rs).
+async fn live_call_start(State(state): State<AppState>, Json(body): Json<CallStarted>) -> ApiResult<Response> {
+    let agent = setup(&state, &body.agent)?;
+    crate::agent_restart::note_live(&agent.name);
+    let calls = crate::live_calls::LiveCalls::of(&state.briefs);
+    let call = crate::live_calls::OpenCall {
+        agent: agent.name.clone(),
+        session: body.session,
+        live_session: body.live_session,
+        started_at: crate::py::time_time(),
+    };
+    blocking(move || calls.note_start(call)).await?;
+    Ok(web::ok(json!({"ok": true, "deposit": true})))
+}
+
+/// The calls that continued a conversation, shown in it (live_calls.rs).
+async fn live_calls_list(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
+    let agent = web::query_required(&q, "agent")?;
+    let session = web::query_required(&q, "session")?;
+    let config = setup(&state, &agent)?;
+    let calls = crate::live_calls::LiveCalls::of(&state.briefs);
+    let records = blocking(move || Ok(calls.records(&config.name, &session))).await?;
+    Ok(web::ok(crate::live_calls::listed(records)))
 }
 
 async fn keep_recap(State(state): State<AppState>, Json(body): Json<CallRecap>) -> ApiResult<Response> {
@@ -924,16 +995,19 @@ async fn take_recap(State(state): State<AppState>, Json(body): Json<RecapTaken>)
             crate::beta_measures::person_message(&config, to_guide, crate::py::time_time());
         }
         // The family news waiting for the agent (family_news.rs) joins the same message, the same way.
-        // The current time first (dates/now.rs), then what waited for this message.
+        // The current time first (dates/now.rs), then what waited for this message. The bridge's own notes name the
+        // app's parts in the agent's language (names.rs); the others carry people's words, left as they are.
+        let lang = crate::handback::language_of(&config, &agent);
+        let named = |note: Option<String>| note.map(|n| crate::names::localize(&n, &lang));
         let parts: Vec<String> =
             [
                 Some(crate::dates::now::line(&config, &agent)),
                 briefs.take_recap(&agent.name, &body.session),
                 crate::family_news::take_notes(&config, &agent.name),
-                crate::notebook::news::take_now(&config, &agent.name), // the Carnet's news (notebook/news.rs)
+                named(crate::notebook::news::take_now(&config, &agent.name)), // the Carnet's news (notebook/news.rs)
                 crate::rooms_memory::take_note(&config, &agent.name), // what's new in its rooms (rooms_memory.rs)
                 crate::friends_cards::take_note(&config, &agent.name), // friends' taps on its cards (friends_cards.rs)
-                crate::storage_watch::take_note(&config, &agent.name), // the place's space (storage_watch.rs)
+                named(crate::storage_watch::take_note(&config, &agent.name)), // the place's space (storage_watch.rs)
                 crate::feature_tips::on_message(
                     &config,
                     &agent.name,
@@ -957,7 +1031,8 @@ async fn take_recap(State(state): State<AppState>, Json(body): Json<RecapTaken>)
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/live/brief", get(live_brief))
-        .route("/live/calls", post(live_call))
+        .route("/live/calls", get(live_calls_list).post(live_call))
+        .route("/live/calls/start", post(live_call_start))
         .route("/live/recaps", post(keep_recap))
         .route("/live/recaps/take", post(take_recap))
 }

@@ -286,6 +286,28 @@ puis à chaque démarrage par `bipagents-image-views.service`). Une seule copie 
 Une nouvelle place sur le même serveur ne télécharge rien
 (`add-seat.sh` → `seat-agent.py --prepare`). Les voix étaient déjà partagées (un seul Pocket par serveur).
 
+### Des places protégées les unes des autres sur un serveur partagé
+
+Plusieurs personnes partagent un serveur ; une place qui remplit son disque ou sa mémoire ne doit jamais faire tomber
+les autres (`installer/cloud/seat-agent.py`, 2026-10-30) :
+
+- **Disque : 5 Go par place, comme son propre disque.** Le dossier personnel de chaque place est une image ext4 de
+  5 Go (`/var/lib/bipagents/places/<compte>.img`, creuse : elle ne prend sur le serveur que ce que la place a écrit),
+  montée sur `/home/<compte>` avant ses services. Tout ce que la place écrit est dedans (son stockage podman, donc ce
+  qu'un agent installe dans son bac à sable, ses navigateurs, son espace chiffré) : `df` y montre 5 Go, et une place
+  pleine reçoit « plus de place » sur son disque seulement. Les nouvelles places l'ont avant leur installation
+  (`add-seat.sh`, `user-data.yaml` → `seat-agent.py --own-disk <n>`) ; celles installées avant y passent à leur
+  prochain ordre de mise à jour (la copie arrête leurs services une minute ou deux ; l'ancien dossier est gardé
+  7 jours). Toutes les 5 minutes : à 80 %, une note à ses agents (faire de la place, ou en demander) ; à 95 %, le
+  guichet prévient Kerfy une fois ; une place pas encore sur son propre disque est mesurée avec `du` contre les mêmes
+  5 Go et, au-delà de 95 %, son pont met en pause l'espace de travail de ses agents (rien n'est effacé) jusqu'à
+  repasser sous 90 %.
+- **Mémoire et processeur : des parts souples.** Le `user-<uid>.slice` de chaque place : `MemoryHigh` = 80 % de la
+  mémoire ÷ les places (au moins 768 Mo ; au-delà la place ralentit, rien n'est tué), `MemoryMax` seulement en
+  sécurité à 1,5 × cela, `CPUWeight` égal, `TasksMax` 8192.
+- **Les agents le savent** (places de l'offre seulement) : leur espace est petit, les gros outils n'y rentrent pas,
+  proposer GitHub Actions ou un service en ligne ; jamais de chiffres.
+
 ### Mesurer une installation (serveur jetable)
 
 Avant et après, même hébergeur et même taille, un serveur neuf à chaque fois :

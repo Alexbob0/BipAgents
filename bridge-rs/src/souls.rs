@@ -173,8 +173,9 @@ pub const VISUAL_RULE: &str = concat!(
     "show it: make a page with create_page (its kit makes a clean one in a few lines) and put its MEDIA: line inside ",
     "your reply, alone on its line where it belongs, with a sentence or two before it and the rest after. Keep your text ",
     "around it short: the page holds the details. Never send a picture of a chart or a table. Link the page to the ",
-    "Carnet page of its subject (create_page's notebook). Places to go, a tour or a way somewhere: a map from ",
-    "map_image in the page. A quick answer, a single number or small talk stays plain text."
+    "Carnet page of its subject (create_page's notebook). A map, places to go, a tour or a way somewhere: map_image ",
+    "(the places by name or address, it finds them; its result is a live map), never a picture or coordinates of ",
+    "your own. A quick answer, a single number or small talk stays plain text."
 );
 
 /// A quick word before slow work (owner's request 2026-10-25, like Grok's app: « Bonne idée, je lance une recherche… »
@@ -314,7 +315,16 @@ fn with_style_paragraph(soul: &str, paragraph: &str) -> String {
 
 /// The soul with the answer style `style` (one of `ANSWER_STYLES`; the person's own text for « custom »).
 pub fn with_style(soul: &str, style: Option<&str>, custom: Option<&str>) -> String {
-    with_style_paragraph(soul, &style_rule(style, custom))
+    with_style_paragraph(soul, &style_in(&style_rule(style, custom), soul_language(soul).as_deref()))
+}
+
+/// A style paragraph for an agent writing in `lang`: its closing `STYLE_CARD_RULE` through `for_language` (« never a
+/// Notebook or memory note »), the person's own words before it untouched.
+fn style_in(paragraph: &str, lang: Option<&str>) -> String {
+    match paragraph.find(&STYLE_CARD_RULE[..36]) {
+        Some(at) => format!("{}{}", &paragraph[..at], for_language(STYLE_CARD_RULE, lang)),
+        None => paragraph.to_string(),
+    }
 }
 
 pub fn language_name(code: &str) -> &'static str {
@@ -324,10 +334,12 @@ pub fn language_name(code: &str) -> &'static str {
 pub fn language_block(lang: Option<&str>) -> String {
     let code = agent_language(lang);
     let name = language_name(&code);
+    // the app's parts by their names in that language (names.rs; none for French: the texts name them so)
+    let names = crate::names::rule(&code).map(|rule| format!(" {rule}")).unwrap_or_default();
     for_language(
         &format!(
             "{BLOCK_START}\nLanguage: answer in the language your person writes in. Always write it with its accents and usual punctuation (routines and notes too), never an ASCII-only version. When you write first (a routine, \
-             a report, a reminder), write in {name}. The current time is at the top of each message (a bip:now line): trust it, never check it in the terminal.\n{CONTENT_RULE}\n{SENDING_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{PROJECT_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{LONG_WORK_RULE}\n{VISUAL_RULE}\n{SPACE_RULE}\n{ACK_RULE}\n{STYLE_RULE}\n{BLOCK_END}"
+             a report, a reminder), write in {name}.{names} The current time is at the top of each message (a bip:now line): trust it, never check it in the terminal.\n{CONTENT_RULE}\n{SENDING_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{PROJECT_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{LONG_WORK_RULE}\n{VISUAL_RULE}\n{SPACE_RULE}\n{ACK_RULE}\n{STYLE_RULE}\n{BLOCK_END}"
         ),
         Some(&code),
     )
@@ -363,7 +375,8 @@ const ENGLISH_EXAMPLES: [(&str, &str); 22] = [
 ];
 
 /// A rule's text for an agent writing first in `lang`: as it is in French (or when the language isn't known: a
-/// personality without a language block), its examples in English otherwise (`ENGLISH_EXAMPLES`).
+/// personality without a language block), its examples in English otherwise (`ENGLISH_EXAMPLES`) and the app's parts
+/// by their names in that language (« Notebook », not « Carnet »: names.rs, Alex 2026-11-01).
 pub fn for_language(rule: &str, lang: Option<&str>) -> String {
     let Some(code) = lang.map(|l| agent_language(Some(l))).filter(|c| c != "fr") else { return rule.to_string() };
     let w = crate::notebook::words(&code);
@@ -373,7 +386,7 @@ pub fn for_language(rule: &str, lang: Option<&str>) -> String {
             text = text.replace(french, &other.replace("{me}", w.me).replace("{brief}", w.brief));
         }
     }
-    text
+    crate::names::localize(&text, &code)
 }
 
 /// The language a personality writes first in (its language block's), for the blocks placed after it.
@@ -423,9 +436,11 @@ pub fn split_language(soul: &str) -> (String, Option<String>) {
 pub fn with_language(soul: &str, lang: Option<&str>) -> String {
     let (body, _) = split_language(soul);
     let fresh = format!("{}\n\n{}\n", body.trim_end(), language_block(lang));
-    // the agent's answer style stays (answer_style.rs)
+    // the agent's answer style stays (answer_style.rs), in the new language
     match style_paragraph(soul) {
-        Some(kept) if kept != STYLE_RULE => with_style_paragraph(&fresh, &kept),
+        Some(kept) if !kept.starts_with(&STYLE_RULE[..24]) => {
+            with_style_paragraph(&fresh, &style_in(&kept, Some(&agent_language(lang))))
+        }
         _ => fresh,
     }
 }
@@ -686,7 +701,60 @@ pub fn sync_payments(config: &crate::config::Config, agent: &crate::config::Agen
     }
 }
 
-// --- token diet prototype (2026-10-24, not wired in) -------------------------------------------------------------
+pub const SERVER_START: &str = "<!-- bipagents:server -->";
+pub const SERVER_END: &str = "<!-- /bipagents:server -->";
+
+/// The offer's places only (`handover::on_offer`, 2026-10-30): the place is a 5 GB disk on a server shared with other
+/// people (installer/cloud/seat-agent.py), and a « DevOps » agent had planned to install Flutter and the Android SDK
+/// there. Never numbers (Alex: the agent must not talk about memory, only know that it doesn't fit). Rust bridge
+/// only; `heal_souls` adds it at start, and takes it away from a place that isn't the offer's. Short: paid on every
+/// call. Since the same day it points to the green light (`heavy_work`, heavy_work.rs), which answers from the place's
+/// room and says what to propose instead (an online service, GitHub Actions, a bigger plan coming).
+pub const SERVER_RULE: &str = "Before installing, building or downloading anything big, ask heavy_work; if it says it \
+doesn't fit, say so simply and suggest another way.";
+
+/// The personality without the server block (the person never sees it).
+pub fn split_server(soul: &str) -> String {
+    let (Some(start), Some(end)) = (soul.find(SERVER_START), soul.find(SERVER_END)) else {
+        return soul.to_string();
+    };
+    if end < start {
+        return soul.to_string();
+    }
+    format!("{}{}", soul[..start].trim_end(), &soul[end + SERVER_END.len()..])
+}
+
+/// The personality with the server block when `on` (at its end when it had none or an older one), without it
+/// otherwise.
+pub fn with_server(soul: &str, on: bool) -> String {
+    let block = format!("{SERVER_START}\n{SERVER_RULE}\n{SERVER_END}");
+    if on && soul.contains(&block) {
+        return soul.to_string(); // already there, wherever the other blocks put it
+    }
+    let body = split_server(soul);
+    if !on {
+        return if soul.contains(SERVER_START) { format!("{}\n", body.trim_end()) } else { soul.to_string() };
+    }
+    format!("{}\n\n{block}\n", body.trim_end())
+}
+
+/// The agent's SOUL.md gets the server block on the offer's places (written only when it changes; agents set up by
+/// hand are left alone).
+pub fn sync_server(config: &crate::config::Config, agent: &crate::config::AgentConfig) {
+    if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
+        return;
+    }
+    let path = crate::agents_admin::profile_folder(config, agent).join("SOUL.md");
+    let Ok(soul) = std::fs::read_to_string(&path) else { return };
+    let changed = with_server(&soul, crate::handover::on_offer());
+    if changed != soul {
+        if let Err(err) = std::fs::write(&path, changed) {
+            tracing::warn!(agent = %agent.name, error = %err, "server rule not written");
+        }
+    }
+}
+
+// --- token diet prototype (2026-10-24, not wired in)-------------------------------------------------------------
 //
 // The same commitments as the language block and the notebook rule, in about half the tokens (scripts/token-anatomy.py
 // counts both). Nothing uses them yet: switching `language_block` / `with_notebook` to them waits for Alex's go and a
@@ -718,8 +786,8 @@ pub const COMPACT_RULES: &str = concat!(
     "(notebook_fill), sorting mails, deep research, comparing 10 flats; a bigger budget or your own idea: propose_task. ",
     "Never give browsing to delegate_task: browse yourself in your visible browser, or in a background task.\n",
     "Numbers to compare, a plan, a budget, a routine or linked steps: show them in a create_page page, its MEDIA: line ",
-    "inside your reply with short text around, linked to its Carnet page; places: map_image in the page. Never a ",
-    "picture of a chart. A quick answer stays plain text."
+    "inside your reply with short text around, linked to its Carnet page; a map or places: map_image (names, not ",
+    "coordinates). Never a picture of a chart or a map. A quick answer stays plain text."
 );
 
 /// `language_block` with `COMPACT_RULES` in place of the nine rules.
@@ -896,7 +964,11 @@ mod tests {
         let soul = with_notebook(&with_language("Tu es Vie.\n", Some("fr")), true);
         assert!(soul.contains("« Noté dans ton Carnet : … »"));
         let english = relanguage_blocks(&with_language(&soul, Some("en")));
-        assert!(english.contains("« Noted in your Carnet: … »") && !english.contains("Noté dans"), "{english}");
+        assert!(english.contains("« Noted in your Notebook: … »") && !english.contains("Noté dans"), "{english}");
+        // the app's parts by their names in the agent's language (names.rs), never the French ones
+        assert!(!english.contains("Carnet") && english.contains("the Notebook, the Inbox"), "{english}");
+        let german = relanguage_blocks(&with_language(&english, Some("de")));
+        assert!(german.contains("Notizbuch") && !german.contains("Notebook") && !german.contains("Carnet"), "{german}");
         let back = relanguage_blocks(&with_language(&english, Some("fr")));
         assert!(back.contains("« Noté dans ton Carnet : … »") && !back.contains("Noted in"), "{back}");
     }
@@ -1024,13 +1096,15 @@ mod tests {
         }
         assert!(STYLE_RULE.len() < 540, "short: paid on every call (with its style card line)");
         for lang in LANGUAGES.iter().chain(["de", "es"].iter()) {
+            // its closing line names the Carnet in the agent's language (names.rs)
+            let rule = for_language(STYLE_RULE, Some(lang));
             for category in CATEGORIES {
                 let soul = soul_for("Bip", category, Some(lang)).unwrap();
-                assert_eq!(soul.matches(STYLE_RULE).count(), 1, "{category} {lang}");
+                assert_eq!(soul.matches(&rule).count(), 1, "{category} {lang}");
             }
             let custom = custom_soul("Bip", "jardinier", "doux", "", Some(lang));
-            assert_eq!(custom.matches(STYLE_RULE).count(), 1, "custom {lang}");
-            assert!(language_block_compact(Some(lang)).contains(STYLE_RULE));
+            assert_eq!(custom.matches(&rule).count(), 1, "custom {lang}");
+            assert!(language_block_compact(Some(lang)).contains(&rule));
         }
         // an older block (before the rule) is brought to it in place, once
         let old = with_language("Tu es Prof.\n", Some("fr")).replace(&format!("\n{STYLE_RULE}"), "");
@@ -1065,5 +1139,21 @@ mod tests {
         assert_eq!(template("custom", None).unwrap()["soul"], "");
         assert!(soul_for("Max", "finance", Some("en")).unwrap().starts_with("You are Max, your user's money agent"));
         assert!(soul_for("Max", "custom", Some("en")).is_err());
+    }
+
+    #[test]
+    fn an_offer_place_s_agent_knows_big_toolchains_don_t_fit() {
+        let soul = "You are Max.\n";
+        let on = with_server(soul, true);
+        assert!(on.ends_with(&format!("{SERVER_START}\n{SERVER_RULE}\n{SERVER_END}\n")));
+        assert_eq!(with_server(&on, true), on); // once
+        assert_eq!(split_server(&on).trim_end(), "You are Max.");
+        assert_eq!(with_server(&on, false), soul); // a place that isn't the offer's: taken away
+        assert_eq!(with_server(soul, false), soul);
+        // no numbers, nothing about memory (Alex, 2026-10-30), and short: at most 30 tokens (about 4.5 characters each)
+        assert!(!SERVER_RULE.chars().any(|c| c.is_ascii_digit()));
+        assert!(!SERVER_RULE.contains("RAM") && !SERVER_RULE.to_lowercase().contains("memory"));
+        assert!(SERVER_RULE.len() <= 140, "{}", SERVER_RULE.len());
+        assert!(SERVER_RULE.contains(crate::heavy_work::HEAVY_WORK) && SERVER_RULE.contains("another way"));
     }
 }

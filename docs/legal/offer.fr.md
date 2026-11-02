@@ -222,10 +222,13 @@ crédit (tu peux en ajouter, section 6) ; les services que tu relies à tes agen
   usage unique envoyé à cette adresse). Il contient ton identité (identifiant Apple ou Google, adresse
   e-mail), le lien avec ton abonnement, la liste de tes appareils et tes invitations. **Il ne contient jamais les clés
   de ta place** : elles restent sur tes appareils.
-- **Nouvel appareil** : tu l'approuves depuis un appareil que tu as déjà.
-- **Plus aucun appareil** : tu récupères ton compte au bout de **24 heures**, et tes anciens appareils et ton adresse
-  e-mail en sont prévenus ; ou **tout de suite** avec ton **code de récupération**, que l'app te propose de faire juste
-  après l'achat. Ce code ouvre aussi
+- **Nouvel appareil** : tu te connectes (Apple, Google ou e-mail) et tu entres le **code à usage unique envoyé à
+  ton adresse e-mail** ; si tu as ajouté une **appli d'authentification**, son code est demandé aussi. Tu peux aussi
+  l'approuver depuis un appareil que tu as déjà. Chaque nouvel appareil est **signalé** à tes autres appareils et par
+  e-mail, avec un lien pour le retirer ; chaque accès est journalisé.
+- **Plus d'accès à ton e-mail** : tu récupères ton compte **tout de suite** avec ton **code de récupération**
+  (facultatif, dans Réglages › Compte), ou au bout de **24 heures**, tes appareils et ton adresse en étant prévenus.
+  Ce code ouvre aussi
   la copie de ta clé de sauvegarde que Kerfy Studio garde chiffrée et ne peut pas lire sans lui. **Garde-le en lieu
   sûr** : Kerfy Studio ne le connaît pas et ne peut pas le retrouver. Sans appareil ni code de récupération, personne
   ne peut ouvrir tes sauvegardes.

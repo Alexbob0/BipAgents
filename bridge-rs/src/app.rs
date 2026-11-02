@@ -306,7 +306,7 @@ impl AppState {
             }
         }
         if config.cron_watch {
-            let watcher = Arc::new(CronWatcher::new(
+            let mut watcher = CronWatcher::new(
                 self.config.clone(),
                 self.hermes.clone(),
                 self.outbox.clone(),
@@ -316,8 +316,9 @@ impl AppState {
                 Some(self.hub.clone()),
                 Some(self.push.clone()),
                 Some(self.presence.clone()),
-            ));
-            self.spawn(watcher.run());
+            );
+            watcher.briefs = Some(self.briefs.clone());
+            self.spawn(Arc::new(watcher).run());
         }
         self.spawn(purge_loop(self.clone()));
         // what takes the place's space, measured; the 80/95 % cards, the pause when full (storage_watch.rs)
@@ -335,6 +336,7 @@ impl AppState {
         crate::agent_email::start(self);
         self.spawn(self.briefs.clone().run());
         self.spawn(self.briefs.clone().sweep_forever());
+        self.spawn(crate::live_calls::run_forever(self.clone())); // Live calls the app never ended (live_calls.rs)
         // the plan's AI credit used (a server of the offer): routines, the browser and background tasks pause
         self.spawn(crate::credit::run_forever(self.clone()));
         // an agent's Hermes restarted when there is a reason, once idle (agent_restart.rs)
@@ -1023,7 +1025,14 @@ async fn session_state(
     // the agent's Boîte messages (a hand-back, a routine's report): they show in the conversation too (Bot Chat, all
     // of them) without changing its message count; the app reloads when this changes
     let outbox = state.store.outbox_marker(&agent_cfg.name).await.ok();
-    Ok(web::ok(json!({"session_id": session_id, "message_count": count, "updated_at": updated, "outbox": outbox})))
+    let mut out = json!({"session_id": session_id, "message_count": count, "updated_at": updated, "outbox": outbox});
+    // a Live call put in it (live_calls.rs): shown at its time, the app reloads when this changes; absent without any
+    let calls = crate::live_calls::LiveCalls::of(&state.briefs);
+    let (name, id) = (agent_cfg.name.clone(), session_id.clone());
+    if let Ok(Some(marker)) = tokio::task::spawn_blocking(move || calls.marker(&name, &id)).await {
+        out["calls"] = json!(marker);
+    }
+    Ok(web::ok(out))
 }
 
 /// Is each agent's Hermes up, and does the model answer? Lets the app tell « server down » from « model
@@ -1591,7 +1600,8 @@ const FIRST_ROUTE_METHODS: &[(&str, &str)] = &[
     ("/v1/agents/{agent_id}/voices", "PUT"),
     ("/v1/agents/{agent_id}/appearance", "PUT"),
     ("/v1/live/brief", "GET"),
-    ("/v1/live/calls", "POST"),
+    ("/v1/live/calls", ""),
+    ("/v1/live/calls/start", "POST"),
     ("/v1/live/recaps", "POST"),
     ("/v1/live/recaps/take", "POST"),
     ("/v1/favicon/{host}", "GET"),
@@ -1716,6 +1726,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(build_router())
         .merge(agents_admin::router())
         .merge(crate::agent_groups::router())
+        .merge(crate::model_choice::router())
         .merge(crate::files_kept::router())
         .merge(crate::storage_watch::router())
         .merge(crate::feature_tips::router())
@@ -1730,6 +1741,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::handover::app_router())
         .merge(crate::link_wallet::app_router())
         .merge(crate::place_backup::router())
+        .merge(crate::restore_reconcile::router())
         .merge(crate::place_move::router())
         .merge(import_admin)
         .merge(crate::ssh_keys::router())

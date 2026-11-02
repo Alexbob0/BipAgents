@@ -40,18 +40,23 @@ static TILE_TURN: LazyLock<tokio::sync::Mutex<Option<Instant>>> = LazyLock::new(
 pub fn tool() -> Value {
     json!({
         "name": TOOL_NAME,
-        "description": "Make a map (OpenStreetMap) with numbered markers, for a page or a reply. Give the places as names \
-    (« Gare de Lyon, Paris ») or « lat, lon ». The result gives a <figure class=\"map-card\"> to paste as it is in \
-    create_page's HTML: in the app it is a live map (move, zoom, a tap on a line of its list goes to its marker, an \
-    « Open in Maps » button per place), elsewhere its picture. line: draw a line through the markers in order (a walk, \
-    a tour). directions: a button for the way from the first marker to the last (walking, driving, transit, \
-    bicycling). Also a MEDIA: line to show the picture alone in a reply.",
+        "description": "A live map in the app (move, zoom, « Open in Maps » per place): use it whenever the person asks \
+    for a map, a « carte », places to see, a tour or a way somewhere; never generate an image of a map, never draw one \
+    in a page. Give each place by its NAME (in the local language when you know it: « Castelo de São Jorge ») or its \
+    ADDRESS (« 12 rue de Rivoli »), and area (the town): \
+    the bridge finds the exact spots itself. Never write coordinates from memory (they land in the sea); « lat, lon » \
+    only when the person or a tool gave them (they are checked). The result gives a MEDIA: line (the map, shown in your \
+    reply) and a short card to put in a bigger create_page page. line: a line through the markers in order (a walk). \
+    directions: a button for the way from the first marker to the last. To move a place, call again.",
         "inputSchema": {"type": "object", "properties": {
             "markers": {"type": "array", "maxItems": MAX_MARKERS, "items": {"type": "object", "properties": {
-                "place": {"type": "string", "description": "a name or « lat, lon »"},
-                "label": {"type": "string", "description": "what the list says for it"},
+                "place": {"type": "string", "description": "its name or address as typed in a map search; not coordinates"},
+                "label": {"type": "string", "description": "what the list says for it (default: the name found)"},
+                "note": {"type": "string", "description": "a short line under it (hours, why go)"},
                 "color": {"type": "string", "description": "red, blue, green, orange, purple, teal, yellow, pink or #rrggbb"}},
                 "required": ["place"]}},
+            "area": {"type": "string", "description": "the town or region all the places are in (« Lisbonne, Portugal »): the search stays there"},
+            "title": {"type": "string", "description": "the map's title (« Lisbonne en 5 monuments »)"},
             "center": {"type": "string", "description": "without markers: the place the map shows"},
             "zoom": {"type": "integer", "minimum": 3, "maximum": 18, "description": "default: what fits the markers"},
             "line": {"type": "boolean", "description": "a line through the markers, in their order"},
@@ -322,18 +327,389 @@ fn color(name: &str, index: usize) -> [u8; 3] {
 
 struct Marker {
     label: String,
+    address: String,
+    area: String,
+    source: &'static str,
+    note: String,
     lat: f64,
     lon: f64,
     color: [u8; 3],
+    /// A street (or found as one): left out rather than drawn far from the others.
+    street: bool,
 }
 
-async fn locate(config: &Config, place: &str) -> Result<(f64, f64, String), String> {
-    if let Some((lat, lon)) = crate::weather::parse_coordinates(place) {
-        return Ok((lat, lon, place.trim().to_string()));
+// --- finding the places ---------------------------------------------------------------------------------------------
+//
+// The model never places a marker from memory (2026-10-31: GLM-5.3 Flash wrote Lisbon's monuments as coordinates of
+// its own and they fell in the sea, twice). Names and addresses are looked up by the bridge (Nominatim, its policy:
+// weather::nominatim), inside the `area` when one is given. Coordinates are only taken once checked: inside the area,
+// or on land (a reverse lookup finds something there); else the other order (« lon, lat », GeoJSON's) when that one
+// passes; else the marker's label is looked up. Last, a map's places are kept together (`strays`): a place far from all
+// the others is looked up again near them, and a street still far from them is left out and said.
+
+/// A place the geocoder knows.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Found {
+    pub name: String,
+    pub address: String,
+    pub lat: f64,
+    pub lon: f64,
+    /// south, north, west, east
+    pub bbox: Option<[f64; 4]>,
+    /// Its town and country (« Lisboa, Portugal »), when the answer had its address's parts.
+    pub area: String,
+    /// A street (OpenStreetMap's `highway`): its name comes back in many towns and districts.
+    pub street: bool,
+}
+
+fn number(value: Option<&Value>) -> Option<f64> {
+    match value? {
+        Value::Number(n) => n.as_f64(),
+        Value::String(s) => s.trim().parse().ok(),
+        _ => None,
     }
-    match crate::weather::geocode(config, place).await? {
-        Some(found) => Ok((found.lat, found.lon, found.name)),
-        None => Err(format!("no place found for « {place} »")),
+}
+
+/// The first place of a Nominatim answer (`search`: a list; `reverse`: one object, or `{"error": …}` over the sea).
+pub fn found_of(answer: &Value) -> Option<Found> {
+    let item = match answer {
+        Value::Array(items) => items.first()?,
+        other => other,
+    };
+    let lat = number(item.get("lat"))?;
+    let lon = number(item.get("lon"))?;
+    if !((-90.0..=90.0).contains(&lat) && (-180.0..=180.0).contains(&lon)) {
+        return None;
+    }
+    let address = item.get("display_name").and_then(Value::as_str).unwrap_or("").trim().to_string();
+    let mut name = item.get("name").and_then(Value::as_str).unwrap_or("").trim().to_string();
+    if name.is_empty() {
+        name = address.split(',').next().unwrap_or("").trim().to_string();
+    }
+    let bbox = item.get("boundingbox").and_then(Value::as_array).and_then(|b| {
+        let v: Vec<f64> = b.iter().filter_map(|x| number(Some(x))).collect();
+        (v.len() == 4).then(|| [v[0], v[1], v[2], v[3]])
+    });
+    let part = |keys: &[&str]| {
+        keys.iter()
+            .find_map(|k| item["address"][*k].as_str().map(str::trim).filter(|v| !v.is_empty()))
+            .unwrap_or("")
+            .to_string()
+    };
+    let town = part(&["city", "town", "village", "municipality", "suburb", "county", "state"]);
+    // « Sintra (Santa Maria e São Miguel, …) »: the town alone
+    let town = town.split(" (").next().unwrap_or("").trim().to_string();
+    let land = part(&["country"]);
+    let area = [town, land].into_iter().filter(|p| !p.is_empty()).collect::<Vec<_>>().join(", ");
+    // `jsonv2` says `category`, `json` says `class`
+    let category = item.get("category").or_else(|| item.get("class")).and_then(Value::as_str);
+    let street = category == Some("highway") || item.get("addresstype").and_then(Value::as_str) == Some("road");
+    Some(Found { name, address, lat, lon, bbox, area, street })
+}
+
+/// Great-circle distance, km.
+pub fn km(a: (f64, f64), b: (f64, f64)) -> f64 {
+    let (la1, la2) = (a.0.to_radians(), b.0.to_radians());
+    let (dla, dlo) = ((b.0 - a.0).to_radians(), (b.1 - a.1).to_radians());
+    let h = (dla / 2.0).sin().powi(2) + la1.cos() * la2.cos() * (dlo / 2.0).sin().powi(2);
+    6371.0 * 2.0 * h.sqrt().min(1.0).asin()
+}
+
+/// Where the places must be: a box (south, north, west, east), widened a little around the area asked.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Area {
+    pub name: String,
+    pub bbox: [f64; 4],
+}
+
+impl Area {
+    /// The area around a place the geocoder found: its own box (or 10 km around it), widened by a quarter of its
+    /// size and at least ~5 km (a city's box leaves out its outskirts and its shore).
+    pub fn around(name: &str, found: &Found) -> Area {
+        let [s, n, w, e] = found.bbox.unwrap_or([found.lat - 0.1, found.lat + 0.1, found.lon - 0.1, found.lon + 0.1]);
+        let (dy, dx) = (((n - s) / 4.0).max(0.05), ((e - w) / 4.0).max(0.05));
+        Area { name: name.trim().to_string(), bbox: [s - dy, n + dy, w - dx, e + dx] }
+    }
+
+    /// The box around a point, `radius` km from it each way (a search near a map's other places).
+    pub fn within_km((lat, lon): (f64, f64), radius: f64) -> Area {
+        let dy = radius / 111.2;
+        let dx = radius / (111.2 * lat.to_radians().cos().max(0.01));
+        Area { name: String::new(), bbox: [lat - dy, lat + dy, lon - dx, lon + dx] }
+    }
+
+    /// The part of this box inside the map's area (this box when there is none, or when they do not meet).
+    pub fn inside(self, area: Option<&Area>) -> Area {
+        let Some(area) = area else { return self };
+        let ([s, n, w, e], [s2, n2, w2, e2]) = (self.bbox, area.bbox);
+        let bbox = [s.max(s2), n.min(n2), w.max(w2), e.min(e2)];
+        if bbox[0] < bbox[1] && bbox[2] < bbox[3] {
+            Area { name: self.name, bbox }
+        } else {
+            self
+        }
+    }
+
+    pub fn middle(&self) -> (f64, f64) {
+        let [s, n, w, e] = self.bbox;
+        ((s + n) / 2.0, (w + e) / 2.0)
+    }
+
+    pub fn holds(&self, (lat, lon): (f64, f64)) -> bool {
+        let [s, n, w, e] = self.bbox;
+        (s..=n).contains(&lat) && (w..=e).contains(&lon)
+    }
+
+    /// Nominatim's `viewbox`: west, north, east, south.
+    fn viewbox(&self) -> String {
+        let [s, n, w, e] = self.bbox;
+        format!("{w:.5},{n:.5},{e:.5},{s:.5}")
+    }
+}
+
+/// A name or an address looked up (inside `area` only, when given).
+async fn search(config: &Config, query: &str, area: Option<&Area>) -> Result<Option<Found>, String> {
+    let mut params = vec![
+        ("q", query.trim().to_string()),
+        ("format", "jsonv2".into()),
+        ("limit", "1".into()),
+        ("addressdetails", "1".into()),
+    ];
+    if let Some(area) = area {
+        params.push(("viewbox", area.viewbox()));
+        params.push(("bounded", "1".into()));
+    }
+    let params: Vec<(&str, &str)> = params.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    let found = found_of(&crate::weather::nominatim(config, "search", &params).await?);
+    Ok(found.filter(|f| area.is_none_or(|a| a.holds((f.lat, f.lon)))))
+}
+
+/// What is at a point (None: nothing, the open sea).
+async fn reverse(config: &Config, (lat, lon): (f64, f64)) -> Result<Option<Found>, String> {
+    let (lat, lon) = (format!("{lat:.5}"), format!("{lon:.5}"));
+    let params =
+        [("lat", lat.as_str()), ("lon", lon.as_str()), ("format", "jsonv2"), ("zoom", "14"), ("addressdetails", "1")];
+    Ok(found_of(&crate::weather::nominatim(config, "reverse", &params).await?))
+}
+
+/// A name inside the area: bounded to it, as given then its first part alone (« Torre de Belém, Avenida da Índia »:
+/// the address was wrong), then with the area's name added (still inside it); last, anywhere within `AROUND_KM` of
+/// the area (a day out of town: Sintra from Lisbon), said in the result. Some((place, a word on it)).
+async fn search_in(
+    config: &Config,
+    name: &str,
+    area: Option<&Area>,
+) -> Result<Option<(Found, Option<String>)>, String> {
+    let Some(area) = area else { return Ok(search(config, name, None).await?.map(|f| (f, None))) };
+    if let Some(found) = search(config, name, Some(area)).await? {
+        return Ok(Some((found, None)));
+    }
+    let first = name.split(',').next().unwrap_or("").trim();
+    if first.len() > 2 && first != name.trim() {
+        if let Some(found) = search(config, first, Some(area)).await? {
+            return Ok(Some((found, None)));
+        }
+    }
+    let town = area.name.split(',').next().unwrap_or("").trim().to_lowercase();
+    if !town.is_empty() && !name.to_lowercase().contains(&town) {
+        let found = search(config, &format!("{name}, {}", area.name), None).await?;
+        if let Some(found) = found.filter(|f| area.holds((f.lat, f.lon))) {
+            return Ok(Some((found, None)));
+        }
+    }
+    let Some(found) = search(config, name, None).await? else { return Ok(None) };
+    let far = km(area.middle(), (found.lat, found.lon));
+    if far > AROUND_KM {
+        return Ok(None);
+    }
+    let said = format!("« {name} » is outside « {} » ({far:.0} km from it)", area.name);
+    Ok(Some((found, Some(said))))
+}
+
+/// How far from the area a place found outside it is still taken.
+const AROUND_KM: f64 = 60.0;
+
+/// Coordinates the model gave, checked: as given, then the other way round. Some((point, swapped, its town)).
+async fn check_given(
+    config: &Config,
+    (lat, lon): (f64, f64),
+    area: Option<&Area>,
+) -> Result<Option<((f64, f64), bool, String)>, String> {
+    for (point, swapped) in [((lat, lon), false), ((lon, lat), true)] {
+        if swapped && (lon.abs() > 90.0 || (lat - lon).abs() < 1e-9) {
+            continue;
+        }
+        let good = match area {
+            Some(area) => area.holds(point).then(|| area.name.clone()),
+            None => match reverse(config, point).await {
+                Ok(found) => found.map(|f| f.area),
+                // no way to check them now: taken as given
+                Err(_) => return Ok(Some(((lat, lon), false, String::new()))),
+            },
+        };
+        if let Some(town) = good {
+            return Ok(Some((point, swapped, town)));
+        }
+    }
+    Ok(None)
+}
+
+/// Where the coordinates came from (the map's data, `source`): looked up in OpenStreetMap, or given by the model
+/// (checked), or none (a place not found: the apps may look it up themselves).
+pub const FROM_OSM: &str = "osm";
+pub const FROM_MODEL: &str = "model";
+pub const FROM_NONE: &str = "none";
+
+/// A marker looked up: its place, a word on it, where its coordinates come from; or why it was not found.
+type Located = Result<(Found, Option<String>, &'static str), String>;
+
+/// Where one marker goes, a word for the person when it was not as given, and where its coordinates come from. Err:
+/// not found (said in the result).
+async fn locate(config: &Config, place: &str, label: &str, area: Option<&Area>) -> Located {
+    if let Some(given) = crate::weather::parse_coordinates(place) {
+        let plain = |(lat, lon): (f64, f64), town: String| Found {
+            name: place.trim().to_string(),
+            address: String::new(),
+            lat,
+            lon,
+            bbox: None,
+            area: town,
+            street: false,
+        };
+        match check_given(config, given, area).await? {
+            Some((point, false, town)) => return Ok((plain(point, town), None, FROM_MODEL)),
+            Some((point, true, town)) => {
+                let said = format!("« {place} » was read as « lon, lat » (else in the sea)");
+                return Ok((plain(point, town), Some(said), FROM_MODEL));
+            }
+            None if !label.trim().is_empty() => {
+                return match search_in(config, label, area).await? {
+                    Some((found, also)) => {
+                        let said = format!("« {place} » was not on land: « {label} » looked up instead");
+                        Ok((found, Some(also.map(|a| format!("{said}; {a}")).unwrap_or(said)), FROM_OSM))
+                    }
+                    None => Err(format!("« {place} » is not on land{} and « {label} » was not found", within(area))),
+                }
+            }
+            None => {
+                return Err(format!("« {place} » is not on land{}: give the place's name or address", within(area)))
+            }
+        }
+    }
+    match search_in(config, place, area).await? {
+        Some((found, said)) => Ok((found, said, FROM_OSM)),
+        None => Err(format!(
+            "no place found for « {place} »{} (try its name in the local language, or its address)",
+            within(area)
+        )),
+    }
+}
+
+/// A place looked up, or not found (said in the result); Err: the search itself is down, no use asking for the others.
+fn unless_down<T>(done: Result<T, String>) -> Result<Result<T, String>, String> {
+    match done {
+        Err(why) if why.starts_with("the place search") => Err(why),
+        done => Ok(done),
+    }
+}
+
+fn within(area: Option<&Area>) -> String {
+    match area {
+        Some(a) if !a.name.is_empty() => format!(" in « {} »", a.name),
+        Some(_) => " near the others".into(),
+        None => String::new(),
+    }
+}
+
+/// The middle of some places (the median of their latitudes, of their longitudes) and how far the farthest of them is
+/// from it, km.
+pub fn cluster(points: &[(f64, f64)]) -> ((f64, f64), f64) {
+    let median = |mut v: Vec<f64>| {
+        v.sort_by(|a, b| a.total_cmp(b));
+        match v.len() {
+            0 => 0.0,
+            n if n % 2 == 1 => v[n / 2],
+            n => (v[n / 2 - 1] + v[n / 2]) / 2.0,
+        }
+    };
+    let middle = (median(points.iter().map(|p| p.0).collect()), median(points.iter().map(|p| p.1).collect()));
+    (middle, points.iter().map(|p| km(*p, middle)).fold(0.0, f64::max))
+}
+
+/// How far from the middle of a map's places another of its places may be: `NEAR_TIMES` as far as they spread
+/// themselves, never less than `NEAR_MIN_KM`. Their spread is their farthest one, not a median: a Lisbon walk is often
+/// three places in Belém and two downtown, 6 km apart, and a median would make the downtown ones strays.
+pub fn near_limit(reach: f64) -> f64 {
+    (reach * NEAR_TIMES).max(NEAR_MIN_KM)
+}
+
+/// The markers that do not go with the map's others: farther from the others' middle than `near_limit` of their own
+/// spread (Le Moulleau, 2026-11-01: three stops within 400 m and « Avenue Gambetta » 3 km away, downtown Arcachon),
+/// or far (> `FAR_KM`) from where most of them are (more than half within `NEAR_KM` of their middle: « Belém » found in
+/// Brazil, the four others in Lisbon). A trip far apart on purpose spreads itself: Lisbon, Coimbra, Porto stay. Under
+/// three places there is nothing to judge.
+pub fn strays(points: &[(f64, f64)]) -> Vec<usize> {
+    if points.len() < 3 {
+        return Vec::new();
+    }
+    let (middle, _) = cluster(points);
+    let most_near = points.iter().filter(|p| km(**p, middle) <= NEAR_KM).count() * 2 > points.len();
+    (0..points.len())
+        .filter(|i| {
+            if most_near && km(points[*i], middle) > FAR_KM {
+                return true;
+            }
+            let others: Vec<(f64, f64)> = points.iter().enumerate().filter(|(j, _)| j != i).map(|(_, p)| *p).collect();
+            let (middle, reach) = cluster(&others);
+            km(points[*i], middle) > near_limit(reach)
+        })
+        .collect()
+}
+
+const NEAR_KM: f64 = 60.0;
+const FAR_KM: f64 = 150.0;
+const NEAR_TIMES: f64 = 5.0;
+const NEAR_MIN_KM: f64 = 2.0;
+
+/// A street, or an address on one, rather than a place's own name: the same street names come back in many towns
+/// and districts (« Avenue Gambetta », « Rua das Flores »), so it is looked for near the map's other places first.
+pub fn street_like(place: &str) -> bool {
+    if crate::weather::parse_coordinates(place).is_some() {
+        return false;
+    }
+    let first = place.split(',').next().unwrap_or("").trim().to_lowercase();
+    if first.starts_with(|c: char| c.is_ascii_digit()) {
+        return true;
+    }
+    // the first word of a street's name, the last one, the end of a compound word
+    const STARTS: &str =
+        "rue avenue av. bd boulevard allée allee chemin impasse quai cours route sentier calle avenida \
+paseo carrer rua travessa via viale corso vicolo street road strada";
+    const ENDS: &str = "street st st. road rd avenue ave lane drive";
+    const COMPOUNDS: [&str; 5] = ["straße", "strasse", "straat", "gasse", "laan"];
+    let word = first.split([' ', '\'', '’']).next().unwrap_or("");
+    let last = first.split_whitespace().last().unwrap_or("");
+    STARTS.split(' ').any(|w| w == word)
+        || ENDS.split(' ').any(|w| w == last)
+        || COMPOUNDS.iter().any(|c| last.ends_with(c))
+}
+
+/// An address with its number (« Rua Augusta 100 », « 12 rue de Rivoli »): the agent says exactly where.
+pub fn numbered(place: &str) -> bool {
+    let first = place.split(',').next().unwrap_or("");
+    first.split_whitespace().any(|w| w.len() <= 6 && w.starts_with(|c: char| c.is_ascii_digit()))
+}
+
+/// The town of « Arcachon, France » (lowercase).
+fn town(area: &str) -> String {
+    area.split(',').next().unwrap_or("").trim().to_lowercase()
+}
+
+fn distance(far: f64) -> String {
+    if far < 10.0 {
+        format!("{far:.1} km")
+    } else {
+        format!("{far:.0} km")
     }
 }
 
@@ -342,6 +718,13 @@ async fn locate(config: &Config, place: &str) -> Result<(f64, f64, String), Stri
 #[derive(Debug, Clone, PartialEq)]
 pub struct Placed {
     pub label: String,
+    /// What the geocoder calls it in full (empty for checked coordinates).
+    pub address: String,
+    /// Its town and country, or the map's area.
+    pub area: String,
+    /// `FROM_OSM` or `FROM_MODEL`.
+    pub source: &'static str,
+    pub note: String,
     pub x: f64,
     pub y: f64,
     pub lat: f64,
@@ -349,12 +732,17 @@ pub struct Placed {
     pub color: [u8; 3],
 }
 
-/// The map drawn: its PNG, its markers, and its center when it has no marker.
+/// The map drawn: its PNG, its markers, and its center when it has no marker; what the person should hear about the
+/// places (looked up again, not found).
 pub struct Drawn {
     pub png: Vec<u8>,
     pub places: Vec<Placed>,
     pub center: Option<(f64, f64)>,
     pub zoom: u32,
+    pub notes: Vec<String>,
+    /// The places not found (their names), for the apps to look up themselves; the map's area.
+    pub unfound: Vec<String>,
+    pub area: String,
 }
 
 /// The map: its PNG and its markers.
@@ -364,26 +752,166 @@ pub async fn draw(config: &Config, arguments: &Dict) -> Result<Drawn, String> {
     }
     let w = arguments.get("width").and_then(Value::as_u64).unwrap_or(600).clamp(200, 800) as u32;
     let h = arguments.get("height").and_then(Value::as_u64).unwrap_or(400).clamp(150, 800) as u32;
-    let mut markers = Vec::new();
-    for (i, item) in
-        arguments.get("markers").and_then(Value::as_array).into_iter().flatten().take(MAX_MARKERS).enumerate()
-    {
-        let place = item.get("place").and_then(Value::as_str).unwrap_or("").trim();
-        if place.is_empty() {
+    let text = |v: Option<&Value>| v.and_then(Value::as_str).map(str::trim).unwrap_or("").to_string();
+    let mut notes = Vec::new();
+    let area = match text(arguments.get("area")) {
+        a if a.is_empty() => None,
+        a => match search(config, &a, None).await? {
+            Some(found) => Some(Area::around(&a, &found)),
+            None => {
+                notes.push(format!("the area « {a} » was not found: places looked up anywhere"));
+                None
+            }
+        },
+    };
+    let area_name = area.as_ref().map(|a| a.name.clone()).unwrap_or_default();
+    // (its colour's index, what was asked, its label, the item)
+    let items: Vec<(usize, String, String, &Value)> = arguments
+        .get("markers")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .take(MAX_MARKERS)
+        .enumerate()
+        .filter_map(|(i, item)| {
+            let label = text(item.get("label"));
+            let place = text(item.get("place"));
+            let place = if place.is_empty() { label.clone() } else { place };
+            (!place.is_empty()).then_some((i, place, label, item))
+        })
+        .collect();
+    // the places' own names first, then the streets near them: a street's name is in many towns and districts, and
+    // the geocoder gives its first one (2026-11-01, Le Moulleau)
+    let mut located: Vec<Option<Located>> = vec![None; items.len()];
+    for (k, (_, place, label, _)) in items.iter().enumerate().filter(|(_, it)| !street_like(&it.1)) {
+        located[k] = Some(unless_down(locate(config, place, label, area.as_ref()).await)?);
+    }
+    let anchors: Vec<(f64, f64)> = located.iter().flatten().flatten().map(|(f, _, _)| (f.lat, f.lon)).collect();
+    let mut tried_near = vec![false; items.len()];
+    for k in 0..items.len() {
+        if located[k].is_some() {
             continue;
         }
-        let (lat, lon, found) = locate(config, place).await?;
-        let label = item.get("label").and_then(Value::as_str).map(str::trim).filter(|l| !l.is_empty());
-        let paint = color(item.get("color").and_then(Value::as_str).unwrap_or(""), i);
-        markers.push(Marker { label: label.map(str::to_string).unwrap_or(found), lat, lon, color: paint });
+        let (_, place, label, _) = &items[k];
+        if !anchors.is_empty() {
+            let (middle, reach) = cluster(&anchors);
+            let limit = near_limit(reach);
+            let near = Area::within_km(middle, limit).inside(area.as_ref());
+            tried_near[k] = true;
+            let found = search(config, place, Some(&near)).await?;
+            if let Some(found) = found.filter(|f| km(middle, (f.lat, f.lon)) <= limit) {
+                located[k] = Some(Ok((found, None, FROM_OSM)));
+                continue;
+            }
+        }
+        located[k] = Some(unless_down(locate(config, place, label, area.as_ref()).await)?);
     }
+    let mut markers = Vec::new();
+    // what was asked for each marker, its label, whether it was looked for near the others already
+    let mut asked: Vec<(String, String, bool)> = Vec::new();
+    let mut missing = Vec::new();
+    let mut unfound = Vec::new();
+    for (k, ((i, place, label, item), done)) in items.into_iter().zip(located).enumerate() {
+        let (found, said, source) = match done.unwrap_or_else(|| Err(format!("no place found for « {place} »"))) {
+            Ok(done) => done,
+            Err(why) => {
+                missing.push(why);
+                unfound.push(if label.is_empty() { place } else { label });
+                continue;
+            }
+        };
+        notes.extend(said);
+        let paint = color(&text(item.get("color")), i);
+        let shown = if !label.is_empty() {
+            label.clone()
+        } else if place.starts_with(|c: char| c.is_ascii_digit()) || !found.name.chars().any(char::is_alphabetic) {
+            // an address: its own words (the geocoder names it by its number: « 12 »)
+            place.split(',').next().unwrap_or(&place).trim().to_string()
+        } else {
+            found.name.clone()
+        };
+        let street = source == FROM_OSM && (street_like(&place) || found.street);
+        markers.push(Marker {
+            label: shown,
+            address: found.address,
+            area: if found.area.is_empty() {
+                area.as_ref().map(|a| a.name.clone()).unwrap_or_default()
+            } else {
+                found.area
+            },
+            source,
+            note: text(item.get("note")),
+            lat: found.lat,
+            lon: found.lon,
+            color: paint,
+            street,
+        });
+        asked.push((place, label, tried_near[k]));
+    }
+    // one map's places together: a place far from all the others is looked up again near them; a street still far
+    // from them is not drawn there but left out and said, so the agent can give it better (a trip's stop in another
+    // town it names, or an address with its number, stays where it is, with a word)
+    let points: Vec<(f64, f64)> = markers.iter().map(|m| (m.lat, m.lon)).collect();
+    let strays = strays(&points);
+    let kept: Vec<usize> = (0..markers.len()).filter(|i| !strays.contains(i)).collect();
+    let mut dropped = Vec::new();
+    if !strays.is_empty() && !kept.is_empty() {
+        let (middle, reach) = cluster(&kept.iter().map(|i| points[*i]).collect::<Vec<_>>());
+        let limit = near_limit(reach);
+        let near = Area::within_km(middle, limit);
+        let towns: Vec<String> = kept.iter().map(|i| town(&markers[*i].area)).collect();
+        for i in strays {
+            let (place, label, tried) = &asked[i];
+            // coordinates (given, or not on land): their label is what can be looked up
+            let name = if crate::weather::parse_coordinates(place).is_some() { label } else { place };
+            let again = if name.is_empty() || *tried {
+                None
+            } else {
+                search(config, name, Some(&near)).await?.filter(|f| km(middle, (f.lat, f.lon)) <= limit)
+            };
+            let m = &mut markers[i];
+            let far = distance(km((m.lat, m.lon), middle));
+            // a stop in another town, named: « Rua das Flores, Porto » on a trip from Lisbon
+            let elsewhere = {
+                let t = town(&m.area);
+                !t.is_empty() && place.to_lowercase().contains(&t) && !towns.contains(&t)
+            };
+            match again {
+                Some(found) => {
+                    notes.push(format!("« {place} » was {far} from the others: looked up again near them"));
+                    (m.lat, m.lon, m.address, m.source) = (found.lat, found.lon, found.address, FROM_OSM);
+                    if !found.area.is_empty() {
+                        m.area = found.area;
+                    }
+                }
+                None if m.street && !numbered(place) && !elsewhere => {
+                    let at =
+                        if m.address.is_empty() { String::new() } else { format!(" ({})", tk::head(&m.address, 90)) };
+                    missing.push(format!(
+                        "could not place « {place} » near the other places: the one found is {far} from them{at}; give \
+the street of that stop near the others or a place beside it (if it really is there, its address with the number)"
+                    ));
+                    unfound.push(if label.is_empty() { place.clone() } else { label.clone() });
+                    dropped.push(i);
+                }
+                None => notes.push(format!("« {place} » is {far} from the others: check it (or give area)")),
+            }
+        }
+    }
+    for i in dropped.into_iter().rev() {
+        markers.remove(i);
+    }
+    if markers.is_empty() && !missing.is_empty() {
+        return Err(missing.join("; "));
+    }
+    notes.extend(missing.into_iter().map(|why| format!("left out: {why}")));
     let points: Vec<(f64, f64)> = markers.iter().map(|m| (m.lat, m.lon)).collect();
     let mut asked_center = None;
     let center = match arguments.get("center").and_then(Value::as_str).map(str::trim).filter(|c| !c.is_empty()) {
         Some(c) => {
-            let (lat, lon, _) = locate(config, c).await?;
-            asked_center = Some((lat, lon));
-            (lat, lon)
+            let (found, _, _) = locate(config, c, "", area.as_ref()).await?;
+            asked_center = Some((found.lat, found.lon));
+            (found.lat, found.lon)
         }
         None if !points.is_empty() => {
             let z = 17;
@@ -458,6 +986,10 @@ pub async fn draw(config: &Config, arguments: &Dict) -> Result<Drawn, String> {
         canvas.text((x - width as f64 / 2.0).round() as i64, (y - 7.0).round() as i64, &number, 2, [255, 255, 255]);
         places.push(Placed {
             label: m.label.clone(),
+            address: m.address.clone(),
+            area: m.area.clone(),
+            source: m.source,
+            note: m.note.clone(),
             x: (x / w as f64 * 1000.0).round() / 10.0,
             y: (y / h as f64 * 1000.0).round() / 10.0,
             lat: m.lat,
@@ -470,7 +1002,8 @@ pub async fn draw(config: &Config, arguments: &Dict) -> Result<Drawn, String> {
     let (bx, by) = (w as i64 - text_w - 14, h as i64 - 24);
     canvas.rect(bx, by, text_w + 14, 24, [255, 255, 255], 0.85);
     canvas.text(bx + 7, by + 5, ATTRIBUTION, 2, [0x33, 0x33, 0x33]);
-    Ok(Drawn { png: canvas.png(), places, center: asked_center.filter(|_| markers.is_empty()), zoom: z })
+    let center = asked_center.filter(|_| markers.is_empty());
+    Ok(Drawn { png: canvas.png(), places, center, zoom: z, notes, unfound, area: area_name })
 }
 
 fn unproject(x: f64, y: f64, z: u32) -> (f64, f64) {
@@ -480,35 +1013,117 @@ fn unproject(x: f64, y: f64, z: u32) -> (f64, f64) {
     (n.sinh().atan().to_degrees(), lon)
 }
 
-/// The card to paste in a page: the picture (`map:<id>`, put inline when the page is kept), its list with each place's
-/// position and colour, and what the live map adds (a line, directions, the center of a map without markers).
-pub fn figure(id: &str, drawn: &Drawn, line: bool, directions: Option<&str>) -> String {
-    let items: String = drawn
+/// The map as data, for the apps that draw maps themselves (Apple Plans, Google Maps; 2026-10-31) and to rebuild the
+/// card in a page: every position from the geocoder, never from the model. Kept beside the picture (`<id>.json`).
+///
+/// `{"type": "map", "version": 1, "id", "title", "area"?, "points": [{"name", "address"?, "area"?, "lat"?, "lon"?,
+/// "source": "osm"|"model"|"none", "note"?, "color", "x", "y"}] (no lat/lon when "none"),
+/// "route": {"line": bool, "mode": "walking"|"driving"|"transit"|"bicycling"|null} | null,
+/// "center": {"lat", "lon", "zoom"} | null (a map without markers), "attribution"}`
+pub fn data(id: &str, title: &str, drawn: &Drawn, line: bool, directions: Option<&str>) -> Value {
+    let points: Vec<Value> = drawn
         .places
         .iter()
         .map(|p| {
+            let mut point = json!({"name": p.label, "lat": round6(p.lat), "lon": round6(p.lon), "source": p.source,
+                                   "color": format!("#{}", hex::encode(p.color)), "x": p.x, "y": p.y});
+            if !p.area.is_empty() {
+                point["area"] = json!(p.area);
+            }
+            if !p.address.is_empty() {
+                point["address"] = json!(p.address);
+            }
+            if !p.note.is_empty() {
+                point["note"] = json!(p.note);
+            }
+            point
+        })
+        .chain(drawn.unfound.iter().map(|name| {
+            let mut point = json!({"name": name, "source": FROM_NONE});
+            if !drawn.area.is_empty() {
+                point["area"] = json!(drawn.area);
+            }
+            point
+        }))
+        .collect();
+    let line = line && drawn.places.len() > 1;
+    let mode = directions.filter(|m| MODES.contains(m)).filter(|_| drawn.places.len() > 1);
+    json!({
+        "type": "map",
+        "version": 1,
+        "id": id,
+        "title": title,
+        "area": if drawn.area.is_empty() { Value::Null } else { json!(drawn.area) },
+        "points": points,
+        "route": if line || mode.is_some() { json!({"line": line, "mode": mode}) } else { Value::Null },
+        "center": drawn.center.map(|(lat, lon)| json!({"lat": round6(lat), "lon": round6(lon), "zoom": drawn.zoom})),
+        "attribution": ATTRIBUTION,
+    })
+}
+
+fn round6(v: f64) -> f64 {
+    (v * 1e6).round() / 1e6
+}
+
+/// The card in a page, from the map's data: the picture (`map:<id>`, put inline when the page is kept), its list
+/// with each place's position and colour (the page kit makes it a live map in the apps), what the live map adds (a
+/// line, directions, the center of a map without markers), and the data itself for the apps (`.map-data`).
+pub fn figure_of(map: &Value) -> String {
+    let id = map["id"].as_str().unwrap_or("");
+    let empty = Vec::new();
+    let points = map["points"].as_array().unwrap_or(&empty);
+    let items: String = points
+        .iter()
+        .filter(|p| p["lat"].is_f64() && p["lon"].is_f64())
+        .map(|p| {
+            let f = |k: &str| p[k].as_f64().unwrap_or(0.0);
+            let note = p["note"].as_str().filter(|n| !n.is_empty());
             format!(
-                "<li data-x=\"{}\" data-y=\"{}\" data-lat=\"{:.6}\" data-lon=\"{:.6}\" data-color=\"#{}\">{}</li>",
-                p.x,
-                p.y,
-                p.lat,
-                p.lon,
-                hex::encode(p.color),
-                tk::html::escape(&p.label)
+                "<li data-x=\"{}\" data-y=\"{}\" data-lat=\"{:.6}\" data-lon=\"{:.6}\" data-color=\"{}\">{}{}</li>",
+                f("x"),
+                f("y"),
+                f("lat"),
+                f("lon"),
+                tk::html::escape(p["color"].as_str().unwrap_or("")),
+                tk::html::escape(p["name"].as_str().unwrap_or("")),
+                note.map(|n| format!(" <small>{}</small>", tk::html::escape(n))).unwrap_or_default()
             )
         })
         .collect();
-    let mut attributes = String::new();
-    if line && drawn.places.len() > 1 {
+    let mut attributes = format!(" data-map=\"{}\"", tk::html::escape(id));
+    if map["route"]["line"].as_bool() == Some(true) {
         attributes.push_str(" data-line=\"1\"");
     }
-    if let Some(mode) = directions.filter(|m| MODES.contains(m)).filter(|_| drawn.places.len() > 1) {
+    if let Some(mode) = map["route"]["mode"].as_str().filter(|m| MODES.contains(m)) {
         attributes.push_str(&format!(" data-directions=\"{mode}\""));
     }
-    if let Some((lat, lon)) = drawn.center {
-        attributes.push_str(&format!(" data-center=\"{lat:.6},{lon:.6}\" data-zoom=\"{}\"", drawn.zoom));
+    if let (Some(lat), Some(lon)) = (map["center"]["lat"].as_f64(), map["center"]["lon"].as_f64()) {
+        attributes.push_str(&format!(" data-center=\"{lat:.6},{lon:.6}\" data-zoom=\"{}\"", map["center"]["zoom"]));
     }
-    format!("<figure class=\"map-card\"{attributes}><img src=\"map:{id}\" alt=\"Carte\"><ol>{items}</ol></figure>")
+    // inside a <script>: no « </ » can end it early
+    let json = serde_json::to_string(map).unwrap_or_default().replace('<', "\\u003c");
+    format!(
+        "<figure class=\"map-card\"{attributes}><img src=\"map:{id}\" alt=\"Carte\"><ol>{items}</ol>\
+<script type=\"application/json\" class=\"map-data\">{json}</script></figure>"
+    )
+}
+
+/// The card of a map as `map_image` gave it (for tests and old callers).
+pub fn figure(id: &str, drawn: &Drawn, line: bool, directions: Option<&str>) -> String {
+    figure_of(&data(id, "", drawn, line, directions))
+}
+
+/// A kept map's data (`<id>.json`), if any.
+pub fn kept(config: &Config, agent: &str, id: &str) -> Option<Value> {
+    let picture = file(config, agent, id)?;
+    let text = std::fs::read_to_string(picture.with_extension("json")).ok()?;
+    serde_json::from_str::<Value>(&text).ok().filter(|v| v["type"] == "map")
+}
+
+/// What the agent pastes in a page: short, so that nothing in it is copied wrong; the bridge puts the whole card in
+/// its place when the page is kept (pages.rs).
+pub fn short_card(id: &str) -> String {
+    format!("<figure class=\"map-card\"><img src=\"map:{id}\" alt=\"Carte\"></figure>")
 }
 
 /// `map_image`: the map kept for the agent, with how to show it.
@@ -517,27 +1132,60 @@ pub async fn call(config: &Config, agent: &str, arguments: &Dict) -> Dict {
         Ok(made) => made,
         Err(why) => return tool_text(&format!("No map: {why}."), true),
     };
-    let data = &drawn.png;
-    let id = format!("m-{}", &hex::encode(<sha2::Sha256 as sha2::Digest>::digest(data))[..10]);
+    let png = &drawn.png;
+    let id = format!("m-{}", &hex::encode(<sha2::Sha256 as sha2::Digest>::digest(png))[..10]);
     let folder = root(config).join(agent);
     let path = folder.join(format!("{id}.png"));
+    let line = arguments.get("line").and_then(Value::as_bool).unwrap_or(false);
+    let directions = arguments.get("directions").and_then(Value::as_str).map(str::trim);
+    let title = arguments.get("title").and_then(Value::as_str).map(str::trim).unwrap_or("");
+    let title = if title.is_empty() { "Carte" } else { tk::head(title, 80) };
+    let map = data(&id, title, &drawn, line, directions);
+    let json = serde_json::to_string_pretty(&map).unwrap_or_default();
     if std::fs::create_dir_all(&folder).is_err()
-        || tk::replace_with(&folder.join(format!(".{id}.part")), &path, data).is_err()
+        || tk::replace_with(&folder.join(format!(".{id}.part")), &path, png).is_err()
+        || tk::replace_with(&folder.join(format!(".{id}.json.part")), &path.with_extension("json"), json.as_bytes())
+            .is_err()
     {
         return tool_text("No map: it could not be kept.", true);
     }
-    let line = arguments.get("line").and_then(Value::as_bool).unwrap_or(false);
-    let directions = arguments.get("directions").and_then(Value::as_str).map(str::trim);
-    let card = figure(&id, &drawn, line, directions);
-    tool_text(
-        &format!(
-            "MEDIA:{PREFIX}/{agent}/{id}.png\nMap ready: {id} ({} markers). To show the picture alone, put the MEDIA line \
-above alone on its own line in your reply, exactly as it is. In a page, paste this as it is into create_page's HTML (a \
-live map in the app, its picture elsewhere):\n{card}",
-            drawn.places.len()
+    // the map shown at once: a page holding only it (a live map in the app, its picture elsewhere)
+    let page = format!("<h1>{}</h1>{}", tk::html::escape(title), short_card(&id));
+    let shown = match crate::pages::save(config, agent, &page, title, Some(&format!("carte-{}", &id[2..]))) {
+        Ok(made) => made.get("path").and_then(Value::as_str).map(str::to_string),
+        Err(_) => None,
+    };
+    let places: Vec<String> = drawn
+        .places
+        .iter()
+        .enumerate()
+        .map(|(i, p)| {
+            let at = if p.address.is_empty() { String::new() } else { format!(" — {}", tk::head(&p.address, 90)) };
+            format!("{}. {}{at}", i + 1, p.label)
+        })
+        .collect();
+    let checks = if drawn.notes.is_empty() { String::new() } else { format!("\nCheck: {}.", drawn.notes.join("; ")) };
+    let show = match shown {
+        Some(path) => format!(
+            "MEDIA:{path}\nMap ready ({} markers, placed by the bridge from the places' names):\n{}{checks}\nTo show it, put \
+the MEDIA line above alone on its own line in your reply, exactly as it is: a live map in the app (move, zoom, « Open \
+in Maps »). Inside a bigger create_page page, paste instead: {}\nThe positions come from OpenStreetMap's search \
+of these names (a place on the water's edge, like a tower on a river, is drawn at the edge). If the person says one is \
+wrong, call map_image again with a more precise name or address for it (and area); never write coordinates or a map \
+of your own.",
+            drawn.places.len(),
+            places.join("\n"),
+            short_card(&id)
         ),
-        false,
-    )
+        None => format!(
+            "MEDIA:{PREFIX}/{agent}/{id}.png\nMap ready ({} markers, placed by the bridge):\n{}{checks}\nPut the MEDIA \
+line above alone on its own line in your reply (its picture), or paste into create_page's HTML: {}",
+            drawn.places.len(),
+            places.join("\n"),
+            short_card(&id)
+        ),
+    };
+    tool_text(&show, false)
 }
 
 #[cfg(test)]
@@ -564,6 +1212,10 @@ mod tests {
     fn the_card_carries_what_the_live_map_needs() {
         let place = |label: &str, lat: f64| Placed {
             label: label.into(),
+            address: String::new(),
+            area: String::new(),
+            source: FROM_OSM,
+            note: String::new(),
             x: 10.0,
             y: 20.5,
             lat,
@@ -575,20 +1227,139 @@ mod tests {
             places: vec![place("Départ <A>", 45.7), place("Fin", 45.71)],
             center: None,
             zoom: 14,
+            notes: Vec::new(),
+            unfound: vec!["Nulle part".into()],
+            area: "Lyon".into(),
         };
         let card = figure("m-1", &drawn, true, Some("walking"));
-        assert_eq!(
-            card,
-            "<figure class=\"map-card\" data-line=\"1\" data-directions=\"walking\"><img src=\"map:m-1\" alt=\"Carte\"><ol>\
+        assert!(card.starts_with(
+            "<figure class=\"map-card\" data-map=\"m-1\" data-line=\"1\" data-directions=\"walking\"><img src=\"map:m-1\" \
+alt=\"Carte\"><ol>\
 <li data-x=\"10\" data-y=\"20.5\" data-lat=\"45.700000\" data-lon=\"4.850000\" data-color=\"#e5484d\">Départ &lt;A&gt;</li>\
-<li data-x=\"10\" data-y=\"20.5\" data-lat=\"45.710000\" data-lon=\"4.850000\" data-color=\"#e5484d\">Fin</li></ol></figure>"
-        );
+<li data-x=\"10\" data-y=\"20.5\" data-lat=\"45.710000\" data-lon=\"4.850000\" data-color=\"#e5484d\">Fin</li></ol>\
+<script type=\"application/json\" class=\"map-data\">"
+        ), "{card}");
+        // the data inside cannot close its script early, and reads back as the map
+        assert!(!card.contains("<A>") && card.ends_with("</script></figure>"));
+        let json = card.split("class=\"map-data\">").nth(1).unwrap().trim_end_matches("</script></figure>");
+        let map: Value = serde_json::from_str(json).unwrap();
+        assert_eq!(map["points"][0]["name"], "Départ <A>");
+        assert_eq!((map["points"][1]["lat"].as_f64(), map["points"][1]["lon"].as_f64()), (Some(45.71), Some(4.85)));
+        assert_eq!(map["route"], json!({"line": true, "mode": "walking"}));
+        assert_eq!(map["area"], "Lyon");
+        assert_eq!(map["points"][0]["source"], "osm");
+        // a place not found: in the data for the apps (they may find it), not in the card's list
+        assert_eq!(map["points"][2], json!({"name": "Nulle part", "source": "none", "area": "Lyon"}));
+        assert_eq!(card.matches("<li ").count(), 2);
         // an unknown mode, or a single place: no directions, no line
         let alone = Drawn { places: vec![place("A", 1.0)], ..drawn };
         let card = figure("m-1", &alone, true, Some("walking"));
-        assert!(!card.contains("data-line") && !card.contains("data-directions"));
-        let empty = Drawn { png: Vec::new(), places: Vec::new(), center: Some((45.5, 4.25)), zoom: 12 };
-        assert!(figure("m-2", &empty, false, Some("teleport"))
-            .starts_with("<figure class=\"map-card\" data-center=\"45.500000,4.250000\" data-zoom=\"12\"><img"));
+        assert!(!card.contains("data-line") && !card.contains("data-directions") && card.contains("\"route\":null"));
+        let empty = Drawn {
+            png: Vec::new(),
+            places: Vec::new(),
+            center: Some((45.5, 4.25)),
+            zoom: 12,
+            notes: Vec::new(),
+            unfound: Vec::new(),
+            area: String::new(),
+        };
+        assert!(figure("m-2", &empty, false, Some("teleport")).starts_with(
+            "<figure class=\"map-card\" data-map=\"m-2\" data-center=\"45.500000,4.250000\" data-zoom=\"12\"><img"
+        ));
+    }
+
+    #[test]
+    fn nominatim_answers_read_in_their_order() {
+        // search: a list, lat and lon as strings; boundingbox south, north, west, east
+        let lisbon = json!([{"lat": "38.7077507", "lon": "-9.1365919", "name": "Lisboa",
+            "display_name": "Lisboa, Portugal", "boundingbox": ["38.6913994", "38.7967584", "-9.2298356", "-9.0863328"]}]);
+        let found = found_of(&lisbon).unwrap();
+        assert_eq!((found.lat, found.lon), (38.7077507, -9.1365919), "lat then lon, never swapped");
+        assert_eq!(found.bbox, Some([38.6913994, 38.7967584, -9.2298356, -9.0863328]));
+        // reverse: one object; over the sea an error
+        assert!(found_of(&json!({"error": "Unable to geocode"})).is_none());
+        assert!(found_of(&json!([])).is_none());
+        let area = Area::around("Lisboa", &found);
+        assert!(area.holds((38.6916, -9.2160)), "Torre de Belém, on the city's edge");
+        assert!(!area.holds((-9.2160, 38.6916)), "the same, lon first: off Africa");
+        assert!(!area.holds((-22.9, -43.2)), "Rio");
+        assert_eq!(area.viewbox(), "-9.27984,38.84676,-9.03633,38.64140");
+        assert!((km((48.8566, 2.3522), (38.7223, -9.1393)) - 1450.0).abs() < 20.0);
+    }
+
+    #[test]
+    fn a_marker_far_from_the_others_is_a_stray() {
+        let lisbon = [(38.6916, -9.2160), (38.6979, -9.2068), (38.7139, -9.1335), (38.7101, -9.1366)];
+        assert!(strays(&lisbon).is_empty());
+        let mut one_off = lisbon.to_vec();
+        one_off.push((-1.4558, -48.5044)); // « Belém » found in Brazil
+        assert_eq!(strays(&one_off), vec![4]);
+        // two or three far apart on purpose (a trip): no majority, nothing moved
+        assert!(strays(&[(48.85, 2.35), (38.72, -9.14), (41.39, 2.17)]).is_empty());
+        assert!(strays(&[(48.85, 2.35), (38.72, -9.14)]).is_empty());
+    }
+
+    #[test]
+    fn a_map_s_places_are_judged_by_their_own_spread() {
+        // Le Moulleau (2026-11-01): the church, the pier, the beach within 400 m; « Avenue Gambetta » downtown, 3 km
+        let moulleau =
+            [(44.6412126, -1.1990896), (44.6417176, -1.2043897), (44.6432, -1.2020), (44.6577791, -1.1681525)];
+        assert_eq!(strays(&moulleau), vec![3]);
+        let (middle, reach) = cluster(&moulleau[..3]);
+        assert!(reach < 0.4 && near_limit(reach) == NEAR_MIN_KM, "{reach}");
+        assert!((3.0..3.5).contains(&km(moulleau[3], middle)));
+        // a Lisbon walk: three places in Belém, two downtown 6 km away: no stray
+        let lisbon =
+            [(38.6916, -9.2160), (38.6978, -9.2067), (38.6976, -9.2063), (38.7139, -9.1335), (38.7075, -9.1364)];
+        assert!(strays(&lisbon).is_empty());
+        // a trip Lisbon → Coimbra → Porto: far apart on purpose
+        let trip = [(38.6916, -9.2160), (38.6978, -9.2067), (40.2073, -8.4260), (41.1458, -8.6139), (41.1435, -8.6130)];
+        assert!(strays(&trip).is_empty());
+        // one place, two: nothing to judge
+        assert!(strays(&[(44.6577791, -1.1681525)]).is_empty());
+        assert!(strays(&moulleau[2..]).is_empty());
+    }
+
+    #[test]
+    fn streets_and_addresses_are_told_from_places_names() {
+        for street in [
+            "Avenue Gambetta, Camicas, Arcachon",
+            "rue des Pins",
+            "12 rue de Rivoli, Paris",
+            "Rua das Flores, Porto",
+            "Calle Mayor",
+            "Kaiserstraße",
+            "Baker Street",
+            "Via del Corso",
+            "Allée des Mimosas",
+        ] {
+            assert!(street_like(street), "{street}");
+        }
+        for place in [
+            "Église Notre-Dame-des-Passes",
+            "Jetée du Moulleau",
+            "Torre de Belém, Avenida da Índia",
+            "Praça do Comércio",
+            "Plage du Moulleau",
+            "44.64, -1.20",
+        ] {
+            assert!(!street_like(place), "{place}");
+        }
+        assert!(numbered("Rua Augusta 100, Lisboa") && numbered("12 rue de Rivoli"));
+        assert!(!numbered("Avenue Gambetta, 33120 Arcachon") && !numbered("Avenue Gambetta"));
+        // OpenStreetMap says a street is one (`category`, or `class` in its older format)
+        let road = json!([{"lat": "44.6577791", "lon": "-1.1681525", "name": "Avenue Gambetta", "category": "highway",
+            "address": {"town": "Arcachon", "country": "France"}}]);
+        let found = found_of(&road).unwrap();
+        assert!(found.street && found.area == "Arcachon, France");
+        assert!(found_of(&json!([{"lat": "1", "lon": "2", "class": "highway"}])).unwrap().street);
+        assert!(!found_of(&json!([{"lat": "1", "lon": "2", "category": "amenity"}])).unwrap().street);
+        // the box near the others, kept inside the map's area
+        let near = Area::within_km((44.6420, -1.2018), 2.0);
+        assert!(near.holds((44.6412, -1.1991)) && !near.holds((44.6578, -1.1682)));
+        let arcachon = Area { name: "Arcachon".into(), bbox: [44.63, 44.67, -1.21, -1.13] };
+        assert_eq!(near.clone().inside(Some(&arcachon)).bbox[2], -1.21);
+        assert_eq!(near.clone().inside(None), near);
     }
 }

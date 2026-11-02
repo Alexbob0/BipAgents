@@ -1,7 +1,7 @@
 <p align="center">🇬🇧 English · <a href="README.fr.md">🇫🇷 Français</a></p>
 
 <p align="center">
-  <img src="docs/bips.svg" alt="The eight BipAgents Bips, bouncing and blinking" width="100%">
+  <img src="docs/bips.svg" alt="The eight BipAgents Bips, bobbing" width="100%">
 </p>
 
 <h1 align="center">BipAgents</h1>
@@ -13,22 +13,22 @@
 
 <p align="center">
   <a href="https://bipagents.com"><img alt="bipagents.com" src="https://img.shields.io/badge/bipagents.com-4F7CFF?style=for-the-badge"></a>
-  <a href="https://alexbob0.github.io/BipAgents/play/"><img alt="Play with the Bips" src="https://img.shields.io/badge/%F0%9F%8E%AE_Play_with_the_Bips-FF7B5C?style=for-the-badge"></a>
+  <a href="https://bipagents.com/play/"><img alt="Play with the Bips" src="https://img.shields.io/badge/%F0%9F%8E%AE_Play_with_the_Bips-FF7B5C?style=for-the-badge"></a>
   <a href="https://x.com/Bob_AI_Digger"><img alt="Follow @Bob_AI_Digger on X" src="https://img.shields.io/badge/@Bob__AI__Digger-16181D?style=for-the-badge&logo=x&logoColor=white"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-3CC37A?style=for-the-badge"></a>
 </p>
 
 ---
 
-Every agent is a **Bip**: a little mascot with its own color, shape, mood and **voice**. One looks after your day,
+Every agent is a **Bip**: a little pixel mascot with its own color, mood and **voice**. One looks after your day,
 another your sleep, another your budget… Text them, talk to them, or call them in **Live**, hands-free. They read
 your mail, keep your calendar, browse the web in a real browser you can watch, and **ask you before they act**.
 
 <p align="center">
-  <img src="site/src/bipagents/shots/home-en.jpg" width="24%" alt="Home: one card per agent, and the Notebook tab">
-  <img src="docs/screenshots/conversation.png" width="24%" alt="Conversation: tools, links with favicons, a reply to listen to">
-  <img src="docs/screenshots/approval-question.png" width="24%" alt="An approval request and a question from the agent">
-  <img src="docs/screenshots/live.png" width="24%" alt="Live: hands-free voice conversation">
+  <img src="site/src/bipagents/shots/home-en.jpg" width="24%" alt="Home: one card per agent, shared agents and group chats">
+  <img src="docs/screenshots/conversation.jpg" width="24%" alt="Conversation: a morning podcast made on request, replies to listen to">
+  <img src="docs/screenshots/approval-question.jpg" width="24%" alt="An approval request from the agent">
+  <img src="docs/screenshots/live.jpg" width="24%" alt="Live: hands-free voice conversation">
 </p>
 
 ## Two ways to use BipAgents
@@ -103,9 +103,10 @@ machine. All of it in the [installer's guide](installer/README.md); by hand: [se
 
 ## 🎮 Play with the Bips
 
-In the app (and [**in your browser**](https://alexbob0.github.io/BipAgents/play/)), they react: tap for a hop, rub
-for a tickle, stroke slowly for hearts, long-press for a **Boing!**, pester them and they sulk. Every reaction is
-babbled in their own « Animalese », synthesized on the fly, with no model and no network.
+In the app (and [**in your browser**](https://bipagents.com/play/)), they react when you tap them: a hop, a wink, a
+giggle, a surprised look, a **Boing!**. They show what they are doing (thinking, talking, working, asleep) and dress
+up for the holidays. Every reaction is babbled in their own « Animalese », synthesized on the fly, with no model and
+no network.
 
 ## 🧩 How it works
 

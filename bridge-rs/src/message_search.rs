@@ -227,7 +227,7 @@ pub fn snippet(text: &str, words: &[String]) -> (String, Vec<(String, bool)>) {
 /// The text of a message: its content, or the text parts of a multimodal one (a JSON list).
 /// A row's words, without the notes for the agent only (`<!--bip:…-->`: the current time at the top of each message
 /// would match every « octobre »).
-fn message_text(content: &str) -> String {
+pub(crate) fn message_text(content: &str) -> String {
     let text = row_text(content);
     if text.contains("bip:") {
         crate::live_brief::visible(&text)

@@ -209,10 +209,13 @@ section 6); the services you connect to your agents and their own subscriptions.
 - **Your account**: you create it with "Sign in with Apple", with Google or with an email address (a one-time code sent to
   that address). It holds your identity (Apple or Google identifier, email address), the link with your subscription, the
   list of your devices and your invitations. **It never holds the keys to your place**: they stay on your devices.
-- **New device**: you approve it from a device you already have.
-- **No device left**: you get your account back after **24 hours**, and your old devices and your email address are
-  told about it; or **at once** with your **recovery code**, which the app suggests you create right after the
-  purchase. This code also opens the copy of your backup key that Kerfy Studio keeps encrypted and cannot read without
+- **New device**: you sign in (Apple, Google or email) and enter the **one-time code sent to your email address**;
+  if you added an **authenticator app**, its code is asked too. You can also approve it from a device you already
+  have. Every new device is **reported** to your other devices and by email, with a link to remove it; every access is
+  logged.
+- **No access to your email any more**: you get your account back **at once** with your **recovery code** (optional,
+  in Settings › Account), or after **24 hours**, your devices and your email address being told about it. This code
+  also opens the copy of your backup key that Kerfy Studio keeps encrypted and cannot read without
   it. **Keep it somewhere safe**: Kerfy Studio does not know it and cannot recover it. With no device and no recovery
   code, nobody can open your backups.
 - You are responsible for the security of your devices, of your Apple, Google or email account, and of your recovery

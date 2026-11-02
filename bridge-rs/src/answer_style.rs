@@ -176,10 +176,14 @@ mod tests {
                 [souls::STYLE_RULE, souls::BALANCED_STYLE_RULE, souls::DETAILED_STYLE_RULE, souls::CUSTOM_STYLE_START];
             assert_eq!(paragraphs.iter().map(|p| text.matches(p).count()).sum::<usize>(), 1, "{style}: {text}");
             assert!(text.ends_with(&format!("\n{}\n", souls::BLOCK_END)) && text.starts_with("Tu es Coach.\n\n"));
-            // the block rewritten (language changed, an older bridge's block healed): its style kept
+            // the block rewritten (language changed, an older bridge's block healed): its style kept, in the new
+            // language (names.rs: « Notebook »), and back
             let other = souls::with_language(&text, Some("en"));
             assert!(other.contains("write in English."));
-            assert_eq!(souls::style_paragraph(&other), souls::style_paragraph(&text));
+            let english = souls::style_paragraph(&other).unwrap();
+            assert!(english.ends_with("never a Notebook or memory note.") && !english.contains("Carnet"), "{english}");
+            let back = souls::with_language(&other, Some("fr"));
+            assert_eq!(souls::style_paragraph(&back), souls::style_paragraph(&text));
         }
         assert_eq!(text, soul, "back to short: the very same soul");
         // a block from before the styles: the paragraph goes last in it

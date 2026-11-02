@@ -806,6 +806,26 @@ def settle(info: Dict, base: Path, repo: Path, address: Optional[str], fresh: Di
                                         or own_backup.get("password")})
 
 
+RESTORED = "restored.json"   # in the bridge's data folder: its route /v1/restore/reconcile reads it
+
+
+def note_restored(info: Dict, base: Path, now: Optional[float] = None) -> Path:
+    """When this place was restored and from which backup (its manifest's time), for the bridge: the phones send back
+    the messages between the two (bridge-rs restore_reconcile.rs, internal/next/restore-reconcile.md)."""
+    import datetime
+    from . import moving
+    backup_at = None
+    try:
+        backup_at = datetime.datetime.fromisoformat(str(info.get("created"))).timestamp()
+    except ValueError:
+        pass
+    inv = moving.read_inventory(base / ".config" / "bipagents" / "bridge.toml", base)
+    path = inv.data_dir / RESTORED
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_private(path, {"restored_at": time.time() if now is None else now, "backup_at": backup_at})
+    return path
+
+
 def restore(key: str, runner, base: Optional[Path] = None, repo: Optional[Path] = None,
             address: Optional[str] = None) -> Dict:
     """The whole restore, as the bridge starts it (a unit of its own, so restarting the bridge doesn't stop it)."""
@@ -839,6 +859,10 @@ def restore(key: str, runner, base: Optional[Path] = None, repo: Optional[Path] 
         (base / MARKER).unlink(missing_ok=True)
         raise
     import shutil
+    try:
+        note_restored(info, base)
+    except (OSError, ValueError) as exc:   # the phones only lose the chance to send back what they kept
+        runner.log.append(f"restored.json not written: {exc}")
     shutil.rmtree(base / RESTORE_TMP, ignore_errors=True)
     (base / ".config" / "bipagents" / "setup.json").unlink(missing_ok=True)   # claimed: the pairing secret goes
     (base / MARKER).unlink(missing_ok=True)

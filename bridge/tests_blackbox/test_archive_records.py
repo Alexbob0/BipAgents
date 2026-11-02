@@ -181,7 +181,8 @@ def test_the_agent_samples_and_proposes_and_the_command_line_reports(bridges, fa
     status = text_of(call(bridge, "archive_records", {"action": "status"}))
     assert "4 new records would be made" in status and "Vélo électrique" in status
     proposed = call(bridge, "archive_records", {"action": "propose"})
-    assert proposed["isError"] is False and "Tâches de fond" in text_of(proposed)
+    # where the person starts it, by the name they read in the app: English, the agent's language (names.rs)
+    assert proposed["isError"] is False and "« Background tasks »" in text_of(proposed)
     job = [j for j in bridge.get("/v1/jobs", headers=AUTH).json()["jobs"] if j["kind"] == "archive_extract"][0]
     assert job["state"] == "proposed" and job["proposed_by"] == "agent"
     assert bridge.post(f"/v1/jobs/{job['id']}/start", headers=AUTH).status_code == 200

@@ -72,7 +72,7 @@ class Browser:
                 ws.send(json.dumps({"id": n, "method": method, "params": params or {},
                                     **({"sessionId": session} if session else {})}))
                 while True:
-                    answer = json.loads(ws.recv())
+                    answer = json.loads(ws.recv(timeout=10))   # a DevTools that never answers fails, never hangs
                     if answer.get("id") == n:
                         return answer.get("result", {})
 

@@ -74,8 +74,70 @@ pub const SUBAGENT_DONE: &str = "subagent.complete";
 /// (loop_brake.rs) `loop_stopped` (`rescue: true` when a rescue turn follows), `loop_rescue_started` (`run_id`: the
 /// rescue turn's, whose events follow in this same stream; nothing shown) and `loop_rescue_failed`.
 pub const NOTICE: &str = "bridge.notice";
+/// Each model call's real tokens as it ends (Hermes patch 0020): the call's `input_tokens`, the run's `totals`.
+pub const MODEL_USAGE: &str = "model.usage";
 /// Present while a run goes on, rewritten every minute (`RunHub::mark_busy_forever`), for the seat agent's beat.
 pub const BUSY_MARKER: &str = ".local/state/bipagents/busy";
+
+/// A run's real tokens so far, from its last `model.usage` event (Hermes patch 0020). An older Hermes gives a run's
+/// tokens only at its end, none for a run stopped before it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RunUsage {
+    /// The run's model calls so far.
+    pub calls: u32,
+    /// What they read (cache reads included), wrote, and read from the cache, in all.
+    pub input: i64,
+    pub output: i64,
+    pub cached: i64,
+    /// What the last call read: the next one reads at least as much (a turn's conversation only grows).
+    pub last_input: i64,
+}
+
+impl RunUsage {
+    /// A `model.usage` event's numbers (None without its `totals`).
+    pub fn of(data: &Map<String, Value>) -> Option<RunUsage> {
+        let totals = data.get("totals")?.as_object()?;
+        let n = |m: &Map<String, Value>, k: &str| m.get(k).and_then(|v| crate::py::py_int(v).ok()).unwrap_or(0).max(0);
+        Some(RunUsage {
+            calls: n(data, "call") as u32,
+            input: n(totals, "input_tokens"),
+            output: n(totals, "output_tokens"),
+            cached: n(totals, "cache_read_tokens"),
+            last_input: n(data, "input_tokens"),
+        })
+    }
+
+    pub fn total(&self) -> i64 {
+        self.input + self.output
+    }
+
+    /// What the run will have taken once its next model call is done.
+    pub fn after_next_call(&self) -> i64 {
+        self.total() + self.last_input
+    }
+
+    /// In the shape of a run's terminal `usage` (jobs.rs counts a task's tokens from it).
+    pub fn as_usage(&self) -> Dict {
+        let mut usage = Dict::new();
+        usage.insert("input_tokens".into(), json!(self.input));
+        usage.insert("output_tokens".into(), json!(self.output));
+        usage.insert("cache_read_tokens".into(), json!(self.cached));
+        usage
+    }
+}
+
+/// What the hub knows of a run it follows (a room's turn, rooms.rs; a background task, jobs.rs).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RunProgress {
+    /// Its tool steps so far (`SubscriptionState::tool_steps`).
+    pub tool_steps: u32,
+    /// The brake stopped it.
+    pub braked: bool,
+    /// Its real tokens so far (None from an older Hermes).
+    pub usage: Option<RunUsage>,
+    /// The hub stopped it at its token limit (`limit_tokens`).
+    pub capped: bool,
+}
 
 fn handoff_tool(tool: &str) -> bool {
     HANDOFF_TOOLS.iter().any(|t| tool == *t || tool.ends_with(&format!("_{t}")))
@@ -317,6 +379,10 @@ pub struct SubscriptionState {
     /// agent already handed work over (start_task, propose_task, notebook_fill), and whether the bridge steered.
     pub followed_since: f64,
     pub tool_calls: u32,
+    /// The run's tool steps (the calls started together before any ended count once: one model answer each), and
+    /// the calls started and not ended yet (rooms.rs estimates a turn's tokens from the steps).
+    pub tool_steps: u32,
+    pub tools_open: u32,
     pub handed_off: bool,
     pub steered: bool,
     /// The tool calls that count for the safety net (neither browsing nor during a sub-agent's work; from 0 again
@@ -355,6 +421,12 @@ pub struct SubscriptionState {
     /// The run's last tool call (bare name) and when: which run a call of the bridge's tools belongs to (`turn_of`).
     pub last_tool: String,
     pub last_tool_at: f64,
+    /// The run's real tokens so far (`model.usage`): None from a Hermes without patch 0020.
+    pub usage: Option<RunUsage>,
+    /// A room's turn (rooms.rs), a background task's run (jobs.rs): the tokens it may take. Once its real ones and its
+    /// next call would pass them, the hub stops it as that call's tool step starts (`capped`).
+    pub token_limit: Option<i64>,
+    pub capped: bool,
     listeners: Vec<Slot>,
     cancel: Option<CancellationToken>,
     task: Option<JoinHandle<()>>,
@@ -374,6 +446,8 @@ impl Default for SubscriptionState {
             pushed: HashSet::new(),
             followed_since: crate::py::time_time(),
             tool_calls: 0,
+            tool_steps: 0,
+            tools_open: 0,
             handed_off: false,
             steered: false,
             counted_calls: 0,
@@ -394,6 +468,9 @@ impl Default for SubscriptionState {
             ever_followed: false,
             last_tool: String::new(),
             last_tool_at: 0.0,
+            usage: None,
+            token_limit: None,
+            capped: false,
             listeners: Vec::new(),
             cancel: None,
             task: None,
@@ -585,6 +662,25 @@ impl RunHub {
             if a == agent && r == run_id {
                 item.insert("room_id".into(), json!(room_id));
             }
+        }
+    }
+
+    /// A run the hub follows (a room's turn, rooms.rs; a background task, jobs.rs): its tool steps, its real tokens so
+    /// far, whether the brake or its token limit stopped it. None once the hub let it go.
+    pub fn run_progress(&self, agent: &str, run_id: &str) -> Option<RunProgress> {
+        let inner = lock(&self.inner);
+        inner.subs.get(&(agent.to_string(), run_id.to_string())).map(|sub| {
+            let st = lock(&sub.state);
+            RunProgress { tool_steps: st.tool_steps, braked: st.braked, usage: st.usage, capped: st.capped }
+        })
+    }
+
+    /// A room's turn (rooms.rs) or a background task's run (jobs.rs) may take `limit` tokens: stopped by the hub before
+    /// a model call that would pass them (`cap`), on its real tokens (Hermes patch 0020).
+    pub fn limit_tokens(&self, agent: &str, run_id: &str, limit: i64) {
+        let inner = lock(&self.inner);
+        if let Some(sub) = inner.subs.get(&(agent.to_string(), run_id.to_string())) {
+            lock(&sub.state).token_limit = Some(limit);
         }
     }
 
@@ -1046,6 +1142,7 @@ impl RunHub {
         let mut st = lock(&sub.state);
         let event = if event.r#type == "approval.request" { self.in_plain_words(sub, &st, event) } else { event };
         let event = if event.r#type == "run.completed" { self.no_reply_in_plain_words(sub, event) } else { event };
+        let event = if event.r#type == "run.failed" { self.account_failure_in_plain_words(sub, event) } else { event };
         append_to_backlog(&mut st.backlog, &event);
         st.send_all(Some(&event));
         let kind = event.r#type.as_str();
@@ -1057,10 +1154,18 @@ impl RunHub {
         if kind == "tool.started" || kind == "tool.completed" || kind == SUBAGENT_START || kind == SUBAGENT_DONE {
             self.handoff(sub, &mut st, &event);
         }
+        if kind == MODEL_USAGE {
+            // the latest totals (a stream replayed after a reconnection repeats them)
+            let usage = RunUsage::of(&event.data);
+            if let Some(usage) = usage.filter(|u| st.usage.is_none_or(|seen| u.total() >= seen.total())) {
+                st.usage = Some(usage);
+            }
+        }
         if kind == "tool.started" {
             let tool = crate::loop_brake::event_tool(&event.data);
             st.last_tool = crate::loop_brake::bare(&tool).to_string();
             st.last_tool_at = crate::py::time_time();
+            self.cap(sub, &mut st);
             self.brake(sub, &mut st, &event);
             // a use of a feature to discover (feature_tips.rs: a podcast made, the Carnet filled…)
             if let (Some(shared), true) = (self.config.clone(), crate::feature_tips::feature_for_tool(&tool).is_some()) {
@@ -1186,6 +1291,26 @@ impl RunHub {
     /// many tools is stopped, and the conversation told in plain words (a `bridge.notice` with code `loop_stopped`, in
     /// the stream before the run's end; a push when nobody follows it). Not while a sub-agent works for the run (its
     /// calls are its own); a background task's run (`mark_background`) and a browsing one get the higher limits.
+    /// A room's turn or a background task's run whose last model call asked for tools (`tool.started`): stopped now,
+    /// before its next call, once its real tokens and that call (reading at least what the last one did) would pass its
+    /// limit. A call that answered asks for none: the turn ends on its own. In the bench of 2026-11-01 a DeepSeek turn reached 249k for
+    /// a 200k cap, its calls reading 41k each after big file reads, on an estimate of 20k a call.
+    fn cap(&self, sub: &RunSubscription, st: &mut SubscriptionState) {
+        let (Some(limit), Some(usage)) = (st.token_limit, st.usage) else { return };
+        if st.capped || st.finished || usage.after_next_call() < limit {
+            return;
+        }
+        st.capped = true;
+        tracing::info!(agent = %sub.agent.name, run_id = %sub.run_id, used = usage.total(), next_call = usage.last_input,
+            limit = limit, "a run's next call would pass its token limit, stopped");
+        let (hermes, agent, run_id) = (self.hermes.clone(), sub.agent.clone(), sub.run_id.clone());
+        self.spawn(async move {
+            if let Err(err) = hermes.stop_run(&agent, &run_id).await {
+                tracing::info!(agent = %agent.name, run_id = %run_id, error = %err, "the token limit's stop refused");
+            }
+        });
+    }
+
     fn brake(&self, sub: &RunSubscription, st: &mut SubscriptionState, event: &SSEEvent) {
         if st.braked || st.finished || st.delegating > 0 || st.subagents > 0 {
             return;
@@ -1556,9 +1681,16 @@ impl RunHub {
     fn handoff(&self, sub: &RunSubscription, st: &mut SubscriptionState, event: &SSEEvent) {
         let tool = event.data.get("tool").or_else(|| event.data.get("name")).and_then(Value::as_str).unwrap_or("");
         let now = crate::py::time_time();
+        if matches!(event.r#type.as_str(), "tool.completed" | "tool.failed") {
+            st.tools_open = st.tools_open.saturating_sub(1);
+        }
         match event.r#type.as_str() {
             "tool.started" => {
                 st.tool_calls += 1;
+                if st.tools_open == 0 {
+                    st.tool_steps += 1;
+                }
+                st.tools_open += 1;
                 if st.recent_tools.len() >= 100 {
                     st.recent_tools.pop_front();
                 }
@@ -1860,6 +1992,20 @@ touche « Démarrer » pour reprendre."
         SSEEvent::new(event.r#type, data, raw)
     }
 
+    /// A turn that failed on a model chosen for this agent at home (model_choice.rs): one plain sentence (check the
+    /// model, or go back to the install's default), never the provider's words nor the plan's credit notice.
+    fn account_failure_in_plain_words(&self, sub: &RunSubscription, event: SSEEvent) -> SSEEvent {
+        let Some(shared) = &self.config else { return event };
+        let config = shared.get();
+        let agent = config.agent(Some(&sub.agent.name)).cloned().unwrap_or_else(|| sub.agent.clone());
+        let Some(line) = crate::model_choice::failure_line(&config, &agent) else { return event };
+        let mut data = event.data;
+        data.insert("error".into(), json!(line));
+        data.insert("own_model".into(), json!(true));
+        let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(data.clone()));
+        SSEEvent::new(event.r#type, data, raw)
+    }
+
     fn on_approval(&self, inner: &mut HubInner, sub: &RunSubscription, st: &mut SubscriptionState, event: &SSEEvent) {
         let data = &event.data;
         let request_id = as_str(data.get("request_id"));
@@ -2116,6 +2262,58 @@ mod tests {
         assert_eq!(st.turn.page_reads, 16);
         let notice = st.backlog.iter().find(|e| e.r#type == NOTICE).unwrap();
         assert_eq!(notice.data["reason"], json!("the browser read the page too many times"));
+    }
+
+    #[tokio::test]
+    async fn a_rooms_turn_is_stopped_before_a_call_that_would_pass_its_limit() {
+        // 2026-11-01, the rooms bench: a DeepSeek turn's calls read 41k each after big file reads, 249k for a 200k cap
+        let hub = RunHub::new(HermesClient::new(reqwest::Client::new()), None, 7200, None);
+        let agent = AgentConfig { name: "front".into(), ..Default::default() };
+        let run = |id: &str| {
+            let sub = Arc::new(RunSubscription::new(agent.clone(), id));
+            lock(&hub.inner).subs.insert(sub.key(), sub.clone());
+            sub
+        };
+        let usage = |call: u32, input: i64, total_in: i64, total_out: i64| {
+            let data = json!({"event": MODEL_USAGE, "call": call, "input_tokens": input, "output_tokens": 400,
+                              "totals": {"input_tokens": total_in, "output_tokens": total_out, "cache_read_tokens": 1000}});
+            SSEEvent::new(MODEL_USAGE, data.as_object().cloned().unwrap(), "{}")
+        };
+        let started = || SSEEvent::new("tool.started", json!({"tool": "read_file"}).as_object().cloned().unwrap(), "{}");
+        let (turn, task) = (run("run_turn"), run("run_task"));
+        hub.limit_tokens("front", "run_turn", 170_000);
+        hub.dispatch(&turn, usage(1, 20_000, 20_000, 400));
+        hub.dispatch(&turn, started());
+        hub.dispatch(&turn, usage(2, 41_000, 61_000, 800));
+        hub.dispatch(&turn, started());
+        hub.dispatch(&turn, usage(3, 45_000, 106_000, 1_200));
+        hub.dispatch(&turn, started());
+        let progress = hub.run_progress("front", "run_turn").unwrap();
+        assert!(!progress.capped, "106k and a call of 45k: still under 170k");
+        assert_eq!(progress.usage, Some(RunUsage { calls: 3, input: 106_000, output: 1_200, cached: 1000, last_input: 45_000 }));
+        // its 4th call ends at 156k: a 5th would read 50k at least, past 170k; stopped as it asks for tools
+        hub.dispatch(&turn, usage(4, 50_000, 156_000, 1_600));
+        assert!(!hub.run_progress("front", "run_turn").unwrap().capped, "not before it asks for tools: may be its answer");
+        hub.dispatch(&turn, started());
+        let progress = hub.run_progress("front", "run_turn").unwrap();
+        assert!(progress.capped);
+        assert_eq!(progress.usage.map(|u| (u.total(), u.after_next_call())), Some((157_600, 207_600)));
+        // a replayed stream's older totals never go back
+        hub.dispatch(&turn, usage(2, 41_000, 61_000, 800));
+        assert_eq!(hub.run_progress("front", "run_turn").unwrap().usage.map(|u| u.calls), Some(4));
+        // a run without a limit (a task) is only counted; a Hermes without patch 0020: no usage at all
+        hub.dispatch(&task, usage(9, 90_000, 400_000, 9_000));
+        hub.dispatch(&task, started());
+        let progress = hub.run_progress("front", "run_task").unwrap();
+        assert!(!progress.capped);
+        assert_eq!(progress.usage.unwrap().as_usage(),
+            json!({"input_tokens": 400_000, "output_tokens": 9_000, "cache_read_tokens": 1000}).as_object().cloned().unwrap());
+        let old = run("run_old");
+        hub.limit_tokens("front", "run_old", 170_000);
+        hub.dispatch(&old, started());
+        let progress = hub.run_progress("front", "run_old").unwrap();
+        assert!(progress.usage.is_none() && !progress.capped);
+        assert_eq!(RunUsage::of(json!({"call": 1, "input_tokens": 5}).as_object().unwrap()), None, "no totals");
     }
 
     #[tokio::test]

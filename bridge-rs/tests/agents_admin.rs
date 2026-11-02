@@ -835,6 +835,7 @@ async fn routes_for_settings_thinking_and_model() {
             "notebook",
             "guide",
             "answer_style",
+            "model_choice",
             "group"
         ]
     );
@@ -964,7 +965,10 @@ async fn the_answer_style_is_kept_and_switches_one_paragraph_of_the_soul() {
         back["answer_style"],
         json!({"style": "short", "custom": "Tutoie-moi,\ndes emojis bipagents", "custom_max": 300})
     );
-    assert_eq!(souls::style_paragraph(&soul()).as_deref(), Some(souls::STYLE_RULE));
+    // in English, the app's parts by their English names (names.rs: « Notebook »)
+    let short = souls::for_language(souls::STYLE_RULE, Some("en"));
+    assert!(short.ends_with("never a Notebook or memory note."), "{short}");
+    assert_eq!(souls::style_paragraph(&soul()), Some(short));
     assert!(soul().contains(&souls::language_block(Some("en"))) && !soul().contains(souls::CUSTOM_STYLE_START));
     let file = std::fs::read_to_string(&source).unwrap();
     assert!(!file.contains("answer_style =") && file.contains("answer_style_custom = "), "{file}");
@@ -974,7 +978,8 @@ async fn the_answer_style_is_kept_and_switches_one_paragraph_of_the_soul() {
     kept.answer_style = Some("balanced".into());
     app.app.state.config.put_agent(kept);
     heal_souls(&app.app.state.config());
-    assert!(soul().contains(souls::BALANCED_STYLE_RULE) && !soul().contains(souls::STYLE_RULE));
+    let balanced = souls::for_language(souls::BALANCED_STYLE_RULE, Some("en"));
+    assert!(soul().contains(&balanced) && !soul().contains(&souls::STYLE_RULE[..40]));
     assert_eq!(soul().matches("Answer first").count(), 1);
     let healed = soul();
     heal_souls(&app.app.state.config());
@@ -991,7 +996,7 @@ async fn the_answer_style_is_kept_and_switches_one_paragraph_of_the_soul() {
     assert_eq!(same["isError"], true, "already its style");
     let card = bipbridge::guide::call(&c, &agent, bipbridge::guide::PROPOSE_PROFILE, &args("detailed")).unwrap();
     assert_eq!(card["isError"], false, "{card:?}");
-    assert!(soul().contains(souls::BALANCED_STYLE_RULE), "nothing before the tap");
+    assert!(soul().contains(&balanced), "nothing before the tap");
     let view = app.get("/v1/guide", &h).await.json();
     let proposal = view["proposals"].as_array().unwrap().iter().find(|p| p["type"] == "style").unwrap().clone();
     assert_eq!((&proposal["answer_style"], &proposal["agent"]), (&json!("detailed"), &json!("wellness")));
@@ -1000,7 +1005,8 @@ async fn the_answer_style_is_kept_and_switches_one_paragraph_of_the_soul() {
     assert_eq!(done.status, 200, "{}", done.text());
     assert_eq!(done.json()["type"], "style");
     assert_eq!(done.json()["answer_style"]["style"], "detailed");
-    assert!(soul().contains(souls::DETAILED_STYLE_RULE) && !soul().contains(souls::BALANCED_STYLE_RULE));
+    let detailed = souls::for_language(souls::DETAILED_STYLE_RULE, Some("en"));
+    assert!(soul().contains(&detailed) && !soul().contains(&balanced));
     assert_eq!(app.app.state.config().agents["wellness"].answer_style.as_deref(), Some("detailed"));
 }
 

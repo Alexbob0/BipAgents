@@ -429,7 +429,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     return status
 
 
-CLOUD_MODEL = "openrouter/auto"   # until the app sends the person's model and key (bridge-rs/src/cloud_setup.rs)
+# The offer's model (Kerfy picks it, 2026-10-27), set at install with a placeholder key: the claim then only writes the
+# person's key (and model, if another) into files Hermes reads at each turn, no gateway restart (bridge-rs/src/
+# cloud_setup.rs, internal/notes/instant-agents.md).
+CLOUD_MODEL = "glm-5.3-flash"
+CLOUD_MODEL_URL = "https://api.eurouter.ai/api/v1"
+CLOUD_KEY_PLACEHOLDER = "reserve-no-key-yet"
 
 
 def cloud_install(args, runner: hermes.Runner, machine: Machine) -> int:
@@ -465,7 +470,7 @@ def cloud_install(args, runner: hermes.Runner, machine: Machine) -> int:
     if not args.languages:   # the Bips in the person's language first; the others load only when spoken
         others = [lang for lang in cloud.LANGUAGES if lang != setup.language]
         args.languages = ",".join([setup.language] + ([] if setup.profile == "mini" else others))
-    model = hermes.Model("openrouter", CLOUD_MODEL, base_url="https://openrouter.ai/api/v1")
+    model = hermes.Model("custom", CLOUD_MODEL, base_url=CLOUD_MODEL_URL, api_key=CLOUD_KEY_PLACEHOLDER)
     inst = Install(repo=REPO, home=Path.home(), ports=pick_block(wanted=args.ports), tailnet_name=None,
                    lan_address=address, model=model, push_service_url=args.push_service, isolated=bool(sandbox),
                    browser=browser, cloud=True, door_port=setup.port, setup_file=config_dir / "setup.json",

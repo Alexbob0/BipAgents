@@ -168,14 +168,16 @@ fn s(arguments: &Dict, key: &str) -> String {
 }
 
 /// What the agent says after filing (or not: the person turned these mentions off). `told`: the person's other
-/// agents the bridge queued the news for (news.rs), named as the person sees them.
-fn mention(config: &Config, what: &str, told: &[String]) -> String {
+/// agents the bridge queued the news for (news.rs), named as the person sees them. Its example in the agent's
+/// language (names.rs: « Noted in your Notebook », never « Noté dans ton Carnet » for an English person).
+fn mention(config: &Config, agent: &str, what: &str, told: &[String]) -> String {
+    let n = crate::names::names(&crate::names::agent_language(config, agent));
     let told_line = if told.is_empty() {
         String::new()
     } else {
-        let names = super::news::names_text(told, &super::language(config));
-        let verb = if told.len() == 1 { "est" } else { "sont" };
-        format!(" · {names} {verb} au courant")
+        let names = super::news::names_text(told, n.lang);
+        let verb = if told.len() == 1 { n.knows.0 } else { n.knows.1 };
+        format!(" · {names} {verb}")
     };
     let note = if told.is_empty() {
         String::new()
@@ -185,8 +187,12 @@ fn mention(config: &Config, what: &str, told: &[String]) -> String {
             super::news::names_text(told, "en")
         )
     };
+    let colon = if n.lang == "fr" { " :" } else { ":" };
     if super::mentions(config) {
-        format!("\nKeep your answer to the person as it was, and add at its end one short line in their language, e.g. « Noté dans ton Carnet : {what}{told_line} ».{note}")
+        format!(
+            "\nKeep your answer to the person as it was, and add at its end one short line in their language, e.g. « {}{colon} {what}{told_line} ».{note}",
+            n.noted
+        )
     } else {
         format!("\nThe person turned these mentions off: don't mention it.{note}")
     }
@@ -340,7 +346,7 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict) -> anyho
                             written.path,
                             marker(part),
                             written.added.len(),
-                            mention(config, &what, &told)
+                            mention(config, agent, &what, &told)
                         ),
                         false,
                     ))
@@ -386,7 +392,7 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict) -> anyho
                         &format!(
                             "Corrected in the Carnet: {} ({summary}).{}",
                             written.title,
-                            mention(config, &summary, &told)
+                            mention(config, agent, &summary, &told)
                         ),
                         false,
                     ))
@@ -488,7 +494,7 @@ the conversation, ask them in one sentence: yes is action add with origin accept
                                     "Task in the Carnet: {} (id {}{due}).{phone}{}",
                                     task.title,
                                     task.id,
-                                    mention(config, &task.title, &told)
+                                    mention(config, agent, &task.title, &told)
                                 ),
                                 false,
                             ))
@@ -565,7 +571,7 @@ fn record(config: &Config, agent: &str, arguments: &Dict, who: &Who) -> anyhow::
                 let path = records::path_of(&super::language(config), kind);
                 let title = path.rsplit('/').next().unwrap_or("").trim_end_matches(".md").to_string();
                 let told = tell(config, agent, Part::Main, &path, &title, "", &line);
-                mention(config, &line, &told)
+                mention(config, agent, &line, &told)
             };
             Ok(tool_text(&format!("{what}: {} (id {id}): {line}.{mention}", kind.id), false))
         }

@@ -5,7 +5,7 @@
 //     node site/check-motions.mjs
 //
 // Exits 1 on the first difference past 0.01 (colours: one step per channel). Also draws every animation and costume
-// once, to catch a markup error.
+// once, to catch a markup error, and the « vertige » reaction (its squares as the apps' tests count them).
 import { copyFileSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -54,5 +54,20 @@ for (const motion of [...m.THINKING, ...Object.keys(m.MOMENTS), "sleep", "listen
     }
   }
 }
-console.log(failures ? `${failures} difference(s)` : `ok: ${checked} frames match the design page`);
+// « Vertige » (dizzy, after too many taps): the same squares as the apps' tests (PixelEngineTests, PixelEngineTest):
+// 32 blocks × 2, two spiral eyes of 10, the wavy mouth's 5, three stars of 5; its still image the same at any time.
+const rects = svg => (svg.match(/<rect/g) || []).length;
+for (const costume of [null, ...Object.keys(m.COSTUMES)]) for (const t of [0, 0.5, 1, 1.5, 2.2]) {
+  const svg = m.pixelSVG({ category: "daily", reaction: "vertige", t, size: 48, costume, still: false });
+  if (!svg.startsWith("<svg") || /NaN|undefined/.test(svg)) fail(`draw vertige ${costume} ${t}`);
+}
+const dizzy = m.pixelSVG({ category: "daily", reaction: "vertige", t: 0.5, size: 120, still: false });
+if (rects(dizzy) !== 104) fail(`vertige @ 0.5: ${rects(dizzy)} squares ≠ 104`);
+if (!/rotate\(1\.31\)/.test(dizzy)) fail("vertige @ 0.5: not swaying");
+const still = m.pixelSVG({ category: "daily", reaction: "vertige", t: 0, size: 48, still: true });
+if (still !== m.pixelSVG({ category: "daily", reaction: "vertige", t: 1.7, size: 48, still: true }) || rects(still) !== 104 || !/rotate\(-7\)/.test(still))
+  fail("vertige: no still image with reduced motion");
+if (rects(m.pixelSVG({ category: "daily", reaction: "vertige", t: 2.2, size: 120, still: false })) !== 71) fail("vertige: not over at 2.2 s");
+
+console.log(failures ? `${failures} difference(s)` : `ok: ${checked} frames match the design page, « vertige » draws`);
 process.exit(failures ? 1 : 0);

@@ -350,8 +350,14 @@ téléphone).
 - **Les invitations familiales n’ont pas de code de comparaison.** Elles sont scellées pour les clés des appareils de
   l’autre personne telles que le guichet les donne (`POST /v1/account/family/devices`) ; un guichet malhonnête pourrait
   donner sa propre clé et ouvrir l’invitation.
-- Une récupération sans le code (après 24 heures) permet au guichet de faire réappairer une place avec un nouvel
-  appareil. C’est voulu, et c’est un pouvoir que détient le guichet.
+- **Un nouvel appareil entre avec la connexion et un code envoyé par e-mail** (et le code d’une appli
+  d’authentification si la personne en a ajouté une). Si un autre appareil approuvé existe, il envoie les clés scellées
+  au nouveau ; sinon, le guichet fait réappairer les places avec le nouvel appareil (nouvelles clés). Le guichet peut
+  donc donner l’accès à qui contrôle l’adresse e-mail (et l’appli d’authentification) : c’est voulu, chaque nouvel
+  appareil est signalé aux autres et par e-mail avec un lien pour le retirer (ce qui change à nouveau les clés), et
+  journalisé. Le secret de l’appli d’authentification est gardé chiffré par le guichet. Une récupération sans aucun
+  code (après 24 heures) reste possible quand l’e-mail ne peut pas être reçu. Le guichet ne lit jamais les
+  conversations.
 - Sur une place de l’offre, le serveur est installé pour Kerfy Studio et tourne chez un hébergeur. Le chiffrement de
   l’app ne protège pas contre celui qui exploite ce serveur.
 - **Invitations à une place partagée :** le guichet détient le secret d’appairage, la clé d’IA et le jeton de la place

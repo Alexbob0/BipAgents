@@ -392,6 +392,11 @@ pub fn diet(
         if bridge_tools.iter().any(|t| t == crate::give_file::TOOL_NAME) {
             add(&format!("!{BRIDGE_PREFIX}{}", crate::give_file::TOOL_NAME));
         }
+        // maps (maps.rs), whatever the kind: behind the search, asked for « une carte », the agent made a picture or a
+        // page with coordinates of its own, which fell in the sea (2026-10-31)
+        if bridge_tools.iter().any(|t| t == crate::maps::TOOL_NAME) {
+            add(&format!("!{BRIDGE_PREFIX}{}", crate::maps::TOOL_NAME));
+        }
         if kind == "guide" {
             GUIDE_DIRECT
                 .iter()
@@ -590,6 +595,13 @@ pub fn with_diet(data: &Yaml, diet: &Diet) -> Option<Yaml> {
     if agent.get("max_turns").is_none_or(|v| *v == Yaml::Null) {
         agent.insert("max_turns", Yaml::Int(MAX_TURNS as i128));
     }
+    // A routine the agent makes in a conversation reports there (cronwatch.rs): Hermes (patch 0019) keeps the
+    // conversation on the job and tells the model so, instead of « local-only: set deliver='telegram' », unless the
+    // profile says otherwise.
+    let cron = map_at(&mut data, "cron")?;
+    if cron.get("session_reports").is_none_or(|v| *v == Yaml::Null) {
+        cron.insert("session_reports", Yaml::Bool(true));
+    }
     if let Some(Yaml::Map(_)) = data.get("mcp_servers").and_then(|s| s.get(BROWSER_SERVER)) {
         let entry = data.get_mut("mcp_servers").and_then(|s| s.get_mut(BROWSER_SERVER))?;
         let filter = map_at(entry, "tools")?;
@@ -682,6 +694,19 @@ mod tests {
         // an agent holding a vault item, or writing skills, keeps those tools
         let d = diet("daily", &tools, false, true, true, &[]);
         assert!(!d.defer.iter().any(|n| n.starts_with("browser_vault") || n == "skill_manage"));
+    }
+
+    #[test]
+    fn the_map_tool_is_in_view_for_every_kind() {
+        // 2026-10-31: asked for « une carte », an agent with map_image behind the search made a picture, then a page
+        // with its own coordinates (in the sea)
+        let tools = names(&["notebook_search", "create_page", "map_image"]);
+        for kind in crate::souls::CATEGORIES.iter().chain(["guide", "custom"].iter()) {
+            let d = diet(kind, &tools, false, false, false, &[]);
+            assert!(d.defer.contains(&"!mcp__bipagents__map_image".to_string()), "{kind}");
+        }
+        let without = diet("finance", &names(&["create_page"]), false, false, false, &[]);
+        assert!(!without.defer.iter().any(|n| n.ends_with("map_image")));
     }
 
     #[test]
@@ -855,6 +880,11 @@ mod tests {
   max_turns: 40
 ").unwrap();
         assert_eq!(cap(&with_diet(&own, &d).unwrap()), Some(Yaml::Int(40)), "its own cap kept");
+        // routines report to the conversation they were made in, unless the profile says otherwise
+        let reports = |data: &Yaml| data.get("cron").and_then(|c| c.get("session_reports")).cloned();
+        assert_eq!(reports(&changed), Some(Yaml::Bool(true)));
+        let off = pyyaml::load("cron:\n  session_reports: false\n").unwrap();
+        assert_eq!(reports(&with_diet(&off, &d).unwrap()), Some(Yaml::Bool(false)), "its own choice kept");
         // the person's own list
         let theirs = pyyaml::load("tools:\n  tool_search:\n    defer: [todo_list]\n").unwrap();
         let kept = with_diet(&theirs, &d).expect("skills still written");

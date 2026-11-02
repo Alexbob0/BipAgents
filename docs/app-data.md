@@ -319,8 +319,13 @@ store alone (StoreKit products and storefront, Play Billing products and country
   it. A full commit-then-reveal exchange, where neither side can choose its key after seeing the other's, is planned.
 - **Family invitations have no comparison code.** They are sealed for the other person's device keys as the guichet
   gives them (`POST /v1/account/family/devices`); a dishonest guichet could hand its own key and open the invitation.
-- Recovery without the code (after 24 hours) lets the guichet have a place paired again with a new device. That is by
-  design, and it is a power the guichet holds.
+- **A new device gets in with the sign-in plus a code sent by email** (and an authenticator app's code when the person
+  added one). When another approved device exists, it sends the new one the sealed keys; otherwise the guichet has the
+  places paired again with the new device (new keys). So the guichet can give access to whoever controls the email
+  address (and the authenticator app): that is by design; every new device is reported to the others and by email
+  with a link that removes it (which changes the keys again), and logged. The authenticator's secret is kept encrypted
+  by the guichet. Recovery with no code at all (after 24 hours) stays for when email can't be received. The guichet
+  never reads conversations.
 - On a place of the offer, the server is installed for Kerfy Studio and runs at a hosting provider. The app's
   encryption does not protect against whoever runs that server.
 - **Invitations to a shared place:** the guichet holds the place's pairing secret, AI key and claim token (it issued

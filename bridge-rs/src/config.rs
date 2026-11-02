@@ -557,19 +557,43 @@ impl Default for JobsConfig {
 
 /// `[rooms]`: group discussions between the person's agents (rooms.rs, 2026-10-25). The router asks a small model
 /// (`router_model`, the install's model as the Carnet finds it) only when the @names and the rule found nobody, at
-/// most `router_daily_max` times a day; an agent's @ in a reply gives another agent a turn, up to `max_hops` hops past
-/// the person's message (at most 2); a turn not done after `turn_seconds` is stopped (unless it waits for an approval).
+/// most `router_daily_max` times a day; an agent's `NEXT: @id` line (its @ in a reply with `handoff` off) gives another
+/// agent a turn, up to `max_hops` hops past the person's message (at most 2); a turn not done after `turn_seconds` is
+/// stopped (unless it waits for an approval).
+/// 2026-10-31 (rooms.rs, « passage de relais »): `handoff` (on by default; off: the router and hops as before), and
+/// for a room with a goal the person accepted, at most `team_turns` turns and `team_tokens` tokens per message of the
+/// person; `goal_model`: a message that looks like a task gets a goal proposed by the small model. `team_turn_tokens`:
+/// one turn of team work at most (one agent's run; Back's took 749k on the lab), its wrap-up included: told to wrap up
+/// at 60 %, stopped 30k before the cap (rooms.rs `turn_limit`; on each model call's real tokens with Hermes patch
+/// 0020, before a call that would pass it), then one short turn without tools says what it did and hands over (never
+/// an empty turn). Since 2026-11-01 also a turn before a goal (a discussion's: Front's took 587k on the bench) and a
+/// turn this install's agent takes in a relative's room (rooms_remote.rs, the whole cap: no wrap-up there).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct RoomsConfig {
     pub router_model: bool,
     pub router_daily_max: u32,
     pub max_hops: u32,
     pub turn_seconds: f64,
+    pub handoff: bool,
+    pub team_turns: u32,
+    pub team_tokens: i64,
+    pub team_turn_tokens: i64,
+    pub goal_model: bool,
 }
 
 impl Default for RoomsConfig {
     fn default() -> Self {
-        RoomsConfig { router_model: true, router_daily_max: 300, max_hops: 1, turn_seconds: 300.0 }
+        RoomsConfig {
+            router_model: true,
+            router_daily_max: 300,
+            max_hops: 1,
+            turn_seconds: 300.0,
+            handoff: true,
+            team_turns: 8,
+            team_tokens: 600_000,
+            team_turn_tokens: 200_000,
+            goal_model: true,
+        }
     }
 }
 
@@ -699,6 +723,10 @@ pub struct Config {
     /// Some(0): no limit. Not in the serialized form either.
     #[serde(skip)]
     pub place_agents_max: Option<usize>,
+    /// `[place] spare_agents` (agent_pool.rs): blank agents kept ready. None (not written): 3 on a place of the
+    /// offer, none on a self-install. Not in the serialized form either.
+    #[serde(skip)]
+    pub place_spare_agents: Option<usize>,
     /// `[connections]` (connections.rs): not in the serialized form either.
     #[serde(skip)]
     pub connections: crate::connections::Settings,
@@ -736,7 +764,7 @@ pub struct Config {
     pub model_health_url: Option<String>,
     pub model_health_key: Option<String>,
     /// `[model] provider_order`: the providers EUrouter tries first for every model call, so their prompt cache works
-    /// (model_route.rs; default entrim, melious; `[]`: EUrouter picks per call).
+    /// (model_route.rs; default entrim, greenpt, inceptron; `[]`: EUrouter picks per call).
     pub model_provider_order: Vec<String>,
     /// The bridge's address on the tailnet (`tailscale serve`), for the pairing QR code.
     pub public_url: Option<String>,
@@ -814,6 +842,7 @@ impl Config {
             rooms: RoomsConfig::default(),
             guide: GuideConfig::default(),
             place_agents_max: None,
+            place_spare_agents: None,
             connections: crate::connections::Settings::default(),
             watchers: crate::watchers::Settings::default(),
             agent_restart: crate::agent_restart::Settings::default(),
@@ -1712,6 +1741,11 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         router_daily_max: i(rooms_t, "router_daily_max", rmd.router_daily_max as i64)?.clamp(0, 100_000) as u32,
         max_hops: i(rooms_t, "max_hops", rmd.max_hops as i64)?.clamp(0, 2) as u32,
         turn_seconds: f(rooms_t, "turn_seconds", rmd.turn_seconds)?.clamp(10.0, 3600.0),
+        handoff: b(rooms_t, "handoff", rmd.handoff),
+        team_turns: i(rooms_t, "team_turns", rmd.team_turns as i64)?.clamp(1, 12) as u32,
+        team_tokens: i(rooms_t, "team_tokens", rmd.team_tokens)?.clamp(10_000, 5_000_000),
+        team_turn_tokens: i(rooms_t, "team_turn_tokens", rmd.team_turn_tokens)?.clamp(10_000, 5_000_000),
+        goal_model: b(rooms_t, "goal_model", rmd.goal_model),
     };
 
     let guide_t = table(data, "guide");
@@ -1726,6 +1760,12 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
     // written as 0 (no limit) is kept apart from not written (the offer's default)
     let place_agents_max = if get(place_t, "agents_max").is_some() {
         Some(i(place_t, "agents_max", 0)?.clamp(0, 1000) as usize)
+    } else {
+        None
+    };
+
+    let place_spare_agents = if get(place_t, "spare_agents").is_some() {
+        Some(i(place_t, "spare_agents", 0)?.clamp(0, 10) as usize)
     } else {
         None
     };
@@ -1823,6 +1863,7 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         rooms,
         guide,
         place_agents_max,
+        place_spare_agents,
         connections: crate::connections::Settings::from_table(table(data, "connections")),
         watchers: crate::watchers::Settings::from_table(table(data, "watchers")),
         agent_restart: crate::agent_restart::Settings::from_table(table(data, "agent_restart")),

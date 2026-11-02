@@ -703,7 +703,10 @@ async fn served_post(
         .take(40)
         .collect();
     let rules = if crate::family_agent::is_family(&config, &agent.name) {
-        crate::family_agent::member_instructions(&person)
+        crate::names::localize(
+            &crate::family_agent::member_instructions(&person),
+            &crate::names::agent_language(&config, &agent.name),
+        )
     } else {
         relative_instructions(&person, &shown)
     };

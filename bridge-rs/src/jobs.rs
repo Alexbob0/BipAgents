@@ -4,9 +4,13 @@
 //!
 //!     mail_scan   a mailbox read through by steps (mail_scan.py): listed and paused here, run there
 //!     task        a long task in the agent's own Hermes, with all its tools, in a conversation of its own (« 🧩 <title> »):
-//!                 the bridge starts the run, reads the conversation's token counters every few seconds and stops the run
+//!                 the bridge starts the run, reads its tokens every few seconds (each model call's, Hermes patch 0020;
+//!                 else the conversation's counters) and stops the run
 //!                 once the budget is reached (paused: the person may give more and resume) or after three hours; the
-//!                 agent ends with a report, which the notification opens
+//!                 agent ends with a report, which the notification opens. With patch 0020 the run hub also stops it
+//!                 before a model call that would pass what is left of its budget (runs.rs `cap`): the conversation's
+//!                 counters move only at a run's end, so before that a run went on to its end whatever it took (Alex's
+//!                 task of 2026-10-31: about twice its budget)
 //!
 //! An agent may propose a task (MCP `propose_task` in agent_tools.py, for work too long for a reply): it waits, budget and all, until the
 //! person starts it in the app. Since 2026-10-22 (owner's decision: long work never inline) an agent also starts a task
@@ -62,6 +66,8 @@ pub const MAX_STEP_SECONDS: f64 = 3.0 * 3600.0;
 pub const RUNNING_MAX: usize = 3;
 /// An agent's proposals waiting for the person.
 pub const PROPOSALS_MAX: usize = 5;
+/// A task paused because the place was too full (heavy_work.rs).
+pub const SPACE_REASON: &str = "space";
 /// Seconds a stop may take before the task is counted as paused anyway.
 pub const STOP_GRACE: f64 = 120.0;
 /// Finished tasks kept in the list, per agent.
@@ -79,9 +85,26 @@ page (create_page) for a table, a comparison or a dashboard, a file in your work
 has a budget; if you are told to continue, pick up where you stopped instead of starting again. End with a short
 report in the person's language: what you did, what you found or made and where it is, what is left or uncertain.";
 pub const CONTINUE: &str = "Continue the task where you stopped (don't start again), then end with your report.";
+/// The pushes' bodies in French; in the agent's language they come from names.rs (`push_body`).
 pub const DONE_BODY: &str = "Tâche de fond terminée";
 pub const PAUSED_BODY: &str = "Tâche de fond en pause";
 pub const PROPOSED_BODY: &str = "Tâche de fond proposée";
+
+/// A push's body (`DONE_BODY`…) in `agent`'s language: what the phone shows, as it is (Android), or when the iOS
+/// catalog has no such key.
+fn push_body(config: &crate::config::Config, agent: &AgentConfig, body: &str) -> &'static str {
+    let n = crate::names::names(&crate::handback::language_of(config, agent));
+    match body {
+        DONE_BODY => n.task_done,
+        PAUSED_BODY => n.task_paused,
+        _ => n.task_proposed,
+    }
+}
+
+/// French puts a space before a colon.
+fn colon(body: &str) -> &'static str {
+    if body.starts_with("Tâche") { " :" } else { ":" }
+}
 
 /// Python's `JobError` (safe to show).
 #[derive(Debug, Clone, thiserror::Error)]
@@ -183,6 +206,14 @@ fn int_of(value: Option<&Value>) -> i64 {
 pub fn spent(job: &Dict) -> i64 {
     let tokens = job.get("tokens");
     int_of(tokens.and_then(|t| t.get("input"))) + int_of(tokens.and_then(|t| t.get("output")))
+}
+
+/// What the task's current run may take: its budget less what its earlier runs took.
+fn left_for_run(job: &Dict) -> i64 {
+    let before = job.get("before");
+    int_of(job.get("max_tokens"))
+        - int_of(before.and_then(|t| t.get("input")))
+        - int_of(before.and_then(|t| t.get("output")))
 }
 
 /// A mailbox scan (mail_scan.py) in the common shape.
@@ -421,6 +452,19 @@ impl Jobs {
         Value::Null
     }
 
+    /// The task's run's real tokens so far, as its model calls end (Hermes patch 0020, followed by the hub), in the
+    /// shape of a run's usage: its budget then counts them, not the conversation's counters, which Hermes writes only
+    /// at a run's end. None from an older Hermes.
+    fn live_usage(&self, agent: &AgentConfig, run_id: &str) -> Option<Dict> {
+        let progress = self.hub.as_ref()?.run_progress(&agent.name, run_id)?;
+        progress.usage.filter(|u| u.total() > 0).map(|u| u.as_usage())
+    }
+
+    /// The hub stopped the task's run before a model call that would have passed its budget (`limit_tokens`).
+    fn capped(&self, agent: &AgentConfig, run_id: &str) -> bool {
+        self.hub.as_ref().and_then(|hub| hub.run_progress(&agent.name, run_id)).is_some_and(|p| p.capped)
+    }
+
     fn agent(&self, name: &str) -> Result<AgentConfig, JobError> {
         self.config
             .get()
@@ -532,8 +576,9 @@ impl Jobs {
         let max_tokens = budget_of(budget).unwrap_or(1_000_000);
         let job = self.new_task(agent, title, prompt, max_tokens, None, "agent", from_session)?;
         if let Some(tell) = &self.tell {
-            let line = format!("{PROPOSED_BODY} : {}", tk::str_or_empty(job.get("title")));
-            tell(agent.name.clone(), None, line, tk::str_or_empty(job.get("id")), PROPOSED_BODY.into()).await;
+            let body = push_body(&self.config.get(), agent, PROPOSED_BODY);
+            let line = format!("{body}{} {}", colon(body), tk::str_or_empty(job.get("title")));
+            tell(agent.name.clone(), None, line, tk::str_or_empty(job.get("id")), body.into()).await;
         }
         Ok(job)
     }
@@ -562,6 +607,7 @@ impl Jobs {
         if self.credit_used() {
             return Err(JobError(crate::credit::JOBS_REFUSED.into()));
         }
+        // (a place too full or pressed doesn't refuse: the task is queued at its start, `launch`, heavy_work.rs)
         let running: Vec<Dict> = tasks(&self.config.get())
             .into_iter()
             .filter(|j| ["running", "stopping"].contains(&state_of(j).as_str()))
@@ -579,6 +625,55 @@ impl Jobs {
     /// The month's AI credit used (credit.rs): what runs by itself pauses.
     pub fn credit_used(&self) -> bool {
         crate::credit::now_at(self.credit_file.as_deref()).paused()
+    }
+
+    /// The place too full (heavy_work.rs's backstop): every running task stopped at its next step, paused with the
+    /// reason « space ». How many.
+    pub async fn pause_for_space(&self) -> usize {
+        let mut count = 0;
+        for mut job in tasks(&self.config.get()) {
+            if state_of(&job) != "running" || crate::archives::records_fill::is_extract(&job) {
+                continue;
+            }
+            let Ok(agent) = self.agent(&agent_of(&job)) else { continue };
+            self.stop(&agent, &mut job, SPACE_REASON).await;
+            count += 1;
+        }
+        count
+    }
+
+    /// Room again: the tasks paused or queued for it go on by themselves, each once its agent's check clears
+    /// (heavy_work.rs `task_gate`; checked each minute).
+    pub async fn resume_after_space(self: &Arc<Self>, config: &crate::config::Config) {
+        for job in tasks(config) {
+            if state_of(&job) == "paused" && job.get("reason") == Some(&json!(SPACE_REASON)) {
+                let (id, agent) = (tk::str_or_empty(job.get("id")), agent_of(&job));
+                let c = self.config.get();
+                let waits = tokio::task::spawn_blocking(move || crate::heavy_work::task_waits(&c, &agent))
+                    .await
+                    .unwrap_or(Some("busy"));
+                if waits.is_some() {
+                    continue;
+                }
+                match self.resume(&id, None, None).await {
+                    Ok(_) => tracing::info!(job = %id, "task started again: there is room"),
+                    Err(e) => tracing::debug!(job = %id, error = %format!("{e:#}"), "task not resumed after the space"),
+                }
+            }
+        }
+    }
+
+    /// `heavy_work` answered « later » to the agent's own background task: that task stopped at its next step,
+    /// paused for room (started again by `resume_after_space`). False when the agent has none running.
+    pub async fn pause_running_for_space(&self, agent: &str) -> bool {
+        let Some(mut job) = tasks(&self.config.get()).into_iter().find(|j| {
+            state_of(j) == "running" && agent_of(j) == agent && !crate::archives::records_fill::is_extract(j)
+        }) else {
+            return false;
+        };
+        let Ok(agent) = self.agent(agent) else { return false };
+        self.stop(&agent, &mut job, SPACE_REASON).await;
+        true
     }
 
     /// The credit back (a pack, the new month): the tasks and mail scans paused for it go on by themselves.
@@ -638,6 +733,16 @@ impl Jobs {
             tracing::info!(agent = %agent.name, job = %tk::str_or_empty(job.get("id")), "job queued: place moving");
             return Ok(());
         }
+        let (c, name) = (self.config.get(), agent.name.clone());
+        if let Some(why) = tokio::task::spawn_blocking(move || crate::heavy_work::task_waits(&c, &name)).await? {
+            // The place's room as heavy_work reads it (heavy_work.rs): queued, started by itself once there is room.
+            job.insert("state".into(), json!("paused"));
+            job.insert("reason".into(), json!(SPACE_REASON));
+            job.insert("queued_text".into(), json!(text));
+            save(&self.config.get(), job)?;
+            tracing::info!(agent = %agent.name, job = %tk::str_or_empty(job.get("id")), why, "job queued: no room now");
+            return Ok(());
+        }
         let refused = |err: HermesError| -> anyhow::Error {
             match &err {
                 HermesError::Http { status, .. } => JobError(format!("the agent refused the task ({status})")).into(),
@@ -664,8 +769,13 @@ impl Jobs {
         // GLM through EUrouter thinks at « low » in chat since 2026-10-28; tasks stay at « medium » until measured.
         let options = crate::agents_admin::task_turn_options(&self.config.get(), &agent);
         let text = &crate::dates::now::stamped(&self.config.get(), &agent, text);
-        let run_id =
-            self.hermes.start_run_with(&agent, text, &session_id, Some(INSTRUCTIONS), options).await.map_err(refused)?;
+        // « Tâches de fond » by its name in the agent's language (names.rs)
+        let instructions = crate::names::localize(INSTRUCTIONS, &crate::handback::language_of(&self.config.get(), &agent));
+        let run_id = self
+            .hermes
+            .start_run_with(&agent, text, &session_id, Some(&instructions), options)
+            .await
+            .map_err(refused)?;
         let now = py::time_time();
         let before = job.get("tokens").cloned().unwrap_or(json!({}));
         let started = job.get("started").filter(|v| py::truthy(v)).cloned().unwrap_or(json!(now));
@@ -689,6 +799,7 @@ impl Jobs {
         if let Some(hub) = &self.hub {
             hub.watch(&agent, &run_id, Some(&session_id), false); // approvals and questions still pushed
             hub.mark_background(&agent.name, &run_id); // the brake's higher limits (loop_brake.rs)
+            hub.limit_tokens(&agent.name, &run_id, left_for_run(job)); // stopped before a call past its budget
         }
         let id = tk::str_or_empty(job.get("id"));
         self.follow(&id);
@@ -720,6 +831,7 @@ impl Jobs {
                     let session = job.get("session_id").filter(|v| !v.is_null()).map(py::py_str);
                     hub.watch(agent, &run_id, session.as_deref(), false);
                     hub.mark_background(&agent.name, &run_id);
+                    hub.limit_tokens(&agent.name, &run_id, left_for_run(&job));
                 }
             }
             self.follow(&tk::str_or_empty(job.get("id")));
@@ -771,7 +883,7 @@ impl Jobs {
             };
             let session_id = tk::str_or_empty(job.get("session_id"));
             match self.hermes.session(&agent, &session_id).await {
-                Ok(session) => count(&mut job, &session, None),
+                Ok(session) => count(&mut job, &session, self.live_usage(&agent, &run_id).as_ref()),
                 Err(HermesError::Decode(err)) => {
                     tracing::error!(job = %job_id, exc = %err, "Task exception was never retrieved");
                     return;
@@ -786,7 +898,7 @@ impl Jobs {
             let now = py::time_time();
             if state_of(&job) == "running" {
                 let step_started = job.get("step_started").map(|v| py::py_float(v).unwrap_or(now)).unwrap_or(now);
-                if spent(&job) >= int_of(job.get("max_tokens")) {
+                if spent(&job) >= int_of(job.get("max_tokens")) || self.capped(&agent, &run_id) {
                     self.stop(&agent, &mut job, "budget").await;
                 } else if now - step_started >= self.max_seconds {
                     self.stop(&agent, &mut job, "time").await;
@@ -830,7 +942,8 @@ impl Jobs {
         let mut status = tk::str_or_empty(run.get("status"));
         let usage = match run.get("usage") {
             Some(Value::Object(u)) => Some(u.clone()),
-            _ => None,
+            // a run stopped (its budget, a pause) comes back without its usage: its calls' real tokens
+            _ => self.live_usage(agent, &tk::str_or_empty(job.get("run_id"))),
         };
         let session_id = tk::str_or_empty(job.get("session_id"));
         let session = self.hermes.session(agent, &session_id).await.unwrap_or_default();
@@ -849,7 +962,11 @@ impl Jobs {
         }
         let now = py::time_time();
         let mut full = String::new();
-        let stopping = job.get("stopping").filter(|v| py::truthy(v)).cloned();
+        // the hub stopped it before a call past its budget, before this watch did (a run that still ended with its
+        // answer is done)
+        let capped = (status != "completed" && self.capped(agent, &tk::str_or_empty(job.get("run_id"))))
+            .then(|| json!("budget"));
+        let stopping = job.get("stopping").filter(|v| py::truthy(v)).cloned().or(capped);
         if stopping.is_some() || ["cancelled", "canceled", "interrupted"].contains(&status.as_str()) {
             job.insert("state".into(), json!("paused"));
             job.insert("reason".into(), stopping.unwrap_or(json!("interrupted")));
@@ -946,8 +1063,8 @@ impl Jobs {
 
     async fn tell_end(&self, agent: &AgentConfig, job: &Dict) {
         let Some(tell) = &self.tell else { return };
-        let body = if state_of(job) == "done" { DONE_BODY } else { PAUSED_BODY };
-        let line = format!("{body} : {}", tk::str_or_empty(job.get("title")));
+        let body = push_body(&self.config.get(), agent, if state_of(job) == "done" { DONE_BODY } else { PAUSED_BODY });
+        let line = format!("{body}{} {}", colon(body), tk::str_or_empty(job.get("title")));
         let session = job.get("session_id").filter(|v| !v.is_null()).map(py::py_str);
         tell(agent.name.clone(), session, line, tk::str_or_empty(job.get("id")), body.into()).await;
     }
@@ -1034,7 +1151,12 @@ impl Jobs {
             None => {}
         }
         let words = tk::head(tk::strip(message.unwrap_or("")), 2000).to_string();
-        let text = if words.is_empty() { CONTINUE.to_string() } else { words };
+        // a task queued before its first run (no room then: `launch`) starts with its own words
+        let queued = match job.remove("queued_text") {
+            Some(Value::String(text)) if !text.is_empty() => Some(text),
+            _ => None,
+        };
+        let text = if !words.is_empty() { words } else { queued.unwrap_or_else(|| CONTINUE.to_string()) };
         self.launch(&mut job, &text).await?;
         Ok(task_view(&job))
     }
@@ -1255,7 +1377,11 @@ pub async fn start_tool(jobs: Option<&Arc<Jobs>>, agent: &AgentConfig, arguments
                 &format!(
                     "That is more than the {} a task may take without your person's go. Propose it with propose_task \
 instead (they start it with one tap) and tell them so in one plain sentence.",
-                    euros_text(config.jobs.direct_budget_eur)
+                    if crate::handover::on_offer() {
+                        euros_text(config.jobs.direct_budget_eur)
+                    } else {
+                        budget_text(&config, default, false)
+                    }
                 ),
                 true,
             ));
@@ -1269,24 +1395,53 @@ instead (they start it with one tap) and tell them so in one plain sentence.",
     started(made, &config, agent)
 }
 
+/// A task's budget as the agent may tell its person: in euros on a place of the offer (« 0.20 €, 363,636 tokens »),
+/// in tokens only on a home install (« 363,636 tokens »), whose model is the person's own (their provider's prices,
+/// or none: a model on their computer), never the `[notebook]` prices the euros are counted at.
+pub fn budget_text(config: &crate::config::Config, tokens: i64, offer: bool) -> String {
+    if offer {
+        format!("{}, {} tokens", euros_text(euros_for(config, tokens)), thousands(tokens))
+    } else {
+        format!("{} tokens", thousands(tokens))
+    }
+}
+
 /// What the agent is told once its task started (or why it could not).
 pub fn started(
     outcome: anyhow::Result<Dict>,
     config: &crate::config::Config,
     agent: &AgentConfig,
 ) -> anyhow::Result<Dict> {
+    started_on(outcome, config, agent, crate::handover::on_offer())
+}
+
+/// `started`, on a place of the offer or not.
+pub fn started_on(
+    outcome: anyhow::Result<Dict>,
+    config: &crate::config::Config,
+    agent: &AgentConfig,
+    offer: bool,
+) -> anyhow::Result<Dict> {
     match outcome {
+        Ok(job) if job.get("reason") == Some(&json!(SPACE_REASON)) => {
+            tracing::info!(agent = %agent.name, job = %tk::str_or_empty(job.get("id")), "job queued by the agent");
+            Ok(tool_text(
+                "Queued in the background: this space is busy right now, so it starts by itself as soon as there is \
+room, and your person gets your report when it ends; they follow it in « Tâches de fond ». Tell them in one plain \
+sentence that it will be done a bit later in the background, and stop here: don't do the work in this turn.",
+                false,
+            ))
+        }
         Ok(job) => {
             let tokens = int_of(job.get("max_tokens"));
             tracing::info!(agent = %agent.name, job = %tk::str_or_empty(job.get("id")), budget = tokens,
                 "job started by the agent");
             Ok(tool_text(
                 &format!(
-                    "Started in the background (budget about {}, {} tokens): it works on its own and your person gets \
+                    "Started in the background (budget about {}): it works on its own and your person gets \
 your report when it ends; they follow it in « Tâches de fond ». Tell them in one plain sentence that you're on it in \
 the background (e.g. « Je m'en occupe en arrière-plan, je te préviens quand c'est fini. »), and stop here.",
-                    euros_text(euros_for(config, tokens)),
-                    thousands(tokens)
+                    budget_text(config, tokens, offer)
                 ),
                 false,
             ))
@@ -1499,5 +1654,31 @@ mod tests {
         config.notebook.price_in = 0.0;
         config.notebook.price_out = 0.0;
         assert_eq!(tokens_for(&config, 1.0), 300_000);
+    }
+
+    #[test]
+    fn a_budget_in_euros_on_the_offer_in_tokens_at_home() {
+        // 2026-10-31, Alex's home install (his own model): a task's card said « 0,071 € dépensés · au plus 0,037 € »,
+        // euros nobody pays there. At home the agent hears its budget in tokens only.
+        let config = crate::config::Config::with_key("k");
+        assert_eq!(budget_text(&config, 363_636, true), "0.20 €, 363,636 tokens");
+        assert_eq!(budget_text(&config, 363_636, false), "363,636 tokens");
+        let agent = AgentConfig { name: "vie".into(), ..Default::default() };
+        let job = || -> anyhow::Result<Dict> { Ok(json!({"id": "t000000000001", "max_tokens": 363_636}).as_object().cloned().unwrap()) };
+        let said = |offer: bool| {
+            let out = started_on(job(), &config, &agent, offer).unwrap();
+            out["content"][0]["text"].as_str().unwrap().to_string()
+        };
+        assert!(said(true).starts_with("Started in the background (budget about 0.20 €, 363,636 tokens):"), "{}", said(true));
+        assert!(said(false).starts_with("Started in the background (budget about 363,636 tokens):"), "{}", said(false));
+        assert!(!said(false).contains('€'));
+    }
+
+    #[test]
+    fn a_run_may_take_its_budget_less_the_earlier_runs() {
+        let job = json!({"max_tokens": 300_000, "before": {"input": 90_000, "output": 10_000, "cached": 50_000},
+                         "tokens": {"input": 150_000, "output": 12_000}});
+        assert_eq!(left_for_run(job.as_object().unwrap()), 200_000);
+        assert_eq!(left_for_run(json!({"max_tokens": 300_000}).as_object().unwrap()), 300_000, "its first run");
     }
 }

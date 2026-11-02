@@ -32,6 +32,8 @@ const GUICHET_BODIES: &[&str] = &[
     "Ton abonnement annuel se renouvelle bientôt : la date, le prix et comment l’arrêter sont dans tes e-mails.",
     "Un nouvel appareil veut rejoindre ton compte : approuve-le ou refuse-le dans l’app.",
     "Ton compte est en cours de récupération sur un autre appareil : si ce n’est pas toi, arrête-la dans l’app.",
+    // a device let in by an e-mail code (the guichet's account_otp.rs)
+    "Un nouvel appareil s’est connecté à ton compte. Ce n’était pas toi ? Retire-le dans l’app.",
     "Quelqu’un de ta famille veut relier ses agents aux tiens : accepte ou refuse dans l’app.",
     // a free week ends in two days (the guichet's trial_notices.rs): bought on the website, then in a store
     "Ta semaine gratuite finit après-demain : rien n’est prélevé si tu l’arrêtes avant. Le prix et le lien pour l’arrêter sont dans tes e-mails.",

@@ -1,9 +1,12 @@
 """Long work handed to background tasks (decided 2026-10-22): `start_task` within the direct budget (`[jobs]
-direct_budget_eur`, ≈ 0.20 € at the `[notebook]` prices), refused above it; `notebook_fill`; « Remplir mon Carnet »
+direct_budget_eur`, ≈ 0.20 € at the `[notebook]` prices), refused above it, the budget told to the agent in tokens on
+a home install like this suite's and in euros too only on a place of the offer (2026-11-01: at home the model is the
+person's own, nobody pays those euros); `notebook_fill`; « Remplir mon Carnet »
 for every agent in turn (`/v1/notebook/fill`); and the bridge's safety net, which steers a long conversation run once
 to hand the rest over (`[jobs] handoff…`): never while a sub-agent works or the agent browses (2026-10-24), and a
 steered run that stops without handing over gets its task from the bridge (started, or proposed), said in the run."""
 import itertools
+import json
 import threading
 import time
 
@@ -21,6 +24,13 @@ def jobs(bridge):
     return bridge.get("/v1/jobs", headers=AUTH).json()["jobs"]
 
 
+def offer_place(bridge):
+    """A place of the all-included offer: its guichet token (test_card_payments.py's), before the start."""
+    settings = bridge.home / ".config" / "bipagents" / "backup.json"
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    settings.write_text(json.dumps({"url": "https://guichet.test/v1/backup", "token": "t1"}))
+
+
 def test_start_task_starts_a_task_within_the_direct_budget(bridges, fakes):
     bridge = bridges.new().start()
     give_token(bridge)
@@ -29,7 +39,9 @@ def test_start_task_starts_a_task_within_the_direct_budget(bridges, fakes):
     assert "start_task" in names and "notebook_fill" in names and "propose_task" in names
     result = call(bridge, "start_task", {"title": "Tri des mails", "instructions": "Trie mes mails de la semaine."})
     assert not result["isError"], text_of(result)
-    assert text_of(result).startswith("Started in the background (budget about 0.20 €, 363,636 tokens)")
+    # at home, in tokens only (the euros are counted at the `[notebook]` prices, not the person's own model's)
+    assert text_of(result).startswith("Started in the background (budget about 363,636 tokens)")
+    assert "€" not in text_of(result) and "« Background tasks »" in text_of(result)
     job = jobs(bridge)[0]
     assert (job["state"], job["proposed_by"], job["max_tokens"]) == ("running", "asked", DEFAULT_TOKENS)
     assert job["title"] == "Tri des mails" and job["prompt"] == "Trie mes mails de la semaine."
@@ -48,12 +60,26 @@ def test_start_task_refuses_more_than_the_direct_budget(bridges, fakes):
     give_token(bridge)
     fakes.hermes.rounds = 1000
     above = call(bridge, "start_task", {"title": "Grosse recherche", "instructions": "Cherche.", "budget_eur": 1.5})
-    assert above["isError"] and "more than the 0.20 € a task may take without your person's go" in text_of(above)
+    assert above["isError"]
+    assert "more than the 363,636 tokens a task may take without your person's go" in text_of(above)
     assert "propose_task" in text_of(above)
     assert not fakes.hermes.seen("/v1/runs", "POST") and jobs(bridge) == []
     smaller = call(bridge, "start_task", {"title": "Petite recherche", "instructions": "Cherche.", "budget_eur": 0.1})
     assert not smaller["isError"] and jobs(bridge)[0]["max_tokens"] == DEFAULT_TOKENS // 2
     assert bridge.delete(f"/v1/jobs/{jobs(bridge)[0]['id']}", headers=AUTH).status_code == 200
+
+
+def test_on_a_place_of_the_offer_the_direct_budget_is_told_in_euros(bridges, fakes):
+    # (a task started there waits for the place's room, read from this machine's disk and memory (heavy_work.rs): its
+    # « Started… (budget about 0.20 €, 363,636 tokens) » is jobs.rs' unit test `a_budget_in_euros_on_the_offer…`)
+    bridge = bridges.new()
+    offer_place(bridge)
+    bridge.start()
+    give_token(bridge)
+    above = call(bridge, "start_task", {"title": "Grosse recherche", "instructions": "Cherche.", "budget_eur": 1.5})
+    assert above["isError"] and "more than the 0.20 € a task may take without your person's go" in text_of(above)
+    assert "tokens" not in text_of(above)
+    assert not fakes.hermes.seen("/v1/runs", "POST") and jobs(bridge) == []
 
 
 def test_the_direct_budget_is_configured(bridges, fakes):
@@ -63,7 +89,7 @@ def test_the_direct_budget_is_configured(bridges, fakes):
     give_token(bridge)
     fakes.hermes.rounds = 1000
     result = call(bridge, "start_task", {"title": "Comparatif", "instructions": "Compare 10 appartements."})
-    assert text_of(result).startswith("Started in the background (budget about 0.55 €, 1,000,000 tokens)")
+    assert text_of(result).startswith("Started in the background (budget about 1,000,000 tokens)")   # 0.55 €
     assert bridge.delete(f"/v1/jobs/{jobs(bridge)[0]['id']}", headers=AUTH).status_code == 200
 
 
@@ -72,10 +98,12 @@ def test_notebook_fill_starts_the_carnets_task(bridges, fakes):
     give_token(bridge)
     fakes.hermes.rounds = 1000
     result = call(bridge, "notebook_fill", {})
-    assert not result["isError"] and text_of(result).startswith("Started in the background (budget about 0.20 €")
+    assert not result["isError"]
+    assert text_of(result).startswith("Started in the background (budget about 363,636 tokens)")
     job = jobs(bridge)[0]
     assert (job["title"], job["template"], job["proposed_by"]) == ("Fill the Notebook", "notebook_fill", "asked")
-    assert job["prompt"].startswith("Fill your person's Carnet from what you already know about them")
+    # the Carnet by its English name, as the agent's person reads it (names.rs)
+    assert job["prompt"].startswith("Fill your person's Notebook from what you already know about them")
     assert "session_search" in fakes.hermes.started["r1"]["input"]
     assert fakes.hermes.created == [("", {"title": "🧩 Fill the Notebook"})]
     assert bridge.delete(f"/v1/jobs/{job['id']}", headers=AUTH).status_code == 200

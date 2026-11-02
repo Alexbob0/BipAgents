@@ -612,7 +612,12 @@ pub async fn create_agent(
 ) -> anyhow::Result<AgentConfig> {
     let config = shared.get();
     check_room(&config)?;
-    let planned = plan_agent(&config, body)?;
+    let mut planned = plan_agent(&config, body)?;
+    // a spare made ahead (agent_pool.rs): files only, no `hermes` command, no restart
+    let spare = spare_for(&config, &planned.profile);
+    if let Some(spare) = &spare {
+        planned.profile = spare.id.clone();
+    }
     let roleless = body.custom.as_ref().is_some_and(|c| c.role.trim().is_empty());
     if roleless {
         // before its tools are given: `propose_profile` is listed for it
@@ -620,8 +625,18 @@ pub async fn create_agent(
     }
     // no Carnet news before its first turn: what was learnt before reaches it through the common memory
     crate::notebook::news::start(&config, &planned.profile, crate::py::time_time());
-    let agent = hub_agent(&config, &planned.profile, &planned.name, &crate::py::token_urlsafe(32));
-    let agent = match make_profile(shared, &planned, agent, http, run, false).await {
+    let took = spare.is_some();
+    let made = match spare {
+        Some(spare) => from_spare(shared, &planned, spare, http, run).await,
+        None => {
+            let agent = hub_agent(&config, &planned.profile, &planned.name, &crate::py::token_urlsafe(32));
+            make_profile(shared, &planned, agent, http, run, false).await
+        }
+    };
+    if took {
+        crate::agent_pool::refill_soon(shared, http, run);
+    }
+    let agent = match made {
         Ok(agent) => agent,
         Err(exc) => {
             if roleless {
@@ -650,14 +665,20 @@ pub async fn create_agents(
     let mut planned_config: Config = Config::clone(&shared.get());
     let mut out: Vec<Option<anyhow::Result<AgentConfig>>> = Vec::new();
     let mut batch: Vec<(usize, PlannedAgent, AgentConfig, bool)> = Vec::new();
+    // as many members as there are spares take one (files only); the others are made as one batch
+    let mut spared: Vec<(usize, PlannedAgent, crate::agent_pool::Spare, bool)> = Vec::new();
     for (i, body) in bodies.iter().enumerate() {
-        let planned = match plan_agent(&planned_config, body) {
+        let mut planned = match plan_agent(&planned_config, body) {
             Ok(p) => p,
             Err(exc) => {
                 out.push(Some(Err(exc)));
                 continue;
             }
         };
+        let spare = spare_for(&planned_config, &planned.profile);
+        if let Some(spare) = &spare {
+            planned.profile = spare.id.clone();
+        }
         let roleless = body.custom.as_ref().is_some_and(|c| c.role.trim().is_empty());
         if roleless {
             if let Err(exc) = crate::guide::mark_roleless(&planned_config, &planned.profile) {
@@ -665,15 +686,31 @@ pub async fn create_agents(
                 continue;
             }
         }
-        let agent = hub_agent(&planned_config, &planned.profile, &planned.name, &crate::py::token_urlsafe(32));
+        let agent = match &spare {
+            Some(spare) => spare.agent(&planned_config, &planned.name),
+            None => hub_agent(&planned_config, &planned.profile, &planned.name, &crate::py::token_urlsafe(32)),
+        };
         // the next body's plan sees this one's name and profile as taken
         planned_config.agents.insert(planned.profile.clone(), agent.clone());
-        batch.push((i, planned, agent, roleless));
+        match spare {
+            Some(spare) => spared.push((i, planned, spare, roleless)),
+            None => batch.push((i, planned, agent, roleless)),
+        }
         out.push(None);
+    }
+    let mut results: Vec<(usize, PlannedAgent, bool, anyhow::Result<AgentConfig>)> = Vec::new();
+    let took = !spared.is_empty();
+    for (i, planned, spare, roleless) in spared {
+        let made = from_spare(shared, &planned, spare, http, run).await;
+        results.push((i, planned, roleless, made));
     }
     let items: Vec<(PlannedAgent, AgentConfig)> = batch.iter().map(|(_, p, a, _)| (p.clone(), a.clone())).collect();
     let made = make_profiles(shared, items, http, run).await;
-    for ((i, planned, _, roleless), result) in batch.into_iter().zip(made) {
+    results.extend(batch.into_iter().zip(made).map(|((i, planned, _, roleless), made)| (i, planned, roleless, made)));
+    if took {
+        crate::agent_pool::refill_soon(shared, http, run);
+    }
+    for (i, planned, roleless, result) in results {
         let result = match result {
             Ok(agent) => {
                 if let Some(group) = bodies[i].group.as_deref().filter(|g| !g.trim().is_empty()) {
@@ -696,6 +733,120 @@ pub async fn create_agents(
     out.into_iter().map(|r| r.unwrap_or_else(|| Err(anyhow::anyhow!("not made")))).collect()
 }
 
+/// A spare for a planned agent (agent_pool.rs), out of the pool: never for the family's agent nor a project agent
+/// (marked before they are made: their tools differ from their creation on).
+fn spare_for(config: &Config, planned_profile: &str) -> Option<crate::agent_pool::Spare> {
+    if crate::agent_pool::wanted(config) == 0
+        || crate::family_agent::is_family(config, planned_profile)
+        || crate::project_agent::is_project(config, planned_profile)
+    {
+        return None;
+    }
+    crate::agent_pool::take(config)
+}
+
+/// A spare becomes the planned agent, with file writes only: its model as the hub's, its personality and
+/// description, Bot Mode and its « Bot Chat » (one request to its gateway, which serves it already), its section in
+/// the bridge's config, the guide's blocks, its tools' entry (written into its config.yaml, no `hermes` command).
+/// Its Hermes listed the bridge's tools when it was made: a change of them reaches it by `tools/list_changed`.
+pub async fn from_spare(
+    shared: &SharedConfig,
+    planned: &PlannedAgent,
+    spare: crate::agent_pool::Spare,
+    http: &reqwest::Client,
+    run: &Run,
+) -> anyhow::Result<AgentConfig> {
+    let started = std::time::Instant::now();
+    let config = shared.get();
+    let folder = PathBuf::from(install_home(&config)).join("profiles").join(&spare.id);
+    crate::agent_pool::follow_hub_model(&config, &folder)?;
+    std::fs::write(folder.join("SOUL.md"), &planned.soul)?;
+    let meta = folder.join("profile.yaml");
+    let mut data = if meta.exists() { load_or_empty(&meta)? } else { Yaml::Null };
+    if !data.is_map() {
+        data = Yaml::map();
+    }
+    data.insert("description", Yaml::str(&planned.description)); // what `profile create --description` writes
+    std::fs::write(&meta, pyyaml::dump(&data))?;
+    mark_as_bot(&folder)?;
+    let agent = spare.agent(&config, &planned.name);
+    wait_served(http, &agent, true).await?;
+    reserve_agent(shared, &agent)?;
+    crate::guide::refresh(&shared.get()); // its blocks, and the guide's list of agents
+    give_tools(&shared.get(), &agent, &crate::agent_pool::files_run(run.clone())).await?;
+    tools_loaded(shared, std::slice::from_ref(&agent), http, run).await;
+    tracing::info!(target: "bipbridge::agents", agent = %agent.name, ms = started.elapsed().as_millis() as u64, "spare agent taken");
+    Ok(agent)
+}
+
+/// `n` spares made as one batch (agent_pool.rs `refill`): their profiles a few at a time, served, their browser and
+/// uploads, the bridge's tools; one wait for their tools to be listed and at most one restart of the hub's gateway,
+/// only when all its agents are idle. Those made are returned (a failed one is left out, its folder hidden).
+pub async fn make_spares(
+    shared: &SharedConfig,
+    n: usize,
+    http: &reqwest::Client,
+    run: &Run,
+) -> Vec<crate::agent_pool::Spare> {
+    let config = shared.get();
+    let started = std::time::Instant::now();
+    // replaced when it is taken; the guide's daily personality meanwhile
+    let soul = crate::souls::soul_for(crate::guide::GUIDE_NAME, "daily", None).unwrap_or_default();
+    let items: Vec<(PlannedAgent, AgentConfig)> = (0..n)
+        .map(|_| {
+            let id = crate::agent_pool::new_id();
+            let planned =
+                PlannedAgent { profile: id.clone(), name: String::new(), soul: soul.clone(), description: String::new() };
+            let agent = hub_agent(&config, &id, "", &crate::py::token_urlsafe(32));
+            (planned, agent)
+        })
+        .collect();
+    let mut preparing: Vec<BoxFuture<'_, anyhow::Result<()>>> = Vec::new();
+    for (planned, agent) in &items {
+        preparing.push(Box::pin(prepare_profile(shared, planned, agent, run, false, false)));
+    }
+    let prepared: Vec<anyhow::Result<()>> =
+        futures::stream::iter(preparing).buffered(PREPARED_TOGETHER).collect().await;
+    let served = futures::future::join_all(items.iter().zip(prepared).map(|((_, agent), ready)| async move {
+        ready?;
+        wait_served(http, agent, false).await
+    }))
+    .await;
+    let mut made: Vec<AgentConfig> = Vec::new();
+    for ((_, agent), served) in items.into_iter().zip(served) {
+        let result: anyhow::Result<AgentConfig> = async {
+            served?;
+            let agent = with_browser(&config, agent, run).await;
+            let agent = mount_uploads(shared, &agent, run, false).await?;
+            give_tools(&config, &agent, run).await?;
+            Ok(agent)
+        }
+        .await;
+        match result {
+            Ok(agent) => made.push(agent),
+            Err(exc) => {
+                tracing::warn!(target: "bipbridge::agents", error = %tail(&format!("{exc:#}"), 200), "spare agent not made")
+            }
+        }
+    }
+    // Their tools listed before anyone takes them: one wait for the batch, one restart at most (all agents idle).
+    let sessions = &crate::mcp_sessions::SESSIONS;
+    if made.first().is_some_and(|first| sessions.others_listed(&first.name)) {
+        let waited = std::time::Instant::now();
+        while made.iter().any(|a| !sessions.has_listed(&a.name)) && waited.elapsed().as_secs_f64() < TOOLS_LISTED_SECONDS
+        {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+        let missing: Vec<AgentConfig> = made.iter().filter(|a| !sessions.has_listed(&a.name)).cloned().collect();
+        if !missing.is_empty() && !restart_hub_when_calm(shared, &missing, http, run).await {
+            // one taken before a restart: its first turn waits for its tools (`tools_loaded`)
+            tracing::info!(target: "bipbridge::agents", spares = missing.len(), "spare agents without their tools yet");
+        }
+    }
+    tracing::info!(target: "bipbridge::agents", spares = made.len(), seconds = format!("{:.1}", started.elapsed().as_secs_f64()), "spare agents made");
+    made.iter().map(crate::agent_pool::Spare::of).collect()
+}
+
 /// The hub profile of a planned agent: made, given its key and personality, served, then saved in the bridge's
 /// config (its section rewritten when it was reserved there first). `resume`: a profile already made by an attempt
 /// cut short is kept, not made again.
@@ -707,7 +858,7 @@ pub async fn make_profile(
     run: &Run,
     resume: bool,
 ) -> anyhow::Result<AgentConfig> {
-    prepare_profile(shared, planned, &agent, run, resume).await?;
+    prepare_profile(shared, planned, &agent, run, resume, true).await?;
     // The gateway picks new profiles up within 30 s; its permanent « Bot Chat » is opened as soon as it answers.
     wait_served(http, &agent, true).await?;
     let agent = finish_profile(shared, planned, agent, run).await?;
@@ -730,7 +881,7 @@ pub async fn make_profiles(
     // the `hermes` commands of a few profiles side by side (each its own folder; `--no-alias` writes no shared file)
     let mut preparing: Vec<BoxFuture<'_, anyhow::Result<()>>> = Vec::new();
     for (planned, agent) in &items {
-        preparing.push(Box::pin(prepare_profile(shared, planned, agent, run, false)));
+        preparing.push(Box::pin(prepare_profile(shared, planned, agent, run, false, true)));
     }
     let prepared: Vec<anyhow::Result<()>> =
         futures::stream::iter(preparing).buffered(PREPARED_TOGETHER).collect().await;
@@ -762,6 +913,7 @@ async fn prepare_profile(
     agent: &AgentConfig,
     run: &Run,
     resume: bool,
+    bot: bool,
 ) -> anyhow::Result<()> {
     let config = shared.get();
     let install = &config.hermes;
@@ -809,7 +961,9 @@ async fn prepare_profile(
     // memory instead of using propose_profile). Given again below, once it is saved (its guide blocks, its browser).
     give_tools(&shared.get(), agent, run).await?;
     std::fs::write(folder.join("SOUL.md"), &planned.soul)?;
-    mark_as_bot(&folder)?;
+    if bot {
+        mark_as_bot(&folder)?; // a spare only once taken: never in the other agents' roster before
+    }
     Ok(())
 }
 
@@ -1032,6 +1186,7 @@ pub fn unclaimed_profiles(config: &Config) -> Vec<Dict> {
         let name = folder.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         if !folder.is_dir()
             || !PROFILE_ID.is_match(&name)
+            || crate::agent_pool::is_spare_id(&name) // made ahead by the bridge (agent_pool.rs), never shown
             || config.agents.contains_key(&name)
             || root.join(".deleted").join(&name).exists()
             || !["config.yaml", "SOUL.md", "profile.yaml"].iter().any(|m| folder.join(m).is_file())
@@ -1413,9 +1568,9 @@ fn record_thinking(folder: &Path, level: &str) -> std::io::Result<()> {
 /// token-diet-step3-2026-10-27.md). There `reasoning_effort: none` makes GLM think ~400 tokens and answer NOTHING
 /// (Entrim), `chat_template_kwargs.enable_thinking` is ignored, and « low » cuts its thinking to ~1 token on an
 /// easy question: −74 % cost, 3× faster, same quality as « medium » (Hermes' default). So « low » is their default
-/// and their floor: « none » is sent as « low ». Melious, the router's second provider, refuses any reasoning field
-/// for GLM (400), but EUrouter skips it by itself when the request carries one and fallbacks are allowed (they
-/// always are, model_route.rs): measured 2026-10-28. Hermes also retries a turn once without the field on that 400.
+/// and their floor: « none » is sent as « low ». Melious refuses any reasoning field for GLM (400, measured 2026-10-28
+/// and 2026-10-31), so it is out of the router's order (model_route.rs); Hermes also retries a turn once without the
+/// field on that 400.
 pub fn keeps_thinking_on(model: &str, base_url: &str) -> bool {
     model.to_lowercase().contains("glm") && crate::model_route::pins(base_url)
 }
@@ -1661,6 +1816,7 @@ pub fn set_model(config: &Config, agent: &AgentConfig, name: &str, vision: Optio
 pub fn heal_souls(config: &Config) {
     let mut place_language: Option<String> = None;
     let circle = crate::shared_memory::circle(config);
+    let offer = crate::handover::on_offer();
     for name in config.agents.keys() {
         let Ok(agent) = editable(config, name) else { continue };
         let Ok(soul) = read_soul(config, &agent) else { continue };
@@ -1682,6 +1838,8 @@ pub fn heal_souls(config: &Config) {
             // in the person's circle or not (shared_memory.rs): it knows whether its memory of them is common
             let gives = circle.iter().find(|m| m.name == agent.name).map(|m| m.gives);
             text = crate::souls::with_shared_memory(&text, gives);
+            // the offer's places: big toolchains don't fit there (souls.rs, 2026-10-30)
+            text = crate::souls::with_server(&text, offer);
         }
         if text != soul {
             let healed = std::fs::write(profile_folder(config, &agent).join("SOUL.md"), text);
@@ -1771,7 +1929,7 @@ pub async fn read_settings(config: &Config, agent: &AgentConfig, http: &reqwest:
     let (soul, _) = crate::souls::split_notebook(&soul);
     let (soul, _) = crate::souls::split_shared_memory(&soul);
     let (soul, _) = crate::souls::split_archives(&soul);
-    let soul = crate::souls::split_payments(&soul);
+    let soul = crate::souls::split_server(&crate::souls::split_payments(&soul));
     let (soul, _) = crate::dates::split_dates(&soul);
     let soul = crate::guide::split_blocks(&soul);
     let guide = json!({"on": crate::guide::is_guide(config, &agent.name)});
@@ -1823,6 +1981,8 @@ pub async fn read_settings(config: &Config, agent: &AgentConfig, http: &reqwest:
               "notebook": {"on": crate::notebook::enabled(config, agent.name.as_str())},
               "guide": guide,
               "answer_style": crate::answer_style::view(agent),
+              // the per-agent model at home (model_choice.rs): its presence tells the apps this bridge offers it
+              "model_choice": crate::model_choice::view(config, agent),
               "group": crate::agent_groups::group_of(config, &agent.name)}))
 }
 
@@ -1972,7 +2132,7 @@ pub fn write_soul(config: &Config, agent: &AgentConfig, soul: &str) -> std::io::
     let text = if closed || agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
         text
     } else {
-        crate::souls::with_payments(&text)
+        crate::souls::with_server(&crate::souls::with_payments(&text), crate::handover::on_offer())
     };
     std::fs::write(profile_folder(config, agent).join("SOUL.md"), text)
 }
@@ -1984,7 +2144,7 @@ pub fn editable_soul(config: &Config, agent: &AgentConfig) -> std::io::Result<St
     let (soul, _) = crate::souls::split_notebook(&soul);
     let (soul, _) = crate::souls::split_shared_memory(&soul);
     let (soul, _) = crate::souls::split_archives(&soul);
-    let soul = crate::souls::split_payments(&soul);
+    let soul = crate::souls::split_server(&crate::souls::split_payments(&soul));
     let (soul, _) = crate::dates::split_dates(&soul);
     let (soul, _) = crate::family_agent::split_family(&soul);
     let (soul, _) = crate::project_agent::split_project(&soul);

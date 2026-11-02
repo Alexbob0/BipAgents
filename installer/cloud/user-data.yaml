@@ -252,6 +252,9 @@ runcmd:
   # The agents' sandboxes (rootless podman) need the account's own range of user ids.
   - grep -q '^bip:' /etc/subuid || usermod --add-subuids 200000-265535 --add-subgids 200000-265535 bip
   - chown bip:bip /etc/bipagents/cloud.json
+  # On the guichet's servers (shared by several people), the place's own disk of 5 GB before anything runs in it
+  # (seat-agent.py --own-disk, as add-seat.sh does for the others).
+  - if [ -f /usr/local/lib/bipagents/seat-agent.py ]; then python3 /usr/local/lib/bipagents/seat-agent.py --own-disk 1 >> /var/log/bipagents-disk.log 2>&1 || true; fi
   # BipAgents' services run when nobody is logged in.
   - loginctl enable-linger bip
   - systemctl start "user@$(id -u bip).service"

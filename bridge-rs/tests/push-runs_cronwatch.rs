@@ -75,6 +75,14 @@ async fn messages(State(h): State<FakeHermes>, Path(sid): Path<String>) -> Respo
     .into_response()
 }
 
+/// One session (`GET /api/sessions/{sid}`): 404 when Hermes no longer has it.
+async fn session(State(h): State<FakeHermes>, Path(sid): Path<String>) -> Response {
+    match h.with(|s| s.sessions.iter().find(|r| r["id"] == sid.as_str()).cloned()) {
+        Some(row) => Json(json!({"session": row})).into_response(),
+        None => (StatusCode::NOT_FOUND, Json(json!({"error": "Session not found"}))).into_response(),
+    }
+}
+
 /// A run that goes on (the app follows it): its stream never ends.
 async fn events() -> Response {
     let stream = futures::stream::pending::<Result<bytes::Bytes, std::io::Error>>();
@@ -97,6 +105,7 @@ async fn world(bot: bool) -> World {
     let url = spawn_fake(
         Router::new()
             .route("/api/sessions", get(sessions))
+            .route("/api/sessions/{sid}", get(session))
             .route("/api/sessions/{sid}/messages", get(messages))
             .route("/v1/runs/{run}/events", get(events))
             .fallback(|| async { (StatusCode::NOT_FOUND, Json(json!({"error": "no route"}))).into_response() })
@@ -106,6 +115,8 @@ async fn world(bot: bool) -> World {
     let apns = FakeApns::start().await;
     let mut data = config_dict(dir.path(), &Urls { hermes: url, ..Urls::default() });
     data["apns"]["base_url"] = json!(apns.url);
+    // the agents' profiles (their routines' `cron/jobs.json`) in the test's own folder
+    data["hermes"] = json!({"home": dir.path().join("hermes").to_string_lossy()});
     // the push alone, as before the agent wrote its own message (handback.rs; the black-box suite covers that)
     data["cron"]["subtask_handback"] = json!(false);
     let app = TestApp::new(parse_config(&data, None).unwrap());
@@ -125,8 +136,9 @@ async fn world(bot: bool) -> World {
     } else {
         (None, None, None)
     };
-    let cron =
+    let mut cron =
         CronWatcher::new(s.config.clone(), s.hermes.clone(), s.outbox.clone(), 60.0, 6.0, None, hub, push, presence);
+    cron.briefs = Some(s.briefs.clone());
     let agent = s.config.get().agent(Some("wellness")).cloned().unwrap();
     World { _dir: dir, app, cron, hermes, apns, agent }
 }
@@ -249,6 +261,62 @@ async fn silent_old_and_running_sessions_are_skipped() {
         w.poll(now()).await;
     }
     assert!(w.outbox().await.is_empty());
+    w.app.shutdown().await;
+}
+
+/// The agent's routines as Hermes keeps them (`cron/jobs.json` in its profile).
+fn write_jobs(w: &World, jobs: Value) {
+    let folder = bipbridge::agents_admin::profile_folder(&w.app.app.state.config.get(), &w.agent).join("cron");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("jobs.json"), json!({"jobs": jobs}).to_string()).unwrap();
+}
+
+#[tokio::test]
+async fn a_routine_made_in_a_conversation_reports_there() {
+    // 2026-10-31, Alex: « mets un schedule ce soir à 23h pour corriger tout le carnet », in his conversation: the
+    // report goes to that conversation (Hermes patch 0019 kept it on the job), and the agent knows what it said.
+    let w = world(false).await;
+    let sid = "cron_fc344ed09026_20261005_075008";
+    write_jobs(&w, json!([{"id": "fc344ed09026", "name": "Réparer le Carnet", "deliver": "local",
+                          "origin_session_id": "api_carnet"}]));
+    w.hermes.with(|s| {
+        s.sessions = vec![json!({"id": sid, "title": "Réparer le Carnet · Oct 05 07:50"}),
+                          json!({"id": "api_carnet", "title": "Le Carnet"})];
+        s.messages.insert(sid.into(), vec![json!({"role": "assistant", "content": "J'ai corrigé 12 fiches du Carnet."})]);
+    });
+    assert_eq!(w.poll(now()).await, 0);
+    assert_eq!(w.poll(now()).await, 1);
+    let items = w.outbox().await;
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["text"], "J'ai corrigé 12 fiches du Carnet.");
+    assert_eq!(items[0]["session_id"], "api_carnet", "in the conversation it was made in");
+    let recap = w.app.app.state.briefs.take_recap("wellness", "api_carnet").expect("kept for the agent");
+    assert!(recap.starts_with("<!--bip:routine") && recap.contains("« Réparer le Carnet »"), "{recap}");
+    assert!(recap.contains("J'ai corrigé 12 fiches du Carnet."), "{recap}");
+    w.app.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_routine_whose_conversation_is_gone_or_made_elsewhere_reports_under_its_run() {
+    let w = world(false).await;
+    let (gone, elsewhere) = ("cron_aaaaaaaaaaaa_20261005_075008", "cron_bbbbbbbbbbbb_20261005_075508");
+    write_jobs(&w, json!([{"id": "aaaaaaaaaaaa", "origin_session_id": "api_deleted"}, {"id": "bbbbbbbbbbbb"}]));
+    w.hermes.with(|s| {
+        s.sessions = vec![json!({"id": gone, "title": "A"}), json!({"id": elsewhere, "title": "B"})];
+        s.messages.insert(gone.into(), vec![json!({"role": "assistant", "content": "Rapport A"})]);
+        s.messages.insert(elsewhere.into(), vec![json!({"role": "assistant", "content": "Rapport B"})]);
+    });
+    w.poll(now()).await;
+    assert_eq!(w.poll(now()).await, 2);
+    let mut where_: Vec<(String, String)> = w
+        .outbox()
+        .await
+        .iter()
+        .map(|i| (i["text"].as_str().unwrap().to_string(), i["session_id"].as_str().unwrap().to_string()))
+        .collect();
+    where_.sort();
+    assert_eq!(where_, vec![("Rapport A".into(), gone.into()), ("Rapport B".into(), elsewhere.into())]);
+    assert!(w.app.app.state.briefs.take_recap("wellness", "api_deleted").is_none());
     w.app.shutdown().await;
 }
 

@@ -1,6 +1,8 @@
 """Background jobs (`/v1/jobs…`): a long task in its own conversation with a budget, followed every 10 s (jobs.py's
 POLL_SECONDS), paused at its budget or by the person, resumed, forgotten; an agent's proposal; a restart; mailbox
-scans listed with them (tests/test_jobs.py, over HTTP; the fake Hermes counts tokens while a run goes on)."""
+scans listed with them (tests/test_jobs.py, over HTTP; the fake Hermes counts tokens while a run goes on). The app's
+names in a task's instructions, in the tools' words and in the pushes are in the agent's language (names.rs,
+2026-11-01): English for an agent with none set, like Wellness here; French on a French place (`french_place`)."""
 import json
 import os
 import re
@@ -25,6 +27,11 @@ def with_device(bridges):
     return bridge.start()
 
 
+def french_place(bridge):
+    """The place's language French (its Carnet's): an agent with no language of its own writes in it."""
+    assert bridge.patch("/v1/notebook/settings", json={"language": "fr"}, headers=AUTH).status_code == 200
+
+
 def view(bridge, job_id):
     return next(j for j in bridge.get("/v1/jobs", headers=AUTH).json()["jobs"] if j["id"] == job_id)
 
@@ -46,7 +53,10 @@ def test_a_task_runs_in_its_own_conversation_and_ends_with_its_report(bridges, f
     now, words = split_now(run["input"])
     assert run["session_id"] == "api_s1" and now and words == "Écoles du quartier\n\nCompare les trois écoles près de chez nous."
     assert "model_options" not in run   # the agent's own thinking level (GLM through EUrouter: « medium », agents_admin)
-    assert run["instructions"].startswith("This is a background task the person gave you from the app (« Tâches de fond »)")
+    # the app's part by its English name: English agents repeated « Tâches de fond » to their person (names.rs)
+    assert run["instructions"].startswith(
+        "This is a background task the person gave you from the app (« Background tasks »)")
+    assert "Tâches de fond" not in run["instructions"]
     stored = bridge.state_dir / "jobs" / f"{job['id']}.json"
     assert oct(os.stat(stored).st_mode & 0o777) == "0o600" and json.loads(stored.read_text())["run_id"] == "r1"
     twice = bridge.post("/v1/agents/wellness/jobs", headers=AUTH, json=TASK)
@@ -58,7 +68,7 @@ def test_a_task_runs_in_its_own_conversation_and_ends_with_its_report(bridges, f
     assert done["tokens"] == {"input": 100_000, "output": 5_000, "cached": 0}
     assert wait_until(lambda: fakes.apns.pushes())
     payload = fakes.apns.payloads()[0]
-    assert payload["aps"]["alert"]["body"] == "Tâche de fond terminée" and payload["job_id"] == job["id"]
+    assert payload["aps"]["alert"]["body"] == "Background task done" and payload["job_id"] == job["id"]
     assert payload["session_id"] == "api_s1" and payload["run_id"] == "session:api_s1"
     assert fakes.apns.pushes()[0].header("apns-collapse-id") == f"job:{job['id']}"
     listed = bridge.get("/v1/jobs", headers=AUTH).json()
@@ -78,8 +88,11 @@ def test_a_task_asked_again_gets_a_numbered_conversation_when_its_title_is_taken
 
 def test_a_task_stops_at_its_budget_and_goes_on_with_a_bigger_one(bridges, fakes):
     bridge = with_device(bridges)
+    french_place(bridge)   # the instructions and the push in French
     fakes.hermes.rounds, fakes.hermes.step = 50, 60_000
     job = bridge.post("/v1/agents/wellness/jobs", headers=AUTH, json={**TASK, "max_tokens": 100_000}).json()
+    assert fakes.hermes.started["r1"]["instructions"].startswith(
+        "This is a background task the person gave you from the app (« Tâches de fond »)")
     assert wait_until(lambda: view(bridge, job["id"])["state"] == "paused", timeout=45)
     paused = view(bridge, job["id"])
     assert paused["reason"] == "budget" and fakes.hermes.seen("/v1/runs/r1/stop", "POST")
@@ -120,14 +133,14 @@ def test_an_agent_proposes_a_task_the_person_starts(bridges, fakes):
     bridge = with_device(bridges)
     give_token(bridge)
     result = call(bridge, "propose_task", {"title": "Dossier location", "prompt": "Prépare le dossier.", "budget": "small"})
-    assert not result["isError"] and "Tâches de fond" in text_of(result)
+    assert not result["isError"] and "« Background tasks »" in text_of(result)   # the agent's language: English
     assert text_of(result).startswith("Proposed (budget about 300,000 tokens).")
     proposed = bridge.get("/v1/jobs", headers=AUTH).json()["jobs"][0]
     assert proposed["state"] == "proposed" and proposed["proposed_by"] == "agent" and proposed["max_tokens"] == 300_000
     assert not fakes.hermes.seen("/v1/runs")                  # nothing spent before the go
     assert wait_until(lambda: fakes.apns.pushes())
     payload = fakes.apns.payloads()[0]
-    assert payload["aps"]["alert"]["body"] == "Tâche de fond proposée" and "session_id" not in payload
+    assert payload["aps"]["alert"]["body"] == "Background task suggested" and "session_id" not in payload
     assert payload["run_id"] == "session:job" and payload["job_id"] == proposed["id"]
     started = bridge.post(f"/v1/jobs/{proposed['id']}/start", headers=AUTH, json={"max_tokens": 500_000})
     assert started.json()["state"] == "running" and started.json()["max_tokens"] == 500_000

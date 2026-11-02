@@ -90,6 +90,47 @@ async fn each_agent_of_the_install_gets_the_tools_with_a_token_of_its_own() {
     assert!(agent_tools::agent_for(&config, &token).is_none());
 }
 
+#[tokio::test]
+async fn agents_registered_at_once_all_keep_their_token() {
+    // At start the bridge registers its agents and its spares at the same time: each one's `hermes config set` lets
+    // the others run, and a store written from a read made before another's token lost that token (CI, 2026-10-31).
+    let dir = tempfile::tempdir().unwrap();
+    let hub = dir.path().join(".hermes");
+    let mut dict = config_dict(dir.path(), &Urls::default());
+    dict["hermes"] = json!({"bin": "/opt/hermes", "home": hub.to_string_lossy(), "hub_url": "http://127.0.0.1:8642"});
+    for name in ["vie", "coach", "budget"] {
+        std::fs::create_dir_all(hub.join("profiles").join(name)).unwrap();
+        std::fs::write(hub.join("profiles").join(name).join("config.yaml"), "model:\n  default: x\n").unwrap();
+        dict["agents"][name] =
+            json!({"hermes_url": format!("http://127.0.0.1:8642/p/{name}"), "hermes_key": "k".repeat(32)});
+    }
+    let config = parse_config(&dict, None).unwrap();
+    let commands: Commands = Default::default();
+    let recorded = commands.clone();
+    let run: Run = Arc::new(move |args, env| {
+        recorded.lock().unwrap().push((args, env));
+        Box::pin(async {
+            tokio::task::yield_now().await; // a real command takes a while: the other registrations go on meanwhile
+            Ok(String::new())
+        })
+    });
+    let url = agent_tools::tools_url(&config);
+    let agents: Vec<AgentConfig> =
+        ["vie", "coach", "budget"].iter().map(|n| config.agent(Some(n)).unwrap().clone()).collect();
+    let (a, b, c) = tokio::join!(
+        agent_tools::register_at(&config, &agents[0], &run, &url),
+        agent_tools::register_at(&config, &agents[1], &run, &url),
+        agent_tools::register_at(&config, &agents[2], &run, &url),
+    );
+    assert!(a.unwrap() && b.unwrap() && c.unwrap());
+    let seen = commands.lock().unwrap().clone();
+    for (args, _) in seen.iter().filter(|(a, _)| a[5] == "mcp_servers.bipagents.headers.Authorization") {
+        let token = args[6].strip_prefix("Bearer ").unwrap();
+        assert_eq!(agent_tools::agent_for(&config, token).map(|a| a.name), Some(args[2].clone()));
+    }
+    assert_eq!(agent_tools::load_tokens(&config).len(), 3);
+}
+
 const TOKEN: &str = "agent-token-for-wellness-0123456789";
 
 async fn app_with_token(dir: &std::path::Path, backend: &FakeBackend) -> TestApp {
@@ -324,7 +365,7 @@ fn the_tools_version_is_the_pythons() {
     // live map, line and directions (2026-10-23), upcoming_dates (2026-10-24), mail_attachment and space_estimate (2026-10-28),
     // space_estimate in plain words (2026-10-28), create_podcast's length in minutes (2026-10-30), its 180 words a
     // minute (2026-10-30, release bench), give_file and room_history (2026-10-30), mail_overview and mail_bulk
-    // (2026-10-30).
+    // (2026-10-30), map_image finding the places itself (names, area, title, notes; 2026-10-31).
     let expected = include_str!("golden/agent_tools_version.txt").trim();
     assert_eq!(agent_tools::tools_version(), expected);
 }

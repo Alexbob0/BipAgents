@@ -60,6 +60,7 @@ def cloud_bridge(bridges, fakes, start=True):
         "lan": {"enabled": True, "address": "203.0.113.7", "host": "127.0.0.1", "port": free_port()},
         "setup": {"file": str(bridge.root / "setup" / "setup.json"), "progress": str(bridge.root / "setup" / "progress.json")},
         "hermes": {"bin": str(bridge.fakebin / "hermes"), "home": str(home), "hub_url": fakes.hermes.url},
+        "place": {"spare_agents": 0},   # no spare agents unless a test asks for some (agent_pool.rs)
     })
     if start:
         bridge.start()
@@ -215,7 +216,8 @@ def test_claiming_sets_the_model_once_and_creates_the_agents_left(bridges, fakes
 
 def test_a_place_of_the_reserve_is_claimed_in_seconds_its_first_agent_made_before(bridges, fakes):
     """A place with no agent yet makes its first one once installed (the Rust bridge says it: `prepared`); the claim
-    then writes files only, answers at once, and restarts the gateway by its unit; the other agents come right after."""
+    then writes files only and answers at once, with no gateway restart (Hermes reads a profile's model and key at each
+    turn: internal/notes/instant-agents.md); the other agents come right after."""
     bridge, cloud = cloud_bridge(bridges, fakes, start=False)
     bridge.config["agents"] = {}
     (bridge.root / ".hermes" / "config.yaml").write_text("model:\n  provider: openrouter\n  default: openrouter/auto\n")
@@ -244,13 +246,37 @@ def test_a_place_of_the_reserve_is_claimed_in_seconds_its_first_agent_made_befor
         assert "OPENROUTER_API_KEY=sk-or-0123456789\n" in (folder / ".env").read_text()
     assert "Quotidien" in (bridge.root / ".hermes" / "profiles" / "agent" / "SOUL.md").read_text()
     assert cloud.setup_file.exists() is False                    # paired: the secret is gone
-    assert wait_until(lambda: ["--user", "restart", "hermes-gateway"] in bridge.commands.of("systemctl"), timeout=10)
     assert wait_until(lambda: any(c[:3] == ["profile", "create", "maison"] for c in bridge.commands.of("hermes")),
                       timeout=20)
+    assert ["--user", "restart", "hermes-gateway"] not in bridge.commands.of("systemctl")
     assert not any(c[:2] == ["config", "set"] for c in bridge.commands.of("hermes"))   # no model through the CLI
     assert ["gateway", "restart"] not in bridge.commands.of("hermes")
     listed = bridge.get("/v1/agents", headers=AUTH).json()["agents"]
     assert {a["id"] for a in listed} >= {"agent", "maison"}
+
+
+def test_spare_agents_are_made_once_installed_hidden_and_taken_by_the_claim(bridges, fakes):
+    """A place of the offer keeps blank agents made ahead (agent_pool.rs, 2026-10-30): never listed, and a claim's agent
+    takes one with files only (no `profile create`, no restart)."""
+    bridge, cloud = cloud_bridge(bridges, fakes, start=False)
+    bridge.config["place"] = {"spare_agents": 2}
+    cloud.done()
+    bridge.start()
+    pool = bridge.config_path.parent / "spare-agents.json"
+    assert wait_until(lambda: pool.exists() and len(json.loads(pool.read_text())) == 2, timeout=30)
+    spares = [s["id"] for s in json.loads(pool.read_text())]
+    assert all(s.startswith("agent_") and len(s) == 14 for s in spares)
+    made = [c[2] for c in bridge.commands.of("hermes") if c[:2] == ["profile", "create"]]
+    assert sorted(made) == sorted(spares)
+    assert not {a["id"] for a in bridge.get("/v1/agents", headers=AUTH).json()["agents"]} & set(spares)
+    bridge.commands.clear()
+    claimed = bridge.post("/v1/setup/claim", json=claim_body(cloud.challenge()))
+    assert claimed.status_code == 200, claimed.text
+    assert claimed.json()["agents"] == [{"id": spares[0], "name": "Quotidien"}]
+    assert not any(c[:2] == ["profile", "create"] and c[2] in spares for c in bridge.commands.of("hermes"))
+    assert "Quotidien" in (bridge.root / ".hermes" / "profiles" / spares[0] / "SOUL.md").read_text()
+    listed = {a["id"]: a for a in bridge.get("/v1/agents", headers=AUTH).json()["agents"]}
+    assert listed[spares[0]]["name"] == "Quotidien" and spares[1] not in listed
 
 
 def test_a_moved_place_is_claimed_with_the_backup_key_and_says_it_is_restoring(bridges, fakes):

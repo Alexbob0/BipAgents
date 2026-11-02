@@ -32,6 +32,9 @@ from .family import confirm, find_config
 
 REPO = Path(__file__).resolve().parents[2]
 PATCHES = REPO / "hermes" / "patches"
+# Hermes 0.22.3 and later changed the Runs API's approvals and questions (the « session authority » runtime): an
+# update is held on the pinned version until the bridge speaks both (2026-11-01). `--any-version` goes past it.
+HELD = True
 
 
 def say(text: str = "") -> None:
@@ -238,6 +241,8 @@ def main(argv: List[str]) -> int:
     parser.add_argument("--yes", action="store_true", help="no question (for a scheduled update)")
     parser.add_argument("--fixes-only", action="store_true",
                         help="only put on the BipAgents fixes the current Hermes doesn't have yet (no Hermes update)")
+    parser.add_argument("--any-version", action="store_true",
+                        help="update Hermes even past the versions this BipAgents supports (at your own risk)")
     args = parser.parse_args(argv)
     if (hermes.hermes_home() / "shared").is_symlink():
         say(ui.note("This Hermes is shared by the server's places and read-only: its administrator updates it "
@@ -286,6 +291,11 @@ def main(argv: List[str]) -> int:
                         "(bipagents hermes-update --fixes-only)."))
         say("\nYour agents, now:")
         report(agents, check_agents(agents, expect_clarify=any(p.name.startswith("0001") for p in mine)))
+        return 0
+    if HELD and not args.any_version:
+        say(ui.note("Hermes stays on this version for now: from its version 0.22.3 on, approvals and questions "
+                    "work differently, and this BipAgents doesn't speak that yet. A BipAgents update brings the "
+                    "next supported Hermes. Nothing was changed."))
         return 0
     if not args.yes:
         if not confirm("Update Hermes now? Your agents restart (1 to 2 minutes)."):

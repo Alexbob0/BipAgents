@@ -85,7 +85,7 @@ window_hours = 12        # on first start, only tasks from the last N hours are 
 # provider's prompt cache works: about 5 times cheaper input. Written in each agent's Hermes config at start
 # (model_route.rs). [] lets EUrouter pick a provider per call.
 # [model]
-# provider_order = ["entrim", "melious"]
+# provider_order = ["entrim", "greenpt", "inceptron"]
 
 [apns]
 # Leave team_id/key_id empty to disable push.

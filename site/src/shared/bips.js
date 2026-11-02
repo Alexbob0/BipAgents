@@ -6,7 +6,7 @@
 // tap reactions, and the costumes with their seasons. Same « Animalese » as BipBabble.swift.
 import D from "./pixel-data.js";
 
-const { P, U, GAP, BOTTOM, CX, INK, LIGHT, COLORS, BODIES, EYE_STYLES, MOUTHS, GLYPHS, SPARK_FRAMES, STATES, REACTIONS,
+const { P, U, GAP, BOTTOM, CX, INK, LIGHT, COLORS, BODIES, EYE_STYLES, MOUTHS, GLYPHS, SPARK_FRAMES, SPIRAL_FRAMES, STATES, REACTIONS,
   REACTION_ORDER, MOUTH_MIN, MOUTH_MAX, COSTUMES, SEASONS } = D;
 export { INK, COSTUMES, SEASONS };
 
@@ -39,7 +39,8 @@ const stateOf = mood => STATES[MOODS[mood] || mood] || STATES.idle;
 
 // -- Engine (the page's evalState / drawPixel / viewBoxOf) ------------------------------------------------------------
 
-const FX = ["dots", "sound", "sparks", "scan", "heart", "z", "bang"];
+// spin: the dizzy eyes' frame (SPIRAL_FRAMES); stars: the dizzy stars' step around the head.
+const FX = ["dots", "sound", "sparks", "scan", "heart", "z", "bang", "spin", "stars"];
 function stepAt(keys, t) { let v = keys[0][1]; for (const [k, val] of keys) { if (k <= t) v = val; else break; } return v; }
 function smoothAt(keys, t) {
   if (t <= keys[0][0]) return keys[0][1];
@@ -104,9 +105,13 @@ function block(x, y, s, fill, deep, outline, extra = "", rot = 0) {
   return sq(x, y, s + 0.3, seam, extra + turn, 0.08 * s / (s + 0.3)) + sq(x, y, inner, fill, extra + turn, 0.12 / 0.86);
 }
 // One eye centred at (x, y): open and wide eyes one solid rounded square, closed a bar, the others pixel lines.
-function eyeShape(shape, x, y, gx, gy, fill, extra = "") {
+function eyeShape(shape, x, y, gx, gy, fill, extra = "", spin = 0, mirrored = false) {
   const ax = x + gx * U;
   switch (shape) {
+    case "spiral": {   // a square spiral turning; the right eye mirrored, so the two turn opposite ways
+      const rows = SPIRAL_FRAMES[((spin % SPIRAL_FRAMES.length) + SPIRAL_FRAMES.length) % SPIRAL_FRAMES.length];
+      return drawGlyph(mirrored ? rows.map(r => [...r].reverse().join("")) : rows, ax, y, U * 0.75, fill, extra);
+    }
     case "wide": return sq(ax, y + gy * U, 2.6 * U, fill, extra, 0.25);
     case "closed": return `<rect x="${fmt(ax - U)}" y="${fmt(y)}" width="${fmt(2 * U)}" height="${fmt(0.6 * U)}" rx="${fmt(0.3 * U)}" fill="${fill}"${extra}/>`;
     case "happy": return drawGlyph([".#.", "#.#"], ax, y, U * 0.8, fill, extra);
@@ -210,8 +215,8 @@ function drawPixel(look, pose, fr, ppu) {
   // Eyes: an open (or wide) eye is one solid rounded square, a closed one a bar; happy, sleeping and busy eyes are lines.
   const eyeY = G.eyeY, openG = glyph(EYE.open), face = U + 0.06;
   [0, 1].forEach(side => {
-    const shape = side ? d.eyeR : d.eyeL, flat = shape === "closed" || shape === "happy" || shape === "sleep";
-    o.push(eyeShape(shape, cx(B.eyeCols[side]), eyeY, d.gaze[0], flat ? 0 : d.gaze[1], C.eye));
+    const shape = side ? d.eyeR : d.eyeL, flat = shape === "closed" || shape === "happy" || shape === "sleep" || shape === "spiral";
+    o.push(eyeShape(shape, cx(B.eyeCols[side]), eyeY, d.gaze[0], flat ? 0 : d.gaze[1], C.eye, "", fx.spin || 0, side === 1));
   });
   layer("face");
   // Brows show when they move.
@@ -241,6 +246,11 @@ function drawPixel(look, pose, fr, ppu) {
   if (fx.heart !== undefined && fx.heart >= 0) o.push(drawGlyph(GLYPHS.heart, right + 1.6 * U, top - (2 + fx.heart) * U, U * 0.62, "#EC6F8F", fx.heart >= 4 ? ` fill-opacity="0.5"` : ""));
   if (fx.z !== undefined) for (let i = 0; i < 3; i++) { const k = (fx.z + i * 3) % 8; if (k >= 7) continue; o.push(drawGlyph(GLYPHS.z, right - 0.5 * U + k * 0.7 * U, top - (0.5 + k * 1.3) * U, U * (0.5 + k * 0.07), C.fx, k >= 5 ? ` fill-opacity="0.5"` : "")); }
   if (fx.bang) o.push(drawGlyph(GLYPHS.bang, right + 1.4 * U, top - 2.6 * U, U * 0.95, C.fx));
+  // The dizzy stars: three on a flat ring above the head, an eighth of a turn per step; those behind it fainter.
+  if (fx.stars !== undefined) for (let i = 0; i < 3; i++) {
+    const a = 2 * Math.PI * (fx.stars / 8 + i / 3);
+    o.push(drawGlyph(GLYPHS.star, CX + Math.cos(a) * 5.5 * U, top + (-2.8 + Math.sin(a) * 1.4) * U, U * 0.7, "#E7B43C", Math.sin(a) < 0 ? ` fill-opacity="0.55"` : ""));
+  }
   return o.join("");
 }
 
@@ -488,15 +498,16 @@ const SHADOW = `<ellipse cx="60" cy="${BOTTOM + 3}" rx="30" ry="4" fill="${INK}"
 
 /** A whole Bip as SVG markup: { color | category, mood or state, t (seconds), costume, size (px, for the mouth) }. */
 /** `motion`: one of the animations of 2026-10-29 (a thinking variant from `thinkingVariant`, a moment of MOMENTS),
- *  `mt` seconds in; asleep and listening Bips take the page's « Dodo » and « Écoute » by themselves. */
+ *  `mt` seconds in; asleep and listening Bips take the page's « Dodo » and « Écoute » by themselves. `reaction`: a tap's
+ *  reaction (REACTIONS: « boing »… « vertige »), `t` seconds after the tap. */
 export function pixelSVG({ category = "daily", color, mood = "idle", t = 0, costume = null, size = 48, still = REDUCED, shadow = true,
-  motion = null, mt = t } = {}) {
-  const c = CATEGORIES[category] || CATEGORIES.daily, st = stateOf(mood);
-  const clock = still ? 0.6 : t, loop = ((t % st.dur) + st.dur) % st.dur;
+  motion = null, mt = t, reaction = null } = {}) {
+  const c = CATEGORIES[category] || CATEGORIES.daily, st = (reaction && REACTIONS[reaction]) || stateOf(mood);
+  const clock = still ? 0.6 : t, loop = st === stateOf(mood) ? ((t % st.dur) + st.dur) % st.dur : Math.min(Math.max(0, t), st.dur);
   const CO = costume && COSTUMES[costume];
   const box = frameOf(costume), look = { color: color || c.color, costume };
   const fr = frameState(CO, clock);
-  const m = reshapes(costume) ? null : motion && MOTIONS[motion] ? motion : st === STATES.sleep ? "sleep" : st === STATES.listen ? "listen" : null;
+  const m = reshapes(costume) || reaction ? null : motion && MOTIONS[motion] ? motion : st === STATES.sleep ? "sleep" : st === STATES.listen ? "listen" : null;
   if (m) {
     const C = paletteOf(look, CO), pose = poseOf(STATES.idle, 0, costume, clock, true);
     pose.m = { x: 0, y: 0, rot: 0, sx: 1, sy: 1 };
@@ -589,6 +600,7 @@ function voiceFor(c, mood) {
   if (mood === "rire") { v.base *= 1.25; v.syl = 0.045; v.bounce = 3; }
   if (mood === "surpris" || mood === "boing") { v.base *= 1.15; v.drift = 5; }
   if (mood === "happy") { v.base *= 0.92; v.syl = 0.075; v.spread = 1.2; v.vol = 0.22; }
+  if (mood === "vertige") { v.syl = 0.07; v.drift = -7; v.spread = 3.5; }   // BipBabble's « dizzy »
   return v;
 }
 
@@ -653,12 +665,14 @@ if (W) {
   W.addEventListener("pointerleave", () => { pointer = null; });
 }
 // What a reaction says (the site's lines) and how it sounds.
-const SAYS = { boing: "boing", clin: "wink", rire: "giggle", regard: "hop", surpris: "surprised" };
+const SAYS = { boing: "boing", clin: "wink", rire: "giggle", regard: "hop", surpris: "surprised", vertige: "dizzy" };
+// Taps: three quick ones (1.2 s) make a happy jump; eight within 6 s (the old Bips' count) make it dizzy.
+const QUICK = [3, 1200], DIZZY = [8, 6000];
 
 /**
  * `new Bip(element, "daily", { interactive, lines, mood, costume })`: draws a pixel Bip in `element` (any size: the
  * SVG fills it), breathing and blinking in its state; when interactive, a tap plays one of the apps' reactions (three
- * quick taps: a happy jump with a heart). `costume`: a costume id, or true for today's event (Halloween…).
+ * quick taps: a happy jump with a heart; eight within six seconds: dizzy, « Tout tourne… »). `costume`: a costume id, or true for today's event (Halloween…).
  * `bip.mood` changes its state from outside.
  */
 export class Bip {
@@ -737,8 +751,16 @@ export class Bip {
 
   tapped() {
     const now = performance.now();
-    this.taps = (this.taps || []).filter(t => now - t < 1200).concat(now);
-    if (this.taps.length >= 3) {
+    if (this.reaction === "vertige") return;   // still dizzy: it waits until the world stops turning
+    this.taps = (this.taps || []).filter(t => now - t < QUICK[1]).concat(now);
+    this.pokes = (this.pokes || []).filter(t => now - t < DIZZY[1]).concat(now);
+    if (this.pokes.length >= DIZZY[0]) {
+      this.taps = []; this.pokes = [];
+      this.react("vertige");
+      this.say(this.line("dizzy"));
+      return;
+    }
+    if (this.taps.length >= QUICK[0]) {
       this.taps = [];
       this.reaction = "happyJump"; this.rt = 0;
       this.say(this.line("thanks"));
