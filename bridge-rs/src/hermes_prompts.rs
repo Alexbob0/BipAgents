@@ -26,17 +26,33 @@ pub fn generation(data: &Map<String, Value>) -> Option<i64> {
     data.get("execution_generation").and_then(Value::as_i64)
 }
 
+/// A question's text without the line Hermes adds for messaging apps (`gateway.clarify.skip_hint`, « Reply "skip" to
+/// skip this question. » in the gateway's language): in the apps a question is skipped by its own button. The hint
+/// is the question's last line and names the word `skip` in quotes, whatever the language.
+pub fn without_skip_hint(question: &str) -> Option<&str> {
+    let (text, last) = question.rsplit_once('\n')?;
+    let quoted = ["\"skip\"", "« skip »", "«skip»", "„skip“", "„skip”", "“skip”", "「skip」", "'skip'"];
+    (quoted.iter().any(|q| last.contains(q)) && !text.trim().is_empty()).then(|| text.trim_end())
+}
+
 /// A prompt's event (`*.request`, `*.settled`) with its `prompt_id` as `request_id` too, as the bridge and the apps
-/// read it. Other events as they are.
+/// read it, and a question without Hermes' skip hint (`without_skip_hint`). Other events as they are.
 pub fn named(event: SSEEvent) -> SSEEvent {
-    let Some(prompt) = event.data.get("prompt_id").and_then(Value::as_str).map(str::to_string) else {
-        return event;
-    };
-    if event.data.contains_key("request_id") {
+    let prompt = event.data.get("prompt_id").and_then(Value::as_str).map(str::to_string);
+    let add_id = prompt.is_some() && !event.data.contains_key("request_id");
+    let question = (event.r#type == "clarify.request")
+        .then(|| event.data.get("question").and_then(Value::as_str).and_then(without_skip_hint).map(str::to_string))
+        .flatten();
+    if !add_id && question.is_none() {
         return event;
     }
     let mut data = event.data;
-    data.insert("request_id".into(), json!(prompt));
+    if let (true, Some(prompt)) = (add_id, prompt) {
+        data.insert("request_id".into(), json!(prompt));
+    }
+    if let Some(question) = question {
+        data.insert("question".into(), json!(question));
+    }
     let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(data.clone()));
     SSEEvent::new(event.r#type, data, raw)
 }
@@ -102,6 +118,30 @@ mod tests {
         assert_eq!(settled.data["request_id"], "c1");
         let delta = SSEEvent::new("message.delta", data(json!({"delta": "Bonjour"})), "{}");
         assert_eq!(named(delta.clone()), delta);
+    }
+
+    #[test]
+    fn questions_lose_hermes_skip_hint() {
+        let ask = |question: &str| {
+            let event = SSEEvent::new(
+                "clarify.request",
+                data(json!({"prompt_id": "c1", "execution_generation": 1, "question": question, "choices": []})),
+                "",
+            );
+            named(event).data["question"].as_str().unwrap().to_string()
+        };
+        assert_eq!(ask("Quel train ?\nReply \"skip\" to skip this question."), "Quel train ?");
+        assert_eq!(ask("Quel train ?\nRépondez « skip » pour passer cette question."), "Quel train ?");
+        assert_eq!(ask("Welcher Zug?\nAntworte mit „skip“, um diese Frage zu überspringen."), "Welcher Zug?");
+        assert_eq!(ask("Lequel ?\n1. Le matin\n2. Le soir"), "Lequel ?\n1. Le matin\n2. Le soir");
+        assert_eq!(ask("Reply \"skip\" to skip this question."), "Reply \"skip\" to skip this question.");
+        // a run's waiting prompts (after a restart) the same
+        let run = data(json!({"pending_controls": [
+            {"kind": "clarify", "prompt_id": "c2", "execution_generation": 2, "question": "Où ?\nReply \"skip\" to skip this question."},
+        ]}));
+        let pending = pending_requests("run_3", &run);
+        assert_eq!(pending[0].data["question"], "Où ?");
+        assert!(!pending[0].raw.contains("skip"));
     }
 
     #[test]
