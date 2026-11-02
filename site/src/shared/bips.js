@@ -2,7 +2,7 @@
 // The Bips for the websites, drawn like the apps draw them (PixelEngine.swift / PixelEngine.kt, the design page
 // « Les Bips se déguisent »): every number comes from scripts/pixel/pixel.json, which the build writes next to this
 // file as pixel-data.js. Body cells of P, face pixels of U = P/3, the mouth in the eyes' colour, each open eye one
-// solid rounded square; states with key times (idle, think, talk, listen, work, happy, sleep, surprised, error), the
+// solid rounded square; states with key times (idle, think, talk, listen, work, happy, sleep, surprised, error, grumpy), the
 // tap reactions, and the costumes with their seasons. Same « Animalese » as BipBabble.swift.
 import D from "./pixel-data.js";
 
@@ -33,7 +33,7 @@ Object.entries(CATEGORIES).forEach(([id, c], i) => {
 const MOODS = {
   happy: "idle", idle: "idle", thinking: "think", think: "think", speaking: "talk", talk: "talk", listening: "listen",
   listen: "listen", working: "work", work: "work", sleeping: "sleep", sleep: "sleep", content: "happy",
-  giggling: "happy", surprised: "surprised", error: "error",
+  giggling: "happy", surprised: "surprised", error: "error", grumpy: "grumpy", sulking: "grumpy",
 };
 const stateOf = mood => STATES[MOODS[mood] || mood] || STATES.idle;
 
