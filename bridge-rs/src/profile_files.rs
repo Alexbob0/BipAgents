@@ -231,36 +231,22 @@ pub struct AgentSettings {
     pub other: serde_json::Map<String, Value>,
 }
 
-/// Before the record (version 0): the level the person chose, one word, and « none » under GLM's floor.
-const LEGACY_THINKING_CHOSEN: &str = ".bipagents-thinking-chosen";
-const LEGACY_THINKING_OFF: &str = ".bipagents-thinking-off";
+/// Bridges before the record kept the level the person chose in a mark file (one word), and « none » under GLM's
+/// floor in another: [`migrate`] moves them into the record once, at the start of the bridge that brings it.
+const OLD_THINKING_CHOSEN: &str = ".bipagents-thinking-chosen";
+const OLD_THINKING_OFF: &str = ".bipagents-thinking-off";
 
 fn valid_level(level: &str) -> Option<String> {
     let level = level.trim().to_lowercase();
     crate::agents_admin::THINKING_LEVELS.contains(&level.as_str()).then_some(level)
 }
 
-/// The record of the profile in `folder`; one never written comes from the mark files earlier bridges left.
+/// The record of the profile in `folder` (empty when none was written).
 pub fn settings(folder: &Path) -> AgentSettings {
-    if let Ok(text) = std::fs::read_to_string(folder.join(SETTINGS_FILE)) {
-        if let Ok(mut record) = serde_json::from_str::<AgentSettings>(&text) {
-            record.thinking = record.thinking.as_deref().and_then(valid_level);
-            return record;
-        }
-    }
-    let chosen = std::fs::read_to_string(folder.join(LEGACY_THINKING_CHOSEN)).ok().and_then(|t| valid_level(&t));
-    let off = folder.join(LEGACY_THINKING_OFF).exists().then(|| "none".to_string());
-    AgentSettings { version: 0, thinking: chosen.or(off), other: Default::default() }
-}
-
-fn write_settings(folder: &Path, record: &AgentSettings) -> anyhow::Result<()> {
-    let mut text = serde_json::to_string_pretty(record)?;
-    text.push('\n');
-    write_atomic(&folder.join(SETTINGS_FILE), text.as_bytes())?;
-    for mark in [LEGACY_THINKING_CHOSEN, LEGACY_THINKING_OFF] {
-        let _ = std::fs::remove_file(folder.join(mark));
-    }
-    Ok(())
+    let text = std::fs::read_to_string(folder.join(SETTINGS_FILE)).unwrap_or_default();
+    let mut record = serde_json::from_str::<AgentSettings>(&text).unwrap_or_default();
+    record.thinking = record.thinking.as_deref().and_then(valid_level);
+    record
 }
 
 /// The record changed by `change` under the profile's lock; whether it was written. A record of a later version is
@@ -277,20 +263,25 @@ pub fn update_settings(folder: &Path, change: impl FnOnce(&mut AgentSettings)) -
     if record == before {
         return Ok(false);
     }
-    write_settings(folder, &record)?;
+    let mut text = serde_json::to_string_pretty(&record)?;
+    text.push('\n');
+    write_atomic(&folder.join(SETTINGS_FILE), text.as_bytes())?;
     Ok(true)
 }
 
-/// The mark files of earlier bridges moved into the record (once); whether it was written.
+/// The mark files of earlier bridges moved into the record, then removed; whether there were any.
 pub fn migrate(folder: &Path) -> anyhow::Result<bool> {
-    if folder.join(SETTINGS_FILE).exists() {
+    let (chosen, off) = (folder.join(OLD_THINKING_CHOSEN), folder.join(OLD_THINKING_OFF));
+    if !chosen.exists() && !off.exists() {
         return Ok(false);
     }
-    let marks = [LEGACY_THINKING_CHOSEN, LEGACY_THINKING_OFF].iter().any(|m| folder.join(m).exists());
-    if !marks {
-        return Ok(false);
+    let level = std::fs::read_to_string(&chosen).ok().and_then(|t| valid_level(&t));
+    let level = level.or_else(|| off.exists().then(|| "none".to_string()));
+    update_settings(folder, |s| s.thinking = s.thinking.take().or(level))?;
+    for mark in [chosen, off] {
+        let _ = std::fs::remove_file(mark);
     }
-    update_settings(folder, |_| {})
+    Ok(true)
 }
 
 // -- reconcile ------------------------------------------------------------------------------------------------------
@@ -485,12 +476,14 @@ mod tests {
         let dir = folder();
         assert_eq!(settings(&dir), AgentSettings::default());
         assert!(!migrate(&dir).unwrap());
-        std::fs::write(dir.join(LEGACY_THINKING_OFF), "").unwrap();
-        assert_eq!(settings(&dir).thinking.as_deref(), Some("none"));
-        std::fs::write(dir.join(LEGACY_THINKING_CHOSEN), "High\n").unwrap();
-        assert_eq!(settings(&dir).thinking.as_deref(), Some("high")); // the chosen level wins over the old mark
+        std::fs::write(dir.join(OLD_THINKING_OFF), "").unwrap();
         assert!(migrate(&dir).unwrap());
-        assert!(!dir.join(LEGACY_THINKING_CHOSEN).exists() && !dir.join(LEGACY_THINKING_OFF).exists());
+        assert_eq!(settings(&dir).thinking.as_deref(), Some("none"));
+        std::fs::remove_file(dir.join(SETTINGS_FILE)).unwrap();
+        std::fs::write(dir.join(OLD_THINKING_OFF), "").unwrap();
+        std::fs::write(dir.join(OLD_THINKING_CHOSEN), "High\n").unwrap();
+        assert!(migrate(&dir).unwrap()); // the chosen level wins over the old « none » mark
+        assert!(!dir.join(OLD_THINKING_CHOSEN).exists() && !dir.join(OLD_THINKING_OFF).exists());
         assert_eq!(settings(&dir), AgentSettings { version: 1, thinking: Some("high".into()), other: Default::default() });
         assert!(!migrate(&dir).unwrap());
     }
