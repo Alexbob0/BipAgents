@@ -8,7 +8,7 @@ import jwt
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from bbkit.common import AUTH
+from bbkit.common import AUTH, in_session
 from bbkit.servers import wait_until
 
 LIVE = "eXaMpLe:APA91bH_" + "x" * 140
@@ -60,9 +60,11 @@ def test_sending_exchanges_the_key_for_a_token_and_drops_dead_tokens(bridges, fa
     assert all(r.path == "/v1/projects/bipagents-test/messages:send" for r in sends)
     live = next(r.json()["message"] for r in sends if r.json()["message"]["token"] == LIVE)
     outbox_id = bridge.get("/v1/outbox", headers=AUTH).json()["items"][0]["id"]
+    n, c = live["data"].pop("n"), live["data"].pop("c")   # the journal's pointer, as strings (docs/conversations.md §9.3)
+    assert n.startswith("n_") and in_session(bridge, {"c": c}, "api_5")
     assert live == {"token": LIVE, "android": {"priority": "HIGH"},
-                    "data": {"title": "Wellness", "body": "Nouveau message", "category": "MESSAGE",
-                             "outbox_id": outbox_id, "agent": "wellness", "session_id": "api_5"}}
+                    "data": {"title": "Wellness", "body": "Nouveau message", "category": "MESSAGE", "v": "2",
+                             "t": "boite", "agent": "wellness", "m": f"o_{outbox_id}", "r": outbox_id}}
     assert fakes.apns.token(fakes.apns.pushes()[0]) == APPLE              # the iPhone gets its own
     assert wait_until(lambda: sorted(r[0] for r in bridge.db().execute("SELECT token FROM devices")) == sorted([LIVE, APPLE]))
     # The next message: the access token is reused.
@@ -71,7 +73,7 @@ def test_sending_exchanges_the_key_for_a_token_and_drops_dead_tokens(bridges, fa
     fakes.hermes.runs["run_2"] = [sse("run.completed", output="Fini.")]
     bridge.post("/v1/watch", headers=AUTH, json={"agent": "wellness", "run_id": "run_2"})
     assert wait_until(lambda: len(fakes.fcm.sends()) >= 3, timeout=15)
-    assert fakes.fcm.sends()[-1].json()["message"]["data"]["kind"] == "reply"
+    assert fakes.fcm.sends()[-1].json()["message"]["data"]["t"] == "reply"
     assert len([r for r in fakes.fcm.requests if r.path == "/token"]) == asked
 
 
@@ -86,7 +88,9 @@ def test_approval_data_messages_carry_the_choices_as_json(bridges, fakes):
     assert wait_until(lambda: fakes.fcm.sends(), timeout=10)
     message = fakes.fcm.sends()[0].json()["message"]
     assert message["android"] == {"priority": "HIGH", "collapse_key": "req_1"}
-    assert message["data"] == {"title": "Wellness", "body": "Approbation requise", "category": "APPROVAL",
-                               "agent": "wellness", "run_id": "run_1", "request_id": "req_1",
-                               "choices": '["once", "deny"]', "session_id": "s1"}
+    n, c = message["data"].pop("n"), message["data"].pop("c")
+    assert n.startswith("n_") and c.startswith("t_")
+    assert message["data"] == {"title": "Wellness", "body": "Approbation requise", "category": "APPROVAL", "v": "2",
+                               "t": "approval", "agent": "wellness", "r": "req_1", "run_id": "run_1",
+                               "request_id": "req_1", "choices": '["once", "deny"]'}
     assert all(isinstance(v, str) for v in message["data"].values())

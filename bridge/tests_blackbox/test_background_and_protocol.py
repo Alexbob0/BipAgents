@@ -110,7 +110,7 @@ def test_android_devices_of_an_install_without_fcm_go_through_the_relay(bridges,
     assert wait_until(lambda: fakes.admin_relay.seen("/v1/relay/push"))
     body = fakes.admin_relay.seen("/v1/relay/push")[0].json()
     assert body["token"] == android and body["environment"] == "fcm" and body["collapse_id"] == "run_a"
-    assert body["payload"]["kind"] == "reply" and bridge.get("/health").json()["fcm"] is False
+    assert body["payload"]["t"] == "reply" and bridge.get("/health").json()["fcm"] is False
 
 
 @pytest.mark.slow

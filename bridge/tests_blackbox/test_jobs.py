@@ -9,7 +9,7 @@ import re
 
 import pytest
 
-from bbkit.common import AUTH
+from bbkit.common import AUTH, in_session
 from bbkit.fakes import split_now
 from bbkit.mcp import call, give_token, text_of
 from bbkit.servers import wait_until
@@ -68,8 +68,8 @@ def test_a_task_runs_in_its_own_conversation_and_ends_with_its_report(bridges, f
     assert done["tokens"] == {"input": 100_000, "output": 5_000, "cached": 0}
     assert wait_until(lambda: fakes.apns.pushes())
     payload = fakes.apns.payloads()[0]
-    assert payload["aps"]["alert"]["body"] == "Background task done" and payload["job_id"] == job["id"]
-    assert payload["session_id"] == "api_s1" and payload["run_id"] == "session:api_s1"
+    assert payload["aps"]["alert"]["body"] == "Background task done" and payload["r"] == job["id"]
+    assert payload["t"] == "task" and in_session(bridge, payload, "api_s1")
     assert fakes.apns.pushes()[0].header("apns-collapse-id") == f"job:{job['id']}"
     listed = bridge.get("/v1/jobs", headers=AUTH).json()
     assert listed["budgets"] == {"small": 300_000, "medium": 1_000_000, "large": 3_000_000}
@@ -140,8 +140,8 @@ def test_an_agent_proposes_a_task_the_person_starts(bridges, fakes):
     assert not fakes.hermes.seen("/v1/runs")                  # nothing spent before the go
     assert wait_until(lambda: fakes.apns.pushes())
     payload = fakes.apns.payloads()[0]
-    assert payload["aps"]["alert"]["body"] == "Background task suggested" and "session_id" not in payload
-    assert payload["run_id"] == "session:job" and payload["job_id"] == proposed["id"]
+    assert payload["aps"]["alert"]["body"] == "Background task suggested" and "c" not in payload
+    assert payload["t"] == "task" and payload["r"] == proposed["id"]
     started = bridge.post(f"/v1/jobs/{proposed['id']}/start", headers=AUTH, json={"max_tokens": 500_000})
     assert started.json()["state"] == "running" and started.json()["max_tokens"] == 500_000
     again = bridge.post(f"/v1/jobs/{proposed['id']}/start", headers=AUTH)

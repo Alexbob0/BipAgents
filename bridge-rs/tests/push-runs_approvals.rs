@@ -358,16 +358,16 @@ async fn reply_ready_pushed_when_the_app_left() {
     gate.set();
     assert!(wait_until(|| count(&c.apns) >= 1, Duration::from_secs(5)).await);
     let payload = c.apns.payloads()[0].clone();
-    assert_eq!(payload["kind"], "reply");
-    assert_eq!(payload["session_id"], "api_9");
-    assert_eq!(payload["run_id"], "run_r");
+    assert_eq!(payload["t"], "reply");
+    assert_eq!(payload["r"], "run_r");
     assert_eq!(payload["aps"]["category"], "MESSAGE");
     assert_eq!(payload["aps"]["alert"]["body"], "Ta réponse est prête.");
-    // The text stays off Apple: the extension fetches it from the bridge.
-    let reply = c.get(&format!("/v1/replies/{}", payload["reply_id"].as_str().unwrap())).await;
+    // The text stays off Apple: the extension fetches it from the bridge (the journal's row).
+    let reply = c.get(&format!("/v1/notifications/{}", payload["n"].as_str().unwrap())).await;
     assert_eq!(reply.status, StatusCode::OK);
-    assert_eq!(reply.json()["text"], "Le train de 9h est à 19 €.");
-    assert_eq!(c.get("/v1/replies/nope").await.status, StatusCode::NOT_FOUND);
+    assert_eq!(reply.json()["preview"], "Le train de 9h est à 19 €.");
+    assert_eq!(reply.json()["session_id"], "api_9");
+    assert_eq!(c.get("/v1/notifications/nope").await.status, StatusCode::NOT_FOUND);
     c.close().await;
 }
 
@@ -408,9 +408,10 @@ async fn question_pushed_when_the_app_left() {
     gate.set();
     assert!(wait_until(|| count(&c.apns) >= 1, Duration::from_secs(5)).await);
     let payload = c.apns.payloads()[0].clone();
-    assert_eq!(payload["kind"], "question");
+    assert_eq!(payload["t"], "question");
     assert_eq!(payload["request_id"], "clr_1");
-    assert_eq!(payload["session_id"], "api_7");
+    let row = c.get(&format!("/v1/notifications/{}", payload["n"].as_str().unwrap())).await.json();
+    assert_eq!(row["session_id"], "api_7");
     assert_eq!(payload["aps"]["alert"]["body"], "Une question pour toi");
     assert_eq!(payload["aps"]["mutable-content"], 1);
     c.close().await;
@@ -564,7 +565,8 @@ async fn watched_runs_resume_after_a_restart_with_their_pending_approval() {
     assert!(wait_until(|| count(&apns) >= 1, Duration::from_secs(5)).await);
     let payload = apns.payloads()[0].clone();
     assert_eq!(payload["aps"]["category"], "APPROVAL");
-    assert_eq!(payload["session_id"], "api_bot");
+    let row = store.run("SELECT session_id FROM notifications", vec![]).await.unwrap();
+    assert_eq!(row[0]["session_id"], "api_bot");
     assert_eq!(payload["request_id"], "req_x");
     // finished and unknown ones forgotten
     let watched: Vec<Value> = store.watched_runs(3600.0).await.unwrap().iter().map(|r| r["run_id"].clone()).collect();

@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from bbkit.common import AUTH
+from bbkit.common import AUTH, in_session, pushed_text
 from bbkit.servers import wait_until
 
 TOKEN = "c" * 64
@@ -62,7 +62,7 @@ def test_finished_cron_replies_go_to_the_outbox_once_and_muted_ones_silently(bri
     assert wait_until(lambda: len(fakes.apns.pushes()) >= 1)
     time.sleep(2.5)   # the muted job's message waited for its audio as long as the pushed one did
     pushed = [p for p in fakes.apns.payloads() if p["aps"].get("category") == "MESSAGE"]
-    assert [p["outbox_id"] for p in pushed] == [by_text["Bonjour Alex !"]["id"]]
+    assert [p["r"] for p in pushed] == [by_text["Bonjour Alex !"]["id"]]
     listed = bridge.get("/v1/cron-jobs", headers=AUTH).json()["jobs"]
     assert {(j["job"], j["notify"]) for j in listed} == {("fc344ed09026", True), ("0681ac73805e", False)}
 
@@ -81,9 +81,8 @@ def test_a_bot_chat_turn_taken_alone_is_pushed_once_unless_on_screen(bridges, fa
     hermes.sessions[""]["api_bot"]["message_count"] = 4
     assert wait_until(lambda: len(fakes.apns.pushes()) >= 1, timeout=10)
     payload = fakes.apns.payloads()[0]
-    assert payload["kind"] == "reply" and payload["session_id"] == "api_bot" and payload["run_id"] == "session:api_bot"
-    assert bridge.get(f"/v1/replies/{payload['reply_id']}", headers=AUTH).json()["text"] == \
-        "Wellness dit que ta nuit était bonne."
+    assert payload["t"] == "reply" and in_session(bridge, payload, "api_bot") and payload["r"] == "session:api_bot"
+    assert pushed_text(bridge, payload) == "Wellness dit que ta nuit était bonne."
     # The conversation open on the phone (it polls its state): the next turn is not pushed.
     state = bridge.get("/v1/sessions/api_bot/state?agent=wellness", headers=AUTH)
     assert state.status_code == 200
@@ -151,9 +150,9 @@ def test_a_subtask_report_left_without_a_reply_is_pushed_once(bridges, fakes):
     assert len(fakes.apns.pushes()) == 1
     payload = fakes.apns.payloads()[0]
     assert payload["aps"]["alert"] == {"title": "Wellness", "body": "🎧 Podcast jeudi"}
-    assert payload["run_id"] == "session:api_7" and payload["session_id"] == "api_7" and payload["kind"] == "reply"
-    assert fakes.apns.pushes()[0].header("apns-collapse-id") == "subtask:api_7"
-    assert bridge.get(f"/v1/replies/{payload['reply_id']}", headers=AUTH).json()["text"] == "🎧 Podcast jeudi"
+    assert payload["t"] == "subtask" and in_session(bridge, payload, "api_7")
+    assert fakes.apns.pushes()[0].header("apns-collapse-id") is None   # a report never replaces another
+    assert pushed_text(bridge, payload) == "🎧 Podcast jeudi"
 
 
 @pytest.mark.slow
@@ -191,5 +190,5 @@ def test_a_subtask_report_left_without_a_reply_is_told_by_the_agent(bridges, fak
     assert wait_until(lambda: fakes.apns.pushes())
     time.sleep(1.5)
     payloads = fakes.apns.payloads()
-    assert len(payloads) == 1 and payloads[0]["outbox_id"] == item["id"] and payloads[0]["session_id"] == "api_7"
+    assert len(payloads) == 1 and payloads[0]["m"] == f"o_{item['id']}" and in_session(bridge, payloads[0], "api_7")
     assert len(hermes.started) == 1   # once

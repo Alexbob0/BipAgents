@@ -1,0 +1,20 @@
+{
+  "notifications": [
+    {
+      "id": "n_001a19d47a45b0e375ca52b7b4",
+      "agent": "wellness",
+      "type": "reply",
+      "c": "t_001a19d47a428816a4d74565b4",
+      "m": "m_af0a98787934cf9df329e34acedad657",
+      "ref": "r1",
+      "session_id": "api_new",
+      "title": "Wellness",
+      "body": "notif.reply",
+      "preview": "Bon voyage !",
+      "state": "open",
+      "created_at": "2026-11-02T17:21:20.475Z",
+      "read_at": null,
+      "push": "sent:1"
+    }
+  ]
+}

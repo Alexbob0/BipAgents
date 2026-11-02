@@ -690,6 +690,9 @@ pub struct Config {
     pub media_roots: IndexMap<String, String>,
     pub ntfy_url: String,
     pub push_previews: bool,
+    /// How long a reply's notification waits for its message to be stored, to carry its id (`[push]
+    /// message_wait_seconds`, notifications.rs). Then it goes without it.
+    pub push_message_wait_seconds: f64,
     pub watch_followed_runs: bool,
     pub apns: ApnsConfig,
     /// The Firebase project's service account (JSON), for the Android app's notifications.
@@ -840,6 +843,7 @@ impl Config {
             media_roots: IndexMap::new(),
             ntfy_url: "http://127.0.0.1:8645".into(),
             push_previews: false,
+            push_message_wait_seconds: 10.0,
             watch_followed_runs: true,
             apns: ApnsConfig::default(),
             fcm_service_account: None,
@@ -1866,6 +1870,7 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         media_roots,
         ntfy_url: py::rstrip_slash(&s(ntfy, "url", "http://127.0.0.1:8645")),
         push_previews: b(push, "previews", false),
+        push_message_wait_seconds: f(push, "message_wait_seconds", 10.0)?.clamp(0.0, 60.0),
         watch_followed_runs: b(push, "watch_followed_runs", true),
         apns,
         fcm_service_account: opt_s(fcm_t, "service_account").map(|p| expand(&p)),

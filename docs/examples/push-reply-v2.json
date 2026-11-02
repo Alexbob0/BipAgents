@@ -1,0 +1,21 @@
+{
+  "aps": {
+    "alert": {
+      "title": "Wellness",
+      "body": "Ta réponse est prête.",
+      "loc-key": "Ta réponse est prête."
+    },
+    "thread-id": "wellness/t_001a19d47a428816a4d74565b4",
+    "mutable-content": 1,
+    "category": "MESSAGE",
+    "sound": "default",
+    "badge": 1
+  },
+  "v": 2,
+  "n": "n_001a19d47a45b0e375ca52b7b4",
+  "t": "reply",
+  "agent": "wellness",
+  "c": "t_001a19d47a428816a4d74565b4",
+  "m": "m_af0a98787934cf9df329e34acedad657",
+  "r": "r1"
+}

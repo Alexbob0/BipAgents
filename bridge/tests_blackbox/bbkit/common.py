@@ -46,3 +46,17 @@ def read_sse(resp, timeout: float = 120.0) -> list:
         elif line.startswith("data: "):
             events.append((name, json.loads(line[len("data: "):])))
     return events
+
+
+def in_session(bridge, payload, session: str) -> bool:
+    """A push's conversation (`c`, a thread of the bridge) holds this Hermes session (docs/conversations.md §9.3)."""
+    thread = payload.get("c")
+    if not thread:
+        return False
+    found = bridge.get(f"/v1/threads/{thread}", headers=AUTH).json()
+    return any(s["session_id"] == session for s in found.get("segments", []))
+
+
+def pushed_text(bridge, payload) -> str:
+    """The text a push's extension shows: its journal row's (`GET /v1/notifications/{n}`)."""
+    return bridge.get(f"/v1/notifications/{payload['n']}", headers=AUTH).json().get("preview")

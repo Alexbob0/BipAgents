@@ -2,7 +2,7 @@
 (tests/test_outbox_push.py, over HTTP)."""
 import json
 
-from bbkit.common import AUTH, NTFY_TOKEN
+from bbkit.common import AUTH, NTFY_TOKEN, in_session
 from bbkit.servers import wait_until
 
 TOKEN = "b" * 64
@@ -64,17 +64,22 @@ def test_ntfy_message_lands_in_outbox_with_audio_and_push(bridges, fakes):
     assert (bridge.data / "audio" / f"{first['id']}.mp3").exists()
 
     # Push: MESSAGE payload, sandbox host for the sandbox device, generic body (no preview).
-    sandbox = [r for r in apns.pushes() if apns.environment(r) == "sandbox"]
+    sandbox = [r for r in apns.pushes() if apns.environment(r) == "sandbox" and r.json()["m"] == f"o_{first['id']}"]
     payload = sandbox[0].json()
+    # the pointer (docs/conversations.md §9.3): the journal's row, the conversation of the message's session
+    n, c = payload.pop("n"), payload.pop("c")
+    assert n.startswith("n_") and in_session(bridge, {"c": c}, "sess_42")
+    badge = payload["aps"].pop("badge")
+    assert badge in (1, 2)   # the journal's unread rows when it was sent (the other message may come first)
     assert payload == {"aps": {"alert": {"title": "Wellness", "body": "Nouveau message", "loc-key": "Nouveau message"},
-                               "thread-id": "wellness", "mutable-content": 1, "category": "MESSAGE",
+                               "thread-id": f"wellness/{c}", "mutable-content": 1, "category": "MESSAGE",
                                "sound": "default"},
-                       "outbox_id": first["id"], "agent": "wellness", "session_id": "sess_42"}
+                       "v": 2, "t": "boite", "agent": "wellness", "m": f"o_{first['id']}", "r": first["id"]}
     assert sandbox[0].header("apns-topic") == "io.github.bipagents"
     assert sandbox[0].header("apns-push-type") == "alert" and sandbox[0].header("apns-priority") == "10"
     assert sandbox[0].header("content-type") == "application/json"
     assert sandbox[0].path == f"/sandbox/3/device/{TOKEN}"
-    assert sandbox[0].body == json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
+    assert sandbox[0].body.startswith(b'{"aps":{"alert":')   # compact JSON, aps first
     # The 410 token was deleted after its first failure; it was sent to the production host.
     dead_calls = [r for r in apns.pushes() if apns.token(r) == DEAD]
     assert 1 <= len(dead_calls) <= 2 and apns.environment(dead_calls[0]) == "production"

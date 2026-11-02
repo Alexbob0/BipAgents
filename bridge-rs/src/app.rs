@@ -98,6 +98,9 @@ pub struct Services {
     pub rooms: OnceLock<Arc<crate::rooms::Rooms>>,
     /// The agents' waiting messages (msg_queue::queues_of, made with the app: the hub tells them each run's end).
     pub queues: OnceLock<Arc<crate::msg_queue::Queues>>,
+    /// The conversations the bridge owns (threads::threads_of, made with the app: the hub and the push service
+    /// reach them).
+    pub threads: OnceLock<Arc<crate::threads::Threads>>,
     /// Wrong keys counted by address (guard.py): Python's `app.state.guard`.
     pub guard: Guard,
     /// The web consoles (console.py): Python's `app.state.console`.
@@ -236,6 +239,7 @@ impl Services {
             jobs: OnceLock::new(),
             rooms: OnceLock::new(),
             queues: OnceLock::new(),
+            threads: OnceLock::new(),
             guard: Guard::default(),
             console: ConsoleStore::new(&py::join(&data_dir, "console.json")),
             tasks: Mutex::new(Vec::new()),
@@ -1091,12 +1095,6 @@ async fn pairing(State(state): State<AppState>) -> ApiResult<Response> {
     Ok(web::ok(json!({"lan": lan_info(&state.config())})))
 }
 
-/// The text of a reply / question push, for the Notification Service Extension (kept 24 h).
-async fn get_reply(State(state): State<AppState>, Path(reply_id): Path<String>) -> ApiResult<Response> {
-    let text = state.push.text(&reply_id).ok_or_else(HttpError::not_found)?;
-    Ok(web::ok(json!({"id": reply_id, "text": text})))
-}
-
 /// Scheduled tasks seen by the cron watcher, with whether their replies are pushed.
 async fn cron_jobs(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
     let config = state.config();
@@ -1384,7 +1382,6 @@ pub fn build_router() -> Router<AppState> {
         .route("/sessions/{session_id}/state", get(session_state))
         .route("/status", get(status))
         .route("/pairing", get(pairing))
-        .route("/replies/{reply_id}", get(get_reply))
         .route("/cron-jobs", get(cron_jobs))
         .route("/cron-jobs/{agent}/{job}", put(set_cron_job))
         .route("/watch", post(watch_run))
@@ -1426,7 +1423,7 @@ async fn health(State(state): State<AppState>) -> ApiResult<Response> {
         // The space encrypted at rest (space.rs): « on » or « off » (a locked bridge answers « locked » itself).
         "space": crate::space::health_state(),
         // What this bridge offers that the Python one doesn't (the apps hide the rest).
-        "features": ["agent_groups", "files_kept", "calendar", "health_categories", "contacts", "time_zone", "message_search", "agent_templates", "agent_notify", "agent_queue"],
+        "features": ["agent_groups", "files_kept", "calendar", "health_categories", "contacts", "time_zone", "message_search", "agent_templates", "agent_notify", "agent_queue", "threads", "notifications"],
     });
     // The config was broken at start and its last good copy put back (config.rs): {at, broken}, for the app and the
     // seat agent to tell.
@@ -1556,7 +1553,6 @@ const FIRST_ROUTE_METHODS: &[(&str, &str)] = &[
     ("/v1/sessions/{session_id}/state", "GET"),
     ("/v1/status", "GET"),
     ("/v1/pairing", "GET"),
-    ("/v1/replies/{reply_id}", "GET"),
     ("/v1/cron-jobs", "GET"),
     ("/v1/cron-jobs/{agent}/{job}", "PUT"),
     ("/v1/watch", "POST"),
@@ -1721,6 +1717,7 @@ pub fn create_app(config: Config, options: AppOptions) -> anyhow::Result<App> {
     let services = Services::new(config)?;
     let state = AppState(Arc::new(services));
     let queues = crate::msg_queue::queues_of(&state); // before any run ends: the hub tells it each end
+    crate::threads::threads_of(&state); // the same: the hub and the push service point at the threads
     let config = state.config();
     crate::profile_files::reconcile_all(&config); // what the bridge decides in each profile, as this bridge renders it
     agents_admin::heal_souls(&config);
@@ -1751,6 +1748,8 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::agent_groups::router())
         .merge(crate::agent_notify::router())
         .merge(crate::msg_queue::router())
+        .merge(crate::threads::router())
+        .merge(crate::notifications::router())
         .merge(crate::model_choice::router())
         .merge(crate::files_kept::router())
         .merge(crate::storage_watch::router())
