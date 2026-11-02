@@ -418,7 +418,7 @@ CREATE TABLE notifications (
   ref_id TEXT,                   -- run / request / card / job / held mail / meet id the item is about
   session_id TEXT,               -- the Hermes session the producer named (legacy apps, debugging)
   title TEXT, body_key TEXT,     -- display name; neutral body code (notif.reply…), apps translate
-  preview TEXT,                  -- first words (kept on the bridge; sent in clear only when previews are on)
+  preview TEXT,                  -- first words (kept on the bridge; never sent in clear)
   args TEXT,                     -- JSON (names, host, line)
   state TEXT NOT NULL,           -- open | answered | expired
   created_at TEXT NOT NULL,
@@ -473,15 +473,19 @@ ship right after): the push carries the pointer only, no legacy field (`run_id` 
 - `aps.thread-id` is `<agent>/<c>` (the agent's when there is no conversation): one notification group per
   conversation. `aps.category`: `APPROVAL` for approvals, `CARD` for connector and e-mail cards (never a secret's:
   it is typed in the app), `MESSAGE` for the rest. `aps.badge`: the journal's unread total.
-- The text the extension shows: `GET /v1/notifications/{n}` (`preview`, the whole text). With previews on, the alert
-  carries the first 160 characters.
+- The text the extension shows: the sealed `enc` (below); `GET /v1/notifications/{n}` (`preview`, the whole text)
+  when the phone is on the tailnet. The alert itself never carries words.
 - Collapse ids only where one notification replaces another: a run's reply (`run_id`), an approval's or question's
   request, a room (`room:<id>`), a task (`job:<id>`), a card, the mailbox scan. Autonomous replies, sub-task reports
   and Boîte messages are never collapsed.
 - FCM gets the same fields as data (strings).
 - The deep link the apps build from it: `bipagents://open?agent=<a>&c=<c>&m=<m>&n=<n>&t=<t>`.
-- Next (notif-encrypt, refonte phase 5): `enc`, the sealed text per device; neutral `loc-key` codes. `emit` stays the
-  only place a push is built.
+- Sealed text (phase 5 of the refonte, `bridge-rs/src/push_runs/seal.rs`): a device registered with its key
+  (`POST /v1/devices {push_key}`, P-256 public key, base64) gets the words only in `enc` (`{v, t, title, body, sub?}`
+  sealed for it: ECDH P-256 + HKDF-SHA256 « bipagents-notif-v1 » + AES-256-GCM, AAD = `agent`) and, in clear, the
+  neutral `loc-key` `notif.<type>` (contracts/notifications/loc-keys.json), no title. Its phone opens it offline.
+  A device without a key gets the neutral line only (no compatibility window: `[push] previews` is gone). `emit`
+  stays the only place a push is built. Vectors: contracts/notifications/sealed.json.
 
 ### 9.4 Read state
 

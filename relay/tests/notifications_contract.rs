@@ -54,3 +54,34 @@ fn every_bridge_payload_passes_with_its_neutral_line_and_its_ids() {
         }
     }
 }
+
+/// Sealed notifications (contracts/notifications/sealed.json, made by the bridge's seal.rs): every variant's push for
+/// a device with a key passes with `enc` untouched, its neutral line, its ids, and no words of the agent.
+#[test]
+fn every_sealed_payload_passes_untouched() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../contracts/notifications/sealed.json");
+    let doc: Value = serde_json::from_str(&std::fs::read_to_string(path).expect("sealed.json")).unwrap();
+    let payloads = doc["payloads"].as_array().unwrap();
+    assert!(payloads.len() >= 30, "{} sealed payloads", payloads.len());
+    for item in payloads {
+        let label = item["variant"].as_str().unwrap();
+        let payload = &item["payload"];
+        let clean = scrub(payload, Audience::Bridge).unwrap_or_else(|e| panic!("{label}: refused: {e}"));
+        assert_eq!(clean["enc"], payload["enc"], "{label}: enc changed");
+        let code = payload["aps"]["alert"]["loc-key"].as_str().unwrap();
+        assert!(code.starts_with("notif."), "{label}");
+        assert_eq!(clean["aps"]["alert"]["body"].as_str(), Some(code), "{label}: neutral line");
+        for (key, value) in payload.as_object().unwrap() {
+            if key != "aps" {
+                assert_eq!(&clean[key], value, "{label}: {key} lost on the way");
+            }
+        }
+        let data = fcm_data(&clean);
+        assert_eq!(data.get("enc"), payload.get("enc"), "{label}: fcm enc");
+        let body = item["shown"]["body"].as_str().unwrap();
+        let clear = serde_json::to_string(&clean).unwrap().replace(payload["enc"].as_str().unwrap(), "");
+        for word in body.split_whitespace().filter(|w| w.chars().count() >= 5) {
+            assert!(!clear.contains(word), "{label}: {word:?} in clear");
+        }
+    }
+}

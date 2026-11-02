@@ -689,7 +689,6 @@ pub struct Config {
     /// Files the agents point to with « MEDIA:<path> » lines: agent-side prefix -> host directory.
     pub media_roots: IndexMap<String, String>,
     pub ntfy_url: String,
-    pub push_previews: bool,
     /// How long a reply's notification waits for its message to be stored, to carry its id (`[push]
     /// message_wait_seconds`, notifications.rs). Then it goes without it.
     pub push_message_wait_seconds: f64,
@@ -842,7 +841,6 @@ impl Config {
             cron_subtask_handback: true,
             media_roots: IndexMap::new(),
             ntfy_url: "http://127.0.0.1:8645".into(),
-            push_previews: false,
             push_message_wait_seconds: 10.0,
             watch_followed_runs: true,
             apns: ApnsConfig::default(),
@@ -1869,7 +1867,6 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         cron_subtask_handback: b(cron, "subtask_handback", true),
         media_roots,
         ntfy_url: py::rstrip_slash(&s(ntfy, "url", "http://127.0.0.1:8645")),
-        push_previews: b(push, "previews", false),
         push_message_wait_seconds: f(push, "message_wait_seconds", 10.0)?.clamp(0.0, 60.0),
         watch_followed_runs: b(push, "watch_followed_runs", true),
         apns,

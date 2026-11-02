@@ -1,0 +1,1023 @@
+{
+  "about": "Sealed notifications (refonte phase 5; bridge-rs/src/push_runs/seal.rs). Checked by bridge-rs/tests/notifications_sealed.rs, HermesKitTests/NotificationSealTests.swift and android …/push/PushSealTest.kt. UPDATE_SEALED=1 cargo test --test notifications_sealed writes it again.",
+  "scheme": {
+    "key": "the device's P-256 key pair; POST /v1/devices {push_key: base64 of the public key, uncompressed (65 bytes)}",
+    "enc": "base64( E (65, uncompressed P-256 ephemeral public key) · nonce (12) · AES-256-GCM ciphertext · tag (16) )",
+    "aes_key": "HKDF-SHA256(ikm = ECDH(e, device) x-coordinate (32), salt = E · device public key (65+65), info = \"bipagents-notif-v1\", length 32)",
+    "aad": "the push's `agent` value, UTF-8",
+    "plaintext": "JSON {v: 1, t: <type, loc-keys.json without notif.>, title, body (≤ 1000 characters, may be empty: show the neutral line), sub?}",
+    "clear": "aps.alert = {loc-key: notif.<t>, body: notif.<t>}, no title; ids next to aps unchanged",
+    "limits": {
+      "enc_max_chars": 3000,
+      "payload_max_bytes": 3800,
+      "body_max_chars": 1000
+    }
+  },
+  "test_key": {
+    "private_hex": "ba9212190c69f8a21b344a6918b8b2526b42f86e341a860b59d2e7ba5a68cdf1",
+    "public": "BMRTWavQY1FpCPpNDwP0v/sk7cIGdT6udi5W3ENJAW2GqaWZLEMx6/8DMUR0BkOnhx9WszZ/c6cg/PPo2cd/8Vc="
+  },
+  "vectors": [
+    {
+      "name": "reply",
+      "agent": "vie",
+      "plaintext": "{\"v\":1,\"t\":\"reply\",\"title\":\"Vie\",\"body\":\"Le train de 9 h part du quai 3.\"}",
+      "enc": "BAG02+PFitm+sXpqenealU/te4zOBn+KpktP7Z4Zyaz9kzyiayF7/3AFVAi4EigmKnyxeg74xdPEmUPlu/P+olQmJLHoZo71nuVNfKs96nd9mP+OF0cU0mz2nsFNPHPkgGzkNE6KlCLBKSapo4sLB/sFjTbGLHOW5GTCDf/8gkZj7BlIdtVTScdS9I+rkXShxgXZ/aDO1M8l/bP9cxU8K+1ojP16N3o="
+    },
+    {
+      "name": "accents_emoji",
+      "agent": "wellness",
+      "plaintext": "{\"v\":1,\"t\":\"question\",\"title\":\"Bien-être\",\"body\":\"Tu préfères 7 h ou 8 h ? 🌅\"}",
+      "enc": "BIHOh83LCiYSFxR55rE7FDkmJX9WMEGYGCIefDagbyxb8GgHnzkbQIM8Y+Z9KGemON1M0wILCMpsqwflU2VJ6M45LwDBGc/mMHzYhP6oUHT1OgYVoiRhwRqiYgmlFhJizc5jdo0q2MSgjGLIx6OsE+c59g4a7CA90XRJZmexbGJKext6OLJlH5XqCfHMfMJWIhWn6xKTDtiSh1uD9HHjPcXnhgyh9fywzbqa6WUILX3Y"
+    },
+    {
+      "name": "shared_agent",
+      "agent": "cuisine__alex",
+      "plaintext": "{\"v\":1,\"t\":\"approval\",\"title\":\"Cuisine (Alex)\",\"body\":\"Cuisine veut commander les courses (32 €).\"}",
+      "enc": "BKlv2W0noParCKBtQvwIYrZ50JYHLFEDIfizDqXW0TmFjLySjzAVXO6a5i+2S4Ek/olVul+9z9Oc2HLdIhqklbTQufevmsnY/98/NX1A1B/5xJDVRb0/Bkw0udkWzmDOiXwaVNaOPcRBde8lBY8Kvc+Ks31KPo+w08HNWDtIvnzjMw7W771oLcVe1+b9/4TmOdCYNt7B0fa+qfe7REgYka00NVMkv/liGlqc+e2gaIa3VcnMlqrcF7QKVe8MlTUpUYU="
+    },
+    {
+      "name": "boite_sub",
+      "agent": "vie",
+      "plaintext": "{\"v\":1,\"t\":\"boite\",\"title\":\"Vie\",\"body\":\"Ton point du matin est prêt.\",\"sub\":\"Point du matin\"}",
+      "enc": "BDM5uRGNAq9itfO9ueSjgQpscQ1qyQYw8Y+PDjjCJphVH4Bc8LqsPXoQPqFc342E68XYSw4nsuw8yD1tK+JdyHP5uKUL2yJxNvooHfymgtmxc4X2ttE6+rHSQvhqT6grVWgfuLCk2C235HUghh3qBTeH56U3Js7VMv9rsanbGWyGUER2/6oZ4kprHVQiAiXbZHR/8Xcs2BlWX+5WqK6Y9VRjKloOB7+//+qNMmNvj5qZV9VH4kR2Cog/ZBo="
+    },
+    {
+      "name": "empty",
+      "agent": "vie",
+      "plaintext": "",
+      "enc": "BEWPGlJTAhll8tGIGtqgFeYr+aB3kgwrHHDomLNT8C/CbbPP4jllt9NTMh7cIgOwVR2iGeE5gBxsyV+bd5mdanSGkHqXqIIdIALLwh0seMJWpjC3fm68ny8nIxsV"
+    }
+  ],
+  "bad": [
+    {
+      "name": "tag_changed",
+      "agent": "vie",
+      "enc": "BAG02+PFitm+sXpqenealU/te4zOBn+KpktP7Z4Zyaz9kzyiayF7/3AFVAi4EigmKnyxeg74xdPEmUPlu/P+olQmJLHoZo71nuVNfKs96nd9mP+OF0cU0mz2nsFNPHPkgGzkNE6KlCLBKSapo4sLB/sFjTbGLHOW5GTCDf/8gkZj7BlIdtVTScdS9I+rkXShxgXZ/aDO1M8l/bP9cxU8K+1ojP16N3s="
+    },
+    {
+      "name": "ciphertext_changed",
+      "agent": "vie",
+      "enc": "BAG02+PFitm+sXpqenealU/te4zOBn+KpktP7Z4Zyaz9kzyiayF7/3AFVAi4EigmKnyxeg74xdPEmUPlu/P+olQmJLHoZo71nuVNfKs96nd8mP+OF0cU0mz2nsFNPHPkgGzkNE6KlCLBKSapo4sLB/sFjTbGLHOW5GTCDf/8gkZj7BlIdtVTScdS9I+rkXShxgXZ/aDO1M8l/bP9cxU8K+1ojP16N3o="
+    },
+    {
+      "name": "other_agent",
+      "agent": "wellness",
+      "enc": "BAG02+PFitm+sXpqenealU/te4zOBn+KpktP7Z4Zyaz9kzyiayF7/3AFVAi4EigmKnyxeg74xdPEmUPlu/P+olQmJLHoZo71nuVNfKs96nd9mP+OF0cU0mz2nsFNPHPkgGzkNE6KlCLBKSapo4sLB/sFjTbGLHOW5GTCDf/8gkZj7BlIdtVTScdS9I+rkXShxgXZ/aDO1M8l/bP9cxU8K+1ojP16N3o="
+    },
+    {
+      "name": "other_device",
+      "agent": "vie",
+      "enc": "BF5/sr4lWl88R44wSCk3nBNnbRI7FlCGDpk4j85VvUEBLY0SG3ZxO3hrN+eGcjKMNWV8roAIx2ZUvYJF/P61aq4sOIPmSkhwzHWNZd/nG1riyDEeZ8PNOx+Lae5ewOgwOsi1BQ=="
+    },
+    {
+      "name": "too_short",
+      "agent": "vie",
+      "enc": "BAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBA=="
+    }
+  ],
+  "payloads": [
+    {
+      "variant": "approval/previews_off",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.approval",
+            "body": "notif.approval"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "APPROVAL",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "run_5",
+        "request_id": "req_1",
+        "choices": [
+          "once",
+          "session",
+          "always",
+          "deny"
+        ],
+        "session_id": "sess_1",
+        "enc": "BBVdMkhC+yjBHPAeGpotiPwnGRO62Z8H7m1XBlMQbwzpM05DC7g7pKUtDaq0QnLPyt+ZTBY66ETlY5rqkii5UPV2LjtnSmRJVQvlgUErGEDLxLzteX0XPb9Ni0MXqm5xmvnSH0CRa4ed3Sy4o7JEIyth/hFUbHv5PNHehusL85b9Hy/xU3DZQcdbDypXxgtWJxOOtyJjQGAgqLnGEr8N"
+      },
+      "shown": {
+        "v": 1,
+        "t": "approval",
+        "title": "Vie",
+        "body": "pip install openpyxl"
+      }
+    },
+    {
+      "variant": "approval/previews_on",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.approval",
+            "body": "notif.approval"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "APPROVAL",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "run_5",
+        "request_id": "req_1",
+        "choices": [
+          "once",
+          "deny"
+        ],
+        "session_id": "sess_1",
+        "enc": "BBWOhIMLkbb6R2XHGRuj0VuUbmdxOImcARzya5cPbXGMnPw9Rg46fD3Q/2KvvF8nNOGGMRyDXepU147E5aYdtH7jQrV2ErmXw3jex3Xo8my0qCJPcWNtWyghNNFK5MRE/ieyfBzMy19aHzIgb01BFa8TIO23BapKRNH+aemjvHvIHOAKt1xlKqzhAgnpJqcJMrLR0GeNoPHiXwCItzQy"
+      },
+      "shown": {
+        "v": 1,
+        "t": "approval",
+        "title": "Vie",
+        "body": "pip install openpyxl"
+      }
+    },
+    {
+      "variant": "approval/room",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.approval",
+            "body": "notif.approval"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "APPROVAL",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "run_5",
+        "request_id": "req_2",
+        "room_id": "room_1",
+        "enc": "BJ2TCw6A7GsRVhV2c1OqFMzFiMgmlkMTU54E5I6CODrZl1Y9Hgmeyc8P2YEE7Sj0OEGGV7H4FlyQHjoPM3VxM7GitBlvWnWNfBJH5+BYyasJwuQZ26qmQ3B3wi1wwnso4/UeOIw+beffJaWqe9dZkJFs2kje7d7YQOX+AOhatXwnSKacArTGi/Izdw=="
+      },
+      "shown": {
+        "v": 1,
+        "t": "approval",
+        "title": "Vie",
+        "body": ""
+      }
+    },
+    {
+      "variant": "approval/no_session",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.approval",
+            "body": "notif.approval"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "APPROVAL",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "run_5",
+        "enc": "BFgCYT3YCdnmKG46ijbgUdtwkC3XWm7Vb964SzBAA+HEBCt+do9a1pUN+NGSGX0JiNikJFIR0h0AkUR2udk/DvpoyhTdnrJA9YezfhBeXJSl4PO7ITGZOFRuuWAlbDC9HaZJFP2BLzf72Tj8wQEFYqb9uvaEeR6J9B0l+oacJIXAd/QAvRlNOJf+oQ=="
+      },
+      "shown": {
+        "v": 1,
+        "t": "approval",
+        "title": "Vie",
+        "body": ""
+      }
+    },
+    {
+      "variant": "approval/shared_agent",
+      "agent": "cuisine__alex",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.approval",
+            "body": "notif.approval"
+          },
+          "thread-id": "cuisine__alex",
+          "mutable-content": 1,
+          "category": "APPROVAL",
+          "sound": "default"
+        },
+        "agent": "cuisine__alex",
+        "run_id": "run_9",
+        "request_id": "req_9",
+        "choices": [
+          "once",
+          "deny"
+        ],
+        "session_id": "conv_1",
+        "enc": "BAN5DLKWePNPlQT6ErUsKGjfw1nFuSNzDT8BOmjuw2onwsacHWsesuukT8+lfK+cRpsX4PKbQ7SuK2IcX0PCaUmYuj6qoUR5cG79BQSMFL0i42AToA3HEkbReoYVCWPL77ztIH2tGCSq+OCh1ccYOE0AyawD/c5xGI9ttGm7qT4oqJxVvmrIMwNwzQ=="
+      },
+      "shown": {
+        "v": 1,
+        "t": "approval",
+        "title": "Vie",
+        "body": ""
+      }
+    },
+    {
+      "variant": "boite/main",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.boite",
+            "body": "notif.boite"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "outbox_id": "o1",
+        "agent": "vie",
+        "enc": "BANhjCfRj8MRyOYrRQm8+06GdiNZFguZdkJMp+CsKIOTN1fVRBvSKE6E9fgQkL+RID/uKMpmW1weMid18MC6kFC7n+SMiVl3VAkkcEuh5FdDdqKbSCkvNGlWOI/r6PpZ2uJM029ddIS0VoQ+wLVN0C+98noRKltYaP0RfeCtVmB0jGH2zPkAJZ5moGe6SeFz9sXqmkqywCqWSuIguw4Eey8X0qu+g7Zo+DMe8SObqeN6uog0CUOW"
+      },
+      "shown": {
+        "v": 1,
+        "t": "boite",
+        "title": "Vie",
+        "body": "Ton point du matin : 3 rendez-vous aujourd'hui."
+      }
+    },
+    {
+      "variant": "boite/with_session",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.boite",
+            "body": "notif.boite"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "outbox_id": "o2",
+        "agent": "vie",
+        "session_id": "sess_h",
+        "enc": "BFTpXr3aZzY80bkVxnzJXWM7qN+kYfS95COgqlla9ndpaTq9lkqnPVYBLRnu/fBoq8QuA7zto6KQWUE3o+6iYYGJNIzrHJI1v6CDgLmxW3TQ0boCFx2ppY2RAGy6+aw6xrW0dBrkSD90kPcZv6yennzq82T82ZueRxtFpYCTJF6B9HSAE/euL5fwE6AR3wqk7JWvV6InrlqiMBUoJoNC"
+      },
+      "shown": {
+        "v": 1,
+        "t": "boite",
+        "title": "Vie",
+        "body": "La recherche est finie."
+      }
+    },
+    {
+      "variant": "bot_chat_turn/previews_off",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.reply",
+            "body": "notif.reply"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:sess_bot",
+        "kind": "reply",
+        "session_id": "sess_bot",
+        "reply_id": "r4",
+        "enc": "BPLspT8mN3qVhCkpsfjYu241BKeFzNeJH7PeHPU2ID9888OHL9Jno7um2hkNnhJ21GUuiMko9Bh9khnBxENkUmuwBDcvBh9s4BkNeUQLjwA2ElVr0eFn83e3C/+FDr2OZ+K8l0TinsZxRxafbqQi0rLkqFoxEmDk6UsYc/JYdiNABd1LJPxnYTJyRs+wTlFUc466FZK7RrX9aSDC+/rbkiNoR128Wug1G65HnKhePg=="
+      },
+      "shown": {
+        "v": 1,
+        "t": "reply",
+        "title": "Vie",
+        "body": "Bonjour ! Ton point du matin est prêt."
+      }
+    },
+    {
+      "variant": "card/connector",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.connector",
+            "body": "notif.connector"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:vault",
+        "kind": "reply",
+        "connector_request": "card_1",
+        "enc": "BD6p2qrz8DFm0fYGyGMDEbBB7XUz330j9ZJvSrgcUmjmpxSCUseJI40D9kxpcg8yeL2aGkaZjMd3PhKc3jlmXguVd5VB3JcXsKAJLKvYluwuQsu3G84cFqgBb4pCWOdMqXZkiXKxCRt6aC0ph/bf2KljUhO7uCGeHQlWiQcwjciYN5Xy0fG3PZcjW5B0p4GMbSJV8nq2n8zc5mQdOk+XctQoU4k="
+      },
+      "shown": {
+        "v": 1,
+        "t": "connector",
+        "title": "Vie",
+        "body": "Garmin veut se connecter"
+      }
+    },
+    {
+      "variant": "card/secret",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.secret",
+            "body": "notif.secret"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:vault",
+        "kind": "reply",
+        "secret_request": "card_2",
+        "enc": "BPWi7fj4kXjNBHMuibx0jMS0WpyLRFBnyoFjTnBwbTqw5/gfTmyLLKb0cJc3KsKqzjR2T8iYfPMG4lhshXwYC4qkujewhWgiluQkm3h8ZU/51za+o+/VM5rsxIU4v6ifatDxEFqqlFrvKGYfO/UHgFP1QAtU48L9oY55lUOG1+nnrO97zPLDq+0zlIg+1RsN8uSmonFscZTqsmUZDEvwG4S7xC6QWEs6sA=="
+      },
+      "shown": {
+        "v": 1,
+        "t": "secret",
+        "title": "Vie",
+        "body": "Demande la clé de l'API Météo"
+      }
+    },
+    {
+      "variant": "card/mail",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.mail_card",
+            "body": "notif.mail_card"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:vault",
+        "kind": "reply",
+        "mail_request": "card_3",
+        "enc": "BKgINKQFeWvgPUApjgjoYTP06w1Nq4Jypv+Lff1u2/+5Ocuv2gNinjyPJGJBhV132rQImKSm9x363co2Ksui6WhijUAwDqdD4CI0zYFCBG4tjQmYQgVdw+xWc5rxODg78EbRhxw48NrVxy2nwCdTOaRdw0NJ2DuRmwj4gHJuSWGlj4RgKaBvnPCk+j7+nIJ5iRulrrXt98hV2Oi4i8JEYODTgk8="
+      },
+      "shown": {
+        "v": 1,
+        "t": "mail_card",
+        "title": "Vie",
+        "body": "Veut lire ta boîte mail"
+      }
+    },
+    {
+      "variant": "email_held/previews_off",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.email_held",
+            "body": "notif.email_held"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:email",
+        "kind": "reply",
+        "email_held": "held_1",
+        "enc": "BGr5euT3kbxfwpziPmBDOAr2v1Oc/3heGjziEINaINIB6VgHBkz0jr/9IDfvGiLa+4jFIeGSSFma0yR7TtnLyJfKi5TNLZTjnhizqAGy+xufzloa3gSrynbI0xV8EwjUtQHZBXLzxUsbMFUHwwf6/ht+5cY55Ne3TcKK5T+a2wVNgO9gDkO18VlSVtjMtPIrNoaViZ6MxcXC++XEnBmkJ3A83oBnvWZBE1nsZA=="
+      },
+      "shown": {
+        "v": 1,
+        "t": "email_held",
+        "title": "Vie",
+        "body": "Veut écrire à lea@example.com"
+      }
+    },
+    {
+      "variant": "email_held/previews_on_en",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.email_held",
+            "body": "notif.email_held"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:email",
+        "kind": "reply",
+        "email_held": "held_1",
+        "enc": "BOHPtbGxN+vvaJdqQnlkYCTU0jZzbqj7m7YUFXAokb1SpJhzVQi3XIi4z1LetALC12dmIzCW83Ve0R47FNMpcWNaPZ47HLTENwOu+vDCDft3m6OGufrov66BR7+H5VYpigmutZCdS34P6bWK35nJ5ll4X/h5hjpwqmCCsneZs3+Yr/fb5MM8jrYuC0Jalz7XM89Qo6BpuCKD1gMAIowKKatsWiXtA1l8/KKo4Klv"
+      },
+      "shown": {
+        "v": 1,
+        "t": "email_held",
+        "title": "Vie",
+        "body": "Wants to write to lea@example.com"
+      }
+    },
+    {
+      "variant": "family/previews_off",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.family",
+            "body": "notif.family"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:family",
+        "kind": "reply",
+        "reply_id": "r9",
+        "family": "note_1",
+        "enc": "BOavEViw8Fg8jrRHbbvPC84CTcfpVYQ7Qb6KxJ+PiZkUv/aRz2IQpKy6LCk6qZ0AdqHuXknoBQVOOX4bFQL1Vbs+5UgueepWdTTECWZHu9ed3kfdrLJ8ShkmzFabGNwzEhQ7OUDafs4pR5TYFjZtiOvCbg185PlQFvgEOjih/ltfvaXqkw4wv659tkplSN9XQYl7vR4HPIXOpzP1hl8LHQLqas2auA=="
+      },
+      "shown": {
+        "v": 1,
+        "t": "family",
+        "title": "Vie",
+        "body": "Alex : je rentre tard ce soir"
+      }
+    },
+    {
+      "variant": "family/previews_on",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.family",
+            "body": "notif.family"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:family",
+        "kind": "reply",
+        "reply_id": "r9",
+        "family": "note_1",
+        "enc": "BM8rsflP+6tMxOgMHUFCxy98/sNLt0o9tcpRtDgNXs0oPPZavlAVAg4kS6v3R6ExTtWm6AqKwMEZ8qNNx8IeXERDCiug4iUKlm+BX8E8TZ4WGkULqlB5Z3+BTsgy2BMeBSUvLkcKItscWS3esvrcqDev1pRani8I7MXCoI9yFOjBIl7bS4IEc8Zky02799XdvdmrCRMLRKiSWzEFD1poNKbTQAT5lw=="
+      },
+      "shown": {
+        "v": 1,
+        "t": "family",
+        "title": "Vie",
+        "body": "Alex : je rentre tard ce soir"
+      }
+    },
+    {
+      "variant": "handback/previews_off",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.reply",
+            "body": "notif.reply"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:sess_main",
+        "kind": "reply",
+        "session_id": "sess_main",
+        "reply_id": "r5",
+        "enc": "BKATFg0Pc5kLCv751sJKqxyAtiR9qVmNCcjaiJ6GWd65BAlcLAmdi1CqN6AaDMEvzGi7lZrTsBpaAWQ1vzTTSTBhScRL9cjGNJO6Bel0JUYmjoFoZj1pgrS9SqPyHqI64G9u0JgMt/wuqOLinvceyKuHoOGB2V4mJs+IIiROwT+EuP2aGK4J4MCizTjR3J7eL2WYZhE4MDsKU1ebAtIZ12Ecw8hd0LTAPnubBxYiRHSO/1/rWnFjUGmf7mcD2niM"
+      },
+      "shown": {
+        "v": 1,
+        "t": "reply",
+        "title": "Vie",
+        "body": "La tâche « Billets » est finie : 2 options trouvées."
+      }
+    },
+    {
+      "variant": "login/previews_off",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.login",
+            "body": "notif.login"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:vault",
+        "kind": "reply",
+        "login_request": "login_1",
+        "enc": "BLc9ZVbI6MUcQ+ZZ3Dft//8a3+jhgXgL8s0hx4BsDHL58OM69Ie2cNTLvQlHDk1o61foSb4O9nyX/BG1eKNJEdAoTxLXSnQm5OXd+5pogjiE3BAhlIj0nvn5lkOtZeo8FrzMYsx08B7zkJ8LvTCfwdOzH1TLAF5xUwXZzx9LCybonDiToqqwzWiYZqvmLVG/y83GwoRAiBiVYIOkT9L1FCx3mM1dBkJSdegiMd3+t8/srYhfX7jcAWy+uSDb4pcXjbbQKCL/HJWAN+w5"
+      },
+      "shown": {
+        "v": 1,
+        "t": "login",
+        "title": "Vie",
+        "body": "Veut créer un compte sur exemple.com avec un mot de passe du coffre"
+      }
+    },
+    {
+      "variant": "login/previews_on_de",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.login",
+            "body": "notif.login"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:vault",
+        "kind": "reply",
+        "login_request": "login_1",
+        "enc": "BByFlIMpB/VQoy6nn/YSgrsOUYb7VStAT7/B4qlkz6SDjp4DoFmqDCSUppSnxXw6Iyy+EGgJjT5FFbXIpi3mbWKkraBcYLivx8+J0IPlXsZGsKm8tyYywliVoBfj85fYiz7llClOEZngJn0HN+zsVe+0W+D+gdhhf041FM+XpLiwGYcQ0CxTiKm38bciyLxctM+j69a0unzAeKB4X1TCeTnI2JO00tKVlwpw77wpLplwnhktqwjX6edP2HWZ1DGgCL2s+c3VCuFVd0P0TCgB6vDV"
+      },
+      "shown": {
+        "v": 1,
+        "t": "login",
+        "title": "Vie",
+        "body": "Will ein Konto auf exemple.com mit einem Passwort aus dem Tresor erstellen"
+      }
+    },
+    {
+      "variant": "meet/previews_off",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.meet",
+            "body": "notif.meet"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:meet",
+        "kind": "reply",
+        "meet": "meet_1",
+        "enc": "BGNIxNjvmYx/wWzypLoZ49+9nlF5HQ7f+zuNiH2TYpfGin54MRoPioZlS1kiYRnAmtz+XkbYJBOBRNFYxOeWe46QhTtZ+MYKuunF52rTsrAb/6m9zOzuU4tvsxnXxINDiazTq447q++n7W3pD7Ia3nq0m2xEdI/marerhzQGmmr4zEIBe8QqgSgFBf+xENqWNdug+N8zGwjaIAbG5RI11xhPWH39"
+      },
+      "shown": {
+        "v": 1,
+        "t": "meet",
+        "title": "Vie",
+        "body": "Léa propose une date : Dîner"
+      }
+    },
+    {
+      "variant": "question/previews_off",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.question",
+            "body": "notif.question"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "run_4",
+        "kind": "question",
+        "request_id": "clr_1",
+        "session_id": "sess_1",
+        "reply_id": "r7",
+        "enc": "BKxWQHEi2GJ5THeS565gVq/rGvPa0FcbJyy+kbsmCWCCa0jxkOzSw4LVHZjaZXTuxU8TdWNxSPqlBIVpiybrFrRBqyyDiXlKdsSGbX1hh2nrdVONZe27FrZt+YcSfH+sAyIGAsb1hbhMWcRaTFJTlj91nDziCR7l3i62Lhh8NbdslUixZVUNa3TtlOBgmuiA2nU/ByKkebsF5BrDsUy7psvKb4E8"
+      },
+      "shown": {
+        "v": 1,
+        "t": "question",
+        "title": "Vie",
+        "body": "Quel train pour Bordeaux ?"
+      }
+    },
+    {
+      "variant": "question/previews_on",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.question",
+            "body": "notif.question"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "run_4",
+        "kind": "question",
+        "request_id": "clr_1",
+        "session_id": "sess_1",
+        "reply_id": "r7",
+        "enc": "BMNeGKVXd2SQQizRkKMbvF5IAAXLipWEVHPCqYOxsXaUMmLUCC9wd2MzOF+fnWPE2BgqG/mBl1qH01B9d/QvyecO2Q8fr61pOuv3T51AFNHBV0G3zzNXC8bJwW49Z9mX4UJg3VWs+H6cysiTgEA9JDkitabXt8VuN/hWToB9TRNQHhQ6g/bWTkRv8s3QpE3Fgi1RsLAdVi+KDvrZtk0FezfaCyxc"
+      },
+      "shown": {
+        "v": 1,
+        "t": "question",
+        "title": "Vie",
+        "body": "Quel train pour Bordeaux ?"
+      }
+    },
+    {
+      "variant": "reply/previews_off",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.reply",
+            "body": "notif.reply"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "run_1",
+        "kind": "reply",
+        "session_id": "sess_1",
+        "reply_id": "r1",
+        "enc": "BMJbhG3mw1u3QLPOOG2r/MmjW71vGHX72TvGATNwVWTUbVvAOJybSzsiIR77gJp01Utwkf14fn/PSLsfskWiWraB1JEoiRCW47eB6ey6PXahj3bvD6oSb3a4J8EpCNu93EJWfI+CagmullSjX5Egw9ybF3Ib/bYD5TgBUYqB7IDDRV+BvjjC9NV8ZRnOVHIHMpXlGPwGMJtoYsUYeybaoBZ6/IwMRgmqAaA="
+      },
+      "shown": {
+        "v": 1,
+        "t": "reply",
+        "title": "Vie",
+        "body": "Voilà le résumé de ta journée."
+      }
+    },
+    {
+      "variant": "reply/previews_on",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.reply",
+            "body": "notif.reply"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "run_1",
+        "kind": "reply",
+        "session_id": "sess_1",
+        "reply_id": "r1",
+        "enc": "BNdW0wcBVhzbDHxVD3dQeymcHeY94HJOJH7DStDI5rkDZwwtGVRtm61g0uHLp0PJlqjGPh3wsEfTKNzy41nbAhFjkbmuKNtcUSuCOx14oi/BfzuQ6To/xNvMofSM9pWlDTJcAauV6cUvjEHlLQWtATY6Ok3b234Hy9qJWsr/qRNhV2m4BANolHWBzZQ442BXzfNk+AnJ2AiY1ON6w8fYkXLZD/TGSOd4Zdk="
+      },
+      "shown": {
+        "v": 1,
+        "t": "reply",
+        "title": "Vie",
+        "body": "Voilà le résumé de ta journée."
+      }
+    },
+    {
+      "variant": "reply/no_session",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.reply",
+            "body": "notif.reply"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "run_2",
+        "kind": "reply",
+        "reply_id": "r2",
+        "enc": "BEH0PoBMj1YxXLFP5ss9yQfr0YrXsD7eUbS+2bXdBZydS4klPlXHFtSmUKiYclracuK3OLfefk01x+Lu+/S9KAhjfopa+gB23S5IUKAhhMJDQ5rIUEfq5j2ibvw6k2+uobyzbPdfhrCCogFNfHga2s5x8pq8Lr7zlgxixcjx+hlbtbLHu21vIxuB3Ss18r4blq+h"
+      },
+      "shown": {
+        "v": 1,
+        "t": "reply",
+        "title": "Vie",
+        "body": "C'est fait."
+      }
+    },
+    {
+      "variant": "reply/shared_agent",
+      "agent": "cuisine__alex",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.reply",
+            "body": "notif.reply"
+          },
+          "thread-id": "cuisine__alex",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "cuisine__alex",
+        "run_id": "run_3",
+        "kind": "reply",
+        "session_id": "conv_1",
+        "reply_id": "r3",
+        "enc": "BIo9CNru/ku6hstRytX4pacu70cLU5++lqqsfM6ALaD4eWwUVvincZoLHVvriE7sxSsEcciEZ622uINhNEFIWIhj7Qc0S2gg3Id6jo/kwBVwSFSODnYV9afc1nfZxwA6McvpGmKcqos2HnOXynkd9AO33TVWeWeZiGabBIQyATUVBYV/jwma8eTW9QX/s6WVDD0AEd3WxfbjH5IH"
+      },
+      "shown": {
+        "v": 1,
+        "t": "reply",
+        "title": "Vie",
+        "body": "Le dîner est prêt."
+      }
+    },
+    {
+      "variant": "room_reply/previews_off",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.room_reply",
+            "body": "notif.room_reply"
+          },
+          "thread-id": "room:room_1",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "room:room_1",
+        "kind": "reply",
+        "reply_id": "r8",
+        "room_id": "room_1",
+        "enc": "BInCUB1Xp8+VJLjxDlo+wJ/AkWMQ0Yjx6aW1+dW7EbccUrAq8hd2uJGzrqMk1cquQ4bmNgjugSYN7vohgPpleQwg2LA3o0LCvhail/fjOZWsC/uS8kW3/b2yJMYNs9Za5iYUXy7amGNz5Scyh1fcp5tVLyruzjRlIODHo2N/Fe+xbAadhudKjWS1xPyyxK1kQmozu9Gbb3A24EmyuwVkJP+ftCCf5DGj6gVZbwo="
+      },
+      "shown": {
+        "v": 1,
+        "t": "room_reply",
+        "title": "Vie · Vacances",
+        "body": "Je propose Lisbonne."
+      }
+    },
+    {
+      "variant": "scan/previews_off",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.scan",
+            "body": "notif.scan"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:scan",
+        "kind": "reply",
+        "enc": "BDf3ImdzoRri308qFiXPL/dvsrRB5WnXphQiKbJ3KDw3GPc3ldXLeGugEEbcsHGFytpg61lax/+vWlUi+RwQGv+dz65B9OY7xgXx8pvh4+q3Pba+iKvS5rSjYOKEdZuaNJGECcdbq1tMGxYLfUE75d9878v/fBGkS7oR2qu472tCunN/RnjQ/1k/JuA4+wYhYZR3bU6jzuKNcbpH0H3yV8yUVaZ5xkw="
+      },
+      "shown": {
+        "v": 1,
+        "t": "scan",
+        "title": "Vie",
+        "body": "Boîte mail : 12 messages triés"
+      }
+    },
+    {
+      "variant": "site/previews_off",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.site",
+            "body": "notif.site"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:sites",
+        "kind": "reply",
+        "site_request": "site_1",
+        "enc": "BEPmDrsJrrFTBT8Fgdag9DKSqGAwMWuqj0PcgOvDzV9K5ra1PcyO1+b4oRtQXWbLvr6eJqtS9bt9eLMIJkE/fuc0vV2baBw8+gKALDVSqHGIJI0Ho6i8CUOtu/vMrGlaG1vQkOmAFdIpDU2gMDncUZuZgFPyr0kkMXQa2zy0z2gSkIk4DfH0aGdCmekaSM9Hj21MGLgWx2yag8cRQ7ftUKVB2KqpxoZEUQG5TqPJIKl52RW0t9+pztV6s3Q0WQ=="
+      },
+      "shown": {
+        "v": 1,
+        "t": "site",
+        "title": "Vie",
+        "body": "Veut envoyer des données à exemple.com (environ 2 Mo)"
+      }
+    },
+    {
+      "variant": "subtask/with_line",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.subtask",
+            "body": "notif.subtask"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:sess_2",
+        "kind": "reply",
+        "session_id": "sess_2",
+        "reply_id": "r6",
+        "enc": "BGv0WrUwgp46bmRG8I/6iJJTzVCu7fz1KyBI68+5zTYjab1J7bgfygBhEA5IcIRPAHDHLNqD0lkIOpFw4jGvzl1Zp14t5OAClWzFDyC2X0wj3BXvO4xRARiG8s73PEnnufzAXfXKVScf2c9T7LlLYsOde99T41IxdWpAmhT+Spto5pNtnrfnH5lk1vxus2LeLb/CdGs3DNKOqzJW"
+      },
+      "shown": {
+        "v": 1,
+        "t": "subtask",
+        "title": "Vie",
+        "body": "🎧 Podcast jeudi"
+      }
+    },
+    {
+      "variant": "subtask/previews_on_no_line",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.subtask",
+            "body": "notif.subtask"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:sess_2",
+        "kind": "reply",
+        "session_id": "sess_2",
+        "enc": "BO/pM/4VM0KNt/2QBgovVSH1MhxCpuQcjT/S7gWSG5WMD9beRHUfbdzYDlWq2KfxaBrmou23xzhUWd5/ylYQWrZ8uw2q/6kW17cSOhgkmcD9Mw2eN6Ic8cK78pes3tvEhRyqoy/wfnt93NSa6jsLrghZ+WbZiLeSJSDfHegmrQJnaYTXZPZEQQQl"
+      },
+      "shown": {
+        "v": 1,
+        "t": "subtask",
+        "title": "Vie",
+        "body": ""
+      }
+    },
+    {
+      "variant": "task/done",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.task",
+            "body": "notif.task"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:sess_3",
+        "kind": "reply",
+        "session_id": "sess_3",
+        "job_id": "job_1",
+        "enc": "BMcLCFskIrfLtdGGWdtZ/jq1Rs+bF+4zfDzBVlvMET3Tqg8b6rbmn4VvaDUl4eO5RWK8ptf1eGsOfHrbudcMtqh1xTdvHItSl9cxz1ts+b+RN4PnW56HJVR0kYpPJT+H3P8QyrM8Wq2ZU1meAA0BaGThY+5TKZllQJ23ZTTeAkJENNxfLhJ0D1J5NdYUZ086gjYpFMrDsWoXrTuA3/Sfqeq3z6+2sJbPEw=="
+      },
+      "shown": {
+        "v": 1,
+        "t": "task",
+        "title": "Vie",
+        "body": "Tâche de fond terminée : Billets"
+      }
+    },
+    {
+      "variant": "task/paused",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.task",
+            "body": "notif.task"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:sess_3",
+        "kind": "reply",
+        "session_id": "sess_3",
+        "job_id": "job_1",
+        "enc": "BG4bbsSx5HfhkIMAvYjQLmNH8jaGRSjGat27OyypMIs2v6opIdabwuGIGxB6Z8SU6y1U7VR39LQRZvtja5cDxx2veGTEm/z9cGKNAIRK8v2nC2JWQqFR9RosIjHMBBPY8P8GNbZZOI/of5Yg8riTsEeHQfLWB4HpdKcIYZxvxpYSd0qMM7hjLs6QmzVI9GkMA5VVgajBqx9z2j6j2CITrLgpi2LepIIN"
+      },
+      "shown": {
+        "v": 1,
+        "t": "task",
+        "title": "Vie",
+        "body": "Tâche de fond en pause : Billets"
+      }
+    },
+    {
+      "variant": "task/proposed",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.task",
+            "body": "notif.task"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:job",
+        "kind": "reply",
+        "job_id": "job_2",
+        "enc": "BCtf46sK5WQUTpG41haRc9kObD6iBbpKsDbmP76QGmD/lzzYxE4Lqmdq4L2hNzs0i3Z4Cjf6Ip4Wx9+twRYzXAwGWRkcPxCzUOv2tm5AsbMJB+Ctyxa3nGRCDyd+D+deLyeaJ2e/UNZ+WTEag8yQXbjSXiy4MnswIXdI82ledvStEChqSYqBYtR2bqmRaw/iPCu9hCkM7dWTu2d1Rn4NgqD901AlW5yzH6ReUSyY3zNegl6o201YWUE="
+      },
+      "shown": {
+        "v": 1,
+        "t": "task",
+        "title": "Vie",
+        "body": "Tâche de fond proposée : Comparer les assurances"
+      }
+    },
+    {
+      "variant": "task/rescued",
+      "agent": "vie",
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.task",
+            "body": "notif.task"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:sess_4",
+        "kind": "reply",
+        "session_id": "sess_4",
+        "job_id": "job_3",
+        "enc": "BNbUK9HOBY9RrdMJIwYDLWyIx3QW7uzjijL6ygMc0U1zsHsyttTDSoqzD4UpoYLQk/D6PPOD6lkSjlIL+lNxiZt9h3SaP/ChjuUV6aGTuXIQAwHLuB8JdeyDuVO2M2HqhAuLZwwI+gAafqHOtyg+niMTXMtsdS9q5zWWJEi/prGV83g9LeaMu9Ciqh1On+w+LPaZnFnWr5pA2bXPNcwWGijDO4l0iZg05+hv"
+      },
+      "shown": {
+        "v": 1,
+        "t": "task",
+        "title": "Vie",
+        "body": "Continue en tâche de fond : Billets"
+      }
+    }
+  ]
+}

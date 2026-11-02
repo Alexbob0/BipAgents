@@ -293,10 +293,25 @@ impl Store {
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
         conn.query_row("PRAGMA journal_mode=WAL", [], |_| Ok(()))?;
         conn.execute_batch(SCHEMA)?;
+        Self::migrate(&conn)?;
         if path != ":memory:" {
             let _ = py::chmod(path, 0o600);
         }
         Ok(Store { inner: Arc::new(Inner { path: path.to_string(), conn: Mutex::new(Some(conn)) }) })
+    }
+
+    /// Columns added since the first schema (the Python bridge reads rows by name and ignores them).
+    fn migrate(conn: &Connection) -> anyhow::Result<()> {
+        let has = |table: &str, column: &str| -> anyhow::Result<bool> {
+            let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+            let names = stmt.query_map([], |r| r.get::<_, String>(1))?.collect::<Result<Vec<_>, _>>()?;
+            Ok(names.iter().any(|n| n == column))
+        };
+        // a phone's key for sealed notifications (push.rs seal.rs): dropped with its row
+        if !has("devices", "push_key")? {
+            conn.execute_batch("ALTER TABLE devices ADD COLUMN push_key TEXT")?;
+        }
+        Ok(())
     }
 
     pub fn path(&self) -> &str {
@@ -420,16 +435,32 @@ impl Store {
     // -- devices -----------------------------------------------------------------------------
 
     pub async fn upsert_device(&self, token: &str, environment: &str, agent_ids: &[String]) -> anyhow::Result<Row> {
+        self.upsert_device_keyed(token, environment, agent_ids, None).await
+    }
+
+    /// `upsert_device` with the phone's key for sealed notifications: each registration says it again; one without
+    /// a key (an older app, a phone that lost it) drops the one kept, so nothing is sealed for a key nobody holds.
+    pub async fn upsert_device_keyed(
+        &self,
+        token: &str,
+        environment: &str,
+        agent_ids: &[String],
+        push_key: Option<&str>,
+    ) -> anyhow::Result<Row> {
         let now = iso(utcnow());
         let mut ids: Vec<String> = agent_ids.to_vec();
         ids.sort();
         ids.dedup();
         let ids_json = py::dumps(&json!(ids));
+        let key = match push_key {
+            Some(k) => text(k),
+            None => Param::Null,
+        };
         self.run(
-            "INSERT INTO devices (token, environment, agent_ids, created_at, updated_at) VALUES (?,?,?,?,?) \
+            "INSERT INTO devices (token, environment, agent_ids, created_at, updated_at, push_key) VALUES (?,?,?,?,?,?) \
              ON CONFLICT(token) DO UPDATE SET environment=excluded.environment, \
-             agent_ids=excluded.agent_ids, updated_at=excluded.updated_at",
-            vec![text(token), text(environment), text(&ids_json), text(&now), text(&now)],
+             agent_ids=excluded.agent_ids, updated_at=excluded.updated_at, push_key=excluded.push_key",
+            vec![text(token), text(environment), text(&ids_json), text(&now), text(&now), key],
         )
         .await?;
         self.get_device(token).await?.ok_or_else(|| anyhow!("device not stored"))
@@ -470,6 +501,9 @@ impl Store {
         out.insert("agent_ids".into(), ids);
         out.insert("created_at".into(), row["created_at"].clone());
         out.insert("updated_at".into(), row["updated_at"].clone());
+        if let Some(key) = row.get("push_key").filter(|k| k.is_string()) {
+            out.insert("push_key".into(), key.clone());
+        }
         out
     }
 

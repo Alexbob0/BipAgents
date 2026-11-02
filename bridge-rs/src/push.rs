@@ -1,8 +1,9 @@
 //! Push notifications to the agent's registered devices.
 //!
-//! Content travels on the tailnet, not through Apple: by default alerts carry a generic body and the
-//! Notification Service Extension (`mutable-content: 1`) fetches the full text from the bridge.
-//! Set `[push] previews = true` to put a short preview in the alert body instead.
+//! What the agent said never travels in clear: a push carries the pointer (docs/conversations.md §9.3) and a neutral
+//! line (`notif.<type>`, the phones translate it); a phone that gave its key (`devices.push_key`) gets the words sealed
+//! for it in `enc` (seal.rs), opened by its Notification Service Extension. A phone without a key gets the neutral
+//! line only.
 //!
 //! Port of `bridge/bipbridge/push.py` (owner group: push-runs).
 
@@ -28,27 +29,15 @@ pub mod pyx;
 pub mod notices;
 use notices::{Context, Notice, Pointer};
 
-pub const MESSAGE_BODY: &str = "Nouveau message";
-pub const REPLY_BODY: &str = "Ta réponse est prête.";
-pub const QUESTION_BODY: &str = "Une question pour toi";
-pub const APPROVAL_BODY: &str = "Approbation requise";
-pub const SUBTASK_BODY: &str = "Sous-tâche terminée";
-pub const FAMILY_BODY: &str = "Message de ta famille";
-pub const EMAIL_HELD_BODY: &str = "Veut écrire à quelqu'un de nouveau : ton accord est demandé";
-/// A site the agent's programs want to reach (sandbox_sites.rs), without the site when previews are off.
-pub const SITE_BODY: &str = "Veut envoyer des données à un site : ton accord est demandé";
-/// An account to create with a password of the vault (vault_logins.rs), without the site when previews are off.
-pub const LOGIN_BODY: &str = "Veut créer un compte sur un site : ton accord est demandé";
-/// A secret or a connector to approve (secrets.rs, connectors.rs), when previews are off.
-pub const CARD_BODY: &str = "Un connecteur attend ton accord";
-pub const MEET_BODY: &str = "Une date à trouver ensemble";
+/// Sealed notifications: the words for each device's own key, a neutral line in clear (refonte phase 5).
+#[path = "push_runs/seal.rs"]
+pub mod seal;
 
-/// The lines a push shows when previews are on, written here: in the language of the agent it comes from (« fr »,
-/// « en », « de », « es »; Alex, 2026-11-01: « Veut écrire à … » reached an English person). The bodies above stay
-/// French: they are keys the phones translate (iOS `loc-key`, Android BipMessagingService `pushBody`).
+/// The lines a sealed push shows, written here: in the language of the agent it comes from (« fr », « en », « de »,
+/// « es »; Alex, 2026-11-01: « Veut écrire à … » reached an English person).
 pub fn approval_line(lang: &str, command: &str) -> String {
     use crate::approval_text::{colon, pick};
-    let said = pick(lang, APPROVAL_BODY, "Approval needed", "Freigabe nötig", "Se necesita tu permiso");
+    let said = pick(lang, "Approbation requise", "Approval needed", "Freigabe nötig", "Se necesita tu permiso");
     format!("{said}{}{}", colon(lang), preview(command, 120))
 }
 
@@ -78,15 +67,6 @@ fn given(value: Option<&str>) -> Option<&str> {
     value.filter(|v| !v.is_empty())
 }
 
-/// The alert: the preview when there is one, else a generic body that iOS translates (`loc-key` is looked
-/// up in the app's string catalog, whose keys are these French texts; `body` is kept for older apps).
-fn alert(title: &str, preview: Option<&str>, fallback: &str) -> Value {
-    match given(preview) {
-        Some(p) => json!({"title": title, "body": p}),
-        None => json!({"title": title, "body": fallback, "loc-key": fallback}),
-    }
-}
-
 /// `_preview(text, limit=160)`: whitespace squashed, cut with « … ».
 pub fn preview(text: &str, limit: usize) -> String {
     let text = pyx::squash(text);
@@ -113,7 +93,8 @@ pub fn category(kind: Kind) -> &'static str {
     }
 }
 
-/// A notification's push (docs/conversations.md §9.3): the alert, `thread-id` per conversation (`<agent>/<c>`, the
+/// A notification's push (docs/conversations.md §9.3): the neutral line (`notif.<type>`: no title, no words; a device
+/// with a key gets them sealed, `PushService::fanout`), `thread-id` per conversation (`<agent>/<c>`, the
 /// agent's when it is about none), the badge (the journal's unread total), then the pointer: `v`, `n`, `t`, `agent`,
 /// `c`, `m`, `r` (the run / request / card / job it is about) and an approval's or question's own fields (`run_id`,
 /// `request_id`, `choices`: what its buttons answer).
@@ -121,9 +102,6 @@ pub fn category(kind: Kind) -> &'static str {
 pub fn payload(
     kind: Kind,
     agent: &str,
-    title: &str,
-    preview: Option<&str>,
-    body: &str,
     n: &str,
     thread: Option<&str>,
     message: Option<&str>,
@@ -133,7 +111,7 @@ pub fn payload(
 ) -> Dict {
     let thread_id = thread.map(|c| format!("{agent}/{c}")).unwrap_or_else(|| agent.to_string());
     let mut out = object(json!({
-        "aps": {"alert": alert(title, preview, body), "thread-id": thread_id, "mutable-content": 1,
+        "aps": {"alert": {"loc-key": kind.body_key(), "body": kind.body_key()}, "thread-id": thread_id, "mutable-content": 1,
                 "category": category(kind), "sound": "default", "badge": badge},
         "v": 2, "n": n, "t": kind.as_str(), "agent": agent,
     }));
@@ -219,12 +197,10 @@ pub struct Event {
     pub room: Option<String>,
     /// The run / request / card / job / mail / meet id it is about.
     pub ref_id: Option<String>,
-    /// Its text: kept in the journal (`GET /v1/notifications/{n}`: what the extension shows).
+    /// Its text: kept in the journal (`GET /v1/notifications/{n}`), sealed for each phone with a key.
     pub text: Option<String>,
-    /// The line shown when previews are on (else `body`).
-    pub preview: Option<String>,
-    /// The generic line when previews are off (a key the apps translate).
-    pub body: String,
+    /// What a sealed push shows when it isn't `text` (a Boîte message's words, a task's generic line).
+    pub shown: Option<String>,
     /// Another title than the agent's name (a room's « <agent> · <room> »).
     pub title: Option<String>,
     /// The message id when the producer knows it (a Boîte message: `o_<id>`).
@@ -243,7 +219,7 @@ pub struct Event {
 }
 
 impl Event {
-    pub fn new(agent: &str, kind: Kind, key: impl Into<String>, body: &str) -> Event {
+    pub fn new(agent: &str, kind: Kind, key: impl Into<String>) -> Event {
         Event {
             agent: agent.to_string(),
             kind,
@@ -251,8 +227,7 @@ impl Event {
             room: None,
             ref_id: None,
             text: None,
-            preview: None,
-            body: body.to_string(),
+            shown: None,
             title: None,
             message: None,
             wait: false,
@@ -274,10 +249,9 @@ impl Event {
         self
     }
 
-    /// The text kept, and shown (cut) when previews are on.
+    /// The text kept and sealed.
     fn text(mut self, text: Option<&str>) -> Self {
         self.text = given(text).map(str::to_string);
-        self.preview = self.text.as_deref().map(|t| preview(t, 160));
         self
     }
 
@@ -315,9 +289,9 @@ impl PushService {
         }
     }
 
-    /// What `notices` needs of the agent: its shown name, the previews setting, its language.
+    /// What `notices` needs of the agent: its shown name and its language.
     fn context(&self, agent: &str) -> Context {
-        Context { title: self.title(agent), previews: self.config.get().push_previews, lang: self.lang(agent).to_string() }
+        Context { title: self.title(agent), lang: self.lang(agent).to_string() }
     }
 
     /// Journals and pushes `notice` (`emit`); a silent one is only pushed.
@@ -326,7 +300,7 @@ impl PushService {
             Some(event) => self.emit(event).await,
             None => {
                 let built = notices::build(agent, &self.context(agent), &notice, &Pointer::default());
-                self.fanout(agent, built.payload, built.push_type, built.priority, None).await
+                self.fanout(agent, built.payload, None, built.push_type, built.priority, None).await
             }
         }
     }
@@ -394,7 +368,7 @@ impl PushService {
             Err(exc) => tracing::error!(exc = %format!("{exc:#}"), "notification not journaled"),
         }
         pointer.badge = crate::notifications::unread_total(&self.store).await.unwrap_or(0);
-        let built = event.push(&context, &pointer);
+        let built = event.push(&pointer);
         let payload = built.payload;
         let quiet = event.kind.follows_switch(event.from) && !crate::agent_notify::notifies(&config, &event.agent);
         // the conversation is on an app's screen (its event stream open): seen there, read, not pushed
@@ -410,8 +384,10 @@ impl PushService {
             (0, "skipped:switch".to_string())
         } else {
             // collapsed only where one notification replaces another (a run's, an approval's, a card's)
-            let sent =
-                self.fanout(&event.agent, payload.clone(), built.push_type, built.priority, built.collapse_id).await;
+            let sealed = event.sealed(&context);
+            let sent = self
+                .fanout(&event.agent, payload.clone(), Some(&sealed), built.push_type, built.priority, built.collapse_id)
+                .await;
             (sent, if sent > 0 { format!("sent:{sent}") } else { "skipped:no_device".into() })
         };
         if let Err(exc) = crate::notifications::set_push(&self.store, &id, &push, &payload).await {
@@ -432,10 +408,13 @@ impl PushService {
         }
     }
 
+    /// Sends `payload` to `agent`'s devices; a device that gave a key (`push_key`) gets `sealed` for it (seal.rs). A
+    /// device without a key, or whose sealed push can't be made, gets the neutral line alone.
     async fn fanout(
         &self,
         agent: &str,
         payload: Dict,
+        sealed: Option<&seal::Sealed>,
         push_type: &str,
         priority: u8,
         collapse_id: Option<String>,
@@ -451,8 +430,11 @@ impl PushService {
         if devices.is_empty() {
             return 0;
         }
-        let payload = Value::Object(payload);
-        let sends = devices.iter().map(|(device, sender)| {
+        let payloads: Vec<Value> = devices
+            .iter()
+            .map(|(device, _)| Value::Object(Self::payload_for(device, &payload, sealed, agent)))
+            .collect();
+        let sends = devices.iter().zip(&payloads).map(|((device, sender), payload)| {
             let options = SendOptions {
                 environment: device.get("environment").and_then(Value::as_str).unwrap_or("").to_string(),
                 push_type: push_type.to_string(),
@@ -461,7 +443,6 @@ impl PushService {
                 expiration: None,
             };
             let token = device.get("token").and_then(Value::as_str).unwrap_or("").to_string();
-            let payload = &payload;
             async move { sender.try_send(&token, payload, &options).await }
         });
         let results = futures::future::join_all(sends).await;
@@ -484,6 +465,16 @@ impl PushService {
             }
         }
         sent
+    }
+
+    /// The push one device gets: sealed for its key when it gave one, else `payload` (the neutral line) as built.
+    fn payload_for(device: &Row, payload: &Dict, sealed: Option<&seal::Sealed>, agent: &str) -> Dict {
+        let key = device.get("push_key").and_then(Value::as_str).and_then(seal::stored_key);
+        let (Some(key), Some(sealed)) = (key, sealed) else { return payload.clone() };
+        seal::for_device(payload, sealed, agent, &key).unwrap_or_else(|exc| {
+            tracing::warn!(exc = %format!("{exc:#}"), agent = %agent, "push not sealed: neutral line only");
+            payload.clone()
+        })
     }
 
     /// A Boîte message (ntfy.rs): `from` says whose (its rule, notifications.rs).
@@ -573,8 +564,8 @@ impl PushService {
         self.notify(agent, Notice::Scan { line: line.into() }).await
     }
 
-    /// A background task ended, paused at its budget, or was proposed by the agent (jobs.rs): `body` when previews
-    /// are off; tapping opens the task's conversation (the Boîte for a proposal). A task's latest state replaces
+    /// A background task ended, paused at its budget, or was proposed by the agent (jobs.rs): `body` sealed when
+    /// there is no line; tapping opens the task's conversation (the Boîte for a proposal). A task's latest state replaces
     /// the earlier one.
     pub async fn notify_job(
         &self,
@@ -660,18 +651,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn previews_and_silent_payloads() {
+    fn pointer_and_silent_payloads() {
         let extra = Map::new();
-        let p = payload(Kind::Reply, "vie", "Vie", None, REPLY_BODY, "n_1", Some("t_1"), Some("m_1"), Some("r1"), 3, &extra);
+        let p = payload(Kind::Reply, "vie", "n_1", Some("t_1"), Some("m_1"), Some("r1"), 3, &extra);
         assert_eq!(
             Value::Object(p),
-            json!({"aps": {"alert": {"title": "Vie", "body": REPLY_BODY, "loc-key": REPLY_BODY}, "thread-id": "vie/t_1",
+            json!({"aps": {"alert": {"loc-key": "notif.reply", "body": "notif.reply"}, "thread-id": "vie/t_1",
                            "mutable-content": 1, "category": "MESSAGE", "sound": "default", "badge": 3},
                    "v": 2, "n": "n_1", "t": "reply", "agent": "vie", "c": "t_1", "m": "m_1", "r": "r1"})
         );
-        let p = payload(Kind::Connector, "vie", "Vie", Some("Notion"), CARD_BODY, "n_2", None, None, None, 0, &extra);
+        let p = payload(Kind::Connector, "vie", "n_2", None, None, None, 0, &extra);
         assert_eq!((p["aps"]["category"].as_str(), p["aps"]["thread-id"].as_str()), (Some("CARD"), Some("vie")));
-        assert_eq!(p["aps"]["alert"]["body"], "Notion");
+        assert_eq!(p["aps"]["alert"], json!({"loc-key": "notif.connector", "body": "notif.connector"}));
         assert_eq!(category(Kind::MailCard), "CARD");
         assert_eq!(category(Kind::Secret), "MESSAGE"); // a secret is typed in the app, never from the notification
         assert_eq!(category(Kind::Approval), "APPROVAL");

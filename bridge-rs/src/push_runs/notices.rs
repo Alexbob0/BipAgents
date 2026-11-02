@@ -10,22 +10,16 @@
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use super::{
-    approval_line, email_held_line, fnv, given, login_line, payload, silent_payload, Event, APPROVAL_BODY,
-    CARD_BODY, EMAIL_HELD_BODY, FAMILY_BODY, LOGIN_BODY, MEET_BODY, MESSAGE_BODY, QUESTION_BODY, REPLY_BODY,
-    SITE_BODY, SUBTASK_BODY,
-};
+use super::seal::Sealed;
+use super::{approval_line, email_held_line, fnv, given, login_line, payload, silent_payload, Event};
 use crate::notifications::Kind;
 use crate::Dict;
 
 /// What the bridge knows of the agent when it builds a push.
 #[derive(Clone, Debug, Deserialize)]
 pub struct Context {
-    /// The agent's shown name (« Vie »), the notification's title.
+    /// The agent's shown name (« Vie »), the sealed notification's title.
     pub title: String,
-    /// `[push] previews`: the words travel in the alert (else a generic body the phones translate).
-    #[serde(default)]
-    pub previews: bool,
     /// The agent's language (« fr », « en », « de », « es »), for the lines written here.
     pub lang: String,
 }
@@ -162,7 +156,7 @@ impl Notice {
     /// Silenced by the agent's « Me prévenir quand il a fini ou qu'il t'attend » switch (agent_notify.rs) when off
     /// (the rules table, notifications.rs; a Boîte message's own rule depends on whose it is, decided by `emit`).
     pub fn follows_switch(&self) -> bool {
-        self.event("", &Context { title: String::new(), previews: false, lang: "fr".into() })
+        self.event("", &Context { title: String::new(), lang: "fr".into() })
             .is_some_and(|e| e.kind.follows_switch(e.from))
     }
 
@@ -172,28 +166,27 @@ impl Notice {
         let event = match self {
             Notice::Message { outbox_id, text, session_id } => {
                 let mut event =
-                    Event::new(agent, Kind::Boite, outbox_id, MESSAGE_BODY).session(opt(session_id)).reference(outbox_id);
-                event.preview = Some(super::preview(text, 160));
+                    Event::new(agent, Kind::Boite, outbox_id).session(opt(session_id)).reference(outbox_id);
+                event.shown = Some(text.clone());
                 event.message = Some(format!("o_{outbox_id}"));
                 event
             }
             Notice::Approval { run_id, request_id, choices, command, session_id, room_id } => {
                 let request = opt(request_id).unwrap_or(run_id).to_string();
                 let choices = choices.as_ref().filter(|c| !c.is_empty()).map(|c| Value::Array(c.clone()));
-                let mut event = Event::new(agent, Kind::Approval, &request, APPROVAL_BODY)
+                let mut event = Event::new(agent, Kind::Approval, &request)
                     .session(opt(session_id))
                     .reference(&request)
                     .collapse(&request)
                     .with("run_id", json!(run_id))
                     .with("request_id", json!(opt(request_id)))
                     .with("choices", choices.unwrap_or(Value::Null));
-                event.preview = opt(command).map(|c| approval_line(&context.lang, c));
-                event.text = event.preview.clone();
+                event.text = opt(command).map(|c| approval_line(&context.lang, c));
                 event.room = opt(room_id).map(str::to_string);
                 event
             }
             Notice::Reply { run_id, text, session_id } => {
-                let mut event = Event::new(agent, Kind::Reply, run_id, REPLY_BODY)
+                let mut event = Event::new(agent, Kind::Reply, run_id)
                     .session(opt(session_id))
                     .reference(run_id)
                     .text(Some(text));
@@ -207,7 +200,7 @@ impl Notice {
             }
             Notice::Room { room_id, room_title, text } => {
                 let key = format!("{room_id}:{:x}", fnv(text));
-                let mut event = Event::new(agent, Kind::RoomReply, key, REPLY_BODY)
+                let mut event = Event::new(agent, Kind::RoomReply, key)
                     .reference(room_id)
                     .text(Some(text))
                     .collapse(format!("room:{room_id}"));
@@ -220,22 +213,24 @@ impl Notice {
             Notice::Subtask { session_id, line } => {
                 let line = opt(line);
                 let key = format!("{session_id}:{:x}", fnv(line.unwrap_or("")));
-                Event::new(agent, Kind::Subtask, key, SUBTASK_BODY).session(Some(session_id)).text(line)
+                Event::new(agent, Kind::Subtask, key).session(Some(session_id)).text(line)
             }
             Notice::Scan { line } => {
                 let key = format!("{:x}:{}", fnv(line), crate::store::iso(crate::store::utcnow()));
-                Event::new(agent, Kind::Scan, key, SUBTASK_BODY).text(Some(line)).collapse(format!("scan:{agent}"))
+                Event::new(agent, Kind::Scan, key).text(Some(line)).collapse(format!("scan:{agent}"))
             }
             Notice::Job { session_id, line, job_id, body } => {
-                Event::new(agent, Kind::Task, format!("{job_id}:{body}"), body)
+                let mut event = Event::new(agent, Kind::Task, format!("{job_id}:{body}"))
                     .session(opt(session_id))
                     .reference(job_id)
                     .text(Some(line))
-                    .collapse(format!("job:{job_id}"))
+                    .collapse(format!("job:{job_id}"));
+                event.shown = Some(body.clone());
+                event
             }
             Notice::Question { run_id, request_id, question, session_id } => {
                 let request = opt(request_id).unwrap_or(run_id).to_string();
-                Event::new(agent, Kind::Question, &request, QUESTION_BODY)
+                Event::new(agent, Kind::Question, &request)
                     .session(opt(session_id))
                     .reference(&request)
                     .text(opt(question))
@@ -244,15 +239,15 @@ impl Notice {
                     .with("request_id", json!(opt(request_id)))
             }
             Notice::Family { line, note_id } => {
-                Event::new(agent, Kind::Family, note_id, FAMILY_BODY).reference(note_id).text(Some(line))
+                Event::new(agent, Kind::Family, note_id).reference(note_id).text(Some(line))
             }
             Notice::EmailHeld { to, held_id } => {
-                card(agent, Kind::EmailHeld, &email_held_line(&context.lang, to), EMAIL_HELD_BODY, held_id)
+                card(agent, Kind::EmailHeld, &email_held_line(&context.lang, to), held_id)
             }
-            Notice::Site { line, id } => card(agent, Kind::Site, line, SITE_BODY, id),
-            Notice::Login { host, id } => card(agent, Kind::Login, &login_line(&context.lang, host), LOGIN_BODY, id),
-            Notice::Card { line, key, id } => card(agent, Kind::of_card(key), line, CARD_BODY, id),
-            Notice::Meet { line, id } => card(agent, Kind::Meet, line, MEET_BODY, id),
+            Notice::Site { line, id } => card(agent, Kind::Site, line, id),
+            Notice::Login { host, id } => card(agent, Kind::Login, &login_line(&context.lang, host), id),
+            Notice::Card { line, key, id } => card(agent, Kind::of_card(key), line, id),
+            Notice::Meet { line, id } => card(agent, Kind::Meet, line, id),
             Notice::Silent { .. } => return None,
         };
         Some(event)
@@ -260,8 +255,8 @@ impl Notice {
 }
 
 /// An accord card (always notified), its id in `r`.
-fn card(agent: &str, kind: Kind, line: &str, body: &str, id: &str) -> Event {
-    Event::new(agent, kind, id, body).reference(id).text(Some(line)).collapse(format!("{}:{id}", kind.as_str()))
+fn card(agent: &str, kind: Kind, line: &str, id: &str) -> Event {
+    Event::new(agent, kind, id).reference(id).text(Some(line)).collapse(format!("{}:{id}", kind.as_str()))
 }
 
 fn opt(value: &Option<String>) -> Option<&str> {
@@ -286,16 +281,20 @@ impl Event {
         self.title.clone().unwrap_or_else(|| context.title.clone())
     }
 
-    /// Its push (`emit` sends exactly this): the alert, the pointer, the buttons' fields.
-    pub fn push(&self, context: &Context, pointer: &Pointer) -> Built {
+    /// What a phone with a key gets sealed (seal.rs): the title the push shows, the whole words (they never travel
+    /// in clear).
+    pub fn sealed(&self, context: &Context) -> Sealed {
+        let words = self.text.as_deref().or(self.shown.as_deref()).unwrap_or("");
+        Sealed::new(self.kind.as_str(), &self.shown_title(context), words)
+    }
+
+    /// Its push (`emit` sends exactly this to a phone without a key; `sealed` added for one with a key): the neutral
+    /// line, the pointer, the buttons' fields.
+    pub fn push(&self, pointer: &Pointer) -> Built {
         let (thread, message) = self.target(pointer);
-        let shown = self.preview.as_deref().filter(|_| context.previews);
         let payload = payload(
             self.kind,
             &self.agent,
-            &self.shown_title(context),
-            shown,
-            &self.body,
             &pointer.n,
             thread.as_deref(),
             message.as_deref(),
@@ -307,11 +306,16 @@ impl Event {
     }
 }
 
+/// What `notice` says, sealed for each phone with a key; None for a silent push.
+pub fn sealed(agent: &str, context: &Context, notice: &Notice) -> Option<Sealed> {
+    notice.event(agent, context).map(|e| e.sealed(context))
+}
+
 /// The push for `notice` from `agent` (its bridge key) once pointed (`pointer`): payload, type, priority and collapse
 /// id, as `emit` sends them.
 pub fn build(agent: &str, context: &Context, notice: &Notice, pointer: &Pointer) -> Built {
     match notice.event(agent, context) {
-        Some(event) => event.push(context, pointer),
+        Some(event) => event.push(pointer),
         None => {
             let Notice::Silent { reason, extra } = notice else { unreachable!("only a silent notice has no event") };
             Built { payload: silent_payload(agent, reason, extra), push_type: "background", priority: 5, collapse_id: None }
