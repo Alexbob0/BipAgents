@@ -71,8 +71,8 @@ def test_a_trip_proposes_the_project_agent_with_a_card(bridge):
     assert "beret" in view["costumes"]["unlocked"] and "chef" in view["costumes"]["locked"]
     assert view["stats"]["project"] == {"proposed": 1, "accepted": 1, "later": 0, "declined": 0, "tried": 1,
                                         "adopted": 0}
-    # the agent is told on its next turn
-    assert "Essayer" in say(bridge, "merci")
+    # the agent is told on its next turn, the button named in its language (English: no language set)
+    assert "« Try it »" in say(bridge, "merci")
     assert bridge.get("/v1/tips").status_code == 401
 
 

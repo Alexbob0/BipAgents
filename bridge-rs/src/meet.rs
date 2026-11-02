@@ -457,6 +457,46 @@ fn push_agent(config: &Config) -> Option<String> {
         .map(|n| n.to_string())
 }
 
+/// The language of the agent the pushes go to (« fr », « en »…).
+fn push_lang(config: &Config) -> &'static str {
+    let lang = match push_agent(config) {
+        Some(agent) => crate::names::agent_language(config, &agent),
+        None => crate::notebook::language(config),
+    };
+    crate::names::names(&lang).lang
+}
+
+/// The notification's line in `lang` (Alex, 2026-11-01: French reached an English person). `what`: « request »,
+/// « none » (no slot suits), « answered », « confirm », « accepted », « declined »; `who` the other household.
+pub fn push_line(lang: &str, what: &str, who: &str, title: &str) -> String {
+    match (lang, what) {
+        ("fr", "request") => format!("{who} propose une date : {title}"),
+        ("fr", "none") => format!("{who} : aucun créneau ne va pour {title}"),
+        ("fr", "answered") => format!("{who} a répondu pour {title} : choisis la date"),
+        ("fr", "confirm") => format!("{who} propose de garder une date pour {title} : d'accord ?"),
+        ("fr", "accepted") => format!("C'est d'accord avec {who} : {title}"),
+        ("fr", _) => format!("{who} ne peut pas pour {title}"),
+        ("de", "request") => format!("{who} schlägt einen Termin vor: {title}"),
+        ("de", "none") => format!("{who}: Kein Termin passt für {title}"),
+        ("de", "answered") => format!("{who} hat für {title} geantwortet: Wähle den Termin"),
+        ("de", "confirm") => format!("{who} möchte einen Termin für {title} festhalten: Einverstanden?"),
+        ("de", "accepted") => format!("Abgemacht mit {who}: {title}"),
+        ("de", _) => format!("{who} kann nicht für {title}"),
+        ("es", "request") => format!("{who} propone una fecha: {title}"),
+        ("es", "none") => format!("{who}: ninguna fecha va bien para {title}"),
+        ("es", "answered") => format!("{who} ha respondido para {title}: elige la fecha"),
+        ("es", "confirm") => format!("{who} propone reservar una fecha para {title}: ¿de acuerdo?"),
+        ("es", "accepted") => format!("De acuerdo con {who}: {title}"),
+        ("es", _) => format!("{who} no puede para {title}"),
+        (_, "request") => format!("{who} suggests a date: {title}"),
+        (_, "none") => format!("{who}: no time works for {title}"),
+        (_, "answered") => format!("{who} answered for {title}: pick the date"),
+        (_, "confirm") => format!("{who} suggests keeping a date for {title}: OK?"),
+        (_, "accepted") => format!("It's agreed with {who}: {title}"),
+        _ => format!("{who} can't make it for {title}"),
+    }
+}
+
 fn notify(state: &AppState, line: String, id: &str) {
     let config = state.config();
     let Some(agent) = push_agent(&config) else { return };
@@ -561,7 +601,7 @@ async fn their_request(State(state): State<AppState>, headers: HeaderMap, body: 
     })?;
     added?;
     tracing::info!(household = %household, slots = slots.len(), "meet: a request received");
-    notify(&state, format!("{name} propose une date : {title}"), &id);
+    notify(&state, push_line(push_lang(&config), "request", &name, &title), &id);
     Ok(web::ok(json!({"ok": true})))
 }
 
@@ -575,6 +615,7 @@ async fn their_answer(
     checked_id(&id)?;
     let slots = checked_slots(body.get("slots").unwrap_or(&json!([])), now()).map_err(|e| HttpError::new(422, e))?;
     let config = state.config();
+    let lang = push_lang(&config);
     let line = update(&config, |all| -> ApiResult<String> {
         let at = theirs(all, &household, &id, "host", &["sent"])?;
         let offered = slots_of(&all[at], "offered");
@@ -583,11 +624,8 @@ async fn their_answer(
         let m = &mut all[at];
         set(m, "answer", json!(kept));
         set(m, "state", json!("answered"));
-        Ok(if kept.is_empty() {
-            format!("{} : aucun créneau ne va pour {}", str_of(m, "household_name"), str_of(m, "title"))
-        } else {
-            format!("{} a répondu pour {} : choisis la date", str_of(m, "household_name"), str_of(m, "title"))
-        })
+        let what = if kept.is_empty() { "none" } else { "answered" };
+        Ok(push_line(lang, what, &str_of(m, "household_name"), &str_of(m, "title")))
     })??;
     notify(&state, line, &id);
     Ok(web::ok(json!({"ok": true})))
@@ -603,6 +641,7 @@ async fn their_confirm(
     checked_id(&id)?;
     let slot = str_of(&Value::Object(body), "slot");
     let config = state.config();
+    let lang = push_lang(&config);
     let line = update(&config, |all| -> ApiResult<String> {
         let at = theirs(all, &household, &id, "guest", &["answered"])?;
         if !within(&slot, &slots_of(&all[at], "answer")) {
@@ -611,7 +650,7 @@ async fn their_confirm(
         let m = &mut all[at];
         set(m, "chosen", json!(slot));
         set(m, "state", json!("asked"));
-        Ok(format!("{} propose de garder une date pour {} : d'accord ?", str_of(m, "household_name"), str_of(m, "title")))
+        Ok(push_line(lang, "confirm", &str_of(m, "household_name"), &str_of(m, "title")))
     })??;
     notify(&state, line, &id);
     Ok(web::ok(json!({"ok": true})))
@@ -626,13 +665,14 @@ async fn their_accept(
     let (household, _) = incoming(&state, &headers, &body)?;
     checked_id(&id)?;
     let config = state.config();
+    let lang = push_lang(&config);
     let line = update(&config, |all| -> ApiResult<String> {
         let at = theirs(all, &household, &id, "host", &["confirmed"])?;
         let booked = book(&config, &all[at]);
         let m = &mut all[at];
         set(m, "state", json!("booked"));
         set(m, "booked", json!(booked));
-        Ok(format!("C'est d'accord avec {} : {}", str_of(m, "household_name"), str_of(m, "title")))
+        Ok(push_line(lang, "accepted", &str_of(m, "household_name"), &str_of(m, "title")))
     })??;
     notify(&state, line, &id);
     Ok(web::ok(json!({"ok": true})))
@@ -647,6 +687,7 @@ async fn their_decline(
     let (household, _) = incoming(&state, &headers, &body)?;
     checked_id(&id)?;
     let config = state.config();
+    let lang = push_lang(&config);
     let line = update(&config, |all| -> ApiResult<String> {
         let at = all
             .iter()
@@ -654,7 +695,7 @@ async fn their_decline(
             .ok_or_else(HttpError::not_found)?;
         let m = &mut all[at];
         set(m, "state", json!("refused"));
-        Ok(format!("{} ne peut pas pour {}", str_of(m, "household_name"), str_of(m, "title")))
+        Ok(push_line(lang, "declined", &str_of(m, "household_name"), &str_of(m, "title")))
     })??;
     notify(&state, line, &id);
     Ok(web::ok(json!({"ok": true})))
@@ -885,6 +926,21 @@ sentence; nothing is sent until they do.",
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_notifications_line_in_the_agents_language() {
+        assert_eq!(push_line("fr", "request", "Léa", "Dîner"), "Léa propose une date : Dîner");
+        let confirm = push_line("fr", "confirm", "Léa", "Dîner");
+        assert_eq!(confirm, "Léa propose de garder une date pour Dîner : d'accord ?");
+        assert_eq!(push_line("en", "request", "Léa", "Dinner"), "Léa suggests a date: Dinner");
+        assert_eq!(push_line("en", "declined", "Léa", "Dinner"), "Léa can't make it for Dinner");
+        assert_eq!(push_line("de", "answered", "Léa", "Essen"), "Léa hat für Essen geantwortet: Wähle den Termin");
+        assert_eq!(push_line("es", "accepted", "Léa", "Cena"), "De acuerdo con Léa: Cena");
+        for what in ["request", "none", "answered", "confirm", "accepted", "declined"] {
+            let line = push_line("en", what, "Léa", "Dinner");
+            assert!(!line.contains("propose") && !line.contains(" pour ") && !line.contains("d'accord"), "{line}");
+        }
+    }
 
     fn at(s: &str) -> NaiveDateTime {
         NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M").unwrap()
