@@ -540,7 +540,10 @@ pub fn current(config: &Config, agent: &AgentConfig) -> Option<Diet> {
         .iter()
         .filter_map(|t| t.get("name").and_then(Value::as_str).map(str::to_string))
         .collect();
-    let writes_skills = !crate::own_skills::listing(&folder).is_empty();
+    // skills it wrote itself: a copy another agent's library gave doesn't count (skill_library.rs)
+    let writes_skills = crate::skill_library::annotate(config, &agent.name, crate::own_skills::listing(&folder))
+        .iter()
+        .any(|s| s.get("library").and_then(|l| l.get("made_by")).and_then(Value::as_str).is_none_or(|m| m == agent.name));
     let called = called_directly(&folder.join("state.db"), crate::py::time_time() - CALLED_DAYS * 86_400.0);
     let browser = crate::agents_admin::load_or_empty(&folder.join("config.yaml"))
         .ok()

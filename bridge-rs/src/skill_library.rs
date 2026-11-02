@@ -1482,7 +1482,7 @@ mod tests {
         // shared clean, then a secret added to a copy: listed as held, never given
         write_skill(&folder, "bank", "Bank", "# Steps");
         share(&config, "budget", "bank", true, &[]).unwrap();
-        std::fs::write(skills(dir.path(), "vie").join("bank/SKILL.md"), "---\nname: bank\n---\npassword = Zx9#kQ2$vB7!mN4p\n").unwrap();
+        std::fs::write(skills(dir.path(), "vie").join("bank/SKILL.md"), "---\nname: bank\n---\ntoken: ghp_abcdefghijklmnopqrstuvwxyz0123456789\n").unwrap();
         let entry = sync(&config).skills["bank"].clone();
         assert_eq!(entry.versions[1].held.as_deref(), Some("secret"));
         assert!(!entry.versions[1].kept && entry.latest().unwrap().n == 1);
