@@ -1120,7 +1120,7 @@ impl Scans {
                     job.insert("state".into(), json!("paused"));
                     job.insert("error".into(), json!("budget"));
                     save(config, job)?;
-                    self.tell(agent, job, true).await;
+                    self.tell(config, agent, job, true).await;
                     return Ok(());
                 }
                 let mails = {
@@ -1206,11 +1206,11 @@ impl Scans {
         job.insert("step".into(), Value::Null);
         save(config, job)?;
         tracing::info!(agent = %agent.name, mails = get_i64(Some(&step_processed)), pages = written.len(), "mail scan step done");
-        self.tell(agent, job, false).await;
+        self.tell(config, agent, job, false).await;
         Ok(())
     }
 
-    async fn tell(&self, agent: &AgentConfig, job: &Dict, budget: bool) {
+    async fn tell(&self, config: &Config, agent: &AgentConfig, job: &Dict, budget: bool) {
         let Some(notify) = &self.notify else { return };
         let ranges = match job.get("ranges") {
             Some(Value::Array(r)) if !r.is_empty() => Some(r),
@@ -1221,15 +1221,24 @@ impl Scans {
             _ => job.get("step").filter(|v| py::truthy(v)).cloned().unwrap_or(json!({})),
         };
         let processed = py::py_str(last.get("processed").unwrap_or(&json!(0)));
-        let line = if budget {
-            format!("Analyse de ta boîte mail en pause : budget atteint ({processed} mails lus)")
-        } else {
-            format!(
-                "Analyse de ta boîte mail terminée : {processed} mails, {} pages",
-                py::py_str(job.get("pages").unwrap_or(&json!(0)))
-            )
-        };
+        let pages = (!budget).then(|| py::py_str(job.get("pages").unwrap_or(&json!(0))));
+        let line = tell_line(&crate::handback::language_of(config, agent), &processed, pages.as_deref());
         notify(agent.name.clone(), line).await;
+    }
+}
+
+/// A step's end as the notification says it, in the agent's language (« fr », « en »…; Alex, 2026-11-01: French
+/// reached an English person); `pages` None: paused at its budget.
+pub fn tell_line(lang: &str, processed: &str, pages: Option<&str>) -> String {
+    match (crate::names::names(lang).lang, pages) {
+        ("fr", None) => format!("Analyse de ta boîte mail en pause : budget atteint ({processed} mails lus)"),
+        ("fr", Some(pages)) => format!("Analyse de ta boîte mail terminée : {processed} mails, {pages} pages"),
+        ("de", None) => format!("Analyse deines Postfachs pausiert: Budget erreicht ({processed} Mails gelesen)"),
+        ("de", Some(pages)) => format!("Analyse deines Postfachs fertig: {processed} Mails, {pages} Seiten"),
+        ("es", None) => format!("Análisis de tu correo en pausa: presupuesto alcanzado ({processed} correos leídos)"),
+        ("es", Some(pages)) => format!("Análisis de tu correo terminado: {processed} correos, {pages} páginas"),
+        (_, None) => format!("Mailbox analysis paused: budget reached ({processed} emails read)"),
+        (_, Some(pages)) => format!("Mailbox analysis done: {processed} emails, {pages} pages"),
     }
 }
 
@@ -1410,6 +1419,16 @@ pub fn router() -> Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_notifications_line_in_the_agents_language() {
+        assert_eq!(tell_line("fr", "12", Some("3")), "Analyse de ta boîte mail terminée : 12 mails, 3 pages");
+        assert_eq!(tell_line("fr", "12", None), "Analyse de ta boîte mail en pause : budget atteint (12 mails lus)");
+        assert_eq!(tell_line("en", "12", Some("3")), "Mailbox analysis done: 12 emails, 3 pages");
+        assert_eq!(tell_line("en-GB", "12", None), "Mailbox analysis paused: budget reached (12 emails read)");
+        assert_eq!(tell_line("de", "12", Some("3")), "Analyse deines Postfachs fertig: 12 Mails, 3 Seiten");
+        assert_eq!(tell_line("es", "12", Some("3")), "Análisis de tu correo terminado: 12 correos, 3 páginas");
+    }
 
     fn agent_in_space(space: &Path, model: &str) -> Config {
         let profile = space.join("profiles").join("vie");
