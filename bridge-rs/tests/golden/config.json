@@ -21,6 +21,7 @@
    "cron_subtask_handback": true,
    "media_roots": {},
    "ntfy_url": "http://127.0.0.1:8645",
+   "push_message_wait_seconds": 10.0,
    "watch_followed_runs": true,
    "apns": {
     "team_id": "",
@@ -138,6 +139,7 @@
    "cron_subtask_handback": true,
    "media_roots": {},
    "ntfy_url": "http://127.0.0.1:8645",
+   "push_message_wait_seconds": 10.0,
    "watch_followed_runs": true,
    "apns": {
     "team_id": "",
@@ -257,6 +259,7 @@
    "cron_subtask_handback": true,
    "media_roots": {},
    "ntfy_url": "http://127.0.0.1:8645",
+   "push_message_wait_seconds": 10.0,
    "watch_followed_runs": true,
    "apns": {
     "team_id": "",
@@ -377,6 +380,7 @@
    "cron_subtask_handback": true,
    "media_roots": {},
    "ntfy_url": "http://127.0.0.1:8645",
+   "push_message_wait_seconds": 10.0,
    "watch_followed_runs": true,
    "apns": {
     "team_id": "",
@@ -516,6 +520,7 @@
    "cron_subtask_handback": true,
    "media_roots": {},
    "ntfy_url": "http://127.0.0.1:8645",
+   "push_message_wait_seconds": 10.0,
    "watch_followed_runs": true,
    "apns": {
     "team_id": "",
@@ -636,6 +641,7 @@
    "cron_subtask_handback": true,
    "media_roots": {},
    "ntfy_url": "http://127.0.0.1:8645",
+   "push_message_wait_seconds": 10.0,
    "watch_followed_runs": true,
    "apns": {
     "team_id": "",
@@ -774,6 +780,7 @@
    "cron_subtask_handback": true,
    "media_roots": {},
    "ntfy_url": "http://127.0.0.1:8645",
+   "push_message_wait_seconds": 10.0,
    "watch_followed_runs": true,
    "apns": {
     "team_id": "",
@@ -891,6 +898,7 @@
    "cron_subtask_handback": true,
    "media_roots": {},
    "ntfy_url": "http://127.0.0.1:8645",
+   "push_message_wait_seconds": 10.0,
    "watch_followed_runs": true,
    "apns": {
     "team_id": "",
@@ -1035,6 +1043,7 @@
    "cron_subtask_handback": true,
    "media_roots": {},
    "ntfy_url": "http://ntfy",
+   "push_message_wait_seconds": 10.0,
    "watch_followed_runs": false,
    "apns": {
     "team_id": "",
@@ -1161,6 +1170,7 @@
    "cron_subtask_handback": true,
    "media_roots": {},
    "ntfy_url": "http://127.0.0.1:8645",
+   "push_message_wait_seconds": 10.0,
    "watch_followed_runs": true,
    "apns": {
     "team_id": "T",
@@ -1290,6 +1300,7 @@
    "cron_subtask_handback": true,
    "media_roots": {},
    "ntfy_url": "http://127.0.0.1:8645",
+   "push_message_wait_seconds": 10.0,
    "watch_followed_runs": true,
    "apns": {
     "team_id": "",
@@ -1414,6 +1425,7 @@
    "cron_subtask_handback": true,
    "media_roots": {},
    "ntfy_url": "http://127.0.0.1:8645",
+   "push_message_wait_seconds": 10.0,
    "watch_followed_runs": true,
    "apns": {
     "team_id": "",
@@ -1568,6 +1580,7 @@
    "cron_subtask_handback": true,
    "media_roots": {},
    "ntfy_url": "http://127.0.0.1:8645",
+   "push_message_wait_seconds": 10.0,
    "watch_followed_runs": true,
    "apns": {
     "team_id": "",
@@ -1844,6 +1857,7 @@
    "cron_subtask_handback": true,
    "media_roots": {},
    "ntfy_url": "http://127.0.0.1:8645",
+   "push_message_wait_seconds": 10.0,
    "watch_followed_runs": true,
    "apns": {
     "team_id": "",
@@ -1964,6 +1978,7 @@
    "cron_subtask_handback": true,
    "media_roots": {},
    "ntfy_url": "http://127.0.0.1:8645",
+   "push_message_wait_seconds": 10.0,
    "watch_followed_runs": true,
    "apns": {
     "team_id": "",
@@ -2100,6 +2115,7 @@
    "cron_subtask_handback": true,
    "media_roots": {},
    "ntfy_url": "http://127.0.0.1:8645",
+   "push_message_wait_seconds": 10.0,
    "watch_followed_runs": true,
    "apns": {
     "team_id": "",
@@ -2227,6 +2243,7 @@
    "cron_subtask_handback": true,
    "media_roots": {},
    "ntfy_url": "http://127.0.0.1:8645",
+   "push_message_wait_seconds": 10.0,
    "watch_followed_runs": true,
    "apns": {
     "team_id": "",
@@ -2361,6 +2378,7 @@
    "cron_subtask_handback": true,
    "media_roots": {},
    "ntfy_url": "http://127.0.0.1:8645",
+   "push_message_wait_seconds": 10.0,
    "watch_followed_runs": true,
    "apns": {
     "team_id": "",
@@ -2490,6 +2508,7 @@
    "cron_subtask_handback": true,
    "media_roots": {},
    "ntfy_url": "http://127.0.0.1:8645",
+   "push_message_wait_seconds": 10.0,
    "watch_followed_runs": true,
    "apns": {
     "team_id": "",
@@ -2624,6 +2643,7 @@
     "/x": "/y"
    },
    "ntfy_url": "http://127.0.0.1:8645",
+   "push_message_wait_seconds": 10.0,
    "watch_followed_runs": true,
    "apns": {
     "team_id": "",
