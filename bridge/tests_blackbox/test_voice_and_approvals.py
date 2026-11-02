@@ -384,9 +384,7 @@ def test_reply_ready_pushed_when_the_app_left(bridge, fakes):
 def test_an_agent_told_not_to_notify_stays_quiet_until_turned_back_on(bridge, fakes):
     """« Me prévenir quand il a fini ou qu'il t'attend » off on its page: its reply waits in the app, silent."""
     register(bridge)
-    assert bridge.get("/v1/agents/wellness/settings", headers=AUTH).json()["notify"] == {"on": True}
     assert bridge.put("/v1/agents/wellness/notify", headers=AUTH, json={"on": False}).json() == {"id": "wellness", "on": False}
-    assert bridge.get("/v1/agents/wellness/settings", headers=AUTH).json()["notify"] == {"on": False}
     assert bridge.put("/v1/agents/nope/notify", headers=AUTH, json={"on": False}).status_code == 404
     for run_id, session in (("run_quiet", "api_q1"), ("run_loud", "api_q2")):
         gate = threading.Event()

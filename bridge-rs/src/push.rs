@@ -316,6 +316,12 @@ impl PushService {
         crate::agent_notify::notifies(&self.config.get(), agent)
     }
 
+    /// The same switch for what asks the person's accord (approvals; e-mail, site, login, connector requests). To keep
+    /// those always notified, make this `true` (one line; Alex to decide, 2026-11-02).
+    fn notifies_requests(&self, agent: &str) -> bool {
+        self.notifies(agent)
+    }
+
     pub(crate) fn sender(&self, device: &Row) -> Option<Sender> {
         match device.get("environment").and_then(Value::as_str) {
             Some("relay") => self.service.clone().map(Sender::Relay),
@@ -417,7 +423,7 @@ impl PushService {
         session_id: Option<&str>,
         room_id: Option<&str>,
     ) -> usize {
-        if !self.notifies(agent) {
+        if !self.notifies_requests(agent) {
             return 0;
         }
         let mut preview_text = None;
@@ -578,7 +584,7 @@ impl PushService {
     /// The agent's e-mail to an address not allowed yet waits for the person (agent_email.rs): « Veut écrire à
     /// x@y » when previews are on; tapping opens the agent's e-mail screen (`email_held`: the held mail's id).
     pub async fn notify_email_held(&self, agent: &str, to: &str, held_id: &str) -> usize {
-        if !self.notifies(agent) {
+        if !self.notifies_requests(agent) {
             return 0;
         }
         let line = format!("Veut écrire à {to}");
@@ -592,7 +598,7 @@ impl PushService {
     /// The agent wants to send data to a site (sandbox_sites.rs; `line`: « Veut envoyer des données à exemple.com
     /// (environ 2 Mo) »): tapping opens the app's Boîte, where the card is.
     pub async fn notify_site_request(&self, agent: &str, line: &str, id: &str) -> usize {
-        if !self.notifies(agent) {
+        if !self.notifies_requests(agent) {
             return 0;
         }
         let preview = if self.previews() { Some(line) } else { None };
@@ -604,7 +610,7 @@ impl PushService {
     /// An agent wants to create an account on a website with a password of the vault (vault_logins.rs): tapping opens
     /// the app's Boîte, where the card is.
     pub async fn notify_login_request(&self, agent: &str, host: &str, id: &str) -> usize {
-        if !self.notifies(agent) {
+        if !self.notifies_requests(agent) {
             return 0;
         }
         let line = format!("Veut créer un compte sur {host} avec un mot de passe du coffre");
@@ -617,7 +623,7 @@ impl PushService {
     /// A secret card or a connector's approval card (secrets.rs, connectors.rs): tapping opens the app's Boîte, where
     /// the card is. `key`: `secret_request` or `connector_request`, with the card's request id.
     pub async fn notify_bridge_card(&self, agent: &str, line: &str, key: &str, id: &str) -> usize {
-        if !self.notifies(agent) {
+        if !self.notifies_requests(agent) {
             return 0;
         }
         let preview = if self.previews() { Some(line) } else { None };

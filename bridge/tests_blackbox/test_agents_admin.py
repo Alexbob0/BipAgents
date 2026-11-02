@@ -169,13 +169,17 @@ def test_settings_and_delete(bridges, fakes):
     assert data["toolsets"] == [{"name": "web", "label": "Web", "description": "Search", "enabled": True, "configured": True}]
     assert data["id"] == "budget" and data["name"] == "Budget" and data["thinking"] is None and data["model"] is None
     assert data["isolated"] is False and data["protected"] is False and data["skills"] == []
-    assert set(data) - {"health", "weather", "notebook", "group", "guide"} == {"id", "name", "soul", "language", "thinking", "model", "toolsets",
+    assert set(data) - {"health", "weather", "notebook", "group", "guide", "notify"} == {"id", "name", "soul", "language", "thinking", "model", "toolsets",
                                                "isolated", "protected", "services", "skills", "browser",
                                                "answer_style", "model_choice"}   # Rust: +3
     # its model chosen at home (model_choice.rs): its install's default (test_model_choice.py)
     assert data["model_choice"]["choice"] == "default"
     # its answer style (answer_style.rs, 2026-10-30): short until the person picks another
     assert data["answer_style"] == {"style": "short", "custom": "", "custom_max": 300}
+    # « Me prévenir quand il a fini ou qu'il t'attend » (agent_notify.rs): on until the person turns it off
+    assert data["notify"] == {"on": True}
+    assert bridge.put("/v1/agents/budget/notify", headers=AUTH, json={"on": False}).json() == {"id": "budget", "on": False}
+    assert bridge.get("/v1/agents/budget/settings", headers=AUTH).json()["notify"] == {"on": False}
     assert fakes.hermes.seen("/p/budget/v1/toolsets")
     bridge.commands.clear()
     patched = bridge.patch("/v1/agents/budget/settings", headers=AUTH,
