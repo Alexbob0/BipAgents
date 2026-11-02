@@ -562,7 +562,13 @@ Bot Chat / peer DM / authority-runs suite of `tests/gateway` (`test_peer_dm_*`, 
 `test_bot_chat_*`, `test_*bot_chat*`, `test_api_authority_runs`, `test_api_runs_native_session_refusal`,
 `test_owner_loop_writes_*`), `tests/tui_gateway/test_profiles_list_canonical_session.py`,
 `tests/hermes_cli/test_peer_cmd.py`: all pass. The bridge's black-box suite fakes it (`bbkit/fakes.py`: a local
-Bot Chat's turns go to a FIFO, an API one's stream). End to end on a lab place with GLM: see the commit's notes.
+Bot Chat's turns go to a FIFO, an API one's stream). End to end on a lab place (Hetzner cax21, GLM-5.3 Flash,
+2026-11-02): installed on the old pin (public 827274a, Hermes 517b5e10f), two turns in an agent's main conversation,
+then moved to v0.22.5 with this set and the branch's bridge: the same conversation (same id, 8 messages) kept its
+history and answered from it, streamed `message.delta`, `model.usage`, tool events, a clarify (`clarify.request` →
+answer → `clarify.settled`), an approval (`approval.request` → once → `approval.settled`) and an agent-to-agent
+`message_agent`; no « Bot Chat (API …) » anywhere. A new agent made afterwards got an API Bot Chat (`api_…`,
+`api_server`) that streams, runs tools and approvals the same way.
 
 ## Moving to v0.22.5 (2026-11-01)
 

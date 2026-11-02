@@ -6,7 +6,7 @@ runs the bridge as a separate process and talks to it the way the apps, the agen
 administrator do: over HTTP, SSE, WebSocket and the command line. It reads and writes nothing of the bridge's code.
 The only Python it imports is its own harness (`bbkit/`).
 
-All 545 tests pass (1 skipped) against the Rust bridge's release build. The full run takes about 4 minutes (Apple M4).
+All 554 tests pass (1 skipped) against the Rust bridge's release build. The full run takes about 4 minutes (Apple M4).
 
 ## Running it
 
