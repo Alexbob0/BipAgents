@@ -298,43 +298,60 @@ impl Threads {
         Ok(titled.iter().find(|s| !s.hidden).or(titled.first()).cloned())
     }
 
-    /// The agent's main thread, adopted from its existing conversation the first time (docs/conversations.md §8).
+    /// The agent's main thread, adopted from its existing conversation (docs/conversations.md §8): the first time, and
+    /// again while it has no segment (a new agent before its first conversation, Hermes having moved it aside).
     pub async fn main(&self, agent: &AgentConfig) -> anyhow::Result<Thread> {
-        let found = self
-            .store
-            .run("SELECT * FROM threads WHERE agent = ? AND kind = 'main'", vec![text(&agent.name)])
-            .await?;
-        if let Some(row) = found.first() {
-            return Ok(Thread::of(row));
+        let found = |rows: Vec<crate::store::Row>| rows.first().map(Thread::of);
+        let sql = "SELECT * FROM threads WHERE agent = ? AND kind = 'main'";
+        if let Some(main) = found(self.store.run(sql, vec![text(&agent.name)]).await?) {
+            if !self.segments(&main.id).await?.is_empty() {
+                return Ok(main);
+            }
         }
         let _guard = self.registry.lock().await;
-        let found = self.store.run("SELECT * FROM threads WHERE agent = ? AND kind = 'main'", vec![text(&agent.name)]).await?;
-        if let Some(row) = found.first() {
-            return Ok(Thread::of(row));
+        let existing = found(self.store.run(sql, vec![text(&agent.name)]).await?);
+        if let Some(main) = &existing {
+            if !self.segments(&main.id).await?.is_empty() {
+                return Ok(main.clone());
+            }
         }
         let source = self.source(agent);
-        let session = match self.main_session(agent, &source).await {
-            Ok(s) => s,
-            Err(exc) => {
-                // Hermes asleep or down: try again at the next request rather than making an empty main thread
-                return Err(exc.context("main conversation not adopted yet"));
+        if let (Some(main), Source::Api(..)) = (&existing, &source) {
+            // an empty main thread looked for through Hermes' API at most every TIP_TTL (a store read is free)
+            let (now, key) = (crate::py::time_time(), format!("main:{}", agent.name));
+            let mut checked = self.checked.lock().unwrap_or_else(|e| e.into_inner());
+            if checked.get(&key).is_some_and(|at| now - at < source::TIP_TTL) {
+                return Ok(main.clone());
             }
-        };
+            checked.insert(key, now);
+        }
+        // Hermes asleep or down: an error, tried again at the next request (nothing half made)
+        let session = self.main_session(agent, &source).await.map_err(|e| e.context("main conversation not adopted yet"))?;
         let line = match session {
             Some(s) => self.line_of(&source, s).await?,
             None => Vec::new(),
         };
         // a session another thread holds (adopted as a side one before) moves to the main thread
         for s in &line {
-            self.store
-                .run("DELETE FROM thread_segments WHERE agent = ? AND session_id = ?", vec![text(&agent.name), text(&s.id)])
-                .await?;
+            if let Some(other) = self.thread_of_session(&agent.name, &s.id).await? {
+                self.store
+                    .run("DELETE FROM thread_segments WHERE agent = ? AND session_id = ?", vec![text(&agent.name), text(&s.id)])
+                    .await?;
+                if self.segments(&other).await?.is_empty() {
+                    self.store.run("DELETE FROM threads WHERE id = ?", vec![text(&other)]).await?;
+                }
+            }
         }
-        let thread = self.create(&agent.name, "main", None, Value::Null, false).await?;
+        let thread = match existing {
+            Some(main) => main,
+            None => self.create(&agent.name, "main", None, Value::Null, false).await?,
+        };
         for (i, s) in line.iter().enumerate() {
             self.append(&agent.name, &thread.id, &s.id, if i == 0 { "adopted" } else { "compression" }).await?;
         }
-        tracing::info!(agent = %agent.name, thread = %thread.id, segments = line.len(), "main thread adopted");
+        if !line.is_empty() {
+            tracing::info!(agent = %agent.name, thread = %thread.id, segments = line.len(), "main thread adopted");
+        }
         Ok(thread)
     }
 
@@ -364,6 +381,13 @@ impl Threads {
             }
         }
         let root = &line[0];
+        // the person's conversation appearing while the main thread is still empty: it is the main thread's
+        if titled_main(root) && !root.hidden && !root.id.starts_with("local-") && self.segments(&main.id).await?.is_empty() {
+            for (i, s) in line.iter().enumerate() {
+                self.append(&agent.name, &main.id, &s.id, if i == 0 { "adopted" } else { "compression" }).await?;
+            }
+            return self.get(&main.id).await;
+        }
         let (kind, hidden) = if routine_session(root) {
             ("routine", true)
         } else if root.id.starts_with("local-") || (titled_main(root) && root.hidden) {
@@ -381,7 +405,6 @@ impl Threads {
         for (i, s) in line.iter().enumerate() {
             self.append(&agent.name, &thread.id, &s.id, if i == 0 { "root" } else { "compression" }).await?;
         }
-        let _ = main;
         Ok(Some(thread))
     }
 

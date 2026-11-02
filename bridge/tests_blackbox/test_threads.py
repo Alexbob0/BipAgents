@@ -218,3 +218,16 @@ def test_the_hermes_store_is_read_without_calling_hermes(bridges, fakes):
     assert [i["id"] for i in page["items"]] == ["m_u1", "m_u2", "m_u5"]
     assert page["thread"]["tip"] == "s2"
     assert [r.path for r in fakes.hermes.requests[before:] if "/api/sessions" in r.path] == []
+
+
+def test_a_new_agents_main_thread_gets_its_first_conversation(bridges, fakes):
+    """No conversation yet: the main thread exists, empty, with its id; the person's first conversation becomes its
+    first segment (never a side thread)."""
+    fakes.hermes.v0225 = True
+    bridge = bridges.new().start()
+    main = get(bridge, "/v1/threads/main", agent="wellness")
+    assert main["tip"] is None and get(bridge, "/v1/threads/main/timeline", agent="wellness")["items"] == []
+    fakes.hermes.add_session("api_first", [user("Bonjour")], title="Bot Chat", last_active=5, started_at=5)
+    found = get(bridge, "/v1/threads/resolve", agent="wellness", session_id="api_first")
+    assert found["thread"]["id"] == main["id"] and found["tip"] == "api_first"
+    assert texts(get(bridge, "/v1/threads/main/timeline", agent="wellness")) == ["Bonjour"]

@@ -61,11 +61,12 @@ The common cause: **the conversation was never a bridge object**. The fix is tha
 | Tool step | `<message id>.t<n>` (n = position of the call in the assistant row) | `m_3f9a….t0` | as its message |
 | Attachment | `<message id>.a<n>` (n = position in the message) | `m_3f9a….a0` | as its message |
 | Boîte message | `o_` + outbox id | `o_9c1e…` | — |
-| Queue item | `q_` + queue item id | `q_5d2a…` | until it starts (then its user message has the same `client_id`) |
+| Queue item | the queue's own id, in `pending.queue` (msg_queue.rs) | `5d2a…` | until it starts (then it is a message) |
 | Notification | `n_` + 26 chars | `n_01JBX…` | — |
 | Room | `room:<room id>` (rooms keep their own ids; thread view in §6.6) | `room:r_12ab` | — |
 
-`client_id`: an id the app chooses for a message it sends (UUID). The bridge stores it with the message once Hermes
+`client_id`: an id the app chooses for a message it sends (UUID; step 4, sending through the bridge, fills it: the
+table `thread_messages` and its merge into the timeline exist, nothing writes it yet). The bridge stores it with the message once Hermes
 has written the user row, so the app replaces its optimistic bubble *by id*. The same mechanism carries the
 attachments the app sent: they belong to the message with that `client_id`, never to a message with similar words
 (this makes the « Yes shown as an old photo » class of bug impossible).
@@ -291,10 +292,15 @@ GET /v1/threads/{thread}/attachments/{id}?agent=  → the bytes (image parts of 
 
 ```text
 GET /v1/threads/events[?agent=<id>]      SSE, keepalive comment every 10 s
-event: thread         data: {"thread": "t_…", "agent": "vie", "version": 43, "reason": "run|message|boite|queue|approval|segment|title|read"}
+event: thread         data: {"thread": "t_…", "agent": "vie", "version": 43, "reason": "run|boite|segment"}
 event: notification   data: {"id": "n_…", "agent": "vie", "t": "reply", "c": "t_…", "m": "m_…", "state": "open"}
-event: read           data: {"agent": "vie", "thread": "t_…", "notifications": ["n_…"], "until": "m_…"}
+event: read           data: {"agent": "vie", "thread": "t_…", "notifications": ["n_…"]}
+event: lagged         data: {}                    (the app missed events: refetch what it shows)
 ```
+
+`thread` is sent today when a run of the thread ends (`run`: the run hub), a Boîte message for it is stored
+(`boite`) and Hermes continued it in a new session (`segment`). The agent's queue keeps its own stream
+(`/v1/agents/{id}/queue/events`, msg_queue.rs); the timeline's `pending.queue` gives its state at each read.
 
 On `thread`, an app showing that thread asks `timeline?after=<its last cursor>`; a list screen refetches
 `/v1/threads`. Events are hints: an app that missed some (asleep, offline) compares `version` and refetches. The live
@@ -321,21 +327,27 @@ text of a run still comes from `/v1/runs/{run_id}/events` (unchanged).
 
 ## 8. Migration of existing places
 
-Runs once per agent, at the first need (lazy), never blocking a request more than one Hermes listing:
+Runs per agent at the first need (lazy), never blocking a request more than one Hermes listing (none on a managed
+install: the store is read):
 
-1. If the agent has a `main` thread, done.
+1. If the agent has a `main` thread with segments, done.
 2. Else find the main conversation's current session, in this order:
-   a. the session botchat-v0225's migration names as the person's main conversation (when that branch lands, its
-      record is read here; until then not present);
-   b. the newest non-hidden session titled `Bot Chat` (case-insensitive), then a hidden one;
-   c. none: the main thread is created empty and gets its first segment when the first turn is started through the
-      bridge, or when the app opens a session for it (`POST /v1/threads/{id}/segments`).
+   a. `<data_dir>/main-sessions.json` (`{agent: session_id}`), for a migration that moves the person's conversation
+      to another session;
+   b. the newest non-hidden session titled `Bot Chat` (case-insensitive), then a hidden one, never a `local-…` one.
+      Since botchat-v0225 (Hermes patch 0021) the person's « Bot Chat » stays an API conversation (`api_…`) and a
+      peer's own « Bot Chat » is a hidden `local-…` session (a `pair` thread here); a thread an unpatched v0.22.5
+      moved aside (« Bot Chat (API <id>) ») is put back at start by welcome.rs, so the title still finds it;
+   c. none: the main thread is created empty (its id is stable from then on); it is looked for again at the next
+      requests (through Hermes' API at most every 30 s), and the person's first « Bot Chat » becomes its first
+      segment even when it is resolved first (an app's session id, a push).
 3. The chosen session's whole line (parents up to the root, continuations down to the tip) becomes the main thread's
    segments (`linked = adopted` for the first, `compression` for the others).
 4. Other sessions are adopted lazily as `side` / `routine` threads the first time they are listed or resolved.
 
-After the botchat-v0225 move, the main thread keeps its id: the new session is appended as a `moved` segment. Titles
-are free again: the bridge no longer looks for `Bot Chat` once the main thread exists.
+A later move (a migration, a hand-over continued elsewhere) keeps the main thread's id: the new session is appended as
+a `moved` segment (`POST /v1/threads/{id}/segments`). The bridge no longer looks at titles once the main thread has
+segments.
 
 ## 9. Notification journal (refonte phase 1)
 
@@ -422,7 +434,7 @@ Every alert push gets, next to its legacy fields (unchanged, for apps that don't
 GET    /v1/notifications?agent=&thread=&since=<iso>&unread=1&limit=50   the Boîte's list, newest first
 GET    /v1/notifications/{id}                                            one row (with `preview`): replaces /v1/replies
 GET    /v1/notifications/unread                                          {total, agents: {a: n}, threads: {t: n}}
-POST   /v1/notifications/read   {ids?: [...], agent?, thread?, until?}   marks read; answers {read: [ids], unread}
+POST   /v1/notifications/read   {ids?: [...], agent?, thread? (an id or main)}   marks read; answers {read, unread}
 DELETE /v1/notifications/{id}                                            hidden from the Boîte (row kept)
 GET    /v1/notifications/rules                                           the table of §9.2
 ```
@@ -463,9 +475,9 @@ Journal row as served:
 | Step | Content | Status |
 |---|---|---|
 | 1 | This document | done |
-| 2a | Thread registry + lineage + adoption; `/v1/threads`, `resolve`, `segments` | §12 |
-| 2b | Timeline (normalization, paging, attachments, Boîte merge, pending), events | §12 |
-| 3 | Notification journal, rules, v2 payloads, read API, read sync | §12 |
+| 2a | Thread registry + lineage + adoption; `/v1/threads`, `resolve`, `segments` | done (branch conv-core) |
+| 2b | Timeline (normalization, paging, attachments, Boîte, answered approvals, Live calls, pending), events | done (branch conv-core) |
+| 3 | Notification journal, rules, v2 payloads, read API, read sync | done (branch conv-core); `POST /v1/notifications/{id}/answer` not yet |
 | 4 | Sending through the bridge (`POST /v1/threads/{id}/messages {text, client_id, attachments}`), approvals and clarify through the bridge | later |
 | 5 | iOS, then Android, on the timeline behind the `threads` feature flag | app agents |
 | 6 | Remove direct Hermes calls and marker parsers from the apps; drop `/v1/replies` after the minimum app version | later |
