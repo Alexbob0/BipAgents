@@ -182,13 +182,13 @@ POST /v1/threads/{thread}/segments  {session_id, agent?}  (migrations, tests)
   "tip": "api_ccc",
   "segments": [{"session_id": "api_aaa", "linked": "adopted"}, {"session_id": "api_bbb", "linked": "compression"},
                {"session_id": "api_ccc", "linked": "compression"}],
-  "last": {"id": "m_3f9a…", "role": "agent", "preview": "Le train de 9 h part…", "at": "2026-11-02T21:04:10.000Z"},
+  "last_active": 1762117450.5,
   "unread": 2
 }
 ```
 
-`segments` is given by `GET /v1/threads/{thread}` and `resolve` only. `unread` counts the thread's unread journal
-items (§9.4).
+`segments` is given by `GET /v1/threads/{thread}` and `resolve` only; `last_active` (Unix seconds, Hermes' last
+activity of the thread's sessions) by the list only. `unread` counts the thread's unread journal items (§9.4).
 
 ### 6.2 Timeline pages
 
@@ -217,8 +217,8 @@ Answer:
   "pending": {
     "run": {"run_id": "r_123", "status": "running"},
     "queue": {"version": 3, "paused": false, "items": [{"id": "q_…", "text": "…", "created_at": "…"}]},
-    "approvals": [{"run_id": "r_123", "request_id": "p_9", "command": "…", "choices": ["once", "deny"]}],
-    "questions": [{"run_id": "r_123", "request_id": "c_4", "question": "…", "choices": ["…"]}]
+    "approvals": [{"run_id": "r_123", "request_id": "p_9", "command": "…", "choices": ["once", "deny"],
+                   "session_id": "api_ccc", "created_at": 1762117450.5}]
   }
 }
 ```
@@ -230,7 +230,8 @@ Answer:
   rewind) still pages correctly: the cursor's position is used when its item is gone.
 - `anchor` is the `around` item when it was found (else null and the latest page is given).
 - `pending` is what is not a stored message yet: the run going on (attach to `/v1/runs/{run_id}/events` for its live
-  text, as today), the agent's queue for this thread (msg_queue.rs), approvals and questions waiting. Once a run ends
+  text, as today), the agent's queue for this thread (msg_queue.rs), the approvals waiting (the run hub's list, as
+  `GET /v1/approvals` gives them). A question waiting comes in the run's own events, as today. Once a run ends
   its messages are items; the app drops its live bubble when an item with the run's reply arrives (`run_id` on the
   agent's final message when the bridge knows it).
 
@@ -245,6 +246,9 @@ turn; the first item's own id before any) and `segment` (Hermes session id, for 
 | `tool` | `tool: {name, call_id, arguments, result, status (done \| failed \| running), via}` | assistant `tool_calls` + their tool rows |
 | `notice` | `notice: {code, text}`: `failed_turn` (Hermes' failed-turn row), `loop_rescue` (the bridge's rescue turn), `stopped` | Hermes rows the bridge recognizes |
 | `boite` | `text`, `title`, `attachments`, `boite: {outbox_id, audio: bool}` | the bridge's outbox (routine reports, hand-backs, credit, storage, imports) |
+| `approval` | `approval: {run_id, request_id, command, description, topic, choice, state: answered}` | approvals_log.rs (Hermes' history has no approval rows) |
+| `call` | `call`: the Live call's record as `GET /v1/live/calls` gives it | live_calls.rs |
+| (role `peer`) | a `message` with `role: peer`, `from: <agent>`: another agent's message in Bot Mode's conversation | « Message from … (@x): » rows |
 
 Never items: hidden rows (`display_kind` hidden, inactive rows unless compacted, compression summaries), the bridge's
 own steers (`[bipagents:…]`), restore notes (`<!--bip:restore…-->`), user rows made only of `<!--bip:…-->` notes.
