@@ -96,6 +96,8 @@ pub struct Services {
     pub jobs: OnceLock<Arc<Jobs>>,
     /// Group discussions between the person's agents (rooms::rooms_of).
     pub rooms: OnceLock<Arc<crate::rooms::Rooms>>,
+    /// The agents' waiting messages (msg_queue::queues_of, made with the app: the hub tells them each run's end).
+    pub queues: OnceLock<Arc<crate::msg_queue::Queues>>,
     /// Wrong keys counted by address (guard.py): Python's `app.state.guard`.
     pub guard: Guard,
     /// The web consoles (console.py): Python's `app.state.console`.
@@ -233,6 +235,7 @@ impl Services {
             scans: OnceLock::new(),
             jobs: OnceLock::new(),
             rooms: OnceLock::new(),
+            queues: OnceLock::new(),
             guard: Guard::default(),
             console: ConsoleStore::new(&py::join(&data_dir, "console.json")),
             tasks: Mutex::new(Vec::new()),
@@ -1032,6 +1035,8 @@ async fn session_state(
     if let Ok(Some(marker)) = tokio::task::spawn_blocking(move || calls.marker(&name, &id)).await {
         out["calls"] = json!(marker);
     }
+    // its waiting messages (msg_queue.rs), so every device shows the same list, and the turn the bridge started
+    out["queue"] = crate::msg_queue::queues_of(&state).get(&agent_cfg.name).snapshot_of(&agent_cfg.name, &session_id);
     Ok(web::ok(out))
 }
 
@@ -1404,7 +1409,7 @@ async fn health(State(state): State<AppState>) -> ApiResult<Response> {
         // The space encrypted at rest (space.rs): « on » or « off » (a locked bridge answers « locked » itself).
         "space": crate::space::health_state(),
         // What this bridge offers that the Python one doesn't (the apps hide the rest).
-        "features": ["agent_groups", "files_kept", "calendar", "health_categories", "contacts", "time_zone", "message_search", "agent_templates", "agent_notify"],
+        "features": ["agent_groups", "files_kept", "calendar", "health_categories", "contacts", "time_zone", "message_search", "agent_templates", "agent_notify", "agent_queue"],
     });
     // The config was broken at start and its last good copy put back (config.rs): {at, broken}, for the app and the
     // seat agent to tell.
@@ -1698,6 +1703,7 @@ impl App {
 pub fn create_app(config: Config, options: AppOptions) -> anyhow::Result<App> {
     let services = Services::new(config)?;
     let state = AppState(Arc::new(services));
+    let queues = crate::msg_queue::queues_of(&state); // before any run ends: the hub tells it each end
     let config = state.config();
     agents_admin::heal_thinking(&config);
     agents_admin::heal_browser_proxy(&config);
@@ -1710,6 +1716,7 @@ pub fn create_app(config: Config, options: AppOptions) -> anyhow::Result<App> {
     crate::shares::heal_skills(&config);
     if options.start_background {
         state.start_background();
+        state.spawn(queues.run_forever()); // the queues kept before a restart, and looked at again every 10 s
     }
     let mut agent_names: Vec<&String> = config.agents.keys().collect();
     agent_names.sort();
@@ -1727,6 +1734,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(agents_admin::router())
         .merge(crate::agent_groups::router())
         .merge(crate::agent_notify::router())
+        .merge(crate::msg_queue::router())
         .merge(crate::model_choice::router())
         .merge(crate::files_kept::router())
         .merge(crate::storage_watch::router())

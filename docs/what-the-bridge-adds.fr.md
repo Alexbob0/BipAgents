@@ -43,6 +43,10 @@ domaine, avec les modules (`bridge-rs/src/<nom>.rs`) qui le font, et ce qu'il la
   séparé transmettent les notifications sans contenu. `runs.rs` transforme une approbation que personne ne regarde en
   notification ; `agent_notify.rs` règle cela par agent ; `live_activities.rs` affiche un long travail sur l'écran
   verrouillé et la Dynamic Island.
+- **Messages pendant le travail.** `msg_queue.rs` : un message envoyé pendant que l'agent travaille entre dans le tour en
+  cours (le steer de Hermes, après ses appels d'outils du moment) ; « Après » le garde plutôt dans la file de l'agent, sur le
+  pont, la même sur tous les appareils, lancée comme tour suivant à la fin du travail (ordre, retrait, envoi immédiat,
+  pause), une seule notification à la fin.
 - **Rien de perdu.** `ntfy.rs` et `cronwatch.rs` mettent les messages des agents et la réponse de chaque routine dans
   une boîte d'envoi (`store.rs`), audio prêt ; `restore_reconcile.rs` remet après une restauration les messages
   gardés par les téléphones.
