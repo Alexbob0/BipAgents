@@ -411,7 +411,7 @@ def test_reply_ready_pushed_when_the_app_left(bridge, fakes):
     payload = apns.payloads()[0]
     assert payload["kind"] == "reply" and payload["session_id"] == "api_9" and payload["run_id"] == "run_r"
     assert payload["aps"]["category"] == "MESSAGE" and payload["aps"]["alert"]["body"] == "Ta réponse est prête."
-    assert apns.pushes()[0].header("apns-collapse-id") is None   # each reply its own (journal row), none replaced
+    assert apns.pushes()[0].header("apns-collapse-id") == "run_r"
     # The text stays off Apple: the extension fetches it from the bridge.
     assert "19 €" not in apns.pushes()[0].body.decode()
     reply = bridge.get(f"/v1/replies/{payload['reply_id']}", headers=AUTH)

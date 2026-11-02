@@ -64,7 +64,7 @@ def test_ntfy_message_lands_in_outbox_with_audio_and_push(bridges, fakes):
     assert (bridge.data / "audio" / f"{first['id']}.mp3").exists()
 
     # Push: MESSAGE payload, sandbox host for the sandbox device, generic body (no preview).
-    sandbox = [r for r in apns.pushes() if apns.environment(r) == "sandbox"]
+    sandbox = [r for r in apns.pushes() if apns.environment(r) == "sandbox" and r.json()["outbox_id"] == first["id"]]
     payload = sandbox[0].json()
     # the journal's pointer (docs/conversations.md §9.3) beside the legacy fields
     v2 = {k: payload.pop(k) for k in ("v", "n", "t", "c", "m")}
@@ -77,7 +77,8 @@ def test_ntfy_message_lands_in_outbox_with_audio_and_push(bridges, fakes):
     assert sandbox[0].header("apns-push-type") == "alert" and sandbox[0].header("apns-priority") == "10"
     assert sandbox[0].header("content-type") == "application/json"
     assert sandbox[0].path == f"/sandbox/3/device/{TOKEN}"
-    assert sandbox[0].body == json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
+    legacy = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))   # the legacy fields first, the pointer after
+    assert sandbox[0].body.startswith(legacy[:-1].encode() + b',"v":2,')
     # The 410 token was deleted after its first failure; it was sent to the production host.
     dead_calls = [r for r in apns.pushes() if apns.token(r) == DEAD]
     assert 1 <= len(dead_calls) <= 2 and apns.environment(dead_calls[0]) == "production"

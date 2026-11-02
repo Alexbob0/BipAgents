@@ -697,7 +697,12 @@ async fn list(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response>
         }
     }
     let rows = threads.store.run("SELECT * FROM threads WHERE agent = ?", vec![text(&agent.name)]).await?;
-    let mut all: Vec<Thread> = rows.iter().map(Thread::of).filter(|t| include_hidden || !t.hidden).collect();
+    // only what Hermes still keeps (a Live call's throwaway session, a deleted conversation: gone from the list)
+    let mut all: Vec<Thread> = rows
+        .iter()
+        .map(Thread::of)
+        .filter(|t| (include_hidden || !t.hidden) && (t.id == main.id || last_active.contains_key(&t.id)))
+        .collect();
     all.sort_by(|a, b| {
         let key = |t: &Thread| (t.id != main.id, -last_active.get(&t.id).copied().unwrap_or(0.0) as i64);
         key(a).cmp(&key(b))

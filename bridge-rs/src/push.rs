@@ -598,6 +598,11 @@ impl PushService {
         let payload = reply_payload(agent, &self.title(agent), run_id, session_id, preview.as_deref(), None, REPLY_BODY);
         let mut event = Event::new(agent, Kind::Reply, run_id, payload).session(session_id).reference(run_id).text(Some(text));
         event.wait = true;
+        // a run's own replies replace each other (one run, one notification); an autonomous turn's (« session:… »)
+        // never replaces an earlier one
+        if !run_id.starts_with("session:") {
+            event.collapse = Some(run_id.to_string());
+        }
         self.emit(event).await
     }
 
@@ -614,10 +619,11 @@ impl PushService {
         let mut payload = reply_payload(agent, &title, &run_id, None, preview.as_deref(), None, REPLY_BODY);
         payload.insert("room_id".into(), json!(room_id));
         if let Some(Value::Object(aps)) = payload.get_mut("aps") {
-            aps.insert("thread-id".into(), json!(run_id));
+            aps.insert("thread-id".into(), json!(&run_id));
         }
         let key = format!("{room_id}:{:x}", fnv(text));
-        let mut event = Event::new(agent, Kind::RoomReply, key, payload).reference(room_id).text(Some(text));
+        let mut event =
+            Event::new(agent, Kind::RoomReply, key, payload).reference(room_id).text(Some(text)).collapse(&run_id);
         event.room = Some(room_id.to_string());
         self.emit(event).await
     }
@@ -657,7 +663,8 @@ impl PushService {
         let mut payload = reply_payload(agent, &self.title(agent), &run_id, session_id, preview, None, body);
         payload.insert("job_id".into(), json!(job_id));
         let key = format!("{job_id}:{body}");
-        self.emit(Event::new(agent, Kind::Task, key, payload).session(session_id).reference(job_id).text(Some(line))).await
+        let event = Event::new(agent, Kind::Task, key, payload).session(session_id).reference(job_id).text(Some(line));
+        self.emit(event.collapse(format!("job:{job_id}"))).await // a task's latest state
     }
 
     /// The agent asks something mid-run (clarify) while nobody follows it: always notified (an unanswered question
