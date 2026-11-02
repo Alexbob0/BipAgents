@@ -118,6 +118,17 @@ def test_a_shared_agents_conversation_through_the_owners_bridge(bridges, fakes):
     assert [(t["id"], t["kind"], t["title"]) for t in listed] == [(cid, "shared", "Dîner")]
     page = get(b, f"/v1/threads/{cid}/timeline", agent="cuisine__alex")
     assert page["thread"]["id"] == cid and [i["text"] for i in page["items"]][-1] == "Une fondue !"
+    assert page["pending"] == {"run": None, "approvals": []}
+    # a turn going on: its state and start, for the shared screen
+    gate = threading.Event()
+    fakes.hermes.runs["r1"] = [gate, sse("run.completed", output="Une tarte.")]
+    sent = b.post(f"/v1/shared-agents/cuisine__alex/conversations/{cid}/messages", headers=AUTH,
+                  json={"text": "Et le dessert ?"})
+    assert sent.status_code == 200, sent.text
+    running = get(b, f"/v1/threads/{cid}/timeline", agent="cuisine__alex")["pending"]["run"]
+    assert running["status"] == "writing" and running["run_id"] == sent.json()["run_id"]
+    assert isinstance(running["started"], (int, float))
+    gate.set()
     assert all("attachments" not in i for i in page["items"])   # only text crosses
     assert page["items"][-1]["id"].startswith("m_")
     # another household's key reaches nothing

@@ -635,8 +635,14 @@ async fn served_timeline(
         })
         .collect();
     let page = crate::threads::timeline::page(items, &want);
+    // the turn going on, as the shared screen draws it: writing, or waiting for her approval, since when
     let (run, approvals) = match turn_going(&c, now()) {
-        Some(run_id) => (json!({"run_id": run_id, "status": "running"}), approvals_of(&state, &agent.name, &run_id)),
+        Some(run_id) => {
+            let approvals = approvals_of(&state, &agent.name, &run_id);
+            let status = if approvals.is_empty() { "writing" } else { "approval" };
+            let started = c.get("run").and_then(|r| r.get("started")).cloned().unwrap_or(Value::Null);
+            (json!({"run_id": run_id, "status": status, "started": started}), approvals)
+        }
         None => (Value::Null, Vec::new()),
     };
     let shown: Vec<Value> = page.items.iter().map(|i| i.to_json(&cid, false)).collect();

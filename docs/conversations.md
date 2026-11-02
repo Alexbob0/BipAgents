@@ -158,7 +158,9 @@ Errors use the bridge's usual shape (`{"detail": …}`, 404 unknown agent/thread
 
 ```text
 GET  /v1/threads?agent=<id>[&include_hidden=1]
-  → {threads: [Thread…]}                  main first, then by last activity
+  → {threads: [Thread…]}                  main first, then by last activity: the history screen's list (only
+                                          what Hermes still keeps); `include_hidden=1` adds routine runs, the
+                                          agents' own conversations (`pair`) and hidden ones
 GET  /v1/threads/{thread}?agent=<id>      (agent required only with thread=main)
   → Thread  (+ segments)
 GET  /v1/threads/resolve?agent=<id>&session_id=<hermes session>
@@ -339,8 +341,15 @@ text of a run still comes from `/v1/runs/{run_id}/events` (unchanged).
   `GET /v1/threads` lists her conversations with that agent (`kind: shared`, `id` = the conversation's id) and
   `GET /v1/threads/{cid}/timeline` (same parameters, same answer shape) is relayed to the owner's bridge
   (`GET /family/s/{agent}/conversations/{cid}/timeline`, the household key, her own conversations only), which
-  serves only words and notices (no attachment, tool step or Boîte item: only text crosses). Sending, stopping and
-  approvals keep `/v1/shared-agents/{id}/conversations/…` until step 4.
+  serves only words and notices (no attachment, tool step or Boîte item: only text crosses). Its answer has the
+  timeline's shape: `thread: {id: <cid>, kind: "shared", title, version}`, `items`, `first`, `last`,
+  `more_before`, `more_after`, `anchor`, `version`, and `pending: {run: {run_id, status: "writing" | "approval",
+  started: <Unix seconds>} | null, approvals: [{run_id, request_id, command, description, choices}]}`.
+  Each timeline read counts as « on screen » for that conversation (the relative's bridge pushes nothing for it
+  meanwhile, as `GET …/messages` did).
+  **Not relayed yet**: the events stream (`/v1/threads/events` with a shared agent): the shared screen re-reads the
+  timeline (`after=<last>`) while a turn goes on. Sending, stopping and approvals keep
+  `/v1/shared-agents/{id}/conversations/…` until step 4.
 
 ## 7. How the apps use it (target)
 
