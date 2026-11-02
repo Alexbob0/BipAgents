@@ -45,9 +45,27 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "content-available": 1
+        },
+        "agent": "vie",
+        "reason": "run_finished",
+        "run_id": "run_1",
+        "session_id": "sess_1"
+      },
+      "fcm_data": {
+        "silent": "1",
+        "agent": "vie",
+        "reason": "run_finished",
+        "run_id": "run_1",
+        "session_id": "sess_1"
+      },
+      "push": {
+        "push_type": "background",
+        "priority": 5,
+        "collapse_id": null
+      },
       "relay": {
         "body": null
       },
@@ -96,9 +114,23 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "content-available": 1
+        },
+        "agent": "vie",
+        "reason": "reminders"
+      },
+      "fcm_data": {
+        "silent": "1",
+        "agent": "vie",
+        "reason": "reminders"
+      },
+      "push": {
+        "push_type": "background",
+        "priority": 5,
+        "collapse_id": null
+      },
       "relay": {
         "body": null
       },
@@ -148,9 +180,23 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "content-available": 1
+        },
+        "agent": "vie",
+        "reason": "calendar"
+      },
+      "fcm_data": {
+        "silent": "1",
+        "agent": "vie",
+        "reason": "calendar"
+      },
+      "push": {
+        "push_type": "background",
+        "priority": 5,
+        "collapse_id": null
+      },
       "relay": {
         "body": null
       },
@@ -200,9 +246,23 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "content-available": 1
+        },
+        "agent": "vie",
+        "reason": "contacts"
+      },
+      "fcm_data": {
+        "silent": "1",
+        "agent": "vie",
+        "reason": "contacts"
+      },
+      "push": {
+        "push_type": "background",
+        "priority": 5,
+        "collapse_id": null
+      },
       "relay": {
         "body": null
       },

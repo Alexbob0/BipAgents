@@ -48,9 +48,39 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "alert": {
+            "title": "Vie",
+            "body": "Ta réponse est prête.",
+            "loc-key": "Ta réponse est prête."
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "run_1",
+        "kind": "reply",
+        "session_id": "sess_1",
+        "reply_id": "r1"
+      },
+      "fcm_data": {
+        "title": "Vie",
+        "body": "Ta réponse est prête.",
+        "category": "MESSAGE",
+        "agent": "vie",
+        "run_id": "run_1",
+        "kind": "reply",
+        "session_id": "sess_1",
+        "reply_id": "r1"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "run_1"
+      },
       "relay": {
         "body": "Ta réponse est prête."
       },
@@ -107,9 +137,38 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "alert": {
+            "title": "Vie",
+            "body": "Voilà le résumé de ta journée."
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "run_1",
+        "kind": "reply",
+        "session_id": "sess_1",
+        "reply_id": "r1"
+      },
+      "fcm_data": {
+        "title": "Vie",
+        "body": "Voilà le résumé de ta journée.",
+        "category": "MESSAGE",
+        "agent": "vie",
+        "run_id": "run_1",
+        "kind": "reply",
+        "session_id": "sess_1",
+        "reply_id": "r1"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "run_1"
+      },
       "relay": {
         "body": "Nouveau message"
       },
@@ -166,9 +225,37 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "alert": {
+            "title": "Vie",
+            "body": "Ta réponse est prête.",
+            "loc-key": "Ta réponse est prête."
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "run_2",
+        "kind": "reply",
+        "reply_id": "r2"
+      },
+      "fcm_data": {
+        "title": "Vie",
+        "body": "Ta réponse est prête.",
+        "category": "MESSAGE",
+        "agent": "vie",
+        "run_id": "run_2",
+        "kind": "reply",
+        "reply_id": "r2"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "run_2"
+      },
       "relay": {
         "body": "Ta réponse est prête."
       },
@@ -225,9 +312,39 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "alert": {
+            "title": "Vie",
+            "body": "Ta réponse est prête.",
+            "loc-key": "Ta réponse est prête."
+          },
+          "thread-id": "cuisine__alex",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "cuisine__alex",
+        "run_id": "run_3",
+        "kind": "reply",
+        "session_id": "conv_1",
+        "reply_id": "r3"
+      },
+      "fcm_data": {
+        "title": "Vie",
+        "body": "Ta réponse est prête.",
+        "category": "MESSAGE",
+        "agent": "cuisine__alex",
+        "run_id": "run_3",
+        "kind": "reply",
+        "session_id": "conv_1",
+        "reply_id": "r3"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "run_3"
+      },
       "relay": {
         "body": "Ta réponse est prête."
       },

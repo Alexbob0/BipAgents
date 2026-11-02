@@ -39,9 +39,37 @@
           }
         }
       },
-      "payload_v1": null,
-      "fcm_data": null,
-      "push": null,
+      "payload_v1": {
+        "aps": {
+          "alert": {
+            "title": "Vie",
+            "body": "Veut envoyer des données à un site : ton accord est demandé",
+            "loc-key": "Veut envoyer des données à un site : ton accord est demandé"
+          },
+          "thread-id": "vie",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default"
+        },
+        "agent": "vie",
+        "run_id": "session:sites",
+        "kind": "reply",
+        "site_request": "site_1"
+      },
+      "fcm_data": {
+        "title": "Vie",
+        "body": "Veut envoyer des données à un site : ton accord est demandé",
+        "category": "MESSAGE",
+        "agent": "vie",
+        "run_id": "session:sites",
+        "kind": "reply",
+        "site_request": "site_1"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "site:site_1"
+      },
       "relay": {
         "body": "Nouveau message"
       },
