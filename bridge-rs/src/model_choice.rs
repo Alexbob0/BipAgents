@@ -67,6 +67,15 @@ pub fn preset(id: &str) -> Option<&'static Preset> {
     PRESETS.iter().find(|p| p.id == id)
 }
 
+/// The connector of the whitelist a model's address belongs to (its host is a preset's), « custom » never: the name
+/// the apps can show for where an agent's text goes (« Remplir mes fiches », archives/records_fill.rs). None: another
+/// server, the person's own.
+pub fn connector_of(base_url: &str) -> Option<&'static str> {
+    let host = |u: &str| url::Url::parse(u).ok().and_then(|u| u.host_str().map(str::to_ascii_lowercase));
+    let wanted = host(base_url)?;
+    PRESETS.iter().find(|p| !p.base_url.is_empty() && host(p.base_url).as_deref() == Some(wanted.as_str())).map(|p| p.id)
+}
+
 /// The person's choice when it is not the install's default. No secret: the key is in the profile's `.env`.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Chosen {
@@ -548,6 +557,17 @@ pub fn router() -> Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_model_s_connector_is_known_by_its_host() {
+        // « Remplir mes fiches » names where the documents go (2026-11-01): a connector of the whitelist, else nothing
+        assert_eq!(connector_of("https://openrouter.ai/api/v1"), Some("openrouter"));
+        assert_eq!(connector_of("https://API.eurouter.ai/api/v1/"), Some("eurouter"));
+        assert_eq!(connector_of("https://api.mistral.ai/v1"), Some("mistral"));
+        assert_eq!(connector_of("http://192.168.1.20:11434/v1"), None); // a server of the person's own
+        assert_eq!(connector_of("https://openrouter.ai.example.com/v1"), None);
+        assert_eq!(connector_of(""), None);
+    }
 
     #[test]
     fn a_key_shows_only_its_end() {

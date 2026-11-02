@@ -380,3 +380,33 @@ fn the_full_pass_report_lists_what_it_found_under_its_totals() {
     let empty = plain_report(&Tally::default(), &archive, "en");
     assert_eq!(empty.lines().count(), 1, "{empty}");
 }
+
+#[test]
+fn a_pass_uses_the_agent_s_model_and_older_apps_may_still_name_one() {
+    // 2026-11-01 (Alex): no model choice and no catalogue prices in the apps. They send no `model`: the pass takes the
+    // agent's own, the one the state names; on the offer the app gives the offer's prices for it. An older app's
+    // `model` (the offer's list it showed) is still taken.
+    let dir = tempfile::tempdir().unwrap();
+    // an agent of its own: two tests indexing « vie »'s archive at once, one would find it busy
+    let (config, agent, archive) = setup(dir.path(), "http://127.0.0.1:9/v1", "own");
+    let body = |v: Value| v.as_object().cloned().unwrap();
+    let own = chosen(&config, &agent, &body(json!({}))).unwrap();
+    assert_eq!((own.name.as_str(), own.own, own.local, own.price_in), ("fake-small", true, true, 0.0));
+    let priced = chosen(&config, &agent, &body(json!({"price_in": 0.4, "price_out": 1.6, "budget_eur": 1}))).unwrap();
+    assert_eq!((priced.name.as_str(), priced.own, priced.price_in, priced.price_out), ("fake-small", true, 0.4, 1.6));
+    let older = chosen(&config, &agent, &body(json!({"model": "big-model", "price_in": 10, "price_out": 50}))).unwrap();
+    assert_eq!((older.name.as_str(), older.own, older.price_out), ("big-model", false, 50.0));
+    assert!(chosen(&config, &agent, &body(json!({"price_in": 1}))).is_err(), "both prices or none");
+
+    let view = state_view(&config, &agent, &archive);
+    assert_eq!(view["model"]["id"], json!("fake-small"));
+    assert_eq!((view["model"]["own"].as_bool(), view["model"]["local"].as_bool()), (Some(true), Some(true)));
+    assert_eq!(view["model"]["connector"], Value::Null, "a server of the person's own: no connector name");
+    assert_eq!(view["models"][0]["id"], json!("fake-small"), "older apps still find it there");
+
+    // a connector of the whitelist is named (« … envoyé au modèle de Vie, chez OpenRouter »)
+    let mut config = (*config).clone();
+    config.notebook.base_url = "https://openrouter.ai/api/v1".into();
+    let view = state_view(&config, &agent, &archive);
+    assert_eq!((view["model"]["connector"].as_str(), view["model"]["local"].as_bool()), (Some("openrouter"), Some(false)));
+}
