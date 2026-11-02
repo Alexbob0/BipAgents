@@ -570,6 +570,22 @@ answer → `clarify.settled`), an approval (`approval.request` → once → `app
 `message_agent`; no « Bot Chat (API …) » anywhere. A new agent made afterwards got an API Bot Chat (`api_…`,
 `api_server`) that streams, runs tools and approvals the same way.
 
+## No patch: `clarify` in the API toolset (2026-11-02)
+
+v0.22.5's `hermes-api-server` toolset leaves `clarify` out (« no interactive UI tools like clarify »), and the lists
+`hermes tools enable/disable --platform api_server` saves name only what was on: on an updated place or a new agent the
+model had no question tool and the app's question card never came (the old pin's Hermes gave it to API runs; 0001's
+Runs API side is now upstream's, its tool was not). Fixed in config, not in Hermes: `platform_toolsets.api_server`
+always carries `clarify` (the bridge at each start and for each new agent, `tool_diet.rs` `with_clarify`; the
+installer on the hub profile every agent is cloned from and the update migration `2026-11-02-clarify-tool`, both
+through `hermes tools enable clarify --platform api_server`). The apps never show that switch.
+
+An existing conversation needs nothing more: the api_server builds a fresh agent for each run from the config
+(`_create_agent` → `_get_platform_tools`), and a continuing session's pinned tools[] keeps its order but appends the
+tools the fresh build adds (`tools/mcp_tool_agent.py` `restore_agent_tool_prefix`); a Bot Chat also rebuilds its
+system prompt once, its capability epoch covering `platform_toolsets` (`tools/bot_mode_probe.py`). A model that said
+« I have no clarify tool » earlier in the same conversation may keep saying so from its history.
+
 ## Moving to v0.22.5 (2026-11-01)
 
 The series rebased from `517b5e10f` on v0.22.5 (`bf0203a794`), branch `bip/patches-v0.22.5`; the installer pins
