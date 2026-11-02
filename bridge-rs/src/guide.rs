@@ -1268,7 +1268,13 @@ pub fn guide_from_claim(config: &Config, agent: &AgentConfig, lang: &str) -> any
 }
 
 async fn get_view(State(state): State<AppState>) -> ApiResult<Response> {
-    Ok(web::ok(view(&state.config())))
+    let config = state.config();
+    // An app opening: a new agent's first conversation not checked yet becomes its thread if it isn't (welcome.rs
+    // `adopt`, 2026-11-01: those written to from an iPhone that opened them before it knew their Bot Chat).
+    for agent in crate::welcome::unchecked(&load(&config)) {
+        crate::welcome::adopt_soon(&state, &agent);
+    }
+    Ok(web::ok(view(&config)))
 }
 
 async fn first_run_route(State(state): State<AppState>, Json(body): Json<FirstRun>) -> ApiResult<Response> {
@@ -1591,6 +1597,8 @@ async fn welcome_done(
     }
     let session = body.unwrap_or_default().session;
     crate::welcome::done(&config, &agent_id, session.as_deref().filter(|s| !s.is_empty()));
+    // that conversation is its one thread (welcome.rs `adopt`)
+    crate::welcome::adopt_soon(&state, &agent_id);
     Ok(web::ok(json!({"ok": true})))
 }
 

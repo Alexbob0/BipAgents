@@ -25,16 +25,20 @@
 //!    runs as a background job (« Tâches de fond », jobs.rs lists it) with a hard cap in euros: before each call the
 //!    bridge counts what it may cost at most (its prompt, its longest answer, at the model's prices) and pauses rather
 //!    than pass the cap; the person resumes with a bigger one. At the end a report and a notification.
-//! 5. **Model**: the agent's own model by default; the person may pick another of their provider's models for the
-//!    one-time pass (the offer's list in the app, `[archive_records] models`, or any id from the command line). Prices:
-//!    those the app or the command gives, else `[archive_records] models`', else free for a model on this machine or
-//!    the local network, else the `[notebook]` prices for the agent's own model, else `unknown_price_*` (high, so the
-//!    cap holds). After a full pass, a nightly pass reads the new documents with the agent's own model
-//!    (`nightly_cap_eur` a night and archive; free when local).
+//! 5. **Model**: the agent's own model, the one its conversations use (on the offer the offer's, at home the one set
+//!    in Avancé › Modèle). Since 2026-11-01 (Alex: no model choice and no catalogue prices) the apps send no `model`:
+//!    the state's `model` says which one it is and its connector (`connector`, model_choice.rs' whitelist), for « the
+//!    documents' text is sent to … ». Another id is still taken from older apps (the offer's list they showed),
+//!    `[archive_records] models` and the command line. Prices: those the app (the offer's, for the agent's model) or
+//!    the command gives, else `[archive_records] models`', else free for a model on this machine or the local network,
+//!    else the `[notebook]` prices for the agent's own model, else `unknown_price_*` (high, so the cap holds). After a
+//!    full pass, a nightly pass reads the new documents with the agent's own model (`nightly_cap_eur` a night and
+//!    archive; free when local).
 //!
 //! Routes (the bridge key):
 //!
-//!     GET   /v1/agents/{id}/archives/{archive}/records          state, last sample, models, counts, nightly, job
+//!     GET   /v1/agents/{id}/archives/{archive}/records          state, last sample, model (models: older apps),
+//!                                                                counts, nightly, job
 //!     POST  /v1/agents/{id}/archives/{archive}/records/sample   {size?, model?, price_in?, price_out?}  (202)
 //!     POST  /v1/agents/{id}/archives/{archive}/records/run      {budget_eur, model?, price_in?, price_out?,
 //!                                                                retry_given_up?}
@@ -441,6 +445,7 @@ impl Model {
 
     pub fn view(&self) -> Value {
         json!({"id": self.name, "provider": self.provider(), "local": self.local, "own": self.own,
+               "connector": crate::model_choice::connector_of(&self.base),
                "price_in": self.price_in, "price_out": self.price_out})
     }
 }
@@ -1823,7 +1828,8 @@ pub async fn nightly(config: Arc<Config>, archive: Archive) -> anyhow::Result<Op
 
 // -- what the app sees -----------------------------------------------------------------------------------------------
 
-/// The models the person may pick: the agent's own, then `[archive_records] models`.
+/// The models an older app let the person pick: the agent's own, then `[archive_records] models` (the apps since
+/// 2026-11-01 read `model` alone).
 pub fn models(config: &Config, agent: &AgentConfig) -> Vec<Value> {
     let mut out = Vec::new();
     if let Ok(own) = model_for(config, agent, "", None) {
@@ -1877,6 +1883,8 @@ pub fn state_view(config: &Config, agent: &AgentConfig, archive: &Archive) -> Va
         "candidates": candidates, "read": read, "given_up": given_up,
         "sample": meta("sample"), "last_night": meta("last_night"),
         "nightly": store.as_ref().and_then(|s| s.meta("nightly")).as_deref() == Some("1"),
+        // the model a pass uses: the agent's own (null: not known, a pass would be refused)
+        "model": model_for(config, agent, "", None).ok().map(|m| m.view()),
         "models": models(config, agent), "sample_size": SAMPLE_SIZE, "sample_cap_eur": config.archive_records.sample_cap_eur,
         "notebook": crate::notebook::enabled(config, &archive.agent),
         "job": job,

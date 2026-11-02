@@ -2,8 +2,11 @@
 the guide's two tools and their cards (accepted: an agent created with its handover as data in its memory, or a
 subject handed over to another agent; declined: not proposed again), the guide's switch, and an agent without a role
 that asks then proposes its own."""
+import time
+
 from bbkit.common import AUTH
 from bbkit.mcp import call, give_token, rpc, text_of
+from bbkit.servers import wait_until
 from conftest import managed_install, profile, wait_registered
 
 GUIDE_TOKEN = "guide-token-0123456789abcdefghijkl"
@@ -156,3 +159,45 @@ def test_an_agent_without_a_role_asks_then_proposes_its_own(bridges, fakes):
     soul = (home / "profiles" / "lea" / "SOUL.md").read_text()
     assert "Ce que ton utilisateur attend de toi : mes courses à pied.\nTon ton : direct." in soul
     assert soul.index("Ton ton : direct.") < soul.index("<!-- bipagents:language -->")
+
+
+def test_the_first_conversation_with_a_new_agent_becomes_its_thread(bridges, fakes):
+    """Alex, 2026-11-01 (his wife's agent made with the guide): « c'est allé dans une discussion séparée, pas celle
+    principale … c'est dans les discussions historiques ». Written to in a conversation of its own while its Bot Chat
+    is empty, a new agent's first conversation becomes its Bot Chat; the empty one is renamed and hidden."""
+    bridge, _ = place(bridges, fakes, agents=())
+    made = bridge.post("/v1/agents", headers=AUTH, json={"name": "Léa", "kind": "wellness"})
+    assert made.status_code == 201, made.text
+    sessions = fakes.hermes.sessions["lea"]
+    [bot_chat] = [sid for sid, s in sessions.items() if s["title"] == "Bot Chat"]   # opened as it was made
+    assert sessions[bot_chat]["message_count"] == 0
+    # what the iPhone did: its own conversation, the person's first message there
+    fakes.hermes.add_session("s_first", [{"role": "user", "content": "Bonjour"},
+                                         {"role": "assistant", "content": "Bonjour !"}],
+                             title="Bonjour", agent="lea", last_active=time.time())
+    fakes.hermes.patched.clear()
+    done = bridge.post("/v1/guide/welcome/lea/done", headers=AUTH, json={"session": "s_first"})
+    assert done.json() == {"ok": True}
+    assert wait_until(lambda: {"id": "s_first", "title": "Bot Chat"} in fakes.hermes.patched, 10)
+    assert fakes.hermes.patched[0] == {"id": bot_chat, "title": f"Fil vide mis de côté · {bot_chat[-8:]}",
+                                       "hidden": True}
+    assert sessions["s_first"]["title"] == "Bot Chat"
+    # its welcome stays at the top of that conversation; an app opening asks nothing more of Hermes
+    assert bridge.get("/v1/guide", headers=AUTH).json()["welcome"]["lea"]["session"] == "s_first"
+    time.sleep(1)
+    assert len(fakes.hermes.patched) == 2
+
+
+def test_an_agent_written_to_in_its_bot_chat_keeps_it(bridges, fakes):
+    """The apps from now on write in the Bot Chat (2026-11-01): nothing renamed, at the first message or when an app
+    opens."""
+    bridge, _ = place(bridges, fakes, agents=())
+    assert bridge.post("/v1/agents", headers=AUTH, json={"name": "Léa", "kind": "wellness"}).status_code == 201
+    sessions = fakes.hermes.sessions["lea"]
+    [bot_chat] = [sid for sid, s in sessions.items() if s["title"] == "Bot Chat"]
+    sessions[bot_chat]["message_count"] = 2
+    fakes.hermes.patched.clear()
+    assert bridge.post("/v1/guide/welcome/lea/done", headers=AUTH, json={"session": bot_chat}).json() == {"ok": True}
+    bridge.get("/v1/guide", headers=AUTH)
+    time.sleep(1)
+    assert fakes.hermes.patched == [] and sessions[bot_chat]["title"] == "Bot Chat"
