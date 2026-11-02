@@ -28,6 +28,10 @@ pub mod pyx;
 pub mod notices;
 use notices::Notice;
 
+/// Sealed notifications: the words for each device's own key, a neutral line in clear (refonte phase 5).
+#[path = "push_runs/seal.rs"]
+pub mod seal;
+
 pub const MESSAGE_BODY: &str = "Nouveau message";
 pub const TEXTS_KEPT: usize = 200;
 pub const TEXT_TTL: f64 = 24.0 * 3600.0;
@@ -366,10 +370,14 @@ impl PushService {
         }
     }
 
+    /// Sends `payload` to `agent`'s devices; a device that gave a key (`push_key`) gets `sealed` for it instead of any
+    /// words in clear (seal.rs). A device whose sealed push can't be made gets the neutral line alone, never the clear
+    /// words.
     async fn fanout(
         &self,
         agent: &str,
         payload: Dict,
+        sealed: Option<&seal::Sealed>,
         push_type: &str,
         priority: u8,
         collapse_id: Option<String>,
@@ -385,8 +393,11 @@ impl PushService {
         if devices.is_empty() {
             return 0;
         }
-        let payload = Value::Object(payload);
-        let sends = devices.iter().map(|(device, sender)| {
+        let payloads: Vec<Value> = devices
+            .iter()
+            .map(|(device, _)| Value::Object(Self::payload_for(device, &payload, sealed, agent)))
+            .collect();
+        let sends = devices.iter().zip(&payloads).map(|((device, sender), payload)| {
             let options = SendOptions {
                 environment: device.get("environment").and_then(Value::as_str).unwrap_or("").to_string(),
                 push_type: push_type.to_string(),
@@ -395,7 +406,6 @@ impl PushService {
                 expiration: None,
             };
             let token = device.get("token").and_then(Value::as_str).unwrap_or("").to_string();
-            let payload = &payload;
             async move { sender.try_send(&token, payload, &options).await }
         });
         let results = futures::future::join_all(sends).await;
@@ -420,6 +430,24 @@ impl PushService {
         sent
     }
 
+    /// The push one device gets: sealed for its key when it gave one and the push has words, else `payload` as built.
+    fn payload_for(device: &Row, payload: &Dict, sealed: Option<&seal::Sealed>, agent: &str) -> Dict {
+        let key = device.get("push_key").and_then(Value::as_str).and_then(seal::stored_key);
+        let (Some(key), Some(sealed)) = (key, sealed) else { return payload.clone() };
+        match seal::for_device(payload, sealed, agent, &key) {
+            Ok(out) => out,
+            Err(exc) => {
+                tracing::warn!(exc = %format!("{exc:#}"), agent = %agent, "push not sealed: neutral line only");
+                let mut out = payload.clone();
+                if let Some(Value::Object(aps)) = out.get_mut("aps") {
+                    let code = seal::loc_key(sealed.kind);
+                    aps.insert("alert".into(), json!({"loc-key": code, "body": code}));
+                }
+                out
+            }
+        }
+    }
+
     /// What `build` needs to know of `agent` here (its language read from its files only when `notice` writes in it).
     fn context(&self, agent: &str, notice: &Notice) -> notices::Context {
         let previews = self.previews();
@@ -433,8 +461,10 @@ impl PushService {
         if notice.follows_switch() && !self.notifies(agent) {
             return 0;
         }
-        let built = notices::build(agent, &self.context(agent, &notice), &notice);
-        self.fanout(agent, built.payload, built.push_type, built.priority, built.collapse_id).await
+        let context = self.context(agent, &notice);
+        let built = notices::build(agent, &context, &notice);
+        let sealed = notices::sealed(&context, &notice);
+        self.fanout(agent, built.payload, sealed.as_ref(), built.push_type, built.priority, built.collapse_id).await
     }
 
     fn owned(value: Option<&str>) -> Option<String> {

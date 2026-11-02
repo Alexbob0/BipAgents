@@ -13,6 +13,7 @@ use super::{
     approval_line, approval_payload, email_held_line, given, login_line, message_payload, preview, question_payload, reply_payload, silent_payload, CARD_BODY, EMAIL_HELD_BODY, FAMILY_BODY, LOGIN_BODY, MEET_BODY,
     REPLY_BODY, SITE_BODY, SUBTASK_BODY,
 };
+use super::seal::Sealed;
 use crate::Dict;
 
 /// What the bridge knows of the agent when it builds a push.
@@ -165,6 +166,41 @@ impl Notice {
                 | Notice::Job { .. }
                 | Notice::Question { .. }
         )
+    }
+}
+
+/// What `notice` says, to be sealed for each device with a key (seal.rs): the agent's whole words whatever the previews
+/// setting (they never travel in clear: only the phone opens them), the title, the type. None for a silent push.
+pub fn sealed(context: &Context, notice: &Notice) -> Option<Sealed> {
+    let title = context.title.as_str();
+    let line = |kind, body: &str| Some(Sealed::new(kind, title, body));
+    match notice {
+        Notice::Message { text, .. } => line("boite", text),
+        // the effect in plain words (runs.rs gives `bip_summary` when the bridge made one)
+        Notice::Approval { command, .. } => line("approval", opt(command).unwrap_or("")),
+        Notice::Reply { text, .. } => line("reply", text),
+        Notice::Room { room_title, text, .. } => {
+            let title = if room_title.is_empty() { title.to_string() } else { format!("{title} · {room_title}") };
+            Some(Sealed::new("room_reply", &title, text))
+        }
+        Notice::Subtask { line: words, .. } => line("subtask", opt(words).unwrap_or("")),
+        Notice::Scan { line: words } => line("scan", words),
+        Notice::Job { line: words, body, .. } => line("task", if words.is_empty() { body } else { words }),
+        Notice::Question { question, .. } => line("question", opt(question).unwrap_or("")),
+        Notice::Family { line: words, .. } => line("family", words),
+        Notice::EmailHeld { to, .. } => line("email_held", &email_held_line(&context.lang, to)),
+        Notice::Site { line: words, .. } => line("site", words),
+        Notice::Login { host, .. } => line("login", &login_line(&context.lang, host)),
+        Notice::Card { line: words, key, .. } => {
+            let kind = match key.as_str() {
+                "secret_request" => "secret",
+                "mail_request" => "mail_card",
+                _ => "connector",
+            };
+            line(kind, words)
+        }
+        Notice::Meet { line: words, .. } => line("meet", words),
+        Notice::Silent { .. } => None,
     }
 }
 

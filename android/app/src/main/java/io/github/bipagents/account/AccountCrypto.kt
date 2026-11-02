@@ -63,18 +63,18 @@ object AccountCrypto {
 
     fun raw(key: ECPublicKey): ByteArray = byteArrayOf(4) + pad32(key.w.affineX) + pad32(key.w.affineY)
 
-    private fun publicKey(raw: ByteArray): ECPublicKey {
+    internal fun publicKey(raw: ByteArray): ECPublicKey {
         require(raw.size == 65 && raw[0] == 4.toByte()) { "not a P-256 key" }
         val point = ECPoint(BigInteger(1, raw.copyOfRange(1, 33)), BigInteger(1, raw.copyOfRange(33, 65)))
         return KeyFactory.getInstance("EC").generatePublic(ECPublicKeySpec(point, params())) as ECPublicKey
     }
 
-    private fun hkdf(ikm: ByteArray, salt: ByteArray, info: ByteArray): ByteArray {
+    internal fun hkdf(ikm: ByteArray, salt: ByteArray, info: ByteArray): ByteArray {
         val extract = Mac.getInstance("HmacSHA256").apply { init(SecretKeySpec(salt, "HmacSHA256")) }.doFinal(ikm)
         return Mac.getInstance("HmacSHA256").apply { init(SecretKeySpec(extract, "HmacSHA256")) }.doFinal(info + byteArrayOf(1))
     }
 
-    private fun ecdh(private: PrivateKey, public: ECPublicKey): ByteArray =
+    internal fun ecdh(private: PrivateKey, public: ECPublicKey): ByteArray =
         KeyAgreement.getInstance("ECDH").apply { init(private); doPhase(public, true) }.generateSecret()
 
     private fun gcm(mode: Int, key: ByteArray, nonce: ByteArray, data: ByteArray): ByteArray =

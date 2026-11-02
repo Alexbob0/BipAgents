@@ -505,10 +505,15 @@ pub struct DeviceRequest {
     /// once, in the same environment, so the phone isn't notified twice (audit 2026-10-27, 20). Older apps omit it.
     #[serde(default)]
     pub previous: Option<String>,
+    /// the phone's public key for sealed notifications (push.rs seal.rs: P-256, uncompressed, base64): its pushes then
+    /// carry the words in `enc`, a neutral line in clear. Each registration gives it again; without it, none is kept.
+    #[serde(default)]
+    pub push_key: Option<String>,
 }
 impl Validate for DeviceRequest {
     fn validate(&self, errors: &mut Vec<FieldError>) {
         check_max_len(errors, "previous", self.previous.as_deref(), 600);
+        check_max_len(errors, "push_key", self.push_key.as_deref(), 200);
     }
 }
 
@@ -801,7 +806,18 @@ async fn register_device(State(state): State<AppState>, Json(body): Json<DeviceR
     if !unknown.is_empty() {
         return Err(HttpError::json(400, json!({"error": "unknown agent_ids", "agent_ids": unknown})));
     }
-    let mut device = state.store.upsert_device(&token, &environment, &agent_ids).await?;
+    let push_key = match body.push_key.as_deref().map(str::trim).filter(|k| !k.is_empty()) {
+        Some(given) => {
+            let raw = crate::push::seal::push_key(given).map_err(|e| HttpError::new(400, e))?;
+            Some(base64::engine::general_purpose::STANDARD.encode(raw))
+        }
+        None => None,
+    };
+    let mut device = state.store.upsert_device_keyed(&token, &environment, &agent_ids, push_key.as_deref()).await?;
+    // the key is the phone's own business: the answer only says its pushes are sealed now
+    if device.remove("push_key").is_some() {
+        device.insert("sealed".into(), Value::Bool(true));
+    }
     tracing::info!(token = %redact6(&token), env = %environment, agents = ?J(&agent_ids), "device registered");
     if let Some(previous) = previous_token(body.previous.as_deref(), &environment).filter(|p| *p != token) {
         // the same phone's former token: forgotten now rather than told too until its push fails
@@ -1409,7 +1425,7 @@ async fn health(State(state): State<AppState>) -> ApiResult<Response> {
         // The space encrypted at rest (space.rs): « on » or « off » (a locked bridge answers « locked » itself).
         "space": crate::space::health_state(),
         // What this bridge offers that the Python one doesn't (the apps hide the rest).
-        "features": ["agent_groups", "files_kept", "calendar", "health_categories", "contacts", "time_zone", "message_search", "agent_templates", "agent_notify", "agent_queue"],
+        "features": ["agent_groups", "files_kept", "calendar", "health_categories", "contacts", "time_zone", "message_search", "agent_templates", "agent_notify", "agent_queue", "push_seal"],
     });
     // The config was broken at start and its last good copy put back (config.rs): {at, broken}, for the app and the
     // seat agent to tell.
