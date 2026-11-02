@@ -15,7 +15,7 @@
 //!
 //! Port of `bridge/bipbridge/agent_tools.py` (owner group: tools-knowledge).
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
 use std::io::{Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -32,6 +32,7 @@ use indexmap::IndexMap;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
+use crate::agents_admin::pyyaml::Yaml;
 use crate::agents_admin::Run;
 use crate::app::AppState;
 use crate::config::{AgentConfig, Config, SharedConfig};
@@ -593,24 +594,18 @@ pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow
         tracing::warn!(agent = %agent.name, error = %last_chars(&exc.to_string(), 200), "Link tools not registered");
         false
     });
-    // What its kind keeps in view, the rest behind Hermes' tool search (tool_diet.rs): after the entries above, so
-    // the bridge tools it keeps direct are the ones it has now.
-    let diet = crate::tool_diet::apply(config, agent).unwrap_or_else(|exc| {
-        tracing::warn!(agent = %agent.name, error = %last_chars(&exc.to_string(), 200), "tools in view not set");
+    // What the bridge decides in its profile (profile_files::reconcile): its kind's tools in view (tool_diet.rs,
+    // after the entries above, so the bridge tools it keeps direct are the ones it has now), the providers EUrouter
+    // tries first (model_route.rs), the thinking level the person chose or GLM's « low » (after the commands above).
+    let reconciled = crate::profile_files::reconcile(config, agent).unwrap_or_else(|exc| {
+        tracing::warn!(agent = %agent.name, error = %last_chars(&exc.to_string(), 200), "profile settings not brought up to date");
         false
     });
-    // The providers EUrouter tries first (model_route.rs): at each start, the migration of existing agents too.
-    let routed = crate::model_route::apply(config, agent).unwrap_or_else(|exc| {
-        tracing::warn!(agent = %agent.name, error = %last_chars(&exc.to_string(), 200), "model provider routing not set");
-        false
-    });
-    // The thinking level the person chose, or GLM's « low », after the `hermes config set` above (agents_admin.rs).
-    let thinking = crate::agents_admin::heal_thinking_of(config, agent);
-    Ok(changed || paying || accounts || connecting || handing || link || diet || routed || thinking)
+    Ok(changed || paying || accounts || connecting || handing || link || reconciled)
 }
 
 /// `register` with the tools' URL given (tests: a later version of the tools).
-pub async fn register_at(config: &Config, agent: &AgentConfig, run: &Run, url: &str) -> anyhow::Result<bool> {
+pub async fn register_at(config: &Config, agent: &AgentConfig, _run: &Run, url: &str) -> anyhow::Result<bool> {
     let Some(folder) = shares::profile_dir(config, agent) else { return Ok(false) };
     if !folder.is_dir() {
         return Ok(false);
@@ -645,29 +640,29 @@ pub async fn register_at(config: &Config, agent: &AgentConfig, run: &Run, url: &
         return Ok(false);
     }
     let token = if known { current } else { py::token_urlsafe(32) };
-    // the profiles' folder is <home>/profiles/<name>
-    let home = folder.parent().and_then(Path::parent).map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
-    let env: BTreeMap<String, String> = [("HERMES_HOME".to_string(), home)].into_iter().collect();
-    let base = vec![config.hermes.bin.clone(), "-p".into(), agent.name.clone(), "config".into(), "set".into()];
-    let with = |key: String, value: String| {
-        let mut args = base.clone();
-        args.extend([key, value]);
-        args
-    };
-    if files {
-        let name = crate::sandbox::SERVER_NAME;
-        run(with(format!("mcp_servers.{name}.url"), crate::sandbox::tools_url(config)), env.clone()).await?;
-        run(with(format!("mcp_servers.{name}.headers.Authorization"), format!("Bearer {token}")), env.clone()).await?;
-        run(with(format!("mcp_servers.{name}.trust"), "untrusted".into()), env.clone()).await?;
-        tracing::info!(agent = %agent.name, "file tools registered (writes and deletes approved by the person)");
-        if same {
-            return Ok(true);
+    let bearer = Yaml::str(format!("Bearer {token}"));
+    // written straight into its config.yaml (profile_files.rs), as `hermes config set mcp_servers.<…>` would
+    crate::profile_files::edit(&folder.join("config.yaml"), |data| {
+        if files {
+            let entry = [
+                ("url", Yaml::str(crate::sandbox::tools_url(config))),
+                ("headers.Authorization", bearer.clone()),
+                ("trust", Yaml::str("untrusted")),
+            ];
+            crate::profile_files::set_server(data, crate::sandbox::SERVER_NAME, Some(&entry));
         }
+        if !same {
+            let entry =
+                [("url", Yaml::str(url)), ("headers.Authorization", bearer), ("timeout", Yaml::Int(TOOL_TIMEOUT.into()))];
+            crate::profile_files::set_server(data, SERVER_NAME, Some(&entry));
+        }
+    })?;
+    if files {
+        tracing::info!(agent = %agent.name, "file tools registered (writes and deletes approved by the person)");
     }
-    run(with(format!("mcp_servers.{SERVER_NAME}.url"), url.to_string()), env.clone()).await?;
-    run(with(format!("mcp_servers.{SERVER_NAME}.headers.Authorization"), format!("Bearer {token}")), env.clone())
-        .await?;
-    run(with(format!("mcp_servers.{SERVER_NAME}.timeout"), TOOL_TIMEOUT.to_string()), env).await?;
+    if same {
+        return Ok(true);
+    }
     keep_token(config, &agent.name, Some(digest(&token)))?;
     tracing::info!(agent = %agent.name, "agent tools registered");
     Ok(true)

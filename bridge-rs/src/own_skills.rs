@@ -192,42 +192,39 @@ pub fn set_enabled(profile: &Path, changes: &IndexMap<String, bool>) -> anyhow::
     if !unknown.is_empty() {
         return Err(LookupError(unknown.into_iter().cloned().collect::<Vec<_>>().join(", ")).into());
     }
-    let mut data = config(profile);
-    let mut off: Vec<String> = disabled(&data).into_iter().filter(|name| changes.get(name) != Some(&true)).collect();
     let sorted: BTreeMap<&String, &bool> = changes.iter().collect();
-    for (name, on) in sorted {
-        if !*on && !off.contains(name) {
-            off.push(name.clone());
+    write_disabled(profile, |off| {
+        off.retain(|name| changes.get(name) != Some(&true));
+        for (name, on) in sorted {
+            if !*on && !off.contains(name) {
+                off.push(name.clone());
+            }
         }
-    }
-    let mut section = match data.get("skills") {
-        Some(s @ Yaml::Map(_)) => s.clone(),
-        _ => Yaml::map(),
-    };
-    section.insert("disabled", Yaml::Seq(off.into_iter().map(Yaml::Str).collect()));
-    data.insert("skills", section);
-    std::fs::write(profile.join("config.yaml"), pyyaml::dump(&data))?;
+    })
+}
+
+/// The profile's `skills.disabled` changed by `change`.
+fn write_disabled(profile: &Path, change: impl FnOnce(&mut Vec<String>)) -> anyhow::Result<()> {
+    crate::profile_files::edit(&profile.join("config.yaml"), |data| {
+        let mut off = disabled(data);
+        change(&mut off);
+        if let Some(section) = data.section("skills") {
+            section.insert("disabled", Yaml::Seq(off.into_iter().map(Yaml::Str).collect()));
+        }
+    })?;
     Ok(())
 }
 
 /// Names listed as switched off in the profile's `skills.disabled` before their skills exist (an import writes them
 /// off: they are never on, not even for a moment).
 pub fn disable(profile: &Path, names: &[String]) -> anyhow::Result<()> {
-    let mut data = config(profile);
-    let mut off = disabled(&data);
-    for name in names {
-        if !off.contains(name) {
-            off.push(name.clone());
+    write_disabled(profile, |off| {
+        for name in names {
+            if !off.contains(name) {
+                off.push(name.clone());
+            }
         }
-    }
-    let mut section = match data.get("skills") {
-        Some(s @ Yaml::Map(_)) => s.clone(),
-        _ => Yaml::map(),
-    };
-    section.insert("disabled", Yaml::Seq(off.into_iter().map(Yaml::Str).collect()));
-    data.insert("skills", section);
-    std::fs::write(profile.join("config.yaml"), pyyaml::dump(&data))?;
-    Ok(())
+    })
 }
 
 #[cfg(test)]

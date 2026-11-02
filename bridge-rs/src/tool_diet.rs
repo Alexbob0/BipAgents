@@ -557,14 +557,6 @@ pub fn current(config: &Config, agent: &AgentConfig) -> Option<Diet> {
     Some(out)
 }
 
-/// `parent[key]`, made a dict when missing or not one.
-fn map_at<'a>(parent: &'a mut Yaml, key: &str) -> Option<&'a mut Yaml> {
-    if !parent.get(key).is_some_and(Yaml::is_map) {
-        parent.insert(key, Yaml::map());
-    }
-    parent.get_mut(key)
-}
-
 fn strings(items: &[String]) -> Yaml {
     Yaml::Seq(items.iter().map(|s| Yaml::str(s.clone())).collect())
 }
@@ -573,8 +565,8 @@ fn strings(items: &[String]) -> Yaml {
 pub fn with_diet(data: &Yaml, diet: &Diet) -> Option<Yaml> {
     let mut data = if data.is_map() { data.clone() } else { Yaml::map() };
     let before = data.clone();
-    let tools = map_at(&mut data, "tools")?;
-    let search = map_at(tools, "tool_search")?;
+    let tools = data.section("tools")?;
+    let search = tools.section("tool_search")?;
     let theirs = match search.get("defer") {
         Some(Yaml::Seq(items)) => !items.iter().any(|i| i.as_str() == Some(MARK)),
         Some(Yaml::Null) | None => false,
@@ -583,26 +575,26 @@ pub fn with_diet(data: &Yaml, diet: &Diet) -> Option<Yaml> {
     if !theirs {
         search.insert("defer", strings(&diet.defer));
     }
-    let skills = map_at(&mut data, "skills")?;
+    let skills = data.section("skills")?;
     skills.insert("compact_categories", strings(&diet.compact_skills));
     // Hermes has no iteration cap by default (`agent.max_turns` unset: unlimited, 267 model calls in one turn on
     // 2026-10-27): one, unless the profile has its own. The bridge's brake (loop_brake.rs) stops loops much earlier;
     // this is for the runs it doesn't follow (routines).
-    let agent = map_at(&mut data, "agent")?;
+    let agent = data.section("agent")?;
     if agent.get("max_turns").is_none_or(|v| *v == Yaml::Null) {
         agent.insert("max_turns", Yaml::Int(MAX_TURNS as i128));
     }
     // A routine the agent makes in a conversation reports there (cronwatch.rs): Hermes (patch 0019) keeps the
     // conversation on the job and tells the model so, instead of « local-only: set deliver='telegram' », unless the
     // profile says otherwise.
-    let cron = map_at(&mut data, "cron")?;
+    let cron = data.section("cron")?;
     if cron.get("session_reports").is_none_or(|v| *v == Yaml::Null) {
         cron.insert("session_reports", Yaml::Bool(true));
     }
     with_clarify(&mut data);
     if let Some(Yaml::Map(_)) = data.get("mcp_servers").and_then(|s| s.get(BROWSER_SERVER)) {
         let entry = data.get_mut("mcp_servers").and_then(|s| s.get_mut(BROWSER_SERVER))?;
-        let filter = map_at(entry, "tools")?;
+        let filter = entry.section("tools")?;
         filter.insert("resources", Yaml::Bool(false));
         filter.insert("prompts", Yaml::Bool(false));
     }
@@ -623,7 +615,7 @@ pub fn with_diet(data: &Yaml, diet: &Diet) -> Option<Yaml> {
 /// `restore_agent_tool_prefix`) and a Bot Chat rebuilds its prompt once (its capability epoch covers
 /// `platform_toolsets`).
 pub fn with_clarify(data: &mut Yaml) {
-    let Some(platforms) = map_at(data, "platform_toolsets") else { return };
+    let Some(platforms) = data.section("platform_toolsets") else { return };
     match platforms.get_mut(API_PLATFORM) {
         Some(Yaml::Seq(items)) => {
             if !items.iter().any(|i| i.as_str() == Some(CLARIFY)) {
@@ -638,37 +630,6 @@ pub fn with_clarify(data: &mut Yaml) {
 pub const API_PLATFORM: &str = "api_server";
 pub const API_DEFAULT_TOOLSET: &str = "hermes-api-server";
 pub const CLARIFY: &str = "clarify";
-
-fn write(path: &Path, diet: &Diet) -> anyhow::Result<bool> {
-    let data = crate::agents_admin::load_or_empty(path)?;
-    match with_diet(&data, diet) {
-        Some(changed) => {
-            crate::agents_admin::replace_yaml(path, &changed)?;
-            Ok(true)
-        }
-        None => Ok(false),
-    }
-}
-
-/// The agent's diet written in its profile; whether it changed (Hermes reads it again from the next conversation).
-pub fn apply(config: &Config, agent: &AgentConfig) -> anyhow::Result<bool> {
-    let Some(folder) = profile_folder(config, agent) else { return Ok(false) };
-    let Some(diet) = current(config, agent) else { return Ok(false) };
-    let changed = write(&folder.join("config.yaml"), &diet)?;
-    if changed {
-        tracing::info!(target: "bipbridge::agents", agent = %agent.name, kind = %diet.kind, "tools in view set for its kind");
-    }
-    Ok(changed)
-}
-
-/// Every agent's (the vault's items changed: its tools follow who holds one).
-pub fn apply_all(config: &Config) {
-    for agent in config.agents.values() {
-        if let Err(exc) = apply(config, agent) {
-            tracing::warn!(target: "bipbridge::agents", agent = %agent.name, error = %exc, "tools in view not set");
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {

@@ -122,6 +122,14 @@ impl Yaml {
         self.get_mut(key)
     }
 
+    /// `self[key]`, made an empty dict when missing or not a dict (None when `self` is no dict).
+    pub fn section(&mut self, key: &str) -> Option<&mut Yaml> {
+        if !self.get(key).is_some_and(Yaml::is_map) {
+            self.insert(key, Yaml::map());
+        }
+        self.get_mut(key)
+    }
+
     /// Python's truthiness.
     pub fn truthy(&self) -> bool {
         match self {

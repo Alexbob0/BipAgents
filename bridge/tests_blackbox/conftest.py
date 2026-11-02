@@ -105,18 +105,24 @@ def profile(home: Path, name: str) -> Path:
     return folder
 
 
+def servers(folder: Path) -> dict:
+    """The `mcp_servers` of a profile's config.yaml (the bridge writes its entries there itself)."""
+    import yaml
+    path = folder / "config.yaml"
+    data = yaml.safe_load(path.read_text()) if path.exists() else None
+    return (data or {}).get("mcp_servers") or {}
+
+
 def wait_registered(bridge: Bridge, agents) -> None:
-    """At start, the bridge gives each agent it manages its tools (three `hermes config set`, in the background, then
-    the card payment and vault account entries where they are offered): waited for, so a test's own commands come
-    after them."""
+    """At start, the bridge gives each agent it manages its tools (its entry written into the profile, in the
+    background, then the card payment and vault account entries where they are offered): waited for, so a test's
+    own commands and token come after them."""
     from bbkit.servers import wait_until
 
     def done() -> bool:
-        seen = {args[1] for args in bridge.commands.of("hermes")
-                if len(args) > 4 and args[0] == "-p" and args[4] == "mcp_servers.bipagents.timeout"}
-        tokens = bridge.state_dir / "agent-tools.json"   # written after the commands: a test's own token comes after
+        tokens = bridge.state_dir / "agent-tools.json"   # written after the entry: a test's own token comes after
         kept = set(json.loads(tokens.read_text())["tokens"]) if tokens.exists() else set()
-        return set(agents) <= seen and set(agents) <= kept
+        return set(agents) <= kept
     assert wait_until(done, timeout=15), bridge.commands.of("hermes")
     # The other entries follow the `bipagents` one: done when no new command came for a while (a slow runner).
     count = [len(bridge.commands.of("hermes")), time.monotonic()]
