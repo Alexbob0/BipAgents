@@ -62,7 +62,7 @@ def test_a_fix_that_does_not_fit_changes_nothing(tmp_path, monkeypatch):
     assert (checkout / "cron.py").read_text() == "b = 7\n"
 
 
-def held_update(tmp_path, monkeypatch, argv):
+def update_run(tmp_path, monkeypatch, argv):
     """`hermes-update` on a Hermes 12 commits behind, with what it would run recorded instead of run."""
     checkout, patches = repo_with_patches(tmp_path)
     monkeypatch.setenv("HERMES_INSTALL_DIR", str(checkout))
@@ -87,16 +87,19 @@ def held_update(tmp_path, monkeypatch, argv):
     return update.main(argv), ran
 
 
-def test_an_update_past_the_supported_hermes_is_held(tmp_path, monkeypatch, capsys):
-    """2026-11-01: Hermes 0.22.3+ changed approvals; even a scheduled update (--yes) stays on the pinned version."""
-    code, ran = held_update(tmp_path, monkeypatch, ["--yes"])
+def test_an_update_follows_hermes_and_parks_what_stays_changed(tmp_path, monkeypatch):
+    """No hold since v0.22.5 is the pin (2026-11-01): `hermes update` runs, with --keep-stash so an older BipAgents'
+    leftover never comes back on the new version, and our patches go back on after."""
+    monkeypatch.setattr(update, "restart", lambda runner: None)
+    monkeypatch.setattr(update, "check_agents", lambda agents, expect_clarify: {})
+    code, ran = update_run(tmp_path, monkeypatch, ["--yes"])
+    assert ["update", "--yes", "--no-gateway-restart", "--keep-stash"] in [c[1:] for c in ran if isinstance(c, list)]
     assert code == 0
-    assert [c for c in ran if c[:1] == ["update"] and "--check" not in c] == []
-    assert "Nothing was changed" in capsys.readouterr().out
 
 
-def test_any_version_goes_past_the_hold(tmp_path, monkeypatch):
+def test_without_yes_it_asks_first(tmp_path, monkeypatch):
     asked = []
     monkeypatch.setattr(update, "confirm", lambda question: asked.append(question) or False)
-    code, ran = held_update(tmp_path, monkeypatch, ["--any-version"])
-    assert code == 1 and len(asked) == 1   # past the hold: the usual question, answered no
+    code, ran = update_run(tmp_path, monkeypatch, [])
+    assert code == 1 and len(asked) == 1
+    assert not [c for c in ran if isinstance(c, list) and "--keep-stash" in c]

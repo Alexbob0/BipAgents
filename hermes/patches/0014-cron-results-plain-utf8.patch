@@ -1,17 +1,20 @@
---- a/tools/cronjob_tools.py
-+++ b/tools/cronjob_tools.py
-@@ -68,7 +68,10 @@
- 
- 
- def _dumps(payload: dict[str, Any]) -> str:
--    return json.dumps(payload, indent=2)
-+    # ensure_ascii=False: the model reads this result. With escapes it sees its own accented
-+    # words come back as backslash-u sequences, takes them for a broken encoding and starts
-+    # writing its prompts without accents.
-+    return json.dumps(payload, indent=2, ensure_ascii=False)
- 
- 
- def _notify_provider_jobs_changed_safe() -> None:
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Alexbob0 <190955252+Alexbob0@users.noreply.github.com>
+Date: Sun, 1 Nov 2026 10:07:40 +0100
+Subject: Routine tool results in plain UTF-8
+
+BipAgents patch, documented in hermes/patches/README.md of the BipAgents repository.
+
+Bip-Patch: 0014-cron-results-plain-utf8
+---
+ tests/tools/test_cronjob_accents.py | 46 +++++++++++++++++++++++++++++
+ tools/cronjob_tools.py              |  5 +++-
+ 2 files changed, 50 insertions(+), 1 deletion(-)
+ create mode 100644 tests/tools/test_cronjob_accents.py
+
+diff --git a/tests/tools/test_cronjob_accents.py b/tests/tools/test_cronjob_accents.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..7568374efc00841abb1edcbbee4770ca565ee049
 --- /dev/null
 +++ b/tests/tools/test_cronjob_accents.py
 @@ -0,0 +1,46 @@
@@ -61,3 +64,19 @@
 +
 +    listed = cronjob(action="list")
 +    assert "\\u00" not in listed and "Routine du soir détendue" in listed
+diff --git a/tools/cronjob_tools.py b/tools/cronjob_tools.py
+index 625b7d970bc66c4d3221dc2eb270b15d948d622a..226695865f556de9fc65f4f8d1055b2c1bc3f159 100644
+--- a/tools/cronjob_tools.py
++++ b/tools/cronjob_tools.py
+@@ -68,7 +68,10 @@ from tools.registry import registry, tool_error
+ 
+ 
+ def _dumps(payload: dict[str, Any]) -> str:
+-    return json.dumps(payload, indent=2)
++    # ensure_ascii=False: the model reads this result. With escapes it sees its own accented
++    # words come back as backslash-u sequences, takes them for a broken encoding and starts
++    # writing its prompts without accents.
++    return json.dumps(payload, indent=2, ensure_ascii=False)
+ 
+ 
+ def _notify_provider_jobs_changed_safe() -> None:

@@ -1,6 +1,20 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Alexbob0 <190955252+Alexbob0@users.noreply.github.com>
+Date: Sun, 1 Nov 2026 10:07:39 +0100
+Subject: MCP tool results: vault passwords scrubbed
+
+BipAgents patch, documented in hermes/patches/README.md of the BipAgents repository.
+
+Bip-Patch: 0013-mcp-results-vault-scrub
+---
+ tests/tools/test_mcp_vault_scrub.py | 85 +++++++++++++++++++++++++++++
+ tools/mcp_tool_handlers.py          | 52 +++++++++++++++++-
+ 2 files changed, 136 insertions(+), 1 deletion(-)
+ create mode 100644 tests/tools/test_mcp_vault_scrub.py
+
 diff --git a/tests/tools/test_mcp_vault_scrub.py b/tests/tools/test_mcp_vault_scrub.py
 new file mode 100644
-index 0000000000..77a0cf730f
+index 0000000000000000000000000000000000000000..00c105ac239ac7c3619018bb0a0adc2bc60b6814
 --- /dev/null
 +++ b/tests/tools/test_mcp_vault_scrub.py
 @@ -0,0 +1,85 @@
@@ -58,7 +72,7 @@ index 0000000000..77a0cf730f
 +        seen.append(asyncio.run(call()))
 +        return seen[-1]
 +
-+    async def call_tool(server, server_name, tool_name, args):
++    async def call_tool(server, server_name, tool_name, args, *rest, **kw):
 +        return result_of("the field holds hunter2-hunter2")
 +
 +    class Lock:
@@ -90,10 +104,10 @@ index 0000000000..77a0cf730f
 +    out = handlers._make_tool_handler("stealth", "execute_script", 30)({"script": "f.value"})
 +    assert "hunter2-hunter2" not in out and "«redacted-vault-secret»" in out
 diff --git a/tools/mcp_tool_handlers.py b/tools/mcp_tool_handlers.py
-index e5c4de2de0..2106079cfd 100644
+index b93fb3b03ea54d564cc17a2efb30d34a36c913e3..7c631220df5fe322bd1f5ae30c1147505a0a2d2c 100644
 --- a/tools/mcp_tool_handlers.py
 +++ b/tools/mcp_tool_handlers.py
-@@ -563,6 +563,56 @@ def _render_call_tool_result(result, server_name: str, image_paths: Optional[lis
+@@ -616,6 +616,56 @@ def _render_call_tool_result(result, server_name: str, image_paths: Optional[lis
          return json.dumps({"result": text_result}, ensure_ascii=False)
  
  
@@ -112,7 +126,7 @@ index e5c4de2de0..2106079cfd 100644
 +def _register_vault_logins() -> None:
 +    """Every login password of this profile's vault, registered with the vault redaction boundary
 +    (agent/redact.py), read again only when the vault file changes. A password typed into a page by someone else
-+    than ``browser_vault_fill`` in this process (an earlier run, the app's bridge creating an account) is covered too."""
++    than a ``browser_vault`` fill in this process (an earlier run, the app's bridge creating an account) is covered too."""
 +    try:
 +        from agent.redact import register_vault_redaction_value
 +        from agent.vault_store import get_vault_store
@@ -150,7 +164,7 @@ index e5c4de2de0..2106079cfd 100644
  def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float, *, native_images: bool = False):
      """Sync handler (``handler(args_dict, **kwargs)``) calling an MCP tool via the background loop. Always a JSON
      string, except with ``native_images`` (the registry handler the agent loop dispatches): a result carrying
-@@ -593,7 +643,7 @@ def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float, *,
+@@ -659,7 +709,7 @@ def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float, *,
              if getattr(server, "_mark_session_proven", None) is not None:  # round-trip done: transport healthy
                  server._mark_session_proven()
              image_paths.clear()
