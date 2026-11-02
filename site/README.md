@@ -14,7 +14,7 @@
   one then does oneself) opens in place (`#install` opens it) —, six questions that settle a purchase, the footer
   (store badges, company, links). On a phone, a bar at the bottom keeps the beta's button. Their own pages: `/demo/` (the app's own demo
   playing in a chat: five scenarios, `/demo/#<scenario>` opening on one, with the walk's map and the page kit's « Your runs » page inside the replies),
-  `/faq/` (every question), `/beta/` (the public beta: what it is, what testers get, what we ask, TestFlight and
+  `/faq/` (every question), `/status/` (the service status: the guichet's public `GET /v1/public-status`, read every minute; « Impossible de joindre le service » when the guichet itself doesn't answer; a local copy may read a mock with `?api=` on 127.0.0.1/localhost only), `/beta/` (the public beta: what it is, what testers get, what we ask, TestFlight and
   Google Play badges, its terms on kerfystudio.com `/beta/`; « Join the beta » is the main button everywhere, the
   Carnet section after the cards shows what the agents keep); `/install/` only sends to the home's `#install`. English at `/`, French, German and
   Spanish at `/fr/`, `/de/`, `/es/` (and `/fr/demo/`, `/fr/faq/`…).

@@ -1,0 +1,78 @@
+{
+  "page": {
+    "status": {
+      "title": "Service status — BipAgents",
+      "description": "Is BipAgents working right now? The live state of the service: your agents, AI answers, notifications, backups, and our messages when something goes wrong."
+    }
+  },
+  "foot": {
+    "status": "Service status"
+  },
+  "status": {
+    "kicker": "Service status",
+    "title": "Is BipAgents working?",
+    "loading": "Checking…",
+    "historyTitle": "Last 30 days",
+    "historyEmpty": "No incident in the last 30 days.",
+    "again": "Check again",
+    "js": {
+      "overall": {
+        "ok": "Everything works",
+        "degraded": "Some slowness",
+        "outage": "Outage in progress",
+        "unknown": "Everything works",
+        "unreachable": "We can't reach the service right now"
+      },
+      "explain": {
+        "ok": "Every part of the service answers normally.",
+        "degraded": "We know and we're on it. Nothing to do on your phone.",
+        "outage": "We know and we're fixing it. Nothing to do on your phone: your agents come back on their own.",
+        "unknown": "Every part of the service answers normally.",
+        "unreachable": "That is the status: the service itself isn't answering. Try again in a few minutes; if it lasts, write to support@bipagents.com."
+      },
+      "states": {
+        "ok": "Everything works",
+        "degraded": "Slowness",
+        "outage": "Outage in progress",
+        "unknown": "Not measured yet"
+      },
+      "parts": {
+        "places": {
+          "name": "Your agents",
+          "what": "The servers where your agents live"
+        },
+        "ai": {
+          "name": "AI answers",
+          "what": "The model your agents think with"
+        },
+        "guichet": {
+          "name": "Accounts and plans",
+          "what": "Signing in, subscriptions, a new agent"
+        },
+        "notifications": {
+          "name": "Notifications",
+          "what": "Alerts on your phone"
+        },
+        "backups": {
+          "name": "Backups",
+          "what": "Copies of your agents, every hour"
+        }
+      },
+      "servers": {
+        "ok": "Servers answering: {n} of {total}",
+        "slow": "Slow servers: {n} of {total}",
+        "down": "Servers down: {n} of {total}"
+      },
+      "noteTitle": "Message from the team",
+      "noteSince": "Since {since}",
+      "noteUpdated": "Since {since} · updated {updated}",
+      "levels": {
+        "info": "Information",
+        "degraded": "Slowness",
+        "outage": "Outage"
+      },
+      "checked": "Checked at {time}, every minute",
+      "tried": "Last try at {time}"
+    }
+  }
+}

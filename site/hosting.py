@@ -49,7 +49,7 @@ def csp(site: Path) -> str:
         "img-src 'self' data:",
         "font-src 'self'",
         "media-src 'self'",
-        "connect-src 'self' https://guichet.bipagents.com",  # /m/<id>: a shared model's preview
+        "connect-src 'self' https://guichet.bipagents.com",  # /m/<id>: a shared model's preview; /status/: the public status
         "frame-src 'self'",
         "worker-src 'self'",
         "object-src 'none'",
