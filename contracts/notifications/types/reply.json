@@ -1,0 +1,264 @@
+{
+  "$schema": "../schema.json",
+  "type": "reply",
+  "audit_row": 1,
+  "summary": "A followed run ended while nobody looked at it: the reply is ready.",
+  "producers": [
+    "runs.rs run end (~1267)",
+    "runs.rs loop brake (~1419, ~1563)",
+    "runs.rs rescue (~1931)",
+    "live_calls.rs:467 (call ended)",
+    "agent_shares.rs:1160 (agent shared by a relative)"
+  ],
+  "policy": {
+    "per_agent_switch": true
+  },
+  "v2": {
+    "t": "reply",
+    "c": "s:<lineage root of session_id> (main when it is the Bot Chat line)",
+    "m": "<Hermes message id of the reply>",
+    "loc_key": "notif.reply",
+    "collapse": "n",
+    "link": "bipagents://open?agent=vie&c=s:<root>&m=<id>&t=reply"
+  },
+  "known_bugs": [
+    "No message id: the apps find the message by its text or by the date (±120 s, MessageLocator).",
+    "reply_id lives 24 h in the bridge's memory and is lost on restart.",
+    "session_id is the segment at send time: after a compression the old segment opens and later messages look missing.",
+    "Sent at run.completed, possibly before Hermes wrote the row."
+  ],
+  "variants": [
+    {
+      "name": "previews_off",
+      "about": "Default install: generic body, the text is fetched by the phone.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "previews": false,
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_reply",
+          "args": {
+            "run_id": "run_1",
+            "text": "Voilà le résumé de ta journée.",
+            "session_id": "sess_1",
+            "reply_id": "r1"
+          }
+        }
+      },
+      "payload_v1": null,
+      "fcm_data": null,
+      "push": null,
+      "relay": {
+        "body": "Ta réponse est prête."
+      },
+      "expect": {
+        "screen": "conversation",
+        "conversation": "sess_1",
+        "message": "focus by reply text / date (MessageLocator)",
+        "ios": {
+          "shared_agent": false,
+          "needs_run_session": false,
+          "route": {
+            "route": "conversation",
+            "session": "sess_1",
+            "focus": true
+          },
+          "nse_fetch": "reply",
+          "presents_as_message": false
+        },
+        "android": {
+          "kind": "agent",
+          "open": {
+            "page": "conversation",
+            "session": "sess_1",
+            "focus": true
+          },
+          "channel": "messages",
+          "notification_key": "run_1",
+          "actions": [
+            "reply"
+          ],
+          "missed_reply": true,
+          "presents_as_message": false,
+          "fetch": "reply"
+        }
+      }
+    },
+    {
+      "name": "previews_on",
+      "about": "[push] previews = true: the first words in the alert.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "previews": true,
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_reply",
+          "args": {
+            "run_id": "run_1",
+            "text": "Voilà le résumé de ta journée.",
+            "session_id": "sess_1",
+            "reply_id": "r1"
+          }
+        }
+      },
+      "payload_v1": null,
+      "fcm_data": null,
+      "push": null,
+      "relay": {
+        "body": "Nouveau message"
+      },
+      "expect": {
+        "screen": "conversation",
+        "conversation": "sess_1",
+        "message": "focus by reply text / date (MessageLocator)",
+        "ios": {
+          "shared_agent": false,
+          "needs_run_session": false,
+          "route": {
+            "route": "conversation",
+            "session": "sess_1",
+            "focus": true
+          },
+          "nse_fetch": "reply",
+          "presents_as_message": false
+        },
+        "android": {
+          "kind": "agent",
+          "open": {
+            "page": "conversation",
+            "session": "sess_1",
+            "focus": true
+          },
+          "channel": "messages",
+          "notification_key": "run_1",
+          "actions": [
+            "reply"
+          ],
+          "missed_reply": true,
+          "presents_as_message": false,
+          "fetch": "reply"
+        }
+      }
+    },
+    {
+      "name": "no_session",
+      "about": "A run whose session the bridge did not know: iOS asks Hermes for the run's session first.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "previews": false,
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_reply",
+          "args": {
+            "run_id": "run_2",
+            "text": "C'est fait.",
+            "session_id": null,
+            "reply_id": "r2"
+          }
+        }
+      },
+      "payload_v1": null,
+      "fcm_data": null,
+      "push": null,
+      "relay": {
+        "body": "Ta réponse est prête."
+      },
+      "expect": {
+        "screen": "conversation",
+        "conversation": "the run's session (iOS asks Hermes), else the agent's main thread",
+        "message": "focus by reply text / date",
+        "ios": {
+          "shared_agent": false,
+          "needs_run_session": true,
+          "route": {
+            "route": "main_thread",
+            "focus": true,
+            "or_inbox": false
+          },
+          "nse_fetch": "reply",
+          "presents_as_message": false
+        },
+        "android": {
+          "kind": "agent",
+          "open": {
+            "page": "conversation",
+            "session": null,
+            "focus": true
+          },
+          "channel": "messages",
+          "notification_key": "run_2",
+          "actions": [
+            "reply"
+          ],
+          "missed_reply": true,
+          "presents_as_message": false,
+          "fetch": "reply"
+        }
+      }
+    },
+    {
+      "name": "shared_agent",
+      "about": "A relative's agent shared with this person (`<agent>__<household>`).",
+      "bridge": {
+        "agent": "cuisine__alex",
+        "context": {
+          "title": "Vie",
+          "previews": false,
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_reply",
+          "args": {
+            "run_id": "run_3",
+            "text": "Le dîner est prêt.",
+            "session_id": "conv_1",
+            "reply_id": "r3"
+          }
+        }
+      },
+      "payload_v1": null,
+      "fcm_data": null,
+      "push": null,
+      "relay": {
+        "body": "Ta réponse est prête."
+      },
+      "expect": {
+        "screen": "shared_conversation",
+        "conversation": "conv_1",
+        "message": "end of the conversation",
+        "ios": {
+          "shared_agent": true,
+          "needs_run_session": false,
+          "route": {
+            "route": "shared",
+            "session": "conv_1"
+          },
+          "nse_fetch": "none",
+          "presents_as_message": false
+        },
+        "android": {
+          "kind": "shared",
+          "open": {
+            "page": "shared",
+            "session": "conv_1"
+          },
+          "channel": "messages",
+          "notification_key": "run_3",
+          "actions": [],
+          "missed_reply": false,
+          "presents_as_message": false,
+          "fetch": "none"
+        }
+      }
+    }
+  ]
+}

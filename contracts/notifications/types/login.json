@@ -1,0 +1,131 @@
+{
+  "$schema": "../schema.json",
+  "type": "login",
+  "audit_row": 14,
+  "summary": "An agent wants to create an account on a website with a password of the vault.",
+  "producers": [
+    "vault_logins.rs:~447 -> notify_login_request"
+  ],
+  "policy": {
+    "per_agent_switch": false
+  },
+  "v2": {
+    "t": "login",
+    "c": "none",
+    "m": null,
+    "loc_key": "notif.login",
+    "collapse": "n",
+    "link": "bipagents://open?agent=vie&n=<journal id>&t=login"
+  },
+  "known_bugs": [
+    "iOS reads it as a site request (same Boîte route); the relay drops the body."
+  ],
+  "variants": [
+    {
+      "name": "previews_off",
+      "about": "Login request.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "previews": false,
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_login_request",
+          "args": {
+            "host": "exemple.com",
+            "id": "login_1"
+          }
+        }
+      },
+      "payload_v1": null,
+      "fcm_data": null,
+      "push": null,
+      "relay": {
+        "body": "Nouveau message"
+      },
+      "expect": {
+        "screen": "boite",
+        "conversation": null,
+        "message": "the card",
+        "ios": {
+          "shared_agent": false,
+          "needs_run_session": false,
+          "route": {
+            "route": "boite"
+          },
+          "nse_fetch": "none",
+          "presents_as_message": true
+        },
+        "android": {
+          "kind": "agent",
+          "open": {
+            "page": "inbox"
+          },
+          "channel": "messages",
+          "notification_key": "session:vault",
+          "actions": [
+            "reply"
+          ],
+          "missed_reply": false,
+          "presents_as_message": true,
+          "fetch": "none"
+        }
+      }
+    },
+    {
+      "name": "previews_on_de",
+      "about": "Login request, previews on, a German agent.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "previews": true,
+          "lang": "de"
+        },
+        "input": {
+          "fn": "notify_login_request",
+          "args": {
+            "host": "exemple.com",
+            "id": "login_1"
+          }
+        }
+      },
+      "payload_v1": null,
+      "fcm_data": null,
+      "push": null,
+      "relay": {
+        "body": "Nouveau message"
+      },
+      "expect": {
+        "screen": "boite",
+        "conversation": null,
+        "message": "the card",
+        "ios": {
+          "shared_agent": false,
+          "needs_run_session": false,
+          "route": {
+            "route": "boite"
+          },
+          "nse_fetch": "none",
+          "presents_as_message": true
+        },
+        "android": {
+          "kind": "agent",
+          "open": {
+            "page": "inbox"
+          },
+          "channel": "messages",
+          "notification_key": "session:vault",
+          "actions": [
+            "reply"
+          ],
+          "missed_reply": false,
+          "presents_as_message": true,
+          "fetch": "none"
+        }
+      }
+    }
+  ]
+}

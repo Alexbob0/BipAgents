@@ -1,0 +1,405 @@
+{
+  "$schema": "../schema.json",
+  "type": "approval",
+  "audit_row": 6,
+  "summary": "Hermes waits for an approval (a command, a tool).",
+  "producers": [
+    "runs.rs push_unseen (~973), ~2060 -> notify_approval_values",
+    "agent_shares.rs:1141 (agent shared by a relative)",
+    "rooms.rs (room_id: a group discussion's turn)"
+  ],
+  "policy": {
+    "per_agent_switch": false
+  },
+  "v2": {
+    "t": "approval",
+    "c": "s:<lineage root> | r:<room> | x:<shared conv>",
+    "m": null,
+    "loc_key": "notif.approval",
+    "collapse": "request_id",
+    "link": "bipagents://open?agent=vie&c=s:<root>&n=<journal id>&t=approval"
+  },
+  "known_bugs": [
+    "Android: two approvals of one run share a notification id (hash of run_id): the second replaces the first.",
+    "Nothing removes the notification when the approval is answered elsewhere."
+  ],
+  "variants": [
+    {
+      "name": "previews_off",
+      "about": "Approval in a conversation.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "previews": false,
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_approval_values",
+          "args": {
+            "run_id": "run_5",
+            "request_id": "req_1",
+            "choices": [
+              "once",
+              "session",
+              "always",
+              "deny"
+            ],
+            "command": "pip install openpyxl",
+            "session_id": "sess_1",
+            "room_id": null
+          }
+        }
+      },
+      "payload_v1": null,
+      "fcm_data": null,
+      "push": null,
+      "relay": {
+        "body": "Approbation requise"
+      },
+      "expect": {
+        "screen": "conversation",
+        "conversation": "sess_1",
+        "message": "the approval card at the end (run re-attached)",
+        "ios": {
+          "shared_agent": false,
+          "needs_run_session": false,
+          "route": {
+            "route": "reattach",
+            "run": "run_5",
+            "session": "sess_1"
+          },
+          "nse_fetch": "approval",
+          "presents_as_message": false,
+          "actions": {
+            "APPROVE_ONCE": {
+              "route": "approve",
+              "run": "run_5",
+              "choice": "once"
+            },
+            "DENY": {
+              "route": "approve",
+              "run": "run_5",
+              "choice": "deny"
+            }
+          }
+        },
+        "android": {
+          "kind": "agent",
+          "open": {
+            "page": "conversation",
+            "session": "sess_1",
+            "focus": false
+          },
+          "channel": "approvals",
+          "notification_key": "run_5",
+          "actions": [
+            "once",
+            "deny"
+          ],
+          "missed_reply": false,
+          "presents_as_message": false,
+          "fetch": "approval"
+        }
+      }
+    },
+    {
+      "name": "previews_on",
+      "about": "Approval with previews: « Approbation requise : <command> » in the agent's language.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "previews": true,
+          "lang": "en"
+        },
+        "input": {
+          "fn": "notify_approval_values",
+          "args": {
+            "run_id": "run_5",
+            "request_id": "req_1",
+            "choices": [
+              "once",
+              "deny"
+            ],
+            "command": "pip install openpyxl",
+            "session_id": "sess_1",
+            "room_id": null
+          }
+        }
+      },
+      "payload_v1": null,
+      "fcm_data": null,
+      "push": null,
+      "relay": {
+        "body": "Nouveau message"
+      },
+      "expect": {
+        "screen": "conversation",
+        "conversation": "sess_1",
+        "message": "the approval card at the end (run re-attached)",
+        "ios": {
+          "shared_agent": false,
+          "needs_run_session": false,
+          "route": {
+            "route": "reattach",
+            "run": "run_5",
+            "session": "sess_1"
+          },
+          "nse_fetch": "approval",
+          "presents_as_message": false,
+          "actions": {
+            "APPROVE_ONCE": {
+              "route": "approve",
+              "run": "run_5",
+              "choice": "once"
+            },
+            "DENY": {
+              "route": "approve",
+              "run": "run_5",
+              "choice": "deny"
+            }
+          }
+        },
+        "android": {
+          "kind": "agent",
+          "open": {
+            "page": "conversation",
+            "session": "sess_1",
+            "focus": false
+          },
+          "channel": "approvals",
+          "notification_key": "run_5",
+          "actions": [
+            "once",
+            "deny"
+          ],
+          "missed_reply": false,
+          "presents_as_message": false,
+          "fetch": "approval"
+        }
+      }
+    },
+    {
+      "name": "room",
+      "about": "Approval of a group discussion's turn: the room opens.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "previews": false,
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_approval_values",
+          "args": {
+            "run_id": "run_5",
+            "request_id": "req_2",
+            "choices": null,
+            "command": null,
+            "session_id": null,
+            "room_id": "room_1"
+          }
+        }
+      },
+      "payload_v1": null,
+      "fcm_data": null,
+      "push": null,
+      "relay": {
+        "body": "Approbation requise"
+      },
+      "expect": {
+        "screen": "room",
+        "conversation": "room_1",
+        "message": "the approval card in the room",
+        "ios": {
+          "shared_agent": false,
+          "needs_run_session": false,
+          "route": {
+            "route": "room",
+            "room": "room_1"
+          },
+          "nse_fetch": "approval",
+          "presents_as_message": false,
+          "actions": {
+            "APPROVE_ONCE": {
+              "route": "approve",
+              "run": "run_5",
+              "choice": "once"
+            },
+            "DENY": {
+              "route": "approve",
+              "run": "run_5",
+              "choice": "deny"
+            }
+          }
+        },
+        "android": {
+          "kind": "agent",
+          "open": {
+            "page": "room",
+            "room": "room_1"
+          },
+          "channel": "approvals",
+          "notification_key": "run_5",
+          "actions": [
+            "once",
+            "deny"
+          ],
+          "missed_reply": false,
+          "presents_as_message": false,
+          "fetch": "approval"
+        }
+      }
+    },
+    {
+      "name": "no_session",
+      "about": "Older producers without the session: iOS asks Hermes for the run's session.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "previews": false,
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_approval_values",
+          "args": {
+            "run_id": "run_5",
+            "request_id": null,
+            "choices": null,
+            "command": null,
+            "session_id": null,
+            "room_id": null
+          }
+        }
+      },
+      "payload_v1": null,
+      "fcm_data": null,
+      "push": null,
+      "relay": {
+        "body": "Approbation requise"
+      },
+      "expect": {
+        "screen": "conversation",
+        "conversation": "the run's session (iOS asks Hermes), else the agent's main thread",
+        "message": "the approval card",
+        "ios": {
+          "shared_agent": false,
+          "needs_run_session": true,
+          "route": {
+            "route": "main_thread",
+            "focus": false,
+            "or_inbox": false
+          },
+          "nse_fetch": "approval",
+          "presents_as_message": false,
+          "actions": {
+            "APPROVE_ONCE": {
+              "route": "approve",
+              "run": "run_5",
+              "choice": "once"
+            },
+            "DENY": {
+              "route": "approve",
+              "run": "run_5",
+              "choice": "deny"
+            }
+          }
+        },
+        "android": {
+          "kind": "agent",
+          "open": {
+            "page": "conversation",
+            "session": null,
+            "focus": false
+          },
+          "channel": "approvals",
+          "notification_key": "run_5",
+          "actions": [
+            "once",
+            "deny"
+          ],
+          "missed_reply": false,
+          "presents_as_message": false,
+          "fetch": "approval"
+        }
+      }
+    },
+    {
+      "name": "shared_agent",
+      "about": "Approval of a relative's agent shared with this person.",
+      "bridge": {
+        "agent": "cuisine__alex",
+        "context": {
+          "title": "Vie",
+          "previews": false,
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_approval_values",
+          "args": {
+            "run_id": "run_9",
+            "request_id": "req_9",
+            "choices": [
+              "once",
+              "deny"
+            ],
+            "command": null,
+            "session_id": "conv_1",
+            "room_id": null
+          }
+        }
+      },
+      "payload_v1": null,
+      "fcm_data": null,
+      "push": null,
+      "relay": {
+        "body": "Approbation requise"
+      },
+      "expect": {
+        "screen": "shared_conversation",
+        "conversation": "conv_1",
+        "message": "the approval card",
+        "ios": {
+          "shared_agent": true,
+          "needs_run_session": false,
+          "route": {
+            "route": "shared",
+            "session": "conv_1"
+          },
+          "nse_fetch": "none",
+          "presents_as_message": false,
+          "actions": {
+            "APPROVE_ONCE": {
+              "route": "shared_answer",
+              "run": "run_9",
+              "choice": "once"
+            },
+            "DENY": {
+              "route": "shared_answer",
+              "run": "run_9",
+              "choice": "deny"
+            }
+          }
+        },
+        "android": {
+          "kind": "shared",
+          "open": {
+            "page": "shared",
+            "session": "conv_1"
+          },
+          "channel": "approvals",
+          "notification_key": "run_9",
+          "actions": [
+            "once",
+            "deny"
+          ],
+          "missed_reply": false,
+          "presents_as_message": false,
+          "fetch": "none"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,145 @@
+{
+  "$schema": "../schema.json",
+  "type": "question",
+  "audit_row": 5,
+  "summary": "The agent asks something mid-run (clarify) while nobody follows it.",
+  "producers": [
+    "runs.rs:~1929 -> notify_question"
+  ],
+  "policy": {
+    "per_agent_switch": true
+  },
+  "v2": {
+    "t": "question",
+    "c": "s:<lineage root>",
+    "m": "<Hermes message id of the question>",
+    "loc_key": "notif.question",
+    "collapse": "n",
+    "link": "bipagents://open?agent=vie&c=s:<root>&m=<id>&t=question"
+  },
+  "known_bugs": [
+    "The per-agent switch off silences questions: the agent waits unseen (policy decision for Alex)."
+  ],
+  "variants": [
+    {
+      "name": "previews_off",
+      "about": "A question, previews off.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "previews": false,
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_question",
+          "args": {
+            "run_id": "run_4",
+            "request_id": "clr_1",
+            "question": "Quel train pour Bordeaux ?",
+            "session_id": "sess_1",
+            "reply_id": "r7"
+          }
+        }
+      },
+      "payload_v1": null,
+      "fcm_data": null,
+      "push": null,
+      "relay": {
+        "body": "Une question pour toi"
+      },
+      "expect": {
+        "screen": "conversation",
+        "conversation": "sess_1",
+        "message": "the question card at the end (run re-attached)",
+        "ios": {
+          "shared_agent": false,
+          "needs_run_session": false,
+          "route": {
+            "route": "reattach",
+            "run": "run_4",
+            "session": "sess_1"
+          },
+          "nse_fetch": "reply",
+          "presents_as_message": false
+        },
+        "android": {
+          "kind": "agent",
+          "open": {
+            "page": "conversation",
+            "session": "sess_1",
+            "focus": false
+          },
+          "channel": "messages",
+          "notification_key": "run_4",
+          "actions": [
+            "reply"
+          ],
+          "missed_reply": true,
+          "presents_as_message": false,
+          "fetch": "reply"
+        }
+      }
+    },
+    {
+      "name": "previews_on",
+      "about": "A question, previews on.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "previews": true,
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_question",
+          "args": {
+            "run_id": "run_4",
+            "request_id": "clr_1",
+            "question": "Quel train pour Bordeaux ?",
+            "session_id": "sess_1",
+            "reply_id": "r7"
+          }
+        }
+      },
+      "payload_v1": null,
+      "fcm_data": null,
+      "push": null,
+      "relay": {
+        "body": "Nouveau message"
+      },
+      "expect": {
+        "screen": "conversation",
+        "conversation": "sess_1",
+        "message": "the question card at the end (run re-attached)",
+        "ios": {
+          "shared_agent": false,
+          "needs_run_session": false,
+          "route": {
+            "route": "reattach",
+            "run": "run_4",
+            "session": "sess_1"
+          },
+          "nse_fetch": "reply",
+          "presents_as_message": false
+        },
+        "android": {
+          "kind": "agent",
+          "open": {
+            "page": "conversation",
+            "session": "sess_1",
+            "focus": false
+          },
+          "channel": "messages",
+          "notification_key": "run_4",
+          "actions": [
+            "reply"
+          ],
+          "missed_reply": true,
+          "presents_as_message": false,
+          "fetch": "reply"
+        }
+      }
+    }
+  ]
+}
