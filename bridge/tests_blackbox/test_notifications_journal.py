@@ -1,5 +1,5 @@
 """The notification journal (docs/conversations.md §9): every notification is a row first, then a push pointing at it
-(`v`, `n`, `t`, `c`, `m`) beside the legacy fields; a reply's push waits for its message and carries its id; the same
+(`v`, `n`, `t`, `c`, `m`, `r`), nothing else; a reply's push waits for its message and carries its id; the same
 reply from two producers is one row; « Me prévenir » off silences replies but never approvals or questions; read
 state shared through the journal."""
 import hashlib
@@ -43,12 +43,12 @@ def test_a_reply_push_points_at_its_stored_message(bridges, fakes):
     payload = fakes.apns.payloads()[0]
     main = bridge.get("/v1/threads/main", params={"agent": "wellness"}, headers=AUTH).json()
     assert payload["v"] == 2 and payload["t"] == "reply" and payload["n"].startswith("n_")
-    assert payload["c"] == main["id"] and payload["m"] == uid("api_main", 1)
-    # the legacy fields are all there for older apps
-    assert payload["kind"] == "reply" and payload["run_id"] == "r1" and payload["session_id"] == "api_main"
-    assert payload["reply_id"] == payload["n"]
-    assert bridge.get(f"/v1/replies/{payload['reply_id']}", headers=AUTH).json()["text"] == "Le train de 9 h."
+    assert payload["c"] == main["id"] and payload["m"] == uid("api_main", 1) and payload["r"] == "r1"
+    # one notification thread per conversation, the badge from the journal; nothing else (no legacy fields)
+    assert payload["aps"]["thread-id"] == f"wellness/{main['id']}" and payload["aps"]["badge"] == 1
+    assert set(payload) == {"aps", "v", "n", "t", "agent", "c", "m", "r"}
     row = bridge.get(f"/v1/notifications/{payload['n']}", headers=AUTH).json()
+    assert row["preview"] == "Le train de 9 h."   # what the extension shows
     assert row["m"] == payload["m"] and row["c"] == main["id"] and row["push"] == "sent:1" and row["read_at"] is None
     # another producer of the same reply (a hand-back, the watcher): one row, one push
     fakes.hermes.runs["r2"] = [sse("run.completed", output="Le train de 9 h.")]
@@ -97,7 +97,9 @@ def test_the_switch_silences_replies_never_approvals_or_questions(bridges, fakes
     kinds = sorted(p["t"] for p in fakes.apns.payloads())
     assert kinds == ["approval", "question"]
     question = [p for p in fakes.apns.payloads() if p["t"] == "question"][0]
-    assert question["kind"] == "question" and question["request_id"] == "c4"
+    assert question["request_id"] == "c4" and question["run_id"] == "r2" and question["r"] == "c4"
+    approval = [p for p in fakes.apns.payloads() if p["t"] == "approval"][0]
+    assert approval["aps"]["category"] == "APPROVAL" and approval["choices"] == ["once", "deny"]
     rules = {(r["type"], r.get("from")): r["follows_switch"]
              for r in bridge.get("/v1/notifications/rules", headers=AUTH).json()["rules"]}
     assert rules[("question", None)] is False and rules[("reply", None)] is True

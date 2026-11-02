@@ -98,126 +98,51 @@ fn object(value: Value) -> Dict {
     }
 }
 
-pub fn message_payload(
-    agent: &str,
-    title: &str,
-    outbox_id: &str,
-    session_id: Option<&str>,
-    preview: Option<&str>,
-) -> Dict {
-    let mut payload = object(json!({
-        "aps": {
-            "alert": alert(title, preview, MESSAGE_BODY),
-            "thread-id": agent,
-            "mutable-content": 1,
-            "category": "MESSAGE",
-            "sound": "default",
-        },
-        "outbox_id": outbox_id,
-        "agent": agent,
-    }));
-    if let Some(s) = given(session_id) {
-        payload.insert("session_id".into(), json!(s));
+/// The APNs category of a notification: approvals have « Autoriser une fois / Refuser », accord cards that may be
+/// answered from the notification « Ouvrir » (never a secret's: it is typed in the app), the others « Répondre ».
+pub fn category(kind: Kind) -> &'static str {
+    match kind {
+        Kind::Approval => "APPROVAL",
+        Kind::Connector | Kind::MailCard => "CARD",
+        _ => "MESSAGE",
     }
-    payload
 }
 
-/// `approval_payload(...)`; `choices` as Hermes gave them (a JSON list).
-pub fn approval_payload(
+/// A notification's push (docs/conversations.md §9.3): the alert, `thread-id` per conversation (`<agent>/<c>`, the
+/// agent's when it is about none), the badge (the journal's unread total), then the pointer: `v`, `n`, `t`, `agent`,
+/// `c`, `m`, `r` (the run / request / card / job it is about) and an approval's or question's own fields (`run_id`,
+/// `request_id`, `choices`: what its buttons answer).
+#[allow(clippy::too_many_arguments)]
+pub fn payload(
+    kind: Kind,
     agent: &str,
     title: &str,
-    run_id: &str,
-    request_id: Option<&str>,
-    choices: Option<&[Value]>,
     preview: Option<&str>,
-    session_id: Option<&str>,
+    body: &str,
+    n: &str,
+    thread: Option<&str>,
+    message: Option<&str>,
+    reference: Option<&str>,
+    badge: i64,
+    extra: &Dict,
 ) -> Dict {
-    let mut payload = object(json!({
-        "aps": {
-            "alert": alert(title, preview, APPROVAL_BODY),
-            "thread-id": agent,
-            "mutable-content": 1,
-            "category": "APPROVAL",
-            "sound": "default",
-        },
-        "agent": agent,
-        "run_id": run_id,
+    let thread_id = thread.map(|c| format!("{agent}/{c}")).unwrap_or_else(|| agent.to_string());
+    let mut out = object(json!({
+        "aps": {"alert": alert(title, preview, body), "thread-id": thread_id, "mutable-content": 1,
+                "category": category(kind), "sound": "default", "badge": badge},
+        "v": 2, "n": n, "t": kind.as_str(), "agent": agent,
     }));
-    if let Some(r) = given(request_id) {
-        payload.insert("request_id".into(), json!(r));
+    for (key, value) in [("c", thread), ("m", message), ("r", reference)] {
+        if let Some(v) = given(value) {
+            out.insert(key.into(), json!(v));
+        }
     }
-    if let Some(c) = choices.filter(|c| !c.is_empty()) {
-        payload.insert("choices".into(), Value::Array(c.to_vec()));
+    for (k, v) in extra {
+        if !v.is_null() {
+            out.insert(k.clone(), v.clone());
+        }
     }
-    if let Some(s) = given(session_id) {
-        payload.insert("session_id".into(), json!(s)); // tapping opens that conversation, where the card is
-    }
-    payload
-}
-
-/// A run finished while nobody followed it: tapping opens its conversation.
-pub fn reply_payload(
-    agent: &str,
-    title: &str,
-    run_id: &str,
-    session_id: Option<&str>,
-    preview: Option<&str>,
-    reply_id: Option<&str>,
-    fallback: &str,
-) -> Dict {
-    let mut payload = object(json!({
-        "aps": {
-            "alert": alert(title, preview, fallback),
-            "thread-id": agent,
-            "mutable-content": 1, // the extension shows it as a message from the agent's Bip
-            "category": "MESSAGE",
-            "sound": "default",
-        },
-        "agent": agent,
-        "run_id": run_id,
-        "kind": "reply",
-    }));
-    if let Some(s) = given(session_id) {
-        payload.insert("session_id".into(), json!(s));
-    }
-    if let Some(r) = given(reply_id) {
-        payload.insert("reply_id".into(), json!(r)); // the extension fetches the text on the device (GET /v1/replies/{id})
-    }
-    payload
-}
-
-/// The agent asks something mid-run (clarify) while nobody follows it: tapping opens its conversation.
-pub fn question_payload(
-    agent: &str,
-    title: &str,
-    run_id: &str,
-    request_id: Option<&str>,
-    session_id: Option<&str>,
-    preview: Option<&str>,
-    reply_id: Option<&str>,
-) -> Dict {
-    let mut payload = object(json!({
-        "aps": {
-            "alert": alert(title, preview, QUESTION_BODY),
-            "thread-id": agent,
-            "mutable-content": 1,
-            "category": "MESSAGE",
-            "sound": "default",
-        },
-        "agent": agent,
-        "run_id": run_id,
-        "kind": "question",
-    }));
-    if let Some(r) = given(request_id) {
-        payload.insert("request_id".into(), json!(r));
-    }
-    if let Some(s) = given(session_id) {
-        payload.insert("session_id".into(), json!(s));
-    }
-    if let Some(r) = given(reply_id) {
-        payload.insert("reply_id".into(), json!(r));
-    }
-    payload
+    out
 }
 
 /// `silent_payload(agent, reason, **extra)`: extras that are None are left out.
@@ -288,8 +213,14 @@ pub struct Event {
     pub room: Option<String>,
     /// The run / request / card / job / mail / meet id it is about.
     pub ref_id: Option<String>,
-    /// Its text: kept in the journal (served by `GET /v1/replies/{id}` and `/v1/notifications/{id}`).
+    /// Its text: kept in the journal (`GET /v1/notifications/{n}`: what the extension shows).
     pub text: Option<String>,
+    /// The line shown when previews are on (else `body`).
+    pub preview: Option<String>,
+    /// The generic line when previews are off (a key the apps translate).
+    pub body: String,
+    /// Another title than the agent's name (a room's « <agent> · <room> »).
+    pub title: Option<String>,
     /// The message id when the producer knows it (a Boîte message: `o_<id>`).
     pub message: Option<String>,
     /// Wait for the reply's message to be stored and point at it.
@@ -297,14 +228,14 @@ pub struct Event {
     /// The dedupe key without the message (`<kind>:<agent>:` is put first; a reply's is its message once found).
     pub key: String,
     pub from: Option<BoiteFrom>,
-    /// The legacy payload (every field older apps read); `reply_id` is set to the journal id when `text` is.
-    pub payload: Dict,
+    /// What an approval's or a question's buttons need (`run_id`, `request_id`, `choices`).
+    pub extra: Dict,
     /// The collapse id of a notification that replaces an earlier one (an approval's request); None for the others.
     pub collapse: Option<String>,
 }
 
 impl Event {
-    pub fn new(agent: &str, kind: Kind, key: impl Into<String>, payload: Dict) -> Event {
+    pub fn new(agent: &str, kind: Kind, key: impl Into<String>, body: &str) -> Event {
         Event {
             agent: agent.to_string(),
             kind,
@@ -312,11 +243,14 @@ impl Event {
             room: None,
             ref_id: None,
             text: None,
+            preview: None,
+            body: body.to_string(),
+            title: None,
             message: None,
             wait: false,
             key: key.into(),
             from: None,
-            payload,
+            extra: Dict::new(),
             collapse: None,
         }
     }
@@ -331,13 +265,20 @@ impl Event {
         self
     }
 
+    /// The text kept, and shown (cut) when previews are on.
     fn text(mut self, text: Option<&str>) -> Self {
         self.text = given(text).map(str::to_string);
+        self.preview = self.text.as_deref().map(|t| preview(t, 160));
         self
     }
 
     fn collapse(mut self, id: impl Into<String>) -> Self {
         self.collapse = Some(id.into());
+        self
+    }
+
+    fn with(mut self, key: &str, value: Value) -> Self {
+        self.extra.insert(key.into(), value);
         self
     }
 }
@@ -354,11 +295,6 @@ impl PushService {
             tracing::warn!("APNs not configured: iPhone push notifications disabled");
         }
         PushService { config, store, apns, android, service, live: Default::default(), threads: Default::default() }
-    }
-
-    /// A notification's text (`GET /v1/replies/{id}`): the journal's row.
-    pub async fn text(&self, reply_id: &str) -> Option<String> {
-        crate::notifications::text_of(&self.store, reply_id).await.ok().flatten()
     }
 
     fn title(&self, agent: &str) -> String {
@@ -381,8 +317,8 @@ impl PushService {
 
     /// The one entry of every notification (docs/conversations.md §9.1): the conversation and the message it is
     /// about (a reply waits until stored), one journal row per event (a second producer of the same event is
-    /// dropped), the rules (« Me prévenir »: notifications.rs), then the push of the pointer (`v`, `n`, `t`, `c`,
-    /// `m`) beside every legacy field. Returns the devices reached.
+    /// dropped), the rules (« Me prévenir »: notifications.rs), then the push of the pointer. Returns the devices
+    /// reached.
     pub async fn emit(&self, event: Event) -> usize {
         let config = self.config.get();
         let threads = crate::threads::upgrade(&self.threads);
@@ -411,7 +347,7 @@ impl PushService {
             _ => format!("{kind}:{}:{}", event.agent, event.key),
         };
         let id = crate::threads::new_id("n_");
-        let title = self.title(&event.agent);
+        let title = event.title.clone().unwrap_or_else(|| self.title(&event.agent));
         let row = crate::notifications::NewRow {
             id: &id,
             agent: &event.agent,
@@ -433,25 +369,15 @@ impl PushService {
             }
             Err(exc) => tracing::error!(exc = %format!("{exc:#}"), "notification not journaled"),
         }
-        let mut payload = event.payload;
-        if event.text.is_some() {
-            payload.insert("reply_id".into(), json!(id)); // the extension fetches the text (GET /v1/replies/{id})
-        }
-        payload.insert("v".into(), json!(2));
-        payload.insert("n".into(), json!(id));
-        payload.insert("t".into(), json!(kind));
-        if let Some(t) = &thread {
-            payload.insert("c".into(), json!(t));
-        }
-        if let Some(m) = &message {
-            payload.insert("m".into(), json!(m));
-        }
+        let badge = crate::notifications::unread_total(&self.store).await.unwrap_or(0);
+        let shown = event.preview.as_deref().filter(|_| self.previews());
+        let payload = payload(event.kind, &event.agent, &title, shown, &event.body, &id, thread.as_deref(),
+                              message.as_deref(), event.ref_id.as_deref(), badge, &event.extra);
         let quiet = event.kind.follows_switch(event.from) && !crate::agent_notify::notifies(&config, &event.agent);
         let (sent, push) = if quiet {
             (0, "skipped:switch".to_string())
         } else {
-            // collapsed only where one notification replaces another (an approval's, a card's); a reply never
-            // replaces an earlier one (each is its own journal row)
+            // collapsed only where one notification replaces another (a run's, an approval's, a card's)
             let sent = self.fanout(&event.agent, payload.clone(), "alert", 10, event.collapse.clone()).await;
             (sent, if sent > 0 { format!("sent:{sent}") } else { "skipped:no_device".into() })
         };
@@ -460,7 +386,7 @@ impl PushService {
         }
         if let Some(threads) = &threads {
             threads.publish(&event.agent, "notification",
-                json!({"id": id, "agent": event.agent, "t": kind, "c": thread, "m": message, "state": "open"}));
+                json!({"n": id, "agent": event.agent, "t": kind, "c": thread, "m": message, "state": "open"}));
         }
         sent
     }
@@ -536,9 +462,8 @@ impl PushService {
         session_id: Option<&str>,
         from: BoiteFrom,
     ) -> usize {
-        let preview = if self.previews() { Some(preview(text, 160)) } else { None };
-        let payload = message_payload(agent, &self.title(agent), outbox_id, session_id, preview.as_deref());
-        let mut event = Event::new(agent, Kind::Boite, outbox_id, payload).session(session_id).reference(outbox_id);
+        let mut event = Event::new(agent, Kind::Boite, outbox_id, MESSAGE_BODY).session(session_id).reference(outbox_id);
+        event.preview = Some(preview(text, 160));
         event.message = Some(format!("o_{outbox_id}"));
         event.from = Some(from);
         self.emit(event).await
@@ -557,8 +482,8 @@ impl PushService {
         self.notify_approval_values(agent, run_id, request_id, choices.as_deref(), command, session_id, None).await
     }
 
-    /// `notify_approval` with the choices as Hermes gave them (RunHub's pending approvals keep them as JSON);
-    /// `room_id` when the run is a group discussion's turn (tapping opens the room).
+    /// An approval Hermes waits for (the choices as Hermes gave them); `room_id` when the run is a group
+    /// discussion's turn (tapping opens the room).
     #[allow(clippy::too_many_arguments)]
     pub async fn notify_approval_values(
         &self,
@@ -570,22 +495,16 @@ impl PushService {
         session_id: Option<&str>,
         room_id: Option<&str>,
     ) -> usize {
-        let preview_text = given(command).filter(|_| self.previews()).map(|c| approval_line(self.lang(agent), c));
-        let mut payload = approval_payload(
-            agent,
-            &self.title(agent),
-            run_id,
-            request_id,
-            choices,
-            preview_text.as_deref(),
-            session_id,
-        );
-        if let Some(room) = given(room_id) {
-            payload.insert("room_id".into(), json!(room)); // tapping opens the room, where its card is
-        }
         let request = given(request_id).unwrap_or(run_id).to_string();
-        let mut event =
-            Event::new(agent, Kind::Approval, &request, payload).session(session_id).reference(&request).collapse(&request);
+        let mut event = Event::new(agent, Kind::Approval, &request, APPROVAL_BODY)
+            .session(session_id)
+            .reference(&request)
+            .collapse(&request)
+            .with("run_id", json!(run_id))
+            .with("request_id", json!(given(request_id)))
+            .with("choices", choices.filter(|c| !c.is_empty()).map(|c| Value::Array(c.to_vec())).unwrap_or(Value::Null));
+        event.preview = given(command).map(|c| approval_line(self.lang(agent), c));
+        event.text = event.preview.clone();
         event.room = given(room_id).map(str::to_string);
         self.emit(event).await
     }
@@ -594,9 +513,8 @@ impl PushService {
     /// (cronwatch.rs, `run_id` « session:<id> ») and a hand-back's reply (handback.rs): the same reply from two of
     /// them is one notification (its message's id).
     pub async fn notify_reply(&self, agent: &str, run_id: &str, text: &str, session_id: Option<&str>) -> usize {
-        let preview = if self.previews() { Some(preview(text, 160)) } else { None };
-        let payload = reply_payload(agent, &self.title(agent), run_id, session_id, preview.as_deref(), None, REPLY_BODY);
-        let mut event = Event::new(agent, Kind::Reply, run_id, payload).session(session_id).reference(run_id).text(Some(text));
+        let mut event =
+            Event::new(agent, Kind::Reply, run_id, REPLY_BODY).session(session_id).reference(run_id).text(Some(text));
         event.wait = true;
         // a run's own replies replace each other (one run, one notification); an autonomous turn's (« session:… »)
         // never replaces an earlier one
@@ -606,24 +524,17 @@ impl PushService {
         self.emit(event).await
     }
 
-    /// An agent answered in a group discussion (rooms.rs) nobody looks at: « <agent> · <room> », its words when
-    /// previews are on; tapping opens the discussion (`room_id`).
+    /// An agent answered in a group discussion (rooms.rs) nobody looks at: « <agent> · <room> »; tapping opens the
+    /// discussion. Collapsed per discussion.
     pub async fn notify_room(&self, agent: &str, room_id: &str, room_title: &str, text: &str) -> usize {
-        let preview = if self.previews() { Some(preview(text, 160)) } else { None };
-        let title = if room_title.is_empty() {
-            self.title(agent)
-        } else {
-            format!("{} · {}", self.title(agent), room_title)
-        };
-        let run_id = format!("room:{room_id}");
-        let mut payload = reply_payload(agent, &title, &run_id, None, preview.as_deref(), None, REPLY_BODY);
-        payload.insert("room_id".into(), json!(room_id));
-        if let Some(Value::Object(aps)) = payload.get_mut("aps") {
-            aps.insert("thread-id".into(), json!(&run_id));
-        }
         let key = format!("{room_id}:{:x}", fnv(text));
-        let mut event =
-            Event::new(agent, Kind::RoomReply, key, payload).reference(room_id).text(Some(text)).collapse(&run_id);
+        let mut event = Event::new(agent, Kind::RoomReply, key, REPLY_BODY)
+            .reference(room_id)
+            .text(Some(text))
+            .collapse(format!("room:{room_id}"));
+        if !room_title.is_empty() {
+            event.title = Some(format!("{} · {}", self.title(agent), room_title));
+        }
         event.room = Some(room_id.to_string());
         self.emit(event).await
     }
@@ -632,24 +543,19 @@ impl PushService {
     /// « 🎧 Podcast jeudi » when it made a file, else « Sous-tâche terminée ». Tapping opens the conversation.
     pub async fn notify_subtask(&self, agent: &str, session_id: &str, line: Option<&str>) -> usize {
         let line = given(line);
-        let preview = if self.previews() { line } else { None };
-        let run_id = format!("session:{session_id}");
-        let payload = reply_payload(agent, &self.title(agent), &run_id, Some(session_id), preview, None, SUBTASK_BODY);
         let key = format!("{session_id}:{:x}", fnv(line.unwrap_or("")));
-        self.emit(Event::new(agent, Kind::Subtask, key, payload).session(Some(session_id)).text(line)).await
+        self.emit(Event::new(agent, Kind::Subtask, key, SUBTASK_BODY).session(Some(session_id)).text(line)).await
     }
 
-    /// A step of a mailbox scan ended (mail_scan.py): its line when previews are on, else « Sous-tâche terminée »;
-    /// tapping opens the agent.
+    /// A step of a mailbox scan ended (mail_scan.rs); tapping opens the agent.
     pub async fn notify_scan(&self, agent: &str, line: &str) -> usize {
-        let preview = if self.previews() { Some(line) } else { None };
-        let payload = reply_payload(agent, &self.title(agent), "session:scan", None, preview, None, SUBTASK_BODY);
         let key = format!("{:x}:{}", fnv(line), crate::store::iso(crate::store::utcnow()));
-        self.emit(Event::new(agent, Kind::Scan, key, payload).text(Some(line)).collapse(format!("scan:{agent}"))).await
+        self.emit(Event::new(agent, Kind::Scan, key, SUBTASK_BODY).text(Some(line)).collapse(format!("scan:{agent}"))).await
     }
 
-    /// A background task ended, paused at its budget, or was proposed by the agent (jobs.py): its line when
-    /// previews are on, else `body`; tapping opens the task's conversation (the agent for a proposal).
+    /// A background task ended, paused at its budget, or was proposed by the agent (jobs.rs): `body` when previews
+    /// are off; tapping opens the task's conversation (the Boîte for a proposal). A task's latest state replaces
+    /// the earlier one.
     pub async fn notify_job(
         &self,
         agent: &str,
@@ -658,13 +564,11 @@ impl PushService {
         job_id: &str,
         body: &str,
     ) -> usize {
-        let preview = if self.previews() { Some(line) } else { None };
-        let run_id = format!("session:{}", given(session_id).unwrap_or("job"));
-        let mut payload = reply_payload(agent, &self.title(agent), &run_id, session_id, preview, None, body);
-        payload.insert("job_id".into(), json!(job_id));
-        let key = format!("{job_id}:{body}");
-        let event = Event::new(agent, Kind::Task, key, payload).session(session_id).reference(job_id).text(Some(line));
-        self.emit(event.collapse(format!("job:{job_id}"))).await // a task's latest state
+        let event = Event::new(agent, Kind::Task, format!("{job_id}:{body}"), body)
+            .session(session_id)
+            .reference(job_id)
+            .text(Some(line));
+        self.emit(event.collapse(format!("job:{job_id}"))).await
     }
 
     /// The agent asks something mid-run (clarify) while nobody follows it: always notified (an unanswered question
@@ -677,64 +581,55 @@ impl PushService {
         question: Option<&str>,
         session_id: Option<&str>,
     ) -> usize {
-        let question = given(question);
-        let preview = if self.previews() { question.map(|q| preview(q, 160)) } else { None };
-        let payload =
-            question_payload(agent, &self.title(agent), run_id, request_id, session_id, preview.as_deref(), None);
         let request = given(request_id).unwrap_or(run_id).to_string();
-        let event = Event::new(agent, Kind::Question, &request, payload).session(session_id).reference(&request);
-        self.emit(event.text(question).collapse(&request)).await
+        let event = Event::new(agent, Kind::Question, &request, QUESTION_BODY)
+            .session(session_id)
+            .reference(&request)
+            .text(given(question))
+            .collapse(&request)
+            .with("run_id", json!(run_id))
+            .with("request_id", json!(given(request_id)));
+        self.emit(event).await
     }
 
-    /// Someone of the family passed something on to this agent (family_news.rs): « Alex : je rentre tard ce soir »
-    /// when previews are on, else « Message de ta famille »; tapping opens the agent.
+    /// Someone of the family passed something on to this agent (family_news.rs); tapping opens the agent.
     pub async fn notify_family(&self, agent: &str, line: &str, note_id: &str) -> usize {
-        let short = preview(line, 160);
-        let shown = if self.previews() { Some(short.as_str()) } else { None };
-        let mut payload = reply_payload(agent, &self.title(agent), "session:family", None, shown, None, FAMILY_BODY);
-        payload.insert("family".into(), json!(note_id));
-        self.emit(Event::new(agent, Kind::Family, note_id, payload).reference(note_id).text(Some(line))).await
+        self.emit(Event::new(agent, Kind::Family, note_id, FAMILY_BODY).reference(note_id).text(Some(line))).await
     }
 
     /// The agent's e-mail to an address not allowed yet waits for the person (agent_email.rs): « Veut écrire à
-    /// x@y » when previews are on; tapping opens the agent's e-mail screen (`email_held`: the held mail's id).
+    /// x@y »; tapping opens the agent's e-mail screen (`r`: the held mail's id).
     pub async fn notify_email_held(&self, agent: &str, to: &str, held_id: &str) -> usize {
         let line = email_held_line(self.lang(agent), to);
-        self.card(agent, Kind::EmailHeld, "session:email", &line, EMAIL_HELD_BODY, "email_held", held_id).await
+        self.card(agent, Kind::EmailHeld, &line, EMAIL_HELD_BODY, held_id).await
     }
 
-    /// The agent wants to send data to a site (sandbox_sites.rs; `line`: « Veut envoyer des données à exemple.com
-    /// (environ 2 Mo) »): tapping opens the app's Boîte, where the card is.
+    /// The agent wants to send data to a site (sandbox_sites.rs): tapping opens the Boîte, where the card is.
     pub async fn notify_site_request(&self, agent: &str, line: &str, id: &str) -> usize {
-        self.card(agent, Kind::Site, "session:sites", line, SITE_BODY, "site_request", id).await
+        self.card(agent, Kind::Site, line, SITE_BODY, id).await
     }
 
-    /// An agent wants to create an account on a website with a password of the vault (vault_logins.rs): tapping opens
-    /// the app's Boîte, where the card is.
+    /// An agent wants to create an account on a website with a password of the vault (vault_logins.rs).
     pub async fn notify_login_request(&self, agent: &str, host: &str, id: &str) -> usize {
         let line = login_line(self.lang(agent), host);
-        self.card(agent, Kind::Login, "session:vault", &line, LOGIN_BODY, "login_request", id).await
+        self.card(agent, Kind::Login, &line, LOGIN_BODY, id).await
     }
 
-    /// A secret card or a connector's approval card (secrets.rs, connectors.rs): tapping opens the app's Boîte, where
-    /// the card is. `key`: `secret_request`, `connector_request` or `mail_request`, with the card's request id.
+    /// A secret card or a connector's / mail's approval card (secrets.rs, connectors.rs, agent_tools.rs). `key`:
+    /// `secret_request`, `connector_request` or `mail_request`, with the card's request id.
     pub async fn notify_bridge_card(&self, agent: &str, line: &str, key: &str, id: &str) -> usize {
-        self.card(agent, Kind::of_card(key), "session:vault", line, CARD_BODY, key, id).await
+        self.card(agent, Kind::of_card(key), line, CARD_BODY, id).await
     }
 
-    /// A date to find with a relative's household (meet.rs): « Léa propose une date : Dîner » when previews are on;
-    /// tapping opens the app's Boîte, where the card is (`meet`: the request's id).
+    /// A date to find with a relative's household (meet.rs): tapping opens the Boîte, where the card is.
     pub async fn notify_meet(&self, agent: &str, line: &str, id: &str) -> usize {
-        self.card(agent, Kind::Meet, "session:meet", line, MEET_BODY, "meet", id).await
+        self.card(agent, Kind::Meet, line, MEET_BODY, id).await
     }
 
-    /// An accord card (always notified): its line when previews are on, the card's id under `key`.
-    #[allow(clippy::too_many_arguments)]
-    async fn card(&self, agent: &str, kind: Kind, run_id: &str, line: &str, body: &str, key: &str, id: &str) -> usize {
-        let preview = if self.previews() { Some(line) } else { None };
-        let mut payload = reply_payload(agent, &self.title(agent), run_id, None, preview, None, body);
-        payload.insert(key.into(), json!(id));
-        self.emit(Event::new(agent, kind, id, payload).reference(id).text(Some(line)).collapse(format!("{key}:{id}"))).await
+    /// An accord card (always notified), its id in `r`.
+    async fn card(&self, agent: &str, kind: Kind, line: &str, body: &str, id: &str) -> usize {
+        let event = Event::new(agent, kind, id, body).reference(id).text(Some(line));
+        self.emit(event.collapse(format!("{}:{id}", kind.as_str()))).await
     }
 
     /// `notify_silent(agent, reason, **extra)`.
@@ -754,14 +649,20 @@ mod tests {
 
     #[test]
     fn previews_and_silent_payloads() {
-        assert_eq!(message_payload("vie", "Vie", "o1", None, Some("Texte"))["aps"]["alert"]["body"], "Texte");
-        assert!(!message_payload("vie", "Vie", "o1", None, None).contains_key("session_id"));
-        let choices = [json!("once"), json!("deny")];
-        let ap = approval_payload("vie", "Vie", "run_1", Some("req_9"), Some(&choices), None, None);
-        assert_eq!(ap["aps"]["category"], "APPROVAL");
-        assert_eq!(ap["run_id"], "run_1");
-        assert_eq!(ap["request_id"], "req_9");
-        assert_eq!(ap["choices"], json!(["once", "deny"]));
+        let extra = Map::new();
+        let p = payload(Kind::Reply, "vie", "Vie", None, REPLY_BODY, "n_1", Some("t_1"), Some("m_1"), Some("r1"), 3, &extra);
+        assert_eq!(
+            Value::Object(p),
+            json!({"aps": {"alert": {"title": "Vie", "body": REPLY_BODY, "loc-key": REPLY_BODY}, "thread-id": "vie/t_1",
+                           "mutable-content": 1, "category": "MESSAGE", "sound": "default", "badge": 3},
+                   "v": 2, "n": "n_1", "t": "reply", "agent": "vie", "c": "t_1", "m": "m_1", "r": "r1"})
+        );
+        let p = payload(Kind::Connector, "vie", "Vie", Some("Notion"), CARD_BODY, "n_2", None, None, None, 0, &extra);
+        assert_eq!((p["aps"]["category"].as_str(), p["aps"]["thread-id"].as_str()), (Some("CARD"), Some("vie")));
+        assert_eq!(p["aps"]["alert"]["body"], "Notion");
+        assert_eq!(category(Kind::MailCard), "CARD");
+        assert_eq!(category(Kind::Secret), "MESSAGE"); // a secret is typed in the app, never from the notification
+        assert_eq!(category(Kind::Approval), "APPROVAL");
         let mut extra = Map::new();
         extra.insert("run_id".into(), json!("r"));
         extra.insert("gone".into(), Value::Null);

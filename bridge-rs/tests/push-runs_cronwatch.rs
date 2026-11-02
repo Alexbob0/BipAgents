@@ -154,11 +154,15 @@ impl World {
     /// The pushes, as Python's FakePush records them: (agent, text or ("subtask", line), session_id).
     async fn replies(&self) -> Vec<(String, String, String)> {
         tokio::time::sleep(Duration::from_millis(30)).await;
-        let push = self.app.app.state.push.clone();
         let mut out = Vec::new();
         for p in self.apns.payloads() {
-            let text = match p["reply_id"].as_str() {
-                Some(id) => push.text(id).await,
+            // the journal row's text (GET /v1/notifications/{n}, what the extension shows)
+            let text = match p["n"].as_str() {
+                Some(id) => {
+                    let (k, v) = auth();
+                    let row = self.app.get(&format!("/v1/notifications/{id}"), &[(k, v.as_str())]).await.json();
+                    row["preview"].as_str().map(str::to_string)
+                }
                 None => None,
             };
             out.push({

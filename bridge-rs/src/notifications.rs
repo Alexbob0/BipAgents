@@ -13,8 +13,8 @@
 //! DELETE /v1/notifications/{id}                                      hidden from the Boîte
 //! ```
 //!
-//! The row's text is kept here (it replaced the push service's in-memory texts: `GET /v1/replies/{id}` reads it, the
-//! id being the row's). Rows older than `KEEP_DAYS` go.
+//! The row's text is kept here (the Notification Service Extension reads it: `GET /v1/notifications/{n}`; it replaced
+//! the push service's in-memory texts and `/v1/replies`). Rows older than `KEEP_DAYS` go.
 //!
 //! No Python counterpart.
 
@@ -212,10 +212,10 @@ pub async fn set_push(store: &Store, id: &str, push: &str, legacy: &Dict) -> any
     Ok(())
 }
 
-/// A row's text (`GET /v1/replies/{id}`: the Notification Service Extension of older apps).
-pub async fn text_of(store: &Store, id: &str) -> anyhow::Result<Option<String>> {
-    let rows = store.run("SELECT preview FROM notifications WHERE id = ?", vec![text(id)]).await?;
-    Ok(rows.first().and_then(|r| r["preview"].as_str()).map(str::to_string))
+/// Unread rows in all (the app icon's badge).
+pub async fn unread_total(store: &Store) -> anyhow::Result<i64> {
+    let rows = store.run("SELECT COUNT(*) AS n FROM notifications WHERE read_at IS NULL AND hidden = 0", vec![]).await?;
+    Ok(rows.first().and_then(|r| r["n"].as_i64()).unwrap_or(0))
 }
 
 /// Unread rows of a thread.
@@ -430,7 +430,6 @@ mod tests {
         let row = NewRow { id: "n_1", agent: "vie", kind: "reply", title: "Vie", state: "open", dedupe: "reply:vie:m_1", text: Some("Bonjour"), ..Default::default() };
         assert!(insert(&store, &row).await.unwrap());
         assert!(!insert(&store, &NewRow { id: "n_2", ..row.clone() }).await.unwrap());
-        assert_eq!(text_of(&store, "n_1").await.unwrap().as_deref(), Some("Bonjour"));
         let thread = NewRow { id: "n_3", thread: Some("t_1"), dedupe: "reply:vie:m_2", ..row };
         insert(&store, &thread).await.unwrap();
         assert_eq!(unread_in(&store, "t_1").await.unwrap(), 1);

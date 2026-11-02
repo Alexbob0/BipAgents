@@ -218,6 +218,9 @@ def test_the_hermes_store_is_read_without_calling_hermes(bridges, fakes):
     assert [i["id"] for i in page["items"]] == ["m_u1", "m_u2", "m_u5"]
     assert page["thread"]["tip"] == "s2"
     assert [r.path for r in fakes.hermes.requests[before:] if "/api/sessions" in r.path] == []
+    # a search hit opens by id: its thread and its item
+    hit = get(bridge, "/v1/search/messages", q="Deuxième", agent="coach")["results"][0]
+    assert hit["thread"] == page["thread"]["id"] and hit["item"] == "m_u5"
 
 
 def test_a_new_agents_main_thread_gets_its_first_conversation(bridges, fakes):

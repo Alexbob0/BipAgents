@@ -1093,12 +1093,6 @@ async fn pairing(State(state): State<AppState>) -> ApiResult<Response> {
     Ok(web::ok(json!({"lan": lan_info(&state.config())})))
 }
 
-/// The text of a reply / question push, for the Notification Service Extension (kept 24 h).
-async fn get_reply(State(state): State<AppState>, Path(reply_id): Path<String>) -> ApiResult<Response> {
-    let text = state.push.text(&reply_id).await.ok_or_else(HttpError::not_found)?;
-    Ok(web::ok(json!({"id": reply_id, "text": text})))
-}
-
 /// Scheduled tasks seen by the cron watcher, with whether their replies are pushed.
 async fn cron_jobs(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
     let config = state.config();
@@ -1373,7 +1367,6 @@ pub fn build_router() -> Router<AppState> {
         .route("/sessions/{session_id}/state", get(session_state))
         .route("/status", get(status))
         .route("/pairing", get(pairing))
-        .route("/replies/{reply_id}", get(get_reply))
         .route("/cron-jobs", get(cron_jobs))
         .route("/cron-jobs/{agent}/{job}", put(set_cron_job))
         .route("/watch", post(watch_run))
@@ -1545,7 +1538,6 @@ const FIRST_ROUTE_METHODS: &[(&str, &str)] = &[
     ("/v1/sessions/{session_id}/state", "GET"),
     ("/v1/status", "GET"),
     ("/v1/pairing", "GET"),
-    ("/v1/replies/{reply_id}", "GET"),
     ("/v1/cron-jobs", "GET"),
     ("/v1/cron-jobs/{agent}/{job}", "PUT"),
     ("/v1/watch", "POST"),
