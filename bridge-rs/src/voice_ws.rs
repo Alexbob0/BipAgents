@@ -252,6 +252,7 @@ impl Follow {
         let consumer = tokio::spawn(consume(rx, fmt.clone(), self.sender.clone(), self.synth_tasks.clone()));
         let _guard = AbortOnDrop(consumer.abort_handle());
         let mut reason = "stream_closed";
+        let mut heard = String::new();
         while let Some(event) = listener.next().await {
             let etype = event.r#type.as_str();
             if is_delta(etype) {
@@ -272,6 +273,7 @@ impl Follow {
                 reason = terminal_reason(etype);
                 enqueue(splitter.flush(), &mut seq, &mut spoken);
                 let final_text = event.final_text();
+                heard = final_text.clone();
                 if spoken == 0 && etype == "run.completed" && !final_text.is_empty() {
                     let mut sentences = splitter.feed(&final_text);
                     sentences.extend(splitter.flush());
@@ -285,6 +287,12 @@ impl Follow {
         let _ = queue.send(None);
         let _ = consumer.await;
         self.sender.send_json(json!({"type": "done", "run_id": run_id, "reason": reason})).await;
+        // a reply heard (the home screen's quick voice): in the Boîte too, unread, not pushed (notifications.rs)
+        if reason == "completed" && !heard.trim().is_empty() {
+            let session = self.state.hub.subscription(&agent.name, &run_id).and_then(|s| s.session_id());
+            let (push, name, run) = (self.state.push.clone(), agent.name.clone(), run_id.clone());
+            tokio::spawn(async move { push.journal_heard(&name, &run, &heard, session.as_deref()).await });
+        }
         tracing::info!(target: "bipbridge.voice", agent = %agent.name, run_id = %run_id, reason = %reason, sentences = seq, "voice done");
         listener.close();
     }

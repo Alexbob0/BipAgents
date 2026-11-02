@@ -73,7 +73,7 @@ def test_read_state_is_the_journals(bridges, fakes):
     # the other devices are told (a silent push), the badge with it
     assert wait_until(lambda: any(p.get("reason") == "read" for p in fakes.apns.payloads()))
     silent = [p for p in fakes.apns.payloads() if p.get("reason") == "read"][0]
-    assert silent["n"] == done["read"] and silent["unread"] == 0
+    assert silent["n"] == ",".join(done["read"]) and silent["unread"] == 0
     assert journal(bridge, unread=1) == []
     assert bridge.delete(f"/v1/notifications/{done['read'][0]}", headers=AUTH).status_code == 204
     assert journal(bridge) == []

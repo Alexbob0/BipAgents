@@ -1,14 +1,14 @@
 {
   "thread": {
-    "id": "t_001a19ca71643700ab24e8d7f4",
+    "id": "t_001a19d47a428816a4d74565b4",
     "agent": "wellness",
     "kind": "main",
     "title": null,
     "hidden": false,
     "origin": null,
     "version": 0,
-    "created_at": "2026-11-02T14:25:58.339Z",
-    "updated_at": "2026-11-02T14:25:58.339Z",
+    "created_at": "2026-11-02T17:21:20.424Z",
+    "updated_at": "2026-11-02T17:21:20.424Z",
     "tip": "api_new"
   },
   "items": [
@@ -68,7 +68,7 @@
           "mime": "image/jpeg",
           "size": null,
           "path": null,
-          "url": "/v1/threads/t_001a19ca71643700ab24e8d7f4/attachments/m_95488776d97d18fb1467e74346f899e8.a0"
+          "url": "/v1/threads/t_001a19d47a428816a4d74565b4/attachments/m_95488776d97d18fb1467e74346f899e8.a0"
         }
       ],
       "at": "1970-01-01T00:00:00.000Z",

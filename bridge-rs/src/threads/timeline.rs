@@ -46,6 +46,9 @@ static TOOL_TAGS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"</?(?:arg_key|arg_value|tool_call|tool_response|function_calls?|invoke|parameter)\b[^>]*>")
         .expect("valid regex")
 });
+/// An agent renamed itself in this turn (guide.rs `rename_yourself`): `<!--bip:renamed <agent id> <name>-->`.
+static RENAMED: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"<!--bip:renamed ([^\s>]+) ([^\n]*?)-->").expect("valid regex"));
 static BLANKS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\n{3,}").expect("valid regex"));
 
 /// One item of a timeline, before it is served.
@@ -218,6 +221,20 @@ fn mime_of(path: &str) -> String {
     mime_guess::from_path(path).first_raw().unwrap_or("application/octet-stream").to_string()
 }
 
+/// The renames a reply carries, the last one per agent: `[{agent, name}]` (the apps update the name at once).
+pub fn renamed_in(raw: &str) -> Vec<Value> {
+    let mut out: Vec<Value> = Vec::new();
+    for caps in RENAMED.captures_iter(raw) {
+        let (agent, name) = (caps[1].to_string(), caps[2].trim().to_string());
+        if name.is_empty() {
+            continue;
+        }
+        out.retain(|r| r["agent"].as_str() != Some(agent.as_str()));
+        out.push(json!({"agent": agent, "name": name}));
+    }
+    out
+}
+
 fn steer_words(text: &str) -> Option<String> {
     let t = text.trim();
     if !t.starts_with(STEER_OPEN) || !t.ends_with(STEER_CLOSE) {
@@ -339,8 +356,12 @@ pub fn segment_items(
                     continue;
                 }
                 let (text, attachments) = visible(&raw, &id, images);
-                if !text.is_empty() || !attachments.is_empty() {
+                let renamed = renamed_in(&raw);
+                if !text.is_empty() || !attachments.is_empty() || !renamed.is_empty() {
                     let mut body = json!({"kind": "message", "role": "agent", "text": text, "attachments": attachments});
+                    if !renamed.is_empty() {
+                        body["renamed"] = Value::Array(renamed);
+                    }
                     if let Some(r) = &row.reasoning {
                         body["reasoning"] = json!(r);
                     }
@@ -520,6 +541,8 @@ mod tests {
         assert_eq!(atts[0]["kind"], "image");
         let (text, _) = visible("Bonjour<tool_call>search<arg_key>q</arg_key></tool_call>", "m_3", 0);
         assert_eq!(text, "Bonjour");
+        let renamed = renamed_in("C'est fait.<!--bip:renamed bip Léo--><!--bip:renamed bip Léon-->");
+        assert_eq!(renamed, vec![json!({"agent": "bip", "name": "Léon"})]);
     }
 
     #[test]
@@ -559,6 +582,35 @@ mod tests {
         let a = items(&[plain.clone()]);
         assert!(a[0].id.starts_with("m_") && a[0].id.len() == 26);
         assert_eq!(a, items(&[plain]));
+    }
+
+    #[test]
+    fn items_come_in_the_order_the_apps_draw_them() {
+        // each assistant row: its words first, then its own calls (their results folded in); the final answer last
+        let mut rows = vec![
+            row(1, "user", json!("Compare trois écoles")),
+            row(2, "assistant", json!("Je cherche d'abord.")),
+            row(3, "tool", json!("r1")),
+            row(4, "tool", json!("r2")),
+            row(5, "assistant", json!("Deux trouvées, je vérifie la troisième.")),
+            row(6, "tool", json!("r3")),
+            row(7, "assistant", json!("Voici le comparatif.")),
+        ];
+        rows[1].tool_calls = Some(json!([{"id": "a", "function": {"name": "web_search", "arguments": "{}"}},
+                                         {"id": "b", "function": {"name": "web_extract", "arguments": "{}"}}]));
+        rows[2].tool_call_id = Some("a".into());
+        rows[3].tool_call_id = Some("b".into());
+        rows[4].tool_calls = Some(json!([{"id": "c", "function": {"name": "web_search", "arguments": "{}"}}]));
+        rows[5].tool_call_id = Some("c".into());
+        let got: Vec<String> = items(&rows)
+            .iter()
+            .map(|i| match i.kind() {
+                "tool" => format!("tool:{}", i.body["tool"]["result"].as_str().unwrap()),
+                _ => i.text().to_string(),
+            })
+            .collect();
+        assert_eq!(got, ["Compare trois écoles", "Je cherche d'abord.", "tool:r1", "tool:r2",
+                         "Deux trouvées, je vérifie la troisième.", "tool:r3", "Voici le comparatif."]);
     }
 
     #[test]

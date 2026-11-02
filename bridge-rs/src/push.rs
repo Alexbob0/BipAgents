@@ -225,6 +225,8 @@ pub struct Event {
     pub message: Option<String>,
     /// Wait for the reply's message to be stored and point at it.
     pub wait: bool,
+    /// Already heard by the person (a voice reply): journaled for the Boîte, never pushed.
+    pub heard: bool,
     /// The dedupe key without the message (`<kind>:<agent>:` is put first; a reply's is its message once found).
     pub key: String,
     pub from: Option<BoiteFrom>,
@@ -248,6 +250,7 @@ impl Event {
             title: None,
             message: None,
             wait: false,
+            heard: false,
             key: key.into(),
             from: None,
             extra: Dict::new(),
@@ -374,7 +377,16 @@ impl PushService {
         let payload = payload(event.kind, &event.agent, &title, shown, &event.body, &id, thread.as_deref(),
                               message.as_deref(), event.ref_id.as_deref(), badge, &event.extra);
         let quiet = event.kind.follows_switch(event.from) && !crate::agent_notify::notifies(&config, &event.agent);
-        let (sent, push) = if quiet {
+        // the conversation is on an app's screen (its event stream open): seen there, read, not pushed
+        let on_screen = matches!((&threads, &thread), (Some(t), Some(c)) if t.is_on_screen(c));
+        let (sent, push) = if on_screen {
+            if let Err(exc) = crate::notifications::mark_read(&self.store, &id).await {
+                tracing::warn!(exc = %format!("{exc:#}"), "notification not marked read");
+            }
+            (0, "skipped:on_screen".to_string())
+        } else if event.heard {
+            (0, "skipped:heard".to_string())
+        } else if quiet {
             (0, "skipped:switch".to_string())
         } else {
             // collapsed only where one notification replaces another (a run's, an approval's, a card's)
@@ -521,6 +533,16 @@ impl PushService {
         if !run_id.starts_with("session:") {
             event.collapse = Some(run_id.to_string());
         }
+        self.emit(event).await
+    }
+
+    /// A reply the person heard through a voice follow (the home screen's quick voice, voice_ws.rs): its journal row
+    /// (the Boîte shows it, unread), no push. The same reply notified by the run's end is the same row.
+    pub async fn journal_heard(&self, agent: &str, run_id: &str, text: &str, session_id: Option<&str>) -> usize {
+        let mut event =
+            Event::new(agent, Kind::Reply, run_id, REPLY_BODY).session(session_id).reference(run_id).text(Some(text));
+        event.wait = true;
+        event.heard = true;
         self.emit(event).await
     }
 

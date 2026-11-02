@@ -140,6 +140,26 @@ pub struct Threads {
     checked: std::sync::Mutex<std::collections::HashMap<String, f64>>,
     /// Where the Live calls' records are (live_calls.rs).
     briefs: Option<Arc<crate::live_brief::Briefs>>,
+    /// The threads on screen: an app holds `/v1/threads/events?thread=<id>` open (presence: no push for them).
+    on_screen: std::sync::Mutex<std::collections::HashMap<String, usize>>,
+}
+
+/// One app showing a thread, for as long as its event stream is open.
+pub struct OnScreen {
+    threads: Arc<Threads>,
+    thread: String,
+}
+
+impl Drop for OnScreen {
+    fn drop(&mut self) {
+        let mut shown = self.threads.on_screen.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(n) = shown.get_mut(&self.thread) {
+            *n -= 1;
+            if *n == 0 {
+                shown.remove(&self.thread);
+            }
+        }
+    }
 }
 
 pub fn threads_of(state: &AppState) -> Arc<Threads> {
@@ -168,7 +188,19 @@ impl Threads {
             events,
             checked: Default::default(),
             briefs: None,
+            on_screen: Default::default(),
         }
+    }
+
+    /// The thread is on an app's screen (its event stream open): a notification for it is journaled, read, not
+    /// pushed.
+    pub fn is_on_screen(&self, thread: &str) -> bool {
+        self.on_screen.lock().unwrap_or_else(|e| e.into_inner()).contains_key(thread)
+    }
+
+    pub fn show(self: &Arc<Self>, thread: &str) -> OnScreen {
+        *self.on_screen.lock().unwrap_or_else(|e| e.into_inner()).entry(thread.to_string()).or_insert(0) += 1;
+        OnScreen { threads: self.clone(), thread: thread.to_string() }
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<(String, String, Value)> {
@@ -674,6 +706,12 @@ fn unavailable(exc: anyhow::Error) -> HttpError {
 
 // -- routes -----------------------------------------------------------------------------------------------------------
 
+/// A shared agent's (`<agent>__<household>`): relayed to the owner's bridge (agent_shares.rs).
+async fn shared(state: &AppState, q: &QueryMap, what: &str) -> Option<ApiResult<Response>> {
+    let agent = q.get("agent")?;
+    crate::agent_shares::relay_thread(state, agent, what, q).await
+}
+
 fn agent_param(state: &AppState, q: &QueryMap) -> ApiResult<Option<AgentConfig>> {
     match q.get("agent").filter(|a| !a.is_empty()) {
         Some(name) => Ok(Some(crate::app::agent_or_404(&state.config(), Some(name))?)),
@@ -701,6 +739,9 @@ async fn served(threads: &Threads, agent: &AgentConfig, thread: &Thread, with_se
 }
 
 async fn list(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
+    if let Some(relayed) = shared(&state, &q, "").await {
+        return relayed;
+    }
     let agent = agent_param(&state, &q)?.ok_or_else(|| HttpError::new(422, "agent is required"))?;
     let threads = threads_of(&state);
     let include_hidden = q.get("include_hidden").is_some_and(|v| v == "1" || v == "true");
@@ -791,20 +832,93 @@ async fn link(State(state): State<AppState>, UrlPath(id): UrlPath<String>, Json(
     Ok(web::ok(served(&threads, &agent, &thread, true).await.map_err(unavailable)?))
 }
 
-async fn timeline_route(State(state): State<AppState>, UrlPath(id): UrlPath<String>, q: QueryMap) -> ApiResult<Response> {
+#[derive(Debug, Clone, Deserialize)]
+pub struct ThreadPatch {
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub agent: Option<String>,
+}
+
+impl Validate for ThreadPatch {
+    fn validate(&self, errors: &mut Vec<FieldError>) {
+        if self.title.as_ref().is_some_and(|t| t.chars().count() > 200) {
+            errors.push(FieldError::new("too_long", vec![json!("body"), json!("title")], "200 characters at most", Value::Null));
+        }
+    }
+}
+
+/// Renames a thread: the bridge's title (the main thread's Hermes session keeps its own, Bot Mode reads it).
+async fn rename(State(state): State<AppState>, UrlPath(id): UrlPath<String>, Json(body): Json<ThreadPatch>) -> ApiResult<Response> {
+    let threads = threads_of(&state);
+    let agent = match body.agent.as_deref() {
+        Some(a) => Some(crate::app::agent_or_404(&state.config(), Some(a))?),
+        None => None,
+    };
+    let (agent, thread) = threads.named(agent.as_ref(), &id).await?;
+    let title = body.title.as_deref().map(str::trim).filter(|t| !t.is_empty());
+    threads
+        .store
+        .run("UPDATE threads SET title = ? WHERE id = ?", vec![title.map(text).unwrap_or(Param::Null), text(&thread.id)])
+        .await?;
+    if thread.kind != "main" {
+        // the Historique's other readers (Hermes' own list, an older tool) see the same name
+        if let (Some(tip), Some(t)) = (threads.segments(&thread.id).await?.last(), title) {
+            let mut fields = serde_json::Map::new();
+            fields.insert("title".into(), json!(t));
+            let _ = threads.hermes.update_session(&agent, &tip.session_id, fields).await;
+        }
+    }
+    let thread = threads.get(&thread.id).await?.unwrap_or(thread);
+    threads.bump(&thread, "title").await?;
+    let thread = threads.get(&thread.id).await?.unwrap_or(thread);
+    Ok(web::ok(served(&threads, &agent, &thread, true).await.map_err(unavailable)?))
+}
+
+/// Deletes a thread: its Hermes sessions and its journal rows. The main thread keeps its id and starts again empty
+/// (its next conversation becomes its first segment).
+async fn delete_thread(State(state): State<AppState>, UrlPath(id): UrlPath<String>, q: QueryMap) -> ApiResult<Response> {
     let threads = threads_of(&state);
     let (agent, thread) = threads.named(agent_param(&state, &q)?.as_ref(), &id).await?;
-    let want = Want {
-        limit: number(&q, "limit", LIMIT_DEFAULT)?.clamp(1, LIMIT_MAX),
+    let _guard = threads.registry.lock().await;
+    for segment in threads.segments(&thread.id).await? {
+        match threads.hermes.delete_session(&agent, &segment.session_id).await {
+            Ok(()) | Err(crate::hermes::HermesError::Http { status: 404, .. }) => {}
+            Err(exc) => return Err(HttpError::new(502, format!("Hermes refused the deletion: {}", exc.type_name()))),
+        }
+    }
+    threads.store.run("DELETE FROM thread_segments WHERE thread_id = ?", vec![text(&thread.id)]).await?;
+    threads.store.run("DELETE FROM notifications WHERE thread_id = ?", vec![text(&thread.id)]).await?;
+    if thread.kind != "main" {
+        threads.store.run("DELETE FROM threads WHERE id = ?", vec![text(&thread.id)]).await?;
+    }
+    threads.publish(&agent.name, "thread", json!({"thread": thread.id, "agent": agent.name, "reason": "deleted"}));
+    tracing::info!(agent = %agent.name, thread = %thread.id, kind = %thread.kind, "thread deleted");
+    Ok(web::no_content())
+}
+
+/// A timeline request's page (`limit`, `before`, `after`, `around`, `before_count`, `after_count`).
+pub fn want_of(q: &QueryMap) -> ApiResult<Want> {
+    Ok(Want {
+        limit: number(q, "limit", LIMIT_DEFAULT)?.clamp(1, LIMIT_MAX),
         before: q.get("before").filter(|v| !v.is_empty()).map(str::to_string),
         after: q.get("after").filter(|v| !v.is_empty()).map(str::to_string),
         around: q.get("around").filter(|v| !v.is_empty()).map(str::to_string),
-        before_count: number(&q, "before_count", 20)?.min(LIMIT_MAX),
+        before_count: number(q, "before_count", 20)?.min(LIMIT_MAX),
         after_count: match q.get("after_count") {
             None | Some("") | Some("all") => None,
-            Some(_) => Some(number(&q, "after_count", 0)?),
+            Some(_) => Some(number(q, "after_count", 0)?),
         },
-    };
+    })
+}
+
+async fn timeline_route(State(state): State<AppState>, UrlPath(id): UrlPath<String>, q: QueryMap) -> ApiResult<Response> {
+    if let Some(relayed) = shared(&state, &q, &format!("{id}/timeline")).await {
+        return relayed;
+    }
+    let threads = threads_of(&state);
+    let (agent, thread) = threads.named(agent_param(&state, &q)?.as_ref(), &id).await?;
+    let want = want_of(&q)?;
     let segments = threads.line(&agent, &thread).await.map_err(unavailable)?;
     let thread = threads.get(&thread.id).await?.unwrap_or(thread);
     let items = threads.items(&agent, &thread, &segments).await.map_err(unavailable)?;
@@ -890,10 +1004,18 @@ async fn attachment_route(
 }
 
 async fn events(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
-    let only = agent_param(&state, &q)?.map(|a| a.name);
-    let mut events = threads_of(&state).subscribe();
+    let agent = agent_param(&state, &q)?;
+    let threads = threads_of(&state);
+    // `thread=<id|main>`: that conversation is on screen while the stream is open (presence)
+    let shown = match q.get("thread").filter(|t| !t.is_empty()) {
+        Some(id) => Some(threads.show(&threads.named(agent.as_ref(), id).await?.1.id)),
+        None => None,
+    };
+    let only = agent.map(|a| a.name);
+    let mut events = threads.subscribe();
     let line = |kind: &str, data: &Value| bytes::Bytes::from(format!("event: {kind}\ndata: {}\n\n", crate::py::dumps(data)));
     let stream = async_stream::stream! {
+        let _shown = shown;   // held as long as the app reads the stream
         yield Ok::<_, std::io::Error>(bytes::Bytes::from_static(b": threads\n\n"));
         loop {
             match tokio::time::timeout(Duration::from_secs_f64(crate::app::SSE_KEEPALIVE_SECONDS), events.recv()).await {
@@ -919,7 +1041,7 @@ pub fn router() -> Router<AppState> {
         .route("/threads", get(list))
         .route("/threads/resolve", get(resolve))
         .route("/threads/events", get(events))
-        .route("/threads/{thread}", get(one))
+        .route("/threads/{thread}", get(one).patch(rename).delete(delete_thread))
         .route("/threads/{thread}/segments", post(link))
         .route("/threads/{thread}/timeline", get(timeline_route))
         .route("/threads/{thread}/items/{item}", get(item_route))

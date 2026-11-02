@@ -12,7 +12,7 @@ import time
 
 import pytest
 
-from bbkit.common import AUTH, read_sse, sse
+from bbkit.common import AUTH, read_sse, sse, in_session
 from bbkit.mcp import call, give_token, rpc, text_of
 from bbkit.servers import wait_until
 
@@ -306,8 +306,8 @@ def test_a_steered_run_that_stops_without_handing_over_gets_its_task_started(bri
     assert ASKED in fakes.hermes.started["r1"]["input"]
     assert wait_until(lambda: fakes.apns.pushes())
     payload = fakes.apns.payloads()[0]
-    assert payload["aps"]["alert"]["body"] == "Continue en tâche de fond" and payload["job_id"] == job["id"]
-    assert payload["session_id"] == "api_c"
+    assert payload["aps"]["alert"]["body"] == "Continue en tâche de fond" and payload["r"] == job["id"]
+    assert in_session(bridge, payload, "api_c")
     assert bridge.logged("long run: the bridge started the background task")
     # replayed to an app that comes back
     assert [name for name, _ in follow(bridge, "run_r")][-2:] == ["bridge.notice", "run.completed"]
@@ -398,10 +398,10 @@ def test_a_finished_task_is_handed_back_to_the_conversation_that_asked(bridges, 
     # the full report, one of the agent's pages (served like any MEDIA file)
     shown = bridge.get("/v1/media", headers=AUTH, params={"path": page})
     assert shown.status_code == 200 and "<li><strong>Uniqlo</strong> : 79 €, laine mérinos</li>" in shown.text
-    assert wait_until(lambda: [p for p in fakes.apns.payloads() if p.get("outbox_id") == item["id"]])
-    told = [p for p in fakes.apns.payloads() if p.get("outbox_id") == item["id"]][0]
-    assert told["session_id"] == "api_c"
-    assert not [p for p in fakes.apns.payloads() if p.get("job_id") == job["id"]]
+    assert wait_until(lambda: [p for p in fakes.apns.payloads() if p.get("m") == f"o_{item['id']}"])
+    told = [p for p in fakes.apns.payloads() if p.get("m") == f"o_{item['id']}"][0]
+    assert in_session(bridge, told, "api_c")
+    assert not [p for p in fakes.apns.payloads() if p.get("t") == "task" and p.get("r") == job["id"]]
     done = jobs(bridge)[0]
     assert done["state"] == "done" and done["tokens"]["input"] == 100_000 + 105_000
     assert bridge.logged("handback delivered")[0]["by_agent"] is True

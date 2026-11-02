@@ -212,6 +212,12 @@ pub async fn set_push(store: &Store, id: &str, push: &str, legacy: &Dict) -> any
     Ok(())
 }
 
+/// One row read now.
+pub async fn mark_read(store: &Store, id: &str) -> anyhow::Result<()> {
+    store.run("UPDATE notifications SET read_at = ? WHERE id = ? AND read_at IS NULL", vec![text(&iso(utcnow())), text(id)]).await?;
+    Ok(())
+}
+
 /// Unread rows in all (the app icon's badge).
 pub async fn unread_total(store: &Store) -> anyhow::Result<i64> {
     let rows = store.run("SELECT COUNT(*) AS n FROM notifications WHERE read_at IS NULL AND hidden = 0", vec![]).await?;
@@ -382,7 +388,7 @@ async fn read(State(state): State<AppState>, Json(body): Json<ReadBody>) -> ApiR
     for (agent, read) in by_agent {
         threads.publish(&agent, "read", json!({"agent": agent, "thread": thread, "notifications": read}));
         let mut extra = Dict::new();
-        extra.insert("n".into(), json!(read));
+        extra.insert("n".into(), json!(read.join(","))); // one form for APNs and FCM (data values are strings)
         extra.insert("unread".into(), unread["total"].clone());
         let push = state.push.clone();
         state.spawn(async move {
