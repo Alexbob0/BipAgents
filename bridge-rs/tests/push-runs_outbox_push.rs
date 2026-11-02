@@ -98,22 +98,19 @@ async fn ntfy_message_lands_in_outbox_with_audio_and_push() {
 
     // Push: MESSAGE payload, sandbox host for the sandbox device, generic body (no preview).
     let pushed = sandbox.requests.lock().unwrap()[0].clone();
-    // the journal's pointer beside the legacy fields (docs/conversations.md §9.3)
+    // the pointer only (docs/conversations.md §9.3); no threads service here: no `c`
     let mut payload = pushed.json();
     let fields = payload.as_object_mut().unwrap();
-    assert_eq!(fields.remove("v"), Some(json!(2)));
-    assert_eq!(fields.remove("t"), Some(json!("boite")));
-    assert_eq!(fields.remove("m"), Some(json!(format!("o_{id}"))));
     assert!(fields.remove("n").unwrap().as_str().unwrap().starts_with("n_"));
     fields.remove("c");
     assert_eq!(
         payload,
         json!({"aps": {"alert": {"title": "Wellness", "body": "Nouveau message", "loc-key": "Nouveau message"},
-                       "thread-id": "wellness", "mutable-content": 1, "category": "MESSAGE", "sound": "default"},
-               "outbox_id": id, "agent": "wellness", "session_id": "sess_42"})
+                       "thread-id": "wellness", "mutable-content": 1, "category": "MESSAGE", "sound": "default",
+                       "badge": 1},
+               "v": 2, "t": "boite", "agent": "wellness", "m": format!("o_{id}"), "r": id})
     );
-    // key order too (json.dumps of the payload dict): the legacy fields first, the pointer after
-    assert!(String::from_utf8_lossy(&pushed.body).starts_with(&format!("{{\"aps\":{{\"alert\":{{\"title\":\"Wellness\",\"body\":\"Nouveau message\",\"loc-key\":\"Nouveau message\"}},\"thread-id\":\"wellness\",\"mutable-content\":1,\"category\":\"MESSAGE\",\"sound\":\"default\"}},\"outbox_id\":\"{id}\",\"agent\":\"wellness\",\"session_id\":\"sess_42\",\"v\":2,")));
+    assert!(String::from_utf8_lossy(&pushed.body).starts_with("{\"aps\":{\"alert\":")); // compact, aps first
     assert_eq!(pushed.header("apns-topic").as_deref(), Some("io.github.bipagents"));
     assert_eq!(pushed.header("apns-push-type").as_deref(), Some("alert"));
     assert_eq!(pushed.path, format!("/3/device/{TOKEN}"));
