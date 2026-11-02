@@ -409,6 +409,14 @@ pub static CLOSE: LazyLock<Regex> = LazyLock::new(|| re(r"\s*[)\]]\s*"));
 /// line (a dialogue, a bullet) is dropped.
 pub static DASH: LazyLock<Regex> = LazyLock::new(|| re(r"\s*[—–]\s*"));
 static DASH_LINE_START: LazyLock<Regex> = LazyLock::new(|| re(r"(?m)^[ \t]*[—–][ \t]*"));
+/// A list's separators (« sommeil 84 · readiness 84 · HRV 85 »): a middle dot or a bullet between words is the short
+/// pause it shows; one that opens a line (a bullet) is dropped. Left in, Pocket got one long chunk with no pause and
+/// repeated or dropped words (Alex 2026-11-02: « sommeil 84 84 84 », no « readiness »). A dot inside a word (Catalan
+/// « l·l ») stays.
+static SEPARATOR_LINE_START: LazyLock<Regex> = LazyLock::new(|| re(r"(?m)^[ \t]*[·•∙⋅◦▪][ \t]*"));
+static SEPARATOR: LazyLock<Regex> = LazyLock::new(|| re(r"\s+[·•∙⋅◦▪]\s*|\s*[·•∙⋅◦▪]\s+"));
+/// A typographic minus (U+2212) or figure dash before a number (« −0,02 °C ») is the minus sign the numbers expect.
+static MINUS_SIGN: LazyLock<Regex> = LazyLock::new(|| re(r"[−‒](?=\d)"));
 pub static COMMA_RUNS: LazyLock<Regex> = LazyLock::new(|| re(r"\s*,(?:\s*,)+\s*"));
 pub static COMMA_BEFORE_END: LazyLock<Regex> = LazyLock::new(|| re(r"\s*,\s*([.!?…:;])"));
 pub static SPACE_RUNS: LazyLock<Regex> = LazyLock::new(|| re(r" {2,}"));
@@ -483,6 +491,7 @@ pub fn prepare_for_synthesis(text: &str) -> String {
 /// The same for a given engine: `Respelled` for Pocket 3.3.0 (« Spotifaï »), `Raw` for Pocket 4 and the others.
 pub fn prepare_for_synthesis_with(text: &str, spelling: pronounce::Spelling) -> String {
     let mut text = pronounce::without_hesitations(text, "fr"); // « Hmm, voyons » -> « Voyons »
+    text = separators(&text); // « sommeil 84 · readiness 84 » -> « sommeil 84, readiness 84 »
     for (pattern, words) in LEXICON.iter() {
         text = pattern.replace(&text, words);
     }
@@ -493,6 +502,13 @@ pub fn prepare_for_synthesis_with(text: &str, spelling: pronounce::Spelling) -> 
     }
     text = SLASH.replace(&text, " ou "); // "Garmin/Oura" -> "Garmin ou Oura"
     pauses(&text)
+}
+
+/// The start shared with speech_intl: list separators as pauses, typographic minus signs as « - ».
+pub(crate) fn separators(text: &str) -> String {
+    let text = SEPARATOR_LINE_START.replace(text, "");
+    let text = SEPARATOR.replace(&text, ", ");
+    MINUS_SIGN.replace(&text, "-")
 }
 
 /// The end shared with speech_intl: dashes and parentheses as pauses, commas tidied (CamelCase names are cut by
@@ -584,6 +600,34 @@ mod tests {
             ("Rien à lire ici.", "Rien à lire ici."),
         ] {
             assert_eq!(spell_numbers(text), spoken, "{text}");
+        }
+    }
+
+    /// Alex 2026-11-02: an Oura summary in markdown, bold numbers between « · », was read « sommeil 84 84 84 »,
+    /// without « readiness » nor « écart thermique »: the « · » stayed (two byte tokens for Pocket) and the line made
+    /// one 83-token chunk without a pause. Each label and value once, « · » a comma, the minus sign and °C spelled.
+    #[test]
+    fn list_separators_are_pauses() {
+        let line = "**Oura** : sommeil **84** · readiness **84** · HRV balance **85** · recovery index **76** · écart thermique **−0,02 °C**";
+        let shown = crate::textproc::normalize_for_speech(line, 180, true);
+        assert_eq!(
+            prepare_for_synthesis(&shown),
+            "Oura : sommeil quatre-vingt-quatre, readiness quatre-vingt-quatre, ache ère vé balance quatre-vingt-cinq, \
+             recovery index soixante-seize, écart thermique moins zéro virgule zéro deux degrés."
+        );
+        assert_eq!(
+            prepare_for_synthesis_with(&shown, pronounce::Spelling::Respelled),
+            "Oûra : sommeil quatre-vingt-quatre, rèdinèsse quatre-vingt-quatre, ache ère vé balance quatre-vingt-cinq, \
+             rikeuvri index soixante-seize, écart thermique moins zéro virgule zéro deux degrés."
+        );
+        for (text, spoken) in [
+            ("Écart 0,02 °C", "Écart zéro virgule zéro deux degrés"),
+            ("Lundi • mardi ∙ mercredi", "Lundi, mardi, mercredi"),
+            ("• Premier point\n• Second", "Premier point\nSecond"),
+            ("Il fait −3 °C cette nuit.", "Il fait moins trois degrés cette nuit."),
+            ("La col·lecció", "La col·lecció"), // a Catalan middle dot inside a word stays
+        ] {
+            assert_eq!(prepare_for_synthesis(text), spoken, "{text}");
         }
     }
 

@@ -1490,6 +1490,11 @@ the BipAgents app.",
                     true,
                 ));
             }
+            // On the offer, only through a model run in the Union: checked here at each call (health.rs).
+            if let Some(why) = crate::health::eu_refusal(&config, &agent_c) {
+                tracing::info!(agent = %agent_c.name, "health refused: the agent's model isn't marked as run in the EU");
+                return Ok(tool_text(&why, true));
+            }
             Ok(crate::health::call(&config, &agent_c.name, &arguments_c))
         })
         .await;
