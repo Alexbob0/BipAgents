@@ -332,6 +332,8 @@ impl AppState {
         self.spawn(crate::connections::run_forever(self.clone())); // renews the services' access tokens
         self.spawn(crate::connectors_run::scheduler(self.clone())); // the connectors' mechanical schedules
         self.spawn(crate::watchers::scheduler(self.clone())); // the watchers: checks with no model call
+        self.spawn(crate::triggers::scheduler(self.clone())); // routines started by an e-mail or a link
+        self.spawn(crate::triggers_mail::supervisor(self.clone())); // their mailboxes, by IMAP IDLE
         self.spawn(crate::archives::scheduler(self.config.clone()));
         crate::agent_email::start(self);
         self.spawn(self.briefs.clone().run());
@@ -1248,6 +1250,18 @@ async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>
             None => Err(HttpError::new(404, "no such request (answered already?)")),
         };
     }
+    // a routine an agent proposed, started by an e-mail or a link (triggers.rs): on with « Oui »
+    if let Some(id) = run_id.strip_prefix(crate::triggers::RUN_PREFIX) {
+        let allow = body.choice.trim().to_lowercase() != "deny";
+        let (config, name, id) = (state.config(), agent.name.clone(), id.to_string());
+        let answered = tokio::task::spawn_blocking(move || crate::triggers::answer(&config, &name, &id, allow))
+            .await
+            .map_err(anyhow::Error::from)?;
+        return match answered {
+            Some(_) => Ok(web::ok(json!({"ok": true, "choice": if allow { "once" } else { "deny" }}))),
+            None => Err(HttpError::new(404, "no such request (answered already?)")),
+        };
+    }
     // a space card (what to keep when the place fills up, storage_watch.rs), answered here
     if let Some(id) = run_id.strip_prefix(crate::storage_watch::RUN_PREFIX) {
         return crate::storage_watch::approve(&state, &agent, id, &body.choice).await;
@@ -1332,6 +1346,7 @@ async fn approvals(State(state): State<AppState>, q: QueryMap) -> ApiResult<Resp
         items.extend(crate::storage_watch::pending_items(&config, name.as_deref()));
         items.extend(crate::mail_tidy::pending_items(&config, name.as_deref()));
         items.extend(crate::feature_tips::pending_items(&config, name.as_deref()));
+        items.extend(crate::triggers::pending_items(&config, name.as_deref()));
     }
     for item in items.iter_mut() {
         let created = item.get("created_at").and_then(Value::as_f64).unwrap_or(0.0);
@@ -1739,6 +1754,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::connectors::app_router())
         .merge(crate::templates::router())
         .merge(crate::autonomous::router())
+        .merge(crate::triggers::router())
         .merge(crate::handover::app_router())
         .merge(crate::link_wallet::app_router())
         .merge(crate::place_backup::router())
@@ -1813,6 +1829,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::link_wallet::router()) // Link Agent Wallet (US/CA), behind its flag
         .merge(crate::agent_tools::router()) // the agents' MCP tools (create_audio), each agent with its own token
         .merge(crate::connections::callback_router()) // a service's sign-in coming back (its single-use state)
+        .merge(crate::triggers::hook_router()) // a routine's link: its secret token is the key (POST only)
         .merge(crate::peers::family_router()) // the linked households' bridges, with the key each was given
         .merge(crate::family_news::household_router()) // their family news, the same key
         .merge(crate::agent_shares::household_router()) // the agents shared with them, the same key
