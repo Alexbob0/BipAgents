@@ -55,6 +55,59 @@ CREATE TABLE IF NOT EXISTS ntfy_cursor (
     last_id TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS threads (
+    id TEXT PRIMARY KEY,
+    agent TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    title TEXT,
+    origin TEXT,
+    hidden INTEGER NOT NULL DEFAULT 0,
+    version INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS threads_one_main ON threads (agent) WHERE kind = 'main';
+CREATE TABLE IF NOT EXISTS thread_segments (
+    agent TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    thread_id TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    linked TEXT NOT NULL,
+    added_at TEXT NOT NULL,
+    PRIMARY KEY (agent, session_id)
+);
+CREATE INDEX IF NOT EXISTS thread_segments_thread ON thread_segments (thread_id, position);
+CREATE TABLE IF NOT EXISTS thread_messages (
+    agent TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    thread_id TEXT NOT NULL,
+    client_id TEXT,
+    attachments TEXT,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (agent, message_id)
+);
+CREATE TABLE IF NOT EXISTS notifications (
+    id TEXT PRIMARY KEY,
+    agent TEXT NOT NULL,
+    type TEXT NOT NULL,
+    thread_id TEXT,
+    message_id TEXT,
+    ref_id TEXT,
+    session_id TEXT,
+    title TEXT,
+    body_key TEXT,
+    preview TEXT,
+    args TEXT,
+    state TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    read_at TEXT,
+    hidden INTEGER NOT NULL DEFAULT 0,
+    push TEXT,
+    dedupe_key TEXT UNIQUE,
+    legacy TEXT
+);
+CREATE INDEX IF NOT EXISTS notifications_agent ON notifications (agent, created_at);
+CREATE INDEX IF NOT EXISTS notifications_thread ON notifications (thread_id, read_at);
 ";
 
 /// A row as Python's `dict(row)`.

@@ -1,0 +1,104 @@
+{
+  "thread": {
+    "id": "t_001a19ca71643700ab24e8d7f4",
+    "agent": "wellness",
+    "kind": "main",
+    "title": null,
+    "hidden": false,
+    "origin": null,
+    "version": 0,
+    "created_at": "2026-11-02T14:25:58.339Z",
+    "updated_at": "2026-11-02T14:25:58.339Z",
+    "tip": "api_new"
+  },
+  "items": [
+    {
+      "id": "m_c01b8eac6c09f9008a3647fbcc4a3f73",
+      "kind": "message",
+      "role": "person",
+      "text": "Quel train pour Lyon demain ?",
+      "at": "1970-01-01T00:00:00.000Z",
+      "cursor": "0.0.0"
+    },
+    {
+      "id": "m_aed5d1f2253f3ca8ed0eace484135a76.t0",
+      "kind": "tool",
+      "tool": {
+        "name": "web_search",
+        "call_id": "call_1",
+        "arguments": "{\"q\": \"train Paris Lyon\"}",
+        "result": "3 résultats",
+        "status": "done",
+        "via": null
+      },
+      "at": "1970-01-01T00:00:00.000Z",
+      "cursor": "0.1.1",
+      "turn": "m_c01b8eac6c09f9008a3647fbcc4a3f73"
+    },
+    {
+      "id": "m_6f86675f7ff051ab59a5524806464216",
+      "kind": "message",
+      "role": "agent",
+      "text": "Le train de 9 h part de la gare de Lyon, voie 4.",
+      "attachments": [
+        {
+          "id": "m_6f86675f7ff051ab59a5524806464216.a0",
+          "kind": "page",
+          "name": "horaires.html",
+          "mime": "text/html",
+          "size": null,
+          "path": "/bipagents/pages/wellness/horaires.html",
+          "offset": 49
+        }
+      ],
+      "at": "1970-01-01T00:00:00.000Z",
+      "cursor": "0.3.0",
+      "turn": "m_c01b8eac6c09f9008a3647fbcc4a3f73"
+    },
+    {
+      "id": "m_95488776d97d18fb1467e74346f899e8",
+      "kind": "message",
+      "role": "person",
+      "text": "Et ce billet ?",
+      "attachments": [
+        {
+          "id": "m_95488776d97d18fb1467e74346f899e8.a0",
+          "kind": "image",
+          "name": null,
+          "mime": "image/jpeg",
+          "size": null,
+          "path": null,
+          "url": "/v1/threads/t_001a19ca71643700ab24e8d7f4/attachments/m_95488776d97d18fb1467e74346f899e8.a0"
+        }
+      ],
+      "at": "1970-01-01T00:00:00.000Z",
+      "cursor": "1.0.0"
+    },
+    {
+      "id": "m_10f6b053e7b3695b7ad0a13e237b4823",
+      "kind": "message",
+      "role": "agent",
+      "text": "C'est un billet pour jeudi.",
+      "at": "1970-01-01T00:00:00.000Z",
+      "cursor": "1.1.0",
+      "turn": "m_95488776d97d18fb1467e74346f899e8"
+    }
+  ],
+  "first": "0.0.0",
+  "last": "1.1.0",
+  "more_before": false,
+  "more_after": false,
+  "anchor": "m_c01b8eac6c09f9008a3647fbcc4a3f73",
+  "version": 0,
+  "pending": {
+    "run": null,
+    "queue": {
+      "agent": "wellness",
+      "version": 0,
+      "paused": false,
+      "items": [],
+      "running": null
+    },
+    "approvals": []
+  }
+}

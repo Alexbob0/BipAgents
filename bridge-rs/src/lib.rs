@@ -39,6 +39,8 @@ pub mod heavy_work;
 pub mod feature_tips;
 pub mod beta_measures;
 pub mod store;
+pub mod threads;
+pub mod notifications;
 
 // -- push-runs -------------------------------------------------------------------------------------
 pub mod apns;

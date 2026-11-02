@@ -162,6 +162,8 @@ def test_watch_pushes_approval_when_nobody_follows(bridge, fakes):
     assert wait_until(lambda: len(apns.pushes()) >= 1)
     payload = apns.payloads()[0]
     assert payload["aps"]["category"] == "APPROVAL" and payload["aps"]["alert"]["body"] == "Approbation requise"
+    v2 = {k: payload.pop(k) for k in ("v", "n", "t")}   # the journal's pointer; no conversation without a session
+    assert v2["v"] == 2 and v2["t"] == "approval" and "c" not in payload
     assert payload == {"aps": {"alert": {"title": "Wellness", "body": "Approbation requise",
                                          "loc-key": "Approbation requise"},
                                "thread-id": "wellness", "mutable-content": 1, "category": "APPROVAL", "sound": "default"},
@@ -409,7 +411,7 @@ def test_reply_ready_pushed_when_the_app_left(bridge, fakes):
     payload = apns.payloads()[0]
     assert payload["kind"] == "reply" and payload["session_id"] == "api_9" and payload["run_id"] == "run_r"
     assert payload["aps"]["category"] == "MESSAGE" and payload["aps"]["alert"]["body"] == "Ta réponse est prête."
-    assert apns.pushes()[0].header("apns-collapse-id") == "run_r"
+    assert apns.pushes()[0].header("apns-collapse-id") is None   # each reply its own (journal row), none replaced
     # The text stays off Apple: the extension fetches it from the bridge.
     assert "19 €" not in apns.pushes()[0].body.decode()
     reply = bridge.get(f"/v1/replies/{payload['reply_id']}", headers=AUTH)
