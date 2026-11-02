@@ -1,0 +1,176 @@
+{{>top}}
+<!-- ============================================================ SERVICE STATUS (the guichet's GET /v1/public-status) -->
+<style>
+.status-wrap { max-width: 760px; margin: 0 auto; }
+.status-head { display: flex; gap: 18px; align-items: center; padding: 24px; border-radius: var(--radius); background: var(--card);
+  box-shadow: var(--shadow); }
+.status-head h2 { font-size: clamp(24px, 3.4vw, 34px); line-height: 1.1; letter-spacing: -.02em; }
+.status-head p { margin-top: 6px; color: var(--ink2); }
+.status-dot { flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--line); }
+.status-dot.big { width: 34px; height: 34px; box-shadow: 0 0 0 8px var(--tone-tint, var(--ground2)); }
+[data-state="ok"] { --tone: var(--green); --tone-deep: var(--green-deep); --tone-tint: var(--green-tint); }
+[data-state="degraded"] { --tone: var(--gold); --tone-deep: var(--gold-deep); --tone-tint: var(--gold-tint); }
+[data-state="outage"], [data-state="unreachable"] { --tone: var(--coral); --tone-deep: var(--coral-deep); --tone-tint: var(--coral-tint); }
+[data-state="info"] { --tone: var(--blue); --tone-deep: var(--blue-deep); --tone-tint: var(--blue-tint); }
+[data-state] .status-dot, .status-dot[data-state] { background: var(--tone, var(--line)); }
+.status-note { margin-top: 18px; padding: 20px 22px; border-radius: 24px; background: var(--tone-tint); }
+.status-note h3 { color: var(--tone-deep); font-size: 15px; text-transform: uppercase; letter-spacing: .04em; }
+.status-note p { margin-top: 6px; }
+.status-note small { display: block; margin-top: 8px; color: var(--ink2); font-size: 14px; }
+.status-parts { margin: 18px 0 0; padding: 0; list-style: none; border-radius: var(--radius); background: var(--card);
+  box-shadow: var(--shadow); overflow: hidden; }
+.status-part { display: flex; gap: 14px; align-items: center; padding: 18px 22px; }
+.status-part + .status-part { border-top: 1px solid var(--line); }
+.status-part .status-dot { width: 14px; height: 14px; }
+.status-part div { flex: 1; min-width: 0; }
+.status-part b { display: block; font-weight: 800; }
+.status-part span { display: block; color: var(--muted); font-size: 15px; }
+.status-word { flex: none; font-weight: 800; color: var(--tone-deep, var(--muted)); text-align: right; }
+.status-history { margin-top: 36px; }
+.status-history h2 { font-size: 24px; letter-spacing: -.02em; }
+.status-history ol { margin: 12px 0 0; padding: 0; list-style: none; }
+.status-history li { display: flex; gap: 14px; padding: 14px 0; border-top: 1px solid var(--line); }
+.status-history li .status-dot { width: 12px; height: 12px; margin-top: 7px; }
+.status-history time, .status-history .when { color: var(--muted); font-size: 14px; }
+.status-history p.empty { margin-top: 12px; color: var(--ink2); }
+.status-foot { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-top: 18px;
+  color: var(--muted); font-size: 14px; }
+.status-foot button { border: 0; cursor: pointer; font: inherit; }
+@media (max-width: 520px) {
+  .status-head { padding: 20px; gap: 14px; }
+  .status-head { align-items: flex-start; }
+  .status-part { padding: 16px 18px; align-items: flex-start; flex-wrap: wrap; row-gap: 2px; }
+  .status-part .status-dot { margin-top: 6px; }
+  .status-word { order: 3; flex-basis: 100%; padding-left: 28px; text-align: left; font-size: 15px; }
+}
+</style>
+<section class="section page-section" id="status">
+  <div class="section-head">
+    <p class="chip-beta">{{status.kicker}}</p>
+    <h1 class="page-h1">{{status.title}}</h1>
+  </div>
+  <div class="status-wrap" id="status-root" aria-live="polite">
+    <div class="status-head" id="status-head" data-state="">
+      <span class="status-dot big" aria-hidden="true"></span>
+      <div><h2 id="status-headline">{{status.loading}}</h2><p id="status-explain"></p></div>
+    </div>
+    <div class="status-note" id="status-note" hidden><h3></h3><p></p><small></small></div>
+    <ul class="status-parts" id="status-parts" role="list" hidden></ul>
+    <div class="status-history" id="status-history" hidden>
+      <h2>{{status.historyTitle}}</h2>
+      <ol id="status-history-list" role="list"></ol>
+      <p class="empty" id="status-history-empty" hidden>{{status.historyEmpty}}</p>
+    </div>
+    <div class="status-foot">
+      <span id="status-checked"></span>
+      <button class="pill pill-ink small" type="button" id="status-again">{{status.again}}</button>
+    </div>
+  </div>
+</section>
+<script>
+// the page's data (#site-data) comes after this script, in the footer
+document.addEventListener("DOMContentLoaded", () => {
+  const data = JSON.parse(document.getElementById("site-data").textContent);
+  const t = data.status, lang = data.lang;
+  // a local copy of the site may read another guichet (?api=http://127.0.0.1:…), the real site only its own
+  const local = ["127.0.0.1", "localhost"].includes(location.hostname);
+  const api = (local && new URLSearchParams(location.search).get("api")) || data.statusApi;
+  const $ = (id) => document.getElementById(id);
+  const when = new Intl.DateTimeFormat(lang, { dateStyle: "medium", timeStyle: "short" });
+  const hour = new Intl.DateTimeFormat(lang, { timeStyle: "short" });
+  const date = (seconds) => when.format(new Date(seconds * 1000));
+  const fill = (text, values) => text.replace(/\{(\w+)\}/g, (_, k) => values[k] ?? "");
+  const words = (text) => (text && (text[lang === "fr" ? "fr" : "en"] || text.en || text.fr)) || "";
+  const state = (s) => (["ok", "degraded", "outage", "info"].includes(s) ? s : "unknown");
+
+  function headline(overall, reachable) {
+    const key = reachable ? state(overall) : "unreachable";
+    $("status-head").dataset.state = key;
+    $("status-headline").textContent = t.overall[key] || t.overall.ok;
+    $("status-explain").textContent = t.explain[key] || "";
+  }
+
+  function detail(name, part) {
+    if (name !== "places" || !part.servers || !part.servers.total) return t.parts[name].what;
+    const s = part.servers;
+    if (s.down) return fill(t.servers.down, { n: s.down, total: s.total });
+    if (s.slow) return fill(t.servers.slow, { n: s.slow, total: s.total });
+    return fill(t.servers.ok, { n: s.ok, total: s.total });
+  }
+
+  function show(snapshot) {
+    headline(snapshot.overall, true);
+    const list = $("status-parts");
+    list.replaceChildren();
+    for (const name of ["places", "ai", "guichet", "notifications", "backups"]) {
+      const part = (snapshot.parts || {})[name];
+      if (!part) continue;
+      const s = state(part.state);
+      const li = document.createElement("li");
+      li.className = "status-part";
+      li.dataset.state = s;
+      li.innerHTML = '<span class="status-dot" aria-hidden="true"></span><div><b></b><span></span></div><span class="status-word"></span>';
+      li.querySelector("b").textContent = t.parts[name].name;
+      li.querySelector("div span").textContent = detail(name, part);
+      li.querySelector(".status-word").textContent = t.states[s];
+      list.append(li);
+    }
+    list.hidden = false;
+    const note = $("status-note"), incident = snapshot.incident;
+    note.hidden = !incident;
+    if (incident) {
+      note.dataset.state = state(incident.level);
+      note.querySelector("h3").textContent = t.noteTitle;
+      note.querySelector("p").textContent = words(incident.text);
+      note.querySelector("small").textContent = fill(incident.updated > incident.started ? t.noteUpdated : t.noteSince,
+        { since: date(incident.started), updated: date(incident.updated) });
+    }
+    // the incident under way is the note above: the history lists the ended ones
+    const past = (snapshot.history || []).filter((i) => i.ended);
+    const ol = $("status-history-list");
+    ol.replaceChildren();
+    for (const i of past) {
+      const li = document.createElement("li");
+      li.dataset.state = state(i.level);
+      li.innerHTML = '<span class="status-dot" aria-hidden="true"></span><div><span class="when"></span><p></p></div>';
+      li.querySelector(".when").textContent = `${t.levels[state(i.level)] || ""} · ${date(i.started)} → ${date(i.ended)}`;
+      li.querySelector("p").textContent = words(i.text);
+      ol.append(li);
+    }
+    $("status-history-empty").hidden = past.length > 0;
+    $("status-history").hidden = false;
+    $("status-checked").textContent = fill(t.checked, { time: hour.format(new Date((snapshot.checked_at || Date.now() / 1000) * 1000)) });
+  }
+
+  function unreachable() {
+    headline(null, false);
+    $("status-parts").hidden = true;
+    $("status-note").hidden = true;
+    $("status-history").hidden = true;
+    $("status-checked").textContent = fill(t.tried, { time: hour.format(new Date()) });
+  }
+
+  let shown = false;
+
+  async function check() {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10000);
+      const res = await fetch(api, { signal: controller.signal, cache: "no-store" });
+      clearTimeout(timer);
+      // too many checks from this network: the last state shown stays
+      if (res.status === 429 && shown) return;
+      if (!res.ok) throw new Error(String(res.status));
+      show(await res.json());
+      shown = true;
+    } catch (e) {
+      unreachable();
+    }
+  }
+
+  $("status-again").addEventListener("click", check);
+  check();
+  setInterval(() => { if (!document.hidden) check(); }, 60000);
+});
+</script>
+{{>foot}}

@@ -14,7 +14,7 @@
   one then does oneself) opens in place (`#install` opens it) —, six questions that settle a purchase, the footer
   (store badges, company, links). On a phone, a bar at the bottom keeps the beta's button. Their own pages: `/demo/` (the app's own demo
   playing in a chat: five scenarios, `/demo/#<scenario>` opening on one, with the walk's map and the page kit's « Your runs » page inside the replies),
-  `/faq/` (every question), `/beta/` (the public beta: what it is, what testers get, what we ask, TestFlight and
+  `/faq/` (every question), `/status/` (the service status: the guichet's public `GET /v1/public-status`, read every minute; « Impossible de joindre le service » when the guichet itself doesn't answer; a local copy may read a mock with `?api=` on 127.0.0.1/localhost only), `/beta/` (the public beta: what it is, what testers get, what we ask, TestFlight and
   Google Play badges, its terms on kerfystudio.com `/beta/`; « Join the beta » is the main button everywhere, the
   Carnet section after the cards shows what the agents keep); `/install/` only sends to the home's `#install`. English at `/`, French, German and
   Spanish at `/fr/`, `/de/`, `/es/` (and `/fr/demo/`, `/fr/faq/`…).
@@ -87,7 +87,7 @@ with a dark look that follows the system.
 **Hosting**: `site/dist/<site>` is plain static files. Both sites live on OVH's free web hosting (Apache), so
 `hosting.py` adds to each a `.htaccess` (one redirect to `https://<apex>/` from http and www; HSTS, short at first;
 nosniff, Referrer-Policy, a Content-Security-Policy with no third party and the hashes of the pages' own inline scripts;
-a year of cache for `?v=` stylesheets and scripts, a week for pictures and fonts, none for pages), a `404.html` and
+a year of cache for `?v=` stylesheets and scripts, a week for pictures and fonts, none for pages; `ErrorDocument 404 /404.html`), a `404.html` (bipagents.com builds its own: « Un Bip a mangé la page », `src/bipagents/404.html` + `notfound.js`, texts in `i18n/notfound.<lang>.json` — one page for the four languages, picked from the missing address's `/fr/`… prefix, else the browser's, with a switch; shake the chubby Bip to get « 4 0 4 » back and the link home) and
 `/.well-known/security.txt`. A private script of the publisher mirrors them to the hostings over SFTP (OVH offers no
 FTP over TLS) and checks each home page. The pages already link to each other by their final addresses.
 

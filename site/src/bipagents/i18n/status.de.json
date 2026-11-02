@@ -1,0 +1,78 @@
+{
+  "page": {
+    "status": {
+      "title": "Dienststatus — BipAgents",
+      "description": "Funktioniert BipAgents gerade? Der Live-Status des Dienstes: Ihre Agenten, KI-Antworten, Benachrichtigungen, Sicherungen und unsere Nachrichten, wenn etwas nicht stimmt."
+    }
+  },
+  "foot": {
+    "status": "Dienststatus"
+  },
+  "status": {
+    "kicker": "Dienststatus",
+    "title": "Funktioniert BipAgents?",
+    "loading": "Wird geprüft…",
+    "historyTitle": "Die letzten 30 Tage",
+    "historyEmpty": "Kein Vorfall in den letzten 30 Tagen.",
+    "again": "Erneut prüfen",
+    "js": {
+      "overall": {
+        "ok": "Alles funktioniert",
+        "degraded": "Einige Verzögerungen",
+        "outage": "Störung",
+        "unknown": "Alles funktioniert",
+        "unreachable": "Der Dienst ist gerade nicht erreichbar"
+      },
+      "explain": {
+        "ok": "Alle Teile des Dienstes antworten normal.",
+        "degraded": "Wir wissen Bescheid und kümmern uns darum. Auf Ihrem Telefon ist nichts zu tun.",
+        "outage": "Wir wissen Bescheid und beheben es. Auf Ihrem Telefon ist nichts zu tun: Ihre Agenten kommen von selbst zurück.",
+        "unknown": "Alle Teile des Dienstes antworten normal.",
+        "unreachable": "Genau das ist der Status: Der Dienst selbst antwortet nicht. Versuchen Sie es in ein paar Minuten erneut; wenn es anhält, schreiben Sie an support@bipagents.com."
+      },
+      "states": {
+        "ok": "Alles funktioniert",
+        "degraded": "Verzögerungen",
+        "outage": "Störung",
+        "unknown": "Noch nicht gemessen"
+      },
+      "parts": {
+        "places": {
+          "name": "Ihre Agenten",
+          "what": "Die Server, auf denen Ihre Agenten leben"
+        },
+        "ai": {
+          "name": "KI-Antworten",
+          "what": "Das Modell, mit dem Ihre Agenten denken"
+        },
+        "guichet": {
+          "name": "Konten und Abos",
+          "what": "Anmelden, Abos, ein neuer Agent"
+        },
+        "notifications": {
+          "name": "Benachrichtigungen",
+          "what": "Hinweise auf Ihrem Telefon"
+        },
+        "backups": {
+          "name": "Sicherungen",
+          "what": "Kopien Ihrer Agenten, stündlich"
+        }
+      },
+      "servers": {
+        "ok": "Server, die antworten: {n} von {total}",
+        "slow": "Langsame Server: {n} von {total}",
+        "down": "Ausgefallene Server: {n} von {total}"
+      },
+      "noteTitle": "Nachricht des Teams",
+      "noteSince": "Seit {since}",
+      "noteUpdated": "Seit {since} · aktualisiert {updated}",
+      "levels": {
+        "info": "Information",
+        "degraded": "Verzögerungen",
+        "outage": "Störung"
+      },
+      "checked": "Geprüft um {time}, jede Minute",
+      "tried": "Letzter Versuch um {time}"
+    }
+  }
+}

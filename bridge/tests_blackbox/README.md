@@ -6,7 +6,7 @@ runs the bridge as a separate process and talks to it the way the apps, the agen
 administrator do: over HTTP, SSE, WebSocket and the command line. It reads and writes nothing of the bridge's code.
 The only Python it imports is its own harness (`bbkit/`).
 
-All 545 tests pass (1 skipped) against the Rust bridge's release build. The full run takes about 4 minutes (Apple M4).
+All 562 tests pass (1 skipped) against the Rust bridge's release build. The full run takes about 4 minutes (Apple M4).
 
 ## Running it
 
@@ -174,7 +174,7 @@ The suite makes about 800 requests in 28 files.
 | `GET /v1/media` | app | agent_tools (2), media_and_jobs (1), pages (1) |
 | `GET /v1/pages` | app | pages (1) |
 | `DELETE /v1/pages/{page}` | app | pages (1) |
-| `GET /v1/sessions/{session_id}/state` | app | cronwatch (2) |
+| `GET /v1/sessions/{session_id}/state` | app | cronwatch (2), agent_queue (1) |
 | `GET /v1/status` | app | relay_and_discovery (2), agents_admin (1), config (1), vault (1) |
 | `GET /v1/pairing` | app | lan (2) |
 | `GET /v1/replies/{reply_id}` | app | voice_and_approvals (2), cronwatch (1) |
@@ -266,6 +266,15 @@ The suite makes about 800 requests in 28 files.
 | `PUT /v1/voices/uses` | voices | voices (3), agent_tools (1) |
 | `PUT /v1/agents/{agent_id}/voices` | voices | voices (3) |
 | `PUT /v1/agents/{agent_id}/appearance` | voices | voices (1) |
+| `GET /v1/agents/{agent_id}/queue` | msg_queue | agent_queue (9) |
+| `POST /v1/agents/{agent_id}/queue` | msg_queue | agent_queue (9) |
+| `POST /v1/agents/{agent_id}/queue/order` | msg_queue | agent_queue (1) |
+| `DELETE /v1/agents/{agent_id}/queue/{item_id}` | msg_queue | agent_queue (1) |
+| `POST /v1/agents/{agent_id}/queue/{item_id}/now` | msg_queue | agent_queue (2) |
+| `POST /v1/agents/{agent_id}/queue/pause` | msg_queue | agent_queue (1) |
+| `POST /v1/agents/{agent_id}/queue/resume` | msg_queue | agent_queue (1) |
+| `GET /v1/agents/{agent_id}/queue/events` | msg_queue | agent_queue (1) |
+| `POST /v1/agents/{agent_id}/steer` | msg_queue | agent_queue (3) |
 | `WEBSOCKET /v1/voice` | voice_ws | voice_and_approvals (12), http_routes (1) |
 | `GET /console/static/…` (mount) | console | console (1) |
 | `GET /desktop/static/novnc/…` (mount) | desktop | desktop (1) |
