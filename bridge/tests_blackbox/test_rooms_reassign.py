@@ -84,6 +84,15 @@ def test_a_task_handed_over_goes_on_from_a_small_note_and_its_follow_ups_go_to_i
     # naming someone still wins
     sent = bridge.post(f"/v1/rooms/{rid}/messages", headers=AUTH, json={"text": "@coach et toi ?"}).json()
     assert sent["route"] == {"by": "mention", "agents": ["coach"]}
+    assert wait_until(lambda: quiet(bridge, rid), timeout=20)
+
+    # « C'est fini »: the task closed, its follow-ups go through the router again
+    assert bridge.post(f"/v1/rooms/{rid}/tasks/9/done", headers=AUTH).status_code == 404
+    closed = bridge.post(f"/v1/rooms/{rid}/tasks/1/done", headers=AUTH)
+    assert closed.status_code == 200, closed.text
+    assert closed.json()["task"]["state"] == "done" and closed.json()["answering"] == []
+    sent = bridge.post(f"/v1/rooms/{rid}/messages", headers=AUTH, json={"text": "autre chose"}).json()
+    assert sent["route"]["by"] != "assigned"
 
 
 def test_the_owner_at_work_stops_and_writes_its_own_note(bridges, fakes):
@@ -115,6 +124,14 @@ def test_the_owner_at_work_stops_and_writes_its_own_note(bridges, fakes):
     assert note_calls(fakes) == []   # its own note: no small call
     task = messages(bridge, rid)["tasks"][0]
     assert task["owner"] == "cuisine" and task["handover"]["in_room"] is True
+
+    # closing a task while its owner works on it stops that turn
+    fakes.hermes.rounds = 10_000
+    bridge.post(f"/v1/rooms/{rid}/messages", headers=AUTH, json={"text": "et la suite ?"})
+    assert wait_until(lambda: (json.loads(stored.read_text()).get("current") or {}).get("run_id") == "r4", timeout=10)
+    closed = bridge.post(f"/v1/rooms/{rid}/tasks/1/done", headers=AUTH).json()
+    assert closed["task"]["state"] == "done" and closed["answering"] == []
+    assert wait_until(lambda: fakes.hermes.started["r4"]["status"] == "cancelled", timeout=10)
 
 
 def test_rooms_without_the_relay_keep_no_tasks(bridges, fakes):

@@ -80,6 +80,7 @@
 //!     POST   /v1/rooms/{id}/tasks/{task}/reassign   {agent}  → {task, message: the notice, answering}  (« Réassigner
 //!                                                   à… », rooms_tasks.rs: the task handed to another agent with a
 //!                                                   short handover note; `tasks` in the room and in each look)
+//!     POST   /v1/rooms/{id}/tasks/{task}/done       {task, answering}  (« C'est fini »: closed, its turns stopped)
 //!
 //!     room       {id, title, participants: [{id, name, category, color, gone}], mode: "auto"|"all", created,
 //!                 updated, last: message|null, answering, tokens: {input, output}, goal: "" | text,
@@ -2118,6 +2119,36 @@ impl Rooms {
         Ok(Some(()))
     }
 
+    /// The person closes `task` (« C'est fini », rooms_tasks.rs): finished, its queued turns gone, its turn going on
+    /// stopped (the others' turns go on).
+    pub async fn close_task(self: &Arc<Self>, id: &str, task: u32) -> Result<Value, HttpError> {
+        let config = self.config.get();
+        let hub = self.hub.clone();
+        let changed = change(&config, id, |room| {
+            let t = crate::rooms_tasks::get_mut(room, task)?;
+            t.state = crate::rooms_tasks::DONE.into();
+            t.updated = now();
+            room.queue.retain(|q| q.task != Some(task));
+            let taken = room.current.take_if(|c| c.task == Some(task));
+            Some((taken, crate::rooms_tasks::get(room, task).cloned(), answering(room, hub.as_deref())))
+        })
+        .map_err(HttpError::from)?
+        .ok_or_else(HttpError::not_found)?;
+        let Some((taken, view, now_answering)) = changed else {
+            return Err(HttpError::new(404, "no such task in this discussion"));
+        };
+        if let Some(turn) = taken {
+            if let (Some(agent), Some(run_id)) = (config.agent(Some(&turn.agent)), turn.run_id.as_deref()) {
+                let _ = self.hermes.stop_run(agent, run_id).await;
+            } else if let (Some(run_id), Some(_)) = (turn.run_id.as_deref(), crate::households::split(&turn.agent)) {
+                crate::rooms_remote::stop(&self.http, &config, &turn.agent, run_id).await;
+            }
+        }
+        tracing::info!(room = %id, task = task, "rooms: a task closed by the person");
+        self.kick(id);
+        Ok(json!({"task": view, "answering": now_answering}))
+    }
+
     /// The person hands `task` to `to` (« Réassigner à… », rooms_tasks.rs): the owner changed at once and said in the
     /// room, the old owner's turns on it stopped, then the new owner's turn with the handover note: written by the old
     /// owner when it was working on it (its run stopped, `wrap_up`), else by one small call.
@@ -2637,6 +2668,13 @@ async fn reassign_route(
     Ok(web::ok(rooms_of(&state).reassign(&id, task, &body.agent).await?))
 }
 
+async fn close_task_route(
+    State(state): State<AppState>,
+    UrlPath((id, task)): UrlPath<(String, u32)>,
+) -> ApiResult<Response> {
+    Ok(web::ok(rooms_of(&state).close_task(&id, task).await?))
+}
+
 async fn stop_route(State(state): State<AppState>, UrlPath(id): UrlPath<String>) -> ApiResult<Response> {
     rooms_of(&state).stop(&id).await?.ok_or_else(HttpError::not_found)?;
     let config = state.config();
@@ -2652,6 +2690,7 @@ pub fn router() -> Router<AppState> {
         .route("/rooms/{room_id}/messages", get(messages).post(post_message))
         .route("/rooms/{room_id}/stop", post(stop_route))
         .route("/rooms/{room_id}/tasks/{task}/reassign", post(reassign_route))
+        .route("/rooms/{room_id}/tasks/{task}/done", post(close_task_route))
 }
 
 #[cfg(test)]
