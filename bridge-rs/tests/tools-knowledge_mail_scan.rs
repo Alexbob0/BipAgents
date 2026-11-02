@@ -226,7 +226,8 @@ async fn a_mailbox_is_counted_free_then_read_by_steps_into_pages() {
     );
     assert_eq!(
         told.lock().unwrap().last().unwrap().clone(),
-        ("coach".to_string(), format!("Analyse de ta boîte mail terminée : 2 mails, {} pages", job["pages"]))
+        // in the agent's language: this place has none, English (mail_scan.rs `tell_line`)
+        ("coach".to_string(), format!("Mailbox analysis done: 2 emails, {} pages", job["pages"]))
     );
     // The model got the mails as text, no tools, the instructions first; the quoted reply was left out.
     let request = seen.lock().unwrap().last().unwrap().clone();

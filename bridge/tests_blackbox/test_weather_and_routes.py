@@ -19,7 +19,7 @@ def test_weather_follows_the_agents_switch(bridges, fakes):
     give_token(bridge, "coach")
     assert "weather" not in names(bridge) and "route" in names(bridge)
     off = call(bridge, "weather", {"place": "Lyon"})
-    assert off["isError"] is True and "« Météo »" in text_of(off)
+    assert off["isError"] is True and "« Weather »" in text_of(off)  # the switch named in the agent's language
     assert fakes.maps.requests == []
 
     settings = bridge.patch("/v1/agents/coach/settings", headers=AUTH, json={"weather": True})
