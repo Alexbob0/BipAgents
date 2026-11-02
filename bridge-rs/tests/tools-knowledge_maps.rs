@@ -198,7 +198,9 @@ async fn map_config(dir: &std::path::Path, geocoder: &str) -> bipbridge::config:
     .await;
     let mut data = config_dict(dir, &Urls::default());
     data["weather"] = json!({"geocoder_url": format!("{geocoder}/search")});
-    data["maps"] = json!({"tiles": "osm", "tile_url": format!("{tile_server}/{{z}}/{{x}}/{{y}}.png")});
+    // no street routing here (its own tests below, against a fake router): never the public one from the tests
+    data["maps"] =
+        json!({"tiles": "osm", "tile_url": format!("{tile_server}/{{z}}/{{x}}/{{y}}.png"), "streets": "off"});
     parse_config(&data, None).unwrap()
 }
 
@@ -237,7 +239,11 @@ async fn places_are_found_by_the_bridge_inside_the_area_and_shown_as_a_live_map_
     assert_eq!(points[0]["note"], "10 h – 18 h");
     assert!(points.iter().all(|p| p["source"] == "osm" && p["area"] == "Lisboa, Portugal"), "{points:?}");
     assert_eq!(map["area"], "Lisboa, Portugal");
-    assert_eq!(map["route"], json!({"line": true, "mode": "walking"}));
+    // routing off: the straight line, dashed, its length as the crow flies
+    assert_eq!(map["route"]["mode"], "walking");
+    assert_eq!((map["route"]["travel"].as_str(), map["route"]["streets"].as_bool()), (Some("walking"), Some(false)));
+    assert!(map["route"].get("path").is_none() && map["route"]["meters"].as_u64().unwrap() > 6000);
+    assert!(said.contains("Way: a dashed straight line, not along the streets (no street routing on this server)"));
     // every search after the area's stayed in its box
     let searches: Vec<String> = asked.lock().unwrap().iter().filter(|s| s.starts_with("search ")).cloned().collect();
     assert!(searches[0].starts_with("search Lisboa, Portugal"));
@@ -541,4 +547,226 @@ async fn a_trip_far_apart_on_purpose_and_a_single_place_stay_as_found() {
     let map = kept_map(&config, "daily", &said);
     assert_eq!((map["points"][0]["lat"].as_f64(), map["points"][0]["source"].as_str()), (Some(44.657779), Some("osm")));
     assert_eq!(searches(&asked).len(), 1);
+}
+
+// --- the way along the streets (map_route.rs, 2026-11-01) -----------------------------------------------------------
+
+/// FOSSGIS's public router, by hand only (`cargo test --test tools-knowledge_maps -- --ignored live_`): Le Moulleau's
+/// walk and a Lisbon walk, one request each, to check the answer's shape. Prints only the stops' coordinates and the
+/// distance; `MAP_ROUTE_OUT=<dir>` keeps each way's data there (the iPhone's design screen, MapRouteDesign.swift).
+#[tokio::test]
+#[ignore]
+async fn live_fossgis_walks_in_le_moulleau_and_lisbon() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut data = config_dict(dir.path(), &Urls::default());
+    data["maps"] = json!({"streets": "osrm", "streets_timeout": 10});
+    let config = parse_config(&data, None).unwrap();
+    let walks = [
+        ("moulleau", vec![(44.6412126, -1.1990896), (44.6417176, -1.2043897), (44.6432, -1.2020), (44.6401, -1.1979)]),
+        ("lisbon", vec![(38.7139, -9.1334), (38.71182, -9.13001), (38.70763, -9.13652), (38.707, -9.1459)]),
+    ];
+    for (name, stops) in walks {
+        let way = bipbridge::map_route::way(&config, "walking", &stops).await.unwrap();
+        let straight = bipbridge::map_route::straight_km(&stops) * 1000.0;
+        println!("{name}: stops {stops:?} → {:.0} m along the streets ({straight:.0} m straight)", way.meters);
+        assert!(way.path.len() >= 2 && way.path.len() <= bipbridge::map_route::MAX_PATH, "{}", way.path.len());
+        assert!(way.meters > straight && way.meters < straight * 3.0, "{} m", way.meters);
+        // the way starts and ends by the first and last stops (within a street's width of them)
+        assert!(maps::km(way.path[0], stops[0]) < 0.1 && maps::km(way.path[way.path.len() - 1], stops[3]) < 0.1);
+        if let Ok(out) = std::env::var("MAP_ROUTE_OUT") {
+            let kept = json!({"stops": stops, "path": way.path, "meters": way.meters, "seconds": way.seconds});
+            std::fs::write(format!("{out}/{name}.json"), kept.to_string()).unwrap();
+        }
+    }
+}
+
+/// What the fake router was asked: each request's address and User-Agent.
+type Requests = Arc<std::sync::Mutex<Vec<(String, String)>>>;
+
+/// A fake OSRM like FOSSGIS's (`/<profile>/route|trip/v1/driving/<lon,lat;…>`): the way from stop to stop goes north
+/// or south then west or east (an L: one corner a hop), a point every ~5 m wiggling by less than a metre, 1.3 times
+/// as long as the straight line at 4.5 km/h; `trip` reverses the stops between the first and the last. `delay` before
+/// answering.
+async fn fake_osrm(asked: Requests, delay: std::time::Duration) -> String {
+    let answer = move |Path((profile, service, p, coords)): Path<(String, String, String, String)>,
+                       axum::extract::RawQuery(query): axum::extract::RawQuery,
+                       headers: axum::http::HeaderMap| {
+        let a = asked.clone();
+        async move {
+            let ua = headers.get("user-agent").and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
+            a.lock().unwrap().push((format!("/{profile}/{service}/v1/{p}/{coords}?{}", query.unwrap_or_default()), ua));
+            tokio::time::sleep(delay).await;
+            let stops: Vec<(f64, f64)> = coords
+                .split(';')
+                .map(|c| {
+                    let (lon, lat) = c.split_once(',').unwrap();
+                    (lat.parse().unwrap(), lon.parse().unwrap())
+                })
+                .collect();
+            if service == "trip" {
+                let n = stops.len();
+                let places: Vec<Value> = (0..n)
+                    .map(|i| json!({"waypoint_index": if i == 0 || i == n - 1 { i } else { n - 1 - i }}))
+                    .collect();
+                return axum::Json(json!({"code": "Ok", "waypoints": places, "trips": [{}]}));
+            }
+            let mut line: Vec<[f64; 2]> = Vec::new();
+            for pair in stops.windows(2) {
+                let ((la1, lo1), (la2, lo2)) = (pair[0], pair[1]);
+                let corner = (la2, lo1);
+                for (from, to) in [((la1, lo1), corner), (corner, (la2, lo2))] {
+                    let steps = (maps::km(from, to) * 200.0).ceil().max(1.0) as usize;
+                    for k in 0..steps {
+                        let t = k as f64 / steps as f64;
+                        let wiggle = if k % 2 == 0 { 0.0 } else { 0.000004 };
+                        line.push([from.1 + (to.1 - from.1) * t + wiggle, from.0 + (to.0 - from.0) * t]);
+                    }
+                }
+            }
+            let last = stops[stops.len() - 1];
+            line.push([last.1, last.0]);
+            let straight: f64 = stops.windows(2).map(|p| maps::km(p[0], p[1])).sum::<f64>() * 1000.0;
+            let meters = straight * 1.3;
+            axum::Json(json!({"code": "Ok", "routes": [{"distance": meters, "duration": meters / 1.25,
+                "geometry": {"type": "LineString", "coordinates": line}}], "waypoints": []}))
+        }
+    };
+    spawn_fake(Router::new().route("/{profile}/{service}/v1/{p}/{coords}", get(answer))).await
+}
+
+async fn route_config(dir: &std::path::Path, geocoder: &str, osrm: &str, timeout: f64) -> bipbridge::config::Config {
+    let tile_server = spawn_fake(
+        Router::new()
+            .route("/{z}/{x}/{y}", get(|| async { ([("content-type", "image/png")], tile_png(0xEE)).into_response() })),
+    )
+    .await;
+    let mut data = config_dict(dir, &Urls::default());
+    data["weather"] = json!({"geocoder_url": format!("{geocoder}/search")});
+    data["maps"] = json!({"tiles": "osm", "tile_url": format!("{tile_server}/{{z}}/{{x}}/{{y}}.png"),
+                          "streets": "osrm", "streets_url": osrm, "streets_timeout": timeout});
+    parse_config(&data, None).unwrap()
+}
+
+/// Le Moulleau's walk (Alex, 2026-11-01): the church, the pier, the beach, lunch rue des Pins.
+fn moulleau(extra: Value) -> Value {
+    let mut arguments = json!({"title": "Le Moulleau à pied", "area": "Arcachon", "line": true, "markers": [
+        {"place": "Église Notre-Dame-des-Passes"}, {"place": "Jetée du Moulleau"}, {"place": "Plage du Moulleau"},
+        {"place": "Rue des Pins", "label": "Déjeuner rue des Pins"}]});
+    for (k, v) in extra.as_object().unwrap() {
+        arguments[k] = v.clone();
+    }
+    arguments
+}
+
+#[tokio::test]
+async fn a_walk_is_drawn_along_the_streets_with_its_length_and_time_asking_only_coordinates() {
+    let geocoder = fake_towns(Arc::new(std::sync::Mutex::new(Vec::new()))).await;
+    let asked: Requests = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let osrm = fake_osrm(asked.clone(), std::time::Duration::ZERO).await;
+    let dir = tempfile::tempdir().unwrap();
+    let config = route_config(dir.path(), &geocoder, &osrm, 3.0).await;
+    let result = maps::call(&config, "daily", moulleau(json!({})).as_object().unwrap()).await;
+    let said = text(&result);
+    assert_eq!(result["isError"], json!(false), "{said}");
+    // under 3 km and no way said: on foot; the stops in the agent's order
+    assert!(
+        said.contains("Way: ") && said.contains("on foot, about") && said.contains("stops in your order"),
+        "{said}"
+    );
+    let map = kept_map(&config, "daily", &said);
+    let route = &map["route"];
+    assert_eq!((route["travel"].as_str(), route["streets"].as_bool()), (Some("walking"), Some(true)), "{route}");
+    assert_eq!(route["attribution"], bipbridge::map_route::ATTRIBUTION);
+    let names: Vec<&str> = map["points"].as_array().unwrap().iter().map(|p| p["name"].as_str().unwrap()).collect();
+    assert_eq!(
+        names,
+        ["Église Notre-Dame-des-Passes", "Jetée du Moulleau", "Plage du Moulleau", "Déjeuner rue des Pins"]
+    );
+    // the wiggles gone, the corners kept: each hop is two straight bits (the stops, the corners)
+    let path = route["path"].as_array().unwrap();
+    assert_eq!(path.len(), 7, "{path:?}");
+    assert_eq!(path[0], json!([44.64121, -1.19909]), "lat first, from the first stop");
+    let (meters, seconds) = (route["meters"].as_u64().unwrap(), route["seconds"].as_u64().unwrap());
+    assert!((1000..2500).contains(&meters) && seconds.abs_diff((meters as f64 / 1.25) as u64) <= 1, "{route}");
+    // one request, from the bridge with the application's name, holding the stops' coordinates and nothing else
+    let requests = asked.lock().unwrap().clone();
+    assert_eq!(requests.len(), 1, "{requests:?}");
+    let (url, ua) = &requests[0];
+    assert!(ua.starts_with("BipAgents/"), "{ua}");
+    assert!(url.starts_with("/routed-foot/route/v1/driving/-1.19909,44.64121;-1.20439,44.64172;"), "{url}");
+    assert!(url.ends_with("?overview=full&geometries=geojson&steps=false&alternatives=false"), "{url}");
+    let coords = url.split("/driving/").nth(1).unwrap().split('?').next().unwrap();
+    assert!(coords.chars().all(|c| c.is_ascii_digit() || ".,;-".contains(c)), "only numbers: {coords}");
+    // the same walk again: from the bridge's cache, nothing asked
+    maps::call(&config, "daily", moulleau(json!({})).as_object().unwrap()).await;
+    assert_eq!(asked.lock().unwrap().len(), 1);
+    // by bike, said by the agent: its own profile
+    let said = text(&maps::call(&config, "daily", moulleau(json!({"travel": "bicycling"})).as_object().unwrap()).await);
+    assert!(said.contains("by bike, about"), "{said}");
+    assert!(asked.lock().unwrap()[1].0.starts_with("/routed-bike/route/v1/"));
+    // places that do not follow each other (no line): never routed
+    let said = text(&maps::call(&config, "daily", moulleau(json!({"line": false})).as_object().unwrap()).await);
+    assert!(!said.contains("Way:") && kept_map(&config, "daily", &said)["route"].is_null(), "{said}");
+    assert_eq!(asked.lock().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn a_router_too_slow_or_stops_too_far_apart_leave_the_straight_line_dashed() {
+    let geocoder = fake_towns(Arc::new(std::sync::Mutex::new(Vec::new()))).await;
+    let asked: Requests = Arc::new(std::sync::Mutex::new(Vec::new()));
+    // a router that would answer in a minute: the map is not kept waiting (the geocoder's turns make the whole call's
+    // time no measure of it, its words are)
+    let osrm = fake_osrm(asked.clone(), std::time::Duration::from_secs(60)).await;
+    let dir = tempfile::tempdir().unwrap();
+    let config = route_config(dir.path(), &geocoder, &osrm, 0.3).await;
+    let result = maps::call(&config, "daily", moulleau(json!({})).as_object().unwrap()).await;
+    let said = text(&result);
+    assert_eq!(result["isError"], json!(false), "the map all the same: {said}");
+    assert!(
+        said.contains("Way: a dashed straight line, not along the streets (the street routing did not answer in time)"),
+        "{said}"
+    );
+    let route = kept_map(&config, "daily", &said)["route"].clone();
+    assert_eq!(
+        (route["streets"].as_bool(), route.get("path"), route.get("seconds")),
+        (Some(false), None, None),
+        "{route}"
+    );
+    assert!((500..1500).contains(&route["meters"].as_u64().unwrap()), "as the crow flies: {route}");
+    assert_eq!(asked.lock().unwrap().len(), 1);
+    // Lisbon to Porto on foot: too far, nothing asked
+    let trip = json!({"line": true, "travel": "walking", "markers": [{"place": "Torre de Belém"},
+        {"place": "Torre dos Clérigos"}]});
+    let said = text(&maps::call(&config, "daily", trip.as_object().unwrap()).await);
+    assert!(said.contains("is too far to go on foot)"), "{said}");
+    assert_eq!(kept_map(&config, "daily", &said)["route"]["streets"], json!(false));
+    // public transport: not routed either
+    let said =
+        text(&maps::call(&config, "daily", moulleau(json!({"directions": "transit"})).as_object().unwrap()).await);
+    assert!(said.contains("public transport is not routed here"), "{said}");
+    assert_eq!(asked.lock().unwrap().len(), 1, "nothing more asked");
+}
+
+#[tokio::test]
+async fn the_stops_are_reordered_only_when_the_agent_asks() {
+    let geocoder = fake_towns(Arc::new(std::sync::Mutex::new(Vec::new()))).await;
+    let asked: Requests = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let osrm = fake_osrm(asked.clone(), std::time::Duration::ZERO).await;
+    let dir = tempfile::tempdir().unwrap();
+    let config = route_config(dir.path(), &geocoder, &osrm, 3.0).await;
+    let said = text(&maps::call(&config, "daily", moulleau(json!({"reorder": true})).as_object().unwrap()).await);
+    assert!(said.contains("stops reordered for the shortest way, first and last kept"), "{said}");
+    // the fake's shortest order: the two in between swapped; the numbers follow it
+    assert!(said.contains("2. Plage du Moulleau") && said.contains("3. Jetée du Moulleau"), "{said}");
+    let map = kept_map(&config, "daily", &said);
+    assert_eq!(map["points"][1]["name"], "Plage du Moulleau");
+    assert_eq!(map["route"]["path"][0], json!([44.64121, -1.19909]));
+    let requests: Vec<String> = asked.lock().unwrap().iter().map(|(u, _)| u.clone()).collect();
+    assert!(requests[0].starts_with("/routed-foot/trip/v1/driving/"), "{requests:?}");
+    assert!(requests[0].contains("source=first&destination=last&roundtrip=false"), "{requests:?}");
+    // the way asked in the new order: the beach second
+    assert!(
+        requests[1].starts_with("/routed-foot/route/v1/driving/-1.19909,44.64121;-1.20200,44.64320;"),
+        "{requests:?}"
+    );
 }

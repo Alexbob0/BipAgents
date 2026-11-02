@@ -454,6 +454,14 @@ pub struct MapsConfig {
     /// The vector provider's address (its style at `<url>/styles/<vector_style>`); tests point it at a fake.
     pub vector_url: String,
     pub vector_style: String,
+    /// An itinerary map's way along the streets (map_route.rs, 2026-11-01): « osrm » (FOSSGIS's OSRM servers, free,
+    /// no key) or « off » (the dashed straight line).
+    pub streets: String,
+    /// The router's address (`<url>/routed-foot/route/v1/…`); tests point it at a fake.
+    pub streets_url: String,
+    /// How long one request may take before the map keeps the straight line (`streets_timeout`, seconds).
+    #[serde(skip)]
+    pub streets_timeout: std::time::Duration,
 }
 
 impl Default for MapsConfig {
@@ -466,6 +474,9 @@ impl Default for MapsConfig {
             vector: "openfreemap".into(),
             vector_url: OPENFREEMAP_URL.into(),
             vector_style: "positron".into(),
+            streets: "osrm".into(),
+            streets_url: crate::map_route::FOSSGIS_URL.into(),
+            streets_timeout: std::time::Duration::from_secs(6),
         }
     }
 }
@@ -1703,6 +1714,9 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
                 "positron".into()
             }
         },
+        streets: s(maps_t, "streets", "osrm").trim().to_lowercase(),
+        streets_url: py::rstrip_slash(&s(maps_t, "streets_url", crate::map_route::FOSSGIS_URL)),
+        streets_timeout: std::time::Duration::from_secs_f64(f(maps_t, "streets_timeout", 6.0)?.clamp(0.1, 30.0)),
     };
 
     let notebook_t = table(data, "notebook");
