@@ -18,12 +18,26 @@
 //! opens with it. Agents that existed before, an imported agent, a team member (it writes its own « Premiers pas »),
 //! a project or family agent never get one.
 //!
+//! That first conversation is the agent's one thread (2026-11-01, Alex, his wife's agent made with the guide: « c'est
+//! allé dans une discussion séparée, pas celle principale. Donc quand on va sur l'agent directement, on ne voit pas la
+//! discussion qu'elle a eue … c'est dans les discussions historiques »). Every new agent gets an empty « Bot Chat »
+//! when it is made (agents_admin.rs `wait_served`), and the apps open an agent on its Bot Chat. The iPhone opened a
+//! just-made agent before it knew that Bot Chat and wrote in a conversation of its own, so the empty Bot Chat stayed
+//! the agent's thread and the person's words went to « Historique ». Now (`adopt`): when the person's first
+//! conversation with it is not its Bot Chat, and its Bot Chat is still empty, that conversation becomes its Bot Chat
+//! (the empty one renamed and hidden first: Hermes refuses a title another conversation holds). Checked once the
+//! first message is known (`done`), and at the next `GET /v1/guide` for the agents made before (an app opening).
+//!
 //! No Python counterpart.
 
+use std::collections::HashSet;
+use std::sync::{LazyLock, Mutex};
+
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 
 use crate::config::{AgentConfig, Config};
+use crate::hermes::{HermesClient, HermesError};
 
 /// An agent made with a welcome: what it was made as, and the conversation of the person's first message to it (None:
 /// not written to yet; empty: written to in a conversation the bridge didn't learn).
@@ -35,6 +49,9 @@ pub struct Waiting {
     pub lang: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session: Option<String>,
+    /// That conversation was checked to be the agent's one thread (its Bot Chat), made so when it wasn't (`adopt`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub main: bool,
 }
 
 /// The languages the welcomes are written in (the apps' languages); any other gets English.
@@ -801,7 +818,7 @@ pub fn view(config: &Config, state: &crate::guide::GuideState) -> Value {
 /// `agent` was just made for the person: its first conversation opens with its welcome (once: a welcome already
 /// given stays as it is).
 pub fn wait_for(config: &Config, agent: &AgentConfig, kind: &str, lang: &str) {
-    let waiting = Waiting { kind: kind.to_string(), lang: language(lang).to_string(), session: None };
+    let waiting = Waiting { kind: kind.to_string(), lang: language(lang).to_string(), ..Default::default() };
     let result = crate::guide::change(config, |s| {
         s.welcome.entry(agent.name.clone()).or_insert(waiting);
     });
@@ -826,6 +843,145 @@ pub fn done(config: &Config, agent: &str, session: Option<&str>) {
     if let Err(err) = result {
         tracing::warn!(target: "bipbridge::guide", agent = %agent, error = %err, "welcome not ended");
     }
+}
+
+/// The agent's one thread, as Hermes titles it (cronwatch::is_bot_chat, the apps' `isBotChat`).
+pub const BOT_CHAT: &str = "Bot Chat";
+/// The title an empty Bot Chat takes when the person's first conversation becomes the agent's Bot Chat (with a part
+/// of its id: titles are unique in Hermes). Hidden, and never « Bot Chat » again.
+pub const SET_ASIDE: &str = "Fil vide mis de côté";
+
+/// What `adopt` found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Adopted {
+    /// Nothing to look at: no first conversation known yet, or already checked.
+    Nothing,
+    /// The first conversation is the agent's Bot Chat already, or the person writes in its Bot Chat too: left alone.
+    Kept,
+    /// The first conversation became the agent's Bot Chat.
+    Made,
+    /// Hermes didn't answer: tried again at the next look.
+    Later,
+}
+
+/// The agents whose first conversation is known but not checked yet (`GET /v1/guide` looks at them).
+pub fn unchecked(state: &crate::guide::GuideState) -> Vec<String> {
+    state
+        .welcome
+        .iter()
+        .filter(|(_, w)| !w.main && w.session.as_deref().is_some_and(|s| !s.is_empty()))
+        .map(|(id, _)| id.clone())
+        .collect()
+}
+
+/// Agents being looked at now (two `GET /v1/guide` close together look once).
+static ADOPTING: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Mutex::default);
+
+/// `adopt` in the background, once at a time per agent.
+pub fn adopt_soon(state: &crate::app::AppState, agent: &str) {
+    let config = state.config();
+    let Some(agent) = config.agents.get(agent).cloned() else { return };
+    if !unchecked(&crate::guide::load(&config)).contains(&agent.name) {
+        return; // the door's relay asks at every turn: nothing to do once checked
+    }
+    if !ADOPTING.lock().unwrap_or_else(|e| e.into_inner()).insert(agent.name.clone()) {
+        return;
+    }
+    let hermes = state.hermes.clone();
+    let shared = state.config.clone();
+    state.spawn(async move {
+        let found = adopt(&hermes, &shared.get(), &agent).await;
+        if found == Adopted::Made {
+            tracing::info!(target: "bipbridge::guide", agent = %agent.name, "first conversation made the agent's thread");
+        }
+        ADOPTING.lock().unwrap_or_else(|e| e.into_inner()).remove(&agent.name);
+    });
+}
+
+fn id_of(row: &Map<String, Value>) -> String {
+    row.get("id").and_then(Value::as_str).unwrap_or_default().to_string()
+}
+
+/// Someone wrote in that conversation (a count Hermes doesn't give: its messages read).
+async fn written(hermes: &HermesClient, agent: &AgentConfig, row: &Map<String, Value>) -> Result<bool, HermesError> {
+    if let Some(count) = row.get("message_count").and_then(Value::as_i64) {
+        return Ok(count > 0);
+    }
+    Ok(!hermes.session_messages(agent, &id_of(row)).await?.is_empty())
+}
+
+/// The person's first conversation with `agent` (its welcome's `session`) made its one thread when it isn't, and its
+/// Bot Chat is still empty: the empty Bot Chat renamed (`SET_ASIDE`) and hidden, then that conversation titled « Bot
+/// Chat ». Left alone: a Bot Chat someone wrote in (the person's words or the agent's are there), a conversation gone
+/// or a routine's. Checked once (`Waiting.main`); a failure is tried again at the next look.
+pub async fn adopt(hermes: &HermesClient, config: &Config, agent: &AgentConfig) -> Adopted {
+    let state = crate::guide::load(config);
+    let Some(first) = state
+        .welcome
+        .get(&agent.name)
+        .filter(|w| !w.main)
+        .and_then(|w| w.session.clone())
+        .filter(|s| !s.is_empty())
+    else {
+        return Adopted::Nothing;
+    };
+    let checked = |found: Adopted| {
+        let result = crate::guide::change(config, |s| {
+            if let Some(w) = s.welcome.get_mut(&agent.name) {
+                w.main = true;
+            }
+        });
+        if let Err(err) = result {
+            tracing::warn!(target: "bipbridge::guide", agent = %agent.name, error = %err, "thread check not kept");
+        }
+        found
+    };
+    let Ok(bot_chats) = hermes.bot_chat_sessions(agent).await else { return Adopted::Later };
+    if bot_chats.iter().any(|row| id_of(row) == first) {
+        return checked(Adopted::Kept);
+    }
+    for row in &bot_chats {
+        match written(hermes, agent, row).await {
+            Ok(true) => return checked(Adopted::Kept),
+            Ok(false) => {}
+            Err(_) => return Adopted::Later,
+        }
+    }
+    match hermes.session(agent, &first).await {
+        Ok(row) => {
+            let source = row.get("source").and_then(Value::as_str).unwrap_or_default();
+            if crate::cronwatch::is_bot_chat(&row) || first.starts_with("cron_") || source.eq_ignore_ascii_case("cron") {
+                return checked(Adopted::Kept);
+            }
+        }
+        Err(err) if err.status() == Some(404) => return checked(Adopted::Kept),
+        Err(_) => return Adopted::Later,
+    }
+    for row in &bot_chats {
+        let id = id_of(row);
+        let short: String = id.chars().rev().take(8).collect::<Vec<_>>().into_iter().rev().collect();
+        let mut fields = Map::new();
+        fields.insert("title".into(), json!(format!("{SET_ASIDE} · {short}")));
+        fields.insert("hidden".into(), Value::Bool(true));
+        match hermes.update_session(agent, &id, fields.clone()).await {
+            Ok(()) => {}
+            Err(HermesError::Http { .. }) => {
+                // an older Hermes without « hidden »: renamed only (an empty conversation, which no app lists)
+                fields.remove("hidden");
+                if hermes.update_session(agent, &id, fields).await.is_err() {
+                    return Adopted::Later;
+                }
+            }
+            Err(_) => return Adopted::Later,
+        }
+    }
+    let mut fields = Map::new();
+    fields.insert("title".into(), json!(BOT_CHAT));
+    if hermes.update_session(agent, &first, fields).await.is_err() {
+        // without a Bot Chat now, the apps open its latest conversation, this one; tried again at the next look
+        return Adopted::Later;
+    }
+    checked(Adopted::Made)
 }
 
 #[cfg(test)]

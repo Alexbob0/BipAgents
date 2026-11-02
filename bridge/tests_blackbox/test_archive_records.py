@@ -83,6 +83,10 @@ def test_a_sample_reports_without_writing_then_the_full_pass_fills_the_records(b
     state = records_state(bridge)
     assert state["candidates"] == 4 and state["read"] == 0 and state["sample"] is None and state["nightly"] is False
     assert state["models"][0]["id"] == "small-model" and state["models"][0]["local"] is True
+    # the model a pass uses, the agent's own (2026-11-01: no choice in the apps), and no connector name for a server
+    # of the person's own
+    assert state["model"]["id"] == "small-model" and state["model"]["own"] is True
+    assert state["model"]["local"] is True and state["model"]["connector"] is None
 
     sampled = bridge.post(f"/v1/agents/{AGENT}/archives/mails/records/sample", json={"size": 50}, headers=AUTH)
     assert sampled.status_code == 202 and sampled.json()["state"] == "sampling"
@@ -165,6 +169,12 @@ def test_the_cap_pauses_the_job_and_a_bigger_one_finishes_it(bridges, fakes):
     assert {c["body"]["model"] for c in extraction_chats(fakes)} == {"big-model"}
     assert bridge.post(f"/v1/agents/{AGENT}/archives/mails/records/run", json={"budget_eur": 0, **priced},
                        headers=AUTH).status_code == 400            # a priced model needs a cap
+    # the apps since 2026-11-01: no `model`, the agent's own; on the offer with the offer's prices for it
+    offer = bridge.post(f"/v1/agents/{AGENT}/archives/mails/records/run",
+                        json={"budget_eur": 1, "price_in": 0.4, "price_out": 1.6}, headers=AUTH)
+    assert offer.status_code == 200, offer.text
+    assert wait_until(lambda: job_of(bridge, offer.json()["id"])["state"] == "done", timeout=30)
+    assert job_of(bridge, offer.json()["id"])["model"] == "small-model"
     switched = bridge.patch(f"/v1/agents/{AGENT}/archives/mails/records", json={"nightly": False}, headers=AUTH)
     assert switched.status_code == 200 and switched.json()["nightly"] is False
 
