@@ -557,15 +557,17 @@ impl Default for JobsConfig {
 
 /// `[rooms]`: group discussions between the person's agents (rooms.rs, 2026-10-25). The router asks a small model
 /// (`router_model`, the install's model as the Carnet finds it) only when the @names and the rule found nobody, at
-/// most `router_daily_max` times a day; an agent's @ in a reply gives another agent a turn, up to `max_hops` hops past
-/// the person's message (at most 2); a turn not done after `turn_seconds` is stopped (unless it waits for an approval).
+/// most `router_daily_max` times a day; an agent's `NEXT: @id` line (its @ in a reply with `handoff` off) gives another
+/// agent a turn, up to `max_hops` hops past the person's message (at most 2); a turn not done after `turn_seconds` is
+/// stopped (unless it waits for an approval).
 /// 2026-10-31 (rooms.rs, « passage de relais »): `handoff` (on by default; off: the router and hops as before), and
 /// for a room with a goal the person accepted, at most `team_turns` turns and `team_tokens` tokens per message of the
 /// person; `goal_model`: a message that looks like a task gets a goal proposed by the small model. `team_turn_tokens`:
 /// one turn of team work at most (one agent's run; Back's took 749k on the lab), its wrap-up included: told to wrap up
 /// at 60 %, stopped 30k before the cap (rooms.rs `turn_limit`; on each model call's real tokens with Hermes patch
 /// 0020, before a call that would pass it), then one short turn without tools says what it did and hands over (never
-/// an empty turn).
+/// an empty turn). Since 2026-11-01 also a turn before a goal (a discussion's: Front's took 587k on the bench) and a
+/// turn this install's agent takes in a relative's room (rooms_remote.rs, the whole cap: no wrap-up there).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct RoomsConfig {
     pub router_model: bool,
