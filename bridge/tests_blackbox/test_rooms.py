@@ -69,7 +69,8 @@ def test_a_discussion_is_made_listed_changed_and_deleted(bridges, fakes):
         {"id": "coach", "name": "Coach", "category": "wellness", "color": None, "gone": False},
         {"id": "cuisine", "name": "Cuisine", "category": "home", "color": None, "gone": False}]
     assert set(room) == {"id", "title", "participants", "mode", "created", "updated", "last", "answering", "tokens",
-                         "goal", "goal_proposed", "progress", "small_tokens"}
+                         "goal", "goal_proposed", "progress", "small_tokens", "tasks"}
+    assert room["tasks"] == []   # its tasks and their owners (rooms_tasks.rs), none yet
     # a discussion, not team work (rooms_handoff.rs, 2026-10-31): no goal until the person accepts one
     assert room["goal"] == "" and room["goal_proposed"] is None
     assert room["progress"] == {"done": [], "next": "", "blocked": ""}

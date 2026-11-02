@@ -77,6 +77,9 @@
 //!                                                   (the app is looking: no push)
 //!     POST   /v1/rooms/{id}/messages                {text}  → {message, route: {by, agents}, answering}
 //!     POST   /v1/rooms/{id}/stop                    room   the turn going on stopped, the queue emptied
+//!     POST   /v1/rooms/{id}/tasks/{task}/reassign   {agent}  → {task, message: the notice, answering}  (« Réassigner
+//!                                                   à… », rooms_tasks.rs: the task handed to another agent with a
+//!                                                   short handover note; `tasks` in the room and in each look)
 //!
 //!     room       {id, title, participants: [{id, name, category, color, gone}], mode: "auto"|"all", created,
 //!                 updated, last: message|null, answering, tokens: {input, output}, goal: "" | text,
@@ -1821,7 +1824,10 @@ impl Rooms {
                 // note, or the answer it finished just before), the new owner queued already, no relay
                 if let Ok(reply) = &outcome.reply {
                     let (text, files) = room_text(reply);
-                    let text = relay::read_marks(&text, &names).text;
+                    // its NEXT line out, its « Done: … » kept: it is the note, not a relay mark
+                    let lines: Vec<&str> =
+                        text.lines().filter(|l| relay::read_marks(l, &names).next.is_none()).collect();
+                    let text = tk::strip(&lines.join("\n")).to_string();
                     if !text.is_empty() || !files.is_empty() {
                         room.push_message(Message {
                             id: 0,
