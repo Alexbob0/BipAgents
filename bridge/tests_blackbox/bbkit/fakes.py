@@ -372,6 +372,9 @@ class FakeHermes(Fake):
             return StreamingResponse(stream(), media_type="text/event-stream")
         if len(parts) == 4 and parts[3] == "approval" and method == "POST":
             self.approvals.append({"agent": agent, "run_id": run_id, "body": seen.json()})
+            # Hermes takes exactly the prompt's identity and the choice (gateway/platforms/api_server_authority_runs.py)
+            if set(seen.json() or {}) != {"request_id", "execution_generation", "choice"}:
+                return JSONResponse({"error": {"message": "invalid_params", "code": "invalid_params"}}, status_code=400)
             status, payload = self.approval_response
             return JSONResponse(payload, status_code=status)
         if len(parts) == 4 and parts[3] == "steer" and method == "POST":
@@ -387,14 +390,32 @@ class FakeHermes(Fake):
                 return JSONResponse(self.run_info[run_id])
             run = self.started.get(run_id)
             if run is None or self.forget_runs:
+                if self._pending_controls(run_id):
+                    return JSONResponse({"status": "waiting_for_approval",
+                                         "pending_controls": self._pending_controls(run_id)})
                 return JSONResponse({"error": "not found"}, status_code=404)
             run["polls"] += 1
             if run["status"] == "running" and run["polls"] >= self.rounds:
                 run["status"] = "completed"
                 output = self.run_outputs.get(run_id, self.run_output)
                 return JSONResponse({"status": "completed", "output": output, "usage": self.run_usage})
-            return JSONResponse({"status": run["status"]})
+            return JSONResponse({"status": run["status"], "pending_controls": self._pending_controls(run_id)})
         return JSONResponse({"error": "no route"}, status_code=404)
+
+    def _pending_controls(self, run_id: str) -> List[Dict[str, Any]]:
+        """The approvals a run's script asks, as Hermes' status lists the prompts waiting (`pending_controls`): each
+        `approval.request`'s `prompt_id` (or `request_id`) and generation (1 when it has none)."""
+        controls = []
+        for item in self.runs.get(run_id, []):
+            if not isinstance(item, str) or "approval.request" not in item:
+                continue
+            for line in item.splitlines():
+                data = json.loads(line[len("data: "):]) if line.startswith("data: ") else {}
+                if data.get("event") == "approval.request":
+                    controls.append({"kind": "approval", "prompt_id": data.get("prompt_id") or data.get("request_id"),
+                                     "execution_generation": data.get("execution_generation", 1),
+                                     "choices": data.get("choices", ["once", "deny"])})
+        return controls
 
     def _sessions(self, seen: Seen, agent: str, parts: List[str], method: str) -> Response:
         mine = self.sessions.setdefault(agent, {})

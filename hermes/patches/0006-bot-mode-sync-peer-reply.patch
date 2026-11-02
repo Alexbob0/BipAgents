@@ -1,6 +1,20 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Alexbob0 <190955252+Alexbob0@users.noreply.github.com>
+Date: Sun, 1 Nov 2026 10:07:39 +0100
+Subject: A peer's reply comes back to an api_server session
+
+BipAgents patch, documented in hermes/patches/README.md of the BipAgents repository.
+
+Bip-Patch: 0006-bot-mode-sync-peer-reply
+---
+ tests/tools/test_bot_mode_dm_sync_peer.py | 27 +++++++++++++
+ tools/bot_mode_dm.py                      | 47 +++++++++++++++++++++++
+ 2 files changed, 74 insertions(+)
+ create mode 100644 tests/tools/test_bot_mode_dm_sync_peer.py
+
 diff --git a/tests/tools/test_bot_mode_dm_sync_peer.py b/tests/tools/test_bot_mode_dm_sync_peer.py
 new file mode 100644
-index 0000000000..3053559ee2
+index 0000000000000000000000000000000000000000..3053559ee2015323bf692e8d0ba1343d55042449
 --- /dev/null
 +++ b/tests/tools/test_bot_mode_dm_sync_peer.py
 @@ -0,0 +1,27 @@
@@ -32,7 +46,7 @@ index 0000000000..3053559ee2
 +    result = json.loads(bot_mode_dm._deliver_peer_sync(["hermes", "peer", "dm", "bip/vie"], "Quel train ?", "@vie", None))
 +    assert "do NOT resend" in json.dumps(result)
 diff --git a/tools/bot_mode_dm.py b/tools/bot_mode_dm.py
-index 80a44c70b9..dc9536cf43 100644
+index a8d7e0112ee64a2927502e89bd996194f2867486..18abf2bf851b6d23b4954b09b4c1adad360a2c3b 100644
 --- a/tools/bot_mode_dm.py
 +++ b/tools/bot_mode_dm.py
 @@ -198,6 +198,44 @@ def _err(message: str, *, roster: list[str] | None = None, peers: list[str] | No

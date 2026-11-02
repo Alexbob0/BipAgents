@@ -29,6 +29,7 @@ pub mod auth;
 pub mod config;
 pub mod guard;
 pub mod hermes;
+pub mod hermes_prompts;
 pub mod lan;
 pub mod logs;
 pub mod loop_brake;

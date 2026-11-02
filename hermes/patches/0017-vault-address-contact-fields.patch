@@ -1,36 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Alexbob0 <190955252+Alexbob0@users.noreply.github.com>
+Date: Sun, 1 Nov 2026 10:07:40 +0100
+Subject: Address items carry a name, a phone and an e-mail
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
 BipAgents « Coordonnées »: an address item also carries a full name, a phone and an e-mail, which the
 browser fill types into a form's name, phone and e-mail fields; none of its fields is required.
 
-diff --git a/agent/vault_store.py b/agent/vault_store.py
---- a/agent/vault_store.py
-+++ b/agent/vault_store.py
-@@ -46,9 +46,12 @@
- ADDRESS_FIELDS = {
-     "address_line1": "address-line1", "address_line2": "address-line2", "city": "address-level2",
-     "state": "address-level1", "postal_code": "postal-code", "country": "country-name",
-+    # contact details kept with the address (BipAgents « Coordonnées »): a form's name, phone and e-mail fields
-+    "full_name": "name", "phone": "tel", "email": "email",
- }
-+# An address item may hold contact details only (a name and an e-mail): at least one field, none required.
- REQUIRED_FIELDS = {"payment": ("card_number", "exp_month", "exp_year", "cvc"),
--                   "address": ("address_line1", "city", "postal_code", "country")}
-+                   "address": ()}
- 
- _DEFAULT_PORTS = {"http": 80, "https": 443}
- 
-@@ -349,6 +352,8 @@
-             missing = [f for f in REQUIRED_FIELDS[kind] if f not in secret]
-             if missing:
-                 raise VaultError(f"{kind} items require {', '.join(missing)}")
-+            if not secret:
-+                raise VaultError(f"{kind} items require at least one field")
-             if origin:
-                 norm_origin = normalize_origin(origin)
- 
+BipAgents patch, documented in hermes/patches/README.md of the BipAgents repository.
+
+Bip-Patch: 0017-vault-address-contact-fields
+---
+ agent/vault_login_classifier.py   | 20 ++++++++++++++---
+ agent/vault_store.py              |  7 +++++-
+ tests/tools/test_browser_vault.py | 37 +++++++++++++++++++++++++++++++
+ 3 files changed, 60 insertions(+), 4 deletions(-)
+
 diff --git a/agent/vault_login_classifier.py b/agent/vault_login_classifier.py
+index 470ba80af6f765d49fb1ffed93a8fd5a51d4d529..72417c17e92946063fb4dac1708630c712b9896d 100644
 --- a/agent/vault_login_classifier.py
 +++ b/agent/vault_login_classifier.py
-@@ -32,6 +32,8 @@
+@@ -33,6 +33,8 @@ LOGIN_AUTOFILL_TOKENS = ("username", "email", "tel", "current-password")
  PAYMENT_AUTOFILL_TOKENS = ("cc-number", "cc-name", "cc-exp", "cc-exp-month", "cc-exp-year", "cc-csc")
  ADDRESS_AUTOFILL_TOKENS = ("address-line1", "address-line2", "address-level2", "address-level1",
                             "postal-code", "country-name", "country")
@@ -39,7 +31,7 @@ diff --git a/agent/vault_login_classifier.py b/agent/vault_login_classifier.py
  _CHECKOUT_HEURISTICS = (
      (re.compile(r"\b(?:card\s*number|cardnumber|ccnumber|cc\s*num|pan)\b"), "cc-number"),
      (re.compile(r"\b(?:name\s*on\s*card|cardholder|cc\s*name|ccname)\b"), "cc-name"),
-@@ -39,6 +41,12 @@
+@@ -40,6 +42,12 @@ _CHECKOUT_HEURISTICS = (
      (re.compile(r"\b(?:exp(?:iry|iration)?\s*month|exp\s*mm|ccmonth)\b"), "cc-exp-month"),
      (re.compile(r"\b(?:exp(?:iry|iration)?\s*year|exp\s*yy(?:yy)?|ccyear)\b"), "cc-exp-year"),
      (re.compile(r"\b(?:exp(?:iry|iration)?(?:\s*date)?|mm\s*yy|valid\s*thru)\b"), "cc-exp"),
@@ -52,7 +44,7 @@ diff --git a/agent/vault_login_classifier.py b/agent/vault_login_classifier.py
      (re.compile(r"\b(?:address\s*(?:line\s*)?2|apt|suite|unit)\b"), "address-line2"),
      (re.compile(r"\b(?:address(?:\s*line\s*1)?|street)\b"), "address-line1"),
      (re.compile(r"\b(?:city|town|locality)\b"), "address-level2"),
-@@ -181,17 +189,23 @@
+@@ -180,17 +188,23 @@ def select_password_fill(
  
  def classify_checkout_control(control: LoginControl) -> Optional[ClassifiedLoginControl]:
      """Classify one control as a payment/address fill target (autocomplete token exact match 100,
@@ -79,10 +71,38 @@ diff --git a/agent/vault_login_classifier.py b/agent/vault_login_classifier.py
      return None
  
  
+diff --git a/agent/vault_store.py b/agent/vault_store.py
+index 746fbf8a771a7834e1b06a01df96a74df75477ce..c6e1cc4eef6f36a56004a8f3674270c3f6558ee8 100644
+--- a/agent/vault_store.py
++++ b/agent/vault_store.py
+@@ -47,9 +47,12 @@ PAYMENT_FIELDS = {
+ ADDRESS_FIELDS = {
+     "address_line1": "address-line1", "address_line2": "address-line2", "city": "address-level2",
+     "state": "address-level1", "postal_code": "postal-code", "country": "country-name",
++    # contact details kept with the address (BipAgents « Coordonnées »): a form's name, phone and e-mail fields
++    "full_name": "name", "phone": "tel", "email": "email",
+ }
++# An address item may hold contact details only (a name and an e-mail): at least one field, none required.
+ REQUIRED_FIELDS = {"payment": ("card_number", "exp_month", "exp_year", "cvc"),
+-                   "address": ("address_line1", "city", "postal_code", "country")}
++                   "address": ()}
+ 
+ _DEFAULT_PORTS = {"http": 80, "https": 443}
+ 
+@@ -350,6 +353,8 @@ class VaultStore:
+             missing = [f for f in REQUIRED_FIELDS[kind] if f not in secret]
+             if missing:
+                 raise VaultError(f"{kind} items require {', '.join(missing)}")
++            if not secret:
++                raise VaultError(f"{kind} items require at least one field")
+             if origin:
+                 norm_origin = normalize_origin(origin)
+ 
 diff --git a/tests/tools/test_browser_vault.py b/tests/tools/test_browser_vault.py
+index 8098e6fd53b1ee27ee482d45c600e0ff93fb7cfc..aa14dd9e95e23b45d920e3026c5a1fc40ded3865 100644
 --- a/tests/tools/test_browser_vault.py
 +++ b/tests/tools/test_browser_vault.py
-@@ -29,10 +29,14 @@
+@@ -29,10 +29,14 @@ from agent.vault_login_classifier import (
      ClassifiedLoginControl,
      LoginControl,
      build_fill_js,
@@ -97,7 +117,7 @@ diff --git a/tests/tools/test_browser_vault.py b/tests/tools/test_browser_vault.
      VaultError,
      VaultStore,
      normalize_origin,
-@@ -128,6 +132,16 @@
+@@ -128,6 +132,16 @@ class TestVaultStore:
          with pytest.raises(VaultError, match="cvc"):
              store.add_item(kind="payment", label="Card", secret={k: v for k, v in _CARD.items() if k != "cvc"})
  
@@ -114,7 +134,7 @@ diff --git a/tests/tools/test_browser_vault.py b/tests/tools/test_browser_vault.
      def test_unknown_kind_rejected(self, store):
          with pytest.raises(VaultError):
              store.add_item(kind="totp", label="x", secret={})
-@@ -199,6 +213,29 @@
+@@ -199,6 +213,29 @@ class TestClassifier:
          res = classify_login_control(_ctrl(label="Username or account"))
          assert res.token == "username"
  
