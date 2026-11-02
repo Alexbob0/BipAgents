@@ -814,34 +814,27 @@ pub fn state(home: &str, agent: &str) -> Option<bool> {
 /// Its MCP server and its skill on or off in its profile, the server's entry kept (Hermes stops or starts it within
 /// a minute; a request after this one already has its tools or not).
 fn mark(home: &str, agent: &str, on: bool) -> anyhow::Result<()> {
-    let path = profile_config(home, agent);
-    let mut data = pyyaml::load(&std::fs::read_to_string(&path)?)?;
-    if !data.truthy() {
-        data = Yaml::map();
-    }
-    let server = data
-        .get_mut("mcp_servers")
-        .and_then(|m| m.get_mut("stealth"))
-        .filter(|s| s.is_map())
-        .ok_or_else(|| anyhow::anyhow!("'mcp_servers'"))?;
-    server.insert("enabled", Yaml::Bool(on));
-    let mut skills = match data.get("skills") {
-        Some(s) if s.is_map() => s.clone(),
-        _ => Yaml::map(),
-    };
-    let disabled: Vec<Yaml> = match skills.get("disabled").filter(|d| d.truthy()) {
-        Some(Yaml::Seq(items)) => items.clone(),
-        Some(Yaml::Str(s)) => s.chars().map(|c| Yaml::str(c.to_string())).collect(),
-        Some(Yaml::Map(pairs)) => pairs.iter().map(|(k, _)| k.clone()).collect(),
-        _ => Vec::new(),
-    };
-    let mut off: Vec<Yaml> = disabled.into_iter().filter(|name| name.as_str() != Some("visible-browser")).collect();
-    if !on {
-        off.push(Yaml::str("visible-browser"));
-    }
-    skills.insert("disabled", Yaml::Seq(off));
-    data.insert("skills", skills);
-    std::fs::write(&path, pyyaml::dump(&data))?;
+    crate::profile_files::try_edit(&profile_config(home, agent), |data| {
+        let server = data
+            .get_mut("mcp_servers")
+            .and_then(|m| m.get_mut("stealth"))
+            .filter(|s| s.is_map())
+            .ok_or_else(|| anyhow::anyhow!("'mcp_servers'"))?;
+        server.insert("enabled", Yaml::Bool(on));
+        let skills = data.section("skills").ok_or_else(|| anyhow::anyhow!("'skills'"))?;
+        let disabled: Vec<Yaml> = match skills.get("disabled").filter(|d| d.truthy()) {
+            Some(Yaml::Seq(items)) => items.clone(),
+            Some(Yaml::Str(s)) => s.chars().map(|c| Yaml::str(c.to_string())).collect(),
+            Some(Yaml::Map(pairs)) => pairs.iter().map(|(k, _)| k.clone()).collect(),
+            _ => Vec::new(),
+        };
+        let mut off: Vec<Yaml> = disabled.into_iter().filter(|name| name.as_str() != Some("visible-browser")).collect();
+        if !on {
+            off.push(Yaml::str("visible-browser"));
+        }
+        skills.insert("disabled", Yaml::Seq(off));
+        Ok(())
+    })?;
     if on {
         set_vault_only(home, agent)?;
     }
@@ -866,29 +859,25 @@ pub fn set_vault_only(home: &str, agent: &str) -> anyhow::Result<()> {
     if vault_only(home, agent) {
         return Ok(());
     }
-    let path = profile_config(home, agent);
-    let mut data = match std::fs::read_to_string(&path) {
-        Ok(text) => pyyaml::load(&text)?,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Yaml::map(),
-        Err(e) => return Err(e.into()),
-    };
-    if !data.truthy() {
-        data = Yaml::map();
-    }
-    if !data.is_map() {
-        return Ok(());
-    }
-    let mut browser = match data.get("browser") {
-        Some(b) if b.is_map() => b.clone(),
-        _ => Yaml::map(),
-    };
-    browser.insert("vault_only", Yaml::Bool(true));
-    data.insert("browser", browser);
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::write(&path, pyyaml::dump(&data))?;
+    crate::profile_files::edit(&profile_config(home, agent), |data| {
+        if let Some(browser) = data.section("browser") {
+            browser.insert("vault_only", Yaml::Bool(true));
+        }
+    })?;
     Ok(())
+}
+
+/// The visible browser's MCP server run by this bridge's program (`proxy`) when the one it names is gone (an older
+/// version's folder, removed when old versions are cleaned): Hermes starts the new command at its next connection
+/// (aibox 2026-10-26: Vie's and Kerfy Studio's spaces had lost their browser after an update). profile_files::reconcile.
+pub fn with_proxy(data: &mut Yaml, proxy: &str) {
+    let Some(server) = data.get_mut("mcp_servers").and_then(|m| m.get_mut("stealth")).filter(|s| s.is_map()) else {
+        return;
+    };
+    let Some(command) = server.get("command").and_then(|c| c.as_str()) else { return };
+    if command.ends_with(PROXY_BINARY) && command != proxy && !Path::new(command).exists() {
+        server.insert("command", Yaml::str(proxy));
+    }
 }
 
 /// At the bridge's start: every agent whose visible browser is on gets `browser.vault_only` (those set up before it

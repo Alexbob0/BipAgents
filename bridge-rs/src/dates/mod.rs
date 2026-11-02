@@ -426,24 +426,12 @@ pub fn write_profile(path: &Path, zone: &str, routines: &str) -> anyhow::Result<
     if !path.exists() {
         return Ok(false);
     }
-    let mut data = crate::agents_admin::load_or_empty(path)?;
-    let mut changed = false;
-    if data.get("timezone").and_then(Yaml::as_str) != Some(zone) {
+    let changed = crate::profile_files::edit(path, |data| {
         data.insert("timezone", Yaml::str(zone));
-        changed = true;
-    }
-    if !data.get("cron").is_some_and(Yaml::is_map) {
-        data.insert("cron", Yaml::map());
-    }
-    if let Some(cron) = data.get_mut("cron") {
-        if cron.get("timezone").and_then(Yaml::as_str) != Some(routines) {
+        if let Some(cron) = data.section("cron") {
             cron.insert("timezone", Yaml::str(routines));
-            changed = true;
         }
-    }
-    if changed {
-        crate::agents_admin::replace_yaml(path, &data)?;
-    }
+    })?;
     Ok(changed)
 }
 

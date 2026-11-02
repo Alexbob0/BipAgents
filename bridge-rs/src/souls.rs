@@ -691,13 +691,8 @@ pub fn sync_payments(config: &crate::config::Config, agent: &crate::config::Agen
     if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
         return;
     }
-    let path = crate::agents_admin::profile_folder(config, agent).join("SOUL.md");
-    let Ok(soul) = std::fs::read_to_string(&path) else { return };
-    let changed = with_payments(&soul);
-    if changed != soul {
-        if let Err(err) = std::fs::write(&path, changed) {
-            tracing::warn!(agent = %agent.name, error = %err, "payments rule not written");
-        }
+    if let Err(err) = crate::agents_admin::edit_soul(config, agent, false, with_payments) {
+        tracing::warn!(agent = %agent.name, error = %err, "payments rule not written");
     }
 }
 
@@ -744,13 +739,9 @@ pub fn sync_server(config: &crate::config::Config, agent: &crate::config::AgentC
     if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
         return;
     }
-    let path = crate::agents_admin::profile_folder(config, agent).join("SOUL.md");
-    let Ok(soul) = std::fs::read_to_string(&path) else { return };
-    let changed = with_server(&soul, crate::handover::on_offer());
-    if changed != soul {
-        if let Err(err) = std::fs::write(&path, changed) {
-            tracing::warn!(agent = %agent.name, error = %err, "server rule not written");
-        }
+    let offer = crate::handover::on_offer();
+    if let Err(err) = crate::agents_admin::edit_soul(config, agent, false, |soul| with_server(soul, offer)) {
+        tracing::warn!(agent = %agent.name, error = %err, "server rule not written");
     }
 }
 

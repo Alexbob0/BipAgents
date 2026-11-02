@@ -18,7 +18,7 @@
 
 use serde_json::{json, Value};
 
-use crate::agents_admin::{profile_folder, read_soul, AgentError};
+use crate::agents_admin::AgentError;
 use crate::config::{AgentConfig, Config, SharedConfig};
 use crate::souls::{self, ANSWER_STYLES, CUSTOM_STYLE_MAX};
 
@@ -46,13 +46,7 @@ pub fn apply(soul: &str, agent: &AgentConfig) -> String {
 
 /// The agent's SOUL.md brought to its style (written only when it changes). Returns whether it was written.
 pub fn sync_soul(config: &Config, agent: &AgentConfig) -> std::io::Result<bool> {
-    let soul = read_soul(config, agent)?;
-    let changed = apply(&soul, agent);
-    if changed == soul {
-        return Ok(false);
-    }
-    std::fs::write(profile_folder(config, agent).join("SOUL.md"), changed)?;
-    Ok(true)
+    crate::agents_admin::edit_soul(config, agent, true, |soul| apply(soul, agent))
 }
 
 /// A new style for the agent: its section, the live config and its soul at once. `custom`: the person's own text

@@ -524,17 +524,14 @@ pub fn sync_soul(config: &Config, agent: &AgentConfig) -> bool {
     if !writable(config, agent) {
         return false;
     }
-    let file = crate::agents_admin::profile_folder(config, agent).join("SOUL.md");
-    let Ok(soul) = std::fs::read_to_string(&file) else { return false };
-    if soul.trim().is_empty() {
-        return false; // Hermes' own personality stays
-    }
-    let changed = with_blocks(config, agent, &soul);
-    if changed == soul {
-        return false;
-    }
-    match std::fs::write(&file, changed) {
-        Ok(()) => true,
+    let written = crate::agents_admin::edit_soul(config, agent, false, |soul| {
+        if soul.trim().is_empty() {
+            return soul.to_string(); // Hermes' own personality stays
+        }
+        with_blocks(config, agent, soul)
+    });
+    match written {
+        Ok(written) => written,
         Err(err) => {
             tracing::warn!(target: "bipbridge::guide", agent = %agent.name, error = %err, "guide block not written");
             false
@@ -1096,13 +1093,10 @@ pub fn rename(shared: &SharedConfig, agent: &AgentConfig, new_name: &str) -> any
     if new_name.is_empty() || new_name == old {
         return Ok(agent.clone());
     }
-    if let Ok(soul) = crate::agents_admin::read_soul(&config, agent) {
-        if let Ok(word) = Regex::new(&format!(r"\b{}\b", regex::escape(&old))) {
-            let text = word.replace_all(&soul, regex::NoExpand(&new_name)).into_owned();
-            if text != soul {
-                std::fs::write(crate::agents_admin::profile_folder(&config, agent).join("SOUL.md"), text)?;
-            }
-        }
+    if let Ok(word) = Regex::new(&format!(r"\b{}\b", regex::escape(&old))) {
+        crate::agents_admin::edit_soul(&config, agent, false, |soul| {
+            word.replace_all(soul, regex::NoExpand(&new_name)).into_owned()
+        })?;
     }
     let mut renamed = agent.clone();
     renamed.display_name = new_name;

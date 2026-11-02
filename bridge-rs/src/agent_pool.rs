@@ -201,30 +201,18 @@ pub fn follow_hub_model(config: &Config, folder: &Path) -> anyhow::Result<bool> 
     let home = PathBuf::from(crate::agents_admin::install_home(config));
     let hub = crate::agents_admin::load_or_empty(&home.join("config.yaml"))?;
     let Some(model) = hub.get("model").filter(|m| m.is_map()).cloned() else { return Ok(false) };
-    let path = folder.join("config.yaml");
-    let mut data = crate::agents_admin::load_or_empty(&path)?;
-    if !data.is_map() {
-        data = Yaml::map();
-    }
-    let mut changed = false;
     // what the bridge sets per agent (thinking floor, routing) is set again by `agent_tools::register`
-    let mut section = data.get("model").filter(|m| m.is_map()).cloned().unwrap_or_else(Yaml::map);
-    for key in ["provider", "default", "base_url", "key_env", "supports_vision"] {
-        let wanted = model.get(key).cloned();
-        if section.get(key).cloned() != wanted {
-            match wanted {
+    let mut changed = crate::profile_files::edit(&folder.join("config.yaml"), |data| {
+        let Some(section) = data.section("model") else { return };
+        for key in ["provider", "default", "base_url", "key_env", "supports_vision"] {
+            match model.get(key).cloned() {
                 Some(value) => section.insert(key, value),
                 None => {
                     section.remove(key);
                 }
             }
-            changed = true;
         }
-    }
-    if changed {
-        data.insert("model", section);
-        crate::agents_admin::replace_yaml(&path, &data)?;
-    }
+    })?;
     let mut names: Vec<String> = KEY_VARIABLES.iter().map(|s| s.to_string()).collect();
     if let Some(own) = model.get("key_env").and_then(Yaml::as_str) {
         names.push(own.to_string());
@@ -266,7 +254,7 @@ fn written_directly(args: &[String], env: &BTreeMap<String, String>) -> Option<a
         (8, "--") => &args[7],
         _ => return None,
     };
-    if !key.starts_with("mcp_servers.") || key.split('.').any(str::is_empty) {
+    if !key.starts_with("mcp_servers.") || key.split('.').count() < 3 || key.split('.').any(str::is_empty) {
         return None;
     }
     let home = env.get("HERMES_HOME").filter(|h| !h.is_empty())?;
@@ -278,24 +266,18 @@ fn written_directly(args: &[String], env: &BTreeMap<String, String>) -> Option<a
 }
 
 fn set_dotted(path: &Path, key: &str, value: &str) -> anyhow::Result<()> {
-    let mut data = crate::agents_admin::load_or_empty(path)?;
-    if !data.is_map() {
-        data = Yaml::map();
-    }
-    let parts: Vec<&str> = key.split('.').collect();
-    let mut node = &mut data;
-    for part in &parts[..parts.len() - 1] {
-        node = node.entry_map(part).ok_or_else(|| anyhow::anyhow!("{key}: {part} is not a mapping"))?;
-    }
     let parsed = if let Ok(n) = value.parse::<i64>() {
-        crate::agents_admin::pyyaml::from_json(&serde_json::json!(n))
+        Yaml::Int(n as i128)
     } else if value == "true" || value == "false" {
         Yaml::Bool(value == "true")
     } else {
         Yaml::str(value)
     };
-    node.insert(parts[parts.len() - 1], parsed);
-    crate::agents_admin::replace_yaml(path, &data)
+    let Some((name, rest)) = key.strip_prefix("mcp_servers.").and_then(|k| k.split_once('.')) else {
+        anyhow::bail!("{key}: not a server's key");
+    };
+    crate::profile_files::edit(path, |data| crate::profile_files::set_server(data, name, Some(&[(rest, parsed)])))?;
+    Ok(())
 }
 
 /// A refill running (one at a time).

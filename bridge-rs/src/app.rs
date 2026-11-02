@@ -384,7 +384,7 @@ impl AppState {
                 self.spawn(async move {
                     let config = shared.get();
                     if vault.follow_browsers(&config).await {
-                        crate::tool_diet::apply_all(&config);
+                        crate::profile_files::reconcile_all(&config);
                     }
                 });
             }
@@ -1707,8 +1707,7 @@ pub fn create_app(config: Config, options: AppOptions) -> anyhow::Result<App> {
     let state = AppState(Arc::new(services));
     let queues = crate::msg_queue::queues_of(&state); // before any run ends: the hub tells it each end
     let config = state.config();
-    agents_admin::heal_thinking(&config);
-    agents_admin::heal_browser_proxy(&config);
+    crate::profile_files::reconcile_all(&config); // what the bridge decides in each profile, as this bridge renders it
     agents_admin::heal_souls(&config);
     crate::voices::heal_defaults(&state.config); // after the souls: their language says the Bip's
     let config = state.config();

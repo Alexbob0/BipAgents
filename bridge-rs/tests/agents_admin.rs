@@ -12,7 +12,7 @@ use axum::routing::any;
 use axum::Router;
 use bipbridge::agents_admin::pyyaml;
 use bipbridge::agents_admin::{
-    self, claim_profile, create_agent, delete_agent, editable, heal_souls, heal_thinking, managed, read_model,
+    self, claim_profile, create_agent, delete_agent, editable, heal_souls, managed, read_model,
     read_settings, read_soul, read_thinking, save_agent, set_language, set_model, set_thinking, unclaimed_profiles,
     write_settings, AgentSettings, NewAgent, Run,
 };
@@ -551,7 +551,7 @@ fn thinking_forced_on_by_an_earlier_bridge_is_healed() {
         "model:\n  provider: custom\n  base_url: http://gpu:8888/v1\nagent:\n  reasoning_effort: xhigh\nproviders:\n  bipagents-thinking:\n    api: http://gpu:8888/v1\n    extra_body:\n      chat_template_kwargs:\n        enable_thinking: true\n",
     )
     .unwrap();
-    heal_thinking(&config.get());
+    bipbridge::profile_files::reconcile_all(&config.get());
     assert!(load(&folder.join("config.yaml")).get("providers").is_none());
     assert_eq!(read_thinking(&config.get(), &agent).as_deref(), Some("xhigh"));
 }
@@ -568,11 +568,11 @@ fn glm_through_eurouter_thinks_low_and_never_none() {
     let folder = profiles(dir.path()).join(&agent.name);
     std::fs::create_dir_all(&folder).unwrap();
     let path = folder.join("config.yaml");
-    let mark = folder.join(agents_admin::THINKING_OFF_MARK);
+    let chosen = || agents_admin::chosen_thinking(&folder);
     // nothing chosen: « low » shown, and written at start
     std::fs::write(&path, GLM_EU).unwrap();
     assert_eq!(read_thinking(&c, &agent).as_deref(), Some("low"));
-    heal_thinking(&c);
+    bipbridge::profile_files::reconcile_all(&c);
     let data = load(&path);
     assert_eq!(data["agent"], json!({"max_turns": 60, "reasoning_effort": "low"}));
     assert_eq!(data["providers"]["bipagents-route"]["extra_body"]["provider"]["allow_fallbacks"], true);
@@ -581,7 +581,7 @@ fn glm_through_eurouter_thinks_low_and_never_none() {
     let data = load(&path);
     assert_eq!(data["agent"]["reasoning_effort"], "low");
     assert!(data["providers"].get("bipagents-thinking").is_none());
-    assert!(mark.exists());
+    assert_eq!(chosen().as_deref(), Some("none"));
     assert_eq!(read_thinking(&c, &agent).as_deref(), Some("none"));
     assert_eq!(agents_admin::quick_turn_options(&c, &agent), json!({"reasoning": {"enabled": true, "effort": "low"}}));
     assert_eq!(
@@ -590,8 +590,8 @@ fn glm_through_eurouter_thinks_low_and_never_none() {
     );
     // a level the person picks: theirs, kept at start; tasks follow it from « medium » up
     assert_eq!(agents_admin::choose_thinking(&c, &agent, "medium").unwrap(), "medium");
-    assert!(!mark.exists());
-    heal_thinking(&c);
+    assert_eq!(chosen().as_deref(), Some("medium"));
+    bipbridge::profile_files::reconcile_all(&c);
     assert_eq!(load(&path)["agent"]["reasoning_effort"], "medium");
     assert_eq!(agents_admin::task_turn_options(&c, &agent), None);
     // switched to DeepSeek with « none » chosen: really off there (DeepSeek follows it), and back to GLM: « low »
@@ -599,7 +599,7 @@ fn glm_through_eurouter_thinks_low_and_never_none() {
     set_model(&c, &agent, "deepseek/deepseek-v4.1-flash", None).unwrap();
     let data = load(&path);
     assert_eq!(data["agent"]["reasoning_effort"], "none");
-    assert!(!mark.exists());
+    assert_eq!(chosen().as_deref(), Some("none"));
     assert_eq!(read_thinking(&c, &agent).as_deref(), Some("none"));
     assert_eq!(agents_admin::quick_turn_options(&c, &agent), json!({"reasoning": {"enabled": false}}));
     assert_eq!(agents_admin::task_turn_options(&c, &agent), None);
@@ -626,22 +626,22 @@ fn hermes_template_medium_is_no_choice_and_a_lost_choice_comes_back() {
     // a fresh profile (or an existing place, the migration): « low », shown and written
     std::fs::write(&path, &template).unwrap();
     assert_eq!(read_thinking(&c, &agent).as_deref(), Some("low"));
-    assert!(agents_admin::heal_thinking_of(&c, &agent));
+    assert!(bipbridge::profile_files::reconcile(&c, &agent).unwrap());
     assert_eq!(load(&path)["agent"]["reasoning_effort"], "low");
-    assert!(!agents_admin::heal_thinking_of(&c, &agent)); // nothing more to do
+    assert!(!bipbridge::profile_files::reconcile(&c, &agent).unwrap()); // nothing more to do
     // the person sets « low », then a rewrite brings the template back: put back, and at each start too
     agents_admin::choose_thinking(&c, &agent, "low").unwrap();
-    assert_eq!(std::fs::read_to_string(folder.join(agents_admin::THINKING_CHOSEN_MARK)).unwrap().trim(), "low");
+    assert_eq!(agents_admin::chosen_thinking(&folder).as_deref(), Some("low"));
     std::fs::write(&path, &template).unwrap();
-    assert!(agents_admin::heal_thinking_of(&c, &agent));
+    assert!(bipbridge::profile_files::reconcile(&c, &agent).unwrap());
     assert_eq!(load(&path)["agent"]["reasoning_effort"], "low");
     // « medium » the person chose stays, and comes back after a rewrite to « low »; background tasks follow it
     agents_admin::choose_thinking(&c, &agent, "medium").unwrap();
-    heal_thinking(&c);
+    bipbridge::profile_files::reconcile_all(&c);
     assert_eq!(load(&path)["agent"]["reasoning_effort"], "medium");
     std::fs::write(&path, format!("{GLM_EU}  reasoning_effort: low\n")).unwrap();
     assert_eq!(read_thinking(&c, &agent).as_deref(), Some("medium"));
-    heal_thinking(&c);
+    bipbridge::profile_files::reconcile_all(&c);
     assert_eq!(load(&path)["agent"]["reasoning_effort"], "medium");
     // the routing written again (each time the bridge gives the tools) keeps the person's level
     std::fs::write(&path, template.replace("medium", "low")).unwrap();
@@ -651,7 +651,7 @@ fn hermes_template_medium_is_no_choice_and_a_lost_choice_comes_back() {
     std::fs::write(&path, "model:\n  provider: custom\n  default: local\n  base_url: http://gpu:8888/v1\n").unwrap();
     agents_admin::choose_thinking(&c, &agent, "high").unwrap();
     std::fs::write(&path, "model:\n  provider: custom\n  default: local\n  base_url: http://gpu:8888/v1\nagent:\n  reasoning_effort: medium\n").unwrap();
-    assert!(agents_admin::heal_thinking_of(&c, &agent));
+    assert!(bipbridge::profile_files::reconcile(&c, &agent).unwrap());
     assert_eq!(load(&path)["agent"]["reasoning_effort"], "high");
 }
 
@@ -687,15 +687,15 @@ fn glm_none_written_by_an_earlier_bridge_is_healed_to_low() {
     )
     .unwrap();
     assert_eq!(read_thinking(&c, &agent).as_deref(), Some("none"));
-    heal_thinking(&c);
+    bipbridge::profile_files::reconcile_all(&c);
     let data = load(&path);
     assert_eq!(data["agent"]["reasoning_effort"], "low");
     assert!(data["providers"].get("bipagents-thinking").is_none());
     assert_eq!(read_thinking(&c, &agent).as_deref(), Some("none")); // the app still shows the person's choice
     // a self-hosted server keeps « none » and its enable_thinking entry
     std::fs::write(&path, "model:\n  provider: custom\n  default: glm-5.3\n  base_url: http://sparks:8000/v1\nagent:\n  reasoning_effort: none\n").unwrap();
-    std::fs::remove_file(folder.join(agents_admin::THINKING_OFF_MARK)).unwrap();
-    heal_thinking(&c);
+    std::fs::remove_file(folder.join(bipbridge::profile_files::SETTINGS_FILE)).unwrap();
+    bipbridge::profile_files::reconcile_all(&c);
     assert_eq!(load(&path)["agent"]["reasoning_effort"], "none");
     assert_eq!(agents_admin::quick_turn_options(&c, &agent), json!({"reasoning": {"enabled": false}}));
 }

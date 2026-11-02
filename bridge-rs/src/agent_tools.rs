@@ -592,20 +592,14 @@ pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow
         tracing::warn!(agent = %agent.name, error = %last_chars(&exc.to_string(), 200), "Link tools not registered");
         false
     });
-    // What its kind keeps in view, the rest behind Hermes' tool search (tool_diet.rs): after the entries above, so
-    // the bridge tools it keeps direct are the ones it has now.
-    let diet = crate::tool_diet::apply(config, agent).unwrap_or_else(|exc| {
-        tracing::warn!(agent = %agent.name, error = %last_chars(&exc.to_string(), 200), "tools in view not set");
+    // What the bridge decides in its profile (profile_files::reconcile): its kind's tools in view (tool_diet.rs,
+    // after the entries above, so the bridge tools it keeps direct are the ones it has now), the providers EUrouter
+    // tries first (model_route.rs), the thinking level the person chose or GLM's « low » (after the commands above).
+    let reconciled = crate::profile_files::reconcile(config, agent).unwrap_or_else(|exc| {
+        tracing::warn!(agent = %agent.name, error = %last_chars(&exc.to_string(), 200), "profile settings not brought up to date");
         false
     });
-    // The providers EUrouter tries first (model_route.rs): at each start, the migration of existing agents too.
-    let routed = crate::model_route::apply(config, agent).unwrap_or_else(|exc| {
-        tracing::warn!(agent = %agent.name, error = %last_chars(&exc.to_string(), 200), "model provider routing not set");
-        false
-    });
-    // The thinking level the person chose, or GLM's « low », after the `hermes config set` above (agents_admin.rs).
-    let thinking = crate::agents_admin::heal_thinking_of(config, agent);
-    Ok(changed || paying || accounts || connecting || handing || link || diet || routed || thinking)
+    Ok(changed || paying || accounts || connecting || handing || link || reconciled)
 }
 
 /// `register` with the tools' URL given (tests: a later version of the tools).
