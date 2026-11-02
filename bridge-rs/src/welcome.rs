@@ -984,6 +984,88 @@ pub async fn adopt(hermes: &HermesClient, config: &Config, agent: &AgentConfig) 
     checked(Adopted::Made)
 }
 
+/// How Hermes v0.22.5 renamed an API-made Bot Chat when it moved it aside (gateway/session_bot.py
+/// `_displace_bot_chat`: « Bot Chat (API <id>) »).
+pub const MOVED_ASIDE: &str = "Bot Chat (API ";
+/// How many conversations `restore_moved_aside` reads at most (200 per page).
+const RESTORE_PAGES: i64 = 5;
+
+fn messages(row: &Map<String, Value>) -> i64 {
+    row.get("message_count").and_then(Value::as_i64).unwrap_or(0)
+}
+
+/// An agent's thread put back where Hermes v0.22.5 had moved it (release bench 2026-11-02). Unpatched, that Hermes
+/// handed every text turn into the « Bot Chat » to its peers' queue and, at the first one, renamed the agent's thread
+/// « Bot Chat (API <id>) » (all its history) and made a new empty local « Bot Chat »: the apps then opened an empty
+/// thread. Hermes patch 0021 stops that; a place that ran without it gets its thread back here, at the bridge's start:
+/// the conversation(s) titled « Bot Chat » since (at most the few messages written meanwhile) archived and hidden
+/// (Hermes frees the title of an archived hidden Bot Chat, and refuses to rename a hidden one), then the moved thread
+/// titled « Bot Chat » again. Several moved: the one with the most messages; only when it holds more than the « Bot
+/// Chat » of now (a thread put back, or written in since, stays). Returns the restored id.
+pub async fn restore_moved_aside(hermes: &HermesClient, agent: &AgentConfig) -> Result<Option<String>, HermesError> {
+    let mut moved: Option<Map<String, Value>> = None;
+    for page in 0..RESTORE_PAGES {
+        let rows = hermes.list_sessions_page(agent, 200, page * 200).await?;
+        let count = rows.len();
+        for row in rows {
+            let title = row.get("title").and_then(Value::as_str).unwrap_or_default();
+            if !title.starts_with(MOVED_ASIDE) || id_of(&row).is_empty() {
+                continue;
+            }
+            if moved.as_ref().is_none_or(|m| messages(&row) > messages(m)) {
+                moved = Some(row);
+            }
+        }
+        if count < 200 {
+            break;
+        }
+    }
+    let Some(moved) = moved else { return Ok(None) };
+    let id = id_of(&moved);
+    let current: Vec<Map<String, Value>> =
+        hermes.bot_chat_sessions(agent).await?.into_iter().filter(|row| id_of(row) != id).collect();
+    if current.iter().any(|row| messages(row) >= messages(&moved)) {
+        return Ok(None); // the Bot Chat holds more than what was moved (put back already, or written in since)
+    }
+    for row in current {
+        let mut fields = Map::new();
+        fields.insert("hidden".into(), Value::Bool(true));
+        fields.insert("archived".into(), Value::Bool(true));
+        hermes.update_session(agent, &id_of(&row), fields).await?;
+    }
+    let mut fields = Map::new();
+    fields.insert("title".into(), json!(BOT_CHAT));
+    hermes.update_session(agent, &id, fields).await?;
+    Ok(Some(id))
+}
+
+/// `restore_moved_aside` for every agent, once at the bridge's start; an agent whose Hermes doesn't answer yet is
+/// tried again a few times (a place starting, a hub restarting).
+pub async fn restore_moved_aside_all(state: crate::app::AppState) {
+    let mut left: Vec<String> = state.config().agents.keys().cloned().collect();
+    for wait in [0u64, 30, 120, 600] {
+        tokio::time::sleep(std::time::Duration::from_secs(wait)).await;
+        let config = state.config();
+        let mut again = Vec::new();
+        for name in left {
+            let Some(agent) = config.agents.get(&name) else { continue };
+            match restore_moved_aside(&state.hermes, agent).await {
+                Ok(Some(id)) => tracing::warn!(target: "bipbridge::guide", agent = %name, session = %id,
+                    "the agent's thread, moved aside by Hermes, is its Bot Chat again"),
+                Ok(None) => {}
+                Err(err) => {
+                    tracing::debug!(target: "bipbridge::guide", agent = %name, error = %err, "thread check later");
+                    again.push(name);
+                }
+            }
+        }
+        if again.is_empty() {
+            return;
+        }
+        left = again;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
