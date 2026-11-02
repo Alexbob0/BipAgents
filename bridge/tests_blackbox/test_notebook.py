@@ -75,8 +75,42 @@ def test_an_agent_files_facts_that_read_well_in_obsidian(bridge):
                  {"page": "Marc Dupont", "facts": ["x"], "private": True}):
         refused = call(bridge, "notebook_note", args)
         assert refused["isError"] and "health" in text_of(refused)
-    # The language is set once the Carnet has pages.
-    assert bridge.patch("/v1/notebook/settings", json={"language": "en"}, headers=AUTH).status_code == 400
+    # The language changed later (2026-11-02): the folders and the own pages move to the new names, the sections are
+    # re-titled, the people's names and the facts stay; the agents' next writes go there.
+    moved = bridge.patch("/v1/notebook/settings", json={"language": "en"}, headers=AUTH)
+    assert moved.status_code == 200 and moved.json()["language"] == "en", moved.text
+    carnet = notebook(bridge) / "carnet"
+    assert not (carnet / "Personnes").exists() and not (carnet / "Sujets").exists()
+    page = (carnet / "People" / "Marc Dupont.md").read_text()
+    assert "## In brief\n" in page and "## Who they are\n- Voisin, rencontré en 2010" in page, page
+    assert "## Likes and preferences\n- Aime le jazz" in page and (carnet / "Subjects" / "Rénovation cuisine.md").exists()
+    again = call(bridge, "notebook_note", {"page": "Marco", "facts": ["Joue du piano"]})
+    assert "People/Marc Dupont.md" in text_of(again) or "Marc Dupont (updated" in text_of(again)
+    assert not (carnet / "Personnes").exists()
+    history = bridge.get("/v1/notebook/history", params={"path": "People/Marc Dupont.md"}, headers=AUTH).json()["changes"]
+    assert any(c["action"] == "language" for c in history)
+    assert all(c["action"] != "language" for c in bridge.get("/v1/notebook", headers=AUTH).json()["recent"])
+    # back to French: the same way
+    assert bridge.patch("/v1/notebook/settings", json={"language": "fr"}, headers=AUTH).status_code == 200
+    assert (carnet / "Personnes" / "Marc Dupont.md").exists() and not (carnet / "People").exists()
+
+
+def test_a_deleted_page_leaves_nouveau(bridge):
+    """2026-11-02: a page deleted in the app stayed under « Nouveau » (« Written by you · 5 min ago »): its « create »
+    line is still in the log. « Nouveau » lists the pages that still exist; a page's own history keeps it all."""
+    give_token(bridge)
+    in_french(bridge)
+    marc(bridge)
+    call(bridge, "notebook_note", {"page": "Zoé", "kind": "person", "facts": ["Aime le thé"]})
+    paths = [c["path"] for c in bridge.get("/v1/notebook", headers=AUTH).json()["recent"]]
+    assert "Personnes/Zoé.md" in paths and "Personnes/Marc Dupont.md" in paths
+    gone = bridge.delete("/v1/notebook/page", params={"path": "Personnes/Zoé.md"}, headers=AUTH)
+    assert gone.status_code == 200, gone.text
+    for recent in (bridge.get("/v1/notebook", headers=AUTH).json()["recent"],
+                   bridge.get("/v1/notebook/history", headers=AUTH).json()["changes"]):
+        assert [c["path"] for c in recent] == ["Personnes/Marc Dupont.md"] * len(recent) and recent, recent
+    own = bridge.get("/v1/notebook/history", params={"path": "Personnes/Zoé.md"}, headers=AUTH).json()["changes"]
+    assert [c["action"] for c in own] == ["delete", "create"]
 
 
 def test_the_app_reads_searches_edits_and_restores(bridge):
@@ -95,6 +129,16 @@ def test_the_app_reads_searches_edits_and_restores(bridge):
     with_me = bridge.get("/v1/notebook", headers=AUTH).json()
     assert with_me["sections"][0] == {"kind": "self", "title": "Toi", "count": 1, "path": "Toi.md"}
     assert with_me["sections"][1]["count"] == 1
+    # an English app on this French Carnet (2026-11-02): what the app shows in English, the pages as they are
+    english = bridge.get("/v1/notebook", params={"lang": "en"}, headers=AUTH).json()
+    assert english["language"] == "fr" and english["shown_language"] == "en"
+    assert english["sections"][0] == {"kind": "self", "title": "You", "count": 1, "path": "Toi.md"}
+    assert [s["title"] for s in english["sections"]][1:4] == ["People", "Subjects", "Trips"]
+    mine = bridge.get("/v1/notebook/page", params={"path": "Toi.md", "lang": "en"}, headers=AUTH).json()
+    assert mine["title"] == "You" and [s["title"] for s in mine["sections"]] == ["Goals"]
+    assert [o["title"] for o in mine["outline"]][:2] == ["Who you are", "Family"]
+    assert "## Objectifs" in mine["text"]
+    assert any(c["title"] == "You" for c in bridge.get("/v1/notebook/history", params={"lang": "en"}, headers=AUTH).json()["changes"])
     assert [s["id"] for s in bridge.get("/v1/notebook/page", params={"path": "Toi.md"}, headers=AUTH).json()["outline"]] == [
         "about", "family", "work", "habits", "goals", "agents", "other"]
     recent = home["recent"][0]

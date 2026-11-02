@@ -37,6 +37,7 @@ pub mod api;
 pub mod archive;
 pub mod fill;
 pub mod records;
+pub mod relanguage;
 pub mod repair;
 pub mod template;
 pub mod news;
@@ -1254,6 +1255,28 @@ pub fn history(config: &Config, part: Option<Part>, path: Option<&str>, limit: u
             continue;
         }
         if path.is_some_and(|p| entry.get("path").and_then(Value::as_str) != Some(p)) {
+            continue;
+        }
+        out.push(entry);
+        if out.len() >= limit {
+            break;
+        }
+    }
+    out
+}
+
+/// « Nouveau » (the home's recent changes, and its full list): the newest changes of pages that still exist, where
+/// they are now. A deleted page (its « create » line stays in the log) or a page moved away is left out, and so are the
+/// deletions themselves (2026-11-02: a deleted page was still listed as « Written by you · 5 min ago »).
+pub fn recent_changes(config: &Config, part: Part, limit: usize) -> Vec<Dict> {
+    let base = part_root(config, part);
+    let mut out: Vec<Dict> = Vec::new();
+    for entry in history(config, Some(part), None, usize::MAX) {
+        let path = entry.get("path").and_then(Value::as_str).unwrap_or("");
+        let action = entry.get("action").and_then(Value::as_str).unwrap_or("");
+        let deleted = action == "delete" || action == relanguage::ACTION; // a language change: housekeeping, not news
+        let exists = checked(path).map(|p| base.join(p).is_file()).unwrap_or(false);
+        if deleted || !exists {
             continue;
         }
         out.push(entry);
@@ -3705,6 +3728,25 @@ mod tests {
             text.contains("## Dates\n- Anniversaire : 14 novembre — *Léa, ")
                 && text.contains("- Fête : 25 avril — *Léa, ")
         );
+    }
+
+    #[test]
+    fn new_skips_deleted_and_moved_pages() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(dir.path());
+        let who = lea();
+        note(&config, Part::Main, "person", "Zoé", "work", &["Architecte".into()], &[], "", "", &who).unwrap();
+        let gone = note(&config, Part::Main, "person", "Marc", "work", &["Pilote".into()], &[], "", "", &who).unwrap();
+        delete_page(&config, Part::Main, &gone.path, &Who::you(&config)).unwrap();
+        let recent = recent_changes(&config, Part::Main, 20);
+        let paths: Vec<&str> = recent.iter().filter_map(|e| e.get("path").and_then(Value::as_str)).collect();
+        assert!(paths.iter().all(|p| *p != gone.path), "{paths:?}");
+        assert!(recent.iter().all(|e| e.get("action").and_then(Value::as_str) != Some("delete")));
+        assert!(paths.contains(&"People/Zoé.md"), "{paths:?}");
+        // the page's own history still has it all
+        assert!(history(&config, Some(Part::Main), Some(&gone.path), 10).len() >= 2);
+        // the limit counts the pages listed
+        assert_eq!(recent_changes(&config, Part::Main, 1).len(), 1);
     }
 
     #[test]

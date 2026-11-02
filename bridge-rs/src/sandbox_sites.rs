@@ -640,18 +640,33 @@ pub fn ask(config: &Config, agent: &str, raw: &str, reason: &str, via: &str, byt
     }
 }
 
-/// The sentence on a card (and in older apps' detail).
-pub fn sentence(shown: &str, hosts: &[String], bytes: u64) -> String {
-    let size = if bytes > 0 { format!(" ({})", about(bytes)) } else { String::new() };
-    match hosts {
-        [one] => format!("{shown} veut envoyer des données à {one}{size}"),
-        _ => format!("{shown} veut envoyer des données à {} sites{size} : {}", hosts.len(), hosts.join(", ")),
+/// The sentence on a card (and in older apps' detail), in `lang` (« fr », « en », « de », « es »; another: English):
+/// the agent's language, like the push lines (2026-11-02: an English demo's API readers got French).
+pub fn sentence(lang: &str, shown: &str, hosts: &[String], bytes: u64) -> String {
+    let lang = crate::names::names(lang).lang;
+    let size = if bytes > 0 { format!(" ({})", about_in(lang, bytes)) } else { String::new() };
+    let n = hosts.len();
+    let list = hosts.join(", ");
+    match (lang, hosts) {
+        ("fr", [one]) => format!("{shown} veut envoyer des données à {one}{size}"),
+        ("fr", _) => format!("{shown} veut envoyer des données à {n} sites{size} : {list}"),
+        ("de", [one]) => format!("{shown} will Daten an {one} senden{size}"),
+        ("de", _) => format!("{shown} will Daten an {n} Websites senden{size}: {list}"),
+        ("es", [one]) => format!("{shown} quiere enviar datos a {one}{size}"),
+        ("es", _) => format!("{shown} quiere enviar datos a {n} sitios{size}: {list}"),
+        (_, [one]) => format!("{shown} wants to send data to {one}{size}"),
+        _ => format!("{shown} wants to send data to {n} sites{size}: {list}"),
     }
 }
 
 fn shown_name(config: &Config, agent: &str) -> String {
     let shown = config.agent(Some(agent)).map(|a| a.display_name.clone()).filter(|n| !n.is_empty());
     shown.unwrap_or_else(|| agent.to_string())
+}
+
+/// A card's sentence for `agent`, in its language (its personality's, else the place's).
+fn card_sentence(config: &Config, agent: &str, hosts: &[String], bytes: u64) -> String {
+    sentence(&crate::names::agent_language(config, agent), &shown_name(config, agent), hosts, bytes)
 }
 
 /// The cards waiting, in Hermes' approvals' shape (`GET /v1/approvals`), oldest first.
@@ -668,7 +683,7 @@ pub fn pending_items(config: &Config, agent: Option<&str>) -> Vec<Dict> {
                 "run_id": format!("{RUN_PREFIX}{}", p.id),
                 "request_id": p.id,
                 "command": hosts.join(", "),
-                "description": sentence(&shown_name(config, &p.agent), &hosts, p.bytes),
+                "description": card_sentence(config, &p.agent, &hosts, p.bytes),
                 "choices": ["always", "deny"],
                 "created_at": p.at,
                 "session_id": null,
@@ -746,7 +761,7 @@ pub fn answer(config: &Config, agent: &str, id: &str, decision: Decision, via: &
     let Some((card, hosts, choice)) = decided else { return Ok(None) };
     let fields = json!({
         "session_id": null, "run_id": format!("{RUN_PREFIX}{}", card.id), "request_id": card.id,
-        "command": hosts.join(", "), "description": sentence(&shown_name(config, agent), &hosts, card.bytes),
+        "command": hosts.join(", "), "description": card_sentence(config, agent, &hosts, card.bytes),
         "topic": "site", "choice": choice, "via": via,
     });
     if let Some(map) = fields.as_object() {
@@ -1158,7 +1173,7 @@ mod tests {
         assert_eq!(items[0]["choices"], json!(["always", "deny"]));
         assert_eq!(items[0]["bip_site_kind"], json!("send"));
         assert_eq!(items[0]["bip_site_send_bytes"], json!(2 * 1024 * 1024));
-        assert_eq!(items[0]["description"], json!("vie veut envoyer des données à upload.example.net (environ 2 Mo)"));
+        assert_eq!(items[0]["description"], json!("vie wants to send data to upload.example.net (about 2 MB)"));
         // refused: quiet for a week from the proxy, a day when the agent asks itself
         assert!(answer(&config, "vie", &card.id, Decision::First(false), "app").unwrap().is_some());
         assert!(answer(&config, "vie", &card.id, Decision::First(false), "app").unwrap().is_none());
@@ -1204,9 +1219,26 @@ mod tests {
     }
 
     #[test]
+    fn the_cards_sentence_in_the_agents_language() {
+        let one = ["a.com".to_string()];
+        assert_eq!(sentence("en", "Dev", &one, 0), "Dev wants to send data to a.com");
+        assert_eq!(sentence("fr-FR", "Dev", &one, 300 * 1024), "Dev veut envoyer des données à a.com (environ 300 Ko)");
+        assert_eq!(sentence("de", "Dev", &one, 0), "Dev will Daten an a.com senden");
+        assert_eq!(sentence("es", "Dev", &one, 0), "Dev quiere enviar datos a a.com");
+        assert_eq!(sentence("nl", "Dev", &one, 0), "Dev wants to send data to a.com");
+        let two = ["a.com".to_string(), "b.com".to_string()];
+        assert_eq!(sentence("en", "Dev", &two, 2 * 1024 * 1024), "Dev wants to send data to 2 sites (about 2 MB): a.com, b.com");
+    }
+
+    #[test]
     fn one_card_older_apps_answers() {
         let dir = tempfile::tempdir().unwrap();
         let config = with_agents(&dir, json!({"vie": {"hermes_url": "http://127.0.0.1:9300", "display_name": "Vie"}}));
+        // a French place: the card's sentence in French (an English one: above)
+        crate::notebook::update_state(&config, |s| {
+            s.insert("language".into(), json!("fr"));
+        })
+        .unwrap();
         proxy_url(&config, "vie", "http://10.233.80.2:3128").unwrap();
         for host in ["a.fr", "b.fr", "c.fr"] {
             ask(&config, "vie", host, "", "proxy", 100 * 1024);
