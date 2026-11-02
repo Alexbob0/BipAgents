@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>{{title}}</title>
+<meta name="theme-color" content="#F7F6F3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#101217" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/assets/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="stylesheet" href="/assets/site.css?v={{version}}">
+<!-- Served by Apache (ErrorDocument 404) at whatever address was missing: every URL here is absolute. One page for the
+     four languages: the script picks the address's (/fr/…), else the browser's, and the switch changes it in place. -->
+<style>
+body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
+.nf-top { display: flex; align-items: center; gap: 12px; padding: 14px max(16px, env(safe-area-inset-left)); }
+.nf-langs { margin-left: auto; display: flex; gap: 4px; }
+.nf-langs a { min-width: 40px; height: 34px; padding: 0 10px; display: grid; place-items: center; border-radius: 999px;
+  font-size: 13px; font-weight: 900; text-decoration: none; color: var(--ink2); }
+.nf-langs a:hover { background: var(--ground2); }
+.nf-langs a[aria-current] { background: var(--card); color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--line); }
+.nf { flex: 1; display: flex; flex-direction: column; align-items: center; text-align: center; padding: 8px 16px 40px; }
+.nf-code { display: flex; gap: 14px; justify-content: center; margin: 4px 0 6px; }
+.nf-slot { width: 62px; height: 84px; border-radius: 18px; display: grid; place-items: center; color: var(--ink);
+  box-shadow: inset 0 0 0 2px var(--line); background-image: radial-gradient(var(--line) 1.5px, transparent 1.6px);
+  background-size: 12px 12px; background-position: center; transition: box-shadow .3s, background-color .3s; }
+.nf-slot.full { box-shadow: none; background: none; }
+.nf-digit { width: 50px; height: 70px; display: block; }
+.nf-digit rect { fill: currentColor; }
+.nf-stage { position: relative; width: min(260px, 70vw); aspect-ratio: 1; margin: 34px 0 8px; }
+.nf-bip { width: 100%; height: 100%; touch-action: none; cursor: grab; border-radius: 40px; }
+.nf-bip.dragging { cursor: grabbing; }
+.nf-bip.back { transition: transform .45s cubic-bezier(.3, 1.8, .5, 1); }
+.nf-bip .bip-bubble { font-size: 16px; }
+.nf-crumbs { position: absolute; inset: auto 0 2% 0; height: 0; pointer-events: none; }
+.nf-crumb { position: absolute; bottom: 0; width: 9px; height: 9px; border-radius: 2px; background: var(--card);
+  box-shadow: 0 0 0 1.5px var(--line); }
+.nf h1 { font-size: clamp(26px, 4.6vw, 40px); line-height: 1.1; max-width: 18em; }
+.nf-hint { margin-top: 10px; color: var(--ink2); max-width: 30em; min-height: 3em; }
+.nf-prize { min-height: 70px; display: grid; place-items: center; margin-top: 6px; }
+.nf-plain { margin-top: 8px; font-size: 15px; }
+.nf-plain a { color: var(--muted); font-weight: 800; }
+.nf-fly { position: fixed; left: 0; top: 0; z-index: 60; pointer-events: none; color: var(--ink); }
+.nf-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (max-width: 420px) { .nf-slot { width: 54px; height: 74px; } .nf-digit { width: 42px; height: 59px; } .nf-stage { margin-top: 30px; } }
+@media (prefers-reduced-motion: reduce) { .nf-bip.back { transition: none; } }
+</style>
+</head>
+<body>
+<header class="nf-top">
+  <a class="brand" href="/" data-home aria-label="BipAgents">
+    <span class="brand-bip" data-bip-icon aria-hidden="true"></span>
+    <span class="brand-name">Bip<b>Agents</b></span>
+  </a>
+  <nav class="nf-langs" aria-label="{{lang}}" id="nf-langs">
+    <a href="/" data-lang="en" hreflang="en" lang="en" aria-current="true">EN</a>
+    <a href="/fr/" data-lang="fr" hreflang="fr" lang="fr">FR</a>
+    <a href="/de/" data-lang="de" hreflang="de" lang="de">DE</a>
+    <a href="/es/" data-lang="es" hreflang="es" lang="es">ES</a>
+  </nav>
+</header>
+<main class="nf" id="main">
+  <div class="nf-code" aria-hidden="true"><span class="nf-slot"></span><span class="nf-slot"></span><span class="nf-slot"></span></div>
+  <div class="nf-stage">
+    <div class="nf-bip" id="nf-bip" aria-label="{{bip}}"></div>
+    <div class="nf-crumbs" aria-hidden="true" id="nf-crumbs"></div>
+  </div>
+  <h1 id="nf-line">{{line}}</h1>
+  <p class="nf-hint" id="nf-hint"><noscript>{{noscript}}</noscript></p>
+  <div class="nf-prize" id="nf-prize"></div>
+  <p class="nf-plain"><a href="/" data-home id="nf-back">{{back}}</a></p>
+  <p class="nf-sr" aria-live="polite" id="nf-live"></p>
+</main>
+<script type="application/json" id="nf-data">{{data}}</script>
+<script type="module" src="/assets/notfound.js?v={{version}}"></script>
+</body>
+</html>

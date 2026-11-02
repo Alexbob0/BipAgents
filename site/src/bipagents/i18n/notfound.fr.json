@@ -1,0 +1,28 @@
+{
+  "notfound": {
+    "title": "Page introuvable · BipAgents",
+    "line": "Oups… un Bip a mangé cette page.",
+    "hint": "Secoue-le (fais-le glisser, ou tape dessus) pour récupérer la page.",
+    "back": "Retour à l’accueil",
+    "bip": "Le Bip qui a mangé la page : secoue-le",
+    "lang": "Langue",
+    "digits": "Le Bip a recraché : {d}",
+    "done": "Ahh, ça va mieux.",
+    "noscript": "Cette page n’existe pas. Elle a peut-être changé d’adresse : tout part de l’accueil.",
+    "hmm": [
+      "Hmpf…",
+      "C’est pas moi !",
+      "Quelle page ?",
+      "*gloups*",
+      "Mmmh…"
+    ],
+    "hic": [
+      "Hic !",
+      "Boing !",
+      "Ptou !"
+    ],
+    "burp": [
+      "Bôôôrp !"
+    ]
+  }
+}
