@@ -1,0 +1,202 @@
+{
+  "$schema": "../schema.json",
+  "type": "card",
+  "audit_row": 15,
+  "summary": "A connector's, a secret's or a mail connector's card waits for the person's accord.",
+  "producers": [
+    "connectors.rs:595 (connector_request)",
+    "connectors.rs:1236 (secret_request)",
+    "agent_tools.rs:1428 (mail_request) -> notify_bridge_card"
+  ],
+  "policy": {
+    "per_agent_switch": false
+  },
+  "v2": {
+    "t": "connector | secret | mail_card",
+    "c": "none",
+    "m": null,
+    "loc_key": "notif.card",
+    "collapse": "n",
+    "link": "bipagents://open?agent=vie&n=<journal id>&t=connector"
+  },
+  "known_bugs": [
+    "CONTRACT DRIFT: none of connector_request / secret_request / mail_request is read by the apps. They expect a bip-conn- / bip-secret- run id, so the tap opens a conversation instead of the Boîte.",
+    "Category MESSAGE: no Allow / Deny from the notification."
+  ],
+  "variants": [
+    {
+      "name": "connector",
+      "about": "A connector's approval card.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "previews": false,
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_bridge_card",
+          "args": {
+            "line": "Garmin veut se connecter",
+            "key": "connector_request",
+            "id": "card_1"
+          }
+        }
+      },
+      "payload_v1": null,
+      "fcm_data": null,
+      "push": null,
+      "relay": {
+        "body": "Nouveau message"
+      },
+      "expect": {
+        "screen": "new conversation (should be the Boîte)",
+        "conversation": null,
+        "message": "the card",
+        "ios": {
+          "shared_agent": false,
+          "needs_run_session": false,
+          "route": {
+            "route": "conversation",
+            "session": null,
+            "focus": false
+          },
+          "nse_fetch": "none",
+          "presents_as_message": true
+        },
+        "android": {
+          "kind": "agent",
+          "open": {
+            "page": "conversation",
+            "session": null,
+            "focus": true
+          },
+          "channel": "messages",
+          "notification_key": "session:vault",
+          "actions": [
+            "reply"
+          ],
+          "missed_reply": false,
+          "presents_as_message": true,
+          "fetch": "none"
+        }
+      }
+    },
+    {
+      "name": "secret",
+      "about": "A secret card (previews on).",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "previews": true,
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_bridge_card",
+          "args": {
+            "line": "Demande la clé de l'API Météo",
+            "key": "secret_request",
+            "id": "card_2"
+          }
+        }
+      },
+      "payload_v1": null,
+      "fcm_data": null,
+      "push": null,
+      "relay": {
+        "body": "Nouveau message"
+      },
+      "expect": {
+        "screen": "new conversation (should be the Boîte)",
+        "conversation": null,
+        "message": "the card",
+        "ios": {
+          "shared_agent": false,
+          "needs_run_session": false,
+          "route": {
+            "route": "conversation",
+            "session": null,
+            "focus": false
+          },
+          "nse_fetch": "none",
+          "presents_as_message": true
+        },
+        "android": {
+          "kind": "agent",
+          "open": {
+            "page": "conversation",
+            "session": null,
+            "focus": true
+          },
+          "channel": "messages",
+          "notification_key": "session:vault",
+          "actions": [
+            "reply"
+          ],
+          "missed_reply": false,
+          "presents_as_message": true,
+          "fetch": "none"
+        }
+      }
+    },
+    {
+      "name": "mail",
+      "about": "A mail connector's card.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "previews": false,
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_bridge_card",
+          "args": {
+            "line": "Veut lire ta boîte mail",
+            "key": "mail_request",
+            "id": "card_3"
+          }
+        }
+      },
+      "payload_v1": null,
+      "fcm_data": null,
+      "push": null,
+      "relay": {
+        "body": "Nouveau message"
+      },
+      "expect": {
+        "screen": "new conversation (should be the Boîte)",
+        "conversation": null,
+        "message": "the card",
+        "ios": {
+          "shared_agent": false,
+          "needs_run_session": false,
+          "route": {
+            "route": "conversation",
+            "session": null,
+            "focus": false
+          },
+          "nse_fetch": "none",
+          "presents_as_message": true
+        },
+        "android": {
+          "kind": "agent",
+          "open": {
+            "page": "conversation",
+            "session": null,
+            "focus": true
+          },
+          "channel": "messages",
+          "notification_key": "session:vault",
+          "actions": [
+            "reply"
+          ],
+          "missed_reply": false,
+          "presents_as_message": true,
+          "fetch": "none"
+        }
+      }
+    }
+  ]
+}

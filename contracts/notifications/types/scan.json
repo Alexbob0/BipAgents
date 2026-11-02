@@ -1,0 +1,81 @@
+{
+  "$schema": "../schema.json",
+  "type": "scan",
+  "audit_row": 10,
+  "summary": "A step of a mailbox scan ended.",
+  "producers": [
+    "mail_scan.rs:~1277 -> notify_scan"
+  ],
+  "policy": {
+    "per_agent_switch": true
+  },
+  "v2": {
+    "t": "scan",
+    "c": "main",
+    "m": null,
+    "loc_key": "notif.scan",
+    "collapse": "n",
+    "link": "bipagents://open?agent=vie&c=main&t=scan"
+  },
+  "known_bugs": [
+    "Lands on an unrelated (new) conversation."
+  ],
+  "variants": [
+    {
+      "name": "previews_off",
+      "about": "A scan step.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "previews": false,
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_scan",
+          "args": {
+            "line": "Boîte mail : 12 messages triés"
+          }
+        }
+      },
+      "payload_v1": null,
+      "fcm_data": null,
+      "push": null,
+      "relay": {
+        "body": "Sous-tâche terminée"
+      },
+      "expect": {
+        "screen": "new conversation",
+        "conversation": null,
+        "message": "none",
+        "ios": {
+          "shared_agent": false,
+          "needs_run_session": false,
+          "route": {
+            "route": "conversation",
+            "session": null,
+            "focus": false
+          },
+          "nse_fetch": "none",
+          "presents_as_message": true
+        },
+        "android": {
+          "kind": "agent",
+          "open": {
+            "page": "conversation",
+            "session": null,
+            "focus": true
+          },
+          "channel": "messages",
+          "notification_key": "session:scan",
+          "actions": [
+            "reply"
+          ],
+          "missed_reply": false,
+          "presents_as_message": true,
+          "fetch": "none"
+        }
+      }
+    }
+  ]
+}

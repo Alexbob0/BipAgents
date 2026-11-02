@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bipagents.com/contracts/notifications/type.json",
+  "title": "One notification type of the bridge: today's v1 payload, how both apps handle it, and the v2 target",
+  "type": "object",
+  "required": ["type", "audit_row", "summary", "producers", "policy", "v2", "known_bugs", "variants"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {"type": "string"},
+    "type": {
+      "description": "The file's name without .json. One file per row 1-17 of the audit (notifications-refonte.md §2).",
+      "enum": ["reply", "bot_chat_turn", "handback", "subtask", "question", "approval", "room_reply", "boite", "task",
+               "scan", "family", "email_held", "site", "login", "card", "meet", "silent"]
+    },
+    "audit_row": {"type": "integer", "minimum": 1, "maximum": 17},
+    "summary": {"type": "string"},
+    "producers": {"description": "Where the bridge sends it (bridge-rs/src).", "type": "array", "items": {"type": "string"}},
+    "policy": {
+      "type": "object",
+      "required": ["per_agent_switch"],
+      "additionalProperties": false,
+      "properties": {
+        "per_agent_switch": {"description": "Silenced when the agent's « Me prévenir » switch is off (push.rs notices::Notice::follows_switch).", "type": "boolean"}
+      }
+    },
+    "v2": {
+      "description": "The target pointer of the redesign (§4.2): what phase 1+ sends next to the v1 fields.",
+      "type": "object",
+      "required": ["t", "c", "m", "loc_key", "collapse", "link"],
+      "properties": {
+        "t": {"type": "string"},
+        "c": {"description": "main | s:<lineage root> | r:<room> | x:<shared conv> | none", "type": "string"},
+        "m": {"description": "The message id the tap positions on, or null.", "type": ["string", "null"]},
+        "loc_key": {"type": ["string", "null"]},
+        "collapse": {"type": ["string", "null"]},
+        "link": {"type": ["string", "null"]},
+        "notes": {"type": "string"}
+      }
+    },
+    "known_bugs": {"type": "array", "items": {"type": "string"}},
+    "variants": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/variant"}}
+  },
+  "$defs": {
+    "variant": {
+      "type": "object",
+      "required": ["name", "about", "bridge", "payload_v1", "fcm_data", "push", "relay", "expect"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string"},
+        "about": {"type": "string"},
+        "bridge": {
+          "description": "The input of bridge-rs push::notices::build (what PushService::notify_* is called with).",
+          "type": "object",
+          "required": ["agent", "context", "input"],
+          "additionalProperties": false,
+          "properties": {
+            "agent": {"description": "The bridge key the push names (`<agent>__<household>` for a shared agent).", "type": "string"},
+            "context": {
+              "type": "object",
+              "required": ["title", "previews", "lang"],
+              "additionalProperties": false,
+              "properties": {"title": {"type": "string"}, "previews": {"type": "boolean"}, "lang": {"enum": ["fr", "en", "de", "es"]}}
+            },
+            "input": {
+              "type": "object",
+              "required": ["fn", "args"],
+              "additionalProperties": false,
+              "properties": {"fn": {"type": "string", "pattern": "^notify_[a-z_]+$"}, "args": {"type": "object"}}
+            }
+          }
+        },
+        "payload_v1": {"description": "The exact APNs payload the bridge sends today (also what the relay and the family relay receive).", "type": "object"},
+        "fcm_data": {"description": "The same payload as Android receives it from the bridge's own FCM sender (fcm::data_message).", "type": "object"},
+        "push": {
+          "type": "object",
+          "required": ["push_type", "priority", "collapse_id"],
+          "additionalProperties": false,
+          "properties": {
+            "push_type": {"enum": ["alert", "background"]},
+            "priority": {"enum": [5, 10]},
+            "collapse_id": {"type": ["string", "null"]}
+          }
+        },
+        "relay": {
+          "description": "What the publisher's relay (relay/src/payload.rs scrub, bridge audience) lets through.",
+          "type": "object",
+          "required": ["body"],
+          "additionalProperties": false,
+          "properties": {"body": {"description": "The alert body after the relay, or null for a silent push.", "type": ["string", "null"]}}
+        },
+        "expect": {
+          "type": "object",
+          "required": ["screen", "conversation", "message", "ios", "android"],
+          "additionalProperties": false,
+          "properties": {
+            "screen": {"description": "In words: the screen a tap opens today.", "type": "string"},
+            "conversation": {"type": ["string", "null"]},
+            "message": {"description": "In words: where the opened screen is positioned.", "type": "string"},
+            "ios": {
+              "type": "object",
+              "required": ["shared_agent", "needs_run_session", "route", "nse_fetch", "presents_as_message"],
+              "additionalProperties": false,
+              "properties": {
+                "shared_agent": {"type": "boolean"},
+                "needs_run_session": {"description": "AppDelegate asks Hermes for the run's session before routing (the route given is with no answer).", "type": "boolean"},
+                "route": {"$ref": "#/$defs/iosRoute"},
+                "actions": {
+                  "description": "The route of each notification action (APPROVE_ONCE, DENY).",
+                  "type": "object",
+                  "additionalProperties": {"$ref": "#/$defs/iosRoute"}
+                },
+                "nse_fetch": {"enum": ["outbox", "approval", "reply", "none"]},
+                "presents_as_message": {"description": "willPresent may hide it when its conversation is on screen.", "type": "boolean"}
+              }
+            },
+            "android": {
+              "type": "object",
+              "required": ["kind", "open", "channel", "notification_key", "actions", "missed_reply", "presents_as_message", "fetch"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": {"description": "agent | shared | silent | sync:<reason>", "type": "string"},
+                "open": {
+                  "type": "object",
+                  "required": ["page"],
+                  "properties": {
+                    "page": {"enum": ["conversation", "room", "email", "inbox", "shared", "none"]},
+                    "session": {"type": ["string", "null"]},
+                    "room": {"type": "string"},
+                    "focus": {"type": "boolean"}
+                  }
+                },
+                "channel": {"enum": ["messages", "approvals", null]},
+                "notification_key": {"description": "The string whose hashCode() is the notification id.", "type": ["string", "null"]},
+                "actions": {"type": "array", "items": {"enum": ["reply", "once", "deny"]}},
+                "missed_reply": {"description": "Added to the Inbox's missed replies.", "type": "boolean"},
+                "presents_as_message": {"type": "boolean"},
+                "fetch": {"enum": ["outbox", "approval", "reply", "none"]}
+              }
+            }
+          }
+        }
+      }
+    },
+    "iosRoute": {
+      "type": "object",
+      "required": ["route"],
+      "properties": {
+        "route": {"enum": ["conversation", "reattach", "main_thread", "room", "email", "boite", "boite_meet", "shared",
+                           "shared_answer", "approve", "answer_card", "ignore", "background_sync", "none"]},
+        "session": {"type": ["string", "null"]},
+        "focus": {"type": "boolean"},
+        "run": {"type": "string"},
+        "room": {"type": "string"},
+        "or_inbox": {"type": "boolean"},
+        "choice": {"enum": ["once", "deny"]},
+        "allow": {"type": "boolean"},
+        "reason": {"type": "string"}
+      }
+    }
+  }
+}

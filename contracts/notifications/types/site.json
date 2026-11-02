@@ -1,0 +1,78 @@
+{
+  "$schema": "../schema.json",
+  "type": "site",
+  "audit_row": 13,
+  "summary": "The agent's programs want to send data to a site.",
+  "producers": [
+    "sandbox_sites.rs:~849 -> notify_site_request"
+  ],
+  "policy": {
+    "per_agent_switch": false
+  },
+  "v2": {
+    "t": "site",
+    "c": "none",
+    "m": null,
+    "loc_key": "notif.site",
+    "collapse": "n",
+    "link": "bipagents://open?agent=vie&n=<journal id>&t=site"
+  },
+  "known_bugs": [
+    "The relay drops the body."
+  ],
+  "variants": [
+    {
+      "name": "previews_off",
+      "about": "Site request.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "previews": false,
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_site_request",
+          "args": {
+            "line": "Veut envoyer des données à exemple.com (environ 2 Mo)",
+            "id": "site_1"
+          }
+        }
+      },
+      "payload_v1": null,
+      "fcm_data": null,
+      "push": null,
+      "relay": {
+        "body": "Nouveau message"
+      },
+      "expect": {
+        "screen": "boite",
+        "conversation": null,
+        "message": "the card",
+        "ios": {
+          "shared_agent": false,
+          "needs_run_session": false,
+          "route": {
+            "route": "boite"
+          },
+          "nse_fetch": "none",
+          "presents_as_message": true
+        },
+        "android": {
+          "kind": "agent",
+          "open": {
+            "page": "inbox"
+          },
+          "channel": "messages",
+          "notification_key": "session:sites",
+          "actions": [
+            "reply"
+          ],
+          "missed_reply": false,
+          "presents_as_message": true,
+          "fetch": "none"
+        }
+      }
+    }
+  ]
+}
