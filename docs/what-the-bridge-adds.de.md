@@ -44,6 +44,10 @@ sie bewusst Hermes überlässt.
   [`relay/`](../relay/) leiten Pushes ohne Inhalt weiter. `runs.rs` macht aus einer Freigabe, die niemand ansieht,
   eine Benachrichtigung; `agent_notify.rs` regelt das pro Agent; `live_activities.rs` zeigt lange Arbeit auf dem
   Sperrbildschirm und in der Dynamic Island.
+- **Nachrichten während der Arbeit.** `msg_queue.rs`: Eine Nachricht, die während der Arbeit des Agenten kommt, geht in
+  den laufenden Durchgang (Hermes' Steer, nach den aktuellen Werkzeugaufrufen); « Danach » legt sie stattdessen in die
+  Warteschlange des Agenten auf der Brücke, auf allen Geräten gleich, als nächster Durchgang gestartet (Reihenfolge,
+  Entfernen, Jetzt senden, Pause), eine einzige Benachrichtigung am Ende.
 - **Nichts geht verloren.** `ntfy.rs` und `cronwatch.rs` legen Agentennachrichten und die Antwort jeder Routine in
   einen Postausgang (`store.rs`), mit fertigem Audio; `restore_reconcile.rs` holt nach einer Wiederherstellung die
   Nachrichten zurück, die die Handys behalten haben.
