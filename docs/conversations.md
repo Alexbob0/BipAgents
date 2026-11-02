@@ -45,8 +45,9 @@ The common cause: **the conversation was never a bridge object**. The fix is tha
    parse Hermes rows or bridge markers again (end state; §11).
 5. **A notification is a pointer** to a journal row, which points to `(agent, thread, message)`. It is sent only once
    the message is stored and has its id (§9).
-6. **Old paths keep working** during the transition: `/hermes/<agent>/…`, `/v1/outbox`, `/v1/replies/{id}`, legacy
-   push fields. Nothing is removed before the oldest supported app stops using it.
+6. **No compatibility layer** (Alex, 2026-11-02: no customers yet, one wave for the bridge, the apps right after):
+   what this replaces is deleted (the legacy push fields and builders, `/v1/replies/{id}`, the reply texts kept in
+   memory). Routes other features still use stay (`/v1/outbox`, `/hermes/<agent>/…` for runs until step 4).
 
 ## 3. Identities
 
@@ -288,12 +289,17 @@ GET /v1/threads/{thread}/attachments/{id}?agent=  → the bytes (image parts of 
                                                     attachment redirects (307) to GET /v1/media?path=&agent=
 ```
 
+### 6.4b Search hits
+
+`GET /v1/search/messages` (message_search.rs) gives each result its `thread` and `item` (`m_…`): the app opens
+`timeline?around=<item>` on that thread, never by words or dates.
+
 ### 6.5 Events
 
 ```text
 GET /v1/threads/events[?agent=<id>]      SSE, keepalive comment every 10 s
 event: thread         data: {"thread": "t_…", "agent": "vie", "version": 43, "reason": "run|boite|segment"}
-event: notification   data: {"id": "n_…", "agent": "vie", "t": "reply", "c": "t_…", "m": "m_…", "state": "open"}
+event: notification   data: {"n": "n_…", "agent": "vie", "t": "reply", "c": "t_…", "m": "m_…", "state": "open"}
 event: read           data: {"agent": "vie", "thread": "t_…", "notifications": ["n_…"]}
 event: lagged         data: {}                    (the app missed events: refetch what it shows)
 ```
@@ -412,27 +418,42 @@ One table (`notifications::RULES`, served by `GET /v1/notifications/rules`), not
 
 Presence (the conversation on screen) is still decided by the producers, as today.
 
-### 9.3 Payload v2 (pointer) alongside v1
+### 9.3 The push: a pointer, nothing else
 
-Every alert push gets, next to its legacy fields (unchanged, for apps that don't read v2):
+No compatibility window (Alex, 2026-11-02: no customers yet; every place gets this bridge in one wave and the apps
+ship right after): the push carries the pointer only, no legacy field (`run_id` as a pseudo-id, `session_id`,
+`outbox_id`, `reply_id`, `kind`, `room_id`, `email_held`, `site_request`, `login_request`, `*_request`, `meet`,
+`family`, `job_id` are gone).
 
 ```json
-{"v": 2, "n": "n_01JBX…", "t": "reply", "c": "t_01JBX…", "m": "m_3f9a…"}
+{"aps": {"alert": {"title": "Vie", "body": "Ta réponse est prête.", "loc-key": "Ta réponse est prête."},
+         "thread-id": "vie/t_01JBX…", "mutable-content": 1, "category": "MESSAGE", "sound": "default", "badge": 3},
+ "v": 2, "n": "n_01JBX…", "t": "reply", "agent": "vie", "c": "t_01JBX…", "m": "m_3f9a…", "r": "r_123"}
 ```
 
-- `c` absent: no conversation (a card for the Boîte, a family note: the app opens the agent or the Boîte).
-- `m` absent: the message was not stored within the wait; the app opens the conversation at its end, then asks the
-  journal (`GET /v1/notifications/{n}`), which has `m` once found.
-- Collapse id: one per journal row (`n`) for replies, sub-task reports, tasks and Boîte messages (an autonomous reply
-  no longer replaces the previous one); approvals and questions keep their request id.
+- `t`: the type (§9.1); `r`: what it is about (the run, the approval's or question's request, the card, the job, the
+  held e-mail, the meet); `c` absent: no conversation (a card for the Boîte, a family note: the app opens the agent
+  or the Boîte); `m` absent: the message was not stored within the wait (the app opens the conversation at its end,
+  then asks `GET /v1/notifications/{n}`, which has `m` once found).
+- Approvals add what their buttons answer: `run_id`, `request_id`, `choices`; questions `run_id`, `request_id`.
+- `aps.thread-id` is `<agent>/<c>` (the agent's when there is no conversation): one notification group per
+  conversation. `aps.category`: `APPROVAL` for approvals, `CARD` for connector and e-mail cards (never a secret's:
+  it is typed in the app), `MESSAGE` for the rest. `aps.badge`: the journal's unread total.
+- The text the extension shows: `GET /v1/notifications/{n}` (`preview`, the whole text). With previews on, the alert
+  carries the first 160 characters.
+- Collapse ids only where one notification replaces another: a run's reply (`run_id`), an approval's or question's
+  request, a room (`room:<id>`), a task (`job:<id>`), a card, the mailbox scan. Autonomous replies, sub-task reports
+  and Boîte messages are never collapsed.
+- FCM gets the same fields as data (strings).
 - The deep link the apps build from it: `bipagents://open?agent=<a>&c=<c>&m=<m>&n=<n>&t=<t>`.
-- Later (phase 5 of the refonte): `enc`, the sealed text per device; neutral `loc-key` codes.
+- Next (notif-encrypt, refonte phase 5): `enc`, the sealed text per device; neutral `loc-key` codes. `emit` stays the
+  only place a push is built.
 
 ### 9.4 Read state
 
 ```text
 GET    /v1/notifications?agent=&thread=&since=<iso>&unread=1&limit=50   the Boîte's list, newest first
-GET    /v1/notifications/{id}                                            one row (with `preview`): replaces /v1/replies
+GET    /v1/notifications/{id}                                            one row, `preview` = its whole text
 GET    /v1/notifications/unread                                          {total, agents: {a: n}, threads: {t: n}}
 POST   /v1/notifications/read   {ids?: [...], agent?, thread? (an id or main)}   marks read; answers {read, unread}
 DELETE /v1/notifications/{id}                                            hidden from the Boîte (row kept)
@@ -440,7 +461,8 @@ GET    /v1/notifications/rules                                           the tab
 ```
 
 - Opening a conversation sends `POST /v1/notifications/read {agent, thread}`: every row of that thread is read.
-- After a read the bridge sends a silent push `reason=read` with `{agent, n: [ids], unread}` to the person's devices
+- After a read the bridge sends a silent push `reason=read` with `{agent, n: [ids] (always an array), unread: <total>}`
+  to the person's devices
   (they remove those delivered notifications and set the badge) and a `read` event (§6.5).
 - `unread.total` is the badge.
 
@@ -480,7 +502,7 @@ Journal row as served:
 | 3 | Notification journal, rules, v2 payloads, read API, read sync | done (branch conv-core); `POST /v1/notifications/{id}/answer` not yet |
 | 4 | Sending through the bridge (`POST /v1/threads/{id}/messages {text, client_id, attachments}`), approvals and clarify through the bridge | later |
 | 5 | iOS, then Android, on the timeline behind the `threads` feature flag | app agents |
-| 6 | Remove direct Hermes calls and marker parsers from the apps; drop `/v1/replies` after the minimum app version | later |
+| 6 | Remove direct Hermes calls and marker parsers from the apps | with the apps |
 
 ## 12. Status
 
@@ -546,5 +568,5 @@ The bridge grows because it now does what each app did twice. The code this make
 | Android `ChatModel.kt` | `thread()`, `restore()`, `keepAnswer()`, `showPendingApproval()`, outbox merge | ~600 of 1,633 lines |
 | Android | `net/Hermes.kt` message parsing (`unwrap`, `isHandoff`, `rescueLine`, `asNotice`, `tidy`), `MessageFocus.kt` | ~350 |
 | Android | `"Bot Chat"` comparisons | 18 sites |
-| Bridge, after the minimum app version | `GET /v1/replies/{id}`, the legacy push fields, `/hermes/<agent>/…` conversation calls (kept for older apps) | — |
+| Bridge, step 4 | `/hermes/<agent>/…` conversation calls, `/v1/approvals/answered` GET, `/v1/live/calls` GET (the timeline has them) | — |
 | Bridge, with botchat-v0225 merged | the four `"Bot Chat"` constants become `threads::LEGACY_MAIN_TITLE` (adoption only) | 6 sites |
