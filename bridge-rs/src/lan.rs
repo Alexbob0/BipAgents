@@ -347,6 +347,7 @@ async fn relay(
                 .ok()
                 .and_then(|b| b.get("session_id").and_then(serde_json::Value::as_str).map(str::to_string));
             crate::welcome::done(&state.config(), &target.name, session.as_deref());
+            crate::welcome::adopt_soon(&state, &target.name); // and that conversation is its one thread
         }
         // the run it started followed by the hub whoever looks at it (the brake, loop_brake.rs)
         return Ok(crate::runs::keep_started(&state.hub, &target, &request_body, response).await);
