@@ -399,7 +399,9 @@ DEMO_TABS = (("book_table", "daily"), ("walk", "daily"), ("runs_weeks", "coach")
 # footer (src/bipagents/partials/). /install/ only sends to the home's #install (old links keep working).
 PAGES = (("home", "index.html", ""), ("demo", "demo.html", "demo/"), ("faq", "faq.html", "faq/"),
          ("install", "install.html", "install/"), ("beta", "beta.html", "beta/"),
-         ("grokbot", "grok-bot.html", "grok-bot/"))
+         ("grokbot", "grok-bot.html", "grok-bot/"), ("status", "status.html", "status/"))
+# The status page reads the guichet's public snapshot (guichet-rs/src/public_status.rs in the guichet's repo).
+STATUS_API = "https://guichet.bipagents.com/v1/public-status"
 FAQ_HOME = (1, 3, 2, 6, 4, 5)   # what's included, AI credit, free week, stopping, privacy, Duo/Famille
 FAQ_COUNT = 11
 
@@ -494,6 +496,7 @@ def bipagents(version: str) -> Path:
             "storebadges": badges,
             "betahref": f"{paths[lang]}beta/",
             "grokbothref": f"{paths[lang]}grok-bot/",
+            "statushref": f"{paths[lang]}status/",
             "grokbotprompt": html.escape(migrate_prompt(lang), quote=False),
             "betabadges": store_badges({"appStore": beta.get("testflight", ""), "googlePlay": beta.get("play", "")},
                                        t["beta"]["storeSoon"], t["beta"]["storeGet"], "TestFlight"),
@@ -525,6 +528,7 @@ def bipagents(version: str) -> Path:
                            demo["pages"]["walk"]["template"])
         # Each page gets the data its script needs: the home its prices, the demo its scenarios.
         data = {
+            "status": {**common, "status": t["status"]["js"], "statusApi": STATUS_API},
             "home": {**common, "prices": {**{k: v for k, v in prices.items() if not k.startswith("_")},
                                 "default": default_currency},
                      "checkout": {plan: {period: checkout_url(cfg, plan, period, lang) for period in ("month", "year")}

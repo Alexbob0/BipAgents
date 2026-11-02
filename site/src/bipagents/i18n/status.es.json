@@ -1,0 +1,78 @@
+{
+  "page": {
+    "status": {
+      "title": "Estado del servicio — BipAgents",
+      "description": "¿Funciona BipAgents ahora mismo? El estado del servicio en directo: tus agentes, las respuestas de la IA, las notificaciones, las copias de seguridad y nuestros mensajes cuando algo falla."
+    }
+  },
+  "foot": {
+    "status": "Estado del servicio"
+  },
+  "status": {
+    "kicker": "Estado del servicio",
+    "title": "¿Funciona BipAgents?",
+    "loading": "Comprobando…",
+    "historyTitle": "Últimos 30 días",
+    "historyEmpty": "Ningún incidente en los últimos 30 días.",
+    "again": "Comprobar de nuevo",
+    "js": {
+      "overall": {
+        "ok": "Todo funciona",
+        "degraded": "Algo de lentitud",
+        "outage": "Avería en curso",
+        "unknown": "Todo funciona",
+        "unreachable": "No podemos contactar con el servicio ahora mismo"
+      },
+      "explain": {
+        "ok": "Todas las partes del servicio responden con normalidad.",
+        "degraded": "Lo sabemos y nos estamos ocupando. No hay nada que hacer en tu teléfono.",
+        "outage": "Lo sabemos y lo estamos arreglando. No hay nada que hacer en tu teléfono: tus agentes vuelven solos.",
+        "unknown": "Todas las partes del servicio responden con normalidad.",
+        "unreachable": "Ese es justamente el estado: el propio servicio no responde. Vuelve a intentarlo en unos minutos; si dura, escribe a support@bipagents.com."
+      },
+      "states": {
+        "ok": "Todo funciona",
+        "degraded": "Lentitud",
+        "outage": "Avería en curso",
+        "unknown": "Aún sin medir"
+      },
+      "parts": {
+        "places": {
+          "name": "Tus agentes",
+          "what": "Los servidores donde viven tus agentes"
+        },
+        "ai": {
+          "name": "Respuestas de la IA",
+          "what": "El modelo con el que piensan tus agentes"
+        },
+        "guichet": {
+          "name": "Cuentas y suscripciones",
+          "what": "Inicio de sesión, suscripciones, un agente nuevo"
+        },
+        "notifications": {
+          "name": "Notificaciones",
+          "what": "Los avisos en tu teléfono"
+        },
+        "backups": {
+          "name": "Copias de seguridad",
+          "what": "Copias de tus agentes, cada hora"
+        }
+      },
+      "servers": {
+        "ok": "Servidores que responden: {n} de {total}",
+        "slow": "Servidores lentos: {n} de {total}",
+        "down": "Servidores caídos: {n} de {total}"
+      },
+      "noteTitle": "Mensaje del equipo",
+      "noteSince": "Desde el {since}",
+      "noteUpdated": "Desde el {since} · actualizado el {updated}",
+      "levels": {
+        "info": "Información",
+        "degraded": "Lentitud",
+        "outage": "Avería"
+      },
+      "checked": "Comprobado a las {time}, cada minuto",
+      "tried": "Último intento a las {time}"
+    }
+  }
+}

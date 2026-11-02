@@ -1,0 +1,78 @@
+{
+  "page": {
+    "status": {
+      "title": "État du service — BipAgents",
+      "description": "BipAgents fonctionne-t-il en ce moment ? L’état du service en direct : vos agents, les réponses de l’IA, les notifications, les sauvegardes, et nos messages quand quelque chose ne va pas."
+    }
+  },
+  "foot": {
+    "status": "État du service"
+  },
+  "status": {
+    "kicker": "État du service",
+    "title": "BipAgents fonctionne-t-il ?",
+    "loading": "Vérification…",
+    "historyTitle": "Les 30 derniers jours",
+    "historyEmpty": "Aucun incident ces 30 derniers jours.",
+    "again": "Vérifier à nouveau",
+    "js": {
+      "overall": {
+        "ok": "Tout fonctionne",
+        "degraded": "Quelques lenteurs",
+        "outage": "Panne en cours",
+        "unknown": "Tout fonctionne",
+        "unreachable": "Impossible de joindre le service pour l’instant"
+      },
+      "explain": {
+        "ok": "Toutes les parties du service répondent normalement.",
+        "degraded": "On est au courant, on s’en occupe. Rien à faire sur votre téléphone.",
+        "outage": "On est au courant, on répare. Rien à faire sur votre téléphone : vos agents reviennent tout seuls.",
+        "unknown": "Toutes les parties du service répondent normalement.",
+        "unreachable": "C’est justement l’état du service : il ne répond pas. Réessayez dans quelques minutes ; si ça dure, écrivez à support@bipagents.com."
+      },
+      "states": {
+        "ok": "Tout fonctionne",
+        "degraded": "Lenteurs",
+        "outage": "Panne en cours",
+        "unknown": "Pas encore mesuré"
+      },
+      "parts": {
+        "places": {
+          "name": "Vos agents",
+          "what": "Les serveurs où vivent vos agents"
+        },
+        "ai": {
+          "name": "Réponses de l’IA",
+          "what": "Le modèle avec lequel vos agents réfléchissent"
+        },
+        "guichet": {
+          "name": "Comptes et abonnements",
+          "what": "Connexion, abonnements, nouvel agent"
+        },
+        "notifications": {
+          "name": "Notifications",
+          "what": "Les alertes sur votre téléphone"
+        },
+        "backups": {
+          "name": "Sauvegardes",
+          "what": "Les copies de vos agents, toutes les heures"
+        }
+      },
+      "servers": {
+        "ok": "Serveurs qui répondent : {n} sur {total}",
+        "slow": "Serveurs lents : {n} sur {total}",
+        "down": "Serveurs en panne : {n} sur {total}"
+      },
+      "noteTitle": "Message de l’équipe",
+      "noteSince": "Depuis le {since}",
+      "noteUpdated": "Depuis le {since} · mis à jour le {updated}",
+      "levels": {
+        "info": "Information",
+        "degraded": "Lenteurs",
+        "outage": "Panne"
+      },
+      "checked": "Vérifié à {time}, chaque minute",
+      "tried": "Dernier essai à {time}"
+    }
+  }
+}
