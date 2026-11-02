@@ -97,10 +97,19 @@ fn now() -> f64 {
     crate::py::time_time()
 }
 
-/// A task's title: the message's first line, cut at a word.
+/// A task's title: the message's first line without the @names it starts with, cut at a word.
 pub fn title_of(text: &str) -> String {
     let line = text.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
-    let line = tk::squeeze(line);
+    let words: Vec<&str> = line.split_whitespace().collect();
+    let first = words.iter().position(|w| !w.starts_with('@')).unwrap_or(0);
+    let line = words[first..].join(" ");
+    let line = line.trim_start_matches([',', ':', ' ']);
+    let mut chars = line.chars();
+    let line = match chars.next() {
+        Some(c) if first > 0 => c.to_uppercase().chain(chars).collect::<String>(),
+        _ => line.to_string(),
+    };
+    let line = tk::squeeze(&line);
     if line.chars().count() <= TITLE_CHARS {
         return line;
     }
@@ -429,6 +438,8 @@ mod tests {
     #[test]
     fn titles_are_first_words() {
         assert_eq!(title_of("  Prépare le plan du voyage\net le reste"), "Prépare le plan du voyage");
+        assert_eq!(title_of("@coach @cuisine faites moi un plan"), "Faites moi un plan");
+        assert_eq!(title_of("@tous"), "@tous");
         let long = title_of(&"mot ".repeat(40));
         assert!(long.ends_with('…') && long.chars().count() <= TITLE_CHARS);
     }

@@ -537,6 +537,8 @@ class FakeModel(Fake):
         self.records_by_word: Dict[str, List[Dict[str, Any]]] = {}
         # a group discussion's router (its instructions start « You route »): the ids it answers
         self.route_answer = "coach"
+        # a room's task handed over (its instructions start « Write the handover note »): the note
+        self.note_answer = "Done: the list\nLeft: the shopping"
         # a WhatsApp chat read for the Carnet (its instructions start « You read a WhatsApp chat »): its answer
         self.whatsapp_answer: Dict[str, Any] = {"people": [], "subjects": [], "dates": [], "tasks": []}
         # an agent's memory translated after its language changed (its instructions start « You translate »)
@@ -572,6 +574,10 @@ class FakeModel(Fake):
                 content = json.dumps(self.translation_answer, ensure_ascii=False)
                 return JSONResponse({"choices": [{"message": {"content": content}}],
                                      "usage": {"prompt_tokens": 400, "completion_tokens": 380}},
+                                    status_code=self.status)
+            if body["messages"][0]["content"].startswith("Write the handover note"):
+                return JSONResponse({"choices": [{"message": {"content": self.note_answer}}],
+                                     "usage": {"prompt_tokens": 300, "completion_tokens": 20}},
                                     status_code=self.status)
             if body["messages"][0]["content"].startswith("You route"):
                 return JSONResponse({"choices": [{"message": {"content": self.route_answer}}],
