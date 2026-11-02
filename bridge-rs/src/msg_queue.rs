@@ -156,7 +156,13 @@ impl AgentQueue {
 
     /// A run of the agent ended: what changes in the queue, and whether more work follows in its conversation (no
     /// « reply ready » then).
-    pub fn run_ended(&mut self, run_id: &str, session_id: Option<&str>, kind: &str, pending_steer: Option<&str>) -> (bool, bool) {
+    pub fn run_ended(
+        &mut self,
+        run_id: &str,
+        session_id: Option<&str>,
+        kind: &str,
+        pending_steer: Option<&str>,
+    ) -> (bool, bool) {
         let mut changed = false;
         if self.running.as_ref().is_some_and(|r| r.run_id == run_id) {
             self.running = None;
@@ -171,8 +177,7 @@ impl AgentQueue {
             }
         }
         // words steered through the bridge that the turn never took: first in line
-        let steered: Vec<String> =
-            self.steers.iter().filter(|s| s.run_id == run_id).map(|s| s.text.clone()).collect();
+        let steered: Vec<String> = self.steers.iter().filter(|s| s.run_id == run_id).map(|s| s.text.clone()).collect();
         self.steers.retain(|s| s.run_id != run_id);
         if let (Some(s), Some(pending)) = (session.as_deref(), pending_steer.map(str::trim).filter(|p| !p.is_empty())) {
             if steered.iter().any(|t| pending.contains(t.trim())) {
@@ -186,7 +191,10 @@ impl AgentQueue {
             }
             return (changed, false);
         };
-        if self.waits_in(&s) && matches!(kind, "run.cancelled" | "run.canceled" | "run.interrupted" | "run.failed") && !self.paused {
+        if self.waits_in(&s)
+            && matches!(kind, "run.cancelled" | "run.canceled" | "run.interrupted" | "run.failed")
+            && !self.paused
+        {
             // stopped by the person, or failed: nothing goes on behind it until « Reprendre »
             self.paused = true;
             changed = true;
@@ -323,7 +331,14 @@ impl Queues {
 
     /// The run hub's word at each run's end (inside its locks: quick, no I/O but the queue's small file). Returns
     /// whether more of the queue follows in that conversation (the hub then pushes no « reply ready »).
-    pub fn run_ended(&self, agent: &str, run_id: &str, session_id: Option<&str>, kind: &str, pending_steer: Option<&str>) -> bool {
+    pub fn run_ended(
+        &self,
+        agent: &str,
+        run_id: &str,
+        session_id: Option<&str>,
+        kind: &str,
+        pending_steer: Option<&str>,
+    ) -> bool {
         let known = {
             let state = lock(&self.state);
             state.get(agent).cloned()
@@ -332,11 +347,10 @@ impl Queues {
         if known.is_none() && !self.path_of(agent).exists() {
             return false;
         }
-        let (queue, changed, (_, follows)) =
-            self.update_quiet(agent, |q| {
-                let (changed, follows) = q.run_ended(run_id, session_id, kind, pending_steer);
-                (changed, (changed, follows))
-            });
+        let (queue, changed, (_, follows)) = self.update_quiet(agent, |q| {
+            let (changed, follows) = q.run_ended(run_id, session_id, kind, pending_steer);
+            (changed, (changed, follows))
+        });
         if follows {
             tracing::info!(agent = %agent, run_id = %run_id, "queue: the next message follows");
         }
@@ -354,7 +368,14 @@ impl Queues {
     }
 
     /// A message to send after the turn going on (`waits_for`: the run the app follows there).
-    pub fn add(&self, agent: &AgentConfig, session_id: &str, text: &str, waits_for: Option<&str>, front: bool) -> Result<AgentQueue, &'static str> {
+    pub fn add(
+        &self,
+        agent: &AgentConfig,
+        session_id: &str,
+        text: &str,
+        waits_for: Option<&str>,
+        front: bool,
+    ) -> Result<AgentQueue, &'static str> {
         let (queue, added) = self.update(&agent.name, |q| {
             if q.items.len() >= ITEMS_MAX {
                 return (false, false);
@@ -432,7 +453,13 @@ impl Queues {
 
     /// Words into the turn going on in `session_id` (`run_id`: the one the app follows). Ok(Some(run)) when Hermes
     /// took them; Ok(None) when no turn takes words now (the caller queues them).
-    pub async fn steer(&self, agent: &AgentConfig, session_id: &str, run_id: Option<&str>, text: &str) -> Result<Option<String>, HermesError> {
+    pub async fn steer(
+        &self,
+        agent: &AgentConfig,
+        session_id: &str,
+        run_id: Option<&str>,
+        text: &str,
+    ) -> Result<Option<String>, HermesError> {
         let Some(run) = run_id.map(str::to_string).or_else(|| self.running_run(&agent.name, session_id)) else {
             return Ok(None);
         };
@@ -568,9 +595,10 @@ impl Queues {
             let queue = self.reorder(&agent.name, &ids);
             return Ok(json!({"steered": false, "queue": queue.snapshot(&agent.name)}));
         }
-        let run = self.start(agent, &item).await.ok_or_else(|| {
-            HttpError::new(502, "your agent isn't answering right now: try again in a moment")
-        })?;
+        let run = self
+            .start(agent, &item)
+            .await
+            .ok_or_else(|| HttpError::new(502, "your agent isn't answering right now: try again in a moment"))?;
         Ok(json!({"steered": false, "run_id": run, "queue": self.get(&agent.name).snapshot(&agent.name)}))
     }
 
@@ -760,7 +788,8 @@ async fn queue_events(State(state): State<AppState>, UrlPath(agent_id): UrlPath<
     let mut events = queues.subscribe();
     let first = queues.get(&agent.name).snapshot(&agent.name);
     let name = agent.name.clone();
-    let line = |kind: &str, data: &Value| bytes::Bytes::from(format!("event: {kind}\ndata: {}\n\n", crate::py::dumps(data)));
+    let line =
+        |kind: &str, data: &Value| bytes::Bytes::from(format!("event: {kind}\ndata: {}\n\n", crate::py::dumps(data)));
     let stream = async_stream::stream! {
         yield Ok::<_, std::io::Error>(line("queue", &first));
         loop {
@@ -799,7 +828,13 @@ mod tests {
     use super::*;
 
     fn item(id: &str, session: &str) -> Item {
-        Item { id: id.into(), session_id: session.into(), text: format!("text {id}"), created_at: "t".into(), late: false }
+        Item {
+            id: id.into(),
+            session_id: session.into(),
+            text: format!("text {id}"),
+            created_at: "t".into(),
+            late: false,
+        }
     }
 
     fn queue_of(ids: &[(&str, &str)]) -> AgentQueue {
