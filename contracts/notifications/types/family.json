@@ -12,10 +12,11 @@
   "v2": {
     "t": "family",
     "c": "main",
-    "m": "<message id of the note>",
+    "m": "m_<message id>",
     "loc_key": "notif.family",
     "collapse": "n",
-    "link": "bipagents://open?agent=vie&c=main&m=<id>&t=family"
+    "link": "bipagents://open?agent=vie&c=main&m=m_<message id>&t=family",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
   },
   "known_bugs": [
     "`family` is read by neither app: opens a new conversation (iOS) / the main one (Android)."

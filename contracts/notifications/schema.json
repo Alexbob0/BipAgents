@@ -29,7 +29,7 @@
       "required": ["t", "c", "m", "loc_key", "collapse", "link"],
       "properties": {
         "t": {"type": "string"},
-        "c": {"description": "main | s:<lineage root> | r:<room> | x:<shared conv> | none", "type": "string"},
+        "c": {"description": "The thread pointer (docs/conversations.md): main | t_<thread id> | room:<id> | none", "type": "string"},
         "m": {"description": "The message id the tap positions on, or null.", "type": ["string", "null"]},
         "loc_key": {"type": ["string", "null"]},
         "collapse": {"type": ["string", "null"]},

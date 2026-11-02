@@ -11,11 +11,12 @@
   },
   "v2": {
     "t": "reply",
-    "c": "main or s:<root of the origin conversation>",
-    "m": "<Hermes message id>",
+    "c": "main or t_<thread>",
+    "m": "m_<message id>",
     "loc_key": "notif.reply",
     "collapse": "n",
-    "link": "bipagents://open?agent=vie&c=main&m=<id>&t=reply"
+    "link": "bipagents://open?agent=vie&c=main&m=m_<message id>&t=reply",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
   },
   "known_bugs": [
     "Same as bot_chat_turn (collapse per session)."

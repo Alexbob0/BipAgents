@@ -15,7 +15,8 @@
     "m": null,
     "loc_key": "notif.scan",
     "collapse": "n",
-    "link": "bipagents://open?agent=vie&c=main&t=scan"
+    "link": "bipagents://open?agent=vie&c=main&t=scan",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
   },
   "known_bugs": [
     "Lands on an unrelated (new) conversation."

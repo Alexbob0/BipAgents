@@ -15,7 +15,8 @@
     "m": null,
     "loc_key": "notif.login",
     "collapse": "n",
-    "link": "bipagents://open?agent=vie&n=<journal id>&t=login"
+    "link": "bipagents://open?agent=vie&n=<journal id>&t=login",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
   },
   "known_bugs": [
     "iOS reads it as a site request (same Boîte route); the relay drops the body."

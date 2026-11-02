@@ -15,7 +15,8 @@
     "m": null,
     "loc_key": "notif.email_held",
     "collapse": "n",
-    "link": "bipagents://open?agent=vie&n=<journal id>&t=email_held"
+    "link": "bipagents://open?agent=vie&n=<journal id>&t=email_held",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
   },
   "known_bugs": [
     "The relay drops the body (« Nouveau message »)."

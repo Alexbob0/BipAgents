@@ -12,10 +12,11 @@
   "v2": {
     "t": "reply",
     "c": "main",
-    "m": "<Hermes message id>",
+    "m": "m_<message id>",
     "loc_key": "notif.reply",
     "collapse": "n",
-    "link": "bipagents://open?agent=vie&c=main&m=<id>&t=reply"
+    "link": "bipagents://open?agent=vie&c=main&m=m_<message id>&t=reply",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
   },
   "known_bugs": [
     "Same collapse id (session:<sid>) and same Android notification id: each autonomous reply replaces the previous one.",

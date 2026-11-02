@@ -15,11 +15,12 @@
   },
   "v2": {
     "t": "reply",
-    "c": "s:<lineage root of session_id> (main when it is the Bot Chat line)",
-    "m": "<Hermes message id of the reply>",
+    "c": "t_<thread of session_id> (main when it is the agent's main thread)",
+    "m": "m_<message id>",
     "loc_key": "notif.reply",
     "collapse": "n",
-    "link": "bipagents://open?agent=vie&c=s:<root>&m=<id>&t=reply"
+    "link": "bipagents://open?agent=vie&c=t_<thread>&m=m_<message id>&t=reply",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
   },
   "known_bugs": [
     "No message id: the apps find the message by its text or by the date (±120 s, MessageLocator).",

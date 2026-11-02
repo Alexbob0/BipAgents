@@ -18,7 +18,7 @@
     "loc_key": null,
     "collapse": null,
     "link": null,
-    "notes": "Typed in the contract but never journaled (§4.8)."
+    "notes": "Typed in the contract but never journaled (§4.8). Pointer shape: docs/conversations.md §9.3 (conv-core)."
   },
   "known_bugs": [
     "run_finished is ignored by both apps."

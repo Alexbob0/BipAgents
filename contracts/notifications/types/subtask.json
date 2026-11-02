@@ -11,11 +11,12 @@
   },
   "v2": {
     "t": "subtask",
-    "c": "s:<lineage root>",
-    "m": "<Hermes message id of the report>",
+    "c": "t_<thread>",
+    "m": "m_<message id>",
     "loc_key": "notif.subtask",
     "collapse": "n",
-    "link": "bipagents://open?agent=vie&c=s:<root>&m=<id>&t=subtask"
+    "link": "bipagents://open?agent=vie&c=t_<thread>&m=m_<message id>&t=subtask",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
   },
   "known_bugs": [
     "Collapse per session (subtask:<sid>): reports overwrite each other."

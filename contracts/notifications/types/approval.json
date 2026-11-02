@@ -13,11 +13,12 @@
   },
   "v2": {
     "t": "approval",
-    "c": "s:<lineage root> | r:<room> | x:<shared conv>",
+    "c": "t_<thread> | room:<id> | t_<thread> on the relative's bridge (agent <agent>__<household>)",
     "m": null,
     "loc_key": "notif.approval",
     "collapse": "request_id",
-    "link": "bipagents://open?agent=vie&c=s:<root>&n=<journal id>&t=approval"
+    "link": "bipagents://open?agent=vie&c=t_<thread>&n=<journal id>&t=approval",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
   },
   "known_bugs": [
     "Android: two approvals of one run share a notification id (hash of run_id): the second replaces the first.",

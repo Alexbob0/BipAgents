@@ -17,7 +17,8 @@
     "m": null,
     "loc_key": "notif.card",
     "collapse": "n",
-    "link": "bipagents://open?agent=vie&n=<journal id>&t=connector"
+    "link": "bipagents://open?agent=vie&n=<journal id>&t=connector",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
   },
   "known_bugs": [
     "CONTRACT DRIFT: none of connector_request / secret_request / mail_request is read by the apps. They expect a bip-conn- / bip-secret- run id, so the tap opens a conversation instead of the Boîte.",

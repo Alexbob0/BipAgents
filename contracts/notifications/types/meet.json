@@ -15,7 +15,8 @@
     "m": null,
     "loc_key": "notif.meet",
     "collapse": "n",
-    "link": "bipagents://open?agent=vie&n=<journal id>&t=meet"
+    "link": "bipagents://open?agent=vie&n=<journal id>&t=meet",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
   },
   "known_bugs": [
     "The relay drops the body."

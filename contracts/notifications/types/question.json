@@ -11,11 +11,12 @@
   },
   "v2": {
     "t": "question",
-    "c": "s:<lineage root>",
-    "m": "<Hermes message id of the question>",
+    "c": "t_<thread>",
+    "m": "m_<message id>",
     "loc_key": "notif.question",
     "collapse": "n",
-    "link": "bipagents://open?agent=vie&c=s:<root>&m=<id>&t=question"
+    "link": "bipagents://open?agent=vie&c=t_<thread>&m=m_<message id>&t=question",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
   },
   "known_bugs": [
     "The per-agent switch off silences questions: the agent waits unseen (policy decision for Alex)."

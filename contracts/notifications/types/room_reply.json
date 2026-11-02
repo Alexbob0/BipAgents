@@ -11,11 +11,12 @@
   },
   "v2": {
     "t": "room_reply",
-    "c": "r:<room>",
-    "m": "<room message id>",
+    "c": "room:<id>",
+    "m": "m_<message id>",
     "loc_key": "notif.reply",
     "collapse": "n",
-    "link": "bipagents://open?agent=vie&c=r:room_1&m=<id>&t=room_reply"
+    "link": "bipagents://open?agent=vie&c=room:room_1&m=m_<message id>&t=room_reply",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
   },
   "known_bugs": [
     "Collapse per room: only the latest room reply is kept."

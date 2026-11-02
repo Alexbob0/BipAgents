@@ -12,11 +12,12 @@
   },
   "v2": {
     "t": "task",
-    "c": "s:<root of the task's conversation> | none (proposal: Boîte › En cours)",
-    "m": "<Hermes message id> | null",
+    "c": "t_<thread> | none (proposal: Boîte › En cours)",
+    "m": "m_<message id> | null",
     "loc_key": "notif.task.<done|paused|proposed|rescued>",
     "collapse": "n",
-    "link": "bipagents://open?agent=vie&c=s:<root>&t=task (proposal: Boîte)"
+    "link": "bipagents://open?agent=vie&c=t_<thread>&t=task (proposal: Boîte)",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
   },
   "known_bugs": [
     "job_id is read by neither app; a proposal (no session) opens a conversation without a session instead of the Boîte card.",

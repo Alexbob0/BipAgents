@@ -11,11 +11,12 @@
   },
   "v2": {
     "t": "boite",
-    "c": "main or s:<root of the origin conversation> (never the bare routine run)",
-    "m": "outbox:<id>",
+    "c": "main or t_<thread> (never the bare routine run)",
+    "m": "outbox:<outbox id>",
     "loc_key": "notif.boite",
     "collapse": "n",
-    "link": "bipagents://open?agent=vie&c=main&m=outbox:o1&t=boite"
+    "link": "bipagents://open?agent=vie&c=main&m=outbox:o1&t=boite",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
   },
   "known_bugs": [
     "iOS always opens the main Bot Chat (ignores session_id); Android opens session_id: platforms diverge.",
