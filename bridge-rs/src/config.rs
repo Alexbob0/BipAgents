@@ -566,7 +566,8 @@ impl Default for JobsConfig {
 /// one turn of team work at most (one agent's run; Back's took 749k on the lab), its wrap-up included: told to wrap up
 /// at 60 %, stopped 30k before the cap (rooms.rs `turn_limit`; on each model call's real tokens with Hermes patch
 /// 0020, before a call that would pass it), then one short turn without tools says what it did and hands over (never
-/// an empty turn).
+/// an empty turn). Since 2026-11-01 also a turn before a goal (a discussion's: Front's took 587k on the bench) and a
+/// turn this install's agent takes in a relative's room (rooms_remote.rs, the whole cap: no wrap-up there).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct RoomsConfig {
     pub router_model: bool,
