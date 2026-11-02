@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import array
 import asyncio
+import hashlib
 import json
 import math
 import re
@@ -301,6 +302,18 @@ class FakeHermes(Fake):
         self.forget_runs = False
         self.default_session = {"title": "Bot Chat", "message_count": 7}
         self.unique_titles = False   # as Hermes: a title another conversation holds is refused (400)
+        # Hermes v0.22.5 as the threads see it (test_threads.py): a session continued after a compression (one with a
+        # `parent_session_id`) is listed only with `include_children=1`; every row has a stable `message_uid`.
+        self.v0225 = False
+        # Hermes v0.22.5 + patch 0021 (gateway/platforms/api_server_bot_chat.py): a « Bot Chat » created with a peer's
+        # source (`hermes peer dm`: bot_peer_dm) is a LOCAL chat (`local-…`, hidden) whose text turns go to Hermes'
+        # peer queue, never an API run: their event stream is only `run.completed` (no text, tools, usage, clarify).
+        # A plain create (no source, or api_server) is an API conversation whose runs stream as any other.
+        self.fifo: List[Dict[str, Any]] = []   # turns that went to the peer queue
+
+    def local_bot_chat(self, agent: str, session_id: Any) -> bool:
+        session = self.sessions.get(agent, {}).get(str(session_id or ""))
+        return bool(session) and str(session.get("chat_id") or "").startswith("local-")
 
     # what the tests set up
     def add_session(self, session_id: str, messages: List[Dict[str, Any]], title: str = "Discussion",
@@ -349,6 +362,11 @@ class FakeHermes(Fake):
                 self.started[run_id] = {"status": "running", "polls": 0, "input": text, "now": now,
                                         "session_id": body.get("session_id"), "instructions": body.get("instructions"),
                                         "agent": agent, "guest_turn": body.get("guest_turn")}
+                if isinstance(body.get("input"), str) and self.local_bot_chat(agent, body.get("session_id")):
+                    self.fifo.append({"agent": agent, "run_id": run_id, "session_id": body.get("session_id"),
+                                      "input": text})
+                    done = {"event": "run.completed", "run_id": run_id, "output": ""}
+                    self.runs.setdefault(run_id, [f"event: run.completed\ndata: {json.dumps(done)}\n\n", CLOSE])
             return JSONResponse({"run_id": run_id, "status": "started"}, status_code=202)
         run_id = parts[2] if len(parts) > 2 else ""
         if len(parts) == 4 and parts[3] == "events":
@@ -424,17 +442,22 @@ class FakeHermes(Fake):
         mine = self.sessions.setdefault(agent, {})
         if len(parts) == 2 and method == "GET":
             listed = sorted(mine.values(), key=lambda s: -float(s.get("last_active") or 0))
+            if self.v0225 and "include_children=1" not in seen.query:
+                listed = [s for s in listed if not s.get("parent_session_id")]
             return JSONResponse({"sessions": listed})
         if len(parts) == 2 and method == "POST":
             body = seen.json() or {}
             if self.unique_titles and any(s.get("title") == body.get("title") for s in mine.values()):
                 return JSONResponse({"error": "title already in use"}, status_code=400)
+            peer_bot_chat = body.get("title") == "Bot Chat" and (body.get("source") or "api_server") != "api_server"
             with self.lock:
                 self.created.append((agent, body))
-                session_id = f"api_s{len(self.created)}"
+                session_id = f"local-s{len(self.created)}" if peer_bot_chat else f"api_s{len(self.created)}"
             mine[session_id] = {"id": session_id, "title": body.get("title"), "message_count": 0,
                                 "last_active": time.time(), "input_tokens": 0, "output_tokens": 0,
                                 "cache_read_tokens": 0}
+            if peer_bot_chat:
+                mine[session_id].update({"chat_id": session_id, "source": "cli", "hidden": True})
             self.messages[(agent, session_id)] = []
             return JSONResponse({"object": "hermes.session", "session": {"id": session_id, "title": body.get("title")}},
                                 status_code=201)
@@ -446,6 +469,11 @@ class FakeHermes(Fake):
         if len(parts) == 3 and method == "PATCH":
             body = seen.json() or {}
             self.patched.append({"id": session_id, **body})
+            if "title" in body:   # Hermes frees the title an archived hidden Bot Chat holds (hermes_state_titles.py)
+                for other in mine.values():
+                    if other["id"] != session_id and other.get("title") == body["title"] \
+                            and other.get("archived") and other.get("hidden"):
+                        other["title"] = None
             if session_id in mine:
                 mine[session_id].update(body)
             return JSONResponse({})
@@ -466,7 +494,15 @@ class FakeHermes(Fake):
                 timer.start()
             return JSONResponse({})
         if len(parts) == 4 and parts[3] == "messages":
-            return JSONResponse({"messages": self.messages.get((agent, session_id), [])})
+            rows = self.messages.get((agent, session_id), [])
+            if self.v0225:
+                rows = [{"id": i + 1, "message_uid": r.get("message_uid") or hashlib.md5(f"{agent}/{session_id}/{i}".encode()).hexdigest(), **r}
+                        for i, r in enumerate(rows)]
+                if "inline_images=false" in seen.query:   # photos as placeholders, as Hermes without inline images
+                    rows = [{**r, "content": [{"type": "text", "text": "[image]"} if p.get("type") == "image_url" else p
+                                              for p in r["content"]]} if isinstance(r.get("content"), list) else r
+                            for r in rows]
+            return JSONResponse({"messages": rows})
         if len(parts) == 4 and parts[3] == "chat" and method == "POST":
             body = seen.json() or {}
             now, body["message"] = split_now(body.get("message"))
@@ -540,6 +576,8 @@ class FakeModel(Fake):
         self.records_by_word: Dict[str, List[Dict[str, Any]]] = {}
         # a group discussion's router (its instructions start « You route »): the ids it answers
         self.route_answer = "coach"
+        # a room's task handed over (its instructions start « Write the handover note »): the note
+        self.note_answer = "Done: the list\nLeft: the shopping"
         # a WhatsApp chat read for the Carnet (its instructions start « You read a WhatsApp chat »): its answer
         self.whatsapp_answer: Dict[str, Any] = {"people": [], "subjects": [], "dates": [], "tasks": []}
         # an agent's memory translated after its language changed (its instructions start « You translate »)
@@ -575,6 +613,10 @@ class FakeModel(Fake):
                 content = json.dumps(self.translation_answer, ensure_ascii=False)
                 return JSONResponse({"choices": [{"message": {"content": content}}],
                                      "usage": {"prompt_tokens": 400, "completion_tokens": 380}},
+                                    status_code=self.status)
+            if body["messages"][0]["content"].startswith("Write the handover note"):
+                return JSONResponse({"choices": [{"message": {"content": self.note_answer}}],
+                                     "usage": {"prompt_tokens": 300, "completion_tokens": 20}},
                                     status_code=self.status)
             if body["messages"][0]["content"].startswith("You route"):
                 return JSONResponse({"choices": [{"message": {"content": self.route_answer}}],

@@ -162,6 +162,8 @@ def test_watch_pushes_approval_when_nobody_follows(bridge, fakes):
     assert wait_until(lambda: len(apns.pushes()) >= 1)
     payload = apns.payloads()[0]
     assert payload["aps"]["category"] == "APPROVAL" and payload["aps"]["alert"]["body"] == "Approbation requise"
+    v2 = {k: payload.pop(k) for k in ("v", "n", "t")}   # the journal's pointer; no conversation without a session
+    assert v2["v"] == 2 and v2["t"] == "approval" and "c" not in payload
     assert payload == {"aps": {"alert": {"title": "Wellness", "body": "Approbation requise",
                                          "loc-key": "Approbation requise"},
                                "thread-id": "wellness", "mutable-content": 1, "category": "APPROVAL", "sound": "default"},

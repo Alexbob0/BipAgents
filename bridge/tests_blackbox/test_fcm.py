@@ -60,6 +60,8 @@ def test_sending_exchanges_the_key_for_a_token_and_drops_dead_tokens(bridges, fa
     assert all(r.path == "/v1/projects/bipagents-test/messages:send" for r in sends)
     live = next(r.json()["message"] for r in sends if r.json()["message"]["token"] == LIVE)
     outbox_id = bridge.get("/v1/outbox", headers=AUTH).json()["items"][0]["id"]
+    v2 = {k: live["data"].pop(k) for k in ("v", "n", "t", "c", "m")}   # the journal's pointer, as strings
+    assert v2["v"] == "2" and v2["t"] == "boite" and v2["m"] == f"o_{outbox_id}"
     assert live == {"token": LIVE, "android": {"priority": "HIGH"},
                     "data": {"title": "Wellness", "body": "Nouveau message", "category": "MESSAGE",
                              "outbox_id": outbox_id, "agent": "wellness", "session_id": "api_5"}}
@@ -86,6 +88,8 @@ def test_approval_data_messages_carry_the_choices_as_json(bridges, fakes):
     assert wait_until(lambda: fakes.fcm.sends(), timeout=10)
     message = fakes.fcm.sends()[0].json()["message"]
     assert message["android"] == {"priority": "HIGH", "collapse_key": "req_1"}
+    v2 = {k: message["data"].pop(k) for k in ("v", "n", "t", "c")}
+    assert v2["t"] == "approval" and v2["c"].startswith("t_")
     assert message["data"] == {"title": "Wellness", "body": "Approbation requise", "category": "APPROVAL",
                                "agent": "wellness", "run_id": "run_1", "request_id": "req_1",
                                "choices": '["once", "deny"]', "session_id": "s1"}

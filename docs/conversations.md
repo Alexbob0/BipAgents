@@ -61,11 +61,12 @@ The common cause: **the conversation was never a bridge object**. The fix is tha
 | Tool step | `<message id>.t<n>` (n = position of the call in the assistant row) | `m_3f9a….t0` | as its message |
 | Attachment | `<message id>.a<n>` (n = position in the message) | `m_3f9a….a0` | as its message |
 | Boîte message | `o_` + outbox id | `o_9c1e…` | — |
-| Queue item | `q_` + queue item id | `q_5d2a…` | until it starts (then its user message has the same `client_id`) |
+| Queue item | the queue's own id, in `pending.queue` (msg_queue.rs) | `5d2a…` | until it starts (then it is a message) |
 | Notification | `n_` + 26 chars | `n_01JBX…` | — |
 | Room | `room:<room id>` (rooms keep their own ids; thread view in §6.6) | `room:r_12ab` | — |
 
-`client_id`: an id the app chooses for a message it sends (UUID). The bridge stores it with the message once Hermes
+`client_id`: an id the app chooses for a message it sends (UUID; step 4, sending through the bridge, fills it: the
+table `thread_messages` and its merge into the timeline exist, nothing writes it yet). The bridge stores it with the message once Hermes
 has written the user row, so the app replaces its optimistic bubble *by id*. The same mechanism carries the
 attachments the app sent: they belong to the message with that `client_id`, never to a message with similar words
 (this makes the « Yes shown as an old photo » class of bug impossible).
@@ -182,13 +183,13 @@ POST /v1/threads/{thread}/segments  {session_id, agent?}  (migrations, tests)
   "tip": "api_ccc",
   "segments": [{"session_id": "api_aaa", "linked": "adopted"}, {"session_id": "api_bbb", "linked": "compression"},
                {"session_id": "api_ccc", "linked": "compression"}],
-  "last": {"id": "m_3f9a…", "role": "agent", "preview": "Le train de 9 h part…", "at": "2026-11-02T21:04:10.000Z"},
+  "last_active": 1762117450.5,
   "unread": 2
 }
 ```
 
-`segments` is given by `GET /v1/threads/{thread}` and `resolve` only. `unread` counts the thread's unread journal
-items (§9.4).
+`segments` is given by `GET /v1/threads/{thread}` and `resolve` only; `last_active` (Unix seconds, Hermes' last
+activity of the thread's sessions) by the list only. `unread` counts the thread's unread journal items (§9.4).
 
 ### 6.2 Timeline pages
 
@@ -217,8 +218,8 @@ Answer:
   "pending": {
     "run": {"run_id": "r_123", "status": "running"},
     "queue": {"version": 3, "paused": false, "items": [{"id": "q_…", "text": "…", "created_at": "…"}]},
-    "approvals": [{"run_id": "r_123", "request_id": "p_9", "command": "…", "choices": ["once", "deny"]}],
-    "questions": [{"run_id": "r_123", "request_id": "c_4", "question": "…", "choices": ["…"]}]
+    "approvals": [{"run_id": "r_123", "request_id": "p_9", "command": "…", "choices": ["once", "deny"],
+                   "session_id": "api_ccc", "created_at": 1762117450.5}]
   }
 }
 ```
@@ -230,7 +231,8 @@ Answer:
   rewind) still pages correctly: the cursor's position is used when its item is gone.
 - `anchor` is the `around` item when it was found (else null and the latest page is given).
 - `pending` is what is not a stored message yet: the run going on (attach to `/v1/runs/{run_id}/events` for its live
-  text, as today), the agent's queue for this thread (msg_queue.rs), approvals and questions waiting. Once a run ends
+  text, as today), the agent's queue for this thread (msg_queue.rs), the approvals waiting (the run hub's list, as
+  `GET /v1/approvals` gives them). A question waiting comes in the run's own events, as today. Once a run ends
   its messages are items; the app drops its live bubble when an item with the run's reply arrives (`run_id` on the
   agent's final message when the bridge knows it).
 
@@ -245,6 +247,9 @@ turn; the first item's own id before any) and `segment` (Hermes session id, for 
 | `tool` | `tool: {name, call_id, arguments, result, status (done \| failed \| running), via}` | assistant `tool_calls` + their tool rows |
 | `notice` | `notice: {code, text}`: `failed_turn` (Hermes' failed-turn row), `loop_rescue` (the bridge's rescue turn), `stopped` | Hermes rows the bridge recognizes |
 | `boite` | `text`, `title`, `attachments`, `boite: {outbox_id, audio: bool}` | the bridge's outbox (routine reports, hand-backs, credit, storage, imports) |
+| `approval` | `approval: {run_id, request_id, command, description, topic, choice, state: answered}` | approvals_log.rs (Hermes' history has no approval rows) |
+| `call` | `call`: the Live call's record as `GET /v1/live/calls` gives it | live_calls.rs |
+| (role `peer`) | a `message` with `role: peer`, `from: <agent>`: another agent's message in Bot Mode's conversation | « Message from … (@x): » rows |
 
 Never items: hidden rows (`display_kind` hidden, inactive rows unless compacted, compression summaries), the bridge's
 own steers (`[bipagents:…]`), restore notes (`<!--bip:restore…-->`), user rows made only of `<!--bip:…-->` notes.
@@ -280,17 +285,22 @@ Example (`docs/examples/timeline-main.json` has a full page):
 ```text
 GET /v1/threads/{thread}/items/{item}?agent=   → Item (404 when gone)
 GET /v1/threads/{thread}/attachments/{id}?agent=  → the bytes (image parts of a Hermes row, decoded); a path
-                                                    attachment redirects (307) to the file route that serves it
+                                                    attachment redirects (307) to GET /v1/media?path=&agent=
 ```
 
 ### 6.5 Events
 
 ```text
 GET /v1/threads/events[?agent=<id>]      SSE, keepalive comment every 10 s
-event: thread         data: {"thread": "t_…", "agent": "vie", "version": 43, "reason": "run|message|boite|queue|approval|segment|title|read"}
+event: thread         data: {"thread": "t_…", "agent": "vie", "version": 43, "reason": "run|boite|segment"}
 event: notification   data: {"id": "n_…", "agent": "vie", "t": "reply", "c": "t_…", "m": "m_…", "state": "open"}
-event: read           data: {"agent": "vie", "thread": "t_…", "notifications": ["n_…"], "until": "m_…"}
+event: read           data: {"agent": "vie", "thread": "t_…", "notifications": ["n_…"]}
+event: lagged         data: {}                    (the app missed events: refetch what it shows)
 ```
+
+`thread` is sent today when a run of the thread ends (`run`: the run hub), a Boîte message for it is stored
+(`boite`) and Hermes continued it in a new session (`segment`). The agent's queue keeps its own stream
+(`/v1/agents/{id}/queue/events`, msg_queue.rs); the timeline's `pending.queue` gives its state at each read.
 
 On `thread`, an app showing that thread asks `timeline?after=<its last cursor>`; a list screen refetches
 `/v1/threads`. Events are hints: an app that missed some (asleep, offline) compares `version` and refetches. The live
@@ -317,21 +327,27 @@ text of a run still comes from `/v1/runs/{run_id}/events` (unchanged).
 
 ## 8. Migration of existing places
 
-Runs once per agent, at the first need (lazy), never blocking a request more than one Hermes listing:
+Runs per agent at the first need (lazy), never blocking a request more than one Hermes listing (none on a managed
+install: the store is read):
 
-1. If the agent has a `main` thread, done.
+1. If the agent has a `main` thread with segments, done.
 2. Else find the main conversation's current session, in this order:
-   a. the session botchat-v0225's migration names as the person's main conversation (when that branch lands, its
-      record is read here; until then not present);
-   b. the newest non-hidden session titled `Bot Chat` (case-insensitive), then a hidden one;
-   c. none: the main thread is created empty and gets its first segment when the first turn is started through the
-      bridge, or when the app opens a session for it (`POST /v1/threads/{id}/segments`).
+   a. `<data_dir>/main-sessions.json` (`{agent: session_id}`), for a migration that moves the person's conversation
+      to another session;
+   b. the newest non-hidden session titled `Bot Chat` (case-insensitive), then a hidden one, never a `local-…` one.
+      Since botchat-v0225 (Hermes patch 0021) the person's « Bot Chat » stays an API conversation (`api_…`) and a
+      peer's own « Bot Chat » is a hidden `local-…` session (a `pair` thread here); a thread an unpatched v0.22.5
+      moved aside (« Bot Chat (API <id>) ») is put back at start by welcome.rs, so the title still finds it;
+   c. none: the main thread is created empty (its id is stable from then on); it is looked for again at the next
+      requests (through Hermes' API at most every 30 s), and the person's first « Bot Chat » becomes its first
+      segment even when it is resolved first (an app's session id, a push).
 3. The chosen session's whole line (parents up to the root, continuations down to the tip) becomes the main thread's
    segments (`linked = adopted` for the first, `compression` for the others).
 4. Other sessions are adopted lazily as `side` / `routine` threads the first time they are listed or resolved.
 
-After the botchat-v0225 move, the main thread keeps its id: the new session is appended as a `moved` segment. Titles
-are free again: the bridge no longer looks for `Bot Chat` once the main thread exists.
+A later move (a migration, a hand-over continued elsewhere) keeps the main thread's id: the new session is appended as
+a `moved` segment (`POST /v1/threads/{id}/segments`). The bridge no longer looks at titles once the main thread has
+segments.
 
 ## 9. Notification journal (refonte phase 1)
 
@@ -418,7 +434,7 @@ Every alert push gets, next to its legacy fields (unchanged, for apps that don't
 GET    /v1/notifications?agent=&thread=&since=<iso>&unread=1&limit=50   the Boîte's list, newest first
 GET    /v1/notifications/{id}                                            one row (with `preview`): replaces /v1/replies
 GET    /v1/notifications/unread                                          {total, agents: {a: n}, threads: {t: n}}
-POST   /v1/notifications/read   {ids?: [...], agent?, thread?, until?}   marks read; answers {read: [ids], unread}
+POST   /v1/notifications/read   {ids?: [...], agent?, thread? (an id or main)}   marks read; answers {read, unread}
 DELETE /v1/notifications/{id}                                            hidden from the Boîte (row kept)
 GET    /v1/notifications/rules                                           the table of §9.2
 ```
@@ -459,9 +475,9 @@ Journal row as served:
 | Step | Content | Status |
 |---|---|---|
 | 1 | This document | done |
-| 2a | Thread registry + lineage + adoption; `/v1/threads`, `resolve`, `segments` | §12 |
-| 2b | Timeline (normalization, paging, attachments, Boîte merge, pending), events | §12 |
-| 3 | Notification journal, rules, v2 payloads, read API, read sync | §12 |
+| 2a | Thread registry + lineage + adoption; `/v1/threads`, `resolve`, `segments` | done (branch conv-core) |
+| 2b | Timeline (normalization, paging, attachments, Boîte, answered approvals, Live calls, pending), events | done (branch conv-core) |
+| 3 | Notification journal, rules, v2 payloads, read API, read sync | done (branch conv-core); `POST /v1/notifications/{id}/answer` not yet |
 | 4 | Sending through the bridge (`POST /v1/threads/{id}/messages {text, client_id, attachments}`), approvals and clarify through the bridge | later |
 | 5 | iOS, then Android, on the timeline behind the `threads` feature flag | app agents |
 | 6 | Remove direct Hermes calls and marker parsers from the apps; drop `/v1/replies` after the minimum app version | later |
@@ -469,3 +485,66 @@ Journal row as served:
 ## 12. Status
 
 Kept up to date in `internal/notes/conv-core.md`.
+
+## 13. Faster, lighter, less code (Alex: « plus rapide et plus optimisé, moins de lignes de code »)
+
+### Requests and bytes per screen
+
+Measured by `bridge/tests_blackbox/test_threads_bench.py` (`-s` prints the table): a main conversation of 400
+messages over three segments (two compressions) and 30 other conversations, the bridge's debug build, the fake Hermes
+on the same Mac, each screen's requests sent one after the other, mean of 20 rounds. Counts and bytes are exact;
+times only give the order of magnitude (on a phone each request is a round trip over the tailnet or the door,
+typically 50–150 ms, so the count of requests is what the person feels).
+
+| Screen | Before: requests | Before: bytes | After: requests | After: bytes |
+|---|---:|---:|---:|---:|
+| Open the main conversation | 7 (3 to Hermes, 4 to the bridge) + `session_state` every 5–8 s | 42,127 (only the tip segment: older segments unreachable) | **1** | 22,728 (latest 50 items of the whole line) |
+| Open around a message (notification, search hit) | 7 (the old segment fetched whole) | 41,723 | **1** | 25,355 (20 before, 50 after) |
+
+- Server time of one timeline page (400-message line rebuilt, debug build): ~5 ms; release builds are several
+  times faster. The old screen's 7 requests took ~2.6 ms in all on localhost, i.e. 7 round trips on a phone.
+- Per item, the timeline sends visible text, an id and a short cursor only: `segment` with `debug=1`, `turn` when it
+  is another item's, `attachments` when there are some. 133 items: 59.5 kB (old: 42 kB for the same 133 Hermes rows,
+  but with neither tool steps, attachments, Boîte, approvals nor calls merged: those were 4 more requests).
+- Live updates: one SSE connection (`/v1/threads/events`) replaces polling: `session_state` (every 5–8 s per open
+  conversation), the home screen's previews, the Boîte's refresh.
+
+### Hermes load
+
+- A store read (`state.db`, managed installs: every offer place) costs Hermes **no call at all**: checked by
+  `test_the_hermes_store_is_read_without_calling_hermes`.
+- Through Hermes' API (an existing Hermes elsewhere): closed segments are read once (Hermes never writes into a
+  compressed session again), the tip again only after a run's end, a Boîte message or a notification touched the
+  thread, or 30 s later; the line's continuations likewise. The bench's 60 new screens made **0** Hermes calls.
+- The old screens made 3 Hermes calls each, plus the session-list pages to find « Bot Chat ».
+
+### Bridge memory and CPU
+
+- No copy of the conversations is kept in the bridge: the timeline is computed from Hermes' rows per request. The
+  API source's cache is bounded (50,000 rows in all, oldest segments dropped first).
+- Bridge RSS in the bench: 45.7 MB before, 45.8 MB after 100 screens (+0.1 MB).
+
+### Lines of code
+
+What this branch adds and removes in the bridge (`git diff --stat` against its base):
+
+| Area | Added | Removed | Note |
+|---|---:|---:|---|
+| `threads/` (registry, lineage, timeline, routes) | ~1,980 | 0 | of which ~330 unit tests |
+| `notifications.rs` (journal, rules, routes) | ~440 | 0 | of which ~45 unit tests |
+| `push.rs` | 219 | 141 | 17 `notify_*` now build one event each; the in-memory reply texts (`remember`, `TEXTS_KEPT`, `TEXT_TTL`) and the seven « Me prévenir » checks are gone (one rules table) |
+| Wiring (app, runs, ntfy, store, config, hermes, lib) | 101 | 5 | |
+| Black-box tests and the fake Hermes | ~520 | ~10 | |
+
+The bridge grows because it now does what each app did twice. The code this makes deletable:
+
+| Where | What goes once the apps read the timeline | Size today (estimate; the app agents confirm) |
+|---|---|---:|
+| iOS `ConversationModel.swift` | the 9-source merge (`show`, `loadOnce`, `restoreAttachments`, outbox/approvals/calls merging, id keeping, `ThreadCache` fallbacks), `findThread` | ~1,200 of 3,034 lines |
+| iOS | `AnsweredApprovals.swift`, `MessageFocus.swift`/`MessageLocator` (except a legacy adapter), `StoppedTurn`, `SteerMarker`, `MessageText` marker stripping, `SentFiles` matching | ~700 |
+| iOS | `isBotChat` / `"Bot Chat"` comparisons | 24 sites |
+| Android `ChatModel.kt` | `thread()`, `restore()`, `keepAnswer()`, `showPendingApproval()`, outbox merge | ~600 of 1,633 lines |
+| Android | `net/Hermes.kt` message parsing (`unwrap`, `isHandoff`, `rescueLine`, `asNotice`, `tidy`), `MessageFocus.kt` | ~350 |
+| Android | `"Bot Chat"` comparisons | 18 sites |
+| Bridge, after the minimum app version | `GET /v1/replies/{id}`, the legacy push fields, `/hermes/<agent>/…` conversation calls (kept for older apps) | — |
+| Bridge, with botchat-v0225 merged | the four `"Bot Chat"` constants become `threads::LEGACY_MAIN_TITLE` (adoption only) | 6 sites |

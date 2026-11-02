@@ -155,11 +155,13 @@ impl World {
     async fn replies(&self) -> Vec<(String, String, String)> {
         tokio::time::sleep(Duration::from_millis(30)).await;
         let push = self.app.app.state.push.clone();
-        self.apns
-            .payloads()
-            .iter()
-            .map(|p| {
-                let text = p["reply_id"].as_str().and_then(|id| push.text(id));
+        let mut out = Vec::new();
+        for p in self.apns.payloads() {
+            let text = match p["reply_id"].as_str() {
+                Some(id) => push.text(id).await,
+                None => None,
+            };
+            out.push({
                 let shown = if p["run_id"].as_str().unwrap().starts_with("session:")
                     && p["aps"]["alert"]["body"] == "Sous-tâche terminée"
                 {
@@ -168,8 +170,9 @@ impl World {
                     text.unwrap_or_default()
                 };
                 (p["agent"].as_str().unwrap().to_string(), shown, p["session_id"].as_str().unwrap_or("").to_string())
-            })
-            .collect()
+            });
+        }
+        out
     }
     /// The app follows a run of `session_id` (Python's FakeHub.followed).
     fn follow(&self, session_id: &str) -> Listener {
@@ -357,7 +360,7 @@ async fn bot_chat_turn_taken_alone_is_pushed_once() {
     let payload = w.apns.payloads()[0].clone();
     assert_eq!(payload["run_id"], "session:api_bot");
     assert_eq!(payload["kind"], "reply");
-    assert_eq!(w.apns.requests.lock().unwrap()[0].header("apns-collapse-id").as_deref(), Some("session:api_bot"));
+    assert_eq!(w.apns.requests.lock().unwrap()[0].header("apns-collapse-id").as_deref(), None); // a reply never replaces another (one journal row each)
     w.poll(now()).await;
     assert_eq!(w.replies().await.len(), 1);
     w.app.shutdown().await;
@@ -508,7 +511,7 @@ async fn a_report_left_without_a_reply_is_pushed_once() {
         payload["aps"]["alert"],
         json!({"title": "Wellness", "body": "Sous-tâche terminée", "loc-key": "Sous-tâche terminée"})
     );
-    assert_eq!(w.apns.requests.lock().unwrap()[0].header("apns-collapse-id").as_deref(), Some("subtask:api_bot"));
+    assert_eq!(w.apns.requests.lock().unwrap()[0].header("apns-collapse-id").as_deref(), None);
     for _ in 0..2 {
         w.poll(now()).await;
     }

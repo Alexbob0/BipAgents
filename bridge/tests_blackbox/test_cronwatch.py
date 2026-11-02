@@ -152,7 +152,7 @@ def test_a_subtask_report_left_without_a_reply_is_pushed_once(bridges, fakes):
     payload = fakes.apns.payloads()[0]
     assert payload["aps"]["alert"] == {"title": "Wellness", "body": "🎧 Podcast jeudi"}
     assert payload["run_id"] == "session:api_7" and payload["session_id"] == "api_7" and payload["kind"] == "reply"
-    assert fakes.apns.pushes()[0].header("apns-collapse-id") == "subtask:api_7"
+    assert fakes.apns.pushes()[0].header("apns-collapse-id") is None   # a report never replaces another
     assert bridge.get(f"/v1/replies/{payload['reply_id']}", headers=AUTH).json()["text"] == "🎧 Podcast jeudi"
 
 

@@ -90,6 +90,43 @@ async fn each_agent_of_the_install_gets_the_tools_with_a_token_of_its_own() {
     assert!(agent_tools::agent_for(&config, &token).is_none());
 }
 
+/// Hermes 0.22.5's API toolset has no `clarify` (the app's question card): at start every agent the bridge manages
+/// gets it in `platform_toolsets.api_server`, whether its profile saved a list (`hermes tools enable/disable`, which
+/// leaves it out) or none; the other choices and platforms stay, and a second start changes nothing.
+#[tokio::test]
+async fn every_agent_can_ask_the_person_a_question() {
+    let dir = tempfile::tempdir().unwrap();
+    let hub = dir.path().join(".hermes");
+    for name in ["vie", "jardin"] {
+        std::fs::create_dir_all(hub.join("profiles").join(name)).unwrap();
+    }
+    std::fs::write(hub.join("profiles/vie/config.yaml"), "model:\n  default: x\n").unwrap();
+    std::fs::write(
+        hub.join("profiles/jardin/config.yaml"),
+        "model:\n  default: x\nplatform_toolsets:\n  api_server:\n  - memory\n  - web\n  cli:\n  - web\n",
+    )
+    .unwrap();
+    let mut dict = config_dict(dir.path(), &Urls::default());
+    dict["hermes"] = json!({"bin": "/opt/hermes", "home": hub.to_string_lossy(), "hub_url": "http://127.0.0.1:8642"});
+    dict["agents"]["Vie"] = json!({"hermes_url": "http://127.0.0.1:8642/p/vie", "hermes_key": "k".repeat(32)});
+    dict["agents"]["Jardin"] = json!({"hermes_url": "http://127.0.0.1:8642/p/jardin", "hermes_key": "j".repeat(32)});
+    let config = parse_config(&dict, None).unwrap();
+    let commands: Commands = Default::default();
+    let run = recording_run(&commands);
+    agent_tools::register_all(SharedConfig::new(config.clone()), run.clone()).await;
+    let read = |name: &str| -> Value {
+        let text = std::fs::read_to_string(hub.join("profiles").join(name).join("config.yaml")).unwrap();
+        serde_yaml::from_str(&text).unwrap()
+    };
+    assert_eq!(read("vie")["platform_toolsets"]["api_server"], json!(["hermes-api-server", "clarify"]));
+    let jardin = read("jardin");
+    assert_eq!(jardin["platform_toolsets"]["api_server"], json!(["memory", "web", "clarify"]));
+    assert_eq!(jardin["platform_toolsets"]["cli"], json!(["web"]));
+    let before = std::fs::read_to_string(hub.join("profiles/jardin/config.yaml")).unwrap();
+    agent_tools::register_all(SharedConfig::new(config.clone()), run).await;
+    assert_eq!(std::fs::read_to_string(hub.join("profiles/jardin/config.yaml")).unwrap(), before);
+}
+
 #[tokio::test]
 async fn agents_registered_at_once_all_keep_their_token() {
     // At start the bridge registers its agents and its spares at the same time: each one's `hermes config set` lets

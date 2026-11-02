@@ -39,6 +39,8 @@ pub mod heavy_work;
 pub mod feature_tips;
 pub mod beta_measures;
 pub mod store;
+pub mod threads;
+pub mod notifications;
 
 // -- push-runs -------------------------------------------------------------------------------------
 pub mod apns;
@@ -163,6 +165,7 @@ pub mod rooms;
 pub mod rooms_handoff;
 pub mod rooms_memory;
 pub mod rooms_remote;
+pub mod rooms_tasks;
 pub mod routes;
 #[doc(hidden)]
 pub mod tools_knowledge; // the group's private helpers (pub for its golden tests)
