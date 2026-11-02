@@ -61,7 +61,7 @@ def mail_setup(bridges, fakes, **triggers):
 
 def test_a_new_email_starts_the_routine_through_idle_once(bridges, fakes):
     bridge, _ = mail_setup(bridges, fakes)
-    assert add_mailbox(bridge, fakes).status_code == 200
+    assert add_mailbox(bridge, fakes).status_code == 201
     account = bridge.get("/v1/mail/accounts", headers=AUTH).json()["accounts"][0]["id"]
     made = make(bridge, name="Factures", prompt="Range la facture dans mes dépenses et dis-moi le montant.",
                 kind="mail", mail={"account": account, "from": "banque.example", "words": "facture, relevé"})
@@ -127,7 +127,7 @@ def test_a_new_email_starts_the_routine_through_idle_once(bridges, fakes):
 
 def test_a_burst_is_batched_into_one_turn(bridges, fakes):
     bridge, _ = mail_setup(bridges, fakes, batch_seconds=3)
-    assert add_mailbox(bridge, fakes).status_code == 200
+    assert add_mailbox(bridge, fakes).status_code == 201
     account = bridge.get("/v1/mail/accounts", headers=AUTH).json()["accounts"][0]["id"]
     make(bridge, name="Tout", prompt="Résume.", kind="mail", mail={"account": account})
     assert wait_until(lambda: fakes.imap.idling >= 1, timeout=20)
@@ -208,7 +208,7 @@ def test_wrong_links_are_blocked_like_wrong_keys(bridges, fakes):
 
 def test_an_agent_proposes_and_the_person_turns_it_on(bridges, fakes):
     bridge, _ = mail_setup(bridges, fakes)
-    assert add_mailbox(bridge, fakes).status_code == 200
+    assert add_mailbox(bridge, fakes).status_code == 201
     result = call(bridge, "routine_trigger", {"action": "create", "kind": "mail", "name": "Mails de Sam",
                                               "prompt": "Résume-moi chaque mail de Sam.", "from": "sam@example.com"},
                   token=TOKEN)
@@ -242,7 +242,7 @@ def test_an_agent_proposes_and_the_person_turns_it_on(bridges, fakes):
 
 def test_a_mailbox_the_agent_may_not_read_is_refused(bridges, fakes):
     bridge, _ = mail_setup(bridges, fakes)
-    assert add_mailbox(bridge, fakes, agents=[]).status_code == 200
+    assert add_mailbox(bridge, fakes, agents=[]).status_code == 201
     account = bridge.get("/v1/mail/accounts", headers=AUTH).json()["accounts"][0]["id"]
     resp = bridge.post("/v1/agents/coach/triggers", headers=AUTH,
                        json={"name": "X", "prompt": "Y", "kind": "mail", "mail": {"account": account}})

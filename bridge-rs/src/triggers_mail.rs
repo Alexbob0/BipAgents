@@ -376,12 +376,21 @@ mod tests {
                     sock.write_all(format!("* 1 FETCH (UID {uid} BODY[]<0> {{{}}}\r\n{raw})\r\n", raw.len()).as_bytes()).unwrap();
                 } else if upper.starts_with("IDLE") {
                     sock.write_all(b"+ idling\r\n").unwrap();
-                    if rx.recv_timeout(Duration::from_secs(5)).is_ok() {
-                        messages.push((8, "Message-ID: <b@x>\r\nFrom: Banque <b@banque.fr>\r\nSubject: deux\r\n\r\nDeux".into()));
-                        sock.write_all(b"* 2 EXISTS\r\n").unwrap();
-                    }
+                    // news when the test says so, DONE whenever the client sends it
+                    sock.set_read_timeout(Some(Duration::from_millis(50))).unwrap();
                     let mut done = String::new();
-                    reader.read_line(&mut done).unwrap();
+                    loop {
+                        if rx.try_recv().is_ok() {
+                            messages.push((8, "Message-ID: <b@x>\r\nFrom: Banque <b@banque.fr>\r\nSubject: deux\r\n\r\nDeux".into()));
+                            sock.write_all(b"* 2 EXISTS\r\n").unwrap();
+                        }
+                        match reader.read_line(&mut done) {
+                            Ok(0) => return,
+                            Ok(_) if done.ends_with('\n') => break,
+                            _ => {}
+                        }
+                    }
+                    sock.set_read_timeout(None).unwrap();
                     assert_eq!(done.trim(), "DONE");
                 } else if upper.starts_with("LOGOUT") {
                     sock.write_all(b"* BYE\r\n").unwrap();
