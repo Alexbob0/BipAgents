@@ -834,11 +834,13 @@ async fn routes_for_settings_thinking_and_model() {
             "weather",
             "notebook",
             "guide",
+            "notify",
             "answer_style",
             "model_choice",
             "group"
         ]
     );
+    assert_eq!(got.json()["notify"], json!({"on": true}));
     assert_eq!(got.json()["answer_style"], json!({"style": "short", "custom": "", "custom_max": 300}));
     assert_eq!(got.json()["soul"], "Tu es Wellness.");
     assert_eq!(got.json()["language"], "fr");
