@@ -350,7 +350,7 @@ def test_an_agent_set_up_by_hand_gets_its_personality_and_thinking_changed(bridg
     # its personality got the bridge's rules at start (every agent talks plainly), in the place's language
     assert settings.json() == {"id": "vie", "name": "Vie", "soul": "Tu es Vie.", "language": "en", "thinking": "medium",
                                "model": None, "by_hand": True, "toolsets": [], "isolated": True, "protected": True,
-                               "services": [], "guide": {"on": False},
+                               "services": [], "guide": {"on": False}, "notify": {"on": True},
                                "answer_style": {"style": "short", "custom": "", "custom_max": 300}}
     assert not fakes.hermes.seen("/p/vie/v1/toolsets")   # its gateway isn't asked for its tools
     assert bridge.put("/v1/agents/vie/language", headers=AUTH, json={"lang": "fr"}).json() == {"id": "vie", "language": "fr"}

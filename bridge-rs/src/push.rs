@@ -310,6 +310,12 @@ impl PushService {
         self.config.get().push_previews
     }
 
+    /// « Me prévenir quand il a fini ou qu'il t'attend » is on for this agent (agent_notify.rs): off, its replies,
+    /// ended work, questions and approvals wait in the app without a notification.
+    fn notifies(&self, agent: &str) -> bool {
+        crate::agent_notify::notifies(&self.config.get(), agent)
+    }
+
     pub(crate) fn sender(&self, device: &Row) -> Option<Sender> {
         match device.get("environment").and_then(Value::as_str) {
             Some("relay") => self.service.clone().map(Sender::Relay),
@@ -411,6 +417,9 @@ impl PushService {
         session_id: Option<&str>,
         room_id: Option<&str>,
     ) -> usize {
+        if !self.notifies(agent) {
+            return 0;
+        }
         let mut preview_text = None;
         if self.previews() {
             if let Some(command) = given(command) {
@@ -434,6 +443,9 @@ impl PushService {
     }
 
     pub async fn notify_reply(&self, agent: &str, run_id: &str, text: &str, session_id: Option<&str>) -> usize {
+        if !self.notifies(agent) {
+            return 0;
+        }
         let preview = if self.previews() { Some(preview(text, 160)) } else { None };
         let reply_id = self.remember(text);
         let payload = reply_payload(
@@ -451,6 +463,9 @@ impl PushService {
     /// An agent answered in a group discussion (rooms.rs) nobody looks at: « <agent> · <room> », its words when
     /// previews are on; tapping opens the discussion (`room_id`). Collapsed per discussion.
     pub async fn notify_room(&self, agent: &str, room_id: &str, room_title: &str, text: &str) -> usize {
+        if !self.notifies(agent) {
+            return 0;
+        }
         let preview = if self.previews() { Some(preview(text, 160)) } else { None };
         let reply_id = self.remember(text);
         let title = if room_title.is_empty() {
@@ -471,6 +486,9 @@ impl PushService {
     /// A background sub-task finished and Hermes left its report in the conversation without waking the agent:
     /// « 🎧 Podcast jeudi » when it made a file, else « Sous-tâche terminée ». Tapping opens the conversation.
     pub async fn notify_subtask(&self, agent: &str, session_id: &str, line: Option<&str>) -> usize {
+        if !self.notifies(agent) {
+            return 0;
+        }
         let line = given(line);
         let preview = if self.previews() { line } else { None };
         let reply_id = line.map(|l| self.remember(l));
@@ -489,6 +507,9 @@ impl PushService {
     /// A step of a mailbox scan ended (mail_scan.py): its line when previews are on, else « Sous-tâche terminée »;
     /// tapping opens the agent.
     pub async fn notify_scan(&self, agent: &str, line: &str) -> usize {
+        if !self.notifies(agent) {
+            return 0;
+        }
         let preview = if self.previews() { Some(line) } else { None };
         let payload = reply_payload(agent, &self.title(agent), "session:scan", None, preview, None, SUBTASK_BODY);
         self.fanout(agent, payload, "alert", 10, Some(format!("scan:{agent}"))).await
@@ -504,6 +525,9 @@ impl PushService {
         job_id: &str,
         body: &str,
     ) -> usize {
+        if !self.notifies(agent) {
+            return 0;
+        }
         let preview = if self.previews() { Some(line) } else { None };
         let run_id = format!("session:{}", given(session_id).unwrap_or("job"));
         let mut payload = reply_payload(agent, &self.title(agent), &run_id, session_id, preview, None, body);
@@ -519,6 +543,9 @@ impl PushService {
         question: Option<&str>,
         session_id: Option<&str>,
     ) -> usize {
+        if !self.notifies(agent) {
+            return 0;
+        }
         let question = given(question);
         let preview = if self.previews() { question.map(|q| preview(q, 160)) } else { None };
         let reply_id = question.map(|q| self.remember(q));
@@ -551,6 +578,9 @@ impl PushService {
     /// The agent's e-mail to an address not allowed yet waits for the person (agent_email.rs): « Veut écrire à
     /// x@y » when previews are on; tapping opens the agent's e-mail screen (`email_held`: the held mail's id).
     pub async fn notify_email_held(&self, agent: &str, to: &str, held_id: &str) -> usize {
+        if !self.notifies(agent) {
+            return 0;
+        }
         let line = format!("Veut écrire à {to}");
         let preview = if self.previews() { Some(line.as_str()) } else { None };
         let mut payload =
@@ -562,6 +592,9 @@ impl PushService {
     /// The agent wants to send data to a site (sandbox_sites.rs; `line`: « Veut envoyer des données à exemple.com
     /// (environ 2 Mo) »): tapping opens the app's Boîte, where the card is.
     pub async fn notify_site_request(&self, agent: &str, line: &str, id: &str) -> usize {
+        if !self.notifies(agent) {
+            return 0;
+        }
         let preview = if self.previews() { Some(line) } else { None };
         let mut payload = reply_payload(agent, &self.title(agent), "session:sites", None, preview, None, SITE_BODY);
         payload.insert("site_request".into(), json!(id));
@@ -571,6 +604,9 @@ impl PushService {
     /// An agent wants to create an account on a website with a password of the vault (vault_logins.rs): tapping opens
     /// the app's Boîte, where the card is.
     pub async fn notify_login_request(&self, agent: &str, host: &str, id: &str) -> usize {
+        if !self.notifies(agent) {
+            return 0;
+        }
         let line = format!("Veut créer un compte sur {host} avec un mot de passe du coffre");
         let preview = if self.previews() { Some(line.as_str()) } else { None };
         let mut payload = reply_payload(agent, &self.title(agent), "session:vault", None, preview, None, LOGIN_BODY);
@@ -581,6 +617,9 @@ impl PushService {
     /// A secret card or a connector's approval card (secrets.rs, connectors.rs): tapping opens the app's Boîte, where
     /// the card is. `key`: `secret_request` or `connector_request`, with the card's request id.
     pub async fn notify_bridge_card(&self, agent: &str, line: &str, key: &str, id: &str) -> usize {
+        if !self.notifies(agent) {
+            return 0;
+        }
         let preview = if self.previews() { Some(line) } else { None };
         let mut payload = reply_payload(agent, &self.title(agent), "session:vault", None, preview, None, CARD_BODY);
         payload.insert(key.into(), json!(id));

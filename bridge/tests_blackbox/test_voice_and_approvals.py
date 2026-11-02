@@ -381,6 +381,30 @@ def test_reply_ready_pushed_when_the_app_left(bridge, fakes):
     assert bridge.get(f"/v1/replies/{payload['reply_id']}").status_code == 401
 
 
+def test_an_agent_told_not_to_notify_stays_quiet_until_turned_back_on(bridge, fakes):
+    """« Me prévenir quand il a fini ou qu'il t'attend » off on its page: its reply waits in the app, silent."""
+    register(bridge)
+    assert bridge.get("/v1/agents/wellness/settings", headers=AUTH).json()["notify"] == {"on": True}
+    assert bridge.put("/v1/agents/wellness/notify", headers=AUTH, json={"on": False}).json() == {"id": "wellness", "on": False}
+    assert bridge.get("/v1/agents/wellness/settings", headers=AUTH).json()["notify"] == {"on": False}
+    assert bridge.put("/v1/agents/nope/notify", headers=AUTH, json={"on": False}).status_code == 404
+    for run_id, session in (("run_quiet", "api_q1"), ("run_loud", "api_q2")):
+        gate = threading.Event()
+        fakes.hermes.runs[run_id] = [gate, sse("run.completed", run_id=run_id, output="Fini.")]
+        follow_then_leave(bridge, run_id, session)
+        gate.set()
+        if run_id == "run_quiet":
+            # its end is seen by the bridge (the run's replay is over), then the switch goes back on
+            with bridge.stream("GET", f"/v1/runs/{run_id}/events?agent=wellness", headers=AUTH) as resp:
+                assert read_sse(resp)[-1][0] == "run.completed"
+            time.sleep(0.5)
+            assert bridge.put("/v1/agents/wellness/notify", headers=AUTH, json={"on": True}).json()["on"] is True
+    apns = fakes.apns
+    assert wait_until(lambda: len(apns.pushes()) >= 1)
+    time.sleep(0.5)
+    assert [p["run_id"] for p in apns.payloads()] == ["run_loud"]
+
+
 def test_replay_backlog_merges_deltas_so_long_replies_keep_their_start(bridge, fakes):
     words = [f"mot{i} " for i in range(5000 + 500)]   # runs.BACKLOG_EVENTS + 500
     fakes.hermes.runs["run_long"] = [sse("message.delta", run_id="run_long", delta="Début : ")] + [

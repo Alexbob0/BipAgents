@@ -1933,11 +1933,12 @@ pub async fn read_settings(config: &Config, agent: &AgentConfig, http: &reqwest:
     let (soul, _) = crate::dates::split_dates(&soul);
     let soul = crate::guide::split_blocks(&soul);
     let guide = json!({"on": crate::guide::is_guide(config, &agent.name)});
+    let notify = json!({"on": crate::agent_notify::notifies(config, &agent.name)});
     if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
         // set up by hand: its tools are its administrator's
         return Ok(json!({"id": agent.name, "name": agent.display_name, "soul": soul.trim(), "language": lang,
                          "thinking": read_thinking(config, agent), "model": null, "by_hand": true, "toolsets": [],
-                         "isolated": agent.isolated, "guide": guide,
+                         "isolated": agent.isolated, "guide": guide, "notify": notify,
                          "answer_style": crate::answer_style::view(agent),
                          "protected": true, "services": []}));
     }
@@ -1980,6 +1981,7 @@ pub async fn read_settings(config: &Config, agent: &AgentConfig, http: &reqwest:
               "weather": {"on": crate::weather::enabled(config, agent.name.as_str())},
               "notebook": {"on": crate::notebook::enabled(config, agent.name.as_str())},
               "guide": guide,
+              "notify": notify,
               "answer_style": crate::answer_style::view(agent),
               // the per-agent model at home (model_choice.rs): its presence tells the apps this bridge offers it
               "model_choice": crate::model_choice::view(config, agent),
