@@ -586,6 +586,14 @@ tools the fresh build adds (`tools/mcp_tool_agent.py` `restore_agent_tool_prefix
 system prompt once, its capability epoch covering `platform_toolsets` (`tools/bot_mode_probe.py`). A model that said
 « I have no clarify tool » earlier in the same conversation may keep saying so from its history.
 
+**Lab** (2026-11-02, Hetzner cax21, GLM-5.3 Flash): installed on public 827274a (Hermes 517b5e10f; every profile's
+saved `api_server` list already without `clarify`), one turn in the « daily » agent's main conversation, then moved to
+v0.22.5 with this branch's bridge (`lab.py hermes` + `local --commit 6961a432 --no-patches`): the bridge's start added
+`clarify` to the four agents' lists (other entries kept); a question card (`clarify.request` → « 14 h » →
+`clarify.settled` → « Tu as choisi le train de 14 h. ») in that same main conversation (same id, from before the
+upgrade), in a new side conversation, in a second agent's main conversation, and in the main conversation of an agent
+made afterwards (a spare taken: `clarify` written when it got its tools).
+
 ## Moving to v0.22.5 (2026-11-01)
 
 The series rebased from `517b5e10f` on v0.22.5 (`bf0203a794`), branch `bip/patches-v0.22.5`; the installer pins
