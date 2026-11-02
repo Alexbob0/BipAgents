@@ -250,6 +250,7 @@ def sandbox_runtime() -> Optional[str]:
     return shutil.which("podman") or shutil.which("docker")
 
 
+CLARIFY_ON = ("tools", "enable", "clarify", "--platform", "api_server")   # the agent can ask the person a question
 DISK_TOOLS = ("terminal", "file", "code_execution", "browser")   # the local browser opens file:// pages
 
 DESKTOP_BINARIES = ("Xvnc", "xfwm4", "xfce4-panel", "xfdesktop", "xfsettingsd", "dbus-run-session", "xauth", "xdpyinfo")
@@ -306,6 +307,9 @@ def setup_hub(runner: Runner, port: int, model: Model, sandbox: Optional[str] = 
         # Same account as the bridge, no sandbox: an agent able to read the disk could read the bridge's keys. Off until
         # the person turns one on in the app (every agent is cloned from this profile).
         runner.run([hermes_bin(), "-p", HUB_PROFILE, "tools", "disable", *DISK_TOOLS, "--platform", "api_server"])
+    # The app's question card: Hermes' `clarify` tool, which its API toolset leaves out (« no interactive UI tools »);
+    # every agent is cloned from this profile, and the bridge adds it at each start too (tool_diet.rs `with_clarify`).
+    runner.run([hermes_bin(), "-p", HUB_PROFILE, *CLARIFY_ON])
     _config(runner, HUB_PROFILE, "API_SERVER_ENABLED", "true")
     _config(runner, HUB_PROFILE, "API_SERVER_HOST", "127.0.0.1")
     _config(runner, HUB_PROFILE, "API_SERVER_PORT", str(port))

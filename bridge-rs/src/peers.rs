@@ -764,6 +764,11 @@ async fn relay(state: AppState, target: String, path: String, request: Request) 
     }
     let body = if is_message(&parts.method, &path) {
         Bytes::from(crate::dates::now::stamped_body_for(&config, &agent, &body))
+    } else if parts.method == Method::POST && path == "api/sessions" {
+        // a peer opening the target's Bot Chat (`hermes peer dm`'s create-if-missing, `source: bot_peer_dm`): made as
+        // the bridge makes it, a plain API conversation the apps' runs stream in (Hermes patch 0021), never the local
+        // one v0.22.5 mints for a peer's create (its turns would go to Hermes' peer queue)
+        Bytes::from(json!({"title": BOT_CHAT_TITLE}).to_string())
     } else {
         body
     };

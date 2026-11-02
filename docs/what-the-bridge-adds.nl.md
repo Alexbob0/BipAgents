@@ -186,6 +186,7 @@ installer past ze toe.
 | 0018 gastbeurten | de beurt van een familielid krijgt alleen de tools van de gast en geen USER.md |
 | 0019 routines melden in hun gesprek | een routine die in een gesprek is gemaakt, antwoordt daar |
 | 0020 verbruik per aanroep in de Runs-API | de echte kosten per modelaanroep, voor budgetten |
+| 0021 het hoofdgesprek blijft dat van de app | het hoofdgesprek van elke agent houdt live antwoorden en zijn geschiedenis op v0.22.5 |
 
 **Hoe we ze upstream brengen.** De reeks is een git-branch op Hermes, geëxporteerd met `scripts/hermes-patches.sh`
 (`branch`, `export`, `check`): één commit per patch, vaste namen, elke keer dezelfde bytes. Naar een nieuwere Hermes

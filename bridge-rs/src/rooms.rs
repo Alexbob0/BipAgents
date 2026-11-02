@@ -77,6 +77,10 @@
 //!                                                   (the app is looking: no push)
 //!     POST   /v1/rooms/{id}/messages                {text}  → {message, route: {by, agents}, answering}
 //!     POST   /v1/rooms/{id}/stop                    room   the turn going on stopped, the queue emptied
+//!     POST   /v1/rooms/{id}/tasks/{task}/reassign   {agent}  → {task, message: the notice, answering}  (« Réassigner
+//!                                                   à… », rooms_tasks.rs: the task handed to another agent with a
+//!                                                   short handover note; `tasks` in the room and in each look)
+//!     POST   /v1/rooms/{id}/tasks/{task}/done       {task, answering}  (« C'est fini »: closed, its turns stopped)
 //!
 //!     room       {id, title, participants: [{id, name, category, color, gone}], mode: "auto"|"all", created,
 //!                 updated, last: message|null, answering, tokens: {input, output}, goal: "" | text,
@@ -246,6 +250,12 @@ pub struct Message {
     /// Team work: this agent's turn reached `[rooms] team_turn_tokens` and was stopped; the text is its short wrap-up.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub capped: bool,
+    /// The task it is about (rooms_tasks.rs).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task: Option<u32>,
+    /// On the notice of a task handed over by the person: {task, from, to}.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub handover: Option<Value>,
 }
 
 /// One agent's turn, queued or going on.
@@ -266,6 +276,12 @@ pub struct Turn {
     /// The conversation's token counters when the run started (for a run Hermes gives no usage for).
     #[serde(default)]
     pub base: Tokens,
+    /// The task it works on (rooms_tasks.rs).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task: Option<u32>,
+    /// The person handed its task to this agent meanwhile: the run stops, it writes its handover note.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reassigned: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -318,6 +334,9 @@ pub struct Room {
     /// reads, for its next turns' cap (`call_tokens`).
     #[serde(default)]
     pub calls: BTreeMap<String, Calls>,
+    /// Its tasks, each with its owner and state (rooms_tasks.rs); none without the relay.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tasks: Vec<crate::rooms_tasks::Task>,
 }
 
 /// An agent's model calls in a room (one before each tool step, one after the last) and their tokens.
@@ -698,6 +717,16 @@ pub fn relay_instructions(id: &str, title: &str, names: &[(String, String)], age
     instructions_with(id, title, names, agent, relay::relay_rules(team))
 }
 
+/// `relay_instructions` for `room`, with the line on tasks handed over once one was (rooms_tasks.rs).
+pub fn room_instructions(room: &Room, names: &[(String, String)], agent: &str) -> String {
+    let rules = relay_instructions(&room.id, &room.title, names, agent, room.team());
+    if crate::rooms_tasks::any_handover(room) {
+        format!("{rules} {}", crate::rooms_tasks::REASSIGN_RULE)
+    } else {
+        rules
+    }
+}
+
 fn instructions_with(id: &str, title: &str, names: &[(String, String)], agent: &str, relay: &str) -> String {
     format!(
         "You are in a group discussion in the app (« {title} ») between your person and some of their agents: {}. \
@@ -741,6 +770,7 @@ pub fn relay_context(room: &Room, agent: &str, names: &[(String, String)]) -> St
         let who = if by == "conductor" { "The discussion's lead".to_string() } else { format!("{from} (@{})", m.from) };
         out.push_str(&format!("{who} hands you the turn{}\n", if why.is_empty() { ".".into() } else { format!(": {why}") }));
     }
+    out.push_str(&crate::rooms_tasks::handover_context(room, agent, names));
     if out.is_empty() {
         out
     } else {
@@ -1196,11 +1226,21 @@ impl Rooms {
         if text.is_empty() {
             return Err(HttpError::new(422, "the message is empty"));
         }
-        let (agents, by) = self.route(&config, &room, &text).await;
+        // the owner the person chose for the open task gets its follow-ups (unless the message names someone, or
+        // starts a new piece of work): no router call
+        let assigned = (config.rooms.handoff && room.mode != "all")
+            .then(|| crate::rooms_tasks::assigned_owner(&room, &text))
+            .flatten()
+            .filter(|_| mentions(&text, &self.candidates(&config, &room), true).is_empty());
+        let (agents, by) = match assigned {
+            Some(owner) => (vec![owner], "assigned"),
+            None => self.route(&config, &room, &text).await,
+        };
         if agents.is_empty() {
             return Err(HttpError::new(409, "no agent of this discussion is on this install any more"));
         }
         let route = json!({"by": by, "agents": agents});
+        let said = text.clone();
         let message = Message {
             id: 0,
             at: now(),
@@ -1215,16 +1255,21 @@ impl Rooms {
             error: None,
             handoff: None,
             capped: false,
+            task: None,
+            handover: None,
         };
         let propose = config.rooms.handoff
             && config.rooms.goal_model
             && !room.team()
             && room.mode != "all"
             && relay::looks_like_task(&message.text);
+        let tasks = config.rooms.handoff;
         let saved = change(&config, id, |room| {
             let mid = room.push_message(message);
+            let task = tasks.then(|| crate::rooms_tasks::begin(room, &said, &agents[0], mid));
             for agent in &agents {
                 room.enqueue(agent, 0, mid);
+                crate::rooms_tasks::tag_turn(room, agent, task);
             }
             room.progress.blocked.clear(); // the person spoke
             (mid, room.messages.last().cloned(), answering(room, self.hub.as_deref()))
@@ -1308,6 +1353,9 @@ impl Rooms {
                     if room.current.is_none() && !room.queue.is_empty() {
                         let mut turn = room.queue.remove(0);
                         turn.started = Some(now());
+                        if let Some(task) = turn.task {
+                            crate::rooms_tasks::started(room, task, &turn.agent);
+                        }
                         room.current = Some(turn);
                     }
                     room.current.clone()
@@ -1359,9 +1407,14 @@ impl Rooms {
 
     /// The turn still the room's (not stopped, the room not deleted).
     fn still(&self, id: &str, turn: &Turn) -> bool {
+        self.current_of(id, turn).is_some()
+    }
+
+    /// The turn as the room keeps it now, while it is still the room's.
+    fn current_of(&self, id: &str, turn: &Turn) -> Option<Turn> {
         load(&self.config.get(), id)
             .and_then(|r| r.current)
-            .is_some_and(|c| c.agent == turn.agent && c.cause == turn.cause && c.started == turn.started)
+            .filter(|c| c.agent == turn.agent && c.cause == turn.cause && c.started == turn.started)
     }
 
     /// One agent's turn in its own Hermes, followed until it ends.
@@ -1388,7 +1441,7 @@ impl Rooms {
                 let names = names_of(&config, &room);
                 let (text, rules) = if config.rooms.handoff {
                     let text = format!("{}{}", relay_context(&room, &agent.name, &names), turn_input(&room, &agent.name, &names));
-                    (text, relay_instructions(&room.id, &room.title, &names, &agent.name, room.team()))
+                    (text, room_instructions(&room, &names, &agent.name))
                 } else {
                     (turn_input(&room, &agent.name, &names), instructions(&room.id, &room.title, &names, &agent.name))
                 };
@@ -1436,9 +1489,15 @@ impl Rooms {
         let mut used_at_stop = 0i64;
         let (status, output, usage) = loop {
             tokio::time::sleep(Duration::from_secs_f64(self.poll)).await;
-            if !self.still(id, turn) {
+            let Some(current) = self.current_of(id, turn) else {
                 let _ = self.hermes.stop_run(&agent, &run_id).await;
                 break ("stopped".to_string(), String::new(), None);
+            };
+            if current.reassigned.is_some() {
+                // the person handed its task to another agent: stopped, it writes its handover note (`wrap_up`)
+                tracing::info!(room = %id, agent = %agent.name, "rooms: a turn stopped, its task handed over");
+                let _ = self.hermes.stop_run(&agent, &run_id).await;
+                break self.ended_run(&agent, &run_id, "reassigned").await;
             }
             // the hub follows the run (its tool calls, the brake, its real tokens: Hermes reports each model call's as
             // it ends, patch 0020). An older Hermes writes a run's tokens in its conversation only at its end (the lab,
@@ -1606,9 +1665,16 @@ impl Rooms {
         let none = (String::new(), Tokens::default());
         let Some(room) = load(config, id) else { return none };
         let names = names_of(config, &room);
-        let rules = relay_instructions(&room.id, &room.title, &names, &agent.name, room.team());
+        let rules = room_instructions(&room, &names, &agent.name);
         let base = self.hermes.session(agent, session).await.map(|s| tokens_of(&s)).unwrap_or_default();
-        let Ok(run_id) = self.hermes.start_run(agent, &wrap_input(why, room.team()), session, Some(&rules)).await else {
+        let input = match room.current.as_ref().and_then(|c| c.reassigned.as_ref()).filter(|_| why == "reassigned") {
+            Some(to) => {
+                let to_name = names.iter().find(|(i, _)| i == to).map(|(_, n)| n.as_str()).unwrap_or(to);
+                crate::rooms_tasks::handover_input(to_name)
+            }
+            None => wrap_input(why, room.team()),
+        };
+        let Ok(run_id) = self.hermes.start_run(agent, &input, session, Some(&rules)).await else {
             return none;
         };
         if let (Some(hub), Some(cap)) = (&self.hub, cap) {
@@ -1701,9 +1767,14 @@ impl Rooms {
         let started = turn.started.unwrap_or_else(now);
         loop {
             tokio::time::sleep(Duration::from_secs_f64(self.poll)).await;
-            if !self.still(id, turn) {
+            let Some(current) = self.current_of(id, turn) else {
                 crate::rooms_remote::stop(&self.http, &config, &turn.agent, &run_id).await;
                 return Outcome { reply: Err("stopped".into()), tokens: none, capped: false };
+            };
+            if current.reassigned.is_some() {
+                // a relative's agent writes no note: the small call does (rooms_tasks.rs)
+                crate::rooms_remote::stop(&self.http, &config, &turn.agent, &run_id).await;
+                return Outcome { reply: Err("the turn ended reassigned".into()), tokens: none, capped: false };
             }
             let waiting = match crate::rooms_remote::look(&self.http, &config, &turn.agent, &run_id).await {
                 Ok(Ok(Some((status, output)))) => {
@@ -1744,10 +1815,48 @@ impl Rooms {
             if !mine || stopped {
                 return (Step::Stop, Vec::new()); // stopped meanwhile: its tokens counted, nothing said
             }
+            let handed = room.current.as_ref().and_then(|c| c.reassigned.clone());
             room.current = None;
             let names = names_of(&config, room);
             let name = names.iter().find(|(i, _)| *i == turn.agent).map(|(_, n)| n.clone()).unwrap_or(turn.agent.clone());
             let lang = agent.as_ref().map(|a| crate::handback::language_of(&config, a)).unwrap_or("fr".into());
+            if handed.is_some() {
+                // its task was handed to another agent meanwhile (rooms_tasks.rs): its words kept (its handover
+                // note, or the answer it finished just before), the new owner queued already, no relay
+                if let Ok(reply) = &outcome.reply {
+                    let (text, files) = room_text(reply);
+                    // its NEXT line out, its « Done: … » kept: it is the note, not a relay mark
+                    let lines: Vec<&str> =
+                        text.lines().filter(|l| relay::read_marks(l, &names).next.is_none()).collect();
+                    let text = tk::strip(&lines.join("\n")).to_string();
+                    if !text.is_empty() || !files.is_empty() {
+                        room.push_message(Message {
+                            id: 0,
+                            at: now(),
+                            from: turn.agent.clone(),
+                            kind: "agent".into(),
+                            text: text.clone(),
+                            files,
+                            reply_to: Some(turn.cause),
+                            hop: turn.hop,
+                            tokens: Some(outcome.tokens.clone()),
+                            route: None,
+                            error: None,
+                            handoff: None,
+                            capped: false,
+                            task: turn.task,
+                            handover: None,
+                        });
+                        if let Some(t) = turn.task.and_then(|t| crate::rooms_tasks::get_mut(room, t)) {
+                            if let Some(h) = t.handover.as_mut().filter(|h| h.from == turn.agent && h.note.is_empty()) {
+                                h.note = tk::head(&text, crate::rooms_tasks::NOTE_CHARS).to_string();
+                                h.in_room = true;
+                            }
+                        }
+                    }
+                }
+                return (Step::Stop, Vec::new());
+            }
             let notice = |text: String, error: Option<String>| Message {
                 id: 0,
                 at: now(),
@@ -1762,6 +1871,8 @@ impl Rooms {
                 error,
                 handoff: None,
                 capped: false,
+                task: turn.task,
+                handover: None,
             };
             let reply = match &outcome.reply {
                 Ok(reply) => reply,
@@ -1779,6 +1890,10 @@ impl Rooms {
                 }
                 Err(why) => {
                     room.push_message(notice(failed_text(&lang, &name), Some(why.clone())));
+                    if let Some(task) = turn.task {
+                        let others = room.queue.iter().any(|q| q.task == Some(task));
+                        crate::rooms_tasks::after(room, task, None, others);
+                    }
                     return (Step::Stop, Vec::new());
                 }
             };
@@ -1797,6 +1912,8 @@ impl Rooms {
                 error: None,
                 handoff: None,
                 capped: outcome.capped,
+                task: turn.task,
+                handover: None,
             };
             if !relay_on {
                 let others: Vec<Candidate> = names
@@ -1820,13 +1937,20 @@ impl Rooms {
                 told = Some((turn.agent.clone(), marks.text.clone()));
             }
             let mid = room.push_message(message);
-            let step = decide(&config, room, turn, &marks, max_hops);
+            let step = match decide(&config, room, turn, &marks, max_hops) {
+                // the person took this task from that agent: the hand goes back to the person (rooms_tasks.rs)
+                Step::Hand(Next::Agent(x), _, by) if crate::rooms_tasks::dropped(room, turn.task, &x) => {
+                    Step::Hand(Next::Person, String::new(), by)
+                }
+                step => step,
+            };
             let (handoff, queued) = match &step {
                 Step::Hand(next, why, by) => {
                     let mut queued = Vec::new();
                     if let Next::Agent(x) = next {
                         if room.enqueue_within(x, turn.hop + 1, turn.cause, room.turns_max(&config)) {
                             queued.push(x.clone());
+                            crate::rooms_tasks::tag_turn(room, x, turn.task);
                         }
                     }
                     (Some(relay::handoff_json(next, why, by)), queued)
@@ -1847,6 +1971,14 @@ impl Rooms {
             }
             if let Some(m) = room.messages.iter_mut().rev().find(|m| m.id == mid) {
                 m.handoff = handoff;
+            }
+            if let Some(task) = turn.task {
+                let others = room.queue.iter().any(|q| q.task == Some(task) || q.cause == turn.cause);
+                match &step {
+                    Step::Hand(next, _, _) => crate::rooms_tasks::after(room, task, Some(next), others),
+                    Step::Stop => crate::rooms_tasks::after(room, task, None, others),
+                    Step::Note(..) | Step::Conduct(_) => {}
+                }
             }
             (step, queued)
         });
@@ -1903,7 +2035,9 @@ impl Rooms {
             Some(answer) => relay::parse_conductor(answer, &names),
             None => (Next::Person, String::new()), // no model: the hand goes back to the person
         };
-        if matches!(&next, Next::Agent(x) if *x == turn.agent || relay::ping_pong(&speakers, &turn.agent, x)) {
+        if matches!(&next, Next::Agent(x) if *x == turn.agent || relay::ping_pong(&speakers, &turn.agent, x)
+            || crate::rooms_tasks::dropped(&room, turn.task, x))
+        {
             (next, why) = (Next::Person, String::new());
         }
         let queued = change(&config, id, |room| {
@@ -1918,6 +2052,12 @@ impl Rooms {
                 Next::Agent(x) => room.enqueue_within(x, turn.hop + 1, turn.cause, room.turns_max(&config)),
                 _ => false,
             };
+            if let (Next::Agent(x), true) = (&next, queued) {
+                crate::rooms_tasks::tag_turn(room, x, turn.task);
+            }
+            if let Some(task) = turn.task {
+                crate::rooms_tasks::after(room, task, Some(&next), false);
+            }
             let next_name = match &next {
                 Next::Agent(x) => names.iter().find(|(i, _)| i == x).map(|(_, n)| n.clone()).unwrap_or(x.clone()),
                 _ => String::new(),
@@ -1944,7 +2084,8 @@ impl Rooms {
         }
         let Some(person) = room.last_person() else { return };
         let last = room.messages.iter().rev().find(|m| m.kind != "person").map(|m| m.from.clone()).unwrap_or_default();
-        let turn = Turn { agent: last, cause: person.id, ..Default::default() };
+        let task = crate::rooms_tasks::open(&room).map(|t| t.id);
+        let turn = Turn { agent: last, cause: person.id, task, ..Default::default() };
         self.conduct(id, &turn, None).await;
         self.kick(id);
     }
@@ -1964,6 +2105,7 @@ impl Rooms {
         let config = self.config.get();
         let taken = change(&config, id, |room| {
             room.queue.clear();
+            crate::rooms_tasks::stopped(room);
             room.current.take()
         })?;
         let Some(taken) = taken else { return Ok(None) };
@@ -1975,6 +2117,118 @@ impl Rooms {
             }
         }
         Ok(Some(()))
+    }
+
+    /// The person closes `task` (« C'est fini », rooms_tasks.rs): finished, its queued turns gone, its turn going on
+    /// stopped (the others' turns go on).
+    pub async fn close_task(self: &Arc<Self>, id: &str, task: u32) -> Result<Value, HttpError> {
+        let config = self.config.get();
+        let hub = self.hub.clone();
+        let changed = change(&config, id, |room| {
+            let t = crate::rooms_tasks::get_mut(room, task)?;
+            t.state = crate::rooms_tasks::DONE.into();
+            t.updated = now();
+            room.queue.retain(|q| q.task != Some(task));
+            let taken = room.current.take_if(|c| c.task == Some(task));
+            Some((taken, crate::rooms_tasks::get(room, task).cloned(), answering(room, hub.as_deref())))
+        })
+        .map_err(HttpError::from)?
+        .ok_or_else(HttpError::not_found)?;
+        let Some((taken, view, now_answering)) = changed else {
+            return Err(HttpError::new(404, "no such task in this discussion"));
+        };
+        if let Some(turn) = taken {
+            if let (Some(agent), Some(run_id)) = (config.agent(Some(&turn.agent)), turn.run_id.as_deref()) {
+                let _ = self.hermes.stop_run(agent, run_id).await;
+            } else if let (Some(run_id), Some(_)) = (turn.run_id.as_deref(), crate::households::split(&turn.agent)) {
+                crate::rooms_remote::stop(&self.http, &config, &turn.agent, run_id).await;
+            }
+        }
+        tracing::info!(room = %id, task = task, "rooms: a task closed by the person");
+        self.kick(id);
+        Ok(json!({"task": view, "answering": now_answering}))
+    }
+
+    /// The person hands `task` to `to` (« Réassigner à… », rooms_tasks.rs): the owner changed at once and said in the
+    /// room, the old owner's turns on it stopped, then the new owner's turn with the handover note: written by the old
+    /// owner when it was working on it (its run stopped, `wrap_up`), else by one small call.
+    pub async fn reassign(self: &Arc<Self>, id: &str, task: u32, to: &str) -> Result<Value, HttpError> {
+        let config = self.config.get();
+        let room = load(&config, id).ok_or_else(HttpError::not_found)?;
+        let Some(before) = crate::rooms_tasks::get(&room, task).cloned() else {
+            return Err(HttpError::new(404, "no such task in this discussion"));
+        };
+        let candidates = self.candidates(&config, &room);
+        let to = match candidates.iter().find(|c| c.id == to) {
+            Some(c) => c.id.clone(),
+            None => mentions(&format!("@{}", handle_of(to)), &candidates, false)
+                .into_iter()
+                .next()
+                .ok_or_else(|| HttpError::new(422, "this agent isn't in this discussion"))?,
+        };
+        let names = names_of(&config, &room);
+        let to_name = names.iter().find(|(i, _)| *i == to).map(|(_, n)| n.clone()).unwrap_or(to.clone());
+        let lang = config.agent(Some(&to)).map(|a| crate::handback::language_of(&config, a)).unwrap_or_else(|| "fr".into());
+        let text = crate::rooms_tasks::reassigned_text(&lang, &to_name, &before.title);
+        let hub = self.hub.clone();
+        let changed = change(&config, id, |room| {
+            if before.owner == to {
+                // its owner already: kept as the person's choice, nothing to hand over
+                if let Some(t) = crate::rooms_tasks::get_mut(room, task) {
+                    t.assigned = true;
+                }
+                return (None, false, crate::rooms_tasks::get(room, task).cloned(), None, answering(room, hub.as_deref()));
+            }
+            let done = crate::rooms_tasks::reassign(room, task, &to, &text);
+            // its own agent working on it writes the note in its stopped turn, then the new owner goes on
+            let note_by_agent = done.as_ref().is_some_and(|d| d.running && config.agent(Some(&d.from)).is_some());
+            if let (Some(d), true) = (&done, note_by_agent) {
+                crate::rooms_tasks::queue_owner(room, &to, d.cause, task);
+            }
+            let notice = done.as_ref().and_then(|d| room.messages.iter().rev().find(|m| m.id == d.notice).cloned());
+            (done, note_by_agent, crate::rooms_tasks::get(room, task).cloned(), notice, answering(room, hub.as_deref()))
+        })
+        .map_err(HttpError::from)?
+        .ok_or_else(HttpError::not_found)?;
+        let (done, note_by_agent, task_view, notice, now_answering) = changed;
+        if let Some(done) = &done {
+            tracing::info!(room = %id, task = task, from = %done.from, to = %to, running = done.running, "rooms: a task handed over");
+            if note_by_agent {
+                self.kick(id);
+            } else {
+                let (this, room, to, cause) = (self.clone(), id.to_string(), to.clone(), done.cause);
+                tokio::spawn(async move { this.write_note(&room, task, &to, cause).await });
+            }
+        }
+        Ok(json!({"task": task_view, "message": notice, "answering": now_answering}))
+    }
+
+    /// The handover note by one small call (else the old owner's last words), then the new owner's turn.
+    async fn write_note(self: &Arc<Self>, id: &str, task: u32, to: &str, cause: u64) {
+        let config = self.config.get();
+        let Some(room) = load(&config, id) else { return };
+        let Some(t) = crate::rooms_tasks::get(&room, task).cloned() else { return };
+        let from = t.handover.as_ref().map(|h| h.from.clone()).unwrap_or_default();
+        let names = names_of(&config, &room);
+        let prompt = crate::rooms_tasks::note_prompt(&room, &t, &names);
+        let asked = self
+            .ask_model(&config, Some(id), crate::rooms_tasks::NOTE_INSTRUCTIONS, &prompt, crate::rooms_tasks::NOTE_MAX_TOKENS)
+            .await;
+        let note = asked
+            .as_deref()
+            .and_then(crate::rooms_tasks::parse_note)
+            .unwrap_or_else(|| crate::rooms_tasks::fallback_note(&room, &t, &from));
+        let _ = change(&config, id, |room| {
+            let Some(t) = crate::rooms_tasks::get_mut(room, task) else { return };
+            if t.owner != to {
+                return; // handed to someone else meanwhile: that one's note
+            }
+            if let Some(h) = t.handover.as_mut() {
+                h.note = note.clone();
+            }
+            crate::rooms_tasks::queue_owner(room, to, cause, task);
+        });
+        self.kick(id);
     }
 
     /// The room forgotten: its turn stopped, its hidden conversations deleted in each agent's Hermes.
@@ -2101,7 +2355,7 @@ pub fn room_view(config: &Config, room: &Room, hub: Option<&RunHub>) -> Value {
         "mode": room.mode, "created": room.created, "updated": room.updated,
         "last": room.messages.last(), "answering": answering(room, hub), "tokens": room.tokens,
         "goal": room.goal, "goal_proposed": room.goal_proposed.as_ref().map(|g| json!({"text": g.text, "message": g.message})),
-        "progress": room.progress, "small_tokens": room.small_tokens,
+        "progress": room.progress, "small_tokens": room.small_tokens, "tasks": crate::rooms_tasks::view(room),
     })
 }
 
@@ -2324,6 +2578,12 @@ async fn update(
             if goal != room.goal {
                 room.progress = Progress::default(); // a new goal: where it stands starts again
             }
+            // the proposal accepted: the task of the message it came from is named after the goal
+            let proposed = room.goal_proposed.as_ref().map(|g| g.message);
+            if let Some(task) = room.tasks.iter_mut().find(|t| Some(t.cause) == proposed && !goal.is_empty()) {
+                task.title = tk::head(&goal, crate::rooms_tasks::TITLE_CHARS).to_string();
+                task.question = false;
+            }
             room.goal = goal;
             room.goal_proposed = None;
         }
@@ -2376,6 +2636,7 @@ async fn messages(State(state): State<AppState>, UrlPath(id): UrlPath<String>, q
     }
     Ok(web::ok(json!({"messages": newer, "answering": answering(&room, Some(&*state.hub)), "last_id": room.last_id(),
                       "goal": room.goal, "progress": room.progress, "handoffs": recent_handoffs(&room),
+                      "tasks": crate::rooms_tasks::view(&room),
                       "goal_proposed": room.goal_proposed.as_ref().map(|g| json!({"text": g.text, "message": g.message}))})))
 }
 
@@ -2385,6 +2646,33 @@ async fn post_message(
     Json(body): Json<NewMessage>,
 ) -> ApiResult<Response> {
     Ok(web::ok(rooms_of(&state).post(&id, &body.text).await?))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Reassign {
+    pub agent: String,
+}
+
+impl Validate for Reassign {
+    fn validate(&self, errors: &mut Vec<FieldError>) {
+        check_min_len(errors, "agent", Some(&self.agent), 1);
+        check_max_len(errors, "agent", Some(&self.agent), 200);
+    }
+}
+
+async fn reassign_route(
+    State(state): State<AppState>,
+    UrlPath((id, task)): UrlPath<(String, u32)>,
+    Json(body): Json<Reassign>,
+) -> ApiResult<Response> {
+    Ok(web::ok(rooms_of(&state).reassign(&id, task, &body.agent).await?))
+}
+
+async fn close_task_route(
+    State(state): State<AppState>,
+    UrlPath((id, task)): UrlPath<(String, u32)>,
+) -> ApiResult<Response> {
+    Ok(web::ok(rooms_of(&state).close_task(&id, task).await?))
 }
 
 async fn stop_route(State(state): State<AppState>, UrlPath(id): UrlPath<String>) -> ApiResult<Response> {
@@ -2401,6 +2689,8 @@ pub fn router() -> Router<AppState> {
         .route("/rooms/{room_id}", get(view).patch(update).delete(remove))
         .route("/rooms/{room_id}/messages", get(messages).post(post_message))
         .route("/rooms/{room_id}/stop", post(stop_route))
+        .route("/rooms/{room_id}/tasks/{task}/reassign", post(reassign_route))
+        .route("/rooms/{room_id}/tasks/{task}/done", post(close_task_route))
 }
 
 #[cfg(test)]
@@ -2477,6 +2767,8 @@ mod tests {
             error: None,
             handoff: None,
             capped: false,
+            task: None,
+            handover: None,
         }
     }
 
