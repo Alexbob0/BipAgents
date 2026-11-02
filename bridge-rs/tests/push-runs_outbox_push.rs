@@ -96,7 +96,7 @@ async fn ntfy_message_lands_in_outbox_with_audio_and_push() {
     assert_eq!(audio.header("content-type").as_deref(), Some("audio/mpeg"));
     assert!(audio.body.starts_with(b"ID3"));
 
-    // Push: MESSAGE payload, sandbox host for the sandbox device, generic body (no preview).
+    // Push: MESSAGE payload, sandbox host for the sandbox device, the neutral line (no words in clear).
     let pushed = sandbox.requests.lock().unwrap()[0].clone();
     // the pointer only (docs/conversations.md §9.3); no threads service here: no `c`
     let mut payload = pushed.json();
@@ -105,7 +105,7 @@ async fn ntfy_message_lands_in_outbox_with_audio_and_push() {
     fields.remove("c");
     assert_eq!(
         payload,
-        json!({"aps": {"alert": {"title": "Wellness", "body": "Nouveau message", "loc-key": "Nouveau message"},
+        json!({"aps": {"alert": {"loc-key": "notif.boite", "body": "notif.boite"},
                        "thread-id": "wellness", "mutable-content": 1, "category": "MESSAGE", "sound": "default",
                        "badge": 1},
                "v": 2, "t": "boite", "agent": "wellness", "m": format!("o_{id}"), "r": id})

@@ -506,7 +506,7 @@ async fn a_report_left_without_a_reply_is_pushed_once() {
     assert_eq!(payload["t"], "subtask");
     assert_eq!(
         payload["aps"]["alert"],
-        json!({"title": "Wellness", "body": "Sous-tâche terminée", "loc-key": "Sous-tâche terminée"})
+        json!({"loc-key": "notif.subtask", "body": "notif.subtask"})
     );
     assert_eq!(w.apns.requests.lock().unwrap()[0].header("apns-collapse-id").as_deref(), None);
     for _ in 0..2 {

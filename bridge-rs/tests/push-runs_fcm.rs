@@ -41,8 +41,7 @@ fn an_apns_payload_becomes_fcm_data() {
     extra.insert("run_id".into(), json!("run_1"));
     extra.insert("request_id".into(), json!("req_1"));
     extra.insert("choices".into(), json!(["once", "deny"]));
-    let approval = payload(Kind::Approval, "wellness", "Wellness", None, "Approbation requise", "n_1", Some("t_1"),
-                           None, Some("req_1"), 2, &extra);
+    let approval = payload(Kind::Approval, "wellness", "n_1", Some("t_1"), None, Some("req_1"), 2, &extra);
     let data = data_message(&Value::Object(approval));
     assert_eq!(data["category"], "APPROVAL");
     assert_eq!(data["agent"], "wellness");
@@ -50,10 +49,11 @@ fn an_apns_payload_becomes_fcm_data() {
     assert_eq!(data["choices"], r#"["once", "deny"]"#);
     assert_eq!((data["v"].as_str(), data["n"].as_str(), data["t"].as_str(), data["c"].as_str()),
                (Some("2"), Some("n_1"), Some("approval"), Some("t_1")));
-    assert_eq!(data["title"], "Wellness");
+    assert!(!data.contains_key("title")); // no words in clear: the neutral line only
+    assert_eq!(data["body"], "notif.approval");
     assert!(data.values().all(Value::is_string));
-    let reply = data_message(&Value::Object(payload(Kind::Reply, "vie", "Vie", None, "Ta réponse est prête.", "n_2",
-                                                    Some("t_2"), Some("m_1"), Some("run_2"), 0, &bipbridge::Dict::new())));
+    let reply = data_message(&Value::Object(payload(Kind::Reply, "vie", "n_2", Some("t_2"), Some("m_1"), Some("run_2"), 0,
+                                                    &bipbridge::Dict::new())));
     assert_eq!((reply["t"].as_str(), reply["m"].as_str()), (Some("reply"), Some("m_1")));
 }
 
@@ -101,8 +101,7 @@ async fn sending_exchanges_the_key_for_a_token_and_drops_dead_tokens() {
     let (g, url) = start_google().await;
     let fcm =
         FcmClient::new(&account(dir.path()), reqwest::Client::new(), &url, Some(&format!("{url}/token"))).unwrap();
-    let payload = Value::Object(payload(Kind::Reply, "vie", "Vie", None, "Ta réponse est prête.", "n_1", None, None,
-                                        Some("run_2"), 0, &bipbridge::Dict::new()));
+    let payload = Value::Object(payload(Kind::Reply, "vie", "n_1", None, None, Some("run_2"), 0, &bipbridge::Dict::new()));
     let ok = fcm.send("live:token-0123456789", &payload, &SendOptions::new("fcm")).await;
     let dead = fcm.send("dead:token-0123456789", &payload, &SendOptions::new("fcm")).await;
     assert!(ok.ok());
