@@ -236,13 +236,15 @@ def _walk(inv, root: Path) -> Iterator[Path]:
 
 # Rewritten while nothing of anyone changes: Hermes' cron opens its tick lock for writing every minute
 # (cron/scheduler.py) and notes its tick in each profile (ticker_heartbeat, ticker_last_success), its gateway notes it
-# is alive (state/gateway.heartbeat) and its channels' list's time (channel_directory.json); the bridge notes the
-# app's last request (sleep.json, every ten minutes while an app is open), measures the place's space (storage.json,
-# every 30 minutes) and the sandboxes' proxy its day's counts (reports/usage.json). Seen on a real place, 2026-11-02:
-# without these, a place nobody used backed up every quarter of an hour. Still backed up; only their changes alone
-# don't call for a backup.
+# is alive (state/gateway.heartbeat) and its channels' list's time (channel_directory.json), its skills' curator its
+# own schedule in each profile (skills/.curator_state: an hour after the gateway starts, then at each run); the bridge
+# notes the app's last request (sleep.json, every ten minutes while an app is open), measures the place's space
+# (storage.json, every 30 minutes) and the sandboxes' proxy its day's counts (reports/usage.json). Seen on a real
+# place, 2026-11-02: without these, a place nobody used backed up every quarter of an hour. Still backed up; only
+# their changes alone don't call for a backup. Hermes' daily archiving of old conversations writes state.db: that
+# counts (one backup a day at most, like the safety one).
 NOISE = {".tick.lock", "sleep.json", "ticker_heartbeat", "ticker_last_success", "gateway.heartbeat",
-         "channel_directory.json"}
+         "channel_directory.json", ".curator_state"}
 NOISE_SUFFIXES = (".lock", ".pid", "-shm")
 NOISE_PATHS = ("/bipagents/storage.json", "/sandbox-proxy/reports/usage.json")
 

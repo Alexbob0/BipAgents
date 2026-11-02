@@ -124,6 +124,7 @@ def test_an_idle_place_s_own_rewrites_are_no_change(tmp_path):
         (profile / "cron").mkdir(parents=True, exist_ok=True)
         (profile / "cron" / "ticker_heartbeat").write_text("1793600523.97 36417")
         (profile / "cron" / "ticker_last_success").write_text("1793600523.98")
+    (hermes_home / "skills").mkdir()
     (hermes_home / "state").mkdir()
     (hermes_home / "state" / "gateway.heartbeat").write_text('{"pid": 1}')
     (hermes_home / "channel_directory.json").write_text('{"updated_at": "a", "platforms": {}}')
@@ -142,6 +143,8 @@ def test_an_idle_place_s_own_rewrites_are_no_change(tmp_path):
         (profile / "cron" / "ticker_last_success").write_text("1793600583.99")
         age(profile / "cron" / "ticker_heartbeat", -60)
         (profile / "cron" / "executions.db-wal").write_text("")   # opened at a tick: an empty WAL appears
+        (profile / "skills").mkdir(exist_ok=True)
+        (profile / "skills" / ".curator_state").write_text('{"last_run_at": "x"}')   # the curator seeded
     (hermes_home / "state" / "gateway.heartbeat").write_text('{"pid": 1, "updated_at": "b"}')
     (hermes_home / "channel_directory.json").write_text('{"updated_at": "bb", "platforms": {}}')
     data = home / "share" / "bipagents"
