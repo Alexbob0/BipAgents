@@ -116,6 +116,43 @@ def test_the_fingerprint_sees_what_a_backup_takes_change_and_nothing_else(tmp_pa
     assert fp(home)["sum"] != third["sum"]
 
 
+def test_an_idle_place_s_own_rewrites_are_no_change(tmp_path):
+    """What a real place nobody used rewrote between two looks (lab server, 2026-11-02): no backup for those."""
+    home, db = a_place(tmp_path)
+    hermes_home = home / ".hermes"
+    for profile in (hermes_home, hermes_home / "profiles" / "coach"):
+        (profile / "cron").mkdir(parents=True, exist_ok=True)
+        (profile / "cron" / "ticker_heartbeat").write_text("1793600523.97 36417")
+        (profile / "cron" / "ticker_last_success").write_text("1793600523.98")
+    (hermes_home / "state").mkdir()
+    (hermes_home / "state" / "gateway.heartbeat").write_text('{"pid": 1}')
+    (hermes_home / "channel_directory.json").write_text('{"updated_at": "a", "platforms": {}}')
+    (home / "data" / "storage.json").write_text('{"rules": {}}')
+    (home / "data" / "sandbox-proxy" / "reports").mkdir(parents=True)
+    (home / "data" / "sandbox-proxy" / "reports" / "usage.json").write_text('{"at": 1}')
+    # data_dir's storage.json is only noise there: the path must end with bipagents/storage.json on a place
+    (home / ".config" / "bipagents" / "bridge.toml").write_text(
+        (home / ".config" / "bipagents" / "bridge.toml").read_text().replace(str(home / "data"),
+                                                                              str(home / "share" / "bipagents")))
+    (home / "share").mkdir()
+    (home / "data").rename(home / "share" / "bipagents")
+    first = fp(home)
+    for profile in (hermes_home, hermes_home / "profiles" / "coach"):
+        (profile / "cron" / "ticker_heartbeat").write_text("1793600583.97 36417")
+        (profile / "cron" / "ticker_last_success").write_text("1793600583.99")
+        age(profile / "cron" / "ticker_heartbeat", -60)
+        (profile / "cron" / "executions.db-wal").write_text("")   # opened at a tick: an empty WAL appears
+    (hermes_home / "state" / "gateway.heartbeat").write_text('{"pid": 1, "updated_at": "b"}')
+    (hermes_home / "channel_directory.json").write_text('{"updated_at": "bb", "platforms": {}}')
+    data = home / "share" / "bipagents"
+    (data / "storage.json").write_text('{"rules": {}, "at": 2}')
+    (data / "sandbox-proxy" / "reports" / "usage.json").write_text('{"at": 22}')
+    assert fp(home)["sum"] == first["sum"]
+    # A WAL with something in it is a change.
+    (hermes_home / "cron" / "executions.db-wal").write_bytes(b"x" * 100)
+    assert fp(home)["sum"] != first["sum"]
+
+
 def test_the_look_walks_exactly_what_a_backup_takes(tmp_path):
     """stat_walk asks `Inventory.skipped` only about the names it may skip (backup._may_skip): the same files as the
     backup's own walk, whatever the skipped names' places, plus the databases' write-ahead logs."""

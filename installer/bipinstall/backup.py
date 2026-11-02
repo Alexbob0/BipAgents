@@ -235,10 +235,24 @@ def _walk(inv, root: Path) -> Iterator[Path]:
 # -- whether anything changed: the files' sizes and times, never their content ----------------------------------------
 
 # Rewritten while nothing of anyone changes: Hermes' cron opens its tick lock for writing every minute
-# (cron/scheduler.py), the bridge notes the app's last request (sleep.json, every ten minutes while an app is open).
-# Still backed up; only their changes alone don't call for a backup.
-NOISE = {".tick.lock", "sleep.json"}
+# (cron/scheduler.py) and notes its tick in each profile (ticker_heartbeat, ticker_last_success), its gateway notes it
+# is alive (state/gateway.heartbeat) and its channels' list's time (channel_directory.json); the bridge notes the
+# app's last request (sleep.json, every ten minutes while an app is open), measures the place's space (storage.json,
+# every 30 minutes) and the sandboxes' proxy its day's counts (reports/usage.json). Seen on a real place, 2026-11-02:
+# without these, a place nobody used backed up every quarter of an hour. Still backed up; only their changes alone
+# don't call for a backup.
+NOISE = {".tick.lock", "sleep.json", "ticker_heartbeat", "ticker_last_success", "gateway.heartbeat",
+         "channel_directory.json"}
 NOISE_SUFFIXES = (".lock", ".pid", "-shm")
+NOISE_PATHS = ("/bipagents/storage.json", "/sandbox-proxy/reports/usage.json")
+
+
+def noise(path: str, st: os.stat_result) -> bool:
+    """Whether this file's change alone calls for no backup. An empty write-ahead log too: SQLite makes one when a
+    database is opened and removes it when closed (Hermes' cron opens its executions.db at every tick), nothing in it."""
+    name = path.rpartition("/")[2]
+    return (name in NOISE or name.endswith(NOISE_SUFFIXES) or path.endswith(NOISE_PATHS)
+            or (st.st_size == 0 and name.endswith("-wal")))
 
 
 def quick(inv):
@@ -336,8 +350,7 @@ def fingerprint(inv, base: Path) -> Dict:
 
     def note(area: str, path: str, st: os.stat_result) -> None:
         nonlocal newest
-        name = path.rpartition("/")[2]
-        if name in NOISE or name.endswith(NOISE_SUFFIXES):
+        if noise(path, st):
             return
         found = areas.get(area)
         if found is None:
