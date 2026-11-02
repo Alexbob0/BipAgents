@@ -1,0 +1,206 @@
+{
+  "$schema": "../schema.json",
+  "type": "approval",
+  "audit_row": 6,
+  "summary": "Hermes waits for an approval (a command, a tool).",
+  "producers": [
+    "runs.rs push_unseen (~973), ~2060 -> notify_approval_values",
+    "agent_shares.rs:1141 (agent shared by a relative)",
+    "rooms.rs (room_id: a group discussion's turn)"
+  ],
+  "policy": {
+    "per_agent_switch": false
+  },
+  "v2": {
+    "t": "approval",
+    "c": "t_<thread> | room:<id> | t_<thread> on the relative's bridge (agent <agent>__<household>)",
+    "m": null,
+    "loc_key": "notif.approval",
+    "collapse": "request_id",
+    "link": "bipagents://open?agent=vie&c=t_<thread>&n=<journal id>&t=approval",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
+  },
+  "variants": [
+    {
+      "name": "default",
+      "about": "Approval in a conversation.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_approval_values",
+          "args": {
+            "run_id": "run_5",
+            "request_id": "req_1",
+            "choices": [
+              "once",
+              "session",
+              "always",
+              "deny"
+            ],
+            "command": "pip install openpyxl",
+            "session_id": "sess_1",
+            "room_id": null
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {},
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "req_1"
+      }
+    },
+    {
+      "name": "previews_on",
+      "about": "Approval with previews: « Approbation requise : <command> » in the agent's language.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "en"
+        },
+        "input": {
+          "fn": "notify_approval_values",
+          "args": {
+            "run_id": "run_5",
+            "request_id": "req_1",
+            "choices": [
+              "once",
+              "deny"
+            ],
+            "command": "pip install openpyxl",
+            "session_id": "sess_1",
+            "room_id": null
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {},
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "req_1"
+      }
+    },
+    {
+      "name": "room",
+      "about": "Approval of a group discussion's turn: the room opens.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_approval_values",
+          "args": {
+            "run_id": "run_5",
+            "request_id": "req_2",
+            "choices": null,
+            "command": null,
+            "session_id": null,
+            "room_id": "room_1"
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {},
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "req_2"
+      }
+    },
+    {
+      "name": "no_session",
+      "about": "Older producers without the session: iOS asks Hermes for the run's session.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_approval_values",
+          "args": {
+            "run_id": "run_5",
+            "request_id": null,
+            "choices": null,
+            "command": null,
+            "session_id": null,
+            "room_id": null
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {},
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "run_5"
+      }
+    },
+    {
+      "name": "shared_agent",
+      "about": "Approval of a relative's agent shared with this person.",
+      "bridge": {
+        "agent": "cuisine__alex",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_approval_values",
+          "args": {
+            "run_id": "run_9",
+            "request_id": "req_9",
+            "choices": [
+              "once",
+              "deny"
+            ],
+            "command": null,
+            "session_id": "conv_1",
+            "room_id": null
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {},
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "req_9"
+      }
+    }
+  ]
+}

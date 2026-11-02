@@ -1,0 +1,148 @@
+{
+  "$schema": "../schema.json",
+  "type": "silent",
+  "audit_row": 17,
+  "summary": "Silent pushes: run_finished, reminders, calendar, contacts.",
+  "producers": [
+    "runs.rs:~1275 (run_finished)",
+    "agent_tools.rs:1539-1603 (reminders, calendar, contacts)",
+    "notebook/api.rs:542 (reminders)"
+  ],
+  "policy": {
+    "per_agent_switch": false
+  },
+  "v2": {
+    "t": "silent",
+    "c": "none",
+    "m": null,
+    "loc_key": null,
+    "collapse": null,
+    "link": null,
+    "notes": "Typed in the contract but never journaled (§4.8). Pointer shape: docs/conversations.md §9.3 (conv-core)."
+  },
+  "variants": [
+    {
+      "name": "run_finished",
+      "about": "Silent push « run_finished ».",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_silent",
+          "args": {
+            "reason": "run_finished",
+            "extra": {
+              "run_id": "run_1",
+              "session_id": "sess_1"
+            }
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {},
+      "push": {
+        "push_type": "background",
+        "priority": 5,
+        "collapse_id": null
+      }
+    },
+    {
+      "name": "reminders",
+      "about": "Silent push « reminders ».",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_silent",
+          "args": {
+            "reason": "reminders",
+            "extra": {}
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {},
+      "push": {
+        "push_type": "background",
+        "priority": 5,
+        "collapse_id": null
+      }
+    },
+    {
+      "name": "calendar",
+      "about": "Silent push « calendar ».",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_silent",
+          "args": {
+            "reason": "calendar",
+            "extra": {}
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {},
+      "push": {
+        "push_type": "background",
+        "priority": 5,
+        "collapse_id": null
+      }
+    },
+    {
+      "name": "contacts",
+      "about": "Silent push « contacts ».",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_silent",
+          "args": {
+            "reason": "contacts",
+            "extra": {}
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {},
+      "push": {
+        "push_type": "background",
+        "priority": 5,
+        "collapse_id": null
+      }
+    }
+  ]
+}

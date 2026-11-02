@@ -23,6 +23,11 @@ use crate::Dict;
 #[path = "push_runs/pyx.rs"]
 pub mod pyx;
 
+/// Every notification as data and its pure builder (the contract's function, contracts/notifications/).
+#[path = "push_runs/notices.rs"]
+pub mod notices;
+use notices::{Context, Notice, Pointer};
+
 pub const MESSAGE_BODY: &str = "Nouveau message";
 pub const REPLY_BODY: &str = "Ta réponse est prête.";
 pub const QUESTION_BODY: &str = "Une question pour toi";
@@ -205,6 +210,7 @@ pub struct PushService {
 }
 
 /// One notification to journal and push ([`PushService::emit`]).
+#[derive(Clone, Debug)]
 pub struct Event {
     pub agent: String,
     pub kind: Kind,
@@ -309,8 +315,20 @@ impl PushService {
         }
     }
 
-    fn previews(&self) -> bool {
-        self.config.get().push_previews
+    /// What `notices` needs of the agent: its shown name, the previews setting, its language.
+    fn context(&self, agent: &str) -> Context {
+        Context { title: self.title(agent), previews: self.config.get().push_previews, lang: self.lang(agent).to_string() }
+    }
+
+    /// Journals and pushes `notice` (`emit`); a silent one is only pushed.
+    async fn notify(&self, agent: &str, notice: Notice) -> usize {
+        match notice.event(agent, &self.context(agent)) {
+            Some(event) => self.emit(event).await,
+            None => {
+                let built = notices::build(agent, &self.context(agent), &notice, &Pointer::default());
+                self.fanout(agent, built.payload, built.push_type, built.priority, None).await
+            }
+        }
     }
 
     /// The language `agent` writes in (« fr », « en », « de », « es »), for the lines written here.
@@ -326,31 +344,34 @@ impl PushService {
         let config = self.config.get();
         let threads = crate::threads::upgrade(&self.threads);
         let agent = config.agent(Some(&event.agent)).cloned();
-        let mut thread = event.room.as_ref().map(|r| format!("room:{r}"));
-        let mut message = event.message.clone();
-        if let (None, Some(threads), Some(agent)) = (&thread, &threads, &agent) {
+        // the thread of its session (the main thread for a Boîte message) and the stored reply it waits for
+        let (mut resolved, mut found) = (None, None);
+        if let (None, Some(threads), Some(agent)) = (&event.room, &threads, &agent) {
             if let (true, Some(session)) = (event.wait, &event.session) {
                 let wait = config.push_message_wait_seconds;
                 if let Some((t, m)) = threads.find_message(agent, session, event.text.as_deref(), wait).await {
-                    thread = Some(t);
-                    message = Some(m);
+                    resolved = Some(t);
+                    found = Some(m);
                 }
             }
-            if thread.is_none() {
-                thread = match &event.session {
+            if resolved.is_none() {
+                resolved = match &event.session {
                     Some(session) => threads.resolve(agent, session).await.ok().flatten().map(|t| t.id),
                     None if event.kind == Kind::Boite => threads.main(agent).await.ok().map(|t| t.id),
                     None => None,
                 };
             }
         }
+        let mut pointer = Pointer { n: crate::threads::new_id("n_"), thread: resolved, message: found, badge: 0 };
+        let (thread, message) = event.target(&pointer);
         let kind = event.kind.as_str();
         let key = match (&message, event.kind) {
             (Some(m), Kind::Reply) => format!("{kind}:{}:{m}", event.agent),
             _ => format!("{kind}:{}:{}", event.agent, event.key),
         };
-        let id = crate::threads::new_id("n_");
-        let title = event.title.clone().unwrap_or_else(|| self.title(&event.agent));
+        let id = pointer.n.clone();
+        let context = self.context(&event.agent);
+        let title = event.shown_title(&context);
         let row = crate::notifications::NewRow {
             id: &id,
             agent: &event.agent,
@@ -372,10 +393,9 @@ impl PushService {
             }
             Err(exc) => tracing::error!(exc = %format!("{exc:#}"), "notification not journaled"),
         }
-        let badge = crate::notifications::unread_total(&self.store).await.unwrap_or(0);
-        let shown = event.preview.as_deref().filter(|_| self.previews());
-        let payload = payload(event.kind, &event.agent, &title, shown, &event.body, &id, thread.as_deref(),
-                              message.as_deref(), event.ref_id.as_deref(), badge, &event.extra);
+        pointer.badge = crate::notifications::unread_total(&self.store).await.unwrap_or(0);
+        let built = event.push(&context, &pointer);
+        let payload = built.payload;
         let quiet = event.kind.follows_switch(event.from) && !crate::agent_notify::notifies(&config, &event.agent);
         // the conversation is on an app's screen (its event stream open): seen there, read, not pushed
         let on_screen = matches!((&threads, &thread), (Some(t), Some(c)) if t.is_on_screen(c));
@@ -390,7 +410,8 @@ impl PushService {
             (0, "skipped:switch".to_string())
         } else {
             // collapsed only where one notification replaces another (a run's, an approval's, a card's)
-            let sent = self.fanout(&event.agent, payload.clone(), "alert", 10, event.collapse.clone()).await;
+            let sent =
+                self.fanout(&event.agent, payload.clone(), built.push_type, built.priority, built.collapse_id).await;
             (sent, if sent > 0 { format!("sent:{sent}") } else { "skipped:no_device".into() })
         };
         if let Err(exc) = crate::notifications::set_push(&self.store, &id, &push, &payload).await {
@@ -474,9 +495,8 @@ impl PushService {
         session_id: Option<&str>,
         from: BoiteFrom,
     ) -> usize {
-        let mut event = Event::new(agent, Kind::Boite, outbox_id, MESSAGE_BODY).session(session_id).reference(outbox_id);
-        event.preview = Some(preview(text, 160));
-        event.message = Some(format!("o_{outbox_id}"));
+        let notice = Notice::Message { outbox_id: outbox_id.into(), text: text.into(), session_id: own(session_id) };
+        let Some(mut event) = notice.event(agent, &self.context(agent)) else { return 0 };
         event.from = Some(from);
         self.emit(event).await
     }
@@ -507,41 +527,30 @@ impl PushService {
         session_id: Option<&str>,
         room_id: Option<&str>,
     ) -> usize {
-        let request = given(request_id).unwrap_or(run_id).to_string();
-        let mut event = Event::new(agent, Kind::Approval, &request, APPROVAL_BODY)
-            .session(session_id)
-            .reference(&request)
-            .collapse(&request)
-            .with("run_id", json!(run_id))
-            .with("request_id", json!(given(request_id)))
-            .with("choices", choices.filter(|c| !c.is_empty()).map(|c| Value::Array(c.to_vec())).unwrap_or(Value::Null));
-        event.preview = given(command).map(|c| approval_line(self.lang(agent), c));
-        event.text = event.preview.clone();
-        event.room = given(room_id).map(str::to_string);
-        self.emit(event).await
+        let notice = Notice::Approval {
+            run_id: run_id.into(),
+            request_id: own(request_id),
+            choices: choices.map(<[Value]>::to_vec),
+            command: own(command),
+            session_id: own(session_id),
+            room_id: own(room_id),
+        };
+        self.notify(agent, notice).await
     }
 
     /// A run ended while nobody followed it; also a turn the agent took on its own in its main conversation
     /// (cronwatch.rs, `run_id` « session:<id> ») and a hand-back's reply (handback.rs): the same reply from two of
     /// them is one notification (its message's id).
     pub async fn notify_reply(&self, agent: &str, run_id: &str, text: &str, session_id: Option<&str>) -> usize {
-        let mut event =
-            Event::new(agent, Kind::Reply, run_id, REPLY_BODY).session(session_id).reference(run_id).text(Some(text));
-        event.wait = true;
-        // a run's own replies replace each other (one run, one notification); an autonomous turn's (« session:… »)
-        // never replaces an earlier one
-        if !run_id.starts_with("session:") {
-            event.collapse = Some(run_id.to_string());
-        }
-        self.emit(event).await
+        self.notify(agent, Notice::Reply { run_id: run_id.into(), text: text.into(), session_id: own(session_id) })
+            .await
     }
 
     /// A reply the person heard through a voice follow (the home screen's quick voice, voice_ws.rs): its journal row
     /// (the Boîte shows it, unread), no push. The same reply notified by the run's end is the same row.
     pub async fn journal_heard(&self, agent: &str, run_id: &str, text: &str, session_id: Option<&str>) -> usize {
-        let mut event =
-            Event::new(agent, Kind::Reply, run_id, REPLY_BODY).session(session_id).reference(run_id).text(Some(text));
-        event.wait = true;
+        let notice = Notice::Reply { run_id: run_id.into(), text: text.into(), session_id: own(session_id) };
+        let Some(mut event) = notice.event(agent, &self.context(agent)) else { return 0 };
         event.heard = true;
         self.emit(event).await
     }
@@ -549,30 +558,19 @@ impl PushService {
     /// An agent answered in a group discussion (rooms.rs) nobody looks at: « <agent> · <room> »; tapping opens the
     /// discussion. Collapsed per discussion.
     pub async fn notify_room(&self, agent: &str, room_id: &str, room_title: &str, text: &str) -> usize {
-        let key = format!("{room_id}:{:x}", fnv(text));
-        let mut event = Event::new(agent, Kind::RoomReply, key, REPLY_BODY)
-            .reference(room_id)
-            .text(Some(text))
-            .collapse(format!("room:{room_id}"));
-        if !room_title.is_empty() {
-            event.title = Some(format!("{} · {}", self.title(agent), room_title));
-        }
-        event.room = Some(room_id.to_string());
-        self.emit(event).await
+        let notice = Notice::Room { room_id: room_id.into(), room_title: room_title.into(), text: text.into() };
+        self.notify(agent, notice).await
     }
 
     /// A background sub-task finished and Hermes left its report in the conversation without waking the agent:
     /// « 🎧 Podcast jeudi » when it made a file, else « Sous-tâche terminée ». Tapping opens the conversation.
     pub async fn notify_subtask(&self, agent: &str, session_id: &str, line: Option<&str>) -> usize {
-        let line = given(line);
-        let key = format!("{session_id}:{:x}", fnv(line.unwrap_or("")));
-        self.emit(Event::new(agent, Kind::Subtask, key, SUBTASK_BODY).session(Some(session_id)).text(line)).await
+        self.notify(agent, Notice::Subtask { session_id: session_id.into(), line: own(line) }).await
     }
 
     /// A step of a mailbox scan ended (mail_scan.rs); tapping opens the agent.
     pub async fn notify_scan(&self, agent: &str, line: &str) -> usize {
-        let key = format!("{:x}:{}", fnv(line), crate::store::iso(crate::store::utcnow()));
-        self.emit(Event::new(agent, Kind::Scan, key, SUBTASK_BODY).text(Some(line)).collapse(format!("scan:{agent}"))).await
+        self.notify(agent, Notice::Scan { line: line.into() }).await
     }
 
     /// A background task ended, paused at its budget, or was proposed by the agent (jobs.rs): `body` when previews
@@ -586,11 +584,9 @@ impl PushService {
         job_id: &str,
         body: &str,
     ) -> usize {
-        let event = Event::new(agent, Kind::Task, format!("{job_id}:{body}"), body)
-            .session(session_id)
-            .reference(job_id)
-            .text(Some(line));
-        self.emit(event.collapse(format!("job:{job_id}"))).await
+        let notice =
+            Notice::Job { session_id: own(session_id), line: line.into(), job_id: job_id.into(), body: body.into() };
+        self.notify(agent, notice).await
     }
 
     /// The agent asks something mid-run (clarify) while nobody follows it: always notified (an unanswered question
@@ -603,61 +599,55 @@ impl PushService {
         question: Option<&str>,
         session_id: Option<&str>,
     ) -> usize {
-        let request = given(request_id).unwrap_or(run_id).to_string();
-        let event = Event::new(agent, Kind::Question, &request, QUESTION_BODY)
-            .session(session_id)
-            .reference(&request)
-            .text(given(question))
-            .collapse(&request)
-            .with("run_id", json!(run_id))
-            .with("request_id", json!(given(request_id)));
-        self.emit(event).await
+        let notice = Notice::Question {
+            run_id: run_id.into(),
+            request_id: own(request_id),
+            question: own(question),
+            session_id: own(session_id),
+        };
+        self.notify(agent, notice).await
     }
 
     /// Someone of the family passed something on to this agent (family_news.rs); tapping opens the agent.
     pub async fn notify_family(&self, agent: &str, line: &str, note_id: &str) -> usize {
-        self.emit(Event::new(agent, Kind::Family, note_id, FAMILY_BODY).reference(note_id).text(Some(line))).await
+        self.notify(agent, Notice::Family { line: line.into(), note_id: note_id.into() }).await
     }
 
     /// The agent's e-mail to an address not allowed yet waits for the person (agent_email.rs): « Veut écrire à
     /// x@y »; tapping opens the agent's e-mail screen (`r`: the held mail's id).
     pub async fn notify_email_held(&self, agent: &str, to: &str, held_id: &str) -> usize {
-        let line = email_held_line(self.lang(agent), to);
-        self.card(agent, Kind::EmailHeld, &line, EMAIL_HELD_BODY, held_id).await
+        self.notify(agent, Notice::EmailHeld { to: to.into(), held_id: held_id.into() }).await
     }
 
     /// The agent wants to send data to a site (sandbox_sites.rs): tapping opens the Boîte, where the card is.
     pub async fn notify_site_request(&self, agent: &str, line: &str, id: &str) -> usize {
-        self.card(agent, Kind::Site, line, SITE_BODY, id).await
+        self.notify(agent, Notice::Site { line: line.into(), id: id.into() }).await
     }
 
     /// An agent wants to create an account on a website with a password of the vault (vault_logins.rs).
     pub async fn notify_login_request(&self, agent: &str, host: &str, id: &str) -> usize {
-        let line = login_line(self.lang(agent), host);
-        self.card(agent, Kind::Login, &line, LOGIN_BODY, id).await
+        self.notify(agent, Notice::Login { host: host.into(), id: id.into() }).await
     }
 
     /// A secret card or a connector's / mail's approval card (secrets.rs, connectors.rs, agent_tools.rs). `key`:
     /// `secret_request`, `connector_request` or `mail_request`, with the card's request id.
     pub async fn notify_bridge_card(&self, agent: &str, line: &str, key: &str, id: &str) -> usize {
-        self.card(agent, Kind::of_card(key), line, CARD_BODY, id).await
+        self.notify(agent, Notice::Card { line: line.into(), key: key.into(), id: id.into() }).await
     }
 
     /// A date to find with a relative's household (meet.rs): tapping opens the Boîte, where the card is.
     pub async fn notify_meet(&self, agent: &str, line: &str, id: &str) -> usize {
-        self.card(agent, Kind::Meet, line, MEET_BODY, id).await
-    }
-
-    /// An accord card (always notified), its id in `r`.
-    async fn card(&self, agent: &str, kind: Kind, line: &str, body: &str, id: &str) -> usize {
-        let event = Event::new(agent, kind, id, body).reference(id).text(Some(line));
-        self.emit(event.collapse(format!("{}:{id}", kind.as_str()))).await
+        self.notify(agent, Notice::Meet { line: line.into(), id: id.into() }).await
     }
 
     /// `notify_silent(agent, reason, **extra)`.
     pub async fn notify_silent(&self, agent: &str, reason: &str, extra: Dict) -> usize {
-        self.fanout(agent, silent_payload(agent, reason, &extra), "background", 5, None).await
+        self.notify(agent, Notice::Silent { reason: reason.into(), extra }).await
     }
+}
+
+fn own(value: Option<&str>) -> Option<String> {
+    value.map(str::to_string)
 }
 
 /// A short stable digest of a text (dedupe keys).

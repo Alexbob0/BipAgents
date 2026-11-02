@@ -1,0 +1,54 @@
+{
+  "$schema": "../schema.json",
+  "type": "bot_chat_turn",
+  "audit_row": 2,
+  "summary": "An autonomous turn in the agent's main thread (Bot Chat), seen by the cron watcher.",
+  "producers": [
+    "cronwatch.rs poll_bot_chat (~762) -> notify_reply with run_id session:<sid>"
+  ],
+  "policy": {
+    "per_agent_switch": true
+  },
+  "v2": {
+    "t": "reply",
+    "c": "main",
+    "m": "m_<message id>",
+    "loc_key": "notif.reply",
+    "collapse": "n",
+    "link": "bipagents://open?agent=vie&c=main&m=m_<message id>&t=reply",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
+  },
+  "variants": [
+    {
+      "name": "default",
+      "about": "Bot Chat turn, previews off.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_reply",
+          "args": {
+            "run_id": "session:sess_bot",
+            "text": "Bonjour ! Ton point du matin est prêt.",
+            "session_id": "sess_bot"
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {},
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "session:sess_bot"
+      }
+    }
+  ]
+}

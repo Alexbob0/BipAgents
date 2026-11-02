@@ -1,0 +1,83 @@
+{
+  "$schema": "../schema.json",
+  "type": "email_held",
+  "audit_row": 12,
+  "summary": "The agent's e-mail to an address not allowed yet waits for the person.",
+  "producers": [
+    "agent_email.rs:~911 -> notify_email_held"
+  ],
+  "policy": {
+    "per_agent_switch": false
+  },
+  "v2": {
+    "t": "email_held",
+    "c": "none",
+    "m": null,
+    "loc_key": "notif.email_held",
+    "collapse": "n",
+    "link": "bipagents://open?agent=vie&n=<journal id>&t=email_held",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
+  },
+  "variants": [
+    {
+      "name": "default",
+      "about": "Held e-mail, previews off.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_email_held",
+          "args": {
+            "to": "lea@example.com",
+            "held_id": "held_1"
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {},
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "email:held_1"
+      }
+    },
+    {
+      "name": "previews_on_en",
+      "about": "Held e-mail, previews on, an English agent.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "en"
+        },
+        "input": {
+          "fn": "notify_email_held",
+          "args": {
+            "to": "lea@example.com",
+            "held_id": "held_1"
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {},
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "email:held_1"
+      }
+    }
+  ]
+}

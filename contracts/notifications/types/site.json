@@ -1,0 +1,53 @@
+{
+  "$schema": "../schema.json",
+  "type": "site",
+  "audit_row": 13,
+  "summary": "The agent's programs want to send data to a site.",
+  "producers": [
+    "sandbox_sites.rs:~849 -> notify_site_request"
+  ],
+  "policy": {
+    "per_agent_switch": false
+  },
+  "v2": {
+    "t": "site",
+    "c": "none",
+    "m": null,
+    "loc_key": "notif.site",
+    "collapse": "n",
+    "link": "bipagents://open?agent=vie&n=<journal id>&t=site",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
+  },
+  "variants": [
+    {
+      "name": "default",
+      "about": "Site request.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_site_request",
+          "args": {
+            "line": "Veut envoyer des données à exemple.com (environ 2 Mo)",
+            "id": "site_1"
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {},
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "site:site_1"
+      }
+    }
+  ]
+}

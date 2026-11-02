@@ -1,0 +1,52 @@
+{
+  "$schema": "../schema.json",
+  "type": "scan",
+  "audit_row": 10,
+  "summary": "A step of a mailbox scan ended.",
+  "producers": [
+    "mail_scan.rs:~1277 -> notify_scan"
+  ],
+  "policy": {
+    "per_agent_switch": true
+  },
+  "v2": {
+    "t": "scan",
+    "c": "main",
+    "m": null,
+    "loc_key": "notif.scan",
+    "collapse": "n",
+    "link": "bipagents://open?agent=vie&c=main&t=scan",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
+  },
+  "variants": [
+    {
+      "name": "default",
+      "about": "A scan step.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_scan",
+          "args": {
+            "line": "Boîte mail : 12 messages triés"
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {},
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "scan:vie"
+      }
+    }
+  ]
+}

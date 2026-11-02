@@ -1,0 +1,120 @@
+{
+  "$schema": "../schema.json",
+  "type": "reply",
+  "audit_row": 1,
+  "summary": "A followed run ended while nobody looked at it: the reply is ready.",
+  "producers": [
+    "runs.rs run end (~1267)",
+    "runs.rs loop brake (~1419, ~1563)",
+    "runs.rs rescue (~1931)",
+    "live_calls.rs:467 (call ended)",
+    "agent_shares.rs:1160 (agent shared by a relative)"
+  ],
+  "policy": {
+    "per_agent_switch": true
+  },
+  "v2": {
+    "t": "reply",
+    "c": "t_<thread of session_id> (main when it is the agent's main thread)",
+    "m": "m_<message id>",
+    "loc_key": "notif.reply",
+    "collapse": "n",
+    "link": "bipagents://open?agent=vie&c=t_<thread>&m=m_<message id>&t=reply",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
+  },
+  "variants": [
+    {
+      "name": "default",
+      "about": "Default install: generic body, the text is fetched by the phone.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_reply",
+          "args": {
+            "run_id": "run_1",
+            "text": "Voilà le résumé de ta journée.",
+            "session_id": "sess_1"
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {},
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "run_1"
+      }
+    },
+    {
+      "name": "no_session",
+      "about": "A run whose session the bridge did not know: iOS asks Hermes for the run's session first.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_reply",
+          "args": {
+            "run_id": "run_2",
+            "text": "C'est fait.",
+            "session_id": null
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {},
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "run_2"
+      }
+    },
+    {
+      "name": "shared_agent",
+      "about": "A relative's agent shared with this person (`<agent>__<household>`).",
+      "bridge": {
+        "agent": "cuisine__alex",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_reply",
+          "args": {
+            "run_id": "run_3",
+            "text": "Le dîner est prêt.",
+            "session_id": "conv_1"
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {},
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "run_3"
+      }
+    }
+  ]
+}

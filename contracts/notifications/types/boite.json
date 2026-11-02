@@ -1,0 +1,85 @@
+{
+  "$schema": "../schema.json",
+  "type": "boite",
+  "audit_row": 8,
+  "summary": "A Boîte message (outbox): routine report, urgent watcher, hand-back outside Bot Chat, credit note, storage card, imports.",
+  "producers": [
+    "ntfy.rs ingest -> deliver -> notify_message; callers cronwatch.rs:691, watchers.rs:616, handback.rs:656, credit.rs:309, storage_watch.rs:1388, assistant_import.rs, whatsapp_import"
+  ],
+  "policy": {
+    "per_agent_switch": false
+  },
+  "v2": {
+    "t": "boite",
+    "c": "main or t_<thread> (never the bare routine run)",
+    "m": "outbox:<outbox id>",
+    "loc_key": "notif.boite",
+    "collapse": "n",
+    "link": "bipagents://open?agent=vie&c=main&m=outbox:o1&t=boite",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
+  },
+  "variants": [
+    {
+      "name": "main",
+      "about": "A routine's report, no session tag.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_message",
+          "args": {
+            "outbox_id": "o1",
+            "text": "Ton point du matin : 3 rendez-vous aujourd'hui.",
+            "session_id": null
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {},
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": null
+      }
+    },
+    {
+      "name": "with_session",
+      "about": "A hand-back into an Historique conversation (session tag).",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_message",
+          "args": {
+            "outbox_id": "o2",
+            "text": "La recherche est finie.",
+            "session_id": "sess_h"
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {},
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": null
+      }
+    }
+  ]
+}
