@@ -131,7 +131,7 @@ pub fn input_of(notes: Option<&str>, words: &str, attachments: &[Attachment]) ->
         })
         .collect();
     let said: Vec<&str> = [notes.unwrap_or("").trim(), words.trim()].into_iter().filter(|p| !p.is_empty()).collect();
-    let text = [said.join("\n\n"), lines.join("\n")].into_iter().filter(|p| !p.is_empty()).collect::<Vec<_>>().join("\n\n");
+    let text = [said.join("\n"), lines.join("\n")].into_iter().filter(|p| !p.is_empty()).collect::<Vec<_>>().join("\n\n");
     let images: Vec<Value> = attachments
         .iter()
         .filter_map(|a| {
@@ -371,7 +371,7 @@ mod tests {
     #[test]
     fn words_go_as_a_string_photos_as_one_user_message() {
         assert_eq!(input_of(None, " Bonjour ", &[]), json!("Bonjour"));
-        assert_eq!(input_of(Some("<!--bip:now 9 h-->"), "Bonjour", &[]), json!("<!--bip:now 9 h-->\n\nBonjour"));
+        assert_eq!(input_of(Some("<!--bip:now 9 h-->"), "Bonjour", &[]), json!("<!--bip:now 9 h-->\nBonjour"));
         let input = input_of(None, "Et ça ?", &[photo()]);
         assert_eq!(input[0]["role"], "user");
         assert_eq!(input[0]["content"][0], json!({"type": "text", "text": "Et ça ?"}));

@@ -66,11 +66,12 @@ The common cause: **the conversation was never a bridge object**. The fix is tha
 | Notification | `n_` + 26 chars | `n_01JBX…` | — |
 | Room | `room:<room id>` (rooms keep their own ids; thread view in §6.6) | `room:r_12ab` | — |
 
-`client_id`: an id the app chooses for a message it sends (UUID; step 4, sending through the bridge, fills it: the
-table `thread_messages` and its merge into the timeline exist, nothing writes it yet). The bridge stores it with the message once Hermes
-has written the user row, so the app replaces its optimistic bubble *by id*. The same mechanism carries the
-attachments the app sent: they belong to the message with that `client_id`, never to a message with similar words
-(this makes the « Yes shown as an old photo » class of bug impossible).
+`client_id`: the id the app gives a message it sends (a UUID: the row it draws at once). Every message goes through
+`POST /v1/threads/{id}/messages` (§6.7) with it; the bridge keeps it in `thread_sends` and serves the message at once
+as an item `s_<client_id>` (`sending: true`), then gives the stored Hermes row the same `client_id` once Hermes has
+written it (matched once, in order, by the bridge that sent the words; kept). The app's row, its voice note and the
+files it sent stay on that id, never on words or time (this makes the « Yes shown as an old photo » class of bug
+impossible).
 
 ## 4. Thread kinds
 
@@ -136,14 +137,15 @@ CREATE TABLE thread_segments (
   added_at TEXT NOT NULL,
   PRIMARY KEY (agent, session_id)
 );
-CREATE TABLE thread_messages (    -- what the bridge knows about a message that Hermes doesn't keep
+CREATE TABLE thread_sends (       -- the messages the apps sent through the bridge (§6.7)
   agent TEXT NOT NULL,
-  message_id TEXT NOT NULL,       -- m_…
+  client_id TEXT NOT NULL,        -- the app's id for it
   thread_id TEXT NOT NULL,
-  client_id TEXT,                 -- the app's id for a message it sent through the bridge
-  attachments TEXT,               -- JSON: files the app sent with it [{id, kind, name, mime, size, path}]
+  text TEXT NOT NULL,             -- the person's words as sent
+  attachments TEXT,               -- JSON: its files [{kind, name, mime, size, path}] (never a photo's bytes)
+  message_id TEXT,                -- m_… once Hermes stored it (NULL: shown as s_<client_id>, for two days at most)
   created_at TEXT NOT NULL,
-  PRIMARY KEY (agent, message_id)
+  PRIMARY KEY (agent, client_id)
 );
 CREATE TABLE thread_reads (agent TEXT, thread_id TEXT, item_id TEXT, at TEXT, PRIMARY KEY (agent, thread_id));
 ```
@@ -228,8 +230,10 @@ Answer:
   "pending": {
     "run": {"run_id": "r_123", "status": "running"},
     "queue": {"version": 3, "paused": false, "items": [{"id": "q_…", "text": "…", "created_at": "…"}]},
-    "approvals": [{"run_id": "r_123", "request_id": "p_9", "command": "…", "choices": ["once", "deny"],
-                   "session_id": "api_ccc", "created_at": 1762117450.5}]
+    "approvals": [{"id": "a_…", "run_id": "r_123", "request_id": "p_9", "command": "…", "choices": ["once", "deny"],
+                   "session_id": "api_ccc", "created_at": 1762117450.5}],
+    "questions": [{"id": "a_…", "kind": "question", "run_id": "r_123", "request_id": "c_2", "questions": […],
+                   "execution_generation": 1, "session_id": "api_ccc"}]
   }
 }
 ```
@@ -241,8 +245,10 @@ Answer:
   rewind) still pages correctly: the cursor's position is used when its item is gone.
 - `anchor` is the `around` item when it was found (else null and the latest page is given).
 - `pending` is what is not a stored message yet: the run going on (attach to `/v1/runs/{run_id}/events` for its live
-  text, as today), the agent's queue for this thread (msg_queue.rs), the approvals waiting (the run hub's list, as
-  `GET /v1/approvals` gives them). A question waiting comes in the run's own events, as today. Once a run ends
+  text, as today), the agent's queue for this thread (msg_queue.rs, each item with its `client_id`), the approvals and
+  the questions waiting (the run hub's). Each card carries `id`: the item it becomes once answered (`a_…`, also
+  `item_id` in the run's `approval.request` / `clarify.request` events), so a card is one row on every device and
+  an answer given on one replaces it in place on the others (the answer bumps the thread: `thread` hint). Once a run ends
   its messages are items; the app drops its live bubble when an item with the run's reply arrives (`run_id` on the
   agent's final message when the bridge knows it).
 
@@ -253,7 +259,7 @@ turn; the first item's own id before any) and `segment` (Hermes session id, for 
 
 | `kind` | Fields | From |
 |---|---|---|
-| `message` | `role` (`person` \| `agent`), `text` (visible words only), `attachments`, `client_id`?, `added_during_run`? (a steer), `reasoning`? , `run_id`? | Hermes user / assistant rows |
+| `message` | `role` (`person` \| `agent`), `text` (visible words only), `attachments`, `client_id`?, `added_during_run`? (a steer), `reasoning`? , `run_id`?, `sending`? (`s_<client_id>`: sent, not stored by Hermes yet) | Hermes user / assistant rows, the bridge's sends |
 | `tool` | `tool: {name, call_id, arguments, result, status (done \| failed \| running), via}` | assistant `tool_calls` + their tool rows |
 | `notice` | `notice: {code, text}`: `failed_turn` (Hermes' failed-turn row), `loop_rescue` (the bridge's rescue turn), `stopped` | Hermes rows the bridge recognizes |
 | `boite` | `text`, `title`, `attachments`, `boite: {outbox_id, audio: bool}` | the bridge's outbox (routine reports, hand-backs, credit, storage, imports) |
@@ -336,7 +342,8 @@ text of a run still comes from `/v1/runs/{run_id}/events` (unchanged).
 ### 6.6 Rooms and shared agents
 
 - **Rooms** keep rooms.rs' store and routes for now; their pointer is `room:<id>` (resolve answers it, notifications
-  carry it). Moving rooms onto the same item model is a later step.
+  carry it). Moving rooms onto the same item model is a later step (not in step 4: what is left is listed in
+  internal/notes/conv-step4.md).
 - **Shared agents** (agent_shares.rs): the relative's app asks its own bridge with `agent=<agent>__<household>`;
   `GET /v1/threads` lists her conversations with that agent (`kind: shared`, `id` = the conversation's id) and
   `GET /v1/threads/{cid}/timeline` (same parameters, same answer shape) is relayed to the owner's bridge
@@ -346,10 +353,35 @@ text of a run still comes from `/v1/runs/{run_id}/events` (unchanged).
   `more_before`, `more_after`, `anchor`, `version`, and `pending: {run: {run_id, status: "writing" | "approval",
   started: <Unix seconds>} | null, approvals: [{run_id, request_id, command, description, choices}]}`.
   Each timeline read counts as « on screen » for that conversation (the relative's bridge pushes nothing for it
-  meanwhile, as `GET …/messages` did).
-  **Not relayed yet**: the events stream (`/v1/threads/events` with a shared agent): the shared screen re-reads the
-  timeline (`after=<last>`) while a turn goes on. Sending, stopping and approvals keep
-  `/v1/shared-agents/{id}/conversations/…` until step 4.
+  meanwhile).
+  Relayed the same way (step 4): `GET /v1/threads/events?agent=<x>__<h>&thread=<cid>` (the owner's
+  `…/conversations/{cid}/events`: `thread` hints; open = on screen), `GET /v1/runs/{run}/events?agent=<x>__<h>&thread=<cid>`
+  (the turn's words live: text deltas, approvals and the end only, no tool step), `POST /v1/threads/{cid|new}/messages`
+  (her `client_id` kept on the owner's side; `new` opens a conversation titled by its first words), `…/{cid}/stop`,
+  `DELETE /v1/threads/{cid}`, and her answers through `POST /v1/approve` with `agent=<x>__<h>`. Her own person's
+  words come unframed. The `/v1/shared-agents/{id}/conversations…` routes are gone.
+
+### 6.7 Sending, stopping, answering (step 4)
+
+```text
+POST /v1/threads/{thread|main|new}/messages
+     {agent?, client_id, text, attachments?: [{kind: image, name, mime, data (base64)} | {kind: document, name, mime,
+      size, path (POST /v1/files)}], notes?, kinds?, after?, instructions?}
+  → {client_id, thread, tip, state: started | steered | queued | known, run_id?}
+POST /v1/threads/{thread}/stop {agent?}          → {stopped, run_id?}
+POST /v1/approve {agent, run_id, request_id?, choice | answer}   an approval's choice or a question's answer (empty:
+                                                                 skipped); the bridge's own cards as before
+```
+
+One sending path (threads/send.rs): nothing runs in the conversation → a turn starts (followed at
+`/v1/runs/{run_id}/events`); a turn goes on → words go into it (Hermes' steer), files, `after` (« Après ») or a turn
+that takes no more words → the agent's queue (msg_queue.rs), started next; the same `client_id` again → nothing.
+The bridge takes what waited for the message (`live_brief::message_notes`: the time, a Live call's recap, the
+family's news…), adds the app's `notes` (its 👍 / 👎), builds Hermes' input (photos as image parts of one user message,
+documents as `[Pièce jointe : …]` lines), creates the tip session when the thread has none (`new`: a side thread).
+Every answer goes through the bridge, which keeps it (approvals_log.rs) and bumps the thread. Deleted with this:
+`POST /v1/agents/{id}/queue` and `/steer`, `GET/POST /v1/approvals/answered`, the apps' Hermes-direct runs, steers,
+approvals and questions.
 
 ## 7. How the apps use it (target)
 
@@ -538,7 +570,7 @@ Journal row as served:
 | 2a | Thread registry + lineage + adoption; `/v1/threads`, `resolve`, `segments` | done (branch conv-core) |
 | 2b | Timeline (normalization, paging, attachments, Boîte, answered approvals, Live calls, pending), events | done (branch conv-core) |
 | 3 | Notification journal, rules, v2 payloads, read API, read sync | done (branch conv-core); `POST /v1/notifications/{id}/answer` not yet |
-| 4 | Sending through the bridge (`POST /v1/threads/{id}/messages {text, client_id, attachments}`), approvals and clarify through the bridge | later |
+| 4 | Sending through the bridge (§6.7), approvals and clarify through the bridge, shared agents on the thread routes | done (branch conv-step4); rooms still on rooms.rs' routes |
 | 5 | iOS, then Android, on the timeline behind the `threads` feature flag | app agents |
 | 6 | Remove direct Hermes calls and marker parsers from the apps | with the apps |
 

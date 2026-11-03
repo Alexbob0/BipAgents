@@ -54,7 +54,7 @@ def test_a_message_is_its_app_id_from_the_send_to_the_stored_row(bridges, fakes)
     sent = send(bridge, thread, "C1D00000-0000-4000-8000-000000000001", "Le train de 9 h ?", kinds=["voice"])
     assert sent.status_code == 200, sent.text
     assert sent.json() == {"client_id": "C1D00000-0000-4000-8000-000000000001", "thread": thread, "state": "started",
-                           "run_id": "r1"}
+                           "run_id": "r1", "tip": SESSION}
     run = fakes.hermes.started["r1"]
     assert run["session_id"] == SESSION and run["input"].endswith("Le train de 9 h ?") and run["now"]
     # at once on every device: the message as an item with the app's id, after everything there is
