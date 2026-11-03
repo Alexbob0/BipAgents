@@ -1098,7 +1098,7 @@ async fn attachment_route(
     }
     // a photo of the message: the n-th image part of its row, decoded
     let content = threads.source(&agent).content_with_images(&item.segment, item.row).await.map_err(unavailable)?;
-    let images: Vec<String> = match content {
+    let images: Vec<String> = match &content {
         Some(Value::Array(parts)) => parts
             .iter()
             .filter(|p| matches!(p.get("type").and_then(Value::as_str), Some("image_url" | "input_image" | "image")))
@@ -1112,10 +1112,16 @@ async fn attachment_route(
             .collect(),
         _ => Vec::new(),
     };
-    let data = images.get(n).ok_or_else(HttpError::not_found)?;
-    let (head, b64) = data.strip_prefix("data:").and_then(|d| d.split_once(',')).ok_or_else(HttpError::not_found)?;
-    let mime = head.split(';').next().unwrap_or("application/octet-stream").to_string();
-    let bytes = base64::engine::general_purpose::STANDARD.decode(b64.trim()).map_err(|_| HttpError::not_found())?;
+    let (mime, bytes) = match images.get(n) {
+        Some(data) => {
+            let (head, b64) =
+                data.strip_prefix("data:").and_then(|d| d.split_once(',')).ok_or_else(HttpError::not_found)?;
+            let mime = head.split(';').next().unwrap_or("application/octet-stream").to_string();
+            (mime, base64::engine::general_purpose::STANDARD.decode(b64.trim()).map_err(|_| HttpError::not_found())?)
+        }
+        // Hermes v0.22.5 keeps a sent photo in a file of the agent's profile: `[Image attached at: <path>]`
+        None => saved_photo(&state, &agent, &content, n).await.ok_or_else(HttpError::not_found)?,
+    };
     let mut response = Response::new(Body::from(bytes));
     response
         .headers_mut()
@@ -1124,6 +1130,33 @@ async fn attachment_route(
         .headers_mut()
         .insert("cache-control", axum::http::HeaderValue::from_static("private, max-age=31536000, immutable"));
     Ok(response)
+}
+
+/// The n-th photo a message names by its saved file (`[Image attached at: <path>]`): (mime, bytes), read only inside
+/// the agent's own Hermes profile (never another path a row could name).
+async fn saved_photo(state: &AppState, agent: &AgentConfig, content: &Option<Value>, n: usize) -> Option<(String, Vec<u8>)> {
+    let text = match content {
+        Some(Value::String(s)) => s.clone(),
+        Some(Value::Array(parts)) => {
+            parts.iter().filter_map(|p| p.get("text").and_then(Value::as_str)).collect::<Vec<_>>().join("\n")
+        }
+        _ => return None,
+    };
+    let path = timeline::IMAGE_AT.captures_iter(&text).nth(n)?.get(1)?.as_str().trim().to_string();
+    let root = crate::agents_admin::profile_folder(&state.config(), agent);
+    let (root, file) = (tokio::fs::canonicalize(&root).await.ok()?, tokio::fs::canonicalize(&path).await.ok()?);
+    if !file.starts_with(&root) {
+        return None;
+    }
+    let mime = match file.extension().and_then(|e| e.to_str()).map(str::to_lowercase).as_deref() {
+        Some("png") => "image/png",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("heic") => "image/heic",
+        _ => return None,
+    };
+    Some((mime.to_string(), tokio::fs::read(&file).await.ok()?))
 }
 
 async fn events(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
