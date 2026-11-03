@@ -38,6 +38,8 @@ use rustls::sign::CertifiedKey;
 use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
 
+use crate::profile_files::write_atomic_with as write_atomic;
+
 pub const CERT_NAME: &str = "place-cert.pem";
 pub const KEY_NAME: &str = "place-key.pem";
 pub const META_NAME: &str = "place-cert.json";
@@ -245,14 +247,6 @@ pub fn new_request(host: &str) -> anyhow::Result<(String, String)> {
     Ok((key.serialize_pem(), csr))
 }
 
-/// Writes next to `path` then renames over it: a reader sees the old file or the new one, never half of one.
-fn write_atomic(path: &Path, data: &[u8], mode: u32) -> std::io::Result<()> {
-    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let temp = path.with_file_name(format!(".{name}.tmp"));
-    let _ = std::fs::remove_file(&temp);
-    crate::py::write_with_mode(&temp.to_string_lossy(), data, mode)?;
-    std::fs::rename(&temp, path)
-}
 
 /// The order under way: its host and CSR (its key stays in its own file).
 fn pending(dir: &Path) -> Option<(String, String)> {
