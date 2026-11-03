@@ -13,7 +13,9 @@
 //!    `@tous` / `@all` / `@everyone` / `@alle` / `@todos`: everyone. The room's mode `all`: everyone, always (only
 //!    when the person chose it).
 //! 2. One participant left: it.
-//! 3. (Team work) the agent that handed the person a decision gets the person's answer.
+//! 3. (Team work) the agent that handed the person a decision gets the person's answer. (A discussion) continuity:
+//!    a follow-up while an agent answers the previous message, or within `CONTINUITY_SECONDS` of its answer, goes to
+//!    it (queued after its turn going on), unless the message clearly concerns another (`continuity`, 2026-11-03).
 //! 4. A rule: the message's words against each agent's name, kind and personality (its SOUL.md without the
 //!    bridge's blocks) and a small lexicon per kind: the agent that stands out answers, ONE.
 //! 5. Else one call to a small model (`[rooms] router_model`, the install's model as the Carnet's nightly pass finds
@@ -25,7 +27,9 @@
 //!
 //! **The relay** (rooms_handoff.rs, Alex 2026-10-31: the agents spoke « chacun leur tour »): each agent ends its reply
 //! with `NEXT: @id — why` / `NEXT: person — what to decide` / `NEXT: none` (and `DONE: …` in team work), or replies
-//! `PASS` when it has nothing to add (kept as a notice « … n'a rien à ajouter. », never read by the others). The bridge
+//! `PASS` when it has nothing to add (kept as a notice « … n'a rien à ajouter. », never read by the others; the agent
+//! picked for the person's message passing hands it to the next most concerned, up to `PICKED_MAX`: `pass_next`,
+//! handoff `by: "pass"`). The bridge
 //! reads the mark, takes it out of the text and keeps it on the message (`handoff`). Without a goal (a discussion, the
 //! default) the hand goes back to the person after the answer, a colleague named by `NEXT` gets a turn only up to
 //! `[rooms] max_hops` hops and once per message. With a goal the person accepted (team work), the agent named goes on;
@@ -164,8 +168,24 @@ pub const WRAP_SECONDS: f64 = 90.0;
 pub const WRAP_STEER: &str = "[BipAgents] This turn is close to its limit. Stop the work here: do not start anything \
 new. Reply now, briefly: what you did and what is left, then the DONE and NEXT lines.";
 /// The same, to a turn before a goal (a discussion: no DONE line there).
-pub const WRAP_STEER_DISCUSSION: &str = "[BipAgents] This turn is close to its limit. Stop the work here: do not \
-start anything new. Reply now, briefly: what you did and what is left, then the NEXT line.";
+pub const WRAP_STEER_DISCUSSION: &str = "[BipAgents] This turn is close to its limit. Call no more tools: give your \
+person your answer now from what you already have (do the reasoning and the sums now, here), never « next turn » or \
+« later ». If real work is truly left, propose a background task (propose_task) and say so plainly. Then the NEXT \
+line.";
+/// Told to a turn past this share of its limit (%): team work early (its next turns go on), a discussion later (its
+/// answer is the person's only one: 2026-11-03, Wellness read Oura and Garmin, was told at 60 % to stop and say « what
+/// is left », and ended « il me reste à calculer la tendance… je le fais au prochain tour »).
+pub const STEER_PERCENT_TEAM: i64 = 60;
+pub const STEER_PERCENT_DISCUSSION: i64 = 80;
+/// In a room turn the agent finishes what it was asked: there is no « next turn » unless the person writes again.
+pub const NO_DEFERRAL: &str = "Finish what your person asked within this turn, with the data you have (the reasoning, \
+the sums, the opinion): never end by promising to do it later or « at the next turn », there is none unless your \
+person writes again. If it truly needs long work, propose a background task (propose_task) and say plainly that it \
+waits for their go in « Tâches de fond ».";
+/// A follow-up within this long after an agent's answer goes to that agent (`continuity`).
+pub const CONTINUITY_SECONDS: f64 = 3600.0;
+/// Another agent's rule score from which a follow-up clearly concerns it rather than the one who just answered.
+pub const CLEARLY_OTHER: usize = 2;
 /// The router model's prompt: the message cut to this, each agent's line to `ROLE_CHARS`.
 pub const ROUTER_MESSAGE_CHARS: usize = 600;
 pub const ROLE_CHARS: usize = 160;
@@ -244,7 +264,7 @@ pub struct Message {
     #[serde(default)]
     pub error: Option<String>,
     /// On an agent's message (or a pass): who acts next and why (rooms_handoff.rs): {to: <id>|"person"|"none", why,
-    /// by: "agent"|"conductor"|"budget"}.
+    /// by: "agent"|"conductor"|"budget"|"pass" (a PASS handed the person's message to the next concerned agent)}.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub handoff: Option<Value>,
     /// Team work: this agent's turn reached `[rooms] team_turn_tokens` and was stopped; the text is its short wrap-up.
@@ -648,6 +668,71 @@ pub fn asked(room: &Room, candidates: &[Candidate]) -> Option<String> {
     (to == "person" && by != "budget" && candidates.iter().any(|c| c.id == last.from)).then(|| last.from.clone())
 }
 
+/// The agent answering, or who just answered, the person's previous message (still writing, queued for it, or its
+/// last answer within `CONTINUITY_SECONDS` of `at`). None in team work (its own rule: `asked`).
+fn answerer(room: &Room, candidates: &[Candidate], at: f64) -> Option<String> {
+    if room.team() {
+        return None;
+    }
+    let previous = room.last_person()?.id;
+    let here = |id: &str| candidates.iter().any(|c| c.id == id);
+    if let Some(turn) = room.current.iter().chain(room.queue.iter()).find(|t| t.cause == previous && here(&t.agent)) {
+        return Some(turn.agent.clone()); // still on it: the new message queues for it
+    }
+    room.messages
+        .iter()
+        .rev()
+        .find(|m| m.kind == "agent" && m.reply_to == Some(previous) && here(&m.from))
+        .filter(|m| at - m.at <= CONTINUITY_SECONDS)
+        .map(|m| m.from.clone())
+}
+
+/// Continuity (2026-11-03: Wellness had just spoken of Alex's runs, « J'ai fait ma course aujourd'hui » went to Vie by
+/// the rule's « courses »): a follow-up right after an agent's answer (or while it is still answering) goes to that
+/// agent, unless the message clearly concerns another (its rule score `CLEARLY_OTHER` or more, above the answerer's).
+/// A message naming someone never gets here (`mentions` first).
+pub fn continuity(room: &Room, candidates: &[Candidate], text: &str, at: f64) -> Option<String> {
+    let agent = answerer(room, candidates, at)?;
+    let scores = rule_scores(text, candidates);
+    let mine = scores.iter().find(|(_, id)| *id == agent).map(|s| s.0).unwrap_or(0);
+    let other = scores.iter().any(|(score, id)| *id != agent && *score >= CLEARLY_OTHER && *score > mine);
+    (!other).then_some(agent)
+}
+
+/// After a PASS by the agent picked for the person's message (a discussion, hop 0), the next most concerned agent
+/// who hasn't had its turn on it: who answered the person just before (continuity), then the rule's order, then the
+/// others; at most `PICKED_MAX` agents tried per message. None: the person named who answers (`mention`, `all`,
+/// `single`, `assigned`), someone answered already, or someone else is queued for it (2026-11-03: Vie's PASS left
+/// Alex with only « Vie n'a rien à ajouter. »).
+pub fn pass_next(room: &Room, turn: &Turn, candidates: &[Candidate]) -> Option<String> {
+    if room.team() || turn.hop != 0 || room.queue.iter().any(|t| t.cause == turn.cause) {
+        return None;
+    }
+    let person = room.messages.iter().find(|m| m.id == turn.cause && m.kind == "person")?;
+    let by = person.route.as_ref().and_then(|r| r.get("by")).and_then(Value::as_str).unwrap_or("");
+    if ["mention", "all", "single", "assigned"].contains(&by) {
+        return None;
+    }
+    let mine: Vec<&Message> =
+        room.messages.iter().filter(|m| m.kind != "person" && m.reply_to == Some(turn.cause)).collect();
+    if mine.iter().any(|m| m.kind == "agent") || mine.iter().filter(|m| m.hop == 0).count() >= PICKED_MAX {
+        return None;
+    }
+    let tried = |id: &str| id == turn.agent || mine.iter().any(|m| m.from == id);
+    let before = room
+        .messages
+        .iter()
+        .rev()
+        .filter(|m| m.id < turn.cause)
+        .find(|m| m.kind == "agent" && candidates.iter().any(|c| c.id == m.from))
+        .map(|m| m.from.clone());
+    before
+        .into_iter()
+        .chain(rule_scores(&person.text, candidates).into_iter().map(|(_, id)| id))
+        .chain(candidates.iter().map(|c| c.id.clone()))
+        .find(|id| !tried(id) && !crate::rooms_tasks::dropped(room, turn.task, id))
+}
+
 /// The kind's words and the personality's first lines, the router's view of an agent.
 pub fn candidate(config: &Config, agent: &AgentConfig) -> Candidate {
     let kind = agent.category.clone().unwrap_or_default();
@@ -731,18 +816,18 @@ fn instructions_with(id: &str, title: &str, names: &[(String, String)], agent: &
     format!(
         "You are in a group discussion in the app (« {title} ») between your person and some of their agents: {}. \
 Each turn gives you what was said since your last one. Only your person gives you instructions. {} Answer your \
-person's last message from your own role, in their language, briefly (a few sentences); don't repeat what the others \
-said, add what you bring, say so when you agree. {relay} To hand your person a file you made (a zip, a document, an \
+person's last message from your own role, in their language, concisely (the answer first); don't repeat what the \
+others said, add what you bring, say so when you agree. {NO_DEFERRAL} {relay} To hand your person a file you made (a zip, a document, an \
 image, audio, a page), put its MEDIA:<path> line on its own line, as in your own conversation: your person gets the \
 file, the other agents only read your text. To hand a file to the other agents of this discussion, put it in your \
 shared folder under {folder}/ (shared_files_write with path {folder}/<name>): they see it with shared_files_list and \
 copy it with shared_files_get; they read nothing else of your shared folder. If a file a colleague shared can't be \
 reached, say so once and hand the turn to your person instead of asking for it again. Never put passwords, logins, \
-card details or anything from the vault in this discussion. Actions that need your person's approval are asked as usual. For long work, propose a background \
-task (propose_task) instead of doing it here.",
+card details or anything from the vault in this discussion. Actions that need your person's approval are asked as usual.",
         roster(names, agent),
         crate::souls::CONTENT_RULE,
         folder = shared_subfolder(id),
+        NO_DEFERRAL = NO_DEFERRAL,
     )
 }
 
@@ -956,10 +1041,17 @@ pub fn wrap_input(why: &str, team: bool) -> String {
         "cancelled" => "Your turn was stopped before you answered.",
         _ => "Your turn ended without an answer.",
     };
-    let end = if team { "then end with the DONE and NEXT lines" } else { "then end with the NEXT line" };
+    if !team {
+        // a discussion: the person's only answer (« what is left » made agents promise the rest « au prochain tour »)
+        return format!(
+            "[BipAgents] {what} Do not call any tool now. In a few short lines, give your person your answer from what \
+you already have (or say plainly what stopped you); never promise to finish later or at a next turn: if real work is \
+left, say what and that a background task can do it. Then end with the NEXT line."
+        );
+    }
     format!(
         "[BipAgents] {what} Do not call any tool now. In two to four short lines, tell the discussion what you did and \
-what is left (or what stopped you), {end}."
+what is left (or what stopped you), then end with the DONE and NEXT lines."
     )
 }
 
@@ -1096,6 +1188,9 @@ impl Rooms {
             // stands out, else the small model
             if let Some(asker) = room.team().then(|| asked(room, &candidates)).flatten() {
                 return (vec![asker], "asked");
+            }
+            if let Some(same) = continuity(room, &candidates, text, now()) {
+                return (vec![same], "continuity");
             }
             if let Some(one) = rule_clear(text, &candidates) {
                 return (vec![one], "rule");
@@ -1528,7 +1623,8 @@ impl Rooms {
                         let _ = self.hermes.stop_run(&agent, &run_id).await;
                         break self.ended_run(&agent, &run_id, "capped").await;
                     }
-                    if !steered && used * 10 >= limit * 6 {
+                    let percent = if room.as_ref().is_some_and(|r| r.team()) { STEER_PERCENT_TEAM } else { STEER_PERCENT_DISCUSSION };
+                    if !steered && used * 100 >= limit * percent {
                         steered = true;
                         tracing::info!(room = %id, agent = %agent.name, used = used, limit = limit, "rooms: a turn near its cap, told to wrap up");
                         if let Err(err) = self.hermes.steer_run(&agent, &run_id, steer).await {
@@ -1808,6 +1904,8 @@ impl Rooms {
         let max_hops = config.rooms.max_hops.min(HOPS_CAP);
         let stopped = outcome.reply.as_ref().err().is_some_and(|e| e == "stopped");
         let relay_on = config.rooms.handoff;
+        // who may take the person's message after a PASS (`pass_next`)
+        let candidates = load(&config, id).map(|r| self.candidates(&config, &r)).unwrap_or_default();
         let mut told: Option<(String, String)> = None;
         let changed = change(&config, id, |room| {
             room.tokens.add(&outcome.tokens);
@@ -1929,7 +2027,8 @@ impl Rooms {
                 return (Step::Stop, queued);
             }
             let marks = relay::read_marks(&text, &names);
-            if marks.pass && message.files.is_empty() {
+            let passed = marks.pass && message.files.is_empty();
+            if passed {
                 // nothing useful to add: no message, a discreet line
                 message = notice(pass_text(&lang, &name), None);
             } else {
@@ -1944,11 +2043,22 @@ impl Rooms {
                 }
                 step => step,
             };
+            let step = match step {
+                // the picked agent passed and gave the hand back: the next most concerned takes the message, as picked
+                Step::Hand(Next::Person | Next::Done | Next::Unknown(_), _, _) if passed => {
+                    match pass_next(room, turn, &candidates) {
+                        Some(x) => Step::Hand(Next::Agent(x), String::new(), "pass"),
+                        None => step,
+                    }
+                }
+                step => step,
+            };
             let (handoff, queued) = match &step {
                 Step::Hand(next, why, by) => {
                     let mut queued = Vec::new();
                     if let Next::Agent(x) = next {
-                        if room.enqueue_within(x, turn.hop + 1, turn.cause, room.turns_max(&config)) {
+                        let hop = if *by == "pass" { turn.hop } else { turn.hop + 1 };
+                        if room.enqueue_within(x, hop, turn.cause, room.turns_max(&config)) {
                             queued.push(x.clone());
                             crate::rooms_tasks::tag_turn(room, x, turn.task);
                         }
@@ -2827,6 +2937,126 @@ mod tests {
         let (text, files) = room_text("Voici.\nMEDIA:/bipagents/pages/bip/a.html\nMEDIA:/bipagents/pages/bip/a.html");
         assert_eq!(text, "Voici.");
         assert_eq!(files, vec!["/bipagents/pages/bip/a.html"]);
+    }
+
+    fn wellness_and_vie() -> Vec<Candidate> {
+        vec![
+            cand("wellness", "Wellness", "wellness sante sport sommeil forme health fitness sleep oura garmin"),
+            cand("vie", "Vie", "daily quotidien courses agenda rendez-vous rappel errands shopping"),
+        ]
+    }
+
+    /// The room of 2026-11-03: Alex asked « que penser de ces derniers jours », Wellness answered (message 2).
+    fn the_room_of_2026_11_03(answered_at: f64) -> Room {
+        let mut room = Room {
+            id: "g000000000001".into(),
+            title: "Wellness, Vie".into(),
+            participants: vec!["wellness".into(), "vie".into()],
+            next_id: 1,
+            ..Default::default()
+        };
+        let mut asked = message(0, "person", "Hello, que penser de ces derniers jours");
+        asked.route = Some(json!({"by": "model", "agents": ["wellness"]}));
+        let cause = room.push_message(asked);
+        let mut answer = message(0, "wellness", "Sommeil 7 h 40, 3 sorties Garmin…");
+        answer.reply_to = Some(cause);
+        answer.at = answered_at;
+        room.push_message(answer);
+        room
+    }
+
+    #[test]
+    fn a_follow_up_goes_to_the_agent_who_just_answered() {
+        let c = wellness_and_vie();
+        let text = "J'ai fait ma course aujourd'hui";
+        // the bug: the rule alone picks Vie (« courses », the errands) over Wellness, who just spoke of the runs
+        assert_eq!(rule_clear(text, &c).as_deref(), Some("vie"));
+        let room = the_room_of_2026_11_03(1000.0);
+        assert_eq!(continuity(&room, &c, text, 1060.0).as_deref(), Some("wellness"));
+        // long after its answer: no continuity, the usual pick
+        assert_eq!(continuity(&room, &c, text, 1000.0 + CONTINUITY_SECONDS + 1.0), None);
+        // a message that clearly concerns the other (two of its words, none of Wellness's)
+        assert_eq!(continuity(&room, &c, "Ajoute un rappel à mon agenda pour demain", 1060.0), None);
+        // Wellness still writing its answer to the previous message: the follow-up is its too (queued after it)
+        let mut room = the_room_of_2026_11_03(1000.0);
+        room.messages.pop();
+        room.current = Some(Turn { agent: "wellness".into(), cause: 1, ..Default::default() });
+        assert_eq!(continuity(&room, &c, text, 1060.0).as_deref(), Some("wellness"));
+        let cause = room.push_message(message(0, "person", text));
+        assert!(room.enqueue("wellness", 0, cause)); // answering now: queued again for the new message
+        // team work keeps its own rule
+        let mut room = the_room_of_2026_11_03(1000.0);
+        room.goal = "Plan de forme".into();
+        assert_eq!(continuity(&room, &c, text, 1060.0), None);
+    }
+
+    #[test]
+    fn a_pass_hands_the_message_to_the_next_concerned_agent() {
+        let c = wellness_and_vie();
+        let mut room = the_room_of_2026_11_03(1000.0);
+        let mut said = message(0, "person", "J'ai fait ma course aujourd'hui");
+        said.route = Some(json!({"by": "rule", "agents": ["vie"]}));
+        let cause = room.push_message(said);
+        let mut pass = message(0, "vie", "Vie n'a rien à ajouter.");
+        pass.kind = "notice".into();
+        pass.reply_to = Some(cause);
+        room.push_message(pass);
+        let turn = Turn { agent: "vie".into(), cause, ..Default::default() };
+        assert_eq!(pass_next(&room, &turn, &c).as_deref(), Some("wellness"));
+        // Wellness passes too: nobody left to try
+        let mut again = message(0, "wellness", "Wellness n'a rien à ajouter.");
+        again.kind = "notice".into();
+        again.reply_to = Some(cause);
+        room.push_message(again);
+        assert_eq!(pass_next(&room, &Turn { agent: "wellness".into(), cause, ..Default::default() }, &c), None);
+        room.messages.pop();
+        // the person named Vie, a colleague's hop, someone queued for it, team work: no fallback
+        let named = |by: &str| {
+            let mut r = room.clone();
+            r.messages.iter_mut().find(|m| m.id == cause).unwrap().route = Some(json!({"by": by}));
+            pass_next(&r, &turn, &c)
+        };
+        assert_eq!(named("mention"), None);
+        assert_eq!(named("assigned"), None);
+        assert_eq!(named("model").as_deref(), Some("wellness"));
+        assert_eq!(pass_next(&room, &Turn { hop: 1, ..turn.clone() }, &c), None);
+        let mut queued = room.clone();
+        queued.queue.push(Turn { agent: "wellness".into(), cause, ..Default::default() });
+        assert_eq!(pass_next(&queued, &turn, &c), None);
+        let mut team = room.clone();
+        team.goal = "x".into();
+        assert_eq!(pass_next(&team, &turn, &c), None);
+        // at most PICKED_MAX agents tried for one message
+        let mut many = room.clone();
+        let mut c4 = c.clone();
+        for id in ["a", "b", "d"] {
+            c4.push(cand(id, id, "x"));
+            many.participants.push(id.into());
+        }
+        for id in ["a", "b"] {
+            let mut p = message(0, id, "PASS");
+            p.kind = "notice".into();
+            p.reply_to = Some(cause);
+            many.push_message(p);
+        }
+        assert_eq!(pass_next(&many, &turn, &c4), None); // vie, a, b: three tried
+    }
+
+    #[test]
+    fn a_room_turn_finishes_its_work_instead_of_promising_a_next_turn() {
+        let rules = relay_instructions("g000000000001", "T", &names(), "coach", false);
+        assert!(rules.contains(NO_DEFERRAL) && rules.contains("never end by promising"));
+        assert!(rules.contains("reply PASS and end with `NEXT: @<id>`"));
+        assert!(!rules.contains("a few sentences"));
+        for told in [WRAP_STEER_DISCUSSION.to_string(), wrap_input("capped", false), wrap_input("timeout", false)] {
+            assert!(!told.contains("what is left"), "{told}");
+            assert!(told.contains("next turn"), "{told}");
+        }
+        assert!(STEER_PERCENT_DISCUSSION > STEER_PERCENT_TEAM);
+        // the steer of 2026-11-03: 4 tool steps of a 20k-call turn (130k) passed 60 % of the 170k limit, not 80 %
+        let limit = turn_limit(200_000);
+        assert!(estimated_tokens(4, CALL_TOKENS) * 100 >= limit * STEER_PERCENT_TEAM);
+        assert!(estimated_tokens(4, CALL_TOKENS) * 100 < limit * STEER_PERCENT_DISCUSSION);
     }
 
     #[test]

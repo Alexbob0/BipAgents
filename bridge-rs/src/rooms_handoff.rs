@@ -462,7 +462,9 @@ decision or information you need>` when your person must decide, or `NEXT: none`
     } else {
         "Your person usually wants one answer, from the agent most concerned: answer, then end with the line \
 `NEXT: person`. Only if you really need a colleague's skill to answer, end with `NEXT: @<id> — <why, a few words>` \
-instead (it then gets one turn). If you have nothing useful to add, reply only PASS. Never call everyone."
+instead (it then gets one turn). If you have nothing useful to add, reply only PASS; if the message is rather for a \
+colleague (it continues what they just said, or is about their field), reply PASS and end with `NEXT: @<id>` naming \
+them. Never call everyone."
     }
 }
 

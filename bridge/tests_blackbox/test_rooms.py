@@ -48,6 +48,16 @@ def replies(bridge, room_id):
     return [m for m in messages(bridge, room_id)["messages"] if m["kind"] != "person"]
 
 
+def age_answers(bridge, room_id, seconds=7200):
+    """The agents' answers moved `seconds` back (past rooms.rs `CONTINUITY_SECONDS`): the next message is routed afresh."""
+    stored = bridge.state_dir / "rooms" / f"{room_id}.json"
+    room = json.loads(stored.read_text())
+    for m in room["messages"]:
+        if m["kind"] != "person":
+            m["at"] -= seconds
+    stored.write_text(json.dumps(room))
+
+
 def runs_of(fakes, agent):
     return [run for run in fakes.hermes.started.values() if run["agent"] == agent]
 
@@ -166,6 +176,8 @@ def test_the_rule_then_the_small_model_then_the_fallback_pick_who_answers(bridge
     assert by_rule["route"] == {"by": "rule", "agents": ["cuisine"]}
     assert fakes.model.chats == []
     assert wait_until(lambda: quiet(bridge, room["id"]), timeout=20)
+    # a follow-up right after Cuisine's answer is Cuisine's (continuity, test_rooms_routing.py): an hour later it isn't
+    age_answers(bridge, room["id"])
 
     fakes.model.route_answer = "wellness, coach"
     by_model = bridge.post(f"/v1/rooms/{room['id']}/messages", headers=AUTH, json={"text": "Bonjour à vous"}).json()
@@ -185,6 +197,7 @@ def test_the_rule_then_the_small_model_then_the_fallback_pick_who_answers(bridge
     assert [r["from"] for r in replies(bridge, room["id"])] == ["cuisine", "wellness", "coach"]
 
     # the model answers nothing useful: the agent that spoke last
+    age_answers(bridge, room["id"])
     fakes.model.route_answer = "personne"
     fallback = bridge.post(f"/v1/rooms/{room['id']}/messages", headers=AUTH, json={"text": "Bonne nuit"}).json()
     assert fallback["route"] == {"by": "fallback", "agents": ["coach"]}
