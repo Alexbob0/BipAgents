@@ -7,7 +7,8 @@
 //!             already_imported, already_imported_until, new_messages, notebook, me,
 //!             estimate: {messages, calls, tokens_in, tokens_out, eur, cap_eur} | null, model: {...} | null}
 //!          nothing kept but the parsed upload, for an hour (data_dir/whatsapp-import/pending/<upload>.json)
-//!     POST /v1/import/whatsapp/apply   {agent, upload, fill? (true), budget_eur? (the estimate's cap)}
+//!     POST /v1/import/whatsapp/apply   {agent, upload, fill? (true), budget_eur? (the estimate's cap), me? (who
+//!                                       the person is in the chat: a participant, "" for nobody; absent: guessed)}
 //!          → 202 {state, chat_title, new_messages, archive, filling, estimate}
 //!     GET  /v1/import/whatsapp/status?agent=
 //!          → {state: idle|filling|done|paused|failed, chat_title, progress: {done, total}, counts: {people,
@@ -482,9 +483,11 @@ pub async fn run_fill(
     archived: Archived,
     model: records_fill::Model,
     budget_eur: f64,
+    me: Option<String>,
 ) -> Value {
     let name = chat.name();
-    let me = guess_me(&config, &chat);
+    // who the person is in the chat: their answer to « Lequel c'est toi ? » (« Aucun »: nobody), else the guess
+    let me = me.unwrap_or_else(|| guess_me(&config, &chat));
     let todo = fill::to_fill(&chat.messages, &archived.known.filled_until).to_vec();
     let parts = fill::windows(&todo);
     let home = fill::home_of(&name, &chat.participants, &me);
@@ -641,6 +644,31 @@ async fn apply_route(State(state): State<AppState>, JsonObject(body): JsonObject
     }
     crate::place_backup::refuse_when_full().await?;
     let fill_wanted = body.get("fill").map(py::truthy).unwrap_or(true);
+    // « Lequel c'est toi ? »: one of the chat's participants, or "" (« Aucun »); absent: the bridge guesses (older apps)
+    let me: Option<String> = match body.get("me") {
+        None | Some(Value::Null) => None,
+        Some(v) => {
+            let wanted = tk::str_or_empty(Some(v));
+            match chat.participants.iter().find(|p| notebook::fold(p) == notebook::fold(&wanted)) {
+                Some(p) => Some(p.clone()),
+                None if wanted.trim().is_empty() => Some(String::new()),
+                None => return Err(HttpError::new(400, "me is not one of the chat's participants")),
+            }
+        }
+    };
+    if let Some(name) = me.clone().filter(|m| !m.is_empty()) {
+        // the person's name in their chats, on « Toi »: the next import of any chat knows them
+        let c = config.clone();
+        tokio::task::spawn_blocking(move || {
+            let who = notebook::Who::you(&c);
+            let me_page = notebook::words(&notebook::language(&c)).me;
+            if let Err(err) = notebook::note(&c, Part::Main, "self", me_page, "", &[], &[name], "", "", &who) {
+                tracing::warn!(target: "bipbridge::whatsapp", error = %err, "the person's name not kept on « Toi »");
+            }
+        })
+        .await
+        .map_err(anyhow::Error::from)?;
+    }
     let (c, a, ch) = (config.clone(), agent.clone(), chat.clone());
     let archived = tokio::task::spawn_blocking(move || archive_chat(&c, &a, &ch))
         .await
@@ -685,7 +713,7 @@ async fn apply_route(State(state): State<AppState>, JsonObject(body): JsonObject
         let (config, agent, name) = (config.clone(), agent.clone(), chat.name());
         let new_messages = archived.new_messages;
         tokio::spawn(async move {
-            let end = run_fill(config, agent.clone(), chat, archived, model, budget).await;
+            let end = run_fill(config, agent.clone(), chat, archived, model, budget, me).await;
             let line = report_line(&lang, &name, &end["counts"], new_messages, end["reason"].as_str());
             tell(agent, "WhatsApp".into(), line).await;
         });
