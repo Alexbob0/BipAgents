@@ -1,0 +1,101 @@
+{
+  "about": "The neutral lines of sealed notifications (refonte phase 5): the only words a push for a device with a key carries in clear (aps.alert.loc-key = the code, no title). One per journal type (docs/conversations.md §9.1). The bridge (push_runs/seal.rs TYPES), the relay (payload.rs whitelist), the iPhone app's catalog (App/Resources/Localizable.xcstrings) and Android's strings (notif_*) are checked against this file.",
+  "keys": {
+    "notif.reply": {
+      "fr": "Nouveau message",
+      "en": "New message",
+      "de": "Neue Nachricht",
+      "es": "Nuevo mensaje"
+    },
+    "notif.question": {
+      "fr": "Une question pour toi",
+      "en": "A question for you",
+      "de": "Eine Frage an dich",
+      "es": "Una pregunta para ti"
+    },
+    "notif.approval": {
+      "fr": "Approbation requise",
+      "en": "Approval needed",
+      "de": "Freigabe erforderlich",
+      "es": "Aprobación necesaria"
+    },
+    "notif.room_reply": {
+      "fr": "Nouveau message dans une discussion",
+      "en": "New message in a discussion",
+      "de": "Neue Nachricht in einer Diskussion",
+      "es": "Nuevo mensaje en una conversación"
+    },
+    "notif.boite": {
+      "fr": "Nouveau message dans ta Boîte",
+      "en": "New message in your Inbox",
+      "de": "Neue Nachricht in deinem Eingang",
+      "es": "Nuevo mensaje en tu Buzón"
+    },
+    "notif.task": {
+      "fr": "Du nouveau pour ta tâche de fond",
+      "en": "News about your background task",
+      "de": "Neues zu deiner Hintergrundaufgabe",
+      "es": "Novedades de tu tarea en segundo plano"
+    },
+    "notif.subtask": {
+      "fr": "Sous-tâche terminée",
+      "en": "Sub-task done",
+      "de": "Teilaufgabe erledigt",
+      "es": "Subtarea terminada"
+    },
+    "notif.scan": {
+      "fr": "Sous-tâche terminée",
+      "en": "Sub-task done",
+      "de": "Teilaufgabe erledigt",
+      "es": "Subtarea terminada"
+    },
+    "notif.family": {
+      "fr": "Message de ta famille",
+      "en": "Message from your family",
+      "de": "Nachricht von deiner Familie",
+      "es": "Mensaje de tu familia"
+    },
+    "notif.email_held": {
+      "fr": "Veut écrire à quelqu’un de nouveau : ton accord est demandé",
+      "en": "Wants to write to someone new: your OK is needed",
+      "de": "Will jemand Neuem schreiben: Dein OK ist gefragt",
+      "es": "Quiere escribir a alguien nuevo: necesita tu permiso"
+    },
+    "notif.site": {
+      "fr": "Veut envoyer des données à un site : ton accord est demandé",
+      "en": "Wants to send data to a site: your OK is needed",
+      "de": "Will Daten an eine Website senden: Dein OK ist gefragt",
+      "es": "Quiere enviar datos a un sitio: necesita tu permiso"
+    },
+    "notif.login": {
+      "fr": "Veut créer un compte sur un site : ton accord est demandé",
+      "en": "Wants to create an account on a site: your OK is needed",
+      "de": "Will ein Konto auf einer Website erstellen: Dein OK ist gefragt",
+      "es": "Quiere crear una cuenta en un sitio: necesita tu permiso"
+    },
+    "notif.connector": {
+      "fr": "Un connecteur attend ton accord",
+      "en": "A connector is waiting for your OK",
+      "de": "Ein Connector wartet auf dein OK",
+      "es": "Un conector espera tu permiso"
+    },
+    "notif.secret": {
+      "fr": "Une demande attend ton accord",
+      "en": "A request is waiting for your OK",
+      "de": "Eine Anfrage wartet auf dein OK",
+      "es": "Una solicitud espera tu permiso"
+    },
+    "notif.mail_card": {
+      "fr": "Une demande attend ton accord",
+      "en": "A request is waiting for your OK",
+      "de": "Eine Anfrage wartet auf dein OK",
+      "es": "Una solicitud espera tu permiso"
+    },
+    "notif.meet": {
+      "fr": "Une date à trouver ensemble",
+      "en": "A date to find together",
+      "de": "Gemeinsam einen Termin finden",
+      "es": "Una fecha que encontrar juntos"
+    }
+  }
+}

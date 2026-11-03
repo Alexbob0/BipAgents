@@ -1,26 +1,43 @@
 //! What a notification may carry through the relay: ids, never what the agent said, nor a title.
 //!
-//! The bridge's payloads are generic by default; one set to show previews puts a line of the message in the
-//! alert's body. The relay replaces any body that is not one of the app's generic, translated texts (`loc-key`)
-//! with « Nouveau message », and keeps only short id-like values next to `aps`. The app's notification extension
-//! then fetches the real text from the person's own bridge. The alert's title never passes (the apps name the agent
+//! A bridge's alert is a neutral line (`notif.<type>`, `NEUTRAL_KEYS`); the relay replaces any other body with
+//! `BRIDGE_FALLBACK` and keeps only short id-like values next to `aps`. The alert's title never passes (the apps name the agent
 //! from their own list); the guichet's texts (accounts, servers) pass only on a token sealed for the guichet, and
 //! `category`, `sound` and `interruption-level` only with the values the apps use.
+//!
+//! Sealed notifications (refonte phase 5): a bridge seals what the agent said for each phone's own key (`enc`, opened
+//! by the phone only) and shows a neutral line in clear (`notif.<type>`, `NEUTRAL_KEYS`). The relay passes `enc` as it
+//! is (base64, at most `ENC_MAX` characters) and never sees the words.
 
 use serde_json::{Map, Value};
 
 use crate::seal::Audience;
 
 pub const GENERIC_BODY: &str = "Nouveau message";
-/// The app's generic, translated texts a bridge sends (its string catalog's keys, bridge-rs push.rs).
-const BRIDGE_BODIES: &[&str] = &[
-    GENERIC_BODY,
-    "Ta réponse est prête.",
-    "Une question pour toi",
-    "Approbation requise",
-    "Sous-tâche terminée",
-    "Message de ta famille",
+/// What a bridge's push shows when its line isn't one of `NEUTRAL_KEYS` (a bridge only sends those).
+pub const BRIDGE_FALLBACK: &str = "notif.reply";
+/// The neutral lines of sealed notifications (contracts/notifications/loc-keys.json, the bridge's seal.rs TYPES): codes
+/// both apps translate. A test checks this list against the contract file.
+pub const NEUTRAL_KEYS: &[&str] = &[
+    "notif.reply",
+    "notif.question",
+    "notif.approval",
+    "notif.room_reply",
+    "notif.boite",
+    "notif.task",
+    "notif.subtask",
+    "notif.scan",
+    "notif.family",
+    "notif.email_held",
+    "notif.site",
+    "notif.login",
+    "notif.connector",
+    "notif.secret",
+    "notif.mail_card",
+    "notif.meet",
 ];
+/// A sealed notification's `enc` at most (base64 characters; the bridge's seal.rs keeps it under).
+pub const ENC_MAX: usize = 3000;
 /// The guichet's words (a server of the all-included offer, the account, the family, shared conversations): only on
 /// a token sealed for the guichet, sent with its key, so a bridge's token can't make them up.
 const GUICHET_BODIES: &[&str] = &[
@@ -72,12 +89,12 @@ fn id_like_key(key: &str) -> bool {
 
 fn alert(value: &Value, aud: Audience) -> Value {
     let mut out = Map::new();
-    let bodies = match aud {
-        Audience::Bridge => BRIDGE_BODIES,
-        Audience::Guichet => GUICHET_BODIES,
+    let (bodies, fallback) = match aud {
+        Audience::Bridge => (NEUTRAL_KEYS, BRIDGE_FALLBACK),
+        Audience::Guichet => (GUICHET_BODIES, GENERIC_BODY),
     };
     let generic = value.get("loc-key").and_then(Value::as_str).filter(|k| bodies.contains(k));
-    let body = generic.unwrap_or(GENERIC_BODY).to_string();
+    let body = generic.unwrap_or(fallback).to_string();
     out.insert("body".into(), Value::String(body.clone()));
     out.insert("loc-key".into(), Value::String(body));
     Value::Object(out)
@@ -95,6 +112,16 @@ fn custom(value: &Value) -> Option<Value> {
         }
         _ => None,
     }
+}
+
+/// A sealed text as a bridge made it: base64 only, not too long. Anything else is dropped (the phone then shows the
+/// neutral line).
+fn sealed(value: &Value) -> Option<Value> {
+    let text = value.as_str()?;
+    let fits = !text.is_empty()
+        && text.len() <= ENC_MAX
+        && text.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'/' | b'='));
+    fits.then(|| value.clone())
 }
 
 /// The payload as the relay forwards it, or why it refuses it.
@@ -129,6 +156,12 @@ pub fn scrub(payload: &Value, aud: Audience) -> Result<Value, &'static str> {
     }
     for (key, value) in object {
         if key == "aps" || !id_like_key(key) {
+            continue;
+        }
+        if key == "enc" {
+            if let Some(kept) = sealed(value) {
+                out.insert(key.clone(), kept);
+            }
             continue;
         }
         if let Some(kept) = custom(value) {
@@ -228,13 +261,16 @@ mod tests {
                                      "mutable-content": 1, "category": "MESSAGE", "thread-id": "vie"},
                              "agent": "vie", "outbox_id": "abc123"});
         let clean = scrub(&preview, Audience::Bridge).unwrap();
-        assert_eq!(clean["aps"]["alert"], json!({"body": "Nouveau message", "loc-key": "Nouveau message"}));
+        assert_eq!(clean["aps"]["alert"], json!({"body": BRIDGE_FALLBACK, "loc-key": BRIDGE_FALLBACK}));
         assert_eq!(clean["aps"]["category"], "MESSAGE");
         assert_eq!(clean["outbox_id"], "abc123");
-        let generic = json!({"aps": {"alert": {"title": "Vie", "body": "Approbation requise", "loc-key": "Approbation requise"}}});
-        assert_eq!(scrub(&generic, Audience::Bridge).unwrap()["aps"]["alert"]["body"], "Approbation requise");
+        let neutral = json!({"aps": {"alert": {"title": "Vie", "body": "notif.approval", "loc-key": "notif.approval"}}});
+        assert_eq!(scrub(&neutral, Audience::Bridge).unwrap()["aps"]["alert"]["body"], "notif.approval");
+        // the French generic lines of the bridges before the pointer-only push: gone
+        let old = json!({"aps": {"alert": {"body": "Approbation requise", "loc-key": "Approbation requise"}}});
+        assert_eq!(scrub(&old, Audience::Bridge).unwrap()["aps"]["alert"]["body"], BRIDGE_FALLBACK);
         let plain = json!({"aps": {"alert": "Un texte entier"}});
-        assert_eq!(scrub(&plain, Audience::Bridge).unwrap()["aps"]["alert"]["body"], GENERIC_BODY);
+        assert_eq!(scrub(&plain, Audience::Bridge).unwrap()["aps"]["alert"]["body"], BRIDGE_FALLBACK);
         // The guichet's word on a server of the all-included offer.
         let down = "Ton serveur ne répond plus : on s’en occupe.";
         let server = json!({"aps": {"alert": {"title": "BipAgents", "body": down, "loc-key": down}}, "kind": "server"});
@@ -258,8 +294,8 @@ mod tests {
                                     "category": "ACCOUNT_ALERT", "sound": "alarm.caf",
                                     "interruption-level": "time-sensitive", "badge": 1}});
         let clean = scrub(&forged, Audience::Bridge).unwrap();
-        assert_eq!(clean["aps"], json!({"alert": {"body": GENERIC_BODY, "loc-key": GENERIC_BODY}, "badge": 1}));
-        let fine = json!({"aps": {"alert": {"loc-key": "Approbation requise"}, "category": "APPROVAL", "sound": "default",
+        assert_eq!(clean["aps"], json!({"alert": {"body": BRIDGE_FALLBACK, "loc-key": BRIDGE_FALLBACK}, "badge": 1}));
+        let fine = json!({"aps": {"alert": {"loc-key": "notif.approval"}, "category": "APPROVAL", "sound": "default",
                                   "interruption-level": "passive"}});
         let clean = scrub(&fine, Audience::Bridge).unwrap();
         assert_eq!(
@@ -305,6 +341,50 @@ mod tests {
     }
 
     #[test]
+    fn a_sealed_push_passes_with_its_neutral_line_and_enc_as_it_is() {
+        let enc = format!("BHk{}+/=", "A".repeat(2000));
+        let push = json!({"aps": {"alert": {"loc-key": "notif.reply", "body": "notif.reply"}, "mutable-content": 1,
+                                  "category": "MESSAGE", "thread-id": "vie"},
+                          "agent": "vie", "run_id": "r1", "enc": enc});
+        let clean = scrub(&push, Audience::Bridge).unwrap();
+        assert_eq!(clean["aps"]["alert"], json!({"body": "notif.reply", "loc-key": "notif.reply"}));
+        assert_eq!(clean["enc"], json!(enc));
+        assert_eq!(fcm_data(&clean)["enc"], json!(enc));
+        assert_eq!(fcm_data(&clean)["body"], "notif.reply");
+        // too long, not base64, not a string: dropped (the neutral line stays)
+        for bad in [json!("A".repeat(ENC_MAX + 1)), json!("line one\nline two"), json!("pas du base64 !"), json!(""),
+                    json!({"text": "secret"}), json!(12)] {
+            let mut push = push.clone();
+            push["enc"] = bad.clone();
+            assert!(scrub(&push, Audience::Bridge).unwrap().get("enc").is_none(), "{bad}");
+        }
+        // a code nobody knows is not a neutral line
+        let made_up = json!({"aps": {"alert": {"loc-key": "notif.Ton médecin à 9 h"}}});
+        assert_eq!(scrub(&made_up, Audience::Bridge).unwrap()["aps"]["alert"]["body"], BRIDGE_FALLBACK);
+        // the guichet doesn't use the bridges' codes
+        let guichet = json!({"aps": {"alert": {"loc-key": "notif.reply"}}});
+        assert_eq!(scrub(&guichet, Audience::Guichet).unwrap()["aps"]["alert"]["body"], GENERIC_BODY);
+        // the whole stays within APNs' limit
+        let mut huge = push.clone();
+        huge["enc"] = json!("A".repeat(ENC_MAX));
+        for i in 0..20 {
+            huge[format!("id{i}")] = json!("x".repeat(60));
+        }
+        assert_eq!(scrub(&huge, Audience::Bridge), Err("payload too large"));
+    }
+
+    #[test]
+    fn the_neutral_lines_are_the_contracts() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../contracts/notifications/loc-keys.json");
+        let doc: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let mut keys: Vec<&str> = doc["keys"].as_object().unwrap().keys().map(String::as_str).collect();
+        let mut ours = NEUTRAL_KEYS.to_vec();
+        keys.sort_unstable();
+        ours.sort_unstable();
+        assert_eq!(keys, ours);
+    }
+
+    #[test]
     fn firebase_gets_strings_as_the_android_app_reads_them() {
         let payload = scrub(
             &json!({"aps": {"alert": {"title": "Vie", "body": "x"}, "category": "APPROVAL"},
@@ -314,7 +394,7 @@ mod tests {
         .unwrap();
         let data = fcm_data(&payload);
         assert!(!data.contains_key("title"));
-        assert_eq!(data["body"], GENERIC_BODY);
+        assert_eq!(data["body"], BRIDGE_FALLBACK);
         assert_eq!(data["category"], "APPROVAL");
         assert_eq!(data["choices"], "[\"once\",\"deny\"]");
         let silent = fcm_data(&json!({"aps": {"content-available": 1}, "agent": "vie"}));

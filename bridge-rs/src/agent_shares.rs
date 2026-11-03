@@ -607,6 +607,90 @@ async fn served_messages(
                       "tokens": c.get("tokens").cloned().unwrap_or_else(|| tokens_value(0, 0))})))
 }
 
+/// The timeline of this household's conversation (docs/conversations.md §6.6), as `/v1/threads/{id}/timeline`
+/// answers, under the conversation's id: its people's and agent's words and notices only (only text crosses: no
+/// file, page, tool step or Boîte message of the owner's).
+async fn served_timeline(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    UrlPath((agent, cid)): UrlPath<(String, String)>,
+    q: web::QueryMap,
+) -> ApiResult<Response> {
+    let (household, agent) = shared_agent(&state, &headers, &agent)?;
+    let c = conversation(&state.config(), &household, &agent.name, &cid)?;
+    let want = crate::threads::want_of(&q)?;
+    let threads = crate::threads::threads_of(&state);
+    let unreachable = |_| HttpError::new(502, "the agent can't be reached");
+    let thread = threads.resolve(&agent, &str_of(&c, "session")).await.map_err(unreachable)?.ok_or_else(HttpError::not_found)?;
+    let segments = threads.line(&agent, &thread).await.map_err(unreachable)?;
+    let items: Vec<crate::threads::timeline::Item> = threads
+        .items(&agent, &thread, &segments)
+        .await
+        .map_err(unreachable)?
+        .into_iter()
+        .filter(|i| matches!(i.kind(), "message" | "notice"))
+        .map(|mut i| {
+            i.body.remove("attachments");
+            i
+        })
+        .collect();
+    let page = crate::threads::timeline::page(items, &want);
+    // the turn going on, as the shared screen draws it: writing, or waiting for her approval, since when
+    let (run, approvals) = match turn_going(&c, now()) {
+        Some(run_id) => {
+            let approvals = approvals_of(&state, &agent.name, &run_id);
+            let status = if approvals.is_empty() { "writing" } else { "approval" };
+            let started = c.get("run").and_then(|r| r.get("started")).cloned().unwrap_or(Value::Null);
+            (json!({"run_id": run_id, "status": status, "started": started}), approvals)
+        }
+        None => (Value::Null, Vec::new()),
+    };
+    let shown: Vec<Value> = page.items.iter().map(|i| i.to_json(&cid, false)).collect();
+    Ok(web::ok(json!({
+        "thread": {"id": cid, "kind": "shared", "title": c.get("title"), "version": thread.version},
+        "items": shown,
+        "first": page.items.first().map(|i| i.cursor()),
+        "last": page.items.last().map(|i| i.cursor()),
+        "more_before": page.more_before, "more_after": page.more_after, "anchor": page.anchor,
+        "version": thread.version,
+        "pending": {"run": run, "approvals": approvals},
+    })))
+}
+
+/// The relative's side: `/v1/threads…?agent=<agent>__<household>` relayed to the owner's bridge (the conversation's
+/// id is the thread's). None when `agent` is not a shared agent's id.
+pub async fn relay_thread(state: &AppState, agent: &str, what: &str, q: &web::QueryMap) -> Option<ApiResult<Response>> {
+    if !agent.contains(SEPARATOR) {
+        return None;
+    }
+    let query: Vec<(String, String)> = q.pairs.iter().filter(|(k, _)| k != "agent").cloned().collect();
+    let encoded = url::form_urlencoded::Serializer::new(String::new()).extend_pairs(query).finish();
+    Some(match what.split_once('/') {
+        // a timeline page: the app is looking at it, nothing pushed meanwhile
+        Some((cid, "timeline")) => {
+            state.presence.touch(agent, cid);
+            to_owner(state, agent, reqwest::Method::GET, &format!("conversations/{cid}/timeline?{encoded}"), None)
+                .await
+                .map(relayed)
+        }
+        // the list: the relative's conversations as threads
+        _ if what.is_empty() => to_owner(state, agent, reqwest::Method::GET, "conversations", None).await.map(|(status, list)| {
+            let threads: Vec<Value> = list
+                .get("conversations")
+                .and_then(Value::as_array)
+                .map(|all| {
+                    all.iter()
+                        .map(|c| json!({"id": c.get("id"), "agent": agent, "kind": "shared", "title": c.get("title"),
+                                        "hidden": false, "updated_at": c.get("updated")}))
+                        .collect()
+                })
+                .unwrap_or_default();
+            web::json_response(status, &json!({"threads": threads}))
+        }),
+        _ => Err(HttpError::not_found()),
+    })
+}
+
 fn usage_of(run: &Dict) -> Option<(i64, i64)> {
     let usage = run.get("usage")?.as_object()?;
     let k = |key: &str| usage.get(key).map(|v| py::py_int(v).unwrap_or(0)).unwrap_or(0);
@@ -889,6 +973,7 @@ pub fn household_router() -> Router<AppState> {
         .route("/family/s/{agent}/conversations", get(served_list).post(served_create))
         .route("/family/s/{agent}/conversations/{cid}", delete(served_delete))
         .route("/family/s/{agent}/conversations/{cid}/messages", get(served_messages).post(served_post))
+        .route("/family/s/{agent}/conversations/{cid}/timeline", get(served_timeline))
         .route("/family/s/{agent}/conversations/{cid}/stop", post(served_stop))
         .route("/family/s/{agent}/approval", post(served_approval))
 }

@@ -166,7 +166,7 @@ async fn an_iphone_gets_its_notification_without_the_message_and_its_token_stays
     let seen = h.seen.lock().unwrap();
     let (to, headers, sent) = &seen.apple[0];
     assert_eq!(to, &device);
-    assert_eq!(sent["aps"]["alert"], json!({"body": "Nouveau message", "loc-key": "Nouveau message"}));
+    assert_eq!(sent["aps"]["alert"], json!({"body": "notif.reply", "loc-key": "notif.reply"}));
     assert_eq!(sent["outbox_id"], "out-1");
     assert_eq!(headers["apns-topic"], "io.github.bipagents");
     assert_eq!(headers["apns-push-type"], "alert");
@@ -212,7 +212,7 @@ async fn an_android_phone_gets_strings_and_dead_tokens_read_as_410() {
         assert_eq!(headers["authorization"], "Bearer access-1");
         let message = &sent["message"];
         assert_eq!(message["token"], "fcm-token_ABCDEFGHIJKLMNOPQRSTUVWXYZ:0123");
-        assert_eq!(message["data"]["body"], "Nouveau message");
+        assert_eq!(message["data"]["body"], "notif.reply");
         assert_eq!(message["data"]["agent"], "vie");
         assert_eq!(message["android"]["priority"], "NORMAL");
     }
@@ -358,7 +358,7 @@ async fn a_token_for_the_guichet_works_only_with_its_key_and_only_it_speaks_as_t
     assert_eq!(status, 200);
     let seen = h.seen.lock().unwrap();
     assert_eq!(seen.apple[0].2["aps"]["alert"], json!({"body": account, "loc-key": account}));
-    assert_eq!(seen.apple[1].2["aps"]["alert"], json!({"body": "Nouveau message", "loc-key": "Nouveau message"}));
+    assert_eq!(seen.apple[1].2["aps"]["alert"], json!({"body": "notif.reply", "loc-key": "notif.reply"}));
 }
 
 #[tokio::test]

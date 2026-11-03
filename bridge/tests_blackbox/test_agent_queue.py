@@ -6,7 +6,7 @@ import json
 import threading
 import time
 
-from bbkit.common import AUTH, HERMES_KEY, read_sse, sse
+from bbkit.common import AUTH, HERMES_KEY, read_sse, sse, in_session
 from bbkit.servers import wait_until
 
 HERMES_AUTH = {"Authorization": f"Bearer {HERMES_KEY}"}
@@ -273,7 +273,7 @@ def test_reply_ready_is_pushed_once_at_the_end_of_the_queue(bridges, fakes):
     time.sleep(1.0)
     payloads = fakes.apns.payloads()
     assert len(payloads) == 1, payloads
-    assert payloads[0]["run_id"] == "r2" and payloads[0]["kind"] == "reply" and payloads[0]["session_id"] == SESSION
+    assert payloads[0]["r"] == "r2" and payloads[0]["t"] == "reply" and in_session(bridge, payloads[0], SESSION)
 
 
 def test_the_queue_answers_for_known_agents_only_and_keeps_its_limits(bridges, fakes):

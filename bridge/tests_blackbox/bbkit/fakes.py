@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import array
 import asyncio
+import hashlib
 import json
 import math
 import re
@@ -301,6 +302,9 @@ class FakeHermes(Fake):
         self.forget_runs = False
         self.default_session = {"title": "Bot Chat", "message_count": 7}
         self.unique_titles = False   # as Hermes: a title another conversation holds is refused (400)
+        # Hermes v0.22.5 as the threads see it (test_threads.py): a session continued after a compression (one with a
+        # `parent_session_id`) is listed only with `include_children=1`; every row has a stable `message_uid`.
+        self.v0225 = False
         # Hermes v0.22.5 + patch 0021 (gateway/platforms/api_server_bot_chat.py): a « Bot Chat » created with a peer's
         # source (`hermes peer dm`: bot_peer_dm) is a LOCAL chat (`local-…`, hidden) whose text turns go to Hermes'
         # peer queue, never an API run: their event stream is only `run.completed` (no text, tools, usage, clarify).
@@ -438,6 +442,8 @@ class FakeHermes(Fake):
         mine = self.sessions.setdefault(agent, {})
         if len(parts) == 2 and method == "GET":
             listed = sorted(mine.values(), key=lambda s: -float(s.get("last_active") or 0))
+            if self.v0225 and "include_children=1" not in seen.query:
+                listed = [s for s in listed if not s.get("parent_session_id")]
             return JSONResponse({"sessions": listed})
         if len(parts) == 2 and method == "POST":
             body = seen.json() or {}
@@ -488,7 +494,15 @@ class FakeHermes(Fake):
                 timer.start()
             return JSONResponse({})
         if len(parts) == 4 and parts[3] == "messages":
-            return JSONResponse({"messages": self.messages.get((agent, session_id), [])})
+            rows = self.messages.get((agent, session_id), [])
+            if self.v0225:
+                rows = [{"id": i + 1, "message_uid": r.get("message_uid") or hashlib.md5(f"{agent}/{session_id}/{i}".encode()).hexdigest(), **r}
+                        for i, r in enumerate(rows)]
+                if "inline_images=false" in seen.query:   # photos as placeholders, as Hermes without inline images
+                    rows = [{**r, "content": [{"type": "text", "text": "[image]"} if p.get("type") == "image_url" else p
+                                              for p in r["content"]]} if isinstance(r.get("content"), list) else r
+                            for r in rows]
+            return JSONResponse({"messages": rows})
         if len(parts) == 4 and parts[3] == "chat" and method == "POST":
             body = seen.json() or {}
             now, body["message"] = split_now(body.get("message"))

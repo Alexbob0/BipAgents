@@ -1,0 +1,117 @@
+{
+  "$schema": "../schema.json",
+  "type": "subtask",
+  "audit_row": 4,
+  "summary": "A background sub-task's report Hermes left in the conversation (hand-back off).",
+  "producers": [
+    "cronwatch.rs push_report -> notify_subtask"
+  ],
+  "policy": {
+    "per_agent_switch": true
+  },
+  "v2": {
+    "t": "subtask",
+    "c": "t_<thread>",
+    "m": "m_<message id>",
+    "loc_key": "notif.subtask",
+    "collapse": "n",
+    "link": "bipagents://open?agent=vie&c=t_<thread>&m=m_<message id>&t=subtask",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
+  },
+  "variants": [
+    {
+      "name": "with_line",
+      "about": "A report that made a file: its line.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_subtask",
+          "args": {
+            "session_id": "sess_2",
+            "line": "🎧 Podcast jeudi"
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.subtask",
+            "body": "notif.subtask"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "subtask",
+        "agent": "vie",
+        "c": "t_contract"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": null
+      }
+    },
+    {
+      "name": "previews_on_no_line",
+      "about": "No line: the neutral line only.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_subtask",
+          "args": {
+            "session_id": "sess_2",
+            "line": null
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.subtask",
+            "body": "notif.subtask"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "subtask",
+        "agent": "vie",
+        "c": "t_contract"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": null
+      }
+    }
+  ]
+}

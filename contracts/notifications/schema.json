@@ -1,0 +1,265 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bipagents.com/contracts/notifications/type.json",
+  "title": "One notification type of the bridge: its inputs, the pointer-only v2 push it gives, where it points",
+  "type": "object",
+  "required": [
+    "type",
+    "audit_row",
+    "summary",
+    "producers",
+    "policy",
+    "v2",
+    "variants"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "type": {
+      "description": "The file's name without .json. One file per row 1-17 of the audit (notifications-refonte.md §2).",
+      "enum": [
+        "reply",
+        "bot_chat_turn",
+        "handback",
+        "subtask",
+        "question",
+        "approval",
+        "room_reply",
+        "boite",
+        "task",
+        "scan",
+        "family",
+        "email_held",
+        "site",
+        "login",
+        "card",
+        "meet",
+        "silent"
+      ]
+    },
+    "audit_row": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 17
+    },
+    "summary": {
+      "type": "string"
+    },
+    "producers": {
+      "description": "Where the bridge sends it (bridge-rs/src).",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "policy": {
+      "type": "object",
+      "required": [
+        "per_agent_switch"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "per_agent_switch": {
+          "description": "Silenced when the agent's « Me prévenir » switch is off (push.rs notices::Notice::follows_switch).",
+          "type": "boolean"
+        }
+      }
+    },
+    "v2": {
+      "description": "The pointer (docs/conversations.md §9.3): what the push carries and where a tap opens.",
+      "type": "object",
+      "required": [
+        "t",
+        "c",
+        "m",
+        "loc_key",
+        "collapse",
+        "link"
+      ],
+      "properties": {
+        "t": {
+          "type": "string"
+        },
+        "c": {
+          "description": "The thread pointer (docs/conversations.md): main | t_<thread id> | room:<id> | none",
+          "type": "string"
+        },
+        "m": {
+          "description": "The message id the tap positions on, or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "loc_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "collapse": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "link": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "variants": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/variant"
+      }
+    }
+  },
+  "$defs": {
+    "variant": {
+      "type": "object",
+      "required": [
+        "name",
+        "about",
+        "bridge",
+        "payload",
+        "push"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "about": {
+          "type": "string"
+        },
+        "bridge": {
+          "description": "The input of bridge-rs push::notices::build (what PushService::notify_* is called with).",
+          "type": "object",
+          "required": [
+            "agent",
+            "context",
+            "pointer",
+            "input"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "agent": {
+              "description": "The bridge key the push names (`<agent>__<household>` for a shared agent).",
+              "type": "string"
+            },
+            "context": {
+              "type": "object",
+              "required": [
+                "title",
+                "lang"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "title": {
+                  "type": "string"
+                },
+                "lang": {
+                  "enum": [
+                    "fr",
+                    "en",
+                    "de",
+                    "es"
+                  ]
+                }
+              }
+            },
+            "input": {
+              "type": "object",
+              "required": [
+                "fn",
+                "args"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "fn": {
+                  "type": "string",
+                  "pattern": "^notify_[a-z_]+$"
+                },
+                "args": {
+                  "type": "object"
+                }
+              }
+            },
+            "pointer": {
+              "description": "What emit resolved: the journal id, the thread of the session, the stored message, the unread total.",
+              "type": "object",
+              "required": [
+                "n",
+                "badge"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "n": {
+                  "type": "string"
+                },
+                "thread": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "message": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "badge": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "push": {
+          "type": "object",
+          "required": [
+            "push_type",
+            "priority",
+            "collapse_id"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "push_type": {
+              "enum": [
+                "alert",
+                "background"
+              ]
+            },
+            "priority": {
+              "enum": [
+                5,
+                10
+              ]
+            },
+            "collapse_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "payload": {
+          "description": "The exact APNs payload the bridge sends a device without a push key (the pointer, the neutral line); a device with a key gets it sealed (sealed.json).",
+          "type": "object"
+        }
+      }
+    }
+  }
+}

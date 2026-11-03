@@ -96,19 +96,21 @@ async fn ntfy_message_lands_in_outbox_with_audio_and_push() {
     assert_eq!(audio.header("content-type").as_deref(), Some("audio/mpeg"));
     assert!(audio.body.starts_with(b"ID3"));
 
-    // Push: MESSAGE payload, sandbox host for the sandbox device, generic body (no preview).
+    // Push: MESSAGE payload, sandbox host for the sandbox device, the neutral line (no words in clear).
     let pushed = sandbox.requests.lock().unwrap()[0].clone();
+    // the pointer only (docs/conversations.md §9.3); no threads service here: no `c`
+    let mut payload = pushed.json();
+    let fields = payload.as_object_mut().unwrap();
+    assert!(fields.remove("n").unwrap().as_str().unwrap().starts_with("n_"));
+    fields.remove("c");
     assert_eq!(
-        pushed.json(),
-        json!({"aps": {"alert": {"title": "Wellness", "body": "Nouveau message", "loc-key": "Nouveau message"},
-                       "thread-id": "wellness", "mutable-content": 1, "category": "MESSAGE", "sound": "default"},
-               "outbox_id": id, "agent": "wellness", "session_id": "sess_42"})
+        payload,
+        json!({"aps": {"alert": {"loc-key": "notif.boite", "body": "notif.boite"},
+                       "thread-id": "wellness", "mutable-content": 1, "category": "MESSAGE", "sound": "default",
+                       "badge": 1},
+               "v": 2, "t": "boite", "agent": "wellness", "m": format!("o_{id}"), "r": id})
     );
-    // key order too (json.dumps of the payload dict)
-    assert_eq!(
-        String::from_utf8_lossy(&pushed.body),
-        format!("{{\"aps\":{{\"alert\":{{\"title\":\"Wellness\",\"body\":\"Nouveau message\",\"loc-key\":\"Nouveau message\"}},\"thread-id\":\"wellness\",\"mutable-content\":1,\"category\":\"MESSAGE\",\"sound\":\"default\"}},\"outbox_id\":\"{id}\",\"agent\":\"wellness\",\"session_id\":\"sess_42\"}}")
-    );
+    assert!(String::from_utf8_lossy(&pushed.body).starts_with("{\"aps\":{\"alert\":")); // compact, aps first
     assert_eq!(pushed.header("apns-topic").as_deref(), Some("io.github.bipagents"));
     assert_eq!(pushed.header("apns-push-type").as_deref(), Some("alert"));
     assert_eq!(pushed.path, format!("/3/device/{TOKEN}"));
@@ -147,15 +149,7 @@ async fn ntfy_message_lands_in_outbox_with_audio_and_push() {
 
 #[test]
 fn push_previews_and_silent_payloads() {
-    use bipbridge::push::{approval_payload, message_payload, silent_payload};
-    assert_eq!(message_payload("vie", "Vie", "o1", None, Some("Texte"))["aps"]["alert"]["body"], "Texte");
-    assert!(!message_payload("vie", "Vie", "o1", None, None).contains_key("session_id"));
-    let choices = [json!("once"), json!("deny")];
-    let ap = approval_payload("vie", "Vie", "run_1", Some("req_9"), Some(&choices), None, None);
-    assert_eq!(ap["aps"]["category"], "APPROVAL");
-    assert_eq!(ap["run_id"], "run_1");
-    assert_eq!(ap["request_id"], "req_9");
-    assert_eq!(ap["choices"], json!(["once", "deny"]));
+    use bipbridge::push::silent_payload;
     let mut extra = bipbridge::Dict::new();
     extra.insert("run_id".into(), json!("r"));
     extra.insert("status".into(), Value::Null);

@@ -66,9 +66,16 @@ async fn search_route(State(state): State<AppState>, q: QueryMap) -> ApiResult<R
     let stores: Vec<(String, Option<PathBuf>)> =
         agents.iter().map(|a| (a.name.clone(), store_path(&config, &a.name))).collect();
     let words = words(&query);
-    let found = tokio::task::spawn_blocking(move || search_stores(&stores, &words, limit, TIME_CAP))
+    let mut found = tokio::task::spawn_blocking(move || search_stores(&stores, &words, limit, TIME_CAP))
         .await
         .map_err(|e| anyhow::anyhow!(e))?;
+    // each hit opens by id: its thread (docs/conversations.md), its item
+    let threads = crate::threads::threads_of(&state);
+    for hit in found.hits.iter_mut() {
+        if let Some(agent) = config.agent(Some(&hit.agent)) {
+            hit.thread = threads.resolve(agent, &hit.segment).await.ok().flatten().map(|t| t.id);
+        }
+    }
     let mut out = found.to_json();
     out["query"] = json!(query);
     Ok(web::ok(out))
@@ -264,6 +271,12 @@ pub struct Hit {
     pub session_id: String,
     pub session_title: Option<String>,
     pub message_id: i64,
+    /// The message's stable id in its thread's timeline (threads/timeline.rs `message_id`: `m_<message_uid>`).
+    pub item: String,
+    /// The session the row is in (its thread is resolved from it by the route).
+    pub segment: String,
+    /// The thread the message is in (set by the route).
+    pub thread: Option<String>,
     pub role: &'static str,
     pub timestamp: f64,
     pub snippet: String,
@@ -277,7 +290,7 @@ impl Hit {
             .unwrap_or_default();
         json!({
             "agent": self.agent, "session_id": self.session_id, "session_title": self.session_title,
-            "message_id": self.message_id, "role": self.role, "timestamp": self.timestamp, "date": date,
+            "message_id": self.message_id, "thread": self.thread, "item": self.item, "role": self.role, "timestamp": self.timestamp, "date": date,
             "snippet": self.snippet,
             "parts": self.parts.iter().map(|(t, h)| json!({"text": t, "hit": h})).collect::<Vec<_>>(),
         })
@@ -456,8 +469,9 @@ pub fn search_store(
         filters.push("_compressed_summary = 0".into());
     }
     let display_metadata = if has(&mcols, "display_metadata") { "display_metadata" } else { "NULL" };
+    let uid = if has(&mcols, "message_uid") { "message_uid" } else { "NULL" };
     let sql = format!(
-        "SELECT id, session_id, role, content, timestamp, {display_metadata} FROM messages WHERE {} ORDER BY id DESC",
+        "SELECT id, session_id, role, content, timestamp, {display_metadata}, {uid} FROM messages WHERE {} ORDER BY id DESC",
         filters.join(" AND ")
     );
     let mut stmt = conn.prepare(&sql)?;
@@ -497,11 +511,16 @@ pub fn search_store(
         let Some(shown) = shown else { continue };
         let role: String = row.get(2)?;
         let (snippet, parts) = snippet(&text, words);
+        let id: i64 = row.get(0)?;
+        let stored = crate::threads::source::Row { row: id, uid: row.get::<_, Option<String>>(6)?, ..Default::default() };
         hits.push(Hit {
+            item: crate::threads::timeline::message_id(agent, &session_id, &stored),
+            segment: session_id.clone(),
+            thread: None,
             agent: agent.to_string(),
             session_title: sessions.get(&shown).and_then(|s| s.title.clone()).filter(|t| !t.trim().is_empty()),
             session_id: shown,
-            message_id: row.get(0)?,
+            message_id: id,
             role: if role == "user" { "person" } else { "agent" },
             timestamp: row.get::<_, Option<f64>>(4)?.unwrap_or(0.0),
             snippet,

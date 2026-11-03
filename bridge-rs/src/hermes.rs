@@ -557,6 +557,16 @@ impl HermesClient {
         Ok(Self::items(data, ["sessions", "data", "items"]))
     }
 
+    /// `GET /api/sessions` with these parameters (threads: `include_children`, `include_hidden`).
+    pub async fn list_sessions_with(
+        &self,
+        agent: &AgentConfig,
+        params: &[(&str, String)],
+    ) -> Result<Vec<Map<String, Value>>, HermesError> {
+        let data = self.get_json(agent, "/api/sessions", params).await?;
+        Ok(Self::items(data, ["sessions", "data", "items"]))
+    }
+
     /// `GET /api/sessions?source=cron&include_children=1`: the routines' sessions, most recent first, with the sessions
     /// Hermes continued them in after compressing their context (`parent_session_id`, which the plain list leaves out).
     /// A Hermes that ignores the filters gives its plain list (cronwatch.rs keeps only the cron sessions).

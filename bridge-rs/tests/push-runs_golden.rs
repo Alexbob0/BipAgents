@@ -22,43 +22,6 @@ fn dicts(v: &Value) -> Vec<Dict> {
 
 fn run(name: &str, a: &[Value]) -> Value {
     match name {
-        "message_payload" => Value::Object(push::message_payload(
-            a[0].as_str().unwrap(),
-            a[1].as_str().unwrap(),
-            a[2].as_str().unwrap(),
-            opt(&a[3]),
-            opt(&a[4]),
-        )),
-        "approval_payload" => {
-            let choices = a[4].as_array().map(|c| c.as_slice());
-            Value::Object(push::approval_payload(
-                a[0].as_str().unwrap(),
-                a[1].as_str().unwrap(),
-                a[2].as_str().unwrap(),
-                opt(&a[3]),
-                choices,
-                opt(&a[5]),
-                opt(&a[6]),
-            ))
-        }
-        "reply_payload" => Value::Object(push::reply_payload(
-            a[0].as_str().unwrap(),
-            a[1].as_str().unwrap(),
-            a[2].as_str().unwrap(),
-            opt(&a[3]),
-            opt(&a[4]),
-            opt(&a[5]),
-            a[6].as_str().unwrap(),
-        )),
-        "question_payload" => Value::Object(push::question_payload(
-            a[0].as_str().unwrap(),
-            a[1].as_str().unwrap(),
-            a[2].as_str().unwrap(),
-            opt(&a[3]),
-            opt(&a[4]),
-            opt(&a[5]),
-            opt(&a[6]),
-        )),
         "silent_payload" => {
             Value::Object(push::silent_payload(a[0].as_str().unwrap(), a[1].as_str().unwrap(), &dict(&a[2])))
         }

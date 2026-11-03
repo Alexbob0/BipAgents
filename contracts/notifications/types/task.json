@@ -1,0 +1,224 @@
+{
+  "$schema": "../schema.json",
+  "type": "task",
+  "audit_row": 9,
+  "summary": "A background task ended, paused at its budget, was proposed by the agent, or a run was rescued into one.",
+  "producers": [
+    "jobs.rs:339 -> notify_job (DONE/PAUSED/PROPOSED)",
+    "runs.rs:~1896 rescue -> notify_job (RESCUE)"
+  ],
+  "policy": {
+    "per_agent_switch": true
+  },
+  "v2": {
+    "t": "task",
+    "c": "t_<thread> | none (proposal: Boîte › En cours)",
+    "m": "m_<message id> | null",
+    "loc_key": "notif.task.<done|paused|proposed|rescued>",
+    "collapse": "n",
+    "link": "bipagents://open?agent=vie&c=t_<thread>&t=task (proposal: Boîte)",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
+  },
+  "variants": [
+    {
+      "name": "done",
+      "about": "A task ended.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_job",
+          "args": {
+            "session_id": "sess_3",
+            "line": "Tâche de fond terminée : Billets",
+            "job_id": "job_1",
+            "body": "Tâche de fond terminée"
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.task",
+            "body": "notif.task"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "task",
+        "agent": "vie",
+        "c": "t_contract",
+        "r": "job_1"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "job:job_1"
+      }
+    },
+    {
+      "name": "paused",
+      "about": "A task paused at its budget.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_job",
+          "args": {
+            "session_id": "sess_3",
+            "line": "Tâche de fond en pause : Billets",
+            "job_id": "job_1",
+            "body": "Tâche de fond en pause"
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.task",
+            "body": "notif.task"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "task",
+        "agent": "vie",
+        "c": "t_contract",
+        "r": "job_1"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "job:job_1"
+      }
+    },
+    {
+      "name": "proposed",
+      "about": "The agent proposes a task (no conversation yet).",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_job",
+          "args": {
+            "session_id": null,
+            "line": "Tâche de fond proposée : Comparer les assurances",
+            "job_id": "job_2",
+            "body": "Tâche de fond proposée"
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.task",
+            "body": "notif.task"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "task",
+        "agent": "vie",
+        "c": "t_contract",
+        "r": "job_2"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "job:job_2"
+      }
+    },
+    {
+      "name": "rescued",
+      "about": "A run continues as a background task.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_job",
+          "args": {
+            "session_id": "sess_4",
+            "line": "Continue en tâche de fond : Billets",
+            "job_id": "job_3",
+            "body": "Continue en tâche de fond"
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.task",
+            "body": "notif.task"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "task",
+        "agent": "vie",
+        "c": "t_contract",
+        "r": "job_3"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "job:job_3"
+      }
+    }
+  ]
+}
