@@ -262,11 +262,26 @@ pub fn city(text: &str, lang: &str) -> Option<String> {
     if name.chars().filter(|c| c.is_alphabetic()).count() < 3 || name.chars().all(|c| !c.is_lowercase()) {
         return None;
     }
+    // a place's name starts with a capital (« Faro », « Le Havre »): « et retour vendredi » is words, not a place
+    if !name.chars().next().is_some_and(char::is_uppercase) {
+        return None;
+    }
     Some(name)
 }
 
 static ARROW: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\s*(?:→|->|⇒|➜|>|–>|—>|\s-\s|\s–\s)\s*").expect("valid regex"));
+    LazyLock::new(|| Regex::new(r"\s*(?:→|->|⇒|➜|–>|—>|>)\s*").expect("valid regex"));
+/// « Paris - Lisbonne »: a dash between two places, read as an arrow only when the text has no real one (in « Vol
+/// Paris → Amsterdam - et retour vendredi » it starts another clause).
+static DASH: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+[-–—]\s+").expect("valid regex"));
+/// Where a destination's words stop: another clause (« et retour vendredi », « puis Porto », « - retour le 18 »), a
+/// date's lead word, a comma.
+static CLAUSE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)\s+(?:et|puis|and|then|und|dann|y|luego|retour|return|back|zur(?:ü|u)ck|vuelta|le|du|au|on|am|el|the)\b.*$|\s+[-–—]\s.*$|[,;(·].*$",
+    )
+    .expect("valid regex")
+});
 static FROM_TO: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(?:de|from|von|desde)\s+(.+?)\s+(?:à|a|vers|to|nach|hacia|pour)\s+(.+)$").expect("valid regex")
 });
@@ -281,19 +296,19 @@ pub fn ends(what: &str) -> (Option<String>, Option<String>) {
     if let Some(c) = Regex::new(r"\b([A-Z]{3})\s*[-–→>/]+\s*([A-Z]{3})\b").expect("valid regex").captures(plain) {
         return (Some(c[1].to_string()), Some(c[2].to_string()));
     }
-    let parts: Vec<&str> = ARROW.split(plain).collect();
+    let mut parts: Vec<&str> = ARROW.split(plain).collect();
+    if parts.len() < 2 {
+        parts = DASH.split(plain).collect();
+    }
     if parts.len() >= 2 {
         // « Vol AF1234 Paris » → « Paris »: the last words before the arrow
         let first = parts[0].split_whitespace().last().unwrap_or("").to_string();
         let from = strip_lead(parts[0]).unwrap_or(first);
-        let to = parts[parts.len() - 1].split([',', '(', '·']).next().unwrap_or("").trim().to_string();
+        let to = CLAUSE.replace(parts[parts.len() - 1].trim(), "").trim().to_string();
         return (Some(from), Some(to).filter(|t| !t.is_empty()));
     }
     if let Some(c) = FROM_TO.captures(plain) {
-        return (
-            Some(c[1].trim().to_string()),
-            Some(c[2].split([',', '(', '·']).next().unwrap_or("").trim().to_string()),
-        );
+        return (Some(c[1].trim().to_string()), Some(CLAUSE.replace(c[2].trim(), "").trim().to_string()));
     }
     if codes.len() == 2 {
         return (Some(codes[0].clone()), Some(codes[1].clone()));
@@ -554,7 +569,7 @@ impl Booking {
         let named = has(&fold(&trip), TRIP_NAME);
         // the destination: a leg's end, a place after « à », « in »… (« Hôtel à Rome », « Vol vers Rome »), a city
         // the table knows in its words (« Airbnb Lisbonne »), else the trip's name
-        let place = AT.captures(&what).map(|c| c[1].split([',', '(', '·']).next().unwrap_or("").trim().to_string());
+        let place = AT.captures(&what).map(|c| CLAUSE.replace(c[1].trim(), "").trim().to_string());
         let to = to
             .and_then(|t| city(&t, lang))
             .or_else(|| place.and_then(|p| city(&p, lang)))
@@ -1235,6 +1250,15 @@ mod tests {
         assert_eq!(ends("Vol AF1234 Paris → Lisbonne"), (Some("Paris".into()), Some("Lisbonne".into())));
         assert_eq!(ends("Train de Lyon à Paris"), (Some("Lyon".into()), Some("Paris".into())));
         assert_eq!(ends("CDG-LIS"), (Some("CDG".into()), Some("LIS".into())));
+        // Alex's « Voyages » page (2026-11-03): a second clause after a dash is not the destination
+        assert_eq!(
+            ends("Vol Paris → Amsterdam - et retour vendredi"),
+            (Some("Paris".into()), Some("Amsterdam".into()))
+        );
+        assert_eq!(ends("Vol Paris → Lisbonne et retour le 18"), (Some("Paris".into()), Some("Lisbonne".into())));
+        assert_eq!(ends("Train Paris - Lyon"), (Some("Paris".into()), Some("Lyon".into())));
+        assert_eq!(city("et retour vendredi", "fr"), None);
+        assert_eq!(city("Faro", "fr").as_deref(), Some("Faro"));
         assert_eq!(booking_kind("Hôtel Alfama", ""), "lodging");
         assert_eq!(booking_kind("Table pour 4", "Le Comptoir"), "event");
         assert_eq!(booking_kind("Vol TP433", "TAP"), "transport");

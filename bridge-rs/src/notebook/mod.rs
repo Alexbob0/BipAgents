@@ -36,9 +36,11 @@
 pub mod api;
 pub mod archive;
 pub mod fill;
+pub mod groups;
 pub mod records;
 pub mod relanguage;
 pub mod repair;
+pub mod subscriptions;
 pub mod template;
 pub mod news;
 pub mod tidy;
@@ -879,6 +881,47 @@ pub fn add_facts(body: &str, section: &str, facts: &[String], who: &Who, date: &
     (lines.join("\n") + "\n", added)
 }
 
+/// `body` (`was` with facts just added to `section`) with the lines `section` had in `was` moved to the end of
+/// `history` (made if missing), their attribution kept: a subject's « Où on en est » holds where it stands now, what
+/// it was before is its history (carnet review, 2026-11-03: the card still said « le plombier vient pour le devis »
+/// once the work had started).
+pub fn supersede(was: &str, body: &str, section: &str, history: &str) -> String {
+    let old_lines = body_lines(was);
+    let Some(start) = section_index(&old_lines, section) else { return body.to_string() };
+    let older: Vec<String> =
+        old_lines[start + 1..section_end(&old_lines, start)].iter().filter(|l| !l.trim().is_empty()).cloned().collect();
+    if older.is_empty() {
+        return body.to_string();
+    }
+    let mut lines = body_lines(body);
+    if let Some(start) = section_index(&lines, section) {
+        let end = section_end(&lines, start);
+        let kept: Vec<String> = lines[start + 1..end].iter().filter(|l| !older.contains(l)).cloned().collect();
+        lines.splice(start + 1..end, kept.into_iter().chain(std::iter::once(String::new())));
+    }
+    match section_index(&lines, history) {
+        Some(start) => {
+            let mut at = section_end(&lines, start);
+            while at > start + 1 && lines[at - 1].trim().is_empty() {
+                at -= 1;
+            }
+            for (n, line) in older.into_iter().enumerate() {
+                lines.insert(at + n, line);
+            }
+        }
+        None => {
+            lines.push(String::new());
+            lines.push(format!("## {history}"));
+            lines.extend(older);
+        }
+    }
+    let mut text = lines.join("\n");
+    while text.contains("\n\n\n") {
+        text = text.replace("\n\n\n", "\n\n");
+    }
+    text.trim_matches('\n').to_string() + "\n"
+}
+
 /// The first fact containing `old` (folded) replaced by `new` with a new attribution, or removed when `new` is empty.
 /// None when no fact matches.
 pub fn correct_fact(body: &str, old: &str, new: &str, who: &Who, date: &str) -> Option<(String, String)> {
@@ -1473,6 +1516,18 @@ pub(crate) fn note_locked(
              (« Amsterdam, déc. 2021 »), with its start and end; this page can stay a subject linking them.",
         );
     }
+    // a records table named as a page (« Abonnements », « Achats »): its rows go through notebook_record (carnet
+    // review, 2026-11-03: seven subscriptions filed as notes on a « person » page « Abonnements »)
+    if let (None, false, Some(t)) = (&found, is_self, records::kind(&title)) {
+        let fields: Vec<&str> = t.fields.iter().map(|f| f.id).filter(|f| *f != "source" && *f != "class").collect();
+        return refuse(format!(
+            "« {title} » is the Carnet's {} table: add each one with notebook_record (action add, type {}, fields {}), \
+             one record each, not as notes.",
+            t.id,
+            t.id,
+            fields.join(", ")
+        ));
+    }
     let (path, before, mut page, created) = match found {
         Some(f) => {
             let before = read_page_text(config, part, &f.path);
@@ -1500,7 +1555,9 @@ pub(crate) fn note_locked(
     }
     let mut names = page.aliases();
     names.extend(aliases.iter().cloned());
-    if fold(&title) != fold(&page.title) && !page.named(&title) && !self_word(&title) {
+    // the name it was called by, unless that was its path (« Personnes/Abonnements.md », from a search)
+    let by_path = title.ends_with(".md") || title.contains('/');
+    if fold(&title) != fold(&page.title) && !page.named(&title) && !self_word(&title) && !by_path {
         names.push(title.clone());
     }
     page.set_aliases(&names);
@@ -1533,12 +1590,20 @@ pub(crate) fn note_locked(
     let mut body = page.body.clone();
     let mut added: Vec<String> = Vec::new();
     let mut sections: Vec<String> = Vec::new();
+    let status = (page_kind == "subject").then(|| template::title("subject", "status", &lang));
     for (title, list) in &groups {
+        // « Où on en est » says where it stands now: a new state sends the one before to « Historique »
+        let before_status = (Some(title) == status.as_ref()).then(|| body.clone());
         let (next, new) = add_facts(&body, title, list, who, &today());
         if !new.is_empty() {
             sections.push(title.clone());
         }
-        body = next;
+        body = match before_status {
+            Some(was) if !new.is_empty() => {
+                supersede(&was, &next, title, &template::title("subject", "history", &lang))
+            }
+            _ => next,
+        };
         added.extend(new);
     }
     let body = set_summary(&body, w.brief, summary);
@@ -1547,6 +1612,10 @@ pub(crate) fn note_locked(
     let aliases_changed = before.as_deref().map(|b| Page::parse(b, "").aliases() != page.aliases()).unwrap_or(false);
     if added.is_empty() && !created && !aliases_changed && !summary_changed && !converted {
         return Ok(Written { part: Some(part), path, title: page.title, created, added, sections, changed: false });
+    }
+    // no page with nothing in it (an empty card in the app: Alex's « Famille », 2026-11-03)
+    if created && added.is_empty() && summary_of(&body, w.brief).is_empty() && kind != "self" && kind != "trip" {
+        return refuse("give the facts to file: a page is made with its first facts");
     }
     page.body = body;
     page.touch();
@@ -3727,6 +3796,31 @@ mod tests {
         assert!(history(&config, Some(Part::Main), Some(&gone.path), 10).len() >= 2);
         // the limit counts the pages listed
         assert_eq!(recent_changes(&config, Part::Main, 1).len(), 1);
+    }
+
+    #[test]
+    fn a_subject_s_status_is_where_it_stands_now_and_records_go_to_their_tables() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(dir.path());
+        update_state(&config, |s| {
+            s.insert("language".into(), json!("fr"));
+        })
+        .unwrap();
+        let who = lea();
+        let say = |fact: &str| {
+            note(&config, Part::Main, "subject", "Salle de bain", "status", &[fact.into()], &[], "", "", &who).unwrap()
+        };
+        say("Le plombier vient le 10 novembre pour le devis");
+        say("Devis de 3 200 € accepté");
+        let written = say("Carrelage posé, reste la peinture");
+        let text = read_page_text(&config, Part::Main, &written.path).unwrap();
+        let status = text.split("## Où on en est\n").nth(1).unwrap().split("\n## ").next().unwrap();
+        assert_eq!(status.trim(), "- Carrelage posé, reste la peinture — *Léa, ".to_string() + &today() + "*", "{text}");
+        let history = text.split("## Historique\n").nth(1).unwrap();
+        assert!(history.starts_with("- Le plombier vient") && history.contains("- Devis de 3 200 € accepté"), "{text}");
+        // a records table is no page for notes (carnet review, 2026-11-03)
+        let refused = note(&config, Part::Main, "person", "Abonnements", "", &["Spotify 10,99 €".into()], &[], "", "", &who);
+        assert!(format!("{:#}", refused.unwrap_err()).contains("notebook_record (action add, type subscription"));
     }
 
     #[test]
