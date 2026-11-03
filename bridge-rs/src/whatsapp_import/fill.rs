@@ -24,8 +24,9 @@ use crate::tools_knowledge as tk;
 
 /// Characters of chat per call (about 3,000 tokens).
 pub const WINDOW_CHARS: usize = 10_000;
-/// What the model may answer (the cap counts it whole).
-pub const MAX_OUTPUT_TOKENS: i64 = 1200;
+/// What the model may answer (the cap counts it whole). 3,000 since 2026-11-03: a model that thinks before answering
+/// (DeepSeek V4.1 Flash through EUrouter in the carnet review's lab) used 1,200 up before any JSON.
+pub const MAX_OUTPUT_TOKENS: i64 = 3000;
 /// What an answer usually takes (the estimate).
 pub const TYPICAL_OUTPUT_TOKENS: i64 = 350;
 /// A first import fills the Carnet from this many days before the chat's last message (the rest stays searchable).
@@ -196,6 +197,13 @@ pub async fn ask(model: &Model, user: &str) -> Result<(String, i64, i64), String
         }
         let data: Value = serde_json::from_slice(&raw).unwrap_or(Value::Null);
         let answer = data.pointer("/choices/0/message/content").and_then(Value::as_str).unwrap_or("").to_string();
+        if !answer.contains('{') {
+            // why there is no JSON: cut short (« length »), or all of it spent thinking
+            let reasoning = data.pointer("/choices/0/message/reasoning_content").and_then(Value::as_str).map_or(0, str::len);
+            let finish = data.pointer("/choices/0/finish_reason").and_then(Value::as_str).unwrap_or("").to_string();
+            tracing::info!(target: "bipbridge::whatsapp", model = %model.name, finish = %finish,
+                answer_chars = answer.len(), reasoning_chars = reasoning, "an answer without JSON");
+        }
         let usage = data.get("usage").cloned().unwrap_or(json!({}));
         let tokens_in = usage
             .get("prompt_tokens")
