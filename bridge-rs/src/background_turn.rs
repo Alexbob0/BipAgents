@@ -1,8 +1,7 @@
 //! One pipeline for every turn an agent takes without the person (2026-11-03, dette-technique §5): a background task
 //! (jobs.rs), a routine started by an event (triggers.rs), a watcher's wake-up (watchers.rs), the hand-back of finished
-//! work (handback.rs: a task's report, a sub-agent's, the guide's new agent introducing itself); a Live call's last
-//! answer lands through [`Pipeline::deliver`] too (live_calls.rs). Each of them is only a *starter* that decides
-//! **when**; this module does the rest, the same way for all:
+//! work (handback.rs: a task's report, a sub-agent's, the guide's new agent introducing itself). Each of them is only
+//! a *starter* that decides **when**; this module does the rest, the same way for all:
 //!
 //! - **where**: the turn runs in a thread (docs/conversations.md), at its tip: the session Hermes goes on in after a
 //!   compression, never a closed segment. A starter names the thread by any of its sessions, its id or `main`;

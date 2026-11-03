@@ -465,18 +465,8 @@ async fn end_inner(state: &AppState, ending: &Ending) -> anyhow::Result<Option<V
     if late || (ending.ended_by == "idle" && !media.is_empty()) {
         let answer =
             lines.iter().rev().find(|(role, _)| role == "assistant").map(|(_, t)| t.clone()).unwrap_or_default();
-        let delivery = crate::background_turn::Delivery {
-            agent: agent.clone(),
-            session: ending.session.clone(),
-            key: format!("live:{}", ending.live_session),
-            title: String::new(),
-            text: answer,
-            as_written: true,
-            run_id: Some(ending.run_id.clone().unwrap_or_else(|| format!("live:{}", ending.live_session))),
-            notify: true,
-            files: Vec::new(),
-        };
-        crate::background_turn::Pipeline::of(state).deliver(&delivery).await;
+        let key = ending.run_id.clone().unwrap_or_else(|| format!("live:{}", ending.live_session));
+        state.push.notify_reply(&agent.name, &key, &answer, Some(&ending.session)).await;
     }
     Ok(Some(record))
 }
