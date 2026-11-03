@@ -25,6 +25,8 @@ const DEVICE: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 #[derive(Default)]
 struct HermesState {
     sessions: Vec<Value>,
+    /// The routines (`GET /api/jobs`).
+    jobs: Vec<Value>,
     messages: HashMap<String, Vec<Value>>,
     message_calls: usize,
 }
@@ -83,6 +85,11 @@ async fn session(State(h): State<FakeHermes>, Path(sid): Path<String>) -> Respon
     }
 }
 
+/// The routines as Hermes' API lists them.
+async fn jobs(State(h): State<FakeHermes>) -> Json<Value> {
+    Json(json!({"jobs": h.with(|s| s.jobs.clone())}))
+}
+
 /// A run that goes on (the app follows it): its stream never ends.
 async fn events() -> Response {
     let stream = futures::stream::pending::<Result<bytes::Bytes, std::io::Error>>();
@@ -107,6 +114,7 @@ async fn world(bot: bool) -> World {
             .route("/api/sessions", get(sessions))
             .route("/api/sessions/{sid}", get(session))
             .route("/api/sessions/{sid}/messages", get(messages))
+            .route("/api/jobs", get(jobs))
             .route("/v1/runs/{run}/events", get(events))
             .fallback(|| async { (StatusCode::NOT_FOUND, Json(json!({"error": "no route"}))).into_response() })
             .with_state(hermes.clone()),
@@ -264,11 +272,9 @@ async fn silent_old_and_running_sessions_are_skipped() {
     w.app.shutdown().await;
 }
 
-/// The agent's routines as Hermes keeps them (`cron/jobs.json` in its profile).
+/// The agent's routines as Hermes' API lists them (`GET /api/jobs`; `origin_session_id`: patch 0019).
 fn write_jobs(w: &World, jobs: Value) {
-    let folder = bipbridge::agents_admin::profile_folder(&w.app.app.state.config.get(), &w.agent).join("cron");
-    std::fs::create_dir_all(&folder).unwrap();
-    std::fs::write(folder.join("jobs.json"), json!({"jobs": jobs}).to_string()).unwrap();
+    w.hermes.with(|s| s.jobs = jobs.as_array().cloned().unwrap_or_default());
 }
 
 #[tokio::test]

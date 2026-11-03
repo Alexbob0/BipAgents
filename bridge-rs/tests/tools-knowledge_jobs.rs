@@ -151,6 +151,14 @@ fn board(config: &Config, told: Option<&Told>) -> Arc<Jobs> {
     Arc::new(jobs)
 }
 
+/// A task run's words, without its time line and its rules' note (every run of a task carries them).
+fn words(input: &Value) -> String {
+    let text = common::without_now(input.as_str().unwrap());
+    let (words, rules) = text.split_once("\n\n<!--bip:task-rules\n").expect("the task's rules in its message");
+    assert!(rules.ends_with("\n-->"));
+    words.to_string()
+}
+
 fn id_of(job: &Dict) -> String {
     job["id"].as_str().unwrap().to_string()
 }
@@ -238,7 +246,7 @@ async fn a_task_stops_at_its_budget_and_goes_on_with_a_bigger_one() {
     assert_eq!((done["state"].as_str(), done["runs"].as_i64()), (Some("done"), Some(2)));
     assert_eq!(done["tokens"]["input"].as_i64().unwrap(), before + 100_000); // the second run's own usage added
     let g = fake.lock().unwrap();
-    assert_eq!(common::without_now(g.runs["r2"]["input"].as_str().unwrap()), "Continue, et termine par ton rapport.");
+    assert_eq!(words(&g.runs["r2"]["input"]), "Continue, et termine par ton rapport.");
     assert_eq!(g.requests.iter().filter(|(m, p, _)| m == "POST" && p.ends_with("/api/sessions")).count(), 1);
 }
 
@@ -258,7 +266,7 @@ async fn the_person_pauses_resumes_and_forgets_a_task() {
     let view = board.view(&id).unwrap();
     assert_eq!((view["state"].as_str(), view["reason"].as_str()), (Some("paused"), Some("stopped")));
     board.resume(&id, None, None).await.unwrap();
-    assert_eq!(common::without_now(fake.lock().unwrap().runs["r2"]["input"].as_str().unwrap()), jobs::CONTINUE);
+    assert_eq!(words(&fake.lock().unwrap().runs["r2"]["input"]), jobs::CONTINUE);
     board.forget(&id).await.unwrap();
     assert!(jobs::load(&config, &id).is_none());
     assert_eq!(fake.lock().unwrap().runs["r2"]["status"], "cancelled");
@@ -479,7 +487,7 @@ async fn the_month_s_credit_used_stops_a_task_after_its_step_refuses_new_ones_an
     assert!(!board.credit_used());
     std::fs::write(&credit, json!({"state": "ok"}).to_string()).unwrap();
     board.resume_after_credit(&config).await;
-    assert_eq!(common::without_now(fake.lock().unwrap().runs["r2"]["input"].as_str().unwrap()), jobs::CONTINUE);
+    assert_eq!(words(&fake.lock().unwrap().runs["r2"]["input"]), jobs::CONTINUE);
     assert_eq!(board.view(&id).unwrap()["state"], "running");
     board.forget(&id).await.unwrap();
 }
