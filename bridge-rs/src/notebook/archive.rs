@@ -109,10 +109,14 @@ fn drop_empty_locked(config: &Config) -> anyhow::Result<usize> {
         }
         let empty = super::summary_of(&page.body, super::words(&lang).brief).trim().is_empty()
             && page.sections().iter().filter(|(name, _)| fold(name) != brief).all(|(_, facts)| facts.is_empty());
+        if !empty {
+            continue;
+        }
+        // read only for an empty page: the history is the whole Carnet's log
         let by_person = super::history(config, Some(Part::Main), Some(&path), 1)
             .first()
             .is_none_or(|e| tk::str_or_empty(e.get("by")) == "you");
-        if !empty || by_person {
+        if by_person {
             continue;
         }
         let Some(before) = super::read_page_text(config, Part::Main, &path) else { continue };

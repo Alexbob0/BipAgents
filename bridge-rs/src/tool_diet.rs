@@ -705,7 +705,8 @@ mod tests {
         let without = diet("finance", &names(&["create_page"]), false, false, false, &[]);
         assert!(!without.defer.iter().any(|n| n.ends_with("map_image")));
         // the records and their corrections in view where money is kept (carnet review, 2026-11-03)
-        let finance = diet("finance", &names(&["notebook_record", "notebook_edit", "notebook_note"]), false, false, false, &[]);
+        let tools = names(&["notebook_record", "notebook_edit", "notebook_note"]);
+        let finance = diet("finance", &tools, false, false, false, &[]);
         for tool in ["notebook_record", "notebook_edit"] {
             assert!(finance.defer.contains(&format!("!{BRIDGE_PREFIX}{tool}")), "{tool}: {:?}", finance.defer);
         }

@@ -199,7 +199,8 @@ pub async fn ask(model: &Model, user: &str) -> Result<(String, i64, i64), String
         let answer = data.pointer("/choices/0/message/content").and_then(Value::as_str).unwrap_or("").to_string();
         if !answer.contains('{') {
             // why there is no JSON: cut short (« length »), or all of it spent thinking
-            let reasoning = data.pointer("/choices/0/message/reasoning_content").and_then(Value::as_str).map_or(0, str::len);
+            let reasoning =
+                data.pointer("/choices/0/message/reasoning_content").and_then(Value::as_str).map_or(0, str::len);
             let finish = data.pointer("/choices/0/finish_reason").and_then(Value::as_str).unwrap_or("").to_string();
             tracing::info!(target: "bipbridge::whatsapp", model = %model.name, finish = %finish,
                 answer_chars = answer.len(), reasoning_chars = reasoning, "an answer without JSON");

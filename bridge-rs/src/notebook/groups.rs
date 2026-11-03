@@ -14,7 +14,7 @@
 
 use std::collections::BTreeMap;
 
-use super::{fold, template, Page, Part, Who};
+use super::{Page, Part, Who, fold, template};
 use crate::config::Config;
 
 /// Facts about someone that earn them their own page.
@@ -50,15 +50,78 @@ pub fn is_group(title: &str) -> bool {
 
 /// Words saying someone is close family (folded), and those saying they are not (they win: « cousin, fils de Martine »).
 const CLOSE: &[&str] = &[
-    "mere", "maman", "pere", "papa", "soeur", "frere", "mari", "femme", "epouse", "epoux", "conjoint", "conjointe",
-    "compagnon", "compagne", "grand mere", "grand pere", "fils", "fille", "enfant", "mother", "mom", "mum", "father",
-    "dad", "sister", "brother", "husband", "wife", "son", "daughter", "grandmother", "grandfather", "mutter", "vater",
-    "schwester", "bruder", "sohn", "tochter", "madre", "padre", "hermana", "hermano", "hijo", "hija",
+    "mere",
+    "maman",
+    "pere",
+    "papa",
+    "soeur",
+    "frere",
+    "mari",
+    "femme",
+    "epouse",
+    "epoux",
+    "conjoint",
+    "conjointe",
+    "compagnon",
+    "compagne",
+    "grand mere",
+    "grand pere",
+    "fils",
+    "fille",
+    "enfant",
+    "mother",
+    "mom",
+    "mum",
+    "father",
+    "dad",
+    "sister",
+    "brother",
+    "husband",
+    "wife",
+    "son",
+    "daughter",
+    "grandmother",
+    "grandfather",
+    "mutter",
+    "vater",
+    "schwester",
+    "bruder",
+    "sohn",
+    "tochter",
+    "madre",
+    "padre",
+    "hermana",
+    "hermano",
+    "hijo",
+    "hija",
 ];
 const NOT_CLOSE: &[&str] = &[
-    "cousin", "cousine", "oncle", "tante", "neveu", "niece", "beau", "belle", "parrain", "marraine", "voisin", "voisine",
-    "collegue", "ami", "amie", "uncle", "aunt", "nephew", "godfather", "godmother", "neighbour", "neighbor",
-    "colleague", "friend", "tio", "tia",
+    "cousin",
+    "cousine",
+    "oncle",
+    "tante",
+    "neveu",
+    "niece",
+    "beau",
+    "belle",
+    "parrain",
+    "marraine",
+    "voisin",
+    "voisine",
+    "collegue",
+    "ami",
+    "amie",
+    "uncle",
+    "aunt",
+    "nephew",
+    "godfather",
+    "godmother",
+    "neighbour",
+    "neighbor",
+    "colleague",
+    "friend",
+    "tio",
+    "tia",
 ];
 
 /// Whether facts about someone say they are close family (« Ma sœur », « Mère, vit à Lyon »; not « Femme de
@@ -88,7 +151,13 @@ pub fn line_name(text: &str) -> Option<(String, String)> {
 }
 
 /// [`file_person_locked`], the lock taken.
-pub fn file_person(config: &Config, name: &str, relation: &str, facts: &[String], who: &Who) -> anyhow::Result<super::Written> {
+pub fn file_person(
+    config: &Config,
+    name: &str,
+    relation: &str,
+    facts: &[String],
+    who: &Who,
+) -> anyhow::Result<super::Written> {
     let _guard = super::lock();
     file_person_locked(config, name, relation, facts, who)
 }
@@ -167,11 +236,11 @@ mod tests {
         assert!(!is_close(&["Cousin, fils de Martine".into()]));
         assert!(!is_close(&["Parrain d'Emma".into()]));
         assert!(!is_close(&["Femme de [[Julien]], mariés cet été".into()]));
-        assert_eq!(line_name("Emma, cousine, sœur de [[Julien]] : infirmière à Lille").map(|n| n.0), Some("Emma".into()));
         assert_eq!(
-            line_name("Paul Lambert : parrain d'Emma"),
-            Some(("Paul Lambert".into(), "parrain d'Emma".into()))
+            line_name("Emma, cousine, sœur de [[Julien]] : infirmière à Lille").map(|n| n.0),
+            Some("Emma".into())
         );
+        assert_eq!(line_name("Paul Lambert : parrain d'Emma"), Some(("Paul Lambert".into(), "parrain d'Emma".into())));
         assert_eq!(line_name("Compagne de [[Julien]], mariés cet été"), None);
         assert_eq!(group_title("work", "fr"), "Collègues");
     }
@@ -197,19 +266,43 @@ mod tests {
         assert_eq!(paul.title, "Amis");
         let mom = file_person_locked(&config, "Françoise", "family", &["Mère, vit à Lyon".into()], &who).unwrap();
         assert_eq!(mom.title, "Françoise", "close family: their own page");
-        for fact in ["Emma, cousine : infirmière à Lille", "Emma : de garde ce week-end", "Emma : aide au déménagement"] {
-            super::super::note_locked(&config, Part::Main, "area", "Famille élargie", "contacts", &[fact.into()], &[], "", "", &who)
-                .unwrap();
+        for fact in ["Emma, cousine : infirmière à Lille", "Emma : de garde ce week-end", "Emma : aide au déménagement"]
+        {
+            super::super::note_locked(
+                &config,
+                Part::Main,
+                "area",
+                "Famille élargie",
+                "contacts",
+                &[fact.into()],
+                &[],
+                "",
+                "",
+                &who,
+            )
+            .unwrap();
         }
         assert_eq!(settle_locked(&config, &Who::tidy(&config)).unwrap(), 1, "Emma has three lines: her page");
         let emma = super::super::find(&config, &[Part::Main], "Emma").unwrap();
         assert_eq!(emma.page.kind(), "person");
         assert!(emma.page.body.contains("infirmière à Lille"), "{}", emma.page.body);
-        let group = super::super::read_page_text(&config, Part::Main, "Domaines/Famille élargie.md").unwrap_or_default();
+        let group =
+            super::super::read_page_text(&config, Part::Main, "Domaines/Famille élargie.md").unwrap_or_default();
         assert!(!group.contains("Emma"), "never on two pages: {group}");
         // a line about someone who has a page moves there
-        super::super::note_locked(&config, Part::Main, "area", "Amis", "contacts", &["Françoise : aime le jardinage".into()], &[], "", "", &who)
-            .unwrap();
+        super::super::note_locked(
+            &config,
+            Part::Main,
+            "area",
+            "Amis",
+            "contacts",
+            &["Françoise : aime le jardinage".into()],
+            &[],
+            "",
+            "",
+            &who,
+        )
+        .unwrap();
         assert_eq!(settle_locked(&config, &Who::tidy(&config)).unwrap(), 1);
         let text = super::super::read_page_text(&config, Part::Main, &mom.path).unwrap();
         assert!(text.contains("aime le jardinage"), "{text}");

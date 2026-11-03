@@ -766,7 +766,8 @@ pub fn settle_locked(config: &Config, who: &Who, today: NaiveDate) -> anyhow::Re
             continue;
         };
         let name = title(place_of(&all).as_deref(), start, &lang);
-        if fold(&name) != fold(&page.title) && !super::all_pages(config, Part::Main).iter().any(|(_, p)| p.named(&name)) {
+        let taken = super::all_pages(config, Part::Main).iter().any(|(_, p)| p.named(&name));
+        if fold(&name) != fold(&page.title) && !taken {
             trip_auto::rename_locked(config, &path, &name, who)?;
             changed += 1;
         }

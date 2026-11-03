@@ -848,7 +848,8 @@ fn same(t: &Kind, old: &Dict, new: &Dict) -> bool {
     // a subscription named three ways by three sources (subscriptions.rs)
     if t.id == "subscription" && has(old, "service") && has(new, "service") {
         let s = |r: &Dict, k: &str| tk::str_or_empty(r.get(k));
-        return super::subscriptions::same_service(&s(old, "service"), &s(new, "service"), (&s(old, "price"), &s(new, "price")));
+        let prices = (s(old, "price"), s(new, "price"));
+        return super::subscriptions::same_service(&s(old, "service"), &s(new, "service"), (&prices.0, &prices.1));
     }
     let Some(key) = t.keys.iter().find(|key| key.iter().all(|k| has(new, k))) else { return false };
     has(old, key[0])
