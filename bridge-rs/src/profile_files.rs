@@ -6,9 +6,10 @@
 //! disk, Hermes' formatting and comments included, stay as they are), and goes to a temporary file renamed over the
 //! old one with its mode (a gateway never reads half a file).
 //!
-//! [`reconcile`] is the single pass that renders what the bridge decides in `config.yaml` (thinking level, router
-//! order, tool diet, browser proxy path): at start for every agent, whenever an agent gets its tools, after a vault
-//! change. Idempotent: a second pass writes nothing.
+//! [`reconcile`] is the single pass that renders what the bridge decides in the profile: `SOUL.md` from the record
+//! (agents_admin::render_soul), and in `config.yaml` the thinking level, router order, tool diet and browser proxy
+//! path: at start for every agent, whenever an agent gets its tools, after a vault change. Idempotent: a second pass
+//! writes nothing.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -26,7 +27,7 @@ pub const LOCK_FILE: &str = ".bipagents-profile.lock";
 /// The bridge's record of the agent's settings, in its profile folder (moves, exports and backups carry it).
 pub const SETTINGS_FILE: &str = "bipagents-settings.json";
 /// The record's version this bridge writes.
-pub const SETTINGS_VERSION: u32 = 1;
+pub const SETTINGS_VERSION: u32 = 2;
 /// How long a writer waits for another's lock (a write takes milliseconds, a Hermes command about a second).
 const LOCK_WAIT: Duration = Duration::from_secs(30);
 
@@ -194,27 +195,35 @@ pub fn locked(inner: Run, blocking: fn(&[String], &BTreeMap<String, String>) -> 
     })
 }
 
+/// `key` (dotted) set to `value`, as `hermes config set <key> <value>` writes a key with no side effect: the sections
+/// on the way made (a scalar in the way becomes one), every other key kept.
+pub fn set_key(data: &mut Yaml, key: &str, value: Yaml) {
+    let (path, last) = key.rsplit_once('.').unwrap_or(("", key));
+    let mut node = data;
+    for part in path.split('.').filter(|p| !p.is_empty()) {
+        match node.section(part) {
+            Some(next) => node = next,
+            None => return,
+        }
+    }
+    node.insert(last, value);
+}
+
+/// [`set_key`] for each of `keys` in the config file at `path`, in one locked [`edit`]; whether it was written.
+pub fn set(path: &Path, keys: &[(&str, Yaml)]) -> anyhow::Result<bool> {
+    edit(path, |data| keys.iter().for_each(|(key, value)| set_key(data, key, value.clone())))
+}
+
 /// `mcp_servers.<name>` set to `entry`'s keys (kept: the entry's other keys, e.g. `enabled`), as `hermes config set
 /// mcp_servers.<name>.<key> <value>` writes each; `entry` None removes the server (`config unset`).
 pub fn set_server(data: &mut Yaml, name: &str, entry: Option<&[(&str, Yaml)]>) {
-    let Some(entry) = entry else {
-        if let Some(servers) = data.get_mut("mcp_servers").filter(|s| s.is_map()) {
-            servers.remove(name);
-        }
-        return;
-    };
-    let Some(servers) = data.entry_map("mcp_servers") else { return };
-    let Some(server) = servers.entry_map(name) else { return };
-    for (key, value) in entry {
-        let parts: Vec<&str> = key.split('.').collect();
-        let mut node = &mut *server;
-        for part in &parts[..parts.len() - 1] {
-            match node.entry_map(part) {
-                Some(next) => node = next,
-                None => return,
+    match entry {
+        Some(entry) => entry.iter().for_each(|(key, value)| set_key(data, &format!("mcp_servers.{name}.{key}"), value.clone())),
+        None => {
+            if let Some(servers) = data.get_mut("mcp_servers").filter(|s| s.is_map()) {
+                servers.remove(name);
             }
         }
-        node.insert(parts[parts.len() - 1], value.clone());
     }
 }
 
@@ -229,6 +238,13 @@ pub struct AgentSettings {
     /// theirs (GLM gets its « low » then).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking: Option<String>,
+    /// v2: the personality the person wrote (SOUL.md without the bridge's blocks; agents_admin::render_soul renders
+    /// it). None: Hermes' own personality, never written by the bridge.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub personality: Option<String>,
+    /// v2: the language the agent writes first in (its SOUL.md's language block).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
     /// Keys of a later bridge, kept as they are.
     #[serde(flatten)]
     pub other: serde_json::Map<String, Value>,
@@ -272,6 +288,18 @@ pub fn update_settings(folder: &Path, change: impl FnOnce(&mut AgentSettings)) -
     Ok(true)
 }
 
+/// A new agent's SOUL.md (its kind's template, with the bridge's blocks) written, its personality and language put in
+/// the record: agents_admin::render_soul renders it from there afterwards.
+pub fn new_soul(folder: &Path, soul: &str) -> anyhow::Result<()> {
+    let (personality, language) = crate::agents_admin::personality_of(soul);
+    update_settings(folder, |s| {
+        s.personality = Some(personality);
+        s.language = language;
+    })?;
+    edit_text(&folder.join("SOUL.md"), |_| Some(soul.to_string()))?;
+    Ok(())
+}
+
 /// The mark files of earlier bridges moved into the record, then removed; whether there were any.
 pub fn migrate(folder: &Path) -> anyhow::Result<bool> {
     let (chosen, off) = (folder.join(OLD_THINKING_CHOSEN), folder.join(OLD_THINKING_OFF));
@@ -296,6 +324,10 @@ pub fn reconcile(config: &Config, agent: &AgentConfig) -> anyhow::Result<bool> {
     // a profile this bridge serves, or the one of an agent set up by hand (its thinking level is the bridge's)
     let folder = crate::shares::profile_dir(config, agent)
         .unwrap_or_else(|| crate::agents_admin::profile_folder(config, agent));
+    // SOUL.md rendered from the record first: the tool diet reads it (agents_admin::render_soul)
+    if let Err(exc) = crate::agents_admin::render_soul(config, agent) {
+        tracing::warn!(target: "bipbridge::agents", agent = %agent.name, error = %format!("{exc:#}"), "personality not rendered");
+    }
     let path = folder.join("config.yaml");
     if !path.is_file() {
         return Ok(false);
@@ -491,7 +523,7 @@ mod tests {
         std::fs::write(dir.join(OLD_THINKING_CHOSEN), "High\n").unwrap();
         assert!(migrate(&dir).unwrap()); // the chosen level wins over the old « none » mark
         assert!(!dir.join(OLD_THINKING_CHOSEN).exists() && !dir.join(OLD_THINKING_OFF).exists());
-        assert_eq!(settings(&dir), AgentSettings { version: 1, thinking: Some("high".into()), other: Default::default() });
+        assert_eq!(settings(&dir), AgentSettings { version: 2, thinking: Some("high".into()), ..Default::default() });
         assert!(!migrate(&dir).unwrap());
     }
 
@@ -504,7 +536,7 @@ mod tests {
             assert!(!update_settings(&dir, |s| s.thinking = Some(level.to_string())).unwrap());
         }
         update_settings(&dir, |s| s.thinking = None).unwrap();
-        assert_eq!(std::fs::read_to_string(dir.join(SETTINGS_FILE)).unwrap(), "{\n  \"version\": 1\n}\n");
+        assert_eq!(std::fs::read_to_string(dir.join(SETTINGS_FILE)).unwrap(), "{\n  \"version\": 2\n}\n");
         // a later bridge's keys stay, and its record is never rewritten by this one
         std::fs::write(dir.join(SETTINGS_FILE), r#"{"version": 1, "thinking": "low", "skills_off": ["x"]}"#).unwrap();
         update_settings(&dir, |s| s.thinking = Some("high".into())).unwrap();

@@ -1176,23 +1176,6 @@ pub fn with_block(soul: &str, on: bool) -> String {
     format!("{}\n\n{block}\n", body.trim_end())
 }
 
-/// The agent's personality has the block exactly when it holds a skill of the library.
-pub fn sync_soul(config: &Config, agent: &AgentConfig) {
-    if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
-        return;
-    }
-    let path = crate::agents_admin::profile_folder(config, agent).join("SOUL.md");
-    let holding = holds(config, &agent.name);
-    // the profile's one writer (profile_files.rs): under its lock, a missing SOUL.md left alone
-    let written = crate::profile_files::edit_text(&path, |soul| {
-        let soul = soul?;
-        let changed = with_block(soul, holding);
-        (changed != soul).then_some(changed)
-    });
-    if let Err(err) = written {
-        tracing::warn!(agent = %agent.name, error = %err, "skill library rule not written");
-    }
-}
 
 // -- routes -----------------------------------------------------------------------------------------------------------
 

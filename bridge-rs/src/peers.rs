@@ -38,7 +38,7 @@ use regex::Regex;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
-use crate::agents_admin::Run;
+use crate::agents_admin::pyyaml::Yaml;
 use crate::app::AppState;
 use crate::config::{AgentConfig, Config};
 use crate::households::{own_url, split, HouseholdError, Households};
@@ -204,18 +204,13 @@ pub fn peer_url(config: &Config) -> String {
     }
 }
 
-fn args(items: &[&str]) -> Vec<String> {
-    items.iter().map(|s| s.to_string()).collect()
-}
-
 /// The person's links. The gateway of each sender gets its token and the bridge as its peer; a gateway with no
 /// sender left loses its token. Returns `{"manual": {agent: ""}}`: the agents set up by hand that need their token
 /// from the administrator. `InvalidLink` (Python's `ValueError`) for a link that cannot be.
-pub async fn apply(
+pub fn apply(
     config: &Config,
     links: &Links,
     wanted: &[(String, String)],
-    run: &Run,
     households: Option<&Households>,
 ) -> anyhow::Result<Dict> {
     let linked: HashSet<String> = match households {
@@ -260,24 +255,14 @@ pub async fn apply(
             continue;
         }
         let token = crate::py::token_urlsafe(32);
-        let env = BTreeMap::from([("HERMES_HOME".to_string(), gateway.clone())]);
         // The gateway's own (default) profile: Hermes reads the peer and its key there when it delivers.
-        run(
-            args(&[&config.hermes.bin, "config", "set", &format!("bot_peers.{PEER_NAME}.url"), &peer_url(config)]),
-            env.clone(),
-        )
-        .await?;
-        run(
-            args(&[
-                &config.hermes.bin,
-                "config",
-                "set",
-                &format!("bot_peers.{PEER_NAME}.note"),
-                "Tes autres agents, par BipAgents (cible : bip/<agent>)",
-            ]),
-            env.clone(),
-        )
-        .await?;
+        crate::profile_files::set(
+            &Path::new(gateway).join("config.yaml"),
+            &[
+                (&format!("bot_peers.{PEER_NAME}.url"), Yaml::str(peer_url(config))),
+                (&format!("bot_peers.{PEER_NAME}.note"), Yaml::str("Tes autres agents, par BipAgents (cible : bip/<agent>)")),
+            ],
+        )?;
         crate::services::set_env(&Path::new(gateway).join(".env"), &key_env, Some(&token))?;
         tokens.insert(gateway.clone(), json!(digest(&token)));
     }

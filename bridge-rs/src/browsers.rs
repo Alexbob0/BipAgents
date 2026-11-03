@@ -753,13 +753,13 @@ pub async fn setup_with(
     let hermes = config.hermes.bin.as_str();
     let cdp = ports.get("cdp").copied().unwrap_or(0);
     let vnc = ports.get("vnc").copied().unwrap_or(0);
-    run(
-        args(&[hermes, "-p", name, "config", "set", "browser.cdp_url", &cdp_url(cdp, &secret)]),
-        env.clone(),
-    )
-    .await?;
-    let server = crate::py::dumps(&mcp_server(&engine, name, proxy.as_deref()));
-    run(args(&[hermes, "-p", name, "config", "set", "mcp_servers.stealth", &server]), env.clone()).await?;
+    crate::profile_files::set(
+        &profile_config(home, name),
+        &[
+            ("browser.cdp_url", Yaml::str(cdp_url(cdp, &secret))),
+            ("mcp_servers.stealth", crate::agents_admin::pyyaml::from_json(&mcp_server(&engine, name, proxy.as_deref()))),
+        ],
+    )?;
     // The vault's tools ride with Hermes' browser toolset; they act on this Chrome through its DevTools port. Of that
     // toolset the agent keeps only them (`browser.vault_only`, hermes/patches 0007): it browses with its `stealth`
     // tools, in the browser the person watches, never with Hermes' own.

@@ -342,32 +342,18 @@ pub fn membership(config: &Config, agent: &str) -> Option<bool> {
     circle(config).into_iter().find(|m| m.name == agent).map(|m| m.gives)
 }
 
-/// The agent's personality has the shared-memory block exactly when it is in the circle (`members`), with the health
-/// agent's variant for one that does not give (an agent set up by hand is left as it is). Whether it was written.
-pub fn sync_soul(config: &Config, agent: &crate::config::AgentConfig, members: &[Member]) -> bool {
-    if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
-        return false;
-    }
-    let gives = members.iter().find(|m| m.name == agent.name).map(|m| m.gives);
-    let written = crate::agents_admin::edit_soul(config, agent, false, |soul| {
-        if soul.trim().is_empty() {
-            return soul.to_string(); // Hermes' own personality: nothing of the bridge's
-        }
-        crate::souls::with_shared_memory(soul, gives)
-    });
-    match written {
-        Ok(written) => written,
-        Err(err) => {
-            tracing::warn!(agent = %agent.name, error = %err, "shared memory rule not written");
-            false
-        }
-    }
+/// The agent's personality has the shared-memory block exactly when it is in the circle, with the health agent's
+/// variant for one that does not give (its SOUL.md rendered again). Whether it was written.
+pub fn sync_soul(config: &Config, agent: &crate::config::AgentConfig) -> bool {
+    crate::agents_admin::render_soul(config, agent).unwrap_or_else(|err| {
+        tracing::warn!(agent = %agent.name, error = %format!("{err:#}"), "shared memory rule not written");
+        false
+    })
 }
 
 /// `sync_soul` for every agent of the place; how many personalities were written.
 pub fn sync_souls(config: &Config) -> usize {
-    let members = circle(config);
-    let written = config.agents.values().filter(|a| sync_soul(config, a, &members)).count();
+    let written = config.agents.values().filter(|a| sync_soul(config, a)).count();
     if written > 0 {
         tracing::info!(agents = written, "shared memory rule brought to the circle");
     }

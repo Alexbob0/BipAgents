@@ -954,7 +954,7 @@ async fn an_english_claim_makes_the_whole_place_english_in_the_persons_zone() {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
     let config = shared.get();
-    bipbridge::agents_admin::heal_souls(&config);
+    bipbridge::agents_admin::render_souls(&config);
     // every personality and every block placed after it: English, with no French example to copy
     for id in ["agent", "maison"] {
         let soul = std::fs::read_to_string(home.join("profiles").join(id).join("SOUL.md")).unwrap();

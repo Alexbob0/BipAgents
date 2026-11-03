@@ -44,8 +44,25 @@ pub fn pins(base_url: &str) -> bool {
         .is_some_and(|host| host.split('.').any(|part| part == "eurouter"))
 }
 
-/// The request's `provider` object for `base_url`, or None (not EUrouter, or no order set).
-pub fn routing(order: &[String], base_url: &str) -> Option<Value> {
+/// Models with an order of their own (cache audit 2026-11-03, #4): Entrim doesn't serve DeepSeek, so the place's
+/// order sent its calls to GreenPT and, with fallbacks, to Aki or Lyceum without a cache (two jumps in a day, a
+/// routine at Aki that read nothing back). DeepSeek is pinned to GreenPT, the provider that caches it (119 of 124
+/// calls of the bench, 99.2 % read back); another one only when GreenPT is down (`allow_fallbacks`).
+pub const MODEL_ORDERS: [(&str, &[&str]); 1] = [("deepseek", &["greenpt"])];
+
+/// The providers to try for `model`: its own order ([`MODEL_ORDERS`], by a part of its name), else the place's
+/// (`[]`, pinning off, stays off).
+pub fn order_for(order: &[String], model: &str) -> Vec<String> {
+    let model = model.to_lowercase();
+    match MODEL_ORDERS.iter().find(|(part, _)| model.contains(part)) {
+        Some((_, own)) if !order.is_empty() => own.iter().map(|p| p.to_string()).collect(),
+        _ => order.to_vec(),
+    }
+}
+
+/// The request's `provider` object for `model` at `base_url`, or None (not EUrouter, or no order set).
+pub fn routing(order: &[String], base_url: &str, model: &str) -> Option<Value> {
+    let order = order_for(order, model);
     (!order.is_empty() && pins(base_url)).then(|| json!({"order": order, "allow_fallbacks": true}))
 }
 
@@ -53,7 +70,8 @@ pub fn routing(order: &[String], base_url: &str) -> Option<Value> {
 /// ([`add_thinking_floor`]).
 pub fn add_to_body(order: &[String], base_url: &str, body: &mut Value) {
     add_thinking_floor(base_url, body);
-    if let (Some(route), Some(map)) = (routing(order, base_url), body.as_object_mut()) {
+    let model = body.get("model").and_then(Value::as_str).unwrap_or("").to_string();
+    if let (Some(route), Some(map)) = (routing(order, base_url, &model), body.as_object_mut()) {
         map.insert("provider".into(), route);
     }
 }
@@ -86,7 +104,8 @@ fn with_routing_only(data: &Yaml, order: &[String]) -> Option<Yaml> {
     let model = data.get("model").filter(|m| m.is_map());
     let custom = model.and_then(|m| m.get("provider")).and_then(Yaml::as_str) == Some("custom");
     let base = model.and_then(|m| m.get("base_url")).and_then(Yaml::as_str).unwrap_or("").to_string();
-    let route = if custom { routing(order, &base) } else { None };
+    let name = model.and_then(|m| m.get("default")).and_then(Yaml::as_str).unwrap_or("");
+    let route = if custom { routing(order, &base, name) } else { None };
     let mut out = data.clone();
     let mut providers = out.get("providers").filter(|p| p.is_map()).cloned().unwrap_or_else(Yaml::map);
     let thinking = providers.get(crate::agents_admin::THINKING_PROVIDER).is_some_and(Yaml::is_map);
@@ -123,19 +142,6 @@ fn with_routing_only(data: &Yaml, order: &[String]) -> Option<Yaml> {
     (out != *data).then_some(out)
 }
 
-/// The routing written in a Hermes config file (the hub's, new agents are cloned from); whether it changed.
-pub fn write(path: &std::path::Path, order: &[String]) -> anyhow::Result<bool> {
-    if !path.is_file() {
-        return Ok(false);
-    }
-    let chosen = path.parent().and_then(crate::agents_admin::chosen_thinking);
-    crate::profile_files::edit(path, |data| {
-        if let Some(routed) = with_routing(data, order, chosen.as_deref()) {
-            *data = routed;
-        }
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -154,13 +160,27 @@ mod tests {
         assert!(!pins("https://openrouter.ai/api/v1"));
         assert!(!pins("http://gpu:8888/v1"));
         assert!(!pins("not a url"));
-        assert_eq!(routing(&[], "https://api.eurouter.ai/api/v1"), None);
+        assert_eq!(routing(&[], "https://api.eurouter.ai/api/v1", "m"), None);
         let mut body = json!({"model": "m"});
         add_to_body(&order(), "https://api.eurouter.ai/api/v1", &mut body);
         assert_eq!(body["provider"], json!({"order": ["entrim", "greenpt", "inceptron"], "allow_fallbacks": true}));
         let mut other = json!({"model": "m"});
         add_to_body(&order(), "http://gpu:8888/v1", &mut other);
         assert!(other.get("provider").is_none());
+    }
+
+    /// Each model on the provider that caches it: GLM keeps the place's order, DeepSeek its own (cache audit #4).
+    #[test]
+    fn deepseek_has_its_own_order_and_glm_keeps_the_places() {
+        let eu = "https://api.eurouter.ai/api/v1";
+        assert_eq!(routing(&order(), eu, "glm-5.3-flash").unwrap()["order"], json!(["entrim", "greenpt", "inceptron"]));
+        let deepseek = json!({"order": ["greenpt"], "allow_fallbacks": true});
+        assert_eq!(routing(&order(), eu, "deepseek/deepseek-v4-flash").unwrap(), deepseek);
+        assert_eq!(routing(&order(), eu, "DeepSeek-V4").unwrap(), deepseek);
+        assert_eq!(routing(&[], eu, "deepseek-v4"), None); // pinning off stays off
+        let profile = pyyaml::load(&EU.replace("glm-5.3-flash", "deepseek-v4-flash")).unwrap();
+        let routed = pyyaml::dump(&with_routing(&profile, &order(), None).unwrap());
+        assert!(routed.contains("order:\n          - greenpt\n") && !routed.contains("entrim"), "{routed}");
     }
 
     /// GLM through EUrouter thinks at « low » (agents_admin::keeps_thinking_on).

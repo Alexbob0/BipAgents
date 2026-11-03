@@ -521,22 +521,10 @@ pub fn with_blocks(config: &Config, agent: &AgentConfig, soul: &str) -> String {
 
 /// The agent's SOUL.md with its blocks up to date. Returns whether it changed.
 pub fn sync_soul(config: &Config, agent: &AgentConfig) -> bool {
-    if !writable(config, agent) {
-        return false;
-    }
-    let written = crate::agents_admin::edit_soul(config, agent, false, |soul| {
-        if soul.trim().is_empty() {
-            return soul.to_string(); // Hermes' own personality stays
-        }
-        with_blocks(config, agent, soul)
-    });
-    match written {
-        Ok(written) => written,
-        Err(err) => {
-            tracing::warn!(target: "bipbridge::guide", agent = %agent.name, error = %err, "guide block not written");
-            false
-        }
-    }
+    crate::agents_admin::render_soul(config, agent).unwrap_or_else(|err| {
+        tracing::warn!(target: "bipbridge::guide", agent = %agent.name, error = %format!("{err:#}"), "guide block not written");
+        false
+    })
 }
 
 /// Every agent's blocks (an agent added, renamed or removed changes the guide's list).
@@ -1094,9 +1082,11 @@ pub fn rename(shared: &SharedConfig, agent: &AgentConfig, new_name: &str) -> any
         return Ok(agent.clone());
     }
     if let Ok(word) = Regex::new(&format!(r"\b{}\b", regex::escape(&old))) {
-        crate::agents_admin::edit_soul(&config, agent, false, |soul| {
-            word.replace_all(soul, regex::NoExpand(&new_name)).into_owned()
-        })?;
+        let soul = crate::agents_admin::editable_soul(&config, agent)?;
+        let renamed = word.replace_all(&soul, regex::NoExpand(&new_name));
+        if renamed != soul {
+            crate::agents_admin::write_soul(&config, agent, &renamed)?;
+        }
     }
     let mut renamed = agent.clone();
     renamed.display_name = new_name;
@@ -1120,7 +1110,7 @@ fn add_role(config: &Config, agent: &AgentConfig, role: &str, tone: &str, lang: 
             format!(" Your tone: {}.", tone.trim().trim_end_matches('.'))
         });
     }
-    Ok(crate::agents_admin::write_soul(config, agent, &format!("{}\n{line}\n", body.trim_end()))?)
+    crate::agents_admin::write_soul(config, agent, &format!("{}\n{line}\n", body.trim_end()))
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

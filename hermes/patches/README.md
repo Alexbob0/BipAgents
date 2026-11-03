@@ -31,6 +31,7 @@ labels, 0008's fall-back fix, 0017, 0009's `!name`, 0013.
 | 0019 routines report to their conversation | `tools/tool_labels.py`, `cron/jobs.py`, `tools/cronjob_*.py`, `gateway/platforms/api_server.py` |
 | 0020 Runs API: each model call's usage (`model.usage`) | `agent/turn_usage.py`, `gateway/platforms/api_server_runs.py`, `gateway/session_api_turn.py`, `gateway/run_turn_runner.py` |
 | 0021 an API client's own Bot Chat stays an API conversation | `gateway/platforms/api_server_bot_chat.py`, `gateway/session_bot.py` |
+| 0022 tools in one canonical order (`tools.order_first`) | `tools/tool_order.py` (new), `model_tools.py`, `tools/mcp_tool_agent.py` |
 
 ## How the patches are kept
 
@@ -670,3 +671,23 @@ deltas): it carries the turn's `cache_read_tokens` and `cache_write_tokens` agai
   and puts on the 15 patches; `test_hermes_update.py`: the update runs, with `--keep-stash`, no hold).
 Not run end to end against a live gateway and a real model yet: the bridge's side of v0.22.5 and the lab bench come
 first.
+
+## 0022 — tools in one canonical order
+
+**Problem.** The tool list heads every request (GLM's template renders it first), and a provider's prompt cache is
+shared only as far as two requests are byte-identical. Hermes sorts the tools by name, so two agents differ from the
+2nd or 3rd tool on (`browser_vault`, `clarify`, `execute_code`…) and share ≈ 100 tokens: each agent's first call,
+and every routine, read nothing from the cache (cache audit of 2026-11-03, #1: ≈ 62k tokens a day for GLM). A tool
+that arrives in a live session (an MCP list refresh) is appended, so that session's list is no longer the one a new
+session builds.
+
+**What the patch does.** `tools.order_first` (a list of tool names in config.yaml, written by the bridge: the 24 tools
+every agent has, ≈ 9.1k tokens) puts those tools first in that order, every other tool after them by name; the tool
+search's own tools take their place too. A tool added to a live session (`restore_agent_tool_prefix`,
+`_merge_preserving_prefix`) is inserted at its canonical place instead of the tail: one break in that session, then
+its list is again the one every new session builds. Without the setting: plain name order, as before.
+
+**Files.** `tools/tool_order.py` (new), `model_tools.py` (`_compute_tool_definitions`), `tools/mcp_tool_agent.py`.
+
+**Tests.** `tests/tools/test_tool_order.py`: common tools first then by name, two agents' common prefix byte-identical,
+the same list from any input order (two starts), a later tool at its place.

@@ -496,7 +496,7 @@ pub fn model_for(
         (None, None) if own => (config.notebook.price_in, config.notebook.price_out),
         (None, None) => (config.archive_records.unknown_price_in, config.archive_records.unknown_price_out),
     };
-    let route = crate::model_route::routing(&config.model_provider_order, &base);
+    let route = crate::model_route::routing(&config.model_provider_order, &base, &name);
     Ok(Model { base: base.trim_end_matches('/').to_string(), name, key, price_in, price_out, local, own, route })
 }
 

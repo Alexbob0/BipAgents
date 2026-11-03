@@ -45,8 +45,8 @@ pub fn apply(soul: &str, agent: &AgentConfig) -> String {
 }
 
 /// The agent's SOUL.md brought to its style (written only when it changes). Returns whether it was written.
-pub fn sync_soul(config: &Config, agent: &AgentConfig) -> std::io::Result<bool> {
-    crate::agents_admin::edit_soul(config, agent, true, |soul| apply(soul, agent))
+pub fn sync_soul(config: &Config, agent: &AgentConfig) -> anyhow::Result<bool> {
+    crate::agents_admin::render_soul(config, agent)
 }
 
 /// A new style for the agent: its section, the live config and its soul at once. `custom`: the person's own text

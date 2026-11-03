@@ -496,25 +496,6 @@ pub fn forget(config: &Config, agent: &str) {
     }
 }
 
-/// The agent's personality has the Carnet's rule exactly when its tools are on (an agent set up by hand is left as
-/// it is). Best effort: called whenever its tools are registered (start, creation, a switch).
-pub fn sync_soul(config: &Config, agent: &crate::config::AgentConfig) {
-    if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
-        return;
-    }
-    let membership = crate::shared_memory::membership(config, &agent.name);
-    let written = crate::agents_admin::edit_soul(config, agent, false, |soul| {
-        let changed = crate::souls::with_notebook(soul, enabled(config, &agent.name));
-        // the health agent's rule brought to its current text (2026-10-30: the body stays off « Toi »); on or off is
-        // agents_admin::set_health's
-        let changed = crate::souls::refresh_health(&changed);
-        // what it remembers of its person is common to the circle, and it knows it (shared_memory.rs)
-        crate::souls::with_shared_memory(&changed, membership)
-    });
-    if let Err(err) = written {
-        tracing::warn!(agent = %agent.name, error = %err, "notebook rule not written");
-    }
-}
 
 /// Whether `agent` may read and write the private health part: the person gave it their health (health.rs).
 pub fn health_agent(config: &Config, agent: &str) -> bool {

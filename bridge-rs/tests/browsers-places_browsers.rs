@@ -87,6 +87,12 @@ fn v(items: &[&str]) -> Vec<String> {
     items.iter().map(|s| s.to_string()).collect()
 }
 
+/// The agent's Hermes config as the bridge wrote it (`browser.cdp_url`, `mcp_servers.stealth`: no `hermes config set`).
+fn written(s: &Setup) -> Value {
+    let text = std::fs::read_to_string(s.hub.join("profiles/budget/config.yaml")).unwrap_or_default();
+    pyyaml::to_json(&pyyaml::load(&text).unwrap())
+}
+
 fn read_json(path: &Path) -> Value {
     serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
 }
@@ -107,15 +113,7 @@ async fn an_install_hands_out_only_its_own_range_and_moves_a_browser_from_outsid
     assert_eq!(agent.desktop_vnc.as_deref(), Some("tcp://127.0.0.1:19601"));
     assert_eq!(std::fs::read_to_string(place.join("profile").join("Cookies")).unwrap(), "kept");
     let secret = std::fs::read_to_string(place.join("cdp.token")).unwrap().trim().to_string();
-    assert!(s.ran().contains(&v(&[
-        "/opt/hermes",
-        "-p",
-        "budget",
-        "config",
-        "set",
-        "browser.cdp_url",
-        &format!("http://127.0.0.1:19600/t/{secret}")
-    ])));
+    assert_eq!(written(&s)["browser"]["cdp_url"], json!(format!("http://127.0.0.1:19600/t/{secret}")));
     std::fs::create_dir_all(s.tmp.join("browsers").join("other")).unwrap();
     std::fs::write(
         s.tmp.join("browsers").join("other").join("ports.json"),
@@ -164,19 +162,10 @@ async fn an_agent_gets_its_own_browser_container_and_desktop() {
     assert!(secret.len() == 64 && secret.bytes().all(|b| b.is_ascii_hexdigit()));
     assert_eq!(std::fs::metadata(&secret_file).unwrap().permissions().mode() & 0o777, 0o600);
     assert!(start.contains(&format!("-v {}:/run/bipagents/cdp.token:ro,Z", secret_file.display())));
-    assert!(ran.contains(&v(&[
-        "/opt/hermes",
-        "-p",
-        "budget",
-        "config",
-        "set",
-        "browser.cdp_url",
-        &format!("http://127.0.0.1:19602/t/{secret}")
-    ])));
+    assert_eq!(written(&s)["browser"]["cdp_url"], json!(format!("http://127.0.0.1:19602/t/{secret}")));
     assert_eq!(browsers::ports_of(&s.config, "budget").unwrap()["cdp"], 19602);
     assert_eq!(browsers::devtools_secret(19602).as_deref(), Some(&*secret));
-    let mcp = ran.iter().find(|c| c.len() > 6 && c[4..6] == v(&["set", "mcp_servers.stealth"])[..]).unwrap();
-    let mcp: Value = serde_json::from_str(&mcp[6]).unwrap();
+    let mcp = written(&s)["mcp_servers"]["stealth"].clone();
     assert_eq!(
         mcp,
         json!({"command": browsers::proxy_binary(), "connect_timeout": 90, "timeout": 120,
@@ -248,8 +237,7 @@ async fn a_browser_kept_running() {
     s.setup_budget(&s.host.clone()).await;
     let ran = s.ran();
     assert!(ran.contains(&v(&["systemctl", "--user", "enable", "--now", "bipagents-browser-budget"])));
-    let mcp = ran.iter().find(|c| c.len() > 6 && c[4..6] == v(&["set", "mcp_servers.stealth"])[..]).unwrap();
-    let mcp: Value = serde_json::from_str(&mcp[6]).unwrap();
+    let mcp = written(&s)["mcp_servers"]["stealth"].clone();
     assert_eq!(mcp["command"], "/usr/bin/podman");
     assert_eq!(mcp["args"], json!(["exec", "-i", "bipagents-browser-budget", "/opt/stealth/mcp.sh"]));
 }
@@ -393,9 +381,9 @@ async fn the_apps_switch_turns_the_browser_off_and_on_keeping_its_profile() {
     assert!(browsers::available_with(&s.host, &s.config));
     // The first time: set up (its container, its MCP server in the profile).
     browsers::switch_with(&s.host, &s.config, &agent, true, &s.run, &home).await.unwrap();
-    assert!(s.ran().iter().any(|c| c.len() > 6 && c[4..6] == v(&["set", "mcp_servers.stealth"])[..]));
+    assert!(written(&s)["mcp_servers"]["stealth"].is_object());
     first_use(&s);
-    let profile = s.hub.join("profiles/budget/config.yaml"); // what `hermes config set` wrote
+    let profile = s.hub.join("profiles/budget/config.yaml"); // what the bridge wrote
     std::fs::write(&profile, "model:\n  provider: custom\nskills:\n  disabled:\n  - arxiv\nmcp_servers:\n  stealth:\n    command: python3\n    args:\n    - proxy\n").unwrap();
     assert_eq!(browsers::state(&home, "budget"), Some(true));
     // Off: its tools and skill off, its Chrome stopped; its profile and its MCP entry stay.
