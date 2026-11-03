@@ -125,7 +125,7 @@ def test_a_shared_agents_conversation_through_the_owners_bridge(bridges, fakes):
     page = get(b, f"/v1/threads/{cid}/timeline", agent="cuisine__alex")
     assert page["thread"]["id"] == cid and [i["text"] for i in page["items"]] == ["Dîner", "Une fondue !"]
     assert page["items"][0]["client_id"] == "C0FFEE00-0000-4000-8000-000000000010"
-    assert page["pending"] == {"run": None, "approvals": []}
+    assert page["pending"] == {"run": None, "approvals": [], "questions": []}
     # a turn going on: its state and start, for the shared screen
     gate = threading.Event()
     fakes.hermes.runs["r2"] = [gate, sse("run.completed", output="Une tarte.")]
