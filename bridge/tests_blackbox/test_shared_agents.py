@@ -135,14 +135,15 @@ def test_a_relative_talks_to_a_shared_agent(bridges, fakes):
     assert answered.status_code == 200, answered.text
     assert fakes.hermes.approvals[-1]["agent"] == "cuisine" and fakes.hermes.approvals[-1]["body"]["choice"] == "once"
     assert wait(lambda: hints != [])   # answered: her screen told to read again
+    # Hermes stores her turn as it ends: her message is the stored row then, still with her app's id, her words unframed
+    session = fakes.hermes.started["r1"]["session_id"]
+    fakes.hermes.messages[("cuisine", session)] = [{"role": "user", "content": fakes.hermes.started["r1"]["input"]},
+                                                   {"role": "assistant", "content": "Une fondue !"}]
     gate.set()
     fakes.hermes.started["r1"]["status"] = "completed"
     assert wait(lambda: page()["pending"]["run"] is None)
     viewer.join(timeout=15)
-    # Hermes stored her turn: her message is the stored row now, still with her app's id, her words unframed
-    session = fakes.hermes.started["r1"]["session_id"]
-    fakes.hermes.messages[("cuisine", session)] = [{"role": "user", "content": fakes.hermes.started["r1"]["input"]},
-                                                   {"role": "assistant", "content": "Une fondue !"}]
+    assert wait(lambda: page()["items"][-1]["text"] == "Une fondue !")
     items = page()["items"]
     assert [(i["role"], i["text"]) for i in items] == [("person", "Une idée de dîner ?"), ("agent", "Une fondue !")]
     assert items[0]["client_id"] == first["client_id"] and not items[0]["id"].startswith("s_")
