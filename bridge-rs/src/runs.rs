@@ -289,6 +289,16 @@ pub fn append_to_backlog(backlog: &mut VecDeque<SSEEvent>, event: &SSEEvent) {
     backlog.push_back(event.clone());
 }
 
+/// An approval's or a question's card with the id of the timeline item it becomes once answered
+/// (threads::answered_id): one row on every device, waiting then answered.
+fn with_item_id(sub: &RunSubscription, event: SSEEvent) -> SSEEvent {
+    let request = if event.r#type == "clarify.request" { clarify_id(&event.data) } else { as_str(event.data.get("request_id")) };
+    let mut data = event.data;
+    data.insert("item_id".into(), json!(crate::threads::answered_id(Some(&sub.run_id), request.as_deref())));
+    let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(data.clone()));
+    SSEEvent::new(event.r#type, data, raw)
+}
+
 /// `_clarify_id(data)`: a question's id (`request_id`: its prompt's, hermes_prompts.rs `named`; or `clarify_id`).
 pub fn clarify_id(data: &Map<String, Value>) -> Option<String> {
     for key in ["request_id", "clarify_id"] {
@@ -1185,6 +1195,7 @@ impl RunHub {
         let mut inner = lock(&self.inner);
         let mut st = lock(&sub.state);
         let event = if event.r#type == "approval.request" { self.in_plain_words(sub, &st, event) } else { event };
+        let event = if matches!(event.r#type.as_str(), "approval.request" | "clarify.request") { with_item_id(sub, event) } else { event };
         let event = if event.r#type == "run.completed" { self.no_reply_in_plain_words(sub, event) } else { event };
         let event = if event.r#type == "run.failed" { self.account_failure_in_plain_words(sub, event) } else { event };
         append_to_backlog(&mut st.backlog, &event);

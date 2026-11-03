@@ -715,7 +715,7 @@ pub async fn relay_thread(state: &AppState, agent: &str, what: &str, q: &web::Qu
                 .map(|all| {
                     all.iter()
                         .map(|c| json!({"id": c.get("id"), "agent": agent, "kind": "shared", "title": c.get("title"),
-                                        "hidden": false, "updated_at": c.get("updated")}))
+                                        "hidden": false, "version": 0, "last_active": c.get("updated")}))
                         .collect()
                 })
                 .unwrap_or_default();
