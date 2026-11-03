@@ -331,6 +331,7 @@ impl AppState {
         // what takes the place's space, measured; the 80/95 % cards, the pause when full (storage_watch.rs)
         self.spawn(crate::storage_watch::run_forever(self.clone()));
         self.spawn(crate::mail_tidy::run_forever(self.clone())); // mail tidy jobs a restart left behind
+        self.spawn(crate::mail_rules::run_forever(self.clone())); // standing mail rules: resumes, weekly line
         self.spawn(crate::door_tls::announce_forever(self.clone())); // our door's certificate to linked households
         self.spawn(crate::notebook::tidy::scheduler(self.clone()));
         self.spawn(crate::dates::run_forever(self.clone()));
@@ -1252,6 +1253,26 @@ async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>
     if let Some(id) = run_id.strip_prefix(crate::feature_tips::RUN_PREFIX) {
         return crate::feature_tips::approve(&state, &agent.name, id, &body.choice).await;
     }
+    // a standing mail rule's card (mail_rules.rs): on with « Oui », the mails already there filed by the bridge
+    if let Some(id) = run_id.strip_prefix(crate::mail_rules::RUN_PREFIX) {
+        let allow = body.choice.trim().to_lowercase() != "deny";
+        let (config, name, id) = (state.config(), agent.name.clone(), id.to_string());
+        let rule = tokio::task::spawn_blocking(move || -> anyhow::Result<Option<crate::mail_rules::Rule>> {
+            let rule = crate::mail_rules::answer(&config, &name, &id, allow, "app")?;
+            if let Some(rule) = rule.as_ref().filter(|r| allow && !r.existing_done) {
+                crate::mail_rules::start(&config, &rule.id, crate::mailbox::default_connect());
+            }
+            Ok(rule)
+        })
+        .await
+        .map_err(anyhow::Error::from)??;
+        return match rule {
+            Some(rule) => Ok(web::ok(
+                json!({"ok": true, "choice": if allow { "once" } else { "deny" }, "count": rule.existing}),
+            )),
+            None => Err(HttpError::new(404, "no such request (answered already?)")),
+        };
+    }
     // a mail tidy card (archive, mark read, move or trash many e-mails, mail_tidy.rs): done by the bridge on « Oui »
     if let Some(id) = run_id.strip_prefix(crate::mail_tidy::RUN_PREFIX) {
         let allow = body.choice.trim().to_lowercase() != "deny";
@@ -1367,6 +1388,7 @@ async fn approvals(State(state): State<AppState>, q: QueryMap) -> ApiResult<Resp
         items.extend(crate::connectors::pending_items(&state, &config, name.as_deref()));
         items.extend(crate::storage_watch::pending_items(&config, name.as_deref()));
         items.extend(crate::mail_tidy::pending_items(&config, name.as_deref()));
+        items.extend(crate::mail_rules::pending_items(&config, name.as_deref()));
         items.extend(crate::feature_tips::pending_items(&config, name.as_deref()));
         items.extend(crate::triggers::pending_items(&config, name.as_deref()));
     }
@@ -1794,6 +1816,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::agent_email::router())
         .merge(crate::sandbox_sites::router())
         .merge(crate::mail_scan::router())
+        .merge(crate::mail_rules::router())
         .merge(crate::jobs::router())
         .merge(crate::notes_import::router())
         .merge(crate::assistant_import::router())

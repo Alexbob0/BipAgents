@@ -9,6 +9,9 @@
 //! trigger needs any more is closed. Each runs in a thread of its own (the IMAP client blocks), stopped within a
 //! second or so of being told to.
 //!
+//! The standing mail rules' mailboxes (mail_rules.rs) are watched the same way: each new message's headers go to their
+//! `sort_new` (only a mailbox a routine wants has its messages read whole).
+//!
 //!     <data>/triggers-mail.json (0600)   {account: {validity, last_uid}}   where each inbox was left
 //!
 //! No Python counterpart.
@@ -84,6 +87,7 @@ pub fn needed(config: &Config) -> HashMap<String, Dict> {
         .into_iter()
         .filter(|t| t.enabled && t.kind == MAIL && config.agent(Some(&t.agent)).is_some())
         .filter_map(|t| t.mail.map(|m| (m.account, t.agent)))
+        .chain(crate::mail_rules::watched(config)) // the standing mail rules' mailboxes too (mail_rules.rs)
         .collect();
     if wanted.is_empty() {
         return HashMap::new();
@@ -134,6 +138,23 @@ fn newest_uid(conn: &mut Connection) -> Result<u64, String> {
         }
     }
     Ok(best)
+}
+
+/// Whether some active e-mail routine of this mailbox wants its new messages.
+fn has_routines(config: &Config, account: &str) -> bool {
+    triggers::load(config)
+        .triggers
+        .iter()
+        .any(|t| t.enabled && t.kind == MAIL && t.mail.as_ref().is_some_and(|m| m.account == account))
+}
+
+/// New messages' headers (mail_rules.rs: sender, list, flags, Message-ID), never their text.
+fn headers_of(conn: &mut Connection, uids: &[u64]) -> Result<Vec<crate::mail_tidy::Row>, String> {
+    let small: Vec<u32> = uids.iter().filter_map(|u| u32::try_from(*u).ok()).collect();
+    let (status, data) = conn
+        .uid("FETCH", &[&crate::mail_tidy::uid_set(&small), crate::mail_tidy::FETCH_ITEMS])
+        .map_err(|e| e.to_string())?;
+    Ok(if status == "OK" { crate::mail_tidy::parse_fetch(&data) } else { Vec::new() })
 }
 
 /// UIDs above `last`, in order.
@@ -215,12 +236,22 @@ fn session(config: &Config, id: &str, account: &Dict, stop: &AtomicBool, tx: &Un
             if stop.load(Ordering::Relaxed) {
                 return Ok(());
             }
-            for uid in new_uids(&mut conn, at.last_uid)?.into_iter().take(PER_LOOK) {
-                if let Some(event) = read_one(&mut conn, id, uid)? {
-                    let _ = tx.send((id.to_string(), event));
+            let uids: Vec<u64> = new_uids(&mut conn, at.last_uid)?.into_iter().take(PER_LOOK).collect();
+            // a mailbox watched only for its rules: no message read whole
+            let routines = !uids.is_empty() && has_routines(config, id);
+            for &uid in &uids {
+                if routines {
+                    if let Some(event) = read_one(&mut conn, id, uid)? {
+                        let _ = tx.send((id.to_string(), event));
+                    }
                 }
                 at.last_uid = uid;
                 save_cursor(config, id, &at);
+            }
+            // then the standing rules file them (their headers only, another connection: mail_rules.rs)
+            if !uids.is_empty() && crate::mail_rules::has_rules(config, id) {
+                let rows = headers_of(&mut conn, &uids)?;
+                crate::mail_rules::sort_new(config, id, &rows, &mailbox::default_connect());
             }
             if idle {
                 conn.idle(Duration::from_secs_f64(settings.idle_minutes * 60.0), &|| stop.load(Ordering::Relaxed))

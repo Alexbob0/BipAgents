@@ -267,7 +267,7 @@ pub struct Scan {
     pub at: f64,
 }
 
-const FETCH_ITEMS: &str =
+pub const FETCH_ITEMS: &str =
     "(UID FLAGS RFC822.SIZE BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE LIST-ID LIST-UNSUBSCRIBE PRECEDENCE MESSAGE-ID)])";
 
 fn search_all(conn: &mut Connection) -> anyhow::Result<Vec<u32>> {
@@ -320,7 +320,7 @@ pub fn scan(conn: &mut Connection, folder: &str, budget: Duration) -> anyhow::Re
 type CacheKey = (String, String);
 static CACHE: LazyLock<Mutex<HashMap<CacheKey, Arc<Scan>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
-fn cached(account: &Dict, folder: &str, conn: &mut Connection, fresh: bool) -> anyhow::Result<Arc<Scan>> {
+pub fn cached(account: &Dict, folder: &str, conn: &mut Connection, fresh: bool) -> anyhow::Result<Arc<Scan>> {
     let key = (mailbox::field(account, "id"), folder.to_string());
     if !fresh {
         let cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
@@ -764,7 +764,9 @@ starred/flagged, the person's own mails.",
     }
     out.push(
         "Next: mail_bulk(action, groups or criteria) makes a card for the person; nothing moves before their Oui. \
-For the doubtful rest, a background task with mail_scan."
+A sender that keeps coming (server providers, shops, banks, newsletters): add rule: true to file it from now on \
+too (a folder rather than the trash; invoices to « Factures »). For the doubtful rest, a background task with \
+mail_scan."
             .into(),
     );
     out.join("\n")
@@ -786,11 +788,11 @@ fn job_line(job: &Job) -> String {
 
 // -- the card ---------------------------------------------------------------------------------------------------------
 
-fn language(config: &Config, agent: &str) -> String {
+pub fn language(config: &Config, agent: &str) -> String {
     config.agent(Some(agent)).map(|a| crate::handback::language_of(config, a)).unwrap_or_else(|| "fr".into())
 }
 
-fn shown_agent(config: &Config, agent: &str) -> String {
+pub fn shown_agent(config: &Config, agent: &str) -> String {
     config.agent(Some(agent)).map(|a| a.display_name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| agent.into())
 }
 
@@ -993,15 +995,22 @@ pub fn tools() -> Vec<Value> {
         json!({
             "name": "mail_bulk",
             "description": "Tidy many e-mails at once: archive, mark_read, move:<folder> or trash, by groups from \
-        mail_overview or criteria. Makes a card the person approves; nothing happens before. Also status, undo (job).",
+        mail_overview or criteria. Makes a card the person approves; nothing happens before. Also status, undo (job). \
+        rule: true = a standing rule (by sender, domain or list only): the existing matches now, then every new one \
+        by itself. After an overview, propose rules for senders that keep coming (server providers, shops, banks, \
+        newsletters); file rather than trash (trash only when the person asks); invoices: move:Factures. rules lists \
+        them; stop_rule / undo_rule (rule_id).",
             "inputSchema": {"type": "object", "properties": {
-                "action": {"type": "string", "description": "archive | mark_read | move:<folder> | trash | status | undo"},
+                "action": {"type": "string", "description": "archive | mark_read | move:<folder> | trash | status | undo | rules | stop_rule | undo_rule"},
                 "groups": {"type": "array", "items": {"type": "string"}, "description": "ids from mail_overview"},
                 "from": {"type": "string"}, "domain": {"type": "string"}, "list_id": {"type": "string"},
                 "older_than_days": {"type": "integer"}, "subject_contains": {"type": "string"},
                 "unread_only": {"type": "boolean"},
                 "everything": {"type": "boolean", "description": "the whole folder, only when the person asked"},
                 "job": {"type": "string", "description": "undo: the job's id"},
+                "rule": {"type": "boolean", "description": "from now on too: a standing rule"},
+                "mark_read": {"type": "boolean", "description": "a rule's: also mark them read"},
+                "rule_id": {"type": "string", "description": "stop_rule, undo_rule"},
                 "folder": {"type": "string"}, "mailbox": {"type": "string"}}, "required": ["action"]},
             "annotations": {"readOnlyHint": false, "destructiveHint": false, "openWorldHint": false},
         }),
@@ -1012,10 +1021,12 @@ pub fn tools() -> Vec<Value> {
 pub struct Called {
     pub result: Dict,
     pub card: Option<Job>,
+    /// A standing rule's card (mail_rules.rs).
+    pub rule: Option<crate::mail_rules::Rule>,
 }
 
-fn said(text: &str, error: bool) -> Called {
-    Called { result: tool_text(text, error), card: None }
+pub fn said(text: &str, error: bool) -> Called {
+    Called { result: tool_text(text, error), card: None, rule: None }
 }
 
 /// One of the tools, for `agent` (only the mailboxes the person gave it).
@@ -1036,6 +1047,9 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict, opener: 
     };
     if name == "mail_bulk" {
         let word = tk::strip(&arg("action")).to_lowercase();
+        if crate::mail_rules::WORDS.contains(&word.as_str()) || arguments.get("rule").is_some_and(py::truthy) {
+            return crate::mail_rules::call(config, agent, &word, arguments, account, &folder, opener);
+        }
         if word == "status" {
             let jobs = jobs_of(config, agent);
             let cards = cards_of(config, Some(agent));
@@ -1051,6 +1065,7 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict, opener: 
                 })
                 .collect();
             lines.extend(jobs.iter().rev().take(5).map(job_line));
+            lines.extend(crate::mail_rules::status_lines(config, agent));
             if lines.is_empty() {
                 return Ok(said("No mail job.", false));
             }
@@ -1108,6 +1123,7 @@ Oui. Tell them in one sentence.",
                 false,
             ),
             card: Some(card),
+            rule: None,
         });
     }
     if name == "mail_overview" {
@@ -1259,11 +1275,11 @@ fn fail(config: &Config, job: &mut Job, message: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn ok(reply: &Result<crate::tools_knowledge::imap::Reply, ImapError>) -> bool {
+pub fn ok(reply: &Result<crate::tools_knowledge::imap::Reply, ImapError>) -> bool {
     matches!(reply, Ok((status, _)) if status == "OK")
 }
 
-fn act(conn: &mut Connection, action: &Action, set: &str, dest: &str) -> anyhow::Result<bool> {
+pub fn act(conn: &mut Connection, action: &Action, set: &str, dest: &str) -> anyhow::Result<bool> {
     let quoted = mailbox::quote(dest);
     Ok(match action {
         Action::MarkRead => ok(&conn.uid("STORE", &[set, "+FLAGS.SILENT", "(\\Seen)"])),
@@ -1285,7 +1301,7 @@ fn act(conn: &mut Connection, action: &Action, set: &str, dest: &str) -> anyhow:
 }
 
 /// The uids of messages whose Message-ID is in `ids`, in the selected folder.
-fn find_by_ids(conn: &mut Connection, ids: &[String]) -> anyhow::Result<Vec<u32>> {
+pub fn find_by_ids(conn: &mut Connection, ids: &[String]) -> anyhow::Result<Vec<u32>> {
     let mut found = Vec::new();
     for chunk in ids.chunks(20) {
         let mut args: Vec<String> = Vec::new();

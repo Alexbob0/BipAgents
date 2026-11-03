@@ -1433,6 +1433,14 @@ pub async fn call_tool(
                 .to_string();
             push.notify_bridge_card(&agent.name, &line, "mail_request", &card.id).await;
         }
+        if let (Some(rule), Some(push)) = (&called.rule, push.as_ref()) {
+            let line = crate::mail_rules::item_of(&config, rule)
+                .get("bip_summary")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            push.notify_bridge_card(&agent.name, &line, "mail_request", &rule.id).await;
+        }
         return Ok(called.result);
     }
     if name == crate::triggers::TOOL_NAME {
