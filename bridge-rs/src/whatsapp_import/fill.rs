@@ -24,8 +24,9 @@ use crate::tools_knowledge as tk;
 
 /// Characters of chat per call (about 3,000 tokens).
 pub const WINDOW_CHARS: usize = 10_000;
-/// What the model may answer (the cap counts it whole).
-pub const MAX_OUTPUT_TOKENS: i64 = 1200;
+/// What the model may answer (the cap counts it whole). 3,000 since 2026-11-03: a model that thinks before answering
+/// (DeepSeek V4.1 Flash through EUrouter in the carnet review's lab) used 1,200 up before any JSON.
+pub const MAX_OUTPUT_TOKENS: i64 = 3000;
 /// What an answer usually takes (the estimate).
 pub const TYPICAL_OUTPUT_TOKENS: i64 = 350;
 /// A first import fills the Carnet from this many days before the chat's last message (the rest stays searchable).
@@ -171,7 +172,12 @@ pub async fn ask(model: &Model, user: &str) -> Result<(String, i64, i64), String
     if let (Some(route), Some(map)) = (&model.route, body.as_object_mut()) {
         map.insert("provider".into(), route.clone());
     }
-    for attempt in 0..2 {
+    // GLM through EUrouter thinks at its own default without it, and its 1,200 tokens ended before any answer (carnet
+    // review's lab, 2026-11-03: « no JSON object in the answer », a family chat imported with nobody in the Carnet)
+    crate::model_route::add_thinking_floor(&model.base, &mut body);
+    let (mut spent_in, mut spent_out) = (0, 0);
+    let mut format_dropped = false;
+    for _ in 0..3 {
         let mut request = HTTP.post(format!("{}/chat/completions", model.base)).json(&body);
         if !model.key.is_empty() {
             request = request.header("Authorization", format!("Bearer {}", model.key));
@@ -179,7 +185,8 @@ pub async fn ask(model: &Model, user: &str) -> Result<(String, i64, i64), String
         let resp = request.send().await.map_err(|e| format!("the model can't be reached ({e})"))?;
         let status = resp.status().as_u16();
         let raw = resp.bytes().await.map_err(|e| e.to_string())?;
-        if status == 400 && attempt == 0 && String::from_utf8_lossy(&raw).contains("response_format") {
+        if status == 400 && !format_dropped && String::from_utf8_lossy(&raw).contains("response_format") {
+            format_dropped = true;
             if let Some(map) = body.as_object_mut() {
                 map.remove("response_format");
             }
@@ -194,15 +201,30 @@ pub async fn ask(model: &Model, user: &str) -> Result<(String, i64, i64), String
         let data: Value = serde_json::from_slice(&raw).unwrap_or(Value::Null);
         let answer = data.pointer("/choices/0/message/content").and_then(Value::as_str).unwrap_or("").to_string();
         let usage = data.get("usage").cloned().unwrap_or(json!({}));
-        let tokens_in = usage
+        spent_in += usage
             .get("prompt_tokens")
             .and_then(Value::as_i64)
             .unwrap_or_else(|| records_fill::tokens_of(INSTRUCTIONS.len() + user.len()));
-        let tokens_out = usage
-            .get("completion_tokens")
-            .and_then(Value::as_i64)
-            .unwrap_or_else(|| records_fill::tokens_of(answer.len()));
-        return Ok((answer, tokens_in, tokens_out));
+        spent_out +=
+            usage.get("completion_tokens").and_then(Value::as_i64).unwrap_or_else(|| records_fill::tokens_of(answer.len()));
+        let finish = data.pointer("/choices/0/finish_reason").and_then(Value::as_str).unwrap_or("").to_string();
+        if !answer.contains('{') {
+            // why there is no JSON: cut short (« length »), or all of it spent thinking
+            let reasoning =
+                data.pointer("/choices/0/message/reasoning_content").and_then(Value::as_str).map_or(0, str::len);
+            tracing::info!(target: "bipbridge::whatsapp", model = %model.name, finish = %finish,
+                answer_chars = answer.len(), reasoning_chars = reasoning, "an answer without JSON");
+            // a model that thought through all of it (DeepSeek V4.1 Flash, the lab's 2026-11-03: 10,000 characters
+            // of thinking, no answer): once more, asked to think little (the run's cap counts this second call)
+            let asked_low = body.get("reasoning_effort").is_some();
+            if finish == "length" && !asked_low {
+                if let Some(map) = body.as_object_mut() {
+                    map.insert("reasoning_effort".into(), json!("low"));
+                }
+                continue;
+            }
+        }
+        return Ok((answer, spent_in, spent_out));
     }
     Err("the model refused the request".into())
 }
@@ -213,6 +235,8 @@ pub async fn ask(model: &Model, user: &str) -> Result<(String, i64, i64), String
 pub struct Person {
     pub name: String,
     pub facts: Vec<String>,
+    /// family, friend, work, service or other (people only): their group's page while they have few facts.
+    pub relation: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -272,7 +296,7 @@ pub fn parse_answer(answer: &str, window: &Window, me: &str, today: NaiveDate) -
         }
         facts.truncate(FACTS_PER_PAGE);
         if !facts.is_empty() {
-            found.people.push(Person { name, facts });
+            found.people.push(Person { name, facts, relation });
         }
     }
     for item in list("subjects") {
@@ -287,7 +311,7 @@ pub fn parse_answer(answer: &str, window: &Window, me: &str, today: NaiveDate) -
             .unwrap_or_default();
         facts.truncate(FACTS_PER_PAGE);
         if !facts.is_empty() {
-            found.subjects.push(Person { name: title, facts });
+            found.subjects.push(Person { name: title, facts, relation: String::new() });
         }
     }
     for item in list("dates") {
@@ -386,13 +410,19 @@ pub fn write(
     let with_link = |facts: &[String]| facts.iter().map(|f| format!("{f}{link}")).collect::<Vec<_>>();
     for person in &found.people {
         let facts = with_link(&person.facts);
-        let Some(written) =
-            kept(notebook::note(config, Part::Main, "person", &person.name, "", &facts, &[], "", "", &who))?
-        else {
+        // their own page when it is a two-person chat's other person, close family, known or with enough facts; else
+        // a line on their group's page (notebook/groups.rs)
+        let direct = home.kind == "person" && notebook::fold(&home.title) == notebook::fold(&person.name);
+        let filed = if direct {
+            notebook::note(config, Part::Main, "person", &person.name, "", &facts, &[], "", "", &who)
+        } else {
+            notebook::groups::file_person(config, &person.name, &person.relation, &facts, &who)
+        };
+        let Some(written) = kept(filed)? else {
             continue;
         };
         if written.created || !written.added.is_empty() {
-            counts.people.insert(notebook::fold(&written.title));
+            counts.people.insert(notebook::fold(&person.name));
         }
     }
     for subject in &found.subjects {
@@ -410,14 +440,25 @@ pub fn write(
         let (kind, title) =
             if person.is_empty() { (home.kind, home.title.as_str()) } else { ("person", person.as_str()) };
         let fact = format!("{what} : {date}{link}");
-        let Some(written) = kept(notebook::note(config, Part::Main, kind, title, "", &[fact], &[], "", "", &who))?
-        else {
+        // someone's date goes where their facts went (their page, else their group's)
+        let relation = found
+            .people
+            .iter()
+            .find(|p| notebook::fold(&p.name) == notebook::fold(title))
+            .map(|p| p.relation.as_str())
+            .unwrap_or("other");
+        let filed = if kind == "person" && notebook::fold(title) != notebook::fold(&home.title) {
+            notebook::groups::file_person(config, title, relation, &[fact], &who)
+        } else {
+            notebook::note(config, Part::Main, kind, title, "", &[fact], &[], "", "", &who)
+        };
+        let Some(written) = kept(filed)? else {
             continue;
         };
         if !written.added.is_empty() {
             counts.dates += 1;
             if kind == "person" {
-                counts.people.insert(notebook::fold(&written.title));
+                counts.people.insert(notebook::fold(title));
             }
         }
     }

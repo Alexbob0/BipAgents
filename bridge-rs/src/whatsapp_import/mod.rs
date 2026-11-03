@@ -508,7 +508,9 @@ pub async fn run_fill(
     set_status(&agent.name, status(0, &counts, 0.0, "filling"));
     for (n, window) in parts.iter().enumerate() {
         let user = fill::prompt_for(&name, &chat.participants, &me, window, &today_text);
-        let most = model.cost(records_fill::tokens_of(fill::INSTRUCTIONS.len() + user.len()), fill::MAX_OUTPUT_TOKENS);
+        // twice: a model that thinks through all of it is asked once more (fill::ask)
+        let most =
+            2.0 * model.cost(records_fill::tokens_of(fill::INSTRUCTIONS.len() + user.len()), fill::MAX_OUTPUT_TOKENS);
         if !free && eur + most > budget_eur {
             stopped = Some("budget");
             break;
@@ -551,7 +553,10 @@ pub async fn run_fill(
                 }
             }
             Err(why) => {
+                // not marked read: a later import reads it again
                 tracing::info!(target: "bipbridge::whatsapp", why = %why, "a bad answer: window skipped");
+                set_status(&agent.name, status(n + 1, &counts, eur, "filling"));
+                continue;
             }
         }
         let (c, a, id, until) = (config.clone(), agent.name.clone(), archived.known.id.clone(), window.last.clone());
