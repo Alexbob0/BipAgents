@@ -47,6 +47,8 @@ pub struct Done {
     pub split_settled: usize,
     /// Records merged or written again (period, price: subscriptions.rs `settle_locked`).
     pub records_settled: usize,
+    /// Light person pages folded into their group's page (groups.rs `fold_light_locked`).
+    pub folded: usize,
     /// People whose group lines moved to their own page (groups.rs).
     pub grouped: usize,
     /// Subjects and areas with nothing in them taken out (`drop_empty_locked`).
@@ -67,6 +69,7 @@ impl Done {
             ("archived_records", self.archived_records),
             ("split_settled", self.split_settled),
             ("records_settled", self.records_settled),
+            ("folded", self.folded),
             ("grouped", self.grouped),
             ("emptied", self.emptied),
         ] {
@@ -86,6 +89,7 @@ pub fn run(config: &Config, today: NaiveDate) -> anyhow::Result<Done> {
     let _guard = super::lock();
     done.split_settled = super::trip_split::settle_locked(config, &Who::tidy(config), today)?;
     done.records_settled = super::subscriptions::settle_locked(config, &Who::tidy(config), today)?;
+    done.folded = super::groups::fold_light_locked(config, &Who::tidy(config))?;
     done.grouped = super::groups::settle_locked(config, &Who::tidy(config))?;
     done.emptied = drop_empty_locked(config)?;
     let (placed, archived) = place_trips_locked(config, today)?;
@@ -164,7 +168,8 @@ pub fn place_one_locked(
     let kept = super::strings(super::read_state(config).get("archive_kept"));
     let folder = path.rsplit_once('/').map(|(f, _)| f.to_string()).unwrap_or_default();
     let end = super::trip::dates_of(page).1;
-    let past = end.is_some_and(|e| e < today) && !kept.contains(&page.id());
+    // over, or called off (Alex, 2026-11-03: a week-end moved then cancelled stayed among the trips to come)
+    let past = (end.is_some_and(|e| e < today) || super::trip::cancelled(page)) && !kept.contains(&page.id());
     let wanted = if past { w.past_trips() } else { w.trips.to_string() };
     // a trip archived by hand (in Obsidian) or kept by the person where it is: left
     if folder == wanted || (folder == w.past_trips() && !end.is_some_and(|e| e >= today)) {

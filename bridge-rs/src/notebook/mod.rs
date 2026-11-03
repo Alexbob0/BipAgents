@@ -1535,6 +1535,14 @@ pub(crate) fn note_locked(
              (« Amsterdam, déc. 2021 »), with its start and end; this page can stay a subject linking them.",
         );
     }
+    // someone folded into their group's page (groups.rs): their facts go there as « Name : fact » lines, until three
+    if let Some(f) = found.as_ref().filter(|f| {
+        kind == "person" && f.page.kind() == "area" && groups::is_group(&f.page.title) && fold(&f.page.title) != fold(&title)
+    }) {
+        let lines: Vec<String> = facts.iter().map(|x| format!("{title} : {x}")).collect();
+        let (group, section) = (f.page.title.clone(), template::title("area", "contacts", &lang));
+        return note_locked(config, part, "area", &group, &section, &lines, &[], "", "", who);
+    }
     // a records table named as a page (« Abonnements », « Achats »): its rows go through notebook_record (carnet
     // review, 2026-11-03: seven subscriptions filed as notes on a « person » page « Abonnements »)
     if let (None, false, Some(t)) = (&found, is_self, records::kind(&title)) {
