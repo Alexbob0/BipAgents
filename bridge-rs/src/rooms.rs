@@ -76,28 +76,33 @@
 //!                                                   at creation; `goal` "" = a discussion again; `start` with a goal:
 //!                                                   the team goes on from the person's last message)
 //!     DELETE /v1/rooms/{id}                         {ok}   its turn stopped, its hidden conversations deleted
-//!     GET    /v1/rooms/{id}/messages?after=&limit=  {messages, answering, last_id, goal, goal_proposed, progress,
-//!                                                   handoffs: [the last 5 relays, {message, to, why, by}]}
-//!                                                   (the app is looking: no push)
-//!     POST   /v1/rooms/{id}/messages                {text}  → {message, route: {by, agents}, answering}
-//!     POST   /v1/rooms/{id}/stop                    room   the turn going on stopped, the queue emptied
 //!     POST   /v1/rooms/{id}/tasks/{task}/reassign   {agent}  → {task, message: the notice, answering}  (« Réassigner
 //!                                                   à… », rooms_tasks.rs: the task handed to another agent with a
 //!                                                   short handover note; `tasks` in the room and in each look)
 //!     POST   /v1/rooms/{id}/tasks/{task}/done       {task, answering}  (« C'est fini »: closed, its turns stopped)
 //!
 //!     room       {id, title, participants: [{id, name, category, color, gone}], mode: "auto"|"all", created,
-//!                 updated, last: message|null, answering, tokens: {input, output}, goal: "" | text,
-//!                 goal_proposed: {text, message}|null, progress: {done: [line], next, blocked}, small_tokens}
-//!     message    {id, at, from: "person"|<agent id>, kind: "person"|"agent"|"notice", text, files, reply_to, hop,
-//!                 tokens: {input, output}|null, route: {by, agents}|null, error, handoff?: {to, why, by}}
+//!                 updated, last: item|null, answering, tokens: {input, output}, goal: "" | text,
+//!                 goal_proposed: {text, message}|null, progress: {done: [line], next, blocked}, small_tokens, tasks}
 //!     answering  [{agent, state: "writing"|"approval"|"queued", since, hop, approval?}]   `approval` (state
 //!                « approval »): {run_id, request_id, command, description, choices, created_at…},
 //!                answered with `POST /v1/approve` like the Boîte's
 //!
-//! A reply nobody looks at (no `GET …/messages` for 45 s) is pushed like a conversation's reply (`room_id`, collapsed
-//! per room). Messages kept: the last `MESSAGES_KEPT`. After a restart, the turn going on is followed again and the
-//! queue goes on.
+//! **A room is a thread** (docs/conversations.md §4, §6.6), `room:<id>`, on the conversations' routes:
+//!
+//!     GET    /v1/threads/room:<id>/timeline?limit=&before=&after=&around=   its messages as items (`rm_<n>`, cursors
+//!                                                   `0.<n>.0`), `pending.room`: the room as above (no `last`) with
+//!                                                   `handoffs` (its last 5 relays: one may land on an item the app has)
+//!     POST   /v1/threads/room:<id>/messages         {client_id, text}  → {client_id, thread, state: started | queued |
+//!                                                   known, route: {by, agents}, item}
+//!     POST   /v1/threads/room:<id>/stop             {stopped}   the turn going on stopped, the queue emptied
+//!     GET    /v1/threads/events?thread=room:<id>    every change of the room is a `thread` hint (its `version`); the
+//!                                                   stream open is « on screen »: its replies are journaled read, not
+//!                                                   pushed
+//!
+//! Each agent's reply is journaled (`room_reply`, `c: room:<id>`, `m: rm_<n>`): unread for the home's dot, pushed
+//! unless the room is on screen (collapsed per room). Messages kept: the last `MESSAGES_KEPT` (cursors hold). After a
+//! restart, the turn going on is followed again and the queue goes on.
 //!
 //! No Python counterpart.
 
@@ -117,11 +122,11 @@ use serde_json::{json, Map, Value};
 
 use crate::app::AppState;
 use crate::config::{AgentConfig, Config, SharedConfig};
-use crate::cronwatch::Presence;
 use crate::hermes::{HermesClient, HermesError};
 use crate::push::PushService;
 use crate::rooms_handoff::{self as relay, GoalProposal, Next, Progress};
 use crate::runs::{RunHub, RunUsage};
+use crate::threads::timeline::{file_attachment, Item, Want};
 use crate::tools_knowledge as tk;
 use crate::web::{self, check_max_len, check_min_len, ApiResult, FieldError, HttpError, Json, Validate};
 use crate::{py, Dict};
@@ -238,7 +243,7 @@ impl Tokens {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Message {
     pub id: u64,
     pub at: f64,
@@ -276,6 +281,9 @@ pub struct Message {
     /// On the notice of a task handed over by the person: {task, from, to}.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub handover: Option<Value>,
+    /// On the person's message: the app's id for it (`POST /v1/threads/room:<id>/messages`), its bubble's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
 }
 
 /// One agent's turn, queued or going on.
@@ -315,9 +323,12 @@ pub struct Room {
     pub created: f64,
     #[serde(default)]
     pub updated: f64,
-    /// The next message's id (ids only grow, so `after=` holds).
+    /// The next message's id (ids only grow: the items' `rm_<id>` and cursors hold).
     #[serde(default = "one")]
     pub next_id: u64,
+    /// Grows at every change (the room thread's `version`, its `thread` hints).
+    #[serde(default)]
+    pub version: u64,
     #[serde(default)]
     pub messages: Vec<Message>,
     /// Agent → its hidden conversation for this room.
@@ -414,6 +425,7 @@ pub fn change<T>(config: &Config, id: &str, edit: impl FnOnce(&mut Room) -> T) -
     let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let Some(mut room) = load(config, id) else { return Ok(None) };
     let out = edit(&mut room);
+    room.version += 1;
     save(config, &room)?;
     Ok(Some(out))
 }
@@ -1104,7 +1116,8 @@ pub struct Rooms {
     pub http: reqwest::Client,
     pub hub: Option<Arc<RunHub>>,
     pub push: Option<Arc<PushService>>,
-    pub presence: Option<Arc<Presence>>,
+    /// The conversations' events (threads.rs): each change of a room is a `thread` hint for `room:<id>`.
+    pub threads: crate::threads::Link,
     /// Seconds between two looks at a run.
     pub poll: f64,
     /// Room → its worker (turns one after another).
@@ -1134,10 +1147,27 @@ impl Rooms {
             http,
             hub: None,
             push: None,
-            presence: None,
+            threads: Default::default(),
             poll: 2.0,
             workers: Mutex::new(HashMap::new()),
             router_calls: Mutex::new((0, 0)),
+        }
+    }
+
+    /// The room changed (`change`) and the apps told: a `thread` hint with its new version.
+    pub fn edit<T>(&self, id: &str, edit: impl FnOnce(&mut Room) -> T) -> anyhow::Result<Option<T>> {
+        let changed = change(&self.config.get(), id, |room| (edit(room), room.version + 1))?;
+        Ok(changed.map(|(out, version)| {
+            self.hint(id, version);
+            out
+        }))
+    }
+
+    /// A `thread` hint for the room (events stream, docs/conversations.md §6.5): rooms concern several agents, so the
+    /// hint has none and reaches every stream.
+    fn hint(&self, id: &str, version: u64) {
+        if let Some(threads) = crate::threads::upgrade(&self.threads) {
+            threads.publish("", "thread", json!({"thread": thread_id(id), "agent": null, "version": version, "reason": "room"}));
         }
     }
 
@@ -1305,7 +1335,7 @@ impl Rooms {
         tracing::info!(tokens_in = input, tokens_out = output, "rooms: router model asked");
         if let Some(room) = room {
             let used = Tokens { input, output };
-            let _ = change(config, room, |r| {
+            let _ = self.edit(room, |r| {
                 r.tokens.add(&used);
                 r.small_tokens.add(&used);
             });
@@ -1314,12 +1344,21 @@ impl Rooms {
     }
 
     /// The person's message: kept, its turns queued, the worker woken.
-    pub async fn post(self: &Arc<Self>, id: &str, text: &str) -> Result<Value, HttpError> {
+    /// `POST /v1/threads/room:<id>/messages` (docs/conversations.md §6.7): `client_id` the app's id for it (the same
+    /// one again: nothing done, `known`). Answers `{client_id, thread, state: started|queued|known, route, item}`.
+    pub async fn post(self: &Arc<Self>, id: &str, text: &str, client_id: &str) -> Result<Value, HttpError> {
         let config = self.config.get();
         let room = load(&config, id).ok_or_else(HttpError::not_found)?;
+        let answer = |state: &str, route: &Value, message: Option<&Message>| {
+            json!({"client_id": client_id, "thread": thread_id(id), "state": state, "route": route,
+                   "item": message.map(|m| item(m).to_json(&thread_id(id), false))})
+        };
+        if let Some(known) = room.messages.iter().find(|m| m.client_id.as_deref() == Some(client_id)) {
+            return Ok(answer("known", known.route.as_ref().unwrap_or(&Value::Null), Some(known)));
+        }
         let text = tk::strip(text).to_string();
-        if text.is_empty() {
-            return Err(HttpError::new(422, "the message is empty"));
+        if text.is_empty() || text.chars().count() > TEXT_MAX {
+            return Err(HttpError::new(422, format!("a message has 1 to {TEXT_MAX} characters")));
         }
         // the owner the person chose for the open task gets its follow-ups (unless the message names someone, or
         // starts a new piece of work): no router call
@@ -1337,21 +1376,13 @@ impl Rooms {
         let route = json!({"by": by, "agents": agents});
         let said = text.clone();
         let message = Message {
-            id: 0,
             at: now(),
             from: "person".into(),
             kind: "person".into(),
             text,
-            files: Vec::new(),
-            reply_to: None,
-            hop: 0,
-            tokens: None,
             route: Some(route.clone()),
-            error: None,
-            handoff: None,
-            capped: false,
-            task: None,
-            handover: None,
+            client_id: Some(client_id.to_string()),
+            ..Default::default()
         };
         let propose = config.rooms.handoff
             && config.rooms.goal_model
@@ -1359,7 +1390,8 @@ impl Rooms {
             && room.mode != "all"
             && relay::looks_like_task(&message.text);
         let tasks = config.rooms.handoff;
-        let saved = change(&config, id, |room| {
+        let saved = self.edit(id, |room| {
+            let busy = room.current.is_some() || !room.queue.is_empty();
             let mid = room.push_message(message);
             let task = tasks.then(|| crate::rooms_tasks::begin(room, &said, &agents[0], mid));
             for agent in &agents {
@@ -1367,7 +1399,7 @@ impl Rooms {
                 crate::rooms_tasks::tag_turn(room, agent, task);
             }
             room.progress.blocked.clear(); // the person spoke
-            (mid, room.messages.last().cloned(), answering(room, self.hub.as_deref()))
+            (mid, room.messages.last().cloned(), busy)
         })
         .map_err(HttpError::from)?
         .ok_or_else(HttpError::not_found)?;
@@ -1378,7 +1410,7 @@ impl Rooms {
             let (this, room, mid, text) = (self.clone(), id.to_string(), saved.0, text_of(&saved.1));
             tokio::spawn(async move { this.propose_goal(&room, mid, &text).await });
         }
-        Ok(json!({"message": saved.1, "route": route, "answering": saved.2}))
+        Ok(answer(if saved.2 { "queued" } else { "started" }, &route, saved.1.as_ref()))
     }
 
     /// A message that looks like a task: the small model says its goal (or « none »), kept as a proposal the person
@@ -1391,7 +1423,7 @@ impl Rooms {
             return;
         };
         let Some(goal) = relay::parse_goal(&answer) else { return };
-        let _ = change(&config, id, |room| {
+        let _ = self.edit(id, |room| {
             if !room.team() {
                 room.goal_proposed = Some(GoalProposal { text: goal.clone(), message });
             }
@@ -1434,7 +1466,7 @@ impl Rooms {
                 // deciding there is nothing left and leaving happen under the workers' lock: a kick in between
                 // would find this worker still there and start none
                 let mut workers = self.workers();
-                let next = change(&self.config.get(), id, |room| {
+                let next = self.edit(id, |room| {
                     if room.current.is_none() && !room.queue.is_empty() {
                         let mut turn = room.queue.remove(0);
                         turn.started = Some(now());
@@ -1481,7 +1513,7 @@ impl Rooms {
         if self.hermes.update_session(agent, &session, fields).await.is_err() {
             tracing::info!(agent = %agent.name, room = %id, "rooms: the conversation could not be hidden");
         }
-        let kept = change(&config, id, |room| {
+        let kept = self.edit(id, |room| {
             room.sessions.entry(agent.name.clone()).or_insert_with(|| session.clone()).clone()
         });
         match kept {
@@ -1540,7 +1572,7 @@ impl Rooms {
                     Err(_) => return Outcome { reply: Err("the agent can't be reached".into()), tokens: none, capped: false },
                 };
                 // what it was given counts as seen once its run started (else the next turn gives it again)
-                let _ = change(&config, id, |room| {
+                let _ = self.edit(id, |room| {
                     room.seen.insert(agent.name.clone(), upto);
                     if let Some(current) = room.current.as_mut().filter(|c| c.agent == turn.agent && c.cause == turn.cause) {
                         current.run_id = Some(run_id.clone());
@@ -1572,6 +1604,7 @@ impl Rooms {
         let (mut steered, mut capped, mut braked, mut looks, mut calls) = (false, false, false, 0u32, 0u32);
         let mut real: Option<RunUsage> = None;
         let mut used_at_stop = 0i64;
+        let mut was_waiting = false;
         let (status, output, usage) = loop {
             tokio::time::sleep(Duration::from_secs_f64(self.poll)).await;
             let Some(current) = self.current_of(id, turn) else {
@@ -1648,6 +1681,11 @@ impl Rooms {
                     .iter()
                     .any(|a| a.get("run_id").and_then(Value::as_str) == Some(run_id.as_str()))
             });
+            if waiting != was_waiting {
+                // the turn waits for the person (its card in `answering`), or goes on: the apps are told
+                was_waiting = waiting;
+                let _ = self.edit(id, |_| ());
+            }
             let limit = if waiting { APPROVAL_WAIT } else { config.rooms.turn_seconds };
             if now() - started >= limit {
                 let _ = self.hermes.stop_run(&agent, &run_id).await;
@@ -1670,7 +1708,7 @@ impl Rooms {
         } else if tokens.input + tokens.output > 0 {
             // what its calls really read, for its next turns' cap
             let spent = tokens.input + tokens.output;
-            let _ = change(&config, id, |room| {
+            let _ = self.edit(id, |room| {
                 let c = room.calls.entry(agent.name.clone()).or_default();
                 c.calls += real.map(|u| u.calls).filter(|n| *n > 0).unwrap_or(calls + 1);
                 c.tokens += spent;
@@ -1840,7 +1878,7 @@ impl Rooms {
                     Ok(run_id) => run_id,
                     Err(why) => return Outcome { reply: Err(why), tokens: none, capped: false },
                 };
-                let _ = change(&config, id, |room| {
+                let _ = self.edit(id, |room| {
                     room.seen.insert(turn.agent.clone(), upto);
                     let mine = |c: &&mut Turn| c.agent == turn.agent && c.cause == turn.cause;
                     if let Some(current) = room.current.as_mut().filter(mine) {
@@ -1896,8 +1934,8 @@ impl Rooms {
         let relay_on = config.rooms.handoff;
         // who may take the person's message after a PASS (`pass_next`)
         let candidates = load(&config, id).map(|r| self.candidates(&config, &r)).unwrap_or_default();
-        let mut told: Option<(String, String)> = None;
-        let changed = change(&config, id, |room| {
+        let mut told: Option<(String, String, u64)> = None;
+        let changed = self.edit(id, |room| {
             room.tokens.add(&outcome.tokens);
             let mine = room.current.as_ref().is_some_and(|c| c.agent == turn.agent && c.cause == turn.cause);
             if !mine || stopped {
@@ -1919,7 +1957,6 @@ impl Rooms {
                     let text = tk::strip(&lines.join("\n")).to_string();
                     if !text.is_empty() || !files.is_empty() {
                         room.push_message(Message {
-                            id: 0,
                             at: now(),
                             from: turn.agent.clone(),
                             kind: "agent".into(),
@@ -1928,12 +1965,8 @@ impl Rooms {
                             reply_to: Some(turn.cause),
                             hop: turn.hop,
                             tokens: Some(outcome.tokens.clone()),
-                            route: None,
-                            error: None,
-                            handoff: None,
-                            capped: false,
                             task: turn.task,
-                            handover: None,
+                            ..Default::default()
                         });
                         if let Some(t) = turn.task.and_then(|t| crate::rooms_tasks::get_mut(room, t)) {
                             if let Some(h) = t.handover.as_mut().filter(|h| h.from == turn.agent && h.note.is_empty()) {
@@ -1946,21 +1979,16 @@ impl Rooms {
                 return (Step::Stop, Vec::new());
             }
             let notice = |text: String, error: Option<String>| Message {
-                id: 0,
                 at: now(),
                 from: turn.agent.clone(),
                 kind: "notice".into(),
                 text,
-                files: Vec::new(),
                 reply_to: Some(turn.cause),
                 hop: turn.hop,
                 tokens: Some(outcome.tokens.clone()),
-                route: None,
                 error,
-                handoff: None,
-                capped: false,
                 task: turn.task,
-                handover: None,
+                ..Default::default()
             };
             let reply = match &outcome.reply {
                 Ok(reply) => reply,
@@ -1987,7 +2015,6 @@ impl Rooms {
             };
             let (text, files) = room_text(reply);
             let mut message = Message {
-                id: 0,
                 at: now(),
                 from: turn.agent.clone(),
                 kind: "agent".into(),
@@ -1996,12 +2023,9 @@ impl Rooms {
                 reply_to: Some(turn.cause),
                 hop: turn.hop,
                 tokens: Some(outcome.tokens.clone()),
-                route: None,
-                error: None,
-                handoff: None,
                 capped: outcome.capped,
                 task: turn.task,
-                handover: None,
+                ..Default::default()
             };
             if !relay_on {
                 let others: Vec<Candidate> = names
@@ -2010,8 +2034,7 @@ impl Rooms {
                     .map(|(id, name)| Candidate { id: id.clone(), name: name.clone(), profile: String::new(), line: String::new() })
                     .collect();
                 let addressed = if turn.hop < max_hops { mentions(&text, &others, false) } else { Vec::new() };
-                told = Some((turn.agent.clone(), text));
-                room.push_message(message);
+                told = Some((turn.agent.clone(), text, room.push_message(message)));
                 let queued: Vec<String> =
                     addressed.into_iter().filter(|a| room.enqueue(a, turn.hop + 1, turn.cause)).collect();
                 return (Step::Stop, queued);
@@ -2023,9 +2046,11 @@ impl Rooms {
                 message = notice(pass_text(&lang, &name), None);
             } else {
                 message.text = marks.text.clone();
-                told = Some((turn.agent.clone(), marks.text.clone()));
             }
             let mid = room.push_message(message);
+            if !passed {
+                told = Some((turn.agent.clone(), marks.text.clone(), mid));
+            }
             let step = match decide(&config, room, turn, &marks, max_hops) {
                 // the person took this task from that agent: the hand goes back to the person (rooms_tasks.rs)
                 Step::Hand(Next::Agent(x), _, by) if crate::rooms_tasks::dropped(room, turn.task, &x) => {
@@ -2092,8 +2117,8 @@ impl Rooms {
         };
         tracing::info!(room = %id, agent = %turn.agent, hop = turn.hop, ok = outcome.reply.is_ok(),
             tokens = outcome.tokens.input + outcome.tokens.output, queued = ?queued, step = ?step, "rooms: turn ended");
-        if let Some((agent, text)) = told {
-            self.tell(id, &agent, &text).await;
+        if let Some((agent, text, mid)) = told {
+            self.tell(id, &agent, &text, mid).await;
         }
         if let Step::Conduct(refused) = step {
             self.conduct(id, turn, refused.as_deref()).await;
@@ -2140,7 +2165,7 @@ impl Rooms {
         {
             (next, why) = (Next::Person, String::new());
         }
-        let queued = change(&config, id, |room| {
+        let queued = self.edit(id, |room| {
             // still this message's round, nobody answering meanwhile
             if room.current.is_some()
                 || room.queue.iter().any(|t| t.cause == turn.cause)
@@ -2190,25 +2215,24 @@ impl Rooms {
         self.kick(id);
     }
 
-    /// A reply pushed like a conversation's, unless the app is looking at the room.
-    async fn tell(&self, id: &str, agent: &str, text: &str) {
-        if self.presence.as_ref().is_some_and(|p| p.viewing("room", id)) {
-            return;
-        }
+    /// A reply journaled and pushed like a conversation's, pointing at its item (`m`): read and not pushed while an
+    /// app shows the room (its events stream open, push.rs `emit`); unread otherwise (the home's dot).
+    async fn tell(&self, id: &str, agent: &str, text: &str, message: u64) {
         let Some(push) = &self.push else { return };
         let title = load(&self.config.get(), id).map(|r| r.title).unwrap_or_default();
-        push.notify_room(agent, id, &title, text).await;
+        push.notify_room(agent, id, &title, text, &item_id(message)).await;
     }
 
-    /// The turn going on stopped and the queue emptied (the person's « Stop », a deletion).
-    pub async fn stop(&self, id: &str) -> anyhow::Result<Option<()>> {
+    /// The turn going on stopped and the queue emptied (the person's « Stop », a deletion): whether one was going on.
+    pub async fn stop(&self, id: &str) -> anyhow::Result<Option<bool>> {
         let config = self.config.get();
-        let taken = change(&config, id, |room| {
+        let taken = self.edit(id, |room| {
             room.queue.clear();
             crate::rooms_tasks::stopped(room);
             room.current.take()
         })?;
         let Some(taken) = taken else { return Ok(None) };
+        let stopped = taken.is_some();
         if let Some(turn) = taken {
             if let (Some(agent), Some(run_id)) = (config.agent(Some(&turn.agent)), turn.run_id.as_deref()) {
                 let _ = self.hermes.stop_run(agent, run_id).await;
@@ -2216,7 +2240,7 @@ impl Rooms {
                 crate::rooms_remote::stop(&self.http, &config, &turn.agent, run_id).await;
             }
         }
-        Ok(Some(()))
+        Ok(Some(stopped))
     }
 
     /// The person closes `task` (« C'est fini », rooms_tasks.rs): finished, its queued turns gone, its turn going on
@@ -2224,7 +2248,7 @@ impl Rooms {
     pub async fn close_task(self: &Arc<Self>, id: &str, task: u32) -> Result<Value, HttpError> {
         let config = self.config.get();
         let hub = self.hub.clone();
-        let changed = change(&config, id, |room| {
+        let changed = self.edit(id, |room| {
             let t = crate::rooms_tasks::get_mut(room, task)?;
             t.state = crate::rooms_tasks::DONE.into();
             t.updated = now();
@@ -2271,7 +2295,7 @@ impl Rooms {
         let lang = config.agent(Some(&to)).map(|a| crate::handback::language_of(&config, a)).unwrap_or_else(|| "fr".into());
         let text = crate::rooms_tasks::reassigned_text(&lang, &to_name, &before.title);
         let hub = self.hub.clone();
-        let changed = change(&config, id, |room| {
+        let changed = self.edit(id, |room| {
             if before.owner == to {
                 // its owner already: kept as the person's choice, nothing to hand over
                 if let Some(t) = crate::rooms_tasks::get_mut(room, task) {
@@ -2300,6 +2324,7 @@ impl Rooms {
                 tokio::spawn(async move { this.write_note(&room, task, &to, cause).await });
             }
         }
+        let notice = notice.map(|m| item(&m).to_json(&thread_id(id), false));
         Ok(json!({"task": task_view, "message": notice, "answering": now_answering}))
     }
 
@@ -2318,7 +2343,7 @@ impl Rooms {
             .as_deref()
             .and_then(crate::rooms_tasks::parse_note)
             .unwrap_or_else(|| crate::rooms_tasks::fallback_note(&room, &t, &from));
-        let _ = change(&config, id, |room| {
+        let _ = self.edit(id, |room| {
             let Some(t) = crate::rooms_tasks::get_mut(room, task) else { return };
             if t.owner != to {
                 return; // handed to someone else meanwhile: that one's note
@@ -2403,8 +2428,8 @@ pub fn answering(room: &Room, hub: Option<&RunHub>) -> Value {
     Value::Array(out)
 }
 
-/// The last relays (`{message, to, why, by}`): the conductor may set one on a message the app has already, so each
-/// look gives the latest again.
+/// The last relays (`{message: <item id>, to, why, by}`): the conductor may set one on a message the app has already,
+/// so each timeline page gives the latest again.
 pub fn recent_handoffs(room: &Room) -> Value {
     let mut out: Vec<Value> = room
         .messages
@@ -2413,7 +2438,7 @@ pub fn recent_handoffs(room: &Room) -> Value {
         .filter_map(|m| {
             let h = m.handoff.as_ref()?;
             let mut v = h.clone();
-            v["message"] = json!(m.id);
+            v["message"] = json!(item_id(m.id));
             Some(v)
         })
         .take(5)
@@ -2453,7 +2478,8 @@ pub fn room_view(config: &Config, room: &Room, hub: Option<&RunHub>) -> Value {
         "id": room.id, "title": room.title,
         "participants": room.participants.iter().map(|p| participant_view(config, room, p)).collect::<Vec<_>>(),
         "mode": room.mode, "created": room.created, "updated": room.updated,
-        "last": room.messages.last(), "answering": answering(room, hub), "tokens": room.tokens,
+        "last": room.messages.last().map(|m| item(m).to_json(&thread_id(&room.id), false)),
+        "answering": answering(room, hub), "tokens": room.tokens,
         "goal": room.goal, "goal_proposed": room.goal_proposed.as_ref().map(|g| json!({"text": g.text, "message": g.message})),
         "progress": room.progress, "small_tokens": room.small_tokens, "tasks": crate::rooms_tasks::view(room),
     })
@@ -2467,10 +2493,116 @@ pub fn rooms_of(state: &AppState) -> Arc<Rooms> {
             let mut rooms = Rooms::new(state.config.clone(), state.hermes.clone(), state.http.clone());
             rooms.hub = Some(state.hub.clone());
             rooms.push = Some(state.push.clone());
-            rooms.presence = Some(state.presence.clone());
+            let _ = rooms.threads.set(Arc::downgrade(&crate::threads::threads_of(state)));
             Arc::new(rooms)
         })
         .clone()
+}
+
+// -- the room as a thread (docs/conversations.md §4, §6) ----------------------------------------------------------
+
+/// A room's thread id: `room:<id>`.
+pub fn thread_id(id: &str) -> String {
+    format!("room:{id}")
+}
+
+/// The room a thread id names (`room:<id>`).
+pub fn of_thread(thread: &str) -> Option<&str> {
+    thread.strip_prefix("room:")
+}
+
+/// A message's item id: `rm_<n>`, `n` the room's message id (it only grows).
+pub fn item_id(n: u64) -> String {
+    format!("rm_{n}")
+}
+
+/// A message as a timeline item (§6.3): the person's and the agents' words a `message` (`role` person | agent, `from`
+/// the agent), a pass, a failed or capped turn, a task handed over a `notice` (`code` pass | failed | capped |
+/// handover); `turn` the person's message it answers; an agent's files its attachments (`path`); what only a room has
+/// under `room` (`hop`, `route`, `handoff`, `task`, `handover`, `tokens`, `error`, `capped`).
+pub fn item(m: &Message) -> Item {
+    let id = item_id(m.id);
+    let mut body = Map::new();
+    if m.kind == "notice" {
+        let code = match (&m.handover, m.capped, &m.error) {
+            (Some(_), _, _) => "handover",
+            (_, true, _) => "capped",
+            (_, _, Some(_)) => "failed",
+            _ => "pass",
+        };
+        body.insert("kind".into(), json!("notice"));
+        body.insert("notice".into(), json!({"code": code, "text": m.text}));
+    } else {
+        body.insert("kind".into(), json!("message"));
+        body.insert("role".into(), json!(if m.kind == "person" { "person" } else { "agent" }));
+        body.insert("text".into(), json!(m.text));
+    }
+    body.insert("from".into(), json!(m.from));
+    let files: Vec<Value> = m
+        .files
+        .iter()
+        .enumerate()
+        .map(|(n, p)| {
+            let mut file = file_attachment(p, None);
+            file["id"] = json!(format!("{id}.a{n}"));
+            file
+        })
+        .collect();
+    body.insert("attachments".into(), Value::Array(files));
+    if let Some(client) = &m.client_id {
+        body.insert("client_id".into(), json!(client));
+    }
+    let mut room = Map::new();
+    room.insert("hop".into(), json!(m.hop));
+    for (key, value) in [("route", &m.route), ("handoff", &m.handoff), ("handover", &m.handover)] {
+        if let Some(v) = value {
+            room.insert(key.into(), v.clone());
+        }
+    }
+    if let Some(task) = m.task {
+        room.insert("task".into(), json!(task));
+    }
+    if let Some(tokens) = &m.tokens {
+        room.insert("tokens".into(), json!(tokens));
+    }
+    if let Some(error) = &m.error {
+        room.insert("error".into(), json!(error));
+    }
+    if m.capped {
+        room.insert("capped".into(), json!(true));
+    }
+    body.insert("room".into(), Value::Object(room));
+    let turn = m.reply_to.map(item_id).unwrap_or_else(|| id.clone());
+    Item { id, pos: (0, m.id as i64, 0), at: m.at, turn, segment: String::new(), row: 0, body }
+}
+
+/// The room as a thread (§6.1).
+pub fn thread_view(room: &Room) -> Value {
+    json!({"id": thread_id(&room.id), "kind": "room", "title": room.title, "version": room.version, "tip": null})
+}
+
+/// `GET /v1/threads/room:<id>/timeline` (§6.2): its messages as items, paged as a conversation's (`latest`, `before`,
+/// `after`, `around`); `pending.room` the room as it is now (participants, who answers and the approval each waits
+/// for, goal, progress, tasks) with its last relays (`handoffs`).
+pub fn timeline(config: &Config, room: &Room, hub: Option<&RunHub>, want: &Want) -> Value {
+    let thread = thread_id(&room.id);
+    let page = crate::threads::timeline::page(room.messages.iter().map(item).collect(), want);
+    let mut view = room_view(config, room, hub);
+    view["handoffs"] = recent_handoffs(room);
+    if let Some(v) = view.as_object_mut() {
+        v.remove("last");
+    }
+    json!({
+        "thread": thread_view(room),
+        "items": page.items.iter().map(|i| i.to_json(&thread, false)).collect::<Vec<_>>(),
+        "first": page.items.first().map(Item::cursor),
+        "last": page.items.last().map(Item::cursor),
+        "more_before": page.more_before,
+        "more_after": page.more_after,
+        "anchor": page.anchor,
+        "version": room.version,
+        "pending": {"room": view},
+    })
 }
 
 // -- the app's routes ------------------------------------------------------------------------------------------------
@@ -2519,18 +2651,6 @@ impl Validate for RoomChange {
         check_max_len(errors, "title", self.title.as_deref(), TITLE_MAX);
         check_max_len(errors, "mode", self.mode.as_deref(), 10);
         check_max_len(errors, "goal", self.goal.as_deref(), relay::GOAL_CHARS);
-    }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct NewMessage {
-    pub text: String,
-}
-
-impl Validate for NewMessage {
-    fn validate(&self, errors: &mut Vec<FieldError>) {
-        check_min_len(errors, "text", Some(&self.text), 1);
-        check_max_len(errors, "text", Some(&self.text), TEXT_MAX);
     }
 }
 
@@ -2607,7 +2727,7 @@ async fn create(State(state): State<AppState>, Json(body): Json<NewRoom>) -> Api
     let mut room = create_room(&state, &body.participants, body.title.as_deref(), body.mode.as_deref()).await?;
     let goal = tk::squeeze(body.goal.as_deref().unwrap_or(""));
     if !goal.is_empty() {
-        room = change(&state.config(), &room.id, |r| {
+        room = rooms_of(&state).edit(&room.id, |r| {
             r.goal = goal;
             r.clone()
         })?
@@ -2673,7 +2793,7 @@ async fn update(
     let title = body.title.as_deref().map(tk::squeeze);
     let goal = body.goal.as_deref().map(tk::squeeze);
     let start = body.start == Some(true) && goal.as_deref().is_some_and(|g| !g.is_empty());
-    let room = change(&config, &id, |room| {
+    let room = rooms_of(&state).edit(&id, |room| {
         if let Some(goal) = goal {
             if goal != room.goal {
                 room.progress = Progress::default(); // a new goal: where it stands starts again
@@ -2723,31 +2843,6 @@ async fn remove(State(state): State<AppState>, UrlPath(id): UrlPath<String>) -> 
     Ok(web::ok(json!({"ok": true})))
 }
 
-async fn messages(State(state): State<AppState>, UrlPath(id): UrlPath<String>, q: web::QueryMap) -> ApiResult<Response> {
-    let after = web::query_int(&q, "after", Some(0), Some(0), None)?.unwrap_or(0) as u64;
-    let limit = web::query_int(&q, "limit", Some(100), Some(1), Some(500))?.unwrap_or(100) as usize;
-    let config = state.config();
-    let room = load(&config, &id).ok_or_else(HttpError::not_found)?;
-    state.presence.touch("room", &id); // the app is looking: replies aren't pushed
-    let mut newer: Vec<&Message> = room.messages.iter().filter(|m| m.id > after).collect();
-    if newer.len() > limit {
-        // the oldest of what's newer first, so a client walking with `after` sees all of it
-        newer.truncate(limit);
-    }
-    Ok(web::ok(json!({"messages": newer, "answering": answering(&room, Some(&*state.hub)), "last_id": room.last_id(),
-                      "goal": room.goal, "progress": room.progress, "handoffs": recent_handoffs(&room),
-                      "tasks": crate::rooms_tasks::view(&room),
-                      "goal_proposed": room.goal_proposed.as_ref().map(|g| json!({"text": g.text, "message": g.message}))})))
-}
-
-async fn post_message(
-    State(state): State<AppState>,
-    UrlPath(id): UrlPath<String>,
-    Json(body): Json<NewMessage>,
-) -> ApiResult<Response> {
-    Ok(web::ok(rooms_of(&state).post(&id, &body.text).await?))
-}
-
 #[derive(Debug, Deserialize)]
 pub struct Reassign {
     pub agent: String,
@@ -2775,20 +2870,11 @@ async fn close_task_route(
     Ok(web::ok(rooms_of(&state).close_task(&id, task).await?))
 }
 
-async fn stop_route(State(state): State<AppState>, UrlPath(id): UrlPath<String>) -> ApiResult<Response> {
-    rooms_of(&state).stop(&id).await?.ok_or_else(HttpError::not_found)?;
-    let config = state.config();
-    let room = load(&config, &id).ok_or_else(HttpError::not_found)?;
-    Ok(web::ok(room_view(&config, &room, Some(&*state.hub))))
-}
-
 /// Mounted under /v1 with the bridge key.
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/rooms", get(listing).post(create))
         .route("/rooms/{room_id}", get(view).patch(update).delete(remove))
-        .route("/rooms/{room_id}/messages", get(messages).post(post_message))
-        .route("/rooms/{room_id}/stop", post(stop_route))
         .route("/rooms/{room_id}/tasks/{task}/reassign", post(reassign_route))
         .route("/rooms/{room_id}/tasks/{task}/done", post(close_task_route))
 }
@@ -2859,16 +2945,8 @@ mod tests {
             from: from.into(),
             kind: if from == "person" { "person".into() } else { "agent".into() },
             text: text.into(),
-            files: Vec::new(),
             reply_to: Some(1),
-            hop: 0,
-            tokens: None,
-            route: None,
-            error: None,
-            handoff: None,
-            capped: false,
-            task: None,
-            handover: None,
+            ..Default::default()
         }
     }
 
@@ -3152,6 +3230,67 @@ mod tests {
         assert!(mates(&config, "sante").is_empty());
         // a relative's agent in the room reads nothing of this install's
         assert!(mates(&config, "cuisine__lea").is_empty());
+    }
+
+    #[test]
+    fn a_room_is_a_thread_of_items_with_stable_ids_and_cursors() {
+        let mut room = Room { id: "g000000000001".into(), next_id: 1, ..Default::default() };
+        let asked = room.push_message(Message {
+            at: 1.0,
+            from: "person".into(),
+            kind: "person".into(),
+            text: "@vie une idée ?".into(),
+            route: Some(json!({"by": "mention", "agents": ["vie"]})),
+            client_id: Some("C0FFEE-01".into()),
+            ..Default::default()
+        });
+        room.push_message(Message {
+            at: 2.0,
+            from: "vie".into(),
+            kind: "agent".into(),
+            text: "Une marche.".into(),
+            files: vec!["/bipagents/pages/vie/marche.html".into()],
+            reply_to: Some(asked),
+            handoff: Some(json!({"to": "person", "why": "", "by": "agent"})),
+            tokens: Some(Tokens { input: 10, output: 2 }),
+            ..Default::default()
+        });
+        room.push_message(Message {
+            at: 3.0,
+            from: "qa".into(),
+            kind: "notice".into(),
+            text: "QA n'a rien à ajouter.".into(),
+            reply_to: Some(asked),
+            ..Default::default()
+        });
+        let items: Vec<Item> = room.messages.iter().map(item).collect();
+        let served: Vec<Value> = items.iter().map(|i| i.to_json("room:g000000000001", false)).collect();
+        let person = &served[0];
+        assert_eq!((person["id"].clone(), person["kind"].clone(), person["role"].clone()), (json!("rm_1"), json!("message"), json!("person")));
+        assert_eq!(person["client_id"], "C0FFEE-01");
+        assert_eq!(person["room"], json!({"hop": 0, "route": {"by": "mention", "agents": ["vie"]}}));
+        assert!(person.get("turn").is_none() && person.get("attachments").is_none(), "{person}");
+        let reply = &served[1];
+        assert_eq!((reply["role"].clone(), reply["from"].clone(), reply["turn"].clone()), (json!("agent"), json!("vie"), json!("rm_1")));
+        assert_eq!(reply["attachments"][0]["id"], "rm_2.a0");
+        assert_eq!((reply["attachments"][0]["kind"].clone(), reply["attachments"][0]["path"].clone()),
+                   (json!("page"), json!("/bipagents/pages/vie/marche.html")));
+        assert_eq!(reply["room"]["handoff"]["to"], "person");
+        assert_eq!(reply["room"]["tokens"], json!({"input": 10, "output": 2}));
+        let pass = &served[2];
+        assert_eq!(pass["kind"], "notice");
+        assert_eq!(pass["notice"], json!({"code": "pass", "text": "QA n'a rien à ajouter."}));
+        assert!(pass.get("text").is_none() && pass.get("role").is_none());
+        assert_eq!(served.iter().map(|i| i["cursor"].clone()).collect::<Vec<_>>(), vec![json!("0.1.0"), json!("0.2.0"), json!("0.3.0")]);
+        // paged as a conversation: what came after a cursor, a notification's message with what follows it; the
+        // oldest messages dropped (MESSAGES_KEPT) never move the others' cursors
+        let after = crate::threads::timeline::page(items.clone(), &Want { limit: 50, after: Some("0.1.0".into()), ..Default::default() });
+        assert_eq!(after.items.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), vec!["rm_2", "rm_3"]);
+        let around = crate::threads::timeline::page(items, &Want { limit: 50, around: Some("rm_2".into()), before_count: 0, ..Default::default() });
+        assert_eq!((around.anchor.as_deref(), around.more_before, around.items.len()), (Some("rm_2"), true, 2));
+        room.messages.remove(0);
+        let left = crate::threads::timeline::page(room.messages.iter().map(item).collect(), &Want { limit: 50, after: Some("0.1.0".into()), ..Default::default() });
+        assert_eq!(left.items.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), vec!["rm_2", "rm_3"]);
     }
 
     #[test]

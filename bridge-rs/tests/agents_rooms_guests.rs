@@ -127,12 +127,13 @@ async fn hermes(State(fake): State<Fake>, request: Request) -> Response {
     out(json!({"ok": true}))
 }
 
+/// The room's timeline (the thread `room:<id>`) once nobody answers.
 async fn settled(app: &TestApp, room: &str) -> Value {
     let (k, v) = auth();
     for _ in 0..200 {
-        let messages = app.get(&format!("/v1/rooms/{room}/messages"), &[(k, v.as_str())]).await.json();
-        if messages["answering"] == json!([]) {
-            return messages;
+        let page = app.get(&format!("/v1/threads/room:{room}/timeline"), &[(k, v.as_str())]).await.json();
+        if page["pending"]["room"]["answering"] == json!([]) {
+            return page;
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
@@ -173,27 +174,27 @@ async fn a_relatives_agent_takes_part_only_where_both_people_allowed_it() {
     assert_eq!(guest["remote"], true);
 
     // Léa hasn't allowed it: her bridge refuses the turn, the room says Cuisine couldn't answer.
-    let path = format!("/v1/rooms/{id}/messages");
-    let posted = a.send_json("POST", &path, &h, &json!({"text": "@cuisine une idée pour ce soir ?"})).await;
+    let path = format!("/v1/threads/room:{id}/messages");
+    let posted = a.send_json("POST", &path, &h, &json!({"text": "@cuisine une idée pour ce soir ?", "client_id": "guest-0001"})).await;
     assert_eq!(posted.status, 200, "{}", posted.text());
     assert_eq!(posted.json()["route"]["agents"], json!(["cuisine__lea"]));
     let messages = settled(&a, &id).await;
-    let last = messages["messages"].as_array().unwrap().last().unwrap().clone();
+    let last = messages["items"].as_array().unwrap().last().unwrap().clone();
     assert_eq!((last["from"].clone(), last["kind"].clone()), (json!("cuisine__lea"), json!("notice")));
-    assert_eq!(last["error"], "their person has not allowed this discussion");
+    assert_eq!(last["room"]["error"], "their person has not allowed this discussion");
     assert!(fake.runs.lock().unwrap().iter().all(|(p, _)| !p.starts_with("/b/")));
 
     // She allows « Vie (Alex) → Cuisine »: Cuisine answers from her bridge, text only, on her credit.
     let theirs = json!({"links": [{"from": "vie__alex", "to": "cuisine"}]});
     assert_eq!(b.send_json("PUT", "/v1/agent-links", &h, &theirs).await.status, 200);
-    let posted = a.send_json("POST", &path, &h, &json!({"text": "@cuisine et maintenant ?"})).await;
+    let posted = a.send_json("POST", &path, &h, &json!({"text": "@cuisine et maintenant ?", "client_id": "guest-0002"})).await;
     assert_eq!(posted.status, 200);
     let messages = settled(&a, &id).await;
-    let last = messages["messages"].as_array().unwrap().last().unwrap().clone();
+    let last = messages["items"].as_array().unwrap().last().unwrap().clone();
     assert_eq!(last["from"], "cuisine__lea");
-    assert_eq!(last["kind"], "agent", "{last}");
+    assert_eq!(last["role"], "agent", "{last}");
     assert_eq!(last["text"], "Je propose une raclette.");
-    assert_eq!(last["files"], json!([]));
+    assert!(last.get("attachments").is_none(), "{last}"); // text only crosses
     let (run_path, run) =
         fake.runs.lock().unwrap().iter().find(|(p, _)| p.starts_with("/b/p/cuisine")).cloned().unwrap();
     assert_eq!(run_path, "/b/p/cuisine/v1/runs");
@@ -205,7 +206,7 @@ async fn a_relatives_agent_takes_part_only_where_both_people_allowed_it() {
     assert_eq!(view["tokens"], json!({"input": 0, "output": 0}));
 
     // Vie's next turn reads Cuisine's words as another household's.
-    let posted = a.send_json("POST", &path, &h, &json!({"text": "@vie qu'en dis-tu ?"})).await;
+    let posted = a.send_json("POST", &path, &h, &json!({"text": "@vie qu'en dis-tu ?", "client_id": "guest-0003"})).await;
     assert_eq!(posted.status, 200);
     settled(&a, &id).await;
     let (_, vie) = fake.runs.lock().unwrap().iter().rev().find(|(p, _)| p.starts_with("/a/p/vie")).cloned().unwrap();
@@ -258,21 +259,21 @@ async fn a_relatives_agents_turn_is_capped_on_its_own_bridge() {
     assert_eq!(made.status, 200, "{}", made.text());
     let id = made.json()["id"].as_str().unwrap().to_string();
 
-    let path = format!("/v1/rooms/{id}/messages");
-    assert_eq!(a.send_json("POST", &path, &h, &json!({"text": "@cuisine une idée pour ce soir ?"})).await.status, 200);
+    let path = format!("/v1/threads/room:{id}/messages");
+    assert_eq!(a.send_json("POST", &path, &h, &json!({"text": "@cuisine une idée pour ce soir ?", "client_id": "guest-0004"})).await.status, 200);
     let messages = settled(&a, &id).await;
-    let last = messages["messages"].as_array().unwrap().last().unwrap().clone();
+    let last = messages["items"].as_array().unwrap().last().unwrap().clone();
     assert_eq!((last["from"].clone(), last["kind"].clone()), (json!("cuisine__lea"), json!("notice")), "{last}");
     // said in plain words, as a team turn at its cap, and nothing left waiting
-    assert!(last["text"].as_str().unwrap().contains("a atteint la limite de son tour"), "{last}");
-    assert_eq!(last["capped"], true, "{last}");
-    assert_eq!(messages["answering"], json!([]));
+    assert!(last["notice"]["text"].as_str().unwrap().contains("a atteint la limite de son tour"), "{last}");
+    assert_eq!(last["room"]["capped"], true, "{last}");
+    assert_eq!(messages["pending"]["room"]["answering"], json!([]));
     let stopped = fake.stopped.lock().unwrap().clone();
     assert!(stopped.iter().any(|p| p.starts_with("/b/p/cuisine/v1/runs/")), "{stopped:?}");
 
     // the room goes on
-    assert_eq!(a.send_json("POST", &path, &h, &json!({"text": "@vie et toi ?"})).await.status, 200);
+    assert_eq!(a.send_json("POST", &path, &h, &json!({"text": "@vie et toi ?", "client_id": "guest-0005"})).await.status, 200);
     let messages = settled(&a, &id).await;
-    let last = messages["messages"].as_array().unwrap().last().unwrap().clone();
+    let last = messages["items"].as_array().unwrap().last().unwrap().clone();
     assert_eq!((last["from"].clone(), last["text"].clone()), (json!("vie"), json!("D'accord.")), "{last}");
 }

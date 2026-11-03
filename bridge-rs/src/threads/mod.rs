@@ -932,8 +932,9 @@ async fn resolve(State(state): State<AppState>, q: QueryMap) -> ApiResult<Respon
         (Some(session), _) => {
             threads.resolve(&agent, session).await.map_err(unavailable)?.ok_or_else(HttpError::not_found)?
         }
-        (None, Some(c)) if c.starts_with("room:") => {
-            return Ok(web::ok(json!({"thread": {"id": c, "agent": agent.name, "kind": "room"}, "tip": null})))
+        (None, Some(c)) if crate::rooms::of_thread(c).is_some() => {
+            let room = room_of(&state, c)?;
+            return Ok(web::ok(json!({"thread": crate::rooms::thread_view(&room), "tip": null})));
         }
         (None, Some(c)) => threads.named(Some(&agent), c).await?.1,
         _ => return Err(HttpError::new(422, "session_id or c is required")),
@@ -1083,6 +1084,10 @@ async fn timeline_route(
     UrlPath(id): UrlPath<String>,
     q: QueryMap,
 ) -> ApiResult<Response> {
+    if crate::rooms::of_thread(&id).is_some() {
+        let room = room_of(&state, &id)?;
+        return Ok(web::ok(crate::rooms::timeline(&state.config(), &room, Some(&*state.hub), &want_of(&q)?)));
+    }
     if let Some(relayed) = shared(&state, &q, &format!("{id}/timeline")).await {
         return relayed;
     }
@@ -1235,8 +1240,9 @@ async fn events(State(state): State<AppState>, q: QueryMap) -> ApiResult<Respons
     }
     let agent = agent_param(&state, &q)?;
     let threads = threads_of(&state);
-    // `thread=<id|main>`: that conversation is on screen while the stream is open (presence)
+    // `thread=<id|main|room:id>`: that conversation is on screen while the stream is open (presence)
     let shown = match q.get("thread").filter(|t| !t.is_empty()) {
+        Some(id) if crate::rooms::of_thread(id).is_some() => Some(threads.show(room_of(&state, id).map(|_| id)?)),
         Some(id) => Some(threads.show(&threads.named(agent.as_ref(), id).await?.1.id)),
         None => None,
     };
@@ -1250,7 +1256,9 @@ async fn events(State(state): State<AppState>, q: QueryMap) -> ApiResult<Respons
         loop {
             match tokio::time::timeout(Duration::from_secs_f64(crate::app::SSE_KEEPALIVE_SECONDS), events.recv()).await {
                 Err(_) => yield Ok(bytes::Bytes::from_static(b": keepalive\n\n")),
-                Ok(Ok((agent, kind, data))) if only.as_deref().is_none_or(|o| o == agent) => yield Ok(line(&kind, &data)),
+                // a room's hints have no agent (several agents speak there): every stream gets them
+                Ok(Ok((agent, kind, data))) if agent.is_empty() || only.as_deref().is_none_or(|o| o == agent) =>
+                    yield Ok(line(&kind, &data)),
                 Ok(Ok(_)) => {}
                 Ok(Err(broadcast::error::RecvError::Lagged(_))) => yield Ok(line("lagged", &json!({}))),
                 Ok(Err(broadcast::error::RecvError::Closed)) => break,
@@ -1286,6 +1294,12 @@ async fn send_route(
     UrlPath(id): UrlPath<String>,
     Json(body): Json<send::NewMessage>,
 ) -> ApiResult<Response> {
+    if let Some(room) = crate::rooms::of_thread(&id) {
+        if !body.attachments.is_empty() {
+            return Err(HttpError::new(422, "a discussion takes words only"));
+        }
+        return Ok(web::ok(crate::rooms::rooms_of(&state).post(room, &body.text, &body.client_id).await?));
+    }
     if let Some(relayed) = crate::agent_shares::relay_send(&state, body.agent.as_deref(), &id, &body).await {
         return relayed;
     }
@@ -1303,12 +1317,21 @@ async fn stop_route(
     UrlPath(id): UrlPath<String>,
     Json(body): Json<send::Stop>,
 ) -> ApiResult<Response> {
+    if let Some(room) = crate::rooms::of_thread(&id) {
+        let stopped = crate::rooms::rooms_of(&state).stop(room).await?.ok_or_else(HttpError::not_found)?;
+        return Ok(web::ok(json!({"stopped": stopped})));
+    }
     if let Some(relayed) = crate::agent_shares::relay_stop(&state, body.agent.as_deref(), &id).await {
         return relayed;
     }
     let threads = threads_of(&state);
     let (agent, thread) = threads.named(agent_param_of(&state, body.agent.as_deref())?.as_ref(), &id).await?;
     Ok(web::ok(send::stop(&state, &agent, &thread).await?))
+}
+
+/// The room a `room:<id>` thread names (404 when none).
+fn room_of(state: &AppState, thread: &str) -> ApiResult<crate::rooms::Room> {
+    crate::rooms::of_thread(thread).and_then(|id| crate::rooms::load(&state.config(), id)).ok_or_else(HttpError::not_found)
 }
 
 fn agent_param_of(state: &AppState, name: Option<&str>) -> ApiResult<Option<AgentConfig>> {

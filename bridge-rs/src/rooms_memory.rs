@@ -243,21 +243,11 @@ mod tests {
 
     fn say(config: &Config, id: &str, from: &str, text: &str) {
         let message = Message {
-            id: 0,
             at: 1_761_800_000.0,
             from: from.into(),
             kind: if from == "person" { "person".into() } else { "agent".into() },
             text: text.into(),
-            files: Vec::new(),
-            reply_to: None,
-            hop: 0,
-            tokens: None,
-            route: None,
-            error: None,
-            handoff: None,
-            capped: false,
-            task: None,
-            handover: None,
+            ..Default::default()
         };
         rooms::change(config, id, |room| room.push_message(message)).unwrap();
     }
