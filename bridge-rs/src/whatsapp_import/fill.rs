@@ -216,6 +216,8 @@ pub async fn ask(model: &Model, user: &str) -> Result<(String, i64, i64), String
 pub struct Person {
     pub name: String,
     pub facts: Vec<String>,
+    /// family, friend, work, service or other (people only): their group's page while they have few facts.
+    pub relation: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -275,7 +277,7 @@ pub fn parse_answer(answer: &str, window: &Window, me: &str, today: NaiveDate) -
         }
         facts.truncate(FACTS_PER_PAGE);
         if !facts.is_empty() {
-            found.people.push(Person { name, facts });
+            found.people.push(Person { name, facts, relation });
         }
     }
     for item in list("subjects") {
@@ -290,7 +292,7 @@ pub fn parse_answer(answer: &str, window: &Window, me: &str, today: NaiveDate) -
             .unwrap_or_default();
         facts.truncate(FACTS_PER_PAGE);
         if !facts.is_empty() {
-            found.subjects.push(Person { name: title, facts });
+            found.subjects.push(Person { name: title, facts, relation: String::new() });
         }
     }
     for item in list("dates") {
@@ -389,13 +391,19 @@ pub fn write(
     let with_link = |facts: &[String]| facts.iter().map(|f| format!("{f}{link}")).collect::<Vec<_>>();
     for person in &found.people {
         let facts = with_link(&person.facts);
-        let Some(written) =
-            kept(notebook::note(config, Part::Main, "person", &person.name, "", &facts, &[], "", "", &who))?
-        else {
+        // their own page when it is a two-person chat's other person, close family, known or with enough facts; else
+        // a line on their group's page (notebook/groups.rs)
+        let direct = home.kind == "person" && notebook::fold(&home.title) == notebook::fold(&person.name);
+        let filed = if direct {
+            notebook::note(config, Part::Main, "person", &person.name, "", &facts, &[], "", "", &who)
+        } else {
+            notebook::groups::file_person(config, &person.name, &person.relation, &facts, &who)
+        };
+        let Some(written) = kept(filed)? else {
             continue;
         };
         if written.created || !written.added.is_empty() {
-            counts.people.insert(notebook::fold(&written.title));
+            counts.people.insert(notebook::fold(&person.name));
         }
     }
     for subject in &found.subjects {
@@ -413,14 +421,25 @@ pub fn write(
         let (kind, title) =
             if person.is_empty() { (home.kind, home.title.as_str()) } else { ("person", person.as_str()) };
         let fact = format!("{what} : {date}{link}");
-        let Some(written) = kept(notebook::note(config, Part::Main, kind, title, "", &[fact], &[], "", "", &who))?
-        else {
+        // someone's date goes where their facts went (their page, else their group's)
+        let relation = found
+            .people
+            .iter()
+            .find(|p| notebook::fold(&p.name) == notebook::fold(title))
+            .map(|p| p.relation.as_str())
+            .unwrap_or("other");
+        let filed = if kind == "person" && notebook::fold(title) != notebook::fold(&home.title) {
+            notebook::groups::file_person(config, title, relation, &[fact], &who)
+        } else {
+            notebook::note(config, Part::Main, kind, title, "", &[fact], &[], "", "", &who)
+        };
+        let Some(written) = kept(filed)? else {
             continue;
         };
         if !written.added.is_empty() {
             counts.dates += 1;
             if kind == "person" {
-                counts.people.insert(notebook::fold(&written.title));
+                counts.people.insert(notebook::fold(title));
             }
         }
     }

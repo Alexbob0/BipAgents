@@ -36,6 +36,7 @@
 pub mod api;
 pub mod archive;
 pub mod fill;
+pub mod groups;
 pub mod records;
 pub mod relanguage;
 pub mod repair;

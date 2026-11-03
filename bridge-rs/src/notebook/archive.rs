@@ -47,6 +47,8 @@ pub struct Done {
     pub split_settled: usize,
     /// Records merged or written again (period, price: subscriptions.rs `settle_locked`).
     pub records_settled: usize,
+    /// People whose group lines moved to their own page (groups.rs).
+    pub grouped: usize,
     /// Subjects and areas with nothing in them taken out (`drop_empty_locked`).
     pub emptied: usize,
 }
@@ -65,6 +67,7 @@ impl Done {
             ("archived_records", self.archived_records),
             ("split_settled", self.split_settled),
             ("records_settled", self.records_settled),
+            ("grouped", self.grouped),
             ("emptied", self.emptied),
         ] {
             if v > 0 {
@@ -83,6 +86,7 @@ pub fn run(config: &Config, today: NaiveDate) -> anyhow::Result<Done> {
     let _guard = super::lock();
     done.split_settled = super::trip_split::settle_locked(config, &Who::tidy(config), today)?;
     done.records_settled = super::subscriptions::settle_locked(config, &Who::tidy(config), today)?;
+    done.grouped = super::groups::settle_locked(config, &Who::tidy(config))?;
     done.emptied = drop_empty_locked(config)?;
     let (placed, archived) = place_trips_locked(config, today)?;
     done.placed = placed;
