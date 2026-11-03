@@ -290,8 +290,9 @@ async fn push(
     let gone = |reason: &str| Json(json!({"status": 410, "reason": reason, "apns_id": null})).into_response();
     let at = now();
     let transition = relay.in_transition(at);
-    // During the transition a first-format token still works as it did: any sender, the guichet's texts too (the
-    // guichet holds such tokens), logged each time.
+    // During the transition a first-format token still works: any sender, logged each time. The guichet's texts only
+    // when the guichet sends it with its key (it holds such tokens): the relay also gives one to every bridge
+    // (`legacy_token`), and a bridge never speaks as the guichet.
     let mut retired = false;
     let claims = if transition && body.token.starts_with(RETIRED_PREFIX) {
         let Some(device) = relay.sealer.open_retired(&body.token) else { return gone("BadRelayToken") };
@@ -299,7 +300,8 @@ async fn push(
         relay.r1_used.fetch_add(1, Ordering::Relaxed);
         let id = retired_id(&body.token);
         tracing::warn!(token = %id, until = %day_of(relay.r1_until), "first-format (r1) token used");
-        Claims { device, id, aud: Audience::Guichet, iat: 0, exp: relay.r1_until }
+        let aud = if relay.sent_by_guichet(&headers) { Audience::Guichet } else { Audience::Bridge };
+        Claims { device, id, aud, iat: 0, exp: relay.r1_until }
     } else {
         match relay.sealer.open(&body.token, at) {
             Ok(claims) => claims,
