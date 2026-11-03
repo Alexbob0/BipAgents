@@ -29,7 +29,8 @@
 //! - **the Carnet**: each entry learnt after the first run is filed on the person's « Toi » page (notebook::note, kind
 //!   self: the section guessed by the outline's words, no model), attributed to the agent that learnt it (to the
 //!   person for an edit in the app), and queued as « Nouvelles du Carnet » (notebook/news.rs) for the other agents:
-//!   Hermes takes a USER.md change only into its next conversation, the news line reaches the ongoing ones. A removal
+//!   Hermes takes a USER.md change into its system prompt at the night's refresh (patch 0022: the day's copy, a
+//!   turn note tells the agent what changed since), the news line reaches the ongoing ones at once. A removal
 //!   is not mirrored (the page keeps its history; the person corrects it there);
 //! - **« Toi » → USER.md** (the real-day bench, 2026-10-29: told « je déménage à Nantes », GLM and DeepSeek filed it in
 //!   the Carnet with notebook_note, never with Hermes' memory tool, so the common memory never saw it): a fact that
