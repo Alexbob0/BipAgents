@@ -72,6 +72,7 @@ use crate::notebook::{fold, Who};
 use crate::tools_knowledge::{self as tk, tool_text};
 use crate::web::{self, ApiResult, HttpError, JsonObject};
 use crate::{py, Dict};
+use crate::notebook::lang_index;
 
 /// The records' schema: a new one reads every document again (the records merge on their keys).
 pub const SCHEMA: &str = "1";
@@ -1209,15 +1210,6 @@ const KIND_WORDS: [(&str, [&str; 4]); 5] = [
     ("paper", ["papiers", "papers", "Papiere", "documentos"]),
     ("booking", ["réservations", "bookings", "Buchungen", "reservas"]),
 ];
-
-fn lang_index(lang: &str) -> usize {
-    match lang {
-        "fr" => 0,
-        "de" => 2,
-        "es" => 3,
-        _ => 1,
-    }
-}
 
 /// « 12 achats, 3 abonnements »
 pub fn counts_text(per_type: &HashMap<&'static str, usize>, lang: &str) -> String {

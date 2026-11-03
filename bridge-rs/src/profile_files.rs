@@ -72,15 +72,35 @@ fn folder_of(path: &Path) -> PathBuf {
 /// `bytes` in `path` through a temporary file beside it, with the old file's mode (0600 for a new one).
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
-    std::fs::create_dir_all(folder_of(path))?;
     let mode = std::fs::metadata(path).map(|m| m.permissions().mode() & 0o7777).unwrap_or(0o600);
+    write_atomic_with(path, bytes, mode)
+}
+
+/// `bytes` in `path` with `mode`, through a temporary file beside it synced to disk before the rename, the folder
+/// after it: a reader, or a power cut, finds the old file or the new one, never half of one.
+pub fn write_atomic_with(path: &Path, bytes: &[u8], mode: u32) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+    let folder = folder_of(path);
+    std::fs::create_dir_all(&folder)?;
     let mut name = std::ffi::OsString::from(".");
     name.push(path.file_name().unwrap_or_default());
     name.push(".bipagents-tmp");
     let temporary = path.with_file_name(name);
-    std::fs::write(&temporary, bytes)?;
-    std::fs::set_permissions(&temporary, std::fs::Permissions::from_mode(mode))?;
-    std::fs::rename(&temporary, path)
+    let written = (|| {
+        let mut fh =
+            std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(mode).open(&temporary)?;
+        fh.set_permissions(std::fs::Permissions::from_mode(mode))?; // whatever the umask
+        fh.write_all(bytes)?;
+        fh.sync_all()?;
+        std::fs::rename(&temporary, path)
+    })();
+    if written.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    written?;
+    let _ = std::fs::File::open(&folder).and_then(|d| d.sync_all()); // the rename itself on disk
+    Ok(())
 }
 
 /// `yaml.safe_load(text) or {}` of a config file (missing: empty); Err for a file that doesn't load (never
@@ -420,6 +440,19 @@ mod tests {
         let names: Vec<String> =
             std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
         assert!(names.iter().all(|n| !n.ends_with(".bipagents-tmp")), "{names:?}");
+    }
+
+    #[test]
+    fn a_new_file_gets_its_mode_whatever_the_umask() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = folder();
+        write_atomic(&dir.join("a.json"), b"{}").unwrap();
+        assert_eq!(std::fs::metadata(dir.join("a.json")).unwrap().permissions().mode() & 0o777, 0o600);
+        write_atomic_with(&dir.join("sub/cert.pem"), b"pem", 0o644).unwrap();
+        assert_eq!(std::fs::metadata(dir.join("sub/cert.pem")).unwrap().permissions().mode() & 0o777, 0o644);
+        write_atomic_with(&dir.join("sub/cert.pem"), b"pem2", 0o600).unwrap();
+        assert_eq!(std::fs::read(dir.join("sub/cert.pem")).unwrap(), b"pem2");
+        assert_eq!(std::fs::metadata(dir.join("sub/cert.pem")).unwrap().permissions().mode() & 0o777, 0o600);
     }
 
     #[test]

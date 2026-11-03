@@ -313,9 +313,11 @@ date) » and « 'What time is it?' → run `date` »: a tool call each time (slo
 and servers run in UTC.
 
 **What the patch does.** (a) The two terminal-for-time lines leave the execution guidance (and its line → tools
-map). (b) The « as of the last context rebuild » line is replaced by one constant line, `NOW_LINE_HINT`: the current
-date and time are at the top of each message (a `bip:now` line), trust the latest one, don't check the clock with a
-tool. It never changes, so the prompt stays byte-stable for the whole conversation. (c) Each routine run's prompt gets
+map). (b) The « as of the last context rebuild » line is replaced by one constant line, `NOW_LINE_HINT`: when a
+message starts with a `bip:now` line, that line is the current date and time, trust the latest one, don't check the
+clock with a tool; without one (a messenger's or the CLI's turn on the same Hermes: no bridge put it), check the clock
+with a tool when the exact time matters (review 2026-11-03, H8). It never changes, so the prompt stays byte-stable for
+the whole conversation. (c) Each routine run's prompt gets
 the same line after the cron hint, in the routines' zone (`cron.timezone` of patch 0008, else the profile's), e.g.
 `<!--bip:now Sunday, October 25, 2026, 02:30, Europe/Paris (UTC+01:00)-->`. The conversations' lines come from the
 bridge and the apps (bridge-rs/src/dates/now.rs): in the new user message, never in the system prompt, so the cache

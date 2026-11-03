@@ -7,7 +7,8 @@
 //! - `FCM_SERVICE_ACCOUNT` or `FCM_SERVICE_ACCOUNT_FILE` (the JSON key): Google; left out, Android devices are refused
 //! - `PORT` (default 8080) or `RELAY_LISTEN` (`0.0.0.0:8080`)
 //! - `RELAY_PUSHES_PER_DEVICE_HOUR` (300), `RELAY_PUSHES_PER_IP_HOUR` (20000), `RELAY_REGISTRATIONS_PER_IP_HOUR` (60)
-//! - `RELAY_TRUST_FORWARDED_FOR=1` behind a proxy that sets `X-Forwarded-For` (the quotas then count its first address)
+//! - `RELAY_TRUST_FORWARDED_FOR=1` behind a proxy that sets `X-Forwarded-For` (the quotas then count its last address, the
+//!   one the proxy added; an IPv6 address counts by its /64)
 //! - `RELAY_GUICHET_KEY` (or `_FILE`): the key the guichet sends its pushes with (tokens sealed for the guichet)
 //! - `RELAY_R1_UNTIL` (`2026-12-15`, UTC midnight): until then the first token format (`r1.`) is still taken and
 //!   still sealed for older apps, and a guichet token sent without the guichet's key is let through (an older
