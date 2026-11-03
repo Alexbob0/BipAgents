@@ -222,11 +222,12 @@ async fn list_pages(State(state): State<AppState>, q: QueryMap) -> ApiResult<Res
                     .find(|d| d.get("path").and_then(Value::as_str) == Some(path.as_str()))
                     .map(|d| json!({"date": d["date"], "in_days": d["in_days"], "fact": d["fact"], "yearly": d["yearly"]}))
                     .unwrap_or(Value::Null);
+                // where it stands now: the latest line (the lines are added at the end, a day's last one after)
                 view["status"] = sections
                     .iter()
                     .find(|(name, _)| p.kind() == "subject" && *name == status)
-                    .and_then(|(_, facts)| facts.first())
-                    .map(|f| json!(f.text))
+                    .and_then(|(_, facts)| facts.iter().enumerate().max_by_key(|(i, f)| (f.date.clone(), *i)))
+                    .map(|(_, f)| json!(f.text))
                     .unwrap_or(Value::Null);
                 view["facts"] = json!(sections
                     .iter()
@@ -374,7 +375,10 @@ pub fn page_view_in(config: &Config, part: Part, path: &str, shown: &str) -> any
         .iter()
         .filter(|(p, _)| p != path)
         .filter(|(_, pg)| {
+            // a trip split from it points back to it (trip_split.rs: no line per trip on the page)
+            let from = super::fold(&crate::tools_knowledge::str_or_empty(pg.front.get("split_from")));
             super::links_in(&pg.body).iter().any(|l| names.iter().any(|n| super::fold(n) == super::fold(l)))
+                || (pg.kind() == "trip" && !from.is_empty() && names.iter().any(|n| super::fold(n) == from))
         })
         .map(|(p, pg)| json!({"title": pg.title, "path": p, "kind": pg.kind()}))
         .collect();

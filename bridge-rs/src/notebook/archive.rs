@@ -43,6 +43,14 @@ pub struct Done {
     pub placed: usize,
     pub archived_trips: usize,
     pub archived_records: usize,
+    /// Pages the older splits' lines and names were put right on (trip_split.rs `settle_locked`).
+    pub split_settled: usize,
+    /// Records merged or written again (period, price: subscriptions.rs `settle_locked`).
+    pub records_settled: usize,
+    /// People whose group lines moved to their own page (groups.rs).
+    pub grouped: usize,
+    /// Subjects and areas with nothing in them taken out (`drop_empty_locked`).
+    pub emptied: usize,
 }
 
 impl Done {
@@ -57,6 +65,10 @@ impl Done {
             ("trips_placed", self.placed),
             ("archived_trips", self.archived_trips),
             ("archived_records", self.archived_records),
+            ("split_settled", self.split_settled),
+            ("records_settled", self.records_settled),
+            ("grouped", self.grouped),
+            ("emptied", self.emptied),
         ] {
             if v > 0 {
                 out.insert(k.into(), json!(v));
@@ -72,11 +84,46 @@ pub fn run(config: &Config, today: NaiveDate) -> anyhow::Result<Done> {
     let mut done = Done { classes: records::settle_classes(config)?, ..Done::default() };
     done.trips = super::trip_auto::sync(config, &Who::tidy(config), today)?;
     let _guard = super::lock();
+    done.split_settled = super::trip_split::settle_locked(config, &Who::tidy(config), today)?;
+    done.records_settled = super::subscriptions::settle_locked(config, &Who::tidy(config), today)?;
+    done.grouped = super::groups::settle_locked(config, &Who::tidy(config))?;
+    done.emptied = drop_empty_locked(config)?;
     let (placed, archived) = place_trips_locked(config, today)?;
     done.placed = placed;
     done.archived_trips = archived;
     done.archived_records = archive_records_locked(config, today)?;
     Ok(done)
+}
+
+/// The subjects and areas with nothing in them (no fact, no « En bref »), last written by an agent or the nightly
+/// pass, taken out: an empty card in the app says nothing (Alex, 2026-11-03: a « Famille » area with no line, the
+/// family's facts being on their own pages). One the person wrote stays; the history keeps every page. Returns how
+/// many.
+fn drop_empty_locked(config: &Config) -> anyhow::Result<usize> {
+    let lang = super::language(config);
+    let brief = fold(super::words(&lang).brief);
+    let mut dropped = 0;
+    for (path, page) in super::all_pages(config, Part::Main) {
+        if !["subject", "area"].contains(&page.kind().as_str()) {
+            continue;
+        }
+        let empty = super::summary_of(&page.body, super::words(&lang).brief).trim().is_empty()
+            && page.sections().iter().filter(|(name, _)| fold(name) != brief).all(|(_, facts)| facts.is_empty());
+        if !empty {
+            continue;
+        }
+        // read only for an empty page: the history is the whole Carnet's log
+        let by_person = super::history(config, Some(Part::Main), Some(&path), 1)
+            .first()
+            .is_none_or(|e| tk::str_or_empty(e.get("by")) == "you");
+        if by_person {
+            continue;
+        }
+        let Some(before) = super::read_page_text(config, Part::Main, &path) else { continue };
+        super::commit(config, Part::Main, &path, Some(&before), None, &Who::tidy(config), "tidy", &page.title)?;
+        dropped += 1;
+    }
+    Ok(dropped)
 }
 
 fn date_of(text: &str) -> Option<NaiveDate> {
@@ -176,7 +223,7 @@ pub fn is_past(t: &Kind, record: &Dict, rows: &[Dict], today: NaiveDate) -> bool
             }),
         },
         "subscription" => {
-            says_ended(record, &["renewal", "period"])
+            says_ended(record, &["service", "renewal", "period"])
                 || day("renewal").is_some_and(|d| (today - d).num_days() > SUBSCRIPTION_DAYS)
         }
         "contract" => {
