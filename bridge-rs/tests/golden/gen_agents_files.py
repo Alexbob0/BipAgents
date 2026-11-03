@@ -84,6 +84,8 @@ def main():
                         {"plant-care": False, "monthly-budget": False}):
             (skills / "config.yaml").write_text(SKILLS, encoding="utf-8")
             own_skills.set_enabled(skills, changes)
+            # Edited by hand since 2026-11-02 (profile_files.rs): a change that leaves the list as it was writes
+            # nothing, so {"monthly-budget": True} keeps the input's bytes (the Python bridge rewrote them).
             cases.append({"fn": "set_enabled", "input": SKILLS, "arg": changes,
                           "output": (skills / "config.yaml").read_text(encoding="utf-8")})
 

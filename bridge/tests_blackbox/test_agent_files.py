@@ -8,7 +8,7 @@ import json
 import os
 
 from bbkit.common import AUTH
-from conftest import managed_install, profile, wait_registered
+from conftest import managed_install, profile, servers, wait_registered
 from test_sandbox import TOKENS, give_tokens, isolated, started
 
 MCP = "/v1/agent-tools/mcp"
@@ -51,10 +51,10 @@ def test_isolated_agents_give_files_along_the_links_the_person_allowed(bridges, 
     give_tokens(bridge, ["vie", "wellness", "budget"])
     vie, wellness, budget = (TOKENS[n] for n in ("vie", "wellness", "budget"))
     assert TOOL not in names(bridge, vie)                     # it may write to nobody yet
+    before = servers(profile(hub, "vie"))["bipagents"]["url"]
     link(bridge, ("vie", "wellness"))
-    # The agents' tools registered again (vie's list changed): their tokens are new, the test's given again.
-    assert any(args[:2] == ["-p", "vie"] and args[4].startswith("mcp_servers.bipagents.url")
-               for args in bridge.commands.of("hermes") if len(args) > 4)
+    # The agents' tools registered again (vie's list changed: a new tools URL), the test's tokens given again.
+    assert servers(profile(hub, "vie"))["bipagents"]["url"] != before
     give_tokens(bridge, ["vie", "wellness", "budget"])
     assert TOOL in names(bridge, vie) and TOOL not in names(bridge, budget) and TOOL not in names(bridge, wellness)
     # A file it made (in /envoi), one it was sent, and a short text.

@@ -662,7 +662,11 @@ pub const PAYMENTS_RULE: &str = concat!(
     "that still works (15 min only for a slot to grab; an hour or more for a price, a parcel or a grade), one request ",
     "per check, an RSS feed or an official API when there is one, the site's robots.txt and terms respected; never ",
     "watch a site that forbids automated checks unless it's the person's own account they may access. To them it is ",
-    "« un veilleur » that checks every 15 minutes, never a script or a program."
+    "« un veilleur » that checks every 15 minutes, never a script or a program. ",
+    // routines started by an event (2026-11-02, triggers.rs)
+    "When they want you to act each time an e-mail arrives (from someone, about something) or when another service or ",
+    "a Shortcut calls you: make it with routine_trigger (mail or link), never a routine every few minutes that checks; ",
+    "they turn it on with one tap in the app."
 );
 
 /// The personality without the payments block (the person never sees it).
@@ -691,13 +695,8 @@ pub fn sync_payments(config: &crate::config::Config, agent: &crate::config::Agen
     if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
         return;
     }
-    let path = crate::agents_admin::profile_folder(config, agent).join("SOUL.md");
-    let Ok(soul) = std::fs::read_to_string(&path) else { return };
-    let changed = with_payments(&soul);
-    if changed != soul {
-        if let Err(err) = std::fs::write(&path, changed) {
-            tracing::warn!(agent = %agent.name, error = %err, "payments rule not written");
-        }
+    if let Err(err) = crate::agents_admin::edit_soul(config, agent, false, with_payments) {
+        tracing::warn!(agent = %agent.name, error = %err, "payments rule not written");
     }
 }
 
@@ -744,13 +743,9 @@ pub fn sync_server(config: &crate::config::Config, agent: &crate::config::AgentC
     if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
         return;
     }
-    let path = crate::agents_admin::profile_folder(config, agent).join("SOUL.md");
-    let Ok(soul) = std::fs::read_to_string(&path) else { return };
-    let changed = with_server(&soul, crate::handover::on_offer());
-    if changed != soul {
-        if let Err(err) = std::fs::write(&path, changed) {
-            tracing::warn!(agent = %agent.name, error = %err, "server rule not written");
-        }
+    let offer = crate::handover::on_offer();
+    if let Err(err) = crate::agents_admin::edit_soul(config, agent, false, |soul| with_server(soul, offer)) {
+        tracing::warn!(agent = %agent.name, error = %err, "server rule not written");
     }
 }
 

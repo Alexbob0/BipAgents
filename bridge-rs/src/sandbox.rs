@@ -109,7 +109,6 @@ pub fn connector_proxy_ip(subnet: &str) -> Option<String> {
 }
 /// Hermes' default sandbox image (hermes_cli/config_defaults.py), with its registry (podman won't guess in a service).
 pub const DEFAULT_IMAGE: &str = "docker.io/nousresearch/hermes-sandbox:desktop";
-/// Where the agent finds the files it was sent, and the shared files it fetched (read-only).
 /// Hermes' sandbox with the styled documents skills' Python libraries (sandbox/Containerfile, style_skills.rs), as the
 /// servers keep it (installer/bipinstall/shared_images.py).
 pub const AGENT_IMAGE: &str = "localhost/bipagents-sandbox:latest";
@@ -129,6 +128,7 @@ pub fn wanted_image(current: Option<&str>, ours_present: bool) -> Option<&'stati
         None
     }
 }
+/// Where the agent finds the files it was sent, and the shared files it fetched (read-only).
 pub const RECEIVED: &str = crate::files::SANDBOX_UPLOADS;
 /// Where it puts a file to share (its own, read-write).
 pub const OUTBOX: &str = "/envoi";
@@ -780,6 +780,17 @@ pub async fn isolate(shared: &SharedConfig, agent: &AgentConfig, run: &Run, save
     if !kept.is_empty() {
         tracing::warn!(target: "bipbridge::sandbox", agent = %agent.name, mounts = %kept.join(" "), "the sandbox still mounts folders added by hand: Hermes keeps asking before risky commands");
     }
+    // the image with the styled documents skills' libraries, once the machine has it
+    let ours_present = run(args(&[&podman, "image", "exists", AGENT_IMAGE]), BTreeMap::new()).await.is_ok();
+    let now = current.get("docker_image").and_then(Value::as_str);
+    if let Some(image) = wanted_image(now, ours_present) {
+        run(
+            args(&[&config.hermes.bin, "-p", &agent.name, "config", "set", "terminal.docker_image", image]),
+            env.clone(),
+        )
+        .await?;
+        tracing::info!(target: "bipbridge::sandbox", agent = %agent.name, image, "sandbox image set");
+    }
     // its own code runs without asking: the network is the bridge's (CODE_KEYS says why it stays safe)
     set_allowlist(&config, agent, &folder, run, true).await?;
     if added + removed > 0 {
@@ -805,17 +816,6 @@ pub async fn isolate(shared: &SharedConfig, agent: &AgentConfig, run: &Run, save
         }
     }
     Ok(agent)
-    // the image with the styled documents skills' libraries, once the machine has it
-    let ours_present = run(args(&[&podman, "image", "exists", AGENT_IMAGE]), BTreeMap::new()).await.is_ok();
-    let now = current.get("docker_image").and_then(Value::as_str);
-    if let Some(image) = wanted_image(now, ours_present) {
-        run(
-            args(&[&config.hermes.bin, "-p", &agent.name, "config", "set", "terminal.docker_image", image]),
-            env.clone(),
-        )
-        .await?;
-        tracing::info!(target: "bipbridge::sandbox", agent = %agent.name, image, "sandbox image set");
-    }
 }
 
 /// At start: every sandboxed agent isolated (or its uploads mounted as before where the install doesn't isolate, and
@@ -1600,6 +1600,12 @@ mod tests {
         .unwrap();
         let share = shares::share_dir(&config, "vie");
         std::fs::create_dir_all(&share).unwrap();
+        let home = dir.path().join("home");
+        std::fs::create_dir_all(home.join(".config")).unwrap();
+        std::fs::write(home.join("secret.txt"), "home secret").unwrap();
+        std::fs::set_permissions(home.join("secret.txt"), std::fs::Permissions::from_mode(0o600)).unwrap();
+        std::fs::set_permissions(&home, std::fs::Permissions::from_mode(0o700)).unwrap();
+        (dir, config, agent, share, home)
     }
 
     /// Ours once the machine has it, Hermes' default back when it is gone, the person's own image never touched.
@@ -1613,12 +1619,6 @@ mod tests {
         assert_eq!(wanted_image(None, false), None);
         assert_eq!(wanted_image(Some(AGENT_IMAGE), false), Some(DEFAULT_IMAGE));
         assert_eq!(wanted_image(Some("docker.io/library/python:3.13"), true), None);
-        let home = dir.path().join("home");
-        std::fs::create_dir_all(home.join(".config")).unwrap();
-        std::fs::write(home.join("secret.txt"), "home secret").unwrap();
-        std::fs::set_permissions(home.join("secret.txt"), std::fs::Permissions::from_mode(0o600)).unwrap();
-        std::fs::set_permissions(&home, std::fs::Permissions::from_mode(0o700)).unwrap();
-        (dir, config, agent, share, home)
     }
 
     fn tool(config: &Config, agent: &AgentConfig, name: &str, arguments: Value) -> (bool, String) {

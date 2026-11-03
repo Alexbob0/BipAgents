@@ -101,6 +101,7 @@ pub mod files;
 pub mod files_kept;
 pub mod households;
 pub mod own_skills;
+pub mod profile_files;
 /// A hub agent moves into its own space by itself the first time it needs to keep a secret.
 pub mod own_space;
 pub mod peers;
@@ -165,6 +166,7 @@ pub mod rooms;
 pub mod rooms_handoff;
 pub mod rooms_memory;
 pub mod rooms_remote;
+pub mod rooms_tasks;
 pub mod routes;
 #[doc(hidden)]
 pub mod tools_knowledge; // the group's private helpers (pub for its golden tests)
@@ -201,6 +203,8 @@ pub mod vault_logins;
 // connectors an agent makes on request (2026-10-28): their secrets, their store and approval, their runs
 pub mod connectors;
 pub mod connectors_run;
+pub mod triggers;
+pub mod triggers_mail;
 pub mod watchers;
 /// An agent's Hermes restarted when there is a reason (memory, unhealthy, requested), only when idle (2026-10-28).
 pub mod agent_restart;

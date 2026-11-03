@@ -2,7 +2,7 @@
 # Word documents: bridge-rs/assets/skills/slides-styles, docs-styles), pinned in requirements.txt. Built by
 # .github/workflows/server-images.yml as ghcr.io/alexbob0/bipagents-sandbox:<key> (<key>: a hash of this folder) and
 # pulled by the servers as localhost/bipagents-sandbox:latest (installer/bipinstall/shared_images.py); the bridge
-# gives it to the agents it isolates when it is there (bridge-rs/src/sandbox.rs `agent_image`).
+# gives it to the agents it isolates when it is there (bridge-rs/src/sandbox.rs `AGENT_IMAGE`).
 ARG BASE=docker.io/nousresearch/hermes-sandbox:desktop
 FROM ${BASE}
 COPY requirements.txt /tmp/bipagents-requirements.txt

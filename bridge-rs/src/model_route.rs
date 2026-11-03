@@ -29,7 +29,6 @@
 use serde_json::{json, Value};
 
 use crate::agents_admin::pyyaml::Yaml;
-use crate::config::{AgentConfig, Config};
 
 /// Entrim, then GreenPT, then Inceptron: the three that cache GLM best (measured 2026-10-31, see the module's doc).
 pub const DEFAULT_ORDER: [&str; 3] = ["entrim", "greenpt", "inceptron"];
@@ -124,30 +123,17 @@ fn with_routing_only(data: &Yaml, order: &[String]) -> Option<Yaml> {
     (out != *data).then_some(out)
 }
 
-/// The routing written in a Hermes config file; whether it changed.
+/// The routing written in a Hermes config file (the hub's, new agents are cloned from); whether it changed.
 pub fn write(path: &std::path::Path, order: &[String]) -> anyhow::Result<bool> {
     if !path.is_file() {
         return Ok(false);
     }
-    let data = crate::agents_admin::load_or_empty(path)?;
     let chosen = path.parent().and_then(crate::agents_admin::chosen_thinking);
-    match with_routing(&data, order, chosen.as_deref()) {
-        Some(changed) => {
-            crate::agents_admin::replace_yaml(path, &changed)?;
-            Ok(true)
+    crate::profile_files::edit(path, |data| {
+        if let Some(routed) = with_routing(data, order, chosen.as_deref()) {
+            *data = routed;
         }
-        None => Ok(false),
-    }
-}
-
-/// The agent's profile routed as the bridge's setting says (Hermes reads it again from the next conversation).
-pub fn apply(config: &Config, agent: &AgentConfig) -> anyhow::Result<bool> {
-    let Some(folder) = crate::shares::profile_dir(config, agent) else { return Ok(false) };
-    let changed = write(&folder.join("config.yaml"), &config.model_provider_order)?;
-    if changed {
-        tracing::info!(target: "bipbridge::agents", agent = %agent.name, "model provider routing set");
-    }
-    Ok(changed)
+    })
 }
 
 #[cfg(test)]

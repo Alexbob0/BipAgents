@@ -1,6 +1,6 @@
 //! Services connected to an agent (MCP servers), from the app's catalog (tool_catalog.yaml).
 //!
-//! Written with Hermes' own CLI (`config set` / `config unset`) into the agent's profile, which its gateway
+//! Written into the agent's profile by the one writer of profile files (profile_files.rs), which its gateway
 //! re-reads within about a minute: no restart. A token goes to the profile's .env (0600) and the config only
 //! refers to it (`Bearer ${MCP_<NAME>_API_KEY}`), so it never appears on a command line or in config.yaml.
 //!
@@ -242,7 +242,7 @@ fn args(items: &[&str]) -> Vec<String> {
     items.iter().map(|s| s.to_string()).collect()
 }
 
-pub async fn add(config: &Config, agent: &AgentConfig, body: &Dict, run: &Run) -> anyhow::Result<Dict> {
+pub async fn add(config: &Config, agent: &AgentConfig, body: &Dict, _run: &Run) -> anyhow::Result<Dict> {
     let wanted = plan(body)?;
     if wanted.get("needs_own_space").map(crate::py::truthy).unwrap_or(false) {
         if let Some(why) = crate::vault::holder(config, agent) {
@@ -251,7 +251,6 @@ pub async fn add(config: &Config, agent: &AgentConfig, body: &Dict, run: &Run) -
         }
     }
     let home = profile_home(config, agent);
-    let env = env_of(&home);
     let name = text(&wanted, "name");
     let url = text(&wanted, "url");
     let catalog_id = text(&wanted, "catalog");
@@ -262,34 +261,17 @@ pub async fn add(config: &Config, agent: &AgentConfig, body: &Dict, run: &Run) -
     if let Some(token) = &token {
         set_env(&home.join("profiles").join(&agent.name).join(".env"), &env_name(&name), Some(token))?;
     }
-    let hermes = config.hermes.bin.as_str();
-    run(args(&[hermes, "-p", &agent.name, "config", "set", &format!("mcp_servers.{name}.url"), &url]), env.clone())
-        .await?;
+    let mut entry = vec![("url", Yaml::str(&url))];
     if token.is_some() {
-        let header = format!("Bearer ${{{}}}", env_name(&name));
-        run(
-            args(&[
-                hermes,
-                "-p",
-                &agent.name,
-                "config",
-                "set",
-                &format!("mcp_servers.{name}.headers.Authorization"),
-                &header,
-            ]),
-            env.clone(),
-        )
-        .await?;
+        entry.push(("headers.Authorization", Yaml::str(format!("Bearer ${{{}}}", env_name(&name)))));
     }
     if catalog_id != "home_assistant" {
         // Hermes asks the person before each of its tools that writes (sends, creates, deletes): a page or an e-mail
         // the agent read cannot make it act through the service. Home Assistant (lights, heating) stays direct.
-        run(
-            args(&[hermes, "-p", &agent.name, "config", "set", &format!("mcp_servers.{name}.trust"), "untrusted"]),
-            env.clone(),
-        )
-        .await?;
+        entry.push(("trust", Yaml::str("untrusted")));
     }
+    let path = home.join("profiles").join(&agent.name).join("config.yaml");
+    crate::profile_files::edit(&path, |data| crate::profile_files::set_server(data, &name, Some(&entry)))?;
     tracing::info!(agent = %agent.name, service = %name, catalog = %catalog_id, "service connected");
     let mut out = Dict::new();
     out.insert("name".into(), json!(name));
@@ -306,14 +288,11 @@ fn known(config: &Config, agent: &AgentConfig, name: &str) -> Result<(), Unknown
     Ok(())
 }
 
-pub async fn remove(config: &Config, agent: &AgentConfig, name: &str, run: &Run) -> anyhow::Result<()> {
+pub async fn remove(config: &Config, agent: &AgentConfig, name: &str, _run: &Run) -> anyhow::Result<()> {
     known(config, agent, name)?;
     let home = profile_home(config, agent);
-    run(
-        args(&[&config.hermes.bin, "-p", &agent.name, "config", "unset", &format!("mcp_servers.{name}")]),
-        env_of(&home),
-    )
-    .await?;
+    let path = home.join("profiles").join(&agent.name).join("config.yaml");
+    crate::profile_files::edit(&path, |data| crate::profile_files::set_server(data, name, None))?;
     set_env(&home.join("profiles").join(&agent.name).join(".env"), &env_name(name), None)?;
     tracing::info!(agent = %agent.name, service = %name, "service removed");
     Ok(())

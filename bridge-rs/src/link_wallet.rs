@@ -524,27 +524,11 @@ pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow
     unregister(config, agent, run).await
 }
 
-async fn unregister(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow::Result<bool> {
+async fn unregister(config: &Config, agent: &AgentConfig, _run: &Run) -> anyhow::Result<bool> {
     let Some(folder) = crate::shares::profile_dir(config, agent) else { return Ok(false) };
-    let profile = crate::shares::profile_config(&folder);
-    if profile.get("mcp_servers").and_then(|s| s.get(SERVER_NAME)).is_none() {
-        return Ok(false);
-    }
-    let home = folder.parent().and_then(Path::parent).map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
-    let env: std::collections::BTreeMap<String, String> = [("HERMES_HOME".to_string(), home)].into_iter().collect();
-    run(
-        vec![
-            config.hermes.bin.clone(),
-            "-p".into(),
-            agent.name.clone(),
-            "config".into(),
-            "unset".into(),
-            format!("mcp_servers.{SERVER_NAME}"),
-        ],
-        env,
-    )
-    .await?;
-    Ok(true)
+    crate::profile_files::edit(&folder.join("config.yaml"), |data| {
+        crate::profile_files::set_server(data, SERVER_NAME, None)
+    })
 }
 
 async fn wire_all(config: &Config, names: &[String], run: &Run) {

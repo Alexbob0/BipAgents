@@ -337,16 +337,9 @@ async fn a_service_with_a_token_needs_the_agents_own_space() {
     )
     .await
     .unwrap();
-    let ran = args(&commands);
-    assert_eq!(
-        ran[ran.len() - 2],
-        strs(&["/opt/hermes", "-p", "maison", "config", "set", "mcp_servers.meteo.url", "https://meteo.example/mcp"])
-    );
-    // Its tools that write ask the person first.
-    assert_eq!(
-        ran[ran.len() - 1],
-        strs(&["/opt/hermes", "-p", "maison", "config", "set", "mcp_servers.meteo.trust", "untrusted"])
-    );
+    // written into its profile, its tools that write asking the person first
+    let profile = std::fs::read_to_string(folder.join("config.yaml")).unwrap();
+    assert!(profile.contains("meteo:\n    url: https://meteo.example/mcp\n    trust: untrusted\n"), "{profile}");
 }
 
 #[tokio::test]
@@ -372,15 +365,8 @@ async fn the_token_goes_to_the_env_file_never_on_a_command_line() {
     assert!(args(&commands).iter().all(|c| !c.join(" ").contains("ha-secret")));
     assert!(std::fs::read_to_string(folder.join(".env")).unwrap().contains("MCP_HOME_ASSISTANT_API_KEY=ha-secret"));
     assert_eq!(mode(&folder.join(".env")), 0o600);
-    assert!(args(&commands).contains(&strs(&[
-        "/opt/hermes",
-        "-p",
-        "maison",
-        "config",
-        "set",
-        "mcp_servers.home_assistant.headers.Authorization",
-        "Bearer ${MCP_HOME_ASSISTANT_API_KEY}"
-    ])));
+    let profile = std::fs::read_to_string(folder.join("config.yaml")).unwrap();
+    assert!(profile.contains("Authorization: Bearer ${MCP_HOME_ASSISTANT_API_KEY}"), "{profile}");
     std::fs::write(
         folder.join("config.yaml"),
         "mcp_servers:\n  ha:\n    url: http://ha.local:8123/api/mcp\n  garmin:\n    command: uvx\n",
@@ -394,8 +380,7 @@ async fn the_token_goes_to_the_env_file_never_on_a_command_line() {
         json!({"ok": true, "message": null, "tools": 7})
     );
     services::remove(&config, &agent, "garmin", &run).await.unwrap();
-    let ran = args(&commands);
-    assert_eq!(ran.last().unwrap()[ran.last().unwrap().len() - 2..], ["unset", "mcp_servers.garmin"]);
+    assert!(!std::fs::read_to_string(folder.join("config.yaml")).unwrap().contains("garmin"));
     let err = services::remove(&config, &agent, "nope", &run).await.unwrap_err();
     assert!(err.downcast_ref::<services::UnknownService>().is_some());
 }

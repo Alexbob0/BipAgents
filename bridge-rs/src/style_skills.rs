@@ -159,16 +159,12 @@ pub fn apply_to(folder: &Path, kind: &str, offer: bool) -> anyhow::Result<Applie
     }
     let mut switched = false;
     if offer || first {
-        let path = folder.join("config.yaml");
-        let data = crate::agents_admin::load_or_empty(&path)?;
-        if let Some(changed) = with_ours_on(&data) {
-            if path.exists() {
-                crate::agents_admin::replace_yaml(&path, &changed)?;
-            } else {
-                std::fs::write(&path, crate::agents_admin::pyyaml::dump(&changed))?;
+        // the profile's one writer (profile_files.rs): under its lock, nothing written when already so
+        switched = crate::profile_files::edit(&folder.join("config.yaml"), |data| {
+            if let Some(changed) = with_ours_on(data) {
+                *data = changed;
             }
-            switched = true;
-        }
+        })?;
     }
     if first {
         write_if_changed(

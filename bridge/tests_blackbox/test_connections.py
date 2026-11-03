@@ -13,7 +13,7 @@ import httpx
 
 from bbkit.common import AUTH
 from bbkit.servers import wait_until
-from conftest import managed_install, profile, wait_registered
+from conftest import managed_install, profile, servers, wait_registered
 
 
 class FakeService:
@@ -178,9 +178,8 @@ def test_notion_signs_in_on_the_phone_and_the_agent_gets_only_an_access_token(br
         assert json.loads((folder / "mcp-tokens" / "notion.client.json").read_text())["client_id"] == "client-1"
         assert oct((folder / "mcp-tokens" / "notion.json").stat().st_mode & 0o777) == "0o600"
         commands = bridge.commands.of("hermes")
-        for key, value in (("url", f"{service.base}/mcp"), ("auth", "oauth"), ("trust", "untrusted")):
-            assert ["-p", "maison", "config", "set", f"mcp_servers.notion.{key}", value] in commands
-        assert not any(c[:2] == ["-p", "coach"] for c in commands)
+        assert servers(folder)["notion"] == {"url": f"{service.base}/mcp", "auth": "oauth", "trust": "untrusted"}
+        assert "notion" not in servers(folder.parent / "coach")
         assert all("at-1" not in " ".join(c) and "rt-1" not in " ".join(c) for c in commands)
         # The bridge's copy: encrypted.
         kept = (bridge.state_dir / "connections" / "connections.json.enc").read_text()
@@ -193,7 +192,7 @@ def test_notion_signs_in_on_the_phone_and_the_agent_gets_only_an_access_token(br
         gone = bridge.delete("/v1/connections/notion", headers=AUTH)
         assert gone.status_code == 200 and gone.json() == {"ok": True, "revoked": True}
         assert {r["token"] for r in service.revoked} == {"at-1", "rt-1"}
-        assert bridge.commands.of("hermes") == [["-p", "maison", "config", "unset", "mcp_servers.notion"]]
+        assert "notion" not in servers(folder)
         assert not (folder / "mcp-tokens" / "notion.json").exists()
         assert bridge.get("/v1/connections", headers=AUTH).json()["connections"][0]["state"] == "not_connected"
         assert bridge.delete("/v1/connections/notion", headers=AUTH).status_code == 404
@@ -271,7 +270,7 @@ def test_the_way_back_through_the_bridge_and_choosing_the_agents_later(bridges, 
         bridge.commands.clear()
         none = bridge.put("/v1/connections/notion/agents", headers=AUTH, json={"agents": []})
         assert none.status_code == 200 and none.json()["agents"] == [] and none.json()["connected"] is True
-        assert bridge.commands.of("hermes") == [["-p", "maison", "config", "unset", "mcp_servers.notion"]]
+        assert "notion" not in servers(folder)
         assert not (folder / "mcp-tokens" / "notion.json").exists()
         back_in = bridge.put("/v1/connections/notion/agents", headers=AUTH, json={"agents": ["maison"]})
         assert back_in.json()["agents"] == ["maison"]

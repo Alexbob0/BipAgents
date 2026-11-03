@@ -190,6 +190,7 @@ l'installateur les applique.
 | 0018 tours d'invités | le tour d'un proche n'a que les outils de l'invité et pas de USER.md |
 | 0019 les routines répondent dans leur conversation | une routine créée dans une conversation y répond |
 | 0020 consommation par appel dans l'API Runs | le vrai coût de chaque appel au modèle, pour les budgets |
+| 0021 la conversation principale reste celle de l'app | la conversation principale de chaque agent garde son affichage en direct et son historique sur la v0.22.5 |
 
 **Comment nous les proposons en amont.** La série est une branche git au-dessus de Hermes, exportée avec
 `scripts/hermes-patches.sh` (`branch`, `export`, `check`) : un commit par patch, des noms stables, les mêmes octets à

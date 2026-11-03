@@ -1097,8 +1097,22 @@ async fn sessions_hermes(rows: Arc<Mutex<Vec<Value>>>, patched: Arc<Mutex<Vec<Va
             },
             (Method::PATCH, _) => {
                 let fields: Value = serde_json::from_slice(&body).unwrap();
-                if rows.iter().any(|r| r["id"] != id.as_str() && fields.get("title").is_some_and(|t| &r["title"] == t)) {
+                // v0.22.5 (hermes_state_titles.py): a hidden Bot Chat's name is its identity, never renamed; an
+                // archived hidden one yields its title to the next
+                let renamed = fields.get("title").is_some_and(|t| t != "Bot Chat");
+                if renamed && rows.iter().any(|r| r["id"] == id.as_str() && r["title"] == "Bot Chat" && r["hidden"] == true) {
+                    return (StatusCode::BAD_REQUEST, axum::Json(json!({"error": "This is the bot's canonical Bot Chat"})));
+                }
+                let retired = |r: &Value| r["title"] == "Bot Chat" && r["hidden"] == true && r["archived"] == true;
+                if rows.iter().any(|r| {
+                    r["id"] != id.as_str() && fields.get("title").is_some_and(|t| &r["title"] == t) && !retired(r)
+                }) {
                     return (StatusCode::BAD_REQUEST, axum::Json(json!({"error": "title already in use"})));
+                }
+                if let Some(title) = fields.get("title") {
+                    for row in rows.iter_mut().filter(|r| r["id"] != id.as_str() && &r["title"] == title) {
+                        row["title"] = Value::Null;
+                    }
                 }
                 patched.lock().unwrap().push(json!({"id": id, "fields": fields}));
                 if let Some(row) = rows.iter_mut().find(|r| r["id"] == id.as_str()) {
@@ -1186,4 +1200,44 @@ async fn a_new_agents_first_conversation_becomes_its_thread_when_its_bot_chat_is
     again(&config, "s_first");
     assert_eq!(adopt(&hermes, &config, &away).await, Adopted::Later);
     assert_eq!(unchecked(&config), vec!["coach".to_string()]);
+}
+
+/// Release bench 2026-11-02: an unpatched Hermes v0.22.5 renamed an agent's thread « Bot Chat (API <id>) » and made a
+/// new empty local « Bot Chat » (hidden). At the bridge's start the thread is its Bot Chat again, the new one archived
+/// and hidden (Hermes refuses to rename a hidden Bot Chat, and frees the title of an archived hidden one).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_thread_hermes_moved_aside_is_the_agents_bot_chat_again() {
+    use bipbridge::welcome::restore_moved_aside;
+    let rows = Arc::new(Mutex::new(vec![
+        json!({"id": "local-9f", "title": "Bot Chat", "message_count": 2, "hidden": true}),
+        json!({"id": "api_1_a", "title": "Bot Chat (API api_1_a)", "message_count": 40, "source": "api_server"}),
+        json!({"id": "api_2_b", "title": "Bot Chat (API api_2_b)", "message_count": 3, "source": "api_server"}),
+        json!({"id": "api_3_c", "title": "Courses", "message_count": 5, "source": "api_server"}),
+    ]));
+    let patched = Arc::new(Mutex::new(Vec::new()));
+    let hermes_url = sessions_hermes(rows.clone(), patched.clone()).await;
+    let coach = bipbridge::config::AgentConfig {
+        name: "coach".into(),
+        hermes_url: format!("{hermes_url}/p/coach"),
+        hermes_key: "k".into(),
+        ..Default::default()
+    };
+    let hermes = bipbridge::hermes::HermesClient::new(reqwest::Client::new());
+    assert_eq!(restore_moved_aside(&hermes, &coach).await.unwrap().as_deref(), Some("api_1_a"));
+    let now = rows.lock().unwrap().clone();
+    assert_eq!(now[1]["title"], "Bot Chat"); // the one with its history
+    assert_eq!((&now[0]["hidden"], &now[0]["archived"]), (&json!(true), &json!(true)));
+    assert_eq!((now[2]["title"].as_str(), now[3]["title"].as_str()), (Some("Bot Chat (API api_2_b)"), Some("Courses")));
+    // once back, nothing more to do at the next start (the smaller moved one stays where it is)
+    patched.lock().unwrap().clear();
+    assert_eq!(restore_moved_aside(&hermes, &coach).await.unwrap(), None);
+    assert!(patched.lock().unwrap().is_empty());
+    // a place never moved aside isn't touched
+    rows.lock().unwrap().remove(2);
+    assert_eq!(restore_moved_aside(&hermes, &coach).await.unwrap(), None);
+    assert!(patched.lock().unwrap().is_empty());
+    // Hermes out of reach: an error, tried again later
+    let mut away = coach.clone();
+    away.hermes_url = "http://127.0.0.1:9/p/coach".into();
+    assert!(restore_moved_aside(&hermes, &away).await.is_err());
 }
