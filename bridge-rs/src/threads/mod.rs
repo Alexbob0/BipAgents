@@ -53,8 +53,9 @@ use crate::web::{self, ApiResult, FieldError, HttpError, Json, QueryMap, Validat
 use source::{ApiCache, Session, Source};
 use timeline::{Item, Want};
 
-/// The title Hermes' Bot Mode gives the agent's permanent conversation: read once, to adopt an existing place's main
-/// conversation (docs/conversations.md §8). Nothing else here depends on a title.
+/// The title Hermes' Bot Mode gives the agent's permanent conversation: the one constant of the bridge for it (peers.rs
+/// keeps Hermes' peer-protocol own). Read to adopt an existing place's main conversation (docs/conversations.md §8),
+/// given to the main session the bridge makes (welcome.rs, agents_admin.rs); a thread's identity never depends on it.
 pub const LEGACY_MAIN_TITLE: &str = "Bot Chat";
 /// A record naming each agent's main session (`{agent: session_id}`), written by a migration that moves the person's
 /// conversation to another session (botchat-v0225): read before any title.

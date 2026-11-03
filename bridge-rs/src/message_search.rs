@@ -45,7 +45,6 @@ pub const TIME_CAP: Duration = Duration::from_millis(1500);
 /// Characters of a snippet, about.
 const SNIPPET_CHARS: usize = 140;
 const BEFORE_CHARS: usize = 40;
-const BOT_CHAT_TITLE: &str = "Bot Chat";
 /// A parent ending this way makes its child a reset session the app lists (Hermes' `_RESET_END_REASONS`).
 const RESET_END_REASONS: [&str; 6] =
     ["session_reset", "session_switch", "idle", "daily", "suspended", "resume_pending_expired"];
@@ -396,7 +395,7 @@ fn listed_session(id: &str, sessions: &HashMap<String, SessionRow>) -> Option<St
         return None; // a sub-agent's run (older stores, no marker)
     }
     let row = sessions.get(&current)?;
-    if row.hidden && row.title.as_deref().map(str::trim) != Some(BOT_CHAT_TITLE) {
+    if row.hidden && row.title.as_deref().map(str::trim) != Some(crate::threads::LEGACY_MAIN_TITLE) {
         return None;
     }
     Some(current)

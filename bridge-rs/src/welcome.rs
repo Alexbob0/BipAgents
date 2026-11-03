@@ -845,8 +845,6 @@ pub fn done(config: &Config, agent: &str, session: Option<&str>) {
     }
 }
 
-/// The agent's one thread, as Hermes titles it (cronwatch::is_bot_chat, the apps' `isBotChat`).
-pub const BOT_CHAT: &str = "Bot Chat";
 /// The title an empty Bot Chat takes when the person's first conversation becomes the agent's Bot Chat (with a part
 /// of its id: titles are unique in Hermes). Hidden, and never « Bot Chat » again.
 pub const SET_ASIDE: &str = "Fil vide mis de côté";
@@ -976,7 +974,7 @@ pub async fn adopt(hermes: &HermesClient, config: &Config, agent: &AgentConfig) 
         }
     }
     let mut fields = Map::new();
-    fields.insert("title".into(), json!(BOT_CHAT));
+    fields.insert("title".into(), json!(crate::threads::LEGACY_MAIN_TITLE));
     if hermes.update_session(agent, &first, fields).await.is_err() {
         // without a Bot Chat now, the apps open its latest conversation, this one; tried again at the next look
         return Adopted::Later;
@@ -1034,7 +1032,7 @@ pub async fn restore_moved_aside(hermes: &HermesClient, agent: &AgentConfig) -> 
         hermes.update_session(agent, &id_of(&row), fields).await?;
     }
     let mut fields = Map::new();
-    fields.insert("title".into(), json!(BOT_CHAT));
+    fields.insert("title".into(), json!(crate::threads::LEGACY_MAIN_TITLE));
     hermes.update_session(agent, &id, fields).await?;
     Ok(Some(id))
 }
