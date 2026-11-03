@@ -18,6 +18,7 @@ use regex::Regex;
 
 use super::{fold, split_attribution};
 use crate::tools_knowledge as tk;
+use crate::notebook::lang_index;
 
 /// One section of an outline: its id (what the agents and the apps use), its title in fr/en/de/es, and other names it
 /// is known by (folded; any language).
@@ -764,15 +765,6 @@ pub fn outline(kind: &str) -> &'static [Section] {
 /// The section ids of a kind, in order (« other » last).
 pub fn ids(kind: &str) -> Vec<&'static str> {
     outline(kind).iter().map(|s| s.id).collect()
-}
-
-fn lang_index(lang: &str) -> usize {
-    match lang {
-        "fr" => 0,
-        "de" => 2,
-        "es" => 3,
-        _ => 1,
-    }
 }
 
 /// A section's title in `lang` (the id itself when the kind has no such section).

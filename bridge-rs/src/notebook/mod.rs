@@ -60,6 +60,16 @@ use crate::config::Config;
 use crate::tools_knowledge as tk;
 use crate::{py, Dict};
 
+/// The column of a word in the tables written `[fr, en, de, es]` (English for any other language).
+pub fn lang_index(lang: &str) -> usize {
+    match lang {
+        "fr" => 0,
+        "de" => 2,
+        "es" => 3,
+        _ => 1,
+    }
+}
+
 /// One writer at a time (the tools run in threads, the routes and the nightly pass too). Taken before the reminders'
 /// lock when both are needed, never after.
 static LOCK: Mutex<()> = Mutex::new(());

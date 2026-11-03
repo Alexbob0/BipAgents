@@ -34,6 +34,7 @@ use super::{fold, template, Page, Part, Who};
 use crate::config::Config;
 use crate::tools_knowledge as tk;
 use crate::Dict;
+use crate::notebook::lang_index;
 
 /// Bookings within this many days of each other (and of the same destination) are one trip.
 pub const GAP_DAYS: i64 = 2;
@@ -164,15 +165,6 @@ const PLACES: &[(&[&str], &[&str], [&str; 4])] = &[
     (&["SIN"], &["changi", "singapour", "singapore", "singapur"], ["Singapour", "Singapore", "Singapur", "Singapur"]),
     (&["TLV"], &["ben gurion", "tel aviv"], ["Tel Aviv", "Tel Aviv", "Tel Aviv", "Tel Aviv"]),
 ];
-
-fn lang_index(lang: &str) -> usize {
-    match lang {
-        "fr" => 0,
-        "de" => 2,
-        "es" => 3,
-        _ => 1,
-    }
-}
 
 static CODE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b([A-Z]{3})\b").expect("valid regex"));
 

@@ -33,6 +33,7 @@ use super::{fold, Page, Part, Who};
 use crate::config::Config;
 use crate::tools_knowledge as tk;
 use crate::{py, Dict};
+use crate::notebook::lang_index;
 
 pub struct Field {
     pub id: &'static str,
@@ -196,15 +197,6 @@ pub fn all_fields() -> Vec<&'static str> {
 
 /// The dates among the fields: written as YYYY-MM-DD when they can be read.
 const DATES: [&str; 5] = ["date", "warranty_end", "renewal", "end", "expires"];
-
-fn lang_index(lang: &str) -> usize {
-    match lang {
-        "fr" => 0,
-        "de" => 2,
-        "es" => 3,
-        _ => 1,
-    }
-}
 
 /// A type by its id, its title in any language or another name.
 pub fn kind(name: &str) -> Option<&'static Kind> {

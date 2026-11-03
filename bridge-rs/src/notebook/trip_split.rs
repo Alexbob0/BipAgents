@@ -25,6 +25,7 @@ use super::{fold, template, Page, Part, Who};
 use crate::config::Config;
 use crate::tools_knowledge as tk;
 use crate::{py, Dict};
+use crate::notebook::lang_index;
 
 /// Dated lines more than this many days apart belong to two trips.
 pub const GAP_DAYS: i64 = 21;
@@ -55,15 +56,6 @@ pub struct Trip {
     /// The body's lines that move to it (indices), and its records' ids.
     pub lines: Vec<usize>,
     pub records: Vec<String>,
-}
-
-fn lang_index(lang: &str) -> usize {
-    match lang {
-        "fr" => 0,
-        "de" => 2,
-        "es" => 3,
-        _ => 1,
-    }
 }
 
 /// Whether a page may hold several journeys: a trip, or a list of trips (« Voyages »).

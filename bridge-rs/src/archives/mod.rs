@@ -72,6 +72,7 @@ use crate::web::{self, ApiResult, HttpError, JsonObject, QueryMap};
 use crate::{py, Dict};
 
 use index::{Hit, Index};
+use crate::notebook::lang_index;
 
 pub const SEARCH: &str = "archive_search";
 pub const READ: &str = "archive_read";
@@ -925,15 +926,6 @@ const KIND_WORDS: [(&str, [&str; 4]); 4] = [
     ("subscription", ["abonnements", "subscriptions", "Abos", "suscripciones"]),
     ("other", ["autres", "others", "andere", "otros"]),
 ];
-
-fn lang_index(lang: &str) -> usize {
-    match lang {
-        "fr" => 0,
-        "de" => 2,
-        "es" => 3,
-        _ => 1,
-    }
-}
 
 /// The overview's lines: « 2024 : 37 achats, 5 voyages, 120 autres », the latest year first (counts only, no content).
 pub fn overview_lines(by_year: &[(String, String, i64)], lang: &str) -> Vec<String> {
