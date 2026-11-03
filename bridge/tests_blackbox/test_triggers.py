@@ -28,8 +28,12 @@ def turns(fakes):
     return [r for r in fakes.hermes.started.values() if "<!--bip:trigger" in (r.get("input") or "")]
 
 
-def boite(bridge, title):
-    return [i for i in bridge.get("/v1/outbox", headers=AUTH).json()["items"] if i["title"] == title]
+def boite(bridge, fakes):
+    """What the Boîte shows of the routines' runs: the journal's rows pointing at the agent's replies in the routine's
+    conversation (background_turn.rs: the reply is not copied into the outbox any more)."""
+    sessions = {t["session_id"] for t in turns(fakes)}
+    rows = bridge.get("/v1/notifications", headers=AUTH).json()["notifications"]
+    return [r for r in rows if r["type"] == "reply" and r["session_id"] in sessions]
 
 
 def make(bridge, agent="coach", **body):
@@ -87,9 +91,10 @@ def test_a_new_email_starts_the_routine_through_idle_once(bridges, fakes):
     assert text.count("-->") == 1 and text.endswith("-->")   # the e-mail can't close the note
     created = [body for agent, body in fakes.hermes.created if agent == "coach"]
     assert created[-1]["title"].startswith("⚡ Factures · ")
-    assert wait_until(lambda: boite(bridge, "Factures"), timeout=20)
-    item = boite(bridge, "Factures")[0]
-    assert item["text"] == "Facture de 42 € rangée dans tes dépenses." and item["session_id"] == turn["session_id"]
+    assert wait_until(lambda: boite(bridge, fakes), timeout=20)
+    item = boite(bridge, fakes)[0]
+    assert item["preview"] == "Facture de 42 € rangée dans tes dépenses." and item["session_id"] == turn["session_id"]
+    assert not [i for i in bridge.get("/v1/outbox", headers=AUTH).json()["items"] if i["title"] == "Factures"]
     # the IDLE was told, not polled: no SEARCH every few seconds while waiting
     searches = [c for c in fakes.imap.commands[commands_before:] if c.startswith("UID SEARCH")]
     assert len(searches) <= 3, searches
@@ -111,7 +116,7 @@ def test_a_new_email_starts_the_routine_through_idle_once(bridges, fakes):
     fakes.imap.add("INBOX", 107, mail(107, "info@banque.example", "Relevé d'octobre", "rien", "<r2@banque.example>"))
     assert wait_until(lambda: len(turns(fakes)) == 2, timeout=20)
     time.sleep(3)
-    assert len(boite(bridge, "Factures")) == 1      # [SILENT]: nothing told
+    assert len(boite(bridge, fakes)) == 1      # [SILENT]: nothing told
     cursors = json.loads((bridge.state_dir / "triggers-mail.json").read_text())
     assert cursors[account]["last_uid"] == 107
     assert oct((bridge.state_dir / "triggers.json").stat().st_mode & 0o777) == "0o600"
@@ -159,7 +164,7 @@ def test_a_link_starts_the_routine_with_its_body_as_data(bridges, fakes):
     [turn] = turns(fakes)
     assert "another service called its link" in turn["input"] and '"texte": "lait, pain"' in turn["input"]
     assert UNTRUSTED in turn["input"]
-    assert wait_until(lambda: boite(bridge, "Courses"), timeout=20)
+    assert wait_until(lambda: boite(bridge, fakes), timeout=20)
 
     # only POST, nothing else of the bridge reachable with it
     assert bridge.get(path).status_code == 405

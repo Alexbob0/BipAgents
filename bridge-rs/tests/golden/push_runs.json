@@ -554,15 +554,6 @@
   "output": true
  },
  {
-  "fn": "session_started",
-  "input": [
-   {
-    "id": "cron_fc344ed09026_20261005_075008"
-   }
-  ],
-  "output": "2026-10-05T07:50:08"
- },
- {
   "fn": "is_cron_session",
   "input": [
    {
@@ -572,15 +563,6 @@
   "output": false
  },
  {
-  "fn": "session_started",
-  "input": [
-   {
-    "id": "api_1791112967_496e4649"
-   }
-  ],
-  "output": null
- },
- {
   "fn": "is_cron_session",
   "input": [
    {
@@ -588,15 +570,6 @@
    }
   ],
   "output": true
- },
- {
-  "fn": "session_started",
-  "input": [
-   {
-    "session_id": "cron_x_1"
-   }
-  ],
-  "output": null
  },
  {
   "fn": "is_cron_session",
@@ -609,16 +582,6 @@
   "output": true
  },
  {
-  "fn": "session_started",
-  "input": [
-   {
-    "id": "x",
-    "source": "Cron"
-   }
-  ],
-  "output": null
- },
- {
   "fn": "is_cron_session",
   "input": [
    {
@@ -627,16 +590,6 @@
    }
   ],
   "output": true
- },
- {
-  "fn": "session_started",
-  "input": [
-   {
-    "id": "",
-    "session_id": "cron_a_20261005_060000"
-   }
-  ],
-  "output": "2026-10-05T06:00:00"
  },
  {
   "fn": "is_cron_session",
@@ -646,13 +599,6 @@
   "output": false
  },
  {
-  "fn": "session_started",
-  "input": [
-   {}
-  ],
-  "output": null
- },
- {
   "fn": "is_cron_session",
   "input": [
    {
@@ -660,15 +606,6 @@
    }
   ],
   "output": true
- },
- {
-  "fn": "session_started",
-  "input": [
-   {
-    "id": "cron_a_b_20261005_060000"
-   }
-  ],
-  "output": "2026-10-05T06:00:00"
  },
  {
   "fn": "is_cron_session",
@@ -681,16 +618,6 @@
   "output": true
  },
  {
-  "fn": "session_started",
-  "input": [
-   {
-    "id": "cron_a_20261399_060000",
-    "started_at": "2026-10-05T07:00:00"
-   }
-  ],
-  "output": "2026-10-05T07:00:00"
- },
- {
   "fn": "is_cron_session",
   "input": [
    {
@@ -699,16 +626,6 @@
    }
   ],
   "output": false
- },
- {
-  "fn": "session_started",
-  "input": [
-   {
-    "id": "api_1",
-    "started_at": "2026-10-05T07:50:08"
-   }
-  ],
-  "output": "2026-10-05T07:50:08"
  },
  {
   "fn": "is_cron_session",
@@ -722,17 +639,6 @@
   "output": false
  },
  {
-  "fn": "session_started",
-  "input": [
-   {
-    "id": "api_1",
-    "created_at": "pas une date",
-    "created": "2026-10-04"
-   }
-  ],
-  "output": "2026-10-04T00:00:00"
- },
- {
   "fn": "is_cron_session",
   "input": [
    {
@@ -740,15 +646,6 @@
    }
   ],
   "output": true
- },
- {
-  "fn": "session_started",
-  "input": [
-   {
-    "id": "cron_x_20261005_075008\n"
-   }
-  ],
-  "output": "2026-10-05T07:50:08"
  },
  {
   "fn": "job_id",
@@ -777,48 +674,6 @@
    "cron__20261005_075008"
   ],
   "output": null
- },
- {
-  "fn": "job_name",
-  "input": [
-   null
-  ],
-  "output": null
- },
- {
-  "fn": "job_name",
-  "input": [
-   ""
-  ],
-  "output": null
- },
- {
-  "fn": "job_name",
-  "input": [
-   "Podcast du matin · Oct 05 07:53"
-  ],
-  "output": "Podcast du matin"
- },
- {
-  "fn": "job_name",
-  "input": [
-   " · x"
-  ],
-  "output": null
- },
- {
-  "fn": "job_name",
-  "input": [
-   "Simple"
-  ],
-  "output": "Simple"
- },
- {
-  "fn": "job_name",
-  "input": [
-   "  Espaces  · y"
-  ],
-  "output": "Espaces"
  },
  {
   "fn": "final_reply",

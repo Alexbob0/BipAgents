@@ -36,15 +36,11 @@ def plant(bridge, hub, conn_id):
     skill.mkdir(parents=True, exist_ok=True)
     (skill / "SKILL.md").write_text(SKILL)
     (skill / ".secret-cache").write_text(f"{CANARY}-hidden")
-    cron = folder / "cron"
-    cron.mkdir(parents=True, exist_ok=True)
-    (cron / "jobs.json").write_text(json.dumps({"jobs": [
-        {"id": "aaaaaaaaaaaa", "name": "Séance du jour", "prompt": "Prépare la séance du jour.",
-         "schedule": {"kind": "cron", "expr": "0 7 * * *", "display": "0 7 * * *"}, "schedule_display": "0 7 * * *",
-         "enabled": True, "state": "scheduled", "deliver": f"telegram:{CANARY}", "origin": {"chat_id": CANARY},
-         "last_output": f"{CANARY}-output", "skills": ["plan-semaine"]},
-        {"id": "bbbbbbbbbbbb", "name": "Script", "prompt": "x", "script": f"/root/{CANARY}.py",
-         "schedule": {"kind": "cron", "expr": "0 8 * * *"}}]}))
+    # the bridge's routines (routines.rs): one whose conversation is the creator's (it doesn't travel)
+    (bridge.state_dir / "routines.json").write_text(json.dumps({"migrated": ["vie"], "routines": [
+        {"id": "aaaaaaaaaaaa", "agent": "vie", "name": "Séance du jour", "prompt": "Prépare la séance du jour.",
+         "schedule": {"kind": "cron", "expr": "0 7 * * *"}, "enabled": True, "origin": f"api_{CANARY}",
+         "last_status": f"{CANARY}-output", "skills": ["plan-semaine"]}]}))
 
 
 def test_a_model_carries_no_canary_and_lands_unapproved(bridges, fakes):
@@ -118,19 +114,19 @@ def test_a_model_carries_no_canary_and_lands_unapproved(bridges, fakes):
     assert opened.status_code == 200, opened.text
     assert opened.json()["card"]["bip_secret_identifier"] == ""
     assert opened.json()["card"]["bip_secret_identifier_label"] == "E-mail de ton compte Garmin"
-    jobs = json.loads((hub / "profiles" / agent / "cron" / "jobs.json").read_text())["jobs"]
-    assert jobs[0]["enabled"] is False and jobs[0]["state"] == "paused" and jobs[0]["deliver"] == "local"
+    jobs = bridge.get(f"/v1/agents/{agent}/routines", headers=AUTH).json()["jobs"]
+    assert jobs[0]["enabled"] is False and jobs[0]["state"] == "paused" and jobs[0]["origin_session_id"] is None
     settings = bridge.get(f"/v1/agents/{agent}/settings", headers=AUTH).json()
     assert {s["name"]: s.get("imported") for s in settings["skills"]}["plan-semaine"] is True
-    everything = json.dumps(made) + (hub / "profiles" / agent / "cron" / "jobs.json").read_text()
+    everything = json.dumps(made) + json.dumps(jobs)
     assert CANARY not in everything and PASSWORD not in everything and EMAIL not in everything
 
     # the routine turned on by the person, then off again
     job = made["routines"][0]["job"]
     on = bridge.put(f"/v1/agents/{agent}/template-routines/{job}", headers=AUTH, json={"on": True})
     assert on.status_code == 200, on.text
-    jobs = json.loads((hub / "profiles" / agent / "cron" / "jobs.json").read_text())["jobs"]
-    assert jobs[0]["enabled"] is True and jobs[0]["state"] == "scheduled" and "next_run_at" not in jobs[0]
+    jobs = bridge.get(f"/v1/agents/{agent}/routines", headers=AUTH).json()["jobs"]
+    assert jobs[0]["enabled"] is True and jobs[0]["state"] == "scheduled" and jobs[0]["next_run_at"]
     assert bridge.get(f"/v1/agents/{agent}/template-routines", headers=AUTH).json()["routines"][0]["on"] is True
     assert bridge.put(f"/v1/agents/{agent}/template-routines/aaaaaaaaaaaa", headers=AUTH,
                       json={"on": True}).status_code == 404   # not a routine a model brought here

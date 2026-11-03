@@ -311,13 +311,15 @@ def test_approve_with_hermes_down(bridges, fakes):
 def test_voice_reports_unreachable_hermes(bridges, fakes):
     bridge = bridges.new(change=lambda c: c["agents"].update(
         Panne={"hermes_url": fakes.down.url, "hermes_key": "p" * 32})).start()
+    time.sleep(0.5)
+    before = fakes.down.connections   # the routines' first look at that Hermes (routines.rs `migrate`) is not the follow's
     with ws(bridge) as conn:
         conn.send(json.dumps({"type": "follow", "agent": "panne", "run_id": "down_1"}))
         frames = receive_frames(conn)
     assert frames[1][1]["code"] == "hermes_unreachable"
     assert frames[-1][1] == {"type": "done", "run_id": "down_1", "reason": "error"}
     time.sleep(1.0)
-    assert fakes.down.connections == 3   # three failed connections, then the (unwatched) follow gives up
+    assert fakes.down.connections == before + 3   # three failed connections, then the (unwatched) follow gives up
 
 
 def test_app_follows_run_through_bridge_and_replays_on_reattach(bridge, fakes):

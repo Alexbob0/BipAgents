@@ -151,6 +151,14 @@ fn board(config: &Config, told: Option<&Told>) -> Arc<Jobs> {
     Arc::new(jobs)
 }
 
+/// A task run's words, without its time line and its rules' note (every run of a task carries them).
+fn words(input: &Value) -> String {
+    let text = common::without_now(input.as_str().unwrap());
+    let (words, rules) = text.split_once("\n\n<!--bip:task-rules\n").expect("the task's rules in its message");
+    assert!(rules.ends_with("\n-->"));
+    words.to_string()
+}
+
 fn id_of(job: &Dict) -> String {
     job["id"].as_str().unwrap().to_string()
 }
@@ -189,8 +197,11 @@ async fn a_task_runs_in_its_own_conversation_and_ends_with_its_report() {
         .collect();
     assert_eq!(posted[0]["title"], "🧩 Écoles du quartier");
     assert_eq!(posted[1]["session_id"], "s1");
-    assert_eq!(posted[1]["instructions"], jobs::INSTRUCTIONS);
-    assert!(common::without_now(posted[1]["input"].as_str().unwrap()).starts_with("Écoles du quartier\n\nCompare"));
+    // the rules in the message, the system prompt the conversations' own (background_turn.rs, cache audit #2)
+    assert!(posted[1].get("instructions").is_none(), "{}", posted[1]);
+    let input = common::without_now(posted[1]["input"].as_str().unwrap());
+    assert!(input.starts_with("Écoles du quartier\n\nCompare"));
+    assert!(input.ends_with(&format!("<!--bip:task-rules\n{}\n-->", jobs::INSTRUCTIONS)), "{input}");
     assert_eq!(
         told.lock().unwrap().clone(),
         vec![(
@@ -235,7 +246,7 @@ async fn a_task_stops_at_its_budget_and_goes_on_with_a_bigger_one() {
     assert_eq!((done["state"].as_str(), done["runs"].as_i64()), (Some("done"), Some(2)));
     assert_eq!(done["tokens"]["input"].as_i64().unwrap(), before + 100_000); // the second run's own usage added
     let g = fake.lock().unwrap();
-    assert_eq!(common::without_now(g.runs["r2"]["input"].as_str().unwrap()), "Continue, et termine par ton rapport.");
+    assert_eq!(words(&g.runs["r2"]["input"]), "Continue, et termine par ton rapport.");
     assert_eq!(g.requests.iter().filter(|(m, p, _)| m == "POST" && p.ends_with("/api/sessions")).count(), 1);
 }
 
@@ -255,7 +266,7 @@ async fn the_person_pauses_resumes_and_forgets_a_task() {
     let view = board.view(&id).unwrap();
     assert_eq!((view["state"].as_str(), view["reason"].as_str()), (Some("paused"), Some("stopped")));
     board.resume(&id, None, None).await.unwrap();
-    assert_eq!(common::without_now(fake.lock().unwrap().runs["r2"]["input"].as_str().unwrap()), jobs::CONTINUE);
+    assert_eq!(words(&fake.lock().unwrap().runs["r2"]["input"]), jobs::CONTINUE);
     board.forget(&id).await.unwrap();
     assert!(jobs::load(&config, &id).is_none());
     assert_eq!(fake.lock().unwrap().runs["r2"]["status"], "cancelled");
@@ -363,8 +374,10 @@ async fn the_routes_need_the_bridge_key_and_list_the_jobs() {
 fn with_handback(config: &Config, told: &Told) -> Arc<Jobs> {
     let board = board(config, Some(told));
     let mut jobs = Arc::try_unwrap(board).ok().unwrap();
-    let mut handback =
-        bipbridge::handback::Handback::new(SharedConfig::new(config.clone()), HermesClient::new(reqwest::Client::new()));
+    let mut handback = bipbridge::background_turn::Pipeline::new(
+        SharedConfig::new(config.clone()),
+        HermesClient::new(reqwest::Client::new()),
+    );
     handback.poll = 0.01;
     jobs.handback = Some(Arc::new(handback));
     Arc::new(jobs)
@@ -474,7 +487,7 @@ async fn the_month_s_credit_used_stops_a_task_after_its_step_refuses_new_ones_an
     assert!(!board.credit_used());
     std::fs::write(&credit, json!({"state": "ok"}).to_string()).unwrap();
     board.resume_after_credit(&config).await;
-    assert_eq!(common::without_now(fake.lock().unwrap().runs["r2"]["input"].as_str().unwrap()), jobs::CONTINUE);
+    assert_eq!(words(&fake.lock().unwrap().runs["r2"]["input"]), jobs::CONTINUE);
     assert_eq!(board.view(&id).unwrap()["state"], "running");
     board.forget(&id).await.unwrap();
 }
@@ -537,4 +550,38 @@ async fn without_real_tokens_a_run_is_counted_at_its_end() {
     assert_eq!(done["state"], "done");
     assert_eq!(jobs::spent(&done), 105_000, "its usage at the end, twice its budget");
     assert!(!fake.lock().unwrap().requests.iter().any(|(_, p, _)| p.ends_with("/stop")));
+}
+
+/// Cache audit #2 (2026-11-03): a turn taken without the person gets the same system prompt as the agent's
+/// conversations, so its request carries no run instructions, whatever starts it (background_turn.rs); what the turn
+/// must know is in its message. Same keys as a conversation's run (`input`, `session_id`), a task's thinking level
+/// aside (`model_options`, not part of the prompt).
+#[tokio::test]
+async fn every_background_turn_keeps_the_conversations_system_prompt() {
+    use bipbridge::background_turn::{Kind, Pipeline, Turn};
+    let dir = tempfile::tempdir().unwrap();
+    let (fake, url) = gateway(1, 10).await;
+    let (config, agent) = setup(dir.path(), &url);
+    let mut pipeline = Pipeline::new(SharedConfig::new(config.clone()), HermesClient::new(reqwest::Client::new()));
+    pipeline.poll = 0.01;
+    for kind in [Kind::Handback, Kind::Trigger, Kind::Watcher, Kind::Task] {
+        let mut turn = Turn::new(&agent, kind, "api_c", format!("<!--bip:{} note -->", kind.as_str()));
+        turn.max_seconds = 5.0;
+        let ran = pipeline.run(&turn).await.unwrap();
+        assert_eq!(ran.session, "api_c", "{kind:?}");
+    }
+    let runs = posted_runs(&fake);
+    assert_eq!(runs.len(), 4);
+    for run in &runs {
+        let mut keys: Vec<&str> =
+            run.as_object().unwrap().keys().map(String::as_str).filter(|k| *k != "model_options").collect();
+        keys.sort_unstable();
+        assert_eq!(keys, ["input", "session_id"], "{run}");
+    }
+    // the same request a background task sends through its board
+    let board = board(&config, None);
+    let job = board.create(&agent, "Écoles", "Compare.", 1_000_000, None).await.unwrap();
+    board.wait(&id_of(&job)).await;
+    let task = posted_runs(&fake).pop().unwrap();
+    assert!(task.get("instructions").is_none(), "{task}");
 }

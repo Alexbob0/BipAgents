@@ -96,18 +96,6 @@ pub fn cited(config: &Config, agent: &AgentConfig, text: &str) -> Vec<String> {
     out
 }
 
-/// `reply` with a `MEDIA:` line for each of `paths` at its end (trailing blank lines tidied).
-pub fn with_cards(reply: &str, paths: &[String]) -> String {
-    let mut fixed = reply.trim_end().to_string();
-    for path in paths {
-        if !fixed.is_empty() {
-            fixed.push('\n');
-        }
-        fixed.push_str(&format!("MEDIA:{path}"));
-    }
-    fixed
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -130,14 +118,6 @@ mod tests {
         );
         assert!(cited_paths("**/envoi/a.md**").contains(&"/envoi/a.md".to_string()));
         assert!(cited_paths("Rien ici.").is_empty());
-    }
-
-    #[test]
-    fn cards_at_the_end() {
-        assert_eq!(
-            with_cards("Voilà /envoi/a.md\n\n", &["/envoi/a.md".into(), "/root/b.txt".into()]),
-            "Voilà /envoi/a.md\nMEDIA:/envoi/a.md\nMEDIA:/root/b.txt"
-        );
     }
 
     fn setup() -> (tempfile::TempDir, Config, AgentConfig) {

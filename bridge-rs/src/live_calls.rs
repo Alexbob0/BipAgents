@@ -416,6 +416,7 @@ async fn end_inner(state: &AppState, ending: &Ending) -> anyhow::Result<Option<V
             let (lines, media) = call_lines(&messages);
             if lines.iter().any(|(role, _)| role == "user") {
                 calls.keep(&agent.name, &ending.session, build(&lines, &media, true, false, recapped))?;
+                told(state, ending).await;
             }
         }
         let since = py::time_time();
@@ -446,6 +447,7 @@ async fn end_inner(state: &AppState, ending: &Ending) -> anyhow::Result<Option<V
     let note = recap(&lines, &media, recapped, &time);
     let record = build(&lines, &media, false, late, lines.len());
     calls.keep(&agent.name, &ending.session, record.clone())?;
+    told(state, ending).await;
     let (briefs, name, session, live) =
         (state.briefs.clone(), agent.name.clone(), ending.session.clone(), ending.live_session.clone());
     tokio::task::spawn_blocking(move || -> std::io::Result<()> {
@@ -467,6 +469,12 @@ async fn end_inner(state: &AppState, ending: &Ending) -> anyhow::Result<Option<V
         state.push.notify_reply(&agent.name, &key, &answer, Some(&ending.session)).await;
     }
     Ok(Some(record))
+}
+
+/// The conversation's open screens told a call item is there or changed (its thread's `thread` event: they ask
+/// `after=`), journal-free (2026-11-03, Alex: the call showed only once the conversation was opened again).
+async fn told(state: &AppState, ending: &Ending) {
+    crate::threads::threads_of(state).touch(&ending.agent.name, Some(&ending.session), "call").await;
 }
 
 /// The calls nothing happened in for `IDLE_SECONDS` (the app quit, the phone off): ended here. Returns how many.
