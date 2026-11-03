@@ -72,6 +72,7 @@ use crate::web::{self, ApiResult, HttpError, JsonObject, QueryMap};
 use crate::{py, Dict};
 
 use index::{Hit, Index};
+use crate::notebook::lang_index;
 
 pub const SEARCH: &str = "archive_search";
 pub const READ: &str = "archive_read";
@@ -893,14 +894,10 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict, opener: 
 
 // -- the rule in the agent's personality -----------------------------------------------------------------------------
 
-/// The agent's rule, set when it has archives, taken out when it has none.
+/// The agent's rule, set when it has archives, taken out when it has none (its SOUL.md rendered again).
 pub fn sync_soul(config: &Config, agent: &AgentConfig) {
-    if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
-        return;
-    }
-    let on = enabled(config, &agent.name);
-    if let Err(err) = crate::agents_admin::edit_soul(config, agent, false, |soul| crate::souls::with_archives(soul, on)) {
-        tracing::warn!(agent = %agent.name, error = %err, "archive rule not written");
+    if let Err(err) = crate::agents_admin::render_soul(config, agent) {
+        tracing::warn!(agent = %agent.name, error = %format!("{err:#}"), "archive rule not written");
     }
 }
 
@@ -925,15 +922,6 @@ const KIND_WORDS: [(&str, [&str; 4]); 4] = [
     ("subscription", ["abonnements", "subscriptions", "Abos", "suscripciones"]),
     ("other", ["autres", "others", "andere", "otros"]),
 ];
-
-fn lang_index(lang: &str) -> usize {
-    match lang {
-        "fr" => 0,
-        "de" => 2,
-        "es" => 3,
-        _ => 1,
-    }
-}
 
 /// The overview's lines: « 2024 : 37 achats, 5 voyages, 120 autres », the latest year first (counts only, no content).
 pub fn overview_lines(by_year: &[(String, String, i64)], lang: &str) -> Vec<String> {

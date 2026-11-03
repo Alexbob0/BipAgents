@@ -778,24 +778,105 @@ impl Vault {
         Ok(())
     }
 
+    /// Takes the item back from these agents' Hermes vaults. A removal Hermes did not confirm keeps its handle in
+    /// `vault-removals.json` (never only a log line): retried at the next change of the vault and at the bridge's
+    /// start, and listed for the app (`removing`) until Hermes confirms it.
     async fn take_back(&self, config: &Config, record: &mut Dict, agent_ids: &[String]) {
         let item = record.get("id").map(crate::py::py_str).unwrap_or_default();
+        let mut waiting = self.retried_removals(config).await;
         for agent_id in agent_ids {
             let handle = Self::handles(record).shift_remove(agent_id);
-            let agent = config.agent(Some(agent_id)).map(|a| vault_target(config, a));
             let handle = handle.filter(|h| crate::py::truthy(h) && h.as_str() != Some(CARD_HANDLE));
-            if let (Some(handle), Some(agent)) = (handle, agent) {
-                if !agent.python.is_empty() && agent.hermes_home.as_deref().map(|h| !h.is_empty()).unwrap_or(false) {
-                    let mut request = Dict::new();
-                    request.insert("op".into(), json!("remove"));
-                    request.insert("id".into(), handle);
-                    if (self.run)(agent.clone(), request).await.is_err() {
-                        tracing::warn!(agent = %agent_id, item = %item, "vault item not removed from agent");
-                    }
+            if let Some(handle) = handle {
+                if let Err(exc) = self.remove_from(config, agent_id, &handle).await {
+                    tracing::warn!(agent = %agent_id, item = %item, error = %exc,
+                        "vault item not removed from the agent's Hermes vault: kept, retried later");
+                    let row = json!({"agent": agent_id, "id": handle, "item": item});
+                    waiting.extend(row.as_object().cloned());
+                    continue;
                 }
             }
             tracing::info!(agent = %agent_id, item = %item, "vault item taken back");
         }
+        self.write_removals(&waiting);
+    }
+
+    /// Removes `handle` from `agent_id`'s Hermes vault. Nothing to do for an agent no longer configured (its vault
+    /// went with it) or one with no Hermes to run.
+    async fn remove_from(&self, config: &Config, agent_id: &str, handle: &Value) -> anyhow::Result<()> {
+        let Some(agent) = config.agent(Some(agent_id)).map(|a| vault_target(config, a)) else { return Ok(()) };
+        if agent.python.is_empty() || agent.hermes_home.as_deref().is_none_or(str::is_empty) {
+            return Ok(());
+        }
+        let mut request = Dict::new();
+        request.insert("op".into(), json!("remove"));
+        request.insert("id".into(), handle.clone());
+        (self.run)(agent, request).await.map(|_| ())
+    }
+
+    fn removals_path(&self) -> PathBuf {
+        self.folder.join("vault-removals.json")
+    }
+
+    /// The removals Hermes has not confirmed yet: `{agent, id (its handle), item}`.
+    fn removals(&self) -> Vec<Dict> {
+        match std::fs::read(self.removals_path()).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()) {
+            Some(Value::Array(rows)) => rows.into_iter().filter_map(|r| r.as_object().cloned()).collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    fn write_removals(&self, rows: &[Dict]) {
+        let path = self.removals_path();
+        let done = if rows.is_empty() {
+            match std::fs::remove_file(&path) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+                _ => Ok(()),
+            }
+        } else {
+            let text = crate::py::dumps(&Value::Array(rows.iter().cloned().map(Value::Object).collect()));
+            let tmp = path.with_file_name(format!(".vault-removals.{}.tmp", std::process::id()));
+            crate::py::makedirs(&self.folder.to_string_lossy(), 0o700)
+                .and_then(|_| crate::py::write_with_mode(&tmp.to_string_lossy(), text.as_bytes(), 0o600))
+                .and_then(|_| std::fs::rename(&tmp, &path))
+        };
+        if let Err(exc) = done {
+            tracing::error!(error = %exc, waiting = rows.len(), "vault removals not written");
+        }
+    }
+
+    /// The waiting removals tried again (the vault's lock held): those Hermes still does not confirm.
+    async fn retried_removals(&self, config: &Config) -> Vec<Dict> {
+        let mut left = Vec::new();
+        for row in self.removals() {
+            let agent = row.get("agent").and_then(Value::as_str).unwrap_or("");
+            let handle = row.get("id").cloned().unwrap_or(Value::Null);
+            match self.remove_from(config, agent, &handle).await {
+                Ok(()) => tracing::info!(agent = %agent, item = ?row.get("item"), "vault item taken back (retried)"),
+                Err(_) => left.push(row),
+            }
+        }
+        left
+    }
+
+    /// The waiting removals tried again (at the bridge's start): how many are still waiting.
+    pub async fn retry_removals(&self, config: &Config) -> usize {
+        let _lock = self.lock.lock().await;
+        if !self.removals_path().exists() {
+            return 0;
+        }
+        let left = self.retried_removals(config).await;
+        self.write_removals(&left);
+        if !left.is_empty() {
+            tracing::warn!(waiting = left.len(), "vault items still in agents' Hermes vaults: their removal is retried");
+        }
+        left.len()
+    }
+
+    /// `(agent, item)` of each removal still waiting, for the app.
+    pub fn removing(&self) -> Vec<(String, String)> {
+        let text = |row: &Dict, key: &str| row.get(key).map(crate::py::py_str).unwrap_or_default();
+        self.removals().iter().map(|r| (text(r, "agent"), text(r, "item"))).collect()
     }
 
     pub async fn create(&self, config: &Config, body: &Dict) -> anyhow::Result<Item> {
@@ -1207,6 +1288,9 @@ impl Vault {
         for record in records.iter_mut() {
             Self::handles(record).shift_remove(agent_id);
         }
+        let mut waiting = self.removals();
+        waiting.retain(|r| r.get("agent").and_then(Value::as_str) != Some(agent_id));
+        self.write_removals(&waiting);
         self.write(&records)
     }
 
@@ -1403,6 +1487,12 @@ async fn listing(State(state): State<AppState>) -> ApiResult<Response> {
         // A place of the offer: cards' numbers stay on the phone, a cap is required (cards.rs).
         map.insert("cards_on_phone".into(), json!(true));
         map.insert("card_cap_max_eur".into(), json!(rules.cap_max_cents / 100));
+    }
+    let removing: Vec<Value> =
+        state.vault.removing().into_iter().map(|(agent, item)| json!({"agent": agent, "item": item})).collect();
+    if let (false, Value::Object(map)) = (removing.is_empty(), &mut out) {
+        // taken back, but Hermes has not confirmed their removal from these agents' vaults yet (retried)
+        map.insert("removing".into(), json!(removing));
     }
     Ok(web::ok(out))
 }

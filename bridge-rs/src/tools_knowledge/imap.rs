@@ -390,6 +390,10 @@ impl Client {
     }
 
     fn encode(&self, text: &str) -> Result<Vec<u8>, ImapError> {
+        if !plain(text) {
+            // a CR/LF would end this command and start another one (`move:x\r\nA1 DELETE INBOX`): never sent
+            return Err(ImapError::Imap(format!("control character in an IMAP argument: {text:?}")));
+        }
         if !self.utf8 && !text.is_ascii() {
             return Err(ImapError::Encode(text.to_string()));
         }
@@ -518,7 +522,13 @@ enum Response {
     Continuation,
 }
 
-/// `_quote`: an IMAP quoted string.
+/// No control character (CR, LF, NUL…): a folder name, a search text or any other command argument from an agent, a
+/// tool or a stored rule. `Client` refuses to send an argument that is not (the last line of defence behind `quote`).
+pub fn plain(text: &str) -> bool {
+    !text.chars().any(char::is_control)
+}
+
+/// `_quote`: an IMAP quoted string (one that is not `plain` is refused when sent).
 pub fn quote(text: &str) -> String {
     format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""))
 }
@@ -739,6 +749,10 @@ mod tests {
             "OK"
         );
         assert!(matches!(client.uid("SEARCH", &["TEXT", "\"relevé\""]), Err(ImapError::Encode(_))));
+        // a line break would start a second command: refused before anything is sent (the server sees LOGOUT next)
+        let folder = quote("Factures\r\nA9 DELETE INBOX");
+        assert!(matches!(client.uid("MOVE", &["101", &folder]), Err(ImapError::Imap(_))));
+        assert!(matches!(client.select(&quote("x\ny"), false), Err(ImapError::Imap(_))));
         client.logout().unwrap();
     }
 }

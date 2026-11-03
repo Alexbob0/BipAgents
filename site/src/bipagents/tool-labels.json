@@ -508,10 +508,22 @@
    "counts": false
   },
   {
+   "id": "proposeAgent",
+   "names": [
+    "propose_agent"
+   ],
+   "prefixes": [],
+   "keys": [
+    "name"
+   ],
+   "counts": false
+  },
+  {
    "id": "payment",
    "names": [
     "list_cards",
     "pay_with_card",
+    "pay_with_link",
     "confirm_payment",
     "cancel_payment"
    ],
@@ -846,6 +858,11 @@
      "many": null,
      "now": "Je lance une tâche de fond…"
     },
+    "proposeAgent": {
+     "one": "Propose un agent",
+     "many": null,
+     "now": "Je prépare un agent…"
+    },
     "payment": {
      "one": "Paiement par carte",
      "many": null,
@@ -1139,6 +1156,11 @@
      "one": "Starts a background task",
      "many": null,
      "now": "Starting a background task…"
+    },
+    "proposeAgent": {
+     "one": "Suggests an agent",
+     "many": null,
+     "now": "Preparing an agent…"
     },
     "payment": {
      "one": "Card payment",
@@ -1434,6 +1456,11 @@
      "many": null,
      "now": "Ich starte eine Hintergrundaufgabe…"
     },
+    "proposeAgent": {
+     "one": "Schlägt einen Agenten vor",
+     "many": null,
+     "now": "Ich bereite einen Agenten vor…"
+    },
     "payment": {
      "one": "Kartenzahlung",
      "many": null,
@@ -1727,6 +1754,11 @@
      "one": "Inicia una tarea en segundo plano",
      "many": null,
      "now": "Iniciando una tarea en segundo plano…"
+    },
+    "proposeAgent": {
+     "one": "Propone un agente",
+     "many": null,
+     "now": "Preparando un agente…"
     },
     "payment": {
      "one": "Pago con tarjeta",

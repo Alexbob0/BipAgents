@@ -390,6 +390,7 @@ impl AppState {
                 let (shared, vault) = (self.config.clone(), self.vault.clone());
                 self.spawn(async move {
                     let config = shared.get();
+                    vault.retry_removals(&config).await;
                     if vault.follow_browsers(&config).await {
                         crate::profile_files::reconcile_all(&config);
                     }
@@ -629,6 +630,8 @@ async fn list_agents(State(state): State<AppState>, caller: Caller) -> ApiResult
                 "voice": crate::voices::voice_for(&config, Some(a), None),
                 "server_voice": a.server_voice, "category": a.category, "color": a.color,
                 "outfit": a.outfit.clone().unwrap_or_default(), "costumes": a.costumes.unwrap_or(true),
+                // the language it writes first in, from its record (the apps keep no copy of it)
+                "language": crate::profile_files::settings(&agents_admin::profile_folder(&config, a)).language,
                 "uploads": a.upload_dir_host.as_deref().map(|u| !u.is_empty()).unwrap_or(false),
                 "inbox": a.ntfy_topic.as_deref().map(|t| !t.is_empty()).unwrap_or(false),
                 "url": a.public_url,
@@ -1754,7 +1757,6 @@ pub fn create_app(config: Config, options: AppOptions) -> anyhow::Result<App> {
     crate::threads::threads_of(&state); // the same: the hub and the push service point at the threads
     let config = state.config();
     crate::profile_files::reconcile_all(&config); // what the bridge decides in each profile, as this bridge renders it
-    agents_admin::heal_souls(&config);
     crate::voices::heal_defaults(&state.config); // after the souls: their language says the Bip's
     let config = state.config();
     crate::guide::refresh(&config); // the guide's list of agents and the setup blocks, as this bridge writes them

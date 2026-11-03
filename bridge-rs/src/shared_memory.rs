@@ -342,32 +342,18 @@ pub fn membership(config: &Config, agent: &str) -> Option<bool> {
     circle(config).into_iter().find(|m| m.name == agent).map(|m| m.gives)
 }
 
-/// The agent's personality has the shared-memory block exactly when it is in the circle (`members`), with the health
-/// agent's variant for one that does not give (an agent set up by hand is left as it is). Whether it was written.
-pub fn sync_soul(config: &Config, agent: &crate::config::AgentConfig, members: &[Member]) -> bool {
-    if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
-        return false;
-    }
-    let gives = members.iter().find(|m| m.name == agent.name).map(|m| m.gives);
-    let written = crate::agents_admin::edit_soul(config, agent, false, |soul| {
-        if soul.trim().is_empty() {
-            return soul.to_string(); // Hermes' own personality: nothing of the bridge's
-        }
-        crate::souls::with_shared_memory(soul, gives)
-    });
-    match written {
-        Ok(written) => written,
-        Err(err) => {
-            tracing::warn!(agent = %agent.name, error = %err, "shared memory rule not written");
-            false
-        }
-    }
+/// The agent's personality has the shared-memory block exactly when it is in the circle, with the health agent's
+/// variant for one that does not give (its SOUL.md rendered again). Whether it was written.
+pub fn sync_soul(config: &Config, agent: &crate::config::AgentConfig) -> bool {
+    crate::agents_admin::render_soul(config, agent).unwrap_or_else(|err| {
+        tracing::warn!(agent = %agent.name, error = %format!("{err:#}"), "shared memory rule not written");
+        false
+    })
 }
 
 /// `sync_soul` for every agent of the place; how many personalities were written.
 pub fn sync_souls(config: &Config) -> usize {
-    let members = circle(config);
-    let written = config.agents.values().filter(|a| sync_soul(config, a, &members)).count();
+    let written = config.agents.values().filter(|a| sync_soul(config, a)).count();
     if written > 0 {
         tracing::info!(agents = written, "shared memory rule brought to the circle");
     }
@@ -1170,7 +1156,7 @@ mod tests {
         for name in ["quotidien", "budget", "coach", "sante"] {
             let a = config.agent(Some(name)).unwrap();
             let file = crate::agents_admin::profile_folder(config, a).join("SOUL.md");
-            std::fs::write(file, format!("Tu es {name}.\n")).unwrap();
+            std::fs::write(file, crate::souls::with_language(&format!("Tu es {name}.\n"), Some("fr"))).unwrap();
         }
     }
 
@@ -1201,7 +1187,8 @@ mod tests {
         std::fs::write(data.join("agent-shares.json"), r#"{"shared": {"coach": ["mamie"]}}"#).unwrap();
         assert_eq!(sync_souls(&config), 3);
         for out in ["quotidien", "budget", "coach"] {
-            assert_eq!(soul(&config, out), format!("Tu es {out}.\n"), "{out}: family, project, shared");
+            let text = soul(&config, out);
+            assert!(text.starts_with(&format!("Tu es {out}.\n")) && !text.contains(SHARED_MEMORY_START), "{out}: family, project, shared");
             assert_eq!(membership(&config, out), None);
         }
         assert!(soul(&config, "sante").contains(HEALTH));
@@ -1213,13 +1200,13 @@ mod tests {
         assert_eq!(soul(&config, "sante").matches(SHARED_MEMORY_START).count(), 1);
         notebook::set_enabled(&config, "sante", false).unwrap();
         sync_souls(&config);
-        assert_eq!(soul(&config, "sante"), "Tu es sante.\n", "Carnet off");
+        assert!(!soul(&config, "sante").contains(SHARED_MEMORY_START), "Carnet off");
 
         // set up by hand: left as it is
         std::fs::write(data.join("agent-shares.json"), r#"{"shared": {}}"#).unwrap();
         config.agents.get_mut("coach").unwrap().host_home = Some(dir.path().to_string_lossy().into_owned());
-        assert_eq!(sync_souls(&config), 0);
-        assert_eq!(soul(&config, "coach"), "Tu es coach.\n");
+        sync_souls(&config);
+        assert!(!soul(&config, "coach").contains(SHARED_MEMORY_START));
     }
 
     /// The look every few seconds syncs the personalities when the circle changed (a share, a switch).
@@ -1231,7 +1218,7 @@ mod tests {
         assert!(soul(&config, "coach").contains(crate::souls::SHARED_MEMORY_RULE));
         notebook::set_enabled(&config, "coach", false).unwrap();
         sync_if_changed(&config);
-        assert_eq!(soul(&config, "coach"), "Tu es coach.\n");
+        assert!(!soul(&config, "coach").contains(crate::souls::SHARED_MEMORY_START));
         assert!(soul(&config, "budget").contains(crate::souls::SHARED_MEMORY_RULE));
     }
 

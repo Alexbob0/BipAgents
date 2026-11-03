@@ -400,3 +400,40 @@ async fn contact_details_reach_the_agents_hermes_vault_only_while_its_browser_is
     vault.update(&config, &item.id, &dict(json!({"agents": []}))).await.unwrap();
     assert_eq!(ops(&calls), vec![("vie".into(), "remove".into())]);
 }
+
+#[tokio::test]
+async fn a_removal_hermes_did_not_confirm_is_kept_and_retried() {
+    let dir = tempfile::tempdir().unwrap();
+    let (config, _, _) = setup(dir.path());
+    let down = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let calls: Calls = Arc::default();
+    let (seen, refuse) = (calls.clone(), down.clone());
+    let run: VaultRun = Arc::new(move |agent, request: Dict| {
+        seen.lock().unwrap().push((agent.name.clone(), request.clone()));
+        let add = request.get("op") == Some(&json!("add"));
+        let failed = !add && refuse.load(std::sync::atomic::Ordering::SeqCst);
+        Box::pin(async move {
+            match (add, failed) {
+                (true, _) => Ok(json!({"id": "vault_1"}).as_object().unwrap().clone()),
+                (false, true) => Err(anyhow::anyhow!("hermes-vie is not running")),
+                (false, false) => Ok(json!({"removed": true}).as_object().unwrap().clone()),
+            }
+        })
+    });
+    let vault = Vault::with_run(&dir.path().join("vault").to_string_lossy(), run);
+    let item = vault.create(&config, &login(json!({"agents": ["vie"]}))).await.unwrap();
+    down.store(true, std::sync::atomic::Ordering::SeqCst);
+    vault.delete(&config, &item.id).await.unwrap();
+    // the item is gone from the app's list, but its removal from Vie's Hermes vault waits, shown to the app
+    assert!(vault.items().is_empty());
+    assert_eq!(vault.removing(), vec![("vie".to_string(), item.id.clone())]);
+    assert_eq!(vault.retry_removals(&config).await, 1);
+    // Hermes back: the retry removes it with the handle it was given
+    down.store(false, std::sync::atomic::Ordering::SeqCst);
+    calls.lock().unwrap().clear();
+    assert_eq!(vault.retry_removals(&config).await, 0);
+    let calls = calls.lock().unwrap().clone();
+    assert_eq!(calls.len(), 1);
+    assert_eq!((calls[0].1["op"].as_str(), calls[0].1["id"].as_str()), (Some("remove"), Some("vault_1")));
+    assert!(vault.removing().is_empty() && !dir.path().join("vault/vault-removals.json").exists());
+}

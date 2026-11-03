@@ -1333,16 +1333,6 @@ impl Rooms {
         }
     }
 
-    /// Waits until the room's worker is done (tests).
-    pub async fn wait(&self, id: &str) {
-        loop {
-            if self.workers().get(id).is_none_or(|w| w.is_finished()) {
-                return;
-            }
-            tokio::time::sleep(Duration::from_millis(5)).await;
-        }
-    }
-
     async fn work(self: Arc<Self>, id: &str) {
         loop {
             let next = {

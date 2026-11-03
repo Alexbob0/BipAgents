@@ -808,8 +808,8 @@ async fn list(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response>
     let threads = threads_of(&state);
     let include_hidden = q.get("include_hidden").is_some_and(|v| v == "1" || v == "true");
     let main = threads.main(&agent).await.map_err(unavailable)?;
-    // the agent's sessions Hermes keeps: each root one is a thread (adopted at first sight)
-    let sessions = threads.source(&agent).sessions(LISTED).await.map_err(unavailable)?;
+    // every session Hermes keeps (not only the last 200): each root one is a thread (adopted at first sight)
+    let sessions = threads.source(&agent).all_sessions().await.map_err(unavailable)?;
     let mut last_active: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
     for session in &sessions {
         let thread = match threads.thread_of_session(&agent.name, &session.id).await? {

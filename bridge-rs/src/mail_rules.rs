@@ -445,6 +445,20 @@ pub fn status_lines(config: &Config, agent: &str) -> Vec<String> {
 
 // -- the card ---------------------------------------------------------------------------------------------------------
 
+/// No line break or other control character in these folder names (they end in IMAP commands).
+fn names_plain(names: &[&str]) -> bool {
+    names.iter().all(|n| crate::tools_knowledge::imap::plain(n))
+}
+
+/// A stored rule's folders plain (a rule applied automatically, without a card, read from disk).
+fn rule_plain(rule: &Rule) -> bool {
+    let moved = match &rule.action {
+        Some(Action::Move(f)) | Some(Action::Copy(f)) => f.as_str(),
+        _ => "",
+    };
+    names_plain(&[&rule.folder, &rule.dest, moved])
+}
+
 /// A rule's card from the folder's scan. Err: plain words for the agent.
 #[allow(clippy::too_many_arguments)]
 pub fn propose(
@@ -460,6 +474,9 @@ pub fn propose(
 ) -> Result<Rule, String> {
     if folders.protected(&scan.folder) {
         return Err(format!("{} is the person's sent mail or drafts: never touched", scan.folder));
+    }
+    if !names_plain(&[&scan.folder]) {
+        return Err("a folder name has no line break or control character".into());
     }
     let dest = match &action {
         None => String::new(),
@@ -478,6 +495,9 @@ pub fn propose(
     };
     if action.is_none() && !mark_read {
         return Err("a rule needs an action".into());
+    }
+    if !names_plain(&[&dest]) {
+        return Err("a folder name has no line break or control character".into());
     }
     if !dest.is_empty() && dest == scan.folder {
         return Err(format!("the mails are already in {dest}"));
@@ -563,6 +583,9 @@ pub fn stop(config: &Config, agent: Option<&str>, id: &str) -> std::io::Result<O
 /// The rule's action on these messages of its folder (already chosen: matching, not the person's own), the flags
 /// checked again just before. Opens the folder for writing; makes the destination when missing.
 pub fn apply_rows(conn: &mut Connection, rule: &Rule, rows: &[Row]) -> anyhow::Result<Run> {
+    if !rule_plain(rule) {
+        return Err(MailError(format!("rule {}: a folder name with a control character, not applied", rule.id)).into());
+    }
     let mut run = Run { at: py::time_time(), ..Run::default() };
     let filed: HashSet<&String> = rule.filed_ids.iter().collect();
     let rows: Vec<&Row> = rows.iter().filter(|r| r.message_id.is_empty() || !filed.contains(&r.message_id)).collect();
@@ -1126,6 +1149,18 @@ mod tests {
         assert!(got.matches(&row(1, "noreply@mail.hetzner.com")));
         assert!(!got.matches(&row(2, "x@nothetzner.com")));
         assert!(!got.matches(&row(3, "a@hetzner.com.evil.example")));
+    }
+
+    #[test]
+    fn a_stored_rule_with_a_control_character_in_a_folder_is_never_applied() {
+        let rule = Rule { folder: "INBOX".into(), action: Some(Action::Move("Serveurs".into())), dest: "Serveurs".into(),
+                          ..Rule::default() };
+        assert!(rule_plain(&rule));
+        let bad = Rule { dest: "Serveurs\r\nA1 DELETE INBOX".into(), ..rule.clone() };
+        assert!(!rule_plain(&bad));
+        let bad = Rule { action: Some(Action::Move("a\nb".into())), ..rule.clone() };
+        assert!(!rule_plain(&bad));
+        assert!(!rule_plain(&Rule { folder: "IN\rBOX".into(), ..rule }));
     }
 
     #[test]
