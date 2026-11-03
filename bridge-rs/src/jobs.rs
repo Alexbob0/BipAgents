@@ -777,6 +777,7 @@ impl Jobs {
         // GLM through EUrouter thinks at « low » in chat since 2026-10-28; tasks stay at « medium » until measured.
         turn.options = crate::agents_admin::task_turn_options(&self.config.get(), &agent);
         turn.budget = Some(left_for_run(job));
+        turn.busy_wait = 0.0; // its own conversation: a route never waits here
         let run_id = match pipeline.start(&turn).await {
             Ok((run_id, _)) => run_id,
             Err(NotRun::Credit) => return Err(JobError(crate::credit::JOBS_REFUSED.into()).into()),

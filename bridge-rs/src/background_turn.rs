@@ -1,8 +1,8 @@
-//! One pipeline for every turn an agent takes without the person (docs/background-turns.md, 2026-11-03): a background
-//! task, a routine started by an event (triggers.rs), a watcher's wake-up (watchers.rs), the hand-back of finished work
-//! (handback.rs: a task's report, a sub-agent's, the guide's new agent introducing itself), a Live call's last answer
-//! (live_calls.rs). Each of them is
-//! only a *starter* that decides **when**; this module does the rest, the same way for all:
+//! One pipeline for every turn an agent takes without the person (2026-11-03, dette-technique §5): a background task
+//! (jobs.rs), a routine started by an event (triggers.rs), a watcher's wake-up (watchers.rs), the hand-back of finished
+//! work (handback.rs: a task's report, a sub-agent's, the guide's new agent introducing itself); a Live call's last
+//! answer lands through [`Pipeline::deliver`] too (live_calls.rs). Each of them is only a *starter* that decides
+//! **when**; this module does the rest, the same way for all:
 //!
 //! - **where**: the turn runs in a thread (docs/conversations.md), at its tip: the session Hermes goes on in after a
 //!   compression, never a closed segment. A starter names the thread by any of its sessions, its id or `main`;
@@ -42,8 +42,6 @@ use crate::{py, Dict};
 pub enum Kind {
     /// Finished work told where it was asked (a task's report, a sub-agent's).
     Handback,
-    /// The answer of a Live call's last turn, after the hang-up.
-    Live,
     /// A background task (jobs.rs).
     Task,
     /// A routine started by an e-mail or a link (triggers.rs).
@@ -56,7 +54,6 @@ impl Kind {
     pub fn as_str(self) -> &'static str {
         match self {
             Kind::Handback => "handback",
-            Kind::Live => "live",
             Kind::Task => "task",
             Kind::Trigger => "trigger",
             Kind::Watcher => "watcher",
@@ -92,7 +89,7 @@ pub struct Turn {
     pub budget: Option<i64>,
     pub options: Option<Value>,
     pub max_seconds: f64,
-    /// How long a busy conversation (or agent) is waited for.
+    /// How long a busy conversation (or agent) is waited for; 0: not looked at (a task in its own conversation).
     pub busy_wait: f64,
 }
 
@@ -273,7 +270,7 @@ impl Pipeline {
         let agent = &turn.agent;
         let session = self.tip(agent, &turn.thread).await;
         let mut waited = 0.0;
-        while let Some(hub) = &self.hub {
+        while let Some(hub) = self.hub.as_ref().filter(|_| turn.busy_wait > 0.0) {
             let busy = if turn.kind.waits_for_agent() {
                 hub.agent_running(&agent.name)
             } else {
@@ -289,14 +286,12 @@ impl Pipeline {
             waited += self.poll;
         }
         let text = crate::dates::now::stamped(&self.config.get(), agent, &turn.prompt);
-        let run_id = self
-            .hermes
-            .start_run_with(agent, &text, &session, None, turn.options.clone())
-            .await
-            .map_err(|e| match e {
+        let run_id = self.hermes.start_run_with(agent, &text, &session, None, turn.options.clone()).await.map_err(
+            |e| match e {
                 HermesError::Http { status: 404 | 410, .. } => NotRun::Gone,
                 e => NotRun::Refused(e),
-            })?;
+            },
+        )?;
         if let Some(hub) = &self.hub {
             hub.watch(agent, &run_id, Some(&session), false); // approvals and questions pushed, the end told here
             if turn.kind.long() {
@@ -337,7 +332,14 @@ impl Pipeline {
     }
 
     /// Tokens a run took: Hermes' usage, else the hub's count of its calls, else what the conversation grew by.
-    pub async fn tokens(&self, agent: &AgentConfig, run_id: &str, session: &str, usage: Option<&Value>, before: i64) -> i64 {
+    pub async fn tokens(
+        &self,
+        agent: &AgentConfig,
+        run_id: &str,
+        session: &str,
+        usage: Option<&Value>,
+        before: i64,
+    ) -> i64 {
         let exact = usage.map(|u| {
             let n = |k: &str| u.get(k).map(|v| py::py_int(v).unwrap_or(0)).unwrap_or(0);
             n("input_tokens") + n("output_tokens")
@@ -428,7 +430,7 @@ mod tests {
     #[test]
     fn who_needs_the_credit_and_who_waits() {
         assert!(Kind::Task.needs_credit() && Kind::Trigger.needs_credit() && Kind::Watcher.needs_credit());
-        assert!(!Kind::Handback.needs_credit() && !Kind::Live.needs_credit());
+        assert!(!Kind::Handback.needs_credit());
         assert!(Kind::Trigger.waits_for_agent() && !Kind::Handback.waits_for_agent());
         assert!(Kind::Task.long() && !Kind::Watcher.long());
     }
