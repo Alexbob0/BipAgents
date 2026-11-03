@@ -423,7 +423,8 @@ def test_a_send_cut_asks_the_person_once_and_autoriser_validates_the_site(bridge
     assert wait_until(lambda: not reports.exists(), timeout=5)
     card = site_cards(bridge, "vie")[0]
     assert card["bip_site"] == "upload.example.net" and card["choices"] == ["always", "deny"]
-    assert card["description"] == "Vie veut envoyer des données à upload.example.net (environ 2 Mo)"
+    # in the agent's language (here the place's, English: 2026-11-02, API readers got French whatever the language)
+    assert card["description"] == "Vie wants to send data to upload.example.net (about 2 MB)"
     assert card["bip_site_kind"] == "send" and card["bip_site_send_bytes"] == 2 * 1024 * 1024
     assert card["bip_site_via"] == "proxy" and card["session_id"] is None
     assert "a send to a site not validated was cut" in bridge.log_tail(20000)
@@ -436,8 +437,7 @@ def test_a_send_cut_asks_the_person_once_and_autoriser_validates_the_site(bridge
     # one card, not two: the sites asked a moment apart gather
     [card] = site_cards(bridge, "vie")
     assert card["bip_sites"] == ["upload.example.net", "api.meteo.fr"] and card["bip_site"] == "upload.example.net"
-    assert card["description"] == ("Vie veut envoyer des données à 2 sites (environ 2 Mo) : upload.example.net, "
-                                   "api.meteo.fr")
+    assert card["description"] == "Vie wants to send data to 2 sites (about 2 MB): upload.example.net, api.meteo.fr"
     assert card["bip_site_reason"] == "la pluie demain" and card["command"] == "upload.example.net, api.meteo.fr"
     assert site_cards(bridge, "wellness") == []
     # An older app (« Autoriser toujours », the first site shown): that one; the other waits on a card of its own.
@@ -505,6 +505,8 @@ def test_the_sites_kept_before_reading_was_open_stay_validated(bridges, fakes):
     started(bridge, hub, ["vie", "wellness"])
     policy = json.loads((bridge.state_dir / "sandbox-proxy" / "policy" / "sites.json").read_text())
     assert policy["agents"]["vie"]["hosts"] == ["data.gouv.fr"] and "any" not in policy["agents"]["vie"]
+    # a French place: the card in French
+    assert bridge.patch("/v1/notebook/settings", json={"language": "fr"}, headers=AUTH).status_code == 200
     [card] = site_cards(bridge, "vie")
     assert card["description"] == "Vie veut envoyer des données à a.fr" and card["bip_site_send_bytes"] == 0
     # an older app's « Tous les sites pour Vie » on it: the sites on the card, not every site
@@ -733,7 +735,7 @@ def test_the_real_proxy_cuts_a_big_upload_and_the_person_gets_one_card(bridges, 
         [card] = site_cards(bridge, "vie")
         assert card["bip_site"] == "upload.example.net" and card["bip_site_kind"] == "send"
         assert 1.5 * 1024 * 1024 < card["bip_site_send_bytes"] <= 2.2 * 1024 * 1024
-        assert card["description"].startswith("Vie veut envoyer des données à upload.example.net (environ 2")
+        assert card["description"].startswith("Vie wants to send data to upload.example.net (about 2")
         assert site.received < 64 * 1024 + 2000 + 600       # the read, at most the hour's budget, the handshakes
         # a download of any size passes (the site answering is another server: the proxy counts what it gets)
         proc.kill()

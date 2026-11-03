@@ -104,6 +104,9 @@ pub struct Person {
     /// « A », « B », « C » or « Corse » (France).
     #[serde(default)]
     pub school_zone: String,
+    /// The phone's region (ISO 3166, `PUT /v1/time/device`'s `region`): the country's guess before the zone's.
+    #[serde(default)]
+    pub device_region: String,
 }
 
 impl Default for Person {
@@ -118,6 +121,7 @@ impl Default for Person {
             country: String::new(),
             region: String::new(),
             school_zone: String::new(),
+            device_region: String::new(),
         }
     }
 }
@@ -205,10 +209,14 @@ impl Person {
         }
     }
 
-    /// The country: the person's choice, else guessed from the zone.
+    /// The country: the person's choice, else the phone's region (a country BipAgents is offered in), else guessed
+    /// from the zone (2026-11-02: a zone says little, « Europe/Paris » for someone in Belgium on a French server).
     pub fn country_code(&self) -> Option<String> {
         if !self.country.is_empty() {
             return Some(self.country.clone());
+        }
+        if words::country_name(&self.device_region, "en").is_some() {
+            return Some(self.device_region.clone());
         }
         guess_country(&self.zone_name()).map(str::to_string)
     }
@@ -625,10 +633,11 @@ pub fn upcoming(person: &Person, days: i64, lang: &str) -> (NaiveDate, Vec<Item>
     (today, standard::upcoming(&person.dates_for(), today, days.clamp(1, MAX_DAYS), lang))
 }
 
-/// The same as the Carnet's « Dates à venir » shows them: computed entries (`computed: true`), never saved.
-pub fn notebook_entries(config: &Config, days: i64) -> Vec<Value> {
+/// The same as the Carnet's « Dates à venir » shows them: computed entries (`computed: true`), never saved; their
+/// names in `lang`, the app's (none: the Carnet's).
+pub fn notebook_entries(config: &Config, days: i64, lang: Option<&str>) -> Vec<Value> {
     let person = load(config);
-    let lang = words::lang(&crate::notebook::language(config));
+    let lang = words::lang(&lang.map(str::to_string).unwrap_or_else(|| crate::notebook::language(config)));
     let (today, items) = upcoming(&person, days, lang);
     items
         .iter()
@@ -824,11 +833,15 @@ fn zone_error(field: &str, value: &str) -> FieldError {
 #[derive(Debug, Deserialize)]
 pub struct Device {
     pub time_zone: String,
+    /// The phone's region (« FR », « US »…; apps from 2026-11-02): the holidays' country unless the person chose one.
+    #[serde(default)]
+    pub region: Option<String>,
 }
 
 impl Validate for Device {
     fn validate(&self, errors: &mut Vec<FieldError>) {
         check_max_len(errors, "time_zone", Some(&self.time_zone), 64);
+        check_max_len(errors, "region", self.region.as_deref(), 16);
         if parse_zone(&self.time_zone).is_none() {
             errors.push(zone_error("time_zone", &self.time_zone));
         }
@@ -843,7 +856,20 @@ async fn put_device(State(state): State<AppState>, q: QueryMap, Json(body): Json
         let routines = has_routines(&c);
         let zone = body.time_zone.trim().to_string();
         let mut moved = false;
-        let person = change(&c, |p| moved = p.device_zone(&zone, routines))?;
+        // the phone's region: two letters (« fr-FR »'s « FR » too); anything else leaves the one known
+        let region = body.region.as_deref().map(|r| r.trim().rsplit(['-', '_']).next().unwrap_or("").to_ascii_uppercase());
+        let region = region.filter(|r| r.len() == 2 && r.chars().all(|c| c.is_ascii_alphabetic()));
+        let mut region_changed = false;
+        let person = change(&c, |p| {
+            if let Some(region) = region {
+                region_changed = p.device_region != region;
+                p.device_region = region;
+            }
+            moved = p.device_zone(&zone, routines);
+        })?;
+        if region_changed && !moved && person.country.is_empty() {
+            applied(&s, &c, &person); // the holidays may be another country's
+        }
         if moved {
             tracing::info!(target: "bipbridge::dates", zone = %zone, asked = person.question.is_some(), "the phone's time zone followed");
             applied(&s, &c, &person);
@@ -1032,6 +1058,19 @@ pub fn router() -> Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_country_from_the_choice_then_the_phone_then_the_zone() {
+        let mut p = Person { time_zone: "Europe/Paris".into(), ..Person::default() };
+        assert_eq!(p.country_code().as_deref(), Some("FR"));
+        p.device_region = "BE".into(); // a Belgian phone in the Paris zone
+        assert_eq!(p.country_code().as_deref(), Some("BE"));
+        p.device_region = "ZZ".into(); // not a country BipAgents is offered in: the zone's guess
+        assert_eq!(p.country_code().as_deref(), Some("FR"));
+        p.device_region = "US".into();
+        p.country = "DE".into(); // the person's own choice first
+        assert_eq!(p.country_code().as_deref(), Some("DE"));
+    }
 
     #[test]
     fn the_phone_moves_the_agents_and_asks_for_the_routines() {

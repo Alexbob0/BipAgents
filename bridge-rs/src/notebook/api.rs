@@ -30,7 +30,8 @@
 //!     GET    /v1/notebook/documents?private=   the files the agents made or received and their web pages, by agent,
 //!                                              with their subjects (the private part's pages only with private=1)
 //!     GET    /v1/notebook/settings             {mentions, nightly, language, cap…}
-//!     PATCH  /v1/notebook/settings             {mentions?, nightly?, language? (only while the Carnet is empty)}
+//!     PATCH  /v1/notebook/settings             {mentions?, nightly?, language? (a Carnet with pages: its folders
+//!                                              and pages moved to the new names, relanguage.rs)}
 //!     GET    /v1/notebook/export?health=       a zip of the vault, for Obsidian
 //!     POST   /v1/notebook/tidy                 the nightly pass now; GET /v1/notebook/runs its runs and this month's cost
 //!     GET    /v1/notebook/fill                 « Remplir mon Carnet »: where it is; POST starts it {agents?}, DELETE stops
@@ -62,6 +63,19 @@ async fn blocking<T: Send + 'static>(work: impl FnOnce() -> anyhow::Result<T> + 
     }
 }
 
+/// The language the app shows the Carnet in (`?lang=`, the app's; apps from 2026-11-02 send it), else the Carnet's
+/// own: what the app shows (the « Toi » card, the sections' names, the standard dates) follows the app, the stored
+/// language only the pages' text the agents write (2026-11-02: an English app on a place claimed in French showed
+/// « Toi »).
+fn shown_language(config: &Config, q: &QueryMap) -> String {
+    let wanted = q.get("lang").map(|l| crate::souls::agent_language(Some(l)));
+    match wanted {
+        Some(lang) if super::WORDS.iter().any(|w| w.lang == lang) => lang,
+        Some(lang) if !lang.is_empty() => "en".into(), // another language (Dutch…): English, like the other names
+        _ => super::language(config),
+    }
+}
+
 fn part_of(q: &QueryMap) -> Part {
     if matches!(q.get("private"), Some("1" | "true" | "yes")) {
         Part::Health
@@ -70,12 +84,17 @@ fn part_of(q: &QueryMap) -> Part {
     }
 }
 
-fn change_view(config: &Config, entry: &Dict) -> Value {
+fn change_view(config: &Config, entry: &Dict, shown: &str) -> Value {
     let mut out = entry.clone();
     // Always strings for the apps: the person's own changes and the nightly tidy's have no agent (null in the log).
     for key in ["id", "at", "by", "name", "agent", "part", "path", "title", "action", "summary"] {
         let text = tk::str_or_empty(entry.get(key));
         out.insert(key.into(), json!(text));
+    }
+    // the person's own page by its name in the app's language (« You », not « Toi »)
+    let path = tk::str_or_empty(entry.get("path"));
+    if super::WORDS.iter().any(|w| path == w.self_path()) {
+        out.insert("title".into(), json!(super::words(shown).me));
     }
     let by = tk::str_or_empty(entry.get("by"));
     out.insert("by_you".into(), json!(by == "you"));
@@ -94,16 +113,19 @@ fn section_of(w: &super::Words, page: &super::Page, path: &str) -> String {
     }
 }
 
-async fn home(State(state): State<AppState>) -> ApiResult<Response> {
+async fn home(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
     let config = state.config();
+    let shown = shown_language(&config, &q);
     let view = blocking(move || {
         let lang = super::language(&config);
-        let w = super::words(&lang);
+        // the paths in the Carnet's language (its folders), the names shown in the app's
+        let stored = super::words(&lang);
+        let w = super::words(&shown);
         let pages = super::all_pages(&config, Part::Main);
         // the person's own page first (« Toi »: one page, its own card), then the sections
         let mine = pages.iter().find(|(_, p)| p.kind() == "self").map(|(path, _)| path.clone());
         let mut sections = vec![json!({"kind": "self", "title": w.me, "count": usize::from(mine.is_some()),
-                                       "path": mine.unwrap_or_else(|| w.self_path())})];
+                                       "path": mine.unwrap_or_else(|| stored.self_path())})];
         for (kind, folder) in [("person", w.people), ("subject", w.subjects), ("area", w.areas)] {
             let count = pages.iter().filter(|(_, p)| p.kind() == kind).count();
             sections.push(json!({"kind": kind, "title": folder, "count": count}));
@@ -111,7 +133,7 @@ async fn home(State(state): State<AppState>) -> ApiResult<Response> {
             if kind == "subject" {
                 let trips: Vec<&String> =
                     pages.iter().filter(|(_, p)| p.kind() == "trip").map(|(path, _)| path).collect();
-                let past = trips.iter().filter(|path| w.archived(path)).count();
+                let past = trips.iter().filter(|path| stored.archived(path)).count();
                 sections.push(json!({"kind": "trip", "title": w.trips, "count": trips.len() - past, "archived": past}));
             }
         }
@@ -122,7 +144,7 @@ async fn home(State(state): State<AppState>) -> ApiResult<Response> {
         sections.push(json!({"kind": "documents", "title": w.documents, "count": documents.len()}));
         let (_, inbox) = super::inbox(&config);
         let recent: Vec<Value> =
-            super::history(&config, Some(Part::Main), None, 20).iter().map(|e| change_view(&config, e)).collect();
+            super::recent_changes(&config, Part::Main, 20).iter().map(|e| change_view(&config, e, &shown)).collect();
         let mut upcoming: Vec<&super::Task> = open.iter().filter(|t| !t.due.is_empty()).collect();
         upcoming.sort_by(|a, b| a.due.cmp(&b.due));
         let upcoming: Vec<Value> = upcoming.iter().take(10).map(|t| t.view()).collect();
@@ -130,14 +152,14 @@ async fn home(State(state): State<AppState>) -> ApiResult<Response> {
         let today = chrono::Local::now().date_naive();
         let mut dates = super::upcoming_dates(&config, 30, false, today);
         // and the standard dates (holidays, school holidays, clock changes): computed for the person, not saved
-        dates.extend(crate::dates::notebook_entries(&config, 30));
+        dates.extend(crate::dates::notebook_entries(&config, 30, Some(&shown)));
         dates.sort_by_key(|d| d.get("in_days").and_then(Value::as_i64).unwrap_or(0));
         // « Mode voyage »: the trips within 30 days or under way; the records by type; the proposals to answer
         let trips = super::trip::upcoming(&config, today);
         let records = super::records::home(&config, today);
         let proposals = super::open_proposals(&config);
         let archives = super::archive::counts(&config);
-        Ok(json!({"language": lang, "sections": sections, "recent": recent, "upcoming": upcoming, "archives": archives,
+        Ok(json!({"language": lang, "shown_language": shown, "sections": sections, "recent": recent, "upcoming": upcoming, "archives": archives,
                   "dates": dates.into_iter().take(10).collect::<Vec<_>>(),
                   "inbox": inbox.len(), "settings": settings_view(&config), "trips": trips, "records": records,
                   "proposals": proposals}))
@@ -285,6 +307,12 @@ async fn search(State(state): State<AppState>, q: QueryMap) -> ApiResult<Respons
 /// A page for the app: its frontmatter apart, its « En bref », its sections with each fact's attribution, its
 /// links resolved to pages (or not found), the pages that link to it.
 pub fn page_view(config: &Config, part: Part, path: &str) -> anyhow::Result<Value> {
+    page_view_in(config, part, path, &super::language(config))
+}
+
+/// [`page_view`] with the sections' names, the outline's and the person's own page's title in `shown` (the app's
+/// language); the page's text stays as it is written.
+pub fn page_view_in(config: &Config, part: Part, path: &str, shown: &str) -> anyhow::Result<Value> {
     super::checked(path)?;
     let Some(text) = super::read_page_text(config, part, path) else {
         return Err(super::NotebookError("no such page".into()).into());
@@ -324,13 +352,19 @@ pub fn page_view(config: &Config, part: Part, path: &str) -> anyhow::Result<Valu
                 .collect();
             let id = super::template::resolve(&kind, &name)
                 .or_else(|| (super::fold(&name) == super::fold(&super::template::title(&kind, "other", &lang))).then_some("other"));
-            json!({"id": id, "title": name, "facts": facts})
+            let title = match id {
+                Some(id) if super::template::outline(&kind).iter().any(|s| s.id == id) => {
+                    super::template::title(&kind, id, shown)
+                }
+                _ => name,
+            };
+            json!({"id": id, "title": title, "facts": facts})
         })
         .collect();
     // the kind's outline, for « Modifier » on a section and adding to an empty one
     let outline: Vec<Value> = super::template::outline(&kind)
         .iter()
-        .map(|s| json!({"id": s.id, "title": super::template::title(&kind, s.id, &lang)}))
+        .map(|s| json!({"id": s.id, "title": super::template::title(&kind, s.id, shown)}))
         .collect();
     let links: Vec<Value> =
         super::links_in(&page.body).iter().filter(|l| !l.starts_with("archive:")).map(|l| resolve(l)).collect();
@@ -359,7 +393,8 @@ pub fn page_view(config: &Config, part: Part, path: &str) -> anyhow::Result<Valu
     let records = super::records::page_view(config, &page, chrono::Local::now().date_naive()).unwrap_or(Value::Null);
     // a page holding several journeys: its split proposal, answered on the page too
     let split = if part == Part::Main { super::trip_split::open_for(config, path, &page) } else { None };
-    Ok(json!({"path": path, "part": part.as_str(), "title": page.title, "kind": page.kind(), "trip": trip,
+    let title = if kind == "self" { super::words(shown).me.to_string() } else { page.title.clone() };
+    Ok(json!({"path": path, "part": part.as_str(), "title": title, "kind": page.kind(), "trip": trip,
               "records": records, "split": split, "archived": w.archived(path),
               "frontmatter": page.front, "aliases": page.aliases(),
               "contact": if page.contact().is_empty() { Value::Null } else { json!(page.contact()) },
@@ -373,8 +408,10 @@ async fn read_page(State(state): State<AppState>, q: QueryMap) -> ApiResult<Resp
     let config = state.config();
     let part = part_of(&q);
     let path = web::query_str(&q, "path", true, Some(300))?.unwrap_or_default();
-    let view =
-        tokio::task::spawn_blocking(move || page_view(&config, part, &path)).await.map_err(anyhow::Error::from)?;
+    let shown = shown_language(&config, &q);
+    let view = tokio::task::spawn_blocking(move || page_view_in(&config, part, &path, &shown))
+        .await
+        .map_err(anyhow::Error::from)?;
     match view {
         Ok(v) => Ok(web::ok(v)),
         Err(err) => match err.downcast_ref::<super::NotebookError>() {
@@ -426,15 +463,16 @@ impl Validate for SectionEdit {
 }
 
 /// The person's « Modifier » on one section of a page.
-async fn write_section(State(state): State<AppState>, Json(body): Json<SectionEdit>) -> ApiResult<Response> {
+async fn write_section(State(state): State<AppState>, q: QueryMap, Json(body): Json<SectionEdit>) -> ApiResult<Response> {
     let config = state.config();
+    let shown = shown_language(&config, &q);
     let part = if body.private { Part::Health } else { Part::Main };
     let view = blocking(move || {
         super::checked(&body.path)?;
         let who = Who::you(&config);
         let (written, _) =
             super::edit(&config, &[part], &body.path, "", "", &body.section, Some(&body.text), "", &who)?;
-        page_view(&config, part, &written.path)
+        page_view_in(&config, part, &written.path, &shown)
     })
     .await?;
     Ok(web::ok(view))
@@ -450,11 +488,16 @@ async fn delete_page(State(state): State<AppState>, q: QueryMap) -> ApiResult<Re
 
 async fn history(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
     let config = state.config();
+    let shown = shown_language(&config, &q);
     let part = part_of(&q);
     let path = q.get("path").map(str::to_string);
     let view = blocking(move || {
-        let changes: Vec<Value> =
-            super::history(&config, Some(part), path.as_deref(), 200).iter().map(|e| change_view(&config, e)).collect();
+        // a page's own history keeps everything; all the changes (« Nouveau ») only the pages still there
+        let entries = match path.as_deref() {
+            Some(p) => super::history(&config, Some(part), Some(p), 200),
+            None => super::recent_changes(&config, part, 200),
+        };
+        let changes: Vec<Value> = entries.iter().map(|e| change_view(&config, e, &shown)).collect();
         Ok(json!({"changes": changes}))
     })
     .await?;
@@ -576,11 +619,12 @@ async fn dates(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response
     let days = q.get("days").and_then(|d| d.parse::<i64>().ok()).unwrap_or(60).clamp(1, 366);
     let all = matches!(q.get("all"), Some("1" | "true" | "yes"));
     let standard = !matches!(q.get("standard"), Some("0" | "false" | "no"));
+    let shown = shown_language(&config, &q);
     let view = blocking(move || {
         // the person's dates, then the standard ones (holidays, school holidays, clock changes: computed, not saved)
         let mut dates = super::upcoming_dates(&config, days, all, chrono::Local::now().date_naive());
         if standard {
-            dates.extend(crate::dates::notebook_entries(&config, days));
+            dates.extend(crate::dates::notebook_entries(&config, days, Some(&shown)));
             dates.sort_by_key(|d| d.get("in_days").and_then(Value::as_i64).unwrap_or(0));
         }
         Ok(json!({"dates": dates}))
@@ -811,11 +855,9 @@ async fn set_settings(State(state): State<AppState>, Json(body): Json<Settings>)
     let config = state.config();
     let view = blocking(move || {
         let _guard = super::lock();
-        if body.language.is_some()
-            && (!super::all_pages(&config, Part::Main).is_empty()
-                || !super::all_pages(&config, Part::Health).is_empty())
-        {
-            return Err(super::NotebookError("the Carnet's language is set once it has pages".into()).into());
+        // a Carnet with pages: its folders and pages moved to the new language's names (relanguage.rs)
+        if let Some(l) = &body.language {
+            super::relanguage::change_locked(&config, l, &Who::you(&config))?;
         }
         super::update_state(&config, |s| {
             if let Some(m) = body.mentions {
@@ -823,9 +865,6 @@ async fn set_settings(State(state): State<AppState>, Json(body): Json<Settings>)
             }
             if let Some(n) = &body.nightly {
                 s.insert("nightly".into(), json!(n));
-            }
-            if let Some(l) = &body.language {
-                s.insert("language".into(), json!(l));
             }
         })?;
         Ok(settings_view(&config))
