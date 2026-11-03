@@ -2,6 +2,8 @@
 as a copy in each profile's skills/; an agent's change is a new version only it moves to; the others update when
 asked; versions compared and brought back; a skill with a key inside is never shared; removing takes the copies
 back, the maker keeps its own. The agents' side is the `skill_library` MCP tool."""
+import json
+
 from bbkit.common import AUTH
 from bbkit.servers import wait_until
 from conftest import managed_install, profile, wait_registered
@@ -28,13 +30,15 @@ def tool(bridge, who, **arguments):
 
 
 def registrations(bridge, name):
-    return sum(1 for args in bridge.commands.of("hermes")
-               if len(args) > 4 and args[:2] == ["-p", name] and args[4].startswith("mcp_servers.bipagents.url"))
+    """The agent's tools token as the bridge keeps it (agent-tools.json): a new one each time it gives the agent its
+    tools again (its MCP entry is written into config.yaml by the bridge itself, no `hermes config set` any more)."""
+    path = bridge.state_dir / "agent-tools.json"
+    return json.loads(path.read_text())["tokens"].get(name) if path.exists() else None
 
 
 def reregistered(bridge, name, before):
     """Its tools given again (a new list): waited for, then the test's tokens given back."""
-    assert wait_until(lambda: registrations(bridge, name) > before, timeout=15), bridge.commands.of("hermes")
+    assert wait_until(lambda: registrations(bridge, name) != before, timeout=15), bridge.log_tail(2000)
     wait_registered(bridge, [name])
     give_tokens(bridge, ["budget", "vie", "wellness"])
 
