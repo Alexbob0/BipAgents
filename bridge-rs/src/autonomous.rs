@@ -32,7 +32,7 @@
 //!                 `notify`, `last_check`, `last_change` (Unix seconds or null), `broken` (« en panne »), `summary`
 //!                 (what it saw last, plain words), `wakes`, `pending`, `description`, `icon`
 //!
-//!     GET  /v1/autonomous[?agent=]    {items, unreachable: [], budgets}
+//!     GET  /v1/autonomous[?agent=]    {items, budgets}
 //!
 //! No Python counterpart.
 
@@ -551,7 +551,7 @@ async fn list_route(State(state): State<AppState>, q: web::QueryMap) -> ApiResul
     };
     let items = listing(&state, only.as_deref()).await;
     let budgets: Map<String, Value> = crate::jobs::BUDGETS.iter().map(|(k, v)| (k.to_string(), json!(v))).collect();
-    Ok(web::ok(json!({"items": items, "unreachable": [], "budgets": budgets, "groups": GROUPS})))
+    Ok(web::ok(json!({"items": items, "budgets": budgets, "groups": GROUPS})))
 }
 
 /// A connector's scheduled call now (« Lancer maintenant »), in the background: its last run says how it went.

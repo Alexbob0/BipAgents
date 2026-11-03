@@ -68,7 +68,7 @@ def test_one_list_of_what_the_agents_do_on_their_own(bridges, fakes):
     assert answer.status_code == 200, answer.text
     body = answer.json()
     assert body["groups"] == ["schedule", "on_change", "now"]
-    assert body["unreachable"] == []
+    assert "unreachable" not in body   # the routines are the bridge's: none « as last seen »
     assert body["budgets"]["medium"] == 1_000_000
     items = {i["id"]: i for i in body["items"]}
     assert set(items) == {"routine:wellness:j1", "routine:wellness:j2", "task:t0000000000a1", "task:t0000000000a3",
@@ -112,7 +112,7 @@ def test_an_agent_s_routines_once_its_hermes_answers_and_after(bridges, fakes):
     fakes.hermes.override = hermes   # its Hermes back: its jobs move at the next look
     assert wait_until(lambda: bridge.get("/v1/agents/coach/routines", headers=AUTH).json()["jobs"], timeout=90)
     first = bridge.get("/v1/autonomous", headers=AUTH, params={"agent": "coach"}).json()
-    assert {i["id"] for i in first["items"]} == {"routine:coach:k1", "connector:coach:c1"} and first["unreachable"] == []
+    assert {i["id"] for i in first["items"]} == {"routine:coach:k1", "connector:coach:c1"}
     assert first["items"][0]["when"]["text"] in ("Chaque jour à 7:00",)
 
     def down(seen):
@@ -122,7 +122,7 @@ def test_an_agent_s_routines_once_its_hermes_answers_and_after(bridges, fakes):
 
     fakes.hermes.override = down   # asleep: its routines are the bridge's, listed as they are
     again = bridge.get("/v1/autonomous", headers=AUTH, params={"agent": "coach"}).json()
-    assert again["unreachable"] == [] and "routine:coach:k1" in {i["id"] for i in again["items"]}
+    assert "routine:coach:k1" in {i["id"] for i in again["items"]}
     assert bridge.get("/v1/autonomous", headers=AUTH, params={"agent": "nobody"}).status_code == 404
     assert bridge.get("/v1/autonomous").status_code == 401
 
