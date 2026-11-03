@@ -120,7 +120,7 @@ async fn watch_pushes_approval_when_nobody_follows() {
     assert!(wait_until(|| count(&c.apns) >= 1, Duration::from_secs(5)).await);
     let payload = c.apns.payloads()[0].clone();
     assert_eq!(payload["aps"]["category"], "APPROVAL");
-    assert_eq!(payload["aps"]["alert"]["body"], "Approbation requise");
+    assert_eq!(payload["aps"]["alert"]["body"], "notif.approval");
     assert_eq!(payload["aps"]["thread-id"], "wellness");
     assert_eq!(payload["aps"]["mutable-content"], 1);
     assert_eq!(
@@ -361,7 +361,7 @@ async fn reply_ready_pushed_when_the_app_left() {
     assert_eq!(payload["t"], "reply");
     assert_eq!(payload["r"], "run_r");
     assert_eq!(payload["aps"]["category"], "MESSAGE");
-    assert_eq!(payload["aps"]["alert"]["body"], "Ta réponse est prête.");
+    assert_eq!(payload["aps"]["alert"], serde_json::json!({"loc-key": "notif.reply", "body": "notif.reply"}));
     // The text stays off Apple: the extension fetches it from the bridge (the journal's row).
     let reply = c.get(&format!("/v1/notifications/{}", payload["n"].as_str().unwrap())).await;
     assert_eq!(reply.status, StatusCode::OK);
@@ -412,7 +412,7 @@ async fn question_pushed_when_the_app_left() {
     assert_eq!(payload["request_id"], "clr_1");
     let row = c.get(&format!("/v1/notifications/{}", payload["n"].as_str().unwrap())).await.json();
     assert_eq!(row["session_id"], "api_7");
-    assert_eq!(payload["aps"]["alert"]["body"], "Une question pour toi");
+    assert_eq!(payload["aps"]["alert"]["body"], "notif.question");
     assert_eq!(payload["aps"]["mutable-content"], 1);
     c.close().await;
 }

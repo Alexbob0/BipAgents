@@ -161,7 +161,7 @@ impl World {
             let row = self.app.get(&format!("/v1/notifications/{}", p["n"].as_str().unwrap()), &[(k, v.as_str())]).await.json();
             let text = row["preview"].as_str().map(str::to_string);
             out.push({
-                let shown = if row["type"] == "subtask" && p["aps"]["alert"]["body"] == "Sous-tâche terminée" {
+                let shown = if row["type"] == "subtask" && p["aps"]["alert"]["body"] == "notif.subtask" {
                     format!("subtask:{}", text.unwrap_or_else(|| "None".into()))
                 } else {
                     text.unwrap_or_default()
