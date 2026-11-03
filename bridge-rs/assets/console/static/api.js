@@ -1,5 +1,5 @@
 // Calls to this bridge. The session cookie (HttpOnly: no script here can read it) plus the X-Bip-Console header stand
-// for the bridge key; an agent's Hermes is reached through /hermes/<agent>/…, where the bridge adds the agent's key.
+// for the bridge key. The console never calls Hermes: conversations go through the bridge's routes (threads, runs).
 
 export class HttpError extends Error {
   constructor(status, detail) {
@@ -34,11 +34,6 @@ export async function call(path, options) {
   const text = await response.text();
   return text ? JSON.parse(text) : null;
 }
-
-const segment = s => encodeURIComponent(s);
-
-/** An agent's Hermes, through the bridge. */
-export const hermes = (agent, path, options) => call(`/hermes/${segment(agent)}/${path}`, options);
 
 /** A file (audio, image…) as an object URL: `<audio src>` cannot send the console header. */
 export async function blobURL(path, options) {

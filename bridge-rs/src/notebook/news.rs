@@ -21,7 +21,7 @@
 //!   recited it all, « love you too » included). What was learnt before that reaches it silently: the common memory
 //!   in its USER.md (shared_memory.rs) and the Carnet itself. News only cover what is learnt once it takes part.
 //!
-//! At that agent's next turn (the apps' messages through `/v1/live/recaps/take`, and every turn the bridge starts:
+//! At that agent's next turn (the apps' messages through threads/send.rs, and every turn the bridge starts:
 //! dates/now.rs `stamped`, messages between agents, hand-backs, background tasks, rooms), the queued lines join the
 //! hidden lines at the top of the message, after the time line, as ONE note, then are forgotten:
 //!

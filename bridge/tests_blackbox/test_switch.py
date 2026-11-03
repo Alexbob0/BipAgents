@@ -55,7 +55,9 @@ def build(bridge, fakes):
     assert not call(bridge, "propose_task", {"title": "Dossier", "prompt": "Prépare-le.", "budget": "small"})["isError"]
     assert not call(bridge, "create_page", {"html": "<p>Suivi</p>", "title": "Suivi"})["isError"]
     bridge.post("/v1/live/calls", headers=AUTH, json={"agent": "wellness", "session": "s1", "live_session": "live1"})
-    bridge.post("/v1/live/recaps", headers=AUTH, json={"agent": "wellness", "session": "s1", "recap": "Appel de 10:05"})
+    recap = bridge.state_dir / "call-recaps" / "wellness" / "s1.txt"   # a call's recap waiting (live_calls.rs)
+    recap.parent.mkdir(parents=True, exist_ok=True)
+    recap.write_text("Appel de 10:05")
     bridge.put("/v1/agents/wellness/appearance", headers=AUTH, json={"category": "home", "color": "#112233"})
     bridge.post("/v1/watch", headers=AUTH, json={"agent": "wellness", "run_id": "run_wait", "session_id": "api_bot"})
     assert wait_until(lambda: bridge.db().execute("SELECT count(*) FROM watched_runs").fetchone()[0] == 1)

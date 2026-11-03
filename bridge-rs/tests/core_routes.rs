@@ -301,31 +301,12 @@ async fn fake_hermes() -> (String, std::sync::Arc<std::sync::Mutex<Vec<String>>>
 }
 
 #[tokio::test]
-async fn session_state_status_and_approvals_through_hermes() {
+async fn status_and_approvals_through_hermes() {
     let (url, _) = fake_hermes().await;
     let dir = tempfile::tempdir().unwrap();
     let app = TestApp::new(config(dir.path(), &Urls { hermes: url, ..Default::default() }));
     let (k, v) = auth();
     let h = [(k, v.as_str())];
-    let resp = app.get("/v1/sessions/s1/state?agent=wellness", &h).await;
-    assert_eq!(
-        resp.json(),
-        json!({"session_id": "s1", "message_count": 7, "updated_at": null, "outbox": "0@",
-               "queue": {"agent": "wellness", "version": 0, "paused": false, "items": [], "running": null}})
-    );
-    assert!(app.app.state.presence.viewing("wellness", "s1"));
-    assert_eq!(app.app.state.presence.viewed("wellness"), vec!["s1".to_string()]);
-    // a Boîte message (a hand-back's, a routine's) changes the conversation's state: the app shows it
-    let extra = bipbridge::store::NewOutbox { title: None, ntfy_id: None, sent_at: None, session_id: None };
-    app.app.state.store.add_outbox("wellness", "Fini.", extra).await.unwrap();
-    let after = app.get("/v1/sessions/s1/state?agent=wellness", &h).await.json();
-    assert!(after["outbox"].as_str().unwrap().starts_with("1@"), "{after}");
-    assert_eq!(
-        app.get("/v1/sessions/bad%20id/state?agent=wellness", &h).await.json(),
-        json!({"detail": "invalid session_id"})
-    );
-    assert_eq!(app.get("/v1/sessions/s1/state?agent=ghost", &h).await.json(), json!({"detail": "unknown agent"}));
-
     let status = app.get("/v1/status", &h).await.json();
     assert_eq!(status, json!({"agents": {"wellness": {"ok": true}}, "model": null, "protected": false}));
 
@@ -349,8 +330,6 @@ async fn hermes_down_is_502_and_status_says_why() {
     let (_dir, app) = app();
     let (k, v) = auth();
     let h = [(k, v.as_str())];
-    let resp = app.get("/v1/sessions/s1/state?agent=wellness", &h).await;
-    assert_eq!((resp.status, resp.json()), (StatusCode::BAD_GATEWAY, json!({"detail": "your agent isn't answering right now: try again in a moment"})));
     let resp =
         app.send_json("POST", "/v1/approve", &h, &json!({"agent": "wellness", "run_id": "r1", "choice": "once"})).await;
     assert_eq!((resp.status, resp.json()), (StatusCode::BAD_GATEWAY, json!({"detail": "your agent isn't answering right now: try again in a moment"})));

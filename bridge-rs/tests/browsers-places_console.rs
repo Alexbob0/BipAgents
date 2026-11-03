@@ -88,17 +88,14 @@ async fn a_code_approved_in_the_app_opens_a_session() {
 }
 
 #[tokio::test]
-async fn the_console_reaches_hermes_without_its_key() {
+async fn the_console_never_reaches_hermes() {
     let backend = FakeBackend::start().await;
     let dir = tempfile::tempdir().unwrap();
     let app = TestApp::new(config(dir.path(), &backend.urls()));
     let (_, cookie) = login(&app).await;
-    // The fake Hermes answers 401 to a wrong key: the bridge put the agent's own.
-    let reached =
+    let refused =
         app.get("/hermes/wellness/api/sessions", &[("x-bip-console", "1"), ("cookie", cookie.as_str())]).await;
-    assert_ne!(reached.status, 401);
-    assert_eq!(app.get("/hermes/wellness/api/sessions", &[]).await.status, 401);
-    // no session, no key: Hermes refuses
+    assert_eq!(refused.status, 403);
 }
 
 #[tokio::test]

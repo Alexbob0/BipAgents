@@ -10,7 +10,7 @@
 //!   sum when larger; `other` is the rest (conversations, memory, Carnet).
 //! - **80 % and 95 %**: once per threshold per month, ONE card (`bip-space-<id>`, with the approvals) for the agent
 //!   using the most space, about its biggest kind, and a note joined to its next turn with the person (the
-//!   `/v1/live/recaps/take` path: never in a routine's own run): it tells them in plain words. Choices: keep the last N
+//!   message sending path (threads/send.rs): never in a routine's own run): it tells them in plain words. Choices: keep the last N
 //!   (also kept as a rule), move them to the Archives (audio made lighter), send them to the phone (« Te l'envoyer »:
 //!   a Boîte message with the files, then a second card « efface-les d'ici ? »), delete them, later. The bridge applies
 //!   the choice, logs it (approvals_log.rs, topic « space ») and tells the agent.

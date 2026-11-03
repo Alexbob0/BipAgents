@@ -351,14 +351,17 @@ text of a run still comes from `/v1/runs/{run_id}/events` (unchanged).
   serves only words and notices (no attachment, tool step or Boîte item: only text crosses). Its answer has the
   timeline's shape: `thread: {id: <cid>, kind: "shared", title, version}`, `items`, `first`, `last`,
   `more_before`, `more_after`, `anchor`, `version`, and `pending: {run: {run_id, status: "writing" | "approval",
-  started: <Unix seconds>} | null, approvals: [{run_id, request_id, command, description, choices}]}`.
+  started: <Unix seconds>} | null, approvals: [{id, run_id, request_id, command, description, choices}],
+  questions: [{id, kind: "question", run_id, request_id, questions, question, choices}]}`.
   Each timeline read counts as « on screen » for that conversation (the relative's bridge pushes nothing for it
   meanwhile).
   Relayed the same way (step 4): `GET /v1/threads/events?agent=<x>__<h>&thread=<cid>` (the owner's
   `…/conversations/{cid}/events`: `thread` hints; open = on screen), `GET /v1/runs/{run}/events?agent=<x>__<h>&thread=<cid>`
-  (the turn's words live: text deltas, approvals and the end only, no tool step), `POST /v1/threads/{cid|new}/messages`
-  (her `client_id` kept on the owner's side; `new` opens a conversation titled by its first words), `…/{cid}/stop`,
-  `DELETE /v1/threads/{cid}`, and her answers through `POST /v1/approve` with `agent=<x>__<h>`. Her own person's
+  (the turn's words live: text deltas, approvals, questions and the end only, no tool step),
+  `POST /v1/threads/{cid|new}/messages` (her `client_id` kept on the owner's side; `new` opens a conversation titled by
+  its first words), `…/{cid}/stop`, `DELETE /v1/threads/{cid}`, and her answers (an approval's `choice`, a question's
+  `answer`) through `POST /v1/approve` with `agent=<x>__<h>` (the owner's `/family/s/{agent}/approval`); her bridge
+  pushes a question like an approval while her app isn't looking. Her own person's
   words come unframed. The `/v1/shared-agents/{id}/conversations…` routes are gone.
 
 ### 6.7 Sending, stopping, answering (step 4)
@@ -383,6 +386,28 @@ Every answer goes through the bridge, which keeps it (approvals_log.rs) and bump
 `POST /v1/agents/{id}/queue` and `/steer`, `GET/POST /v1/approvals/answered`, the apps' Hermes-direct runs, steers,
 approvals and questions.
 
+Run state comes from the timeline only: `pending.run` (is the turn still going?), `pending.approvals` /
+`pending.questions` (what it waits for) and the events stream; the apps ask Hermes nothing about a run (their
+`getRun` / `checkRun` and the old `GET /v1/sessions/{id}/state` poll are gone).
+
+**A Live call** (live_turns.rs, live_brief.rs) keeps its own short session, made by the bridge:
+
+```text
+POST /v1/live/calls/start {agent, session?, prelude?}           → {ok, live_session}   the warm-up read at once
+POST /v1/live/turns {agent, live_session, text, attachments?}   → Hermes' chat/stream SSE, passed on as it comes
+POST /v1/live/turns/stop {agent, run_id}                        → {stopped}
+POST /v1/live/calls {agent, session, live_session, run_id?, started_at?}   the call put into its conversation
+```
+
+The first turn's text starts with the call's hidden prelude (the time, its rules, its brief, the greeting said); the
+bridge adds the agent's quick-turn thinking (`quick_turn_options`). One request per turn, streamed through: the first
+words come as early as from Hermes itself. The call's recap joins the next written message on the bridge's side
+(`message_notes`): `POST /v1/live/recaps` and `/v1/live/recaps/take`, and the phones' own recaps, are gone.
+
+**The web console** (`/console/`) uses the same routes: the thread list, the timeline and its events stream (on screen
+while open), the send and stop routes, `POST /v1/approve` for approvals and questions, a run's events at
+`/v1/runs/{id}/events`. `/hermes/<agent>/…` refuses a console session.
+
 ## 7. How the apps use it (target)
 
 - **One cache per thread, keyed by item id.** Merge rule: an item with a known id replaces the cached one; a new id is
@@ -390,8 +415,9 @@ approvals and questions.
   carries the `client_id`; the server item with that `client_id` replaces it.
 - **Opening a conversation**: `timeline?limit=50` (or `around=<m>` from a notification, a Boîte row, a search hit).
   Scroll up: `before=<first>`. Live: the `thread` event → `after=<last>`. Version mismatch after sleep → `after=`.
-- **No Hermes calls** for conversations (end state): list, history, approvals and clarify go through the bridge.
-  `/hermes/<agent>/…` stays for older apps.
+- **No Hermes calls** for conversations: list, history, sending, run state, approvals, clarify and Live turns go
+  through the bridge. `/hermes/<agent>/…` stays for the apps' other Hermes calls (routines, settings), never the
+  console's.
 - **No marker parsing**: `text` is already visible text; attachments are structured.
 - **Badges and read state** come from the journal (§9.4).
 

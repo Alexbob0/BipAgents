@@ -419,20 +419,6 @@ async fn bot_chat_reply_followed_or_on_screen_is_not_pushed() {
     w.app.shutdown().await;
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn session_state_route_records_presence() {
-    let dir = tempfile::tempdir().unwrap();
-    let backend = FakeBackend::start().await;
-    let app = TestApp::new(config(dir.path(), &backend.urls()));
-    let (k, v) = auth();
-    let h = [(k, v.as_str())];
-    let resp = app.get("/v1/sessions/api_bot/state?agent=wellness", &h).await;
-    assert_eq!(resp.status, StatusCode::OK);
-    assert_eq!(resp.json()["message_count"], 7);
-    assert!(app.app.state.presence.viewing("wellness", "api_bot"));
-    assert_eq!(app.get("/v1/sessions/bad%20id/state?agent=wellness", &h).await.status, StatusCode::BAD_REQUEST);
-}
-
 #[tokio::test]
 async fn answer_to_another_agent_is_not_pushed() {
     let w = world(true).await;

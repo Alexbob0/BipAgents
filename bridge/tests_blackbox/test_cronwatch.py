@@ -1,18 +1,15 @@
 """The cron watcher end to end (cronwatch.py): finished scheduled-task runs read from Hermes' sessions into the outbox
-and pushed (a muted job stored silently), Bot Chat turns taken alone pushed as « reply ready », and the conversation
-state route that tells the bridge what is on screen. The watcher starts 10 s after the bridge."""
+and pushed (a muted job stored silently), Bot Chat turns taken alone pushed as « reply ready », never while that
+conversation is on screen. The watcher starts 10 s after the bridge."""
 import time
 
 import pytest
 
-from bbkit.common import AUTH, in_session, pushed_text
+from bbkit.common import AUTH, in_session, on_screen, pushed_text
 from bbkit.servers import wait_until
 
 TOKEN = "c" * 64
 NOW = "2026-10-21T08:00:00.000Z"
-
-# the agent's waiting messages in that conversation (msg_queue.rs, test_agent_queue.py): none
-NO_QUEUE = {"agent": "wellness", "version": 0, "paused": False, "items": [], "running": None}
 
 
 def stamp(seconds_ago: float) -> str:
@@ -83,47 +80,15 @@ def test_a_bot_chat_turn_taken_alone_is_pushed_once_unless_on_screen(bridges, fa
     payload = fakes.apns.payloads()[0]
     assert payload["t"] == "reply" and in_session(bridge, payload, "api_bot") and payload["r"] == "session:api_bot"
     assert pushed_text(bridge, payload) == "Wellness dit que ta nuit était bonne."
-    # The conversation open on the phone (it polls its state): the next turn is not pushed.
-    state = bridge.get("/v1/sessions/api_bot/state?agent=wellness", headers=AUTH)
-    assert state.status_code == 200
-    assert state.json() == {"session_id": "api_bot", "message_count": 4, "updated_at": 0, "outbox": "0@",  # Hermes' last_active
-                            "queue": NO_QUEUE}
-    hermes.messages[("", "api_bot")] += [{"role": "user", "content": "Et demain ?"},
-                                         {"role": "assistant", "content": "Grand soleil."}]
-    hermes.sessions[""]["api_bot"]["message_count"] = 6
-    seen = fetched()
-    assert wait_until(lambda: fetched() >= seen + 2, timeout=10)
-    time.sleep(0.5)
-    assert len(fakes.apns.pushes()) == 1
-
-
-def test_session_state_route(bridges, fakes):
-    bridge = bridges.new(change=lambda c: c["agents"].update(Panne={"hermes_url": fakes.down.url, "hermes_key": "p" * 32}))
-    bridge.start()
-    resp = bridge.get("/v1/sessions/api_bot/state?agent=wellness", headers=AUTH)
-    assert resp.status_code == 200 and resp.json() == {"session_id": "api_bot", "message_count": 7, "updated_at": None,
-                                                       "outbox": "0@", "queue": NO_QUEUE}  # the agent's Boîte: none yet
-    fakes.hermes.add_session("api_9", [{"role": "user", "content": "x"}], updated_at="2026-10-21T07:00:00Z")
-    assert bridge.get("/v1/sessions/api_9/state?agent=wellness", headers=AUTH).json() == {
-        "session_id": "api_9", "message_count": 1, "updated_at": "2026-10-21T07:00:00Z", "outbox": "0@", "queue": NO_QUEUE}
-    bad = bridge.get("/v1/sessions/bad%20id/state?agent=wellness", headers=AUTH)
-    assert bad.status_code == 400 and bad.json() == {"detail": "invalid session_id"}
-    assert bridge.get("/v1/sessions/api_bot/state?agent=ghost", headers=AUTH).status_code == 404
-    assert bridge.get("/v1/sessions/api_bot/state", headers=AUTH).status_code == 422
-    down = bridge.get("/v1/sessions/api_bot/state?agent=panne", headers=AUTH)
-    assert down.status_code == 502 and down.json() == {"detail": "your agent isn't answering right now: try again in a moment"}
-    fakes.hermes.keys[""] = "another-key"
-    refused = bridge.get("/v1/sessions/api_bot/state?agent=wellness", headers=AUTH)
-    assert refused.status_code == 401 and refused.json() == {"detail": "Hermes refused"}
-
-    def broken(seen):
-        from starlette.responses import JSONResponse
-        return JSONResponse({"error": "boom"}, status_code=500) if seen.path.startswith("/api/sessions/") else None
-
-    fakes.hermes.keys[""] = "hermes-wellness-key-xyz"
-    fakes.hermes.override = broken
-    failing = bridge.get("/v1/sessions/api_bot/state?agent=wellness", headers=AUTH)
-    assert failing.status_code == 502 and failing.json() == {"detail": "Hermes refused"}
+    # The conversation open on the phone (its event stream): the next turn is not pushed.
+    with on_screen(bridge):
+        hermes.messages[("", "api_bot")] += [{"role": "user", "content": "Et demain ?"},
+                                             {"role": "assistant", "content": "Grand soleil."}]
+        hermes.sessions[""]["api_bot"]["message_count"] = 6
+        seen = fetched()
+        assert wait_until(lambda: fetched() >= seen + 2, timeout=10)
+        time.sleep(0.5)
+        assert len(fakes.apns.pushes()) == 1
 
 
 @pytest.mark.slow

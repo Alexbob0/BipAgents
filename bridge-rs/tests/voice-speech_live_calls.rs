@@ -1,5 +1,5 @@
 //! A Live call lands in the conversation it continued, by the bridge (live_calls.rs): at the hang-up, after its last
-//! turn ends in the background, or when the app never said (nothing for IDLE_SECONDS); older apps keep their own way.
+//! turn ends in the background, or when the app never said (nothing for IDLE_SECONDS).
 
 mod common;
 
@@ -32,6 +32,7 @@ async fn handle(State(fake): State<Fake>, request: Request) -> Response {
     let parts: Vec<&str> = path.split('/').collect();
     let h = fake.lock().unwrap();
     match parts.as_slice() {
+        ["api", "sessions"] if request.method() == "POST" => Json(json!({"session": {"id": "live1"}})).into_response(), // the call's session
         ["api", "sessions", id] => match h.sessions.get(*id) {
             Some((row, _)) => Json(json!({"session": row})).into_response(),
             None => (StatusCode::NOT_FOUND, Json(json!({"error": "Session not found"}))).into_response(),
@@ -86,6 +87,11 @@ fn said() -> Vec<Value> {
     ]
 }
 
+/// What waits for the next message written in `session` (threads/send.rs takes it), the current time left out.
+async fn notes(app: &TestApp, session: &str) -> String {
+    common::without_now(&common::notes(app, "Wellness", session, "").await)
+}
+
 async fn records_of(app: &TestApp, session: &str) -> Vec<Value> {
     let (k, v) = auth();
     app.get(&format!("/v1/live/calls?agent=Wellness&session={session}"), &[(k, v.as_str())]).await.json()["calls"]
@@ -119,16 +125,13 @@ async fn a_hung_up_call_lands_in_its_conversation() {
             "POST",
             "/v1/live/calls/start",
             &a,
-            &json!({"agent": "Wellness", "session": "api_main", "live_session": "live1"}),
+            &json!({"agent": "Wellness", "session": "api_main"}),
         )
         .await;
-    assert_eq!(started.json(), json!({"ok": true, "deposit": true}));
+    assert_eq!(started.json(), json!({"ok": true, "live_session": "live1"}));
     let name = s.app.app.state.config().agent(Some("Wellness")).unwrap().name.clone();
     let calls = LiveCalls::of(&s.app.app.state.briefs);
     assert_eq!(calls.open_calls().len(), 1);
-    // no call yet: the conversation's state says nothing of calls (older apps see the same answer as before)
-    let state = s.app.get("/v1/sessions/api_main/state?agent=Wellness", &a).await.json();
-    assert!(state.get("calls").is_none(), "{state}");
 
     let ended = s
         .app
@@ -136,10 +139,10 @@ async fn a_hung_up_call_lands_in_its_conversation() {
             "POST",
             "/v1/live/calls",
             &a,
-            &json!({"agent": "Wellness", "session": "api_main", "live_session": "live1", "deposit": true}),
+            &json!({"agent": "Wellness", "session": "api_main", "live_session": "live1"}),
         )
         .await;
-    assert_eq!(ended.json(), json!({"ok": true, "deposit": true}));
+    assert_eq!(ended.json(), json!({"ok": true}));
     let records = wait_for(&s.app, "api_main", |r| !r.is_empty()).await;
     let record = &records[0];
     assert_eq!(record["id"], "live1");
@@ -153,48 +156,13 @@ async fn a_hung_up_call_lands_in_its_conversation() {
     assert_eq!(lines[1], json!({"role": "user", "text": "Fais-moi une fiche des boulangeries du quartier"}));
     assert!(record.get("recapped").is_none(), "bookkeeping not listed");
     assert!(calls.open_calls().is_empty());
-    // the conversation's state changes: the app on it reloads
-    let state = s.app.get("/v1/sessions/api_main/state?agent=Wellness", &a).await.json();
-    assert!(state["calls"].as_str().unwrap().starts_with("1@"), "{state}");
     // the agent gets the call with the next message written there, the page named
-    let taken = s
-        .app
-        .send_json("POST", "/v1/live/recaps/take", &a, &json!({"agent": "Wellness", "session": "api_main"}))
-        .await
-        .json();
-    let recap = common::without_now(taken["recap"].as_str().unwrap());
+    let recap = notes(&s.app, "api_main").await;
     assert!(recap.starts_with("<!--bip:call\nVoice call of "), "{recap}");
     assert!(recap.contains("The person: Fais-moi une fiche"));
     assert!(recap.contains("MEDIA:/bipagents/pages/boulangeries.html"));
     // and its next briefs know it
     assert_eq!(s.app.app.state.briefs.load(&name, "api_main")["calls"][0]["live_session"], "live1");
-}
-
-#[tokio::test]
-async fn an_older_app_keeps_its_own_way() {
-    let s = setup().await;
-    let now = time_time();
-    s.fake.lock().unwrap().sessions.insert("live1".into(), call(now - 100.0, now, said()));
-    let (k, v) = auth();
-    let a = [(k, v.as_str())];
-    let ended = s
-        .app
-        .send_json(
-            "POST",
-            "/v1/live/calls",
-            &a,
-            &json!({"agent": "Wellness", "session": "api_main", "live_session": "live1"}),
-        )
-        .await;
-    assert_eq!(ended.json(), json!({"ok": true})); // no `deposit`: the app keeps the recap (CallRecaps)
-    tokio::time::sleep(Duration::from_millis(300)).await;
-    assert!(records_of(&s.app, "api_main").await.is_empty());
-    let taken = s
-        .app
-        .send_json("POST", "/v1/live/recaps/take", &a, &json!({"agent": "Wellness", "session": "api_main"}))
-        .await
-        .json();
-    assert_eq!(common::without_now(taken["recap"].as_str().unwrap()), "", "no second recap from the bridge");
 }
 
 #[tokio::test]
@@ -278,24 +246,12 @@ async fn a_call_the_app_never_ended_lands_after_a_quiet_while() {
     assert_eq!(records[0]["ended_by"], "idle");
     assert_eq!(records[0]["seconds"], json!(340.0));
     // the app comes back and hangs up later: the same call, no second recap of what was given already
-    let (k, v) = auth();
-    let a = [(k, v.as_str())];
-    let first = s
-        .app
-        .send_json("POST", "/v1/live/recaps/take", &a, &json!({"agent": "Wellness", "session": "api_main"}))
-        .await
-        .json();
-    assert!(first["recap"].as_str().unwrap().contains("bip:call"));
+    assert!(notes(&s.app, "api_main").await.contains("bip:call"));
     let agent = s.app.app.state.config().agent(Some("Wellness")).unwrap().clone();
     bipbridge::live_calls::end_call(&s.app.app.state, Ending::hangup(agent, "api_main", "live1", None)).await.unwrap();
     assert_eq!(records_of(&s.app, "api_main").await.len(), 1);
-    let again = s
-        .app
-        .send_json("POST", "/v1/live/recaps/take", &a, &json!({"agent": "Wellness", "session": "api_main"}))
-        .await
-        .json();
     // nothing new said since: no second recap
-    let again = common::without_now(again["recap"].as_str().unwrap());
+    let again = notes(&s.app, "api_main").await;
     assert!(!again.contains("The person:"), "{again}");
 }
 
@@ -327,7 +283,7 @@ async fn the_routes_check_what_they_get() {
             "POST",
             "/v1/live/calls/start",
             &a,
-            &json!({"agent": "Wellness", "session": "", "live_session": "l"}),
+            &json!({"agent": "Wellness", "prelude": "x".repeat(40_001)}),
         )
         .await;
     assert_eq!(resp.status, 422);

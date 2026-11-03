@@ -1,13 +1,13 @@
 """The current time at the top of each turn (bridge-rs/src/dates/now.rs): ONE hidden line, computed when the turn goes,
-in the person's zone (the phone's, `/v1/time/device`), never in the system prompt. The apps get it first in
-`POST /v1/live/recaps/take` and put it before the message; a Live call's brief starts with it; the bridge's own turns
+in the person's zone (the phone's, `/v1/time/device`), never in the system prompt. The send route puts it
+first in the person's message (threads/send.rs); a Live call's brief starts with it; the bridge's own turns
 (a watcher waking its agent here) carry it. The apps hide every `<!--bip:…-->` note, so does the search."""
 import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from bbkit.common import AUTH
-from bbkit.fakes import split_brief_now, split_now
+from bbkit.fakes import split_brief_now, split_now, taken_notes
 from conftest import managed_install, profile
 from test_message_search import store
 from test_watchers import check, setup, turns
@@ -31,14 +31,12 @@ def assert_now_in(line, zone):
 
 def test_an_app_message_and_a_call_get_the_time_in_the_person_s_zone(bridge):
     assert bridge.put("/v1/time/device", headers=AUTH, json={"time_zone": "Asia/Tokyo"}).status_code == 200
-    recap = bridge.post("/v1/live/recaps/take", headers=AUTH, json={"agent": "wellness", "session": "s1"}).json()["recap"]
-    now, rest = split_now(recap)
+    now, rest = split_now(taken_notes(bridge))
     assert_now_in(now, "Asia/Tokyo")
     assert rest == ""   # nothing else waited
     # the person flies to New York: the next message has New York's time
     bridge.put("/v1/time/device", headers=AUTH, json={"time_zone": "America/New_York"})
-    recap = bridge.post("/v1/live/recaps/take", headers=AUTH, json={"agent": "wellness", "session": "s1"}).json()["recap"]
-    assert_now_in(split_now(recap)[0], "America/New_York")
+    assert_now_in(split_now(taken_notes(bridge))[0], "America/New_York")
     brief = bridge.get("/v1/live/brief", params={"agent": "wellness"}, headers=AUTH).json()
     assert_now_in(split_brief_now(brief["text"])[0], "America/New_York")
 

@@ -12,7 +12,7 @@ import time
 
 import pytest
 
-from bbkit.common import AUTH, read_sse, sse, in_session
+from bbkit.common import AUTH, on_screen, read_sse, sse, in_session
 from bbkit.mcp import call, give_token, rpc, text_of
 from bbkit.servers import wait_until
 
@@ -451,8 +451,7 @@ def test_a_task_whose_conversation_is_gone_is_told_by_the_template(bridges, fake
 @pytest.mark.slow
 def test_a_hand_back_while_the_bot_chat_is_on_screen_is_not_pushed(bridges, fakes):
     """2026-10-26: Alex had his Bot Chat open (it shows every Boîte message) when a task's result came: it was pushed,
-    and showed only once he tapped the notification. Now the open conversation's state changes (`outbox`), so the app
-    shows it, and no push comes for what is on screen."""
+    and showed only once he tapped the notification. Now no push comes for what is on screen (its event stream open)."""
     bridge = with_device(bridges, {})
     give_token(bridge)
     hermes = fakes.hermes
@@ -468,18 +467,12 @@ def test_a_hand_back_while_the_bot_chat_is_on_screen_is_not_pushed(bridges, fake
     assert not call(bridge, "start_task", {"title": "Veste en laine", "instructions": ASKED})["isError"]
     hermes.run_outputs = {"r1": REPORT, "r2": MESSAGE}
 
-    def state():
-        return bridge.get("/v1/sessions/api_bot/state", headers=AUTH, params={"agent": "wellness"}).json()
-
-    before = state()["outbox"]
-    gate.set()
-
     def handed():
-        state()   # the Bot Chat on screen, as the app polls it
         return [i for i in bridge.get("/v1/outbox", headers=AUTH).json()["items"] if i["session_id"] == "api_c"]
 
-    assert wait_until(handed, timeout=40)
-    assert state()["outbox"] != before
-    item = handed()[0]
-    time.sleep(1.0)
-    assert not [p for p in fakes.apns.payloads() if p.get("outbox_id") == item["id"]]
+    with on_screen(bridge):   # the Bot Chat on screen
+        gate.set()
+        assert wait_until(handed, timeout=40)
+        item = handed()[0]
+        time.sleep(1.0)
+        assert not [p for p in fakes.apns.payloads() if p.get("outbox_id") == item["id"]]

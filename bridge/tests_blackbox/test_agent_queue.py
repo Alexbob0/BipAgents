@@ -79,9 +79,11 @@ def test_a_message_for_after_waits_for_the_turn_then_starts(bridges, fakes):
     assert item["session_id"] == SESSION and item["late"] is False and item["id"].startswith("q")
     time.sleep(1.5)
     assert started_inputs(fakes) == ["Compare trois écoles"], "nothing starts while the turn goes on"
-    # every device reads the same list with the conversation's state
-    state = bridge.get(f"/v1/sessions/{SESSION}/state?agent=wellness", headers=AUTH).json()
-    assert texts(state["queue"]) == ["Ensuite range le Carnet"] and state["queue"]["version"] == snapshot["version"]
+    # every device reads the same list with the conversation's timeline
+    thread = bridge.get("/v1/threads/resolve", headers=AUTH, params={"agent": "wellness", "session_id": SESSION}).json()
+    page = bridge.get(f"/v1/threads/{thread['thread']['id']}/timeline", headers=AUTH, params={"agent": "wellness"}).json()
+    assert texts(page["pending"]["queue"]) == ["Ensuite range le Carnet"]
+    assert page["pending"]["queue"]["version"] == snapshot["version"]
     gate.set()
     assert wait_until(lambda: len(fakes.hermes.started) == 2, timeout=15)
     second = fakes.hermes.started["r2"]
