@@ -1,8 +1,8 @@
 """An agent's waiting messages (bridge-rs/src/msg_queue.rs, 2026-11-02), through the one sending route
 (`POST /v1/threads/{id}/messages`, threads/send.rs): words steered into the turn going on (Hermes'
 `POST /v1/runs/{id}/steer`), « Après » kept by the bridge per agent and started as the next turns one after another,
-reordered, cancelled, sent now, paused and resumed; the same list for every device (`session_state`, the queue's own
-event stream), kept across a restart; « reply ready » pushed once, at the end of the queue."""
+reordered, cancelled, sent now, paused and resumed; the same list for every device (the timeline's `pending.queue`, the queue's
+own event stream), kept across a restart; « reply ready » pushed once, at the end of the queue."""
 import json
 import threading
 import time

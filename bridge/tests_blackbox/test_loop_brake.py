@@ -354,11 +354,24 @@ def test_the_audio_made_in_a_turn_is_handed_over_by_its_reply(bridges, fakes):
     events = follow_relay(bridge, "r1")
     end = events[-1][1]
     assert events[-1][0] == "run.completed"
-    # the stale line replaced by today's file, in the end's output and on the screen (a last delta)
-    assert end["output"] == f"🎙️ Ton podcast du jour est prêt.\nMEDIA:{path}" and end["bip_media_fixed"] is True
+    # today's file the end's attachment, the stale line marked, the model's words untouched (2026-11-03)
+    assert end["output"] == reply and [a["path"] for a in end["attachments"]] == [path] and end["stale"] == [stale]
     said = "".join(d.get("delta", "") for n, d in events if n == "message.delta")
-    assert said.endswith(f"\n\nMEDIA:{path}")
-    assert bridge.logged("files made in the turn: their MEDIA lines handed over")
+    assert said == reply
+    assert bridge.logged("files of the turn handed over as attachments")
+    # Hermes keeps the reply as the model wrote it: the timeline still shows today's file and not yesterday's, the
+    # stored message's attachments (structured, 2026-11-03), at every read
+    fakes.hermes.add_session("api_c", [{"role": "user", "content": "C'est quand l'anniversaire de Julie ?"},
+                                       {"role": "assistant", "content": reply}], title="Julie")
+    thread = bridge.get("/v1/threads/resolve", headers=AUTH, params={"agent": "wellness", "session_id": "api_c"}).json()
+
+    def files():
+        page = bridge.get(f"/v1/threads/{thread['thread']['id']}/timeline", headers=AUTH,
+                          params={"agent": "wellness"}).json()
+        said = [i for i in page["items"] if i["kind"] == "message" and i["role"] == "agent"]
+        return [a["path"] for a in said[-1].get("attachments", [])] if said else []
+
+    assert wait_until(lambda: files() == [path], timeout=20), files()
 
 
 def test_a_reply_that_already_hands_the_file_over_is_left_alone(bridges, fakes):
@@ -374,11 +387,11 @@ def test_a_reply_that_already_hands_the_file_over_is_left_alone(bridges, fakes):
                                 sse("run.completed", run_id="r1", output=said["reply"])]
     gate.set()
     events = follow_relay(bridge, "r1")
-    assert events[-1][1]["output"] == said["reply"] and "bip_media_fixed" not in events[-1][1]
+    assert events[-1][1]["output"] == said["reply"] and "attachments" not in events[-1][1]
     # and a turn that made nothing: an older audio the person asked for again stays
     old = "/bipagents/audio/wellness/20261020-080000-ancien.m4a"
     fakes.hermes.runs["r2"] = [sse("message.delta", run_id="r2", delta=f"Le revoici.\nMEDIA:{old}"),
                                sse("run.completed", run_id="r2", output=f"Le revoici.\nMEDIA:{old}")]
     assert start(bridge) == "r2"
     events = follow_relay(bridge, "r2")
-    assert events[-1][1]["output"] == f"Le revoici.\nMEDIA:{old}" and "bip_media_fixed" not in events[-1][1]
+    assert events[-1][1]["output"] == f"Le revoici.\nMEDIA:{old}" and "attachments" not in events[-1][1]

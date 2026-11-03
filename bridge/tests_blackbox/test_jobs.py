@@ -20,6 +20,14 @@ TASK = {"title": "Écoles du quartier", "prompt": "Compare les trois écoles pr�
 NOW = "2026-10-21T08:00:00.000Z"
 
 
+
+def words(text):
+    """A task run's words without its rules' note (every run of a task carries it in its message, not as run
+    instructions: background_turn.rs)."""
+    head, rules = text.split("\n\n<!--bip:task-rules\n", 1)
+    assert rules.endswith("\n-->")
+    return head
+
 def with_device(bridges):
     bridge = bridges.new()
     bridge.seed_db([("INSERT INTO devices (token, environment, agent_ids, created_at, updated_at) VALUES (?,?,?,?,?)",
@@ -51,12 +59,15 @@ def test_a_task_runs_in_its_own_conversation_and_ends_with_its_report(bridges, f
     assert fakes.hermes.created == [("", {"title": "🧩 Écoles du quartier"})]
     run = fakes.hermes.seen("/v1/runs", "POST")[0].json()
     now, words = split_now(run["input"])
-    assert run["session_id"] == "api_s1" and now and words == "Écoles du quartier\n\nCompare les trois écoles près de chez nous."
+    assert run["session_id"] == "api_s1" and now
+    assert words.startswith("Écoles du quartier\n\nCompare les trois écoles près de chez nous.\n\n<!--bip:task-rules\n")
     assert "model_options" not in run   # the agent's own thinking level (GLM through EUrouter: « medium », agents_admin)
+    # the rules in the turn's message, never as run instructions: the system prompt (and its prompt cache) stays the
+    # conversations' (background_turn.rs, cache audit #2)
+    assert "instructions" not in run
     # the app's part by its English name: English agents repeated « Tâches de fond » to their person (names.rs)
-    assert run["instructions"].startswith(
-        "This is a background task the person gave you from the app (« Background tasks »)")
-    assert "Tâches de fond" not in run["instructions"]
+    assert "This is a background task the person gave you from the app (« Background tasks »)" in words
+    assert "Tâches de fond" not in words
     stored = bridge.state_dir / "jobs" / f"{job['id']}.json"
     assert oct(os.stat(stored).st_mode & 0o777) == "0o600" and json.loads(stored.read_text())["run_id"] == "r1"
     twice = bridge.post("/v1/agents/wellness/jobs", headers=AUTH, json=TASK)
@@ -91,8 +102,8 @@ def test_a_task_stops_at_its_budget_and_goes_on_with_a_bigger_one(bridges, fakes
     french_place(bridge)   # the instructions and the push in French
     fakes.hermes.rounds, fakes.hermes.step = 50, 60_000
     job = bridge.post("/v1/agents/wellness/jobs", headers=AUTH, json={**TASK, "max_tokens": 100_000}).json()
-    assert fakes.hermes.started["r1"]["instructions"].startswith(
-        "This is a background task the person gave you from the app (« Tâches de fond »)")
+    assert "This is a background task the person gave you from the app (« Tâches de fond »)" in \
+        fakes.hermes.started["r1"]["input"]
     assert wait_until(lambda: view(bridge, job["id"])["state"] == "paused", timeout=45)
     paused = view(bridge, job["id"])
     assert paused["reason"] == "budget" and fakes.hermes.seen("/v1/runs/r1/stop", "POST")
@@ -105,7 +116,7 @@ def test_a_task_stops_at_its_budget_and_goes_on_with_a_bigger_one(bridges, fakes
     resumed = bridge.post(f"/v1/jobs/{job['id']}/resume", headers=AUTH,
                           json={"max_tokens": 5_000_000, "message": "Continue, et termine par ton rapport."}).json()
     assert resumed["state"] == "running" and resumed["runs"] == 2 and resumed["max_tokens"] == 5_000_000
-    assert fakes.hermes.started["r2"]["input"] == "Continue, et termine par ton rapport."
+    assert words(fakes.hermes.started["r2"]["input"]) == "Continue, et termine par ton rapport."
     assert len(fakes.hermes.created) == 1                      # the same conversation
     gone = bridge.delete(f"/v1/jobs/{job['id']}", headers=AUTH)
     assert gone.json() == {"ok": True} and fakes.hermes.started["r2"]["status"] == "cancelled"
@@ -122,7 +133,8 @@ def test_the_person_pauses_resumes_and_forgets_a_task(bridges, fakes):
     assert wait_until(lambda: view(bridge, job["id"])["state"] == "paused", timeout=25)
     assert view(bridge, job["id"])["reason"] == "stopped"
     assert bridge.post(f"/v1/jobs/{job['id']}/resume", headers=AUTH).json()["state"] == "running"
-    assert fakes.hermes.started["r2"]["input"] == "Continue the task where you stopped (don't start again), then end with your report."
+    assert words(fakes.hermes.started["r2"]["input"]) == \
+        "Continue the task where you stopped (don't start again), then end with your report."
     assert bridge.delete(f"/v1/jobs/{job['id']}", headers=AUTH).json() == {"ok": True}
     assert not (bridge.state_dir / "jobs" / f"{job['id']}.json").exists()
     assert fakes.hermes.started["r2"]["status"] == "cancelled"

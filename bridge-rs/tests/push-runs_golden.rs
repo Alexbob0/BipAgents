@@ -40,20 +40,7 @@ fn run(name: &str, a: &[Value]) -> Value {
             json!([text, paths])
         }
         "is_cron_session" => json!(cronwatch::is_cron_session(&dict(&a[0]))),
-        "session_started" => match cronwatch::session_started(&dict(&a[0])) {
-            Some(dt) => {
-                let text = dt.format("%Y-%m-%dT%H:%M:%S").to_string();
-                let micros = dt.and_utc().timestamp_subsec_micros();
-                if micros > 0 {
-                    json!(format!("{text}.{micros:06}"))
-                } else {
-                    json!(text)
-                }
-            }
-            None => Value::Null,
-        },
         "job_id" => json!(cronwatch::job_id(a[0].as_str().unwrap())),
-        "job_name" => json!(cronwatch::job_name(opt(&a[0]))),
         "final_reply" => json!(cronwatch::final_reply(&dicts(&a[0]))),
         "subtask_report" => json!(cronwatch::subtask_report(&dicts(&a[0]))),
         "answers_another_agent" => json!(cronwatch::answers_another_agent(&dicts(&a[0]))),

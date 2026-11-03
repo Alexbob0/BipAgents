@@ -16,7 +16,7 @@ use axum::extract::{Path, Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, post, put};
+use axum::routing::{delete, get, post};
 use axum::Router;
 use futures::StreamExt;
 use regex::Regex;
@@ -144,10 +144,11 @@ impl Services {
         ));
         let hermes = HermesClient::new(http.clone());
         let briefs = Arc::new(Briefs::new(&py::join(&data_dir, "briefs"), hermes.clone(), shared.clone()));
-        let routines_store = store.clone();
+        // when each routine last ran (sleep.rs: a place with routines stays up)
+        let routines_config = shared.clone();
         let routines: crate::sleep::Routines = Arc::new(move || {
-            let store = routines_store.clone();
-            Box::pin(async move { routines(&store).await })
+            let config = routines_config.get();
+            Box::pin(async move { crate::routines::last_runs(&config) })
         });
         let (up_config, up_hermes) = (shared.clone(), hermes.clone());
         let hermes_up: crate::sleep::HermesUp = Arc::new(move || {
@@ -281,14 +282,6 @@ impl Services {
     }
 }
 
-/// When each scheduled task last ran (sleep.py: a place with routines stays up).
-async fn routines(store: &Store) -> Vec<String> {
-    match store.cron_jobs(None).await {
-        Ok(rows) => rows.iter().filter(|r| py::truthy(&r["last_seen"])).map(|r| py::py_str(&r["last_seen"])).collect(),
-        Err(_) => Vec::new(),
-    }
-}
-
 async fn hermes_up(config: &Config, hermes: &HermesClient) -> bool {
     match config.agents.values().next() {
         None => true,
@@ -313,18 +306,16 @@ impl AppState {
             }
         }
         if config.cron_watch {
-            let mut watcher = CronWatcher::new(
+            // the agents' turns no run of ours carries: Bot Chat replies, sub-agents' reports (cronwatch.rs)
+            let watcher = CronWatcher::new(
                 self.config.clone(),
                 self.hermes.clone(),
                 self.outbox.clone(),
                 config.cron_interval_seconds,
-                config.cron_window_hours,
-                Some(self.store.clone()),
                 Some(self.hub.clone()),
                 Some(self.push.clone()),
                 Some(self.presence.clone()),
             );
-            watcher.briefs = Some(self.briefs.clone());
             self.spawn(Arc::new(watcher).run());
         }
         self.spawn(purge_loop(self.clone()));
@@ -340,6 +331,7 @@ impl AppState {
         self.spawn(crate::connections::run_forever(self.clone())); // renews the services' access tokens
         self.spawn(crate::connectors_run::scheduler(self.clone())); // the connectors' mechanical schedules
         self.spawn(crate::watchers::scheduler(self.clone())); // the watchers: checks with no model call
+        self.spawn(crate::routines::scheduler(self.clone())); // routines on a clock (Hermes' cron runs none)
         self.spawn(crate::triggers::scheduler(self.clone())); // routines started by an e-mail or a link
         self.spawn(crate::triggers_mail::supervisor(self.clone())); // their mailboxes, by IMAP IDLE
         self.spawn(crate::archives::scheduler(self.config.clone()));
@@ -466,13 +458,6 @@ async fn purge_loop(state: AppState) {
 // -- request models ----------------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
-pub struct CronJobPrefs {
-    #[serde(deserialize_with = "web::lax::bool")]
-    pub notify: bool,
-}
-impl Validate for CronJobPrefs {}
-
-#[derive(Debug, Deserialize)]
 pub struct TtsRequest {
     pub text: String,
     #[serde(default)]
@@ -589,6 +574,8 @@ fn outbox_item(row: &Row, state: &AppState) -> Value {
         "id": get("id"), "agent": get("agent"), "title": get("title"), "text": get("text"),
         "created_at": get("created_at"), "sent_at": get("sent_at"), "session_id": get("session_id"),
         "has_audio": has_audio, "audio_url": format!("/v1/outbox/{id}/audio"),
+        "attachments": row.get("attachments").and_then(Value::as_str).and_then(|a| serde_json::from_str::<Value>(a).ok())
+            .unwrap_or(json!([])),
     })
 }
 
@@ -1063,29 +1050,6 @@ async fn pairing(State(state): State<AppState>) -> ApiResult<Response> {
     Ok(web::ok(json!({"lan": lan_info(&state.config())})))
 }
 
-/// Scheduled tasks seen by the cron watcher, with whether their replies are pushed.
-async fn cron_jobs(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
-    let config = state.config();
-    let name = match q.get("agent").filter(|a| !a.is_empty()) {
-        Some(a) => Some(agent_or_404(&config, Some(a))?.name),
-        None => None,
-    };
-    let jobs = state.store.cron_jobs(name.as_deref()).await?;
-    Ok(web::ok(json!({"jobs": jobs})))
-}
-
-async fn set_cron_job(
-    State(state): State<AppState>,
-    Path((agent, job)): Path<(String, String)>,
-    Json(body): Json<CronJobPrefs>,
-) -> ApiResult<Response> {
-    let name = agent_or_404(&state.config(), Some(&agent))?.name;
-    if !state.store.set_cron_notify(&name, &job, body.notify).await? {
-        return Err(HttpError::new(404, "unknown job"));
-    }
-    Ok(web::ok(json!({"agent": name, "job": job, "notify": body.notify})))
-}
-
 async fn watch_run(State(state): State<AppState>, Json(body): Json<WatchRequest>) -> ApiResult<Response> {
     let agent = agent_or_404(&state.config(), Some(&body.agent))?;
     let run_id = check_run_id(&body.run_id)?;
@@ -1361,8 +1325,6 @@ pub fn build_router() -> Router<AppState> {
         .route("/pages/{page}", delete(delete_page))
         .route("/status", get(status))
         .route("/pairing", get(pairing))
-        .route("/cron-jobs", get(cron_jobs))
-        .route("/cron-jobs/{agent}/{job}", put(set_cron_job))
         .route("/watch", post(watch_run))
         .route("/runs/{run_id}/events", get(run_events))
         .route("/approve", post(approve))
@@ -1735,6 +1697,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::templates::router())
         .merge(crate::autonomous::router())
         .merge(crate::triggers::router())
+        .merge(crate::routines::router())
         .merge(crate::handover::app_router())
         .merge(crate::link_wallet::app_router())
         .merge(crate::place_backup::router())

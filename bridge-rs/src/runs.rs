@@ -1127,10 +1127,8 @@ impl RunHub {
                                     self.rescue(sub, &event).await;
                                     // a turn the brake stopped: its rescue turn's end instead (loop_rescue)
                                     let event = self.loop_rescue(sub, event).await;
-                                    // the audio made in the turn handed over whatever the model wrote
-                                    let event = self.hand_over_files(sub, event);
-                                    // and the files its reply only cites, from the agent's own folders
-                                    self.hand_over_cited(sub, event).await
+                                    // what the turn made and the files its reply cites, as attachments
+                                    self.hand_over(sub, event).await
                                 } else {
                                     event
                                 };
@@ -1258,8 +1256,12 @@ impl RunHub {
                 st.output = output.clone();
             }
             Self::forget_pending(&mut inner, &sub.agent.name, &sub.run_id, None);
+            // the files it hands the person kept (sent_files.rs): its lines and its attachments
+            let handed: String = event.data.get("attachments").and_then(Value::as_array).into_iter().flatten()
+                .filter_map(|a| a["path"].as_str()).map(|p| format!("\nMEDIA:{p}")).collect();
+            let shown = output.clone().map(|o| o + &handed);
             if let (Some(shared), Some(text)) =
-                (self.config.clone(), output.clone().filter(|o| kind == "run.completed" && o.contains("MEDIA:")))
+                (self.config.clone(), shown.filter(|o| kind == "run.completed" && o.contains("MEDIA:")))
             {
                 let agent = sub.agent.clone();
                 self.spawn(async move {
@@ -1595,11 +1597,11 @@ impl RunHub {
         }
     }
 
-    /// The files the bridge made in this turn (made_files.rs: audio, pages, maps; its rescue turn's too) handed over by
-    /// its reply (2026-10-28, aibox: a podcast made, yesterday's path in the reply): the end's `output` gets the
-    /// `MEDIA:` line it lacks, or the new file instead of a stale one of its kind (`bip_media_fixed`), and the streamed
-    /// text, which the apps show live, a last delta with the line of each such file it doesn't carry.
-    fn hand_over_files(&self, sub: &Arc<RunSubscription>, event: SSEEvent) -> SSEEvent {
+    /// What the turn made (made_files.rs: audio, pages, maps) and the files its reply only cites from the agent's own
+    /// folders (cited_files.rs), handed over as the end's `attachments` (structured items; `stale`: the `MEDIA:` lines
+    /// of older files the model wrote from memory) and kept on the stored message (threads.rs `attach_with`): the model's
+    /// words are never rewritten for files (2026-11-03). The vault's chips and a rename still join its words (marks).
+    async fn hand_over(&self, sub: &Arc<RunSubscription>, event: SSEEvent) -> SSEEvent {
         if event.r#type != "run.completed" {
             return event;
         }
@@ -1611,83 +1613,75 @@ impl RunHub {
             made.extend(crate::made_files::MADE.in_run(agent, &other));
             listed.extend(crate::vault_contacts::listed_in_run(agent, &other));
         }
-        if made.is_empty() && listed.is_empty() {
-            return event;
-        }
         let said: String =
             lock(&sub.state).backlog.iter().filter(|e| is_delta(&e.r#type)).map(|e| e.text()).collect();
-        let output = as_str(event.data.get("output")).filter(|o| !o.trim().is_empty());
-        made.extend(crate::vault_contacts::used_marks(output.as_deref().unwrap_or(&said), &listed));
-        if made.is_empty() {
-            return event;
-        }
-        let Some(fixed) = crate::made_files::fix_reply(output.as_deref().unwrap_or(&said), agent, &made) else {
-            return event;
-        };
-        tracing::info!(agent = %agent, run_id = %sub.run_id, files = made.len(),
-            "files made in the turn: their MEDIA lines handed over");
-        let unseen: Vec<&String> =
-            made.iter().filter(|path| fixed.contains(path.as_str()) && !said.contains(path.as_str())).collect();
-        self.with_media_lines(sub, event, &said, fixed, &unseen, "bip_media_fixed")
-    }
-
-    /// The end's `output` replaced by `fixed` (flagged `flag`), and, when text was streamed, a last delta with the
-    /// `MEDIA:` line of each of `unseen` for the screen.
-    fn with_media_lines(
-        &self,
-        sub: &Arc<RunSubscription>,
-        event: SSEEvent,
-        said: &str,
-        fixed: String,
-        unseen: &[&String],
-        flag: &str,
-    ) -> SSEEvent {
-        if !said.trim().is_empty() && !unseen.is_empty() {
-            let lines: String = unseen.iter().map(|path| format!("\n\n{}", crate::made_files::line_of(path))).collect();
-            let mut delta = Map::new();
-            delta.insert("event".into(), json!("message.delta"));
-            delta.insert("run_id".into(), event.data.get("run_id").cloned().unwrap_or_else(|| json!(sub.run_id)));
-            delta.insert("delta".into(), json!(lines));
-            delta.insert(flag.into(), json!(true));
-            let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(delta.clone()));
-            self.forward(sub, &SSEEvent::new("message.delta", delta, raw));
+        let written = as_str(event.data.get("output")).filter(|o| !o.trim().is_empty()).unwrap_or(said.clone());
+        made.extend(crate::vault_contacts::used_marks(&written, &listed));
+        let (marks, files): (Vec<String>, Vec<String>) = made.into_iter().partition(|m| crate::made_files::is_mark(m));
+        // files: the lines the old hand-over would have added or dropped, as items
+        let fixed = crate::made_files::fix_reply(&written, agent, &files).unwrap_or_else(|| written.clone());
+        let (_, before) = crate::media::extract_media(&written);
+        let (_, after) = crate::media::extract_media(&fixed);
+        let mut added: Vec<String> = after.iter().filter(|p| !before.contains(p)).cloned().collect();
+        let stale: Vec<String> = before.iter().filter(|p| !after.contains(p)).cloned().collect();
+        if let (Some(shared), true) = (self.config.clone(), crate::cited_files::may_cite(&written)) {
+            let (agent, text) = (sub.agent.clone(), written.clone());
+            let cited = tokio::task::spawn_blocking(move || {
+                let config = shared.get();
+                let agent = config.agent(Some(&agent.name)).cloned().unwrap_or(agent);
+                crate::cited_files::cited(&config, &agent, &text)
+            })
+            .await
+            .unwrap_or_default();
+            added.extend(cited.into_iter().filter(|p| !before.contains(p) && !after.contains(p)));
         }
         let mut data = event.data;
-        data.insert("output".into(), json!(fixed));
-        data.insert(flag.into(), json!(true));
+        let marked = crate::made_files::fix_reply(&written, agent, &marks);
+        if let Some(fixed) = &marked {
+            if !said.trim().is_empty() {
+                // the screen gets the marks it was not streamed
+                let lines: String = marks.iter().filter(|m| !said.contains(m.as_str())).map(|m| format!("\n\n{m}")).collect();
+                let delta = json!({"event": "message.delta", "run_id": data.get("run_id").cloned().unwrap_or(json!(sub.run_id)),
+                                   "delta": lines});
+                let raw = crate::py::Dumps::new().unicode().dumps(&delta);
+                self.forward(sub, &SSEEvent::new("message.delta", delta.as_object().cloned().unwrap_or_default(), raw));
+            }
+            data.insert("output".into(), json!(fixed));
+        }
+        if added.is_empty() && stale.is_empty() && marked.is_none() {
+            return SSEEvent::new(event.r#type, data, event.raw);
+        }
+        if !added.is_empty() || !stale.is_empty() {
+            tracing::info!(agent = %agent, run_id = %sub.run_id, files = added.len(), stale = stale.len(),
+                "files of the turn handed over as attachments");
+            let items: Vec<Value> = added.iter().map(|p| crate::threads::timeline::file_attachment(p, None)).collect();
+            data.insert("attachments".into(), json!(items));
+            data.insert("stale".into(), json!(stale));
+            self.attach_handed_over(sub, &written, added, stale);
+        }
         let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(data.clone()));
         SSEEvent::new(event.r#type, data, raw)
     }
 
-    /// The files the reply only cites (« c'est dans /envoi/notes.md »), when they are in the agent's own folders
-    /// (cited_files.rs), handed over with a `MEDIA:` line each at its end (`bip_files_cited`), so the apps show a
-    /// file card; the path's text stays as the agent wrote it.
-    async fn hand_over_cited(&self, sub: &Arc<RunSubscription>, event: SSEEvent) -> SSEEvent {
-        if event.r#type != "run.completed" {
-            return event;
-        }
-        let Some(shared) = self.config.clone() else { return event };
-        let said: String =
-            lock(&sub.state).backlog.iter().filter(|e| is_delta(&e.r#type)).map(|e| e.text()).collect();
-        let output = as_str(event.data.get("output")).filter(|o| !o.trim().is_empty());
-        let reply = output.unwrap_or_else(|| said.clone());
-        if !crate::cited_files::may_cite(&reply) {
-            return event;
-        }
-        let (agent, text) = (sub.agent.clone(), reply.clone());
-        let found = tokio::task::spawn_blocking(move || {
-            let config = shared.get();
-            let agent = config.agent(Some(&agent.name)).cloned().unwrap_or(agent);
-            crate::cited_files::cited(&config, &agent, &text)
-        })
-        .await
-        .unwrap_or_default();
-        if found.is_empty() {
-            return event;
-        }
-        let fixed = crate::cited_files::with_cards(&reply, &found);
-        let unseen: Vec<&String> = found.iter().collect();
-        self.with_media_lines(sub, event, &said, fixed, &unseen, "bip_files_cited")
+    /// The files handed over, kept on the stored message as its attachments (threads.rs `attach_with`): the timeline
+    /// shows them at every read.
+    fn attach_handed_over(&self, sub: &Arc<RunSubscription>, written: &str, added: Vec<String>, stale: Vec<String>) {
+        let (Some(threads), Some(session)) = (crate::threads::upgrade(&self.threads), lock(&sub.state).session_id.clone())
+        else {
+            return;
+        };
+        let (agent, written, wait) = (sub.agent.clone(), written.to_string(), self.message_wait());
+        self.spawn(async move {
+            match threads.find_message(&agent, &session, Some(&written), wait).await {
+                Some((thread, message)) => threads.attach_with(&agent, &thread, &message, &added, &stale).await,
+                None => tracing::warn!(agent = %agent.name, session = %session,
+                    "handed-over files not attached: the reply's message not found"),
+            }
+        });
+    }
+
+    fn message_wait(&self) -> f64 {
+        self.config.as_ref().map(|c| c.get().push_message_wait_seconds).unwrap_or(10.0)
     }
 
     /// An event shown in this run's stream as it is (the rescue turn's, the bridge's word), without this run's own
@@ -2444,29 +2438,28 @@ mod tests {
         crate::made_files::MADE.note("podcaster", today, Some("run_missing"), 1.0);
         crate::made_files::MADE.note("podcaster", today, Some("run_stale"), 1.0);
         crate::made_files::MADE.note("podcaster", today, Some("run_right"), 1.0);
-        // missing: added to the end's output, and a last delta for the screen
+        let files = |end: &SSEEvent| -> Vec<String> {
+            end.data.get("attachments").and_then(Value::as_array).into_iter().flatten()
+                .filter_map(|a| a["path"].as_str().map(str::to_string)).collect()
+        };
+        // missing: the end's attachment (2026-11-03: the model's words untouched, no line added)
         let sub = turn("run_missing", "Ton podcast est prêt.");
-        let end = hub.hand_over_files(&sub, ended("Ton podcast est prêt."));
-        assert_eq!(end.data["output"], json!(format!("Ton podcast est prêt.\nMEDIA:{today}")));
-        assert_eq!(deltas(&sub), format!("Ton podcast est prêt.\n\nMEDIA:{today}"), "the screen gets the line too");
-        // stale: replaced by today's
+        let end = hub.hand_over(&sub, ended("Ton podcast est prêt.")).await;
+        assert_eq!(end.data["output"], json!("Ton podcast est prêt."));
+        assert_eq!(files(&end), [today]);
+        assert_eq!(deltas(&sub), "Ton podcast est prêt.", "nothing added to the screen's words");
+        // stale: today's as the attachment, yesterday's line marked stale
         let stale = format!("Podcast du jour.\nMEDIA:{yesterday}");
         let sub = turn("run_stale", &stale);
-        let end = hub.hand_over_files(&sub, ended(&stale));
-        assert_eq!(end.data["output"], json!(format!("Podcast du jour.\nMEDIA:{today}")));
-        assert_eq!(end.data["bip_media_fixed"], json!(true));
-        // right: untouched
-        let right = format!("Podcast du jour.\nMEDIA:{today}");
-        let sub = turn("run_right", &right);
-        let end = hub.hand_over_files(&sub, ended(&right));
-        assert_eq!(end.data["output"], json!(right));
-        assert!(!end.data.contains_key("bip_media_fixed") && deltas(&sub) == right);
-        // nothing made in the turn (yesterday's asked again): untouched
-        let again = format!("Le voici.\nMEDIA:{yesterday}");
-        let sub = turn("run_nothing", &again);
-        let end = hub.hand_over_files(&sub, ended(&again));
-        assert_eq!(end.data["output"], json!(again));
-        assert!(!end.data.contains_key("bip_media_fixed"));
+        let end = hub.hand_over(&sub, ended(&stale)).await;
+        assert_eq!((files(&end), end.data["stale"].clone()), (vec![today.to_string()], json!([yesterday])));
+        // right, and nothing made in the turn (yesterday's asked again): untouched
+        for (run, text) in [("run_right", format!("Podcast du jour.\nMEDIA:{today}")), ("run_nothing", format!("Le voici.\nMEDIA:{yesterday}"))] {
+            let sub = turn(run, &text);
+            let end = hub.hand_over(&sub, ended(&text)).await;
+            assert_eq!(end.data["output"], json!(text));
+            assert!(!end.data.contains_key("attachments") && !end.data.contains_key("stale"));
+        }
     }
 
     #[test]

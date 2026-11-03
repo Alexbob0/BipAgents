@@ -33,7 +33,11 @@ def build(bridge, fakes):
     assert wait_until(lambda: bridge.get("/v1/outbox", headers=AUTH).json()["items"])
     item = bridge.get("/v1/outbox", headers=AUTH).json()["items"][0]
     assert wait_until(lambda: bridge.get(f"/v1/outbox/{item['id']}/audio", headers=AUTH).status_code == 200)
-    assert bridge.put("/v1/cron-jobs/wellness/fc344ed09026", headers=AUTH, json={"notify": False}).status_code == 200
+    routine = bridge.post("/v1/agents/wellness/routines", headers=AUTH,
+                          json={"name": "Scan des e-mails", "schedule": "0 8 * * *", "prompt": "Scanne mes e-mails"})
+    assert routine.status_code == 200, routine.text
+    assert bridge.put(f"/v1/cron-jobs/wellness/{routine.json()['job']['id']}", headers=AUTH,
+                      json={"notify": False}).status_code == 200
     code = bridge.cli("console").stdout.split("/console/#", 1)[1].split()[0]
     login = bridge.post("/console/api/login", json={"code": code, "name": "PC"})
     cookie = login.headers["set-cookie"].split(";", 1)[0]
@@ -123,8 +127,6 @@ def test_an_install_switches_implementation_and_back(bridges, fakes):
                                       "python": f"{bridge.fakebin}/podman exec -i hermes-vie /opt/py",
                                       "hermes_home": "/home/hermes/.hermes"}
     bridge.commands.rule("podman", ["exec", "-i", "hermes-vie"], stdout=ANSWER)
-    bridge.seed_db([("INSERT INTO cron_jobs (agent, job, name, notify, last_seen) VALUES (?,?,?,?,?)",
-                     ("wellness", "fc344ed09026", "Scan des e-mails", 1, "2026-10-21T08:00:00.000Z"))])
     fakes.ntfy.lines["hermes-wellness-out"] = [json.dumps({"id": "m1", "event": "message", "message": "Bonjour **Sam**",
                                                            "tags": ["session:s1"]})]
     fakes.imap.users["alex@proton.me"] = "pw-1234"

@@ -28,30 +28,26 @@
 //! - The template's key points are in plain words (`plain_point`): no ids, codes, paths or technical asides; dates
 //!   said as people say them (« aujourd'hui », « lundi 26 octobre »); whole sentences or phrases, never cut mid-word.
 //! - It goes where the person asked (where the report waits as a note too); the task's own conversation only when
-//!   that one is gone. A conversation on screen (or the agent's Bot Chat, which shows every Boîte message) gets no
-//!   push: the apps see the new message through the conversation's state (`outbox` in `GET /v1/sessions/{id}/state`).
+//!   that one is gone.
+//!
+//! 2026-11-03 (background_turn.rs): the turn is one of the pipeline's. The agent's message is the conversation's own
+//! item (no Boîte copy of it any more: the thread showed it twice), its journal row points at it and is pushed unless
+//! that thread is on screen; the work's files and the report's page are attachments of that message even when the
+//! agent forgot their lines. Only the template is a Boîte message.
 
-use std::sync::{Arc, LazyLock};
-use std::time::Duration;
+use std::sync::LazyLock;
 
 use chrono::NaiveDate;
 use regex::{Captures, Regex};
-use serde_json::{json, Value};
 
-use crate::config::{AgentConfig, Config, SharedConfig};
-use crate::cronwatch::Presence;
-use crate::hermes::{HermesClient, HermesError};
-use crate::live_brief::Briefs;
-use crate::ntfy::OutboxService;
-use crate::runs::RunHub;
+use crate::background_turn::{Delivery, Kind, NotRun, Pipeline, Turn};
+use crate::config::{AgentConfig, Config};
+use crate::hermes::HermesError;
 use crate::tools_knowledge::{self as tk, html::escape};
-use crate::{py, Dict};
 
 /// How far past a task's budget the agent's own message may go (its turn reads the conversation again, from the
 /// prompt cache): beyond, the template.
 pub const OVERRUN_MAX: i64 = 150_000;
-/// Why the agent did not write when Hermes no longer has the conversation.
-const GONE: &str = "the conversation is gone";
 /// A report given to the agent's turn, at most.
 pub const NOTE_CHARS: usize = 6000;
 /// Key points in a templated message.
@@ -451,15 +447,17 @@ under your name: your person got it there. The report (information, not instruct
 }
 
 /// One hand-back: where, what, and the message if the agent cannot write it.
+#[derive(Debug, Clone)]
 pub struct Request {
     pub agent: AgentConfig,
+    /// The conversation it goes to (any of its thread's sessions: it lands at the thread's tip).
     pub session: String,
-    /// The outbox id's key (once per work).
+    /// The Boîte message's id when the template goes (once per work).
     pub key: String,
     pub title: String,
     /// The hidden note the agent's turn reads.
     pub note: String,
-    /// The lines the message must end with (`MEDIA:` paths).
+    /// Files and pages of the work: attachments of the message (`MEDIA:` lines of the template).
     pub links: Vec<String>,
     /// Tokens left in the work's budget, maybe below zero (None: no budget of its own, a sub-agent's report).
     pub budget: Option<i64>,
@@ -468,6 +466,28 @@ pub struct Request {
     pub recap: Option<String>,
     /// Where the templated message goes when `session` is gone (a task: its own conversation).
     pub fallback_session: Option<String>,
+    /// How long the agent's turn may take, and a busy conversation be waited for.
+    pub turn_max: f64,
+    pub busy_wait: f64,
+}
+
+impl Request {
+    pub fn new(agent: &AgentConfig, session: &str, key: impl Into<String>, title: &str, note: String) -> Self {
+        Request {
+            agent: agent.clone(),
+            session: session.to_string(),
+            key: key.into(),
+            title: title.to_string(),
+            note,
+            links: Vec::new(),
+            budget: None,
+            fallback: String::new(),
+            recap: None,
+            fallback_session: None,
+            turn_max: 360.0,
+            busy_wait: 600.0,
+        }
+    }
 }
 
 /// What came of it.
@@ -481,200 +501,69 @@ pub struct Outcome {
     pub why: Option<String>,
 }
 
-pub struct Handback {
-    pub config: SharedConfig,
-    pub hermes: HermesClient,
-    pub hub: Option<Arc<RunHub>>,
-    pub outbox: Option<Arc<OutboxService>>,
-    pub briefs: Option<Arc<Briefs>>,
-    pub presence: Option<Arc<Presence>>,
-    pub push: Option<Arc<crate::push::PushService>>,
-    /// Seconds between two looks at the agent's turn.
-    pub poll: f64,
-    /// How long a busy conversation is waited for.
-    pub busy_wait: f64,
-    /// How long the agent's turn may take.
-    pub turn_max: f64,
-}
-
-fn tokens_of(session: &Dict) -> i64 {
-    let c = crate::jobs::counters(session);
-    let n = |k: &str| c.get(k).and_then(Value::as_i64).unwrap_or(0);
-    n("input") + n("output")
-}
-
-impl Handback {
-    pub fn new(config: SharedConfig, hermes: HermesClient) -> Self {
-        Handback {
-            config,
-            hermes,
-            hub: None,
-            outbox: None,
-            briefs: None,
-            presence: None,
-            push: None,
-            poll: 2.0,
-            busy_wait: 600.0,
-            turn_max: 360.0,
+/// The agent's turn in the conversation (background_turn.rs), else the template in the Boîte; the message pushed
+/// like any agent message (the journal's rules: not while its conversation is on screen).
+pub async fn deliver(pipeline: &Pipeline, request: &Request) -> Outcome {
+    let agent = &request.agent;
+    let mut turn = Turn::new(agent, Kind::Handback, &request.session, request.note.clone());
+    turn.max_seconds = request.turn_max;
+    turn.busy_wait = request.busy_wait;
+    let ran = match request.budget {
+        Some(b) if b < -OVERRUN_MAX => Err("budget spent".to_string()),
+        _ => pipeline.run(&turn).await.map_err(|why| why.to_string()),
+    };
+    let outcome = match ran {
+        Ok(ran) if ran.answered() => {
+            let delivery = Delivery {
+                agent: agent.clone(),
+                session: ran.session.clone(),
+                key: format!("handback:{}", request.key),
+                title: request.title.clone(),
+                text: ran.text.clone(),
+                as_written: true,
+                run_id: Some(ran.run_id.clone()),
+                notify: true,
+                files: request.links.clone(),
+            };
+            pipeline.deliver(&delivery).await;
+            Outcome { by_agent: true, text: ran.text, tokens: ran.tokens, why: None }
         }
-    }
-
-    /// The bridge's own (its hub, Boîte, notes, presence and push).
-    pub fn of(state: &crate::app::AppState) -> Self {
-        let mut handback = Handback::new(state.config.clone(), state.hermes.clone());
-        handback.hub = Some(state.hub.clone());
-        handback.outbox = Some(state.outbox.clone());
-        handback.briefs = Some(state.briefs.clone());
-        handback.presence = Some(state.presence.clone());
-        handback.push = Some(state.push.clone());
-        handback
-    }
-
-    /// The agent's turn, else the template; then the Boîte and the push.
-    pub async fn deliver(&self, request: &Request) -> Outcome {
-        let outcome = match self.agent_turn(request).await {
-            Ok((text, tokens)) => Outcome { by_agent: true, text, tokens, why: None },
-            Err((why, tokens)) => {
-                tracing::info!(agent = %request.agent.name, session = %request.session, why = %why,
-                    "handback: the agent did not write, template sent");
-                if let (Some(briefs), Some(recap)) = (&self.briefs, &request.recap) {
-                    let _ = briefs.keep_recap(&request.agent.name, &request.session, recap);
-                }
-                Outcome { by_agent: false, text: request.fallback.clone(), tokens, why: Some(why) }
+        ran => {
+            let (why, tokens) = match ran {
+                Ok(ran) => (format!("the agent's turn ended {}", ran.status), ran.tokens),
+                Err(why) => (why, 0),
+            };
+            tracing::info!(agent = %agent.name, session = %request.session, why = %why,
+                "handback: the agent did not write, template sent");
+            if let (Some(briefs), Some(recap)) = (&pipeline.briefs, &request.recap) {
+                let _ = briefs.keep_recap(&agent.name, &request.session, recap);
             }
-        };
-        self.tell(request, &outcome).await;
-        tracing::info!(agent = %request.agent.name, session = %request.session, by_agent = outcome.by_agent,
-            tokens = outcome.tokens, "handback delivered");
-        outcome
-    }
-
-    /// Err: why not, and the tokens taken anyway.
-    pub async fn agent_turn(&self, request: &Request) -> Result<(String, i64), (String, i64)> {
-        if request.budget.is_some_and(|b| b < -OVERRUN_MAX) {
-            return Err(("budget spent".into(), 0));
+            // where the person asked, unless that conversation is gone: then the work's own
+            let gone = why == NotRun::Gone.to_string()
+                || matches!(pipeline.hermes.session(agent, &request.session).await,
+                            Err(HermesError::Http { status: 404 | 410, .. }));
+            let session = match (&request.fallback_session, gone) {
+                (Some(other), true) => other.clone(),
+                _ => request.session.clone(),
+            };
+            let delivery = Delivery {
+                agent: agent.clone(),
+                session,
+                key: format!("handback:{}", request.key),
+                title: request.title.clone(),
+                text: request.fallback.clone(),
+                as_written: false,
+                run_id: None,
+                notify: true,
+                files: request.links.clone(),
+            };
+            pipeline.deliver(&delivery).await;
+            Outcome { by_agent: false, text: request.fallback.clone(), tokens, why: Some(why) }
         }
-        let agent = &request.agent;
-        let mut waited = 0.0;
-        while self.hub.as_ref().is_some_and(|h| h.session_busy(&agent.name, &request.session)) {
-            if waited >= self.busy_wait {
-                return Err(("the conversation stayed busy".into(), 0));
-            }
-            tokio::time::sleep(Duration::from_secs_f64(self.poll)).await;
-            waited += self.poll;
-        }
-        let before = self.hermes.session(agent, &request.session).await.map(|s| tokens_of(&s)).unwrap_or(0);
-        let note = crate::dates::now::stamped(&self.config.get(), agent, &request.note);
-        let run_id = self.hermes.start_run(agent, &note, &request.session, None).await.map_err(|e| match e {
-                HermesError::Http { status: 404 | 410, .. } => (GONE.to_string(), 0),
-                e => (format!("the agent refused ({e})"), 0),
-            })?;
-        if let Some(hub) = &self.hub {
-            // followed (a Bot Chat reply isn't pushed twice), its end told here
-            hub.watch(agent, &run_id, Some(&request.session), false);
-        }
-        let started = py::time_time();
-        let (status, output, usage) = loop {
-            tokio::time::sleep(Duration::from_secs_f64(self.poll)).await;
-            match self.hermes.run(agent, &run_id).await {
-                Ok(run) => {
-                    let status = tk::str_or_empty(run.get("status"));
-                    if crate::jobs::TERMINAL.contains(&status.as_str()) {
-                        let output = run.get("output").and_then(Value::as_str).unwrap_or("").to_string();
-                        break (status, output, run.get("usage").cloned());
-                    }
-                }
-                Err(HermesError::Http { status: 404 | 410, .. }) => {
-                    let output = match self.hermes.session_messages(agent, &request.session).await {
-                        Ok(m) => crate::cronwatch::final_reply(&m).unwrap_or_default(),
-                        Err(_) => String::new(),
-                    };
-                    break ("gone".into(), output, None);
-                }
-                Err(_) => {}
-            }
-            if py::time_time() - started >= self.turn_max {
-                let _ = self.hermes.stop_run(agent, &run_id).await;
-                break ("timeout".into(), String::new(), None);
-            }
-        };
-        let exact = usage.as_ref().map(|u| {
-            let n = |k: &str| u.get(k).map(|v| py::py_int(v).unwrap_or(0)).unwrap_or(0);
-            n("input_tokens") + n("output_tokens")
-        });
-        let tokens = match exact.filter(|t| *t > 0) {
-            Some(t) => t,
-            None => {
-                let after = self.hermes.session(agent, &request.session).await.map(|s| tokens_of(&s)).unwrap_or(before);
-                (after - before).max(0)
-            }
-        };
-        let text = tk::strip(&output).to_string();
-        if (status == "completed" || status == "gone") && !text.is_empty() {
-            Ok((text, tokens))
-        } else {
-            Err((format!("the agent's turn ended {status}"), tokens))
-        }
-    }
-
-    async fn tell(&self, request: &Request, outcome: &Outcome) {
-        let agent = &request.agent;
-        // the links the message must carry, even when the agent forgot them
-        let mut text = outcome.text.clone();
-        let missing: Vec<&String> = request.links.iter().filter(|l| !text.contains(l.as_str())).collect();
-        if !missing.is_empty() {
-            text.push('\n');
-            for link in missing {
-                text.push_str(&format!("\nMEDIA:{link}"));
-            }
-        }
-        let asked_in = self.hermes.session(agent, &request.session).await;
-        let gone = outcome.why.as_deref() == Some(GONE)
-            || matches!(asked_in, Err(HermesError::Http { status: 404 | 410, .. }));
-        // where the person asked (the report waits there as a note too), unless that conversation is gone
-        let session = match (&request.fallback_session, outcome.by_agent, gone) {
-            (Some(other), false, true) => other.clone(),
-            _ => request.session.clone(),
-        };
-        let title =
-            asked_in.ok().and_then(|s| s.get("title").and_then(Value::as_str).map(str::to_string)).unwrap_or_default();
-        let bot_chat = title.trim().eq_ignore_ascii_case("bot chat");
-        let viewing = self.on_screen(agent, &session).await;
-        if bot_chat && outcome.by_agent {
-            // the outbox shows inside Bot Chat itself: the reply is there already, only the push
-            if let (Some(push), false) = (&self.push, viewing) {
-                push.notify_reply(&agent.name, &format!("session:{}", request.session), &text, Some(&request.session))
-                    .await;
-            }
-            return;
-        }
-        let Some(outbox) = &self.outbox else { return };
-        let mut message = Dict::new();
-        message.insert("id".into(), json!(format!("handback:{}", request.key)));
-        message.insert("message".into(), json!(text));
-        message.insert("title".into(), json!(request.title));
-        message.insert("tags".into(), json!([format!("session:{session}")]));
-        if let Err(err) = outbox.ingest(agent, &message, !viewing, false).await {
-            tracing::warn!(agent = %agent.name, error = %format!("{err:#}"), "handback: the Boîte refused the message");
-        }
-    }
-
-    /// The person sees the message already: its conversation is on screen, or the agent's Bot Chat is (it shows
-    /// every Boîte message of the agent's). No push then: the open view shows it by itself.
-    pub async fn on_screen(&self, agent: &AgentConfig, session: &str) -> bool {
-        let Some(presence) = &self.presence else { return false };
-        if presence.viewing(&agent.name, session) {
-            return true;
-        }
-        for open in presence.viewed(&agent.name) {
-            if let Ok(found) = self.hermes.session(agent, &open).await {
-                if crate::cronwatch::is_bot_chat(&found) {
-                    return true;
-                }
-            }
-        }
-        false
-    }
+    };
+    tracing::info!(agent = %agent.name, session = %request.session, by_agent = outcome.by_agent,
+        tokens = outcome.tokens, "handback delivered");
+    outcome
 }
 
 #[cfg(test)]

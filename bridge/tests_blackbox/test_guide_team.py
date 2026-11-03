@@ -92,9 +92,11 @@ def test_a_team_card_creates_the_ticked_agents_with_their_mission_and_first_turn
     assert again.status_code == 200 and again.json() == made
     assert bridge.get("/v1/guide", headers=AUTH).json()["proposals"] == []
 
-    # one first turn each, in a new conversation « Premiers pas », one at a time, its message in the Boîte
+    # one first turn each, in a new conversation « Premiers pas », one at a time, its message pointed at by the Boîte
+    # (the journal; the message itself stays in that conversation: background_turn.rs)
     def boite():
-        return [i for i in bridge.get("/v1/outbox", headers=AUTH).json()["items"] if i["agent"] in ids]
+        rows = bridge.get("/v1/notifications", headers=AUTH).json()["notifications"]
+        return [r for r in rows if r["agent"] in ids and r["type"] == "reply"]
 
     assert wait_until(lambda: len(boite()) == 4, timeout=60), boite()
     stop.set()
@@ -104,7 +106,7 @@ def test_a_team_card_creates_the_ticked_agents_with_their_mission_and_first_turn
     assert first == sorted(ids)
     runs = [r for r in fakes.hermes.started.values() if r["agent"] in ids]
     assert len(runs) == 4 and all(r["input"].startswith("<!--bip:team\n") and "propose_task" in r["input"] for r in runs)
-    assert all(i["text"] == fakes.hermes.run_output for i in boite())
+    assert all(r["preview"] == fakes.hermes.run_output for r in boite())
     # its first actions as cards: what the agent proposes lands in « Tâches de fond »
     give_token(bridge, "ventes", VENTES_TOKEN)
     proposed = call(bridge, "propose_task", {"title": "Lire la partie Ventes", "prompt": "Lis la partie ventes."},

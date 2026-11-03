@@ -44,7 +44,8 @@ use crate::app::AppState;
 use crate::config::{AgentConfig, Config};
 use crate::connectors::{self, Connector, Watch};
 use crate::connectors_run::{self as runner, RunError};
-use crate::handback::{self, Handback};
+use crate::background_turn::{Delivery, Kind, Pipeline, Turn};
+use crate::handback;
 use crate::tools_knowledge as tk;
 use crate::{py, Dict};
 
@@ -536,24 +537,6 @@ fn session_title(lang: &str, name: &str) -> String {
     }
 }
 
-/// Its conversation in the agent's Hermes: the one kept, else a new one.
-async fn session_of(state: &AppState, agent: &AgentConfig, conn: &Connector, lang: &str) -> Option<String> {
-    let config = state.config();
-    let kept = load(&config, &agent.name, &conn.id).session;
-    if !kept.is_empty() && state.hermes.session(agent, &kept).await.is_ok() {
-        return Some(kept);
-    }
-    let title = session_title(lang, &conn.name);
-    let mut made = state.hermes.create_session(agent, &title).await.ok();
-    if made.is_none() {
-        // a title another conversation holds is refused by Hermes
-        made = state.hermes.create_session(agent, &format!("{title} ({})", &py::uuid4_hex()[..4])).await.ok();
-    }
-    let id = made?;
-    change(&config, &agent.name, &conn.id, |rt| rt.session = id.clone());
-    Some(id)
-}
-
 /// How a wake-up went.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Told {
@@ -564,29 +547,27 @@ pub struct Told {
     pub urgent: bool,
 }
 
-/// ONE turn of the agent with `note`, then its message (if any) in the Boîte, pushed when urgent.
+/// ONE turn of the agent with `note` in the watcher's own conversation (background_turn.rs), then its message (if
+/// any) in the Boîte, pushed when urgent.
 async fn wake(state: &AppState, agent: &AgentConfig, conn: &Connector, note: String, fallback: String, key: &str) -> Told {
     let config = state.config();
     let lang = handback::language_of(&config, agent);
-    let mut handback = Handback::of(state);
-    handback.turn_max = config.watchers.turn_max_seconds;
-    handback.busy_wait = 120.0;
-    let session = session_of(state, agent, conn, &lang).await;
+    let pipeline = Pipeline::of(state);
+    let kept = load(&config, &agent.name, &conn.id).session;
+    let session = pipeline.work_session(agent, &session_title(&lang, &conn.name), &kept).await.ok();
+    if let Some(s) = session.as_ref().filter(|s| **s != kept) {
+        change(&config, &agent.name, &conn.id, |rt| rt.session = s.clone());
+    }
     let turn = match &session {
         Some(session) => {
-            let request = handback::Request {
-                agent: agent.clone(),
-                session: session.clone(),
-                key: key.to_string(),
-                title: conn.name.clone(),
-                note,
-                links: Vec::new(),
-                budget: None,
-                fallback: String::new(),
-                recap: None,
-                fallback_session: None,
-            };
-            handback.agent_turn(&request).await.map(|(text, _)| text).map_err(|(why, _)| why)
+            let mut turn = Turn::new(agent, Kind::Watcher, session, note);
+            turn.max_seconds = config.watchers.turn_max_seconds;
+            turn.busy_wait = 120.0;
+            match pipeline.run(&turn).await {
+                Ok(ran) if ran.answered() => Ok(ran.text),
+                Ok(ran) => Err(format!("the agent's turn ended {}", ran.status)),
+                Err(why) => Err(why.to_string()),
+            }
         }
         None => Err("no conversation could be opened".to_string()),
     };
@@ -601,25 +582,19 @@ async fn wake(state: &AppState, agent: &AgentConfig, conn: &Connector, note: Str
         tracing::info!(target: "bipbridge::watchers", agent = %agent.name, watcher = %conn.id, "the agent kept it to itself");
         return Told { by_agent, sent: false, urgent: false };
     };
-    let viewing = match &session {
-        Some(s) => handback.on_screen(agent, s).await,
-        None => false,
+    // the bridge's words (its URGENT mark taken out): a Boîte message in the watcher's conversation
+    let delivery = Delivery {
+        agent: agent.clone(),
+        session: session.unwrap_or_default(),
+        key: format!("watch:{key}"),
+        title: conn.name.clone(),
+        text,
+        as_written: false,
+        run_id: None,
+        notify: urgent,
+        files: Vec::new(),
     };
-    let mut message = Dict::new();
-    message.insert("id".into(), json!(format!("watch:{key}")));
-    message.insert("message".into(), json!(text));
-    message.insert("title".into(), json!(conn.name));
-    if let Some(s) = &session {
-        message.insert("tags".into(), json!([format!("session:{s}")]));
-    }
-    let push = urgent && !viewing;
-    let sent = match state.outbox.ingest(agent, &message, push, false).await {
-        Ok(_) => true,
-        Err(err) => {
-            tracing::warn!(target: "bipbridge::watchers", agent = %agent.name, error = %format!("{err:#}"), "the Boîte refused the watcher's message");
-            false
-        }
-    };
+    let sent = pipeline.deliver(&delivery).await;
     Told { by_agent, sent, urgent }
 }
 

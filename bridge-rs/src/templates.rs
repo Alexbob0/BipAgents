@@ -54,8 +54,6 @@ pub const MAX_INSTRUCTIONS: usize = 8000;
 pub const MAX_INTRO: usize = 400;
 pub const MAX_NAME: usize = 40;
 pub const MAX_PROMPT: usize = 4000;
-/// Hermes' `paused_reason` of a routine a model brought, until the person turns it on.
-pub const PAUSE_REASON: &str = "bipagents-template: turned on by the person in the app";
 pub const FIND_TOOL: &str = "find_template";
 pub const LINK_BASE: &str = "https://bipagents.com/m/";
 pub const DEFAULT_GUICHET: &str = "https://guichet.bipagents.com";
@@ -187,47 +185,7 @@ fn write_files(root: &Path, files: &[(PathBuf, bool, Vec<u8>)]) -> std::io::Resu
     Ok(())
 }
 
-// -- routines (Hermes' cron/jobs.json) ---------------------------------------------------------------------------------
-
-fn jobs_file(config: &Config, agent: &AgentConfig) -> PathBuf {
-    agents_admin::profile_folder(config, agent).join("cron").join("jobs.json")
-}
-
-fn read_jobs(file: &Path) -> Vec<Value> {
-    let Ok(text) = std::fs::read_to_string(file) else { return Vec::new() };
-    match serde_json::from_str::<Value>(&text) {
-        Ok(Value::Array(items)) => items,
-        Ok(Value::Object(map)) => map.get("jobs").and_then(Value::as_array).cloned().unwrap_or_default(),
-        _ => Vec::new(),
-    }
-}
-
-/// Changes the jobs file under Hermes' own lock (made when missing), written whole (0600).
-fn change_jobs<T>(file: &Path, f: impl FnOnce(&mut Vec<Value>) -> T) -> std::io::Result<T> {
-    let folder = file.parent().ok_or_else(|| std::io::Error::other("no folder"))?;
-    std::fs::create_dir_all(folder)?;
-    let _lock = crate::credit::JobsLock::take(folder)?;
-    let text = std::fs::read_to_string(file).unwrap_or_default();
-    let mut data: Value = serde_json::from_str(&text).unwrap_or_else(|_| json!({"jobs": []}));
-    if !data.is_array() && !data.get("jobs").is_some_and(Value::is_array) {
-        data = json!({"jobs": []});
-    }
-    let out = {
-        let jobs = match &mut data {
-            Value::Array(items) => items,
-            Value::Object(map) => map.get_mut("jobs").and_then(Value::as_array_mut).expect("a list"),
-            _ => unreachable!(),
-        };
-        f(jobs)
-    };
-    if let Value::Object(map) = &mut data {
-        map.insert("updated_at".into(), json!(crate::vault::now()));
-    }
-    let tmp = folder.join(format!(".jobs.json.bipagents-{}", std::process::id()));
-    py::write_with_mode(&tmp.to_string_lossy(), serde_json::to_string_pretty(&data)?.as_bytes(), 0o600)?;
-    std::fs::rename(&tmp, file)?;
-    Ok(out)
-}
+// -- routines (routines.rs) -------------------------------------------------------------------------------------------
 
 /// A job a model may carry: a prompt on a recurring schedule, nothing that points at the creator's files or moment.
 fn shareable_job(job: &Value) -> Option<Value> {
@@ -495,7 +453,9 @@ pub async fn review(state: &AppState, agent: &AgentConfig, body: &Value) -> (u16
     bundle.insert("skills".into(), json!(skills));
     // routines' definitions
     let mut routines = Vec::new();
-    for job in read_jobs(&jobs_file(&config, agent)).iter().take(MAX_ROUTINES) {
+    let zone = crate::routines::zone(&config);
+    for routine in crate::routines::list(&config, Some(&agent.name)).iter().take(MAX_ROUTINES) {
+        let job = &crate::routines::view(routine, zone);
         let Some(mut shared) = shareable_job(job) else { continue };
         let id = format!("routine:{}", s(job, "id"));
         let shown = s(&shared, "name");
@@ -790,18 +750,16 @@ pub fn check_bundle(bundle: &Value) -> Result<(), String> {
 }
 
 /// The routine as Hermes' `create_job` stores a paused one (`deliver: local`: no target of the creator's).
-fn hermes_job(routine: &Value, skills: &BTreeSet<String>) -> Option<Value> {
+/// A model's routine as one of the new agent's, paused (the person turns it on): its schedule only if a recurring one
+/// the bridge reads, its skills only those that came with the model.
+fn template_routine(agent: &str, routine: &Value, skills: &BTreeSet<String>) -> Option<crate::routines::Routine> {
+    use crate::routines::Schedule;
     let schedule = routine.get("schedule")?;
-    let display = s(schedule, "display");
     let parsed = match s(schedule, "kind").as_str() {
-        "cron" if cron_ok(&s(schedule, "expr")) => {
-            let expr = s(schedule, "expr");
-            json!({"kind": "cron", "expr": expr, "display": if display.is_empty() { expr.clone() } else { head(&display, 80) }})
-        }
-        "interval" => {
-            let minutes = schedule.get("minutes").and_then(Value::as_i64).filter(|m| (5..=60 * 24 * 31).contains(m))?;
-            json!({"kind": "interval", "minutes": minutes, "display": if display.is_empty() { format!("every {minutes}m") } else { head(&display, 80) }})
-        }
+        "cron" if cron_ok(&s(schedule, "expr")) => Schedule::Cron { expr: s(schedule, "expr") },
+        "interval" => Schedule::Interval {
+            minutes: schedule.get("minutes").and_then(Value::as_i64).filter(|m| (5..=60 * 24 * 31).contains(m))? as u32,
+        },
         _ => return None,
     };
     let prompt = head(s(routine, "prompt").trim(), MAX_PROMPT);
@@ -814,18 +772,22 @@ fn hermes_job(routine: &Value, skills: &BTreeSet<String>) -> Option<Value> {
         .and_then(Value::as_array)
         .map(|a| a.iter().filter_map(Value::as_str).filter(|n| skills.contains(*n)).map(str::to_string).collect())
         .unwrap_or_default();
-    let now = crate::vault::now();
-    Some(json!({
-        "id": &py::uuid4_hex()[..12], "name": name, "prompt": prompt, "skills": kept, "skill": kept.first(),
-        "model": null, "provider": null, "base_url": null, "script": null, "no_agent": false,
-        "monitor_script": null, "monitor_url": null, "monitor_state": null, "context_from": null,
-        "schedule_display": parsed["display"], "schedule": parsed,
-        "repeat": {"times": null, "completed": 0},
-        "enabled": false, "state": "paused", "paused_at": now, "paused_reason": PAUSE_REASON,
-        "created_at": now, "next_run_at": null, "last_run_at": null, "last_status": null, "last_error": null,
-        "last_delivery_error": null, "last_delivery_unverified": null, "last_failure": null, "failure_streak": 0,
-        "deliver": "local", "origin": null, "enabled_toolsets": null, "workdir": null,
-    }))
+    Some(crate::routines::Routine {
+        id: py::uuid4_hex()[..12].to_string(),
+        agent: agent.to_string(),
+        name,
+        prompt,
+        schedule: parsed,
+        skills: kept,
+        enabled: false,
+        notify: true,
+        origin: String::new(),
+        repeat: None,
+        next_run: None,
+        last_run: None,
+        last_status: String::new(),
+        created: py::time_time(),
+    })
 }
 
 /// A new agent from a bundle (checked first). Its connectors pending, its routines paused, health off.
@@ -961,32 +923,25 @@ pub async fn import(state: &AppState, body: &Value) -> ApiResult<Value> {
 
     // its routines, paused
     let mut routines_out = Vec::new();
-    let mut jobs = Vec::new();
+    let mut made = Vec::new();
     for routine in bundle.get("routines").and_then(Value::as_array).cloned().unwrap_or_default() {
-        match hermes_job(&routine, &skills_done) {
-            Some(job) => jobs.push(job),
+        match template_routine(&agent.name, &routine, &skills_done) {
+            Some(r) => made.push(r),
             None => left_out.push(format!(
                 "la routine « {} » (son horaire n'est pas pris en charge)",
                 head(&s(&routine, "name"), 60)
             )),
         }
     }
-    if !jobs.is_empty() {
-        let file = jobs_file(&config, &agent);
-        let added = jobs.clone();
-        match change_jobs(&file, move |list| list.extend(added)) {
-            Ok(()) => {
-                let ids: Vec<String> = jobs.iter().map(|j| s(j, "id")).collect();
-                let _ = remember_routines(&config, &agent.name, &ids);
-                for job in &jobs {
-                    routines_out.push(json!({"job": s(job, "id"), "name": s(job, "name"), "display": s(job, "schedule_display"), "on": false}));
-                }
-            }
-            Err(exc) => {
-                tracing::warn!(target: "bipbridge::templates", agent = %agent.name, error = %exc, "routines not written");
-                left_out.push("ses routines".into());
-            }
+    if !made.is_empty() {
+        let zone = crate::routines::zone(&config);
+        let ids: Vec<String> = made.iter().map(|r| r.id.clone()).collect();
+        for r in &made {
+            let v = crate::routines::view(r, zone);
+            routines_out.push(json!({"job": r.id, "name": r.name, "display": v["schedule_display"], "on": false}));
         }
+        crate::routines::change(&config, |b| b.routines.extend(made));
+        let _ = remember_routines(&config, &agent.name, &ids);
     }
 
     // its connectors, pending, with a card each
@@ -1059,12 +1014,13 @@ async fn routines_route(State(state): State<AppState>, UrlPath(agent_id): UrlPat
     let agent = agent_of(&config, &agent_id)?;
     let ours: BTreeSet<String> =
         imported_routines(&config).remove(&agent.name).unwrap_or_default().into_iter().collect();
-    let routines: Vec<Value> = read_jobs(&jobs_file(&config, &agent))
+    let zone = crate::routines::zone(&config);
+    let routines: Vec<Value> = crate::routines::list(&config, Some(&agent.name))
         .iter()
-        .filter(|j| ours.contains(&s(j, "id")))
-        .map(|j| {
-            json!({"job": s(j, "id"), "name": s(j, "name"), "display": s(j, "schedule_display"), "prompt": s(j, "prompt"),
-                   "on": j.get("enabled").and_then(Value::as_bool).unwrap_or(false)})
+        .filter(|r| ours.contains(&r.id))
+        .map(|r| {
+            json!({"job": r.id, "name": r.name, "display": crate::routines::view(r, zone)["schedule_display"],
+                   "prompt": r.prompt, "on": r.enabled})
         })
         .collect();
     Ok(web::ok(json!({"routines": routines})))
@@ -1083,25 +1039,12 @@ async fn routine_switch(
     if !ours.contains(&job) {
         return Err(HttpError::new(404, "unknown job"));
     }
-    let file = jobs_file(&config, &agent);
-    let wanted = job.clone();
-    let found = change_jobs(&file, move |jobs| {
-        let Some(Value::Object(j)) = jobs.iter_mut().find(|j| s(j, "id") == wanted) else { return false };
-        if on {
-            j.insert("enabled".into(), json!(true));
-            j.insert("state".into(), json!("scheduled"));
-            j.insert("paused_at".into(), Value::Null);
-            j.insert("paused_reason".into(), Value::Null);
-            j.remove("next_run_at"); // Hermes' due scan computes it again
-        } else {
-            j.insert("enabled".into(), json!(false));
-            j.insert("state".into(), json!("paused"));
-            j.insert("paused_at".into(), json!(crate::vault::now()));
-            j.insert("paused_reason".into(), json!(PAUSE_REASON));
-        }
-        true
+    let found = crate::routines::update(&config, &job, |r| {
+        r.enabled = on;
+        Ok(())
     })
-    .map_err(anyhow::Error::from)?;
+    .map_err(|e| HttpError::new(422, e))?
+    .is_some();
     if !found {
         return Err(HttpError::new(404, "unknown job"));
     }
@@ -1245,23 +1188,19 @@ mod tests {
     #[test]
     fn routines_land_paused_without_the_creators_targets() {
         let skills: BTreeSet<String> = ["plan".to_string()].into_iter().collect();
-        let job = hermes_job(
+        let r = template_routine(
+            "vie",
             &json!({"name": "Matin", "prompt": "Prépare", "skills": ["plan", "other"],
                                      "schedule": {"kind": "cron", "expr": "0 7 * * *"}}),
             &skills,
         )
         .unwrap();
-        assert_eq!(
-            (job["enabled"].clone(), job["state"].clone(), job["deliver"].clone()),
-            (json!(false), json!("paused"), json!("local"))
-        );
-        assert_eq!(job["skills"], json!(["plan"]));
-        assert_eq!(job["origin"], Value::Null);
-        assert!(hermes_job(&json!({"prompt": "x", "schedule": {"kind": "once", "run_at": "2026-01-01"}}), &skills)
+        assert!(!r.enabled && r.origin.is_empty());
+        assert_eq!(r.skills, ["plan"]);
+        assert!(template_routine("vie", &json!({"prompt": "x", "schedule": {"kind": "once", "run_at": "2026-01-01"}}), &skills)
             .is_none());
-        assert!(
-            hermes_job(&json!({"prompt": "x", "schedule": {"kind": "cron", "expr": "rm -rf /"}}), &skills).is_none()
-        );
+        assert!(template_routine("vie", &json!({"prompt": "x", "schedule": {"kind": "cron", "expr": "rm -rf /"}}), &skills)
+            .is_none());
         // what a job may carry: never a script, a monitor or a delivery
         let shared = shareable_job(
             &json!({"id": "a", "name": "n", "prompt": "p", "deliver": "telegram:123", "origin": {"chat": 1},

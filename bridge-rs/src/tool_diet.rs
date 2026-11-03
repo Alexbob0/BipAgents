@@ -568,12 +568,14 @@ pub fn with_diet(data: &Yaml, diet: &Diet) -> Option<Yaml> {
     if agent.get("max_turns").is_none_or(|v| *v == Yaml::Null) {
         agent.insert("max_turns", Yaml::Int(MAX_TURNS as i128));
     }
-    // A routine the agent makes in a conversation reports there (cronwatch.rs): Hermes (patch 0019) keeps the
-    // conversation on the job and tells the model so, instead of « local-only: set deliver='telegram' », unless the
-    // profile says otherwise.
-    let cron = data.section("cron")?;
-    if cron.get("session_reports").is_none_or(|v| *v == Yaml::Null) {
-        cron.insert("session_reports", Yaml::Bool(true));
+    // routines are the bridge's (routines.rs `routine_schedule`): Hermes' own cron tool off, so none is made there
+    match agent.get_mut("disabled_toolsets") {
+        Some(Yaml::Seq(items)) => {
+            if !items.iter().any(|i| i.as_str() == Some(CRON_TOOLSET)) {
+                items.push(Yaml::str(CRON_TOOLSET));
+            }
+        }
+        _ => agent.insert("disabled_toolsets", strings(&[CRON_TOOLSET.to_string()])),
     }
     with_clarify(&mut data);
     if let Some(Yaml::Map(_)) = data.get("mcp_servers").and_then(|s| s.get(BROWSER_SERVER)) {
@@ -614,6 +616,8 @@ pub fn with_clarify(data: &mut Yaml) {
 pub const API_PLATFORM: &str = "api_server";
 pub const API_DEFAULT_TOOLSET: &str = "hermes-api-server";
 pub const CLARIFY: &str = "clarify";
+/// Hermes' cron toolset (`cronjob`): the bridge keeps the routines.
+pub const CRON_TOOLSET: &str = "cronjob";
 
 #[cfg(test)]
 mod tests {
@@ -810,11 +814,11 @@ mod tests {
   max_turns: 40
 ").unwrap();
         assert_eq!(cap(&with_diet(&own, &d).unwrap()), Some(Yaml::Int(40)), "its own cap kept");
-        // routines report to the conversation they were made in, unless the profile says otherwise
-        let reports = |data: &Yaml| data.get("cron").and_then(|c| c.get("session_reports")).cloned();
-        assert_eq!(reports(&changed), Some(Yaml::Bool(true)));
-        let off = pyyaml::load("cron:\n  session_reports: false\n").unwrap();
-        assert_eq!(reports(&with_diet(&off, &d).unwrap()), Some(Yaml::Bool(false)), "its own choice kept");
+        // Hermes' cron tool off (routines.rs keeps the routines), next to what the profile turned off itself
+        let off = |data: &Yaml| data.get("agent").and_then(|a| a.get("disabled_toolsets")).cloned();
+        assert_eq!(off(&changed), Some(Yaml::Seq(vec![Yaml::str(CRON_TOOLSET)])));
+        let theirs = pyyaml::load("agent:\n  disabled_toolsets: [browser]\n").unwrap();
+        assert_eq!(off(&with_diet(&theirs, &d).unwrap()), Some(Yaml::Seq(vec![Yaml::str("browser"), Yaml::str(CRON_TOOLSET)])));
         // the person's own list
         let theirs = pyyaml::load("tools:\n  tool_search:\n    defer: [todo_list]\n").unwrap();
         let kept = with_diet(&theirs, &d).expect("skills still written");

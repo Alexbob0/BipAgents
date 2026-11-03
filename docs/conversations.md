@@ -147,6 +147,14 @@ CREATE TABLE thread_sends (       -- the messages the apps sent through the brid
   created_at TEXT NOT NULL,
   PRIMARY KEY (agent, client_id)
 );
+CREATE TABLE thread_files (       -- files of an agent's message Hermes' row doesn't carry (background_turn.rs, runs.rs)
+  agent TEXT NOT NULL,
+  message_id TEXT NOT NULL,       -- m_…
+  thread_id TEXT NOT NULL,
+  files TEXT NOT NULL,            -- JSON: [{kind, name, mime, path}] added, [{path, stale: true}] a MEDIA line hidden
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (agent, message_id)
+);
 CREATE TABLE thread_reads (agent TEXT, thread_id TEXT, item_id TEXT, at TEXT, PRIMARY KEY (agent, thread_id));
 ```
 
@@ -321,14 +329,15 @@ thread's too: the app knows it from `GET /v1/threads/main`) and `item` (`m_…`)
 
 ```text
 GET /v1/threads/events[?agent=<id>]      SSE, keepalive comment every 10 s
-event: thread         data: {"thread": "t_…", "agent": "vie", "version": 43, "reason": "run|boite|segment"}
+event: thread         data: {"thread": "t_…", "agent": "vie", "version": 43, "reason": "run|boite|segment|call"}
 event: notification   data: {"n": "n_…", "agent": "vie", "t": "reply", "c": "t_…", "m": "m_…", "state": "open"}
 event: read           data: {"agent": "vie", "thread": "t_…", "notifications": ["n_…"]}
 event: lagged         data: {}                    (the app missed events: refetch what it shows)
 ```
 
 `thread` is sent today when a run of the thread ends (`run`: the run hub), a Boîte message for it is stored
-(`boite`) and Hermes continued it in a new session (`segment`). The agent's queue keeps its own stream
+(`boite`), a Live call is recorded in it (`call`, live_calls.rs: its item is in the next `after=` page; no journal
+row) and Hermes continued it in a new session (`segment`). The agent's queue keeps its own stream
 (`/v1/agents/{id}/queue/events`, msg_queue.rs); the timeline's `pending.queue` gives its state at each read.
 
 **Presence**: `GET /v1/threads/events?agent=<a>&thread=<id|main>` means « this conversation is on screen » for as

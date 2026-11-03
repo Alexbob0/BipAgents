@@ -138,7 +138,8 @@ def test_sent_to_the_phone_then_deleted_here(bridge):
     deadline = time.time() + 5
     while time.time() < deadline and "space-out" not in json.dumps(boite()):
         time.sleep(0.2)
-    path = json.dumps(boite()).split("MEDIA:")[1].split("\\n")[0].split('"')[0]
+    files = [a["path"] for i in boite()["items"] for a in i["attachments"]]   # the message's attachments
+    path = next(p for p in files if "space-out" in p)
     assert path.startswith("/bipagents/space-out/wellness/")
     assert bridge.get("/v1/media", params={"path": path}, headers=AUTH).status_code == 200
     done = approve(bridge, sent[0], "delete").json()
