@@ -23,6 +23,7 @@ jobs:
           cache-dependency-path: |
             installer/requirements.txt
             bridge/tests_blackbox/requirements.txt
+            sandbox/requirements.txt
       - run: pip install -r installer/requirements.txt -r bridge/tests_blackbox/requirements.txt
       # The bridge (bridge-rs/), built once for the installer's config checks and the black-box suite; its own unit
       # tests and clippy run in bridge-release.yml.
@@ -35,6 +36,12 @@ jobs:
         run: cargo build --release --locked
       - name: Installer
         run: PYTHONPATH=installer python -m pytest -q installer/tests
+      - name: Styled documents skills (their scripts against the agents' sandbox image's pinned libraries)
+        # a venv of their own: sandbox/requirements.txt pins what the image has, not what the installer's tests use
+        run: |
+          python -m venv "$RUNNER_TEMP/skills-venv"
+          "$RUNNER_TEMP/skills-venv/bin/pip" install -q -r sandbox/requirements.txt pytest
+          "$RUNNER_TEMP/skills-venv/bin/python" -m pytest -q -p no:cacheprovider bridge-rs/tests_skills
       - name: Demo voices (every reply the demo shows has its recording)
         # scripts/ stays private (scripts/public-paths.txt): the public repository has no such test to run
         if: hashFiles('scripts/test_demo_voices.py') != ''

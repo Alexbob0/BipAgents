@@ -1211,6 +1211,34 @@ pub fn short_card(id: &str) -> String {
     format!("<figure class=\"map-card\"><img src=\"map:{id}\" alt=\"Carte\"></figure>")
 }
 
+/// Where a map's picture is also put for the agent's own programs (a deck, a document: the slides-styles skill), under
+/// the folder of the files it was sent: `/fichiers/cartes/<id>.png` in its sandbox. The tiles are fetched here, by the
+/// bridge, within OpenStreetMap's policy (and cached); a script in the sandbox never fetches tiles itself.
+pub const SANDBOX_SUBFOLDER: &str = "cartes";
+
+/// The picture copied where the agent's programs read it: into its isolated sandbox's files volume (sandbox.rs), else
+/// into its uploads folder (mounted in the sandbox, or read as is); the path as the agent sees it. None: neither.
+pub fn put_for_programs(config: &Config, agent: &str, id: &str, png: &[u8]) -> Option<String> {
+    use std::io::Write as _;
+    let name = std::ffi::OsString::from(format!("{id}.png"));
+    let write = |root: &std::path::Path, mode: u32| -> std::io::Result<()> {
+        let folder =
+            crate::beneath::Dir::open(root)?.make_dirs(std::path::Path::new(SANDBOX_SUBFOLDER), Some(0o755))?;
+        folder.write_file(&name, mode, None, |out| out.write_all(png))
+    };
+    if let Some((files, _)) = crate::sandbox::volumes_of(config, agent) {
+        if write(&files, 0o644).is_ok() {
+            return Some(format!("{}/{SANDBOX_SUBFOLDER}/{id}.png", crate::sandbox::RECEIVED));
+        }
+    }
+    let entry = config.agent(Some(agent))?;
+    let host = entry.upload_dir_host.as_deref().filter(|s| !s.is_empty())?;
+    let seen = entry.upload_dir_container.as_deref().filter(|s| !s.is_empty()).unwrap_or(host);
+    std::fs::create_dir_all(host).ok()?;
+    write(std::path::Path::new(host), 0o644).ok()?;
+    Some(format!("{}/{SANDBOX_SUBFOLDER}/{id}.png", seen.trim_end_matches('/')))
+}
+
 /// `map_image`: the map kept for the agent, with how to show it.
 pub async fn call(config: &Config, agent: &str, arguments: &Dict) -> Dict {
     let drawn = match draw(config, arguments).await {
@@ -1268,6 +1296,10 @@ pub async fn call(config: &Config, agent: &str, arguments: &Dict) -> Dict {
                 planned.why.as_deref().unwrap_or("no route")
             ),
         });
+    }
+    // the same picture for its programs (a deck's map: slides-styles)
+    if let Some(seen) = put_for_programs(config, agent, &id, png) {
+        checks.push_str(&format!("\nPicture in your sandbox: {seen} (for a deck or a document; not for your reply)."));
     }
     let show = match shown {
         Some(path) => format!(
@@ -1515,5 +1547,32 @@ alt=\"Carte\"><ol>\
         let arcachon = Area { name: "Arcachon".into(), bbox: [44.63, 44.67, -1.21, -1.13] };
         assert_eq!(near.clone().inside(Some(&arcachon)).bbox[2], -1.21);
         assert_eq!(near.clone().inside(None), near);
+    }
+
+    /// The picture reaches the agent's programs (a deck's map), in its isolated sandbox's files volume, else in its
+    /// uploads folder at the path its sandbox sees; never anywhere for an agent without either.
+    #[test]
+    fn the_picture_reaches_the_agents_programs() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::with_key("k");
+        config.outbox.db_path = dir.path().join("data/outbox.db").to_string_lossy().into_owned();
+        let uploads = dir.path().join("uploads");
+        let mut agent = crate::config::AgentConfig { name: "vie".into(), ..Default::default() };
+        agent.upload_dir_host = Some(uploads.to_string_lossy().into_owned());
+        agent.upload_dir_container = Some("/fichiers".into());
+        config.agents.insert(agent.name.clone(), agent);
+        assert_eq!(put_for_programs(&config, "vie", "m-abc", b"png").as_deref(), Some("/fichiers/cartes/m-abc.png"));
+        assert_eq!(std::fs::read(uploads.join("cartes/m-abc.png")).unwrap(), b"png");
+        // isolated: into its files volume
+        let volume = dir.path().join("volume");
+        std::fs::create_dir_all(&volume).unwrap();
+        crate::sandbox::save_state(&config, |state| {
+            state.insert("agents".into(), json!({"vie": {"files": volume.to_string_lossy(), "outbox": "/x"}}));
+        })
+        .unwrap();
+        assert_eq!(put_for_programs(&config, "vie", "m-def", b"png2").as_deref(), Some("/fichiers/cartes/m-def.png"));
+        assert_eq!(std::fs::read(volume.join("cartes/m-def.png")).unwrap(), b"png2");
+        assert!(!uploads.join("cartes/m-def.png").exists());
+        assert_eq!(put_for_programs(&config, "nobody", "m-ghi", b"png"), None);
     }
 }

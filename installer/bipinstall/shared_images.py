@@ -61,6 +61,10 @@ REGISTRY = "ghcr.io/alexbob0"
 BROWSER = "localhost/bipagents-browser:latest"     # what `bipagents-browser` means to podman (browser_refresh.IMAGE)
 SANDBOX = "docker.io/nousresearch/hermes-sandbox:desktop"   # Hermes' default sandbox (bridge-rs/src/sandbox.rs)
 SANDBOX_SOURCES = (f"{REGISTRY}/hermes-sandbox:desktop", SANDBOX)   # the mirror first, Docker Hub when it fails
+# Hermes' sandbox plus the styled documents skills' Python libraries (sandbox/Containerfile, 2026-11-02): the bridge
+# gives it to the agents it isolates when the store has it (bridge-rs/src/sandbox.rs AGENT_IMAGE), else they keep
+# Hermes' own and the skills install their libraries on first use.
+AGENT_SANDBOX = "localhost/bipagents-sandbox:latest"
 PREVIOUS = "previous"
 STORAGE_CONF = Path(".config") / "containers" / "storage.conf"
 MARK = "# BipAgents: the server's shared images"
@@ -82,13 +86,22 @@ def say(text: str = "") -> None:
     print(text, flush=True)
 
 
-def browser_key(repo: Path = REPO) -> Optional[str]:
-    """The browser image's key, the same hash the workflow computes: sha256 of the tree id of browser/ (the image is
-    built from that folder alone), 12 characters. None outside a git checkout."""
-    done = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD:browser"], capture_output=True, text=True)
+def tree_key(folder: str, repo: Path = REPO) -> Optional[str]:
+    """An image's key, the same hash the workflow computes: sha256 of the tree id of `folder` (the image is built from
+    that folder alone), 12 characters. None outside a git checkout, or without that folder."""
+    done = subprocess.run(["git", "-C", str(repo), "rev-parse", f"HEAD:{folder}"], capture_output=True, text=True)
     if done.returncode != 0:
         return None
     return hashlib.sha256(done.stdout.strip().encode()).hexdigest()[:12]
+
+
+def browser_key(repo: Path = REPO) -> Optional[str]:
+    """The browser image's key (browser/)."""
+    return tree_key("browser", repo)
+
+
+def agent_sandbox_ref(key: str) -> str:
+    return f"{REGISTRY}/bipagents-sandbox:{key}"
 
 
 def browser_ref(key: str) -> str:
@@ -96,7 +109,8 @@ def browser_ref(key: str) -> str:
 
 
 def setting() -> Optional[dict]:
-    """What root pulled into the server's store, when it did: {"store", "browser": {"key", "id"}, "sandbox": {"id"}}."""
+    """What root pulled into the server's store, when it did: {"store", "browser": {"key", "id"}, "sandbox": {"id"},
+    "agent_sandbox": {"key", "id"}}."""
     try:
         data = json.loads(SETTING.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -279,10 +293,16 @@ def pull(repo: Path = REPO, store: Path = STORE, run: Run = browser_refresh.run,
     say(said or "no sandbox image")
     if sandbox:
         found["sandbox"] = {"id": sandbox}
+    agent_key = tree_key("sandbox", repo)
+    if agent_key:
+        ours, said = pull_one(podman, [agent_sandbox_ref(agent_key)], AGENT_SANDBOX, run)
+        say(said or "no agents' sandbox image for this checkout (the agents keep Hermes' own)")
+        if ours:
+            found["agent_sandbox"] = {"key": agent_key, "id": ours}
     run(podman + ["image", "prune", "--force"], 600)   # the untagged ones (two nights old)
     views(store, folder, run)
     before = setting() or {}
-    for name in ("browser", "sandbox"):   # a failed pull keeps what the store has
+    for name in ("browser", "sandbox", "agent_sandbox"):   # a failed pull keeps what the store has
         if name not in found and name in before:
             found[name] = before[name]
     if found:
@@ -360,7 +380,8 @@ def unwire(home: Path) -> None:
 
 def check(engine: str, data: dict, run: Run) -> Tuple[bool, str]:
     """Both images run as this account from the server's store, with the right owners."""
-    images = (("sandbox", SANDBOX, SANDBOX_CHECK, []), ("browser", BROWSER, BROWSER_CHECK, [BROWSER_USERNS]))
+    images = (("sandbox", SANDBOX, SANDBOX_CHECK, []), ("agent_sandbox", AGENT_SANDBOX, SANDBOX_CHECK, []),
+              ("browser", BROWSER, BROWSER_CHECK, [BROWSER_USERNS]))
     tests = [test for test in images if data.get(test[0])]
     for label, image, script, userns in tests:
         code, out = run([engine, "run", "--rm", "--pull=never", "--network=none", *userns, "--entrypoint", "/bin/sh",

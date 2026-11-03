@@ -601,7 +601,12 @@ pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow
         tracing::warn!(agent = %agent.name, error = %last_chars(&exc.to_string(), 200), "profile settings not brought up to date");
         false
     });
-    Ok(changed || paying || accounts || connecting || handing || link || reconciled)
+    // The styled decks and Word documents (style_skills.rs), in place of Hermes' `powerpoint` and `docx`.
+    let styled = crate::style_skills::apply(config, agent).unwrap_or_else(|exc| {
+        tracing::warn!(agent = %agent.name, error = %last_chars(&exc.to_string(), 200), "styled documents skills not set");
+        false
+    });
+    Ok(changed || paying || accounts || connecting || handing || link || reconciled || styled)
 }
 
 /// `register` with the tools' URL given (tests: a later version of the tools).

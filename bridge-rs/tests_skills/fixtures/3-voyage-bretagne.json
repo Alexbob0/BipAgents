@@ -1,0 +1,12 @@
+{
+  "style": "carnet",
+  "title": "Bretagne",
+  "slides": [
+    {"layout": "cover", "title": "Bretagne", "subtitle": "Saint-Malo · Cancale · Mont-Saint-Michel · Dinan", "image": "msm.jpg"},
+    {"layout": "timeline", "title": "L'itinéraire", "image": "map.png"},
+    {"layout": "image_text", "title": "Saint-Malo, cité corsaire", "text": "Les remparts en boucle complète, la mer de tous les côtés. Fort National à marée basse et rues intra-muros.", "image": "saintmalo.jpg", "credit": "Gzen92 · CC BY-SA 4.0"},
+    {"layout": "image_text", "title": "Cancale et ses huîtres", "text": "Le port de la Houle, un plateau d'huîtres face à la baie. Les parcs à huîtres se découvrent à marée basse.", "image": "cancale2.jpg", "credit": "Pline · CC BY-SA 3.0"},
+    {"layout": "image_text", "title": "Le Mont-Saint-Michel", "text": "La merveille de l'Occident : la rue du Petit-Fort, l'abbaye au sommet, la baie immense à marée montante.", "image": "msm.jpg", "credit": "Benh LIEU SONG · CC BY 2.5"},
+    {"layout": "closing", "title": "Dinan, la médiévale", "text": "Le vieux pont sur la Rance, la rue du Jerzual, les remparts et le château. Fin du voyage, retour chez nous.", "image": "dinan.jpg", "credit": "Benh LIEU SONG · CC BY-SA 3.0"}
+  ]
+}

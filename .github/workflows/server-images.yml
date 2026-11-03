@@ -5,6 +5,9 @@
 #                                                   browser/, 12 characters. Also :<key>-<yyyymmdd> (a way back).
 #   ghcr.io/alexbob0/hermes-sandbox:desktop         Hermes' sandbox (docker.io/nousresearch/hermes-sandbox:desktop),
 #                                                   mirrored: the servers don't depend on Docker Hub's limits.
+#   ghcr.io/alexbob0/bipagents-sandbox:<key>        the agents' sandbox: Hermes' plus the styled documents skills'
+#                                                   Python libraries (sandbox/Containerfile), x86_64 and ARM; <key>
+#                                                   the same hash of sandbox/. Built again when Hermes' image changes.
 # Each night it asks dnf, in the current image, whether Chrome (Chromium on ARM) or Fedora have something new (the same
 # check as installer/bipinstall/browser_refresh.py) and builds it again under the same key when they do; servers
 # pull it at 00:50 (root's bipagents-images.timer), the places restart their idle browsers on it from 01:00.
@@ -14,7 +17,7 @@ name: Server images
 on:
   push:
     branches: [main]
-    paths: ["browser/**", ".github/workflows/server-images.yml"]
+    paths: ["browser/**", "sandbox/**", ".github/workflows/server-images.yml"]
   schedule:
     - cron: "0 21 * * *"
   workflow_dispatch:
@@ -34,6 +37,8 @@ concurrency:
 
 env:
   BROWSER: ghcr.io/alexbob0/bipagents-browser
+  AGENT_SANDBOX: ghcr.io/alexbob0/bipagents-sandbox
+  SANDBOX_BASE: docker.io/nousresearch/hermes-sandbox:desktop
 
 jobs:
   key:
@@ -115,3 +120,66 @@ jobs:
             --dest-creds "${{ github.actor }}:${{ github.token }}" \
             docker://docker.io/nousresearch/hermes-sandbox:desktop \
             docker://ghcr.io/alexbob0/hermes-sandbox:desktop
+
+  agent-sandbox-key:
+    name: Agents' sandbox key, and whether to build
+    needs: sandbox
+    if: github.repository == 'Alexbob0/BipAgents'
+    runs-on: ubuntu-latest
+    outputs:
+      key: ${{ steps.key.outputs.key }}
+      base: ${{ steps.key.outputs.base }}
+      build: ${{ steps.decide.outputs.build }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: key
+        run: |
+          echo "key=$(printf '%s' "$(git rev-parse HEAD:sandbox)" | sha256sum | cut -c1-12)" >> "$GITHUB_OUTPUT"
+          echo "base=$(skopeo inspect --format '{{.Digest}}' "docker://$SANDBOX_BASE")" >> "$GITHUB_OUTPUT"
+      - id: decide
+        env:
+          FORCE: ${{ github.event.inputs.force }}
+        run: |
+          image="$AGENT_SANDBOX:${{ steps.key.outputs.key }}"
+          built=$(skopeo inspect --format '{{index .Labels "bipagents.base"}}' "docker://$image" 2>/dev/null || true)
+          # missing, forced, or Hermes' image changed since it was built
+          if [ "$FORCE" = "true" ] || [ "$built" != "${{ steps.key.outputs.base }}" ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  agent-sandbox:
+    name: Agents' sandbox ${{ matrix.arch }}
+    needs: agent-sandbox-key
+    if: needs.agent-sandbox-key.outputs.build == 'true'
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Build (Hermes' sandbox at the digest checked, plus the pinned libraries)
+        run: |
+          tag="$AGENT_SANDBOX:${{ needs.agent-sandbox-key.outputs.key }}-${{ matrix.arch }}"
+          docker build --pull --build-arg "BASE=docker.io/nousresearch/hermes-sandbox@${{ needs.agent-sandbox-key.outputs.base }}" \
+            --label "bipagents.base=${{ needs.agent-sandbox-key.outputs.base }}" -t "$tag" -f sandbox/Containerfile sandbox
+          docker run --rm --network=none "$tag" python3 -c "import pptx, docx, lxml, PIL, xlsxwriter"
+          docker push "$tag"
+
+  agent-sandbox-manifest:
+    name: Agents' sandbox ${{ needs.agent-sandbox-key.outputs.key }}
+    needs: [agent-sandbox-key, agent-sandbox]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: One name for both processors
+        run: |
+          key="${{ needs.agent-sandbox-key.outputs.key }}"
+          docker buildx imagetools create -t "$AGENT_SANDBOX:$key" -t "$AGENT_SANDBOX:$key-$(date -u +%Y%m%d)" \
+            "$AGENT_SANDBOX:$key-amd64" "$AGENT_SANDBOX:$key-arm64"

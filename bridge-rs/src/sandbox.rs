@@ -109,6 +109,25 @@ pub fn connector_proxy_ip(subnet: &str) -> Option<String> {
 }
 /// Hermes' default sandbox image (hermes_cli/config_defaults.py), with its registry (podman won't guess in a service).
 pub const DEFAULT_IMAGE: &str = "docker.io/nousresearch/hermes-sandbox:desktop";
+/// Hermes' sandbox with the styled documents skills' Python libraries (sandbox/Containerfile, style_skills.rs), as the
+/// servers keep it (installer/bipinstall/shared_images.py).
+pub const AGENT_IMAGE: &str = "localhost/bipagents-sandbox:latest";
+
+/// The `terminal.docker_image` an isolated agent's profile should get, when it changes: ours when the machine has it
+/// and the profile still runs Hermes' default (unset or named), Hermes' default again when ours is gone. An image the
+/// person chose is left alone. None: nothing to change.
+pub fn wanted_image(current: Option<&str>, ours_present: bool) -> Option<&'static str> {
+    let current = current.map(str::trim).unwrap_or("");
+    let hermes_default =
+        current.is_empty() || current == DEFAULT_IMAGE || DEFAULT_IMAGE.strip_prefix("docker.io/") == Some(current);
+    if hermes_default && ours_present {
+        Some(AGENT_IMAGE)
+    } else if current == AGENT_IMAGE && !ours_present {
+        Some(DEFAULT_IMAGE)
+    } else {
+        None
+    }
+}
 /// Where the agent finds the files it was sent, and the shared files it fetched (read-only).
 pub const RECEIVED: &str = crate::files::SANDBOX_UPLOADS;
 /// Where it puts a file to share (its own, read-write).
@@ -760,6 +779,17 @@ pub async fn isolate(shared: &SharedConfig, agent: &AgentConfig, run: &Run, save
     });
     if !kept.is_empty() {
         tracing::warn!(target: "bipbridge::sandbox", agent = %agent.name, mounts = %kept.join(" "), "the sandbox still mounts folders added by hand: Hermes keeps asking before risky commands");
+    }
+    // the image with the styled documents skills' libraries, once the machine has it
+    let ours_present = run(args(&[&podman, "image", "exists", AGENT_IMAGE]), BTreeMap::new()).await.is_ok();
+    let now = current.get("docker_image").and_then(Value::as_str);
+    if let Some(image) = wanted_image(now, ours_present) {
+        run(
+            args(&[&config.hermes.bin, "-p", &agent.name, "config", "set", "terminal.docker_image", image]),
+            env.clone(),
+        )
+        .await?;
+        tracing::info!(target: "bipbridge::sandbox", agent = %agent.name, image, "sandbox image set");
     }
     // its own code runs without asking: the network is the bridge's (CODE_KEYS says why it stays safe)
     set_allowlist(&config, agent, &folder, run, true).await?;
@@ -1576,6 +1606,19 @@ mod tests {
         std::fs::set_permissions(home.join("secret.txt"), std::fs::Permissions::from_mode(0o600)).unwrap();
         std::fs::set_permissions(&home, std::fs::Permissions::from_mode(0o700)).unwrap();
         (dir, config, agent, share, home)
+    }
+
+    /// Ours once the machine has it, Hermes' default back when it is gone, the person's own image never touched.
+    #[test]
+    fn the_sandbox_image_follows_the_machine() {
+        assert_eq!(wanted_image(None, true), Some(AGENT_IMAGE));
+        assert_eq!(wanted_image(Some(""), true), Some(AGENT_IMAGE));
+        assert_eq!(wanted_image(Some("nousresearch/hermes-sandbox:desktop"), true), Some(AGENT_IMAGE));
+        assert_eq!(wanted_image(Some(DEFAULT_IMAGE), true), Some(AGENT_IMAGE));
+        assert_eq!(wanted_image(Some(AGENT_IMAGE), true), None);
+        assert_eq!(wanted_image(None, false), None);
+        assert_eq!(wanted_image(Some(AGENT_IMAGE), false), Some(DEFAULT_IMAGE));
+        assert_eq!(wanted_image(Some("docker.io/library/python:3.13"), true), None);
     }
 
     fn tool(config: &Config, agent: &AgentConfig, name: &str, arguments: Value) -> (bool, String) {

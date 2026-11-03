@@ -120,6 +120,8 @@ pub mod souls;
 pub mod space;
 pub mod spaces;
 pub mod ssh_keys;
+/// The styled documents skills (decks and Word documents), in place of Hermes' `powerpoint` and `docx`.
+pub mod style_skills;
 /// What each kind of agent keeps in view of Hermes' tools (token diet, phase 2).
 pub mod tool_diet;
 /// The providers EUrouter tries first, for its prompt cache.

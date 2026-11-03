@@ -1,0 +1,74 @@
+{
+  "title": "Le Fournil de Léa",
+  "slides": [
+    {
+      "layout": "cover",
+      "title": "Le Fournil de Léa",
+      "subtitle": "Boulangerie bio au levain naturel · Nantes · Ouverture avril 2026",
+      "image": "pain.jpg",
+      "credit": "August Geyler · CC BY-SA 4.0 · Wikimedia Commons"
+    },
+    {
+      "layout": "bullets",
+      "title": "Le projet",
+      "bullets": [
+        "Boulangerie 100 % bio, pain au levain naturel, farines locales",
+        "Ouverture prévue en avril 2026 à Nantes",
+        "Cuisson au four à sole, pétrissage lent, fabrication sur place",
+        "Offre : pains au levain, viennoiseries bio, pâtisseries maison",
+        "Positionnement : artisanat, circuit court, quartier de vie"
+      ]
+    },
+    {
+      "layout": "image_text",
+      "title": "L'équipe",
+      "image": "pain.jpg",
+      "credit": "August Geyler · CC BY-SA 4.0 · Wikimedia Commons",
+      "text": "Léa Martin, boulangère : 12 ans de métier, spécialiste du levain naturel. Karim Benali, pâtissier : viennoiseries et pâtisseries bio faites maison. Deux artisans complémentaires, une même exigence de qualité."
+    },
+    {
+      "layout": "chart",
+      "title": "Chiffre d'affaires prévisionnel",
+      "chart": {
+        "type": "bar",
+        "categories": ["2026", "2027", "2028"],
+        "series": { "CA (k€)": [160, 240, 310] },
+        "unit": "k€"
+      },
+      "takeaway": "CA quasi doublé en deux ans : montée en puissance du fonds de commerce et de la clientèle."
+    },
+    {
+      "layout": "stats",
+      "title": "Le besoin : 120 000 €",
+      "stats": [
+        { "value": "48 k€", "label": "Four et pétrin" },
+        { "value": "36 k€", "label": "Travaux" },
+        { "value": "24 k€", "label": "Stock et trésorerie" },
+        { "value": "12 k€", "label": "Communication" }
+      ],
+      "takeaway": "Un financement ciblé sur l'outil de production et le lancement."
+    },
+    {
+      "layout": "big_number",
+      "value": "+94 %",
+      "label": "Croissance du CA entre 2026 et 2028",
+      "context": "De 160 k€ la première année à 310 k€ la troisième : un modèle qui monte vite, porté par la demande de pain bio au levain à Nantes."
+    },
+    {
+      "layout": "bullets",
+      "title": "Pourquoi investir",
+      "bullets": [
+        "Marché du pain bio et artisanal en forte croissance à Nantes",
+        "Équipe expérimentée : 12 ans de métier pour Léa",
+        "Investissement matériel ciblé et rapidement amorti",
+        "CA prévisionnel solide : 310 k€ dès la 3e année",
+        "Positionnement bio et local différenciant"
+      ]
+    },
+    {
+      "layout": "closing",
+      "title": "Rejoignez l'aventure",
+      "contact": "Léa Martin · Le Fournil de Léa · Nantes · Ouverture avril 2026 · À compléter : téléphone, e-mail"
+    }
+  ]
+}

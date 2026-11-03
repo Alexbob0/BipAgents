@@ -92,6 +92,24 @@ def test_the_sandbox_comes_from_docker_hub_when_the_mirror_fails_and_a_failed_pu
     assert shared_images.pull(store=tmp_path, run=Podman(fail={shared_images.browser_ref("k1")})) == 1
 
 
+def test_root_pulls_the_agents_sandbox_of_this_checkout_when_the_registry_has_it(tmp_path, setting, monkeypatch):
+    real = shared_images.tree_key
+    monkeypatch.setattr(shared_images, "tree_key", lambda folder, repo=None: "s9" if folder == "sandbox" else real(folder))
+    podman = Podman()
+    podman.registry[shared_images.agent_sandbox_ref("s9")] = "a1"
+    assert shared_images.pull(store=tmp_path, run=podman) == 0
+    assert podman.images[shared_images.AGENT_SANDBOX] == "a1"
+    assert shared_images.agent_sandbox_ref("s9") == "ghcr.io/alexbob0/bipagents-sandbox:s9"
+    assert json.loads(setting.read_text())["agent_sandbox"] == {"key": "s9", "id": "a1"}
+    # not built yet for this checkout: the agents keep Hermes' own sandbox, nothing fails, last night's is kept
+    assert shared_images.pull(store=tmp_path, run=Podman(images=dict(podman.images))) == 0
+    assert json.loads(setting.read_text())["agent_sandbox"]["id"] == "a1"
+    # the workflow builds it from that folder, under the same key
+    workflow = (ROOT / ".github" / "workflows" / "server-images.yml").read_text(encoding="utf-8")
+    assert "git rev-parse HEAD:sandbox" in workflow and "bipagents-sandbox" in workflow
+    assert (ROOT / "sandbox" / "Containerfile").is_file()
+
+
 def test_root_pulls_again_each_night_before_the_places_refresh(tmp_path):
     units = dict(shared_images.units(Path("/usr/local/lib/bipagents/repo")))
     assert "ExecStart=/usr/bin/python3 -m bipinstall.shared_images pull" in units["bipagents-images.service"]
