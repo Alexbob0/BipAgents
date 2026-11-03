@@ -352,6 +352,91 @@ static NUMBER: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\b((?:TGV|ICE|AVE|EC|IC|[A-Z]{2}|[A-Z]\d|\d[A-Z])\s?\d{2,4})\b").expect("valid regex")
 });
 
+/// Words saying something was called off (folded, whole words).
+const CANCELLED: &[&str] = &[
+    "annule",
+    "annulee",
+    "annules",
+    "annulees",
+    "cancelled",
+    "canceled",
+    "called off",
+    "abgesagt",
+    "storniert",
+    "cancelado",
+    "cancelada",
+    "suspendido",
+];
+/// What may be called off inside a trip without the trip being so (a flight, a dinner…), folded.
+const PART_OF_TRIP: &[&str] = &[
+    "vol",
+    "vols",
+    "avion",
+    "train",
+    "trains",
+    "tgv",
+    "billet",
+    "billets",
+    "hotel",
+    "airbnb",
+    "location",
+    "voiture",
+    "reservation",
+    "ferry",
+    "bus",
+    "navette",
+    "flight",
+    "ticket",
+    "tickets",
+    "rental",
+    "booking",
+    "zug",
+    "flug",
+    "vuelo",
+    "tren",
+    "restaurant",
+    "diner",
+    "dejeuner",
+    "table",
+    "visite",
+    "excursion",
+    "activite",
+    "spectacle",
+    "concert",
+    "musee",
+    "cours",
+    "match",
+    "rendez vous",
+    "rdv",
+    "dinner",
+    "lunch",
+    "museum",
+];
+
+/// Whether a trip's page says the trip itself was called off: its « En bref », or one of its lines, has a sentence
+/// with « annulé » (« Week-end à Lyon annulé : mes parents ne seront pas là », « Voyage annulé le 3/11 ») and nothing
+/// that is only part of the trip (« Vol AF1234 annulé », « Dîner du samedi annulé » leave it as it is), no question
+/// and no negation. The lab's week-end moved then cancelled (2026-11-03), with GLM and DeepSeek.
+pub fn cancelled(page: &Page) -> bool {
+    let has = |text: &str, words: &[&str]| words.iter().any(|w| text.contains(&format!(" {w} ")));
+    let says = |sentence: &str| {
+        if sentence.contains('?') {
+            return false;
+        }
+        let plain = format!(" {} ", fold(sentence).replace(|c: char| !c.is_alphanumeric(), " "));
+        let plain = plain.split_whitespace().collect::<Vec<_>>().join(" ");
+        let plain = format!(" {plain} ");
+        has(&plain, CANCELLED)
+            && !has(&plain, PART_OF_TRIP)
+            && !["pas annule", "non annule", "not cancelled", "not canceled", "nicht abgesagt", "no cancelado"]
+                .iter()
+                .any(|n| plain.contains(n))
+    };
+    // its « En bref » is a section too (its lines, not list items)
+    let texts: Vec<String> = page.sections().into_iter().flat_map(|(_, f)| f).map(|f| f.text).collect();
+    texts.iter().any(|t| t.split(['.', '\n', ';', '!']).any(says))
+}
+
 /// A date in a line, with the year when it has none: the one that puts it within a year from `around`.
 pub fn date_of(text: &str, around: NaiveDate) -> Option<NaiveDate> {
     let (month, day, year) = super::date_in(text)?;
@@ -757,6 +842,26 @@ pub fn tick(config: &Config, part: Part, path: &str, item: &str, done: bool, who
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_trip_called_off_and_one_with_a_cancelled_flight() {
+        let page = |body: &str| Page::parse(&format!("---\ntype: trip\n---\n# Lyon, nov. 2026\n\n{body}"), "x");
+        // the lab's pages (2026-11-03)
+        assert!(cancelled(&page("## En bref\nWeek-end chez les parents à Lyon annulé (03/11) : parents absents.\n")));
+        assert!(cancelled(&page(
+            "## En bref\nVoyage annulé le 3/11/2026 : mes parents ne seront pas là. Billet de train à annuler.\n"
+        )));
+        assert!(cancelled(&page(
+            "## Dates\n- Le report au 27–29 novembre est annulé aussi — *Quotidien, 2026-11-03*\n"
+        )));
+        // part of the trip, a question, a negation, a free cancellation: not the trip
+        assert!(!cancelled(&page("## Transports\n- Vol AF1234 annulé, remplacé par AF1236 — *Léa, 2026-11-03*\n")));
+        assert!(!cancelled(&page("## Sur place\n- Dîner du samedi annulé — *Léa, 2026-11-03*\n")));
+        assert!(!cancelled(&page("## Notes\n- Week-end annulé ? À voir avec les parents — *Léa, 2026-11-03*\n")));
+        assert!(!cancelled(&page("## Notes\n- Le week-end n'est pas annulé, juste décalé — *Léa, 2026-11-03*\n")));
+        assert!(!cancelled(&page("## Hébergement\n- Annulation gratuite jusqu'au 10 — *Léa, 2026-11-03*\n")));
+        assert!(!cancelled(&page("## Transports\n- Train à annuler ou échanger — *Léa, 2026-11-03*\n")));
+    }
 
     #[test]
     fn a_subject_that_is_a_trip_keeps_everything() {
