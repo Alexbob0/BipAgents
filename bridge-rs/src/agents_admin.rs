@@ -1927,6 +1927,7 @@ pub async fn read_settings(config: &Config, agent: &AgentConfig, http: &reqwest:
     let (soul, _) = crate::souls::split_health(&soul);
     let (soul, _) = crate::souls::split_notebook(&soul);
     let (soul, _) = crate::souls::split_shared_memory(&soul);
+    let (soul, _) = crate::skill_library::split_block(&soul);
     let (soul, _) = crate::souls::split_archives(&soul);
     let soul = crate::souls::split_server(&crate::souls::split_payments(&soul));
     let (soul, _) = crate::dates::split_dates(&soul);
@@ -1973,7 +1974,7 @@ pub async fn read_settings(config: &Config, agent: &AgentConfig, http: &reqwest:
               "thinking": read_thinking(config, agent), "model": read_model(config, agent), "toolsets": toolsets,
               "isolated": agent.isolated,
               "protected": config.hermes.isolated,
-              "services": crate::services::listing(config, agent), "skills": crate::own_skills::listing(&profile_folder(config, agent)),
+              "services": crate::services::listing(config, agent), "skills": crate::skill_library::annotate(config, &agent.name, crate::own_skills::listing(&profile_folder(config, agent))),
               "browser": browser_settings(config, agent),
               "health": {"on": crate::health::enabled(config, agent.name.as_str()),
                          "categories": crate::health::categories(config, agent.name.as_str())},
@@ -2124,6 +2125,7 @@ pub fn write_soul(config: &Config, agent: &AgentConfig, soul: &str) -> std::io::
     let text = crate::souls::with_notebook(&text, !closed && crate::notebook::enabled(config, &agent.name));
     let circle = if closed { None } else { crate::shared_memory::membership(config, &agent.name) };
     let text = crate::souls::with_shared_memory(&text, circle);
+    let text = crate::skill_library::with_block(&text, !closed && crate::skill_library::holds(config, &agent.name));
     let text = crate::souls::with_archives(&text, !closed && crate::archives::enabled(config, &agent.name));
     let line = crate::dates::agent_line(config, &crate::dates::load(config), &text);
     let text = crate::dates::with_dates(&text, line.as_deref());
@@ -2144,6 +2146,7 @@ pub fn editable_soul(config: &Config, agent: &AgentConfig) -> std::io::Result<St
     let (soul, _) = crate::souls::split_health(&soul);
     let (soul, _) = crate::souls::split_notebook(&soul);
     let (soul, _) = crate::souls::split_shared_memory(&soul);
+    let (soul, _) = crate::skill_library::split_block(&soul);
     let (soul, _) = crate::souls::split_archives(&soul);
     let soul = crate::souls::split_server(&crate::souls::split_payments(&soul));
     let (soul, _) = crate::dates::split_dates(&soul);

@@ -183,6 +183,12 @@ pub fn folders(profile: &Path) -> Vec<(Dict, PathBuf)> {
     out
 }
 
+/// Whether `name` is in the profile's `skills.disabled` (skill_library.rs: an agent with a copy switched off doesn't
+/// count as using it).
+pub fn is_disabled(profile: &Path, name: &str) -> bool {
+    disabled(&config(profile)).iter().any(|n| n == name)
+}
+
 /// Turns some of the agent's own skills on or off (others, Hermes' or the hub's, are not this switch's): an
 /// unknown name is Python's `LookupError` (« a, b »).
 pub fn set_enabled(profile: &Path, changes: &IndexMap<String, bool>) -> anyhow::Result<()> {
