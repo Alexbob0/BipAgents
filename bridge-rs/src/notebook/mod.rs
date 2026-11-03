@@ -38,7 +38,6 @@ pub mod archive;
 pub mod fill;
 pub mod records;
 pub mod relanguage;
-pub mod repair;
 pub mod template;
 pub mod news;
 pub mod tidy;
