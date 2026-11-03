@@ -174,7 +174,6 @@ The suite makes about 800 requests in 28 files.
 | `GET /v1/media` | app | agent_tools (2), media_and_jobs (1), pages (1) |
 | `GET /v1/pages` | app | pages (1) |
 | `DELETE /v1/pages/{page}` | app | pages (1) |
-| `GET /v1/sessions/{session_id}/state` | app | cronwatch (2), agent_queue (1) |
 | `GET /v1/status` | app | relay_and_discovery (2), agents_admin (1), config (1), vault (1) |
 | `GET /v1/pairing` | app | lan (2) |
 | `GET /v1/replies/{reply_id}` | app | voice_and_approvals (2), cronwatch (1) |
@@ -221,8 +220,9 @@ The suite makes about 800 requests in 28 files.
 | `GET POST PUT PATCH DELETE /hermes/{agent}/{path:path}` | lan | lan (4), console (1) |
 | `GET /v1/live/brief` | live_brief | live_brief (2) |
 | `POST /v1/live/calls` | live_brief | live_brief (2) |
-| `POST /v1/live/recaps` | live_brief | live_brief (1) |
-| `POST /v1/live/recaps/take` | live_brief | live_brief (1) |
+| `POST /v1/live/calls/start` | live_brief | live_brief (2) |
+| `POST /v1/live/turns` | live_turns | live_turns (2) |
+| `POST /v1/live/turns/stop` | live_turns | live_turns (1) |
 | `GET /v1/agents/{agent_id}/mail-scan` | mail_scan | mailbox (1) |
 | `POST /v1/agents/{agent_id}/mail-scan` | mail_scan | mailbox (2) |
 | `POST /v1/agents/{agent_id}/mail-scan/step` | mail_scan | mailbox (2) |
@@ -346,7 +346,5 @@ These are Python behaviours a port must reproduce, or decide about:
    start with `{`.
 6. **SIGTERM exit status.** On SIGTERM, uvicorn re-raises the signal once it has stopped, so the process ends with -15.
    The suite accepts 0 or -15, within 10 s.
-7. **`/v1/sessions/{id}/state` passes Hermes' `last_active` through as it is.** That includes `0`, where `null` might
-   be expected.
-8. **The search snippet of a multipart mail starts with its MIME lines.** It is `BODY[TEXT]` as IMAP gives it,
+7. **The search snippet of a multipart mail starts with its MIME lines.** It is `BODY[TEXT]` as IMAP gives it,
    spaces folded.

@@ -21,7 +21,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
 
-from .common import HERMES_KEY, make_wav, pcm_for
+from .common import HERMES_KEY, make_wav, pcm_for, sse
 from .servers import Seen, Served, wait_flag
 
 CLOSE = object()   # in a run's script: end the SSE stream here (instead of staying open like Hermes does)
@@ -258,8 +258,32 @@ def split_brief_now(text: Any) -> Tuple[Optional[str], Any]:
     return (found.group(1), text[:found.start()]) if found else (None, text)
 
 
+def taken_notes(bridge, agent: str = "wellness", session: str = "s1", text: str = "Bonjour", kinds=()) -> str:
+    """What joined the person's next message in `session` (the send route takes it, threads/send.rs), as the bridge
+    wrote it before her words: the current time first, then what waited for the message."""
+    import uuid
+
+    from .common import AUTH
+    from .servers import wait_until
+    hermes = bridge.fakes.hermes
+    thread = bridge.get("/v1/threads/resolve", headers=AUTH, params={"agent": agent, "session_id": session}).json()
+    thread = thread["thread"]["id"]
+    run = f"r{len(hermes.started) + 1}"
+    hermes.runs[run] = [sse("run.completed", run_id=run, output=""), CLOSE]
+    sent = bridge.post(f"/v1/threads/{thread}/messages", headers=AUTH,
+                       json={"agent": agent, "client_id": uuid.uuid4().hex, "text": text, "kinds": list(kinds)})
+    assert sent.status_code == 200 and sent.json()["state"] == "started", sent.text
+    started = hermes.started[sent.json()["run_id"]]
+    page = lambda: bridge.get(f"/v1/threads/{thread}/timeline", headers=AUTH,   # noqa: E731
+                              params={"agent": agent, "limit": 1}).json()
+    assert wait_until(lambda: not page()["pending"]["run"]), "the turn never ended"
+    assert started["input"].endswith(text.strip()), started
+    notes = started["input"][:-len(text.strip())].rstrip("\n")
+    return f"<!--bip:now {started['now']}-->" + (f"\n{notes}" if notes else "")
+
+
 def waiting_notes(recap: Optional[str]) -> Optional[str]:
-    """`POST /v1/live/recaps/take`'s `recap` without the current time at its top: None when only the time was there."""
+    """`taken_notes` without the current time at its top: None when only the time was there."""
     now, rest = split_now(recap)
     assert recap is None or now is not None, f"no current time first: {recap!r}"
     return rest or None
@@ -296,6 +320,9 @@ class FakeHermes(Fake):
         self.messages: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
         self.created: List[Tuple[str, Dict[str, Any]]] = []
         self.chats: List[Dict[str, Any]] = []
+        self.streams: List[Dict[str, Any]] = []          # POST /api/sessions/{id}/chat/stream (a Live call's turns)
+        self.stream_script: List[Any] = [sse("assistant.delta", run_id="run_l1", delta="Salut"),
+                                         sse("run.completed", run_id="run_l1", output="Salut")]
         self.patched: List[Dict[str, Any]] = []
         self.deleted: List[str] = []
         # Hermes' titler writing a deleted session that had a chat back (an empty row titled from the request, source
@@ -524,6 +551,18 @@ class FakeHermes(Fake):
                                               for p in r["content"]]} if isinstance(r.get("content"), list) else r
                             for r in rows]
             return JSONResponse({"messages": rows})
+        if parts[3:] == ["chat", "stream"] and method == "POST":
+            self.streams.append({"agent": agent, "session": session_id, **(seen.json() or {})})
+            script = self.stream_script
+
+            async def turn():
+                for item in script:
+                    if isinstance(item, (int, float)):
+                        await asyncio.sleep(item)
+                    else:
+                        yield item.encode("utf-8")
+
+            return StreamingResponse(turn(), media_type="text/event-stream")
         if len(parts) == 4 and parts[3] == "chat" and method == "POST":
             body = seen.json() or {}
             now, body["message"] = split_now(body.get("message"))
@@ -589,6 +628,9 @@ class FakeModel(Fake):
         super().reset()
         self.status = 200
         self.chats: List[Dict[str, Any]] = []
+        self.streams: List[Dict[str, Any]] = []          # POST /api/sessions/{id}/chat/stream (a Live call's turns)
+        self.stream_script: List[Any] = [sse("assistant.delta", run_id="run_l1", delta="Salut"),
+                                         sse("run.completed", run_id="run_l1", output="Salut")]
         # the Carnet's nightly pass (its instructions start « You tidy »): the lines it answers
         self.notebook_lines: List[Dict[str, Any]] = []
         # records from an archive (its instructions start « You extract precise records »): per document of the

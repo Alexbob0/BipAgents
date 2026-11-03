@@ -1003,64 +1003,6 @@ async fn delete_page(State(state): State<AppState>, Path(page): Path<String>, q:
     Ok(web::ok(json!({"deleted": page})))
 }
 
-/// Polled by an open conversation: its message count (to show turns the agent takes on its own),
-/// and « the user is looking at it » (no push for what is on screen).
-async fn session_state(
-    State(state): State<AppState>,
-    Path(session_id): Path<String>,
-    q: QueryMap,
-) -> ApiResult<Response> {
-    let agent = web::query_required(&q, "agent")?;
-    let config = state.config();
-    let agent_cfg = agent_or_404(&config, Some(&agent))?;
-    if !SESSION_ID.is_match(&session_id) {
-        return Err(HttpError::new(400, "invalid session_id"));
-    }
-    state.presence.touch(&agent_cfg.name, &session_id);
-    let session = match state.hermes.session(&agent_cfg, &session_id).await {
-        Ok(s) => s,
-        Err(exc) => {
-            if let Some(status) = exc.status() {
-                return Err(HttpError::new(
-                    if [401, 403, 404].contains(&status) { status } else { 502 },
-                    "Hermes refused",
-                ));
-            }
-            if exc.is_transport() {
-                return Err(HttpError::new(502, "your agent isn't answering right now: try again in a moment"));
-            }
-            return Err(anyhow::anyhow!(exc).into());
-        }
-    };
-    let count =
-        if session.contains_key("message_count") { session.get("message_count") } else { session.get("messages") };
-    // isinstance(count, int): a bool is one in Python.
-    let count = match count {
-        Some(Value::Number(n)) if n.is_i64() || n.is_u64() => Value::Number(n.clone()),
-        Some(Value::Bool(b)) => Value::Bool(*b),
-        _ => Value::Null,
-    };
-    let updated = session
-        .get("updated_at")
-        .filter(|v| py::truthy(v))
-        .or_else(|| session.get("last_active"))
-        .cloned()
-        .unwrap_or(Value::Null);
-    // the agent's Boîte messages (a hand-back, a routine's report): they show in the conversation too (Bot Chat, all
-    // of them) without changing its message count; the app reloads when this changes
-    let outbox = state.store.outbox_marker(&agent_cfg.name).await.ok();
-    let mut out = json!({"session_id": session_id, "message_count": count, "updated_at": updated, "outbox": outbox});
-    // a Live call put in it (live_calls.rs): shown at its time, the app reloads when this changes; absent without any
-    let calls = crate::live_calls::LiveCalls::of(&state.briefs);
-    let (name, id) = (agent_cfg.name.clone(), session_id.clone());
-    if let Ok(Some(marker)) = tokio::task::spawn_blocking(move || calls.marker(&name, &id)).await {
-        out["calls"] = json!(marker);
-    }
-    // its waiting messages (msg_queue.rs), so every device shows the same list, and the turn the bridge started
-    out["queue"] = crate::msg_queue::queues_of(&state).get(&agent_cfg.name).snapshot_of(&agent_cfg.name, &session_id);
-    Ok(web::ok(out))
-}
-
 /// Is each agent's Hermes up, and does the model answer? Lets the app tell « server down » from « model
 /// down » (its machine off, an expired API key).
 async fn status(State(state): State<AppState>) -> ApiResult<Response> {
@@ -1179,8 +1121,8 @@ async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>
         // an agent a relative shares with this person: her answer goes to their bridge (agent_shares.rs)
         let run_id = check_run_id(&body.run_id)?;
         let choice = body.choice.trim().to_lowercase();
-        return crate::agent_shares::approve_mine(&state, &body.agent, &run_id, &choice, body.request_id.as_deref())
-            .await;
+        let (answer, request) = (body.answer.as_deref(), body.request_id.as_deref());
+        return crate::agent_shares::approve_mine(&state, &body.agent, &run_id, &choice, answer, request).await;
     }
     let agent = agent_or_404(&config, Some(&body.agent))?;
     let run_id = check_run_id(&body.run_id)?;
@@ -1381,7 +1323,6 @@ pub fn build_router() -> Router<AppState> {
         .route("/media", get(get_media))
         .route("/pages", get(list_pages))
         .route("/pages/{page}", delete(delete_page))
-        .route("/sessions/{session_id}/state", get(session_state))
         .route("/status", get(status))
         .route("/pairing", get(pairing))
         .route("/watch", post(watch_run))
@@ -1549,7 +1490,6 @@ const FIRST_ROUTE_METHODS: &[(&str, &str)] = &[
     ("/v1/media", "GET"),
     ("/v1/pages", "GET"),
     ("/v1/pages/{page}", "DELETE"),
-    ("/v1/sessions/{session_id}/state", "GET"),
     ("/v1/status", "GET"),
     ("/v1/pairing", "GET"),
     ("/v1/cron-jobs", "GET"),
@@ -1558,8 +1498,6 @@ const FIRST_ROUTE_METHODS: &[(&str, &str)] = &[
     ("/v1/runs/{run_id}/events", "GET"),
     ("/v1/approve", "POST"),
     ("/v1/approvals", "GET"),
-    ("/v1/approvals/answered", "GET"),
-    ("/v1/approvals/answered", "POST"),
     ("/v1/relay/push", "POST"),
     ("/v1/agent-kinds", "GET"),
     ("/v1/agents/claim", "POST"),
@@ -1619,8 +1557,6 @@ const FIRST_ROUTE_METHODS: &[(&str, &str)] = &[
     ("/v1/live/brief", "GET"),
     ("/v1/live/calls", ""),
     ("/v1/live/calls/start", "POST"),
-    ("/v1/live/recaps", "POST"),
-    ("/v1/live/recaps/take", "POST"),
     ("/v1/favicon/{host}", "GET"),
     ("/v1/console/pairings/{code}", "POST"),
     ("/v1/console/devices", "GET"),
@@ -1794,6 +1730,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::health::router())
         .merge(crate::voices::router())
         .merge(crate::live_brief::router())
+        .merge(crate::live_turns::router())
         .merge(crate::favicons::router())
         .merge(crate::map_tiles::router())
         .merge(crate::message_search::router())

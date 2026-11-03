@@ -6,7 +6,7 @@ import json
 import os
 import time
 
-from bbkit.fakes import waiting_notes
+from bbkit.fakes import taken_notes, waiting_notes
 from bbkit.common import AUTH, answered
 from bbkit.mcp import call, give_token, text_of
 
@@ -71,9 +71,9 @@ def test_80_percent_one_card_one_note_and_keep_the_last(bridge):
     # measured again: no second card, no second note this month
     bridge.post("/v1/storage/measure", headers=AUTH)
     assert len(space_cards(bridge)) == 1
-    note = waiting_notes(bridge.post("/v1/live/recaps/take", headers=AUTH, json={"agent": "wellness", "session": "s1"}).json()["recap"])
+    note = waiting_notes(taken_notes(bridge))
     assert note.startswith("<!--bip:space\n") and "80 % full" in note and "podcasts" in note
-    assert waiting_notes(bridge.post("/v1/live/recaps/take", headers=AUTH, json={"agent": "wellness", "session": "s1"}).json()["recap"]) is None
+    assert waiting_notes(taken_notes(bridge)) is None
     done = approve(bridge, card, "keep_last:5")
     assert done.status_code == 200 and done.json() == {"ok": True, "choice": "keep_last", "removed": 15, "freed": 15000}
     assert len(list((bridge.state_dir / "agent-audio" / "wellness").iterdir())) == 5
@@ -83,7 +83,7 @@ def test_80_percent_one_card_one_note_and_keep_the_last(bridge):
     assert kept == {"wellness": {"audio": {"keep_last": 5}}}
     logged = answered(bridge, "wellness")
     assert logged[-1]["topic"] == "space" and logged[-1]["choice"] == "keep_last"
-    told = bridge.post("/v1/live/recaps/take", headers=AUTH, json={"agent": "wellness", "session": "s1"}).json()["recap"]
+    told = taken_notes(bridge)
     assert "keep your last 5" in told
     # 95 %: a card again (its own threshold)
     offer(bridge, int(FIVE_GB * 0.96))
@@ -207,7 +207,7 @@ def test_over_its_allowance_the_biggest_agent_s_sandbox_pauses_then_resumes(brid
     body = bridge.post("/v1/storage/measure", headers=AUTH).json()
     assert body["paused"] == []
     assert ["unpause", "c0ffee"] in bridge.commands.of("podman")
-    note = bridge.post("/v1/live/recaps/take", headers=AUTH, json={"agent": "wellness", "session": "s"}).json()["recap"]
+    note = taken_notes(bridge, session="s")
     assert "works again" in note
     log = bridge.log_path.read_text()
     assert "the agent's sandbox paused" in log and "the agent's sandbox resumed" in log

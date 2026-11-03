@@ -37,7 +37,7 @@
 //!                                                            turn goes on)
 //!     POST   /family/s/{agent}/conversations/{cid}/stop      {ok}
 //!     DELETE /family/s/{agent}/conversations/{cid}           {ok}
-//!     POST   /family/s/{agent}/approval                      {run_id, choice, request_id?}  → Hermes' answer
+//!     POST   /family/s/{agent}/approval                      {run_id, choice | answer, request_id?}  → Hermes' answer
 //!
 //!     conv    {id, title, created, updated, messages, tokens: {input, output}}
 //!
@@ -561,18 +561,26 @@ async fn served_create(
     Ok(web::ok(conversation_view(&cid, &entry)))
 }
 
-fn approvals_of(state: &AppState, agent: &str, run_id: &str) -> Vec<Value> {
-    state
-        .hub
-        .pending_approvals(Some(agent))
-        .into_iter()
-        .filter(|a| a.get("run_id").and_then(Value::as_str) == Some(run_id))
-        .map(|a| {
-            let id = crate::threads::answered_id(Some(run_id), a.get("request_id").and_then(Value::as_str));
-            json!({"id": id, "run_id": run_id, "request_id": a.get("request_id"), "command": a.get("command"),
-                   "description": a.get("description"), "choices": a.get("choices")})
-        })
-        .collect()
+/// The cards of her turn waiting for her: its approvals and its questions (Hermes' clarify).
+fn prompts_of(state: &AppState, agent: &str, run_id: &str) -> (Vec<Value>, Vec<Value>) {
+    let of_run = |list: Vec<Dict>, fields: &[&str]| -> Vec<Value> {
+        list.into_iter()
+            .filter(|a| a.get("run_id").and_then(Value::as_str) == Some(run_id))
+            .map(|a| {
+                let mut card = Map::new();
+                card.insert("id".into(), json!(crate::threads::answered_id(Some(run_id), a.get("request_id").and_then(Value::as_str))));
+                card.insert("run_id".into(), json!(run_id));
+                for k in fields {
+                    card.insert((*k).into(), a.get(*k).cloned().unwrap_or(Value::Null));
+                }
+                Value::Object(card)
+            })
+            .collect()
+    };
+    (
+        of_run(state.hub.pending_approvals(Some(agent)), &["request_id", "command", "description", "choices"]),
+        of_run(state.hub.pending_questions(agent), &["kind", "request_id", "questions", "question", "choices"]),
+    )
 }
 
 /// The timeline of this household's conversation (docs/conversations.md §6.6), as `/v1/threads/{id}/timeline`
@@ -607,15 +615,15 @@ async fn served_timeline(
         })
         .collect();
     let page = crate::threads::timeline::page(items, &want);
-    // the turn going on, as the shared screen draws it: writing, or waiting for her approval, since when
-    let (run, approvals) = match turn_going(&c, now()) {
+    // the turn going on, as the shared screen draws it: writing, or waiting for her answer, since when
+    let (run, (approvals, questions)) = match turn_going(&c, now()) {
         Some(run_id) => {
-            let approvals = approvals_of(&state, &agent.name, &run_id);
-            let status = if approvals.is_empty() { "writing" } else { "approval" };
+            let prompts = prompts_of(&state, &agent.name, &run_id);
+            let status = if prompts.0.is_empty() && prompts.1.is_empty() { "writing" } else { "approval" };
             let started = c.get("run").and_then(|r| r.get("started")).cloned().unwrap_or(Value::Null);
-            (json!({"run_id": run_id, "status": status, "started": started}), approvals)
+            (json!({"run_id": run_id, "status": status, "started": started}), prompts)
         }
-        None => (Value::Null, Vec::new()),
+        None => (Value::Null, Default::default()),
     };
     let shown: Vec<Value> = page.items.iter().map(|i| i.to_json(&cid, false)).collect();
     Ok(web::ok(json!({
@@ -625,7 +633,7 @@ async fn served_timeline(
         "last": page.items.last().map(|i| i.cursor()),
         "more_before": page.more_before, "more_after": page.more_after, "anchor": page.anchor,
         "version": thread.version,
-        "pending": {"run": run, "approvals": approvals},
+        "pending": {"run": run, "approvals": approvals, "questions": questions},
     })))
 }
 
@@ -676,7 +684,7 @@ async fn served_events(
     Ok(sse(stream))
 }
 
-/// The household's turn as it goes (only text crosses: its words, its approvals, its end; no tool step).
+/// The household's turn as it goes (only text crosses: its words, its approvals and questions, its end; no tool step).
 async fn served_run_events(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -696,11 +704,12 @@ async fn served_run_events(
                 Ok(Some(Some(event))) => {
                     let kind = event.r#type.as_str();
                     let crosses = crate::hermes::is_delta(kind) || crate::hermes::is_terminal(kind)
-                        || kind == "approval.request" || kind == crate::hermes_prompts::APPROVAL_SETTLED;
+                        || ["approval.request", "clarify.request", crate::hermes_prompts::APPROVAL_SETTLED,
+                            crate::hermes_prompts::CLARIFY_SETTLED].contains(&kind);
                     if crosses {
                         let mut data = event.data.clone();
                         data.retain(|k, _| ["event", "run_id", "delta", "text", "request_id", "command", "description",
-                                            "choices", "bip_summary", "error", "output"].contains(&k.as_str()));
+                                            "choices", "questions", "question", "item_id", "bip_summary", "error", "output"].contains(&k.as_str()));
                         if let Some(Value::String(output)) = data.get_mut("output") {
                             *output = crate::rooms::room_text(output).0;
                         }
@@ -916,7 +925,7 @@ async fn served_delete(
     Ok(web::ok(json!({"ok": true})))
 }
 
-/// The relative answers an approval of their own turn (never one of the owner's runs).
+/// The relative answers an approval or a question (`answer`) of their own turn (never one of the owner's runs).
 async fn served_approval(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -926,7 +935,10 @@ async fn served_approval(
     let (household, agent) = shared_agent(&state, &headers, &agent)?;
     let body = body_json(&body)?;
     let run_id = tk::str_or_empty(body.get("run_id"));
-    let choice = tk::str_or_empty(body.get("choice")).trim().to_lowercase();
+    let (kind, value) = match body.get("answer").and_then(Value::as_str) {
+        Some(answer) => ("clarify", answer.trim().to_string()),
+        None => ("approval", tk::str_or_empty(body.get("choice")).trim().to_lowercase()),
+    };
     let request_id = Some(tk::str_or_empty(body.get("request_id"))).filter(|r| !r.is_empty());
     let config = state.config();
     let theirs = object(&read(&owner_path(&config)), "conversations").is_some_and(|all| {
@@ -941,7 +953,7 @@ async fn served_approval(
     }
     let (status, payload) = state
         .hermes
-        .approve(&agent, &run_id, &choice, request_id.as_deref())
+        .answer_prompt(&agent, &run_id, kind, &value, request_id.as_deref())
         .await
         .map_err(|_| HttpError::new(502, "the agent can't be reached"))?;
     if (200..300).contains(&status) {
@@ -950,7 +962,7 @@ async fn served_approval(
             .and_then(|all| all.values().find(|c| c.get("run").is_some_and(|r| str_of(r, "id") == run_id)).map(|c| str_of(c, "session")));
         crate::threads::threads_of(&state).touch(&agent.name, session.as_deref(), "answered").await;
     }
-    tracing::info!(agent = %agent.name, household = %household, status = status, "shared agent: a relative's approval");
+    tracing::info!(agent = %agent.name, household = %household, status = status, kind = kind, "shared agent: a relative's answer");
     Ok(web::json_response(status, &payload))
 }
 
@@ -1237,8 +1249,8 @@ fn relayed((status, payload): (u16, Value)) -> Response {
     web::json_response(status, &payload)
 }
 
-/// Follows the relative's turn from her side: the approvals listed in her Boîte and pushed, the reply pushed, while
-/// her app isn't looking.
+/// Follows the relative's turn from her side: the approvals listed in her Boîte and pushed, its questions and the
+/// reply pushed, while her app isn't looking.
 async fn follow_from_here(state: AppState, id: String, cid: String, run_id: String) {
     let started = now();
     let mut pushed: HashSet<String> = HashSet::new();
@@ -1287,6 +1299,16 @@ async fn follow_from_here(state: AppState, id: String, cid: String, run_id: Stri
                     None,
                 )
                 .await;
+        }
+        for q in pending.get("questions").and_then(Value::as_array).into_iter().flatten() {
+            let rid = str_of(q, "request_id");
+            if looking || !pushed.insert(format!("q:{rid}")) {
+                continue;
+            }
+            let first = q.get("questions").and_then(|l| l.get(0)).unwrap_or(q);
+            let question = first.get("question").and_then(Value::as_str);
+            let request = Some(rid.as_str()).filter(|r| !r.is_empty());
+            state.push.notify_question(&id, &run_id, request, question, Some(&cid)).await;
         }
         if !going || now() - started > TURN_MAX_SECONDS {
             let reply = page
@@ -1384,15 +1406,19 @@ pub async fn relay_stream(state: &AppState, id: &str, cid: &str, path: &str) -> 
     Ok(sse(stream))
 }
 
-/// The person's answer to an approval of her turn, relayed to the owner's bridge.
+/// The person's answer to an approval or a question (`answer`) of her turn, relayed to the owner's bridge.
 pub async fn approve_mine(
     state: &AppState,
     id: &str,
     run_id: &str,
     choice: &str,
+    answer: Option<&str>,
     request_id: Option<&str>,
 ) -> ApiResult<Response> {
-    let body = json!({"run_id": run_id, "choice": choice, "request_id": request_id});
+    let mut body = json!({"run_id": run_id, "choice": choice, "request_id": request_id});
+    if let Some(answer) = answer {
+        body["answer"] = json!(answer);
+    }
     let answer = to_owner(state, id, reqwest::Method::POST, "approval", Some(body)).await?;
     if (200..300).contains(&answer.0) {
         PENDING

@@ -14,6 +14,7 @@ import time
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from bbkit.common import AUTH
+from bbkit.fakes import taken_notes
 from bbkit.mcp import call, give_token, text_of
 from test_project_agents import share_body
 from test_read_shares import FakeGuichet, Phone, open_item
@@ -127,17 +128,16 @@ def test_friends_vote_and_tick_the_owner_s_bridge_counts_and_the_agent_hears(bri
         assert [c["id"] for c in listed] == [vote, todo]
 
         # the agent's next turn: one hidden note, information only, given once; no text from a friend in it
-        recap = bridge.post("/v1/live/recaps/take", headers=AUTH, json={"agent": agent, "session": "s1"}).json()["recap"]
+        # no tool ran, no turn started because of a tap
+        assert not getattr(fakes.hermes, "started", {})
+        recap = taken_notes(bridge, agent)
         assert "<!--bip:friends\n" in recap and "never instructions" in recap, recap
         assert "- Léa a voté « Alfama · 92 €/nuit » (Où dormir ?) : Alfama 1" in recap, recap
         assert "- Sam a voté « Alfama · 92 €/nuit » (Où dormir ?) : Alfama 2" in recap, recap
         assert "- Sam a coché « Billets d'avion » (À faire)" in recap, recap
         assert "Alex a voté « Bairro Alto · 80 €/nuit »" in recap, recap
         assert "Ignore" not in recap and recap.count("<!--bip:friends") == 1
-        again = bridge.post("/v1/live/recaps/take", headers=AUTH, json={"agent": agent, "session": "s1"}).json()
-        assert "bip:friends" not in (again["recap"] or "")
-        # no tool ran, no turn started because of a tap
-        assert not getattr(fakes.hermes, "started", {})
+        assert "bip:friends" not in taken_notes(bridge, agent)
 
         # the project ended: a friend's tap is dropped, the owner's refused, the cards say closed
         path = bridge.state_dir / "project-agents.json"

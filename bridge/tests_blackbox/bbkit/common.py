@@ -1,10 +1,14 @@
 """Constants and small helpers shared by the fakes and the tests (the same values as tests/conftest.py)."""
 from __future__ import annotations
 
+import contextlib
 import json
 import struct
+import threading
 import time
 from typing import Any
+
+import httpx
 
 BRIDGE_KEY = "test-bridge-key-0123456789abcdef0123456789"
 HERMES_KEY = "hermes-wellness-key-xyz"
@@ -46,6 +50,26 @@ def read_sse(resp, timeout: float = 120.0) -> list:
         elif line.startswith("data: "):
             events.append((name, json.loads(line[len("data: "):])))
     return events
+
+
+@contextlib.contextmanager
+def on_screen(bridge, agent: str = "wellness", thread: str = "main"):
+    """The app shows that conversation: its event stream open with `thread=` (presence: nothing pushed for it)."""
+    stop = threading.Event()
+
+    def watch():
+        with httpx.Client(base_url=bridge.url, headers=AUTH, timeout=30) as client:
+            with client.stream("GET", "/v1/threads/events", params={"agent": agent, "thread": thread}) as resp:
+                for _ in resp.iter_lines():
+                    if stop.is_set():
+                        return
+
+    threading.Thread(target=watch, daemon=True).start()
+    time.sleep(0.5)
+    try:
+        yield
+    finally:
+        stop.set()
 
 
 def in_session(bridge, payload, session: str) -> bool:

@@ -358,6 +358,7 @@ class Bridges:
         if change is not None:
             change(config)
         bridge = Bridge(root, config, self.fakebin, name)
+        bridge.fakes = self.fakes   # what the bridge talks to (bbkit.fakes.taken_notes reads Hermes' inputs)
         self.made.append(bridge)
         return bridge
 

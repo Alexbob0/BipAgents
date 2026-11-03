@@ -5,6 +5,7 @@ for the one-line mention; an agent other people talk to (the family's agent) nev
 import json
 
 from bbkit.common import AUTH
+from bbkit.fakes import taken_notes
 from conftest import managed_install, profile, wait_registered
 from test_agent_messages import TOKENS, ask, give_tokens, rpc
 
@@ -32,9 +33,7 @@ def note(bridge, who, arguments):
 
 
 def recap(bridge, agent):
-    taken = bridge.post("/v1/live/recaps/take", json={"agent": agent, "session": "s1"}, headers=AUTH)
-    assert taken.status_code == 200, taken.text
-    return taken.json()["recap"] or ""
+    return taken_notes(bridge, agent)
 
 
 def test_a_fact_on_budget_s_area_reaches_budget_s_next_turn_once(bridges, fakes):

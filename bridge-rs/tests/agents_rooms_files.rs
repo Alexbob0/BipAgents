@@ -73,9 +73,8 @@ async fn a_rooms_file_reaches_the_person_and_one_to_one_hears_of_the_room() {
     let h = [(k, v.as_str())];
 
     // nothing said in any room yet: no note joins the one-to-one message (0 token more)
-    let take = json!({"agent": "dev", "session": "s1", "text": "Salut"});
-    let recap = app.send_json("POST", "/v1/live/recaps/take", &h, &take).await.json();
-    assert!(recap["recap"].as_str().is_none_or(|r| !r.contains("bip:rooms")), "{recap}");
+    let recap = common::notes(&app, "dev", "s1", "Salut").await;
+    assert!(!recap.contains("bip:rooms"), "{recap}");
 
     let made = app.send_json("POST", "/v1/rooms", &h, &json!({"participants": ["dev", "bip"], "title": "Site du club"})).await;
     assert_eq!(made.status, 200, "{}", made.text());
@@ -111,11 +110,10 @@ async fn a_rooms_file_reaches_the_person_and_one_to_one_hears_of_the_room() {
     assert_eq!(app.get("/v1/media?path=/envoi/site.zip&agent=dev", &h).await.status, 200);
 
     // back in the one-to-one conversation: what's new in the room, once
-    let recap = app.send_json("POST", "/v1/live/recaps/take", &h, &take).await.json();
-    let note = recap["recap"].as_str().unwrap_or_default().to_string();
+    let note = common::notes(&app, "dev", "s1", "Salut").await;
     assert!(note.contains("<!--bip:rooms\n") && note.contains("From the room « Site du club »:"), "{note}");
     assert!(note.contains("- You: Voici le site du club, prêt à mettre en ligne. [file: site.zip]"), "{note}");
     assert!(note.contains("- Your person: @dev fais le site du club de foot"), "{note}");
-    let again = app.send_json("POST", "/v1/live/recaps/take", &h, &take).await.json();
-    assert!(again["recap"].as_str().is_none_or(|r| !r.contains("bip:rooms")), "{again}");
+    let again = common::notes(&app, "dev", "s1", "Salut").await;
+    assert!(!again.contains("bip:rooms"), "{again}");
 }
