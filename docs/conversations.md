@@ -47,7 +47,7 @@ The common cause: **the conversation was never a bridge object**. The fix is tha
    the message is stored and has its id (§9).
 6. **No compatibility layer** (Alex, 2026-11-02: no customers yet, one wave for the bridge, the apps right after):
    what this replaces is deleted (the legacy push fields and builders, `/v1/replies/{id}`, the reply texts kept in
-   memory). Routes other features still use stay (`/v1/outbox`, `/hermes/<agent>/…` for runs until step 4).
+   memory). Routes other features still use stay (`/v1/outbox`; `/hermes/<agent>/…`: Live's own turns, the web console, the lab).
 
 ## 3. Identities
 
@@ -641,5 +641,5 @@ The bridge grows because it now does what each app did twice. The code this make
 | Android `ChatModel.kt` | `thread()`, `restore()`, `keepAnswer()`, `showPendingApproval()`, outbox merge | ~600 of 1,633 lines |
 | Android | `net/Hermes.kt` message parsing (`unwrap`, `isHandoff`, `rescueLine`, `asNotice`, `tidy`), `MessageFocus.kt` | ~350 |
 | Android | `"Bot Chat"` comparisons | 18 sites |
-| Bridge, step 4 | `/hermes/<agent>/…` conversation calls, `/v1/approvals/answered` GET, `/v1/live/calls` GET (the timeline has them) | — |
+| Bridge, step 4 | done: the apps' `/hermes/<agent>/…` runs, steers, approvals and questions, `/v1/approvals/answered`, `/v1/agents/{id}/queue` POST and `/steer`, the shared-agents conversation routes (conv-step4). Left: `/v1/live/calls` GET, `/v1/sessions/{id}/state` (web console) | — |
 | Bridge, with botchat-v0225 merged | the four `"Bot Chat"` constants become `threads::LEGACY_MAIN_TITLE` (adoption only) | 6 sites |
