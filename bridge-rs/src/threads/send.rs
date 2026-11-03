@@ -180,7 +180,7 @@ impl Threads {
                 i.kind() == "message"
                     && i.body.get("role") == Some(&json!("person"))
                     && !claimed.contains_key(&i.id)
-                    && i.at >= at - CLOCK_SLACK
+                    && (i.at == 0.0 || i.at >= at - CLOCK_SLACK) // a row without its time (an older store): order only
                     && (if words.is_empty() { i.body.contains_key("attachments") } else { i.text().contains(words) })
             });
             if let Some((n, item)) = found {
