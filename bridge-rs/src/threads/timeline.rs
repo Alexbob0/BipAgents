@@ -33,6 +33,10 @@ static NOTES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<!--\s*bip:[\s\S]*
 static PHOTO_MARK: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?m)^[ \t]*\[(?:screenshot|image envoyée plus tôt|image)\][ \t]*\n?").expect("valid regex")
 });
+/// A photo Hermes (v0.22.5) saved for a message: `[Image attached at: <path>]` (the bytes are in that file, not in the
+/// row): an image attachment, served from the file (mod.rs `attachment_route`), never words of the message.
+pub static IMAGE_AT: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^[ \t]*\[Image attached at: ([^\]\n]+)\][ \t]*\n?").expect("valid regex"));
 static SYNC_LINK: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\s*\[Synchronous link:[^\]]*(?:\]|$)").expect("valid regex"));
 static DOCUMENT: LazyLock<Regex> = LazyLock::new(|| {
@@ -171,10 +175,13 @@ pub fn visible(raw: &str, id: &str, images: usize) -> (String, Vec<Value>) {
     text = SYNC_LINK.replace_all(&text, "").to_string();
     let marked = PHOTO_MARK.find_iter(&text).count();
     text = PHOTO_MARK.replace_all(&text, "").to_string();
+    let saved = IMAGE_AT.find_iter(&text).count();
+    text = IMAGE_AT.replace_all(&text, "").to_string();
     text = TOOL_MARKUP.replace_all(&text, "").to_string();
     text = TOOL_TAGS.replace_all(&text, "").to_string();
     let mut attachments = Vec::new();
-    for _ in 0..images.max(marked) {
+    // one photo is told by its part, its `[screenshot]` mark and its saved file alike: the most of the three
+    for _ in 0..images.max(marked).max(saved) {
         let n = attachments.len();
         attachments.push(json!({"id": format!("{id}.a{n}"), "kind": "image", "name": null, "mime": "image/jpeg",
                                 "size": null, "path": null}));
@@ -279,6 +286,36 @@ fn peer_of(text: &str) -> Option<String> {
     crate::cronwatch::TEAMMATE_PREFIX.captures(text).map(|c| c[1].to_string())
 }
 
+/// Which rows a segment shows. Hermes v0.22.5 compacts a conversation IN its session (no child): the rows it keeps are
+/// copied after the old ones with the same `message_uid` (both shown: one `compacted`, one active), and a message it
+/// folded into the summary is left inactive while the summary row takes its uid. So: a row shown as before (active or
+/// compacted, not a summary, not hidden), once per uid (the first, where it was said); and a row the summary absorbed
+/// (inactive, its uid held only by a summary row) shown again, at its place (lab 2026-11-03: « ok 3 » was lost and
+/// « Note 1 », « Note 2 » were drawn twice, with the same id).
+fn in_place_compaction(rows: &[Row]) -> Vec<bool> {
+    let hidden = |r: &Row| r.display_kind.as_deref() == Some("hidden") || r.role == "session_meta";
+    let shown_uids: HashSet<&str> =
+        rows.iter().filter(|r| r.shown && !r.summary && !hidden(r)).filter_map(|r| r.uid.as_deref()).collect();
+    let summary_uids: HashSet<&str> = rows.iter().filter(|r| r.summary).filter_map(|r| r.uid.as_deref()).collect();
+    let mut seen: HashSet<&str> = HashSet::new();
+    rows.iter()
+        .map(|r| {
+            if r.summary || hidden(r) {
+                return false;
+            }
+            let absorbed = !r.shown
+                && r.uid.as_deref().is_some_and(|u| summary_uids.contains(u) && !shown_uids.contains(u));
+            if !r.shown && !absorbed {
+                return false;
+            }
+            match r.uid.as_deref() {
+                Some(u) => seen.insert(u),
+                None => true,
+            }
+        })
+        .collect()
+}
+
 /// One segment's rows → items. `skip`: rows already shown (a continuation's copied tail), by message id.
 pub fn segment_items(
     agent: &str,
@@ -291,8 +328,9 @@ pub fn segment_items(
     let results: HashMap<&str, &Row> =
         rows.iter().filter(|r| r.role == "tool").filter_map(|r| r.tool_call_id.as_deref().map(|id| (id, r))).collect();
     let mut items = Vec::new();
-    for row in rows {
-        if !row.shown || row.summary || row.display_kind.as_deref() == Some("hidden") {
+    let keep = in_place_compaction(rows);
+    for (row, kept) in rows.iter().zip(keep) {
+        if !kept {
             continue;
         }
         let id = message_id(agent, session, row);
@@ -653,6 +691,48 @@ mod tests {
         assert_eq!(got[1].body["notice"]["text"], "J'ai arrêté une boucle.");
         let only_failed = items(&rows[..2]);
         assert_eq!(only_failed[1].body["notice"]["code"], "failed_turn");
+    }
+
+    #[test]
+    fn an_in_place_compaction_shows_each_message_once_and_keeps_what_the_summary_absorbed() {
+        // as Hermes v0.22.5 left the lab's conversation of 2026-11-03 (state.db rows 151-177, two passes)
+        let msg = |id: i64, role: &str, uid: &str, text: &str, active: bool, compacted: bool| {
+            let mut r = row(id, role, json!(text));
+            r.uid = Some(uid.into());
+            r.shown = active || compacted;
+            r
+        };
+        let mut summary = msg(163, "assistant", "u3a", "[PRIOR CONTEXT …]", true, true);
+        summary.summary = true;
+        let rows = vec![
+            msg(151, "user", "u1", "Note 1", false, true),
+            msg(152, "assistant", "u1a", "ok 1", false, true),
+            msg(154, "user", "u2", "Note 2", false, true),
+            msg(155, "assistant", "u2a", "ok 2", false, true),
+            msg(156, "user", "u3", "Note 3", false, true),
+            msg(157, "assistant", "u3a", "ok 3", false, false),
+            msg(160, "user", "u1", "Note 1", false, true),
+            msg(161, "assistant", "u1a", "ok 1", false, true),
+            msg(162, "user", "u2", "Note 2", false, true),
+            summary,
+            msg(164, "user", "u4", "Note 4", false, true),
+            msg(165, "assistant", "u4a", "ok 4", false, false),
+            msg(170, "assistant", "u4a", "ok 4", true, false),
+            msg(171, "user", "u5", "Note 5", true, false),
+        ];
+        let got: Vec<String> = items(&rows).iter().map(|i| i.text().to_string()).collect();
+        assert_eq!(got, ["Note 1", "ok 1", "Note 2", "ok 2", "Note 3", "ok 3", "Note 4", "ok 4", "Note 5"]);
+        let ids: HashSet<String> = items(&rows).into_iter().map(|i| i.id).collect();
+        assert_eq!(ids.len(), 9);
+    }
+
+    #[test]
+    fn a_photo_saved_by_hermes_is_an_attachment_not_words() {
+        let raw = "Voici une photo.\n\n[Image attached at: /home/bip/.hermes/profiles/vie/cache/documents/x.png]\n[screenshot]";
+        let (text, atts) = visible(raw, "m_1", 0);
+        assert_eq!(text, "Voici une photo.");
+        assert_eq!(atts.len(), 1);
+        assert_eq!(atts[0]["kind"], "image");
     }
 
     #[test]
