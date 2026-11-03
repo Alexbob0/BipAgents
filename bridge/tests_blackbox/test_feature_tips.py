@@ -5,7 +5,7 @@ moi » never again; the page `/v1/tips` with each feature's state, the costumes,
 import json
 
 from bbkit.fakes import waiting_notes
-from bbkit.common import AUTH
+from bbkit.common import AUTH, answered
 
 
 def tips_file(bridge):
@@ -64,7 +64,7 @@ def test_a_trip_proposes_the_project_agent_with_a_card(bridge):
     assert done.json() == {"ok": True, "choice": "try", "feature": "project", "action": {"kind": "message"},
                            "costume": "beret"}
     assert approve(bridge, card, "try").status_code == 404
-    logged = bridge.get("/v1/approvals/answered", headers=AUTH, params={"agent": "wellness"}).json()["items"]
+    logged = answered(bridge, "wellness")
     assert logged[-1]["topic"] == "tip" and logged[-1]["choice"] == "try"
     view = bridge.get("/v1/tips", headers=AUTH).json()
     assert feature_of(view, "project")["state"] == "tried"

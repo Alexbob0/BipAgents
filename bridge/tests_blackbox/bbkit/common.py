@@ -60,3 +60,11 @@ def in_session(bridge, payload, session: str) -> bool:
 def pushed_text(bridge, payload) -> str:
     """The text a push's extension shows: its journal row's (`GET /v1/notifications/{n}`)."""
     return bridge.get(f"/v1/notifications/{payload['n']}", headers=AUTH).json().get("preview")
+
+
+def answered(bridge, agent: str) -> list:
+    """The decisions the bridge kept for an agent's conversations (approvals_log.rs), oldest first: what the timeline
+    shows as answered approvals."""
+    path = bridge.data / "approvals" / f"{agent}.jsonl"
+    rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()] if path.exists() else []
+    return sorted([r for r in rows if r.get("choice")], key=lambda r: r.get("at") or 0)

@@ -757,7 +757,19 @@ impl HermesClient {
         instructions: Option<&str>,
         model_options: Option<Value>,
     ) -> Result<String, HermesError> {
-        self.start_run_body(agent, text, session_id, instructions, model_options, None).await
+        self.start_run_body(agent, Value::String(text.to_string()), session_id, instructions, model_options, None).await
+    }
+
+    /// [`Self::start_run`] with an `input` as Hermes takes it: a string, or a list of messages (photos: one user message
+    /// whose content is the text and image parts, threads/send.rs).
+    pub async fn start_run_input(
+        &self,
+        agent: &AgentConfig,
+        input: Value,
+        session_id: &str,
+        instructions: Option<&str>,
+    ) -> Result<String, HermesError> {
+        self.start_run_body(agent, input, session_id, instructions, None, None).await
     }
 
     /// [`Self::start_run`] for a turn someone other than the agent's person writes (a relative, a member of the
@@ -772,13 +784,13 @@ impl HermesClient {
         instructions: Option<&str>,
         tools: &[String],
     ) -> Result<String, HermesError> {
-        self.start_run_body(agent, text, session_id, instructions, None, Some(tools)).await
+        self.start_run_body(agent, Value::String(text.to_string()), session_id, instructions, None, Some(tools)).await
     }
 
     async fn start_run_body(
         &self,
         agent: &AgentConfig,
-        text: &str,
+        input: Value,
         session_id: &str,
         instructions: Option<&str>,
         model_options: Option<Value>,
@@ -792,7 +804,7 @@ impl HermesClient {
         if let Some(options) = model_options {
             body.insert("model_options".into(), options);
         }
-        body.insert("input".into(), Value::String(text.to_string()));
+        body.insert("input".into(), input);
         body.insert("session_id".into(), Value::String(session_id.to_string()));
         if let Some(instructions) = instructions.filter(|i| !i.is_empty()) {
             // Hermes adds them to its system prompt for this run only
@@ -892,6 +904,19 @@ impl HermesClient {
         choice: &str,
         request_id: Option<&str>,
     ) -> Result<(u16, Value), HermesError> {
+        self.answer_prompt(agent, run_id, "approval", choice, request_id).await
+    }
+
+    /// `POST /v1/runs/{id}/approval` (`kind` approval: `{…, choice}`) or `/clarify` (`kind` clarify: `{…, answer}`, a
+    /// question's words; an empty one skips it, docs/hermes-clarify-api.md).
+    pub async fn answer_prompt(
+        &self,
+        agent: &AgentConfig,
+        run_id: &str,
+        kind: &str,
+        value: &str,
+        request_id: Option<&str>,
+    ) -> Result<(u16, Value), HermesError> {
         let run = match self.run(agent, run_id).await {
             Ok(run) => run,
             // the run Hermes does not know (404), or refuses to show: its answer, as an answer's would be
@@ -900,14 +925,15 @@ impl HermesClient {
             }
             Err(exc) => return Err(exc),
         };
-        let Some((prompt, generation)) = crate::hermes_prompts::pending_identity(&run, "approval", request_id) else {
-            return Ok((409, json!({"detail": "no approval of this run waits for this answer"})));
+        let Some((prompt, generation)) = crate::hermes_prompts::pending_identity(&run, kind, request_id) else {
+            return Ok((409, json!({"detail": "nothing of this run waits for this answer"})));
         };
-        let body = json!({"request_id": prompt, "execution_generation": generation, "choice": choice});
+        let field = if kind == "clarify" { "answer" } else { "choice" };
+        let body = json!({"request_id": prompt, "execution_generation": generation, field: value});
         ready(agent).await;
         let resp = self
             .client
-            .post(format!("{}/v1/runs/{run_id}/approval", agent.hermes_url))
+            .post(format!("{}/v1/runs/{run_id}/{kind}", agent.hermes_url))
             .json(&body)
             .headers(Self::headers(agent, "application/json"))
             .timeout(Duration::from_secs(15))
