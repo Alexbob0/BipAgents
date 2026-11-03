@@ -92,18 +92,29 @@ impl Relay {
     }
 
     fn client_ip(&self, peer: SocketAddr, headers: &HeaderMap) -> String {
-        if self.trust_forwarded_for {
-            if let Some(first) = headers
-                .get("x-forwarded-for")
-                .and_then(|v| v.to_str().ok())
-                .and_then(|v| v.split(',').next())
-                .map(str::trim)
-                .filter(|v| !v.is_empty())
-            {
-                return first.to_string();
+        client_key(peer, headers, self.trust_forwarded_for)
+    }
+}
+
+/// Who the per-address quotas count: with `trust_forwarded_for`, the right-most `X-Forwarded-For` address (the one our
+/// proxy added: those before it are whatever the client sent), else the peer. An IPv6 address counts by its /64 (one
+/// line or host owns a whole /64 and can change address in it at will).
+fn client_key(peer: SocketAddr, headers: &HeaderMap, trust_forwarded_for: bool) -> String {
+    let forwarded = trust_forwarded_for
+        .then(|| headers.get_all("x-forwarded-for").iter().filter_map(|v| v.to_str().ok()).next_back())
+        .flatten()
+        .and_then(|v| v.rsplit(',').map(str::trim).find(|a| !a.is_empty()))
+        .and_then(|a| a.parse::<std::net::IpAddr>().ok());
+    let ip = forwarded.unwrap_or(peer.ip());
+    match ip {
+        std::net::IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
+            Some(v4) => v4.to_string(),
+            None => {
+                let s = v6.segments();
+                format!("{:x}:{:x}:{:x}:{:x}::/64", s[0], s[1], s[2], s[3])
             }
-        }
-        peer.ip().to_string()
+        },
+        v4 => v4.to_string(),
     }
 }
 
@@ -417,5 +428,34 @@ async fn report(
             refuse(StatusCode::BAD_GATEWAY, "the report could not be passed on: the app sends an e-mail")
         }
         Err(_) => refuse(StatusCode::BAD_GATEWAY, "the report could not be passed on: the app sends an e-mail"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn headers(values: &[&str]) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        for v in values {
+            h.append("x-forwarded-for", v.parse().unwrap());
+        }
+        h
+    }
+
+    #[test]
+    fn the_quotas_count_the_address_our_proxy_saw_and_an_ipv6_by_its_64() {
+        let peer: SocketAddr = "127.0.0.1:5000".parse().unwrap();
+        // the client's own X-Forwarded-For comes first; the proxy appends the real address
+        assert_eq!(client_key(peer, &headers(&["6.6.6.6, 203.0.113.7"]), true), "203.0.113.7");
+        assert_eq!(client_key(peer, &headers(&["6.6.6.6", "203.0.113.8"]), true), "203.0.113.8");
+        assert_eq!(client_key(peer, &headers(&["6.6.6.6, 203.0.113.7"]), false), "127.0.0.1");
+        assert_eq!(client_key(peer, &headers(&["not an address"]), true), "127.0.0.1");
+        assert_eq!(client_key(peer, &HeaderMap::new(), true), "127.0.0.1");
+        let a = client_key(peer, &headers(&["2001:db8:1:2:aaaa::1"]), true);
+        let b = client_key("[2001:db8:1:2:bbbb::9]:443".parse().unwrap(), &HeaderMap::new(), false);
+        assert_eq!((a.as_str(), b.as_str()), ("2001:db8:1:2::/64", "2001:db8:1:2::/64"));
+        assert_ne!(client_key(peer, &headers(&["2001:db8:1:3::1"]), true), a);
+        assert_eq!(client_key("[::ffff:198.51.100.4]:1".parse().unwrap(), &HeaderMap::new(), false), "198.51.100.4");
     }
 }
