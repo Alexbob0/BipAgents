@@ -29,6 +29,8 @@ struct HermesState {
     jobs: Vec<Value>,
     messages: HashMap<String, Vec<Value>>,
     message_calls: usize,
+    /// Hermes fails to read any session's messages for now.
+    failing: bool,
 }
 
 #[derive(Clone, Default)]
@@ -67,7 +69,7 @@ async fn sessions(State(h): State<FakeHermes>, Query(q): Query<HashMap<String, S
 
 /// A session's messages (`broken_…`: Hermes fails to read it).
 async fn messages(State(h): State<FakeHermes>, Path(sid): Path<String>) -> Response {
-    if sid.starts_with("broken_") {
+    if sid.starts_with("broken_") || h.with(|s| s.failing) {
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": "database is locked"}))).into_response();
     }
     Json(json!({"messages": h.with(|s| {
@@ -366,6 +368,26 @@ async fn bot_chat_turn_taken_alone_is_pushed_once() {
     assert_eq!(w.apns.requests.lock().unwrap()[0].header("apns-collapse-id").as_deref(), None); // a reply never replaces another (one journal row each)
     w.poll(now()).await;
     assert_eq!(w.replies().await.len(), 1);
+    w.app.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_bot_chat_reply_whose_read_failed_is_pushed_at_the_next_poll() {
+    let w = world(true).await;
+    bot_chat(&w, "api_bot", 2, json!([{"role": "user", "content": "Bonjour"}, {"role": "assistant", "content": "Salut"}]));
+    w.poll(now()).await; // baseline
+    w.hermes.set_count("api_bot", 4);
+    w.hermes.push_messages(
+        "api_bot",
+        json!([{"role": "user", "content": "[Routine] Point"}, {"role": "assistant", "content": "Tout va bien."}]),
+    );
+    w.hermes.with(|s| s.failing = true);
+    w.poll(now()).await; // the count moved, but Hermes could not be read: not counted as seen
+    w.poll(now()).await;
+    w.hermes.with(|s| s.failing = false);
+    w.poll(now()).await; // read: a candidate
+    w.poll(now()).await; // unchanged: pushed
+    assert_eq!(w.replies().await, [reply("wellness", "Tout va bien.", "api_bot")]);
     w.app.shutdown().await;
 }
 

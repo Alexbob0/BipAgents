@@ -192,7 +192,17 @@ pub struct Event {
     pub mail_ref: String,
     pub text: String,
     pub content_type: String,
+    /// Runs that could not start with this event (put back each time, `START_TRIES` at most).
+    #[serde(skip_serializing_if = "is_zero")]
+    pub tries: u32,
 }
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
+/// Times a run may fail to start (no conversation, the agent refused) before its events are given up.
+pub const START_TRIES: u32 = 3;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
@@ -821,6 +831,35 @@ fn record(config: &Config, id: &str, run: RunRecord) {
     });
 }
 
+/// A run that did not start: its events back at the head of the queue for the next round (its run still counted
+/// against the limits), each `START_TRIES` times at most; the run's line says what became of them.
+fn put_back(config: &Config, id: &str, events: &[Event], dropped: u64, why: &str) -> String {
+    let max = config.triggers.pending_max;
+    let (again, given_up): (Vec<Event>, Vec<Event>) = events
+        .iter()
+        .cloned()
+        .map(|e| Event { tries: e.tries + 1, ..e })
+        .partition(|e| e.tries < START_TRIES);
+    let kept = again.len();
+    change(config, |store| {
+        if let Some(slot) = store.triggers.iter_mut().find(|o| o.id == id) {
+            let later = std::mem::take(&mut slot.pending);
+            slot.pending = again.into_iter().chain(later).collect();
+            slot.dropped += dropped;
+            if slot.pending.len() > max {
+                let extra = slot.pending.len() - max;
+                slot.pending.drain(..extra);
+                slot.dropped += extra as u64;
+            }
+        }
+    });
+    match (kept, given_up.len()) {
+        (_, 0) => format!("{why}: tried again at the next round"),
+        (0, n) => format!("{why}: {n} not handled after {START_TRIES} tries"),
+        (_, n) => format!("{why}: tried again at the next round, {n} not handled after {START_TRIES} tries"),
+    }
+}
+
 /// One run of trigger `id` on the events waiting (the first `events_per_run`).
 pub async fn fire(state: &AppState, id: &str) {
     let config = state.config();
@@ -833,7 +872,7 @@ pub async fn fire(state: &AppState, id: &str) {
     }
     let taken: HashSet<String> = events.iter().map(|e| e.id.clone()).collect();
     let dropped = t.dropped;
-    // taken now (and counted against the limits), so a run that fails is not retried in a loop
+    // taken now (and counted against the limits); a run that cannot start puts them back (`put_back`), a few times
     change(&config, |store| {
         if let Some(slot) = store.triggers.iter_mut().find(|o| o.id == id) {
             slot.pending.retain(|e| !taken.contains(&e.id));
@@ -847,7 +886,8 @@ pub async fn fire(state: &AppState, id: &str) {
     let pipeline = Pipeline::of(state);
     let Some(session) = session_of(&pipeline, &agent, &t).await else {
         tracing::warn!(target: "bipbridge::triggers", agent = %agent.name, trigger = id, "no conversation could be opened");
-        record(&config, id, RunRecord { at, ok: false, events: events.len(), tokens: 0, message: "no conversation".into() });
+        let message = put_back(&config, id, &events, dropped, "no conversation");
+        record(&config, id, RunRecord { at, ok: false, events: events.len(), tokens: 0, message });
         return;
     };
     tracing::info!(target: "bipbridge::triggers", agent = %agent.name, trigger = id, events = events.len(), "routine triggered");
@@ -859,7 +899,8 @@ pub async fn fire(state: &AppState, id: &str) {
         Ok(ran) => ran,
         Err(why) => {
             tracing::warn!(target: "bipbridge::triggers", agent = %agent.name, trigger = id, why = %why, "routine run not started");
-            record(&config, id, RunRecord { at, ok: false, events: events.len(), tokens: 0, message: why.to_string() });
+            let message = put_back(&config, id, &events, dropped, &why.to_string());
+            record(&config, id, RunRecord { at, ok: false, events: events.len(), tokens: 0, message });
             return;
         }
     };
@@ -1318,6 +1359,31 @@ mod tests {
         busy.fired = vec![first, first + 30.0];
         assert!(!due(&busy, &s, first + 61.0));
         assert!(due(&busy, &s, first + 3700.0));
+    }
+
+    #[test]
+    fn a_run_that_does_not_start_puts_its_events_back_a_few_times() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(dir.path());
+        let f = Fields { name: Some("R".into()), prompt: Some("p".into()), kind: Some(LINK.into()), ..Fields::default() };
+        let t = create(&config, "vie", &f, "person").unwrap();
+        enqueue(&config, &t.id, mail_event("<1@x>", "a")).unwrap();
+        let taken = get(&config, &t.id).unwrap().pending;
+        change(&config, |store| store.triggers[0].pending.clear());
+        enqueue(&config, &t.id, mail_event("<2@x>", "a")).unwrap(); // came while the run was starting
+        let said = put_back(&config, &t.id, &taken, 0, "the agent refused");
+        assert_eq!(said, "the agent refused: tried again at the next round");
+        let pending = get(&config, &t.id).unwrap().pending;
+        assert_eq!(pending.iter().map(|e| (e.message_id.as_str(), e.tries)).collect::<Vec<_>>(), [("<1@x>", 1), ("<2@x>", 0)]);
+        // the third failure gives it up, and says so
+        let first = vec![pending[0].clone()];
+        change(&config, |store| store.triggers[0].pending.remove(0));
+        let again = put_back(&config, &t.id, &first, 0, "no conversation");
+        assert!(again.ends_with("tried again at the next round"));
+        let first = vec![get(&config, &t.id).unwrap().pending.remove(0)];
+        change(&config, |store| store.triggers[0].pending.remove(0));
+        assert_eq!(put_back(&config, &t.id, &first, 0, "no conversation"), "no conversation: 1 not handled after 3 tries");
+        assert_eq!(get(&config, &t.id).unwrap().pending.len(), 1);
     }
 
     #[test]

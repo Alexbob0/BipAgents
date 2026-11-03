@@ -390,6 +390,7 @@ impl AppState {
                 let (shared, vault) = (self.config.clone(), self.vault.clone());
                 self.spawn(async move {
                     let config = shared.get();
+                    vault.retry_removals(&config).await;
                     if vault.follow_browsers(&config).await {
                         crate::profile_files::reconcile_all(&config);
                     }

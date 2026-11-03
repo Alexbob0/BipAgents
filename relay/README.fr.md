@@ -67,7 +67,7 @@ guichet (serveurs, compte, famille, conversations partagées) seulement sur un j
 | `FCM_SERVICE_ACCOUNT` ou `FCM_SERVICE_ACCOUNT_FILE` | Google : le compte de service Firebase (JSON). Sans lui, les appareils Android sont refusés. |
 | `PORT` ou `RELAY_LISTEN` | `8080` / `0.0.0.0:8080` |
 | `RELAY_PUSHES_PER_DEVICE_HOUR`, `RELAY_PUSHES_PER_IP_HOUR`, `RELAY_REGISTRATIONS_PER_IP_HOUR` | `300`, `20000`, `60` |
-| `RELAY_TRUST_FORWARDED_FOR` | `1` derrière un proxy qui pose `X-Forwarded-For` |
+| `RELAY_TRUST_FORWARDED_FOR` | `1` derrière un proxy qui ajoute à `X-Forwarded-For` (sa dernière adresse compte ; IPv6 par /64) |
 | `RELAY_REPORT_URL`, `RELAY_REPORT_SECRET` ou `RELAY_REPORT_SECRET_FILE`, `RELAY_REPORTS_PER_IP_HOUR` | où vont les signalements (le `/v1/reports` du guichet), le secret qu'il vérifie, `20` |
 | `RELAY_BLOCKED` ou `RELAY_BLOCKED_FILE` | appareils refusés pour abus (conditions d'utilisation), par l'empreinte de 8 caractères hexadécimaux que montrent les journaux, ou un jeton de relais qui a fuité, par son identifiant de 16 caractères (`token` dans les journaux) ; redémarrer pour appliquer |
 | `RELAY_GUICHET_KEY` ou `RELAY_GUICHET_KEY_FILE` | la clé avec laquelle le guichet envoie ses notifications (séparées par des virgules pour en changer : l'ancienne et la nouvelle passent) ; sans elle, les jetons `guichet` sont refusés |

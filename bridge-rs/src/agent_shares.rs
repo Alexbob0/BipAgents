@@ -379,6 +379,34 @@ fn turn_going(c: &Value, at: f64) -> Option<String> {
     (at - started < TURN_MAX_SECONDS).then(|| str_of(run, "id")).filter(|id| !id.is_empty())
 }
 
+/// The conversation reserved for a turn about to start (`run.id` a `starting_…` mark): None when a turn goes on.
+fn reserve_turn(path: &PathBuf, cid: &str) -> anyhow::Result<Option<String>> {
+    let mark = format!("starting_{}", crate::py::token_hex(6));
+    update(path, |data| {
+        let Some(Value::Object(c)) = object_mut(data, "conversations").get_mut(cid) else { return None };
+        if turn_going(&Value::Object(c.clone()), now()).is_some() {
+            return None;
+        }
+        c.insert("run".into(), json!({"id": mark, "started": now()}));
+        Some(mark)
+    })
+}
+
+/// The reservation `mark` replaced by the run Hermes started, or let go when none started.
+fn settle_turn(path: &PathBuf, cid: &str, mark: &str, run_id: Option<&str>) -> anyhow::Result<()> {
+    update(path, |data| {
+        if let Some(Value::Object(c)) = object_mut(data, "conversations").get_mut(cid) {
+            if c.get("run").and_then(|r| r.get("id")).and_then(Value::as_str) == Some(mark) {
+                let run = run_id.map(|id| json!({"id": id, "started": now()})).unwrap_or(Value::Null);
+                c.insert("run".into(), run);
+            }
+            if run_id.is_some() {
+                c.insert("updated".into(), json!(now()));
+            }
+        }
+    })
+}
+
 /// Whether a relative talks to `agent` right now (the owner's private tools are then closed to it).
 pub fn relative_turn(config: &Config, agent: &str) -> bool {
     let data = read(&owner_path(config));
@@ -810,9 +838,10 @@ async fn served_post(
     }
     let config = state.config();
     let c = conversation(&config, &household, &agent.name, &cid)?;
-    if turn_going(&c, now()).is_some() {
+    // one run per shared conversation: reserved in the same locked write as the test, before Hermes is called
+    let Some(reserved) = reserve_turn(&owner_path(&config), &cid)? else {
         return Err(HttpError::new(409, "the agent is still answering"));
-    }
+    };
     let linked = households(&config);
     let shown = household_name(&linked, &household);
     let person: String = Some(tk::squeeze(&tk::str_or_empty(body.get("person"))))
@@ -833,17 +862,10 @@ async fn served_post(
     let base = state.hermes.session(&agent, &session).await.map(|s| counters_of(&s)).unwrap_or((0, 0));
     let input = crate::dates::now::stamped(&config, &agent, &framed(&person, &shown, &text));
     let tools = relative_guest_tools(&config, &agent.name);
-    let run_id = state
-        .hermes
-        .start_guest_run(&agent, &input, &session, Some(&rules), &tools)
-        .await
-        .map_err(|_| HttpError::new(502, "the agent can't be reached"))?;
-    update(&owner_path(&config), |data| {
-        if let Some(Value::Object(c)) = object_mut(data, "conversations").get_mut(&cid) {
-            c.insert("run".into(), json!({"id": run_id, "started": now()}));
-            c.insert("updated".into(), json!(now()));
-        }
-    })?;
+    let started = state.hermes.start_guest_run(&agent, &input, &session, Some(&rules), &tools).await;
+    let run_id = started.as_ref().ok().cloned();
+    settle_turn(&owner_path(&config), &cid, &reserved, run_id.as_deref())?;
+    let run_id = run_id.ok_or_else(|| HttpError::new(502, "the agent can't be reached"))?;
     tracing::info!(agent = %agent.name, household = %household, "shared agent: a relative's turn");
     // her app's id for the message: its item carries it once Hermes has it (threads/send.rs)
     let client_id = tk::str_or_empty(body.get("client_id"));
@@ -1442,6 +1464,30 @@ mod tests {
         let family = guest_tools(&crate::family_agent::TOOLS);
         assert!(family.contains(&"mcp__bipagents__family_notebook_write".to_string()));
         assert_eq!(crate::hermes::guest_turn(&tools)["tools"][5], "web_search");
+    }
+
+    #[test]
+    fn two_quick_messages_start_one_run() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("shares.json");
+        update(&path, |data| {
+            object_mut(data, "conversations").insert("c1".into(), json!({"agent": "vie", "run": null}));
+        })
+        .unwrap();
+        let first = reserve_turn(&path, "c1").unwrap().expect("free");
+        assert!(reserve_turn(&path, "c1").unwrap().is_none(), "the second waits for the first");
+        assert!(reserve_turn(&path, "ghost").unwrap().is_none());
+        settle_turn(&path, "c1", &first, Some("run_1")).unwrap();
+        assert_eq!(turn_going(&read(&path)["conversations"]["c1"], now()).as_deref(), Some("run_1"));
+        assert!(reserve_turn(&path, "c1").unwrap().is_none());
+        // a run that could not start lets the conversation go
+        update(&path, |data| {
+            object_mut(data, "conversations").insert("c2".into(), json!({"agent": "vie", "run": null}));
+        })
+        .unwrap();
+        let mark = reserve_turn(&path, "c2").unwrap().unwrap();
+        settle_turn(&path, "c2", &mark, None).unwrap();
+        assert!(reserve_turn(&path, "c2").unwrap().is_some());
     }
 
     #[test]

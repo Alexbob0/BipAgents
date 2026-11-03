@@ -718,7 +718,7 @@ impl CronWatcher {
         let key = format!("{}/{sid}", agent.name);
         let count = message_count(session);
         let first = {
-            let mut st = lock(&self.state);
+            let st = lock(&self.state);
             let first = !st.bot_count.contains_key(&key);
             if !first
                 && count.is_some()
@@ -728,27 +728,35 @@ impl CronWatcher {
             {
                 return Ok(()); // nothing new since the last poll
             }
-            st.bot_count.insert(key.clone(), count);
             first
         };
         let messages = self.hermes.session_messages(agent, sid).await?;
-        self.check_report(agent, sid, &messages, first).await;
-        let reply = final_reply(&messages);
+        self.bot_chat_reply(agent, sid, &key, first, &messages).await;
+        // seen only once read and its reply notified: a read that failed is tried again at the next poll
+        lock(&self.state).bot_count.insert(key, count);
+        Ok(())
+    }
+
+    /// The Bot Chat's final reply, pushed once it stops changing (unless the app shows it).
+    async fn bot_chat_reply(&self, agent: &AgentConfig, sid: &str, key: &str, first: bool, messages: &[Dict]) {
+        self.check_report(agent, sid, messages, first).await;
+        let reply = final_reply(messages);
         {
             let mut st = lock(&self.state);
+            let key = key.to_string();
             let Some(reply) = reply.clone().filter(|_| !first) else {
                 if let Some(reply) = reply {
                     st.bot_last.insert(key, reply); // baseline: what is already there was seen (or is old)
                 }
-                return Ok(());
+                return;
             };
             if st.bot_last.get(&key) == Some(&reply) {
                 st.bot_candidate.remove(&key);
-                return Ok(());
+                return;
             }
             if st.bot_candidate.get(&key) != Some(&reply) {
                 st.bot_candidate.insert(key, reply); // take it once it stops changing
-                return Ok(());
+                return;
             }
             st.bot_candidate.remove(&key);
             st.bot_last.insert(key, reply);
@@ -756,22 +764,21 @@ impl CronWatcher {
         let reply = reply.unwrap_or_default();
         if let Some(hub) = &self.hub {
             if hub.followed_recently(&agent.name, sid, Some(&reply), 600.0) {
-                return Ok(()); // the app followed this turn: shown live or pushed as « reply ready »
+                return; // the app followed this turn: shown live or pushed as « reply ready »
             }
         }
         if let Some(presence) = &self.presence {
             if presence.viewing(&agent.name, sid) {
-                return Ok(()); // on screen right now
+                return; // on screen right now
             }
         }
-        if answers_another_agent(&messages) {
-            return Ok(()); // an answer to another agent: that agent reports back to the user, one notification
+        if answers_another_agent(messages) {
+            return; // an answer to another agent: that agent reports back to the user, one notification
         }
         if let (Some(push), true) = (&self.push, pyx::strip(&reply) != SILENT) {
             tracing::info!(agent = %agent.name, session = %sid, chars = pyx::len(&reply), "bot chat push");
             push.notify_reply(&agent.name, &format!("session:{sid}"), &reply, Some(sid)).await;
         }
-        Ok(())
     }
 
     /// Another conversation: fetched only when its message count moves, for sub-task reports.
@@ -787,10 +794,11 @@ impl CronWatcher {
                 st.bot_count.insert(key, Some(count)); // first sight: what is there is old
                 return Ok(());
             }
-            st.bot_count.insert(key, Some(count));
         }
         let messages = self.hermes.session_messages(agent, sid).await?;
         self.check_report(agent, sid, &messages, false).await;
+        // seen only once read and its report handled: a read that failed is tried again at the next poll
+        lock(&self.state).bot_count.insert(key, Some(count));
         Ok(())
     }
 

@@ -22,6 +22,11 @@ pub const TIP_TTL: f64 = 30.0;
 /// Rows kept in the API cache at most (all agents), before the oldest segments are dropped.
 const CACHE_ROWS: usize = 50_000;
 
+/// Sessions in one page of Hermes' list (its API serves at most 200).
+const PAGE: usize = 200;
+/// Sessions read at most for the whole list.
+const ALL_MAX: usize = 10_000;
+
 /// A Hermes session, as far as threads go.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Session {
@@ -196,6 +201,30 @@ impl Source {
                 Ok(out)
             }
         }
+    }
+
+    /// Every session the agent's Hermes keeps, read page after page (its API serves at most `PAGE` at a time), most
+    /// recent first; at most `ALL_MAX`. A Hermes that ignores `offset` gives the same page again: the reading stops.
+    pub async fn all_sessions(&self) -> anyhow::Result<Vec<Session>> {
+        let Source::Api(hermes, agent, _) = self else { return self.sessions(ALL_MAX).await };
+        let mut out: Vec<Session> = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        while out.len() < ALL_MAX {
+            let params = [
+                ("limit", PAGE.to_string()),
+                ("offset", seen.len().to_string()),
+                ("include_children", "1".into()),
+                ("include_hidden", "1".into()),
+            ];
+            let rows = hermes.list_sessions_with(agent, &params).await?;
+            let before = out.len();
+            out.extend(rows.iter().filter_map(Session::of_api).filter(|s| seen.insert(s.id.clone())));
+            if rows.is_empty() || out.len() == before {
+                break;
+            }
+        }
+        out.sort_by(|a, b| b.last_active.total_cmp(&a.last_active));
+        Ok(out)
     }
 
     /// One session (None when Hermes doesn't know it).
