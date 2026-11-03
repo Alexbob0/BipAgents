@@ -30,14 +30,15 @@ def test_the_person_turns_the_agents_browser_off_and_on(bridges, fakes):
     assert off.status_code == 200 and off.json()["browser"] == {"on": False, "ready": True}
     data = yaml.safe_load((folder / "config.yaml").read_text())
     assert data["mcp_servers"]["stealth"]["enabled"] is False
-    assert data["skills"]["disabled"] == ["something-else", "visible-browser"]
+    # Hermes' own powerpoint/docx skills stay off too (the styled decks and Word skills replace them)
+    assert [s for s in data["skills"]["disabled"] if s not in ("powerpoint", "docx")] == ["something-else", "visible-browser"]
     assert bridge.commands.of("hermes") == [["-p", "coach", "tools", "disable", "browser", "--platform", "api_server"]]
     assert bridge.commands.of("systemctl") == [["--user", "stop", "bipagents-browser-coach"]]
     bridge.commands.clear()
     on = bridge.patch("/v1/agents/coach/settings", headers=AUTH, json={"browser": True})
     assert on.json()["browser"] == {"on": True, "ready": True}
     data = yaml.safe_load((folder / "config.yaml").read_text())
-    assert data["mcp_servers"]["stealth"]["enabled"] is True and data["skills"]["disabled"] == ["something-else"]
+    assert data["mcp_servers"]["stealth"]["enabled"] is True and [s for s in data["skills"]["disabled"] if s not in ("powerpoint", "docx")] == ["something-else"]
     assert bridge.commands.of("hermes") == [["-p", "coach", "tools", "enable", "browser", "--platform", "api_server"]]
 
 
