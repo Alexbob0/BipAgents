@@ -119,6 +119,9 @@ def test_a_chat_is_archived_whole_and_fills_the_carnet_then_only_its_new_part(br
     assert "Organise l'anniversaire de Hugo" in lea and f"Anniversaire de Hugo chez Marc : {SOON}" in lea
     assert "[[archive:coach/whatsapp/" in lea
     assert not (carnet / "Personnes" / "Personne Inventée.md").exists()
+    # someone with one fact is a line on their group's page, not a page (notebook/groups.rs, 2026-11-03)
+    assert not (carnet / "Personnes" / "Hugo.md").exists()
+    assert "Hugo : Va avoir 7 ans" in (carnet / "Domaines" / "Famille élargie.md").read_text()
     assert (carnet / "Sujets" / "Anniversaire de Hugo.md").exists()
     assert "Envoyer le devis du traiteur à Léa" in (carnet / "Tâches" / "Tâches.md").read_text()
     reference = lea.split("[[archive:")[1].split("|")[0]

@@ -57,15 +57,20 @@ pub fn tools(health: bool) -> Vec<Value> {
             "name": NOTE,
             "description": "File durable facts in the Carnet: about your person themself (kind self: their « Toi » page; who \
         they are, family, work, likes and habits, goals, how their agents should behave with them), a person (birthday, \
-        family, preferences, what was agreed, recent exchanges), a subject or project (decisions, status, next steps, people involved) or an area of life (home, \
-        money, work, family…) or a trip (kind trip: one page per journey, named by place and month « Amsterdam, déc. 2021 », never « Voyages »; give start and end; a \
+        family, preferences, what was agreed, recent exchanges; a human, never a company, a service or a subscription), a \
+        subject or project (decisions, status, next steps, people involved) or an area of life (home, money, work…, or a \
+        group of people: « Famille élargie », « Amis », « Collègues ») or a trip (kind trip: one page per journey, named by place and month « Amsterdam, déc. 2021 », never « Voyages »; give start and end; a \
         subject that turns out to be a trip becomes one when you file it with kind trip, its content kept). The page is found \
         by its name, a nickname or the contact's id, and made if it doesn't exist. \
         Facts already there are not repeated. Every page has the same fixed sections for its kind: give the section \
         the facts belong to (one call per section); one short fact per item. Write each fact short and dated when it matters (« Anniversaire : 14 novembre », \
         « Devis plombier accepté le 22/10 : 480 € »); link pages with [[Name]]. Give the page's « En bref » when it changes: \
-        2 or 3 short lines saying what matters most now. Not for small talk, one-off questions, passwords or codes, or what \
-        the person asked not to keep.",
+        2 or 3 short lines saying what matters most now. People: close family (partner, children, parents, brothers and \
+        sisters) and close friends each have their own page (close true); someone else (a cousin, a colleague, a friend's \
+        partner) is one line on their group's page (« Emma, cousine, sœur de [[Julien]] : infirmière à Lille ») until \
+        there are three facts about them, then their own page. A fact about two people (a wedding, a baby) goes on one \
+        page only, linking the other. Write as your person would (« Cousin, fils de Martine »), never « ma personne ». \
+        Not for small talk, one-off questions, passwords or codes, or what the person asked not to keep.",
             "inputSchema": {"type": "object", "properties": {
                 "page": {"type": "string", "description": "the person's, subject's or area's name (« Marc Dupont », « Rénovation cuisine », « Maison »)"},
                 "kind": {"type": "string", "enum": ["person", "subject", "area", "self", "trip"], "description": "for a new page; self: your person themself (their « Toi » page, one per Carnet); trip: a journey (also turns an existing subject into a trip)"},

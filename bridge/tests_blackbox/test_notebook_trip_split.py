@@ -65,9 +65,14 @@ def test_one_card_then_yes_makes_the_trips_and_keeps_the_rest(bridge):
     rest = bridge.get("/v1/notebook/page", params={"path": "Voyages/Voyages.md"}, headers=AUTH).json()
     assert rest["kind"] == "subject" and rest["split"] is None
     assert "Garder les factures" in rest["text"] and "Parking" not in rest["text"]
-    assert {link["title"] for link in rest["links"]} >= {"Amsterdam, déc. 2021", "Lisbonne, juil. 2022",
-                                                         "Voyage d'oct. 2022"}
-    assert all(link["path"] for link in rest["links"])
+    # its trips point back to it (no line per trip on it: they read as its status, 2026-11-03)
+    assert {link["title"] for link in rest["backlinks"]} >= {"Amsterdam, déc. 2021", "Lisbonne, juil. 2022",
+                                                             "Voyage d'oct. 2022"}
+    assert all(link["path"] for link in rest["backlinks"])
+    assert not [s for s in rest["sections"] if s["id"] == "status"], rest["sections"]
+    card = next(p for p in bridge.get("/v1/notebook/pages", params={"kind": "subject"}, headers=AUTH).json()["pages"]
+                if p["path"] == "Voyages/Voyages.md")
+    assert card["status"] is None, card
     # Every move in the history, and undone from there.
     history = bridge.get("/v1/notebook/history", params={"path": "Voyages/Voyages.md"}, headers=AUTH).json()["changes"]
     assert history[0]["action"] == "split"  # the change before it: the page as it was (refiled, or as found)
@@ -93,3 +98,52 @@ def test_left_as_it_is_no_card_again(bridge):
     asked = call(bridge, "notebook_edit", {"page": "Voyages", "split_trips": True})
     assert asked["isError"] is False and "Proposed to the person" in text_of(asked) and QUESTION in text_of(asked)
     assert [p["state"] for p in splits(bridge)] == ["open", "declined"]
+
+
+ALEX = ("---\ntype: subject\n---\n# Voyages\n\n## Où on en est\n"
+        "- Vol Paris → Amsterdam le 18/12/2021 à 07:15 — *toi, 2026-10-30*\n"
+        "- Vol Amsterdam → Paris le 22/12/2021 — *toi, 2026-10-30*\n"
+        "- Vol Paris → Amsterdam le 16/12/2026 - et retour vendredi 18/12/2026 — *toi, 2026-10-30*\n")
+
+
+def test_alex_s_page_is_split_by_places_and_leaves_no_status_lines(bridge):
+    """What Alex saw on 2026-11-03: « Où on en est » holding « et retour vendredi, déc. 2026 : 20 déc. 2026 » by « toi »."""
+    give_token(bridge)
+    in_french(bridge)
+    put = bridge.put("/v1/notebook/page", json={"path": "Sujets/Voyages.md", "text": ALEX}, headers=AUTH)
+    assert put.status_code == 200, put.text
+    assert tidy(bridge).get("splits") == 1
+    card = splits(bridge)[0]
+    assert [t["title"] for t in card["trips"]] == ["Amsterdam, déc. 2021", "Amsterdam, déc. 2026"], card
+    made = bridge.post(f"/v1/notebook/proposals/{card['id']}", json={"accept": True}, headers=AUTH).json()["split"]
+    assert len(made["trips"]) == 2
+    trips = bridge.get("/v1/notebook/pages", params={"kind": "trip"}, headers=AUTH).json()["pages"]
+    new = next(p for p in trips if p["title"] == "Amsterdam, déc. 2026")
+    assert (new["start"], new["end"]) == ("2026-12-16", "2026-12-18"), "the return said in the same line"
+    subjects = bridge.get("/v1/notebook/pages", params={"kind": "subject"}, headers=AUTH).json()["pages"]
+    assert not [p for p in subjects if p["title"] == "Voyages"], "nothing left on it: it goes (its trips in Voyages)"
+
+
+def test_the_lines_older_splits_wrote_are_put_right_at_night(bridge):
+    give_token(bridge)
+    in_french(bridge)
+    root = notebook(bridge) / "carnet"
+    for path, text in [
+        ("Sujets/Voyages.md", "---\ntype: subject\n---\n# Voyages\n\n## Où on en est\n"
+                              "- [[Amsterdam, déc. 2021]] : 18 – 22 déc. 2021 — *toi, 2026-11-01*\n"
+                              "- [[et retour vendredi, déc. 2026]] : 20 déc. 2026 — *toi, 2026-11-01*\n"),
+        ("Archives/Voyages/Amsterdam, déc. 2021.md",
+         "---\ntype: trip\norigin: split\nsplit_from: Voyages\nstart: 2021-12-18\nend: 2021-12-22\n---\n"
+         "# Amsterdam, déc. 2021\n\n## Transports\n- Vol Paris → Amsterdam le 18/12/2021\n"),
+        ("Voyages/et retour vendredi, déc. 2026.md",
+         "---\ntype: trip\norigin: split\nsplit_from: Voyages\nstart: 2026-12-16\nend: 2026-12-20\n---\n"
+         "# et retour vendredi, déc. 2026\n\n## Transports\n"
+         "- Vol Paris → Amsterdam le 16/12/2026 - et retour vendredi 20/12/2026\n"),
+    ]:
+        (root / path).parent.mkdir(parents=True, exist_ok=True)
+        (root / path).write_text(text)
+    tidy(bridge)
+    subjects = bridge.get("/v1/notebook/pages", params={"kind": "subject"}, headers=AUTH).json()["pages"]
+    assert not [p for p in subjects if p["title"] == "Voyages"], subjects
+    trips = bridge.get("/v1/notebook/pages", params={"kind": "trip"}, headers=AUTH).json()["pages"]
+    assert sorted(p["title"] for p in trips) == ["Amsterdam, déc. 2021", "Amsterdam, déc. 2026"], trips
