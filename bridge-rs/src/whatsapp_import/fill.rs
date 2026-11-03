@@ -175,7 +175,9 @@ pub async fn ask(model: &Model, user: &str) -> Result<(String, i64, i64), String
     // GLM through EUrouter thinks at its own default without it, and its 1,200 tokens ended before any answer (carnet
     // review's lab, 2026-11-03: « no JSON object in the answer », a family chat imported with nobody in the Carnet)
     crate::model_route::add_thinking_floor(&model.base, &mut body);
-    for attempt in 0..2 {
+    let (mut spent_in, mut spent_out) = (0, 0);
+    let mut format_dropped = false;
+    for _ in 0..3 {
         let mut request = HTTP.post(format!("{}/chat/completions", model.base)).json(&body);
         if !model.key.is_empty() {
             request = request.header("Authorization", format!("Bearer {}", model.key));
@@ -183,7 +185,8 @@ pub async fn ask(model: &Model, user: &str) -> Result<(String, i64, i64), String
         let resp = request.send().await.map_err(|e| format!("the model can't be reached ({e})"))?;
         let status = resp.status().as_u16();
         let raw = resp.bytes().await.map_err(|e| e.to_string())?;
-        if status == 400 && attempt == 0 && String::from_utf8_lossy(&raw).contains("response_format") {
+        if status == 400 && !format_dropped && String::from_utf8_lossy(&raw).contains("response_format") {
+            format_dropped = true;
             if let Some(map) = body.as_object_mut() {
                 map.remove("response_format");
             }
@@ -197,24 +200,31 @@ pub async fn ask(model: &Model, user: &str) -> Result<(String, i64, i64), String
         }
         let data: Value = serde_json::from_slice(&raw).unwrap_or(Value::Null);
         let answer = data.pointer("/choices/0/message/content").and_then(Value::as_str).unwrap_or("").to_string();
+        let usage = data.get("usage").cloned().unwrap_or(json!({}));
+        spent_in += usage
+            .get("prompt_tokens")
+            .and_then(Value::as_i64)
+            .unwrap_or_else(|| records_fill::tokens_of(INSTRUCTIONS.len() + user.len()));
+        spent_out +=
+            usage.get("completion_tokens").and_then(Value::as_i64).unwrap_or_else(|| records_fill::tokens_of(answer.len()));
+        let finish = data.pointer("/choices/0/finish_reason").and_then(Value::as_str).unwrap_or("").to_string();
         if !answer.contains('{') {
             // why there is no JSON: cut short (« length »), or all of it spent thinking
             let reasoning =
                 data.pointer("/choices/0/message/reasoning_content").and_then(Value::as_str).map_or(0, str::len);
-            let finish = data.pointer("/choices/0/finish_reason").and_then(Value::as_str).unwrap_or("").to_string();
             tracing::info!(target: "bipbridge::whatsapp", model = %model.name, finish = %finish,
                 answer_chars = answer.len(), reasoning_chars = reasoning, "an answer without JSON");
+            // a model that thought through all of it (DeepSeek V4.1 Flash, the lab's 2026-11-03: 10,000 characters
+            // of thinking, no answer): once more, asked to think little (the run's cap counts this second call)
+            let asked_low = body.get("reasoning_effort").is_some();
+            if finish == "length" && !asked_low {
+                if let Some(map) = body.as_object_mut() {
+                    map.insert("reasoning_effort".into(), json!("low"));
+                }
+                continue;
+            }
         }
-        let usage = data.get("usage").cloned().unwrap_or(json!({}));
-        let tokens_in = usage
-            .get("prompt_tokens")
-            .and_then(Value::as_i64)
-            .unwrap_or_else(|| records_fill::tokens_of(INSTRUCTIONS.len() + user.len()));
-        let tokens_out = usage
-            .get("completion_tokens")
-            .and_then(Value::as_i64)
-            .unwrap_or_else(|| records_fill::tokens_of(answer.len()));
-        return Ok((answer, tokens_in, tokens_out));
+        return Ok((answer, spent_in, spent_out));
     }
     Err("the model refused the request".into())
 }
