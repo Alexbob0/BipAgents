@@ -179,16 +179,24 @@ def test_a_subtask_report_left_without_a_reply_is_told_by_the_agent(bridges, fak
     assert turn["session_id"] == "api_7" and turn["input"].startswith("<!--bip:subtask\n")
     assert turn["input"].endswith("MEDIA:/home/hermes/.hermes/media/podcast_jeudi.mp3\n-->")
 
-    def items():
-        return bridge.get("/v1/outbox", headers=AUTH).json()["items"]
+    # the agent's message is the conversation's own item (background_turn.rs: no Boîte copy), the journal points at
+    # it and pushes it once; the sub-agent's file is one of its attachments
+    reply = hermes.run_output
+    hermes.messages[("", "api_7")].append({"role": "assistant", "content": reply})   # what Hermes keeps of the turn
 
-    assert wait_until(items, timeout=15)
-    item = items()[0]
-    # An mp3 the bridge can't serve keeps its line: the app shows it as a file (2026-10-30, ntfy.rs own_mp3).
-    assert item["session_id"] == "api_7" and item["text"] == ("Ton podcast de jeudi est prêt :\n- 12 minutes\n- deux voix\n"
-                                                              "MEDIA:/home/hermes/.hermes/media/podcast_jeudi.mp3")
+    def rows():
+        found = bridge.get("/v1/notifications", headers=AUTH).json()["notifications"]
+        return [r for r in found if r["type"] == "reply" and r["session_id"] == "api_7" and r["m"]]
+
+    assert wait_until(rows, timeout=20)
+    assert bridge.get("/v1/outbox", headers=AUTH).json()["items"] == []
+    row = rows()[0]
+    page = bridge.get(f"/v1/threads/{row['c']}/timeline", headers=AUTH, params={"agent": "wellness"}).json()
+    [said] = [i for i in page["items"] if i["id"] == row["m"]]
+    assert said["text"] == "Ton podcast de jeudi est prêt :\n- 12 minutes\n- deux voix"
+    assert [a["path"] for a in said["attachments"]] == ["/home/hermes/.hermes/media/podcast_jeudi.mp3"]
     assert wait_until(lambda: fakes.apns.pushes())
     time.sleep(1.5)
     payloads = fakes.apns.payloads()
-    assert len(payloads) == 1 and payloads[0]["m"] == f"o_{item['id']}" and in_session(bridge, payloads[0], "api_7")
+    assert len(payloads) == 1 and payloads[0]["m"] == row["m"] and in_session(bridge, payloads[0], "api_7")
     assert len(hermes.started) == 1   # once

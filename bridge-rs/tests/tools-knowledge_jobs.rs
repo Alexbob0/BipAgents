@@ -189,8 +189,11 @@ async fn a_task_runs_in_its_own_conversation_and_ends_with_its_report() {
         .collect();
     assert_eq!(posted[0]["title"], "🧩 Écoles du quartier");
     assert_eq!(posted[1]["session_id"], "s1");
-    assert_eq!(posted[1]["instructions"], jobs::INSTRUCTIONS);
-    assert!(common::without_now(posted[1]["input"].as_str().unwrap()).starts_with("Écoles du quartier\n\nCompare"));
+    // the rules in the message, the system prompt the conversations' own (background_turn.rs, cache audit #2)
+    assert!(posted[1].get("instructions").is_none(), "{}", posted[1]);
+    let input = common::without_now(posted[1]["input"].as_str().unwrap());
+    assert!(input.starts_with("Écoles du quartier\n\nCompare"));
+    assert!(input.ends_with(&format!("<!--bip:task-rules\n{}\n-->", jobs::INSTRUCTIONS)), "{input}");
     assert_eq!(
         told.lock().unwrap().clone(),
         vec![(
@@ -363,8 +366,10 @@ async fn the_routes_need_the_bridge_key_and_list_the_jobs() {
 fn with_handback(config: &Config, told: &Told) -> Arc<Jobs> {
     let board = board(config, Some(told));
     let mut jobs = Arc::try_unwrap(board).ok().unwrap();
-    let mut handback =
-        bipbridge::handback::Handback::new(SharedConfig::new(config.clone()), HermesClient::new(reqwest::Client::new()));
+    let mut handback = bipbridge::background_turn::Pipeline::new(
+        SharedConfig::new(config.clone()),
+        HermesClient::new(reqwest::Client::new()),
+    );
     handback.poll = 0.01;
     jobs.handback = Some(Arc::new(handback));
     Arc::new(jobs)

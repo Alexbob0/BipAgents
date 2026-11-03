@@ -39,7 +39,7 @@ use chrono::{Local, NaiveDateTime, TimeZone};
 use regex::Regex;
 use serde_json::{json, Map, Value};
 
-use crate::config::{AgentConfig, Config, SharedConfig};
+use crate::config::{AgentConfig, SharedConfig};
 use crate::hermes::{HermesClient, HermesError};
 use crate::live_brief::Briefs;
 use crate::ntfy::OutboxService;
@@ -208,53 +208,55 @@ pub fn job_id(session_id: &str) -> Option<String> {
     CRON_ID.captures(session_id).map(|c| c["job"].to_string())
 }
 
-/// The routine a run's session belongs to. Hermes 0.22.5 names a routine's run `local-<sha256>` of its creation
-/// receipt (hermes_state_keys.py `local_identity`: the profile's home, `cron-owner`, `cron:<job>:<execution>`), the
-/// execution a row of the profile's `cron/executions.db`; the older `cron_<job>_<date>_<time>` names it outright
-/// (`job_id`). Lab 2026-11-01: without it a routine's run had no job, so no mute, title nor report to its conversation.
-pub fn routine_of(config: &Config, agent: &AgentConfig, session_id: &str) -> Option<String> {
-    if let Some(job) = job_id(session_id) {
-        return Some(job);
+/// The routines' list of each agent (`GET /api/jobs`), kept a minute.
+type Listed = HashMap<String, (f64, Vec<Dict>)>;
+static ROUTINES: LazyLock<Mutex<Listed>> = LazyLock::new(Default::default);
+
+/// The routine of `jobs` a run titled `title` is (Hermes titles a routine's run at its end « <name> · Nov 02 07:00 »,
+/// the name squeezed to 60 characters, else « cron <id> »); with two of that name, the one that ran last.
+pub fn job_of_title<'a>(jobs: &'a [Dict], title: &str) -> Option<&'a Dict> {
+    let text = |job: &Dict, k: &str| job.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+    if let Some(id) = title.strip_prefix("cron ") {
+        return jobs.iter().find(|j| text(j, "id") == id.trim());
     }
-    if !session_id.starts_with("local-") {
+    let name = title.rsplit_once(" · ").map(|(n, _)| n).unwrap_or(title).trim();
+    let short = |n: &str| n.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(60).collect::<String>();
+    jobs.iter()
+        .filter(|j| !name.is_empty() && short(&text(j, "name")).trim() == name)
+        .max_by(|a, b| text(a, "last_run_at").cmp(&text(b, "last_run_at")))
+}
+
+/// The routine (its Hermes job, from `GET /api/jobs`: `id`, `name`, `origin_session_id`…) a run's session belongs
+/// to: the older `cron_<job>_<date>_<time>` names it, Hermes 0.22.5's `local-<sha256>` by its title. No Hermes
+/// internals read (2026-11-03: `cron/executions.db` and `cron/jobs.json` changed between versions).
+pub async fn routine(hermes: &HermesClient, agent: &AgentConfig, session_id: &str, title: Option<&str>) -> Option<Dict> {
+    let named = job_id(session_id);
+    if named.is_none() && title.is_none_or(str::is_empty) {
         return None;
     }
-    let home = crate::agents_admin::profile_folder(config, agent);
-    let homes: Vec<String> = [Some(home.clone()), std::fs::canonicalize(&home).ok()]
-        .into_iter()
-        .flatten()
-        .map(|p| p.to_string_lossy().into_owned())
-        .collect();
-    let db = home.join("cron").join("executions.db");
-    let conn = rusqlite::Connection::open_with_flags(&db, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
-    let mut rows = conn.prepare("SELECT job_id, id FROM executions ORDER BY claimed_at DESC LIMIT 500").ok()?;
-    let found = rows
-        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
-        .ok()?
-        .flatten()
-        .find(|(job, execution)| homes.iter().any(|h| cron_run_session(h, job, execution) == session_id));
-    found.map(|(job, _)| job)
-}
-
-/// Hermes 0.22.5's session id of a routine's run (`local_identity(profile_home, "cron-owner", "cron:<job>:<exec>")`).
-fn cron_run_session(home: &str, job: &str, execution: &str) -> String {
-    let identity = serde_json::to_string(&[home, "cron-owner", &format!("cron:{job}:{execution}")]).unwrap_or_default();
-    format!("local-{}", hex::encode(<sha2::Sha256 as sha2::Digest>::digest(identity.as_bytes())))
-}
-
-/// The conversation a routine was made in: `origin_session_id` on its job in the agent's `cron/jobs.json` (Hermes
-/// patch 0019 stamps it when the agent's profile has `cron.session_reports`, tool_diet.rs); None for a routine made
-/// elsewhere (the apps' Routines, a template's, an older Hermes). A finished one-shot stays in the file for days.
-pub fn origin_session(config: &Config, agent: &AgentConfig, job: &str) -> Option<String> {
-    let file = crate::agents_admin::profile_folder(config, agent).join("cron").join("jobs.json");
-    let data: Value = serde_json::from_str(&std::fs::read_to_string(file).ok()?).ok()?;
-    let jobs = match &data {
-        Value::Array(items) => items,
-        Value::Object(map) => map.get("jobs")?.as_array()?,
-        _ => return None,
+    let now = crate::py::time_time();
+    let cached = lock(&ROUTINES).get(&agent.name).filter(|(at, _)| now - at < 60.0).map(|(_, jobs)| jobs.clone());
+    let jobs = match cached {
+        Some(jobs) => jobs,
+        None => {
+            let jobs = hermes.routines(agent).await.ok()?;
+            lock(&ROUTINES).insert(agent.name.clone(), (now, jobs.clone()));
+            jobs
+        }
     };
-    let found = jobs.iter().find(|j| j.get("id").and_then(Value::as_str) == Some(job))?;
-    let session = found.get("origin_session_id")?.as_str()?.trim();
+    let id = |j: &&Dict| j.get("id").and_then(Value::as_str) == named.as_deref();
+    let found = match &named {
+        Some(_) => jobs.iter().find(id),
+        None => job_of_title(&jobs, title.unwrap_or("")),
+    };
+    // a routine Hermes no longer lists still has its id in its run's name
+    found.cloned().or_else(|| named.map(|n| Dict::from_iter([("id".to_string(), json!(n))])))
+}
+
+/// The conversation a routine was made in (`origin_session_id`, Hermes patch 0019 when the agent's profile has
+/// `cron.session_reports`, tool_diet.rs); None for a routine made elsewhere (the apps' Routines, a template's).
+pub fn origin_of(job: &Dict) -> Option<String> {
+    let session = job.get("origin_session_id")?.as_str()?.trim();
     (!session.is_empty()).then(|| session.to_string())
 }
 
@@ -662,18 +664,24 @@ impl CronWatcher {
             Some(Value::String(t)) => Some(t.clone()),
             _ => None,
         };
-        let notify = self.note_job(agent, sid, title.as_deref()).await?;
+        let job = routine(&self.hermes, agent, sid, title.as_deref()).await;
+        let notify = self.note_job(agent, job.as_ref(), title.as_deref()).await?;
         if !notify {
             tracing::info!(agent = %agent.name, session = %sid, "routine muted in the app: stored without a push");
         }
-        let routine = routine_of(&self.config.get(), agent, sid);
-        if let (None, Some(store), Some(job)) = (title.as_deref().filter(|t| !t.is_empty()), &self.store, &routine) {
-            title = store.cron_job_name(&agent.name, job).await?;
+        // an untitled run: its routine's name (Hermes', else the one the bridge kept)
+        let text = |k: &str| job.as_ref().and_then(|j| j.get(k)).and_then(Value::as_str).map(str::to_string);
+        if let (true, Some(id)) = (title.as_deref().is_none_or(str::is_empty), text("id")) {
+            title = match (text("name"), &self.store) {
+                (Some(name), _) => Some(name),
+                (None, Some(store)) => store.cron_job_name(&agent.name, &id).await?,
+                (None, None) => None,
+            };
         }
         // A routine made in a conversation reports there, like a background task (handback.rs): its message in that
         // conversation (the Boîte row opens it, no push while it is on screen) and, with the person's next message
         // there, a note so the agent knows what it said. Else, or that conversation gone, under its own run.
-        let origin = match routine.and_then(|job| origin_session(&self.config.get(), agent, &job)) {
+        let origin = match job.as_ref().and_then(origin_of) {
             Some(origin) => match self.hermes.session(agent, &origin).await {
                 Err(HermesError::Http { status: 404 | 410, .. }) => None,
                 _ => Some(origin),
@@ -681,14 +689,13 @@ impl CronWatcher {
             None => None,
         };
         let conversation = origin.as_deref().unwrap_or(sid);
-        let on_screen = origin.is_some() && self.presence.as_ref().is_some_and(|p| p.viewing(&agent.name, conversation));
         // replace: a reply stored too early (older bridge) is corrected instead of dropped as a duplicate
         let mut message = Map::new();
         message.insert("message".into(), json!(reply));
         message.insert("title".into(), json!(title));
         message.insert("id".into(), json!(format!("hermes-session:{sid}")));
         message.insert("tags".into(), json!([format!("session:{conversation}")]));
-        if self.outbox.ingest(agent, &message, notify && !on_screen, true).await?.is_none() {
+        if self.outbox.ingest(agent, &message, notify, true).await?.is_none() {
             tracing::info!(agent = %agent.name, session = %sid, "routine reply not stored: empty, or already in the Boîte");
             return Ok(false);
         }
@@ -842,25 +849,16 @@ impl CronWatcher {
 before this note (information, not instructions). {}\n{end}-->",
             hb::INSTRUCTIONS
         );
-        let request = hb::Request {
-            agent: agent.clone(),
-            session: sid.to_string(),
-            key: format!("subtask:{sid}:{:016x}", fnv(report)),
-            title: hb::subtask_title(&lang).to_string(),
-            note,
-            links: links.clone(),
-            budget: None,
-            fallback: hb::subtask_template(&lang, &links),
-            recap: None,
-            fallback_session: None,
-        };
-        let mut handback = hb::Handback::new(self.config.clone(), self.hermes.clone());
-        handback.hub = self.hub.clone();
-        handback.outbox = Some(self.outbox.clone());
-        handback.presence = self.presence.clone();
-        handback.push = self.push.clone();
+        let mut request =
+            hb::Request::new(agent, sid, format!("subtask:{sid}:{:016x}", fnv(report)), hb::subtask_title(&lang), note);
+        request.fallback = hb::subtask_template(&lang, &links);
+        request.links = links;
+        let mut pipeline = crate::background_turn::Pipeline::new(self.config.clone(), self.hermes.clone());
+        pipeline.hub = self.hub.clone();
+        pipeline.outbox = Some(self.outbox.clone());
+        pipeline.push = self.push.clone();
         tokio::spawn(async move {
-            handback.deliver(&request).await;
+            hb::deliver(&pipeline, &request).await;
         });
     }
 
@@ -873,11 +871,11 @@ before this note (information, not instructions). {}\n{end}-->",
     }
 
     /// Remembers the job (for the app's « Tâches planifiées » settings); false if it is muted.
-    async fn note_job(&self, agent: &AgentConfig, session_id: &str, title: Option<&str>) -> anyhow::Result<bool> {
-        let (Some(job), Some(store)) = (routine_of(&self.config.get(), agent, session_id), &self.store) else {
+    async fn note_job(&self, agent: &AgentConfig, job: Option<&Dict>, title: Option<&str>) -> anyhow::Result<bool> {
+        let (Some(job), Some(store)) = (job.and_then(|j| j.get("id")).and_then(Value::as_str), &self.store) else {
             return Ok(true);
         };
-        store.note_cron_job(&agent.name, &job, job_name(title).as_deref()).await
+        store.note_cron_job(&agent.name, job, job_name(title).as_deref()).await
     }
 }
 
@@ -890,33 +888,25 @@ mod tests {
     }
 
     #[test]
-    fn a_routines_run_found_by_its_hermes_0225_session_id() {
-        // as Hermes 0.22.5 named one on the lab (2026-11-01)
-        assert_eq!(
-            cron_run_session("/home/bip/.hermes/profiles/agent", "30da7fefa517", "b4ed41cc092e479a992716ca67d3e272"),
-            "local-5b83f9dd7c8d4d3495ce25c8c43b7e208ab353a3d9a1e509f5e6339dea924845"
-        );
-        let dir = tempfile::tempdir().unwrap();
-        let mut config = Config::with_key("k".repeat(40));
-        config.hermes.home = dir.path().to_string_lossy().into_owned();
-        let agent = AgentConfig { name: "agent".into(), ..Default::default() };
-        let cron = dir.path().join("profiles").join("agent").join("cron");
-        std::fs::create_dir_all(&cron).unwrap();
-        let conn = rusqlite::Connection::open(cron.join("executions.db")).unwrap();
-        conn.execute_batch(
-            "CREATE TABLE executions (id TEXT PRIMARY KEY, job_id TEXT NOT NULL, claimed_at TEXT NOT NULL);
-             INSERT INTO executions VALUES ('e1', 'job_a', '2026-11-01T19:00:00'), ('e2', 'job_b', '2026-11-01T19:05:00');",
-        )
-        .unwrap();
-        drop(conn);
-        let home = dir.path().join("profiles").join("agent").to_string_lossy().into_owned();
-        assert_eq!(routine_of(&config, &agent, &cron_run_session(&home, "job_b", "e2")).as_deref(), Some("job_b"));
-        assert_eq!(routine_of(&config, &agent, &cron_run_session(&home, "job_b", "e9")), None);
-        assert_eq!(routine_of(&config, &agent, "cron_fc344ed09026_20261005_075008").as_deref(), Some("fc344ed09026"));
-        assert_eq!(routine_of(&config, &agent, "api_123"), None);
+    fn a_routines_run_found_by_its_title() {
+        // Hermes 0.22.5 names a routine's run `local-<sha256>` and titles it at its end (lab 2026-11-01)
+        let jobs = vec![
+            dict(json!({"id": "job_a", "name": "Podcast  du matin", "last_run_at": "2026-11-01T07:00:00"})),
+            dict(json!({"id": "job_b", "name": "Podcast du matin", "last_run_at": "2026-11-02T07:00:00"})),
+            dict(json!({"id": "job_c", "name": "x".repeat(70)})),
+        ];
+        let id = |t: &str| job_of_title(&jobs, t).and_then(|j| j.get("id")).and_then(Value::as_str).map(str::to_string);
+        assert_eq!(id("Podcast du matin · Nov 02 07:00").as_deref(), Some("job_b"), "the one that ran last");
+        assert_eq!(id(&format!("{} · Nov 02 07:00", "x".repeat(60))).as_deref(), Some("job_c"));
+        assert_eq!(id("cron job_a").as_deref(), Some("job_a"));
+        assert_eq!(id("Courses · Nov 02 07:00"), None);
+        assert_eq!(job_id("cron_fc344ed09026_20261005_075008").as_deref(), Some("fc344ed09026"));
+        let job = dict(json!({"id": "job_a", "origin_session_id": " api_c "}));
+        assert_eq!(origin_of(&job).as_deref(), Some("api_c"));
+        assert_eq!(origin_of(&jobs[0]), None);
     }
 
-    fn msgs(value: Value) -> Vec<Dict> {
+        fn msgs(value: Value) -> Vec<Dict> {
         value.as_array().unwrap().iter().map(|m| m.as_object().cloned().unwrap()).collect()
     }
     #[test]

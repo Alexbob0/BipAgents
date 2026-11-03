@@ -145,6 +145,7 @@ pub mod favicons;
 pub mod guide;
 pub mod guide_team;
 pub mod welcome;
+pub mod background_turn;
 pub mod handback;
 pub mod health;
 pub mod jobs;

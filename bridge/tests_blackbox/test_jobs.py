@@ -51,12 +51,15 @@ def test_a_task_runs_in_its_own_conversation_and_ends_with_its_report(bridges, f
     assert fakes.hermes.created == [("", {"title": "🧩 Écoles du quartier"})]
     run = fakes.hermes.seen("/v1/runs", "POST")[0].json()
     now, words = split_now(run["input"])
-    assert run["session_id"] == "api_s1" and now and words == "Écoles du quartier\n\nCompare les trois écoles près de chez nous."
+    assert run["session_id"] == "api_s1" and now
+    assert words.startswith("Écoles du quartier\n\nCompare les trois écoles près de chez nous.\n\n<!--bip:task-rules\n")
     assert "model_options" not in run   # the agent's own thinking level (GLM through EUrouter: « medium », agents_admin)
+    # the rules in the turn's message, never as run instructions: the system prompt (and its prompt cache) stays the
+    # conversations' (background_turn.rs, cache audit #2)
+    assert "instructions" not in run
     # the app's part by its English name: English agents repeated « Tâches de fond » to their person (names.rs)
-    assert run["instructions"].startswith(
-        "This is a background task the person gave you from the app (« Background tasks »)")
-    assert "Tâches de fond" not in run["instructions"]
+    assert "This is a background task the person gave you from the app (« Background tasks »)" in words
+    assert "Tâches de fond" not in words
     stored = bridge.state_dir / "jobs" / f"{job['id']}.json"
     assert oct(os.stat(stored).st_mode & 0o777) == "0o600" and json.loads(stored.read_text())["run_id"] == "r1"
     twice = bridge.post("/v1/agents/wellness/jobs", headers=AUTH, json=TASK)
@@ -91,8 +94,8 @@ def test_a_task_stops_at_its_budget_and_goes_on_with_a_bigger_one(bridges, fakes
     french_place(bridge)   # the instructions and the push in French
     fakes.hermes.rounds, fakes.hermes.step = 50, 60_000
     job = bridge.post("/v1/agents/wellness/jobs", headers=AUTH, json={**TASK, "max_tokens": 100_000}).json()
-    assert fakes.hermes.started["r1"]["instructions"].startswith(
-        "This is a background task the person gave you from the app (« Tâches de fond »)")
+    assert "This is a background task the person gave you from the app (« Tâches de fond »)" in \
+        fakes.hermes.started["r1"]["input"]
     assert wait_until(lambda: view(bridge, job["id"])["state"] == "paused", timeout=45)
     paused = view(bridge, job["id"])
     assert paused["reason"] == "budget" and fakes.hermes.seen("/v1/runs/r1/stop", "POST")

@@ -10,6 +10,8 @@ import json
 import threading
 import time
 
+import httpx
+
 import pytest
 
 from bbkit.common import AUTH, read_sse, sse, in_session
@@ -46,8 +48,8 @@ def test_start_task_starts_a_task_within_the_direct_budget(bridges, fakes):
     assert (job["state"], job["proposed_by"], job["max_tokens"]) == ("running", "asked", DEFAULT_TOKENS)
     assert job["title"] == "Tri des mails" and job["prompt"] == "Trie mes mails de la semaine."
     run = fakes.hermes.started["r1"]
-    assert run["input"] == "Tri des mails\n\nTrie mes mails de la semaine."
-    assert run["instructions"].startswith("This is a background task")
+    assert run["input"].startswith("Tri des mails\n\nTrie mes mails de la semaine.\n\n<!--bip:task-rules\nThis is a background task")
+    assert "instructions" not in run
     # one task per agent: the next one is refused, with what to do instead
     again = call(bridge, "start_task", {"title": "Autre", "instructions": "Encore."})
     assert again["isError"] and text_of(again) == ("Not started: this agent is already on a background task. "
@@ -378,6 +380,8 @@ def test_a_finished_task_is_handed_back_to_the_conversation_that_asked(bridges, 
     job = jobs(bridge)[0]
     assert job["from_session"] == "api_c" and job["session_id"] == "api_s1"
     hermes.run_outputs = {"r1": REPORT, "r2": MESSAGE}
+    hermes.add_session("api_c", [{"role": "user", "content": ASKED}, {"role": "assistant", "content": MESSAGE}],
+                       title="Veste")   # what Hermes keeps of the agent's turn there
     # the task (r1, its own conversation), then the agent's turn where the person asked (r2)
     assert wait_until(lambda: "r2" in hermes.started, timeout=40)
     turn = hermes.started["r2"]
@@ -387,20 +391,25 @@ def test_a_finished_task_is_handed_back_to_the_conversation_that_asked(bridges, 
     assert turn["input"].startswith("<!--bip:task\nYour background work « Veste en laine » is finished.")
     assert "- Arket : 129 €" in turn["input"] and turn["input"].endswith(f"MEDIA:{page}\n-->")
 
+    # the agent's message is the conversation's own item (background_turn.rs: no Boîte copy of it), its journal row
+    # points at it and is pushed; the report's page is one of its attachments even though it forgot the line
     def handed():
-        return [i for i in bridge.get("/v1/outbox", headers=AUTH).json()["items"] if i["session_id"] == "api_c"]
+        rows = bridge.get("/v1/notifications", headers=AUTH).json()["notifications"]
+        return [r for r in rows if r["type"] == "reply" and r["session_id"] == "api_c" and r["m"]]
 
     assert wait_until(handed, timeout=20)
-    item = handed()[0]
-    # the page's MEDIA line kept in the Boîte's text: the apps show the report as its page card
-    assert item["text"] == f"{MESSAGE}\n\nMEDIA:{page}"
-    assert item["title"] == "Veste en laine" and item["agent"] == "wellness"
+    row = handed()[0]
+    assert not [i for i in bridge.get("/v1/outbox", headers=AUTH).json()["items"] if i["session_id"] == "api_c"]
+    timeline = bridge.get(f"/v1/threads/{row['c']}/timeline", headers=AUTH, params={"agent": "wellness"}).json()
+    [said] = [i for i in timeline["items"] if i["id"] == row["m"]]
+    assert said["text"] == MESSAGE and [a["path"] for a in said["attachments"]] == [page]
+    assert said["attachments"][0]["kind"] == "page"
     # the full report, one of the agent's pages (served like any MEDIA file)
     shown = bridge.get("/v1/media", headers=AUTH, params={"path": page})
     assert shown.status_code == 200 and "<li><strong>Uniqlo</strong> : 79 €, laine mérinos</li>" in shown.text
-    assert wait_until(lambda: [p for p in fakes.apns.payloads() if p.get("m") == f"o_{item['id']}"])
-    told = [p for p in fakes.apns.payloads() if p.get("m") == f"o_{item['id']}"][0]
-    assert in_session(bridge, told, "api_c")
+    assert wait_until(lambda: [p for p in fakes.apns.payloads() if p.get("m") == row["m"]])
+    told = [p for p in fakes.apns.payloads() if p.get("m") == row["m"]][0]
+    assert in_session(bridge, told, "api_c") and told["t"] == "reply"
     assert not [p for p in fakes.apns.payloads() if p.get("t") == "task" and p.get("r") == job["id"]]
     done = jobs(bridge)[0]
     assert done["state"] == "done" and done["tokens"]["input"] == 100_000 + 105_000
@@ -449,16 +458,15 @@ def test_a_task_whose_conversation_is_gone_is_told_by_the_template(bridges, fake
 
 
 @pytest.mark.slow
-def test_a_hand_back_while_the_bot_chat_is_on_screen_is_not_pushed(bridges, fakes):
-    """2026-10-26: Alex had his Bot Chat open (it shows every Boîte message) when a task's result came: it was pushed,
-    and showed only once he tapped the notification. Now the open conversation's state changes (`outbox`), so the app
-    shows it, and no push comes for what is on screen."""
+def test_a_hand_back_while_its_conversation_is_on_screen_is_not_pushed(bridges, fakes):
+    """2026-10-26: Alex had the conversation open when a task's result came: it was pushed, and showed only once he
+    tapped the notification. Now its thread's event stream is open (the app shows it): the reply is journaled, read,
+    and not pushed (docs/conversations.md §6.5)."""
     bridge = with_device(bridges, {})
     give_token(bridge)
     hermes = fakes.hermes
     hermes.rounds = 1
     hermes.add_session("api_c", [{"role": "user", "content": ASKED}], title="Veste")
-    hermes.add_session("api_bot", [], title="Bot Chat")
     gate = threading.Event()
     hermes.runs["run_c"] = [sse("tool.started", run_id="run_c", tool="mcp_bipagents_start_task", preview="x"), gate,
                             sse("run.completed", run_id="run_c", output="Je m'en occupe en arrière-plan.")]
@@ -467,19 +475,28 @@ def test_a_hand_back_while_the_bot_chat_is_on_screen_is_not_pushed(bridges, fake
     time.sleep(0.3)
     assert not call(bridge, "start_task", {"title": "Veste en laine", "instructions": ASKED})["isError"]
     hermes.run_outputs = {"r1": REPORT, "r2": MESSAGE}
+    thread = bridge.get("/v1/threads/resolve", headers=AUTH, params={"agent": "wellness", "session_id": "api_c"}).json()
+    stop = threading.Event()
 
-    def state():
-        return bridge.get("/v1/sessions/api_bot/state", headers=AUTH, params={"agent": "wellness"}).json()
+    def watch():
+        with httpx.Client(base_url=bridge.url, headers=AUTH, timeout=60) as client:
+            with client.stream("GET", "/v1/threads/events",
+                               params={"agent": "wellness", "thread": thread["thread"]["id"]}) as resp:
+                for _ in resp.iter_lines():
+                    if stop.is_set():
+                        return
 
-    before = state()["outbox"]
+    viewer = threading.Thread(target=watch, daemon=True)
+    viewer.start()
+    time.sleep(0.5)
     gate.set()
 
     def handed():
-        state()   # the Bot Chat on screen, as the app polls it
-        return [i for i in bridge.get("/v1/outbox", headers=AUTH).json()["items"] if i["session_id"] == "api_c"]
+        rows = bridge.get("/v1/notifications", headers=AUTH).json()["notifications"]
+        return [r for r in rows if r["type"] == "reply" and r["session_id"] == "api_c"]
 
     assert wait_until(handed, timeout=40)
-    assert state()["outbox"] != before
-    item = handed()[0]
-    time.sleep(1.0)
-    assert not [p for p in fakes.apns.payloads() if p.get("outbox_id") == item["id"]]
+    assert handed()[0]["push"] == "skipped:on_screen" and handed()[0]["read_at"]
+    assert not [p for p in fakes.apns.payloads() if p.get("t") == "reply"]
+    stop.set()
+    viewer.join(timeout=15)

@@ -19,9 +19,9 @@
 //! A run is ONE turn of the agent in the trigger's conversation of the day (« ⚡ <name> · 2/11 »): the person's words,
 //! then the events as DATA inside a hidden note (`<!--bip:trigger … -->`, marked as content written by someone else,
 //! never instructions: prompt-injection rule). It is an ordinary run of the agent: its approvals apply and are pushed
-//! as usual. Its reply goes to the Boîte (pushed unless that conversation is on screen); `[SILENT]` keeps it quiet. If
-//! the agent is busy with another run, the triggered one waits its turn ([`run_turn`]: the only place that starts
-//! the agent, kept small so a per-agent queue can take it over).
+//! as usual. Its reply stays in that conversation, the Boîte points at it (pushed unless on screen); `[SILENT]` keeps it
+//! quiet. If the agent is busy with another run, the triggered one waits its turn (background_turn.rs, the one
+//! pipeline of the turns taken without the person).
 //!
 //! Made by the person in the app (active at once), or proposed by an agent (MCP `routine_trigger`): then it waits for
 //! the person's OK on an approval card (`bip-trig-<card>`, `GET /v1/approvals`), so a message the agent read can never
@@ -61,6 +61,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::app::AppState;
+use crate::background_turn::{Delivery, Kind, Pipeline, Turn};
 use crate::auth::ClientAddr;
 use crate::config::{AgentConfig, Config};
 use crate::tools_knowledge::{self as tk, tool_text};
@@ -792,90 +793,22 @@ pub async fn scheduler(state: AppState) {
 }
 
 /// The trigger's conversation of the day (made when missing).
-async fn session_of(state: &AppState, agent: &AgentConfig, t: &Trigger) -> Option<String> {
-    let today = crate::handback::today(&state.config());
+async fn session_of(pipeline: &Pipeline, agent: &AgentConfig, t: &Trigger) -> Option<String> {
+    let config = pipeline.config.get();
+    let today = crate::handback::today(&config);
     let day = today.format("%Y-%m-%d").to_string();
-    if t.session_day == day && !t.session.is_empty() && state.hermes.session(agent, &t.session).await.is_ok() {
-        return Some(t.session.clone());
+    let kept = if t.session_day == day { t.session.as_str() } else { "" };
+    let id = pipeline.work_session(agent, &session_title(&t.name, today), kept).await.ok()?;
+    if id != t.session {
+        let (tid, sid) = (t.id.clone(), id.clone());
+        change(&config, |store| {
+            if let Some(slot) = store.triggers.iter_mut().find(|o| o.id == tid) {
+                slot.session = sid;
+                slot.session_day = day;
+            }
+        });
     }
-    let title = session_title(&t.name, today);
-    let mut made = state.hermes.create_session(agent, &title).await.ok();
-    if made.is_none() {
-        made = state.hermes.create_session(agent, &format!("{title} ({})", &py::uuid4_hex()[..4])).await.ok();
-    }
-    let id = made?;
-    let (config, tid, sid) = (state.config(), t.id.clone(), id.clone());
-    change(&config, |store| {
-        if let Some(slot) = store.triggers.iter_mut().find(|o| o.id == tid) {
-            slot.session = sid;
-            slot.session_day = day;
-        }
-    });
     Some(id)
-}
-
-/// How a turn went.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Turn {
-    pub status: String,
-    pub output: String,
-    pub tokens: i64,
-}
-
-/// ONE turn of `agent` in `session` with `text`, at most `budget` tokens and `turn_max` seconds. The only place a
-/// trigger starts the agent: when another run of the agent goes on (a chat turn, a task), it waits its turn (up to
-/// `busy_wait`), then starts; the run hub follows it (approvals pushed, its end not).
-pub async fn run_turn(
-    state: &AppState,
-    agent: &AgentConfig,
-    session: &str,
-    text: &str,
-    budget: i64,
-    settings: &Settings,
-) -> Result<(String, Turn), String> {
-    let mut waited = 0.0;
-    while state.hub.agent_running(&agent.name) && waited < settings.busy_wait_seconds {
-        tokio::time::sleep(Duration::from_secs(2)).await;
-        waited += 2.0;
-    }
-    let note = crate::dates::now::stamped(&state.config(), agent, text);
-    let run_id = state.hermes.start_run(agent, &note, session, None).await.map_err(|e| format!("the agent refused ({e})"))?;
-    state.hub.watch(agent, &run_id, Some(session), false);
-    state.hub.limit_tokens(&agent.name, &run_id, budget);
-    let started = py::time_time();
-    let (status, output, usage) = loop {
-        tokio::time::sleep(Duration::from_secs(2)).await;
-        match state.hermes.run(agent, &run_id).await {
-            Ok(run) => {
-                let status = tk::str_or_empty(run.get("status"));
-                if crate::jobs::TERMINAL.contains(&status.as_str()) {
-                    let output = run.get("output").and_then(Value::as_str).unwrap_or("").to_string();
-                    break (status, output, run.get("usage").cloned());
-                }
-            }
-            Err(crate::hermes::HermesError::Http { status: 404 | 410, .. }) => {
-                let output = match state.hermes.session_messages(agent, session).await {
-                    Ok(m) => crate::cronwatch::final_reply(&m).unwrap_or_default(),
-                    Err(_) => String::new(),
-                };
-                break ("gone".into(), output, None);
-            }
-            Err(_) => {}
-        }
-        if py::time_time() - started >= settings.turn_max_seconds {
-            let _ = state.hermes.stop_run(agent, &run_id).await;
-            break ("timeout".into(), String::new(), None);
-        }
-    };
-    let tokens = usage
-        .as_ref()
-        .map(|u| {
-            let n = |k: &str| u.get(k).map(|v| py::py_int(v).unwrap_or(0)).unwrap_or(0);
-            n("input_tokens") + n("output_tokens")
-        })
-        .or_else(|| state.hub.run_progress(&agent.name, &run_id).and_then(|p| p.usage).map(|u| u.total()))
-        .unwrap_or(0);
-    Ok((run_id, Turn { status, output: tk::strip(&output).to_string(), tokens }))
 }
 
 fn record(config: &Config, id: &str, run: RunRecord) {
@@ -911,34 +844,42 @@ pub async fn fire(state: &AppState, id: &str) {
         }
     });
     let at = py::time_time();
-    let Some(session) = session_of(state, &agent, &t).await else {
+    let pipeline = Pipeline::of(state);
+    let Some(session) = session_of(&pipeline, &agent, &t).await else {
         tracing::warn!(target: "bipbridge::triggers", agent = %agent.name, trigger = id, "no conversation could be opened");
         record(&config, id, RunRecord { at, ok: false, events: events.len(), tokens: 0, message: "no conversation".into() });
         return;
     };
-    let text = turn_text(&t, &events, dropped);
     tracing::info!(target: "bipbridge::triggers", agent = %agent.name, trigger = id, events = events.len(), "routine triggered");
-    let turn = run_turn(state, &agent, &session, &text, t.budget_tokens, &settings).await;
-    let (run_id, turn) = match turn {
-        Ok(done) => done,
+    let mut turn = Turn::new(&agent, Kind::Trigger, &session, turn_text(&t, &events, dropped));
+    turn.budget = Some(t.budget_tokens);
+    turn.max_seconds = settings.turn_max_seconds;
+    turn.busy_wait = settings.busy_wait_seconds;
+    let turn = match pipeline.run(&turn).await {
+        Ok(ran) => ran,
         Err(why) => {
             tracing::warn!(target: "bipbridge::triggers", agent = %agent.name, trigger = id, why = %why, "routine run not started");
-            record(&config, id, RunRecord { at, ok: false, events: events.len(), tokens: 0, message: why });
+            record(&config, id, RunRecord { at, ok: false, events: events.len(), tokens: 0, message: why.to_string() });
             return;
         }
     };
     let ok = turn.status == "completed" || turn.status == "gone";
-    let silent = turn.output.is_empty() || turn.output.trim() == SILENT || turn.output.trim().starts_with(SILENT);
+    let silent = turn.text.is_empty() || turn.text.trim().starts_with(SILENT);
     let mut message = if !ok { format!("ended {}", turn.status) } else if silent { "silent".into() } else { "sent".into() };
     if ok && !silent {
-        let viewing = crate::handback::Handback::of(state).on_screen(&agent, &session).await;
-        let mut item = Dict::new();
-        item.insert("id".into(), json!(format!("trigger:{id}:{run_id}")));
-        item.insert("message".into(), json!(turn.output));
-        item.insert("title".into(), json!(t.name));
-        item.insert("tags".into(), json!([format!("session:{session}")]));
-        if let Err(err) = state.outbox.ingest(&agent, &item, !viewing, false).await {
-            tracing::warn!(target: "bipbridge::triggers", agent = %agent.name, error = %format!("{err:#}"), "the Boîte refused the routine's message");
+        // the agent's own message in the routine's conversation, pointed at by the Boîte (no copy of it)
+        let delivery = Delivery {
+            agent: agent.clone(),
+            session: turn.session.clone(),
+            key: format!("trigger:{id}:{}", turn.run_id),
+            title: t.name.clone(),
+            text: turn.text.clone(),
+            as_written: true,
+            run_id: Some(turn.run_id.clone()),
+            notify: true,
+            files: Vec::new(),
+        };
+        if !pipeline.deliver(&delivery).await {
             message = "not delivered".into();
         }
     }

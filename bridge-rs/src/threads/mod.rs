@@ -476,8 +476,8 @@ impl Threads {
             ("side", root.hidden)
         };
         let origin = if kind == "routine" {
-            let job = crate::cronwatch::routine_of(&self.config.get(), agent, &root.id);
-            json!({"kind": "routine", "routine": job})
+            let job = crate::cronwatch::routine(&self.hermes, agent, &root.id, root.title.as_deref()).await;
+            json!({"kind": "routine", "routine": job.and_then(|j| j.get("id").cloned())})
         } else {
             Value::Null
         };
@@ -625,21 +625,50 @@ impl Threads {
             if let Some(c) = row["client_id"].as_str() {
                 item.body.insert("client_id".into(), json!(c));
             }
-            if let Some(Value::Array(sent)) = row["attachments"].as_str().and_then(|a| serde_json::from_str(a).ok()) {
-                if !sent.is_empty() {
-                    let atts: Vec<Value> = sent
-                        .into_iter()
-                        .enumerate()
-                        .map(|(n, mut a)| {
-                            a["id"] = json!(format!("{}.a{n}", item.id));
-                            a
-                        })
-                        .collect();
+            if let Some(Value::Array(kept)) = row["attachments"].as_str().and_then(|a| serde_json::from_str(a).ok()) {
+                // the app's files replace what Hermes kept of them; an agent's work adds its files to its lines'
+                let mut atts = match (item.body.get("role"), item.body.get("attachments")) {
+                    (Some(r), Some(Value::Array(own))) if r == "agent" => own.clone(),
+                    _ => Vec::new(),
+                };
+                for a in kept {
+                    if a["stale"] == json!(true) {
+                        atts.retain(|o| o["path"] != a["path"]);
+                    } else if !atts.iter().any(|o| !a["path"].is_null() && o["path"] == a["path"]) {
+                        atts.push(a);
+                    }
+                }
+                for (n, a) in atts.iter_mut().enumerate() {
+                    a["id"] = json!(format!("{}.a{n}", item.id));
+                }
+                if atts.is_empty() {
+                    item.body.remove("attachments");
+                } else {
                     item.body.insert("attachments".into(), Value::Array(atts));
                 }
             }
         }
         Ok(())
+    }
+
+    /// Files a background turn made (background_turn.rs), attached to the agent's message `message` whatever its words
+    /// say: the timeline gives them as its attachments (`kind` from the path, as a `MEDIA:` line's).
+    pub async fn attach(&self, agent: &AgentConfig, thread: &str, message: &str, files: &[String]) {
+        self.attach_with(agent, thread, message, files, &[]).await
+    }
+
+    /// [`Self::attach`], and the `MEDIA:` lines of `stale` files left out of the message's attachments (an older
+    /// podcast's path the model wrote from memory, an earlier version of a file it made again: made_files.rs).
+    pub async fn attach_with(&self, agent: &AgentConfig, thread: &str, message: &str, files: &[String], stale: &[String]) {
+        let mut atts: Vec<Value> = files.iter().map(|p| timeline::file_attachment(p, None)).collect();
+        atts.extend(stale.iter().map(|p| json!({"path": p, "stale": true})));
+        let sql = "INSERT INTO thread_messages (agent, message_id, thread_id, attachments, created_at) \
+                   VALUES (?, ?, ?, ?, ?) ON CONFLICT (agent, message_id) DO UPDATE SET attachments = excluded.attachments";
+        let params = vec![text(&agent.name), text(message), text(thread), text(&Value::Array(atts).to_string()),
+                          text(&iso(utcnow()))];
+        if let Err(exc) = self.store.run(sql, params).await {
+            tracing::warn!(agent = %agent.name, error = %format!("{exc:#}"), "files not attached to their message");
+        }
     }
 
     /// The Boîte's messages that belong to this thread: tagged with one of its sessions; for the main thread also

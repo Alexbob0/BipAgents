@@ -48,6 +48,7 @@ use serde_json::{json, Value};
 
 use crate::app::AppState;
 use crate::config::{AgentConfig, SharedConfig};
+use crate::background_turn::{End, Kind, NotRun, Pipeline, Turn};
 use crate::hermes::{HermesClient, HermesError};
 use crate::mail_scan::{self, ScanError, Scans};
 use crate::push::PushService;
@@ -319,7 +320,7 @@ pub struct Jobs {
     /// « Remplir mon Carnet » for every agent, one after another (notebook/fill.rs).
     pub filler: std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
     /// A finished task's result handed back to the conversation it came from (handback.rs); None: only the push.
-    pub handback: Option<Arc<crate::handback::Handback>>,
+    pub handback: Option<Arc<crate::background_turn::Pipeline>>,
     /// The plan's AI credit as the guichet tells the place (credit.rs); None: the place's own file. Used up: no new
     /// task, a running one stops after its current step.
     pub credit_file: Option<PathBuf>,
@@ -604,6 +605,16 @@ impl Jobs {
         Ok(task_view(&job))
     }
 
+    /// The turns' pipeline (background_turn.rs) with this board's services.
+    fn pipeline(&self) -> Pipeline {
+        Pipeline {
+            hub: self.hub.clone(),
+            push: self.push.clone(),
+            credit_file: self.credit_file.clone(),
+            ..Pipeline::new(self.config.clone(), self.hermes.clone())
+        }
+    }
+
     pub(crate) fn may_run(&self, agent: &str) -> Result<(), JobError> {
         if self.credit_used() {
             return Err(JobError(crate::credit::JOBS_REFUSED.into()));
@@ -751,32 +762,28 @@ impl Jobs {
                 _ => job_error("the agent can't be reached"),
             }
         };
-        if !job.get("session_id").is_some_and(py::truthy) {
-            // Hermes refuses a title another conversation holds (a task asked again after it was cancelled): numbered
-            let base = format!("{TITLE_MARK}{}", tk::str_or_empty(job.get("title")));
-            let mut attempt = 1;
-            let session = loop {
-                let title = if attempt == 1 { base.clone() } else { format!("{base} ({attempt})") };
-                match self.hermes.create_session(&agent, &title).await {
-                    Ok(session) => break session,
-                    Err(HermesError::Http { status: 400 | 409, .. }) if attempt < 9 => attempt += 1,
-                    Err(err) => return Err(refused(err)),
-                }
-            };
-            job.insert("session_id".into(), json!(session));
-        }
-        let session_id = tk::str_or_empty(job.get("session_id"));
+        let pipeline = self.pipeline();
+        // Hermes refuses a title another conversation holds (a task asked again after it was cancelled): numbered
+        let kept = tk::str_or_empty(job.get("session_id"));
+        let title = format!("{TITLE_MARK}{}", tk::str_or_empty(job.get("title")));
+        let session_id = if kept.is_empty() { pipeline.work_session(&agent, &title, "").await.map_err(refused)? } else { kept };
+        job.insert("session_id".into(), json!(session_id));
         let base = counters(&self.hermes.session(&agent, &session_id).await.map_err(refused)?);
+        // the task's rules in its message (a note the apps hide), never as run instructions: the system prompt stays
+        // the agent's conversations' own, and so does the model server's prompt cache; « Tâches de fond » by its name
+        // in the agent's language (names.rs)
+        let rules = crate::names::localize(INSTRUCTIONS, &crate::handback::language_of(&self.config.get(), &agent));
+        let mut turn = Turn::new(&agent, Kind::Task, &session_id, format!("{text}\n\n<!--bip:task-rules\n{rules}\n-->"));
         // GLM through EUrouter thinks at « low » in chat since 2026-10-28; tasks stay at « medium » until measured.
-        let options = crate::agents_admin::task_turn_options(&self.config.get(), &agent);
-        let text = &crate::dates::now::stamped(&self.config.get(), &agent, text);
-        // « Tâches de fond » by its name in the agent's language (names.rs)
-        let instructions = crate::names::localize(INSTRUCTIONS, &crate::handback::language_of(&self.config.get(), &agent));
-        let run_id = self
-            .hermes
-            .start_run_with(&agent, text, &session_id, Some(&instructions), options)
-            .await
-            .map_err(refused)?;
+        turn.options = crate::agents_admin::task_turn_options(&self.config.get(), &agent);
+        turn.budget = Some(left_for_run(job));
+        let run_id = match pipeline.start(&turn).await {
+            Ok((run_id, _)) => run_id,
+            Err(NotRun::Credit) => return Err(JobError(crate::credit::JOBS_REFUSED.into()).into()),
+            Err(NotRun::Refused(err)) => return Err(refused(err)),
+            Err(NotRun::Gone) => return Err(refused(HermesError::http(404, ""))),
+            Err(why) => return Err(JobError(format!("the agent refused the task ({why})")).into()),
+        };
         let now = py::time_time();
         let before = job.get("tokens").cloned().unwrap_or(json!({}));
         let started = job.get("started").filter(|v| py::truthy(v)).cloned().unwrap_or(json!(now));
@@ -797,11 +804,6 @@ impl Jobs {
             job.insert(key.into(), value);
         }
         save(&self.config.get(), job)?;
-        if let Some(hub) = &self.hub {
-            hub.watch(&agent, &run_id, Some(&session_id), false); // approvals and questions still pushed
-            hub.mark_background(&agent.name, &run_id); // the brake's higher limits (loop_brake.rs)
-            hub.limit_tokens(&agent.name, &run_id, left_for_run(job)); // stopped before a call past its budget
-        }
         let id = tk::str_or_empty(job.get("id"));
         self.follow(&id);
         tracing::info!(agent = %agent.name, job = %id, budget = int_of(job.get("max_tokens")), "job started");
@@ -867,22 +869,8 @@ impl Jobs {
                 let _ = save(&config, &job);
                 return;
             };
-            let run_id = tk::str_or_empty(job.get("run_id"));
-            let run = match self.hermes.run(&agent, &run_id).await {
-                Ok(run) => run,
-                Err(HermesError::Http { status, .. }) if status == 404 || status == 410 => {
-                    // Hermes restarted, or forgot the run long after it ended
-                    let mut gone = Dict::new();
-                    gone.insert("status".into(), json!("gone"));
-                    gone
-                }
-                Err(HermesError::Decode(err)) => {
-                    tracing::error!(job = %job_id, exc = %err, "Task exception was never retrieved");
-                    return;
-                }
-                Err(_) => continue, // Hermes restarting: asked again at the next round
-            };
-            let session_id = tk::str_or_empty(job.get("session_id"));
+            let (run_id, session_id) = (tk::str_or_empty(job.get("run_id")), tk::str_or_empty(job.get("session_id")));
+            let end = self.pipeline().status(&agent, &run_id, &session_id).await;
             match self.hermes.session(&agent, &session_id).await {
                 Ok(session) => count(&mut job, &session, self.live_usage(&agent, &run_id).as_ref()),
                 Err(HermesError::Decode(err)) => {
@@ -891,9 +879,8 @@ impl Jobs {
                 }
                 Err(_) => {}
             }
-            let status = tk::str_or_empty(run.get("status"));
-            if TERMINAL.contains(&status.as_str()) || status == "gone" {
-                self.ended(&agent, &mut job, &run).await;
+            if let Some(end) = end {
+                self.ended(&agent, &mut job, end).await;
                 return;
             }
             let now = py::time_time();
@@ -910,9 +897,8 @@ impl Jobs {
             } else {
                 let asked = job.get("stop_asked").map(|v| py::py_float(v).unwrap_or(now)).unwrap_or(now);
                 if now - asked >= STOP_GRACE {
-                    let mut cancelled = Dict::new();
-                    cancelled.insert("status".into(), json!("cancelled"));
-                    self.ended(&agent, &mut job, &cancelled).await; // Hermes never confirmed the stop
+                    // Hermes never confirmed the stop
+                    self.ended(&agent, &mut job, End { status: "cancelled".into(), ..End::default() }).await;
                     return;
                 }
             }
@@ -939,10 +925,10 @@ impl Jobs {
         tracing::info!(agent = %agent.name, job = %id, reason = %reason, "job stopping");
     }
 
-    async fn ended(&self, agent: &AgentConfig, job: &mut Dict, run: &Dict) {
-        let mut status = tk::str_or_empty(run.get("status"));
-        let usage = match run.get("usage") {
-            Some(Value::Object(u)) if !u.is_empty() => Some(u.clone()),
+        async fn ended(&self, agent: &AgentConfig, job: &mut Dict, end: End) {
+        let End { mut status, output, usage, error } = end;
+        let usage = match usage {
+            Some(Value::Object(u)) if !u.is_empty() => Some(u),
             // a run stopped (its budget, a pause) comes back without its usage, one lost in a Hermes restart with an
             // empty one (`{}`, hermes.rs `resolve_unknown`; lab 2026-11-01: its 21.9k counted as the conversation's
             // 1.4k): its calls' real tokens
@@ -951,17 +937,8 @@ impl Jobs {
         let session_id = tk::str_or_empty(job.get("session_id"));
         let session = self.hermes.session(agent, &session_id).await.unwrap_or_default();
         count(job, &session, usage.as_ref());
-        let mut output = run.get("output").and_then(Value::as_str).map(str::to_string);
         if status == "gone" {
-            output = match self.hermes.session_messages(agent, &session_id).await {
-                Ok(messages) => crate::cronwatch::final_reply(&messages),
-                Err(_) => None,
-            };
-            status = if output.as_deref().is_some_and(|o| !o.is_empty()) {
-                "completed".into()
-            } else {
-                "interrupted".into()
-            };
+            status = if output.is_empty() { "interrupted".into() } else { "completed".into() };
         }
         let now = py::time_time();
         let mut full = String::new();
@@ -974,14 +951,13 @@ impl Jobs {
             job.insert("state".into(), json!("paused"));
             job.insert("reason".into(), stopping.unwrap_or(json!("interrupted")));
         } else if status == "completed" {
-            full = tk::strip(output.as_deref().unwrap_or("")).to_string();
+            full = tk::strip(&output).to_string();
             let report = tk::head(&full, REPORT_CHARS).to_string();
             job.insert("state".into(), json!("done"));
             job.insert("report".into(), if report.is_empty() { Value::Null } else { json!(report) });
             job.insert("finished".into(), json!(now));
         } else {
-            let error = run.get("error").and_then(Value::as_str).unwrap_or("");
-            let error = if error.is_empty() { "the task failed" } else { error };
+            let error = if error.is_empty() { "the task failed" } else { error.as_str() };
             job.insert("state".into(), json!("failed"));
             job.insert("error".into(), json!(tk::head(error, 300)));
             job.insert("finished".into(), json!(now));
@@ -1005,7 +981,7 @@ impl Jobs {
     /// full report kept as one of its pages and linked, the turn's tokens counted in the task's.
     async fn hand_back(
         &self,
-        handback: &crate::handback::Handback,
+        handback: &crate::background_turn::Pipeline,
         agent: &AgentConfig,
         job: &mut Dict,
         from: &str,
@@ -1028,25 +1004,14 @@ impl Jobs {
                     "handback: the report page could not be kept"),
             }
         }
-        let budget = int_of(job.get("max_tokens")) - spent(job);
-        let request = hb::Request {
-            agent: agent.clone(),
-            session: from.to_string(),
-            key: id.clone(),
-            title: title.clone(),
-            note: hb::note("task", &title, report, &links),
-            links: links.clone(),
-            budget: Some(budget),
-            fallback: hb::template(
-                &lang,
-                &title,
-                &hb::key_points(report, hb::POINTS_MAX, &lang, hb::today(&config)),
-                &links,
-            ),
-            recap: Some(hb::recap(&title, report)),
-            fallback_session: job.get("session_id").and_then(Value::as_str).map(str::to_string),
-        };
-        let outcome = handback.deliver(&request).await;
+        let mut request = hb::Request::new(agent, from, id.clone(), &title, hb::note("task", &title, report, &links));
+        request.links = links.clone();
+        request.budget = Some(int_of(job.get("max_tokens")) - spent(job));
+        request.fallback =
+            hb::template(&lang, &title, &hb::key_points(report, hb::POINTS_MAX, &lang, hb::today(&config)), &links);
+        request.recap = Some(hb::recap(&title, report));
+        request.fallback_session = job.get("session_id").and_then(Value::as_str).map(str::to_string);
+        let outcome = hb::deliver(handback, &request).await;
         // the turn is part of the task's cost
         let mut latest = load(&config, &id).unwrap_or_else(|| job.clone());
         if outcome.tokens > 0 {
@@ -1471,7 +1436,7 @@ pub fn jobs_of(state: &AppState) -> Arc<Jobs> {
                 Some(state.push.clone()),
                 Some(crate::mail_scan::scans_of(state)),
             );
-            board.handback = Some(Arc::new(crate::handback::Handback::of(state)));
+            board.handback = Some(Arc::new(crate::background_turn::Pipeline::of(state)));
             let jobs = Arc::new(board);
             // The safety net's rescue starts tasks for runs that stopped without handing over (runs.rs).
             let _ = state.hub.jobs.set(Arc::downgrade(&jobs));
