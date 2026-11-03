@@ -519,38 +519,18 @@ pub fn time_of(expr: &str) -> Option<NaiveTime> {
     NaiveTime::from_hms_opt(hour, minute, 0)
 }
 
-/// The routines (enabled cron jobs) of every agent: their `cron/jobs.json` in each profile.
+/// The enabled routines on a clock of every agent (routines.rs), their time of day when they have one.
 pub fn routines(config: &Config) -> Vec<Routine> {
-    let mut out = Vec::new();
-    for agent in config.agents.values() {
-        let file = crate::agents_admin::profile_folder(config, agent).join("cron").join("jobs.json");
-        let Ok(text) = std::fs::read_to_string(&file) else { continue };
-        let Ok(data) = serde_json::from_str::<Value>(&text) else { continue };
-        let jobs = match &data {
-            Value::Array(items) => items.clone(),
-            Value::Object(map) => map.get("jobs").and_then(Value::as_array).cloned().unwrap_or_default(),
-            _ => Vec::new(),
-        };
-        for job in jobs {
-            let schedule = job.get("schedule").cloned().unwrap_or(Value::Null);
-            if schedule.get("kind").and_then(Value::as_str) != Some("cron") || job.get("enabled") == Some(&json!(false))
-            {
-                continue;
+    crate::routines::list(config, None)
+        .into_iter()
+        .filter(|r| r.enabled && config.agent(Some(&r.agent)).is_some())
+        .filter_map(|r| match &r.schedule {
+            crate::routines::Schedule::Cron { expr } => {
+                Some(Routine { at: time_of(expr), agent: r.agent, name: if r.name.is_empty() { "Routine".into() } else { r.name } })
             }
-            let state = job.get("state").and_then(Value::as_str).unwrap_or("scheduled");
-            if matches!(state, "paused" | "completed" | "deleted") {
-                continue;
-            }
-            let name = job.get("name").and_then(Value::as_str).unwrap_or("").trim().to_string();
-            let at = schedule.get("expr").and_then(Value::as_str).and_then(time_of);
-            out.push(Routine {
-                agent: agent.name.clone(),
-                name: if name.is_empty() { "Routine".into() } else { name },
-                at,
-            });
-        }
-    }
-    out
+            _ => None,
+        })
+        .collect()
 }
 
 fn offset_now(zone: Tz) -> i32 {

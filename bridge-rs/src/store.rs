@@ -362,22 +362,6 @@ impl Store {
         tokio::task::spawn_blocking(move || store.count_sync(&sql, &params)).await?
     }
 
-    // -- scheduled tasks -----------------------------------------------------------------------
-
-    /// Records a job seen by the cron watcher; returns whether its replies should be pushed.
-    pub async fn note_cron_job(&self, agent: &str, job: &str, name: Option<&str>) -> anyhow::Result<bool> {
-        self.run(
-            "INSERT INTO cron_jobs (agent, job, name, notify, last_seen) VALUES (?,?,?,1,?) \
-             ON CONFLICT(agent, job) DO UPDATE SET name=COALESCE(excluded.name, cron_jobs.name), \
-             last_seen=excluded.last_seen",
-            vec![text(agent), text(job), opt(name), text(&iso(utcnow()))],
-        )
-        .await?;
-        let rows =
-            self.run("SELECT notify FROM cron_jobs WHERE agent=? AND job=?", vec![text(agent), text(job)]).await?;
-        Ok(rows.first().map(|r| py::truthy(&r["notify"])).unwrap_or(true))
-    }
-
     // -- runs watched for push (survive a restart) ----------------------------------------------
 
     pub async fn remember_run(&self, agent: &str, run_id: &str, session_id: Option<&str>) -> anyhow::Result<()> {
@@ -409,11 +393,7 @@ impl Store {
         self.run("SELECT * FROM watched_runs ORDER BY created_at", vec![]).await
     }
 
-    pub async fn cron_job_name(&self, agent: &str, job: &str) -> anyhow::Result<Option<String>> {
-        let rows = self.run("SELECT name FROM cron_jobs WHERE agent=? AND job=?", vec![text(agent), text(job)]).await?;
-        Ok(rows.first().and_then(|r| r["name"].as_str()).filter(|n| !n.is_empty()).map(str::to_string))
-    }
-
+    /// The mute of each routine Hermes ran before the bridge did (routines.rs `migrate` reads it once).
     pub async fn cron_jobs(&self, agent: Option<&str>) -> anyhow::Result<Vec<Row>> {
         let (mut sql, mut params) = ("SELECT * FROM cron_jobs".to_string(), vec![]);
         if let Some(agent) = agent.filter(|a| !a.is_empty()) {
@@ -430,16 +410,6 @@ impl Store {
                 r
             })
             .collect())
-    }
-
-    pub async fn set_cron_notify(&self, agent: &str, job: &str, notify: bool) -> anyhow::Result<bool> {
-        let n = self
-            .run_count(
-                "UPDATE cron_jobs SET notify=? WHERE agent=? AND job=?",
-                vec![Param::Integer(notify as i64), text(agent), text(job)],
-            )
-            .await?;
-        Ok(n > 0)
     }
 
     // -- devices -----------------------------------------------------------------------------
@@ -692,12 +662,6 @@ mod tests {
         assert_eq!(replaced["title"], "T");
         assert_eq!(store.list_outbox(None, Some("lea"), 10).await.unwrap().len(), 1);
 
-        assert!(store.note_cron_job("lea", "j1", Some("Matin")).await.unwrap());
-        assert!(store.set_cron_notify("lea", "j1", false).await.unwrap());
-        assert!(!store.note_cron_job("lea", "j1", None).await.unwrap());
-        assert_eq!(store.cron_job_name("lea", "j1").await.unwrap().as_deref(), Some("Matin"));
-        let jobs = store.cron_jobs(Some("lea")).await.unwrap();
-        assert_eq!(jobs[0]["notify"], json!(false));
 
         store.set_cursor("lea", "c1").await.unwrap();
         store.set_cursor("lea", "c2").await.unwrap();

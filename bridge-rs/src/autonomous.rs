@@ -20,7 +20,8 @@
 //!
 //! The actions go through the existing routes, by kind:
 //!
-//!     routine     pause / resume / run / delete   the agent's Hermes: POST /api/jobs/{ref}/pause|resume|run, DELETE
+//!     routine     pause / resume / run / delete   POST /v1/routines/{ref}/pause|resume|run, DELETE /v1/routines/{ref}
+//!                                                 (routines.rs: the bridge keeps and runs them)
 //!     task, scan  pause / resume / start / delete POST /v1/jobs/{ref}/pause|resume|start, DELETE /v1/jobs/{ref}
 //!     connector   pause / resume / delete         PATCH /v1/agents/{agent}/connectors/{ref} {enabled}, DELETE
 //!                 run                             POST /v1/agents/{agent}/connectors/{ref}/run (here: its schedule's
@@ -31,14 +32,10 @@
 //!                 `notify`, `last_check`, `last_change` (Unix seconds or null), `broken` (« en panne »), `summary`
 //!                 (what it saw last, plain words), `wakes`, `pending`, `description`, `icon`
 //!
-//!     GET  /v1/autonomous[?agent=]    {items, unreachable, budgets}   `unreachable`: agents whose Hermes didn't
-//!                                                                    answer (their routines as last seen, if any)
+//!     GET  /v1/autonomous[?agent=]    {items, unreachable: [], budgets}
 //!
 //! No Python counterpart.
 
-use std::collections::HashMap;
-use std::sync::{LazyLock, Mutex};
-use std::time::Duration;
 
 use axum::extract::{Path as UrlPath, State};
 use axum::response::Response;
@@ -56,14 +53,10 @@ use crate::{py, Dict};
 
 /// A finished task or scan stays in the list this long (seconds).
 pub const RECENT_SECONDS: f64 = 3.0 * 86400.0;
-/// How long the list waits for one agent's Hermes.
-pub const HERMES_WAIT: Duration = Duration::from_secs(6);
 pub const GROUPS: [&str; 3] = ["schedule", "on_change", "now"];
 
 const DAYS_FR: [&str; 7] = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
 
-/// Each agent's routines as last read, shown when its Hermes doesn't answer (asleep, restarting).
-static LAST_ROUTINES: LazyLock<Mutex<HashMap<String, Vec<Dict>>>> = LazyLock::new(Default::default);
 
 // --- when ------------------------------------------------------------------------------------------------------------
 
@@ -256,7 +249,7 @@ fn item(
 
 // --- the kinds -------------------------------------------------------------------------------------------------------
 
-/// One of an agent's routines (Hermes' `/api/jobs` row).
+/// One of an agent's routines (routines.rs, in Hermes' job shape).
 pub fn routine_item(agent: &str, job: &Dict) -> Option<Value> {
     let job_id = text_of(job.get("id")).chars().take(80).collect::<String>();
     if job_id.is_empty() {
@@ -282,8 +275,8 @@ pub fn routine_item(agent: &str, job: &Dict) -> Option<Value> {
     let status = text_of(job.get("last_status")).to_lowercase();
     let last_run = match seconds_of(job.get("last_run_at")) {
         Some(at) => {
-            let ok =
-                status.is_empty() || ["ok", "success", "succeeded", "completed", "done"].contains(&status.as_str());
+            let ok = status.is_empty()
+                || ["ok", "success", "succeeded", "completed", "done", "sent", "silent"].contains(&status.as_str());
             let error = if ok {
                 Value::Null
             } else {
@@ -516,36 +509,17 @@ pub fn sort_items(items: &mut [Value]) {
     });
 }
 
-/// An agent's routines: Ok from its Hermes now, Err with the last ones seen when it didn't answer.
-async fn routines_of(state: &AppState, agent: &AgentConfig) -> Result<Vec<Dict>, Vec<Dict>> {
-    let read = tokio::time::timeout(HERMES_WAIT, state.hermes.routines(agent)).await;
-    let mut cache = LAST_ROUTINES.lock().unwrap_or_else(|e| e.into_inner());
-    match read {
-        Ok(Ok(jobs)) => {
-            cache.insert(agent.name.clone(), jobs.clone());
-            Ok(jobs)
-        }
-        _ => Err(cache.get(&agent.name).cloned().unwrap_or_default()),
-    }
-}
-
 /// Everything that runs without being asked, for one agent or all.
-pub async fn listing(state: &AppState, only: Option<&str>) -> (Vec<Value>, Vec<String>) {
+pub async fn listing(state: &AppState, only: Option<&str>) -> Vec<Value> {
     let config = state.config();
     let agents: Vec<AgentConfig> =
         config.agents.values().filter(|a| only.is_none_or(|name| a.name == name)).cloned().collect();
-    let reads = futures::future::join_all(agents.iter().map(|a| routines_of(state, a))).await;
     let mut items = Vec::new();
-    let mut unreachable = Vec::new();
-    for (agent, read) in agents.iter().zip(reads) {
-        let jobs = match read {
-            Ok(jobs) => jobs,
-            Err(last) => {
-                unreachable.push(agent.name.clone());
-                last
-            }
-        };
-        items.extend(jobs.iter().filter_map(|job| routine_item(&agent.name, job)));
+    let zone = crate::routines::zone(&config);
+    for r in crate::routines::list(&config, None) {
+        if agents.iter().any(|a| a.name == r.agent) {
+            items.extend(crate::routines::view(&r, zone).as_object().and_then(|job| routine_item(&r.agent, job)));
+        }
     }
     let now = py::time_time();
     items.extend(crate::jobs::jobs_of(state).list(only).iter().filter_map(|job| job_item(job, now)));
@@ -561,7 +535,7 @@ pub async fn listing(state: &AppState, only: Option<&str>) -> (Vec<Value>, Vec<S
     }
     items.extend(crate::triggers::autonomous_items(&config, only));
     sort_items(&mut items);
-    (items, unreachable)
+    items
 }
 
 async fn list_route(State(state): State<AppState>, q: web::QueryMap) -> ApiResult<Response> {
@@ -575,9 +549,9 @@ async fn list_route(State(state): State<AppState>, q: web::QueryMap) -> ApiResul
         ),
         _ => None,
     };
-    let (items, unreachable) = listing(&state, only.as_deref()).await;
+    let items = listing(&state, only.as_deref()).await;
     let budgets: Map<String, Value> = crate::jobs::BUDGETS.iter().map(|(k, v)| (k.to_string(), json!(v))).collect();
-    Ok(web::ok(json!({"items": items, "unreachable": unreachable, "budgets": budgets, "groups": GROUPS})))
+    Ok(web::ok(json!({"items": items, "unreachable": [], "budgets": budgets, "groups": GROUPS})))
 }
 
 /// A connector's scheduled call now (« Lancer maintenant »), in the background: its last run says how it went.

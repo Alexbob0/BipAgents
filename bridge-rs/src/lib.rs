@@ -168,6 +168,7 @@ pub mod phone_asks;
 pub mod phone_rights;
 pub mod reminders;
 pub mod rooms;
+pub mod routines;
 pub mod rooms_handoff;
 pub mod rooms_memory;
 pub mod rooms_remote;

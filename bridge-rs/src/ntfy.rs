@@ -269,7 +269,7 @@ impl OutboxService {
         let ntfy_id = item.get("ntfy_id").and_then(Value::as_str).unwrap_or("");
         let from = if ntfy_id.starts_with("handback:") {
             BoiteFrom::Task
-        } else if ntfy_id.starts_with("hermes-session:") {
+        } else if ntfy_id.starts_with("hermes-session:") || ntfy_id.starts_with("routine:") {
             BoiteFrom::Routine
         } else {
             BoiteFrom::Other

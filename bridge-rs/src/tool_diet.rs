@@ -592,12 +592,14 @@ pub fn with_diet(data: &Yaml, diet: &Diet) -> Option<Yaml> {
     if agent.get("max_turns").is_none_or(|v| *v == Yaml::Null) {
         agent.insert("max_turns", Yaml::Int(MAX_TURNS as i128));
     }
-    // A routine the agent makes in a conversation reports there (cronwatch.rs): Hermes (patch 0019) keeps the
-    // conversation on the job and tells the model so, instead of « local-only: set deliver='telegram' », unless the
-    // profile says otherwise.
-    let cron = data.section("cron")?;
-    if cron.get("session_reports").is_none_or(|v| *v == Yaml::Null) {
-        cron.insert("session_reports", Yaml::Bool(true));
+    // routines are the bridge's (routines.rs `routine_schedule`): Hermes' own cron tool off, so none is made there
+    match agent.get_mut("disabled_toolsets") {
+        Some(Yaml::Seq(items)) => {
+            if !items.iter().any(|i| i.as_str() == Some(CRON_TOOLSET)) {
+                items.push(Yaml::str(CRON_TOOLSET));
+            }
+        }
+        _ => agent.insert("disabled_toolsets", strings(&[CRON_TOOLSET.to_string()])),
     }
     with_clarify(&mut data);
     if let Some(Yaml::Map(_)) = data.get("mcp_servers").and_then(|s| s.get(BROWSER_SERVER)) {
@@ -638,6 +640,8 @@ pub fn with_clarify(data: &mut Yaml) {
 pub const API_PLATFORM: &str = "api_server";
 pub const API_DEFAULT_TOOLSET: &str = "hermes-api-server";
 pub const CLARIFY: &str = "clarify";
+/// Hermes' cron toolset (`cronjob`): the bridge keeps the routines.
+pub const CRON_TOOLSET: &str = "cronjob";
 
 #[cfg(test)]
 mod tests {

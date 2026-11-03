@@ -484,8 +484,7 @@ impl Threads {
             ("side", root.hidden)
         };
         let origin = if kind == "routine" {
-            let job = crate::cronwatch::routine(&self.hermes, agent, &root.id, root.title.as_deref()).await;
-            json!({"kind": "routine", "routine": job.and_then(|j| j.get("id").cloned())})
+            json!({"kind": "routine", "routine": crate::cronwatch::job_id(&root.id)})
         } else {
             Value::Null
         };
@@ -547,6 +546,22 @@ impl Threads {
             self.bump(thread, "segment").await?;
         }
         Ok(segments)
+    }
+
+    /// A conversation the bridge made for work of its own (a routine's run: routines.rs) adopted as a hidden thread of
+    /// `kind` before anyone lists it.
+    pub async fn adopt(&self, agent: &AgentConfig, session: &str, kind: &str, origin: Value) {
+        let _guard = self.registry.lock().await;
+        let made = async {
+            if self.thread_of_session(&agent.name, session).await?.is_none() {
+                let thread = self.create(&agent.name, kind, None, origin, true).await?;
+                self.append(&agent.name, &thread.id, session, "root").await?;
+            }
+            anyhow::Ok(())
+        };
+        if let Err(exc) = made.await {
+            tracing::warn!(agent = %agent.name, error = %format!("{exc:#}"), "work conversation not adopted");
+        }
     }
 
     /// Appends a session as the thread's next segment (a migration moving the conversation, a test).

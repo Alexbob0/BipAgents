@@ -47,6 +47,8 @@ pub enum Kind {
     Trigger,
     /// A watcher that saw a change (watchers.rs).
     Watcher,
+    /// A routine on a clock (routines.rs).
+    Routine,
 }
 
 impl Kind {
@@ -56,12 +58,13 @@ impl Kind {
             Kind::Task => "task",
             Kind::Trigger => "trigger",
             Kind::Watcher => "watcher",
+            Kind::Routine => "routine",
         }
     }
 
     /// Work the person did not just ask for stops with the month's credit; telling what is done never does.
     pub fn needs_credit(self) -> bool {
-        matches!(self, Kind::Task | Kind::Trigger | Kind::Watcher)
+        !matches!(self, Kind::Handback)
     }
 
     /// A routine started by an event waits while the agent runs anything else (triggers.rs: one at a time).
@@ -71,7 +74,7 @@ impl Kind {
 
     /// The brake's higher limits for long work (loop_brake.rs).
     fn long(self) -> bool {
-        matches!(self, Kind::Task | Kind::Trigger)
+        matches!(self, Kind::Task | Kind::Trigger | Kind::Routine)
     }
 }
 
