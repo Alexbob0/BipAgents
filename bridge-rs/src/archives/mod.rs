@@ -894,14 +894,10 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict, opener: 
 
 // -- the rule in the agent's personality -----------------------------------------------------------------------------
 
-/// The agent's rule, set when it has archives, taken out when it has none.
+/// The agent's rule, set when it has archives, taken out when it has none (its SOUL.md rendered again).
 pub fn sync_soul(config: &Config, agent: &AgentConfig) {
-    if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
-        return;
-    }
-    let on = enabled(config, &agent.name);
-    if let Err(err) = crate::agents_admin::edit_soul(config, agent, false, |soul| crate::souls::with_archives(soul, on)) {
-        tracing::warn!(agent = %agent.name, error = %err, "archive rule not written");
+    if let Err(err) = crate::agents_admin::render_soul(config, agent) {
+        tracing::warn!(agent = %agent.name, error = %format!("{err:#}"), "archive rule not written");
     }
 }
 

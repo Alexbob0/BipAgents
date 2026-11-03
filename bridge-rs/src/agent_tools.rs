@@ -563,11 +563,6 @@ pub fn agent_for(config: &Config, token: &str) -> Option<AgentConfig> {
 /// `hermes config set` that failed (Python's RuntimeError/OSError).
 pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow::Result<bool> {
     crate::mcp_sessions::poke(); // its tools may have changed: its open MCP streams check now (mcp_sessions.rs)
-    crate::notebook::sync_soul(config, agent);
-    crate::archives::sync_soul(config, agent);
-    crate::skill_library::sync_soul(config, agent); // the short block of an agent with a shared skill
-    crate::souls::sync_payments(config, agent);
-    crate::souls::sync_server(config, agent); // the offer's places: big toolchains don't fit (souls.rs)
     let tools = tools_for(config, agent);
     let url = if tools.as_slice() != install_tools(config) {
         url_with(config, &version_of(&tools))

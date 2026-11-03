@@ -419,3 +419,56 @@ fn the_tools_version_is_the_pythons() {
     let expected = include_str!("golden/agent_tools_version.txt").trim();
     assert_eq!(agent_tools::tools_version(), expected);
 }
+
+/// Cache audit 2026-11-03 (#1): the tools common to every agent come first in one fixed order (`tools.order_first`,
+/// Hermes patch 0022), and the bridge's own common tools are byte-identical for two agents of different kinds and
+/// from one start to the next; nothing in the lists follows an agent's history.
+#[tokio::test]
+async fn the_common_tools_are_the_same_bytes_for_every_agent_and_every_start() {
+    use bipbridge::tool_diet::{BRIDGE_PREFIX, COMMON_FIRST};
+    let dir = tempfile::tempdir().unwrap();
+    let hub = dir.path().join(".hermes");
+    for (name, soul) in [("vie", "Tu es Vie.\n"), ("budget", "Tu es Budget.\n")] {
+        std::fs::create_dir_all(hub.join("profiles").join(name)).unwrap();
+        std::fs::write(hub.join("profiles").join(name).join("config.yaml"), "model:\n  default: x\n").unwrap();
+        std::fs::write(hub.join("profiles").join(name).join("SOUL.md"), soul).unwrap();
+    }
+    let mut dict = config_dict(dir.path(), &Urls::default());
+    dict["hermes"] = json!({"bin": "/opt/hermes", "home": hub.to_string_lossy(), "hub_url": "http://127.0.0.1:8642"});
+    dict["agents"]["Vie"] = json!({"hermes_url": "http://127.0.0.1:8642/p/vie", "hermes_key": "k".repeat(32), "category": "wellness"});
+    dict["agents"]["Budget"] = json!({"hermes_url": "http://127.0.0.1:8642/p/budget", "hermes_key": "b".repeat(32), "category": "finance"});
+    let config = parse_config(&dict, None).unwrap();
+    let common = |agent: &str| -> String {
+        let tools = agent_tools::tools_for(&config, config.agent(Some(agent)).unwrap());
+        let mine: Vec<&Value> = COMMON_FIRST
+            .iter()
+            .filter_map(|n| n.strip_prefix(BRIDGE_PREFIX))
+            .filter_map(|n| tools.iter().find(|t| t["name"] == n))
+            .collect();
+        serde_json::to_string(&mine).unwrap()
+    };
+    let (vie, budget) = (common("vie"), common("budget"));
+    assert_eq!(vie, budget, "the same bytes for two kinds of agents");
+    assert!(vie.contains("\"create_page\"") && vie.contains("\"start_task\""), "{vie}");
+    let run = recording_run(&Default::default());
+    agent_tools::register_all(SharedConfig::new(config.clone()), run.clone()).await;
+    let read = |name: &str| std::fs::read_to_string(hub.join("profiles").join(name).join("config.yaml")).unwrap();
+    let first: Value = serde_yaml::from_str(&read("vie")).unwrap();
+    let order: Vec<&str> = first["tools"]["order_first"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
+    assert_eq!(order, COMMON_FIRST, "the fixed order");
+    let mut sorted = order.clone();
+    sorted.sort();
+    assert_eq!(order, sorted, "Hermes' sorted order of their names: any tool added later lands at its sorted place");
+    let other: Value = serde_yaml::from_str(&read("budget")).unwrap();
+    assert_eq!(first["tools"]["order_first"], other["tools"]["order_first"]);
+    // both kinds keep the bridge's common tools in view
+    for profile in [&first, &other] {
+        let defer: Vec<&str> = profile["tools"]["tool_search"]["defer"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
+        assert!(defer.contains(&"!mcp__bipagents__create_page") && defer.contains(&"!mcp__bipagents__notebook_search"));
+    }
+    // a second start: the same bytes, the same tools
+    let (vie_config, budget_config) = (read("vie"), read("budget"));
+    agent_tools::register_all(SharedConfig::new(config.clone()), run).await;
+    assert_eq!((read("vie"), read("budget")), (vie_config, budget_config));
+    assert_eq!(common("vie"), vie);
+}

@@ -645,6 +645,27 @@ impl HermesClient {
         Ok(Self::items(data, ["messages", "data", "items"]))
     }
 
+    /// One page of a conversation's rows, oldest first (`limit` 500 at most, Hermes' cap), compacted rows included:
+    /// v0.22.5 gives the whole compression lineage root → `session_id`, each row with its own `session_id`
+    /// (threads/source.rs keeps the segment's own rows).
+    pub async fn session_messages_page(
+        &self,
+        agent: &AgentConfig,
+        session_id: &str,
+        offset: usize,
+        images: bool,
+    ) -> Result<Vec<Map<String, Value>>, HermesError> {
+        let params = [
+            ("order", "oldest".to_string()),
+            ("limit", "500".to_string()),
+            ("offset", offset.to_string()),
+            ("include_compacted", "true".to_string()),
+            ("inline_images", images.to_string()),
+        ];
+        let data = self.get_json(agent, &format!("/api/sessions/{session_id}/messages"), &params).await?;
+        Ok(Self::items(data, ["messages", "data", "items"]))
+    }
+
     async fn send(
         &self,
         agent: &AgentConfig,

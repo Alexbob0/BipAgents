@@ -12,7 +12,7 @@ use axum::routing::any;
 use axum::Router;
 use bipbridge::agents_admin::pyyaml;
 use bipbridge::agents_admin::{
-    self, claim_profile, create_agent, delete_agent, editable, heal_souls, managed, read_model,
+    self, claim_profile, create_agent, delete_agent, editable, render_souls, managed, read_model,
     read_settings, read_soul, read_thinking, save_agent, set_language, set_model, set_thinking, unclaimed_profiles,
     write_settings, AgentSettings, NewAgent, Run,
 };
@@ -643,7 +643,7 @@ fn hermes_template_medium_is_no_choice_and_a_lost_choice_comes_back() {
     assert_eq!(load(&path)["agent"]["reasoning_effort"], "medium");
     // the routing written again (each time the bridge gives the tools) keeps the person's level
     std::fs::write(&path, template.replace("medium", "low")).unwrap();
-    bipbridge::model_route::write(&path, &[]).unwrap();
+    bipbridge::profile_files::reconcile(&c, &agent).unwrap();
     assert_eq!(load(&path)["agent"]["reasoning_effort"], "medium");
     // another model: the person's level put back too
     std::fs::write(&path, "model:\n  provider: custom\n  default: local\n  base_url: http://gpu:8888/v1\n").unwrap();
@@ -698,6 +698,12 @@ fn glm_none_written_by_an_earlier_bridge_is_healed_to_low() {
     assert_eq!(agents_admin::quick_turn_options(&c, &agent), json!({"reasoning": {"enabled": false}}));
 }
 
+/// A SOUL.md written by hand (an earlier bridge, Hermes): taken in again by the next render (its record forgotten).
+fn hand_soul(folder: &std::path::Path, text: impl AsRef<[u8]>) {
+    std::fs::write(folder.join("SOUL.md"), text).unwrap();
+    let _ = std::fs::remove_file(folder.join(bipbridge::profile_files::SETTINGS_FILE));
+}
+
 #[test]
 fn an_earlier_bridge_block_gets_the_rule_about_what_agents_read() {
     let dir = tempfile::tempdir().unwrap();
@@ -711,25 +717,73 @@ fn an_earlier_bridge_block_gets_the_rule_about_what_agents_read() {
         souls::BLOCK_START,
         souls::BLOCK_END
     );
-    std::fs::write(folder.join("SOUL.md"), old).unwrap();
-    heal_souls(&c);
+    hand_soul(&folder, old);
+    render_souls(&c);
     let soul = read_soul(&c, &agent).unwrap();
     assert!(soul.starts_with("Tu es Vie, ma personnalité à moi.") && soul.contains(souls::CONTENT_RULE));
     assert!(soul.contains("write in French.") && soul.matches(souls::BLOCK_START).count() == 1);
     assert_eq!(soul.matches(souls::STYLE_RULE).count(), 1); // short answers (2026-10-30), without recreating it
-    heal_souls(&c);
+    render_souls(&c);
     assert_eq!(read_soul(&c, &agent).unwrap(), soul); // once
                                                       // A personality written by hand gets the block too (owner 2026-10-22: every agent talks plainly), in the place's
                                                       // language; the person's words are kept.
-    std::fs::write(folder.join("SOUL.md"), "Fait à la main, sans bloc.\n").unwrap();
-    heal_souls(&c);
+    hand_soul(&folder, "Fait à la main, sans bloc.\n");
+    render_souls(&c);
     let healed = read_soul(&c, &agent).unwrap();
     assert!(healed.starts_with("Fait à la main, sans bloc.\n\n") && healed.contains(souls::PLAIN_RULE));
-    heal_souls(&c);
+    render_souls(&c);
     assert_eq!(read_soul(&c, &agent).unwrap(), healed);
-    std::fs::write(folder.join("SOUL.md"), "").unwrap();
-    heal_souls(&c);
+    hand_soul(&folder, "");
+    render_souls(&c);
     assert_eq!(read_soul(&c, &agent).unwrap(), ""); // none at all: Hermes' own stays
+}
+
+/// The bridge's blocks of a rendered SOUL.md, in order.
+fn blocks(soul: &str) -> Vec<String> {
+    soul.split("<!-- bipagents:").skip(1).map(|b| b.split(" -->").next().unwrap_or("").to_string()).collect()
+}
+
+/// SOUL.md is rendered from the record (personality, language) in one fixed order of blocks, whatever was switched
+/// last (cache audit 2026-11-03: the cache breaks at the first changed character): a block switched off and on comes
+/// back at its place, and what is before it never changes.
+#[test]
+fn the_soul_is_rendered_in_one_fixed_order() {
+    let dir = tempfile::tempdir().unwrap();
+    let (config, _) = managed_config(dir.path(), "http://127.0.0.1:8642");
+    let agent = hub_agent(&config);
+    let c = config.get();
+    let folder = profiles(dir.path()).join(&agent.name);
+    std::fs::create_dir_all(&folder).unwrap();
+    bipbridge::profile_files::new_soul(&folder, "Tu es Vie.\n").unwrap();
+    bipbridge::health::set_enabled(&c, &agent.name, true).unwrap();
+    assert!(agents_admin::render_soul(&c, &agent).unwrap());
+    let full = read_soul(&c, &agent).unwrap();
+    // golden order: the personality, its language, the rules that never change, the switches' rules
+    assert!(full.starts_with("Tu es Vie.\n\n<!-- bipagents:language -->"), "{full}");
+    assert_eq!(blocks(&full), ["language", "payments", "notebook", "health", "shared-memory"], "{full}");
+    assert!(!agents_admin::render_soul(&c, &agent).unwrap(), "idempotent");
+    // health off: the blocks before it unchanged byte for byte; on again: the same file as before
+    let health = full.find("<!-- bipagents:health -->").unwrap();
+    bipbridge::health::set_enabled(&c, &agent.name, false).unwrap();
+    agents_admin::render_soul(&c, &agent).unwrap();
+    let off = read_soul(&c, &agent).unwrap();
+    assert_eq!(off[..health], full[..health]);
+    bipbridge::health::set_enabled(&c, &agent.name, true).unwrap();
+    agents_admin::render_soul(&c, &agent).unwrap();
+    assert_eq!(read_soul(&c, &agent).unwrap(), full);
+    // the personality and the language come from the record, never from the file
+    std::fs::write(folder.join("SOUL.md"), "changed by hand\n").unwrap();
+    agents_admin::render_soul(&c, &agent).unwrap();
+    assert_eq!(read_soul(&c, &agent).unwrap(), full);
+    agents_admin::write_soul(&c, &agent, "Tu es Vie, autrement.").unwrap();
+    let written = read_soul(&c, &agent).unwrap();
+    assert!(written.starts_with("Tu es Vie, autrement.\n\n") && written.ends_with(&full["Tu es Vie.".len()..]), "{written}");
+    assert_eq!(agents_admin::editable_soul(&c, &agent).unwrap(), "Tu es Vie, autrement.");
+    agents_admin::set_language(&c, &agent, "en").unwrap();
+    let english = read_soul(&c, &agent).unwrap();
+    assert!(english.contains("write in English.") && blocks(&english) == blocks(&full), "{english}");
+    let record = bipbridge::profile_files::settings(&folder);
+    assert_eq!((record.version, record.language.as_deref()), (2, Some("en")));
 }
 
 #[test]
@@ -740,22 +794,22 @@ fn healing_tells_an_agent_whether_its_memory_is_shared() {
     let c = config.get();
     let folder = profiles(dir.path()).join(&agent.name);
     std::fs::create_dir_all(&folder).unwrap();
-    std::fs::write(folder.join("SOUL.md"), format!("Tu es Vie.\n\n{}\n", souls::language_block(Some("fr")))).unwrap();
+    hand_soul(&folder, format!("Tu es Vie.\n\n{}\n", souls::language_block(Some("fr"))));
     // in the circle (the Carnet on by default): what it remembers of the person is common, and it knows it
-    heal_souls(&c);
+    render_souls(&c);
     let soul = read_soul(&c, &agent).unwrap();
     assert_eq!(soul.matches(souls::SHARED_MEMORY_RULE).count(), 1, "{soul}");
-    heal_souls(&c);
+    render_souls(&c);
     assert_eq!(read_soul(&c, &agent).unwrap(), soul, "once");
     assert!(!agents_admin::editable_soul(&c, &agent).unwrap().contains(souls::SHARED_MEMORY_START), "never shown");
     // the health given to it: the variant (what it learns stays its own)
     bipbridge::health::set_enabled(&c, &agent.name, true).unwrap();
-    heal_souls(&c);
+    render_souls(&c);
     let soul = read_soul(&c, &agent).unwrap();
     assert!(soul.contains(souls::SHARED_MEMORY_HEALTH_RULE) && !soul.contains(souls::SHARED_MEMORY_RULE));
     // the Carnet off: out of the circle, the block goes
     bipbridge::notebook::set_enabled(&c, &agent.name, false).unwrap();
-    heal_souls(&c);
+    render_souls(&c);
     let soul = read_soul(&c, &agent).unwrap();
     assert!(!soul.contains(souls::SHARED_MEMORY_START) && soul.starts_with("Tu es Vie.\n\n"), "{soul}");
 }
@@ -801,7 +855,7 @@ async fn routes_for_settings_thinking_and_model() {
     config.agents.insert("wellness".into(), agent);
     let folder = profiles(dir.path()).join("wellness");
     std::fs::create_dir_all(&folder).unwrap();
-    std::fs::write(folder.join("SOUL.md"), souls::with_language("Tu es Wellness.\n", Some("fr"))).unwrap();
+    hand_soul(&folder, souls::with_language("Tu es Wellness.\n", Some("fr")));
     std::fs::write(
         folder.join("config.yaml"),
         "model:\n  provider: custom\n  default: glm\n  base_url: http://gpu/v1\n",
@@ -862,7 +916,7 @@ async fn routes_for_settings_thinking_and_model() {
     assert_eq!(edited.json()["soul"], "Tu es Vie.");
     let soul = std::fs::read_to_string(folder.join("SOUL.md")).unwrap();
     assert!(soul.contains(souls::HEALTH_RULE) && soul.contains("write in French"));
-    std::fs::write(folder.join("SOUL.md"), souls::with_language("Tu es Wellness.\n", Some("fr"))).unwrap();
+    hand_soul(&folder, souls::with_language("Tu es Wellness.\n", Some("fr")));
     bipbridge::health::set_enabled(&config, "wellness", false).unwrap();
     // « Météo »: the weather tool, nothing in its personality.
     assert_eq!(got.json()["weather"], json!({"on": false}));
@@ -919,7 +973,7 @@ async fn the_answer_style_is_kept_and_switches_one_paragraph_of_the_soul() {
     config.agents.insert("wellness".into(), agent);
     let folder = profiles(dir.path()).join("wellness");
     std::fs::create_dir_all(&folder).unwrap();
-    std::fs::write(folder.join("SOUL.md"), souls::with_language("Tu es Wellness.\n", Some("fr"))).unwrap();
+    hand_soul(&folder, souls::with_language("Tu es Wellness.\n", Some("fr")));
     let app = TestApp::new(config.clone());
     let (k, v) = auth();
     let h = [(k, v.as_str())];
@@ -977,12 +1031,12 @@ async fn the_answer_style_is_kept_and_switches_one_paragraph_of_the_soul() {
     let mut kept = app.app.state.config().agents["wellness"].clone();
     kept.answer_style = Some("balanced".into());
     app.app.state.config.put_agent(kept);
-    heal_souls(&app.app.state.config());
+    render_souls(&app.app.state.config());
     let balanced = souls::for_language(souls::BALANCED_STYLE_RULE, Some("en"));
     assert!(soul().contains(&balanced) && !soul().contains(&souls::STYLE_RULE[..40]));
     assert_eq!(soul().matches("Answer first").count(), 1);
     let healed = soul();
-    heal_souls(&app.app.state.config());
+    render_souls(&app.app.state.config());
     assert_eq!(soul(), healed);
 
     // « Sois plus détaillé »: a card, applied on the tap only

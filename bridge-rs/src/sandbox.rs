@@ -651,13 +651,17 @@ pub fn wanted_allowlist(current: &Value, isolated: bool) -> Option<Vec<String>> 
 
 /// `command_allowlist` set as `wanted_allowlist` says (Hermes reads it when the gateway starts: the update restarts
 /// it, migrations.py). Returns whether it changed.
-async fn set_allowlist(config: &Config, agent: &AgentConfig, folder: &Path, run: &Run, isolated: bool) -> anyhow::Result<bool> {
-    let current = shares::profile_config(folder).get("command_allowlist").cloned().unwrap_or(Value::Null);
-    let Some(wanted) = wanted_allowlist(&current, isolated) else { return Ok(false) };
-    let home = folder.parent().and_then(Path::parent).map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
-    let env = BTreeMap::from([("HERMES_HOME".to_string(), home)]);
-    let value = py::dumps(&json!(wanted));
-    run(args(&[&config.hermes.bin, "-p", &agent.name, "config", "set", "command_allowlist", &value]), env).await?;
+fn set_allowlist(agent: &AgentConfig, folder: &Path, isolated: bool) -> anyhow::Result<bool> {
+    use crate::agents_admin::pyyaml::{to_json, Yaml};
+    let changed = crate::profile_files::edit(&folder.join("config.yaml"), |data| {
+        let current = data.get("command_allowlist").map(to_json).unwrap_or(Value::Null);
+        if let Some(wanted) = wanted_allowlist(&current, isolated) {
+            data.insert("command_allowlist", Yaml::Seq(wanted.into_iter().map(Yaml::Str).collect()));
+        }
+    })?;
+    if !changed {
+        return Ok(false);
+    }
     tracing::info!(
         target: "bipbridge::sandbox",
         agent = %agent.name,
@@ -792,7 +796,7 @@ pub async fn isolate(shared: &SharedConfig, agent: &AgentConfig, run: &Run, save
         tracing::info!(target: "bipbridge::sandbox", agent = %agent.name, image, "sandbox image set");
     }
     // its own code runs without asking: the network is the bridge's (CODE_KEYS says why it stays safe)
-    set_allowlist(&config, agent, &folder, run, true).await?;
+    set_allowlist(agent, &folder, true)?;
     if added + removed > 0 {
         tracing::info!(target: "bipbridge::sandbox", agent = %agent.name, added, removed, "received files copied into the sandbox");
     }
@@ -930,7 +934,7 @@ pub async fn revert(config: &Config, agent: &AgentConfig, folder: &Path, run: &R
         .await?;
         changed.push(key.clone());
     }
-    if set_allowlist(config, agent, folder, run, false).await? {
+    if set_allowlist(agent, folder, false)? {
         changed.push("command_allowlist".into());
     }
     tracing::info!(

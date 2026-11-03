@@ -52,8 +52,9 @@ def test_an_agent_moves_into_its_own_space(bridges, fakes):
     assert soul.split("\n\n<!-- bipagents:")[0] == "Tu es Coach." and "<!-- /bipagents:language -->" in soul and "<!-- /bipagents:notebook -->" in soul and (copied / "memories" / "MEMORY.md").exists()
     assert not (copied / "gateway.pid").exists()
     commands = [(e["argv"], e["hermes_home"]) for e in bridge.commands.entries("hermes")]
-    assert (["-p", "coach", "config", "set", "gateway.strict", "true"], str(root)) in commands
-    assert (["-p", "coach", "config", "set", "browser.backend", "off"], str(root)) in commands
+    settings = yaml.safe_load((copied / "config.yaml").read_text())   # written by the bridge, no `hermes config set`
+    assert settings["gateway"]["strict"] is True and settings["browser"]["backend"] == "off"
+    assert not any(argv[2:4] == ["config", "set"] and argv[4] in ("gateway.strict", "browser.backend") for argv, _ in commands)
     assert (["profile", "delete", "coach", "--yes"], str(hub)) in commands        # the hub forgets it
     assert bridge.commands.of("fake-gateway") == [[str(root)]]
     # Its tools came with its profile (the same entry and token: nothing to register again).

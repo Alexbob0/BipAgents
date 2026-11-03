@@ -667,20 +667,10 @@ pub fn agent_line(config: &Config, person: &Person, soul: &str) -> Option<String
     line_for(person, &lang)
 }
 
-/// Each agent's personality carries today's line, or none (agents set up by hand are left as they are).
+/// Each agent's personality carries today's line, or none (its SOUL.md rendered again; agents set up by hand are left
+/// as they are).
 pub fn refresh_souls(config: &Config) {
-    let person = load(config);
-    for agent in config.agents.values() {
-        if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
-            continue;
-        }
-        let written = crate::agents_admin::edit_soul(config, agent, false, |soul| {
-            with_dates(soul, agent_line(config, &person, soul).as_deref())
-        });
-        if let Err(err) = written {
-            tracing::warn!(target: "bipbridge::dates", agent = %agent.name, error = %err, "dates line not written");
-        }
-    }
+    crate::agents_admin::render_souls(config);
 }
 
 /// At start, then each hour: the agents' profiles carry the person's zones (an agent created since gets them) and

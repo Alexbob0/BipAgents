@@ -59,6 +59,7 @@ def test_agents_listing(bridge):
     assert all(a.pop("family", False) is False for a in listing["agents"])   # the family's agent: Rust only
     assert all(a.pop("project", None) is None for a in listing["agents"])   # project agents: Rust only
     assert all(a.pop("requested", None) is None for a in listing["agents"])   # made from an accepted card: Rust only
+    assert all(a.pop("language") is None for a in listing["agents"])   # its record's language (none: no profile here)
     assert listing == {"bridge": {"url": None, "lan": None},
                            "agents": [{"id": "wellness", "name": "Wellness", "voice": "4193", "server_voice": None,
                                        "category": None, "color": None, "uploads": True,

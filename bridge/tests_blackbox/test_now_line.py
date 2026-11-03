@@ -7,7 +7,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from bbkit.common import AUTH
-from bbkit.fakes import split_now
+from bbkit.fakes import split_brief_now, split_now
 from conftest import managed_install, profile
 from test_message_search import store
 from test_watchers import check, setup, turns
@@ -40,7 +40,7 @@ def test_an_app_message_and_a_call_get_the_time_in_the_person_s_zone(bridge):
     recap = bridge.post("/v1/live/recaps/take", headers=AUTH, json={"agent": "wellness", "session": "s1"}).json()["recap"]
     assert_now_in(split_now(recap)[0], "America/New_York")
     brief = bridge.get("/v1/live/brief", params={"agent": "wellness"}, headers=AUTH).json()
-    assert_now_in(split_now(brief["text"])[0], "America/New_York")
+    assert_now_in(split_brief_now(brief["text"])[0], "America/New_York")
 
 
 def test_a_watcher_wakes_its_agent_with_the_time(bridges, fakes):
