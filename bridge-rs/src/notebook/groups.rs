@@ -150,6 +150,27 @@ pub fn line_name(text: &str) -> Option<(String, String)> {
     (!rest.is_empty()).then(|| (name.to_string(), rest))
 }
 
+/// Whether the person's own page names them among their close family (« Mère : Françoise, vit à Lyon » in « Toi »'s
+/// family section): a group chat says who is who to the others, not to the person (the lab's family chat, 2026-11-03:
+/// « Maman d'Hugo et Inès » for the person's sister).
+fn named_on_self(config: &Config, name: &str) -> bool {
+    let Some(me) = super::find(config, &[Part::Main], &super::words(&super::language(config)).self_path()) else {
+        return false;
+    };
+    let first = fold(name.split_whitespace().next().unwrap_or(""));
+    if first.chars().count() < 3 {
+        return false;
+    }
+    me.page.sections().into_iter().filter(|(title, _)| template::resolve("self", title) == Some("family")).any(
+        |(_, facts)| {
+            facts.iter().any(|f| {
+                let words = format!(" {} ", fold(&f.text).replace(|c: char| !c.is_alphanumeric(), " "));
+                words.contains(&format!(" {first} ")) && is_close(std::slice::from_ref(&f.text))
+            })
+        },
+    )
+}
+
 /// [`file_person_locked`], the lock taken.
 pub fn file_person(
     config: &Config,
@@ -173,7 +194,7 @@ pub fn file_person_locked(
     who: &Who,
 ) -> anyhow::Result<super::Written> {
     let own = super::find(config, &[Part::Main], name).is_some_and(|f| f.page.kind() == "person");
-    if own || is_close(facts) || facts.len() >= PROMOTE_FACTS {
+    if own || is_close(facts) || named_on_self(config, name) || facts.len() >= PROMOTE_FACTS {
         return super::note_locked(config, Part::Main, "person", name, "", facts, &[], "", "", who);
     }
     let lang = super::language(config);
@@ -289,6 +310,23 @@ mod tests {
         let group =
             super::super::read_page_text(&config, Part::Main, "Domaines/Famille élargie.md").unwrap_or_default();
         assert!(!group.contains("Emma"), "never on two pages: {group}");
+        // close family named on « Toi » (a group chat says « Maman d'Hugo » for the person's sister)
+        super::super::note_locked(
+            &config,
+            Part::Main,
+            "self",
+            "Toi",
+            "family",
+            &["Sœur : Claire, à Nantes".into()],
+            &[],
+            "",
+            "",
+            &who,
+        )
+        .unwrap();
+        let claire =
+            file_person_locked(&config, "Claire Fournier", "family", &["Maman d'Hugo et Inès".into()], &who).unwrap();
+        assert_eq!(claire.title, "Claire Fournier");
         // a line about someone who has a page moves there
         super::super::note_locked(
             &config,
