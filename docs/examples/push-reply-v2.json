@@ -1,9 +1,8 @@
 {
   "aps": {
     "alert": {
-      "title": "Wellness",
-      "body": "Ta réponse est prête.",
-      "loc-key": "Ta réponse est prête."
+      "loc-key": "notif.reply",
+      "body": "notif.reply"
     },
     "thread-id": "wellness/t_001a19d47a428816a4d74565b4",
     "mutable-content": 1,
