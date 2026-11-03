@@ -317,7 +317,7 @@ async fn session_state_status_and_approvals_through_hermes() {
     assert!(app.app.state.presence.viewing("wellness", "s1"));
     assert_eq!(app.app.state.presence.viewed("wellness"), vec!["s1".to_string()]);
     // a Boîte message (a hand-back's, a routine's) changes the conversation's state: the app shows it
-    let extra = bipbridge::store::NewOutbox { title: None, ntfy_id: None, sent_at: None, session_id: None };
+    let extra = bipbridge::store::NewOutbox::default();
     app.app.state.store.add_outbox("wellness", "Fini.", extra).await.unwrap();
     let after = app.get("/v1/sessions/s1/state?agent=wellness", &h).await.json();
     assert!(after["outbox"].as_str().unwrap().starts_with("1@"), "{after}");

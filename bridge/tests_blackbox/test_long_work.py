@@ -452,8 +452,10 @@ def test_a_task_whose_conversation_is_gone_is_told_by_the_template(bridges, fake
     # its words in the agent's language (English here), its key points from the report
     assert item["text"].startswith("Done: “Veste”.") or item["text"].startswith("C'est fait : « Veste ».")
     assert "\n- Uniqlo : 79 €, laine mérinos\n- Arket : 129 €\n- COS : 145 €" in item["text"]
-    # the full report's page stays in the Boîte's text (the apps show its card)
-    assert item["text"].endswith(f"\nMEDIA:/bipagents/pages/wellness/rapport-{jobs(bridge)[0]['id']}.html")
+    # the full report's page is the Boîte message's attachment (the apps show its card), no MEDIA line in its words
+    page = f"/bipagents/pages/wellness/rapport-{jobs(bridge)[0]['id']}.html"
+    assert "MEDIA:" not in item["text"] and [a["path"] for a in item["attachments"]] == [page]
+    assert item["attachments"][0]["kind"] == "page"
     assert bridge.logged("handback delivered")[0]["by_agent"] is False
 
 

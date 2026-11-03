@@ -264,6 +264,8 @@ pub struct NewOutbox {
     pub ntfy_id: Option<String>,
     pub sent_at: Option<String>,
     pub session_id: Option<String>,
+    /// Its files, a JSON list of attachments.
+    pub attachments: Option<String>,
 }
 
 type Param = rusqlite::types::Value;
@@ -320,6 +322,10 @@ impl Store {
         // a phone's key for sealed notifications (push.rs seal.rs): dropped with its row
         if !has("devices", "push_key")? {
             conn.execute_batch("ALTER TABLE devices ADD COLUMN push_key TEXT")?;
+        }
+        // a Boîte message's files, as items (JSON list), never `MEDIA:` lines in its text (ntfy.rs `ingest`)
+        if !has("outbox", "attachments")? {
+            conn.execute_batch("ALTER TABLE outbox ADD COLUMN attachments TEXT")?;
         }
         Ok(())
     }
@@ -494,8 +500,8 @@ impl Store {
         let item_id = py::uuid4_hex();
         let count = self
             .run_count(
-                "INSERT OR IGNORE INTO outbox (id, agent, ntfy_id, title, text, created_at, sent_at, session_id) \
-                 VALUES (?,?,?,?,?,?,?,?)",
+                "INSERT OR IGNORE INTO outbox (id, agent, ntfy_id, title, text, created_at, sent_at, session_id, \
+                 attachments) VALUES (?,?,?,?,?,?,?,?,?)",
                 vec![
                     text(&item_id),
                     text(agent),
@@ -505,6 +511,7 @@ impl Store {
                     text(&outbox_stamp()),
                     opt(extra.sent_at.as_deref()),
                     opt(extra.session_id.as_deref()),
+                    opt(extra.attachments.as_deref()),
                 ],
             )
             .await?;

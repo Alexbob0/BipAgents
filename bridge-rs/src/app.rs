@@ -574,6 +574,8 @@ fn outbox_item(row: &Row, state: &AppState) -> Value {
         "id": get("id"), "agent": get("agent"), "title": get("title"), "text": get("text"),
         "created_at": get("created_at"), "sent_at": get("sent_at"), "session_id": get("session_id"),
         "has_audio": has_audio, "audio_url": format!("/v1/outbox/{id}/audio"),
+        "attachments": row.get("attachments").and_then(Value::as_str).and_then(|a| serde_json::from_str::<Value>(a).ok())
+            .unwrap_or(json!([])),
     })
 }
 

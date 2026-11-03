@@ -692,7 +692,8 @@ impl Threads {
     async fn boite(&self, agent: &AgentConfig, thread: &Thread, segments: &[Segment]) -> anyhow::Result<Vec<Item>> {
         let rows = self
             .store
-            .run("SELECT id, title, text, created_at, session_id, audio_path FROM outbox WHERE agent = ? ORDER BY created_at",
+            .run("SELECT id, title, text, created_at, session_id, audio_path, attachments FROM outbox WHERE agent = ? \
+                  ORDER BY created_at",
                  vec![text(&agent.name)])
             .await?;
         let sessions: HashSet<&str> = segments.iter().map(|s| s.session_id.as_str()).collect();
@@ -721,7 +722,13 @@ impl Threads {
                 .and_then(|c| crate::store::parse_since(c).ok())
                 .map(|d| d.timestamp_micros() as f64 / 1e6)
                 .unwrap_or(0.0);
-            let (words, attachments) = timeline::visible(row["text"].as_str().unwrap_or(""), &id, 0);
+            let (words, mut attachments) = timeline::visible(row["text"].as_str().unwrap_or(""), &id, 0);
+            if let Some(Value::Array(kept)) = row["attachments"].as_str().and_then(|a| serde_json::from_str(a).ok()) {
+                attachments.extend(kept);
+            }
+            for (n, a) in attachments.iter_mut().enumerate() {
+                a["id"] = json!(format!("{id}.a{n}"));
+            }
             let body = json!({"kind": "boite", "text": words, "title": row["title"], "attachments": attachments,
                               "boite": {"outbox_id": row["id"], "audio": !row["audio_path"].is_null()}});
             out.push(Item {

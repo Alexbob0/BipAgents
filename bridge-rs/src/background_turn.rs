@@ -410,13 +410,10 @@ impl Pipeline {
             return true;
         }
         let Some(outbox) = &self.outbox else { return false };
-        let mut text = d.text.clone();
-        for file in d.files.iter().filter(|f| !d.text.contains(f.as_str())) {
-            text.push_str(&format!("\n\nMEDIA:{file}"));
-        }
         let mut message = Dict::new();
         message.insert("id".into(), json!(d.key));
-        message.insert("message".into(), json!(text));
+        message.insert("message".into(), json!(d.text));
+        message.insert("files".into(), json!(d.files));
         message.insert("title".into(), json!(d.title));
         message.insert("tags".into(), json!([format!("session:{}", d.session)]));
         match outbox.ingest(agent, &message, d.notify, false).await {
