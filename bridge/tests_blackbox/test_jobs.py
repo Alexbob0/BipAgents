@@ -20,6 +20,14 @@ TASK = {"title": "Écoles du quartier", "prompt": "Compare les trois écoles pr�
 NOW = "2026-10-21T08:00:00.000Z"
 
 
+
+def words(text):
+    """A task run's words without its rules' note (every run of a task carries it in its message, not as run
+    instructions: background_turn.rs)."""
+    head, rules = text.split("\n\n<!--bip:task-rules\n", 1)
+    assert rules.endswith("\n-->")
+    return head
+
 def with_device(bridges):
     bridge = bridges.new()
     bridge.seed_db([("INSERT INTO devices (token, environment, agent_ids, created_at, updated_at) VALUES (?,?,?,?,?)",
@@ -108,7 +116,7 @@ def test_a_task_stops_at_its_budget_and_goes_on_with_a_bigger_one(bridges, fakes
     resumed = bridge.post(f"/v1/jobs/{job['id']}/resume", headers=AUTH,
                           json={"max_tokens": 5_000_000, "message": "Continue, et termine par ton rapport."}).json()
     assert resumed["state"] == "running" and resumed["runs"] == 2 and resumed["max_tokens"] == 5_000_000
-    assert fakes.hermes.started["r2"]["input"] == "Continue, et termine par ton rapport."
+    assert words(fakes.hermes.started["r2"]["input"]) == "Continue, et termine par ton rapport."
     assert len(fakes.hermes.created) == 1                      # the same conversation
     gone = bridge.delete(f"/v1/jobs/{job['id']}", headers=AUTH)
     assert gone.json() == {"ok": True} and fakes.hermes.started["r2"]["status"] == "cancelled"
@@ -125,7 +133,8 @@ def test_the_person_pauses_resumes_and_forgets_a_task(bridges, fakes):
     assert wait_until(lambda: view(bridge, job["id"])["state"] == "paused", timeout=25)
     assert view(bridge, job["id"])["reason"] == "stopped"
     assert bridge.post(f"/v1/jobs/{job['id']}/resume", headers=AUTH).json()["state"] == "running"
-    assert fakes.hermes.started["r2"]["input"] == "Continue the task where you stopped (don't start again), then end with your report."
+    assert words(fakes.hermes.started["r2"]["input"]) == \
+        "Continue the task where you stopped (don't start again), then end with your report."
     assert bridge.delete(f"/v1/jobs/{job['id']}", headers=AUTH).json() == {"ok": True}
     assert not (bridge.state_dir / "jobs" / f"{job['id']}.json").exists()
     assert fakes.hermes.started["r2"]["status"] == "cancelled"

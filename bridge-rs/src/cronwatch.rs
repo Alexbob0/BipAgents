@@ -238,11 +238,14 @@ pub async fn routine(hermes: &HermesClient, agent: &AgentConfig, session_id: &st
     let cached = lock(&ROUTINES).get(&agent.name).filter(|(at, _)| now - at < 60.0).map(|(_, jobs)| jobs.clone());
     let jobs = match cached {
         Some(jobs) => jobs,
-        None => {
-            let jobs = hermes.routines(agent).await.ok()?;
-            lock(&ROUTINES).insert(agent.name.clone(), (now, jobs.clone()));
-            jobs
-        }
+        // not listed (an older Hermes, Hermes down): the run's own name still says which routine it is
+        None => match hermes.routines(agent).await {
+            Ok(jobs) => {
+                lock(&ROUTINES).insert(agent.name.clone(), (now, jobs.clone()));
+                jobs
+            }
+            Err(_) => Vec::new(),
+        },
     };
     let id = |j: &&Dict| j.get("id").and_then(Value::as_str) == named.as_deref();
     let found = match &named {
