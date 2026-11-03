@@ -1,6 +1,6 @@
-"""The cron watcher end to end (cronwatch.py): finished scheduled-task runs read from Hermes' sessions into the outbox
-and pushed (a muted job stored silently), Bot Chat turns taken alone pushed as « reply ready », and the conversation
-state route that tells the bridge what is on screen. The watcher starts 10 s after the bridge."""
+"""The watcher of the turns no run of the bridge carries (cronwatch.rs) end to end: Bot Chat turns taken alone pushed as
+« reply ready », sub-agents' reports, and the conversation state route that tells the bridge what is on screen. The
+watcher starts 10 s after the bridge. Routines: test_routines.py (the bridge runs them)."""
 import time
 
 import pytest
@@ -28,43 +28,6 @@ def watching(bridges):
          ("wellness", "0681ac73805e", "Tri des e-mails", 0, NOW)),
     ])
     return bridge
-
-
-@pytest.mark.slow
-def test_finished_cron_replies_go_to_the_outbox_once_and_muted_ones_silently(bridges, fakes):
-    bridge = watching(bridges)
-    hermes = fakes.hermes
-    podcast, muted = f"cron_fc344ed09026_{stamp(3600)}", f"cron_0681ac73805e_{stamp(1800)}"
-    hermes.add_session(podcast, [{"role": "user", "content": "Produis le point"},
-                                 {"role": "assistant", "content": [{"type": "text", "text": "Bonjour Alex !"}]}],
-                       title="Podcast du matin · Oct 21 07:00")
-    hermes.add_session(muted, [{"role": "user", "content": "Trie"}, {"role": "assistant", "content": "Tri des e-mails fait."}],
-                       title=None)
-    hermes.add_session(f"cron_aaaa_{stamp(600)}", [{"role": "assistant", "content": "[SILENT]"}])
-    hermes.add_session(f"cron_bbbb_{stamp(3 * 86400)}", [{"role": "assistant", "content": "Vieux message"}])
-    hermes.add_session(f"cron_cccc_{stamp(60)}", [{"role": "user", "content": "Produis le point"}])   # still running
-    hermes.add_session(f"cron_dddd_{stamp(60)}", [{"role": "assistant", "content": "je passe par terminal…",
-                                                   "tool_calls": [{"id": "t1"}]}])
-    bridge.start()
-    assert wait_until(lambda: len(bridge.get("/v1/outbox", headers=AUTH).json()["items"]) == 2, timeout=25)
-    time.sleep(1.0)   # more polls: nothing else, nothing twice
-    items = bridge.get("/v1/outbox", headers=AUTH).json()["items"]
-    by_text = {i["text"]: i for i in items}
-    assert set(by_text) == {"Bonjour Alex !", "Tri des e-mails fait."}
-    assert by_text["Bonjour Alex !"]["title"] == "Podcast du matin · Oct 21 07:00"
-    assert by_text["Bonjour Alex !"]["session_id"] == podcast
-    assert by_text["Tri des e-mails fait."]["title"] == "Tri des e-mails"     # the job's name kept by the bridge
-    with bridge.db() as db:
-        ids = sorted(row[0] for row in db.execute("SELECT ntfy_id FROM outbox"))
-        jobs = dict(db.execute("SELECT job, name FROM cron_jobs").fetchall())
-    assert ids == sorted([f"hermes-session:{podcast}", f"hermes-session:{muted}"])
-    assert jobs == {"fc344ed09026": "Podcast du matin", "0681ac73805e": "Tri des e-mails"}
-    assert wait_until(lambda: len(fakes.apns.pushes()) >= 1)
-    time.sleep(2.5)   # the muted job's message waited for its audio as long as the pushed one did
-    pushed = [p for p in fakes.apns.payloads() if p["aps"].get("category") == "MESSAGE"]
-    assert [p["r"] for p in pushed] == [by_text["Bonjour Alex !"]["id"]]
-    listed = bridge.get("/v1/cron-jobs", headers=AUTH).json()["jobs"]
-    assert {(j["job"], j["notify"]) for j in listed} == {("fc344ed09026", True), ("0681ac73805e", False)}
 
 
 @pytest.mark.slow

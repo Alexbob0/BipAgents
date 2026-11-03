@@ -1,13 +1,14 @@
 """« Ce que tes agents font tout seuls » (`GET /v1/autonomous`, bridge-rs/src/autonomous.rs): every agent's routines
-(its Hermes' `/api/jobs`), background tasks and mailbox scans (jobs.rs) and connectors on a mechanical schedule
-(connectors.rs) in one list, grouped (schedule / on_change / now), with a plain state, the last and next run, the cost
-fields and the actions; an agent whose Hermes doesn't answer is named, with its routines as last seen."""
+(the bridge's own, routines.rs: each Hermes' jobs read once and moved there), background tasks and mailbox scans
+(jobs.rs) and connectors on a mechanical schedule (connectors.rs) in one list, grouped (schedule / on_change / now),
+with a plain state, the last and next run, the cost fields and the actions."""
 import json
 import time
 
 from starlette.responses import JSONResponse
 
 from bbkit.common import AUTH, HERMES_KEY
+from bbkit.servers import wait_until
 
 ROUTINES = [
     {"id": "j1", "name": "Point du lundi", "prompt": "Fais le point sur ma semaine", "state": "scheduled",
@@ -54,7 +55,11 @@ def seeded(bridges, fakes, coach_down=True):
         return None
 
     fakes.hermes.override = hermes
-    return bridge.start()
+    bridge.start()
+    # the jobs moved to the bridge at its first look (routines.rs `migrate`)
+    assert wait_until(lambda: len(bridge.get("/v1/agents/wellness/routines", headers=AUTH).json()["jobs"]) == 2,
+                      timeout=15)
+    return bridge
 
 
 def test_one_list_of_what_the_agents_do_on_their_own(bridges, fakes):
@@ -63,7 +68,7 @@ def test_one_list_of_what_the_agents_do_on_their_own(bridges, fakes):
     assert answer.status_code == 200, answer.text
     body = answer.json()
     assert body["groups"] == ["schedule", "on_change", "now"]
-    assert body["unreachable"] == ["coach"]
+    assert body["unreachable"] == []
     assert body["budgets"]["medium"] == 1_000_000
     items = {i["id"]: i for i in body["items"]}
     assert set(items) == {"routine:wellness:j1", "routine:wellness:j2", "task:t0000000000a1", "task:t0000000000a3",
@@ -88,34 +93,36 @@ def test_one_list_of_what_the_agents_do_on_their_own(bridges, fakes):
     # groups in order: the schedules first, then what runs now
     groups = [i["group"] for i in body["items"]]
     assert groups == sorted(groups, key=["schedule", "on_change", "now"].index)
-    # the Hermes call: with the paused routines, with the agent's key
-    call = [r for r in fakes.hermes.seen("/api/jobs", "GET")][0]
-    assert "include_disabled=true" in call.query and call.header("authorization") == f"Bearer {HERMES_KEY}"
+    # Hermes read once, with the paused routines and the agent's key, then its jobs deleted there: it runs none
+    calls = fakes.hermes.seen("/api/jobs", "GET")
+    assert len(calls) == 1 and "include_disabled=true" in calls[0].query
+    assert calls[0].header("authorization") == f"Bearer {HERMES_KEY}"
+    assert {r.path for r in fakes.hermes.seen("", "DELETE")} >= {"/api/jobs/j1", "/api/jobs/j2"}
 
 
-def test_one_agent_and_the_routines_last_seen(bridges, fakes):
-    bridge = seeded(bridges, fakes, coach_down=False)
-    coach_jobs = [{"id": "k1", "name": "Séance du jour", "enabled": True, "schedule": "0 7 * * *"}]
+def test_an_agent_s_routines_once_its_hermes_answers_and_after(bridges, fakes):
+    bridge = seeded(bridges, fakes, coach_down=True)
+    coach_jobs = [{"id": "k1", "name": "Séance du jour", "enabled": True, "prompt": "La séance", "schedule": "0 7 * * *"}]
 
     def hermes(seen):
-        if seen.path == "/p/coach/api/jobs":
+        if seen.path == "/p/coach/api/jobs" and seen.method == "GET":
             return JSONResponse({"jobs": coach_jobs})
         return None
 
-    fakes.hermes.override = hermes
+    fakes.hermes.override = hermes   # its Hermes back: its jobs move at the next look
+    assert wait_until(lambda: bridge.get("/v1/agents/coach/routines", headers=AUTH).json()["jobs"], timeout=40)
     first = bridge.get("/v1/autonomous", headers=AUTH, params={"agent": "coach"}).json()
     assert {i["id"] for i in first["items"]} == {"routine:coach:k1", "connector:coach:c1"} and first["unreachable"] == []
     assert first["items"][0]["when"]["text"] in ("Chaque jour à 7:00",)
 
     def down(seen):
-        if seen.path == "/p/coach/api/jobs":
+        if seen.path.startswith("/p/coach/"):
             return JSONResponse({"error": "asleep"}, status_code=502)
         return None
 
-    fakes.hermes.override = down
+    fakes.hermes.override = down   # asleep: its routines are the bridge's, listed as they are
     again = bridge.get("/v1/autonomous", headers=AUTH, params={"agent": "coach"}).json()
-    assert again["unreachable"] == ["coach"]
-    assert "routine:coach:k1" in {i["id"] for i in again["items"]}   # as last seen
+    assert again["unreachable"] == [] and "routine:coach:k1" in {i["id"] for i in again["items"]}
     assert bridge.get("/v1/autonomous", headers=AUTH, params={"agent": "nobody"}).status_code == 404
     assert bridge.get("/v1/autonomous").status_code == 401
 

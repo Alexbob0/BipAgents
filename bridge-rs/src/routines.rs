@@ -320,7 +320,7 @@ pub fn view(r: &Routine, zone: Tz) -> Value {
            "next_run_at": iso(r.next_run, zone), "last_run_at": iso(r.last_run, zone),
            "last_status": if r.last_status.is_empty() { Value::Null } else { json!(r.last_status) },
            "origin_session_id": if r.origin.is_empty() { Value::Null } else { json!(r.origin) },
-           "repeat": r.repeat, "deliver": "local"})
+           "repeat": r.repeat, "skills": r.skills, "deliver": "local"})
 }
 
 // -- making and changing ------------------------------------------------------------------------------------------------
@@ -523,8 +523,13 @@ async fn deliver(state: &AppState, pipeline: &Pipeline, agent: &AgentConfig, r: 
 /// The agent's Hermes jobs, read once, kept here, and deleted from Hermes (it no longer runs them). An unreachable
 /// Hermes is tried again at the next look.
 pub async fn migrate(state: &AppState, agent: &AgentConfig) {
-    let Ok(jobs) = state.hermes.routines(agent).await else { return };
     let config = state.config();
+    let jobs = match state.hermes.routines(agent).await {
+        Ok(jobs) => jobs,
+        // a Hermes without jobs (no such route): nothing to move
+        Err(crate::hermes::HermesError::Http { status: 404, .. }) => Vec::new(),
+        Err(_) => return,
+    };
     let zone = zone(&config);
     let muted: Vec<String> = state
         .store
@@ -570,8 +575,8 @@ pub async fn migrate(state: &AppState, agent: &AgentConfig) {
             notify: !muted.contains(&text("id")),
             origin: text("origin_session_id"),
             repeat: times.map(|t| t.saturating_sub(done) as u32),
-            last_run: None,
-            last_status: String::new(),
+            last_run: DateTime::parse_from_rfc3339(&text("last_run_at")).ok().map(|d| d.timestamp() as f64),
+            last_status: text("last_status"),
             created: now,
         });
     }
@@ -764,6 +769,9 @@ async fn action_route(State(state): State<AppState>, UrlPath((id, action)): UrlP
 async fn mutes(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
     let config = state.config();
     let agent = web::query_str(&q, "agent", false, Some(200))?.filter(|a| !a.is_empty());
+    if let Some(a) = &agent {
+        agent_of(&state, a)?;
+    }
     let rows: Vec<Value> = list(&config, agent.as_deref())
         .iter()
         .map(|r| json!({"agent": r.agent, "job": r.id, "name": r.name, "notify": r.notify, "last_seen": iso(r.last_run, Tz::UTC)}))
@@ -771,8 +779,9 @@ async fn mutes(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response
     Ok(web::ok(json!({"jobs": rows})))
 }
 
-async fn set_mute(State(state): State<AppState>, UrlPath((_agent, id)): UrlPath<(String, String)>, body: Bytes) -> ApiResult<Response> {
+async fn set_mute(State(state): State<AppState>, UrlPath((agent, id)): UrlPath<(String, String)>, body: Bytes) -> ApiResult<Response> {
     let config = state.config();
+    agent_of(&state, &agent)?;
     get(&config, &id).ok_or_else(|| HttpError::new(404, "unknown job"))?;
     let notify = parsed(&body)?.notify.ok_or_else(|| HttpError::new(422, "notify is required"))?;
     let r = update(&config, &id, |r| {
