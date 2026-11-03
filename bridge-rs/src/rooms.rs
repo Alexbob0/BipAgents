@@ -3052,7 +3052,7 @@ mod tests {
             assert!(!told.contains("what is left"), "{told}");
             assert!(told.contains("next turn"), "{told}");
         }
-        assert!(STEER_PERCENT_DISCUSSION > STEER_PERCENT_TEAM);
+        const { assert!(STEER_PERCENT_DISCUSSION > STEER_PERCENT_TEAM) };
         // the steer of 2026-11-03: 4 tool steps of a 20k-call turn (130k) passed 60 % of the 170k limit, not 80 %
         let limit = turn_limit(200_000);
         assert!(estimated_tokens(4, CALL_TOKENS) * 100 >= limit * STEER_PERCENT_TEAM);
