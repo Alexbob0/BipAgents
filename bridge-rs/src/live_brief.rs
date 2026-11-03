@@ -83,10 +83,10 @@ pub const CALL_CHARS: usize = 2500;
 pub const POINTS_TITLE: &str = "BipAgents · notes";
 /// The scratch session of a call's warm-up (`warm_up`).
 pub const WARM_TITLE: &str = "BipAgents · live";
-/// The warm-up's message: the shortest answer, no tool.
+/// The warm-up's request, after the call's prelude: the shortest answer, no tool.
 pub const WARM_MESSAGE: &str = "<!--bip:warm\nNot from the person: answer exactly « OK » and nothing else, no tool.\n-->";
-/// The longest instructions a call start may send for its warm-up (the brief is ~6-9k characters).
-pub const WARM_INSTRUCTIONS_MAX: usize = 40_000;
+/// The longest prelude a call start may send for its warm-up (the brief is ~6-9k characters).
+pub const WARM_PRELUDE_MAX: usize = 40_000;
 /// After a scratch session's deletion, when it is deleted again (seconds): Hermes' titler may write it back meanwhile.
 pub const SCRATCH_CHECKS: [f64; 6] = [10.0, 30.0, 90.0, 300.0, 900.0, 1800.0];
 /// A scratch session Hermes still keeps past the last check (a turn still running…): again every half hour…
@@ -580,20 +580,22 @@ impl Briefs {
         Ok(true)
     }
 
-    /// A Live call's prompt read once by the model while its greeting plays (3/11), never waited for: a turn with the
-    /// call's own instructions in a hidden throwaway session. Hermes' system prompt holds nothing of the session, so
-    /// the call's first question finds the same prompt up to its own words in the model server's cache (a provider's
+    /// A Live call's prompt read once by the model while its greeting plays (3/11), never waited for: a turn in a hidden
+    /// throwaway session whose message starts with the call's prelude (the apps' first message: the time, the call's
+    /// rules and brief), no `instructions`. Hermes' system prompt holds nothing of the session, so the call's first
+    /// question finds the agent's system prompt, its tools and the prelude in the model server's cache (a provider's
     /// prefix cache, vLLM's or llama.cpp's slot) instead of reading ~20k tokens then. What the call's turns send as
     /// `model_options` (`quick_turn_options`): the same rendering. One at a time per agent.
-    pub async fn warm_up(&self, agent: &AgentConfig, instructions: &str) -> anyhow::Result<()> {
+    pub async fn warm_up(&self, agent: &AgentConfig, prelude: &str) -> anyhow::Result<()> {
         static RUNNING: LazyLock<Mutex<std::collections::HashSet<String>>> = LazyLock::new(Default::default);
         if !lock(&RUNNING).insert(agent.name.clone()) {
             return Ok(());
         }
         let started = std::time::Instant::now();
         let options = crate::agents_admin::quick_turn_options(&self.config.get(), agent);
-        let extra = json!({"model_options": options, "instructions": instructions});
-        let reply = self.scratch_chat(agent, WARM_TITLE, WARM_MESSAGE, extra, 60.0).await;
+        let extra = json!({"model_options": options});
+        let message = format!("{prelude}\n\n{WARM_MESSAGE}");
+        let reply = self.scratch_chat(agent, WARM_TITLE, &message, extra, 60.0).await;
         lock(&RUNNING).remove(&agent.name);
         tracing::info!(agent = %agent.name, ms = started.elapsed().as_millis() as u64, ok = reply.is_ok(), "live warm-up");
         reply.map(|_| ())
@@ -873,9 +875,9 @@ pub struct CallStarted {
     pub agent: String,
     pub session: String,
     pub live_session: String,
-    /// The call's instructions as its turns send them (apps since 3/11): the model reads them at once (`warm_up`).
+    /// What opens the call's first message (apps since 3/11): the model reads it at once (`warm_up`).
     #[serde(default)]
-    pub instructions: Option<String>,
+    pub prelude: Option<String>,
 }
 
 impl Validate for CallStarted {
@@ -885,7 +887,7 @@ impl Validate for CallStarted {
         web::check_max_len(errors, "session", Some(&self.session), 300);
         web::check_min_len(errors, "live_session", Some(&self.live_session), 1);
         web::check_max_len(errors, "live_session", Some(&self.live_session), 300);
-        web::check_max_len(errors, "instructions", self.instructions.as_deref(), WARM_INSTRUCTIONS_MAX);
+        web::check_max_len(errors, "prelude", self.prelude.as_deref(), WARM_PRELUDE_MAX);
     }
 }
 
@@ -1006,11 +1008,11 @@ async fn live_call(State(state): State<AppState>, Json(body): Json<CallEnded>) -
 async fn live_call_start(State(state): State<AppState>, Json(body): Json<CallStarted>) -> ApiResult<Response> {
     let agent = setup(&state, &body.agent)?;
     crate::agent_restart::note_live(&agent.name);
-    if let Some(instructions) = body.instructions.filter(|i| !i.trim().is_empty()) {
+    if let Some(prelude) = body.prelude.filter(|p| !p.trim().is_empty()) {
         // never waited for: the first question goes whenever the person is done
         let (briefs, warmed) = (state.briefs.clone(), agent.clone());
         state.spawn(async move {
-            if let Err(exc) = briefs.warm_up(&warmed, &instructions).await {
+            if let Err(exc) = briefs.warm_up(&warmed, &prelude).await {
                 tracing::info!(agent = %warmed.name, error = %error_name(&exc), "live warm-up failed");
             }
         });
@@ -1101,6 +1103,16 @@ pub fn router() -> Router<AppState> {
         .route("/live/recaps/take", post(take_recap))
 }
 
+/// The end of the last call noted in a conversation's brief state (`note_call` writes it when the call ends).
+fn last_call(state: &Dict) -> Option<f64> {
+    state
+        .get("calls")
+        .and_then(Value::as_array)?
+        .iter()
+        .filter_map(|call| call.get("at").and_then(|at| py::py_float(at).ok()))
+        .fold(None, |latest: Option<f64>, at| Some(latest.map_or(at, |l| l.max(at))))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1131,14 +1143,4 @@ mod tests {
         // not a note: as it is
         assert_eq!(recap_in_note("plain"), "plain");
     }
-}
-
-/// The end of the last call noted in a conversation's brief state (`note_call` writes it when the call ends).
-fn last_call(state: &Dict) -> Option<f64> {
-    state
-        .get("calls")
-        .and_then(Value::as_array)?
-        .iter()
-        .filter_map(|call| call.get("at").and_then(|at| py::py_float(at).ok()))
-        .fold(None, |latest: Option<f64>, at| Some(latest.map_or(at, |l| l.max(at))))
 }

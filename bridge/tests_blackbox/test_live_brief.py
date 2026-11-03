@@ -105,17 +105,19 @@ def test_a_call_continues_in_the_next_briefs(bridge, fakes):
     assert "Earlier voice calls" not in brief(bridge, session="s1").json()["text"]
 
 
-def test_a_call_start_has_the_model_read_its_instructions_without_waiting(bridge, fakes):
-    """3/11: the call start (apps since then) sends the call's instructions; the bridge answers at once and has the
-    model read them in a hidden throwaway session (same instructions and reasoning as the call's turns), deleted."""
+def test_a_call_start_has_the_model_read_its_prelude_without_waiting(bridge, fakes):
+    """3/11: the call start (apps since then) sends what opens the call's first message; the bridge answers at once and
+    has the model read it in a hidden throwaway session (no instructions: the agent's own system prompt; the call's
+    reasoning), deleted."""
     hermes = fakes.hermes
     hermes.add_session("s1", talk(4))
+    prelude = "<!--bip:live\nRules\n\nBrief of s1\n-->"
     started = bridge.post("/v1/live/calls/start", headers=AUTH, json={
-        "agent": "wellness", "session": "s1", "live_session": "live1", "instructions": "Rules\n\nBrief of s1"})
+        "agent": "wellness", "session": "s1", "live_session": "live1", "prelude": prelude})
     assert started.status_code == 200 and started.json() == {"ok": True, "deposit": True}
     assert wait_until(lambda: hermes.deleted, timeout=10)
     chat, = hermes.chats
-    assert chat["instructions"] == "Rules\n\nBrief of s1" and chat["message"].startswith("<!--bip:warm")
+    assert chat["message"].startswith(prelude + "\n\n<!--bip:warm") and not chat.get("instructions")
     assert chat["model_options"] == {"reasoning": {"enabled": False}}   # what the brief tells the call to send
     (_, created), = hermes.created
     assert created["title"].startswith("BipAgents · live · ")
