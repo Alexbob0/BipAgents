@@ -126,7 +126,7 @@ use crate::hermes::{HermesClient, HermesError};
 use crate::push::PushService;
 use crate::rooms_handoff::{self as relay, GoalProposal, Next, Progress};
 use crate::runs::{RunHub, RunUsage};
-use crate::threads::timeline::{media_attachment, Item, Want};
+use crate::threads::timeline::{file_attachment, Item, Want};
 use crate::tools_knowledge as tk;
 use crate::web::{self, check_max_len, check_min_len, ApiResult, FieldError, HttpError, Json, Validate};
 use crate::{py, Dict};
@@ -2538,7 +2538,16 @@ pub fn item(m: &Message) -> Item {
         body.insert("text".into(), json!(m.text));
     }
     body.insert("from".into(), json!(m.from));
-    let files: Vec<Value> = m.files.iter().enumerate().map(|(n, p)| media_attachment(&id, n, p)).collect();
+    let files: Vec<Value> = m
+        .files
+        .iter()
+        .enumerate()
+        .map(|(n, p)| {
+            let mut file = file_attachment(p, None);
+            file["id"] = json!(format!("{id}.a{n}"));
+            file
+        })
+        .collect();
     body.insert("attachments".into(), Value::Array(files));
     if let Some(client) = &m.client_id {
         body.insert("client_id".into(), json!(client));

@@ -19,7 +19,6 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
-use std::time::Duration;
 
 use axum::body::Bytes;
 use axum::extract::{Request, State};
@@ -115,30 +114,7 @@ pub async fn guard(State(state): State<AppState>, request: Request, next: Next) 
     next.run(request).await
 }
 
-// -- the agents' routines (Hermes cron, through each agent's gateway) -----------------------------------------------------
-
-async fn hermes_call(
-    client: &reqwest::Client,
-    agent: &AgentConfig,
-    method: reqwest::Method,
-    path: &str,
-) -> Result<Value, String> {
-    let response = client
-        .request(method, format!("{}{}", agent.hermes_url.trim_end_matches('/'), path))
-        .bearer_auth(&agent.hermes_key)
-        .header("content-type", "application/json")
-        .body("{}")
-        .timeout(Duration::from_secs(20))
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    let status = response.status().as_u16();
-    let text = response.text().await.map_err(|e| e.to_string())?;
-    if !(200..300).contains(&status) {
-        return Err(format!("{status}"));
-    }
-    Ok(serde_json::from_str(&text).unwrap_or(Value::Null))
-}
+// -- the agents' routines (routines.rs) ------------------------------------------------------------------------------
 
 /// An ISO time (Hermes' `next_run_at`) in Unix seconds.
 pub fn epoch(text: &str) -> Option<f64> {
@@ -150,22 +126,9 @@ pub fn epoch(text: &str) -> Option<f64> {
     chrono::Local.from_local_datetime(&naive).single().map(|t| t.timestamp_millis() as f64 / 1000.0)
 }
 
-/// An agent's routines: (id, name, enabled, next time).
-async fn routines(client: &reqwest::Client, agent: &AgentConfig) -> Vec<(String, String, bool, Option<f64>)> {
-    let Ok(data) = hermes_call(client, agent, reqwest::Method::GET, "/api/jobs").await else { return Vec::new() };
-    let list = data.get("jobs").cloned().unwrap_or(data);
-    let Value::Array(items) = list else { return Vec::new() };
-    items
-        .iter()
-        .filter_map(|job| {
-            let id = job.get("id")?.as_str()?.to_string();
-            let name = job.get("name").and_then(Value::as_str).unwrap_or("").to_string();
-            let enabled = job.get("enabled").and_then(Value::as_bool).unwrap_or(true)
-                && job.get("state").and_then(Value::as_str) != Some("paused");
-            let next = job.get("next_run_at").and_then(Value::as_str).and_then(epoch);
-            Some((id, name, enabled, next))
-        })
-        .collect()
+/// An agent's routines: (id, name, enabled, next time) (routines.rs: the bridge runs them, none while moving).
+fn routines(config: &crate::config::Config, agent: &AgentConfig) -> Vec<(String, String, bool, Option<f64>)> {
+    crate::routines::list(config, Some(&agent.name)).into_iter().map(|r| (r.id, r.name, r.enabled, r.next_run)).collect()
 }
 
 /// The routines to pause for a window ending at `until`: enabled, next time before it (with the margin).
@@ -190,7 +153,7 @@ async fn status_of(state: &AppState) -> Dict {
     let mut found = Vec::new();
     let mut next_routine: Option<f64> = None;
     for agent in config.agents.values() {
-        for (id, name, enabled, next) in routines(&state.hermes.client, agent).await {
+        for (id, name, enabled, next) in routines(&config, agent) {
             if enabled {
                 if let Some(n) = next {
                     next_routine = Some(next_routine.map_or(n, |m: f64| m.min(n)));
@@ -263,14 +226,8 @@ pub async fn drain(state: &AppState, asked: &Dict) -> anyhow::Result<Dict> {
     let until = asked.get("until").and_then(Value::as_f64).unwrap_or(now + 900.0);
     let mut postponed: Vec<Value> = data.get("postponed").and_then(Value::as_array).cloned().unwrap_or_default();
     for agent in config.agents.values() {
-        let found = routines(&state.hermes.client, agent).await;
-        for (id, due) in due_before(&found, until) {
-            let known = postponed.iter().any(|p| p["agent"] == json!(agent.name) && p["id"] == json!(id));
-            if known {
-                continue;
-            }
-            let call = format!("/api/jobs/{id}/pause");
-            if hermes_call(&state.hermes.client, agent, reqwest::Method::POST, &call).await.is_ok() {
+        for (id, due) in due_before(&routines(&config, agent), until) {
+            if !postponed.iter().any(|p| p["agent"] == json!(agent.name) && p["id"] == json!(id)) {
                 postponed.push(json!({"agent": agent.name, "id": id, "due": due}));
             }
         }
@@ -296,29 +253,16 @@ pub async fn resume(state: &AppState) -> anyhow::Result<Dict> {
     let mut failed = Vec::new();
     for item in data.get("postponed").and_then(Value::as_array).cloned().unwrap_or_default() {
         let (Some(name), Some(id)) = (item["agent"].as_str(), item["id"].as_str()) else { continue };
-        let Some(agent) = config.agent(Some(name)).cloned() else { continue };
-        // Hermes may still be starting on the new server: a few tries.
-        let mut done = false;
-        for attempt in 0..12 {
-            let call = format!("/api/jobs/{id}/resume");
-            if hermes_call(&state.hermes.client, &agent, reqwest::Method::POST, &call).await.is_ok() {
-                done = true;
-                break;
-            }
-            if attempt < 11 {
-                tokio::time::sleep(Duration::from_secs(5)).await;
-            }
-        }
-        if !done {
+        if config.agent(Some(name)).is_none() || crate::routines::get(&config, id).is_none() {
             failed.push(json!({"agent": name, "id": id}));
             continue;
         }
         routines_resumed += 1;
         if item["due"].as_f64().is_some_and(|due| due <= now) {
-            let call = format!("/api/jobs/{id}/run");
-            if hermes_call(&state.hermes.client, &agent, reqwest::Method::POST, &call).await.is_ok() {
-                caught_up.push(json!({"agent": name, "id": id}));
-            }
+            // its run, missed while the place moved, now (the clock skips runs while moving: routines.rs)
+            let (state, id) = (state.clone(), id.to_string());
+            tokio::spawn(async move { crate::routines::fire(&state, &id).await });
+            caught_up.push(json!({"agent": name, "id": item["id"]}));
         }
     }
     // Clear the state first: the tasks' launches below must not queue again.

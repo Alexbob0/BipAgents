@@ -151,13 +151,22 @@ impl OutboxService {
         if spoken.is_empty() && media_paths.is_empty() {
             return Ok(None);
         }
-        // The files the apps show stay in the text as its `MEDIA:` lines, in their places (a report's page, a
-        // picture, a document: 2026-10-26, a hand-back's « Le rapport complet : » had lost its page); the first mp3
-        // the bridge serves is the message's own audio instead (`attach_media_audio`), its line taken out. Any other
-        // audio line stays (a podcast in .m4a or .wav, an mp3 the bridge can't reach): the app plays it as a file.
+        // The files the apps show are the message's attachments (2026-11-03: items, no `MEDIA:` line left in its
+        // text; `offset` keeps a page's place in it), and those `files` the sender gives; the first mp3 the bridge
+        // serves is the message's own audio instead (`attach_media_audio`). Any other audio (a podcast in .m4a or
+        // .wav, an mp3 the bridge can't reach) stays a file the app plays.
         let own_mp3 = self.own_mp3(&media_paths);
-        let mut text = without_media_lines(&text, |path| own_mp3.as_ref().is_some_and(|(p, _)| p == path));
-        if text.is_empty() {
+        let kept = without_media_lines(&text, |path| own_mp3.as_ref().is_some_and(|(p, _)| p == path));
+        let (mut text, mut files) = crate::threads::timeline::visible(&kept, "", 0);
+        for path in message.get("files").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str) {
+            if !files.iter().any(|f| f["path"] == path) {
+                files.push(crate::threads::timeline::file_attachment(path, None));
+            }
+        }
+        for file in files.iter_mut() {
+            file.as_object_mut().map(|f| f.remove("id"));
+        }
+        if text.is_empty() && files.is_empty() {
             text = "🎧".into();
         }
         let title = match message.get("title") {
@@ -196,7 +205,8 @@ impl OutboxService {
             Some(Value::String(s)) => Some(s.clone()),
             Some(other) => Some(crate::py::py_str(other)),
         };
-        let extra = NewOutbox { title: title.clone(), ntfy_id: ntfy_id.clone(), sent_at, session_id };
+        let attachments = (!files.is_empty()).then(|| Value::Array(files).to_string());
+        let extra = NewOutbox { title: title.clone(), ntfy_id: ntfy_id.clone(), sent_at, session_id, attachments };
         let mut item = self.store.add_outbox(&agent.name, &text, extra).await?;
         let chars = pyx::len(&text);
         let mut notify = notify;
@@ -269,7 +279,7 @@ impl OutboxService {
         let ntfy_id = item.get("ntfy_id").and_then(Value::as_str).unwrap_or("");
         let from = if ntfy_id.starts_with("handback:") {
             BoiteFrom::Task
-        } else if ntfy_id.starts_with("hermes-session:") {
+        } else if ntfy_id.starts_with("hermes-session:") || ntfy_id.starts_with("routine:") {
             BoiteFrom::Routine
         } else {
             BoiteFrom::Other

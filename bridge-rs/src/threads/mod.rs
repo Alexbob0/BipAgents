@@ -484,8 +484,7 @@ impl Threads {
             ("side", root.hidden)
         };
         let origin = if kind == "routine" {
-            let job = crate::cronwatch::routine_of(&self.config.get(), agent, &root.id);
-            json!({"kind": "routine", "routine": job})
+            json!({"kind": "routine", "routine": crate::cronwatch::job_id(&root.id)})
         } else {
             Value::Null
         };
@@ -547,6 +546,22 @@ impl Threads {
             self.bump(thread, "segment").await?;
         }
         Ok(segments)
+    }
+
+    /// A conversation the bridge made for work of its own (a routine's run: routines.rs) adopted as a hidden thread of
+    /// `kind` before anyone lists it.
+    pub async fn adopt(&self, agent: &AgentConfig, session: &str, kind: &str, origin: Value) {
+        let _guard = self.registry.lock().await;
+        let made = async {
+            if self.thread_of_session(&agent.name, session).await?.is_none() {
+                let thread = self.create(&agent.name, kind, None, origin, true).await?;
+                self.append(&agent.name, &thread.id, session, "root").await?;
+            }
+            anyhow::Ok(())
+        };
+        if let Err(exc) = made.await {
+            tracing::warn!(agent = %agent.name, error = %format!("{exc:#}"), "work conversation not adopted");
+        }
     }
 
     /// Appends a session as the thread's next segment (a migration moving the conversation, a test).
@@ -617,7 +632,59 @@ impl Threads {
             q.get(&agent.name).items.into_iter().filter_map(|i| i.client_id).collect()
         });
         self.with_sends(agent, thread, &mut items, &queued).await?;
+        self.with_files(agent, thread, &mut items).await?;
         Ok(items)
+    }
+
+    /// The files kept for the agent's messages (`attach`): added to those its `MEDIA:` lines give, stale ones left
+    /// out, numbered after them.
+    async fn with_files(&self, agent: &AgentConfig, thread: &Thread, items: &mut [Item]) -> anyhow::Result<()> {
+        let sql = "SELECT message_id, files FROM thread_files WHERE agent = ? AND thread_id = ?";
+        let rows = self.store.run(sql, vec![text(&agent.name), text(&thread.id)]).await?;
+        for row in &rows {
+            let Some(item) = items.iter_mut().find(|i| row["message_id"].as_str() == Some(i.id.as_str())) else { continue };
+            let Some(Value::Array(kept)) = row["files"].as_str().and_then(|f| serde_json::from_str(f).ok()) else { continue };
+            let mut atts = match item.body.get("attachments") {
+                Some(Value::Array(own)) => own.clone(),
+                _ => Vec::new(),
+            };
+            for a in kept {
+                if a["stale"] == json!(true) {
+                    atts.retain(|o| o["path"] != a["path"]);
+                } else if !atts.iter().any(|o| o["path"] == a["path"]) {
+                    atts.push(a);
+                }
+            }
+            for (n, a) in atts.iter_mut().enumerate() {
+                a["id"] = json!(format!("{}.a{n}", item.id));
+            }
+            if atts.is_empty() {
+                item.body.remove("attachments");
+            } else {
+                item.body.insert("attachments".into(), Value::Array(atts));
+            }
+        }
+        Ok(())
+    }
+
+    /// Files a background turn made (background_turn.rs), attached to the agent's message `message` whatever its words
+    /// say: the timeline gives them as its attachments (`kind` from the path, as a `MEDIA:` line's).
+    pub async fn attach(&self, agent: &AgentConfig, thread: &str, message: &str, files: &[String]) {
+        self.attach_with(agent, thread, message, files, &[]).await
+    }
+
+    /// [`Self::attach`], and the `MEDIA:` lines of `stale` files left out of the message's attachments (an older
+    /// podcast's path the model wrote from memory, an earlier version of a file it made again: made_files.rs).
+    pub async fn attach_with(&self, agent: &AgentConfig, thread: &str, message: &str, files: &[String], stale: &[String]) {
+        let mut atts: Vec<Value> = files.iter().map(|p| timeline::file_attachment(p, None)).collect();
+        atts.extend(stale.iter().map(|p| json!({"path": p, "stale": true})));
+        let sql = "INSERT INTO thread_files (agent, message_id, thread_id, files, created_at) VALUES (?, ?, ?, ?, ?) \
+                   ON CONFLICT (agent, message_id) DO UPDATE SET files = excluded.files";
+        let params = vec![text(&agent.name), text(message), text(thread), text(&Value::Array(atts).to_string()),
+                          text(&iso(utcnow()))];
+        if let Err(exc) = self.store.run(sql, params).await {
+            tracing::warn!(agent = %agent.name, error = %format!("{exc:#}"), "files not attached to their message");
+        }
     }
 
     /// The Boîte's messages that belong to this thread: tagged with one of its sessions; for the main thread also
@@ -625,7 +692,8 @@ impl Threads {
     async fn boite(&self, agent: &AgentConfig, thread: &Thread, segments: &[Segment]) -> anyhow::Result<Vec<Item>> {
         let rows = self
             .store
-            .run("SELECT id, title, text, created_at, session_id, audio_path FROM outbox WHERE agent = ? ORDER BY created_at",
+            .run("SELECT id, title, text, created_at, session_id, audio_path, attachments FROM outbox WHERE agent = ? \
+                  ORDER BY created_at",
                  vec![text(&agent.name)])
             .await?;
         let sessions: HashSet<&str> = segments.iter().map(|s| s.session_id.as_str()).collect();
@@ -654,7 +722,13 @@ impl Threads {
                 .and_then(|c| crate::store::parse_since(c).ok())
                 .map(|d| d.timestamp_micros() as f64 / 1e6)
                 .unwrap_or(0.0);
-            let (words, attachments) = timeline::visible(row["text"].as_str().unwrap_or(""), &id, 0);
+            let (words, mut attachments) = timeline::visible(row["text"].as_str().unwrap_or(""), &id, 0);
+            if let Some(Value::Array(kept)) = row["attachments"].as_str().and_then(|a| serde_json::from_str(a).ok()) {
+                attachments.extend(kept);
+            }
+            for (n, a) in attachments.iter_mut().enumerate() {
+                a["id"] = json!(format!("{id}.a{n}"));
+            }
             let body = json!({"kind": "boite", "text": words, "title": row["title"], "attachments": attachments,
                               "boite": {"outbox_id": row["id"], "audio": !row["audio_path"].is_null()}});
             out.push(Item {

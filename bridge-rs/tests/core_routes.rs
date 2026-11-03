@@ -238,11 +238,12 @@ async fn outbox_and_cron_jobs() {
     assert_eq!(app.get(&format!("/v1/outbox/{id}"), &h).await.json()["text"], "Bonjour");
     assert_eq!(app.get("/v1/outbox/nope", &h).await.json(), json!({"detail": "not found"}));
 
-    store.note_cron_job("wellness", "j1", Some("Matin")).await.unwrap();
+    let config = app.app.state.config();
+    let j1 = bipbridge::routines::create(&config, "wellness", "Matin", "0 7 * * *", "Le point du matin", None).unwrap().id;
     let jobs = app.get("/v1/cron-jobs?agent=wellness", &h).await.json();
     assert_eq!(jobs["jobs"][0]["notify"], true);
-    let resp = app.send_json("PUT", "/v1/cron-jobs/wellness/j1", &h, &json!({"notify": false})).await;
-    assert_eq!(resp.json(), json!({"agent": "wellness", "job": "j1", "notify": false}));
+    let resp = app.send_json("PUT", &format!("/v1/cron-jobs/wellness/{j1}"), &h, &json!({"notify": false})).await;
+    assert_eq!(resp.json(), json!({"agent": "wellness", "job": j1, "notify": false}));
     let resp = app.send_json("PUT", "/v1/cron-jobs/wellness/nope", &h, &json!({"notify": "yes"})).await;
     assert_eq!((resp.status, resp.json()), (StatusCode::NOT_FOUND, json!({"detail": "unknown job"})));
 }
@@ -316,7 +317,7 @@ async fn session_state_status_and_approvals_through_hermes() {
     assert!(app.app.state.presence.viewing("wellness", "s1"));
     assert_eq!(app.app.state.presence.viewed("wellness"), vec!["s1".to_string()]);
     // a Boîte message (a hand-back's, a routine's) changes the conversation's state: the app shows it
-    let extra = bipbridge::store::NewOutbox { title: None, ntfy_id: None, sent_at: None, session_id: None };
+    let extra = bipbridge::store::NewOutbox::default();
     app.app.state.store.add_outbox("wellness", "Fini.", extra).await.unwrap();
     let after = app.get("/v1/sessions/s1/state?agent=wellness", &h).await.json();
     assert!(after["outbox"].as_str().unwrap().starts_with("1@"), "{after}");

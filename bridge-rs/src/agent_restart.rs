@@ -482,14 +482,12 @@ pub(crate) async fn activity(state: &AppState, config: &Config, agent: &AgentCon
         py::py_str(j.get("agent").unwrap_or(&Value::Null)) == name
             && ["running", "stopping"].contains(&py::py_str(j.get("state").unwrap_or(&Value::Null)).as_str())
     });
-    let routine = match tokio::time::timeout(Duration::from_secs(10), state.hermes.routines(agent)).await {
-        Ok(Ok(jobs)) => {
-            let items: Vec<Value> =
-                jobs.iter().filter_map(|j| crate::autonomous::routine_item(name, j)).collect();
-            routine_busy(&items, now, config.agent_restart.routine_margin_minutes)
-        }
-        _ => false, // Hermes not answering: no routine runs in it either
-    };
+    let zone = crate::routines::zone(config);
+    let items: Vec<Value> = crate::routines::list(config, Some(name))
+        .iter()
+        .filter_map(|r| crate::autonomous::routine_item(name, crate::routines::view(r, zone).as_object()?))
+        .collect();
+    let routine = routine_busy(&items, now, config.agent_restart.routine_margin_minutes);
     Activity {
         turn: state.hub.agent_running(name),
         live: live_recently(name, now),

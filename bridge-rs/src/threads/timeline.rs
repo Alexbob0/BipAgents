@@ -199,18 +199,22 @@ pub fn visible(raw: &str, id: &str, images: usize) -> (String, Vec<Value>) {
         let whole = caps.get(0).expect("match");
         out.push_str(&text[last..whole.start()]);
         last = whole.end();
-        let mut file = media_attachment(id, attachments.len(), &caps[1]);
-        file["offset"] = json!(out.trim_start().chars().count());
-        attachments.push(file);
+        let mut found = file_attachment(&caps[1], Some(out.trim_start().chars().count()));
+        found["id"] = json!(format!("{id}.a{}", attachments.len()));
+        attachments.push(found);
     }
     out.push_str(&text[last..]);
     (tidy(&out), attachments)
 }
 
-/// A file an agent's message names by its path (its `MEDIA:` line): attachment `n` of item `id`.
-pub fn media_attachment(id: &str, n: usize, path: &str) -> Value {
-    json!({"id": format!("{id}.a{n}"), "kind": media_kind(path), "name": path.rsplit('/').next().unwrap_or(path),
-           "mime": mime_of(path), "size": null, "path": path})
+/// An agent's file as an attachment (its id set by the message): `offset`, where its `MEDIA:` line was in the text.
+pub fn file_attachment(path: &str, offset: Option<usize>) -> Value {
+    let mut a = json!({"id": null, "kind": media_kind(path), "name": path.rsplit('/').next().unwrap_or(path),
+                       "mime": mime_of(path), "size": null, "path": path});
+    if let Some(at) = offset {
+        a["offset"] = json!(at);
+    }
+    a
 }
 
 fn media_kind(path: &str) -> &'static str {

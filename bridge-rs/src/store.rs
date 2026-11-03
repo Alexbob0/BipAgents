@@ -88,6 +88,14 @@ CREATE TABLE IF NOT EXISTS thread_sends (
     created_at TEXT NOT NULL,
     PRIMARY KEY (agent, client_id)
 );
+CREATE TABLE IF NOT EXISTS thread_files (
+    agent TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    thread_id TEXT NOT NULL,
+    files TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (agent, message_id)
+);
 CREATE TABLE IF NOT EXISTS notifications (
     id TEXT PRIMARY KEY,
     agent TEXT NOT NULL,
@@ -256,6 +264,8 @@ pub struct NewOutbox {
     pub ntfy_id: Option<String>,
     pub sent_at: Option<String>,
     pub session_id: Option<String>,
+    /// Its files, a JSON list of attachments.
+    pub attachments: Option<String>,
 }
 
 type Param = rusqlite::types::Value;
@@ -313,6 +323,10 @@ impl Store {
         if !has("devices", "push_key")? {
             conn.execute_batch("ALTER TABLE devices ADD COLUMN push_key TEXT")?;
         }
+        // a Boîte message's files, as items (JSON list), never `MEDIA:` lines in its text (ntfy.rs `ingest`)
+        if !has("outbox", "attachments")? {
+            conn.execute_batch("ALTER TABLE outbox ADD COLUMN attachments TEXT")?;
+        }
         Ok(())
     }
 
@@ -354,22 +368,6 @@ impl Store {
         tokio::task::spawn_blocking(move || store.count_sync(&sql, &params)).await?
     }
 
-    // -- scheduled tasks -----------------------------------------------------------------------
-
-    /// Records a job seen by the cron watcher; returns whether its replies should be pushed.
-    pub async fn note_cron_job(&self, agent: &str, job: &str, name: Option<&str>) -> anyhow::Result<bool> {
-        self.run(
-            "INSERT INTO cron_jobs (agent, job, name, notify, last_seen) VALUES (?,?,?,1,?) \
-             ON CONFLICT(agent, job) DO UPDATE SET name=COALESCE(excluded.name, cron_jobs.name), \
-             last_seen=excluded.last_seen",
-            vec![text(agent), text(job), opt(name), text(&iso(utcnow()))],
-        )
-        .await?;
-        let rows =
-            self.run("SELECT notify FROM cron_jobs WHERE agent=? AND job=?", vec![text(agent), text(job)]).await?;
-        Ok(rows.first().map(|r| py::truthy(&r["notify"])).unwrap_or(true))
-    }
-
     // -- runs watched for push (survive a restart) ----------------------------------------------
 
     pub async fn remember_run(&self, agent: &str, run_id: &str, session_id: Option<&str>) -> anyhow::Result<()> {
@@ -401,11 +399,7 @@ impl Store {
         self.run("SELECT * FROM watched_runs ORDER BY created_at", vec![]).await
     }
 
-    pub async fn cron_job_name(&self, agent: &str, job: &str) -> anyhow::Result<Option<String>> {
-        let rows = self.run("SELECT name FROM cron_jobs WHERE agent=? AND job=?", vec![text(agent), text(job)]).await?;
-        Ok(rows.first().and_then(|r| r["name"].as_str()).filter(|n| !n.is_empty()).map(str::to_string))
-    }
-
+    /// The mute of each routine Hermes ran before the bridge did (routines.rs `migrate` reads it once).
     pub async fn cron_jobs(&self, agent: Option<&str>) -> anyhow::Result<Vec<Row>> {
         let (mut sql, mut params) = ("SELECT * FROM cron_jobs".to_string(), vec![]);
         if let Some(agent) = agent.filter(|a| !a.is_empty()) {
@@ -422,16 +416,6 @@ impl Store {
                 r
             })
             .collect())
-    }
-
-    pub async fn set_cron_notify(&self, agent: &str, job: &str, notify: bool) -> anyhow::Result<bool> {
-        let n = self
-            .run_count(
-                "UPDATE cron_jobs SET notify=? WHERE agent=? AND job=?",
-                vec![Param::Integer(notify as i64), text(agent), text(job)],
-            )
-            .await?;
-        Ok(n > 0)
     }
 
     // -- devices -----------------------------------------------------------------------------
@@ -516,8 +500,8 @@ impl Store {
         let item_id = py::uuid4_hex();
         let count = self
             .run_count(
-                "INSERT OR IGNORE INTO outbox (id, agent, ntfy_id, title, text, created_at, sent_at, session_id) \
-                 VALUES (?,?,?,?,?,?,?,?)",
+                "INSERT OR IGNORE INTO outbox (id, agent, ntfy_id, title, text, created_at, sent_at, session_id, \
+                 attachments) VALUES (?,?,?,?,?,?,?,?,?)",
                 vec![
                     text(&item_id),
                     text(agent),
@@ -527,6 +511,7 @@ impl Store {
                     text(&outbox_stamp()),
                     opt(extra.sent_at.as_deref()),
                     opt(extra.session_id.as_deref()),
+                    opt(extra.attachments.as_deref()),
                 ],
             )
             .await?;
@@ -671,7 +656,7 @@ mod tests {
         let keys: Vec<&String> = item.keys().collect();
         assert_eq!(
             keys,
-            ["id", "agent", "ntfy_id", "title", "text", "created_at", "sent_at", "session_id", "audio_path"]
+            ["id", "agent", "ntfy_id", "title", "text", "created_at", "sent_at", "session_id", "audio_path", "attachments"]
         );
         assert!(store
             .add_outbox("lea", "Bonjour", NewOutbox { ntfy_id: Some("n1".into()), ..Default::default() })
@@ -684,12 +669,6 @@ mod tests {
         assert_eq!(replaced["title"], "T");
         assert_eq!(store.list_outbox(None, Some("lea"), 10).await.unwrap().len(), 1);
 
-        assert!(store.note_cron_job("lea", "j1", Some("Matin")).await.unwrap());
-        assert!(store.set_cron_notify("lea", "j1", false).await.unwrap());
-        assert!(!store.note_cron_job("lea", "j1", None).await.unwrap());
-        assert_eq!(store.cron_job_name("lea", "j1").await.unwrap().as_deref(), Some("Matin"));
-        let jobs = store.cron_jobs(Some("lea")).await.unwrap();
-        assert_eq!(jobs[0]["notify"], json!(false));
 
         store.set_cursor("lea", "c1").await.unwrap();
         store.set_cursor("lea", "c2").await.unwrap();
