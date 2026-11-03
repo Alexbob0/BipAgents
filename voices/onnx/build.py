@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -127,6 +128,9 @@ def quantize(source: Path, target: Path, scratch: Path) -> None:
                      op_types_to_quantize=["MatMul", "Gemm"], extra_options={"MatMulConstBOnly": True})
     onnx.save_model(onnx.load(str(quantized)), str(target), save_as_external_data=True, all_tensors_to_one_file=True,
                     location=target.name + ".data", size_threshold=1024)
+    # onnx writes the weights file owner-only (0600): an App Store asset pack keeps that mode, and the iPhone's app
+    # then can't open it (its Bip never spoke, 3/11). Everyone may read the package's files.
+    os.chmod(target.parent / (target.name + ".data"), 0o644)
 
 
 def export_mimi(model, path: Path) -> List[str]:
