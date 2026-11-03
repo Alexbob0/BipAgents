@@ -564,25 +564,6 @@ fn model_base_url(model: &ModelChoice) -> Option<String> {
         .or_else(|| (model.provider == "openrouter").then(|| "https://openrouter.ai/api/v1".to_string()))
 }
 
-/// The hub profile's model (every agent is cloned from it), as the installer sets it (hermes.set_model).
-pub fn model_commands(config: &Config, model: &ModelChoice) -> Vec<Vec<String>> {
-    // the hub is the default profile: no -p
-    let setting = |key: &str, value: &str| {
-        vec![config.hermes.bin.clone(), "config".into(), "set".into(), key.to_string(), value.to_string()]
-    };
-    let key_env = key_env(model);
-    let mut commands = vec![setting("model.provider", &model.provider), setting("model.default", &model.name)];
-    if let Some(url) = model_base_url(model) {
-        commands.push(setting("model.base_url", &url));
-    }
-    if model.provider == "custom" {
-        commands.push(setting("model.key_env", key_env));
-    }
-    commands.push(setting(key_env, &model.key));
-    commands.push(setting("model.supports_vision", if model.vision { "true" } else { "false" }));
-    commands
-}
-
 /// « Model unreachable » in the app: the bridge checks the model's /models with its key (`[model]`).
 pub fn write_model_health(config: &SharedConfig, base_url: &str, key: &str) -> anyhow::Result<()> {
     let url = format!("{}/models", base_url.trim_end_matches('/'));
@@ -697,12 +678,9 @@ pub async fn claim_server(
     }
     let state = read_json(snapshot.setup_file.as_deref());
     if !state.get("model_set").map(crate::py::truthy).unwrap_or(false) {
-        for command in model_commands(&snapshot, &request.model) {
-            run(command, env.clone()).await?;
-        }
-        // the providers EUrouter tries first (model_route.rs): in the hub's config, which every agent is cloned from
-        let hub_config = PathBuf::from(crate::agents_admin::install_home(&snapshot)).join("config.yaml");
-        crate::model_route::write(&hub_config, &snapshot.model_provider_order)?;
+        // in the hub's config, which every agent is cloned from
+        let hub = PathBuf::from(crate::agents_admin::install_home(&snapshot));
+        write_model_files(&hub, &request.model, &snapshot.model_provider_order)?;
         run(vec![snapshot.hermes.bin.clone(), "gateway".into(), "restart".into()], env.clone()).await?;
         let base_url = request
             .model
@@ -995,13 +973,19 @@ async fn spares_when_installed(config: SharedConfig, http: reqwest::Client) {
     crate::agent_pool::refill_soon(&config, &http, &crate::agents_admin::default_run());
 }
 
-/// The model in a Hermes home or profile folder, as `hermes config set` writes it: `model` in config.yaml, the key in
+/// The model in a Hermes home or profile folder, as `hermes config set model.*` would write it (no side effect but the
+/// stale route of another provider dropped): `model` in config.yaml, the key in
 /// `.env`; with the providers EUrouter tries first (`order`, model_route.rs).
 pub fn write_model_files(folder: &Path, model: &ModelChoice, order: &[String]) -> anyhow::Result<()> {
     use crate::agents_admin::pyyaml::Yaml;
     let chosen = crate::agents_admin::chosen_thinking(folder);
     crate::profile_files::edit(&folder.join("config.yaml"), |data| {
         if let Some(section) = data.section("model") {
+            if section.get("provider").and_then(Yaml::as_str) != Some(&model.provider) {
+                // the old provider's route goes with it (Hermes' `config set model.provider`, drop_stale_model_route)
+                section.remove("base_url");
+                section.remove("api_mode");
+            }
             section.insert("provider", Yaml::str(&model.provider));
             section.insert("default", Yaml::str(&model.name));
             if let Some(url) = model_base_url(model) {
@@ -1090,7 +1074,7 @@ fn rename_prepared(config: &SharedConfig, prepared: &str, choice: &AgentChoice, 
         Err(_) => (crate::souls::soul_for(name, PREPARED_KIND, Some(lang))?, PREPARED_KIND.to_string()),
     };
     let folder = crate::agents_admin::profile_folder(&snapshot, &agent);
-    crate::profile_files::edit_text(&folder.join("SOUL.md"), |_| Some(soul))?;
+    crate::profile_files::new_soul(&folder, &soul)?;
     // what `hermes profile create --description` wrote
     let description = crate::souls::template(&kind, Some(lang))
         .and_then(|t| t.get("description").map(crate::py::py_str))
@@ -1681,22 +1665,5 @@ mod tests {
             .unwrap_err(),
             "Input should be a valid boolean, unable to interpret input"
         );
-    }
-
-    #[test]
-    fn model_commands_as_the_installer_sets_them() {
-        let mut config = Config::with_key("k");
-        config.hermes.bin = "/opt/hermes".into();
-        let model = ModelChoice {
-            provider: "custom".into(),
-            name: "glm".into(),
-            base_url: Some("https://e/v1".into()),
-            key: "sk".into(),
-            vision: false,
-        };
-        let commands = model_commands(&config, &model);
-        assert_eq!(commands[2], vec!["/opt/hermes", "config", "set", "model.base_url", "https://e/v1"]);
-        assert_eq!(commands[3], vec!["/opt/hermes", "config", "set", "model.key_env", "CUSTOM_MODEL_API_KEY"]);
-        assert_eq!(commands[5], vec!["/opt/hermes", "config", "set", "model.supports_vision", "false"]);
     }
 }

@@ -1,10 +1,22 @@
-//! Where a thread's sessions and rows are read: the agent's Hermes store (`<profile>/state.db`, read-only, no call to
-//! Hermes at all) when the bridge knows the profile folder, else Hermes' API. One agent always uses the same source,
-//! so the ids made from its rows never change between reads.
+//! Where a thread's sessions and rows are read. Hermes' API is the reference: every agent can be read through it
+//! ([`Source::Api`]). The agent's Hermes store (`<profile>/state.db`, read-only, no call to Hermes) is read instead
+//! when the bridge reaches the profile folder, because v0.22.5's API does not give all a timeline needs
+//! (internal/notes/finalise.md, measured on the black-box fake):
+//! - `message_uid`: the stable message ids (`m_<uid>`, kept by the apps and by `thread_messages`) and the in-place
+//!   compaction's rows (a summary taking the uid of the rows it absorbed: `timeline::in_place_compaction`);
+//! - the inactive rows a summary absorbed (the API returns active and compacted rows only);
+//! - hidden sessions in the list (routines, the Bot Chat): `/api/sessions` lists them only for a title search.
+//!
+//! What the bridge reads of state.db is [`STATE_DB_READS`]: a store without one of them is logged as an error once
+//! (the read goes on with a neutral value), its unit test checks them against the pinned Hermes' schema
+//! (tests/golden/hermes_state_schema.sql), and scripts/hermes-schema-check.py against any Hermes checkout (the weekly
+//! upstream check). One agent always uses the same source, so the ids made from its rows never change between reads.
 //!
 //! The API source caches what can't change: a segment that is not the tip any more (Hermes never writes into a
 //! compressed session again) is read once; the tip is read again only after the thread was touched (a run's end, a
 //! Boîte message, a notification) or `TIP_TTL` later. An app opening a conversation costs Hermes nothing then.
+//! Hermes gives a segment's whole lineage (root → segment, each row with its `session_id`), 500 rows a page: the
+//! segment's own rows are kept, page after page.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -16,6 +28,63 @@ use serde_json::Value;
 use crate::config::{AgentConfig, Config};
 use crate::hermes::HermesClient;
 use crate::Dict;
+
+/// Every table and column of Hermes' state.db the bridge reads (threads, message_search.rs, restore_reconcile.rs).
+/// The one list: scripts/hermes-schema-check.py parses it.
+pub const STATE_DB_READS: &[(&str, &[&str])] = &[
+    (
+        "sessions",
+        &["id", "parent_session_id", "title", "source", "model_config", "end_reason", "started_at", "ended_at", "hidden"],
+    ),
+    (
+        "messages",
+        &[
+            "id",
+            "session_id",
+            "role",
+            "content",
+            "timestamp",
+            "message_uid",
+            "tool_calls",
+            "tool_call_id",
+            "tool_name",
+            "display_kind",
+            "display_metadata",
+            "reasoning",
+            "active",
+            "compacted",
+            "_compressed_summary",
+            "display_order",
+        ],
+    ),
+];
+
+/// The tables and columns of [`STATE_DB_READS`] the store at `conn` doesn't have (`table` or `table.column`).
+pub fn missing_columns(conn: &Connection) -> rusqlite::Result<Vec<String>> {
+    let mut missing = Vec::new();
+    for (table, wanted) in STATE_DB_READS {
+        let have = columns(conn, table)?;
+        if have.is_empty() {
+            missing.push(table.to_string());
+            continue;
+        }
+        missing.extend(wanted.iter().filter(|c| !have.iter().any(|h| h == *c)).map(|c| format!("{table}.{c}")));
+    }
+    Ok(missing)
+}
+
+/// Logged once per store: a Hermes whose state.db lost what the bridge reads (an update past the pinned one).
+fn check_schema(path: &std::path::Path, conn: &Connection) {
+    static CHECKED: std::sync::LazyLock<Mutex<std::collections::HashSet<PathBuf>>> = std::sync::LazyLock::new(Default::default);
+    if !CHECKED.lock().unwrap_or_else(|e| e.into_inner()).insert(path.to_path_buf()) {
+        return;
+    }
+    let missing = missing_columns(conn).unwrap_or_default();
+    if !missing.is_empty() {
+        tracing::error!(target: "bipbridge::threads", store = %path.display(), missing = %missing.join(", "),
+                        "Hermes' state.db changed: columns the bridge reads are gone (scripts/hermes-schema-check.py)");
+    }
+}
 
 /// How long the API source trusts a tip it read without being told of a change.
 pub const TIP_TTL: f64 = 30.0;
@@ -267,12 +336,12 @@ impl Source {
                 if let Some(kept) = cache.get(&agent.name, session, tip) {
                     return Ok(kept);
                 }
-                let rows = match hermes.session_messages(agent, session).await {
+                let rows = match api_rows(hermes, agent, session, false).await {
                     Ok(rows) => rows,
                     Err(crate::hermes::HermesError::Http { status: 404, .. }) => Vec::new(),
                     Err(e) => return Err(e.into()),
                 };
-                let rows = Arc::new(rows.iter().enumerate().map(|(i, r)| Row::of_api(i, r)).collect::<Vec<_>>());
+                let rows = Arc::new(rows);
                 cache.put(&agent.name, session, rows.clone());
                 Ok(rows)
             }
@@ -288,8 +357,7 @@ impl Source {
                 Ok(rows.into_iter().find(|r| r.row == row).map(|r| r.content))
             }
             Source::Api(hermes, agent, _) => {
-                let rows = hermes.session_messages_with_images(agent, session).await?;
-                Ok(rows.iter().enumerate().map(|(i, r)| Row::of_api(i, r)).find(|r| r.row == row).map(|r| r.content))
+                Ok(api_rows(hermes, agent, session, true).await?.into_iter().find(|r| r.row == row).map(|r| r.content))
             }
         }
     }
@@ -301,11 +369,43 @@ impl Source {
     }
 }
 
+/// A segment's own rows through Hermes' API, every page (Hermes gives the lineage root → `session`: the rows of the
+/// sessions before it are left out). Stops on a short page, or one that brings nothing new (a Hermes without paging).
+async fn api_rows(
+    hermes: &HermesClient,
+    agent: &AgentConfig,
+    session: &str,
+    images: bool,
+) -> Result<Vec<Row>, crate::hermes::HermesError> {
+    let (mut rows, mut seen, mut offset) = (Vec::new(), std::collections::HashSet::new(), 0);
+    for _ in 0..200 {
+        let page = hermes.session_messages_page(agent, session, offset, images).await?;
+        let size = page.len();
+        let mut fresh = false;
+        for item in &page {
+            let key = item.get("id").map(Value::to_string).unwrap_or_else(|| format!("@{}", offset + seen.len()));
+            if !seen.insert(key) {
+                continue;
+            }
+            fresh = true;
+            if item.get("session_id").and_then(Value::as_str).is_none_or(|s| s == session) {
+                rows.push(Row::of_api(rows.len(), item));
+            }
+        }
+        offset += size;
+        if size < 500 || !fresh {
+            break;
+        }
+    }
+    Ok(rows)
+}
+
 // -- state.db -------------------------------------------------------------------------------------------------------
 
 fn open(path: &PathBuf) -> rusqlite::Result<Connection> {
     let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)?;
     conn.busy_timeout(std::time::Duration::from_secs(2))?;
+    check_schema(path, &conn);
     Ok(conn)
 }
 
@@ -482,5 +582,36 @@ mod tests {
         let mut old = session("a", None, None, None);
         old.has_end_reason = false;
         assert!(session("b", Some("a"), None, None).continues(&old));
+    }
+
+    /// The pinned Hermes' state.db (tests/golden/hermes_state_schema.sql, from scripts/hermes-schema-check.py
+    /// --write) has every column the bridge reads; a store that lost one is reported, and the bridge's own reads
+    /// run on a store made of exactly those columns (none of its SQL reads another one).
+    #[test]
+    fn the_bridge_reads_only_columns_hermes_has() {
+        let golden = include_str!("../../tests/golden/hermes_state_schema.sql")
+            .replace("REFERENCES system_prompts(hash)", "REFERENCES sessions(id)");
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(&golden).unwrap();
+        assert_eq!(missing_columns(&conn).unwrap(), Vec::<String>::new(), "Hermes' schema changed: see STATE_DB_READS");
+        let dir = std::env::temp_dir().join(format!("state-schema-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("state.db");
+        let exact = Connection::open(&path).unwrap();
+        for (table, cols) in STATE_DB_READS {
+            exact.execute_batch(&format!("CREATE TABLE {table} ({});", cols.join(", "))).unwrap();
+        }
+        exact
+            .execute_batch(
+                "INSERT INTO sessions (id, started_at, ended_at, hidden) VALUES ('a', 1, 2, 0);
+                 INSERT INTO messages (id, session_id, role, content, timestamp, message_uid, active, compacted,
+                   _compressed_summary, display_order) VALUES (1, 'a', 'user', 'bonjour', 1, 'u1', 1, 0, 0, 1);",
+            )
+            .unwrap();
+        assert_eq!(db_sessions(&path, None, 10).unwrap()[0].id, "a");
+        assert_eq!(db_rows(&path, "a").unwrap()[0].uid.as_deref(), Some("u1"));
+        exact.execute_batch("ALTER TABLE sessions DROP COLUMN hidden; ALTER TABLE messages DROP COLUMN message_uid;").unwrap();
+        assert_eq!(missing_columns(&exact).unwrap(), ["sessions.hidden", "messages.message_uid"]);
+        assert_eq!(db_rows(&path, "a").unwrap()[0].uid, None, "still read, with a neutral value");
     }
 }

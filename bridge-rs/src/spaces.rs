@@ -20,6 +20,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use crate::agents_admin::pyyaml::Yaml;
 use crate::agents_admin::Run;
 use crate::browsers::pyx::shlex_quote;
 use crate::config::{AgentConfig, Config};
@@ -396,12 +397,14 @@ impl Spaces {
             let has_start = config.spaces.start.as_deref().map(|s| !s.is_empty()).unwrap_or(false);
             let sandboxed = has_start || sandbox_available(config);
             let bin = config.hermes.bin.as_str();
-            // Attachments only from its own files (a routed profile reads this from its own config).
-            self.run(&[bin, "-p", &agent.name, "config", "set", "gateway.strict", "true"], env.clone()).await?;
-            // Hermes' own browser tools: « Browser Use » puts a socket under the agent's folder, too long a path here.
-            // (0.22.5 still reads it, « off » = the built-in tools; 0.23.0 drops `browser.backend` with the built-in
-            // browser tools, config v52: there, turn the `browser` toolset off for this profile instead.)
-            self.run(&[bin, "-p", &agent.name, "config", "set", "browser.backend", "off"], env.clone()).await?;
+            // Attachments only from its own files (a routed profile reads this from its own config). Hermes' own
+            // browser tools: « Browser Use » puts a socket under the agent's folder, too long a path here. (0.22.5
+            // still reads it, « off » = the built-in tools; 0.23.0 drops `browser.backend` with the built-in browser
+            // tools, config v52: there, turn the `browser` toolset off for this profile instead.)
+            crate::profile_files::set(
+                &root.join("profiles").join(&agent.name).join("config.yaml"),
+                &[("gateway.strict", Yaml::Bool(true)), ("browser.backend", Yaml::str("off"))],
+            )?;
             if !has_start && sandbox_available(config) {
                 // Terminal, files, code and the browser's desktop in a container; nothing of the host mounted.
                 self.run(&[bin, "-p", &agent.name, "config", "set", "terminal.backend", "docker"], env.clone()).await?;
