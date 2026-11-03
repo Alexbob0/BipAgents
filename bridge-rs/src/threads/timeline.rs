@@ -199,14 +199,18 @@ pub fn visible(raw: &str, id: &str, images: usize) -> (String, Vec<Value>) {
         let whole = caps.get(0).expect("match");
         out.push_str(&text[last..whole.start()]);
         last = whole.end();
-        let path = caps[1].to_string();
-        let n = attachments.len();
-        attachments.push(json!({"id": format!("{id}.a{n}"), "kind": media_kind(&path),
-                                "name": path.rsplit('/').next().unwrap_or(&path), "mime": mime_of(&path),
-                                "size": null, "path": path, "offset": out.trim_start().chars().count()}));
+        let mut file = media_attachment(id, attachments.len(), &caps[1]);
+        file["offset"] = json!(out.trim_start().chars().count());
+        attachments.push(file);
     }
     out.push_str(&text[last..]);
     (tidy(&out), attachments)
+}
+
+/// A file an agent's message names by its path (its `MEDIA:` line): attachment `n` of item `id`.
+pub fn media_attachment(id: &str, n: usize, path: &str) -> Value {
+    json!({"id": format!("{id}.a{n}"), "kind": media_kind(path), "name": path.rsplit('/').next().unwrap_or(path),
+           "mime": mime_of(path), "size": null, "path": path})
 }
 
 fn media_kind(path: &str) -> &'static str {

@@ -2,9 +2,9 @@
   "$schema": "../schema.json",
   "type": "room_reply",
   "audit_row": 7,
-  "summary": "An agent answered in a group discussion (« Discussion entre agents ») nobody looks at.",
+  "summary": "An agent answered in a group discussion (« Discussion entre agents »): journaled for every reply, pushed unless the room is on screen.",
   "producers": [
-    "rooms.rs:~1959 -> notify_room"
+    "rooms.rs tell -> notify_room"
   ],
   "policy": {
     "per_agent_switch": true
@@ -12,10 +12,10 @@
   "v2": {
     "t": "room_reply",
     "c": "room:<id>",
-    "m": "m_<message id>",
+    "m": "rm_<message id>",
     "loc_key": "notif.reply",
     "collapse": "n",
-    "link": "bipagents://open?agent=vie&c=room:room_1&m=m_<message id>&t=room_reply",
+    "link": "bipagents://open?agent=vie&c=room:room_1&m=rm_<message id>&t=room_reply",
     "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
   },
   "variants": [
@@ -33,7 +33,8 @@
           "args": {
             "room_id": "room_1",
             "room_title": "Vacances",
-            "text": "Je propose Lisbonne."
+            "text": "Je propose Lisbonne.",
+            "message": "rm_3"
           }
         },
         "pointer": {
@@ -60,6 +61,7 @@
         "t": "room_reply",
         "agent": "vie",
         "c": "room:room_1",
+        "m": "rm_3",
         "r": "room_1"
       },
       "push": {
