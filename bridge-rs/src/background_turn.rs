@@ -8,7 +8,7 @@
 //!   compression, never a closed segment. A starter names the thread by any of its sessions, its id or `main`;
 //!   [`Pipeline::work_session`] opens a work conversation of its own (a task's « 🧩 … », a trigger's of the day);
 //! - **whether**: the month's AI credit used up holds every starter except the ones reporting work already done
-//!   ([`Kind::needs_credit`]); a conversation (or, for an event, the agent) busy with another run is waited for;
+//!   ([`Kind::needs_credit`]); a conversation (or, for a trigger, the agent) busy with another run is waited for;
 //! - **the same prompt**: never run instructions (Hermes adds them to the system prompt, which then differs from the
 //!   agent's conversations and loses the model server's prompt cache: cache audit #2, 2026-11-03); what a kind of
 //!   turn must know (« this is a background task… ») travels in the turn's own message, as a hidden note;
@@ -65,9 +65,9 @@ impl Kind {
         matches!(self, Kind::Task | Kind::Trigger | Kind::Watcher)
     }
 
-    /// Started by an event: waits while the agent runs anything else (one turn at a time on its model).
+    /// A routine started by an event waits while the agent runs anything else (triggers.rs: one at a time).
     fn waits_for_agent(self) -> bool {
-        matches!(self, Kind::Trigger | Kind::Watcher)
+        self == Kind::Trigger
     }
 
     /// The brake's higher limits for long work (loop_brake.rs).
@@ -89,7 +89,7 @@ pub struct Turn {
     pub budget: Option<i64>,
     pub options: Option<Value>,
     pub max_seconds: f64,
-    /// How long a busy conversation (or agent) is waited for; 0: not looked at (a task in its own conversation).
+    /// How long a busy conversation (or a trigger's agent) is waited for; 0: not looked at (a task in its own conversation).
     pub busy_wait: f64,
 }
 
