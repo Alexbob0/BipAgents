@@ -27,6 +27,8 @@ def echo(seen):
         return JSONResponse({})
     if seen.method == "GET" and seen.path.endswith("/api/sessions/pair-1/messages"):
         return JSONResponse({"messages": [{"role": "assistant", "content": "Des lasagnes."}]})
+    if seen.method == "GET" and seen.path.endswith("/api/jobs"):
+        return JSONResponse({"jobs": []})   # the routines' one look (routines.rs `migrate`): none
     if seen.method == "GET" and "/v1/runs/" in seen.path:
         return JSONResponse({"status": "running", "session_id": "bot-1" if "run-bot" in seen.path else "s9"})
     RECEIVED.append((seen.path, seen.query, seen.header("authorization"), seen.json()))

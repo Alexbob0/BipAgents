@@ -109,6 +109,9 @@ pub struct Book {
 
 static LOCK: LazyLock<Mutex<()>> = LazyLock::new(Default::default);
 static RUNNING: LazyLock<Mutex<std::collections::HashSet<String>>> = LazyLock::new(Default::default);
+/// When each agent's Hermes was last asked for its jobs (`migrate`).
+static TRIED: LazyLock<Mutex<std::collections::HashMap<String, f64>>> = LazyLock::new(Default::default);
+const MIGRATE_EVERY_SECONDS: f64 = 60.0;
 
 fn path(config: &Config) -> std::path::PathBuf {
     std::path::Path::new(&config.data_dir()).join("routines.json")
@@ -406,9 +409,14 @@ exactly {SILENT}.{skills}\n-->",
 pub async fn scheduler(state: AppState) {
     loop {
         let config = state.config();
-        for agent in config.agents.values() {
-            if !load(&config).migrated.contains(&agent.name) {
+        let migrated = load(&config).migrated;
+        for agent in config.agents.values().filter(|a| !migrated.contains(&a.name)) {
+            // a Hermes that doesn't answer is asked again every few minutes, not at every tick
+            let last = TRIED.lock().unwrap_or_else(|e| e.into_inner()).insert(agent.name.clone(), py::time_time());
+            if last.is_none_or(|at| py::time_time() - at > MIGRATE_EVERY_SECONDS) {
                 migrate(&state, agent).await;
+            } else {
+                TRIED.lock().unwrap_or_else(|e| e.into_inner()).insert(agent.name.clone(), last.unwrap_or_default());
             }
         }
         if crate::place_move::moving(&config) {

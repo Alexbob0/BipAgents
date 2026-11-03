@@ -656,7 +656,7 @@ mod tests {
         let keys: Vec<&String> = item.keys().collect();
         assert_eq!(
             keys,
-            ["id", "agent", "ntfy_id", "title", "text", "created_at", "sent_at", "session_id", "audio_path"]
+            ["id", "agent", "ntfy_id", "title", "text", "created_at", "sent_at", "session_id", "audio_path", "attachments"]
         );
         assert!(store
             .add_outbox("lea", "Bonjour", NewOutbox { ntfy_id: Some("n1".into()), ..Default::default() })

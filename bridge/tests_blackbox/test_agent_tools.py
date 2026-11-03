@@ -52,7 +52,7 @@ def test_the_protocol_and_the_tokens(bridge):
                                           "mail_overview", "mail_bulk",
                                           "knowledge_read", "knowledge_search", "reminders_list", "reminders_add",
                                           "reminders_complete", "propose_task", "start_task", "route", "map_image", "upcoming_dates", "space_estimate",
-                                          "give_file", "room_history", "routine_trigger",
+                                          "give_file", "room_history", "routine_trigger", "routine_schedule",
                                           # the Carnet's (on by default)
                                           "notebook_search", "notebook_read", "notebook_note", "notebook_edit",
                                           "notebook_task", "notebook_record", "notebook_fill"]

@@ -110,7 +110,7 @@ def test_an_agent_s_routines_once_its_hermes_answers_and_after(bridges, fakes):
         return None
 
     fakes.hermes.override = hermes   # its Hermes back: its jobs move at the next look
-    assert wait_until(lambda: bridge.get("/v1/agents/coach/routines", headers=AUTH).json()["jobs"], timeout=40)
+    assert wait_until(lambda: bridge.get("/v1/agents/coach/routines", headers=AUTH).json()["jobs"], timeout=90)
     first = bridge.get("/v1/autonomous", headers=AUTH, params={"agent": "coach"}).json()
     assert {i["id"] for i in first["items"]} == {"routine:coach:k1", "connector:coach:c1"} and first["unreachable"] == []
     assert first["items"][0]["when"]["text"] in ("Chaque jour à 7:00",)
