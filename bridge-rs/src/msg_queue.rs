@@ -9,19 +9,19 @@
 //! queue's own event stream, `session_state`), and changes it the same way:
 //!
 //!     GET    /v1/agents/{id}/queue                    the agent's queue (below)
-//!     POST   /v1/agents/{id}/queue                    {session_id, text, run_id?, front?}  waits after the turn
-//!                                                     going on (`run_id`: the one the app follows), or goes now
 //!     POST   /v1/agents/{id}/queue/order              {ids: [...]}  those first, in that order; the rest after
 //!     DELETE /v1/agents/{id}/queue/{item}             cancelled
 //!     POST   /v1/agents/{id}/queue/{item}/now         into the turn going on (a steer), else started at once
 //!     POST   /v1/agents/{id}/queue/pause | resume     paused, nothing new starts (the turn going on finishes)
-//!     POST   /v1/agents/{id}/steer                    {session_id, text, run_id?}  into the turn going on; when it
-//!                                                     no longer takes words (it just ended), first in the queue
 //!     GET    /v1/agents/{id}/queue/events             SSE: `queue` (the whole queue, at once and at each change),
 //!                                                     `queue.started` {run_id, session_id, item_id, text}
 //!
-//! The queue: `{agent, version, paused, items: [{id, session_id, text, created_at, late}], running: {item_id, run_id,
-//! session_id, text, started_at} | null}`; `version` grows at each change (an app keeps the highest it saw), `late`:
+//! Messages come in through the conversation's one sending route (threads/send.rs, `POST /v1/threads/{id}/messages`):
+//! into the turn going on (a steer), or here with « Après », or when the turn takes no words (files, a turn just
+//! ending).
+//!
+//! The queue: `{agent, version, paused, items: [{id, session_id, text, created_at, late, client_id}], running:
+//! {item_id, run_id, session_id, text, started_at} | null}`; `version` grows at each change (an app keeps the highest it saw), `late`:
 //! words a turn no longer took (Hermes' `pending_steer` on its end), first in line.
 //!
 //! What the bridge decides (the run hub tells it each run's end, runs.rs):
@@ -57,7 +57,7 @@ use crate::app::AppState;
 use crate::config::{AgentConfig, SharedConfig};
 use crate::hermes::{HermesClient, HermesError};
 use crate::runs::RunHub;
-use crate::web::{self, check_max_len, check_min_len, ApiResult, FieldError, HttpError, Json, Validate};
+use crate::web::{self, ApiResult, FieldError, HttpError, Json, Validate};
 
 /// Items an agent's queue holds at most.
 pub const ITEMS_MAX: usize = 30;
@@ -79,6 +79,19 @@ pub struct Item {
     pub created_at: String,
     #[serde(default)]
     pub late: bool,
+    /// The app's id for the message (threads/send.rs): its timeline item carries it once Hermes has it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    /// What goes to Hermes when it starts (notes, photos), kept off the apps' answers; else `text`.
+    #[serde(default, skip_serializing)]
+    pub input: Option<Value>,
+}
+
+/// A message the sending route hands to the queue: its app id and Hermes' input.
+#[derive(Debug, Clone, Default)]
+pub struct Sent {
+    pub client_id: Option<String>,
+    pub input: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -94,6 +107,8 @@ pub struct Running {
 struct Steer {
     run_id: String,
     text: String,
+    #[serde(default)]
+    client_id: Option<String>,
 }
 
 /// One agent's queue, as kept on disk.
@@ -177,11 +192,12 @@ impl AgentQueue {
             }
         }
         // words steered through the bridge that the turn never took: first in line
-        let steered: Vec<String> = self.steers.iter().filter(|s| s.run_id == run_id).map(|s| s.text.clone()).collect();
+        let steered: Vec<Steer> = self.steers.iter().filter(|s| s.run_id == run_id).cloned().collect();
         self.steers.retain(|s| s.run_id != run_id);
         if let (Some(s), Some(pending)) = (session.as_deref(), pending_steer.map(str::trim).filter(|p| !p.is_empty())) {
-            if steered.iter().any(|t| pending.contains(t.trim())) {
-                self.items.insert(0, new_item(s, pending, true));
+            if let Some(first) = steered.iter().find(|t| pending.contains(t.text.trim())) {
+                let sent = Sent { client_id: first.client_id.clone(), input: None };
+                self.items.insert(0, new_item(s, pending, true, sent));
                 changed = true;
             }
         }
@@ -206,13 +222,15 @@ impl AgentQueue {
     }
 }
 
-fn new_item(session_id: &str, text: &str, late: bool) -> Item {
+fn new_item(session_id: &str, text: &str, late: bool, sent: Sent) -> Item {
     Item {
         id: format!("q{}", crate::py::token_urlsafe(9).replace(['-', '_'], "x")),
         session_id: session_id.to_string(),
         text: text.to_string(),
         created_at: crate::store::iso(crate::store::utcnow()),
         late,
+        client_id: sent.client_id,
+        input: sent.input,
     }
 }
 
@@ -375,12 +393,13 @@ impl Queues {
         text: &str,
         waits_for: Option<&str>,
         front: bool,
+        sent: Sent,
     ) -> Result<AgentQueue, &'static str> {
         let (queue, added) = self.update(&agent.name, |q| {
             if q.items.len() >= ITEMS_MAX {
                 return (false, false);
             }
-            let item = new_item(session_id, text.trim(), false);
+            let item = new_item(session_id, text.trim(), false, sent);
             if front {
                 q.items.insert(0, item);
             } else {
@@ -459,6 +478,7 @@ impl Queues {
         session_id: &str,
         run_id: Option<&str>,
         text: &str,
+        client_id: Option<&str>,
     ) -> Result<Option<String>, HermesError> {
         let Some(run) = run_id.map(str::to_string).or_else(|| self.running_run(&agent.name, session_id)) else {
             return Ok(None);
@@ -467,7 +487,11 @@ impl Queues {
             Ok(()) => {
                 // kept quietly: nothing the apps show changed
                 self.update_quiet(&agent.name, |q| {
-                    q.steers.push(Steer { run_id: run.clone(), text: text.trim().to_string() });
+                    q.steers.push(Steer {
+                        run_id: run.clone(),
+                        text: text.trim().to_string(),
+                        client_id: client_id.map(str::to_string),
+                    });
                     let extra = q.steers.len().saturating_sub(50);
                     q.steers.drain(..extra);
                     (true, ())
@@ -545,7 +569,8 @@ impl Queues {
 
     /// Starts an item as a turn of its conversation (taken out of the list once Hermes has it).
     async fn start(&self, agent: &AgentConfig, item: &Item) -> Option<String> {
-        let run_id = match self.hermes.start_run(agent, &item.text, &item.session_id, None).await {
+        let input = item.input.clone().unwrap_or_else(|| Value::String(item.text.clone()));
+        let run_id = match self.hermes.start_run_input(agent, input, &item.session_id, None).await {
             Ok(run_id) => run_id,
             Err(exc) => {
                 tracing::warn!(agent = %agent.name, error = %exc, "queue: the next message did not start (tried again soon)");
@@ -583,7 +608,12 @@ impl Queues {
     pub async fn send_now(&self, agent: &AgentConfig, item_id: &str) -> Result<Value, HttpError> {
         let queue = self.get(&agent.name);
         let item = queue.items.iter().find(|i| i.id == item_id).cloned().ok_or_else(HttpError::not_found)?;
-        if let Some(run) = self.steer(agent, &item.session_id, None, &item.text).await.map_err(hermes_error)? {
+        let steerable = item.input.as_ref().is_none_or(Value::is_string);
+        let steered = match steerable {
+            true => self.steer(agent, &item.session_id, None, &item.text, item.client_id.as_deref()).await.map_err(hermes_error)?,
+            false => None,
+        };
+        if let Some(run) = steered {
             let queue = self.remove(&agent.name, item_id).unwrap_or_else(|| self.get(&agent.name));
             return Ok(json!({"steered": true, "run_id": run, "queue": queue.snapshot(&agent.name)}));
         }
@@ -647,53 +677,6 @@ pub fn queues_of(state: &AppState) -> Arc<Queues> {
 
 // -- routes -----------------------------------------------------------------------------------------------------------
 
-fn check_session(session_id: &str) -> ApiResult<()> {
-    if !crate::app::SESSION_ID.is_match(session_id) {
-        return Err(HttpError::new(400, "invalid session_id"));
-    }
-    Ok(())
-}
-
-fn check_run(run_id: Option<&str>) -> ApiResult<Option<String>> {
-    match run_id.filter(|r| !r.is_empty()) {
-        Some(r) if crate::app::RUN_ID.is_match(r) => Ok(Some(r.to_string())),
-        Some(_) => Err(HttpError::new(400, "invalid run_id")),
-        None => Ok(None),
-    }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct NewItem {
-    pub session_id: String,
-    pub text: String,
-    #[serde(default)]
-    pub run_id: Option<String>,
-    #[serde(default)]
-    pub front: bool,
-}
-
-impl Validate for NewItem {
-    fn validate(&self, errors: &mut Vec<FieldError>) {
-        check_min_len(errors, "text", Some(self.text.trim()), 1);
-        check_max_len(errors, "text", Some(&self.text), TEXT_MAX);
-    }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct SteerBody {
-    pub session_id: String,
-    pub text: String,
-    #[serde(default)]
-    pub run_id: Option<String>,
-}
-
-impl Validate for SteerBody {
-    fn validate(&self, errors: &mut Vec<FieldError>) {
-        check_min_len(errors, "text", Some(self.text.trim()), 1);
-        check_max_len(errors, "text", Some(&self.text), TEXT_MAX);
-    }
-}
-
 #[derive(Debug, Deserialize)]
 pub struct Order {
     pub ids: Vec<String>,
@@ -710,20 +693,6 @@ fn agent_of(state: &AppState, agent_id: &str) -> ApiResult<AgentConfig> {
 async fn get_queue(State(state): State<AppState>, UrlPath(agent_id): UrlPath<String>) -> ApiResult<Response> {
     let agent = agent_of(&state, &agent_id)?;
     Ok(web::ok(queues_of(&state).get(&agent.name).snapshot(&agent.name)))
-}
-
-async fn add_item(
-    State(state): State<AppState>,
-    UrlPath(agent_id): UrlPath<String>,
-    Json(body): Json<NewItem>,
-) -> ApiResult<Response> {
-    let agent = agent_of(&state, &agent_id)?;
-    check_session(&body.session_id)?;
-    let run = check_run(body.run_id.as_deref())?;
-    let queue = queues_of(&state)
-        .add(&agent, &body.session_id, &body.text, run.as_deref(), body.front)
-        .map_err(|_| HttpError::new(409, "too many messages waiting"))?;
-    Ok(web::ok(queue.snapshot(&agent.name)))
 }
 
 async fn order_items(
@@ -763,25 +732,6 @@ async fn resume(State(state): State<AppState>, UrlPath(agent_id): UrlPath<String
     Ok(web::ok(queues_of(&state).set_paused(&agent.name, false).snapshot(&agent.name)))
 }
 
-async fn steer(
-    State(state): State<AppState>,
-    UrlPath(agent_id): UrlPath<String>,
-    Json(body): Json<SteerBody>,
-) -> ApiResult<Response> {
-    let agent = agent_of(&state, &agent_id)?;
-    check_session(&body.session_id)?;
-    let run = check_run(body.run_id.as_deref())?;
-    let queues = queues_of(&state);
-    if let Some(run) = queues.steer(&agent, &body.session_id, run.as_deref(), &body.text).await.map_err(hermes_error)? {
-        return Ok(web::ok(json!({"steered": true, "run_id": run})));
-    }
-    // the turn no longer takes words (it just ended, or none goes on): first in line, so it goes right after
-    let queue = queues
-        .add(&agent, &body.session_id, &body.text, None, true)
-        .map_err(|_| HttpError::new(409, "too many messages waiting"))?;
-    Ok(web::ok(json!({"steered": false, "queued": true, "queue": queue.snapshot(&agent.name)})))
-}
-
 async fn queue_events(State(state): State<AppState>, UrlPath(agent_id): UrlPath<String>) -> ApiResult<Response> {
     let agent = agent_of(&state, &agent_id)?;
     let queues = queues_of(&state);
@@ -813,14 +763,13 @@ async fn queue_events(State(state): State<AppState>, UrlPath(agent_id): UrlPath<
 /// Mounted under /v1 with the bridge key.
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/agents/{agent_id}/queue", get(get_queue).post(add_item))
+        .route("/agents/{agent_id}/queue", get(get_queue))
         .route("/agents/{agent_id}/queue/order", post(order_items))
         .route("/agents/{agent_id}/queue/pause", post(pause))
         .route("/agents/{agent_id}/queue/resume", post(resume))
         .route("/agents/{agent_id}/queue/events", get(queue_events))
         .route("/agents/{agent_id}/queue/{item_id}", delete(delete_item))
         .route("/agents/{agent_id}/queue/{item_id}/now", post(send_now))
-        .route("/agents/{agent_id}/steer", post(steer))
 }
 
 #[cfg(test)]
@@ -834,6 +783,8 @@ mod tests {
             text: format!("text {id}"),
             created_at: "t".into(),
             late: false,
+            client_id: None,
+            input: None,
         }
     }
 
@@ -877,11 +828,12 @@ mod tests {
     #[test]
     fn words_the_turn_did_not_take_come_back_first() {
         let mut q = queue_of(&[("a", "s1")]);
-        q.steers.push(Steer { run_id: "r1".into(), text: "et en bio".into() });
+        q.steers.push(Steer { run_id: "r1".into(), text: "et en bio".into(), client_id: Some("c-steer-1".into()) });
         let (changed, follows) = q.run_ended("r1", Some("s1"), "run.completed", Some("et en bio"));
         assert!(changed && follows);
         assert_eq!(q.items.len(), 2);
         assert!(q.items[0].late && q.items[0].text == "et en bio" && q.items[0].session_id == "s1");
+        assert_eq!(q.items[0].client_id.as_deref(), Some("c-steer-1"), "still the app's message");
         assert!(q.steers.is_empty());
         // words steered straight at Hermes (not through the bridge) are the app's own to send
         let mut q = AgentQueue::default();
@@ -943,9 +895,9 @@ mod tests {
         let hub = Arc::new(RunHub::new(hermes.clone(), None, 60, None));
         let queues = Queues::new(shared.clone(), hermes.clone(), hub.clone());
         let agent = config.agents["maison"].clone();
-        queues.add(&agent, "s1", "  puis range  ", Some("r1"), false).unwrap();
+        queues.add(&agent, "s1", "  puis range  ", Some("r1"), false, Sent::default()).unwrap();
         let mut events = queues.subscribe();
-        queues.add(&agent, "s1", "et appelle", None, true).unwrap();
+        queues.add(&agent, "s1", "et appelle", None, true, Sent::default()).unwrap();
         let (who, kind, data) = events.recv().await.unwrap();
         assert_eq!((who.as_str(), kind.as_str()), ("maison", "queue"));
         assert_eq!(data["items"][0]["text"], "et appelle");
@@ -960,8 +912,8 @@ mod tests {
         assert_eq!(q.runs.get("s1").map(String::as_str), Some("r1"));
         assert_eq!(q.version, 2);
         for i in 2..ITEMS_MAX {
-            again.add(&agent, "s1", &format!("m{i}"), None, false).unwrap();
+            again.add(&agent, "s1", &format!("m{i}"), None, false, Sent::default()).unwrap();
         }
-        assert_eq!(again.add(&agent, "s1", "one more", None, false).unwrap_err(), "full");
+        assert_eq!(again.add(&agent, "s1", "one more", None, false, Sent::default()).unwrap_err(), "full");
     }
 }

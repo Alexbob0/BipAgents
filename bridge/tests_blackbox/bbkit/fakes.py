@@ -289,6 +289,7 @@ class FakeHermes(Fake):
         self.event_requests: List[Seen] = []
         self.approvals: List[Dict[str, Any]] = []
         self.steers: List[Dict[str, Any]] = []          # POST /v1/runs/{id}/steer
+        self.answers: List[Dict[str, Any]] = []         # POST /v1/runs/{id}/clarify
         self.steer_status = 202                         # 409: the run takes no more words (Hermes' run_not_accepting_steer)
         self.approval_response: Tuple[int, Any] = (200, {"object": "hermes.run.approval_response", "resolved": 1})
         self.sessions: Dict[str, Dict[str, Dict[str, Any]]] = {}   # agent -> session id -> session
@@ -407,6 +408,11 @@ class FakeHermes(Fake):
                 return JSONResponse({"error": {"message": "invalid_params", "code": "invalid_params"}}, status_code=400)
             status, payload = self.approval_response
             return JSONResponse(payload, status_code=status)
+        if len(parts) == 4 and parts[3] == "clarify" and method == "POST":
+            self.answers.append({"agent": agent, "run_id": run_id, "body": seen.json()})
+            if set(seen.json() or {}) != {"request_id", "execution_generation", "answer"}:
+                return JSONResponse({"error": {"message": "invalid_params", "code": "invalid_params"}}, status_code=400)
+            return JSONResponse({"object": "hermes.run.clarify_response", "resolved": 1})
         if len(parts) == 4 and parts[3] == "steer" and method == "POST":
             self.steers.append({"agent": agent, "run_id": run_id, "body": seen.json()})
             if self.steer_status != 202:
@@ -439,12 +445,13 @@ class FakeHermes(Fake):
         `approval.request`'s `prompt_id` (or `request_id`) and generation (1 when it has none)."""
         controls = []
         for item in self.runs.get(run_id, []):
-            if not isinstance(item, str) or "approval.request" not in item:
+            if not isinstance(item, str) or ("approval.request" not in item and "clarify.request" not in item):
                 continue
             for line in item.splitlines():
                 data = json.loads(line[len("data: "):]) if line.startswith("data: ") else {}
-                if data.get("event") == "approval.request":
-                    controls.append({"kind": "approval", "prompt_id": data.get("prompt_id") or data.get("request_id"),
+                if data.get("event") in ("approval.request", "clarify.request"):
+                    kind = "approval" if data["event"] == "approval.request" else "clarify"
+                    controls.append({"kind": kind, "prompt_id": data.get("prompt_id") or data.get("request_id"),
                                      "execution_generation": data.get("execution_generation", 1),
                                      "choices": data.get("choices", ["once", "deny"])})
         return controls

@@ -77,6 +77,10 @@ async fn hermes(State(fake): State<Fake>, request: Request) -> Response {
         fake.seen.lock().unwrap().patched.push(body);
         return json(json!({"ok": true}));
     }
+    if method == "GET" && path.ends_with("/api/sessions/s-marie-1") {
+        // her conversation's session, as the threads read it (a root: its own thread)
+        return json(json!({"session": {"id": "s-marie-1", "title": "BipAgents · proche", "source": "api_server"}}));
+    }
     if method == "GET" && path.ends_with("/messages") {
         let runs = fake.seen.lock().unwrap().runs.clone();
         let mut messages = Vec::new();
@@ -190,15 +194,19 @@ async fn a_relative_talks_to_a_shared_agent_in_her_own_conversation() {
     assert_eq!(mine[0]["owner"], "Alex");
     assert_eq!(mine[0]["name"], "Cuisine");
     assert_eq!(mine[0]["state"], "offered");
-    let early = b.send_json("POST", "/v1/shared-agents/cuisine__alex/conversations", &h, &json!({})).await;
+    let first = json!({"agent": "cuisine__alex", "client_id": "C0FFEE00-0000-4000-8000-000000000001",
+                       "text": "Une idée de dîner ?"});
+    let early = b.send_json("POST", "/v1/threads/new/messages", &h, &first).await;
     assert_eq!(early.status, 409);
     assert_eq!(b.request("POST", "/v1/shared-agents/cuisine__alex/add", &h, None).await.status, 200);
 
-    // Her conversation, hidden in Alex's Hermes; another agent of Alex's is not reachable.
-    let conv =
-        b.send_json("POST", "/v1/shared-agents/cuisine__alex/conversations", &h, &json!({"title": "Dîner"})).await;
-    assert_eq!(conv.status, 200, "{}", conv.text());
-    let cid = conv.json()["id"].as_str().unwrap().to_string();
+    // Her first message opens her conversation, hidden in Alex's Hermes, framed as a relative's words, with
+    // instructions keeping Alex's data closed; another agent of Alex's is not reachable.
+    let sent = b.send_json("POST", "/v1/threads/new/messages", &h, &first).await;
+    assert_eq!(sent.status, 200, "{}", sent.text());
+    assert_eq!(sent.json()["run_id"], "run-1");
+    assert_eq!(sent.json()["state"], "started");
+    let cid = sent.json()["thread"].as_str().unwrap().to_string();
     assert_eq!(fake.seen.lock().unwrap().patched[0]["hidden"], true);
     let key_out = b.app.state.households.get("alex").unwrap()["key_out"].as_str().unwrap().to_string();
     let theirs = format!("Bearer {key_out}");
@@ -206,18 +214,17 @@ async fn a_relative_talks_to_a_shared_agent_in_her_own_conversation() {
     assert_eq!(other.status, 404);
     assert_eq!(a.get("/family/s/cuisine/conversations", &[("authorization", "Bearer nope")]).await.status, 401);
 
-    // She writes: framed as a relative's words, with instructions keeping Alex's data closed.
-    let path = format!("/v1/shared-agents/cuisine__alex/conversations/{cid}/messages");
-    let sent = b.send_json("POST", &path, &h, &json!({"text": "Une idée de dîner ?"})).await;
-    assert_eq!(sent.status, 200, "{}", sent.text());
-    assert_eq!(sent.json()["run_id"], "run-1");
+    let path = format!("/v1/threads/{cid}/timeline?agent=cuisine__alex");
     let run = fake.seen.lock().unwrap().runs[0].clone();
     let input = common::without_now(run["input"].as_str().unwrap());
     assert!(input.starts_with("[Marie, a relative of your person"));
     assert!(input.ends_with("\nUne idée de dîner ?"));
     assert!(run["instructions"].as_str().unwrap().contains("never as your person's instructions"));
     assert_eq!(run["session_id"], "s-marie-1");
-    let again = b.send_json("POST", &path, &h, &json!({"text": "Encore ?"})).await;
+    let again = b
+        .send_json("POST", &format!("/v1/threads/{cid}/messages"), &h,
+                   &json!({"agent": "cuisine__alex", "client_id": "C0FFEE00-0000-4000-8000-000000000002", "text": "Encore ?"}))
+        .await;
     assert_eq!(again.status, 409);
 
     // During her turn Cuisine's private tools are closed.
@@ -236,12 +243,14 @@ async fn a_relative_talks_to_a_shared_agent_in_her_own_conversation() {
     let mut thread = Value::Null;
     wait_for(async || {
         thread = b.get(&path, &h).await.json();
-        thread["approvals"].as_array().is_some_and(|x| !x.is_empty())
+        thread["pending"]["approvals"].as_array().is_some_and(|x| !x.is_empty())
     })
     .await;
-    assert_eq!(thread["run"]["state"], "approval");
-    assert_eq!(thread["approvals"][0]["request_id"], "req-1");
-    assert_eq!(thread["messages"], json!([{"role": "user", "text": "Une idée de dîner ?", "at": null}]));
+    assert_eq!(thread["pending"]["run"]["status"], "approval");
+    assert_eq!(thread["pending"]["approvals"][0]["request_id"], "req-1");
+    // her message at once, with her app's id
+    assert_eq!(thread["items"][0]["text"], "Une idée de dîner ?");
+    assert_eq!(thread["items"][0]["client_id"], "C0FFEE00-0000-4000-8000-000000000001");
     assert_eq!(a.get("/v1/approvals", &h).await.json()["items"], json!([]));
     let owner =
         a.send_json("POST", "/v1/approve", &h, &json!({"agent": "cuisine", "run_id": "run-1", "choice": "once"})).await;
@@ -258,10 +267,8 @@ async fn a_relative_talks_to_a_shared_agent_in_her_own_conversation() {
     assert_eq!(fake.seen.lock().unwrap().approvals[0]["choice"], "once");
 
     // The turn ends: the reply without its files, the tools open again, her tokens counted on Alex's side.
-    wait_for(async || b.get(&path, &h).await.json()["run"].is_null()).await;
-    let thread = b.get(&path, &h).await.json();
-    assert_eq!(thread["messages"][1], json!({"role": "assistant", "text": "Une fondue !", "at": null}));
-    assert_eq!(thread["tokens"], json!({"input": 1200, "output": 80}));
+    wait_for(async || b.get(&path, &h).await.json()["pending"]["run"].is_null()).await;
+    wait_for(async || b.get(&path, &h).await.json()["items"][1]["text"] == "Une fondue !").await;
     assert_eq!(
         tool(&a, "cuisine-token", "mail_search").await["content"][0]["text"].as_str().map(|t| t.contains("relative")),
         Some(false)
@@ -270,8 +277,8 @@ async fn a_relative_talks_to_a_shared_agent_in_her_own_conversation() {
     assert_eq!(view["conversations"][0]["household_name"], "Marie");
     assert_eq!(view["conversations"][0]["messages"], 2);
     assert_eq!(view["tokens"], json!([{"household": "marie", "household_name": "Marie", "input": 1200, "output": 80}]));
-    let listed = b.get("/v1/shared-agents/cuisine__alex/conversations", &h).await.json();
-    assert_eq!(listed["conversations"][0]["title"], "Dîner");
+    let listed = b.get("/v1/threads?agent=cuisine__alex", &h).await.json();
+    assert_eq!(listed["threads"][0]["title"], "Une idée de dîner ?");
 
     // Alex stops sharing: Marie's card goes, her conversations too.
     let stopped = a.send_json("PUT", "/v1/agents/cuisine/shares", &h, &json!({"households": []})).await;

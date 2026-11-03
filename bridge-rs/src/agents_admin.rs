@@ -1192,7 +1192,7 @@ pub async fn wait_served(http: &reqwest::Client, agent: &AgentConfig, bot_chat: 
                     .post(format!("{}/api/sessions", agent.hermes_url))
                     .header("Authorization", &auth)
                     .timeout(Duration::from_secs(10))
-                    .json(&json!({"title": "Bot Chat"}))
+                    .json(&json!({"title": crate::threads::LEGACY_MAIN_TITLE}))
                     .send()
                     .await;
                 if posted.is_ok() {

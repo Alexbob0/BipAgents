@@ -57,7 +57,7 @@ def test_opening_a_conversation_old_and_new(bridges, fakes):
         (hermes, "/api/sessions/s3/messages", {"limit": 300, "order": "latest", "inline_images": "false"}),
         (app, "/v1/outbox", {"agent": "wellness"}),
         (app, "/v1/approvals", {"agent": "wellness"}),
-        (app, "/v1/approvals/answered", {"agent": "wellness", "session_id": "s3"}),
+        # (the answered approvals' own request, gone since step 4: the timeline has them)
         (app, "/v1/live/calls", {"agent": "wellness", "session": "s3"}),
     ]
     # an old notification about a message of the first segment: the app had to fetch that segment whole

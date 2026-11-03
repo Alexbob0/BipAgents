@@ -1,0 +1,201 @@
+"""Sending through the bridge (docs/conversations.md §6.7, threads/send.rs): every message with the app's id
+(`client_id`), one route deciding (a turn started, words into the turn going on, the queue); the message shown at once
+as an item carrying that id, then as Hermes' stored row with the same id (never matched by the apps); a retry never
+runs twice; stop; approvals and questions answered through the bridge, the answer seen by every device (the waiting
+card and the answered item share one id, the thread's hint tells the others)."""
+import json
+import threading
+import time
+
+import httpx
+
+from bbkit.common import AUTH, sse
+from bbkit.servers import wait_until
+
+SESSION = "api_main"
+
+
+def user(text):
+    return {"role": "user", "content": text}
+
+
+def agent(text):
+    return {"role": "assistant", "content": text}
+
+
+def setup(bridges, fakes):
+    fakes.hermes.v0225 = True
+    fakes.hermes.rounds = 1000
+    fakes.hermes.add_session(SESSION, [user("Bonjour"), agent("Salut")], title="Bot Chat", last_active=10, started_at=1)
+    bridge = bridges.new().start()
+    main = bridge.get("/v1/threads/main", headers=AUTH, params={"agent": "wellness"}).json()
+    return bridge, main["id"]
+
+
+def send(bridge, thread, client_id, text="", **extra):
+    body = {"agent": "wellness", "client_id": client_id, "text": text, **extra}
+    return bridge.post(f"/v1/threads/{thread}/messages", headers=AUTH, json=body)
+
+
+def page(bridge, thread, **params):
+    answer = bridge.get(f"/v1/threads/{thread}/timeline", headers=AUTH, params={"agent": "wellness", **params})
+    assert answer.status_code == 200, answer.text
+    return answer.json()
+
+
+def stored(fakes, *rows):
+    fakes.hermes.messages[("", SESSION)] += list(rows)
+
+
+def test_a_message_is_its_app_id_from_the_send_to_the_stored_row(bridges, fakes):
+    bridge, thread = setup(bridges, fakes)
+    gate = threading.Event()
+    fakes.hermes.runs["r1"] = [sse("run.started", run_id="r1"), gate, sse("run.completed", run_id="r1", output="Voie 4.")]
+    sent = send(bridge, thread, "C1D00000-0000-4000-8000-000000000001", "Le train de 9 h ?", kinds=["voice"])
+    assert sent.status_code == 200, sent.text
+    assert sent.json() == {"client_id": "C1D00000-0000-4000-8000-000000000001", "thread": thread, "state": "started",
+                           "run_id": "r1", "tip": SESSION}
+    run = fakes.hermes.started["r1"]
+    assert run["session_id"] == SESSION and run["input"].endswith("Le train de 9 h ?") and run["now"]
+    # at once on every device: the message as an item with the app's id, after everything there is
+    before = page(bridge, thread)
+    last = before["items"][-1]
+    assert last["id"] == "s_C1D00000-0000-4000-8000-000000000001" and last["client_id"] == last["id"][2:]
+    assert last["text"] == "Le train de 9 h ?" and last["role"] == "person" and last["sending"] is True
+    assert before["pending"]["run"] == {"run_id": "r1", "status": "running"}
+    # the same message again (an answer lost on the way): nothing sent twice
+    again = send(bridge, thread, "C1D00000-0000-4000-8000-000000000001", "Le train de 9 h ?")
+    assert again.json()["state"] == "known" and len(fakes.hermes.started) == 1
+    # Hermes stored the turn: the stored row carries the id, `after=` the item before brings it
+    stored(fakes, user("<!--bip:now lundi 9 h-->\n\nLe train de 9 h ?"), agent("Voie 4."))
+    gate.set()
+    # the run's end tells the apps (`thread` hint): what they read then
+    assert wait_until(lambda: page(bridge, thread)["items"][-1]["text"] == "Voie 4.", timeout=15)
+    after = page(bridge, thread, after=before["items"][-2]["cursor"])
+    assert [(i["role"], i["text"]) for i in after["items"]] == [("person", "Le train de 9 h ?"), ("agent", "Voie 4.")]
+    assert after["items"][0]["client_id"] == "C1D00000-0000-4000-8000-000000000001"
+    assert after["items"][0]["id"].startswith("m_") and "sending" not in after["items"][0]
+    # matched once, kept: the same on every read (a « Le train de 9 h ? » sent later is another message)
+    assert page(bridge, thread)["items"][-2]["client_id"] == "C1D00000-0000-4000-8000-000000000001"
+
+
+def test_photos_and_documents_go_with_their_message(bridges, fakes):
+    bridge, thread = setup(bridges, fakes)
+    fakes.hermes.runs["r1"] = [sse("run.completed", run_id="r1", output="Vu.")]
+    doc = {"kind": "document", "name": "devis.pdf", "mime": "application/pdf", "size": 12000,
+           "path": "/uploads/2026-11/abc-devis.pdf"}
+    photo = {"kind": "image", "name": "compteur.jpg", "mime": "image/jpeg", "data": "AAAA"}
+    sent = send(bridge, thread, "C1D00000-0000-4000-8000-0000000000A1", "Regarde", attachments=[photo, doc])
+    assert sent.status_code == 200, sent.text
+    message = fakes.hermes.started["r1"]["input"][0]
+    assert message["role"] == "user"
+    words, image = message["content"]
+    assert words["text"].endswith("Regarde\n\n[Pièce jointe : devis.pdf (application/pdf, 12 Ko) → /uploads/2026-11/abc-devis.pdf]")
+    assert image == {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,AAAA"}}
+    shown = page(bridge, thread)["items"][-1]
+    assert [a["name"] for a in shown["attachments"]] == ["compteur.jpg", "devis.pdf"]
+    assert "data" not in json.dumps(shown["attachments"]), "never the photo's bytes"
+    # a message needs words or a file, a photo its bytes
+    assert send(bridge, thread, "C1D00000-0000-4000-8000-0000000000A2", "  ").status_code == 422
+    assert send(bridge, thread, "C1D00000-0000-4000-8000-0000000000A3", "x", attachments=[{"kind": "image"}]).status_code == 422
+
+
+def test_words_during_a_turn_go_into_it_files_wait(bridges, fakes):
+    bridge, thread = setup(bridges, fakes)
+    gate = threading.Event()
+    fakes.hermes.runs["r1"] = [sse("run.started", run_id="r1"), gate, sse("run.completed", run_id="r1", output="Fini.")]
+    fakes.hermes.runs["r2"] = [sse("run.completed", run_id="r2", output="La photo.")]
+    send(bridge, thread, "C1D00000-0000-4000-8000-0000000000B1", "Compare trois écoles")
+    steered = send(bridge, thread, "C1D00000-0000-4000-8000-0000000000B2", "Seulement les publiques")
+    assert steered.json()["state"] == "steered" and steered.json()["run_id"] == "r1"
+    assert fakes.hermes.steers[-1]["body"] == {"input": "Seulement les publiques"}
+    photo = {"kind": "image", "mime": "image/png", "data": "AAAA"}
+    queued = send(bridge, thread, "C1D00000-0000-4000-8000-0000000000B3", "Et celle-ci", attachments=[photo])
+    assert queued.json()["state"] == "queued"
+    now = page(bridge, thread)
+    # waiting in the queue (its strip), not as a sent message; the steered one shows at once
+    assert [i["client_id"] for i in now["pending"]["queue"]["items"]] == ["C1D00000-0000-4000-8000-0000000000B3"]
+    assert [i["id"] for i in now["items"] if i["id"].startswith("s_")] == [
+        "s_C1D00000-0000-4000-8000-0000000000B1", "s_C1D00000-0000-4000-8000-0000000000B2"]
+    gate.set()
+    assert wait_until(lambda: "r2" in fakes.hermes.started, timeout=15)
+    assert fakes.hermes.started["r2"]["input"][0]["content"][-1]["image_url"]["url"] == "data:image/png;base64,AAAA"
+    assert [i["id"] for i in page(bridge, thread)["items"] if i["id"].startswith("s_")][-1] == \
+        "s_C1D00000-0000-4000-8000-0000000000B3"
+
+
+def test_a_new_conversation_and_stop(bridges, fakes):
+    bridge, _ = setup(bridges, fakes)
+    gate = threading.Event()
+    fakes.hermes.runs["r1"] = [sse("run.started", run_id="r1"), gate, sse("run.cancelled", run_id="r1")]
+    sent = send(bridge, "new", "C1D00000-0000-4000-8000-0000000000C1", "Un voyage à Lisbonne")
+    assert sent.status_code == 200, sent.text
+    thread = sent.json()["thread"]
+    assert thread.startswith("t_") and fakes.hermes.created[-1][1]["title"] == "Un voyage à Lisbonne"
+    one = bridge.get(f"/v1/threads/{thread}", headers=AUTH).json()
+    assert one["kind"] == "side" and one["tip"] == fakes.hermes.started["r1"]["session_id"]
+    stopped = bridge.post(f"/v1/threads/{thread}/stop", headers=AUTH, json={})
+    assert stopped.json() == {"stopped": True, "run_id": "r1"}
+    assert fakes.hermes.started["r1"]["status"] == "cancelled"
+    gate.set()
+    assert wait_until(lambda: page(bridge, thread)["pending"]["run"] is None, timeout=15)
+    assert bridge.post(f"/v1/threads/{thread}/stop", headers=AUTH, json={}).json() == {"stopped": False}
+
+
+def watch(bridge, thread, hints, stop):
+    """Another device showing the conversation: its hints."""
+    with httpx.Client(base_url=bridge.url, headers=AUTH, timeout=30) as client:
+        with client.stream("GET", "/v1/threads/events", params={"agent": "wellness", "thread": thread}) as resp:
+            for line in resp.iter_lines():
+                if line.startswith("data: ") and thread in line:
+                    hints.append(json.loads(line[len("data: "):]))
+                if stop.is_set():
+                    return
+
+
+def test_an_approval_answered_on_one_phone_is_answered_on_the_other(bridges, fakes):
+    bridge, thread = setup(bridges, fakes)
+    gate = threading.Event()
+    fakes.hermes.runs["r1"] = [
+        sse("approval.request", run_id="r1", request_id="req-1", command="rm -rf build/", choices=["once", "deny"]),
+        gate, sse("run.completed", run_id="r1", output="Fait.")]
+    send(bridge, thread, "C1D00000-0000-4000-8000-0000000000D1", "Nettoie")
+    assert wait_until(lambda: page(bridge, thread)["pending"]["approvals"] != [], timeout=10)
+    card = page(bridge, thread)["pending"]["approvals"][0]
+    assert card["request_id"] == "req-1" and card["id"].startswith("a_")
+    hints, stop = [], threading.Event()
+    other = threading.Thread(target=watch, args=(bridge, thread, hints, stop), daemon=True)
+    other.start()
+    time.sleep(0.5)
+    answered = bridge.post("/v1/approve", headers=AUTH,
+                           json={"agent": "wellness", "run_id": "r1", "request_id": "req-1", "choice": "once"})
+    assert answered.status_code == 200, answered.text
+    assert wait_until(lambda: any(h.get("reason") == "answered" for h in hints), timeout=10)
+    seen = page(bridge, thread)   # what the other phone reads on the hint
+    assert seen["pending"]["approvals"] == []
+    item = next(i for i in seen["items"] if i["kind"] == "approval")
+    assert item["id"] == card["id"] and item["approval"]["state"] == "answered" and item["approval"]["choice"] == "once"
+    stop.set()
+    gate.set()
+    # no phone keeps answers: the old routes are gone
+    assert bridge.get("/v1/approvals/answered", headers=AUTH, params={"agent": "wellness"}).status_code in (404, 405)
+
+
+def test_a_question_waits_on_every_phone_until_answered(bridges, fakes):
+    bridge, thread = setup(bridges, fakes)
+    gate = threading.Event()
+    fakes.hermes.runs["r1"] = [
+        sse("clarify.request", run_id="r1", prompt_id="q-1", execution_generation=2,
+            questions=[{"id": "q", "question": "Quel jour ?", "choices": ["Lundi", "Mardi"]}]),
+        gate, sse("run.completed", run_id="r1", output="Lundi, noté.")]
+    send(bridge, thread, "C1D00000-0000-4000-8000-0000000000E1", "Réserve")
+    assert wait_until(lambda: page(bridge, thread)["pending"]["questions"] != [], timeout=10)
+    question = page(bridge, thread)["pending"]["questions"][0]
+    assert question["request_id"] == "q-1" and question["questions"][0]["question"] == "Quel jour ?"
+    assert page(bridge, thread)["pending"]["approvals"] == [], "a question is no approval"
+    answered = bridge.post("/v1/approve", headers=AUTH,
+                           json={"agent": "wellness", "run_id": "r1", "request_id": "q-1", "answer": "Lundi"})
+    assert answered.status_code == 200, answered.text
+    assert fakes.hermes.answers[-1]["body"] == {"request_id": "q-1", "execution_generation": 2, "answer": "Lundi"}
+    assert page(bridge, thread)["pending"]["questions"] == []
+    gate.set()

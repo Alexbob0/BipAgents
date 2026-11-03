@@ -1,10 +1,12 @@
-"""An agent's waiting messages (bridge-rs/src/msg_queue.rs, 2026-11-02): words steered into the turn going on (Hermes'
+"""An agent's waiting messages (bridge-rs/src/msg_queue.rs, 2026-11-02), through the one sending route
+(`POST /v1/threads/{id}/messages`, threads/send.rs): words steered into the turn going on (Hermes'
 `POST /v1/runs/{id}/steer`), « Après » kept by the bridge per agent and started as the next turns one after another,
 reordered, cancelled, sent now, paused and resumed; the same list for every device (`session_state`, the queue's own
 event stream), kept across a restart; « reply ready » pushed once, at the end of the queue."""
 import json
 import threading
 import time
+import uuid
 
 from bbkit.common import AUTH, HERMES_KEY, read_sse, sse, in_session
 from bbkit.servers import wait_until
@@ -27,13 +29,24 @@ def queue(bridge):
     return answer.json()
 
 
-def add(bridge, text, run_id=None, session=SESSION, **extra):
-    body = {"session_id": session, "text": text, **extra}
-    if run_id:
-        body["run_id"] = run_id
-    answer = bridge.post("/v1/agents/wellness/queue", headers=AUTH, json=body)
+def thread_of(bridge, session=SESSION):
+    answer = bridge.get("/v1/threads/resolve", headers=AUTH, params={"agent": "wellness", "session_id": session})
     assert answer.status_code == 200, answer.text
-    return answer.json()
+    return answer.json()["thread"]["id"]
+
+
+def send(bridge, text, after=False, session=SESSION, **extra):
+    """The app's message (its own id), « Après » with `after`."""
+    body = {"agent": "wellness", "client_id": str(uuid.uuid4()), "text": text, "after": after, **extra}
+    return bridge.post(f"/v1/threads/{thread_of(bridge, session)}/messages", headers=AUTH, json=body)
+
+
+def add(bridge, text, run_id=None, session=SESSION):
+    """« Après »: waits for the turn going on (the bridge knows which), the queue as every device reads it."""
+    answer = send(bridge, text, after=True, session=session)
+    assert answer.status_code == 200, answer.text
+    assert answer.json()["state"] == "queued"
+    return queue(bridge)
 
 
 def texts(snapshot):
@@ -96,27 +109,23 @@ def test_words_steered_reach_the_running_turn(bridges, fakes):
     start(bridge)
     assert wait_until(lambda: bridge.post("/v1/watch", headers=AUTH,
                                           json={"agent": "wellness", "run_id": "r1"}).status_code == 200)
-    answer = bridge.post("/v1/agents/wellness/steer", headers=AUTH,
-                         json={"session_id": SESSION, "text": "Seulement les publiques"})
+    answer = send(bridge, "Seulement les publiques")
     assert answer.status_code == 200, answer.text
-    assert answer.json() == {"steered": True, "run_id": "r1"}
+    assert answer.json()["state"] == "steered" and answer.json()["run_id"] == "r1"
     assert fakes.hermes.steers == [{"agent": "", "run_id": "r1", "body": {"input": "Seulement les publiques"}}]
     assert queue(bridge)["items"] == [], "into the turn, not the queue"
     # the turn no longer takes words (it is ending): first in line instead, and it goes right after
     fakes.hermes.steer_status = 409
-    answer = bridge.post("/v1/agents/wellness/steer", headers=AUTH,
-                         json={"session_id": SESSION, "text": "Et près de chez nous", "run_id": "r1"}).json()
-    assert answer["steered"] is False and answer["queued"] is True
-    assert texts(answer["queue"]) == ["Et près de chez nous"]
+    answer = send(bridge, "Et près de chez nous").json()
+    assert answer["state"] == "queued"
+    assert texts(queue(bridge)) == ["Et près de chez nous"]
     fakes.hermes.runs["r2"] = turn("r2", output="Deux.")
     gate.set()
     assert wait_until(lambda: started_inputs(fakes)[1:] == ["Et près de chez nous"], timeout=15)
     # bad requests
-    assert bridge.post("/v1/agents/nope/steer", headers=AUTH, json={"session_id": SESSION, "text": "x"}).status_code == 404
-    assert bridge.post("/v1/agents/wellness/steer", headers=AUTH,
-                       json={"session_id": "../x", "text": "x"}).status_code == 400
-    assert bridge.post("/v1/agents/wellness/steer", headers=AUTH,
-                       json={"session_id": SESSION, "text": "   "}).status_code == 422
+    assert send(bridge, "x", agent="nope").status_code == 404
+    assert send(bridge, "x", client_id="../x").status_code == 422
+    assert send(bridge, "   ").status_code == 422
 
 
 def test_words_the_turn_did_not_take_come_back_first(bridges, fakes):
@@ -127,8 +136,7 @@ def test_words_the_turn_did_not_take_come_back_first(bridges, fakes):
     fakes.hermes.runs["r1"] = turn("r1", gate, output="Fini.", pending_steer="Et en bio")
     fakes.hermes.runs["r2"] = turn("r2", output="Bio.")
     start(bridge)
-    assert bridge.post("/v1/agents/wellness/steer", headers=AUTH,
-                       json={"session_id": SESSION, "text": "Et en bio"}).json()["steered"] is True
+    assert send(bridge, "Et en bio").json()["state"] == "steered"
     gate.set()
     assert wait_until(lambda: started_inputs(fakes)[1:] == ["Et en bio"], timeout=15)
     assert fakes.hermes.started["r2"]["session_id"] == SESSION
@@ -284,13 +292,9 @@ def test_the_queue_answers_for_known_agents_only_and_keeps_its_limits(bridges, f
     start(bridge)
     assert bridge.get("/v1/agents/nope/queue", headers=AUTH).status_code == 404
     assert bridge.get("/v1/agents/wellness/queue").status_code == 401
-    assert bridge.post("/v1/agents/wellness/queue", headers=AUTH,
-                       json={"session_id": SESSION, "text": "x" * 20_001}).status_code == 422
-    assert bridge.post("/v1/agents/wellness/queue", headers=AUTH,
-                       json={"session_id": SESSION, "text": "x", "run_id": "bad id"}).status_code == 400
+    assert send(bridge, "x" * 20_001, after=True).status_code == 422
     for i in range(30):
         add(bridge, f"m{i}", run_id="r1")
-    assert bridge.post("/v1/agents/wellness/queue", headers=AUTH,
-                       json={"session_id": SESSION, "text": "one more"}).status_code == 409
+    assert send(bridge, "one more", after=True).status_code == 409
     assert bridge.post("/v1/agents/wellness/queue/zzz/now", headers=AUTH).status_code == 404
     gate.set()
