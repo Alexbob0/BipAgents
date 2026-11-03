@@ -1,0 +1,75 @@
+{
+  "$schema": "../schema.json",
+  "type": "question",
+  "audit_row": 5,
+  "summary": "The agent asks something mid-run (clarify) while nobody follows it.",
+  "producers": [
+    "runs.rs:~1929 -> notify_question"
+  ],
+  "policy": {
+    "per_agent_switch": false
+  },
+  "v2": {
+    "t": "question",
+    "c": "t_<thread>",
+    "m": "m_<message id>",
+    "loc_key": "notif.question",
+    "collapse": "n",
+    "link": "bipagents://open?agent=vie&c=t_<thread>&m=m_<message id>&t=question",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
+  },
+  "variants": [
+    {
+      "name": "default",
+      "about": "A question.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_question",
+          "args": {
+            "run_id": "run_4",
+            "request_id": "clr_1",
+            "question": "Quel train pour Bordeaux ?",
+            "session_id": "sess_1"
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.question",
+            "body": "notif.question"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "question",
+        "agent": "vie",
+        "c": "t_contract",
+        "r": "clr_1",
+        "run_id": "run_4",
+        "request_id": "clr_1"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "clr_1"
+      }
+    }
+  ]
+}

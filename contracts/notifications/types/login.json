@@ -1,0 +1,119 @@
+{
+  "$schema": "../schema.json",
+  "type": "login",
+  "audit_row": 14,
+  "summary": "An agent wants to create an account on a website with a password of the vault.",
+  "producers": [
+    "vault_logins.rs:~447 -> notify_login_request"
+  ],
+  "policy": {
+    "per_agent_switch": false
+  },
+  "v2": {
+    "t": "login",
+    "c": "none",
+    "m": null,
+    "loc_key": "notif.login",
+    "collapse": "n",
+    "link": "bipagents://open?agent=vie&n=<journal id>&t=login",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
+  },
+  "variants": [
+    {
+      "name": "default",
+      "about": "Login request.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_login_request",
+          "args": {
+            "host": "exemple.com",
+            "id": "login_1"
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.login",
+            "body": "notif.login"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "login",
+        "agent": "vie",
+        "c": "t_contract",
+        "r": "login_1"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "login:login_1"
+      }
+    },
+    {
+      "name": "previews_on_de",
+      "about": "Login request, a German agent.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "de"
+        },
+        "input": {
+          "fn": "notify_login_request",
+          "args": {
+            "host": "exemple.com",
+            "id": "login_1"
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.login",
+            "body": "notif.login"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "login",
+        "agent": "vie",
+        "c": "t_contract",
+        "r": "login_1"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "login:login_1"
+      }
+    }
+  ]
+}

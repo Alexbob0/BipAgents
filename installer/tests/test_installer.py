@@ -120,6 +120,7 @@ def test_hermes_setup_commands(monkeypatch, tmp_path):
     log = "\n".join(runner.log)
     assert "config set API_SERVER_PORT 8642" in log and "config set gateway.multiplex_profiles true" in log
     assert "config set approvals.mode manual" in log   # a risky command always asks the person
+    assert "-p default tools enable clarify --platform api_server" in log   # the app's question card (cloned)
     assert "profile create finance --clone-from default --no-alias" in log   # the hub's sandbox, as the app's agents
     assert f"-p finance config set API_SERVER_KEY {key}" in log
     assert "-p finance config set API_SERVER_ENABLED" not in log   # only the hub listens
@@ -188,7 +189,8 @@ def test_hermes_is_pinned_and_patched(tmp_path, monkeypatch):
         "0011-titles-reasoning-floor-glm.patch", "0013-mcp-results-vault-scrub.patch",
         "0014-cron-results-plain-utf8.patch", "0015-time-anchor.patch", "0016-message-agent-the-bridges-everywhere.patch",
         "0017-vault-address-contact-fields.patch", "0018-guest-turns-closed-tools-no-user-profile.patch",
-        "0019-routines-report-to-their-conversation.patch", "0020-runs-model-usage-per-call.patch"]
+        "0019-routines-report-to-their-conversation.patch", "0020-runs-model-usage-per-call.patch",
+        "0021-api-bot-chat-stays-api.patch"]
 
 
 def test_bot_mode_marker(tmp_path):
@@ -1169,3 +1171,30 @@ def test_the_bridge_s_notifications_follow_the_new_app_identifier(tmp_path, monk
     assert "already" in migrations.app_identifier(runner, tmp_path)
     config.write_text('[apns]\nbundle_id = "com.example.mine"\n')
     assert "already" in migrations.app_identifier(runner, tmp_path) and "com.example.mine" in config.read_text()
+
+
+def test_an_update_gives_every_agent_the_question_tool(tmp_path):
+    """2026-11-02: Hermes 0.22.5's API toolset has no `clarify`: every profile (the hub's own, its agents, a space's)
+    gets it through `hermes tools enable`, with its own HERMES_HOME; a profile that fails does not stop the others."""
+    from bipinstall import migrations
+    for folder in [tmp_path / ".hermes", tmp_path / ".hermes" / "profiles" / "vie",
+                   tmp_path / ".local" / "share" / "bipagents" / "spaces" / "lea" / "profiles" / "jardin"]:
+        folder.mkdir(parents=True)
+        (folder / "config.yaml").write_text("model:\n  default: x\n")
+    runner = hermes.Runner()
+    ran = []
+
+    def run(args, check=True, **kw):
+        ran.append((list(args), runner.env["HERMES_HOME"], check))
+        return ""
+    runner.run = run
+    said = migrations.clarify_tool(runner, tmp_path)
+    tail = ["tools", "enable", "clarify", "--platform", "api_server"]
+    assert [(a[1:], home) for a, home, _ in ran] == [
+        (tail, str(tmp_path / ".hermes")),
+        (["-p", "vie"] + tail, str(tmp_path / ".hermes")),
+        (["-p", "jardin"] + tail, str(tmp_path / ".local" / "share" / "bipagents" / "spaces" / "lea")),
+    ]
+    assert all(check is False for *_, check in ran)
+    assert said.endswith("(3 agent(s))")
+    assert "2026-11-02-clarify-tool" in [mid for mid, _ in migrations.MIGRATIONS]

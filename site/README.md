@@ -87,7 +87,7 @@ with a dark look that follows the system.
 **Hosting**: `site/dist/<site>` is plain static files. Both sites live on OVH's free web hosting (Apache), so
 `hosting.py` adds to each a `.htaccess` (one redirect to `https://<apex>/` from http and www; HSTS, short at first;
 nosniff, Referrer-Policy, a Content-Security-Policy with no third party and the hashes of the pages' own inline scripts;
-a year of cache for `?v=` stylesheets and scripts, a week for pictures and fonts, none for pages), a `404.html` and
+a year of cache for `?v=` stylesheets and scripts, a week for pictures and fonts, none for pages; `ErrorDocument 404 /404.html`), a `404.html` (bipagents.com builds its own: « Un Bip a mangé la page », `src/bipagents/404.html` + `notfound.js`, texts in `i18n/notfound.<lang>.json` — one page for the four languages, picked from the missing address's `/fr/`… prefix, else the browser's, with a switch; shake the chubby Bip to get « 4 0 4 » back and the link home) and
 `/.well-known/security.txt`. A private script of the publisher mirrors them to the hostings over SFTP (OVH offers no
 FTP over TLS) and checks each home page. The pages already link to each other by their final addresses.
 

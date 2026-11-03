@@ -69,7 +69,8 @@ def test_a_discussion_is_made_listed_changed_and_deleted(bridges, fakes):
         {"id": "coach", "name": "Coach", "category": "wellness", "color": None, "gone": False},
         {"id": "cuisine", "name": "Cuisine", "category": "home", "color": None, "gone": False}]
     assert set(room) == {"id", "title", "participants", "mode", "created", "updated", "last", "answering", "tokens",
-                         "goal", "goal_proposed", "progress", "small_tokens"}
+                         "goal", "goal_proposed", "progress", "small_tokens", "tasks"}
+    assert room["tasks"] == []   # its tasks and their owners (rooms_tasks.rs), none yet
     # a discussion, not team work (rooms_handoff.rs, 2026-10-31): no goal until the person accepts one
     assert room["goal"] == "" and room["goal_proposed"] is None
     assert room["progress"] == {"done": [], "next": "", "blocked": ""}
@@ -261,12 +262,10 @@ def test_a_reply_nobody_looks_at_is_pushed_and_one_looked_at_is_not(bridges, fak
     bridge.post(f"/v1/rooms/{room['id']}/messages", headers=AUTH, json={"text": "@coach combien de sport ?"})
     assert wait_until(lambda: fakes.apns.pushes(), timeout=20)
     payload = fakes.apns.payloads()[0]
-    assert payload["aps"]["alert"]["title"] == "Coach · Forme"
-    assert payload["aps"]["alert"]["body"] == "Ta réponse est prête."   # no previews by default
-    assert payload["aps"]["thread-id"] == f"room:{room['id']}"
-    assert payload["room_id"] == room["id"] and payload["agent"] == "coach" and payload["kind"] == "reply"
-    assert payload["run_id"] == f"room:{room['id']}" and "session_id" not in payload
-    assert bridge.get(f"/v1/replies/{payload['reply_id']}", headers=AUTH).status_code == 200
+    assert payload["aps"]["alert"] == {"loc-key": "notif.room_reply", "body": "notif.room_reply"}   # no words in clear
+    assert payload["aps"]["thread-id"] == f"coach/room:{room['id']}"
+    assert payload["c"] == f"room:{room['id']}" and payload["agent"] == "coach" and payload["t"] == "room_reply"
+    assert bridge.get(f"/v1/notifications/{payload['n']}", headers=AUTH).status_code == 200
     assert fakes.apns.pushes()[0].header("apns-collapse-id") == f"room:{room['id']}"
 
     messages(bridge, room["id"])   # the app has the discussion on screen
@@ -351,7 +350,7 @@ def test_an_approval_asked_in_a_room_opens_the_room(bridges, fakes):
     assert wait_until(lambda: fakes.apns.pushes(), timeout=20)
     payload = fakes.apns.payloads()[0]
     assert payload["aps"]["category"] == "APPROVAL" and payload["agent"] == "cuisine"
-    assert payload["room_id"] == room["id"] and payload["run_id"] == "r1" and payload["request_id"] == "req_7"
+    assert payload["c"] == f"room:{room['id']}" and payload["run_id"] == "r1" and payload["request_id"] == "req_7"
     pending = bridge.get("/v1/approvals", headers=AUTH).json()["items"]
     assert [(p["agent"], p["run_id"], p.get("room_id")) for p in pending] == [("cuisine", "r1", room["id"])]
     fakes.hermes.rounds = 1   # approved, the run ends

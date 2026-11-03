@@ -25,6 +25,8 @@
 //!     connector   pause / resume / delete         PATCH /v1/agents/{agent}/connectors/{ref} {enabled}, DELETE
 //!                 run                             POST /v1/agents/{agent}/connectors/{ref}/run (here: its schedule's
 //!                                                 tool now, in the background)
+//!     trigger     pause / resume / start / delete   a routine started by an e-mail or a link (triggers.rs): PATCH
+//!                 /v1/triggers/{ref} {enabled} (start: the person's OK of an agent's proposal), DELETE /v1/triggers/{ref}
 //!     watcher     the same routes; run checks it now (`?wait=true`: answers with the check's outcome). Its `detail`:
 //!                 `notify`, `last_check`, `last_change` (Unix seconds or null), `broken` (« en panne »), `summary`
 //!                 (what it saw last, plain words), `wakes`, `pending`, `description`, `icon`
@@ -557,6 +559,7 @@ pub async fn listing(state: &AppState, only: Option<&str>) -> (Vec<Value>, Vec<S
             }
         }
     }
+    items.extend(crate::triggers::autonomous_items(&config, only));
     sort_items(&mut items);
     (items, unreachable)
 }

@@ -547,6 +547,11 @@ pub struct RunHub {
     pub config: Option<SharedConfig>,
     /// The background tasks (jobs.rs), for the safety net's rescue: set by `jobs_of`.
     pub jobs: std::sync::OnceLock<std::sync::Weak<crate::jobs::Jobs>>,
+    /// The agents' waiting messages (msg_queue.rs): told each run's end, they say whether more follows in its
+    /// conversation (no « reply ready » then). Set by `queues_of`.
+    pub queues: std::sync::OnceLock<std::sync::Weak<crate::msg_queue::Queues>>,
+    /// The conversations (threads.rs): told each run's end (their version grows, the apps are told).
+    pub threads: crate::threads::Link,
     inner: Mutex<HubInner>,
     tasks: Mutex<Vec<JoinHandle<()>>>,
     next_id: AtomicU64,
@@ -574,6 +579,8 @@ impl RunHub {
             retention_seconds: FINISHED_RETENTION_SECONDS,
             config: None,
             jobs: std::sync::OnceLock::new(),
+            queues: std::sync::OnceLock::new(),
+            threads: Default::default(),
             inner: Mutex::new(HubInner::default()),
             tasks: Mutex::new(Vec::new()),
             next_id: AtomicU64::new(1),
@@ -858,6 +865,33 @@ impl RunHub {
             let st = lock(&sub.state);
             sub.agent.name == agent && !st.finished && st.session_id.as_deref() == Some(session_id)
         })
+    }
+
+    /// The run going on in this conversation (not ended, its end not reached yet), if the hub follows one.
+    pub fn session_run(&self, agent: &str, session_id: &str) -> Option<String> {
+        let inner = lock(&self.inner);
+        inner
+            .subs
+            .values()
+            .find(|sub| {
+                let st = lock(&sub.state);
+                sub.agent.name == agent && !st.finished && st.terminal.is_none() && st.session_id.as_deref() == Some(session_id)
+            })
+            .map(|sub| sub.run_id.clone())
+    }
+
+    /// An event for the apps following the agent's runs going on now, live only (not replayed to a later follower:
+    /// the agent's message queue changed, msg_queue.rs).
+    pub fn tell_agent_live(&self, agent: &str, kind: &str, data: Map<String, Value>) {
+        let inner = lock(&self.inner);
+        let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(data.clone()));
+        let event = SSEEvent::new(kind, data, raw);
+        for sub in inner.subs.values().filter(|sub| sub.agent.name == agent) {
+            let st = lock(&sub.state);
+            if !st.finished && st.terminal.is_none() {
+                st.send_all(Some(&event));
+            }
+        }
     }
 
     pub fn subscription(&self, agent: &str, run_id: &str) -> Option<Arc<RunSubscription>> {
@@ -1222,7 +1256,16 @@ impl RunHub {
                     }
                 });
             }
-            if let (true, Some(push)) = (st.watched && st.end_push && st.followers() == 0, self.push.clone()) {
+            if let Some(threads) = crate::threads::upgrade(&self.threads) {
+                let (agent, session) = (sub.agent.name.clone(), st.session_id.clone());
+                self.spawn(async move { threads.touch(&agent, session.as_deref(), "run").await });
+            }
+            // the agent's message queue: what waits starts now, and while more follows here no « reply ready »
+            let follows = self.queues.get().and_then(std::sync::Weak::upgrade).is_some_and(|queues| {
+                let pending = as_str(event.data.get("pending_steer"));
+                queues.run_ended(&sub.agent.name, &sub.run_id, st.session_id.as_deref(), kind, pending.as_deref())
+            });
+            if let (true, Some(push)) = (st.watched && st.end_push && st.followers() == 0 && !follows, self.push.clone()) {
                 let (agent, run_id, session) = (sub.agent.name.clone(), sub.run_id.clone(), st.session_id.clone());
                 match output.filter(|o| kind == "run.completed" && !o.is_empty()) {
                     Some(output) => {

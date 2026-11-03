@@ -1,0 +1,177 @@
+{
+  "$schema": "../schema.json",
+  "type": "reply",
+  "audit_row": 1,
+  "summary": "A followed run ended while nobody looked at it: the reply is ready.",
+  "producers": [
+    "runs.rs run end (~1267)",
+    "runs.rs loop brake (~1419, ~1563)",
+    "runs.rs rescue (~1931)",
+    "live_calls.rs:467 (call ended)",
+    "agent_shares.rs:1160 (agent shared by a relative)"
+  ],
+  "policy": {
+    "per_agent_switch": true
+  },
+  "v2": {
+    "t": "reply",
+    "c": "t_<thread of session_id> (main when it is the agent's main thread)",
+    "m": "m_<message id>",
+    "loc_key": "notif.reply",
+    "collapse": "n",
+    "link": "bipagents://open?agent=vie&c=t_<thread>&m=m_<message id>&t=reply",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
+  },
+  "variants": [
+    {
+      "name": "default",
+      "about": "A reply: neutral line in clear, the words sealed.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_reply",
+          "args": {
+            "run_id": "run_1",
+            "text": "Voilà le résumé de ta journée.",
+            "session_id": "sess_1"
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.reply",
+            "body": "notif.reply"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "reply",
+        "agent": "vie",
+        "c": "t_contract",
+        "m": "m_contract",
+        "r": "run_1"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "run_1"
+      }
+    },
+    {
+      "name": "no_session",
+      "about": "A run whose session the bridge did not know: iOS asks Hermes for the run's session first.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_reply",
+          "args": {
+            "run_id": "run_2",
+            "text": "C'est fait.",
+            "session_id": null
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.reply",
+            "body": "notif.reply"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "reply",
+        "agent": "vie",
+        "c": "t_contract",
+        "m": "m_contract",
+        "r": "run_2"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "run_2"
+      }
+    },
+    {
+      "name": "shared_agent",
+      "about": "A relative's agent shared with this person (`<agent>__<household>`).",
+      "bridge": {
+        "agent": "cuisine__alex",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_reply",
+          "args": {
+            "run_id": "run_3",
+            "text": "Le dîner est prêt.",
+            "session_id": "conv_1"
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.reply",
+            "body": "notif.reply"
+          },
+          "thread-id": "cuisine__alex/t_contract",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "reply",
+        "agent": "cuisine__alex",
+        "c": "t_contract",
+        "m": "m_contract",
+        "r": "run_3"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "run_3"
+      }
+    }
+  ]
+}

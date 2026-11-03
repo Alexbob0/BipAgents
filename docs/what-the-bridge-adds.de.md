@@ -44,6 +44,10 @@ sie bewusst Hermes überlässt.
   [`relay/`](../relay/) leiten Pushes ohne Inhalt weiter. `runs.rs` macht aus einer Freigabe, die niemand ansieht,
   eine Benachrichtigung; `agent_notify.rs` regelt das pro Agent; `live_activities.rs` zeigt lange Arbeit auf dem
   Sperrbildschirm und in der Dynamic Island.
+- **Nachrichten während der Arbeit.** `msg_queue.rs`: Eine Nachricht, die während der Arbeit des Agenten kommt, geht in
+  den laufenden Durchgang (Hermes' Steer, nach den aktuellen Werkzeugaufrufen); « Danach » legt sie stattdessen in die
+  Warteschlange des Agenten auf der Brücke, auf allen Geräten gleich, als nächster Durchgang gestartet (Reihenfolge,
+  Entfernen, Jetzt senden, Pause), eine einzige Benachrichtigung am Ende.
 - **Nichts geht verloren.** `ntfy.rs` und `cronwatch.rs` legen Agentennachrichten und die Antwort jeder Routine in
   einen Postausgang (`store.rs`), mit fertigem Audio; `restore_reconcile.rs` holt nach einer Wiederherstellung die
   Nachrichten zurück, die die Handys behalten haben.
@@ -187,6 +191,7 @@ Installer wendet sie an.
 | 0018 Gast-Runden | die Runde eines Angehörigen bekommt nur die Werkzeuge des Gastes und keine USER.md |
 | 0019 Routinen berichten in ihr Gespräch | eine Routine, die in einem Gespräch entstand, antwortet dort |
 | 0020 Verbrauch pro Aufruf in der Runs-API | echte Kosten pro Modellaufruf, für Budgets |
+| 0021 das Hauptgespräch bleibt das der App | das Hauptgespräch jedes Agenten behält Live-Anzeige und Verlauf auf v0.22.5 |
 
 **Wie wir sie upstream bringen.** Die Serie ist ein Git-Branch auf Hermes, exportiert mit `scripts/hermes-patches.sh`
 (`branch`, `export`, `check`): ein Commit pro Patch, stabile Namen, jedes Mal dieselben Bytes. Der Wechsel auf ein

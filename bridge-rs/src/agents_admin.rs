@@ -43,9 +43,9 @@ use pyyaml::Yaml;
 pub type Run =
     Arc<dyn Fn(Vec<String>, BTreeMap<String, String>) -> BoxFuture<'static, anyhow::Result<String>> + Send + Sync>;
 
-/// `run_hermes` as a [`Run`].
+/// `run_hermes` as a [`Run`], the commands that write a profile under its lock (profile_files::locked).
 pub fn default_run() -> Run {
-    Arc::new(|args, env| Box::pin(run_hermes(args, env)))
+    crate::profile_files::locked(Arc::new(|args, env| Box::pin(run_hermes(args, env))), run_hermes_blocking)
 }
 
 /// Python's `LookupError` (`managed`, `editable`: not an agent the bridge may change).
@@ -438,6 +438,46 @@ pub async fn run_hermes(args: Vec<String>, env: BTreeMap<String, String>) -> any
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
+/// [`run_hermes`] on a blocking thread (the commands that write a profile, under its lock: profile_files::hermes).
+pub fn run_hermes_blocking(args: &[String], env: &BTreeMap<String, String>) -> anyhow::Result<String> {
+    use std::io::Read;
+    let Some(program) = args.first() else { anyhow::bail!("no command") };
+    let mut child = std::process::Command::new(program)
+        .args(&args[1..])
+        .envs(env)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()?;
+    let pipe = |mut from: Box<dyn Read + Send>| {
+        std::thread::spawn(move || {
+            let mut bytes = Vec::new();
+            let _ = from.read_to_end(&mut bytes);
+            bytes
+        })
+    };
+    let stdout = pipe(Box::new(child.stdout.take().expect("piped")));
+    let stderr = pipe(Box::new(child.stderr.take().expect("piped")));
+    let deadline = std::time::Instant::now() + Duration::from_secs(120);
+    let status = loop {
+        if let Some(status) = child.try_wait()? {
+            break status;
+        }
+        if std::time::Instant::now() > deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(CommandTimeout.into());
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    let (stdout, stderr) = (stdout.join().unwrap_or_default(), stderr.join().unwrap_or_default());
+    if !status.success() {
+        let shown = args.iter().take(4).cloned().collect::<Vec<_>>().join(" ");
+        anyhow::bail!("{shown} failed: {}", tail(String::from_utf8_lossy(&stderr).trim(), 300));
+    }
+    Ok(String::from_utf8_lossy(&stdout).into_owned())
+}
+
 /// Tools that read this machine's files: off by default where the agents are not isolated from the bridge. The
 /// browser too: Hermes' local Chromium opens file:// pages (checked: it read a file next to the bridge's keys).
 pub const DISK_TOOLS: [&str; 4] = ["terminal", "file", "code_execution", "browser"];
@@ -449,14 +489,13 @@ fn load_yaml_file(path: &Path) -> anyhow::Result<Yaml> {
 
 /// Bot Mode: the agents of an install can message each other in their « Bot Chat ».
 pub fn mark_as_bot(folder: &Path) -> anyhow::Result<()> {
-    let path = folder.join("profile.yaml");
-    let data = if path.exists() { load_yaml_file(&path)? } else { Yaml::Null };
-    let mut data = if data.is_map() { data } else { Yaml::map() };
-    let meta = data.entry_map("ui_meta").ok_or_else(|| anyhow::anyhow!("AttributeError: 'ui_meta' is not a dict"))?;
-    if !meta.is_map() || meta.entry_map("hermes-bots").is_none() {
-        anyhow::bail!("AttributeError: 'ui_meta' is not a dict");
-    }
-    std::fs::write(&path, pyyaml::dump(&data))?;
+    crate::profile_files::try_edit(&folder.join("profile.yaml"), |data| {
+        let meta = data.entry_map("ui_meta").filter(|m| m.is_map());
+        match meta.and_then(|m| m.entry_map("hermes-bots")) {
+            Some(_) => Ok(()),
+            None => anyhow::bail!("AttributeError: 'ui_meta' is not a dict"),
+        }
+    })?;
     Ok(())
 }
 
@@ -760,20 +799,17 @@ pub async fn from_spare(
     let config = shared.get();
     let folder = PathBuf::from(install_home(&config)).join("profiles").join(&spare.id);
     crate::agent_pool::follow_hub_model(&config, &folder)?;
-    std::fs::write(folder.join("SOUL.md"), &planned.soul)?;
-    let meta = folder.join("profile.yaml");
-    let mut data = if meta.exists() { load_or_empty(&meta)? } else { Yaml::Null };
-    if !data.is_map() {
-        data = Yaml::map();
-    }
-    data.insert("description", Yaml::str(&planned.description)); // what `profile create --description` writes
-    std::fs::write(&meta, pyyaml::dump(&data))?;
+    crate::profile_files::edit_text(&folder.join("SOUL.md"), |_| Some(planned.soul.clone()))?;
+    // what `profile create --description` writes
+    crate::profile_files::edit(&folder.join("profile.yaml"), |data| {
+        data.insert("description", Yaml::str(&planned.description))
+    })?;
     mark_as_bot(&folder)?;
     let agent = spare.agent(&config, &planned.name);
     wait_served(http, &agent, true).await?;
     reserve_agent(shared, &agent)?;
     crate::guide::refresh(&shared.get()); // its blocks, and the guide's list of agents
-    give_tools(&shared.get(), &agent, &crate::agent_pool::files_run(run.clone())).await?;
+    give_tools(&shared.get(), &agent, run).await?;
     tools_loaded(shared, std::slice::from_ref(&agent), http, run).await;
     tracing::info!(target: "bipbridge::agents", agent = %agent.name, ms = started.elapsed().as_millis() as u64, "spare agent taken");
     Ok(agent)
@@ -960,7 +996,7 @@ async fn prepare_profile(
     // a new agent answered its first messages with Hermes' tools only, and wrote « call me Max » into the shared
     // memory instead of using propose_profile). Given again below, once it is saved (its guide blocks, its browser).
     give_tools(&shared.get(), agent, run).await?;
-    std::fs::write(folder.join("SOUL.md"), &planned.soul)?;
+    crate::profile_files::edit_text(&folder.join("SOUL.md"), |_| Some(planned.soul.clone()))?;
     if bot {
         mark_as_bot(&folder)?; // a spare only once taken: never in the other agents' roster before
     }
@@ -1528,13 +1564,28 @@ pub fn read_soul(config: &Config, agent: &AgentConfig) -> std::io::Result<String
     }
 }
 
+/// The agent's SOUL.md changed by `change` (profile_files::edit_text: under its profile's lock, written only when it
+/// changes); whether it was written. `create`: a missing one is changed as empty, else left missing (Hermes' own).
+pub fn edit_soul(
+    config: &Config,
+    agent: &AgentConfig,
+    create: bool,
+    change: impl FnOnce(&str) -> String,
+) -> std::io::Result<bool> {
+    let path = profile_folder(config, agent).join("SOUL.md");
+    crate::profile_files::edit_text(&path, |soul| match soul {
+        Some(soul) => Some(change(soul)),
+        None if create => Some(change("")),
+        None => None,
+    })
+    .map_err(std::io::Error::other)
+}
+
 /// The agent's language block rewritten (the rest of its personality untouched); returns the language kept.
 pub fn set_language(config: &Config, agent: &AgentConfig, lang: &str) -> std::io::Result<String> {
     let code = crate::souls::agent_language(Some(lang));
-    let soul = read_soul(config, agent)?;
     // its other blocks' examples follow (souls::for_language): no French phrase left for an English agent
-    let text = crate::souls::relanguage_blocks(&crate::souls::with_language(&soul, Some(&code)));
-    std::fs::write(profile_folder(config, agent).join("SOUL.md"), text)?;
+    edit_soul(config, agent, true, |soul| crate::souls::relanguage_blocks(&crate::souls::with_language(soul, Some(&code))))?;
     Ok(code)
 }
 
@@ -1544,24 +1595,13 @@ pub const THINKING_LEVELS: [&str; 5] = ["none", "low", "medium", "high", "xhigh"
 pub const DEFAULT_THINKING: &str = "medium";
 /// GLM's level through EUrouter when nothing is chosen, and what « none » becomes there (see [`keeps_thinking_on`]).
 pub const GLM_THINKING: &str = "low";
-/// Next to a GLM profile whose `reasoning_effort` is « low » because the person chose « none »: the app shows « none ».
-pub const THINKING_OFF_MARK: &str = ".bipagents-thinking-off";
-/// Next to a profile's config: the level the person chose (from the app or the console), one word. A level in the
-/// config without it is not the person's: Hermes' config template writes `reasoning_effort: medium` in every new
-/// profile (real-day bench 2026-10-28: the offer ran GLM at « medium », 1.8× the cost), so GLM through EUrouter gets
-/// its « low » there. Kept apart from config.yaml, which Hermes' own commands rewrite, so a chosen level a rewrite
-/// lost is put back ([`heal_thinking_of`]).
-pub const THINKING_CHOSEN_MARK: &str = ".bipagents-thinking-chosen";
-
-/// The level the person chose for the profile in `folder` ([`THINKING_CHOSEN_MARK`]), None when they never did.
+/// The level the person chose for the profile in `folder` (its settings record, profile_files.rs), None when they
+/// never did. A level in the config without it is not the person's: Hermes' config template writes
+/// `reasoning_effort: medium` in every new profile (real-day bench 2026-10-28: the offer ran GLM at « medium », 1.8×
+/// the cost), so GLM through EUrouter gets its « low » there. Kept apart from config.yaml, which Hermes' own commands
+/// rewrite, so a chosen level a rewrite lost is put back (profile_files::reconcile).
 pub fn chosen_thinking(folder: &Path) -> Option<String> {
-    let text = std::fs::read_to_string(folder.join(THINKING_CHOSEN_MARK)).ok()?;
-    let level = text.trim().to_lowercase();
-    THINKING_LEVELS.contains(&level.as_str()).then_some(level)
-}
-
-fn record_thinking(folder: &Path, level: &str) -> std::io::Result<()> {
-    std::fs::write(folder.join(THINKING_CHOSEN_MARK), format!("{level}\n"))
+    crate::profile_files::settings(folder).thinking
 }
 
 /// Models whose thinking can't be switched off: GLM through EUrouter (measured 2026-10-27, internal/research/
@@ -1602,7 +1642,7 @@ fn written_thinking(data: &Yaml) -> Option<String> {
 
 /// A config with GLM's floor (see [`keeps_thinking_on`]), `chosen` the level the person chose ([`chosen_thinking`]):
 /// - chosen: that level (« none » written « low »), also when a rewrite of the config lost it;
-/// - nothing chosen: « low », over Hermes' template « medium » too (never the person's: [`THINKING_CHOSEN_MARK`]);
+/// - nothing chosen: « low », over Hermes' template « medium » too (never the person's: [`chosen_thinking`]);
 ///   « high » or « xhigh », which only a person writes (bridges before the record didn't keep one), stay.
 ///
 /// None when nothing changes (another model, the level already right). Applied wherever the bridge writes a model's
@@ -1664,49 +1704,39 @@ pub fn load_or_empty(path: &Path) -> anyhow::Result<Yaml> {
     Ok(if data.truthy() { data } else { Yaml::map() })
 }
 
-/// Written next to it then moved over it: never a half-written config for a gateway reading it.
-pub fn replace_yaml(path: &Path, data: &Yaml) -> anyhow::Result<()> {
-    let mut name = path.file_name().map(|n| n.to_os_string()).unwrap_or_default();
-    name.push(".tmp");
-    let temporary = path.with_file_name(name);
-    std::fs::write(&temporary, pyyaml::dump(data))?;
-    std::fs::set_permissions(&temporary, std::fs::metadata(path)?.permissions())?;
-    std::fs::rename(&temporary, path)?;
-    Ok(())
-}
-
 /// How much the agent thinks before answering (none … xhigh), or None when its model is not one the bridge can
 /// set (an OpenAI-compatible server of the person's: provider `custom` with an address).
 pub fn read_thinking(config: &Config, agent: &AgentConfig) -> Option<String> {
     let data = load_or_empty(&profile_config_path(config, agent)).ok()?;
+    thinking_of(&data, chosen_thinking(&profile_folder(config, agent)).as_deref())
+}
+
+/// [`read_thinking`] of a config, `chosen` the person's level ([`chosen_thinking`]).
+fn thinking_of(data: &Yaml, chosen: Option<&str>) -> Option<String> {
     let model = data.get("model").filter(|m| m.is_map())?;
     if model.get("provider").and_then(Yaml::as_str) != Some("custom")
         || !model.get("base_url").is_some_and(Yaml::truthy)
     {
         return None;
     }
-    let folder = profile_folder(config, agent);
-    if let Some(chosen) = chosen_thinking(&folder) {
-        return Some(chosen); // the person's, whatever a rewrite of the config left there (healed: heal_thinking_of)
+    if let Some(chosen) = chosen {
+        return Some(chosen.to_string()); // the person's, whatever a rewrite of the config left there (reconcile)
     }
-    let floor = thinking_floor(&data);
+    let floor = thinking_floor(data);
     let default = if floor { GLM_THINKING } else { DEFAULT_THINKING };
-    let Some(effort) = written_thinking(&data) else { return Some(default.into()) };
-    if floor && effort == GLM_THINKING && folder.join(THINKING_OFF_MARK).exists() {
-        return Some("none".into()); // what the person chose (before the record); GLM gets its floor
-    }
+    let Some(effort) = written_thinking(data) else { return Some(default.into()) };
     if floor && effort == DEFAULT_THINKING {
         return Some(default.into()); // Hermes' template « medium », never the person's: GLM thinks « low »
     }
     Some(if THINKING_LEVELS.contains(&effort.as_str()) { effort } else { default.into() })
 }
 
-/// The level the person chose from the app or the console: recorded ([`THINKING_CHOSEN_MARK`]), then written.
+/// The level the person chose from the app or the console: recorded (their settings record), then written.
 pub fn choose_thinking(config: &Config, agent: &AgentConfig, level: &str) -> anyhow::Result<String> {
     if !THINKING_LEVELS.contains(&level) || read_thinking(config, agent).is_none() {
         return Err(LookupError(agent.name.clone()).into());
     }
-    record_thinking(&profile_folder(config, agent), level)?;
+    crate::profile_files::update_settings(&profile_folder(config, agent), |s| s.thinking = Some(level.into()))?;
     set_thinking(config, agent, level)
 }
 
@@ -1714,16 +1744,36 @@ pub fn choose_thinking(config: &Config, agent: &AgentConfig, level: &str) -> any
 /// changes): `reasoning_effort`, which GLM-like servers follow (the model still answers an easy question at once).
 /// « none » also turns the chat template's `enable_thinking` off (bound to the model's address), for servers that
 /// only follow that one. Never on: it would win over a turn that asks for no thinking (Live).
-/// GLM through EUrouter ([`keeps_thinking_on`]): « none » is written « low » (its floor) and remembered by
-/// [`THINKING_OFF_MARK`], so the app still shows the person's choice; no `enable_thinking` entry (ignored there).
+/// GLM through EUrouter ([`keeps_thinking_on`]): « none » is written « low » (its floor), the person's choice kept
+/// in their record so the app still shows it; no `enable_thinking` entry (ignored there).
 pub fn set_thinking(config: &Config, agent: &AgentConfig, level: &str) -> anyhow::Result<String> {
     if !THINKING_LEVELS.contains(&level) || read_thinking(config, agent).is_none() {
         return Err(LookupError(agent.name.clone()).into());
     }
-    let path = profile_config_path(config, agent);
-    let mut data = load_or_empty(&path)?;
-    let floor = thinking_floor(&data);
-    let written = if floor && level == "none" { GLM_THINKING } else { level };
+    let folder = profile_folder(config, agent);
+    let chosen = chosen_thinking(&folder);
+    let mut floored = false;
+    crate::profile_files::edit(&folder.join("config.yaml"), |data| {
+        floored = write_thinking(data, level, chosen.as_deref(), &config.model_provider_order);
+    })?;
+    keep_floored_none(&folder, floored, chosen.as_deref())?;
+    Ok(level.to_string())
+}
+
+/// « none » written « low » under GLM's floor with no level recorded (a level of an earlier bridge, carried to GLM):
+/// recorded, so the app still shows « none ».
+fn keep_floored_none(folder: &Path, floored: bool, chosen: Option<&str>) -> anyhow::Result<()> {
+    if floored && chosen.is_none() {
+        crate::profile_files::update_settings(folder, |s| s.thinking = Some("none".into()))?;
+    }
+    Ok(())
+}
+
+/// `level` written in a config (see [`set_thinking`]), with the router's order; whether it was « none » written
+/// « low » under GLM's floor.
+fn write_thinking(data: &mut Yaml, level: &str, chosen: Option<&str>, order: &[String]) -> bool {
+    let floored = thinking_floor(data) && level == "none";
+    let written = if floored { GLM_THINKING } else { level };
     let mut providers = data.get("providers").filter(|p| p.is_map()).cloned().unwrap_or_else(Yaml::map);
     if written == "none" {
         let api = data.get("model").and_then(|m| m.get("base_url")).cloned().unwrap_or(Yaml::Null);
@@ -1746,18 +1796,10 @@ pub fn set_thinking(config: &Config, agent: &AgentConfig, level: &str) -> anyhow
     let mut settings = data.get("agent").filter(|a| a.is_map()).cloned().unwrap_or_else(Yaml::map);
     settings.insert("reasoning_effort", Yaml::str(written));
     data.insert("agent", settings);
-    let chosen = chosen_thinking(&profile_folder(config, agent));
-    if let Some(routed) = crate::model_route::with_routing(&data, &config.model_provider_order, chosen.as_deref()) {
-        data = routed; // the thinking entry is the one Hermes picks for the router's address: it carries the routing
+    if let Some(routed) = crate::model_route::with_routing(data, order, chosen) {
+        *data = routed; // the thinking entry is the one Hermes picks for the router's address: it carries the routing
     }
-    replace_yaml(&path, &data)?;
-    let mark = profile_folder(config, agent).join(THINKING_OFF_MARK);
-    if floor && level == "none" {
-        std::fs::write(&mark, "")?;
-    } else if mark.exists() {
-        std::fs::remove_file(&mark)?;
-    }
-    Ok(level.to_string())
+    floored
 }
 
 /// The agent's model (its id at the router, whether it sees images), or None when the bridge can't switch it
@@ -1783,29 +1825,31 @@ pub fn set_model(config: &Config, agent: &AgentConfig, name: &str, vision: Optio
     if read_model(config, agent).is_none() {
         return Err(LookupError(agent.name.clone()).into());
     }
-    let path = profile_config_path(config, agent);
-    let mut data = load_or_empty(&path)?;
-    let floor_before = thinking_floor(&data);
-    // the level the person chose (« none » under GLM's floor included), carried over to the new model
-    let chosen = written_thinking(&data).and_then(|_| read_thinking(config, agent));
-    if let Some(model) = data.get_mut("model") {
-        model.insert("default", Yaml::str(name));
-        if let Some(vision) = vision {
-            model.insert("supports_vision", Yaml::Bool(vision));
+    let folder = profile_folder(config, agent);
+    let recorded = chosen_thinking(&folder);
+    let mut floored = false;
+    crate::profile_files::edit(&folder.join("config.yaml"), |data| {
+        let floor_before = thinking_floor(data);
+        // the level the person chose (« none » under GLM's floor included), carried over to the new model
+        let chosen = written_thinking(data).and_then(|_| thinking_of(data, recorded.as_deref()));
+        if let Some(model) = data.get_mut("model") {
+            model.insert("default", Yaml::str(name));
+            if let Some(vision) = vision {
+                model.insert("supports_vision", Yaml::Bool(vision));
+            }
         }
-    }
-    let floor_after = thinking_floor(&data);
-    let recorded = chosen_thinking(&profile_folder(config, agent));
-    if let Some(routed) = crate::model_route::with_routing(&data, &config.model_provider_order, recorded.as_deref()) {
-        data = routed;
-    }
-    replace_yaml(&path, &data)?;
-    if floor_before != floor_after {
-        // to or from GLM through EUrouter: « none » written as that model needs it (set_thinking)
-        if let Some(level) = chosen {
-            set_thinking(config, agent, &level)?;
+        let order = &config.model_provider_order;
+        if let Some(routed) = crate::model_route::with_routing(data, order, recorded.as_deref()) {
+            *data = routed;
         }
-    }
+        if floor_before != thinking_floor(data) {
+            // to or from GLM through EUrouter: « none » written as that model needs it (set_thinking)
+            if let Some(level) = chosen {
+                floored = write_thinking(data, &level, recorded.as_deref(), order);
+            }
+        }
+    })?;
+    keep_floored_none(&folder, floored, recorded.as_deref())?;
     Ok(read_model(config, agent).unwrap_or_else(|| json!({})))
 }
 
@@ -1841,84 +1885,39 @@ pub fn heal_souls(config: &Config) {
             // the offer's places: big toolchains don't fit there (souls.rs, 2026-10-30)
             text = crate::souls::with_server(&text, offer);
         }
-        if text != soul {
-            let healed = std::fs::write(profile_folder(config, &agent).join("SOUL.md"), text);
-            if healed.is_ok() {
-                tracing::info!(target: "bipbridge::agents", agent = %agent.name, "personality's bridge rules brought up to date");
-            }
+        if text != soul && edit_soul(config, &agent, false, |_| text).unwrap_or(false) {
+            tracing::info!(target: "bipbridge::agents", agent = %agent.name, "personality's bridge rules brought up to date");
         }
     }
 }
 
-/// Profiles whose browser tools run a bridge program that's gone (an older version's folder, removed when old
-/// versions are cleaned): the one next to this bridge instead. Hermes starts the new command at its next connection
-/// (aibox 2026-10-26: Vie's and Kerfy Studio's spaces had lost their browser after an update).
-pub fn heal_browser_proxy(config: &Config) {
-    let current = crate::browsers::proxy_binary();
-    if !Path::new(&current).exists() {
-        return;
-    }
-    for agent in config.agents.values() {
-        let path = profile_config_path(config, agent);
-        let Ok(text) = std::fs::read_to_string(&path) else { continue };
-        let Ok(mut data) = pyyaml::load(&text) else { continue };
-        let Some(server) = data.get_mut("mcp_servers").and_then(|m| m.get_mut("stealth")).filter(|s| s.is_map()) else {
-            continue;
-        };
-        let Some(command) = server.get("command").and_then(|c| c.as_str()).map(str::to_string) else { continue };
-        if !command.ends_with(crate::browsers::PROXY_BINARY) || command == current || Path::new(&command).exists() {
-            continue;
-        }
-        server.insert("command", Yaml::str(current.clone()));
-        if std::fs::write(&path, pyyaml::dump(&data)).is_ok() {
-            tracing::info!(target: "bipbridge::agents", agent = %agent.name, "browser tools' program brought to this bridge's");
-        }
-    }
-}
-
-/// At start:
-/// - profiles set by an earlier bridge with the chat template's thinking forced on: that wins over a turn asking
-///   for none (Live), so it goes (their reasoning_effort stays);
+/// The thinking level in a config as it should be (profile_files::reconcile), `chosen` the person's level:
+/// - a config an earlier bridge wrote with the chat template's thinking forced on: that wins over a turn asking for
+///   none (Live), so it goes (its reasoning_effort stays);
 /// - GLM through EUrouter ([`keeps_thinking_on`], 2026-10-28): nothing chosen (Hermes' template « medium »
 ///   included: the migration of existing places, real-day bench 2026-10-28) becomes « low », « none » becomes
 ///   « low » with the person's choice kept for the app, and the ignored `enable_thinking` entry goes;
-/// - a level the person chose ([`THINKING_CHOSEN_MARK`]) that a rewrite of the config lost is put back.
-pub fn heal_thinking(config: &Config) {
-    for name in config.agents.keys() {
-        let Ok(agent) = editable(config, name) else { continue };
-        heal_thinking_of(config, &agent);
-    }
-}
-
-/// [`heal_thinking`] for one agent; whether its config changed. Also each time the bridge gives an agent its tools
-/// (agent_tools::register): Hermes' own commands rewrite the config meanwhile (`hermes config set`, `tools enable`),
-/// and an agent still being made after a claim lost the level the person had just set (« Prof » back to « medium »,
-/// real-day bench 2026-10-28).
-pub fn heal_thinking_of(config: &Config, agent: &AgentConfig) -> bool {
-    let Some(level) = read_thinking(config, agent) else { return false };
-    let Ok(data) = load_or_empty(&profile_config_path(config, agent)) else { return false };
-    let chosen = chosen_thinking(&profile_folder(config, agent));
+/// - a level the person chose that a rewrite of the config lost is put back: Hermes' own commands rewrite the config
+///   (`hermes config set`, `tools enable`), and an agent still being made after a claim lost the level the person
+///   had just set (« Prof » back to « medium », real-day bench 2026-10-28).
+///
+/// Whether « none » was written « low » under GLM's floor with nothing recorded (to record: [`keep_floored_none`]).
+pub fn heal_thinking_in(data: &mut Yaml, chosen: Option<&str>, order: &[String]) -> bool {
+    let Some(level) = thinking_of(data, chosen) else { return false };
     let entry = data.get("providers").and_then(|p| p.get(THINKING_PROVIDER)).is_some();
-    let heal = if thinking_floor(&data) {
-        entry || with_thinking_floor(&data, chosen.as_deref()).is_some()
+    let heal = if thinking_floor(data) {
+        entry || with_thinking_floor(data, chosen).is_some()
     } else {
         (entry && level != "none")
             || (!entry && level == "none" && chosen.is_some())
-            || chosen.is_some_and(|c| written_thinking(&data).as_deref() != Some(c.as_str()))
+            || chosen.is_some_and(|c| written_thinking(data).as_deref() != Some(c))
     };
-    if !heal {
-        return false;
-    }
-    match set_thinking(config, agent, &level) {
-        Ok(_) => {
-            tracing::info!(target: "bipbridge::agents", agent = %agent.name, level = %level, "thinking level healed");
-            true
-        }
-        Err(err) => {
-            tracing::warn!(target: "bipbridge::agents", agent = %agent.name, error = %format!("{err:#}"), "thinking level not healed");
-            false
-        }
-    }
+    heal && write_thinking(data, &level, chosen, order) && chosen.is_none()
+}
+
+/// [`keep_floored_none`] for profile_files::reconcile.
+pub fn record_floored_none(folder: &Path) -> anyhow::Result<()> {
+    keep_floored_none(folder, true, None)
 }
 
 /// The settings page of an agent. `GatewayError` (Python's `httpx.HTTPError`) when its gateway does not answer.
@@ -2136,7 +2135,7 @@ pub fn write_soul(config: &Config, agent: &AgentConfig, soul: &str) -> std::io::
     } else {
         crate::souls::with_server(&crate::souls::with_payments(&text), crate::handover::on_offer())
     };
-    std::fs::write(profile_folder(config, agent).join("SOUL.md"), text)
+    edit_soul(config, agent, true, |_| text).map(|_| ())
 }
 
 /// The personality as the person sees and edits it: without the bridge's blocks.
@@ -2157,11 +2156,7 @@ pub fn editable_soul(config: &Config, agent: &AgentConfig) -> std::io::Result<St
 /// not: a changed entry makes its Hermes fetch the list again).
 pub async fn set_health(config: &Config, agent: &AgentConfig, on: bool, run: &Run) -> anyhow::Result<()> {
     crate::health::set_enabled(config, &agent.name, on)?;
-    let soul = read_soul(config, agent)?;
-    let changed = crate::souls::with_health(&soul, on);
-    if changed != soul {
-        std::fs::write(profile_folder(config, agent).join("SOUL.md"), changed)?;
-    }
+    edit_soul(config, agent, true, |soul| crate::souls::with_health(soul, on))?;
     if let Err(exc) = crate::agent_tools::register(config, agent, run).await {
         let error = tail(&exc.to_string(), 200);
         tracing::warn!(target: "bipbridge::agents", agent = %agent.name, error = %error, "agent tools not registered");
@@ -2436,7 +2431,7 @@ async fn patch_settings(
         let agent = config.agent(Some(&agent.name)).cloned().unwrap_or_else(|| agent.clone());
         match state.vault.follow_browser(&config, &agent).await {
             Ok(true) => {
-                let _ = crate::tool_diet::apply(&config, &agent);
+                let _ = crate::profile_files::reconcile(&config, &agent);
             }
             Ok(false) => {}
             Err(exc) => tracing::warn!(target: "bipbridge::agents", agent = %agent.name, error = %exc,

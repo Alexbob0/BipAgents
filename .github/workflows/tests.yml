@@ -93,6 +93,14 @@ jobs:
       - name: VoiceKit
         working-directory: Packages/VoiceKit
         run: swift test
+      # The notifications' UI rig (BipAgentsUITests): the demo launched as a tapped notification of the contract
+      # (contracts/notifications/) opens the right conversation on the right message; prints « [open-timing] ».
+      - name: App UI tests (notifications)
+        run: |
+          device=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for r in sorted(d, reverse=True) if 'iOS' in r for x in d[r] if x['name'].startswith('iPhone')))")
+          xcodebuild test -project BipAgents.xcodeproj -scheme BipAgents -destination "id=$device" \
+            -only-testing:BipAgentsUITests CODE_SIGNING_ALLOWED=NO | tee ui-tests.log | grep -E "open-timing|Test Case|error:|\*\* TEST" || true
+          grep -q "\*\* TEST SUCCEEDED \*\*" ui-tests.log
 
   android:
     name: Android app

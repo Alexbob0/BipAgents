@@ -1,0 +1,79 @@
+{
+  "rules": [
+    {
+      "type": "reply",
+      "follows_switch": true
+    },
+    {
+      "type": "question",
+      "follows_switch": false
+    },
+    {
+      "type": "approval",
+      "follows_switch": false
+    },
+    {
+      "type": "room_reply",
+      "follows_switch": true
+    },
+    {
+      "type": "task",
+      "follows_switch": true
+    },
+    {
+      "type": "subtask",
+      "follows_switch": true
+    },
+    {
+      "type": "scan",
+      "follows_switch": true
+    },
+    {
+      "type": "family",
+      "follows_switch": false
+    },
+    {
+      "type": "email_held",
+      "follows_switch": false
+    },
+    {
+      "type": "site",
+      "follows_switch": false
+    },
+    {
+      "type": "login",
+      "follows_switch": false
+    },
+    {
+      "type": "connector",
+      "follows_switch": false
+    },
+    {
+      "type": "secret",
+      "follows_switch": false
+    },
+    {
+      "type": "mail_card",
+      "follows_switch": false
+    },
+    {
+      "type": "meet",
+      "follows_switch": false
+    },
+    {
+      "type": "boite",
+      "from": "task",
+      "follows_switch": true
+    },
+    {
+      "type": "boite",
+      "from": "routine",
+      "follows_switch": false
+    },
+    {
+      "type": "boite",
+      "from": "other",
+      "follows_switch": false
+    }
+  ]
+}

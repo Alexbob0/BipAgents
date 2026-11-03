@@ -6,7 +6,7 @@ runs the bridge as a separate process and talks to it the way the apps, the agen
 administrator do: over HTTP, SSE, WebSocket and the command line. It reads and writes nothing of the bridge's code.
 The only Python it imports is its own harness (`bbkit/`).
 
-All 545 tests pass (1 skipped) against the Rust bridge's release build. The full run takes about 4 minutes (Apple M4).
+All tests pass (1 skipped) against the Rust bridge's release build. The full run takes about 4 minutes (Apple M4).
 
 ## Running it
 
@@ -70,7 +70,7 @@ reset before each test. Each one records every request it gets.
 | Publisher's push relay | `relay/` | `POST /v1/relay/push` |
 | Another bridge's relay | `[push] relay_url` | |
 | A model | The model's API | `/v1/models` and `/v1/chat/completions` (the mailbox scan's facts). |
-| IMAP server | A mailbox | Reached like Proton Mail Bridge on this machine: plain IMAP, then STARTTLS with a self-signed certificate. |
+| IMAP server | A mailbox | Reached like Proton Mail Bridge on this machine: plain IMAP, then STARTTLS with a self-signed certificate. IDLE tells new mail while the bridge waits (`idling` counts the connections in IDLE). |
 | Dropper | An unreachable host | Accepts each connection and closes it at once. |
 
 **The fake executables** (`bbkit/fakebin.py`). These are first on the bridge's `PATH`, and `[hermes] bin` names the
@@ -174,7 +174,7 @@ The suite makes about 800 requests in 28 files.
 | `GET /v1/media` | app | agent_tools (2), media_and_jobs (1), pages (1) |
 | `GET /v1/pages` | app | pages (1) |
 | `DELETE /v1/pages/{page}` | app | pages (1) |
-| `GET /v1/sessions/{session_id}/state` | app | cronwatch (2) |
+| `GET /v1/sessions/{session_id}/state` | app | cronwatch (2), agent_queue (1) |
 | `GET /v1/status` | app | relay_and_discovery (2), agents_admin (1), config (1), vault (1) |
 | `GET /v1/pairing` | app | lan (2) |
 | `GET /v1/replies/{reply_id}` | app | voice_and_approvals (2), cronwatch (1) |
@@ -211,6 +211,13 @@ The suite makes about 800 requests in 28 files.
 | `POST /v1/jobs/{job_id}/pause` | jobs | jobs (3) |
 | `POST /v1/jobs/{job_id}/resume` | jobs | jobs (3) |
 | `DELETE /v1/jobs/{job_id}` | jobs | jobs (4) |
+| `GET /v1/triggers` | triggers | triggers (5) |
+| `POST /v1/agents/{agent}/triggers` | triggers | triggers (5) |
+| `PATCH /v1/triggers/{id}` | triggers | triggers (2) |
+| `DELETE /v1/triggers/{id}` | triggers | triggers (1) |
+| `POST /v1/triggers/{id}/link` | triggers | triggers (1) |
+| `POST /v1/triggers/{id}/run` | triggers | triggers (1) |
+| `POST /hook/{token}` (no key: the token is the key) | triggers | triggers (2) |
 | `GET POST PUT PATCH DELETE /hermes/{agent}/{path:path}` | lan | lan (4), console (1) |
 | `GET /v1/live/brief` | live_brief | live_brief (2) |
 | `POST /v1/live/calls` | live_brief | live_brief (2) |
@@ -266,6 +273,15 @@ The suite makes about 800 requests in 28 files.
 | `PUT /v1/voices/uses` | voices | voices (3), agent_tools (1) |
 | `PUT /v1/agents/{agent_id}/voices` | voices | voices (3) |
 | `PUT /v1/agents/{agent_id}/appearance` | voices | voices (1) |
+| `GET /v1/agents/{agent_id}/queue` | msg_queue | agent_queue (9) |
+| `POST /v1/agents/{agent_id}/queue` | msg_queue | agent_queue (9) |
+| `POST /v1/agents/{agent_id}/queue/order` | msg_queue | agent_queue (1) |
+| `DELETE /v1/agents/{agent_id}/queue/{item_id}` | msg_queue | agent_queue (1) |
+| `POST /v1/agents/{agent_id}/queue/{item_id}/now` | msg_queue | agent_queue (2) |
+| `POST /v1/agents/{agent_id}/queue/pause` | msg_queue | agent_queue (1) |
+| `POST /v1/agents/{agent_id}/queue/resume` | msg_queue | agent_queue (1) |
+| `GET /v1/agents/{agent_id}/queue/events` | msg_queue | agent_queue (1) |
+| `POST /v1/agents/{agent_id}/steer` | msg_queue | agent_queue (3) |
 | `WEBSOCKET /v1/voice` | voice_ws | voice_and_approvals (12), http_routes (1) |
 | `GET /console/static/…` (mount) | console | console (1) |
 | `GET /desktop/static/novnc/…` (mount) | desktop | desktop (1) |

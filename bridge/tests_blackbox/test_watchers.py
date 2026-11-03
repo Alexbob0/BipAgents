@@ -140,7 +140,7 @@ def test_a_change_wakes_the_agent_once_and_no_change_never(bridges, fakes):
     assert turns(fakes)[1]["session_id"] == turn["session_id"]
     assert wait_until(lambda: [i for i in boite(bridge) if i["text"] == "Un créneau ce soir à 18 h : réserve vite."])
     pushed = next(i for i in boite(bridge) if i["text"].startswith("Un créneau ce soir"))
-    assert wait_until(lambda: [p for p in fakes.apns.payloads() if p.get("outbox_id") == pushed["id"]], timeout=20)
+    assert wait_until(lambda: [p for p in fakes.apns.payloads() if p.get("m") == f"o_{pushed['id']}"], timeout=20)
 
     # 6. NOTHING: the agent keeps it to itself
     fakes.hermes.run_output = "NOTHING"

@@ -1,20 +1,21 @@
 //! Push notifications to the agent's registered devices.
 //!
-//! Content travels on the tailnet, not through Apple: by default alerts carry a generic body and the
-//! Notification Service Extension (`mutable-content: 1`) fetches the full text from the bridge.
-//! Set `[push] previews = true` to put a short preview in the alert body instead.
+//! What the agent said never travels in clear: a push carries the pointer (docs/conversations.md §9.3) and a neutral
+//! line (`notif.<type>`, the phones translate it); a phone that gave its key (`devices.push_key`) gets the words sealed
+//! for it in `enc` (seal.rs), opened by its Notification Service Extension. A phone without a key gets the neutral
+//! line only.
 //!
 //! Port of `bridge/bipbridge/push.py` (owner group: push-runs).
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
-use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
 
 use crate::apns::{ApnsClient, ApnsResult, SendOptions};
 use crate::config::SharedConfig;
 use crate::fcm::FcmClient;
 use crate::logs::{redact6, J};
+use crate::notifications::{BoiteFrom, Kind};
 use crate::relay::RelayClient;
 use crate::store::{Row, Store};
 use crate::Dict;
@@ -23,29 +24,20 @@ use crate::Dict;
 #[path = "push_runs/pyx.rs"]
 pub mod pyx;
 
-pub const MESSAGE_BODY: &str = "Nouveau message";
-pub const TEXTS_KEPT: usize = 200;
-pub const TEXT_TTL: f64 = 24.0 * 3600.0;
-pub const REPLY_BODY: &str = "Ta réponse est prête.";
-pub const QUESTION_BODY: &str = "Une question pour toi";
-pub const APPROVAL_BODY: &str = "Approbation requise";
-pub const SUBTASK_BODY: &str = "Sous-tâche terminée";
-pub const FAMILY_BODY: &str = "Message de ta famille";
-pub const EMAIL_HELD_BODY: &str = "Veut écrire à quelqu'un de nouveau : ton accord est demandé";
-/// A site the agent's programs want to reach (sandbox_sites.rs), without the site when previews are off.
-pub const SITE_BODY: &str = "Veut envoyer des données à un site : ton accord est demandé";
-/// An account to create with a password of the vault (vault_logins.rs), without the site when previews are off.
-pub const LOGIN_BODY: &str = "Veut créer un compte sur un site : ton accord est demandé";
-/// A secret or a connector to approve (secrets.rs, connectors.rs), when previews are off.
-pub const CARD_BODY: &str = "Un connecteur attend ton accord";
-pub const MEET_BODY: &str = "Une date à trouver ensemble";
+/// Every notification as data and its pure builder (the contract's function, contracts/notifications/).
+#[path = "push_runs/notices.rs"]
+pub mod notices;
+use notices::{Context, Notice, Pointer};
 
-/// The lines a push shows when previews are on, written here: in the language of the agent it comes from (« fr »,
-/// « en », « de », « es »; Alex, 2026-11-01: « Veut écrire à … » reached an English person). The bodies above stay
-/// French: they are keys the phones translate (iOS `loc-key`, Android BipMessagingService `pushBody`).
+/// Sealed notifications: the words for each device's own key, a neutral line in clear (refonte phase 5).
+#[path = "push_runs/seal.rs"]
+pub mod seal;
+
+/// The lines a sealed push shows, written here: in the language of the agent it comes from (« fr », « en », « de »,
+/// « es »; Alex, 2026-11-01: « Veut écrire à … » reached an English person).
 pub fn approval_line(lang: &str, command: &str) -> String {
     use crate::approval_text::{colon, pick};
-    let said = pick(lang, APPROVAL_BODY, "Approval needed", "Freigabe nötig", "Se necesita tu permiso");
+    let said = pick(lang, "Approbation requise", "Approval needed", "Freigabe nötig", "Se necesita tu permiso");
     format!("{said}{}{}", colon(lang), preview(command, 120))
 }
 
@@ -75,15 +67,6 @@ fn given(value: Option<&str>) -> Option<&str> {
     value.filter(|v| !v.is_empty())
 }
 
-/// The alert: the preview when there is one, else a generic body that iOS translates (`loc-key` is looked
-/// up in the app's string catalog, whose keys are these French texts; `body` is kept for older apps).
-fn alert(title: &str, preview: Option<&str>, fallback: &str) -> Value {
-    match given(preview) {
-        Some(p) => json!({"title": title, "body": p}),
-        None => json!({"title": title, "body": fallback, "loc-key": fallback}),
-    }
-}
-
 /// `_preview(text, limit=160)`: whitespace squashed, cut with « … ».
 pub fn preview(text: &str, limit: usize) -> String {
     let text = pyx::squash(text);
@@ -100,126 +83,49 @@ fn object(value: Value) -> Dict {
     }
 }
 
-pub fn message_payload(
-    agent: &str,
-    title: &str,
-    outbox_id: &str,
-    session_id: Option<&str>,
-    preview: Option<&str>,
-) -> Dict {
-    let mut payload = object(json!({
-        "aps": {
-            "alert": alert(title, preview, MESSAGE_BODY),
-            "thread-id": agent,
-            "mutable-content": 1,
-            "category": "MESSAGE",
-            "sound": "default",
-        },
-        "outbox_id": outbox_id,
-        "agent": agent,
-    }));
-    if let Some(s) = given(session_id) {
-        payload.insert("session_id".into(), json!(s));
+/// The APNs category of a notification: approvals have « Autoriser une fois / Refuser », accord cards that may be
+/// answered from the notification « Ouvrir » (never a secret's: it is typed in the app), the others « Répondre ».
+pub fn category(kind: Kind) -> &'static str {
+    match kind {
+        Kind::Approval => "APPROVAL",
+        Kind::Connector | Kind::MailCard => "CARD",
+        _ => "MESSAGE",
     }
-    payload
 }
 
-/// `approval_payload(...)`; `choices` as Hermes gave them (a JSON list).
-pub fn approval_payload(
+/// A notification's push (docs/conversations.md §9.3): the neutral line (`notif.<type>`: no title, no words; a device
+/// with a key gets them sealed, `PushService::fanout`), `thread-id` per conversation (`<agent>/<c>`, the
+/// agent's when it is about none), the badge (the journal's unread total), then the pointer: `v`, `n`, `t`, `agent`,
+/// `c`, `m`, `r` (the run / request / card / job it is about) and an approval's or question's own fields (`run_id`,
+/// `request_id`, `choices`: what its buttons answer).
+#[allow(clippy::too_many_arguments)]
+pub fn payload(
+    kind: Kind,
     agent: &str,
-    title: &str,
-    run_id: &str,
-    request_id: Option<&str>,
-    choices: Option<&[Value]>,
-    preview: Option<&str>,
-    session_id: Option<&str>,
+    n: &str,
+    thread: Option<&str>,
+    message: Option<&str>,
+    reference: Option<&str>,
+    badge: i64,
+    extra: &Dict,
 ) -> Dict {
-    let mut payload = object(json!({
-        "aps": {
-            "alert": alert(title, preview, APPROVAL_BODY),
-            "thread-id": agent,
-            "mutable-content": 1,
-            "category": "APPROVAL",
-            "sound": "default",
-        },
-        "agent": agent,
-        "run_id": run_id,
+    let thread_id = thread.map(|c| format!("{agent}/{c}")).unwrap_or_else(|| agent.to_string());
+    let mut out = object(json!({
+        "aps": {"alert": {"loc-key": kind.body_key(), "body": kind.body_key()}, "thread-id": thread_id, "mutable-content": 1,
+                "category": category(kind), "sound": "default", "badge": badge},
+        "v": 2, "n": n, "t": kind.as_str(), "agent": agent,
     }));
-    if let Some(r) = given(request_id) {
-        payload.insert("request_id".into(), json!(r));
+    for (key, value) in [("c", thread), ("m", message), ("r", reference)] {
+        if let Some(v) = given(value) {
+            out.insert(key.into(), json!(v));
+        }
     }
-    if let Some(c) = choices.filter(|c| !c.is_empty()) {
-        payload.insert("choices".into(), Value::Array(c.to_vec()));
+    for (k, v) in extra {
+        if !v.is_null() {
+            out.insert(k.clone(), v.clone());
+        }
     }
-    if let Some(s) = given(session_id) {
-        payload.insert("session_id".into(), json!(s)); // tapping opens that conversation, where the card is
-    }
-    payload
-}
-
-/// A run finished while nobody followed it: tapping opens its conversation.
-pub fn reply_payload(
-    agent: &str,
-    title: &str,
-    run_id: &str,
-    session_id: Option<&str>,
-    preview: Option<&str>,
-    reply_id: Option<&str>,
-    fallback: &str,
-) -> Dict {
-    let mut payload = object(json!({
-        "aps": {
-            "alert": alert(title, preview, fallback),
-            "thread-id": agent,
-            "mutable-content": 1, // the extension shows it as a message from the agent's Bip
-            "category": "MESSAGE",
-            "sound": "default",
-        },
-        "agent": agent,
-        "run_id": run_id,
-        "kind": "reply",
-    }));
-    if let Some(s) = given(session_id) {
-        payload.insert("session_id".into(), json!(s));
-    }
-    if let Some(r) = given(reply_id) {
-        payload.insert("reply_id".into(), json!(r)); // the extension fetches the text on the device (GET /v1/replies/{id})
-    }
-    payload
-}
-
-/// The agent asks something mid-run (clarify) while nobody follows it: tapping opens its conversation.
-pub fn question_payload(
-    agent: &str,
-    title: &str,
-    run_id: &str,
-    request_id: Option<&str>,
-    session_id: Option<&str>,
-    preview: Option<&str>,
-    reply_id: Option<&str>,
-) -> Dict {
-    let mut payload = object(json!({
-        "aps": {
-            "alert": alert(title, preview, QUESTION_BODY),
-            "thread-id": agent,
-            "mutable-content": 1,
-            "category": "MESSAGE",
-            "sound": "default",
-        },
-        "agent": agent,
-        "run_id": run_id,
-        "kind": "question",
-    }));
-    if let Some(r) = given(request_id) {
-        payload.insert("request_id".into(), json!(r));
-    }
-    if let Some(s) = given(session_id) {
-        payload.insert("session_id".into(), json!(s));
-    }
-    if let Some(r) = given(reply_id) {
-        payload.insert("reply_id".into(), json!(r));
-    }
-    payload
+    out
 }
 
 /// `silent_payload(agent, reason, **extra)`: extras that are None are left out.
@@ -275,11 +181,89 @@ pub struct PushService {
     pub android: Option<Sender>,
     /// The publisher's relay (RelayClient), for devices registered there (« relay »).
     pub service: Option<Arc<RelayClient>>,
-    /// Texts of recent reply / question pushes, fetched by the Notification Service Extension over the
-    /// tailnet (GET /v1/replies/{id}): the alert shows the message, which never goes through Apple.
-    texts: Mutex<IndexMap<String, (f64, String)>>,
     /// The Live Activities (and Android's progress notifications) following an agent's work (live_activities.rs).
     pub live: crate::live_activities::Registry,
+    /// The conversations (threads.rs): where a notification points.
+    pub threads: crate::threads::Link,
+}
+
+/// One notification to journal and push ([`PushService::emit`]).
+#[derive(Clone, Debug)]
+pub struct Event {
+    pub agent: String,
+    pub kind: Kind,
+    /// The Hermes session it is about (resolved to its thread), or the room.
+    pub session: Option<String>,
+    pub room: Option<String>,
+    /// The run / request / card / job / mail / meet id it is about.
+    pub ref_id: Option<String>,
+    /// Its text: kept in the journal (`GET /v1/notifications/{n}`), sealed for each phone with a key.
+    pub text: Option<String>,
+    /// What a sealed push shows when it isn't `text` (a Boîte message's words, a task's generic line).
+    pub shown: Option<String>,
+    /// Another title than the agent's name (a room's « <agent> · <room> »).
+    pub title: Option<String>,
+    /// The message id when the producer knows it (a Boîte message: `o_<id>`).
+    pub message: Option<String>,
+    /// Wait for the reply's message to be stored and point at it.
+    pub wait: bool,
+    /// Already heard by the person (a voice reply): journaled for the Boîte, never pushed.
+    pub heard: bool,
+    /// The dedupe key without the message (`<kind>:<agent>:` is put first; a reply's is its message once found).
+    pub key: String,
+    pub from: Option<BoiteFrom>,
+    /// What an approval's or a question's buttons need (`run_id`, `request_id`, `choices`).
+    pub extra: Dict,
+    /// The collapse id of a notification that replaces an earlier one (an approval's request); None for the others.
+    pub collapse: Option<String>,
+}
+
+impl Event {
+    pub fn new(agent: &str, kind: Kind, key: impl Into<String>) -> Event {
+        Event {
+            agent: agent.to_string(),
+            kind,
+            session: None,
+            room: None,
+            ref_id: None,
+            text: None,
+            shown: None,
+            title: None,
+            message: None,
+            wait: false,
+            heard: false,
+            key: key.into(),
+            from: None,
+            extra: Dict::new(),
+            collapse: None,
+        }
+    }
+
+    fn session(mut self, session: Option<&str>) -> Self {
+        self.session = given(session).map(str::to_string);
+        self
+    }
+
+    fn reference(mut self, id: &str) -> Self {
+        self.ref_id = Some(id.to_string()).filter(|i| !i.is_empty());
+        self
+    }
+
+    /// The text kept and sealed.
+    fn text(mut self, text: Option<&str>) -> Self {
+        self.text = given(text).map(str::to_string);
+        self
+    }
+
+    fn collapse(mut self, id: impl Into<String>) -> Self {
+        self.collapse = Some(id.into());
+        self
+    }
+
+    fn with(mut self, key: &str, value: Value) -> Self {
+        self.extra.insert(key.into(), value);
+        self
+    }
 }
 
 impl PushService {
@@ -293,38 +277,7 @@ impl PushService {
         if apns.is_none() {
             tracing::warn!("APNs not configured: iPhone push notifications disabled");
         }
-        PushService {
-            config,
-            store,
-            apns,
-            android,
-            service,
-            texts: Mutex::new(IndexMap::new()),
-            live: Default::default(),
-        }
-    }
-
-    /// Keeps a reply's text for the Notification Service Extension; returns its id.
-    pub fn remember(&self, text: &str) -> String {
-        let reply_id = crate::py::uuid4_hex();
-        let mut texts = self.texts.lock().unwrap_or_else(|e| e.into_inner());
-        texts.insert(reply_id.clone(), (crate::py::time_time(), text.to_string()));
-        loop {
-            let oldest_expired =
-                texts.first().map(|(_, (t, _))| *t < crate::py::time_time() - TEXT_TTL).unwrap_or(false);
-            if texts.len() > TEXTS_KEPT || oldest_expired {
-                texts.shift_remove_index(0);
-            } else {
-                break;
-            }
-        }
-        reply_id
-    }
-
-    /// A kept text (24 h), for `GET /v1/replies/{id}`.
-    pub fn text(&self, reply_id: &str) -> Option<String> {
-        let texts = self.texts.lock().unwrap_or_else(|e| e.into_inner());
-        texts.get(reply_id).filter(|(t, _)| *t >= crate::py::time_time() - TEXT_TTL).map(|(_, text)| text.clone())
+        PushService { config, store, apns, android, service, live: Default::default(), threads: Default::default() }
     }
 
     fn title(&self, agent: &str) -> String {
@@ -336,21 +289,115 @@ impl PushService {
         }
     }
 
-    fn previews(&self) -> bool {
-        self.config.get().push_previews
+    /// What `notices` needs of the agent: its shown name and its language.
+    fn context(&self, agent: &str) -> Context {
+        Context { title: self.title(agent), lang: self.lang(agent).to_string() }
     }
 
-    /// « Me prévenir quand il a fini ou qu'il t'attend » is on for this agent (agent_notify.rs): off, its replies,
-    /// ended work and questions wait in the app without a notification. Approvals and accord requests (site, login,
-    /// held e-mail, connector, vault) always notify: an agent is never stuck without the person knowing (Alex,
-    /// 2026-11-02).
-    fn notifies(&self, agent: &str) -> bool {
-        crate::agent_notify::notifies(&self.config.get(), agent)
+    /// Journals and pushes `notice` (`emit`); a silent one is only pushed.
+    async fn notify(&self, agent: &str, notice: Notice) -> usize {
+        match notice.event(agent, &self.context(agent)) {
+            Some(event) => self.emit(event).await,
+            None => {
+                let built = notices::build(agent, &self.context(agent), &notice, &Pointer::default());
+                self.fanout(agent, built.payload, None, built.push_type, built.priority, None).await
+            }
+        }
     }
 
     /// The language `agent` writes in (« fr », « en », « de », « es »), for the lines written here.
     fn lang(&self, agent: &str) -> &'static str {
         crate::names::names(&crate::names::agent_language(&self.config.get(), agent)).lang
+    }
+
+    /// The one entry of every notification (docs/conversations.md §9.1): the conversation and the message it is
+    /// about (a reply waits until stored), one journal row per event (a second producer of the same event is
+    /// dropped), the rules (« Me prévenir »: notifications.rs), then the push of the pointer. Returns the devices
+    /// reached.
+    pub async fn emit(&self, event: Event) -> usize {
+        let config = self.config.get();
+        let threads = crate::threads::upgrade(&self.threads);
+        let agent = config.agent(Some(&event.agent)).cloned();
+        // the thread of its session (the main thread for a Boîte message) and the stored reply it waits for
+        let (mut resolved, mut found) = (None, None);
+        if let (None, Some(threads), Some(agent)) = (&event.room, &threads, &agent) {
+            if let (true, Some(session)) = (event.wait, &event.session) {
+                let wait = config.push_message_wait_seconds;
+                if let Some((t, m)) = threads.find_message(agent, session, event.text.as_deref(), wait).await {
+                    resolved = Some(t);
+                    found = Some(m);
+                }
+            }
+            if resolved.is_none() {
+                resolved = match &event.session {
+                    Some(session) => threads.resolve(agent, session).await.ok().flatten().map(|t| t.id),
+                    None if event.kind == Kind::Boite => threads.main(agent).await.ok().map(|t| t.id),
+                    None => None,
+                };
+            }
+        }
+        let mut pointer = Pointer { n: crate::threads::new_id("n_"), thread: resolved, message: found, badge: 0 };
+        let (thread, message) = event.target(&pointer);
+        let kind = event.kind.as_str();
+        let key = match (&message, event.kind) {
+            (Some(m), Kind::Reply) => format!("{kind}:{}:{m}", event.agent),
+            _ => format!("{kind}:{}:{}", event.agent, event.key),
+        };
+        let id = pointer.n.clone();
+        let context = self.context(&event.agent);
+        let title = event.shown_title(&context);
+        let row = crate::notifications::NewRow {
+            id: &id,
+            agent: &event.agent,
+            kind,
+            thread: thread.as_deref(),
+            message: message.as_deref(),
+            ref_id: event.ref_id.as_deref(),
+            session: event.session.as_deref(),
+            title: &title,
+            text: event.text.as_deref(),
+            state: "open",
+            dedupe: &key,
+        };
+        match crate::notifications::insert(&self.store, &row).await {
+            Ok(true) => {}
+            Ok(false) => {
+                tracing::info!(agent = %event.agent, kind = kind, key = %key, "notification already sent");
+                return 0;
+            }
+            Err(exc) => tracing::error!(exc = %format!("{exc:#}"), "notification not journaled"),
+        }
+        pointer.badge = crate::notifications::unread_total(&self.store).await.unwrap_or(0);
+        let built = event.push(&pointer);
+        let payload = built.payload;
+        let quiet = event.kind.follows_switch(event.from) && !crate::agent_notify::notifies(&config, &event.agent);
+        // the conversation is on an app's screen (its event stream open): seen there, read, not pushed
+        let on_screen = matches!((&threads, &thread), (Some(t), Some(c)) if t.is_on_screen(c));
+        let (sent, push) = if on_screen {
+            if let Err(exc) = crate::notifications::mark_read(&self.store, &id).await {
+                tracing::warn!(exc = %format!("{exc:#}"), "notification not marked read");
+            }
+            (0, "skipped:on_screen".to_string())
+        } else if event.heard {
+            (0, "skipped:heard".to_string())
+        } else if quiet {
+            (0, "skipped:switch".to_string())
+        } else {
+            // collapsed only where one notification replaces another (a run's, an approval's, a card's)
+            let sealed = event.sealed(&context);
+            let sent = self
+                .fanout(&event.agent, payload.clone(), Some(&sealed), built.push_type, built.priority, built.collapse_id)
+                .await;
+            (sent, if sent > 0 { format!("sent:{sent}") } else { "skipped:no_device".into() })
+        };
+        if let Err(exc) = crate::notifications::set_push(&self.store, &id, &push, &payload).await {
+            tracing::error!(exc = %format!("{exc:#}"), "notification not journaled");
+        }
+        if let Some(threads) = &threads {
+            threads.publish(&event.agent, "notification",
+                json!({"n": id, "agent": event.agent, "t": kind, "c": thread, "m": message, "state": "open"}));
+        }
+        sent
     }
 
     pub(crate) fn sender(&self, device: &Row) -> Option<Sender> {
@@ -361,10 +408,13 @@ impl PushService {
         }
     }
 
+    /// Sends `payload` to `agent`'s devices; a device that gave a key (`push_key`) gets `sealed` for it (seal.rs). A
+    /// device without a key, or whose sealed push can't be made, gets the neutral line alone.
     async fn fanout(
         &self,
         agent: &str,
         payload: Dict,
+        sealed: Option<&seal::Sealed>,
         push_type: &str,
         priority: u8,
         collapse_id: Option<String>,
@@ -380,8 +430,11 @@ impl PushService {
         if devices.is_empty() {
             return 0;
         }
-        let payload = Value::Object(payload);
-        let sends = devices.iter().map(|(device, sender)| {
+        let payloads: Vec<Value> = devices
+            .iter()
+            .map(|(device, _)| Value::Object(Self::payload_for(device, &payload, sealed, agent)))
+            .collect();
+        let sends = devices.iter().zip(&payloads).map(|((device, sender), payload)| {
             let options = SendOptions {
                 environment: device.get("environment").and_then(Value::as_str).unwrap_or("").to_string(),
                 push_type: push_type.to_string(),
@@ -390,7 +443,6 @@ impl PushService {
                 expiration: None,
             };
             let token = device.get("token").and_then(Value::as_str).unwrap_or("").to_string();
-            let payload = &payload;
             async move { sender.try_send(&token, payload, &options).await }
         });
         let results = futures::future::join_all(sends).await;
@@ -415,17 +467,29 @@ impl PushService {
         sent
     }
 
+    /// The push one device gets: sealed for its key when it gave one, else `payload` (the neutral line) as built.
+    fn payload_for(device: &Row, payload: &Dict, sealed: Option<&seal::Sealed>, agent: &str) -> Dict {
+        let key = device.get("push_key").and_then(Value::as_str).and_then(seal::stored_key);
+        let (Some(key), Some(sealed)) = (key, sealed) else { return payload.clone() };
+        seal::for_device(payload, sealed, agent, &key).unwrap_or_else(|exc| {
+            tracing::warn!(exc = %format!("{exc:#}"), agent = %agent, "push not sealed: neutral line only");
+            payload.clone()
+        })
+    }
+
+    /// A Boîte message (ntfy.rs): `from` says whose (its rule, notifications.rs).
     pub async fn notify_message(
         &self,
         agent: &str,
         outbox_id: &str,
         text: &str,
         session_id: Option<&str>,
-        _title: Option<&str>,
+        from: BoiteFrom,
     ) -> usize {
-        let preview = if self.previews() { Some(preview(text, 160)) } else { None };
-        let payload = message_payload(agent, &self.title(agent), outbox_id, session_id, preview.as_deref());
-        self.fanout(agent, payload, "alert", 10, None).await
+        let notice = Notice::Message { outbox_id: outbox_id.into(), text: text.into(), session_id: own(session_id) };
+        let Some(mut event) = notice.event(agent, &self.context(agent)) else { return 0 };
+        event.from = Some(from);
+        self.emit(event).await
     }
 
     pub async fn notify_approval(
@@ -441,8 +505,8 @@ impl PushService {
         self.notify_approval_values(agent, run_id, request_id, choices.as_deref(), command, session_id, None).await
     }
 
-    /// `notify_approval` with the choices as Hermes gave them (RunHub's pending approvals keep them as JSON);
-    /// `room_id` when the run is a group discussion's turn (tapping opens the room).
+    /// An approval Hermes waits for (the choices as Hermes gave them); `room_id` when the run is a group
+    /// discussion's turn (tapping opens the room).
     #[allow(clippy::too_many_arguments)]
     pub async fn notify_approval_values(
         &self,
@@ -454,103 +518,55 @@ impl PushService {
         session_id: Option<&str>,
         room_id: Option<&str>,
     ) -> usize {
-        let mut preview_text = None;
-        if self.previews() {
-            if let Some(command) = given(command) {
-                preview_text = Some(approval_line(self.lang(agent), command));
-            }
-        }
-        let mut payload = approval_payload(
-            agent,
-            &self.title(agent),
-            run_id,
-            request_id,
-            choices,
-            preview_text.as_deref(),
-            session_id,
-        );
-        if let Some(room) = given(room_id) {
-            payload.insert("room_id".into(), json!(room)); // tapping opens the room, where its card is
-        }
-        let collapse = given(request_id).unwrap_or(run_id).to_string();
-        self.fanout(agent, payload, "alert", 10, Some(collapse)).await
-    }
-
-    pub async fn notify_reply(&self, agent: &str, run_id: &str, text: &str, session_id: Option<&str>) -> usize {
-        if !self.notifies(agent) {
-            return 0;
-        }
-        let preview = if self.previews() { Some(preview(text, 160)) } else { None };
-        let reply_id = self.remember(text);
-        let payload = reply_payload(
-            agent,
-            &self.title(agent),
-            run_id,
-            session_id,
-            preview.as_deref(),
-            Some(&reply_id),
-            REPLY_BODY,
-        );
-        self.fanout(agent, payload, "alert", 10, Some(run_id.to_string())).await
-    }
-
-    /// An agent answered in a group discussion (rooms.rs) nobody looks at: « <agent> · <room> », its words when
-    /// previews are on; tapping opens the discussion (`room_id`). Collapsed per discussion.
-    pub async fn notify_room(&self, agent: &str, room_id: &str, room_title: &str, text: &str) -> usize {
-        if !self.notifies(agent) {
-            return 0;
-        }
-        let preview = if self.previews() { Some(preview(text, 160)) } else { None };
-        let reply_id = self.remember(text);
-        let title = if room_title.is_empty() {
-            self.title(agent)
-        } else {
-            format!("{} · {}", self.title(agent), room_title)
+        let notice = Notice::Approval {
+            run_id: run_id.into(),
+            request_id: own(request_id),
+            choices: choices.map(<[Value]>::to_vec),
+            command: own(command),
+            session_id: own(session_id),
+            room_id: own(room_id),
         };
-        let run_id = format!("room:{room_id}");
-        let mut payload =
-            reply_payload(agent, &title, &run_id, None, preview.as_deref(), Some(&reply_id), REPLY_BODY);
-        payload.insert("room_id".into(), json!(room_id));
-        if let Some(Value::Object(aps)) = payload.get_mut("aps") {
-            aps.insert("thread-id".into(), json!(run_id));
-        }
-        self.fanout(agent, payload, "alert", 10, Some(run_id)).await
+        self.notify(agent, notice).await
+    }
+
+    /// A run ended while nobody followed it; also a turn the agent took on its own in its main conversation
+    /// (cronwatch.rs, `run_id` « session:<id> ») and a hand-back's reply (handback.rs): the same reply from two of
+    /// them is one notification (its message's id).
+    pub async fn notify_reply(&self, agent: &str, run_id: &str, text: &str, session_id: Option<&str>) -> usize {
+        self.notify(agent, Notice::Reply { run_id: run_id.into(), text: text.into(), session_id: own(session_id) })
+            .await
+    }
+
+    /// A reply the person heard through a voice follow (the home screen's quick voice, voice_ws.rs): its journal row
+    /// (the Boîte shows it, unread), no push. The same reply notified by the run's end is the same row.
+    pub async fn journal_heard(&self, agent: &str, run_id: &str, text: &str, session_id: Option<&str>) -> usize {
+        let notice = Notice::Reply { run_id: run_id.into(), text: text.into(), session_id: own(session_id) };
+        let Some(mut event) = notice.event(agent, &self.context(agent)) else { return 0 };
+        event.heard = true;
+        self.emit(event).await
+    }
+
+    /// An agent answered in a group discussion (rooms.rs) nobody looks at: « <agent> · <room> »; tapping opens the
+    /// discussion. Collapsed per discussion.
+    pub async fn notify_room(&self, agent: &str, room_id: &str, room_title: &str, text: &str) -> usize {
+        let notice = Notice::Room { room_id: room_id.into(), room_title: room_title.into(), text: text.into() };
+        self.notify(agent, notice).await
     }
 
     /// A background sub-task finished and Hermes left its report in the conversation without waking the agent:
     /// « 🎧 Podcast jeudi » when it made a file, else « Sous-tâche terminée ». Tapping opens the conversation.
     pub async fn notify_subtask(&self, agent: &str, session_id: &str, line: Option<&str>) -> usize {
-        if !self.notifies(agent) {
-            return 0;
-        }
-        let line = given(line);
-        let preview = if self.previews() { line } else { None };
-        let reply_id = line.map(|l| self.remember(l));
-        let payload = reply_payload(
-            agent,
-            &self.title(agent),
-            &format!("session:{session_id}"),
-            Some(session_id),
-            preview,
-            reply_id.as_deref(),
-            SUBTASK_BODY,
-        );
-        self.fanout(agent, payload, "alert", 10, Some(format!("subtask:{session_id}"))).await
+        self.notify(agent, Notice::Subtask { session_id: session_id.into(), line: own(line) }).await
     }
 
-    /// A step of a mailbox scan ended (mail_scan.py): its line when previews are on, else « Sous-tâche terminée »;
-    /// tapping opens the agent.
+    /// A step of a mailbox scan ended (mail_scan.rs); tapping opens the agent.
     pub async fn notify_scan(&self, agent: &str, line: &str) -> usize {
-        if !self.notifies(agent) {
-            return 0;
-        }
-        let preview = if self.previews() { Some(line) } else { None };
-        let payload = reply_payload(agent, &self.title(agent), "session:scan", None, preview, None, SUBTASK_BODY);
-        self.fanout(agent, payload, "alert", 10, Some(format!("scan:{agent}"))).await
+        self.notify(agent, Notice::Scan { line: line.into() }).await
     }
 
-    /// A background task ended, paused at its budget, or was proposed by the agent (jobs.py): its line when
-    /// previews are on, else `body`; tapping opens the task's conversation (the agent for a proposal).
+    /// A background task ended, paused at its budget, or was proposed by the agent (jobs.rs): `body` sealed when
+    /// there is no line; tapping opens the task's conversation (the Boîte for a proposal). A task's latest state replaces
+    /// the earlier one.
     pub async fn notify_job(
         &self,
         agent: &str,
@@ -559,16 +575,13 @@ impl PushService {
         job_id: &str,
         body: &str,
     ) -> usize {
-        if !self.notifies(agent) {
-            return 0;
-        }
-        let preview = if self.previews() { Some(line) } else { None };
-        let run_id = format!("session:{}", given(session_id).unwrap_or("job"));
-        let mut payload = reply_payload(agent, &self.title(agent), &run_id, session_id, preview, None, body);
-        payload.insert("job_id".into(), json!(job_id));
-        self.fanout(agent, payload, "alert", 10, Some(format!("job:{job_id}"))).await
+        let notice =
+            Notice::Job { session_id: own(session_id), line: line.into(), job_id: job_id.into(), body: body.into() };
+        self.notify(agent, notice).await
     }
 
+    /// The agent asks something mid-run (clarify) while nobody follows it: always notified (an unanswered question
+    /// holds the agent like an approval; adopted 2026-11-02).
     pub async fn notify_question(
         &self,
         agent: &str,
@@ -577,90 +590,60 @@ impl PushService {
         question: Option<&str>,
         session_id: Option<&str>,
     ) -> usize {
-        if !self.notifies(agent) {
-            return 0;
-        }
-        let question = given(question);
-        let preview = if self.previews() { question.map(|q| preview(q, 160)) } else { None };
-        let reply_id = question.map(|q| self.remember(q));
-        let payload = question_payload(
-            agent,
-            &self.title(agent),
-            run_id,
-            request_id,
-            session_id,
-            preview.as_deref(),
-            reply_id.as_deref(),
-        );
-        let collapse = given(request_id).unwrap_or(run_id).to_string();
-        self.fanout(agent, payload, "alert", 10, Some(collapse)).await
+        let notice = Notice::Question {
+            run_id: run_id.into(),
+            request_id: own(request_id),
+            question: own(question),
+            session_id: own(session_id),
+        };
+        self.notify(agent, notice).await
     }
 
-    /// Someone of the family passed something on to this agent (family_news.rs): « Alex : je rentre tard ce soir »
-    /// when previews are on, else « Message de ta famille » (the extension fetches the line on the device); tapping
-    /// opens the agent.
+    /// Someone of the family passed something on to this agent (family_news.rs); tapping opens the agent.
     pub async fn notify_family(&self, agent: &str, line: &str, note_id: &str) -> usize {
-        let short = preview(line, 160);
-        let shown = if self.previews() { Some(short.as_str()) } else { None };
-        let reply_id = self.remember(line);
-        let mut payload =
-            reply_payload(agent, &self.title(agent), "session:family", None, shown, Some(&reply_id), FAMILY_BODY);
-        payload.insert("family".into(), json!(note_id));
-        self.fanout(agent, payload, "alert", 10, Some(format!("family:{note_id}"))).await
+        self.notify(agent, Notice::Family { line: line.into(), note_id: note_id.into() }).await
     }
 
     /// The agent's e-mail to an address not allowed yet waits for the person (agent_email.rs): « Veut écrire à
-    /// x@y » when previews are on; tapping opens the agent's e-mail screen (`email_held`: the held mail's id).
+    /// x@y »; tapping opens the agent's e-mail screen (`r`: the held mail's id).
     pub async fn notify_email_held(&self, agent: &str, to: &str, held_id: &str) -> usize {
-        let line = email_held_line(self.lang(agent), to);
-        let preview = if self.previews() { Some(line.as_str()) } else { None };
-        let mut payload =
-            reply_payload(agent, &self.title(agent), "session:email", None, preview, None, EMAIL_HELD_BODY);
-        payload.insert("email_held".into(), json!(held_id));
-        self.fanout(agent, payload, "alert", 10, Some(format!("email:{held_id}"))).await
+        self.notify(agent, Notice::EmailHeld { to: to.into(), held_id: held_id.into() }).await
     }
 
-    /// The agent wants to send data to a site (sandbox_sites.rs; `line`: « Veut envoyer des données à exemple.com
-    /// (environ 2 Mo) »): tapping opens the app's Boîte, where the card is.
+    /// The agent wants to send data to a site (sandbox_sites.rs): tapping opens the Boîte, where the card is.
     pub async fn notify_site_request(&self, agent: &str, line: &str, id: &str) -> usize {
-        let preview = if self.previews() { Some(line) } else { None };
-        let mut payload = reply_payload(agent, &self.title(agent), "session:sites", None, preview, None, SITE_BODY);
-        payload.insert("site_request".into(), json!(id));
-        self.fanout(agent, payload, "alert", 10, Some(format!("site:{id}"))).await
+        self.notify(agent, Notice::Site { line: line.into(), id: id.into() }).await
     }
 
-    /// An agent wants to create an account on a website with a password of the vault (vault_logins.rs): tapping opens
-    /// the app's Boîte, where the card is.
+    /// An agent wants to create an account on a website with a password of the vault (vault_logins.rs).
     pub async fn notify_login_request(&self, agent: &str, host: &str, id: &str) -> usize {
-        let line = login_line(self.lang(agent), host);
-        let preview = if self.previews() { Some(line.as_str()) } else { None };
-        let mut payload = reply_payload(agent, &self.title(agent), "session:vault", None, preview, None, LOGIN_BODY);
-        payload.insert("login_request".into(), json!(id));
-        self.fanout(agent, payload, "alert", 10, Some(format!("login:{id}"))).await
+        self.notify(agent, Notice::Login { host: host.into(), id: id.into() }).await
     }
 
-    /// A secret card or a connector's approval card (secrets.rs, connectors.rs): tapping opens the app's Boîte, where
-    /// the card is. `key`: `secret_request` or `connector_request`, with the card's request id.
+    /// A secret card or a connector's / mail's approval card (secrets.rs, connectors.rs, agent_tools.rs). `key`:
+    /// `secret_request`, `connector_request` or `mail_request`, with the card's request id.
     pub async fn notify_bridge_card(&self, agent: &str, line: &str, key: &str, id: &str) -> usize {
-        let preview = if self.previews() { Some(line) } else { None };
-        let mut payload = reply_payload(agent, &self.title(agent), "session:vault", None, preview, None, CARD_BODY);
-        payload.insert(key.into(), json!(id));
-        self.fanout(agent, payload, "alert", 10, Some(format!("{key}:{id}"))).await
+        self.notify(agent, Notice::Card { line: line.into(), key: key.into(), id: id.into() }).await
     }
 
-    /// A date to find with a relative's household (meet.rs): « Léa propose une date : Dîner » when previews are on;
-    /// tapping opens the app's Boîte, where the card is (`meet`: the request's id).
+    /// A date to find with a relative's household (meet.rs): tapping opens the Boîte, where the card is.
     pub async fn notify_meet(&self, agent: &str, line: &str, id: &str) -> usize {
-        let preview = if self.previews() { Some(line) } else { None };
-        let mut payload = reply_payload(agent, &self.title(agent), "session:meet", None, preview, None, MEET_BODY);
-        payload.insert("meet".into(), json!(id));
-        self.fanout(agent, payload, "alert", 10, Some(format!("meet:{id}"))).await
+        self.notify(agent, Notice::Meet { line: line.into(), id: id.into() }).await
     }
 
     /// `notify_silent(agent, reason, **extra)`.
     pub async fn notify_silent(&self, agent: &str, reason: &str, extra: Dict) -> usize {
-        self.fanout(agent, silent_payload(agent, reason, &extra), "background", 5, None).await
+        self.notify(agent, Notice::Silent { reason: reason.into(), extra }).await
     }
+}
+
+fn own(value: Option<&str>) -> Option<String> {
+    value.map(str::to_string)
+}
+
+/// A short stable digest of a text (dedupe keys).
+fn fnv(text: &str) -> u64 {
+    text.bytes().fold(0xcbf29ce484222325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100000001b3))
 }
 
 #[cfg(test)]
@@ -668,15 +651,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn previews_and_silent_payloads() {
-        assert_eq!(message_payload("vie", "Vie", "o1", None, Some("Texte"))["aps"]["alert"]["body"], "Texte");
-        assert!(!message_payload("vie", "Vie", "o1", None, None).contains_key("session_id"));
-        let choices = [json!("once"), json!("deny")];
-        let ap = approval_payload("vie", "Vie", "run_1", Some("req_9"), Some(&choices), None, None);
-        assert_eq!(ap["aps"]["category"], "APPROVAL");
-        assert_eq!(ap["run_id"], "run_1");
-        assert_eq!(ap["request_id"], "req_9");
-        assert_eq!(ap["choices"], json!(["once", "deny"]));
+    fn pointer_and_silent_payloads() {
+        let extra = Map::new();
+        let p = payload(Kind::Reply, "vie", "n_1", Some("t_1"), Some("m_1"), Some("r1"), 3, &extra);
+        assert_eq!(
+            Value::Object(p),
+            json!({"aps": {"alert": {"loc-key": "notif.reply", "body": "notif.reply"}, "thread-id": "vie/t_1",
+                           "mutable-content": 1, "category": "MESSAGE", "sound": "default", "badge": 3},
+                   "v": 2, "n": "n_1", "t": "reply", "agent": "vie", "c": "t_1", "m": "m_1", "r": "r1"})
+        );
+        let p = payload(Kind::Connector, "vie", "n_2", None, None, None, 0, &extra);
+        assert_eq!((p["aps"]["category"].as_str(), p["aps"]["thread-id"].as_str()), (Some("CARD"), Some("vie")));
+        assert_eq!(p["aps"]["alert"], json!({"loc-key": "notif.connector", "body": "notif.connector"}));
+        assert_eq!(category(Kind::MailCard), "CARD");
+        assert_eq!(category(Kind::Secret), "MESSAGE"); // a secret is typed in the app, never from the notification
+        assert_eq!(category(Kind::Approval), "APPROVAL");
         let mut extra = Map::new();
         extra.insert("run_id".into(), json!("r"));
         extra.insert("gone".into(), Value::Null);

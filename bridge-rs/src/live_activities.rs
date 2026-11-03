@@ -514,7 +514,8 @@ impl PushService {
     }
 
     async fn live_deliver(self: Arc<Self>, item: Outgoing) {
-        let previews = self.config.get().push_previews;
+        // the site the browser is on never goes through Apple ([push] previews removed with sealed notifications)
+        let previews = false;
         let mut device = Dict::new();
         device.insert("environment".into(), json!(item.environment));
         let Some(sender) = self.sender(&device) else {

@@ -348,18 +348,15 @@ pub fn sync_soul(config: &Config, agent: &crate::config::AgentConfig, members: &
     if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
         return false;
     }
-    let path = crate::agents_admin::profile_folder(config, agent).join("SOUL.md");
-    let Ok(soul) = std::fs::read_to_string(&path) else { return false };
-    if soul.trim().is_empty() {
-        return false; // Hermes' own personality: nothing of the bridge's
-    }
     let gives = members.iter().find(|m| m.name == agent.name).map(|m| m.gives);
-    let changed = crate::souls::with_shared_memory(&soul, gives);
-    if changed == soul {
-        return false;
-    }
-    match std::fs::write(&path, changed) {
-        Ok(()) => true,
+    let written = crate::agents_admin::edit_soul(config, agent, false, |soul| {
+        if soul.trim().is_empty() {
+            return soul.to_string(); // Hermes' own personality: nothing of the bridge's
+        }
+        crate::souls::with_shared_memory(soul, gives)
+    });
+    match written {
+        Ok(written) => written,
         Err(err) => {
             tracing::warn!(agent = %agent.name, error = %err, "shared memory rule not written");
             false

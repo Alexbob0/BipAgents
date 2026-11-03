@@ -78,6 +78,20 @@ pub trait Imap: Send {
     fn uid_validity(&mut self) -> Option<u64> {
         None
     }
+    /// Whether the server offers `IDLE` (RFC 2177): new mail told as it arrives (triggers_mail.rs). Asked again after
+    /// the login when the greeting's list lacked it (servers list more once logged in).
+    fn can_idle(&mut self) -> bool {
+        false
+    }
+    /// `IDLE` on the selected folder until the server tells of new mail (`* n EXISTS` / `RECENT`: Ok(true)), `max`
+    /// passes, or `stop()` says so (Ok(false)); then `DONE`. A fake without it refuses.
+    fn idle(&mut self, _max: Duration, _stop: &dyn Fn() -> bool) -> Result<bool, ImapError> {
+        Err(ImapError::Imap("IDLE not supported".into()))
+    }
+    /// `NOOP`: the server's news, the connection kept alive.
+    fn noop(&mut self) -> Result<(), ImapError> {
+        Ok(())
+    }
     fn logout(&mut self) -> Result<(), ImapError>;
 }
 
@@ -118,6 +132,10 @@ pub struct Client {
     untagged: HashMap<String, Vec<Data>>,
     utf8: bool,
     capabilities: Vec<String>,
+    /// The socket under the stream (its read timeout shortened while idling), when known.
+    socket: Option<TcpStream>,
+    /// Its usual read timeout.
+    timeout: Duration,
 }
 
 static UNTAGGED_RESPONSE: LazyLock<Regex> =
@@ -221,19 +239,28 @@ fn wrap(stream: TcpStream, host: &str, verify: bool) -> Result<Box<dyn Stream>, 
 impl Client {
     /// `IMAP4_SSL(host, port, timeout=…)`.
     pub fn connect_tls(host: &str, port: u16, timeout: Duration) -> Result<Client, ImapError> {
-        let stream = wrap(tcp(host, port, timeout)?, host, true)?;
-        Client::start(stream)
+        let plain = tcp(host, port, timeout)?;
+        let socket = plain.try_clone().ok();
+        let stream = wrap(plain, host, true)?;
+        Client::start(stream).map(|c| c.with_socket(socket, timeout))
+    }
+
+    fn with_socket(mut self, socket: Option<TcpStream>, timeout: Duration) -> Client {
+        self.socket = socket;
+        self.timeout = timeout;
+        self
     }
 
     /// `IMAP4(host, port, timeout=…)` then `starttls(context)` (certificates not checked on this machine).
     pub fn connect_starttls(host: &str, port: u16, timeout: Duration, verify: bool) -> Result<Client, ImapError> {
         let plain = tcp(host, port, timeout)?;
         let clone = plain.try_clone().map_err(|e| os_error(&e))?;
+        let socket = plain.try_clone().ok();
         let client = Client::start(Box::new(plain))?;
         if !client.offers_starttls() {
             return Err(ImapError::Imap("TLS not supported by server".into()));
         }
-        client.upgrade(clone, host, verify)
+        client.upgrade(clone, host, verify).map(|c| c.with_socket(socket, timeout))
     }
 
     /// A server on this machine — Proton Mail Bridge or hydroxide (decided 2026-10-28) — whose certificate, when it
@@ -249,6 +276,7 @@ impl Client {
         let plain = tcp(host, port, timeout)?;
         Client::loopback_only(&plain)?;
         let clone = plain.try_clone().map_err(|e| os_error(&e))?;
+        let socket = plain.try_clone().ok();
         clone.set_read_timeout(Some(LOCAL_GREETING)).map_err(|e| os_error(&e))?;
         let client = match Client::start(Box::new(plain)) {
             Ok(client) => client,
@@ -256,15 +284,16 @@ impl Client {
             Err(ImapError::Os { name: "TimeoutError", .. }) => {
                 let stream = tcp(host, port, timeout)?;
                 Client::loopback_only(&stream)?;
-                return Client::start(wrap(stream, host, false)?);
+                let socket = stream.try_clone().ok();
+                return Client::start(wrap(stream, host, false)?).map(|c| c.with_socket(socket, timeout));
             }
             Err(exc) => return Err(exc),
         };
         clone.set_read_timeout(Some(timeout)).map_err(|e| os_error(&e))?;
         if client.offers_starttls() {
-            return client.upgrade(clone, host, false);
+            return client.upgrade(clone, host, false).map(|c| c.with_socket(socket, timeout));
         }
-        Ok(client)
+        Ok(client.with_socket(socket, timeout))
     }
 
     /// Err unless the stream's other end is this machine.
@@ -298,6 +327,8 @@ impl Client {
             untagged: HashMap::new(),
             utf8: false,
             capabilities: Vec::new(),
+            socket: None,
+            timeout: Duration::from_secs(30),
         };
         // the greeting
         let greeting = client.get_line()?;
@@ -558,6 +589,89 @@ impl Imap for Client {
             };
             CODE.captures(line).and_then(|c| std::str::from_utf8(&c[1]).ok()?.parse().ok())
         })
+    }
+
+    fn can_idle(&mut self) -> bool {
+        if !self.capabilities.iter().any(|c| c == "IDLE") {
+            if let Ok(caps) = self.get_capabilities() {
+                self.capabilities = caps;
+            }
+        }
+        self.capabilities.iter().any(|c| c == "IDLE")
+    }
+
+    fn idle(&mut self, max: Duration, stop: &dyn Fn() -> bool) -> Result<bool, ImapError> {
+        if !self.can_idle() {
+            return Err(ImapError::Imap("IDLE not supported".into()));
+        }
+        self.tagnum += 1;
+        let tag = format!("{}{}", self.tagpre, self.tagnum);
+        self.send(format!("{tag} IDLE\r\n").as_bytes())?;
+        loop {
+            match self.get_response()? {
+                Response::Continuation => break,
+                Response::Tagged(t, typ, data) if t == tag => {
+                    return Err(ImapError::Imap(format!("IDLE refused: {typ} {}", String::from_utf8_lossy(&data))));
+                }
+                _ => {}
+            }
+        }
+        // short reads, so that `stop` is heard within a second or so
+        let short = Duration::from_millis(500);
+        if let Some(socket) = &self.socket {
+            let _ = socket.set_read_timeout(Some(short));
+        }
+        let started = std::time::Instant::now();
+        let mut pending: Vec<u8> = Vec::new();
+        let mut news = false;
+        let mut failed: Option<ImapError> = None;
+        while !news && !stop() && started.elapsed() < max {
+            match (&mut self.reader).take(MAXLINE as u64).read_until(b'\n', &mut pending) {
+                Ok(0) => {
+                    failed = Some(ImapError::Imap("socket error: EOF".into()));
+                    break;
+                }
+                Ok(_) if pending.ends_with(b"\r\n") => {
+                    let line = std::mem::take(&mut pending);
+                    let upper = String::from_utf8_lossy(&line).to_uppercase();
+                    if upper.starts_with("* BYE") {
+                        failed = Some(ImapError::Imap(upper.trim().to_string()));
+                        break;
+                    }
+                    news = upper.starts_with("* ") && (upper.trim_end().ends_with(" EXISTS") || upper.trim_end().ends_with(" RECENT"));
+                }
+                Ok(_) if pending.len() >= MAXLINE => {
+                    failed = Some(ImapError::Imap(format!("got more than {MAXLINE} bytes")));
+                    break;
+                }
+                Ok(_) => {}
+                Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {}
+                Err(e) => {
+                    failed = Some(os_error(&e));
+                    break;
+                }
+            }
+        }
+        if let Some(socket) = &self.socket {
+            let _ = socket.set_read_timeout(Some(self.timeout));
+        }
+        if let Some(err) = failed {
+            return Err(err);
+        }
+        self.send(b"DONE\r\n")?;
+        loop {
+            if let Response::Tagged(t, _, _) = self.get_response()? {
+                if t == tag {
+                    break;
+                }
+            }
+        }
+        self.untagged.clear();
+        Ok(news)
+    }
+
+    fn noop(&mut self) -> Result<(), ImapError> {
+        self.simple("NOOP", &[]).map(|_| ())
     }
 
     fn logout(&mut self) -> Result<(), ImapError> {

@@ -256,6 +256,8 @@ mod tests {
             error: None,
             handoff: None,
             capped: false,
+            task: None,
+            handover: None,
         };
         rooms::change(config, id, |room| room.push_message(message)).unwrap();
     }

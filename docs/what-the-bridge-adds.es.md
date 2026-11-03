@@ -42,6 +42,10 @@ solo programa en Rust, `bipbridge`). Esta página recoge lo que añade, área po
   texto del bridge: Apple y Google nunca lo ven; `relay.rs` y el [`relay/`](../relay/) aparte reenvían avisos sin
   contenido. `runs.rs` convierte en notificación una aprobación que nadie mira; `agent_notify.rs` lo ajusta por
   agente; `live_activities.rs` muestra un trabajo largo en la pantalla de bloqueo y la Dynamic Island.
+- **Mensajes durante el trabajo.** `msg_queue.rs`: un mensaje enviado mientras el agente trabaja entra en el turno en
+  curso (el steer de Hermes, tras sus llamadas a herramientas del momento); « Después » lo guarda en la cola del agente, en
+  el puente, igual en todos los dispositivos, lanzado como siguiente turno al terminar (orden, quitar, enviar ahora,
+  pausa), una sola notificación al final.
 - **Nada se pierde.** `ntfy.rs` y `cronwatch.rs` guardan los mensajes de los agentes y la respuesta de cada rutina en
   una bandeja de salida (`store.rs`), con el audio listo; `restore_reconcile.rs` recupera tras una restauración los
   mensajes que guardaron los móviles.
@@ -183,6 +187,7 @@ los aplica.
 | 0018 turnos de invitados | el turno de un familiar solo tiene las herramientas del invitado y ningún USER.md |
 | 0019 las rutinas informan en su conversación | una rutina creada en una conversación responde allí |
 | 0020 consumo por llamada en la API Runs | el coste real de cada llamada al modelo, para los presupuestos |
+| 0021 la conversación principal sigue siendo la de la app | la conversación principal de cada agente conserva la respuesta en directo y su historial en v0.22.5 |
 
 **Cómo los llevamos upstream.** La serie es una rama git sobre Hermes, exportada con `scripts/hermes-patches.sh`
 (`branch`, `export`, `check`): un commit por parche, nombres estables, los mismos bytes cada vez. Pasar a un Hermes

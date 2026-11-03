@@ -1,0 +1,71 @@
+{
+  "$schema": "../schema.json",
+  "type": "meet",
+  "audit_row": 16,
+  "summary": "A date to find with a relative's household.",
+  "producers": [
+    "meet.rs:~505 -> notify_meet"
+  ],
+  "policy": {
+    "per_agent_switch": false
+  },
+  "v2": {
+    "t": "meet",
+    "c": "none",
+    "m": null,
+    "loc_key": "notif.meet",
+    "collapse": "n",
+    "link": "bipagents://open?agent=vie&n=<journal id>&t=meet",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
+  },
+  "variants": [
+    {
+      "name": "default",
+      "about": "A date to find.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_meet",
+          "args": {
+            "line": "Léa propose une date : Dîner",
+            "id": "meet_1"
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.meet",
+            "body": "notif.meet"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "meet",
+        "agent": "vie",
+        "c": "t_contract",
+        "r": "meet_1"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "meet:meet_1"
+      }
+    }
+  ]
+}

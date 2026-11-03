@@ -23,6 +23,7 @@ use tokio::task::{AbortHandle, JoinHandle};
 use crate::config::{AgentConfig, SharedConfig};
 use crate::hermes::HermesError;
 use crate::media::{extract_media, resolve, without_media_lines};
+use crate::notifications::BoiteFrom;
 use crate::push::pyx::{self, PyError};
 use crate::push::PushService;
 use crate::store::{iso, NewOutbox, Row, Store};
@@ -255,14 +256,25 @@ impl OutboxService {
             // push now when it takes longer; the audio route serves it once ready
             let _ = tokio::time::timeout(Duration::from_secs_f64(wait), task).await;
         }
+        let session_id = item.get("session_id").and_then(Value::as_str);
+        if let Some(threads) = crate::threads::upgrade(&self.push.threads) {
+            threads.touch(&agent.name, session_id, "boite").await;
+        }
         if !notify {
             return;
         }
         let id = crate::py::py_str(&item["id"]);
         let (text, _) = extract_media(item.get("text").and_then(Value::as_str).unwrap_or("")); // its words only
-        let session_id = item.get("session_id").and_then(Value::as_str);
-        let title = item.get("title").and_then(Value::as_str);
-        self.push.notify_message(&agent.name, &id, &text, session_id, title).await;
+        // whose: a background task's hand-back follows « Me prévenir », a routine's report its own mute
+        let ntfy_id = item.get("ntfy_id").and_then(Value::as_str).unwrap_or("");
+        let from = if ntfy_id.starts_with("handback:") {
+            BoiteFrom::Task
+        } else if ntfy_id.starts_with("hermes-session:") {
+            BoiteFrom::Routine
+        } else {
+            BoiteFrom::Other
+        };
+        self.push.notify_message(&agent.name, &id, &text, session_id, from).await;
     }
 
     pub async fn close(&self) {

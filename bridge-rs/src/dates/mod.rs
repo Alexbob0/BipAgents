@@ -434,24 +434,12 @@ pub fn write_profile(path: &Path, zone: &str, routines: &str) -> anyhow::Result<
     if !path.exists() {
         return Ok(false);
     }
-    let mut data = crate::agents_admin::load_or_empty(path)?;
-    let mut changed = false;
-    if data.get("timezone").and_then(Yaml::as_str) != Some(zone) {
+    let changed = crate::profile_files::edit(path, |data| {
         data.insert("timezone", Yaml::str(zone));
-        changed = true;
-    }
-    if !data.get("cron").is_some_and(Yaml::is_map) {
-        data.insert("cron", Yaml::map());
-    }
-    if let Some(cron) = data.get_mut("cron") {
-        if cron.get("timezone").and_then(Yaml::as_str) != Some(routines) {
+        if let Some(cron) = data.section("cron") {
             cron.insert("timezone", Yaml::str(routines));
-            changed = true;
         }
-    }
-    if changed {
-        crate::agents_admin::replace_yaml(path, &data)?;
-    }
+    })?;
     Ok(changed)
 }
 
@@ -706,13 +694,11 @@ pub fn refresh_souls(config: &Config) {
         if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
             continue;
         }
-        let file = crate::agents_admin::profile_folder(config, agent).join("SOUL.md");
-        let Ok(soul) = std::fs::read_to_string(&file) else { continue };
-        let changed = with_dates(&soul, agent_line(config, &person, &soul).as_deref());
-        if changed != soul {
-            if let Err(err) = std::fs::write(&file, changed) {
-                tracing::warn!(target: "bipbridge::dates", agent = %agent.name, error = %err, "dates line not written");
-            }
+        let written = crate::agents_admin::edit_soul(config, agent, false, |soul| {
+            with_dates(soul, agent_line(config, &person, soul).as_deref())
+        });
+        if let Err(err) = written {
+            tracing::warn!(target: "bipbridge::dates", agent = %agent.name, error = %err, "dates line not written");
         }
     }
 }

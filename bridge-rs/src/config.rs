@@ -689,7 +689,9 @@ pub struct Config {
     /// Files the agents point to with « MEDIA:<path> » lines: agent-side prefix -> host directory.
     pub media_roots: IndexMap<String, String>,
     pub ntfy_url: String,
-    pub push_previews: bool,
+    /// How long a reply's notification waits for its message to be stored, to carry its id (`[push]
+    /// message_wait_seconds`, notifications.rs). Then it goes without it.
+    pub push_message_wait_seconds: f64,
     pub watch_followed_runs: bool,
     pub apns: ApnsConfig,
     /// The Firebase project's service account (JSON), for the Android app's notifications.
@@ -744,6 +746,9 @@ pub struct Config {
     /// `[watchers]` (watchers.rs): not in the serialized form either.
     #[serde(skip)]
     pub watchers: crate::watchers::Settings,
+    /// `[triggers]` (triggers.rs): routines started by an e-mail or a link. Not serialized either.
+    #[serde(skip)]
+    pub triggers: crate::triggers::Settings,
     /// `[agent_restart]` (agent_restart.rs): not in the serialized form either.
     #[serde(skip)]
     pub agent_restart: crate::agent_restart::Settings,
@@ -836,7 +841,7 @@ impl Config {
             cron_subtask_handback: true,
             media_roots: IndexMap::new(),
             ntfy_url: "http://127.0.0.1:8645".into(),
-            push_previews: false,
+            push_message_wait_seconds: 10.0,
             watch_followed_runs: true,
             apns: ApnsConfig::default(),
             fcm_service_account: None,
@@ -862,6 +867,7 @@ impl Config {
             place_spare_agents: None,
             connections: crate::connections::Settings::default(),
             watchers: crate::watchers::Settings::default(),
+            triggers: crate::triggers::Settings::default(),
             agent_restart: crate::agent_restart::Settings::default(),
             link: crate::link_wallet::Settings::default(),
             archive_records: ArchiveRecordsConfig::default(),
@@ -1861,7 +1867,7 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         cron_subtask_handback: b(cron, "subtask_handback", true),
         media_roots,
         ntfy_url: py::rstrip_slash(&s(ntfy, "url", "http://127.0.0.1:8645")),
-        push_previews: b(push, "previews", false),
+        push_message_wait_seconds: f(push, "message_wait_seconds", 10.0)?.clamp(0.0, 60.0),
         watch_followed_runs: b(push, "watch_followed_runs", true),
         apns,
         fcm_service_account: opt_s(fcm_t, "service_account").map(|p| expand(&p)),
@@ -1887,6 +1893,7 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         place_spare_agents,
         connections: crate::connections::Settings::from_table(table(data, "connections")),
         watchers: crate::watchers::Settings::from_table(table(data, "watchers")),
+        triggers: crate::triggers::Settings::from_table(table(data, "triggers")),
         agent_restart: crate::agent_restart::Settings::from_table(table(data, "agent_restart")),
         link: crate::link_wallet::Settings::from_table(table(data, "link")),
         archive_records,
