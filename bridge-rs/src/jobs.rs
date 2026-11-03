@@ -829,14 +829,9 @@ impl Jobs {
                 continue;
             }
             let Some(agent) = config.agent(Some(&agent_of(&job))) else { continue };
-            let run_id = tk::str_or_empty(job.get("run_id"));
-            if let Some(hub) = &self.hub {
-                if !run_id.is_empty() {
-                    let session = job.get("session_id").filter(|v| !v.is_null()).map(py::py_str);
-                    hub.watch(agent, &run_id, session.as_deref(), false);
-                    hub.mark_background(&agent.name, &run_id);
-                    hub.limit_tokens(&agent.name, &run_id, left_for_run(&job));
-                }
+            let (run_id, session) = (tk::str_or_empty(job.get("run_id")), tk::str_or_empty(job.get("session_id")));
+            if !run_id.is_empty() {
+                self.pipeline().follow(agent, Kind::Task, &run_id, &session, Some(left_for_run(&job)));
             }
             self.follow(&tk::str_or_empty(job.get("id")));
             count += 1;

@@ -292,18 +292,23 @@ impl Pipeline {
                 e => NotRun::Refused(e),
             },
         )?;
-        if let Some(hub) = &self.hub {
-            hub.watch(agent, &run_id, Some(&session), false); // approvals and questions pushed, the end told here
-            if turn.kind.long() {
-                hub.mark_background(&agent.name, &run_id);
-            }
-            if let Some(budget) = turn.budget {
-                hub.limit_tokens(&agent.name, &run_id, budget);
-            }
-        }
+        self.follow(agent, turn.kind, &run_id, &session, turn.budget);
         tracing::info!(target: "bipbridge::background_turn", agent = %agent.name, kind = turn.kind.as_str(),
             run_id = %run_id, session = %session, "background turn started");
         Ok((run_id, session))
+    }
+
+    /// The run hub follows the turn's run (again after a restart): approvals and questions pushed, the brake's
+    /// limits of its kind, its budget; its end is told by the starter (`deliver`).
+    pub fn follow(&self, agent: &AgentConfig, kind: Kind, run_id: &str, session: &str, budget: Option<i64>) {
+        let Some(hub) = &self.hub else { return };
+        hub.watch(agent, run_id, Some(session).filter(|s| !s.is_empty()), false);
+        if kind.long() {
+            hub.mark_background(&agent.name, run_id);
+        }
+        if let Some(budget) = budget {
+            hub.limit_tokens(&agent.name, run_id, budget);
+        }
     }
 
     /// The run's end, or None while it goes on.
