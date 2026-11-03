@@ -551,7 +551,10 @@ pub async fn run_fill(
                 }
             }
             Err(why) => {
+                // not marked read: a later import reads it again
                 tracing::info!(target: "bipbridge::whatsapp", why = %why, "a bad answer: window skipped");
+                set_status(&agent.name, status(n + 1, &counts, eur, "filling"));
+                continue;
             }
         }
         let (c, a, id, until) = (config.clone(), agent.name.clone(), archived.known.id.clone(), window.last.clone());

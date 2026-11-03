@@ -171,6 +171,9 @@ pub async fn ask(model: &Model, user: &str) -> Result<(String, i64, i64), String
     if let (Some(route), Some(map)) = (&model.route, body.as_object_mut()) {
         map.insert("provider".into(), route.clone());
     }
+    // GLM through EUrouter thinks at its own default without it, and its 1,200 tokens ended before any answer (carnet
+    // review's lab, 2026-11-03: « no JSON object in the answer », a family chat imported with nobody in the Carnet)
+    crate::model_route::add_thinking_floor(&model.base, &mut body);
     for attempt in 0..2 {
         let mut request = HTTP.post(format!("{}/chat/completions", model.base)).json(&body);
         if !model.key.is_empty() {
