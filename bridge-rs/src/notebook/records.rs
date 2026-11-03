@@ -811,6 +811,18 @@ pub fn next_date(t: &Kind, record: &Dict) -> Option<NaiveDate> {
     NaiveDate::from_ymd_opt(y?, m, d)
 }
 
+/// A record's next date as the apps and the reminders take it on `today`: a subscription's renewal moved on by its
+/// period, or none when only the last one is known (subscriptions.rs `renewal`).
+pub fn next_date_on(t: &Kind, record: &Dict, today: NaiveDate) -> Option<NaiveDate> {
+    if t.id != "subscription" {
+        return next_date(t, record);
+    }
+    match super::subscriptions::renewal(record, today)? {
+        super::subscriptions::Renewal::Next(d) => Some(d),
+        super::subscriptions::Renewal::Last(_) => None,
+    }
+}
+
 static TIME: std::sync::LazyLock<regex::Regex> =
     std::sync::LazyLock::new(|| regex::Regex::new(r"\b([01]?\d|2[0-3])[:hH]([0-5]\d)\b").expect("valid regex"));
 
@@ -833,6 +845,11 @@ fn iso(text: &str) -> String {
 /// matching anything).
 fn same(t: &Kind, old: &Dict, new: &Dict) -> bool {
     let has = |r: &Dict, k: &str| !tk::str_or_empty(r.get(k)).trim().is_empty();
+    // a subscription named three ways by three sources (subscriptions.rs)
+    if t.id == "subscription" && has(old, "service") && has(new, "service") {
+        let s = |r: &Dict, k: &str| tk::str_or_empty(r.get(k));
+        return super::subscriptions::same_service(&s(old, "service"), &s(new, "service"), (&s(old, "price"), &s(new, "price")));
+    }
     let Some(key) = t.keys.iter().find(|key| key.iter().all(|k| has(new, k))) else { return false };
     has(old, key[0])
         && key
@@ -911,7 +928,8 @@ pub fn upsert(
 ) -> anyhow::Result<(Dict, Upserted)> {
     let _guard = super::lock();
     let lang = super::language(config);
-    let new = prepare(t, fields);
+    let mut new = prepare(t, fields);
+    super::subscriptions::settle_values(t, &mut new, &lang);
     let id = id.trim();
     let position = |table: &Table| {
         if id.is_empty() {
@@ -953,7 +971,16 @@ pub fn upsert(
     for (k, v) in &new {
         // the same value written another way (« lave linge » for « Lave-linge ») keeps the record's spelling
         let kept = tk::str_or_empty(record.get(k));
-        if kept.is_empty() || fold(&kept) != fold(&tk::str_or_empty(Some(v))) {
+        // the same service found under another name (« Max plan - 20x » for « Claude Max 20x »): the name changes only
+        // for a more precise one (an update by id renames it as asked)
+        let vaguer = t.id == "subscription"
+            && k == "service"
+            && index.is_some()
+            && id.is_empty()
+            && !kept.is_empty()
+            && super::subscriptions::service_words(&tk::str_or_empty(Some(v))).len()
+                <= super::subscriptions::service_words(&kept).len();
+        if !vaguer && (kept.is_empty() || fold(&kept) != fold(&tk::str_or_empty(Some(v)))) {
             record.insert(k.clone(), v.clone());
         }
     }
@@ -1100,11 +1127,18 @@ pub fn source_ref(source: &str) -> Option<String> {
     ARCHIVE_REF.captures(source).map(|c| c[1].to_lowercase())
 }
 
-fn item_view(t: &Kind, record: &Dict, today: NaiveDate, min_eur: f64, archived: bool) -> Value {
+fn item_view(t: &Kind, record: &Dict, today: NaiveDate, min_eur: f64, archived: bool, lang: &str) -> Value {
     let mut out = record.clone();
-    let next = next_date(t, record);
+    let next = next_date_on(t, record, today);
     out.insert("next_date".into(), json!(next.map(|d| d.format("%Y-%m-%d").to_string())));
     out.insert("in_days".into(), json!(next.map(|d| (d - today).num_days())));
+    // a renewal already past and not moved on: the last known one, said as such (never « next »)
+    if let Some(super::subscriptions::Renewal::Last(d)) =
+        (t.id == "subscription").then(|| super::subscriptions::renewal(record, today)).flatten()
+    {
+        out.insert("last_date".into(), json!(d.format("%Y-%m-%d").to_string()));
+        out.insert("last_title".into(), json!(super::subscriptions::last_title(lang)));
+    }
     let legal = t.id == "purchase" && is_legal(&tk::str_or_empty(record.get("warranty_end")));
     out.insert("legal".into(), json!(legal));
     if t.id == "purchase" {
@@ -1126,7 +1160,7 @@ pub fn type_view(config: &Config, t: &Kind, today: NaiveDate) -> Value {
     let lang = super::language(config);
     let i = lang_index(&lang);
     let mut items: Vec<Dict> = records(config, t);
-    items.sort_by_key(|r| match next_date(t, r) {
+    items.sort_by_key(|r| match next_date_on(t, r, today).or_else(|| next_date(t, r)) {
         Some(d) if d >= today => (0, (d - today).num_days()),
         Some(d) => (1, (today - d).num_days()),
         None => (2, 0),
@@ -1140,13 +1174,13 @@ pub fn type_view(config: &Config, t: &Kind, today: NaiveDate) -> Value {
             super::date_in(&tk::str_or_empty(r.get("date"))).and_then(|(m, d, y)| NaiveDate::from_ymd_opt(y?, m, d))
         }))
     });
-    let views: Vec<Value> = items.iter().map(|r| item_view(t, r, today, min_eur, false)).collect();
+    let views: Vec<Value> = items.iter().map(|r| item_view(t, r, today, min_eur, false, &lang)).collect();
     let important = views.iter().filter(|v| v.get("important").map(py::truthy).unwrap_or(false)).count();
     json!({"type": t.id, "title": t.titles[i], "path": path_of(&lang, t), "fields": fields, "next": t.next,
            "next_title": next_title, "count": items.len(), "important_count": important,
            "warranty_min_eur": min_eur, "items": views,
            "archive_path": archive_path_of(&lang, t), "archived_count": archived.len(),
-           "archived": archived.iter().map(|r| item_view(t, r, today, min_eur, true)).collect::<Vec<_>>()})
+           "archived": archived.iter().map(|r| item_view(t, r, today, min_eur, true, &lang)).collect::<Vec<_>>()})
 }
 
 /// Every type, for `GET /v1/notebook/records`.
@@ -1166,7 +1200,7 @@ pub fn home(config: &Config, today: NaiveDate) -> Vec<Value> {
         }
         let next = items
             .iter()
-            .filter_map(|r| next_date(t, r).filter(|d| *d >= today).map(|d| (d, r)))
+            .filter_map(|r| next_date_on(t, r, today).filter(|d| *d >= today).map(|d| (d, r)))
             .min_by_key(|(d, _)| *d)
             .map(|(d, r)| {
                 json!({"date": d.format("%Y-%m-%d").to_string(), "in_days": (d - today).num_days(),
@@ -1254,7 +1288,7 @@ pub fn propose_due(config: &Config, today: NaiveDate) -> anyhow::Result<usize> {
             if t.id == "purchase" && !important(&record, config.notebook.warranty_min_eur, today) {
                 continue;
             }
-            let Some(date) = next_date(t, &record) else { continue };
+            let Some(date) = next_date_on(t, &record, today) else { continue };
             let until = (date - today).num_days();
             if until < 0 || until > t.window {
                 continue;
