@@ -55,10 +55,10 @@ def test_a_phone_with_a_key_gets_the_words_sealed_and_a_neutral_line(bridge, fak
     assert opened["v"] == 1 and opened["t"] == "reply" and opened["body"] == "Le rendez-vous chez le dentiste est à 9 h."
     assert opened["title"]
     # the ids the apps route by are the same for both phones
-    for key in ("agent", "run_id", "kind"):
+    for key in ("agent", "n", "t", "r"):
         assert sealed[key] == plain[key]
-    # the phone without a key: today's push, no enc
-    assert "enc" not in plain and plain["aps"]["alert"].get("title")
+    # the phone without a key: the neutral line only, no enc, no words
+    assert "enc" not in plain and plain["aps"]["alert"] == {"loc-key": "notif.reply", "body": "notif.reply"}
 
 
 def test_a_registration_without_the_key_drops_it_and_a_bad_key_is_refused(bridge, fakes):

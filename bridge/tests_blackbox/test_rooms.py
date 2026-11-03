@@ -262,8 +262,7 @@ def test_a_reply_nobody_looks_at_is_pushed_and_one_looked_at_is_not(bridges, fak
     bridge.post(f"/v1/rooms/{room['id']}/messages", headers=AUTH, json={"text": "@coach combien de sport ?"})
     assert wait_until(lambda: fakes.apns.pushes(), timeout=20)
     payload = fakes.apns.payloads()[0]
-    assert payload["aps"]["alert"]["title"] == "Coach · Forme"
-    assert payload["aps"]["alert"]["body"] == "Ta réponse est prête."   # no previews by default
+    assert payload["aps"]["alert"] == {"loc-key": "notif.room_reply", "body": "notif.room_reply"}   # no words in clear
     assert payload["aps"]["thread-id"] == f"coach/room:{room['id']}"
     assert payload["c"] == f"room:{room['id']}" and payload["agent"] == "coach" and payload["t"] == "room_reply"
     assert bridge.get(f"/v1/notifications/{payload['n']}", headers=AUTH).status_code == 200

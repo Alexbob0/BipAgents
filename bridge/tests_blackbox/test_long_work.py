@@ -306,7 +306,7 @@ def test_a_steered_run_that_stops_without_handing_over_gets_its_task_started(bri
     assert ASKED in fakes.hermes.started["r1"]["input"]
     assert wait_until(lambda: fakes.apns.pushes())
     payload = fakes.apns.payloads()[0]
-    assert payload["aps"]["alert"]["body"] == "Continue en tâche de fond" and payload["r"] == job["id"]
+    assert payload["aps"]["alert"]["body"] == "notif.task" and payload["r"] == job["id"]
     assert in_session(bridge, payload, "api_c")
     assert bridge.logged("long run: the bridge started the background task")
     # replayed to an app that comes back

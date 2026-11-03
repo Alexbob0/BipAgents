@@ -161,10 +161,9 @@ def test_watch_pushes_approval_when_nobody_follows(bridge, fakes):
     apns = fakes.apns
     assert wait_until(lambda: len(apns.pushes()) >= 1)
     payload = apns.payloads()[0]
-    assert payload["aps"]["category"] == "APPROVAL" and payload["aps"]["alert"]["body"] == "Approbation requise"
+    assert payload["aps"]["category"] == "APPROVAL" and payload["aps"]["alert"]["body"] == "notif.approval"
     assert payload.pop("n").startswith("n_")   # the journal's row; no conversation without a session
-    assert payload == {"aps": {"alert": {"title": "Wellness", "body": "Approbation requise",
-                                         "loc-key": "Approbation requise"},
+    assert payload == {"aps": {"alert": {"loc-key": "notif.approval", "body": "notif.approval"},
                                "thread-id": "wellness", "mutable-content": 1, "category": "APPROVAL", "sound": "default",
                                "badge": 1},
                        "v": 2, "t": "approval", "agent": "wellness", "r": "req_1", "run_id": "run_w",
@@ -410,7 +409,7 @@ def test_reply_ready_pushed_when_the_app_left(bridge, fakes):
     assert wait_until(lambda: len(apns.pushes()) >= 1)
     payload = apns.payloads()[0]
     assert payload["t"] == "reply" and in_session(bridge, payload, "api_9") and payload["r"] == "run_r"
-    assert payload["aps"]["category"] == "MESSAGE" and payload["aps"]["alert"]["body"] == "Ta réponse est prête."
+    assert payload["aps"]["category"] == "MESSAGE" and payload["aps"]["alert"]["body"] == "notif.reply"
     assert apns.pushes()[0].header("apns-collapse-id") == "run_r"
     # The text stays off Apple: the extension fetches it from the bridge.
     assert "19 €" not in apns.pushes()[0].body.decode()
@@ -485,7 +484,7 @@ def test_question_pushed_when_the_app_left(bridge, fakes):
     assert wait_until(lambda: len(apns.pushes()) >= 1)
     payload = apns.payloads()[0]
     assert payload["t"] == "question" and payload["request_id"] == "clr_1" and in_session(bridge, payload, "api_7")
-    assert payload["aps"]["alert"]["body"] == "Une question pour toi" and payload["aps"]["mutable-content"] == 1
+    assert payload["aps"]["alert"]["body"] == "notif.question" and payload["aps"]["mutable-content"] == 1
     assert pushed_text(bridge, payload) == "Quel train ?"
 
 

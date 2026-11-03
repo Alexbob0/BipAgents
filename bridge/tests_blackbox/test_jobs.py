@@ -68,7 +68,7 @@ def test_a_task_runs_in_its_own_conversation_and_ends_with_its_report(bridges, f
     assert done["tokens"] == {"input": 100_000, "output": 5_000, "cached": 0}
     assert wait_until(lambda: fakes.apns.pushes())
     payload = fakes.apns.payloads()[0]
-    assert payload["aps"]["alert"]["body"] == "Background task done" and payload["r"] == job["id"]
+    assert payload["aps"]["alert"]["body"] == "notif.task" and payload["r"] == job["id"]
     assert payload["t"] == "task" and in_session(bridge, payload, "api_s1")
     assert fakes.apns.pushes()[0].header("apns-collapse-id") == f"job:{job['id']}"
     listed = bridge.get("/v1/jobs", headers=AUTH).json()
@@ -98,7 +98,7 @@ def test_a_task_stops_at_its_budget_and_goes_on_with_a_bigger_one(bridges, fakes
     assert paused["reason"] == "budget" and fakes.hermes.seen("/v1/runs/r1/stop", "POST")
     assert paused["tokens"]["input"] >= 100_000 * 20 // 21   # counted from the conversation's counters
     assert wait_until(lambda: fakes.apns.pushes())
-    assert fakes.apns.payloads()[-1]["aps"]["alert"]["body"] == "Tâche de fond en pause"
+    assert fakes.apns.payloads()[-1]["aps"]["alert"]["body"] == "notif.task"
     # Resuming without more budget is refused; with more, the same conversation goes on.
     refused = bridge.post(f"/v1/jobs/{job['id']}/resume", headers=AUTH)
     assert refused.status_code == 409 and refused.json() == {"detail": "the budget is used up: give a bigger one"}
@@ -140,7 +140,7 @@ def test_an_agent_proposes_a_task_the_person_starts(bridges, fakes):
     assert not fakes.hermes.seen("/v1/runs")                  # nothing spent before the go
     assert wait_until(lambda: fakes.apns.pushes())
     payload = fakes.apns.payloads()[0]
-    assert payload["aps"]["alert"]["body"] == "Background task suggested" and "c" not in payload
+    assert payload["aps"]["alert"]["body"] == "notif.task" and "c" not in payload
     assert payload["t"] == "task" and payload["r"] == proposed["id"]
     started = bridge.post(f"/v1/jobs/{proposed['id']}/start", headers=AUTH, json={"max_tokens": 500_000})
     assert started.json()["state"] == "running" and started.json()["max_tokens"] == 500_000

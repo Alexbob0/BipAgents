@@ -149,7 +149,7 @@ def test_a_subtask_report_left_without_a_reply_is_pushed_once(bridges, fakes):
     time.sleep(1.0)
     assert len(fakes.apns.pushes()) == 1
     payload = fakes.apns.payloads()[0]
-    assert payload["aps"]["alert"] == {"title": "Wellness", "body": "🎧 Podcast jeudi"}
+    assert payload["aps"]["alert"] == {"loc-key": "notif.subtask", "body": "notif.subtask"}   # the words: journal / sealed
     assert payload["t"] == "subtask" and in_session(bridge, payload, "api_7")
     assert fakes.apns.pushes()[0].header("apns-collapse-id") is None   # a report never replaces another
     assert pushed_text(bridge, payload) == "🎧 Podcast jeudi"

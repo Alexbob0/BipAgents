@@ -63,7 +63,7 @@ def test_sending_exchanges_the_key_for_a_token_and_drops_dead_tokens(bridges, fa
     n, c = live["data"].pop("n"), live["data"].pop("c")   # the journal's pointer, as strings (docs/conversations.md §9.3)
     assert n.startswith("n_") and in_session(bridge, {"c": c}, "api_5")
     assert live == {"token": LIVE, "android": {"priority": "HIGH"},
-                    "data": {"title": "Wellness", "body": "Nouveau message", "category": "MESSAGE", "v": "2",
+                    "data": {"body": "notif.boite", "category": "MESSAGE", "v": "2",
                              "t": "boite", "agent": "wellness", "m": f"o_{outbox_id}", "r": outbox_id}}
     assert fakes.apns.token(fakes.apns.pushes()[0]) == APPLE              # the iPhone gets its own
     assert wait_until(lambda: sorted(r[0] for r in bridge.db().execute("SELECT token FROM devices")) == sorted([LIVE, APPLE]))
@@ -90,7 +90,7 @@ def test_approval_data_messages_carry_the_choices_as_json(bridges, fakes):
     assert message["android"] == {"priority": "HIGH", "collapse_key": "req_1"}
     n, c = message["data"].pop("n"), message["data"].pop("c")
     assert n.startswith("n_") and c.startswith("t_")
-    assert message["data"] == {"title": "Wellness", "body": "Approbation requise", "category": "APPROVAL", "v": "2",
+    assert message["data"] == {"body": "notif.approval", "category": "APPROVAL", "v": "2",
                                "t": "approval", "agent": "wellness", "r": "req_1", "run_id": "run_1",
                                "request_id": "req_1", "choices": '["once", "deny"]'}
     assert all(isinstance(v, str) for v in message["data"].values())
