@@ -111,6 +111,8 @@ def default_config(root: Path, fakes: Any, p8_path: str) -> Dict[str, Any]:
                  "bundle_id": "io.github.bipagents", "environment": "sandbox",
                  "base_url": fakes.apns.url + "/production", "sandbox_url": fakes.apns.url + "/sandbox"},
         "outbox": {"audio_wait_seconds": 2},
+        # a reply's notification waits for its message to be stored (notifications.rs): 1 s here, not 10
+        "push": {"message_wait_seconds": 1},
         "limits": {"upload_max_mb": 1, "purge_interval_hours": 1000},
         "cron": {"watch": False},
         # The weather and route tools' services: never the real ones.

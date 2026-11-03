@@ -1,0 +1,72 @@
+{
+  "$schema": "../schema.json",
+  "type": "room_reply",
+  "audit_row": 7,
+  "summary": "An agent answered in a group discussion (« Discussion entre agents ») nobody looks at.",
+  "producers": [
+    "rooms.rs:~1959 -> notify_room"
+  ],
+  "policy": {
+    "per_agent_switch": true
+  },
+  "v2": {
+    "t": "room_reply",
+    "c": "room:<id>",
+    "m": "m_<message id>",
+    "loc_key": "notif.reply",
+    "collapse": "n",
+    "link": "bipagents://open?agent=vie&c=room:room_1&m=m_<message id>&t=room_reply",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
+  },
+  "variants": [
+    {
+      "name": "default",
+      "about": "A room reply.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_room",
+          "args": {
+            "room_id": "room_1",
+            "room_title": "Vacances",
+            "text": "Je propose Lisbonne."
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.room_reply",
+            "body": "notif.room_reply"
+          },
+          "thread-id": "vie/room:room_1",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "room_reply",
+        "agent": "vie",
+        "c": "room:room_1",
+        "r": "room_1"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "room:room_1"
+      }
+    }
+  ]
+}

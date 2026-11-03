@@ -550,6 +550,8 @@ pub struct RunHub {
     /// The agents' waiting messages (msg_queue.rs): told each run's end, they say whether more follows in its
     /// conversation (no « reply ready » then). Set by `queues_of`.
     pub queues: std::sync::OnceLock<std::sync::Weak<crate::msg_queue::Queues>>,
+    /// The conversations (threads.rs): told each run's end (their version grows, the apps are told).
+    pub threads: crate::threads::Link,
     inner: Mutex<HubInner>,
     tasks: Mutex<Vec<JoinHandle<()>>>,
     next_id: AtomicU64,
@@ -578,6 +580,7 @@ impl RunHub {
             config: None,
             jobs: std::sync::OnceLock::new(),
             queues: std::sync::OnceLock::new(),
+            threads: Default::default(),
             inner: Mutex::new(HubInner::default()),
             tasks: Mutex::new(Vec::new()),
             next_id: AtomicU64::new(1),
@@ -1252,6 +1255,10 @@ impl RunHub {
                         tracing::error!(target: "asyncio", exc = %format!("{exc:#}"), "Task exception was never retrieved");
                     }
                 });
+            }
+            if let Some(threads) = crate::threads::upgrade(&self.threads) {
+                let (agent, session) = (sub.agent.name.clone(), st.session_id.clone());
+                self.spawn(async move { threads.touch(&agent, session.as_deref(), "run").await });
             }
             // the agent's message queue: what waits starts now, and while more follows here no « reply ready »
             let follows = self.queues.get().and_then(std::sync::Weak::upgrade).is_some_and(|queues| {

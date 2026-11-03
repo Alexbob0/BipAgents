@@ -4,7 +4,7 @@ the conversation gets a plain line (`bridge.notice`, code `loop_stopped`); the a
 write twice in a turn, and too many writes. `[brake]` in bridge.toml."""
 import threading
 
-from bbkit.common import AUTH, HERMES_KEY, read_sse, sse
+from bbkit.common import AUTH, HERMES_KEY, read_sse, sse, in_session
 from bbkit.mcp import call, give_token, media_of, text_of
 from bbkit.servers import wait_until
 
@@ -178,10 +178,10 @@ def test_a_turn_nobody_follows_is_stopped_too(bridges, fakes):
     start(bridge)
     assert wait_until(lambda: fakes.hermes.seen("/v1/runs/r1/stop", "POST"))
     assert bridge.logged("going round in circles: run stopped")
-    assert wait_until(lambda: [p for p in fakes.apns.payloads() if p.get("run_id") == "r1"])
-    pushed = [p for p in fakes.apns.payloads() if p.get("run_id") == "r1"]
-    assert len(pushed) == 1 and pushed[0]["session_id"] == "api_c"
-    said = bridge.get(f"/v1/replies/{pushed[0]['reply_id']}", headers=AUTH).json()
+    assert wait_until(lambda: [p for p in fakes.apns.payloads() if p.get("r") == "r1"])
+    pushed = [p for p in fakes.apns.payloads() if p.get("r") == "r1"]
+    assert len(pushed) == 1 and in_session(bridge, pushed[0], "api_c")
+    said = bridge.get(f"/v1/notifications/{pushed[0]['n']}", headers=AUTH).json()["preview"]
     assert "circles" in str(said) or "rond" in str(said), said
 
 

@@ -1,0 +1,71 @@
+{
+  "$schema": "../schema.json",
+  "type": "family",
+  "audit_row": 11,
+  "summary": "Someone of the family passed something on to this agent.",
+  "producers": [
+    "family_news.rs:~891 -> notify_family"
+  ],
+  "policy": {
+    "per_agent_switch": false
+  },
+  "v2": {
+    "t": "family",
+    "c": "main",
+    "m": "m_<message id>",
+    "loc_key": "notif.family",
+    "collapse": "n",
+    "link": "bipagents://open?agent=vie&c=main&m=m_<message id>&t=family",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
+  },
+  "variants": [
+    {
+      "name": "default",
+      "about": "A family note.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_family",
+          "args": {
+            "line": "Alex : je rentre tard ce soir",
+            "note_id": "note_1"
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.family",
+            "body": "notif.family"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "family",
+        "agent": "vie",
+        "c": "t_contract",
+        "r": "note_1"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": null
+      }
+    }
+  ]
+}

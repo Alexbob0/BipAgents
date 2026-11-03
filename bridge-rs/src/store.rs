@@ -55,6 +55,59 @@ CREATE TABLE IF NOT EXISTS ntfy_cursor (
     last_id TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS threads (
+    id TEXT PRIMARY KEY,
+    agent TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    title TEXT,
+    origin TEXT,
+    hidden INTEGER NOT NULL DEFAULT 0,
+    version INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS threads_one_main ON threads (agent) WHERE kind = 'main';
+CREATE TABLE IF NOT EXISTS thread_segments (
+    agent TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    thread_id TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    linked TEXT NOT NULL,
+    added_at TEXT NOT NULL,
+    PRIMARY KEY (agent, session_id)
+);
+CREATE INDEX IF NOT EXISTS thread_segments_thread ON thread_segments (thread_id, position);
+CREATE TABLE IF NOT EXISTS thread_messages (
+    agent TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    thread_id TEXT NOT NULL,
+    client_id TEXT,
+    attachments TEXT,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (agent, message_id)
+);
+CREATE TABLE IF NOT EXISTS notifications (
+    id TEXT PRIMARY KEY,
+    agent TEXT NOT NULL,
+    type TEXT NOT NULL,
+    thread_id TEXT,
+    message_id TEXT,
+    ref_id TEXT,
+    session_id TEXT,
+    title TEXT,
+    body_key TEXT,
+    preview TEXT,
+    args TEXT,
+    state TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    read_at TEXT,
+    hidden INTEGER NOT NULL DEFAULT 0,
+    push TEXT,
+    dedupe_key TEXT UNIQUE,
+    legacy TEXT
+);
+CREATE INDEX IF NOT EXISTS notifications_agent ON notifications (agent, created_at);
+CREATE INDEX IF NOT EXISTS notifications_thread ON notifications (thread_id, read_at);
 ";
 
 /// A row as Python's `dict(row)`.
@@ -240,10 +293,25 @@ impl Store {
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
         conn.query_row("PRAGMA journal_mode=WAL", [], |_| Ok(()))?;
         conn.execute_batch(SCHEMA)?;
+        Self::migrate(&conn)?;
         if path != ":memory:" {
             let _ = py::chmod(path, 0o600);
         }
         Ok(Store { inner: Arc::new(Inner { path: path.to_string(), conn: Mutex::new(Some(conn)) }) })
+    }
+
+    /// Columns added since the first schema (the Python bridge reads rows by name and ignores them).
+    fn migrate(conn: &Connection) -> anyhow::Result<()> {
+        let has = |table: &str, column: &str| -> anyhow::Result<bool> {
+            let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+            let names = stmt.query_map([], |r| r.get::<_, String>(1))?.collect::<Result<Vec<_>, _>>()?;
+            Ok(names.iter().any(|n| n == column))
+        };
+        // a phone's key for sealed notifications (push.rs seal.rs): dropped with its row
+        if !has("devices", "push_key")? {
+            conn.execute_batch("ALTER TABLE devices ADD COLUMN push_key TEXT")?;
+        }
+        Ok(())
     }
 
     pub fn path(&self) -> &str {
@@ -367,16 +435,32 @@ impl Store {
     // -- devices -----------------------------------------------------------------------------
 
     pub async fn upsert_device(&self, token: &str, environment: &str, agent_ids: &[String]) -> anyhow::Result<Row> {
+        self.upsert_device_keyed(token, environment, agent_ids, None).await
+    }
+
+    /// `upsert_device` with the phone's key for sealed notifications: each registration says it again; one without
+    /// a key (an older app, a phone that lost it) drops the one kept, so nothing is sealed for a key nobody holds.
+    pub async fn upsert_device_keyed(
+        &self,
+        token: &str,
+        environment: &str,
+        agent_ids: &[String],
+        push_key: Option<&str>,
+    ) -> anyhow::Result<Row> {
         let now = iso(utcnow());
         let mut ids: Vec<String> = agent_ids.to_vec();
         ids.sort();
         ids.dedup();
         let ids_json = py::dumps(&json!(ids));
+        let key = match push_key {
+            Some(k) => text(k),
+            None => Param::Null,
+        };
         self.run(
-            "INSERT INTO devices (token, environment, agent_ids, created_at, updated_at) VALUES (?,?,?,?,?) \
+            "INSERT INTO devices (token, environment, agent_ids, created_at, updated_at, push_key) VALUES (?,?,?,?,?,?) \
              ON CONFLICT(token) DO UPDATE SET environment=excluded.environment, \
-             agent_ids=excluded.agent_ids, updated_at=excluded.updated_at",
-            vec![text(token), text(environment), text(&ids_json), text(&now), text(&now)],
+             agent_ids=excluded.agent_ids, updated_at=excluded.updated_at, push_key=excluded.push_key",
+            vec![text(token), text(environment), text(&ids_json), text(&now), text(&now), key],
         )
         .await?;
         self.get_device(token).await?.ok_or_else(|| anyhow!("device not stored"))
@@ -417,6 +501,9 @@ impl Store {
         out.insert("agent_ids".into(), ids);
         out.insert("created_at".into(), row["created_at"].clone());
         out.insert("updated_at".into(), row["updated_at"].clone());
+        if let Some(key) = row.get("push_key").filter(|k| k.is_string()) {
+            out.insert("push_key".into(), key.clone());
+        }
         out
     }
 

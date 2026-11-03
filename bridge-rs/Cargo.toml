@@ -99,6 +99,9 @@ tokio-tungstenite = { version = "0.29", default-features = false, features = ["c
 
 [dev-dependencies]
 rsa = { version = "0.9", features = ["pem"] }
+# tests/notifications_sealed.rs opens the sealed notifications as the phones do (the bridge only seals, with ring)
+p256 = { version = "0.13", default-features = false, features = ["ecdh", "std"] }
+aes-gcm = "0.10"
 tempfile = "3"
 
 # The tests make an RSA key at each run: its maths optimised even in debug builds.

@@ -1,0 +1,172 @@
+{
+  "$schema": "../schema.json",
+  "type": "card",
+  "audit_row": 15,
+  "summary": "A connector's, a secret's or a mail connector's card waits for the person's accord.",
+  "producers": [
+    "connectors.rs:595 (connector_request)",
+    "connectors.rs:1236 (secret_request)",
+    "agent_tools.rs:1428 (mail_request) -> notify_bridge_card"
+  ],
+  "policy": {
+    "per_agent_switch": false
+  },
+  "v2": {
+    "t": "connector | secret | mail_card",
+    "c": "none",
+    "m": null,
+    "loc_key": "notif.card",
+    "collapse": "n",
+    "link": "bipagents://open?agent=vie&n=<journal id>&t=connector",
+    "notes": "Pointer shape: docs/conversations.md §9.3 (conv-core)."
+  },
+  "variants": [
+    {
+      "name": "connector",
+      "about": "A connector's approval card.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_bridge_card",
+          "args": {
+            "line": "Garmin veut se connecter",
+            "key": "connector_request",
+            "id": "card_1"
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.connector",
+            "body": "notif.connector"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "CARD",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "connector",
+        "agent": "vie",
+        "c": "t_contract",
+        "r": "card_1"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "connector:card_1"
+      }
+    },
+    {
+      "name": "secret",
+      "about": "A secret card.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_bridge_card",
+          "args": {
+            "line": "Demande la clé de l'API Météo",
+            "key": "secret_request",
+            "id": "card_2"
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.secret",
+            "body": "notif.secret"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "MESSAGE",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "secret",
+        "agent": "vie",
+        "c": "t_contract",
+        "r": "card_2"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "secret:card_2"
+      }
+    },
+    {
+      "name": "mail",
+      "about": "A mail connector's card.",
+      "bridge": {
+        "agent": "vie",
+        "context": {
+          "title": "Vie",
+          "lang": "fr"
+        },
+        "input": {
+          "fn": "notify_bridge_card",
+          "args": {
+            "line": "Veut lire ta boîte mail",
+            "key": "mail_request",
+            "id": "card_3"
+          }
+        },
+        "pointer": {
+          "n": "n_contract",
+          "thread": "t_contract",
+          "message": "m_contract",
+          "badge": 1
+        }
+      },
+      "payload": {
+        "aps": {
+          "alert": {
+            "loc-key": "notif.mail_card",
+            "body": "notif.mail_card"
+          },
+          "thread-id": "vie/t_contract",
+          "mutable-content": 1,
+          "category": "CARD",
+          "sound": "default",
+          "badge": 1
+        },
+        "v": 2,
+        "n": "n_contract",
+        "t": "mail_card",
+        "agent": "vie",
+        "c": "t_contract",
+        "r": "card_3"
+      },
+      "push": {
+        "push_type": "alert",
+        "priority": 10,
+        "collapse_id": "mail_card:card_3"
+      }
+    }
+  ]
+}

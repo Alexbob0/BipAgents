@@ -1,0 +1,23 @@
+{
+  "id": "t_001a19d47a428816a4d74565b4",
+  "agent": "wellness",
+  "kind": "main",
+  "title": null,
+  "hidden": false,
+  "origin": null,
+  "version": 0,
+  "created_at": "2026-11-02T17:21:20.424Z",
+  "updated_at": "2026-11-02T17:21:20.424Z",
+  "tip": "api_new",
+  "segments": [
+    {
+      "session_id": "api_old",
+      "linked": "adopted"
+    },
+    {
+      "session_id": "api_new",
+      "linked": "compression"
+    }
+  ],
+  "unread": 0
+}

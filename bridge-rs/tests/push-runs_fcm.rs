@@ -20,7 +20,8 @@ use axum::{Json, Router};
 use bipbridge::apns::{ApnsClient, SendOptions};
 use bipbridge::config::SharedConfig;
 use bipbridge::fcm::{data_message, FcmClient};
-use bipbridge::push::{approval_payload, reply_payload, PushService, Sender};
+use bipbridge::notifications::Kind;
+use bipbridge::push::{payload, PushService, Sender};
 use bipbridge::store::Store;
 use common::fakes::*;
 use common::*;
@@ -36,27 +37,24 @@ fn account(dir: &std::path::Path) -> String {
 
 #[test]
 fn an_apns_payload_becomes_fcm_data() {
-    let choices = [json!("once"), json!("deny")];
-    let payload = approval_payload("wellness", "Wellness", "run_1", Some("req_1"), Some(&choices), None, Some("s1"));
-    let data = data_message(&Value::Object(payload));
+    let mut extra = bipbridge::Dict::new();
+    extra.insert("run_id".into(), json!("run_1"));
+    extra.insert("request_id".into(), json!("req_1"));
+    extra.insert("choices".into(), json!(["once", "deny"]));
+    let approval = payload(Kind::Approval, "wellness", "n_1", Some("t_1"), None, Some("req_1"), 2, &extra);
+    let data = data_message(&Value::Object(approval));
     assert_eq!(data["category"], "APPROVAL");
     assert_eq!(data["agent"], "wellness");
     assert_eq!(data["run_id"], "run_1");
     assert_eq!(data["choices"], r#"["once", "deny"]"#);
-    assert_eq!(data["session_id"], "s1");
-    assert_eq!(data["title"], "Wellness");
+    assert_eq!((data["v"].as_str(), data["n"].as_str(), data["t"].as_str(), data["c"].as_str()),
+               (Some("2"), Some("n_1"), Some("approval"), Some("t_1")));
+    assert!(!data.contains_key("title")); // no words in clear: the neutral line only
+    assert_eq!(data["body"], "notif.approval");
     assert!(data.values().all(Value::is_string));
-    let reply = data_message(&Value::Object(reply_payload(
-        "vie",
-        "Vie",
-        "run_2",
-        None,
-        None,
-        Some("abc"),
-        "Ta réponse est prête.",
-    )));
-    assert_eq!(reply["kind"], "reply");
-    assert_eq!(reply["reply_id"], "abc");
+    let reply = data_message(&Value::Object(payload(Kind::Reply, "vie", "n_2", Some("t_2"), Some("m_1"), Some("run_2"), 0,
+                                                    &bipbridge::Dict::new())));
+    assert_eq!((reply["t"].as_str(), reply["m"].as_str()), (Some("reply"), Some("m_1")));
 }
 
 #[derive(Clone, Default)]
@@ -103,7 +101,7 @@ async fn sending_exchanges_the_key_for_a_token_and_drops_dead_tokens() {
     let (g, url) = start_google().await;
     let fcm =
         FcmClient::new(&account(dir.path()), reqwest::Client::new(), &url, Some(&format!("{url}/token"))).unwrap();
-    let payload = Value::Object(reply_payload("vie", "Vie", "run_2", None, None, None, "Ta réponse est prête."));
+    let payload = Value::Object(payload(Kind::Reply, "vie", "n_1", None, None, Some("run_2"), 0, &bipbridge::Dict::new()));
     let ok = fcm.send("live:token-0123456789", &payload, &SendOptions::new("fcm")).await;
     let dead = fcm.send("dead:token-0123456789", &payload, &SendOptions::new("fcm")).await;
     assert!(ok.ok());

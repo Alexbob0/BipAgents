@@ -4,7 +4,7 @@ import json
 import threading
 import time
 
-from bbkit.common import AUTH, HERMES_KEY, pcm_for, read_sse, sse
+from bbkit.common import AUTH, HERMES_KEY, pcm_for, read_sse, sse, in_session, pushed_text
 from bbkit.servers import wait_until
 from bbkit.ws import open_ws, receive_frames, recv_json
 
@@ -161,12 +161,13 @@ def test_watch_pushes_approval_when_nobody_follows(bridge, fakes):
     apns = fakes.apns
     assert wait_until(lambda: len(apns.pushes()) >= 1)
     payload = apns.payloads()[0]
-    assert payload["aps"]["category"] == "APPROVAL" and payload["aps"]["alert"]["body"] == "Approbation requise"
-    assert payload == {"aps": {"alert": {"title": "Wellness", "body": "Approbation requise",
-                                         "loc-key": "Approbation requise"},
-                               "thread-id": "wellness", "mutable-content": 1, "category": "APPROVAL", "sound": "default"},
-                       "agent": "wellness", "run_id": "run_w", "request_id": "req_1",
-                       "choices": ["once", "session", "deny"]}
+    assert payload["aps"]["category"] == "APPROVAL" and payload["aps"]["alert"]["body"] == "notif.approval"
+    assert payload.pop("n").startswith("n_")   # the journal's row; no conversation without a session
+    assert payload == {"aps": {"alert": {"loc-key": "notif.approval", "body": "notif.approval"},
+                               "thread-id": "wellness", "mutable-content": 1, "category": "APPROVAL", "sound": "default",
+                               "badge": 1},
+                       "v": 2, "t": "approval", "agent": "wellness", "r": "req_1", "run_id": "run_w",
+                       "request_id": "req_1", "choices": ["once", "session", "deny"]}
     first = apns.pushes()[0]
     assert first.header("apns-collapse-id") == "req_1" and first.header("apns-push-type") == "alert"
     assert first.header("apns-priority") == "10" and first.header("apns-topic") == "io.github.bipagents"
@@ -407,15 +408,15 @@ def test_reply_ready_pushed_when_the_app_left(bridge, fakes):
     apns = fakes.apns
     assert wait_until(lambda: len(apns.pushes()) >= 1)
     payload = apns.payloads()[0]
-    assert payload["kind"] == "reply" and payload["session_id"] == "api_9" and payload["run_id"] == "run_r"
-    assert payload["aps"]["category"] == "MESSAGE" and payload["aps"]["alert"]["body"] == "Ta réponse est prête."
+    assert payload["t"] == "reply" and in_session(bridge, payload, "api_9") and payload["r"] == "run_r"
+    assert payload["aps"]["category"] == "MESSAGE" and payload["aps"]["alert"]["body"] == "notif.reply"
     assert apns.pushes()[0].header("apns-collapse-id") == "run_r"
     # The text stays off Apple: the extension fetches it from the bridge.
     assert "19 €" not in apns.pushes()[0].body.decode()
-    reply = bridge.get(f"/v1/replies/{payload['reply_id']}", headers=AUTH)
-    assert reply.status_code == 200 and reply.json() == {"id": payload["reply_id"], "text": "Le train de 9h est à 19 €."}
-    assert bridge.get("/v1/replies/nope", headers=AUTH).status_code == 404
-    assert bridge.get(f"/v1/replies/{payload['reply_id']}").status_code == 401
+    reply = bridge.get(f"/v1/notifications/{payload['n']}", headers=AUTH)
+    assert reply.status_code == 200 and reply.json()["preview"] == "Le train de 9h est à 19 €."
+    assert bridge.get("/v1/notifications/nope", headers=AUTH).status_code == 404
+    assert bridge.get(f"/v1/notifications/{payload['n']}").status_code == 401
 
 
 def test_an_agent_told_not_to_notify_stays_quiet_until_turned_back_on(bridge, fakes):
@@ -437,7 +438,7 @@ def test_an_agent_told_not_to_notify_stays_quiet_until_turned_back_on(bridge, fa
     apns = fakes.apns
     assert wait_until(lambda: len(apns.pushes()) >= 1)
     time.sleep(0.5)
-    assert [p["run_id"] for p in apns.payloads()] == ["run_loud"]
+    assert [p["r"] for p in apns.payloads()] == ["run_loud"]
 
 
 def test_an_approval_is_pushed_even_when_the_agent_is_told_not_to_notify(bridge, fakes):
@@ -482,9 +483,9 @@ def test_question_pushed_when_the_app_left(bridge, fakes):
     apns = fakes.apns
     assert wait_until(lambda: len(apns.pushes()) >= 1)
     payload = apns.payloads()[0]
-    assert payload["kind"] == "question" and payload["request_id"] == "clr_1" and payload["session_id"] == "api_7"
-    assert payload["aps"]["alert"]["body"] == "Une question pour toi" and payload["aps"]["mutable-content"] == 1
-    assert bridge.get(f"/v1/replies/{payload['reply_id']}", headers=AUTH).json()["text"] == "Quel train ?"
+    assert payload["t"] == "question" and payload["request_id"] == "clr_1" and in_session(bridge, payload, "api_7")
+    assert payload["aps"]["alert"]["body"] == "notif.question" and payload["aps"]["mutable-content"] == 1
+    assert pushed_text(bridge, payload) == "Quel train ?"
 
 
 def test_upstream_question_contract_is_pushed_too(bridge, fakes):
@@ -557,7 +558,7 @@ def test_watched_runs_resume_after_a_restart_with_their_pending_approval(bridge,
     assert [(p["run_id"], p["request_id"], p["session_id"]) for p in pending] == [("run_wait", "req_x", "api_bot")]
     assert wait_until(lambda: len(fakes.apns.pushes()) >= 1)
     payload = fakes.apns.payloads()[0]
-    assert payload["aps"]["category"] == "APPROVAL" and payload["session_id"] == "api_bot"
+    assert payload["aps"]["category"] == "APPROVAL" and in_session(bridge, payload, "api_bot")
     assert wait_until(lambda: [r[1] for r in rows()] == ["run_wait"])   # finished and unknown ones forgotten
     assert bridge.logged("run watch resumed")[0]["status"] == "waiting_for_approval"
 
