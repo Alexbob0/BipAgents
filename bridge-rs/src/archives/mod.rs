@@ -898,13 +898,9 @@ pub fn sync_soul(config: &Config, agent: &AgentConfig) {
     if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
         return;
     }
-    let path = crate::agents_admin::profile_folder(config, agent).join("SOUL.md");
-    let Ok(soul) = std::fs::read_to_string(&path) else { return };
-    let changed = crate::souls::with_archives(&soul, enabled(config, &agent.name));
-    if changed != soul {
-        if let Err(err) = std::fs::write(&path, changed) {
-            tracing::warn!(agent = %agent.name, error = %err, "archive rule not written");
-        }
+    let on = enabled(config, &agent.name);
+    if let Err(err) = crate::agents_admin::edit_soul(config, agent, false, |soul| crate::souls::with_archives(soul, on)) {
+        tracing::warn!(agent = %agent.name, error = %err, "archive rule not written");
     }
 }
 

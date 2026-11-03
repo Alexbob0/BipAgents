@@ -362,7 +362,7 @@ pub(crate) async fn keep_appearance(
     changed.costumes = costumes;
     state.config.put_agent(changed.clone());
     // an agent of no kind of ours (« Autre ») keeps in view what its category's agents do (tool_diet.rs)
-    if let Err(exc) = crate::tool_diet::apply(&state.config(), &changed) {
+    if let Err(exc) = crate::profile_files::reconcile(&state.config(), &changed) {
         tracing::warn!(agent = %changed.name, error = %exc, "tools in view not set");
     }
     Ok(changed)

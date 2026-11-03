@@ -42,6 +42,9 @@ toevoegt, met de modules (`bridge-rs/src/<naam>.rs`) die het doen, en wat hij be
   meldingen door zonder inhoud. `runs.rs` maakt van een goedkeuring waar niemand naar kijkt een melding;
   `agent_notify.rs` stelt dat per agent in; `live_activities.rs` toont lang werk op het vergrendelscherm en in het
   Dynamic Island.
+- **Berichten tijdens het werk.** `msg_queue.rs`: een bericht dat je stuurt terwijl de agent werkt, gaat in de lopende
+  beurt (Hermes' steer, na de huidige toolaanroepen); « Daarna » zet het in de wachtrij van de agent op de brug, op elk
+  apparaat hetzelfde, gestart als volgende beurt (volgorde, weghalen, nu sturen, pauze), één melding aan het eind.
 - **Niets kwijt.** `ntfy.rs` en `cronwatch.rs` zetten berichten van agents en het antwoord van elke routine in een
   outbox (`store.rs`), met de audio klaar; `restore_reconcile.rs` zet na een herstel de berichten terug die de
   telefoons bewaarden.
@@ -183,6 +186,7 @@ installer past ze toe.
 | 0018 gastbeurten | de beurt van een familielid krijgt alleen de tools van de gast en geen USER.md |
 | 0019 routines melden in hun gesprek | een routine die in een gesprek is gemaakt, antwoordt daar |
 | 0020 verbruik per aanroep in de Runs-API | de echte kosten per modelaanroep, voor budgetten |
+| 0021 het hoofdgesprek blijft dat van de app | het hoofdgesprek van elke agent houdt live antwoorden en zijn geschiedenis op v0.22.5 |
 
 **Hoe we ze upstream brengen.** De reeks is een git-branch op Hermes, geëxporteerd met `scripts/hermes-patches.sh`
 (`branch`, `export`, `check`): één commit per patch, vaste namen, elke keer dezelfde bytes. Naar een nieuwere Hermes

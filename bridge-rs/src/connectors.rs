@@ -383,25 +383,21 @@ pub fn direct_entries(config: &Config, agent: &AgentConfig) -> Vec<String> {
 fn remove_entries(config: &Config, agent: &AgentConfig, keep: &[String]) -> bool {
     use crate::agents_admin::pyyaml;
     let Some(folder) = crate::shares::profile_dir(config, agent) else { return false };
-    let path = folder.join("config.yaml");
-    let Ok(text) = std::fs::read_to_string(&path) else { return false };
-    let Ok(mut data) = pyyaml::load(&text) else { return false };
-    let Some(servers) = data.get_mut("mcp_servers").filter(|s| s.is_map()) else { return false };
-    let names: Vec<String> = match &*servers {
-        pyyaml::Yaml::Map(pairs) => pairs
-            .iter()
-            .filter_map(|(k, _)| k.as_str().map(str::to_string))
-            .filter(|k| k.starts_with(ENTRY_PREFIX) && !keep.contains(k))
-            .collect(),
-        _ => Vec::new(),
-    };
-    if names.is_empty() {
-        return false;
-    }
-    for name in &names {
-        servers.remove(name);
-    }
-    let written = std::fs::write(&path, pyyaml::dump(&data)).is_ok();
+    let mut names: Vec<String> = Vec::new();
+    let written = crate::profile_files::edit(&folder.join("config.yaml"), |data| {
+        let Some(servers) = data.get_mut("mcp_servers").filter(|s| s.is_map()) else { return };
+        if let pyyaml::Yaml::Map(pairs) = &*servers {
+            names = pairs
+                .iter()
+                .filter_map(|(k, _)| k.as_str().map(str::to_string))
+                .filter(|k| k.starts_with(ENTRY_PREFIX) && !keep.contains(k))
+                .collect();
+        }
+        for name in &names {
+            servers.remove(name);
+        }
+    })
+    .unwrap_or(false);
     if written {
         tracing::info!(target: "bipbridge::connectors", agent = %agent.name, entries = %names.join(","), "connector entries removed");
     }
@@ -432,7 +428,7 @@ async fn register_now(state: &AppState, agent: &AgentConfig) {
     if let Err(exc) = register(&config, agent, &crate::agents_admin::default_run()).await {
         tracing::warn!(target: "bipbridge::connectors", agent = %agent.name, error = %crate::agents_admin::tail(&exc.to_string(), 200), "connector entries not written");
     }
-    let _ = crate::tool_diet::apply(&config, agent);
+    let _ = crate::profile_files::reconcile(&config, agent);
 }
 
 // --- the cards -------------------------------------------------------------------------------------------------------

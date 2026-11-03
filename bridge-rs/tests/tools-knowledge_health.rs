@@ -105,12 +105,16 @@ async fn the_phone_sends_its_days_only_once_an_agent_has_health_on() {
     let plain = souls::split_notebook(&souls::split_health(&souls::split_payments(&soul)).0).0;
     let plain = souls::split_shared_memory(&plain).0;
     assert_eq!(souls::split_language(&plain).0.trim(), "Tu es Coach.");
-    let urls: Vec<String> = commands.lock().unwrap().iter().map(|a: &Vec<String>| a[6].clone()).collect();
-    assert!(urls[0].ends_with(&format!(
+    let url = || {
+        let text = std::fs::read_to_string(folder.join("config.yaml")).unwrap();
+        let data: Value = serde_yaml::from_str(&text).unwrap();
+        data["mcp_servers"]["bipagents"]["url"].as_str().unwrap().to_string()
+    };
+    assert!(url().ends_with(&format!(
         "?v={}",
         agent_tools::version_of(&agent_tools::tools_for(&config, config.agent(Some("coach")).unwrap()))
     )));
-    assert_ne!(urls[0], agent_tools::tools_url(&config));
+    assert_ne!(url(), agent_tools::tools_url(&config));
     assert!(tool_names(&app).await.contains(&"health".to_string()));
     // A new switch reads activity, sleep and heart; weight is in « body », chosen here too.
     assert_eq!(health::categories(&config, "coach"), vec!["activity", "sleep", "heart"]);
@@ -125,7 +129,7 @@ async fn the_phone_sends_its_days_only_once_an_agent_has_health_on() {
     .unwrap();
     let after = agent_tools::version_of(&agent_tools::tools_for(&config, config.agent(Some("coach")).unwrap()));
     assert_ne!(before, after); // the tool's description changed: its Hermes fetches the list again
-    assert!(commands.lock().unwrap().iter().any(|a| a.get(6).is_some_and(|u| u.ends_with(&format!("?v={after}")))));
+    assert!(url().ends_with(&format!("?v={after}")));
 
     let days: Vec<Value> = (0..30).map(|n| day(today - Duration::days(29 - n), n)).collect();
     let sent = app.send_json("PUT", "/v1/health-data/days", &h, &json!({"days": days})).await;

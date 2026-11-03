@@ -49,7 +49,7 @@ def csp(site: Path) -> str:
         "img-src 'self' data:",
         "font-src 'self'",
         "media-src 'self'",
-        "connect-src 'self' https://guichet.bipagents.com",  # /m/<id>: a shared model's preview
+        "connect-src 'self' https://guichet.bipagents.com",  # /m/<id>: a shared model's preview; /status/: the public status
         "frame-src 'self'",
         "worker-src 'self'",
         "object-src 'none'",
@@ -171,8 +171,9 @@ def security_txt(domain: str, contact: Dict[str, str], policy: str) -> str:
 
 
 def finish(site: Path, domain: str, cfg: Dict) -> None:
-    """Called last: the 404 page and security.txt first (the hashes see every page), then the .htaccess."""
-    (site / "404.html").write_text(not_found(domain), encoding="utf-8")
+    """Called last: the 404 page (unless the site made its own) and security.txt first (the hashes see every page), then the .htaccess."""
+    if not (site / "404.html").exists():   # bipagents.com builds its own (« Un Bip a mangé la page », site/build.py)
+        (site / "404.html").write_text(not_found(domain), encoding="utf-8")
     well_known = site / ".well-known"
     well_known.mkdir(exist_ok=True)
     policy = cfg.get("repo", "https://github.com/Alexbob0/BipAgents").rstrip("/") + "/blob/main/SECURITY.md"

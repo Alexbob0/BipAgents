@@ -1,14 +1,16 @@
 """A small IMAP4rev1 server for the mailbox tests: plain connection then STARTTLS (as Proton Mail Bridge on this machine,
 whose certificate the bridge does not check) — or plain only with `starttls = False`, as hydroxide without TLS
 options —, LOGIN, LIST, SELECT/EXAMINE, UID SEARCH (ALL, SINCE, BEFORE, FROM, TEXT,
-CHARSET), UID FETCH (RFC822.SIZE, BODY.PEEK[], BODY.PEEK[HEADER.FIELDS (…)], BODY.PEEK[TEXT], partials), APPEND, LOGOUT. It records
-every command it gets."""
+CHARSET, UID n:*), UID FETCH (RFC822.SIZE, BODY.PEEK[], BODY.PEEK[HEADER.FIELDS (…)], BODY.PEEK[TEXT], partials, `*`),
+APPEND, IDLE (new mail told as `* n EXISTS` while idling; off with `idle = False`), NOOP, LOGOUT. It records every
+command it gets."""
 from __future__ import annotations
 
 import datetime
 import email
 import email.policy
 import re
+import select
 import socket
 import ssl
 import tempfile
@@ -96,6 +98,9 @@ class FakeImap:
         self.logins: List[Tuple[str, bool]] = []
         self.tls_seen = 0
         self.starttls = True
+        self.idle = True
+        self.idling = 0        # connections in IDLE now
+        self.idles = 0         # IDLE commands seen
 
     def add(self, folder: str, uid: int, raw: bytes) -> None:
         self.folders.setdefault(folder, []).append((uid, raw))
@@ -149,6 +154,7 @@ class FakeImap:
     def _dispatch(self, state, tag: str, command: str, args: str, payload: bytes) -> bool:
         if command == "CAPABILITY":
             caps = "IMAP4rev1 AUTH=PLAIN" + ("" if state.get("tls") or not self.starttls else " STARTTLS")
+            caps += " IDLE" if self.idle else ""
             self._send(state, f"* CAPABILITY {caps}\r\n".encode())
             self._ok(state, tag)
         elif command == "STARTTLS" and self.starttls:
@@ -174,6 +180,29 @@ class FakeImap:
             self._ok(state, tag)
         elif state["user"] is None:
             self._send(state, f"{tag} NO not logged in\r\n".encode())
+        elif command == "IDLE" and self.idle:
+            folder = state["folder"] or "INBOX"
+            start = len(self.folders.get(folder, []))
+            self._send(state, b"+ idling\r\n")
+            self.idles += 1
+            self.idling += 1
+            told = False
+            conn = state["conn"]
+            try:
+                while True:
+                    count = len(self.folders.get(folder, []))
+                    if not told and count > start:
+                        self._send(state, f"* {count} EXISTS\r\n".encode())
+                        told = True
+                    # the client says nothing until DONE: nothing waits in the file's buffer meanwhile
+                    readable, _, _ = select.select([conn], [], [], 0.05)
+                    if readable or (hasattr(conn, "pending") and conn.pending()):
+                        if not state["stream"].readline():
+                            return False
+                        break
+            finally:
+                self.idling -= 1
+            self._ok(state, tag, "IDLE terminated")
         elif command == "LIST":
             for flags, name in self.FOLDERS:
                 self._send(state, f'* LIST ({flags}) "/" "{name}"\r\n'.encode())
@@ -232,6 +261,13 @@ class FakeImap:
                 elif word == "FROM":
                     ok &= value.lower() in str(header.get("From") or "").lower()
                     i += 2
+                elif word == "UID":
+                    low, _, high = value.partition(":")
+                    top = max((u for u, _ in mails), default=0)
+                    high_n = top if high in ("*", "") else int(high)
+                    # `n:*` always includes the highest UID, even below n (RFC 3501)
+                    ok &= (int(low) <= uid <= high_n) or (high == "*" and uid == top)
+                    i += 2
                 elif word == "TEXT":
                     ok &= value.lower() in raw.decode("utf-8", "replace").lower()
                     i += 2
@@ -243,8 +279,12 @@ class FakeImap:
 
     def _fetch(self, state, uidset: str, items: str) -> None:
         wanted = set()
+        mails_all = self.folders.get(state["folder"] or "", [])
+        top = max((u for u, _ in mails_all), default=0)
         for piece in uidset.split(","):
-            if ":" in piece:
+            if piece == "*":
+                wanted.add(top)
+            elif ":" in piece:
                 low, high = piece.split(":")
                 wanted.update(range(int(low), 10**9 if high == "*" else int(high) + 1))
             else:

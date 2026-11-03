@@ -308,7 +308,11 @@ async fn session_state_status_and_approvals_through_hermes() {
     let (k, v) = auth();
     let h = [(k, v.as_str())];
     let resp = app.get("/v1/sessions/s1/state?agent=wellness", &h).await;
-    assert_eq!(resp.json(), json!({"session_id": "s1", "message_count": 7, "updated_at": null, "outbox": "0@"}));
+    assert_eq!(
+        resp.json(),
+        json!({"session_id": "s1", "message_count": 7, "updated_at": null, "outbox": "0@",
+               "queue": {"agent": "wellness", "version": 0, "paused": false, "items": [], "running": null}})
+    );
     assert!(app.app.state.presence.viewing("wellness", "s1"));
     assert_eq!(app.app.state.presence.viewed("wellness"), vec!["s1".to_string()]);
     // a Boîte message (a hand-back's, a routine's) changes the conversation's state: the app shows it

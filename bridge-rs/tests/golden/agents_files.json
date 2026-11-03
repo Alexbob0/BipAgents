@@ -157,7 +157,7 @@
   "arg": {
    "monthly-budget": true
   },
-  "output": "model:\n  provider: custom\nskills:\n  disabled:\n  - plant-care\n  - arxiv\n  external_dirs: []\n"
+  "output": "model:\n  provider: custom\nskills:\n  disabled: [plant-care, arxiv]\n  external_dirs: []\n"
  },
  {
   "fn": "set_enabled",

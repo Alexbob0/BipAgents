@@ -998,36 +998,24 @@ async fn spares_when_installed(config: SharedConfig, http: reqwest::Client) {
 /// The model in a Hermes home or profile folder, as `hermes config set` writes it: `model` in config.yaml, the key in
 /// `.env`; with the providers EUrouter tries first (`order`, model_route.rs).
 pub fn write_model_files(folder: &Path, model: &ModelChoice, order: &[String]) -> anyhow::Result<()> {
-    use crate::agents_admin::pyyaml::{self, Yaml};
-    let path = folder.join("config.yaml");
-    let mut data = if path.exists() { crate::agents_admin::load_or_empty(&path)? } else { Yaml::map() };
-    if !data.is_map() {
-        data = Yaml::map();
-    }
-    let mut section = match data.get("model") {
-        Some(m) if m.is_map() => m.clone(),
-        _ => Yaml::map(),
-    };
-    section.insert("provider", Yaml::str(&model.provider));
-    section.insert("default", Yaml::str(&model.name));
-    if let Some(url) = model_base_url(model) {
-        section.insert("base_url", Yaml::str(url));
-    }
-    if model.provider == "custom" {
-        section.insert("key_env", Yaml::str(key_env(model)));
-    }
-    section.insert("supports_vision", Yaml::Bool(model.vision));
-    data.insert("model", section);
+    use crate::agents_admin::pyyaml::Yaml;
     let chosen = crate::agents_admin::chosen_thinking(folder);
-    if let Some(routed) = crate::model_route::with_routing(&data, order, chosen.as_deref()) {
-        data = routed;
-    }
-    if path.exists() {
-        crate::agents_admin::replace_yaml(&path, &data)?;
-    } else {
-        std::fs::create_dir_all(folder)?;
-        std::fs::write(&path, pyyaml::dump(&data))?;
-    }
+    crate::profile_files::edit(&folder.join("config.yaml"), |data| {
+        if let Some(section) = data.section("model") {
+            section.insert("provider", Yaml::str(&model.provider));
+            section.insert("default", Yaml::str(&model.name));
+            if let Some(url) = model_base_url(model) {
+                section.insert("base_url", Yaml::str(url));
+            }
+            if model.provider == "custom" {
+                section.insert("key_env", Yaml::str(key_env(model)));
+            }
+            section.insert("supports_vision", Yaml::Bool(model.vision));
+        }
+        if let Some(routed) = crate::model_route::with_routing(data, order, chosen.as_deref()) {
+            *data = routed;
+        }
+    })?;
     set_env(&folder.join(".env"), key_env(model), &model.key)
 }
 
@@ -1102,18 +1090,14 @@ fn rename_prepared(config: &SharedConfig, prepared: &str, choice: &AgentChoice, 
         Err(_) => (crate::souls::soul_for(name, PREPARED_KIND, Some(lang))?, PREPARED_KIND.to_string()),
     };
     let folder = crate::agents_admin::profile_folder(&snapshot, &agent);
-    std::fs::write(folder.join("SOUL.md"), soul)?;
+    crate::profile_files::edit_text(&folder.join("SOUL.md"), |_| Some(soul))?;
     // what `hermes profile create --description` wrote
     let description = crate::souls::template(&kind, Some(lang))
         .and_then(|t| t.get("description").map(crate::py::py_str))
         .unwrap_or_default();
     let meta = folder.join("profile.yaml");
     if meta.exists() && !description.is_empty() {
-        let mut data = crate::agents_admin::load_or_empty(&meta)?;
-        if data.is_map() {
-            data.insert("description", Yaml::str(description));
-            crate::agents_admin::replace_yaml(&meta, &data)?;
-        }
+        crate::profile_files::edit(&meta, |data| data.insert("description", Yaml::str(description)))?;
     }
     agent.display_name = name.to_string();
     crate::agents_admin::save_agent(config, &agent)

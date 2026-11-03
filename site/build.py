@@ -399,7 +399,9 @@ DEMO_TABS = (("book_table", "daily"), ("walk", "daily"), ("runs_weeks", "coach")
 # footer (src/bipagents/partials/). /install/ only sends to the home's #install (old links keep working).
 PAGES = (("home", "index.html", ""), ("demo", "demo.html", "demo/"), ("faq", "faq.html", "faq/"),
          ("install", "install.html", "install/"), ("beta", "beta.html", "beta/"),
-         ("grokbot", "grok-bot.html", "grok-bot/"))
+         ("grokbot", "grok-bot.html", "grok-bot/"), ("status", "status.html", "status/"))
+# The status page reads the guichet's public snapshot (guichet-rs/src/public_status.rs in the guichet's repo).
+STATUS_API = "https://guichet.bipagents.com/v1/public-status"
 FAQ_HOME = (1, 3, 2, 6, 4, 5)   # what's included, AI credit, free week, stopping, privacy, Duo/Famille
 FAQ_COUNT = 11
 
@@ -411,7 +413,7 @@ def bipagents(version: str) -> Path:
         shutil.rmtree(out)
     assets = out / "assets"
     assets.mkdir(parents=True)
-    for name in ("site.css", "site.js"):
+    for name in ("site.css", "site.js", "notfound.js"):
         copy(src / name, assets / name)
     bips_engine(assets)
     copy(REPO / "android" / "app" / "src" / "main" / "res" / "font" / "nunito.ttf", assets / "nunito.ttf")
@@ -494,6 +496,7 @@ def bipagents(version: str) -> Path:
             "storebadges": badges,
             "betahref": f"{paths[lang]}beta/",
             "grokbothref": f"{paths[lang]}grok-bot/",
+            "statushref": f"{paths[lang]}status/",
             "grokbotprompt": html.escape(migrate_prompt(lang), quote=False),
             "betabadges": store_badges({"appStore": beta.get("testflight", ""), "googlePlay": beta.get("play", "")},
                                        t["beta"]["storeSoon"], t["beta"]["storeGet"], "TestFlight"),
@@ -525,6 +528,7 @@ def bipagents(version: str) -> Path:
                            demo["pages"]["walk"]["template"])
         # Each page gets the data its script needs: the home its prices, the demo its scenarios.
         data = {
+            "status": {**common, "status": t["status"]["js"], "statusApi": STATUS_API},
             "home": {**common, "prices": {**{k: v for k, v in prices.items() if not k.startswith("_")},
                                 "default": default_currency},
                      "checkout": {plan: {period: checkout_url(cfg, plan, period, lang) for period in ("month", "year")}
@@ -565,6 +569,7 @@ def bipagents(version: str) -> Path:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(page, encoding="utf-8")
         og_image(t, lang, assets / f"og-{lang}.png")
+    not_found_page(src, out, texts, version)
     links(src, out)
     (out / "robots.txt").write_text(f"User-agent: *\nAllow: /\nSitemap: {BIPAGENTS}/sitemap.xml\n", encoding="utf-8")
     (out / "sitemap.xml").write_text('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
@@ -572,6 +577,23 @@ def bipagents(version: str) -> Path:
                                                for name, _, sub in PAGES if name != "install" for l in LANGS)
                                      + "</urlset>\n", encoding="utf-8")
     return out
+
+
+def not_found_page(src: Path, out: Path, texts: Dict[str, Dict[str, Any]], version: str) -> None:
+    """/404.html, which Apache shows for any missing address (ErrorDocument in site/hosting.py's .htaccess): « Un Bip a
+    mangé la page » (src/bipagents/404.html + notfound.js). One page for the four languages, written in English; the
+    script switches to the address's or the browser's language, so its data carries the four."""
+    def words(lang: str) -> Dict[str, Any]:
+        t = {**texts[lang]["notfound"], **{k: texts[lang]["lines"][k] for k in ("dizzy", "grumpy", "boing")}}
+        if lang == "fr":
+            t = {k: [french_spaces(x) for x in v] if isinstance(v, list) else french_spaces(v) for k, v in t.items()}
+        return t
+    en = texts["en"]["notfound"]
+    values = {k: html.escape(en[k]) for k in ("title", "line", "back", "bip", "lang", "noscript")}
+    values.update({"version": version,
+                   "data": json.dumps({"texts": {lang: words(lang) for lang in LANGS}}, ensure_ascii=False).replace("</", "<\\/")})
+    page = fill((src / "404.html").read_text(encoding="utf-8"), values, "bipagents/404")
+    (out / "404.html").write_text(page, encoding="utf-8")
 
 
 def links(src: Path, out: Path) -> None:

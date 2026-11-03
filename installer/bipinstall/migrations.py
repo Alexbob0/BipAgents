@@ -44,6 +44,19 @@ def approvals_manual(runner: hermes.Runner, home: Path) -> str:
     return "risky commands always ask you (approvals.mode manual)"
 
 
+def clarify_tool(runner: hermes.Runner, home: Path) -> str:
+    """Hermes 0.22.5's API toolset has no `clarify` (« no interactive UI tools »): its agents said they could not ask
+    the person anything, the app's question card never came (2026-11-02). Each profile gets it through Hermes' own
+    `tools enable` (its other choices kept; a second run changes nothing). Hermes reads it at the next run, no
+    restart. A profile it fails on is left to the bridge, which adds it at each start (tool_diet.rs `with_clarify`)."""
+    count = 0
+    for root, profile in hermes_configs(home):
+        runner.env = {**runner.env, "HERMES_HOME": str(root)}
+        runner.run([hermes.hermes_bin()] + (["-p", profile] if profile else []) + list(hermes.CLARIFY_ON), check=False)
+        count += 1
+    return f"agents can ask you a question in the app again ({count} agent(s))"
+
+
 def local_compression(runner: hermes.Runner, home: Path) -> str:
     local = re.compile(r"^\s+base_url:\s*['\"]?http://", re.M)
     count = 0
@@ -631,6 +644,7 @@ MIGRATIONS: List[Tuple[str, Callable[[hermes.Runner, Path], str]]] = [
     ("2026-10-27-bridge-stop-timeout", bridge_stop_timeout),
     ("2026-10-31-sandboxes-at-gateway-start", sandboxes_at_gateway_start),
     ("2026-10-31-backup-on-activity", backup_on_activity),
+    ("2026-11-02-clarify-tool", clarify_tool),
 ]
 
 

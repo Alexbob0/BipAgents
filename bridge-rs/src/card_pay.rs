@@ -57,6 +57,7 @@ use serde_json::{json, Value};
 use tokio::sync::{mpsc, oneshot, Notify};
 use zeroize::Zeroizing;
 
+use crate::agents_admin::pyyaml::Yaml;
 use crate::agents_admin::Run;
 use crate::app::AppState;
 use crate::card_fill::{self, CardValues, FillError, Page};
@@ -158,7 +159,7 @@ pub async fn register(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow
 pub async fn register_entry(
     config: &Config,
     agent: &AgentConfig,
-    run: &Run,
+    _run: &Run,
     server: &str,
     url: &str,
     timeout: u32,
@@ -185,23 +186,14 @@ pub async fn register_entry(
     if same {
         return Ok(false);
     }
-    let home = folder.parent().and_then(std::path::Path::parent).map(|p| p.to_string_lossy().into_owned());
-    let env: std::collections::BTreeMap<String, String> =
-        [("HERMES_HOME".to_string(), home.unwrap_or_default())].into_iter().collect();
-    let set = |key: &str, value: String| {
-        vec![
-            config.hermes.bin.clone(),
-            "-p".into(),
-            agent.name.clone(),
-            "config".into(),
-            "set".into(),
-            format!("mcp_servers.{server}.{key}"),
-            value,
-        ]
-    };
-    run(set("url", url.to_string()), env.clone()).await?;
-    run(set("headers.Authorization", header), env.clone()).await?;
-    run(set("timeout", timeout.to_string()), env).await?;
+    let entry = [
+        ("url", Yaml::str(url)),
+        ("headers.Authorization", Yaml::str(header)),
+        ("timeout", Yaml::Int(timeout.into())),
+    ];
+    crate::profile_files::edit(&folder.join("config.yaml"), |data| {
+        crate::profile_files::set_server(data, server, Some(&entry))
+    })?;
     tracing::info!(agent = %agent.name, server = server, "bridge tools registered");
     Ok(true)
 }

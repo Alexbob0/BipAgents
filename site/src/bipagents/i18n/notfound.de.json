@@ -1,0 +1,28 @@
+{
+  "notfound": {
+    "title": "Seite nicht gefunden · BipAgents",
+    "line": "Hoppla… ein Bip hat diese Seite gefressen.",
+    "hint": "Schüttle ihn (zieh ihn hin und her oder tippe darauf), um die Seite zurückzubekommen.",
+    "back": "Zurück zur Startseite",
+    "bip": "Der Bip, der die Seite gefressen hat: schüttle ihn",
+    "lang": "Sprache",
+    "digits": "Der Bip hat ausgespuckt: {d}",
+    "done": "Ahh, schon besser.",
+    "noscript": "Diese Seite gibt es nicht. Vielleicht ist sie umgezogen: Auf der Startseite findest du alles.",
+    "hmm": [
+      "Hmpf…",
+      "Ich war’s nicht!",
+      "Welche Seite?",
+      "*schluck*",
+      "Mmmh…"
+    ],
+    "hic": [
+      "Hicks!",
+      "Boing!",
+      "Ptüh!"
+    ],
+    "burp": [
+      "Buuurps!"
+    ]
+  }
+}

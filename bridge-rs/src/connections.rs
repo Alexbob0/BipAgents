@@ -72,6 +72,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::Digest;
 
+use crate::agents_admin::pyyaml::Yaml;
 use crate::agents_admin::{default_run, Run};
 use crate::app::AppState;
 use crate::config::{AgentConfig, Config};
@@ -648,14 +649,6 @@ pub fn callback_query(url: &str) -> HashMap<String, String> {
 
 // -- the agents' profiles ----------------------------------------------------------------------------------------------
 
-fn args(items: &[&str]) -> Vec<String> {
-    items.iter().map(|s| s.to_string()).collect()
-}
-
-fn hermes_env(home: &Path) -> BTreeMap<String, String> {
-    BTreeMap::from([("HERMES_HOME".to_string(), home.to_string_lossy().into_owned())])
-}
-
 fn tokens_dir(config: &Config, agent: &AgentConfig) -> PathBuf {
     crate::services::profile_home(config, agent).join("profiles").join(&agent.name).join("mcp-tokens")
 }
@@ -697,25 +690,24 @@ pub fn remove_token_files(dir: &Path, name: &str) {
     }
 }
 
-async fn wire(config: &Config, agent: &AgentConfig, conn: &Connection, run: &Run) -> anyhow::Result<()> {
+/// The agent's profile config.yaml.
+fn profile_config(config: &Config, agent: &AgentConfig) -> PathBuf {
+    crate::services::profile_home(config, agent).join("profiles").join(&agent.name).join("config.yaml")
+}
+
+async fn wire(config: &Config, agent: &AgentConfig, conn: &Connection, _run: &Run) -> anyhow::Result<()> {
     let name = conn.service.as_str();
     write_token_files(&tokens_dir(config, agent), name, conn)?;
-    let env = hermes_env(&crate::services::profile_home(config, agent));
-    let hermes = config.hermes.bin.as_str();
-    for (key, value) in [("url", conn.server.mcp_url.as_str()), ("auth", "oauth"), ("trust", "untrusted")] {
-        run(
-            args(&[hermes, "-p", &agent.name, "config", "set", &format!("mcp_servers.{name}.{key}"), value]),
-            env.clone(),
-        )
-        .await?;
-    }
+    let entry = [("url", Yaml::str(&conn.server.mcp_url)), ("auth", Yaml::str("oauth")), ("trust", Yaml::str("untrusted"))];
+    crate::profile_files::edit(&profile_config(config, agent), |data| {
+        crate::profile_files::set_server(data, name, Some(&entry))
+    })?;
     tracing::info!(agent = %agent.name, service = %name, "connections: wired");
     Ok(())
 }
 
-async fn unwire(config: &Config, agent: &AgentConfig, name: &str, run: &Run) -> anyhow::Result<()> {
-    let env = hermes_env(&crate::services::profile_home(config, agent));
-    run(args(&[&config.hermes.bin, "-p", &agent.name, "config", "unset", &format!("mcp_servers.{name}")]), env).await?;
+async fn unwire(config: &Config, agent: &AgentConfig, name: &str, _run: &Run) -> anyhow::Result<()> {
+    crate::profile_files::edit(&profile_config(config, agent), |data| crate::profile_files::set_server(data, name, None))?;
     remove_token_files(&tokens_dir(config, agent), name);
     tracing::info!(agent = %agent.name, service = %name, "connections: unwired");
     Ok(())

@@ -4,7 +4,7 @@ and test_services.py, over HTTP; the profiles' changes go through the fake `herm
 import json
 
 from bbkit.common import AUTH
-from conftest import managed_install, profile, wait_registered
+from conftest import managed_install, profile, servers, wait_registered
 
 
 def sandboxed(bridges, fakes):
@@ -145,10 +145,8 @@ def test_a_service_with_a_token_needs_the_agents_own_space(bridges, fakes):
                         json={"catalog": "custom", "name": "Météo", "address": "https://meteo.example/mcp"})
     assert added.status_code == 201
     assert added.json() == {"name": "meteo", "url": "https://meteo.example/mcp", "enabled": True, "catalog": "custom"}
-    commands = bridge.commands.of("hermes")
-    assert commands[-2] == ["-p", "maison", "config", "set", "mcp_servers.meteo.url", "https://meteo.example/mcp"]
     # Its tools that write ask the person first (what the agent read cannot make it act through the service).
-    assert commands[-1] == ["-p", "maison", "config", "set", "mcp_servers.meteo.trust", "untrusted"]
+    assert servers(folder)["meteo"] == {"url": "https://meteo.example/mcp", "trust": "untrusted"}
     twice = bridge.post("/v1/agents/maison/services", headers=AUTH,
                         json={"catalog": "custom", "name": "Météo", "address": "https://meteo.example/mcp"})
     assert twice.status_code == 400 and twice.json() == {"detail": "a service with this name already exists"}
@@ -166,9 +164,9 @@ def test_the_token_goes_to_the_env_file_never_on_a_command_line(bridges, fakes):
     assert all("ha-secret" not in " ".join(c) for c in commands)
     assert "MCP_HOME_ASSISTANT_API_KEY=ha-secret" in (folder / ".env").read_text()   # its catalog id: no name field
     assert oct((folder / ".env").stat().st_mode & 0o777) == "0o600"
-    assert ["-p", "maison", "config", "set", "mcp_servers.home_assistant.headers.Authorization",
-            "Bearer ${MCP_HOME_ASSISTANT_API_KEY}"] in commands
-    assert not any("trust" in c[4] for c in commands)                 # Home Assistant stays direct
+    entry = servers(folder)["home_assistant"]
+    assert entry["headers"] == {"Authorization": "Bearer ${MCP_HOME_ASSISTANT_API_KEY}"}
+    assert "trust" not in entry                                       # Home Assistant stays direct
     (folder / "config.yaml").write_text("mcp_servers:\n  ha:\n    url: http://ha.local:8123/api/mcp\n"
                                         "  garmin:\n    command: uvx\n")
     settings = bridge.get("/v1/agents/maison/settings", headers=AUTH).json()
@@ -189,7 +187,7 @@ def test_the_token_goes_to_the_env_file_never_on_a_command_line(bridges, fakes):
     assert failed["ok"] is False and failed["tools"] is None and "boom" in failed["message"]
     removed = bridge.delete("/v1/agents/maison/services/garmin", headers=AUTH)
     assert removed.status_code == 204
-    assert bridge.commands.of("hermes")[-1] == ["-p", "maison", "config", "unset", "mcp_servers.garmin"]
+    assert "garmin" not in servers(folder)
     assert bridge.delete("/v1/agents/maison/services/nope", headers=AUTH).status_code == 404
     assert bridge.post("/v1/agents/maison/services/nope/test", headers=AUTH).status_code == 404
 

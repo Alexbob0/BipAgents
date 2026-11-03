@@ -156,24 +156,15 @@ fn unset_env(path: &Path, key: &str) -> std::io::Result<()> {
 /// The profile's `model` section rewritten by `change`, then its routing (EUrouter's providers when it is the
 /// router's address, none otherwise: model_route.rs).
 fn change_model(config: &Config, folder: &Path, change: impl FnOnce(&mut Yaml)) -> anyhow::Result<()> {
-    let path = folder.join("config.yaml");
-    let mut data = crate::agents_admin::load_or_empty(&path)?;
-    if !data.is_map() {
-        data = Yaml::map();
-    }
-    let mut section = data.get("model").filter(|m| m.is_map()).cloned().unwrap_or_else(Yaml::map);
-    change(&mut section);
-    data.insert("model", section);
     let level = crate::agents_admin::chosen_thinking(folder);
-    if let Some(routed) = crate::model_route::with_routing(&data, &config.model_provider_order, level.as_deref()) {
-        data = routed;
-    }
-    if path.exists() {
-        crate::agents_admin::replace_yaml(&path, &data)?;
-    } else {
-        std::fs::create_dir_all(folder)?;
-        std::fs::write(&path, crate::agents_admin::pyyaml::dump(&data))?;
-    }
+    crate::profile_files::edit(&folder.join("config.yaml"), |data| {
+        if let Some(section) = data.section("model") {
+            change(section);
+        }
+        if let Some(routed) = crate::model_route::with_routing(data, &config.model_provider_order, level.as_deref()) {
+            *data = routed;
+        }
+    })?;
     Ok(())
 }
 
@@ -287,7 +278,7 @@ pub fn back_to_default(config: &Config, agent: &AgentConfig) -> anyhow::Result<(
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
         _ => {}
     }
-    crate::agents_admin::heal_thinking_of(config, agent);
+    crate::profile_files::reconcile(config, agent)?;
     Ok(())
 }
 

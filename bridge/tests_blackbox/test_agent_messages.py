@@ -11,7 +11,7 @@ import yaml
 
 from bbkit.common import AUTH
 from bbkit.servers import wait_until
-from conftest import managed_install, profile, wait_registered
+from conftest import managed_install, profile, servers, wait_registered
 
 MCP = "/v1/agent-tools/mcp"
 TOKENS = {"quotidien": "quotidien-token-0123456789abcdefghij", "coach": "coach-token-0123456789abcdefghijklmn",
@@ -60,9 +60,7 @@ def test_a_linked_agent_gets_message_agent_and_its_call_brings_the_answer(bridge
     # its Hermes was given the new list (a new tools URL) and keeps the tool out of the tool search
     config = yaml.safe_load((profile(hub, "quotidien") / "config.yaml").read_text())
     assert "!mcp__bipagents__message_agent" in config["tools"]["tool_search"]["defer"]
-    assert wait_until(lambda: any(
-        args[:2] == ["-p", "quotidien"] and args[4] == "mcp_servers.bipagents.url"
-        for args in bridge.commands.of("hermes") if len(args) > 5), timeout=10)
+    assert "?v=" in servers(profile(hub, "quotidien"))["bipagents"]["url"]
     # the call: in Quotidien and Coach's own conversation (agent_pairs.rs, test_agent_pairs.py), signed as a peer's
     # message, its answer brought back
     fakes.hermes.run_output = "Tu as dormi 7 h 10 en moyenne cette semaine."

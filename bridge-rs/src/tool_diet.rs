@@ -14,6 +14,8 @@
 //!   system prompt (patch 0009); they still load with `skill_view`.
 //! - the visible browser's MCP server without its resource and prompt helpers (4 entries of the search's catalog the
 //!   agents never use).
+//! - `clarify` in `platform_toolsets.api_server` (`with_clarify`): the app's question card needs it, Hermes 0.22.5's
+//!   API toolset leaves it out.
 //!
 //! - every tool the agent's model called directly in its conversations of the last `CALLED_DAYS` days stays direct
 //!   (a bridge or other MCP tool gets its `!` entry, a core tool leaves the list), whatever its kind's plan says. A
@@ -558,14 +560,6 @@ pub fn current(config: &Config, agent: &AgentConfig) -> Option<Diet> {
     Some(out)
 }
 
-/// `parent[key]`, made a dict when missing or not one.
-fn map_at<'a>(parent: &'a mut Yaml, key: &str) -> Option<&'a mut Yaml> {
-    if !parent.get(key).is_some_and(Yaml::is_map) {
-        parent.insert(key, Yaml::map());
-    }
-    parent.get_mut(key)
-}
-
 fn strings(items: &[String]) -> Yaml {
     Yaml::Seq(items.iter().map(|s| Yaml::str(s.clone())).collect())
 }
@@ -574,8 +568,8 @@ fn strings(items: &[String]) -> Yaml {
 pub fn with_diet(data: &Yaml, diet: &Diet) -> Option<Yaml> {
     let mut data = if data.is_map() { data.clone() } else { Yaml::map() };
     let before = data.clone();
-    let tools = map_at(&mut data, "tools")?;
-    let search = map_at(tools, "tool_search")?;
+    let tools = data.section("tools")?;
+    let search = tools.section("tool_search")?;
     let theirs = match search.get("defer") {
         Some(Yaml::Seq(items)) => !items.iter().any(|i| i.as_str() == Some(MARK)),
         Some(Yaml::Null) | None => false,
@@ -584,25 +578,26 @@ pub fn with_diet(data: &Yaml, diet: &Diet) -> Option<Yaml> {
     if !theirs {
         search.insert("defer", strings(&diet.defer));
     }
-    let skills = map_at(&mut data, "skills")?;
+    let skills = data.section("skills")?;
     skills.insert("compact_categories", strings(&diet.compact_skills));
     // Hermes has no iteration cap by default (`agent.max_turns` unset: unlimited, 267 model calls in one turn on
     // 2026-10-27): one, unless the profile has its own. The bridge's brake (loop_brake.rs) stops loops much earlier;
     // this is for the runs it doesn't follow (routines).
-    let agent = map_at(&mut data, "agent")?;
+    let agent = data.section("agent")?;
     if agent.get("max_turns").is_none_or(|v| *v == Yaml::Null) {
         agent.insert("max_turns", Yaml::Int(MAX_TURNS as i128));
     }
     // A routine the agent makes in a conversation reports there (cronwatch.rs): Hermes (patch 0019) keeps the
     // conversation on the job and tells the model so, instead of « local-only: set deliver='telegram' », unless the
     // profile says otherwise.
-    let cron = map_at(&mut data, "cron")?;
+    let cron = data.section("cron")?;
     if cron.get("session_reports").is_none_or(|v| *v == Yaml::Null) {
         cron.insert("session_reports", Yaml::Bool(true));
     }
+    with_clarify(&mut data);
     if let Some(Yaml::Map(_)) = data.get("mcp_servers").and_then(|s| s.get(BROWSER_SERVER)) {
         let entry = data.get_mut("mcp_servers").and_then(|s| s.get_mut(BROWSER_SERVER))?;
-        let filter = map_at(entry, "tools")?;
+        let filter = entry.section("tools")?;
         filter.insert("resources", Yaml::Bool(false));
         filter.insert("prompts", Yaml::Bool(false));
     }
@@ -613,36 +608,31 @@ pub fn with_diet(data: &Yaml, diet: &Diet) -> Option<Yaml> {
     }
 }
 
-fn write(path: &Path, diet: &Diet) -> anyhow::Result<bool> {
-    let data = crate::agents_admin::load_or_empty(path)?;
-    match with_diet(&data, diet) {
-        Some(changed) => {
-            crate::agents_admin::replace_yaml(path, &changed)?;
-            Ok(true)
+/// The app's question card (`clarify.request`, QuestionCard.swift / ChatModel.kt) needs Hermes' `clarify` tool, and
+/// Hermes 0.22.5's `hermes-api-server` toolset leaves it out (« no interactive UI tools like clarify »): an agent
+/// without it says it cannot ask. The apps never show that switch (AgentTools.swift `hidden`), so it is always on:
+/// `platform_toolsets.api_server` gets `clarify` added to the list it has (a list `hermes tools enable/disable`
+/// saved keeps every other choice), or, with none saved, the platform default plus it (`[hermes-api-server,
+/// clarify]`: Hermes reads a mixed list as the composite's toolsets and the named one). Hermes reads it again for
+/// each run; an existing conversation gets the new tool appended to its pinned tools[] (tools/mcp_tool_agent.py
+/// `restore_agent_tool_prefix`) and a Bot Chat rebuilds its prompt once (its capability epoch covers
+/// `platform_toolsets`).
+pub fn with_clarify(data: &mut Yaml) {
+    let Some(platforms) = data.section("platform_toolsets") else { return };
+    match platforms.get_mut(API_PLATFORM) {
+        Some(Yaml::Seq(items)) => {
+            if !items.iter().any(|i| i.as_str() == Some(CLARIFY)) {
+                items.push(Yaml::str(CLARIFY));
+            }
         }
-        None => Ok(false),
+        _ => platforms.insert(API_PLATFORM, strings(&[API_DEFAULT_TOOLSET.to_string(), CLARIFY.to_string()])),
     }
 }
 
-/// The agent's diet written in its profile; whether it changed (Hermes reads it again from the next conversation).
-pub fn apply(config: &Config, agent: &AgentConfig) -> anyhow::Result<bool> {
-    let Some(folder) = profile_folder(config, agent) else { return Ok(false) };
-    let Some(diet) = current(config, agent) else { return Ok(false) };
-    let changed = write(&folder.join("config.yaml"), &diet)?;
-    if changed {
-        tracing::info!(target: "bipbridge::agents", agent = %agent.name, kind = %diet.kind, "tools in view set for its kind");
-    }
-    Ok(changed)
-}
-
-/// Every agent's (the vault's items changed: its tools follow who holds one).
-pub fn apply_all(config: &Config) {
-    for agent in config.agents.values() {
-        if let Err(exc) = apply(config, agent) {
-            tracing::warn!(target: "bipbridge::agents", agent = %agent.name, error = %exc, "tools in view not set");
-        }
-    }
-}
+/// Hermes' platform of the apps' agents, its default toolset (hermes_cli/platforms.py), the question tool.
+pub const API_PLATFORM: &str = "api_server";
+pub const API_DEFAULT_TOOLSET: &str = "hermes-api-server";
+pub const CLARIFY: &str = "clarify";
 
 #[cfg(test)]
 mod tests {
@@ -892,5 +882,36 @@ mod tests {
         let kept = with_diet(&theirs, &d).expect("skills still written");
         let defer = kept.get("tools").and_then(|t| t.get("tool_search")).and_then(|t| t.get("defer")).unwrap();
         assert_eq!(defer, &Yaml::Seq(vec![Yaml::str("todo_list")]));
+    }
+
+    fn api_list(data: &Yaml) -> Option<Vec<String>> {
+        match data.get("platform_toolsets").and_then(|p| p.get(API_PLATFORM)) {
+            Some(Yaml::Seq(items)) => Some(items.iter().filter_map(|i| i.as_str().map(str::to_string)).collect()),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn clarify_always_in_the_api_toolsets() {
+        let d = diet("daily", &[], false, false, false, &[]);
+        // none saved (a new profile): the platform default plus clarify
+        let fresh = with_diet(&pyyaml::load("model:\n  default: x\n").unwrap(), &d).unwrap();
+        assert_eq!(api_list(&fresh), Some(names(&["hermes-api-server", "clarify"])));
+        // a list `hermes tools enable/disable` saved (Hermes 0.22.5 leaves clarify out): kept, clarify added
+        let saved = "platform_toolsets:\n  api_server: [file, memory, web]\n  cli: [web]\n";
+        let changed = with_diet(&pyyaml::load(saved).unwrap(), &d).unwrap();
+        assert_eq!(api_list(&changed), Some(names(&["file", "memory", "web", "clarify"])));
+        assert_eq!(
+            changed.get("platform_toolsets").and_then(|p| p.get("cli")),
+            Some(&Yaml::Seq(vec![Yaml::str("web")])),
+            "other platforms untouched"
+        );
+        // idempotent: the same again changes nothing, and a list that has it is left as it is
+        assert!(with_diet(&changed, &d).is_none());
+        let has = pyyaml::load("platform_toolsets:\n  api_server: [clarify, web]\n").unwrap();
+        assert_eq!(api_list(&with_diet(&has, &d).unwrap()), Some(names(&["clarify", "web"])));
+        // a value that is no list (Hermes falls back to the default for it): the default plus clarify
+        let odd = pyyaml::load("platform_toolsets:\n  api_server: null\n").unwrap();
+        assert_eq!(api_list(&with_diet(&odd, &d).unwrap()), Some(names(&["hermes-api-server", "clarify"])));
     }
 }

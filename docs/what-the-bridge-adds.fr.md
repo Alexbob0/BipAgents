@@ -43,6 +43,10 @@ domaine, avec les modules (`bridge-rs/src/<nom>.rs`) qui le font, et ce qu'il la
   séparé transmettent les notifications sans contenu. `runs.rs` transforme une approbation que personne ne regarde en
   notification ; `agent_notify.rs` règle cela par agent ; `live_activities.rs` affiche un long travail sur l'écran
   verrouillé et la Dynamic Island.
+- **Messages pendant le travail.** `msg_queue.rs` : un message envoyé pendant que l'agent travaille entre dans le tour en
+  cours (le steer de Hermes, après ses appels d'outils du moment) ; « Après » le garde plutôt dans la file de l'agent, sur le
+  pont, la même sur tous les appareils, lancée comme tour suivant à la fin du travail (ordre, retrait, envoi immédiat,
+  pause), une seule notification à la fin.
 - **Rien de perdu.** `ntfy.rs` et `cronwatch.rs` mettent les messages des agents et la réponse de chaque routine dans
   une boîte d'envoi (`store.rs`), audio prêt ; `restore_reconcile.rs` remet après une restauration les messages
   gardés par les téléphones.
@@ -186,6 +190,7 @@ l'installateur les applique.
 | 0018 tours d'invités | le tour d'un proche n'a que les outils de l'invité et pas de USER.md |
 | 0019 les routines répondent dans leur conversation | une routine créée dans une conversation y répond |
 | 0020 consommation par appel dans l'API Runs | le vrai coût de chaque appel au modèle, pour les budgets |
+| 0021 la conversation principale reste celle de l'app | la conversation principale de chaque agent garde son affichage en direct et son historique sur la v0.22.5 |
 
 **Comment nous les proposons en amont.** La série est une branche git au-dessus de Hermes, exportée avec
 `scripts/hermes-patches.sh` (`branch`, `export`, `check`) : un commit par patch, des noms stables, les mêmes octets à
