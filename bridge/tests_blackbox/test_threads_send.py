@@ -69,7 +69,8 @@ def test_a_message_is_its_app_id_from_the_send_to_the_stored_row(bridges, fakes)
     # Hermes stored the turn: the stored row carries the id, `after=` the item before brings it
     stored(fakes, user("<!--bip:now lundi 9 h-->\n\nLe train de 9 h ?"), agent("Voie 4."))
     gate.set()
-    assert wait_until(lambda: page(bridge, thread)["pending"]["run"] is None, timeout=15)
+    # the run's end tells the apps (`thread` hint): what they read then
+    assert wait_until(lambda: page(bridge, thread)["items"][-1]["text"] == "Voie 4.", timeout=15)
     after = page(bridge, thread, after=before["items"][-2]["cursor"])
     assert [(i["role"], i["text"]) for i in after["items"]] == [("person", "Le train de 9 h ?"), ("agent", "Voie 4.")]
     assert after["items"][0]["client_id"] == "C1D00000-0000-4000-8000-000000000001"

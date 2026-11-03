@@ -282,8 +282,9 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
         Some(t) => t,
         None => threads.create(&agent.name, "side", None, Value::Null, false).await?,
     };
-    let answer = |state: &str, run: Option<&str>| {
-        json!({"client_id": body.client_id, "thread": thread.id, "state": state, "run_id": run})
+    let mut tip: Option<String> = None;
+    let answer = |state: &str, run: Option<&str>, tip: &Option<String>| {
+        json!({"client_id": body.client_id, "thread": thread.id, "state": state, "run_id": run, "tip": tip})
     };
     let known = state
         .store
@@ -293,27 +294,30 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
         )
         .await?;
     if !known.is_empty() {
-        return Ok(answer("known", None));
+        return Ok(answer("known", None, &tip));
     }
     let words = body.text.trim().to_string();
-    let tip = tip_of(state, &threads, agent, &thread, &words).await?;
+    tip = Some(tip_of(state, &threads, agent, &thread, &words).await?);
+    let tip_id = tip.clone().unwrap_or_default();
+    let tip_ref = &tip;
+    let tip = tip_id.as_str();
     keep(&threads, &agent.name, &thread.id, &body.client_id, &words, &body.attachments).await?;
     let queues = queues_of(state);
-    let running = state.hub.session_run(&agent.name, &tip);
+    let running = state.hub.session_run(&agent.name, tip);
     let waits = queues.get(&agent.name).items.iter().any(|i| i.session_id == tip);
     if let Some(run) = running.as_deref().filter(|_| !body.after && !waits && body.attachments.is_empty()) {
         // words into the turn going on (Hermes takes them at its next step)
         let steered = queues
-            .steer(agent, &tip, Some(run), &words, Some(&body.client_id))
+            .steer(agent, tip, Some(run), &words, Some(&body.client_id))
             .await
             .map_err(|_| HttpError::new(502, "your agent isn't answering right now: try again in a moment"))?;
         if let Some(run) = steered {
             threads.bump(&thread, "sent").await?;
-            return Ok(answer("steered", Some(&run)));
+            return Ok(answer("steered", Some(&run), tip_ref));
         }
     }
     // what waited for this message (a Live call's recap, the time, the family's news, a feature to propose…)
-    let waited = crate::live_brief::message_notes(state, agent, &tip, &words, &body.kinds).await;
+    let waited = crate::live_brief::message_notes(state, agent, tip, &words, &body.kinds).await;
     let notes = [waited, body.notes.clone()].into_iter().flatten().collect::<Vec<_>>().join("\n");
     let input = input_of(Some(&notes), &words, &body.attachments);
     if running.is_some() || waits || body.after {
@@ -321,25 +325,25 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
         let front = running.is_some() && !body.after && !waits;
         let sent = Sent { client_id: Some(body.client_id.clone()), input: Some(input) };
         queues
-            .add(agent, &tip, &words, running.as_deref(), front, sent)
+            .add(agent, tip, &words, running.as_deref(), front, sent)
             .map_err(|_| HttpError::new(409, "too many messages waiting"))?;
         threads.bump(&thread, "sent").await?;
-        return Ok(answer("queued", None));
+        return Ok(answer("queued", None, tip_ref));
     }
     crate::cloud_setup::READINESS.wait(&agent.name, crate::cloud_setup::READY_WAIT).await;
     crate::mcp_sessions::SESSIONS.first_turn(&agent.name, crate::mcp_sessions::FIRST_TURN_WAIT).await;
     let instructions = body.instructions.as_deref().filter(|i| !i.trim().is_empty());
-    let run = state.hermes.start_run_input(agent, input, &tip, instructions).await.map_err(|exc| match exc.status() {
+    let run = state.hermes.start_run_input(agent, input, tip, instructions).await.map_err(|exc| match exc.status() {
         Some(status @ (400 | 413 | 415 | 422)) => HttpError::new(status, "your agent refused this message"),
         _ => HttpError::new(502, "your agent isn't answering right now: try again in a moment"),
     })?;
-    crate::welcome::done(&state.config(), &agent.name, Some(&tip));
+    crate::welcome::done(&state.config(), &agent.name, Some(tip));
     // followed by the hub whoever looks (the brake, « reply ready »), and the queue waits for it
-    state.hub.watch(agent, &run, Some(&tip), true);
-    state.hub.keep(agent, &run, Some(&tip));
+    state.hub.watch(agent, &run, Some(tip), true);
+    state.hub.keep(agent, &run, Some(tip));
     tracing::info!(agent = %agent.name, run_id = %run, "message sent: a turn started");
     threads.bump(&thread, "sent").await?;
-    Ok(answer("started", Some(&run)))
+    Ok(answer("started", Some(&run), tip_ref))
 }
 
 /// `POST /v1/threads/{thread}/stop`: the turn going on in the conversation stopped (Hermes then ends it cancelled).
