@@ -1921,7 +1921,9 @@ pub fn described() -> String {
     format!(
         "the page's section, by its id. person: {} (who: how they relate to the person, how they met, contact details \
 if useful; dates: birthday, name day, important dates; tastes: likes, dislikes, food allergies as everyday facts; \
-agreed: promises, loans, appointments; exchanges: short dated lines, the latest few). subject: {}. area: {}. \
+agreed: promises, loans, appointments; exchanges: short dated lines, the latest few). subject: {} (status: where it \
+stands now, one or two lines; a new state replaces the one before, which goes to history by itself; history: short \
+dated lines). area: {}. \
 self (your person themself): {} (agents: how their agents should behave with them). trip: {} (itinerary: one \
 line a day, « J1 · 12/11 : … »; transport: flights and trains with times and booking numbers; packing: one thing to \
 take a line). other only when nothing fits.",
