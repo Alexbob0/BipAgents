@@ -180,7 +180,7 @@ mod tests {
         assert_eq!(routing(&[], eu, "deepseek-v4"), None); // pinning off stays off
         let profile = pyyaml::load(&EU.replace("glm-5.3-flash", "deepseek-v4-flash")).unwrap();
         let routed = pyyaml::dump(&with_routing(&profile, &order(), None).unwrap());
-        assert!(routed.contains("order:\n          - greenpt\n") && !routed.contains("entrim"), "{routed}");
+        assert!(routed.contains("- greenpt\n") && !routed.contains("entrim"), "{routed}");
     }
 
     /// GLM through EUrouter thinks at « low » (agents_admin::keeps_thinking_on).

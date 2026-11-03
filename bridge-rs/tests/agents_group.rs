@@ -634,7 +634,7 @@ fn each_sending_gateway_gets_a_token_in_its_own_env() {
     assert_eq!(p.links.caller(&space_token), Some(s(&p.space)));
     assert!(!std::fs::read_to_string(&p.links_path).unwrap().contains(&hub_token)); // only digests are kept
     let peer = std::fs::read_to_string(p.space.join("config.yaml")).unwrap(); // written by the bridge, no `hermes`
-    assert!(peer.contains("bot_peers:\n  bip:\n    url: http://127.0.0.1:8643/peer\n    note: Tes autres agents"), "{peer}");
+    assert!(peer.contains("bot_peers:\n  bip:\n    url: http://127.0.0.1:8643/peer\n    note: 'Tes autres agents"), "{peer}");
     assert!(p.links.allowed("jardin", "wellness") && !p.links.allowed("wellness", "jardin"));
     // Wellness (set up by hand) sends: the administrator gives it a token; the hub sends nothing any more.
     let result = peers::apply(&p.config, &p.links, &pairs(&[("wellness", "budget")]), None).unwrap();

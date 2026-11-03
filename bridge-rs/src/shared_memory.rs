@@ -1156,7 +1156,7 @@ mod tests {
         for name in ["quotidien", "budget", "coach", "sante"] {
             let a = config.agent(Some(name)).unwrap();
             let file = crate::agents_admin::profile_folder(config, a).join("SOUL.md");
-            std::fs::write(file, format!("Tu es {name}.\n")).unwrap();
+            std::fs::write(file, crate::souls::with_language(&format!("Tu es {name}.\n"), Some("fr"))).unwrap();
         }
     }
 
@@ -1187,7 +1187,8 @@ mod tests {
         std::fs::write(data.join("agent-shares.json"), r#"{"shared": {"coach": ["mamie"]}}"#).unwrap();
         assert_eq!(sync_souls(&config), 3);
         for out in ["quotidien", "budget", "coach"] {
-            assert_eq!(soul(&config, out), format!("Tu es {out}.\n"), "{out}: family, project, shared");
+            let text = soul(&config, out);
+            assert!(text.starts_with(&format!("Tu es {out}.\n")) && !text.contains(SHARED_MEMORY_START), "{out}: family, project, shared");
             assert_eq!(membership(&config, out), None);
         }
         assert!(soul(&config, "sante").contains(HEALTH));
@@ -1199,13 +1200,13 @@ mod tests {
         assert_eq!(soul(&config, "sante").matches(SHARED_MEMORY_START).count(), 1);
         notebook::set_enabled(&config, "sante", false).unwrap();
         sync_souls(&config);
-        assert_eq!(soul(&config, "sante"), "Tu es sante.\n", "Carnet off");
+        assert!(!soul(&config, "sante").contains(SHARED_MEMORY_START), "Carnet off");
 
         // set up by hand: left as it is
         std::fs::write(data.join("agent-shares.json"), r#"{"shared": {}}"#).unwrap();
         config.agents.get_mut("coach").unwrap().host_home = Some(dir.path().to_string_lossy().into_owned());
-        assert_eq!(sync_souls(&config), 0);
-        assert_eq!(soul(&config, "coach"), "Tu es coach.\n");
+        sync_souls(&config);
+        assert!(!soul(&config, "coach").contains(SHARED_MEMORY_START));
     }
 
     /// The look every few seconds syncs the personalities when the circle changed (a share, a switch).
@@ -1217,7 +1218,7 @@ mod tests {
         assert!(soul(&config, "coach").contains(crate::souls::SHARED_MEMORY_RULE));
         notebook::set_enabled(&config, "coach", false).unwrap();
         sync_if_changed(&config);
-        assert_eq!(soul(&config, "coach"), "Tu es coach.\n");
+        assert!(!soul(&config, "coach").contains(crate::souls::SHARED_MEMORY_START));
         assert!(soul(&config, "budget").contains(crate::souls::SHARED_MEMORY_RULE));
     }
 

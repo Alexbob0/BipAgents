@@ -27,7 +27,7 @@
 //! at start for every agent — the migration of existing ones — and when a tool is shared or turned on), and when the
 //! vault's items change (its tools come out of the search only for an agent that holds one).
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use serde_json::Value;
 
@@ -682,7 +682,7 @@ mod tests {
         assert!(!without.defer.iter().any(|n| n.ends_with("map_image")));
         // the records and their corrections in view where money is kept (carnet review, 2026-11-03)
         let tools = names(&["notebook_record", "notebook_edit", "notebook_note"]);
-        let finance = diet("finance", &tools, false, false, false, &[]);
+        let finance = diet("finance", &tools, false, false, false);
         for tool in ["notebook_record", "notebook_edit"] {
             assert!(finance.defer.contains(&format!("!{BRIDGE_PREFIX}{tool}")), "{tool}: {:?}", finance.defer);
         }
