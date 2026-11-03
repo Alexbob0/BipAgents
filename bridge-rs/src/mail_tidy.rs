@@ -448,6 +448,9 @@ impl Action {
             if folder.is_empty() {
                 return Err("move:<folder> needs a folder".into());
             }
+            if !crate::tools_knowledge::imap::plain(folder) {
+                return Err("a folder name has no line break or control character".into());
+            }
             return Ok(Action::Move(folder.to_string()));
         }
         match lower.as_str() {
@@ -1041,6 +1044,9 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict, opener: 
     let arg = |k: &str| tk::str_or_empty(arguments.get(k));
     let folder =
         Some(tk::strip(&arg("folder")).to_string()).filter(|f| !f.is_empty()).unwrap_or_else(|| "INBOX".into());
+    if !crate::tools_knowledge::imap::plain(&folder) {
+        return Ok(said("A folder name has no line break or control character.", true));
+    }
     let account = match mailbox::pick(&accounts, &arg("mailbox")) {
         Ok(a) => a,
         Err(e) => return Ok(said(&e.0, true)),
@@ -1448,6 +1454,14 @@ mod tests {
         assert_eq!((rows[1].uid, rows[1].flagged, rows[1].list_id.as_str()), (9, true, "club.example.org"));
         assert_eq!(rows[1].date, "2026-10-20");
         assert_eq!((rows[2].uid, rows[2].seen), (12, false));
+    }
+
+    #[test]
+    fn a_folder_with_a_line_break_is_refused() {
+        assert_eq!(Action::parse("move: Factures ").unwrap(), Action::Move("Factures".into()));
+        for bad in ["move:Factures\r\nA1 DELETE INBOX", "move:a\nb", "move:a\u{0}b", "move:a\tb"] {
+            assert!(Action::parse(bad).is_err(), "{bad:?}");
+        }
     }
 
     #[test]

@@ -856,8 +856,8 @@ def restore(key: str, runner, base: Optional[Path] = None, repo: Optional[Path] 
         if info.get("browsers"):
             runner.run(cli(base, repo) + ["browser", "add", "--all", "--config", str(config)], cwd=repo / "bridge",
                        check=False)
-    except BackupError as exc:
-        progress(base, 0, error=str(exc))
+    except Exception as exc:   # any failure, not only a BackupError: never left « restoring » without a word
+        progress(base, 0, error=str(exc) if isinstance(exc, BackupError) else f"{type(exc).__name__}: {exc}")
         (base / MARKER).unlink(missing_ok=True)
         raise
     import shutil
