@@ -252,7 +252,7 @@ pub fn is_ghost(session: &Dict, now: f64) -> bool {
         && source == "unknown"
         && as_int(session.get("message_count")) == Some(0)
         && !truthy_key(session, "pinned")
-        && !title.eq_ignore_ascii_case("Bot Chat")
+        && !title.eq_ignore_ascii_case(crate::threads::LEGACY_MAIN_TITLE)
         && !title.starts_with(LIVE_TITLE)
         && !is_cron_session(session)
         && old("started_at")

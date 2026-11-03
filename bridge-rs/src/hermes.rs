@@ -579,7 +579,7 @@ impl HermesClient {
     /// The agent's « Bot Chat » session(s) (its single thread), hidden ones included, oldest first (read_shares.rs:
     /// a project agent's whole thread shared).
     pub async fn bot_chat_sessions(&self, agent: &AgentConfig) -> Result<Vec<Map<String, Value>>, HermesError> {
-        let params = [("limit", "200".to_string()), ("title", "Bot Chat".to_string()), ("include_hidden", "1".into())];
+        let params = [("limit", "200".to_string()), ("title", crate::threads::LEGACY_MAIN_TITLE.to_string()), ("include_hidden", "1".into())];
         let data = self.get_json(agent, "/api/sessions", &params).await?;
         let mut rows: Vec<Map<String, Value>> = Self::items(data, ["sessions", "data", "items"])
             .into_iter()
