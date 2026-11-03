@@ -2,8 +2,9 @@
 whose certificate the bridge does not check) — or plain only with `starttls = False`, as hydroxide without TLS
 options —, LOGIN, LIST, SELECT/EXAMINE, UID SEARCH (ALL, SINCE, BEFORE, FROM, TEXT,
 CHARSET, UID n:*), UID FETCH (RFC822.SIZE, BODY.PEEK[], BODY.PEEK[HEADER.FIELDS (…)], BODY.PEEK[TEXT], partials, `*`),
-APPEND, IDLE (new mail told as `* n EXISTS` while idling; off with `idle = False`), NOOP, LOGOUT. It records every
-command it gets."""
+APPEND, IDLE (new mail told as `* n EXISTS` while idling; off with `idle = False`), NOOP, LOGOUT; for the mail rules
+(mail_rules.rs): FLAGS (`flags`), UID STORE, UID MOVE, UID COPY, CREATE (listed after), SEARCH HEADER Message-ID. It
+records every command it gets."""
 from __future__ import annotations
 
 import datetime
@@ -101,9 +102,22 @@ class FakeImap:
         self.idle = True
         self.idling = 0        # connections in IDLE now
         self.idles = 0         # IDLE commands seen
+        self.flags: Dict[Tuple[str, int], set] = {}   # (folder, uid) → flags
+        self.created: List[str] = []
+        self.next_uid = 10000  # a moved or copied message's uid in its new folder
 
-    def add(self, folder: str, uid: int, raw: bytes) -> None:
+    def add(self, folder: str, uid: int, raw: bytes, flags=()) -> None:
         self.folders.setdefault(folder, []).append((uid, raw))
+        self.flags[(folder, uid)] = set(flags)
+
+    def message_ids(self, folder: str) -> List[str]:
+        return [str(self._header(raw).get("Message-ID") or "") for _, raw in self.folders.get(folder, [])]
+
+    def flags_of(self, folder: str, message_id: str) -> set:
+        for uid, raw in self.folders.get(folder, []):
+            if str(self._header(raw).get("Message-ID") or "") == message_id:
+                return self.flags.get((folder, uid), set())
+        return set()
 
     def _accept(self) -> None:
         while True:
@@ -204,9 +218,17 @@ class FakeImap:
                 self.idling -= 1
             self._ok(state, tag, "IDLE terminated")
         elif command == "LIST":
-            for flags, name in self.FOLDERS:
+            for flags, name in self.FOLDERS + [("\\HasNoChildren", n) for n in self.created]:
                 self._send(state, f'* LIST ({flags}) "/" "{name}"\r\n'.encode())
             self._ok(state, tag)
+        elif command == "CREATE":
+            name = (_tokens(args) or [""])[0]
+            if name in self.folders:
+                self._send(state, f"{tag} NO already there\r\n".encode())
+            else:
+                self.folders[name] = []
+                self.created.append(name)
+                self._ok(state, tag, "CREATE completed")
         elif command in ("SELECT", "EXAMINE"):
             name = (_tokens(args) or [""])[0]
             if name not in self.folders:
@@ -225,6 +247,32 @@ class FakeImap:
                 uidset, _, items = rest.partition(" ")
                 self._fetch(state, uidset, items)
                 self._ok(state, tag)
+            elif sub.upper() == "STORE":
+                uidset, how, flags = (_tokens(rest) + ["", "", ""])[:3]
+                folder = state["folder"] or ""
+                wanted = set(flags.strip("()").split())
+                for uid in self._uids(folder, uidset):
+                    have = self.flags.setdefault((folder, uid), set())
+                    if how.startswith("+"):
+                        have |= wanted
+                    elif how.startswith("-"):
+                        have -= wanted
+                self._ok(state, tag)
+            elif sub.upper() in ("MOVE", "COPY"):
+                uidset, dest = (_tokens(rest) + ["", ""])[:2]
+                folder = state["folder"] or ""
+                if dest not in self.folders:
+                    self._send(state, f"{tag} NO [TRYCREATE] no such folder\r\n".encode())
+                    return True
+                chosen = [(u, r) for u, r in self.folders.get(folder, []) if u in set(self._uids(folder, uidset))]
+                for uid, raw in chosen:
+                    self.next_uid += 1
+                    self.folders[dest].append((self.next_uid, raw))
+                    self.flags[(dest, self.next_uid)] = set(self.flags.get((folder, uid), set()))
+                if sub.upper() == "MOVE":
+                    gone = {u for u, _ in chosen}
+                    self.folders[folder] = [(u, r) for u, r in self.folders[folder] if u not in gone]
+                self._ok(state, tag)
             else:
                 self._send(state, f"{tag} BAD unknown UID command\r\n".encode())
         elif command == "APPEND":
@@ -242,8 +290,27 @@ class FakeImap:
     def _header(raw: bytes) -> email.message.Message:
         return email.message_from_bytes(raw.partition(b"\r\n\r\n")[0] + b"\r\n\r\n", policy=email.policy.default)
 
+    def _uids(self, folder: str, uidset: str) -> List[int]:
+        mails = self.folders.get(folder, [])
+        top = max((u for u, _ in mails), default=0)
+        wanted = set()
+        for piece in uidset.split(","):
+            if piece == "*":
+                wanted.add(top)
+            elif ":" in piece:
+                low, high = piece.split(":")
+                wanted.update(range(int(low), (top if high == "*" else int(high)) + 1))
+            elif piece:
+                wanted.add(int(piece))
+        return [u for u, _ in mails if u in wanted]
+
     def _search(self, folder: Optional[str], words: List[str]) -> List[int]:
         mails = self.folders.get(folder or "", [])
+        # HEADER Message-ID <id> (any of several, ORed): the undo's way to find messages again
+        ids = [words[i + 2] for i in range(len(words) - 2) if words[i].upper() == "HEADER"
+               and words[i + 1].lower() == "message-id"]
+        if ids:
+            return sorted(u for u, raw in mails if str(self._header(raw).get("Message-ID") or "") in ids)
         keep = []
         for uid, raw in mails:
             header, ok, i = self._header(raw), True, 0
@@ -319,6 +386,8 @@ class FakeImap:
                     label += f"<{start}>"
                 chunks.append((label, data))
             out = f"* {seq} FETCH (UID {uid}".encode()
+            if re.search(r"\bFLAGS\b", items.upper()):
+                out += f" FLAGS ({' '.join(sorted(self.flags.get((state['folder'], uid), set())))})".encode()
             if "RFC822.SIZE" in items.upper():
                 out += f" RFC822.SIZE {len(raw)}".encode()
             for label, data in chunks:
