@@ -666,7 +666,11 @@ pub const PAYMENTS_RULE: &str = concat!(
     // routines started by an event (2026-11-02, triggers.rs)
     "When they want you to act each time an e-mail arrives (from someone, about something) or when another service or ",
     "a Shortcut calls you: make it with routine_trigger (mail or link), never a routine every few minutes that checks; ",
-    "they turn it on with one tap in the app."
+    "they turn it on with one tap in the app. ",
+    // standing mail rules (2026-11-03, mail_rules.rs)
+    "A mailbox that fills with the same senders (server providers, shops, banks, newsletters): after mail_overview, ",
+    "propose rules (mail_bulk with rule: true) that file them from now on, with nothing left for them to do; file ",
+    "into a folder rather than trash or delete; invoices go to « Factures »."
 );
 
 /// The personality without the payments block (the person never sees it).

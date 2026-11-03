@@ -149,6 +149,7 @@ pub mod handback;
 pub mod health;
 pub mod jobs;
 pub mod mail_scan;
+pub mod mail_rules;
 pub mod mail_tidy;
 pub mod mailbox;
 pub mod map_route;

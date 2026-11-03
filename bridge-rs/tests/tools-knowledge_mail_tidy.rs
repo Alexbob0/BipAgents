@@ -413,3 +413,151 @@ fn gmail_archives_to_all_mail_and_trash_is_its_trash() {
     assert_eq!(count(&srv, "INBOX"), 460);
     assert!(srv.lock().unwrap().log.iter().any(|l| l.starts_with("COPY") && l.contains("INBOX")));
 }
+
+// -- standing rules (mail_rules.rs) -----------------------------------------------------------------------------------
+
+use bipbridge::mail_rules;
+use bipbridge::mail_tidy::Row;
+
+fn hetzner(server: &Shared) {
+    let mut s = server.lock().unwrap();
+    let inbox = s.folders.get_mut("INBOX").unwrap();
+    inbox.push(message(500, "Hetzner <noreply@hetzner.com>", None, "Server created", &[]));
+    inbox.push(message(501, "Hetzner Billing <billing@mail.hetzner.com>", None, "Invoice", &["\\Seen"]));
+    inbox.push(message(502, "Hetzner <noreply@hetzner.com>", None, "Important", &["\\Flagged"]));
+}
+
+fn folder_flags(server: &Shared, folder: &str) -> Vec<(String, Vec<String>)> {
+    server.lock().unwrap().folders[folder].iter().map(|m| (m.message_id.clone(), m.flags.clone())).collect()
+}
+
+fn new_row(uid: u32, from: &str) -> Row {
+    Row { uid, from: from.into(), subject: "Server created".into(), message_id: format!("<m{uid}@test>"), ..Row::default() }
+}
+
+#[test]
+fn a_rule_files_what_is_there_then_new_mail_by_itself() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = setup(dir.path(), "t4");
+    let srv = server(false);
+    hetzner(&srv);
+    let open = opener(&srv);
+
+    // refused before any card: mail content, the whole folder, a guess, a delete, Sent
+    for bad in [
+        json!({"action": "move:Serveurs", "rule": true, "subject_contains": "server"}),
+        json!({"action": "move:Serveurs", "rule": true, "everything": true}),
+        json!({"action": "archive", "rule": true, "groups": ["promo"]}),
+        json!({"action": "delete", "rule": true, "domain": "hetzner.com"}),
+        json!({"action": "archive", "rule": true, "domain": "hetzner.com", "folder": "Sent"}),
+        json!({"action": "trash", "rule": true, "domain": "hetzner.com"}), // no trash folder in this box
+    ] {
+        let (error, said) = text(&mail_tidy::call(&config, "coach", "mail_bulk", &args(bad.clone()), &open).unwrap());
+        assert!(error, "{bad}: {said}");
+    }
+    assert!(mail_rules::pending_items(&config, None).is_empty());
+
+    // the card: one sentence, the count of what is there (the starred one left out); nothing moves
+    let called = mail_tidy::call(
+        &config,
+        "coach",
+        "mail_bulk",
+        &args(json!({"action": "move:Serveurs", "mark_read": true, "domain": "hetzner.com", "rule": true})),
+        &open,
+    )
+    .unwrap();
+    assert!(!text(&called).0, "{}", text(&called).1);
+    let card = called.rule.unwrap();
+    assert_eq!(card.existing, 2);
+    let items = mail_rules::pending_items(&config, Some("coach"));
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["run_id"], json!(format!("bip-mailrule-{}", card.id)));
+    assert_eq!(
+        items[0]["bip_summary"],
+        json!("coach propose une règle : désormais, les mails de hetzner.com vont dans « Serveurs », marqués comme lus — 2 déjà là")
+    );
+    assert_eq!(moves(&srv), 0);
+    // the same rule twice: refused once it is on
+    let job = mail_rules::answer(&config, "coach", &card.id, true, "app").unwrap().unwrap();
+    assert!(mail_rules::pending_items(&config, None).is_empty());
+    let again = mail_tidy::call(
+        &config,
+        "coach",
+        "mail_bulk",
+        &args(json!({"action": "archive", "groups": ["domain:hetzner.com"], "rule": true})),
+        &open,
+    )
+    .unwrap();
+    assert!(text(&again).0 && text(&again).1.contains("already a rule"), "{}", text(&again).1);
+
+    // « Oui »: the folder made, the two there filed and read; the starred one stays
+    mail_rules::run_existing(&config, &job.id, &open).unwrap();
+    assert!(srv.lock().unwrap().log.iter().any(|l| l == "CREATE \"Serveurs\""));
+    let filed = folder_flags(&srv, "Serveurs");
+    assert_eq!(filed.len(), 2);
+    assert!(filed.iter().all(|(_, f)| f.contains(&"\\Seen".to_string())));
+    assert!(srv.lock().unwrap().folders["INBOX"].iter().any(|m| m.uid == 502));
+    let rule = &mail_rules::rules_of(&config, Some("coach"))[0];
+    assert_eq!((rule.applied, rule.runs, rule.existing_done), (2, 1, true));
+
+    // a new mail: filed by itself, no card
+    srv.lock().unwrap().folders.get_mut("INBOX").unwrap().push(message(600, "Hetzner <noreply@hetzner.com>", None, "x", &[]));
+    srv.lock().unwrap().folders.get_mut("INBOX").unwrap().push(message(601, "Sam <sam@friends.example>", None, "y", &[]));
+    let rows = vec![new_row(600, "noreply@hetzner.com"), new_row(601, "sam@friends.example")];
+    assert_eq!(mail_rules::sort_new(&config, "t4", &rows, &open), 1);
+    assert_eq!(count(&srv, "Serveurs"), 3);
+    assert!(srv.lock().unwrap().folders["INBOX"].iter().any(|m| m.uid == 601));
+    assert!(mail_rules::pending_items(&config, None).is_empty());
+    // the person's own mail, from a matching domain or not, never
+    let own = vec![new_row(602, "alex@example.com")];
+    assert_eq!(mail_rules::sort_new(&config, "t4", &own, &open), 0);
+    let rule = mail_rules::rules_of(&config, Some("coach"))[0].clone();
+    assert_eq!((rule.applied, rule.runs), (3, 2));
+    let view = mail_rules::view(&config, &rule);
+    assert_eq!(view["line"], json!("Les mails de hetzner.com vont dans « Serveurs », marqués comme lus"));
+    assert_eq!((view["can_undo"].as_bool(), view["last_count"].as_u64()), (Some(true), Some(1)));
+
+    // the undo of its last run: back in the inbox, unread; never filed again by the rule
+    assert_eq!(mail_rules::undo_last(&config, Some("coach"), &rule.id, &open).unwrap(), 1);
+    let back = srv.lock().unwrap().folders["INBOX"].iter().find(|m| m.message_id == "<m600@test>").cloned().unwrap();
+    assert!(!back.flags.contains(&"\\Seen".to_string()));
+    assert_eq!(count(&srv, "Serveurs"), 2);
+    let again = Row { message_id: back.message_id.clone(), ..new_row(back.uid, "noreply@hetzner.com") };
+    assert_eq!(mail_rules::sort_new(&config, "t4", &[again], &open), 0);
+    assert!(mail_rules::undo_last(&config, Some("coach"), &rule.id, &open).is_err(), "once");
+
+    // stopped: new mail stays where it lands
+    let (error, said) = text(
+        &mail_tidy::call(&config, "coach", "mail_bulk", &args(json!({"action": "stop_rule", "rule_id": rule.id})), &open)
+            .unwrap(),
+    );
+    assert!(!error, "{said}");
+    srv.lock().unwrap().folders.get_mut("INBOX").unwrap().push(message(700, "Hetzner <noreply@hetzner.com>", None, "z", &[]));
+    assert_eq!(mail_rules::sort_new(&config, "t4", &[new_row(700, "noreply@hetzner.com")], &open), 0);
+    assert!(srv.lock().unwrap().folders["INBOX"].iter().any(|m| m.uid == 700));
+    assert_eq!(count(&srv, "Serveurs"), 2, "what it filed stays filed");
+    assert!(mail_rules::rules_of(&config, None).is_empty());
+}
+
+#[test]
+fn another_agents_rules_and_cards_stay_apart() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = setup(dir.path(), "t5");
+    let srv = server(false);
+    let open = opener(&srv);
+    let card = mail_tidy::call(
+        &config,
+        "coach",
+        "mail_bulk",
+        &args(json!({"action": "mark_read", "list_id": "news.shop.example", "rule": true})),
+        &open,
+    )
+    .unwrap()
+    .rule
+    .unwrap();
+    assert_eq!(card.existing, 449, "unread ones only, the starred one left out");
+    assert!(mail_rules::answer(&config, "vie", &card.id, true, "app").unwrap().is_none());
+    assert!(mail_rules::answer(&config, "coach", &card.id, false, "app").unwrap().is_some());
+    assert!(mail_rules::rules_of(&config, None).is_empty() && mail_rules::pending_items(&config, None).is_empty());
+    assert!(mail_rules::stop(&config, Some("vie"), &card.id).unwrap().is_none());
+}

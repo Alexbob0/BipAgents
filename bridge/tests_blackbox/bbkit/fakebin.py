@@ -223,6 +223,8 @@ elif NAME == "ffmpeg":
     ffmpeg()
 elif NAME == "fake-gateway":
     gateway()
+elif NAME == "podman" and ARGS[:2] == ["image", "exists"]:
+    sys.exit(1)     # no image on this machine unless a test says so (the agents keep Hermes' default sandbox image)
 sys.exit(0)
 '''
 
