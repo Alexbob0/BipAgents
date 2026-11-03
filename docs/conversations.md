@@ -145,6 +145,14 @@ CREATE TABLE thread_messages (    -- what the bridge knows about a message that 
   created_at TEXT NOT NULL,
   PRIMARY KEY (agent, message_id)
 );
+CREATE TABLE thread_files (       -- files of an agent's message Hermes' row doesn't carry (background_turn.rs, runs.rs)
+  agent TEXT NOT NULL,
+  message_id TEXT NOT NULL,       -- m_…
+  thread_id TEXT NOT NULL,
+  files TEXT NOT NULL,            -- JSON: [{kind, name, mime, path}] added, [{path, stale: true}] a MEDIA line hidden
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (agent, message_id)
+);
 CREATE TABLE thread_reads (agent TEXT, thread_id TEXT, item_id TEXT, at TEXT, PRIMARY KEY (agent, thread_id));
 ```
 

@@ -14,16 +14,19 @@
 //! GET  /v1/threads/{thread}/timeline?agent=&limit=&before=&after=&around=&before_count=&after_count=
 //! GET  /v1/threads/{thread}/items/{item}
 //! GET  /v1/threads/{thread}/attachments/{attachment}
+//! POST /v1/threads/{thread}/messages {client_id, text, attachments?…}   the person's message (send.rs)
+//! POST /v1/threads/{thread}/stop                                        the turn going on stopped
 //! ```
 //!
 //! A shared agent's (`agent=<agent>__<household>`): the list and timeline pages relayed to the owner's bridge
 //! (agent_shares.rs).
 //!
-//! Tables in bridge.db (store.rs): `threads`, `thread_segments`, `thread_messages`. Reads Hermes through
+//! Tables in bridge.db (store.rs): `threads`, `thread_segments`, `thread_sends`. Reads Hermes through
 //! [`source::Source`]: the agent's `state.db` (no call to Hermes) or its API (cached).
 //!
 //! No Python counterpart.
 
+pub mod send;
 pub mod source;
 pub mod timeline;
 
@@ -151,6 +154,8 @@ pub struct Threads {
     briefs: Option<Arc<crate::live_brief::Briefs>>,
     /// The threads on screen: an app holds `/v1/threads/events?thread=<id>` open (presence: no push for them).
     on_screen: std::sync::Mutex<std::collections::HashMap<String, usize>>,
+    /// The agents' queues (msg_queue.rs): a message waiting there shows in `pending.queue`, not as a sent item.
+    queued: std::sync::OnceLock<Weak<crate::msg_queue::Queues>>,
 }
 
 /// One app showing a thread, for as long as its event stream is open.
@@ -177,6 +182,7 @@ pub fn threads_of(state: &AppState) -> Arc<Threads> {
         .get_or_init(|| {
             let mut threads = Threads::new(state.config.clone(), state.store.clone(), state.hermes.clone());
             threads.briefs = Some(state.briefs.clone());
+            let _ = threads.queued.set(Arc::downgrade(&crate::msg_queue::queues_of(state)));
             let threads = Arc::new(threads);
             let _ = state.hub.threads.set(Arc::downgrade(&threads));
             let _ = state.push.threads.set(Arc::downgrade(&threads));
@@ -198,6 +204,7 @@ impl Threads {
             checked: Default::default(),
             briefs: None,
             on_screen: Default::default(),
+            queued: Default::default(),
         }
     }
 
@@ -602,50 +609,43 @@ impl Threads {
             ));
             previous = Some(rows);
         }
-        self.with_client_ids(agent, &mut items).await?;
         let mut extra = self.boite(agent, thread, segments).await?;
         extra.extend(self.kept(agent, segments).await?);
-        Ok(timeline::merge(items, extra))
+        let mut items = timeline::merge(items, extra);
+        let queued: Vec<String> = self.queued.get().and_then(Weak::upgrade).map_or_else(Vec::new, |q| {
+            q.get(&agent.name).items.into_iter().filter_map(|i| i.client_id).collect()
+        });
+        self.with_sends(agent, thread, &mut items, &queued).await?;
+        self.with_files(agent, thread, &mut items).await?;
+        Ok(items)
     }
 
-    /// The `client_id` and the files the app sent with each of its messages (thread_messages).
-    async fn with_client_ids(&self, agent: &AgentConfig, items: &mut [Item]) -> anyhow::Result<()> {
-        let rows = self
-            .store
-            .run(
-                "SELECT message_id, client_id, attachments FROM thread_messages WHERE agent = ?",
-                vec![text(&agent.name)],
-            )
-            .await?;
-        if rows.is_empty() {
-            return Ok(());
-        }
-        for item in items.iter_mut() {
-            let Some(row) = rows.iter().find(|r| r["message_id"].as_str() == Some(item.id.as_str())) else { continue };
-            if let Some(c) = row["client_id"].as_str() {
-                item.body.insert("client_id".into(), json!(c));
+    /// The files kept for the agent's messages (`attach`): added to those its `MEDIA:` lines give, stale ones left
+    /// out, numbered after them.
+    async fn with_files(&self, agent: &AgentConfig, thread: &Thread, items: &mut [Item]) -> anyhow::Result<()> {
+        let sql = "SELECT message_id, files FROM thread_files WHERE agent = ? AND thread_id = ?";
+        let rows = self.store.run(sql, vec![text(&agent.name), text(&thread.id)]).await?;
+        for row in &rows {
+            let Some(item) = items.iter_mut().find(|i| row["message_id"].as_str() == Some(i.id.as_str())) else { continue };
+            let Some(Value::Array(kept)) = row["files"].as_str().and_then(|f| serde_json::from_str(f).ok()) else { continue };
+            let mut atts = match item.body.get("attachments") {
+                Some(Value::Array(own)) => own.clone(),
+                _ => Vec::new(),
+            };
+            for a in kept {
+                if a["stale"] == json!(true) {
+                    atts.retain(|o| o["path"] != a["path"]);
+                } else if !atts.iter().any(|o| o["path"] == a["path"]) {
+                    atts.push(a);
+                }
             }
-            if let Some(Value::Array(kept)) = row["attachments"].as_str().and_then(|a| serde_json::from_str(a).ok()) {
-                // the app's files replace what Hermes kept of them; an agent's work adds its files to its lines'
-                let mut atts = match (item.body.get("role"), item.body.get("attachments")) {
-                    (Some(r), Some(Value::Array(own))) if r == "agent" => own.clone(),
-                    _ => Vec::new(),
-                };
-                for a in kept {
-                    if a["stale"] == json!(true) {
-                        atts.retain(|o| o["path"] != a["path"]);
-                    } else if !atts.iter().any(|o| !a["path"].is_null() && o["path"] == a["path"]) {
-                        atts.push(a);
-                    }
-                }
-                for (n, a) in atts.iter_mut().enumerate() {
-                    a["id"] = json!(format!("{}.a{n}", item.id));
-                }
-                if atts.is_empty() {
-                    item.body.remove("attachments");
-                } else {
-                    item.body.insert("attachments".into(), Value::Array(atts));
-                }
+            for (n, a) in atts.iter_mut().enumerate() {
+                a["id"] = json!(format!("{}.a{n}", item.id));
+            }
+            if atts.is_empty() {
+                item.body.remove("attachments");
+            } else {
+                item.body.insert("attachments".into(), Value::Array(atts));
             }
         }
         Ok(())
@@ -662,8 +662,8 @@ impl Threads {
     pub async fn attach_with(&self, agent: &AgentConfig, thread: &str, message: &str, files: &[String], stale: &[String]) {
         let mut atts: Vec<Value> = files.iter().map(|p| timeline::file_attachment(p, None)).collect();
         atts.extend(stale.iter().map(|p| json!({"path": p, "stale": true})));
-        let sql = "INSERT INTO thread_messages (agent, message_id, thread_id, attachments, created_at) \
-                   VALUES (?, ?, ?, ?, ?) ON CONFLICT (agent, message_id) DO UPDATE SET attachments = excluded.attachments";
+        let sql = "INSERT INTO thread_files (agent, message_id, thread_id, files, created_at) VALUES (?, ?, ?, ?, ?) \
+                   ON CONFLICT (agent, message_id) DO UPDATE SET files = excluded.files";
         let params = vec![text(&agent.name), text(message), text(thread), text(&Value::Array(atts).to_string()),
                           text(&iso(utcnow()))];
         if let Err(exc) = self.store.run(sql, params).await {
@@ -732,15 +732,15 @@ impl Threads {
             for session in &sessions {
                 for entry in crate::approvals_log::list(&config, &name, Some(session)) {
                     let at = entry.get("at").and_then(Value::as_f64).unwrap_or(0.0);
-                    let key = format!("{}/{}", entry.get("run_id").and_then(Value::as_str).unwrap_or(""),
-                                      entry.get("request_id").and_then(Value::as_str).unwrap_or(""));
+                    let key = (entry.get("run_id").and_then(Value::as_str).unwrap_or(""),
+                               entry.get("request_id").and_then(Value::as_str).unwrap_or(""));
                     let mut body = serde_json::Map::new();
                     body.insert("kind".into(), json!("approval"));
                     body.insert("approval".into(), json!({
                         "run_id": entry.get("run_id"), "request_id": entry.get("request_id"), "command": entry.get("command"),
                         "description": entry.get("description"), "topic": entry.get("topic"),
                         "choice": entry.get("choice"), "state": "answered"}));
-                    out.push((format!("a_{}", &hex::encode(sha2::Sha256::digest(key.as_bytes()))[..24]), at, session.clone(), body));
+                    out.push((answered_id(Some(key.0), Some(key.1)), at, session.clone(), body));
                 }
                 for record in calls.as_ref().map(|c| c.records(&name, session)).unwrap_or_default() {
                     let Some(id) = record.get("id").and_then(Value::as_str).map(str::to_string) else { continue };
@@ -801,6 +801,13 @@ impl Threads {
             tokio::time::sleep(Duration::from_millis(400)).await;
         }
     }
+}
+
+/// The item an approval (or a question) becomes once answered: the same id while it waits (`pending`), so a card is
+/// one row on every device, answered in place.
+pub fn answered_id(run_id: Option<&str>, request_id: Option<&str>) -> String {
+    let key = format!("{}/{}", run_id.unwrap_or(""), request_id.unwrap_or(""));
+    format!("a_{}", &hex::encode(sha2::Sha256::digest(key.as_bytes()))[..24])
 }
 
 /// Hermes not reachable while adopting: the apps try again (503), nothing half made.
@@ -1011,6 +1018,9 @@ async fn delete_thread(
     UrlPath(id): UrlPath<String>,
     q: QueryMap,
 ) -> ApiResult<Response> {
+    if let Some(relayed) = shared(&state, &q, &format!("{id}:delete")).await {
+        return relayed;
+    }
     let threads = threads_of(&state);
     let (agent, thread) = threads.named(agent_param(&state, &q)?.as_ref(), &id).await?;
     let _guard = threads.registry.lock().await;
@@ -1062,13 +1072,19 @@ async fn timeline_route(
     let page = timeline::page(items, &want);
     let tip = segments.last().map(|s| s.session_id.clone());
     let sessions: HashSet<&str> = segments.iter().map(|s| s.session_id.as_str()).collect();
-    let approvals: Vec<Value> = state
-        .hub
-        .pending_approvals(Some(&agent.name))
-        .into_iter()
-        .filter(|a| a.get("session_id").and_then(Value::as_str).is_some_and(|s| sessions.contains(s)))
-        .map(Value::Object)
-        .collect();
+    // what waits for the person here, each with the id of the item it becomes once answered (one card on every device)
+    let waiting = |all: Vec<crate::store::Row>| -> Vec<Value> {
+        all.into_iter()
+            .filter(|a| a.get("session_id").and_then(Value::as_str).is_some_and(|s| sessions.contains(s)))
+            .map(|mut a| {
+                let id = answered_id(a.get("run_id").and_then(Value::as_str), a.get("request_id").and_then(Value::as_str));
+                a.insert("id".into(), json!(id));
+                Value::Object(a)
+            })
+            .collect()
+    };
+    let approvals = waiting(state.hub.pending_approvals(Some(&agent.name)));
+    let questions = waiting(state.hub.pending_questions(&agent.name));
     let run = tip.as_deref().and_then(|t| state.hub.session_run(&agent.name, t));
     let queue =
         tip.as_deref().map(|t| crate::msg_queue::queues_of(&state).get(&agent.name).snapshot_of(&agent.name, t));
@@ -1085,7 +1101,8 @@ async fn timeline_route(
         "more_after": page.more_after,
         "anchor": page.anchor,
         "version": thread.version,
-        "pending": {"run": run.map(|r| json!({"run_id": r, "status": "running"})), "queue": queue, "approvals": approvals},
+        "pending": {"run": run.map(|r| json!({"run_id": r, "status": "running"})), "queue": queue, "approvals": approvals,
+                    "questions": questions},
     })))
 }
 
@@ -1189,6 +1206,10 @@ async fn saved_photo(state: &AppState, agent: &AgentConfig, content: &Option<Val
 }
 
 async fn events(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
+    // a shared agent's conversation: the owner's hints for it (agent_shares.rs)
+    if let (Some(id), Some(cid)) = (q.get("agent").filter(|a| a.contains(crate::households::SEPARATOR)), q.get("thread")) {
+        return crate::agent_shares::relay_stream(&state, id, cid, "events").await;
+    }
     let agent = agent_param(&state, &q)?;
     let threads = threads_of(&state);
     // `thread=<id|main>`: that conversation is on screen while the stream is open (presence)
@@ -1232,6 +1253,46 @@ pub fn router() -> Router<AppState> {
         .route("/threads/{thread}/timeline", get(timeline_route))
         .route("/threads/{thread}/items/{item}", get(item_route))
         .route("/threads/{thread}/attachments/{attachment}", get(attachment_route))
+        .route("/threads/{thread}/messages", post(send_route))
+        .route("/threads/{thread}/stop", post(stop_route))
+}
+
+/// The person's message (send.rs); a shared agent's goes to its owner's bridge (agent_shares.rs).
+async fn send_route(
+    State(state): State<AppState>,
+    UrlPath(id): UrlPath<String>,
+    Json(body): Json<send::NewMessage>,
+) -> ApiResult<Response> {
+    if let Some(relayed) = crate::agent_shares::relay_send(&state, body.agent.as_deref(), &id, &body).await {
+        return relayed;
+    }
+    let threads = threads_of(&state);
+    let agent = crate::app::agent_or_404(&state.config(), body.agent.as_deref())?;
+    let thread = match id.as_str() {
+        "new" => None,
+        _ => Some(threads.named(Some(&agent), &id).await?.1),
+    };
+    Ok(web::ok(send::send(&state, &agent, thread, body).await?))
+}
+
+async fn stop_route(
+    State(state): State<AppState>,
+    UrlPath(id): UrlPath<String>,
+    Json(body): Json<send::Stop>,
+) -> ApiResult<Response> {
+    if let Some(relayed) = crate::agent_shares::relay_stop(&state, body.agent.as_deref(), &id).await {
+        return relayed;
+    }
+    let threads = threads_of(&state);
+    let (agent, thread) = threads.named(agent_param_of(&state, body.agent.as_deref())?.as_ref(), &id).await?;
+    Ok(web::ok(send::stop(&state, &agent, &thread).await?))
+}
+
+fn agent_param_of(state: &AppState, name: Option<&str>) -> ApiResult<Option<AgentConfig>> {
+    match name.filter(|a| !a.is_empty()) {
+        Some(name) => Ok(Some(crate::app::agent_or_404(&state.config(), Some(name))?)),
+        None => Ok(None),
+    }
 }
 
 /// What the run hub and the push service keep to reach the threads (made with the app).

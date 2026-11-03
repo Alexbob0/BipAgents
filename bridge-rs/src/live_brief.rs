@@ -981,16 +981,28 @@ async fn keep_recap(State(state): State<AppState>, Json(body): Json<CallRecap>) 
 
 async fn take_recap(State(state): State<AppState>, Json(body): Json<RecapTaken>) -> ApiResult<Response> {
     let agent = setup(&state, &body.agent)?;
+    let recap =
+        message_notes(&state, &agent, &body.session, body.text.as_deref().unwrap_or(""), body.kinds.as_deref().unwrap_or(&[]))
+            .await;
+    Ok(web::ok(json!({"recap": recap})))
+}
+
+/// What waited for the person's next message in `session`, for the agent only (the message sending route,
+/// threads/send.rs, and `POST /v1/live/recaps/take`): the current time, a Live call's recap, the family's news, what is
+/// new in the Carnet, the rooms, friends' taps, the place's space, a feature to propose (`text` and `kinds`: the
+/// message's, never kept).
+pub async fn message_notes(state: &AppState, agent: &AgentConfig, session: &str, text: &str, kinds: &[String]) -> Option<String> {
     let briefs = state.briefs.clone();
     let config = state.config();
+    let (agent, session, text, kinds) = (agent.clone(), session.to_string(), text.to_string(), kinds.to_vec());
     // a feature to discover, at a good moment (feature_tips.rs): the message's signals, the agent busy or not
     let moment = crate::feature_tips::Moment {
-        busy: crate::feature_tips::busy(&state, &agent.name, &body.session),
+        busy: crate::feature_tips::busy(state, &agent.name, &session),
         guide: crate::feature_tips::guide_of(&config),
     };
-    let recap = blocking(move || {
+    blocking(move || {
         // the beta's measures (beta_measures.rs): that the person wrote, and to the guide or not; never what
-        if !body.session.starts_with("cron_") {
+        if !session.starts_with("cron_") {
             let to_guide = moment.guide.as_deref() == Some(agent.name.as_str());
             crate::beta_measures::person_message(&config, to_guide, crate::py::time_time());
         }
@@ -1002,29 +1014,22 @@ async fn take_recap(State(state): State<AppState>, Json(body): Json<RecapTaken>)
         let parts: Vec<String> =
             [
                 Some(crate::dates::now::line(&config, &agent)),
-                briefs.take_recap(&agent.name, &body.session),
+                briefs.take_recap(&agent.name, &session),
                 crate::family_news::take_notes(&config, &agent.name),
                 named(crate::notebook::news::take_now(&config, &agent.name)), // the Carnet's news (notebook/news.rs)
                 crate::rooms_memory::take_note(&config, &agent.name), // what's new in its rooms (rooms_memory.rs)
                 crate::friends_cards::take_note(&config, &agent.name), // friends' taps on its cards (friends_cards.rs)
                 named(crate::storage_watch::take_note(&config, &agent.name)), // the place's space (storage_watch.rs)
-                crate::feature_tips::on_message(
-                    &config,
-                    &agent.name,
-                    &body.session,
-                    body.text.as_deref().unwrap_or(""),
-                    body.kinds.as_deref().unwrap_or(&[]),
-                    &moment,
-                    crate::py::time_time(),
-                ),
+                crate::feature_tips::on_message(&config, &agent.name, &session, &text, &kinds, &moment, crate::py::time_time()),
             ]
                 .into_iter()
                 .flatten()
                 .collect();
         Ok((!parts.is_empty()).then(|| parts.join("\n")))
     })
-    .await?;
-    Ok(web::ok(json!({"recap": recap})))
+    .await
+    .ok()
+    .flatten()
 }
 
 /// `live_router()` (mounted under /v1 with the bridge key).

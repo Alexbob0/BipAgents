@@ -77,12 +77,22 @@ CREATE TABLE IF NOT EXISTS thread_segments (
     PRIMARY KEY (agent, session_id)
 );
 CREATE INDEX IF NOT EXISTS thread_segments_thread ON thread_segments (thread_id, position);
-CREATE TABLE IF NOT EXISTS thread_messages (
+DROP TABLE IF EXISTS thread_messages;
+CREATE TABLE IF NOT EXISTS thread_sends (
+    agent TEXT NOT NULL,
+    client_id TEXT NOT NULL,
+    thread_id TEXT NOT NULL,
+    text TEXT NOT NULL,
+    attachments TEXT,
+    message_id TEXT,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (agent, client_id)
+);
+CREATE TABLE IF NOT EXISTS thread_files (
     agent TEXT NOT NULL,
     message_id TEXT NOT NULL,
     thread_id TEXT NOT NULL,
-    client_id TEXT,
-    attachments TEXT,
+    files TEXT NOT NULL,
     created_at TEXT NOT NULL,
     PRIMARY KEY (agent, message_id)
 );
