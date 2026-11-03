@@ -185,12 +185,17 @@ pub fn kind_diet(kind: &str) -> KindDiet {
                 "productivity",
             ],
         },
+        // the records (subscriptions, purchases, contracts) and their corrections in view: behind the search, the
+        // carnet review's lab (2026-11-03, GLM-5.3 Flash) filed seven subscriptions as notes on « person » pages named
+        // « Abonnements » and « Anthropic », and wrote its corrections as facts (« Remplacer la ligne… »)
         "finance" => KindDiet {
             deferred: &["patch", "search_files"],
             direct: &[
                 "notebook_search",
+                "notebook_record",
                 "notebook_read",
                 "notebook_note",
+                "notebook_edit",
                 "archive_search",
                 "create_page",
                 "start_task",
@@ -699,6 +704,11 @@ mod tests {
         }
         let without = diet("finance", &names(&["create_page"]), false, false, false, &[]);
         assert!(!without.defer.iter().any(|n| n.ends_with("map_image")));
+        // the records and their corrections in view where money is kept (carnet review, 2026-11-03)
+        let finance = diet("finance", &names(&["notebook_record", "notebook_edit", "notebook_note"]), false, false, false, &[]);
+        for tool in ["notebook_record", "notebook_edit"] {
+            assert!(finance.defer.contains(&format!("!{BRIDGE_PREFIX}{tool}")), "{tool}: {:?}", finance.defer);
+        }
     }
 
     #[test]
