@@ -278,29 +278,27 @@ async fn tip_of(state: &AppState, threads: &Threads, agent: &AgentConfig, thread
 /// `POST /v1/threads/{thread}/messages`.
 pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>, body: NewMessage) -> ApiResult<Value> {
     let threads = threads_of(state);
+    // the same message again (an answer lost on the way): nothing sent twice, no conversation made twice
+    let known = state
+        .store
+        .run(
+            "SELECT thread_id FROM thread_sends WHERE agent = ? AND client_id = ?",
+            vec![text(&agent.name), text(&body.client_id)],
+        )
+        .await?;
+    if let Some(row) = known.first() {
+        return Ok(json!({"client_id": body.client_id, "thread": row["thread_id"], "state": "known", "run_id": null, "tip": null}));
+    }
     let thread = match thread {
         Some(t) => t,
         None => threads.create(&agent.name, "side", None, Value::Null, false).await?,
     };
-    let mut tip: Option<String> = None;
-    let answer = |state: &str, run: Option<&str>, tip: &Option<String>| {
+    let words = body.text.trim().to_string();
+    let tip = tip_of(state, &threads, agent, &thread, &words).await?;
+    let tip = tip.as_str();
+    let answer = |state: &str, run: Option<&str>| {
         json!({"client_id": body.client_id, "thread": thread.id, "state": state, "run_id": run, "tip": tip})
     };
-    let known = state
-        .store
-        .run(
-            "SELECT client_id FROM thread_sends WHERE agent = ? AND client_id = ?",
-            vec![text(&agent.name), text(&body.client_id)],
-        )
-        .await?;
-    if !known.is_empty() {
-        return Ok(answer("known", None, &tip));
-    }
-    let words = body.text.trim().to_string();
-    tip = Some(tip_of(state, &threads, agent, &thread, &words).await?);
-    let tip_id = tip.clone().unwrap_or_default();
-    let tip_ref = &tip;
-    let tip = tip_id.as_str();
     keep(&threads, &agent.name, &thread.id, &body.client_id, &words, &body.attachments).await?;
     let queues = queues_of(state);
     let running = state.hub.session_run(&agent.name, tip);
@@ -313,7 +311,7 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
             .map_err(|_| HttpError::new(502, "your agent isn't answering right now: try again in a moment"))?;
         if let Some(run) = steered {
             threads.bump(&thread, "sent").await?;
-            return Ok(answer("steered", Some(&run), tip_ref));
+            return Ok(answer("steered", Some(&run)));
         }
     }
     // what waited for this message (a Live call's recap, the time, the family's news, a feature to propose…)
@@ -328,7 +326,7 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
             .add(agent, tip, &words, running.as_deref(), front, sent)
             .map_err(|_| HttpError::new(409, "too many messages waiting"))?;
         threads.bump(&thread, "sent").await?;
-        return Ok(answer("queued", None, tip_ref));
+        return Ok(answer("queued", None));
     }
     crate::cloud_setup::READINESS.wait(&agent.name, crate::cloud_setup::READY_WAIT).await;
     crate::mcp_sessions::SESSIONS.first_turn(&agent.name, crate::mcp_sessions::FIRST_TURN_WAIT).await;
@@ -343,7 +341,7 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
     state.hub.keep(agent, &run, Some(tip));
     tracing::info!(agent = %agent.name, run_id = %run, "message sent: a turn started");
     threads.bump(&thread, "sent").await?;
-    Ok(answer("started", Some(&run), tip_ref))
+    Ok(answer("started", Some(&run)))
 }
 
 /// `POST /v1/threads/{thread}/stop`: the turn going on in the conversation stopped (Hermes then ends it cancelled).
