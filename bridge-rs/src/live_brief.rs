@@ -72,11 +72,21 @@ pub const POINTS_EVERY: usize = 6;
 pub const MIN_MESSAGES: usize = 10;
 /// The turn is over.
 pub const QUIET_SECONDS: f64 = 60.0;
+/// After a Live call that continued the conversation, the key points wait this long (3/11): rewritten a minute after
+/// a call, they changed the next call's instructions (a broken prompt cache) and, on a one-slot local model server,
+/// their throwaway turn pushed the call's prompt out of the cache: the next call's first answer came 3-4 s later.
+pub const AFTER_CALL_QUIET_SECONDS: f64 = 600.0;
 pub const LOOP_SECONDS: f64 = 120.0;
 pub const CALLS_KEPT: usize = 3;
 pub const CALL_HOURS: f64 = 24.0;
 pub const CALL_CHARS: usize = 2500;
 pub const POINTS_TITLE: &str = "BipAgents · notes";
+/// The scratch session of a call's warm-up (`warm_up`).
+pub const WARM_TITLE: &str = "BipAgents · live";
+/// The warm-up's message: the shortest answer, no tool.
+pub const WARM_MESSAGE: &str = "<!--bip:warm\nNot from the person: answer exactly « OK » and nothing else, no tool.\n-->";
+/// The longest instructions a call start may send for its warm-up (the brief is ~6-9k characters).
+pub const WARM_INSTRUCTIONS_MAX: usize = 40_000;
 /// After a scratch session's deletion, when it is deleted again (seconds): Hermes' titler may write it back meanwhile.
 pub const SCRATCH_CHECKS: [f64; 6] = [10.0, 30.0, 90.0, 300.0, 900.0, 1800.0];
 /// A scratch session Hermes still keeps past the last check (a turn still running…): again every half hour…
@@ -519,7 +529,13 @@ impl Briefs {
             }
         }
         let id = py::py_str(session.get("id").unwrap_or(&Value::Null));
-        match as_int(self.load(agent, &id).get("count")) {
+        let state = self.load(agent, &id);
+        if let Some(call) = last_call(&state) {
+            if now - call < AFTER_CALL_QUIET_SECONDS {
+                return false; // another call may follow: its instructions and the model's cache stay as they are
+            }
+        }
+        match as_int(state.get("count")) {
             None => true,
             Some(done) => count - done >= POINTS_EVERY as i64 || count < done,
         }
@@ -546,8 +562,55 @@ impl Briefs {
             _ => "(none yet)".to_string(),
         };
         let request = points_request(pystr::strip(&points), &text);
+        // thinking off, or GLM's « low » through EUrouter (« none » makes it answer nothing there)
+        let options = crate::agents_admin::quick_turn_options(&self.config.get(), agent);
+        let extra = json!({"model_options": options});
+        let reply = self.scratch_chat(agent, POINTS_TITLE, &request, extra, 240.0).await?;
+        let points = visible(&reply);
+        if points.is_empty() {
+            return Ok(false);
+        }
+        let mut state = self.load(&agent.name, session); // a call may have been noted meanwhile
+        state.insert("points".into(), json!(pystr::head(&points, 4000)));
+        state.insert("points_at".into(), json!(py::time_time()));
+        state.insert("upto".into(), json!(messages.len()));
+        state.insert("count".into(), json!(count.unwrap_or(messages.len() as i64)));
+        self.save(&agent.name, session, &state)?;
+        tracing::info!(agent = %agent.name, chars = pystr::len(&points), "live brief points");
+        Ok(true)
+    }
+
+    /// A Live call's prompt read once by the model while its greeting plays (3/11), never waited for: a turn with the
+    /// call's own instructions in a hidden throwaway session. Hermes' system prompt holds nothing of the session, so
+    /// the call's first question finds the same prompt up to its own words in the model server's cache (a provider's
+    /// prefix cache, vLLM's or llama.cpp's slot) instead of reading ~20k tokens then. What the call's turns send as
+    /// `model_options` (`quick_turn_options`): the same rendering. One at a time per agent.
+    pub async fn warm_up(&self, agent: &AgentConfig, instructions: &str) -> anyhow::Result<()> {
+        static RUNNING: LazyLock<Mutex<std::collections::HashSet<String>>> = LazyLock::new(Default::default);
+        if !lock(&RUNNING).insert(agent.name.clone()) {
+            return Ok(());
+        }
+        let started = std::time::Instant::now();
+        let options = crate::agents_admin::quick_turn_options(&self.config.get(), agent);
+        let extra = json!({"model_options": options, "instructions": instructions});
+        let reply = self.scratch_chat(agent, WARM_TITLE, WARM_MESSAGE, extra, 60.0).await;
+        lock(&RUNNING).remove(&agent.name);
+        tracing::info!(agent = %agent.name, ms = started.elapsed().as_millis() as u64, ok = reply.is_ok(), "live warm-up");
+        reply.map(|_| ())
+    }
+
+    /// One turn in a hidden throwaway session, deleted at once and again over the next half hour (`sweep_scratch`):
+    /// its reply.
+    async fn scratch_chat(
+        &self,
+        agent: &AgentConfig,
+        title: &str,
+        message: &str,
+        extra: Value,
+        timeout: f64,
+    ) -> anyhow::Result<String> {
         // Unique: Hermes refuses a title another session holds (one left behind would stop the notes for good).
-        let title = format!("{POINTS_TITLE} · {}", &uuid::Uuid::new_v4().simple().to_string()[..8]);
+        let title = format!("{title} · {}", &uuid::Uuid::new_v4().simple().to_string()[..8]);
         let scratch = self.hermes.create_session(agent, &title).await?;
         self.note_scratch(&agent.name, &scratch, py::time_time() + SCRATCH_CHAT_SECONDS)?;
         // The title again through a PATCH: « user » provenance, so Hermes' titler leaves the session alone (no model
@@ -567,10 +630,7 @@ impl Briefs {
             }
             Err(other) => return Err(other.into()),
         }
-        // thinking off, or GLM's « low » through EUrouter (« none » makes it answer nothing there)
-        let options = crate::agents_admin::quick_turn_options(&self.config.get(), agent);
-        let extra = json!({"model_options": options});
-        let reply = self.hermes.session_chat(agent, &scratch, &request, extra.as_object().cloned(), 240.0).await;
+        let reply = self.hermes.session_chat(agent, &scratch, message, extra.as_object().cloned(), timeout).await;
         let deleted = self.hermes.delete_session(agent, &scratch).await;
         // Deleted or not, deleted again over the next half hour (`sweep_scratch`).
         self.note_scratch(&agent.name, &scratch, py::time_time() + SCRATCH_CHECKS[0])?;
@@ -581,18 +641,7 @@ impl Briefs {
             }
             Err(other) => return Err(other.into()),
         }
-        let points = visible(&reply?);
-        if points.is_empty() {
-            return Ok(false);
-        }
-        let mut state = self.load(&agent.name, session); // a call may have been noted meanwhile
-        state.insert("points".into(), json!(pystr::head(&points, 4000)));
-        state.insert("points_at".into(), json!(py::time_time()));
-        state.insert("upto".into(), json!(messages.len()));
-        state.insert("count".into(), json!(count.unwrap_or(messages.len() as i64)));
-        self.save(&agent.name, session, &state)?;
-        tracing::info!(agent = %agent.name, chars = pystr::len(&points), "live brief points");
-        Ok(true)
+        Ok(reply?)
     }
 
     fn scratch_path(&self) -> String {
@@ -824,6 +873,9 @@ pub struct CallStarted {
     pub agent: String,
     pub session: String,
     pub live_session: String,
+    /// The call's instructions as its turns send them (apps since 3/11): the model reads them at once (`warm_up`).
+    #[serde(default)]
+    pub instructions: Option<String>,
 }
 
 impl Validate for CallStarted {
@@ -833,6 +885,7 @@ impl Validate for CallStarted {
         web::check_max_len(errors, "session", Some(&self.session), 300);
         web::check_min_len(errors, "live_session", Some(&self.live_session), 1);
         web::check_max_len(errors, "live_session", Some(&self.live_session), 300);
+        web::check_max_len(errors, "instructions", self.instructions.as_deref(), WARM_INSTRUCTIONS_MAX);
     }
 }
 
@@ -908,7 +961,9 @@ async fn live_brief(State(state): State<AppState>, q: QueryMap) -> ApiResult<Res
     };
     let mut brief = state.briefs.brief(&config, &chosen).await.map_err(hermes_error)?;
     let text = brief.get("text").and_then(Value::as_str).unwrap_or("").to_string();
-    brief.insert("text".into(), json!(format!("{now}\n{text}")));
+    // The time last: it changes every minute, and what follows a change is read again by the model (3/11: the
+    // stable part first, the key points, then the last exchanges and calls, then the time).
+    brief.insert("text".into(), json!(format!("{text}\n\n{now}")));
     brief.insert("model_options".into(), options);
     Ok(web::ok(Value::Object(brief)))
 }
@@ -951,6 +1006,15 @@ async fn live_call(State(state): State<AppState>, Json(body): Json<CallEnded>) -
 async fn live_call_start(State(state): State<AppState>, Json(body): Json<CallStarted>) -> ApiResult<Response> {
     let agent = setup(&state, &body.agent)?;
     crate::agent_restart::note_live(&agent.name);
+    if let Some(instructions) = body.instructions.filter(|i| !i.trim().is_empty()) {
+        // never waited for: the first question goes whenever the person is done
+        let (briefs, warmed) = (state.briefs.clone(), agent.clone());
+        state.spawn(async move {
+            if let Err(exc) = briefs.warm_up(&warmed, &instructions).await {
+                tracing::info!(agent = %warmed.name, error = %error_name(&exc), "live warm-up failed");
+            }
+        });
+    }
     let calls = crate::live_calls::LiveCalls::of(&state.briefs);
     let call = crate::live_calls::OpenCall {
         agent: agent.name.clone(),
@@ -1067,4 +1131,14 @@ mod tests {
         // not a note: as it is
         assert_eq!(recap_in_note("plain"), "plain");
     }
+}
+
+/// The end of the last call noted in a conversation's brief state (`note_call` writes it when the call ends).
+fn last_call(state: &Dict) -> Option<f64> {
+    state
+        .get("calls")
+        .and_then(Value::as_array)?
+        .iter()
+        .filter_map(|call| call.get("at").and_then(|at| py::py_float(at).ok()))
+        .fold(None, |latest: Option<f64>, at| Some(latest.map_or(at, |l| l.max(at))))
 }

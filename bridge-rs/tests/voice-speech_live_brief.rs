@@ -14,7 +14,8 @@ use axum::{Json, Router};
 use bipbridge::config::{AgentConfig, SharedConfig};
 use bipbridge::hermes::HermesClient;
 use bipbridge::live_brief::{
-    is_conversation, is_ghost, visible, Briefs, GHOST_AGE_SECONDS, MIN_MESSAGES, POINTS_TITLE, SCRATCH_CHECKS,
+    is_conversation, is_ghost, visible, Briefs, AFTER_CALL_QUIET_SECONDS, GHOST_AGE_SECONDS, MIN_MESSAGES, POINTS_TITLE,
+    SCRATCH_CHECKS, WARM_MESSAGE, WARM_TITLE,
 };
 use bipbridge::py::time_time;
 use common::{auth, config_dict, spawn_fake, TestApp, HERMES_KEY};
@@ -241,6 +242,13 @@ async fn which_conversations_are_due() {
     assert!(briefs.due(&name, &obj(long_quiet.clone()), now)); // 6 new
     briefs.save(&name, "a", &obj(json!({"count": 50}))).unwrap();
     assert!(briefs.due(&name, &obj(long_quiet.clone()), now)); // compressed since: fewer than covered
+    // a Live call just ended there: the next call may follow, its instructions (and the model's cache) stay put
+    let called = |ago: f64| obj(json!({"count": 24, "calls": [{"live_session": "l1", "at": now - 3000.0},
+                                                                 {"live_session": "l2", "at": now - ago}]}));
+    briefs.save(&name, "a", &called(120.0)).unwrap();
+    assert!(!briefs.due(&name, &obj(long_quiet.clone()), now));
+    briefs.save(&name, "a", &called(AFTER_CALL_QUIET_SECONDS + 60.0)).unwrap();
+    assert!(briefs.due(&name, &obj(long_quiet.clone()), now));
                                                                // an ISO date (Hermes' older answers)
     assert!(!briefs.due(&name, &with("last_active", json!(chrono::Utc::now().to_rfc3339())), now));
 }
@@ -324,7 +332,11 @@ async fn routes() {
     assert_eq!(app.get("/v1/live/brief?agent=Wellness", &[]).await.status, 401);
     let latest = app.get("/v1/live/brief?agent=Wellness", &a).await.json();
     assert_eq!(latest["session"], "api_new"); // the latest conversation, not the call
-    assert!(latest["text"].as_str().unwrap().contains("message 5"));
+    let text = latest["text"].as_str().unwrap();
+    assert!(text.contains("message 5"));
+    // the stable part first, the time (new every minute) last
+    assert!(text.starts_with("This is a voice call"), "{text}");
+    assert!(text.trim_end().ends_with("-->") && text.rfind("<!--bip:now").unwrap() > text.find("message 5").unwrap());
     let chosen = app.get("/v1/live/brief?agent=Wellness&session=api_old", &a).await.json();
     assert_eq!(chosen["session"], "api_old");
     assert_eq!(app.get("/v1/live/brief?agent=Nobody", &a).await.status, 404);
@@ -491,4 +503,22 @@ async fn the_empty_rows_written_back_are_swept() {
     deleted.sort();
     assert_eq!(deleted, ["api_ghost1", "api_ghost2"]);
     assert_eq!(s.briefs.sweep_ghosts(&s.agent, time_time()).await.unwrap(), 0);
+}
+
+#[tokio::test]
+async fn a_calls_warm_up_reads_its_instructions_in_a_throwaway_session() {
+    let s = setup().await;
+    s.fake.lock().unwrap().reply = "OK".into();
+    s.briefs.warm_up(&s.agent, "Brief of the call\n\nCall rules").await.unwrap();
+    let h = s.fake.lock().unwrap();
+    assert_eq!(h.chats.len(), 1);
+    let chat = &h.chats[0];
+    assert_eq!(chat["instructions"], "Brief of the call\n\nCall rules"); // the call's own, as its turns send them
+    assert_eq!(chat["message"], WARM_MESSAGE);
+    assert!(chat["model_options"]["reasoning"].is_object(), "{chat}"); // what the call's turns ask for
+    let session = chat["session"].as_str().unwrap();
+    assert!(h.patched.iter().any(|p| p["id"] == session && p["hidden"] == true
+        && p["title"].as_str().unwrap().starts_with(WARM_TITLE)));
+    assert_eq!(h.deleted, vec![session.to_string()]);
+    assert!(s.briefs.scratch_pending().iter().any(|(_, id)| id == session)); // deleted again later
 }

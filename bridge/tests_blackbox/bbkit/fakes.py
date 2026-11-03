@@ -248,6 +248,16 @@ def split_now(text: Any) -> Tuple[Optional[str], Any]:
     return (found.group(1), text[found.end():]) if found else (None, text)
 
 
+NOW_LINE_LAST = re.compile(r"(?:\A|\n\n?)<!--bip:now ([^\n]*?)-->\s*\Z")
+
+
+def split_brief_now(text: Any) -> Tuple[Optional[str], Any]:
+    """A Live brief's current time, last since 3/11 (the stable part first, live_brief.rs): (what it says, the rest);
+    (None, the text) without one."""
+    found = NOW_LINE_LAST.search(text) if isinstance(text, str) else None
+    return (found.group(1), text[:found.start()]) if found else (None, text)
+
+
 def waiting_notes(recap: Optional[str]) -> Optional[str]:
     """`POST /v1/live/recaps/take`'s `recap` without the current time at its top: None when only the time was there."""
     now, rest = split_now(recap)
