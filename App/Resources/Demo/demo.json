@@ -3454,5 +3454,42 @@
       "center": null,
       "attribution": "© OpenStreetMap contributors"
     }
+  },
+  "mail_rules": {
+    "daily": [
+      {
+        "id": "demo-rule-servers",
+        "applied": 14,
+        "days_ago": 0.3,
+        "line": {
+          "fr": "Les mails de hetzner.com vont dans « Serveurs », marqués comme lus",
+          "en": "E-mails from hetzner.com go to “Serveurs”, marked as read",
+          "de": "Die Mails von hetzner.com kommen in „Serveurs“, als gelesen markiert",
+          "es": "Los correos de hetzner.com van a «Serveurs», marcados como leídos"
+        }
+      },
+      {
+        "id": "demo-rule-invoices",
+        "applied": 6,
+        "days_ago": 2,
+        "line": {
+          "fr": "Les mails de stripe.com vont dans « Factures »",
+          "en": "E-mails from stripe.com go to “Factures”",
+          "de": "Die Mails von stripe.com kommen in „Factures“",
+          "es": "Los correos de stripe.com van a «Factures»"
+        }
+      },
+      {
+        "id": "demo-rule-news",
+        "applied": 23,
+        "days_ago": 1,
+        "line": {
+          "fr": "Les mails de la liste news.boutique.example sont archivés",
+          "en": "E-mails from the list news.boutique.example are archived",
+          "de": "Die Mails von der Liste news.boutique.example werden archiviert",
+          "es": "Los correos de la lista news.boutique.example se archivan"
+        }
+      }
+    ]
   }
 }
