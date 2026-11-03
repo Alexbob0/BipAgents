@@ -1597,8 +1597,16 @@ pub fn render_soul(config: &Config, agent: &AgentConfig) -> anyhow::Result<bool>
     }
     let record = soul_record(config, agent)?;
     let Some(personality) = record.personality.as_deref() else { return Ok(false) };
-    // a personality without a language yet writes first in the place's (every agent talks plainly: owner 2026-10-22)
-    let lang = record.language.clone().unwrap_or_else(|| crate::notebook::language(config));
+    // a personality without a language yet writes first in the place's (every agent talks plainly: owner 2026-10-22),
+    // kept in its record from then on
+    let lang = match record.language.clone() {
+        Some(lang) => lang,
+        None => {
+            let lang = crate::notebook::language(config);
+            crate::profile_files::update_settings(&profile_folder(config, agent), |s| s.language = Some(lang.clone()))?;
+            lang
+        }
+    };
     let text = soul_text(config, agent, personality, &lang);
     crate::profile_files::edit_text(&profile_folder(config, agent).join("SOUL.md"), |_| Some(text))
 }
