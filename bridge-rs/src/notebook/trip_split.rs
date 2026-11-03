@@ -97,6 +97,22 @@ fn fact_text(line: &str) -> String {
     super::split_attribution(item).0
 }
 
+/// The other dates of a line, each clause read on its own, up to a month after its first `date`.
+fn later_dates(text: &str, date: NaiveDate, today: NaiveDate) -> Vec<NaiveDate> {
+    static CLAUSES: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r"(?i)\s+[-–—]\s+|[,;]\s*|\s+(?:et|puis|and|then|und|y)\s+").expect("valid regex")
+    });
+    let mut out: Vec<NaiveDate> = Vec::new();
+    for piece in CLAUSES.split(text).skip(1) {
+        if let Some(d) = super::trip::date_of(piece, today) {
+            if d > date && (d - date).num_days() <= 31 && !out.contains(&d) {
+                out.push(d);
+            }
+        }
+    }
+    out
+}
+
 /// A line's words for its place: its dates and times taken out (« Vol Paris → Amsterdam le 18/12/2021 à 07:15 »).
 fn placeless(text: &str) -> String {
     let text = super::ISO_DATE.replace_all(text, " ");
@@ -164,14 +180,22 @@ pub fn items_of(page: &Page, records: &[Dict], lang: &str, today: NaiveDate) -> 
         fields.insert("date".into(), json!(date.format("%Y-%m-%d").to_string()));
         fields.insert("what".into(), json!(placeless(&text)));
         let booking = Booking::new(&fields, lang);
+        let w = weight(&text, explicit);
+        // an airport's parking is where the journey starts, not where it goes
+        let at_home = format!(" {} ", fold(&text)).contains(" parking ");
         out.push(Item {
             date,
-            weight: weight(&text, explicit),
+            weight: w,
             line: Some(i),
             record: None,
-            to: booking.as_ref().and_then(|b| b.to.clone()),
+            to: booking.as_ref().and_then(|b| b.to.clone()).filter(|_| !at_home),
             from: booking.and_then(|b| b.from),
         });
+        // a second date in the same line (« … le 16/12/2026 - et retour vendredi 18/12/2026 », « rendue le 17/10 »):
+        // the journey's other end, when within a month after
+        for other in later_dates(&text, date, today) {
+            out.push(Item { date: other, weight: w, line: Some(i), record: None, to: None, from: None });
+        }
     }
     for r in records {
         let mut fields = r.clone();
@@ -278,6 +302,7 @@ pub fn trips(items: &[Item], lang: &str) -> Vec<Trip> {
         }
         let mut lines: Vec<usize> = members.iter().filter_map(|m| m.line).collect();
         lines.sort();
+        lines.dedup();
         out.push(Trip {
             title: name,
             place,
@@ -496,19 +521,11 @@ fn remember_locked(config: &Config, keys: &[String], measure: Value) -> std::io:
     })
 }
 
-/// The day range of a trip in its link line (« 18 – 22 déc. 2021 »).
-fn range(start: NaiveDate, end: NaiveDate, lang: &str) -> String {
-    let i = lang_index(lang);
-    let month = |d: NaiveDate| trip_auto::MONTHS[i][d.month0() as usize];
-    if start == end {
-        format!("{} {} {}", start.day(), month(start), start.year())
-    } else if (start.month(), start.year()) == (end.month(), end.year()) {
-        format!("{} – {} {} {}", start.day(), end.day(), month(end), end.year())
-    } else if start.year() == end.year() {
-        format!("{} {} – {} {} {}", start.day(), month(start), end.day(), month(end), end.year())
-    } else {
-        format!("{} {} {} – {} {} {}", start.day(), month(start), start.year(), end.day(), month(end), end.year())
-    }
+/// Whether a page holds nothing: no fact under any section, no « En bref ».
+fn is_empty(page: &Page, lang: &str) -> bool {
+    let brief = fold(super::words(lang).brief);
+    super::summary_of(&page.body, super::words(lang).brief).trim().is_empty()
+        && page.sections().iter().filter(|(name, _)| fold(name) != brief).all(|(_, facts)| facts.is_empty())
 }
 
 /// The body without the lines `gone` (indices), its headings left with nothing under them taken out.
@@ -648,7 +665,10 @@ fn split_locked(config: &Config, path: &str, page: &Page, trips: &[Trip], who: &
         made.push(json!({"title": trip.title, "path": trip_path, "start": trip.start.format("%Y-%m-%d").to_string(),
                          "end": trip.end.format("%Y-%m-%d").to_string()}));
     }
-    // the page: what has no date stays, a subject linking to its trips
+    // the page: what has no date stays, a subject its trips point back to (`split_from`: the app lists them on it,
+    // api.rs `page_view`). No line per trip on it: in « Où on en est » they read as the subject's status (Alex,
+    // 2026-11-03: « Amsterdam, déc. 2021 : 31 déc. 2021 », by « toi »). A page left with nothing goes (its trips are
+    // in « Voyages »; the history keeps it).
     let Some(before) = super::read_page_text(config, Part::Main, path) else { return Ok(json!(made)) };
     let mut rest = page.clone();
     rest.ensure_id();
@@ -658,13 +678,10 @@ fn split_locked(config: &Config, path: &str, page: &Page, trips: &[Trip], who: &
         rest.body = String::new();
     }
     rest.front.insert("type".into(), json!("subject"));
-    let links: Vec<String> =
-        trips.iter().map(|t| format!("[[{}]] : {}", t.title, range(t.start, t.end, &lang))).collect();
-    let status = template::title("subject", "status", &lang);
-    rest.body = super::add_facts(&rest.body, &status, &links, who, &super::today()).0;
     rest.touch();
     let summary = format!("« {} » → {}", page.title, trips.iter().map(|t| t.title.as_str()).collect::<Vec<_>>().join(" · "));
-    super::commit(config, Part::Main, path, Some(&before), Some(&rest.render()), who, "split", &summary)?;
+    let after = (!is_empty(&rest, &lang)).then(|| rest.render());
+    super::commit(config, Part::Main, path, Some(&before), after.as_deref(), who, "split", &summary)?;
     // not proposed again (an undo from the history brings the page back as it was), neither made a trip again at
     // night, nor taken by the extraction's own trips
     let id = rest.id();
@@ -684,6 +701,77 @@ fn split_locked(config: &Config, path: &str, page: &Page, trips: &[Trip], who: &
         s.insert("trips_auto_done".into(), json!(done));
     })?;
     Ok(json!(made))
+}
+
+/// A link line splits wrote in a page's « Où on en est » before 2026-11-03: « [[Amsterdam, déc. 2021]] : 18 – 22
+/// déc. 2021 » (its attribution after).
+static LINK_LINE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(r"^[-*] \[\[([^\]|#]+)(?:[#|][^\]]*)?\]\] : [^\[\]]*\d{4}\s*(?:—\s*\*[^*]*\*)?$").expect("valid regex")
+});
+
+/// A trip named by words that are no place (« et retour vendredi, déc. 2026 », the splits before 2026-11-03).
+fn badly_named(title: &str) -> bool {
+    !title.trim().chars().next().is_some_and(|c| c.is_uppercase() || c.is_numeric())
+}
+
+/// What the splits made before 2026-11-03 put right, at each nightly pass (archive.rs `run`; idempotent): their link
+/// lines out of the pages' « Où on en est » (each trip points back to its page, `split_from`), a page left with
+/// nothing removed (its trips are in « Voyages »; the history keeps it), and the trips they named by a clause renamed
+/// by their place (« Amsterdam, déc. 2026 »), else their month. Every change in the Carnet's history. Returns how many
+/// pages changed.
+pub fn settle_locked(config: &Config, who: &Who, today: NaiveDate) -> anyhow::Result<usize> {
+    let lang = super::language(config);
+    let mut changed = 0;
+    let pages = super::all_pages(config, Part::Main);
+    let trips: Vec<&Page> = pages.iter().filter(|(_, p)| p.kind() == "trip").map(|(_, p)| p).collect();
+    for (path, page) in pages.iter().filter(|(_, p)| p.kind() == "subject") {
+        let mut heading: Option<&str> = None;
+        let mut gone: Vec<usize> = Vec::new();
+        for (i, line) in page.body.lines().enumerate() {
+            if let Some(name) = line.strip_prefix("## ") {
+                heading = template::resolve("subject", name.trim());
+                continue;
+            }
+            if heading != Some("status") {
+                continue;
+            }
+            if let Some(c) = LINK_LINE.captures(line.trim()) {
+                if trips.iter().any(|t| t.named(c[1].trim())) {
+                    gone.push(i);
+                }
+            }
+        }
+        if gone.is_empty() {
+            continue;
+        }
+        let Some(before) = super::read_page_text(config, Part::Main, path) else { continue };
+        let mut rest = page.clone();
+        rest.body = without(&page.body, &gone);
+        if rest.body.trim().is_empty() {
+            rest.body = String::new();
+        }
+        rest.touch();
+        let after = (!is_empty(&rest, &lang)).then(|| rest.render());
+        let summary = format!("« {} » : {} voyages", page.title, gone.len());
+        super::commit(config, Part::Main, path, Some(&before), after.as_deref(), who, "tidy", &summary)?;
+        changed += 1;
+    }
+    for (path, page) in super::all_pages(config, Part::Main) {
+        if page.kind() != "trip" || tk::str_or_empty(page.front.get("origin")) != "split" || !badly_named(&page.title) {
+            continue;
+        }
+        let items = items_of(&page, &records_of(config, &page), &lang, today);
+        let all: Vec<&Item> = items.iter().collect();
+        let Some(start) = super::trip::dates_of(&page).0.or_else(|| items.iter().map(|i| i.date).min()) else {
+            continue;
+        };
+        let name = title(place_of(&all).as_deref(), start, &lang);
+        if fold(&name) != fold(&page.title) && !super::all_pages(config, Part::Main).iter().any(|(_, p)| p.named(&name)) {
+            trip_auto::rename_locked(config, &path, &name, who)?;
+            changed += 1;
+        }
+    }
+    Ok(changed)
 }
 
 /// The records `ids` pointed to their trip (`title` in their « trip »), in the live table and the archived one.
@@ -781,7 +869,6 @@ mod tests {
         assert_eq!(title(None, day(2022, 7, 22), "en"), "Trip in Jul 2022");
         assert_eq!(title(None, day(2022, 7, 22), "de"), "Reise im Juli 2022");
         assert_eq!(title(None, day(2022, 7, 22), "es"), "Viaje de jul. 2022");
-        assert_eq!(range(day(2021, 12, 18), day(2021, 12, 22), "fr"), "18 – 22 déc. 2021");
     }
 
     #[test]
@@ -821,7 +908,8 @@ mod tests {
         let rest = all.iter().find(|(p, _)| p == "Voyages/Voyages.md").unwrap().1.clone();
         assert_eq!(rest.kind(), "subject");
         let text = rest.render();
-        assert!(text.contains("Garder les factures") && text.contains("[[Amsterdam, déc. 2021]]"), "{text}");
+        assert!(text.contains("Garder les factures"), "{text}");
+        assert!(!text.contains("[[Amsterdam, déc. 2021]]"), "no line per trip on it (Alex, 2026-11-03): {text}");
         assert!(!text.contains("Parking"), "{text}");
         let amsterdam = all.iter().find(|(_, p)| p.title == "Amsterdam, déc. 2021").unwrap();
         assert!(amsterdam.0.starts_with("Archives/"), "a past trip: {}", amsterdam.0);
@@ -830,6 +918,62 @@ mod tests {
         assert!(text.contains("— *Vie, 2026-10-28*"), "the attribution kept: {text}");
         // nothing more proposed for it
         assert_eq!(detect(&config).unwrap(), 0);
+    }
+
+    /// Alex's page (2026-11-03): its journeys in « Où on en est », a return said in a second clause.
+    const ALEX: &str = "---\ntype: subject\nid: pvoyagesalex\n---\n# Voyages\n\n## Où on en est\n\
+- Vol Paris → Amsterdam le 18/12/2021 à 07:15 — *toi, 2026-10-30*\n- Vol Amsterdam → Paris le 22/12/2021 — *toi, 2026-10-30*\n\
+- Location de voiture à Faro le 10/10/2022, rendue le 17/10/2022 — *toi, 2026-10-30*\n\
+- Vol Paris → Amsterdam le 16/12/2026 - et retour vendredi 18/12/2026 — *toi, 2026-10-30*\n";
+
+    #[test]
+    fn alex_s_page_splits_into_places_and_leaves_no_status_lines() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(dir.path());
+        super::super::update_state(&config, |s| {
+            s.insert("language".into(), json!("fr"));
+        })
+        .unwrap();
+        super::super::write_file(&super::super::part_root(&config, Part::Main).join("Sujets/Voyages.md"), ALEX).unwrap();
+        assert_eq!(detect(&config).unwrap(), 1);
+        let id = tk::str_or_empty(super::super::open_proposals(&config)[0].get("id"));
+        let made = accept(&config, &id, &Who::you(&config)).unwrap();
+        let names: Vec<String> =
+            made["trips"].as_array().unwrap().iter().map(|t| tk::str_or_empty(t.get("title"))).collect();
+        assert_eq!(names, ["Amsterdam, déc. 2021", "Faro, oct. 2022", "Amsterdam, déc. 2026"]);
+        let all = super::super::all_pages(&config, Part::Main);
+        assert!(!all.iter().any(|(p, _)| p == "Sujets/Voyages.md"), "nothing left on it: it goes");
+        let trip = all.iter().find(|(_, p)| p.title == "Amsterdam, déc. 2026").unwrap();
+        assert_eq!(super::super::trip::dates_of(&trip.1), (Some(day(2026, 12, 16)), Some(day(2026, 12, 18))));
+    }
+
+    #[test]
+    fn the_lines_older_splits_wrote_are_put_right() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(dir.path());
+        super::super::update_state(&config, |s| {
+            s.insert("language".into(), json!("fr"));
+        })
+        .unwrap();
+        let root = super::super::part_root(&config, Part::Main);
+        let rest = "---\ntype: subject\n---\n# Voyages\n\n## Où on en est\n\
+- [[Amsterdam, déc. 2021]] : 18 – 22 déc. 2021 — *toi, 2026-11-01*\n\
+- [[et retour vendredi, déc. 2026]] : 20 déc. 2026 — *toi, 2026-11-01*\n- Passeport à renouveler — *Léa, 2026-10-20*\n";
+        super::super::write_file(&root.join("Sujets/Voyages.md"), rest).unwrap();
+        let old = "---\ntype: trip\norigin: split\nsplit_from: Voyages\nstart: 2021-12-18\nend: 2021-12-22\n---\n\
+# Amsterdam, déc. 2021\n\n## Transports\n- Vol Paris → Amsterdam le 18/12/2021\n";
+        super::super::write_file(&root.join("Archives/Voyages/Amsterdam, déc. 2021.md"), old).unwrap();
+        let bad = "---\ntype: trip\norigin: split\nsplit_from: Voyages\nstart: 2026-12-16\nend: 2026-12-20\n---\n\
+# et retour vendredi, déc. 2026\n\n## Transports\n- Vol Paris → Amsterdam le 16/12/2026 - et retour vendredi 20/12/2026\n";
+        super::super::write_file(&root.join("Voyages/et retour vendredi, déc. 2026.md"), bad).unwrap();
+        let who = Who::tidy(&config);
+        assert_eq!(settle_locked(&config, &who, day(2026, 11, 3)).unwrap(), 2);
+        let text = std::fs::read_to_string(root.join("Sujets/Voyages.md")).unwrap();
+        assert!(!text.contains("[[") && text.contains("Passeport à renouveler"), "{text}");
+        let all = super::super::all_pages(&config, Part::Main);
+        let renamed = all.iter().find(|(_, p)| p.title == "Amsterdam, déc. 2026").expect("renamed by its place");
+        assert!(renamed.1.named("et retour vendredi, déc. 2026"), "the old name kept as an alias");
+        assert_eq!(settle_locked(&config, &who, day(2026, 11, 3)).unwrap(), 0, "once");
     }
 
     #[test]
