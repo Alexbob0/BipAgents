@@ -220,29 +220,189 @@ pub fn settle_locked(config: &Config, who: &Who) -> anyhow::Result<usize> {
             }
         }
         let mut gone: Vec<usize> = Vec::new();
+        let mut leaving: Vec<(String, Vec<String>)> = Vec::new();
         for (name, lines) in by_name.values() {
             let own = super::find(config, &[Part::Main], name).is_some_and(|f| f.page.kind() == "person");
             if !own && lines.len() < PROMOTE_FACTS {
                 continue;
             }
-            let facts: Vec<String> = lines.iter().map(|(_, f)| f.clone()).collect();
-            super::note_locked(config, Part::Main, "person", name, "", &facts, &[], "", "", who)?;
+            leaving.push((name.clone(), lines.iter().map(|(_, f)| f.clone()).collect()));
             gone.extend(lines.iter().map(|(i, _)| *i));
-            moved += 1;
         }
         if gone.is_empty() {
             continue;
         }
+        // the group first, without their lines nor their names (a folded page's names: its links resolve here until
+        // the person has a page again)
         let Some(before) = super::read_page_text(config, Part::Main, &path) else { continue };
         let mut rest: Page = page.clone();
         let lang = super::language(config);
         let kept: Vec<&str> =
             page.body.lines().enumerate().filter(|(i, _)| !gone.contains(i)).map(|(_, l)| l).collect();
         rest.body = template::normalize("area", &lang, super::words(&lang).brief, &kept.join("\n")).body;
+        let names: Vec<String> = rest
+            .aliases()
+            .into_iter()
+            .filter(|a| {
+                !leaving.iter().any(|(n, _)| fold(n) == fold(a) || fold(a).starts_with(&format!("{} ", fold(n))))
+            })
+            .collect();
+        rest.set_aliases(&names);
         rest.touch();
         super::commit(config, Part::Main, &path, Some(&before), Some(&rest.render()), who, "tidy", &page.title)?;
+        for (name, facts) in &leaving {
+            super::note_locked(config, Part::Main, "person", name, "", facts, &[], "", "", who)?;
+            moved += 1;
+        }
     }
     Ok(moved)
+}
+
+/// A light page's group, from the words of its facts (« Cousine, sœur de Julien » → family).
+fn relation_of(text: &str) -> &'static str {
+    let plain = format!(" {} ", fold(text).replace(|c: char| !c.is_alphanumeric(), " "));
+    let has = |words: &[&str]| words.iter().any(|w| plain.contains(&format!(" {w} ")));
+    if has(&[
+        "cousin", "cousine", "oncle", "tante", "neveu", "niece", "beau", "belle", "uncle", "aunt", "nephew", "onkel",
+        "cousine", "primo", "prima", "tio", "tia", "sobrino",
+    ]) {
+        "family"
+    } else if has(&[
+        "collegue",
+        "colleague",
+        "chef",
+        "manager",
+        "boss",
+        "kollege",
+        "kollegin",
+        "colega",
+        "travail",
+        "bureau",
+        "work",
+    ]) {
+        "work"
+    } else if has(&["ami", "amie", "copain", "copine", "friend", "freund", "freundin", "amigo", "amiga"]) {
+        "friend"
+    } else {
+        "other"
+    }
+}
+
+/// The light pages folded into their group (Alex, 2026-11-03: yes): someone with fewer than `PROMOTE_FACTS` facts who
+/// is not close family (not marked close, not named so on « Toi », no close word) becomes « Name : fact » lines on
+/// their group's page, each with its attribution, the page's « En bref » a line too; the page goes, its names become
+/// the group's aliases (its links and its tasks still find it). Left as they are: a page the person wrote last, one
+/// linked to a phone contact, one shared with the family, one with nothing in it. Every change in the history.
+/// Returns how many pages were folded.
+pub fn fold_light_locked(config: &Config, who: &Who) -> anyhow::Result<usize> {
+    let lang = super::language(config);
+    let brief = fold(super::words(&lang).brief);
+    let mut folded = 0;
+    for (path, page) in super::all_pages(config, Part::Main) {
+        if page.kind() != "person" || page.close() || !page.contact().is_empty() {
+            continue;
+        }
+        let facts: Vec<super::Fact> =
+            page.sections().into_iter().filter(|(name, _)| fold(name) != brief).flat_map(|(_, f)| f).collect();
+        let summary = super::summary_of(&page.body, super::words(&lang).brief);
+        let texts: Vec<String> = facts.iter().map(|f| f.text.clone()).chain(std::iter::once(summary.clone())).collect();
+        if facts.is_empty()
+            || facts.len() >= PROMOTE_FACTS
+            || is_close(&texts)
+            || named_on_self(config, &page.title)
+            || !super::shares_of(config, Part::Main, &path, &page).is_empty()
+        {
+            continue;
+        }
+        // written by the person last, or by hand outside the Carnet's history (Obsidian): theirs, left as it is
+        let by_person = super::history(config, Some(Part::Main), Some(&path), 1)
+            .first()
+            .is_none_or(|e| crate::tools_knowledge::str_or_empty(e.get("by")) == "you");
+        if by_person {
+            continue;
+        }
+        // its lines, as written (their attribution kept), « En bref » too when it says more
+        let name = page.title.clone();
+        let mut lines: Vec<String> = facts
+            .iter()
+            .map(|f| {
+                let by = if f.who.is_empty() { String::new() } else { format!(" — *{}, {}*", f.who, f.date) };
+                format!("- {name} : {}{by}", f.text)
+            })
+            .collect();
+        if !summary.trim().is_empty() && !facts.iter().any(|f| fold(&f.text) == fold(&summary)) {
+            lines.push(format!("- {name} : {}", summary.replace('\n', " ")));
+        }
+        let group = group_title(relation_of(&texts.join(" ")), &lang);
+        let section = template::title("area", "contacts", &lang);
+        let (gpath, gbefore, mut gpage) =
+            match super::find(config, &[Part::Main], group).filter(|f| f.page.kind() == "area") {
+                Some(f) => (f.path.clone(), super::read_page_text(config, Part::Main, &f.path), f.page),
+                None => {
+                    let folder = super::words(&lang).folder("area").unwrap_or("Domaines").to_string();
+                    (format!("{folder}/{}.md", super::file_name(group)), None, Page::new("area", group))
+                }
+            };
+        gpage.ensure_id();
+        let mut body = body_with(&gpage.body, &section, &lines);
+        body = template::normalize("area", &lang, super::words(&lang).brief, &body).body;
+        gpage.body = body;
+        let mut names = gpage.aliases();
+        for n in std::iter::once(name.clone()).chain(page.aliases()) {
+            if !names.iter().any(|a| fold(a) == fold(&n)) {
+                names.push(n);
+            }
+        }
+        gpage.set_aliases(&names);
+        gpage.touch();
+        let summary_line = format!("{name} → {group}");
+        super::commit(
+            config,
+            Part::Main,
+            &gpath,
+            gbefore.as_deref(),
+            Some(&gpage.render()),
+            who,
+            "tidy",
+            &summary_line,
+        )?;
+        let Some(before) = super::read_page_text(config, Part::Main, &path) else { continue };
+        super::commit(config, Part::Main, &path, Some(&before), None, who, "tidy", &summary_line)?;
+        folded += 1;
+    }
+    Ok(folded)
+}
+
+/// `body` with `lines` (list lines, as written) at the end of `section`, made if missing; those already there (same
+/// text without attribution) left out.
+fn body_with(body: &str, section: &str, lines: &[String]) -> String {
+    let mut all = super::body_lines(body);
+    let known: Vec<String> =
+        all.iter().map(|l| fold(&super::split_attribution(l.trim().trim_start_matches("- ")).0)).collect();
+    let new: Vec<String> = lines
+        .iter()
+        .filter(|l| !known.contains(&fold(&super::split_attribution(l.trim().trim_start_matches("- ")).0)))
+        .cloned()
+        .collect();
+    match super::section_index(&all, section) {
+        Some(start) => {
+            let mut at = super::section_end(&all, start);
+            while at > start + 1 && all[at - 1].trim().is_empty() {
+                at -= 1;
+            }
+            for (n, line) in new.into_iter().enumerate() {
+                all.insert(at + n, line);
+            }
+        }
+        None => {
+            if !all.is_empty() {
+                all.push(String::new());
+            }
+            all.push(format!("## {section}"));
+            all.extend(new);
+        }
+    }
+    all.join("\n") + "\n"
 }
 
 #[cfg(test)]
@@ -271,6 +431,52 @@ mod tests {
         config.hermes.home = dir.join("hermes").to_string_lossy().into_owned();
         config.outbox.db_path = dir.join("data/outbox.db").to_string_lossy().into_owned();
         config
+    }
+
+    #[test]
+    fn light_pages_fold_into_their_group_and_come_back_at_three_facts() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(dir.path());
+        super::super::update_state(&config, |s| {
+            s.insert("language".into(), json!("fr"));
+        })
+        .unwrap();
+        let agent = Who::agent(&config, "lea");
+        let _guard = super::super::lock();
+        let note = |kind: &str, name: &str, section: &str, facts: &[&str], who: &Who| {
+            let facts: Vec<String> = facts.iter().map(|f| f.to_string()).collect();
+            super::super::note_locked(&config, Part::Main, kind, name, section, &facts, &[], "", "", who).unwrap()
+        };
+        let paul = note("person", "Paul Lambert", "who", &["Parrain d'Emma"], &agent);
+        let martine =
+            note("person", "Martine", "who", &["Tante, mère de [[Julien]]", "Fête ses 70 ans le 12 avril"], &agent);
+        let mom = note("person", "Françoise", "who", &["Ma mère"], &agent);
+        let mine = note("person", "Thomas", "who", &["Collègue"], &Who::you(&config));
+        let julien = note("person", "Julien", "who", &["Cousin", "Aime le vélo", "Cherche un appartement"], &agent);
+        assert_eq!(fold_light_locked(&config, &Who::tidy(&config)).unwrap(), 2, "Paul and Martine");
+        for (path, stays) in
+            [(&paul.path, false), (&martine.path, false), (&mom.path, true), (&mine.path, true), (&julien.path, true)]
+        {
+            assert_eq!(super::super::read_page_text(&config, Part::Main, path).is_some(), stays, "{path}");
+        }
+        let family = super::super::find(&config, &[Part::Main], "Famille élargie").unwrap();
+        assert!(family.page.body.contains("- Martine : Fête ses 70 ans le 12 avril — *lea, "), "{}", family.page.body);
+        let known = super::super::find(&config, &[Part::Main], "Paul Lambert").expect("the old name still resolves");
+        assert_eq!(known.page.title, "Connaissances");
+        // facts about him now go there, and at three he has his page again (his name leaves the group)
+        note("person", "Paul Lambert", "", &["Vit à Angers"], &agent);
+        note("person", "Paul Lambert", "", &["Fait du jardinage"], &agent);
+        let group = super::super::find(&config, &[Part::Main], "Connaissances").unwrap();
+        assert!(group.page.body.contains("Paul Lambert : Vit à Angers"), "{}", group.page.body);
+        assert_eq!(settle_locked(&config, &Who::tidy(&config)).unwrap(), 1);
+        let back = super::super::find(&config, &[Part::Main], "Paul Lambert").unwrap();
+        assert_eq!(back.page.kind(), "person");
+        assert!(
+            back.page.body.contains("Parrain d'Emma") && back.page.body.contains("Fait du jardinage"),
+            "{}",
+            back.page.body
+        );
+        assert_eq!(fold_light_locked(&config, &Who::tidy(&config)).unwrap(), 0, "stable");
     }
 
     #[test]

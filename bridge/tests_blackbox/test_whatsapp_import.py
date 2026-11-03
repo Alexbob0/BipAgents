@@ -167,3 +167,28 @@ def test_an_agent_shared_with_a_relative_never_takes_a_chat(bridges, fakes):
     assert refused.status_code == 409 and refused.json()["reason"] == "shared"
     applied = a.post("/v1/import/whatsapp/apply", headers=AUTH, json={"agent": "cuisine", "upload": "0" * 24})
     assert applied.status_code == 409
+
+
+def test_who_is_me_is_asked_and_the_answer_kept_on_toi(bridges, fakes):
+    """« Lequel c'est toi ? » (Alex, 2026-11-03): the app sends the participant who is the person, or "" for nobody;
+    that one is never a person of the Carnet, and their name joins « Toi » for the next imports."""
+    bridge, _ = started(bridges, fakes)
+    summary = parse(bridge, FIRST).json()
+    refused = bridge.post("/v1/import/whatsapp/apply", headers=AUTH,
+                          json={"agent": "coach", "upload": summary["upload"], "me": "Personne Inventée"})
+    assert refused.status_code == 400, refused.text
+    fakes.model.whatsapp_answer = {
+        "people": [{"name": "Léa Martin", "relation": "friend", "facts": ["Organise l'anniversaire de Hugo"]},
+                   {"name": "Alex Dubois", "relation": "friend", "facts": ["Envoie le devis du traiteur"]}],
+        "subjects": [], "dates": [], "tasks": [],
+    }
+    applied = bridge.post("/v1/import/whatsapp/apply", headers=AUTH,
+                          json={"agent": "coach", "upload": summary["upload"], "me": "Léa Martin"})
+    assert applied.status_code == 202, applied.text
+    assert wait_until(lambda: status(bridge)["state"] == "done", timeout=15), status(bridge)
+    carnet = bridge.state_dir / "notebook" / "carnet"
+    assert "  - Léa Martin" in (carnet / "Toi.md").read_text(), "the person's name kept on « Toi »"
+    assert not (carnet / "Personnes" / "Léa Martin.md").exists()
+    assert "Léa Martin" not in "".join(p.read_text() for p in carnet.rglob("*.md") if p.name != "Toi.md")
+    # the next chat: the bridge's own guess is now that name
+    assert parse(bridge, FIRST.replace("Coucou", "Salut"), name="WhatsApp Chat - Léa 2.zip").json()["me"] == "Léa Martin"
