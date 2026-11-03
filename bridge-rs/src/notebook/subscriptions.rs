@@ -21,7 +21,7 @@
 
 use std::collections::BTreeSet;
 
-use chrono::{Months, NaiveDate};
+use chrono::{Datelike, Months, NaiveDate};
 use serde_json::json;
 
 use super::records::{self, Kind, Table};
@@ -322,8 +322,9 @@ pub enum Renewal {
 }
 
 pub fn renewal(record: &Dict, today: NaiveDate) -> Option<Renewal> {
-    let (m, d, y) = super::date_in(&tk::str_or_empty(record.get("renewal")))?;
-    let date = NaiveDate::from_ymd_opt(y?, m, d)?;
+    let text = tk::str_or_empty(record.get("renewal"));
+    let Some((m, d, Some(y))) = super::date_in(&text) else { return monthly_day(record, &text, today) };
+    let date = NaiveDate::from_ymd_opt(y, m, d)?;
     if date >= today {
         return Some(Renewal::Next(date));
     }
@@ -339,6 +340,27 @@ pub fn renewal(record: &Dict, today: NaiveDate) -> Option<Renewal> {
         Some(n) if n >= today => Some(Renewal::Next(n)),
         _ => Some(Renewal::Last(date)),
     }
+}
+
+/// A monthly renewal given as its day (« le 5 de chaque mois », « prélevé le 20 »): its next one.
+fn monthly_day(record: &Dict, text: &str, today: NaiveDate) -> Option<Renewal> {
+    static DAY: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r"(?i)\b(?:le|the|on|am|el|day)\s+(\d{1,2})(?:er|st|nd|rd|th|\.)?\b").expect("valid regex")
+    });
+    let monthly = period_of(&tk::str_or_empty(record.get("period"))).is_some_and(|p| p.0 == "month")
+        || ["chaque mois", "tous les mois", "each month", "every month", "du mois", "jeden monat", "cada mes"]
+            .iter()
+            .any(|w| fold(text).contains(w));
+    let day: u32 = DAY.captures(text)?[1].parse().ok()?;
+    if !monthly || !(1..=31).contains(&day) {
+        return None;
+    }
+    let on = |month: NaiveDate| {
+        (0..4).find_map(|less| NaiveDate::from_ymd_opt(month.year(), month.month(), day.saturating_sub(less).max(1)))
+    };
+    let first = NaiveDate::from_ymd_opt(today.year(), today.month(), 1)?;
+    let this = on(first)?;
+    Some(Renewal::Next(if this >= today { this } else { on(first.checked_add_months(Months::new(1))?)? }))
 }
 
 /// « Dernier renouvellement connu » (the apps' line for a past renewal), in the Carnet's language.
@@ -512,6 +534,12 @@ mod tests {
         assert_eq!(renewal(&r, today), Some(Renewal::Last(day("2026-10-30"))));
         let r = rec(&[("renewal", "2026-12-01"), ("period", "monthly")]);
         assert_eq!(renewal(&r, today), Some(Renewal::Next(day("2026-12-01"))));
+        // a day of the month (the lab's GLM, 2026-11-03: « prélèvement mensuel le 5 »)
+        let r = rec(&[("renewal", "prélèvement mensuel le 5"), ("period", "mensuel")]);
+        assert_eq!(renewal(&r, today), Some(Renewal::Next(day("2026-11-05"))));
+        let r = rec(&[("renewal", "le 2 de chaque mois")]);
+        assert_eq!(renewal(&r, today), Some(Renewal::Next(day("2026-12-02"))));
+        assert_eq!(renewal(&rec(&[("renewal", "le 5")]), today), None, "no period, no « each month »");
     }
 
     #[test]
