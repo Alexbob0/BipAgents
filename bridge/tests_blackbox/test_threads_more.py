@@ -116,7 +116,7 @@ def test_a_shared_agents_conversation_through_the_owners_bridge(bridges, fakes):
     cid = first.json()["thread"]
     session = fakes.hermes.started["r1"]["session_id"]
     fakes.hermes.messages[("cuisine", session)] = [
-        {"role": "user", "content": "[Marie, a relative of your person, writes] Dîner"},
+        {"role": "user", "content": "[Marie, a relative of your person (household « Marie »), writes to you:]\nDîner"},
         {"role": "assistant", "content": "Une fondue !\nMEDIA:/bipagents/pages/cuisine/fondue.html"},
     ]
     assert wait_until(lambda: get(b, f"/v1/threads/{cid}/timeline", agent="cuisine__alex")["pending"]["run"] is None)

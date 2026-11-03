@@ -7,7 +7,7 @@ import os
 import time
 
 from bbkit.fakes import waiting_notes
-from bbkit.common import AUTH
+from bbkit.common import AUTH, answered
 from bbkit.mcp import call, give_token, text_of
 
 FIVE_GB = 5 * 2**30
@@ -81,7 +81,7 @@ def test_80_percent_one_card_one_note_and_keep_the_last(bridge):
     assert space_cards(bridge) == []
     kept = bridge.get("/v1/storage", headers=AUTH).json()["kept_rules"]
     assert kept == {"wellness": {"audio": {"keep_last": 5}}}
-    logged = bridge.get("/v1/approvals/answered", headers=AUTH, params={"agent": "wellness"}).json()["items"]
+    logged = answered(bridge, "wellness")
     assert logged[-1]["topic"] == "space" and logged[-1]["choice"] == "keep_last"
     told = bridge.post("/v1/live/recaps/take", headers=AUTH, json={"agent": "wellness", "session": "s1"}).json()["recap"]
     assert "keep your last 5" in told
