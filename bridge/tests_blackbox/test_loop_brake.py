@@ -359,6 +359,19 @@ def test_the_audio_made_in_a_turn_is_handed_over_by_its_reply(bridges, fakes):
     said = "".join(d.get("delta", "") for n, d in events if n == "message.delta")
     assert said.endswith(f"\n\nMEDIA:{path}")
     assert bridge.logged("files made in the turn: their MEDIA lines handed over")
+    # Hermes keeps the reply as the model wrote it: the timeline still shows today's file and not yesterday's, the
+    # stored message's attachments (structured, 2026-11-03), at every read
+    fakes.hermes.add_session("api_c", [{"role": "user", "content": "C'est quand l'anniversaire de Julie ?"},
+                                       {"role": "assistant", "content": reply}], title="Julie")
+    thread = bridge.get("/v1/threads/resolve", headers=AUTH, params={"agent": "wellness", "session_id": "api_c"}).json()
+
+    def files():
+        page = bridge.get(f"/v1/threads/{thread['thread']['id']}/timeline", headers=AUTH,
+                          params={"agent": "wellness"}).json()
+        said = [i for i in page["items"] if i["kind"] == "message" and i["role"] == "agent"]
+        return [a["path"] for a in said[-1].get("attachments", [])] if said else []
+
+    assert wait_until(lambda: files() == [path], timeout=20), files()
 
 
 def test_a_reply_that_already_hands_the_file_over_is_left_alone(bridges, fakes):

@@ -1106,10 +1106,14 @@ impl RunHub {
                                     self.rescue(sub, &event).await;
                                     // a turn the brake stopped: its rescue turn's end instead (loop_rescue)
                                     let event = self.loop_rescue(sub, event).await;
+                                    let written = as_str(event.data.get("output")).unwrap_or_default();
                                     // the audio made in the turn handed over whatever the model wrote
                                     let event = self.hand_over_files(sub, event);
                                     // and the files its reply only cites, from the agent's own folders
-                                    self.hand_over_cited(sub, event).await
+                                    let event = self.hand_over_cited(sub, event).await;
+                                    // kept as the stored message's attachments too (the stream's lines are not)
+                                    self.attach_handed_over(sub, &written, &event);
+                                    event
                                 } else {
                                     event
                                 };
@@ -1665,6 +1669,39 @@ impl RunHub {
         let fixed = crate::cited_files::with_cards(&reply, &found);
         let unseen: Vec<&String> = found.iter().collect();
         self.with_media_lines(sub, event, &said, fixed, &unseen, "bip_files_cited")
+    }
+
+    /// The files the end's `output` hands over that Hermes' stored reply (`written`) doesn't carry, and the stale lines
+    /// it dropped, put on that stored message as its attachments (threads.rs `attach`): the timeline shows them at
+    /// every read, not only the stream that ended the run (2026-11-03, structured attachments).
+    fn attach_handed_over(&self, sub: &Arc<RunSubscription>, written: &str, event: &SSEEvent) {
+        let handed = as_str(event.data.get("output")).unwrap_or_default();
+        if event.r#type != "run.completed" || handed == written {
+            return;
+        }
+        let (_, before) = crate::media::extract_media(written);
+        let (_, after) = crate::media::extract_media(&handed);
+        let added: Vec<String> = after.iter().filter(|p| !before.contains(p)).cloned().collect();
+        let stale: Vec<String> = before.iter().filter(|p| !after.contains(p)).cloned().collect();
+        let (Some(threads), Some(session)) = (crate::threads::upgrade(&self.threads), lock(&sub.state).session_id.clone())
+        else {
+            return;
+        };
+        if added.is_empty() && stale.is_empty() {
+            return;
+        }
+        let (agent, written, wait) = (sub.agent.clone(), written.to_string(), self.message_wait());
+        self.spawn(async move {
+            match threads.find_message(&agent, &session, Some(&written), wait).await {
+                Some((thread, message)) => threads.attach_with(&agent, &thread, &message, &added, &stale).await,
+                None => tracing::warn!(agent = %agent.name, session = %session,
+                    "handed-over files not attached: the reply's message not found"),
+            }
+        });
+    }
+
+    fn message_wait(&self) -> f64 {
+        self.config.as_ref().map(|c| c.get().push_message_wait_seconds).unwrap_or(10.0)
     }
 
     /// An event shown in this run's stream as it is (the rescue turn's, the bridge's word), without this run's own
