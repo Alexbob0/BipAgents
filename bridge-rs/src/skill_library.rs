@@ -1182,12 +1182,15 @@ pub fn sync_soul(config: &Config, agent: &AgentConfig) {
         return;
     }
     let path = crate::agents_admin::profile_folder(config, agent).join("SOUL.md");
-    let Ok(soul) = std::fs::read_to_string(&path) else { return };
-    let changed = with_block(&soul, holds(config, &agent.name));
-    if changed != soul {
-        if let Err(err) = std::fs::write(&path, changed) {
-            tracing::warn!(agent = %agent.name, error = %err, "skill library rule not written");
-        }
+    let holding = holds(config, &agent.name);
+    // the profile's one writer (profile_files.rs): under its lock, a missing SOUL.md left alone
+    let written = crate::profile_files::edit_text(&path, |soul| {
+        let soul = soul?;
+        let changed = with_block(soul, holding);
+        (changed != soul).then_some(changed)
+    });
+    if let Err(err) = written {
+        tracing::warn!(agent = %agent.name, error = %err, "skill library rule not written");
     }
 }
 
