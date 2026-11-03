@@ -305,6 +305,7 @@ class FakeHermes(Fake):
         # Hermes v0.22.5 as the threads see it (test_threads.py): a session continued after a compression (one with a
         # `parent_session_id`) is listed only with `include_children=1`; every row has a stable `message_uid`.
         self.v0225 = False
+        self.page_max = 0   # > 0: the list honours `limit` (at most this many) and `offset`, as Hermes' API pages
         # Hermes v0.22.5 + patch 0021 (gateway/platforms/api_server_bot_chat.py): a « Bot Chat » created with a peer's
         # source (`hermes peer dm`: bot_peer_dm) is a LOCAL chat (`local-…`, hidden) whose text turns go to Hermes'
         # peer queue, never an API run: their event stream is only `run.completed` (no text, tools, usage, clarify).
@@ -444,6 +445,9 @@ class FakeHermes(Fake):
             listed = sorted(mine.values(), key=lambda s: -float(s.get("last_active") or 0))
             if self.v0225 and "include_children=1" not in seen.query:
                 listed = [s for s in listed if not s.get("parent_session_id")]
+            if self.page_max:
+                offset = int(seen.params.get("offset") or 0)
+                listed = listed[offset:offset + min(int(seen.params.get("limit") or 50), self.page_max)]
             return JSONResponse({"sessions": listed})
         if len(parts) == 2 and method == "POST":
             body = seen.json() or {}

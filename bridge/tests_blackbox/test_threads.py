@@ -234,3 +234,15 @@ def test_a_new_agents_main_thread_gets_its_first_conversation(bridges, fakes):
     found = get(bridge, "/v1/threads/resolve", agent="wellness", session_id="api_first")
     assert found["thread"]["id"] == main["id"] and found["tip"] == "api_first"
     assert texts(get(bridge, "/v1/threads/main/timeline", agent="wellness")) == ["Bonjour"]
+
+
+def test_the_list_reads_every_page_of_the_sessions_hermes_keeps(bridges, fakes):
+    compressed_main(fakes)
+    for i in range(5):
+        fakes.hermes.add_session(f"api_old{i}", [user(f"Sujet {i}")], title=f"Sujet {i}", last_active=1 + i * 0.1,
+                                 started_at=0.5)
+    fakes.hermes.page_max = 2   # Hermes serves its list a page at a time: the oldest conversations are on later pages
+    bridge = bridges.new().start()
+    listed = get(bridge, "/v1/threads", agent="wellness")["threads"]
+    assert [t["kind"] for t in listed][0] == "main"
+    assert sorted(t["title"] for t in listed[1:]) == ["Sujet 0", "Sujet 1", "Sujet 2", "Sujet 3", "Sujet 4", "Vacances"]

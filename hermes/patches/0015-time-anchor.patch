@@ -8,12 +8,12 @@ BipAgents patch, documented in hermes/patches/README.md of the BipAgents reposit
 Bip-Patch: 0015-time-anchor
 ---
  agent/prompt_builder.py           |  4 --
- agent/system_prompt.py            | 12 +++--
- cron/scheduler_prompt.py          | 13 +++++-
+ agent/system_prompt.py            | 14 ++++--
+ cron/scheduler_prompt.py          | 13 ++++-
  hermes_state_common.py            |  5 +-
- tests/agent/test_now_line.py      | 78 +++++++++++++++++++++++++++++++
+ tests/agent/test_now_line.py      | 81 +++++++++++++++++++++++++++++++
  tests/agent/test_system_prompt.py |  9 ++--
- 6 files changed, 108 insertions(+), 13 deletions(-)
+ 6 files changed, 113 insertions(+), 13 deletions(-)
  create mode 100644 tests/agent/test_now_line.py
 
 diff --git a/agent/prompt_builder.py b/agent/prompt_builder.py
@@ -53,23 +53,25 @@ index 4ba0650b51531b6a5825dc00eb961e07b6f892f2..5d13d35863c362b09710711e547e8016
  
  
 diff --git a/agent/system_prompt.py b/agent/system_prompt.py
-index 03ede0060d239d9ecca197ed29d039d205fc230e..5e9356322968bf1bfefc960c9f285ae6b2224294 100644
+index 03ede0060d239d9ecca197ed29d039d205fc230e..f614d05ffedc314be8d68220f075278167bde94a 100644
 --- a/agent/system_prompt.py
 +++ b/agent/system_prompt.py
-@@ -492,6 +492,12 @@ def _zone_bits(now: Any, tz: Any) -> list[str]:
+@@ -492,6 +492,14 @@ def _zone_bits(now: Any, tz: Any) -> list[str]:
      return bits
  
  
 +# The client (BipAgents' bridge and apps) and the cron scheduler put the current time at the top of each
 +# user message, in the person's zone: ``<!--bip:now Thursday, October 29, 2026, 08:40, Europe/Paris (UTC+01:00)-->``.
-+NOW_LINE_HINT = ("The current date and time are given at the top of each message (a bip:now line): trust the "
-+                 "latest one over the start date, and don't check the clock with a tool.")
++# Other gateways (a messenger, the CLI) put none: the hint holds only for a message that carries the line.
++NOW_LINE_HINT = ("When a message starts with a bip:now line, that line is the current date and time: trust the "
++                 "latest one over the start date, and don't check the clock with a tool. Without one, check the "
++                 "clock with a tool when the exact time matters.")
 +
 +
  def _timestamp_line(agent: Any) -> str:
      """Date-only so the prompt is byte-stable for the day; zone + offset so
      tools needn't guess EST vs EDT. Long-lived sessions get an "as of" line on
-@@ -509,9 +515,9 @@ def _timestamp_line(agent: Any) -> str:
+@@ -509,9 +517,9 @@ def _timestamp_line(agent: Any) -> str:
      # of' refreshes exactly when the cache prefix is already being invalidated (compaction), so the added
      # line costs no extra cache churn. Same-day sessions skip the second line entirely — nothing to correct,
      # and the single-line shape stays byte-identical for the day (prefix-cache safe).
@@ -131,10 +133,10 @@ index c31526f02c6516cdd25cd611df8a388098564366..87f97e699cc69a69f4d3e03521ccff9c
  # No LIKE wildcards in either prefix, so no ESCAPE clause is needed.
 diff --git a/tests/agent/test_now_line.py b/tests/agent/test_now_line.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..07a475b6656a3e067f056d7dfbd22593523bc238
+index 0000000000000000000000000000000000000000..77a21429579eb851ee83675d9066bb403e9eac90
 --- /dev/null
 +++ b/tests/agent/test_now_line.py
-@@ -0,0 +1,78 @@
+@@ -0,0 +1,81 @@
 +"""The current time comes with each message, never from the terminal: each routine run's prompt
 +starts with a now line in the routines' zone (``cron.timezone``), right across clock changes, and
 +the prompt no longer sends the model to ``date``; a session's preview skips the line."""
@@ -199,6 +201,9 @@ index 0000000000000000000000000000000000000000..07a475b6656a3e067f056d7dfbd22593
 +        assert "run `date`" not in text
 +        assert "use terminal" in text  # the other lines stay
 +    assert "bip:now" in NOW_LINE_HINT and "don't check the clock" in NOW_LINE_HINT
++    # only for a message that carries the line: a messenger's or the CLI's turn still checks the clock
++    assert NOW_LINE_HINT.startswith("When a message starts with a bip:now line")
++    assert "Without one, check the clock with a tool" in NOW_LINE_HINT
 +
 +
 +def test_a_session_preview_skips_the_now_line():
@@ -214,7 +219,7 @@ index 0000000000000000000000000000000000000000..07a475b6656a3e067f056d7dfbd22593
 +    previews = [_shape_preview(raw) for (raw,) in db.execute(f"SELECT {_PREVIEW_RAW_SELECT} FROM messages m")]
 +    assert previews == ["On part à Lisbonne quand ?", "Sans heure", "<!--bip:now cut"]
 diff --git a/tests/agent/test_system_prompt.py b/tests/agent/test_system_prompt.py
-index 38f3d739bb70ebfe0388d84ce00d57e7f1b5fda6..96b4fef5f185d963927e41fab223e40cd67dfbee 100644
+index 38f3d739bb70ebfe0388d84ce00d57e7f1b5fda6..a2118ffd93db84268f5f89e54284c8ec6dd9d97c 100644
 --- a/tests/agent/test_system_prompt.py
 +++ b/tests/agent/test_system_prompt.py
 @@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
@@ -245,7 +250,7 @@ index 38f3d739bb70ebfe0388d84ce00d57e7f1b5fda6..96b4fef5f185d963927e41fab223e40c
          assert "Conversation started:" in vol
 -        assert "as of the last context rebuild" in vol
 +        assert "as of the last context rebuild" not in vol
-+        assert "at the top of each message (a bip:now line)" in vol
++        assert "When a message starts with a bip:now line" in vol
  
      def test_same_day_session_keeps_single_line(self):
          from hermes_time import now as hermes_now

@@ -21,6 +21,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::agents_admin::Run;
+use crate::browsers::pyx::shlex_quote;
 use crate::config::{AgentConfig, Config};
 
 /// Runtime files of a running gateway or sandbox: never copied (the space starts its own).
@@ -47,18 +48,6 @@ pub fn unit_name(agent: &str) -> String {
 
 fn home_dir() -> String {
     crate::py::expanduser("~")
-}
-
-/// Python's `shlex.quote`.
-pub fn shlex_quote(s: &str) -> String {
-    if s.is_empty() {
-        return "''".to_string();
-    }
-    let safe = s.chars().all(|c| c.is_ascii_alphanumeric() || "_@%+=:,./-".contains(c));
-    if safe {
-        return s.to_string();
-    }
-    format!("'{}'", s.replace('\'', "'\"'\"'"))
 }
 
 /// Python's `template.format(**values)` for an administrator's command (`{agent}`, `{home}`; `{{`/`}}` braces).
