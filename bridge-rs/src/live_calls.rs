@@ -13,13 +13,11 @@
 //! record shows « still working » meanwhile, then its answer and its files land there with a notification, like a
 //! background task that ends.
 //!
-//! Who does it: the apps since 2026-10-31 say a call started (`POST /v1/live/calls/start`, which lets the bridge end
-//! it alone when the app is quit) and send `deposit: true` with its end; the bridge then answers `deposit: true` and the
-//! app stops keeping the recap itself (CallRecaps). An older app sends neither and keeps doing it: nothing changes for
-//! it. A newer app talking to an older bridge sees no `deposit` in the answer and keeps its old way too.
+//! The apps say a call started (`POST /v1/live/calls/start`, which makes the call's session and lets the bridge end
+//! it alone when the app is quit) and when it ended:
 //!
-//!     POST /v1/live/calls/start   {agent, session, live_session}  -> {ok, deposit: true}
-//!     POST /v1/live/calls         {agent, session, live_session, deposit?, run_id?, started_at?}  (live_brief.rs)
+//!     POST /v1/live/calls/start   {agent, session?, prelude?}  -> {ok, live_session}
+//!     POST /v1/live/calls         {agent, session, live_session, run_id?, started_at?}  (live_brief.rs)
 //!     GET  /v1/live/calls?agent=&session=  -> {calls: [record…]}  the conversation's calls, oldest first
 //!
 //! A record: `{id, live_session, started_at, ended_at, seconds, lines: [{role, text}], media: [path…], working, late,
@@ -197,16 +195,6 @@ impl LiveCalls {
         }
         let start = records.len().saturating_sub(RECORDS_KEPT);
         self.write(&path, &json!({"calls": records[start..].to_vec()}))
-    }
-
-    /// What changes when a call lands in the conversation (`GET /v1/sessions/{id}/state`): the apps reload then. None
-    /// without any call.
-    pub fn marker(&self, agent: &str, session: &str) -> Option<String> {
-        let records = self.records(agent, session);
-        let last = records.last()?;
-        let at = last.get("ended_at").and_then(Value::as_f64).unwrap_or(0.0);
-        let working = last.get("working").and_then(Value::as_bool).unwrap_or(false);
-        Some(format!("{}@{at:.0}{}", records.len(), if working { "w" } else { "" }))
     }
 }
 

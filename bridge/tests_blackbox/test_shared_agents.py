@@ -160,3 +160,39 @@ def test_a_relative_talks_to_a_shared_agent(bridges, fakes):
     # Alex stops sharing: the card goes on Marie's side.
     assert a.put("/v1/agents/cuisine/shares", headers=AUTH, json={"households": []}).json()["told"] == {"marie": True}
     assert b.get("/v1/shared-agents", headers=AUTH).json()["agents"] == []
+
+
+def test_a_shared_agent_s_question_reaches_the_relative_and_her_answer_goes_back(bridges, fakes):
+    """Her turn's questions (Hermes' clarify) are hers like its approvals: in her timeline and her turn's live words,
+    answered through her bridge's `POST /v1/approve` (`answer`), relayed to Alex's Hermes."""
+    a = household(bridges, fakes, "alex", ["cuisine"])
+    b = household(bridges, fakes, "marie", ["vie"])
+    link(a, b)
+    assert a.put("/v1/agents/cuisine/shares", headers=AUTH, json={"households": ["marie"]}).status_code == 200
+    assert b.post("/v1/shared-agents/cuisine__alex/add", headers=AUTH).status_code == 200
+    gate = threading.Event()
+    fakes.hermes.runs["r1"] = [
+        sse("clarify.request", run_id="r1", prompt_id="q-1", execution_generation=2,
+            questions=[{"id": "q", "question": "Pour combien ?", "choices": ["2", "4"]}]),
+        gate, sse("run.completed", run_id="r1", output="Pour 4, noté.")]
+    body = {"agent": "cuisine__alex", "client_id": "C0FFEE00-0000-4000-8000-0000000000Q1", "text": "Une recette ?"}
+    sent = b.post("/v1/threads/new/messages", headers=AUTH, json=body)
+    assert sent.status_code == 200, sent.text
+    cid = sent.json()["thread"]
+    with httpx.Client(base_url=b.url, headers=AUTH, timeout=10) as client:
+        with client.stream("GET", "/v1/runs/r1/events", params={"agent": "cuisine__alex", "thread": cid}) as live:
+            event = next(json.loads(line[6:]) for line in live.iter_lines() if line.startswith("data: "))
+    assert event["event"] == "clarify.request" and event["questions"][0]["question"] == "Pour combien ?"
+    page = lambda: b.get(f"/v1/threads/{cid}/timeline", headers=AUTH, params={"agent": "cuisine__alex"}).json()  # noqa: E731
+    assert wait(lambda: page()["pending"].get("questions"))
+    pending = page()["pending"]
+    assert pending["run"]["status"] == "approval" and pending["approvals"] == []
+    question, = pending["questions"]
+    assert question["request_id"] == "q-1" and question["id"].startswith("a_")
+    answered = b.post("/v1/approve", headers=AUTH,
+                      json={"agent": "cuisine__alex", "run_id": "r1", "request_id": "q-1", "answer": "4"})
+    assert answered.status_code == 200, answered.text
+    assert fakes.hermes.answers[-1] == {"agent": "cuisine", "run_id": "r1",
+                                        "body": {"request_id": "q-1", "execution_generation": 2, "answer": "4"}}
+    assert wait(lambda: page()["pending"]["questions"] == [])
+    gate.set()

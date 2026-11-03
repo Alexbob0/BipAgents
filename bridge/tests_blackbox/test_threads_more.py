@@ -125,7 +125,7 @@ def test_a_shared_agents_conversation_through_the_owners_bridge(bridges, fakes):
     page = get(b, f"/v1/threads/{cid}/timeline", agent="cuisine__alex")
     assert page["thread"]["id"] == cid and [i["text"] for i in page["items"]] == ["Dîner", "Une fondue !"]
     assert page["items"][0]["client_id"] == "C0FFEE00-0000-4000-8000-000000000010"
-    assert page["pending"] == {"run": None, "approvals": []}
+    assert page["pending"] == {"run": None, "approvals": [], "questions": []}
     # a turn going on: its state and start, for the shared screen
     gate = threading.Event()
     fakes.hermes.runs["r2"] = [gate, sse("run.completed", output="Une tarte.")]
@@ -169,8 +169,8 @@ def test_a_live_call_put_in_a_conversation_tells_its_open_screens(bridges, fakes
     viewer.start()
     time.sleep(0.5)
     ended = bridge.post("/v1/live/calls", headers=AUTH, json={"agent": "wellness", "session": "api_main",
-                                                               "live_session": "live_1", "deposit": True})
-    assert ended.json()["deposit"] is True
+                                                               "live_session": "live_1"})
+    assert ended.json() == {"ok": True}
     assert wait_until(lambda: any(main["id"] in e and '"call"' in e for e in events), timeout=15), events
     newer = get(bridge, f"/v1/threads/{main['id']}/timeline", agent="wellness", after=page["last"])
     calls = [i for i in newer["items"] if i["kind"] == "call"]

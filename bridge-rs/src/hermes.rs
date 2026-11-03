@@ -756,6 +756,19 @@ impl HermesClient {
         Ok(data.get("message").and_then(|m| m.get("content")).and_then(Value::as_str).unwrap_or("").to_string())
     }
 
+    /// `POST /api/sessions/{id}/chat/stream`: one turn, Hermes' SSE answer as it comes (a Live call's, live_turns.rs).
+    pub async fn chat_stream(&self, agent: &AgentConfig, session_id: &str, body: Value) -> Result<reqwest::Response, HermesError> {
+        turn_ready(agent).await;
+        ready(agent).await;
+        let url = format!("{}/api/sessions/{session_id}/chat/stream", agent.hermes_url);
+        let resp = self.client.post(url).headers(Self::headers(agent, "text/event-stream")).json(&body).send().await?;
+        let status = resp.status().as_u16();
+        if status != 200 {
+            return Err(HermesError::http(status, head(&resp.text().await.unwrap_or_default(), 500)));
+        }
+        Ok(resp)
+    }
+
     /// `POST /v1/runs` in a conversation: the run's id (it goes on in Hermes; follow it with `run`).
     pub async fn start_run(
         &self,

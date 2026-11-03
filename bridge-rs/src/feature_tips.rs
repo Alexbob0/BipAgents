@@ -2,7 +2,7 @@
 //! internal/next/feature-discovery.md). The bridge notices moments in the person's normal use with cheap signals (words
 //! of their message matched by simple rules, the kinds of attachments, the tools their agents call, the day of the week)
 //! and proposes the fitting feature once, through the agent they talk to most: a note joined to their next message
-//! (`/v1/live/recaps/take`, like storage_watch.rs) and a card « Essayer / Plus tard / Pas pour moi » (`bip-tip-<id>`,
+//! (the message sending route, like storage_watch.rs) and a card « Essayer / Plus tard / Pas pour moi » (`bip-tip-<id>`,
 //! with the approvals). A calendar is the safety net for what never came up (J1 voice… J28). No model call; no content
 //! kept (the message is matched in memory and dropped: counters, dates, a service id from a closed list and short
 //! salted hashes only).
@@ -929,7 +929,7 @@ fn wrap(lines: &[String]) -> String {
     format!("<!--bip:tip\n{}\n-->", lines.join("\n"))
 }
 
-/// The person wrote to `agent` (`/v1/live/recaps/take`): the message's signals counted (the text dropped), and what
+/// The person wrote to `agent` (threads/send.rs): the message's signals counted (the text dropped), and what
 /// waits for this agent's turn: its notes, and a tip when the moment allows one. Returns the hidden part, if any.
 pub fn on_message(
     config: &Config,

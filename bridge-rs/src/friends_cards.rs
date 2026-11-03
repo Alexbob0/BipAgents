@@ -15,7 +15,7 @@
 //! keys; the card one of this agent's; the option one of the card's; the action not seen before; the project live),
 //! then applied: a vote replaces that friend's vote on the card, a tick toggles that friend on that line. Never a tool
 //! run, never a turn started, never text passed on: one line per tap is queued for the agent and joins the hidden
-//! notes of its next turn (`take_note`: dates/now.rs `head`, `/v1/live/recaps/take`) as information.
+//! notes of its next turn (`take_note`: dates/now.rs `head`, threads/send.rs) as information.
 //!
 //! `<data>/friends-cards.json` (0600): `{cards: {agent: {id: card}}, news: {agent: [line]}, seen: {share: [ids]}}`.
 //!

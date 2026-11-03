@@ -352,45 +352,27 @@ async fn routes() {
     assert_eq!(done.json(), json!({"ok": true}));
     let name = app.app.state.config().agent(Some("Wellness")).unwrap().name.clone();
     assert_eq!(app.app.state.briefs.load(&name, "api_old")["calls"][0]["live_session"], "Live");
+    // the call lands in its conversation in the background (live_calls.rs), its recap waiting for the next message
+    for _ in 0..100 {
+        if common::notes(&app, "Wellness", "api_old", "").await.contains("bip:call") {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
     // What the call said waits here for the next written message, whichever device writes it, then is gone.
     let first = "<!--bip:call\nVoice call of 10:05 in between:\nThe person: je pars à Lyon\nYou: Bon voyage\n-->";
     let second = "<!--bip:call\nVoice call of 18:40 in between:\nThe person: je suis rentré\nYou: Super\n-->";
     for recap in [first, second] {
-        let resp = app
-            .send_json(
-                "POST",
-                "/v1/live/recaps",
-                &a,
-                &json!({"agent": "Wellness", "session": "api_old", "recap": recap}),
-            )
-            .await;
-        assert_eq!(resp.json(), json!({"ok": true}));
+        app.app.state.briefs.keep_recap(&name, "api_old", recap).unwrap(); // by the call's end (live_calls.rs)
     }
     let recaps = dir.path().join("data").join("call-recaps").join(&name).join("api_old.txt");
     assert_eq!(std::fs::read_to_string(&recaps).unwrap(), format!("{first}\u{1e}{second}"));
     use std::os::unix::fs::PermissionsExt;
     assert_eq!(std::fs::metadata(&recaps).unwrap().permissions().mode() & 0o777, 0o600);
-    let taken = app
-        .send_json("POST", "/v1/live/recaps/take", &a, &json!({"agent": "Wellness", "session": "api_old"}))
-        .await
-        .json();
-    let (now, recap) = common::split_now(taken["recap"].as_str().unwrap());
+    let (now, recap) = common::split_now(&common::notes(&app, "Wellness", "api_old", "").await);
     assert!(now.is_some(), "the current time first");
     assert_eq!(recap, format!("{first}\n{second}"));
-    let again = app
-        .send_json("POST", "/v1/live/recaps/take", &a, &json!({"agent": "Wellness", "session": "api_old"}))
-        .await
-        .json();
-    assert_eq!(common::without_now(again["recap"].as_str().unwrap()), "", "only the current time");
-    let resp = app
-        .send_json("POST", "/v1/live/recaps", &[], &json!({"agent": "Wellness", "session": "api_old", "recap": "x"}))
-        .await;
-    assert_eq!(resp.status, 401);
-    let resp = app
-        .send_json("POST", "/v1/live/recaps", &a, &json!({"agent": "Wellness", "session": "api_old", "recap": ""}))
-        .await;
-    assert_eq!(resp.status, 422);
-    assert_eq!(resp.json()["detail"][0]["type"], "string_too_short");
+    assert_eq!(common::without_now(&common::notes(&app, "Wellness", "api_old", "").await), "", "only the current time");
 }
 
 /// Hermes' titler bills its model call to the scratch session, which writes the row back after its deletion (an empty

@@ -65,6 +65,7 @@ pub mod sleep;
 pub mod durations;
 pub mod live_brief;
 pub mod live_calls;
+pub mod live_turns;
 pub mod numbers_fr;
 pub mod pronounce;
 pub mod pronunciations;

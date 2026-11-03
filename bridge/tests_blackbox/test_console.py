@@ -120,15 +120,11 @@ def test_logging_out_ends_the_session(bridge):
     assert bridge.get("/v1/console/devices", headers=AUTH).json() == {"devices": []}
 
 
-def test_the_console_reaches_hermes_without_its_key(bridge, fakes):
+def test_the_console_never_reaches_hermes(bridge, fakes):
+    """The console goes through the bridge's routes (threads, runs, approvals): `/hermes/…` refuses it."""
     _, session, _ = login(bridge)
-    # The fake Hermes answers 401 to a wrong key: the bridge put the agent's own.
-    reached = bridge.get("/hermes/wellness/api/sessions", headers=session)
-    assert reached.status_code == 200
-    seen = fakes.hermes.seen("/api/sessions")[-1]
-    assert seen.header("authorization") == f"Bearer {HERMES_KEY}"
-    assert seen.header("cookie") is None and seen.header("x-bip-console") is None
-    assert bridge.get("/hermes/wellness/api/sessions").status_code == 401   # no session, no key: Hermes refuses
+    assert bridge.get("/hermes/wellness/api/sessions", headers=session).status_code == 403
+    assert not fakes.hermes.seen("/api/sessions")
 
 
 def test_the_page_runs_only_its_own_scripts(bridge):
