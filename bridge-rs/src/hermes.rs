@@ -839,7 +839,8 @@ impl HermesClient {
         body.insert("input".into(), input);
         body.insert("session_id".into(), Value::String(session_id.to_string()));
         if let Some(instructions) = instructions.filter(|i| !i.is_empty()) {
-            // Hermes adds them to its system prompt for this run only
+            // Hermes (patch 0023) tells them in a note on the run's message, once per conversation and again when
+            // they change, never in its system prompt (the same prompt for all the agent's conversations: cache)
             body.insert("instructions".into(), Value::String(instructions.to_string()));
         }
         let body = Value::Object(body);

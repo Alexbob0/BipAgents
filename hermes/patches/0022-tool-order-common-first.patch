@@ -83,7 +83,7 @@ index 0000000000000000000000000000000000000000..e53b17eb696407fbfed251b655cd5fb5
 +    monkeypatch.setattr(tool_order, "configured_first", lambda: [])
 +    assert _names(ordered(_defs("b", "a", "c"))) == ["a", "b", "c"]
 diff --git a/tools/mcp_tool_agent.py b/tools/mcp_tool_agent.py
-index 3d298839462e5fe26684985f5bc0bb5ff664a4b0..eebc0a1da072716cc8628dacd566475dbd905eab 100644
+index fe0e6f40f1f10dd00f50439ef08494e7b9d11bda..81b99992964e56a18066393dc0dce634a3a85021 100644
 --- a/tools/mcp_tool_agent.py
 +++ b/tools/mcp_tool_agent.py
 @@ -238,7 +238,8 @@ def restore_agent_tool_prefix(agent, saved) -> bool:
