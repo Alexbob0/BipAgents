@@ -1106,10 +1106,8 @@ async fn apply_route(State(state): State<AppState>, Json(body): Json<Apply>) -> 
         }
     }
     if let Some((title, text)) = boite_message(&lang, &source, &plan) {
-        let mut message = crate::Dict::new();
-        message.insert("message".into(), json!(text));
-        message.insert("title".into(), json!(title));
-        if let Err(err) = state.outbox.ingest(&agent, &message, true, false).await {
+        let message = crate::outbox::BoiteMessage { title: Some(title), ..crate::outbox::BoiteMessage::new(text) };
+        if let Err(err) = state.outbox.ingest(&agent, message, true).await {
             tracing::warn!(target: "bipbridge::import", agent = %agent.name, error = %err, "import message not stored");
         }
     }

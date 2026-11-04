@@ -7,10 +7,10 @@ until equivalent changes land upstream.
   (`HERMES_COMMIT`, installer/bipinstall/hermes.py). Every patch applies cleanly there, in order.
 - **Apply** from the root of a Hermes checkout at that commit: `git apply hermes/patches/<patch>`, in order.
 - Until 2026-11-01 the base was `517b5e10f` (upstream `main` of 2026-10-08): that set, its `next/` variants and the
-  sections of the patches dropped since (0001, 0004, 0012) are in git history (`git show 7618e0a1:hermes/patches/`).
+  sections of the patches dropped since (0001, 0004, 0012; 0014 on 2026-11-04) are in git history (`git show 7618e0a1:hermes/patches/`).
 
 **Upstream.** 0005 is proposed as NousResearch/hermes-agent#136660 (its head is written for main's later browser
-modules; the patch here is the same behaviour on v0.22.5's). Candidates for small upstream PRs: 0014, 0011, 0019's
+modules; the patch here is the same behaviour on v0.22.5's). Candidates for small upstream PRs: 0011, 0019's
 labels, 0008's fall-back fix, 0017, 0009's `!name`, 0013.
 
 | Patch | Files touched (v0.22.5) |
@@ -23,7 +23,6 @@ labels, 0008's fall-back fix, 0017, 0009's `!name`, 0013.
 | 0010 empty replies: changed retries, tool calls written as text | `agent/leaked_tool_calls.py` (new), `agent/turn_*.py`, `agent/chat_completion_helpers.py` |
 | 0011 titles with GLM: thinking floored to low | `agent/auxiliary_reasoning_floor.py` |
 | 0013 MCP results: vault passwords scrubbed | `tools/mcp_tool_handlers.py` |
-| 0014 routine tool results in plain UTF-8 | `tools/cronjob_tools.py` |
 | 0015 time anchor: the time with each message | `agent/prompt_builder.py`, `agent/system_prompt.py`, `cron/scheduler_prompt.py`, `hermes_state_common.py` |
 | 0016 one `message_agent`, the bridge's (0012 folded in) | `tools/bot_mode_dm.py`, `tools/mcp_tool_agent.py` |
 | 0017 address items with name, phone, e-mail | `agent/vault_store.py`, `agent/vault_login_classifier.py` |
@@ -290,25 +289,6 @@ password field back; this is the net under those rules, not a wall against an ag
 `test_mcp_structured_content.py`, `test_mcp_image_content.py`, `test_mcp_empty_error_message.py`: 137 passed, 5 failed
 for a missing Pillow in the test environment (`test_mcp_image_content.py`'s native image tests), Python 3.12. No other
 patch touches the file; `patch --dry-run` passes on `517b5e10f` and `97a9ae8ee`.
-
-## 0014 — routine tool results in plain UTF-8
-
-**Problem.** Hermes' `cronjob` tool answers the model with `json.dumps(..., indent=2)`, so every non-ASCII character
-comes back as a `\uXXXX` escape: an agent that creates or updates a French routine reads its own « journée » back as
-`journ\u00e9e` in the name and the prompt preview. Hermes' other tools mostly answer in plain UTF-8. Seen 2026-10-28: an
-agent (GLM-5.3 Flash) rewrote its nightly routine's prompt without accents, blaming « a limit on long texts ». No such
-limit exists on that path: a 3 000, 8 000 or 20 000-character accented prompt is stored and read back intact, and
-tool-call arguments with `\u` escapes decode fine; only the escaped results remained.
-
-**What the patch does.** The tool's results are written with `ensure_ascii=False`. Same JSON, readable words.
-
-**Files.** `tools/cronjob_tools.py` (`_dumps`); new `tests/tools/test_cronjob_accents.py` (create, update through JSON
-tool-call arguments and list, with 3 000 and 8 000-character accented prompts; fails without the patch).
-
-**Tests.** The new file with `test_cronjob_tools.py`, `test_cronjob_job_args.py`, `test_cron_prompt_injection.py`:
-81 passed, 2 skipped, Python 3.12, with 0008 and 0013 applied. No other patch touches the file; `git apply --check`
-passes on `517b5e10f`, `patch --dry-run` on upstream `main` (`8acb7f6580`, 2026-10-28), which still escapes. A small
-upstream PR candidate.
 
 ## 0015 — the current time with each message, never from the terminal
 
@@ -628,7 +608,7 @@ restriction), applied when that Hermes was built.
 | 0011 titles with GLM | kept; its test merged beside v0.22.5's new token-plan tests. |
 | 0012 + 0016 one `message_agent`, the bridge's | **folded** into `0016-message-agent-the-bridges-everywhere` (0016's behaviour; 0012's unused `drop_mcp_message_agent` removed). No `0012` file. |
 | 0013 MCP results: vault passwords scrubbed | kept; docstring names `browser_vault`; its handler test follows v0.22.5's `_call_tool_racing_stdio_death` signature. |
-| 0014 routine results in plain UTF-8 | kept (applies as is). |
+| 0014 routine results in plain UTF-8 | **dropped** 2026-11-04: the bridge keeps Hermes' `cronjob` toolset off (routines run on the bridge). |
 | 0015 time anchor | kept **whole, part (c) included**: `[CURRENT RUN TIME]` in routine prompts is on upstream `main`, not in v0.22.5, so part (c) goes at the next base that has it. |
 | 0017 address items with name, phone, e-mail | kept (applies as is). |
 | 0018 guest turns | **rewritten** for the session authority (below). |

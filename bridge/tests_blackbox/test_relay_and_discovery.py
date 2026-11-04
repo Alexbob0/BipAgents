@@ -3,15 +3,11 @@ with the publisher's relay, agents' discovery and the install's QR code, `/v1/st
 (tests/test_relay_and_discovery.py, over HTTP and the CLI)."""
 import json
 
-from bbkit.common import AUTH, BRIDGE_KEY, HERMES_KEY
+from bbkit.common import AUTH, BRIDGE_KEY, HERMES_KEY, boite_message
 from bbkit.servers import free_port, wait_until
 
 MEMBER_KEY = "member-relay-key-0123456789abcdef012345"
 TOKEN = "ab" * 32
-
-
-def ntfy_message(fakes, msg_id="m1", text="Le texte du message"):
-    fakes.ntfy.lines["hermes-wellness-out"] = [json.dumps({"id": msg_id, "event": "message", "message": text})]
 
 
 def test_relay_forwards_to_apns_with_the_admin_key(bridges, fakes):
@@ -76,10 +72,10 @@ def test_member_install_sends_through_the_relay(bridges, fakes):
     """No Apple key here: pushes go to the administrator's bridge (`[push] relay_url`), with this install's key."""
     bridge = bridges.new(change=lambda c: c.update(
         apns={}, push={"relay_url": fakes.admin_relay.url + "/", "relay_key": MEMBER_KEY}))
-    ntfy_message(fakes)
     bridge.seed_db([("INSERT INTO devices (token, environment, agent_ids, created_at, updated_at) VALUES (?,?,?,?,?)",
                      (TOKEN, "production", "[]", "2026-10-21T08:00:00.000Z", "2026-10-21T08:00:00.000Z"))])
     bridge.start()
+    boite_message(bridge, fakes, "Le texte du message")
     health = bridge.get("/health").json()
     assert health["push"] == "relay" and health["apns"] is False
     assert wait_until(lambda: fakes.admin_relay.seen("/v1/relay/push"), timeout=15)
@@ -119,7 +115,7 @@ def test_agents_discovery_and_install_qr(bridges, fakes):
     one = bridge.cli("qr", "--json", "--agent", "Wellness")
     assert json.loads(one.stdout) == {"name": "Wellness", "agent": "wellness", "baseURL": "https://box.example.ts.net:8642",
                                       "apiKey": HERMES_KEY, "bridgeURL": "https://box.example.ts.net:8643",
-                                      "bridgeKey": BRIDGE_KEY, "voice": "4193"}
+                                      "bridgeKey": BRIDGE_KEY, "voice": "pocket:colibri"}
     unknown = bridge.cli("qr", "--json", "--agent", "nobody")
     assert unknown.returncode == 2 and unknown.stderr.strip() == "unknown agent: nobody"
 
@@ -139,6 +135,11 @@ def test_status_tells_server_from_model(bridges, fakes):
     assert status["agents"]["panne"] == {"ok": False, "error": "ConnectError"}
     assert status["model"] == {"ok": False, "error": "ConnectError"}
     assert status["protected"] is False and list(status) == ["agents", "model", "protected"]
+    # one agent: only its Hermes is asked
+    asked = len(fakes.hermes.seen("/p/vie/v1/capabilities"))
+    one = bridge.get("/v1/status", headers=AUTH, params={"agent": "Panne"}).json()
+    assert list(one["agents"]) == ["panne"] and len(fakes.hermes.seen("/p/vie/v1/capabilities")) == asked
+    assert bridge.get("/v1/status", headers=AUTH, params={"agent": "nobody"}).status_code == 404
 
 
 def test_status_with_a_model_that_answers(bridges, fakes):
@@ -168,9 +169,7 @@ def test_devices_registered_with_the_publishers_relay_go_through_it(bridges, fak
     assert old.status_code == 200 and old.json()["renew"] is True
     assert bridge.delete("/v1/devices/r1." + "A" * 60, headers=AUTH).status_code == 204
     # A message for the agent: both devices are sent it through the publisher's relay.
-    bridge.stop()
-    ntfy_message(fakes, "out-1")
-    bridge.start()
+    boite_message(bridge, fakes, "Le texte du message")
     assert wait_until(lambda: len(fakes.push_service.seen("/v1/relay/push")) == 2, timeout=15)
     sent = fakes.push_service.seen("/v1/relay/push")
     assert {r.json()["token"] for r in sent} == {live, dead}
@@ -199,7 +198,7 @@ def test_the_check_command(bridges, fakes):
     lines = out.stdout.splitlines()
     assert lines[0] == f"config OK: {bridge.config_path}"
     assert f"  listen      127.0.0.1:{bridge.port}" in lines
-    assert f"  kyutai      {fakes.kyutai.url}" in lines and "  voice       5476 (default)" in lines
+    assert f"  pocket      {fakes.pocket.url}" in lines and "  voice       pocket:ours (default)" in lines
     assert "  apns        enabled (sandbox)" in lines and "  lan         off" in lines
     assert any(line.startswith("  agent wellness: hermes=") for line in lines)
     assert len(bridge.cli("genkey").stdout.strip()) == 43
@@ -211,8 +210,8 @@ def test_the_relays_answer_counts_and_a_relay_down_is_a_soft_failure(bridges, fa
     now = "2026-10-21T08:00:00.000Z"
     bridge.seed_db([("INSERT INTO devices (token, environment, agent_ids, created_at, updated_at) VALUES (?,?,?,?,?)",
                      (token, "production", "[]", now, now)) for token in (TOKEN, dead, blocked)])
-    ntfy_message(fakes)
     bridge.start()
+    boite_message(bridge, fakes, "Le texte du message")
     assert wait_until(lambda: len(fakes.admin_relay.seen("/v1/relay/push")) == 3, timeout=15)
     # The relay said the dead one is gone (APNs' 410 in its answer): forgotten; refused or fine: kept.
     assert wait_until(lambda: sorted(r[0] for r in bridge.db().execute("SELECT token FROM devices")) == sorted([TOKEN, blocked]))
@@ -220,7 +219,7 @@ def test_the_relays_answer_counts_and_a_relay_down_is_a_soft_failure(bridges, fa
     down = bridges.new("down", change=lambda c: c.update(apns={}, push={"relay_url": fakes.down.url, "relay_key": MEMBER_KEY}))
     down.seed_db([("INSERT INTO devices (token, environment, agent_ids, created_at, updated_at) VALUES (?,?,?,?,?)",
                    (TOKEN, "production", "[]", now, now))])
-    ntfy_message(fakes, "m2")
     down.start()
+    boite_message(down, fakes, "Le texte du message")
     assert wait_until(lambda: down.logged("relay unreachable"), timeout=15)
     assert [r[0] for r in down.db().execute("SELECT token FROM devices")] == [TOKEN]   # the device stays registered

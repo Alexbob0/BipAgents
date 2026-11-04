@@ -50,13 +50,6 @@ async fn routes_require_bridge_key() {
 }
 
 #[tokio::test]
-async fn websocket_requires_bridge_key() {
-    let (_dir, app) = app();
-    let resp = app.get("/v1/voice", &[("authorization", "Bearer wrong")]).await;
-    assert_eq!(resp.status, StatusCode::FORBIDDEN);
-}
-
-#[tokio::test]
 async fn wrong_keys_block_an_address_for_a_while() {
     let (_dir, app) = app();
     for _ in 0..20 {
@@ -77,8 +70,8 @@ async fn agents_listing() {
     assert_eq!(
         resp.json(),
         json!({"bridge": {"url": null, "lan": null},
-               "agents": [{"id": "wellness", "name": "Wellness", "voice": "4193", "server_voice": null, "category": null,
-                           "color": null, "outfit": "", "costumes": true, "language": null, "uploads": true, "inbox": true, "url": null, "family": false, "project": null,
+               "agents": [{"id": "wellness", "name": "Wellness", "voice": "pocket:colibri", "server_voice": null, "category": null,
+                           "color": null, "outfit": "", "costumes": true, "language": null, "uploads": true, "url": null, "family": false, "project": null,
                            "requested": null, "key": null, "group": ""}],
                "unclaimed": []})
     );

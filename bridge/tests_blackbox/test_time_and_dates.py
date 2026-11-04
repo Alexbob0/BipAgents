@@ -48,11 +48,6 @@ def test_the_standard_dates_route_the_carnet_and_the_tool(bridge):
     assert kinds == {"holiday", "school", "clock_change"}, dates
     assert any(d["text"] == "jour férié : Fête nationale" for d in dates["dates"])
     assert any(d["text"].startswith("passage à l'heure d'") for d in dates["dates"])
-    carnet = bridge.get("/v1/notebook/dates?days=366", headers=AUTH).json()["dates"]
-    computed = [d for d in carnet if d.get("computed")]
-    assert computed and all(d["fact"] == d["text"] for d in computed)
-    plain = bridge.get("/v1/notebook/dates?days=366&standard=0", headers=AUTH).json()["dates"]
-    assert not [d for d in plain if d.get("computed")]
     give_token(bridge)
     result = call(bridge, "upcoming_dates", {"days": 366})
     assert result["isError"] is False

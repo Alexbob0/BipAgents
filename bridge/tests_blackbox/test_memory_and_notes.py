@@ -77,11 +77,6 @@ def test_a_memory_in_the_old_language_is_translated_once_and_can_be_put_back(bri
     [chat] = fakes.model.chats
     assert chat["authorization"] == "Bearer sk-test-key" and "into English" in chat["body"]["messages"][0]["content"]
     assert "memory translated" in bridge.log_path.read_text()
-    undone = bridge.post("/v1/agents/coach/memory/translation/undo", headers=AUTH)
-    assert undone.json() == {"restored": ["MEMORY.md"]}
-    assert bridge.get("/v1/agents/coach/memory", headers=AUTH).json()["notes"]["entries"] == NOTES_FR
-    assert bridge.post("/v1/agents/nobody/memory/translation/undo", headers=AUTH).status_code == 404
-    assert bridge.post("/v1/agents/coach/memory/translation/undo").status_code == 401
 
 
 def test_knowledge_pages_are_listed_read_edited_and_removed_inside_their_folder(bridges, fakes):

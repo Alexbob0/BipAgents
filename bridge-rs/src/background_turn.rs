@@ -25,12 +25,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use crate::config::{AgentConfig, SharedConfig};
 use crate::hermes::{HermesClient, HermesError};
 use crate::live_brief::Briefs;
-use crate::ntfy::OutboxService;
+use crate::outbox::{BoiteMessage, OutboxService};
 use crate::push::PushService;
 use crate::runs::RunHub;
 use crate::tools_knowledge as tk;
@@ -444,13 +444,14 @@ impl Pipeline {
             return true;
         }
         let Some(outbox) = &self.outbox else { return false };
-        let mut message = Dict::new();
-        message.insert("id".into(), json!(d.key));
-        message.insert("message".into(), json!(d.text));
-        message.insert("files".into(), json!(d.files));
-        message.insert("title".into(), json!(d.title));
-        message.insert("tags".into(), json!([format!("session:{}", d.session)]));
-        match outbox.ingest(agent, &message, d.notify, false).await {
+        let message = BoiteMessage {
+            id: Some(d.key.clone()),
+            text: d.text.clone(),
+            files: d.files.clone(),
+            title: Some(d.title.clone()),
+            session_id: Some(d.session.clone()),
+        };
+        match outbox.ingest(agent, message, d.notify).await {
             Ok(_) => true,
             Err(err) => {
                 tracing::warn!(target: "bipbridge::background_turn", agent = %agent.name, key = %d.key,

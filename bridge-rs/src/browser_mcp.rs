@@ -26,8 +26,6 @@
 //! agent's Hermes connects without starting anything), `ready_seconds` (how long its container may take to start),
 //! and `unit` (`{path, text}`), `profile` and `reload`: the container's systemd unit and its Chrome profile folder,
 //! written at the first start rather than with the agent (browsers.rs), then `reload` run once.
-//!
-//! Port of `bridge/bipbridge/browser_mcp.py` (owner group: browsers-places).
 
 use std::collections::HashMap;
 use std::io::Write;

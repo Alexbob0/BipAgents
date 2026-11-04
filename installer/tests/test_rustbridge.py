@@ -79,11 +79,9 @@ def test_the_service_runs_this_checkout_s_binary(tmp_path, monkeypatch):
     assert rustbridge.cli(tmp_path, repo) == [str(binary)]
     unit = tmp_path / ".config" / "systemd" / "user" / "bipagents-bridge.service"
     unit.parent.mkdir(parents=True)
-    unit.write_text("[Service]\nWorkingDirectory=/x\nExecStart=/x/.venv/bin/python -m bipbridge serve\nRestart=on-failure\n")
+    unit.write_text("[Service]\nWorkingDirectory=/x\nExecStart=/x/bin/bipbridge serve\nRestart=on-failure\n")
     monkeypatch.setattr(rustbridge.sys, "platform", "linux")
-    assert rustbridge.python_service(tmp_path)   # an install made before 2026-10-21
     assert rustbridge.rewrite_service(tmp_path, rustbridge.program(tmp_path, repo)) == unit
-    assert not rustbridge.python_service(tmp_path)
     assert f"ExecStart={binary} serve\n" in unit.read_text() and "Restart=on-failure" in unit.read_text()
 
 
@@ -118,46 +116,6 @@ def test_ensure_fetches_or_says_why_not(tmp_path, monkeypatch):
     monkeypatch.setattr(rustbridge, "key", lambda repo=None: None)
     with pytest.raises(rustbridge.RustBridgeError, match="git checkout"):
         rustbridge.ensure(tmp_path, tmp_path)
-
-
-def test_an_update_moves_a_python_bridge_to_rust_once_its_binaries_are_out(tmp_path, monkeypatch):
-    from bipinstall import __main__ as cli, hermes, migrations
-    monkeypatch.setattr(rustbridge, "key", lambda repo=None: "abc123def456")
-    monkeypatch.setattr(rustbridge.sys, "platform", "linux")
-    monkeypatch.setattr(migrations, "REPO", tmp_path / "BipAgents")
-    monkeypatch.setattr(cli, "INSTALLER_PYTHON", tmp_path / "BipAgents" / "installer" / ".venv" / "bin" / "python")
-    units = tmp_path / ".config" / "systemd" / "user"
-    units.mkdir(parents=True)
-    unit = units / "bipagents-bridge.service"
-    unit.write_text("[Service]\nExecStart=/r/bridge/.venv/bin/python -m bipbridge serve\n")
-    (units / "bipagents-backup.service").write_text("ExecStart=/r/bridge/.venv/bin/python -m bipinstall backup\n")
-    (tmp_path / rustbridge.ENGINE).parent.mkdir(parents=True)
-    (tmp_path / rustbridge.ENGINE).write_text("python\n")
-    old = tmp_path / "BipAgents" / "bridge" / ".venv"
-    old.mkdir(parents=True)
-    runner = hermes.Runner()
-    ran = []
-    runner.run = lambda args, **kw: ran.append(list(args)) or ""
-    monkeypatch.setattr(cli, "venv", lambda folder, runner, requirements="requirements.txt": ran.append(["venv", str(folder)]))
-    restarted = []
-    monkeypatch.setattr(rustbridge, "restart", lambda home: restarted.append(home))
-    monkeypatch.setattr(rustbridge, "browsers_follow", lambda home: restarted.append("browsers"))
-
-    def not_out(home, repo=None, runner=None):
-        raise rustbridge.RustBridgeError("the bridge of this version isn't out yet (HTTPError)")
-    monkeypatch.setattr(rustbridge, "ensure", not_out)
-    with pytest.raises(migrations.NotYet, match="stays on Python"):
-        migrations.rust_bridge(runner, tmp_path)
-    assert "python -m bipbridge" in unit.read_text() and old.exists() and not restarted   # nothing changed
-
-    monkeypatch.setattr(rustbridge, "ensure", lambda home, repo=None, runner=None: rustbridge.binary(home, "abc123def456"))
-    said = migrations.rust_bridge(runner, tmp_path)
-    assert f"ExecStart={rustbridge.binary(tmp_path, 'abc123def456')} serve" in unit.read_text()
-    assert restarted == [tmp_path, "browsers"] and "now runs in Rust (abc123def456)" in said
-    assert ["venv", str(tmp_path / "BipAgents" / "installer")] in ran
-    assert "installer/.venv/bin/python -m bipinstall backup" in (units / "bipagents-backup.service").read_text()
-    assert not old.exists() and not (tmp_path / rustbridge.ENGINE).exists()
-    assert "already ran in Rust" in migrations.rust_bridge(runner, tmp_path)   # again: harmless
 
 
 def test_the_command_line_uses_the_newest_bridge_here_until_this_version_s_is_fetched(tmp_path, monkeypatch):
@@ -237,7 +195,6 @@ def test_a_new_install_takes_the_newest_version_whose_bridge_is_out(tmp_path, mo
 
 def test_an_update_keeps_the_current_bridge_or_waits_for_the_new_one(tmp_path, monkeypatch):
     monkeypatch.setattr(rustbridge, "key", lambda repo=None: "new000000000")
-    monkeypatch.setattr(rustbridge, "python_service", lambda home: False)
     rewritten = []
     monkeypatch.setattr(rustbridge, "rewrite_service", lambda home, run: rewritten.append(run))
     attempts = []

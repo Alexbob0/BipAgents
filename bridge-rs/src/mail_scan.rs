@@ -17,8 +17,6 @@
 //!     POST   /v1/agents/{id}/mail-scan/step            {since, until, max_tokens}
 //!     POST   /v1/agents/{id}/mail-scan/pause | resume      resume: {max_tokens?} a bigger budget
 //!     DELETE /v1/agents/{id}/mail-scan                 the job forgotten (its pages stay)
-//!
-//! Port of `bridge/bipbridge/mail_scan.py` (owner group: tools-knowledge).
 
 use std::collections::{HashMap, HashSet};
 use std::io::Write;

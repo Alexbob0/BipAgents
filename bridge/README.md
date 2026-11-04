@@ -6,8 +6,8 @@ A single program, written in Rust (`bridge-rs/`), that runs on **the server** ne
 serves the BipAgents apps over the tailnet (files: `docs/file-uploads.md`). It replaced the Python bridge
 (`bridge/bipbridge`) on 2026-10-21, with the same routes, files and settings; that one stays in the repository's
 history. This folder holds what goes with it: the config example (`bridge.example.toml`), service files for an
-install by hand (`systemd/`, `launchd/`), the black-box suite that pins its HTTP contract (`tests_blackbox/`) and
-`tools/` (an evaluation script for long work on a real install).
+install by hand (`systemd/`, `launchd/`), and the black-box suite that pins its HTTP contract
+(`tests_blackbox/`).
 
 Today the bridge does everything the apps need beyond Hermes' own API: the Bips' voices and Live calls, files, push
 notifications (directly or through the [push relay](../relay/README.md)), approvals and questions, the Inbox and
@@ -21,12 +21,11 @@ sections below document the original core (voice, files, push, approvals), which
 | Feature | Route | What the bridge does |
 |---|---|---|
 | Per-sentence TTS | `POST /v1/tts/sentence` | normalizes the text (markdown, links), calls the voice engine (Pocket, or your own voice model), returns 24 kHz mono int16 PCM (or Opus/WAV); global FIFO queue + LRU cache |
-| Streaming voice | `WS /v1/voice` | follows a Hermes run (`GET /v1/runs/{id}/events`), splits the deltas into sentences, synthesizes them in order, sends `sentence` (JSON) + audio (binary) |
 | Files | `POST /v1/files` | drops PDF/Excel/text… files into a folder mounted in the Hermes container and returns the path **as seen by the agent** |
 | Push | `POST/DELETE /v1/devices` | registers APNs device tokens (SQLite), sends pushes over HTTP/2 + ES256 JWT token |
-| Proactive messages | `GET /v1/outbox…` | watches each agent's scheduled tasks (and, legacy, its ntfy topic), stores the messages, pre-synthesizes the audio (mp3), pushes `MESSAGE` |
+| Proactive messages | `GET /v1/outbox…` | stores the messages of the agents' routines and background work, pre-synthesizes the audio (mp3), pushes `MESSAGE` |
 | Approvals | `POST /v1/watch`, `POST /v1/approve`, `GET /v1/approvals` | watches a run in the background, pushes `APPROVAL` if nobody is following it, relays the answer to Hermes |
-| Health | `GET /health` | no authentication: version + voice engines/ntfy reachability |
+| Health | `GET /health` | no authentication: version + voice engines' reachability |
 
 The bridge listens **only on `127.0.0.1:8643`**; HTTPS exposure is handled by `tailscale serve`.
 It contains no secrets: everything lives in its config folder (mode 600): `~/.config/bipagents/` when the installer set
@@ -53,7 +52,7 @@ mkdir -p ~/.config/hermes-ios && chmod 700 ~/.config/hermes-ios
 cp bridge/bridge.example.toml ~/.config/hermes-ios/bridge.toml
 chmod 600 ~/.config/hermes-ios/bridge.toml
 ~/.local/bin/bipbridge genkey                  # -> put it in bridge_key (and give it to the app)
-$EDITOR ~/.config/hermes-ios/bridge.toml       # Hermes keys, ntfy tokens, APNs, upload folders
+$EDITOR ~/.config/hermes-ios/bridge.toml       # Hermes keys, APNs, upload folders
 ~/.local/bin/bipbridge check                   # validates the config (rejects CHANGE-ME values)
 
 # 3. Upload folders visible to the agents (Hermes home mounted in the containers)
@@ -76,8 +75,7 @@ sudo tailscale serve --bg --https=8643 http://127.0.0.1:8643
 curl https://server.example.ts.net:8643/health
 ```
 
-Updating: the binaries of the new version (step 1 again), `systemctl --user restart hermes-bridge`. Restarting the bridge does not affect Hermes (no running turn is killed);
-an ongoing voice conversation is simply cut off and the app can `follow` again with `from_seq`.
+Updating: the binaries of the new version (step 1 again), `systemctl --user restart hermes-bridge`. Restarting the bridge does not affect Hermes (no running turn is killed).
 
 ### Permissions on uploaded files (check once)
 
@@ -94,21 +92,6 @@ podman exec hermes-gateway cat /home/hermes/.hermes/profiles/wellness/uploads/<Y
 If the container cannot read them: set `upload_file_mode = "644"` and `upload_dir_mode = "755"` in `[limits]`
 (or a `setfacl` ACL for the mapped UID). Files older than 30 days are purged automatically
 (only those written by the bridge: `YYYY-MM/<12 hex>-<name>`).
-
-### ntfy: read token for the bridge (legacy, optional)
-
-Scheduled tasks reach the Inbox without ntfy (`[cron]`); this is only for installs that still deliver through it.
-
-The bridge **reads** the `hermes-wellness-out` / `hermes-vie-out` topics (where Hermes publishes via `deliver: ntfy`):
-
-```bash
-podman exec -it ntfy ntfy user add bridge
-podman exec -it ntfy ntfy access bridge 'hermes-*-out' read-only
-podman exec -it ntfy ntfy token add bridge        # -> ntfy_token of each agent
-```
-
-The last ntfy id read is stored (SQLite) and sent back as `since=` on reconnection (backoff 0.5 → 8 s):
-no message is lost as long as it is still in the ntfy cache (12 h by default).
 
 ### APNs
 
@@ -127,30 +110,24 @@ file is readable by group or others. Every secret also accepts the `<name>_file 
 |---|---|---|
 | `bridge_key` | — (required) | the app's single Bearer key (≥ 32 chars, `bipbridge genkey`) |
 | `host`, `port` | `127.0.0.1`, `8643` | local listening address |
-| `[kyutai] enabled`, `url`, `default_voice` | `true`, `http://127.0.0.1:8097`, `5476` | legacy: Kyutai 1.6B as an engine of its own. The installer writes `enabled = false` (Pocket only); a Kyutai server is now a `[voice_server]` like any other |
-| `[pocket] url`, `default_voice` | absent (disabled), `pocket:colibri` | Kyutai Pocket TTS (`pocket/`) for the Bips' voices; `default_voice` is the default voice when `[kyutai]` is off |
-| `[voice_server] url`, `model`, `stream_rate`, `voices`, `live`, `replies`, `reading`, `first_audio_seconds` | absent, `tts-1`, none, `[]`, `true` ×3, `5` | the person's own voice model (OpenAI `/v1/audio/speech`), see below; an earlier `[drama] url` counts as one |
+| `[pocket] url`, `default_voice` | `http://127.0.0.1:8098`, `pocket:ours` | Kyutai Pocket TTS (`pocket/`) for the Bips' voices (an old `[kyutai]` section is ignored: a Kyutai server is a `[voice_server]` like any other) |
+| `[voice_server] url`, `model`, `stream_rate`, `voices`, `live`, `replies`, `reading`, `first_audio_seconds` | absent, `tts-1`, none, `[]`, `true` ×3, `5` | the person's own voice model (OpenAI `/v1/audio/speech`), see below |
 | `[pronunciations.<lang>] <word> = "<respelling>"` | none | words the voices say wrong, respelled (whole words, any case) |
-| `[ntfy] url` | `http://127.0.0.1:8645` | |
 | `[apns] team_id, key_id, p8_path, bundle_id, environment` | push disabled if empty | |
 | `[push] previews` | `false` | `false`: generic notification body, the text travels over the tailnet |
-| `[push] watch_followed_runs` | `true` | a run followed in voice mode stays watched (approvals) after the WebSocket closes |
 | `[outbox] db_path, audio_dir, retention_days, audio_max_chars, audio_wait_seconds` | `~/.local/share/hermes-bridge/…`, 90 d, 2000, 8 s | |
 | `[limits] upload_max_mb, upload_retention_days, upload_file_mode, sentence_max_chars, tts_max_chars, watch_max_minutes` | 50, 30, `640`, 180, 1000, 120 | |
-| `[agents.<id>] display_name, hermes_url, hermes_key, ntfy_topic, ntfy_token, upload_dir_host, upload_dir_container, voice` | | lowercase `<id>` = identifier used by the app (`wellness`, `vie`) |
+| `[agents.<id>] display_name, hermes_url, hermes_key, upload_dir_host, upload_dir_container, voice` | | lowercase `<id>` = identifier used by the app (`wellness`, `vie`) |
 
 ## 3. What the iPhone calls
 
 Base: `https://server.example.ts.net:8643`, header `Authorization: Bearer <bridge key>` everywhere except `/health`
-(otherwise 401 + `WWW-Authenticate: Bearer`; WebSocket rejected with 403 / code 1008). The agent identifier is
+(otherwise 401 + `WWW-Authenticate: Bearer`). The agent identifier is
 case-insensitive (`wellness`, `vie`).
 
 - **Launch / Settings**: `GET /health` (status dot), `GET /v1/agents` (agents known to the bridge).
 - **Notifications**: on startup, `POST /v1/devices {token, environment, agent_ids}`; on sign-out
   `DELETE /v1/devices/{token}`.
-- **Voice mode**: after starting the Hermes turn (chat/stream) and noting `run_id`, open `WS /v1/voice`, send
-  `follow`, play each binary message received after its `sentence` header; barge-in: `{"type":"cancel"}` + `POST /v1/runs/{id}/stop`
-  on the Hermes side. Simple variant: `POST /v1/tts/sentence` per sentence.
 - **Going to the background during a run**: `POST /v1/watch {agent, run_id}` → `APPROVAL` push if an approval comes in,
   silent `run_finished` push at the end.
 - **Notification Service Extension**: `MESSAGE` → `GET /v1/outbox/{outbox_id}` + `GET /v1/outbox/{id}/audio` (mp3);
@@ -163,7 +140,7 @@ The detailed contract (exact payloads) is in the next section.
 ## 4. API contract
 
 ### `GET /health` (public)
-`{"ok": true, "version": "0.1.0", "kyutai": bool, "ntfy": bool, "apns": bool, "tts_queue": n}`
+`{"ok": true, "version": "0.1.0", "pocket": bool, "apns": bool, "tts_queue": n}`
 
 ### `GET /v1/agents`
 `{"agents": [{"id": "wellness", "name": "Wellness", "voice": "5476", "uploads": true, "inbox": true}]}`
@@ -188,9 +165,7 @@ is cached. The app uses it in Live and falls back to `/v1/tts/sentence` if the b
 ### Voices and engines
 `voice` (body of the TTS routes, or an agent's `voice` in the config): a `pocket:<name>` voice (`pocket:colibri`,
 `pocket:mousse`, `pocket:lumen`, `pocket:galet`, `pocket:ours`, see `voices/french/`) goes through Kyutai Pocket TTS
-(CPU, `[pocket]` section), with its own queue. Legacy: with `[kyutai]` on, a Kyutai voice (`5476`, `4193`, `5207`, path
-`cml-tts/fr/…`) goes through Kyutai 1.6B (GPU), and a French Pocket failure falls back to it (that audio is not
-cached). `/health` reports `"pocket": true|false|null`. The apps can also speak with the Bips' voices on the phone
+(CPU, `[pocket]` section), with its own queue; an old Kyutai 1.6B voice (`5476`…) speaks with the default Bip. `/health` reports `"pocket": true|false|null`. The apps can also speak with the Bips' voices on the phone
 itself, without the bridge (`voices/onnx/`).
 
 Own voice model: `server:<language>/<id>` (`server:fr/fr-mascotte-s17`, `server:en/af_bella`) goes to `[voice_server]`, any
@@ -199,14 +174,13 @@ An agent has its Bip (`voice`) and its voice there (`server_voice`); `[voice_ser
 which uses go to the server (`voices.rs`: `use` in the TTS routes, the Live WebSocket, the outbox reading). Down,
 failing before the first sound, or too slow for a Live sentence or a spoken reply (no sound `first_audio_seconds`
 after it is sent, plus the text's length for whole files): the agent's Bip speaks, and goes on for 30 s. `GET /v1/voices` lists its voices (from its
-`GET /v1/audio/voices`, Kyutai's `/v1/voices`, else `voices`) and uses; `PUT /v1/voices/uses` and
+`GET /v1/audio/voices`, a Kyutai server's `/v1/voices`, else `voices`) and uses; `PUT /v1/voices/uses` and
 `PUT /v1/agents/{id}/voices` change them in the config file. The voices of an earlier app (`drama:<id>`) go there too.
 
 Other languages: `pocket:<language>/<name>` (`pocket:en/colibri`, `pocket:es/ours`, `pocket:de/galet`, `pocket:nl/lumen`, see
 `voices/english|spanish|german|dutch/`) goes to the Pocket model for that language; the Pocket server receives `voice` =
 `en/colibri`. The text is prepared in the voice's language (`bridge-rs/src/speech_intl.rs`, numbers via `num2words`:
-"$5" → "five dollars", "23:15 Uhr" → "dreiundzwanzig Uhr fünfzehn"). When Pocket fails (and, in French, no
-legacy Kyutai is on), the bridge returns 502/503 and the app reads the text with the phone's own voice.
+"$5" → "five dollars", "23:15 Uhr" → "dreiundzwanzig Uhr fünfzehn"). When Pocket fails, the bridge returns 502/503 and the app reads the text with the phone's own voice.
 
 ### Scheduled tasks and agent files
 - Every minute, the bridge rereads each agent's `cron_…` sessions and puts the final answer of each
@@ -244,28 +218,6 @@ path); the apps show it in a view with no way out. `list_pages`, `read_page` (th
 never served) and `delete_page` complete it; the apps list them with `GET /v1/pages?agent=` and delete one with
 `DELETE /v1/pages/{id}?agent=`.
 
-### `WS /v1/voice`
-Client → server (JSON text):
-- `{"type":"follow","agent":"wellness","run_id":"…","voice"?:"5476","format"?:"pcm16"|"opus"|"wav","from_seq"?:0}`
-  (`from_seq`: resume after reconnection, sentences numbered < `from_seq` are neither synthesized nor resent;
-  a new `follow` cancels the previous one)
-- `{"type":"cancel"}` · `{"type":"ping"}`
-
-Server → client:
-- `{"type":"following","run_id","agent","format","sample_rate":24000,"channels":1}`
-- for each sentence, in order: `{"type":"sentence","seq":n,"text":"…","format","sample_rate","channels","bytes":len}`
-  **immediately followed** by a **binary** message (the sentence's audio, raw PCM16 by default)
-- `{"type":"done","run_id","reason":"completed"|"failed"|"cancelled"|"interrupted"|"error"|"stream_closed"}`
-  (after `cancel`: `{"type":"done","run_id":null,"reason":"cancelled"}` if a follow was active)
-- `{"type":"error","code","message"[,"seq"]}` — codes: `unknown_agent`, `invalid_run_id`, `invalid_format`,
-  `invalid_json`, `run_not_found`, `hermes_refused`, `hermes_unreachable`, `tts_failed` (sentence skipped, the stream continues),
-  `internal` · `{"type":"pong"}`
-
-Splitting: end of sentence `.!?…` followed by whitespace (never `3.5`, nor `M.`/`etc.`/initials/list `1.`), line break,
-or ~180 characters on a word boundary (preferably after a comma). Pending text is also spoken at
-`tool.started` / `approval.request`. Markdown stripped, links → their text, bare URLs removed, code blocks ignored,
-list items terminated with a period. If no delta arrived, the final text of `run.completed` is read.
-
 ### `POST /v1/files` (multipart/form-data: `agent`, `file`)
 200: `{"path": "/home/hermes/.hermes/profiles/wellness/uploads/2026-10/0a1b2c3d4e5f-Releve_oct.pdf",
 "filename": "Releve_oct.pdf", "size": 220512, "content_type": "application/pdf"}`
@@ -290,8 +242,7 @@ invalid environment, `{"detail":{"error":"unknown agent_ids","agent_ids":[…]}}
  "created_at": "2026-10-04T08:15:01.532Z", "sent_at": "2026-10-04T08:15:01.000Z", "session_id": null,
  "has_audio": true, "audio_url": "/v1/outbox/9f3c…/audio"}
 ```
-`created_at` = receipt by the bridge (UTC, ms, fixed format); `sent_at` = ntfy timestamp; `session_id` comes from an
-ntfy `session:<id>` tag if there is one. For pagination, pass the last item's `created_at` back as `since`.
+`created_at` = receipt by the bridge (UTC, ms, fixed format); `sent_at` is null; `session_id` is the conversation it belongs to, if any. For pagination, pass the last item's `created_at` back as `since`.
 
 ### `GET /v1/outbox/{id}` → Item (404 otherwise)
 
@@ -301,9 +252,7 @@ ntfy `session:<id>` tag if there is one. For pagination, pass the last item's `c
 
 ### `POST /v1/watch`
 Body: `{"agent":"wellness","run_id":"…"}` → `{"watching": true, "agent", "run_id", "followers": n, "finished": bool}`.
-The bridge subscribes to the run (a single Hermes subscription per run, shared with the WebSocket, with replay for a late
-follower) for at most `watch_max_minutes`. On `approval.request` with no client attached (voice WebSocket or the
-app's stream): `APPROVAL` push (once per `request_id`). At the end of the run with no client attached: "reply ready" push
+The bridge subscribes to the run (a single Hermes subscription per run, with replay for a late follower) for at most `watch_max_minutes`. On `approval.request` with no client attached (the app's stream): `APPROVAL` push (once per `request_id`). At the end of the run with no client attached: "reply ready" push
 (`run.completed` with a reply, `MESSAGE` category, `kind: "reply"`, `session_id` if known), silent push otherwise.
 
 ### `GET /v1/runs/{run_id}/events?agent=…&session_id=…`
@@ -343,15 +292,10 @@ contains an excerpt of the text (or of the command).
 - **Serialized synthesis**: one request per engine at a time on the bridge side too, served in arrival order; "interactive"
   priority (voice, `/v1/tts/sentence`) ahead of "background" (outbox audio) — a synthesis that has already started is
   never interrupted. A cancelled request (barge-in) leaves the queue. LRU cache (voice, format, normalized text).
-- **Prefetch**: each sentence is queued for synthesis as soon as it is complete; delivery to the client stays in order.
 - **Lenient SSE**: type read from the JSON (`type` or `event`), otherwise from the `event:` line; `: keepalive` ignored;
   text taken from `delta` / `text` / `content`. Text events: `message.delta`, `assistant.delta`.
 - **Logs**: JSON on stdout (journald), never any secret or message text; device tokens truncated;
   no access log (paths contain tokens).
-
-Known limitations: `WS /v1/stt` (server-side STT, v2) is not implemented. If the local bridge → Hermes connection drops
-in the middle of a run and Hermes replays the events on resubscription, a sentence could be repeated
-(unlikely: both are on 127.0.0.1).
 
 ## 6. Development and tests
 
@@ -362,6 +306,6 @@ pip install -r tests_blackbox/requirements.txt                              # Py
 python -m pytest tests_blackbox -q -p no:cacheprovider                      # the HTTP contract (tests_blackbox/README.md)
 ```
 
-Neither calls a real service: Hermes, the voice engines, ntfy, APNs and FCM are fakes (`bridge-rs/tests/common/`,
+Neither calls a real service: Hermes, the voice engines, APNs and FCM are fakes (`bridge-rs/tests/common/`,
 `tests_blackbox/bbkit/`). The Rust tests were ported from the Python bridge's, and its golden fixtures
-(`bridge-rs/tests/golden/`) were made by running the Python code: their `gen_*.py` need that bridge, from the history.
+(`bridge-rs/tests/golden/`) were made by running the Python code: they are frozen (their generators left with it).

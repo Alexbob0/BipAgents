@@ -1,4 +1,4 @@
-//! souls against the Python's own results (tests/golden/souls.json, made by gen_souls.py).
+//! souls against the Python's own results (tests/golden/souls.json, frozen: made by the retired Python bridge).
 
 use bipbridge::souls;
 use serde_json::{json, Value};

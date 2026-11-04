@@ -67,4 +67,3 @@ def test_the_examples_match_the_bridge(bridges, fakes):
     check("push-reply-v2", fakes.apns.payloads()[0])
     check("notifications", get("/v1/notifications", agent="wellness"))
     check("notifications-unread", get("/v1/notifications/unread"))
-    check("notifications-rules", get("/v1/notifications/rules"))

@@ -32,8 +32,8 @@ solo programa en Rust, `bipbridge`). Esta página recoge lo que añade, área po
 
 ## El móvil primero
 
-- **Voz.** `voice_ws.rs` sigue una ejecución de Hermes y envía una frase sintetizada cada vez; `textproc.rs` corta el
-  markdown en frases a medida que llega; `tts.rs` organiza los motores (Pocket TTS en CPU, o el servidor de voz propio
+- **Voz.** `live_calls.rs` lleva las llamadas Live; `textproc.rs` corta el
+  markdown en frases; `tts.rs` organiza los motores (Pocket TTS en CPU, o el servidor de voz propio
   de la persona); `voices.rs` da a cada agente su voz. El texto se prepara para hablar: `numbers_fr.rs`,
   `speech_intl.rs` (inglés, español, alemán, neerlandés), `durations.rs`, `pronounce.rs`, `pronunciations.rs`.
 - **Llamadas Live.** `live_brief.rs` empieza una llamada con un breve resumen de la conversación en lugar de 100k
@@ -46,9 +46,8 @@ solo programa en Rust, `bipbridge`). Esta página recoge lo que añade, área po
   curso (el steer de Hermes, tras sus llamadas a herramientas del momento); « Después » lo guarda en la cola del agente, en
   el puente, igual en todos los dispositivos, lanzado como siguiente turno al terminar (orden, quitar, enviar ahora,
   pausa), una sola notificación al final.
-- **Nada se pierde.** `ntfy.rs` y `cronwatch.rs` guardan los mensajes de los agentes y la respuesta de cada rutina en
-  una bandeja de salida (`store.rs`), con el audio listo; `restore_reconcile.rs` recupera tras una restauración los
-  mensajes que guardaron los móviles.
+- **Nada se pierde.** `outbox.rs` y `cronwatch.rs` guardan los mensajes de los agentes y la respuesta de cada rutina en
+  una bandeja de salida (`store.rs`), con el audio listo.
 - **Llegar a casa.** Por Tailscale, o `lan.rs`: una puerta HTTPS fijada en la red local cuando falla Internet.
   `device_keys.rs` da a cada dispositivo su clave; `guard.rs` cuenta las claves erróneas; `console.rs` es la consola
   web.
@@ -180,7 +179,6 @@ los aplica.
 | 0010 respuestas vacías | las llamadas a herramientas que un modelo escribe como texto se vuelven llamadas reales; los reintentos cambian la petición |
 | 0011 títulos con GLM | GLM responde vacío a las llamadas sin razonamiento, así que los títulos piden razonamiento « low » |
 | 0013 resultados MCP: contraseñas de la caja fuerte borradas | una contraseña nunca vuelve al modelo por el resultado de una herramienta |
-| 0014 resultados de rutinas en UTF-8 simple | los acentos siguen legibles en los resultados de las rutinas |
 | 0015 ancla temporal | la hora actual viaja con cada mensaje |
 | 0016 un solo `message_agent`, el del bridge | todo mensaje entre agentes pasa por los controles del bridge |
 | 0017 elementos de dirección | las direcciones de la caja fuerte llevan nombre, teléfono y correo |
@@ -194,7 +192,7 @@ los aplica.
 más reciente es un rebase de esa rama y una nueva `BASE`. Un parche desaparece en cuanto Hermes hace lo mismo: 0001
 (clarify en la API Runs) y 0004 (imágenes guardadas para preguntas posteriores) se fueron cuando v0.22.5 trajo los
 suyos. 0005 está propuesto upstream (NousResearch/hermes-agent#136660); los parches pequeños y generales (la
-corrección de 0008, 0009, 0011, 0013, 0014, 0017, las etiquetas de 0019) son los siguientes candidatos. Detalle de
+corrección de 0008, 0009, 0011, 0013, 0017, las etiquetas de 0019) son los siguientes candidatos. Detalle de
 cada parche: [`hermes/patches/README.md`](../hermes/patches/README.md).
 
 ## Lo que dejamos a propósito a Hermes

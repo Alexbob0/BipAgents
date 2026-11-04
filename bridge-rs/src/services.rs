@@ -3,8 +3,6 @@
 //! Written into the agent's profile by the one writer of profile files (profile_files.rs), which its gateway
 //! re-reads within about a minute: no restart. A token goes to the profile's .env (0600) and the config only
 //! refers to it (`Bearer ${MCP_<NAME>_API_KEY}`), so it never appears on a command line or in config.yaml.
-//!
-//! Port of `bridge/bipbridge/services.py` (owner group: agents).
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};

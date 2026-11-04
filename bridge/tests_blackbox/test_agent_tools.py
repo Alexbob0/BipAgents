@@ -87,10 +87,10 @@ def test_an_agent_turns_a_text_into_audio_with_its_voice(bridge, fakes):
                         result["content"][0]["text"]), result
     media = media_of(result)
     # Read with the agent's reading voice, one paragraph at a time, in the background queue.
-    assert [body["voice"] for body in fakes.kyutai.inputs] == ["4193", "4193"]
-    assert [body["input"] for body in fakes.kyutai.inputs] == ["Bonjour et bienvenue dans ce podcast.",
+    assert [body["voice"] for body in fakes.pocket.inputs] == ["colibri", "colibri"]
+    assert [body["input"] for body in fakes.pocket.inputs] == ["Bonjour et bienvenue dans ce podcast.",
                                                               "Voici les nouvelles du jour."]
-    assert all(body["response_format"] == "wav" for body in fakes.kyutai.inputs)
+    assert all(body["response_format"] == "wav" for body in fakes.pocket.inputs)
     # Encoded by ffmpeg (here the fake, which copies its input): its arguments, and the AI mark in the file.
     mark = f"AI-generated: synthetic voice by the AI agent Wellness (BipAgents). digitalsourcetype={AI_SOURCE}"
     ffmpeg = bridge.commands.of("ffmpeg")[0]
@@ -144,7 +144,7 @@ def test_a_long_call_is_streamed_and_errors_are_the_tools_not_the_protocols(brid
     assert empty == {"content": [{"type": "text", "text": "the text is empty"}], "isError": True}
     only_media = call(bridge, "create_audio", {"text": "MEDIA:/tmp/x.mp3"})
     assert only_media["content"][0]["text"] == "nothing to read once MEDIA: lines are removed"
-    fakes.kyutai.status = 500
+    fakes.pocket.status = 500
     failed = call(bridge, "create_audio", {"text": "Autre phrase."})
     assert failed["isError"] is True and failed["content"][0]["text"].startswith("the voice failed (")
 
@@ -152,7 +152,7 @@ def test_a_long_call_is_streamed_and_errors_are_the_tools_not_the_protocols(brid
 def test_a_podcast_gives_each_host_a_voice_of_their_own(bridge, fakes):
     give_token(bridge)
     listed = call(bridge, "list_voices", {})
-    assert listed["content"][0]["text"].splitlines() == ["4193 (your voice)", "pocket:colibri (Bip)", "pocket:galet (Bip)",
+    assert listed["content"][0]["text"].splitlines() == ["pocket:colibri (your voice)", "pocket:galet (Bip)",
                                                          "pocket:lumen (Bip)", "pocket:mousse (Bip)", "pocket:ours (Bip)"]
     turns = [{"speaker": "Max", "text": "Bonjour à tous, bienvenue."},
              {"speaker": "Léa", "text": "Salut Max ! Alors, quoi de neuf ?"},
@@ -160,13 +160,12 @@ def test_a_podcast_gives_each_host_a_voice_of_their_own(bridge, fakes):
     result = call(bridge, "create_podcast", {"title": "Le point", "turns": turns})
     assert result["isError"] is False
     text = result["content"][0]["text"]
-    assert text.endswith("Voices:\n- Max: 4193\n- Léa: pocket:colibri") and "-le-point.m4a" in text
+    assert text.endswith("Voices:\n- Max: pocket:colibri\n- Léa: pocket:galet") and "-le-point.m4a" in text
     # The first host with the agent's voice, the other with another one; turns read in order.
-    assert [body["voice"] for body in fakes.kyutai.inputs] == ["4193", "4193"]
-    assert [body["voice"] for body in fakes.pocket.inputs] == ["colibri"]
+    assert [body["voice"] for body in fakes.pocket.inputs] == ["colibri", "galet", "colibri"]
     # A voice picked by the agent, from list_voices; an unknown one is refused.
-    picked = call(bridge, "create_podcast", {"turns": turns, "voices": {"Léa": "pocket:galet"}})
-    assert picked["isError"] is False and fakes.pocket.inputs[-1]["voice"] == "galet"
+    picked = call(bridge, "create_podcast", {"turns": turns, "voices": {"Léa": "pocket:lumen"}})
+    assert picked["isError"] is False and fakes.pocket.inputs[-1]["voice"] == "lumen"
     assert "-podcast.m4a" in picked["content"][0]["text"]
     bad = call(bridge, "create_podcast", {"turns": turns, "voices": {"Léa": "pocket:dragon"}})
     assert bad["isError"] is True and "unknown voice" in bad["content"][0]["text"]

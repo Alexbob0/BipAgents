@@ -5,8 +5,6 @@
 //! - `GET  /v1/voices`                  -> the server's voices (the app shows them as « Voix 1, Voix 2… ») and its uses
 //! - `PUT  /v1/voices/uses`             `{"live": true, "replies": false, "reading": true}`
 //! - `PUT  /v1/agents/{id}/voices`      `{"voice": "pocket:galet", "server_voice": "server:fr/af_bella"}`
-//!
-//! Port of `bridge/bipbridge/voices.py` (owner group: voice-speech).
 
 use axum::extract::{Path, State};
 use axum::response::Response;
@@ -61,12 +59,8 @@ pub fn bip_in(voice: &str, lang: &str) -> String {
 }
 
 /// The voice of an agent nobody picked one for: its category's Bip in the language it writes in (2026-10-30: the
-/// agents of an English place spoke with the French Bips, the default `pocket:ours`). An install whose default is
-/// not a Bip (a Kyutai voice) keeps it.
+/// agents of an English place spoke with the French Bips, the default `pocket:ours`).
 pub fn default_for(config: &Config, agent: &AgentConfig) -> String {
-    if !config.default_voice.starts_with(crate::tts::POCKET_PREFIX) {
-        return config.default_voice.clone();
-    }
     let bip = format!("{}{}", crate::tts::POCKET_PREFIX, category_bip(agent.category.as_deref()));
     bip_in(&bip, &crate::handback::language_of(config, agent))
 }

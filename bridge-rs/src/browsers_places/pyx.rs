@@ -8,35 +8,7 @@ use hmac::{Hmac, Mac};
 use serde_json::Value;
 use sha2::Sha256;
 
-/// `str.isspace()` for one character.
-pub fn is_space(c: char) -> bool {
-    matches!(
-        c,
-        '\t' | '\n'
-            | '\u{0b}'
-            | '\u{0c}'
-            | '\r'
-            | '\u{1c}'
-            | '\u{1d}'
-            | '\u{1e}'
-            | '\u{1f}'
-            | ' '
-            | '\u{85}'
-            | '\u{a0}'
-            | '\u{1680}'
-            | '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{3000}'
-    )
-}
-
-/// `text.strip()`.
-pub fn strip(text: &str) -> &str {
-    text.trim_matches(is_space)
-}
-
-/// `text[:n]` (code points).
-pub fn head(text: &str, n: usize) -> String {
-    text.chars().take(n).collect()
-}
+pub use crate::voice_speech::pystr::{head, is_space, strip};
 
 /// `text[-n:]` (code points).
 pub fn tail(text: &str, n: usize) -> String {

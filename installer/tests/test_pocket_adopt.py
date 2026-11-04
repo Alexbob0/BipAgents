@@ -197,10 +197,3 @@ def test_a_pocket_with_every_language_gets_dutch_once_its_states_are_there(tmp_p
     assert voices.with_new_languages(["fr"]) == ["fr"]
 
 
-def test_the_migration_names_the_account_and_the_command(monkeypatch):
-    from bipinstall import migrations
-    monkeypatch.setenv("USER", "aibox")
-    said = migrations.pocket_not_yet("http://127.0.0.1:8098", "3.3.0", "4.0.1", owner="aibox")
-    assert "still Pocket 3.3.0" in said and "`bipagents update` from the account « aibox » (this one)" in said
-    assert "Pocket 4.0.1" in said and "bipagents-pocket" in said
-    assert "« alex »" in migrations.pocket_not_yet("u", None, "4.0.1", owner="alex")

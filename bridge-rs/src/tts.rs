@@ -1,13 +1,10 @@
-//! TTS client (Kyutai 1.6B, optional Kyutai Pocket TTS, optional voice server of the person's own: Fish Audio Drama 3,
-//! Kokoro…): FIFO scheduler per engine, WAV -> PCM16 conversion, resampling to 24 kHz, small LRU cache.
+//! TTS client (Kyutai Pocket TTS for the Bips, optional voice server of the person's own: Fish Audio Drama 3,
+//! Kokoro, Kyutai…): FIFO scheduler per engine, WAV -> PCM16 conversion, resampling to 24 kHz, small LRU cache.
 //!
-//! Kyutai (`context/kyutai_server.py`) serializes synthesis behind a global lock and returns whole
-//! files. The bridge mirrors that with its own queue so requests reach Kyutai strictly in arrival
-//! order (FIFO), interactive requests (voice sentences, `/v1/tts/sentence`) ahead of background ones
-//! (outbox pre-synthesis), and a cancelled waiter simply leaves the queue.
-//!
-//! Port of `bridge/bipbridge/tts.py` (owner group: voice-speech). The resampling is a windowed-sinc filter of our
-//! own (Python uses soxr's HQ): the same lengths and a clean signal, not the same samples.
+//! Each engine generates one thing at a time: the bridge keeps its own queue per engine so requests reach it in
+//! arrival order (FIFO), interactive requests (Live sentences, `/v1/tts/sentence`) ahead of background ones (outbox
+//! pre-synthesis), and a cancelled waiter simply leaves the queue. The resampling is a windowed-sinc filter of our
+//! own: the same lengths as soxr's and a clean signal, not the same samples.
 
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
@@ -23,8 +20,7 @@ use serde_json::{json, Value};
 
 use crate::config::VoiceServerConfig;
 use crate::hermes::httpx_error_name;
-use crate::numbers_fr::prepare_for_synthesis_with;
-use crate::pronounce::Spelling;
+use crate::numbers_fr::prepare_for_synthesis;
 use crate::pronunciations::Lexicon;
 use crate::speech_intl;
 use crate::textproc::{normalize_for_speech, strip_emoji};
@@ -34,7 +30,7 @@ use crate::voice_speech::pystr;
 pub const INTERACTIVE: u8 = 0;
 pub const BACKGROUND: u8 = 1;
 
-/// client format -> (Kyutai response_format, content type)
+/// client format -> (the engine's response_format, content type)
 pub const FORMATS: [(&str, &str, &str); 4] = [
     ("pcm16", "wav", "application/octet-stream"),
     ("wav", "wav", "audio/wav"),
@@ -52,13 +48,10 @@ fn content_type_of(fmt: &str) -> &'static str {
 }
 
 pub const POCKET_PREFIX: &str = "pocket:";
-/// The Pocket packages a phone has when it doesn't say (`engine` in /v1/tts/prepare): the apps from before 2026-10-25
-/// don't, and they have the 3.3.0 packages.
-const PHONE_POCKET_DEFAULT: &str = "3.3.0";
 pub const SERVER_PREFIX: &str = "server:";
 /// A voice server's voice, as an earlier app named the Drama 3 ones (`drama:fr-mascotte-s17`).
 pub const DRAMA_PREFIX: &str = "drama:";
-/// What the app plays (and Kyutai, Pocket produce).
+/// What the app plays (and Pocket produces).
 pub const OUTPUT_RATE: u32 = 24000;
 pub const CHARS_PER_SECOND: f64 = 15.0;
 /// After a missed deadline, how long the Bips speak instead of the voice server.
@@ -232,7 +225,7 @@ fn clamp_unit(x: f64) -> f64 {
 /// int16 PCM. Returns `(pcm, sample_rate, channels)`.
 pub fn wav_to_pcm16(data: &[u8]) -> Result<(Vec<u8>, u32, u16), TtsError> {
     if data.len() < 12 || &data[..4] != b"RIFF" || &data[8..12] != b"WAVE" {
-        return Err(TtsError::upstream("Kyutai returned something that is not a WAV file"));
+        return Err(TtsError::upstream("the engine returned something that is not a WAV file"));
     }
     // A truncated chunk header is Python's struct.error: an uncaught exception there (a 500 for the route).
     let truncated = || TtsError::new("Internal Server Error", 500);
@@ -336,8 +329,18 @@ impl Audio {
     }
 }
 
+/// A text as a Bip reads it on the phone (Pocket 4: the raw words), without the server's own lexicon.
+pub fn spoken_text(text: &str, lang: &str) -> String {
+    let clean = normalize_for_speech(&strip_emoji(text), 180, true);
+    if lang == "fr" {
+        crate::numbers_fr::prepare_for_synthesis(&clean)
+    } else {
+        speech_intl::prepare_for_synthesis(&clean, lang)
+    }
+}
+
 /// `pocket:en/colibri` -> `en`, `server:en/af_bella` -> `en`, `drama:en-naturelle-s47` -> `en`; French for
-/// `pocket:colibri` and Kyutai voices.
+/// `pocket:colibri` and any other voice.
 pub fn voice_language(voice: &str) -> String {
     for prefix in [POCKET_PREFIX, SERVER_PREFIX] {
         if let Some(rest) = voice.strip_prefix(prefix) {
@@ -562,7 +565,7 @@ impl Resampler {
 
 // -- the service ---------------------------------------------------------------------------------
 
-/// A TTS server: Kyutai, Pocket, or the person's own voice server.
+/// A TTS server: Pocket, or the person's own voice server.
 pub struct Engine {
     pub name: String,
     pub url: String,
@@ -572,7 +575,6 @@ pub struct Engine {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Which {
-    Kyutai,
     Pocket,
     Server,
 }
@@ -585,8 +587,6 @@ pub struct TtsOptions {
     pub max_chars: usize,
     pub sentence_max_chars: usize,
     pub pocket_url: Option<String>,
-    /// The server's Pocket version (« 4 », « 3.3.0 »): see `Spelling::for_engine`.
-    pub pocket_engine: String,
     pub voice_server: Option<VoiceServerConfig>,
     pub words: IndexMap<String, IndexMap<String, String>>,
 }
@@ -599,7 +599,6 @@ impl Default for TtsOptions {
             max_chars: 1000,
             sentence_max_chars: 180,
             pocket_url: None,
-            pocket_engine: "3.3.0".into(),
             voice_server: None,
             words: IndexMap::new(),
         }
@@ -617,24 +616,18 @@ pub struct SynthOptions {
 
 type CacheKey = (String, String, String);
 
-/// Kyutai TTS 1.6B (GPU) plus, optionally, Kyutai Pocket TTS (CPU) for the Bips' voices.
+/// Kyutai Pocket TTS (CPU) for the Bips' voices, and the person's own voice server.
 ///
 /// A voice named `pocket:<name>` (e.g. `pocket:colibri`) goes to Pocket in French, `pocket:<lang>/<name>`
 /// (`en`, `es`, `de`) to Pocket's model for that language; `server:<lang>/<id>` (or an earlier app's
-/// `drama:<id>`) to the person's voice server; any other voice to Kyutai. Each engine has its own FIFO queue (they
-/// run on different hardware, and each generates one thing at a time). When Pocket is not configured, down or
-/// failing before its first audio, a French request falls back to Kyutai's default voice (that audio is not
-/// cached); another language fails instead, so the app reads it with the iPhone's voice in the right language.
-/// When the voice server is not configured or fails before its first audio, a Pocket Bip of the same language stands
-/// in.
+/// `drama:<id>`) to the person's voice server; any other voice (an old Kyutai 1.6B one) to the default Bip. Each
+/// engine has its own FIFO queue. When Pocket fails, the request fails (502/503), so the app reads it with the
+/// phone's voice in the right language. When the voice server is not configured or fails before its first audio, a
+/// Pocket Bip of the same language stands in.
 pub struct TtsService {
     pub client: reqwest::Client,
-    pub base_url: String,
     pub default_voice: String,
     pub options: TtsOptions,
-    pub scheduler: Arc<FifoScheduler>,
-    /// None: Pocket only (no GPU); then the default voice is a Pocket one and nothing falls back to Kyutai.
-    pub kyutai: Option<Engine>,
     pub pocket: Option<Engine>,
     pub server: Option<Engine>,
     pub words: Lexicon,
@@ -646,15 +639,7 @@ pub struct TtsService {
 }
 
 impl TtsService {
-    pub fn new(client: reqwest::Client, base_url: Option<&str>, default_voice: &str, options: TtsOptions) -> Self {
-        let base_url = base_url.unwrap_or("").trim_end_matches('/').to_string();
-        let scheduler = Arc::new(FifoScheduler::default());
-        let kyutai = (!base_url.is_empty()).then(|| Engine {
-            name: "kyutai".into(),
-            url: base_url.clone(),
-            scheduler: scheduler.clone(),
-            health_path: "/health".into(),
-        });
+    pub fn new(client: reqwest::Client, default_voice: &str, options: TtsOptions) -> Self {
         let pocket = options.pocket_url.as_ref().filter(|u| !u.is_empty()).map(|url| Engine {
             name: "pocket".into(),
             url: url.trim_end_matches('/').to_string(),
@@ -670,11 +655,8 @@ impl TtsService {
         let words = Lexicon::new(&options.words);
         TtsService {
             client,
-            base_url,
             default_voice: default_voice.to_string(),
             options,
-            scheduler,
-            kyutai,
             pocket,
             server,
             words,
@@ -691,7 +673,6 @@ impl TtsService {
 
     fn engine(&self, which: Which) -> &Engine {
         match which {
-            Which::Kyutai => self.kyutai.as_ref(),
             Which::Pocket => self.pocket.as_ref(),
             Which::Server => self.server.as_ref(),
         }
@@ -710,33 +691,17 @@ impl TtsService {
                 return Ok((Which::Pocket, name.to_string()));
             }
             tracing::warn!(voice = %voice, "pocket voice requested but pocket is not configured");
-            if voice_language(voice) != "fr" || self.kyutai.is_none() {
-                return Err(TtsError::new("pocket is not configured", 503));
-            }
-            return Ok((Which::Kyutai, self.default_voice.clone()));
+            return Err(TtsError::new("pocket is not configured", 503));
         }
-        if self.kyutai.is_none() {
-            if !self.default_voice.starts_with(POCKET_PREFIX) {
-                return Err(TtsError::new("kyutai is not configured", 503));
-            }
-            return self.route(&self.default_voice.clone()); // a Kyutai voice asked for, no Kyutai here: the default Bip
+        if !self.default_voice.starts_with(POCKET_PREFIX) {
+            return Err(TtsError::new(format!("no engine for the voice {voice}"), 503));
         }
-        Ok((Which::Kyutai, voice.to_string()))
+        self.route(&self.default_voice.clone()) // an old Kyutai 1.6B voice: the default Bip
     }
 
     /// Pocket phrases the text itself (a pause per sentence, longer between lines): keep the line breaks.
     fn paragraphs(&self, voice: &str) -> bool {
         voice.starts_with(POCKET_PREFIX) && self.pocket.is_some()
-    }
-
-    /// Respelled names only for this server's Pocket when it is the old engine (< 4); every other engine reads the
-    /// raw text.
-    fn spelling(&self, voice: &str) -> Spelling {
-        if voice.starts_with(POCKET_PREFIX) && self.pocket.is_some() {
-            Spelling::for_engine(Some(&self.options.pocket_engine))
-        } else {
-            Spelling::Raw
-        }
     }
 
     fn cache_get(&self, key: &CacheKey) -> Option<Audio> {
@@ -765,7 +730,6 @@ impl TtsService {
         max_chars: Option<usize>,
         language: &str,
         paragraphs: bool,
-        spelling: Spelling,
     ) -> Result<String, TtsError> {
         let text = strip_emoji(text); // never read out, and Pocket stumbles on them
         let clean = if normalized {
@@ -773,12 +737,11 @@ impl TtsService {
         } else {
             normalize_for_speech(&text, self.options.sentence_max_chars, paragraphs)
         };
-        let clean = self.words.apply(&clean, language); // « Garmin » as it is said, before numbers and CamelCase
-                                                        // names respelled, numbers in words, parentheses as pauses
+        let clean = self.words.apply(&clean, language); // « Garmin » as it is said, before numbers
         let clean = if language == "fr" {
-            prepare_for_synthesis_with(&clean, spelling)
+            prepare_for_synthesis(&clean)
         } else {
-            speech_intl::prepare_for_synthesis_with(&clean, language, spelling)
+            speech_intl::prepare_for_synthesis(&clean, language)
         };
         if clean.is_empty() {
             return Err(TtsError::new("empty text after normalization", 400));
@@ -798,7 +761,6 @@ impl TtsService {
         text: &str,
         voice: Option<&str>,
         max_chars: Option<usize>,
-        engine: Option<&str>,
     ) -> Result<Option<(String, String, String)>, TtsError> {
         let voice = voice.filter(|v| !v.is_empty()).unwrap_or(&self.default_voice);
         let Some(rest) = voice.strip_prefix(POCKET_PREFIX) else {
@@ -806,9 +768,7 @@ impl TtsService {
         };
         let language = voice_language(voice);
         let bip = rest.rsplit('/').next().unwrap_or(rest).to_string();
-        // The phone's own Pocket package: until the apps say which (`engine`), they have the 3.3.0 packages.
-        let spelling = Spelling::for_engine(Some(engine.unwrap_or(PHONE_POCKET_DEFAULT)));
-        Ok(Some((self.prepare(text, false, max_chars, &language, true, spelling)?, language, bip)))
+        Ok(Some((self.prepare(text, false, max_chars, &language, true)?, language, bip)))
     }
 
     /// Seconds an interactive request waits for the voice server's first sound once it is sent (not its turn in
@@ -861,7 +821,6 @@ impl TtsService {
             options.max_chars,
             &language,
             self.paragraphs(&voice),
-            self.spelling(&voice),
         )?;
         let key: CacheKey = (voice.clone(), fmt.to_string(), clean.clone());
         if let Some(hit) = self.cache_get(&key) {
@@ -909,7 +868,7 @@ impl TtsService {
                 }
             };
         }
-        let attempts = if which == Which::Pocket { POCKET_ATTEMPTS } else { 1 };
+        let attempts = POCKET_ATTEMPTS;
         let mut audio = None;
         for attempt in 1..=attempts {
             let result = async {
@@ -928,24 +887,15 @@ impl TtsService {
                     break;
                 }
                 Err(exc) => {
-                    if which == Which::Pocket && language != "fr" && exc.status < 500 {
+                    if language != "fr" && exc.status < 500 {
                         // e.g. this language's voices are not installed: 503 so the app reads it with the iPhone's voice
                         return Err(TtsError::new(format!("pocket {language} voice unavailable: {exc}"), 503));
                     }
-                    if which == Which::Kyutai || exc.status < 500 {
+                    if exc.status < 500 || attempt >= attempts {
                         return Err(exc);
                     }
-                    if attempt < attempts {
-                        tracing::info!(error = %exc, "pocket failed, retrying");
-                        tokio::time::sleep(Duration::from_secs_f64(POCKET_RETRY_DELAY)).await;
-                        continue;
-                    }
-                    if language != "fr" || self.kyutai.is_none() {
-                        return Err(exc);
-                    }
-                    tracing::warn!(error = %exc, text = %pystr::head(&clean, 60), "pocket failed, falling back to kyutai");
-                    let _slot = self.engine(Which::Kyutai).scheduler.slot(priority).await;
-                    return self.call_engine(Which::Kyutai, &clean, &self.default_voice, fmt).await;
+                    tracing::info!(error = %exc, "pocket failed, retrying");
+                    tokio::time::sleep(Duration::from_secs_f64(POCKET_RETRY_DELAY)).await;
                 }
             }
         }
@@ -955,7 +905,7 @@ impl TtsService {
     }
 
     /// PCM16 mono 24 kHz chunks as the engine produces them (`POST /v1/audio/stream`): the first
-    /// audio arrives after ~0.75 s with Kyutai, ~0.1 s with Pocket, instead of after the whole text.
+    /// audio arrives after ~0.1 s with Pocket, instead of after the whole text.
     /// Validation errors and an engine failure before the first chunk are the stream's first item (Python raises
     /// `TtsError`); an engine without the streaming route (404/405) falls back to one whole-file synthesis. Only a
     /// complete stream is cached.
@@ -973,7 +923,7 @@ impl TtsService {
         let relay = relay.filter(|r| !r.is_empty()).map(str::to_string);
         async_stream::stream! {
             let language = voice_language(&voice);
-            let clean = match this.prepare(&text, false, max_chars, &language, this.paragraphs(&voice), this.spelling(&voice)) {
+            let clean = match this.prepare(&text, false, max_chars, &language, this.paragraphs(&voice)) {
                 Ok(clean) => clean,
                 Err(e) => { yield Err(e); return; }
             };
@@ -1041,7 +991,7 @@ impl TtsService {
                 }
                 return;
             }
-            let attempts = if which == Which::Pocket { POCKET_ATTEMPTS } else { 1 };
+            let attempts = POCKET_ATTEMPTS;
             for attempt in 1..=attempts {
                 let mut failed: Option<TtsError> = None;
                 {
@@ -1060,34 +1010,17 @@ impl TtsService {
                 if !received.is_empty() {
                     return; // cut mid-stream: the client keeps what it already played, nothing is cached
                 }
-                if which == Which::Pocket && language != "fr" && exc.status < 500 {
+                if language != "fr" && exc.status < 500 {
                     yield Err(TtsError::new(format!("pocket {language} voice unavailable: {exc}"), 503));
                     return;
                 }
-                if which == Which::Kyutai || exc.status < 500 {
+                if exc.status < 500 || attempt >= attempts {
                     yield Err(exc);
                     return;
                 }
-                if attempt < attempts {
-                    // Usually busy finishing a cancelled request (one generation at a time): try once more.
-                    tracing::info!(error = %exc, "pocket stream failed, retrying");
-                    tokio::time::sleep(Duration::from_secs_f64(POCKET_RETRY_DELAY)).await;
-                    continue;
-                }
-                if language != "fr" || this.kyutai.is_none() {
-                    yield Err(exc);
-                    return;
-                }
-                tracing::warn!(error = %exc, text = %pystr::head(&clean, 60), "pocket stream failed, falling back to kyutai");
-                let mut chunks = this.stream_engine(Which::Kyutai, clean.clone(), this.default_voice.clone(), priority);
-                while let Some(item) = chunks.next().await {
-                    let stop = item.is_err();
-                    yield item;
-                    if stop {
-                        return;
-                    }
-                }
-                return;
+                // Usually busy finishing a cancelled request (one generation at a time): try once more.
+                tracing::info!(error = %exc, "pocket stream failed, retrying");
+                tokio::time::sleep(Duration::from_secs_f64(POCKET_RETRY_DELAY)).await;
             }
             if !received.is_empty() {
                 this.cache_put(key, Audio::new(received, content_type_of("pcm16"), "pcm16"));
@@ -1353,8 +1286,8 @@ impl TtsService {
         Ok(Audio { sample_rate: OUTPUT_RATE, channels: 1, ..Audio::new(pcm, content_type_of("pcm16"), "pcm16") })
     }
 
-    /// The voice server's voices, in its order: `GET /v1/audio/voices` (audio.cpp, Kokoro), Kyutai's
-    /// `GET /v1/voices`, else the ones its config lists. Kept a few minutes.
+    /// The voice server's voices, in its order: `GET /v1/audio/voices` (audio.cpp, Kokoro), a Kyutai
+    /// server's `GET /v1/voices`, else the ones its config lists. Kept a few minutes.
     pub async fn server_voices(&self, max_age: f64) -> Vec<String> {
         let Some(server) = self.voice_server() else {
             return Vec::new();
@@ -1435,9 +1368,9 @@ impl TtsService {
         Ok(Audio::new(content, content_type, fmt))
     }
 
-    /// Whether the engine (Kyutai when None) answers its health route; None when it is not configured.
+    /// Whether the engine answers its health route; None when it is not configured.
     pub async fn reachable(&self, engine: Option<&Engine>) -> Option<bool> {
-        let engine = engine.or(self.kyutai.as_ref())?;
+        let engine = engine?;
         match self
             .client
             .get(format!("{}{}", engine.url, engine.health_path))
@@ -1468,6 +1401,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn spoken_text_reads_as_a_bip_on_the_phone() {
+        assert_eq!(spoken_text("Rendez-vous à **9h30** 🎉", "fr"), "Rendez-vous à neuf heures trente.");
+        assert_eq!(spoken_text("See you at 5.", "en"), "See you at five.");
+    }
 
     fn tone(seconds: f64, rate: u32) -> Vec<u8> {
         let n = (seconds * rate as f64) as usize;

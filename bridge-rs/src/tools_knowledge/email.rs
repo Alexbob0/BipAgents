@@ -1,4 +1,4 @@
-//! Python's `email` package as mailbox.py and mail_scan.py use it with `policy.default`: header values read as its
+//! Python's `email` package as mailbox.rs and mail_scan.rs use it with `policy.default`: header values read as its
 //! header registry gives them (unfolded, RFC 2047 words decoded, addresses and dates written again its way),
 //! `email.header.decode_header` + `make_header`, `utils.parsedate_to_datetime` / `format_datetime` / `formatdate` /
 //! `make_msgid`, `imaplib.Time2Internaldate`, the walk over a message's parts (mail-parser underneath), and the draft

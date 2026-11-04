@@ -1,6 +1,4 @@
-//! `python -m bipbridge [serve|check|genkey|qr|peer-token|browser]` → `bipbridge <the same>`.
-//!
-//! Port of `bridge/bipbridge/__main__.py` (core group): the same commands, options, messages and exit codes; `serve`
+//! `bipbridge [serve|check|genkey|qr|peer-token|browser]`: `serve`
 //! runs the main listener (and the LAN door over HTTPS when it is on) until SIGTERM / Ctrl-C, then stops: event
 //! streams closed at once, requests under way given `STOP_DRAIN`, the services `STOP_SERVICES`, and the process gone
 //! after `STOP_HARD` whatever still runs.
@@ -206,6 +204,20 @@ pub fn parse_args(argv: &[String]) -> Result<Args, ArgsExit> {
     Ok(args)
 }
 
+fn speech_text(lang: &str) -> i32 {
+    let mut input = String::new();
+    let texts = std::io::Read::read_to_string(&mut std::io::stdin(), &mut input)
+        .ok()
+        .and_then(|_| serde_json::from_str::<Vec<String>>(&input).ok());
+    let Some(texts) = texts else {
+        eprintln!("bipbridge: speech-text: a JSON list of texts on stdin");
+        return 2;
+    };
+    let spoken: Vec<String> = texts.iter().map(|t| crate::tts::spoken_text(t, lang)).collect();
+    println!("{}", serde_json::to_string(&spoken).unwrap_or_default());
+    0
+}
+
 /// The process's exit code.
 pub fn main(argv: Vec<String>) -> i32 {
     // `bipbridge fs-as-root …`: file work as the sandboxes' « root », run by the bridge itself under `podman unshare`
@@ -239,6 +251,11 @@ pub fn main(argv: Vec<String>) -> i32 {
     // `bipbridge approvals [--agent X] [--last N]`: what the agents asked, from the bridge's logs (approvals_log.rs).
     if rest.first().map(String::as_str) == Some("approvals") {
         return crate::approvals_log::cli(&with_config(&rest[1..]));
+    }
+    // `bipbridge speech-text <lang>`: a JSON list of texts on stdin, each as a Bip reads it on stdout (the demo's
+    // recordings, scripts/demo-voices.py)
+    if rest.first().map(String::as_str) == Some("speech-text") {
+        return speech_text(rest.get(1).map(String::as_str).unwrap_or("fr"));
     }
     if rest.first().map(String::as_str) == Some("sandbox") && rest.get(1).map(String::as_str) == Some("adopt") {
         return crate::sandbox_adopt::cli(&with_config(&rest[2..]));
@@ -318,10 +335,8 @@ pub fn main(argv: Vec<String>) -> i32 {
 fn check(config: &Config, args: &Args) -> i32 {
     println!("config OK: {}", args.config.clone().unwrap_or_else(config_path));
     println!("  listen      {}:{}", config.host, config.port);
-    println!("  kyutai      {}", config.kyutai_url.as_deref().unwrap_or("off"));
     println!("  pocket      {}", config.pocket_url.as_deref().unwrap_or("off"));
     println!("  voice       {} (default)", config.default_voice);
-    println!("  ntfy        {}", config.ntfy_url);
     println!(
         "  apns        {} ({})",
         if config.apns.enabled() { "enabled" } else { "disabled" },
@@ -338,10 +353,9 @@ fn check(config: &Config, args: &Args) -> i32 {
     for agent in config.agents.values() {
         let or_dash = |v: &Option<String>| v.clone().filter(|s| !s.is_empty()).unwrap_or_else(|| "-".into());
         println!(
-            "  agent {}: hermes={} ntfy_topic={} uploads={} -> {}",
+            "  agent {}: hermes={} uploads={} -> {}",
             agent.name,
             agent.hermes_url,
-            or_dash(&agent.ntfy_topic),
             or_dash(&agent.upload_dir_host),
             or_dash(&agent.upload_dir_container)
         );

@@ -2,7 +2,7 @@
 //! per agent and across agents, instead of separate words and screens (routines, « Tâches de fond », mail scans,
 //! connectors on a schedule). The apps show it in three groups:
 //!
-//!     schedule    « Chaque jour / chaque semaine »: the agents' routines (Hermes' scheduled tasks, `/api/jobs`) and the
+//!     schedule    « Chaque jour / chaque semaine »: the agents' routines (routines.rs) and the
 //!                 connectors' mechanical schedules (connectors_run.rs, no model call)
 //!     on_change   « Quand quelque chose change »: the watchers (watchers.rs), connectors whose program runs often
 //!                 with no model call and wakes the agent only on a change

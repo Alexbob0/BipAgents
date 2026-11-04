@@ -1,5 +1,5 @@
-//! conftest.py's fakes as real servers on 127.0.0.1: Kyutai, Pocket, Hermes (runs SSE + approvals + sessions), ntfy
-//! (one `FakeBackend`, four servers) and APNs (`FakeApns`). Their recorded requests and their knobs are shared with
+//! conftest.py's fakes as real servers on 127.0.0.1: Pocket, Hermes (runs SSE + approvals + sessions)
+//! (one `FakeBackend`, two servers) and APNs (`FakeApns`). Their recorded requests and their knobs are shared with
 //! the test through `Arc<Mutex<…>>`, as the Python fakes' attributes.
 //!
 //! Differences with Python's MockTransport: each fake host is its own server (`backend.urls()` gives them to
@@ -138,13 +138,11 @@ async fn seen_of(request: Request) -> Seen {
 
 /// The fakes' knobs and records (conftest's FakeBackend attributes).
 pub struct BackendState {
-    pub kyutai_inputs: Vec<Value>,
-    pub kyutai_delay: Duration,
-    pub kyutai_status: u16,
-    /// False: an older Kyutai without /v1/audio/stream.
-    pub kyutai_streaming: bool,
     pub pocket_inputs: Vec<Value>,
+    pub pocket_delay: Duration,
     pub pocket_status: u16,
+    /// False: an engine without /v1/audio/stream.
+    pub pocket_streaming: bool,
     /// run_id -> its SSE script.
     pub runs: HashMap<String, Vec<RunItem>>,
     pub run_status: HashMap<String, u16>,
@@ -153,27 +151,21 @@ pub struct BackendState {
     pub approval_response: (u16, Value),
     /// run_id -> `GET /v1/runs/{id}`.
     pub run_info: HashMap<String, Value>,
-    pub ntfy_lines: HashMap<String, Vec<String>>,
-    pub ntfy_requests: Vec<Seen>,
 }
 
 impl Default for BackendState {
     fn default() -> Self {
         BackendState {
-            kyutai_inputs: Vec::new(),
-            kyutai_delay: Duration::ZERO,
-            kyutai_status: 200,
-            kyutai_streaming: true,
             pocket_inputs: Vec::new(),
+            pocket_delay: Duration::ZERO,
             pocket_status: 200,
+            pocket_streaming: true,
             runs: HashMap::new(),
             run_status: HashMap::new(),
             run_requests: Vec::new(),
             approvals: Vec::new(),
             approval_response: (200, json!({"object": "hermes.run.approval_response", "resolved": 1})),
             run_info: HashMap::new(),
-            ntfy_lines: HashMap::new(),
-            ntfy_requests: Vec::new(),
         }
     }
 }
@@ -181,14 +173,12 @@ impl Default for BackendState {
 #[derive(Clone)]
 pub struct FakeBackend {
     pub state: Arc<Mutex<BackendState>>,
-    /// Set to close the streams that stay open (runs, ntfy); the test's runtime ending closes them too.
+    /// Set to close the streams that stay open (runs); the test's runtime ending closes them too.
     pub release: Arc<Flag>,
-    pub kyutai_active: Arc<AtomicUsize>,
-    pub kyutai_max_active: Arc<AtomicUsize>,
-    pub kyutai_url: String,
+    pub pocket_active: Arc<AtomicUsize>,
+    pub pocket_max_active: Arc<AtomicUsize>,
     pub pocket_url: String,
     pub hermes_url: String,
-    pub ntfy_url: String,
 }
 
 impl FakeBackend {
@@ -200,26 +190,20 @@ impl FakeBackend {
         let mut fake = FakeBackend {
             state,
             release,
-            kyutai_active: active,
-            kyutai_max_active: max_active,
-            kyutai_url: String::new(),
+            pocket_active: active,
+            pocket_max_active: max_active,
             pocket_url: String::new(),
             hermes_url: String::new(),
-            ntfy_url: String::new(),
         };
-        fake.kyutai_url = spawn_fake(Router::new().fallback(any(kyutai)).with_state(fake.clone())).await;
         fake.pocket_url = spawn_fake(Router::new().fallback(any(pocket)).with_state(fake.clone())).await;
         fake.hermes_url = spawn_fake(Router::new().fallback(any(hermes)).with_state(fake.clone())).await;
-        fake.ntfy_url = spawn_fake(Router::new().fallback(any(ntfy)).with_state(fake.clone())).await;
         fake
     }
 
     /// The backends' URLs for `config_dict`.
     pub fn urls(&self) -> Urls {
         Urls {
-            kyutai: self.kyutai_url.clone(),
             pocket: self.pocket_url.clone(),
-            ntfy: self.ntfy_url.clone(),
             hermes: self.hermes_url.clone(),
         }
     }
@@ -233,24 +217,28 @@ fn bytes_response(status: u16, content_type: &str, body: Vec<u8>) -> Response {
     Response::builder().status(status).header("content-type", content_type).body(Body::from(body)).unwrap()
 }
 
-async fn kyutai(State(fake): State<FakeBackend>, request: Request) -> Response {
+/// Pocket TTS: `/health` (its voices), `/v1/audio/speech` (wav: the fake PCM in a WAV; mp3: « ID3 » + the text) and
+/// `/v1/audio/stream` (the fake PCM in two chunks).
+async fn pocket(State(fake): State<FakeBackend>, request: Request) -> Response {
     if request.uri().path() == "/health" {
-        return Json(json!({"status": "ok"})).into_response();
+        let ok = fake.with(|s| s.pocket_status == 200);
+        let body = json!({"status": "ok", "voices": {"fr": ["colibri", "galet", "lumen", "mousse", "ours"]}});
+        return (if ok { StatusCode::OK } else { StatusCode::SERVICE_UNAVAILABLE }, Json(body)).into_response();
     }
     let seen = seen_of(request).await;
     let body = seen.json();
-    let n = fake.kyutai_active.fetch_add(1, Ordering::SeqCst) + 1;
-    fake.kyutai_max_active.fetch_max(n, Ordering::SeqCst);
+    let n = fake.pocket_active.fetch_add(1, Ordering::SeqCst) + 1;
+    fake.pocket_max_active.fetch_max(n, Ordering::SeqCst);
     let (delay, status, streaming) = fake.with(|s| {
-        s.kyutai_inputs.push(body.clone());
-        (s.kyutai_delay, s.kyutai_status, s.kyutai_streaming)
+        s.pocket_inputs.push(body.clone());
+        (s.pocket_delay, s.pocket_status, s.pocket_streaming)
     });
     if !delay.is_zero() {
         tokio::time::sleep(delay).await;
     }
-    fake.kyutai_active.fetch_sub(1, Ordering::SeqCst);
+    fake.pocket_active.fetch_sub(1, Ordering::SeqCst);
     if status != 200 {
-        return bytes_response(status, "text/plain; charset=utf-8", b"boom".to_vec());
+        return bytes_response(status, "text/plain; charset=utf-8", b"pocket down".to_vec());
     }
     let input = body["input"].as_str().unwrap_or("").to_string();
     if seen.path == "/v1/audio/stream" {
@@ -270,35 +258,6 @@ async fn kyutai(State(fake): State<FakeBackend>, request: Request) -> Response {
         return bytes_response(200, "audio/wav", wav(&pcm_for(&input)));
     }
     let mut out = b"ID3".to_vec();
-    out.extend(input.as_bytes());
-    bytes_response(200, "audio/mpeg", out)
-}
-
-/// Pocket TTS speaks the Kyutai API; its fake audio is the text reversed (tells engines apart).
-async fn pocket(State(fake): State<FakeBackend>, request: Request) -> Response {
-    if request.uri().path() == "/health" {
-        let ok = fake.with(|s| s.pocket_status == 200);
-        let body = json!({"status": "ok", "voices": {"fr": ["colibri", "galet", "lumen", "mousse", "ours"]}});
-        return (if ok { StatusCode::OK } else { StatusCode::SERVICE_UNAVAILABLE }, Json(body)).into_response();
-    }
-    let seen = seen_of(request).await;
-    let body = seen.json();
-    let status = fake.with(|s| {
-        s.pocket_inputs.push(body.clone());
-        s.pocket_status
-    });
-    if status != 200 {
-        return bytes_response(status, "text/plain; charset=utf-8", b"pocket down".to_vec());
-    }
-    let input = body["input"].as_str().unwrap_or("").to_string();
-    let pcm = pcm_for(&input.chars().rev().collect::<String>());
-    if seen.path == "/v1/audio/stream" {
-        return bytes_response(200, "application/octet-stream", pcm);
-    }
-    if body["response_format"] == "wav" {
-        return bytes_response(200, "audio/wav", wav(&pcm));
-    }
-    let mut out = b"ID3pocket".to_vec();
     out.extend(input.as_bytes());
     bytes_response(200, "audio/mpeg", out)
 }
@@ -359,28 +318,6 @@ async fn hermes(State(fake): State<FakeBackend>, request: Request) -> Response {
         return (StatusCode::from_u16(status).unwrap(), Json(payload)).into_response();
     }
     (StatusCode::NOT_FOUND, Json(json!({"error": "no route"}))).into_response()
-}
-
-async fn ntfy(State(fake): State<FakeBackend>, request: Request) -> Response {
-    if request.uri().path() == "/v1/health" {
-        return Json(json!({"healthy": true})).into_response();
-    }
-    let seen = seen_of(request).await;
-    let topic = seen.path.trim_matches('/').split('/').next().unwrap_or("").to_string();
-    let lines = fake.with(|s| {
-        s.ntfy_requests.push(seen.clone());
-        s.ntfy_lines.remove(&topic).unwrap_or_default()
-    });
-    let release = fake.release.clone();
-    let stream = async_stream::stream! {
-        let open = bipbridge::py::dumps(&json!({"id": "open1", "event": "open", "topic": topic}));
-        yield Ok::<_, std::io::Error>(Bytes::from(format!("{open}\n")));
-        for line in lines {
-            yield Ok(Bytes::from(format!("{line}\n")));
-        }
-        release.wait(Duration::from_secs(30)).await;
-    };
-    Response::new(Body::from_stream(stream))
 }
 
 /// token -> (status, reason).

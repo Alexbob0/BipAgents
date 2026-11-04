@@ -1,5 +1,5 @@
 //! Shared test support (Python's tests/conftest.py): the config dict the tests start from, an app driven without
-//! a socket, and fake backends (Hermes, Kyutai, ntfy, APNs…) as small axum servers on 127.0.0.1.
+//! a socket, and fake backends (Hermes, Pocket, APNs…) as small axum servers on 127.0.0.1.
 //!
 //! Each test file declares `mod common;` and uses what it needs; add helpers here only when several groups need
 //! them (other agents edit their own test files).
@@ -21,7 +21,6 @@ use tower::ServiceExt;
 
 pub const BRIDGE_KEY: &str = "test-bridge-key-0123456789abcdef0123456789";
 pub const HERMES_KEY: &str = "hermes-wellness-key-xyz";
-pub const NTFY_TOKEN: &str = "tk_testtoken";
 
 /// The current time the bridge puts at the top of the turns it starts and of the apps' messages (src/dates/now.rs):
 /// (what it says, the rest); (None, the text) without one.
@@ -51,9 +50,7 @@ pub fn auth() -> (&'static str, String) {
 
 /// Python's `config_dict` fixture, with the backends' URLs given (fakes started by the test, or unreachable ones).
 pub struct Urls {
-    pub kyutai: String,
     pub pocket: String,
-    pub ntfy: String,
     pub hermes: String,
 }
 
@@ -61,9 +58,7 @@ impl Default for Urls {
     /// Nothing listens there (connections refused at once).
     fn default() -> Self {
         Urls {
-            kyutai: "http://127.0.0.1:9".into(),
             pocket: "http://127.0.0.1:9".into(),
-            ntfy: "http://127.0.0.1:9".into(),
             hermes: "http://127.0.0.1:9".into(),
         }
     }
@@ -82,9 +77,7 @@ pub fn config_dict(dir: &Path, urls: &Urls) -> Value {
     json!({
         "bridge_key": BRIDGE_KEY,
         "data_dir": dir.join("data").to_string_lossy(),
-        "kyutai": {"url": urls.kyutai, "default_voice": "5476"},
         "pocket": {"url": urls.pocket},
-        "ntfy": {"url": urls.ntfy},
         "apns": {"team_id": "TEAM123456", "key_id": "TESTKEY123", "p8_path": p8,
                  "bundle_id": "io.github.bipagents", "environment": "sandbox"},
         "outbox": {"audio_wait_seconds": 2},
@@ -98,10 +91,9 @@ pub fn config_dict(dir: &Path, urls: &Urls) -> Value {
         "agents": {
             "Wellness": {
                 "display_name": "Wellness", "hermes_url": urls.hermes, "hermes_key": HERMES_KEY,
-                "ntfy_topic": "hermes-wellness-out", "ntfy_token": NTFY_TOKEN,
                 "upload_dir_host": dir.join("uploads").join("wellness").to_string_lossy(),
                 "upload_dir_container": "/home/hermes/.hermes/profiles/wellness/uploads",
-                "voice": "4193",
+                "voice": "pocket:colibri",
             },
         },
     })

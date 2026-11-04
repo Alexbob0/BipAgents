@@ -32,8 +32,8 @@ domaine, avec les modules (`bridge-rs/src/<nom>.rs`) qui le font, et ce qu'il la
 
 ## Le téléphone d'abord
 
-- **Voix.** `voice_ws.rs` suit un run Hermes et envoie une phrase synthétisée à la fois ; `textproc.rs` découpe le
-  markdown en phrases au fil de l'eau ; `tts.rs` ordonne les moteurs (Pocket TTS sur CPU, ou le serveur de voix de la
+- **Voix.** `live_calls.rs` mène les appels Live ; `textproc.rs` découpe le
+  markdown en phrases ; `tts.rs` ordonne les moteurs (Pocket TTS sur CPU, ou le serveur de voix de la
   personne) ; `voices.rs` donne sa voix à chaque agent. Le texte est préparé pour la parole : `numbers_fr.rs`,
   `speech_intl.rs` (anglais, espagnol, allemand, néerlandais), `durations.rs`, `pronounce.rs`, `pronunciations.rs`.
 - **Appels Live.** `live_brief.rs` démarre un appel depuis un court résumé de la conversation au lieu de 100k jetons
@@ -47,9 +47,8 @@ domaine, avec les modules (`bridge-rs/src/<nom>.rs`) qui le font, et ce qu'il la
   cours (le steer de Hermes, après ses appels d'outils du moment) ; « Après » le garde plutôt dans la file de l'agent, sur le
   pont, la même sur tous les appareils, lancée comme tour suivant à la fin du travail (ordre, retrait, envoi immédiat,
   pause), une seule notification à la fin.
-- **Rien de perdu.** `ntfy.rs` et `cronwatch.rs` mettent les messages des agents et la réponse de chaque routine dans
-  une boîte d'envoi (`store.rs`), audio prêt ; `restore_reconcile.rs` remet après une restauration les messages
-  gardés par les téléphones.
+- **Rien de perdu.** `outbox.rs` et `cronwatch.rs` mettent les messages des agents et la réponse de chaque routine dans
+  une boîte d'envoi (`store.rs`), audio prêt.
 - **Joindre la maison.** Par Tailscale, ou `lan.rs` : une porte HTTPS épinglée sur le réseau local quand Internet est
   coupé. `device_keys.rs` donne une clé à chaque appareil ; `guard.rs` compte les mauvaises clés ; `console.rs` est la
   console web.
@@ -183,7 +182,6 @@ l'installateur les applique.
 | 0010 réponses vides | les appels d'outils écrits en texte par un modèle deviennent de vrais appels ; les nouvelles tentatives changent la requête |
 | 0011 titres avec GLM | GLM répond vide aux appels sans réflexion, donc les titres demandent une réflexion « low » |
 | 0013 résultats MCP : mots de passe du coffre effacés | un mot de passe ne revient jamais au modèle par un résultat d'outil |
-| 0014 résultats des routines en UTF-8 simple | les accents restent lisibles dans les résultats des routines |
 | 0015 ancre temporelle | l'heure actuelle voyage avec chaque message |
 | 0016 un seul `message_agent`, celui du bridge | chaque message entre agents passe par les contrôles du bridge |
 | 0017 coordonnées | les adresses du coffre portent un nom, un téléphone et un e-mail |
@@ -197,7 +195,7 @@ l'installateur les applique.
 chaque fois. Passer à un Hermes plus récent, c'est rebaser cette branche, puis une nouvelle `BASE`. Un patch disparaît
 dès que Hermes fait la même chose : 0001 (clarify dans l'API Runs) et 0004 (images gardées pour les questions
 suivantes) sont partis quand la v0.22.5 a eu les siens. 0005 est proposé en amont (NousResearch/hermes-agent#136660) ;
-les petits patches généraux (le correctif de 0008, 0009, 0011, 0013, 0014, 0017, les libellés de 0019) sont les
+les petits patches généraux (le correctif de 0008, 0009, 0011, 0013, 0017, les libellés de 0019) sont les
 prochains candidats. Le détail de chaque patch : [`hermes/patches/README.md`](../hermes/patches/README.md).
 
 ## Ce que nous laissons volontairement à Hermes

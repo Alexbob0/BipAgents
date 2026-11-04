@@ -7,8 +7,6 @@
 //! - `POST /v1/agents`: `{"name", "kind", "lang"}` or `{"name", "custom": {"role", "tone", "rules", "category"}, "lang"}`
 //!   → the new agent as `GET /v1/agents` lists it (id, name, tailnet url, key).
 //! - `PUT /v1/agents/{id}/language`: `{"lang"}` — the language it writes first in (its SOUL.md's language block).
-//!
-//! Port of `bridge/bipbridge/agents_admin.py` (owner group: agents).
 
 #[path = "agents/pyyaml.rs"]
 pub mod pyyaml;
@@ -517,7 +515,7 @@ fn q(value: &str) -> String {
 }
 
 /// The new agent in the bridge's config file, so it is still there after a restart. `kept`: other lines of its
-/// section to keep (what the bridge does not set itself: its voice, ntfy, shares…).
+/// section to keep (what the bridge does not set itself: its voice, shares…).
 pub fn append_agent(config_path: &str, agent: &AgentConfig, kept: &[String]) -> std::io::Result<()> {
     crate::config::update_source(config_path, |text| Ok(with_agent(text, agent, kept)))
 }
@@ -1514,7 +1512,7 @@ pub async fn mount_all_uploads(config: SharedConfig, run: Run) {
 }
 
 /// The agent's section of the bridge's config file rewritten (after a move, a browser): what the bridge sets is
-/// replaced, the rest of the section (voice, ntfy, shares, a key kept in a file…) stays. The running
+/// replaced, the rest of the section (voice, shares, a key kept in a file…) stays. The running
 /// configuration gets the agent too.
 pub fn save_agent(config: &SharedConfig, agent: &AgentConfig) -> anyhow::Result<()> {
     if let Some(path) = config.get().source_path.as_deref() {
@@ -1965,6 +1963,10 @@ pub async fn read_settings(config: &Config, agent: &AgentConfig, http: &reqwest:
                 for k in ["name", "label", "description", "enabled", "configured"] {
                     out.insert(k.into(), t.get(k).cloned().unwrap_or(Value::Null));
                 }
+                if out["name"] == crate::tool_diet::CRON_TOOLSET {
+                    // the « Routines » tile: the bridge's routines (Hermes' cron stays off)
+                    out.insert("enabled".into(), Value::Bool(crate::routines::enabled(config, &agent.name)));
+                }
                 Value::Object(out)
             })
             .collect(),
@@ -2005,7 +2007,9 @@ pub async fn write_settings(
     run: &Run,
 ) -> anyhow::Result<()> {
     let config = shared.get();
-    let toolsets = lax_map(&body.toolsets);
+    let mut toolsets = lax_map(&body.toolsets);
+    // the « Routines » tile drives the bridge's routines, never Hermes' cron (tool_diet.rs keeps it off)
+    let routines_on = toolsets.shift_remove(crate::tool_diet::CRON_TOOLSET);
     let skills = lax_map(&body.skills);
     if agent.host_home.as_deref().is_some_and(|h| !h.is_empty())
         && (!toolsets.is_empty()
@@ -2035,6 +2039,9 @@ pub async fn write_settings(
         )
     {
         return Err(AgentError("a project agent is shown to friends: these tools stay off".into()).into());
+    }
+    if let Some(on) = routines_on {
+        crate::routines::set_enabled(&config, &agent.name, on);
     }
     if !skills.is_empty() {
         if let Err(exc) = crate::own_skills::set_enabled(&profile_folder(&config, agent), &skills) {

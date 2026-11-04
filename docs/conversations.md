@@ -57,7 +57,7 @@ The common cause: **the conversation was never a bridge object**. The fix is tha
 | Thread | `t_` + 26 chars (time-sortable, random) | `t_01JBX4K9W3M2Q8R6T5Y7Z0A1B2` | titles, compressions, Hermes upgrades, bridge restarts |
 | Main thread alias | `main` (accepted wherever a thread id is, with `agent`) | `?agent=vie&thread=main` | — |
 | Hermes segment | Hermes session id (`api_…`, `cron_…`, `local-…`) | `api_8f2c…` | — (an implementation detail) |
-| Message | `m_` + Hermes `message_uid` (32 hex) | `m_3f9a…` | compressions, restores (restore_reconcile keeps `message_uid`), re-reads |
+| Message | `m_` + Hermes `message_uid` (32 hex) | `m_3f9a…` | compressions, restores, re-reads |
 | Message (no `message_uid`) | `m_` + first 24 hex of `sha256(agent \0 session \0 row id)` | `m_a1b2…` | re-reads (only on an install whose store has no `message_uid`) |
 | Tool step | `<message id>.t<n>` (n = position of the call in the assistant row) | `m_3f9a….t0` | as its message |
 | Attachment | `<message id>.a<n>` (n = position in the message) | `m_3f9a….a0` | as its message |
@@ -86,7 +86,7 @@ impossible).
 | `room` | A group discussion: rooms.rs keeps its store (`data_dir/rooms/<id>.json`), served as the thread `room:<id>` (§6.6) | `GET /v1/threads?kind=room` | rooms.rs |
 
 `hidden` threads are returned with `include_hidden=1` only. A sub-agent's run (`delegate_task`), a branch or a reset
-child is never a segment of anything: it is ignored (same rules as `restore_reconcile::continuation`).
+child is never a segment of anything: it is ignored.
 
 ## 5. Lineage: a thread is a chain of sessions
 
@@ -99,8 +99,7 @@ thread t_…  (kind main)
 
 - **Continuation rule** (one function, `threads::lineage::is_continuation`): a child session whose
   `parent_session_id` is a segment, whose `model_config` has none of `_branched_from`, `_delegate_from`,
-  `_reset_from`, whose `source` is not `tool`. Among several, the latest started. Same rule as
-  `restore_reconcile.rs` (moved there from it, shared).
+  `_reset_from`, whose `source` is not `tool`. Among several, the latest started.
 - **Where it is read**: the agent's `state.db` (read-only, as message_search.rs does) when the bridge knows the profile
   folder; else Hermes' API (`GET /api/sessions?include_children=1`, `GET /api/sessions/{id}`). The same agent always
   uses the same source, so ids never change between reads.
@@ -532,7 +531,7 @@ CREATE TABLE notifications (
 
 ### 9.2 Rules: « Me prévenir »
 
-One table (`notifications::RULES`, served by `GET /v1/notifications/rules`), not scattered `if`s:
+One table (`notifications::Kind::follows_switch`), not scattered `if`s:
 
 | Type | Follows the agent's « Me prévenir » switch | Notes |
 |---|---|---|
@@ -545,9 +544,7 @@ One table (`notifications::RULES`, served by `GET /v1/notifications/rules`), not
 | `boite` other (credit, storage, imports, watchers) | no | their sources decide |
 | `family` | no | |
 
-Two more rules, in `emit`: a notification for a thread on screen (§6.5) is read and not pushed; a reply the person
-heard through a voice follow (the home screen's quick voice, voice_ws.rs) is journaled unread for the Boîte and not
-pushed (`skipped:heard`).
+Two more rules, in `emit`: a notification for a thread on screen (§6.5) is read and not pushed.
 
 ### 9.3 The push: a pointer, nothing else
 
@@ -592,7 +589,6 @@ GET    /v1/notifications/{id}                                            one row
 GET    /v1/notifications/unread                                          {total, agents: {a: n}, threads: {t: n}}
 POST   /v1/notifications/read   {ids?: [...], agent?, thread? (an id or main)}   marks read; answers {read, unread}
 DELETE /v1/notifications/{id}                                            hidden from the Boîte (row kept)
-GET    /v1/notifications/rules                                           the table of §9.2
 ```
 
 - Opening a conversation sends `POST /v1/notifications/read {agent, thread}`: every row of that thread is read.
@@ -693,7 +689,7 @@ What this branch adds and removes in the bridge (`git diff --numstat` against it
 | `notifications.rs` (journal, rules, routes) | 444 | 0 | of which ~45 unit tests |
 | `push.rs` | 325 | 317 | **deleted**: the four legacy payload builders (`message_payload`, `approval_payload`, `reply_payload`, `question_payload`), every legacy field (`run_id` pseudo-ids, `session_id`, `outbox_id`, `reply_id`, `kind`, `room_id`, `email_held`, `site_request`, `login_request`, `*_request`, `meet`, `family`, `job_id`), the in-memory reply texts (`remember`, `TEXTS_KEPT`, `TEXT_TTL`) and the seven « Me prévenir » checks; one `payload` builder and one `emit` instead |
 | `app.rs` | 8 | 9 | **deleted**: `GET /v1/replies/{id}` |
-| `agent_shares.rs`, `message_search.rs`, `voice_ws.rs`, wiring | ~210 | ~10 | shared agents' threads, search ids, voice replies in the Boîte |
+| `agent_shares.rs`, `message_search.rs`, wiring | ~210 | ~10 | shared agents' threads, search ids, voice replies in the Boîte |
 | Tests: golden payload cases | 0 | 531 | **deleted** with the builders (`push_runs.json` 494 lines, the test's arms 37) |
 | Tests: black-box and fakes | ~540 | ~100 | the suite asserts the pointer only |
 

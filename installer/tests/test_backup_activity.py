@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from bipinstall import backup, hermes, migrations, space
+from bipinstall import backup
 
 ROOT = Path(__file__).resolve().parents[2]
 MIN = 60
@@ -433,34 +433,6 @@ def test_the_units_look_every_5_minutes_at_their_own_minute_and_the_button_still
     assert "hourly" not in timer and "Persistent" not in timer
     assert "--keep-within" in backup.KEEP and backup.KEEP[backup.KEEP.index("--keep-within") + 1] == "2h"
     assert backup.KEEP[2:] == ["--keep-hourly", "48", "--keep-daily", "30", "--keep-weekly", "12"]
-
-
-def test_the_update_rewrites_the_hourly_timer_and_an_encrypted_space_gates_the_look_too(tmp_path, monkeypatch):
-    units = tmp_path / ".config" / "systemd" / "user"
-    units.mkdir(parents=True)
-    (units / "bipagents-backup.service").write_text("ExecStart=/r/installer/.venv/bin/python -m bipinstall backup\n")
-    (units / "bipagents-backup.timer").write_text("[Timer]\nOnCalendar=hourly\nRandomizedDelaySec=50min\n")
-    (units / "bipagents-backup.service.d").mkdir()
-    (units / "bipagents-backup.service.d" / space.DROP_IN).write_text(space.drop_in(tmp_path / "space"))
-    monkeypatch.setenv("XDG_RUNTIME_DIR", "/run/user/1000")
-    ran = []
-    runner = hermes.Runner()
-    monkeypatch.setattr(runner, "run", lambda args, **kw: ran.append(list(args)))
-    said = migrations.backup_on_activity(runner, tmp_path)
-    assert "activity" in said
-    assert "OnCalendar=*:0/5" in (units / "bipagents-backup.timer").read_text()
-    assert "--if-needed" in (units / "bipagents-backup-check.service").read_text()
-    assert (units / "bipagents-backup-check.service.d" / space.DROP_IN).read_text() == \
-        space.drop_in(tmp_path / "space")
-    assert ran == [["systemctl", "--user", "daemon-reload"], ["systemctl", "--user", "enable", "bipagents-backup.timer"],
-                   ["systemctl", "--user", "restart", "bipagents-backup.timer"]]
-    assert "2026-10-31-backup-on-activity" in [mid for mid, _ in migrations.MIGRATIONS]
-    # The look is one of the services that wait for the open folder when the space gets encrypted later.
-    assert "bipagents-backup-check.service" in space.gated_units(tmp_path)
-    # A place without backups (a self-hosted install): nothing.
-    other = tmp_path / "other"
-    other.mkdir()
-    assert migrations.backup_on_activity(runner, other) == "no backups here"
 
 
 def _seat_agent():

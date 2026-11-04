@@ -21,7 +21,6 @@
 //! never by default), and the time spent in either does not count. A steered run that still ends without handing over
 //! has its task started by the bridge (`rescue`), the conversation told by a `bridge.notice` event before the end.
 //!
-//! Port of `bridge/bipbridge/runs.py` (owner group: push-runs).
 //!
 //! Concurrency (Python runs all this on one event loop): the hub's map of runs and its pending approvals sit
 //! behind one lock, each run's state behind its own; the hub's lock is always taken first. Dispatching an event,
@@ -1545,11 +1544,14 @@ impl RunHub {
         };
         tracing::info!(agent = %agent.name, run_id = %sub.run_id, rescue = %rescue_id,
             "going round in circles: rescue turn started");
+        let watched = lock(&sub.state).watched;
         {
             let mut inner = lock(&self.inner);
             let rescue = self.get_or_start(&mut inner, &agent, &rescue_id);
             let mut st = lock(&rescue.state);
             st.kept = true;
+            // watched like the turn it follows (its approvals pushed when nobody looks), without the app's /v1/watch
+            st.watched = watched;
             st.end_push = false; // this run's end tells it
             st.session_id = session.clone();
             st.rescue_of = Some(sub.run_id.clone());

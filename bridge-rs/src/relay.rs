@@ -1,8 +1,6 @@
 //! Notifications for installs without an APNs key: another person's bridge on the same server sends its pushes to
 //! the administrator's bridge (`POST /v1/relay/push`, its own key), which forwards them to APNs with the team key. The
 //! key never leaves the administrator's install; each relaying install has its own key and an hourly quota.
-//!
-//! Port of `bridge/bipbridge/relay.py` (owner group: push-runs).
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, LazyLock, Mutex};

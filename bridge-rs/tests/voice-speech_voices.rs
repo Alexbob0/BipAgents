@@ -33,11 +33,11 @@ fn each_use_speaks_with_the_voice_it_goes_to() {
     let mut agent = config.agent(Some("wellness")).unwrap().clone();
     assert_eq!(voice_for(&config, Some(&agent), Some("replies")), "server:fr/af_bella");
     assert_eq!(voice_for(&config, Some(&agent), Some("reading")), "server:fr/af_bella");
-    assert_eq!(voice_for(&config, Some(&agent), Some("live")), "4193"); // the Live stays on its Bip
-    assert_eq!(voice_for(&config, Some(&agent), None), "4193");
+    assert_eq!(voice_for(&config, Some(&agent), Some("live")), "pocket:colibri"); // the Live stays on its Bip
+    assert_eq!(voice_for(&config, Some(&agent), None), "pocket:colibri");
     agent.server_voice = None;
-    assert_eq!(voice_for(&config, Some(&agent), Some("replies")), "4193"); // no voice picked on the server yet
-    assert_eq!(voice_for(&config, None, Some("replies")), "5476");
+    assert_eq!(voice_for(&config, Some(&agent), Some("replies")), "pocket:colibri"); // no voice picked on the server yet
+    assert_eq!(voice_for(&config, None, Some("replies")), "pocket:ours");
 }
 
 #[test]

@@ -1,4 +1,4 @@
-//! An IMAP client shaped like Python's `imaplib.IMAP4` (what mailbox.py and mail_scan.py call on it): `select`,
+//! An IMAP client shaped like Python's `imaplib.IMAP4` (what mailbox.rs and mail_scan.rs call on it): `select`,
 //! `uid`, `list`, `append`, `logout`, with the same response data — a list of lines, a line with its literal as a
 //! pair (`(b'1 (UID 5 BODY[] {12}', b'…')`), `None` when the server sent nothing — and the same errors (`IMAP4.error`
 //! for a BAD answer, `abort` for a broken connection, `OSError` for the socket). Blocking, as imaplib is (the bridge
@@ -62,7 +62,7 @@ impl ImapError {
     }
 }
 
-/// What mailbox.py and mail_scan.py use of an `imaplib.IMAP4` (tests implement it with a fake).
+/// What mailbox.rs and mail_scan.rs use of an `imaplib.IMAP4` (tests implement it with a fake).
 pub trait Imap: Send {
     fn select(&mut self, mailbox: &str, readonly: bool) -> Result<Reply, ImapError>;
     fn uid(&mut self, command: &str, args: &[&str]) -> Result<Reply, ImapError>;

@@ -30,7 +30,7 @@ use crate::config::{AgentConfig, Config};
 use crate::hermes::HermesClient;
 use crate::Dict;
 
-/// Every table and column of Hermes' state.db the bridge reads (threads, message_search.rs, restore_reconcile.rs).
+/// Every table and column of Hermes' state.db the bridge reads (threads, message_search.rs).
 /// The one list: scripts/hermes-schema-check.py parses it.
 pub const STATE_DB_READS: &[(&str, &[&str])] = &[
     (
@@ -115,7 +115,7 @@ pub struct Session {
 
 impl Session {
     /// A child Hermes resumes in after compressing `parent`'s context: not a branch, a sub-agent's run or a reset.
-    /// The one rule for every reader (restore_reconcile.rs, cronwatch.rs, threads).
+    /// The one rule for every reader (cronwatch.rs, threads).
     pub fn continues(&self, parent: &Session) -> bool {
         if self.parent.as_deref() != Some(parent.id.as_str()) {
             return false;

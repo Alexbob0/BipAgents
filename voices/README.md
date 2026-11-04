@@ -27,8 +27,7 @@ accept its terms, Hugging Face login), `get_state_for_audio_prompt(..., truncate
 `<voice>_sample.wav` spoken again with 4.0.1. The 3.3.0 states are in git history.
 
 A server's Pocket and these states move together: `bipagents update` (in the account that runs Pocket) installs the
-pocket-tts that `pocket/requirements.txt` pins and restarts it on the voices of the same commit; the bridge then stops
-respelling names (`[pocket] engine = "4.0.1"`, installer/bipinstall/migrations.py, `pocket-engine`).
+pocket-tts that `pocket/requirements.txt` pins and restarts it on the voices of the same commit.
 
 ## Short prompts (2026-11-04)
 

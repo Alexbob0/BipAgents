@@ -32,8 +32,8 @@ sie bewusst Hermes überlässt.
 
 ## Das Handy zuerst
 
-- **Stimme.** `voice_ws.rs` folgt einem Hermes-Run und streamt einen synthetisierten Satz nach dem anderen;
-  `textproc.rs` zerlegt das gestreamte Markdown in Sätze; `tts.rs` plant die Engines (Pocket TTS auf der CPU oder der
+- **Stimme.** `live_calls.rs` führt die Live-Gespräche;
+  `textproc.rs` zerlegt Markdown in Sätze; `tts.rs` plant die Engines (Pocket TTS auf der CPU oder der
   eigene Stimmserver der Person); `voices.rs` gibt jedem Agenten seine Stimme. Der Text wird für die Sprache
   aufbereitet: `numbers_fr.rs`, `speech_intl.rs` (Englisch, Spanisch, Deutsch, Niederländisch), `durations.rs`,
   `pronounce.rs`, `pronunciations.rs`.
@@ -48,9 +48,8 @@ sie bewusst Hermes überlässt.
   den laufenden Durchgang (Hermes' Steer, nach den aktuellen Werkzeugaufrufen); « Danach » legt sie stattdessen in die
   Warteschlange des Agenten auf der Brücke, auf allen Geräten gleich, als nächster Durchgang gestartet (Reihenfolge,
   Entfernen, Jetzt senden, Pause), eine einzige Benachrichtigung am Ende.
-- **Nichts geht verloren.** `ntfy.rs` und `cronwatch.rs` legen Agentennachrichten und die Antwort jeder Routine in
-  einen Postausgang (`store.rs`), mit fertigem Audio; `restore_reconcile.rs` holt nach einer Wiederherstellung die
-  Nachrichten zurück, die die Handys behalten haben.
+- **Nichts geht verloren.** `outbox.rs` und `cronwatch.rs` legen Agentennachrichten und die Antwort jeder Routine in
+  einen Postausgang (`store.rs`), mit fertigem Audio.
 - **Nach Hause kommen.** Über Tailscale oder `lan.rs`: eine gepinnte HTTPS-Tür im lokalen Netz, wenn das Internet weg
   ist. `device_keys.rs` gibt jedem Gerät einen eigenen Schlüssel; `guard.rs` zählt falsche Schlüssel; `console.rs` ist
   die Web-Konsole.
@@ -184,7 +183,6 @@ Installer wendet sie an.
 | 0010 leere Antworten | Werkzeugaufrufe, die ein Modell als Text schreibt, werden echte Aufrufe; Wiederholungen ändern die Anfrage |
 | 0011 Titel mit GLM | GLM antwortet auf Aufrufe ohne Denken leer, also fragen Titel nach « low » |
 | 0013 MCP-Ergebnisse: Tresor-Passwörter entfernt | ein Passwort kommt nie über ein Werkzeugergebnis zum Modell zurück |
-| 0014 Routinen-Ergebnisse in einfachem UTF-8 | Umlaute und Akzente bleiben in Routinen-Ergebnissen lesbar |
 | 0015 Zeitanker | die aktuelle Uhrzeit reist mit jeder Nachricht |
 | 0016 ein `message_agent`, der der Bridge | jede Nachricht zwischen Agenten geht durch die Prüfungen der Bridge |
 | 0017 Adresseinträge | Tresor-Adressen tragen Name, Telefon und E-Mail |
@@ -198,7 +196,7 @@ Installer wendet sie an.
 neueres Hermes ist ein Rebase dieses Branches, dann eine neue `BASE`. Ein Patch fällt weg, sobald Hermes dasselbe
 kann: 0001 (Clarify in der Runs-API) und 0004 (Bilder für Folgefragen behalten) gingen, als v0.22.5 eigene Lösungen
 brachte. 0005 ist upstream vorgeschlagen (NousResearch/hermes-agent#136660); kleine, allgemeine Patches (der Fix in
-0008, 0009, 0011, 0013, 0014, 0017, die Labels aus 0019) sind die nächsten Kandidaten. Details pro Patch:
+0008, 0009, 0011, 0013, 0017, die Labels aus 0019) sind die nächsten Kandidaten. Details pro Patch:
 [`hermes/patches/README.md`](../hermes/patches/README.md).
 
 ## Was wir bewusst Hermes überlassen

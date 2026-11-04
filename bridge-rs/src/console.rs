@@ -10,8 +10,6 @@
 //!   browser asking first) stands for the bridge key (`auth.require_bridge_key`).
 //! - **Never Hermes**: conversations go through the bridge's routes (threads, runs, `/v1/approve`, docs/conversations.md
 //!   §6); `/hermes/<agent>/…` refuses a console, and no Hermes key ever reaches the browser (`/v1/agents` leaves them out).
-//!
-//! Port of `bridge/bipbridge/console.py` (owner group: browsers-places).
 
 use std::path::PathBuf;
 use std::sync::Mutex;

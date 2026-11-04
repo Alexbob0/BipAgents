@@ -6,8 +6,8 @@ Un seul programme, écrit en Rust (`bridge-rs/`), qui tourne sur le **serveur** 
 les apps BipAgents sur le tailnet (fichiers : `docs/file-uploads.md`). Il a remplacé le bridge Python
 (`bridge/bipbridge`) le 2026-10-21, avec les mêmes routes, fichiers et réglages ; celui-ci reste dans l'historique du
 dépôt. Ce dossier contient ce qui va avec : l'exemple de config (`bridge.example.toml`), les fichiers de service pour
-une installation à la main (`systemd/`, `launchd/`), la suite boîte noire qui fixe son contrat HTTP
-(`tests_blackbox/`) et `tools/` (un script d'évaluation des longs travaux sur une vraie installation).
+une installation à la main (`systemd/`, `launchd/`) et la suite boîte noire qui fixe son contrat HTTP
+(`tests_blackbox/`).
 
 Aujourd'hui le bridge fait tout ce dont les apps ont besoin au-delà de l'API d'Hermes : les voix des Bips et les appels
 Live, les fichiers, les notifications (directement ou par le [relais](../relay/README.fr.md)), les accords et les
@@ -22,12 +22,11 @@ documentent le cœur d'origine (voix, fichiers, push, accords), que les apps uti
 | Fonction | Route | Ce que fait le bridge |
 |---|---|---|
 | TTS par phrase | `POST /v1/tts/sentence` | normalise le texte (markdown, liens), appelle le moteur de voix (Pocket, ou ton propre modèle de voix), renvoie du PCM int16 mono 24 kHz (ou Opus/WAV) ; file FIFO globale + cache LRU |
-| Voix en flux | `WS /v1/voice` | suit un run Hermes (`GET /v1/runs/{id}/events`), découpe les deltas en phrases, synthétise dans l'ordre, envoie `sentence` (JSON) + audio (binaire) |
 | Fichiers | `POST /v1/files` | dépose PDF/Excel/texte… dans un dossier monté dans le conteneur Hermes et renvoie le chemin **vu par l'agent** |
 | Push | `POST/DELETE /v1/devices` | enregistre les device tokens APNs (SQLite), envoie les push via HTTP/2 + jeton JWT ES256 |
-| Messages proactifs | `GET /v1/outbox…` | suit les tâches planifiées de chaque agent (et, en héritage, son topic ntfy), stocke les messages, pré-synthétise l'audio (mp3), pousse `MESSAGE` |
+| Messages proactifs | `GET /v1/outbox…` | stocke les messages des routines et du travail de fond des agents, pré-synthétise l'audio (mp3), pousse `MESSAGE` |
 | Approbations | `POST /v1/watch`, `POST /v1/approve`, `GET /v1/approvals` | surveille un run en arrière-plan, pousse `APPROVAL` si personne ne le suit, relaie la réponse à Hermes |
-| Santé | `GET /health` | sans authentification : version + moteurs de voix/ntfy joignables |
+| Santé | `GET /health` | sans authentification : version + moteurs de voix joignables |
 
 Le bridge écoute **uniquement sur `127.0.0.1:8643`** ; l'exposition HTTPS se fait par `tailscale serve`.
 Il ne contient aucun secret : tout est dans son dossier de config (mode 600) : `~/.config/bipagents/` quand
@@ -55,7 +54,7 @@ mkdir -p ~/.config/hermes-ios && chmod 700 ~/.config/hermes-ios
 cp bridge/bridge.example.toml ~/.config/hermes-ios/bridge.toml
 chmod 600 ~/.config/hermes-ios/bridge.toml
 ~/.local/bin/bipbridge genkey                  # -> à mettre dans bridge_key (et à donner à l'app)
-$EDITOR ~/.config/hermes-ios/bridge.toml       # clés Hermes, jetons ntfy, APNs, dossiers d'upload
+$EDITOR ~/.config/hermes-ios/bridge.toml       # clés Hermes, APNs, dossiers d'upload
 ~/.local/bin/bipbridge check                   # valide la config (refuse les valeurs CHANGE-ME)
 
 # 3. Dossiers d'upload visibles par les agents (home Hermes monté dans les conteneurs)
@@ -78,8 +77,7 @@ sudo tailscale serve --bg --https=8643 http://127.0.0.1:8643
 curl https://server.example.ts.net:8643/health
 ```
 
-Mise à jour : les binaires de la nouvelle version (étape 1 à nouveau), `systemctl --user restart hermes-bridge`. Le redémarrage du bridge n'affecte pas Hermes (aucun tour en cours n'est tué) ;
-une conversation vocale en cours est simplement coupée et l'app peut refaire `follow` avec `from_seq`.
+Mise à jour : les binaires de la nouvelle version (étape 1 à nouveau), `systemctl --user restart hermes-bridge`. Le redémarrage du bridge n'affecte pas Hermes (aucun tour en cours n'est tué).
 
 ### Droits sur les fichiers déposés (à vérifier une fois)
 
@@ -96,21 +94,6 @@ podman exec hermes-gateway cat /home/hermes/.hermes/profiles/wellness/uploads/<A
 Si le conteneur ne peut pas lire : mettre `upload_file_mode = "644"` et `upload_dir_mode = "755"` dans `[limits]`
 (ou une ACL `setfacl` pour l'UID mappé). Les fichiers de plus de 30 jours sont purgés automatiquement
 (seulement ceux écrits par le bridge : `AAAA-MM/<12 hex>-<nom>`).
-
-### ntfy : jeton de lecture pour le bridge (héritage, facultatif)
-
-Les tâches planifiées arrivent dans la Boîte sans ntfy (`[cron]`) ; ceci ne sert qu'aux installations qui livrent encore par lui.
-
-Le bridge **lit** les topics `hermes-wellness-out` / `hermes-vie-out` (où Hermes publie via `deliver: ntfy`) :
-
-```bash
-podman exec -it ntfy ntfy user add bridge
-podman exec -it ntfy ntfy access bridge 'hermes-*-out' read-only
-podman exec -it ntfy ntfy token add bridge        # -> ntfy_token de chaque agent
-```
-
-Le dernier id ntfy lu est mémorisé (SQLite) et renvoyé en `since=` à la reconnexion (backoff 0,5 → 8 s) :
-aucun message perdu tant qu'il est dans le cache ntfy (12 h par défaut).
 
 ### APNs
 
@@ -129,30 +112,24 @@ fichier est lisible par le groupe ou les autres. Chaque secret accepte aussi la 
 |---|---|---|
 | `bridge_key` | — (obligatoire) | clé Bearer unique de l'app (≥ 32 car., `bipbridge genkey`) |
 | `host`, `port` | `127.0.0.1`, `8643` | écoute locale |
-| `[kyutai] enabled`, `url`, `default_voice` | `true`, `http://127.0.0.1:8097`, `5476` | héritage : Kyutai 1.6B comme moteur à part. L'installateur écrit `enabled = false` (Pocket seul) ; un serveur Kyutai est désormais un `[voice_server]` comme un autre |
-| `[pocket] url`, `default_voice` | absent (désactivé), `pocket:colibri` | Kyutai Pocket TTS (`pocket/`) pour les voix des Bips ; `default_voice` est la voix par défaut quand `[kyutai]` est coupé |
-| `[voice_server] url`, `model`, `stream_rate`, `voices`, `live`, `replies`, `reading`, `first_audio_seconds` | absent, `tts-1`, aucun, `[]`, `true` ×3, `5` | le modèle de voix de la personne (OpenAI `/v1/audio/speech`), voir plus bas ; un ancien `[drama] url` en est un |
+| `[pocket] url`, `default_voice` | `http://127.0.0.1:8098`, `pocket:ours` | Kyutai Pocket TTS (`pocket/`) pour les voix des Bips (une ancienne section `[kyutai]` est ignorée : un serveur Kyutai est un `[voice_server]` comme un autre) |
+| `[voice_server] url`, `model`, `stream_rate`, `voices`, `live`, `replies`, `reading`, `first_audio_seconds` | absent, `tts-1`, aucun, `[]`, `true` ×3, `5` | le modèle de voix de la personne (OpenAI `/v1/audio/speech`), voir plus bas |
 | `[pronunciations.<langue>] <mot> = "<graphie>"` | aucun | les mots que les voix disent mal, réécrits (mots entiers, toute casse) |
-| `[ntfy] url` | `http://127.0.0.1:8645` | |
 | `[apns] team_id, key_id, p8_path, bundle_id, environment` | push désactivé si vide | |
 | `[push] previews` | `false` | `false` : corps de notification générique, le texte transite par le tailnet |
-| `[push] watch_followed_runs` | `true` | un run suivi en vocal reste surveillé (approbations) après fermeture du WebSocket |
 | `[outbox] db_path, audio_dir, retention_days, audio_max_chars, audio_wait_seconds` | `~/.local/share/hermes-bridge/…`, 90 j, 2000, 8 s | |
 | `[limits] upload_max_mb, upload_retention_days, upload_file_mode, sentence_max_chars, tts_max_chars, watch_max_minutes` | 50, 30, `640`, 180, 1000, 120 | |
-| `[agents.<id>] display_name, hermes_url, hermes_key, ntfy_topic, ntfy_token, upload_dir_host, upload_dir_container, voice` | | `<id>` en minuscules = identifiant utilisé par l'app (`wellness`, `vie`) |
+| `[agents.<id>] display_name, hermes_url, hermes_key, upload_dir_host, upload_dir_container, voice` | | `<id>` en minuscules = identifiant utilisé par l'app (`wellness`, `vie`) |
 
 ## 3. Ce que l'iPhone appelle
 
 Base : `https://server.example.ts.net:8643`, en-tête `Authorization: Bearer <clé bridge>` partout sauf `/health`
-(401 + `WWW-Authenticate: Bearer` sinon ; WebSocket refusé avec 403 / code 1008). L'identifiant d'agent est
+(401 + `WWW-Authenticate: Bearer` sinon). L'identifiant d'agent est
 insensible à la casse (`wellness`, `vie`).
 
 - **Lancement / Réglages** : `GET /health` (pastille), `GET /v1/agents` (agents connus du bridge).
 - **Notifications** : au démarrage, `POST /v1/devices {token, environment, agent_ids}` ; à la déconnexion
   `DELETE /v1/devices/{token}`.
-- **Mode vocal** : après avoir lancé le tour Hermes (chat/stream) et relevé `run_id`, ouvrir `WS /v1/voice`, envoyer
-  `follow`, jouer chaque binaire reçu après son en-tête `sentence` ; barge-in : `{"type":"cancel"}` + `POST /v1/runs/{id}/stop`
-  côté Hermes. Variante simple : `POST /v1/tts/sentence` par phrase.
 - **Passage en arrière-plan pendant un run** : `POST /v1/watch {agent, run_id}` → push `APPROVAL` si une approbation arrive,
   push silencieux `run_finished` à la fin.
 - **Notification Service Extension** : `MESSAGE` → `GET /v1/outbox/{outbox_id}` + `GET /v1/outbox/{id}/audio` (mp3) ;
@@ -165,7 +142,7 @@ Le contrat détaillé (payloads exacts) est dans la section suivante.
 ## 4. Contrat d'API
 
 ### `GET /health` (public)
-`{"ok": true, "version": "0.1.0", "kyutai": bool, "ntfy": bool, "apns": bool, "tts_queue": n}`
+`{"ok": true, "version": "0.1.0", "pocket": bool, "apns": bool, "tts_queue": n}`
 
 ### `GET /v1/agents`
 `{"agents": [{"id": "wellness", "name": "Wellness", "voice": "5476", "uploads": true, "inbox": true}]}`
@@ -190,9 +167,8 @@ est mis en cache. L'app l'utilise en Live et retombe sur `/v1/tts/sentence` si l
 ### Voix et moteurs
 `voice` (corps des routes TTS, ou `voice` d'un agent dans la config) : une voix `pocket:<nom>` (`pocket:colibri`,
 `pocket:mousse`, `pocket:lumen`, `pocket:galet`, `pocket:ours`, cf. `voices/french/`) passe par Kyutai Pocket TTS (CPU,
-section `[pocket]`), avec sa propre file d'attente. Héritage : avec `[kyutai]` actif, une voix Kyutai (`5476`, `4193`,
-`5207`, chemin `cml-tts/fr/…`) passe par Kyutai 1.6B (GPU), et un échec de Pocket en français y retombe (cet audio-là
-n'est pas mis en cache). `/health` indique `"pocket": true|false|null`. Les apps peuvent aussi parler avec les voix des
+section `[pocket]`), avec sa propre file d'attente ; une ancienne voix Kyutai 1.6B (`5476`…) parle avec le Bip par
+défaut. `/health` indique `"pocket": true|false|null`. Les apps peuvent aussi parler avec les voix des
 Bips sur le téléphone lui-même, sans le bridge (`voices/onnx/`).
 
 Modèle de voix personnel : `server:<langue>/<id>` (`server:fr/fr-mascotte-s17`, `server:en/af_bella`) va à
@@ -208,8 +184,7 @@ ancienne app (`drama:<id>`) y vont aussi.
 Autres langues : `pocket:<langue>/<nom>` (`pocket:en/colibri`, `pocket:es/ours`, `pocket:de/galet`, `pocket:nl/lumen`, cf.
 `voices/english|spanish|german|dutch/`) passe au modèle Pocket de cette langue ; le serveur Pocket reçoit `voice` =
 `en/colibri`. Le texte est préparé dans la langue de la voix (`bridge-rs/src/speech_intl.rs`, nombres via `num2words` :
-« $5 » → « five dollars », « 23:15 Uhr » → « dreiundzwanzig Uhr fünfzehn »). Quand Pocket échoue (et, en français, sans
-Kyutai hérité actif), le bridge répond 502/503 et l'app lit le texte avec la voix du téléphone.
+« $5 » → « five dollars », « 23:15 Uhr » → « dreiundzwanzig Uhr fünfzehn »). Quand Pocket échoue, le bridge répond 502/503 et l'app lit le texte avec la voix du téléphone.
 
 ### Tâches planifiées et fichiers des agents
 - Le bridge relit toutes les minutes les sessions `cron_…` de chaque agent et met la réponse finale de chaque
@@ -249,28 +224,6 @@ l'adresse) ; les apps l'affichent dans une vue sans issue. `list_pages`, `read_p
 côté et jamais servie) et `delete_page` complètent ; les apps les listent par `GET /v1/pages?agent=` et en suppriment
 une par `DELETE /v1/pages/{id}?agent=`.
 
-### `WS /v1/voice`
-Client → serveur (texte JSON) :
-- `{"type":"follow","agent":"wellness","run_id":"…","voice"?:"5476","format"?:"pcm16"|"opus"|"wav","from_seq"?:0}`
-  (`from_seq` : reprise après reconnexion, les phrases de numéro < `from_seq` ne sont ni synthétisées ni renvoyées ;
-  un nouveau `follow` annule le précédent)
-- `{"type":"cancel"}` · `{"type":"ping"}`
-
-Serveur → client :
-- `{"type":"following","run_id","agent","format","sample_rate":24000,"channels":1}`
-- pour chaque phrase, dans l'ordre : `{"type":"sentence","seq":n,"text":"…","format","sample_rate","channels","bytes":len}`
-  **immédiatement suivi** d'un message **binaire** (l'audio de la phrase, PCM16 brut par défaut)
-- `{"type":"done","run_id","reason":"completed"|"failed"|"cancelled"|"interrupted"|"error"|"stream_closed"}`
-  (après `cancel` : `{"type":"done","run_id":null,"reason":"cancelled"}` si un suivi était actif)
-- `{"type":"error","code","message"[,"seq"]}` — codes : `unknown_agent`, `invalid_run_id`, `invalid_format`,
-  `invalid_json`, `run_not_found`, `hermes_refused`, `hermes_unreachable`, `tts_failed` (phrase sautée, le flux continue),
-  `internal` · `{"type":"pong"}`
-
-Découpage : fin de phrase `.!?…` suivie d'un blanc (jamais `3.5`, ni `M.`/`etc.`/initiales/`1.` de liste), saut de ligne,
-ou ~180 caractères sur une limite de mot (de préférence après une virgule). Le texte en attente est aussi prononcé à
-`tool.started` / `approval.request`. Markdown retiré, liens → leur texte, URL nues supprimées, blocs de code ignorés,
-éléments de liste terminés par un point. Si aucun delta n'est arrivé, le texte final de `run.completed` est lu.
-
 ### `POST /v1/files` (multipart/form-data : `agent`, `file`)
 200 : `{"path": "/home/hermes/.hermes/profiles/wellness/uploads/2026-10/0a1b2c3d4e5f-Releve_oct.pdf",
 "filename": "Releve_oct.pdf", "size": 220512, "content_type": "application/pdf"}`
@@ -295,8 +248,7 @@ environnement invalide, `{"detail":{"error":"unknown agent_ids","agent_ids":[…
  "created_at": "2026-10-04T08:15:01.532Z", "sent_at": "2026-10-04T08:15:01.000Z", "session_id": null,
  "has_audio": true, "audio_url": "/v1/outbox/9f3c…/audio"}
 ```
-`created_at` = réception par le bridge (UTC, ms, format fixe) ; `sent_at` = horodatage ntfy ; `session_id` vient d'un tag
-ntfy `session:<id>` s'il existe. Pour la pagination, repasser le `created_at` du dernier élément en `since`.
+`created_at` = réception par le bridge (UTC, ms, format fixe) ; `sent_at` est nul ; `session_id` est la conversation du message, s'il en a une. Pour la pagination, repasser le `created_at` du dernier élément en `since`.
 
 ### `GET /v1/outbox/{id}` → Item (404 sinon)
 
@@ -306,9 +258,7 @@ ntfy `session:<id>` s'il existe. Pour la pagination, repasser le `created_at` du
 
 ### `POST /v1/watch`
 Corps : `{"agent":"wellness","run_id":"…"}` → `{"watching": true, "agent", "run_id", "followers": n, "finished": bool}`.
-Le bridge s'abonne au run (un seul abonnement Hermes par run, partagé avec le WebSocket, avec rejeu pour un suivi
-tardif) pendant au plus `watch_max_minutes`. Sur `approval.request` sans client attaché (WebSocket vocal ou flux de
-l'app) : push `APPROVAL` (une fois par `request_id`). À la fin du run sans client attaché : push « réponse prête »
+Le bridge s'abonne au run (un seul abonnement Hermes par run, avec rejeu pour un suivi tardif) pendant au plus `watch_max_minutes`. Sur `approval.request` sans client attaché (le flux de l'app) : push `APPROVAL` (une fois par `request_id`). À la fin du run sans client attaché : push « réponse prête »
 (`run.completed` avec une réponse, catégorie `MESSAGE`, `kind: "reply"`, `session_id` si connu), push silencieux sinon.
 
 ### `GET /v1/runs/{run_id}/events?agent=…&session_id=…`
@@ -348,15 +298,10 @@ contient un extrait du texte (ou de la commande).
 - **Synthèse sérialisée** : une seule requête par moteur à la fois côté bridge aussi, servie par ordre d'arrivée ; priorité
   « interactive » (voix, `/v1/tts/sentence`) devant « arrière-plan » (audio de l'outbox) — jamais d'interruption d'une
   synthèse déjà lancée. Une requête annulée (barge-in) quitte la file. Cache LRU (voix, format, texte normalisé).
-- **Prérequête** : chaque phrase est mise en file de synthèse dès qu'elle est complète, l'envoi au client reste dans l'ordre.
 - **SSE tolérant** : type lu dans le JSON (`type` ou `event`) sinon la ligne `event:` ; `: keepalive` ignoré ;
   texte pris dans `delta` / `text` / `content`. Événements de texte : `message.delta`, `assistant.delta`.
 - **Journaux** : JSON sur stdout (journald), jamais de secret ni de texte de message ; tokens d'appareil tronqués ;
   pas de journal d'accès (les chemins contiennent des tokens).
-
-Limites connues : `WS /v1/stt` (STT serveur, v2) n'est pas implémenté. Si la connexion locale bridge → Hermes coupe
-au milieu d'un run et que Hermes rejoue les événements à la réabonnement, une phrase pourrait être répétée
-(cas improbable : les deux sont sur 127.0.0.1).
 
 ## 6. Développement et tests
 
@@ -367,7 +312,6 @@ pip install -r tests_blackbox/requirements.txt                              # Py
 python -m pytest tests_blackbox -q -p no:cacheprovider                      # le contrat HTTP (tests_blackbox/README.md)
 ```
 
-Aucun n'appelle de service réel : Hermes, les moteurs de voix, ntfy, APNs et FCM sont simulés
+Aucun n'appelle de service réel : Hermes, les moteurs de voix, APNs et FCM sont simulés
 (`bridge-rs/tests/common/`, `tests_blackbox/bbkit/`). Les tests Rust ont été portés depuis ceux du bridge Python, et
-ses fixtures dorées (`bridge-rs/tests/golden/`) faites en lançant le code Python : leurs `gen_*.py` ont besoin de ce
-bridge, depuis l'historique.
+ses fixtures dorées (`bridge-rs/tests/golden/`) faites en lançant le code Python : elles sont figées (leurs générateurs sont partis avec lui).

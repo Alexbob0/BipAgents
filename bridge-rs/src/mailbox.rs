@@ -2,7 +2,7 @@
 //! iCloud, Yahoo, Free, Orange, La Poste, OVH, or another host; Proton through Proton Mail Bridge or hydroxide (decided
 //! 2026-10-28) on the person's own machine only. The passwords stay here, encrypted (Fernet, like the vault): the app
 //! sends them once, never reads them back, and no agent sees them. An agent reaches its mailboxes through the bridge's
-//! own tools (agent_tools.py), from its Hermes on this machine — never from its sandbox, which reaches no local port:
+//! own tools (agent_tools.rs), from its Hermes on this machine — never from its sandbox, which reaches no local port:
 //!
 //!     mail_search      the latest messages matching words, a sender, a period, in a folder (headers and a snippet)
 //!     mail_read        one message's text, stripped of HTML, marked as untrusted content (a mail may try to steer it)
@@ -28,8 +28,6 @@
 //!     DELETE /v1/mail/accounts/{id}
 //!
 //!     data_dir/mail/accounts.json.enc, mail.key   (chmod 600)
-//!
-//! Port of `bridge/bipbridge/mailbox.py` (owner group: tools-knowledge).
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};

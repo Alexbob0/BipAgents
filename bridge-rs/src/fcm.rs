@@ -4,8 +4,6 @@
 //! APNs-style payload is turned into an FCM *data* message: the app's messaging service builds the notification itself,
 //! opening the words sealed for it (`enc`) as the iPhone's notification extension does; nothing readable goes through
 //! Google.
-//!
-//! Port of `bridge/bipbridge/fcm.py` (owner group: push-runs).
 
 use std::sync::{LazyLock, Mutex};
 use std::time::Duration;

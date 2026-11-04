@@ -1,13 +1,12 @@
 """The APNs client as Apple sees it: an ES256 provider token signed with the team's key (`kid`, `iss`, `iat`), kept
 50 minutes, made again once when Apple calls it expired; dead tokens dropped, a network error kept (tests/test_outbox_push.py's
 test_apns_jwt_refresh_and_retry, over HTTP)."""
-import json
 import time
 
 import jwt
 from cryptography.hazmat.primitives import serialization
 
-from bbkit.common import AUTH, sse
+from bbkit.common import AUTH, boite_message, sse
 from bbkit.servers import wait_until
 
 NOW = "2026-10-21T08:00:00.000Z"
@@ -68,7 +67,7 @@ def test_dead_tokens_go_and_a_network_error_keeps_them(bridges, fakes):
     down = bridges.new("down", change=lambda c: c["apns"].update(base_url=fakes.down.url, sandbox_url=fakes.down.url))
     down.seed_db([("INSERT INTO devices (token, environment, agent_ids, created_at, updated_at) VALUES (?,?,?,?,?)",
                    (LIVE, "sandbox", "[]", NOW, NOW))])
-    fakes.ntfy.lines["hermes-wellness-out"] = [json.dumps({"id": "m1", "event": "message", "message": "Bonjour"})]
     down.start()
+    boite_message(down, fakes, "Bonjour")
     assert wait_until(lambda: down.logged("apns unreachable"), timeout=15)
     assert devices(down) == [LIVE]

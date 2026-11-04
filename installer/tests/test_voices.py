@@ -208,54 +208,7 @@ def test_an_update_brings_the_light_voices_new_packages(monkeypatch, tmp_path):
 def bridge_config(tmp_path, pocket):
     config = tmp_path / ".config" / "bipagents" / "bridge.toml"
     config.parent.mkdir(parents=True, exist_ok=True)
-    config.write_text('bridge_key = "k"\nport = 8643\n\n[kyutai]\nenabled = false\n\n' + pocket + "\n[cron]\nwatch = true\n")
+    config.write_text('bridge_key = "k"\nport = 8643\n\n' + pocket + "\n[cron]\nwatch = true\n")
     return config
 
 
-def test_the_bridge_stops_the_respellings_once_its_pocket_runs_4(monkeypatch, tmp_path):
-    import tomllib
-    from bipinstall import family, migrations
-    config = bridge_config(tmp_path, '[pocket]\nurl = "http://127.0.0.1:8098"\ndefault_voice = "pocket:colibri"\n')
-    runner = hermes.Runner(dry=False)
-    ran = []
-    runner.run = lambda args, **kw: ran.append(list(args)) or ""
-    monkeypatch.setattr(family, "bridge_restart", lambda home=None: ["systemctl", "--user", "restart", "bipagents-bridge"])
-    asked = []
-    engine = {"now": "3.3.0"}
-    monkeypatch.setattr(voices, "engine_at", lambda url, wait=0: asked.append((url, wait)) or engine["now"])
-    # The Pocket (here or in another account) not moved yet: nothing changes, the next update looks again.
-    with pytest.raises(migrations.NotYet, match="still Pocket 3.3.0"):
-        migrations.pocket_engine(runner, tmp_path)
-    assert asked == [("http://127.0.0.1:8098", migrations.POCKET_WAIT)] and ran == []
-    engine["now"] = None
-    with pytest.raises(migrations.NotYet, match="no version"):
-        migrations.pocket_engine(runner, tmp_path)
-    engine["now"] = "4.0.1"
-    said = migrations.pocket_engine(runner, tmp_path)
-    assert "Pocket 4.0.1" in said and ran == [["systemctl", "--user", "restart", "bipagents-bridge"]]
-    parsed = tomllib.loads(config.read_text())
-    assert parsed["pocket"] == {"engine": "4.0.1", "url": "http://127.0.0.1:8098", "default_voice": "pocket:colibri"}
-    assert parsed["cron"] == {"watch": True}
-    ran.clear()
-    assert "already" in migrations.pocket_engine(runner, tmp_path) and ran == []   # again: harmless
-    assert migrations.POCKET_ENGINE in [mid for mid, _ in migrations.MIGRATIONS]
-
-
-def test_an_old_engine_line_is_replaced():
-    from bipinstall import migrations
-    text = '[pocket]\nurl = "u"\nengine = "3.3.0"\n\n[cron]\nwatch = true\n'
-    assert migrations.with_pocket_engine(text, "4.0.1") == '[pocket]\nengine = "4.0.1"\nurl = "u"\n\n[cron]\nwatch = true\n'
-    assert migrations.with_pocket_engine('port = 1\n', "4.0.1") == 'port = 1\n\n[pocket]\nengine = "4.0.1"\n'
-
-
-def test_a_fresh_install_tells_its_bridge_which_pocket_speaks(tmp_path):
-    import tomllib
-    from pathlib import Path
-    from bipinstall.ports import Ports
-    from bipinstall.stack import Install, bridge_toml
-    inst = Install(repo=Path("/r"), home=tmp_path, ports=Ports(8640), tailnet_name=None, lan_address=None)
-    assert "engine" not in tomllib.loads(bridge_toml(inst))["pocket"]   # unknown: the bridge's default, then the update
-    inst.pocket_engine = "4.0.1"
-    assert tomllib.loads(bridge_toml(inst))["pocket"]["engine"] == "4.0.1"
-    from bipinstall import migrations
-    assert migrations.POCKET_ENGINE in migrations.AFTER_INSTALL

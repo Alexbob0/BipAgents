@@ -13,8 +13,6 @@
 //! sending anything. Wrong proofs count as wrong keys (guard.py). Only on a place of the all-included offer.
 //!
 //!     ~/.local/state/bipagents/import/    code.json, the archive and its passphrase, progress.json (the installer's)
-//!
-//! Port of `bridge/bipbridge/place_import.py` (owner group: browsers-places).
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;

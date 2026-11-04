@@ -1,4 +1,4 @@
-"""The TTS engines behind /v1/tts/*: Kyutai's queue and cache, Pocket alone, and the person's own voice server (Drama 3
+"""The TTS engines behind /v1/tts/*: Pocket's queue and cache, and the person's own voice server (Drama 3
 on audio.cpp streaming 44.1 kHz, Kokoro's whole files, a busy GPU handing over to the agent's Bip) — tests/test_tts.py,
 through the bridge's routes."""
 import array
@@ -21,22 +21,22 @@ def sentence(bridge, **body):
     return bridge.post("/v1/tts/sentence", headers=AUTH, json=body)
 
 
-def test_pcm16_strips_wav_header_and_sends_kyutai_params(bridge, fakes):
-    resp = sentence(bridge, text="Bonjour **toi** [lien](http://x.y).", voice="4193", format="pcm16")
-    assert fakes.kyutai.inputs == [{"model": "kyutai-tts", "input": "Bonjour toi lien.", "voice": "4193",
+def test_pcm16_strips_wav_header_and_sends_pocket_params(bridge, fakes):
+    resp = sentence(bridge, text="Bonjour **toi** [lien](http://x.y).", voice="pocket:colibri", format="pcm16")
+    assert fakes.pocket.inputs == [{"model": "pocket-tts", "input": "Bonjour toi lien.", "voice": "colibri",
                                     "response_format": "wav"}]
     assert resp.content == pcm_for("Bonjour toi lien.")
     assert (resp.headers["x-sample-rate"], resp.headers["x-channels"]) == ("24000", "1")
     assert resp.headers["content-type"] == "application/octet-stream"
 
 
-def test_one_kyutai_call_at_a_time(bridge, fakes):
-    fakes.kyutai.delay = 0.05
+def test_one_pocket_call_at_a_time(bridge, fakes):
+    fakes.pocket.delay = 0.05
     texts = [f"Phrase numéro {word}." for word in ("un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit")]
     with concurrent.futures.ThreadPoolExecutor(8) as pool:
         results = list(pool.map(lambda t: sentence(bridge, text=t).content, texts))
-    assert sorted(b["input"] for b in fakes.kyutai.inputs) == sorted(texts)
-    assert fakes.kyutai.max_active == 1
+    assert sorted(b["input"] for b in fakes.pocket.inputs) == sorted(texts)
+    assert fakes.pocket.max_active == 1
     assert results == [pcm_for(t) for t in texts]
 
 
@@ -44,11 +44,11 @@ def test_lru_cache_hits_and_evicts(bridges, fakes):
     bridge = bridges.new(change=lambda c: c["limits"].update(tts_cache_entries=2)).start()
     first = sentence(bridge, text="Salut.")
     again = sentence(bridge, text="Salut.")
-    assert first.headers["x-cache"] == "miss" and again.headers["x-cache"] == "hit" and len(fakes.kyutai.inputs) == 1
-    sentence(bridge, text="Salut.", voice="4193")   # other voice = other key
-    sentence(bridge, text="Autre.")                 # evicts ("5476", "Salut.")
+    assert first.headers["x-cache"] == "miss" and again.headers["x-cache"] == "hit" and len(fakes.pocket.inputs) == 1
+    sentence(bridge, text="Salut.", voice="pocket:galet")   # other voice = other key
+    sentence(bridge, text="Autre.")                         # evicts ("pocket:ours", "Salut.")
     assert sentence(bridge, text="Salut.").headers["x-cache"] == "miss"
-    assert len(fakes.kyutai.inputs) == 4
+    assert len(fakes.pocket.inputs) == 4
     other_format = sentence(bridge, text="Autre.", format="wav")
     assert other_format.headers["x-cache"] == "miss"   # the format is part of the key
 
@@ -59,54 +59,45 @@ def test_errors(bridges, fakes):
     assert empty.status_code == 400
     long = sentence(bridge, text="x " * 50)
     assert long.status_code == 413
-    fakes.kyutai.status = 500
+    fakes.pocket.status = 500
     upstream = sentence(bridge, text="Ok.")
-    assert upstream.status_code == 502 and upstream.json() == {"detail": "kyutai returned HTTP 500"}
-    down = bridges.new("down", change=lambda c: c["kyutai"].update(url=f"http://127.0.0.1:{free_port()}")).start()
+    assert upstream.status_code == 502 and upstream.json() == {"detail": "pocket returned HTTP 500"}
+    down = bridges.new("down", change=lambda c: c["pocket"].update(url=f"http://127.0.0.1:{free_port()}")).start()
     unreachable = sentence(down, text="Ok.")
-    assert unreachable.status_code == 502 and unreachable.json() == {"detail": "kyutai unreachable"}
-    assert down.get("/health").json()["kyutai"] is False
+    assert unreachable.status_code == 502 and unreachable.json() == {"detail": "pocket unreachable"}
+    assert down.get("/health").json()["pocket"] is False
 
 
 def test_wav_float32_and_extensible_are_converted(bridge, fakes):
     floats = array.array("f", [0.0, 0.5, -1.0, 2.0])
-    fakes.kyutai.override = lambda seen: Response(make_wav(floats.tobytes(), bits=32, tag=3), media_type="audio/wav") \
+    fakes.pocket.override = lambda seen: Response(make_wav(floats.tobytes(), bits=32, tag=3), media_type="audio/wav") \
         if seen.path == "/v1/audio/speech" else None
     resp = sentence(bridge, text="Flottant.")
     assert array.array("h", resp.content).tolist() == [0, 16383, -32767, 32767]
     raw = struct.pack("<hh", 1, -2)
-    fakes.kyutai.override = lambda seen: Response(make_wav(raw), media_type="audio/wav") \
+    fakes.pocket.override = lambda seen: Response(make_wav(raw), media_type="audio/wav") \
         if seen.path == "/v1/audio/speech" else None
     assert sentence(bridge, text="Entier.").content == raw
 
 
-def test_pocket_only_routes_everything_to_pocket_and_never_to_kyutai(bridges, fakes):
+def test_an_old_kyutai_voice_speaks_with_the_default_bip(bridges, fakes):
+    """Kyutai 1.6B is gone (a Kyutai server is a voice server like any other): an old `[kyutai]` section is ignored,
+    an old Kyutai voice speaks with the default Bip."""
     def change(c):
-        c["kyutai"] = {"enabled": False}
+        c["kyutai"] = {"url": "http://127.0.0.1:8097", "default_voice": "5476"}
         c["pocket"] = {"url": fakes.pocket.url, "default_voice": "pocket:loutre"}
         c["agents"]["Wellness"].pop("voice")
     bridge = bridges.new(change=change).start()
-    sentence(bridge, text="Bonjour.", voice="5476")  # a Kyutai voice: the default Bip speaks instead
-    assert fakes.pocket.inputs[-1]["voice"] == "loutre" and fakes.kyutai.inputs == []
+    sentence(bridge, text="Bonjour.", voice="5476")
+    assert fakes.pocket.inputs[-1]["voice"] == "loutre"
     # an agent nobody picked a voice for gets its category's Bip in the language it writes in (place-locale, 2026-10-30),
     # not the install's default Bip
     assert bridge.get("/v1/agents", headers=AUTH).json()["agents"][0]["voice"] == "pocket:en/ours"
     fakes.pocket.status = 503
     assert sentence(bridge, text="Encore.", voice="pocket:loutre").status_code >= 500
-    assert fakes.kyutai.inputs == []
     health = bridge.get("/health").json()
-    assert health["kyutai"] is None and health["pocket"] is False
-    out = bridge.cli("check")
-    assert "  kyutai      off" in out.stdout.splitlines() and "  voice       pocket:loutre (default)" in out.stdout
-
-
-def test_no_tts_engine_is_a_config_error(bridges):
-    bridge = bridges.new(change=lambda c: (c.update(kyutai={"url": ""}), c.pop("pocket")))
-    bridge.write_config()
-    out = bridge.cli("check")
-    assert out.returncode == 2 and out.stderr.strip() == "config error: no TTS engine: set [pocket] url, or [kyutai] url"
-    bridge.start(wait=False)
-    assert bridge.process.wait(timeout=30) == 2
+    assert "kyutai" not in health and health["pocket"] is False
+    assert "  voice       pocket:loutre (default)" in bridge.cli("check").stdout
 
 
 def test_the_persons_own_respellings_win(bridges, fakes):
@@ -136,13 +127,6 @@ def test_drama_streams_its_44k_audio_resampled_to_24k(bridges, fakes):
     assert health["voice_server"] is True and health["drama"] is True
 
 
-def test_an_earlier_installs_drama_section_is_a_voice_server(bridges, fakes):
-    bridge = bridges.new(change=lambda c: c.update(drama={"url": fakes.voices.url})).start()
-    stream(bridge, text="Bonjour.", voice="drama:fr-mascotte-s17")
-    assert fakes.voices.inputs[0]["model"] == "drama-3" and fakes.voices.inputs[0]["response_format"] == "pcm"
-    assert bridge.get("/health").json()["drama"] is True
-
-
 def test_drama_down_speaks_with_a_pocket_bip_of_the_same_language(bridges, fakes):
     bridge = bridges.new(change=lambda c: c.update(voice_server={"url": f"http://127.0.0.1:{free_port()}",
                                                                  "model": "drama-3", "stream_rate": 44100})).start()
@@ -170,7 +154,7 @@ def test_drama_whole_files_and_formats_it_cannot_make(bridges, fakes):
     wav = sentence(bridge, text="Bonjour à toi.", voice="drama:fr-naturelle-s21", format="wav")
     assert wav.content[:4] == b"RIFF" and struct.unpack("<I", wav.content[24:28])[0] == 24000
     mp3 = bridge.post("/v1/tts/message", headers=AUTH, json={"text": "Bonjour à toi.", "voice": "drama:fr-naturelle-s21"})
-    assert fakes.pocket.inputs[-1]["voice"] == "galet" and mp3.content.startswith(b"ID3pocket")   # a Bip reads it
+    assert fakes.pocket.inputs[-1]["voice"] == "galet" and mp3.content.startswith(b"ID3")   # a Bip reads it
 
 
 def test_drama_voices_without_drama_go_to_pocket(bridge, fakes):

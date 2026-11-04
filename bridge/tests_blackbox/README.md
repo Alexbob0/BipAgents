@@ -61,10 +61,8 @@ reset before each test. Each one records every request it gets.
 | Fake | Stands in for | Notes |
 |---|---|---|
 | Hermes api_server | Hermes | Several agents: the root one and the hub's `/p/<name>`. It serves sessions, messages, chat, `/v1/runs` (start, status, stop, SSE events from a script with gates, approval), capabilities and toolsets, and counts tokens while a run goes on. |
-| Kyutai TTS | Kyutai | Same fake audio as `tests/conftest.py`. |
 | Pocket TTS | Pocket | Same fake audio as `tests/conftest.py`. |
 | Voice server | The person's own voice server | Drama 3 streaming 44.1 kHz, whole WAV files, mp3, a busy GPU, an endless take, `/v1/audio/voices` or `/v1/voices`. |
-| ntfy | ntfy | `/v1/health` and `/<topic>/json` streams. |
 | APNs | Apple's push service | `/production/3/device/<token>` and `/sandbox/3/device/<token>`, over plain HTTP/1.1. Real APNs uses HTTP/2 over TLS, which both bridges negotiate by ALPN. |
 | FCM | Google's push service | `/v1/projects/<id>/messages:send` plus the OAuth `/token` endpoint. |
 | Publisher's push relay | `relay/` | `POST /v1/relay/push` |
@@ -123,7 +121,7 @@ Python tests pass.
 ## Coverage: route → tests
 
 The tables were generated from the routers (`@router.<method>(…)`) and the tests' requests, matched by method and path,
-then completed by hand for the MCP endpoint (its calls go through `bbkit/mcp.py`), the voice WebSocket and the static
+then completed by hand for the MCP endpoint (its calls go through `bbkit/mcp.py`), the desktop's WebSocket and the static
 mounts. Every route has at least one test.
 
 The original suite had about 310 client calls in 41 files. All of its HTTP-level behaviour is ported, and many of its
@@ -281,7 +279,6 @@ The suite makes about 800 requests in 28 files.
 | `POST /v1/agents/{agent_id}/queue/resume` | msg_queue | agent_queue (1) |
 | `GET /v1/agents/{agent_id}/queue/events` | msg_queue | agent_queue (1) |
 | `POST /v1/agents/{agent_id}/steer` | msg_queue | agent_queue (3) |
-| `WEBSOCKET /v1/voice` | voice_ws | voice_and_approvals (12), http_routes (1) |
 | `GET /console/static/…` (mount) | console | console (1) |
 | `GET /desktop/static/novnc/…` (mount) | desktop | desktop (1) |
 
@@ -304,8 +301,6 @@ The suite makes about 800 requests in 28 files.
   - Turning an existing browser off and on, and `browser remove`, are tested.
 - **systemd and launchd services for spaces.** The suite uses `[spaces] start` / `stop`, the administrator's own
   commands. The systemd unit and the launchd plist the bridge writes otherwise depend on the OS.
-- **The LAN door's WebSocket (`wss://…/v1/voice`).** The door is tested over HTTPS: certificate pinning, the same
-  routes, and the Hermes relay.
 
 **Too slow for a test run:**
 

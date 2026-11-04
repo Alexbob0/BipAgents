@@ -20,8 +20,6 @@
 //! calls, and the message's signature (« Message from … (@agent): ») which of its agents. An agent in its own
 //! space is alone in its gateway, so it is known for sure; in the shared hub, an agent could sign as another hub
 //! agent (same person, nothing secret there). Agents of the hub can also message each other directly.
-//!
-//! Port of `bridge/bipbridge/peers.py` (owner group: agents).
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::{Path, PathBuf};

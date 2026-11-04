@@ -5,40 +5,7 @@
 
 use std::fmt;
 
-/// `str.isspace()` for one character.
-pub fn is_space(c: char) -> bool {
-    matches!(
-        c,
-        '\t' | '\n'
-            | '\u{0b}'
-            | '\u{0c}'
-            | '\r'
-            | '\u{1c}'
-            | '\u{1d}'
-            | '\u{1e}'
-            | '\u{1f}'
-            | ' '
-            | '\u{85}'
-            | '\u{a0}'
-            | '\u{1680}'
-            | '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{3000}'
-    )
-}
-
-/// `text.strip()`.
-pub fn strip(text: &str) -> &str {
-    text.trim_matches(is_space)
-}
-
-/// `text.rstrip()`.
-pub fn rstrip(text: &str) -> &str {
-    text.trim_end_matches(is_space)
-}
-
-/// `text.split()`.
-pub fn split(text: &str) -> Vec<&str> {
-    text.split(is_space).filter(|w| !w.is_empty()).collect()
-}
+pub use crate::voice_speech::pystr::{is_space, len, rstrip, split_ws as split, strip};
 
 /// `" ".join(text.split())`.
 pub fn squash(text: &str) -> String {
@@ -51,11 +18,6 @@ pub fn head(text: &str, n: usize) -> &str {
         Some((i, _)) => &text[..i],
         None => text,
     }
-}
-
-/// `len(text)` (code points).
-pub fn len(text: &str) -> usize {
-    text.chars().count()
 }
 
 /// An exception Python lets through (a `KeyError`, a `ValueError`…): its class name, for the log lines that show

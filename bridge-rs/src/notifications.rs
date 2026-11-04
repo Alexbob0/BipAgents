@@ -7,8 +7,10 @@
 //! ```text
 //! GET    /v1/notifications?agent=&thread=&since=&unread=1&limit=     newest first
 //! GET    /v1/notifications/unread                                    {total, agents, threads}
-//! GET    /v1/notifications/rules                                     the rules table
 //! GET    /v1/notifications/{id}                                      one row, with its text
+//!
+//! A `boite` row carries its message as the Boîte shows it (`boite`: title, the whole text, attachments, has_audio,
+//! audio_url — the audio at `/v1/outbox/{id}/audio`): the apps read the Boîte from here alone.
 //! POST   /v1/notifications/read  {ids?, agent?, thread?}             → {read: [ids], unread}
 //! DELETE /v1/notifications/{id}                                      hidden from the Boîte
 //! ```
@@ -132,19 +134,6 @@ impl Kind {
     }
 }
 
-/// The rules table as served (`GET /v1/notifications/rules`).
-pub fn rules() -> Value {
-    let mut rows: Vec<Value> = Kind::ALL
-        .iter()
-        .filter(|k| **k != Kind::Boite)
-        .map(|k| json!({"type": k.as_str(), "follows_switch": k.follows_switch(None)}))
-        .collect();
-    for (from, name) in [(BoiteFrom::Task, "task"), (BoiteFrom::Routine, "routine"), (BoiteFrom::Other, "other")] {
-        rows.push(json!({"type": "boite", "from": name, "follows_switch": Kind::Boite.follows_switch(Some(from))}));
-    }
-    json!({"rules": rows})
-}
-
 type Param = rusqlite::types::Value;
 
 fn text(v: &str) -> Param {
@@ -202,13 +191,8 @@ pub async fn insert(store: &Store, row: &NewRow<'_>) -> anyhow::Result<bool> {
     Ok(n > 0)
 }
 
-pub async fn set_push(store: &Store, id: &str, push: &str, legacy: &Dict) -> anyhow::Result<()> {
-    store
-        .run(
-            "UPDATE notifications SET push = ?, legacy = ? WHERE id = ?",
-            vec![text(push), text(&Value::Object(legacy.clone()).to_string()), text(id)],
-        )
-        .await?;
+pub async fn set_push(store: &Store, id: &str, push: &str) -> anyhow::Result<()> {
+    store.run("UPDATE notifications SET push = ? WHERE id = ?", vec![text(push), text(id)]).await?;
     Ok(())
 }
 
@@ -282,6 +266,39 @@ async fn counts(store: &Store) -> anyhow::Result<Value> {
     Ok(json!({"total": total, "agents": agents, "threads": threads}))
 }
 
+/// The rows served, a Boîte row with its message (`boite`, see the module's doc).
+async fn served_rows(state: &AppState, rows: &[crate::store::Row], full: bool) -> anyhow::Result<Vec<Value>> {
+    let ids: Vec<&str> = rows
+        .iter()
+        .filter(|r| r["type"] == "boite")
+        .filter_map(|r| r.get("ref_id").and_then(Value::as_str))
+        .collect();
+    let mut messages = std::collections::HashMap::new();
+    if !ids.is_empty() {
+        let marks = vec!["?"; ids.len()].join(",");
+        let found = state
+            .store
+            .run(&format!("SELECT * FROM outbox WHERE id IN ({marks})"), ids.iter().map(|i| text(i)).collect())
+            .await?;
+        for row in &found {
+            let item = crate::app::outbox_item(row, state);
+            let boite = json!({"title": item["title"], "text": item["text"], "attachments": item["attachments"],
+                               "has_audio": item["has_audio"], "audio_url": item["audio_url"]});
+            messages.insert(item["id"].as_str().unwrap_or("").to_string(), boite);
+        }
+    }
+    Ok(rows
+        .iter()
+        .map(|r| {
+            let mut out = served(r, full);
+            if let Some(boite) = r.get("ref_id").and_then(Value::as_str).and_then(|i| messages.get(i)) {
+                out["boite"] = boite.clone();
+            }
+            out
+        })
+        .collect())
+}
+
 // -- routes ---------------------------------------------------------------------------------------------------------
 
 async fn list(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
@@ -306,22 +323,17 @@ async fn list(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response>
     let limit = q.get("limit").and_then(|l| l.parse::<usize>().ok()).unwrap_or(50).clamp(1, 500);
     sql.push_str(&format!(" ORDER BY created_at DESC, id DESC LIMIT {limit}"));
     let rows = state.store.run(&sql, params).await?;
-    let items: Vec<Value> = rows.iter().map(|r| served(r, false)).collect();
-    Ok(web::ok(json!({"notifications": items})))
+    Ok(web::ok(json!({"notifications": served_rows(&state, &rows, false).await?})))
 }
 
 async fn unread(State(state): State<AppState>) -> ApiResult<Response> {
     Ok(web::ok(counts(&state.store).await?))
 }
 
-async fn rules_route() -> ApiResult<Response> {
-    Ok(web::ok(rules()))
-}
-
 async fn one(State(state): State<AppState>, UrlPath(id): UrlPath<String>) -> ApiResult<Response> {
     let rows = state.store.run("SELECT * FROM notifications WHERE id = ?", vec![text(&id)]).await?;
-    let row = rows.first().ok_or_else(HttpError::not_found)?;
-    Ok(web::ok(served(row, true)))
+    rows.first().ok_or_else(HttpError::not_found)?;
+    Ok(web::ok(served_rows(&state, &rows, true).await?.remove(0)))
 }
 
 async fn hide(State(state): State<AppState>, UrlPath(id): UrlPath<String>) -> ApiResult<Response> {
@@ -418,7 +430,6 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/notifications", get(list))
         .route("/notifications/unread", get(unread))
-        .route("/notifications/rules", get(rules_route))
         .route("/notifications/read", post(read))
         .route("/notifications/{id}", get(one).delete(hide))
 }
@@ -453,7 +464,6 @@ mod tests {
         let names: std::collections::HashSet<&str> = Kind::ALL.iter().map(|k| k.as_str()).collect();
         assert_eq!(names.len(), Kind::ALL.len());
         assert_eq!(Kind::of_card("secret_request"), Kind::Secret);
-        assert_eq!(rules()["rules"].as_array().unwrap().len(), 18);
     }
 
     #[tokio::test]

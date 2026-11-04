@@ -1,16 +1,12 @@
-//! The push-runs group's pure functions against the Python's own results (tests/golden/push_runs.json, made by
-//! gen_push_runs.py): push payloads and previews, FCM data messages, ntfy's cron unwrapping, MEDIA lines, the cron
+//! The push-runs group's pure functions against the Python's own results (tests/golden/push_runs.json, frozen:
+//! made by the retired Python bridge): push payloads and previews, FCM data messages, MEDIA lines, the cron
 //! watcher's helpers and the run hub's backlog merging. Outputs are compared as JSON text: key order counts.
 
 use std::collections::VecDeque;
 
 use bipbridge::hermes::SSEEvent;
-use bipbridge::{cronwatch, fcm, media, ntfy, push, runs, Dict};
+use bipbridge::{cronwatch, fcm, media, push, runs, Dict};
 use serde_json::{json, Value};
-
-fn opt(v: &Value) -> Option<&str> {
-    v.as_str()
-}
 
 fn dict(v: &Value) -> Dict {
     v.as_object().cloned().unwrap_or_default()
@@ -27,14 +23,6 @@ fn run(name: &str, a: &[Value]) -> Value {
         }
         "preview" => json!(push::preview(a[0].as_str().unwrap(), a[1].as_u64().unwrap() as usize)),
         "data_message" => Value::Object(fcm::data_message(&a[0])),
-        "unwrap_cron" => {
-            let (name, body) = ntfy::unwrap_cron(a[0].as_str().unwrap());
-            json!([name, body])
-        }
-        "auth_header" => match ntfy::auth_header(opt(&a[0])) {
-            Some((k, v)) => json!({ k: v }),
-            None => json!({}),
-        },
         "extract_media" => {
             let (text, paths) = media::extract_media(a[0].as_str().unwrap());
             json!([text, paths])

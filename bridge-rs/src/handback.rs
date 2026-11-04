@@ -14,7 +14,7 @@
 //! - the message is in the Boîte (the outbox, one row, tagged with the conversation, so tapping opens it) and pushed
 //!   like any agent message, unless the person has that conversation on screen (it appears there live: the apps poll
 //!   an open conversation's state). In « Bot Chat » the outbox shows inside the conversation itself, so it gets only
-//!   the push. The Boîte keeps the message's `MEDIA:` lines (ntfy.rs), so the report shows as its page card.
+//!   the push. The Boîte keeps the message's `MEDIA:` lines (outbox.rs), so the report shows as its page card.
 //! - That turn's tokens are counted in the task's. When the model fails, the turn runs too long or the conversation
 //!   stays busy, a templated message (four languages) goes to the Boîte instead, and the report waits as a note joined
 //!   to the next message the person writes there (the Live recaps' way, live_brief.rs), so the agent still knows.

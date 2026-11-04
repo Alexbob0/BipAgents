@@ -618,25 +618,6 @@ async fn set_task(
 
 /// « Dates à venir »: dated facts (birthdays, anniversaries, deadlines of others), never tasks. `days` (default 60,
 /// at most 366); `all=1`: every page, not only the close people's.
-async fn dates(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
-    let config = state.config();
-    let days = q.get("days").and_then(|d| d.parse::<i64>().ok()).unwrap_or(60).clamp(1, 366);
-    let all = matches!(q.get("all"), Some("1" | "true" | "yes"));
-    let standard = !matches!(q.get("standard"), Some("0" | "false" | "no"));
-    let shown = shown_language(&config, &q);
-    let view = blocking(move || {
-        // the person's dates, then the standard ones (holidays, school holidays, clock changes: computed, not saved)
-        let mut dates = super::upcoming_dates(&config, days, all, chrono::Local::now().date_naive());
-        if standard {
-            dates.extend(crate::dates::notebook_entries(&config, days, Some(&shown)));
-            dates.sort_by_key(|d| d.get("in_days").and_then(Value::as_i64).unwrap_or(0));
-        }
-        Ok(json!({"dates": dates}))
-    })
-    .await?;
-    Ok(web::ok(view))
-}
-
 #[derive(Debug, Deserialize)]
 pub struct Close {
     pub path: String,
@@ -911,16 +892,6 @@ async fn tidy_now(State(state): State<AppState>) -> ApiResult<Response> {
     Ok(web::ok(json!({"run": record})))
 }
 
-async fn runs(State(state): State<AppState>) -> ApiResult<Response> {
-    let config = state.config();
-    let view = blocking(move || {
-        Ok(json!({"runs": super::tidy::runs(&config), "spend": super::tidy::spending(&config),
-                  "monthly_cap": config.notebook.monthly_cap}))
-    })
-    .await?;
-    Ok(web::ok(view))
-}
-
 #[derive(Debug, Deserialize)]
 pub struct FillAll {
     #[serde(default)]
@@ -968,7 +939,6 @@ pub fn router() -> Router<AppState> {
         .route("/notebook/tasks", get(list_tasks).post(add_task))
         .route("/notebook/tasks/{id}", post(set_task))
         .route("/notebook/documents", get(documents))
-        .route("/notebook/dates", get(dates))
         .route("/notebook/close", post(set_close))
         .route("/notebook/icon", post(set_icon))
         .route("/notebook/proposals", get(proposals))
@@ -979,6 +949,5 @@ pub fn router() -> Router<AppState> {
         .route("/notebook/settings", get(get_settings).patch(set_settings))
         .route("/notebook/export", get(export))
         .route("/notebook/tidy", post(tidy_now))
-        .route("/notebook/runs", get(runs))
         .route("/notebook/fill", get(fill_view).post(fill_all).delete(fill_stop))
 }

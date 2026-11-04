@@ -82,9 +82,4 @@ def test_a_real_page_read_and_followed_without_being_touched(bridges, fakes, chr
                          ("li", "Bassin sportif"), ("li", "Pataugeoire")]
     assert not any("caché" in t or "Accueil" in t or "MutationObserver" in t for _, t in texts)
 
-    focus = bridge.get("/v1/agents/vie/desktop/focus", headers=AUTH)
-    assert focus.status_code == 200, focus.text
-    target = focus.json()["target"]
-    assert target["kind"] == "field" and 400 < target["x"] < 600 and 190 < target["w"] < 215
-    assert focus.json()["viewport"]["w"] > 1000
     assert page_counters(chromium) == [0, 0, "name"]      # nothing changed, no event, the focus where it was

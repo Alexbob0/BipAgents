@@ -2,8 +2,6 @@
 //! icon, and DuckDuckGo's icon service (which serves them) sees this server's address, never the phone's.
 //!
 //! - `GET /v1/favicon/{host}` -> the icon (kept 30 days on disk), 404 when the site has none
-//!
-//! Port of `bridge/bipbridge/favicons.py` (owner group: tools-knowledge).
 
 use std::path::PathBuf;
 use std::sync::LazyLock;

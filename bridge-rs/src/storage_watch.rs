@@ -1009,7 +1009,7 @@ saved them, a card lets them delete them here.",
 }
 
 /// The Boîte message carrying the files sent to the phone (« Te l'envoyer »), in the agent's language.
-pub fn send_message(config: &Config, agent: &AgentConfig, paths: &[String]) -> Dict {
+pub fn send_message(config: &Config, agent: &AgentConfig, paths: &[String]) -> crate::outbox::BoiteMessage {
     let lead = match crate::handback::language_of(config, agent).as_str() {
         "en" => "Here are the files to save on your phone. Once they're saved, tell me on the card and I'll delete them from your space.",
         "de" => "Hier sind die Dateien zum Speichern auf deinem Telefon. Sobald sie gespeichert sind, sag es mir auf der Karte, dann lösche ich sie aus deinem Bereich.",
@@ -1020,10 +1020,7 @@ pub fn send_message(config: &Config, agent: &AgentConfig, paths: &[String]) -> D
     for path in paths {
         text.push_str(&format!("\nMEDIA:{path}"));
     }
-    let mut message = Dict::new();
-    message.insert("id".into(), json!(format!("space:{}", py::token_hex(6))));
-    message.insert("message".into(), json!(text));
-    message
+    crate::outbox::BoiteMessage { id: Some(format!("space:{}", py::token_hex(6))), ..crate::outbox::BoiteMessage::new(text) }
 }
 
 // --- the place's own disk, as the seat agent tells it -----------------------------------------------------------------
@@ -1385,7 +1382,7 @@ pub async fn approve(state: &AppState, agent: &AgentConfig, id: &str, choice: &s
         .ok_or_else(|| HttpError::new(404, "no such request (answered already?)"))?;
     if !done.sent.is_empty() {
         let message = send_message(&state.config(), agent, &done.sent);
-        if let Err(err) = state.outbox.ingest(agent, &message, true, false).await {
+        if let Err(err) = state.outbox.ingest(agent, message, true).await {
             tracing::warn!(target: "bipbridge::storage", agent = %agent.name, error = %format!("{err:#}"), "files to send: the Boîte refused them");
         }
     }

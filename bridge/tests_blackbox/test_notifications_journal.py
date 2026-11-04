@@ -100,7 +100,3 @@ def test_the_switch_silences_replies_never_approvals_or_questions(bridges, fakes
     assert question["request_id"] == "c4" and question["run_id"] == "r2" and question["r"] == "c4"
     approval = [p for p in fakes.apns.payloads() if p["t"] == "approval"][0]
     assert approval["aps"]["category"] == "APPROVAL" and approval["choices"] == ["once", "deny"]
-    rules = {(r["type"], r.get("from")): r["follows_switch"]
-             for r in bridge.get("/v1/notifications/rules", headers=AUTH).json()["rules"]}
-    assert rules[("question", None)] is False and rules[("reply", None)] is True
-    assert rules[("boite", "task")] is True and rules[("boite", "routine")] is False

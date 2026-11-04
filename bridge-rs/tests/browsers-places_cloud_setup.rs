@@ -935,7 +935,7 @@ async fn an_english_claim_makes_the_whole_place_english_in_the_persons_zone() {
     let mut config = cloud(dir.path());
     config.hermes.hub_url = gateway.clone();
     config.agents.clear();
-    config.default_voice = "pocket:ours".into(); // an offer place: the Bips, no Kyutai
+    config.default_voice = "pocket:ours".into(); // an offer place: the Bips
     let home = dir.path().join(".hermes");
     std::fs::create_dir_all(&home).unwrap();
     std::fs::write(home.join("config.yaml"), "model:\n  provider: openrouter\n  default: openrouter/auto\n").unwrap();

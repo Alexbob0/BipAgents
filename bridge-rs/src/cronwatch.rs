@@ -12,8 +12,6 @@
 //! it names); an agent Hermes does wake replies within that minute, and its reply is pushed instead.
 //!
 //! The helpers that read Hermes' rows (`final_reply`, `message_text`, `is_bot_chat`…) serve the other modules.
-//!
-//! Port of `bridge/bipbridge/cronwatch.py` (owner group: push-runs).
 
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
@@ -24,7 +22,7 @@ use serde_json::Value;
 
 use crate::config::{AgentConfig, SharedConfig};
 use crate::hermes::HermesClient;
-use crate::ntfy::OutboxService;
+use crate::outbox::OutboxService;
 use crate::push::pyx;
 use crate::push::PushService;
 use crate::runs::RunHub;

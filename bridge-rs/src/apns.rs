@@ -1,6 +1,4 @@
 //! APNs HTTP/2 client with token-based (ES256 JWT) authentication.
-//!
-//! Port of `bridge/bipbridge/apns.py` (owner group: push-runs).
 
 use std::sync::Mutex;
 use std::time::Duration;

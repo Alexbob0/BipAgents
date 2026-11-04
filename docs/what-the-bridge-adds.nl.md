@@ -31,8 +31,8 @@ toevoegt, met de modules (`bridge-rs/src/<naam>.rs`) die het doen, en wat hij be
 
 ## De telefoon eerst
 
-- **Stem.** `voice_ws.rs` volgt een Hermes-run en streamt één gesynthetiseerde zin tegelijk; `textproc.rs` knipt de
-  binnenkomende markdown in zinnen; `tts.rs` plant de engines (Pocket TTS op de CPU, of de eigen stemserver van de
+- **Stem.** `live_calls.rs` voert de Live-gesprekken; `textproc.rs` knipt
+  markdown in zinnen; `tts.rs` plant de engines (Pocket TTS op de CPU, of de eigen stemserver van de
   persoon); `voices.rs` geeft elke agent zijn stem. De tekst wordt op spraak voorbereid: `numbers_fr.rs`,
   `speech_intl.rs` (Engels, Spaans, Duits, Nederlands), `durations.rs`, `pronounce.rs`, `pronunciations.rs`.
 - **Live-gesprekken.** `live_brief.rs` begint een gesprek met een korte samenvatting van de conversatie in plaats van
@@ -45,9 +45,8 @@ toevoegt, met de modules (`bridge-rs/src/<naam>.rs`) die het doen, en wat hij be
 - **Berichten tijdens het werk.** `msg_queue.rs`: een bericht dat je stuurt terwijl de agent werkt, gaat in de lopende
   beurt (Hermes' steer, na de huidige toolaanroepen); « Daarna » zet het in de wachtrij van de agent op de brug, op elk
   apparaat hetzelfde, gestart als volgende beurt (volgorde, weghalen, nu sturen, pauze), één melding aan het eind.
-- **Niets kwijt.** `ntfy.rs` en `cronwatch.rs` zetten berichten van agents en het antwoord van elke routine in een
-  outbox (`store.rs`), met de audio klaar; `restore_reconcile.rs` zet na een herstel de berichten terug die de
-  telefoons bewaarden.
+- **Niets kwijt.** `outbox.rs` en `cronwatch.rs` zetten berichten van agents en het antwoord van elke routine in een
+  outbox (`store.rs`), met de audio klaar.
 - **Thuis bereiken.** Via Tailscale, of `lan.rs`: een vastgepinde HTTPS-deur op het lokale netwerk als internet
   wegvalt. `device_keys.rs` geeft elk apparaat een eigen sleutel; `guard.rs` telt foute sleutels; `console.rs` is de
   webconsole.
@@ -179,7 +178,6 @@ installer past ze toe.
 | 0010 lege antwoorden | toolaanroepen die een model als tekst schrijft worden echte aanroepen; nieuwe pogingen veranderen het verzoek |
 | 0011 titels met GLM | GLM antwoordt leeg op aanroepen zonder denken, dus titels vragen om « low » denken |
 | 0013 MCP-resultaten: kluiswachtwoorden gewist | een wachtwoord komt nooit via een toolresultaat terug bij het model |
-| 0014 routineresultaten in gewone UTF-8 | accenten blijven leesbaar in routineresultaten |
 | 0015 tijdanker | de huidige tijd reist mee met elk bericht |
 | 0016 één `message_agent`, die van de bridge | elk bericht tussen agents gaat langs de controles van de bridge |
 | 0017 adresitems | kluisadressen hebben een naam, telefoon en e-mail |
@@ -193,7 +191,7 @@ installer past ze toe.
 gaan is een rebase van die branch en daarna een nieuwe `BASE`. Een patch verdwijnt zodra Hermes hetzelfde kan: 0001
 (clarify in de Runs-API) en 0004 (afbeeldingen bewaard voor vervolgvragen) vielen weg toen v0.22.5 eigen versies
 kreeg. 0005 is upstream voorgesteld (NousResearch/hermes-agent#136660); kleine, algemene patches (de fix in 0008,
-0009, 0011, 0013, 0014, 0017, de labels uit 0019) zijn de volgende kandidaten. Details per patch:
+0009, 0011, 0013, 0017, de labels uit 0019) zijn de volgende kandidaten. Details per patch:
 [`hermes/patches/README.md`](../hermes/patches/README.md).
 
 ## Wat we bewust aan Hermes overlaten

@@ -31,8 +31,8 @@ that do it, and what it deliberately leaves to Hermes.
 
 ## Phone first
 
-- **Voice.** `voice_ws.rs` follows a Hermes run and streams one synthesized sentence at a time; `textproc.rs` splits
-  the streamed markdown into sentences; `tts.rs` schedules the engines (Pocket TTS on CPU, or the person's own voice
+- **Voice.** `live_calls.rs` runs the Live calls; `textproc.rs` splits
+  markdown into sentences; `tts.rs` schedules the engines (Pocket TTS on CPU, or the person's own voice
   server); `voices.rs` gives each agent its voice. Text is prepared for speech: `numbers_fr.rs`, `speech_intl.rs`
   (English, Spanish, German, Dutch), `durations.rs`, `pronounce.rs`, `pronunciations.rs`.
 - **Live calls.** `live_brief.rs` starts a call from a short brief of the conversation instead of 100k tokens of
@@ -44,8 +44,8 @@ that do it, and what it deliberately leaves to Hermes.
 - **Messages during the work.** `msg_queue.rs`: a message sent while the agent works goes into the turn going on
   (Hermes' steer, after its current tool calls); « After » keeps it in the agent's queue instead, on the bridge, the same on
   every device, started as the next turn once the work ends (reorder, cancel, send now, pause), one notification at the end.
-- **Nothing missed.** `ntfy.rs` and `cronwatch.rs` put agent messages and every routine's reply into an outbox
-  (`store.rs`) with its audio ready; `restore_reconcile.rs` puts back the messages phones kept after a restore.
+- **Nothing missed.** `outbox.rs` and `cronwatch.rs` put agent messages and every routine's reply into an outbox
+  (`store.rs`) with its audio ready.
 - **Reaching home.** Over Tailscale, or `lan.rs`: a pinned HTTPS door on the local network when the Internet is down.
   `device_keys.rs` gives each device its own key; `guard.rs` counts wrong keys; `console.rs` is the web console.
 - **Plain words.** `approval_text.rs`, `approval_command.rs`, `no_reply.rs`, `names.rs`, `answer_style.rs` and
@@ -167,7 +167,6 @@ top of the pinned stable release (`BASE`: v0.22.5), and the installer applies th
 | 0010 empty replies | tool calls a model writes as text become real calls; retries change the request |
 | 0011 titles with GLM | GLM answers thinking-off calls with nothing, so titles ask for « low » thinking |
 | 0013 MCP results: vault passwords scrubbed | a password never comes back to the model through a tool result |
-| 0014 routine results in plain UTF-8 | accents stay readable in routine tool results |
 | 0015 time anchor | the current time travels with each message |
 | 0016 one `message_agent`, the bridge's | every agent-to-agent message goes through the bridge's checks |
 | 0017 address items | vault addresses carry a name, a phone and an e-mail |
@@ -181,7 +180,7 @@ top of the pinned stable release (`BASE`: v0.22.5), and the installer applies th
 time. A move to a newer Hermes is a rebase of that branch, then a new `BASE`. Patches are dropped as soon as Hermes has
 the same thing: 0001 (clarify in the Runs API) and 0004 (images kept for follow-up questions) went when v0.22.5
 shipped its own. 0005 is proposed upstream as NousResearch/hermes-agent#136660; small, general ones (0008's fix,
-0009, 0011, 0013, 0014, 0017, 0019's labels) are the next candidates. Details per patch:
+0009, 0011, 0013, 0017, 0019's labels) are the next candidates. Details per patch:
 [`hermes/patches/README.md`](../hermes/patches/README.md).
 
 ## What we deliberately leave to Hermes

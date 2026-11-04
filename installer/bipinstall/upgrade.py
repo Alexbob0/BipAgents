@@ -326,9 +326,7 @@ def main(argv: List[str]) -> int:
 
     # 2. What runs here (the bridge also when an earlier update ran before its release was out).
     bridge = bool(config) and (touched("bridge-rs/") or rustbridge.missed(Path.home()))
-    if bridge and rustbridge.python_service(Path.home()):
-        pass   # the Python bridge left the code: the migration rust-bridge (step 3) moves its service to Rust
-    elif bridge:
+    if bridge:
         # its binaries for this version; unattended (the nightly timer, the guichet's waves), a release still being
         # built is waited for a few minutes; else, or past that, the current bridge keeps running
         rust = rustbridge.keep_in_step(Path.home(), wait=300 if args.auto else 0) if not runner.dry else None

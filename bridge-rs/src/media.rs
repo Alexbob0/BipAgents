@@ -4,8 +4,6 @@
 //! roots` maps agent-side prefixes to host directories; only files under a declared root, with a known
 //! media or document extension, are ever served (symlinks and `..` resolved first). A file in the agent's own places
 //! (its isolated sandbox's `/envoi`, its workspace) is served from the bridge's copy: sent_files.rs.
-//!
-//! Port of `bridge/bipbridge/media.py` (owner group: push-runs).
 
 use std::sync::LazyLock;
 

@@ -25,10 +25,10 @@ def test_each_use_speaks_with_the_voice_it_goes_to(bridges, fakes):
     bridge = server_bridge(bridges, fakes)
     assert prepared(bridge, "replies") == {"local": False, "voice": "server:fr/af_bella"}
     assert prepared(bridge, "reading") == {"local": False, "voice": "server:fr/af_bella"}
-    assert prepared(bridge, "live") == {"local": False, "voice": "4193"}        # the Live stays on its Bip
-    assert prepared(bridge, None) == {"local": False, "voice": "4193"}
-    bridge.put("/v1/agents/wellness/voices", headers=AUTH, json={"voice": "4193"})
-    assert prepared(bridge, "replies") == {"local": False, "voice": "4193"}     # no voice picked on the server yet
+    assert prepared(bridge, "live")["voice"] == "pocket:colibri"        # the Live stays on its Bip
+    assert prepared(bridge, None)["voice"] == "pocket:colibri"
+    bridge.put("/v1/agents/wellness/voices", headers=AUTH, json={"voice": "pocket:galet"})
+    assert prepared(bridge, "replies")["voice"] == "pocket:galet"       # no voice picked on the server yet
 
 
 def test_the_app_lists_the_server_voices_and_changes_the_uses(bridges, fakes):
@@ -65,13 +65,12 @@ def test_the_app_sets_an_agents_voices(bridges, fakes):
     assert resp.status_code == 200 and resp.json() == {"voice": "pocket:mousse", "server_voice": "server:fr/am_adam"}
     agent = tomllib.loads(bridge.toml_text())["agents"]["wellness"]
     assert agent["voice"] == "pocket:mousse" and agent["server_voice"] == "server:fr/am_adam"
-    assert agent["ntfy_topic"] == "hermes-wellness-out"
     listed = bridge.get("/v1/agents", headers=AUTH).json()["agents"][0]
     assert listed["voice"] == "pocket:mousse" and listed["server_voice"] == "server:fr/am_adam"
     cleared = bridge.put("/v1/agents/wellness/voices", headers=AUTH, json={"voice": "", "server_voice": None})
     assert cleared.json() == {"voice": None, "server_voice": None}
     assert "server_voice" not in tomllib.loads(bridge.toml_text())["agents"]["wellness"]
-    assert bridge.get("/v1/agents", headers=AUTH).json()["agents"][0]["voice"] == "5476"   # the default
+    assert bridge.get("/v1/agents", headers=AUTH).json()["agents"][0]["voice"] == "pocket:en/ours"   # its category's Bip
     assert bridge.put("/v1/agents/nobody/voices", headers=AUTH, json={}).status_code == 404
 
 

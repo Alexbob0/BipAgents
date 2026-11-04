@@ -14,8 +14,6 @@
 //! (`others_facing`). While the hub hosts one, its agents move into their own space at their first secret
 //! (own_space.rs), as before. Trade-off: one agent tricked by what it read could reach the person's other agents'
 //! passwords, in exchange for no extra container per agent.
-//!
-//! Port of `bridge/bipbridge/vault.py` (owner group: browsers-places).
 
 use std::path::PathBuf;
 use std::sync::Arc;

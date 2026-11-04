@@ -320,7 +320,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--pocket-models", action="store_true",
                         help="the Bips' voices with Pocket's own models instead (PyTorch, about 5.5 GB): only to make "
                              "or serve voices of your own")
-    parser.add_argument("--voice-server", "--kyutai-url",
+    parser.add_argument("--voice-server",
                         help="your own voice model: a TTS server with OpenAI's /v1/audio/speech, Kyutai's included "
                              "(default: look for one on this machine and the local network, then ask)")
     parser.add_argument("--voice-uses", help="what it speaks for, among live, replies, reading (default: asked)")
@@ -407,7 +407,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     from . import migrations
     from .upgrade import install_command
     migrations.sandboxes_at_gateway_start(runner, Path.home())   # what that last migration sets, a fresh install too
-    migrations.mark([mid for mid, _ in migrations.MIGRATIONS if mid not in migrations.AFTER_INSTALL], runner)   # a fresh install has them all already
+    migrations.mark([mid for mid, _ in migrations.MIGRATIONS], runner)   # a fresh install has them all already
     install_command(runner)   # `bipagents update` later
     if plan.browser != "none" and not browser:   # the visible browser brings its own desktop
         if hermes.desktop_ready() or sandbox:
@@ -492,7 +492,7 @@ def cloud_install(args, runner: hermes.Runner, machine: Machine) -> int:
     hermes.apply_patches(runner, REPO / "hermes" / "patches")
     hermes.setup_hub(runner, inst.ports.hermes, model, sandbox=sandbox)
     migrations.sandboxes_at_gateway_start(runner, Path.home())
-    migrations.mark([mid for mid, _ in migrations.MIGRATIONS if mid not in migrations.AFTER_INSTALL], runner)
+    migrations.mark([mid for mid, _ in migrations.MIGRATIONS], runner)
     install_command(runner)
     gateway_service(inst, machine, runner)
     status = finish(inst, machine, runner, args, steps, total, sandbox)
@@ -682,7 +682,6 @@ def finish(inst: Install, machine: Machine, runner: hermes.Runner, args, steps, 
     step(next(steps), total, "The Bips' voices")
     if pocket_running():
         say("  already set up on this machine: I'll share it.")
-        inst.pocket_engine = voices.engine_at(inst.pocket_url)   # the bridge prepares the text for that Pocket
         checkout.narrow(REPO, runner, voice_states=False)
     else:
         languages = args.languages or bip_languages()
@@ -695,7 +694,6 @@ def finish(inst: Install, machine: Machine, runner: hermes.Runner, args, steps, 
         # Pocket's own models read the voice states of the checkout (a light clone leaves them out until then).
         checkout.narrow(REPO, runner, voice_states=packages is None)
         venv(REPO / "pocket", runner, "requirements-onnx.txt" if packages else "requirements.txt")
-        inst.pocket_engine = voices.engine_of(packages) if packages else voices.pinned_pocket(REPO)
         label, path, content = pocket_service(inst, machine.system, languages, packages=packages)
         write(path, content, runner)
         start_service(machine.system, label, path, runner)

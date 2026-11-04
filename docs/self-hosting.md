@@ -105,9 +105,6 @@ The release's `SHA256SUMS` lists each archive's checksum.
 In `~/.config/hermes-ios/bridge.toml`, for a machine without a GPU:
 
 ```toml
-[kyutai]
-enabled = false                 # Kyutai 1.6B, if you run it, is a [voice_server] like any other (see the end)
-
 [pocket]
 url = "http://127.0.0.1:8098"
 default_voice = "pocket:colibri"
@@ -120,8 +117,7 @@ upload_dir_host = "~/hermes/profiles/wellness/uploads"        # where the bridge
 upload_dir_container = "/home/hermes/.hermes/profiles/wellness/uploads"   # the same folder as seen by the agent
 ```
 
-The `[ntfy]` sections and `ntfy_topic` / `ntfy_token` are optional (legacy proactive messages). Hermes' scheduled
-tasks reach the Inbox without them (`[cron]`). Then run `~/.local/bin/bipbridge check --config ~/.config/hermes-ios/bridge.toml`.
+Then run `~/.local/bin/bipbridge check --config ~/.config/hermes-ios/bridge.toml`.
 
 All options: [`bridge/README.md`](../bridge/README.md).
 
@@ -168,7 +164,7 @@ The bridge keeps the person's Carnet under its data dir (`notebook/carnet/`, pla
 night at most, only when the day's conversations hold something the agents did not file, under a monthly cap:
 `[notebook] model` (default: the agents' own model, at their provider), `base_url` and `key` for another
 OpenAI-compatible API, `price_in`/`price_out` (€ per million tokens), `monthly_cap` (€, default 0.10) and `hour`
-(default 3). Each run logs `notebook pass` with its tokens and cost; `GET /v1/notebook/runs` shows the month.
+(default 3). Each run logs `notebook pass` with its tokens and cost; the Carnet's settings show the month's spend.
 
 Long work goes to background tasks, never inline in a conversation. An agent starts one by itself only when the person
 asked for it, within `[jobs] direct_budget_eur` (€, default 0.20, counted at the `[notebook]` prices); above that it

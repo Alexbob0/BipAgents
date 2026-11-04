@@ -4,8 +4,6 @@
 //! line (`notif.<type>`, the phones translate it); a phone that gave its key (`devices.push_key`) gets the words sealed
 //! for it in `enc` (seal.rs), opened by its Notification Service Extension. A phone without a key gets the neutral
 //! line only.
-//!
-//! Port of `bridge/bipbridge/push.py` (owner group: push-runs).
 
 use std::sync::Arc;
 
@@ -207,8 +205,8 @@ pub struct Event {
     pub message: Option<String>,
     /// Wait for the reply's message to be stored and point at it.
     pub wait: bool,
-    /// Already heard by the person (a voice reply): journaled for the Boîte, never pushed.
-    pub heard: bool,
+    /// Journaled for the Boîte, never pushed (a muted routine's report, a mail digest).
+    pub quiet: bool,
     /// The dedupe key without the message (`<kind>:<agent>:` is put first; a reply's is its message once found).
     pub key: String,
     pub from: Option<BoiteFrom>,
@@ -231,7 +229,7 @@ impl Event {
             title: None,
             message: None,
             wait: false,
-            heard: false,
+            quiet: false,
             key: key.into(),
             from: None,
             extra: Dict::new(),
@@ -378,8 +376,8 @@ impl PushService {
                 tracing::warn!(exc = %format!("{exc:#}"), "notification not marked read");
             }
             (0, "skipped:on_screen".to_string())
-        } else if event.heard {
-            (0, "skipped:heard".to_string())
+        } else if event.quiet {
+            (0, "skipped:muted".to_string())
         } else if quiet {
             (0, "skipped:switch".to_string())
         } else {
@@ -390,7 +388,7 @@ impl PushService {
                 .await;
             (sent, if sent > 0 { format!("sent:{sent}") } else { "skipped:no_device".into() })
         };
-        if let Err(exc) = crate::notifications::set_push(&self.store, &id, &push, &payload).await {
+        if let Err(exc) = crate::notifications::set_push(&self.store, &id, &push).await {
             tracing::error!(exc = %format!("{exc:#}"), "notification not journaled");
         }
         if let Some(threads) = &threads {
@@ -477,7 +475,8 @@ impl PushService {
         })
     }
 
-    /// A Boîte message (ntfy.rs): `from` says whose (its rule, notifications.rs).
+    /// A Boîte message (outbox.rs): `from` says whose (its rule, notifications.rs); `notify` false: journaled only
+    /// (the Boîte lists it), no push.
     pub async fn notify_message(
         &self,
         agent: &str,
@@ -485,10 +484,12 @@ impl PushService {
         text: &str,
         session_id: Option<&str>,
         from: BoiteFrom,
+        notify: bool,
     ) -> usize {
         let notice = Notice::Message { outbox_id: outbox_id.into(), text: text.into(), session_id: own(session_id) };
         let Some(mut event) = notice.event(agent, &self.context(agent)) else { return 0 };
         event.from = Some(from);
+        event.quiet = !notify;
         self.emit(event).await
     }
 
@@ -535,15 +536,6 @@ impl PushService {
     pub async fn notify_reply(&self, agent: &str, run_id: &str, text: &str, session_id: Option<&str>) -> usize {
         self.notify(agent, Notice::Reply { run_id: run_id.into(), text: text.into(), session_id: own(session_id) })
             .await
-    }
-
-    /// A reply the person heard through a voice follow (the home screen's quick voice, voice_ws.rs): its journal row
-    /// (the Boîte shows it, unread), no push. The same reply notified by the run's end is the same row.
-    pub async fn journal_heard(&self, agent: &str, run_id: &str, text: &str, session_id: Option<&str>) -> usize {
-        let notice = Notice::Reply { run_id: run_id.into(), text: text.into(), session_id: own(session_id) };
-        let Some(mut event) = notice.event(agent, &self.context(agent)) else { return 0 };
-        event.heard = true;
-        self.emit(event).await
     }
 
     /// An agent answered in a group discussion (rooms.rs): « <agent> · <room> »; tapping opens the discussion on its

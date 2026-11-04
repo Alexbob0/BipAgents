@@ -29,8 +29,6 @@
 //!
 //! The `shared_files_*` tools (sandbox.rs) and the files an agent hands out (sent_files.rs, agent_files.rs) reach the
 //! same folders through `share_dir`.
-//!
-//! Port of `bridge/bipbridge/shares.py` (owner group: agents).
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::ffi::{OsStr, OsString};

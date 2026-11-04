@@ -7,8 +7,6 @@
 //!     DELETE /v1/device-keys/{id}   that device can't come in any more
 //!
 //!     data_dir/device-keys.json   [{id, name, hash, created, seen}]   (chmod 600)
-//!
-//! Port of `bridge/bipbridge/device_keys.py` (owner group: agents).
 
 use std::path::PathBuf;
 use std::sync::Mutex;

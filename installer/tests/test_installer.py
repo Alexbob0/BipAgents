@@ -187,7 +187,7 @@ def test_hermes_is_pinned_and_patched(tmp_path, monkeypatch):
         "0007-browser-vault-only.patch", "0008-timezone-routines-wall-clock.patch",
         "0009-tool-search-keep-direct-compact-skills.patch", "0010-empty-replies-changed-retries-leaked-tool-calls.patch",
         "0011-titles-reasoning-floor-glm.patch", "0013-mcp-results-vault-scrub.patch",
-        "0014-cron-results-plain-utf8.patch", "0015-time-anchor.patch", "0016-message-agent-the-bridges-everywhere.patch",
+        "0015-time-anchor.patch", "0016-message-agent-the-bridges-everywhere.patch",
         "0017-vault-address-contact-fields.patch", "0018-guest-turns-closed-tools-no-user-profile.patch",
         "0019-routines-report-to-their-conversation.patch", "0020-runs-model-usage-per-call.patch",
         "0021-api-bot-chat-stays-api.patch", "0022-tool-order-common-first.patch",
@@ -265,7 +265,7 @@ def test_whole_dry_run(monkeypatch, tmp_path, capsys):
     assert "profile create lea" in out and "profile create fougere" in out
     assert "[agents.fougere]" in out and 'display_name = "Fougère"' in out
     assert "API_SERVER_KEY <key>" in out
-    assert "[kyutai]\nenabled = false" in out
+    assert "[kyutai]" not in out
     # The bridge: this version's Rust binaries, nothing of Python's (no venv, no `-m bipbridge`).
     assert "fetch the bridge " in out and "bipbridge-macos-universal.tar.gz" in out
     assert "bridge/.venv" not in out and "-m bipbridge" not in out and "bridge/requirements" not in out
@@ -304,8 +304,7 @@ def test_the_agents_get_their_language_from_the_app(monkeypatch, tmp_path, capsy
 
 
 def test_a_kyutai_server_is_a_voice_model_like_any_other(monkeypatch, tmp_path, capsys):
-    """Kyutai is no engine of its own: one already running (an administrator's, on any GPU) is the person's voice model,
-    given here by its old flag."""
+    """Kyutai is no engine of its own: one already running (an administrator's, on any GPU) is the person's voice model."""
     from bipinstall import __main__ as cli
     from bipinstall import voice_server
     monkeypatch.setenv("HOME", str(tmp_path))
@@ -318,10 +317,9 @@ def test_a_kyutai_server_is_a_voice_model_like_any_other(monkeypatch, tmp_path, 
                                                                                     kind="Kyutai"))
     answers = iter(["1", "1", "", "1,9", "Léa", "Fougère", "suit mes plantes", "", "", "4", "y"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
-    assert cli.main(["--dry-run", "--kyutai-url", "http://127.0.0.1:8097", "--voice-uses", "reading"]) == 0
+    assert cli.main(["--dry-run", "--voice-server", "http://127.0.0.1:8097", "--voice-uses", "reading"]) == 0
     out = capsys.readouterr().out
     assert "Your voice model: Kyutai — http://127.0.0.1:8097" in out
-    assert '[kyutai]\nenabled = false' in out
     assert '[voice_server]\nurl = "http://127.0.0.1:8097"\nmodel = "kyutai-tts"\nlive = false\nreplies = false\nreading = true' in out
 
 
@@ -674,10 +672,10 @@ def test_the_bridge_gets_its_voice_server_and_what_it_speaks_for(tmp_path):
     with pytest.raises(ValueError):
         voice_server.parse_uses("live,podcasts")
     config = tmp_path / "bridge.toml"
-    config.write_text('bridge_key = "k"\n\n[drama]\nurl = "http://127.0.0.1:8099"\n\n[cron]\nwatch = true\n')
+    config.write_text('bridge_key = "k"\n\n[cron]\nwatch = true\n')
     assert voice_server.connect(config, lines, hermes.Runner())
     text = config.read_text()
-    assert "[drama]" not in text and "[cron]\nwatch = true" in text and text.endswith("reading = true\n")
+    assert "[cron]\nwatch = true" in text and text.endswith("reading = true\n")
     voice_server.connect(config, lines, hermes.Runner())
     assert config.read_text().count("[voice_server]") == 1     # replaced, not added twice
     import tomllib
@@ -706,153 +704,6 @@ def test_the_voice_server_lines_go_into_the_bridge_config(tmp_path):
 
 
 # -- Updates --------------------------------------------------------------------------------------------------------
-
-def test_an_update_applies_the_settings_a_fresh_install_now_makes_once(tmp_path, monkeypatch):
-    from bipinstall import migrations
-    monkeypatch.setattr(migrations, "STATE", tmp_path / "state" / "migrations.json")
-    hub = tmp_path / ".hermes"
-    (hub / "profiles" / "vie").mkdir(parents=True)
-    (hub / "config.yaml").write_text("model:\n  base_url: http://192.168.1.30:8888/v1\n")
-    (hub / "profiles" / "vie" / "config.yaml").write_text("model:\n  base_url: https://openrouter.ai/api/v1\n")
-    space = tmp_path / ".local" / "share" / "bipagents" / "spaces" / "wellness"
-    (space / "profiles" / "wellness").mkdir(parents=True)
-    (space / "profiles" / "wellness" / "config.yaml").write_text("model:\n  base_url: 'http://gpu:8888/v1'\n")
-    runner = hermes.Runner()
-    runner.dry = False
-    ran = []
-    runner.run = lambda args, **kw: ran.append((dict(runner.env).get("HERMES_HOME"), list(args[1:]))) or ""
-    monkeypatch.setattr(migrations, "REPO", tmp_path / "BipAgents")
-    said = migrations.run(runner, home=tmp_path)
-    assert said[0] == "the bridge already ran in Rust"
-    assert "2 agent(s)" in said[1] and "approvals.mode manual" in said[2] and said[3] == "no agent browser here"
-    assert (str(hub), ["config", "set", "compression.threshold_tokens", "100000"]) in ran
-    assert (str(space), ["-p", "wellness", "config", "set", "compression.threshold_tokens", "100000"]) in ran
-    assert (str(hub), ["-p", "vie", "config", "set", "compression.threshold_tokens", "100000"]) not in ran   # an API model
-    assert (str(hub), ["-p", "vie", "config", "set", "approvals.mode", "manual"]) in ran
-    ran.clear()
-    assert migrations.run(runner, home=tmp_path) == [] and ran == []        # once
-    monkeypatch.setattr(migrations, "STATE", tmp_path / "other.json")
-    said = migrations.run(runner, home=tmp_path, own_hermes=False)
-    assert ran == [] and all("not applied to your own Hermes" in line for line in said)
-
-
-def test_an_update_makes_the_browsers_start_when_used(tmp_path, monkeypatch):
-    from bipinstall import migrations, update
-    units = tmp_path / ".config" / "systemd" / "user"
-    units.mkdir(parents=True)
-    (units / "bipagents-browser-vie.service").write_text("[Service]\n")
-    (tmp_path / ".config" / "bipagents").mkdir()
-    (tmp_path / ".config" / "bipagents" / "bridge.toml").write_text("")
-    monkeypatch.setattr(update, "gateway_units", lambda: [("systemd", "bipagents-hermes")])
-    runner = hermes.Runner()
-    runner.dry = False
-    ran = []
-    runner.run = lambda args, **kw: ran.append(list(args)) or ""
-    said = migrations.browsers_on_demand(runner, tmp_path)
-    assert ran[0][0].endswith("/bipbridge") and ran[0][1:] == ["browser", "add", "--all", "--config",
-                                                               str(tmp_path / ".config" / "bipagents" / "bridge.toml")]
-    assert ran[1] == ["systemctl", "--user", "restart", "bipagents-hermes"] and "(1)" in said
-
-
-def test_an_update_isolates_the_agents_sandboxes_on_linux_with_podman(tmp_path, monkeypatch):
-    """The bridge's own command does it and prints what each agent got; the gateways restart so their sandboxes are
-    made again without the old mounts. Elsewhere nothing runs."""
-    import platform
-    import shutil
-    from bipinstall import migrations, update
-    config = tmp_path / ".config" / "bipagents" / "bridge.toml"
-    config.parent.mkdir(parents=True)
-    config.write_text('bridge_key = "k"\n')
-    monkeypatch.setattr(update, "gateway_units", lambda: [("systemd", "bipagents-hermes")])
-    runner = hermes.Runner()
-    runner.dry = False
-    ran = []
-    report = "network: bipagents-sandbox (no route out)\nvie: isolated (volumes: bipagents-files-vie:/fichiers:ro)\n"
-    runner.run = lambda args, **kw: ran.append(list(args)) or (report if "sandbox" in args else "")
-    monkeypatch.setattr(platform, "system", lambda: "Darwin")
-    assert "left as they are" in migrations.isolated_sandboxes(runner, tmp_path) and ran == []
-    monkeypatch.setattr(platform, "system", lambda: "Linux")
-    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/podman" if name == "podman" else None)
-    said = migrations.isolated_sandboxes(runner, tmp_path)
-    assert ran[0][0].endswith("/bipbridge") and ran[0][1:] == ["sandbox", "--config", str(config)]
-    assert ran[1] == ["systemctl", "--user", "restart", "bipagents-hermes"]
-    assert said.startswith("agents' sandboxes isolated") and "\n  vie: isolated" in said
-    assert "2026-10-22-isolated-sandboxes" in [mid for mid, _ in migrations.MIGRATIONS]
-
-
-def test_a_migration_needing_the_bridge_waits_for_its_release(tmp_path, monkeypatch):
-    """2026-10-26 on aibox: the update ran before this version's bridge was out, and the migration ran a binary that
-    wasn't there. It now waits (NotYet): the next `bipagents update` applies it, the previous bridge meanwhile."""
-    import platform
-    import shutil
-    from bipinstall import migrations, rustbridge
-    config = tmp_path / ".config" / "bipagents" / "bridge.toml"
-    config.parent.mkdir(parents=True)
-    config.write_text('bridge_key = "k"\n')
-    runner = hermes.Runner()
-    runner.dry = False
-    ran = []
-    runner.run = lambda args, **kw: ran.append(list(args)) or ""
-    monkeypatch.setattr(platform, "system", lambda: "Linux")
-    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/podman" if name == "podman" else None)
-    monkeypatch.setattr(rustbridge, "missed", lambda home, repo=None: True)
-    with pytest.raises(migrations.NotYet, match="isn't out yet"):
-        migrations.code_without_asking(runner, tmp_path)
-    assert ran == []
-
-
-def test_an_update_puts_the_shared_folders_in_podman_volumes(tmp_path, monkeypatch):
-    """2026-10-23: the same command of the bridge makes the shared folders' volumes (the old folders copied in and
-    kept as a backup) and mounts them; the gateways restart. Elsewhere nothing runs."""
-    import platform
-    import shutil
-    from bipinstall import migrations, update
-    config = tmp_path / ".config" / "bipagents" / "bridge.toml"
-    config.parent.mkdir(parents=True)
-    config.write_text('bridge_key = "k"\n')
-    monkeypatch.setattr(update, "gateway_units", lambda: [("systemd", "bipagents-hermes")])
-    runner = hermes.Runner()
-    runner.dry = False
-    ran = []
-    report = ("network: bipagents-sandbox (no route out)\nwellness's shared folder: 3 file(s) copied into "
-              "bipagents-share-wellness; the old folder kept as a backup at /d/shares/wellness.before-volume\n")
-    runner.run = lambda args, **kw: ran.append(list(args)) or (report if "sandbox" in args else "")
-    monkeypatch.setattr(platform, "system", lambda: "Darwin")
-    assert migrations.share_volumes(runner, tmp_path).startswith("shared folders left as they are") and ran == []
-    monkeypatch.setattr(platform, "system", lambda: "Linux")
-    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/podman" if name == "podman" else None)
-    said = migrations.share_volumes(runner, tmp_path)
-    assert ran[0][1:] == ["sandbox", "--config", str(config)]
-    assert ran[1] == ["systemctl", "--user", "restart", "bipagents-hermes"]
-    assert said.startswith("shared folders in podman volumes, gateways restarted")
-    assert "\n  wellness's shared folder: 3 file(s) copied" in said
-    assert "2026-10-23-share-volumes" in [mid for mid, _ in migrations.MIGRATIONS]
-
-
-def test_an_update_lets_agents_run_their_code_in_their_isolated_sandbox(tmp_path, monkeypatch):
-    """2026-10-26: the bridge's `sandbox` command puts the code keys in each isolated agent's `command_allowlist`;
-    Hermes reads it when its gateway starts, so the gateways restart. Elsewhere nothing runs."""
-    import platform
-    import shutil
-    from bipinstall import migrations, update
-    config = tmp_path / ".config" / "bipagents" / "bridge.toml"
-    config.parent.mkdir(parents=True)
-    config.write_text('bridge_key = "k"\n')
-    monkeypatch.setattr(update, "gateway_units", lambda: [("systemd", "bipagents-hermes")])
-    runner = hermes.Runner()
-    runner.dry = False
-    ran = []
-    runner.run = lambda args, **kw: ran.append(list(args)) or ("vie: isolated\n" if "sandbox" in args else "")
-    monkeypatch.setattr(platform, "system", lambda: "Darwin")
-    assert migrations.code_without_asking(runner, tmp_path).startswith("agents keep asking") and ran == []
-    monkeypatch.setattr(platform, "system", lambda: "Linux")
-    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/podman" if name == "podman" else None)
-    said = migrations.code_without_asking(runner, tmp_path)
-    assert ran[0][1:] == ["sandbox", "--config", str(config)]
-    assert ran[1] == ["systemctl", "--user", "restart", "bipagents-hermes"]
-    assert said.startswith("agents run the code they write in their isolated sandbox without asking")
-    assert "2026-10-26-code-without-asking" in [mid for mid, _ in migrations.MIGRATIONS]
-
 
 def test_the_approvals_command_lists_what_the_agents_asked(tmp_path, monkeypatch):
     """`bipagents approvals [agent] [--last N]`: the bridge's `approvals` with this account's config (read only)."""
@@ -899,31 +750,6 @@ def test_forty_places_on_one_server_get_port_blocks_clear_of_the_first_install_s
     assert not taken & first_browsers
     browsers = [set(range(first, first + count)) for first, count in map(browser_ports, blocks)]
     assert sum(len(b) for b in browsers) == len(set().union(*browsers))   # no two places share a browser port
-
-
-def test_an_update_moves_the_browsers_into_the_install_s_own_ports(tmp_path, monkeypatch):
-    """Two accounts on one machine gave their first browsers 9600 and 9601: only one could run. The update writes
-    this install's range and sets the browsers up again in it (their profiles kept)."""
-    from bipinstall import migrations, update
-    units = tmp_path / ".config" / "systemd" / "user"
-    units.mkdir(parents=True)
-    (units / "bipagents-browser-daily.service").write_text("[Service]\n")
-    config = tmp_path / ".config" / "bipagents" / "bridge.toml"
-    config.parent.mkdir()
-    config.write_text('bridge_key = "k"\nport = 9213\n\n[browser]\nenabled = true\nidle_minutes = 10\n\n'
-                      '[agents.daily]\nport = 1\n')
-    monkeypatch.setattr(update, "gateway_units", lambda: [("systemd", "bipagents-hermes")])
-    runner = hermes.Runner()
-    runner.dry = False
-    ran = []
-    runner.run = lambda args, **kw: ran.append(list(args)) or ""
-    said = migrations.browser_ports(runner, tmp_path)
-    text = config.read_text()
-    assert "[browser]\nfirst_port = 20040\nports = 40\nenabled = true\nidle_minutes = 10\n" in text
-    assert "[agents.daily]\nport = 1" in text and text.count("first_port") == 1
-    assert ran[0][0].endswith("/bipbridge") and ran[0][1:3] == ["browser", "add"] and "20040 to 20079" in said
-    assert ran[1] == ["systemctl", "--user", "restart", "bipagents-hermes"]
-    assert migrations.with_browser_range(text, 20040, 40) == text     # again: nothing changes
 
 
 def test_the_bipagents_command_runs_install_sh_and_shows_its_help_alone(tmp_path):
@@ -1115,87 +941,22 @@ def test_the_cloud_file_is_checked(tmp_path):
     assert json.loads((tmp_path / "p.json").read_text()) == {"step": 2, "total": 5, "label": "Voices", "done": False}
 
 
-def test_the_bridge_s_service_stops_within_15_seconds(tmp_path, monkeypatch):
-    """2026-10-27: systemd waited its 90 s for a bridge hanging on its way out (every update, every move): a fresh
-    install's unit and plist say 15 s, and an update adds it to the units installed before (once)."""
-    import sys
-    from bipinstall import migrations, stack
-    assert "2026-10-27-bridge-stop-timeout" in [name for name, *_ in migrations.MIGRATIONS]
-    inst = Install(repo=tmp_path, home=tmp_path, ports=Ports(8640), tailnet_name=None, lan_address=None)
-    _, _, unit = stack.bridge_service(inst, "linux")
-    assert "\nTimeoutStopSec=15\n" in unit
-    _, _, plist = stack.bridge_service(inst, "macos")
-    assert "<key>ExitTimeOut</key><integer>15</integer>" in plist
-    assert "TimeoutStopSec" not in stack.systemd_unit("x", ["/bin/x"], tmp_path, {})   # the other services as before
-    # an install from before: its unit gets the line, systemd reads it again
-    folder = tmp_path / ".config" / "systemd" / "user"
-    folder.mkdir(parents=True)
-    old = unit.replace("TimeoutStopSec=15\n", "")
-    (folder / "bipagents-bridge.service").write_text(old)
-    (folder / "bipagents-pocket.service").write_text(stack.systemd_unit("p", ["/bin/pocket"], tmp_path, {}))
-    monkeypatch.setattr(sys, "platform", "linux")
-    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
-    runner = hermes.Runner()
-    runner.dry = False
-    ran = []
-    runner.run = lambda args, **kw: ran.append(list(args)) or ""
-    assert "15 s" in migrations.bridge_stop_timeout(runner, tmp_path)
-    text = (folder / "bipagents-bridge.service").read_text()
-    assert text.count("TimeoutStopSec=15") == 1 and text.index("[Service]") < text.index("TimeoutStopSec")
-    assert "TimeoutStopSec" not in (folder / "bipagents-pocket.service").read_text()
-    assert ran == [["systemctl", "--user", "daemon-reload"]]
-    assert "already" in migrations.bridge_stop_timeout(runner, tmp_path)
-    # launchd: the plist gets ExitTimeOut
-    monkeypatch.setattr(sys, "platform", "darwin")
-    agents = tmp_path / "Library" / "LaunchAgents"
-    agents.mkdir(parents=True)
-    (agents / "io.github.bipagents.bridge.plist").write_text(plist.replace("\n  <key>ExitTimeOut</key><integer>15</integer>", ""))
-    assert "15 s" in migrations.bridge_stop_timeout(runner, tmp_path)
-    assert (agents / "io.github.bipagents.bridge.plist").read_text() == plist
-    assert "already" in migrations.bridge_stop_timeout(runner, tmp_path)
-
-
-def test_the_bridge_s_notifications_follow_the_new_app_identifier(tmp_path, monkeypatch):
-    """2026-10-26: the app became com.kerfystudio.bipagents; a bridge pushing to Apple itself names it from the
-    update on (and restarts); an own build's identifier stays."""
-    from bipinstall import family, migrations
-    config = tmp_path / ".config" / "bipagents" / "bridge.toml"
-    config.parent.mkdir(parents=True)
-    config.write_text('[apns]\nteam_id = "T"\nbundle_id = "io.github.bipagents"\n')
-    monkeypatch.setattr(family, "bridge_restart", lambda home=None: ["systemctl", "--user", "restart", "bipagents-bridge"])
-    runner = hermes.Runner()
-    runner.dry = False
-    ran = []
-    runner.run = lambda args, **kw: ran.append(list(args)) or ""
-    assert "com.kerfystudio.bipagents" in migrations.app_identifier(runner, tmp_path)
-    assert 'bundle_id = "com.kerfystudio.bipagents"' in config.read_text() and ran[-1][-1] == "bipagents-bridge"
-    assert "already" in migrations.app_identifier(runner, tmp_path)
-    config.write_text('[apns]\nbundle_id = "com.example.mine"\n')
-    assert "already" in migrations.app_identifier(runner, tmp_path) and "com.example.mine" in config.read_text()
-
-
-def test_an_update_gives_every_agent_the_question_tool(tmp_path):
-    """2026-11-02: Hermes 0.22.5's API toolset has no `clarify`: every profile (the hub's own, its agents, a space's)
-    gets it through `hermes tools enable`, with its own HERMES_HOME; a profile that fails does not stop the others."""
+def test_the_migrations_run_once_and_one_not_ready_waits(tmp_path, monkeypatch):
     from bipinstall import migrations
-    for folder in [tmp_path / ".hermes", tmp_path / ".hermes" / "profiles" / "vie",
-                   tmp_path / ".local" / "share" / "bipagents" / "spaces" / "lea" / "profiles" / "jardin"]:
-        folder.mkdir(parents=True)
-        (folder / "config.yaml").write_text("model:\n  default: x\n")
-    runner = hermes.Runner()
-    ran = []
+    monkeypatch.setattr(migrations, "STATE", tmp_path / "migrations.json")
+    calls = []
 
-    def run(args, check=True, **kw):
-        ran.append((list(args), runner.env["HERMES_HOME"], check))
-        return ""
-    runner.run = run
-    said = migrations.clarify_tool(runner, tmp_path)
-    tail = ["tools", "enable", "clarify", "--platform", "api_server"]
-    assert [(a[1:], home) for a, home, _ in ran] == [
-        (tail, str(tmp_path / ".hermes")),
-        (["-p", "vie"] + tail, str(tmp_path / ".hermes")),
-        (["-p", "jardin"] + tail, str(tmp_path / ".local" / "share" / "bipagents" / "spaces" / "lea")),
-    ]
-    assert all(check is False for *_, check in ran)
-    assert said.endswith("(3 agent(s))")
-    assert "2026-11-02-clarify-tool" in [mid for mid, _ in migrations.MIGRATIONS]
+    def ready(runner, home):
+        calls.append(home)
+        return "done"
+
+    def later(runner, home):
+        raise migrations.NotYet("this version's bridge isn't out yet")
+
+    monkeypatch.setattr(migrations, "MIGRATIONS", [("a", ready), ("b", later)])
+    runner = hermes.Runner()
+    runner.dry = False
+    assert migrations.run(runner, tmp_path) == ["done", "b: this version's bridge isn't out yet"]
+    assert migrations.pending() == ["b"]
+    migrations.run(runner, tmp_path)
+    assert calls == [tmp_path]   # done once

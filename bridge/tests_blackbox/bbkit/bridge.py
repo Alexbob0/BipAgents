@@ -19,7 +19,7 @@ from typing import Any, Callable, Dict, List, Optional
 import httpx
 
 from . import toml_out
-from .common import BRIDGE_KEY, HERMES_KEY, NTFY_TOKEN
+from .common import BRIDGE_KEY, HERMES_KEY
 from .fakebin import Commands
 from .servers import free_port
 
@@ -89,11 +89,6 @@ CREATE TABLE IF NOT EXISTS watched_runs (
     created_at TEXT NOT NULL,
     PRIMARY KEY (agent, run_id)
 );
-CREATE TABLE IF NOT EXISTS ntfy_cursor (
-    agent TEXT PRIMARY KEY,
-    last_id TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
 """
 
 
@@ -104,9 +99,7 @@ def default_config(root: Path, fakes: Any, p8_path: str) -> Dict[str, Any]:
         "host": "127.0.0.1",
         "port": free_port(),
         "data_dir": str(root / "data"),
-        "kyutai": {"url": fakes.kyutai.url, "default_voice": "5476"},
         "pocket": {"url": fakes.pocket.url},
-        "ntfy": {"url": fakes.ntfy.url},
         "apns": {"team_id": "TEAM123456", "key_id": "TESTKEY123", "p8_path": p8_path,
                  "bundle_id": "io.github.bipagents", "environment": "sandbox",
                  "base_url": fakes.apns.url + "/production", "sandbox_url": fakes.apns.url + "/sandbox"},
@@ -127,10 +120,9 @@ def default_config(root: Path, fakes: Any, p8_path: str) -> Dict[str, Any]:
         "agents": {
             "Wellness": {
                 "display_name": "Wellness", "hermes_url": fakes.hermes.url, "hermes_key": HERMES_KEY,
-                "ntfy_topic": "hermes-wellness-out", "ntfy_token": NTFY_TOKEN,
                 "upload_dir_host": str(root / "uploads" / "wellness"),
                 "upload_dir_container": "/home/hermes/.hermes/profiles/wellness/uploads",
-                "voice": "4193",
+                "voice": "pocket:colibri",
             },
         },
     }
@@ -213,7 +205,7 @@ class Bridge:
     def start(self, wait: bool = True, write: bool = True) -> "Bridge":
         if self.running:
             # The process started first would be lost, never stopped: it would keep reading the shared fakes (Hermes'
-            # sessions, ntfy's lines) through the rest of the suite.
+            # sessions) through the rest of the suite.
             raise BridgeFailed(f"{self.name} is running already (the `bridge` fixture is started): stop it first")
         if write:
             self.write_config()

@@ -1,5 +1,5 @@
 //! The files the agents group writes (profile.yaml, config.yaml, the bridge's config) against the Python's own output
-//! (tests/golden/agents_files.json, made by gen_agents_files.py), byte for byte.
+//! (tests/golden/agents_files.json, frozen: made by the retired Python bridge), byte for byte.
 
 use bipbridge::agents_admin::{mark_as_bot, save_agent, set_model, set_thinking};
 use bipbridge::config::{parse_config, AgentConfig, SharedConfig};

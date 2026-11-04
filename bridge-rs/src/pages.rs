@@ -6,8 +6,6 @@
 //! answer themselves with fixed map files), Chart.js from the bridge put inline instead of a
 //! CDN's, and the apps show it in a view with no way out (nothing loaded from the network, no navigation, no bridge to the
 //! app). The agent's own source is kept beside it (`<id>.source`, never served) for `read_page`.
-//!
-//! Port of `bridge/bipbridge/pages.py` (owner group: tools-knowledge).
 
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;

@@ -1,4 +1,4 @@
-//! BipAgents bridge: TTS by sentence, voice WebSocket, file drop, APNs push and ntfy outbox
+//! BipAgents bridge: TTS by sentence, file drop, APNs push and the Boîte
 //! for Hermes agents (see ../README.md).
 //!
 //! Rust port of `bridge/bipbridge` (Python): the same routes, JSON, files on disk, config and CLI. One Rust module
@@ -54,7 +54,7 @@ pub mod cronwatch;
 pub mod no_reply;
 pub mod fcm;
 pub mod media;
-pub mod ntfy;
+pub mod outbox;
 pub mod live_activities;
 pub mod push;
 pub mod relay;
@@ -74,7 +74,6 @@ pub mod textproc;
 pub mod tts;
 /// Private helpers of the voice-speech modules (Python's `re`/`str` semantics, num2words).
 pub mod voice_speech;
-pub mod voice_ws;
 pub mod voices;
 
 // -- agents ----------------------------------------------------------------------------------------
@@ -198,7 +197,6 @@ pub mod desktop_page;
 pub mod desktop_read;
 pub mod login_fill;
 pub mod place_backup;
-pub mod restore_reconcile;
 /// A bipagents.com hostname and its Let's Encrypt certificate for a place of the offer (no Python counterpart).
 pub mod place_cert;
 pub mod proxy_header;

@@ -614,7 +614,7 @@ pub fn file_name(title: &str) -> String {
 
 /// Quoted as JSON, its accents as they are: `notebook_read` gives the agents the page's raw text, and an alias written
 /// « Copropriété » reads to a model as a broken encoding it then tries to « repair » (as Hermes' routine
-/// results did, patch 0014). YAML reads both the same.
+/// results did). YAML reads both the same.
 fn json_quoted(value: &Value) -> String {
     py::Dumps::new().unicode().dumps(value)
 }

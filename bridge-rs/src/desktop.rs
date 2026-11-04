@@ -14,8 +14,6 @@
 //! password file (`desktop_vnc_password_file`): the bridge logs in itself and shows it the same way, so the
 //! password never reaches the phone and the VNC port need not be published. Taking over there only lets input
 //! through: such a browser has no Hermes lease to pause. (`desktop_url` still opens a viewer page as it is.)
-//!
-//! Port of `bridge/bipbridge/desktop.py` (owner group: browsers-places).
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -880,7 +878,6 @@ pub fn desktop_admin_router() -> Router<AppState> {
         .route("/agents/{agent_id}/desktop/control", post(control))
         .route("/agents/{agent_id}/desktop/state", get(crate::desktop_page::state_route))
         .route("/agents/{agent_id}/desktop/open", post(crate::desktop_page::open_route))
-        .route("/agents/{agent_id}/desktop/focus", get(crate::desktop_read::focus_route))
         .route("/agents/{agent_id}/desktop/reader", get(crate::desktop_read::reader_route))
 }
 

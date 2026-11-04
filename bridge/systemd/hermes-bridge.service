@@ -2,8 +2,8 @@
 # Installation: see bridge/README.md. The bridge binary (a release's bipbridge, or cargo build --release in
 # bridge-rs/) in ~/.local/bin.
 [Unit]
-Description=BipAgents bridge (per-sentence TTS, voice WS, files, APNs push, ntfy outbox) on 127.0.0.1:8643
-After=network-online.target kyutai-tts.service ntfy.service
+Description=BipAgents bridge (per-sentence TTS, files, APNs push, the Boîte) on 127.0.0.1:8643
+After=network-online.target
 Wants=network-online.target
 
 [Service]

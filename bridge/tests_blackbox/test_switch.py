@@ -10,7 +10,7 @@ import os
 import shlex
 
 from bbkit.bridge import bridge_command
-from bbkit.common import AUTH, sse
+from bbkit.common import AUTH, boite_message
 from bbkit.mcp import call, give_token, rpc, text_of
 from bbkit.servers import wait_until
 from conftest import managed_install, profile, wait_registered
@@ -30,8 +30,7 @@ def build(bridge, fakes):
     assert bridge.post("/v1/devices", headers=AUTH, json={"token": TOKEN, "environment": "sandbox",
                                                            "agent_ids": ["wellness"]}).status_code == 200
     assert bridge.post("/v1/devices", headers=AUTH, json={"token": FCM, "environment": "fcm"}).status_code == 200
-    assert wait_until(lambda: bridge.get("/v1/outbox", headers=AUTH).json()["items"])
-    item = bridge.get("/v1/outbox", headers=AUTH).json()["items"][0]
+    item = boite_message(bridge, fakes, "Bonjour **Sam**")
     assert wait_until(lambda: bridge.get(f"/v1/outbox/{item['id']}/audio", headers=AUTH).status_code == 200)
     routine = bridge.post("/v1/agents/wellness/routines", headers=AUTH,
                           json={"name": "Scan des e-mails", "schedule": "0 8 * * *", "prompt": "Scanne mes e-mails"})
@@ -64,7 +63,7 @@ def build(bridge, fakes):
     recap.write_text("Appel de 10:05")
     bridge.put("/v1/agents/wellness/appearance", headers=AUTH, json={"category": "home", "color": "#112233"})
     bridge.post("/v1/watch", headers=AUTH, json={"agent": "wellness", "run_id": "run_wait", "session_id": "api_bot"})
-    assert wait_until(lambda: bridge.db().execute("SELECT count(*) FROM watched_runs").fetchone()[0] == 1)
+    assert wait_until(lambda: bridge.db().execute("SELECT count(*) FROM watched_runs WHERE run_id = 'run_wait'").fetchone()[0] == 1)
     return {"cookie": cookie, "device_key": device["key"], "outbox_id": item["id"]}
 
 
@@ -127,8 +126,6 @@ def test_an_install_switches_implementation_and_back(bridges, fakes):
                                       "python": f"{bridge.fakebin}/podman exec -i hermes-vie /opt/py",
                                       "hermes_home": "/home/hermes/.hermes"}
     bridge.commands.rule("podman", ["exec", "-i", "hermes-vie"], stdout=ANSWER)
-    fakes.ntfy.lines["hermes-wellness-out"] = [json.dumps({"id": "m1", "event": "message", "message": "Bonjour **Sam**",
-                                                           "tags": ["session:s1"]})]
     fakes.imap.users["alex@proton.me"] = "pw-1234"
     fakes.imap.add("INBOX", 7, b"From: Sam <sam@example.com>\r\nSubject: Repas\r\nDate: Mon, 19 Oct 2026 10:00:00 +0200\r\n"
                                b"\r\nOn mange ?")
@@ -145,10 +142,7 @@ def test_an_install_switches_implementation_and_back(bridges, fakes):
     before = snapshot(bridge, keys)
     for command in (other_command(), bridge_command()):
         bridge.stop()
-        fakes.ntfy.subscriptions.clear()
         bridge.command = command
         bridge.start(write=False)
         after = snapshot(bridge, keys)
         assert after == before, [k for k in before if before[k] != after.get(k)]
-        assert wait_until(lambda: fakes.ntfy.subscriptions)
-        assert fakes.ntfy.subscriptions[0].params.get("since") == "m1"            # the ntfy cursor kept

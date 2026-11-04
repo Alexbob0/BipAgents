@@ -105,9 +105,6 @@ Le `SHA256SUMS` de la release donne l'empreinte de chaque archive.
 Dans `~/.config/hermes-ios/bridge.toml`, pour une machine sans GPU :
 
 ```toml
-[kyutai]
-enabled = false                 # Kyutai 1.6B, si tu le fais tourner, est un [voice_server] comme un autre (cf. la fin)
-
 [pocket]
 url = "http://127.0.0.1:8098"
 default_voice = "pocket:colibri"
@@ -120,8 +117,7 @@ upload_dir_host = "~/hermes/profiles/wellness/uploads"        # où le bridge d�
 upload_dir_container = "/home/hermes/.hermes/profiles/wellness/uploads"   # le même dossier vu par l'agent
 ```
 
-Les sections `[ntfy]` et `ntfy_topic` / `ntfy_token` sont facultatives (anciens messages proactifs). Les tâches
-planifiées de Hermes arrivent dans la Boîte sans elles (`[cron]`). Puis `~/.local/bin/bipbridge check --config ~/.config/hermes-ios/bridge.toml`.
+Puis `~/.local/bin/bipbridge check --config ~/.config/hermes-ios/bridge.toml`.
 
 Toutes les options : [`bridge/README.md`](../bridge/README.fr.md).
 
@@ -173,7 +169,7 @@ de nuit appelle un petit modèle une fois par nuit au plus, seulement quand les 
 quelque chose que les agents n'ont pas noté, sous un plafond mensuel : `[notebook] model` (par défaut
 le modèle des agents, chez leur fournisseur), `base_url` et `key` pour une autre API compatible OpenAI,
 `price_in`/`price_out` (€ par million de tokens), `monthly_cap` (€, 0,10 par défaut) et `hour` (3 par défaut). Chaque
-passage écrit `notebook pass` dans le journal avec ses tokens et son coût ; `GET /v1/notebook/runs` montre le mois.
+passage écrit `notebook pass` dans le journal avec ses tokens et son coût ; les réglages du Carnet montrent la dépense du mois.
 
 Les travaux longs passent en tâche de fond, jamais dans la conversation. Un agent en lance une de lui-même seulement
 quand la personne l'a demandé, dans la limite de `[jobs] direct_budget_eur` (€, 0,20 par défaut, compté aux prix de

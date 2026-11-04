@@ -517,13 +517,13 @@ fn rewriting_an_agents_section_keeps_what_the_bridge_does_not_set() {
     let again = load_config(Some(&path.to_string_lossy())).unwrap();
     let vie = again.agent(Some("vie")).unwrap();
     assert_eq!(vie.voice.as_deref(), Some("pocket:colibri"));
-    assert_eq!(vie.ntfy_topic.as_deref(), Some("vie-out"));
     assert_eq!(vie.shares, "external");
     assert!(
         vie.space.as_deref() == Some("/s/vie") && vie.isolated && vie.hermes_url.starts_with("http://127.0.0.1:8660")
     );
     let text = std::fs::read_to_string(&path).unwrap();
     assert_eq!(vie.hermes_key, "k".repeat(32));
+    assert!(text.contains("ntfy_topic = \"vie-out\"")); // a key the bridge no longer reads: kept, ignored
     assert!(!text.split("[agents.vie]").nth(1).unwrap().split("[agents").next().unwrap().contains("hermes_key = "));
     assert_eq!(text.matches("hermes_url").count(), 2);
     assert_eq!(again.agent(Some("wellness")).unwrap().hermes_key, "w".repeat(32));

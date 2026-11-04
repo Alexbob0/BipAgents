@@ -1,4 +1,4 @@
-//! SQLite storage (devices, outbox, ntfy cursors). sqlite3 calls run in a worker thread.
+//! SQLite storage (devices, outbox, watched runs, threads, notifications). sqlite3 calls run in a worker thread.
 //!
 //! The same file, schema and queries as the Python bridge (`bridge.db`, WAL, mode 0600): an install switches
 //! between the two without losing anything. Rows come back as JSON objects with the columns in table order, as
@@ -50,11 +50,7 @@ CREATE TABLE IF NOT EXISTS watched_runs (
     created_at TEXT NOT NULL,
     PRIMARY KEY (agent, run_id)
 );
-CREATE TABLE IF NOT EXISTS ntfy_cursor (
-    agent TEXT PRIMARY KEY,
-    last_id TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
+DROP TABLE IF EXISTS ntfy_cursor;
 CREATE TABLE IF NOT EXISTS threads (
     id TEXT PRIMARY KEY,
     agent TEXT NOT NULL,
@@ -113,8 +109,7 @@ CREATE TABLE IF NOT EXISTS notifications (
     read_at TEXT,
     hidden INTEGER NOT NULL DEFAULT 0,
     push TEXT,
-    dedupe_key TEXT UNIQUE,
-    legacy TEXT
+    dedupe_key TEXT UNIQUE
 );
 CREATE INDEX IF NOT EXISTS notifications_agent ON notifications (agent, created_at);
 CREATE INDEX IF NOT EXISTS notifications_thread ON notifications (thread_id, read_at);
@@ -236,7 +231,7 @@ struct Inner {
 
 /// An outbox message's `created_at`, a millisecond after the previous one when two land in the same millisecond.
 /// The apps page with `since=<last created_at>` (strictly after): Python, slower, practically never stores two in one
-/// millisecond; Rust does (two ntfy lines read at once), and the second would never be fetched.
+/// millisecond; Rust does (two messages stored at once), and the second would never be fetched.
 fn outbox_stamp() -> String {
     static LAST: std::sync::Mutex<Option<DateTime<Utc>>> = std::sync::Mutex::new(None);
     let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
@@ -261,8 +256,8 @@ pub struct Store {
 #[derive(Debug, Clone, Default)]
 pub struct NewOutbox {
     pub title: Option<String>,
+    /// The producer's key (column `ntfy_id`, its first producer's name): one message per key and agent.
     pub ntfy_id: Option<String>,
-    pub sent_at: Option<String>,
     pub session_id: Option<String>,
     /// Its files, a JSON list of attachments.
     pub attachments: Option<String>,
@@ -323,9 +318,13 @@ impl Store {
         if !has("devices", "push_key")? {
             conn.execute_batch("ALTER TABLE devices ADD COLUMN push_key TEXT")?;
         }
-        // a Boîte message's files, as items (JSON list), never `MEDIA:` lines in its text (ntfy.rs `ingest`)
+        // a Boîte message's files, as items (JSON list), never `MEDIA:` lines in its text (outbox.rs `ingest`)
         if !has("outbox", "attachments")? {
             conn.execute_batch("ALTER TABLE outbox ADD COLUMN attachments TEXT")?;
+        }
+        // the legacy push payload a notification's row kept: never read
+        if has("notifications", "legacy")? {
+            conn.execute_batch("ALTER TABLE notifications DROP COLUMN legacy")?;
         }
         Ok(())
     }
@@ -495,13 +494,13 @@ impl Store {
 
     // -- outbox ------------------------------------------------------------------------------
 
-    /// Insert a message; returns `None` when this ntfy message was already stored.
+    /// Insert a message; returns `None` when a message with this key was already stored.
     pub async fn add_outbox(&self, agent: &str, text_: &str, extra: NewOutbox) -> anyhow::Result<Option<Row>> {
         let item_id = py::uuid4_hex();
         let count = self
             .run_count(
-                "INSERT OR IGNORE INTO outbox (id, agent, ntfy_id, title, text, created_at, sent_at, session_id, \
-                 attachments) VALUES (?,?,?,?,?,?,?,?,?)",
+                "INSERT OR IGNORE INTO outbox (id, agent, ntfy_id, title, text, created_at, session_id, attachments) \
+                 VALUES (?,?,?,?,?,?,?,?)",
                 vec![
                     text(&item_id),
                     text(agent),
@@ -509,7 +508,6 @@ impl Store {
                     opt(extra.title.as_deref()),
                     text(text_),
                     text(&outbox_stamp()),
-                    opt(extra.sent_at.as_deref()),
                     opt(extra.session_id.as_deref()),
                     opt(extra.attachments.as_deref()),
                 ],
@@ -519,29 +517,6 @@ impl Store {
             return Ok(None);
         }
         self.get_outbox(&item_id).await
-    }
-
-    /// New text for an already stored message (its audio is redone); `None` if unknown or unchanged.
-    pub async fn replace_outbox(
-        &self,
-        agent: &str,
-        ntfy_id: &str,
-        text_: &str,
-        title: Option<&str>,
-    ) -> anyhow::Result<Option<Row>> {
-        let rows =
-            self.run("SELECT * FROM outbox WHERE agent=? AND ntfy_id=?", vec![text(agent), text(ntfy_id)]).await?;
-        let Some(row) = rows.first() else { return Ok(None) };
-        if row["text"].as_str() == Some(text_) {
-            return Ok(None);
-        }
-        let id = row["id"].as_str().unwrap_or_default().to_string();
-        self.run(
-            "UPDATE outbox SET text=?, title=COALESCE(?, title), audio_path=NULL, created_at=? WHERE id=?",
-            vec![text(text_), opt(title), text(&outbox_stamp()), text(&id)],
-        )
-        .await?;
-        self.get_outbox(&id).await
     }
 
     pub async fn set_outbox_audio(&self, item_id: &str, path: &str) -> anyhow::Result<()> {
@@ -579,23 +554,6 @@ impl Store {
         let rows = self.run("SELECT id, audio_path FROM outbox WHERE created_at < ?", vec![text(&cutoff)]).await?;
         self.run("DELETE FROM outbox WHERE created_at < ?", vec![text(&cutoff)]).await?;
         Ok(rows)
-    }
-
-    // -- ntfy cursors ------------------------------------------------------------------------
-
-    pub async fn get_cursor(&self, agent: &str) -> anyhow::Result<Option<String>> {
-        let rows = self.run("SELECT last_id FROM ntfy_cursor WHERE agent=?", vec![text(agent)]).await?;
-        Ok(rows.first().and_then(|r| r["last_id"].as_str()).map(str::to_string))
-    }
-
-    pub async fn set_cursor(&self, agent: &str, last_id: &str) -> anyhow::Result<()> {
-        self.run(
-            "INSERT INTO ntfy_cursor (agent, last_id, updated_at) VALUES (?,?,?) \
-             ON CONFLICT(agent) DO UPDATE SET last_id=excluded.last_id, updated_at=excluded.updated_at",
-            vec![text(agent), text(last_id), text(&iso(utcnow()))],
-        )
-        .await?;
-        Ok(())
     }
 }
 
@@ -651,16 +609,8 @@ mod tests {
             .await
             .unwrap()
             .is_none());
-        assert!(store.replace_outbox("lea", "n1", "Bonjour", None).await.unwrap().is_none());
-        let replaced = store.replace_outbox("lea", "n1", "Salut", Some("T")).await.unwrap().unwrap();
-        assert_eq!(replaced["text"], "Salut");
-        assert_eq!(replaced["title"], "T");
         assert_eq!(store.list_outbox(None, Some("lea"), 10).await.unwrap().len(), 1);
 
-
-        store.set_cursor("lea", "c1").await.unwrap();
-        store.set_cursor("lea", "c2").await.unwrap();
-        assert_eq!(store.get_cursor("lea").await.unwrap().as_deref(), Some("c2"));
 
         store.remember_run("lea", "r1", None).await.unwrap();
         store.remember_run("lea", "r1", Some("s1")).await.unwrap();

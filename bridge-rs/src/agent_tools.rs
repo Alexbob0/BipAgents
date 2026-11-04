@@ -12,8 +12,6 @@
 //! into paragraphs and short groups of sentences (a voice server skips or repeats lines in a long block), read with the
 //! person's pronunciations, one piece after the other in the background queue, so a Live started meanwhile is not held
 //! up. The file lands in the bridge's own folder, served to the app like any `MEDIA:` file under `/bipagents/audio`.
-//!
-//! Port of `bridge/bipbridge/agent_tools.py` (owner group: tools-knowledge).
 
 use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
@@ -276,7 +274,7 @@ static TOOL_LIST: LazyLock<Vec<Value>> = LazyLock::new(|| {
     tools.push(crate::give_file::tool()); // a file it made, to the person's drive or the conversation (give_file.rs)
     tools.push(crate::rooms_memory::tool()); // its group discussions, read from a one-to-one turn
     tools.push(crate::triggers::tool()); // routines started by an e-mail or a link (triggers.rs)
-    tools.push(crate::routines::tool()); // routines on a clock (routines.rs; Hermes' cronjob tool is off)
+    tools.push(crate::routines::tool()); // routines on a clock (routines.rs; Hermes' cronjob tool is off), the tile's
     tools
 });
 
@@ -464,6 +462,9 @@ fn own_tools(config: &Config, agent: &AgentConfig, offer: bool) -> Vec<Value> {
     // the offer's places: a green light before heavy work, behind the tool search (heavy_work.rs)
     if crate::heavy_work::offered(agent, offer) {
         tools.extend(crate::heavy_work::tools());
+    }
+    if !crate::routines::enabled(config, &agent.name) {
+        tools.retain(|t| t["name"] != crate::routines::TOOL_NAME);
     }
     tools
 }
@@ -1975,6 +1976,9 @@ async fn mcp(
         return Ok(answer(result));
     }
     if name == crate::routines::TOOL_NAME {
+        if !crate::routines::enabled(&state.config(), &agent.name) {
+            return Ok(answer(tool_text("Routines are off for you: the person switches « Routines » on in your page of the app.", true)));
+        }
         // made in this conversation: its report goes back there
         let origin = state.hub.asking_session(&agent.name);
         let (mut result, run) = crate::routines::call(&state.config(), &agent.name, &arguments, origin.as_deref());
