@@ -354,32 +354,13 @@ def test_the_reader_and_focus_need_the_agents_own_browser(bridges, fakes):
     bridge.config["agents"]["Vue"] = {"hermes_url": fakes.down.url, "hermes_key": "v" * 32,
                                       "desktop_url": "https://vue.tailnet.ts.net/vnc.html"}
     bridge.start()
-    for route in ("reader", "focus"):
+    for route in ("reader",):
         answer = bridge.get(f"/v1/agents/vue/desktop/{route}", headers=AUTH)
         assert answer.status_code == 409 and answer.json() == {"detail": {"code": "no_page_view"}}
         assert bridge.get(f"/v1/agents/nobody/desktop/{route}", headers=AUTH).status_code == 404
     stopped, folder = browser_bridge(bridges, fakes, free_port())
     answer = stopped.get("/v1/agents/vie/desktop/reader", headers=AUTH)
     assert answer.status_code == 409 and answer.json() == {"detail": {"code": "not_running"}}
-
-
-def test_where_the_agent_acts_is_read_in_a_world_of_its_own(bridges, fakes, chrome):
-    bridge, folder = browser_bridge(bridges, fakes, chrome.port)
-    answer = bridge.get("/v1/agents/vie/desktop/focus", headers=AUTH)
-    assert answer.status_code == 200, answer.text
-    assert answer.json() == {"site": "lemonde.fr", "viewport": {"w": 1366.0, "h": 600.0},
-                             "target": {"x": 400.0, "y": 300.0, "w": 280.0, "h": 40.0, "kind": "field"}}
-    world = chrome.methods("Page.createIsolatedWorld")[0][2]
-    assert world == {"frameId": "FRAME1", "worldName": "bipagents-view"}
-    evaluated = chrome.methods("Runtime.evaluate")[0][2]
-    assert evaluated["contextId"] == 42 and evaluated["returnByValue"] is True
-    assert "document.activeElement" in evaluated["expression"] and "getBoundingClientRect" in evaluated["expression"]
-    # read-only: no listener, no change to the page, its size or its scroll
-    for word in ("addEventListener", "scroll", "style", "setAttribute", "appendChild", "innerHTML", "focus()"):
-        assert word not in evaluated["expression"]
-    assert not chrome.methods("Emulation.setDeviceMetricsOverride") and not chrome.methods("Runtime.enable")
-    chrome.focus = {"v": {"w": 1366, "h": 600}, "r": [10, -500, 100, 40], "kind": "element"}   # scrolled away
-    assert bridge.get("/v1/agents/vie/desktop/focus", headers=AUTH).json()["target"] is None
 
 
 def test_the_phone_follows_where_the_agent_acts(bridges, fakes, chrome):

@@ -171,13 +171,6 @@ async fn the_settings_and_the_standard_dates() {
     assert!(all.iter().any(|d| d["text"] == "jour férié (Moselle) : Vendredi saint"), "{dates}");
     assert!(all.iter().all(|d| d["in_days"].as_i64().unwrap() >= 0));
 
-    // the Carnet's « Dates à venir »: computed entries, not saved; standard=0 leaves them out
-    let carnet = get(&app, "/v1/notebook/dates?days=366").await;
-    let computed: Vec<&Value> = carnet["dates"].as_array().unwrap().iter().filter(|d| d["computed"] == true).collect();
-    assert!(!computed.is_empty(), "{carnet}");
-    assert!(computed.iter().all(|d| d["fact"] == d["text"]));
-    let plain = get(&app, "/v1/notebook/dates?days=366&standard=0").await;
-    assert!(plain["dates"].as_array().unwrap().iter().all(|d| d["computed"] != true));
     app.shutdown().await;
 }
 

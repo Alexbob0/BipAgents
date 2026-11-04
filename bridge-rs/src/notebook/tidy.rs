@@ -173,13 +173,6 @@ pub fn spending(config: &Config) -> Dict {
     }
 }
 
-pub fn runs(config: &Config) -> Vec<Value> {
-    match tidy_state(&super::read_state(config)).get("runs") {
-        Some(Value::Array(items)) => items.clone(),
-        _ => Vec::new(),
-    }
-}
-
 /// Whether the pass is due now: its setting, the hour, once a day (or a week), and the cap not reached.
 pub fn due(config: &Config, now: chrono::DateTime<Local>) -> bool {
     let every = super::nightly(config);

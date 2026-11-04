@@ -3,11 +3,9 @@
 //! `memories/MEMORY.md` and `USER.md`, read into every conversation — may still be in the old one and pull its
 //! routines and reports back to it. When the memory is clearly in another language, it is translated once with the
 //! agent's own model (its router, key and model: `mail_scan::model_of`), every fact, name, date and number kept; the
-//! previous files are kept next to them (`<file>.before-translation`) and put back by the undo route. Unsure (too few
+//! previous files are kept next to them (`<file>.before-translation`). Unsure (too few
 //! words, mixed languages) or no model the bridge can call: nothing is touched. The personality (SOUL.md) is never
 //! translated: only the bridge's own block follows the language.
-//!
-//!     POST /v1/agents/{id}/memory/translation/undo    {restored: [files]}
 //!
 //! About 1 000 tokens in and as many out for full default memories (3 575 characters): well under a cent.
 
@@ -15,17 +13,11 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::extract::{Path as UrlPath, State};
-use axum::response::Response;
-use axum::routing::post;
-use axum::Router;
 use serde_json::{json, Value};
 
-use crate::app::AppState;
 use crate::config::{AgentConfig, Config};
-use crate::memory_edit::{folder_of, http_error, read_entries, write_entries, DELIMITER, FILES};
+use crate::memory_edit::{read_entries, write_entries, DELIMITER, FILES};
 use crate::tools_knowledge as tk;
-use crate::web::{self, ApiResult};
 
 /// Next to each memory file, its version before the last translation.
 pub const BACKUP_SUFFIX: &str = ".before-translation";
@@ -289,20 +281,6 @@ pub fn apply(folder: &Path, after: &Memory) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// The files as they were before the last translation, put back (their backups kept). Returns the files restored.
-pub fn undo(folder: &Path) -> anyhow::Result<Vec<String>> {
-    let memories = folder.join("memories");
-    let mut restored = Vec::new();
-    for (which, file, _) in FILES {
-        let Ok(text) = tk::read_text(&memories.join(format!("{file}{BACKUP_SUFFIX}"))) else { continue };
-        let entries: Vec<String> =
-            text.split(DELIMITER).map(|e| tk::strip(e).to_string()).filter(|e| !e.is_empty()).collect();
-        write_entries(folder, which, &entries)?;
-        restored.push(file.to_string());
-    }
-    Ok(restored)
-}
-
 /// What [`follow`] did, for its log line.
 #[derive(Debug, PartialEq)]
 pub enum Outcome {
@@ -413,19 +391,6 @@ pub fn after_change(
             }
         }
     });
-}
-
-async fn undo_route(State(state): State<AppState>, UrlPath(agent_id): UrlPath<String>) -> ApiResult<Response> {
-    let folder = folder_of(&state, &agent_id)?;
-    let restored =
-        tokio::task::spawn_blocking(move || undo(&folder)).await.map_err(anyhow::Error::from)?.map_err(http_error)?;
-    tracing::info!(target: "bipbridge::memory", agent = %agent_id, files = ?restored, "memory put back as before its translation");
-    Ok(web::ok(json!({"restored": restored})))
-}
-
-/// Mounted under /v1 with the bridge key.
-pub fn router() -> Router<AppState> {
-    Router::new().route("/agents/{agent_id}/memory/translation/undo", post(undo_route))
 }
 
 #[cfg(test)]

@@ -531,7 +531,7 @@ CREATE TABLE notifications (
 
 ### 9.2 Rules: « Me prévenir »
 
-One table (`notifications::RULES`, served by `GET /v1/notifications/rules`), not scattered `if`s:
+One table (`notifications::Kind::follows_switch`), not scattered `if`s:
 
 | Type | Follows the agent's « Me prévenir » switch | Notes |
 |---|---|---|
@@ -589,7 +589,6 @@ GET    /v1/notifications/{id}                                            one row
 GET    /v1/notifications/unread                                          {total, agents: {a: n}, threads: {t: n}}
 POST   /v1/notifications/read   {ids?: [...], agent?, thread? (an id or main)}   marks read; answers {read, unread}
 DELETE /v1/notifications/{id}                                            hidden from the Boîte (row kept)
-GET    /v1/notifications/rules                                           the table of §9.2
 ```
 
 - Opening a conversation sends `POST /v1/notifications/read {agent, thread}`: every row of that thread is read.

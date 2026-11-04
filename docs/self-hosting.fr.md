@@ -169,7 +169,7 @@ de nuit appelle un petit modèle une fois par nuit au plus, seulement quand les 
 quelque chose que les agents n'ont pas noté, sous un plafond mensuel : `[notebook] model` (par défaut
 le modèle des agents, chez leur fournisseur), `base_url` et `key` pour une autre API compatible OpenAI,
 `price_in`/`price_out` (€ par million de tokens), `monthly_cap` (€, 0,10 par défaut) et `hour` (3 par défaut). Chaque
-passage écrit `notebook pass` dans le journal avec ses tokens et son coût ; `GET /v1/notebook/runs` montre le mois.
+passage écrit `notebook pass` dans le journal avec ses tokens et son coût ; les réglages du Carnet montrent la dépense du mois.
 
 Les travaux longs passent en tâche de fond, jamais dans la conversation. Un agent en lance une de lui-même seulement
 quand la personne l'a demandé, dans la limite de `[jobs] direct_budget_eur` (€, 0,20 par défaut, compté aux prix de

@@ -7,7 +7,6 @@
 //! ```text
 //! GET    /v1/notifications?agent=&thread=&since=&unread=1&limit=     newest first
 //! GET    /v1/notifications/unread                                    {total, agents, threads}
-//! GET    /v1/notifications/rules                                     the rules table
 //! GET    /v1/notifications/{id}                                      one row, with its text
 //!
 //! A `boite` row carries its message as the Boîte shows it (`boite`: title, the whole text, attachments, has_audio,
@@ -133,19 +132,6 @@ impl Kind {
     pub fn body_key(self) -> String {
         format!("notif.{}", self.as_str())
     }
-}
-
-/// The rules table as served (`GET /v1/notifications/rules`).
-pub fn rules() -> Value {
-    let mut rows: Vec<Value> = Kind::ALL
-        .iter()
-        .filter(|k| **k != Kind::Boite)
-        .map(|k| json!({"type": k.as_str(), "follows_switch": k.follows_switch(None)}))
-        .collect();
-    for (from, name) in [(BoiteFrom::Task, "task"), (BoiteFrom::Routine, "routine"), (BoiteFrom::Other, "other")] {
-        rows.push(json!({"type": "boite", "from": name, "follows_switch": Kind::Boite.follows_switch(Some(from))}));
-    }
-    json!({"rules": rows})
 }
 
 type Param = rusqlite::types::Value;
@@ -344,10 +330,6 @@ async fn unread(State(state): State<AppState>) -> ApiResult<Response> {
     Ok(web::ok(counts(&state.store).await?))
 }
 
-async fn rules_route() -> ApiResult<Response> {
-    Ok(web::ok(rules()))
-}
-
 async fn one(State(state): State<AppState>, UrlPath(id): UrlPath<String>) -> ApiResult<Response> {
     let rows = state.store.run("SELECT * FROM notifications WHERE id = ?", vec![text(&id)]).await?;
     rows.first().ok_or_else(HttpError::not_found)?;
@@ -448,7 +430,6 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/notifications", get(list))
         .route("/notifications/unread", get(unread))
-        .route("/notifications/rules", get(rules_route))
         .route("/notifications/read", post(read))
         .route("/notifications/{id}", get(one).delete(hide))
 }
@@ -483,7 +464,6 @@ mod tests {
         let names: std::collections::HashSet<&str> = Kind::ALL.iter().map(|k| k.as_str()).collect();
         assert_eq!(names.len(), Kind::ALL.len());
         assert_eq!(Kind::of_card("secret_request"), Kind::Secret);
-        assert_eq!(rules()["rules"].as_array().unwrap().len(), 18);
     }
 
     #[tokio::test]

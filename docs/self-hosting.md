@@ -164,7 +164,7 @@ The bridge keeps the person's Carnet under its data dir (`notebook/carnet/`, pla
 night at most, only when the day's conversations hold something the agents did not file, under a monthly cap:
 `[notebook] model` (default: the agents' own model, at their provider), `base_url` and `key` for another
 OpenAI-compatible API, `price_in`/`price_out` (€ per million tokens), `monthly_cap` (€, default 0.10) and `hour`
-(default 3). Each run logs `notebook pass` with its tokens and cost; `GET /v1/notebook/runs` shows the month.
+(default 3). Each run logs `notebook pass` with its tokens and cost; the Carnet's settings show the month's spend.
 
 Long work goes to background tasks, never inline in a conversation. An agent starts one by itself only when the person
 asked for it, within `[jobs] direct_budget_eur` (€, default 0.20, counted at the `[notebook]` prices); above that it

@@ -488,19 +488,6 @@ pub async fn ticket_reader(State(state): State<AppState>, UrlPath(ticket): UrlPa
     reader_of(&state, &agent).await
 }
 
-/// `GET /v1/agents/{id}/desktop/focus`: where the agent acts now (a world of its own for this one reading).
-pub async fn focus_route(State(state): State<AppState>, UrlPath(agent_id): UrlPath<String>) -> ApiResult<Response> {
-    let agent = own_browser(&state, &agent_id)?;
-    let (mut cdp, tab) = front_tab(&state, &agent).await?;
-    let mut world = None;
-    let answer = focus(&mut cdp, &mut world).await;
-    cdp.close().await;
-    let focus = answer.map_err(|_| HttpError::json(503, json!({"code": "busy"})))?;
-    let mut body = focus.to_json();
-    body["site"] = json!(site(&tab.url));
-    Ok(web::ok(body))
-}
-
 // -- the container's relay -------------------------------------------------------------------------------------------
 
 /// The relay's version this bridge needs (browser/devtools_relay.py's RELAY_VERSION).

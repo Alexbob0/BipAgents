@@ -342,12 +342,12 @@ def test_dates_to_come_are_facts_of_close_people(bridge):
               "novembre", "décembre"]
     fact = f"Anniversaire : {date.day} {months[date.month - 1]}"
     call(bridge, "notebook_note", {"page": "Zoé", "kind": "person", "facts": [fact]})
-    assert bridge.get("/v1/notebook/dates", headers=AUTH).json()["dates"] == []   # not marked close
-    assert len(bridge.get("/v1/notebook/dates", params={"all": 1}, headers=AUTH).json()["dates"]) == 1
+    def dates():
+        return [d for d in bridge.get("/v1/notebook", headers=AUTH).json()["dates"] if not d.get("computed")]
+
+    assert dates() == []   # not marked close
     call(bridge, "notebook_note", {"page": "Zoé", "facts": [], "close": True})
-    dates = bridge.get("/v1/notebook/dates", headers=AUTH).json()["dates"]
-    assert [(d["page"], d["in_days"], d["yearly"], d["fact"]) for d in dates] == [("Zoé", 10, True, fact)]
-    assert bridge.get("/v1/notebook", headers=AUTH).json()["dates"][0]["page"] == "Zoé"
+    assert [(d["page"], d["in_days"], d["yearly"], d["fact"]) for d in dates()] == [("Zoé", 10, True, fact)]
     # What the person's card shows in the « Personnes » mosaic.
     card = bridge.get("/v1/notebook/pages", params={"kind": "person"}, headers=AUTH).json()["pages"][0]
     assert (card["close"], card["next_date"]["in_days"], card["next_date"]["fact"], card["facts"]) == (True, 10, fact, 1)
@@ -356,7 +356,7 @@ def test_dates_to_come_are_facts_of_close_people(bridge):
     assert (subject["status"], subject["next_date"]) == ("Haie taillée", None)
     assert bridge.get("/v1/notebook/tasks", headers=AUTH).json()["open"] == []   # a fact is not a task
     assert bridge.post("/v1/notebook/close", json={"path": "Personnes/Zoé.md", "close": False}, headers=AUTH).status_code == 200
-    assert bridge.get("/v1/notebook/dates", headers=AUTH).json()["dates"] == []
+    assert dates() == []
 
 
 def test_the_person_picks_a_subjects_icon_and_agents_keep_it(bridge):
@@ -431,8 +431,7 @@ def test_the_nightly_pass_calls_no_model_when_there_is_nothing_to_file(bridges, 
     run = tidy(bridge)
     assert (run["reason"], run["turns_seen"], run["turns_kept"], run["model_called"]) == ("nothing to file", 2, 0, False)
     assert fakes.model.chats == []
-    runs = bridge.get("/v1/notebook/runs", headers=AUTH).json()
-    assert runs["spend"]["eur"] == 0 and runs["spend"]["model_calls"] == 0 and len(runs["runs"]) == 2
+    assert bridge.get("/v1/notebook/settings", headers=AUTH).json()["spent_this_month"] == 0
 
 
 def test_the_nightly_pass_files_what_the_agents_missed_and_counts_its_cost(bridges, fakes):
@@ -461,8 +460,7 @@ def test_the_nightly_pass_files_what_the_agents_missed_and_counts_its_cost(bridg
     # The same conversation is not read again.
     again = tidy(bridge)
     assert again["model_called"] is False and len(fakes.model.chats) == 1
-    spend = bridge.get("/v1/notebook/runs", headers=AUTH).json()["spend"]
-    assert (spend["eur"], spend["tokens_in"], spend["model_calls"]) == (0.00195, 3000, 1)
+    assert bridge.get("/v1/notebook/settings", headers=AUTH).json()["spent_this_month"] == 0.00195
 
 
 def test_the_monthly_cap_stops_the_nightly_pass(bridges, fakes):

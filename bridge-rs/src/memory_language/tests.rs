@@ -2,7 +2,9 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use axum::extract::State;
 use axum::routing::post;
+use axum::Router;
 
 use super::*;
 
@@ -120,9 +122,6 @@ async fn a_french_memory_is_translated_once_kept_aside_and_can_be_put_back() {
     assert_eq!(follow(&config, &http, &agent, "en").await, Outcome::Kept("its memory is already in that language"));
     assert_eq!(calls.load(Ordering::SeqCst), 1);
 
-    assert_eq!(undo(&folder).unwrap(), vec!["MEMORY.md".to_string(), "USER.md".to_string()]);
-    assert_eq!(entries_of(&folder, "notes").unwrap(), owned(&NOTES_FR));
-    assert_eq!(entries_of(&folder, "user").unwrap(), owned(&USER_FR));
 }
 
 #[tokio::test]
@@ -139,5 +138,4 @@ async fn an_unclear_or_empty_memory_is_left_alone() {
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     assert_eq!(entries_of(&folder, "notes").unwrap(), owned(&mixed));
     assert!(!folder.join("memories").join(format!("MEMORY.md{BACKUP_SUFFIX}")).exists());
-    assert!(undo(&folder).unwrap().is_empty());
 }
