@@ -22,7 +22,6 @@ documentent le cœur d'origine (voix, fichiers, push, accords), que les apps uti
 | Fonction | Route | Ce que fait le bridge |
 |---|---|---|
 | TTS par phrase | `POST /v1/tts/sentence` | normalise le texte (markdown, liens), appelle le moteur de voix (Pocket, ou ton propre modèle de voix), renvoie du PCM int16 mono 24 kHz (ou Opus/WAV) ; file FIFO globale + cache LRU |
-| Voix en flux | `WS /v1/voice` | suit un run Hermes (`GET /v1/runs/{id}/events`), découpe les deltas en phrases, synthétise dans l'ordre, envoie `sentence` (JSON) + audio (binaire) |
 | Fichiers | `POST /v1/files` | dépose PDF/Excel/texte… dans un dossier monté dans le conteneur Hermes et renvoie le chemin **vu par l'agent** |
 | Push | `POST/DELETE /v1/devices` | enregistre les device tokens APNs (SQLite), envoie les push via HTTP/2 + jeton JWT ES256 |
 | Messages proactifs | `GET /v1/outbox…` | suit les tâches planifiées de chaque agent (et, en héritage, son topic ntfy), stocke les messages, pré-synthétise l'audio (mp3), pousse `MESSAGE` |
@@ -78,8 +77,7 @@ sudo tailscale serve --bg --https=8643 http://127.0.0.1:8643
 curl https://server.example.ts.net:8643/health
 ```
 
-Mise à jour : les binaires de la nouvelle version (étape 1 à nouveau), `systemctl --user restart hermes-bridge`. Le redémarrage du bridge n'affecte pas Hermes (aucun tour en cours n'est tué) ;
-une conversation vocale en cours est simplement coupée et l'app peut refaire `follow` avec `from_seq`.
+Mise à jour : les binaires de la nouvelle version (étape 1 à nouveau), `systemctl --user restart hermes-bridge`. Le redémarrage du bridge n'affecte pas Hermes (aucun tour en cours n'est tué).
 
 ### Droits sur les fichiers déposés (à vérifier une fois)
 
@@ -136,7 +134,6 @@ fichier est lisible par le groupe ou les autres. Chaque secret accepte aussi la 
 | `[ntfy] url` | `http://127.0.0.1:8645` | |
 | `[apns] team_id, key_id, p8_path, bundle_id, environment` | push désactivé si vide | |
 | `[push] previews` | `false` | `false` : corps de notification générique, le texte transite par le tailnet |
-| `[push] watch_followed_runs` | `true` | un run suivi en vocal reste surveillé (approbations) après fermeture du WebSocket |
 | `[outbox] db_path, audio_dir, retention_days, audio_max_chars, audio_wait_seconds` | `~/.local/share/hermes-bridge/…`, 90 j, 2000, 8 s | |
 | `[limits] upload_max_mb, upload_retention_days, upload_file_mode, sentence_max_chars, tts_max_chars, watch_max_minutes` | 50, 30, `640`, 180, 1000, 120 | |
 | `[agents.<id>] display_name, hermes_url, hermes_key, ntfy_topic, ntfy_token, upload_dir_host, upload_dir_container, voice` | | `<id>` en minuscules = identifiant utilisé par l'app (`wellness`, `vie`) |
@@ -144,15 +141,12 @@ fichier est lisible par le groupe ou les autres. Chaque secret accepte aussi la 
 ## 3. Ce que l'iPhone appelle
 
 Base : `https://server.example.ts.net:8643`, en-tête `Authorization: Bearer <clé bridge>` partout sauf `/health`
-(401 + `WWW-Authenticate: Bearer` sinon ; WebSocket refusé avec 403 / code 1008). L'identifiant d'agent est
+(401 + `WWW-Authenticate: Bearer` sinon). L'identifiant d'agent est
 insensible à la casse (`wellness`, `vie`).
 
 - **Lancement / Réglages** : `GET /health` (pastille), `GET /v1/agents` (agents connus du bridge).
 - **Notifications** : au démarrage, `POST /v1/devices {token, environment, agent_ids}` ; à la déconnexion
   `DELETE /v1/devices/{token}`.
-- **Mode vocal** : après avoir lancé le tour Hermes (chat/stream) et relevé `run_id`, ouvrir `WS /v1/voice`, envoyer
-  `follow`, jouer chaque binaire reçu après son en-tête `sentence` ; barge-in : `{"type":"cancel"}` + `POST /v1/runs/{id}/stop`
-  côté Hermes. Variante simple : `POST /v1/tts/sentence` par phrase.
 - **Passage en arrière-plan pendant un run** : `POST /v1/watch {agent, run_id}` → push `APPROVAL` si une approbation arrive,
   push silencieux `run_finished` à la fin.
 - **Notification Service Extension** : `MESSAGE` → `GET /v1/outbox/{outbox_id}` + `GET /v1/outbox/{id}/audio` (mp3) ;
@@ -249,28 +243,6 @@ l'adresse) ; les apps l'affichent dans une vue sans issue. `list_pages`, `read_p
 côté et jamais servie) et `delete_page` complètent ; les apps les listent par `GET /v1/pages?agent=` et en suppriment
 une par `DELETE /v1/pages/{id}?agent=`.
 
-### `WS /v1/voice`
-Client → serveur (texte JSON) :
-- `{"type":"follow","agent":"wellness","run_id":"…","voice"?:"5476","format"?:"pcm16"|"opus"|"wav","from_seq"?:0}`
-  (`from_seq` : reprise après reconnexion, les phrases de numéro < `from_seq` ne sont ni synthétisées ni renvoyées ;
-  un nouveau `follow` annule le précédent)
-- `{"type":"cancel"}` · `{"type":"ping"}`
-
-Serveur → client :
-- `{"type":"following","run_id","agent","format","sample_rate":24000,"channels":1}`
-- pour chaque phrase, dans l'ordre : `{"type":"sentence","seq":n,"text":"…","format","sample_rate","channels","bytes":len}`
-  **immédiatement suivi** d'un message **binaire** (l'audio de la phrase, PCM16 brut par défaut)
-- `{"type":"done","run_id","reason":"completed"|"failed"|"cancelled"|"interrupted"|"error"|"stream_closed"}`
-  (après `cancel` : `{"type":"done","run_id":null,"reason":"cancelled"}` si un suivi était actif)
-- `{"type":"error","code","message"[,"seq"]}` — codes : `unknown_agent`, `invalid_run_id`, `invalid_format`,
-  `invalid_json`, `run_not_found`, `hermes_refused`, `hermes_unreachable`, `tts_failed` (phrase sautée, le flux continue),
-  `internal` · `{"type":"pong"}`
-
-Découpage : fin de phrase `.!?…` suivie d'un blanc (jamais `3.5`, ni `M.`/`etc.`/initiales/`1.` de liste), saut de ligne,
-ou ~180 caractères sur une limite de mot (de préférence après une virgule). Le texte en attente est aussi prononcé à
-`tool.started` / `approval.request`. Markdown retiré, liens → leur texte, URL nues supprimées, blocs de code ignorés,
-éléments de liste terminés par un point. Si aucun delta n'est arrivé, le texte final de `run.completed` est lu.
-
 ### `POST /v1/files` (multipart/form-data : `agent`, `file`)
 200 : `{"path": "/home/hermes/.hermes/profiles/wellness/uploads/2026-10/0a1b2c3d4e5f-Releve_oct.pdf",
 "filename": "Releve_oct.pdf", "size": 220512, "content_type": "application/pdf"}`
@@ -306,9 +278,7 @@ ntfy `session:<id>` s'il existe. Pour la pagination, repasser le `created_at` du
 
 ### `POST /v1/watch`
 Corps : `{"agent":"wellness","run_id":"…"}` → `{"watching": true, "agent", "run_id", "followers": n, "finished": bool}`.
-Le bridge s'abonne au run (un seul abonnement Hermes par run, partagé avec le WebSocket, avec rejeu pour un suivi
-tardif) pendant au plus `watch_max_minutes`. Sur `approval.request` sans client attaché (WebSocket vocal ou flux de
-l'app) : push `APPROVAL` (une fois par `request_id`). À la fin du run sans client attaché : push « réponse prête »
+Le bridge s'abonne au run (un seul abonnement Hermes par run, avec rejeu pour un suivi tardif) pendant au plus `watch_max_minutes`. Sur `approval.request` sans client attaché (le flux de l'app) : push `APPROVAL` (une fois par `request_id`). À la fin du run sans client attaché : push « réponse prête »
 (`run.completed` avec une réponse, catégorie `MESSAGE`, `kind: "reply"`, `session_id` si connu), push silencieux sinon.
 
 ### `GET /v1/runs/{run_id}/events?agent=…&session_id=…`
@@ -348,15 +318,10 @@ contient un extrait du texte (ou de la commande).
 - **Synthèse sérialisée** : une seule requête par moteur à la fois côté bridge aussi, servie par ordre d'arrivée ; priorité
   « interactive » (voix, `/v1/tts/sentence`) devant « arrière-plan » (audio de l'outbox) — jamais d'interruption d'une
   synthèse déjà lancée. Une requête annulée (barge-in) quitte la file. Cache LRU (voix, format, texte normalisé).
-- **Prérequête** : chaque phrase est mise en file de synthèse dès qu'elle est complète, l'envoi au client reste dans l'ordre.
 - **SSE tolérant** : type lu dans le JSON (`type` ou `event`) sinon la ligne `event:` ; `: keepalive` ignoré ;
   texte pris dans `delta` / `text` / `content`. Événements de texte : `message.delta`, `assistant.delta`.
 - **Journaux** : JSON sur stdout (journald), jamais de secret ni de texte de message ; tokens d'appareil tronqués ;
   pas de journal d'accès (les chemins contiennent des tokens).
-
-Limites connues : `WS /v1/stt` (STT serveur, v2) n'est pas implémenté. Si la connexion locale bridge → Hermes coupe
-au milieu d'un run et que Hermes rejoue les événements à la réabonnement, une phrase pourrait être répétée
-(cas improbable : les deux sont sur 127.0.0.1).
 
 ## 6. Développement et tests
 

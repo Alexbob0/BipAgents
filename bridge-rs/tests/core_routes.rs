@@ -50,13 +50,6 @@ async fn routes_require_bridge_key() {
 }
 
 #[tokio::test]
-async fn websocket_requires_bridge_key() {
-    let (_dir, app) = app();
-    let resp = app.get("/v1/voice", &[("authorization", "Bearer wrong")]).await;
-    assert_eq!(resp.status, StatusCode::FORBIDDEN);
-}
-
-#[tokio::test]
 async fn wrong_keys_block_an_address_for_a_while() {
     let (_dir, app) = app();
     for _ in 0..20 {

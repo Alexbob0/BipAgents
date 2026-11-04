@@ -32,8 +32,8 @@ sie bewusst Hermes überlässt.
 
 ## Das Handy zuerst
 
-- **Stimme.** `voice_ws.rs` folgt einem Hermes-Run und streamt einen synthetisierten Satz nach dem anderen;
-  `textproc.rs` zerlegt das gestreamte Markdown in Sätze; `tts.rs` plant die Engines (Pocket TTS auf der CPU oder der
+- **Stimme.** `live_calls.rs` führt die Live-Gespräche;
+  `textproc.rs` zerlegt Markdown in Sätze; `tts.rs` plant die Engines (Pocket TTS auf der CPU oder der
   eigene Stimmserver der Person); `voices.rs` gibt jedem Agenten seine Stimme. Der Text wird für die Sprache
   aufbereitet: `numbers_fr.rs`, `speech_intl.rs` (Englisch, Spanisch, Deutsch, Niederländisch), `durations.rs`,
   `pronounce.rs`, `pronunciations.rs`.

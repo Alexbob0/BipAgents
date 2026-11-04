@@ -32,8 +32,8 @@ domaine, avec les modules (`bridge-rs/src/<nom>.rs`) qui le font, et ce qu'il la
 
 ## Le téléphone d'abord
 
-- **Voix.** `voice_ws.rs` suit un run Hermes et envoie une phrase synthétisée à la fois ; `textproc.rs` découpe le
-  markdown en phrases au fil de l'eau ; `tts.rs` ordonne les moteurs (Pocket TTS sur CPU, ou le serveur de voix de la
+- **Voix.** `live_calls.rs` mène les appels Live ; `textproc.rs` découpe le
+  markdown en phrases ; `tts.rs` ordonne les moteurs (Pocket TTS sur CPU, ou le serveur de voix de la
   personne) ; `voices.rs` donne sa voix à chaque agent. Le texte est préparé pour la parole : `numbers_fr.rs`,
   `speech_intl.rs` (anglais, espagnol, allemand, néerlandais), `durations.rs`, `pronounce.rs`, `pronunciations.rs`.
 - **Appels Live.** `live_brief.rs` démarre un appel depuis un court résumé de la conversation au lieu de 100k jetons

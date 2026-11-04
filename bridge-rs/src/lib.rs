@@ -74,7 +74,6 @@ pub mod textproc;
 pub mod tts;
 /// Private helpers of the voice-speech modules (Python's `re`/`str` semantics, num2words).
 pub mod voice_speech;
-pub mod voice_ws;
 pub mod voices;
 
 // -- agents ----------------------------------------------------------------------------------------

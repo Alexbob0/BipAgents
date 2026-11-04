@@ -31,8 +31,8 @@ that do it, and what it deliberately leaves to Hermes.
 
 ## Phone first
 
-- **Voice.** `voice_ws.rs` follows a Hermes run and streams one synthesized sentence at a time; `textproc.rs` splits
-  the streamed markdown into sentences; `tts.rs` schedules the engines (Pocket TTS on CPU, or the person's own voice
+- **Voice.** `live_calls.rs` runs the Live calls; `textproc.rs` splits
+  markdown into sentences; `tts.rs` schedules the engines (Pocket TTS on CPU, or the person's own voice
   server); `voices.rs` gives each agent its voice. Text is prepared for speech: `numbers_fr.rs`, `speech_intl.rs`
   (English, Spanish, German, Dutch), `durations.rs`, `pronounce.rs`, `pronunciations.rs`.
 - **Live calls.** `live_brief.rs` starts a call from a short brief of the conversation instead of 100k tokens of

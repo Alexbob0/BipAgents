@@ -32,8 +32,8 @@ solo programa en Rust, `bipbridge`). Esta página recoge lo que añade, área po
 
 ## El móvil primero
 
-- **Voz.** `voice_ws.rs` sigue una ejecución de Hermes y envía una frase sintetizada cada vez; `textproc.rs` corta el
-  markdown en frases a medida que llega; `tts.rs` organiza los motores (Pocket TTS en CPU, o el servidor de voz propio
+- **Voz.** `live_calls.rs` lleva las llamadas Live; `textproc.rs` corta el
+  markdown en frases; `tts.rs` organiza los motores (Pocket TTS en CPU, o el servidor de voz propio
   de la persona); `voices.rs` da a cada agente su voz. El texto se prepara para hablar: `numbers_fr.rs`,
   `speech_intl.rs` (inglés, español, alemán, neerlandés), `durations.rs`, `pronounce.rs`, `pronunciations.rs`.
 - **Llamadas Live.** `live_brief.rs` empieza una llamada con un breve resumen de la conversación en lugar de 100k

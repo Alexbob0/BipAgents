@@ -17,8 +17,6 @@ use crate::py;
 pub const DELTA_TYPES: [&str; 3] = ["message.delta", "assistant.delta", "response.output_text.delta"];
 pub const TERMINAL_TYPES: [&str; 6] =
     ["run.completed", "run.failed", "run.cancelled", "run.interrupted", "done", "error"];
-/// Events after which buffered text is a complete thought worth speaking right away.
-pub const FLUSH_TYPES: [&str; 4] = ["tool.started", "approval.request", "assistant.completed", "message.completed"];
 
 pub fn is_delta(event_type: &str) -> bool {
     DELTA_TYPES.contains(&event_type)
@@ -26,10 +24,6 @@ pub fn is_delta(event_type: &str) -> bool {
 
 pub fn is_terminal(event_type: &str) -> bool {
     TERMINAL_TYPES.contains(&event_type)
-}
-
-pub fn is_flush(event_type: &str) -> bool {
-    FLUSH_TYPES.contains(&event_type)
 }
 
 /// The `guest_turn` mark of a run or a session chat (Hermes patch 0018): someone other than the agent's person writes

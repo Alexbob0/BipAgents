@@ -101,7 +101,6 @@ environment = "sandbox"     # default for devices that don't specify one: sandbo
 
 [push]
 previews = false            # false: generic push body, the content is fetched over the tailnet by the extension
-watch_followed_runs = true  # a run followed in voice mode stays watched (approvals) if the app goes to the background
 
 [outbox]
 db_path = "~/.local/share/hermes-bridge/bridge.db"

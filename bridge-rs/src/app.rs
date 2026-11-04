@@ -1782,8 +1782,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::rooms_remote::household_router()) // their agents in this person's discussions, the same key
         .merge(crate::meet::household_router()) // a date to find together, the same key
         .nest("/desktop/static/novnc", crate::desktop::static_files())
-        .merge(crate::desktop::desktop_router()) // the page and its stream: a short-lived ticket from the route above
-        .route("/v1/voice", get(crate::voice_ws::voice_endpoint));
+        .merge(crate::desktop::desktop_router()); // the page and its stream: a short-lived ticket from the route above
     // The same routes, answering « matched » without running anything: what `redirect_slashes` asks.
     let routes: Router = app.clone().route_layer(middleware::from_fn(probe)).with_state(state.clone());
     let inner: Router =

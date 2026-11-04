@@ -692,7 +692,6 @@ pub struct Config {
     /// How long a reply's notification waits for its message to be stored, to carry its id (`[push]
     /// message_wait_seconds`, notifications.rs). Then it goes without it.
     pub push_message_wait_seconds: f64,
-    pub watch_followed_runs: bool,
     pub apns: ApnsConfig,
     /// The Firebase project's service account (JSON), for the Android app's notifications.
     pub fcm_service_account: Option<String>,
@@ -842,7 +841,6 @@ impl Config {
             media_roots: IndexMap::new(),
             ntfy_url: "http://127.0.0.1:8645".into(),
             push_message_wait_seconds: 10.0,
-            watch_followed_runs: true,
             apns: ApnsConfig::default(),
             fcm_service_account: None,
             fcm_base_url: FCM_BASE_URL.into(),
@@ -1868,7 +1866,6 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         media_roots,
         ntfy_url: py::rstrip_slash(&s(ntfy, "url", "http://127.0.0.1:8645")),
         push_message_wait_seconds: f(push, "message_wait_seconds", 10.0)?.clamp(0.0, 60.0),
-        watch_followed_runs: b(push, "watch_followed_runs", true),
         apns,
         fcm_service_account: opt_s(fcm_t, "service_account").map(|p| expand(&p)),
         fcm_base_url: py::rstrip_slash(&opt_s(fcm_t, "base_url").unwrap_or_else(|| FCM_BASE_URL.into())),

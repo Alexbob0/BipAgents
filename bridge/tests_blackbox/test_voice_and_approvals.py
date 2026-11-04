@@ -1,138 +1,12 @@
-"""WS /v1/voice follow/cancel, the app's SSE through the bridge, push decisions for watched runs, /v1/approve
+"""The app's SSE through the bridge, push decisions for watched runs, /v1/approve
 forwarding, and watched runs resumed after a restart (tests/test_voice_and_approvals.py, over HTTP)."""
-import json
 import threading
 import time
 
-from bbkit.common import answered, AUTH, HERMES_KEY, pcm_for, read_sse, sse, in_session, pushed_text
+from bbkit.common import answered, AUTH, HERMES_KEY, read_sse, sse, in_session, pushed_text
 from bbkit.servers import wait_until
-from bbkit.ws import open_ws, receive_frames, recv_json
 
 TOKEN = "e" * 64
-
-
-def ws(bridge):
-    return open_ws(bridge.ws_url("/v1/voice"), AUTH)
-
-
-def test_voice_follow_happy_path(bridge, fakes):
-    hermes = fakes.hermes
-    hermes.runs["run_1"] = [
-        ": keepalive\n\n",
-        sse("message.delta", run_id="run_1", delta="Bonjour à tous. Il fait 3."),
-        sse("message.delta", run_id="run_1", delta="5 degrés"),
-        sse("tool.started", run_id="run_1", tool="weather", preview="{}"),
-        sse("message.delta", run_id="run_1", delta=" dehors ! **Fin**"),
-        sse("run.completed", run_id="run_1"),
-    ]
-    with ws(bridge) as conn:
-        conn.send(json.dumps({"type": "follow", "agent": "wellness", "run_id": "run_1"}))
-        frames = receive_frames(conn)
-    following = frames[0][1]
-    assert following == {"type": "following", "run_id": "run_1", "agent": "wellness", "format": "pcm16",
-                         "sample_rate": 24000, "channels": 1}
-    sentences = ["Bonjour à tous.", "Il fait 3.5 degrés.", "dehors !", "Fin."]
-    spoken = ["Bonjour à tous.", "Il fait trois virgule cinq degrés.", "dehors !", "Fin."]   # numbers_fr, as spoken
-    body = frames[1:-1]
-    assert len(body) == 2 * len(sentences)
-    for i, text in enumerate(sentences):
-        kind, header = body[2 * i]
-        assert kind == "json" and header["type"] == "sentence" and header["seq"] == i and header["text"] == text
-        assert header["sample_rate"] == 24000 and header["channels"] == 1 and header["format"] == "pcm16"
-        kind, audio = body[2 * i + 1]
-        assert kind == "bin" and audio == pcm_for(spoken[i]) and header["bytes"] == len(audio)
-    assert frames[-1][1] == {"type": "done", "run_id": "run_1", "reason": "completed"}
-    # Hermes called with the agent key; Kyutai with the agent voice, in order.
-    assert hermes.event_requests[0].header("authorization") == f"Bearer {HERMES_KEY}"
-    assert hermes.event_requests[0].header("accept") == "text/event-stream"
-    assert [b["input"] for b in fakes.kyutai.inputs] == spoken
-    assert {b["voice"] for b in fakes.kyutai.inputs} == {"4193"}
-
-
-def test_voice_cancel_stops_everything(bridge, fakes):
-    gate = threading.Event()
-    fakes.hermes.runs["run_2"] = [
-        sse("message.delta", run_id="run_2", delta="Première phrase. "),
-        sse("message.delta", run_id="run_2", delta="Deuxième"),
-        gate,  # Hermes is still generating...
-        sse("message.delta", run_id="run_2", delta=" phrase jamais dite."),
-        sse("run.completed", run_id="run_2"),
-    ]
-    with ws(bridge) as conn:
-        conn.send(json.dumps({"type": "follow", "agent": "Wellness", "run_id": "run_2", "voice": "5207"}))
-        frames = receive_frames(conn, until_type="sentence")
-        assert frames[-1][1]["text"] == "Première phrase."
-        assert conn.recv(timeout=10) == pcm_for("Première phrase.")
-        conn.send(json.dumps({"type": "cancel"}))
-        assert recv_json(conn) == {"type": "done", "run_id": None, "reason": "cancelled"}
-        gate.set()
-        conn.send(json.dumps({"type": "ping"}))
-        assert recv_json(conn) == {"type": "pong"}  # nothing else was queued
-    assert [b["input"] for b in fakes.kyutai.inputs] == ["Première phrase."]
-    assert fakes.kyutai.inputs[0]["voice"] == "5207"
-
-
-def test_voice_errors(bridge, fakes):
-    fakes.hermes.run_status["missing"] = 404
-    with ws(bridge) as conn:
-        conn.send(json.dumps({"type": "follow", "agent": "ghost", "run_id": "r"}))
-        assert recv_json(conn) == {"type": "error", "code": "unknown_agent", "message": "agent inconnu"}
-        conn.send("not json")
-        assert recv_json(conn) == {"type": "error", "code": "invalid_json", "message": "JSON attendu"}
-        conn.send(json.dumps(["a list"]))
-        assert recv_json(conn)["code"] == "invalid_json"
-        conn.send(b"\x00binary")
-        assert recv_json(conn) == {"type": "error", "code": "binary_not_supported", "message": "JSON attendu"}
-        conn.send(json.dumps({"type": "dance"}))
-        assert recv_json(conn) == {"type": "error", "code": "unknown_message", "message": "dance"}
-        conn.send(json.dumps({"type": "follow", "agent": "wellness", "run_id": "a/b"}))
-        assert recv_json(conn) == {"type": "error", "code": "invalid_run_id", "message": "run_id invalide"}
-        conn.send(json.dumps({"type": "follow", "agent": "wellness", "run_id": "r", "format": "mp3"}))
-        assert recv_json(conn) == {"type": "error", "code": "invalid_format", "message": "mp3"}
-        conn.send(json.dumps({"type": "cancel"}))                     # nothing to cancel: no answer
-        conn.send(json.dumps({"type": "ping"}))
-        assert recv_json(conn) == {"type": "pong"}
-        conn.send(json.dumps({"type": "follow", "agent": "wellness", "run_id": "missing"}))
-        frames = receive_frames(conn)
-        assert frames[0][1]["type"] == "following"
-        assert frames[1][1] == {"type": "error", "code": "run_not_found", "message": "flux Hermes indisponible"}
-        assert frames[2][1] == {"type": "done", "run_id": "missing", "reason": "error"}
-
-
-def test_voice_formats_and_refused_runs(bridge, fakes):
-    fakes.hermes.run_status["secret"] = 403
-    fakes.hermes.runs["run_o"] = [sse("message.delta", delta="Bonjour."), sse("run.failed", error="x")]
-    with ws(bridge) as conn:
-        conn.send(json.dumps({"type": "follow", "agent": "wellness", "run_id": "run_o", "format": "opus"}))
-        frames = receive_frames(conn)
-        assert frames[0][1]["format"] == "opus"
-        assert frames[1][1]["type"] == "sentence" and frames[1][1]["format"] == "opus"
-        assert frames[2] == ("bin", b"ID3" + "Bonjour.".encode())  # the fake's non-wav answer, as it is
-        assert frames[-1][1] == {"type": "done", "run_id": "run_o", "reason": "failed"}
-        conn.send(json.dumps({"type": "follow", "agent": "wellness", "run_id": "secret"}))
-        frames = receive_frames(conn)
-        assert frames[1][1]["code"] == "hermes_refused"
-    assert fakes.kyutai.inputs[0]["response_format"] == "opus"
-
-
-def test_voice_resume_from_seq_and_final_text_fallback(bridge, fakes):
-    fakes.hermes.runs["run_3"] = [sse("run.completed", run_id="run_3", output="Un. Deux. Trois.")]
-    with ws(bridge) as conn:
-        conn.send(json.dumps({"type": "follow", "agent": "wellness", "run_id": "run_3", "from_seq": 1}))
-        frames = receive_frames(conn)
-    texts = [f[1]["text"] for f in frames if f[0] == "json" and f[1]["type"] == "sentence"]
-    seqs = [f[1]["seq"] for f in frames if f[0] == "json" and f[1]["type"] == "sentence"]
-    assert texts == ["Deux.", "Trois."] and seqs == [1, 2]
-
-
-def test_voice_tts_failure_is_reported_per_sentence(bridge, fakes):
-    fakes.kyutai.status = 500
-    fakes.hermes.runs["run_t"] = [sse("message.delta", delta="Une phrase."), sse("run.completed")]
-    with ws(bridge) as conn:
-        conn.send(json.dumps({"type": "follow", "agent": "wellness", "run_id": "run_t"}))
-        frames = receive_frames(conn)
-    assert frames[1][1]["type"] == "error" and frames[1][1]["code"] == "tts_failed" and frames[1][1]["seq"] == 0
-    assert frames[-1][1]["reason"] == "completed"
 
 
 def approval_event(run_id, request_id):
@@ -201,39 +75,6 @@ def test_watch_validates(bridge):
     bad = bridge.post("/v1/watch", headers=AUTH, json={"agent": "wellness", "run_id": "../x"})
     assert bad.status_code == 400 and bad.json() == {"detail": "invalid run_id"}
     assert bridge.post("/v1/watch", headers=AUTH, json={"agent": "wellness"}).status_code == 422
-
-
-def test_no_approval_push_while_voice_client_follows(bridge, fakes):
-    register(bridge)
-    gate = threading.Event()
-    fakes.hermes.runs["run_f"] = [
-        sse("message.delta", run_id="run_f", delta="Je dois demander. "),
-        gate,
-        approval_event("run_f", "req_2"),
-        sse("run.completed", run_id="run_f"),
-    ]
-    with ws(bridge) as conn:
-        conn.send(json.dumps({"type": "follow", "agent": "wellness", "run_id": "run_f"}))
-        receive_frames(conn, until_type="sentence")
-        conn.recv(timeout=10)  # audio
-        watched = bridge.post("/v1/watch", headers=AUTH, json={"agent": "wellness", "run_id": "run_f"}).json()
-        assert watched["followers"] == 1
-        gate.set()
-        frames = receive_frames(conn)
-        assert frames[-1][1]["reason"] == "completed"
-    time.sleep(0.5)
-    assert fakes.apns.pushes() == []  # follower attached: the app shows the approval itself
-
-
-def test_unwatched_run_never_pushes(bridges, fakes):
-    bridge = bridges.new(change=lambda c: c.update(push={"watch_followed_runs": False})).start()
-    register(bridge)
-    fakes.hermes.runs["run_u"] = [approval_event("run_u", "req_3"), sse("run.completed", run_id="run_u")]
-    with ws(bridge) as conn:
-        conn.send(json.dumps({"type": "follow", "agent": "wellness", "run_id": "run_u"}))
-        receive_frames(conn)
-    time.sleep(0.5)
-    assert fakes.apns.pushes() == []
 
 
 def waiting(prompt_id, generation=5):
@@ -306,20 +147,6 @@ def test_approve_with_hermes_down(bridges, fakes):
     bridge = bridges.new(change=lambda c: c["agents"]["Wellness"].update(hermes_url=fakes.down.url)).start()
     resp = bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": "r", "choice": "once"})
     assert resp.status_code == 502 and resp.json() == {"detail": "your agent isn't answering right now: try again in a moment"}
-
-
-def test_voice_reports_unreachable_hermes(bridges, fakes):
-    bridge = bridges.new(change=lambda c: c["agents"].update(
-        Panne={"hermes_url": fakes.down.url, "hermes_key": "p" * 32})).start()
-    time.sleep(0.5)
-    before = fakes.down.connections   # the routines' first look at that Hermes (routines.rs `migrate`) is not the follow's
-    with ws(bridge) as conn:
-        conn.send(json.dumps({"type": "follow", "agent": "panne", "run_id": "down_1"}))
-        frames = receive_frames(conn)
-    assert frames[1][1]["code"] == "hermes_unreachable"
-    assert frames[-1][1] == {"type": "done", "run_id": "down_1", "reason": "error"}
-    time.sleep(1.0)
-    assert fakes.down.connections == before + 3   # three failed connections, then the (unwatched) follow gives up
 
 
 def test_app_follows_run_through_bridge_and_replays_on_reattach(bridge, fakes):
@@ -502,10 +329,10 @@ def test_approval_is_pushed_when_the_app_stops_following(bridge, fakes):
         finish,
         sse("run.completed", run_id="run_l"),
     ]
-    with ws(bridge) as conn:
-        conn.send(json.dumps({"type": "follow", "agent": "wellness", "run_id": "run_l"}))
-        receive_frames(conn, until_type="sentence")
-        bridge.post("/v1/watch", headers=AUTH, json={"agent": "wellness", "run_id": "run_l"})
+    with bridge.stream("GET", "/v1/runs/run_l/events?agent=wellness", headers=AUTH) as resp:
+        assert resp.status_code == 200
+        watch = {"agent": "wellness", "run_id": "run_l"}
+        assert wait_until(lambda: bridge.post("/v1/watch", headers=AUTH, json=watch).json()["followers"] == 1)
         asked.set()
         assert wait_until(lambda: bridge.get("/v1/approvals", headers=AUTH).json()["items"])
         assert fakes.apns.pushes() == []  # on screen: the app shows it
@@ -551,17 +378,3 @@ def test_watched_runs_resume_after_a_restart_with_their_pending_approval(bridge,
     assert bridge.logged("run watch resumed")[0]["status"] == "waiting_for_approval"
 
 
-def test_a_new_follow_replaces_the_current_one_silently(bridge, fakes):
-    """`follow` while another run is followed: the first one stops without its own « done »."""
-    fakes.hermes.runs["run_x"] = [sse("message.delta", delta="Première course. "), threading.Event()]
-    fakes.hermes.runs["run_y"] = [sse("message.delta", delta="Seconde course."), sse("run.completed")]
-    with ws(bridge) as conn:
-        conn.send(json.dumps({"type": "follow", "agent": "wellness", "run_id": "run_x"}))
-        first = receive_frames(conn, until_type="sentence")
-        assert first[0][1]["run_id"] == "run_x" and first[-1][1]["text"] == "Première course."
-        assert conn.recv(timeout=10) == pcm_for("Première course.")
-        conn.send(json.dumps({"type": "follow", "agent": "wellness", "run_id": "run_y"}))
-        frames = receive_frames(conn)
-    kinds = [(k, d.get("type"), d.get("run_id")) for k, d in frames if k == "json"]
-    assert kinds == [("json", "following", "run_y"), ("json", "sentence", None), ("json", "done", "run_y")]
-    assert frames[-1][1] == {"type": "done", "run_id": "run_y", "reason": "completed"}

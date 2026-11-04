@@ -6,7 +6,6 @@ import time
 import pytest
 
 from bbkit.common import AUTH, BRIDGE_KEY, REMOTE, pcm_for
-from bbkit.ws import InvalidStatus, open_ws
 
 
 # -- auth ------------------------------------------------------------------------------------------
@@ -41,14 +40,6 @@ def test_routes_require_bridge_key(bridge, headers):
 def test_the_bearer_scheme_is_case_insensitive(bridge):
     assert bridge.get("/v1/agents", headers={"Authorization": f"bearer {BRIDGE_KEY}"}).status_code == 200
     assert bridge.get("/v1/agents", headers={"Authorization": f"BEARER   {BRIDGE_KEY}"}).status_code == 200
-
-
-def test_websocket_requires_bridge_key(bridge):
-    for headers in ({"Authorization": "Bearer wrong"}, {}):
-        with pytest.raises(InvalidStatus) as exc:
-            with open_ws(bridge.ws_url("/v1/voice"), headers):
-                pass
-        assert exc.value.response.status_code == 403   # closed (1008) before the handshake: HTTP 403
 
 
 def test_agents_listing(bridge):

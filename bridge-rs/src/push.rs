@@ -207,8 +207,6 @@ pub struct Event {
     pub message: Option<String>,
     /// Wait for the reply's message to be stored and point at it.
     pub wait: bool,
-    /// Already heard by the person (a voice reply): journaled for the Boîte, never pushed.
-    pub heard: bool,
     /// The dedupe key without the message (`<kind>:<agent>:` is put first; a reply's is its message once found).
     pub key: String,
     pub from: Option<BoiteFrom>,
@@ -231,7 +229,6 @@ impl Event {
             title: None,
             message: None,
             wait: false,
-            heard: false,
             key: key.into(),
             from: None,
             extra: Dict::new(),
@@ -378,8 +375,6 @@ impl PushService {
                 tracing::warn!(exc = %format!("{exc:#}"), "notification not marked read");
             }
             (0, "skipped:on_screen".to_string())
-        } else if event.heard {
-            (0, "skipped:heard".to_string())
         } else if quiet {
             (0, "skipped:switch".to_string())
         } else {
@@ -535,15 +530,6 @@ impl PushService {
     pub async fn notify_reply(&self, agent: &str, run_id: &str, text: &str, session_id: Option<&str>) -> usize {
         self.notify(agent, Notice::Reply { run_id: run_id.into(), text: text.into(), session_id: own(session_id) })
             .await
-    }
-
-    /// A reply the person heard through a voice follow (the home screen's quick voice, voice_ws.rs): its journal row
-    /// (the Boîte shows it, unread), no push. The same reply notified by the run's end is the same row.
-    pub async fn journal_heard(&self, agent: &str, run_id: &str, text: &str, session_id: Option<&str>) -> usize {
-        let notice = Notice::Reply { run_id: run_id.into(), text: text.into(), session_id: own(session_id) };
-        let Some(mut event) = notice.event(agent, &self.context(agent)) else { return 0 };
-        event.heard = true;
-        self.emit(event).await
     }
 
     /// An agent answered in a group discussion (rooms.rs): « <agent> · <room> »; tapping opens the discussion on its

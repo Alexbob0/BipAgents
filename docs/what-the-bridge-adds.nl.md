@@ -31,8 +31,8 @@ toevoegt, met de modules (`bridge-rs/src/<naam>.rs`) die het doen, en wat hij be
 
 ## De telefoon eerst
 
-- **Stem.** `voice_ws.rs` volgt een Hermes-run en streamt één gesynthetiseerde zin tegelijk; `textproc.rs` knipt de
-  binnenkomende markdown in zinnen; `tts.rs` plant de engines (Pocket TTS op de CPU, of de eigen stemserver van de
+- **Stem.** `live_calls.rs` voert de Live-gesprekken; `textproc.rs` knipt
+  markdown in zinnen; `tts.rs` plant de engines (Pocket TTS op de CPU, of de eigen stemserver van de
   persoon); `voices.rs` geeft elke agent zijn stem. De tekst wordt op spraak voorbereid: `numbers_fr.rs`,
   `speech_intl.rs` (Engels, Spaans, Duits, Nederlands), `durations.rs`, `pronounce.rs`, `pronunciations.rs`.
 - **Live-gesprekken.** `live_brief.rs` begint een gesprek met een korte samenvatting van de conversatie in plaats van

@@ -545,9 +545,7 @@ One table (`notifications::RULES`, served by `GET /v1/notifications/rules`), not
 | `boite` other (credit, storage, imports, watchers) | no | their sources decide |
 | `family` | no | |
 
-Two more rules, in `emit`: a notification for a thread on screen (§6.5) is read and not pushed; a reply the person
-heard through a voice follow (the home screen's quick voice, voice_ws.rs) is journaled unread for the Boîte and not
-pushed (`skipped:heard`).
+Two more rules, in `emit`: a notification for a thread on screen (§6.5) is read and not pushed.
 
 ### 9.3 The push: a pointer, nothing else
 
@@ -693,7 +691,7 @@ What this branch adds and removes in the bridge (`git diff --numstat` against it
 | `notifications.rs` (journal, rules, routes) | 444 | 0 | of which ~45 unit tests |
 | `push.rs` | 325 | 317 | **deleted**: the four legacy payload builders (`message_payload`, `approval_payload`, `reply_payload`, `question_payload`), every legacy field (`run_id` pseudo-ids, `session_id`, `outbox_id`, `reply_id`, `kind`, `room_id`, `email_held`, `site_request`, `login_request`, `*_request`, `meet`, `family`, `job_id`), the in-memory reply texts (`remember`, `TEXTS_KEPT`, `TEXT_TTL`) and the seven « Me prévenir » checks; one `payload` builder and one `emit` instead |
 | `app.rs` | 8 | 9 | **deleted**: `GET /v1/replies/{id}` |
-| `agent_shares.rs`, `message_search.rs`, `voice_ws.rs`, wiring | ~210 | ~10 | shared agents' threads, search ids, voice replies in the Boîte |
+| `agent_shares.rs`, `message_search.rs`, wiring | ~210 | ~10 | shared agents' threads, search ids, voice replies in the Boîte |
 | Tests: golden payload cases | 0 | 531 | **deleted** with the builders (`push_runs.json` 494 lines, the test's arms 37) |
 | Tests: black-box and fakes | ~540 | ~100 | the suite asserts the pointer only |
 

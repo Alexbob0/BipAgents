@@ -123,7 +123,7 @@ Python tests pass.
 ## Coverage: route → tests
 
 The tables were generated from the routers (`@router.<method>(…)`) and the tests' requests, matched by method and path,
-then completed by hand for the MCP endpoint (its calls go through `bbkit/mcp.py`), the voice WebSocket and the static
+then completed by hand for the MCP endpoint (its calls go through `bbkit/mcp.py`), the desktop's WebSocket and the static
 mounts. Every route has at least one test.
 
 The original suite had about 310 client calls in 41 files. All of its HTTP-level behaviour is ported, and many of its
@@ -281,7 +281,6 @@ The suite makes about 800 requests in 28 files.
 | `POST /v1/agents/{agent_id}/queue/resume` | msg_queue | agent_queue (1) |
 | `GET /v1/agents/{agent_id}/queue/events` | msg_queue | agent_queue (1) |
 | `POST /v1/agents/{agent_id}/steer` | msg_queue | agent_queue (3) |
-| `WEBSOCKET /v1/voice` | voice_ws | voice_and_approvals (12), http_routes (1) |
 | `GET /console/static/…` (mount) | console | console (1) |
 | `GET /desktop/static/novnc/…` (mount) | desktop | desktop (1) |
 
@@ -304,8 +303,6 @@ The suite makes about 800 requests in 28 files.
   - Turning an existing browser off and on, and `browser remove`, are tested.
 - **systemd and launchd services for spaces.** The suite uses `[spaces] start` / `stop`, the administrator's own
   commands. The systemd unit and the launchd plist the bridge writes otherwise depend on the OS.
-- **The LAN door's WebSocket (`wss://…/v1/voice`).** The door is tested over HTTPS: certificate pinning, the same
-  routes, and the Hermes relay.
 
 **Too slow for a test run:**
 

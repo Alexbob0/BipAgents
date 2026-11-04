@@ -230,26 +230,6 @@ pub async fn require_bridge_key(State(state): State<AppState>, request: Request,
     HttpError::new(401, "unauthorized").with_header("www-authenticate", "Bearer").into_response()
 }
 
-/// The voice WebSocket's check (before accepting it).
-pub fn websocket_authorized(state: &AppState, address: Option<&str>, headers: &HeaderMap) -> bool {
-    if state.guard.blocked(address) {
-        return false;
-    }
-    let presented = bearer_of(headers);
-    let config = state.config();
-    if key_matches(&config.bridge_key, presented.as_deref()) {
-        crate::cloud_setup::bridge_key_used(&config);
-        return true;
-    }
-    if device(state, presented.as_deref()).is_some() {
-        return true;
-    }
-    if presented.is_some() {
-        state.guard.fail(address, "bridge key");
-    }
-    false
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
