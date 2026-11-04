@@ -68,12 +68,20 @@ def manifest(code: str, folder: str) -> dict:
             "platforms": ["iOS"]}
 
 
+def readable(folder: Path) -> None:
+    """Files 0644, folders 0755: an Apple pack keeps each file's mode, and onnx saves flowlm.onnx.data 0600, which the
+    app on the iPhone can't open (the Bip's voice never started there, the server spoke instead: 3/11)."""
+    for path in [folder, *folder.rglob("*")]:
+        os.chmod(path, 0o755 if path.is_dir() else 0o644)
+
+
 def apple(found: dict, source: Path = SOURCE, target: Path = APPLE) -> list:
     if shutil.which("xcrun") is None:
         raise SystemExit("the App Store's packs are made on a Mac with Xcode (xcrun ba-package)")
     target.mkdir(parents=True, exist_ok=True)
     made = []
     for code, folder in found.items():
+        readable(source / folder)
         path = target / f"voices-{code}.json"
         path.write_text(json.dumps(manifest(code, folder), indent=2), encoding="utf-8")
         archive = target / f"voices-{code}.aar"
