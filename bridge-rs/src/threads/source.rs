@@ -4,7 +4,8 @@
 //! (internal/notes/finalise.md, measured on the black-box fake):
 //! - `message_uid`: the stable message ids (`m_<uid>`, kept by the apps and by `thread_messages`) and the in-place
 //!   compaction's rows (a summary taking the uid of the rows it absorbed: `timeline::in_place_compaction`);
-//! - the inactive rows a summary absorbed (the API returns active and compacted rows only);
+//! - the inactive rows a summary absorbed (the API, `include_compacted`, gives Hermes' own display list: compacted rows
+//!   too, but each message at its newest copy's row id, without uid or flags: build server, 2026-11-04);
 //! - hidden sessions in the list (routines, the Bot Chat): `/api/sessions` lists them only for a title search.
 //!
 //! What the bridge reads of state.db is [`STATE_DB_READS`]: a store without one of them is logged as an error once

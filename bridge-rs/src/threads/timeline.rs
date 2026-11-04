@@ -346,34 +346,52 @@ fn peer_of(text: &str) -> Option<String> {
     crate::cronwatch::TEAMMATE_PREFIX.captures(text).map(|c| c[1].to_string())
 }
 
-/// Which rows a segment shows. Hermes v0.22.5 compacts a conversation IN its session (no child): the rows it keeps are
-/// copied after the old ones with the same `message_uid` (both shown: one `compacted`, one active), and a message it
-/// folded into the summary is left inactive while the summary row takes its uid. So: a row shown as before (active or
-/// compacted, not a summary, not hidden), once per uid (the first, where it was said); and a row the summary absorbed
-/// (inactive, its uid held only by a summary row) shown again, at its place (lab 2026-11-03: « ok 3 » was lost and
-/// « Note 1 », « Note 2 » were drawn twice, with the same id).
-fn in_place_compaction(rows: &[Row]) -> Vec<bool> {
+/// Which rows a segment shows, as (where it reads, whose words). Hermes v0.22.5 compacts a conversation IN its session
+/// (no child): the messages it summarizes stay as `compacted` rows; the ones it keeps are copied after them with the
+/// same `message_uid` (the originals left inactive, not compacted: « superseded »), and the summary row takes the uid of
+/// a message it folded in (that message's rows then all inactive). Each compaction makes new copies. So a message (a
+/// uid) is shown when one of its rows is (active or compacted, not a summary, not hidden) or a summary holds its uid,
+/// once, at its FIRST row whatever its state: where it was said, the same place after every compaction. Placed at its
+/// first shown copy instead, a message moved at each compaction, sometimes ahead of the ones said after it, and the
+/// apps stopped paging back when an older page brought a message they held further down
+/// (internal/notes/history-compaction.md). A row without uid: as Hermes shows it. The words are the newest shown
+/// copy's (the same bytes but for a prune). Lab 2026-11-03: « ok 3 » was lost and « Note 1 », « Note 2 » were drawn
+/// twice, with the same id.
+fn in_place_compaction(rows: &[Row]) -> Vec<(usize, usize)> {
     let hidden = |r: &Row| r.display_kind.as_deref() == Some("hidden") || r.role == "session_meta";
-    let shown_uids: HashSet<&str> =
-        rows.iter().filter(|r| r.shown && !r.summary && !hidden(r)).filter_map(|r| r.uid.as_deref()).collect();
-    let summary_uids: HashSet<&str> = rows.iter().filter(|r| r.summary).filter_map(|r| r.uid.as_deref()).collect();
+    // per uid: the copy whose words are shown (the newest shown: the live one when there is one, as Hermes shows it),
+    // None when only a summary holds it
+    let mut words: HashMap<&str, Option<usize>> = HashMap::new();
+    for (i, r) in rows.iter().enumerate() {
+        let Some(u) = r.uid.as_deref() else { continue };
+        if r.summary {
+            words.entry(u).or_insert(None);
+        } else if r.shown && !hidden(r) {
+            let best = words.entry(u).or_insert(None);
+            if best.is_none_or(|b| rows[b].row < r.row) {
+                *best = Some(i);
+            }
+        }
+    }
     let mut seen: HashSet<&str> = HashSet::new();
-    rows.iter()
-        .map(|r| {
-            if r.summary || hidden(r) {
-                return false;
+    let mut out = Vec::new();
+    for (i, r) in rows.iter().enumerate() {
+        if r.summary || hidden(r) {
+            continue;
+        }
+        match r.uid.as_deref() {
+            Some(u) => {
+                if let Some(shown) = words.get(u) {
+                    if seen.insert(u) {
+                        out.push((i, shown.unwrap_or(i)));
+                    }
+                }
             }
-            let absorbed = !r.shown
-                && r.uid.as_deref().is_some_and(|u| summary_uids.contains(u) && !shown_uids.contains(u));
-            if !r.shown && !absorbed {
-                return false;
-            }
-            match r.uid.as_deref() {
-                Some(u) => seen.insert(u),
-                None => true,
-            }
-        })
-        .collect()
+            None if r.shown => out.push((i, i)),
+            None => {}
+        }
+    }
+    out
 }
 
 /// One segment's rows → items. `skip`: rows already shown (a continuation's copied tail), by message id.
@@ -388,11 +406,8 @@ pub fn segment_items(
     let results: HashMap<&str, &Row> =
         rows.iter().filter(|r| r.role == "tool").filter_map(|r| r.tool_call_id.as_deref().map(|id| (id, r))).collect();
     let mut items = Vec::new();
-    let keep = in_place_compaction(rows);
-    for (row, kept) in rows.iter().zip(keep) {
-        if !kept {
-            continue;
-        }
+    for (place, shown) in in_place_compaction(rows) {
+        let (row, place) = (&rows[shown], &rows[place]);
         let id = message_id(agent, session, row);
         if skip.contains(&id) {
             continue;
@@ -400,8 +415,8 @@ pub fn segment_items(
         let (raw, images) = words_and_images(&row.content);
         let item = |id: String, sub: u32, turn: &str, body: Value| Item {
             id,
-            pos: (position, row.order, sub),
-            at: row.timestamp,
+            pos: (position, place.order, sub),
+            at: place.timestamp,
             turn: turn.to_string(),
             segment: session.to_string(),
             row: row.row,
@@ -900,6 +915,43 @@ not from your person: you have read the page 5 times\n[/OUT-OF-BAND USER MESSAGE
         assert_eq!(got, ["Note 1", "ok 1", "Note 2", "ok 2", "Note 3", "ok 3", "Note 4", "ok 4", "Note 5"]);
         let ids: HashSet<String> = items(&rows).into_iter().map(|i| i.id).collect();
         assert_eq!(ids.len(), 9);
+    }
+
+    #[test]
+    fn a_compaction_leaves_every_message_at_its_first_row() {
+        // as Hermes v0.22.5 left the build server's conversation (internal/notes/history-compaction.md, rows of
+        // tests_blackbox/fixtures/hermes_compaction/updated_03{2,3}.json): its 2nd compaction carried « ok 24 »,
+        // « Note 25 », « ok 25 » (originals 48-50 superseded, copies 102-104), its 3rd folded « Note 25 » into the
+        // summary (119 takes its uid) and carried « ok 25 » again (120)
+        let msg = |id: i64, role: &str, uid: &str, text: &str, active: bool, compacted: bool| {
+            let mut r = row(id, role, json!(text));
+            r.uid = Some(uid.into());
+            r.shown = active || compacted;
+            r
+        };
+        let before = vec![
+            msg(47, "user", "n24", "Note 24", false, true),
+            msg(48, "assistant", "o24", "ok 24", false, false),
+            msg(49, "user", "n25", "Note 25", false, false),
+            msg(50, "assistant", "o25", "ok 25", false, false),
+            msg(102, "assistant", "o24", "ok 24", true, false),
+            msg(103, "user", "n25", "Note 25", true, false),
+            msg(104, "assistant", "o25", "ok 25", true, false),
+        ];
+        let mut after = before.clone();
+        after[4].shown = true; // compacted
+        after[5].shown = false; // superseded
+        after[6].shown = false;
+        let mut summary = msg(119, "user", "n25", "[CONTEXT COMPACTION …]", true, false);
+        summary.summary = true;
+        after.extend([summary, msg(120, "assistant", "o25", "ok 25", true, false)]);
+        let placed = |rows: &[Row]| -> Vec<(String, String, i64)> {
+            items(rows).into_iter().map(|i| (i.id.clone(), i.text().to_string(), i.pos.1)).collect()
+        };
+        let want = [("m_n24", "Note 24", 47), ("m_o24", "ok 24", 48), ("m_n25", "Note 25", 49), ("m_o25", "ok 25", 50)]
+            .map(|(id, text, at)| (id.to_string(), text.to_string(), at));
+        assert_eq!(placed(&before), want);
+        assert_eq!(placed(&after), want, "a message moved at the compaction");
     }
 
     #[test]

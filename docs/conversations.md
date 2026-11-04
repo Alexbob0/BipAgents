@@ -287,6 +287,12 @@ updates the name at once, whenever it reads the item.
 Never items: hidden rows (`display_kind` hidden, inactive rows unless compacted, compression summaries), the bridge's
 own steers (`[bipagents:…]`), restore notes (`<!--bip:restore…-->`), user rows made only of `<!--bip:…-->` notes.
 
+A conversation Hermes compacted in place keeps several rows per message (`message_uid`): the summarized one
+(compacted), the copies each compaction makes of the messages it keeps (the originals left inactive), and a summary
+holding the uid of a message it folded in. One item per message, at its first row: its place, and so its cursor, never
+change when Hermes compacts again (`a_compaction_leaves_every_message_at_its_first_row`, black-box
+`test_threads_compaction.py` on rows a real Hermes wrote).
+
 Attachment:
 
 ```json
