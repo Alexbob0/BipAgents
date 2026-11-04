@@ -19,8 +19,6 @@
 //! creating one is a few file writes.
 //!
 //! Linux only: the screen is an X server in the container.
-//!
-//! Port of `bridge/bipbridge/browsers.py` (owner group: browsers-places).
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};

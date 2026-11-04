@@ -4,7 +4,7 @@
 //! common units ("91" -> "quatre-vingt-onze", "14h30" -> "quatorze heures trente", "3,5 %" -> "trois virgule
 //! cinq pour cent", "1er" -> "premier"). Anything it does not recognize is left untouched.
 //!
-//! Port of `bridge/bipbridge/numbers_fr.py` (owner group: voice-speech). Numbers are handled as digit strings, so
+//! Numbers are handled as digit strings, so
 //! any length spells as Python's unbounded ints do; the patterns run on `voice_speech::pyre` (Python's `re`).
 
 use std::sync::LazyLock;

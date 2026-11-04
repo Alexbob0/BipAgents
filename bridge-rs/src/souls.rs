@@ -21,8 +21,6 @@
 //! health data has a second block (`with_health`): use it to help, never to diagnose. An agent in the person's
 //! circle (shared_memory.rs) knows that what it remembers of them is common to their own agents
 //! (`with_shared_memory`, 2026-10-30).
-//!
-//! Port of `bridge/bipbridge/souls.py` (owner group: agents).
 
 use std::sync::LazyLock;
 

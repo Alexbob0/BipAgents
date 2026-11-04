@@ -12,8 +12,6 @@
 //! it names); an agent Hermes does wake replies within that minute, and its reply is pushed instead.
 //!
 //! The helpers that read Hermes' rows (`final_reply`, `message_text`, `is_bot_chat`…) serve the other modules.
-//!
-//! Port of `bridge/bipbridge/cronwatch.py` (owner group: push-runs).
 
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};

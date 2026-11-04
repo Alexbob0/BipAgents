@@ -1,6 +1,4 @@
-//! `python -m bipbridge [serve|check|genkey|qr|peer-token|browser]` → `bipbridge <the same>`.
-//!
-//! Port of `bridge/bipbridge/__main__.py` (core group): the same commands, options, messages and exit codes; `serve`
+//! `bipbridge [serve|check|genkey|qr|peer-token|browser]`: `serve`
 //! runs the main listener (and the LAN door over HTTPS when it is on) until SIGTERM / Ctrl-C, then stops: event
 //! streams closed at once, requests under way given `STOP_DRAIN`, the services `STOP_SERVICES`, and the process gone
 //! after `STOP_HARD` whatever still runs.

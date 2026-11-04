@@ -21,7 +21,6 @@
 //! never by default), and the time spent in either does not count. A steered run that still ends without handing over
 //! has its task started by the bridge (`rescue`), the conversation told by a `bridge.notice` event before the end.
 //!
-//! Port of `bridge/bipbridge/runs.py` (owner group: push-runs).
 //!
 //! Concurrency (Python runs all this on one event loop): the hub's map of runs and its pending approvals sit
 //! behind one lock, each run's state behind its own; the hub's lock is always taken first. Dispatching an event,

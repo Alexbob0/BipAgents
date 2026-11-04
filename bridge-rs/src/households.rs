@@ -13,8 +13,6 @@
 //! `<data>/households.json` holds this install's name, the linked households (their address, the key we send, a digest
 //! of the key they send, and the certificate their address serves when it is a place's door: door_tls.rs) and the
 //! pending invitations.
-//!
-//! Port of `bridge/bipbridge/households.py` (owner group: agents).
 
 use std::path::PathBuf;
 

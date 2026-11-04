@@ -11,8 +11,6 @@
 //! The person's space (decided 2026-10-21): 5 GB of their own things — files, photos, notes, memory, conversations — as
 //! the last backup measured them (everything it takes, caches, code and images apart). Once full, files and notes sent
 //! to the bridge are refused (507) until some go; the guichet keeps more for the backups' history.
-//!
-//! Port of `bridge/bipbridge/place_backup.py` (owner group: browsers-places).
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;

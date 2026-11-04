@@ -3,8 +3,6 @@
 //! Stored at `{upload_dir_host}/{YYYY-MM}/{id12}-{name}`; the response gives the same file as seen
 //! from inside the Hermes container: `{upload_dir_container}/{YYYY-MM}/{id12}-{name}`. An agent whose tools run in a
 //! sandbox sees its folder there at `/fichiers`, read-only (`agents_admin.mount_uploads`).
-//!
-//! Port of `bridge/bipbridge/files.py` (owner group: agents).
 
 use std::io::{Read, Write};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};

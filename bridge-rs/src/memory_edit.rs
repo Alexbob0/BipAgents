@@ -12,8 +12,6 @@
 //!
 //! Only an agent this install manages (agents_admin.editable). `USER.md` is common to the person's own agents
 //! (shared_memory.rs): an edit of « what it knows about you » goes to all of them at once.
-//!
-//! Port of `bridge/bipbridge/memory_edit.py` (owner group: tools-knowledge).
 
 use std::collections::VecDeque;
 use std::path::{Component, Path, PathBuf};

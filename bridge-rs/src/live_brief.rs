@@ -34,8 +34,6 @@
 //! - the empty rows already written back are swept (`is_ghost`): an `api_` id (minted by `POST /api/sessions`) whose
 //!   source is Hermes' accounting placeholder « unknown », no message (count and transcript), not pinned, ten
 //!   minutes old at least.
-//!
-//! Port of `bridge/bipbridge/live_brief.py` (owner group: voice-speech).
 
 use std::sync::{LazyLock, Mutex};
 

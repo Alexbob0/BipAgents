@@ -7,8 +7,6 @@
 //! - `POST /v1/agents`: `{"name", "kind", "lang"}` or `{"name", "custom": {"role", "tone", "rules", "category"}, "lang"}`
 //!   → the new agent as `GET /v1/agents` lists it (id, name, tailnet url, key).
 //! - `PUT /v1/agents/{id}/language`: `{"lang"}` — the language it writes first in (its SOUL.md's language block).
-//!
-//! Port of `bridge/bipbridge/agents_admin.py` (owner group: agents).
 
 #[path = "agents/pyyaml.rs"]
 pub mod pyyaml;

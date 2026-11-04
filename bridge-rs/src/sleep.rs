@@ -5,8 +5,6 @@
 //!
 //!     data_dir/sleep.json                      {last, asleep}: the last request from an app, and whether Hermes sleeps
 //!     ~/.local/state/bipagents/asleep          while it sleeps: the seat agent tells the guichet (not a stopped Hermes)
-//!
-//! Port of `bridge/bipbridge/sleep.py` (owner group: push-runs).
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};

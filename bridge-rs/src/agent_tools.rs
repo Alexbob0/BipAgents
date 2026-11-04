@@ -12,8 +12,6 @@
 //! into paragraphs and short groups of sentences (a voice server skips or repeats lines in a long block), read with the
 //! person's pronunciations, one piece after the other in the background queue, so a Live started meanwhile is not held
 //! up. The file lands in the bridge's own folder, served to the app like any `MEDIA:` file under `/bipagents/audio`.
-//!
-//! Port of `bridge/bipbridge/agent_tools.py` (owner group: tools-knowledge).
 
 use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;

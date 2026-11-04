@@ -29,8 +29,6 @@
 //! `{"restore": {"key": …}}` instead: the backup key the person's phone kept. The installer's `restore` puts their last
 //! backup back (installer/bipinstall/backup.py) in a unit of its own, its steps shown as `restoring`, then restarts the
 //! bridge with their own keys and certificate: the app then reaches it as before, at this new address.
-//!
-//! Port of `bridge/bipbridge/cloud_setup.py` (owner group: browsers-places).
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};

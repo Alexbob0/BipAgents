@@ -4,8 +4,6 @@
 //! line (`notif.<type>`, the phones translate it); a phone that gave its key (`devices.push_key`) gets the words sealed
 //! for it in `enc` (seal.rs), opened by its Notification Service Extension. A phone without a key gets the neutral
 //! line only.
-//!
-//! Port of `bridge/bipbridge/push.py` (owner group: push-runs).
 
 use std::sync::Arc;
 

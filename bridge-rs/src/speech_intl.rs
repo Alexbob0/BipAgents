@@ -5,7 +5,7 @@
 //! dreißig", "3,5 %" -> "tres coma cinco por ciento"). Pauses (parentheses, dashes) and CamelCase names are
 //! handled as in French. Anything not recognized is left untouched.
 //!
-//! Port of `bridge/bipbridge/speech_intl.py` (owner group: voice-speech). num2words (Python, LGPL, optional there)
+//! Num2words (Python, LGPL, optional there)
 //! is `voice_speech::num2words` here, always present; the patterns run on `voice_speech::pyre` (Python's `re`).
 
 use std::collections::HashMap;

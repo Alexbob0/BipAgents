@@ -3,8 +3,6 @@
 //! `skills/` folder, next to the ones it ships (`.bundled_manifest`), the ones installed from its hub (`.hub/lock.json`)
 //! and the ones this bridge gives (shared data, the visible browser, contacts): those are not the agent's own. Turning
 //! one off lists it in the profile's `skills.disabled`, which Hermes reads again when the profile's config changes.
-//!
-//! Port of `bridge/bipbridge/own_skills.py` (owner group: agents).
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::{Path, PathBuf};

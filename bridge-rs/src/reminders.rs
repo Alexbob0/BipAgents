@@ -21,8 +21,6 @@
 //!                                        request's op: it stays waiting for the app's update)
 //!
 //!     data_dir/reminders.json   (chmod 600: the copy, the agents allowed, the requests)
-//!
-//! Port of `bridge/bipbridge/reminders.py` (owner group: tools-knowledge).
 
 use std::path::PathBuf;
 use std::sync::Mutex;

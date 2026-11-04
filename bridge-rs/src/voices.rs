@@ -5,8 +5,6 @@
 //! - `GET  /v1/voices`                  -> the server's voices (the app shows them as « Voix 1, Voix 2… ») and its uses
 //! - `PUT  /v1/voices/uses`             `{"live": true, "replies": false, "reading": true}`
 //! - `PUT  /v1/agents/{id}/voices`      `{"voice": "pocket:galet", "server_voice": "server:fr/af_bella"}`
-//!
-//! Port of `bridge/bipbridge/voices.py` (owner group: voice-speech).
 
 use axum::extract::{Path, State};
 use axum::response::Response;

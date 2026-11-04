@@ -2,7 +2,7 @@
 //! conversations, with its cost shown before (a budget the person chooses) and after (the tokens it took), pause, resume
 //! and cancel, and a notification when it ends. Two kinds:
 //!
-//!     mail_scan   a mailbox read through by steps (mail_scan.py): listed and paused here, run there
+//!     mail_scan   a mailbox read through by steps (mail_scan.rs): listed and paused here, run there
 //!     task        a long task in the agent's own Hermes, with all its tools, in a conversation of its own (« 🧩 <title> »):
 //!                 the bridge starts the run, reads its tokens every few seconds (each model call's, Hermes patch 0020;
 //!                 else the conversation's counters) and stops the run
@@ -12,7 +12,7 @@
 //!                 counters move only at a run's end, so before that a run went on to its end whatever it took (Alex's
 //!                 task of 2026-10-31: about twice its budget)
 //!
-//! An agent may propose a task (MCP `propose_task` in agent_tools.py, for work too long for a reply): it waits, budget and all, until the
+//! An agent may propose a task (MCP `propose_task` in agent_tools.rs, for work too long for a reply): it waits, budget and all, until the
 //! person starts it in the app. Since 2026-10-22 (owner's decision: long work never inline) an agent also starts a task
 //! itself (`start_task`, `notebook_fill`), but only for work the person just asked for and within a small budget
 //! (`[jobs] direct_budget_eur`, ≈ 0.20 €, in tokens at the `[notebook]` prices: `direct_budget`); anything bigger,
@@ -27,8 +27,6 @@
 //!
 //! Mail scans keep their own routes for their steps (/v1/agents/{id}/mail-scan…); their job id here is
 //! `mail-scan:<agent>`.
-//!
-//! Port of `bridge/bipbridge/jobs.py` (owner group: tools-knowledge).
 
 use std::collections::HashMap;
 use std::io::Write;
@@ -218,7 +216,7 @@ fn left_for_run(job: &Dict) -> i64 {
         - int_of(before.and_then(|t| t.get("output")))
 }
 
-/// A mailbox scan (mail_scan.py) in the common shape.
+/// A mailbox scan (mail_scan.rs) in the common shape.
 pub fn scan_view(job: &Dict, running: bool) -> Dict {
     let mut state = job.get("state").map(py::py_str).unwrap_or_else(|| "none".into());
     if (state == "counting" || state == "running") && !running {
@@ -1237,7 +1235,7 @@ fn thousands(n: i64) -> String {
     }
 }
 
-/// The `propose_task` MCP tool (agent_tools.py). Err: what Python lets through (a task file that cannot be written).
+/// The `propose_task` MCP tool (agent_tools.rs). Err: what Python lets through (a task file that cannot be written).
 pub async fn propose_tool(jobs: Option<&Jobs>, agent: &AgentConfig, arguments: &Dict) -> anyhow::Result<Dict> {
     let Some(jobs) = jobs else {
         return Ok(crate::tools_knowledge::tool_failure(

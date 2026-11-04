@@ -13,8 +13,6 @@
 //! The service that runs the space's gateway is a systemd user unit (Linux) or a launchd agent (macOS), or the
 //! administrator's own commands (`[spaces] start` / `stop`), e.g. a container per space on a server where Hermes
 //! itself runs in containers.
-//!
-//! Port of `bridge/bipbridge/spaces.py` (owner group: agents).
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};

@@ -6,7 +6,7 @@
 //! word boundary. Each emitted segment is then normalized (markdown removed, links reduced to their
 //! label, list items ended with a period so they are read naturally).
 //!
-//! Port of `bridge/bipbridge/textproc.py` (owner group: voice-speech). Its regular expressions run on
+//! Its regular expressions run on
 //! `voice_speech::pyre` (Python's `re` semantics and character classes).
 
 use std::sync::LazyLock;

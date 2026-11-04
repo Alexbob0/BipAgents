@@ -8,8 +8,6 @@
 //!
 //! A key is one public key line with nothing in front (no `command=` or other options); it goes to
 //! ~/.ssh/authorized_keys (700/600), which the account's other keys share.
-//!
-//! Port of `bridge/bipbridge/ssh_keys.py` (owner group: agents).
 
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;

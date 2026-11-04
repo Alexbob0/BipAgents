@@ -5,8 +5,6 @@
 //! knowledge_read and knowledge_search, and the person sees and edits them in « Sa mémoire ».
 //!
 //!     POST /v1/agents/{id}/memory/import   {name, data (base64), source?}  ->  {notes, skipped}
-//!
-//! Port of `bridge/bipbridge/notes_import.py` (owner group: tools-knowledge).
 
 use std::io::Read;
 use std::path::Path;
