@@ -2,7 +2,7 @@
 // conversations and the inbox, as in the app. No build step: Preact + htm, vendored.
 import { html, render, useState, useEffect, useRef, useCallback, useMemo } from "./vendor/preact-htm.js";
 import { call, events, blobURL, HttpError } from "./api.js";
-import { render as markdown, visible, media } from "./markdown.js";
+import { render as markdown, visible } from "./markdown.js";
 import { attach, category, CATEGORIES } from "./bips.js";
 import { T, lang } from "./text.js";
 
@@ -184,7 +184,7 @@ function Listen({ agent, text }) {
   return html`<button class="tiny" onClick=${listen} title=${T.listen}>${state === "loading" ? "…" : state === "playing" ? "■ " + T.stop : state === "error" ? "⚠︎ " + T.listen : "▶︎ " + T.listen}</button>`;
 }
 
-/** A file of a message: `path` (an agent's MEDIA file, served by /v1/media) or `src` (a photo of the timeline). */
+/** A file of a message: `path` (an agent's file, served by /v1/media) or `src` (a photo of the timeline). */
 function MediaFile({ path, src, name = path.split("/").pop(), agent }) {
   const [url, setUrl] = useState(null);
   const [failed, setFailed] = useState(false);
@@ -431,7 +431,10 @@ function Inbox({ agents, onOpen }) {
   const [items, setItems] = useState(null);
   const [error, setError] = useState(null);
   useEffect(() => {
-    call("/v1/outbox?limit=100").then(r => setItems((r.items || []).slice().reverse())).catch(e => setError(errorText(e)));
+    // the Boîte's messages from the notification journal: a `boite` row carries its message whole, newest first
+    call("/v1/notifications?limit=100").then(r => setItems((r.notifications || []).filter(n => n.type === "boite" && n.boite)
+      .map(n => ({ ...n.boite, id: n.id, agent: n.agent, created_at: n.created_at, session_id: n.session_id }))))
+      .catch(e => setError(errorText(e)));
   }, []);
   const byId = Object.fromEntries(agents.map(a => [a.id, a]));
   return html`<section class="inbox">
@@ -442,9 +445,9 @@ function Inbox({ agents, onOpen }) {
     ${items && items.map(it => {
       const agent = byId[it.agent] || { id: it.agent, name: it.agent };
       return html`<article key=${it.id} class="card inbox-item">
-        <header><${Bip} agent=${agent} size=${36}/><div><strong>${it.title || agent.name}</strong><span class="muted small"> · ${it.title ? `${agent.name} · ` : ""}${when(it.sent_at || it.created_at)}</span></div></header>
+        <header><${Bip} agent=${agent} size=${36}/><div><strong>${it.title || agent.name}</strong><span class="muted small"> · ${it.title ? `${agent.name} · ` : ""}${when(it.created_at)}</span></div></header>
         <div class="md">${markdown(it.text)}</div>
-        ${media(it.text).map(p => html`<${MediaFile} key=${p} path=${p} agent=${agent.id}/>`)}
+        ${(it.attachments || []).map(f => html`<${MediaFile} key=${f.path} path=${f.path} agent=${agent.id}/>`)}
         <div class="meta">
           <${InboxAudio} item=${it}/>
           ${it.session_id && byId[it.agent] && html`<button class="tiny" onClick=${() => onOpen(it.agent, it.session_id)}>${T.openConversation}</button>`}
@@ -459,7 +462,7 @@ function InboxAudio({ item }) {
   async function listen() {
     if (state === "playing") { stopPlaying(); setState("idle"); return; }
     setState("loading");
-    try { await play(await blobURL(`/v1/outbox/${encodeURIComponent(item.id)}/audio`), () => setState("idle")); setState("playing"); }
+    try { await play(await blobURL(item.audio_url), () => setState("idle")); setState("playing"); }
     catch { setState("error"); }
   }
   return html`<button class="tiny" onClick=${listen}>${state === "loading" ? "…" : state === "playing" ? "■ " + T.stop : state === "error" ? "⚠︎ " + T.listen : "▶︎ " + T.listen}</button>`;

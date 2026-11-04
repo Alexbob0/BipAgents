@@ -4,22 +4,16 @@
 // names another site shows the real one.
 import { h } from "./vendor/preact-htm.js";
 
-const MEDIA_LINE = /^[ \t]*MEDIA:[ \t]*(\S+)[ \t]*$/gm;
 const OPENABLE = new Set(["http:", "https:", "tel:", "mailto:"]);
 
-/** The reply without the MEDIA lines and the tool-call markup a model sometimes writes as text. */
+/** The reply without the tool-call markup a model sometimes writes as text (no MEDIA line reaches an app). */
 export function visible(text) {
-  let result = (text || "").replace(MEDIA_LINE, "");
+  let result = text || "";
   if (result.includes("<")) {
     result = result.replace(/<tool_call>[\s\S]*?(?:<\/tool_call>|$)/g, "")
       .replace(/<\/?(?:arg_key|arg_value|tool_call|tool_response|function_calls?|invoke|parameter)\b[^>]*>/g, "");
   }
   return result.trim();
-}
-
-/** Files the reply points to with « MEDIA:<path> » lines. */
-export function media(text) {
-  return [...(text || "").matchAll(MEDIA_LINE)].map(m => m[1]);
 }
 
 function safeURL(raw) {
