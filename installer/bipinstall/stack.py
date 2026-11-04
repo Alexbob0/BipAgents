@@ -24,8 +24,8 @@ class AgentEntry:
     root: bool = False   # the gateway's main profile (an existing Hermes), served at its root, not /p/<name>
 
 
-# The publisher's push relay, once it is online (relay/README.md): every new install sends through it.
-PUSH_SERVICE_URL = ""
+# The publisher's push relay (relay/README.md, online since 11/2026, APNs + FCM): every install sends through it.
+PUSH_SERVICE_URL = "https://push.bipagents.com"
 
 
 @dataclass
