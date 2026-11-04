@@ -247,23 +247,6 @@ def test_the_timer_runs_each_night_spread_and_at_the_lowest_priority(tmp_path):
     assert not list(folder.glob("bipagents-browser-*.service"))   # never taken for an agent's browser
 
 
-def test_an_update_gives_existing_installs_the_refresh(tmp_path, monkeypatch):
-    from bipinstall import migrations
-    runner = hermes.Runner()
-    ran = []
-    runner.run = lambda args, **kw: ran.append(list(args)) or ""
-    monkeypatch.setattr(hermes, "sandbox_runtime", lambda: None)                 # a Mac: no browsers
-    assert migrations.browser_refresh(runner, tmp_path) == "no agent browser here" and ran == []
-    monkeypatch.setattr(hermes, "sandbox_runtime", lambda: ENGINE)
-    monkeypatch.setattr(refresh, "run", Engine(UP_TO_DATE, ids=("", "")))        # Linux, browser never built
-    assert migrations.browser_refresh(runner, tmp_path) == "no agent browser here"
-    monkeypatch.setattr(refresh, "run", Engine(UP_TO_DATE))
-    said = migrations.browser_refresh(runner, tmp_path)
-    assert "each night" in said and (tmp_path / ".config" / "systemd" / "user" / "bipagents-refresh-browser.timer").is_file()
-    assert ran[-1] == ["systemctl", "--user", "enable", "--now", "bipagents-refresh-browser.timer"]
-    assert "2026-10-22-browser-refresh" in [mid for mid, _ in migrations.MIGRATIONS]
-
-
 def test_a_rebuild_from_an_update_never_reuses_yesterday_s_packages():
     runner = hermes.Runner(dry=True)
     hermes.build_browser(runner, "/usr/bin/docker", REPO)

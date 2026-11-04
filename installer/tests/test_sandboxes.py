@@ -15,4 +15,3 @@ def test_the_gateway_removes_the_agents_dead_sandboxes_before_it_starts(tmp_path
         assert text.splitlines()[-1].startswith("ExecStartPre=-/bin/sh -c 'podman ps -a")
         assert 'grep "^hermes-"' in text and "%" not in text   # never another container (browsers, egress)
     assert ["systemctl", "--user", "daemon-reload"] in ran
-    assert "2026-10-31-sandboxes-at-gateway-start" in [mid for mid, _ in migrations.MIGRATIONS]

@@ -407,7 +407,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     from . import migrations
     from .upgrade import install_command
     migrations.sandboxes_at_gateway_start(runner, Path.home())   # what that last migration sets, a fresh install too
-    migrations.mark([mid for mid, _ in migrations.MIGRATIONS if mid not in migrations.AFTER_INSTALL], runner)   # a fresh install has them all already
+    migrations.mark([mid for mid, _ in migrations.MIGRATIONS], runner)   # a fresh install has them all already
     install_command(runner)   # `bipagents update` later
     if plan.browser != "none" and not browser:   # the visible browser brings its own desktop
         if hermes.desktop_ready() or sandbox:
@@ -492,7 +492,7 @@ def cloud_install(args, runner: hermes.Runner, machine: Machine) -> int:
     hermes.apply_patches(runner, REPO / "hermes" / "patches")
     hermes.setup_hub(runner, inst.ports.hermes, model, sandbox=sandbox)
     migrations.sandboxes_at_gateway_start(runner, Path.home())
-    migrations.mark([mid for mid, _ in migrations.MIGRATIONS if mid not in migrations.AFTER_INSTALL], runner)
+    migrations.mark([mid for mid, _ in migrations.MIGRATIONS], runner)
     install_command(runner)
     gateway_service(inst, machine, runner)
     status = finish(inst, machine, runner, args, steps, total, sandbox)

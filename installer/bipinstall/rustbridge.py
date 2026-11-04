@@ -14,8 +14,7 @@ knows which release is its own without asking anyone.
 A machine with no build of ours (another processor, another system) can run binaries built on it (`cargo build
 --release` in bridge-rs/): BIPAGENTS_BRIDGE_BUILD=<their folder> for the install or `bipagents bridge rust`.
 
-`bipagents update` keeps the binaries in step with the code: a new key, its binaries, a restart. An install still on
-the Python bridge is moved to them by its first update (migrations.py, rust-bridge).
+`bipagents update` keeps the binaries in step with the code: a new key, its binaries, a restart.
 """
 from __future__ import annotations
 
@@ -38,7 +37,6 @@ from . import release_key
 
 REPO = Path(__file__).resolve().parents[2]
 SLUG = "Alexbob0/BipAgents"
-ENGINE = Path(".config") / "bipagents" / "bridge-engine"   # « rust » or « python » while both existed; removed now
 BINARIES = Path(".local") / "share" / "bipagents" / "bridge"
 KEEP = 2                     # binaries kept: this version's and the one before (a quick way back)
 SUMS = "SHA256SUMS"
@@ -300,17 +298,6 @@ def cli(home: Path, repo: Path = REPO) -> List[str]:
     return [str(found[0])] if found else wanted
 
 
-def python_service(home: Path) -> bool:
-    """Whether the bridge's service still runs the Python bridge (an install made before 2026-10-21)."""
-    if sys.platform == "darwin":
-        files = sorted((home / "Library" / "LaunchAgents").glob("*.plist"))
-        pattern = r"<string>-m</string>\s*<string>bipbridge</string>"
-    else:
-        files = sorted((home / ".config" / "systemd" / "user").glob("*.service"))
-        pattern = r"^ExecStart=\S*python\S* -m bipbridge"
-    return any(re.search(pattern, path.read_text(errors="ignore"), flags=re.M) for path in files)
-
-
 def rewrite_service(home: Path, run: List[str]) -> Optional[Path]:
     """The installed service, its program swapped (systemd's ExecStart, launchd's ProgramArguments)."""
     if sys.platform == "darwin":
@@ -348,12 +335,10 @@ def restart(home: Path) -> None:
 
 def keep_in_step(home: Path, repo: Path = REPO, wait: float = 0.0, sleep=None) -> Optional[str]:
     """After a pull (`bipagents update`): this version's binaries, the service on them. Says what it did, or why it
-    kept the previous ones (None: the service still runs the Python bridge, which the migration rust-bridge moves).
+    kept the previous ones.
     `wait`: seconds to wait for a release still being built (a nightly update, unattended), asked again every 30 s.
     The service is only rewritten once the binaries are here: an update never leaves the bridge on a missing one."""
     import time
-    if python_service(home):
-        return None
     sleep = sleep or time.sleep
     deadline = time.monotonic() + wait
     while True:
@@ -374,7 +359,6 @@ def switch(home: Path, repo: Path = REPO) -> str:
     ensure(home, repo)
     if rewrite_service(home, program(home, repo)) is None:
         raise RustBridgeError("I can't find the bridge's service in this account.")
-    (home / ENGINE).unlink(missing_ok=True)   # there is only one bridge now
     restart(home)
     browsers_follow(home)
     return f"The bridge {key(repo)} runs."
@@ -395,15 +379,10 @@ def main(argv: List[str]) -> int:
         if said:
             print(ui.note(said))
         return 0
-    if choice == "python":
-        print(ui.fail("The Python bridge was retired on 2026-10-21 (it stays in BipAgents' history): the bridge is "
-                      "the Rust one now."))
-        return 2
     if choice != "rust":
         release = key()
         here = bool(release) and binary(home, release).exists()
-        print(f"Bridge: {release or 'unknown version'} ({'downloaded' if here else 'not downloaded'})"
-              + (" — its service still runs the Python bridge: `bipagents update` moves it" if python_service(home) else ""))
+        print(f"Bridge: {release or 'unknown version'} ({'downloaded' if here else 'not downloaded'})")
         print("Fetch it again and restart it: bipagents bridge rust")
         return 0 if not choice else 2
     try:

@@ -6,7 +6,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from bipinstall import hermes, migrations, routing  # noqa: E402
+from bipinstall import routing  # noqa: E402
 
 EU = {"model": {"provider": "custom", "default": "glm-5.3-flash", "base_url": "https://api.eurouter.ai/api/v1"}}
 ROUTE = {"order": ["entrim", "greenpt", "inceptron"], "allow_fallbacks": True}
@@ -36,23 +36,3 @@ def test_one_entry_for_the_router_and_the_thinking_entry_carries_it():
         assert not routing.with_routing(other, routing.DEFAULT_ORDER)
 
 
-def test_the_migration_routes_every_config_with_the_bridge_s_order(tmp_path):
-    hub = tmp_path / ".hermes"
-    (hub / "profiles" / "vie").mkdir(parents=True)
-    (hub / "config.yaml").write_text(yaml.safe_dump(EU))
-    (hub / "profiles" / "vie" / "config.yaml").write_text(yaml.safe_dump(EU))
-    local = tmp_path / ".hermes" / "profiles" / "gpu"
-    local.mkdir()
-    (local / "config.yaml").write_text(yaml.safe_dump({"model": {"provider": "custom", "base_url": "http://gpu:8888/v1"}}))
-    bridge = tmp_path / ".config" / "bipagents" / "bridge.toml"
-    bridge.parent.mkdir(parents=True)
-    bridge.write_text('bridge_key = "k"\n\n[model]\nprovider_order = ["melious", "entrim"]\n')
-    runner = hermes.Runner()
-    said = migrations.provider_routing(runner, tmp_path)
-    assert said.endswith("(2 config(s))") and "melious, entrim" in said
-    vie = yaml.safe_load((hub / "profiles" / "vie" / "config.yaml").read_text())
-    assert vie["providers"]["bipagents-route"]["extra_body"]["provider"]["order"] == ["melious", "entrim"]
-    assert "providers" not in yaml.safe_load((local / "config.yaml").read_text())
-    assert migrations.provider_routing(runner, tmp_path).startswith("no agent on EUrouter")   # again: nothing to do
-    assert "2026-10-26-provider-routing" in [mid for mid, _ in migrations.MIGRATIONS]
-    assert routing.order_from(None) == routing.DEFAULT_ORDER
