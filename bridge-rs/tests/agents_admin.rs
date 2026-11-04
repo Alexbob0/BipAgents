@@ -572,7 +572,10 @@ fn glm_through_eurouter_thinks_low_and_never_none() {
     assert_eq!(read_thinking(&c, &agent).as_deref(), Some("low"));
     bipbridge::profile_files::reconcile_all(&c);
     let data = load(&path);
-    assert_eq!(data["agent"], json!({"max_turns": 60, "disabled_toolsets": ["cronjob"], "reasoning_effort": "low"}));
+    assert_eq!(
+        data["agent"],
+        json!({"max_turns": 60, "instructions_as_note": true, "disabled_toolsets": ["cronjob"], "reasoning_effort": "low"})
+    );
     assert_eq!(data["providers"]["bipagents-route"]["extra_body"]["provider"]["allow_fallbacks"], true);
     // « none »: written « low », the person's choice kept for the app, no enable_thinking entry
     assert_eq!(agents_admin::choose_thinking(&c, &agent, "none").unwrap(), "none");
