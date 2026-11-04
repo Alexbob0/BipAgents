@@ -1312,7 +1312,9 @@ pub fn start_task_tool() -> Value {
     It runs on its own, in a conversation of its own with all your tools, within a small default budget, and your \
     person gets your report when it ends. Then tell them in one plain sentence that you're on it in the background, \
     and stop: don't do the work here as well. Only for work your person asked for: for your own ideas, or work that \
-    needs more than the default budget, use propose_task.",
+    needs more than the default budget, use propose_task. Never for something at a later time or on a schedule \
+    (« dans 2 minutes », « demain à 8 h », « tous les matins »): it would run now; that is a routine (routine_schedule, \
+    with its date and time).",
         "inputSchema": {"type": "object", "properties": {
             "title": {"type": "string", "description": "a few words, in the person's language"},
             "instructions": {"type": "string", "description": "everything needed to do the task without this \
