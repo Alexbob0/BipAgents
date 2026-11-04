@@ -60,7 +60,7 @@ def answering(bridge, room_id):
 
 def quiet(bridge, room_id):
     """Nobody answers any more (looked at through the room's view)."""
-    return bridge.get(f"/v1/rooms/{room_id}", headers=AUTH).json()["answering"] == []
+    return bridge.get(f"/v1/threads/room:{room_id}", headers=AUTH).json()["room"]["answering"] == []
 
 
 def kind(item):
@@ -77,13 +77,14 @@ def replies(bridge, room_id):
 
 
 @contextlib.contextmanager
-def on_screen(bridge, room_id):
-    """An app showing the room: its events stream open with `thread=room:<id>` (presence), the `thread` hints it gets."""
+def on_screen(bridge, room_id, **params):
+    """An app showing the room: its events stream open with `thread=room:<id>` (presence), the `thread` hints it gets
+    for the room; `params` another stream (`agent=`: a conversation's, none: the home's)."""
     hints, stop = [], threading.Event()
 
     def watch():
         with httpx.Client(base_url=bridge.url, headers=AUTH, timeout=30) as client:
-            with client.stream("GET", "/v1/threads/events", params={"thread": f"room:{room_id}"}) as resp:
+            with client.stream("GET", "/v1/threads/events", params=params or {"thread": f"room:{room_id}"}) as resp:
                 event = ""
                 for line in resp.iter_lines():
                     if line.startswith("event: "):
@@ -146,7 +147,7 @@ def test_a_discussion_is_made_listed_changed_and_deleted(bridges, fakes):
 
     other = room_of(bridge, "wellness", "coach", title="  Vacances   d'août ")
     assert other["title"] == "Vacances d'août"
-    listed = bridge.get("/v1/rooms", headers=AUTH).json()["rooms"]
+    listed = [t["room"] for t in bridge.get("/v1/threads?kind=room", headers=AUTH).json()["threads"]]
     assert [r["id"] for r in listed] == [other["id"], room["id"]]   # the newest first
 
     changed = bridge.patch(f"/v1/rooms/{room['id']}", headers=AUTH,
@@ -155,11 +156,11 @@ def test_a_discussion_is_made_listed_changed_and_deleted(bridges, fakes):
     assert changed.json()["title"] == "Repas" and changed.json()["mode"] == "all"
     assert [p["id"] for p in changed.json()["participants"]] == ["coach", "cuisine", "wellness"]
     assert bridge.patch(f"/v1/rooms/{room['id']}", headers=AUTH, json={"mode": "loud"}).status_code == 422
-    assert bridge.get("/v1/rooms/g000000000000", headers=AUTH).status_code == 404
-    assert bridge.get("/v1/rooms/../x", headers=AUTH).status_code == 404
+    assert bridge.get("/v1/threads/room:g000000000000", headers=AUTH).status_code == 404
+    assert bridge.get("/v1/threads/room:../x", headers=AUTH).status_code == 404
 
     assert bridge.delete(f"/v1/rooms/{other['id']}", headers=AUTH).json() == {"ok": True}
-    assert bridge.get(f"/v1/rooms/{other['id']}", headers=AUTH).status_code == 404
+    assert bridge.get(f"/v1/threads/room:{other['id']}", headers=AUTH).status_code == 404
     assert bridge.delete(f"/v1/rooms/{other['id']}", headers=AUTH).status_code == 404
 
 
@@ -202,7 +203,13 @@ def test_an_at_name_forces_who_answers_in_its_own_hidden_conversation(bridges, f
     assert [(f["id"], f["kind"], f["path"]) for f in reply["attachments"]] == [
         ("rm_2.a0", "page", "/bipagents/pages/coach/marche.html")]
     assert reply["room"]["tokens"] == {"input": 100_000, "output": 5_000}     # the run's own usage
-    viewed = bridge.get(f"/v1/rooms/{room['id']}", headers=AUTH).json()
+    # its item and its file through the conversations' routes
+    assert bridge.get(f"/v1/threads/room:{room['id']}/items/{reply['id']}", headers=AUTH).json() == reply
+    file = bridge.get(f"/v1/threads/room:{room['id']}/attachments/rm_2.a0", headers=AUTH)
+    assert file.status_code == 307 and file.headers["location"] == \
+        "/v1/media?path=%2Fbipagents%2Fpages%2Fcoach%2Fmarche%2Ehtml&agent=coach"
+    assert bridge.get(f"/v1/threads/room:{room['id']}/attachments/rm_2.a1", headers=AUTH).status_code == 404
+    viewed = bridge.get(f"/v1/threads/room:{room['id']}", headers=AUTH).json()["room"]
     assert viewed["tokens"] == {"input": 100_000, "output": 5_000} and viewed["last"]["id"] == reply["id"]
 
     # the next agent reads the person and Coach, Coach's words as information, without its file
@@ -358,7 +365,11 @@ def test_a_reply_nobody_looks_at_is_pushed_and_one_on_screen_is_read_there(bridg
     read = bridge.post("/v1/notifications/read", headers=AUTH, json={"thread": f"room:{room['id']}"}).json()
     assert read["read"] == [payload["n"]] and read["unread"]["threads"] == {}
 
-    with on_screen(bridge, room["id"]) as hints:   # the app has the discussion on screen
+    listed = bridge.get("/v1/threads", headers=AUTH, params={"kind": "room"}).json()["threads"]
+    assert [(t["id"], t["kind"], t["unread"], t["room"]["id"]) for t in listed] == [(f"room:{room['id']}", "room", 0, room["id"])]
+    # the room's hints reach its own streams and the home's, not a conversation's
+    with on_screen(bridge, room["id"]) as hints, on_screen(bridge, room["id"], agent="coach") as elsewhere, \
+            on_screen(bridge, room["id"], home="1") as home:   # the app has the discussion on screen
         sent = send(bridge, room["id"], "@cuisine et le dîner ?").json()
         assert wait_until(lambda: len(replies(bridge, room["id"])) == 2 and quiet(bridge, room["id"]), timeout=20)
         # each change was a hint for the room (sent, its turn, its reply), versions growing up to the timeline's
@@ -368,6 +379,7 @@ def test_a_reply_nobody_looks_at_is_pushed_and_one_on_screen_is_read_there(bridg
         assert messages(bridge, room["id"], after=sent["item"]["cursor"])["items"][0]["from"] == "cuisine"
         rows = bridge.get("/v1/notifications", headers=AUTH).json()["notifications"]
         assert (rows[0]["m"], rows[0]["push"]) == ("rm_4", "skipped:on_screen") and rows[0]["read_at"]
+        assert wait_until(lambda: len(home) == len(hints), timeout=10) and elsewhere == []
     assert len([p for p in fakes.apns.payloads() if p.get("t") == "room_reply"]) == 1
 
 

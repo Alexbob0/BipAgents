@@ -308,7 +308,7 @@ async fn a_task_gets_a_goal_proposed_then_the_team_relays_toward_it() {
     assert_eq!(sent["route"]["agents"], json!(["qa"]), "{sent}");
     settled(&app, &id, 8).await;
     // the small calls counted on the room
-    let room = app.get(&format!("/v1/rooms/{id}"), &h).await.json();
+    let room = app.get(&format!("/v1/threads/room:{id}"), &h).await.json()["room"].clone();
     assert!(room["small_tokens"]["input"].as_i64().unwrap() >= 300, "{room}");
 }
 

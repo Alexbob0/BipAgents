@@ -55,7 +55,7 @@ def test_a_task_handed_over_goes_on_from_a_small_note_and_its_follow_ups_go_to_i
     assert text(notice) in ("Cuisine reprend « Faites moi un plan de repas pour la semaine ».",
                               "Cuisine takes over “Faites moi un plan de repas pour la semaine”.")
     # every device sees the new owner at its next look (the room's view too)
-    assert bridge.get(f"/v1/rooms/{rid}", headers=AUTH).json()["tasks"][0]["owner"] == "cuisine"
+    assert bridge.get(f"/v1/threads/room:{rid}", headers=AUTH).json()["room"]["tasks"][0]["owner"] == "cuisine"
 
     assert wait_until(lambda: quiet(bridge, rid) and len(replies(bridge, rid)) == 3, timeout=25)
     asked = note_calls(fakes)

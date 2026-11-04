@@ -83,7 +83,7 @@ impossible).
 | `routine` | A routine's run (`cron_<job>_<date>_<time>`, `local-<sha256>` on v0.22.5). Its report goes to its origin thread (Hermes patch 0019) or to `main` as a Boîte message; the run itself is a hidden thread | no | the first sight of a routine session |
 | `pair` | Two agents' own conversation (agent_pairs.rs) | no | the household link |
 | `live` | A Live call's throwaway session (live_brief.rs) | no | the Live call |
-| `room` | A group discussion: rooms.rs keeps its store (`data_dir/rooms/<id>.json`), served as the thread `room:<id>` (§6.6) | via `/v1/rooms` | rooms.rs |
+| `room` | A group discussion: rooms.rs keeps its store (`data_dir/rooms/<id>.json`), served as the thread `room:<id>` (§6.6) | `GET /v1/threads?kind=room` | rooms.rs |
 
 `hidden` threads are returned with `include_hidden=1` only. A sub-agent's run (`delegate_task`), a branch or a reset
 child is never a segment of anything: it is ignored (same rules as `restore_reconcile::continuation`).
@@ -172,6 +172,7 @@ GET  /v1/threads?agent=<id>[&include_hidden=1]
   → {threads: [Thread…]}                  main first, then by last activity: the history screen's list (only
                                           what Hermes still keeps); `include_hidden=1` adds routine runs, the
                                           agents' own conversations (`pair`) and hidden ones
+GET  /v1/threads?kind=room                the rooms (§6.6), newest first, no agent needed
 GET  /v1/threads/{thread}?agent=<id>      (agent required only with thread=main)
   → Thread  (+ segments)
 GET  /v1/threads/resolve?agent=<id>&session_id=<hermes session>
@@ -351,7 +352,12 @@ text of a run still comes from `/v1/runs/{run_id}/events` (unchanged).
 
 ### 6.6 Rooms and shared agents
 
-- **Rooms** (branch rooms-items) are threads `room:<id>` on the same routes, no agent needed (several agents speak):
+- **Rooms** (branch rooms-items, reduced in rooms-reduction) are threads `room:<id>` on the same routes, no agent
+  needed (several agents speak):
+  - `GET /v1/threads?kind=room` lists them (`{id: room:<id>, kind: room, title, version, tip: null, last_active,
+    unread, room}`, `room` the room as `pending.room` gives it, with `last`); `GET /v1/threads/room:<id>` is one;
+    `GET /v1/threads/room:<id>/items/rm_<n>` an item and `…/attachments/rm_<n>.a<k>` its file (→ `/v1/media` with
+    the agent that handed it), through the conversations' code.
   - `GET /v1/threads/room:<id>/timeline` (same paging): items `rm_<n>`; the person's words and the agents' a `message`
     (`role` person | agent, `from` the agent, `client_id` on the person's), a pass, a failed or capped turn, a task
     handed over a `notice` (`code` pass | failed | capped | handover); `turn` the person's message answered; an agent's
@@ -360,14 +366,17 @@ text of a run still comes from `/v1/runs/{run_id}/events` (unchanged).
     for, goal, proposal, progress, tasks) and `handoffs` (its last 5 relays: the conductor may set one on an item the
     app has already). `thread.version` = the room's version.
   - `POST /v1/threads/room:<id>/messages {client_id, text}` → `{client_id, thread, state: started | queued | known,
-    route: {by, agents}, item}` (words only: attachments 422); `POST /v1/threads/room:<id>/stop` → `{stopped}`.
+    route: {by, agents}, item}` (words only: attachments 422; the message is kept before the router picks who answers,
+    so the other devices see it at once); `POST /v1/threads/room:<id>/stop` → `{stopped}`.
   - Every change of a room (rooms.rs `Rooms::edit`) is a `thread` hint `{thread: room:<id>, agent: null, version,
-    reason: room}` on every events stream; `GET /v1/threads/events?thread=room:<id>` is « on screen » (presence).
+    reason: room}`, sent only to the streams that follow it (`GET /v1/threads/events?thread=room:<id>`, « on screen »:
+    presence) and the home's (no agent, no thread).
   - Each agent's reply is journaled (`room_reply`, `c: room:<id>`, `m: rm_<n>`): unread for the apps' dots
     (`/v1/notifications/unread` `threads`), read and not pushed while the room is on screen, read with
     `POST /v1/notifications/read {thread: room:<id>}`. A notification opens the room `around=m`.
-  - `/v1/rooms` keeps the room itself (list, create, change, delete, tasks); `GET/POST /v1/rooms/{id}/messages` and
-    `/stop` are gone, so are the apps' polling, `RoomsCenter.isUnread`'s phone-side « seen » map and Android's.
+  - `/v1/rooms` keeps the room's changes (create, change, delete, tasks); its list and view
+    (`GET /v1/rooms[/{id}]`), `GET/POST /v1/rooms/{id}/messages` and `/stop` are gone, so are the apps' polling,
+    `RoomsCenter.isUnread`'s phone-side « seen » map and Android's.
 - **Shared agents** (agent_shares.rs): the relative's app asks its own bridge with `agent=<agent>__<household>`;
   `GET /v1/threads` lists her conversations with that agent (`kind: shared`, `id` = the conversation's id) and
   `GET /v1/threads/{cid}/timeline` (same parameters, same answer shape) is relayed to the owner's bridge
