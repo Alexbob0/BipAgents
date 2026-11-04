@@ -28,8 +28,7 @@ langue (jamais l'extrait d'une autre langue : cela garde un accent) avec le mod�
 Les états 3.3.0 restent dans l'historique git.
 
 Le Pocket d'un serveur et ces états avancent ensemble : `bipagents update` (dans le compte qui fait tourner Pocket)
-installe le pocket-tts que fixe `pocket/requirements.txt` et le redémarre sur les voix du même commit ; le bridge cesse
-alors de réécrire les noms (`[pocket] engine = "4.0.1"`, installer/bipinstall/migrations.py, `pocket-engine`).
+installe le pocket-tts que fixe `pocket/requirements.txt` et le redémarre sur les voix du même commit.
 
 ## Extraits courts (04/11/2026)
 

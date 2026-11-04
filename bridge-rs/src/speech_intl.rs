@@ -672,11 +672,6 @@ pub fn spell_numbers(text: &str, lang: &str) -> String {
 
 /// Same last touch as the French one, in `lang` (`en`, `es`, `de` or `nl`).
 pub fn prepare_for_synthesis(text: &str, lang: &str) -> String {
-    prepare_for_synthesis_with(text, lang, crate::pronounce::Spelling::Raw)
-}
-
-/// The same for a given engine (see `numbers_fr::prepare_for_synthesis_with`).
-pub fn prepare_for_synthesis_with(text: &str, lang: &str, spelling: crate::pronounce::Spelling) -> String {
     let mut text = crate::pronounce::without_hesitations(text, lang); // « Hmm, let me see » -> « Let me see »
     text = fr::separators(&text); // « sleep 84 · readiness 84 » -> « sleep 84, readiness 84 »
     if let Some(rules) = LEXICON.get(lang) {
@@ -684,7 +679,7 @@ pub fn prepare_for_synthesis_with(text: &str, lang: &str, spelling: crate::prono
             text = pattern.replace(&text, words);
         }
     }
-    text = crate::pronounce::respell(&text, lang, spelling); // names, acronyms and English words for this voice
+    text = crate::pronounce::respell(&text, lang); // exceptions and acronyms for this voice
     text = spell_numbers(&text, lang);
     if LANGUAGES.contains(&lang) {
         text = SLASH.replace(&text, &format!(" {} ", word(lang, "or")));
@@ -731,7 +726,7 @@ mod tests {
                 "You spent four hundred and twenty dollars and fifty cents, twelve percent less, in twenty twenty-six.",
             ),
             ("en", "1,250 steps vs 1 h on the 3rd day.", "one thousand two hundred and fifty steps versus one hour on the third day."),
-            ("en", "Garmin/Oura e.g. OpenAI", "Garmin or Oura for example Open AI"),
+            ("en", "Garmin/Oura e.g. OpenAI", "Garmin or Oura for example OpenAI"),
             ("es", "A las 23:15, 18 °C.", "A las veintitrés y quince, dieciocho grados."),
             ("es", "Gastaste 420,50 € el 3º día.", "Gastaste cuatrocientos veinte euros con cincuenta el tercer día."),
             ("es", "1 día, 1 semana, 1.250 pasos, 3,5 km.", "un día, una semana, mil doscientos cincuenta pasos, tres coma cinco kilómetros."),
@@ -745,10 +740,8 @@ mod tests {
                 "1 Tag, 1 Woche, 1.250 Schritte, z. B. 1999",
                 "ein Tag, eine Woche, eintausendzweihundertfünfzig Schritte, zum Beispiel neunzehnhundertneunundneunzig",
             ),
-            ("es", "Pon Spotify en el iPhone 16 y mándalo por WhatsApp.", "Pon Espotifai en el Aifon dieciséis y mándalo por Guasap."),
-            ("de", "Schick es per WhatsApp, das Meeting ist um 10:30 – mit dem ADAC.", "Schick es per WhatsApp, das Mieting ist um zehn Uhr dreißig, mit dem Ah Deh Ah Zeh."),
         ] {
-            assert_eq!(prepare_for_synthesis_with(text, lang, crate::pronounce::Spelling::Respelled), spoken, "{lang}: {text}");
+            assert_eq!(prepare_for_synthesis(text, lang), spoken, "{lang}: {text}");
         }
         for (lang, text, spoken) in [
             ("es", "Pon Spotify en el iPhone 16 y el PDF.", "Pon Spotify en el iPhone dieciséis y el pe de efe."),

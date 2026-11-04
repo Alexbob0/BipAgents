@@ -135,7 +135,6 @@ impl Services {
                 max_chars: config.limits.tts_max_chars,
                 sentence_max_chars: config.limits.sentence_max_chars,
                 pocket_url: config.pocket_url.clone(),
-                pocket_engine: config.pocket_engine.clone(),
                 voice_server: config.voice_server.clone(),
                 words: config.pronunciations.clone(),
                 ..Default::default()
@@ -456,11 +455,6 @@ pub struct TtsRequest {
     /// What it is for (`live`, `replies`, `reading`): with no `voice`, the agent's voice for that use.
     #[serde(default, rename = "use")]
     pub use_: Option<String>,
-    /// /v1/tts/prepare: the version of the Pocket package the phone speaks with (« 3.3.0 », « 4.0.1 », from its
-    /// manifest). Below 4 the text is respelled for the old voices; missing (an app from before 2026-10-25), the phone
-    /// is taken to have the 3.3.0 packages (`PHONE_POCKET_DEFAULT`).
-    #[serde(default)]
-    pub engine: Option<String>,
 }
 
 fn default_format() -> String {
@@ -471,7 +465,6 @@ impl Validate for TtsRequest {
     fn validate(&self, errors: &mut Vec<FieldError>) {
         check_max_len(errors, "text", Some(&self.text), 20000);
         check_max_len(errors, "voice", self.voice.as_deref(), 300);
-        check_max_len(errors, "engine", self.engine.as_deref(), 40);
         check_max_len(errors, "use", self.use_.as_deref(), 20);
     }
 }
@@ -678,7 +671,7 @@ async fn tts_prepare(State(state): State<AppState>, Json(body): Json<TtsRequest>
         .unwrap_or_else(|| voice_for(&config, agent.as_ref(), body.use_.as_deref()));
     let prepared = state
         .tts
-        .for_phone(&body.text, Some(&voice), Some(MESSAGE_MAX_CHARS), body.engine.as_deref())
+        .for_phone(&body.text, Some(&voice), Some(MESSAGE_MAX_CHARS))
         .map_err(tts_error)?;
     Ok(web::ok(match prepared {
         None => json!({"local": false, "voice": voice}),

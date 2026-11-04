@@ -670,10 +670,6 @@ pub struct Config {
     /// Kyutai Pocket TTS (CPU) for the Bips' voices, used by voices named "pocket:<name>" (`[pocket] url`, default
     /// `http://127.0.0.1:8098`; an old `[kyutai]` section is ignored).
     pub pocket_url: Option<String>,
-    /// The version of the server's Pocket engine (`[pocket] engine`, default "3.3.0"; the installer's migration
-    /// pocket-engine writes "4.0.1" once the server's Pocket says it runs it): below 4 (3.3.0) the names and
-    /// English words are respelled for it (pronounce.rs); from 4 on, the model reads them from the raw text.
-    pub pocket_engine: String,
     /// The person's own voice model (`[voice_server]`). None = the Bips only.
     pub voice_server: Option<VoiceServerConfig>,
     /// Words the voices say wrong, respelled by language (`[pronunciations.fr] Garmin = "Garmine"`).
@@ -825,7 +821,6 @@ impl Config {
             log_level: "info".into(),
             default_voice: "pocket:ours".into(),
             pocket_url: Some(POCKET_URL.into()),
-            pocket_engine: "3.3.0".into(),
             voice_server: None,
             pronunciations: IndexMap::new(),
             cron_watch: true,
@@ -1824,7 +1819,6 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         log_level: s(data, "log_level", "info").to_lowercase(),
         default_voice,
         pocket_url,
-        pocket_engine: s(pocket, "engine", "3.3.0"),
         voice_server,
         pronunciations,
         cron_watch: b(cron, "watch", true),

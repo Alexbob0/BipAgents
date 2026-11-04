@@ -21,8 +21,6 @@ public_url = "https://mamachine.tailnet.ts.net:8643"   # the bridge on the tailn
 [pocket]
 url = "http://127.0.0.1:8098"
 default_voice = "pocket:colibri"
-# engine = "4.0.1"                 # the Pocket version (default "3.3.0"): below 4, brands and English words are
-                                   # respelled; the installer and `bipagents update` set it from the Pocket's /health
 
 # Your own voice model (optional): any server with OpenAI's POST /v1/audio/speech (Fish Audio Drama 3 on audio.cpp,
 # Kokoro, Kyutai…). Its voices are "server:<lang>/<id>" (the app lists them from GET /v1/audio/voices, else `voices`);

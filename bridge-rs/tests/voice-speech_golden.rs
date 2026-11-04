@@ -2,7 +2,6 @@
 //! numbers_fr, speech_intl, pronunciations and the pure parts of tts, on hand-written and thousands of random
 //! inputs. Every output must match byte for byte.
 
-use bipbridge::pronounce::Spelling::Respelled;
 use bipbridge::voice_speech::num2words::num2words;
 use bipbridge::{numbers_fr, pronunciations, speech_intl, textproc, tts};
 use indexmap::IndexMap;
@@ -101,16 +100,16 @@ fn french_spell_numbers() {
 }
 
 // The two prepare_for_synthesis sections hold the Rust bridge's outputs since 2026-10-25, when it left the Python on
-// purpose (src/pronounce.rs: lexicon, acronyms, English words; dashes as pauses).
+// purpose (src/pronounce.rs: lexicon, acronyms; dashes as pauses), and the Pocket 4 path's since 2026-11-04.
 #[test]
 fn french_prepare_for_synthesis() {
-    check("fr.prepare_for_synthesis", |i| Value::from(numbers_fr::prepare_for_synthesis_with(s(i), Respelled)));
+    check("fr.prepare_for_synthesis", |i| Value::from(numbers_fr::prepare_for_synthesis(s(i))));
 }
 
 #[test]
 fn intl_prepare_for_synthesis() {
     check("intl.prepare_for_synthesis", |i| {
-        Value::from(speech_intl::prepare_for_synthesis_with(s(&i[0]), s(&i[1]), Respelled))
+        Value::from(speech_intl::prepare_for_synthesis(s(&i[0]), s(&i[1])))
     });
 }
 

@@ -682,7 +682,6 @@ def finish(inst: Install, machine: Machine, runner: hermes.Runner, args, steps, 
     step(next(steps), total, "The Bips' voices")
     if pocket_running():
         say("  already set up on this machine: I'll share it.")
-        inst.pocket_engine = voices.engine_at(inst.pocket_url)   # the bridge prepares the text for that Pocket
         checkout.narrow(REPO, runner, voice_states=False)
     else:
         languages = args.languages or bip_languages()
@@ -695,7 +694,6 @@ def finish(inst: Install, machine: Machine, runner: hermes.Runner, args, steps, 
         # Pocket's own models read the voice states of the checkout (a light clone leaves them out until then).
         checkout.narrow(REPO, runner, voice_states=packages is None)
         venv(REPO / "pocket", runner, "requirements-onnx.txt" if packages else "requirements.txt")
-        inst.pocket_engine = voices.engine_of(packages) if packages else voices.pinned_pocket(REPO)
         label, path, content = pocket_service(inst, machine.system, languages, packages=packages)
         write(path, content, runner)
         start_service(machine.system, label, path, runner)

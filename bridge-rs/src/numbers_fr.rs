@@ -485,17 +485,12 @@ static SLASH: LazyLock<Regex> = LazyLock::new(|| re(r"(?<=\w) ?/ ?(?=\w)"));
 /// (`pronounce`), numbers in words, slashes read ("ou", "sur", dates), and parentheses or dashes read as pauses ("le train (TGV) part" -> "le train, TGV,
 /// part").
 pub fn prepare_for_synthesis(text: &str) -> String {
-    prepare_for_synthesis_with(text, pronounce::Spelling::Raw)
-}
-
-/// The same for a given engine: `Respelled` for Pocket 3.3.0 (« Spotifaï »), `Raw` for Pocket 4 and the others.
-pub fn prepare_for_synthesis_with(text: &str, spelling: pronounce::Spelling) -> String {
     let mut text = pronounce::without_hesitations(text, "fr"); // « Hmm, voyons » -> « Voyons »
     text = separators(&text); // « sommeil 84 · readiness 84 » -> « sommeil 84, readiness 84 »
     for (pattern, words) in LEXICON.iter() {
         text = pattern.replace(&text, words);
     }
-    text = pronounce::respell(&text, "fr", spelling); // names, acronyms and English words (« Spotifaï », « èsse ène cé èffe »)
+    text = pronounce::respell(&text, "fr"); // exceptions and acronyms (« Garmine », « èsse ène cé èffe »)
     text = spell_numbers(&text);
     for (pattern, words) in SLASH_WORDS.iter() {
         text = pattern.replace(&text, words);
@@ -615,11 +610,6 @@ mod tests {
             "Oura : sommeil quatre-vingt-quatre, readiness quatre-vingt-quatre, ache ère vé balance quatre-vingt-cinq, \
              recovery index soixante-seize, écart thermique moins zéro virgule zéro deux degrés."
         );
-        assert_eq!(
-            prepare_for_synthesis_with(&shown, pronounce::Spelling::Respelled),
-            "Oûra : sommeil quatre-vingt-quatre, rèdinèsse quatre-vingt-quatre, ache ère vé balance quatre-vingt-cinq, \
-             rikeuvri index soixante-seize, écart thermique moins zéro virgule zéro deux degrés."
-        );
         for (text, spoken) in [
             ("Écart 0,02 °C", "Écart zéro virgule zéro deux degrés"),
             ("Lundi • mardi ∙ mercredi", "Lundi, mardi, mercredi"),
@@ -649,10 +639,10 @@ mod tests {
     #[test]
     fn prepare_for_synthesis_cases() {
         for (text, spoken) in [
-            ("Cherche sur DuckDuckGo ou YouTube.", "Cherche sur Deuk Deuk Go ou YouTube."),
+            ("Cherche sur DuckDuckGo ou YouTube.", "Cherche sur DuckDuckGo ou YouTube."),
             (
                 "Selon OpenAI, iPhone et SNCF restent tels quels.",
-                "Selon Opène-aïe, Aïe-faune et èsse ène cé èffe restent tels quels.",
+                "Selon OpenAI, iPhone et èsse ène cé èffe restent tels quels.",
             ),
             ("Le train (TGV) part à 9h.", "Le train, té gé vé, part à neuf heures."),
             ("Deux options (la seconde est moins chère).", "Deux options, la seconde est moins chère."),
@@ -665,7 +655,7 @@ mod tests {
             ),
             (
                 "Données Garmin/Oura, billet aller/retour, A/R, et/ou à 50 km/h.",
-                "Données Garmine ou Oûra, billet aller-retour, aller-retour, et ou à cinquante kilomètres heure.",
+                "Données Garmine ou Oura, billet aller-retour, aller-retour, et ou à cinquante kilomètres heure.",
             ),
             (
                 "Bordeaux St-Jean → Paris Montparnasse le 03/02/2027 : 19 €.",
@@ -692,13 +682,11 @@ mod tests {
                 "Ligne n°4, Sainte-Anne & Ste Marie, ≈ 30 min, ≥ 5 km.",
                 "Ligne numéro quatre, Sainte-Anne et Sainte Marie, environ trente minutes, au moins cinq kilomètres.",
             ),
-            ("Wellness + Vie, 3 × 10 reps, PSG vs OM.", "Ouèlnesse plus Vie, trois fois dix reps, pé èsse gé contre o ème."),
+            ("Wellness + Vie, 3 × 10 reps, PSG vs OM.", "Wellness plus Vie, trois fois dix reps, pé èsse gé contre o ème."),
             (
                 "Ça prend ~15 min, soit ~ une heure en tout, ou 2~3 jours.",
                 "Ça prend environ quinze minutes, soit environ une heure en tout, ou deux à trois jours.",
             ),
-            ("Les runs Hermes et le cron du matin.", "Les reunes Hermes et le crone du matin."),
-            ("Lance un Live avec Wellness, puis check tes emails.", "Lance un Laïve avec Ouèlnesse, puis tchèque tes imèles."),
             ("Rien d'anglais dans « il court » ni « livret ».", "Rien d'anglais dans « il court » ni « livret »."),
             ("Entre 42-46% des cas.", "Entre quarante-deux à quarante-six pour cent des cas."),
             ("Entre 42–46 % des cas.", "Entre quarante-deux à quarante-six pour cent des cas."),
@@ -707,15 +695,15 @@ mod tests {
             ("le 2026-10-12", "le douze octobre deux mille vingt-six"),
             ("Il fait -5 °C", "Il fait moins cinq degrés"),
             ("Paris—Lyon – puis Nice, un aller-retour.\n— Oui.", "Paris, Lyon, puis Nice, un aller-retour.\nOui."),
-            ("Un meeting à 10 h sur Teams, puis mets Spotify.", "Un mitingue à dix heures sur Tîmze, puis mets Spotifaï."),
-            ("Ton iPhone 16 et ta PS5.", "Ton Aïe-faune seize et ta pé èsse cinq."),
+            ("Un meeting à 10 h sur Teams, puis mets Spotify.", "Un meeting à dix heures sur Teams, puis mets Spotify."),
+            ("Ton iPhone 16 et ta PS5.", "Ton iPhone seize et ta pé èsse cinq."),
             (
                 "Allure 5:10 par km, 1:52/100 m, marathon en 3:25:12, rendez-vous à 5:10.",
                 "Allure cinq minutes dix par kilomètre, une minute cinquante-deux aux cent mètres, marathon en trois \
                  heures vingt-cinq minutes douze, rendez-vous à cinq heures dix.",
             ),
         ] {
-            assert_eq!(prepare_for_synthesis_with(text, pronounce::Spelling::Respelled), spoken, "{text}");
+            assert_eq!(prepare_for_synthesis(text), spoken, "{text}");
         }
     }
 }
