@@ -216,3 +216,46 @@ def test_a_question_waits_on_every_phone_until_answered(bridges, fakes):
     assert fakes.hermes.answers[-1]["body"] == {"request_id": "q-1", "execution_generation": 2, "answer": "Lundi"}
     assert page(bridge, thread)["pending"]["questions"] == []
     gate.set()
+
+
+def test_a_skipped_question_goes_as_hermes_skip_and_closes_everywhere(bridges, fakes):
+    """« Passer » (an empty answer from the apps) goes as Hermes' skip word: an empty answer is no reply to Hermes 0.22.5
+    (the whole batch ends « timed out »), its skip word lets the next question come. The first choice comes without
+    Hermes' English « (Recommended) » label."""
+    bridge, thread = setup(bridges, fakes)
+    gate = threading.Event()
+    fakes.hermes.runs["r1"] = [
+        sse("clarify.request", run_id="r1", prompt_id="q-1", execution_generation=2,
+            question="Quand ?\nReply \"skip\" to skip this question.", choices=["Samedi matin (Recommended)", "Dimanche"]),
+        gate, sse("run.completed", run_id="r1", output="D'accord.")]
+    send(bridge, thread, "C1D00000-0000-4000-8000-0000000000E2", "Organise")
+    assert wait_until(lambda: page(bridge, thread)["pending"]["questions"] != [], timeout=10)
+    question = page(bridge, thread)["pending"]["questions"][0]
+    assert question["question"] == "Quand ?" and question["choices"] == ["Samedi matin", "Dimanche"]
+    skipped = bridge.post("/v1/approve", headers=AUTH,
+                          json={"agent": "wellness", "run_id": "r1", "request_id": "q-1", "answer": ""})
+    assert skipped.status_code == 200, skipped.text
+    assert fakes.hermes.answers[-1]["body"] == {"request_id": "q-1", "execution_generation": 2, "answer": "\x00skipped"}
+    assert page(bridge, thread)["pending"]["questions"] == []
+    # gone: a second « Passer » is refused, nothing sent
+    again = bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": "r1", "request_id": "q-gone", "answer": ""})
+    assert again.status_code == 409 and len(fakes.hermes.answers) == 1
+    gate.set()
+
+
+def test_a_question_hermes_no_longer_waits_for_leaves_every_phone(bridges, fakes):
+    """A card whose prompt Hermes settled meanwhile (its turn moved on): the answer is refused (409, nothing sent) and
+    the question leaves the thread's `pending.questions`, not shown again on any phone."""
+    bridge, thread = setup(bridges, fakes)
+    gate = threading.Event()
+    fakes.hermes.runs["r1"] = [
+        sse("clarify.request", run_id="r1", prompt_id="q-1", execution_generation=2, question="Quand ?", choices=["Lundi"]),
+        gate, sse("run.completed", run_id="r1", output="D'accord.")]
+    send(bridge, thread, "C1D00000-0000-4000-8000-0000000000E3", "Organise")
+    assert wait_until(lambda: page(bridge, thread)["pending"]["questions"] != [], timeout=10)
+    fakes.hermes.run_info["r1"] = {"status": "running", "execution_generation": 2, "pending_controls": []}
+    gone = bridge.post("/v1/approve", headers=AUTH,
+                       json={"agent": "wellness", "run_id": "r1", "request_id": "q-1", "answer": ""})
+    assert gone.status_code == 409 and fakes.hermes.answers == []
+    assert page(bridge, thread)["pending"]["questions"] == []
+    gate.set()

@@ -70,8 +70,13 @@ a son propre clarify : le patch 0001 est abandonné, et ce qui précède reste c
   `request_id` (le `prompt_id`), l'identifiant que lisent les apps et les notifications.
 - La réponse est `POST /v1/runs/{run_id}/clarify` avec exactement
   `{"request_id": "<prompt_id>", "execution_generation": <n>, "answer": "<texte>"}`.
-- Pas d'abandon : « pas de réponse » part comme une `answer` vide, que l'agent lit comme une question passée
-  (le `cancel` de 0001 finissait tout le lot ; ici la question suivante du lot arrive quand même).
+- Pas d'abandon. Une question passée part avec le mot « passer » de Hermes, `"\u0000skipped"` (`SKIPPED` de
+  `tools/clarify_gateway.py`, ce que devient le « skip » tapé dans une messagerie) : l'agent la lit comme passée et la
+  question suivante du lot arrive quand même. Une `answer` **vide** est lue comme pas de réponse du tout
+  (`[user did not respond within 60m]`, tout le lot s'arrête) : les apps envoient toujours une réponse vide pour
+  « Passer » et le bridge la change en ce mot (mesuré sur la v0.22.5, 2026-11-04).
+- Le premier choix arrive avec l'étiquette anglaise « (Recommended) » de Hermes ; le bridge l'enlève avant les apps
+  (Hermes l'enlève de toute façon de la réponse).
 - `clarify.settled` et `approval.settled` terminent une invite (répondue, expirée ou disparue) ; ils ne portent pas
   les réponses.
 - Les approbations prennent exactement `{"request_id": "<prompt_id>", "execution_generation": <n>, "choice": …}`.

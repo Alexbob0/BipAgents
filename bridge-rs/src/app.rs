@@ -1243,7 +1243,8 @@ async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>
         p.get("run_id").and_then(Value::as_str) == Some(run_id.as_str())
             && (request_id.is_none() || p.get("request_id").and_then(Value::as_str) == request_id)
     };
-    if (200..300).contains(&status) && kind == "clarify" {
+    // a question nothing waits for any more (409: Hermes settled it, its turn moved on) goes from every phone too
+    if ((200..300).contains(&status) || (status == 409 && request_id.is_some())) && kind == "clarify" {
         let asked = state.hub.pending_questions(&agent.name).into_iter().find(waiting);
         state.hub.forget_approval(&agent.name, &run_id, request_id);
         // answered on one device: gone from the others' (the thread's `pending.questions`)
