@@ -31,7 +31,8 @@ labels, 0008's fall-back fix, 0017, 0009's `!name`, 0013.
 | 0019 routines report to their conversation | `tools/tool_labels.py`, `cron/jobs.py`, `tools/cronjob_*.py`, `gateway/platforms/api_server.py` |
 | 0020 Runs API: each model call's usage (`model.usage`) | `agent/turn_usage.py`, `gateway/platforms/api_server_runs.py`, `gateway/session_api_turn.py`, `gateway/run_turn_runner.py` |
 | 0021 an API client's own Bot Chat stays an API conversation | `gateway/platforms/api_server_bot_chat.py`, `gateway/session_bot.py` |
-| 0022 a system prompt stable across conversations (prefix cache) | `agent/prompt_cache_notes.py` (new), `agent/system_prompt.py`, `agent/turn_context.py`, `agent/agent_init.py`, `tools/memory_tool_store.py` |
+| 0022 tools in one canonical order (`tools.order_first`) | `tools/tool_order.py` (new), `model_tools.py`, `tools/mcp_tool_agent.py` |
+| 0023 a system prompt stable across conversations (prefix cache) | `agent/prompt_cache_notes.py` (new), `agent/system_prompt.py`, `agent/turn_context.py`, `agent/agent_init.py`, `tools/memory_tool_store.py` |
 
 ## How the patches are kept
 
@@ -318,9 +319,11 @@ date) » and « 'What time is it?' → run `date` »: a tool call each time (slo
 and servers run in UTC.
 
 **What the patch does.** (a) The two terminal-for-time lines leave the execution guidance (and its line → tools
-map). (b) The « as of the last context rebuild » line is replaced by one constant line, `NOW_LINE_HINT`: the current
-date and time are at the top of each message (a `bip:now` line), trust the latest one, don't check the clock with a
-tool. It never changes, so the prompt stays byte-stable for the whole conversation. (c) Each routine run's prompt gets
+map). (b) The « as of the last context rebuild » line is replaced by one constant line, `NOW_LINE_HINT`: when a
+message starts with a `bip:now` line, that line is the current date and time, trust the latest one, don't check the
+clock with a tool; without one (a messenger's or the CLI's turn on the same Hermes: no bridge put it), check the clock
+with a tool when the exact time matters (review 2026-11-03, H8). It never changes, so the prompt stays byte-stable for
+the whole conversation. (c) Each routine run's prompt gets
 the same line after the cron hint, in the routines' zone (`cron.timezone` of patch 0008, else the profile's), e.g.
 `<!--bip:now Sunday, October 25, 2026, 02:30, Europe/Paris (UTC+01:00)-->`. The conversations' lines come from the
 bridge and the apps (bridge-rs/src/dates/now.rs): in the new user message, never in the system prompt, so the cache
@@ -679,7 +682,27 @@ deltas): it carries the turn's `cache_read_tokens` and `cache_write_tokens` agai
 Not run end to end against a live gateway and a real model yet: the bridge's side of v0.22.5 and the lab bench come
 first.
 
-## 0022 — a system prompt stable across an agent's conversations (prefix cache)
+## 0022 — tools in one canonical order
+
+**Problem.** The tool list heads every request (GLM's template renders it first), and a provider's prompt cache is
+shared only as far as two requests are byte-identical. Hermes sorts the tools by name, so two agents differ from the
+2nd or 3rd tool on (`browser_vault`, `clarify`, `execute_code`…) and share ≈ 100 tokens: each agent's first call,
+and every routine, read nothing from the cache (cache audit of 2026-11-03, #1: ≈ 62k tokens a day for GLM). A tool
+that arrives in a live session (an MCP list refresh) is appended, so that session's list is no longer the one a new
+session builds.
+
+**What the patch does.** `tools.order_first` (a list of tool names in config.yaml, written by the bridge: the 24 tools
+every agent has, ≈ 9.1k tokens) puts those tools first in that order, every other tool after them by name; the tool
+search's own tools take their place too. A tool added to a live session (`restore_agent_tool_prefix`,
+`_merge_preserving_prefix`) is inserted at its canonical place instead of the tail: one break in that session, then
+its list is again the one every new session builds. Without the setting: plain name order, as before.
+
+**Files.** `tools/tool_order.py` (new), `model_tools.py` (`_compute_tool_definitions`), `tools/mcp_tool_agent.py`.
+
+**Tests.** `tests/tools/test_tool_order.py`: common tools first then by name, two agents' common prefix byte-identical,
+the same list from any input order (two starts), a later tool at its place.
+
+## 0023 — a system prompt stable across an agent's conversations (prefix cache)
 
 **Problem.** The 3 November cache audit (`scripts/token-lab/cache_breaks.py` on the release lab's dumps): inside a
 conversation the provider's prefix cache reads back 99 % of the previous call, but between conversations the start

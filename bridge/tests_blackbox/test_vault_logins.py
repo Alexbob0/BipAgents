@@ -13,7 +13,7 @@ import asyncio
 from cryptography.fernet import Fernet
 from websockets.asyncio.server import serve
 
-from bbkit.common import AUTH
+from bbkit.common import AUTH, answered
 from bbkit.mcp import give_token
 from bbkit.servers import free_port
 
@@ -258,9 +258,9 @@ def test_a_card_first_then_the_password_typed_into_password_fields_only_never_re
         [add] = [json.loads(e["stdin"]) for e in bridge.commands.entries("podman") if e["argv"][:3] == ["exec", "-i", "hermes-vie"]]
         assert add["op"] == "add" and add["origin"] == "https://shop.example" and add["secret"]["password"] == password
         # Never shown to the agent, never in a log or a card; the person can see it (the app asks for Face ID).
-        answered = bridge.get("/v1/approvals/answered", headers=AUTH, params={"agent": "vie"}).json()["items"]
-        assert [(a["topic"], a["choice"], a["via"]) for a in answered] == [("vault_login", "once", "app")]
-        for where in (json.dumps(result), json.dumps(answered), bridge.get("/v1/vault", headers=AUTH).text,
+        decided = answered(bridge, "vie")
+        assert [(a["topic"], a["choice"], a["via"]) for a in decided] == [("vault_login", "once", "app")]
+        for where in (json.dumps(result), json.dumps(decided), bridge.get("/v1/vault", headers=AUTH).text,
                       (bridge.root / "bridge.log").read_text()):
             assert password not in where
         shown = bridge.post(f"/v1/vault/{item['id']}/reveal", headers=AUTH)
@@ -294,8 +294,8 @@ def test_a_refusal_conflicting_rules_another_site_or_a_known_login_type_nothing(
         assert card and refused["isError"] is True and "The person refused" in refused["content"][0]["text"]
         assert chrome.typed == [] and bridge.get("/v1/vault", headers=AUTH).json()["items"] == []
         assert not [c for c in bridge.commands.of("podman") if "printf" in c[-1]]
-        answered = bridge.get("/v1/approvals/answered", headers=AUTH, params={"agent": "vie"}).json()["items"]
-        assert [(a["topic"], a["choice"]) for a in answered] == [("vault_login", "deny")]
+        decided = answered(bridge, "vie")
+        assert [(a["topic"], a["choice"]) for a in decided] == [("vault_login", "deny")]
         # A refusal is not remembered as a yes: the next call asks again.
         _, card = create(bridge, allow=False)
         assert card
@@ -327,8 +327,8 @@ def test_corrected_rules_within_the_window_need_no_new_card_and_replace_the_wait
         assert after != before and len(after) == 12 and after.isalnum() and any(c.isdigit() for c in after)
         records = vault_records(bridge)
         assert len(records) == 1 and records[0]["secret"] == {"password": after} and records[0]["pending"] is True
-        answered = bridge.get("/v1/approvals/answered", headers=AUTH, params={"agent": "vie"}).json()["items"]
-        assert len(answered) == 1                                      # one card for both
+        decided = answered(bridge, "vie")
+        assert len(decided) == 1                                       # one card for both
         # The agent's own Hermes vault: the first one taken back, the new one given.
         ops = [json.loads(e["stdin"])["op"] for e in bridge.commands.entries("podman") if e["argv"][:3] == ["exec", "-i", "hermes-vie"]]
         assert ops == ["add", "remove", "add"]

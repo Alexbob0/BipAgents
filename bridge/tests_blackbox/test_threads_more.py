@@ -108,22 +108,29 @@ def test_a_shared_agents_conversation_through_the_owners_bridge(bridges, fakes):
     link(a, b)
     assert a.put("/v1/agents/cuisine/shares", headers=AUTH, json={"households": ["marie"]}).status_code == 200
     assert b.post("/v1/shared-agents/cuisine__alex/add", headers=AUTH).status_code == 200
-    cid = b.post("/v1/shared-agents/cuisine__alex/conversations", headers=AUTH, json={"title": "Dîner"}).json()["id"]
-    session = [sid for (agent, sid) in fakes.hermes.messages if agent == "cuisine"][-1]
+    # her first message opens the conversation (its words its title)
+    fakes.hermes.runs["r1"] = [sse("run.completed", output="Une fondue !")]
+    first = b.post("/v1/threads/new/messages", headers=AUTH,
+                   json={"agent": "cuisine__alex", "client_id": "C0FFEE00-0000-4000-8000-000000000010", "text": "Dîner"})
+    assert first.status_code == 200, first.text
+    cid = first.json()["thread"]
+    session = fakes.hermes.started["r1"]["session_id"]
     fakes.hermes.messages[("cuisine", session)] = [
-        {"role": "user", "content": "[Marie, a relative of your person, writes] Une idée de dîner ?"},
+        {"role": "user", "content": "[Marie, a relative of your person (household « Marie »), writes to you:]\nDîner"},
         {"role": "assistant", "content": "Une fondue !\nMEDIA:/bipagents/pages/cuisine/fondue.html"},
     ]
+    assert wait_until(lambda: get(b, f"/v1/threads/{cid}/timeline", agent="cuisine__alex")["pending"]["run"] is None)
     listed = get(b, "/v1/threads", agent="cuisine__alex")["threads"]
     assert [(t["id"], t["kind"], t["title"]) for t in listed] == [(cid, "shared", "Dîner")]
     page = get(b, f"/v1/threads/{cid}/timeline", agent="cuisine__alex")
-    assert page["thread"]["id"] == cid and [i["text"] for i in page["items"]][-1] == "Une fondue !"
+    assert page["thread"]["id"] == cid and [i["text"] for i in page["items"]] == ["Dîner", "Une fondue !"]
+    assert page["items"][0]["client_id"] == "C0FFEE00-0000-4000-8000-000000000010"
     assert page["pending"] == {"run": None, "approvals": []}
     # a turn going on: its state and start, for the shared screen
     gate = threading.Event()
-    fakes.hermes.runs["r1"] = [gate, sse("run.completed", output="Une tarte.")]
-    sent = b.post(f"/v1/shared-agents/cuisine__alex/conversations/{cid}/messages", headers=AUTH,
-                  json={"text": "Et le dessert ?"})
+    fakes.hermes.runs["r2"] = [gate, sse("run.completed", output="Une tarte.")]
+    sent = b.post(f"/v1/threads/{cid}/messages", headers=AUTH,
+                  json={"agent": "cuisine__alex", "client_id": "C0FFEE00-0000-4000-8000-000000000011", "text": "Et le dessert ?"})
     assert sent.status_code == 200, sent.text
     running = get(b, f"/v1/threads/{cid}/timeline", agent="cuisine__alex")["pending"]["run"]
     assert running["status"] == "writing" and running["run_id"] == sent.json()["run_id"]

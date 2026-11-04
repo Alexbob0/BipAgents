@@ -289,6 +289,16 @@ pub fn append_to_backlog(backlog: &mut VecDeque<SSEEvent>, event: &SSEEvent) {
     backlog.push_back(event.clone());
 }
 
+/// An approval's or a question's card with the id of the timeline item it becomes once answered
+/// (threads::answered_id): one row on every device, waiting then answered.
+fn with_item_id(sub: &RunSubscription, event: SSEEvent) -> SSEEvent {
+    let request = if event.r#type == "clarify.request" { clarify_id(&event.data) } else { as_str(event.data.get("request_id")) };
+    let mut data = event.data;
+    data.insert("item_id".into(), json!(crate::threads::answered_id(Some(&sub.run_id), request.as_deref())));
+    let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(data.clone()));
+    SSEEvent::new(event.r#type, data, raw)
+}
+
 /// `_clarify_id(data)`: a question's id (`request_id`: its prompt's, hermes_prompts.rs `named`; or `clarify_id`).
 pub fn clarify_id(data: &Map<String, Value>) -> Option<String> {
     for key in ["request_id", "clarify_id"] {
@@ -898,13 +908,24 @@ impl RunHub {
         lock(&self.inner).subs.get(&(agent.to_string(), run_id.to_string())).cloned()
     }
 
-    /// What Hermes waits for (approvals, questions), each with `created_at` in Unix seconds.
+    /// The approvals Hermes waits for, each with `created_at` in Unix seconds.
     pub fn pending_approvals(&self, agent: Option<&str>) -> Vec<Dict> {
+        self.pending_of(agent, false)
+    }
+
+    /// The questions Hermes waits for (a run's `clarify.request`, until settled or the run's end): every device of
+    /// the person shows the same card, gone once answered on one (threads' `pending.questions`).
+    pub fn pending_questions(&self, agent: &str) -> Vec<Dict> {
+        self.pending_of(Some(agent), true)
+    }
+
+    fn pending_of(&self, agent: Option<&str>, questions: bool) -> Vec<Dict> {
         let inner = lock(&self.inner);
         let mut items: Vec<Dict> = inner
             .pending
             .values()
             .filter(|v| agent.is_none() || v.get("agent").and_then(Value::as_str) == agent)
+            .filter(|v| (v.get("kind").and_then(Value::as_str) == Some("question")) == questions)
             .cloned()
             .collect();
         let created = |item: &Dict| item.get("created_at").and_then(Value::as_f64).unwrap_or(0.0);
@@ -1170,6 +1191,7 @@ impl RunHub {
         let mut inner = lock(&self.inner);
         let mut st = lock(&sub.state);
         let event = if event.r#type == "approval.request" { self.in_plain_words(sub, &st, event) } else { event };
+        let event = if matches!(event.r#type.as_str(), "approval.request" | "clarify.request") { with_item_id(sub, event) } else { event };
         let event = if event.r#type == "run.completed" { self.no_reply_in_plain_words(sub, event) } else { event };
         let event = if event.r#type == "run.failed" { self.account_failure_in_plain_words(sub, event) } else { event };
         append_to_backlog(&mut st.backlog, &event);
@@ -1220,8 +1242,9 @@ impl RunHub {
         if kind == "approval.request" {
             self.on_approval(&mut inner, sub, &mut st, &event);
         } else if kind == "clarify.request" {
+            Self::keep_question(&mut inner, sub, &st, &event);
             self.on_clarify(sub, &mut st, &event);
-        } else if kind == crate::hermes_prompts::APPROVAL_SETTLED {
+        } else if kind == crate::hermes_prompts::APPROVAL_SETTLED || kind == crate::hermes_prompts::CLARIFY_SETTLED {
             Self::forget_pending(&mut inner, &sub.agent.name, &sub.run_id, event.data.get("request_id"));
         } else if is_terminal(kind) {
             st.terminal = Some(kind.to_string());
@@ -1944,6 +1967,25 @@ touche « Démarrer » pour reprendre."
         }
         let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(notice.clone()));
         self.dispatch(sub, SSEEvent::new(NOTICE, notice, raw));
+    }
+
+    /// A question kept while Hermes waits for its answer (`pending_questions`).
+    fn keep_question(inner: &mut HubInner, sub: &RunSubscription, st: &SubscriptionState, event: &SSEEvent) {
+        let request_id = clarify_id(&event.data);
+        let mut item = Map::new();
+        item.insert("kind".into(), json!("question"));
+        item.insert("agent".into(), json!(sub.agent.name));
+        item.insert("run_id".into(), json!(sub.run_id));
+        item.insert("request_id".into(), json!(request_id));
+        item.insert("session_id".into(), json!(st.session_id));
+        item.insert("created_at".into(), json!(crate::py::time_time()));
+        for key in ["questions", "question", "choices", "execution_generation"] {
+            if let Some(value) = event.data.get(key) {
+                item.insert(key.into(), value.clone());
+            }
+        }
+        let key = format!("clarify:{}", request_id.unwrap_or_else(|| sha16(&event.raw)));
+        inner.pending.insert((sub.agent.name.clone(), sub.run_id.clone(), key), item);
     }
 
     /// A question (docs/hermes-clarify-api.md) nobody sees: push it once, like an approval.

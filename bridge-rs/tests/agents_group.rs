@@ -146,16 +146,10 @@ async fn an_agent_moves_into_its_own_space_and_keeps_everything() {
         assert_eq!(content, "bonjour");
     }
     let ran = commands.lock().unwrap().clone();
-    assert_eq!(
-        ran[0],
-        (
-            strs(&["/opt/hermes", "-p", "budget", "config", "set", "gateway.strict", "true"]),
-            BTreeMap::from([("HERMES_HOME".into(), s(&space))])
-        )
-    );
-    assert_eq!(ran[1].0[ran[1].0.len() - 2..], ["browser.backend", "off"]);
-    assert_eq!(ran[2].0[..2], ["sh", "-c"]);
-    assert!(ran[2].0[2].contains("start-space budget"));
+    let settings = std::fs::read_to_string(space.join("profiles/budget/config.yaml")).unwrap(); // no `hermes config set`
+    assert!(settings.contains("gateway:\n  strict: true\n") && settings.contains("browser:\n  backend: 'off'\n"), "{settings}");
+    assert_eq!(ran[0].0[..2], ["sh", "-c"]);
+    assert!(ran[0].0[2].contains("start-space budget"));
     assert_eq!(
         ran.last().unwrap(),
         &(
@@ -627,13 +621,11 @@ fn env_token(path: &Path) -> String {
     std::fs::read_to_string(path).unwrap().split("HERMES_PEER_BIP_KEY=").nth(1).unwrap().trim().to_string()
 }
 
-#[tokio::test]
-async fn each_sending_gateway_gets_a_token_in_its_own_env() {
+#[test]
+fn each_sending_gateway_gets_a_token_in_its_own_env() {
     let dir = tempfile::tempdir().unwrap();
     let p = peers_setup(dir.path());
-    let (run, commands) = recorder();
-    let result = peers::apply(&p.config, &p.links, &pairs(&[("budget", "jardin"), ("jardin", "wellness")]), &run, None)
-        .await
+    let result = peers::apply(&p.config, &p.links, &pairs(&[("budget", "jardin"), ("jardin", "wellness")]), None)
         .unwrap();
     assert_eq!(result["manual"], json!({}));
     let hub_token = env_token(&p.hub.join(".env"));
@@ -641,14 +633,11 @@ async fn each_sending_gateway_gets_a_token_in_its_own_env() {
     assert_eq!(p.links.caller(&hub_token), Some(s(&p.hub)));
     assert_eq!(p.links.caller(&space_token), Some(s(&p.space)));
     assert!(!std::fs::read_to_string(&p.links_path).unwrap().contains(&hub_token)); // only digests are kept
-    let expected = (
-        strs(&["/opt/hermes", "config", "set", "bot_peers.bip.url", "http://127.0.0.1:8643/peer"]),
-        BTreeMap::from([("HERMES_HOME".to_string(), s(&p.space))]),
-    );
-    assert!(commands.lock().unwrap().contains(&expected));
+    let peer = std::fs::read_to_string(p.space.join("config.yaml")).unwrap(); // written by the bridge, no `hermes`
+    assert!(peer.contains("bot_peers:\n  bip:\n    url: http://127.0.0.1:8643/peer\n    note: 'Tes autres agents"), "{peer}");
     assert!(p.links.allowed("jardin", "wellness") && !p.links.allowed("wellness", "jardin"));
     // Wellness (set up by hand) sends: the administrator gives it a token; the hub sends nothing any more.
-    let result = peers::apply(&p.config, &p.links, &pairs(&[("wellness", "budget")]), &run, None).await.unwrap();
+    let result = peers::apply(&p.config, &p.links, &pairs(&[("wellness", "budget")]), None).unwrap();
     assert_eq!(result["manual"], json!({"wellness": ""}));
     assert!(
         !std::fs::read_to_string(p.hub.join(".env")).unwrap().contains("HERMES_PEER_BIP_KEY")
@@ -658,10 +647,10 @@ async fn each_sending_gateway_gets_a_token_in_its_own_env() {
     assert_eq!(p.links.caller(&token).as_deref(), Some("manual:wellness"));
     assert_eq!(peers::gateway_of(&p.config, p.config.agent(Some("wellness")).unwrap()), "manual:wellness");
     // Turning its last link off keeps its token; it is refused anyway.
-    peers::apply(&p.config, &p.links, &pairs(&[("budget", "jardin")]), &run, None).await.unwrap();
+    peers::apply(&p.config, &p.links, &pairs(&[("budget", "jardin")]), None).unwrap();
     assert_eq!(p.links.caller(&token).as_deref(), Some("manual:wellness"));
     assert!(!p.links.allowed("wellness", "budget"));
-    let err = peers::apply(&p.config, &p.links, &pairs(&[("budget", "budget")]), &run, None).await.unwrap_err();
+    let err = peers::apply(&p.config, &p.links, &pairs(&[("budget", "budget")]), None).unwrap_err();
     assert!(err.downcast_ref::<peers::InvalidLink>().is_some());
 }
 
@@ -694,16 +683,15 @@ async fn the_bridge_refuses_what_the_person_did_not_allow() {
     );
 }
 
-#[tokio::test]
-async fn each_sender_learns_whom_it_may_write_to() {
+#[test]
+fn each_sender_learns_whom_it_may_write_to() {
     let dir = tempfile::tempdir().unwrap();
     let p = peers_setup(dir.path());
-    let (run, _) = recorder();
-    peers::apply(&p.config, &p.links, &pairs(&[("budget", "jardin"), ("budget", "maison")]), &run, None).await.unwrap();
+    peers::apply(&p.config, &p.links, &pairs(&[("budget", "jardin"), ("budget", "maison")]), None).unwrap();
     let contacts = std::fs::read_to_string(p.hub.join("profiles/budget/skills/agent-contacts/SKILL.md")).unwrap();
     assert!(contacts.contains("`bip/jardin`: Jardin") && contacts.contains("`bip/maison`: Maison"));
     assert!(!p.space.join("profiles/jardin/skills/agent-contacts").exists()); // writes to nobody
-    peers::apply(&p.config, &p.links, &[], &run, None).await.unwrap();
+    peers::apply(&p.config, &p.links, &[], None).unwrap();
     assert!(!p.hub.join("profiles/budget/skills/agent-contacts/SKILL.md").exists());
 }
 

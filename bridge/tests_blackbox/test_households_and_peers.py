@@ -7,6 +7,8 @@ import json
 import os
 import time
 
+import yaml
+
 from starlette.responses import JSONResponse
 
 from bbkit.common import AUTH
@@ -256,10 +258,12 @@ def test_each_sending_gateway_gets_a_token_and_each_sender_learns_whom_it_may_wr
     assert stored["tokens"] == {str(hub): hashlib.sha256(hub_token.encode()).hexdigest(),
                                 str(space): hashlib.sha256(space_token.encode()).hexdigest()}
     assert hub_token not in (bridge.state_dir / "peers.json").read_text()
-    commands = [(e["argv"], e["hermes_home"]) for e in bridge.commands.entries("hermes")]
-    assert (["config", "set", "bot_peers.bip.url", f"http://127.0.0.1:{bridge.port}/peer"], str(space)) in commands
-    assert (["config", "set", "bot_peers.bip.note", "Tes autres agents, par BipAgents (cible : bip/<agent>)"],
-            str(hub)) in commands
+    # the peer in each gateway's own config.yaml, written by the bridge itself (no `hermes config set`)
+    for gateway in (hub, space):
+        peer = yaml.safe_load((gateway / "config.yaml").read_text())["bot_peers"]["bip"]
+        assert peer == {"url": f"http://127.0.0.1:{bridge.port}/peer",
+                        "note": "Tes autres agents, par BipAgents (cible : bip/<agent>)"}
+    assert not any(e["argv"][:2] == ["config", "set"] for e in bridge.commands.entries("hermes"))
     contacts = (hub / "profiles" / "budget" / "skills" / "agent-contacts" / "SKILL.md").read_text()
     assert "`bip/jardin`: Jardin" in contacts and "`bip/maison`: Maison" in contacts
     assert not (hub / "profiles" / "maison" / "skills" / "agent-contacts").exists()   # writes to nobody

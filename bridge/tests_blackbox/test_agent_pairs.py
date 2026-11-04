@@ -94,8 +94,8 @@ def test_a_relative_never_sees_the_pair_conversation(bridges, fakes):
     assert not failed and "Sept heures." in text
     assert len(a.get("/v1/agent-pairs", params={"agent": "coach"}, headers=AUTH).json()["pairs"]) == 1
     # Marie's view of Coach: her own conversations only, never the pair's
-    mine = b.get("/v1/shared-agents/coach__alex/conversations", headers=AUTH)
+    mine = b.get("/v1/threads", params={"agent": "coach__alex"}, headers=AUTH)
     assert mine.status_code == 200, mine.text
-    assert mine.json()["conversations"] == []
+    assert mine.json()["threads"] == []
     # her bridge has no way to Alex's pairs
     assert b.get("/v1/agent-pairs", params={"agent": "coach__alex"}, headers=AUTH).status_code == 404

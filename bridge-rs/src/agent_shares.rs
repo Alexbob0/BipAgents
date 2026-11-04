@@ -29,15 +29,17 @@
 //!     POST   /family/shared                                  {agent, name, category, color, shared}  (to the relative)
 //!     GET    /family/s/{agent}/conversations                 {conversations: [conv]}       (this relative's only)
 //!     POST   /family/s/{agent}/conversations                 {title?}  → conv
-//!     GET    /family/s/{agent}/conversations/{cid}/messages  thread
-//!     POST   /family/s/{agent}/conversations/{cid}/messages  {text, person?}  → {run_id}  (409 while a turn goes on)
+//!     GET    /family/s/{agent}/conversations/{cid}/timeline  a timeline page (docs/conversations.md §6.6)
+//!     GET    /family/s/{agent}/conversations/{cid}/events    SSE: `thread` {thread: cid, version} at each change
+//!     GET    /family/s/{agent}/conversations/{cid}/runs/{run}/events   SSE: the turn's words as they come (text,
+//!                                                            approvals and the end only: no tool step crosses)
+//!     POST   /family/s/{agent}/conversations/{cid}/messages  {text, person?, client_id?}  → {run_id}  (409 while a
+//!                                                            turn goes on)
 //!     POST   /family/s/{agent}/conversations/{cid}/stop      {ok}
 //!     DELETE /family/s/{agent}/conversations/{cid}           {ok}
 //!     POST   /family/s/{agent}/approval                      {run_id, choice, request_id?}  → Hermes' answer
 //!
 //!     conv    {id, title, created, updated, messages, tokens: {input, output}}
-//!     thread  {messages: [{role: "user"|"assistant", text, at}], run: {id, state: "writing"|"approval", started}|null,
-//!              approvals: [{run_id, request_id, command, description, choices}], tokens: {input, output}}
 //!
 //! **The relative's side** (Marie's app, her bridge's key; `id` is `<agent>__<household>`, e.g. `cuisine__alex`):
 //!
@@ -45,14 +47,11 @@
 //!                                                  state: "offered"|"added", since}]}   « Partagés avec toi »
 //!     POST   /v1/shared-agents/{id}/add           {ok}   « Ajouter » (the card in her Boîte)
 //!     DELETE /v1/shared-agents/{id}               {ok}   « Non merci » / « Ne plus l'utiliser »
-//!     GET    /v1/shared-agents/{id}/conversations                      (relayed to the owner's bridge, as above)
-//!     POST   /v1/shared-agents/{id}/conversations
-//!     GET    /v1/shared-agents/{id}/conversations/{cid}/messages     (the app looks: no push meanwhile)
-//!     POST   /v1/shared-agents/{id}/conversations/{cid}/messages     {text}
-//!     POST   /v1/shared-agents/{id}/conversations/{cid}/stop
-//!     DELETE /v1/shared-agents/{id}/conversations/{cid}
-//!     POST   /v1/shared-agents/{id}/approval                         {run_id, choice, request_id?}
 //!
+//! Her conversations are threads of her own bridge's routes with `agent=<id>` (threads/mod.rs), each relayed to the
+//! owner's bridge above: `GET /v1/threads` (her list), `…/{cid}/timeline`, `GET /v1/threads/events?thread=<cid>` (on
+//! screen while open: no push meanwhile), `POST …/{cid}/messages` (`new`: a conversation opened by its first
+//! message), `…/{cid}/stop`, `DELETE …/{cid}`, `GET /v1/runs/{run}/events?agent=<id>&thread=<cid>` (the words live).
 //! Her pending approvals are also in her `GET /v1/approvals` (agent `cuisine__alex`), and `POST /v1/approve` with
 //! that agent relays her answer; while her app isn't looking, her bridge follows the turn and pushes the approval and
 //! the reply to her devices (agent `cuisine__alex`: the app adds it to its device's agents).
@@ -380,6 +379,34 @@ fn turn_going(c: &Value, at: f64) -> Option<String> {
     (at - started < TURN_MAX_SECONDS).then(|| str_of(run, "id")).filter(|id| !id.is_empty())
 }
 
+/// The conversation reserved for a turn about to start (`run.id` a `starting_…` mark): None when a turn goes on.
+fn reserve_turn(path: &PathBuf, cid: &str) -> anyhow::Result<Option<String>> {
+    let mark = format!("starting_{}", crate::py::token_hex(6));
+    update(path, |data| {
+        let Some(Value::Object(c)) = object_mut(data, "conversations").get_mut(cid) else { return None };
+        if turn_going(&Value::Object(c.clone()), now()).is_some() {
+            return None;
+        }
+        c.insert("run".into(), json!({"id": mark, "started": now()}));
+        Some(mark)
+    })
+}
+
+/// The reservation `mark` replaced by the run Hermes started, or let go when none started.
+fn settle_turn(path: &PathBuf, cid: &str, mark: &str, run_id: Option<&str>) -> anyhow::Result<()> {
+    update(path, |data| {
+        if let Some(Value::Object(c)) = object_mut(data, "conversations").get_mut(cid) {
+            if c.get("run").and_then(|r| r.get("id")).and_then(Value::as_str) == Some(mark) {
+                let run = run_id.map(|id| json!({"id": id, "started": now()})).unwrap_or(Value::Null);
+                c.insert("run".into(), run);
+            }
+            if run_id.is_some() {
+                c.insert("updated".into(), json!(now()));
+            }
+        }
+    })
+}
+
 /// Whether a relative talks to `agent` right now (the owner's private tools are then closed to it).
 pub fn relative_turn(config: &Config, agent: &str) -> bool {
     let data = read(&owner_path(config));
@@ -436,40 +463,6 @@ fn unframed(text: &str) -> String {
         Some((first, rest)) if first.starts_with('[') && first.contains(FRAME_MARK) => rest.to_string(),
         _ => text.to_string(),
     }
-}
-
-fn content_text(content: Option<&Value>) -> String {
-    match content {
-        Some(Value::String(s)) => s.clone(),
-        Some(Value::Array(parts)) => parts
-            .iter()
-            .filter_map(|p| p.get("text").and_then(Value::as_str).or_else(|| p.as_str()))
-            .collect::<Vec<_>>()
-            .join("\n"),
-        _ => String::new(),
-    }
-}
-
-/// Hermes' messages as the relative sees them: their words and the agent's replies, text only.
-pub fn thread(messages: &[Dict]) -> Vec<Value> {
-    messages
-        .iter()
-        .filter_map(|m| {
-            let role = m.get("role").and_then(Value::as_str)?;
-            let text = content_text(m.get("content"));
-            let text = match role {
-                "user" => unframed(&text),
-                "assistant" => crate::rooms::room_text(&text).0,
-                _ => return None,
-            };
-            let text = tk::strip(&text).to_string();
-            if text.is_empty() {
-                return None;
-            }
-            let at = m.get("timestamp").or_else(|| m.get("created_at")).cloned().unwrap_or(Value::Null);
-            Some(json!({"role": role, "text": text, "at": at}))
-        })
-        .collect()
 }
 
 fn household_of(state: &AppState, headers: &HeaderMap) -> ApiResult<String> {
@@ -575,36 +568,11 @@ fn approvals_of(state: &AppState, agent: &str, run_id: &str) -> Vec<Value> {
         .into_iter()
         .filter(|a| a.get("run_id").and_then(Value::as_str) == Some(run_id))
         .map(|a| {
-            json!({"run_id": run_id, "request_id": a.get("request_id"), "command": a.get("command"),
+            let id = crate::threads::answered_id(Some(run_id), a.get("request_id").and_then(Value::as_str));
+            json!({"id": id, "run_id": run_id, "request_id": a.get("request_id"), "command": a.get("command"),
                    "description": a.get("description"), "choices": a.get("choices")})
         })
         .collect()
-}
-
-async fn served_messages(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    UrlPath((agent, cid)): UrlPath<(String, String)>,
-) -> ApiResult<Response> {
-    let (household, agent) = shared_agent(&state, &headers, &agent)?;
-    let config = state.config();
-    let c = conversation(&config, &household, &agent.name, &cid)?;
-    let messages = state
-        .hermes
-        .session_messages(&agent, &str_of(&c, "session"))
-        .await
-        .map_err(|_| HttpError::new(502, "the agent can't be reached"))?;
-    let (run, approvals) = match turn_going(&c, now()) {
-        Some(run_id) => {
-            let approvals = approvals_of(&state, &agent.name, &run_id);
-            let started = c.get("run").and_then(|r| r.get("started")).cloned();
-            let state_word = if approvals.is_empty() { "writing" } else { "approval" };
-            (json!({"id": run_id, "state": state_word, "started": started}), approvals)
-        }
-        None => (Value::Null, Vec::new()),
-    };
-    Ok(web::ok(json!({"messages": thread(&messages), "run": run, "approvals": approvals,
-                      "tokens": c.get("tokens").cloned().unwrap_or_else(|| tokens_value(0, 0))})))
 }
 
 /// The timeline of this household's conversation (docs/conversations.md §6.6), as `/v1/threads/{id}/timeline`
@@ -631,6 +599,10 @@ async fn served_timeline(
         .filter(|i| matches!(i.kind(), "message" | "notice"))
         .map(|mut i| {
             i.body.remove("attachments");
+            if i.body.get("role") == Some(&json!("person")) {
+                let words = unframed(i.text());
+                i.body.insert("text".into(), json!(words.trim()));
+            }
             i
         })
         .collect();
@@ -657,6 +629,91 @@ async fn served_timeline(
     })))
 }
 
+/// An SSE answer.
+fn sse(stream: impl futures::Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static) -> Response {
+    let mut response = Response::new(axum::body::Body::from_stream(stream));
+    let headers = response.headers_mut();
+    headers.insert("content-type", axum::http::HeaderValue::from_static("text/event-stream; charset=utf-8"));
+    headers.insert("cache-control", axum::http::HeaderValue::from_static("no-store"));
+    headers.insert("x-accel-buffering", axum::http::HeaderValue::from_static("no"));
+    response
+}
+
+fn event_line(kind: &str, data: &Value) -> Bytes {
+    Bytes::from(format!("event: {kind}\ndata: {}\n\n", py::dumps(data)))
+}
+
+/// The household's conversation changed (a turn's end, her message stored, an approval answered): `thread` hints, as
+/// `/v1/threads/events` gives them, under the conversation's id.
+async fn served_events(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    UrlPath((agent, cid)): UrlPath<(String, String)>,
+) -> ApiResult<Response> {
+    let (household, agent) = shared_agent(&state, &headers, &agent)?;
+    let c = conversation(&state.config(), &household, &agent.name, &cid)?;
+    let threads = crate::threads::threads_of(&state);
+    let thread = threads
+        .resolve(&agent, &str_of(&c, "session"))
+        .await
+        .map_err(|_| HttpError::new(502, "the agent can't be reached"))?
+        .ok_or_else(HttpError::not_found)?;
+    let mut events = threads.subscribe();
+    let stream = async_stream::stream! {
+        yield Ok::<_, std::io::Error>(Bytes::from_static(b": threads\n\n"));
+        loop {
+            match tokio::time::timeout(Duration::from_secs_f64(crate::app::SSE_KEEPALIVE_SECONDS), events.recv()).await {
+                Err(_) => yield Ok(Bytes::from_static(b": keepalive\n\n")),
+                Ok(Ok((_, kind, data))) if kind == "thread" && data.get("thread") == Some(&json!(thread.id)) => {
+                    yield Ok(event_line("thread", &json!({"thread": cid, "version": data.get("version")})));
+                }
+                Ok(Ok(_)) => {}
+                Ok(Err(tokio::sync::broadcast::error::RecvError::Lagged(_))) => yield Ok(event_line("lagged", &json!({}))),
+                Ok(Err(tokio::sync::broadcast::error::RecvError::Closed)) => break,
+            }
+        }
+    };
+    Ok(sse(stream))
+}
+
+/// The household's turn as it goes (only text crosses: its words, its approvals, its end; no tool step).
+async fn served_run_events(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    UrlPath((agent, cid, run_id)): UrlPath<(String, String, String)>,
+) -> ApiResult<Response> {
+    let (household, agent) = shared_agent(&state, &headers, &agent)?;
+    let c = conversation(&state.config(), &household, &agent.name, &cid)?;
+    if turn_going(&c, now()).as_deref() != Some(run_id.as_str()) {
+        return Err(HttpError::new(404, "no such turn"));
+    }
+    let mut listener = state.hub.subscribe(&agent, &run_id, "shared", false);
+    let stream = async_stream::stream! {
+        loop {
+            match tokio::time::timeout(Duration::from_secs_f64(crate::app::SSE_KEEPALIVE_SECONDS), listener.queue.recv()).await {
+                Err(_) => yield Ok::<_, std::io::Error>(Bytes::from_static(b": keepalive\n\n")),
+                Ok(None) | Ok(Some(None)) => break,
+                Ok(Some(Some(event))) => {
+                    let kind = event.r#type.as_str();
+                    let crosses = crate::hermes::is_delta(kind) || crate::hermes::is_terminal(kind)
+                        || kind == "approval.request" || kind == crate::hermes_prompts::APPROVAL_SETTLED;
+                    if crosses {
+                        let mut data = event.data.clone();
+                        data.retain(|k, _| ["event", "run_id", "delta", "text", "request_id", "command", "description",
+                                            "choices", "bip_summary", "error", "output"].contains(&k.as_str()));
+                        if let Some(Value::String(output)) = data.get_mut("output") {
+                            *output = crate::rooms::room_text(output).0;
+                        }
+                        yield Ok(event_line(kind, &Value::Object(data)));
+                    }
+                }
+            }
+        }
+        listener.close();
+    };
+    Ok(sse(stream))
+}
+
 /// The relative's side: `/v1/threads…?agent=<agent>__<household>` relayed to the owner's bridge (the conversation's
 /// id is the thread's). None when `agent` is not a shared agent's id.
 pub async fn relay_thread(state: &AppState, agent: &str, what: &str, q: &web::QueryMap) -> Option<ApiResult<Response>> {
@@ -673,6 +730,11 @@ pub async fn relay_thread(state: &AppState, agent: &str, what: &str, q: &web::Qu
                 .await
                 .map(relayed)
         }
+        // ended by her: its words deleted on the owner's side
+        None if what.ends_with(":delete") => {
+            let cid = what.trim_end_matches(":delete");
+            to_owner(state, agent, reqwest::Method::DELETE, &format!("conversations/{cid}"), None).await.map(relayed)
+        }
         // the list: the relative's conversations as threads
         _ if what.is_empty() => to_owner(state, agent, reqwest::Method::GET, "conversations", None).await.map(|(status, list)| {
             let threads: Vec<Value> = list
@@ -681,7 +743,7 @@ pub async fn relay_thread(state: &AppState, agent: &str, what: &str, q: &web::Qu
                 .map(|all| {
                     all.iter()
                         .map(|c| json!({"id": c.get("id"), "agent": agent, "kind": "shared", "title": c.get("title"),
-                                        "hidden": false, "updated_at": c.get("updated")}))
+                                        "hidden": false, "version": 0, "last_active": c.get("updated")}))
                         .collect()
                 })
                 .unwrap_or_default();
@@ -733,7 +795,8 @@ async fn follow_turn(
             ((after.0 - base.0).max(0), (after.1 - base.1).max(0))
         }
     };
-    let messages = state.hermes.session_messages(&agent, &session).await.map(|m| thread(&m).len()).ok();
+    let said = |m: &Dict| matches!(m.get("role").and_then(Value::as_str), Some("user" | "assistant"));
+    let messages = state.hermes.session_messages(&agent, &session).await.map(|m| m.iter().filter(|m| said(m)).count()).ok();
     let kept = update(&owner_path(&config), |data| {
         if let Some(Value::Object(c)) = object_mut(data, "conversations").get_mut(&cid) {
             if c.get("run").and_then(|r| r.get("id")).and_then(Value::as_str) == Some(run_id.as_str()) {
@@ -775,9 +838,10 @@ async fn served_post(
     }
     let config = state.config();
     let c = conversation(&config, &household, &agent.name, &cid)?;
-    if turn_going(&c, now()).is_some() {
+    // one run per shared conversation: reserved in the same locked write as the test, before Hermes is called
+    let Some(reserved) = reserve_turn(&owner_path(&config), &cid)? else {
         return Err(HttpError::new(409, "the agent is still answering"));
-    }
+    };
     let linked = households(&config);
     let shown = household_name(&linked, &household);
     let person: String = Some(tk::squeeze(&tk::str_or_empty(body.get("person"))))
@@ -798,18 +862,20 @@ async fn served_post(
     let base = state.hermes.session(&agent, &session).await.map(|s| counters_of(&s)).unwrap_or((0, 0));
     let input = crate::dates::now::stamped(&config, &agent, &framed(&person, &shown, &text));
     let tools = relative_guest_tools(&config, &agent.name);
-    let run_id = state
-        .hermes
-        .start_guest_run(&agent, &input, &session, Some(&rules), &tools)
-        .await
-        .map_err(|_| HttpError::new(502, "the agent can't be reached"))?;
-    update(&owner_path(&config), |data| {
-        if let Some(Value::Object(c)) = object_mut(data, "conversations").get_mut(&cid) {
-            c.insert("run".into(), json!({"id": run_id, "started": now()}));
-            c.insert("updated".into(), json!(now()));
-        }
-    })?;
+    let started = state.hermes.start_guest_run(&agent, &input, &session, Some(&rules), &tools).await;
+    let run_id = started.as_ref().ok().cloned();
+    settle_turn(&owner_path(&config), &cid, &reserved, run_id.as_deref())?;
+    let run_id = run_id.ok_or_else(|| HttpError::new(502, "the agent can't be reached"))?;
     tracing::info!(agent = %agent.name, household = %household, "shared agent: a relative's turn");
+    // her app's id for the message: its item carries it once Hermes has it (threads/send.rs)
+    let client_id = tk::str_or_empty(body.get("client_id"));
+    if crate::threads::send::CLIENT_ID.is_match(&client_id) {
+        let threads = crate::threads::threads_of(&state);
+        if let Ok(Some(thread)) = threads.resolve(&agent, &session).await {
+            crate::threads::send::keep(&threads, &agent.name, &thread.id, &client_id, &text, &[]).await?;
+            threads.bump(&thread, "sent").await?;
+        }
+    }
     state.spawn(follow_turn(state.clone(), agent, household, cid, run_id.clone(), base));
     Ok(web::ok(json!({"run_id": run_id})))
 }
@@ -880,6 +946,9 @@ async fn served_approval(
         .map_err(|_| HttpError::new(502, "the agent can't be reached"))?;
     if (200..300).contains(&status) {
         state.hub.forget_approval(&agent.name, &run_id, request_id.as_deref());
+        let session = object(&read(&owner_path(&config)), "conversations")
+            .and_then(|all| all.values().find(|c| c.get("run").is_some_and(|r| str_of(r, "id") == run_id)).map(|c| str_of(c, "session")));
+        crate::threads::threads_of(&state).touch(&agent.name, session.as_deref(), "answered").await;
     }
     tracing::info!(agent = %agent.name, household = %household, status = status, "shared agent: a relative's approval");
     Ok(web::json_response(status, &payload))
@@ -972,8 +1041,10 @@ pub fn household_router() -> Router<AppState> {
         .route("/family/shared", post(offered))
         .route("/family/s/{agent}/conversations", get(served_list).post(served_create))
         .route("/family/s/{agent}/conversations/{cid}", delete(served_delete))
-        .route("/family/s/{agent}/conversations/{cid}/messages", get(served_messages).post(served_post))
+        .route("/family/s/{agent}/conversations/{cid}/messages", post(served_post))
         .route("/family/s/{agent}/conversations/{cid}/timeline", get(served_timeline))
+        .route("/family/s/{agent}/conversations/{cid}/events", get(served_events))
+        .route("/family/s/{agent}/conversations/{cid}/runs/{run_id}/events", get(served_run_events))
         .route("/family/s/{agent}/conversations/{cid}/stop", post(served_stop))
         .route("/family/s/{agent}/approval", post(served_approval))
 }
@@ -1166,24 +1237,6 @@ fn relayed((status, payload): (u16, Value)) -> Response {
     web::json_response(status, &payload)
 }
 
-async fn mine_conversations(State(state): State<AppState>, UrlPath(id): UrlPath<String>) -> ApiResult<Response> {
-    Ok(relayed(to_owner(&state, &id, reqwest::Method::GET, "conversations", None).await?))
-}
-
-async fn mine_create(State(state): State<AppState>, UrlPath(id): UrlPath<String>, body: Bytes) -> ApiResult<Response> {
-    let body = body_json(&body)?;
-    let title = json!({"title": body.get("title").cloned().unwrap_or(Value::Null)});
-    Ok(relayed(to_owner(&state, &id, reqwest::Method::POST, "conversations", Some(title)).await?))
-}
-
-async fn mine_messages(
-    State(state): State<AppState>,
-    UrlPath((id, cid)): UrlPath<(String, String)>,
-) -> ApiResult<Response> {
-    state.presence.touch(&id, &cid); // the app is looking: nothing pushed
-    Ok(relayed(to_owner(&state, &id, reqwest::Method::GET, &format!("conversations/{cid}/messages"), None).await?))
-}
-
 /// Follows the relative's turn from her side: the approvals listed in her Boîte and pushed, the reply pushed, while
 /// her app isn't looking.
 async fn follow_from_here(state: AppState, id: String, cid: String, run_id: String) {
@@ -1191,15 +1244,16 @@ async fn follow_from_here(state: AppState, id: String, cid: String, run_id: Stri
     let mut pushed: HashSet<String> = HashSet::new();
     loop {
         tokio::time::sleep(Duration::from_secs(3)).await;
-        let answer = to_owner(&state, &id, reqwest::Method::GET, &format!("conversations/{cid}/messages"), None).await;
-        let Ok((200, thread)) = answer else {
+        let answer = to_owner(&state, &id, reqwest::Method::GET, &format!("conversations/{cid}/timeline?limit=1"), None).await;
+        let Ok((200, page)) = answer else {
             if now() - started > TURN_MAX_SECONDS {
                 break;
             }
             continue;
         };
-        let going = thread.get("run").and_then(|r| r.get("id")).and_then(Value::as_str) == Some(run_id.as_str());
-        let approvals: Vec<Value> = thread.get("approvals").and_then(Value::as_array).cloned().unwrap_or_default();
+        let pending = page.get("pending").cloned().unwrap_or(Value::Null);
+        let going = pending.get("run").and_then(|r| r.get("run_id")).and_then(Value::as_str) == Some(run_id.as_str());
+        let approvals: Vec<Value> = pending.get("approvals").and_then(Value::as_array).cloned().unwrap_or_default();
         {
             let mut pending = PENDING.lock().unwrap_or_else(|e| e.into_inner());
             pending.retain(|(a, r, _), _| !(*a == id && *r == run_id));
@@ -1235,11 +1289,11 @@ async fn follow_from_here(state: AppState, id: String, cid: String, run_id: Stri
                 .await;
         }
         if !going || now() - started > TURN_MAX_SECONDS {
-            let reply = thread
-                .get("messages")
+            let reply = page
+                .get("items")
                 .and_then(Value::as_array)
                 .and_then(|m| m.last())
-                .filter(|m| str_of(m, "role") == "assistant")
+                .filter(|m| str_of(m, "role") == "agent")
                 .map(|m| str_of(m, "text"));
             if let Some(reply) = reply.filter(|_| !state.presence.viewing(&id, &cid)) {
                 state.push.notify_reply(&id, &run_id, &reply, Some(&cid)).await;
@@ -1250,45 +1304,84 @@ async fn follow_from_here(state: AppState, id: String, cid: String, run_id: Stri
     PENDING.lock().unwrap_or_else(|e| e.into_inner()).retain(|(a, r, _), _| !(*a == id && *r == run_id));
 }
 
-async fn mine_post(
-    State(state): State<AppState>,
-    UrlPath((id, cid)): UrlPath<(String, String)>,
-    body: Bytes,
-) -> ApiResult<Response> {
-    let body = body_json(&body)?;
-    let text = tk::strip(&tk::str_or_empty(body.get("text"))).to_string();
-    if text.is_empty() || text.chars().count() > TEXT_MAX {
-        return Err(HttpError::new(422, format!("a message of 1 to {TEXT_MAX} characters")));
-    }
-    let person = state.households.name();
-    let answer = to_owner(
-        &state,
-        &id,
-        reqwest::Method::POST,
-        &format!("conversations/{cid}/messages"),
-        Some(json!({"text": text, "person": person})),
-    )
-    .await?;
-    if answer.0 == 200 {
-        if let Some(run_id) = answer.1.get("run_id").and_then(Value::as_str) {
-            state.spawn(follow_from_here(state.clone(), id.clone(), cid.clone(), run_id.to_string()));
+/// Her message (`POST /v1/threads/{cid}/messages?agent=<id>`, `cid` `new` for a new conversation): relayed to the
+/// owner's bridge, and its turn followed from here for her pushes.
+pub async fn relay_send(
+    state: &AppState,
+    agent: Option<&str>,
+    cid: &str,
+    body: &crate::threads::send::NewMessage,
+) -> Option<ApiResult<Response>> {
+    let id = agent.filter(|a| a.contains(SEPARATOR))?.to_string();
+    Some(async {
+        let text = tk::strip(&body.text).to_string();
+        if text.is_empty() || text.chars().count() > TEXT_MAX {
+            return Err(HttpError::new(422, format!("a message of 1 to {TEXT_MAX} characters")));
         }
+        let cid = match cid {
+            "new" => {
+                let title: String = text.chars().take(TITLE_MAX).collect();
+                let (status, made) = to_owner(state, &id, reqwest::Method::POST, "conversations", Some(json!({"title": title}))).await?;
+                if status != 200 {
+                    return Ok(relayed((status, made)));
+                }
+                str_of(&made, "id")
+            }
+            cid => cid.to_string(),
+        };
+        let person = state.households.name();
+        let sent = json!({"text": text, "person": person, "client_id": body.client_id});
+        let (status, answer) = to_owner(state, &id, reqwest::Method::POST, &format!("conversations/{cid}/messages"), Some(sent)).await?;
+        let Some(run_id) = answer.get("run_id").and_then(Value::as_str).filter(|_| status == 200).map(str::to_string) else {
+            return Ok(relayed((status, answer)));
+        };
+        state.spawn(follow_from_here(state.clone(), id.clone(), cid.clone(), run_id.clone()));
+        Ok(web::ok(json!({"client_id": body.client_id, "thread": cid, "state": "started", "run_id": run_id})))
     }
-    Ok(relayed(answer))
+    .await)
 }
 
-async fn mine_stop(
-    State(state): State<AppState>,
-    UrlPath((id, cid)): UrlPath<(String, String)>,
-) -> ApiResult<Response> {
-    Ok(relayed(to_owner(&state, &id, reqwest::Method::POST, &format!("conversations/{cid}/stop"), None).await?))
+pub async fn relay_stop(state: &AppState, agent: Option<&str>, cid: &str) -> Option<ApiResult<Response>> {
+    let id = agent.filter(|a| a.contains(SEPARATOR))?;
+    Some(
+        to_owner(state, id, reqwest::Method::POST, &format!("conversations/{cid}/stop"), None)
+            .await
+            .map(|(status, _)| web::json_response(status, &json!({"stopped": status == 200}))),
+    )
 }
 
-async fn mine_delete(
-    State(state): State<AppState>,
-    UrlPath((id, cid)): UrlPath<(String, String)>,
-) -> ApiResult<Response> {
-    Ok(relayed(to_owner(&state, &id, reqwest::Method::DELETE, &format!("conversations/{cid}"), None).await?))
+/// An event stream of the owner's (`events`, `runs/<run>/events` of conversation `cid`), passed on as it comes;
+/// while open, the conversation is on her screen (nothing pushed from here meanwhile).
+pub async fn relay_stream(state: &AppState, id: &str, cid: &str, path: &str) -> ApiResult<Response> {
+    let config = state.config();
+    let shared = mine(&config, id, true)?;
+    let entry = state.households.get(&str_of(&shared, "household")).ok_or_else(|| HttpError::new(404, "no such shared agent"))?;
+    let url = format!("{}/family/s/{}/conversations/{cid}/{path}", entry.get("url").map(py::py_str).unwrap_or_default(),
+                      str_of(&shared, "agent"));
+    let key = entry.get("key_out").map(py::py_str).unwrap_or_default();
+    let resp = crate::door_tls::household_client(&state.http, &entry)
+        .get(url)
+        .bearer_auth(key)
+        .send()
+        .await
+        .map_err(|_| HttpError::new(502, "their side does not answer right now: try again later"))?;
+    if !resp.status().is_success() {
+        return Err(HttpError::new(resp.status().as_u16(), "their side refused"));
+    }
+    let (state, id, cid) = (state.clone(), id.to_string(), cid.to_string());
+    let mut chunks = resp.bytes_stream();
+    let stream = async_stream::stream! {
+        use futures::StreamExt;
+        state.presence.touch(&id, &cid);
+        while let Some(chunk) = chunks.next().await {
+            state.presence.touch(&id, &cid); // their keepalive every 10 s: still on screen
+            match chunk {
+                Ok(bytes) => yield Ok::<_, std::io::Error>(bytes),
+                Err(_) => break,
+            }
+        }
+    };
+    Ok(sse(stream))
 }
 
 /// The person's answer to an approval of her turn, relayed to the owner's bridge.
@@ -1310,19 +1403,6 @@ pub async fn approve_mine(
     Ok(relayed(answer))
 }
 
-async fn mine_approval(
-    State(state): State<AppState>,
-    UrlPath(id): UrlPath<String>,
-    body: Bytes,
-) -> ApiResult<Response> {
-    let body = body_json(&body)?;
-    let run_id = tk::str_or_empty(body.get("run_id"));
-    let choice = tk::str_or_empty(body.get("choice"));
-    let request_id = Some(tk::str_or_empty(body.get("request_id"))).filter(|r| !r.is_empty());
-    approve_mine(&state, &id, &run_id, &choice, request_id.as_deref()).await
-}
-
-/// The approvals waiting for this person in agents relatives share with her (her Boîte, `GET /v1/approvals`).
 pub fn pending_mine(agent: Option<&str>) -> Vec<Dict> {
     let pending = PENDING.lock().unwrap_or_else(|e| e.into_inner());
     pending.iter().filter(|((a, _, _), _)| agent.is_none_or(|x| x == a)).map(|(_, item)| item.clone()).collect()
@@ -1336,11 +1416,7 @@ pub fn router() -> Router<AppState> {
         .route("/shared-agents", get(list_mine))
         .route("/shared-agents/{id}", delete(drop_mine))
         .route("/shared-agents/{id}/add", post(add_mine))
-        .route("/shared-agents/{id}/approval", post(mine_approval))
-        .route("/shared-agents/{id}/conversations", get(mine_conversations).post(mine_create))
-        .route("/shared-agents/{id}/conversations/{cid}", delete(mine_delete))
-        .route("/shared-agents/{id}/conversations/{cid}/messages", get(mine_messages).post(mine_post))
-        .route("/shared-agents/{id}/conversations/{cid}/stop", post(mine_stop))
+
 }
 
 #[cfg(test)]
@@ -1351,19 +1427,7 @@ mod tests {
     fn a_relatives_words_are_framed_for_the_agent_and_shown_plain() {
         let text = framed("Marie", "Marie", "Une recette avec des poireaux ?");
         assert!(text.starts_with("[Marie, a relative of your person (household « Marie »), writes to you:]\n"));
-        let messages: Vec<Dict> = [
-            json!({"role": "user", "content": text, "timestamp": 1.0}),
-            json!({"role": "assistant", "content": ""}),
-            json!({"role": "tool", "content": "secret"}),
-            json!({"role": "assistant", "content": [{"type": "text", "text": "Une fondue !\nMEDIA:/root/x.png"}]}),
-        ]
-        .into_iter()
-        .map(|v| v.as_object().cloned().unwrap())
-        .collect();
-        let shown = thread(&messages);
-        assert_eq!(shown.len(), 2);
-        assert_eq!(shown[0], json!({"role": "user", "text": "Une recette avec des poireaux ?", "at": 1.0}));
-        assert_eq!(shown[1]["text"], "Une fondue !");
+        assert_eq!(unframed(&text), "Une recette avec des poireaux ?");
         // a person's own bracket line is kept
         assert_eq!(unframed("[note]\nhello"), "[note]\nhello");
     }
@@ -1400,6 +1464,30 @@ mod tests {
         let family = guest_tools(&crate::family_agent::TOOLS);
         assert!(family.contains(&"mcp__bipagents__family_notebook_write".to_string()));
         assert_eq!(crate::hermes::guest_turn(&tools)["tools"][5], "web_search");
+    }
+
+    #[test]
+    fn two_quick_messages_start_one_run() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("shares.json");
+        update(&path, |data| {
+            object_mut(data, "conversations").insert("c1".into(), json!({"agent": "vie", "run": null}));
+        })
+        .unwrap();
+        let first = reserve_turn(&path, "c1").unwrap().expect("free");
+        assert!(reserve_turn(&path, "c1").unwrap().is_none(), "the second waits for the first");
+        assert!(reserve_turn(&path, "ghost").unwrap().is_none());
+        settle_turn(&path, "c1", &first, Some("run_1")).unwrap();
+        assert_eq!(turn_going(&read(&path)["conversations"]["c1"], now()).as_deref(), Some("run_1"));
+        assert!(reserve_turn(&path, "c1").unwrap().is_none());
+        // a run that could not start lets the conversation go
+        update(&path, |data| {
+            object_mut(data, "conversations").insert("c2".into(), json!({"agent": "vie", "run": null}));
+        })
+        .unwrap();
+        let mark = reserve_turn(&path, "c2").unwrap().unwrap();
+        settle_turn(&path, "c2", &mark, None).unwrap();
+        assert!(reserve_turn(&path, "c2").unwrap().is_some());
     }
 
     #[test]

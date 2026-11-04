@@ -390,6 +390,7 @@ impl AppState {
                 let (shared, vault) = (self.config.clone(), self.vault.clone());
                 self.spawn(async move {
                     let config = shared.get();
+                    vault.retry_removals(&config).await;
                     if vault.follow_browsers(&config).await {
                         crate::profile_files::reconcile_all(&config);
                     }
@@ -539,14 +540,19 @@ impl Validate for WatchRequest {}
 pub struct ApproveRequest {
     pub agent: String,
     pub run_id: String,
+    #[serde(default)]
     pub choice: String,
     #[serde(default)]
     pub request_id: Option<String>,
+    /// A question's answer (Hermes' clarify: its words; empty skips it) instead of a choice.
+    #[serde(default)]
+    pub answer: Option<String>,
 }
 
 impl Validate for ApproveRequest {
     fn validate(&self, errors: &mut Vec<FieldError>) {
         check_max_len(errors, "choice", Some(&self.choice), 32);
+        check_max_len(errors, "answer", self.answer.as_deref(), 20_000);
         check_max_len(errors, "request_id", self.request_id.as_deref(), 256);
     }
 }
@@ -624,6 +630,8 @@ async fn list_agents(State(state): State<AppState>, caller: Caller) -> ApiResult
                 "voice": crate::voices::voice_for(&config, Some(a), None),
                 "server_voice": a.server_voice, "category": a.category, "color": a.color,
                 "outfit": a.outfit.clone().unwrap_or_default(), "costumes": a.costumes.unwrap_or(true),
+                // the language it writes first in, from its record (the apps keep no copy of it)
+                "language": crate::profile_files::settings(&agents_admin::profile_folder(&config, a)).language,
                 "uploads": a.upload_dir_host.as_deref().map(|u| !u.is_empty()).unwrap_or(false),
                 "inbox": a.ntfy_topic.as_deref().map(|t| !t.is_empty()).unwrap_or(false),
                 "url": a.public_url,
@@ -1151,6 +1159,11 @@ async fn watch_run(State(state): State<AppState>, Json(body): Json<WatchRequest>
 /// someone is watching, so approvals and « reply ready » are pushed only when nobody is.
 async fn run_events(State(state): State<AppState>, Path(run_id): Path<String>, q: QueryMap) -> ApiResult<Response> {
     let agent = web::query_required(&q, "agent")?;
+    // a shared agent's turn: its words from the owner's bridge (`thread`: her conversation, agent_shares.rs)
+    if let (true, Some(cid)) = (agent.contains(crate::households::SEPARATOR), q.get("thread")) {
+        let run_id = check_run_id(&run_id)?;
+        return crate::agent_shares::relay_stream(&state, &agent, cid, &format!("runs/{run_id}/events")).await;
+    }
     let session_id = web::query_str(&q, "session_id", false, Some(200))?;
     let agent_cfg = agent_or_404(&state.config(), Some(&agent))?;
     let run_id = check_run_id(&run_id)?;
@@ -1310,18 +1323,30 @@ async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>
         return crate::storage_watch::approve(&state, &agent, id, &body.choice).await;
     }
     let request_id = body.request_id.as_deref();
+    let (kind, value) = match &body.answer {
+        Some(answer) => ("clarify", answer.trim().to_string()),
+        None => ("approval", body.choice.trim().to_lowercase()),
+    };
     let (status, payload) =
-        match state.hermes.approve(&agent, &run_id, &body.choice.trim().to_lowercase(), request_id).await {
+        match state.hermes.answer_prompt(&agent, &run_id, kind, &value, request_id).await {
             Ok(r) => r,
             Err(exc) if exc.is_transport() => return Err(HttpError::new(502, "your agent isn't answering right now: try again in a moment")),
             Err(exc) => return Err(anyhow::anyhow!(exc).into()),
         };
-    if (200..300).contains(&status) {
+    let waiting = |p: &Map<String, Value>| {
+        p.get("run_id").and_then(Value::as_str) == Some(run_id.as_str())
+            && (request_id.is_none() || p.get("request_id").and_then(Value::as_str) == request_id)
+    };
+    if (200..300).contains(&status) && kind == "clarify" {
+        let asked = state.hub.pending_questions(&agent.name).into_iter().find(waiting);
+        state.hub.forget_approval(&agent.name, &run_id, request_id);
+        // answered on one device: gone from the others' (the thread's `pending.questions`)
+        let session = asked.and_then(|q| q.get("session_id").and_then(Value::as_str).map(str::to_string));
+        crate::threads::threads_of(&state).touch(&agent.name, session.as_deref(), "answered").await;
+    } else if (200..300).contains(&status) {
         // kept for the conversation, with the request as it was shown (approvals_log.rs)
-        let shown = state.hub.pending_approvals(Some(&agent.name)).into_iter().find(|p| {
-            p.get("run_id").and_then(Value::as_str) == Some(run_id.as_str())
-                && (request_id.is_none() || p.get("request_id").and_then(Value::as_str) == request_id)
-        });
+        let shown = state.hub.pending_approvals(Some(&agent.name)).into_iter().find(waiting);
+        let session = shown.as_ref().and_then(|p| p.get("session_id").and_then(Value::as_str).map(str::to_string));
         let mut fields = shown.unwrap_or_default();
         fields.insert("run_id".into(), json!(run_id));
         fields.insert("request_id".into(), json!(request_id));
@@ -1332,37 +1357,11 @@ async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>
             tracing::warn!(agent = %agent.name, error = %err, "approval decision not kept");
         }
         state.hub.forget_approval(&agent.name, &run_id, request_id);
+        // the answered item in the conversation on every device (the timeline's approvals log)
+        crate::threads::threads_of(&state).touch(&agent.name, session.as_deref(), "answered").await;
     }
-    tracing::info!(agent = %agent.name, run_id = %run_id, status = status, "approval forwarded");
+    tracing::info!(agent = %agent.name, run_id = %run_id, status = status, kind = kind, "answer forwarded");
     Ok(web::json_response(status, &payload))
-}
-
-/// The approvals the person answered in a conversation (`agent`, `session_id`), the oldest first (approvals_log.rs).
-async fn answered_approvals(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
-    let config = state.config();
-    let agent = agent_or_404(&config, Some(&web::query_required(&q, "agent")?))?;
-    let session = web::query_str(&q, "session_id", false, Some(200))?.filter(|s| !s.is_empty());
-    let items = crate::approvals_log::list(&config, &agent.name, session.as_deref());
-    Ok(web::ok(json!({"items": items})))
-}
-
-/// An app answered an approval (Hermes itself, or through the bridge): kept for the conversation.
-async fn record_approval(State(state): State<AppState>, body: axum::body::Bytes) -> ApiResult<Response> {
-    let config = state.config();
-    let fields = serde_json::from_slice::<Value>(&body)
-        .ok()
-        .and_then(|v| v.as_object().cloned())
-        .ok_or_else(|| HttpError::new(422, "a JSON object"))?;
-    let agent = agent_or_404(&config, fields.get("agent").and_then(Value::as_str))?;
-    match crate::approvals_log::record(&config, &agent.name, &fields) {
-        Ok(entry) => {
-            // answered: no longer waiting
-            let run = entry.get("run_id").and_then(Value::as_str).unwrap_or_default().to_string();
-            state.hub.forget_approval(&agent.name, &run, entry.get("request_id").and_then(Value::as_str));
-            Ok(web::ok(json!({"kept": entry})))
-        }
-        Err(err) => Err(HttpError::new(422, err.to_string())),
-    }
 }
 
 async fn approvals(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
@@ -1427,7 +1426,6 @@ pub fn build_router() -> Router<AppState> {
         .route("/runs/{run_id}/events", get(run_events))
         .route("/approve", post(approve))
         .route("/approvals", get(approvals))
-        .route("/approvals/answered", get(answered_approvals).post(record_approval))
 }
 
 async fn health(State(state): State<AppState>) -> ApiResult<Response> {
@@ -1759,7 +1757,6 @@ pub fn create_app(config: Config, options: AppOptions) -> anyhow::Result<App> {
     crate::threads::threads_of(&state); // the same: the hub and the push service point at the threads
     let config = state.config();
     crate::profile_files::reconcile_all(&config); // what the bridge decides in each profile, as this bridge renders it
-    agents_admin::heal_souls(&config);
     crate::voices::heal_defaults(&state.config); // after the souls: their language says the Bip's
     let config = state.config();
     crate::guide::refresh(&config); // the guide's list of agents and the setup blocks, as this bridge writes them

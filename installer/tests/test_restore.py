@@ -98,3 +98,29 @@ def test_the_bridge_is_told_when_the_place_was_restored_and_from_which_backup(tm
     assert oct(path.stat().st_mode & 0o777) == "0o600"
     backup.note_restored({}, home, now=T)   # an older backup's manifest without its time
     assert json.loads(path.read_text()) == {"restored_at": T, "backup_at": None}
+
+
+def test_a_restore_that_breaks_on_anything_says_so_and_stops_restoring(tmp_path, monkeypatch):
+    from bipinstall import update
+
+    class Runner:
+        log = []
+
+        def run(self, *args, **kwargs):
+            raise AssertionError("nothing runs after the failure")
+
+    marker = tmp_path / backup.MARKER
+    marker.parent.mkdir(parents=True)
+    marker.write_text("{}")
+    monkeypatch.setattr(backup, "fetch", lambda base, key: tmp_path / "fetched")
+    monkeypatch.setattr(update, "gateway_units", lambda: [])
+
+    def broken(*args):
+        raise KeyError("roots")
+
+    monkeypatch.setattr(backup, "put_back", broken)
+    with pytest.raises(KeyError):
+        backup.restore("key", Runner(), base=tmp_path, repo=tmp_path / "checkout")
+    assert not marker.exists()
+    state = json.loads((tmp_path / ".config" / "bipagents" / "setup-progress.json").read_text())
+    assert state["error"] == "KeyError: 'roots'" and not state["done"]

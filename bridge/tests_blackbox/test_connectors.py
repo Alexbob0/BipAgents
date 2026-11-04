@@ -20,7 +20,7 @@ import pytest
 import yaml
 from cryptography.fernet import Fernet
 
-from bbkit.common import AUTH
+from bbkit.common import AUTH, answered
 from bbkit.servers import free_port, wait_until
 from conftest import profile, wait_registered
 from test_sandbox import isolated
@@ -241,8 +241,8 @@ def test_a_connector_end_to_end_the_secret_never_reaches_the_agent_the_model_or_
     assert any(r.get("value") == PASSWORD for r in [rec.get("secret", {}) for rec in vault_records(bridge)])
 
     # 5. the decisions kept with the person's others
-    answered = bridge.get("/v1/approvals/answered", headers=AUTH, params={"agent": "vie"}).json()["items"]
-    topics = [(a["topic"], a["choice"]) for a in answered]
+    decided = answered(bridge, "vie")
+    topics = [(a["topic"], a["choice"]) for a in decided]
     assert ("secret", "once") in topics and ("secret", "deny") in topics and ("connector", "once") in topics
 
 

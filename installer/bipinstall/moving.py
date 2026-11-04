@@ -209,6 +209,18 @@ def _git_head(folder: Path) -> Optional[str]:
     return out.stdout.strip() or None
 
 
+def archive_commit(info: Dict) -> Optional[str]:
+    """The Hermes commit an archive names, if it is one (it ends in the installer's command line)."""
+    commit = info.get("hermes_commit")
+    return commit if isinstance(commit, str) and re.fullmatch(r"[0-9a-f]{7,40}", commit) else None
+
+
+def serve_commands(tailscale: Optional[str], ports: List) -> List[List[str]]:
+    """`tailscale serve` for each port an archive published (whole numbers only), as argument lists: no shell."""
+    valid = [p for p in ports if isinstance(p, int) and not isinstance(p, bool) and 0 < p < 65536]
+    return [[tailscale or "tailscale", "serve", "--bg", f"--https={p}", f"http://127.0.0.1:{p}"] for p in valid]
+
+
 def published_ports(tailscale: Optional[str]) -> Optional[List[int]]:
     """The ports this machine publishes on its tailnet (`tailscale serve status`), None when it cannot tell."""
     if not tailscale:
@@ -774,8 +786,8 @@ def import_main(argv: List[str]) -> int:
     total = 5 + (1 if info.get("browsers") and target.sandbox else 0)
     steps = iter(range(1, total + 1))
     say(ui.step(next(steps), total, "Hermes, in the same version"))
-    if info.get("hermes_commit"):
-        hermes.HERMES_COMMIT = info["hermes_commit"]
+    if archive_commit(info):
+        hermes.HERMES_COMMIT = archive_commit(info)
     from .plan import make_plan
     hermes.install(runner, browser=make_plan(machine, False).browser != "none")
     skipped = hermes.apply_patches(runner, REPO / "hermes" / "patches")
@@ -865,10 +877,8 @@ def import_main(argv: List[str]) -> int:
 
     say(ui.step(next(steps), total, "Tailscale and checks"))
     if not args.no_tailscale:
-        published = [mapping.get(p, p) for p in info["published"]]
-        for port in published:
-            runner.run(f"{machine.tailscale or 'tailscale'} serve --bg --https={port} http://127.0.0.1:{port}",
-                       shell=True, check=False)
+        for command in serve_commands(machine.tailscale, [mapping.get(p, p) for p in info["published"]]):
+            runner.run(command, check=False)
     from . import migrations
     from .update import restart
     from .upgrade import install_command

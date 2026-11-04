@@ -12,7 +12,7 @@ On api_server the run's instructions leave the system prompt for a turn note, se
 
 BipAgents patch, documented in hermes/patches/README.md of the BipAgents repository.
 
-Bip-Patch: 0022-prompt-cache-stable-across-conversations
+Bip-Patch: 0023-prompt-cache-stable-across-conversations
 ---
  agent/agent_init.py                     |   2 +
  agent/prompt_cache_notes.py             | 184 ++++++++++++++++++++++++
@@ -228,10 +228,10 @@ index 0000000000000000000000000000000000000000..6a9901b363f423d13b2ceeaebc37bfb7
 +    agent._instructions_note = ""
 +    return note if isinstance(note, str) else ""
 diff --git a/agent/system_prompt.py b/agent/system_prompt.py
-index 5e9356322968bf1bfefc960c9f285ae6b2224294..e18b3b7ba245766ead93838473c800ed3f15195f 100644
+index f614d05ffedc314be8d68220f075278167bde94a..7d8e8fc2b48cb3ce914d82013a70b6747c833f78 100644
 --- a/agent/system_prompt.py
 +++ b/agent/system_prompt.py
-@@ -704,7 +704,7 @@ def _coding_parts(agent: Any) -> tuple[list[str], list[str], list[str]]:
+@@ -706,7 +706,7 @@ def _coding_parts(agent: Any) -> tuple[list[str], list[str], list[str]]:
  def _post_workspace_parts(agent: Any) -> list[str]:
      """Blocks that follow the worktree-specific context: environment probe
      (config.yaml agent.environment_probe; one line, nothing when clean, skipped
@@ -240,7 +240,7 @@ index 5e9356322968bf1bfefc960c9f285ae6b2224294..e18b3b7ba245766ead93838473c800ed
      parts: list[str] = []
      if getattr(agent, "_environment_probe", True):
          try:
-@@ -712,8 +712,8 @@ def _post_workspace_parts(agent: Any) -> list[str]:
+@@ -714,8 +714,8 @@ def _post_workspace_parts(agent: Any) -> list[str]:
              parts.append(get_environment_probe_line())
          except Exception:
              pass  # Probe failure must never block prompt build.
@@ -251,7 +251,7 @@ index 5e9356322968bf1bfefc960c9f285ae6b2224294..e18b3b7ba245766ead93838473c800ed
      parts.append(platform_hint(agent))
      return parts
  
-@@ -795,6 +795,10 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None)
+@@ -797,6 +797,10 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None)
      # The profile line names this home's path, so it rides in the volatile tier: the stable
      # prefix then stays byte-identical across every profile (and home) on the host.
      volatile_parts.append(_active_profile_line(agent))

@@ -45,8 +45,22 @@ impl Guard {
         }
     }
 
+    /// What is counted: the address, an IPv6 one by its /64 (a line or host owns the whole /64 and can change
+    /// address in it at will).
+    fn key(address: &str) -> String {
+        match address.parse::<IpAddr>() {
+            Ok(IpAddr::V6(v6)) if v6.to_ipv4_mapped().is_none() => {
+                let s = v6.segments();
+                format!("{:x}:{:x}:{:x}:{:x}::/64", s[0], s[1], s[2], s[3])
+            }
+            Ok(IpAddr::V6(v6)) => v6.to_ipv4_mapped().map(|v4| v4.to_string()).unwrap_or_default(),
+            _ => address.to_string(),
+        }
+    }
+
     pub fn blocked(&self, address: Option<&str>) -> bool {
-        let key = address.unwrap_or("");
+        let key = Self::key(address.unwrap_or(""));
+        let key = key.as_str();
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         let Some(until) = state.blocked.get(key).copied() else { return false };
         if (self.clock)() >= until {
@@ -60,7 +74,7 @@ impl Guard {
         if !Self::counted(address) {
             return;
         }
-        let address = address.unwrap_or_default().to_string();
+        let address = Self::key(address.unwrap_or_default());
         let now = (self.clock)();
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         let mut recent: Vec<f64> = state
@@ -120,5 +134,19 @@ mod tests {
         now.store(1000 + 901 + 601, Ordering::SeqCst);
         guard.fail(addr, "x");
         assert!(!guard.blocked(addr));
+    }
+
+    #[test]
+    fn an_ipv6_address_is_counted_by_its_64() {
+        let guard = Guard::new(3, 600.0, 900.0, Arc::new(|| 1000.0));
+        guard.fail(Some("2001:db8:7:8::1"), "bridge key");
+        guard.fail(Some("2001:db8:7:8::2"), "bridge key");
+        guard.fail(Some("2001:db8:7:8:ffff::3"), "bridge key");
+        assert!(guard.blocked(Some("2001:db8:7:8::99")));
+        assert!(!guard.blocked(Some("2001:db8:7:9::1")));
+        guard.fail(Some("::ffff:203.0.113.5"), "x");
+        guard.fail(Some("203.0.113.5"), "x");
+        guard.fail(Some("::ffff:203.0.113.5"), "x");
+        assert!(guard.blocked(Some("203.0.113.5")));
     }
 }

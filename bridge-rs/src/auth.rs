@@ -21,9 +21,11 @@ use crate::web::HttpError;
 /// uvicorn's `forwarded_allow_ips="127.0.0.1"`.
 pub const TRUSTED_PROXIES: [&str; 1] = ["127.0.0.1"];
 
-/// `hmac.compare_digest` on bytes.
+/// `hmac.compare_digest` on bytes, the length included: the SHA-256 of both are compared (a fixed length), so the
+/// time taken tells nothing of the expected value's length either.
 pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    a.len() == b.len() && bool::from(a.ct_eq(b))
+    use sha2::{Digest, Sha256};
+    bool::from(Sha256::digest(a).as_slice().ct_eq(Sha256::digest(b).as_slice()))
 }
 
 /// The token of an `Authorization: Bearer <token>` header (any case for « Bearer »).
@@ -53,8 +55,7 @@ pub fn key_matches(expected: &str, presented: Option<&str>) -> bool {
     match presented {
         None | Some("") => {
             // Still run a comparison so timing does not reveal "missing" vs "wrong".
-            let zeros = vec![0u8; expected.len()];
-            let _ = constant_time_eq(expected.as_bytes(), &zeros);
+            let _ = constant_time_eq(expected.as_bytes(), b"");
             false
         }
         Some(p) => constant_time_eq(expected.as_bytes(), p.as_bytes()),
@@ -252,6 +253,17 @@ pub fn websocket_authorized(state: &AppState, address: Option<&str>, headers: &H
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn keys_compare_whatever_their_length() {
+        assert!(constant_time_eq(b"k3y", b"k3y"));
+        assert!(!constant_time_eq(b"k3y", b"k3z"));
+        assert!(!constant_time_eq(b"k3y", b"k3"));
+        assert!(!constant_time_eq(b"", b"k"));
+        assert!(constant_time_eq(b"", b""));
+        assert!(key_matches("k".repeat(40).as_str(), Some(&"k".repeat(40))));
+        assert!(!key_matches("k".repeat(40).as_str(), None) && !key_matches("k", Some("")));
+    }
 
     #[test]
     fn bearer_parsing() {

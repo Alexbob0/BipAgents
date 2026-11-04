@@ -1,0 +1,191 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Alexbob0 <alextsmail@pm.me>
+Date: Tue, 3 Nov 2026 13:51:22 +0100
+Subject: Tools in one canonical order: tools.order_first, then by name; later
+ tools at their place
+
+BipAgents patch, documented in hermes/patches/README.md of the BipAgents repository.
+
+Bip-Patch: 0022-tool-order-common-first
+---
+ model_tools.py                 |  5 +++-
+ tests/tools/test_tool_order.py | 44 ++++++++++++++++++++++++++++
+ tools/mcp_tool_agent.py        | 17 ++++++++---
+ tools/tool_order.py            | 52 ++++++++++++++++++++++++++++++++++
+ 4 files changed, 113 insertions(+), 5 deletions(-)
+ create mode 100644 tests/tools/test_tool_order.py
+ create mode 100644 tools/tool_order.py
+
+diff --git a/model_tools.py b/model_tools.py
+index 1a4d469891223591757aa8c664c8cb073ab62114..e65498144011ecd1b6a58a3f755b62d5defa25c4 100644
+--- a/model_tools.py
++++ b/model_tools.py
+@@ -553,7 +553,10 @@ def _compute_tool_definitions(enabled_toolsets: Optional[list[str]] = None, disa
+     except Exception as e:  # pragma: no cover — never break tool loading
+         logger.warning("Tool search assembly skipped: %s", e)
+ 
+-    return filtered_tools
++    # One canonical order (``tools.order_first``, then by name), the tool search's own tools included: the list
++    # heads every request, so two agents share the cache as far as their lists are the same (BipAgents 0022).
++    from tools.tool_order import ordered
++    return ordered(filtered_tools)
+ 
+ 
+ def _active_model_config() -> tuple[str, dict[str, Any]]:
+diff --git a/tests/tools/test_tool_order.py b/tests/tools/test_tool_order.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..e53b17eb696407fbfed251b655cd5fb5f70c3f37
+--- /dev/null
++++ b/tests/tools/test_tool_order.py
+@@ -0,0 +1,44 @@
++"""BipAgents patch 0022: one canonical tool order (``tools.order_first``, then by name), kept by later arrivals."""
++
++from tools import tool_order
++from tools.tool_order import insert_in_order, ordered
++
++
++def _defs(*names):
++    return [{"type": "function", "function": {"name": n, "description": n}} for n in names]
++
++
++def _names(defs):
++    return [d["function"]["name"] for d in defs]
++
++
++FIRST = ["clarify", "mcp__bipagents__create_page", "memory", "tool_call"]
++
++
++def test_common_tools_first_then_by_name():
++    defs = _defs("web_search", "tool_call", "browser_vault", "memory", "clarify", "execute_code",
++                 "mcp__bipagents__create_page", "mcp__bipagents__health")
++    assert _names(ordered(defs, FIRST)) == [
++        "clarify", "mcp__bipagents__create_page", "memory", "tool_call",
++        "browser_vault", "execute_code", "mcp__bipagents__health", "web_search"]
++
++
++def test_two_agents_share_the_common_prefix_byte_for_byte():
++    one = ordered(_defs("memory", "clarify", "tool_call", "mcp__bipagents__health", "mcp__bipagents__create_page"), FIRST)
++    two = ordered(_defs("tool_call", "execute_code", "clarify", "memory", "mcp__bipagents__create_page"), FIRST)
++    assert repr(one[:4]) == repr(two[:4])
++    assert ordered(list(reversed(one)), FIRST) == one  # the same list from any order (two starts)
++
++
++def test_a_later_tool_takes_its_place_never_the_tail():
++    live = ordered(_defs("clarify", "memory", "tool_call", "execute_code", "web_search"), FIRST)
++    insert_in_order(live, _defs("mcp__bipagents__create_page")[0], FIRST)
++    insert_in_order(live, _defs("patch")[0], FIRST)
++    insert_in_order(live, _defs("zz_last")[0], FIRST)
++    assert _names(live) == _names(ordered(live, FIRST))
++    assert _names(live)[1] == "mcp__bipagents__create_page" and _names(live)[-1] == "zz_last"
++
++
++def test_without_a_list_plain_name_order(monkeypatch):
++    monkeypatch.setattr(tool_order, "configured_first", lambda: [])
++    assert _names(ordered(_defs("b", "a", "c"))) == ["a", "b", "c"]
+diff --git a/tools/mcp_tool_agent.py b/tools/mcp_tool_agent.py
+index fe0e6f40f1f10dd00f50439ef08494e7b9d11bda..81b99992964e56a18066393dc0dce634a3a85021 100644
+--- a/tools/mcp_tool_agent.py
++++ b/tools/mcp_tool_agent.py
+@@ -238,7 +238,8 @@ def restore_agent_tool_prefix(agent, saved) -> bool:
+     catalog, per-surface dynamic parameters, the ``-q`` footprint): tools[] heads every request.
+     Pinned by other code (``hermes update``, a legacy name list) a tool's contract may have moved,
+     so each takes its current definition. A pinned tool this process did not build is carried
+-    only while its toolset config allows it here; deregistered tools drop, new tools append."""
++    only while its toolset config allows it here; deregistered tools drop, new tools take their canonical place
++    (tools.tool_order, BipAgents 0022)."""
+     pinned, same_code, pinned_defs = _pinned_tool_defs(saved, {_def_name(t): t for t in _agent_tool_defs(agent)})
+     if not pinned:
+         return False
+@@ -250,7 +251,11 @@ def restore_agent_tool_prefix(agent, saved) -> bool:
+     carried &= _config_permitted_names(agent) if carried else set()
+     merged = [d for d in pinned_defs if _def_name(d) in fresh or _def_name(d) in carried]
+     pinned_names = {_def_name(d) for d in merged}
+-    merged.extend(t for t in fresh_defs if _def_name(t) not in pinned_names)
++    from tools.tool_order import configured_first, insert_in_order
++    first = configured_first()
++    for t in fresh_defs:
++        if _def_name(t) not in pinned_names:
++            insert_in_order(merged, t, first)  # at its canonical place, never at the tail (BipAgents 0022)
+     merged = _drop_gated_carried_tools(merged, carried)
+     merged_names = {_def_name(t) for t in merged}
+     _reinject_authorized_dynamic_tools(agent, merged, merged_names)
+@@ -269,7 +274,8 @@ def _merge_preserving_prefix(current_defs: list, new_defs: list, registered_name
+     """Fold a fresh tool snapshot into a live one without moving existing bytes. Ordered by
+     ``current_defs`` (the cached request prefix): a name already sent keeps its slot and the
+     schema bytes already sent; a name only in the live list is kept if still registered
+-    (``check_fn`` flapped), else dropped; a name only in the fresh list is appended at the tail.
++    (``check_fn`` flapped), else dropped; a name only in the fresh list takes its canonical place
++    (tools.tool_order, BipAgents 0022): the live list stays the one a new session builds.
+ 
+     A refreshed schema is not substituted in place. Tool JSON is rendered ahead of the
+     conversation, so one changed description means the next prompt no longer starts with the
+@@ -291,7 +297,10 @@ def _merge_preserving_prefix(current_defs: list, new_defs: list, registered_name
+         replacement = fresh.pop(name, None)
+         if replacement is not None or name in BRIDGE_TOOL_NAMES or (name and name in registered_names):
+             merged.append(entry)
+-    merged.extend(fresh.values())
++    from tools.tool_order import configured_first, insert_in_order
++    first = configured_first()
++    for entry in fresh.values():
++        insert_in_order(merged, entry, first)  # at its canonical place, never at the tail (BipAgents 0022)
+     return merged, {_def_name(t) for t in merged}
+ 
+ 
+diff --git a/tools/tool_order.py b/tools/tool_order.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..05affc1ec9fb0cda370c91fe67d918b64848d9ad
+--- /dev/null
++++ b/tools/tool_order.py
+@@ -0,0 +1,52 @@
++"""One canonical order for the model's tool list (BipAgents patch 0022).
++
++The tools are rendered ahead of the conversation, so a provider's prompt cache is shared only as far as two tool
++lists are byte-identical. ``tools.order_first`` (a list of tool names in config.yaml) puts those tools first, in
++that order; every other tool follows, sorted by name. A tool that arrives later in a live session is inserted at
++its canonical place, never appended: the session's list then stays the one every new session builds, so a new
++conversation (or another agent with the same common tools) reads the whole common prefix from the cache.
++"""
++
++from __future__ import annotations
++
++from typing import Any
++
++
++def configured_first() -> list[str]:
++    """``tools.order_first`` of this profile's config (empty on any failure)."""
++    try:
++        import hermes_cli.config as _cfg_mod
++        tools_cfg = (_cfg_mod.load_config_readonly() or {}).get("tools")
++        raw = tools_cfg.get("order_first") if isinstance(tools_cfg, dict) else None
++    except Exception:
++        return []
++    if not isinstance(raw, (list, tuple)):
++        return []
++    return [str(n).strip() for n in raw if str(n).strip()]
++
++
++def _name(entry: Any) -> str:
++    fn = entry.get("function") if isinstance(entry, dict) else None
++    return str((fn or {}).get("name") or "")
++
++
++def order_key(name: str, first: list[str]) -> tuple:
++    """Where ``name`` goes: by its place in ``first``, else after all of them, by name."""
++    return (0, first.index(name), "") if name in first else (1, 0, name)
++
++
++def ordered(tool_defs: list[dict[str, Any]], first: list[str] | None = None) -> list[dict[str, Any]]:
++    """``tool_defs`` in the canonical order (a stable sort: same names, same order)."""
++    first = configured_first() if first is None else first
++    return sorted(tool_defs, key=lambda t: order_key(_name(t), first))
++
++
++def insert_in_order(tool_defs: list, entry: dict[str, Any], first: list[str] | None = None) -> None:
++    """``entry`` inserted before the first tool that sorts after it (appended only when none does)."""
++    first = configured_first() if first is None else first
++    key = order_key(_name(entry), first)
++    for index, existing in enumerate(tool_defs):
++        if order_key(_name(existing), first) > key:
++            tool_defs.insert(index, entry)
++            return
++    tool_defs.append(entry)

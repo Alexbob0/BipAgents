@@ -406,11 +406,26 @@ async fn during_the_transition_older_apps_bridges_and_guichet_keep_working() {
         let (status, body) = h.post("/v1/relay/push", json!({"token": token, "payload": preview("vie")})).await;
         assert_eq!((status, body["status"].as_u64()), (200, Some(200)), "{body}");
     }
-    // The guichet's word on a first-format token (the guichet holds them), without its key: as before.
+    // The guichet's word on a first-format token (the guichet holds them): its text with its key; sent by anyone else
+    // (a bridge holds first-format tokens too) the neutral line, never the guichet's text.
     let account = "Un nouvel appareil veut rejoindre ton compte : approuve-le ou refuse-le dans l’app.";
     let word = json!({"aps": {"alert": {"body": account, "loc-key": account}}, "kind": "server"});
     let (status, _) = h.post("/v1/relay/push", json!({"token": old_app, "payload": word})).await;
     assert_eq!(status, 200);
+    let keyed = h
+        .http
+        .post(format!("{}/v1/relay/push", h.relay))
+        .bearer_auth("guichet-key-1")
+        .json(&json!({"token": old_app, "payload": word}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(keyed.status().as_u16(), 200);
+    {
+        let seen = h.seen.lock().unwrap();
+        assert_eq!(seen.apple[2].2["aps"]["alert"], json!({"body": "notif.reply", "loc-key": "notif.reply"}));
+        assert_eq!(seen.apple[3].2["aps"]["alert"], json!({"body": account, "loc-key": account}));
+    }
     // A newer app: its own token, plus a first-format one for a bridge that refuses r2 (an older bridge).
     let (_, body) = h.post("/v1/register", json!({"platform": "apns", "token": iphone, "audience": "bridge"})).await;
     let (new_app, legacy) = (body["relay_token"].as_str().unwrap(), body["legacy_token"].as_str().unwrap());
@@ -438,11 +453,11 @@ async fn during_the_transition_older_apps_bridges_and_guichet_keep_working() {
     let altered = format!("r1.{}", "A".repeat(80));
     let (_, body) = h.post("/v1/relay/push", json!({"token": altered, "payload": preview("vie")})).await;
     assert_eq!(body["reason"].as_str(), Some("BadRelayToken"));
-    assert_eq!(h.seen.lock().unwrap().apple.len(), 6);
+    assert_eq!(h.seen.lock().unwrap().apple.len(), 7);
     // /health warns, with the counts.
     let health: Value = h.http.get(format!("{}/health", h.relay)).send().await.unwrap().json().await.unwrap();
     assert!(health["warning"].as_str().unwrap().contains("r1"));
-    assert_eq!(health["r1_used"].as_u64(), Some(5), "{health}");
+    assert_eq!(health["r1_used"].as_u64(), Some(6), "{health}");
     assert_eq!(health["guichet_without_key"].as_u64(), Some(1));
     assert!(health["r1_until"].as_str().unwrap().len() == 10);
 }

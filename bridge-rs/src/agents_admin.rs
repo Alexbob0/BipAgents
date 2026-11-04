@@ -363,6 +363,9 @@ impl Validate for Claim {
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct AgentSettings {
+    /// Its name, renamed in an app (guide::rename: its section and its personality); the apps keep no copy of it.
+    #[serde(default)]
+    pub name: Option<String>,
     #[serde(default)]
     pub soul: Option<String>,
     #[serde(default)]
@@ -395,6 +398,7 @@ pub struct AgentSettings {
 impl Validate for AgentSettings {
     fn validate(&self, errors: &mut Vec<FieldError>) {
         check_max_len(errors, "soul", self.soul.as_deref(), 8000);
+        check_max_len(errors, "name", self.name.as_deref(), 40);
         check_max_len(errors, "answer_style_custom", self.answer_style_custom.as_deref(), crate::souls::CUSTOM_STYLE_MAX);
         if let Some(style) = self.answer_style.as_deref().filter(|s| !crate::souls::ANSWER_STYLES.contains(s)) {
             errors.push(FieldError::new(
@@ -799,7 +803,7 @@ pub async fn from_spare(
     let config = shared.get();
     let folder = PathBuf::from(install_home(&config)).join("profiles").join(&spare.id);
     crate::agent_pool::follow_hub_model(&config, &folder)?;
-    crate::profile_files::edit_text(&folder.join("SOUL.md"), |_| Some(planned.soul.clone()))?;
+    crate::profile_files::new_soul(&folder, &planned.soul)?;
     // what `profile create --description` writes
     crate::profile_files::edit(&folder.join("profile.yaml"), |data| {
         data.insert("description", Yaml::str(&planned.description))
@@ -996,7 +1000,7 @@ async fn prepare_profile(
     // a new agent answered its first messages with Hermes' tools only, and wrote « call me Max » into the shared
     // memory instead of using propose_profile). Given again below, once it is saved (its guide blocks, its browser).
     give_tools(&shared.get(), agent, run).await?;
-    crate::profile_files::edit_text(&folder.join("SOUL.md"), |_| Some(planned.soul.clone()))?;
+    crate::profile_files::new_soul(&folder, &planned.soul)?;
     if bot {
         mark_as_bot(&folder)?; // a spare only once taken: never in the other agents' roster before
     }
@@ -1188,7 +1192,7 @@ pub async fn wait_served(http: &reqwest::Client, agent: &AgentConfig, bot_chat: 
                     .post(format!("{}/api/sessions", agent.hermes_url))
                     .header("Authorization", &auth)
                     .timeout(Duration::from_secs(10))
-                    .json(&json!({"title": "Bot Chat"}))
+                    .json(&json!({"title": crate::threads::LEGACY_MAIN_TITLE}))
                     .send()
                     .await;
                 if posted.is_ok() {
@@ -1564,28 +1568,69 @@ pub fn read_soul(config: &Config, agent: &AgentConfig) -> std::io::Result<String
     }
 }
 
-/// The agent's SOUL.md changed by `change` (profile_files::edit_text: under its profile's lock, written only when it
-/// changes); whether it was written. `create`: a missing one is changed as empty, else left missing (Hermes' own).
-pub fn edit_soul(
-    config: &Config,
-    agent: &AgentConfig,
-    create: bool,
-    change: impl FnOnce(&str) -> String,
-) -> std::io::Result<bool> {
-    let path = profile_folder(config, agent).join("SOUL.md");
-    crate::profile_files::edit_text(&path, |soul| match soul {
-        Some(soul) => Some(change(soul)),
-        None if create => Some(change("")),
-        None => None,
-    })
-    .map_err(std::io::Error::other)
+/// The agent's settings record with its personality: the one in its SOUL.md taken in once when the record has none
+/// (an agent made before the record, or from a template written as a file: profile_files::new_soul).
+pub fn soul_record(config: &Config, agent: &AgentConfig) -> anyhow::Result<crate::profile_files::AgentSettings> {
+    let folder = profile_folder(config, agent);
+    let record = crate::profile_files::settings(&folder);
+    if record.personality.is_some() {
+        return Ok(record);
+    }
+    let soul = read_soul(config, agent)?;
+    if soul.trim().is_empty() {
+        return Ok(record); // Hermes' own personality: nothing of the bridge's
+    }
+    let (personality, lang) = personality_of(&soul);
+    crate::profile_files::update_settings(&folder, |s| {
+        s.personality = Some(personality);
+        s.language = s.language.take().or(lang);
+    })?;
+    Ok(crate::profile_files::settings(&folder))
+}
+
+/// The agent's SOUL.md rendered from its record (docs/agent-settings.md): the personality the person wrote, then the
+/// bridge's blocks from their own stores ([`soul_text`]). Written only when it changes; whether it was. An agent the
+/// bridge may not write ([`editable`]) or with Hermes' own personality (none in the record) is left as it is.
+pub fn render_soul(config: &Config, agent: &AgentConfig) -> anyhow::Result<bool> {
+    if editable(config, &agent.name).is_err() || !profile_folder(config, agent).is_dir() {
+        return Ok(false);
+    }
+    let record = soul_record(config, agent)?;
+    let Some(personality) = record.personality.as_deref() else { return Ok(false) };
+    // a personality without a language yet writes first in the place's (every agent talks plainly: owner 2026-10-22),
+    // kept in its record from then on
+    let lang = match record.language.clone() {
+        Some(lang) => lang,
+        None => {
+            let lang = crate::notebook::language(config);
+            crate::profile_files::update_settings(&profile_folder(config, agent), |s| s.language = Some(lang.clone()))?;
+            lang
+        }
+    };
+    let text = soul_text(config, agent, personality, &lang);
+    crate::profile_files::edit_text(&profile_folder(config, agent).join("SOUL.md"), |_| Some(text))
+}
+
+/// [`render_soul`] for every agent (at start: profile_files::reconcile_all); a failure is logged.
+pub fn render_souls(config: &Config) {
+    for agent in config.agents.values() {
+        match render_soul(config, agent) {
+            Ok(true) => tracing::info!(target: "bipbridge::agents", agent = %agent.name, "personality's bridge rules brought up to date"),
+            Ok(false) => {}
+            Err(err) => tracing::warn!(target: "bipbridge::agents", agent = %agent.name, error = %format!("{err:#}"), "personality not rendered"),
+        }
+    }
 }
 
 /// The agent's language block rewritten (the rest of its personality untouched); returns the language kept.
-pub fn set_language(config: &Config, agent: &AgentConfig, lang: &str) -> std::io::Result<String> {
+pub fn set_language(config: &Config, agent: &AgentConfig, lang: &str) -> anyhow::Result<String> {
     let code = crate::souls::agent_language(Some(lang));
-    // its other blocks' examples follow (souls::for_language): no French phrase left for an English agent
-    edit_soul(config, agent, true, |soul| crate::souls::relanguage_blocks(&crate::souls::with_language(soul, Some(&code))))?;
+    soul_record(config, agent)?;
+    crate::profile_files::update_settings(&profile_folder(config, agent), |s| {
+        s.personality.get_or_insert_with(String::new);
+        s.language = Some(code.clone());
+    })?;
+    render_soul(config, agent)?;
     Ok(code)
 }
 
@@ -1853,44 +1898,6 @@ pub fn set_model(config: &Config, agent: &AgentConfig, name: &str, vision: Optio
     Ok(read_model(config, agent).unwrap_or_else(|| json!({})))
 }
 
-/// Agents whose bridge-owned block (language, what they read, plain words) an earlier bridge wrote: brought up to
-/// date, the personality the person wrote untouched. A personality written by hand without the block gets it, in
-/// the place's language (owner 2026-10-22: every agent talks plainly and treats what it reads as information, an
-/// agent set up by hand too, like Vie); an agent without any personality keeps Hermes' own.
-pub fn heal_souls(config: &Config) {
-    let mut place_language: Option<String> = None;
-    let circle = crate::shared_memory::circle(config);
-    let offer = crate::handover::on_offer();
-    for name in config.agents.keys() {
-        let Ok(agent) = editable(config, name) else { continue };
-        let Ok(soul) = read_soul(config, &agent) else { continue };
-        let lang = match crate::souls::split_language(&soul).1 {
-            Some(lang) => lang,
-            None if soul.trim().is_empty() => continue,
-            None => place_language.get_or_insert_with(|| crate::notebook::language(config)).clone(),
-        };
-        // its block with its answer style (answer_style.rs): the one paragraph switched when the setting changed
-        let block = crate::answer_style::apply(&crate::souls::language_block(Some(&lang)), &agent);
-        let mut text = if soul.contains(&block) {
-            soul.clone()
-        } else {
-            crate::answer_style::apply(&crate::souls::with_language(&soul, Some(&lang)), &agent)
-        };
-        // The payments rule at start too (registration adds it later, after the first turns could be answered).
-        if !agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
-            text = crate::souls::with_payments(&text);
-            // in the person's circle or not (shared_memory.rs): it knows whether its memory of them is common
-            let gives = circle.iter().find(|m| m.name == agent.name).map(|m| m.gives);
-            text = crate::souls::with_shared_memory(&text, gives);
-            // the offer's places: big toolchains don't fit there (souls.rs, 2026-10-30)
-            text = crate::souls::with_server(&text, offer);
-        }
-        if text != soul && edit_soul(config, &agent, false, |_| text).unwrap_or(false) {
-            tracing::info!(target: "bipbridge::agents", agent = %agent.name, "personality's bridge rules brought up to date");
-        }
-    }
-}
-
 /// The thinking level in a config as it should be (profile_files::reconcile), `chosen` the person's level:
 /// - a config an earlier bridge wrote with the chat template's thinking forced on: that wins over a turn asking for
 ///   none (Live), so it goes (its reasoning_effort stays);
@@ -1923,15 +1930,8 @@ pub fn record_floored_none(folder: &Path) -> anyhow::Result<()> {
 /// The settings page of an agent. `GatewayError` (Python's `httpx.HTTPError`) when its gateway does not answer.
 pub async fn read_settings(config: &Config, agent: &AgentConfig, http: &reqwest::Client) -> anyhow::Result<Value> {
     // The language block is the bridge's: shown and changed as « language », never in the editable personality.
-    let (soul, lang) = crate::souls::split_language(&read_soul(config, agent)?);
-    let (soul, _) = crate::souls::split_health(&soul);
-    let (soul, _) = crate::souls::split_notebook(&soul);
-    let (soul, _) = crate::souls::split_shared_memory(&soul);
-    let (soul, _) = crate::skill_library::split_block(&soul);
-    let (soul, _) = crate::souls::split_archives(&soul);
-    let soul = crate::souls::split_server(&crate::souls::split_payments(&soul));
-    let (soul, _) = crate::dates::split_dates(&soul);
-    let soul = crate::guide::split_blocks(&soul);
+    let record = soul_record(config, agent)?;
+    let (soul, lang) = (record.personality.unwrap_or_default(), record.language);
     let guide = json!({"on": crate::guide::is_guide(config, &agent.name)});
     let notify = json!({"on": crate::agent_notify::notifies(config, &agent.name)});
     if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
@@ -2105,44 +2105,53 @@ pub async fn write_settings(
             run(args, env.clone()).await?;
         }
     }
+    // last: the steps above save the section they were given (its old name)
+    if let Some(name) = body.name.as_deref().filter(|n| !n.trim().is_empty()) {
+        let current = shared.get().agent(Some(&agent.name)).cloned().unwrap_or_else(|| agent.clone());
+        crate::guide::rename(shared, &current, name)?;
+    }
     Ok(())
 }
 
-/// The personality the person edited (or imported), with the language block it had (they never see it) and the
-/// rules of its switches (health, Carnet, archives).
-pub fn write_soul(config: &Config, agent: &AgentConfig, soul: &str) -> std::io::Result<()> {
-    let (_, lang) = crate::souls::split_language(&read_soul(config, agent)?);
-    let text = format!("{}\n", soul.trim());
-    let text = match lang.as_deref() {
-        Some(lang) if !lang.is_empty() => crate::answer_style::apply(&crate::souls::with_language(&text, Some(lang)), agent),
-        _ => text,
-    };
+/// The personality the person edited (or imported), kept in the record and rendered with the bridge's blocks.
+pub fn write_soul(config: &Config, agent: &AgentConfig, soul: &str) -> anyhow::Result<()> {
+    soul_record(config, agent)?;
+    crate::profile_files::update_settings(&profile_folder(config, agent), |s| s.personality = Some(soul.trim().to_string()))?;
+    render_soul(config, agent).map(|_| ())
+}
+
+/// The agent's SOUL.md: `personality` (the person's text) and its language block, then the bridge's blocks in ONE
+/// fixed order, the ones that change most last (cache audit 2026-11-03: the prompt's cache breaks at the first
+/// changed character, and each block used to move to the end when it changed): the rules that never change (payments,
+/// the offer's server), the switches' rules (Carnet, archives, shared skills, health, shared memory), the family's or
+/// project's block, then the personal parts: the guide's blocks (they list the other agents) and today's line. The
+/// only renderer of SOUL.md (golden: tests/golden/soul_rendered.md).
+pub fn soul_text(config: &Config, agent: &AgentConfig, personality: &str, lang: &str) -> String {
+    let text = format!("{}\n", personality.trim());
+    let text = crate::answer_style::apply(&crate::souls::with_language(&text, Some(lang)), agent);
     // the family's agent: none of its creator's private tools, its own block instead (family_agent.rs)
     let project = crate::project_agent::is_project(config, &agent.name);
     let family = crate::family_agent::is_family(config, &agent.name);
     let closed = family || project;
-    let text = crate::souls::with_health(&text, !closed && crate::health::enabled(config, &agent.name));
+    let open = !closed && !agent.host_home.as_deref().is_some_and(|h| !h.is_empty());
+    let text = if open { crate::souls::with_payments(&text) } else { text };
+    let text = crate::souls::with_server(&text, open && crate::handover::on_offer());
     let text = crate::souls::with_notebook(&text, !closed && crate::notebook::enabled(config, &agent.name));
+    let text = crate::souls::with_archives(&text, !closed && crate::archives::enabled(config, &agent.name));
+    let text = crate::skill_library::with_block(&text, !closed && crate::skill_library::holds(config, &agent.name));
+    let text = crate::souls::with_health(&text, !closed && crate::health::enabled(config, &agent.name));
     let circle = if closed { None } else { crate::shared_memory::membership(config, &agent.name) };
     let text = crate::souls::with_shared_memory(&text, circle);
-    let text = crate::skill_library::with_block(&text, !closed && crate::skill_library::holds(config, &agent.name));
-    let text = crate::souls::with_archives(&text, !closed && crate::archives::enabled(config, &agent.name));
-    let line = crate::dates::agent_line(config, &crate::dates::load(config), &text);
-    let text = crate::dates::with_dates(&text, line.as_deref());
-    let text = crate::guide::with_blocks(config, agent, &text);
     let text = crate::family_agent::with_family(&text, family);
     let text = crate::project_agent::with_project(&text, project);
-    let text = if closed || agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
-        text
-    } else {
-        crate::souls::with_server(&crate::souls::with_payments(&text), crate::handover::on_offer())
-    };
-    edit_soul(config, agent, true, |_| text).map(|_| ())
+    let text = crate::guide::with_blocks(config, agent, &text);
+    let line = crate::dates::agent_line(config, &crate::dates::load(config), &text);
+    crate::dates::with_dates(&text, line.as_deref())
 }
 
-/// The personality as the person sees and edits it: without the bridge's blocks.
-pub fn editable_soul(config: &Config, agent: &AgentConfig) -> std::io::Result<String> {
-    let (soul, _) = crate::souls::split_language(&read_soul(config, agent)?);
+/// A SOUL.md split into the person's personality (without any of the bridge's blocks) and its block's language.
+pub fn personality_of(soul: &str) -> (String, Option<String>) {
+    let (soul, lang) = crate::souls::split_language(soul);
     let (soul, _) = crate::souls::split_health(&soul);
     let (soul, _) = crate::souls::split_notebook(&soul);
     let (soul, _) = crate::souls::split_shared_memory(&soul);
@@ -2152,14 +2161,19 @@ pub fn editable_soul(config: &Config, agent: &AgentConfig) -> std::io::Result<St
     let (soul, _) = crate::dates::split_dates(&soul);
     let (soul, _) = crate::family_agent::split_family(&soul);
     let (soul, _) = crate::project_agent::split_project(&soul);
-    Ok(crate::guide::split_blocks(&soul))
+    (crate::guide::split_blocks(&soul).trim().to_string(), lang)
+}
+
+/// The personality as the person sees and edits it: without the bridge's blocks.
+pub fn editable_soul(config: &Config, agent: &AgentConfig) -> anyhow::Result<String> {
+    Ok(soul_record(config, agent)?.personality.unwrap_or_default())
 }
 
 /// « Santé » on or off: the switch, the rule in its personality, and its tools' entry (the `health` tool listed or
 /// not: a changed entry makes its Hermes fetch the list again).
 pub async fn set_health(config: &Config, agent: &AgentConfig, on: bool, run: &Run) -> anyhow::Result<()> {
     crate::health::set_enabled(config, &agent.name, on)?;
-    edit_soul(config, agent, true, |soul| crate::souls::with_health(soul, on))?;
+    render_soul(config, agent)?;
     if let Err(exc) = crate::agent_tools::register(config, agent, run).await {
         let error = tail(&exc.to_string(), 200);
         tracing::warn!(target: "bipbridge::agents", agent = %agent.name, error = %error, "agent tools not registered");
@@ -2358,7 +2372,7 @@ async fn put_language(
     let agent = editable(&config, &agent_id).map_err(|_| not_managed())?;
     let _guard = LOCK.lock().await;
     let previous = read_soul(&config, &agent).ok().and_then(|soul| crate::souls::split_language(&soul).1);
-    let code = set_language(&config, &agent, &body.lang).map_err(anyhow::Error::from)?;
+    let code = set_language(&config, &agent, &body.lang)?;
     // its memory may still be in the old language and pull its replies back to it: translated once when it clearly is
     crate::memory_language::after_change(config.clone(), state.http.clone(), agent.clone(), previous, code.clone());
     Ok(web::ok(json!({"id": agent.name, "language": code})))
@@ -2503,8 +2517,7 @@ async fn set_agent_links(State(state): State<AppState>, request: Request) -> Api
     let wanted = pairs_of(&body, "links", "from", "to")?;
     let result = {
         let _guard = LOCK.lock().await;
-        match crate::peers::apply(&state.config(), &state.links, &wanted, &default_run(), Some(&state.households)).await
-        {
+        match crate::peers::apply(&state.config(), &state.links, &wanted, Some(&state.households)) {
             Ok(result) => result,
             Err(exc) => {
                 if let Some(e) = exc.downcast_ref::<crate::peers::InvalidLink>() {

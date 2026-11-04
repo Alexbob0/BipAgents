@@ -39,7 +39,6 @@ pub mod fill;
 pub mod groups;
 pub mod records;
 pub mod relanguage;
-pub mod repair;
 pub mod subscriptions;
 pub mod template;
 pub mod news;
@@ -62,6 +61,16 @@ use sha2::{Digest, Sha256};
 use crate::config::Config;
 use crate::tools_knowledge as tk;
 use crate::{py, Dict};
+
+/// The column of a word in the tables written `[fr, en, de, es]` (English for any other language).
+pub fn lang_index(lang: &str) -> usize {
+    match lang {
+        "fr" => 0,
+        "de" => 2,
+        "es" => 3,
+        _ => 1,
+    }
+}
 
 /// One writer at a time (the tools run in threads, the routes and the nightly pass too). Taken before the reminders'
 /// lock when both are needed, never after.
@@ -498,25 +507,6 @@ pub fn forget(config: &Config, agent: &str) {
     }
 }
 
-/// The agent's personality has the Carnet's rule exactly when its tools are on (an agent set up by hand is left as
-/// it is). Best effort: called whenever its tools are registered (start, creation, a switch).
-pub fn sync_soul(config: &Config, agent: &crate::config::AgentConfig) {
-    if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
-        return;
-    }
-    let membership = crate::shared_memory::membership(config, &agent.name);
-    let written = crate::agents_admin::edit_soul(config, agent, false, |soul| {
-        let changed = crate::souls::with_notebook(soul, enabled(config, &agent.name));
-        // the health agent's rule brought to its current text (2026-10-30: the body stays off « Toi »); on or off is
-        // agents_admin::set_health's
-        let changed = crate::souls::refresh_health(&changed);
-        // what it remembers of its person is common to the circle, and it knows it (shared_memory.rs)
-        crate::souls::with_shared_memory(&changed, membership)
-    });
-    if let Err(err) = written {
-        tracing::warn!(agent = %agent.name, error = %err, "notebook rule not written");
-    }
-}
 
 /// Whether `agent` may read and write the private health part: the person gave it their health (health.rs).
 pub fn health_agent(config: &Config, agent: &str) -> bool {
@@ -1534,6 +1524,14 @@ pub(crate) fn note_locked(
             "This page gathers several trips: make one trip page per journey, named by its place and month \
              (« Amsterdam, déc. 2021 »), with its start and end; this page can stay a subject linking them.",
         );
+    }
+    // someone folded into their group's page (groups.rs): their facts go there as « Name : fact » lines, until three
+    if let Some(f) = found.as_ref().filter(|f| {
+        kind == "person" && f.page.kind() == "area" && groups::is_group(&f.page.title) && fold(&f.page.title) != fold(&title)
+    }) {
+        let lines: Vec<String> = facts.iter().map(|x| format!("{title} : {x}")).collect();
+        let (group, section) = (f.page.title.clone(), template::title("area", "contacts", &lang));
+        return note_locked(config, part, "area", &group, &section, &lines, &[], "", "", who);
     }
     // a records table named as a page (« Abonnements », « Achats »): its rows go through notebook_record (carnet
     // review, 2026-11-03: seven subscriptions filed as notes on a « person » page « Abonnements »)

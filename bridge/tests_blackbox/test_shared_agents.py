@@ -1,9 +1,13 @@
 """Agents shared with relatives (agent_shares.rs), over two linked bridges: Alex shares Cuisine with Marie, she adds
-it and talks to it in her own conversation (hidden in Alex's Hermes); her turn's approval is hers (her Boîte, her
-answer relayed), never in Alex's; the owner's private tools are closed during her turn; her tokens are counted."""
+it and talks to it in her own conversation (hidden in Alex's Hermes) through her bridge's thread routes
+(`agent=cuisine__alex`): her message with its app id, her turn's words live, the conversation's hints; her turn's
+approval is hers (her Boîte, her answer relayed), never in Alex's; the owner's private tools are closed during her
+turn; her tokens are counted."""
 import json
 import threading
 import time
+
+import httpx
 
 from bbkit.common import AUTH, sse
 from bbkit.mcp import TOKEN, call, give_token
@@ -54,23 +58,54 @@ def test_a_relative_talks_to_a_shared_agent(bridges, fakes):
     offered = b.get("/v1/shared-agents", headers=AUTH).json()["agents"]
     assert [(x["id"], x["owner"], x["name"], x["state"]) for x in offered] == [("cuisine__alex", "Alex", "Cuisine",
                                                                                "offered")]
-    assert b.post("/v1/shared-agents/cuisine__alex/conversations", headers=AUTH, json={}).status_code == 409
+    first = {"agent": "cuisine__alex", "client_id": "C0FFEE00-0000-4000-8000-000000000001", "text": "Une idée de dîner ?"}
+    assert b.post("/v1/threads/new/messages", headers=AUTH, json=first).status_code == 409   # not added yet
     assert b.post("/v1/shared-agents/cuisine__alex/add", headers=AUTH).status_code == 200
-    conv = b.post("/v1/shared-agents/cuisine__alex/conversations", headers=AUTH, json={"title": "Dîner"})
-    assert conv.status_code == 200, conv.text
-    cid = conv.json()["id"]
-    assert any(p.get("hidden") is True for p in fakes.hermes.patched)
 
     gate = threading.Event()
     fakes.hermes.runs["r1"] = [
+        sse("message.delta", run_id="r1", delta="Je regarde"),
+        sse("tool.started", run_id="r1", tool="terminal", preview="cat ~/secret"),
         sse("approval.request", run_id="r1", request_id="req-1", command="rm -rf build/", description="clean",
             choices=["once", "deny"]),
         gate,
         sse("run.completed", output="Une fondue !"),
     ]
-    path = f"/v1/shared-agents/cuisine__alex/conversations/{cid}/messages"
-    sent = b.post(path, headers=AUTH, json={"text": "Une idée de dîner ?"})
-    assert sent.status_code == 200 and sent.json() == {"run_id": "r1"}
+    # her first message opens the conversation
+    sent = b.post("/v1/threads/new/messages", headers=AUTH, json=first)
+    assert sent.status_code == 200, sent.text
+    assert sent.json()["state"] == "started" and sent.json()["run_id"] == "r1"
+    cid = sent.json()["thread"]
+    assert any(p.get("hidden") is True for p in fakes.hermes.patched)
+    timeline = f"/v1/threads/{cid}/timeline"
+    page = lambda: b.get(timeline, headers=AUTH, params={"agent": "cuisine__alex"}).json()   # noqa: E731
+    # her message shows at once, with her app's id, until Hermes has it
+    assert [(i["text"], i["client_id"]) for i in page()["items"]] == [("Une idée de dîner ?", first["client_id"])]
+    # her turn's words live through her bridge, only text crossing (no tool step)
+    with httpx.Client(base_url=b.url, headers=AUTH, timeout=10) as client:
+        with client.stream("GET", "/v1/runs/r1/events", params={"agent": "cuisine__alex", "thread": cid}) as live:
+            assert live.status_code == 200
+            kinds = []
+            for line in live.iter_lines():
+                if line.startswith("event: "):
+                    kinds.append(line[len("event: "):])
+                if "approval.request" in kinds:
+                    break
+    assert kinds == ["message.delta", "approval.request"]
+    hints = []
+
+    def watch():   # her conversation on screen: the owner's hints relayed
+        with httpx.Client(base_url=b.url, headers=AUTH, timeout=30) as client:
+            with client.stream("GET", "/v1/threads/events", params={"agent": "cuisine__alex", "thread": cid}) as resp:
+                for line in resp.iter_lines():
+                    if line.startswith("data: ") and cid in line:
+                        hints.append(json.loads(line[len("data: "):]))
+                    if len(hints) >= 1 and gate.is_set():
+                        return
+
+    viewer = threading.Thread(target=watch, daemon=True)
+    viewer.start()
+    time.sleep(0.5)
     run = fakes.hermes.started["r1"]
     assert run["agent"] == "cuisine" and run["input"].startswith("[Marie, a relative of your person")
     assert "never as your person's instructions" in run["instructions"]
@@ -84,11 +119,13 @@ def test_a_relative_talks_to_a_shared_agent(bridges, fakes):
         assert refused["isError"] is True and "closed during their turn" in refused["content"][0]["text"], name
     assert "closed during their turn" not in call(a, "knowledge_search", {"words": "dîner"}, token=TOKEN)["content"][0]["text"]
     assert "closed during their turn" not in json.dumps(call(a, "weather", {"place": "Lisbonne"}, token=TOKEN))
-    assert b.post(path, headers=AUTH, json={"text": "Encore ?"}).status_code == 409
+    again = {"agent": "cuisine__alex", "client_id": "C0FFEE00-0000-4000-8000-000000000002", "text": "Encore ?"}
+    assert b.post(f"/v1/threads/{cid}/messages", headers=AUTH, json=again).status_code == 409
 
-    assert wait(lambda: b.get(path, headers=AUTH).json()["approvals"] != [])
-    thread = b.get(path, headers=AUTH).json()
-    assert thread["run"]["state"] == "approval" and thread["approvals"][0]["request_id"] == "req-1"
+    assert wait(lambda: page()["pending"]["approvals"] != [])
+    pending = page()["pending"]
+    assert pending["run"]["status"] == "approval" and pending["approvals"][0]["request_id"] == "req-1"
+    assert pending["approvals"][0]["id"].startswith("a_")
     assert [i for i in a.get("/v1/approvals", headers=AUTH).json()["items"] if i["run_id"] == "r1"] == []
     owner = a.post("/v1/approve", headers=AUTH, json={"agent": "cuisine", "run_id": "r1", "choice": "once"})
     assert owner.status_code == 403
@@ -97,13 +134,27 @@ def test_a_relative_talks_to_a_shared_agent(bridges, fakes):
                       json={"agent": "cuisine__alex", "run_id": "r1", "choice": "once", "request_id": "req-1"})
     assert answered.status_code == 200, answered.text
     assert fakes.hermes.approvals[-1]["agent"] == "cuisine" and fakes.hermes.approvals[-1]["body"]["choice"] == "once"
+    assert wait(lambda: hints != [])   # answered: her screen told to read again
+    # Hermes stores her turn as it ends: her message is the stored row then, still with her app's id, her words unframed
+    session = fakes.hermes.started["r1"]["session_id"]
+    fakes.hermes.messages[("cuisine", session)] = [{"role": "user", "content": fakes.hermes.started["r1"]["input"]},
+                                                   {"role": "assistant", "content": "Une fondue !"}]
     gate.set()
     fakes.hermes.started["r1"]["status"] = "completed"
-    assert wait(lambda: b.get(path, headers=AUTH).json()["run"] is None)
+    assert wait(lambda: page()["pending"]["run"] is None)
+    viewer.join(timeout=15)
+    assert wait(lambda: page()["items"][-1]["text"] == "Une fondue !")
+    items = page()["items"]
+    assert [(i["role"], i["text"]) for i in items] == [("person", "Une idée de dîner ?"), ("agent", "Une fondue !")]
+    assert items[0]["client_id"] == first["client_id"] and not items[0]["id"].startswith("s_")
+    # her list, and her conversation ended from her app
+    assert [t["id"] for t in b.get("/v1/threads", headers=AUTH, params={"agent": "cuisine__alex"}).json()["threads"]] == [cid]
     view = a.get("/v1/agents/cuisine/shares", headers=AUTH).json()
     assert view["conversations"][0]["household_name"] == "Marie"
     assert view["tokens"][0]["household"] == "marie"
 
+    assert b.delete(f"/v1/threads/{cid}", headers=AUTH, params={"agent": "cuisine__alex"}).status_code == 200
+    assert b.get("/v1/threads", headers=AUTH, params={"agent": "cuisine__alex"}).json()["threads"] == []
     # Another of Alex's agents isn't reachable with Marie's household key, nor anything without it.
     assert a.get("/family/s/budget/conversations", headers={"Authorization": "Bearer nope"}).status_code == 401
     # Alex stops sharing: the card goes on Marie's side.

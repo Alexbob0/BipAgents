@@ -467,10 +467,14 @@ async fn claiming_sets_the_model_and_creates_agents_reached_through_the_door() {
     let hermes = |rest: &[&str]| -> Vec<String> {
         std::iter::once("/opt/hermes").chain(rest.iter().copied()).map(str::to_string).collect()
     };
-    assert!(ran.contains(&hermes(&["config", "set", "model.provider", "openrouter"])));
-    assert!(ran.contains(&hermes(&["config", "set", "model.base_url", "https://openrouter.ai/api/v1"])));
-    assert!(ran.contains(&hermes(&["config", "set", "OPENROUTER_API_KEY", "sk-or-0123456789"])));
-    assert!(ran.contains(&hermes(&["config", "set", "model.supports_vision", "true"])));
+    // the model written into the hub by the bridge itself, then the gateway restarted to read its key
+    assert!(!ran.iter().any(|c| c.get(1).map(String::as_str) == Some("config")));
+    let hub = bipbridge::agents_admin::install_home(&shared.get());
+    let model = std::fs::read_to_string(std::path::Path::new(&hub).join("config.yaml")).unwrap();
+    assert!(model.contains("provider: openrouter") && model.contains("base_url: https://openrouter.ai/api/v1"), "{model}");
+    assert!(model.contains("supports_vision: true"), "{model}");
+    let env = std::fs::read_to_string(std::path::Path::new(&hub).join(".env")).unwrap();
+    assert!(env.contains("OPENROUTER_API_KEY=sk-or-0123456789"), "{env}");
     assert!(ran.contains(&hermes(&["gateway", "restart"])));
     assert_eq!(
         shared.get().agent(Some("quotidien")).unwrap().public_url.as_deref(),
@@ -954,7 +958,7 @@ async fn an_english_claim_makes_the_whole_place_english_in_the_persons_zone() {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
     let config = shared.get();
-    bipbridge::agents_admin::heal_souls(&config);
+    bipbridge::agents_admin::render_souls(&config);
     // every personality and every block placed after it: English, with no French example to copy
     for id in ["agent", "maison"] {
         let soul = std::fs::read_to_string(home.join("profiles").join(id).join("SOUL.md")).unwrap();

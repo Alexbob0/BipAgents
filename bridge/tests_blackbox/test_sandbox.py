@@ -18,7 +18,7 @@ from pathlib import Path
 
 import yaml
 
-from bbkit.common import AUTH
+from bbkit.common import AUTH, answered as decisions
 from bbkit.servers import free_port, wait_until
 from conftest import managed_install, profile, wait_registered
 
@@ -458,7 +458,7 @@ def test_a_send_cut_asks_the_person_once_and_autoriser_validates_the_site(bridge
     policy = json.loads((bridge.state_dir / "sandbox-proxy" / "policy" / "sites.json").read_text())
     assert policy["agents"]["vie"]["hosts"] == ["upload.example.net"] and policy["agents"]["vie"]["reset"] > 0
     assert policy["agents"]["wellness"]["hosts"] == [] and "any" not in policy["agents"]["wellness"]
-    kept = bridge.get("/v1/approvals/answered", params={"agent": "vie"}, headers=AUTH).json()["items"]
+    kept = decisions(bridge, "vie")
     assert [(k["command"], k["choice"], k["topic"]) for k in kept] == [
         ("upload.example.net", "always", "site"), ("api.meteo.fr", "deny", "site")]
     # Refused: the proxy's next cut asks nothing; the agent's own request neither, today. A validated site is never

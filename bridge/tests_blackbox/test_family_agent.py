@@ -68,13 +68,12 @@ def test_every_member_gets_the_familys_agent(bridges, fakes):
     assert a.patch("/v1/agents/famille/settings", headers=AUTH, json={"toolsets": {"terminal": True}}).status_code >= 400
 
     # Marie talks to it in her own conversation, as a family member
-    conv = b.post("/v1/shared-agents/famille__alex/conversations", headers=AUTH, json={"title": "Menus"})
-    assert conv.status_code == 200, conv.text
-    cid = conv.json()["id"]
     fakes.hermes.runs["r1"] = [sse("run.completed", output="Des crêpes !")]
-    path = f"/v1/shared-agents/famille__alex/conversations/{cid}/messages"
-    sent = b.post(path, headers=AUTH, json={"text": "Une idée pour dimanche ?"})
+    sent = b.post("/v1/threads/new/messages", headers=AUTH,
+                  json={"agent": "famille__alex", "client_id": "C0FFEE00-0000-4000-8000-0000000000F1",
+                        "text": "Une idée pour dimanche ?"})
     assert sent.status_code == 200, sent.text
+    timeline = f"/v1/threads/{sent.json()['thread']}/timeline"
     run = fakes.hermes.started["r1"]
     assert run["agent"] == "famille" and "You are the family's agent" in run["instructions"]
     # a member's run is marked for Hermes: the family's tools and web search only (patch 0018)
@@ -83,7 +82,7 @@ def test_every_member_gets_the_familys_agent(bridges, fakes):
         "mcp__bipagents__route", "mcp__bipagents__map_image", "mcp__bipagents__family_notebook_read",
         "mcp__bipagents__family_notebook_write", "mcp__bipagents__give_file", "web_search"]}
     fakes.hermes.started["r1"]["status"] = "completed"
-    assert wait(lambda: b.get(path, headers=AUTH).json()["run"] is None)
+    assert wait(lambda: b.get(timeline, headers=AUTH, params={"agent": "famille__alex"}).json()["pending"]["run"] is None)
 
     usage = a.get("/v1/family-agent/usage", headers=AUTH).json()["members"]
     assert [m["id"] for m in usage] == ["self", "marie"]

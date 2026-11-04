@@ -95,6 +95,14 @@ def test_the_server_proves_its_certificate_before_anything(bridges, fakes):
         assert door.get("/v1/setup", params={"nonce": NONCE}).json()["fingerprint"] == cloud.fingerprint()
 
 
+def hub_model(bridge):
+    """The hub's `model` section and its key's line in `.env`."""
+    hub = bridge.root / ".hermes"
+    model = (yaml.safe_load((hub / "config.yaml").read_text()) or {}).get("model")
+    key = next(l for l in (hub / ".env").read_text().splitlines() if l.endswith("-0123456789"))
+    return model, key
+
+
 def test_a_claim_with_the_secret_pairs_the_app_once(bridges, fakes):
     bridge, cloud = cloud_bridge(bridges, fakes)
     cloud.done()
@@ -105,12 +113,11 @@ def test_a_claim_with_the_secret_pairs_the_app_once(bridges, fakes):
                              "fingerprint": cloud.fingerprint(), "agents": [{"id": "quotidien", "name": "Quotidien"}]}
     hermes = str(bridge.fakebin / "hermes")
     commands = bridge.commands.of("hermes")
-    for wanted in (["config", "set", "model.provider", "custom"], ["config", "set", "model.default", "glm-5.3"],
-                   ["config", "set", "model.base_url", "https://api.eurouter.example/v1"],
-                   ["config", "set", "model.key_env", "CUSTOM_MODEL_API_KEY"],
-                   ["config", "set", "CUSTOM_MODEL_API_KEY", "sk-eu-0123456789"],
-                   ["config", "set", "model.supports_vision", "false"], ["gateway", "restart"]):
-        assert wanted in commands, wanted
+    # the model written into the hub by the bridge itself (no `hermes config set`), then the gateway restarted
+    assert hub_model(bridge) == ({"provider": "custom", "default": "glm-5.3", "base_url": "https://api.eurouter.example/v1",
+                                  "key_env": "CUSTOM_MODEL_API_KEY", "supports_vision": False},
+                                 "CUSTOM_MODEL_API_KEY=sk-eu-0123456789")
+    assert not any(c[:2] == ["config", "set"] for c in commands) and ["gateway", "restart"] in commands
     assert commands.index(["gateway", "restart"]) < next(i for i, c in enumerate(commands) if c[:2] == ["profile", "create"])
     assert all(e["hermes_home"] == str(bridge.root / ".hermes") for e in bridge.commands.entries("hermes"))
     model = tomllib.loads(bridge.toml_text())["model"]
@@ -192,12 +199,10 @@ def test_claiming_sets_the_model_once_and_creates_the_agents_left(bridges, fakes
     failed = bridge.post("/v1/setup/claim", json=claim_body(cloud.challenge(), wanted))
     assert failed.status_code == 502 and failed.json() == {"detail": "the setup could not finish: try again"}
     commands = bridge.commands.of("hermes")
-    assert ["config", "set", "model.provider", "openrouter"] in commands
-    assert ["config", "set", "model.base_url", "https://openrouter.ai/api/v1"] in commands
-    assert ["config", "set", "OPENROUTER_API_KEY", "sk-or-0123456789"] in commands
-    assert ["config", "set", "model.supports_vision", "true"] in commands
+    assert hub_model(bridge) == ({"provider": "openrouter", "default": "z-ai/glm-5.3",
+                                  "base_url": "https://openrouter.ai/api/v1", "supports_vision": True},
+                                 "OPENROUTER_API_KEY=sk-or-0123456789")
     assert ["gateway", "restart"] in commands
-    assert not any(c[:3] == ["config", "set", "model.key_env"] for c in commands)
     model = tomllib.loads(bridge.toml_text())["model"]
     assert model == {"health_url": "https://openrouter.ai/api/v1/models", "health_key": "sk-or-0123456789"}
     remembered = json.loads(cloud.setup_file.read_text())

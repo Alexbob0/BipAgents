@@ -7,7 +7,7 @@ import time
 import pytest
 
 from bbkit.common import AUTH
-from bbkit.fakes import split_now, waiting_notes
+from bbkit.fakes import split_brief_now, split_now, waiting_notes
 from bbkit.servers import wait_until
 
 
@@ -33,8 +33,8 @@ def test_a_brief_is_the_last_exchanges_without_tools_or_hidden_text(bridge, fake
     fakes.hermes.add_session("s1", messages)
     got = brief(bridge, session="s1").json()
     assert got["session"] == "s1" and got["points_at"] is None
-    now, text = split_now(got["text"])
-    assert now is not None   # the call's start time first (bridge-rs/src/dates/now.rs)
+    now, text = split_brief_now(got["text"])
+    assert now is not None   # the call's start time, last (bridge-rs/src/dates/now.rs; what changes most, last)
     assert text.startswith("This is a voice call with the person. It continues the conversation summed up below")
     assert "Its last exchanges:\n" in text and "- The person: Et demain ?" in text and "- You: Grand soleil." in text
     assert "message 11" in text and "message 5" not in text   # the last ones only
@@ -80,7 +80,7 @@ def test_routes(bridge, fakes):
 def test_no_conversation_yet_and_hermes_errors(bridge, fakes):
     # model_options: what the call's turns send (thinking off; « low » for GLM through EUrouter, test_agents_admin)
     got = brief(bridge).json()
-    now, rest = split_now(got.pop("text"))
+    now, rest = split_brief_now(got.pop("text"))
     assert now is not None and rest == ""   # the call's start time alone
     assert got == {"session": None, "points_at": None, "model_options": {"reasoning": {"enabled": False}}}
     fakes.hermes.keys[""] = "other"
@@ -95,7 +95,7 @@ def test_a_call_continues_in_the_next_briefs(bridge, fakes):
                                        {"role": "user", "content": "Oui, je pars à Lyon demain."},
                                        {"role": "assistant", "content": "Bon voyage !"}], title="Live · 10:05")
     bridge.post("/v1/live/calls", json={"agent": "wellness", "session": "s1", "live_session": "live1"}, headers=AUTH)
-    text = split_now(brief(bridge, session="s1").json()["text"])[1]
+    text = split_brief_now(brief(bridge, session="s1").json()["text"])[1]
     assert "Earlier voice calls" in text and "je pars à Lyon demain" in text and "bip:" not in text
     # A day old at most: the bridge's own file, aged.
     path = bridge.state_dir / "briefs" / "wellness" / "s1.json"
@@ -103,6 +103,29 @@ def test_a_call_continues_in_the_next_briefs(bridge, fakes):
     data["calls"][0]["at"] = time.time() - 2 * 86400
     path.write_text(json.dumps(data))
     assert "Earlier voice calls" not in brief(bridge, session="s1").json()["text"]
+
+
+def test_a_call_start_has_the_model_read_its_prelude_without_waiting(bridge, fakes):
+    """3/11: the call start (apps since then) sends what opens the call's first message; the bridge answers at once and
+    has the model read it in a hidden throwaway session (no instructions: the agent's own system prompt; the call's
+    reasoning), deleted."""
+    hermes = fakes.hermes
+    hermes.add_session("s1", talk(4))
+    prelude = "<!--bip:live\nRules\n\nBrief of s1\n-->"
+    started = bridge.post("/v1/live/calls/start", headers=AUTH, json={
+        "agent": "wellness", "session": "s1", "live_session": "live1", "prelude": prelude})
+    assert started.status_code == 200 and started.json() == {"ok": True, "deposit": True}
+    assert wait_until(lambda: hermes.deleted, timeout=10)
+    chat, = hermes.chats
+    assert chat["message"].startswith(prelude + "\n\n<!--bip:warm") and not chat.get("instructions")
+    assert chat["model_options"] == {"reasoning": {"enabled": False}}   # what the brief tells the call to send
+    (_, created), = hermes.created
+    assert created["title"].startswith("BipAgents · live · ")
+    assert hermes.deleted == [chat["session"]] and chat["session"] != "live1"   # never the call's own session
+    # an older app: no instructions, no warm-up
+    bridge.post("/v1/live/calls/start", headers=AUTH, json={"agent": "wellness", "session": "s1", "live_session": "live2"})
+    time.sleep(1)
+    assert len(hermes.chats) == 1
 
 
 @pytest.mark.slow

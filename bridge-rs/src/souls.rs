@@ -694,15 +694,6 @@ pub fn with_payments(soul: &str) -> String {
     format!("{}\n\n{PAYMENTS_START}\n{rule}\n{PAYMENTS_END}\n", body.trim_end())
 }
 
-/// The agent's SOUL.md gets the payments block (written only when it changes; agents set up by hand are left alone).
-pub fn sync_payments(config: &crate::config::Config, agent: &crate::config::AgentConfig) {
-    if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
-        return;
-    }
-    if let Err(err) = crate::agents_admin::edit_soul(config, agent, false, with_payments) {
-        tracing::warn!(agent = %agent.name, error = %err, "payments rule not written");
-    }
-}
 
 pub const SERVER_START: &str = "<!-- bipagents:server -->";
 pub const SERVER_END: &str = "<!-- /bipagents:server -->";
@@ -741,17 +732,6 @@ pub fn with_server(soul: &str, on: bool) -> String {
     format!("{}\n\n{block}\n", body.trim_end())
 }
 
-/// The agent's SOUL.md gets the server block on the offer's places (written only when it changes; agents set up by
-/// hand are left alone).
-pub fn sync_server(config: &crate::config::Config, agent: &crate::config::AgentConfig) {
-    if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
-        return;
-    }
-    let offer = crate::handover::on_offer();
-    if let Err(err) = crate::agents_admin::edit_soul(config, agent, false, |soul| with_server(soul, offer)) {
-        tracing::warn!(agent = %agent.name, error = %err, "server rule not written");
-    }
-}
 
 // --- token diet prototype (2026-10-24, not wired in)-------------------------------------------------------------
 //
