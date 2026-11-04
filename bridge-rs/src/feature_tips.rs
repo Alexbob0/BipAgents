@@ -53,7 +53,7 @@ pub const PODCAST_DAY: u32 = 5;
 pub const LAST_DAY: i64 = 35;
 /// The words of a message read, at most (the rest is ignored).
 pub const TEXT_MAX: usize = 4000;
-/// A `cronjob` call this soon after trying the morning brief or the podcast counts for it.
+/// A `routine_schedule` call this soon after trying the morning brief or the podcast counts for it.
 const TRY_WINDOW: f64 = 1800.0;
 const TALK_DAYS: i64 = 14;
 const REPEATS_MAX: usize = 200;
@@ -401,7 +401,7 @@ pub fn feature_for_tool(tool: &str) -> Option<(&'static str, bool)> {
         "create_project_agent" => ("project", true),
         "tell_family" => ("family", false),
         "start_task" | "propose_task" => ("jobs", false),
-        "cronjob" => ("routine", true),
+        "routine_schedule" => ("routine", true),
         _ if t.starts_with("notebook_") || t == "notebook_fill" => ("carnet", false),
         _ if t.contains("vault") => ("vault", false),
         _ if t.contains("connector") => ("connectors", true),
@@ -1463,8 +1463,8 @@ mod tests {
         assert_eq!(done["action"], json!({"kind": "message"}));
         assert_eq!(done["costume"], json!("chef"));
         // a routine made right after: the brief adopted
-        tool_used(&config, "mcp_cronjob", at(1, 10) + 60.0);
-        tool_used(&config, "cronjob", py::time_time() + 60.0); // the try was just now
+        tool_used(&config, "mcp_bipagents_routine_schedule", at(1, 10) + 60.0);
+        tool_used(&config, "routine_schedule", py::time_time() + 60.0); // the try was just now
         let v = view(&config);
         let brief = v["features"].as_array().unwrap().iter().find(|f| f["id"] == "morning_brief").unwrap().clone();
         assert_eq!(brief["state"], json!("adopted"));
