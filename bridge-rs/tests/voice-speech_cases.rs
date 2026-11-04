@@ -1,5 +1,5 @@
 //! Port of tests/test_numbers_fr.py and tests/test_speech_intl.py: their parametrized cases, with the values the
-//! Python tests expect, taken from the test files by tests/golden/gen_speech_cases.py.
+//! Python tests expect, taken from the test files (tests/golden/speech_cases.json, frozen).
 
 use bipbridge::pronounce::Spelling::Respelled;
 use bipbridge::{numbers_fr, speech_intl, tts};

@@ -1,4 +1,4 @@
-//! agents_admin::pyyaml against PyYAML's own results (tests/golden/pyyaml.json, made by gen_pyyaml.py): safe_load's
+//! agents_admin::pyyaml against PyYAML's own results (tests/golden/pyyaml.json, frozen): safe_load's
 //! values and safe_dump(allow_unicode=True, sort_keys=False)'s text, byte for byte.
 
 use bipbridge::agents_admin::pyyaml::{dump, dump_json, load, to_json};

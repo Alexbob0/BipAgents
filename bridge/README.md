@@ -6,8 +6,8 @@ A single program, written in Rust (`bridge-rs/`), that runs on **the server** ne
 serves the BipAgents apps over the tailnet (files: `docs/file-uploads.md`). It replaced the Python bridge
 (`bridge/bipbridge`) on 2026-10-21, with the same routes, files and settings; that one stays in the repository's
 history. This folder holds what goes with it: the config example (`bridge.example.toml`), service files for an
-install by hand (`systemd/`, `launchd/`), the black-box suite that pins its HTTP contract (`tests_blackbox/`) and
-`tools/` (an evaluation script for long work on a real install).
+install by hand (`systemd/`, `launchd/`), and the black-box suite that pins its HTTP contract
+(`tests_blackbox/`).
 
 Today the bridge does everything the apps need beyond Hermes' own API: the Bips' voices and Live calls, files, push
 notifications (directly or through the [push relay](../relay/README.md)), approvals and questions, the Inbox and
@@ -308,4 +308,4 @@ python -m pytest tests_blackbox -q -p no:cacheprovider                      # th
 
 Neither calls a real service: Hermes, the voice engines, APNs and FCM are fakes (`bridge-rs/tests/common/`,
 `tests_blackbox/bbkit/`). The Rust tests were ported from the Python bridge's, and its golden fixtures
-(`bridge-rs/tests/golden/`) were made by running the Python code: their `gen_*.py` need that bridge, from the history.
+(`bridge-rs/tests/golden/`) were made by running the Python code: they are frozen (their generators left with it).

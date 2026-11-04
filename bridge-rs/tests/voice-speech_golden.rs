@@ -1,4 +1,4 @@
-//! The speech text processing against golden fixtures from the Python (tests/golden/gen_speech.py): textproc,
+//! The speech text processing against golden fixtures from the Python (frozen): textproc,
 //! numbers_fr, speech_intl, pronunciations and the pure parts of tts, on hand-written and thousands of random
 //! inputs. Every output must match byte for byte.
 

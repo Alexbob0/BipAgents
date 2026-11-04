@@ -1,4 +1,4 @@
-//! The core's pure functions against the Python's own results (tests/golden/core.json, made by gen_core.py).
+//! The core's pure functions against the Python's own results (tests/golden/core.json, frozen: made by the retired Python bridge).
 
 use bipbridge::hermes::{LineDecoder, SSEEvent, SSEParser};
 use bipbridge::py;

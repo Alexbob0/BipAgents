@@ -1,4 +1,4 @@
-//! config.parse_config against the Python's own results (tests/golden/config.json, made by gen_config.py), and
+//! config.parse_config against the Python's own results (tests/golden/config.json, frozen: made by the retired Python bridge, updated by hand since), and
 //! Python's tests/test_config.py.
 
 use bipbridge::config::{load_config, parse_config, ConfigError};

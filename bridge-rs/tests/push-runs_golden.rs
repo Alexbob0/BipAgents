@@ -1,5 +1,5 @@
-//! The push-runs group's pure functions against the Python's own results (tests/golden/push_runs.json, made by
-//! gen_push_runs.py): push payloads and previews, FCM data messages, MEDIA lines, the cron
+//! The push-runs group's pure functions against the Python's own results (tests/golden/push_runs.json, frozen:
+//! made by the retired Python bridge): push payloads and previews, FCM data messages, MEDIA lines, the cron
 //! watcher's helpers and the run hub's backlog merging. Outputs are compared as JSON text: key order counts.
 
 use std::collections::VecDeque;
