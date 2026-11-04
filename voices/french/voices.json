@@ -15,30 +15,51 @@
    "design_instruct": "Voix de petite mascotte posée, médium-grave, nette et assurée, débit régulier, ton de guide calme qui explique clairement, timbre légèrement stylisé comme un personnage d'animation, jamais robotique, enregistrement studio sans écho.",
    "seed": 20201,
    "candidate": "galet_c1",
-   "source_s": 26.1,
-   "safetensors_bytes": 16123704,
-   "first_sound_s": 0.159,
-   "rtf": 7.45
+   "source_s": 8.11,
+   "safetensors_bytes": 5113656,
+   "short_prompt": {
+    "from_source_s": 26.1,
+    "window_s": [
+     12.01,
+     20.12
+    ],
+    "frames": 104,
+    "old_frames": 328
+   }
   },
   "lumen": {
    "description": "Petite mascotte claire et lumineuse, voix médium, très articulée, neutre et efficace, débit régulier, idéale pour lire des informations.",
    "design_instruct": "Voix de petite mascotte claire et lumineuse, médium, très articulée, neutre et efficace, débit régulier, idéale pour lire des informations, timbre légèrement stylisé comme un personnage d'animation, jamais robotique, enregistrement studio sans écho.",
    "seed": 20303,
    "candidate": "lumen_c3",
-   "source_s": 22.0,
-   "safetensors_bytes": 13567800,
-   "first_sound_s": 0.127,
-   "rtf": 8.24
+   "source_s": 7.93,
+   "safetensors_bytes": 4966200,
+   "short_prompt": {
+    "from_source_s": 22.0,
+    "window_s": [
+     10.61,
+     18.54
+    ],
+    "frames": 101,
+    "old_frames": 276
+   }
   },
   "mousse": {
    "description": "Petite mascotte ronde et légère, voix médium, souriante mais sobre, chaleureuse, débit naturel, articulation nette.",
    "design_instruct": "Voix de petite mascotte ronde et légère, médium, souriante mais sobre, chaleureuse, débit naturel, articulation nette, timbre légèrement stylisé comme un personnage d'animation, jamais robotique, enregistrement studio sans écho.",
    "seed": 20502,
    "candidate": "mousse_c2",
-   "source_s": 22.9,
-   "safetensors_bytes": 14157624,
-   "first_sound_s": 0.096,
-   "rtf": 8.13
+   "source_s": 8.05,
+   "safetensors_bytes": 5064504,
+   "short_prompt": {
+    "from_source_s": 22.9,
+    "window_s": [
+     11.53,
+     19.58
+    ],
+    "frames": 103,
+    "old_frames": 288
+   }
   },
   "ours": {
    "description": "Grand ours en peluche calme, voix grave et douce, rassurante, débit lent.",
@@ -54,5 +75,6 @@
    "first_sound_s": 0.085,
    "rtf": 9.22
   }
- }
+ },
+ "prompts": "2026-11-04: the Bips whose clip ran 20-26 s (english: all five; french: galet, lumen, mousse) cloned again from ~8 s of it (voices/onnx/short_prompts.py: pauses over 0.4 s shortened, a 6.5-9 s window of whole phrases closest to 8 s, pocket-tts 4.0.1 with the same recipe), so they speak as fast as the others on a phone (1.2-1.3x, voices/onnx/bench.py); <voice>_source.wav is that cut clip now, the full clips are in git history (before 2026-11-04); approved by ear by Alex on 2026-11-04. `short_prompt`: the window taken in the full clip (s) and its length in frames."
 }

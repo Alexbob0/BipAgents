@@ -31,6 +31,17 @@ Le Pocket d'un serveur et ces états avancent ensemble : `bipagents update` (dan
 installe le pocket-tts que fixe `pocket/requirements.txt` et le redémarre sur les voix du même commit ; le bridge cesse
 alors de réécrire les noms (`[pocket] engine = "4.0.1"`, installer/bipinstall/migrations.py, `pocket-engine`).
 
+## Extraits courts (04/11/2026)
+
+L'état d'un Bip est le cache de Pocket après son extrait, et chaque trame générée le relit en entier : les Bips clonés
+depuis 20 à 26 s (les cinq anglais, galet, lumen et mousse en français) parlaient 1,5 à 2 fois plus lentement sur un
+téléphone que ceux de ~8 s (voices/onnx/bench.py). Leurs extraits ont été coupés à environ 8 s avec une seule règle pour
+tous (voices/onnx/short_prompts.py : pauses de plus de 0,4 s raccourcies, une fenêtre de 6,5 à 9 s de phrases entières
+la plus proche de 8 s) puis clonés à nouveau de la même façon : 1,2 à 1,3 fois plus rapides sur un téléphone, validés à
+l'oreille le 04/11/2026. Leur `<voix>_source.wav` est maintenant cet extrait coupé (la fenêtre dans chaque
+`voices.json`, `short_prompt`), leur `<voix>_sample.wav` et les aperçus des apps ont été refaits ; les extraits complets
+(aussi le timbre d'où viennent les extraits néerlandais) sont dans l'historique git avant le 04/11/2026.
+
 ## Autres langues
 
 Les Bips gardent leur nom dans chaque langue : le bridge envoie `pocket:<code>/<voix>` (`en`, `es`, `de`) et le

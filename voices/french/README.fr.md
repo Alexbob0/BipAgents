@@ -16,7 +16,7 @@ stylisé comme un personnage d'animation, ni réalistes ni robotiques. Ours et C
 | **colibri** | petit oiseau vif et enjoué, voix claire et légère, médium, chantante, débit rapide et précis | `colibri.*` |
 
 - `<voix>.safetensors` : état de voix Pocket TTS pré-calculé (modèle `french`, pocket-tts 4.0.1 : recalculé depuis `<voix>_source.wav` le 25/10/2026). C'est le fichier à utiliser.
-  13 à 16 Mo pour galet, lumen et mousse (extraits de 22–26 s), 3 à 4 Mo pour ours et colibri (extraits de 5–7 s).
+  3 à 5 Mo chacun (extraits de 5–8 s ; galet, lumen et mousse reclonés le 04/11/2026 depuis ~8 s de leurs prises de 22–26 s, voices/README.fr.md « Extraits courts »).
 - `<voix>_source.wav` : l'extrait qui a servi au clonage (sortie Qwen3-TTS VoiceDesign, mono 24 kHz, pic −1 dBFS). Permet de recalculer l'état si les poids Pocket TTS changent.
 - `<voix>_sample.wav` : rendu Pocket TTS de la phrase de test « Coucou ! J'ai regardé ta journée : trois rendez-vous, et un peu de temps pour marcher cet après-midi. »
 - `voices.json` : descriptions, consignes de design, graines et mesures.
