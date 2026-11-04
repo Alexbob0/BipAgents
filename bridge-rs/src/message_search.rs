@@ -457,7 +457,14 @@ pub fn search_store(
     }
     let mut filters = vec!["role IN ('user', 'assistant')".to_string(), "content IS NOT NULL".to_string()];
     if has(&mcols, "active") && has(&mcols, "compacted") {
-        filters.push("(active = 1 OR compacted = 1)".into());
+        // and a message an in-place compaction folded into its summary (its rows all inactive, the summary holding
+        // its uid): the timeline shows it (threads::timeline::in_place_compaction)
+        let absorbed = if has(&mcols, "message_uid") && has(&mcols, "_compressed_summary") {
+            " OR message_uid IN (SELECT message_uid FROM messages WHERE _compressed_summary = 1 AND message_uid IS NOT NULL)"
+        } else {
+            ""
+        };
+        filters.push(format!("(active = 1 OR compacted = 1{absorbed})"));
     } else if has(&mcols, "active") {
         filters.push("active = 1".into());
     }
@@ -477,6 +484,7 @@ pub fn search_store(
     let mut rows = stmt.query([])?;
     let mut listed: HashMap<String, Option<String>> = HashMap::new();
     let mut hits = Vec::new();
+    let mut found = std::collections::HashSet::new();
     let mut seen = 0usize;
     while let Some(row) = rows.next()? {
         seen += 1;
@@ -512,8 +520,12 @@ pub fn search_store(
         let (snippet, parts) = snippet(&text, words);
         let id: i64 = row.get(0)?;
         let stored = crate::threads::source::Row { row: id, uid: row.get::<_, Option<String>>(6)?, ..Default::default() };
+        let item = crate::threads::timeline::message_id(agent, &session_id, &stored);
+        if !found.insert(item.clone()) {
+            continue; // a copy Hermes made of it at a compaction: one hit per message
+        }
         hits.push(Hit {
-            item: crate::threads::timeline::message_id(agent, &session_id, &stored),
+            item,
             segment: session_id.clone(),
             thread: None,
             agent: agent.to_string(),
@@ -659,6 +671,38 @@ mod tests {
         assert_eq!(hits.len(), 1);
         let (hits, _) = search_store("coach", &path, &words("mer"), 2, far()).unwrap();
         assert_eq!(hits.len(), 2);
+    }
+
+    /// A conversation Hermes v0.22.5 compacted in place (internal/notes/history-compaction.md): a message it kept is a
+    /// compacted row and copies with the same uid (one hit), one it folded into the summary has only inactive rows
+    /// and the summary holds its uid (found, as the timeline shows it), one the person took back is not.
+    #[test]
+    fn a_compacted_conversation_is_searched_once_per_message() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.db");
+        let conn = make_store(&path);
+        conn.execute_batch("ALTER TABLE messages ADD COLUMN message_uid TEXT;").unwrap();
+        session(&conn, "bot", None, None, Some("Bot Chat"), 0);
+        // (uid, words, time, active, compacted, summary)
+        let rows = [
+            ("kept", "mer gardée", 1, 0, 1, 0),
+            ("kept", "mer gardée", 2, 0, 0, 0),
+            ("kept", "mer gardée", 3, 1, 0, 0),
+            ("folded", "mer résumée", 4, 0, 0, 0),
+            ("folded", "[CONTEXT COMPACTION] mer", 5, 1, 0, 1),
+            ("gone", "mer reprise", 6, 0, 0, 0),
+        ];
+        for (uid, content, ts, active, compacted, summary) in rows {
+            conn.execute(
+                "INSERT INTO messages (session_id, role, content, timestamp, active, compacted, _compressed_summary, \
+                 message_uid) VALUES ('bot', 'user', ?1, ?2, ?3, ?4, ?5, ?6)",
+                rusqlite::params![content, ts, active, compacted, summary, uid],
+            )
+            .unwrap();
+        }
+        let (hits, _) = search_store("coach", &path, &words("mer"), 10, far()).unwrap();
+        let found: Vec<&str> = hits.iter().map(|h| h.item.as_str()).collect();
+        assert_eq!(found, ["m_folded", "m_kept"]);
     }
 
     #[test]
