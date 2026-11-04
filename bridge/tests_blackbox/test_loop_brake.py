@@ -284,6 +284,39 @@ def test_a_stopped_turn_ends_on_the_agents_own_reply_after_the_brakes_line(bridg
     assert again[-1][0] == "run.completed"
 
 
+def test_a_stopped_turn_shows_only_the_brakes_line_in_the_timeline(bridges, fakes):
+    """Alex 4/11 (release blocker): the rescue turn's input, stored with the time line in front of its mark, showed
+    as his own bubble with the agent's English instruction. The timeline serves the brake's plain line only."""
+    bridge = bridges.new().start()
+    fakes.hermes.runs["run_vie"] = diagnosis("run_vie", 5)
+    reply = "Je n'ai pas trouvé l'erreur. Veux-tu que je regarde les journaux du serveur ?"
+    fakes.hermes.runs["r1"] = [sse("message.delta", run_id="r1", delta=reply),
+                               sse("run.completed", run_id="r1", output=reply)]
+    events = follow(bridge, "run_vie")
+    line = notices(events)[0]["text"]
+    sent = fakes.hermes.started["r1"]["input"]
+    stored = sent if sent.startswith("<!--bip:now") else f"<!--bip:now mardi 4 novembre, 10 h 12-->\n{sent}"
+    fakes.hermes.add_session("api_c", [
+        {"role": "user", "content": "Pourquoi le job de nuit échoue ?"},
+        {"role": "assistant", "content": "This turn did not complete. Some actions may already have run; verify "
+                                         "their effects before resending."},
+        {"role": "user", "content": stored},
+        {"role": "user", "content": "[OUT-OF-BAND USER MESSAGE from the user]\n[bipagents:brake] A note from the "
+                                    "app, not from your person: change approach\n[/OUT-OF-BAND USER MESSAGE]"},
+        {"role": "assistant", "content": reply}], title="Job de nuit")
+    thread = bridge.get("/v1/threads/resolve", headers=AUTH, params={"agent": "wellness", "session_id": "api_c"}).json()
+    page = bridge.get(f"/v1/threads/{thread['thread']['id']}/timeline", headers=AUTH, params={"agent": "wellness"})
+    assert page.status_code == 200, page.text
+    shown = [(i["kind"], i.get("role"), i.get("text") or i.get("notice", {}).get("text")) for i in page.json()["items"]]
+    # the brake's line in the timeline: the head of the stream's (`notice_head`), in the agent's language
+    head = shown[1][2] if len(shown) == 3 else None
+    assert head and line.startswith(head), (shown, line)
+    assert shown == [("message", "person", "Pourquoi le job de nuit échoue ?"), ("notice", None, head),
+                     ("message", "agent", reply)], shown
+    assert page.json()["items"][1]["notice"]["code"] == "loop_rescue"
+    assert "bipagents:" not in page.text and "A note from the app" not in page.text and "<!--" not in page.text
+
+
 def test_a_rescue_turn_that_loops_is_not_rescued_again(bridges, fakes):
     bridge = bridges.new().start()
     fakes.hermes.runs["run_vie"] = diagnosis("run_vie", 5)

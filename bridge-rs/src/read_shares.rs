@@ -402,7 +402,10 @@ pub fn typed_words(text: &str) -> Option<String> {
         Some(inner) => inner.split_once(']').map(|(_, words)| words.trim()).unwrap_or(""),
         None => text,
     };
-    if text.starts_with("[bipagents:") || crate::cronwatch::REPORT_PREFIXES.iter().any(|p| text.starts_with(p)) {
+    if text.starts_with("[bipagents:")
+        || text.starts_with("[IMPORTANT: Background process")
+        || crate::cronwatch::REPORT_PREFIXES.iter().any(|p| text.starts_with(p))
+    {
         return None;
     }
     Some(text.to_string())
@@ -1093,6 +1096,12 @@ mod tests {
         );
         assert_eq!(typed_words("[bipagents:handoff] hand it over"), None);
         assert_eq!(typed_words("[SUBAGENT report] done"), None);
+        assert_eq!(typed_words("[IMPORTANT: Background process proc_1 completed normally] ls"), None);
+        // the brake's rescue input, stamped as the bridge sends it (4/11)
+        assert_eq!(
+            typed_words("<!--bip:now x-->\n[bipagents:loop_rescue] Je me suis arrêté.\n\nYou were stopped"),
+            None
+        );
         // the agent's notes never reach a viewer
         let now = "<!--bip:now jeudi 29 octobre 2026, 08:40, Europe/Paris (UTC+01:00)-->";
         let typed = typed_words(&format!("{now}\n<!--bip:call\nVoice call\n-->\n\nOn part ?"));

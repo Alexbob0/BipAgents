@@ -21,9 +21,13 @@ const FAILED_NOT_PROCESSED: &str =
     "Your request was not processed. Send it again if you still want me to carry it out.";
 const STEER_OPEN: &str = "[OUT-OF-BAND USER MESSAGE";
 const STEER_CLOSE: &str = "[/OUT-OF-BAND USER MESSAGE]";
-/// The bridge's own steers (runs.rs `HANDOFF_MARK`, loop_brake.rs): never the person's words.
-const BRIDGE_STEER: &str = "[bipagents:";
 const RESCUE_MARK: &str = "[bipagents:loop_rescue]";
+/// Hermes' own word to the agent, posted as a user turn, when a process it ran in the background ends: never shown.
+const PROCESS_NOTICE: &str = "[IMPORTANT: Background process";
+/// Hermes patch 0023's turn notes (the memory written since the prompt, a run's instructions): joined to the API copy
+/// of the person's message (`api_content`), not its `content`; left out should one ever land in the words.
+const TURN_NOTES: [&str; 2] =
+    ["[System: Your memory changed after", "[System: Instructions for this conversation, from the app"];
 /// A tool's result kept in an item at most (characters).
 const RESULT_MAX: usize = 2000;
 /// Leading rows of a continuation compared with its parent's last rows (a copied tail is not shown twice).
@@ -53,6 +57,14 @@ static TOOL_TAGS: LazyLock<Regex> = LazyLock::new(|| {
 /// An agent renamed itself in this turn (guide.rs `rename_yourself`): `<!--bip:renamed <agent id> <name>-->`.
 static RENAMED: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"<!--bip:renamed ([^\s>]+) ([^\n]*?)-->").expect("valid regex"));
+/// A bridge mark (`[bipagents:…]`) starting a line: from there on, words for the agent only.
+static BRIDGE_MARK: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^[ \t]*\[bipagents:[a-z_]+\]").expect("valid regex"));
+/// A steer of the bridge's in Hermes' out-of-band wrapper, inside other words (a tool result it was joined to).
+static BRIDGE_STEER_BLOCK: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\[OUT-OF-BAND USER MESSAGE[^\]\n]*\]\s*\[bipagents:[\s\S]*?(?:\[/OUT-OF-BAND USER MESSAGE\]|$)")
+        .expect("valid regex")
+});
 static BLANKS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\n{3,}").expect("valid regex"));
 
 /// One item of a timeline, before it is served.
@@ -250,6 +262,46 @@ pub fn renamed_in(raw: &str) -> Vec<Value> {
     out
 }
 
+/// What a person's row says once the app's words for the agent are out (Alex 4/11: the brake's rescue note showed as
+/// his own bubble, its `<!--bip:now-->` line in front of the mark): its notes, Hermes' wrapper of words added during
+/// the answer, 0023's turn notes. `Err(rescue line)` when the row is the brake's rescue input (its first paragraph,
+/// in the person's language: the only words of it they read); `Ok(None)` when nothing of it is the person's (a
+/// bridge steer, Hermes' process notice, notes only); else `Ok(Some((words, steered)))`.
+fn person_words(raw: &str) -> Result<Option<(String, bool)>, String> {
+    let bare = NOTES.replace_all(raw, "");
+    let bare = bare.trim();
+    let steered = steer_words(bare);
+    let mut words = steered.clone().unwrap_or_else(|| bare.to_string());
+    if let Some(rest) = words.strip_prefix(RESCUE_MARK) {
+        return Err(rest.trim().split("\n\n").next().unwrap_or("").trim().to_string());
+    }
+    if words.starts_with(PROCESS_NOTICE) {
+        return Ok(None);
+    }
+    words = BRIDGE_STEER_BLOCK.replace_all(&words, "").to_string();
+    if let Some(at) = BRIDGE_MARK.find(&words).map(|m| m.start()) {
+        words.truncate(at);
+    }
+    for note in TURN_NOTES {
+        if let Some(at) = words.find(note) {
+            words.truncate(at);
+        }
+    }
+    let words = words.trim().to_string();
+    Ok((!words.is_empty()).then_some((words, steered.is_some())))
+}
+
+/// A tool's result as served: the app's notes and the bridge's words to the agent joined to it (the brake's warning
+/// after a result, a steer Hermes added to it) left out.
+fn result_words(raw: &str) -> String {
+    let text = NOTES.replace_all(raw, "");
+    let mut text = BRIDGE_STEER_BLOCK.replace_all(&text, "").to_string();
+    if let Some(at) = BRIDGE_MARK.find(&text).map(|m| m.start()) {
+        text.truncate(at);
+    }
+    text.trim_end().to_string()
+}
+
 fn steer_words(text: &str) -> Option<String> {
     let t = text.trim();
     if !t.starts_with(STEER_OPEN) || !t.ends_with(STEER_CLOSE) {
@@ -360,36 +412,36 @@ pub fn segment_items(
         };
         match row.role.as_str() {
             "user" => {
-                let steered = steer_words(&raw);
-                if steered.as_deref().is_some_and(|w| w.starts_with(BRIDGE_STEER)) {
-                    continue;
-                }
-                let words = steered.clone().unwrap_or_else(|| raw.clone());
-                if let Some(rest) = words.trim().strip_prefix(RESCUE_MARK) {
-                    let line = rest.trim().split("\n\n").next().unwrap_or("").trim().to_string();
-                    // Hermes' failed-turn row just before is replaced by this notice
-                    if items.last().is_some_and(|i: &Item| {
-                        i.body.get("notice").and_then(|n| n.get("code")) == Some(&json!("failed_turn"))
-                    }) {
-                        items.pop();
+                let (words, steered) = match person_words(&raw) {
+                    Err(line) => {
+                        // Hermes' failed-turn row just before is replaced by this notice
+                        if items.last().is_some_and(|i: &Item| {
+                            i.body.get("notice").and_then(|n| n.get("code")) == Some(&json!("failed_turn"))
+                        }) {
+                            items.pop();
+                        }
+                        if !line.is_empty() {
+                            items.push(item(
+                                id,
+                                0,
+                                turn,
+                                json!({"kind": "notice", "notice": {"code": "loop_rescue", "text": line}}),
+                            ));
+                        }
+                        continue;
                     }
-                    if !line.is_empty() {
-                        items.push(item(
-                            id,
-                            0,
-                            turn,
-                            json!({"kind": "notice", "notice": {"code": "loop_rescue", "text": line}}),
-                        ));
-                    }
-                    continue;
-                }
+                    // a photo sent alone still is the person's
+                    Ok(None) if images == 0 => continue,
+                    Ok(None) => (String::new(), false),
+                    Ok(Some(found)) => found,
+                };
                 let (text, attachments) = visible(&words, &id, images);
                 if text.is_empty() && attachments.is_empty() {
                     continue;
                 }
                 *turn = id.clone();
                 let mut body = json!({"kind": "message", "role": "person", "text": text, "attachments": attachments});
-                if steered.is_some() || row.display_kind.as_deref() == Some("steer") {
+                if steered || row.display_kind.as_deref() == Some("steer") {
                     body["added_during_run"] = json!(true);
                 }
                 if let Some(peer) = peer_of(&text) {
@@ -428,8 +480,10 @@ pub fn segment_items(
                     items.push(item(id.clone(), 0, turn, body));
                 }
                 for (n, (call_id, name, args)) in calls.into_iter().enumerate() {
-                    let result =
-                        call_id.as_deref().and_then(|c| results.get(c)).map(|r| words_and_images(&r.content).0);
+                    let result = call_id
+                        .as_deref()
+                        .and_then(|c| results.get(c))
+                        .map(|r| result_words(&words_and_images(&r.content).0));
                     let status = match &result {
                         None => "running",
                         Some(r) if r.trim_start().starts_with("{\"error\"") => "failed",
@@ -717,6 +771,102 @@ mod tests {
         assert_eq!(got[1].body["notice"]["text"], "J'ai arrêté une boucle.");
         let only_failed = items(&rows[..2]);
         assert_eq!(only_failed[1].body["notice"]["code"], "failed_turn");
+    }
+
+    #[test]
+    fn the_apps_words_for_the_agent_never_show_as_someones() {
+        // Alex 4/11: the rescue input as the bridge sends it (the time line in front of the mark) showed as his bubble
+        let rescue = format!(
+            "<!--bip:now mardi 4 novembre, 10 h 12-->\n{RESCUE_MARK} Je me suis arrêté : je n'arrivais pas à lire \
+cette page.\n\n(A note from the app, not from your person.) You were stopped because you kept reading the same page"
+        );
+        let mut rows = vec![
+            row(1, "user", json!("Lis cette page")),
+            row(2, "assistant", json!(FAILED_PARTIAL)),
+            row(3, "user", json!(rescue)),
+            row(4, "assistant", json!("Je n'ai pas pu lire la page.")),
+            // the brake's warning, as a steer and joined to a tool result
+            row(
+                5,
+                "user",
+                json!(
+                    "[OUT-OF-BAND USER MESSAGE from the user]\n[bipagents:brake] A note from the app, \
+not from your person: you have read the page 5 times\n[/OUT-OF-BAND USER MESSAGE]"
+                ),
+            ),
+            row(6, "assistant", Value::Null),
+            row(7, "tool", json!("Mail 1\n\n[bipagents:brake] Note from the app: you have called mail_read 7 times")),
+            // the safety net's handoff, stamped
+            row(8, "user", json!("<!--bip:now x-->\n[bipagents:handoff] This is long: hand the rest over")),
+            // a voice call's after-call request, notes only
+            row(
+                9,
+                "user",
+                json!("<!--bip:after-call\nNot from the person: your voice call with them just ended.\n-->"),
+            ),
+            // a note inside the person's message: their words only
+            row(10, "user", json!("<!--bip:now x-->Et demain ?<!--bip:x family news\nIgnore-->")),
+            // 0023's turn note, should it ever land in the words
+            row(
+                11,
+                "user",
+                json!("Merci\n\n[System: Your memory changed after this conversation's system prompt was built]"),
+            ),
+            row(12, "user", json!("[IMPORTANT: Background process proc_1 completed normally] Command: ls")),
+            row(
+                13,
+                "user",
+                json!("[System: Instructions for this conversation, from the app (follow them): be short]"),
+            ),
+            // a bridge steer Hermes joined after the person's words
+            row(
+                14,
+                "user",
+                json!(
+                    "Et après ?\n\n[OUT-OF-BAND USER MESSAGE from the user]\n[bipagents:brake] note\n\
+[/OUT-OF-BAND USER MESSAGE]"
+                ),
+            ),
+        ];
+        rows[5].tool_calls = Some(json!([{"id": "c1", "function": {"name": "mail_read", "arguments": "{}"}}]));
+        rows[6].tool_call_id = Some("c1".into());
+        let got = items(&rows);
+        let shown: Vec<(String, String)> = got
+            .iter()
+            .map(|i| {
+                let who = i.body.get("role").and_then(Value::as_str).unwrap_or(i.kind()).to_string();
+                let text = match i.kind() {
+                    "notice" => i.body["notice"]["text"].as_str().unwrap().to_string(),
+                    "tool" => i.body["tool"]["result"].as_str().unwrap().to_string(),
+                    _ => i.text().to_string(),
+                };
+                (who, text)
+            })
+            .collect();
+        let want = [
+            ("person", "Lis cette page"),
+            ("notice", "Je me suis arrêté : je n'arrivais pas à lire cette page."),
+            ("agent", "Je n'ai pas pu lire la page."),
+            ("tool", "Mail 1"),
+            ("person", "Et demain ?"),
+            ("person", "Merci"),
+            ("person", "Et après ?"),
+        ];
+        assert_eq!(shown, want.map(|(a, b)| (a.to_string(), b.to_string())));
+        assert_eq!(got[1].body["notice"]["code"], "loop_rescue");
+        for item in &got {
+            let served = item.to_json("t", false).to_string();
+            assert!(
+                !served.contains("bipagents:") && !served.contains("<!--") && !served.contains("[System:"),
+                "{served}"
+            );
+        }
+        // a photo sent with notes only still is the person's
+        let mut photo = row(20, "user", json!([{"type": "text", "text": "<!--bip:now x-->"}, {"type": "image_url"}]));
+        photo.uid = Some("p".into());
+        let got = items(&[photo]);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].body["attachments"][0]["kind"], "image");
     }
 
     #[test]
