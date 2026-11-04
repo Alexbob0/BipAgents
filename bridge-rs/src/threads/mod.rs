@@ -849,10 +849,7 @@ async fn shared(state: &AppState, q: &QueryMap, what: &str) -> Option<ApiResult<
 }
 
 fn agent_param(state: &AppState, q: &QueryMap) -> ApiResult<Option<AgentConfig>> {
-    match q.get("agent").filter(|a| !a.is_empty()) {
-        Some(name) => Ok(Some(crate::app::agent_or_404(&state.config(), Some(name))?)),
-        None => Ok(None),
-    }
+    agent_param_of(state, q.get("agent"))
 }
 
 fn number(q: &QueryMap, key: &str, default: usize) -> ApiResult<usize> {
@@ -877,7 +874,8 @@ async fn served(threads: &Threads, agent: &AgentConfig, thread: &Thread, with_se
 
 /// A room as a thread, the room itself under `room` and its unread replies.
 async fn room_served(state: &AppState, room: &crate::rooms::Room) -> Value {
-    let mut out = crate::rooms::thread_view(&state.config(), room, Some(&*state.hub), true);
+    let mut out = crate::rooms::thread_view(room);
+    out["room"] = crate::rooms::room_view(&state.config(), room, Some(&*state.hub));
     out["unread"] = json!(crate::notifications::unread_in(&state.store, &crate::rooms::thread_id(&room.id)).await.unwrap_or(0));
     out
 }
@@ -950,10 +948,6 @@ async fn resolve(State(state): State<AppState>, q: QueryMap) -> ApiResult<Respon
         (Some(session), _) => {
             threads.resolve(&agent, session).await.map_err(unavailable)?.ok_or_else(HttpError::not_found)?
         }
-        (None, Some(c)) if crate::rooms::of_thread(c).is_some() => {
-            let room = room_of(&state, c)?;
-            return Ok(web::ok(json!({"thread": crate::rooms::thread_view(&state.config(), &room, None, false), "tip": null})));
-        }
         (None, Some(c)) => threads.named(Some(&agent), c).await?.1,
         _ => return Err(HttpError::new(422, "session_id or c is required")),
     };
@@ -988,11 +982,7 @@ async fn link(
     Json(body): Json<LinkBody>,
 ) -> ApiResult<Response> {
     let threads = threads_of(&state);
-    let agent = match body.agent.as_deref() {
-        Some(a) => Some(crate::app::agent_or_404(&state.config(), Some(a))?),
-        None => None,
-    };
-    let (agent, thread) = threads.named(agent.as_ref(), &id).await?;
+    let (agent, thread) = threads.named(agent_param_of(&state, body.agent.as_deref())?.as_ref(), &id).await?;
     threads.link(&agent, &thread, &body.session_id).await?;
     let thread = threads.get(&thread.id).await?.unwrap_or(thread);
     Ok(web::ok(served(&threads, &agent, &thread, true).await.map_err(unavailable)?))
@@ -1026,11 +1016,7 @@ async fn rename(
     Json(body): Json<ThreadPatch>,
 ) -> ApiResult<Response> {
     let threads = threads_of(&state);
-    let agent = match body.agent.as_deref() {
-        Some(a) => Some(crate::app::agent_or_404(&state.config(), Some(a))?),
-        None => None,
-    };
-    let (agent, thread) = threads.named(agent.as_ref(), &id).await?;
+    let (agent, thread) = threads.named(agent_param_of(&state, body.agent.as_deref())?.as_ref(), &id).await?;
     let title = body.title.as_deref().map(str::trim).filter(|t| !t.is_empty());
     threads
         .store

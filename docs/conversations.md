@@ -176,7 +176,7 @@ GET  /v1/threads?kind=room                the rooms (§6.6), newest first, no ag
 GET  /v1/threads/{thread}?agent=<id>      (agent required only with thread=main)
   → Thread  (+ segments)
 GET  /v1/threads/resolve?agent=<id>&session_id=<hermes session>
-GET  /v1/threads/resolve?agent=<id>&c=<pointer>          (c: thread id, `main`, `room:<id>`)
+GET  /v1/threads/resolve?agent=<id>&c=<pointer>          (c: thread id or `main`)
   → {thread: Thread, tip: <session id>}
 POST /v1/threads/{thread}/segments  {session_id, agent?}  (migrations, tests)
   → Thread

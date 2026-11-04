@@ -1341,10 +1341,9 @@ impl Rooms {
         Some(answer)
     }
 
-    /// The person's message: kept at once (the other devices see it while the router thinks), then routed, its turns
-    /// queued, the worker woken. `POST /v1/threads/room:<id>/messages` (docs/conversations.md §6.7): `client_id` the
-    /// app's id for it (the same one again: nothing done, `known`). Answers `{client_id, thread, state:
-    /// started|queued|known, route, item}`.
+    /// The person's message (`POST /v1/threads/room:<id>/messages`, docs/conversations.md §6.7): kept at once (other
+    /// devices see it while the router thinks), then routed, its turns queued, the worker woken; the same `client_id`
+    /// again: `known`. Answers `{client_id, thread, state: started|queued|known, route, item}`.
     pub async fn post(self: &Arc<Self>, id: &str, text: &str, client_id: &str) -> Result<Value, HttpError> {
         let config = self.config.get();
         let room = load(&config, id).ok_or_else(HttpError::not_found)?;
@@ -2578,14 +2577,10 @@ pub fn item(m: &Message) -> Item {
     Item { id, pos: (0, m.id as i64, 0), at: m.at, turn, segment: String::new(), row: 0, body }
 }
 
-/// The room as a thread (§6.1); `with_room`: the room itself under `room`, as the apps' lists draw it.
-pub fn thread_view(config: &Config, room: &Room, hub: Option<&RunHub>, with_room: bool) -> Value {
-    let mut view = json!({"id": thread_id(&room.id), "kind": "room", "title": room.title, "version": room.version,
-                          "tip": null, "last_active": room.updated});
-    if with_room {
-        view["room"] = room_view(config, room, hub);
-    }
-    view
+/// The room as a thread (§6.1).
+pub fn thread_view(room: &Room) -> Value {
+    json!({"id": thread_id(&room.id), "kind": "room", "title": room.title, "version": room.version, "tip": null,
+           "last_active": room.updated})
 }
 
 /// `GET /v1/threads/room:<id>/timeline` (§6.2): its messages as items, paged as a conversation's (`latest`, `before`,
@@ -2598,7 +2593,7 @@ pub fn timeline(config: &Config, room: &Room, hub: Option<&RunHub>, want: &Want)
     if let Some(v) = view.as_object_mut() {
         v.remove("last");
     }
-    page.answer(thread_view(config, room, hub, false), room.version as i64, json!({"room": view}), false)
+    page.answer(thread_view(room), room.version as i64, json!({"room": view}), false)
 }
 
 // -- the app's routes ------------------------------------------------------------------------------------------------
