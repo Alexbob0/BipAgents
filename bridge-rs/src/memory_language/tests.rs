@@ -121,7 +121,6 @@ async fn a_french_memory_is_translated_once_kept_aside_and_can_be_put_back() {
     // already in English: the model isn't called again
     assert_eq!(follow(&config, &http, &agent, "en").await, Outcome::Kept("its memory is already in that language"));
     assert_eq!(calls.load(Ordering::SeqCst), 1);
-
 }
 
 #[tokio::test]

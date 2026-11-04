@@ -272,24 +272,28 @@ impl MediaFilter {
     }
 
     fn events(&self, pieces: Vec<Piece>, kind: &str, delta: Map<String, Value>, key: &str) -> Vec<SSEEvent> {
-        let mut shown = self.shown - pieces.iter().map(|p| if let Piece::Words(w) = p { w.chars().count() } else { 0 }).sum::<usize>();
-        pieces.into_iter().map(|piece| match piece {
-            Piece::Words(words) => {
-                shown += words.chars().count();
-                let mut data = delta.clone();
-                data.insert(key.into(), Value::String(words));
-                rebuilt(kind.to_string(), data)
-            }
-            Piece::File(path) => {
-                let mut data = Map::new();
-                data.insert("event".into(), json!(FILE));
-                data.insert("run_id".into(), delta.get("run_id").cloned().unwrap_or(Value::Null));
-                if let Value::Object(file) = crate::threads::timeline::file_attachment(&path, Some(shown)) {
-                    data.extend(file);
+        let mut shown = self.shown
+            - pieces.iter().map(|p| if let Piece::Words(w) = p { w.chars().count() } else { 0 }).sum::<usize>();
+        pieces
+            .into_iter()
+            .map(|piece| match piece {
+                Piece::Words(words) => {
+                    shown += words.chars().count();
+                    let mut data = delta.clone();
+                    data.insert(key.into(), Value::String(words));
+                    rebuilt(kind.to_string(), data)
                 }
-                rebuilt(FILE.to_string(), data)
-            }
-        }).collect()
+                Piece::File(path) => {
+                    let mut data = Map::new();
+                    data.insert("event".into(), json!(FILE));
+                    data.insert("run_id".into(), delta.get("run_id").cloned().unwrap_or(Value::Null));
+                    if let Value::Object(file) = crate::threads::timeline::file_attachment(&path, Some(shown)) {
+                        data.extend(file);
+                    }
+                    rebuilt(FILE.to_string(), data)
+                }
+            })
+            .collect()
     }
 
     /// A whole text without its MEDIA lines; at the end, their files added to its `attachments`.
@@ -313,8 +317,14 @@ impl MediaFilter {
             changed = true;
         }
         if let (true, Some(files)) = (end, placed) {
-            let stale: Vec<String> = data.get("stale").and_then(Value::as_array).into_iter().flatten()
-                .filter_map(Value::as_str).map(str::to_string).collect();
+            let stale: Vec<String> = data
+                .get("stale")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect();
             let given: Vec<Value> = data.get("attachments").and_then(Value::as_array).cloned().unwrap_or_default();
             let mut all: Vec<Value> = Vec::new();
             for file in files.into_iter().chain(given) {
@@ -326,7 +336,11 @@ impl MediaFilter {
             }
             data.insert("attachments".into(), Value::Array(all));
         }
-        if changed { rebuilt(event.r#type, data) } else { SSEEvent::new(event.r#type, data, event.raw) }
+        if changed {
+            rebuilt(event.r#type, data)
+        } else {
+            SSEEvent::new(event.r#type, data, event.raw)
+        }
     }
 }
 
@@ -335,7 +349,8 @@ fn rebuilt(kind: String, data: Map<String, Value>) -> SSEEvent {
     SSEEvent::new(kind, data, raw)
 }
 
-static MEDIA_WHOLE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[ \t]*MEDIA:[ \t]*(\S+)[ \t]*$").expect("valid regex"));
+static MEDIA_WHOLE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[ \t]*MEDIA:[ \t]*(\S+)[ \t]*$").expect("valid regex"));
 
 /// The path of a whole MEDIA line.
 fn media_path(line: &str) -> Option<String> {
@@ -358,7 +373,13 @@ mod tests {
 
     /// The words, a file as « [path] ».
     fn read(pieces: Vec<Piece>) -> String {
-        pieces.into_iter().map(|p| match p { Piece::Words(w) => w, Piece::File(f) => format!("[{f}]") }).collect()
+        pieces
+            .into_iter()
+            .map(|p| match p {
+                Piece::Words(w) => w,
+                Piece::File(f) => format!("[{f}]"),
+            })
+            .collect()
     }
 
     fn shown(chunks: &[&str]) -> String {
@@ -375,7 +396,10 @@ mod tests {
         // a line cut anywhere across deltas, spaces around, the last line without its newline
         assert_eq!(shown(&["A\n", "M", "ED", "IA: /x.mp3 ", "\nB\nMEDIA:/y.png"]), "A\n[/x.mp3]B\n[/y.png]");
         // only a whole line is one: mid-line, with words after, or another word starting with M
-        assert_eq!(shown(&["Voir MEDIA:/x.png\n", "MEDIA:/a b\n", "Merci\n", "MED"]), "Voir MEDIA:/x.png\nMEDIA:/a b\nMerci\nMED");
+        assert_eq!(
+            shown(&["Voir MEDIA:/x.png\n", "MEDIA:/a b\n", "Merci\n", "MED"]),
+            "Voir MEDIA:/x.png\nMEDIA:/a b\nMerci\nMED"
+        );
         // words go out at once, a line start that could still be one waits for its next characters
         let mut filter = MediaFilter::default();
         assert_eq!(read(filter.text("Le plan\nM")), "Le plan\n");
@@ -385,21 +409,32 @@ mod tests {
 
     #[test]
     fn a_delta_becomes_its_words_and_file_events() {
-        let delta = |text: &str| SSEEvent::new("message.delta", json!({"event": "message.delta", "run_id": "r1", "delta": text}).as_object().cloned().unwrap(), "{}");
+        let delta = |text: &str| {
+            SSEEvent::new(
+                "message.delta",
+                json!({"event": "message.delta", "run_id": "r1", "delta": text}).as_object().cloned().unwrap(),
+                "{}",
+            )
+        };
         let mut filter = MediaFilter::default();
         let out = filter.event(delta("Voici 🏃 :\nMEDIA:/bipagents/pages/a/p.html\nLa suite"));
         let kinds: Vec<&str> = out.iter().map(|e| e.r#type.as_str()).collect();
         assert_eq!(kinds, ["message.delta", FILE, "message.delta"]);
         assert_eq!((out[0].text(), out[2].text()), ("Voici 🏃 :\n".to_string(), "La suite".to_string()));
         let file = &out[1].data;
-        assert_eq!((file["path"].as_str(), file["kind"].as_str(), file["offset"].as_i64(), file["run_id"].as_str()),
-                   (Some("/bipagents/pages/a/p.html"), Some("page"), Some(10), Some("r1")));
+        assert_eq!(
+            (file["path"].as_str(), file["kind"].as_str(), file["offset"].as_i64(), file["run_id"].as_str()),
+            (Some("/bipagents/pages/a/p.html"), Some("page"), Some(10), Some("r1"))
+        );
         assert!(out.iter().all(|e| !e.raw.contains("MEDIA:")));
         // a delta all MEDIA line: its file only; the last line at the end, as a file
         let only = filter.event(delta("\nMEDIA:/z.png\nMEDIA:/y.png"));
         assert_eq!(only.iter().map(|e| e.r#type.as_str()).collect::<Vec<_>>(), ["message.delta", FILE]);
         let end = filter.flush_events("message.delta", &json!("r1"));
-        assert_eq!((end.len(), end[0].data["path"].as_str(), end[0].data["offset"].as_i64()), (1, Some("/y.png"), Some(19)));
+        assert_eq!(
+            (end.len(), end[0].data["path"].as_str(), end[0].data["offset"].as_i64()),
+            (1, Some("/y.png"), Some(19))
+        );
     }
 
     #[test]
@@ -409,14 +444,22 @@ mod tests {
         let interim = filter.event(event("message.interim", json!({"text": "Je regarde.\nMEDIA:/x.png"}))).remove(0);
         assert_eq!(interim.data["text"], "Je regarde.");
         assert!(!interim.data.contains_key("attachments") && !interim.raw.contains("MEDIA"));
-        let end = filter.event(event("run.completed", json!({
+        let end = filter
+            .event(event(
+                "run.completed",
+                json!({
             "output": "Voilà :\nMEDIA:/old.mp3\nMEDIA:/new.mp3", "stale": ["/old.mp3"],
-            "attachments": [{"path": "/new.mp3"}, {"path": "/made.html"}]}))).remove(0);
+            "attachments": [{"path": "/new.mp3"}, {"path": "/made.html"}]}),
+            ))
+            .remove(0);
         assert_eq!(end.data["output"], "Voilà :");
-        let paths: Vec<&str> = end.data["attachments"].as_array().unwrap().iter().filter_map(|a| a["path"].as_str()).collect();
+        let paths: Vec<&str> =
+            end.data["attachments"].as_array().unwrap().iter().filter_map(|a| a["path"].as_str()).collect();
         assert_eq!(paths, ["/new.mp3", "/made.html"], "stale ones out, each file once");
         // nothing to take out: the event as it came
-        let plain = filter.event(SSEEvent::new("run.completed", json!({"output": "Ok"}).as_object().cloned().unwrap(), "RAW")).remove(0);
+        let plain = filter
+            .event(SSEEvent::new("run.completed", json!({"output": "Ok"}).as_object().cloned().unwrap(), "RAW"))
+            .remove(0);
         assert_eq!(plain.raw, "RAW");
     }
 

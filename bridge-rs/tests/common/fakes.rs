@@ -202,10 +202,7 @@ impl FakeBackend {
 
     /// The backends' URLs for `config_dict`.
     pub fn urls(&self) -> Urls {
-        Urls {
-            pocket: self.pocket_url.clone(),
-            hermes: self.hermes_url.clone(),
-        }
+        Urls { pocket: self.pocket_url.clone(), hermes: self.hermes_url.clone() }
     }
 
     pub fn with<R>(&self, f: impl FnOnce(&mut BackendState) -> R) -> R {

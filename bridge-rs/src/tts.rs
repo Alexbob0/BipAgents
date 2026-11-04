@@ -815,13 +815,7 @@ impl TtsService {
         }
         let voice = voice.filter(|v| !v.is_empty()).unwrap_or(&self.default_voice).to_string();
         let language = voice_language(&voice);
-        let clean = self.prepare(
-            text,
-            options.normalized,
-            options.max_chars,
-            &language,
-            self.paragraphs(&voice),
-        )?;
+        let clean = self.prepare(text, options.normalized, options.max_chars, &language, self.paragraphs(&voice))?;
         let key: CacheKey = (voice.clone(), fmt.to_string(), clean.clone());
         if let Some(hit) = self.cache_get(&key) {
             return Ok(Audio { cached: true, ..hit });

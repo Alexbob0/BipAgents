@@ -57,10 +57,7 @@ pub struct Urls {
 impl Default for Urls {
     /// Nothing listens there (connections refused at once).
     fn default() -> Self {
-        Urls {
-            pocket: "http://127.0.0.1:9".into(),
-            hermes: "http://127.0.0.1:9".into(),
-        }
+        Urls { pocket: "http://127.0.0.1:9".into(), hermes: "http://127.0.0.1:9".into() }
     }
 }
 
@@ -198,7 +195,9 @@ pub async fn boite_items(app: &TestApp) -> Vec<Value> {
         .filter(|r| r["type"] == "boite" && r.get("boite").is_some())
         .map(|r| {
             let mut item = r["boite"].clone();
-            for (key, from) in [("id", "ref"), ("agent", "agent"), ("session_id", "session_id"), ("created_at", "created_at")] {
+            for (key, from) in
+                [("id", "ref"), ("agent", "agent"), ("session_id", "session_id"), ("created_at", "created_at")]
+            {
                 item[key] = r[from].clone();
             }
             item

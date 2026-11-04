@@ -43,7 +43,9 @@ async fn pcm16_strips_wav_header_and_sends_pocket_params() {
         .unwrap();
     assert_eq!(
         backend.with(|s| s.pocket_inputs.clone()),
-        vec![json!({"model": "pocket-tts", "input": "Bonjour toi lien.", "voice": "colibri", "response_format": "wav"})]
+        vec![
+            json!({"model": "pocket-tts", "input": "Bonjour toi lien.", "voice": "colibri", "response_format": "wav"})
+        ]
     );
     assert_eq!(audio.data.to_vec(), pcm_for("Bonjour toi lien."));
     assert_eq!(

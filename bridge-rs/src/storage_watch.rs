@@ -1020,7 +1020,10 @@ pub fn send_message(config: &Config, agent: &AgentConfig, paths: &[String]) -> c
     for path in paths {
         text.push_str(&format!("\nMEDIA:{path}"));
     }
-    crate::outbox::BoiteMessage { id: Some(format!("space:{}", py::token_hex(6))), ..crate::outbox::BoiteMessage::new(text) }
+    crate::outbox::BoiteMessage {
+        id: Some(format!("space:{}", py::token_hex(6))),
+        ..crate::outbox::BoiteMessage::new(text)
+    }
 }
 
 // --- the place's own disk, as the seat agent tells it -----------------------------------------------------------------

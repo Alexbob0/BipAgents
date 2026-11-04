@@ -110,7 +110,8 @@ impl OutboxService {
             text = "🎧".into();
         }
         let attachments = (!files.is_empty()).then(|| Value::Array(files).to_string());
-        let extra = NewOutbox { title: message.title, ntfy_id: message.id, session_id: message.session_id, attachments };
+        let extra =
+            NewOutbox { title: message.title, ntfy_id: message.id, session_id: message.session_id, attachments };
         let Some(item) = self.store.add_outbox(&agent.name, &text, extra).await? else {
             return Ok(None); // duplicate (already ingested)
         };
@@ -131,7 +132,8 @@ impl OutboxService {
     fn own_mp3(&self, paths: &[String]) -> Option<(String, String)> {
         let config = self.config.get();
         paths.iter().filter(|p| p.to_lowercase().ends_with(".mp3")).find_map(|path| {
-            let host = resolve(path, &config.media_roots).or_else(|| crate::agent_tools::served_media(&config, path))?;
+            let host =
+                resolve(path, &config.media_roots).or_else(|| crate::agent_tools::served_media(&config, path))?;
             Some((path.clone(), host))
         })
     }
@@ -162,7 +164,7 @@ impl OutboxService {
         }
         let id = crate::py::py_str(&item["id"]);
         let (text, _) = extract_media(item.get("text").and_then(Value::as_str).unwrap_or("")); // its words only
-        // whose: a background task's hand-back follows « Me prévenir », a routine's report its own mute
+                                                                                               // whose: a background task's hand-back follows « Me prévenir », a routine's report its own mute
         let ntfy_id = item.get("ntfy_id").and_then(Value::as_str).unwrap_or("");
         let from = if ntfy_id.starts_with("handback:") {
             BoiteFrom::Task

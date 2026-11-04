@@ -270,11 +270,8 @@ async fn counts(store: &Store) -> anyhow::Result<Value> {
 
 /// The rows served, a Boîte row with its message (`boite`, see the module's doc).
 async fn served_rows(state: &AppState, rows: &[crate::store::Row], full: bool) -> anyhow::Result<Vec<Value>> {
-    let ids: Vec<&str> = rows
-        .iter()
-        .filter(|r| r["type"] == "boite")
-        .filter_map(|r| r.get("ref_id").and_then(Value::as_str))
-        .collect();
+    let ids: Vec<&str> =
+        rows.iter().filter(|r| r["type"] == "boite").filter_map(|r| r.get("ref_id").and_then(Value::as_str)).collect();
     let mut messages = std::collections::HashMap::new();
     if !ids.is_empty() {
         let marks = vec!["?"; ids.len()].join(",");

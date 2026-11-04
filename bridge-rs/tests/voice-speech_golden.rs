@@ -108,9 +108,7 @@ fn french_prepare_for_synthesis() {
 
 #[test]
 fn intl_prepare_for_synthesis() {
-    check("intl.prepare_for_synthesis", |i| {
-        Value::from(speech_intl::prepare_for_synthesis(s(&i[0]), s(&i[1])))
-    });
+    check("intl.prepare_for_synthesis", |i| Value::from(speech_intl::prepare_for_synthesis(s(&i[0]), s(&i[1]))));
 }
 
 #[test]
