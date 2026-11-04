@@ -8,10 +8,11 @@ BipAgents patch, documented in hermes/patches/README.md of the BipAgents reposit
 
 Bip-Patch: 0009-tool-search-keep-direct-compact-skills
 ---
- agent/prompt_builder.py                       | 14 ++++++
- ..._tool_search_keep_direct_compact_skills.py | 48 +++++++++++++++++++
- tools/tool_search.py                          |  5 +-
- 3 files changed, 66 insertions(+), 1 deletion(-)
+ agent/prompt_builder.py                       | 14 ++++
+ ..._tool_search_keep_direct_compact_skills.py | 68 +++++++++++++++++++
+ tools/tool_search.py                          |  9 ++-
+ tools/tool_search_catalog.py                  |  2 +-
+ 4 files changed, 90 insertions(+), 3 deletions(-)
  create mode 100644 tests/agent/test_tool_search_keep_direct_compact_skills.py
 
 diff --git a/agent/prompt_builder.py b/agent/prompt_builder.py
@@ -45,10 +46,10 @@ index 68375dea3d4367653c787fc810e89e0a83e356c1..4ba0650b51531b6a5825dc00eb961e07
      disabled = get_disabled_skill_names(_platform_hint or None)
 diff --git a/tests/agent/test_tool_search_keep_direct_compact_skills.py b/tests/agent/test_tool_search_keep_direct_compact_skills.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..cadde375ff73f0dea1b7a7bda99a9c468945be52
+index 0000000000000000000000000000000000000000..485b79d10533cf0a02baffbd5f672985bf01bf03
 --- /dev/null
 +++ b/tests/agent/test_tool_search_keep_direct_compact_skills.py
-@@ -0,0 +1,48 @@
+@@ -0,0 +1,68 @@
 +"""BipAgents patch 0009: ``!<name>`` in ``tools.tool_search.defer`` keeps a tool direct (an MCP tool
 +included), and ``skills.compact_categories`` lists those categories by name only in the skills index."""
 +
@@ -97,8 +98,28 @@ index 0000000000000000000000000000000000000000..cadde375ff73f0dea1b7a7bda99a9c46
 +    compact = build_skills_system_prompt()
 +    assert "song-maker" in compact and "Compose a song" not in compact   # name only, still loadable
 +    assert "Take careful notes" in compact                                # other categories whole
++
++
++def test_tool_search_description_has_no_counts(mcp_tools, monkeypatch):
++    """The deferred count changed with the kind of session (82/83/84 seen in one day) and broke the prompt cache
++    from that tool on; neither the description nor the catalog's group headings carry a count."""
++    from tools import tool_search_catalog
++    monkeypatch.setattr(tool_search_catalog, "hidden_declared_sources", lambda: [])
++
++    def described(n):
++        defs = [{"type": "function", "function": {"name": f"mcp__bipagents__t{i}", "description": f"Tool {i}.",
++                                                  "parameters": {"type": "object", "properties": {}}}}
++                for i in range(n)]
++        listing, form = tool_search_catalog.build_catalog_listing_with_form(defs)
++        return tool_search.bridge_tool_schemas(n, listing=listing, listing_form=form)[0]["function"]["description"]
++
++    few, more = described(3), described(4)
++    assert few.startswith("Search additional tools that are loaded on demand.")
++    assert " tools:\n- mcp__bipagents__t0" in few and "(3)" not in few
++    # One tool more only adds its own line, at the end: everything before it is byte-identical.
++    assert more.startswith(few)
 diff --git a/tools/tool_search.py b/tools/tool_search.py
-index 90631843bcf5edebf9bd5ab322f9ee6eba900c2f..89f56ab836039d62c6de0cc0518bf9ba20aac0a9 100644
+index 90631843bcf5edebf9bd5ab322f9ee6eba900c2f..c0c8c375d36cb4b5f5e1f0c1445adea4f788a4fc 100644
 --- a/tools/tool_search.py
 +++ b/tools/tool_search.py
 @@ -150,9 +150,12 @@ _DEFAULT_DEFERRED_TOOLS = frozenset(DEFAULT_CONFIG["tools"]["tool_search"]["defe
@@ -115,3 +136,27 @@ index 90631843bcf5edebf9bd5ab322f9ee6eba900c2f..89f56ab836039d62c6de0cc0518bf9ba
      if defer_tools is not None and name in defer_tools:
          return True
      if name in _core_tool_names():
+@@ -241,7 +244,9 @@ def _search_description(deferred_count: int, listing: Optional[str], listing_for
+     ``manage_connections``; without that tool in the session the sentence would name a tool
+     the model cannot call."""
+     desc = (
+-        (f"Search {deferred_count} additional tools that are loaded on demand. "
++        # BipAgents 0009: no count — it changed with the kind of session and the MCP servers' state, and every
++        # change cost the prompt cache all that follows this tool (the whole system prompt).
++        ("Search additional tools that are loaded on demand. "
+          if deferred_count else "Search remote connector tools (email, calendars, issue trackers, and more). ")
+         + "Send one keyword query per capability you need; returns matching tool names "
+         f"and descriptions. Then `{TOOL_DESCRIBE_NAME}` loads schemas and `{TOOL_CALL_NAME}` "
+diff --git a/tools/tool_search_catalog.py b/tools/tool_search_catalog.py
+index d46ab1579290967016fe5c4b4ee5deaac5c5af4e..99b2ea721aa0aa3ae8518f7087ed1507c3addcf8 100644
+--- a/tools/tool_search_catalog.py
++++ b/tools/tool_search_catalog.py
+@@ -283,7 +283,7 @@ def build_catalog_listing_with_form(
+         if mode == "summary":
+             return (f"{label} ({len(tools)} tools — names not listed; "
+                     f"discover via `{TOOL_SEARCH_NAME}`)")
+-        lines = [f"{label} tools ({len(tools)}):"]
++        lines = [f"{label} tools:"]  # BipAgents 0009: no count (prompt-cache stable, the names follow)
+         if mode == "full":
+             lines.extend(f"- {name}: {desc}" if desc else f"- {name}" for name, desc in tools)
+         else:

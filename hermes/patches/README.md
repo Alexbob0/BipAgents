@@ -32,6 +32,7 @@ labels, 0008's fall-back fix, 0017, 0009's `!name`, 0013.
 | 0020 Runs API: each model call's usage (`model.usage`) | `agent/turn_usage.py`, `gateway/platforms/api_server_runs.py`, `gateway/session_api_turn.py`, `gateway/run_turn_runner.py` |
 | 0021 an API client's own Bot Chat stays an API conversation | `gateway/platforms/api_server_bot_chat.py`, `gateway/session_bot.py` |
 | 0022 tools in one canonical order (`tools.order_first`) | `tools/tool_order.py` (new), `model_tools.py`, `tools/mcp_tool_agent.py` |
+| 0023 a system prompt stable across conversations (prefix cache) | `agent/prompt_cache_notes.py` (new), `agent/system_prompt.py`, `agent/turn_context.py`, `agent/agent_init.py`, `tools/memory_tool_store.py` |
 | 0024 tools refused for one turn (`model_options.closed_tools`) | `agent/closed_tools.py` (new), `agent/agent_runtime_helpers.py`, `agent/tool_executor.py`, `gateway/platforms/api_server.py`, `gateway/run_turn_runner.py` |
 
 ## How the patches are kept
@@ -167,7 +168,12 @@ music generation's included, with no setting to shorten it short of disabling sk
 - `skills.compact_categories` (a list of top-level categories): those categories are listed by name only in the
   system prompt, as the coding posture already does for its own; their skills still load with `skill_view`.
 
-**Files.** `tools/tool_search.py`, `agent/prompt_builder.py`.
+- No count in `tool_search`'s description (« Search additional tools… », was « Search 83 additional tools ») nor in
+  the catalog's group headings (« bipagents tools: », was « (36) »): the count changed with the kind of session and
+  the MCP servers' state (82/83/84 on 3 November), and each change cost the prompt cache everything after that tool,
+  the whole system prompt (≈ 11k tokens). A tool more or less still changes the listing from its line on.
+
+**Files.** `tools/tool_search.py`, `tools/tool_search_catalog.py`, `agent/prompt_builder.py`.
 
 **Bridge side** (bridge-rs/src/tool_diet.rs). Per kind of agent, the bridge writes the defer list (Hermes' defaults, the
 core tools the kind rarely needs, `!mcp__bipagents__<tool>` for its most used cheap tools) and the compact categories.
@@ -357,12 +363,14 @@ tool named `mcp__<server>__message_agent` is in the staged list, the built-in is
 the MCP tools were listed leaves the list and `valid_tool_names`. One way to write to an agent everywhere, the
 bridge's, and every exchange in its pair's conversation. Without such an MCP tool (an install without the bridge, an
 agent linked to nobody) the built-in is injected as upstream. Deterministic for the session, so the prompt cache
-holds. A tool behind the tool search is not seen (the token diet keeps this one direct, `!mcp__bipagents__message_agent`).
+holds. The bridge's tool behind the tool search counts too (`mcp_message_agent_offered`: the deferred names of the
+session, when `tool_call` is there): on 3 November Prof's bridge `message_agent` was deferred, its Bot Chat got the
+built-in and its other conversations had none (7.8k tokens of cache lost going from one to the other).
 0012's `drop_mcp_message_agent` stays, unused; a separate patch so an install that has 0012 gets this one as a new fix
 (`hermes-update --fixes-only`).
 
 **Files.** `tools/bot_mode_dm.py`, `tools/mcp_tool_agent.py`; 0012's `tests/tools/test_bot_mode_dm_one_message_agent.py`
-rewritten for the new rule (7 tests).
+rewritten for the new rule (8 tests, one for a deferred bridge tool).
 
 **Tests.** `patch --dry-run` after 0006 and 0012 on `517b5e10f`; the files compile (`py_compile`). The test file was
 not run on the Mac (no Hermes test environment there): run it with `tests/tools/test_bot_mode_dm.py`,
@@ -695,6 +703,53 @@ its list is again the one every new session builds. Without the setting: plain n
 **Tests.** `tests/tools/test_tool_order.py`: common tools first then by name, two agents' common prefix byte-identical,
 the same list from any input order (two starts), a later tool at its place.
 
+## 0023 — a system prompt stable across an agent's conversations (prefix cache)
+
+**Problem.** The 3 November cache audit (`scripts/token-lab/cache_breaks.py` on the release lab's dumps): inside a
+conversation the provider's prefix cache reads back 99 % of the previous call, but between conversations the start
+of the prompt differs. Three sources are in Hermes' system prompt: the Bot Chat's « ## Messaging other agents »
+section sat in the middle (after the context files, before the platform hint, skills and memory), so a Bot Chat and
+the agent's other conversations shared only the first part; the memory blocks (MEMORY.md, USER.md, which BipAgents
+keeps common to the person's agents) were taken at each session's start, so every write changed the end of every
+later conversation's prompt, for each agent of the circle on a USER.md write; and the Runs API's `instructions` (a
+room's rules, a background task's brief, a Live brief) were appended to the system prompt of each call. With a
+template that puts the tools after the system prompt (DeepSeek), a change at its end also loses the ≈ 15k tokens of
+tool schemas: measured 57k tokens a day for USER.md, 16k for a room.
+
+**What the patch does.**
+- The Bot Mode section (and its capability epoch line) goes to the volatile tier, after the memory and the profile
+  line, just before the date line (which the Bot Chat also changes): the runtime block stays last, as
+  `surface_switch` expects.
+- `memory.prompt_refresh` (`daily` for an agent unless the profile says `session`; a bare `MemoryStore` keeps
+  `session`): the system prompt shows the day's copy of the memory (`memories/.prompt-day.json`, written by the
+  day's first load in the configured time zone; the live entries the tools use are always the files). What is
+  written later reaches the model in a turn note (`agent/prompt_cache_notes.py`, on the per-turn channel of the
+  skills-index note: joined to the API copy of the turn's message, persisted as its `api_content`): « Your memory
+  changed after this conversation's system prompt was built… Now in your memory too: - USER PROFILE: … / No longer
+  in your memory: … ». Each note states the full difference against the prompt (entries parsed from its blocks,
+  against the files on disk now: another process may have written them), and a note is sent only when that
+  difference is not the newest note of the transcript, so an agent knows in a later conversation of the day a fact
+  it stored in an earlier one. No note on a guest turn (0018), threat-flagged entries never told. A compaction
+  rebuild takes the day's copy too.
+- On `api_server`, the run's instructions (`ephemeral_system_prompt`) leave the system prompt for a turn note
+  (« [System: Instructions for this conversation, from the app…] »), sent when they are not the transcript's newest
+  instructions note: a room's rules come once and again at a hand-over. A cached agent keeps them on
+  `_run_instructions` (they are part of its cache signature). Other platforms keep upstream's behaviour.
+  The bridge turns it on (`agent.instructions_as_note`, tool_diet.rs) and sends `instructions` only for a room's
+  rules and a read-only share's: background turns (`after_call`'s included) and Live calls carry theirs in the turn's
+  own message (a hidden note, the apps' call prelude), so nothing is told twice; the notes come after the message's
+  text, so a Live warm-up and the call's first turn still share the prefix up to the prelude.
+
+**Files.** `agent/prompt_cache_notes.py` (new), `agent/system_prompt.py`, `agent/turn_context.py`
+(`_merge_gateway_notes`: instructions first, memory last), `agent/agent_init.py`, `tools/memory_tool_store.py`.
+
+**Tests.** `tests/agent/test_prompt_cache_stable.py` (9): the Bot Chat section after the shared part; the day's copy
+until the next day, `session` as upstream; a fact stored in an earlier conversation of the day told in the next
+one's note, not told twice, its removal told; no note on a guest turn; instructions told once, again when changed,
+untouched off `api_server`; both notes join the turn's message. Effect on the 3 November lab day, the dumps
+rewritten as the patches would send them (internal/notes/cache-hermes.md): GLM, tokens lost between conversations
+from these sources ≈ 16k → ≈ 1k; DeepSeek ≈ 73k → 0.
+
 ## 0024 — tools refused for one turn
 
 **Problem.** In a Live call (4/11) the person asked how to pronounce a word and the agent started making an audio file
@@ -717,5 +772,4 @@ turns and warm-up (`bridge-rs/src/live_turns.rs` `LIVE_CLOSED_TOOLS`); a Hermes 
 **Tests.** `tests/agent/test_closed_tools.py`: parsing (a malformed value ignored), the request's tools unchanged, the
 next turn's tools back, exact names and prefixes refused, `invoke_tool` and the policy gate refusing without running
 anything, `_create_agent` marking the agent from its `model_options`. With 0018's tests and the gateway's turn runner
-tests: green on v0.22.5 with the whole set. (Numbered 0024: 0023 is the prompt-cache patch of the `cache-hermes`
-branch.)
+tests: green on v0.22.5 with the whole set, 0023 under it.

@@ -12,18 +12,18 @@ BipAgents patch, documented in hermes/patches/README.md of the BipAgents reposit
 
 Bip-Patch: 0016-message-agent-the-bridges-everywhere
 ---
- .../test_bot_mode_dm_one_message_agent.py     | 119 ++++++++++++++++++
- tools/bot_mode_dm.py                          |  36 ++++++
+ .../test_bot_mode_dm_one_message_agent.py     | 138 ++++++++++++++++++
+ tools/bot_mode_dm.py                          |  53 +++++++
  tools/mcp_tool_agent.py                       |   7 +-
- 3 files changed, 160 insertions(+), 2 deletions(-)
+ 3 files changed, 196 insertions(+), 2 deletions(-)
  create mode 100644 tests/tools/test_bot_mode_dm_one_message_agent.py
 
 diff --git a/tests/tools/test_bot_mode_dm_one_message_agent.py b/tests/tools/test_bot_mode_dm_one_message_agent.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..6a462e82230f8157fbb774df14ec1f425cabbea3
+index 0000000000000000000000000000000000000000..92fae92bff66dd45b7e05b7461c8abd0135fe3d1
 --- /dev/null
 +++ b/tests/tools/test_bot_mode_dm_one_message_agent.py
-@@ -0,0 +1,119 @@
+@@ -0,0 +1,138 @@
 +"""BipAgents 0012 + 0016: where an MCP server offers its own ``message_agent`` (``mcp__bipagents__message_agent``,
 +BipAgents' bridge, in every conversation: it answers in the two agents' own conversation, not in the
 +target's Bot Chat), the built-in is not injected, even in a Bot Chat, so the model sees one way to write to
@@ -143,11 +143,30 @@ index 0000000000000000000000000000000000000000..6a462e82230f8157fbb774df14ec1f42
 +    assert bot_mode_dm.has_mcp_message_agent([_schema("mcp__x__message_agent")])
 +    assert not bot_mode_dm.has_mcp_message_agent([_schema("message_agent_log"), _schema("mcp__x__message_agents")])
 +    assert not bot_mode_dm.has_mcp_message_agent(None)
++
++
++def test_a_deferred_bridge_message_agent_keeps_the_builtin_out(tmp_path, monkeypatch):
++    """The bridge's message_agent behind the tool search (the 3 November lab: Prof's Bot Chat got the built-in,
++    its other conversations had none, 7.8k tokens of prompt cache lost between them): the Bot Chat gets the same
++    tool list as the agent's other conversations."""
++    from agent import tool_executor
++    monkeypatch.setattr(tool_executor, "_tool_search_scoped_names", lambda agent: frozenset({BRIDGE, "mcp__x__y"}))
++    home = _managed_home(tmp_path)
++    agent = _FakeAgent(home, "Bot Chat", names=("mcp__bipagents__health", "tool_call"))
++    assert bot_mode_dm.ensure_message_agent_tool(agent) is False
++    assert _names(agent.tools) == ["mcp__bipagents__health", "tool_call"]
++    staged, names = [_schema("mcp__bipagents__health"), _schema("tool_call")], {"mcp__bipagents__health", "tool_call"}
++    _reinject_authorized_dynamic_tools(agent, staged, names)
++    assert BUILTIN not in names
++    # Without the tool search (no tool_call), the deferred set is not looked at.
++    monkeypatch.setattr(tool_executor, "_tool_search_scoped_names", lambda agent: frozenset())
++    agent = _FakeAgent(home, "Bot Chat", names=("mcp__bipagents__health", "tool_call"))
++    assert bot_mode_dm.ensure_message_agent_tool(agent) is True
 diff --git a/tools/bot_mode_dm.py b/tools/bot_mode_dm.py
-index 18abf2bf851b6d23b4954b09b4c1adad360a2c3b..3a79e1dde07a69e049630c8ebf7a056f5c7abbe3 100644
+index 18abf2bf851b6d23b4954b09b4c1adad360a2c3b..fe187c897ab45cf8b927cebe99763ae8a59be09e 100644
 --- a/tools/bot_mode_dm.py
 +++ b/tools/bot_mode_dm.py
-@@ -137,6 +137,38 @@ def message_agent_authorized(agent: Any) -> bool:
+@@ -137,6 +137,55 @@ def message_agent_authorized(agent: Any) -> bool:
          return False
  
  
@@ -163,6 +182,23 @@ index 18abf2bf851b6d23b4954b09b4c1adad360a2c3b..3a79e1dde07a69e049630c8ebf7a056f
 +        return isinstance(tools, list) and any(
 +            isinstance(t, dict) and _is_mcp_message_agent(t.get("function", {}).get("name")) for t in tools
 +        )
++    except Exception:  # pragma: no cover — must never break a turn
++        return False
++
++
++def mcp_message_agent_offered(agent: Any, tools: Any) -> bool:
++    """Whether an MCP server's own ``message_agent`` is in the session: in ``tools``, or behind the tool search
++    (deferred: reached with ``tool_call``). A deferred one counts too, so a Bot Chat whose bridge ``message_agent``
++    is deferred does not get the built-in that its other conversations lack (one tool list for every conversation
++    of an agent, so their prompt prefix is shared). Never raises."""
++    if has_mcp_message_agent(tools):
++        return True
++    try:
++        names = {t.get("function", {}).get("name") for t in tools if isinstance(t, dict)} if isinstance(tools, list) else set()
++        if "tool_call" not in names:
++            return False
++        from agent.tool_executor import _tool_search_scoped_names
++        return any(_is_mcp_message_agent(n) for n in _tool_search_scoped_names(agent))
 +    except Exception:  # pragma: no cover — must never break a turn
 +        return False
 +
@@ -186,11 +222,11 @@ index 18abf2bf851b6d23b4954b09b4c1adad360a2c3b..3a79e1dde07a69e049630c8ebf7a056f
  def ensure_message_agent_tool(agent: Any) -> bool:
      """Inject the ``message_agent`` schema into a Bot Chat agent's tool list (once per turn).
      Idempotent and deterministic for the session's life (the gate is stable from the
-@@ -145,6 +177,10 @@ def ensure_message_agent_tool(agent: Any) -> bool:
+@@ -145,6 +194,10 @@ def ensure_message_agent_tool(agent: Any) -> bool:
          if not getattr(agent, "_bot_mode_protocol", True):
              return False
          tools = getattr(agent, "tools", None)
-+        if has_mcp_message_agent(tools):
++        if mcp_message_agent_offered(agent, tools):
 +            # BipAgents 0016: the bridge's own message_agent stays, the built-in goes (stale copies too).
 +            drop_builtin_message_agent(tools, getattr(agent, "valid_tool_names", None))
 +            return False
@@ -198,7 +234,7 @@ index 18abf2bf851b6d23b4954b09b4c1adad360a2c3b..3a79e1dde07a69e049630c8ebf7a056f
              isinstance(t, dict) and t.get("function", {}).get("name") == MESSAGE_AGENT_TOOL_NAME
              for t in tools
 diff --git a/tools/mcp_tool_agent.py b/tools/mcp_tool_agent.py
-index e74f1510b57f110aa7069409398fb4a15677730d..3d298839462e5fe26684985f5bc0bb5ff664a4b0 100644
+index e74f1510b57f110aa7069409398fb4a15677730d..fe0e6f40f1f10dd00f50439ef08494e7b9d11bda 100644
 --- a/tools/mcp_tool_agent.py
 +++ b/tools/mcp_tool_agent.py
 @@ -299,11 +299,14 @@ def _reinject_authorized_dynamic_tools(agent, tools_list: list, name_set: set) -
@@ -207,14 +243,14 @@ index e74f1510b57f110aa7069409398fb4a15677730d..3d298839462e5fe26684985f5bc0bb5f
      gate re-authorizes, so the publisher exposes a coherent ``(tools, valid_tool_names)``."""
 -    from tools.bot_mode_dm import MESSAGE_AGENT_TOOL_NAME, message_agent_authorized, message_agent_tool_schema
 +    from tools.bot_mode_dm import (
-+        MESSAGE_AGENT_TOOL_NAME, has_mcp_message_agent, message_agent_authorized, message_agent_tool_schema,
++        MESSAGE_AGENT_TOOL_NAME, mcp_message_agent_offered, message_agent_authorized, message_agent_tool_schema,
 +    )
  
      tools_list[:] = [entry for entry in tools_list if _def_name(entry) != MESSAGE_AGENT_TOOL_NAME]
      name_set.discard(MESSAGE_AGENT_TOOL_NAME)
 -    if message_agent_authorized(agent):
 +    # BipAgents 0016: an MCP server's own message_agent (the bridge's) replaces the built-in.
-+    if message_agent_authorized(agent) and not has_mcp_message_agent(tools_list):
++    if message_agent_authorized(agent) and not mcp_message_agent_offered(agent, tools_list):
          tools_list.append(message_agent_tool_schema())
          name_set.add(MESSAGE_AGENT_TOOL_NAME)
  
