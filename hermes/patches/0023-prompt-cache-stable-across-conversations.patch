@@ -25,25 +25,25 @@ Bip-Patch: 0023-prompt-cache-stable-across-conversations
  create mode 100644 tests/agent/test_prompt_cache_stable.py
 
 diff --git a/agent/agent_init.py b/agent/agent_init.py
-index 59006475ded77decfdcfa887506667d3f48ae411..366622c1b86a5ae4c2a49e6c3a4433393b76e720 100644
+index 59006475ded77decfdcfa887506667d3f48ae411..a5d82bcca5dd7320b890ddc53e07aa2216691783 100644
 --- a/agent/agent_init.py
 +++ b/agent/agent_init.py
 @@ -1337,6 +1337,8 @@ def _init_memory(agent, _agent_cfg, skip_memory, platform, memory_manager=None):
                      user_char_limit=mem_config.get("user_char_limit", 1375),
                      memory_enabled=agent._memory_enabled,
                      user_profile_enabled=agent._user_profile_enabled,
-+                    # BipAgents 0022: the day's copy in the prompt unless the profile says "session"
++                    # BipAgents 0023: the day's copy in the prompt unless the profile says "session"
 +                    prompt_refresh=str(mem_config.get("prompt_refresh") or "daily"),
                  )
                  agent._memory_store.load_from_disk()
  
 diff --git a/agent/prompt_cache_notes.py b/agent/prompt_cache_notes.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..6a9901b363f423d13b2ceeaebc37bfb79d6eb62e
+index 0000000000000000000000000000000000000000..918605650c79aa3de737489d551bea45c732fdf3
 --- /dev/null
 +++ b/agent/prompt_cache_notes.py
 @@ -0,0 +1,184 @@
-+"""BipAgents 0022: what changes during the day reaches the model in the turn's message, not in the system prompt.
++"""BipAgents 0023: what changes during the day reaches the model in the turn's message, not in the system prompt.
 +
 +A provider's prefix cache only reuses the identical beginning of a request. The system prompt is that beginning for
 +every conversation of an agent, so anything in it that moves between conversations (the memory an agent just wrote,
@@ -228,7 +228,7 @@ index 0000000000000000000000000000000000000000..6a9901b363f423d13b2ceeaebc37bfb7
 +    agent._instructions_note = ""
 +    return note if isinstance(note, str) else ""
 diff --git a/agent/system_prompt.py b/agent/system_prompt.py
-index f614d05ffedc314be8d68220f075278167bde94a..7d8e8fc2b48cb3ce914d82013a70b6747c833f78 100644
+index f614d05ffedc314be8d68220f075278167bde94a..9455b18906bee6c3d279e45520e0c5b262adb4f6 100644
 --- a/agent/system_prompt.py
 +++ b/agent/system_prompt.py
 @@ -706,7 +706,7 @@ def _coding_parts(agent: Any) -> tuple[list[str], list[str], list[str]]:
@@ -236,7 +236,7 @@ index f614d05ffedc314be8d68220f075278167bde94a..7d8e8fc2b48cb3ce914d82013a70b674
      """Blocks that follow the worktree-specific context: environment probe
      (config.yaml agent.environment_probe; one line, nothing when clean, skipped
 -    for remote backends), bot-mode protocol, platform hint."""
-+    for remote backends), platform hint (the bot-mode protocol is in the volatile tier: BipAgents 0022)."""
++    for remote backends), platform hint (the bot-mode protocol is in the volatile tier: BipAgents 0023)."""
      parts: list[str] = []
      if getattr(agent, "_environment_probe", True):
          try:
@@ -246,7 +246,7 @@ index f614d05ffedc314be8d68220f075278167bde94a..7d8e8fc2b48cb3ce914d82013a70b674
              pass  # Probe failure must never block prompt build.
 -    if getattr(agent, "_bot_mode_protocol", True):
 -        parts.extend(_bot_mode_parts(agent))
-+    # BipAgents 0022: the Bot Mode section goes at the end of the prompt (volatile tier), so a Bot Chat and the
++    # BipAgents 0023: the Bot Mode section goes at the end of the prompt (volatile tier), so a Bot Chat and the
 +    # agent's other conversations share everything before it.
      parts.append(platform_hint(agent))
      return parts
@@ -255,7 +255,7 @@ index f614d05ffedc314be8d68220f075278167bde94a..7d8e8fc2b48cb3ce914d82013a70b674
      # The profile line names this home's path, so it rides in the volatile tier: the stable
      # prefix then stays byte-identical across every profile (and home) on the host.
      volatile_parts.append(_active_profile_line(agent))
-+    # BipAgents 0022: the Bot Chat's own section last before the date line (which it also changes), after the
++    # BipAgents 0023: the Bot Chat's own section last before the date line (which it also changes), after the
 +    # memory: what only the Bot Chat has comes after everything it shares with the agent's other conversations.
 +    if getattr(agent, "_bot_mode_protocol", True):
 +        volatile_parts.extend(_bot_mode_parts(agent))
@@ -263,14 +263,14 @@ index f614d05ffedc314be8d68220f075278167bde94a..7d8e8fc2b48cb3ce914d82013a70b674
      # Keep the renderer-owned runtime anchor after all user/plugin prose so quoted
      # host examples cannot shadow it during persisted-prompt validation.
 diff --git a/agent/turn_context.py b/agent/turn_context.py
-index c2786a27fc1aa7a57264993e4d4dc31e99f9ecd9..7d70d3dd40fce1b6ca6ba570ede6e1a3b1c4ecf6 100644
+index c2786a27fc1aa7a57264993e4d4dc31e99f9ecd9..cc299bd7bb38421da82dbf8f9ad7698e9ac14709 100644
 --- a/agent/turn_context.py
 +++ b/agent/turn_context.py
 @@ -862,10 +862,11 @@ def _merge_gateway_notes(
      tool result carried, then the surface-switch correction. Multimodal (list) content can't take the
      string sidecar — append a durable text part instead."""
      forward_lsp_verdicts(agent)  # late LSP verdicts on last turn's edits ride the plugin-notice queue
-+    from agent.prompt_cache_notes import consume_instructions_note, consume_memory_note  # BipAgents 0022
++    from agent.prompt_cache_notes import consume_instructions_note, consume_memory_note  # BipAgents 0023
      _turn_notes = "\n\n".join(
 -        part for part in (consume_gateway_turn_context_notes(agent), pop_plugin_notices(agent),
 -                          consume_surface_switch_note(agent),
@@ -285,7 +285,7 @@ index c2786a27fc1aa7a57264993e4d4dc31e99f9ecd9..7d70d3dd40fce1b6ca6ba570ede6e1a3
      # Every turn, not only on a prompt restore: a long-lived agent (CLI, TUI, Desktop) keeps its
      # prompt in memory for the whole conversation and would never re-check its skills index.
      stage_skills_index_note(agent, active_system_prompt, messages)
-+    # BipAgents 0022: run instructions and the memory written since the prompt's daily copy ride the same channel.
++    # BipAgents 0023: run instructions and the memory written since the prompt's daily copy ride the same channel.
 +    from agent.prompt_cache_notes import stage_instructions_note, stage_memory_note
 +    with suppress(Exception):  # on a failure the instructions stay in the system prompt, as upstream
 +        stage_instructions_note(agent, messages)
@@ -296,11 +296,11 @@ index c2786a27fc1aa7a57264993e4d4dc31e99f9ecd9..7d70d3dd40fce1b6ca6ba570ede6e1a3
      )
 diff --git a/tests/agent/test_prompt_cache_stable.py b/tests/agent/test_prompt_cache_stable.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..0d2ba497bd3c5cc74f845e68bf26bc6488609084
+index 0000000000000000000000000000000000000000..a23a3dc93662cb249d1ba44196034907f8fe5264
 --- /dev/null
 +++ b/tests/agent/test_prompt_cache_stable.py
 @@ -0,0 +1,171 @@
-+"""BipAgents 0022: a system prompt that stays the same across an agent's conversations (prefix cache).
++"""BipAgents 0023: a system prompt that stays the same across an agent's conversations (prefix cache).
 +
 +- the Bot Chat's own section comes after everything the Bot Chat shares with the agent's other conversations;
 +- the memory blocks are the day's copy; what is written later reaches the model in a turn note, so an agent still
@@ -472,7 +472,7 @@ index 0000000000000000000000000000000000000000..0d2ba497bd3c5cc74f845e68bf26bc64
 +    assert merged.index("[System: I]") < merged.index("[System: M]")
 +    assert agent._instructions_note == "" and agent._memory_note == ""
 diff --git a/tools/memory_tool_store.py b/tools/memory_tool_store.py
-index 3666bf9fd564873f29e6ce76f1508fa9007b1418..48e7e80d6510670959986f2a94f03f4aeee65989 100644
+index 3666bf9fd564873f29e6ce76f1508fa9007b1418..c830108c831dc3b2651f759a796cfd5e9c5af1a7 100644
 --- a/tools/memory_tool_store.py
 +++ b/tools/memory_tool_store.py
 @@ -184,12 +184,16 @@ class MemoryStore:
@@ -486,7 +486,7 @@ index 3666bf9fd564873f29e6ce76f1508fa9007b1418..48e7e80d6510670959986f2a94f03f4a
          self.memory_char_limit, self.user_char_limit = memory_char_limit, user_char_limit
          self.memory_enabled, self.user_profile_enabled = memory_enabled, user_profile_enabled
          self._system_prompt_snapshot: dict[str, str] = {"memory": "", "user": ""}
-+        # BipAgents 0022: "daily" = the system prompt carries the day's copy (memories/.prompt-day.json), the same
++        # BipAgents 0023: "daily" = the system prompt carries the day's copy (memories/.prompt-day.json), the same
 +        # for every conversation of the day (prefix cache); what changes later is told in a turn note
 +        # (agent/prompt_cache_notes.py). "session" = the copy of each session's start (upstream).
 +        self.prompt_refresh = prompt_refresh
@@ -522,7 +522,7 @@ index 3666bf9fd564873f29e6ce76f1508fa9007b1418..48e7e80d6510670959986f2a94f03f4a
 +                target, [_sanitize(e, path.name) for e in shown[target]])
 +
 +    def _prompt_day_entries(self, live: dict[str, list[str]]) -> dict[str, list[str]]:
-+        """BipAgents 0022: the entries the system prompt shows today: the day's copy, taken by the day's first load
++        """BipAgents 0023: the entries the system prompt shows today: the day's copy, taken by the day's first load
 +        (in the configured time zone) from ``live``. Any error: ``live`` (upstream behaviour)."""
 +        import json
 +        try:
