@@ -142,6 +142,23 @@ def test_a_new_conversation_and_stop(bridges, fakes):
     assert bridge.post(f"/v1/threads/{thread}/stop", headers=AUTH, json={}).json() == {"stopped": False}
 
 
+
+def test_a_new_conversation_with_the_same_first_words_as_an_earlier_one(bridges, fakes):
+    """Release bench of 4/11: Hermes refuses a title another conversation holds, and a new conversation is titled by
+    its first words: the second « Bonjour » failed (502) and left an empty thread."""
+    bridge, _ = setup(bridges, fakes)
+    fakes.hermes.unique_titles = True
+    threads = []
+    for n, run in enumerate(("r1", "r2", "r3"), start=1):
+        fakes.hermes.runs[run] = [sse("run.started", run_id=run), sse("run.completed", run_id=run, output="Salut !")]
+        sent = send(bridge, "new", f"C1D00000-0000-4000-8000-0000000000D{n}", "Bonjour")
+        assert sent.status_code == 200, sent.text
+        threads.append(sent.json()["thread"])
+    assert len(set(threads)) == 3
+    titles = [body["title"] for _, body in fakes.hermes.created[-3:]]
+    assert titles == ["Bonjour", "Bonjour (2)", "Bonjour (3)"]
+    assert len({fakes.hermes.started[r]["session_id"] for r in ("r1", "r2", "r3")}) == 3
+
 def watch(bridge, thread, hints, stop):
     """Another device showing the conversation: its hints."""
     with httpx.Client(base_url=bridge.url, headers=AUTH, timeout=30) as client:

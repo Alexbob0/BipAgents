@@ -265,12 +265,19 @@ async fn tip_of(state: &AppState, threads: &Threads, agent: &AgentConfig, thread
     if let Some(tip) = threads.line(agent, thread).await.map_err(unavailable)?.last() {
         return Ok(tip.session_id.clone());
     }
-    let title: String = words.chars().take(60).collect();
-    let session = state
-        .hermes
-        .create_session(agent, &title)
-        .await
-        .map_err(|_| HttpError::new(502, "your agent isn't answering right now: try again in a moment"))?;
+    let first: String = words.chars().take(60).collect();
+    // Hermes refuses a title another conversation holds (400 `invalid_title`): a new conversation opened with the same
+    // words as an earlier one (« Bonjour », the console's « ＋ », a relative's) failed with « isn't answering » and left
+    // an empty thread (release bench of 4/11). Numbered then, as the background turns' work conversations are.
+    let mut attempt = 1;
+    let session = loop {
+        let title = if attempt == 1 { first.clone() } else { format!("{first} ({attempt})") };
+        match state.hermes.create_session(agent, &title).await {
+            Ok(session) => break session,
+            Err(crate::hermes::HermesError::Http { status: 400 | 409, .. }) if attempt < 9 => attempt += 1,
+            Err(_) => return Err(HttpError::new(502, "your agent isn't answering right now: try again in a moment")),
+        }
+    };
     threads.link(agent, thread, &session).await?;
     Ok(session)
 }
