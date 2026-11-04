@@ -395,12 +395,11 @@ async function play(id) {
         await wait(800);
         if (step.then && !(await steps(step.then))) return false;
       } else if (step.say) {
-        // « MEDIA:/demo/page/… » in a reply is where the app shows the page the agent made.
-        const [before, after] = fill(step.say).split(/\n*MEDIA:\S+\n*/);
-        await say(before);
-        if (after !== undefined && alive()) {
-          if (madePage && data.pages[madePage]) { pageCard(madePage); await wait(2200); }
-          if (after.trim()) await say(after);
+        await say(fill(step.say));
+      } else if (step.show) {
+        // a file placed in the reply (demo.json's `show`): the page the agent made, where the app shows it
+        if (madePage && step.show.startsWith(`/demo/page/${madePage}/`) && data.pages[madePage]) {
+          pageCard(madePage); await wait(2200);
         }
       } else if (step.pause) {
         await wait(step.pause * 1000);
