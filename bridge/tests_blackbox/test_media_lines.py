@@ -6,8 +6,7 @@ import json
 
 import httpx
 
-from bbkit.common import AUTH, read_sse, sse
-from bbkit.servers import wait_until
+from bbkit.common import AUTH, boite_message, read_sse, sse
 
 PAGE = "/bipagents/pages/wellness/plan.html"
 REPLY = f"Voici le plan :\nMEDIA:{PAGE}\n\nLa suite.\nMEDIA:/envoi/devis.pdf"
@@ -74,15 +73,13 @@ def test_the_timeline_and_the_boite_give_files_never_lines(bridges, fakes):
     fakes.hermes.add_session("api_main", [{"role": "user", "content": "Un plan ?"},
                                           {"role": "assistant", "content": REPLY}],
                              title="Bot Chat", last_active=10, started_at=1)
-    fakes.ntfy.lines["hermes-wellness-out"] = [json.dumps({
-        "id": "n1", "event": "message", "message": f"Le point du jour.\nMEDIA:{PAGE}"})]
     bridge = bridges.new().start()
     main = bridge.get("/v1/threads/main", params={"agent": "wellness"}, headers=AUTH).json()
     items = bridge.get(f"/v1/threads/{main['id']}/timeline", headers=AUTH).json()["items"]
     reply = next(i for i in items if i["kind"] == "message" and i.get("role") == "agent")
     assert reply["text"] == "Voici le plan :\n\nLa suite."
     assert [(a["path"], a["offset"]) for a in reply["attachments"]] == [(PAGE, 15), ("/envoi/devis.pdf", 26)]
-    assert wait_until(lambda: bridge.get("/v1/outbox", headers=AUTH).json()["items"])
-    item = bridge.get("/v1/outbox", headers=AUTH).json()["items"][0]
+    # a routine's report in the Boîte, as the apps read it (the journal's boite row, its message whole)
+    item = boite_message(bridge, fakes, f"Le point du jour.\nMEDIA:{PAGE}")
     assert item["text"] == "Le point du jour." and [a["path"] for a in item["attachments"]] == [PAGE]
     assert "MEDIA:" not in json.dumps(items) + json.dumps(item)
