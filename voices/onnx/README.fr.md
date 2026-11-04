@@ -15,6 +15,8 @@ téléchargé au premier usage) et le décodeur audio qu'ils partagent (40 Mo).
 | `golden.py`, `golden/` | des exemples écrits par pocket lui-même ; `test_textprep.py` et les tests des apps s'y comparent |
 | `tokenizers/` | le tokenizer.json de chaque langue (Kyutai, CC-BY-4.0) |
 | `store_packs.py` | les paquets comme les stores les livrent : paquets hébergés par Apple (`build/voices-store/apple/*.aar`) et paquets à la demande de Google Play (`android/voicepacks/`) |
+| `bench.py` | la vitesse de chaque Bip d'un dossier de voix, comme sur un téléphone (un fil, les trois mêmes phrases et la même graine pour tous) : longueur de l'extrait, premier son, vitesse ; `--wavs` garde l'audio |
+| `short_prompts.py` | les Bips lents reclonés à partir d'environ 8 s de leur extrait source (une seule règle de coupe pour tous), dans un nouveau dossier de voix, l'ancien intact |
 
 ```bash
 uv venv --python 3.12 voices/onnx/.venv && uv pip install --python voices/onnx/.venv/bin/python -r voices/onnx/requirements.txt

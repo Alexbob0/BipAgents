@@ -30,6 +30,16 @@ A server's Pocket and these states move together: `bipagents update` (in the acc
 pocket-tts that `pocket/requirements.txt` pins and restarts it on the voices of the same commit; the bridge then stops
 respelling names (`[pocket] engine = "4.0.1"`, installer/bipinstall/migrations.py, `pocket-engine`).
 
+## Short prompts (2026-11-04)
+
+A Bip's state is Pocket's cache after its clip, and every generated frame attends to all of it: the Bips cloned from
+20-26 s (all five English ones, French galet, lumen and mousse) spoke 1.5-2x slower on a phone than the ~8 s ones
+(voices/onnx/bench.py). Their clips were cut to about 8 s with one rule for all (voices/onnx/short_prompts.py: pauses
+over 0.4 s shortened, a 6.5-9 s window of whole phrases closest to 8 s) and cloned again the same way: 1.2-1.3x faster
+on a phone, approved by ear on 2026-11-04. Their `<voice>_source.wav` is that cut clip now (the window in each
+`voices.json`, `short_prompt`), their `<voice>_sample.wav` and the apps' previews were spoken again; the full clips
+(also the timbre the Dutch clips were made from) are in git history before 2026-11-04.
+
 ## Other languages
 
 The Bips keep their names in every language: the bridge sends `pocket:<code>/<voice>` (`en`, `es`, `de`) and the
