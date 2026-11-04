@@ -118,7 +118,15 @@ function toolLabel(rawTool, rawArgs) {
   const [server, name] = plainTool(tool);
   const row = kindOf(name, server), kind = row.id;
   const text = (args ?? "").trim();
-  let detail = null;
+  let detail = null, file = null;
+  if (text && kind === "compute") {
+    // A small program saving a file reads by the file's name (ToolLabel.fileWritten).
+    let code = text;
+    try { code = JSON.parse(text)?.code ?? text; } catch { code = text; }
+    if (/\.save\(|\.to_(?:csv|excel|json|html)\(|savefig\(|\.write\(|open\([^)]*['"][wa]b?['"]/.test(code)) {
+      file = code.match(/['"]([^'"\/\n]*\/)?([^'"\/\n]+\.(?:xlsx|xls|csv|pdf|docx|pptx|odt|ods|png|jpe?g|svg|gif|md|txt|json|html|zip|mp3|wav|ics))['"]/)?.[2] ?? null;
+    }
+  }
   if (text && kind !== "compute") {
     let object = null;
     if (text.startsWith("{")) { try { object = JSON.parse(text); } catch { object = null; } }
@@ -135,17 +143,101 @@ function toolLabel(rawTool, rawArgs) {
     }
   }
   const words = TOOLS.words[kind] ?? {};
-  return { kind, detail, title: words.one ?? TOOLS.words.tool?.one ?? "", site: siteIn(args) };
+  const shownKind = kind === "compute" && file ? "prepareFile" : kind;
+  return { kind: shownKind, detail: detail ?? file, title: words.one ?? TOOLS.words.tool?.one ?? "", site: siteIn(args),
+           target: target(TOOLS.list.find(k => k.id === shownKind) ?? row, text, file),
+           use: (TOOLS.list.find(k => k.id === shownKind) ?? row).use ?? (kind === "unknown" ? TOOLS.lexicon?.unknownUse : null) };
 }
 
-// The working line's words for the call running now (null: the agent thinks).
-function workingPhrase(label, site) {
+// What the call works on, from its own arguments (WorkingStep.target in the apps): a few readable words, never a
+// link, an address, a key, a path, JSON or a command; ≤ 40 characters.
+function target(row, text, file) {
+  const keys = row.target ?? [];
+  let found = null;
+  if (keys.length && text) {
+    if (text.startsWith("{")) {
+      let object = null;
+      try { object = JSON.parse(text); } catch { object = null; }
+      for (const key of object && typeof object === "object" ? keys : []) {
+        const v = object[key], value = Array.isArray(v) ? v.find(x => typeof x === "string" && x.trim()) : v;
+        if (typeof value === "string" && (found = shown(value, key))) break;
+      }
+    } else if (row.preview && !text.startsWith("[")) {
+      found = shown(text, keys[0]);
+    }
+  }
+  if (!found && row.id === "prepareFile") found = file;
+  if (row.id === "calendarRead") return found?.match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? null;
+  if (!found || !readable(found)) return null;
+  return shortened(found, 40);
+}
+
+function readable(value) {
+  if (!/\p{L}/u.test(value) || value.includes("://") || /^[{[$/~<`]/.test(value)) return false;
+  if (/[\w.+-]+@[\w-]+\.[\w.-]+/.test(value)) return false;
+  return !value.split(/[^\p{L}\p{N}\-_+/=.]+/u).some(run => run.length >= 24 && /\d/.test(run));
+}
+
+function shortened(value, length) {
+  const text = value.replace(/…$/, "");
+  if (text.length <= length) return text;
+  const cut = text.slice(0, length - 1), space = cut.lastIndexOf(" ");
+  return (space > length / 2 ? cut.slice(0, space) : cut) + "…";
+}
+
+// The person's message's topic and mood (WorkingTopic in the apps, scripts/working-topics.json): the longest word
+// or phrase found wins; a question looks, a statement about themselves notes, else handle.
+function tokens(text) {
+  return (text ?? "").toLowerCase().replaceAll("ß", "ss").replaceAll("œ", "oe").replaceAll("æ", "ae")
+    .normalize("NFD").replace(/\p{Mn}+/gu, "").split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+}
+function found(entry, words, atStart = false) {
+  const prefix = entry.endsWith("*"), parts = entry.replace(/\*$/, "").split(" ");
+  for (let start = 0; start <= (atStart ? 0 : words.length - parts.length); start++) {
+    if (start + parts.length > words.length) break;
+    if (parts.every((p, i) => words[start + i] === p || (i === parts.length - 1 && prefix && words[start + i].startsWith(p)))) return true;
+  }
+  return false;
+}
+function topicOf(message) {
+  const words = tokens(message);
+  let best = null, longest = 0;
+  for (const [topic, entries] of TOOLS.lexicon?.topics ?? []) {
+    for (const e of entries) {
+      const length = e.replace(/\*$/, "").length;
+      if (length > longest && found(e, words)) { best = topic; longest = length; }
+    }
+  }
+  return best;
+}
+function moodOf(message) {
+  const text = (message ?? "").trim(), words = tokens(text), lex = TOOLS.lexicon ?? {};
+  if (!words.length) return "handle";
+  if (/[?？]$/.test(text) || text.startsWith("¿") || (lex.question ?? []).some(e => found(e, words, true))
+      || (lex.look ?? []).some(e => found(e, words))) return "look";
+  return (lex.note ?? []).some(e => found(e, words)) ? "note" : "handle";
+}
+
+// The working line's words for the call running now (null: the agent thinks); `prompt`: the person's message.
+function workingPhrase(label, site, prompt) {
   const extra = TOOLS.extra;
   if (!label) return extra.toolrow_now_thinking;
   if (label.kind === "browser" && site) return extra.toolrow_now_browsing.replace("{}", site);
   if (label.kind === "webRead" && site) return extra.toolrow_now_reading.replace("{}", site);
   if (label.kind === "messageAgent" && label.detail) return extra.toolrow_now_writing_to.replace("{}", label.detail);
-  return (TOOLS.words[label.kind] ?? TOOLS.words.unknown).now;
+  const words = TOOLS.words[label.kind] ?? TOOLS.words.unknown;
+  if (label.target && words.target) {
+    const day = label.kind === "calendarRead"
+      ? new Intl.DateTimeFormat(data.lang, { day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(label.target + "T00:00:00Z"))
+      : label.target;
+    return words.target.replace("{}", day);
+  }
+  if (label.use) {
+    const verb = label.use === "mood" ? moodOf(prompt) : label.use, topic = topicOf(prompt);
+    if (topic && TOOLS.topics?.[topic]?.[verb]) return TOOLS.topics[topic][verb];
+    if (label.use === "mood" && TOOLS.generic?.[verb]) return TOOLS.generic[verb];
+  }
+  return words.now;
 }
 
 const md = s => esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/\n\n/g, "<br><br>").replace(/\n/g, "<br>");
@@ -245,7 +337,7 @@ async function play(id) {
     const ph = $(".ph", workingLine);
     if (label) {
       clearInterval(rotation); rotation = null;
-      ph.textContent = workingPhrase(label, site);
+      ph.textContent = workingPhrase(label, site, scenario.prompt);
     } else {
       ph.textContent = THINKING[thinkingAt];
       if (!rotation) rotation = setInterval(() => {

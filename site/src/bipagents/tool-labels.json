@@ -10,7 +10,12 @@
    "keys": [
     "words"
    ],
-   "counts": false
+   "counts": false,
+   "target": [
+    "words"
+   ],
+   "preview": true,
+   "use": "look"
   },
   {
    "id": "notebookRead",
@@ -21,7 +26,12 @@
    "keys": [
     "page"
    ],
-   "counts": true
+   "counts": true,
+   "target": [
+    "page"
+   ],
+   "preview": true,
+   "use": "look"
   },
   {
    "id": "notebookNote",
@@ -34,7 +44,12 @@
     "facts",
     "summary"
    ],
-   "counts": true
+   "counts": true,
+   "target": [
+    "page"
+   ],
+   "preview": false,
+   "use": "note"
   },
   {
    "id": "notebookEdit",
@@ -45,7 +60,12 @@
    "keys": [
     "page"
    ],
-   "counts": true
+   "counts": true,
+   "target": [
+    "page"
+   ],
+   "preview": false,
+   "use": "note"
   },
   {
    "id": "notebookTask",
@@ -57,7 +77,12 @@
     "title",
     "page"
    ],
-   "counts": false
+   "counts": false,
+   "target": [
+    "title"
+   ],
+   "preview": false,
+   "use": "note"
   },
   {
    "id": "sendFiles",
@@ -70,7 +95,10 @@
     "text_name",
     "files"
    ],
-   "counts": false
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
   },
   {
    "id": "sharedFiles",
@@ -82,7 +110,10 @@
     "path",
     "agent"
    ],
-   "counts": true
+   "counts": true,
+   "target": [],
+   "preview": false,
+   "use": null
   },
   {
    "id": "createPage",
@@ -93,7 +124,12 @@
    "keys": [
     "title"
    ],
-   "counts": false
+   "counts": false,
+   "target": [
+    "title"
+   ],
+   "preview": false,
+   "use": null
   },
   {
    "id": "pages",
@@ -106,7 +142,10 @@
    "keys": [
     "page"
    ],
-   "counts": false
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
   },
   {
    "id": "weather",
@@ -119,7 +158,12 @@
    "keys": [
     "place"
    ],
-   "counts": false
+   "counts": false,
+   "target": [
+    "place"
+   ],
+   "preview": true,
+   "use": null
   },
   {
    "id": "route",
@@ -132,7 +176,12 @@
    "keys": [
     "destination"
    ],
-   "counts": false
+   "counts": false,
+   "target": [
+    "destination"
+   ],
+   "preview": true,
+   "use": null
   },
   {
    "id": "contactsChange",
@@ -145,7 +194,12 @@
     "name",
     "nickname"
    ],
-   "counts": true
+   "counts": true,
+   "target": [
+    "name"
+   ],
+   "preview": false,
+   "use": null
   },
   {
    "id": "contactsRead",
@@ -157,7 +211,12 @@
     "query",
     "group"
    ],
-   "counts": false
+   "counts": false,
+   "target": [
+    "query"
+   ],
+   "preview": true,
+   "use": null
   },
   {
    "id": "calendarChange",
@@ -170,7 +229,12 @@
    "keys": [
     "title"
    ],
-   "counts": false
+   "counts": false,
+   "target": [
+    "title"
+   ],
+   "preview": false,
+   "use": null
   },
   {
    "id": "calendarRead",
@@ -182,7 +246,12 @@
     "from",
     "calendar"
    ],
-   "counts": false
+   "counts": false,
+   "target": [
+    "from"
+   ],
+   "preview": false,
+   "use": null
   },
   {
    "id": "remindersAdd",
@@ -193,7 +262,12 @@
    "keys": [
     "title"
    ],
-   "counts": false
+   "counts": false,
+   "target": [
+    "title"
+   ],
+   "preview": false,
+   "use": null
   },
   {
    "id": "remindersDone",
@@ -204,7 +278,12 @@
    "keys": [
     "title"
    ],
-   "counts": false
+   "counts": false,
+   "target": [
+    "title"
+   ],
+   "preview": false,
+   "use": null
   },
   {
    "id": "remindersRead",
@@ -215,7 +294,10 @@
    "keys": [
     "list"
    ],
-   "counts": false
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
   },
   {
    "id": "health",
@@ -226,7 +308,10 @@
    "keys": [
     "categories"
    ],
-   "counts": false
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": "look"
   },
   {
    "id": "mailSearch",
@@ -238,7 +323,12 @@
     "query",
     "sender"
    ],
-   "counts": false
+   "counts": false,
+   "target": [
+    "query"
+   ],
+   "preview": true,
+   "use": null
   },
   {
    "id": "mailRead",
@@ -249,7 +339,12 @@
    "keys": [
     "subject"
    ],
-   "counts": false
+   "counts": false,
+   "target": [
+    "subject"
+   ],
+   "preview": false,
+   "use": null
   },
   {
    "id": "mailDraft",
@@ -261,7 +356,12 @@
     "subject",
     "to"
    ],
-   "counts": false
+   "counts": false,
+   "target": [
+    "subject"
+   ],
+   "preview": false,
+   "use": null
   },
   {
    "id": "mailAttachment",
@@ -272,7 +372,12 @@
    "keys": [
     "attachment"
    ],
-   "counts": true
+   "counts": true,
+   "target": [
+    "attachment"
+   ],
+   "preview": false,
+   "use": null
   },
   {
    "id": "createAudio",
@@ -285,7 +390,12 @@
     "title",
     "text"
    ],
-   "counts": false
+   "counts": false,
+   "target": [
+    "title"
+   ],
+   "preview": false,
+   "use": null
   },
   {
    "id": "createPodcast",
@@ -296,7 +406,12 @@
    "keys": [
     "title"
    ],
-   "counts": false
+   "counts": false,
+   "target": [
+    "title"
+   ],
+   "preview": false,
+   "use": null
   },
   {
    "id": "voices",
@@ -305,7 +420,10 @@
    ],
    "prefixes": [],
    "keys": [],
-   "counts": false
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
   },
   {
    "id": "messageAgent",
@@ -317,7 +435,10 @@
     "target",
     "agent"
    ],
-   "counts": false
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
   },
   {
    "id": "delegate",
@@ -329,7 +450,12 @@
     "goal",
     "tasks"
    ],
-   "counts": false
+   "counts": false,
+   "target": [
+    "goal"
+   ],
+   "preview": false,
+   "use": "mood"
   },
   {
    "id": "webSearch",
@@ -340,7 +466,12 @@
    "keys": [
     "query"
    ],
-   "counts": false
+   "counts": false,
+   "target": [
+    "query"
+   ],
+   "preview": true,
+   "use": null
   },
   {
    "id": "webRead",
@@ -352,7 +483,10 @@
     "urls",
     "url"
    ],
-   "counts": true
+   "counts": true,
+   "target": [],
+   "preview": false,
+   "use": null
   },
   {
    "id": "browser",
@@ -366,7 +500,10 @@
     "query",
     "selector"
    ],
-   "counts": false
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
   },
   {
    "id": "terminal",
@@ -378,7 +515,10 @@
    "keys": [
     "command"
    ],
-   "counts": false
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": "mood"
   },
   {
    "id": "compute",
@@ -387,7 +527,10 @@
    ],
    "prefixes": [],
    "keys": [],
-   "counts": false
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": "compute"
   },
   {
    "id": "prepareFile",
@@ -399,7 +542,12 @@
    "keys": [
     "path"
    ],
-   "counts": true
+   "counts": true,
+   "target": [
+    "path"
+   ],
+   "preview": false,
+   "use": null
   },
   {
    "id": "readFile",
@@ -412,7 +560,12 @@
     "path",
     "pattern"
    ],
-   "counts": true
+   "counts": true,
+   "target": [
+    "path"
+   ],
+   "preview": true,
+   "use": null
   },
   {
    "id": "memory",
@@ -423,7 +576,10 @@
    "keys": [
     "content"
    ],
-   "counts": false
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": "note"
   },
   {
    "id": "knowledge",
@@ -435,7 +591,12 @@
     "query",
     "path"
    ],
-   "counts": false
+   "counts": false,
+   "target": [
+    "query"
+   ],
+   "preview": true,
+   "use": "look"
   },
   {
    "id": "sessionSearch",
@@ -446,7 +607,12 @@
    "keys": [
     "query"
    ],
-   "counts": false
+   "counts": false,
+   "target": [
+    "query"
+   ],
+   "preview": true,
+   "use": "look"
   },
   {
    "id": "skills",
@@ -459,7 +625,10 @@
    "keys": [
     "name"
    ],
-   "counts": false
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
   },
   {
    "id": "todo",
@@ -470,7 +639,10 @@
     "todo_"
    ],
    "keys": [],
-   "counts": false
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
   },
   {
    "id": "schedule",
@@ -482,7 +654,12 @@
     "name",
     "prompt"
    ],
-   "counts": false
+   "counts": false,
+   "target": [
+    "name"
+   ],
+   "preview": false,
+   "use": null
   },
   {
    "id": "proposeTask",
@@ -493,7 +670,10 @@
    "keys": [
     "title"
    ],
-   "counts": false
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
   },
   {
    "id": "startTask",
@@ -505,7 +685,10 @@
    "keys": [
     "title"
    ],
-   "counts": false
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
   },
   {
    "id": "proposeAgent",
@@ -516,7 +699,10 @@
    "keys": [
     "name"
    ],
-   "counts": false
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
   },
   {
    "id": "payment",
@@ -532,7 +718,10 @@
     "merchant",
     "card"
    ],
-   "counts": false
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
   },
   {
    "id": "image",
@@ -543,7 +732,10 @@
    "keys": [
     "prompt"
    ],
-   "counts": false
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
   },
   {
    "id": "vision",
@@ -554,7 +746,10 @@
    "keys": [
     "question"
    ],
-   "counts": false
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
   },
   {
    "id": "home",
@@ -566,7 +761,10 @@
     "entity_id",
     "domain"
    ],
-   "counts": false
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
   },
   {
    "id": "askSecret",
@@ -578,7 +776,10 @@
     "name",
     "site"
    ],
-   "counts": false
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
   },
   {
    "id": "connector",
@@ -592,7 +793,10 @@
    "keys": [
     "name"
    ],
-   "counts": false
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
   },
   {
    "id": "sendMessage",
@@ -604,7 +808,10 @@
     "target",
     "message"
    ],
-   "counts": false
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
   },
   {
    "id": "clarify",
@@ -615,7 +822,10 @@
    "keys": [
     "question"
    ],
-   "counts": false
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
   },
   {
    "id": "findTool",
@@ -628,7 +838,10 @@
     "queries",
     "names"
    ],
-   "counts": false
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
   },
   {
    "id": "tool",
@@ -637,7 +850,10 @@
    ],
    "prefixes": [],
    "keys": [],
-   "counts": false
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": "mood"
   }
  ],
  "text": {
@@ -646,27 +862,32 @@
     "notebookSearch": {
      "one": "Cherche dans ton Carnet",
      "many": "Cherche {n} fois dans ton Carnet",
-     "now": "Je cherche dans ton Carnet…"
+     "now": "Je cherche dans ton Carnet…",
+     "target": "Je cherche « {} » dans ton Carnet…"
     },
     "notebookRead": {
      "one": "Lit la fiche",
      "many": "Lit {n} fiches du Carnet",
-     "now": "Je lis ton Carnet…"
+     "now": "Je lis ton Carnet…",
+     "target": "Je lis la fiche « {} »…"
     },
     "notebookNote": {
      "one": "Note sur la fiche",
      "many": "Note sur {n} fiches du Carnet",
-     "now": "Je prends des notes dans ton Carnet…"
+     "now": "Je prends des notes dans ton Carnet…",
+     "target": "Je note sur la fiche « {} »…"
     },
     "notebookEdit": {
      "one": "Corrige la fiche",
      "many": "Corrige {n} fiches du Carnet",
-     "now": "Je corrige ton Carnet…"
+     "now": "Je corrige ton Carnet…",
+     "target": "Je corrige la fiche « {} »…"
     },
     "notebookTask": {
      "one": "Tâche du Carnet",
      "many": "{n} tâches du Carnet",
-     "now": "Je mets à jour les tâches du Carnet…"
+     "now": "Je mets à jour les tâches du Carnet…",
+     "target": "Je note la tâche « {} »…"
     },
     "sendFiles": {
      "one": "Envoie des fichiers à",
@@ -681,7 +902,8 @@
     "createPage": {
      "one": "Crée une page",
      "many": "Crée {n} pages",
-     "now": "Je prépare une page…"
+     "now": "Je prépare une page…",
+     "target": "Je prépare la page « {} »…"
     },
     "pages": {
      "one": "Regarde ses pages",
@@ -691,42 +913,50 @@
     "weather": {
      "one": "Regarde la météo",
      "many": null,
-     "now": "Je regarde la météo…"
+     "now": "Je regarde la météo…",
+     "target": "Je regarde la météo à {}…"
     },
     "route": {
      "one": "Calcule un trajet",
      "many": "Calcule {n} trajets",
-     "now": "Je calcule le trajet…"
+     "now": "Je calcule le trajet…",
+     "target": "Je calcule le trajet vers {}…"
     },
     "contactsChange": {
      "one": "Met à jour tes contacts",
      "many": "Met à jour {n} contacts",
-     "now": "Je mets à jour tes contacts…"
+     "now": "Je mets à jour tes contacts…",
+     "target": "Je mets à jour la fiche de {}…"
     },
     "contactsRead": {
      "one": "Cherche dans tes contacts",
      "many": "Cherche {n} fois dans tes contacts",
-     "now": "Je cherche dans tes contacts…"
+     "now": "Je cherche dans tes contacts…",
+     "target": "Je cherche « {} » dans tes contacts…"
     },
     "calendarChange": {
      "one": "Modifie ton agenda",
      "many": "Modifie {n} événements",
-     "now": "Je modifie ton agenda…"
+     "now": "Je modifie ton agenda…",
+     "target": "Je modifie ton agenda : « {} »…"
     },
     "calendarRead": {
      "one": "Regarde ton agenda",
      "many": null,
-     "now": "Je regarde ton agenda…"
+     "now": "Je regarde ton agenda…",
+     "target": "Je regarde ton agenda du {}…"
     },
     "remindersAdd": {
      "one": "Ajoute un rappel",
      "many": "Ajoute {n} rappels",
-     "now": "J’ajoute un rappel…"
+     "now": "J’ajoute un rappel…",
+     "target": "J’ajoute le rappel « {} »…"
     },
     "remindersDone": {
      "one": "Coche un rappel",
      "many": "Coche {n} rappels",
-     "now": "Je coche un rappel…"
+     "now": "Je coche un rappel…",
+     "target": "Je coche « {} »…"
     },
     "remindersRead": {
      "one": "Regarde tes rappels",
@@ -741,32 +971,38 @@
     "mailSearch": {
      "one": "Cherche dans tes e-mails",
      "many": "Cherche {n} fois dans tes e-mails",
-     "now": "Je cherche dans tes mails…"
+     "now": "Je cherche dans tes mails…",
+     "target": "Je cherche « {} » dans tes e-mails…"
     },
     "mailRead": {
      "one": "Lit un e-mail",
      "many": "Lit {n} e-mails",
-     "now": "Je lis tes mails…"
+     "now": "Je lis tes mails…",
+     "target": "Je lis l’e-mail « {} »…"
     },
     "mailDraft": {
      "one": "Prépare un brouillon d’e-mail",
      "many": "Prépare {n} brouillons d’e-mail",
-     "now": "Je prépare un brouillon de mail…"
+     "now": "Je prépare un brouillon de mail…",
+     "target": "Je prépare un brouillon : « {} »…"
     },
     "mailAttachment": {
      "one": "Récupère une pièce jointe",
      "many": "Récupère {n} pièces jointes",
-     "now": "Je récupère une pièce jointe…"
+     "now": "Je récupère une pièce jointe…",
+     "target": "Je récupère la pièce jointe « {} »…"
     },
     "createAudio": {
      "one": "Enregistre un audio",
      "many": "Enregistre {n} audios",
-     "now": "J’enregistre un audio…"
+     "now": "J’enregistre un audio…",
+     "target": "J’enregistre « {} »…"
     },
     "createPodcast": {
      "one": "Prépare un podcast",
      "many": null,
-     "now": "Je prépare un podcast…"
+     "now": "Je prépare un podcast…",
+     "target": "Je prépare le podcast « {} »…"
     },
     "voices": {
      "one": "Regarde les voix disponibles",
@@ -781,12 +1017,14 @@
     "delegate": {
      "one": "Confie une tâche à un assistant",
      "many": "Confie {n} tâches à des assistants",
-     "now": "Je confie une tâche à un assistant…"
+     "now": "Je confie une tâche à un assistant…",
+     "target": "Je confie « {} » à un assistant…"
     },
     "webSearch": {
      "one": "Cherche sur le web",
      "many": "Cherche {n} fois sur le web",
-     "now": "Je cherche sur le web…"
+     "now": "Je cherche sur le web…",
+     "target": "Je cherche « {} » sur le web…"
     },
     "webRead": {
      "one": "Lit une page web",
@@ -811,12 +1049,14 @@
     "prepareFile": {
      "one": "Prépare un fichier",
      "many": "Prépare {n} fichiers",
-     "now": "Je prépare un fichier…"
+     "now": "Je prépare un fichier…",
+     "target": "Je prépare le fichier {}…"
     },
     "readFile": {
      "one": "Lit un fichier",
      "many": "Lit {n} fichiers",
-     "now": "Je lis un fichier…"
+     "now": "Je lis un fichier…",
+     "target": "Je lis le fichier {}…"
     },
     "memory": {
      "one": "Met à jour sa mémoire",
@@ -826,12 +1066,14 @@
     "knowledge": {
      "one": "Relit ses notes",
      "many": null,
-     "now": "Je relis mes notes…"
+     "now": "Je relis mes notes…",
+     "target": "Je relis mes notes sur « {} »…"
     },
     "sessionSearch": {
      "one": "Cherche dans vos anciennes discussions",
      "many": null,
-     "now": "Je cherche dans nos anciennes discussions…"
+     "now": "Je cherche dans nos anciennes discussions…",
+     "target": "Je cherche « {} » dans nos anciennes discussions…"
     },
     "skills": {
      "one": "Consulte ses savoir-faire",
@@ -846,7 +1088,8 @@
     "schedule": {
      "one": "Programme une tâche",
      "many": null,
-     "now": "Je programme une tâche…"
+     "now": "Je programme une tâche…",
+     "target": "Je programme « {} »…"
     },
     "proposeTask": {
      "one": "Propose une tâche de fond",
@@ -938,34 +1181,130 @@
     "Hmm, une seconde…",
     "Je fais le tour de la question…",
     "Je pèse le pour et le contre…"
-   ]
+   ],
+   "topics": {
+    "sleep": {
+     "note": "Je note ton sommeil…",
+     "look": "Je regarde ton sommeil…",
+     "compute": "Je fais le point sur ton sommeil…",
+     "handle": "Je m’occupe de ton sommeil…"
+    },
+    "sport": {
+     "note": "Je note ton sport…",
+     "look": "Je regarde ton sport…",
+     "compute": "Je fais le point sur ton sport…",
+     "handle": "Je m’occupe de ton sport…"
+    },
+    "meals": {
+     "note": "Je note tes repas…",
+     "look": "Je regarde tes repas…",
+     "compute": "Je fais le point sur tes repas…",
+     "handle": "Je m’occupe de tes repas…"
+    },
+    "weight": {
+     "note": "Je note ton poids…",
+     "look": "Je regarde ton poids…",
+     "compute": "Je fais le point sur ton poids…",
+     "handle": "Je m’occupe de ton poids…"
+    },
+    "mood": {
+     "note": "Je note ton humeur…",
+     "look": "Je regarde ton humeur…",
+     "compute": "Je fais le point sur ton humeur…",
+     "handle": "Je m’occupe de ton humeur…"
+    },
+    "health": {
+     "note": "Je note tes infos santé…",
+     "look": "Je regarde ta santé…",
+     "compute": "Je fais le point sur ta santé…",
+     "handle": "Je m’occupe de ta santé…"
+    },
+    "agenda": {
+     "note": "Je note ça dans ton agenda…",
+     "look": "Je jette un œil à ton agenda…",
+     "compute": "Je fais le point sur ton agenda…",
+     "handle": "Je m’occupe de ton agenda…"
+    },
+    "shopping": {
+     "note": "Je note tes courses…",
+     "look": "Je regarde tes courses…",
+     "compute": "Je fais le point sur tes courses…",
+     "handle": "Je m’occupe de tes courses…"
+    },
+    "money": {
+     "note": "Je note tes dépenses…",
+     "look": "Je regarde tes dépenses…",
+     "compute": "Je fais le point sur tes dépenses…",
+     "handle": "Je m’occupe de tes dépenses…"
+    },
+    "travel": {
+     "note": "Je note ton voyage…",
+     "look": "Je regarde ton voyage…",
+     "compute": "Je fais le point sur ton voyage…",
+     "handle": "Je m’occupe de ton voyage…"
+    },
+    "kids": {
+     "note": "Je note ça pour les enfants…",
+     "look": "Je regarde pour les enfants…",
+     "compute": "Je fais le point pour les enfants…",
+     "handle": "Je m’occupe des enfants…"
+    },
+    "home": {
+     "note": "Je note ça pour la maison…",
+     "look": "Je regarde pour la maison…",
+     "compute": "Je fais le point sur la maison…",
+     "handle": "Je m’occupe de la maison…"
+    },
+    "work": {
+     "note": "Je note ça pour ton travail…",
+     "look": "Je regarde ton travail…",
+     "compute": "Je fais le point sur ton travail…",
+     "handle": "Je m’occupe de ton travail…"
+    },
+    "weather": {
+     "note": "Je note la météo…",
+     "look": "Je regarde la météo…",
+     "compute": "Je fais le point sur la météo…",
+     "handle": "Je m’occupe de la météo…"
+    }
+   },
+   "generic": {
+    "note": "Je note tes infos…",
+    "look": "Je regarde ça…",
+    "handle": "Je m’en occupe…"
+   }
   },
   "en": {
    "kinds": {
     "notebookSearch": {
      "one": "Searches your Notebook",
      "many": "Searches your Notebook {n} times",
-     "now": "Searching your Notebook…"
+     "now": "Searching your Notebook…",
+     "target": "I’m searching your Notebook for “{}”…"
     },
     "notebookRead": {
      "one": "Reads the page",
      "many": "Reads {n} Notebook pages",
-     "now": "Reading your Notebook…"
+     "now": "Reading your Notebook…",
+     "target": "I’m reading the page “{}”…"
     },
     "notebookNote": {
      "one": "Notes on the page",
      "many": "Notes on {n} Notebook pages",
-     "now": "Taking notes in your Notebook…"
+     "now": "Taking notes in your Notebook…",
+     "target": "Noting on the page “{}”…"
     },
     "notebookEdit": {
      "one": "Corrects the page",
      "many": "Corrects {n} Notebook pages",
-     "now": "Correcting your Notebook…"
+     "now": "Correcting your Notebook…",
+     "target": "Correcting the page “{}”…"
     },
     "notebookTask": {
      "one": "Notebook task",
      "many": "{n} Notebook tasks",
-     "now": "Updating the Notebook’s tasks…"
+     "now": "Updating the Notebook’s tasks…",
+     "target": "Noting the task “{}”…"
     },
     "sendFiles": {
      "one": "Sends files to",
@@ -980,7 +1319,8 @@
     "createPage": {
      "one": "Creates a page",
      "many": "Creates {n} pages",
-     "now": "Preparing a page…"
+     "now": "Preparing a page…",
+     "target": "I’m preparing the page “{}”…"
     },
     "pages": {
      "one": "Looks at its pages",
@@ -990,42 +1330,50 @@
     "weather": {
      "one": "Checks the weather",
      "many": null,
-     "now": "Checking the weather…"
+     "now": "Checking the weather…",
+     "target": "I’m checking the weather in {}…"
     },
     "route": {
      "one": "Plans a route",
      "many": "Plans {n} routes",
-     "now": "Planning the route…"
+     "now": "Planning the route…",
+     "target": "I’m planning the route to {}…"
     },
     "contactsChange": {
      "one": "Updates your contacts",
      "many": "Updates {n} contacts",
-     "now": "Updating your contacts…"
+     "now": "Updating your contacts…",
+     "target": "Updating {}’s contact card…"
     },
     "contactsRead": {
      "one": "Searches your contacts",
      "many": "Searches your contacts {n} times",
-     "now": "Searching your contacts…"
+     "now": "Searching your contacts…",
+     "target": "I’m looking for “{}” in your contacts…"
     },
     "calendarChange": {
      "one": "Updates your calendar",
      "many": "Updates {n} events",
-     "now": "Updating your calendar…"
+     "now": "Updating your calendar…",
+     "target": "I’m updating your calendar: “{}”…"
     },
     "calendarRead": {
      "one": "Checks your calendar",
      "many": null,
-     "now": "Checking your calendar…"
+     "now": "Checking your calendar…",
+     "target": "Checking your calendar for {}…"
     },
     "remindersAdd": {
      "one": "Adds a reminder",
      "many": "Adds {n} reminders",
-     "now": "Adding a reminder…"
+     "now": "Adding a reminder…",
+     "target": "I’m adding the reminder “{}”…"
     },
     "remindersDone": {
      "one": "Ticks off a reminder",
      "many": "Ticks off {n} reminders",
-     "now": "Ticking off a reminder…"
+     "now": "Ticking off a reminder…",
+     "target": "Ticking off “{}”…"
     },
     "remindersRead": {
      "one": "Checks your reminders",
@@ -1040,32 +1388,38 @@
     "mailSearch": {
      "one": "Searches your e-mails",
      "many": "Searches your e-mails {n} times",
-     "now": "Searching your emails…"
+     "now": "Searching your emails…",
+     "target": "I’m searching your e-mails for “{}”…"
     },
     "mailRead": {
      "one": "Reads an e-mail",
      "many": "Reads {n} e-mails",
-     "now": "Reading your emails…"
+     "now": "Reading your emails…",
+     "target": "I’m reading the e-mail “{}”…"
     },
     "mailDraft": {
      "one": "Drafts an e-mail",
      "many": "Drafts {n} e-mails",
-     "now": "Drafting an email…"
+     "now": "Drafting an email…",
+     "target": "I’m drafting an e-mail: “{}”…"
     },
     "mailAttachment": {
      "one": "Saves an attachment",
      "many": "Saves {n} attachments",
-     "now": "Saving an attachment…"
+     "now": "Saving an attachment…",
+     "target": "I’m saving the attachment “{}”…"
     },
     "createAudio": {
      "one": "Records an audio",
      "many": "Records {n} audios",
-     "now": "Recording an audio…"
+     "now": "Recording an audio…",
+     "target": "Recording “{}”…"
     },
     "createPodcast": {
      "one": "Makes a podcast",
      "many": null,
-     "now": "Preparing a podcast…"
+     "now": "Preparing a podcast…",
+     "target": "Preparing the podcast “{}”…"
     },
     "voices": {
      "one": "Looks at the voices",
@@ -1080,12 +1434,14 @@
     "delegate": {
      "one": "Hands a task to a helper",
      "many": "Hands {n} tasks to helpers",
-     "now": "Handing a task to a helper…"
+     "now": "Handing a task to a helper…",
+     "target": "Handing “{}” to a helper…"
     },
     "webSearch": {
      "one": "Searches the web",
      "many": "Searches the web {n} times",
-     "now": "Searching the web…"
+     "now": "Searching the web…",
+     "target": "I’m searching the web for “{}”…"
     },
     "webRead": {
      "one": "Reads a web page",
@@ -1110,12 +1466,14 @@
     "prepareFile": {
      "one": "Prepares a file",
      "many": "Prepares {n} files",
-     "now": "Preparing a file…"
+     "now": "Preparing a file…",
+     "target": "I’m preparing the file {}…"
     },
     "readFile": {
      "one": "Reads a file",
      "many": "Reads {n} files",
-     "now": "Reading a file…"
+     "now": "Reading a file…",
+     "target": "I’m reading the file {}…"
     },
     "memory": {
      "one": "Updates its memory",
@@ -1125,12 +1483,14 @@
     "knowledge": {
      "one": "Reads its notes",
      "many": null,
-     "now": "Going over my notes…"
+     "now": "Going over my notes…",
+     "target": "Going over my notes on “{}”…"
     },
     "sessionSearch": {
      "one": "Searches your past conversations",
      "many": null,
-     "now": "Searching our past conversations…"
+     "now": "Searching our past conversations…",
+     "target": "I’m searching our past conversations for “{}”…"
     },
     "skills": {
      "one": "Checks its skills",
@@ -1145,7 +1505,8 @@
     "schedule": {
      "one": "Schedules a task",
      "many": null,
-     "now": "Scheduling a task…"
+     "now": "Scheduling a task…",
+     "target": "Scheduling “{}”…"
     },
     "proposeTask": {
      "one": "Suggests a background task",
@@ -1237,34 +1598,130 @@
     "Hmm, one moment…",
     "Looking at it from every side…",
     "Weighing it up…"
-   ]
+   ],
+   "topics": {
+    "sleep": {
+     "note": "Noting your sleep…",
+     "look": "Looking at your sleep…",
+     "compute": "Going over your sleep…",
+     "handle": "Taking care of your sleep…"
+    },
+    "sport": {
+     "note": "Noting your workout…",
+     "look": "Looking at your workout…",
+     "compute": "Going over your workout…",
+     "handle": "Taking care of your workout…"
+    },
+    "meals": {
+     "note": "Noting your meals…",
+     "look": "Looking at your meals…",
+     "compute": "Going over your meals…",
+     "handle": "Taking care of your meals…"
+    },
+    "weight": {
+     "note": "Noting your weight…",
+     "look": "Looking at your weight…",
+     "compute": "Going over your weight…",
+     "handle": "Taking care of your weight…"
+    },
+    "mood": {
+     "note": "Noting your mood…",
+     "look": "Looking at your mood…",
+     "compute": "Going over your mood…",
+     "handle": "Taking care of your mood…"
+    },
+    "health": {
+     "note": "Noting your health info…",
+     "look": "Looking at your health…",
+     "compute": "Going over your health…",
+     "handle": "Taking care of your health…"
+    },
+    "agenda": {
+     "note": "Noting this in your schedule…",
+     "look": "Looking at your schedule…",
+     "compute": "Going over your schedule…",
+     "handle": "Taking care of your schedule…"
+    },
+    "shopping": {
+     "note": "Noting your shopping…",
+     "look": "Looking at your shopping…",
+     "compute": "Going over your shopping…",
+     "handle": "Taking care of your shopping…"
+    },
+    "money": {
+     "note": "Noting your spending…",
+     "look": "Looking at your spending…",
+     "compute": "Going over your spending…",
+     "handle": "Taking care of your spending…"
+    },
+    "travel": {
+     "note": "Noting your trip…",
+     "look": "Looking at your trip…",
+     "compute": "Going over your trip…",
+     "handle": "Taking care of your trip…"
+    },
+    "kids": {
+     "note": "Noting this for the kids…",
+     "look": "Looking into it for the kids…",
+     "compute": "Going over things for the kids…",
+     "handle": "Sorting things out for the kids…"
+    },
+    "home": {
+     "note": "Noting this for the house…",
+     "look": "Looking into it for the house…",
+     "compute": "Going over the house…",
+     "handle": "Taking care of the house…"
+    },
+    "work": {
+     "note": "Noting this for work…",
+     "look": "Looking at your work…",
+     "compute": "Going over your work…",
+     "handle": "Taking care of your work…"
+    },
+    "weather": {
+     "note": "Noting the weather…",
+     "look": "Checking the weather…",
+     "compute": "Going over the weather…",
+     "handle": "Taking care of the weather…"
+    }
+   },
+   "generic": {
+    "note": "Noting your info…",
+    "look": "Looking into it…",
+    "handle": "On it…"
+   }
   },
   "de": {
    "kinds": {
     "notebookSearch": {
      "one": "Sucht in deinem Notizbuch",
      "many": "Sucht {n}-mal in deinem Notizbuch",
-     "now": "Ich suche in deinem Notizbuch…"
+     "now": "Ich suche in deinem Notizbuch…",
+     "target": "Ich suche in deinem Notizbuch nach „{}“…"
     },
     "notebookRead": {
      "one": "Liest die Seite",
      "many": "Liest {n} Seiten im Notizbuch",
-     "now": "Ich lese dein Notizbuch…"
+     "now": "Ich lese dein Notizbuch…",
+     "target": "Ich lese die Seite „{}“…"
     },
     "notebookNote": {
      "one": "Notiert auf der Seite",
      "many": "Notiert auf {n} Seiten im Notizbuch",
-     "now": "Ich mache Notizen in deinem Notizbuch…"
+     "now": "Ich mache Notizen in deinem Notizbuch…",
+     "target": "Ich notiere auf der Seite „{}“…"
     },
     "notebookEdit": {
      "one": "Korrigiert die Seite",
      "many": "Korrigiert {n} Seiten im Notizbuch",
-     "now": "Ich korrigiere dein Notizbuch…"
+     "now": "Ich korrigiere dein Notizbuch…",
+     "target": "Ich korrigiere die Seite „{}“…"
     },
     "notebookTask": {
      "one": "Aufgabe im Notizbuch",
      "many": "{n} Aufgaben im Notizbuch",
-     "now": "Ich aktualisiere die Aufgaben im Notizbuch…"
+     "now": "Ich aktualisiere die Aufgaben im Notizbuch…",
+     "target": "Ich notiere die Aufgabe „{}“…"
     },
     "sendFiles": {
      "one": "Schickt Dateien an",
@@ -1279,7 +1736,8 @@
     "createPage": {
      "one": "Erstellt eine Seite",
      "many": "Erstellt {n} Seiten",
-     "now": "Ich bereite eine Seite vor…"
+     "now": "Ich bereite eine Seite vor…",
+     "target": "Ich bereite die Seite „{}“ vor…"
     },
     "pages": {
      "one": "Sieht seine Seiten an",
@@ -1289,42 +1747,50 @@
     "weather": {
      "one": "Schaut nach dem Wetter",
      "many": null,
-     "now": "Ich schaue nach dem Wetter…"
+     "now": "Ich schaue nach dem Wetter…",
+     "target": "Ich schaue nach dem Wetter in {}…"
     },
     "route": {
      "one": "Berechnet eine Route",
      "many": "Berechnet {n} Routen",
-     "now": "Ich berechne die Route…"
+     "now": "Ich berechne die Route…",
+     "target": "Ich berechne die Route nach {}…"
     },
     "contactsChange": {
      "one": "Aktualisiert deine Kontakte",
      "many": "Aktualisiert {n} Kontakte",
-     "now": "Ich aktualisiere deine Kontakte…"
+     "now": "Ich aktualisiere deine Kontakte…",
+     "target": "Ich aktualisiere den Kontakt {}…"
     },
     "contactsRead": {
      "one": "Sucht in deinen Kontakten",
      "many": "Sucht {n}-mal in deinen Kontakten",
-     "now": "Ich suche in deinen Kontakten…"
+     "now": "Ich suche in deinen Kontakten…",
+     "target": "Ich suche „{}“ in deinen Kontakten…"
     },
     "calendarChange": {
      "one": "Ändert deinen Kalender",
      "many": "Ändert {n} Termine",
-     "now": "Ich ändere deinen Kalender…"
+     "now": "Ich ändere deinen Kalender…",
+     "target": "Ich ändere deinen Kalender: „{}“…"
     },
     "calendarRead": {
      "one": "Schaut in deinen Kalender",
      "many": null,
-     "now": "Ich schaue in deinen Kalender…"
+     "now": "Ich schaue in deinen Kalender…",
+     "target": "Ich schaue in deinen Kalender für den {}…"
     },
     "remindersAdd": {
      "one": "Fügt eine Erinnerung hinzu",
      "many": "Fügt {n} Erinnerungen hinzu",
-     "now": "Ich füge eine Erinnerung hinzu…"
+     "now": "Ich füge eine Erinnerung hinzu…",
+     "target": "Ich füge die Erinnerung „{}“ hinzu…"
     },
     "remindersDone": {
      "one": "Hakt eine Erinnerung ab",
      "many": "Hakt {n} Erinnerungen ab",
-     "now": "Ich hake eine Erinnerung ab…"
+     "now": "Ich hake eine Erinnerung ab…",
+     "target": "Ich hake „{}“ ab…"
     },
     "remindersRead": {
      "one": "Schaut deine Erinnerungen an",
@@ -1339,32 +1805,38 @@
     "mailSearch": {
      "one": "Durchsucht deine E-Mails",
      "many": "Durchsucht {n}-mal deine E-Mails",
-     "now": "Ich durchsuche deine E-Mails…"
+     "now": "Ich durchsuche deine E-Mails…",
+     "target": "Ich suche in deinen E-Mails nach „{}“…"
     },
     "mailRead": {
      "one": "Liest eine E-Mail",
      "many": "Liest {n} E-Mails",
-     "now": "Ich lese deine E-Mails…"
+     "now": "Ich lese deine E-Mails…",
+     "target": "Ich lese die E-Mail „{}“…"
     },
     "mailDraft": {
      "one": "Entwirft eine E-Mail",
      "many": "Entwirft {n} E-Mails",
-     "now": "Ich entwerfe eine E-Mail…"
+     "now": "Ich entwerfe eine E-Mail…",
+     "target": "Ich entwerfe eine E-Mail: „{}“…"
     },
     "mailAttachment": {
      "one": "Speichert einen Anhang",
      "many": "Speichert {n} Anhänge",
-     "now": "Ich speichere einen Anhang…"
+     "now": "Ich speichere einen Anhang…",
+     "target": "Ich speichere den Anhang „{}“…"
     },
     "createAudio": {
      "one": "Nimmt ein Audio auf",
      "many": "Nimmt {n} Audios auf",
-     "now": "Ich nehme ein Audio auf…"
+     "now": "Ich nehme ein Audio auf…",
+     "target": "Ich nehme „{}“ auf…"
     },
     "createPodcast": {
      "one": "Erstellt einen Podcast",
      "many": null,
-     "now": "Ich bereite einen Podcast vor…"
+     "now": "Ich bereite einen Podcast vor…",
+     "target": "Ich bereite den Podcast „{}“ vor…"
     },
     "voices": {
      "one": "Sieht sich die Stimmen an",
@@ -1379,12 +1851,14 @@
     "delegate": {
      "one": "Gibt eine Aufgabe an einen Helfer",
      "many": "Gibt {n} Aufgaben an Helfer",
-     "now": "Ich gebe eine Aufgabe an einen Helfer…"
+     "now": "Ich gebe eine Aufgabe an einen Helfer…",
+     "target": "Ich gebe „{}“ an einen Helfer…"
     },
     "webSearch": {
      "one": "Sucht im Web",
      "many": "Sucht {n}-mal im Web",
-     "now": "Ich suche im Web…"
+     "now": "Ich suche im Web…",
+     "target": "Ich suche im Web nach „{}“…"
     },
     "webRead": {
      "one": "Liest eine Webseite",
@@ -1409,12 +1883,14 @@
     "prepareFile": {
      "one": "Bereitet eine Datei vor",
      "many": "Bereitet {n} Dateien vor",
-     "now": "Ich bereite eine Datei vor…"
+     "now": "Ich bereite eine Datei vor…",
+     "target": "Ich bereite die Datei {} vor…"
     },
     "readFile": {
      "one": "Liest eine Datei",
      "many": "Liest {n} Dateien",
-     "now": "Ich lese eine Datei…"
+     "now": "Ich lese eine Datei…",
+     "target": "Ich lese die Datei {}…"
     },
     "memory": {
      "one": "Aktualisiert sein Gedächtnis",
@@ -1424,12 +1900,14 @@
     "knowledge": {
      "one": "Liest seine Notizen",
      "many": null,
-     "now": "Ich lese meine Notizen…"
+     "now": "Ich lese meine Notizen…",
+     "target": "Ich lese meine Notizen zu „{}“…"
     },
     "sessionSearch": {
      "one": "Durchsucht eure früheren Unterhaltungen",
      "many": null,
-     "now": "Ich durchsuche unsere früheren Unterhaltungen…"
+     "now": "Ich durchsuche unsere früheren Unterhaltungen…",
+     "target": "Ich suche in unseren früheren Unterhaltungen nach „{}“…"
     },
     "skills": {
      "one": "Schaut seine Fähigkeiten an",
@@ -1444,7 +1922,8 @@
     "schedule": {
      "one": "Plant eine Aufgabe",
      "many": null,
-     "now": "Ich plane eine Aufgabe ein…"
+     "now": "Ich plane eine Aufgabe ein…",
+     "target": "Ich plane „{}“ ein…"
     },
     "proposeTask": {
      "one": "Schlägt eine Hintergrundaufgabe vor",
@@ -1536,34 +2015,130 @@
     "Hmm, einen Moment…",
     "Ich schaue es mir von allen Seiten an…",
     "Ich wäge ab…"
-   ]
+   ],
+   "topics": {
+    "sleep": {
+     "note": "Ich notiere deinen Schlaf…",
+     "look": "Ich schaue mir deinen Schlaf an…",
+     "compute": "Ich werte deinen Schlaf aus…",
+     "handle": "Ich kümmere mich um deinen Schlaf…"
+    },
+    "sport": {
+     "note": "Ich notiere dein Training…",
+     "look": "Ich schaue mir dein Training an…",
+     "compute": "Ich werte dein Training aus…",
+     "handle": "Ich kümmere mich um dein Training…"
+    },
+    "meals": {
+     "note": "Ich notiere deine Mahlzeiten…",
+     "look": "Ich schaue mir deine Mahlzeiten an…",
+     "compute": "Ich werte deine Mahlzeiten aus…",
+     "handle": "Ich kümmere mich um deine Mahlzeiten…"
+    },
+    "weight": {
+     "note": "Ich notiere dein Gewicht…",
+     "look": "Ich schaue mir dein Gewicht an…",
+     "compute": "Ich werte dein Gewicht aus…",
+     "handle": "Ich kümmere mich um dein Gewicht…"
+    },
+    "mood": {
+     "note": "Ich notiere deine Stimmung…",
+     "look": "Ich schaue mir deine Stimmung an…",
+     "compute": "Ich werte deine Stimmung aus…",
+     "handle": "Ich kümmere mich um deine Stimmung…"
+    },
+    "health": {
+     "note": "Ich notiere deine Gesundheitsdaten…",
+     "look": "Ich schaue mir deine Gesundheit an…",
+     "compute": "Ich werte deine Gesundheit aus…",
+     "handle": "Ich kümmere mich um deine Gesundheit…"
+    },
+    "agenda": {
+     "note": "Ich notiere das in deinem Kalender…",
+     "look": "Ich schaue mir deine Termine an…",
+     "compute": "Ich werte deine Termine aus…",
+     "handle": "Ich kümmere mich um deine Termine…"
+    },
+    "shopping": {
+     "note": "Ich notiere deine Einkäufe…",
+     "look": "Ich schaue mir deine Einkäufe an…",
+     "compute": "Ich werte deine Einkäufe aus…",
+     "handle": "Ich kümmere mich um deine Einkäufe…"
+    },
+    "money": {
+     "note": "Ich notiere deine Ausgaben…",
+     "look": "Ich schaue mir deine Ausgaben an…",
+     "compute": "Ich werte deine Ausgaben aus…",
+     "handle": "Ich kümmere mich um deine Ausgaben…"
+    },
+    "travel": {
+     "note": "Ich notiere deine Reise…",
+     "look": "Ich schaue mir deine Reise an…",
+     "compute": "Ich werte deine Reise aus…",
+     "handle": "Ich kümmere mich um deine Reise…"
+    },
+    "kids": {
+     "note": "Ich notiere das für die Kinder…",
+     "look": "Ich schaue für die Kinder nach…",
+     "compute": "Ich ziehe Bilanz für die Kinder…",
+     "handle": "Ich kümmere mich um die Kinder…"
+    },
+    "home": {
+     "note": "Ich notiere das für den Haushalt…",
+     "look": "Ich schaue mir den Haushalt an…",
+     "compute": "Ich werte den Haushalt aus…",
+     "handle": "Ich kümmere mich um den Haushalt…"
+    },
+    "work": {
+     "note": "Ich notiere das für die Arbeit…",
+     "look": "Ich schaue mir deine Arbeit an…",
+     "compute": "Ich werte deine Arbeit aus…",
+     "handle": "Ich kümmere mich um deine Arbeit…"
+    },
+    "weather": {
+     "note": "Ich notiere das Wetter…",
+     "look": "Ich schaue nach dem Wetter…",
+     "compute": "Ich werte das Wetter aus…",
+     "handle": "Ich kümmere mich um das Wetter…"
+    }
+   },
+   "generic": {
+    "note": "Ich notiere deine Infos…",
+    "look": "Ich schaue nach…",
+    "handle": "Ich kümmere mich darum…"
+   }
   },
   "es": {
    "kinds": {
     "notebookSearch": {
      "one": "Busca en tu Cuaderno",
      "many": "Busca {n} veces en tu Cuaderno",
-     "now": "Buscando en tu Cuaderno…"
+     "now": "Buscando en tu Cuaderno…",
+     "target": "Busco «{}» en tu Cuaderno…"
     },
     "notebookRead": {
      "one": "Lee la ficha",
      "many": "Lee {n} fichas del Cuaderno",
-     "now": "Leyendo tu Cuaderno…"
+     "now": "Leyendo tu Cuaderno…",
+     "target": "Leo la ficha «{}»…"
     },
     "notebookNote": {
      "one": "Anota en la ficha",
      "many": "Anota en {n} fichas del Cuaderno",
-     "now": "Tomando notas en tu Cuaderno…"
+     "now": "Tomando notas en tu Cuaderno…",
+     "target": "Anotando en la ficha «{}»…"
     },
     "notebookEdit": {
      "one": "Corrige la ficha",
      "many": "Corrige {n} fichas del Cuaderno",
-     "now": "Corrigiendo tu Cuaderno…"
+     "now": "Corrigiendo tu Cuaderno…",
+     "target": "Corrigiendo la ficha «{}»…"
     },
     "notebookTask": {
      "one": "Tarea del Cuaderno",
      "many": "{n} tareas del Cuaderno",
-     "now": "Actualizando las tareas del Cuaderno…"
+     "now": "Actualizando las tareas del Cuaderno…",
+     "target": "Anotando la tarea «{}»…"
     },
     "sendFiles": {
      "one": "Envía archivos a",
@@ -1578,7 +2153,8 @@
     "createPage": {
      "one": "Crea una página",
      "many": "Crea {n} páginas",
-     "now": "Preparando una página…"
+     "now": "Preparando una página…",
+     "target": "Preparo la página «{}»…"
     },
     "pages": {
      "one": "Mira sus páginas",
@@ -1588,42 +2164,50 @@
     "weather": {
      "one": "Mira el tiempo",
      "many": null,
-     "now": "Mirando el tiempo…"
+     "now": "Mirando el tiempo…",
+     "target": "Miro el tiempo en {}…"
     },
     "route": {
      "one": "Calcula un trayecto",
      "many": "Calcula {n} trayectos",
-     "now": "Calculando el trayecto…"
+     "now": "Calculando el trayecto…",
+     "target": "Calculo el trayecto a {}…"
     },
     "contactsChange": {
      "one": "Actualiza tus contactos",
      "many": "Actualiza {n} contactos",
-     "now": "Actualizando tus contactos…"
+     "now": "Actualizando tus contactos…",
+     "target": "Actualizando el contacto de {}…"
     },
     "contactsRead": {
      "one": "Busca en tus contactos",
      "many": "Busca {n} veces en tus contactos",
-     "now": "Buscando en tus contactos…"
+     "now": "Buscando en tus contactos…",
+     "target": "Busco «{}» en tus contactos…"
     },
     "calendarChange": {
      "one": "Modifica tu agenda",
      "many": "Modifica {n} eventos",
-     "now": "Modificando tu agenda…"
+     "now": "Modificando tu agenda…",
+     "target": "Modifico tu agenda: «{}»…"
     },
     "calendarRead": {
      "one": "Mira tu agenda",
      "many": null,
-     "now": "Mirando tu agenda…"
+     "now": "Mirando tu agenda…",
+     "target": "Mirando tu agenda del {}…"
     },
     "remindersAdd": {
      "one": "Añade un recordatorio",
      "many": "Añade {n} recordatorios",
-     "now": "Añadiendo un recordatorio…"
+     "now": "Añadiendo un recordatorio…",
+     "target": "Añado el recordatorio «{}»…"
     },
     "remindersDone": {
      "one": "Marca un recordatorio",
      "many": "Marca {n} recordatorios",
-     "now": "Marcando un recordatorio…"
+     "now": "Marcando un recordatorio…",
+     "target": "Marcando «{}»…"
     },
     "remindersRead": {
      "one": "Mira tus recordatorios",
@@ -1638,32 +2222,38 @@
     "mailSearch": {
      "one": "Busca en tus correos",
      "many": "Busca {n} veces en tus correos",
-     "now": "Buscando en tus correos…"
+     "now": "Buscando en tus correos…",
+     "target": "Busco «{}» en tus correos…"
     },
     "mailRead": {
      "one": "Lee un correo",
      "many": "Lee {n} correos",
-     "now": "Leyendo tus correos…"
+     "now": "Leyendo tus correos…",
+     "target": "Leo el correo «{}»…"
     },
     "mailDraft": {
      "one": "Prepara un borrador de correo",
      "many": "Prepara {n} borradores de correo",
-     "now": "Preparando un borrador de correo…"
+     "now": "Preparando un borrador de correo…",
+     "target": "Preparo un borrador: «{}»…"
     },
     "mailAttachment": {
      "one": "Guarda un adjunto",
      "many": "Guarda {n} adjuntos",
-     "now": "Guardando un adjunto…"
+     "now": "Guardando un adjunto…",
+     "target": "Guardo el adjunto «{}»…"
     },
     "createAudio": {
      "one": "Graba un audio",
      "many": "Graba {n} audios",
-     "now": "Grabando un audio…"
+     "now": "Grabando un audio…",
+     "target": "Grabando «{}»…"
     },
     "createPodcast": {
      "one": "Prepara un pódcast",
      "many": null,
-     "now": "Preparando un pódcast…"
+     "now": "Preparando un pódcast…",
+     "target": "Preparando el pódcast «{}»…"
     },
     "voices": {
      "one": "Mira las voces disponibles",
@@ -1678,12 +2268,14 @@
     "delegate": {
      "one": "Encarga una tarea a un ayudante",
      "many": "Encarga {n} tareas a ayudantes",
-     "now": "Encargando una tarea a un asistente…"
+     "now": "Encargando una tarea a un asistente…",
+     "target": "Encargando «{}» a un asistente…"
     },
     "webSearch": {
      "one": "Busca en la web",
      "many": "Busca {n} veces en la web",
-     "now": "Buscando en la web…"
+     "now": "Buscando en la web…",
+     "target": "Busco «{}» en la web…"
     },
     "webRead": {
      "one": "Lee una página web",
@@ -1708,12 +2300,14 @@
     "prepareFile": {
      "one": "Prepara un archivo",
      "many": "Prepara {n} archivos",
-     "now": "Preparando un archivo…"
+     "now": "Preparando un archivo…",
+     "target": "Preparo el archivo {}…"
     },
     "readFile": {
      "one": "Lee un archivo",
      "many": "Lee {n} archivos",
-     "now": "Leyendo un archivo…"
+     "now": "Leyendo un archivo…",
+     "target": "Leo el archivo {}…"
     },
     "memory": {
      "one": "Actualiza su memoria",
@@ -1723,12 +2317,14 @@
     "knowledge": {
      "one": "Lee sus notas",
      "many": null,
-     "now": "Repasando mis notas…"
+     "now": "Repasando mis notas…",
+     "target": "Repasando mis notas sobre «{}»…"
     },
     "sessionSearch": {
      "one": "Busca en vuestras conversaciones anteriores",
      "many": null,
-     "now": "Buscando en nuestras conversaciones anteriores…"
+     "now": "Buscando en nuestras conversaciones anteriores…",
+     "target": "Busco «{}» en nuestras conversaciones anteriores…"
     },
     "skills": {
      "one": "Consulta sus habilidades",
@@ -1743,7 +2339,8 @@
     "schedule": {
      "one": "Programa una tarea",
      "many": null,
-     "now": "Programando una tarea…"
+     "now": "Programando una tarea…",
+     "target": "Programando «{}»…"
     },
     "proposeTask": {
      "one": "Propone una tarea en segundo plano",
@@ -1835,7 +2432,930 @@
     "Mmm, un segundito…",
     "Mirándolo por todos lados…",
     "Sopesándolo…"
-   ]
+   ],
+   "topics": {
+    "sleep": {
+     "note": "Apuntando tu sueño…",
+     "look": "Mirando tu sueño…",
+     "compute": "Haciendo el balance de tu sueño…",
+     "handle": "Ocupándome de tu sueño…"
+    },
+    "sport": {
+     "note": "Apuntando tu ejercicio…",
+     "look": "Mirando tu ejercicio…",
+     "compute": "Haciendo el balance de tu ejercicio…",
+     "handle": "Ocupándome de tu ejercicio…"
+    },
+    "meals": {
+     "note": "Apuntando tus comidas…",
+     "look": "Mirando tus comidas…",
+     "compute": "Haciendo el balance de tus comidas…",
+     "handle": "Ocupándome de tus comidas…"
+    },
+    "weight": {
+     "note": "Apuntando tu peso…",
+     "look": "Mirando tu peso…",
+     "compute": "Haciendo el balance de tu peso…",
+     "handle": "Ocupándome de tu peso…"
+    },
+    "mood": {
+     "note": "Apuntando tu ánimo…",
+     "look": "Mirando tu ánimo…",
+     "compute": "Haciendo el balance de tu ánimo…",
+     "handle": "Ocupándome de tu ánimo…"
+    },
+    "health": {
+     "note": "Apuntando tus datos de salud…",
+     "look": "Mirando tu salud…",
+     "compute": "Haciendo el balance de tu salud…",
+     "handle": "Ocupándome de tu salud…"
+    },
+    "agenda": {
+     "note": "Apuntándolo en tu agenda…",
+     "look": "Echando un ojo a tu agenda…",
+     "compute": "Haciendo el balance de tu agenda…",
+     "handle": "Ocupándome de tu agenda…"
+    },
+    "shopping": {
+     "note": "Apuntando tus compras…",
+     "look": "Mirando tus compras…",
+     "compute": "Haciendo el balance de tus compras…",
+     "handle": "Ocupándome de tus compras…"
+    },
+    "money": {
+     "note": "Apuntando tus gastos…",
+     "look": "Mirando tus gastos…",
+     "compute": "Haciendo el balance de tus gastos…",
+     "handle": "Ocupándome de tus gastos…"
+    },
+    "travel": {
+     "note": "Apuntando tu viaje…",
+     "look": "Mirando tu viaje…",
+     "compute": "Haciendo el balance de tu viaje…",
+     "handle": "Ocupándome de tu viaje…"
+    },
+    "kids": {
+     "note": "Apuntando lo de los niños…",
+     "look": "Mirando lo de los niños…",
+     "compute": "Haciendo el balance de lo de los niños…",
+     "handle": "Ocupándome de lo de los niños…"
+    },
+    "home": {
+     "note": "Apuntando lo de la casa…",
+     "look": "Mirando lo de la casa…",
+     "compute": "Haciendo el balance de lo de la casa…",
+     "handle": "Ocupándome de lo de la casa…"
+    },
+    "work": {
+     "note": "Apuntando lo de tu trabajo…",
+     "look": "Mirando lo de tu trabajo…",
+     "compute": "Haciendo el balance de lo de tu trabajo…",
+     "handle": "Ocupándome de lo de tu trabajo…"
+    },
+    "weather": {
+     "note": "Apuntando la previsión…",
+     "look": "Mirando el tiempo…",
+     "compute": "Haciendo el balance de la previsión…",
+     "handle": "Ocupándome de la previsión…"
+    }
+   },
+   "generic": {
+    "note": "Apuntando tus datos…",
+    "look": "Echando un vistazo…",
+    "handle": "Me encargo…"
+   }
   }
+ },
+ "lexicon": {
+  "topics": [
+   [
+    "sleep",
+    [
+     "dormi",
+     "dormir",
+     "dors",
+     "sommeil",
+     "reveil*",
+     "insomnie*",
+     "sieste*",
+     "endormi*",
+     "nuit",
+     "nuits",
+     "couche tard",
+     "me suis couche*",
+     "slept",
+     "sleep*",
+     "asleep",
+     "insomnia",
+     "nap",
+     "naps",
+     "napped",
+     "woke",
+     "wake up",
+     "waking up",
+     "bedtime",
+     "schlaf*",
+     "geschlafen",
+     "aufgewacht",
+     "eingeschlafen",
+     "nickerchen",
+     "schlaflos*",
+     "dormido",
+     "duermo",
+     "sueno",
+     "desperte",
+     "despertado",
+     "siesta",
+     "insomnio",
+     "geslapen",
+     "slaap*",
+     "slapen",
+     "wakker",
+     "dutje",
+     "middagdutje"
+    ]
+   ],
+   [
+    "sport",
+    [
+     "sport*",
+     "couru",
+     "courir",
+     "footing",
+     "jogging",
+     "course a pied",
+     "velo",
+     "natation",
+     "nage",
+     "muscu*",
+     "salle de sport",
+     "entrainement*",
+     "yoga",
+     "randonnee*",
+     "rando",
+     "nombre de pas",
+     "podometre",
+     "seance de sport",
+     "workout*",
+     "exercise*",
+     "jogged",
+     "running",
+     "ran",
+     "gym",
+     "cycling",
+     "swim",
+     "swimming",
+     "swam",
+     "hike",
+     "hiking",
+     "training",
+     "steps today",
+     "step count",
+     "pedometer",
+     "joggen",
+     "gejoggt",
+     "trainiert",
+     "fitness*",
+     "radfahren",
+     "schwimmen",
+     "geschwommen",
+     "wandern",
+     "gewandert",
+     "schritte",
+     "deporte*",
+     "corri",
+     "correr",
+     "gimnasio",
+     "entrenamiento",
+     "entrene",
+     "bici*",
+     "natacion",
+     "nade",
+     "caminata",
+     "senderismo",
+     "pasos",
+     "hardlopen",
+     "hardgelopen",
+     "fietsen",
+     "gefietst",
+     "zwemmen",
+     "gezwommen",
+     "sportschool",
+     "wandelen",
+     "gewandeld",
+     "stappen"
+    ]
+   ],
+   [
+    "meals",
+    [
+     "repas",
+     "mange",
+     "manger",
+     "dejeuner",
+     "dejeune",
+     "diner",
+     "dine",
+     "petit dej*",
+     "gouter",
+     "recette*",
+     "calorie*",
+     "grignote",
+     "meal*",
+     "ate",
+     "eaten",
+     "eating",
+     "breakfast",
+     "lunch",
+     "dinner",
+     "recipe*",
+     "snack*",
+     "gegessen",
+     "essen",
+     "fruhstuck*",
+     "mittagessen",
+     "abendessen",
+     "kochrezept*",
+     "kalorie*",
+     "mahlzeit*",
+     "comida*",
+     "comi",
+     "comer",
+     "desayun*",
+     "almuerzo",
+     "almorce",
+     "cena",
+     "cene",
+     "receta*",
+     "caloria*",
+     "gegeten",
+     "eten",
+     "ontbijt",
+     "avondeten",
+     "recept",
+     "recepten",
+     "maaltijd*"
+    ]
+   ],
+   [
+    "weight",
+    [
+     "poids",
+     "kilos",
+     "pese",
+     "maigri*",
+     "grossi",
+     "regime",
+     "weight",
+     "weigh*",
+     "pounds",
+     "diet",
+     "gewicht",
+     "abgenommen",
+     "zugenommen",
+     "gewogen",
+     "diat",
+     "kilo",
+     "peso",
+     "adelgac*",
+     "engord*",
+     "dieta",
+     "afgevallen",
+     "aangekomen",
+     "dieet"
+    ]
+   ],
+   [
+    "mood",
+    [
+     "humeur",
+     "moral",
+     "stress*",
+     "angoiss*",
+     "anxi*",
+     "triste*",
+     "deprim*",
+     "fatigue*",
+     "creve",
+     "crevee",
+     "epuise*",
+     "heureux",
+     "heureuse",
+     "enerve*",
+     "colere",
+     "ca va pas",
+     "pas le moral",
+     "mood",
+     "stressed",
+     "anxious",
+     "anxiety",
+     "sad",
+     "depressed",
+     "tired",
+     "exhausted",
+     "upset",
+     "angry",
+     "lonely",
+     "feeling down",
+     "stimmung",
+     "gestresst",
+     "stress",
+     "traurig",
+     "mude",
+     "erschopft",
+     "angstlich",
+     "angst",
+     "glucklich",
+     "wutend",
+     "genervt",
+     "animo",
+     "estres",
+     "estresad*",
+     "cansad*",
+     "agotad*",
+     "ansiedad",
+     "ansios*",
+     "feliz",
+     "enfadad*",
+     "agobiad*",
+     "stemming",
+     "gestrest",
+     "verdrietig",
+     "moe",
+     "uitgeput",
+     "angstig",
+     "blij",
+     "boos",
+     "somber"
+    ]
+   ],
+   [
+    "health",
+    [
+     "medicament*",
+     "medecin*",
+     "docteur",
+     "sante",
+     "malade",
+     "douleur*",
+     "mal a",
+     "mal au",
+     "mal aux",
+     "mal de tete",
+     "fievre",
+     "toux",
+     "traitement*",
+     "pilule*",
+     "comprime*",
+     "ordonnance*",
+     "vaccin*",
+     "symptome*",
+     "migraine*",
+     "medication*",
+     "medicine*",
+     "doctor",
+     "health",
+     "sick",
+     "fever",
+     "cough*",
+     "pill",
+     "pills",
+     "prescription*",
+     "symptom*",
+     "vaccine*",
+     "headache*",
+     "hurts",
+     "medikament*",
+     "arzt",
+     "arztin",
+     "gesundheit",
+     "krank",
+     "schmerz*",
+     "fieber",
+     "husten",
+     "tablette*",
+     "impfung",
+     "kopfweh",
+     "migrane",
+     "medicamento*",
+     "medico",
+     "medica",
+     "salud",
+     "enferm*",
+     "dolor*",
+     "fiebre",
+     "tos",
+     "pastilla*",
+     "receta medica",
+     "sintoma*",
+     "vacuna*",
+     "jaqueca",
+     "migrana",
+     "medicijn*",
+     "dokter",
+     "huisarts",
+     "gezondheid",
+     "ziek",
+     "pijn",
+     "koorts",
+     "hoest",
+     "pil",
+     "pillen",
+     "symptoom",
+     "symptomen",
+     "hoofdpijn",
+     "migraine"
+    ]
+   ],
+   [
+    "agenda",
+    [
+     "rendez vous",
+     "rdv",
+     "agenda",
+     "reunion*",
+     "calendrier",
+     "planning",
+     "appointment*",
+     "meeting*",
+     "calendar",
+     "termin",
+     "terminen",
+     "terminkalender",
+     "arzttermin",
+     "kalender",
+     "besprechung*",
+     "meeting",
+     "cita",
+     "citas",
+     "reunion",
+     "reuniones",
+     "calendario",
+     "afspraak",
+     "afspraken",
+     "vergadering*"
+    ]
+   ],
+   [
+    "shopping",
+    [
+     "courses",
+     "liste de courses",
+     "faire les courses",
+     "acheter",
+     "supermarche",
+     "epicerie",
+     "shopping",
+     "groceries",
+     "grocery",
+     "supermarket",
+     "shopping list",
+     "buy",
+     "einkauf*",
+     "einkaufsliste",
+     "kaufen",
+     "supermarkt",
+     "compra",
+     "compras",
+     "comprar",
+     "supermercado",
+     "lista de la compra",
+     "boodschappen",
+     "kopen",
+     "boodschappenlijst*"
+    ]
+   ],
+   [
+    "money",
+    [
+     "depense*",
+     "depense",
+     "note de frais",
+     "notes de frais",
+     "budget*",
+     "argent",
+     "euros",
+     "facture*",
+     "banque",
+     "compte bancaire",
+     "salaire",
+     "loyer",
+     "impot*",
+     "remboursement*",
+     "expense*",
+     "spent",
+     "spend*",
+     "money",
+     "bills",
+     "invoice*",
+     "bank",
+     "salary",
+     "rent",
+     "tax",
+     "taxes",
+     "refund*",
+     "ausgabe*",
+     "ausgegeben",
+     "budget",
+     "geld",
+     "rechnung*",
+     "gehalt",
+     "miete",
+     "steuer*",
+     "gasto*",
+     "gaste",
+     "presupuesto",
+     "dinero",
+     "factura*",
+     "banco",
+     "sueldo",
+     "alquiler",
+     "impuesto*",
+     "uitgave*",
+     "uitgegeven",
+     "rekening*",
+     "salaris",
+     "huur",
+     "belasting*"
+    ]
+   ],
+   [
+    "travel",
+    [
+     "voyage*",
+     "vacances",
+     "vols",
+     "avion",
+     "train",
+     "billet*",
+     "hotel*",
+     "valise*",
+     "week end a",
+     "trip",
+     "trips",
+     "travel*",
+     "holiday*",
+     "vacation*",
+     "flight*",
+     "plane",
+     "ticket*",
+     "reise*",
+     "urlaub",
+     "flug*",
+     "zug",
+     "viaje*",
+     "vacaciones",
+     "vuelo*",
+     "tren",
+     "billete*",
+     "reis",
+     "reizen",
+     "vakantie",
+     "vlucht*",
+     "vliegtuig",
+     "trein"
+    ]
+   ],
+   [
+    "kids",
+    [
+     "enfant*",
+     "ecole",
+     "gosse*",
+     "fils",
+     "fille",
+     "filles",
+     "creche",
+     "devoirs",
+     "maitresse",
+     "college",
+     "lycee",
+     "bebe*",
+     "nounou",
+     "kid",
+     "kids",
+     "child*",
+     "school",
+     "homework",
+     "daughter",
+     "baby",
+     "nursery",
+     "teacher",
+     "babysitter",
+     "kinder*",
+     "schule",
+     "hausaufgaben",
+     "sohn",
+     "tochter",
+     "kita",
+     "nino*",
+     "nina*",
+     "hijo*",
+     "hija*",
+     "colegio",
+     "escuela",
+     "deberes",
+     "bebe",
+     "guarderia",
+     "kinderen",
+     "huiswerk",
+     "zoon",
+     "dochter",
+     "oppas"
+    ]
+   ],
+   [
+    "home",
+    [
+     "maison",
+     "appartement",
+     "appart",
+     "menage",
+     "travaux",
+     "plombier",
+     "chaudiere",
+     "jardin*",
+     "linge",
+     "lessive",
+     "bricolage",
+     "house",
+     "apartment",
+     "cleaning",
+     "chores",
+     "plumber",
+     "garden*",
+     "laundry",
+     "repairs",
+     "wohnung",
+     "haus",
+     "putzen",
+     "haushalt",
+     "handwerker",
+     "garten",
+     "wasche",
+     "heizung",
+     "casa",
+     "piso",
+     "limpieza",
+     "fontanero",
+     "jardin",
+     "colada",
+     "reforma*",
+     "huis",
+     "schoonmaken",
+     "huishouden",
+     "loodgieter",
+     "tuin",
+     "verbouwing"
+    ]
+   ],
+   [
+    "work",
+    [
+     "boulot",
+     "travail",
+     "bureau",
+     "collegue*",
+     "patron",
+     "patronne",
+     "client*",
+     "taf",
+     "job",
+     "office",
+     "boss",
+     "colleague*",
+     "coworker*",
+     "arbeit",
+     "buro",
+     "chefin",
+     "kollege*",
+     "kollegin*",
+     "trabajo",
+     "oficina",
+     "jefe",
+     "jefa",
+     "companero de trabajo",
+     "curro",
+     "werk",
+     "kantoor",
+     "baas",
+     "collega*"
+    ]
+   ],
+   [
+    "weather",
+    [
+     "meteo",
+     "pluie",
+     "pleut",
+     "pleuvoir",
+     "neige*",
+     "soleil",
+     "orage*",
+     "temperature*",
+     "parapluie",
+     "weather",
+     "rain",
+     "raining",
+     "rainy",
+     "snow*",
+     "sunny",
+     "storm*",
+     "forecast",
+     "umbrella",
+     "wetter",
+     "regen",
+     "regnet",
+     "schnee",
+     "schneit",
+     "sonne",
+     "gewitter",
+     "temperatur*",
+     "clima",
+     "lluvia",
+     "llueve",
+     "nieve",
+     "tormenta*",
+     "pronostico",
+     "temperatura*",
+     "paraguas",
+     "weerbericht",
+     "regent",
+     "sneeuw",
+     "onweer",
+     "temperatuur",
+     "paraplu"
+    ]
+   ]
+  ],
+  "unknownUse": "mood",
+  "question": [
+   "combien",
+   "quand",
+   "quel",
+   "quelle",
+   "quels",
+   "quelles",
+   "est ce que",
+   "comment",
+   "pourquoi",
+   "ou",
+   "qui",
+   "quoi",
+   "qu est ce",
+   "how",
+   "what",
+   "when",
+   "where",
+   "which",
+   "who",
+   "why",
+   "wie",
+   "was",
+   "wann",
+   "wo",
+   "welche*",
+   "warum",
+   "wieviel",
+   "cuanto*",
+   "cuanta*",
+   "cuando",
+   "que",
+   "cual",
+   "donde",
+   "como",
+   "por que",
+   "quien",
+   "hoeveel",
+   "wanneer",
+   "wat",
+   "waar",
+   "welke",
+   "hoe",
+   "waarom"
+  ],
+  "look": [
+   "montre",
+   "montre moi",
+   "regarde",
+   "affiche",
+   "resume",
+   "bilan",
+   "combien",
+   "retrouve",
+   "cherche",
+   "show me",
+   "check",
+   "how much",
+   "how many",
+   "summary",
+   "summarize",
+   "find",
+   "look up",
+   "zeig",
+   "zeige",
+   "wie viel",
+   "wieviel",
+   "ubersicht",
+   "zusammenfassung",
+   "such",
+   "suche",
+   "finde",
+   "muestra",
+   "muestrame",
+   "ensena",
+   "ensename",
+   "resumen",
+   "cuanto*",
+   "busca",
+   "encuentra",
+   "laat zien",
+   "toon",
+   "hoeveel",
+   "overzicht",
+   "samenvatting",
+   "zoek"
+  ],
+  "note": [
+   "j ai",
+   "je suis",
+   "j etais",
+   "je me suis",
+   "je viens de",
+   "je me sens",
+   "je pese",
+   "on a",
+   "nous avons",
+   "note que",
+   "note le",
+   "note la",
+   "note ca",
+   "prends note",
+   "enregistre",
+   "retiens",
+   "garde",
+   "ajoute",
+   "rappelle toi",
+   "i ve",
+   "i m",
+   "i was",
+   "i slept",
+   "i ate",
+   "i ran",
+   "i walked",
+   "i spent",
+   "i weigh",
+   "i woke",
+   "i had",
+   "i did",
+   "i went",
+   "i feel",
+   "i felt",
+   "i got",
+   "i took",
+   "i have",
+   "we had",
+   "note that",
+   "note down",
+   "log",
+   "save",
+   "remember",
+   "record",
+   "ich habe",
+   "ich hab",
+   "hab",
+   "ich bin",
+   "ich war",
+   "ich hatte",
+   "ich fuhle",
+   "wir haben",
+   "notier*",
+   "merk dir",
+   "speicher*",
+   "trag ein",
+   "he",
+   "estoy",
+   "estuve",
+   "tengo",
+   "tuve",
+   "me siento",
+   "fui",
+   "hemos",
+   "apunta",
+   "anota",
+   "guarda",
+   "recuerda",
+   "registra",
+   "ik heb",
+   "ik ben",
+   "ik was",
+   "ik had",
+   "ik voel",
+   "we hebben",
+   "noteer",
+   "onthoud",
+   "bewaar",
+   "sla op"
+  ]
  }
 }

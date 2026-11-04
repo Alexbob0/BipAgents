@@ -540,7 +540,9 @@ def bipagents(version: str) -> Path:
                      # tool rows and the working line in plain words, as the apps word them (scripts/tool-labels.py)
                      "tools": {"list": tool_labels["kinds"], "words": tool_labels["text"][lang]["kinds"],
                                "extra": tool_labels["text"][lang]["extra"],
-                               "thinking": tool_labels["text"][lang]["thinking"]},
+                               "thinking": tool_labels["text"][lang]["thinking"],
+                               "topics": tool_labels["text"][lang]["topics"],
+                               "generic": tool_labels["text"][lang]["generic"], "lexicon": tool_labels["lexicon"]},
                      "pages": {"runs": {"src": f"/assets/pages/runs-{lang}.html",
                                         "title": localized(demo["pages"]["runs"]["values"]["title"], lang)},
                                "walk": {"src": f"/assets/showcase/{map_file}", "title": walk["title"], "subtitle": walk["subtitle"],
