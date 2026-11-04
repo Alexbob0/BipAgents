@@ -1115,62 +1115,55 @@ pub fn listener_events(mut listener: crate::runs::Listener) -> Response {
     )
 }
 
-async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>) -> ApiResult<Response> {
-    let config = state.config();
-    if config.agent(Some(&body.agent)).is_none() && crate::agent_shares::is_shared_with_me(&config, &body.agent) {
-        // an agent a relative shares with this person: her answer goes to their bridge (agent_shares.rs)
-        let run_id = check_run_id(&body.run_id)?;
-        let choice = body.choice.trim().to_lowercase();
-        let (answer, request) = (body.answer.as_deref(), body.request_id.as_deref());
-        return crate::agent_shares::approve_mine(&state, &body.agent, &run_id, &choice, answer, request).await;
-    }
-    let agent = agent_or_404(&config, Some(&body.agent))?;
-    let run_id = check_run_id(&body.run_id)?;
-    if crate::agent_shares::relative_run(&config, &run_id) {
-        return Err(HttpError::new(403, "a relative's turn: they answer its approvals"));
-    }
+/// `POST /v1/approve` for a card of the bridge's own (`bip-…`): its module answers it. None: not one of them.
+async fn bridge_card(
+    state: &AppState,
+    agent: &AgentConfig,
+    run_id: &str,
+    body: &ApproveRequest,
+) -> ApiResult<Option<Response>> {
     // a card of the bridge's own (a site for the agent's programs, sandbox_sites.rs), answered here
     if let Some(id) = run_id.strip_prefix(crate::sandbox_sites::RUN_PREFIX) {
         let decision = crate::sandbox_sites::decision_of_choice(&body.choice);
         let choice = if decision == crate::sandbox_sites::Decision::DenyAll { "deny" } else { "always" };
-        return match crate::sandbox_sites::answer(&state.config(), &agent.name, id, decision, "notification")
+        return Ok(Some(match crate::sandbox_sites::answer(&state.config(), &agent.name, id, decision, "notification")
             .map_err(anyhow::Error::from)?
         {
             Some(_) => Ok(web::ok(json!({"ok": true, "choice": choice}))),
             None => Err(HttpError::new(404, "no such request (answered already?)")),
-        };
+        }?));
     }
     // a card of the vault's (an account to create with a vault password, vault_logins.rs), answered here
     if let Some(id) = run_id.strip_prefix(crate::vault_logins::RUN_PREFIX) {
         let allow = body.choice.trim().to_lowercase() != "deny";
-        return if crate::vault_logins::answer(&state.config(), &agent.name, id, allow, "notification") {
+        return Ok(Some(if crate::vault_logins::answer(&state.config(), &agent.name, id, allow, "notification") {
             Ok(web::ok(json!({"ok": true, "choice": if allow { "once" } else { "deny" }})))
         } else {
             Err(HttpError::new(404, "no such request (answered already?)"))
-        };
+        }?));
     }
     // a secret card (secrets.rs): refused here; the value only comes through the app's secure field
     if let Some(id) = run_id.strip_prefix(crate::secrets::RUN_PREFIX) {
         if body.choice.trim().to_lowercase() != "deny" {
             return Err(HttpError::json(409, json!({"code": "needs_secure_field"})));
         }
-        return if crate::secrets::deny(&state.config(), Some(&agent.name), id, "notification") {
+        return Ok(Some(if crate::secrets::deny(&state.config(), Some(&agent.name), id, "notification") {
             Ok(web::ok(json!({"ok": true, "choice": "deny"})))
         } else {
             Err(HttpError::new(404, "no such request (answered already?)"))
-        };
+        }?));
     }
     // a connector's approval card (connectors.rs)
     if let Some(id) = run_id.strip_prefix(crate::connectors::RUN_PREFIX) {
         let allow = body.choice.trim().to_lowercase() != "deny";
-        return crate::connectors::answered_response(
-            crate::connectors::answer(&state, id, allow, "notification").await,
+        return Ok(Some(crate::connectors::answered_response(
+            crate::connectors::answer(state, id, allow, "notification").await,
             allow,
-        );
+        )?));
     }
     // a tip card (a feature to discover, feature_tips.rs), answered here
     if let Some(id) = run_id.strip_prefix(crate::feature_tips::RUN_PREFIX) {
-        return crate::feature_tips::approve(&state, &agent.name, id, &body.choice).await;
+        return Ok(Some(crate::feature_tips::approve(state, &agent.name, id, &body.choice).await?));
     }
     // a standing mail rule's card (mail_rules.rs): on with « Oui », the mails already there filed by the bridge
     if let Some(id) = run_id.strip_prefix(crate::mail_rules::RUN_PREFIX) {
@@ -1185,12 +1178,12 @@ async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>
         })
         .await
         .map_err(anyhow::Error::from)??;
-        return match rule {
+        return Ok(Some(match rule {
             Some(rule) => Ok(web::ok(
                 json!({"ok": true, "choice": if allow { "once" } else { "deny" }, "count": rule.existing}),
             )),
             None => Err(HttpError::new(404, "no such request (answered already?)")),
-        };
+        }?));
     }
     // a mail tidy card (archive, mark read, move or trash many e-mails, mail_tidy.rs): done by the bridge on « Oui »
     if let Some(id) = run_id.strip_prefix(crate::mail_tidy::RUN_PREFIX) {
@@ -1205,12 +1198,12 @@ async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>
         })
         .await
         .map_err(anyhow::Error::from)??;
-        return match job {
+        return Ok(Some(match job {
             Some(job) => {
                 Ok(web::ok(json!({"ok": true, "choice": if allow { "once" } else { "deny" }, "count": job.uids.len()})))
             }
             None => Err(HttpError::new(404, "no such request (answered already?)")),
-        };
+        }?));
     }
     // a routine an agent proposed, started by an e-mail or a link (triggers.rs): on with « Oui »
     if let Some(id) = run_id.strip_prefix(crate::triggers::RUN_PREFIX) {
@@ -1219,14 +1212,52 @@ async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>
         let answered = tokio::task::spawn_blocking(move || crate::triggers::answer(&config, &name, &id, allow))
             .await
             .map_err(anyhow::Error::from)?;
-        return match answered {
+        return Ok(Some(match answered {
             Some(_) => Ok(web::ok(json!({"ok": true, "choice": if allow { "once" } else { "deny" }}))),
             None => Err(HttpError::new(404, "no such request (answered already?)")),
-        };
+        }?));
     }
     // a space card (what to keep when the place fills up, storage_watch.rs), answered here
     if let Some(id) = run_id.strip_prefix(crate::storage_watch::RUN_PREFIX) {
-        return crate::storage_watch::approve(&state, &agent, id, &body.choice).await;
+        return Ok(Some(crate::storage_watch::approve(state, agent, id, &body.choice).await?));
+    }
+    Ok(None)
+}
+
+async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>) -> ApiResult<Response> {
+    let config = state.config();
+    if config.agent(Some(&body.agent)).is_none() && crate::agent_shares::is_shared_with_me(&config, &body.agent) {
+        // an agent a relative shares with this person: her answer goes to their bridge (agent_shares.rs)
+        let run_id = check_run_id(&body.run_id)?;
+        let choice = body.choice.trim().to_lowercase();
+        let (answer, request) = (body.answer.as_deref(), body.request_id.as_deref());
+        return crate::agent_shares::approve_mine(&state, &body.agent, &run_id, &choice, answer, request).await;
+    }
+    let agent = agent_or_404(&config, Some(&body.agent))?;
+    let run_id = check_run_id(&body.run_id)?;
+    if crate::agent_shares::relative_run(&config, &run_id) {
+        return Err(HttpError::new(403, "a relative's turn: they answer its approvals"));
+    }
+    // a card of the bridge's own, answered here; then gone from the Boîte and the conversation on every device
+    // (a card that folds several requests of the same kind: each of them, card_place.rs `fold`)
+    if run_id.starts_with("bip-") {
+        let members = crate::card_place::members(&state, &agent.name, &run_id);
+        let choice = body.choice.trim().to_lowercase();
+        let mut first: Option<ApiResult<Option<Response>>> = None;
+        for member in &members {
+            let answered = bridge_card(&state, &agent, member, &body).await;
+            if matches!(&answered, Ok(Some(r)) if r.status().is_success()) {
+                crate::card_place::answered(&state, &agent, member, &choice).await;
+                if first.as_ref().is_none_or(|f| !matches!(f, Ok(Some(r)) if r.status().is_success())) {
+                    first = Some(answered); // the answer of the first request done stands for the card
+                }
+            } else if first.is_none() {
+                first = Some(answered);
+            }
+        }
+        if let Some(response) = first.transpose()?.flatten() {
+            return Ok(response);
+        }
     }
     let request_id = body.request_id.as_deref();
     let (kind, value) = match &body.answer {
@@ -1265,6 +1296,13 @@ async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>
         state.hub.forget_approval(&agent.name, &run_id, request_id);
         // the answered item in the conversation on every device (the timeline's approvals log)
         crate::threads::threads_of(&state).touch(&agent.name, session.as_deref(), "answered").await;
+        // a background task's: also the conversation it reports to, which showed it too (card_place.rs)
+        if let Some(s) = session.as_deref() {
+            let report = crate::card_place::report_of(&state, &agent, s).await;
+            if report.as_deref() != Some(s) {
+                crate::threads::threads_of(&state).touch(&agent.name, report.as_deref(), "answered").await;
+            }
+        }
     }
     tracing::info!(agent = %agent.name, run_id = %run_id, status = status, kind = kind, "answer forwarded");
     Ok(web::json_response(status, &payload))
@@ -1287,15 +1325,9 @@ async fn approvals(State(state): State<AppState>, q: QueryMap) -> ApiResult<Resp
     }
     // the bridge's own cards too (a site for an agent's programs, sandbox_sites.rs)
     if shared.is_none() {
-        items.extend(crate::sandbox_sites::pending_items(&config, name.as_deref()));
-        items.extend(crate::vault_logins::pending_items(&config, name.as_deref()));
-        items.extend(crate::secrets::pending_items(&config, name.as_deref()));
-        items.extend(crate::connectors::pending_items(&state, &config, name.as_deref()));
-        items.extend(crate::storage_watch::pending_items(&config, name.as_deref()));
-        items.extend(crate::mail_tidy::pending_items(&config, name.as_deref()));
-        items.extend(crate::mail_rules::pending_items(&config, name.as_deref()));
-        items.extend(crate::feature_tips::pending_items(&config, name.as_deref()));
-        items.extend(crate::triggers::pending_items(&config, name.as_deref()));
+        // each with the conversation it shows in (card_place.rs)
+        let cards = crate::card_place::fold(&config, crate::card_place::bridge_cards(&state, &config, name.as_deref()));
+        items.extend(cards.into_iter().map(|c| crate::card_place::with_session(&config, c)));
     }
     for item in items.iter_mut() {
         let created = item.get("created_at").and_then(Value::as_f64).unwrap_or(0.0);

@@ -1428,7 +1428,9 @@ pub async fn call_tool(
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_string();
-            push.notify_bridge_card(&agent.name, &line, "mail_request", &card.id).await;
+            // the card's run id: the notification's « Autoriser » answers it through /v1/approve
+            let run_id = format!("{}{}", crate::mail_tidy::RUN_PREFIX, card.id);
+            push.notify_bridge_card(&agent.name, &line, "mail_request", &run_id).await;
         }
         if let (Some(rule), Some(push)) = (&called.rule, push.as_ref()) {
             let line = crate::mail_rules::item_of(&config, rule)
@@ -1436,7 +1438,8 @@ pub async fn call_tool(
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_string();
-            push.notify_bridge_card(&agent.name, &line, "mail_request", &rule.id).await;
+            let run_id = format!("{}{}", crate::mail_rules::RUN_PREFIX, rule.id);
+            push.notify_bridge_card(&agent.name, &line, "mail_request", &run_id).await;
         }
         return Ok(called.result);
     }
@@ -1995,8 +1998,12 @@ async fn mcp(
     let push = state.push.clone();
     let maker = state.audio_maker.clone();
     let work_lang = lang.clone();
+    // the cards waiting before the call: those it makes show in its turn's conversation (card_place.rs)
+    let cards_before = crate::card_place::waiting(&state, &agent.name);
+    let card_state = state.clone();
     let work = tokio::spawn(async move {
         let mut result = call_tool(&maker, &agent, &name, &arguments, Some(push), Some(jobs)).await;
+        crate::card_place::place_new(&card_state, &agent, &cards_before, turn_run.as_deref()).await;
         if let Ok(done) = &mut result {
             crate::names::localize_result(done, &work_lang);
             wrote(&agent.name, &name, &arguments, done);

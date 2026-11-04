@@ -290,7 +290,7 @@ fn overview_card_batches_and_undo() {
     assert_eq!(items[0]["run_id"], json!(format!("bip-mail-{}", card.id)));
     assert_eq!(items[0]["choices"], json!(["once", "deny"]));
     let summary = items[0]["bip_summary"].as_str().unwrap();
-    assert!(summary.contains("449") && summary.contains("shop.example 449"), "{summary}");
+    assert!(summary.contains("449 e-mails") && summary.ends_with(" shop.example)"), "{summary}");
     assert!(items[0]["bip_detail"].as_str().unwrap().contains("news@mail.shop.example"));
     assert_eq!(moves(&srv), 0);
     assert_eq!(count(&srv, "INBOX"), 460);
