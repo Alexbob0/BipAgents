@@ -333,6 +333,16 @@ impl Audio {
     }
 }
 
+/// A text as a Bip reads it on the phone (Pocket 4: the raw words), without the server's own lexicon.
+pub fn spoken_text(text: &str, lang: &str) -> String {
+    let clean = normalize_for_speech(&strip_emoji(text), 180, true);
+    if lang == "fr" {
+        crate::numbers_fr::prepare_for_synthesis(&clean)
+    } else {
+        speech_intl::prepare_for_synthesis(&clean, lang)
+    }
+}
+
 /// `pocket:en/colibri` -> `en`, `server:en/af_bella` -> `en`, `drama:en-naturelle-s47` -> `en`; French for
 /// `pocket:colibri` and any other voice.
 pub fn voice_language(voice: &str) -> String {
@@ -1414,6 +1424,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn spoken_text_reads_as_a_bip_on_the_phone() {
+        assert_eq!(spoken_text("Rendez-vous à **9h30** 🎉", "fr"), "Rendez-vous à neuf heures trente.");
+        assert_eq!(spoken_text("See you at 5.", "en"), "See you at five.");
+    }
 
     fn tone(seconds: f64, rate: u32) -> Vec<u8> {
         let n = (seconds * rate as f64) as usize;

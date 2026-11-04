@@ -204,6 +204,20 @@ pub fn parse_args(argv: &[String]) -> Result<Args, ArgsExit> {
     Ok(args)
 }
 
+fn speech_text(lang: &str) -> i32 {
+    let mut input = String::new();
+    let texts = std::io::Read::read_to_string(&mut std::io::stdin(), &mut input)
+        .ok()
+        .and_then(|_| serde_json::from_str::<Vec<String>>(&input).ok());
+    let Some(texts) = texts else {
+        eprintln!("bipbridge: speech-text: a JSON list of texts on stdin");
+        return 2;
+    };
+    let spoken: Vec<String> = texts.iter().map(|t| crate::tts::spoken_text(t, lang)).collect();
+    println!("{}", serde_json::to_string(&spoken).unwrap_or_default());
+    0
+}
+
 /// The process's exit code.
 pub fn main(argv: Vec<String>) -> i32 {
     // `bipbridge fs-as-root …`: file work as the sandboxes' « root », run by the bridge itself under `podman unshare`
@@ -237,6 +251,11 @@ pub fn main(argv: Vec<String>) -> i32 {
     // `bipbridge approvals [--agent X] [--last N]`: what the agents asked, from the bridge's logs (approvals_log.rs).
     if rest.first().map(String::as_str) == Some("approvals") {
         return crate::approvals_log::cli(&with_config(&rest[1..]));
+    }
+    // `bipbridge speech-text <lang>`: a JSON list of texts on stdin, each as a Bip reads it on stdout (the demo's
+    // recordings, scripts/demo-voices.py)
+    if rest.first().map(String::as_str) == Some("speech-text") {
+        return speech_text(rest.get(1).map(String::as_str).unwrap_or("fr"));
     }
     if rest.first().map(String::as_str) == Some("sandbox") && rest.get(1).map(String::as_str) == Some("adopt") {
         return crate::sandbox_adopt::cli(&with_config(&rest[2..]));
