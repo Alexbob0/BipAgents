@@ -157,6 +157,27 @@ def test_a_call_s_turns_go_through_the_bridge(bridge, fakes):
     assert bridge.post("/v1/live/turns", json={"agent": "wellness", "live_session": live, "text": "x"}).status_code == 401
 
 
+def test_a_second_call_in_the_same_second_gets_its_own_session(bridge, fakes):
+    """3/11 22:25 (Alex, agent Vie): « Ça n'a pas été accepté » right after his first words. Hermes refuses a title
+    another session holds (400), and the calls' sessions stay: a call starting in the same second (in the apps up to
+    3/11, the same minute) as an earlier one was refused, then its first turn. Now it gets a unique title."""
+    hermes = fakes.hermes
+    hermes.unique_titles = True
+    now = time.time()
+    for k in range(4):   # the earlier calls' sessions, whatever second this call starts in
+        stamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now + k))
+        hermes.add_session(f"live_{k}", talk(2), title=f"Live · {stamp}")
+    started = bridge.post("/v1/live/calls/start", headers=AUTH, json={"agent": "wellness"})
+    assert started.status_code == 200, started.text
+    live = started.json()["live_session"]
+    titles = [body["title"] for _, body in hermes.created]
+    assert titles[-1].startswith("Live · ") and titles.count(titles[-1]) == 1
+    again = bridge.post("/v1/live/calls/start", headers=AUTH, json={"agent": "wellness"})
+    assert again.status_code == 200 and again.json()["live_session"] != live
+    sent = bridge.post("/v1/live/turns", headers=AUTH, json={"agent": "wellness", "live_session": live, "text": "Hello"})
+    assert sent.status_code == 200 and hermes.streams[-1]["input"] == "Hello"
+
+
 @pytest.mark.slow
 def test_the_key_points_are_written_in_a_throwaway_session_then_kept(bridge, fakes):
     """The background loop (30 s after the start, one conversation at a time): a hidden scratch session, one chat with
