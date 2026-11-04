@@ -1544,11 +1544,14 @@ impl RunHub {
         };
         tracing::info!(agent = %agent.name, run_id = %sub.run_id, rescue = %rescue_id,
             "going round in circles: rescue turn started");
+        let watched = lock(&sub.state).watched;
         {
             let mut inner = lock(&self.inner);
             let rescue = self.get_or_start(&mut inner, &agent, &rescue_id);
             let mut st = lock(&rescue.state);
             st.kept = true;
+            // watched like the turn it follows (its approvals pushed when nobody looks), without the app's /v1/watch
+            st.watched = watched;
             st.end_push = false; // this run's end tells it
             st.session_id = session.clone();
             st.rescue_of = Some(sub.run_id.clone());
