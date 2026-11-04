@@ -180,7 +180,6 @@ los aplica.
 | 0010 respuestas vacías | las llamadas a herramientas que un modelo escribe como texto se vuelven llamadas reales; los reintentos cambian la petición |
 | 0011 títulos con GLM | GLM responde vacío a las llamadas sin razonamiento, así que los títulos piden razonamiento « low » |
 | 0013 resultados MCP: contraseñas de la caja fuerte borradas | una contraseña nunca vuelve al modelo por el resultado de una herramienta |
-| 0014 resultados de rutinas en UTF-8 simple | los acentos siguen legibles en los resultados de las rutinas |
 | 0015 ancla temporal | la hora actual viaja con cada mensaje |
 | 0016 un solo `message_agent`, el del bridge | todo mensaje entre agentes pasa por los controles del bridge |
 | 0017 elementos de dirección | las direcciones de la caja fuerte llevan nombre, teléfono y correo |
@@ -194,7 +193,7 @@ los aplica.
 más reciente es un rebase de esa rama y una nueva `BASE`. Un parche desaparece en cuanto Hermes hace lo mismo: 0001
 (clarify en la API Runs) y 0004 (imágenes guardadas para preguntas posteriores) se fueron cuando v0.22.5 trajo los
 suyos. 0005 está propuesto upstream (NousResearch/hermes-agent#136660); los parches pequeños y generales (la
-corrección de 0008, 0009, 0011, 0013, 0014, 0017, las etiquetas de 0019) son los siguientes candidatos. Detalle de
+corrección de 0008, 0009, 0011, 0013, 0017, las etiquetas de 0019) son los siguientes candidatos. Detalle de
 cada parche: [`hermes/patches/README.md`](../hermes/patches/README.md).
 
 ## Lo que dejamos a propósito a Hermes

@@ -184,7 +184,6 @@ Installer wendet sie an.
 | 0010 leere Antworten | Werkzeugaufrufe, die ein Modell als Text schreibt, werden echte Aufrufe; Wiederholungen ändern die Anfrage |
 | 0011 Titel mit GLM | GLM antwortet auf Aufrufe ohne Denken leer, also fragen Titel nach « low » |
 | 0013 MCP-Ergebnisse: Tresor-Passwörter entfernt | ein Passwort kommt nie über ein Werkzeugergebnis zum Modell zurück |
-| 0014 Routinen-Ergebnisse in einfachem UTF-8 | Umlaute und Akzente bleiben in Routinen-Ergebnissen lesbar |
 | 0015 Zeitanker | die aktuelle Uhrzeit reist mit jeder Nachricht |
 | 0016 ein `message_agent`, der der Bridge | jede Nachricht zwischen Agenten geht durch die Prüfungen der Bridge |
 | 0017 Adresseinträge | Tresor-Adressen tragen Name, Telefon und E-Mail |
@@ -198,7 +197,7 @@ Installer wendet sie an.
 neueres Hermes ist ein Rebase dieses Branches, dann eine neue `BASE`. Ein Patch fällt weg, sobald Hermes dasselbe
 kann: 0001 (Clarify in der Runs-API) und 0004 (Bilder für Folgefragen behalten) gingen, als v0.22.5 eigene Lösungen
 brachte. 0005 ist upstream vorgeschlagen (NousResearch/hermes-agent#136660); kleine, allgemeine Patches (der Fix in
-0008, 0009, 0011, 0013, 0014, 0017, die Labels aus 0019) sind die nächsten Kandidaten. Details pro Patch:
+0008, 0009, 0011, 0013, 0017, die Labels aus 0019) sind die nächsten Kandidaten. Details pro Patch:
 [`hermes/patches/README.md`](../hermes/patches/README.md).
 
 ## Was wir bewusst Hermes überlassen

@@ -183,7 +183,6 @@ l'installateur les applique.
 | 0010 réponses vides | les appels d'outils écrits en texte par un modèle deviennent de vrais appels ; les nouvelles tentatives changent la requête |
 | 0011 titres avec GLM | GLM répond vide aux appels sans réflexion, donc les titres demandent une réflexion « low » |
 | 0013 résultats MCP : mots de passe du coffre effacés | un mot de passe ne revient jamais au modèle par un résultat d'outil |
-| 0014 résultats des routines en UTF-8 simple | les accents restent lisibles dans les résultats des routines |
 | 0015 ancre temporelle | l'heure actuelle voyage avec chaque message |
 | 0016 un seul `message_agent`, celui du bridge | chaque message entre agents passe par les contrôles du bridge |
 | 0017 coordonnées | les adresses du coffre portent un nom, un téléphone et un e-mail |
@@ -197,7 +196,7 @@ l'installateur les applique.
 chaque fois. Passer à un Hermes plus récent, c'est rebaser cette branche, puis une nouvelle `BASE`. Un patch disparaît
 dès que Hermes fait la même chose : 0001 (clarify dans l'API Runs) et 0004 (images gardées pour les questions
 suivantes) sont partis quand la v0.22.5 a eu les siens. 0005 est proposé en amont (NousResearch/hermes-agent#136660) ;
-les petits patches généraux (le correctif de 0008, 0009, 0011, 0013, 0014, 0017, les libellés de 0019) sont les
+les petits patches généraux (le correctif de 0008, 0009, 0011, 0013, 0017, les libellés de 0019) sont les
 prochains candidats. Le détail de chaque patch : [`hermes/patches/README.md`](../hermes/patches/README.md).
 
 ## Ce que nous laissons volontairement à Hermes

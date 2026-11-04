@@ -167,7 +167,6 @@ top of the pinned stable release (`BASE`: v0.22.5), and the installer applies th
 | 0010 empty replies | tool calls a model writes as text become real calls; retries change the request |
 | 0011 titles with GLM | GLM answers thinking-off calls with nothing, so titles ask for « low » thinking |
 | 0013 MCP results: vault passwords scrubbed | a password never comes back to the model through a tool result |
-| 0014 routine results in plain UTF-8 | accents stay readable in routine tool results |
 | 0015 time anchor | the current time travels with each message |
 | 0016 one `message_agent`, the bridge's | every agent-to-agent message goes through the bridge's checks |
 | 0017 address items | vault addresses carry a name, a phone and an e-mail |
@@ -181,7 +180,7 @@ top of the pinned stable release (`BASE`: v0.22.5), and the installer applies th
 time. A move to a newer Hermes is a rebase of that branch, then a new `BASE`. Patches are dropped as soon as Hermes has
 the same thing: 0001 (clarify in the Runs API) and 0004 (images kept for follow-up questions) went when v0.22.5
 shipped its own. 0005 is proposed upstream as NousResearch/hermes-agent#136660; small, general ones (0008's fix,
-0009, 0011, 0013, 0014, 0017, 0019's labels) are the next candidates. Details per patch:
+0009, 0011, 0013, 0017, 0019's labels) are the next candidates. Details per patch:
 [`hermes/patches/README.md`](../hermes/patches/README.md).
 
 ## What we deliberately leave to Hermes
