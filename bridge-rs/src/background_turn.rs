@@ -49,6 +49,8 @@ pub enum Kind {
     Watcher,
     /// A routine on a clock (routines.rs).
     Routine,
+    /// What the agent noted in a voice call to make once it ended (live_calls.rs `after_call`).
+    AfterCall,
 }
 
 impl Kind {
@@ -59,6 +61,7 @@ impl Kind {
             Kind::Trigger => "trigger",
             Kind::Watcher => "watcher",
             Kind::Routine => "routine",
+            Kind::AfterCall => "after_call",
         }
     }
 
@@ -74,7 +77,7 @@ impl Kind {
 
     /// The brake's higher limits for long work (loop_brake.rs).
     fn long(self) -> bool {
-        matches!(self, Kind::Task | Kind::Trigger | Kind::Routine)
+        matches!(self, Kind::Task | Kind::Trigger | Kind::Routine | Kind::AfterCall)
     }
 }
 
@@ -437,6 +440,7 @@ mod tests {
         assert!(!Kind::Handback.needs_credit());
         assert!(Kind::Trigger.waits_for_agent() && !Kind::Handback.waits_for_agent());
         assert!(Kind::Task.long() && !Kind::Watcher.long());
+        assert!(Kind::AfterCall.needs_credit() && Kind::AfterCall.long() && !Kind::AfterCall.waits_for_agent());
     }
 
     #[test]

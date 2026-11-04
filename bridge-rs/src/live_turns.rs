@@ -2,7 +2,7 @@
 //! call's own short session (made by `POST /v1/live/calls/start`, live_brief.rs) on Hermes' `chat/stream`, whose SSE
 //! answer is passed on as it comes (one request, nothing waited for: the first words as early as before), with the
 //! agent's quick-turn thinking (`quick_turn_options`: off, or the least its model allows) and the media and long tools
-//! closed (`LIVE_CLOSED_TOOLS`, `live_turn_options`).
+//! refused (`LIVE_CLOSED_TOOLS`, `live_turn_options`).
 //!
 //!     POST /v1/live/turns       {agent, live_session, text, attachments?}   → text/event-stream (Hermes' events)
 //!     POST /v1/live/turns/stop  {agent, run_id}                             → {stopped}
@@ -64,15 +64,16 @@ fn field(name: &str, msg: &str) -> FieldError {
     FieldError::new("value_error", vec![json!("body"), json!(name)], msg, Value::Null)
 }
 
-/// The tools a Live turn leaves out (4/11: asked for help with a pronunciation in a call, an agent started making an
+/// The tools a Live turn may not run (4/11: asked for help with a pronunciation in a call, an agent started making an
 /// audio file while the person waited on the line): what makes media or long outputs (audio and podcasts, Hermes'
 /// speech, images and videos, pages, files written, sub-agents, background and heavy work started, the browsers).
-/// The call's rules (the apps' prelude, LiveLines `callRules`) say to speak it instead and offer it for after the call.
-/// Quick ones stay: web search, the Carnet, calendar and reminders, mail, maps, messages to other agents, a background
-/// task proposed (`propose_task`). Hermes patch 0023 (`model_options.closed_tools`, a trailing `*` closes a prefix)
-/// leaves them out of the model's requests and refuses them in its dispatcher (`tool_call` included); a Hermes without
-/// it ignores the field, the rules still say it. Fixed: every call's turns send the same list, so the warm-up's prompt
-/// is the one the call's questions find in the model server's cache.
+/// The call's rules (the apps' prelude, LiveLines `callRules`) say to speak it instead and note what is to be made with
+/// `after_call`, made once the call ends (live_calls.rs). Quick ones stay: web search, the Carnet, calendar and
+/// reminders, mail, maps, messages to other agents, a background task proposed (`propose_task`), `after_call`.
+/// Hermes patch 0024 (`model_options.closed_tools`, a trailing `*` closes a prefix) refuses them in its dispatcher
+/// (`tool_call` included) with « say it instead, offer it for after the call »; the request still lists every tool, so
+/// a call's prompt is its conversations' one in the model server's cache. A Hermes without the patch ignores the field:
+/// the rules still say it.
 pub const LIVE_CLOSED_TOOLS: [&str; 17] = [
     "browser_*",
     "computer_use",
@@ -162,14 +163,14 @@ mod tests {
         for quick in [crate::agent_tools::PROPOSE_TASK, crate::agent_tools::KNOWLEDGE_SEARCH, crate::maps::TOOL_NAME,
             crate::routes::TOOL_NAME, crate::weather::TOOL_NAME, crate::agent_messages::TOOL_NAME,
             crate::notebook::tools::SEARCH, crate::notebook::tools::NOTE, "calendar_list", "reminders_add", "mail_search",
-            "mail_read", crate::agent_tools::LIST_PAGES, crate::agent_tools::READ_PAGE]
+            "mail_read", crate::agent_tools::LIST_PAGES, crate::agent_tools::READ_PAGE, crate::live_calls::AFTER_CALL]
         {
             assert!(!closes(&bridge(quick)), "{quick}");
         }
         for quick in ["web_search", "web_extract", "clarify", "memory", "read_file", "terminal", "tool_search"] {
             assert!(!closes(quick), "{quick}");
         }
-        // Hermes 0023 takes at most 128 names without spaces; one fixed list, in order, for the prompt cache
+        // Hermes 0024 takes at most 128 names without spaces; one fixed list, in order
         assert!(LIVE_CLOSED_TOOLS.len() <= 128 && LIVE_CLOSED_TOOLS.iter().all(|n| !n.contains(char::is_whitespace)));
         assert!(LIVE_CLOSED_TOOLS.windows(2).all(|w| w[0] < w[1]));
     }

@@ -32,7 +32,7 @@ labels, 0008's fall-back fix, 0017, 0009's `!name`, 0013.
 | 0020 Runs API: each model call's usage (`model.usage`) | `agent/turn_usage.py`, `gateway/platforms/api_server_runs.py`, `gateway/session_api_turn.py`, `gateway/run_turn_runner.py` |
 | 0021 an API client's own Bot Chat stays an API conversation | `gateway/platforms/api_server_bot_chat.py`, `gateway/session_bot.py` |
 | 0022 tools in one canonical order (`tools.order_first`) | `tools/tool_order.py` (new), `model_tools.py`, `tools/mcp_tool_agent.py` |
-| 0023 tools closed for one turn (`model_options.closed_tools`) | `agent/closed_tools.py` (new), `agent/agent_runtime_helpers.py`, `agent/chat_completion_helpers.py`, `agent/tool_executor.py`, `gateway/platforms/api_server.py`, `gateway/run_turn_runner.py` |
+| 0024 tools refused for one turn (`model_options.closed_tools`) | `agent/closed_tools.py` (new), `agent/agent_runtime_helpers.py`, `agent/tool_executor.py`, `gateway/platforms/api_server.py`, `gateway/run_turn_runner.py` |
 
 ## How the patches are kept
 
@@ -695,27 +695,27 @@ its list is again the one every new session builds. Without the setting: plain n
 **Tests.** `tests/tools/test_tool_order.py`: common tools first then by name, two agents' common prefix byte-identical,
 the same list from any input order (two starts), a later tool at its place.
 
-## 0023 — tools closed for one turn
+## 0024 — tools refused for one turn
 
 **Problem.** In a Live call (4/11) the person asked how to pronounce a word and the agent started making an audio file
 (`create_audio`) while they waited on the line. A voice call needs the agent to speak, not to make media or start long
 work, but the person's own turns can't be closed as a guest's are (0018: no USER.md, no memory, a fresh agent).
 
 **What the patch does.** A turn's `model_options` may carry `closed_tools` (tool names, a trailing `*` closing a
-prefix, 128 at most): its requests to the model leave those tools out, and the dispatcher refuses them, the underlying
-tool of a `tool_call` included, with a reply telling the model to say it instead and offer it for after the call.
-Nothing else of the turn changes (prompt, memory, profile, other tools). `model_options` already rides every path a
-turn takes (session chat and its stream, `/v1/runs`, the session authority's admission), so no new field is plumbed;
-the mark is set again at every turn (`_create_agent` on the direct path, the TurnRunner's resolved agent), so a cached
-agent's next turn has its tools back. A malformed value closes nothing (logged). The bridge sends it on a Live call's
+prefix, 128 at most): the dispatcher refuses those tools, the underlying tool of a `tool_call` included, with a reply
+telling the model to say it instead and offer it for after the call. The request still offers every tool: the tool
+list stays the one the agent's conversations send, so the model server's prompt cache keeps one prefix (cache audit
+rule). Nothing else of the turn changes (prompt, memory, profile). `model_options` already rides every path a turn
+takes (session chat and its stream, `/v1/runs`, the session authority's admission), so no new field is plumbed; the
+mark is set again at every turn (`_create_agent` on the direct path, the TurnRunner's resolved agent), so a cached
+agent's next turn runs them again. A malformed value closes nothing (logged). The bridge sends it on a Live call's
 turns and warm-up (`bridge-rs/src/live_turns.rs` `LIVE_CLOSED_TOOLS`); a Hermes without the patch ignores the key.
 
-**Files.** `agent/closed_tools.py` (new), `agent/agent_runtime_helpers.py` (`invoke_tool`),
-`agent/chat_completion_helpers.py` (`_build_api_kwargs_for_mode`), `agent/tool_executor.py`
+**Files.** `agent/closed_tools.py` (new), `agent/agent_runtime_helpers.py` (`invoke_tool`), `agent/tool_executor.py`
 (`_dispatch_authorized_once`), `gateway/platforms/api_server.py` (`_create_agent`), `gateway/run_turn_runner.py`.
 
-**Tests.** `tests/agent/test_closed_tools.py`: parsing (a malformed value ignored), the requests without the closed
-tools, the next turn's tools back, exact names and prefixes refused, `invoke_tool` and the policy gate refusing without
-running anything, `_create_agent` marking the agent from its `model_options`. With 0018's tests and the gateway's turn
-runner tests: green on v0.22.5 with the whole set.
-
+**Tests.** `tests/agent/test_closed_tools.py`: parsing (a malformed value ignored), the request's tools unchanged, the
+next turn's tools back, exact names and prefixes refused, `invoke_tool` and the policy gate refusing without running
+anything, `_create_agent` marking the agent from its `model_options`. With 0018's tests and the gateway's turn runner
+tests: green on v0.22.5 with the whole set. (Numbered 0024: 0023 is the prompt-cache patch of the `cache-hermes`
+branch.)

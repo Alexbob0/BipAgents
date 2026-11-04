@@ -267,6 +267,7 @@ static TOOL_LIST: LazyLock<Vec<Value>> = LazyLock::new(|| {
     tools.extend([knowledge_read_tool(), knowledge_search_tool()]);
     tools.extend(reminders::reminder_tools());
     tools.push(propose_task_tool());
+    tools.push(crate::live_calls::after_call_tool()); // what to make once a voice call ends (live_calls.rs)
     tools.push(crate::jobs::start_task_tool());
     tools.push(crate::routes::route_tool());
     tools.push(crate::maps::tool());
@@ -1952,6 +1953,11 @@ async fn mcp(
         if let Some(mark) = mark {
             crate::made_files::MADE.note(&agent.name, &mark, turn_run.as_deref(), py::time_time());
         }
+        wrote(&agent.name, &name, &arguments, &mut result);
+        return Ok(answer(result));
+    }
+    if name == crate::live_calls::AFTER_CALL {
+        let mut result = crate::live_calls::after_call(&state, &agent, &arguments);
         wrote(&agent.name, &name, &arguments, &mut result);
         return Ok(answer(result));
     }

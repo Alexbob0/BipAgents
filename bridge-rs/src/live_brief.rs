@@ -590,7 +590,7 @@ impl Briefs {
             return Ok(());
         }
         let started = std::time::Instant::now();
-        // the call's turns' options, closed tools included: the same tool list, so the same prompt in the cache
+        // the call's turns' options (their closed tools included): the warm-up renders as they do
         let options = crate::live_turns::live_turn_options(&self.config.get(), agent);
         let extra = json!({"model_options": options});
         let message = format!("{prelude}\n\n{WARM_MESSAGE}");
@@ -987,6 +987,7 @@ async fn live_call_start(State(state): State<AppState>, Json(body): Json<CallSta
             session,
             live_session: live_session.clone(),
             started_at: crate::py::time_time(),
+            after: Vec::new(),
         };
         blocking(move || calls.note_start(call)).await?;
     }
