@@ -4,7 +4,7 @@
   "audit_row": 8,
   "summary": "A Boîte message (outbox): routine report, urgent watcher, hand-back outside Bot Chat, credit note, storage card, imports.",
   "producers": [
-    "ntfy.rs ingest -> deliver -> notify_message; callers cronwatch.rs:691, watchers.rs:616, handback.rs:656, credit.rs:309, storage_watch.rs:1388, assistant_import.rs, whatsapp_import"
+    "outbox.rs ingest -> deliver -> notify_message; callers cronwatch.rs:691, watchers.rs:616, handback.rs:656, credit.rs:309, storage_watch.rs:1388, assistant_import.rs, whatsapp_import"
   ],
   "policy": {
     "per_agent_switch": false

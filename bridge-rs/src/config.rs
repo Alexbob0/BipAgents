@@ -1,8 +1,8 @@
 //! Bridge configuration (TOML).
 //!
 //! Default path: `~/.config/hermes-ios/bridge.toml`, overridable with `BRIDGE_CONFIG`.
-//! Secrets may be given inline (`bridge_key`, `hermes_key`, `ntfy_token`) or through a file
-//! (`bridge_key_file`, `hermes_key_file`, `ntfy_token_file`), e.g. a systemd credential.
+//! Secrets may be given inline (`bridge_key`, `hermes_key`) or through a file (`bridge_key_file`,
+//! `hermes_key_file`), e.g. a systemd credential. Keys it no longer reads (an old `ntfy_topic`, `[ntfy]`) are ignored.
 //!
 //! `parse_config` works on the TOML document as a JSON value (`serde_json::Value`, what Python's `tomllib` gives
 //! as dicts), with Python's own conversions (`str()`, `int()`, `float()`, truthiness), so the same file gives the
@@ -52,8 +52,6 @@ pub struct AgentConfig {
     pub display_name: String,
     pub hermes_url: String,
     pub hermes_key: String,
-    pub ntfy_topic: Option<String>,
-    pub ntfy_token: Option<String>,
     pub upload_dir_host: Option<String>,
     pub upload_dir_container: Option<String>,
     pub voice: Option<String>,
@@ -688,7 +686,6 @@ pub struct Config {
     pub cron_subtask_handback: bool,
     /// Files the agents point to with « MEDIA:<path> » lines: agent-side prefix -> host directory.
     pub media_roots: IndexMap<String, String>,
-    pub ntfy_url: String,
     /// How long a reply's notification waits for its message to be stored, to carry its id (`[push]
     /// message_wait_seconds`, notifications.rs). Then it goes without it.
     pub push_message_wait_seconds: f64,
@@ -839,7 +836,6 @@ impl Config {
             cron_window_hours: 12.0,
             cron_subtask_handback: true,
             media_roots: IndexMap::new(),
-            ntfy_url: "http://127.0.0.1:8645".into(),
             push_message_wait_seconds: 10.0,
             apns: ApnsConfig::default(),
             fcm_service_account: None,
@@ -1451,7 +1447,6 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
     let kyutai = table(data, "kyutai");
     let pocket = table(data, "pocket");
     let cron = table(data, "cron");
-    let ntfy = table(data, "ntfy");
     let push = table(data, "push");
     let apns_t = table(data, "apns");
     let outbox_t = table(data, "outbox");
@@ -1539,8 +1534,6 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
                 display_name,
                 hermes_url,
                 hermes_key: secret(t, "hermes_key", &where_, true)?.unwrap_or_default(),
-                ntfy_topic: opt_s(t, "ntfy_topic"),
-                ntfy_token: secret(t, "ntfy_token", &where_, false)?,
                 upload_dir_host: opt_s(t, "upload_dir_host").map(|p| expand(&p)),
                 upload_dir_container: opt_s(t, "upload_dir_container").map(|p| py::rstrip_slash(&p)),
                 voice: opt_s(t, "voice"),
@@ -1864,7 +1857,6 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         cron_window_hours: f(cron, "window_hours", 12.0)?,
         cron_subtask_handback: b(cron, "subtask_handback", true),
         media_roots,
-        ntfy_url: py::rstrip_slash(&s(ntfy, "url", "http://127.0.0.1:8645")),
         push_message_wait_seconds: f(push, "message_wait_seconds", 10.0)?.clamp(0.0, 60.0),
         apns,
         fcm_service_account: opt_s(fcm_t, "service_account").map(|p| expand(&p)),

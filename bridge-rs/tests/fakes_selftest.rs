@@ -60,21 +60,6 @@ async fn backend_fakes_answer_like_conftest() {
     assert_eq!(hermes.run_events(&agent, "nope").await.err().unwrap().status(), Some(404));
     assert_eq!(hermes.session(&agent, "s").await.unwrap()["message_count"], 7);
 
-    backend.with(|s| s.ntfy_lines.insert("topic".into(), vec!["{\"id\": \"m1\"}".into()]));
-    let lines: Vec<String> = bipbridge::hermes::lines_of(
-        http.get(format!("{}/topic/json", backend.ntfy_url)).send().await.unwrap().bytes_stream(),
-    )
-    .map(|l| l.unwrap())
-    .collect()
-    .await;
-    assert_eq!(
-        lines,
-        vec![
-            "{\"id\": \"open1\", \"event\": \"open\", \"topic\": \"topic\"}".to_string(),
-            "{\"id\": \"m1\"}".to_string()
-        ]
-    );
-
     let apns = FakeApns::start().await;
     apns.responses.lock().unwrap().insert("dead".into(), (410, Some("Unregistered".into())));
     let r = http.post(format!("{}/3/device/live", apns.url)).json(&json!({"aps": {}})).send().await.unwrap();

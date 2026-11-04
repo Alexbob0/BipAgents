@@ -24,9 +24,9 @@ documentent le cœur d'origine (voix, fichiers, push, accords), que les apps uti
 | TTS par phrase | `POST /v1/tts/sentence` | normalise le texte (markdown, liens), appelle le moteur de voix (Pocket, ou ton propre modèle de voix), renvoie du PCM int16 mono 24 kHz (ou Opus/WAV) ; file FIFO globale + cache LRU |
 | Fichiers | `POST /v1/files` | dépose PDF/Excel/texte… dans un dossier monté dans le conteneur Hermes et renvoie le chemin **vu par l'agent** |
 | Push | `POST/DELETE /v1/devices` | enregistre les device tokens APNs (SQLite), envoie les push via HTTP/2 + jeton JWT ES256 |
-| Messages proactifs | `GET /v1/outbox…` | suit les tâches planifiées de chaque agent (et, en héritage, son topic ntfy), stocke les messages, pré-synthétise l'audio (mp3), pousse `MESSAGE` |
+| Messages proactifs | `GET /v1/outbox…` | stocke les messages des routines et du travail de fond des agents, pré-synthétise l'audio (mp3), pousse `MESSAGE` |
 | Approbations | `POST /v1/watch`, `POST /v1/approve`, `GET /v1/approvals` | surveille un run en arrière-plan, pousse `APPROVAL` si personne ne le suit, relaie la réponse à Hermes |
-| Santé | `GET /health` | sans authentification : version + moteurs de voix/ntfy joignables |
+| Santé | `GET /health` | sans authentification : version + moteurs de voix joignables |
 
 Le bridge écoute **uniquement sur `127.0.0.1:8643`** ; l'exposition HTTPS se fait par `tailscale serve`.
 Il ne contient aucun secret : tout est dans son dossier de config (mode 600) : `~/.config/bipagents/` quand
@@ -54,7 +54,7 @@ mkdir -p ~/.config/hermes-ios && chmod 700 ~/.config/hermes-ios
 cp bridge/bridge.example.toml ~/.config/hermes-ios/bridge.toml
 chmod 600 ~/.config/hermes-ios/bridge.toml
 ~/.local/bin/bipbridge genkey                  # -> à mettre dans bridge_key (et à donner à l'app)
-$EDITOR ~/.config/hermes-ios/bridge.toml       # clés Hermes, jetons ntfy, APNs, dossiers d'upload
+$EDITOR ~/.config/hermes-ios/bridge.toml       # clés Hermes, APNs, dossiers d'upload
 ~/.local/bin/bipbridge check                   # valide la config (refuse les valeurs CHANGE-ME)
 
 # 3. Dossiers d'upload visibles par les agents (home Hermes monté dans les conteneurs)
@@ -95,21 +95,6 @@ Si le conteneur ne peut pas lire : mettre `upload_file_mode = "644"` et `upload_
 (ou une ACL `setfacl` pour l'UID mappé). Les fichiers de plus de 30 jours sont purgés automatiquement
 (seulement ceux écrits par le bridge : `AAAA-MM/<12 hex>-<nom>`).
 
-### ntfy : jeton de lecture pour le bridge (héritage, facultatif)
-
-Les tâches planifiées arrivent dans la Boîte sans ntfy (`[cron]`) ; ceci ne sert qu'aux installations qui livrent encore par lui.
-
-Le bridge **lit** les topics `hermes-wellness-out` / `hermes-vie-out` (où Hermes publie via `deliver: ntfy`) :
-
-```bash
-podman exec -it ntfy ntfy user add bridge
-podman exec -it ntfy ntfy access bridge 'hermes-*-out' read-only
-podman exec -it ntfy ntfy token add bridge        # -> ntfy_token de chaque agent
-```
-
-Le dernier id ntfy lu est mémorisé (SQLite) et renvoyé en `since=` à la reconnexion (backoff 0,5 → 8 s) :
-aucun message perdu tant qu'il est dans le cache ntfy (12 h par défaut).
-
 ### APNs
 
 Dans Apple Developer : *Keys* → nouvelle clé avec *Apple Push Notifications service (APNs)* → télécharger
@@ -131,12 +116,11 @@ fichier est lisible par le groupe ou les autres. Chaque secret accepte aussi la 
 | `[pocket] url`, `default_voice` | absent (désactivé), `pocket:colibri` | Kyutai Pocket TTS (`pocket/`) pour les voix des Bips ; `default_voice` est la voix par défaut quand `[kyutai]` est coupé |
 | `[voice_server] url`, `model`, `stream_rate`, `voices`, `live`, `replies`, `reading`, `first_audio_seconds` | absent, `tts-1`, aucun, `[]`, `true` ×3, `5` | le modèle de voix de la personne (OpenAI `/v1/audio/speech`), voir plus bas ; un ancien `[drama] url` en est un |
 | `[pronunciations.<langue>] <mot> = "<graphie>"` | aucun | les mots que les voix disent mal, réécrits (mots entiers, toute casse) |
-| `[ntfy] url` | `http://127.0.0.1:8645` | |
 | `[apns] team_id, key_id, p8_path, bundle_id, environment` | push désactivé si vide | |
 | `[push] previews` | `false` | `false` : corps de notification générique, le texte transite par le tailnet |
 | `[outbox] db_path, audio_dir, retention_days, audio_max_chars, audio_wait_seconds` | `~/.local/share/hermes-bridge/…`, 90 j, 2000, 8 s | |
 | `[limits] upload_max_mb, upload_retention_days, upload_file_mode, sentence_max_chars, tts_max_chars, watch_max_minutes` | 50, 30, `640`, 180, 1000, 120 | |
-| `[agents.<id>] display_name, hermes_url, hermes_key, ntfy_topic, ntfy_token, upload_dir_host, upload_dir_container, voice` | | `<id>` en minuscules = identifiant utilisé par l'app (`wellness`, `vie`) |
+| `[agents.<id>] display_name, hermes_url, hermes_key, upload_dir_host, upload_dir_container, voice` | | `<id>` en minuscules = identifiant utilisé par l'app (`wellness`, `vie`) |
 
 ## 3. Ce que l'iPhone appelle
 
@@ -159,7 +143,7 @@ Le contrat détaillé (payloads exacts) est dans la section suivante.
 ## 4. Contrat d'API
 
 ### `GET /health` (public)
-`{"ok": true, "version": "0.1.0", "kyutai": bool, "ntfy": bool, "apns": bool, "tts_queue": n}`
+`{"ok": true, "version": "0.1.0", "kyutai": bool, "apns": bool, "tts_queue": n}`
 
 ### `GET /v1/agents`
 `{"agents": [{"id": "wellness", "name": "Wellness", "voice": "5476", "uploads": true, "inbox": true}]}`
@@ -267,8 +251,7 @@ environnement invalide, `{"detail":{"error":"unknown agent_ids","agent_ids":[…
  "created_at": "2026-10-04T08:15:01.532Z", "sent_at": "2026-10-04T08:15:01.000Z", "session_id": null,
  "has_audio": true, "audio_url": "/v1/outbox/9f3c…/audio"}
 ```
-`created_at` = réception par le bridge (UTC, ms, format fixe) ; `sent_at` = horodatage ntfy ; `session_id` vient d'un tag
-ntfy `session:<id>` s'il existe. Pour la pagination, repasser le `created_at` du dernier élément en `since`.
+`created_at` = réception par le bridge (UTC, ms, format fixe) ; `sent_at` est nul ; `session_id` est la conversation du message, s'il en a une. Pour la pagination, repasser le `created_at` du dernier élément en `since`.
 
 ### `GET /v1/outbox/{id}` → Item (404 sinon)
 
@@ -332,7 +315,7 @@ pip install -r tests_blackbox/requirements.txt                              # Py
 python -m pytest tests_blackbox -q -p no:cacheprovider                      # le contrat HTTP (tests_blackbox/README.md)
 ```
 
-Aucun n'appelle de service réel : Hermes, les moteurs de voix, ntfy, APNs et FCM sont simulés
+Aucun n'appelle de service réel : Hermes, les moteurs de voix, APNs et FCM sont simulés
 (`bridge-rs/tests/common/`, `tests_blackbox/bbkit/`). Les tests Rust ont été portés depuis ceux du bridge Python, et
 ses fixtures dorées (`bridge-rs/tests/golden/`) faites en lançant le code Python : leurs `gen_*.py` ont besoin de ce
 bridge, depuis l'historique.

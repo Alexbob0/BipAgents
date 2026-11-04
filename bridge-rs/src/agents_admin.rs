@@ -517,7 +517,7 @@ fn q(value: &str) -> String {
 }
 
 /// The new agent in the bridge's config file, so it is still there after a restart. `kept`: other lines of its
-/// section to keep (what the bridge does not set itself: its voice, ntfy, shares…).
+/// section to keep (what the bridge does not set itself: its voice, shares…).
 pub fn append_agent(config_path: &str, agent: &AgentConfig, kept: &[String]) -> std::io::Result<()> {
     crate::config::update_source(config_path, |text| Ok(with_agent(text, agent, kept)))
 }
@@ -1514,7 +1514,7 @@ pub async fn mount_all_uploads(config: SharedConfig, run: Run) {
 }
 
 /// The agent's section of the bridge's config file rewritten (after a move, a browser): what the bridge sets is
-/// replaced, the rest of the section (voice, ntfy, shares, a key kept in a file…) stays. The running
+/// replaced, the rest of the section (voice, shares, a key kept in a file…) stays. The running
 /// configuration gets the agent too.
 pub fn save_agent(config: &SharedConfig, agent: &AgentConfig) -> anyhow::Result<()> {
     if let Some(path) = config.get().source_path.as_deref() {

@@ -57,7 +57,6 @@ fn example_config_with_real_values() {
     for name in ["wellness", "vie"] {
         text = text.replace(&format!("\"CHANGE-ME-API_SERVER_KEY-of-{name}\""), &format!("\"key-{name}\""));
     }
-    text = text.replace("\"CHANGE-ME-tk_token-with-read-access\"", "\"tk_abc\"");
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("bridge.toml");
     std::fs::write(&path, text).unwrap();
@@ -67,7 +66,6 @@ fn example_config_with_real_values() {
     let cfg = load_config(Some(path.to_str().unwrap())).unwrap();
     assert_eq!((cfg.port, cfg.host.as_str()), (8643, "127.0.0.1"));
     assert_eq!(cfg.kyutai_url.as_deref(), Some("http://127.0.0.1:8097"));
-    assert_eq!(cfg.ntfy_url, "http://127.0.0.1:8645");
     assert_eq!(cfg.apns.bundle_id, "com.kerfystudio.bipagents");
     assert!(!cfg.apns.enabled());
     let mut names: Vec<&String> = cfg.agents.keys().collect();

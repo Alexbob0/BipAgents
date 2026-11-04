@@ -472,7 +472,7 @@ impl PushService {
         })
     }
 
-    /// A Boîte message (ntfy.rs): `from` says whose (its rule, notifications.rs).
+    /// A Boîte message (outbox.rs): `from` says whose (its rule, notifications.rs).
     pub async fn notify_message(
         &self,
         agent: &str,

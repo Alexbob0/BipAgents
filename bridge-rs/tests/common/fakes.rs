@@ -1,5 +1,5 @@
-//! conftest.py's fakes as real servers on 127.0.0.1: Kyutai, Pocket, Hermes (runs SSE + approvals + sessions), ntfy
-//! (one `FakeBackend`, four servers) and APNs (`FakeApns`). Their recorded requests and their knobs are shared with
+//! conftest.py's fakes as real servers on 127.0.0.1: Kyutai, Pocket, Hermes (runs SSE + approvals + sessions)
+//! (one `FakeBackend`, three servers) and APNs (`FakeApns`). Their recorded requests and their knobs are shared with
 //! the test through `Arc<Mutex<…>>`, as the Python fakes' attributes.
 //!
 //! Differences with Python's MockTransport: each fake host is its own server (`backend.urls()` gives them to
@@ -153,8 +153,6 @@ pub struct BackendState {
     pub approval_response: (u16, Value),
     /// run_id -> `GET /v1/runs/{id}`.
     pub run_info: HashMap<String, Value>,
-    pub ntfy_lines: HashMap<String, Vec<String>>,
-    pub ntfy_requests: Vec<Seen>,
 }
 
 impl Default for BackendState {
@@ -172,8 +170,6 @@ impl Default for BackendState {
             approvals: Vec::new(),
             approval_response: (200, json!({"object": "hermes.run.approval_response", "resolved": 1})),
             run_info: HashMap::new(),
-            ntfy_lines: HashMap::new(),
-            ntfy_requests: Vec::new(),
         }
     }
 }
@@ -181,14 +177,13 @@ impl Default for BackendState {
 #[derive(Clone)]
 pub struct FakeBackend {
     pub state: Arc<Mutex<BackendState>>,
-    /// Set to close the streams that stay open (runs, ntfy); the test's runtime ending closes them too.
+    /// Set to close the streams that stay open (runs); the test's runtime ending closes them too.
     pub release: Arc<Flag>,
     pub kyutai_active: Arc<AtomicUsize>,
     pub kyutai_max_active: Arc<AtomicUsize>,
     pub kyutai_url: String,
     pub pocket_url: String,
     pub hermes_url: String,
-    pub ntfy_url: String,
 }
 
 impl FakeBackend {
@@ -205,12 +200,10 @@ impl FakeBackend {
             kyutai_url: String::new(),
             pocket_url: String::new(),
             hermes_url: String::new(),
-            ntfy_url: String::new(),
         };
         fake.kyutai_url = spawn_fake(Router::new().fallback(any(kyutai)).with_state(fake.clone())).await;
         fake.pocket_url = spawn_fake(Router::new().fallback(any(pocket)).with_state(fake.clone())).await;
         fake.hermes_url = spawn_fake(Router::new().fallback(any(hermes)).with_state(fake.clone())).await;
-        fake.ntfy_url = spawn_fake(Router::new().fallback(any(ntfy)).with_state(fake.clone())).await;
         fake
     }
 
@@ -219,7 +212,6 @@ impl FakeBackend {
         Urls {
             kyutai: self.kyutai_url.clone(),
             pocket: self.pocket_url.clone(),
-            ntfy: self.ntfy_url.clone(),
             hermes: self.hermes_url.clone(),
         }
     }
@@ -359,28 +351,6 @@ async fn hermes(State(fake): State<FakeBackend>, request: Request) -> Response {
         return (StatusCode::from_u16(status).unwrap(), Json(payload)).into_response();
     }
     (StatusCode::NOT_FOUND, Json(json!({"error": "no route"}))).into_response()
-}
-
-async fn ntfy(State(fake): State<FakeBackend>, request: Request) -> Response {
-    if request.uri().path() == "/v1/health" {
-        return Json(json!({"healthy": true})).into_response();
-    }
-    let seen = seen_of(request).await;
-    let topic = seen.path.trim_matches('/').split('/').next().unwrap_or("").to_string();
-    let lines = fake.with(|s| {
-        s.ntfy_requests.push(seen.clone());
-        s.ntfy_lines.remove(&topic).unwrap_or_default()
-    });
-    let release = fake.release.clone();
-    let stream = async_stream::stream! {
-        let open = bipbridge::py::dumps(&json!({"id": "open1", "event": "open", "topic": topic}));
-        yield Ok::<_, std::io::Error>(Bytes::from(format!("{open}\n")));
-        for line in lines {
-            yield Ok(Bytes::from(format!("{line}\n")));
-        }
-        release.wait(Duration::from_secs(30)).await;
-    };
-    Response::new(Body::from_stream(stream))
 }
 
 /// token -> (status, reason).

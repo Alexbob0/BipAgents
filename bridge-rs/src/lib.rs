@@ -1,4 +1,4 @@
-//! BipAgents bridge: TTS by sentence, voice WebSocket, file drop, APNs push and ntfy outbox
+//! BipAgents bridge: TTS by sentence, file drop, APNs push and the Boîte
 //! for Hermes agents (see ../README.md).
 //!
 //! Rust port of `bridge/bipbridge` (Python): the same routes, JSON, files on disk, config and CLI. One Rust module
@@ -54,7 +54,7 @@ pub mod cronwatch;
 pub mod no_reply;
 pub mod fcm;
 pub mod media;
-pub mod ntfy;
+pub mod outbox;
 pub mod live_activities;
 pub mod push;
 pub mod relay;

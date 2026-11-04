@@ -1,10 +1,10 @@
 """The fake servers the bridge talks to, each on its own port of 127.0.0.1: Hermes' api_server, Kyutai TTS, Pocket
-TTS, the person's own voice server, ntfy, APNs, FCM (with Google's OAuth token endpoint), the publisher's push relay
+TTS, the person's own voice server, APNs, FCM (with Google's OAuth token endpoint), the publisher's push relay
 and a model's /v1/models. They behave like the fakes of tests/conftest.py (same fake audio, same answers), record
 every request (`.requests`, a list of `Seen`) and are driven from the tests by plain attributes.
 
 Started once per test session; `reset()` before each test puts them back to their defaults. Streams they hold open
-(SSE, ntfy) end when the test sets `release`, or when its own flag in a run's script is set."""
+(SSE) end when the test sets `release`, or when its own flag in a run's script is set."""
 from __future__ import annotations
 
 import array
@@ -572,36 +572,6 @@ class FakeHermes(Fake):
         return JSONResponse({"error": "no route"}, status_code=404)
 
 
-# -- ntfy, model --------------------------------------------------------------------------------------------------
-
-class FakeNtfy(Fake):
-    """ntfy: `/v1/health`, and `GET /<topic>/json` streaming an « open » event, the lines queued for the topic, then
-    staying open until the test ends."""
-    name = "ntfy"
-
-    def reset(self) -> None:
-        super().reset()
-        self.lines: Dict[str, List[str]] = {}
-        self.subscriptions: List[Seen] = []
-
-    async def handle(self, seen: Seen) -> Response:
-        if seen.path == "/v1/health":
-            return JSONResponse({"healthy": True})
-        self.subscriptions.append(seen)
-        topic = seen.path.strip("/").split("/")[0]
-        with self.lock:
-            lines = self.lines.pop(topic, [])
-        release = self.release
-
-        async def stream():
-            yield (json.dumps({"id": "open1", "event": "open", "topic": topic}) + "\n").encode()
-            for line in lines:
-                yield (line + "\n").encode()
-            await wait_flag(release, 60)
-
-        return StreamingResponse(stream(), media_type="application/x-ndjson")
-
-
 def facts_answer(body: Dict[str, Any]) -> List[Dict[str, Any]]:
     """The mailbox scan's model (tests/test_mail_scan.py's): one line of facts per « E-mail N » it was given, by sender."""
     text = body["messages"][1]["content"]
@@ -900,14 +870,13 @@ class Fakes:
         self.kyutai = FakeKyutai()
         self.pocket = FakePocket()
         self.voices = FakeVoiceServer()
-        self.ntfy = FakeNtfy()
         self.model = FakeModel()
         self.apns = FakeApns()
         self.fcm = FakeFcm()
         self.push_service = FakePushService()
         self.admin_relay = FakeAdminRelay()
         self.maps = FakeMaps()
-        self.all: List[Fake] = [self.hermes, self.kyutai, self.pocket, self.voices, self.ntfy, self.model, self.apns,
+        self.all: List[Fake] = [self.hermes, self.kyutai, self.pocket, self.voices, self.model, self.apns,
                                 self.fcm, self.push_service, self.admin_relay, self.maps]
         self.down = Dropper()
         from .imap import FakeImap

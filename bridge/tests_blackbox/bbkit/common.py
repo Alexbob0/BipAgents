@@ -12,7 +12,6 @@ import httpx
 
 BRIDGE_KEY = "test-bridge-key-0123456789abcdef0123456789"
 HERMES_KEY = "hermes-wellness-key-xyz"
-NTFY_TOKEN = "tk_testtoken"
 AUTH = {"Authorization": f"Bearer {BRIDGE_KEY}"}
 # An address on the Internet, as the bridge sees it through X-Forwarded-For from 127.0.0.1 (uvicorn's
 # `proxy_headers` with `forwarded_allow_ips="127.0.0.1"`): wrong keys are only counted for such addresses.
@@ -92,3 +91,21 @@ def answered(bridge, agent: str) -> list:
     path = bridge.data / "approvals" / f"{agent}.jsonl"
     rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()] if path.exists() else []
     return sorted([r for r in rows if r.get("choice")], key=lambda r: r.get("at") or 0)
+
+
+def boite_message(bridge, fakes, text: str, name: str = "Le point") -> dict:
+    """A message in the Boîte as the bridge's own producers put one there: a routine's report (made by the app, run
+    now, its turn answering `text`). Returns the Boîte's item once stored."""
+    from .servers import wait_until
+    made = bridge.post("/v1/agents/wellness/routines", headers=AUTH,
+                       json={"name": name, "schedule": "every day at 7:00", "prompt": "Fais le point."})
+    assert made.status_code == 200, made.text
+    before = {i["id"] for i in bridge.get("/v1/outbox", headers=AUTH).json()["items"]}
+    fakes.hermes.run_output = text
+    assert bridge.post(f"/v1/routines/{made.json()['job']['id']}/run", headers=AUTH).status_code == 200
+
+    def new():
+        return [i for i in bridge.get("/v1/outbox", headers=AUTH).json()["items"] if i["id"] not in before]
+
+    assert wait_until(new, timeout=20)
+    return new()[0]

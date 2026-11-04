@@ -976,11 +976,12 @@ pub async fn run_forever(state: AppState) {
         .await
         .unwrap_or_default();
         for (agent, lang, id, text) in due {
-            let mut note = serde_json::Map::new();
-            note.insert("message".into(), json!(text));
-            note.insert("title".into(), json!(digest_title(&lang)));
-            note.insert("id".into(), json!(id));
-            if let Err(e) = state.outbox.ingest(&agent, &note, false, false).await {
+            let note = crate::outbox::BoiteMessage {
+                id: Some(id),
+                title: Some(digest_title(&lang).to_string()),
+                ..crate::outbox::BoiteMessage::new(text)
+            };
+            if let Err(e) = state.outbox.ingest(&agent, note, false).await {
                 tracing::warn!(agent = %agent.name, error = %format!("{e:#}"), "mail rules' weekly line not stored");
             }
         }

@@ -1,9 +1,7 @@
 """MEDIA: files (`/v1/media`), a podcast's own mp3 as an outbox message's audio, the scheduled tasks' push setting
 (tests/test_media_and_jobs.py, over HTTP)."""
-import json
 
-from bbkit.common import AUTH
-from bbkit.servers import wait_until
+from bbkit.common import AUTH, boite_message
 
 NOW = "2026-10-21T08:00:00.000Z"
 
@@ -23,8 +21,6 @@ def with_media(bridges):
 
 def test_media_route_and_podcast_audio_in_the_outbox(bridges, fakes):
     bridge = with_media(bridges)
-    fakes.ntfy.lines["hermes-wellness-out"] = [json.dumps({
-        "id": "n1", "event": "message", "message": "MEDIA:/home/hermes/simplex-files/point.mp3\n\nPoint du matin"})]
     bridge.start()
     resp = bridge.get("/v1/media", params={"path": "/home/hermes/simplex-files/point.mp3"}, headers=AUTH)
     assert resp.status_code == 200 and resp.content == b"ID3podcast-audio"
@@ -39,8 +35,7 @@ def test_media_route_and_podcast_audio_in_the_outbox(bridges, fakes):
     assert bridge.get("/v1/media", headers=AUTH).status_code == 422
     assert bridge.get("/v1/media", params={"path": "x" * 1025}, headers=AUTH).status_code == 422
     assert bridge.get("/v1/media", params={"path": "/home/hermes/simplex-files/point.mp3"}).status_code == 401
-    assert wait_until(lambda: bridge.get("/v1/outbox", headers=AUTH).json()["items"])
-    item = bridge.get("/v1/outbox", headers=AUTH).json()["items"][0]
+    item = boite_message(bridge, fakes, "MEDIA:/home/hermes/simplex-files/point.mp3\n\nPoint du matin")
     assert item["text"] == "Point du matin" and item["has_audio"] is True
     audio = bridge.get(f"/v1/outbox/{item['id']}/audio", headers=AUTH)
     assert audio.status_code == 200 and audio.content == b"ID3podcast-audio"  # the podcast, not a synthesis
@@ -49,11 +44,8 @@ def test_media_route_and_podcast_audio_in_the_outbox(bridges, fakes):
 
 def test_a_media_only_message_reads_as_headphones(bridges, fakes):
     bridge = with_media(bridges)
-    fakes.ntfy.lines["hermes-wellness-out"] = [json.dumps({
-        "id": "n2", "event": "message", "message": "MEDIA:/home/hermes/simplex-files/point.mp3"})]
     bridge.start()
-    assert wait_until(lambda: bridge.get("/v1/outbox", headers=AUTH).json()["items"])
-    assert bridge.get("/v1/outbox", headers=AUTH).json()["items"][0]["text"] == "🎧"
+    assert boite_message(bridge, fakes, "MEDIA:/home/hermes/simplex-files/point.mp3")["text"] == "🎧"
 
 
 def test_cron_job_notification_preference(bridges):

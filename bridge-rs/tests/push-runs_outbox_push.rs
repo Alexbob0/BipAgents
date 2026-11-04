@@ -1,4 +1,4 @@
-//! ntfy -> outbox ingestion, audio pre-synthesis, MESSAGE push, outbox routes, APNs client (Python:
+//! Boîte messages: ingestion, audio pre-synthesis, MESSAGE push, outbox routes, APNs client (Python:
 //! tests/test_outbox_push.py).
 
 mod common;
@@ -13,9 +13,9 @@ use axum::routing::post;
 use axum::{Json, Router};
 use base64::Engine;
 use bipbridge::apns::{ApnsClient, SendOptions};
-use bipbridge::app::AppOptions;
 use bipbridge::config::{parse_config, ApnsConfig};
-use bipbridge::store::{NewOutbox, Store};
+use bipbridge::outbox::BoiteMessage;
+use bipbridge::store::Store;
 use common::fakes::*;
 use common::*;
 use serde_json::{json, Value};
@@ -23,14 +23,13 @@ use serde_json::{json, Value};
 const TOKEN: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const DEAD: &str = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
 
-fn ntfy_message(msg_id: &str, text: &str, title: Option<&str>, tags: &[&str]) -> String {
-    bipbridge::py::dumps(&json!({"id": msg_id, "time": 1790000000, "event": "message", "topic": "hermes-wellness-out",
-                                 "message": text, "title": title, "tags": tags}))
-}
-
-fn query_param(seen: &Seen, name: &str) -> Option<String> {
-    let query = seen.query.clone().unwrap_or_default();
-    url::form_urlencoded::parse(query.as_bytes()).find(|(k, _)| k == name).map(|(_, v)| v.into_owned())
+fn boite(id: &str, text: &str, title: Option<&str>, session: Option<&str>) -> BoiteMessage {
+    BoiteMessage {
+        id: Some(id.into()),
+        title: title.map(str::to_string),
+        session_id: session.map(str::to_string),
+        ..BoiteMessage::new(text)
+    }
 }
 
 fn ends_with(apns: &FakeApns, token: &str) -> usize {
@@ -38,21 +37,10 @@ fn ends_with(apns: &FakeApns, token: &str) -> usize {
 }
 
 #[tokio::test]
-async fn ntfy_message_lands_in_outbox_with_audio_and_push() {
+async fn a_message_lands_in_outbox_with_audio_and_push() {
     let dir = tempfile::tempdir().unwrap();
     let backend = FakeBackend::start().await;
     let (production, sandbox) = (FakeApns::start().await, FakeApns::start().await);
-    backend.with(|s| {
-        s.ntfy_lines.insert(
-            "hermes-wellness-out".into(),
-            vec![
-                bipbridge::py::dumps(&json!({"id": "k1", "event": "keepalive"})),
-                ntfy_message("m1", "Bonjour **Sam**, as-tu bien dormi ?", Some("Check-in"), &["session:sess_42"]),
-                ntfy_message("m1", "Bonjour **Sam**, as-tu bien dormi ?", Some("Check-in"), &[]), // duplicate delivery
-                ntfy_message("m2", "Pense à boire de l'eau.", None, &[]),
-            ],
-        );
-    });
     let mut data = config_dict(dir.path(), &backend.urls());
     data["apns"]["base_url"] = json!(production.url);
     data["apns"]["sandbox_url"] = json!(sandbox.url);
@@ -64,15 +52,17 @@ async fn ntfy_message_lands_in_outbox_with_audio_and_push() {
     store.close();
     production.responses.lock().unwrap().insert(DEAD.into(), (410, Some("Unregistered".into())));
 
-    let client = TestApp::with_options(config.clone(), AppOptions { start_background: true });
+    let client = TestApp::new(config.clone());
     let (k, v) = auth();
     let h = [(k, v.as_str())];
+    let outbox = client.app.state.outbox.clone();
+    let agent = config.agent(Some("wellness")).cloned().unwrap();
+    let first = boite("m1", "Bonjour **Sam**, as-tu bien dormi ?", Some("Check-in"), Some("sess_42"));
+    assert!(outbox.ingest(&agent, first.clone(), true).await.unwrap().is_some());
+    assert!(outbox.ingest(&agent, first, true).await.unwrap().is_none()); // the same key again: stored once
+    outbox.ingest(&agent, boite("m2", "Pense à boire de l'eau.", None, None), true).await.unwrap();
     // m1 -> TOKEN + DEAD (410, then deleted), m2 -> TOKEN (+ DEAD if it raced the deletion)
     assert!(wait_until(|| ends_with(&sandbox, TOKEN) >= 2, Duration::from_secs(10)).await);
-    let req = backend.with(|s| s.ntfy_requests[0].clone());
-    assert_eq!(req.path, "/hermes-wellness-out/json");
-    assert_eq!(req.header("authorization"), Some(format!("Bearer {NTFY_TOKEN}")));
-    assert_eq!(query_param(&req, "since"), None);
 
     let items = client.get("/v1/outbox", &h).await.json()["items"].clone();
     let texts: Vec<&str> = items.as_array().unwrap().iter().map(|i| i["text"].as_str().unwrap()).collect();
@@ -83,7 +73,6 @@ async fn ntfy_message_lands_in_outbox_with_audio_and_push() {
     assert_eq!(first["session_id"], "sess_42");
     assert_eq!(first["has_audio"], true);
     assert!(first["created_at"].as_str().unwrap().ends_with('Z'));
-    assert!(first["sent_at"].as_str().unwrap().starts_with("2026-"));
 
     // Audio was pre-synthesized as mp3 from the normalized text.
     let mp3: Vec<Value> =
@@ -136,14 +125,6 @@ async fn ntfy_message_lands_in_outbox_with_audio_and_push() {
     assert_eq!(client.get("/v1/outbox?since=hier", &h).await.status, StatusCode::BAD_REQUEST);
     assert_eq!(client.get("/v1/outbox/nope", &h).await.status, StatusCode::NOT_FOUND);
     client.shutdown().await;
-
-    // Cursor persisted: a restart resumes with since=<last id>.
-    backend.with(|s| s.ntfy_requests.clear());
-    let again = TestApp::with_options(config, AppOptions { start_background: true });
-    assert!(wait_until(|| backend.with(|s| !s.ntfy_requests.is_empty()), Duration::from_secs(5)).await);
-    let req = backend.with(|s| s.ntfy_requests[0].clone());
-    assert_eq!(query_param(&req, "since").as_deref(), Some("m2"));
-    again.shutdown().await;
     backend.release.set();
 }
 
@@ -244,51 +225,4 @@ async fn apns_jwt_refresh_and_retry() {
     let result = bad.send(&"c".repeat(64), &json!({"aps": {}}), &SendOptions::new("sandbox")).await;
     assert!(result.token_is_dead());
     assert_eq!(result.reason.as_deref(), Some("BadDeviceToken"));
-}
-
-#[test]
-fn unwrap_cron_keeps_the_job_name_and_output() {
-    use bipbridge::ntfy::unwrap_cron;
-    let wrapped = "Cronjob Response: test-push-bipagents (job_id: 0681ac73805e)\n-------------\n\n\
-                   Bonjour Alex, ceci est un test.\n\nNote: The agent cannot see this message, and therefore cannot respond to it.";
-    assert_eq!(unwrap_cron(wrapped), (Some("test-push-bipagents".into()), "Bonjour Alex, ceci est un test.".into()));
-    assert_eq!(
-        unwrap_cron("Cronjob Response: Morning feeds\n-------------\n\nLe point du matin."),
-        (Some("Morning feeds".into()), "Le point du matin.".into())
-    );
-    assert_eq!(unwrap_cron("  Un message normal.  "), (None, "Un message normal.".into()));
-    let hermes_021 =
-        "Cronjob Response: Test push propre (job_id: 1a2b3c4d5e6f)\n-------------\n\nCoucou, test réussi.\n\n\
-                      To stop or manage this job, send me a new message (e.g. \"stop reminder Test push propre\").";
-    assert_eq!(unwrap_cron(hermes_021), (Some("Test push propre".into()), "Coucou, test réussi.".into()));
-    let both = format!("{hermes_021}\n\nNote: The agent cannot see this message, and therefore cannot respond to it.");
-    assert_eq!(unwrap_cron(&both), (Some("Test push propre".into()), "Coucou, test réussi.".into()));
-}
-
-#[tokio::test]
-async fn a_reply_stored_too_early_is_replaced_not_dropped() {
-    let dir = tempfile::tempdir().unwrap();
-    let store = Store::open(&dir.path().join("b.db").to_string_lossy()).unwrap();
-    let ntfy = |id: &str| NewOutbox { ntfy_id: Some(id.into()), ..Default::default() };
-    let first =
-        store.add_outbox("vie", "je passe par terminal…", ntfy("hermes-session:cron_x")).await.unwrap().unwrap();
-    assert!(store.add_outbox("vie", "🎙️ Point du matin", ntfy("hermes-session:cron_x")).await.unwrap().is_none());
-    // unchanged
-    assert!(store
-        .replace_outbox("vie", "hermes-session:cron_x", "je passe par terminal…", None)
-        .await
-        .unwrap()
-        .is_none());
-    store.set_outbox_audio(first["id"].as_str().unwrap(), "/tmp/old.mp3").await.unwrap();
-    let fixed = store
-        .replace_outbox("vie", "hermes-session:cron_x", "🎙️ Point du matin", Some("Podcast du matin"))
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(fixed["id"], first["id"]);
-    assert_eq!(fixed["text"], "🎙️ Point du matin");
-    assert_eq!(fixed["title"], "Podcast du matin");
-    assert!(fixed["audio_path"].is_null());
-    assert!(store.replace_outbox("vie", "hermes-session:other", "x", None).await.unwrap().is_none());
-    store.close();
 }

@@ -24,7 +24,7 @@ use serde_json::Value;
 
 use crate::config::{AgentConfig, SharedConfig};
 use crate::hermes::HermesClient;
-use crate::ntfy::OutboxService;
+use crate::outbox::OutboxService;
 use crate::push::pyx;
 use crate::push::PushService;
 use crate::runs::RunHub;

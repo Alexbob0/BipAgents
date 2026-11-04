@@ -26,7 +26,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use serde_json::{json, Map, Value};
+use serde_json::Value;
 
 use crate::app::AppState;
 
@@ -155,10 +155,9 @@ pub async fn check(state: &AppState, credit: Credit, was_paused: Option<bool>) {
             }
             // the same id is stored once (a restart, a second round: nothing again)
             let lang = crate::handback::language_of(&config, agent);
-            let mut note = Map::new();
-            note.insert("message".into(), json!(routines_note(&lang)));
-            note.insert("id".into(), json!(format!("credit-pause:{}:{}", agent.name, credit.resumes.unwrap_or(0.0) as i64)));
-            if let Err(e) = state.outbox.ingest(agent, &note, true, false).await {
+            let id = format!("credit-pause:{}:{}", agent.name, credit.resumes.unwrap_or(0.0) as i64);
+            let note = crate::outbox::BoiteMessage { id: Some(id), ..crate::outbox::BoiteMessage::new(routines_note(&lang)) };
+            if let Err(e) = state.outbox.ingest(agent, note, true).await {
                 tracing::warn!(agent = %agent.name, error = %format!("{e:#}"), "credit note not stored");
             }
         }

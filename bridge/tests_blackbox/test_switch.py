@@ -64,7 +64,7 @@ def build(bridge, fakes):
     recap.write_text("Appel de 10:05")
     bridge.put("/v1/agents/wellness/appearance", headers=AUTH, json={"category": "home", "color": "#112233"})
     bridge.post("/v1/watch", headers=AUTH, json={"agent": "wellness", "run_id": "run_wait", "session_id": "api_bot"})
-    assert wait_until(lambda: bridge.db().execute("SELECT count(*) FROM watched_runs").fetchone()[0] == 1)
+    assert wait_until(lambda: bridge.db().execute("SELECT count(*) FROM watched_runs WHERE run_id = 'run_wait'").fetchone()[0] == 1)
     return {"cookie": cookie, "device_key": device["key"], "outbox_id": item["id"]}
 
 

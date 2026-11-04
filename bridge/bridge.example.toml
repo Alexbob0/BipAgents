@@ -3,7 +3,7 @@
 # Alternative path: BRIDGE_CONFIG environment variable.
 #
 # Each secret can be given inline (`bridge_key = "…"`) or via a file
-# (`bridge_key_file = "~/.config/hermes-ios/bridge.key"`); same for `hermes_key(_file)` and `ntfy_token(_file)`.
+# (`bridge_key_file = "~/.config/hermes-ios/bridge.key"`); same for `hermes_key(_file)`.
 
 bridge_key = "CHANGE-ME-run-bipbridge-genkey"
 host = "127.0.0.1"          # exposed on the tailnet via `tailscale serve`, never directly
@@ -51,11 +51,8 @@ default_voice = "pocket:colibri"   # default voice when Kyutai is disabled
 # [pronunciations.fr]
 # Garmin = "Garmine"
 
-[ntfy]
-url = "http://127.0.0.1:8645"
-
 # Replies from Hermes scheduled tasks (cron_… sessions), read directly from Hermes and put in the
-# Inbox with a push, whatever the job's configured delivery (SimpleX, ntfy…). `[SILENT]` ignored.
+# Inbox with a push, whatever the job's configured delivery. `[SILENT]` ignored.
 [cron]
 watch = true
 interval_seconds = 30
@@ -232,8 +229,6 @@ display_name = "Wellness"
 hermes_url = "http://127.0.0.1:8642"
 public_url = "https://mamachine.tailnet.ts.net:8642"   # its Hermes on the tailnet, for the pairing QR code
 hermes_key = "CHANGE-ME-API_SERVER_KEY-of-wellness"
-ntfy_topic = "hermes-wellness-out"
-ntfy_token = "CHANGE-ME-tk_token-with-read-access"
 upload_dir_host = "~/hermes-agent/hermes-home/profiles/wellness/uploads"
 upload_dir_container = "/home/hermes/.hermes/profiles/wellness/uploads"
 voice = "5476"
@@ -242,8 +237,6 @@ voice = "5476"
 display_name = "Vie"
 hermes_url = "http://127.0.0.1:8644"
 hermes_key = "CHANGE-ME-API_SERVER_KEY-of-vie"
-ntfy_topic = "hermes-vie-out"
-ntfy_token = "CHANGE-ME-tk_token-with-read-access"
 upload_dir_host = "~/hermes-agent/hermes-home/profiles/vie/uploads"
 upload_dir_container = "/home/hermes/.hermes/profiles/vie/uploads"
 voice = "5476"

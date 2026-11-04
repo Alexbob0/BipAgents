@@ -8,7 +8,7 @@ import jwt
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from bbkit.common import AUTH, in_session
+from bbkit.common import AUTH, boite_message, in_session
 from bbkit.servers import wait_until
 
 LIVE = "eXaMpLe:APA91bH_" + "x" * 140
@@ -44,10 +44,7 @@ def test_sending_exchanges_the_key_for_a_token_and_drops_dead_tokens(bridges, fa
     assert bridge.get("/health").json()["fcm"] is True
     for token, env in ((LIVE, "fcm"), (DEAD, "fcm"), (APPLE, "production")):
         assert bridge.post("/v1/devices", headers=AUTH, json={"token": token, "environment": env}).status_code == 200
-    bridge.stop()
-    fakes.ntfy.lines["hermes-wellness-out"] = [json.dumps({"id": "a1", "event": "message", "message": "Coucou",
-                                                           "tags": ["session:api_5"]})]
-    bridge.start()
+    item = boite_message(bridge, fakes, "Coucou")
     assert wait_until(lambda: len(fakes.fcm.sends()) == 2 and fakes.apns.pushes(), timeout=15)
     tokens = [r for r in fakes.fcm.requests if r.path == "/token"]
     assert 1 <= len(tokens) <= 2                     # the two devices are sent to at once: each may ask for it
@@ -61,7 +58,7 @@ def test_sending_exchanges_the_key_for_a_token_and_drops_dead_tokens(bridges, fa
     live = next(r.json()["message"] for r in sends if r.json()["message"]["token"] == LIVE)
     outbox_id = bridge.get("/v1/outbox", headers=AUTH).json()["items"][0]["id"]
     n, c = live["data"].pop("n"), live["data"].pop("c")   # the journal's pointer, as strings (docs/conversations.md §9.3)
-    assert n.startswith("n_") and in_session(bridge, {"c": c}, "api_5")
+    assert n.startswith("n_") and in_session(bridge, {"c": c}, item["session_id"])
     assert live == {"token": LIVE, "android": {"priority": "HIGH"},
                     "data": {"body": "notif.boite", "category": "MESSAGE", "v": "2",
                              "t": "boite", "agent": "wellness", "m": f"o_{outbox_id}", "r": outbox_id}}

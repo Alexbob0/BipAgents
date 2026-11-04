@@ -120,8 +120,7 @@ upload_dir_host = "~/hermes/profiles/wellness/uploads"        # where the bridge
 upload_dir_container = "/home/hermes/.hermes/profiles/wellness/uploads"   # the same folder as seen by the agent
 ```
 
-The `[ntfy]` sections and `ntfy_topic` / `ntfy_token` are optional (legacy proactive messages). Hermes' scheduled
-tasks reach the Inbox without them (`[cron]`). Then run `~/.local/bin/bipbridge check --config ~/.config/hermes-ios/bridge.toml`.
+Then run `~/.local/bin/bipbridge check --config ~/.config/hermes-ios/bridge.toml`.
 
 All options: [`bridge/README.md`](../bridge/README.md).
 

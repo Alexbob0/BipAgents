@@ -370,7 +370,7 @@ def test_an_agent_set_up_by_hand_gets_its_personality_and_thinking_changed(bridg
 
 def test_rewriting_an_agents_section_keeps_what_the_bridge_does_not_set(bridges, fakes):
     """At start, an agent whose tools run in a sandbox gets its uploads mounted there (/fichiers): its section is
-    rewritten, and keeps its voice, ntfy topic and a key kept in a file."""
+    rewritten, and keeps its voice, a key it no longer reads (an old ntfy topic) and a key kept in a file."""
     bridge, home = managed(bridges, fakes, start=False)
     key_file = bridge.root / "vie.key"
     key_file.write_text("k" * 32)

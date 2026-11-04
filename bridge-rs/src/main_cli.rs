@@ -321,7 +321,6 @@ fn check(config: &Config, args: &Args) -> i32 {
     println!("  kyutai      {}", config.kyutai_url.as_deref().unwrap_or("off"));
     println!("  pocket      {}", config.pocket_url.as_deref().unwrap_or("off"));
     println!("  voice       {} (default)", config.default_voice);
-    println!("  ntfy        {}", config.ntfy_url);
     println!(
         "  apns        {} ({})",
         if config.apns.enabled() { "enabled" } else { "disabled" },
@@ -338,10 +337,9 @@ fn check(config: &Config, args: &Args) -> i32 {
     for agent in config.agents.values() {
         let or_dash = |v: &Option<String>| v.clone().filter(|s| !s.is_empty()).unwrap_or_else(|| "-".into());
         println!(
-            "  agent {}: hermes={} ntfy_topic={} uploads={} -> {}",
+            "  agent {}: hermes={} uploads={} -> {}",
             agent.name,
             agent.hermes_url,
-            or_dash(&agent.ntfy_topic),
             or_dash(&agent.upload_dir_host),
             or_dash(&agent.upload_dir_container)
         );

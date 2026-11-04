@@ -45,7 +45,7 @@ toevoegt, met de modules (`bridge-rs/src/<naam>.rs`) die het doen, en wat hij be
 - **Berichten tijdens het werk.** `msg_queue.rs`: een bericht dat je stuurt terwijl de agent werkt, gaat in de lopende
   beurt (Hermes' steer, na de huidige toolaanroepen); « Daarna » zet het in de wachtrij van de agent op de brug, op elk
   apparaat hetzelfde, gestart als volgende beurt (volgorde, weghalen, nu sturen, pauze), één melding aan het eind.
-- **Niets kwijt.** `ntfy.rs` en `cronwatch.rs` zetten berichten van agents en het antwoord van elke routine in een
+- **Niets kwijt.** `outbox.rs` en `cronwatch.rs` zetten berichten van agents en het antwoord van elke routine in een
   outbox (`store.rs`), met de audio klaar; `restore_reconcile.rs` zet na een herstel de berichten terug die de
   telefoons bewaarden.
 - **Thuis bereiken.** Via Tailscale, of `lan.rs`: een vastgepinde HTTPS-deur op het lokale netwerk als internet

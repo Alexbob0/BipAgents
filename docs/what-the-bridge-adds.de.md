@@ -48,7 +48,7 @@ sie bewusst Hermes überlässt.
   den laufenden Durchgang (Hermes' Steer, nach den aktuellen Werkzeugaufrufen); « Danach » legt sie stattdessen in die
   Warteschlange des Agenten auf der Brücke, auf allen Geräten gleich, als nächster Durchgang gestartet (Reihenfolge,
   Entfernen, Jetzt senden, Pause), eine einzige Benachrichtigung am Ende.
-- **Nichts geht verloren.** `ntfy.rs` und `cronwatch.rs` legen Agentennachrichten und die Antwort jeder Routine in
+- **Nichts geht verloren.** `outbox.rs` und `cronwatch.rs` legen Agentennachrichten und die Antwort jeder Routine in
   einen Postausgang (`store.rs`), mit fertigem Audio; `restore_reconcile.rs` holt nach einer Wiederherstellung die
   Nachrichten zurück, die die Handys behalten haben.
 - **Nach Hause kommen.** Über Tailscale oder `lan.rs`: eine gepinnte HTTPS-Tür im lokalen Netz, wenn das Internet weg

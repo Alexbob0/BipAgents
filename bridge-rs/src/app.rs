@@ -41,7 +41,7 @@ use crate::lan::lan_info;
 use crate::live_brief::Briefs;
 use crate::logs::{redact6, J};
 use crate::mail_scan::Scans;
-use crate::ntfy::{ntfy_reachable, NtfySubscriber, OutboxService};
+use crate::outbox::OutboxService;
 use crate::peers::Links;
 use crate::push::{PushService, Sender};
 use crate::relay::RelayClient;
@@ -64,7 +64,7 @@ pub const MESSAGE_MAX_CHARS: usize = 8000;
 /// Everything that needs a running event loop (created in the lifespan).
 pub struct Services {
     pub config: SharedConfig,
-    /// The shared HTTP client (Hermes, TTS engines, ntfy, relays): no total timeout, 30 s to connect; set
+    /// The shared HTTP client (Hermes, TTS engines, relays): no total timeout, 30 s to connect; set
     /// `.timeout(…)` on each request as Python's per-request timeouts (its default is 30 s per phase).
     pub http: reqwest::Client,
     /// APNs' client (HTTP/2), 15 s.
@@ -293,18 +293,6 @@ impl AppState {
     /// Python's `start_background()`.
     pub fn start_background(&self) {
         let config = self.config();
-        for agent in config.agents.values() {
-            if agent.ntfy_topic.as_deref().map(|t| !t.is_empty()).unwrap_or(false) {
-                let sub = Arc::new(NtfySubscriber::new(
-                    self.http.clone(),
-                    &config.ntfy_url,
-                    agent.clone(),
-                    self.store.clone(),
-                    self.outbox.clone(),
-                ));
-                self.spawn(sub.run());
-            }
-        }
         if config.cron_watch {
             // the agents' turns no run of ours carries: Bot Chat replies, sub-agents' reports (cronwatch.rs)
             let watcher = CronWatcher::new(
@@ -620,7 +608,6 @@ async fn list_agents(State(state): State<AppState>, caller: Caller) -> ApiResult
                 // the language it writes first in, from its record (the apps keep no copy of it)
                 "language": crate::profile_files::settings(&agents_admin::profile_folder(&config, a)).language,
                 "uploads": a.upload_dir_host.as_deref().map(|u| !u.is_empty()).unwrap_or(false),
-                "inbox": a.ntfy_topic.as_deref().map(|t| !t.is_empty()).unwrap_or(false),
                 "url": a.public_url,
                 "family": crate::family_agent::is_family(&config, &a.name),
                 "project": crate::project_agent::listing_mark(&config, &a.name),
@@ -1334,9 +1321,8 @@ pub fn build_router() -> Router<AppState> {
 async fn health(State(state): State<AppState>) -> ApiResult<Response> {
     let config = state.config();
     let tts = &state.tts;
-    let (kyutai_ok, ntfy_ok, pocket_ok, server_ok) = tokio::join!(
+    let (kyutai_ok, pocket_ok, server_ok) = tokio::join!(
         tts.reachable(None),
-        ntfy_reachable(&state.http, &config.ntfy_url),
         async {
             match tts.pocket.as_ref() {
                 Some(engine) => tts.reachable(Some(engine)).await,
@@ -1355,7 +1341,7 @@ async fn health(State(state): State<AppState>) -> ApiResult<Response> {
     let drama = config.voice_server.as_ref().map(|v| v.model.starts_with("drama")).unwrap_or(false);
     let mut body = json!({
         "ok": true, "version": VERSION, "kyutai": kyutai_ok, "pocket": pocket_ok,
-        "voice_server": server_ok, "drama": if drama { json!(server_ok) } else { Value::Null }, "ntfy": ntfy_ok,
+        "voice_server": server_ok, "drama": if drama { json!(server_ok) } else { Value::Null },
         "apns": state.apns.is_some(), "push": state.push_mode,
         // The app registers with the publisher's relay and sends the relay token (environment « relay »).
         "push_relay": state.push_service.is_some(), "fcm": state.fcm.is_some(),
@@ -1623,7 +1609,7 @@ fn first_route_methods(path: &str) -> Option<&'static str> {
 /// What `create_app` takes besides the configuration.
 #[derive(Debug, Clone)]
 pub struct AppOptions {
-    /// The ntfy subscribers, the cron watcher, the purge loop… (tests turn them off, as Python's `start_background`).
+    /// The cron watcher, the purge loop… (tests turn them off, as Python's `start_background`).
     pub start_background: bool,
 }
 

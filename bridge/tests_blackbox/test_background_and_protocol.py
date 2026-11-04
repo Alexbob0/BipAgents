@@ -7,7 +7,7 @@ import time
 
 import pytest
 
-from bbkit.common import AUTH, sse
+from bbkit.common import AUTH, boite_message, sse
 from bbkit.mcp import give_token, rpc
 from bbkit.servers import wait_until
 
@@ -87,7 +87,7 @@ def test_a_trailing_slash_is_redirected(bridge):
 
 
 def test_the_bridge_stops_cleanly(bridge, fakes):
-    """SIGTERM (systemd's stop): it ends within its 5 s of grace even with a run watched and ntfy subscribed, with
+    """SIGTERM (systemd's stop): it ends within its 5 s of grace even with a run watched, with
     nothing logged as an error. (uvicorn re-raises the signal once stopped: -15; exiting 0 is as good.)"""
     import threading
     fakes.hermes.runs["never"] = [threading.Event()]
@@ -118,10 +118,8 @@ def test_an_outbox_audio_still_being_made_says_so(bridges, fakes):
     """GET /v1/outbox/{id}/audio waits 20 s for the synthesis, then answers 202 {"status": "pending"}, Retry-After 3."""
     bridge = bridges.new()
     fakes.kyutai.delay = 24
-    fakes.ntfy.lines["hermes-wellness-out"] = [json.dumps({"id": "slow", "event": "message", "message": "Un texte lent."})]
     bridge.start()
-    assert wait_until(lambda: bridge.get("/v1/outbox", headers=AUTH).json()["items"])
-    item = bridge.get("/v1/outbox", headers=AUTH).json()["items"][0]
+    item = boite_message(bridge, fakes, "Un texte lent.")
     assert item["has_audio"] is False
     started = time.monotonic()
     pending = bridge.get(f"/v1/outbox/{item['id']}/audio", headers=AUTH)

@@ -64,7 +64,6 @@ reset before each test. Each one records every request it gets.
 | Kyutai TTS | Kyutai | Same fake audio as `tests/conftest.py`. |
 | Pocket TTS | Pocket | Same fake audio as `tests/conftest.py`. |
 | Voice server | The person's own voice server | Drama 3 streaming 44.1 kHz, whole WAV files, mp3, a busy GPU, an endless take, `/v1/audio/voices` or `/v1/voices`. |
-| ntfy | ntfy | `/v1/health` and `/<topic>/json` streams. |
 | APNs | Apple's push service | `/production/3/device/<token>` and `/sandbox/3/device/<token>`, over plain HTTP/1.1. Real APNs uses HTTP/2 over TLS, which both bridges negotiate by ALPN. |
 | FCM | Google's push service | `/v1/projects/<id>/messages:send` plus the OAuth `/token` endpoint. |
 | Publisher's push relay | `relay/` | `POST /v1/relay/push` |

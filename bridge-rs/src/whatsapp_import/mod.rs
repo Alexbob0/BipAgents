@@ -690,10 +690,8 @@ async fn apply_route(State(state): State<AppState>, JsonObject(body): JsonObject
     let tell: Tell = Arc::new(move |agent: AgentConfig, title: String, text: String| {
         let outbox = outbox.clone();
         Box::pin(async move {
-            let mut message = Dict::new();
-            message.insert("message".into(), json!(text));
-            message.insert("title".into(), json!(title));
-            if let Err(err) = outbox.ingest(&agent, &message, true, false).await {
+            let message = crate::outbox::BoiteMessage { title: Some(title), ..crate::outbox::BoiteMessage::new(text) };
+            if let Err(err) = outbox.ingest(&agent, message, true).await {
                 tracing::warn!(target: "bipbridge::whatsapp", agent = %agent.name, error = %err, "import message not stored");
             }
         })

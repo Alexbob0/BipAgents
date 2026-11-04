@@ -9,10 +9,11 @@ use std::time::Duration;
 use axum::http::StatusCode;
 use bipbridge::config::parse_config;
 use bipbridge::media::{extract_media, resolve};
+use bipbridge::outbox::BoiteMessage;
 use common::fakes::*;
 use common::*;
 use indexmap::IndexMap;
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 
 #[test]
 fn extract_and_resolve_media() {
@@ -35,10 +36,6 @@ fn extract_and_resolve_media() {
     assert_eq!(resolve("/etc/passwd", &roots), None);
     std::fs::write(root.join("notes.sh"), "x").unwrap();
     assert_eq!(resolve("/home/hermes/simplex-files/notes.sh", &roots), None); // not media
-}
-
-fn message(pairs: Value) -> Map<String, Value> {
-    pairs.as_object().cloned().unwrap()
 }
 
 #[tokio::test]
@@ -64,9 +61,11 @@ async fn media_route_and_podcast_audio_in_the_outbox() {
         .outbox
         .ingest(
             &agent,
-            &message(json!({"message": "MEDIA:/home/hermes/simplex-files/point.mp3\n\nPoint du matin", "id": "n1"})),
+            BoiteMessage {
+                id: Some("n1".into()),
+                ..BoiteMessage::new("MEDIA:/home/hermes/simplex-files/point.mp3\n\nPoint du matin")
+            },
             true,
-            false,
         )
         .await
         .unwrap()
@@ -122,7 +121,7 @@ async fn muted_job_reply_is_stored_without_push() {
     let agent = services.config.get().agent(Some("wellness")).cloned().unwrap();
     let item = services
         .outbox
-        .ingest(&agent, &message(json!({"message": "Tri des e-mails fait.", "id": "s1"})), false, false)
+        .ingest(&agent, BoiteMessage { id: Some("s1".into()), ..BoiteMessage::new("Tri des e-mails fait.") }, false)
         .await
         .unwrap();
     tokio::time::sleep(Duration::from_millis(500)).await;
