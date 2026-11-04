@@ -550,18 +550,39 @@ impl Threads {
     }
 
     /// A conversation the bridge made for work of its own (a routine's run: routines.rs) adopted as a hidden thread of
-    /// `kind` before anyone lists it.
-    pub async fn adopt(&self, agent: &AgentConfig, session: &str, kind: &str, origin: Value) {
+    /// `kind`, named `title` (the run's screen says what it is): its id (None: not adopted). A session another thread took first (a list or an event resolving it as a
+    /// side one) moves here, so the work never shows in the person's conversations.
+    pub async fn adopt(&self, agent: &AgentConfig, session: &str, title: &str, kind: &str, origin: Value) -> Option<String> {
         let _guard = self.registry.lock().await;
         let made = async {
-            if self.thread_of_session(&agent.name, session).await?.is_none() {
-                let thread = self.create(&agent.name, kind, None, origin, true).await?;
-                self.append(&agent.name, &thread.id, session, "root").await?;
+            if let Some(id) = self.thread_of_session(&agent.name, session).await? {
+                match self.get(&id).await? {
+                    Some(held) if held.kind == kind && held.hidden => return Ok(id),
+                    held => {
+                        tracing::warn!(agent = %agent.name, session = %session, thread = %id,
+                            kind = %held.as_ref().map_or("", |t| t.kind.as_str()), "work conversation taken by another thread: moved");
+                        self.store
+                            .run("DELETE FROM thread_segments WHERE agent = ? AND session_id = ?",
+                                 vec![text(&agent.name), text(session)])
+                            .await?;
+                        if let Some(held) = held.filter(|t| t.kind != "main") {
+                            if self.segments(&held.id).await?.is_empty() {
+                                self.store.run("DELETE FROM threads WHERE id = ?", vec![text(&held.id)]).await?;
+                            }
+                        }
+                    }
+                }
             }
-            anyhow::Ok(())
+            let thread = self.create(&agent.name, kind, Some(title).filter(|t| !t.is_empty()), origin, true).await?;
+            self.append(&agent.name, &thread.id, session, "root").await?;
+            anyhow::Ok(thread.id)
         };
-        if let Err(exc) = made.await {
-            tracing::warn!(agent = %agent.name, error = %format!("{exc:#}"), "work conversation not adopted");
+        match made.await {
+            Ok(id) => Some(id),
+            Err(exc) => {
+                tracing::warn!(agent = %agent.name, error = %format!("{exc:#}"), "work conversation not adopted");
+                None
+            }
         }
     }
 
@@ -625,6 +646,10 @@ impl Threads {
                 &mut turn,
             ));
             previous = Some(rows);
+        }
+        if thread.kind != "main" {
+            // a run without the person that had nothing to tell (« [SILENT] », or the code word translated): no reply
+            items.retain(|i| !timeline::silent_reply(i));
         }
         let mut extra = self.boite(agent, thread, segments).await?;
         extra.extend(self.kept(agent, segments).await?);
