@@ -160,6 +160,34 @@ def test_a_failing_hermes_is_a_502(bridges, fakes):
     assert "budget" not in tomllib.loads(bridge.toml_text()).get("agents", {})
 
 
+def test_the_routines_tile_drives_the_bridges_routines_not_hermes_cron(bridges, fakes):
+    """The apps' « Routines » tile is Hermes' `cronjob` toolset by name; Hermes' cron stays off (the bridge runs the
+    routines): the tile turns the agent's `routine_schedule` on and off."""
+    from bbkit.mcp import call, give_token, rpc, text_of
+    bridge, home = managed(bridges, fakes)
+    assert bridge.post("/v1/agents", headers=AUTH, json={"name": "Budget", "kind": "finance"}).status_code == 201
+    fakes.hermes.toolsets = fakes.hermes.toolsets + [{"name": "cronjob", "label": "Cron", "description": "Jobs",
+                                                      "enabled": False, "configured": True}]
+    tile = lambda: next(t for t in bridge.get("/v1/agents/budget/settings", headers=AUTH).json()["toolsets"]
+                        if t["name"] == "cronjob")
+    assert tile()["enabled"] is True                            # on by default, whatever Hermes says of its cron
+    give_token(bridge, "budget")
+
+    def offered():
+        tools = rpc(bridge, "tools/list").json()["result"]["tools"]
+        return "routine_schedule" in [t["name"] for t in tools]
+
+    assert offered()
+    bridge.commands.clear()
+    assert bridge.patch("/v1/agents/budget/settings", headers=AUTH, json={"toolsets": {"cronjob": False}}).status_code == 200
+    assert not [a for a in hermes_args(bridge) if "cronjob" in a]   # Hermes' cron untouched
+    assert tile()["enabled"] is False and not offered()
+    refused = call(bridge, "routine_schedule", {"action": "list"})
+    assert refused["isError"] is True and "Routines are off" in text_of(refused)
+    assert bridge.patch("/v1/agents/budget/settings", headers=AUTH, json={"toolsets": {"cronjob": True}}).status_code == 200
+    assert tile()["enabled"] is True and offered()
+
+
 def test_settings_and_delete(bridges, fakes):
     bridge, home = managed(bridges, fakes)
     assert bridge.post("/v1/agents", headers=AUTH, json={"name": "Budget", "kind": "finance"}).status_code == 201

@@ -105,6 +105,9 @@ pub struct Book {
     pub routines: Vec<Routine>,
     #[serde(default)]
     pub migrated: Vec<String>,
+    /// The agents whose « Routines » tile is off: no `routine_schedule` for them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub off: Vec<String>,
 }
 
 static LOCK: LazyLock<Mutex<()>> = LazyLock::new(Default::default);
@@ -119,6 +122,21 @@ fn path(config: &Config) -> std::path::PathBuf {
 
 pub fn load(config: &Config) -> Book {
     std::fs::read_to_string(path(config)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+}
+
+/// The apps' « Routines » tile, shown as Hermes' `cronjob` toolset (which the bridge keeps off for every agent):
+/// whether `agent` is offered `routine_schedule`. On unless switched off.
+pub fn enabled(config: &Config, agent: &str) -> bool {
+    !load(config).off.iter().any(|a| a == agent)
+}
+
+pub fn set_enabled(config: &Config, agent: &str, on: bool) {
+    change(config, |b| {
+        b.off.retain(|a| a != agent);
+        if !on {
+            b.off.push(agent.to_string());
+        }
+    })
 }
 
 /// Read, change, write (0600), under one lock.
