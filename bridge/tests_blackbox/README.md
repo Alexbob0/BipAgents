@@ -158,7 +158,6 @@ The suite makes about 800 requests in 28 files.
 | `POST /v1/agents/{agent_id}/services` | agents_admin | shares_and_services (3) |
 | `DELETE /v1/agents/{agent_id}/services/{name}` | agents_admin | shares_and_services (1) |
 | `POST /v1/agents/{agent_id}/services/{name}/test` | agents_admin | shares_and_services (1) |
-| `POST /v1/agents/{agent_id}/space` | agents_admin | spaces (2) |
 | `DELETE /v1/agents/{agent_id}` | agents_admin | agents_admin (3), shares_and_services (1), spaces (1) |
 | `GET /v1/agents` | app | http_routes (4), agents_admin (3), cloud_setup (3), console (3), lan (2), place (2), voices (2), background_and_protocol (1), config (1), relay_and_discovery (1), spaces (1), tts (1) |
 | `POST /v1/tts/sentence` | app | http_routes (5), tts (1) |

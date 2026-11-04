@@ -356,7 +356,7 @@ pub fn holder(config: &Config, agent: &AgentConfig) -> Option<String> {
         if holds_in_hub(config, agent) {
             return None; // one of the person's own agents, in a hub only they use
         }
-        // An agent of the shared hub can move into its own space from the app; one set up by hand is up to its
+        // An agent of the shared hub moves into its own space by itself (own_space.rs); one set up by hand is up to its
         // administrator (its own container, then `isolated`, `python` and `hermes_home` in this file).
         return Some(if in_hub(config, agent) { "needs_own_space" } else { "not_configured" }.into());
     }

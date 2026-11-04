@@ -5,6 +5,7 @@
 //!
 //! ```text
 //! GET  /v1/threads?agent=[&include_hidden=1]                    {threads: [Thread]}
+//! GET  /v1/threads?kind=room                                    {threads: [room thread]} (rooms.rs)
 //! GET  /v1/threads/resolve?agent=&session_id= | &c=             {thread, tip}
 //! GET  /v1/threads/events[?agent=&thread=]                      SSE: thread, notification, read; `thread`: on screen
 //! GET  /v1/threads/{thread}[?agent=]                            Thread with its segments (`main` needs agent)
@@ -848,10 +849,7 @@ async fn shared(state: &AppState, q: &QueryMap, what: &str) -> Option<ApiResult<
 }
 
 fn agent_param(state: &AppState, q: &QueryMap) -> ApiResult<Option<AgentConfig>> {
-    match q.get("agent").filter(|a| !a.is_empty()) {
-        Some(name) => Ok(Some(crate::app::agent_or_404(&state.config(), Some(name))?)),
-        None => Ok(None),
-    }
+    agent_param_of(state, q.get("agent"))
 }
 
 fn number(q: &QueryMap, key: &str, default: usize) -> ApiResult<usize> {
@@ -874,7 +872,22 @@ async fn served(threads: &Threads, agent: &AgentConfig, thread: &Thread, with_se
     Ok(out)
 }
 
+/// A room as a thread, the room itself under `room` and its unread replies.
+async fn room_served(state: &AppState, room: &crate::rooms::Room) -> Value {
+    let mut out = crate::rooms::thread_view(room);
+    out["room"] = crate::rooms::room_view(&state.config(), room, Some(&*state.hub));
+    out["unread"] = json!(crate::notifications::unread_in(&state.store, &crate::rooms::thread_id(&room.id)).await.unwrap_or(0));
+    out
+}
+
 async fn list(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
+    if q.get("kind") == Some("room") {
+        let mut out = Vec::new();
+        for room in crate::rooms::all(&state.config()) {
+            out.push(room_served(&state, &room).await);
+        }
+        return Ok(web::ok(json!({"threads": out})));
+    }
     if let Some(relayed) = shared(&state, &q, "").await {
         return relayed;
     }
@@ -920,6 +933,9 @@ async fn list(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response>
 }
 
 async fn one(State(state): State<AppState>, UrlPath(id): UrlPath<String>, q: QueryMap) -> ApiResult<Response> {
+    if crate::rooms::of_thread(&id).is_some() {
+        return Ok(web::ok(room_served(&state, &room_of(&state, &id)?).await));
+    }
     let threads = threads_of(&state);
     let (agent, thread) = threads.named(agent_param(&state, &q)?.as_ref(), &id).await?;
     Ok(web::ok(served(&threads, &agent, &thread, true).await.map_err(unavailable)?))
@@ -931,10 +947,6 @@ async fn resolve(State(state): State<AppState>, q: QueryMap) -> ApiResult<Respon
     let thread = match (q.get("session_id").filter(|s| !s.is_empty()), q.get("c").filter(|s| !s.is_empty())) {
         (Some(session), _) => {
             threads.resolve(&agent, session).await.map_err(unavailable)?.ok_or_else(HttpError::not_found)?
-        }
-        (None, Some(c)) if crate::rooms::of_thread(c).is_some() => {
-            let room = room_of(&state, c)?;
-            return Ok(web::ok(json!({"thread": crate::rooms::thread_view(&room), "tip": null})));
         }
         (None, Some(c)) => threads.named(Some(&agent), c).await?.1,
         _ => return Err(HttpError::new(422, "session_id or c is required")),
@@ -970,11 +982,7 @@ async fn link(
     Json(body): Json<LinkBody>,
 ) -> ApiResult<Response> {
     let threads = threads_of(&state);
-    let agent = match body.agent.as_deref() {
-        Some(a) => Some(crate::app::agent_or_404(&state.config(), Some(a))?),
-        None => None,
-    };
-    let (agent, thread) = threads.named(agent.as_ref(), &id).await?;
+    let (agent, thread) = threads.named(agent_param_of(&state, body.agent.as_deref())?.as_ref(), &id).await?;
     threads.link(&agent, &thread, &body.session_id).await?;
     let thread = threads.get(&thread.id).await?.unwrap_or(thread);
     Ok(web::ok(served(&threads, &agent, &thread, true).await.map_err(unavailable)?))
@@ -1008,11 +1016,7 @@ async fn rename(
     Json(body): Json<ThreadPatch>,
 ) -> ApiResult<Response> {
     let threads = threads_of(&state);
-    let agent = match body.agent.as_deref() {
-        Some(a) => Some(crate::app::agent_or_404(&state.config(), Some(a))?),
-        None => None,
-    };
-    let (agent, thread) = threads.named(agent.as_ref(), &id).await?;
+    let (agent, thread) = threads.named(agent_param_of(&state, body.agent.as_deref())?.as_ref(), &id).await?;
     let title = body.title.as_deref().map(str::trim).filter(|t| !t.is_empty());
     threads
         .store
@@ -1118,20 +1122,21 @@ async fn timeline_route(
         tip.as_deref().map(|t| crate::msg_queue::queues_of(&state).get(&agent.name).snapshot_of(&agent.name, t));
     let mut out_thread = thread.to_json();
     out_thread["tip"] = json!(tip);
-    let debug = q.get("debug").is_some_and(|d| d == "1");
-    let items: Vec<Value> = page.items.iter().map(|i| i.to_json(&thread.id, debug)).collect();
-    Ok(web::ok(json!({
-        "thread": out_thread,
-        "items": items,
-        "first": page.items.first().map(Item::cursor),
-        "last": page.items.last().map(Item::cursor),
-        "more_before": page.more_before,
-        "more_after": page.more_after,
-        "anchor": page.anchor,
-        "version": thread.version,
-        "pending": {"run": run.map(|r| json!({"run_id": r, "status": "running"})), "queue": queue, "approvals": approvals,
-                    "questions": questions},
-    })))
+    let pending = json!({"run": run.map(|r| json!({"run_id": r, "status": "running"})), "queue": queue,
+                         "approvals": approvals, "questions": questions});
+    Ok(web::ok(page.answer(out_thread, thread.version, pending, q.get("debug").is_some_and(|d| d == "1"))))
+}
+
+/// A thread's items and the agent whose files they are: a conversation's, or a room's (`None`: each item's `from`).
+async fn all_items(state: &AppState, id: &str, q: &QueryMap) -> ApiResult<(Option<AgentConfig>, String, Vec<Item>)> {
+    if crate::rooms::of_thread(id).is_some() {
+        return Ok((None, id.to_string(), room_of(state, id)?.messages.iter().map(crate::rooms::item).collect()));
+    }
+    let threads = threads_of(state);
+    let (agent, thread) = threads.named(agent_param(state, q)?.as_ref(), id).await?;
+    let segments = threads.line(&agent, &thread).await.map_err(unavailable)?;
+    let items = threads.items(&agent, &thread, &segments).await.map_err(unavailable)?;
+    Ok((Some(agent), thread.id, items))
 }
 
 async fn item_route(
@@ -1139,12 +1144,9 @@ async fn item_route(
     UrlPath((id, item)): UrlPath<(String, String)>,
     q: QueryMap,
 ) -> ApiResult<Response> {
-    let threads = threads_of(&state);
-    let (agent, thread) = threads.named(agent_param(&state, &q)?.as_ref(), &id).await?;
-    let segments = threads.line(&agent, &thread).await.map_err(unavailable)?;
-    let items = threads.items(&agent, &thread, &segments).await.map_err(unavailable)?;
+    let (_, thread, items) = all_items(&state, &id, &q).await?;
     let found = items.iter().find(|i| i.id == item).ok_or_else(HttpError::not_found)?;
-    Ok(web::ok(found.to_json(&thread.id, q.get("debug").is_some_and(|d| d == "1"))))
+    Ok(web::ok(found.to_json(&thread, q.get("debug").is_some_and(|d| d == "1"))))
 }
 
 async fn attachment_route(
@@ -1152,26 +1154,25 @@ async fn attachment_route(
     UrlPath((id, attachment)): UrlPath<(String, String)>,
     q: QueryMap,
 ) -> ApiResult<Response> {
-    let threads = threads_of(&state);
-    let (agent, thread) = threads.named(agent_param(&state, &q)?.as_ref(), &id).await?;
     let (message, n) = attachment.rsplit_once(".a").ok_or_else(HttpError::not_found)?;
     let n: usize = n.parse().map_err(|_| HttpError::not_found())?;
-    let segments = threads.line(&agent, &thread).await.map_err(unavailable)?;
-    let items = threads.items(&agent, &thread, &segments).await.map_err(unavailable)?;
+    let (agent, _, items) = all_items(&state, &id, &q).await?;
     let item = items.iter().find(|i| i.id == message).ok_or_else(HttpError::not_found)?;
     let att = item.body.get("attachments").and_then(|a| a.get(n)).cloned().ok_or_else(HttpError::not_found)?;
     if let Some(path) = att.get("path").and_then(Value::as_str) {
         let mut response = Response::new(Body::empty());
         *response.status_mut() = axum::http::StatusCode::TEMPORARY_REDIRECT;
         let enc = |v: &str| percent_encoding::utf8_percent_encode(v, percent_encoding::NON_ALPHANUMERIC).to_string();
-        let target = format!("/v1/media?path={}&agent={}", enc(path), enc(&agent.name));
+        let owner = agent.as_ref().map(|a| a.name.as_str()).or(item.body.get("from").and_then(Value::as_str));
+        let target = format!("/v1/media?path={}&agent={}", enc(path), enc(owner.unwrap_or_default()));
         response
             .headers_mut()
             .insert("location", axum::http::HeaderValue::from_str(&target).map_err(anyhow::Error::from)?);
         return Ok(response);
     }
-    // a photo of the message: the n-th image part of its row, decoded
-    let content = threads.source(&agent).content_with_images(&item.segment, item.row).await.map_err(unavailable)?;
+    // a photo of the message: the n-th image part of its row, decoded (a room's files all have a path)
+    let agent = agent.ok_or_else(HttpError::not_found)?;
+    let content = threads_of(&state).source(&agent).content_with_images(&item.segment, item.row).await.map_err(unavailable)?;
     let images: Vec<String> = match &content {
         Some(Value::Array(parts)) => parts
             .iter()
@@ -1247,6 +1248,14 @@ async fn events(State(state): State<AppState>, q: QueryMap) -> ApiResult<Respons
         None => None,
     };
     let only = agent.map(|a| a.name);
+    let room = q.get("thread").filter(|t| crate::rooms::of_thread(t).is_some()).map(str::to_string);
+    // a room's hints are keyed by its thread: for the streams that follow it and the home's (no agent, no thread)
+    let home = only.is_none() && shown.is_none();
+    let wanted = move |key: &str| match &room {
+        Some(room) => key == room,
+        None if crate::rooms::of_thread(key).is_some() => home,
+        None => only.as_deref().is_none_or(|o| o == key),
+    };
     let mut events = threads.subscribe();
     let line =
         |kind: &str, data: &Value| bytes::Bytes::from(format!("event: {kind}\ndata: {}\n\n", crate::py::dumps(data)));
@@ -1256,9 +1265,7 @@ async fn events(State(state): State<AppState>, q: QueryMap) -> ApiResult<Respons
         loop {
             match tokio::time::timeout(Duration::from_secs_f64(crate::app::SSE_KEEPALIVE_SECONDS), events.recv()).await {
                 Err(_) => yield Ok(bytes::Bytes::from_static(b": keepalive\n\n")),
-                // a room's hints have no agent (several agents speak there): every stream gets them
-                Ok(Ok((agent, kind, data))) if agent.is_empty() || only.as_deref().is_none_or(|o| o == agent) =>
-                    yield Ok(line(&kind, &data)),
+                Ok(Ok((key, kind, data))) if wanted(&key) => yield Ok(line(&kind, &data)),
                 Ok(Ok(_)) => {}
                 Ok(Err(broadcast::error::RecvError::Lagged(_))) => yield Ok(line("lagged", &json!({}))),
                 Ok(Err(broadcast::error::RecvError::Closed)) => break,

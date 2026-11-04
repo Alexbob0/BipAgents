@@ -514,6 +514,24 @@ pub struct Page {
     pub anchor: Option<String>,
 }
 
+impl Page {
+    /// The answer of `GET /v1/threads/{thread}/timeline` (§6.2): a conversation's or a room's.
+    pub fn answer(&self, thread: Value, version: i64, pending: Value, debug: bool) -> Value {
+        let id = thread["id"].as_str().unwrap_or_default().to_string();
+        json!({
+            "thread": thread,
+            "items": self.items.iter().map(|i| i.to_json(&id, debug)).collect::<Vec<_>>(),
+            "first": self.items.first().map(Item::cursor),
+            "last": self.items.last().map(Item::cursor),
+            "more_before": self.more_before,
+            "more_after": self.more_after,
+            "anchor": self.anchor,
+            "version": version,
+            "pending": pending,
+        })
+    }
+}
+
 /// What a request asks of the timeline.
 #[derive(Debug, Clone, Default)]
 pub struct Want {

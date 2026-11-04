@@ -20,7 +20,7 @@ def test_a_relatives_agent_joins_an_existing_discussion_only_along_both_links(br
     rid = made.json()["id"]
     refused = a.patch(f"/v1/rooms/{rid}", headers=AUTH, json={"participants": ["vie", "budget", "cuisine@marie"]})
     assert refused.status_code == 403
-    assert [p["id"] for p in a.get(f"/v1/rooms/{rid}", headers=AUTH).json()["participants"]] == ["vie", "budget"]
+    assert [p["id"] for p in a.get(f"/v1/threads/room:{rid}", headers=AUTH).json()["room"]["participants"]] == ["vie", "budget"]
     assert a.put("/v1/agent-links", headers=AUTH, json={"links": [{"from": "vie", "to": "cuisine__marie"}]}).status_code == 200
     added = a.patch(f"/v1/rooms/{rid}", headers=AUTH, json={"participants": ["vie", "budget", "cuisine@marie"]})
     assert added.status_code == 200, added.text
@@ -44,13 +44,13 @@ def test_the_guide_proposes_a_discussion_and_one_tap_opens_it(bridges, fakes):
     proposal = bridge.get("/v1/guide", headers=AUTH).json()["proposals"][0]
     assert proposal["type"] == "room" and proposal["participants"] == ["coach", "maison"]
     assert proposal["participant_names"] == ["Coach", "Maison"] and proposal["title"] == "Les vacances"
-    assert bridge.get("/v1/rooms", headers=AUTH).json()["rooms"] == []   # nothing before the tap
+    assert [t["room"] for t in bridge.get("/v1/threads?kind=room", headers=AUTH).json()["threads"]] == []   # nothing before the tap
     opened = bridge.post(f"/v1/guide/proposals/{proposal['id']}/accept", headers=AUTH)
     assert opened.status_code == 201, opened.text
     room = opened.json()["room"]
     assert opened.json()["type"] == "room" and room["title"] == "Les vacances"
     assert [p["id"] for p in room["participants"]] == ["coach", "maison"]
-    assert [r["id"] for r in bridge.get("/v1/rooms", headers=AUTH).json()["rooms"]] == [room["id"]]
+    assert [r["id"] for r in [t["room"] for t in bridge.get("/v1/threads?kind=room", headers=AUTH).json()["threads"]]] == [room["id"]]
     assert bridge.get("/v1/guide", headers=AUTH).json()["proposals"] == []
 
 
