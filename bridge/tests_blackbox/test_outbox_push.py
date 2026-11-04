@@ -122,3 +122,18 @@ def test_outbox_audio_too_long_or_failing(bridges, fakes):
     fakes.pocket.status = 200
     ok = bridge.get(f"/v1/outbox/{short_item['id']}/audio", headers=AUTH)
     assert ok.status_code == 200 and ok.content == b"ID3Court."
+
+
+def test_the_journal_carries_the_boite_message_whole(bridge, fakes):
+    """The apps read the Boîte from the notification journal alone: a `boite` row has its message's title, whole
+    text, attachments and audio (the « Écouter » button)."""
+    long = "Le point du matin. " + "Une phrase de plus pour dépasser l'aperçu. " * 8
+    item = boite_message(bridge, fakes, long.strip(), name="Point du matin")
+    assert wait_until(lambda: bridge.get(f"/v1/outbox/{item['id']}/audio", headers=AUTH).status_code == 200, timeout=20)
+    rows = bridge.get("/v1/notifications", headers=AUTH, params={"agent": "wellness"}).json()["notifications"]
+    [row] = [r for r in rows if r["type"] == "boite" and r["ref"] == item["id"]]
+    assert row["boite"] == {"title": "Point du matin", "text": long.strip(), "attachments": [], "has_audio": True,
+                            "audio_url": f"/v1/outbox/{item['id']}/audio"}
+    one = bridge.get(f"/v1/notifications/{row['id']}", headers=AUTH).json()
+    assert one["boite"] == row["boite"]
+    assert all("boite" not in r for r in rows if r["type"] != "boite")

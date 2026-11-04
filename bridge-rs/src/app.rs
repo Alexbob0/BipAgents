@@ -553,7 +553,7 @@ fn tts_error(exc: TtsError) -> HttpError {
     HttpError::new(exc.status, exc.message)
 }
 
-fn outbox_item(row: &Row, state: &AppState) -> Value {
+pub(crate) fn outbox_item(row: &Row, state: &AppState) -> Value {
     let id = py::py_str(&row["id"]);
     let has_audio = std::path::Path::new(&state.outbox.audio_file(&id)).exists();
     let get = |k: &str| row.get(k).cloned().unwrap_or(Value::Null);
