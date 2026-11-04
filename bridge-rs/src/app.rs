@@ -1511,7 +1511,6 @@ const FIRST_ROUTE_METHODS: &[(&str, &str)] = &[
     ("/v1/agents/{agent_id}/services", "POST"),
     ("/v1/agents/{agent_id}/services/{name}", "DELETE"),
     ("/v1/agents/{agent_id}/services/{name}/test", "POST"),
-    ("/v1/agents/{agent_id}/space", "POST"),
     ("/v1/agents/{agent_id}", "DELETE"),
     ("/v1/vault", "GET"),
     ("/v1/vault/{item_id}", "PATCH"),

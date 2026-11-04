@@ -202,7 +202,7 @@ async fn a_relatives_agent_takes_part_only_where_both_people_allowed_it() {
     assert!(input.contains("[Alex, a relative of your person, who created this discussion]"), "{input}");
     assert!(input.contains("@cuisine et maintenant ?"));
     assert!(run["instructions"].as_str().unwrap().contains("Alex is not your person"));
-    let view = a.get(&format!("/v1/rooms/{id}"), &h).await.json();
+    let view = a.get(&format!("/v1/threads/room:{id}"), &h).await.json()["room"].clone();
     assert_eq!(view["tokens"], json!({"input": 0, "output": 0}));
 
     // Vie's next turn reads Cuisine's words as another household's.
