@@ -53,4 +53,6 @@ def test_a_cited_file_of_the_agents_own_folders_gets_a_card_and_nothing_else_doe
     # already handed over with its MEDIA line: no second one
     reply = "Le devis est dans /envoi/deja.pdf\nMEDIA:/envoi/deja.pdf"
     end, said = ended(bridge, fakes, "wellness", "run_dup", reply)
-    assert end["output"] == reply and "attachments" not in end
+    # its line the end's one attachment (4/11: no MEDIA line in what the apps get)
+    assert end["output"] == "Le devis est dans /envoi/deja.pdf" and said == "Le devis est dans /envoi/deja.pdf\n"
+    assert [a["path"] for a in end["attachments"]] == ["/envoi/deja.pdf"]

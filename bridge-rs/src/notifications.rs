@@ -162,7 +162,9 @@ pub struct NewRow<'a> {
 
 /// Inserts the row unless its dedupe key is taken: false then (the event was journaled already).
 pub async fn insert(store: &Store, row: &NewRow<'_>) -> anyhow::Result<bool> {
-    let cut: Option<String> = row.text.map(|t| t.chars().take(TEXT_MAX).collect());
+    // the words only: a reply's files are in its conversation, never its `MEDIA:` lines here (4/11)
+    let cut: Option<String> =
+        row.text.map(|t| crate::media::without_media_lines(t, |_| true).chars().take(TEXT_MAX).collect());
     let n = store
         .run_count(
             "INSERT OR IGNORE INTO notifications (id, agent, type, thread_id, message_id, ref_id, session_id, title, \
@@ -485,5 +487,10 @@ mod tests {
         insert(&store, &thread).await.unwrap();
         assert_eq!(unread_in(&store, "t_1").await.unwrap(), 1);
         assert_eq!(counts(&store).await.unwrap()["total"], 2);
+        // a reply's words kept, never its MEDIA lines
+        let files = NewRow { id: "n_4", dedupe: "reply:vie:m_3", text: Some("Voilà.\nMEDIA:/envoi/a.pdf"), ..thread };
+        insert(&store, &files).await.unwrap();
+        let rows = store.run("SELECT preview FROM notifications WHERE id = 'n_4'", vec![]).await.unwrap();
+        assert_eq!(rows[0]["preview"], json!("Voilà."));
     }
 }

@@ -378,7 +378,8 @@ async fn a_report_the_agent_answers_is_not_pushed_twice() {
     for _ in 0..3 {
         w.poll().await;
     }
-    assert_eq!(w.replies().await, [reply("wellness", "MEDIA:/m/podcast.mp3\nVoilà ton podcast !", "api_bot")]);
+    // the journal keeps the words, its file is the conversation's (4/11)
+    assert_eq!(w.replies().await, [reply("wellness", "Voilà ton podcast !", "api_bot")]);
     w.app.shutdown().await;
 }
 

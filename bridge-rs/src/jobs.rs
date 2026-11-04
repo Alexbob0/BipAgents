@@ -275,10 +275,15 @@ pub fn task_view(job: &Dict) -> Dict {
     // an extraction from an archive (archives/records_fill.rs): its euros, its cap, the documents read
     const EXTRACT: [&str; 6] = ["archive", "eur", "budget_eur", "progress", "model", "counts"];
     let extract = crate::archives::records_fill::is_extract(job);
-    KEEP.iter()
+    let mut view: Dict = KEEP.iter()
         .chain(EXTRACT.iter().filter(|_| extract))
         .map(|k| (k.to_string(), job.get(*k).cloned().unwrap_or(Value::Null)))
-        .collect()
+        .collect();
+    // its words: the files of the report are in its conversation, never as `MEDIA:` lines here (4/11)
+    if let Some(Value::String(report)) = view.get_mut("report") {
+        *report = crate::media::without_media_lines(report, |_| true);
+    }
+    view
 }
 
 fn state_of(job: &Dict) -> String {

@@ -1492,10 +1492,26 @@
         },
         {
           "say": {
-            "fr": "Tu progresses bien 🏃 **86 km** en 4 semaines, et ton allure a gagné **23 s/km** :\n\nMEDIA:/demo/page/runs/tes-sorties.html\n\nTu as passé les **25 km** la semaine dernière. Pour la suite : une sortie longue par semaine, et pas plus de 10 % de distance en plus.",
-            "en": "You’re making good progress 🏃 **86 km** in 4 weeks, and your pace is **23 s/km** faster:\n\nMEDIA:/demo/page/runs/your-runs.html\n\nYou went past **25 km** last week. Next: one long run a week, and no more than 10% extra distance.",
-            "de": "Du machst gute Fortschritte 🏃 **86 km** in 4 Wochen, und dein Tempo ist **23 s/km** schneller:\n\nMEDIA:/demo/page/runs/deine-laeufe.html\n\nLetzte Woche hast du die **25 km** geknackt. Weiter so: ein langer Lauf pro Woche und höchstens 10 % mehr Strecke.",
-            "es": "Vas progresando bien 🏃 **86 km** en 4 semanas y tu ritmo ha mejorado **23 s/km**:\n\nMEDIA:/demo/page/runs/tus-salidas.html\n\nLa semana pasada superaste los **25 km**. Lo siguiente: una tirada larga por semana y no más de un 10 % de distancia extra."
+            "fr": "Tu progresses bien 🏃 **86 km** en 4 semaines, et ton allure a gagné **23 s/km** :",
+            "en": "You’re making good progress 🏃 **86 km** in 4 weeks, and your pace is **23 s/km** faster:",
+            "de": "Du machst gute Fortschritte 🏃 **86 km** in 4 Wochen, und dein Tempo ist **23 s/km** schneller:",
+            "es": "Vas progresando bien 🏃 **86 km** en 4 semanas y tu ritmo ha mejorado **23 s/km**:"
+          }
+        },
+        {
+          "show": {
+            "fr": "/demo/page/runs/tes-sorties.html",
+            "en": "/demo/page/runs/your-runs.html",
+            "de": "/demo/page/runs/deine-laeufe.html",
+            "es": "/demo/page/runs/tus-salidas.html"
+          }
+        },
+        {
+          "say": {
+            "fr": "Tu as passé les **25 km** la semaine dernière. Pour la suite : une sortie longue par semaine, et pas plus de 10 % de distance en plus.",
+            "en": "You went past **25 km** last week. Next: one long run a week, and no more than 10% extra distance.",
+            "de": "Letzte Woche hast du die **25 km** geknackt. Weiter so: ein langer Lauf pro Woche und höchstens 10 % mehr Strecke.",
+            "es": "La semana pasada superaste los **25 km**. Lo siguiente: una tirada larga por semana y no más de un 10 % de distancia extra."
           }
         }
       ],
@@ -1572,10 +1588,26 @@
         },
         {
           "say": {
-            "fr": "Voilà une jolie balade de **3,2 km** (environ 50 min) au parc de la Tête d’Or, avec le soleil dimanche matin ☀️\n\nMEDIA:/demo/page/walk/balade-du-dimanche.html\n\nTouche une étape pour la voir sur la carte, ou « Ouvrir dans Plans » pour y aller.",
-            "en": "Here’s a nice **3.2 km** walk (about 50 min) in the Parc de la Tête d’Or, with sunshine on Sunday morning ☀️\n\nMEDIA:/demo/page/walk/sunday-walk.html\n\nTap a stop to see it on the map, or « Open in Maps » to get there.",
-            "de": "Hier ist ein schöner Spaziergang von **3,2 km** (etwa 50 Min.) im Parc de la Tête d’Or, Sonntagmorgen mit Sonne ☀️\n\nMEDIA:/demo/page/walk/sonntagsspaziergang.html\n\nTippe auf eine Station, um sie auf der Karte zu sehen, oder auf „In Karten öffnen“, um hinzukommen.",
-            "es": "Aquí tienes un bonito paseo de **3,2 km** (unos 50 min) por el Parc de la Tête d’Or, con sol el domingo por la mañana ☀️\n\nMEDIA:/demo/page/walk/paseo-del-domingo.html\n\nToca una etapa para verla en el mapa, o « Abrir en Mapas » para ir."
+            "fr": "Voilà une jolie balade de **3,2 km** (environ 50 min) au parc de la Tête d’Or, avec le soleil dimanche matin ☀️",
+            "en": "Here’s a nice **3.2 km** walk (about 50 min) in the Parc de la Tête d’Or, with sunshine on Sunday morning ☀️",
+            "de": "Hier ist ein schöner Spaziergang von **3,2 km** (etwa 50 Min.) im Parc de la Tête d’Or, Sonntagmorgen mit Sonne ☀️",
+            "es": "Aquí tienes un bonito paseo de **3,2 km** (unos 50 min) por el Parc de la Tête d’Or, con sol el domingo por la mañana ☀️"
+          }
+        },
+        {
+          "show": {
+            "fr": "/demo/page/walk/balade-du-dimanche.html",
+            "en": "/demo/page/walk/sunday-walk.html",
+            "de": "/demo/page/walk/sonntagsspaziergang.html",
+            "es": "/demo/page/walk/paseo-del-domingo.html"
+          }
+        },
+        {
+          "say": {
+            "fr": "Touche une étape pour la voir sur la carte, ou « Ouvrir dans Plans » pour y aller.",
+            "en": "Tap a stop to see it on the map, or « Open in Maps » to get there.",
+            "de": "Tippe auf eine Station, um sie auf der Karte zu sehen, oder auf „In Karten öffnen“, um hinzukommen.",
+            "es": "Toca una etapa para verla en el mapa, o « Abrir en Mapas » para ir."
           }
         }
       ],
@@ -1809,10 +1841,18 @@
         },
         {
           "say": {
-            "fr": "C’est parti ! Votez pour le week-end 👇\n\nMEDIA:/demo/card/lisbon_dates",
-            "en": "Here we go! Vote for the weekend 👇\n\nMEDIA:/demo/card/lisbon_dates",
-            "de": "Los geht’s! Stimmt fürs Wochenende ab 👇\n\nMEDIA:/demo/card/lisbon_dates",
-            "es": "¡Vamos! Votad el finde 👇\n\nMEDIA:/demo/card/lisbon_dates"
+            "fr": "C’est parti ! Votez pour le week-end 👇",
+            "en": "Here we go! Vote for the weekend 👇",
+            "de": "Los geht’s! Stimmt fürs Wochenende ab 👇",
+            "es": "¡Vamos! Votad el finde 👇"
+          }
+        },
+        {
+          "show": {
+            "fr": "/demo/card/lisbon_dates",
+            "en": "/demo/card/lisbon_dates",
+            "de": "/demo/card/lisbon_dates",
+            "es": "/demo/card/lisbon_dates"
           }
         },
         {
@@ -1840,10 +1880,18 @@
         },
         {
           "say": {
-            "fr": "Le **week-end du 21 novembre** l’emporte ✅ Du vendredi 20 au dimanche 22.\n\nDeux apparts pour 4 avec terrasse, à vous :\n\nMEDIA:/demo/card/lisbon_flat",
-            "en": "The **weekend of 21 November** wins ✅ Friday 20th to Sunday 22nd.\n\nTwo flats for 4 with a terrace, your turn:\n\nMEDIA:/demo/card/lisbon_flat",
-            "de": "Das **Wochenende vom 21. November** gewinnt ✅ Von Freitag, 20., bis Sonntag, 22.\n\nZwei Wohnungen für 4 mit Terrasse, ihr seid dran:\n\nMEDIA:/demo/card/lisbon_flat",
-            "es": "Gana el **finde del 21 de noviembre** ✅ Del viernes 20 al domingo 22.\n\nDos pisos para 4 con terraza, os toca:\n\nMEDIA:/demo/card/lisbon_flat"
+            "fr": "Le **week-end du 21 novembre** l’emporte ✅ Du vendredi 20 au dimanche 22.\n\nDeux apparts pour 4 avec terrasse, à vous :",
+            "en": "The **weekend of 21 November** wins ✅ Friday 20th to Sunday 22nd.\n\nTwo flats for 4 with a terrace, your turn:",
+            "de": "Das **Wochenende vom 21. November** gewinnt ✅ Von Freitag, 20., bis Sonntag, 22.\n\nZwei Wohnungen für 4 mit Terrasse, ihr seid dran:",
+            "es": "Gana el **finde del 21 de noviembre** ✅ Del viernes 20 al domingo 22.\n\nDos pisos para 4 con terraza, os toca:"
+          }
+        },
+        {
+          "show": {
+            "fr": "/demo/card/lisbon_flat",
+            "en": "/demo/card/lisbon_flat",
+            "de": "/demo/card/lisbon_flat",
+            "es": "/demo/card/lisbon_flat"
           }
         },
         {
@@ -1861,10 +1909,26 @@
         },
         {
           "say": {
-            "fr": "**Alfama** passe en tête 🏡 Voici la liste du week-end, chacun sa part :\n\nMEDIA:/demo/page/lisbon_list/week-end-lisbonne.html\n\nJe vous rappelle les billets d’avion jeudi ✈️",
-            "en": "**Alfama** takes the lead 🏡 Here’s the weekend list, everyone has their part:\n\nMEDIA:/demo/page/lisbon_list/lisbon-weekend.html\n\nI’ll remind you all about the plane tickets on Thursday ✈️",
-            "de": "**Alfama** liegt vorn 🏡 Hier die Liste fürs Wochenende, jeder hat seinen Teil:\n\nMEDIA:/demo/page/lisbon_list/lissabon-wochenende.html\n\nAm Donnerstag erinnere ich euch an die Flugtickets ✈️",
-            "es": "**Alfama** va en cabeza 🏡 Aquí está la lista del finde, cada uno con su parte:\n\nMEDIA:/demo/page/lisbon_list/finde-lisboa.html\n\nEl jueves os recuerdo los billetes de avión ✈️"
+            "fr": "**Alfama** passe en tête 🏡 Voici la liste du week-end, chacun sa part :",
+            "en": "**Alfama** takes the lead 🏡 Here’s the weekend list, everyone has their part:",
+            "de": "**Alfama** liegt vorn 🏡 Hier die Liste fürs Wochenende, jeder hat seinen Teil:",
+            "es": "**Alfama** va en cabeza 🏡 Aquí está la lista del finde, cada uno con su parte:"
+          }
+        },
+        {
+          "show": {
+            "fr": "/demo/page/lisbon_list/week-end-lisbonne.html",
+            "en": "/demo/page/lisbon_list/lisbon-weekend.html",
+            "de": "/demo/page/lisbon_list/lissabon-wochenende.html",
+            "es": "/demo/page/lisbon_list/finde-lisboa.html"
+          }
+        },
+        {
+          "say": {
+            "fr": "Je vous rappelle les billets d’avion jeudi ✈️",
+            "en": "I’ll remind you all about the plane tickets on Thursday ✈️",
+            "de": "Am Donnerstag erinnere ich euch an die Flugtickets ✈️",
+            "es": "El jueves os recuerdo los billetes de avión ✈️"
           }
         }
       ],
@@ -2203,10 +2267,26 @@
         },
         {
           "say": {
-            "fr": "Voilà la liste de la semaine, rangée par rayon 🛒\n\nMEDIA:/demo/page/groceries/courses-de-la-semaine.html\n\nElle est partagée avec toute la maison : le premier qui passe au supermarché coche ce qu’il prend.",
-            "en": "Here’s this week’s list, sorted by aisle 🛒\n\nMEDIA:/demo/page/groceries/shopping-list.html\n\nIt’s shared with the whole household: whoever goes to the shop ticks what they pick up.",
-            "de": "Hier ist die Liste der Woche, nach Regal sortiert 🛒\n\nMEDIA:/demo/page/groceries/einkaufsliste.html\n\nSie ist mit dem ganzen Haushalt geteilt: Wer einkaufen geht, hakt ab, was er mitnimmt.",
-            "es": "Aquí tienes la lista de la semana, ordenada por pasillo 🛒\n\nMEDIA:/demo/page/groceries/lista-de-la-compra.html\n\nEstá compartida con toda la casa: quien vaya al súper marca lo que coge."
+            "fr": "Voilà la liste de la semaine, rangée par rayon 🛒",
+            "en": "Here’s this week’s list, sorted by aisle 🛒",
+            "de": "Hier ist die Liste der Woche, nach Regal sortiert 🛒",
+            "es": "Aquí tienes la lista de la semana, ordenada por pasillo 🛒"
+          }
+        },
+        {
+          "show": {
+            "fr": "/demo/page/groceries/courses-de-la-semaine.html",
+            "en": "/demo/page/groceries/shopping-list.html",
+            "de": "/demo/page/groceries/einkaufsliste.html",
+            "es": "/demo/page/groceries/lista-de-la-compra.html"
+          }
+        },
+        {
+          "say": {
+            "fr": "Elle est partagée avec toute la maison : le premier qui passe au supermarché coche ce qu’il prend.",
+            "en": "It’s shared with the whole household: whoever goes to the shop ticks what they pick up.",
+            "de": "Sie ist mit dem ganzen Haushalt geteilt: Wer einkaufen geht, hakt ab, was er mitnimmt.",
+            "es": "Está compartida con toda la casa: quien vaya al súper marca lo que coge."
           }
         }
       ],
@@ -2287,10 +2367,26 @@
         },
         {
           "say": {
-            "fr": "Voilà la semaine de la famille 👇\n\nMEDIA:/demo/page/family_week/planning-de-la-semaine.html\n\nTout le monde est au courant ✅ Camille, Léo, Jade et Mamie le voient ici, et chacun reçoit son rappel la veille.",
-            "en": "Here’s the family’s week 👇\n\nMEDIA:/demo/page/family_week/week-plan.html\n\nEveryone’s in the loop ✅ Camille, Léo, Jade and Grandma see it here, and each gets a reminder the day before.",
-            "de": "Hier ist die Woche der Familie 👇\n\nMEDIA:/demo/page/family_week/wochenplan.html\n\nAlle wissen Bescheid ✅ Camille, Léo, Jade und Oma sehen ihn hier, und jeder bekommt am Vortag eine Erinnerung.",
-            "es": "Aquí tienes la semana de la familia 👇\n\nMEDIA:/demo/page/family_week/planning-semana.html\n\nTodos están al tanto ✅ Camille, Léo, Jade y la abuela lo ven aquí, y cada uno recibe su recordatorio la víspera."
+            "fr": "Voilà la semaine de la famille 👇",
+            "en": "Here’s the family’s week 👇",
+            "de": "Hier ist die Woche der Familie 👇",
+            "es": "Aquí tienes la semana de la familia 👇"
+          }
+        },
+        {
+          "show": {
+            "fr": "/demo/page/family_week/planning-de-la-semaine.html",
+            "en": "/demo/page/family_week/week-plan.html",
+            "de": "/demo/page/family_week/wochenplan.html",
+            "es": "/demo/page/family_week/planning-semana.html"
+          }
+        },
+        {
+          "say": {
+            "fr": "Tout le monde est au courant ✅ Camille, Léo, Jade et Mamie le voient ici, et chacun reçoit son rappel la veille.",
+            "en": "Everyone’s in the loop ✅ Camille, Léo, Jade and Grandma see it here, and each gets a reminder the day before.",
+            "de": "Alle wissen Bescheid ✅ Camille, Léo, Jade und Oma sehen ihn hier, und jeder bekommt am Vortag eine Erinnerung.",
+            "es": "Todos están al tanto ✅ Camille, Léo, Jade y la abuela lo ven aquí, y cada uno recibe su recordatorio la víspera."
           }
         }
       ],
@@ -2357,10 +2453,26 @@
         },
         {
           "say": {
-            "fr": "Voilà les **5 lieux** à ne pas rater, d’est en ouest, pour votre week-end 🇵🇹\n\nMEDIA:/demo/map/lisbon_spots/lisbonne.map.json\n\nTouche un lieu pour son adresse et mon conseil, ou ouvre-la dans ton app de cartes pour y aller.",
-            "en": "Here are the **5 places** not to miss, from east to west, for your weekend 🇵🇹\n\nMEDIA:/demo/map/lisbon_spots/lisbon.map.json\n\nTap a place for its address and my tip, or open it in your maps app to get there.",
-            "de": "Hier sind die **5 Orte**, die ihr nicht verpassen solltet, von Ost nach West, für euer Wochenende 🇵🇹\n\nMEDIA:/demo/map/lisbon_spots/lissabon.map.json\n\nTippe auf einen Ort für seine Adresse und meinen Tipp, oder öffne sie in deiner Karten-App, um hinzukommen.",
-            "es": "Aquí tenéis los **5 sitios** imprescindibles, de este a oeste, para vuestro finde 🇵🇹\n\nMEDIA:/demo/map/lisbon_spots/lisboa.map.json\n\nToca un lugar para ver su dirección y mi consejo, o ábrelo en tu app de mapas para ir."
+            "fr": "Voilà les **5 lieux** à ne pas rater, d’est en ouest, pour votre week-end 🇵🇹",
+            "en": "Here are the **5 places** not to miss, from east to west, for your weekend 🇵🇹",
+            "de": "Hier sind die **5 Orte**, die ihr nicht verpassen solltet, von Ost nach West, für euer Wochenende 🇵🇹",
+            "es": "Aquí tenéis los **5 sitios** imprescindibles, de este a oeste, para vuestro finde 🇵🇹"
+          }
+        },
+        {
+          "show": {
+            "fr": "/demo/map/lisbon_spots/lisbonne.map.json",
+            "en": "/demo/map/lisbon_spots/lisbon.map.json",
+            "de": "/demo/map/lisbon_spots/lissabon.map.json",
+            "es": "/demo/map/lisbon_spots/lisboa.map.json"
+          }
+        },
+        {
+          "say": {
+            "fr": "Touche un lieu pour son adresse et mon conseil, ou ouvre-la dans ton app de cartes pour y aller.",
+            "en": "Tap a place for its address and my tip, or open it in your maps app to get there.",
+            "de": "Tippe auf einen Ort für seine Adresse und meinen Tipp, oder öffne sie in deiner Karten-App, um hinzukommen.",
+            "es": "Toca un lugar para ver su dirección y mi consejo, o ábrelo en tu app de mapas para ir."
           }
         }
       ],
