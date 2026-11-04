@@ -21,6 +21,30 @@ pub const APPROVAL_SETTLED: &str = "approval.settled";
 /// A question answered or gone.
 pub const CLARIFY_SETTLED: &str = "clarify.settled";
 
+/// The answer Hermes reads as « skipped » (`tools/clarify_gateway.py` `SKIPPED`, what a messaging app's typed `skip`
+/// becomes): the next question of the batch still comes. An empty answer is no reply to Hermes (`[user did not respond
+/// within Nm]`, the batch ends): measured on v0.22.5, 2026-11-04.
+pub const SKIPPED: &str = "\u{0}skipped";
+
+/// The label Hermes adds to a question's first choice (`tools/clarify_tool.py` `RECOMMENDED_LABEL`), in English
+/// whatever the person's language; Hermes strips it from the answer again, so the apps show the choice without it.
+const RECOMMENDED: &str = "(Recommended)";
+
+/// A choice without Hermes' « (Recommended) » label.
+pub fn without_recommended(choice: &str) -> &str {
+    let text = choice.trim_end();
+    match text.len().checked_sub(RECOMMENDED.len()) {
+        Some(at)
+            if text.is_char_boundary(at)
+                && text[at..].eq_ignore_ascii_case(RECOMMENDED)
+                && !text[..at].trim().is_empty() =>
+        {
+            text[..at].trim_end()
+        }
+        _ => choice,
+    }
+}
+
 /// A prompt's `execution_generation` (an integer; Hermes refuses any other).
 pub fn generation(data: &Map<String, Value>) -> Option<i64> {
     data.get("execution_generation").and_then(Value::as_i64)
@@ -36,14 +60,23 @@ pub fn without_skip_hint(question: &str) -> Option<&str> {
 }
 
 /// A prompt's event (`*.request`, `*.settled`) with its `prompt_id` as `request_id` too, as the bridge and the apps
-/// read it, and a question without Hermes' skip hint (`without_skip_hint`). Other events as they are.
+/// read it, and a question without Hermes' skip hint (`without_skip_hint`) nor its « (Recommended) » label
+/// (`without_recommended`). Other events as they are.
 pub fn named(event: SSEEvent) -> SSEEvent {
     let prompt = event.data.get("prompt_id").and_then(Value::as_str).map(str::to_string);
     let add_id = prompt.is_some() && !event.data.contains_key("request_id");
-    let question = (event.r#type == "clarify.request")
+    let asks = event.r#type == "clarify.request";
+    let question = asks
         .then(|| event.data.get("question").and_then(Value::as_str).and_then(without_skip_hint).map(str::to_string))
         .flatten();
-    if !add_id && question.is_none() {
+    let choices: Option<Vec<Value>> = asks
+        .then(|| event.data.get("choices").and_then(Value::as_array))
+        .flatten()
+        .filter(|all| all.iter().any(|c| c.as_str().is_some_and(|c| without_recommended(c) != c)))
+        .map(|all| {
+            all.iter().map(|c| c.as_str().map_or_else(|| c.clone(), |c| json!(without_recommended(c)))).collect()
+        });
+    if !add_id && question.is_none() && choices.is_none() {
         return event;
     }
     let mut data = event.data;
@@ -52,6 +85,9 @@ pub fn named(event: SSEEvent) -> SSEEvent {
     }
     if let Some(question) = question {
         data.insert("question".into(), json!(question));
+    }
+    if let Some(choices) = choices {
+        data.insert("choices".into(), Value::Array(choices));
     }
     let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(data.clone()));
     SSEEvent::new(event.r#type, data, raw)
@@ -142,6 +178,23 @@ mod tests {
         let pending = pending_requests("run_3", &run);
         assert_eq!(pending[0].data["question"], "Où ?");
         assert!(!pending[0].raw.contains("skip"));
+    }
+
+    #[test]
+    fn choices_lose_hermes_recommended_label() {
+        let ask = SSEEvent::new(
+            "clarify.request",
+            data(json!({"prompt_id": "c1", "execution_generation": 1, "question": "Quand ?",
+                        "choices": ["Samedi matin (Recommended)", "Dimanche"]})),
+            "",
+        );
+        let seen = named(ask);
+        assert_eq!(seen.data["choices"], json!(["Samedi matin", "Dimanche"]));
+        assert!(!seen.raw.contains("Recommended"));
+        assert_eq!(without_recommended("(Recommended)"), "(Recommended)");
+        assert_eq!(without_recommended("Le train (recommended) "), "Le train");
+        assert_eq!(without_recommended("Recommended"), "Recommended");
+        assert_eq!(without_recommended("Paris"), "Paris");
     }
 
     #[test]

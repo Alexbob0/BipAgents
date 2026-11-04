@@ -935,7 +935,7 @@ impl HermesClient {
     }
 
     /// `POST /v1/runs/{id}/approval` (`kind` approval: `{…, choice}`) or `/clarify` (`kind` clarify: `{…, answer}`, a
-    /// question's words; an empty one skips it, docs/hermes-clarify-api.md).
+    /// question's words; an empty one skips it: sent as Hermes' skip, `hermes_prompts::SKIPPED`).
     pub async fn answer_prompt(
         &self,
         agent: &AgentConfig,
@@ -956,6 +956,8 @@ impl HermesClient {
             return Ok((409, json!({"detail": "nothing of this run waits for this answer"})));
         };
         let field = if kind == "clarify" { "answer" } else { "choice" };
+        // Hermes reads an empty answer as no reply at all (the whole batch ends « timed out »): a skip is its sentinel
+        let value = if kind == "clarify" && value.trim().is_empty() { crate::hermes_prompts::SKIPPED } else { value };
         let body = json!({"request_id": prompt, "execution_generation": generation, field: value});
         ready(agent).await;
         let resp = self

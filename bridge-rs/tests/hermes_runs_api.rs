@@ -74,6 +74,16 @@ async fn approval(State(fake): State<Fake>, request: Request) -> Response {
     Json(json!({"run_id": "run_1", "status": "resolved", "prompt_id": body["request_id"]})).into_response()
 }
 
+async fn clarify(State(fake): State<Fake>, request: Request) -> Response {
+    let body = record(&fake, request).await;
+    let mut keys: Vec<String> = body.as_object().map(|o| o.keys().cloned().collect()).unwrap_or_default();
+    keys.sort();
+    if keys != ["answer", "execution_generation", "request_id"] {
+        return refusal(StatusCode::BAD_REQUEST, "invalid_params");
+    }
+    Json(json!({"run_id": "run_1", "status": "resolved", "prompt_id": body["request_id"]})).into_response()
+}
+
 async fn resolve_unknown(State(fake): State<Fake>, request: Request) -> Response {
     let body = record(&fake, request).await;
     if body != json!({"admission_id": "adm_9", "execution_generation": 7}) {
@@ -122,6 +132,7 @@ async fn fake_hermes() -> (AgentConfig, Fake) {
         .route("/v1/runs", post(start))
         .route("/v1/runs/{id}", get(run_status))
         .route("/v1/runs/{id}/approval", post(approval))
+        .route("/v1/runs/{id}/clarify", post(clarify))
         .route("/v1/runs/{id}/resolve-unknown", post(resolve_unknown))
         .route("/v1/runs/{id}/events", get(events))
         .with_state(fake.clone());
@@ -160,6 +171,28 @@ async fn an_approval_goes_as_the_exact_prompt_waiting() {
     let (status, _) = hermes.approve(&agent, "run_1", "once", Some("p_gone")).await.unwrap();
     assert_eq!(status, 409);
     assert_eq!(posted(&fake, "/v1/runs/run_1/approval").len(), 2);
+}
+
+#[tokio::test]
+async fn a_skipped_question_goes_as_hermes_skip() {
+    // Hermes 0.22.5 reads an empty answer as no reply (the batch ends « timed out »): « Passer » sends its skip word
+    let hermes = HermesClient::new(reqwest::Client::new());
+    let (agent, fake) = fake_hermes().await;
+    let (status, _) = hermes.answer_prompt(&agent, "run_1", "clarify", "", Some("c1")).await.unwrap();
+    assert_eq!(status, 200);
+    let (status, _) = hermes.answer_prompt(&agent, "run_1", "clarify", "14h", Some("c1")).await.unwrap();
+    assert_eq!(status, 200);
+    assert_eq!(
+        posted(&fake, "/v1/runs/run_1/clarify"),
+        [
+            json!({"request_id": "c1", "execution_generation": 3, "answer": "\u{0}skipped"}),
+            json!({"request_id": "c1", "execution_generation": 3, "answer": "14h"}),
+        ]
+    );
+    // a question no longer waiting: 409, nothing sent
+    let (status, _) = hermes.answer_prompt(&agent, "run_1", "clarify", "", Some("c_gone")).await.unwrap();
+    assert_eq!(status, 409);
+    assert_eq!(posted(&fake, "/v1/runs/run_1/clarify").len(), 2);
 }
 
 #[tokio::test]

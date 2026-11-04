@@ -956,7 +956,8 @@ async fn served_approval(
         .answer_prompt(&agent, &run_id, kind, &value, request_id.as_deref())
         .await
         .map_err(|_| HttpError::new(502, "the agent can't be reached"))?;
-    if (200..300).contains(&status) {
+    // answered, or a question nothing waits for any more (409): gone from every phone
+    if (200..300).contains(&status) || (status == 409 && kind == "clarify" && request_id.is_some()) {
         state.hub.forget_approval(&agent.name, &run_id, request_id.as_deref());
         let session = object(&read(&owner_path(&config)), "conversations")
             .and_then(|all| all.values().find(|c| c.get("run").is_some_and(|r| str_of(r, "id") == run_id)).map(|c| str_of(c, "session")));
@@ -1419,8 +1420,10 @@ pub async fn approve_mine(
     if let Some(answer) = answer {
         body["answer"] = json!(answer);
     }
+    let question = answer.is_some();
     let answer = to_owner(state, id, reqwest::Method::POST, "approval", Some(body)).await?;
-    if (200..300).contains(&answer.0) {
+    // answered, or a question nothing waits for any more (409): gone
+    if (200..300).contains(&answer.0) || (answer.0 == 409 && question && request_id.is_some()) {
         PENDING
             .lock()
             .unwrap_or_else(|e| e.into_inner())

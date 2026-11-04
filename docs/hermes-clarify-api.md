@@ -70,8 +70,13 @@ clarify: patch 0001 is dropped, and what is above is kept as its record. The con
   bridge adds `request_id` (the `prompt_id`), the id the apps and the pushes read.
 - The answer is `POST /v1/runs/{run_id}/clarify` with exactly
   `{"request_id": "<prompt_id>", "execution_generation": <n>, "answer": "<text>"}`.
-- There is no dismissal: « no answer » is sent as an empty `answer`, which the agent reads as the question
-  skipped (0001's `cancel` ended the whole batch; here the next question of the batch still comes).
+- There is no dismissal. A skipped question is sent as Hermes' skip word, `"\u0000skipped"` (`tools/clarify_gateway.py`
+  `SKIPPED`, what a messaging app's typed « skip » becomes): the agent reads it as skipped and the next question of the
+  batch still comes. An **empty** `answer` is read as no reply at all (`[user did not respond within 60m]`, the whole
+  batch ends): the apps still send an empty answer for « Passer » and the bridge turns it into the skip word (measured
+  on v0.22.5, 2026-11-04).
+- The first choice comes with Hermes' English « (Recommended) » label; the bridge drops it before the apps see it
+  (Hermes strips it from the answer anyway).
 - `clarify.settled` and `approval.settled` end a prompt (answered, timed out or gone); they carry no answers.
 - Approvals take exactly `{"request_id": "<prompt_id>", "execution_generation": <n>, "choice": …}`. Without
   the generation (a notification's button), the apps and the bridge read the prompt from `GET /v1/runs/{id}`
