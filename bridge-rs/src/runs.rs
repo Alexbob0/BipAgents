@@ -1198,15 +1198,22 @@ impl RunHub {
         let event = if event.r#type == "run.failed" { self.account_failure_in_plain_words(sub, event) } else { event };
         // the model's words as Hermes keeps them (to recognise its reply), the apps' without MEDIA lines
         let written = as_str(event.data.get("output"));
-        let Some(event) = st.media.event(event) else { return };
-        append_to_backlog(&mut st.backlog, &event);
-        st.send_all(Some(&event));
-        let kind = event.r#type.as_str();
-        if let Some(push) = &self.push {
-            // the Live Activities following this run (its own, its task's, its discussion's): live_activities.rs
-            let followed = st.followers() > 0;
-            push.live_event(&sub.agent.name, &sub.run_id, st.room_id.as_deref(), kind, &event.data, followed);
+        let delta = is_delta(&event.r#type);
+        let mut shown = st.media.event(event);
+        for event in &shown {
+            append_to_backlog(&mut st.backlog, event);
+            st.send_all(Some(event));
+            if let Some(push) = &self.push {
+                // the Live Activities following this run (its own, its task's, its discussion's): live_activities.rs
+                let followed = st.followers() > 0;
+                push.live_event(&sub.agent.name, &sub.run_id, st.room_id.as_deref(), &event.r#type, &event.data, followed);
+            }
         }
+        if delta || shown.is_empty() {
+            return; // its words and files passed on: nothing else to do with a delta
+        }
+        let event = shown.remove(0);
+        let kind = event.r#type.as_str();
         if kind == "tool.started" || kind == "tool.completed" || kind == SUBAGENT_START || kind == SUBAGENT_DONE {
             self.handoff(sub, &mut st, &event);
         }
@@ -1740,13 +1747,10 @@ impl RunHub {
 
     /// The reply's last words held back as maybe a `MEDIA:` line (media.rs), given before its end.
     fn flush_media(&self, sub: &RunSubscription) {
-        let held = lock(&sub.state).media.flush();
-        if held.is_empty() {
-            return;
+        let held = lock(&sub.state).media.flush_events("message.delta", &json!(sub.run_id));
+        for event in &held {
+            self.forward(sub, event);
         }
-        let delta = json!({"event": "message.delta", "run_id": sub.run_id, "delta": held});
-        let raw = crate::py::Dumps::new().unicode().dumps(&delta);
-        self.forward(sub, &SSEEvent::new("message.delta", delta.as_object().cloned().unwrap_or_default(), raw));
     }
 
     /// An event shown in this run's stream as it is (the rescue turn's, the bridge's word), without this run's own
@@ -2581,6 +2585,12 @@ mod tests {
         let deltas: String = st.backlog.iter().filter(|e| is_delta(&e.r#type)).map(|e| e.text()).collect();
         assert_eq!(deltas, "Voici le plan :\nLa suite.\n");
         assert!(st.backlog.iter().all(|e| !e.raw.contains("MEDIA:")));
+        // each line a file event at once, in its place among the words
+        let order: Vec<String> = st.backlog.iter()
+            .map(|e| if e.r#type == crate::media::FILE { format!("[{}@{}]", e.data["path"].as_str().unwrap(), e.data["offset"]) } else { e.text() })
+            .filter(|t| !t.is_empty()).collect();
+        assert_eq!(order[..3], ["Voici le plan :\n".to_string(), "[/bipagents/pages/vie/plan.html@16]".into(), "La suite.\n".into()]);
+        assert_eq!(order[3], "[/envoi/devis.pdf@26]");
         let end = st.backlog.back().unwrap();
         assert_eq!(end.data["output"], json!("Voici le plan :\nLa suite."));
         let files: Vec<(&str, &str, i64)> = end.data["attachments"].as_array().unwrap().iter()

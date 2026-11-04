@@ -1,6 +1,7 @@
 """The files a reply names reach the apps as attachments only (4/11): the bridge takes the model's `MEDIA:` lines out
 of everything it passes on (a run's deltas, even a line cut across them, and its end's `output`; a Live turn's
-stream; the timeline, the Boîte) and gives the files as structured attachments (media.rs `MediaFilter`)."""
+stream; the timeline, the Boîte) and gives the files as structured items: a `message.file` event where the line was
+while the reply streams, the end's `attachments`, the timeline's (media.rs `MediaFilter`)."""
 import json
 
 import httpx
@@ -23,6 +24,12 @@ def test_a_runs_events_carry_no_media_line_and_its_end_the_files(bridge, fakes):
     assert all("MEDIA:" not in json.dumps(data) for _, data in events), events
     said = "".join(d.get("delta", "") for name, d in events if name == "message.delta")
     assert said == "Voici le plan :\n\nLa suite.\n"
+    # each line a file event at once, in its place, before the run's end (the page shows while the reply is written)
+    names = [name for name, _ in events]
+    files = [(d["path"], d["kind"], d["offset"]) for name, d in events if name == "message.file"]
+    assert files == [(PAGE, "page", 16), ("/envoi/devis.pdf", "file", 27)]
+    assert names.index("message.file") < names.index("run.completed")
+    assert names[names.index("message.file") - 1] == "message.delta", "after the words before it"
     name, end = events[-1]
     assert name == "run.completed" and end["output"] == "Voici le plan :\n\nLa suite."
     files = [(a["path"], a["kind"], a["offset"]) for a in end["attachments"]]
@@ -53,6 +60,10 @@ def test_a_live_turn_streams_without_media_lines(bridge, fakes):
     data = [json.loads(line[6:]) for line in lines if line.startswith("data: ")]
     said = "".join(d["delta"] for d in data if d.get("event") == "assistant.delta")
     assert said == "Je te montre.\nVoilà."
+    events = [d.get("event") for d in data]
+    file = next(d for d in data if d.get("event") == "message.file")
+    assert file["path"] == "/bipagents/pages/wellness/carte.html" and file["offset"] == 14
+    assert events.index("message.file") < events.index("run.completed")
     end = next(d for d in data if d.get("event") == "run.completed")
     assert end["output"] == "Je te montre.\nVoilà."
     assert [a["path"] for a in end["attachments"]] == ["/bipagents/pages/wellness/carte.html"]

@@ -153,14 +153,12 @@ where
                 }
             };
             let Some(event) = event else { continue };
+            let mut shown = Vec::new();
             if crate::hermes::is_terminal(&event.r#type) || event.r#type == "assistant.completed" {
-                let held = media.flush();
-                if !held.is_empty() {
-                    let data = json!({"event": "assistant.delta", "run_id": event.data.get("run_id"), "delta": held});
-                    yield Ok(frame("assistant.delta", &crate::py::Dumps::new().unicode().dumps(&data)));
-                }
+                shown = media.flush_events("assistant.delta", event.data.get("run_id").unwrap_or(&Value::Null));
             }
-            if let Some(event) = media.event(event) {
+            shown.extend(media.event(event));
+            for event in shown {
                 yield Ok(frame(&event.r#type, &event.raw));
             }
         }
