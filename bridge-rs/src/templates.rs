@@ -987,9 +987,7 @@ pub async fn import(state: &AppState, body: &Value) -> ApiResult<Value> {
     }
     tracing::info!(target: "bipbridge::templates", agent = %agent.name, source = %head(&s(body, "source"), 64),
                    connectors = conns_out.len(), routines = routines_out.len(), skills = skills_done.len(), "agent made from a model");
-    let has_url = agent.public_url.as_deref().is_some_and(|u| !u.is_empty());
     let created = json!({"id": agent.name, "name": agent.display_name, "url": agent.public_url,
-                         "key": if has_url { Some(agent.hermes_key.clone()) } else { None },
                          "group": crate::agent_groups::group_of(&config, &agent.name)});
     Ok(json!({"agent": created, "connectors": conns_out, "routines": routines_out,
               "skills": skills_done.into_iter().collect::<Vec<_>>(), "left_out": left_out, "notes": notes}))

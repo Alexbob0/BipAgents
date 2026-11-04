@@ -128,7 +128,7 @@ def test_a_new_agent_is_created_from_the_export(bridges, fakes):
         "soul": "Tu es Max, l'assistant de la maison.", "user": ["Alex vit à Lyon."]})
     assert done.status_code == 201, done.text
     out = done.json()
-    assert out["new"] is True and out["agent"]["id"] == "max" and out["agent"]["key"]
+    assert out["new"] is True and out["agent"]["id"] == "max" and "key" not in out["agent"]
     soul = (home / "profiles" / "max" / "SOUL.md").read_text()
     assert soul.startswith("Tu es Max, l'assistant de la maison.") and "<!-- bipagents:language -->" in soul
     assert "Alex vit à Lyon." in (home / "profiles" / "max" / "memories" / "USER.md").read_text()

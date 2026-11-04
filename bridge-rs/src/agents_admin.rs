@@ -2296,9 +2296,7 @@ fn links_json(links: &Dict) -> Vec<Value> {
 }
 
 fn created(config: &Config, agent: &AgentConfig) -> Value {
-    let has_url = agent.public_url.as_deref().is_some_and(|u| !u.is_empty());
     json!({"id": agent.name, "name": agent.display_name, "url": agent.public_url,
-           "key": if has_url { Some(agent.hermes_key.clone()) } else { None },
            "group": crate::agent_groups::group_of(config, &agent.name)})
 }
 

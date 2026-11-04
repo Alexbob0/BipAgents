@@ -54,7 +54,7 @@ def test_agents_listing(bridge):
     assert listing == {"bridge": {"url": None, "lan": None},
                            "agents": [{"id": "wellness", "name": "Wellness", "voice": "pocket:colibri", "server_voice": None,
                                        "category": None, "color": None, "uploads": True,
-                                       "url": None, "key": None}],
+                                       "url": None}],
                            "unclaimed": []}
 
 

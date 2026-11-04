@@ -43,10 +43,10 @@ def test_create_custom_agent(bridges, fakes):
         "role": "suit mes plantes", "tone": "drôle", "category": "home"}})
     assert resp.status_code == 201, resp.text
     created = resp.json()
-    key = created["key"]
     assert created.pop("group", "") == ""   # agent groups: Rust only
-    assert created == {"id": "fougere", "name": "Fougère", "url": "https://mini.ts.net:8642/p/fougere", "key": key}
+    assert created == {"id": "fougere", "name": "Fougère", "url": "https://mini.ts.net:8642/p/fougere"}   # no Hermes key
     commands = hermes_args(bridge)
+    key = commands[1][-1]   # its new API_SERVER_KEY, kept by the bridge alone
     assert commands[0] == ["profile", "create", "fougere", "--clone-from", "default", "--no-alias", "--description",
                            "suit mes plantes"]
     assert commands[1] == ["-p", "fougere", "config", "set", "API_SERVER_KEY", "--", key]
@@ -76,12 +76,12 @@ def test_create_custom_agent(bridges, fakes):
     assert tokens["fougere"] == hashlib.sha256(token.encode()).hexdigest()
     assert oct(os.stat(bridge.state_dir / "agent-tools.json").st_mode & 0o777) == "0o600"
     listed = {a["id"]: a for a in bridge.get("/v1/agents", headers=AUTH).json()["agents"]}
-    assert listed["fougere"]["key"] == key and listed["fougere"]["uploads"] is True
+    assert "key" not in listed["fougere"] and listed["fougere"]["uploads"] is True
     assert bridge.logged("agent created")[0]["agent"] == "fougere" and bridge.logged("agent created")[0]["kind"] == "custom"
     # It survives a restart, with its key and its tools (nothing to register again).
     bridge.commands.clear()
     bridge.restart(write=False)
-    assert {a["id"]: a for a in bridge.get("/v1/agents", headers=AUTH).json()["agents"]}["fougere"]["key"] == key
+    assert "fougere" in {a["id"] for a in bridge.get("/v1/agents", headers=AUTH).json()["agents"]}
     time.sleep(1.0)                                   # what the bridge does in the background at start
     assert hermes_args(bridge) == [] and not bridge.logged("agent tools registered")
 
@@ -275,13 +275,13 @@ def test_profiles_created_on_the_server_can_be_claimed(bridges, fakes):
     # bridge the checkout hand-over's (« l'agent prépare, tu paies », every agent, 2026-10-26).
     claimed = jardin.json()
     assert claimed.pop("group", "") == ""   # agent groups: Rust only
-    assert claimed == {"id": "jardin", "name": "Mon jardin", "url": "https://mini.ts.net:8642/p/jardin", "key": "own-key"}
+    assert claimed == {"id": "jardin", "name": "Mon jardin", "url": "https://mini.ts.net:8642/p/jardin"}   # no Hermes key
     assert hermes_args(bridge) == []
     assert set(servers(profiles / "jardin")) == {"bipagents", "bipagents_checkout"}
     bridge.commands.clear()
     cuisine = bridge.post("/v1/agents/claim", headers=AUTH, json={"id": "cuisine"}).json()
     assert cuisine["name"] == "Cuisine"
-    assert hermes_args(bridge)[0] == ["-p", "cuisine", "config", "set", "API_SERVER_KEY", "--", cuisine["key"]]
+    assert hermes_args(bridge)[0][:6] == ["-p", "cuisine", "config", "set", "API_SERVER_KEY", "--"] and "key" not in cuisine
     assert hermes_args(bridge)[1:] == []
     assert set(servers(profiles / "cuisine")) == {"bipagents", "bipagents_checkout"}
     assert [agent for agent, _ in fakes.hermes.created] == ["jardin", "cuisine"]   # their « Discussion »

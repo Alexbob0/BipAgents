@@ -1113,9 +1113,7 @@ async fn apply_route(State(state): State<AppState>, Json(body): Json<Apply>) -> 
     }
     tracing::info!(target: "bipbridge::import", agent = %agent.name, new = new, skills = counts.skills, pages = counts.pages, "assistant imported");
     let config = state.config();
-    let has_url = agent.public_url.as_deref().is_some_and(|u| !u.is_empty());
     let shown = json!({"id": agent.name, "name": agent.display_name, "url": agent.public_url,
-                       "key": if has_url { Some(agent.hermes_key.clone()) } else { None },
                        "group": crate::agent_groups::group_of(&config, &agent.name)});
     let out = json!({"agent": shown, "new": new, "counts": counts});
     Ok(web::json_response(if new { 201 } else { 200 }, &out))

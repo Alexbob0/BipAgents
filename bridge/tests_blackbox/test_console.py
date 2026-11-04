@@ -5,7 +5,7 @@ import os
 import re
 import stat
 
-from bbkit.common import AUTH, HERMES_KEY
+from bbkit.common import AUTH
 
 CONSOLE = {"X-Bip-Console": "1"}
 
@@ -58,8 +58,8 @@ def test_a_one_time_link_opens_a_session_once(bridges):
     assert bridge.get("/console/api/me", headers=session).json() == {"logged_in": True}
     assert bridge.get("/console/api/me").json() == {"logged_in": False}
     agents = bridge.get("/v1/agents", headers=session)
-    assert agents.status_code == 200 and all(a["key"] is None for a in agents.json()["agents"])
-    assert bridge.get("/v1/agents", headers=AUTH).json()["agents"][0]["key"] == HERMES_KEY   # the app gets it
+    assert agents.status_code == 200 and all("key" not in a for a in agents.json()["agents"])
+    assert "key" not in bridge.get("/v1/agents", headers=AUTH).json()["agents"][0]   # nor the app
     # Without the header (a page from elsewhere), the cookie alone is not enough.
     assert bridge.get("/v1/agents", headers={"Cookie": session["Cookie"]}).status_code == 401
     # The app lists it and can revoke it.

@@ -3,7 +3,7 @@ with the publisher's relay, agents' discovery and the install's QR code, `/v1/st
 (tests/test_relay_and_discovery.py, over HTTP and the CLI)."""
 import json
 
-from bbkit.common import AUTH, BRIDGE_KEY, HERMES_KEY, boite_message
+from bbkit.common import AUTH, BRIDGE_KEY, boite_message
 from bbkit.servers import free_port, wait_until
 
 MEMBER_KEY = "member-relay-key-0123456789abcdef012345"
@@ -108,13 +108,12 @@ def test_agents_discovery_and_install_qr(bridges, fakes):
     assert listed["bridge"] == {"url": "https://box.example.ts.net:8643", "lan": None}
     wellness = next(a for a in listed["agents"] if a["id"] == "wellness")
     assert wellness["name"] == "Wellness" and wellness["url"] == "https://box.example.ts.net:8642"
-    assert wellness["key"] == HERMES_KEY
+    assert "key" not in wellness
     install = bridge.cli("qr", "--json")
     assert install.returncode == 0, install.stderr
     assert json.loads(install.stdout) == {"v": 2, "bridgeURL": "https://box.example.ts.net:8643", "bridgeKey": BRIDGE_KEY}
     one = bridge.cli("qr", "--json", "--agent", "Wellness")
-    assert json.loads(one.stdout) == {"name": "Wellness", "agent": "wellness", "baseURL": "https://box.example.ts.net:8642",
-                                      "apiKey": HERMES_KEY, "bridgeURL": "https://box.example.ts.net:8643",
+    assert json.loads(one.stdout) == {"name": "Wellness", "agent": "wellness", "bridgeURL": "https://box.example.ts.net:8643",
                                       "bridgeKey": BRIDGE_KEY, "voice": "pocket:colibri"}
     unknown = bridge.cli("qr", "--json", "--agent", "nobody")
     assert unknown.returncode == 2 and unknown.stderr.strip() == "unknown agent: nobody"

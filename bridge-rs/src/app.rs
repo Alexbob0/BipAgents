@@ -27,7 +27,7 @@ use tokio::task::JoinHandle;
 
 use crate::agent_tools::AudioMaker;
 use crate::apns::ApnsClient;
-use crate::auth::{require_bridge_key, Caller};
+use crate::auth::require_bridge_key;
 use crate::config::{AgentConfig, Config, SharedConfig};
 use crate::console::ConsoleStore;
 use crate::cronwatch::{CronWatcher, Presence};
@@ -583,7 +583,7 @@ fn bytes_response(data: bytes::Bytes, content_type: &str, headers: &[(&'static s
 
 // -- the core routes (Python's build_router: /v1, bridge key) ----------------------------------------
 
-async fn list_agents(State(state): State<AppState>, caller: Caller) -> ApiResult<Response> {
+async fn list_agents(State(state): State<AppState>) -> ApiResult<Response> {
     let config = state.config();
     // made on the person's request (a card accepted): their apps add these at once, in this order
     let requested = crate::guide::load(&config).requested;
@@ -591,7 +591,6 @@ async fn list_agents(State(state): State<AppState>, caller: Caller) -> ApiResult
         .agents
         .values()
         .map(|a| {
-            let url = a.public_url.clone().filter(|u| !u.is_empty());
             json!({
                 "id": a.name, "name": a.display_name,
                 "voice": crate::voices::voice_for(&config, Some(a), None),
@@ -604,8 +603,6 @@ async fn list_agents(State(state): State<AppState>, caller: Caller) -> ApiResult
                 "family": crate::family_agent::is_family(&config, &a.name),
                 "project": crate::project_agent::listing_mark(&config, &a.name),
                 "requested": requested.get(&a.name),
-                // Never to a web console: it reaches Hermes through the bridge, which adds the key.
-                "key": if url.is_some() && !caller.console { Some(a.hermes_key.clone()) } else { None },
             })
         })
         .collect();

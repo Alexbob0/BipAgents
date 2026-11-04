@@ -121,20 +121,15 @@ pub fn lan_info(config: &Config) -> Option<Value> {
     Some(info)
 }
 
-/// What the pairing QR code carries (the app's « Scanner le QR code »): tailnet addresses, keys, voice, and the
-/// LAN door. Err (Python's ValueError) when a tailnet address is missing from the config.
+/// What an agent's pairing QR code carries (the app's « Scanner le QR code »): the bridge's tailnet address and key,
+/// the agent's name and voice, and the LAN door. Err when the bridge's tailnet address is missing from the config.
 pub fn pairing_payload(config: &Config, agent: &AgentConfig) -> Result<Value, String> {
-    let Some(base) = agent.public_url.as_deref().filter(|u| !u.is_empty()) else {
-        return Err(format!("agents.{}.public_url is missing (its Hermes address on the tailnet)", agent.name));
-    };
     let Some(bridge) = config.public_url.as_deref().filter(|u| !u.is_empty()) else {
         return Err("public_url is missing (the bridge's address on the tailnet)".into());
     };
     let mut payload = Map::new();
     payload.insert("name".into(), json!(agent.display_name));
     payload.insert("agent".into(), json!(agent.name));
-    payload.insert("baseURL".into(), json!(base));
-    payload.insert("apiKey".into(), json!(agent.hermes_key));
     payload.insert("bridgeURL".into(), json!(bridge));
     payload.insert("bridgeKey".into(), json!(config.bridge_key));
     if let Some(voice) = agent.voice.as_deref().filter(|v| !v.is_empty()) {
@@ -439,7 +434,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut config = lan_config(dir.path());
         config.public_url = Some("https://box.example.ts.net:8643".into());
-        let mut agent = AgentConfig {
+        let agent = AgentConfig {
             name: "wellness".into(),
             display_name: "Wellness".into(),
             hermes_url: "http://hermes-wellness.test".into(),
@@ -449,18 +444,17 @@ mod tests {
         };
         ensure_certificate(&config).unwrap();
         let payload = pairing_payload(&config, &agent).unwrap();
-        assert_eq!(payload["baseURL"], "https://box.example.ts.net:8642");
         assert_eq!(payload["agent"], "wellness");
-        assert_eq!(payload["apiKey"], "hermes-wellness-key-xyz");
         assert_eq!(payload["bridgeURL"], "https://box.example.ts.net:8643");
         assert_eq!(
             payload["lan"],
             json!({"url": "https://192.168.1.177:8650", "fingerprint": fingerprint(&config).unwrap()})
         );
         let keys: Vec<&String> = payload.as_object().unwrap().keys().collect();
-        assert_eq!(keys, ["name", "agent", "baseURL", "apiKey", "bridgeURL", "bridgeKey", "lan"]);
-        agent.public_url = None;
+        assert_eq!(keys, ["name", "agent", "bridgeURL", "bridgeKey", "lan"]);
+        let bridge = config.public_url.take();
         assert!(pairing_payload(&config, &agent).unwrap_err().contains("public_url"));
+        config.public_url = bridge;
         let install = install_payload(&config).unwrap();
         assert_eq!(install["v"], 2);
     }

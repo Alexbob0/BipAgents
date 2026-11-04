@@ -126,7 +126,7 @@ def test_a_claim_with_the_secret_pairs_the_app_once(bridges, fakes):
     agent = tomllib.loads(bridge.toml_text())["agents"]["quotidien"]
     assert agent["hermes_url"] == f"{fakes.hermes.url}/p/quotidien" and agent["public_url"] == "https://203.0.113.7/hermes/quotidien"
     listed = {a["id"]: a for a in bridge.get("/v1/agents", headers=AUTH).json()["agents"]}
-    assert listed["quotidien"]["url"] == "https://203.0.113.7/hermes/quotidien" and listed["quotidien"]["key"]
+    assert listed["quotidien"]["url"] == "https://203.0.113.7/hermes/quotidien" and "key" not in listed["quotidien"]
     assert hermes  # the fake ran as [hermes] bin
     # The secret is gone: the server says so, and a second claim, even with the same proof, is refused.
     assert not cloud.setup_file.exists()

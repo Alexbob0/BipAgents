@@ -34,7 +34,7 @@ async fn a_one_time_link_opens_a_session_once() {
     assert_eq!(app.get("/console/api/me", &[]).await.json(), json!({"logged_in": false}));
     let agents = app.get("/v1/agents", &console).await;
     assert_eq!(agents.status, 200);
-    assert!(agents.json()["agents"].as_array().unwrap().iter().all(|a| a["key"].is_null()));
+    assert!(agents.json()["agents"].as_array().unwrap().iter().all(|a| a.get("key").is_none()));
     // Without the header (a page from elsewhere), the cookie alone is not enough.
     assert_eq!(app.get("/v1/agents", &[("cookie", cookie.as_str())]).await.status, 401);
     // The app lists it and can revoke it.

@@ -72,7 +72,7 @@ async fn agents_listing() {
         json!({"bridge": {"url": null, "lan": null},
                "agents": [{"id": "wellness", "name": "Wellness", "voice": "pocket:colibri", "server_voice": null, "category": null,
                            "color": null, "outfit": "", "costumes": true, "language": null, "uploads": true, "url": null, "family": false, "project": null,
-                           "requested": null, "key": null, "group": ""}],
+                           "requested": null, "group": ""}],
                "unclaimed": []})
     );
     // FastAPI's JSON: compact, keys in the dict's order.
@@ -353,8 +353,8 @@ async fn pairing_route_and_hermes_relay() {
         app.get("/v1/pairing", &[(k, &v)]).await.json(),
         json!({"lan": {"url": "https://192.168.1.177:8650", "fingerprint": print}})
     );
-    // the agents listing gives the key when the agent has a tailnet address
-    assert_eq!(app.get("/v1/agents", &[(k, &v)]).await.json()["agents"][0]["key"], HERMES_KEY);
+    // the agents listing never gives an agent's Hermes key
+    assert!(app.get("/v1/agents", &[(k, &v)]).await.json()["agents"][0].get("key").is_none());
 
     let hermes_auth = format!("Bearer {HERMES_KEY}");
     let posted = app

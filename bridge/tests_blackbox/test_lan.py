@@ -52,17 +52,16 @@ def test_pairing_payload_carries_tailnet_addresses_keys_and_lan(bridges, fakes):
     bridge = with_lan(bridges, fakes).start()
     port = bridge.config["lan"]["port"]
     payload = json.loads(bridge.cli("qr", "--json", "--agent", "wellness").stdout)
-    assert payload["baseURL"] == "https://box.example.ts.net:8642" and payload["agent"] == "wellness"
-    assert payload["apiKey"] == HERMES_KEY and payload["bridgeKey"] == BRIDGE_KEY
+    assert payload["agent"] == "wellness" and "apiKey" not in payload and "baseURL" not in payload
+    assert payload["bridgeKey"] == BRIDGE_KEY
     assert payload["bridgeURL"] == "https://box.example.ts.net:8643"
     assert payload["lan"] == {"url": f"https://192.168.1.177:{port}", "fingerprint": served_fingerprint(port)}
     install = json.loads(bridge.cli("qr", "--json").stdout)
     assert install == {"v": 2, "bridgeURL": "https://box.example.ts.net:8643", "bridgeKey": BRIDGE_KEY,
                        "lan": payload["lan"]}
-    bridge.config["agents"]["Wellness"].pop("public_url")
+    bridge.config["agents"]["Wellness"].pop("public_url")   # the agent's own Hermes address is not needed any more
     bridge.write_config()
-    missing = bridge.cli("qr", "--json", "--agent", "wellness")
-    assert missing.returncode == 2 and "public_url" in missing.stderr
+    assert bridge.cli("qr", "--json", "--agent", "wellness").returncode == 0
 
 
 def test_lan_off_by_default(bridge):
