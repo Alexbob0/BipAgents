@@ -264,7 +264,8 @@ mod tests {
         assert_eq!(clean["aps"]["alert"], json!({"body": BRIDGE_FALLBACK, "loc-key": BRIDGE_FALLBACK}));
         assert_eq!(clean["aps"]["category"], "MESSAGE");
         assert_eq!(clean["outbox_id"], "abc123");
-        let neutral = json!({"aps": {"alert": {"title": "Vie", "body": "notif.approval", "loc-key": "notif.approval"}}});
+        let neutral =
+            json!({"aps": {"alert": {"title": "Vie", "body": "notif.approval", "loc-key": "notif.approval"}}});
         assert_eq!(scrub(&neutral, Audience::Bridge).unwrap()["aps"]["alert"]["body"], "notif.approval");
         // the French generic lines of the bridges before the pointer-only push: gone
         let old = json!({"aps": {"alert": {"body": "Approbation requise", "loc-key": "Approbation requise"}}});
@@ -352,8 +353,14 @@ mod tests {
         assert_eq!(fcm_data(&clean)["enc"], json!(enc));
         assert_eq!(fcm_data(&clean)["body"], "notif.reply");
         // too long, not base64, not a string: dropped (the neutral line stays)
-        for bad in [json!("A".repeat(ENC_MAX + 1)), json!("line one\nline two"), json!("pas du base64 !"), json!(""),
-                    json!({"text": "secret"}), json!(12)] {
+        for bad in [
+            json!("A".repeat(ENC_MAX + 1)),
+            json!("line one\nline two"),
+            json!("pas du base64 !"),
+            json!(""),
+            json!({"text": "secret"}),
+            json!(12),
+        ] {
             let mut push = push.clone();
             push["enc"] = bad.clone();
             assert!(scrub(&push, Audience::Bridge).unwrap().get("enc").is_none(), "{bad}");

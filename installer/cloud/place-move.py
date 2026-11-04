@@ -742,7 +742,8 @@ PLACE_PROGRAMS = (("bipbridge",), ("hermes", "gateway"))
 
 
 def still_running(uid, proc="/proc"):
-    """Which of PLACE_PROGRAMS still run as the place's account (their names, nothing more)."""
+    """Which of PLACE_PROGRAMS still run as the place's account (their names, nothing more, in PLACE_PROGRAMS'
+    order)."""
     found = []
     try:
         pids = os.listdir(proc)
@@ -761,7 +762,7 @@ def still_running(uid, proc="/proc"):
         for words in PLACE_PROGRAMS:
             if all(word in command for word in words) and " ".join(words) not in found:
                 found.append(" ".join(words))
-    return found
+    return [" ".join(words) for words in PLACE_PROGRAMS if " ".join(words) in found]
 
 
 def made_stopped(entry, proc="/proc", run=subprocess.run, sleep=time.sleep, wait=10):
