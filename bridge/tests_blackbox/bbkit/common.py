@@ -93,13 +93,16 @@ def answered(bridge, agent: str) -> list:
     return sorted([r for r in rows if r.get("choice")], key=lambda r: r.get("at") or 0)
 
 
-def boite_message(bridge, fakes, text: str, name: str = "Le point") -> dict:
+def boite_message(bridge, fakes, text: str, name: str = "Le point", notify: bool = True) -> dict:
     """A message in the Boîte as the bridge's own producers put one there: a routine's report (made by the app, run
-    now, its turn answering `text`). Returns the Boîte's item once stored."""
+    now, its turn answering `text`; `notify` False: the routine muted). Returns the Boîte's item once stored."""
     from .servers import wait_until
     made = bridge.post("/v1/agents/wellness/routines", headers=AUTH,
                        json={"name": name, "schedule": "every day at 7:00", "prompt": "Fais le point."})
     assert made.status_code == 200, made.text
+    if not notify:
+        muted = bridge.put(f"/v1/cron-jobs/wellness/{made.json()['job']['id']}", headers=AUTH, json={"notify": False})
+        assert muted.status_code == 200, muted.text
     before = {i["id"] for i in bridge.get("/v1/outbox", headers=AUTH).json()["items"]}
     fakes.hermes.run_output = text
     assert bridge.post(f"/v1/routines/{made.json()['job']['id']}/run", headers=AUTH).status_code == 200

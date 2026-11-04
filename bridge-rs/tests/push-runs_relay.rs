@@ -229,7 +229,7 @@ async fn devices_registered_with_the_publishers_relay_go_through_it() {
     }
     let resp = app.send_json("POST", "/v1/devices", &h, &json!({"token": token(), "environment": "relay"})).await;
     assert_eq!(resp.status, StatusCode::BAD_REQUEST);
-    assert_eq!(services.push.notify_message("wellness", "out-1", "Le texte du message", None, bipbridge::notifications::BoiteFrom::Other).await, 2); // delivered: the r1 one and the live one
+    assert_eq!(services.push.notify_message("wellness", "out-1", "Le texte du message", None, bipbridge::notifications::BoiteFrom::Other, true).await, 2); // delivered: the r1 one and the live one
     {
         let sent = sent.lock().unwrap();
         let mut tokens: Vec<String> = sent.iter().map(|r| r.json()["token"].as_str().unwrap().to_string()).collect();

@@ -205,6 +205,8 @@ pub struct Event {
     pub message: Option<String>,
     /// Wait for the reply's message to be stored and point at it.
     pub wait: bool,
+    /// Journaled for the Boîte, never pushed (a muted routine's report, a mail digest).
+    pub quiet: bool,
     /// The dedupe key without the message (`<kind>:<agent>:` is put first; a reply's is its message once found).
     pub key: String,
     pub from: Option<BoiteFrom>,
@@ -227,6 +229,7 @@ impl Event {
             title: None,
             message: None,
             wait: false,
+            quiet: false,
             key: key.into(),
             from: None,
             extra: Dict::new(),
@@ -373,6 +376,8 @@ impl PushService {
                 tracing::warn!(exc = %format!("{exc:#}"), "notification not marked read");
             }
             (0, "skipped:on_screen".to_string())
+        } else if event.quiet {
+            (0, "skipped:muted".to_string())
         } else if quiet {
             (0, "skipped:switch".to_string())
         } else {
@@ -470,7 +475,8 @@ impl PushService {
         })
     }
 
-    /// A Boîte message (outbox.rs): `from` says whose (its rule, notifications.rs).
+    /// A Boîte message (outbox.rs): `from` says whose (its rule, notifications.rs); `notify` false: journaled only
+    /// (the Boîte lists it), no push.
     pub async fn notify_message(
         &self,
         agent: &str,
@@ -478,10 +484,12 @@ impl PushService {
         text: &str,
         session_id: Option<&str>,
         from: BoiteFrom,
+        notify: bool,
     ) -> usize {
         let notice = Notice::Message { outbox_id: outbox_id.into(), text: text.into(), session_id: own(session_id) };
         let Some(mut event) = notice.event(agent, &self.context(agent)) else { return 0 };
         event.from = Some(from);
+        event.quiet = !notify;
         self.emit(event).await
     }
 

@@ -160,9 +160,6 @@ impl OutboxService {
         if let Some(threads) = crate::threads::upgrade(&self.push.threads) {
             threads.touch(&agent.name, session_id, "boite").await;
         }
-        if !notify {
-            return;
-        }
         let id = crate::py::py_str(&item["id"]);
         let (text, _) = extract_media(item.get("text").and_then(Value::as_str).unwrap_or("")); // its words only
         // whose: a background task's hand-back follows « Me prévenir », a routine's report its own mute
@@ -174,7 +171,7 @@ impl OutboxService {
         } else {
             BoiteFrom::Other
         };
-        self.push.notify_message(&agent.name, &id, &text, session_id, from).await;
+        self.push.notify_message(&agent.name, &id, &text, session_id, from, notify).await;
     }
 
     pub async fn close(&self) {

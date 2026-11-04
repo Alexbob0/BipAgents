@@ -137,3 +137,19 @@ def test_the_journal_carries_the_boite_message_whole(bridge, fakes):
     one = bridge.get(f"/v1/notifications/{row['id']}", headers=AUTH).json()
     assert one["boite"] == row["boite"]
     assert all("boite" not in r for r in rows if r["type"] != "boite")
+
+
+def test_a_muted_message_is_in_the_journal_without_a_push(bridge, fakes):
+    """The Boîte read from the journal alone shows a muted routine's report too: its row, no push."""
+    bridge.post("/v1/devices", headers=AUTH, json={"token": TOKEN, "environment": "sandbox", "agent_ids": ["wellness"]})
+    item = boite_message(bridge, fakes, "Rapport discret.", name="Discret", notify=False)
+
+    def row():
+        rows = bridge.get("/v1/notifications", headers=AUTH, params={"agent": "wellness"}).json()["notifications"]
+        return [r for r in rows if r["type"] == "boite" and r["ref"] == item["id"]]
+
+    assert wait_until(lambda: row() and row()[0]["push"], timeout=15)
+    [found] = row()
+    assert found["push"] == "skipped:muted" and found["boite"]["text"] == "Rapport discret."
+    assert not [p for p in fakes.apns.payloads() if p.get("r") == item["id"]]
+
