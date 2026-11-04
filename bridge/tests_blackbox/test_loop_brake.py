@@ -374,6 +374,42 @@ def test_the_audio_made_in_a_turn_is_handed_over_by_its_reply(bridges, fakes):
     assert wait_until(lambda: files() == [path], timeout=20), files()
 
 
+def test_the_files_handed_over_are_on_the_timeline_when_the_end_arrives(bridges, fakes):
+    """4/11 release check: the apps read the timeline as soon as a run ends, and a catch-up (`after=`) never gives an
+    item again. The files a turn made, kept on its stored reply, are there before the end is passed on: a reply read
+    then would stay without them on that phone."""
+    bridge = bridges.new().start()
+    give_token(bridge)
+    gate = threading.Event()
+    reply = "Voilà ta page."   # the model names no file: only the bridge's attachments show it
+    fakes.hermes.runs["r1"] = [sse("tool.started", run_id="r1", tool="mcp_bipagents_create_page", preview="{}"),
+                               gate, sse("message.delta", run_id="r1", delta=reply),
+                               sse("run.completed", run_id="r1", output=reply)]
+    fakes.hermes.add_session("api_c", [{"role": "user", "content": "C'est quand l'anniversaire de Julie ?"},
+                                       {"role": "assistant", "content": reply}], title="Julie")
+    start(bridge)
+    assert wait_until(lambda: fakes.hermes.event_requests)
+    made = call(bridge, "create_page", {"title": "Julie", "html": "<h1>Julie</h1>"})
+    assert not made["isError"], text_of(made)
+    path = media_of(made)
+    thread = bridge.get("/v1/threads/resolve", headers=AUTH, params={"agent": "wellness", "session_id": "api_c"}).json()
+
+    def files():
+        page = bridge.get(f"/v1/threads/{thread['thread']['id']}/timeline", headers=AUTH,
+                          params={"agent": "wellness"}).json()
+        said = [i for i in page["items"] if i["kind"] == "message" and i["role"] == "agent"]
+        return [a["path"] for a in said[-1].get("attachments", [])] if said else []
+
+    gate.set()
+    seen = None
+    with bridge.stream("GET", "/hermes/wellness/v1/runs/r1/events", headers=HERMES_AUTH) as resp:
+        for line in resp.iter_lines():
+            if line == "event: run.completed":
+                seen = files()   # read at once, as the apps do
+                break
+    assert seen == [path], seen
+
+
 def test_a_reply_that_already_hands_the_file_over_is_left_alone(bridges, fakes):
     bridge = bridges.new().start()
     give_token(bridge)

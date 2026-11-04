@@ -756,11 +756,17 @@ fn the_soul_is_rendered_in_one_fixed_order() {
     std::fs::create_dir_all(&folder).unwrap();
     bipbridge::profile_files::new_soul(&folder, "Tu es Vie.\n").unwrap();
     bipbridge::health::set_enabled(&c, &agent.name, true).unwrap();
+    // A person in UTC without a country: no standard date ever, so no dates block whatever today is (the server's
+    // zone and the calendar would else decide, e.g. « Mercredi 11 novembre : jour férié » from 4/11 in Paris).
+    bipbridge::dates::change(&c, |p| p.time_zone = "UTC".into()).unwrap();
     assert!(agents_admin::render_soul(&c, &agent).unwrap());
     let full = read_soul(&c, &agent).unwrap();
     // golden order: the personality, its language, the rules that never change, the switches' rules
     assert!(full.starts_with("Tu es Vie.\n\n<!-- bipagents:language -->"), "{full}");
     assert_eq!(blocks(&full), ["language", "payments", "notebook", "health", "shared-memory"], "{full}");
+    // today's line, the most volatile, comes after all of them: what is before it never changes with the day
+    let dated = bipbridge::dates::with_dates(&full, Some("Mercredi 11 novembre : jour férié : Armistice"));
+    assert!(dated.starts_with(full.trim_end()) && blocks(&dated).last().map(String::as_str) == Some("dates"), "{dated}");
     assert!(!agents_admin::render_soul(&c, &agent).unwrap(), "idempotent");
     // health off: the blocks before it unchanged byte for byte; on again: the same file as before
     let health = full.find("<!-- bipagents:health -->").unwrap();

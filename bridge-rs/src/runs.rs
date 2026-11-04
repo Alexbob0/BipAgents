@@ -1657,23 +1657,35 @@ impl RunHub {
             let items: Vec<Value> = added.iter().map(|p| crate::threads::timeline::file_attachment(p, None)).collect();
             data.insert("attachments".into(), json!(items));
             data.insert("stale".into(), json!(stale));
-            self.attach_handed_over(sub, &written, added, stale);
+            self.attach_handed_over(sub, &written, added, stale).await;
         }
         let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(data.clone()));
         SSEEvent::new(event.r#type, data, raw)
     }
 
     /// The files handed over, kept on the stored message as its attachments (threads.rs `attach_with`): the timeline
-    /// shows them at every read.
-    fn attach_handed_over(&self, sub: &Arc<RunSubscription>, written: &str, added: Vec<String>, stale: Vec<String>) {
+    /// shows them at every read. Kept before the run's end is passed on (4/11): the apps read the timeline at once when
+    /// the end comes, and a page catching up (`after=`) never gives again an item it gave, so a reply read before its
+    /// files were kept stayed without them on that phone. A message Hermes has not stored yet is waited for
+    /// `INLINE_WAIT` at most here, then in the background, the thread signalled once its files are kept.
+    async fn attach_handed_over(&self, sub: &Arc<RunSubscription>, written: &str, added: Vec<String>, stale: Vec<String>) {
+        const INLINE_WAIT: f64 = 3.0;
         let (Some(threads), Some(session)) = (crate::threads::upgrade(&self.threads), lock(&sub.state).session_id.clone())
         else {
             return;
         };
-        let (agent, written, wait) = (sub.agent.clone(), written.to_string(), self.message_wait());
+        let (agent, wait) = (sub.agent.clone(), self.message_wait());
+        if let Some((thread, message)) = threads.find_message(&agent, &session, Some(written), wait.min(INLINE_WAIT)).await {
+            threads.attach_with(&agent, &thread, &message, &added, &stale).await;
+            return;
+        }
+        let written = written.to_string();
         self.spawn(async move {
-            match threads.find_message(&agent, &session, Some(&written), wait).await {
-                Some((thread, message)) => threads.attach_with(&agent, &thread, &message, &added, &stale).await,
+            match threads.find_message(&agent, &session, Some(&written), (wait - INLINE_WAIT).max(0.0)).await {
+                Some((thread, message)) => {
+                    threads.attach_with(&agent, &thread, &message, &added, &stale).await;
+                    threads.touch(&agent.name, Some(&session), "files").await;
+                }
                 None => tracing::warn!(agent = %agent.name, session = %session,
                     "handed-over files not attached: the reply's message not found"),
             }
