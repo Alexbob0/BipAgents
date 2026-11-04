@@ -658,9 +658,48 @@ fn after_call_title(lang: &str) -> &'static str {
     }
 }
 
+/// What the person gets when the after-call turn made files but ended without a reply (stopped by the brake or its
+/// budget: release bench of 4/11, GLM made the page then called it 9 times more until its token limit).
+fn after_call_made_text(lang: &str) -> &'static str {
+    match lang.get(..2).unwrap_or("") {
+        "en" => "Here is what I prepared after our call.",
+        "de" => "Hier ist, was ich nach unserem Anruf vorbereitet habe.",
+        "es" => "Esto es lo que preparé después de nuestra llamada.",
+        "nl" => "Dit heb ik na ons gesprek voorbereid.",
+        _ => "Voici ce que j’ai préparé après notre appel.",
+    }
+}
+
+/// The after-call turn's delivery: its reply with the files made (as written), or, a turn that ended without a reply
+/// but made files, those files in a short message of the bridge's (the person was told « it comes after the call »);
+/// nothing made and nothing said: None.
+fn after_call_delivery(
+    agent: &AgentConfig,
+    lang: &str,
+    live: &str,
+    ran: &crate::background_turn::Ran,
+    files: Vec<String>,
+) -> Option<crate::background_turn::Delivery> {
+    let answered = ran.answered();
+    if !answered && files.is_empty() {
+        return None;
+    }
+    Some(crate::background_turn::Delivery {
+        agent: agent.clone(),
+        session: ran.session.clone(),
+        key: format!("handback:after-call:{live}"),
+        title: after_call_title(lang).into(),
+        text: if answered { ran.text.clone() } else { after_call_made_text(lang).into() },
+        as_written: answered,
+        run_id: Some(ran.run_id.clone()),
+        notify: true,
+        files,
+    })
+}
+
 /// The after-call turn in the call's conversation, its reply and files delivered there (pushed).
 async fn make_after_call(state: &AppState, agent: &AgentConfig, session: &str, live: &str, after: &[String], transcript: &str) {
-    use crate::background_turn::{Delivery, Kind, Pipeline, Turn};
+    use crate::background_turn::{Kind, Pipeline, Turn};
     let pipeline = Pipeline::of(state);
     let config = state.config();
     let mut turn = Turn::new(agent, Kind::AfterCall, session, after_call_prompt(after, transcript));
@@ -668,23 +707,19 @@ async fn make_after_call(state: &AppState, agent: &AgentConfig, session: &str, l
     turn.budget = Some(crate::jobs::direct_budget(&config));
     turn.options = crate::agents_admin::task_turn_options(&config, agent);
     match pipeline.run(&turn).await {
-        Ok(ran) if ran.answered() => {
-            let delivery = Delivery {
-                agent: agent.clone(),
-                session: ran.session.clone(),
-                key: format!("handback:after-call:{live}"),
-                title: after_call_title(&crate::handback::language_of(&config, agent)).into(),
-                text: ran.text.clone(),
-                as_written: true,
-                run_id: Some(ran.run_id.clone()),
-                notify: true,
-                files: crate::made_files::MADE.in_run(&agent.name, &ran.run_id),
-            };
-            pipeline.deliver(&delivery).await;
-            tracing::info!(agent = %agent.name, session = %session, tokens = ran.tokens, "after the call: made");
+        Ok(ran) => {
+            let lang = crate::handback::language_of(&config, agent);
+            let files = crate::made_files::MADE.in_run(&agent.name, &ran.run_id);
+            match after_call_delivery(agent, &lang, live, &ran, files) {
+                Some(delivery) => {
+                    pipeline.deliver(&delivery).await;
+                    tracing::info!(agent = %agent.name, session = %session, tokens = ran.tokens, status = %ran.status,
+                                   replied = delivery.as_written, files = delivery.files.len(), "after the call: made");
+                }
+                None => tracing::warn!(agent = %agent.name, session = %session, status = %ran.status,
+                                       "after the call: the turn ended without a reply"),
+            }
         }
-        Ok(ran) => tracing::warn!(agent = %agent.name, session = %session, status = %ran.status,
-                                  "after the call: the turn ended without a reply"),
         Err(why) => tracing::warn!(agent = %agent.name, session = %session, why = %why, "after the call: not run"),
     }
 }
@@ -717,6 +752,30 @@ mod tests {
         assert!(prompt.starts_with("<!--bip:after-call\n") && prompt.ends_with("-->"));
         assert_eq!(prompt.matches("-->").count(), 1);
         assert!(prompt.contains("- un audio → x") && prompt.contains("You: bonjour"));
+    }
+
+    /// Release bench of 4/11: the after-call turn made its page, then looped on it until its token limit (cancelled,
+    /// no reply): the page still reaches the person, in a short message of the bridge's.
+    #[test]
+    fn what_the_after_call_turn_made_reaches_the_person_without_its_reply() {
+        let agent = AgentConfig { name: "vie".into(), ..Default::default() };
+        let ran = |status: &str, text: &str| crate::background_turn::Ran {
+            run_id: "run_1".into(), session: "api_s".into(), status: status.into(), text: text.into(), tokens: 1,
+        };
+        let page = vec!["/bipagents/pages/vie/prononcer.html".to_string()];
+        let replied = after_call_delivery(&agent, "fr", "live_1", &ran("completed", "Voilà l'audio."), page.clone()).unwrap();
+        assert!(replied.as_written);
+        assert_eq!((replied.text.as_str(), replied.files.clone()), ("Voilà l'audio.", page.clone()));
+        let stopped = after_call_delivery(&agent, "fr", "live_1", &ran("cancelled", ""), page.clone()).unwrap();
+        assert!(!stopped.as_written, "a Boîte message of the bridge's, in the call's conversation");
+        assert_eq!((stopped.session.as_str(), stopped.files.clone()), ("api_s", page));
+        assert_eq!(stopped.text, "Voici ce que j’ai préparé après notre appel.");
+        assert_eq!(stopped.title, "Après l’appel");
+        assert_eq!(stopped.key, "handback:after-call:live_1");
+        assert!(stopped.notify);
+        assert!(after_call_delivery(&agent, "en", "live_1", &ran("cancelled", ""), vec![]).is_none());
+        assert_eq!(after_call_delivery(&agent, "en", "l", &ran("failed", ""), vec!["/a.wav".into()]).unwrap().text,
+                   "Here is what I prepared after our call.");
     }
 
     fn m(v: Value) -> Dict {

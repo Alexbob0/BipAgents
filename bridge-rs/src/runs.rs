@@ -1411,6 +1411,40 @@ impl RunHub {
             });
         }
         let Some(over) = noted else { return };
+        self.stop_looping(sub, st, over, rescuing, &settings);
+    }
+
+    /// The bridge's tool called again with the very same arguments in a run it follows, after its « already done »
+    /// (loop_brake.rs `Turns::check`): `calls` such calls in all. Hermes' run events carry no arguments for the
+    /// bridge's tools (an empty preview), so the brake's `same_call` can't see them: it hears it from the tool here,
+    /// and stops the run at that limit like any loop (release bench of 4/11: an after-call turn made its page, then
+    /// asked for it 9 times more until its token limit, 333k tokens).
+    pub fn same_write_again(&self, agent: &str, run_id: &str, tool: &str, calls: u32) {
+        let Some(sub) = lock(&self.inner).subs.get(&(agent.to_string(), run_id.to_string())).cloned() else { return };
+        let settings = self.config.as_ref().map(|c| c.get().brake.clone()).unwrap_or_default();
+        let mut st = lock(&sub.state);
+        if !settings.enabled || st.braked || st.finished {
+            return;
+        }
+        let rescuing = st.rescue_of.is_some();
+        let limits = if rescuing { settings.rescue_limits() } else { settings.limits(st.background) };
+        if calls >= limits.same_call {
+            let over = crate::loop_brake::Over::SameCall(crate::loop_brake::bare(tool).to_string());
+            self.stop_looping(&sub, &mut st, over, rescuing, &settings);
+        }
+    }
+
+    /// A run going round in circles stopped: the plain line in its stream, the rescue turn planned when it is a
+    /// person's conversation, its own push when nobody looks, Hermes' stop.
+    fn stop_looping(
+        &self,
+        sub: &RunSubscription,
+        st: &mut SubscriptionState,
+        over: crate::loop_brake::Over,
+        rescuing: bool,
+        settings: &crate::loop_brake::Settings,
+    ) {
+        let config = self.config.as_ref().map(|shared| shared.get());
         st.braked = true;
         // The safety net's rescue would start the same work again in a background task.
         st.rescued = true;
@@ -2309,6 +2343,45 @@ mod tests {
         drop(st);
         // the background task's run goes further (40 of one tool)
         assert!(notices(&task).is_empty() && !lock(&task.state).braked);
+    }
+
+    /// Release bench of 4/11: Hermes' run events carry no arguments for the bridge's tools (`"preview": ""`), so the
+    /// same page asked for 10 times in an after-call turn was never « the same call »; the tool tells the hub instead.
+    #[tokio::test]
+    async fn the_same_write_asked_again_stops_the_run_at_its_same_call() {
+        let hub = RunHub::new(HermesClient::new(reqwest::Client::new()), None, 7200, None);
+        let agent = AgentConfig { name: "daily".into(), ..Default::default() };
+        let run = |id: &str| {
+            let sub = Arc::new(RunSubscription::new(agent.clone(), id));
+            lock(&hub.inner).subs.insert(sub.key(), sub.clone());
+            sub
+        };
+        let started = SSEEvent::new("tool.started", json!({"tool": "mcp__bipagents__create_page", "preview": ""})
+            .as_object().cloned().unwrap(), "{}");
+        let notices = |sub: &RunSubscription| {
+            lock(&sub.state).backlog.iter().filter(|e| e.r#type == NOTICE).map(|e| e.data.clone()).collect::<Vec<_>>()
+        };
+        let (chat, task) = (run("run_chat"), run("run_task"));
+        hub.mark_background("daily", "run_task");
+        for calls in 1..=4u32 {
+            hub.dispatch(&chat, started.clone());
+            hub.dispatch(&task, started.clone());
+            if calls > 1 {
+                hub.same_write_again("daily", "run_chat", "mcp__bipagents__create_page", calls);
+                hub.same_write_again("daily", "run_task", "mcp__bipagents__create_page", calls);
+            }
+            // a conversation's turn at its 3rd identical call, not before
+            assert_eq!(lock(&chat.state).braked, calls >= 3, "chat at {calls}");
+        }
+        assert_eq!(notices(&chat).len(), 1);
+        assert_eq!(notices(&chat)[0]["code"], json!("loop_stopped"));
+        // a background turn at the task's same_call (5)
+        assert!(!lock(&task.state).braked);
+        hub.dispatch(&task, started.clone());
+        hub.same_write_again("daily", "run_task", "mcp__bipagents__create_page", 5);
+        assert!(lock(&task.state).braked && notices(&task).len() == 1);
+        // nothing followed: nothing to stop
+        hub.same_write_again("daily", "run_gone", "mcp__bipagents__create_page", 9);
     }
 
     #[tokio::test]

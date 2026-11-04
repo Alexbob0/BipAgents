@@ -859,6 +859,9 @@ pub struct Turn {
 struct BridgeTurn {
     writes: u32,
     seen: HashSet<String>,
+    /// The same write asked again after its « already done »: its calls in all, by signature (the hub stops the run
+    /// at `same_call`: `RunHub::same_write_again`).
+    again: HashMap<String, u32>,
     /// A turn with no run (a routine): all its bridge calls, by tool and in all.
     calls: u32,
     per_tool: HashMap<String, u32>,
@@ -905,6 +908,16 @@ fn signature_of(tool: &str, arguments: &Dict) -> String {
 }
 
 impl Turns {
+    /// How many times `turn` has asked for this very write (tool and arguments), once it was refused as already done:
+    /// 0 when it never was.
+    pub fn same_write_calls(&self, agent: &str, turn: Option<&Turn>, tool: &str, arguments: &Dict) -> u32 {
+        let turns = self.turns.lock().unwrap_or_else(|e| e.into_inner());
+        turns
+            .get(&turn_key(agent, turn))
+            .and_then(|t| t.again.get(&signature_of(tool, arguments)).copied())
+            .unwrap_or(0)
+    }
+
     /// A call of the bridge's tool `tool` by `agent` in `turn`: None when it may go on, else the refusal the model
     /// gets.
     pub fn check(
@@ -993,7 +1006,9 @@ what you have, and say plainly what you couldn't find or do (no limits or tools 
         // Only within a followed run: without one, the « turn » is a guess, and the person may well have asked for
         // the same thing again since (« refais le podcast »).
         if turn.is_some() && entry.seen.contains(&signature_of(tool, arguments)) {
-            tracing::info!(agent = %agent, tool = %tool, "the same write again in this turn: refused");
+            let calls = entry.again.entry(signature_of(tool, arguments)).or_insert(1);
+            *calls += 1;
+            tracing::info!(agent = %agent, tool = %tool, calls = *calls, "the same write again in this turn: refused");
             return Some(tool_text(
                 "Already done in this turn with exactly these arguments: not done again. There is nothing more to do for \
 it; tell the person what you did.",
@@ -1111,6 +1126,25 @@ mod tests {
             }
         }
         assert_eq!(stopped, Some((20, Over::SameTool("calendar_add".into()))));
+    }
+
+    #[test]
+    fn the_same_write_asked_again_is_counted_for_the_hub() {
+        let turns = Turns::default();
+        let settings = Settings::default();
+        let turn = Turn { run_id: "run_1".into(), background: true, banned: None };
+        let args = json!({"title": "Prononcer", "html": "<p>x</p>"}).as_object().cloned().unwrap();
+        let other = json!({"title": "Autre", "html": "<p>y</p>"}).as_object().cloned().unwrap();
+        assert_eq!(turns.check(&settings, "vie", Some(&turn), "mcp__bipagents__create_page", &args, 1.0), None);
+        turns.record("vie", Some(&turn), "mcp__bipagents__create_page", &args);
+        assert_eq!(turns.same_write_calls("vie", Some(&turn), "create_page", &args), 0, "done once, never refused");
+        for calls in 2..=4u32 {
+            assert!(turns.check(&settings, "vie", Some(&turn), "mcp__bipagents__create_page", &args, 2.0).is_some());
+            assert_eq!(turns.same_write_calls("vie", Some(&turn), "mcp__bipagents__create_page", &args), calls);
+        }
+        assert_eq!(turns.same_write_calls("vie", Some(&turn), "create_page", &other), 0);
+        let next = Turn { run_id: "run_2".into(), ..turn.clone() };
+        assert_eq!(turns.same_write_calls("vie", Some(&next), "create_page", &args), 0, "per run");
     }
 
     #[test]

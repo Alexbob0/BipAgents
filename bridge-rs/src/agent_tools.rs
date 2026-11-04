@@ -1936,6 +1936,14 @@ async fn mcp(
         &arguments,
         py::time_time(),
     ) {
+        // the very same write asked again and again: the hub stops the run at its `same_call` (Hermes' run events
+        // don't carry these tools' arguments, so it can't count them itself)
+        if let Some(t) = turn.as_ref() {
+            let calls = crate::loop_brake::TURNS.same_write_calls(&agent.name, Some(t), &name, &arguments);
+            if calls > 1 {
+                state.hub.same_write_again(&agent.name, &t.run_id, &name, calls);
+            }
+        }
         return Ok(answer(refused));
     }
     let wrote = move |agent: &str, name: &str, arguments: &Dict, result: &mut Dict| {
