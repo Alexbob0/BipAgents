@@ -681,7 +681,6 @@ pub struct Config {
     /// Scheduled-task replies read from Hermes sessions into the outbox (see cronwatch.py).
     pub cron_watch: bool,
     pub cron_interval_seconds: f64,
-    pub cron_window_hours: f64,
     /// A background sub-agent's report left without a reply: the agent writes the message itself (handback.rs).
     pub cron_subtask_handback: bool,
     /// Files the agents point to with « MEDIA:<path> » lines: agent-side prefix -> host directory.
@@ -831,7 +830,6 @@ impl Config {
             pronunciations: IndexMap::new(),
             cron_watch: true,
             cron_interval_seconds: 30.0,
-            cron_window_hours: 12.0,
             cron_subtask_handback: true,
             media_roots: IndexMap::new(),
             push_message_wait_seconds: 10.0,
@@ -1831,7 +1829,6 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         pronunciations,
         cron_watch: b(cron, "watch", true),
         cron_interval_seconds: f(cron, "interval_seconds", 30.0)?,
-        cron_window_hours: f(cron, "window_hours", 12.0)?,
         cron_subtask_handback: b(cron, "subtask_handback", true),
         media_roots,
         push_message_wait_seconds: f(push, "message_wait_seconds", 10.0)?.clamp(0.0, 60.0),

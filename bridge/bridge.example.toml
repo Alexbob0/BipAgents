@@ -47,7 +47,6 @@ default_voice = "pocket:colibri"
 [cron]
 watch = true
 interval_seconds = 30
-window_hours = 12        # on first start, only tasks from the last N hours are picked up
 
 # Files that agents point to with a "MEDIA:<path>" line (podcast mp3, image…): prefix as seen by
 # the agent (inside its container) -> folder on the host. Only media files under these folders are served
