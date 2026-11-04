@@ -109,8 +109,7 @@ CREATE TABLE IF NOT EXISTS notifications (
     read_at TEXT,
     hidden INTEGER NOT NULL DEFAULT 0,
     push TEXT,
-    dedupe_key TEXT UNIQUE,
-    legacy TEXT
+    dedupe_key TEXT UNIQUE
 );
 CREATE INDEX IF NOT EXISTS notifications_agent ON notifications (agent, created_at);
 CREATE INDEX IF NOT EXISTS notifications_thread ON notifications (thread_id, read_at);
@@ -322,6 +321,10 @@ impl Store {
         // a Boîte message's files, as items (JSON list), never `MEDIA:` lines in its text (outbox.rs `ingest`)
         if !has("outbox", "attachments")? {
             conn.execute_batch("ALTER TABLE outbox ADD COLUMN attachments TEXT")?;
+        }
+        // the legacy push payload a notification's row kept: never read
+        if has("notifications", "legacy")? {
+            conn.execute_batch("ALTER TABLE notifications DROP COLUMN legacy")?;
         }
         Ok(())
     }

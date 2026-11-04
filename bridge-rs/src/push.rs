@@ -385,7 +385,7 @@ impl PushService {
                 .await;
             (sent, if sent > 0 { format!("sent:{sent}") } else { "skipped:no_device".into() })
         };
-        if let Err(exc) = crate::notifications::set_push(&self.store, &id, &push, &payload).await {
+        if let Err(exc) = crate::notifications::set_push(&self.store, &id, &push).await {
             tracing::error!(exc = %format!("{exc:#}"), "notification not journaled");
         }
         if let Some(threads) = &threads {

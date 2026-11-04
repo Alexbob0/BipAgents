@@ -202,13 +202,8 @@ pub async fn insert(store: &Store, row: &NewRow<'_>) -> anyhow::Result<bool> {
     Ok(n > 0)
 }
 
-pub async fn set_push(store: &Store, id: &str, push: &str, legacy: &Dict) -> anyhow::Result<()> {
-    store
-        .run(
-            "UPDATE notifications SET push = ?, legacy = ? WHERE id = ?",
-            vec![text(push), text(&Value::Object(legacy.clone()).to_string()), text(id)],
-        )
-        .await?;
+pub async fn set_push(store: &Store, id: &str, push: &str) -> anyhow::Result<()> {
+    store.run("UPDATE notifications SET push = ? WHERE id = ?", vec![text(push), text(id)]).await?;
     Ok(())
 }
 
