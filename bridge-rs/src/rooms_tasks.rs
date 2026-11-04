@@ -292,21 +292,14 @@ pub fn reassign(room: &mut Room, task: u32, to: &str, notice_text: &str) -> Opti
     }
     room.queue.retain(|turn| !(turn.agent == from && turn.task == Some(task)));
     let notice = room.push_message(Message {
-        id: 0,
         at,
         from: to.to_string(),
         kind: "notice".into(),
         text: notice_text.to_string(),
-        files: Vec::new(),
         reply_to: None, // not a turn: never counted among the message's turns
-        hop: 0,
-        tokens: None,
-        route: None,
-        error: None,
-        handoff: None,
-        capped: false,
         task: Some(task),
         handover: Some(json!({"task": task, "from": from, "to": to})),
+        ..Default::default()
     });
     if let Some(t) = get_mut(room, task) {
         t.handover = Some(Handover { from: from.clone(), to: to.into(), at, message: notice, note: String::new(), in_room: false });
@@ -417,21 +410,11 @@ mod tests {
 
     fn person(room: &mut Room, text: &str) -> u64 {
         room.push_message(Message {
-            id: 0,
             at: 1.0,
             from: "person".into(),
             kind: "person".into(),
             text: text.into(),
-            files: Vec::new(),
-            reply_to: None,
-            hop: 0,
-            tokens: None,
-            route: None,
-            error: None,
-            handoff: None,
-            capped: false,
-            task: None,
-            handover: None,
+            ..Default::default()
         })
     }
 

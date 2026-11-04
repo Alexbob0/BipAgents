@@ -8,7 +8,7 @@
 //! cache holds): `<!--bip:now jeudi 29 octobre 2026, 08:40, Europe/Paris (UTC+01:00)-->`. Hermes patch 0015 says in
 //! the prompt to trust it, and puts the same line, in the routines' zone, at the top of each routine run.
 //!
-//! Where: the apps' messages (`POST /v1/live/recaps/take` answers it first, the apps put it before the message), a
+//! Where: the apps' messages (the sending route puts it first, threads/send.rs), a
 //! Live call's brief (`GET /v1/live/brief`), and every turn the bridge starts itself (watchers, handbacks, background
 //! tasks, rooms, shared agents, the brake's rescue, messages between agents). The apps hide every `<!--bip:…-->`
 //! note, and shared conversations leave them out (read_shares.rs).

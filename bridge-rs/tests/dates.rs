@@ -34,15 +34,19 @@ write first (a routine, a report, a reminder), write in French.\n<!-- /bipagents
     config
 }
 
-fn routines(dir: &Path) {
-    let jobs = json!({"jobs": [
-        {"id": "a1", "name": "Point du matin", "enabled": true, "state": "scheduled",
-         "schedule": {"kind": "cron", "expr": "0 7 * * *", "display": "0 7 * * *"}},
-        {"id": "a2", "name": "Bilan du soir", "enabled": true, "schedule": {"kind": "cron", "expr": "0 21 * * *"}},
-        {"id": "a3", "name": "En pause", "enabled": false, "schedule": {"kind": "cron", "expr": "0 9 * * *"}},
-    ]});
-    let file = dir.join("hermes").join("profiles").join("wellness").join("cron").join("jobs.json");
-    std::fs::write(file, jobs.to_string()).unwrap();
+fn routines(app: &TestApp) {
+    let config = app.app.state.config();
+    let agent = config.agents.values().next().unwrap().name.clone();
+    for (name, schedule) in [("Point du matin", "0 7 * * *"), ("Bilan du soir", "0 21 * * *"), ("En pause", "0 9 * * *")] {
+        let id = bipbridge::routines::create(&config, &agent, name, schedule, "…", None).unwrap().id;
+        if name == "En pause" {
+            bipbridge::routines::update(&config, &id, |r| {
+                r.enabled = false;
+                Ok(())
+            })
+            .unwrap();
+        }
+    }
 }
 
 fn profile(dir: &Path) -> String {
@@ -67,7 +71,7 @@ async fn get(app: &TestApp, path: &str) -> Value {
 async fn the_phone_zone_reaches_the_agents_and_the_routines_wait_for_the_answer() {
     let dir = tempfile::tempdir().unwrap();
     let app = TestApp::new(setup(dir.path()));
-    routines(dir.path());
+    routines(&app);
 
     // the key is needed
     assert_eq!(app.get("/v1/time", &[]).await.status, 401);

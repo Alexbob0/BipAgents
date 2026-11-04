@@ -5,10 +5,10 @@
 //! podcast). The bridge doesn't depend on the model copying a path.
 //!
 //! The tools that make a file (`create_audio`, `create_podcast`, `create_page`, `map`: agent_tools.rs, the `MEDIA:`
-//! line first in their result) note it here, with the turn it was made in: the run the hub follows
-//! (`RunHub::turn_of`), or none (a routine: Hermes' cron, which the bridge only watches). When the reply that ends the
-//! turn is delivered (runs.rs `hand_over_files` for the runs the hub follows, cronwatch.rs for a routine's output: the
-//! files made by that agent with no run, between the routine's start and its output), `fix_reply`:
+//! line first in their result) note it here, with the turn it was made in (`RunHub::turn_of`: every turn is a run the
+//! hub follows, routines included since 2026-11-03). When the turn ends, runs.rs `hand_over` reads with `fix_reply`
+//! which files the reply should carry, and gives them as the end's attachments (the model's words untouched); a mark
+//! (a vault chip, a rename) still joins the words. `fix_reply`'s rules:
 //!
 //! - replaces a `MEDIA:` line pointing at another file of the same kind and agent (`/bipagents/audio/<agent>/…`,
 //!   `/bipagents/pages/<agent>/…`, `/bipagents/maps/<agent>/…`) by a file of that kind made in the turn that the
@@ -109,19 +109,6 @@ impl MadeFiles {
             .unwrap_or_default()
     }
 
-    /// The files made by `agent` in a turn no run carries (a routine), between `from` and `to` (Unix seconds).
-    pub fn in_routine(&self, agent: &str, from: f64, to: f64) -> Vec<String> {
-        let all = self.by_agent.lock().unwrap_or_else(|e| e.into_inner());
-        all.get(agent)
-            .map(|files| {
-                files
-                    .iter()
-                    .filter(|m| m.run_id.is_none() && m.at >= from && m.at <= to)
-                    .map(|m| m.path.clone())
-                    .collect()
-            })
-            .unwrap_or_default()
-    }
 }
 
 /// An audio file's title as its name says it (`/bipagents/audio/<agent>/20261030-101503-mars.m4a` → `mars`): the
@@ -159,23 +146,6 @@ pub fn media_path_of(result: &crate::Dict) -> Option<String> {
 /// `MEDIA:<path>` on a line of its own (spaces around allowed).
 static MEDIA_LINE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^[ \t]*MEDIA:[ \t]*(\S+)[ \t]*$").expect("valid regex"));
-
-/// The files made in the turn that `reply` doesn't carry and must (audio, pages), for the screen's last delta.
-pub fn missing_from(reply: &str, agent: &str, made: &[String]) -> Vec<String> {
-    let carried: Vec<String> = MEDIA_LINE.captures_iter(reply).map(|c| c[1].to_string()).collect();
-    let replaced = superseded(made);
-    let mut out: Vec<String> = Vec::new();
-    for path in made {
-        if !carried.contains(path)
-            && !out.contains(path)
-            && !replaced.contains(path)
-            && kind_of(path, agent).is_some_and(|(_, required)| required)
-        {
-            out.push(path.clone());
-        }
-    }
-    out
-}
 
 /// `reply` handing over the files `made` in its turn by `agent` (see the module's rules); None when it already does,
 /// or when nothing was made.
@@ -273,15 +243,6 @@ pub fn is_mark(made: &str) -> bool {
     made.starts_with(crate::vault_contacts::MARK_OPEN) || made.starts_with(crate::guide::RENAMED_OPEN)
 }
 
-/// The line a reply carries for `made`: a file's `MEDIA:` line, or a vault entry's mark as it is.
-pub fn line_of(made: &str) -> String {
-    if is_mark(made) {
-        made.to_string()
-    } else {
-        format!("MEDIA:{made}")
-    }
-}
-
 /// The vault entries' marks noted in the turn that `reply` doesn't carry yet (by their entry's id: the model may have
 /// copied the label differently), each once.
 fn missing_marks(reply: &str, made: &[String]) -> Vec<String> {
@@ -321,7 +282,6 @@ mod tests {
         assert_eq!(fix_reply("Voilà.\n\n", "vie", &[TODAY.into()]).unwrap(), format!("Voilà.\nMEDIA:{TODAY}"));
         // a page too
         assert_eq!(fix_reply("Ton budget.", "vie", &[PAGE.into()]).unwrap(), format!("Ton budget.\nMEDIA:{PAGE}"));
-        assert_eq!(missing_from("Ton budget.", "vie", &[PAGE.into(), MAP.into()]), vec![PAGE.to_string()]);
     }
 
     #[test]
@@ -370,8 +330,6 @@ MEDIA:/bipagents/audio/coach/20261027-seance.m4a";
         // with a page made in the same turn: both, the mark last, each once
         let fixed = fix_reply(reply, "vie", &[PAGE.into(), mark.clone(), mark.clone()]).unwrap();
         assert_eq!(fixed, format!("{reply}\nMEDIA:{PAGE}\n{mark}"));
-        assert_eq!(line_of(&mark), mark);
-        assert_eq!(line_of(PAGE), format!("MEDIA:{PAGE}"));
     }
 
     #[test]
@@ -391,7 +349,6 @@ MEDIA:/bipagents/audio/coach/20261027-seance.m4a";
         assert_eq!(fix_reply(&format!("Prêt.\nMEDIA:{first}"), "vie", &made).unwrap(), format!("Prêt.\nMEDIA:{third}"));
         // none written: the last one added, not the others
         assert_eq!(fix_reply("Prêt.", "vie", &made).unwrap(), format!("Prêt.\nMEDIA:{third}"));
-        assert_eq!(missing_from("Prêt.", "vie", &made), vec![third.to_string()]);
         // the last one alone already: nothing to change
         assert_eq!(fix_reply(&format!("Prêt.\nMEDIA:{third}"), "vie", &made), None);
     }
@@ -421,7 +378,6 @@ MEDIA:/bipagents/audio/coach/20261027-seance.m4a";
         assert_eq!(fix_reply(reply, "bip", &[first.clone(), last.clone()]).unwrap(), format!("{reply}\n{last}"));
         assert_eq!(fix_reply(&format!("{reply}\n{last}"), "bip", std::slice::from_ref(&last)), None);
         assert!(is_mark(&last));
-        assert_eq!(line_of(&last), last);
     }
 
     #[test]
@@ -438,10 +394,8 @@ MEDIA:/bipagents/audio/coach/20261027-seance.m4a";
         made.note("vie", TODAY, None, 5000.0);
         made.note("vie", "/bipagents/audio/vie/chat.m4a", Some("run_1"), 5001.0);
         made.note("coach", "/bipagents/audio/coach/x.m4a", None, 5002.0);
-        assert_eq!(made.in_routine("vie", 4000.0, 6000.0), vec![TODAY.to_string()]);
         assert_eq!(made.in_run("vie", "run_1"), vec!["/bipagents/audio/vie/chat.m4a".to_string()]);
         assert!(made.in_run("vie", "run_2").is_empty());
-        assert!(made.in_routine("lea", 0.0, 1e12).is_empty());
         // from a tool's result: the MEDIA line of the agent's own kind of file
         let result = |text: &str| crate::tools_knowledge::tool_text(text, false);
         made.note_result("vie", &result(&format!("MEDIA:{PAGE}\nPage ready: id budget-novembre.")), Some("run_3"), 6000.0);

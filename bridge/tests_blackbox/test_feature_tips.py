@@ -1,10 +1,10 @@
 """Features discovered over the first weeks (feature_tips.rs, Alex 2026-10-28): a moment noticed in the person's message
-(`/v1/live/recaps/take` with `text` and `kinds`) proposes the fitting feature once, as a hidden note for the agent and a
+(the send route, its `text` and `kinds`) proposes the fitting feature once, as a hidden note for the agent and a
 `bip-tip-` card « Essayer / Plus tard / Pas pour moi »; one a day, never at night, never in a routine's run, « Pas pour
 moi » never again; the page `/v1/tips` with each feature's state, the costumes, the counts; a switch to turn it off."""
 import json
 
-from bbkit.fakes import waiting_notes
+from bbkit.fakes import taken_notes, waiting_notes
 from bbkit.common import AUTH, answered
 
 
@@ -26,12 +26,7 @@ def daytime(bridge):
 
 
 def say(bridge, text, kinds=None, session="s1"):
-    body = {"agent": "wellness", "session": session, "text": text}
-    if kinds:
-        body["kinds"] = kinds
-    response = bridge.post("/v1/live/recaps/take", headers=AUTH, json=body)
-    assert response.status_code == 200, response.text
-    return waiting_notes(response.json()["recap"])
+    return waiting_notes(taken_notes(bridge, session=session, text=text, kinds=kinds or ()))
 
 
 def tip_cards(bridge):
@@ -136,9 +131,8 @@ def test_adoption_the_page_and_the_switch(bridge):
     assert bridge.put("/v1/tips/settings", headers=AUTH, json={"enabled": True}).json()["enabled"] is True
 
 
-def test_an_older_app_without_text(bridge):
+def test_a_plain_message_on_day_0(bridge):
     daytime(bridge)
-    response = bridge.post("/v1/live/recaps/take", headers=AUTH, json={"agent": "wellness", "session": "s1"})
-    assert response.status_code == 200 and waiting_notes(response.json()["recap"]) is None   # day 0: nothing from the calendar
+    assert say(bridge, "Bonjour") is None   # day 0: nothing from the calendar
     view = bridge.get("/v1/tips", headers=AUTH).json()
     assert view["day"] == 0 and view["enabled"] is True and len(view["features"]) == 13

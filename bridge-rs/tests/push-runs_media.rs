@@ -86,15 +86,15 @@ async fn cron_job_notification_preference() {
     let client = TestApp::new(config(dir.path(), &Urls::default()));
     let (k, v) = auth();
     let h = [(k, v.as_str())];
-    let store = client.app.state.store.clone();
-    assert!(store.note_cron_job("wellness", "fc344ed09026", Some("Scan des e-mails")).await.unwrap());
+    let config = client.app.state.config();
+    let id = bipbridge::routines::create(&config, "wellness", "Scan des e-mails", "every 2h", "Scanne", None).unwrap().id;
     let jobs = client.get("/v1/cron-jobs", &h).await.json()["jobs"].clone();
     let listed: Vec<(Value, Value, Value)> =
         jobs.as_array().unwrap().iter().map(|j| (j["job"].clone(), j["name"].clone(), j["notify"].clone())).collect();
-    assert_eq!(listed, [(json!("fc344ed09026"), json!("Scan des e-mails"), json!(true))]);
-    let resp = client.send_json("PUT", "/v1/cron-jobs/wellness/fc344ed09026", &h, &json!({"notify": false})).await;
+    assert_eq!(listed, [(json!(id), json!("Scan des e-mails"), json!(true))]);
+    let resp = client.send_json("PUT", &format!("/v1/cron-jobs/wellness/{id}"), &h, &json!({"notify": false})).await;
     assert_eq!(resp.status, StatusCode::OK);
-    assert!(!store.note_cron_job("wellness", "fc344ed09026", None).await.unwrap()); // muted, name kept
+    assert!(!bipbridge::routines::get(&config, &id).unwrap().notify); // muted, name kept
     assert_eq!(client.get("/v1/cron-jobs?agent=wellness", &h).await.json()["jobs"][0]["name"], "Scan des e-mails");
     let resp = client.send_json("PUT", "/v1/cron-jobs/wellness/nope", &h, &json!({"notify": false})).await;
     assert_eq!(resp.status, StatusCode::NOT_FOUND);

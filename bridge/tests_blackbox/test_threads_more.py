@@ -125,7 +125,7 @@ def test_a_shared_agents_conversation_through_the_owners_bridge(bridges, fakes):
     page = get(b, f"/v1/threads/{cid}/timeline", agent="cuisine__alex")
     assert page["thread"]["id"] == cid and [i["text"] for i in page["items"]] == ["Dîner", "Une fondue !"]
     assert page["items"][0]["client_id"] == "C0FFEE00-0000-4000-8000-000000000010"
-    assert page["pending"] == {"run": None, "approvals": []}
+    assert page["pending"] == {"run": None, "approvals": [], "questions": []}
     # a turn going on: its state and start, for the shared screen
     gate = threading.Event()
     fakes.hermes.runs["r2"] = [gate, sse("run.completed", output="Une tarte.")]
@@ -141,3 +141,40 @@ def test_a_shared_agents_conversation_through_the_owners_bridge(bridges, fakes):
     # another household's key reaches nothing
     assert a.get(f"/family/s/cuisine/conversations/{cid}/timeline",
                  headers={"Authorization": "Bearer nope"}).status_code == 401
+
+
+def test_a_live_call_put_in_a_conversation_tells_its_open_screens(bridges, fakes):
+    """2026-11-03 (Alex, TestFlight 20261103.1141): back from a Live call, the call's item showed only once the
+    conversation was opened again. Recording the call in its thread sends the thread's event on the stream (no journal
+    row: nothing to notify), and the next `after=` page has the call."""
+    main_session(fakes)
+    fakes.hermes.add_session("live_1", [{"role": "user", "content": "Je pars à Lyon"},
+                                        {"role": "assistant", "content": "Bon voyage !"}],
+                             title="Live · 11:00", last_active=12, started_at=11)
+    bridge = with_device(bridges).start()
+    main = get(bridge, "/v1/threads/main", agent="wellness")
+    page = get(bridge, f"/v1/threads/{main['id']}/timeline", agent="wellness")
+    events, stop = [], threading.Event()
+
+    def watch():
+        with httpx.Client(base_url=bridge.url, headers=AUTH, timeout=30) as client:
+            with client.stream("GET", "/v1/threads/events", params={"agent": "wellness", "thread": "main"}) as resp:
+                for line in resp.iter_lines():
+                    if line.startswith("data:"):
+                        events.append(line[5:].strip())
+                    if stop.is_set():
+                        return
+
+    viewer = threading.Thread(target=watch, daemon=True)
+    viewer.start()
+    time.sleep(0.5)
+    ended = bridge.post("/v1/live/calls", headers=AUTH, json={"agent": "wellness", "session": "api_main",
+                                                               "live_session": "live_1"})
+    assert ended.json() == {"ok": True}
+    assert wait_until(lambda: any(main["id"] in e and '"call"' in e for e in events), timeout=15), events
+    newer = get(bridge, f"/v1/threads/{main['id']}/timeline", agent="wellness", after=page["last"])
+    calls = [i for i in newer["items"] if i["kind"] == "call"]
+    assert calls and calls[0]["call"]["live_session"] == "live_1"
+    assert bridge.get("/v1/notifications", headers=AUTH).json()["notifications"] == []
+    stop.set()
+    viewer.join(timeout=15)

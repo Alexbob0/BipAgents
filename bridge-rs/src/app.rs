@@ -16,7 +16,7 @@ use axum::extract::{Path, Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, post, put};
+use axum::routing::{delete, get, post};
 use axum::Router;
 use futures::StreamExt;
 use regex::Regex;
@@ -144,10 +144,11 @@ impl Services {
         ));
         let hermes = HermesClient::new(http.clone());
         let briefs = Arc::new(Briefs::new(&py::join(&data_dir, "briefs"), hermes.clone(), shared.clone()));
-        let routines_store = store.clone();
+        // when each routine last ran (sleep.rs: a place with routines stays up)
+        let routines_config = shared.clone();
         let routines: crate::sleep::Routines = Arc::new(move || {
-            let store = routines_store.clone();
-            Box::pin(async move { routines(&store).await })
+            let config = routines_config.get();
+            Box::pin(async move { crate::routines::last_runs(&config) })
         });
         let (up_config, up_hermes) = (shared.clone(), hermes.clone());
         let hermes_up: crate::sleep::HermesUp = Arc::new(move || {
@@ -281,14 +282,6 @@ impl Services {
     }
 }
 
-/// When each scheduled task last ran (sleep.py: a place with routines stays up).
-async fn routines(store: &Store) -> Vec<String> {
-    match store.cron_jobs(None).await {
-        Ok(rows) => rows.iter().filter(|r| py::truthy(&r["last_seen"])).map(|r| py::py_str(&r["last_seen"])).collect(),
-        Err(_) => Vec::new(),
-    }
-}
-
 async fn hermes_up(config: &Config, hermes: &HermesClient) -> bool {
     match config.agents.values().next() {
         None => true,
@@ -313,18 +306,16 @@ impl AppState {
             }
         }
         if config.cron_watch {
-            let mut watcher = CronWatcher::new(
+            // the agents' turns no run of ours carries: Bot Chat replies, sub-agents' reports (cronwatch.rs)
+            let watcher = CronWatcher::new(
                 self.config.clone(),
                 self.hermes.clone(),
                 self.outbox.clone(),
                 config.cron_interval_seconds,
-                config.cron_window_hours,
-                Some(self.store.clone()),
                 Some(self.hub.clone()),
                 Some(self.push.clone()),
                 Some(self.presence.clone()),
             );
-            watcher.briefs = Some(self.briefs.clone());
             self.spawn(Arc::new(watcher).run());
         }
         self.spawn(purge_loop(self.clone()));
@@ -340,6 +331,7 @@ impl AppState {
         self.spawn(crate::connections::run_forever(self.clone())); // renews the services' access tokens
         self.spawn(crate::connectors_run::scheduler(self.clone())); // the connectors' mechanical schedules
         self.spawn(crate::watchers::scheduler(self.clone())); // the watchers: checks with no model call
+        self.spawn(crate::routines::scheduler(self.clone())); // routines on a clock (Hermes' cron runs none)
         self.spawn(crate::triggers::scheduler(self.clone())); // routines started by an e-mail or a link
         self.spawn(crate::triggers_mail::supervisor(self.clone())); // their mailboxes, by IMAP IDLE
         self.spawn(crate::archives::scheduler(self.config.clone()));
@@ -466,13 +458,6 @@ async fn purge_loop(state: AppState) {
 // -- request models ----------------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
-pub struct CronJobPrefs {
-    #[serde(deserialize_with = "web::lax::bool")]
-    pub notify: bool,
-}
-impl Validate for CronJobPrefs {}
-
-#[derive(Debug, Deserialize)]
 pub struct TtsRequest {
     pub text: String,
     #[serde(default)]
@@ -589,6 +574,8 @@ fn outbox_item(row: &Row, state: &AppState) -> Value {
         "id": get("id"), "agent": get("agent"), "title": get("title"), "text": get("text"),
         "created_at": get("created_at"), "sent_at": get("sent_at"), "session_id": get("session_id"),
         "has_audio": has_audio, "audio_url": format!("/v1/outbox/{id}/audio"),
+        "attachments": row.get("attachments").and_then(Value::as_str).and_then(|a| serde_json::from_str::<Value>(a).ok())
+            .unwrap_or(json!([])),
     })
 }
 
@@ -1016,64 +1003,6 @@ async fn delete_page(State(state): State<AppState>, Path(page): Path<String>, q:
     Ok(web::ok(json!({"deleted": page})))
 }
 
-/// Polled by an open conversation: its message count (to show turns the agent takes on its own),
-/// and « the user is looking at it » (no push for what is on screen).
-async fn session_state(
-    State(state): State<AppState>,
-    Path(session_id): Path<String>,
-    q: QueryMap,
-) -> ApiResult<Response> {
-    let agent = web::query_required(&q, "agent")?;
-    let config = state.config();
-    let agent_cfg = agent_or_404(&config, Some(&agent))?;
-    if !SESSION_ID.is_match(&session_id) {
-        return Err(HttpError::new(400, "invalid session_id"));
-    }
-    state.presence.touch(&agent_cfg.name, &session_id);
-    let session = match state.hermes.session(&agent_cfg, &session_id).await {
-        Ok(s) => s,
-        Err(exc) => {
-            if let Some(status) = exc.status() {
-                return Err(HttpError::new(
-                    if [401, 403, 404].contains(&status) { status } else { 502 },
-                    "Hermes refused",
-                ));
-            }
-            if exc.is_transport() {
-                return Err(HttpError::new(502, "your agent isn't answering right now: try again in a moment"));
-            }
-            return Err(anyhow::anyhow!(exc).into());
-        }
-    };
-    let count =
-        if session.contains_key("message_count") { session.get("message_count") } else { session.get("messages") };
-    // isinstance(count, int): a bool is one in Python.
-    let count = match count {
-        Some(Value::Number(n)) if n.is_i64() || n.is_u64() => Value::Number(n.clone()),
-        Some(Value::Bool(b)) => Value::Bool(*b),
-        _ => Value::Null,
-    };
-    let updated = session
-        .get("updated_at")
-        .filter(|v| py::truthy(v))
-        .or_else(|| session.get("last_active"))
-        .cloned()
-        .unwrap_or(Value::Null);
-    // the agent's Boîte messages (a hand-back, a routine's report): they show in the conversation too (Bot Chat, all
-    // of them) without changing its message count; the app reloads when this changes
-    let outbox = state.store.outbox_marker(&agent_cfg.name).await.ok();
-    let mut out = json!({"session_id": session_id, "message_count": count, "updated_at": updated, "outbox": outbox});
-    // a Live call put in it (live_calls.rs): shown at its time, the app reloads when this changes; absent without any
-    let calls = crate::live_calls::LiveCalls::of(&state.briefs);
-    let (name, id) = (agent_cfg.name.clone(), session_id.clone());
-    if let Ok(Some(marker)) = tokio::task::spawn_blocking(move || calls.marker(&name, &id)).await {
-        out["calls"] = json!(marker);
-    }
-    // its waiting messages (msg_queue.rs), so every device shows the same list, and the turn the bridge started
-    out["queue"] = crate::msg_queue::queues_of(&state).get(&agent_cfg.name).snapshot_of(&agent_cfg.name, &session_id);
-    Ok(web::ok(out))
-}
-
 /// Is each agent's Hermes up, and does the model answer? Lets the app tell « server down » from « model
 /// down » (its machine off, an expired API key).
 async fn status(State(state): State<AppState>) -> ApiResult<Response> {
@@ -1119,29 +1048,6 @@ async fn status(State(state): State<AppState>) -> ApiResult<Response> {
 /// The LAN door as it is now (address, certificate): the app refreshes it while the tailnet works.
 async fn pairing(State(state): State<AppState>) -> ApiResult<Response> {
     Ok(web::ok(json!({"lan": lan_info(&state.config())})))
-}
-
-/// Scheduled tasks seen by the cron watcher, with whether their replies are pushed.
-async fn cron_jobs(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
-    let config = state.config();
-    let name = match q.get("agent").filter(|a| !a.is_empty()) {
-        Some(a) => Some(agent_or_404(&config, Some(a))?.name),
-        None => None,
-    };
-    let jobs = state.store.cron_jobs(name.as_deref()).await?;
-    Ok(web::ok(json!({"jobs": jobs})))
-}
-
-async fn set_cron_job(
-    State(state): State<AppState>,
-    Path((agent, job)): Path<(String, String)>,
-    Json(body): Json<CronJobPrefs>,
-) -> ApiResult<Response> {
-    let name = agent_or_404(&state.config(), Some(&agent))?.name;
-    if !state.store.set_cron_notify(&name, &job, body.notify).await? {
-        return Err(HttpError::new(404, "unknown job"));
-    }
-    Ok(web::ok(json!({"agent": name, "job": job, "notify": body.notify})))
 }
 
 async fn watch_run(State(state): State<AppState>, Json(body): Json<WatchRequest>) -> ApiResult<Response> {
@@ -1215,8 +1121,8 @@ async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>
         // an agent a relative shares with this person: her answer goes to their bridge (agent_shares.rs)
         let run_id = check_run_id(&body.run_id)?;
         let choice = body.choice.trim().to_lowercase();
-        return crate::agent_shares::approve_mine(&state, &body.agent, &run_id, &choice, body.request_id.as_deref())
-            .await;
+        let (answer, request) = (body.answer.as_deref(), body.request_id.as_deref());
+        return crate::agent_shares::approve_mine(&state, &body.agent, &run_id, &choice, answer, request).await;
     }
     let agent = agent_or_404(&config, Some(&body.agent))?;
     let run_id = check_run_id(&body.run_id)?;
@@ -1417,11 +1323,8 @@ pub fn build_router() -> Router<AppState> {
         .route("/media", get(get_media))
         .route("/pages", get(list_pages))
         .route("/pages/{page}", delete(delete_page))
-        .route("/sessions/{session_id}/state", get(session_state))
         .route("/status", get(status))
         .route("/pairing", get(pairing))
-        .route("/cron-jobs", get(cron_jobs))
-        .route("/cron-jobs/{agent}/{job}", put(set_cron_job))
         .route("/watch", post(watch_run))
         .route("/runs/{run_id}/events", get(run_events))
         .route("/approve", post(approve))
@@ -1587,7 +1490,6 @@ const FIRST_ROUTE_METHODS: &[(&str, &str)] = &[
     ("/v1/media", "GET"),
     ("/v1/pages", "GET"),
     ("/v1/pages/{page}", "DELETE"),
-    ("/v1/sessions/{session_id}/state", "GET"),
     ("/v1/status", "GET"),
     ("/v1/pairing", "GET"),
     ("/v1/cron-jobs", "GET"),
@@ -1596,8 +1498,6 @@ const FIRST_ROUTE_METHODS: &[(&str, &str)] = &[
     ("/v1/runs/{run_id}/events", "GET"),
     ("/v1/approve", "POST"),
     ("/v1/approvals", "GET"),
-    ("/v1/approvals/answered", "GET"),
-    ("/v1/approvals/answered", "POST"),
     ("/v1/relay/push", "POST"),
     ("/v1/agent-kinds", "GET"),
     ("/v1/agents/claim", "POST"),
@@ -1657,8 +1557,6 @@ const FIRST_ROUTE_METHODS: &[(&str, &str)] = &[
     ("/v1/live/brief", "GET"),
     ("/v1/live/calls", ""),
     ("/v1/live/calls/start", "POST"),
-    ("/v1/live/recaps", "POST"),
-    ("/v1/live/recaps/take", "POST"),
     ("/v1/favicon/{host}", "GET"),
     ("/v1/console/pairings/{code}", "POST"),
     ("/v1/console/devices", "GET"),
@@ -1799,6 +1697,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::templates::router())
         .merge(crate::autonomous::router())
         .merge(crate::triggers::router())
+        .merge(crate::routines::router())
         .merge(crate::handover::app_router())
         .merge(crate::link_wallet::app_router())
         .merge(crate::place_backup::router())
@@ -1831,6 +1730,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::health::router())
         .merge(crate::voices::router())
         .merge(crate::live_brief::router())
+        .merge(crate::live_turns::router())
         .merge(crate::favicons::router())
         .merge(crate::map_tiles::router())
         .merge(crate::message_search::router())

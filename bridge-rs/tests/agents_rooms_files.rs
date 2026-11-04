@@ -73,27 +73,31 @@ async fn a_rooms_file_reaches_the_person_and_one_to_one_hears_of_the_room() {
     let h = [(k, v.as_str())];
 
     // nothing said in any room yet: no note joins the one-to-one message (0 token more)
-    let take = json!({"agent": "dev", "session": "s1", "text": "Salut"});
-    let recap = app.send_json("POST", "/v1/live/recaps/take", &h, &take).await.json();
-    assert!(recap["recap"].as_str().is_none_or(|r| !r.contains("bip:rooms")), "{recap}");
+    let recap = common::notes(&app, "dev", "s1", "Salut").await;
+    assert!(!recap.contains("bip:rooms"), "{recap}");
 
     let made = app.send_json("POST", "/v1/rooms", &h, &json!({"participants": ["dev", "bip"], "title": "Site du club"})).await;
     assert_eq!(made.status, 200, "{}", made.text());
     let id = made.json()["id"].as_str().unwrap().to_string();
-    let path = format!("/v1/rooms/{id}/messages");
-    let sent = app.send_json("POST", &path, &h, &json!({"text": "@dev fais le site du club de foot"})).await;
+    let thread = format!("/v1/threads/room:{id}");
+    let said = json!({"text": "@dev fais le site du club de foot", "client_id": "files-0001"});
+    let sent = app.send_json("POST", &format!("{thread}/messages"), &h, &said).await;
     assert_eq!(sent.status, 200, "{}", sent.text());
-    let mut messages = Value::Null;
+    let mut page = Value::Null;
     for _ in 0..200 {
-        messages = app.get(&path, &h).await.json();
-        if messages["answering"] == json!([]) && messages["messages"].as_array().unwrap().len() >= 2 {
+        page = app.get(&format!("{thread}/timeline"), &h).await.json();
+        if page["pending"]["room"]["answering"] == json!([]) && page["items"].as_array().unwrap().len() >= 2 {
             break;
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    let reply = &messages["messages"][1];
-    assert_eq!(reply["from"], "dev", "{messages}");
-    assert_eq!(reply["files"], json!(["/envoi/site.zip"]), "{messages}");
+    let reply = &page["items"][1];
+    assert_eq!(reply["from"], "dev", "{page}");
+    // its file for the person, as an attachment of the item (its path served by /v1/media)
+    let file = &reply["attachments"][0];
+    assert_eq!((file["id"].clone(), file["path"].clone(), file["name"].clone()),
+               (json!("rm_2.a0"), json!("/envoi/site.zip"), json!("site.zip")), "{page}");
+    assert_eq!(reply["attachments"].as_array().unwrap().len(), 1, "{page}");
     assert!(!reply["text"].as_str().unwrap().contains("MEDIA:"));
     // the run was told files may be handed, the vault never
     let runs = fake.runs.lock().unwrap().clone();
@@ -106,11 +110,10 @@ async fn a_rooms_file_reaches_the_person_and_one_to_one_hears_of_the_room() {
     assert_eq!(app.get("/v1/media?path=/envoi/site.zip&agent=dev", &h).await.status, 200);
 
     // back in the one-to-one conversation: what's new in the room, once
-    let recap = app.send_json("POST", "/v1/live/recaps/take", &h, &take).await.json();
-    let note = recap["recap"].as_str().unwrap_or_default().to_string();
+    let note = common::notes(&app, "dev", "s1", "Salut").await;
     assert!(note.contains("<!--bip:rooms\n") && note.contains("From the room « Site du club »:"), "{note}");
     assert!(note.contains("- You: Voici le site du club, prêt à mettre en ligne. [file: site.zip]"), "{note}");
     assert!(note.contains("- Your person: @dev fais le site du club de foot"), "{note}");
-    let again = app.send_json("POST", "/v1/live/recaps/take", &h, &take).await.json();
-    assert!(again["recap"].as_str().is_none_or(|r| !r.contains("bip:rooms")), "{again}");
+    let again = common::notes(&app, "dev", "s1", "Salut").await;
+    assert!(!again.contains("bip:rooms"), "{again}");
 }

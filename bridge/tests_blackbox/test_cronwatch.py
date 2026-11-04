@@ -1,18 +1,15 @@
-"""The cron watcher end to end (cronwatch.py): finished scheduled-task runs read from Hermes' sessions into the outbox
-and pushed (a muted job stored silently), Bot Chat turns taken alone pushed as « reply ready », and the conversation
-state route that tells the bridge what is on screen. The watcher starts 10 s after the bridge."""
+"""The watcher of the turns no run of the bridge carries (cronwatch.rs) end to end: Bot Chat turns taken alone pushed as
+« reply ready », never while that conversation is on screen, and sub-agents' reports. The watcher starts 10 s after
+the bridge. Routines: test_routines.py (the bridge runs them)."""
 import time
 
 import pytest
 
-from bbkit.common import AUTH, in_session, pushed_text
+from bbkit.common import AUTH, in_session, on_screen, pushed_text
 from bbkit.servers import wait_until
 
 TOKEN = "c" * 64
 NOW = "2026-10-21T08:00:00.000Z"
-
-# the agent's waiting messages in that conversation (msg_queue.rs, test_agent_queue.py): none
-NO_QUEUE = {"agent": "wellness", "version": 0, "paused": False, "items": [], "running": None}
 
 
 def stamp(seconds_ago: float) -> str:
@@ -31,43 +28,6 @@ def watching(bridges):
 
 
 @pytest.mark.slow
-def test_finished_cron_replies_go_to_the_outbox_once_and_muted_ones_silently(bridges, fakes):
-    bridge = watching(bridges)
-    hermes = fakes.hermes
-    podcast, muted = f"cron_fc344ed09026_{stamp(3600)}", f"cron_0681ac73805e_{stamp(1800)}"
-    hermes.add_session(podcast, [{"role": "user", "content": "Produis le point"},
-                                 {"role": "assistant", "content": [{"type": "text", "text": "Bonjour Alex !"}]}],
-                       title="Podcast du matin · Oct 21 07:00")
-    hermes.add_session(muted, [{"role": "user", "content": "Trie"}, {"role": "assistant", "content": "Tri des e-mails fait."}],
-                       title=None)
-    hermes.add_session(f"cron_aaaa_{stamp(600)}", [{"role": "assistant", "content": "[SILENT]"}])
-    hermes.add_session(f"cron_bbbb_{stamp(3 * 86400)}", [{"role": "assistant", "content": "Vieux message"}])
-    hermes.add_session(f"cron_cccc_{stamp(60)}", [{"role": "user", "content": "Produis le point"}])   # still running
-    hermes.add_session(f"cron_dddd_{stamp(60)}", [{"role": "assistant", "content": "je passe par terminal…",
-                                                   "tool_calls": [{"id": "t1"}]}])
-    bridge.start()
-    assert wait_until(lambda: len(bridge.get("/v1/outbox", headers=AUTH).json()["items"]) == 2, timeout=25)
-    time.sleep(1.0)   # more polls: nothing else, nothing twice
-    items = bridge.get("/v1/outbox", headers=AUTH).json()["items"]
-    by_text = {i["text"]: i for i in items}
-    assert set(by_text) == {"Bonjour Alex !", "Tri des e-mails fait."}
-    assert by_text["Bonjour Alex !"]["title"] == "Podcast du matin · Oct 21 07:00"
-    assert by_text["Bonjour Alex !"]["session_id"] == podcast
-    assert by_text["Tri des e-mails fait."]["title"] == "Tri des e-mails"     # the job's name kept by the bridge
-    with bridge.db() as db:
-        ids = sorted(row[0] for row in db.execute("SELECT ntfy_id FROM outbox"))
-        jobs = dict(db.execute("SELECT job, name FROM cron_jobs").fetchall())
-    assert ids == sorted([f"hermes-session:{podcast}", f"hermes-session:{muted}"])
-    assert jobs == {"fc344ed09026": "Podcast du matin", "0681ac73805e": "Tri des e-mails"}
-    assert wait_until(lambda: len(fakes.apns.pushes()) >= 1)
-    time.sleep(2.5)   # the muted job's message waited for its audio as long as the pushed one did
-    pushed = [p for p in fakes.apns.payloads() if p["aps"].get("category") == "MESSAGE"]
-    assert [p["r"] for p in pushed] == [by_text["Bonjour Alex !"]["id"]]
-    listed = bridge.get("/v1/cron-jobs", headers=AUTH).json()["jobs"]
-    assert {(j["job"], j["notify"]) for j in listed} == {("fc344ed09026", True), ("0681ac73805e", False)}
-
-
-@pytest.mark.slow
 def test_a_bot_chat_turn_taken_alone_is_pushed_once_unless_on_screen(bridges, fakes):
     bridge = watching(bridges)
     hermes = fakes.hermes
@@ -83,47 +43,15 @@ def test_a_bot_chat_turn_taken_alone_is_pushed_once_unless_on_screen(bridges, fa
     payload = fakes.apns.payloads()[0]
     assert payload["t"] == "reply" and in_session(bridge, payload, "api_bot") and payload["r"] == "session:api_bot"
     assert pushed_text(bridge, payload) == "Wellness dit que ta nuit était bonne."
-    # The conversation open on the phone (it polls its state): the next turn is not pushed.
-    state = bridge.get("/v1/sessions/api_bot/state?agent=wellness", headers=AUTH)
-    assert state.status_code == 200
-    assert state.json() == {"session_id": "api_bot", "message_count": 4, "updated_at": 0, "outbox": "0@",  # Hermes' last_active
-                            "queue": NO_QUEUE}
-    hermes.messages[("", "api_bot")] += [{"role": "user", "content": "Et demain ?"},
-                                         {"role": "assistant", "content": "Grand soleil."}]
-    hermes.sessions[""]["api_bot"]["message_count"] = 6
-    seen = fetched()
-    assert wait_until(lambda: fetched() >= seen + 2, timeout=10)
-    time.sleep(0.5)
-    assert len(fakes.apns.pushes()) == 1
-
-
-def test_session_state_route(bridges, fakes):
-    bridge = bridges.new(change=lambda c: c["agents"].update(Panne={"hermes_url": fakes.down.url, "hermes_key": "p" * 32}))
-    bridge.start()
-    resp = bridge.get("/v1/sessions/api_bot/state?agent=wellness", headers=AUTH)
-    assert resp.status_code == 200 and resp.json() == {"session_id": "api_bot", "message_count": 7, "updated_at": None,
-                                                       "outbox": "0@", "queue": NO_QUEUE}  # the agent's Boîte: none yet
-    fakes.hermes.add_session("api_9", [{"role": "user", "content": "x"}], updated_at="2026-10-21T07:00:00Z")
-    assert bridge.get("/v1/sessions/api_9/state?agent=wellness", headers=AUTH).json() == {
-        "session_id": "api_9", "message_count": 1, "updated_at": "2026-10-21T07:00:00Z", "outbox": "0@", "queue": NO_QUEUE}
-    bad = bridge.get("/v1/sessions/bad%20id/state?agent=wellness", headers=AUTH)
-    assert bad.status_code == 400 and bad.json() == {"detail": "invalid session_id"}
-    assert bridge.get("/v1/sessions/api_bot/state?agent=ghost", headers=AUTH).status_code == 404
-    assert bridge.get("/v1/sessions/api_bot/state", headers=AUTH).status_code == 422
-    down = bridge.get("/v1/sessions/api_bot/state?agent=panne", headers=AUTH)
-    assert down.status_code == 502 and down.json() == {"detail": "your agent isn't answering right now: try again in a moment"}
-    fakes.hermes.keys[""] = "another-key"
-    refused = bridge.get("/v1/sessions/api_bot/state?agent=wellness", headers=AUTH)
-    assert refused.status_code == 401 and refused.json() == {"detail": "Hermes refused"}
-
-    def broken(seen):
-        from starlette.responses import JSONResponse
-        return JSONResponse({"error": "boom"}, status_code=500) if seen.path.startswith("/api/sessions/") else None
-
-    fakes.hermes.keys[""] = "hermes-wellness-key-xyz"
-    fakes.hermes.override = broken
-    failing = bridge.get("/v1/sessions/api_bot/state?agent=wellness", headers=AUTH)
-    assert failing.status_code == 502 and failing.json() == {"detail": "Hermes refused"}
+    # The conversation open on the phone (its event stream): the next turn is not pushed.
+    with on_screen(bridge):
+        hermes.messages[("", "api_bot")] += [{"role": "user", "content": "Et demain ?"},
+                                             {"role": "assistant", "content": "Grand soleil."}]
+        hermes.sessions[""]["api_bot"]["message_count"] = 6
+        seen = fetched()
+        assert wait_until(lambda: fetched() >= seen + 2, timeout=10)
+        time.sleep(0.5)
+        assert len(fakes.apns.pushes()) == 1
 
 
 @pytest.mark.slow
@@ -179,16 +107,24 @@ def test_a_subtask_report_left_without_a_reply_is_told_by_the_agent(bridges, fak
     assert turn["session_id"] == "api_7" and turn["input"].startswith("<!--bip:subtask\n")
     assert turn["input"].endswith("MEDIA:/home/hermes/.hermes/media/podcast_jeudi.mp3\n-->")
 
-    def items():
-        return bridge.get("/v1/outbox", headers=AUTH).json()["items"]
+    # the agent's message is the conversation's own item (background_turn.rs: no Boîte copy), the journal points at
+    # it and pushes it once; the sub-agent's file is one of its attachments
+    reply = hermes.run_output
+    hermes.messages[("", "api_7")].append({"role": "assistant", "content": reply})   # what Hermes keeps of the turn
 
-    assert wait_until(items, timeout=15)
-    item = items()[0]
-    # An mp3 the bridge can't serve keeps its line: the app shows it as a file (2026-10-30, ntfy.rs own_mp3).
-    assert item["session_id"] == "api_7" and item["text"] == ("Ton podcast de jeudi est prêt :\n- 12 minutes\n- deux voix\n"
-                                                              "MEDIA:/home/hermes/.hermes/media/podcast_jeudi.mp3")
+    def rows():
+        found = bridge.get("/v1/notifications", headers=AUTH).json()["notifications"]
+        return [r for r in found if r["type"] == "reply" and r["session_id"] == "api_7" and r["m"]]
+
+    assert wait_until(rows, timeout=20)
+    assert bridge.get("/v1/outbox", headers=AUTH).json()["items"] == []
+    row = rows()[0]
+    page = bridge.get(f"/v1/threads/{row['c']}/timeline", headers=AUTH, params={"agent": "wellness"}).json()
+    [said] = [i for i in page["items"] if i["id"] == row["m"]]
+    assert said["text"] == "Ton podcast de jeudi est prêt :\n- 12 minutes\n- deux voix"
+    assert [a["path"] for a in said["attachments"]] == ["/home/hermes/.hermes/media/podcast_jeudi.mp3"]
     assert wait_until(lambda: fakes.apns.pushes())
     time.sleep(1.5)
     payloads = fakes.apns.payloads()
-    assert len(payloads) == 1 and payloads[0]["m"] == f"o_{item['id']}" and in_session(bridge, payloads[0], "api_7")
+    assert len(payloads) == 1 and payloads[0]["m"] == row["m"] and in_session(bridge, payloads[0], "api_7")
     assert len(hermes.started) == 1   # once

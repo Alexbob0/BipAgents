@@ -275,6 +275,7 @@ static TOOL_LIST: LazyLock<Vec<Value>> = LazyLock::new(|| {
     tools.push(crate::give_file::tool()); // a file it made, to the person's drive or the conversation (give_file.rs)
     tools.push(crate::rooms_memory::tool()); // its group discussions, read from a one-to-one turn
     tools.push(crate::triggers::tool()); // routines started by an e-mail or a link (triggers.rs)
+    tools.push(crate::routines::tool()); // routines on a clock (routines.rs; Hermes' cronjob tool is off)
     tools
 });
 
@@ -1956,6 +1957,17 @@ async fn mcp(
     }
     if name == crate::agent_messages::TOOL_NAME {
         let mut result = crate::agent_messages::call(&state.http, Some(state.hub.clone()), &state.config(), &agent, &arguments).await;
+        wrote(&agent.name, &name, &arguments, &mut result);
+        return Ok(answer(result));
+    }
+    if name == crate::routines::TOOL_NAME {
+        // made in this conversation: its report goes back there
+        let origin = state.hub.asking_session(&agent.name);
+        let (mut result, run) = crate::routines::call(&state.config(), &agent.name, &arguments, origin.as_deref());
+        if let Some(id) = run {
+            let state = state.clone();
+            tokio::spawn(async move { crate::routines::fire(&state, &id).await });
+        }
         wrote(&agent.name, &name, &arguments, &mut result);
         return Ok(answer(result));
     }

@@ -57,24 +57,25 @@ def test_a_media_only_message_reads_as_headphones(bridges, fakes):
 
 
 def test_cron_job_notification_preference(bridges):
-    bridge = bridges.new()
-    bridge.seed_db([("INSERT INTO cron_jobs (agent, job, name, notify, last_seen) VALUES (?,?,?,?,?)",
-                     ("wellness", "fc344ed09026", "Scan des e-mails", 1, NOW)),
-                    ("INSERT INTO cron_jobs (agent, job, name, notify, last_seen) VALUES (?,?,?,?,?)",
-                     ("wellness", "0681ac73805e", None, 0, "2026-10-20T08:00:00.000Z"))])
-    bridge.start()
-    jobs = bridge.get("/v1/cron-jobs", headers=AUTH).json()["jobs"]
-    assert jobs == [{"agent": "wellness", "job": "fc344ed09026", "name": "Scan des e-mails", "notify": True,
-                     "last_seen": NOW},
-                    {"agent": "wellness", "job": "0681ac73805e", "name": None, "notify": False,
-                     "last_seen": "2026-10-20T08:00:00.000Z"}]          # the last seen first
-    resp = bridge.put("/v1/cron-jobs/wellness/fc344ed09026", headers=AUTH, json={"notify": False})
-    assert resp.status_code == 200 and resp.json() == {"agent": "wellness", "job": "fc344ed09026", "notify": False}
-    with bridge.db() as db:
-        assert db.execute("SELECT notify FROM cron_jobs WHERE job='fc344ed09026'").fetchone() == (0,)
-    assert bridge.get("/v1/cron-jobs?agent=wellness", headers=AUTH).json()["jobs"][0]["name"] == "Scan des e-mails"
+    """Each routine's « Me prévenir » (routines.rs, the routines the bridge keeps), as the apps' list reads it."""
+    bridge = bridges.new().start()
+
+    def made(name, schedule):
+        resp = bridge.post("/v1/agents/wellness/routines", headers=AUTH,
+                           json={"name": name, "schedule": schedule, "prompt": f"{name}, comme d'habitude"})
+        assert resp.status_code == 200, resp.text
+        return resp.json()["job"]["id"]
+
+    scan, tidy = made("Scan des e-mails", "0 8 * * *"), made("Rangement", "every 2h")
+    jobs = {j["job"]: j for j in bridge.get("/v1/cron-jobs", headers=AUTH).json()["jobs"]}
+    assert set(jobs) == {scan, tidy} and jobs[scan]["name"] == "Scan des e-mails" and jobs[scan]["notify"] is True
+    resp = bridge.put(f"/v1/cron-jobs/wellness/{scan}", headers=AUTH, json={"notify": False})
+    assert resp.status_code == 200 and resp.json() == {"agent": "wellness", "job": scan, "notify": False}
+    listed = bridge.get("/v1/cron-jobs?agent=wellness", headers=AUTH).json()["jobs"]
+    assert [j["notify"] for j in listed if j["job"] == scan] == [False]
+    assert bridge.get("/v1/agents/wellness/routines", headers=AUTH).json()["jobs"][0]["notify"] is False
     assert bridge.get("/v1/cron-jobs?agent=ghost", headers=AUTH).status_code == 404
     unknown = bridge.put("/v1/cron-jobs/wellness/nope", headers=AUTH, json={"notify": False})
     assert unknown.status_code == 404 and unknown.json() == {"detail": "unknown job"}
-    assert bridge.put("/v1/cron-jobs/ghost/fc344ed09026", headers=AUTH, json={"notify": True}).status_code == 404
-    assert bridge.put("/v1/cron-jobs/wellness/fc344ed09026", headers=AUTH, json={}).status_code == 422
+    assert bridge.put(f"/v1/cron-jobs/ghost/{scan}", headers=AUTH, json={"notify": True}).status_code == 404
+    assert bridge.put(f"/v1/cron-jobs/wellness/{scan}", headers=AUTH, json={}).status_code == 422

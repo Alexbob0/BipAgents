@@ -1,7 +1,7 @@
 // The web console: log in (a one-time link, or a code approved in the iPhone app), then the person's agents, their
 // conversations and the inbox, as in the app. No build step: Preact + htm, vendored.
 import { html, render, useState, useEffect, useRef, useCallback, useMemo } from "./vendor/preact-htm.js";
-import { call, hermes, events, blobURL, HttpError } from "./api.js";
+import { call, events, blobURL, HttpError } from "./api.js";
 import { render as markdown, visible, media } from "./markdown.js";
 import { attach, category, CATEGORIES } from "./bips.js";
 import { T, lang } from "./text.js";
@@ -21,12 +21,9 @@ function deviceName() {
   return os ? `${browser} · ${os}` : browser;
 }
 
-const isBotChat = s => (s.title || "").toLowerCase() === "bot chat";
-const isScheduled = s => (s.id || "").startsWith("cron_") || (s.source || "").toLowerCase() === "cron";
-// Hermes gives times as ISO strings or epoch seconds.
+// Times as ISO strings or epoch seconds.
 const millis = v => typeof v === "number" ? v * (v < 1e12 ? 1000 : 1) : Date.parse(v) || 0;
-const sessionTime = s => millis(s.updated_at || s.last_active || s.last_message_at || s.created_at || s.started_at || 0);
-const newestFirst = list => [...list].sort((a, b) => sessionTime(b) - sessionTime(a));
+const q = encodeURIComponent;
 
 function when(value) {
   const ms = millis(value);
@@ -46,45 +43,6 @@ function errorText(error) {
   }
   return T.unreachable;
 }
-
-function messageText(m) {
-  if (typeof m.content === "string") return m.content;
-  if (Array.isArray(m.content)) return m.content.map(p => typeof p === "string" ? p : p.type === "text" ? p.text : "").filter(Boolean).join("\n");
-  return m.text || "";
-}
-
-function hasImage(m) {
-  return Array.isArray(m.content) && m.content.some(p => ["image_url", "input_image", "image"].includes(p?.type));
-}
-
-// The transcript as the app shows it: what the person wrote, the agent's replies, and the tools it used between them.
-function thread(messages) {
-  const out = [];
-  let tools = [];
-  for (const m of messages) {
-    const role = (m.role || "").toLowerCase();
-    if (role === "tool") continue;
-    if (role === "assistant") {
-      for (const call of m.tool_calls || []) tools.push(call.function?.name || call.name || "tool");
-      const text = messageText(m);
-      if (!visible(text) && !media(text).length) continue;
-      out.push({ id: m.id ?? out.length, role, text, tools, at: m.created_at || m.timestamp });
-      tools = [];
-    } else if (role === "user") {
-      if (tools.length) { out.push({ id: `t${out.length}`, role: "tools", tools }); tools = []; }
-      out.push({ id: m.id ?? out.length, role, text: messageText(m), image: hasImage(m), at: m.created_at || m.timestamp });
-    }
-  }
-  if (tools.length) out.push({ id: `t${out.length}`, role: "tools", tools });
-  return out;
-}
-
-// Runs this browser started and may come back to (a reload, another conversation): session → run.
-const activeRuns = {
-  all() { return store.get("bip-active-runs", {}); },
-  get(session) { return this.all()[session]; },
-  set(session, run) { const all = this.all(); if (run) all[session] = run; else delete all[session]; store.set("bip-active-runs", all); },
-};
 
 // ------------------------------------------------------------------------------------------------------------------
 // Bips
@@ -158,60 +116,38 @@ function Login({ onIn, notice }) {
 // The agent's sessions
 // ------------------------------------------------------------------------------------------------------------------
 function Sessions({ agent, current, onOpen, refreshKey }) {
-  const [sessions, setSessions] = useState(null);
+  const [threads, setThreads] = useState(null);
   const [error, setError] = useState(null);
   const [showTasks, setShowTasks] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      const all = [];
-      for (let offset = 0, page = 0; page < 4; page++) {
-        const r = await hermes(agent.id, `api/sessions?limit=50&offset=${offset}`);
-        const list = Array.isArray(r) ? r : r.sessions || r.data || [];
-        all.push(...list.filter(s => !all.some(a => a.id === s.id)));
-        offset += list.length;
-        if (list.length < 50 || all.filter(s => !isScheduled(s)).length >= 30) break;
-      }
-      setSessions(all);
-      setError(null);
-      return all;
-    } catch (e) {
-      setError(errorText(e));
-      return null;
-    }
-  }, [agent.id]);
+  // the bridge's conversations (docs/conversations.md §6.1): main first, then by last activity; routines' runs too
+  const load = useCallback(() => call(`/v1/threads?agent=${q(agent.id)}&include_hidden=1`)
+    .then(r => { setThreads(r.threads); setError(null); return r.threads; })
+    .catch(e => { setError(errorText(e)); return null; }), [agent.id]);
 
   useEffect(() => {
-    setSessions(null);
-    load().then(all => {
-      if (all && !current) {
-        const main = all.find(isBotChat) || newestFirst(all).find(s => !isScheduled(s));
-        if (main) onOpen(main.id);
-      }
-    });
+    setThreads(null);
+    load().then(all => { if (all && !current) onOpen(all.find(t => t.kind === "main")?.id || "new"); });
   }, [agent.id]);
   useEffect(() => { if (refreshKey) load(); }, [refreshKey]);
 
-  // A new conversation exists once its first message goes (titled after it, as in the app).
-  const create = () => onOpen("new");
-
-  const row = s => html`<button key=${s.id} class=${`session ${s.id === current ? "on" : ""}`} onClick=${() => onOpen(s.id)}>
-    <span class="session-title">${isBotChat(s) ? T.botChat : s.title || s.preview || T.untitled}</span>
-    <span class="session-when">${when(sessionTime(s))}</span>
+  const row = t => html`<button key=${t.id} class=${`session ${t.id === current ? "on" : ""}`} onClick=${() => onOpen(t.id)}>
+    <span class="session-title">${t.kind === "main" ? T.botChat : t.title || T.untitled}</span>
+    <span class="session-when">${when(t.last_active || t.updated_at)}</span>
   </button>`;
 
-  const bot = (sessions || []).filter(isBotChat);
-  const talks = newestFirst((sessions || []).filter(s => !isBotChat(s) && !isScheduled(s)));
-  const tasks = newestFirst((sessions || []).filter(isScheduled));
+  const list = threads || [];
+  const talks = list.filter(t => t.kind !== "main" && t.kind !== "routine" && !t.hidden);
+  const tasks = list.filter(t => t.kind === "routine");
   return html`<nav class="sessions" aria-label=${T.conversations}>
     <div class="sessions-head">
       <${Bip} agent=${agent} size=${40}/>
       <strong>${agent.name}</strong>
-      <button class="ghost" onClick=${create} title=${T.newConversation} aria-label=${T.newConversation}>＋</button>
+      <button class="ghost" onClick=${() => onOpen("new")} title=${T.newConversation} aria-label=${T.newConversation}>＋</button>
     </div>
     ${error && html`<p class="error small">${error}</p>`}
-    ${sessions === null && !error && html`<p class="muted small pad">${T.loading}</p>`}
-    ${bot.map(row)}
+    ${threads === null && !error && html`<p class="muted small pad">${T.loading}</p>`}
+    ${list.filter(t => t.kind === "main").map(row)}
     ${talks.length > 0 && html`<h3>${T.conversations}</h3>`}
     ${talks.map(row)}
     ${tasks.length > 0 && html`<button class="section-toggle" onClick=${() => setShowTasks(!showTasks)}>${showTasks ? "▾" : "▸"} ${T.tasks} (${tasks.length})</button>`}
@@ -248,17 +184,17 @@ function Listen({ agent, text }) {
   return html`<button class="tiny" onClick=${listen} title=${T.listen}>${state === "loading" ? "…" : state === "playing" ? "■ " + T.stop : state === "error" ? "⚠︎ " + T.listen : "▶︎ " + T.listen}</button>`;
 }
 
-function MediaFile({ path, agent }) {
+/** A file of a message: `path` (an agent's MEDIA file, served by /v1/media) or `src` (a photo of the timeline). */
+function MediaFile({ path, src, name = path.split("/").pop(), agent }) {
   const [url, setUrl] = useState(null);
   const [failed, setFailed] = useState(false);
-  const name = path.split("/").pop();
   const ext = (name.split(".").pop() || "").toLowerCase();
-  const kind = ["mp3", "m4a", "wav", "ogg", "opus", "aac", "flac"].includes(ext) ? "audio" : ["png", "jpg", "jpeg", "gif", "webp"].includes(ext) ? "image" : ["mp4", "m4v", "mov", "webm"].includes(ext) ? "video" : "file";
+  const kind = src ? "image" : ["mp3", "m4a", "wav", "ogg", "opus", "aac", "flac"].includes(ext) ? "audio" : ["png", "jpg", "jpeg", "gif", "webp"].includes(ext) ? "image" : ["mp4", "m4v", "mov", "webm"].includes(ext) ? "video" : "file";
   async function open() {
-    const of = agent ? `&agent=${encodeURIComponent(agent)}` : "";  // a file in that agent's own places (/envoi…)
-    try { setUrl(await blobURL(`/v1/media?path=${encodeURIComponent(path)}${of}`)); } catch { setFailed(true); }
+    // a file in that agent's own places (/envoi…)
+    try { setUrl(await blobURL(src || `/v1/media?path=${q(path)}${agent ? `&agent=${q(agent)}` : ""}`)); } catch { setFailed(true); }
   }
-  useEffect(() => { if (kind === "image") open(); }, [path]);
+  useEffect(() => { if (kind === "image") open(); }, [path, src]);
   if (failed) return html`<p class="media muted">📎 ${name} · ${T.fileUnavailable}</p>`;
   if (!url) return html`<button class="media-chip" onClick=${open}>${kind === "audio" ? "🎧" : kind === "video" ? "🎬" : kind === "image" ? "🖼️" : "📎"} ${name}</button>`;
   if (kind === "audio") return html`<audio class="media" controls autoplay src=${url}></audio>`;
@@ -292,168 +228,127 @@ function Clarify({ request, onAnswer }) {
         ${q.allow_other !== false && html`<input placeholder=${T.yourAnswer} value=${choices.includes(answers[id]) ? "" : answers[id] || ""} onInput=${e => set(id, e.target.value)}/>`}
       </div>`;
     })}
-    <div class="row"><button class="primary" onClick=${() => onAnswer(answers, questions)}>${T.answer}</button><button onClick=${() => onAnswer(null, questions)}>${T.skip}</button></div>
+    <div class="row"><button class="primary" onClick=${() => onAnswer(Object.values(answers).filter(Boolean).join("\n"))}>${T.answer}</button><button onClick=${() => onAnswer("")}>${T.skip}</button></div>
   </div>`;
 }
 
-function Conversation({ agent, sessionId, onSessionChange, onMood }) {
-  const [items, setItems] = useState(null);
+/** One conversation of the bridge (docs/conversations.md §6): its timeline, re-read at each `thread` hint of the events
+ *  stream (open while shown: nothing pushed for it meanwhile); a turn's live words from its run's events; sending,
+ *  stopping and answering through the bridge. */
+function Conversation({ agent, threadId, onThreadChange, onMood }) {
+  const [page, setPage] = useState(null);       // the latest timeline page
   const [error, setError] = useState(null);
   const [draft, setDraft] = useState(() => store.get(`bip-draft-${agent.id}`, ""));
-  const [live, setLive] = useState(null);       // the turn in progress: {sent, text, tools, runId}
-  const [approval, setApproval] = useState(null);
-  const [clarify, setClarify] = useState(null);
+  const [live, setLive] = useState(null);       // the turn going on: {runId, text, tools}
+  const [cards, setCards] = useState([]);       // approvals and questions waiting
   const scroller = useRef(null);
   const following = useRef(null);
   const stick = useRef(true);
   const sending = useRef(false);
+  const of = `agent=${q(agent.id)}`;
   // A new agent's first message, written by the bridge (welcome.rs): a new conversation until the person writes, then
   // that conversation only.
   const [welcome, setWelcome] = useState(null);
   useEffect(() => {
     setWelcome(null);
     call("/v1/guide").then(r => setWelcome((r.welcome || {})[agent.id] || null)).catch(() => {});
-  }, [agent.id, sessionId]);
-  const greeting = welcome && (!welcome.session || welcome.session === sessionId) ? welcome : null;
-
-  const load = useCallback(async () => {
-    if (!sessionId) { setItems([]); return; }
-    try {
-      const r = await hermes(agent.id, `api/sessions/${encodeURIComponent(sessionId)}/messages?include_compacted=false&inline_images=false`);
-      setItems(thread(Array.isArray(r) ? r : r.messages || r.data || []));
-      setError(null);
-    } catch (e) {
-      setError(errorText(e));
-    }
-  }, [agent.id, sessionId]);
+  }, [agent.id, threadId]);
+  const greeting = welcome && (!welcome.session || welcome.session === page?.thread?.tip) ? welcome : null;
 
   // A run's events, through the bridge (it holds the one Hermes subscription and replays the run from its start).
-  const follow = useCallback(async (runId, sent) => {
+  const follow = useCallback(async runId => {
+    if (following.current?.runId === runId) return;
     following.current?.abort();
     const controller = new AbortController();
+    controller.runId = runId;
     following.current = controller;
-    let text = "", tools = [], done = false;
-    setLive({ sent, text, tools, runId });
+    let text = "", tools = [];
+    setLive({ runId, text, tools });
     onMood("thinking");
     const update = () => setLive(l => l && l.runId === runId ? { ...l, text, tools: [...tools] } : l);
     try {
-      await events(`/v1/runs/${encodeURIComponent(runId)}/events?agent=${encodeURIComponent(agent.id)}${sessionId ? `&session_id=${encodeURIComponent(sessionId)}` : ""}`, ({ type, data }) => {
-        switch (type) {
-          case "assistant.delta": case "message.delta": case "response.output_text.delta": {
-            const d = data.delta ?? data.text ?? data.content ?? "";
-            text += typeof d === "string" ? d : d.content || d.text || "";
-            onMood("speaking");
-            update();
-            break;
-          }
-          case "assistant.commentary": case "message.interim":
-            if (!data.already_streamed && data.text) { text += (text ? "\n\n" : "") + data.text + "\n\n"; update(); }
-            break;
-          case "tool.started": case "tool.start":
-            tools.push(data.tool || data.name || data.tool_name || "tool");
-            onMood("thinking");
-            update();
-            break;
-          case "approval.request": case "approval.required":
-            setApproval({ ...data, runId });
-            onMood("asking");
-            break;
-          case "approval.responded": case "approval.resolved":
-            setApproval(null);
-            break;
-          case "clarify.request": case "clarify.required":
-            setClarify({ ...data, runId });
-            onMood("asking");
-            break;
-          case "clarify.responded": case "clarify.resolved": case "clarify.cancelled": case "clarify.canceled": case "clarify.expired":
-            setClarify(null);
-            break;
-          case "run.completed": case "run.failed": case "run.cancelled": case "run.canceled": case "run.interrupted":
-            done = true;
-            if (type === "run.failed" && data.error) setError(typeof data.error === "string" ? data.error : data.error.message || T.failed);
-            break;
+      await events(`/v1/runs/${q(runId)}/events?${of}`, ({ type, data }) => {
+        if (type.endsWith(".delta")) {
+          const d = data.delta ?? data.text ?? "";
+          text += typeof d === "string" ? d : d.content || d.text || "";
+          onMood("speaking");
+          update();
+        } else if (type === "assistant.commentary" && !data.already_streamed && data.text) {
+          text += (text ? "\n\n" : "") + data.text + "\n\n";
+          update();
+        } else if (type === "tool.started") {
+          tools.push(data.tool || data.name || "tool");
+          onMood("thinking");
+          update();
+        } else if (type === "approval.request" || type === "clarify.request") {
+          setCards(c => [...c.filter(x => x.request_id !== data.request_id), { ...data, run_id: runId, kind: type === "clarify.request" ? "question" : "approval" }]);
+          onMood("asking");
+        } else if (type === "run.failed" && data.error) {
+          setError(typeof data.error === "string" ? data.error : data.error.message || T.failed);
         }
       }, controller.signal);
     } catch (e) {
       if (e.name === "AbortError") return;
-      if (e instanceof HttpError && e.status === 404) done = true;   // the run is over and gone
-      else setError(errorText(e));
+      if (!(e instanceof HttpError && e.status === 404)) setError(errorText(e));   // 404: the run is over and gone
     }
     if (following.current !== controller) return;
     following.current = null;
-    if (done && sessionId) activeRuns.set(sessionId, null);
-    setApproval(null);
-    setClarify(null);
     await load();
     setLive(null);
     onMood("idle");
-    onSessionChange();
-  }, [agent.id, sessionId, load]);
+  }, [agent.id, threadId]);
+
+  const load = useCallback(async () => {
+    if (!threadId) { setPage({ items: [] }); return; }
+    try {
+      const r = await call(`/v1/threads/${q(threadId)}/timeline?${of}&limit=100`);
+      setPage(r);
+      setCards([...(r.pending?.approvals || []), ...(r.pending?.questions || []).map(x => ({ ...x, kind: "question" }))]);
+      setError(null);
+      if (r.pending?.run) follow(r.pending.run.run_id);
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }, [agent.id, threadId]);
 
   useEffect(() => {
-    setItems(null);
+    setPage(null);
     setLive(null);
-    setApproval(null);
-    setClarify(null);
+    setCards([]);
     setError(null);
     stick.current = true;
     load();
-    const pending = store.get("bip-pending-follow", null);
-    const run = sessionId && activeRuns.get(sessionId);
-    if (pending && pending.session === sessionId) { store.set("bip-pending-follow", null); follow(pending.runId, pending.text); }
-    else if (run) follow(run, null);
-    else if (sessionId) {   // a run the app started that waits for an approval
-      call(`/v1/approvals?agent=${encodeURIComponent(agent.id)}`).then(r => {
-        const pending = (r.items || []).find(a => a.session_id === sessionId);
-        if (pending && !following.current) follow(pending.run_id, null);
-      }).catch(() => {});
+    // on screen while open; each `thread` hint: this conversation read again, the list too
+    const hints = new AbortController();
+    if (threadId) {
+      events(`/v1/threads/events?${of}&thread=${q(threadId)}`, ({ type, data }) => {
+        if (type !== "thread" && type !== "lagged") return;
+        if (type === "lagged" || data.thread === threadId) load();
+        onThreadChange();
+      }, hints.signal).catch(() => {});
     }
-    return () => { following.current?.abort(); following.current = null; onMood("idle"); };
-  }, [agent.id, sessionId]);
-
-  // Turns the agent takes on its own (a routine, a reply that came while away) show up without reloading.
-  useEffect(() => {
-    if (!sessionId) return;
-    let count = null;
-    const timer = setInterval(async () => {
-      if (following.current || document.hidden) return;
-      try {
-        const s = await call(`/v1/sessions/${encodeURIComponent(sessionId)}/state?agent=${encodeURIComponent(agent.id)}`);
-        if (count !== null && s.message_count !== count) load();
-        count = s.message_count;
-      } catch {}
-    }, 8000);
-    return () => clearInterval(timer);
-  }, [agent.id, sessionId]);
+    return () => { hints.abort(); following.current?.abort(); following.current = null; onMood("idle"); };
+  }, [agent.id, threadId]);
 
   useEffect(() => {
     const el = scroller.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
-  }, [items, live, approval, clarify]);
+  }, [page, live, cards]);
 
   useEffect(() => { store.set(`bip-draft-${agent.id}`, draft); }, [draft]);
 
   async function send() {
     const text = draft.trim();
-    if (!text || following.current || sending.current) return;
+    if (!text || sending.current) return;
     sending.current = true;
     setDraft("");
     setError(null);
     stick.current = true;
     try {
-      let session = sessionId;
-      if (!session) {
-        const s = await hermes(agent.id, "api/sessions", { method: "POST", body: { title: text.slice(0, 60) } });
-        session = (s.session || s).id;
-      }
-      const run = await hermes(agent.id, "v1/runs", { method: "POST", body: { input: text, session_id: session }, headers: { "Idempotency-Key": crypto.randomUUID() } });
-      const runId = run.run_id || run.id;
-      activeRuns.set(session, runId);
-      if (session === sessionId) follow(runId, text);
-      else {   // a new conversation: it opens and follows the run from there
-        store.set("bip-pending-follow", { session, runId, text });
-        onSessionChange(session);
-      }
+      // one sending route (threads/send.rs): a turn starts, or the words go into the one going on, or wait for it
+      const sent = await call(`/v1/threads/${q(threadId || "new")}/messages`, { method: "POST", body: { agent: agent.id, client_id: crypto.randomUUID(), text } });
+      if (sent.thread !== threadId) onThreadChange(sent.thread);   // a new conversation opens (and follows its run)
+      else await load();
     } catch (e) {
       setDraft(text);
       setError(errorText(e));
@@ -463,33 +358,16 @@ function Conversation({ agent, sessionId, onSessionChange, onMood }) {
   }
 
   async function stop() {
-    if (!live?.runId) return;
-    try { await hermes(agent.id, `v1/runs/${encodeURIComponent(live.runId)}/stop`, { method: "POST", body: {} }); } catch (e) { setError(errorText(e)); }
+    try { await call(`/v1/threads/${q(threadId)}/stop`, { method: "POST", body: { agent: agent.id } }); } catch (e) { setError(errorText(e)); }
   }
 
-  async function choose(choice) {
-    const request = approval;
-    setApproval(null);
+  // an approval's choice or a question's answer (empty: skipped), through the bridge: answered on every device
+  async function reply(card, answer) {
+    setCards(c => c.filter(x => x !== card));
     try {
-      await call("/v1/approve", { method: "POST", body: { agent: agent.id, run_id: request.runId, choice, request_id: request.request_id || request.approval_id || null } });
+      await call("/v1/approve", { method: "POST", body: { agent: agent.id, run_id: card.run_id, request_id: card.request_id || null, ...answer } });
       onMood("thinking");
-    } catch (e) { setApproval(request); setError(errorText(e)); }
-  }
-
-  async function answer(answers, questions) {
-    const request = clarify;
-    setClarify(null);
-    const path = `v1/runs/${encodeURIComponent(request.runId)}/clarify`;
-    try {
-      if (request.request_id) {
-        await hermes(agent.id, path, { method: "POST", body: answers ? { request_id: request.request_id, answers } : { request_id: request.request_id, cancel: true } });
-      } else {
-        const q = questions[0], id = q.id || q.question_id || "q1";
-        let response = answers ? answers[id] ?? Object.values(answers)[0] ?? "" : "";
-        if (q.multi_select && response) response = JSON.stringify([response]);
-        await hermes(agent.id, path, { method: "POST", body: { clarify_id: request.clarify_id || request.id, response } });
-      }
-    } catch (e) { setClarify(request); setError(errorText(e)); }
+    } catch (e) { setCards(c => [...c, card]); setError(errorText(e)); }
   }
 
   function onKey(e) {
@@ -498,36 +376,49 @@ function Conversation({ agent, sessionId, onSessionChange, onMood }) {
 
   const onScroll = e => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; };
 
+  // the items as they read (§6.3): the tools an answer used folded into one line before it
+  const shown = [];
+  for (const it of page?.items || []) {
+    const last = shown[shown.length - 1];
+    if (it.kind === "tool") {
+      if (last?.kind === "tools") last.tools.push(it.tool.name); else shown.push({ id: it.id, kind: "tools", tools: [it.tool.name] });
+    } else if (["message", "boite", "notice"].includes(it.kind)) shown.push(it);
+  }
+  const files = it => (it.attachments || []).map(a => a.path
+    ? html`<${MediaFile} key=${a.id} path=${a.path} agent=${agent.id}/>`
+    : html`<${MediaFile} key=${a.id} src=${`${a.url}?${of}`} name=${a.name || "photo"}/>`);
+  const tools = list => html`<p class="tools">🔧 ${[...new Set(list)].join(" · ")}</p>`;
   const bubble = it => {
-    if (it.role === "tools") return html`<p key=${it.id} class="tools">🔧 ${[...new Set(it.tools)].join(" · ")}</p>`;
-    if (it.role === "user") return html`<div key=${it.id} class="msg user"><div class="bubble">${it.image && html`<span class="muted">🖼️ </span>`}${it.text}</div></div>`;
+    if (it.kind === "tools") return html`<div key=${it.id}>${tools(it.tools)}</div>`;
+    if (it.kind === "notice") return html`<p key=${it.id} class="muted small">${it.notice?.text}</p>`;
+    if (it.role === "person") return html`<div key=${it.id} class="msg user"><div class="bubble">${it.text}</div>${files(it)}</div>`;
     return html`<div key=${it.id} class="msg agent">
-      ${it.tools?.length > 0 && html`<p class="tools">🔧 ${[...new Set(it.tools)].join(" · ")}</p>`}
-      <div class="bubble md">${markdown(it.text)}</div>
-      ${media(it.text).map(p => html`<${MediaFile} key=${p} path=${p} agent=${agent.id}/>`)}
-      <div class="meta">${it.at && html`<span>${when(it.at)}</span>`}${visible(it.text) && html`<${Listen} agent=${agent} text=${it.text}/>`}</div>
+      ${it.title && html`<strong>${it.title}</strong>`}
+      ${it.text && html`<div class="bubble md">${markdown(it.text)}</div>`}
+      ${files(it)}
+      <div class="meta">${it.at && html`<span>${when(it.at)}</span>`}${it.text && html`<${Listen} agent=${agent} text=${it.text}/>`}</div>
     </div>`;
   };
 
   return html`<section class="conversation">
     <div class="thread" ref=${scroller} onScroll=${onScroll}>
-      ${items === null && !error && html`<p class="muted pad">${T.loading}</p>`}
-      ${items && greeting && html`<div class="msg agent"><div class="bubble md">${markdown(greeting.text)}</div></div>`}
-      ${items && greeting && !greeting.session && items.length === 0 && !live && html`<div class="row wrap">${(greeting.suggestions || []).map(s => html`<button key=${s} onClick=${() => setDraft(s)}>${s}</button>`)}</div>`}
-      ${items && items.length === 0 && !live && !greeting && html`<div class="empty"><${Bip} agent=${agent} size=${96} mood="content"/><p>${T.emptyThread(agent.name)}</p></div>`}
-      ${items && items.map(bubble)}
-      ${live && live.sent && html`<div class="msg user"><div class="bubble">${live.sent}</div></div>`}
+      ${page === null && !error && html`<p class="muted pad">${T.loading}</p>`}
+      ${page && greeting && html`<div class="msg agent"><div class="bubble md">${markdown(greeting.text)}</div></div>`}
+      ${page && greeting && !greeting.session && shown.length === 0 && !live && html`<div class="row wrap">${(greeting.suggestions || []).map(s => html`<button key=${s} onClick=${() => setDraft(s)}>${s}</button>`)}</div>`}
+      ${page && shown.length === 0 && !live && !greeting && html`<div class="empty"><${Bip} agent=${agent} size=${96} mood="content"/><p>${T.emptyThread(agent.name)}</p></div>`}
+      ${shown.map(bubble)}
       ${live && html`<div class="msg agent">
-        ${live.tools.length > 0 && html`<p class="tools">🔧 ${[...new Set(live.tools)].join(" · ")}</p>`}
+        ${live.tools.length > 0 && tools(live.tools)}
         ${live.text ? html`<div class="bubble md">${markdown(live.text)}</div>` : html`<div class="bubble typing"><span></span><span></span><span></span></div>`}
       </div>`}
-      ${approval && html`<${Approval} request=${approval} onChoose=${choose}/>`}
-      ${clarify && html`<${Clarify} request=${clarify} onAnswer=${answer}/>`}
+      ${cards.map(card => card.kind === "question"
+        ? html`<${Clarify} key=${card.request_id} request=${card} onAnswer=${answer => reply(card, { answer })}/>`
+        : html`<${Approval} key=${card.request_id} request=${card} onChoose=${choice => reply(card, { choice })}/>`)}
     </div>
     ${error && html`<p class="error bar">${error}</p>`}
     <div class="composer">
       <textarea rows="1" placeholder=${T.message(agent.name)} value=${draft} onInput=${e => setDraft(e.target.value)} onKeyDown=${onKey}></textarea>
-      ${live ? html`<button class="stop" onClick=${stop} title=${T.stop}>■</button>`
+      ${live && !draft.trim() ? html`<button class="stop" onClick=${stop} title=${T.stop}>■</button>`
              : html`<button class="send primary" onClick=${send} disabled=${!draft.trim()} title=${T.send}>↑</button>`}
     </div>
   </section>`;
@@ -639,12 +530,13 @@ function Console({ onOut }) {
         <button class="rail-link" onClick=${logout}>${T.logout}</button>
       </div>
     </aside>
-    ${route.view === "inbox" ? html`<main class="main"><${Inbox} agents=${agents} onOpen=${(a, s) => go("agent", a, s)}/></main>`
+    ${route.view === "inbox" ? html`<main class="main"><${Inbox} agents=${agents} onOpen=${(a, s) =>
+        call(`/v1/threads/resolve?agent=${q(a)}&session_id=${q(s)}`).then(r => go("agent", a, r.thread.id)).catch(e => setError(errorText(e)))}/></main>`
       : agent ? html`
         <${Sessions} key=${agent.id} agent=${agent} current=${route.session} refreshKey=${refresh} onOpen=${s => go("agent", agent.id, s)}/>
-        <main class="main"><${Conversation} key=${agent.id + (route.session || "")} agent=${agent} sessionId=${route.session === "new" ? null : route.session}
+        <main class="main"><${Conversation} key=${agent.id + (route.session || "")} agent=${agent} threadId=${route.session === "new" ? null : route.session}
           onMood=${setMood(agent.id)}
-          onSessionChange=${s => { setRefresh(r => r + 1); if (s) go("agent", agent.id, s); }}/></main>`
+          onThreadChange=${t => { setRefresh(r => r + 1); if (t) go("agent", agent.id, t); }}/></main>`
       : html`<main class="main"><${Home} agents=${agents} moods=${moods} onPick=${id => go("agent", id)}/></main>`}
   </div>`;
 }

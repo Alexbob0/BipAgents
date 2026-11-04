@@ -36,6 +36,14 @@ pub fn without_now(text: &str) -> String {
     split_now(text).1
 }
 
+/// What joins the person's next message to `agent` in `session` (live_brief.rs `message_notes`, threads/send.rs):
+/// the current time first, then what waited; "" for none.
+pub async fn notes(app: &TestApp, agent: &str, session: &str, text: &str) -> String {
+    let state = &app.app.state;
+    let agent = state.config().agent(Some(agent)).unwrap().clone();
+    bipbridge::live_brief::message_notes(state, &agent, session, text, &[]).await.unwrap_or_default()
+}
+
 /// `Authorization: Bearer <bridge key>`.
 pub fn auth() -> (&'static str, String) {
     ("authorization", format!("Bearer {BRIDGE_KEY}"))

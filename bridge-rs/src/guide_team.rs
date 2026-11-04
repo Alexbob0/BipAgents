@@ -605,22 +605,13 @@ async fn first_turn(state: &AppState, card: &str, agent: &AgentConfig, member: &
         return;
     };
     let agent = state.config().agent(Some(&agent.name)).cloned().unwrap_or_else(|| agent.clone());
-    let mut handback = crate::handback::Handback::of(state);
-    handback.poll = 1.0;
-    handback.turn_max = 240.0;
-    let request = crate::handback::Request {
-        agent: agent.clone(),
-        session,
-        key: format!("team:{card}:{}", agent.name),
-        title: title.to_string(),
-        note: first_note(from),
-        links: Vec::new(),
-        budget: None,
-        fallback: fallback(lang, &agent.display_name, member),
-        recap: None,
-        fallback_session: None,
-    };
-    handback.deliver(&request).await;
+    let mut pipeline = crate::background_turn::Pipeline::of(state);
+    pipeline.poll = 1.0;
+    let mut request =
+        crate::handback::Request::new(&agent, &session, format!("team:{card}:{}", agent.name), title, first_note(from));
+    request.turn_max = 240.0;
+    request.fallback = fallback(lang, &agent.display_name, member);
+    crate::handback::deliver(&pipeline, &request).await;
 }
 
 #[cfg(test)]

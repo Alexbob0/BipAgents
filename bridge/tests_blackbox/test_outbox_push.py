@@ -51,7 +51,8 @@ def test_ntfy_message_lands_in_outbox_with_audio_and_push(bridges, fakes):
     assert first["session_id"] == "sess_42" and first["has_audio"] is True
     assert first["created_at"].endswith("Z") and first["sent_at"] == "2026-09-21T14:13:20.000Z"
     assert first["audio_url"] == f"/v1/outbox/{first['id']}/audio" and len(first["id"]) == 32
-    assert set(first) == {"id", "agent", "title", "text", "created_at", "sent_at", "session_id", "has_audio", "audio_url"}
+    assert set(first) == {"id", "agent", "title", "text", "created_at", "sent_at", "session_id", "has_audio", "audio_url",
+                          "attachments"}
     assert items[1]["title"] is None and items[1]["session_id"] is None
 
     # Audio was pre-synthesized as mp3 from the normalized text.

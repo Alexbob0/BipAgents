@@ -8,8 +8,8 @@
 //!   Strict, 30 days, listed and revocable (`/v1/console/devices`).
 //! - **Calling the bridge**: the cookie plus an `X-Bip-Console: 1` header (a page from elsewhere cannot send it without the
 //!   browser asking first) stands for the bridge key (`auth.require_bridge_key`).
-//! - **Calling an agent's Hermes**: through `/hermes/<agent>/…`, the bridge adding the agent's key itself: no Hermes key
-//!   ever reaches the browser (`/v1/agents` leaves them out for a console).
+//! - **Never Hermes**: conversations go through the bridge's routes (threads, runs, `/v1/approve`, docs/conversations.md
+//!   §6); `/hermes/<agent>/…` refuses a console, and no Hermes key ever reaches the browser (`/v1/agents` leaves them out).
 //!
 //! Port of `bridge/bipbridge/console.py` (owner group: browsers-places).
 

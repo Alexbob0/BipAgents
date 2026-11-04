@@ -545,10 +545,17 @@ impl HermesClient {
         }
     }
 
-    /// `GET /api/jobs?include_disabled=true`: the agent's routines (its scheduled tasks), paused ones included.
+    /// `GET /api/jobs?include_disabled=true`: the jobs Hermes kept before the bridge ran the routines (read once by
+    /// routines.rs `migrate`).
     pub async fn routines(&self, agent: &AgentConfig) -> Result<Vec<Map<String, Value>>, HermesError> {
         let data = self.get_json(agent, "/api/jobs", &[("include_disabled", "true".to_string())]).await?;
         Ok(Self::items(data, ["jobs", "data", "items"]))
+    }
+
+    /// `DELETE /api/jobs/{id}`: a job moved to the bridge's routines (routines.rs `migrate`).
+    pub async fn delete_routine(&self, agent: &AgentConfig, id: &str) -> Result<(), HermesError> {
+        self.send(agent, reqwest::Method::DELETE, &format!("/api/jobs/{id}"), None, 15.0).await?;
+        Ok(())
     }
 
     /// `GET /api/sessions` (most recent first).
@@ -564,15 +571,6 @@ impl HermesClient {
         params: &[(&str, String)],
     ) -> Result<Vec<Map<String, Value>>, HermesError> {
         let data = self.get_json(agent, "/api/sessions", params).await?;
-        Ok(Self::items(data, ["sessions", "data", "items"]))
-    }
-
-    /// `GET /api/sessions?source=cron&include_children=1`: the routines' sessions, most recent first, with the sessions
-    /// Hermes continued them in after compressing their context (`parent_session_id`, which the plain list leaves out).
-    /// A Hermes that ignores the filters gives its plain list (cronwatch.rs keeps only the cron sessions).
-    pub async fn cron_sessions(&self, agent: &AgentConfig, limit: i64) -> Result<Vec<Map<String, Value>>, HermesError> {
-        let params = [("limit", limit.to_string()), ("source", "cron".to_string()), ("include_children", "1".into())];
-        let data = self.get_json(agent, "/api/sessions", &params).await?;
         Ok(Self::items(data, ["sessions", "data", "items"]))
     }
 
@@ -756,6 +754,19 @@ impl HermesClient {
             )
             .await?;
         Ok(data.get("message").and_then(|m| m.get("content")).and_then(Value::as_str).unwrap_or("").to_string())
+    }
+
+    /// `POST /api/sessions/{id}/chat/stream`: one turn, Hermes' SSE answer as it comes (a Live call's, live_turns.rs).
+    pub async fn chat_stream(&self, agent: &AgentConfig, session_id: &str, body: Value) -> Result<reqwest::Response, HermesError> {
+        turn_ready(agent).await;
+        ready(agent).await;
+        let url = format!("{}/api/sessions/{session_id}/chat/stream", agent.hermes_url);
+        let resp = self.client.post(url).headers(Self::headers(agent, "text/event-stream")).json(&body).send().await?;
+        let status = resp.status().as_u16();
+        if status != 200 {
+            return Err(HermesError::http(status, head(&resp.text().await.unwrap_or_default(), 500)));
+        }
+        Ok(resp)
     }
 
     /// `POST /v1/runs` in a conversation: the run's id (it goes on in Hermes; follow it with `run`).

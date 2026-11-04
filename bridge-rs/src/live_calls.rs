@@ -13,13 +13,11 @@
 //! record shows « still working » meanwhile, then its answer and its files land there with a notification, like a
 //! background task that ends.
 //!
-//! Who does it: the apps since 2026-10-31 say a call started (`POST /v1/live/calls/start`, which lets the bridge end
-//! it alone when the app is quit) and send `deposit: true` with its end; the bridge then answers `deposit: true` and the
-//! app stops keeping the recap itself (CallRecaps). An older app sends neither and keeps doing it: nothing changes for
-//! it. A newer app talking to an older bridge sees no `deposit` in the answer and keeps its old way too.
+//! The apps say a call started (`POST /v1/live/calls/start`, which makes the call's session and lets the bridge end
+//! it alone when the app is quit) and when it ended:
 //!
-//!     POST /v1/live/calls/start   {agent, session, live_session}  -> {ok, deposit: true}
-//!     POST /v1/live/calls         {agent, session, live_session, deposit?, run_id?, started_at?}  (live_brief.rs)
+//!     POST /v1/live/calls/start   {agent, session?, prelude?}  -> {ok, live_session}
+//!     POST /v1/live/calls         {agent, session, live_session, run_id?, started_at?}  (live_brief.rs)
 //!     GET  /v1/live/calls?agent=&session=  -> {calls: [record…]}  the conversation's calls, oldest first
 //!
 //! A record: `{id, live_session, started_at, ended_at, seconds, lines: [{role, text}], media: [path…], working, late,
@@ -197,16 +195,6 @@ impl LiveCalls {
         }
         let start = records.len().saturating_sub(RECORDS_KEPT);
         self.write(&path, &json!({"calls": records[start..].to_vec()}))
-    }
-
-    /// What changes when a call lands in the conversation (`GET /v1/sessions/{id}/state`): the apps reload then. None
-    /// without any call.
-    pub fn marker(&self, agent: &str, session: &str) -> Option<String> {
-        let records = self.records(agent, session);
-        let last = records.last()?;
-        let at = last.get("ended_at").and_then(Value::as_f64).unwrap_or(0.0);
-        let working = last.get("working").and_then(Value::as_bool).unwrap_or(false);
-        Some(format!("{}@{at:.0}{}", records.len(), if working { "w" } else { "" }))
     }
 }
 
@@ -416,6 +404,7 @@ async fn end_inner(state: &AppState, ending: &Ending) -> anyhow::Result<Option<V
             let (lines, media) = call_lines(&messages);
             if lines.iter().any(|(role, _)| role == "user") {
                 calls.keep(&agent.name, &ending.session, build(&lines, &media, true, false, recapped))?;
+                told(state, ending).await;
             }
         }
         let since = py::time_time();
@@ -446,6 +435,7 @@ async fn end_inner(state: &AppState, ending: &Ending) -> anyhow::Result<Option<V
     let note = recap(&lines, &media, recapped, &time);
     let record = build(&lines, &media, false, late, lines.len());
     calls.keep(&agent.name, &ending.session, record.clone())?;
+    told(state, ending).await;
     let (briefs, name, session, live) =
         (state.briefs.clone(), agent.name.clone(), ending.session.clone(), ending.live_session.clone());
     tokio::task::spawn_blocking(move || -> std::io::Result<()> {
@@ -467,6 +457,12 @@ async fn end_inner(state: &AppState, ending: &Ending) -> anyhow::Result<Option<V
         state.push.notify_reply(&agent.name, &key, &answer, Some(&ending.session)).await;
     }
     Ok(Some(record))
+}
+
+/// The conversation's open screens told a call item is there or changed (its thread's `thread` event: they ask
+/// `after=`), journal-free (2026-11-03, Alex: the call showed only once the conversation was opened again).
+async fn told(state: &AppState, ending: &Ending) {
+    crate::threads::threads_of(state).touch(&ending.agent.name, Some(&ending.session), "call").await;
 }
 
 /// The calls nothing happened in for `IDLE_SECONDS` (the app quit, the phone off): ended here. Returns how many.

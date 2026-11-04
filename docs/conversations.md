@@ -64,7 +64,8 @@ The common cause: **the conversation was never a bridge object**. The fix is tha
 | Boîte message | `o_` + outbox id | `o_9c1e…` | — |
 | Queue item | the queue's own id, in `pending.queue` (msg_queue.rs) | `5d2a…` | until it starts (then it is a message) |
 | Notification | `n_` + 26 chars | `n_01JBX…` | — |
-| Room | `room:<room id>` (rooms keep their own ids; thread view in §6.6) | `room:r_12ab` | — |
+| Room | `room:<room id>` (thread view in §6.6) | `room:g1a2b3c4d5e6f` | — |
+| Room message | `rm_<n>` (n: the room's message number, which only grows); cursor `0.<n>.0` | `rm_12` | the room's life (the oldest of `MESSAGES_KEPT` dropped, cursors hold) |
 
 `client_id`: the id the app gives a message it sends (a UUID: the row it draws at once). Every message goes through
 `POST /v1/threads/{id}/messages` (§6.7) with it; the bridge keeps it in `thread_sends` and serves the message at once
@@ -82,7 +83,7 @@ impossible).
 | `routine` | A routine's run (`cron_<job>_<date>_<time>`, `local-<sha256>` on v0.22.5). Its report goes to its origin thread (Hermes patch 0019) or to `main` as a Boîte message; the run itself is a hidden thread | no | the first sight of a routine session |
 | `pair` | Two agents' own conversation (agent_pairs.rs) | no | the household link |
 | `live` | A Live call's throwaway session (live_brief.rs) | no | the Live call |
-| `room` | A group discussion (rooms.rs keeps its own store; the thread id is `room:<id>`) | via rooms | rooms.rs |
+| `room` | A group discussion: rooms.rs keeps its store (`data_dir/rooms/<id>.json`), served as the thread `room:<id>` (§6.6) | via `/v1/rooms` | rooms.rs |
 
 `hidden` threads are returned with `include_hidden=1` only. A sub-agent's run (`delegate_task`), a branch or a reset
 child is never a segment of anything: it is ignored (same rules as `restore_reconcile::continuation`).
@@ -146,6 +147,14 @@ CREATE TABLE thread_sends (       -- the messages the apps sent through the brid
   message_id TEXT,                -- m_… once Hermes stored it (NULL: shown as s_<client_id>, for two days at most)
   created_at TEXT NOT NULL,
   PRIMARY KEY (agent, client_id)
+);
+CREATE TABLE thread_files (       -- files of an agent's message Hermes' row doesn't carry (background_turn.rs, runs.rs)
+  agent TEXT NOT NULL,
+  message_id TEXT NOT NULL,       -- m_…
+  thread_id TEXT NOT NULL,
+  files TEXT NOT NULL,            -- JSON: [{kind, name, mime, path}] added, [{path, stale: true}] a MEDIA line hidden
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (agent, message_id)
 );
 CREATE TABLE thread_reads (agent TEXT, thread_id TEXT, item_id TEXT, at TEXT, PRIMARY KEY (agent, thread_id));
 ```
@@ -321,14 +330,15 @@ thread's too: the app knows it from `GET /v1/threads/main`) and `item` (`m_…`)
 
 ```text
 GET /v1/threads/events[?agent=<id>]      SSE, keepalive comment every 10 s
-event: thread         data: {"thread": "t_…", "agent": "vie", "version": 43, "reason": "run|boite|segment"}
+event: thread         data: {"thread": "t_…", "agent": "vie", "version": 43, "reason": "run|boite|segment|call"}
 event: notification   data: {"n": "n_…", "agent": "vie", "t": "reply", "c": "t_…", "m": "m_…", "state": "open"}
 event: read           data: {"agent": "vie", "thread": "t_…", "notifications": ["n_…"]}
 event: lagged         data: {}                    (the app missed events: refetch what it shows)
 ```
 
 `thread` is sent today when a run of the thread ends (`run`: the run hub), a Boîte message for it is stored
-(`boite`) and Hermes continued it in a new session (`segment`). The agent's queue keeps its own stream
+(`boite`), a Live call is recorded in it (`call`, live_calls.rs: its item is in the next `after=` page; no journal
+row) and Hermes continued it in a new session (`segment`). The agent's queue keeps its own stream
 (`/v1/agents/{id}/queue/events`, msg_queue.rs); the timeline's `pending.queue` gives its state at each read.
 
 **Presence**: `GET /v1/threads/events?agent=<a>&thread=<id|main>` means « this conversation is on screen » for as
@@ -341,9 +351,23 @@ text of a run still comes from `/v1/runs/{run_id}/events` (unchanged).
 
 ### 6.6 Rooms and shared agents
 
-- **Rooms** keep rooms.rs' store and routes for now; their pointer is `room:<id>` (resolve answers it, notifications
-  carry it). Moving rooms onto the same item model is a later step (not in step 4: what is left is listed in
-  internal/notes/conv-step4.md).
+- **Rooms** (branch rooms-items) are threads `room:<id>` on the same routes, no agent needed (several agents speak):
+  - `GET /v1/threads/room:<id>/timeline` (same paging): items `rm_<n>`; the person's words and the agents' a `message`
+    (`role` person | agent, `from` the agent, `client_id` on the person's), a pass, a failed or capped turn, a task
+    handed over a `notice` (`code` pass | failed | capped | handover); `turn` the person's message answered; an agent's
+    files its attachments (`path`); what only a room has under `room` (`hop`, `route`, `handoff`, `task`, `handover`,
+    `tokens`, `error`, `capped`). `pending.room`: the room (participants, `answering` with the approval each turn waits
+    for, goal, proposal, progress, tasks) and `handoffs` (its last 5 relays: the conductor may set one on an item the
+    app has already). `thread.version` = the room's version.
+  - `POST /v1/threads/room:<id>/messages {client_id, text}` → `{client_id, thread, state: started | queued | known,
+    route: {by, agents}, item}` (words only: attachments 422); `POST /v1/threads/room:<id>/stop` → `{stopped}`.
+  - Every change of a room (rooms.rs `Rooms::edit`) is a `thread` hint `{thread: room:<id>, agent: null, version,
+    reason: room}` on every events stream; `GET /v1/threads/events?thread=room:<id>` is « on screen » (presence).
+  - Each agent's reply is journaled (`room_reply`, `c: room:<id>`, `m: rm_<n>`): unread for the apps' dots
+    (`/v1/notifications/unread` `threads`), read and not pushed while the room is on screen, read with
+    `POST /v1/notifications/read {thread: room:<id>}`. A notification opens the room `around=m`.
+  - `/v1/rooms` keeps the room itself (list, create, change, delete, tasks); `GET/POST /v1/rooms/{id}/messages` and
+    `/stop` are gone, so are the apps' polling, `RoomsCenter.isUnread`'s phone-side « seen » map and Android's.
 - **Shared agents** (agent_shares.rs): the relative's app asks its own bridge with `agent=<agent>__<household>`;
   `GET /v1/threads` lists her conversations with that agent (`kind: shared`, `id` = the conversation's id) and
   `GET /v1/threads/{cid}/timeline` (same parameters, same answer shape) is relayed to the owner's bridge
@@ -351,14 +375,17 @@ text of a run still comes from `/v1/runs/{run_id}/events` (unchanged).
   serves only words and notices (no attachment, tool step or Boîte item: only text crosses). Its answer has the
   timeline's shape: `thread: {id: <cid>, kind: "shared", title, version}`, `items`, `first`, `last`,
   `more_before`, `more_after`, `anchor`, `version`, and `pending: {run: {run_id, status: "writing" | "approval",
-  started: <Unix seconds>} | null, approvals: [{run_id, request_id, command, description, choices}]}`.
+  started: <Unix seconds>} | null, approvals: [{id, run_id, request_id, command, description, choices}],
+  questions: [{id, kind: "question", run_id, request_id, questions, question, choices}]}`.
   Each timeline read counts as « on screen » for that conversation (the relative's bridge pushes nothing for it
   meanwhile).
   Relayed the same way (step 4): `GET /v1/threads/events?agent=<x>__<h>&thread=<cid>` (the owner's
   `…/conversations/{cid}/events`: `thread` hints; open = on screen), `GET /v1/runs/{run}/events?agent=<x>__<h>&thread=<cid>`
-  (the turn's words live: text deltas, approvals and the end only, no tool step), `POST /v1/threads/{cid|new}/messages`
-  (her `client_id` kept on the owner's side; `new` opens a conversation titled by its first words), `…/{cid}/stop`,
-  `DELETE /v1/threads/{cid}`, and her answers through `POST /v1/approve` with `agent=<x>__<h>`. Her own person's
+  (the turn's words live: text deltas, approvals, questions and the end only, no tool step),
+  `POST /v1/threads/{cid|new}/messages` (her `client_id` kept on the owner's side; `new` opens a conversation titled by
+  its first words), `…/{cid}/stop`, `DELETE /v1/threads/{cid}`, and her answers (an approval's `choice`, a question's
+  `answer`) through `POST /v1/approve` with `agent=<x>__<h>` (the owner's `/family/s/{agent}/approval`); her bridge
+  pushes a question like an approval while her app isn't looking. Her own person's
   words come unframed. The `/v1/shared-agents/{id}/conversations…` routes are gone.
 
 ### 6.7 Sending, stopping, answering (step 4)
@@ -383,6 +410,28 @@ Every answer goes through the bridge, which keeps it (approvals_log.rs) and bump
 `POST /v1/agents/{id}/queue` and `/steer`, `GET/POST /v1/approvals/answered`, the apps' Hermes-direct runs, steers,
 approvals and questions.
 
+Run state comes from the timeline only: `pending.run` (is the turn still going?), `pending.approvals` /
+`pending.questions` (what it waits for) and the events stream; the apps ask Hermes nothing about a run (their
+`getRun` / `checkRun` and the old `GET /v1/sessions/{id}/state` poll are gone).
+
+**A Live call** (live_turns.rs, live_brief.rs) keeps its own short session, made by the bridge:
+
+```text
+POST /v1/live/calls/start {agent, session?, prelude?}           → {ok, live_session}   the warm-up read at once
+POST /v1/live/turns {agent, live_session, text, attachments?}   → Hermes' chat/stream SSE, passed on as it comes
+POST /v1/live/turns/stop {agent, run_id}                        → {stopped}
+POST /v1/live/calls {agent, session, live_session, run_id?, started_at?}   the call put into its conversation
+```
+
+The first turn's text starts with the call's hidden prelude (the time, its rules, its brief, the greeting said); the
+bridge adds the agent's quick-turn thinking (`quick_turn_options`). One request per turn, streamed through: the first
+words come as early as from Hermes itself. The call's recap joins the next written message on the bridge's side
+(`message_notes`): `POST /v1/live/recaps` and `/v1/live/recaps/take`, and the phones' own recaps, are gone.
+
+**The web console** (`/console/`) uses the same routes: the thread list, the timeline and its events stream (on screen
+while open), the send and stop routes, `POST /v1/approve` for approvals and questions, a run's events at
+`/v1/runs/{id}/events`. `/hermes/<agent>/…` refuses a console session.
+
 ## 7. How the apps use it (target)
 
 - **One cache per thread, keyed by item id.** Merge rule: an item with a known id replaces the cached one; a new id is
@@ -390,8 +439,9 @@ approvals and questions.
   carries the `client_id`; the server item with that `client_id` replaces it.
 - **Opening a conversation**: `timeline?limit=50` (or `around=<m>` from a notification, a Boîte row, a search hit).
   Scroll up: `before=<first>`. Live: the `thread` event → `after=<last>`. Version mismatch after sleep → `after=`.
-- **No Hermes calls** for conversations (end state): list, history, approvals and clarify go through the bridge.
-  `/hermes/<agent>/…` stays for older apps.
+- **No Hermes calls** for conversations: list, history, sending, run state, approvals, clarify and Live turns go
+  through the bridge. `/hermes/<agent>/…` stays for the apps' other Hermes calls (routines, settings), never the
+  console's.
 - **No marker parsing**: `text` is already visible text; attachments are structured.
 - **Badges and read state** come from the journal (§9.4).
 
@@ -570,7 +620,8 @@ Journal row as served:
 | 2a | Thread registry + lineage + adoption; `/v1/threads`, `resolve`, `segments` | done (branch conv-core) |
 | 2b | Timeline (normalization, paging, attachments, Boîte, answered approvals, Live calls, pending), events | done (branch conv-core) |
 | 3 | Notification journal, rules, v2 payloads, read API, read sync | done (branch conv-core); `POST /v1/notifications/{id}/answer` not yet |
-| 4 | Sending through the bridge (§6.7), approvals and clarify through the bridge, shared agents on the thread routes | done (branch conv-step4); rooms still on rooms.rs' routes |
+| 4 | Sending through the bridge (§6.7), approvals and clarify through the bridge, shared agents on the thread routes | done (branch conv-step4) |
+| 4b | Rooms on the item model (§6.6): timeline, send with `client_id`, hints + presence, journal unread | done (branch rooms-items) |
 | 5 | iOS, then Android, on the timeline behind the `threads` feature flag | app agents |
 | 6 | Remove direct Hermes calls and marker parsers from the apps | with the apps |
 

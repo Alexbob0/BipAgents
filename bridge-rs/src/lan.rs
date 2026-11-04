@@ -228,6 +228,10 @@ async fn relay(
     if state.guard.blocked(address.as_deref()) {
         return Err(HttpError::new(429, "too many wrong keys, try again later"));
     }
+    if crate::console::is_console(&state, &headers) {
+        // the web console goes through the bridge's own routes, never to Hermes (it never holds an agent's key)
+        return Err(HttpError::new(403, "not for the console"));
+    }
     let config = state.config();
     let allowed = path.starts_with("v1/") || path.starts_with("api/") || path == "health" || path == "v1/capabilities";
     let target = match config.agent(Some(&agent)) {
@@ -249,14 +253,6 @@ async fn relay(
         }
         forwarded.retain(|(n, _)| n != name);
         forwarded.push((name.clone(), value.clone()));
-    }
-    if crate::console::is_console(&state, &headers) {
-        // a web console never holds the key: the bridge adds it
-        forwarded
-            .retain(|(n, _)| !matches!(n.as_str(), "authorization" | "cookie") && n.as_str() != crate::console::HEADER);
-        if let Ok(v) = HeaderValue::from_str(&format!("Bearer {}", target.hermes_key)) {
-            forwarded.push((HeaderName::from_static("authorization"), v));
-        }
     }
     // A run's events come from the run hub, which holds the single Hermes subscription (Hermes' event buffer has one
     // reader) and counts its tools for the brake (loop_brake.rs): the lab and the apps' direct fallbacks follow runs
@@ -301,7 +297,7 @@ async fn relay(
         return Ok(crate::app::listener_events(listener));
     }
     let starts_run = method == Method::POST && path == "v1/runs";
-    // A run started with the agent's key (or by the web console) is read whole, to follow the run it starts;
+    // A run started with the agent's key is read whole, to follow the run it starts;
     // anything else goes to Hermes as it comes, and Hermes checks the key.
     let presented = forwarded
         .iter()

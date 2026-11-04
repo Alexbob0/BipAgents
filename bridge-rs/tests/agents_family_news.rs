@@ -151,21 +151,16 @@ async fn told_only_after_the_person_says_so() {
     assert_eq!(received[0]["from"], "Alex");
     assert_eq!(received[0]["from_agent"], "Vie");
     assert_eq!(received[0]["text"], "Je commande des pizzas ce midi !");
-    let recap =
-        b.send_json("POST", "/v1/live/recaps/take", &h, &json!({"agent": "cuisine", "session": "s1"})).await.json();
-    let (now, note) = common::split_now(recap["recap"].as_str().unwrap());
+    let (now, note) = common::split_now(&common::notes(&b, "cuisine", "s1", "").await);
     assert!(now.is_some(), "the current time first");
     assert!(
         note.starts_with("<!--bip:family")
             && note.contains("Alex (through their agent Vie): « Je commande des pizzas ce midi ! »")
     );
     // taken once
-    let again =
-        b.send_json("POST", "/v1/live/recaps/take", &h, &json!({"agent": "cuisine", "session": "s1"})).await.json();
-    assert_eq!(common::without_now(again["recap"].as_str().unwrap()), "", "only the current time");
+    assert_eq!(common::without_now(&common::notes(&b, "cuisine", "s1", "").await), "", "only the current time");
     // the sender's agent knows it went
-    let mine = a.send_json("POST", "/v1/live/recaps/take", &h, &json!({"agent": "vie", "session": "s2"})).await.json();
-    assert!(mine["recap"].as_str().unwrap().contains("passed on to Léa"));
+    assert!(common::notes(&a, "vie", "s2", "").await.contains("passed on to Léa"));
     // closed by Léa
     let rid = received[0]["id"].as_str().unwrap();
     assert_eq!(b.request("POST", &format!("/v1/family/received/{rid}/seen"), &h, None).await.status, 200);
@@ -185,9 +180,7 @@ async fn told_only_after_the_person_says_so() {
     assert_eq!(a.request("DELETE", &format!("/v1/family/proposals/{sid}"), &h, None).await.status, 200);
     assert_eq!(a.get("/v1/family/news", &h).await.json()["proposals"], json!([]));
     assert_eq!(b.get("/v1/family/news?agent=budget", &h).await.json()["received"], json!([]));
-    let declined =
-        a.send_json("POST", "/v1/live/recaps/take", &h, &json!({"agent": "vie", "session": "s2"})).await.json();
-    assert!(declined["recap"].as_str().unwrap().contains("chose not to pass on"));
+    assert!(common::notes(&a, "vie", "s2", "").await.contains("chose not to pass on"));
     assert_eq!(a.request("DELETE", &format!("/v1/family/proposals/{sid}"), &h, None).await.status, 404);
 
     // The receiving route wants the household's own key.

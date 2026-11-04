@@ -93,12 +93,9 @@ SESSIONS = [{"id": "cron_fc344ed09026_20261005_075008"}, {"id": "api_1791112967_
             {"id": "cron_x_20261005_075008\n"}]
 for session in SESSIONS:
     case("is_cron_session", cronwatch.is_cron_session, session)
-    started = cronwatch.session_started(session)
-    CASES.append({"fn": "session_started", "input": [session], "output": started.isoformat() if started else None})
 for sid in ["cron_fc344ed09026_20261005_075008", "api_123", "cron_a_b_c_20261005_075008", "cron__20261005_075008"]:
     case("job_id", cronwatch.job_id, sid)
 for title in [None, "", "Podcast du matin · Oct 05 07:53", " · x", "Simple", "  Espaces  · y"]:
-    case("job_name", cronwatch.job_name, title)
 MESSAGES = [
     [{"role": "user", "content": "prompt"}, {"role": "assistant", "content": [{"type": "text", "text": "Voilà le point."}]}],
     [{"role": "assistant", "content": "…"}, {"role": "user", "content": "encore"}],

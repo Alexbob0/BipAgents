@@ -60,7 +60,7 @@ pub enum Notice {
     Reply { run_id: String, text: String, session_id: Option<String> },
     /// An agent's reply in a group discussion.
     #[serde(rename = "notify_room")]
-    Room { room_id: String, room_title: String, text: String },
+    Room { room_id: String, room_title: String, text: String, #[serde(default)] message: String },
     /// A sub-task's report Hermes left in the conversation.
     #[serde(rename = "notify_subtask")]
     Subtask { session_id: String, line: Option<String> },
@@ -198,8 +198,8 @@ impl Notice {
                 }
                 event
             }
-            Notice::Room { room_id, room_title, text } => {
-                let key = format!("{room_id}:{:x}", fnv(text));
+            Notice::Room { room_id, room_title, text, message } => {
+                let key = format!("{room_id}:{message}");
                 let mut event = Event::new(agent, Kind::RoomReply, key)
                     .reference(room_id)
                     .text(Some(text))
@@ -208,6 +208,7 @@ impl Notice {
                     event.title = Some(format!("{} · {}", context.title, room_title));
                 }
                 event.room = Some(room_id.clone());
+                event.message = Some(message.clone());
                 event
             }
             Notice::Subtask { session_id, line } => {

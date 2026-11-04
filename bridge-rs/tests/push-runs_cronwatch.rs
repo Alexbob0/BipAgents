@@ -1,4 +1,4 @@
-//! Cron sessions -> outbox, Bot Chat turns taken alone -> pushes, sub-task reports left without a reply -> pushes
+//! Bot Chat turns taken alone -> pushes, sub-task reports left without a reply -> pushes (routines: routines.rs)
 //! (Python: tests/test_cronwatch.py). Hermes is a small fake; the outbox, the pushes and the hub are the app's own.
 
 mod common;
@@ -15,7 +15,6 @@ use axum::{Json, Router};
 use bipbridge::config::{parse_config, AgentConfig};
 use bipbridge::cronwatch::{CronWatcher, Presence};
 use bipbridge::runs::Listener;
-use chrono::{NaiveDate, NaiveDateTime};
 use common::fakes::*;
 use common::*;
 use serde_json::{json, Value};
@@ -25,6 +24,7 @@ const DEVICE: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 #[derive(Default)]
 struct HermesState {
     sessions: Vec<Value>,
+
     messages: HashMap<String, Vec<Value>>,
     message_calls: usize,
     /// Hermes fails to read any session's messages for now.
@@ -138,20 +138,14 @@ async fn world(bot: bool) -> World {
     } else {
         (None, None, None)
     };
-    let mut cron =
-        CronWatcher::new(s.config.clone(), s.hermes.clone(), s.outbox.clone(), 60.0, 6.0, None, hub, push, presence);
-    cron.briefs = Some(s.briefs.clone());
+    let cron = CronWatcher::new(s.config.clone(), s.hermes.clone(), s.outbox.clone(), 60.0, hub, push, presence);
     let agent = s.config.get().agent(Some("wellness")).cloned().unwrap();
     World { _dir: dir, app, cron, hermes, apns, agent }
 }
 
 impl World {
-    async fn poll(&self, now: NaiveDateTime) -> usize {
-        self.cron.poll(&self.agent, Some(now)).await.unwrap()
-    }
-    async fn outbox(&self) -> Vec<Value> {
-        let (k, v) = auth();
-        self.app.get("/v1/outbox", &[(k, v.as_str())]).await.json()["items"].as_array().unwrap().clone()
+    async fn poll(&self) {
+        self.cron.poll(&self.agent).await.unwrap()
     }
     /// The pushes, as Python's FakePush records them: (agent, text or ("subtask", line), session_id).
     async fn replies(&self) -> Vec<(String, String, String)> {
@@ -181,153 +175,9 @@ impl World {
     }
 }
 
-fn now() -> NaiveDateTime {
-    NaiveDate::from_ymd_opt(2026, 10, 5).unwrap().and_hms_opt(8, 30, 0).unwrap()
-}
 
 fn reply(agent: &str, text: &str, sid: &str) -> (String, String, String) {
     (agent.to_string(), text.to_string(), sid.to_string())
-}
-
-#[tokio::test]
-async fn finished_cron_reply_goes_to_the_outbox_once() {
-    let w = world(false).await;
-    let sid = "cron_fc344ed09026_20261005_075008";
-    w.hermes.with(|s| {
-        s.sessions = vec![json!({"id": sid, "title": "Podcast du matin"}), json!({"id": "api_123", "title": "Chat"})];
-        s.messages.insert(
-            sid.into(),
-            vec![
-                json!({"role": "user", "content": "Produis le point"}),
-                json!({"role": "assistant", "content": "Bonjour Alex !"}),
-            ],
-        );
-    });
-    assert_eq!(w.poll(now()).await, 0); // first sight: wait until it stops changing
-    assert_eq!(w.poll(now()).await, 1); // unchanged: stored
-    let items = w.outbox().await;
-    assert_eq!(items.len(), 1);
-    assert_eq!(items[0]["text"], "Bonjour Alex !");
-    assert_eq!(items[0]["title"], "Podcast du matin");
-    assert_eq!(items[0]["session_id"], sid);
-    let calls = w.hermes.with(|s| s.message_calls);
-    assert_eq!(w.poll(now()).await, 0); // done: not fetched again
-    assert_eq!(w.hermes.with(|s| s.message_calls), calls);
-    w.app.shutdown().await;
-}
-
-#[tokio::test]
-async fn a_restart_corrects_a_routine_s_reply_without_pushing_it_again() {
-    // aibox 2026-10-26: after `bipagents update`, the morning podcast (stored that morning by the older bridge, its
-    // text written differently) was read again within the window, replaced, and pushed a second time.
-    let w = world(false).await;
-    let sid = "cron_fc344ed09026_20261005_075008";
-    w.hermes.with(|s| {
-        s.sessions = vec![json!({"id": sid, "title": "Podcast du matin"})];
-        s.messages.insert(sid.into(), vec![json!({"role": "assistant", "content": "Bonjour Alex !"})]);
-    });
-    assert_eq!(w.poll(now()).await, 0);
-    assert_eq!(w.poll(now()).await, 1);
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    let pushed = w.apns.payloads().len();
-    assert_eq!(pushed, 1);
-    let s = w.app.app.state.clone();
-    let id = format!("hermes-session:{sid}");
-    assert!(s.store.replace_outbox("wellness", &id, "ce que l'ancien bridge avait écrit", None).await.unwrap().is_some());
-    // the bridge restarts: a new watcher, nothing in memory
-    let again = CronWatcher::new(s.config.clone(), s.hermes.clone(), s.outbox.clone(), 60.0, 6.0, None, None, None, None);
-    assert_eq!(again.poll(&w.agent, Some(now())).await.unwrap(), 0);
-    assert_eq!(again.poll(&w.agent, Some(now())).await.unwrap(), 1); // corrected in the Boîte
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    assert_eq!(w.outbox().await[0]["text"], "Bonjour Alex !");
-    assert_eq!(w.apns.payloads().len(), pushed); // and not pushed again
-    w.app.shutdown().await;
-}
-
-#[tokio::test]
-async fn silent_old_and_running_sessions_are_skipped() {
-    let w = world(false).await;
-    w.hermes.with(|s| {
-        s.sessions = vec![
-            json!({"id": "cron_a_20261005_060000"}),
-            json!({"id": "cron_b_20261001_060000"}),
-            json!({"id": "cron_c_20261005_082900"}),
-        ];
-        s.messages.insert("cron_a_20261005_060000".into(), vec![json!({"role": "assistant", "content": "[SILENT]"})]);
-        s.messages
-            .insert("cron_b_20261001_060000".into(), vec![json!({"role": "assistant", "content": "Vieux message"})]);
-        s.messages
-            .insert("cron_c_20261005_082900".into(), vec![json!({"role": "user", "content": "Produis le point"})]);
-    });
-    for _ in 0..3 {
-        w.poll(now()).await;
-    }
-    assert!(w.outbox().await.is_empty());
-    w.app.shutdown().await;
-}
-
-/// The agent's routines as Hermes keeps them (`cron/jobs.json` in its profile).
-fn write_jobs(w: &World, jobs: Value) {
-    let folder = bipbridge::agents_admin::profile_folder(&w.app.app.state.config.get(), &w.agent).join("cron");
-    std::fs::create_dir_all(&folder).unwrap();
-    std::fs::write(folder.join("jobs.json"), json!({"jobs": jobs}).to_string()).unwrap();
-}
-
-#[tokio::test]
-async fn a_routine_made_in_a_conversation_reports_there() {
-    // 2026-10-31, Alex: « mets un schedule ce soir à 23h pour corriger tout le carnet », in his conversation: the
-    // report goes to that conversation (Hermes patch 0019 kept it on the job), and the agent knows what it said.
-    let w = world(false).await;
-    let sid = "cron_fc344ed09026_20261005_075008";
-    write_jobs(&w, json!([{"id": "fc344ed09026", "name": "Réparer le Carnet", "deliver": "local",
-                          "origin_session_id": "api_carnet"}]));
-    w.hermes.with(|s| {
-        s.sessions = vec![json!({"id": sid, "title": "Réparer le Carnet · Oct 05 07:50"}),
-                          json!({"id": "api_carnet", "title": "Le Carnet"})];
-        s.messages.insert(sid.into(), vec![json!({"role": "assistant", "content": "J'ai corrigé 12 fiches du Carnet."})]);
-    });
-    assert_eq!(w.poll(now()).await, 0);
-    assert_eq!(w.poll(now()).await, 1);
-    let items = w.outbox().await;
-    assert_eq!(items.len(), 1);
-    assert_eq!(items[0]["text"], "J'ai corrigé 12 fiches du Carnet.");
-    assert_eq!(items[0]["session_id"], "api_carnet", "in the conversation it was made in");
-    let recap = w.app.app.state.briefs.take_recap("wellness", "api_carnet").expect("kept for the agent");
-    assert!(recap.starts_with("<!--bip:routine") && recap.contains("« Réparer le Carnet »"), "{recap}");
-    assert!(recap.contains("J'ai corrigé 12 fiches du Carnet."), "{recap}");
-    w.app.shutdown().await;
-}
-
-#[tokio::test]
-async fn a_routine_whose_conversation_is_gone_or_made_elsewhere_reports_under_its_run() {
-    let w = world(false).await;
-    let (gone, elsewhere) = ("cron_aaaaaaaaaaaa_20261005_075008", "cron_bbbbbbbbbbbb_20261005_075508");
-    write_jobs(&w, json!([{"id": "aaaaaaaaaaaa", "origin_session_id": "api_deleted"}, {"id": "bbbbbbbbbbbb"}]));
-    w.hermes.with(|s| {
-        s.sessions = vec![json!({"id": gone, "title": "A"}), json!({"id": elsewhere, "title": "B"})];
-        s.messages.insert(gone.into(), vec![json!({"role": "assistant", "content": "Rapport A"})]);
-        s.messages.insert(elsewhere.into(), vec![json!({"role": "assistant", "content": "Rapport B"})]);
-    });
-    w.poll(now()).await;
-    assert_eq!(w.poll(now()).await, 2);
-    let mut where_: Vec<(String, String)> = w
-        .outbox()
-        .await
-        .iter()
-        .map(|i| (i["text"].as_str().unwrap().to_string(), i["session_id"].as_str().unwrap().to_string()))
-        .collect();
-    where_.sort();
-    assert_eq!(where_, vec![("Rapport A".into(), gone.into()), ("Rapport B".into(), elsewhere.into())]);
-    assert!(w.app.app.state.briefs.take_recap("wellness", "api_deleted").is_none());
-    w.app.shutdown().await;
-}
-
-#[test]
-fn job_helpers() {
-    use bipbridge::cronwatch::{job_id, job_name};
-    assert_eq!(job_id("cron_fc344ed09026_20261005_075008").as_deref(), Some("fc344ed09026"));
-    assert_eq!(job_id("api_123"), None);
-    assert_eq!(job_name(Some("Podcast du matin · Oct 05 07:53")).as_deref(), Some("Podcast du matin"));
 }
 
 fn bot_chat(w: &World, sid: &str, count: i64, history: Value) {
@@ -346,21 +196,21 @@ async fn bot_chat_turn_taken_alone_is_pushed_once() {
         4,
         json!([{"role": "user", "content": "Bonjour"}, {"role": "assistant", "content": "Ancienne réponse"}]),
     );
-    w.poll(now()).await; // baseline: nothing old is pushed
+    w.poll().await; // baseline: nothing old is pushed
     assert!(w.replies().await.is_empty());
     w.hermes.set_count("api_bot", 6);
     w.hermes.push_messages(
         "api_bot",
         json!([{"role": "user", "content": "[Routine] Point de midi"}, {"role": "assistant", "content": "Wellness dit que ta nuit était bonne."}]),
     );
-    w.poll(now()).await; // first sight: wait until it stops changing
-    w.poll(now()).await;
+    w.poll().await; // first sight: wait until it stops changing
+    w.poll().await;
     assert_eq!(w.replies().await, [reply("wellness", "Wellness dit que ta nuit était bonne.", "api_bot")]);
     let payload = w.apns.payloads()[0].clone();
     assert_eq!(payload["r"], "session:api_bot");
     assert_eq!(payload["t"], "reply");
     assert_eq!(w.apns.requests.lock().unwrap()[0].header("apns-collapse-id").as_deref(), None); // a reply never replaces another (one journal row each)
-    w.poll(now()).await;
+    w.poll().await;
     assert_eq!(w.replies().await.len(), 1);
     w.app.shutdown().await;
 }
@@ -369,18 +219,18 @@ async fn bot_chat_turn_taken_alone_is_pushed_once() {
 async fn a_bot_chat_reply_whose_read_failed_is_pushed_at_the_next_poll() {
     let w = world(true).await;
     bot_chat(&w, "api_bot", 2, json!([{"role": "user", "content": "Bonjour"}, {"role": "assistant", "content": "Salut"}]));
-    w.poll(now()).await; // baseline
+    w.poll().await; // baseline
     w.hermes.set_count("api_bot", 4);
     w.hermes.push_messages(
         "api_bot",
         json!([{"role": "user", "content": "[Routine] Point"}, {"role": "assistant", "content": "Tout va bien."}]),
     );
     w.hermes.with(|s| s.failing = true);
-    w.poll(now()).await; // the count moved, but Hermes could not be read: not counted as seen
-    w.poll(now()).await;
+    w.poll().await; // the count moved, but Hermes could not be read: not counted as seen
+    w.poll().await;
     w.hermes.with(|s| s.failing = false);
-    w.poll(now()).await; // read: a candidate
-    w.poll(now()).await; // unchanged: pushed
+    w.poll().await; // read: a candidate
+    w.poll().await; // unchanged: pushed
     assert_eq!(w.replies().await, [reply("wellness", "Tout va bien.", "api_bot")]);
     w.app.shutdown().await;
 }
@@ -394,7 +244,7 @@ async fn bot_chat_reply_followed_or_on_screen_is_not_pushed() {
         2,
         json!([{"role": "user", "content": "Salut"}, {"role": "assistant", "content": "Salut !"}]),
     );
-    w.poll(now()).await;
+    w.poll().await;
     w.hermes.set_count("api_bot", 4);
     w.hermes.push_messages(
         "api_bot",
@@ -402,7 +252,7 @@ async fn bot_chat_reply_followed_or_on_screen_is_not_pushed() {
     );
     let listener = w.follow("api_bot"); // the app sent it and followed the run
     for _ in 0..2 {
-        w.poll(now()).await;
+        w.poll().await;
     }
     drop(listener);
     w.cron.hub = None; // followed.clear(): the run is not this conversation's any more
@@ -413,24 +263,10 @@ async fn bot_chat_reply_followed_or_on_screen_is_not_pushed() {
     );
     w.cron.presence.as_ref().unwrap().touch("wellness", "api_bot"); // the conversation is open on the phone
     for _ in 0..2 {
-        w.poll(now()).await;
+        w.poll().await;
     }
     assert!(w.replies().await.is_empty());
     w.app.shutdown().await;
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn session_state_route_records_presence() {
-    let dir = tempfile::tempdir().unwrap();
-    let backend = FakeBackend::start().await;
-    let app = TestApp::new(config(dir.path(), &backend.urls()));
-    let (k, v) = auth();
-    let h = [(k, v.as_str())];
-    let resp = app.get("/v1/sessions/api_bot/state?agent=wellness", &h).await;
-    assert_eq!(resp.status, StatusCode::OK);
-    assert_eq!(resp.json()["message_count"], 7);
-    assert!(app.app.state.presence.viewing("wellness", "api_bot"));
-    assert_eq!(app.get("/v1/sessions/bad%20id/state?agent=wellness", &h).await.status, StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
@@ -442,7 +278,7 @@ async fn answer_to_another_agent_is_not_pushed() {
         2,
         json!([{"role": "user", "content": "Salut"}, {"role": "assistant", "content": "Salut !"}]),
     );
-    w.poll(now()).await;
+    w.poll().await;
     w.hermes.set_count("api_bot", 4);
     w.hermes.push_messages(
         "api_bot",
@@ -450,7 +286,7 @@ async fn answer_to_another_agent_is_not_pushed() {
                {"role": "assistant", "content": "Nuit correcte, 7 h 10, score 82."}]),
     );
     for _ in 0..2 {
-        w.poll(now()).await;
+        w.poll().await;
     }
     assert!(w.replies().await.is_empty()); // Vie reports back to the user: one notification, from Vie
     w.app.shutdown().await;
@@ -465,7 +301,7 @@ async fn teammate_answer_to_our_own_request_is_pushed() {
         2,
         json!([{"role": "user", "content": "Salut"}, {"role": "assistant", "content": "Salut !"}]),
     );
-    w.poll(now()).await;
+    w.poll().await;
     w.hermes.set_count("api_vie", 6);
     w.hermes.push_messages(
         "api_vie",
@@ -478,28 +314,9 @@ async fn teammate_answer_to_our_own_request_is_pushed() {
         ]),
     );
     for _ in 0..2 {
-        w.poll(now()).await;
+        w.poll().await;
     }
     assert_eq!(w.replies().await, [reply("wellness", "Wellness dit : nuit correcte, 7 h 10.", "api_vie")]);
-    w.app.shutdown().await;
-}
-
-#[tokio::test]
-async fn a_comment_before_a_running_tool_is_not_the_final_reply() {
-    let w = world(false).await;
-    let calling = json!({"role": "assistant", "content": "execute_code est bloqué en cron — je passe par terminal.",
-                         "tool_calls": [{"function": {"name": "terminal", "arguments": "{}"}}]});
-    let sid = "cron_fc344ed09026_20261006_075008";
-    w.hermes.with(|s| {
-        s.sessions = vec![json!({"id": sid, "title": "Podcast du matin"})];
-        s.messages.insert(sid.into(), vec![json!({"role": "user", "content": "Produis le podcast"}), calling]);
-    });
-    let at = NaiveDate::from_ymd_opt(2026, 10, 6).unwrap().and_hms_opt(8, 0, 0).unwrap();
-    for _ in 0..3 {
-        // the synthesis takes minutes: the comment stays unchanged, it is not taken
-        w.poll(at).await;
-    }
-    assert!(w.outbox().await.is_empty());
     w.app.shutdown().await;
 }
 
@@ -516,13 +333,13 @@ async fn a_report_left_without_a_reply_is_pushed_once() {
         2,
         json!([{"role": "user", "content": "Un podcast ?"}, {"role": "assistant", "content": "Relancé : le sous-agent régénère le podcast."}]),
     );
-    w.poll(now()).await;
+    w.poll().await;
     let listener = w.follow("api_bot"); // the app followed « Relancé… »
     w.hermes.set_count("api_bot", 3);
     w.hermes.push_messages("api_bot", json!([{"role": "user", "content": REPORT}])); // Hermes: stored, no wake turn
-    w.poll(now()).await; // first sight: maybe the agent wakes up
+    w.poll().await; // first sight: maybe the agent wakes up
     assert!(w.replies().await.is_empty());
-    w.poll(now()).await; // still last: nobody will reply
+    w.poll().await; // still last: nobody will reply
     assert_eq!(w.replies().await, [reply("wellness", "subtask:🎧 Podcast jeudi0810", "api_bot")]);
     let payload = w.apns.payloads()[0].clone();
     assert_eq!(payload["t"], "subtask");
@@ -532,7 +349,7 @@ async fn a_report_left_without_a_reply_is_pushed_once() {
     );
     assert_eq!(w.apns.requests.lock().unwrap()[0].header("apns-collapse-id").as_deref(), None);
     for _ in 0..2 {
-        w.poll(now()).await;
+        w.poll().await;
     }
     assert_eq!(w.replies().await.len(), 1);
     drop(listener);
@@ -549,17 +366,17 @@ async fn a_report_the_agent_answers_is_not_pushed_twice() {
         2,
         json!([{"role": "user", "content": "Un podcast ?"}, {"role": "assistant", "content": "C'est lancé."}]),
     );
-    w.poll(now()).await;
+    w.poll().await;
     w.hermes.set_count("api_bot", 3);
     w.hermes.push_messages("api_bot", json!([{"role": "user", "content": REPORT}]));
-    w.poll(now()).await;
+    w.poll().await;
     w.hermes.set_count("api_bot", 4); // this Hermes wakes the agent: it delivers
     w.hermes.push_messages(
         "api_bot",
         json!([{"role": "assistant", "content": "MEDIA:/m/podcast.mp3\nVoilà ton podcast !"}]),
     );
     for _ in 0..3 {
-        w.poll(now()).await;
+        w.poll().await;
     }
     assert_eq!(w.replies().await, [reply("wellness", "MEDIA:/m/podcast.mp3\nVoilà ton podcast !", "api_bot")]);
     w.app.shutdown().await;
@@ -580,7 +397,7 @@ async fn a_report_in_another_conversation_is_pushed_unless_on_screen() {
             );
         }
     });
-    w.poll(now()).await; // baseline, nothing fetched
+    w.poll().await; // baseline, nothing fetched
     assert_eq!(w.hermes.with(|s| s.message_calls), 0);
     for sid in ["api_x", "api_y"] {
         w.hermes.set_count(sid, 3);
@@ -591,249 +408,8 @@ async fn a_report_in_another_conversation_is_pushed_unless_on_screen() {
     }
     w.cron.presence.as_ref().unwrap().touch("wellness", "api_y");
     for _ in 0..3 {
-        w.poll(now()).await;
+        w.poll().await;
     }
     assert_eq!(w.replies().await, [reply("wellness", "subtask:None", "api_x")]);
-    w.app.shutdown().await;
-}
-
-/// The watcher as the app starts it (app.rs `start_background`): the store, the hub, the pushes and the presence.
-fn production_watcher(w: &World) -> CronWatcher {
-    let s = w.app.app.state.clone();
-    CronWatcher::new(
-        s.config.clone(),
-        s.hermes.clone(),
-        s.outbox.clone(),
-        30.0,
-        12.0,
-        Some(s.store.clone()),
-        Some(s.hub.clone()),
-        Some(s.push.clone()),
-        Some(Arc::new(Presence::new(45.0))),
-    )
-}
-
-/// A morning routine (Hermes cron) that made a two-voice podcast with create_podcast and ended on its text and the
-/// podcast's `MEDIA:` line, listed among the agent's other conversations.
-fn podcast_routine(w: &World, sid: &str, started: f64, audio: &str) {
-    let prompt = "<!--bip:now Friday, October 30, 2026, 07:53, Europe/Paris (UTC+01:00)-->\nPrépare le podcast du matin.";
-    w.hermes.with(|s| {
-        s.sessions = vec![
-            json!({"id": "api_bot", "title": "Bot Chat", "source": "api_server", "message_count": 2,
-                   "started_at": started - 86_400.0}),
-            json!({"id": "api_chat", "title": "Courses", "source": "api_server", "message_count": 4,
-                   "started_at": started - 3_600.0}),
-            json!({"id": sid, "title": "Routine du matin", "source": "cron", "message_count": 4,
-                   "started_at": started}),
-        ];
-        s.messages.insert(
-            "api_bot".into(),
-            vec![json!({"role": "user", "content": "Salut"}), json!({"role": "assistant", "content": "Salut !"})],
-        );
-        s.messages.insert(
-            sid.into(),
-            vec![
-                json!({"role": "user", "content": prompt}),
-                json!({"role": "assistant", "content": "",
-                       "tool_calls": [{"id": "c1", "type": "function", "function": {
-                           "name": "mcp_bipagents_create_podcast", "arguments": "{\"title\": \"Nuit\"}"}}]}),
-                json!({"role": "tool", "tool_call_id": "c1",
-                       "content": format!("MEDIA:{audio}\nAudio ready (1 min 56 s): to give it to the person, put the \
-MEDIA line above alone at the end of your reply, exactly as it is.")}),
-                json!({"role": "assistant",
-                       "content": format!("🎙️ Ta nuit en deux voix : 7 h 12 de sommeil, score 81.\n\nMEDIA:{audio}"),
-                       "tool_calls": []}),
-            ],
-        );
-    });
-}
-
-#[tokio::test]
-async fn a_routines_podcast_reaches_the_boite_and_is_pushed() {
-    // aibox 2026-10-29 and 30: the 07:53 routine made its two-voice podcast, its reply ended on the right MEDIA line,
-    // the job was « ok »… and nothing reached the app.
-    let w = world(false).await;
-    let cron = production_watcher(&w);
-    let started = chrono::Local::now() - chrono::Duration::minutes(3);
-    let audio = podcast_made(&w, started);
-    let sid = format!("cron_5d1c0f2a9b3e_{}", started.format("%Y%m%d_%H%M%S"));
-    podcast_routine(&w, &sid, started.timestamp() as f64, &audio);
-    let now = chrono::Local::now().naive_local();
-    let mut stored = 0;
-    for _ in 0..3 {
-        stored += cron.poll(&w.agent, Some(now)).await.unwrap();
-    }
-    assert_eq!(stored, 1);
-    let items = w.outbox().await;
-    assert_eq!(items.len(), 1, "{items:?}");
-    assert_eq!(items[0]["session_id"], json!(sid));
-    assert!(items[0]["text"].as_str().unwrap().ends_with(&format!("MEDIA:{audio}")), "{:?}", items[0]["text"]);
-    tokio::time::sleep(Duration::from_millis(300)).await;
-    let pushed = w.apns.payloads();
-    assert_eq!(pushed.len(), 1, "{pushed:?}");
-    w.app.shutdown().await;
-}
-
-/// The podcast's file in the bridge's audio folder; its `MEDIA:` path. Not noted in `made_files::MADE`: the reply
-/// carries it already, and that list is the process's (it would reach the other tests' routines).
-fn podcast_made(w: &World, started: chrono::DateTime<chrono::Local>) -> String {
-    let config = w.app.app.state.config.get();
-    let file = format!("{}-podcast.m4a", started.format("%Y%m%d-%H%M%S"));
-    let folder = bipbridge::agent_tools::audio_root(&config).join("wellness");
-    std::fs::create_dir_all(&folder).unwrap();
-    std::fs::write(folder.join(&file), b"m4a").unwrap();
-    format!("/bipagents/audio/wellness/{file}")
-}
-
-#[tokio::test]
-async fn a_routine_hermes_continued_after_compressing_its_context_is_delivered() {
-    // The routine read the sleep data and the last days' outputs, then Hermes compressed its context: the cron session
-    // ends on a tool's result (end_reason « compression ») and the run goes on in a new session started from it, which
-    // Hermes' plain list leaves out. Its final reply, podcast included, must reach the app.
-    let w = world(false).await;
-    let cron = production_watcher(&w);
-    let started = chrono::Local::now() - chrono::Duration::minutes(4);
-    let at = started.timestamp() as f64;
-    let audio = podcast_made(&w, started);
-    let root = format!("cron_5d1c0f2a9b3e_{}", started.format("%Y%m%d_%H%M%S"));
-    let tip = format!("{}_a1b2c3", (started + chrono::Duration::minutes(2)).format("%Y%m%d_%H%M%S"));
-    let helper = format!("{}_d4e5f6", (started + chrono::Duration::minutes(1)).format("%Y%m%d_%H%M%S"));
-    w.hermes.with(|s| {
-        s.sessions = vec![
-            json!({"id": tip, "source": "cron", "parent_session_id": root, "started_at": at + 120.0, "title": null}),
-            json!({"id": helper, "source": "cron", "parent_session_id": root, "started_at": at + 60.0}),
-            json!({"id": "api_bot", "title": "Bot Chat", "source": "api_server", "message_count": 2, "started_at": at - 9e4}),
-            json!({"id": root, "title": "Routine du matin", "source": "cron", "end_reason": "compression",
-                   "message_count": 3, "started_at": at}),
-        ];
-        s.messages.insert(
-            root.clone(),
-            vec![
-                json!({"role": "user", "content": "Prépare le podcast du matin."}),
-                json!({"role": "assistant", "content": "", "tool_calls": [{"id": "c1", "type": "function",
-                       "function": {"name": "mcp_bipagents_health_read", "arguments": "{}"}}]}),
-                json!({"role": "tool", "tool_call_id": "c1", "content": "{\"sleep\": \"7 h 12\"}"}),
-            ],
-        );
-        // a sub-agent's run started from the routine: never delivered on its own
-        s.messages.insert(helper.clone(), vec![json!({"role": "assistant", "content": "Script du sous-agent prêt."})]);
-        s.messages.insert(
-            tip.clone(),
-            vec![
-                json!({"role": "user", "content": "[CONTEXT COMPACTION] Résumé : nuit de 7 h 12, score 81…"}),
-                json!({"role": "assistant", "content": "", "tool_calls": [{"id": "c2", "type": "function",
-                       "function": {"name": "mcp_bipagents_create_podcast", "arguments": "{}"}}]}),
-                json!({"role": "tool", "tool_call_id": "c2", "content": format!("MEDIA:{audio}\nAudio ready (1 min 56 s).")}),
-                json!({"role": "assistant", "content": format!("🎙️ Ta nuit en deux voix.\n\nMEDIA:{audio}")}),
-            ],
-        );
-    });
-    let now = chrono::Local::now().naive_local();
-    let mut stored = 0;
-    for _ in 0..3 {
-        stored += cron.poll(&w.agent, Some(now)).await.unwrap();
-    }
-    assert_eq!(stored, 1);
-    let items = w.outbox().await;
-    assert_eq!(items.len(), 1, "{items:?}");
-    assert_eq!(items[0]["text"], json!(format!("🎙️ Ta nuit en deux voix.\n\nMEDIA:{audio}")));
-    assert_eq!(items[0]["title"], "Routine du matin");
-    assert_eq!(items[0]["session_id"], json!(root)); // one message per run, under the routine's own session
-    tokio::time::sleep(Duration::from_millis(300)).await;
-    assert_eq!(w.apns.payloads().len(), 1);
-    for _ in 0..2 {
-        assert_eq!(cron.poll(&w.agent, Some(now)).await.unwrap(), 0); // once
-    }
-    w.app.shutdown().await;
-}
-
-#[tokio::test]
-async fn a_conversation_hermes_cannot_read_never_holds_a_routine_back() {
-    let w = world(true).await;
-    let cron = production_watcher(&w);
-    let started = chrono::Local::now() - chrono::Duration::minutes(3);
-    let audio = podcast_made(&w, started);
-    let sid = format!("cron_5d1c0f2a9b3e_{}", started.format("%Y%m%d_%H%M%S"));
-    podcast_routine(&w, &sid, started.timestamp() as f64, &audio);
-    w.hermes.with(|s| {
-        // listed before the routine, its messages fail every time
-        s.sessions.insert(0, json!({"id": "broken_bot", "title": "Bot Chat", "message_count": 9}));
-        s.sessions.insert(1, json!({"id": "broken_chat", "title": "Recettes", "message_count": 3}));
-    });
-    let now = chrono::Local::now().naive_local();
-    w.hermes.set_count("broken_chat", 4); // moved: fetched
-    let mut stored = 0;
-    for _ in 0..3 {
-        stored += cron.poll(&w.agent, Some(now)).await.unwrap();
-        w.hermes.with(|s| s.sessions[1]["message_count"] = json!(s.sessions[1]["message_count"].as_i64().unwrap() + 1));
-    }
-    assert_eq!(stored, 1);
-    assert_eq!(w.outbox().await.len(), 1);
-    w.app.shutdown().await;
-}
-
-/// A routine whose final reply is `reply`, started 3 minutes ago; stored after three rounds. Its Boîte item.
-async fn routine_stored(w: &World, reply: &str) -> Value {
-    let cron = production_watcher(w);
-    let started = chrono::Local::now() - chrono::Duration::minutes(3);
-    let sid = format!("cron_5d1c0f2a9b3e_{}", started.format("%Y%m%d_%H%M%S"));
-    w.hermes.with(|s| {
-        s.sessions = vec![json!({"id": sid, "title": "Routine du matin", "source": "cron"})];
-        s.messages.insert(
-            sid.clone(),
-            vec![json!({"role": "user", "content": "Le podcast du matin"}), json!({"role": "assistant", "content": reply})],
-        );
-    });
-    let now = chrono::Local::now().naive_local();
-    let mut stored = 0;
-    for _ in 0..3 {
-        stored += cron.poll(&w.agent, Some(now)).await.unwrap();
-    }
-    assert_eq!(stored, 1);
-    let items = w.outbox().await;
-    assert_eq!(items.len(), 1, "{items:?}");
-    items[0].clone()
-}
-
-#[tokio::test]
-async fn a_routines_m4a_podcast_is_its_audio_not_a_reading_of_its_text() {
-    // aibox 2026-10-30: the routine's text arrived, its podcast didn't. The bridge read the text aloud as the message's
-    // audio (`has_audio`), and the iPhone, taking that reading for the podcast, left the podcast's MEDIA line out.
-    let w = world(false).await;
-    let audio = podcast_made(&w, chrono::Local::now() - chrono::Duration::minutes(2));
-    let item = routine_stored(&w, &format!("🎙️ Ta nuit en deux voix.\n\nMEDIA:{audio}")).await;
-    assert_eq!(item["text"], json!(format!("🎙️ Ta nuit en deux voix.\n\nMEDIA:{audio}")));
-    let (k, v) = auth();
-    let id = item["id"].as_str().unwrap();
-    // no reading made on top of the podcast: the message has no audio of its own, the app plays the file
-    let resp = w.app.get(&format!("/v1/outbox/{id}/audio"), &[(k, v.as_str())]).await;
-    assert_eq!(resp.status, StatusCode::NOT_FOUND);
-    assert_eq!(w.outbox().await[0]["has_audio"], false);
-    // and the file is served to the app
-    let resp = w.app.get(&format!("/v1/media?path={audio}&agent=wellness"), &[(k, v.as_str())]).await;
-    assert_eq!(resp.status, StatusCode::OK);
-    assert_eq!(resp.body, b"m4a");
-    w.app.shutdown().await;
-}
-
-#[tokio::test]
-async fn a_routines_mp3_from_the_bridges_folder_becomes_its_audio() {
-    // an mp3 the bridge made (its audio folder, outside `[media] roots`) was taken out of the text and never attached
-    let w = world(false).await;
-    let config = w.app.app.state.config.get();
-    let folder = bipbridge::agent_tools::audio_root(&config).join("wellness");
-    std::fs::create_dir_all(&folder).unwrap();
-    std::fs::write(folder.join("20261030-075500-podcast.mp3"), b"ID3 podcast").unwrap();
-    let item = routine_stored(&w, "Ton podcast.\nMEDIA:/bipagents/audio/wellness/20261030-075500-podcast.mp3").await;
-    assert_eq!(item["text"], "Ton podcast.");
-    assert_eq!(item["has_audio"], true);
-    let (k, v) = auth();
-    let resp = w.app.get(&format!("/v1/outbox/{}/audio", item["id"].as_str().unwrap()), &[(k, v.as_str())]).await;
-    assert_eq!(resp.body, b"ID3 podcast");
-    w.app.shutdown().await;
-    // an mp3 nobody can reach keeps its line (the app says it's missing) instead of vanishing
-    let w = world(false).await;
-    let item = routine_stored(&w, "Ton podcast.\nMEDIA:/nulle/part/podcast.mp3").await;
-    assert_eq!(item["text"], "Ton podcast.\nMEDIA:/nulle/part/podcast.mp3");
     w.app.shutdown().await;
 }

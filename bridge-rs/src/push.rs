@@ -546,10 +546,15 @@ impl PushService {
         self.emit(event).await
     }
 
-    /// An agent answered in a group discussion (rooms.rs) nobody looks at: « <agent> · <room> »; tapping opens the
-    /// discussion. Collapsed per discussion.
-    pub async fn notify_room(&self, agent: &str, room_id: &str, room_title: &str, text: &str) -> usize {
-        let notice = Notice::Room { room_id: room_id.into(), room_title: room_title.into(), text: text.into() };
+    /// An agent answered in a group discussion (rooms.rs): « <agent> · <room> »; tapping opens the discussion on its
+    /// message (`m`, the room item's id). Collapsed per discussion.
+    pub async fn notify_room(&self, agent: &str, room_id: &str, room_title: &str, text: &str, message: &str) -> usize {
+        let notice = Notice::Room {
+            room_id: room_id.into(),
+            room_title: room_title.into(),
+            text: text.into(),
+            message: message.into(),
+        };
         self.notify(agent, notice).await
     }
 

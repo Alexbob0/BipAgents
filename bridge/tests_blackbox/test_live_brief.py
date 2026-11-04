@@ -4,10 +4,11 @@ recaps waiting for the next written message (tests/test_live_brief.py, over HTTP
 import json
 import time
 
+import httpx
 import pytest
 
 from bbkit.common import AUTH
-from bbkit.fakes import split_brief_now, split_now, waiting_notes
+from bbkit.fakes import split_brief_now, split_now, taken_notes, waiting_notes
 from bbkit.servers import wait_until
 
 
@@ -61,18 +62,12 @@ def test_routes(bridge, fakes):
     # What the call said waits here for the next written message, whichever device writes it, then is gone.
     first = "<!--bip:call\nVoice call of 10:05 in between:\nThe person: je pars à Lyon\nYou: Bon voyage\n-->"
     second = "<!--bip:call\nVoice call of 18:40 in between:\nThe person: je suis rentré\nYou: Super\n-->"
-    for recap in (first, second):
-        assert bridge.post("/v1/live/recaps", json={"agent": "Wellness", "session": "api_old", "recap": recap},
-                           headers=AUTH).json() == {"ok": True}
-    stored = bridge.state_dir / "call-recaps" / "wellness" / "api_old.txt"
-    assert stored.read_text() == first + "\x1e" + second and oct(stored.stat().st_mode & 0o777) == "0o600"
-    taken = bridge.post("/v1/live/recaps/take", json={"agent": "Wellness", "session": "api_old"}, headers=AUTH).json()
-    assert list(taken) == ["recap"] and waiting_notes(taken["recap"]) == first + "\n" + second
-    again = bridge.post("/v1/live/recaps/take", json={"agent": "Wellness", "session": "api_old"}, headers=AUTH).json()
-    assert waiting_notes(again["recap"]) is None   # the current time alone
-    assert bridge.post("/v1/live/recaps", json={"agent": "Wellness", "session": "api_old", "recap": "x"}).status_code == 401
-    assert bridge.post("/v1/live/recaps", json={"agent": "Wellness", "session": "api_old", "recap": ""},
-                       headers=AUTH).status_code == 422
+    stored = bridge.state_dir / "call-recaps" / "wellness" / "api_old.txt"   # kept by the calls' ends (live_calls.rs)
+    assert wait_until(stored.exists)   # that call's own, put in its conversation in the background
+    assert "bip:call" in taken_notes(bridge, "Wellness", "api_old")
+    stored.write_text(first + "\x1e" + second)
+    assert waiting_notes(taken_notes(bridge, "Wellness", "api_old")) == first + "\n" + second
+    assert waiting_notes(taken_notes(bridge, "Wellness", "api_old")) is None   # the current time alone
     assert bridge.post("/v1/live/calls", json={"agent": "ghost", "session": "a", "live_session": "b"},
                        headers=AUTH).status_code == 404
 
@@ -112,20 +107,54 @@ def test_a_call_start_has_the_model_read_its_prelude_without_waiting(bridge, fak
     hermes = fakes.hermes
     hermes.add_session("s1", talk(4))
     prelude = "<!--bip:live\nRules\n\nBrief of s1\n-->"
-    started = bridge.post("/v1/live/calls/start", headers=AUTH, json={
-        "agent": "wellness", "session": "s1", "live_session": "live1", "prelude": prelude})
-    assert started.status_code == 200 and started.json() == {"ok": True, "deposit": True}
+    started = bridge.post("/v1/live/calls/start", headers=AUTH, json={"agent": "wellness", "session": "s1", "prelude": prelude})
+    assert started.status_code == 200 and started.json() == {"ok": True, "live_session": "api_s1"}   # the call's own
     assert wait_until(lambda: hermes.deleted, timeout=10)
     chat, = hermes.chats
     assert chat["message"].startswith(prelude + "\n\n<!--bip:warm") and not chat.get("instructions")
-    assert chat["model_options"] == {"reasoning": {"enabled": False}}   # what the brief tells the call to send
-    (_, created), = hermes.created
-    assert created["title"].startswith("BipAgents · live · ")
-    assert hermes.deleted == [chat["session"]] and chat["session"] != "live1"   # never the call's own session
-    # an older app: no instructions, no warm-up
-    bridge.post("/v1/live/calls/start", headers=AUTH, json={"agent": "wellness", "session": "s1", "live_session": "live2"})
+    assert chat["model_options"] == {"reasoning": {"enabled": False}}   # what the call's turns send
+    (_, call), (_, warm) = hermes.created
+    assert call["title"].startswith("Live · ") and warm["title"].startswith("BipAgents · live · ")
+    assert hermes.deleted == [chat["session"]] and chat["session"] != "api_s1"   # never the call's own session
+    # no prelude: no warm-up; no conversation: a call that lands nowhere
+    assert bridge.post("/v1/live/calls/start", headers=AUTH, json={"agent": "wellness"}).json()["live_session"] == "api_s3"
     time.sleep(1)
     assert len(hermes.chats) == 1
+
+
+def test_a_call_s_turns_go_through_the_bridge(bridge, fakes):
+    """3/11: the apps no longer call Hermes in a Live call: each turn goes to Hermes' chat/stream in the call's own
+    session through `POST /v1/live/turns`, its events passed on as they come (the first words before the turn ends),
+    with the agent's quick thinking; photos inline; a turn stopped through the bridge (live_turns.rs)."""
+    hermes = fakes.hermes
+    hermes.stream_script = [hermes.stream_script[0], 2.0, hermes.stream_script[1]]
+    live = bridge.post("/v1/live/calls/start", headers=AUTH, json={"agent": "wellness"}).json()["live_session"]
+    asked = time.monotonic()
+    with httpx.Client(base_url=bridge.url, headers=AUTH, timeout=30) as client:
+        with client.stream("POST", "/v1/live/turns", json={"agent": "wellness", "live_session": live,
+                                                             "text": "<!--bip:live\nRules\n-->\n\nBonjour"}) as resp:
+            assert resp.status_code == 200 and resp.headers["content-type"].startswith("text/event-stream")
+            lines = resp.iter_lines()
+            first = next(line for line in lines if line.startswith("data: "))
+            assert time.monotonic() - asked < 1.5, "the first words wait for the turn's end"
+            assert json.loads(first[6:]) == {"event": "assistant.delta", "run_id": "run_l1", "delta": "Salut"}
+            assert any("run.completed" in line for line in lines)
+    turn, = hermes.streams
+    assert turn == {"agent": "", "session": live, "input": "<!--bip:live\nRules\n-->\n\nBonjour",
+                    "model_options": {"reasoning": {"enabled": False}}}
+    hermes.stream_script = []
+    photo = {"kind": "image", "mime": "image/png", "data": "AAAA"}
+    sent = bridge.post("/v1/live/turns", headers=AUTH, json={"agent": "wellness", "live_session": live,
+                                                            "text": "Et ça ?", "attachments": [photo]})
+    assert sent.status_code == 200
+    assert hermes.streams[1]["input"] == [{"type": "text", "text": "Et ça ?"},
+                                          {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}}]
+    stopped = bridge.post("/v1/live/turns/stop", headers=AUTH, json={"agent": "wellness", "run_id": "run_l1"})
+    assert stopped.json() == {"stopped": True} and hermes.seen("/v1/runs/run_l1/stop", "POST")
+    for bad in ({"agent": "wellness", "live_session": "a b", "text": "x"}, {"agent": "wellness", "live_session": live}):
+        assert bridge.post("/v1/live/turns", headers=AUTH, json=bad).status_code == 422
+    assert bridge.post("/v1/live/turns", headers=AUTH, json={"agent": "ghost", "live_session": live, "text": "x"}).status_code == 404
+    assert bridge.post("/v1/live/turns", json={"agent": "wellness", "live_session": live, "text": "x"}).status_code == 401
 
 
 @pytest.mark.slow
