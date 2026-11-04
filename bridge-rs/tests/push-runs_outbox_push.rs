@@ -64,8 +64,8 @@ async fn a_message_lands_in_outbox_with_audio_and_push() {
     // m1 -> TOKEN + DEAD (410, then deleted), m2 -> TOKEN (+ DEAD if it raced the deletion)
     assert!(wait_until(|| ends_with(&sandbox, TOKEN) >= 2, Duration::from_secs(10)).await);
 
-    let items = client.get("/v1/outbox", &h).await.json()["items"].clone();
-    let texts: Vec<&str> = items.as_array().unwrap().iter().map(|i| i["text"].as_str().unwrap()).collect();
+    let items = boite_items(&client).await;
+    let texts: Vec<&str> = items.iter().map(|i| i["text"].as_str().unwrap()).collect();
     assert_eq!(texts, ["Bonjour **Sam**, as-tu bien dormi ?", "Pense à boire de l'eau."]);
     let first = items[0].clone();
     assert_eq!(first["agent"], "wellness");
@@ -113,17 +113,7 @@ async fn a_message_lands_in_outbox_with_audio_and_push() {
         assert_eq!(tokens, [TOKEN]);
     }
 
-    // Single item + since filtering + agent filter
-    let one = client.get(&format!("/v1/outbox/{id}"), &h).await.json();
-    assert_eq!(one["text"], first["text"]);
-    let since: String =
-        url::form_urlencoded::byte_serialize(first["created_at"].as_str().unwrap().as_bytes()).collect();
-    let later = client.get(&format!("/v1/outbox?since={since}"), &h).await.json()["items"].clone();
-    let texts: Vec<&str> = later.as_array().unwrap().iter().map(|i| i["text"].as_str().unwrap()).collect();
-    assert_eq!(texts, ["Pense à boire de l'eau."]);
-    assert_eq!(client.get("/v1/outbox?agent=ghost", &h).await.status, StatusCode::NOT_FOUND);
-    assert_eq!(client.get("/v1/outbox?since=hier", &h).await.status, StatusCode::BAD_REQUEST);
-    assert_eq!(client.get("/v1/outbox/nope", &h).await.status, StatusCode::NOT_FOUND);
+    assert_eq!(client.get("/v1/outbox/nope/audio", &h).await.status, StatusCode::NOT_FOUND);
     client.shutdown().await;
     backend.release.set();
 }

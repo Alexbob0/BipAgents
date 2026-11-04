@@ -55,7 +55,7 @@ def test_opening_a_conversation_old_and_new(bridges, fakes):
         (hermes, "/api/sessions", {"limit": 50}),
         (hermes, "/api/sessions/s3", {}),
         (hermes, "/api/sessions/s3/messages", {"limit": 300, "order": "latest", "inline_images": "false"}),
-        (app, "/v1/outbox", {"agent": "wellness"}),
+        (app, "/v1/notifications", {"agent": "wellness"}),
         (app, "/v1/approvals", {"agent": "wellness"}),
         # (the answered approvals' own request, gone since step 4: the timeline has them)
         (app, "/v1/live/calls", {"agent": "wellness", "session": "s3"}),

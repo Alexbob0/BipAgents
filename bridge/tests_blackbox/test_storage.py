@@ -7,7 +7,7 @@ import os
 import time
 
 from bbkit.fakes import taken_notes, waiting_notes
-from bbkit.common import AUTH, answered
+from bbkit.common import AUTH, answered, boite_items
 from bbkit.mcp import call, give_token, text_of
 
 FIVE_GB = 5 * 2**30
@@ -134,7 +134,7 @@ def test_sent_to_the_phone_then_deleted_here(bridge):
     assert sent[0]["description"].startswith("Je t'ai envoyé 2 fichiers")
     # the Boîte has the agent's message with the files, served to the app
     def boite():
-        return bridge.get("/v1/outbox", headers=AUTH, params={"agent": "wellness"}).json()
+        return {"items": boite_items(bridge, "wellness")}
     deadline = time.time() + 5
     while time.time() < deadline and "space-out" not in json.dumps(boite()):
         time.sleep(0.2)

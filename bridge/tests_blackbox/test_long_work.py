@@ -14,7 +14,7 @@ import httpx
 
 import pytest
 
-from bbkit.common import AUTH, read_sse, sse, in_session
+from bbkit.common import AUTH, read_sse, sse, in_session, boite_items
 from bbkit.mcp import call, give_token, rpc, text_of
 from bbkit.servers import wait_until
 
@@ -399,7 +399,7 @@ def test_a_finished_task_is_handed_back_to_the_conversation_that_asked(bridges, 
 
     assert wait_until(handed, timeout=20)
     row = handed()[0]
-    assert not [i for i in bridge.get("/v1/outbox", headers=AUTH).json()["items"] if i["session_id"] == "api_c"]
+    assert not [i for i in boite_items(bridge) if i["session_id"] == "api_c"]
     timeline = bridge.get(f"/v1/threads/{row['c']}/timeline", headers=AUTH, params={"agent": "wellness"}).json()
     [said] = [i for i in timeline["items"] if i["id"] == row["m"]]
     assert said["text"] == MESSAGE and [a["path"] for a in said["attachments"]] == [page]
@@ -444,7 +444,7 @@ def test_a_task_whose_conversation_is_gone_is_told_by_the_template(bridges, fake
     gate.set()
 
     def told():
-        return bridge.get("/v1/outbox", headers=AUTH).json()["items"]
+        return boite_items(bridge)
 
     assert wait_until(told, timeout=40)
     item = told()[0]

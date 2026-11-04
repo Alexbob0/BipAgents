@@ -28,7 +28,7 @@ def test_health_is_public_and_reports_reachability(bridge):
 @pytest.mark.parametrize("headers", [{}, {"Authorization": "Bearer nope"}, {"Authorization": BRIDGE_KEY},
                                      {"Authorization": f"Basic {BRIDGE_KEY}"}])
 def test_routes_require_bridge_key(bridge, headers):
-    for method, path in [("get", "/v1/outbox"), ("post", "/v1/tts/sentence"), ("post", "/v1/devices"),
+    for method, path in [("get", "/v1/notifications"), ("post", "/v1/tts/sentence"), ("post", "/v1/devices"),
                          ("delete", "/v1/devices/abc"), ("post", "/v1/files"), ("get", "/v1/agents"),
                          ("post", "/v1/watch"), ("post", "/v1/approve"), ("get", "/v1/approvals")]:
         resp = bridge.request(method.upper(), path, headers=headers)

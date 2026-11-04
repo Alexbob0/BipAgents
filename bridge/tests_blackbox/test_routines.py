@@ -8,7 +8,7 @@ import time
 
 from starlette.responses import JSONResponse
 
-from bbkit.common import AUTH, sse
+from bbkit.common import AUTH, sse, boite_items
 from bbkit.mcp import call, give_token, text_of
 from bbkit.servers import wait_until
 
@@ -21,7 +21,7 @@ def turns(fakes):
 
 
 def boite(bridge):
-    return bridge.get("/v1/outbox", headers=AUTH).json()["items"]
+    return boite_items(bridge)
 
 
 def test_a_routine_made_in_a_conversation_runs_with_the_conversation_prompt_and_reports_there(bridges, fakes):

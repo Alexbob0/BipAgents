@@ -93,6 +93,14 @@ def answered(bridge, agent: str) -> list:
     return sorted([r for r in rows if r.get("choice")], key=lambda r: r.get("at") or 0)
 
 
+def boite_items(bridge, agent=None) -> list:
+    """The Boîte as the apps read it: the journal's `boite` rows, oldest first, each as its message."""
+    params = {"limit": 500, **({"agent": agent} if agent else {})}
+    rows = bridge.get("/v1/notifications", headers=AUTH, params=params).json()["notifications"]
+    return [{"id": r["ref"], "agent": r["agent"], "session_id": r["session_id"], "created_at": r["created_at"],
+             **r["boite"]} for r in reversed(rows) if r["type"] == "boite" and "boite" in r]
+
+
 def boite_message(bridge, fakes, text: str, name: str = "Le point", notify: bool = True) -> dict:
     """A message in the Boîte as the bridge's own producers put one there: a routine's report (made by the app, run
     now, its turn answering `text`; `notify` False: the routine muted). Returns the Boîte's item once stored."""
@@ -103,12 +111,12 @@ def boite_message(bridge, fakes, text: str, name: str = "Le point", notify: bool
     if not notify:
         muted = bridge.put(f"/v1/cron-jobs/wellness/{made.json()['job']['id']}", headers=AUTH, json={"notify": False})
         assert muted.status_code == 200, muted.text
-    before = {i["id"] for i in bridge.get("/v1/outbox", headers=AUTH).json()["items"]}
+    before = {i["id"] for i in boite_items(bridge)}
     fakes.hermes.run_output = text
     assert bridge.post(f"/v1/routines/{made.json()['job']['id']}/run", headers=AUTH).status_code == 200
 
     def new():
-        return [i for i in bridge.get("/v1/outbox", headers=AUTH).json()["items"] if i["id"] not in before]
+        return [i for i in boite_items(bridge) if i["id"] not in before]
 
     assert wait_until(new, timeout=20)
     return new()[0]

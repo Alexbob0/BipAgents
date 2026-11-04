@@ -23,7 +23,7 @@ sections below document the original core (voice, files, push, approvals), which
 | Per-sentence TTS | `POST /v1/tts/sentence` | normalizes the text (markdown, links), calls the voice engine (Pocket, or your own voice model), returns 24 kHz mono int16 PCM (or Opus/WAV); global FIFO queue + LRU cache |
 | Files | `POST /v1/files` | drops PDF/Excel/text… files into a folder mounted in the Hermes container and returns the path **as seen by the agent** |
 | Push | `POST/DELETE /v1/devices` | registers APNs device tokens (SQLite), sends pushes over HTTP/2 + ES256 JWT token |
-| Proactive messages | `GET /v1/outbox…` | stores the messages of the agents' routines and background work, pre-synthesizes the audio (mp3), pushes `MESSAGE` |
+| Proactive messages | `GET /v1/notifications`, `GET /v1/outbox/{id}/audio` | stores the messages of the agents' routines and background work, pre-synthesizes the audio (mp3), pushes `MESSAGE` |
 | Approvals | `POST /v1/watch`, `POST /v1/approve`, `GET /v1/approvals` | watches a run in the background, pushes `APPROVAL` if nobody is following it, relays the answer to Hermes |
 | Health | `GET /health` | no authentication: version + voice engines' reachability |
 
@@ -130,9 +130,9 @@ case-insensitive (`wellness`, `vie`).
   `DELETE /v1/devices/{token}`.
 - **Going to the background during a run**: `POST /v1/watch {agent, run_id}` → `APPROVAL` push if an approval comes in,
   silent `run_finished` push at the end.
-- **Notification Service Extension**: `MESSAGE` → `GET /v1/outbox/{outbox_id}` + `GET /v1/outbox/{id}/audio` (mp3);
+- **Notification Service Extension**: `MESSAGE` → `GET /v1/notifications/{n}` + `GET /v1/outbox/{id}/audio` (mp3);
   `APPROVAL` → `GET /v1/approvals?agent=` to display the command; Approve/Deny actions → `POST /v1/approve`.
-- **Inbox**: `GET /v1/outbox?since=<created_at of the last item>` when returning to the foreground.
+- **Inbox**: `GET /v1/notifications` (its `boite` rows) when returning to the foreground.
 - **Files**: `POST /v1/files` (multipart `agent`, `file`) then a `[Pièce jointe : … → <path>]` line in the message.
 
 The detailed contract (exact payloads) is in the next section.
@@ -232,19 +232,12 @@ Body: `{"token": "<APNs hex>", "environment"?: "sandbox"|"production", "agent_id
 `{"token","environment","agent_ids","created_at","updated_at"}`. Registering again updates it. 400: non-hexadecimal token,
 invalid environment, `{"detail":{"error":"unknown agent_ids","agent_ids":[…]}}`.
 
-### `DELETE /v1/devices/{token}` → 204 (idempotent)
+### `DELETE /v1/devices/{toke### The Boîte: `GET /v1/notifications?agent=…`
+A Boîte message is a `boite` row of the notification journal (`bridge-rs/src/notifications.rs`), with `boite`:
+`{"title", "text" (whole, markdown), "attachments", "has_audio", "audio_url"}`, muted ones included (push
+`skipped:muted`); `ref` is its id for the audio route below.
 
-### `GET /v1/outbox?since=<ISO 8601>&agent=<id>&limit=<1..500, default 100>`
-`{"items": [Item…], "server_time": "2026-10-04T08:15:02.120Z"}`, sorted by ascending `created_at`, `since` exclusive
-(ISO with `Z`/offset, or Unix seconds). Item:
-```json
-{"id": "9f3c…(32 hex)", "agent": "wellness", "title": "Check-in", "text": "full text (markdown)",
- "created_at": "2026-10-04T08:15:01.532Z", "sent_at": "2026-10-04T08:15:01.000Z", "session_id": null,
- "has_audio": true, "audio_url": "/v1/outbox/9f3c…/audio"}
-```
-`created_at` = receipt by the bridge (UTC, ms, fixed format); `sent_at` is null; `session_id` is the conversation it belongs to, if any. For pagination, pass the last item's `created_at` back as `since`.
-
-### `GET /v1/outbox/{id}` → Item (404 otherwise)
+→ Item (404 otherwise)
 
 ### `GET /v1/outbox/{id}/audio`
 200 `audio/mpeg`; if synthesis is still in progress (wait ≤ 20 s): 202 `{"status":"pending"}` + `Retry-After: 3`;

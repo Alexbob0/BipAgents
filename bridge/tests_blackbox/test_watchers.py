@@ -11,7 +11,7 @@ import time
 
 import pytest
 
-from bbkit.common import AUTH
+from bbkit.common import AUTH, boite_items
 from bbkit.servers import wait_until
 from conftest import profile, wait_registered
 from test_connectors import IMAGE, TOKEN, approve_next, rpc, text
@@ -82,7 +82,7 @@ def row(bridge, conn):
 
 
 def boite(bridge):
-    return [i for i in bridge.get("/v1/outbox", headers=AUTH).json()["items"] if i["title"] == "Créneau médecin"]
+    return [i for i in boite_items(bridge) if i["title"] == "Créneau médecin"]
 
 
 def podman_runs(bridge):

@@ -127,7 +127,14 @@ async fn muted_job_reply_is_stored_without_push() {
     tokio::time::sleep(Duration::from_millis(500)).await;
     let item = item.expect("stored");
     assert!(apns.requests.lock().unwrap().is_empty());
-    let items = client.get("/v1/outbox", &h).await.json()["items"].clone();
-    assert!(items.as_array().unwrap().iter().any(|row| row["id"] == item["id"]));
+    let mut found = false;
+    for _ in 0..30 {
+        found = boite_items(&client).await.iter().any(|row| row["id"] == item["id"]); // muted: in the Boîte, not pushed
+        if found {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+    assert!(found);
     client.shutdown().await;
 }

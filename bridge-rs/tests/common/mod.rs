@@ -185,3 +185,23 @@ impl TestApp {
         self.app.shutdown().await;
     }
 }
+
+/// The Boîte as the apps read it: the journal's `boite` rows (`/v1/notifications`), oldest first, each as its
+/// message (`id` its outbox id).
+pub async fn boite_items(app: &TestApp) -> Vec<Value> {
+    let (k, v) = auth();
+    let rows = app.get("/v1/notifications?limit=500", &[(k, v.as_str())]).await.json()["notifications"].clone();
+    rows.as_array()
+        .unwrap()
+        .iter()
+        .rev()
+        .filter(|r| r["type"] == "boite" && r.get("boite").is_some())
+        .map(|r| {
+            let mut item = r["boite"].clone();
+            for (key, from) in [("id", "ref"), ("agent", "agent"), ("session_id", "session_id"), ("created_at", "created_at")] {
+                item[key] = r[from].clone();
+            }
+            item
+        })
+        .collect()
+}

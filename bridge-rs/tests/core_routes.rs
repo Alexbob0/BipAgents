@@ -31,7 +31,6 @@ async fn routes_require_bridge_key() {
     for headers in &variants {
         let headers: Vec<(&str, &str)> = headers.iter().map(|(k, v)| (*k, v.as_str())).collect();
         for (method, path) in [
-            ("GET", "/v1/outbox"),
             ("POST", "/v1/tts/sentence"),
             ("POST", "/v1/devices"),
             ("DELETE", "/v1/devices/abc"),
@@ -197,9 +196,6 @@ async fn fastapi_like_errors() {
     assert_eq!(resp.status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(resp.json()["detail"][0]["type"], "string_too_long");
     // query parameters
-    let resp = app.get("/v1/outbox?limit=0", &h).await;
-    assert_eq!(resp.status, StatusCode::UNPROCESSABLE_ENTITY);
-    assert_eq!(resp.json()["detail"][0]["loc"], json!(["query", "limit"]));
     let resp = app.get("/v1/pages", &h).await;
     assert_eq!(
         resp.json()["detail"][0],
@@ -215,21 +211,9 @@ async fn outbox_and_cron_jobs() {
     let store = &app.app.state.store;
     let item = store.add_outbox("wellness", "Bonjour", Default::default()).await.unwrap().unwrap();
     let id = item["id"].as_str().unwrap().to_string();
-    let resp = app.get("/v1/outbox?agent=Wellness", &h).await;
-    assert_eq!(resp.status, StatusCode::OK);
-    let body = resp.json();
-    assert_eq!(body["items"][0]["id"], id.as_str());
-    assert_eq!(body["items"][0]["has_audio"], false);
-    assert_eq!(body["items"][0]["audio_url"], format!("/v1/outbox/{id}/audio"));
-    assert!(body["server_time"].as_str().unwrap().ends_with('Z'));
-    assert_eq!(
-        app.get("/v1/outbox?since=yesterday", &h).await.json(),
-        json!({"detail": "invalid since (ISO 8601 expected)"})
-    );
-    assert_eq!(app.get("/v1/outbox?since=2999-01-01T00:00:00Z", &h).await.json()["items"], json!([]));
-    assert_eq!(app.get("/v1/outbox?agent=ghost", &h).await.json(), json!({"detail": "unknown agent"}));
-    assert_eq!(app.get(&format!("/v1/outbox/{id}"), &h).await.json()["text"], "Bonjour");
-    assert_eq!(app.get("/v1/outbox/nope", &h).await.json(), json!({"detail": "not found"}));
+    // the list and the one-item routes went: the apps read the Boîte from the journal
+    assert_eq!(app.get(&format!("/v1/outbox/{id}"), &h).await.status, StatusCode::NOT_FOUND);
+    assert_eq!(app.get("/v1/outbox/nope/audio", &h).await.json(), json!({"detail": "not found"}));
 
     let config = app.app.state.config();
     let j1 = bipbridge::routines::create(&config, "wellness", "Matin", "0 7 * * *", "Le point du matin", None).unwrap().id;

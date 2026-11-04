@@ -1,6 +1,6 @@
 """Boîte messages (outbox): ingestion, audio pre-synthesis, MESSAGE push, outbox routes (tests/test_outbox_push.py,
 over HTTP). The messages are routines' reports, the way the bridge's own producers fill the Boîte."""
-from bbkit.common import AUTH, boite_message, in_session
+from bbkit.common import AUTH, boite_message, in_session, boite_items
 from bbkit.servers import wait_until
 
 TOKEN = "b" * 64
@@ -29,15 +29,15 @@ def test_a_message_lands_in_outbox_with_audio_and_push(bridges, fakes):
     # the first -> TOKEN + DEAD (410, then deleted), the second -> TOKEN (+ DEAD if it raced the deletion)
     assert wait_until(lambda: len([r for r in apns.pushes() if apns.token(r) == TOKEN]) >= 2, timeout=15)
 
-    items = bridge.get("/v1/outbox", headers=AUTH).json()["items"]
+    items = boite_items(bridge)
     assert [i["text"] for i in items] == ["Bonjour **Sam**, as-tu bien dormi ?", "Pense à boire de l'eau."]
     first = items[0]
     session = first["session_id"]
     assert first["agent"] == "wellness" and first["title"] == "Check-in"
     assert session and first["has_audio"] is True
-    assert first["created_at"].endswith("Z") and first["sent_at"] is None
+    assert first["created_at"].endswith("Z")
     assert first["audio_url"] == f"/v1/outbox/{first['id']}/audio" and len(first["id"]) == 32
-    assert set(first) == {"id", "agent", "title", "text", "created_at", "sent_at", "session_id", "has_audio", "audio_url",
+    assert set(first) == {"id", "agent", "title", "text", "created_at", "session_id", "has_audio", "audio_url",
                           "attachments"}
     assert items[1]["title"] == "Eau" and items[1]["session_id"] != session
 
@@ -76,25 +76,8 @@ def test_a_message_lands_in_outbox_with_audio_and_push(bridges, fakes):
     assert tokens == [TOKEN]
     assert stored[0][0] == "wellness" and stored[0][1].startswith("routine:") and stored[0][2:] == ("Check-in", session, None)
 
-    # Single item + since filtering + agent filter
-    one = bridge.get(f"/v1/outbox/{first['id']}", headers=AUTH).json()
-    assert one == first
-    later = bridge.get("/v1/outbox", headers=AUTH, params={"since": first["created_at"]}).json()["items"]
-    assert [i["text"] for i in later] == ["Pense à boire de l'eau."]
-    assert bridge.get("/v1/outbox", headers=AUTH, params={"since": "1"}).json()["items"] == items   # Unix seconds
-    assert len(bridge.get("/v1/outbox", headers=AUTH, params={"limit": 1}).json()["items"]) == 1
-    assert bridge.get("/v1/outbox", headers=AUTH, params={"agent": "Wellness"}).json()["items"] == items
-    ghost = bridge.get("/v1/outbox", headers=AUTH, params={"agent": "ghost"})
-    assert ghost.status_code == 404 and ghost.json() == {"detail": "unknown agent"}
-    hier = bridge.get("/v1/outbox", headers=AUTH, params={"since": "hier"})
-    assert hier.status_code == 400 and hier.json() == {"detail": "invalid since (ISO 8601 expected)"}
-    assert bridge.get("/v1/outbox", headers=AUTH, params={"limit": 0}).status_code == 422
-    assert bridge.get("/v1/outbox", headers=AUTH, params={"limit": 501}).status_code == 422
-    nope = bridge.get("/v1/outbox/nope", headers=AUTH)
-    assert nope.status_code == 404 and nope.json() == {"detail": "not found"}
     assert bridge.get("/v1/outbox/nope/audio", headers=AUTH).status_code == 404
-    listing = bridge.get("/v1/outbox", headers=AUTH).json()
-    assert listing["server_time"].endswith("Z") and len(listing["server_time"]) == 24
+    assert bridge.get(f"/v1/outbox/{first['id']}", headers=AUTH).status_code == 404   # the journal has the message
 
 
 def test_no_words_in_clear_even_with_the_old_previews_setting(bridges, fakes):

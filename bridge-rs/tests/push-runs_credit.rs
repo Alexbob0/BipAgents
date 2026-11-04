@@ -5,7 +5,7 @@ mod common;
 
 use bipbridge::config::parse_config;
 use bipbridge::credit::{self, Credit, State};
-use common::{auth, config_dict, TestApp, Urls};
+use common::{boite_items, config_dict, TestApp, Urls};
 use serde_json::json;
 
 #[tokio::test]
@@ -16,9 +16,10 @@ async fn one_note_while_the_credit_is_used_for_an_agent_with_routines() {
     let state = app.app.state.clone();
     let config = state.config();
     let agent = config.agents.values().next().unwrap().clone();
+    // journaled once delivered (its audio waited for, `[outbox] audio_wait_seconds`)
     let outbox = || async {
-        let (k, v) = auth();
-        app.get("/v1/outbox", &[(k, v.as_str())]).await.json()["items"].as_array().unwrap().clone()
+        tokio::time::sleep(std::time::Duration::from_millis(2500)).await;
+        boite_items(&app).await
     };
     let full = Credit { state: State::Full, resumes: Some(4.0e9) };
     // no routine: nothing to say

@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from bbkit.common import AUTH, in_session, on_screen, pushed_text
+from bbkit.common import AUTH, in_session, on_screen, pushed_text, boite_items
 from bbkit.servers import wait_until
 
 TOKEN = "c" * 64
@@ -117,7 +117,7 @@ def test_a_subtask_report_left_without_a_reply_is_told_by_the_agent(bridges, fak
         return [r for r in found if r["type"] == "reply" and r["session_id"] == "api_7" and r["m"]]
 
     assert wait_until(rows, timeout=20)
-    assert bridge.get("/v1/outbox", headers=AUTH).json()["items"] == []
+    assert boite_items(bridge) == []
     row = rows()[0]
     page = bridge.get(f"/v1/threads/{row['c']}/timeline", headers=AUTH, params={"agent": "wellness"}).json()
     [said] = [i for i in page["items"] if i["id"] == row["m"]]

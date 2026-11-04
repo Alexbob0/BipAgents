@@ -44,7 +44,7 @@ def test_old_uploads_audio_and_messages_are_purged(bridges):
     assert not old.exists() and new.exists() and foreign.exists() and not lonely.exists()
     assert not (audio / "old.m4a").exists() and (audio / "new.m4a").exists()
     assert not (bridge.data / "audio" / "o1.mp3").exists()
-    assert [i["id"] for i in bridge.get("/v1/outbox", headers=AUTH).json()["items"]] == ["o2"]
+    assert [r[0] for r in bridge.db().execute("SELECT id FROM outbox")] == ["o2"]
     assert bridge.logged("uploads purged")[0] == {**bridge.logged("uploads purged")[0], "agent": "wellness", "removed": 2}
     assert bridge.logged("agent audio purged")[0]["removed"] == 1 and bridge.logged("outbox purged")[0]["removed"] == 1
 

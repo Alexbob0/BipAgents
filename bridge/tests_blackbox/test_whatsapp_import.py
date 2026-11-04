@@ -7,7 +7,7 @@ import io
 import zipfile
 from datetime import date, datetime, timedelta
 
-from bbkit.common import AUTH
+from bbkit.common import AUTH, boite_items
 from bbkit.servers import wait_until
 from conftest import managed_install, profile
 from test_shared_agents import link
@@ -128,8 +128,8 @@ def test_a_chat_is_archived_whole_and_fills_the_carnet_then_only_its_new_part(br
     document = bridge.get("/v1/archives/document", params={"ref": reference}, headers=AUTH)
     assert document.status_code == 200 and "On fête les 7 ans de Hugo" in document.json()["text"]
     # done: a line in the agent's Boîte
-    assert wait_until(lambda: bridge.get("/v1/outbox", headers=AUTH).json()["items"])
-    item = bridge.get("/v1/outbox", headers=AUTH).json()["items"][0]
+    assert wait_until(lambda: boite_items(bridge))
+    item = boite_items(bridge)[0]
     assert item["agent"] == "coach" and "2 personnes, 1 sujet, 1 date, 1 tâche ajoutés au Carnet" in item["text"]
 
     # exported again two days later: recognised, only the two new messages added and read

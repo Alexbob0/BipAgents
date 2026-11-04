@@ -7,7 +7,7 @@ import zipfile
 
 import yaml
 
-from bbkit.common import AUTH
+from bbkit.common import AUTH, boite_items
 from bbkit.servers import wait_until
 from conftest import managed_install, profile
 
@@ -111,8 +111,8 @@ def test_what_the_person_kept_fills_an_existing_agent(bridges, fakes):
     assert [a["name"] for a in archives] == ["Conversations (Grok Bot)"]
     assert "Bretagne" not in memory
     # routines: nothing scheduled, a message in the Boîte waits for a yes
-    assert wait_until(lambda: bridge.get("/v1/outbox", headers=AUTH).json()["items"])
-    item = bridge.get("/v1/outbox", headers=AUTH).json()["items"][0]
+    assert wait_until(lambda: boite_items(bridge))
+    item = boite_items(bridge)[0]
     assert item["agent"] == "coach" and "« Point du matin »" in item["text"] and "Gmail, Notion" in item["text"]
     assert not [c for c in bridge.commands.of("hermes") if "cron" in c]
     missing = bridge.post("/v1/assistant-import/apply", headers=AUTH, json={"agent": "nobody", "memory": ["x"]})

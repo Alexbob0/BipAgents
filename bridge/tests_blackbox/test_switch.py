@@ -10,7 +10,7 @@ import os
 import shlex
 
 from bbkit.bridge import bridge_command
-from bbkit.common import AUTH, boite_message
+from bbkit.common import AUTH, boite_items, boite_message
 from bbkit.mcp import call, give_token, rpc, text_of
 from bbkit.servers import wait_until
 from conftest import managed_install, profile, wait_registered
@@ -93,7 +93,7 @@ def snapshot(bridge, keys):
         "agents": get("/v1/agents", headers=AUTH),
         "max": get("/v1/agents/max/settings", headers=AUTH),
         "devices": devices,
-        "outbox": get("/v1/outbox", headers=AUTH)["items"],
+        "outbox": boite_items(bridge),
         "audio": bridge.get(f"/v1/outbox/{keys['outbox_id']}/audio", headers=AUTH).content,
         "cron": get("/v1/cron-jobs", headers=AUTH)["jobs"],
         "console": (get("/console/api/me", headers=console), [d["name"] for d in get("/v1/console/devices", headers=AUTH)["devices"]]),

@@ -528,27 +528,6 @@ impl Store {
         Ok(self.run("SELECT * FROM outbox WHERE id=?", vec![text(item_id)]).await?.into_iter().next())
     }
 
-    pub async fn list_outbox(
-        &self,
-        since: Option<DateTime<Utc>>,
-        agent: Option<&str>,
-        limit: i64,
-    ) -> anyhow::Result<Vec<Row>> {
-        let mut sql = "SELECT * FROM outbox WHERE 1=1".to_string();
-        let mut params = Vec::new();
-        if let Some(since) = since {
-            sql.push_str(" AND created_at > ?");
-            params.push(text(&iso(since)));
-        }
-        if let Some(agent) = agent.filter(|a| !a.is_empty()) {
-            sql.push_str(" AND agent = ?");
-            params.push(text(agent));
-        }
-        sql.push_str(" ORDER BY created_at ASC LIMIT ?");
-        params.push(Param::Integer(limit));
-        self.run(&sql, params).await
-    }
-
     pub async fn purge_outbox(&self, older_than_days: i64) -> anyhow::Result<Vec<Row>> {
         let cutoff = iso(utcnow() - Duration::days(older_than_days));
         let rows = self.run("SELECT id, audio_path FROM outbox WHERE created_at < ?", vec![text(&cutoff)]).await?;
@@ -609,7 +588,6 @@ mod tests {
             .await
             .unwrap()
             .is_none());
-        assert_eq!(store.list_outbox(None, Some("lea"), 10).await.unwrap().len(), 1);
 
 
         store.remember_run("lea", "r1", None).await.unwrap();

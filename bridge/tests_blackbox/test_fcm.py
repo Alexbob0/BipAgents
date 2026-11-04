@@ -8,7 +8,7 @@ import jwt
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from bbkit.common import AUTH, boite_message, in_session
+from bbkit.common import AUTH, boite_message, in_session, boite_items
 from bbkit.servers import wait_until
 
 LIVE = "eXaMpLe:APA91bH_" + "x" * 140
@@ -56,7 +56,7 @@ def test_sending_exchanges_the_key_for_a_token_and_drops_dead_tokens(bridges, fa
     sends = fakes.fcm.sends()
     assert all(r.path == "/v1/projects/bipagents-test/messages:send" for r in sends)
     live = next(r.json()["message"] for r in sends if r.json()["message"]["token"] == LIVE)
-    outbox_id = bridge.get("/v1/outbox", headers=AUTH).json()["items"][0]["id"]
+    outbox_id = boite_items(bridge)[0]["id"]
     n, c = live["data"].pop("n"), live["data"].pop("c")   # the journal's pointer, as strings (docs/conversations.md §9.3)
     assert n.startswith("n_") and in_session(bridge, {"c": c}, item["session_id"])
     assert live == {"token": LIVE, "android": {"priority": "HIGH"},

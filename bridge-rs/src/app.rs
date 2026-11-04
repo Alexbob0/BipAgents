@@ -47,7 +47,7 @@ use crate::push::{PushService, Sender};
 use crate::relay::RelayClient;
 use crate::runs::RunHub;
 use crate::sleep::Sleep;
-use crate::store::{iso, parse_since, utcnow, Row, Store};
+use crate::store::{iso, Row, Store};
 use crate::tts::{SynthOptions, TtsError, TtsOptions, TtsService, INTERACTIVE};
 use crate::vault::Vault;
 use crate::voices::{relay_for, voice_for};
@@ -831,29 +831,6 @@ async fn delete_device(State(state): State<AppState>, Path(token): Path<String>)
     Ok(web::no_content())
 }
 
-async fn list_outbox(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
-    let config = state.config();
-    let since = q.get("since").map(str::to_string);
-    let agent = q.get("agent").map(str::to_string);
-    let limit = web::query_int(&q, "limit", Some(100), Some(1), Some(500))?.unwrap_or(100);
-    let mut since_dt = None;
-    if let Some(since) = since.filter(|s| !s.is_empty()) {
-        since_dt = Some(parse_since(&since).map_err(|_| HttpError::new(400, "invalid since (ISO 8601 expected)"))?);
-    }
-    let agent_name = match agent.filter(|a| !a.is_empty()) {
-        Some(a) => Some(agent_or_404(&config, Some(&a))?.name),
-        None => None,
-    };
-    let rows = state.store.list_outbox(since_dt, agent_name.as_deref(), limit).await?;
-    let items: Vec<Value> = rows.iter().map(|r| outbox_item(r, &state)).collect();
-    Ok(web::ok(json!({"items": items, "server_time": iso(utcnow())})))
-}
-
-async fn get_outbox(State(state): State<AppState>, Path(item_id): Path<String>) -> ApiResult<Response> {
-    let row = state.store.get_outbox(&item_id).await?.ok_or_else(HttpError::not_found)?;
-    Ok(web::ok(outbox_item(&row, &state)))
-}
-
 async fn get_outbox_audio(
     State(state): State<AppState>,
     Path(item_id): Path<String>,
@@ -1300,8 +1277,6 @@ pub fn build_router() -> Router<AppState> {
         .route("/files", post(upload_file))
         .route("/devices", post(register_device))
         .route("/devices/{token}", delete(delete_device))
-        .route("/outbox", get(list_outbox))
-        .route("/outbox/{item_id}", get(get_outbox))
         .route("/outbox/{item_id}/audio", get(get_outbox_audio))
         .route("/media", get(get_media))
         .route("/pages", get(list_pages))
@@ -1465,8 +1440,6 @@ const FIRST_ROUTE_METHODS: &[(&str, &str)] = &[
     ("/v1/files", "POST"),
     ("/v1/devices", "POST"),
     ("/v1/devices/{token}", "DELETE"),
-    ("/v1/outbox", "GET"),
-    ("/v1/outbox/{item_id}", "GET"),
     ("/v1/outbox/{item_id}/audio", "GET"),
     ("/v1/media", "GET"),
     ("/v1/pages", "GET"),

@@ -24,7 +24,7 @@ documentent le cœur d'origine (voix, fichiers, push, accords), que les apps uti
 | TTS par phrase | `POST /v1/tts/sentence` | normalise le texte (markdown, liens), appelle le moteur de voix (Pocket, ou ton propre modèle de voix), renvoie du PCM int16 mono 24 kHz (ou Opus/WAV) ; file FIFO globale + cache LRU |
 | Fichiers | `POST /v1/files` | dépose PDF/Excel/texte… dans un dossier monté dans le conteneur Hermes et renvoie le chemin **vu par l'agent** |
 | Push | `POST/DELETE /v1/devices` | enregistre les device tokens APNs (SQLite), envoie les push via HTTP/2 + jeton JWT ES256 |
-| Messages proactifs | `GET /v1/outbox…` | stocke les messages des routines et du travail de fond des agents, pré-synthétise l'audio (mp3), pousse `MESSAGE` |
+| Messages proactifs | `GET /v1/notifications`, `GET /v1/outbox/{id}/audio` | stocke les messages des routines et du travail de fond des agents, pré-synthétise l'audio (mp3), pousse `MESSAGE` |
 | Approbations | `POST /v1/watch`, `POST /v1/approve`, `GET /v1/approvals` | surveille un run en arrière-plan, pousse `APPROVAL` si personne ne le suit, relaie la réponse à Hermes |
 | Santé | `GET /health` | sans authentification : version + moteurs de voix joignables |
 
@@ -132,9 +132,9 @@ insensible à la casse (`wellness`, `vie`).
   `DELETE /v1/devices/{token}`.
 - **Passage en arrière-plan pendant un run** : `POST /v1/watch {agent, run_id}` → push `APPROVAL` si une approbation arrive,
   push silencieux `run_finished` à la fin.
-- **Notification Service Extension** : `MESSAGE` → `GET /v1/outbox/{outbox_id}` + `GET /v1/outbox/{id}/audio` (mp3) ;
+- **Notification Service Extension** : `MESSAGE` → `GET /v1/notifications/{n}` + `GET /v1/outbox/{id}/audio` (mp3) ;
   `APPROVAL` → `GET /v1/approvals?agent=` pour afficher la commande ; actions Approuver/Refuser → `POST /v1/approve`.
-- **Boîte de réception** : `GET /v1/outbox?since=<created_at du dernier élément>` au retour au premier plan.
+- **Boîte de réception** : `GET /v1/notifications` (ses lignes `boite`) au retour au premier plan.
 - **Fichiers** : `POST /v1/files` (multipart `agent`, `file`) puis ligne `[Pièce jointe : … → <path>]` dans le message.
 
 Le contrat détaillé (payloads exacts) est dans la section suivante.
@@ -238,19 +238,12 @@ Corps : `{"token": "<hex APNs>", "environment"?: "sandbox"|"production", "agent_
 `{"token","environment","agent_ids","created_at","updated_at"}`. Ré-enregistrer met à jour. 400 : token non hexadécimal,
 environnement invalide, `{"detail":{"error":"unknown agent_ids","agent_ids":[…]}}`.
 
-### `DELETE /v1/devices/{token}` → 204 (idempotent)
+### `DELETE /v1/devices/{toke### La Boîte : `GET /v1/notifications?agent=…`
+Un message de la Boîte est une ligne `boite` du journal des notifications (`bridge-rs/src/notifications.rs`), avec
+`boite` : `{"title", "text" (entier, markdown), "attachments", "has_audio", "audio_url"}`, les messages en sourdine
+compris (push `skipped:muted`) ; `ref` est son id pour la route audio ci-dessous.
 
-### `GET /v1/outbox?since=<ISO 8601>&agent=<id>&limit=<1..500, défaut 100>`
-`{"items": [Item…], "server_time": "2026-10-04T08:15:02.120Z"}`, trié par `created_at` croissant, `since` exclusif
-(ISO avec `Z`/décalage, ou secondes Unix). Item :
-```json
-{"id": "9f3c…(32 hex)", "agent": "wellness", "title": "Check-in", "text": "texte complet (markdown)",
- "created_at": "2026-10-04T08:15:01.532Z", "sent_at": "2026-10-04T08:15:01.000Z", "session_id": null,
- "has_audio": true, "audio_url": "/v1/outbox/9f3c…/audio"}
-```
-`created_at` = réception par le bridge (UTC, ms, format fixe) ; `sent_at` est nul ; `session_id` est la conversation du message, s'il en a une. Pour la pagination, repasser le `created_at` du dernier élément en `since`.
-
-### `GET /v1/outbox/{id}` → Item (404 sinon)
+d}` → Item (404 sinon)
 
 ### `GET /v1/outbox/{id}/audio`
 200 `audio/mpeg` ; si la synthèse est encore en cours (attente ≤ 20 s) : 202 `{"status":"pending"}` + `Retry-After: 3` ;

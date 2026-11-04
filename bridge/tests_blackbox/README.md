@@ -165,8 +165,6 @@ The suite makes about 800 requests in 28 files.
 | `POST /v1/files` | app | http_routes (8), agents_admin (2) |
 | `POST /v1/devices` | app | http_routes (4), fcm (3), relay_and_discovery (2), background_and_protocol (1), voice_and_approvals (1) |
 | `DELETE /v1/devices/{token}` | app | http_routes (2), relay_and_discovery (1) |
-| `GET /v1/outbox` | app | outbox_push (3), background_and_protocol (2), media_and_jobs (2), cronwatch (1), fcm (1), http_routes (1) |
-| `GET /v1/outbox/{item_id}` | app | outbox_push (1) |
 | `GET /v1/outbox/{item_id}/audio` | app | outbox_push (2), background_and_protocol (1), media_and_jobs (1) |
 | `GET /v1/media` | app | agent_tools (2), media_and_jobs (1), pages (1) |
 | `GET /v1/pages` | app | pages (1) |

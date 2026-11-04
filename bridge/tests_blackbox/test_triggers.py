@@ -9,7 +9,7 @@ import email.utils
 import json
 import time
 
-from bbkit.common import AUTH
+from bbkit.common import AUTH, boite_items
 from bbkit.mcp import call, text_of
 from bbkit.servers import wait_until
 from test_mailbox import TOKEN, add_mailbox, mail_bridge
@@ -94,7 +94,7 @@ def test_a_new_email_starts_the_routine_through_idle_once(bridges, fakes):
     assert wait_until(lambda: boite(bridge, fakes), timeout=20)
     item = boite(bridge, fakes)[0]
     assert item["preview"] == "Facture de 42 € rangée dans tes dépenses." and item["session_id"] == turn["session_id"]
-    assert not [i for i in bridge.get("/v1/outbox", headers=AUTH).json()["items"] if i["title"] == "Factures"]
+    assert not [i for i in boite_items(bridge) if i["title"] == "Factures"]
     # the IDLE was told, not polled: no SEARCH every few seconds while waiting
     searches = [c for c in fakes.imap.commands[commands_before:] if c.startswith("UID SEARCH")]
     assert len(searches) <= 3, searches
