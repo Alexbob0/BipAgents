@@ -684,7 +684,10 @@
    "keys": [
     "what"
    ],
-   "counts": false
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
   },
   {
    "id": "startTask",
