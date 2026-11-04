@@ -630,6 +630,46 @@ pub struct Job {
     pub undone: bool,
 }
 
+impl Job {
+    /// A card waiting for the same decision: same agent, mailbox, folder, action and destination.
+    fn same_decision(&self, other: &Job) -> bool {
+        self.agent == other.agent
+            && self.account == other.account
+            && self.folder == other.folder
+            && self.action == other.action
+            && self.dest == other.dest
+            && self.uid_validity == other.uid_validity
+            && self.status == "asked"
+    }
+
+    /// Another proposal for the same decision joined in: its messages (once each), senders and sample added.
+    fn fold(&mut self, other: &Job) {
+        let known: HashSet<u32> = self.uids.iter().copied().collect();
+        for (i, uid) in other.uids.iter().enumerate() {
+            if !known.contains(uid) {
+                self.uids.push(*uid);
+                self.message_ids.push(other.message_ids.get(i).cloned().unwrap_or_default());
+            }
+        }
+        let mut by_group: BTreeMap<String, usize> = self.groups.iter().cloned().collect();
+        for (g, n) in &other.groups {
+            let k = by_group.entry(g.clone()).or_default();
+            *k = (*k).max(*n); // the same sender proposed again: its count once
+        }
+        let mut groups: Vec<(String, usize)> = by_group.into_iter().collect();
+        groups.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        self.groups = groups;
+        for line in &other.sample {
+            if self.sample.len() < SAMPLE && !self.sample.contains(line) {
+                self.sample.push(line.clone());
+            }
+        }
+        self.everything |= other.everything;
+        self.make_dest |= other.make_dest;
+        self.total = self.total.max(other.total);
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct Store {
     cards: Vec<Job>,
@@ -799,27 +839,41 @@ pub fn shown_agent(config: &Config, agent: &str) -> String {
     config.agent(Some(agent)).map(|a| a.display_name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| agent.into())
 }
 
-/// « Lina veut archiver 1234 e-mails — shop.example 800, news.example 400, +2 »
+/// « 1 e-mail », « 3 e-mails », « 1 E-Mail », « 2 correos »: the count and its noun, in the card's language.
+fn mails(lang: &str, c: usize) -> String {
+    let one = c == 1;
+    let noun = match lang {
+        "de" => if one { "E-Mail" } else { "E-Mails" },
+        "es" => if one { "correo" } else { "correos" },
+        _ => if one { "e-mail" } else { "e-mails" },
+    };
+    format!("{c} {noun}")
+}
+
+/// « Lina veut archiver 1234 e-mails : 800 de shop.example, 400 de news.example, +2 autres »; one sender:
+/// « Lina veut archiver 3 e-mails (de shop.example) ». The whole list is in « Voir la liste » (`detail`).
 pub fn sentence(lang: &str, agent: &str, card: &Job) -> String {
     let c = card.uids.len();
+    let n = mails(lang, c);
+    let one = c == 1;
     let action = card.action.clone().unwrap_or(Action::Archive);
     let verb = match (lang, &action) {
-        ("fr", Action::MarkRead) => format!("marquer {c} e-mails comme lus"),
-        ("fr", Action::Move(f)) => format!("déplacer {c} e-mails vers « {f} »"),
-        ("fr", Action::Trash) => format!("mettre {c} e-mails à la corbeille"),
-        ("fr", _) => format!("archiver {c} e-mails"),
-        ("de", Action::MarkRead) => format!("{c} E-Mails als gelesen markieren"),
-        ("de", Action::Move(f)) => format!("{c} E-Mails nach „{f}“ verschieben"),
-        ("de", Action::Trash) => format!("{c} E-Mails in den Papierkorb legen"),
-        ("de", _) => format!("{c} E-Mails archivieren"),
-        ("es", Action::MarkRead) => format!("marcar {c} correos como leídos"),
-        ("es", Action::Move(f)) => format!("mover {c} correos a «{f}»"),
-        ("es", Action::Trash) => format!("mover {c} correos a la papelera"),
-        ("es", _) => format!("archivar {c} correos"),
-        (_, Action::MarkRead) => format!("mark {c} e-mails as read"),
-        (_, Action::Move(f)) => format!("move {c} e-mails to “{f}”"),
-        (_, Action::Trash) => format!("put {c} e-mails in the trash"),
-        _ => format!("archive {c} e-mails"),
+        ("fr", Action::MarkRead) => format!("marquer {n} comme {}", if one { "lu" } else { "lus" }),
+        ("fr", Action::Move(f)) => format!("déplacer {n} vers « {f} »"),
+        ("fr", Action::Trash) => format!("mettre {n} à la corbeille"),
+        ("fr", _) => format!("archiver {n}"),
+        ("de", Action::MarkRead) => format!("{n} als gelesen markieren"),
+        ("de", Action::Move(f)) => format!("{n} nach „{f}“ verschieben"),
+        ("de", Action::Trash) => format!("{n} in den Papierkorb legen"),
+        ("de", _) => format!("{n} archivieren"),
+        ("es", Action::MarkRead) => format!("marcar {n} como {}", if one { "leído" } else { "leídos" }),
+        ("es", Action::Move(f)) => format!("mover {n} a «{f}»"),
+        ("es", Action::Trash) => format!("mover {n} a la papelera"),
+        ("es", _) => format!("archivar {n}"),
+        (_, Action::MarkRead) => format!("mark {n} as read"),
+        (_, Action::Move(f)) => format!("move {n} to “{f}”"),
+        (_, Action::Trash) => format!("put {n} in the trash"),
+        _ => format!("archive {n}"),
     };
     let wants = crate::approval_text::pick(lang, "veut", "wants to", "möchte", "quiere");
     let mut text = format!("{agent} {wants} {verb}");
@@ -832,12 +886,19 @@ pub fn sentence(lang: &str, agent: &str, card: &Job) -> String {
             " (toda la carpeta)",
         ));
     }
-    let mut senders: Vec<String> = card.groups.iter().take(3).map(|(g, n)| format!("{g} {n}")).collect();
-    if card.groups.len() > 3 {
-        senders.push(format!("+{}", card.groups.len() - 3));
-    }
-    if !senders.is_empty() {
-        text.push_str(&format!(" — {}", senders.join(", ")));
+    let from = crate::approval_text::pick(lang, "de", "from", "von", "de");
+    match card.groups.as_slice() {
+        [] => {}
+        [(g, _)] => text.push_str(&format!(" ({from} {g})")),
+        groups => {
+            let mut senders: Vec<String> = groups.iter().take(3).map(|(g, k)| format!("{k} {from} {g}")).collect();
+            if groups.len() > 3 {
+                let more = crate::approval_text::pick(lang, "autres", "more", "weitere", "más");
+                senders.push(format!("+{} {more}", groups.len() - 3));
+            }
+            let colon = if lang == "fr" { " : " } else { ": " };
+            text.push_str(&format!("{colon}{}", senders.join(", ")));
+        }
     }
     text
 }
@@ -998,7 +1059,9 @@ pub fn tools() -> Vec<Value> {
         json!({
             "name": "mail_bulk",
             "description": "Tidy many e-mails at once: archive, mark_read, move:<folder> or trash, by groups from \
-        mail_overview or criteria. Makes a card the person approves; nothing happens before. Also status, undo (job). \
+        mail_overview or criteria. Makes a card the person approves; nothing happens before. Several senders for the same \
+        action: ONE call, all of them in groups (domain:a.com, domain:b.com); the same action on the same folder while \
+        a card waits joins that card. Also status, undo (job). \
         rule: true = a standing rule (by sender, domain or list only): the existing matches now, then every new one \
         by itself. After an overview, propose rules for senders that keep coming (server providers, shops, banks, \
         newsletters); file rather than trash (trash only when the person asks); invoices: move:Factures. rules lists \
@@ -1113,13 +1176,25 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict, opener: 
                 None => return Err(exc),
             },
         };
-        change(config, |s| s.cards.push(card.clone()))?;
-        tracing::info!(agent = %agent, card = %card.id, count = card.uids.len(), "mail tidy card");
+        // one decision, one card: the same action on the same folder still waiting joins it (an agent calling once
+        // per sender made ~15 cards to approve one by one, Alex 2026-11-04)
+        let (card, joined) = change(config, |s| match s.cards.iter_mut().find(|c| c.same_decision(&card)) {
+            Some(waiting) => {
+                waiting.fold(&card);
+                (waiting.clone(), true)
+            }
+            None => {
+                s.cards.push(card.clone());
+                (card, false)
+            }
+        })?;
+        tracing::info!(agent = %agent, card = %card.id, count = card.uids.len(), joined, "mail tidy card");
         let groups: Vec<String> = card.groups.iter().take(5).map(|(g, n)| format!("{g} {n}")).collect();
+        let made = if joined { "Added to the card already waiting" } else { "Card made" };
         return Ok(Called {
             result: tool_text(
                 &format!(
-                    "Card {} made: {} {} e-mails ({}). It waits in the person's approvals; nothing moves before their \
+                    "{made} ({}): {} {} e-mails ({}). It waits in the person's approvals; nothing moves before their \
 Oui. Tell them in one sentence.",
                     card.id,
                     card.action.as_ref().map(Action::word).unwrap_or_default(),
@@ -1429,6 +1504,66 @@ mod tests {
 
     fn row(uid: u32, from: &str, subject: &str) -> Row {
         Row { uid, from: from.into(), subject: subject.into(), date: "2026-01-10".into(), ..Row::default() }
+    }
+
+    fn card(action: Action, uids: &[u32], groups: &[(&str, usize)]) -> Job {
+        Job {
+            agent: "vie".into(),
+            account: "a1".into(),
+            folder: "INBOX".into(),
+            dest: "Pub".into(),
+            action: Some(action),
+            uids: uids.to_vec(),
+            message_ids: uids.iter().map(|u| format!("<{u}@x>")).collect(),
+            groups: groups.iter().map(|(g, n)| (g.to_string(), *n)).collect(),
+            status: "asked".into(),
+            ..Job::default()
+        }
+    }
+
+    #[test]
+    fn the_card_says_its_count_and_senders_plainly() {
+        let one = card(Action::Archive, &[1], &[("actia-concept.fr", 1)]);
+        assert_eq!(sentence("fr", "Vie", &one), "Vie veut archiver 1 e-mail (de actia-concept.fr)");
+        assert_eq!(sentence("en", "Vie", &one), "Vie wants to archive 1 e-mail (from actia-concept.fr)");
+        assert_eq!(sentence("de", "Vie", &one), "Vie möchte 1 E-Mail archivieren (von actia-concept.fr)");
+        assert_eq!(sentence("es", "Vie", &one), "Vie quiere archivar 1 correo (de actia-concept.fr)");
+        let read = card(Action::MarkRead, &[1], &[("a.fr", 1)]);
+        assert_eq!(sentence("fr", "Vie", &read), "Vie veut marquer 1 e-mail comme lu (de a.fr)");
+        let groups = [("a.fr", 3), ("b.fr", 2), ("c.fr", 1), ("d.fr", 1), ("e.fr", 1)];
+        let many = card(Action::Move("Pub".into()), &[1, 2, 3, 4, 5, 6, 7, 8], &groups);
+        assert_eq!(
+            sentence("fr", "Vie", &many),
+            "Vie veut déplacer 8 e-mails vers « Pub » : 3 de a.fr, 2 de b.fr, 1 de c.fr, +2 autres"
+        );
+        assert_eq!(
+            sentence("en", "Vie", &many),
+            "Vie wants to move 8 e-mails to “Pub”: 3 from a.fr, 2 from b.fr, 1 from c.fr, +2 more"
+        );
+        assert_eq!(
+            sentence("de", "Vie", &many),
+            "Vie möchte 8 E-Mails nach „Pub“ verschieben: 3 von a.fr, 2 von b.fr, 1 von c.fr, +2 weitere"
+        );
+        assert_eq!(
+            sentence("es", "Vie", &many),
+            "Vie quiere mover 8 correos a «Pub»: 3 de a.fr, 2 de b.fr, 1 de c.fr, +2 más"
+        );
+    }
+
+    #[test]
+    fn the_same_decision_joins_the_card_waiting() {
+        let mut waiting = card(Action::Move("Pub".into()), &[1, 2], &[("a.fr", 2)]);
+        let next = card(Action::Move("Pub".into()), &[2, 3, 4], &[("a.fr", 1), ("b.fr", 2)]);
+        assert!(waiting.same_decision(&next));
+        waiting.fold(&next);
+        assert_eq!(waiting.uids, vec![1, 2, 3, 4]);
+        assert_eq!(waiting.message_ids, vec!["<1@x>", "<2@x>", "<3@x>", "<4@x>"]);
+        assert_eq!(waiting.groups, vec![("a.fr".to_string(), 2), ("b.fr".to_string(), 2)]);
+        // another action, folder, mailbox or agent: its own card
+        assert!(!waiting.same_decision(&card(Action::Archive, &[5], &[])));
+        assert!(!waiting.same_decision(&Job { folder: "Promos".into(), ..next.clone() }));
+        assert!(!waiting.same_decision(&Job { agent: "lina".into(), ..next.clone() }));
+        assert!(!Job { status: "running".into(), ..waiting.clone() }.same_decision(&next));
     }
 
     #[test]

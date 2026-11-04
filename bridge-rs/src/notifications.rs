@@ -425,6 +425,42 @@ async fn read(State(state): State<AppState>, Json(body): Json<ReadBody>) -> ApiR
 }
 
 /// Mounted under /v1 with the bridge key.
+/// A card answered (card_place.rs): its notifications (`ref` the card's id) read and marked answered, on every device
+/// (the push `read`, with `card`: the Boîte asks its cards again).
+pub async fn read_card(state: &AppState, agent: &str, card: &str, run_id: &str) {
+    let found = state
+        .store
+        .run(
+            "SELECT id FROM notifications WHERE agent = ? AND ref_id IN (?, ?) AND type IN \
+             ('site', 'login', 'connector', 'secret', 'mail_card') AND (read_at IS NULL OR state != 'answered')",
+            vec![text(agent), text(card), text(run_id)],
+        )
+        .await;
+    let ids: Vec<String> =
+        found.unwrap_or_default().iter().filter_map(|r| r["id"].as_str().map(str::to_string)).collect();
+    if !ids.is_empty() {
+        let mut params = vec![text(&iso(utcnow()))];
+        params.extend(ids.iter().map(|i| text(i)));
+        let sql = format!(
+            "UPDATE notifications SET read_at = COALESCE(read_at, ?), state = 'answered' WHERE id IN ({})",
+            vec!["?"; ids.len()].join(",")
+        );
+        if let Err(err) = state.store.run(&sql, params).await {
+            tracing::warn!(agent = %agent, error = %format!("{err:#}"), "card notification not read");
+        }
+    }
+    let unread = counts(&state.store).await.unwrap_or_else(|_| json!({"total": 0}));
+    crate::threads::threads_of(state).publish(agent, "read", json!({"agent": agent, "notifications": ids, "card": card}));
+    let mut extra = Dict::new();
+    extra.insert("n".into(), json!(ids.join(",")));
+    extra.insert("unread".into(), unread["total"].clone());
+    extra.insert("card".into(), json!(card));
+    let (push, agent) = (state.push.clone(), agent.to_string());
+    state.spawn(async move {
+        push.notify_silent(&agent, "read", extra).await;
+    });
+}
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/notifications", get(list))

@@ -263,6 +263,12 @@ impl Threads {
             .collect())
     }
 
+    /// The thread holding `session` already (None: none yet, or the store unreadable).
+    pub async fn thread_of(&self, agent: &AgentConfig, session: &str) -> Option<Thread> {
+        let id = self.thread_of_session(&agent.name, session).await.ok().flatten()?;
+        self.get(&id).await.ok().flatten()
+    }
+
     async fn thread_of_session(&self, agent: &str, session: &str) -> anyhow::Result<Option<String>> {
         let rows = self
             .store
@@ -1140,7 +1146,31 @@ async fn timeline_route(
             })
             .collect()
     };
-    let approvals = waiting(state.hub.pending_approvals(Some(&agent.name)));
+    let main = thread.kind == "main";
+    let mut asked = Vec::new();
+    let mut elsewhere = Vec::new();
+    for approval in state.hub.pending_approvals(Some(&agent.name)) {
+        let session = approval.get("session_id").and_then(Value::as_str).unwrap_or("").to_string();
+        if session.is_empty() || sessions.contains(session.as_str()) {
+            asked.push(approval);
+            continue;
+        }
+        // a background task's or a routine's (its own hidden conversation): also where it reports (card_place.rs)
+        let report = crate::card_place::report_of(&state, &agent, &session).await;
+        let place = crate::card_place::Place { session: Some(session.clone()), report, ..Default::default() };
+        if place.report.as_deref() != Some(session.as_str()) && place.shows_in(&sessions, main) {
+            elsewhere.push(approval);
+        }
+    }
+    // the bridge's own cards made in this conversation's turns, or by work that reports here (card_place.rs)
+    elsewhere.extend(crate::card_place::cards_in(&state, &agent.name, &sessions, main));
+    let mut approvals = waiting(asked);
+    approvals.extend(elsewhere.into_iter().map(|mut a| {
+        let id = answered_id(a.get("run_id").and_then(Value::as_str), a.get("request_id").and_then(Value::as_str));
+        a.insert("id".into(), json!(id));
+        a.insert("session_id".into(), json!(tip)); // shown here, at the conversation's end
+        Value::Object(a)
+    }));
     let questions = waiting(state.hub.pending_questions(&agent.name));
     let run = tip.as_deref().and_then(|t| state.hub.session_run(&agent.name, t));
     let queue =
