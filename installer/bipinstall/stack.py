@@ -37,8 +37,6 @@ class Install:
     lan_address: Optional[str]
     agents: List[AgentEntry] = field(default_factory=list)
     model: Optional[Model] = None
-    relay_url: Optional[str] = None  # the administrator's bridge, when this install has no APNs key
-    relay_key: Optional[str] = None
     # The publisher's push relay (relay/): the app registers there and gives this bridge a relay token.
     push_service_url: Optional[str] = None
     bridge_key: str = field(default_factory=lambda: secrets.token_urlsafe(32))
@@ -118,8 +116,6 @@ def bridge_toml(inst: Install) -> str:
     media = inst.home / ".hermes" / "media"
     lines += ["", "[media.roots]", f"{_q(str(media))} = {_q(str(media))}"]   # native Hermes: same path both sides
     push = []
-    if inst.relay_url and inst.relay_key:
-        push += [f"relay_url = {_q(inst.relay_url)}", f"relay_key = {_q(inst.relay_key)}"]
     if inst.push_service_url:
         push.append(f"service_url = {_q(inst.push_service_url)}")
     if push:

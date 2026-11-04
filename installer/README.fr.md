@@ -233,22 +233,19 @@ relais par installation).
 
 ### `family add`, étape par étape (Linux)
 
-À lancer **dans le terminal de l'administrateur**. La commande affiche chaque étape `[n/5]` :
+À lancer **dans le terminal de l'administrateur**. La commande affiche chaque étape `[n/4]` :
 
 1. **Son compte Linux** (`lea`, ou celui donné par `--account`) : créé s'il n'existe pas, avec ses plages
    d'identifiants pour les conteneurs sans droits admin (le navigateur des agents) et « linger » (ses services
    continuent quand elle n'est pas connectée). Chaque commande `sudo` est affichée et confirmée avant ; rien n'est
    demandé si le compte est déjà prêt. `--dry-run` ne fait qu'afficher ces commandes.
-2. **Redémarre ton bridge**, pour qu'il connaisse sa clé de relais : la commande propose de le faire (`y`), ou
-   affiche la commande à lancer dans un autre terminal de **ton** compte, avant l'étape 3 — en général
-   `systemctl --user restart bipagents-bridge`.
-3. **Son installation, dans son compte** : pas besoin de te connecter à son compte (pas de `ssh lea@…`). Réponds
+2. **Son installation, dans son compte** : pas besoin de te connecter à son compte (pas de `ssh lea@…`). Réponds
    `y` et elle s'y lance par `sudo`, ses questions s'affichant **dans ton terminal** (le modèle, ses premiers agents,
    le navigateur visible). Elle n'a rien à taper. Elle se termine par son **QR code**. Réponds `N` pour obtenir la
    commande et la lancer plus tard.
-4. **Publier ses ports sur le tailnet** : la commande propose de lancer les `sudo tailscale serve` (`y`), ou les
+3. **Publier ses ports sur le tailnet** : la commande propose de lancer les `sudo tailscale serve` (`y`), ou les
    affiche.
-5. **Son téléphone, dans TON tailnet** : celui où est le serveur. Un compte Tailscale à elle crée un tailnet à elle, où
+4. **Son téléphone, dans TON tailnet** : celui où est le serveur. Un compte Tailscale à elle crée un tailnet à elle, où
    l'app ne trouve pas le serveur. Donc :
    1. invite-la dans la [console Tailscale](https://login.tailscale.com/admin/users) › Invite users (son e-mail) ;
    2. sur son téléphone, elle accepte l'invitation, puis dans l'app Tailscale : icône de profil › Add account › connexion

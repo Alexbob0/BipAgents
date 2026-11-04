@@ -62,7 +62,7 @@ CHROME_SKIP = {"Cache", "Code Cache", "GPUCache", "ShaderCache", "GrShaderCache"
                "DawnWebGPUCache", "Crashpad", "SingletonLock", "SingletonSocket", "SingletonCookie"}
 # Settings rewritten for the target (paths, ports, names); conversations, files and browser profiles stay as they are.
 TEXT_SUFFIXES = {".toml", ".yaml", ".yml", ".json", ".env", ".conf", ".txt", ".service", ".plist", ".sh"}
-TEXT_NAMES = {".env", "relay-clients"}
+TEXT_NAMES = {".env"}
 # The bridge's derived data, made again after a restore or a move: the archives' search indexes (bridge-rs/src/archives/).
 DATA_SKIP = {"archive-index"}
 # The bridge's spare agents (bridge-rs/src/agent_pool.rs POOL_FILE), next to bridge.toml.

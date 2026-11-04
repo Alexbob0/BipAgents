@@ -98,21 +98,6 @@ def test_the_bridge_stops_cleanly(bridge, fakes):
     assert not [e for e in bridge.logs() if e.get("level") in ("error", "critical") or "exc" in e]
 
 
-def test_android_devices_of_an_install_without_fcm_go_through_the_relay(bridges, fakes):
-    member_key = "member-relay-key-0123456789abcdef012345"
-    bridge = bridges.new(change=lambda c: c.update(apns={}, push={"relay_url": fakes.admin_relay.url,
-                                                                    "relay_key": member_key}))
-    bridge.start()
-    android = "x:fcm-token-0123456789"
-    assert bridge.post("/v1/devices", headers=AUTH, json={"token": android, "environment": "fcm"}).status_code == 200
-    fakes.hermes.runs["run_a"] = [sse("run.completed", output="Fini.")]
-    bridge.post("/v1/watch", headers=AUTH, json={"agent": "wellness", "run_id": "run_a"})
-    assert wait_until(lambda: fakes.admin_relay.seen("/v1/relay/push"))
-    body = fakes.admin_relay.seen("/v1/relay/push")[0].json()
-    assert body["token"] == android and body["environment"] == "fcm" and body["collapse_id"] == "run_a"
-    assert body["payload"]["t"] == "reply" and bridge.get("/health").json()["fcm"] is False
-
-
 @pytest.mark.slow
 def test_an_outbox_audio_still_being_made_says_so(bridges, fakes):
     """GET /v1/outbox/{id}/audio waits 20 s for the synthesis, then answers 202 {"status": "pending"}, Retry-After 3."""

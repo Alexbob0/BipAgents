@@ -160,10 +160,8 @@ def test_installer_writers_go_through_the_lock(tmp_path, monkeypatch):
     monkeypatch.setattr(bridgeconf, "update", counted)
     path = tmp_path / "bridge.toml"
     path.write_text(config_text() + '\n[hermes]\nhub_url = "http://127.0.0.1:9209"\n\n[pocket]\nurl = "http://127.0.0.1:8098"\n')
-    family.ensure_clients_file(path, path.read_text())
     assert shared_hermes.bridge_config(path, tmp_path / "hermes")
     moving.rewrite(iter([path]), [(re.compile("9209"), "BIPAGENTSPORT0X")], [(re.compile("BIPAGENTSPORT0X"), "9309")])
     data = whole(path.read_text())
-    assert data["relay"]["clients_file"].endswith("relay-clients")
     assert data["hermes"]["hub_url"] == "http://127.0.0.1:9309" and data["hermes"]["root"]
-    assert calls == ["bridge.toml"] * 3
+    assert calls == ["bridge.toml"] * 2

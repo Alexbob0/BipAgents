@@ -306,8 +306,6 @@ def main(argv: Optional[List[str]] = None) -> int:
                                      "console; `bipinstall hermes-update` updates Hermes "
                                      "and checks the agents)")
     parser.add_argument("--dry-run", action="store_true", help="show every step without changing anything")
-    parser.add_argument("--relay-url", help="the administrator's bridge, to send notifications without an APNs key")
-    parser.add_argument("--relay-key", help="this install's relay key (given by the administrator)")
     parser.add_argument("--push-service", default=PUSH_SERVICE_URL or None,
                         help="the publisher's push relay (the app's notifications without an APNs key of your own)")
     parser.add_argument("--ports", type=int, help="the first port of this install's block (default: the first free one)")
@@ -394,7 +392,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     inst = Install(repo=REPO, home=Path.home(), ports=ports, tailnet_name=machine.tailnet_name,
                    lan_address=(machine.lan_addresses or [None])[0], model=model,
-                   relay_url=args.relay_url, relay_key=args.relay_key, push_service_url=args.push_service,
+                   push_service_url=args.push_service,
                    isolated=bool(sandbox), browser=browser)
     steps = iter(range(1, 7 if browser else 6))
     total = 6 if browser else 5
@@ -626,7 +624,7 @@ def install_on_existing(args, runner: hermes.Runner, machine: Machine, existing)
         return 1
 
     inst = Install(repo=REPO, home=Path.home(), ports=ports, tailnet_name=machine.tailnet_name,
-                   lan_address=(machine.lan_addresses or [None])[0], relay_url=args.relay_url, relay_key=args.relay_key,
+                   lan_address=(machine.lan_addresses or [None])[0],
                    push_service_url=args.push_service, isolated=existing.protected, browser=browser, hermes_port=hub_port)
     total = 6 if browser else 5
     steps = iter(range(1, total + 1))

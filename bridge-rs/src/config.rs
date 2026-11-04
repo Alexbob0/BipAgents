@@ -383,26 +383,6 @@ impl Default for BrowserConfig {
     }
 }
 
-/// This bridge relays the notifications of other installs on the server, which have no APNs key of their own
-/// (another person's bridge): each install gets its own key, listed here as key -> install name.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct RelayConfig {
-    pub clients: IndexMap<String, String>,
-    pub per_hour: i64,
-}
-
-impl Default for RelayConfig {
-    fn default() -> Self {
-        RelayConfig { clients: IndexMap::new(), per_hour: 600 }
-    }
-}
-
-impl RelayConfig {
-    pub fn enabled(&self) -> bool {
-        !self.clients.is_empty()
-    }
-}
-
 /// The local-network door (no Tailscale): the same bridge over HTTPS with a self-signed certificate the app pins,
 /// Hermes relayed under /hermes/<agent>/. Off by default: everything else only listens on 127.0.0.1.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -695,7 +675,6 @@ pub struct Config {
     pub limits: Limits,
     pub agents: IndexMap<String, AgentConfig>,
     pub lan: LanConfig,
-    pub relay: RelayConfig,
     pub hermes: HermesInstall,
     pub spaces: SpacesConfig,
     pub browser: BrowserConfig,
@@ -761,9 +740,6 @@ pub struct Config {
     /// tables as written (checked by archives/). Not in the serialized form either.
     #[serde(skip)]
     pub archives: Vec<Value>,
-    /// Notifications through another bridge's relay instead of APNs (an install without the .p8 key).
-    pub push_relay_url: Option<String>,
-    pub push_relay_key: Option<String>,
     /// The publisher's push relay (relay/): devices registered there give this bridge a relay token instead of
     /// their own (the app does it when this bridge has no Apple key). None: off.
     pub push_service_url: Option<String>,
@@ -836,7 +812,6 @@ impl Config {
             limits: Limits::default(),
             agents: IndexMap::new(),
             lan: LanConfig::default(),
-            relay: RelayConfig::default(),
             hermes: HermesInstall::default(),
             spaces: SpacesConfig::default(),
             browser: BrowserConfig::default(),
@@ -859,8 +834,6 @@ impl Config {
             cards: "auto".into(),
             payments: PaymentsConfig::default(),
             archives: Vec::new(),
-            push_relay_url: None,
-            push_relay_key: None,
             push_service_url: None,
             model_health_url: None,
             model_health_key: None,
@@ -1534,38 +1507,6 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         }
     }
 
-    let relay_t = table(data, "relay");
-    let mut clients: IndexMap<String, String> = IndexMap::new();
-    if let Value::Object(listed) = table(relay_t, "clients") {
-        // [relay.clients] chi = "key"
-        for (name, key) in listed {
-            let key = py::py_str(key).trim().to_string();
-            if !key.is_empty() {
-                clients.insert(key, name.clone());
-            }
-        }
-    }
-    if has(relay_t, "clients_file") {
-        // or one « name key » per line
-        let path = expand(&s(relay_t, "clients_file", ""));
-        match std::fs::read_to_string(&path) {
-            Ok(text) => {
-                for line in py_lines(&text) {
-                    let parts: Vec<&str> = line.split_whitespace().collect();
-                    if parts.len() == 2 && !line.trim_start().starts_with('#') {
-                        clients.insert(parts[1].to_string(), parts[0].to_string());
-                    }
-                }
-            }
-            Err(exc) => return Err(ConfigError(format!("relay.clients_file: cannot read {path}: {}", os_error(&exc)))),
-        }
-    }
-    if clients.keys().any(|k| k.chars().count() < 32) {
-        return Err(ConfigError::new("relay: client keys must be at least 32 characters (bipbridge genkey)"));
-    }
-    let relay = RelayConfig { clients, per_hour: i(relay_t, "per_hour", 600)? };
-    let push_relay_url = opt_s(push, "relay_url").map(|u| py::rstrip_slash(&u));
-    let push_relay_key = secret(push, "relay_key", "push", push_relay_url.is_some())?;
     let push_service_url = opt_s(push, "service_url").map(|u| py::rstrip_slash(&u));
     let model_t = table(data, "model");
     let hermes_t = table(data, "hermes");
@@ -1834,7 +1775,6 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         limits,
         agents,
         lan,
-        relay,
         hermes,
         spaces,
         browser,
@@ -1860,8 +1800,6 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
             Some(Value::Array(items)) => items.iter().filter(|v| v.is_object()).cloned().collect(),
             _ => Vec::new(),
         },
-        push_relay_url,
-        push_relay_key,
         push_service_url,
         model_health_url: opt_s(model_t, "health_url"),
         model_health_key: secret(model_t, "health_key", "model", false)?,
@@ -1893,11 +1831,6 @@ pub fn capitalize(text: &str) -> String {
         Some(first) => first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase(),
         None => String::new(),
     }
-}
-
-/// Lines as Python's file iteration gives them, without their ends (`\n`; a `\r\n` keeps no `\r` in `split()`).
-fn py_lines(text: &str) -> impl Iterator<Item = &str> {
-    text.split_inclusive('\n').map(|l| l.trim_end_matches('\n'))
 }
 
 /// `BRIDGE_CONFIG`, else the default path, expanded.

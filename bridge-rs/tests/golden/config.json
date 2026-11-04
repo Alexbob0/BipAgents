@@ -55,10 +55,6 @@
     "address": null,
     "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
    },
-   "relay": {
-    "clients": {},
-    "per_hour": 600
-   },
    "hermes": {
     "bin": "",
     "home": "",
@@ -89,8 +85,6 @@
     "timezone": "",
     "idle_minutes": 10
    },
-   "push_relay_url": null,
-   "push_relay_key": null,
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
@@ -167,10 +161,6 @@
     "address": null,
     "cert_dir": "/srv/bip/data/lan"
    },
-   "relay": {
-    "clients": {},
-    "per_hour": 600
-   },
    "hermes": {
     "bin": "",
     "home": "",
@@ -201,8 +191,6 @@
     "timezone": "",
     "idle_minutes": 10
    },
-   "push_relay_url": null,
-   "push_relay_key": null,
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
@@ -281,10 +269,6 @@
     "address": null,
     "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
    },
-   "relay": {
-    "clients": {},
-    "per_hour": 600
-   },
    "hermes": {
     "bin": "",
     "home": "",
@@ -315,8 +299,6 @@
     "timezone": "",
     "idle_minutes": 10
    },
-   "push_relay_url": null,
-   "push_relay_key": null,
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
@@ -396,10 +378,6 @@
     "address": null,
     "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
    },
-   "relay": {
-    "clients": {},
-    "per_hour": 600
-   },
    "hermes": {
     "bin": "",
     "home": "",
@@ -430,8 +408,6 @@
     "timezone": "",
     "idle_minutes": 10
    },
-   "push_relay_url": null,
-   "push_relay_key": null,
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
@@ -510,10 +486,6 @@
     "address": null,
     "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
    },
-   "relay": {
-    "clients": {},
-    "per_hour": 600
-   },
    "hermes": {
     "bin": "",
     "home": "",
@@ -544,8 +516,6 @@
     "timezone": "",
     "idle_minutes": 10
    },
-   "push_relay_url": null,
-   "push_relay_key": null,
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
@@ -625,10 +595,6 @@
     "address": null,
     "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
    },
-   "relay": {
-    "clients": {},
-    "per_hour": 600
-   },
    "hermes": {
     "bin": "",
     "home": "",
@@ -659,8 +625,6 @@
     "timezone": "",
     "idle_minutes": 10
    },
-   "push_relay_url": null,
-   "push_relay_key": null,
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
@@ -758,10 +722,6 @@
     "address": null,
     "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
    },
-   "relay": {
-    "clients": {},
-    "per_hour": 600
-   },
    "hermes": {
     "bin": "",
     "home": "",
@@ -792,8 +752,6 @@
     "timezone": "",
     "idle_minutes": 10
    },
-   "push_relay_url": null,
-   "push_relay_key": null,
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
@@ -870,10 +828,6 @@
     "address": null,
     "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
    },
-   "relay": {
-    "clients": {},
-    "per_hour": 600
-   },
    "hermes": {
     "bin": "",
     "home": "",
@@ -904,8 +858,6 @@
     "timezone": "",
     "idle_minutes": 10
    },
-   "push_relay_url": null,
-   "push_relay_key": null,
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
@@ -1009,10 +961,6 @@
     "address": null,
     "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
    },
-   "relay": {
-    "clients": {},
-    "per_hour": 600
-   },
    "hermes": {
     "bin": "",
     "home": "",
@@ -1043,8 +991,6 @@
     "timezone": "",
     "idle_minutes": 10
    },
-   "push_relay_url": "http://relay",
-   "push_relay_key": "rkrkrkrkrkrkrkrkrkrkrkrkrkrkrkrkrkrkrkrk",
    "push_service_url": "https://push.example",
    "model_health_url": "http://model/v1/models",
    "model_health_key": "mk",
@@ -1130,10 +1076,6 @@
     "address": null,
     "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
    },
-   "relay": {
-    "clients": {},
-    "per_hour": 600
-   },
    "hermes": {
     "bin": "",
     "home": "",
@@ -1164,8 +1106,6 @@
     "timezone": "",
     "idle_minutes": 10
    },
-   "push_relay_url": null,
-   "push_relay_key": null,
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
@@ -1254,10 +1194,6 @@
     "address": null,
     "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
    },
-   "relay": {
-    "clients": {},
-    "per_hour": 600
-   },
    "hermes": {
     "bin": "",
     "home": "",
@@ -1288,8 +1224,6 @@
     "timezone": "",
     "idle_minutes": 10
    },
-   "push_relay_url": null,
-   "push_relay_key": null,
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
@@ -1373,10 +1307,6 @@
     "address": null,
     "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
    },
-   "relay": {
-    "clients": {},
-    "per_hour": 600
-   },
    "hermes": {
     "bin": "",
     "home": "",
@@ -1407,8 +1337,6 @@
     "timezone": "",
     "idle_minutes": 10
    },
-   "push_relay_url": null,
-   "push_relay_key": null,
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
@@ -1607,10 +1535,6 @@
     "address": null,
     "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
    },
-   "relay": {
-    "clients": {},
-    "per_hour": 600
-   },
    "hermes": {
     "bin": "",
     "home": "",
@@ -1641,8 +1565,6 @@
     "timezone": "",
     "idle_minutes": 10
    },
-   "push_relay_url": null,
-   "push_relay_key": null,
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
@@ -1787,10 +1709,6 @@
     "address": null,
     "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
    },
-   "relay": {
-    "clients": {},
-    "per_hour": 600
-   },
    "hermes": {
     "bin": "",
     "home": "",
@@ -1821,8 +1739,6 @@
     "timezone": "",
     "idle_minutes": 10
    },
-   "push_relay_url": null,
-   "push_relay_key": null,
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
@@ -1902,12 +1818,6 @@
     "address": null,
     "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
    },
-   "relay": {
-    "clients": {
-     "cccccccccccccccccccccccccccccccccccccccc": "chi"
-    },
-    "per_hour": 60
-   },
    "hermes": {
     "bin": "",
     "home": "",
@@ -1938,8 +1848,6 @@
     "timezone": "",
     "idle_minutes": 10
    },
-   "push_relay_url": null,
-   "push_relay_key": null,
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
@@ -1955,17 +1863,6 @@
    "setup_progress": null,
    "source_path": null
   }
- },
- {
-  "input": {
-   "bridge_key": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
-   "relay": {
-    "clients": {
-     "chi": "short"
-    }
-   }
-  },
-  "error": "relay: client keys must be at least 32 characters (bipbridge genkey)"
  },
  {
   "input": {
@@ -2033,10 +1930,6 @@
     "address": null,
     "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
    },
-   "relay": {
-    "clients": {},
-    "per_hour": 600
-   },
    "hermes": {
     "bin": "/opt/hermes/bin/hermes",
     "home": "/srv/no-such-hermes-home",
@@ -2073,8 +1966,6 @@
     "timezone": "",
     "idle_minutes": 10
    },
-   "push_relay_url": null,
-   "push_relay_key": null,
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
@@ -2155,10 +2046,6 @@
     "address": null,
     "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
    },
-   "relay": {
-    "clients": {},
-    "per_hour": 600
-   },
    "hermes": {
     "bin": "",
     "home": "",
@@ -2189,8 +2076,6 @@
     "timezone": "",
     "idle_minutes": 10
    },
-   "push_relay_url": null,
-   "push_relay_key": null,
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
@@ -2284,10 +2169,6 @@
     "address": null,
     "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
    },
-   "relay": {
-    "clients": {},
-    "per_hour": 600
-   },
    "hermes": {
     "bin": "",
     "home": "",
@@ -2318,8 +2199,6 @@
     "timezone": "Europe/Paris",
     "idle_minutes": 0
    },
-   "push_relay_url": null,
-   "push_relay_key": null,
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
@@ -2408,10 +2287,6 @@
     "address": "192.168.1.177",
     "cert_dir": "/srv/lan"
    },
-   "relay": {
-    "clients": {},
-    "per_hour": 600
-   },
    "hermes": {
     "bin": "",
     "home": "",
@@ -2442,8 +2317,6 @@
     "timezone": "",
     "idle_minutes": 10
    },
-   "push_relay_url": null,
-   "push_relay_key": null,
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,
@@ -2537,10 +2410,6 @@
     "address": null,
     "cert_dir": "$HOME/.local/share/hermes-bridge/lan"
    },
-   "relay": {
-    "clients": {},
-    "per_hour": 600
-   },
    "hermes": {
     "bin": "",
     "home": "",
@@ -2571,8 +2440,6 @@
     "timezone": "",
     "idle_minutes": 10
    },
-   "push_relay_url": null,
-   "push_relay_key": null,
    "push_service_url": null,
    "model_health_url": null,
    "model_health_key": null,

@@ -220,7 +220,6 @@ def bridge_check(tmp_path: Path, text: str) -> str:
 def test_bridge_config_is_valid_for_the_bridge(tmp_path):
     inst = Install(repo=ROOT, home=tmp_path, ports=Ports(9200), tailnet_name="mini.tail0000.ts.net",
                    lan_address="192.168.1.20", model=hermes.Model("custom", "glm", base_url="http://192.168.1.30:8888/v1"),
-                   relay_url="https://admin.tail0000.ts.net:8643", relay_key="r" * 40,
                    agents=[AgentEntry("finance", "Budget", "k" * 43)])
     shown = bridge_check(tmp_path, bridge_toml(inst))
     assert "agent finance: hermes=http://127.0.0.1:9202/p/finance " in shown
@@ -228,7 +227,6 @@ def test_bridge_config_is_valid_for_the_bridge(tmp_path):
     assert "pocket      http://127.0.0.1:8098" in shown
     import tomllib
     config = tomllib.loads(bridge_toml(inst))
-    assert config["push"]["relay_url"] == "https://admin.tail0000.ts.net:8643"
     assert config["model"]["health_url"] == "http://192.168.1.30:8888/v1/models"
     assert config["hermes"]["hub_url"] == "http://127.0.0.1:9202"
     assert config["hermes"]["public_hub_url"] == "https://mini.tail0000.ts.net:9202"
@@ -526,24 +524,46 @@ def _async(value):
     return _async_value(value)
 
 
-def test_family_member_gets_a_relay_key_and_a_block_of_ports(tmp_path):
+def test_family_member_gets_a_block_of_ports(tmp_path):
     from bipinstall import family
 
     config = tmp_path / "bridge.toml"
     config.write_text('bridge_key = "k"\npublic_url = "https://box.ts.net:8643"\n\n[apns]\nteam_id = "T"\n')
+    before = config.read_text()
     result = family.add("Léa", str(config), is_free=lambda port: True)
-    assert result["member"] == "lea" and result["relay_url"] == "https://box.ts.net:8643"
+    assert result["member"] == "lea" and result["server_url"] == "https://box.ts.net:8643"
     assert result["ports"].base == 9200                     # never 8640: the administrator's own block
-    assert 'clients_file = "' in config.read_text() and "[relay]" in config.read_text()
-    clients = tmp_path / "relay-clients"
-    assert clients.read_text() == f"lea {result['key']}\n" and oct(clients.stat().st_mode & 0o777) == "0o600"
+    assert config.read_text() == before                     # no relay key: their notifications use the publisher's relay
     second = family.add("Chloé", str(config), is_free=lambda port: True)
     assert second["ports"].base == 9210                     # reserved blocks are not handed out twice
     with pytest.raises(SystemExit):
         family.add("Léa", str(config), is_free=lambda port: True)
-    # The bridge reads the relay keys back as `name key` lines (its check fails on a bad clients file).
-    text = config.read_text().replace('bridge_key = "k"', 'bridge_key = "' + "x" * 40 + '"')
-    bridge_check(tmp_path, text + '\n[pocket]\nurl = "http://p"\n' if "[pocket]" not in text else text)
+
+
+def test_a_bridge_relaying_for_another_moves_to_the_publishers_relay(tmp_path, monkeypatch):
+    from bipinstall import migrations, stack
+    config = tmp_path / ".config" / "bipagents" / "bridge.toml"
+    config.parent.mkdir(parents=True)
+    member = 'bridge_key = "k"\n\n[push]\nrelay_url = "https://alex.ts.net:8643"\nrelay_key = "r"\n\n[cron]\nwatch = true\n'
+    config.write_text(member)
+    runner = hermes.Runner()
+    runner.dry = False
+    ran = []
+    runner.run = lambda args, **kw: ran.append(list(args)) or ""
+    monkeypatch.setattr(stack, "PUSH_SERVICE_URL", "")
+    with pytest.raises(migrations.NotYet):
+        migrations.push_relay_service(runner, tmp_path)
+    assert config.read_text() == member and ran == []
+    monkeypatch.setattr(stack, "PUSH_SERVICE_URL", "https://push.example.com")
+    assert "publisher's push relay" in migrations.push_relay_service(runner, tmp_path)
+    assert config.read_text() == 'bridge_key = "k"\n\n[push]\nservice_url = "https://push.example.com"\n[cron]\nwatch = true\n'
+    assert len(ran) == 1   # the bridge restarted
+    # the administrator's side: its [relay] table and key file go
+    config.write_text('bridge_key = "k"\n\n[relay]\nclients_file = "/x/relay-clients"\n\n[cron]\nwatch = true\n')
+    (config.parent / "relay-clients").write_text("chi key\n")
+    assert "no longer relays" in migrations.push_relay_service(runner, tmp_path)
+    assert "[relay]" not in config.read_text() and not (config.parent / "relay-clients").exists()
+    assert migrations.push_relay_service(runner, tmp_path) == "no relay between bridges here"
 
 
 

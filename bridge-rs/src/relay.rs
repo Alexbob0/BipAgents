@@ -1,29 +1,15 @@
-//! Notifications for installs without an APNs key: another person's bridge on the same server sends its pushes to
-//! the administrator's bridge (`POST /v1/relay/push`, its own key), which forwards them to APNs with the team key. The
-//! key never leaves the administrator's install; each relaying install has its own key and an hourly quota.
+//! The publisher's push relay (relay/), seen from the bridge: its device tokens (an app with no Apple key of the
+//! install's own registers there) and the client that sends through it (`[push] service_url`).
 
-use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::LazyLock;
 use std::time::Duration;
 
-use axum::extract::State;
-use axum::http::HeaderMap;
-use axum::response::Response;
-use axum::routing::post;
-use axum::Router;
 use regex::Regex;
-use serde::{Deserialize, Deserializer};
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 
 use crate::apns::{ApnsResult, SendOptions};
-use crate::app::AppState;
-use crate::auth::{extract_bearer, key_matches};
-use crate::logs::redact6;
 use crate::push::pyx::{self, PyError};
-use crate::push::Sender;
-use crate::web::{self, ApiResult, FieldError, HttpError, Json, Validate};
 
-pub static DEVICE_TOKEN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[0-9a-f]{32,512}$").expect("valid regex"));
 /// A token from the publisher's push relay (relay/): kept as it is (case-sensitive). `r2.` and later end after 90
 /// days; the first format (`r1.`, without an end) is taken only until [`R1_UNTIL`], see [`relay_token_taken`].
 pub static RELAY_TOKEN: LazyLock<Regex> =
@@ -47,10 +33,8 @@ pub fn relay_token_taken(token: &str, now: u64) -> bool {
 pub fn unix_now() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
-/// APNs' own limit for an alert.
-pub const MAX_PAYLOAD_BYTES: usize = 4096;
 
-/// Sends through another bridge's relay (`[push] relay_url`), or the publisher's relay (`[push] service_url`).
+/// Sends through the publisher's relay (`[push] service_url`, relay/).
 pub struct RelayClient {
     pub url: String,
     pub key: String,
@@ -126,131 +110,6 @@ impl RelayClient {
             apns_id: text_of("apns_id"),
         })
     }
-}
-
-fn dict<'de, D: Deserializer<'de>>(d: D) -> Result<Map<String, Value>, D::Error> {
-    match Value::deserialize(d)? {
-        Value::Object(map) => Ok(map),
-        _ => Err(serde::de::Error::custom("pydantic:dict_type:Input should be a valid dictionary")),
-    }
-}
-
-fn default_push_type() -> String {
-    "alert".into()
-}
-
-fn default_priority() -> i64 {
-    10
-}
-
-/// `RelayPush` (pydantic).
-#[derive(Debug, Deserialize)]
-pub struct RelayPush {
-    pub token: String,
-    pub environment: String,
-    #[serde(deserialize_with = "dict")]
-    pub payload: Map<String, Value>,
-    #[serde(default = "default_push_type")]
-    pub push_type: String,
-    #[serde(default = "default_priority", deserialize_with = "web::lax::int")]
-    pub priority: i64,
-    #[serde(default)]
-    pub collapse_id: Option<String>,
-}
-
-impl Validate for RelayPush {
-    fn validate(&self, errors: &mut Vec<FieldError>) {
-        web::check_max_len(errors, "token", Some(&self.token), 4096);
-        web::check_max_len(errors, "collapse_id", self.collapse_id.as_deref(), 64);
-    }
-}
-
-/// Pushes relayed per install over the last hour.
-#[derive(Default)]
-struct Quota {
-    sent: Mutex<HashMap<String, VecDeque<f64>>>,
-}
-
-impl Quota {
-    fn allow(&self, client: &str, per_hour: i64) -> bool {
-        let now = crate::py::monotonic();
-        let mut sent = self.sent.lock().unwrap_or_else(|e| e.into_inner());
-        let window = sent.entry(client.to_string()).or_default();
-        while window.front().map(|t| *t < now - 3600.0).unwrap_or(false) {
-            window.pop_front();
-        }
-        if window.len() as i64 >= per_hour {
-            return false;
-        }
-        window.push_back(now);
-        true
-    }
-}
-
-/// `relay_router()`: the relay this bridge offers to other installs (`[relay] clients`), each with its own key
-/// (checked here, not the bridge key). Mounted at the root, as in Python.
-pub fn router() -> Router<AppState> {
-    let quota = Arc::new(Quota::default());
-    Router::new().route(
-        "/v1/relay/push",
-        post(move |state: State<AppState>, headers: HeaderMap, body: Json<RelayPush>| {
-            relay_push(state, headers, body, quota.clone())
-        }),
-    )
-}
-
-async fn relay_push(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Json(body): Json<RelayPush>,
-    quota: Arc<Quota>,
-) -> ApiResult<Response> {
-    let config = state.config();
-    let relay = &config.relay;
-    if !relay.enabled() {
-        return Err(HttpError::new(404, "not found"));
-    }
-    let presented = extract_bearer(headers.get("authorization").and_then(|v| v.to_str().ok()));
-    let client =
-        relay.clients.iter().find(|(key, _)| key_matches(key, presented.as_deref())).map(|(_, name)| name.clone());
-    let Some(client) = client else {
-        return Err(HttpError::new(401, "unauthorized").with_header("www-authenticate", "Bearer"));
-    };
-    let android = body.environment == "fcm";
-    let sender = if android { state.fcm.clone().map(Sender::Fcm) } else { state.apns.clone().map(Sender::Apns) };
-    let Some(sender) = sender else {
-        return Err(HttpError::new(
-            503,
-            format!("{} not configured on the relay", if android { "FCM" } else { "APNs" }),
-        ));
-    };
-    let token = if android { pyx::strip(&body.token).to_string() } else { pyx::strip(&body.token).to_lowercase() };
-    let valid_token = if android { crate::fcm::FCM_TOKEN.is_match(&token) } else { DEVICE_TOKEN.is_match(&token) };
-    if !valid_token
-        || !["sandbox", "production", "fcm"].contains(&body.environment.as_str())
-        || !["alert", "background", "liveactivity"].contains(&body.push_type.as_str())
-        || (android && body.push_type == "liveactivity")
-        || ![5, 10].contains(&body.priority)
-    {
-        return Err(HttpError::new(400, "invalid push"));
-    }
-    let payload = Value::Object(body.payload);
-    if crate::py::Dumps::new().unicode().dumps(&payload).len() > MAX_PAYLOAD_BYTES {
-        return Err(HttpError::new(413, "payload too large"));
-    }
-    if !quota.allow(&client, relay.per_hour) {
-        return Err(HttpError::new(429, "quota exceeded"));
-    }
-    let options = SendOptions {
-        environment: body.environment.clone(),
-        push_type: body.push_type.clone(),
-        priority: body.priority as u8,
-        collapse_id: body.collapse_id.clone(),
-        expiration: None,
-    };
-    let result = sender.try_send(&token, &payload, &options).await?;
-    tracing::info!(client = %client, token = %redact6(&token), status = result.status, "relayed push");
-    Ok(web::ok(json!({"status": result.status, "reason": result.reason, "apns_id": result.apns_id})))
 }
 
 #[cfg(test)]

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # BipAgents — install for the person running it, in their own account (no sudo):
 #   curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash
-# Options are passed on to the installer: --dry-run, --relay-url URL --relay-key KEY, --ports 9200, --languages fr,en
+# Options are passed on to the installer: --dry-run, --ports 9200, --languages fr,en
 # Later: `bash ~/BipAgents/install.sh update` brings it up to date (and offers to do it each night).
 # An install exported on another machine (`bipagents export --moving`), moved here: `… | bash -s -- import <file>`.
 # One's agents (or a Hermes alone) sent to a place of the all-included offer: `… | bash -s -- send <address> <code>`.

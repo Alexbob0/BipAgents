@@ -163,25 +163,10 @@ impl Services {
                 tracing::warn!(path = %config.apns.p8_path, "APNs key file missing");
             }
         }
-        // Without its own APNs key, an install (another person's bridge) sends through the administrator's relay.
-        let relay = || match (&config.push_relay_url, &config.push_relay_key) {
-            (Some(url), Some(key)) if !url.is_empty() && !key.is_empty() => {
-                Some(Arc::new(RelayClient::new(url, key, http.clone())))
-            }
-            _ => None,
-        };
-        let sender = match &apns {
-            Some(client) => Some(Sender::Apns(client.clone())),
-            None => relay().map(Sender::Relay),
-        };
-        let push_mode = if apns.is_some() {
-            Some("apns")
-        } else if sender.is_some() {
-            Some("relay")
-        } else {
-            None
-        };
-        // Android: FCM with the Firebase project's key, else through the same relay as Apple's pushes.
+        // Without an APNs key of its own, an install's apps register with the publisher's relay (push_service below).
+        let sender = apns.clone().map(Sender::Apns);
+        let push_mode = apns.is_some().then_some("apns");
+        // Android: FCM with the Firebase project's key, else the publisher's relay.
         let mut fcm = None;
         if let Some(account) = config.fcm_service_account.as_deref() {
             if std::path::Path::new(account).exists() {
@@ -195,10 +180,7 @@ impl Services {
                 tracing::warn!(path = %account, "FCM service account missing");
             }
         }
-        let android = match &fcm {
-            Some(client) => Some(Sender::Fcm(client.clone())),
-            None => relay().map(Sender::Relay),
-        };
+        let android = fcm.clone().map(Sender::Fcm);
         // The publisher's relay, for the apps that registered there (any install without an Apple key of its own).
         let push_service = config
             .push_service_url
@@ -1452,7 +1434,6 @@ const FIRST_ROUTE_METHODS: &[(&str, &str)] = &[
     ("/v1/runs/{run_id}/events", "GET"),
     ("/v1/approve", "POST"),
     ("/v1/approvals", "GET"),
-    ("/v1/relay/push", "POST"),
     ("/v1/agent-kinds", "GET"),
     ("/v1/agents/claim", "POST"),
     ("/v1/agents/{agent_id}/settings", "GET"),
@@ -1706,8 +1687,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
 
     let mut app = Router::new()
         .route("/health", get(health))
-        .merge(Router::new().nest("/v1", authed.route_layer(auth())))
-        .merge(crate::relay::router());
+        .merge(Router::new().nest("/v1", authed.route_layer(auth())));
     if !config.cloud {
         // on the Internet (a server the app created), no web console: one door less
         app = app.merge(crate::console::console_router()).nest("/console/static", crate::console::console_files());

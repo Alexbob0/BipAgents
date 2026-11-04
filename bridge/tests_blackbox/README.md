@@ -66,7 +66,6 @@ reset before each test. Each one records every request it gets.
 | APNs | Apple's push service | `/production/3/device/<token>` and `/sandbox/3/device/<token>`, over plain HTTP/1.1. Real APNs uses HTTP/2 over TLS, which both bridges negotiate by ALPN. |
 | FCM | Google's push service | `/v1/projects/<id>/messages:send` plus the OAuth `/token` endpoint. |
 | Publisher's push relay | `relay/` | `POST /v1/relay/push` |
-| Another bridge's relay | `[push] relay_url` | |
 | A model | The model's API | `/v1/models` and `/v1/chat/completions` (the mailbox scan's facts). |
 | IMAP server | A mailbox | Reached like Proton Mail Bridge on this machine: plain IMAP, then STARTTLS with a self-signed certificate. IDLE tells new mail while the bridge waits (`idling` counts the connections in IDLE). |
 | Dropper | An unreachable host | Accepts each connection and closes it at once. |
@@ -251,7 +250,6 @@ The suite makes about 800 requests in 28 files.
 | `DELETE /v1/import` | place_import | place (1) |
 | `GET /v1/import/hello` | place_import | place (2) |
 | `PUT /v1/import/archive` | place_import | place (2) |
-| `POST /v1/relay/push` | relay | relay_and_discovery (6), background_and_protocol (1) |
 | `GET /v1/reminders` | reminders | memory_and_notes (1) |
 | `PUT /v1/reminders` | reminders | memory_and_notes (1) |
 | `PUT /v1/reminders/agents` | reminders | memory_and_notes (1) |

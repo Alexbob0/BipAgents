@@ -717,22 +717,6 @@ class FakePushService(Fake):
                              "apns_id": None if dead else "relay-1"})
 
 
-class FakeAdminRelay(Fake):
-    """Another person's bridge's relay (`[push] relay_url`): answers like `/v1/relay/push` of an admin bridge (APNs'
-    410 for a token ending in « dead », a 403 for one ending in « blocked »)."""
-    name = "admin-relay"
-
-    async def handle(self, seen: Seen) -> Response:
-        if seen.path != "/v1/relay/push":
-            return Response(status_code=404)
-        token = str(seen.json().get("token", ""))
-        if token.endswith("blocked"):
-            return JSONResponse({"detail": "this device was blocked for abuse"}, status_code=403)
-        if token.endswith("dead"):
-            return JSONResponse({"status": 410, "reason": "Unregistered", "apns_id": None})
-        return JSONResponse({"status": 200, "reason": None, "apns_id": "relayed"})
-
-
 # -- the weather and route tools' services ---------------------------------------------------------------------------
 
 def tiny_png(width: int = 256, height: int = 256, rgb: Tuple[int, int, int] = (0xD0, 0xE4, 0xC8)) -> bytes:
@@ -848,10 +832,9 @@ class Fakes:
         self.apns = FakeApns()
         self.fcm = FakeFcm()
         self.push_service = FakePushService()
-        self.admin_relay = FakeAdminRelay()
         self.maps = FakeMaps()
         self.all: List[Fake] = [self.hermes, self.pocket, self.voices, self.model, self.apns,
-                                self.fcm, self.push_service, self.admin_relay, self.maps]
+                                self.fcm, self.push_service, self.maps]
         self.down = Dropper()
         from .imap import FakeImap
         self.imap = FakeImap()

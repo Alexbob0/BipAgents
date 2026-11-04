@@ -26,9 +26,8 @@
 //! phases and the end at 10. While the app follows the run (its SSE is attached), steps aren't pushed: it updates the
 //! activity itself.
 //!
-//! **Relay**: a bridge with its own Apple key sends straight to APNs (topic `<bundle>.push-type.liveactivity`); one
-//! relaying through an administrator's bridge (`[push] relay_url`) passes `push_type: liveactivity` on (relay.rs takes
-//! it). The publisher's relay (relay/) forwards them since 2026-10-26 (its `scrub_live` keeps codes only: no `detail`);
+//! **Relay**: a bridge with its own Apple key sends straight to APNs (topic `<bundle>.push-type.liveactivity`). The
+//! publisher's relay (relay/) forwards them since 2026-10-26 (its `scrub_live` keeps codes only: no `detail`);
 //! a relay not updated yet refuses them (400), logged once, and the app's own updates still work. Android needs nothing
 //! new on either relay.
 

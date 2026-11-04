@@ -6,10 +6,11 @@ we would change, the person decides.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
-from . import hermes
+from . import bridgeconf, hermes
 
 STATE = Path.home() / ".local" / "share" / "bipagents" / "migrations.json"
 REPO = Path(__file__).resolve().parents[2]
@@ -52,9 +53,54 @@ def sandboxes_at_gateway_start(runner: hermes.Runner, home: Path) -> str:
     return "the gateway removes the agents' dead sandboxes before it starts (from its next start)"
 
 
+def push_relay_service(runner: hermes.Runner, home: Path) -> str:
+    """The relay between bridges retired (2026-11-04): an install that sent its notifications through another
+    person's bridge (`[push] relay_url`, `relay_key`: Chi through Alex's) sends them through the publisher's relay
+    (`[push] service_url`), and a bridge that relayed for others loses its `[relay]` table (its `relay-clients` file
+    goes). Waits (NotYet) while this version doesn't know the relay's address."""
+    from .family import bridge_restart
+    from .stack import PUSH_SERVICE_URL
+    config = home / ".config" / "bipagents" / "bridge.toml"
+    if not config.is_file():
+        return "no bridge here"
+    text = config.read_text(encoding="utf-8")
+    member = re.search(r"^\s*relay_(url|key)\s*=", text, re.M)
+    serving = re.search(r"^\[relay(\.clients)?\]\s*$", text, re.M)
+    if not member and not serving:
+        return "no relay between bridges here"
+    if member and not PUSH_SERVICE_URL:
+        raise NotYet("the publisher's push relay has no address in this version yet: notifications still go through "
+                     "the other bridge")
+
+    def changed(text: str) -> str:
+        kept, skipping = [], False
+        for line in text.splitlines():
+            header = line.strip()
+            if header.startswith("[") and header.endswith("]"):
+                skipping = header in ("[relay]", "[relay.clients]")
+            if skipping or re.match(r"\s*relay_(url|key)(_file)?\s*=", line):
+                continue
+            kept.append(line)
+        out = "\n".join(kept).rstrip("\n") + "\n"
+        if member and not re.search(r"^\s*service_url\s*=", out, re.M):
+            line = f'service_url = "{PUSH_SERVICE_URL}"'
+            out = (re.sub(r"^\[push\]\s*$", f"[push]\n{line}", out, count=1, flags=re.M)
+                   if re.search(r"^\[push\]\s*$", out, re.M) else out + f"\n[push]\n{line}\n")
+        return out
+    runner.log.append(f"write {config}")
+    if not runner.dry:
+        bridgeconf.update(config, changed)
+        (config.parent / "relay-clients").unlink(missing_ok=True)
+    runner.run(bridge_restart(home), check=False)
+    return ("notifications now go through the publisher's push relay" if member
+            else "this bridge no longer relays other installs' notifications") + " (bridge restarted)"
+
+
 # In order; an id never changes once released. The ones from 2026-10-15 to 2026-11-02 left on 2026-11-04 (every
 # install had them from that day's release): their code is in git history.
-MIGRATIONS: List[Tuple[str, Callable[[hermes.Runner, Path], str]]] = []
+MIGRATIONS: List[Tuple[str, Callable[[hermes.Runner, Path], str]]] = [
+    ("2026-11-04-push-relay-service", push_relay_service),
+]
 
 
 def done() -> List[str]:

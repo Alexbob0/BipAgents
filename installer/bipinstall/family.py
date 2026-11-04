@@ -1,15 +1,13 @@
 """``bipinstall family add <name>``, run by the administrator in their own account: prepares a family member's
 install on the same server. On Linux it first gets their account ready (created if needed, ID ranges for rootless
-podman, linger: `account.py`, each sudo command shown and confirmed). It gives them a relay key on the
-administrator's bridge (their notifications go out through it, the APNs key never leaves it), reserves their block of
-ports, offers to run their install in their account right away (or prints the line to paste in their session), then
+podman, linger: `account.py`, each sudo command shown and confirmed). It reserves their block of ports (their
+notifications go out through the publisher's push relay, like any install without an Apple key), offers to run their install in their account right away (or prints the line to paste in their session), then
 the `tailscale serve` commands to run once it is done. Their install itself runs as them, without admin rights."""
 from __future__ import annotations
 
 import json
 import os
 import re
-import secrets
 import shlex
 import subprocess
 import sys
@@ -17,7 +15,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
-from . import account, bridgeconf, ui
+from . import account, ui
 from .ports import FIRST_BLOCK, Ports, candidate_bases, port_free
 
 INSTALL_LINE = "curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash -s --"
@@ -56,24 +54,6 @@ def slug(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", plain).strip("-") or "membre"
 
 
-def ensure_clients_file(config_path: Path, text: str) -> Path:
-    """The relay keys live in a file next to bridge.toml (« name key » per line), named in its [relay] table."""
-    found = re.search(r'^\s*clients_file\s*=\s*"([^"]+)"', text, re.M)
-    if found:
-        return Path(found.group(1)).expanduser()
-    path = config_path.parent / "relay-clients"
-    line = f'clients_file = "{path}"'
-
-    def with_relay(text: str) -> str:
-        if re.search(r'^\s*clients_file\s*=', text, re.M):
-            return text
-        if re.search(r"^\[relay\]\s*$", text, re.M):
-            return re.sub(r"^\[relay\]\s*$", f"[relay]\n{line}", text, count=1, flags=re.M)
-        return text.rstrip("\n") + f"\n\n# Other installs on this server send their notifications through this bridge.\n[relay]\n{line}\n"
-    bridgeconf.update(config_path, with_relay)
-    return path
-
-
 def reserved_blocks(folder: Path) -> Dict[str, int]:
     try:
         return json.loads((folder / "family-ports.json").read_text(encoding="utf-8"))
@@ -95,26 +75,14 @@ def add(name: str, config: Optional[str] = None, is_free=port_free) -> Dict[str,
     config_path = find_config(config)
     text = config_path.read_text(encoding="utf-8")
     public = re.search(r'^\s*public_url\s*=\s*"([^"]+)"', text, re.M)
-    if not public:
-        raise SystemExit("Your bridge has no address on the tailnet (public_url at the top of bridge.toml): "
-                            "the other installs couldn't reach it for their notifications.")
-    team = re.search(r'^\s*team_id\s*=\s*"([^"]+)"', text, re.M)
-    if not team:
-        print(ui.note("Your bridge has no Apple key (APNs): it won't be able to relay notifications."))
     member = slug(name)
-    clients = ensure_clients_file(config_path, text)
-    lines = clients.read_text(encoding="utf-8").splitlines() if clients.exists() else []
-    if any(line.split()[:1] == [member] for line in lines if line.strip() and not line.startswith("#")):
-        raise SystemExit(f"{name} already has a relay key. To make a new one, remove their line from {clients}.")
-    key = secrets.token_urlsafe(32)
-    clients.write_text("\n".join(lines + [f"{member} {key}"]) + "\n", encoding="utf-8")
-    clients.chmod(0o600)
     blocks = reserved_blocks(config_path.parent)
+    if member in blocks:
+        raise SystemExit(f"{name} already has a block of ports ({blocks[member]}, family-ports.json).")
     ports = next_block(list(blocks.values()), is_free)
     blocks[member] = ports.base
     (config_path.parent / "family-ports.json").write_text(json.dumps(blocks, indent=2) + "\n", encoding="utf-8")
-    return {"member": member, "key": key, "relay_url": public.group(1).rstrip("/"), "ports": ports,
-            "clients_file": str(clients)}
+    return {"member": member, "server_url": public.group(1).rstrip("/") if public else "", "ports": ports}
 
 
 def confirm(question: str) -> bool:
@@ -137,7 +105,7 @@ def main(argv: List[str]) -> int:
     args = parser.parse_args(argv)
     linux = sys.platform.startswith("linux")
     login = args.account or slug(args.name)
-    total = 5 if linux else 4
+    total = 4 if linux else 3
     print(ui.bip("happy", f"Let's get things ready for {args.name}."))
     if linux:
         print(ui.step(1, total, f"Their Linux account: {login}"))
@@ -149,18 +117,10 @@ def main(argv: List[str]) -> int:
         print(ui.done(f"The {login} account is ready (containers without admin rights, services that keep running)."))
     result = add(args.name, args.config)
     ports: Ports = result["ports"]   # type: ignore[assignment]
-    print(ui.done(f"Relay key created for {args.name} (in {result['clients_file']})."))
     print(ui.done(f"Ports reserved: {ports.base}–{ports.base + 9}."))
     first = 2 if linux else 1
-    print(ui.step(first, total, "Restart your bridge, so it knows this key"))
-    restart = bridge_restart()
-    if confirm(f"Shall I restart it now ({shlex.join(restart)})?") and subprocess.run(restart).returncode == 0:
-        print(ui.done("Your bridge restarted."))
-    else:
-        print("Restart it from another terminal of YOUR account before going on:")
-        print(f"\n  {shlex.join(restart)}\n")
-    line = f"{INSTALL_LINE} --relay-url {result['relay_url']} --relay-key {result['key']} --ports {ports.base}"
-    print(ui.step(first + 1, total, f"{args.name}'s install, in their account"))
+    line = f"{INSTALL_LINE} --ports {ports.base}"
+    print(ui.step(first, total, f"{args.name}'s install, in their account"))
     if linux:
         command = account.install_command(login, account.uid_of(login), line)
         print(ui.note(f"No need to log into {login}: their install runs from here through sudo, and its questions "
@@ -178,7 +138,6 @@ def main(argv: List[str]) -> int:
         installed = False
         print(f"{args.name} pastes this line in a terminal of THEIR session (not yours):")
         print(f"\n  {line}\n")
-    print(ui.note("The key is only used to send their notifications through your bridge. Don't send it by email."))
     print(ui.step(total - 1, total, "Publish their ports on the tailnet"))
     serve = [["sudo", "tailscale", "serve", "--bg", f"--https={port}", f"http://127.0.0.1:{port}"] for port in ports.tailnet]
     if installed and confirm("Shall I publish them now (with sudo)?") and \
@@ -190,17 +149,17 @@ def main(argv: List[str]) -> int:
             print(f"  {shlex.join(command)}")
         print(ui.note("The last one is only needed if their agents' desktop is installed."))
     print(ui.step(total, total, "Their iPhone, on YOUR tailnet"))
-    for line in iphone_steps(args.name, result["relay_url"]):
+    for line in iphone_steps(args.name, str(result["server_url"])):
         print(line)
     if linux:
         print(f"To show their QR code again:\n  bipagents qr {login}")
     return 0
 
 
-def iphone_steps(name: str, relay_url: str) -> List[str]:
+def iphone_steps(name: str, server_url: str) -> List[str]:
     """Their iPhone has to join the administrator's tailnet: a Tailscale account of their own makes a tailnet of its
     own, where this server isn't."""
-    host = urlparse(relay_url).hostname or ""
+    host = urlparse(server_url).hostname or ""
     machine, _, tailnet = host.partition(".")
     tailnet = tailnet or "yours"
     return [

@@ -222,19 +222,17 @@ key per install).
 
 ### `family add`, step by step (Linux)
 
-Run it **in the administrator's terminal**. It shows each step as `[n/5]`:
+Run it **in the administrator's terminal**. It shows each step as `[n/4]`:
 
 1. **Their Linux account** (`lea`, or the one given with `--account`): created if it does not exist, given ID ranges
    for rootless containers (the agents' browser) and « linger » (their services keep running while they are logged
    out). Each `sudo` command is shown and confirmed first; nothing is asked when the account is already ready.
    `--dry-run` only shows these commands.
-2. **Restart your bridge**, so it knows their relay key: it offers to do it (`y`), or prints the command to run in
-   another terminal of **your** account, before step 3 — usually `systemctl --user restart bipagents-bridge`.
-3. **Their install, in their account**: no need to log into their account (no `ssh lea@…`). Answer `y` and it runs
+2. **Their install, in their account**: no need to log into their account (no `ssh lea@…`). Answer `y` and it runs
    there through `sudo`, its questions showing up **in your terminal** (the model, their first agents, the visible
    browser). They type nothing. It ends with their **QR code**. Answer `N` to get the command and run it later.
-4. **Publish their ports on the tailnet**: it offers to run the `sudo tailscale serve` commands (`y`), or prints them.
-5. **Their phone, on YOUR tailnet**: the one this server is in. A Tailscale account of their own makes a tailnet of
+3. **Publish their ports on the tailnet**: it offers to run the `sudo tailscale serve` commands (`y`), or prints them.
+4. **Their phone, on YOUR tailnet**: the one this server is in. A Tailscale account of their own makes a tailnet of
    its own, where the app can't reach the server. So:
    1. invite them in the [Tailscale console](https://login.tailscale.com/admin/users) › Invite users (their email);
    2. on their phone, they accept the invite, then in the Tailscale app: profile icon › Add account › sign in with

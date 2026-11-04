@@ -34,7 +34,6 @@ def test_config_errors_are_said_and_stop_the_bridge(bridges, fakes):
         (lambda c: c.update(spaces={"sandbox": "maybe"}), "spaces.sandbox must be 'auto' or 'none'"),
         (lambda c: c.update(browser={"runtime": "lxc"}),
          "browser.runtime must be 'podman' or 'docker', browser.gpu 'auto' or 'none'"),
-        (lambda c: c.update(push={"relay_url": "https://admin:8643"}), "push.relay_key (or relay_key_file) is required"),
     ]
     for index, (change, message) in enumerate(cases):
         bridge = broken(bridges, f"case{index}", change)
