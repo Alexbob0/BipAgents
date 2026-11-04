@@ -1,0 +1,319 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Alexbob0 <alextsmail@pm.me>
+Date: Wed, 4 Nov 2026 09:04:44 +0100
+Subject: Closed tools per turn: model_options.closed_tools left out of the
+ requests and refused
+
+A turn's model_options may name tools that turn must not use (closed_tools, exact names or a prefix ending in *):
+its requests to the model leave them out and the dispatcher refuses them, tool_call's underlying tool included.
+Everything else is the person's usual turn. Set again at every turn (the direct path's _create_agent, the
+TurnRunner's resolved agent), so a cached agent's next turn gets them back. BipAgents closes the media and long
+tools in a voice call's turns.
+
+BipAgents patch, documented in hermes/patches/README.md of the BipAgents repository.
+
+Bip-Patch: 0023-closed-tools-per-turn
+---
+ agent/agent_runtime_helpers.py   |   5 ++
+ agent/chat_completion_helpers.py |   3 +
+ agent/closed_tools.py            |  90 ++++++++++++++++++++++++
+ agent/tool_executor.py           |   4 ++
+ gateway/platforms/api_server.py  |   3 +
+ gateway/run_turn_runner.py       |   4 ++
+ tests/agent/test_closed_tools.py | 116 +++++++++++++++++++++++++++++++
+ 7 files changed, 225 insertions(+)
+ create mode 100644 agent/closed_tools.py
+ create mode 100644 tests/agent/test_closed_tools.py
+
+diff --git a/agent/agent_runtime_helpers.py b/agent/agent_runtime_helpers.py
+index 45300b6a50d5f999f8ccee6b6206d93afd4449a9..b9335fee3cc2dcde44c21afbdeb5176b5d38c2b0 100644
+--- a/agent/agent_runtime_helpers.py
++++ b/agent/agent_runtime_helpers.py
+@@ -2523,6 +2523,11 @@ def invoke_tool(agent, function_name: str, function_args: dict, effective_task_i
+     guest_refused = _guest_refusal_result(agent, function_name)
+     if guest_refused is not None:
+         return guest_refused
++    # A tool closed for this turn (patch 0023, a voice call's) is refused the same way.
++    from agent.closed_tools import refusal_result as _closed_refusal_result
++    closed_refused = _closed_refusal_result(agent, function_name)
++    if closed_refused is not None:
++        return closed_refused
+     hook_ids = tool_hook_ids(agent, effective_task_id, tool_call_id)
+     _tool_middleware_trace = list(tool_request_middleware_trace or [])
+     try:
+diff --git a/agent/chat_completion_helpers.py b/agent/chat_completion_helpers.py
+index c355355cc23b2874351d5f6b98767b9adb56d903..4159d0f007a22861e0e752770b6e149c32b3df24 100644
+--- a/agent/chat_completion_helpers.py
++++ b/agent/chat_completion_helpers.py
+@@ -1543,6 +1543,9 @@ def _build_api_kwargs_for_mode(agent, api_messages: list, tools_for_api: list |
+     # A guest turn sends only its own tools, whatever rebuilt or merged agent.tools since (patch 0018).
+     from agent.guest_turn import request_tools as _guest_request_tools
+     tools_for_api = _guest_request_tools(agent, tools_for_api)
++    # Nor the tools closed for this turn (patch 0023, a voice call's).
++    from agent.closed_tools import request_tools as _closed_request_tools
++    tools_for_api = _closed_request_tools(agent, tools_for_api)
+     # The one place request_overrides are consumed: static /fast values are already pinned
+     # in agent.request_overrides; auto/cold windows layer the fast override per request.
+     request_overrides = effective_request_overrides(agent)
+diff --git a/agent/closed_tools.py b/agent/closed_tools.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..93e1848a158a2e3a1e38dee7083c8db194b2bb3f
+--- /dev/null
++++ b/agent/closed_tools.py
+@@ -0,0 +1,90 @@
++"""Tools closed for one turn of the agent's own person (BipAgents patch 0023).
++
++A client (BipAgents' bridge) names, in a turn's ``model_options``, tools that turn must not use:
++``"closed_tools": ["text_to_speech", "mcp__bipagents__create_audio", "mcp__stealth__*", ...]``. A voice call's turns
++close the tools that make media or long outputs (audio, images, pages, files, the browser): the person is waiting on
++the line, and what is to be made is made after the call. For that turn only:
++
++- the requests to the model leave those tools out (``request_tools``);
++- the dispatcher refuses any of them a model names anyway, ``tool_call`` included (``refusal``), with a reply that
++  says what to do instead.
++
++Everything else is the person's usual turn: the same system prompt, memory, profile and other tools. ``model_options``
++already rides every path a turn takes (the session chat, its stream, ``/v1/runs``, the session authority's
++admission), and each turn sets the mark again (``apply``), so a cached agent's next turn gets its tools back.
++
++A name ending in ``*`` closes every tool it starts (an MCP server's: ``mcp__stealth__*``). A malformed value closes
++nothing (logged): the mark only spares a turn from waiting, it guards no data.
++"""
++
++from __future__ import annotations
++
++import json
++import logging
++from typing import Any, Optional
++
++logger = logging.getLogger(__name__)
++
++KEY = "closed_tools"
++MAX_NAMES = 128
++MAX_NAME = 200
++REFUSAL = (
++    "This tool is closed during this voice call. Say it instead (pronounce or spell words, describe, explain), and "
++    "offer to make the audio, image, page or file after the call."
++)
++
++
++def parse(model_options: Any) -> Optional[tuple]:
++    """The closed names of a turn's ``model_options`` (``None``: nothing closed)."""
++    if not isinstance(model_options, dict) or model_options.get(KEY) is None:
++        return None
++    names = model_options.get(KEY)
++    if (not isinstance(names, list) or len(names) > MAX_NAMES
++            or not all(isinstance(n, str) and 0 < len(n) <= MAX_NAME and not any(c.isspace() for c in n)
++                       for n in names)):
++        logger.warning("closed_tools ignored: a list of at most %d tool names is expected", MAX_NAMES)
++        return None
++    return tuple(sorted(set(names))) or None
++
++
++def apply(agent: Any, model_options: Any) -> None:
++    """Mark ``agent`` for the turn about to run (cleared when ``model_options`` closes nothing)."""
++    closed = parse(model_options)
++    agent._closed_tools = closed
++    if closed:
++        logger.info("turn with closed tools: %s", ", ".join(closed))
++
++
++def is_closed(agent: Any, name: str) -> bool:
++    closed = getattr(agent, "_closed_tools", None)
++    if not isinstance(closed, tuple) or not name:
++        return False
++    return any(name.startswith(c[:-1]) if c.endswith("*") else name == c for c in closed)
++
++
++def _name(tool: Any) -> str:
++    try:
++        return str(tool["function"]["name"])
++    except Exception:
++        return ""
++
++
++def request_tools(agent: Any, tools: Optional[list]) -> Optional[list]:
++    """The tools a request of this turn sends to the model."""
++    if not tools or not isinstance(getattr(agent, "_closed_tools", None), tuple):
++        return tools
++    kept = [t for t in tools if not is_closed(agent, _name(t))]
++    return kept or None
++
++
++def refusal(agent: Any, name: str) -> Optional[str]:
++    """Why ``name`` can't run during this turn (``None``: it can)."""
++    if not is_closed(agent, name):
++        return None
++    logger.info("closed tool %s refused", name)
++    return REFUSAL
++
++
++def refusal_result(agent: Any, name: str) -> Optional[str]:
++    message = refusal(agent, name)
++    return None if message is None else json.dumps({"error": message}, ensure_ascii=False)
+diff --git a/agent/tool_executor.py b/agent/tool_executor.py
+index e9666fc5e49673ebe4e8ac292c6949ca7dbffd3d..28f581c82c73b1502cc3639cdee5c3c3d2e885c4 100644
+--- a/agent/tool_executor.py
++++ b/agent/tool_executor.py
+@@ -713,6 +713,10 @@ def _dispatch_authorized_once(
+         # A guest turn runs only its own tools (patch 0018), before any plugin may rewrite the call.
+         from agent.guest_turn import refusal as _guest_refusal
+         block_message, block_error_type = _guest_refusal(agent, ref.name), "guest_turn_block"
++    if block_message is None:
++        # A tool closed for this turn (patch 0023, a voice call's), tool_call's underlying one included.
++        from agent.closed_tools import refusal as _closed_refusal
++        block_message, block_error_type = _closed_refusal(agent, ref.name), "closed_tool_block"
+     if block_message is None:
+         block_error_type = "plugin_block"
+         resolve = lambda: _pre_tool_block(agent, ref)
+diff --git a/gateway/platforms/api_server.py b/gateway/platforms/api_server.py
+index d5ed09e0eb63da768806292abfa335aafb936967..b39d66adf7ac3f20b4600cbcbd55ebce62c62859 100644
+--- a/gateway/platforms/api_server.py
++++ b/gateway/platforms/api_server.py
+@@ -2358,6 +2358,9 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
+         if guest_tools is not None:
+             from agent.guest_turn import apply as _apply_guest_turn
+             _apply_guest_turn(agent, guest_tools)
++        # BipAgents 0023: the tools this turn's model_options close (a voice call's turn).
++        from agent.closed_tools import apply as _apply_closed_tools
++        _apply_closed_tools(agent, model_options)
+         route_source = (
+             "session_model_lock" if confirmed_runtime_lock
+             else "session_model_override" if session_override
+diff --git a/gateway/run_turn_runner.py b/gateway/run_turn_runner.py
+index ddf2476adb58f5bc96c400a7164f64042756062c..540dc5682123a9abc1ecab8c641c7d61c26756cb 100644
+--- a/gateway/run_turn_runner.py
++++ b/gateway/run_turn_runner.py
+@@ -1307,6 +1307,10 @@ class TurnRunner(GatewayTurnProgressMixin, GatewaySessionAgentMixin):
+         agent, reused_cached_agent = self._resolve_turn_agent(
+             turn_route, platform_key, combined_ephemeral, max_iterations, reasoning_config, pr,
+         )
++        # BipAgents 0023: the tools this API turn's model_options close (a voice call's turn), set at every turn so
++        # a cached agent's next turn gets them back.
++        from agent.closed_tools import apply as _apply_closed_tools
++        _apply_closed_tools(agent, api['settings'].get('model_options') if api is not None else None)
+         if pending_fallback_notice:
+             # Reuse the in-agent one-shot notice so the pre-agent provider switch is user-visible too.
+             agent._pending_fallback_notice = pending_fallback_notice
+diff --git a/tests/agent/test_closed_tools.py b/tests/agent/test_closed_tools.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..7a7664031fc1aea557d7afda043ed315d029ff6e
+--- /dev/null
++++ b/tests/agent/test_closed_tools.py
+@@ -0,0 +1,116 @@
++"""Tools closed for one turn of the person's own (BipAgents patch 0023): a voice call's turns leave out the tools that
++make media or long outputs, through ``model_options.closed_tools``."""
++
++import json
++from types import SimpleNamespace
++from unittest.mock import MagicMock
++
++import pytest
++
++from agent import closed_tools
++
++CLOSED = ["text_to_speech", "image_generate", "mcp__bipagents__create_audio", "mcp__stealth__*"]
++OPTIONS = {"reasoning": {"enabled": False}, "closed_tools": CLOSED}
++
++
++def _tool(name):
++    return {"type": "function", "function": {"name": name, "description": name, "parameters": {"type": "object"}}}
++
++
++def _agent():
++    return SimpleNamespace(tools=[_tool(n) for n in ("web_search", "text_to_speech", "mcp__bipagents__create_audio",
++                                                     "mcp__bipagents__calendar_list", "mcp__stealth__navigate")])
++
++
++def test_parse_reads_the_names_and_ignores_a_malformed_value():
++    assert closed_tools.parse(None) is None
++    assert closed_tools.parse({"reasoning": {"enabled": False}}) is None
++    assert closed_tools.parse({"closed_tools": []}) is None
++    assert closed_tools.parse(OPTIONS) == tuple(sorted(CLOSED))
++    for bad in ["text_to_speech", [1], ["a b"], [""], ["x"] * 129]:
++        assert closed_tools.parse({"closed_tools": bad}) is None
++
++
++def test_requests_leave_the_closed_tools_out():
++    agent = _agent()
++    closed_tools.apply(agent, OPTIONS)
++    sent = closed_tools.request_tools(agent, agent.tools)
++    assert [t["function"]["name"] for t in sent] == ["web_search", "mcp__bipagents__calendar_list"]
++    assert closed_tools.request_tools(agent, [_tool("image_generate")]) is None
++
++
++def test_the_next_turn_without_the_mark_gets_every_tool_back():
++    agent = _agent()
++    closed_tools.apply(agent, OPTIONS)
++    closed_tools.apply(agent, {"reasoning": {"enabled": False}})
++    assert closed_tools.request_tools(agent, agent.tools) is agent.tools
++    assert closed_tools.refusal(agent, "text_to_speech") is None
++    assert closed_tools.request_tools(_agent(), _agent().tools) is not None  # never marked: untouched
++
++
++def test_the_dispatcher_refuses_closed_tools_and_prefixes():
++    agent = _agent()
++    closed_tools.apply(agent, OPTIONS)
++    for name in ["text_to_speech", "mcp__bipagents__create_audio", "mcp__stealth__navigate", "mcp__stealth__click"]:
++        assert closed_tools.refusal(agent, name) == closed_tools.REFUSAL
++    for name in ["web_search", "mcp__bipagents__create_audio_x", "mcp__bipagents__calendar_list", "mcp__stealthy"]:
++        assert closed_tools.refusal(agent, name) is None
++
++
++def test_invoke_tool_returns_the_refusal_without_running_anything(monkeypatch):
++    from agent import agent_runtime_helpers
++    import model_tools
++    ran = []
++    monkeypatch.setattr(model_tools, "handle_function_call", lambda *a, **k: ran.append(a) or "{}")
++    agent = _agent()
++    closed_tools.apply(agent, OPTIONS)
++    result = agent_runtime_helpers.invoke_tool(agent, "text_to_speech", {"text": "bonjour"}, "task-1")
++    assert json.loads(result) == {"error": closed_tools.REFUSAL}
++    assert ran == []
++
++
++def test_the_policy_gate_blocks_the_underlying_tool_before_dispatch(monkeypatch):
++    from agent import tool_executor
++    agent = _agent()
++    closed_tools.apply(agent, OPTIONS)
++    agent._tool_guardrails = MagicMock()
++    hooks = []
++    monkeypatch.setattr(tool_executor, "_pre_tool_block", lambda *a: hooks.append(a) or (None, {}))
++    state = tool_executor._ManagedToolResult(result=None, args={}, middleware_trace=[], blocked=False,
++                                             dispatched=True)
++    ref = tool_executor._ToolCallRef("mcp__bipagents__create_audio", {"text": "x"}, "task-1", "call-1", [])
++    monkeypatch.setattr(ref, "emit_post", lambda *a, **k: None, raising=False)
++    executed = []
++    result = tool_executor._dispatch_authorized_once(
++        agent, state, ref, execute=lambda args: executed.append(args), scope_block=None, display_index=None,
++        begin_execution=None, authorization_gate=None)
++    assert json.loads(result) == {"error": closed_tools.REFUSAL}
++    assert state.blocked is True and executed == [] and hooks == []
++
++
++@pytest.mark.asyncio
++async def test_create_agent_marks_the_agent_from_its_model_options(monkeypatch):
++    from gateway.config import PlatformConfig
++    from gateway.platforms.api_server import APIServerAdapter
++    host = APIServerAdapter(PlatformConfig(enabled=True, extra={}))
++
++    class FakeAgent:
++        def __init__(self, **kwargs):
++            pass
++
++    import gateway.run as gateway_run
++    import run_agent
++    monkeypatch.setattr(run_agent, "AIAgent", FakeAgent)
++    monkeypatch.setattr(gateway_run, "_resolve_runtime_agent_kwargs", lambda: {"model": "m"})
++    monkeypatch.setattr(gateway_run, "_load_gateway_config", lambda: {})
++    monkeypatch.setattr(gateway_run, "_checkpoint_agent_kwargs", lambda cfg: {})
++    monkeypatch.setattr(gateway_run, "_current_max_iterations", lambda: 10)
++    monkeypatch.setattr(gateway_run.GatewayRunner, "_load_reasoning_config", staticmethod(lambda m: None))
++    monkeypatch.setattr(gateway_run.GatewayRunner, "_load_fallback_model", staticmethod(lambda: None))
++    monkeypatch.setattr(host, "_select_agent_runtime", lambda kw, model, **k: (model, False, None, None))
++    monkeypatch.setattr(host, "_ensure_session_db", lambda: None)
++    monkeypatch.setattr(host._memory_sessions, "checkout", MagicMock(return_value=None))
++    agent = host._create_agent(session_id="live-1", model_options=OPTIONS)
++    assert agent._closed_tools == tuple(sorted(CLOSED))
++    agent = host._create_agent(session_id="s-alex")
++    assert agent._closed_tools is None

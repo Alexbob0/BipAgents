@@ -400,7 +400,8 @@ class FakeHermes(Fake):
                 run_id = f"r{len(self.started) + 1}"
                 self.started[run_id] = {"status": "running", "polls": 0, "input": text, "now": now,
                                         "session_id": body.get("session_id"), "instructions": body.get("instructions"),
-                                        "agent": agent, "guest_turn": body.get("guest_turn")}
+                                        "agent": agent, "guest_turn": body.get("guest_turn"),
+                                        "model_options": body.get("model_options")}
                 if isinstance(body.get("input"), str) and self.local_bot_chat(agent, body.get("session_id")):
                     self.fifo.append({"agent": agent, "run_id": run_id, "session_id": body.get("session_id"),
                                       "input": text})

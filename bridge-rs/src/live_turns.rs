@@ -1,7 +1,8 @@
 //! A Live call's turns go through the bridge (3/11): the apps no longer call Hermes for them. Each turn runs in the
 //! call's own short session (made by `POST /v1/live/calls/start`, live_brief.rs) on Hermes' `chat/stream`, whose SSE
 //! answer is passed on as it comes (one request, nothing waited for: the first words as early as before), with the
-//! agent's quick-turn thinking (`quick_turn_options`: off, or the least its model allows).
+//! agent's quick-turn thinking (`quick_turn_options`: off, or the least its model allows) and the media and long tools
+//! closed (`LIVE_CLOSED_TOOLS`, `live_turn_options`).
 //!
 //!     POST /v1/live/turns       {agent, live_session, text, attachments?}   → text/event-stream (Hermes' events)
 //!     POST /v1/live/turns/stop  {agent, run_id}                             → {stopped}
@@ -63,6 +64,43 @@ fn field(name: &str, msg: &str) -> FieldError {
     FieldError::new("value_error", vec![json!("body"), json!(name)], msg, Value::Null)
 }
 
+/// The tools a Live turn leaves out (4/11: asked for help with a pronunciation in a call, an agent started making an
+/// audio file while the person waited on the line): what makes media or long outputs (audio and podcasts, Hermes'
+/// speech, images and videos, pages, files written, sub-agents, background and heavy work started, the browsers).
+/// The call's rules (the apps' prelude, LiveLines `callRules`) say to speak it instead and offer it for after the call.
+/// Quick ones stay: web search, the Carnet, calendar and reminders, mail, maps, messages to other agents, a background
+/// task proposed (`propose_task`). Hermes patch 0023 (`model_options.closed_tools`, a trailing `*` closes a prefix)
+/// leaves them out of the model's requests and refuses them in its dispatcher (`tool_call` included); a Hermes without
+/// it ignores the field, the rules still say it. Fixed: every call's turns send the same list, so the warm-up's prompt
+/// is the one the call's questions find in the model server's cache.
+pub const LIVE_CLOSED_TOOLS: [&str; 17] = [
+    "browser_*",
+    "computer_use",
+    "delegate_task",
+    "image_generate",
+    "mcp__bipagents__create_audio",
+    "mcp__bipagents__create_page",
+    "mcp__bipagents__create_podcast",
+    "mcp__bipagents__heavy_work",
+    "mcp__bipagents__start_task",
+    "mcp__bipagents_files__shared_files_write",
+    "mcp__stealth__*",
+    "patch",
+    "text_to_speech",
+    "video_generate",
+    "write_file",
+    "xai_video_edit",
+    "xai_video_extend",
+];
+
+/// The `model_options` of a Live call's turns and of its warm-up (live_brief.rs `warm_up`): the agent's quick-turn
+/// thinking, `LIVE_CLOSED_TOOLS` closed.
+pub fn live_turn_options(config: &crate::config::Config, agent: &crate::config::AgentConfig) -> Value {
+    let mut options = crate::agents_admin::quick_turn_options(config, agent);
+    options["closed_tools"] = json!(LIVE_CLOSED_TOOLS);
+    options
+}
+
 const UNREACHABLE: &str = "your agent isn't answering right now: try again in a moment";
 
 async fn turn(State(state): State<AppState>, Json(body): Json<Turn>) -> ApiResult<Response> {
@@ -73,7 +111,7 @@ async fn turn(State(state): State<AppState>, Json(body): Json<Turn>) -> ApiResul
         Value::Array(mut messages) => messages.swap_remove(0)["content"].take(),
         words => words,
     };
-    let request = json!({"input": input, "model_options": crate::agents_admin::quick_turn_options(&config, &agent)});
+    let request = json!({"input": input, "model_options": live_turn_options(&config, &agent)});
     let upstream = state.hermes.chat_stream(&agent, &body.live_session, request).await.map_err(|exc| match exc.status() {
         Some(status @ (400..=499)) => HttpError::new(status, "your agent refused this message"),
         _ => HttpError::new(502, UNREACHABLE),
@@ -97,4 +135,42 @@ async fn stop(State(state): State<AppState>, Json(body): Json<Stop>) -> ApiResul
 /// Mounted under /v1 with the bridge key.
 pub fn router() -> Router<AppState> {
     Router::new().route("/live/turns", post(turn)).route("/live/turns/stop", post(stop))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn closes(name: &str) -> bool {
+        LIVE_CLOSED_TOOLS.iter().any(|c| match c.strip_suffix('*') {
+            Some(prefix) => name.starts_with(prefix),
+            None => name == *c,
+        })
+    }
+
+    #[test]
+    fn a_call_closes_the_media_and_long_tools_and_keeps_the_quick_ones() {
+        let bridge = |name: &str| format!("{}{name}", crate::tool_diet::BRIDGE_PREFIX);
+        for made in [crate::agent_tools::CREATE_AUDIO, crate::agent_tools::CREATE_PODCAST, crate::agent_tools::CREATE_PAGE,
+            crate::jobs::START_TASK, crate::heavy_work::HEAVY_WORK]
+        {
+            assert!(closes(&bridge(made)), "{made}");
+        }
+        for native in ["text_to_speech", "image_generate", "write_file", "browser_navigate", "mcp__stealth__navigate"] {
+            assert!(closes(native), "{native}");
+        }
+        for quick in [crate::agent_tools::PROPOSE_TASK, crate::agent_tools::KNOWLEDGE_SEARCH, crate::maps::TOOL_NAME,
+            crate::routes::TOOL_NAME, crate::weather::TOOL_NAME, crate::agent_messages::TOOL_NAME,
+            crate::notebook::tools::SEARCH, crate::notebook::tools::NOTE, "calendar_list", "reminders_add", "mail_search",
+            "mail_read", crate::agent_tools::LIST_PAGES, crate::agent_tools::READ_PAGE]
+        {
+            assert!(!closes(&bridge(quick)), "{quick}");
+        }
+        for quick in ["web_search", "web_extract", "clarify", "memory", "read_file", "terminal", "tool_search"] {
+            assert!(!closes(quick), "{quick}");
+        }
+        // Hermes 0023 takes at most 128 names without spaces; one fixed list, in order, for the prompt cache
+        assert!(LIVE_CLOSED_TOOLS.len() <= 128 && LIVE_CLOSED_TOOLS.iter().all(|n| !n.contains(char::is_whitespace)));
+        assert!(LIVE_CLOSED_TOOLS.windows(2).all(|w| w[0] < w[1]));
+    }
 }
