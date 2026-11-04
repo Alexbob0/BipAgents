@@ -950,13 +950,26 @@ async fn live_call(State(state): State<AppState>, Json(body): Json<CallEnded>) -
     Ok(web::ok(json!({"ok": true})))
 }
 
+/// The call's own session, titled with its start time. Hermes refuses a title another session holds (400
+/// `invalid_title`), and the calls' sessions stay: a second call in the same second (before 3/11 the same minute, in
+/// the apps) was refused, and the person saw « Ça n'a pas été accepté » once they spoke. Such a call gets a unique title.
+async fn create_call_session(state: &AppState, agent: &AgentConfig) -> Result<String, HermesError> {
+    let title = format!("Live · {}", Local::now().format("%Y-%m-%d %H:%M:%S"));
+    match state.hermes.create_session(agent, &title).await {
+        Err(HermesError::Http { status: 400, .. }) => {
+            let unique = format!("{title} · {}", &uuid::Uuid::new_v4().simple().to_string()[..6]);
+            state.hermes.create_session(agent, &unique).await
+        }
+        made => made,
+    }
+}
+
 /// A call starts: the bridge makes its own short session (its turns: live_turns.rs), has the model read the prelude
 /// at once, and ends the call by itself if the app never says (live_calls.rs).
 async fn live_call_start(State(state): State<AppState>, Json(body): Json<CallStarted>) -> ApiResult<Response> {
     let agent = setup(&state, &body.agent)?;
     crate::agent_restart::note_live(&agent.name);
-    let title = format!("Live · {}", Local::now().format("%Y-%m-%d %H:%M:%S"));
-    let live_session = state.hermes.create_session(&agent, &title).await.map_err(hermes_error)?;
+    let live_session = create_call_session(&state, &agent).await.map_err(hermes_error)?;
     if let Some(prelude) = body.prelude.filter(|p| !p.trim().is_empty()) {
         // never waited for: the first question goes whenever the person is done
         let (briefs, warmed) = (state.briefs.clone(), agent.clone());
