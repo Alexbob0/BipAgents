@@ -273,7 +273,9 @@ impl Follow {
                 reason = terminal_reason(etype);
                 enqueue(splitter.flush(), &mut seq, &mut spoken);
                 let final_text = event.final_text();
-                heard = final_text.clone();
+                // the reply as Hermes keeps it (its MEDIA lines in: the Boîte gives them as its files)
+                let sub = self.state.hub.subscription(&agent.name, &run_id);
+                heard = sub.and_then(|s| s.output()).unwrap_or_else(|| final_text.clone());
                 if spoken == 0 && etype == "run.completed" && !final_text.is_empty() {
                     let mut sentences = splitter.feed(&final_text);
                     sentences.extend(splitter.flush());

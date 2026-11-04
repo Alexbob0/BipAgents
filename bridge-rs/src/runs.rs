@@ -434,6 +434,8 @@ pub struct SubscriptionState {
     /// next call would pass them, the hub stops it as that call's tool step starts (`capped`).
     pub token_limit: Option<i64>,
     pub capped: bool,
+    /// The reply's `MEDIA:` lines, out of what the apps get (media.rs).
+    pub media: crate::media::MediaFilter,
     listeners: Vec<Slot>,
     cancel: Option<CancellationToken>,
     task: Option<JoinHandle<()>>,
@@ -478,6 +480,7 @@ impl Default for SubscriptionState {
             usage: None,
             token_limit: None,
             capped: false,
+            media: Default::default(),
             listeners: Vec::new(),
             cancel: None,
             task: None,
@@ -1124,6 +1127,7 @@ impl RunHub {
                                 failures = 0;
                                 let terminal = is_terminal(&event.r#type);
                                 let event = if terminal {
+                                    self.flush_media(sub);
                                     self.rescue(sub, &event).await;
                                     // a turn the brake stopped: its rescue turn's end instead (loop_rescue)
                                     let event = self.loop_rescue(sub, event).await;
@@ -1192,6 +1196,9 @@ impl RunHub {
         let event = if matches!(event.r#type.as_str(), "approval.request" | "clarify.request") { with_item_id(sub, event) } else { event };
         let event = if event.r#type == "run.completed" { self.no_reply_in_plain_words(sub, event) } else { event };
         let event = if event.r#type == "run.failed" { self.account_failure_in_plain_words(sub, event) } else { event };
+        // the model's words as Hermes keeps them (to recognise its reply), the apps' without MEDIA lines
+        let written = as_str(event.data.get("output"));
+        let Some(event) = st.media.event(event) else { return };
         append_to_backlog(&mut st.backlog, &event);
         st.send_all(Some(&event));
         let kind = event.r#type.as_str();
@@ -1252,8 +1259,8 @@ impl RunHub {
                 }
             }
             let output = as_str(event.data.get("output"));
-            if output.is_some() {
-                st.output = output.clone();
+            if written.is_some() {
+                st.output = written.clone();
             }
             Self::forget_pending(&mut inner, &sub.agent.name, &sub.run_id, None);
             // the files it hands the person kept (sent_files.rs): its lines and its attachments
@@ -1292,7 +1299,7 @@ impl RunHub {
             });
             if let (true, Some(push)) = (st.watched && st.end_push && st.followers() == 0 && !follows, self.push.clone()) {
                 let (agent, run_id, session) = (sub.agent.name.clone(), sub.run_id.clone(), st.session_id.clone());
-                match output.filter(|o| kind == "run.completed" && !o.is_empty()) {
+                match written.filter(|o| kind == "run.completed" && !o.is_empty()) {
                     Some(output) => {
                         tracing::info!(agent = %agent, run_id = %run_id, "reply push");
                         self.spawn(async move {
@@ -1594,7 +1601,8 @@ impl RunHub {
             Some(end)
                 if end.r#type == "run.completed"
                     && !braked
-                    && !(said.trim().is_empty() && end.final_text().trim().is_empty()) =>
+                    && !(said.trim().is_empty() && end.final_text().trim().is_empty()
+                        && end.data.get("attachments").and_then(Value::as_array).is_none_or(Vec::is_empty)) =>
             {
                 tracing::info!(agent = %agent.name, run_id = %sub.run_id, rescue = %rescue_id,
                     "going round in circles: the rescue turn answered");
@@ -1647,8 +1655,7 @@ impl RunHub {
             made.extend(crate::made_files::MADE.in_run(agent, &other));
             listed.extend(crate::vault_contacts::listed_in_run(agent, &other));
         }
-        let said: String =
-            lock(&sub.state).backlog.iter().filter(|e| is_delta(&e.r#type)).map(|e| e.text()).collect();
+        let said = lock(&sub.state).media.said().to_string();
         let written = as_str(event.data.get("output")).filter(|o| !o.trim().is_empty()).unwrap_or(said.clone());
         made.extend(crate::vault_contacts::used_marks(&written, &listed));
         let (marks, files): (Vec<String>, Vec<String>) = made.into_iter().partition(|m| crate::made_files::is_mark(m));
@@ -1688,7 +1695,8 @@ impl RunHub {
         if !added.is_empty() || !stale.is_empty() {
             tracing::info!(agent = %agent, run_id = %sub.run_id, files = added.len(), stale = stale.len(),
                 "files of the turn handed over as attachments");
-            let items: Vec<Value> = added.iter().map(|p| crate::threads::timeline::file_attachment(p, None)).collect();
+            let mut items: Vec<Value> = data.get("attachments").and_then(Value::as_array).cloned().unwrap_or_default();
+            items.extend(added.iter().map(|p| crate::threads::timeline::file_attachment(p, None)));
             data.insert("attachments".into(), json!(items));
             data.insert("stale".into(), json!(stale));
             self.attach_handed_over(sub, &written, added, stale).await;
@@ -1728,6 +1736,17 @@ impl RunHub {
 
     fn message_wait(&self) -> f64 {
         self.config.as_ref().map(|c| c.get().push_message_wait_seconds).unwrap_or(10.0)
+    }
+
+    /// The reply's last words held back as maybe a `MEDIA:` line (media.rs), given before its end.
+    fn flush_media(&self, sub: &RunSubscription) {
+        let held = lock(&sub.state).media.flush();
+        if held.is_empty() {
+            return;
+        }
+        let delta = json!({"event": "message.delta", "run_id": sub.run_id, "delta": held});
+        let raw = crate::py::Dumps::new().unicode().dumps(&delta);
+        self.forward(sub, &SSEEvent::new("message.delta", delta.as_object().cloned().unwrap_or_default(), raw));
     }
 
     /// An event shown in this run's stream as it is (the rescue turn's, the bridge's word), without this run's own
@@ -2545,6 +2564,38 @@ mod tests {
             assert_eq!(end.data["output"], json!(text));
             assert!(!end.data.contains_key("attachments") && !end.data.contains_key("stale"));
         }
+    }
+
+    #[tokio::test]
+    async fn the_files_a_reply_names_reach_the_apps_as_attachments_only() {
+        // 4/11: no `MEDIA:` line in what the apps get, deltas (even a line cut across them) and the end's output alike
+        let hub = Arc::new(RunHub::new(HermesClient::new(reqwest::Client::new()), None, 7200, None));
+        let sub = Arc::new(RunSubscription::new(AgentConfig { name: "vie".into(), ..Default::default() }, "run_m"));
+        for said in ["Voici le plan :\nMED", "IA:/bipagents/pages/vie/plan.html\nLa ", "suite.\n  MEDIA: /envoi/devis.pdf"] {
+            hub.dispatch(&sub, delta("message.delta", said));
+        }
+        hub.flush_media(&sub);
+        let written = "Voici le plan :\nMEDIA:/bipagents/pages/vie/plan.html\nLa suite.\n  MEDIA: /envoi/devis.pdf";
+        hub.dispatch(&sub, SSEEvent::new("run.completed", json!({"output": written}).as_object().cloned().unwrap(), "{}"));
+        let st = lock(&sub.state);
+        let deltas: String = st.backlog.iter().filter(|e| is_delta(&e.r#type)).map(|e| e.text()).collect();
+        assert_eq!(deltas, "Voici le plan :\nLa suite.\n");
+        assert!(st.backlog.iter().all(|e| !e.raw.contains("MEDIA:")));
+        let end = st.backlog.back().unwrap();
+        assert_eq!(end.data["output"], json!("Voici le plan :\nLa suite."));
+        let files: Vec<(&str, &str, i64)> = end.data["attachments"].as_array().unwrap().iter()
+            .map(|a| (a["path"].as_str().unwrap(), a["kind"].as_str().unwrap(), a["offset"].as_i64().unwrap())).collect();
+        assert_eq!(files, [("/bipagents/pages/vie/plan.html", "page", 15), ("/envoi/devis.pdf", "file", 25)]);
+        // the bridge still reads the reply as written (its reply recognised, its files kept)
+        assert_eq!(st.output.as_deref(), Some(written));
+        assert_eq!(st.media.said(), "Voici le plan :\nMEDIA:/bipagents/pages/vie/plan.html\nLa suite.\n  MEDIA: /envoi/devis.pdf");
+        drop(st);
+        // words held back as maybe a MEDIA line are given at the end
+        let sub = Arc::new(RunSubscription::new(AgentConfig { name: "vie".into(), ..Default::default() }, "run_n"));
+        hub.dispatch(&sub, delta("message.delta", "Merci\nME"));
+        hub.flush_media(&sub);
+        let deltas: String = lock(&sub.state).backlog.iter().filter(|e| is_delta(&e.r#type)).map(|e| e.text()).collect();
+        assert_eq!(deltas, "Merci\nME");
     }
 
     #[test]

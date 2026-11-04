@@ -2,6 +2,7 @@
 many times, the same call again and again, or far too many tools is stopped (Hermes' `POST /v1/runs/{id}/stop`) and
 the conversation gets a plain line (`bridge.notice`, code `loop_stopped`); the agents' write tools refuse the same
 write twice in a turn, and too many writes. `[brake]` in bridge.toml."""
+import json
 import threading
 
 from bbkit.common import AUTH, HERMES_KEY, read_sse, sse, in_session
@@ -387,10 +388,12 @@ def test_the_audio_made_in_a_turn_is_handed_over_by_its_reply(bridges, fakes):
     events = follow_relay(bridge, "r1")
     end = events[-1][1]
     assert events[-1][0] == "run.completed"
-    # today's file the end's attachment, the stale line marked, the model's words untouched (2026-11-03)
-    assert end["output"] == reply and [a["path"] for a in end["attachments"]] == [path] and end["stale"] == [stale]
+    # today's file the end's attachment, the stale line marked, the model's words untouched (2026-11-03) but its MEDIA
+    # lines, never passed to the apps (4/11)
+    words = "🎙️ Ton podcast du jour est prêt."
+    assert end["output"] == words and [a["path"] for a in end["attachments"]] == [path] and end["stale"] == [stale]
     said = "".join(d.get("delta", "") for n, d in events if n == "message.delta")
-    assert said == reply
+    assert said == words + "\n"
     assert bridge.logged("files of the turn handed over as attachments")
     # Hermes keeps the reply as the model wrote it: the timeline still shows today's file and not yesterday's, the
     # stored message's attachments (structured, 2026-11-03), at every read
@@ -456,11 +459,14 @@ def test_a_reply_that_already_hands_the_file_over_is_left_alone(bridges, fakes):
                                 sse("run.completed", run_id="r1", output=said["reply"])]
     gate.set()
     events = follow_relay(bridge, "r1")
-    assert events[-1][1]["output"] == said["reply"] and "attachments" not in events[-1][1]
+    # its MEDIA line as the end's attachment (4/11: never as words), the file once
+    assert events[-1][1]["output"] == "Voilà." and [a["path"] for a in events[-1][1]["attachments"]] == [path]
+    assert all("MEDIA:" not in json.dumps(data) for _, data in events)
     # and a turn that made nothing: an older audio the person asked for again stays
     old = "/bipagents/audio/wellness/20261020-080000-ancien.m4a"
     fakes.hermes.runs["r2"] = [sse("message.delta", run_id="r2", delta=f"Le revoici.\nMEDIA:{old}"),
                                sse("run.completed", run_id="r2", output=f"Le revoici.\nMEDIA:{old}")]
     assert start(bridge) == "r2"
     events = follow_relay(bridge, "r2")
-    assert events[-1][1]["output"] == f"Le revoici.\nMEDIA:{old}" and "attachments" not in events[-1][1]
+    assert events[-1][1]["output"] == "Le revoici." and [a["path"] for a in events[-1][1]["attachments"]] == [old]
+    assert "stale" not in events[-1][1]

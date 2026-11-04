@@ -15,7 +15,7 @@ use axum::extract::State;
 use axum::response::Response;
 use axum::routing::post;
 use axum::Router;
-use futures::TryStreamExt;
+use futures::StreamExt;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -117,11 +117,58 @@ async fn turn(State(state): State<AppState>, Json(body): Json<Turn>) -> ApiResul
         Some(status @ (400..=499)) => HttpError::new(status, "your agent refused this message"),
         _ => HttpError::new(502, UNREACHABLE),
     })?;
-    let mut response = Response::new(axum::body::Body::from_stream(upstream.bytes_stream().map_err(std::io::Error::other)));
+    let mut response = Response::new(axum::body::Body::from_stream(without_media(upstream.bytes_stream())));
     for (name, value) in [("content-type", "text/event-stream; charset=utf-8"), ("cache-control", "no-store"), ("x-accel-buffering", "no")] {
         response.headers_mut().insert(name, axum::http::HeaderValue::from_static(value));
     }
     Ok(response)
+}
+
+/// Hermes' events as the apps get them: a reply's `MEDIA:` lines out (media.rs), the files at the end as its
+/// `attachments`; its keepalives passed on.
+fn without_media<S, E>(chunks: S) -> impl futures::Stream<Item = Result<bytes::Bytes, std::io::Error>> + Send
+where
+    S: futures::Stream<Item = Result<bytes::Bytes, E>> + Send + 'static,
+    E: std::error::Error + Send + Sync + 'static,
+{
+    async_stream::stream! {
+        let lines = crate::hermes::lines_of(chunks);
+        futures::pin_mut!(lines);
+        let (mut parser, mut media) = (crate::hermes::SSEParser::new(), crate::media::MediaFilter::default());
+        let mut done = false;
+        while !done {
+            let event = match lines.next().await {
+                Some(Ok(line)) if line.starts_with(':') => {
+                    yield Ok(bytes::Bytes::from(format!("{line}\n\n")));
+                    continue;
+                }
+                Some(Ok(line)) => parser.feed_line(&line),
+                Some(Err(exc)) => {
+                    yield Err(std::io::Error::other(exc));
+                    return;
+                }
+                None => {
+                    done = true;
+                    parser.finish()
+                }
+            };
+            let Some(event) = event else { continue };
+            if crate::hermes::is_terminal(&event.r#type) || event.r#type == "assistant.completed" {
+                let held = media.flush();
+                if !held.is_empty() {
+                    let data = json!({"event": "assistant.delta", "run_id": event.data.get("run_id"), "delta": held});
+                    yield Ok(frame("assistant.delta", &crate::py::Dumps::new().unicode().dumps(&data)));
+                }
+            }
+            if let Some(event) = media.event(event) {
+                yield Ok(frame(&event.r#type, &event.raw));
+            }
+        }
+    }
+}
+
+fn frame(kind: &str, data: &str) -> bytes::Bytes {
+    bytes::Bytes::from(format!("event: {kind}\ndata: {}\n\n", data.replace('\n', "\ndata: ")))
 }
 
 async fn stop(State(state): State<AppState>, Json(body): Json<Stop>) -> ApiResult<Response> {

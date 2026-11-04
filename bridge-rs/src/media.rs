@@ -11,6 +11,9 @@ use std::sync::LazyLock;
 
 use indexmap::IndexMap;
 use regex::Regex;
+use serde_json::{Map, Value};
+
+use crate::hermes::SSEEvent;
 
 /// `^[ \t]*MEDIA:[ \t]*(\S+)[ \t]*$` (multiline).
 pub const MEDIA_LINE: &str = r"(?m)^[ \t]*MEDIA:[ \t]*(\S+)[ \t]*$";
@@ -145,9 +148,201 @@ pub fn content_type_of(path: &str) -> Option<String> {
     CONTENT_TYPES.iter().chain(DOCUMENT_TYPES).find(|(e, _)| *e == ext).map(|(_, t)| t.to_string())
 }
 
+/// The `MEDIA:` lines of a reply taken out of what the apps get (4/11): the files they name reach the apps as the
+/// message's attachments only (timeline items, the end's `attachments`). One per stream (a run's events, a Live turn):
+/// a delta's text loses its MEDIA lines as it comes, a line start that may still become one held back until its line
+/// is whole; a whole text (an interim, the end's `output`) loses them at once, the end's files added to its
+/// `attachments` (`offset`: where each line was). What the model wrote is kept whole (`said`) for the bridge's own
+/// reading of the reply (made_files.rs, sent_files.rs).
+#[derive(Debug, Default)]
+pub struct MediaFilter {
+    held: String,
+    mid_line: bool,
+    said: String,
+}
+
+/// The events whose whole text is the reply's (or part of it), MEDIA lines taken out.
+const TEXT_EVENTS: [&str; 5] =
+    ["message.interim", "assistant.commentary", "assistant.completed", "message.completed", "message.complete"];
+/// The keys a whole text may be under.
+const TEXT_KEYS: [&str; 6] = ["output", "final_output", "response", "text", "content", "result"];
+
+impl MediaFilter {
+    /// A delta's text without its MEDIA lines.
+    pub fn text(&mut self, chunk: &str) -> String {
+        self.said.push_str(chunk);
+        let text = std::mem::take(&mut self.held) + chunk;
+        let mut out = String::with_capacity(text.len());
+        let mut rest = text.as_str();
+        loop {
+            let newline = rest.find('\n');
+            if self.mid_line {
+                let Some(at) = newline else {
+                    out.push_str(rest);
+                    return out;
+                };
+                out.push_str(&rest[..=at]);
+                rest = &rest[at + 1..];
+                self.mid_line = false;
+                continue;
+            }
+            match newline {
+                Some(at) => {
+                    if !is_media_line(&rest[..at]) {
+                        out.push_str(&rest[..=at]);
+                    }
+                    rest = &rest[at + 1..];
+                }
+                None => {
+                    if may_become_media(rest) {
+                        self.held = rest.to_string();
+                    } else {
+                        out.push_str(rest);
+                        self.mid_line = !rest.is_empty();
+                    }
+                    return out;
+                }
+            }
+        }
+    }
+
+    /// What is held back, given at the reply's end (a last line that is a MEDIA line dropped).
+    pub fn flush(&mut self) -> String {
+        let held = std::mem::take(&mut self.held);
+        if is_media_line(&held) {
+            return String::new();
+        }
+        self.mid_line = !held.is_empty();
+        held
+    }
+
+    /// Everything the deltas said, MEDIA lines in (the reply as Hermes keeps it).
+    pub fn said(&self) -> &str {
+        &self.said
+    }
+
+    /// An event as the apps get it. None: a delta whose text was all MEDIA lines (or is held back).
+    pub fn event(&mut self, event: SSEEvent) -> Option<SSEEvent> {
+        let kind = event.r#type.as_str();
+        if crate::hermes::is_delta(kind) {
+            let Some((key, Value::String(text))) =
+                ["delta", "text", "content"].iter().find_map(|k| event.data.get(*k).map(|v| (*k, v.clone())))
+            else {
+                return Some(event);
+            };
+            let shown = self.text(&text);
+            if shown == text {
+                return Some(event);
+            }
+            if shown.is_empty() {
+                return None;
+            }
+            let mut data = event.data;
+            data.insert(key.into(), Value::String(shown));
+            return Some(rebuilt(event.r#type, data));
+        }
+        let end = crate::hermes::is_terminal(kind) || kind == "assistant.completed";
+        if !end && !TEXT_EVENTS.contains(&kind) {
+            return Some(event);
+        }
+        let mut data = event.data;
+        let mut changed = false;
+        let mut placed: Option<Vec<Value>> = None;
+        for key in TEXT_KEYS {
+            let Some(Value::String(text)) = data.get(key).cloned() else { continue };
+            if !MEDIA_RE.is_match(&text) {
+                continue;
+            }
+            let (shown, files) = crate::threads::timeline::place_media(&text);
+            data.insert(key.into(), Value::String(shown));
+            placed.get_or_insert(files);
+            changed = true;
+        }
+        if let (true, Some(files)) = (end, placed) {
+            let stale: Vec<String> = data.get("stale").and_then(Value::as_array).into_iter().flatten()
+                .filter_map(Value::as_str).map(str::to_string).collect();
+            let given: Vec<Value> = data.get("attachments").and_then(Value::as_array).cloned().unwrap_or_default();
+            let mut all: Vec<Value> = Vec::new();
+            for file in files.into_iter().chain(given) {
+                let path = file["path"].as_str().unwrap_or_default();
+                if stale.iter().any(|s| s == path) || all.iter().any(|a| a["path"].as_str() == Some(path)) {
+                    continue;
+                }
+                all.push(file);
+            }
+            data.insert("attachments".into(), Value::Array(all));
+        }
+        Some(if changed { rebuilt(event.r#type, data) } else { SSEEvent::new(event.r#type, data, event.raw) })
+    }
+}
+
+fn rebuilt(kind: String, data: Map<String, Value>) -> SSEEvent {
+    let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(data.clone()));
+    SSEEvent::new(kind, data, raw)
+}
+
+static MEDIA_WHOLE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[ \t]*MEDIA:[ \t]*\S+[ \t]*$").expect("valid regex"));
+
+fn is_media_line(line: &str) -> bool {
+    MEDIA_WHOLE.is_match(line)
+}
+
+/// A line start that may still be a MEDIA line once whole.
+fn may_become_media(start: &str) -> bool {
+    let start = start.trim_start_matches([' ', '\t']);
+    if start.len() >= "MEDIA:".len() {
+        start.starts_with("MEDIA:") && !start["MEDIA:".len()..].trim_matches([' ', '\t']).contains(char::is_whitespace)
+    } else {
+        "MEDIA:".starts_with(start)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn shown(chunks: &[&str]) -> String {
+        let mut filter = MediaFilter::default();
+        let mut out: String = chunks.iter().map(|c| filter.text(c)).collect();
+        out.push_str(&filter.flush());
+        out
+    }
+
+    #[test]
+    fn a_reply_streams_without_its_media_lines() {
+        assert_eq!(shown(&["Bonjour", " toi"]), "Bonjour toi");
+        assert_eq!(shown(&["A :\n\nMEDIA:/p/x.html\n\nB"]), "A :\n\n\nB");
+        // a line cut anywhere across deltas, spaces around, the last line without its newline
+        assert_eq!(shown(&["A\n", "M", "ED", "IA: /x.mp3 ", "\nB\nMEDIA:/y.png"]), "A\nB\n");
+        // only a whole line is one: mid-line, with words after, or another word starting with M
+        assert_eq!(shown(&["Voir MEDIA:/x.png\n", "MEDIA:/a b\n", "Merci\n", "MED"]), "Voir MEDIA:/x.png\nMEDIA:/a b\nMerci\nMED");
+        // words go out at once, a line start that could still be one waits for its next characters
+        let mut filter = MediaFilter::default();
+        assert_eq!(filter.text("Le plan\nM"), "Le plan\n");
+        assert_eq!(filter.text("ais"), "Mais");
+        assert_eq!(filter.said(), "Le plan\nMais");
+    }
+
+    #[test]
+    fn a_whole_text_and_the_end_lose_their_media_lines_for_attachments() {
+        let event = |kind: &str, data: serde_json::Value| SSEEvent::new(kind, data.as_object().cloned().unwrap(), "{}");
+        let mut filter = MediaFilter::default();
+        let interim = filter.event(event("message.interim", serde_json::json!({"text": "Je regarde.\nMEDIA:/x.png"}))).unwrap();
+        assert_eq!(interim.data["text"], "Je regarde.");
+        assert!(!interim.data.contains_key("attachments") && !interim.raw.contains("MEDIA"));
+        let end = filter.event(event("run.completed", serde_json::json!({
+            "output": "Voilà :\nMEDIA:/old.mp3\nMEDIA:/new.mp3", "stale": ["/old.mp3"],
+            "attachments": [{"path": "/new.mp3"}, {"path": "/made.html"}]}))).unwrap();
+        assert_eq!(end.data["output"], "Voilà :");
+        let paths: Vec<&str> = end.data["attachments"].as_array().unwrap().iter().filter_map(|a| a["path"].as_str()).collect();
+        assert_eq!(paths, ["/new.mp3", "/made.html"], "stale ones out, each file once");
+        // nothing to take out: the event as it came
+        let plain = filter.event(SSEEvent::new("run.completed", serde_json::json!({"output": "Ok"}).as_object().cloned().unwrap(), "RAW")).unwrap();
+        assert_eq!(plain.raw, "RAW");
+        // a delta all MEDIA line: not passed on
+        assert!(filter.event(event("message.delta", serde_json::json!({"delta": "\nMEDIA:/z.png\n"}))).is_some());
+        assert!(filter.event(event("message.delta", serde_json::json!({"delta": "MEDIA:/z.png\n"}))).is_none());
+    }
 
     #[test]
     fn extract_and_resolve_media() {

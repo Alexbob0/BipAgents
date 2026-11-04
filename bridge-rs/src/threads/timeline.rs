@@ -204,19 +204,28 @@ pub fn visible(raw: &str, id: &str, images: usize) -> (String, Vec<Value>) {
                                 "mime": caps[2].to_string(), "size": caps[3].to_string(), "path": caps[4].to_string()}));
     }
     text = DOCUMENT.replace_all(&text, "").to_string();
-    // MEDIA lines: where each was (in the text without them) for an inline page
-    let mut out = String::with_capacity(text.len());
-    let mut last = 0;
-    for caps in MEDIA.captures_iter(&text) {
-        let whole = caps.get(0).expect("match");
-        out.push_str(&text[last..whole.start()]);
-        last = whole.end();
-        let mut found = file_attachment(&caps[1], Some(out.trim_start().chars().count()));
+    let (text, files) = place_media(&text);
+    for mut found in files {
         found["id"] = json!(format!("{id}.a{}", attachments.len()));
         attachments.push(found);
     }
+    (text, attachments)
+}
+
+/// A text without its `MEDIA:` lines (tidied) and the files they name, each with its `offset`: where its line was, in
+/// characters of that text, right after the words before it (the apps cut the text there for a page in its place).
+pub fn place_media(text: &str) -> (String, Vec<Value>) {
+    let mut out = String::with_capacity(text.len());
+    let mut files = Vec::new();
+    let mut last = 0;
+    for caps in MEDIA.captures_iter(text) {
+        let whole = caps.get(0).expect("match");
+        out.push_str(&text[last..whole.start()]);
+        last = whole.end();
+        files.push(file_attachment(&caps[1], Some(tidy(&out).chars().count())));
+    }
     out.push_str(&text[last..]);
-    (tidy(&out), attachments)
+    (tidy(&out), files)
 }
 
 /// An agent's file as an attachment (its id set by the message): `offset`, where its `MEDIA:` line was in the text.
@@ -667,7 +676,7 @@ mod tests {
         assert_eq!(atts[0]["path"], "/home/x/uploads/devis.pdf");
         assert_eq!(atts[1]["kind"], "page");
         assert_eq!(atts[1]["id"], "m_1.a1");
-        assert_eq!(atts[1]["offset"], 15);
+        assert_eq!(atts[1]["offset"], 14);
         let (text, atts) = visible("[screenshot]\nYes", "m_2", 1);
         assert_eq!(text, "Yes");
         assert_eq!(atts.len(), 1);
