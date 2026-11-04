@@ -15,12 +15,12 @@ BipAgents patch, documented in hermes/patches/README.md of the BipAgents reposit
 Bip-Patch: 0023-prompt-cache-stable-across-conversations
 ---
  agent/agent_init.py                     |   2 +
- agent/prompt_cache_notes.py             | 184 ++++++++++++++++++++++++
+ agent/prompt_cache_notes.py             | 196 ++++++++++++++++++++++++
  agent/system_prompt.py                  |  10 +-
  agent/turn_context.py                   |  13 +-
- tests/agent/test_prompt_cache_stable.py | 171 ++++++++++++++++++++++
+ tests/agent/test_prompt_cache_stable.py | 185 ++++++++++++++++++++++
  tools/memory_tool_store.py              |  36 ++++-
- 6 files changed, 407 insertions(+), 9 deletions(-)
+ 6 files changed, 433 insertions(+), 9 deletions(-)
  create mode 100644 agent/prompt_cache_notes.py
  create mode 100644 tests/agent/test_prompt_cache_stable.py
 
@@ -39,10 +39,10 @@ index 59006475ded77decfdcfa887506667d3f48ae411..a5d82bcca5dd7320b890ddc53e07aa22
  
 diff --git a/agent/prompt_cache_notes.py b/agent/prompt_cache_notes.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..918605650c79aa3de737489d551bea45c732fdf3
+index 0000000000000000000000000000000000000000..403bdf0dc7ef391a6823643b043108bcabf3b172
 --- /dev/null
 +++ b/agent/prompt_cache_notes.py
-@@ -0,0 +1,184 @@
+@@ -0,0 +1,196 @@
 +"""BipAgents 0023: what changes during the day reaches the model in the turn's message, not in the system prompt.
 +
 +A provider's prefix cache only reuses the identical beginning of a request. The system prompt is that beginning for
@@ -59,8 +59,9 @@ index 0000000000000000000000000000000000000000..918605650c79aa3de737489d551bea45
 +  changes, so an agent knows a fact it stored in an earlier conversation of the same day. The night's first
 +  conversation takes the new copy into its prompt.
 +- **run instructions**: the Runs API's ``instructions`` (a room's rules, a background task's brief, a Live call's
-+  brief) used to be appended to the system prompt of each call. On ``api_server`` they now come as a note on the
-+  turn's message, once, and again only when they change in that conversation.
++  brief) used to be appended to the system prompt of each call. On ``api_server`` with ``agent.instructions_as_note:
++  true`` (BipAgents' bridge sets it) they come as a note on the turn's message, once, and again only when they change
++  in that conversation.
 +"""
 +from __future__ import annotations
 +
@@ -203,11 +204,22 @@ index 0000000000000000000000000000000000000000..918605650c79aa3de737489d551bea45
 +    return f"{INSTRUCTIONS_NOTE_PREFIX}\n{text.strip()}\n{_INSTRUCTIONS_NOTE_END}"
 +
 +
++def instructions_as_note() -> bool:
++    """``agent.instructions_as_note`` in the profile's config (BipAgents' bridge sets it; off: upstream's behaviour,
++    an API client's system message stays in the system prompt)."""
++    try:
++        from hermes_cli.config import load_config_readonly
++        section = (load_config_readonly() or {}).get("agent")
++        return isinstance(section, dict) and section.get("instructions_as_note") is True
++    except Exception:
++        return False
++
++
 +def stage_instructions_note(agent: Any, conversation_history: Any) -> bool:
 +    """On ``api_server``, the run's instructions leave the system prompt for a note on the turn's message, sent when
 +    they are not what the conversation was last told. The agent keeps them on ``_run_instructions`` (a cached agent
 +    is reused only with the same instructions: they are part of its cache signature)."""
-+    if (getattr(agent, "platform", None) or "") != "api_server":
++    if (getattr(agent, "platform", None) or "") != "api_server" or not instructions_as_note():
 +        return False
 +    if getattr(agent, "provider", None) == "moa" or getattr(agent, "api_mode", None) == "codex_app_server":
 +        return False
@@ -296,10 +308,10 @@ index c2786a27fc1aa7a57264993e4d4dc31e99f9ecd9..cc299bd7bb38421da82dbf8f9ad7698e
      )
 diff --git a/tests/agent/test_prompt_cache_stable.py b/tests/agent/test_prompt_cache_stable.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..a23a3dc93662cb249d1ba44196034907f8fe5264
+index 0000000000000000000000000000000000000000..97a05015ccfe355d1103660f83e876e4644e7aef
 --- /dev/null
 +++ b/tests/agent/test_prompt_cache_stable.py
-@@ -0,0 +1,171 @@
+@@ -0,0 +1,185 @@
 +"""BipAgents 0023: a system prompt that stays the same across an agent's conversations (prefix cache).
 +
 +- the Bot Chat's own section comes after everything the Bot Chat shares with the agent's other conversations;
@@ -442,7 +454,12 @@ index 0000000000000000000000000000000000000000..a23a3dc93662cb249d1ba44196034907
 +
 +# -- run instructions ------------------------------------------------------------------------------------------------
 +
-+def test_run_instructions_come_once_as_a_turn_note(memory_dir):
++@pytest.fixture
++def as_note(monkeypatch):
++    monkeypatch.setattr(notes, "instructions_as_note", lambda: True)
++
++
++def test_run_instructions_come_once_as_a_turn_note(memory_dir, as_note):
 +    agent = _agent(None, ephemeral_system_prompt="Salon « Vacances » : réponds en deux phrases.")
 +    assert notes.stage_instructions_note(agent, []) is True
 +    assert agent.ephemeral_system_prompt is None              # never appended to the system prompt
@@ -458,10 +475,19 @@ index 0000000000000000000000000000000000000000..a23a3dc93662cb249d1ba44196034907
 +    assert notes.stage_instructions_note(changed, history) is True
 +
 +
-+def test_instructions_stay_in_the_system_prompt_off_the_api_server():
++def test_instructions_stay_in_the_system_prompt_off_the_api_server(as_note):
 +    agent = _agent(None, platform="telegram", ephemeral_system_prompt="Channel rules.")
 +    assert notes.stage_instructions_note(agent, []) is False
 +    assert agent.ephemeral_system_prompt == "Channel rules."
++
++
++def test_instructions_stay_in_the_system_prompt_without_the_setting(monkeypatch):
++    monkeypatch.setattr("hermes_cli.config.load_config_readonly", lambda: {"agent": {}})
++    agent = _agent(None, ephemeral_system_prompt="API_STABLE_SYSTEM")
++    assert notes.stage_instructions_note(agent, []) is False
++    assert agent.ephemeral_system_prompt == "API_STABLE_SYSTEM"
++    monkeypatch.setattr("hermes_cli.config.load_config_readonly", lambda: {"agent": {"instructions_as_note": True}})
++    assert notes.stage_instructions_note(agent, []) is True
 +
 +
 +def test_the_notes_join_the_turns_message():

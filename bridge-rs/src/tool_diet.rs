@@ -14,6 +14,8 @@
 //!   system prompt (patch 0009); they still load with `skill_view`.
 //! - the visible browser's MCP server without its resource and prompt helpers (4 entries of the search's catalog the
 //!   agents never use).
+//! - `agent.instructions_as_note`: a run's `instructions` come in a note on its message, not at the end of the
+//!   system prompt (Hermes patch 0023; prompt cache audit 2026-11-03, #3).
 //! - `clarify` in `platform_toolsets.api_server` (`with_clarify`): the app's question card needs it, Hermes 0.22.5's
 //!   API toolset leaves it out.
 //!
@@ -568,6 +570,9 @@ pub fn with_diet(data: &Yaml, diet: &Diet) -> Option<Yaml> {
     if agent.get("max_turns").is_none_or(|v| *v == Yaml::Null) {
         agent.insert("max_turns", Yaml::Int(MAX_TURNS as i128));
     }
+    // a run's instructions (rooms, background tasks, Live) in a note on its message, not in the system prompt
+    // (Hermes patch 0023): the same prompt for all the agent's conversations, so the model's prefix cache holds
+    agent.insert("instructions_as_note", Yaml::Bool(true));
     // routines are the bridge's (routines.rs `routine_schedule`): Hermes' own cron tool off, so none is made there
     match agent.get_mut("disabled_toolsets") {
         Some(Yaml::Seq(items)) => {
@@ -839,6 +844,7 @@ mod tests {
         // none saved (a new profile): the platform default plus clarify
         let fresh = with_diet(&pyyaml::load("model:\n  default: x\n").unwrap(), &d).unwrap();
         assert_eq!(api_list(&fresh), Some(names(&["hermes-api-server", "clarify"])));
+        assert_eq!(fresh.get("agent").and_then(|a| a.get("instructions_as_note")), Some(&Yaml::Bool(true)));
         // a list `hermes tools enable/disable` saved (Hermes 0.22.5 leaves clarify out): kept, clarify added
         let saved = "platform_toolsets:\n  api_server: [file, memory, web]\n  cli: [web]\n";
         let changed = with_diet(&pyyaml::load(saved).unwrap(), &d).unwrap();
