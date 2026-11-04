@@ -231,6 +231,7 @@ async fn a_call_the_app_never_ended_lands_after_a_quiet_while() {
             session: "api_main".into(),
             live_session: "live1".into(),
             started_at: now - IDLE_SECONDS - 400.0,
+            after: Vec::new(),
         })
         .unwrap();
     // still active a moment ago: left alone

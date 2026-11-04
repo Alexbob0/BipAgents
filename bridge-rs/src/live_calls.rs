@@ -23,6 +23,13 @@
 //! A record: `{id, live_session, started_at, ended_at, seconds, lines: [{role, text}], media: [path…], working, late,
 //! ended_by}`. Kept in the data folder (« live-calls/<agent>/<session>.json », the last `RECORDS_KEPT`); the calls under
 //! way in « live-calls/open.json ».
+//!
+//! **What to make after the call** (4/11): in a call the agent speaks, and the tools that make media or long outputs
+//! are refused (live_turns.rs `LIVE_CLOSED_TOOLS`). What the person wants made (an audio to listen to, a page, a file)
+//! the agent notes with its `after_call` tool, kept on the call under way (`after`, `AFTER_MAX` at most). Once the call
+//! is in its conversation, the bridge starts ONE background turn there (background_turn.rs, kind `AfterCall`: the
+//! month's credit, the direct budget of a task the person asked for) asking the agent to make what was noted; its reply
+//! lands in the conversation as a message with its files, pushed. Nothing noted: nothing runs.
 
 use std::collections::HashSet;
 use std::sync::{LazyLock, Mutex};
@@ -68,6 +75,15 @@ fn safe_name(name: &str) -> String {
     pystr::head(&safe, 120)
 }
 
+/// The agent's tool noting what to make once the call ends.
+pub const AFTER_CALL: &str = "after_call";
+/// Things noted for after one call, at most.
+pub const AFTER_MAX: usize = 5;
+/// One of them, at most (characters).
+pub const AFTER_CHARS: usize = 2000;
+/// The after-call turn's longest run (an audio takes about as long as it lasts).
+pub const AFTER_TURN_SECONDS: f64 = 1200.0;
+
 /// A call under way.
 #[derive(Debug, Clone, PartialEq)]
 pub struct OpenCall {
@@ -75,6 +91,8 @@ pub struct OpenCall {
     pub session: String,
     pub live_session: String,
     pub started_at: f64,
+    /// What the agent noted to make once the call ends (`after_call`).
+    pub after: Vec<String>,
 }
 
 impl OpenCall {
@@ -84,12 +102,21 @@ impl OpenCall {
             session: value.get("session")?.as_str()?.to_string(),
             live_session: value.get("live_session")?.as_str()?.to_string(),
             started_at: value.get("started_at")?.as_f64()?,
+            after: value
+                .get("after")
+                .and_then(Value::as_array)
+                .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
+                .unwrap_or_default(),
         })
     }
 
     fn json(&self) -> Value {
-        json!({"agent": self.agent, "session": self.session, "live_session": self.live_session,
-               "started_at": self.started_at})
+        let mut value = json!({"agent": self.agent, "session": self.session, "live_session": self.live_session,
+                               "started_at": self.started_at});
+        if !self.after.is_empty() {
+            value["after"] = json!(self.after);
+        }
+        value
     }
 }
 
@@ -158,6 +185,30 @@ impl LiveCalls {
         }
         calls.push(call);
         self.save_open(&calls)
+    }
+
+    /// `what` noted for after the agent's call under way: the one in `live_session` if it is open, else its latest.
+    /// Err: no call under way for that agent (a call without a conversation isn't kept), or `AFTER_MAX` noted already.
+    pub fn note_after(&self, agent: &str, live_session: Option<&str>, what: &str) -> Result<OpenCall, &'static str> {
+        let _guard = lock(&FILE_LOCK);
+        let mut calls: Vec<OpenCall> =
+            Self::read_list(&self.open_path(), "calls").iter().filter_map(OpenCall::of).collect();
+        let index = live_session
+            .and_then(|live| calls.iter().position(|c| c.agent == agent && c.live_session == live))
+            .or_else(|| {
+                (0..calls.len())
+                    .filter(|&i| calls[i].agent == agent)
+                    .max_by(|&a, &b| calls[a].started_at.total_cmp(&calls[b].started_at))
+            })
+            .ok_or("no call under way")?;
+        let call = &mut calls[index];
+        if call.after.len() >= AFTER_MAX {
+            return Err("full");
+        }
+        call.after.push(pystr::head(what.trim(), AFTER_CHARS));
+        let noted = call.clone();
+        self.save_open(&calls).map_err(|_| "not saved")?;
+        Ok(noted)
     }
 
     /// The call under way, no longer (None: it was not noted).
@@ -447,6 +498,13 @@ async fn end_inner(state: &AppState, ending: &Ending) -> anyhow::Result<Option<V
     .await??;
     tracing::info!(agent = %agent.name, lines = lines.len(), media = media.len(), late = late, by = ending.ended_by,
                    "live call put in its conversation");
+    // What the agent noted to make once the call ended: one background turn in the conversation, now.
+    if let Some(after) = opened.as_ref().map(|o| o.after.clone()).filter(|a| !a.is_empty()) {
+        let (state, agent, session, live) =
+            (state.clone(), agent.clone(), ending.session.clone(), ending.live_session.clone());
+        let transcript = crate::live_brief::transcript(&lines, crate::live_brief::MESSAGE_CHARS);
+        tokio::spawn(async move { make_after_call(&state, &agent, &session, &live, &after, &transcript).await });
+    }
 
     // Its end told, like a background task's: the answer that came after the hang-up, or what was made while nobody
     // was in the app any more.
@@ -534,9 +592,132 @@ pub fn listed(records: Vec<Value>) -> Value {
     json!({"calls": calls})
 }
 
+/// The agent's `after_call` tool (kept open in a call's turns).
+pub fn after_call_tool() -> Value {
+    json!({
+        "name": AFTER_CALL,
+        "description": "In a voice call only: note something the person wants made once the call ends (an audio to \
+listen to, a podcast, a page, a file, an image…), which you can't make while they wait on the line. When the call \
+ends you get a turn in this conversation to make it, and it is sent to them. Call it once per thing, then tell \
+them in a few words that you'll prepare it after the call.",
+        "inputSchema": {"type": "object", "properties": {
+            "what": {"type": "string", "description": "what to make, with everything needed to make it without the \
+call: the subject, the words or content agreed, the form (audio, page, file…), the language, its length"}},
+            "required": ["what"]},
+    })
+}
+
+/// `after_call`: `what` noted on the agent's call under way (the one of the turn asking, if the hub knows it).
+pub fn after_call(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> Dict {
+    let what = crate::tools_knowledge::str_or_empty(arguments.get("what"));
+    if what.trim().is_empty() {
+        return crate::tools_knowledge::tool_text("Say what to make (`what`).", true);
+    }
+    let asking = state.hub.asking_session(&agent.name);
+    match LiveCalls::of(&state.briefs).note_after(&agent.name, asking.as_deref(), &what) {
+        Ok(call) => {
+            tracing::info!(agent = %agent.name, live_session = %call.live_session, noted = call.after.len(),
+                           "after the call: noted");
+            crate::tools_knowledge::tool_text(
+                "Noted: you'll make it in this conversation as soon as the call ends. Tell the person in a few words.",
+                false,
+            )
+        }
+        Err("full") => crate::tools_knowledge::tool_text(
+            &format!("{AFTER_MAX} things are noted for after this call already: put this one with one of them."),
+            true,
+        ),
+        Err(_) => crate::tools_knowledge::tool_text(
+            "There is no voice call under way: make it now, or propose a background task (propose_task).",
+            true,
+        ),
+    }
+}
+
+/// What the after-call turn reads: a hidden note (the apps leave it out of the conversation).
+pub fn after_call_prompt(after: &[String], transcript: &str) -> String {
+    let things: Vec<String> = after.iter().map(|w| format!("- {}", w.replace("-->", "→"))).collect();
+    let call = transcript.replace("-->", "→");
+    format!(
+        "<!--bip:after-call\nNot from the person: your voice call with them just ended. During it you said you would \
+make this once it ended:\n{}\n\nMake it now, with your tools (an audio, a podcast, a page, a file…), then reply in \
+a few words in the person's language with what you made (each file's MEDIA: line alone on its line). The call:\n{}\n-->",
+        things.join("\n"),
+        call
+    )
+}
+
+/// The delivered message's title, in the person's language.
+fn after_call_title(lang: &str) -> &'static str {
+    match lang.get(..2).unwrap_or("") {
+        "en" => "After the call",
+        "de" => "Nach dem Anruf",
+        "es" => "Después de la llamada",
+        "nl" => "Na het gesprek",
+        _ => "Après l’appel",
+    }
+}
+
+/// The after-call turn in the call's conversation, its reply and files delivered there (pushed).
+async fn make_after_call(state: &AppState, agent: &AgentConfig, session: &str, live: &str, after: &[String], transcript: &str) {
+    use crate::background_turn::{Delivery, Kind, Pipeline, Turn};
+    let pipeline = Pipeline::of(state);
+    let config = state.config();
+    let mut turn = Turn::new(agent, Kind::AfterCall, session, after_call_prompt(after, transcript));
+    turn.max_seconds = AFTER_TURN_SECONDS;
+    turn.budget = Some(crate::jobs::direct_budget(&config));
+    turn.options = crate::agents_admin::task_turn_options(&config, agent);
+    match pipeline.run(&turn).await {
+        Ok(ran) if ran.answered() => {
+            let delivery = Delivery {
+                agent: agent.clone(),
+                session: ran.session.clone(),
+                key: format!("handback:after-call:{live}"),
+                title: after_call_title(&crate::handback::language_of(&config, agent)).into(),
+                text: ran.text.clone(),
+                as_written: true,
+                run_id: Some(ran.run_id.clone()),
+                notify: true,
+                files: crate::made_files::MADE.in_run(&agent.name, &ran.run_id),
+            };
+            pipeline.deliver(&delivery).await;
+            tracing::info!(agent = %agent.name, session = %session, tokens = ran.tokens, "after the call: made");
+        }
+        Ok(ran) => tracing::warn!(agent = %agent.name, session = %session, status = %ran.status,
+                                  "after the call: the turn ended without a reply"),
+        Err(why) => tracing::warn!(agent = %agent.name, session = %session, why = %why, "after the call: not run"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn things_noted_for_after_a_call() {
+        let folder = tempfile::tempdir().unwrap();
+        let calls = LiveCalls::new(folder.path().to_str().unwrap());
+        assert_eq!(calls.note_after("vie", None, "un audio"), Err("no call under way"));
+        let call = |live: &str, at: f64| OpenCall {
+            agent: "vie".into(), session: "s1".into(), live_session: live.into(), started_at: at, after: vec![],
+        };
+        calls.note_start(call("live_old", 1.0)).unwrap();
+        calls.note_start(call("live_new", 2.0)).unwrap();
+        // the turn's own call, else the latest
+        assert_eq!(calls.note_after("vie", Some("live_old"), "a").unwrap().live_session, "live_old");
+        assert_eq!(calls.note_after("vie", None, " b ").unwrap().after, vec!["b".to_string()]);
+        for i in 1..AFTER_MAX {
+            calls.note_after("vie", None, &format!("c{i}")).unwrap();
+        }
+        assert_eq!(calls.note_after("vie", None, "too many"), Err("full"));
+        let taken = calls.take_open("vie", "live_new").unwrap();
+        assert_eq!(taken.after.len(), AFTER_MAX);
+        assert_eq!(calls.take_open("vie", "live_old").unwrap().after, vec!["a".to_string()]);
+        let prompt = after_call_prompt(&["un audio --> x".into()], "You: bonjour");
+        assert!(prompt.starts_with("<!--bip:after-call\n") && prompt.ends_with("-->"));
+        assert_eq!(prompt.matches("-->").count(), 1);
+        assert!(prompt.contains("- un audio → x") && prompt.contains("You: bonjour"));
+    }
 
     fn m(v: Value) -> Dict {
         v.as_object().unwrap().clone()

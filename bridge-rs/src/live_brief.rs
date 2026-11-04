@@ -583,14 +583,15 @@ impl Briefs {
     /// rules and brief), no `instructions`. Hermes' system prompt holds nothing of the session, so the call's first
     /// question finds the agent's system prompt, its tools and the prelude in the model server's cache (a provider's
     /// prefix cache, vLLM's or llama.cpp's slot) instead of reading ~20k tokens then. What the call's turns send as
-    /// `model_options` (`quick_turn_options`): the same rendering. One at a time per agent.
+    /// `model_options` (`live_turns::live_turn_options`): the same rendering and tools. One at a time per agent.
     pub async fn warm_up(&self, agent: &AgentConfig, prelude: &str) -> anyhow::Result<()> {
         static RUNNING: LazyLock<Mutex<std::collections::HashSet<String>>> = LazyLock::new(Default::default);
         if !lock(&RUNNING).insert(agent.name.clone()) {
             return Ok(());
         }
         let started = std::time::Instant::now();
-        let options = crate::agents_admin::quick_turn_options(&self.config.get(), agent);
+        // the call's turns' options (their closed tools included): the warm-up renders as they do
+        let options = crate::live_turns::live_turn_options(&self.config.get(), agent);
         let extra = json!({"model_options": options});
         let message = format!("{prelude}\n\n{WARM_MESSAGE}");
         let reply = self.scratch_chat(agent, WARM_TITLE, &message, extra, 60.0).await;
@@ -986,6 +987,7 @@ async fn live_call_start(State(state): State<AppState>, Json(body): Json<CallSta
             session,
             live_session: live_session.clone(),
             started_at: crate::py::time_time(),
+            after: Vec::new(),
         };
         blocking(move || calls.note_start(call)).await?;
     }

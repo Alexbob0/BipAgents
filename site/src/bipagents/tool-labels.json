@@ -676,6 +676,17 @@
    "use": null
   },
   {
+   "id": "afterCall",
+   "names": [
+    "after_call"
+   ],
+   "prefixes": [],
+   "keys": [
+    "what"
+   ],
+   "counts": false
+  },
+  {
    "id": "startTask",
    "names": [
     "start_task",
@@ -1096,6 +1107,11 @@
      "many": null,
      "now": "Je prépare une tâche de fond…"
     },
+    "afterCall": {
+     "one": "Note pour après l’appel",
+     "many": null,
+     "now": "Je note ça pour après l’appel…"
+    },
     "startTask": {
      "one": "Lance une tâche de fond",
      "many": null,
@@ -1512,6 +1528,11 @@
      "one": "Suggests a background task",
      "many": null,
      "now": "Preparing a background task…"
+    },
+    "afterCall": {
+     "one": "Notes it for after the call",
+     "many": null,
+     "now": "Noting it for after the call…"
     },
     "startTask": {
      "one": "Starts a background task",
@@ -1930,6 +1951,11 @@
      "many": null,
      "now": "Ich bereite eine Hintergrundaufgabe vor…"
     },
+    "afterCall": {
+     "one": "Notiert es für nach dem Anruf",
+     "many": null,
+     "now": "Ich notiere es für nach dem Anruf…"
+    },
     "startTask": {
      "one": "Startet eine Hintergrundaufgabe",
      "many": null,
@@ -2346,6 +2372,11 @@
      "one": "Propone una tarea en segundo plano",
      "many": null,
      "now": "Preparando una tarea en segundo plano…"
+    },
+    "afterCall": {
+     "one": "Lo anota para después de la llamada",
+     "many": null,
+     "now": "Lo anoto para después de la llamada…"
     },
     "startTask": {
      "one": "Inicia una tarea en segundo plano",

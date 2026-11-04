@@ -112,9 +112,11 @@ pub const MAX_TURNS: u32 = 150;
 /// first in each agent's tool list in this order (Hermes' sorted order of their names), so that any agent's first call
 /// reads them from the cache another agent left (`tools.order_first`, Hermes patch 0022). Those of the bridge are in
 /// view for every kind ([`diet`]); a tool an agent lacks is skipped (the prefix stops being common there).
-pub const COMMON_FIRST: [&str; 24] = [
+pub const COMMON_FIRST: [&str; 25] = [
     "clarify",
     "manage_connections",
+    // in view for a voice call's turns, where what it notes can't be made (live_calls.rs, 4/11)
+    "mcp__bipagents__after_call",
     "mcp__bipagents__create_page",
     "mcp__bipagents__give_file",
     "mcp__bipagents__map_image",

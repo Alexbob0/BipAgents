@@ -22,6 +22,27 @@ def talk(n, start=0):
     return out
 
 
+# 4/11 (Alex asked a pronunciation in a call; the agent started an audio file while he waited): a call's turns and its
+# warm-up have the tools that make media or long outputs refused (Hermes patch 0024, `model_options.closed_tools`).
+LIVE_CLOSED = ["browser_*", "computer_use", "delegate_task", "image_generate", "mcp__bipagents__create_audio",
+               "mcp__bipagents__create_page", "mcp__bipagents__create_podcast", "mcp__bipagents__heavy_work",
+               "mcp__bipagents__start_task", "mcp__bipagents_files__shared_files_write", "mcp__stealth__*", "patch",
+               "text_to_speech", "video_generate", "write_file", "xai_video_edit", "xai_video_extend"]
+LIVE_OPTIONS = {"reasoning": {"enabled": False}, "closed_tools": LIVE_CLOSED}
+# The quick ones a call keeps.
+LIVE_KEPT = ["web_search", "web_extract", "mcp__bipagents__notebook_search", "mcp__bipagents__notebook_note",
+             "mcp__bipagents__calendar_list", "mcp__bipagents__calendar_add", "mcp__bipagents__reminders_add",
+             "mcp__bipagents__mail_search", "mcp__bipagents__mail_read", "mcp__bipagents__map_image",
+             "mcp__bipagents__route", "mcp__bipagents__weather", "mcp__bipagents__message_agent",
+             "mcp__bipagents__propose_task", "mcp__bipagents__knowledge_search", "mcp__bipagents__after_call", "clarify",
+             "memory"]
+
+
+def closes(closed, name):
+    """Whether Hermes 0024 closes `name` with the list `closed` (a trailing `*` closes a prefix)."""
+    return any(name.startswith(c[:-1]) if c.endswith("*") else name == c for c in closed)
+
+
 def brief(bridge, **params):
     return bridge.get("/v1/live/brief", params={"agent": "Wellness", **params}, headers=AUTH)
 
@@ -112,7 +133,7 @@ def test_a_call_start_has_the_model_read_its_prelude_without_waiting(bridge, fak
     assert wait_until(lambda: hermes.deleted, timeout=10)
     chat, = hermes.chats
     assert chat["message"].startswith(prelude + "\n\n<!--bip:warm") and not chat.get("instructions")
-    assert chat["model_options"] == {"reasoning": {"enabled": False}}   # what the call's turns send
+    assert chat["model_options"] == LIVE_OPTIONS   # what the call's turns send: the same tools in the cache
     (_, call), (_, warm) = hermes.created
     assert call["title"].startswith("Live · ") and warm["title"].startswith("BipAgents · live · ")
     assert hermes.deleted == [chat["session"]] and chat["session"] != "api_s1"   # never the call's own session
@@ -141,7 +162,7 @@ def test_a_call_s_turns_go_through_the_bridge(bridge, fakes):
             assert any("run.completed" in line for line in lines)
     turn, = hermes.streams
     assert turn == {"agent": "", "session": live, "input": "<!--bip:live\nRules\n-->\n\nBonjour",
-                    "model_options": {"reasoning": {"enabled": False}}}
+                    "model_options": LIVE_OPTIONS}
     hermes.stream_script = []
     photo = {"kind": "image", "mime": "image/png", "data": "AAAA"}
     sent = bridge.post("/v1/live/turns", headers=AUTH, json={"agent": "wellness", "live_session": live,
@@ -255,3 +276,75 @@ def test_a_written_back_row_is_not_the_latest_conversation(bridge, fakes):
     fakes.hermes.add_session("api_talk", talk(4), last_active=1)
     fakes.hermes.add_session("api_ghost", [], title="Notes on a cable", last_active=2, source="unknown")
     assert brief(bridge).json()["session"] == "api_talk"
+
+
+def test_a_call_s_turns_close_the_media_and_long_tools_and_keep_the_quick_ones(bridge, fakes):
+    """4/11: in a call the agent speaks (a pronunciation said, not an audio file made): the call's turns ask Hermes to
+    refuse audio, speech, images, pages, files, the browsers and long work, never the quick tools."""
+    hermes = fakes.hermes
+    live = bridge.post("/v1/live/calls/start", headers=AUTH, json={"agent": "wellness"}).json()["live_session"]
+    sent = bridge.post("/v1/live/turns", headers=AUTH, json={"agent": "wellness", "live_session": live,
+                                                            "text": "Comment on prononce « Hermès » ?"})
+    assert sent.status_code == 200
+    closed = hermes.streams[-1]["model_options"]["closed_tools"]
+    for media in ["mcp__bipagents__create_audio", "mcp__bipagents__create_podcast", "text_to_speech", "image_generate",
+                  "mcp__bipagents__create_page", "write_file", "mcp__stealth__navigate", "browser_navigate",
+                  "delegate_task", "mcp__bipagents__start_task"]:
+        assert closes(closed, media), media
+    for quick in LIVE_KEPT:
+        assert not closes(closed, quick), quick
+
+
+def test_a_written_turn_keeps_every_tool(bridges, fakes):
+    """A message of a conversation is the person's usual turn: nothing closed."""
+    fakes.hermes.v0225 = True
+    fakes.hermes.add_session("api_main", [{"role": "user", "content": "Bonjour"}], title="Bot Chat", last_active=10,
+                             started_at=1)
+    bridge = bridges.new().start()
+    thread = bridge.get("/v1/threads/main", headers=AUTH, params={"agent": "wellness"}).json()["id"]
+    sent = bridge.post(f"/v1/threads/{thread}/messages", headers=AUTH,
+                       json={"agent": "wellness", "client_id": "C1D00000-0000-4000-8000-0000000000aa",
+                             "text": "Fais-moi un podcast sur la voile"})
+    assert sent.status_code == 200, sent.text
+    run, = fakes.hermes.started.values()
+    assert "closed_tools" not in (run["model_options"] or {})
+
+
+def test_what_the_agent_noted_in_a_call_is_made_once_it_ends(bridge, fakes):
+    """4/11: in a call the agent notes what to make (`after_call`, live_calls.rs) instead of making it while the person
+    waits; once the call is in its conversation, ONE background turn there asks it to make what was noted (its reply and
+    files delivered as a message). A call that noted nothing: no turn."""
+    from bbkit.mcp import call, give_token, text_of
+    hermes = fakes.hermes
+    hermes.rounds = 1
+    hermes.run_output = "Voici l'audio. MEDIA:/bipagents/audio/hermes.mp3"
+    give_token(bridge)
+    hermes.add_session("s1", talk(4))
+    # no call under way: said so, nothing noted
+    refused = call(bridge, "after_call", {"what": "un audio"})
+    assert refused["isError"] and "no voice call" in text_of(refused)
+    live = bridge.post("/v1/live/calls/start", headers=AUTH, json={"agent": "wellness", "session": "s1"}).json()["live_session"]
+    noted = call(bridge, "after_call", {"what": "Un audio de 1 min où je prononce « Hermès » lentement, en français"})
+    assert not noted["isError"] and "as soon as the call ends" in text_of(noted)
+    assert call(bridge, "after_call", {"what": " "})["isError"]
+    hermes.messages[("", live)] = [{"role": "user", "content": "Comment on prononce Hermès ?"},
+                                   {"role": "assistant", "content": "Er-mès. Je te prépare un audio après l'appel."}]
+    ended = bridge.post("/v1/live/calls", headers=AUTH, json={"agent": "wellness", "session": "s1", "live_session": live})
+    assert ended.status_code == 200
+
+    def after_turns():
+        return [r for r in hermes.started.values() if "bip:after-call" in (r["input"] or "")]
+
+    assert wait_until(lambda: after_turns(), timeout=20)
+    turn, = after_turns()
+    assert turn["session_id"] == "s1"   # in the call's conversation, not the call's own session
+    assert "prononce « Hermès » lentement" in turn["input"] and "Comment on prononce Hermès ?" in turn["input"]
+    assert not turn.get("instructions")   # the rules in the message: the prompt cache stays the conversation's
+    # a second call that noted nothing: no turn after it
+    other = bridge.post("/v1/live/calls/start", headers=AUTH, json={"agent": "wellness", "session": "s1"}).json()["live_session"]
+    hermes.messages[("", other)] = [{"role": "user", "content": "Merci !"}, {"role": "assistant", "content": "Avec plaisir."}]
+    bridge.post("/v1/live/calls", headers=AUTH, json={"agent": "wellness", "session": "s1", "live_session": other})
+    calls_file = bridge.state_dir / "live-calls" / "wellness" / "s1.json"
+    assert wait_until(lambda: calls_file.exists() and other in calls_file.read_text(), timeout=20)
+    time.sleep(3)
+    assert len(after_turns()) == 1
