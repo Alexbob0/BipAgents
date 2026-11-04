@@ -48,8 +48,7 @@ domaine, avec les modules (`bridge-rs/src/<nom>.rs`) qui le font, et ce qu'il la
   pont, la même sur tous les appareils, lancée comme tour suivant à la fin du travail (ordre, retrait, envoi immédiat,
   pause), une seule notification à la fin.
 - **Rien de perdu.** `outbox.rs` et `cronwatch.rs` mettent les messages des agents et la réponse de chaque routine dans
-  une boîte d'envoi (`store.rs`), audio prêt ; `restore_reconcile.rs` remet après une restauration les messages
-  gardés par les téléphones.
+  une boîte d'envoi (`store.rs`), audio prêt.
 - **Joindre la maison.** Par Tailscale, ou `lan.rs` : une porte HTTPS épinglée sur le réseau local quand Internet est
   coupé. `device_keys.rs` donne une clé à chaque appareil ; `guard.rs` compte les mauvaises clés ; `console.rs` est la
   console web.

@@ -57,7 +57,7 @@ The common cause: **the conversation was never a bridge object**. The fix is tha
 | Thread | `t_` + 26 chars (time-sortable, random) | `t_01JBX4K9W3M2Q8R6T5Y7Z0A1B2` | titles, compressions, Hermes upgrades, bridge restarts |
 | Main thread alias | `main` (accepted wherever a thread id is, with `agent`) | `?agent=vie&thread=main` | — |
 | Hermes segment | Hermes session id (`api_…`, `cron_…`, `local-…`) | `api_8f2c…` | — (an implementation detail) |
-| Message | `m_` + Hermes `message_uid` (32 hex) | `m_3f9a…` | compressions, restores (restore_reconcile keeps `message_uid`), re-reads |
+| Message | `m_` + Hermes `message_uid` (32 hex) | `m_3f9a…` | compressions, restores, re-reads |
 | Message (no `message_uid`) | `m_` + first 24 hex of `sha256(agent \0 session \0 row id)` | `m_a1b2…` | re-reads (only on an install whose store has no `message_uid`) |
 | Tool step | `<message id>.t<n>` (n = position of the call in the assistant row) | `m_3f9a….t0` | as its message |
 | Attachment | `<message id>.a<n>` (n = position in the message) | `m_3f9a….a0` | as its message |
@@ -86,7 +86,7 @@ impossible).
 | `room` | A group discussion: rooms.rs keeps its store (`data_dir/rooms/<id>.json`), served as the thread `room:<id>` (§6.6) | `GET /v1/threads?kind=room` | rooms.rs |
 
 `hidden` threads are returned with `include_hidden=1` only. A sub-agent's run (`delegate_task`), a branch or a reset
-child is never a segment of anything: it is ignored (same rules as `restore_reconcile::continuation`).
+child is never a segment of anything: it is ignored.
 
 ## 5. Lineage: a thread is a chain of sessions
 
@@ -99,8 +99,7 @@ thread t_…  (kind main)
 
 - **Continuation rule** (one function, `threads::lineage::is_continuation`): a child session whose
   `parent_session_id` is a segment, whose `model_config` has none of `_branched_from`, `_delegate_from`,
-  `_reset_from`, whose `source` is not `tool`. Among several, the latest started. Same rule as
-  `restore_reconcile.rs` (moved there from it, shared).
+  `_reset_from`, whose `source` is not `tool`. Among several, the latest started.
 - **Where it is read**: the agent's `state.db` (read-only, as message_search.rs does) when the bridge knows the profile
   folder; else Hermes' API (`GET /api/sessions?include_children=1`, `GET /api/sessions/{id}`). The same agent always
   uses the same source, so ids never change between reads.

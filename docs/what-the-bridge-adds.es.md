@@ -47,8 +47,7 @@ solo programa en Rust, `bipbridge`). Esta página recoge lo que añade, área po
   el puente, igual en todos los dispositivos, lanzado como siguiente turno al terminar (orden, quitar, enviar ahora,
   pausa), una sola notificación al final.
 - **Nada se pierde.** `outbox.rs` y `cronwatch.rs` guardan los mensajes de los agentes y la respuesta de cada rutina en
-  una bandeja de salida (`store.rs`), con el audio listo; `restore_reconcile.rs` recupera tras una restauración los
-  mensajes que guardaron los móviles.
+  una bandeja de salida (`store.rs`), con el audio listo.
 - **Llegar a casa.** Por Tailscale, o `lan.rs`: una puerta HTTPS fijada en la red local cuando falla Internet.
   `device_keys.rs` da a cada dispositivo su clave; `guard.rs` cuenta las claves erróneas; `console.rs` es la consola
   web.

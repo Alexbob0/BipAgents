@@ -45,7 +45,7 @@ that do it, and what it deliberately leaves to Hermes.
   (Hermes' steer, after its current tool calls); « After » keeps it in the agent's queue instead, on the bridge, the same on
   every device, started as the next turn once the work ends (reorder, cancel, send now, pause), one notification at the end.
 - **Nothing missed.** `outbox.rs` and `cronwatch.rs` put agent messages and every routine's reply into an outbox
-  (`store.rs`) with its audio ready; `restore_reconcile.rs` puts back the messages phones kept after a restore.
+  (`store.rs`) with its audio ready.
 - **Reaching home.** Over Tailscale, or `lan.rs`: a pinned HTTPS door on the local network when the Internet is down.
   `device_keys.rs` gives each device its own key; `guard.rs` counts wrong keys; `console.rs` is the web console.
 - **Plain words.** `approval_text.rs`, `approval_command.rs`, `no_reply.rs`, `names.rs`, `answer_style.rs` and
