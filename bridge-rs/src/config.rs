@@ -107,6 +107,8 @@ pub struct AgentConfig {
 }
 
 pub const VOICE_USES: [&str; 3] = ["live", "replies", "reading"];
+/// Where Pocket listens when `[pocket] url` isn't set.
+pub const POCKET_URL: &str = "http://127.0.0.1:8098";
 
 /// The person's own voice model: any server with OpenAI's `POST /v1/audio/speech` (Fish Audio Drama 3 on
 /// audio.cpp, Kokoro, Kyutai…). Its voices are `server:<lang>/<id>`; Pocket's Bips stand in when it is down.
@@ -664,17 +666,15 @@ pub struct Config {
     pub host: String,
     pub port: u16,
     pub log_level: String,
-    /// Kyutai TTS 1.6B (GPU): the human voice and the podcast. None = off (Pocket only, e.g. on a Mac mini or a VPS).
-    pub kyutai_url: Option<String>,
-    pub kyutai_timeout: f64,
     pub default_voice: String,
-    /// Kyutai Pocket TTS (CPU) for the Bips' voices, used by voices named "pocket:<name>". None = off.
+    /// Kyutai Pocket TTS (CPU) for the Bips' voices, used by voices named "pocket:<name>" (`[pocket] url`, default
+    /// `http://127.0.0.1:8098`; an old `[kyutai]` section is ignored).
     pub pocket_url: Option<String>,
     /// The version of the server's Pocket engine (`[pocket] engine`, default "3.3.0"; the installer's migration
     /// pocket-engine writes "4.0.1" once the server's Pocket says it runs it): below 4 (3.3.0) the names and
     /// English words are respelled for it (pronounce.rs); from 4 on, the model reads them from the raw text.
     pub pocket_engine: String,
-    /// The person's own voice model (`[voice_server]`; an older `[drama] url` is one). None = the Bips only.
+    /// The person's own voice model (`[voice_server]`). None = the Bips only.
     pub voice_server: Option<VoiceServerConfig>,
     /// Words the voices say wrong, respelled by language (`[pronunciations.fr] Garmin = "Garmine"`).
     pub pronunciations: IndexMap<String, IndexMap<String, String>>,
@@ -824,10 +824,8 @@ impl Config {
             host: "127.0.0.1".into(),
             port: 8643,
             log_level: "info".into(),
-            kyutai_url: Some("http://127.0.0.1:8097".into()),
-            kyutai_timeout: 120.0,
-            default_voice: "5476".into(),
-            pocket_url: None,
+            default_voice: "pocket:ours".into(),
+            pocket_url: Some(POCKET_URL.into()),
             pocket_engine: "3.3.0".into(),
             voice_server: None,
             pronunciations: IndexMap::new(),
@@ -1406,33 +1404,28 @@ fn command(value: Option<&Value>) -> Vec<String> {
 }
 
 fn voice_server(data: &Value) -> Result<Option<VoiceServerConfig>> {
-    let mut t = table(data, "voice_server").clone();
-    let drama = table(data, "drama");
-    if !has(&t, "url") && has(drama, "url") && b(drama, "enabled", true) {
-        // Set up by an earlier installer: audio.cpp serving Drama 3 (44.1 kHz)
-        t = serde_json::json!({"url": get(drama, "url").cloned().unwrap_or(Value::Null), "model": "drama-3", "stream_rate": 44100});
-    }
-    if !has(&t, "url") || !b(&t, "enabled", true) {
+    let t = table(data, "voice_server");
+    if !has(t, "url") || !b(t, "enabled", true) {
         return Ok(None);
     }
-    let uses = VOICE_USES.iter().map(|u| (u.to_string(), b(&t, u, true))).collect();
-    let rate = match get(&t, "stream_rate") {
+    let uses = VOICE_USES.iter().map(|u| (u.to_string(), b(t, u, true))).collect();
+    let rate = match get(t, "stream_rate") {
         Some(v) if py::truthy(v) => {
             Some(narrow::<u32>(py::py_int(v).map_err(value_error)?, "voice_server.stream_rate")?)
         }
         _ => None,
     };
-    let voices = match get(&t, "voices") {
+    let voices = match get(t, "voices") {
         Some(Value::Array(items)) => items.iter().map(py::py_str).collect(),
         _ => Vec::new(),
     };
     Ok(Some(VoiceServerConfig {
-        url: py::rstrip_slash(&s(&t, "url", "")),
-        model: opt_s(&t, "model").unwrap_or_else(|| "tts-1".into()),
+        url: py::rstrip_slash(&s(t, "url", "")),
+        model: opt_s(t, "model").unwrap_or_else(|| "tts-1".into()),
         stream_rate: rate,
         voices,
         uses,
-        first_audio_seconds: f(&t, "first_audio_seconds", 5.0)?,
+        first_audio_seconds: f(t, "first_audio_seconds", 5.0)?,
     }))
 }
 
@@ -1444,29 +1437,15 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
     }
     let data_dir = expand(&s(data, "data_dir", DEFAULT_DATA_DIR));
 
-    let kyutai = table(data, "kyutai");
     let pocket = table(data, "pocket");
     let cron = table(data, "cron");
     let push = table(data, "push");
     let apns_t = table(data, "apns");
     let outbox_t = table(data, "outbox");
     let fcm_t = table(data, "fcm");
-    // `[kyutai] enabled = false` (or `url = ""`) runs on Pocket alone; the default voice is then a Bip's.
-    let kyutai_url = if b(kyutai, "enabled", true) {
-        py::rstrip_slash(&s(kyutai, "url", "http://127.0.0.1:8097"))
-    } else {
-        String::new()
-    };
-    let pocket_url = if has(pocket, "url") { Some(py::rstrip_slash(&s(pocket, "url", ""))) } else { None };
+    let pocket_url = Some(py::rstrip_slash(&s(pocket, "url", POCKET_URL))).filter(|u| !u.is_empty());
     let voice_server = voice_server(data)?;
-    if kyutai_url.is_empty() && pocket_url.is_none() {
-        return Err(ConfigError::new("no TTS engine: set [pocket] url, or [kyutai] url"));
-    }
-    let default_voice = if !kyutai_url.is_empty() {
-        s(kyutai, "default_voice", "5476")
-    } else {
-        s(pocket, "default_voice", "pocket:ours")
-    };
+    let default_voice = s(pocket, "default_voice", "pocket:ours");
     let limits_t = table(data, "limits");
 
     let apns = ApnsConfig {
@@ -1845,8 +1824,6 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         host: s(data, "host", "127.0.0.1"),
         port: narrow(i(data, "port", 8643)?, "port")?,
         log_level: s(data, "log_level", "info").to_lowercase(),
-        kyutai_url: if kyutai_url.is_empty() { None } else { Some(kyutai_url) },
-        kyutai_timeout: f(kyutai, "timeout_seconds", 120.0)?,
         default_voice,
         pocket_url,
         pocket_engine: s(pocket, "engine", "3.3.0"),
@@ -1993,8 +1970,8 @@ mod tests {
     fn defaults() {
         let c = parse_config(&base(), None).unwrap();
         assert_eq!(c.port, 8643);
-        assert_eq!(c.kyutai_url.as_deref(), Some("http://127.0.0.1:8097"));
-        assert_eq!(c.default_voice, "5476");
+        assert_eq!(c.pocket_url.as_deref(), Some(POCKET_URL));
+        assert_eq!(c.default_voice, "pocket:ours");
         assert_eq!(c.limits.upload_max_bytes, 50 * 1024 * 1024);
         assert!(c.outbox.db_path.ends_with("/.local/share/hermes-bridge/bridge.db"));
         assert_eq!(c.apns.host("sandbox"), "https://api.sandbox.push.apple.com");

@@ -39,7 +39,7 @@ def test_media_route_and_podcast_audio_in_the_outbox(bridges, fakes):
     assert item["text"] == "Point du matin" and item["has_audio"] is True
     audio = bridge.get(f"/v1/outbox/{item['id']}/audio", headers=AUTH)
     assert audio.status_code == 200 and audio.content == b"ID3podcast-audio"  # the podcast, not a synthesis
-    assert fakes.kyutai.inputs == [] and fakes.pocket.inputs == []
+    assert fakes.pocket.inputs == []
 
 
 def test_a_media_only_message_reads_as_headphones(bridges, fakes):

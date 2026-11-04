@@ -318,7 +318,6 @@ pub fn main(argv: Vec<String>) -> i32 {
 fn check(config: &Config, args: &Args) -> i32 {
     println!("config OK: {}", args.config.clone().unwrap_or_else(config_path));
     println!("  listen      {}:{}", config.host, config.port);
-    println!("  kyutai      {}", config.kyutai_url.as_deref().unwrap_or("off"));
     println!("  pocket      {}", config.pocket_url.as_deref().unwrap_or("off"));
     println!("  voice       {} (default)", config.default_voice);
     println!(

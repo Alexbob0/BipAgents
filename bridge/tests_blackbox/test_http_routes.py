@@ -14,13 +14,13 @@ def test_health_is_public_and_reports_reachability(bridge):
     resp = bridge.get("/health")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["ok"] is True and body["kyutai"] is True and body["apns"] is True
+    assert body["ok"] is True and body["pocket"] is True and body["apns"] is True
     assert "version" in body
     assert body.pop("features", []) in ([], ["agent_groups", "files_kept", "calendar", "health_categories", "contacts", "time_zone",
                                                     "message_search", "agent_templates", "agent_notify", "agent_queue",
                                                     "threads", "notifications", "push_seal"])   # Rust
     assert body.pop("space", "off") == "off"   # Rust: the space's encryption (space.rs), off here
-    assert body == {"ok": True, "version": body["version"], "kyutai": True, "pocket": True, "voice_server": None,
+    assert body == {"ok": True, "version": body["version"], "pocket": True, "voice_server": None,
                     "drama": None, "apns": True, "push": "apns", "push_relay": False, "fcm": False,
                     "tts_queue": 0}
 
@@ -52,7 +52,7 @@ def test_agents_listing(bridge):
     assert all(a.pop("requested", None) is None for a in listing["agents"])   # made from an accepted card: Rust only
     assert all(a.pop("language") is None for a in listing["agents"])   # its record's language (none: no profile here)
     assert listing == {"bridge": {"url": None, "lan": None},
-                           "agents": [{"id": "wellness", "name": "Wellness", "voice": "4193", "server_voice": None,
+                           "agents": [{"id": "wellness", "name": "Wellness", "voice": "pocket:colibri", "server_voice": None,
                                        "category": None, "color": None, "uploads": True,
                                        "url": None, "key": None}],
                            "unclaimed": []}
@@ -116,7 +116,7 @@ def test_tts_sentence_pcm16(bridge, fakes):
     assert resp.headers["x-sample-format"] == "s16le" and resp.headers["x-cache"] == "miss"
     assert resp.headers["cache-control"] == "no-store"
     assert resp.headers["content-type"] == "application/octet-stream"
-    assert fakes.kyutai.inputs[-1]["voice"] == "5476"
+    assert fakes.pocket.inputs[-1]["voice"] == "ours"
     again = bridge.post("/v1/tts/sentence", headers=AUTH, json={"text": "Bonjour *toi*"})
     assert again.headers["x-cache"] == "hit" and again.content == resp.content
 
@@ -124,7 +124,7 @@ def test_tts_sentence_pcm16(bridge, fakes):
 def test_tts_sentence_agent_voice_and_formats(bridge, fakes):
     resp = bridge.post("/v1/tts/sentence", headers=AUTH, json={"text": "Salut.", "agent": "Wellness", "format": "opus"})
     assert resp.status_code == 200 and resp.headers["content-type"] == "audio/ogg"
-    assert fakes.kyutai.inputs[-1] == {"model": "kyutai-tts", "input": "Salut.", "voice": "4193",
+    assert fakes.pocket.inputs[-1] == {"model": "pocket-tts", "input": "Salut.", "voice": "colibri",
                                        "response_format": "opus"}
     assert "x-sample-format" not in resp.headers
     flac = bridge.post("/v1/tts/sentence", headers=AUTH, json={"text": "x", "format": "flac"})
@@ -153,8 +153,8 @@ def test_a_bip_s_text_is_prepared_for_the_phone_to_speak_it(bridge):
     assert old["text"] == "Mets Spotifaï avec ta Garmine, le pé dé èffe, allure cinq minutes dix par kilomètre."
     english = bridge.post("/v1/tts/prepare", headers=AUTH, json={"text": "See you at 5.", "voice": "pocket:en/lumen"})
     assert english.json()["language"] == "en" and english.json()["bip"] == "lumen"
-    kyutai = bridge.post("/v1/tts/prepare", headers=AUTH, json={"text": "Salut.", "agent": "wellness"})
-    assert kyutai.json() == {"local": False, "voice": "4193"}                  # not a Bip: audio from the bridge
+    other = bridge.post("/v1/tts/prepare", headers=AUTH, json={"text": "Salut.", "voice": "server:fr/af_bella"})
+    assert other.json() == {"local": False, "voice": "server:fr/af_bella"}    # not a Bip: audio from the bridge
     assert bridge.post("/v1/tts/prepare", headers=AUTH, json={"text": "---", "voice": "pocket:galet"}).status_code == 400
     assert bridge.post("/v1/tts/prepare", json={"text": "x"}).status_code == 401
     assert bridge.post("/v1/tts/prepare", headers=AUTH, json={"text": "x", "agent": "nope"}).status_code == 404
@@ -370,8 +370,8 @@ def test_tts_message_returns_one_mp3_for_a_whole_reply(bridge, fakes):
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "audio/mpeg"
     assert resp.headers["x-cache"] == "miss" and resp.headers["cache-control"] == "no-store"
-    assert fakes.kyutai.inputs[-1]["response_format"] == "mp3"
-    assert len(fakes.kyutai.inputs[-1]["input"]) > 1000
+    assert fakes.pocket.inputs[-1]["response_format"] == "mp3"
+    assert len(fakes.pocket.inputs[-1]["input"]) > 1000
     long = bridge.post("/v1/tts/message", headers=AUTH, json={"text": "x" * 9000})
     assert long.status_code == 413
     flac = bridge.post("/v1/tts/message", headers=AUTH, json={"text": "x", "format": "flac"})
@@ -379,33 +379,33 @@ def test_tts_message_returns_one_mp3_for_a_whole_reply(bridge, fakes):
     assert bridge.post("/v1/tts/message", headers=AUTH, json={"text": "x", "agent": "nope"}).status_code == 404
 
 
-def test_tts_stream_relays_kyutai_pcm_chunks(bridge, fakes):
+def test_tts_stream_relays_pocket_pcm_chunks(bridge, fakes):
     text = "Bonjour Alex. On commence doucement."
     resp = bridge.post("/v1/tts/stream", headers=AUTH, json={"text": text, "agent": "Wellness"})
     assert resp.status_code == 200
     assert resp.headers["x-sample-rate"] == "24000" and resp.headers["x-channels"] == "1"
     assert resp.headers["x-sample-format"] == "s16le" and resp.headers["content-type"] == "application/octet-stream"
-    sent = fakes.kyutai.inputs[-1]
+    sent = fakes.pocket.inputs[-1]
     assert sent["format"] == "pcm16" and "response_format" not in sent
     assert resp.content == pcm_for(sent["input"])
-    calls = len(fakes.kyutai.inputs)
+    calls = len(fakes.pocket.inputs)
     again = bridge.post("/v1/tts/stream", headers=AUTH, json={"text": text, "agent": "Wellness"})
-    assert again.content == resp.content and len(fakes.kyutai.inputs) == calls  # cached
+    assert again.content == resp.content and len(fakes.pocket.inputs) == calls  # cached
 
 
-def test_tts_stream_falls_back_to_whole_file_on_old_kyutai(bridge, fakes):
-    fakes.kyutai.streaming = False
-    resp = bridge.post("/v1/tts/stream", headers=AUTH, json={"text": "Un ancien Kyutai."})
+def test_tts_stream_falls_back_to_whole_file_on_an_engine_without_streaming(bridge, fakes):
+    fakes.pocket.streaming = False
+    resp = bridge.post("/v1/tts/stream", headers=AUTH, json={"text": "Un ancien moteur."})
     assert resp.status_code == 200
-    assert fakes.kyutai.inputs[-1]["response_format"] == "wav"
-    assert resp.content == pcm_for(fakes.kyutai.inputs[-1]["input"])
+    assert fakes.pocket.inputs[-1]["response_format"] == "wav"
+    assert resp.content == pcm_for(fakes.pocket.inputs[-1]["input"])
 
 
 def test_tts_stream_errors_before_audio_are_http_errors(bridge, fakes):
     assert bridge.post("/v1/tts/stream", headers=AUTH, json={"text": "  "}).status_code == 400
     assert bridge.post("/v1/tts/stream", headers=AUTH, json={"text": "x" * 9000}).status_code == 413
     assert bridge.post("/v1/tts/stream", headers=AUTH, json={"text": "a", "agent": "Nope"}).status_code == 404
-    fakes.kyutai.status = 500
+    fakes.pocket.status = 500
     assert bridge.post("/v1/tts/stream", headers=AUTH, json={"text": "Panne."}).status_code == 502
 
 
@@ -415,28 +415,18 @@ def test_pocket_voices_go_to_pocket_tts(bridge, fakes):
     assert resp.status_code == 200
     sent = fakes.pocket.inputs[-1]
     assert sent["voice"] == "loutre" and sent["format"] == "pcm16"
-    assert resp.content == pcm_for(sent["input"][::-1])
-    kyutai_calls = len(fakes.kyutai.inputs)
+    assert resp.content == pcm_for(sent["input"])
     whole = bridge.post("/v1/tts/message", headers=AUTH, json={"text": text, "voice": "pocket:loutre"})
-    assert whole.status_code == 200 and whole.content.startswith(b"ID3pocket")
+    assert whole.status_code == 200 and whole.content.startswith(b"ID3")
     assert fakes.pocket.inputs[-1]["response_format"] == "mp3"
-    assert len(fakes.kyutai.inputs) == kyutai_calls  # Kyutai untouched
     assert bridge.get("/health").json()["pocket"] is True
 
 
-def test_pocket_down_falls_back_to_kyutai_default_voice(bridge, fakes):
+def test_pocket_down_is_an_error_the_app_reads_with_the_phones_voice(bridge, fakes):
     fakes.pocket.status = 503
     resp = bridge.post("/v1/tts/stream", headers=AUTH, json={"text": "Pocket est en panne.", "voice": "pocket:lutin"})
-    assert resp.status_code == 200
-    assert fakes.kyutai.inputs[-1]["voice"] == "5476"
-    assert resp.content == pcm_for(fakes.kyutai.inputs[-1]["input"])
-    sentence = bridge.post("/v1/tts/sentence", headers=AUTH, json={"text": "Toujours en panne.", "voice": "pocket:lutin"})
-    assert sentence.status_code == 200 and fakes.kyutai.inputs[-1]["voice"] == "5476"
+    assert resp.status_code >= 500
     assert bridge.get("/health").json()["pocket"] is False
-    # The fallback audio is not cached under the Pocket voice: once Pocket is back, it is used.
-    fakes.pocket.status = 200
-    again = bridge.post("/v1/tts/stream", headers=AUTH, json={"text": "Pocket est en panne.", "voice": "pocket:lutin"})
-    assert fakes.pocket.inputs[-1]["voice"] == "lutin" and again.content != resp.content
 
 
 def test_numbers_are_spelled_before_synthesis(bridge, fakes):
@@ -445,13 +435,12 @@ def test_numbers_are_spelled_before_synthesis(bridge, fakes):
     assert fakes.pocket.inputs[-1]["input"] == "Ta moyenne : quatre-vingt-onze battements par minute à quatorze heures trente."
 
 
-def test_pocket_hiccup_is_retried_before_falling_back(bridge, fakes):
+def test_pocket_hiccup_is_retried(bridge, fakes):
     fakes.pocket.statuses = [503]
-    kyutai_calls = len(fakes.kyutai.inputs)
     resp = bridge.post("/v1/tts/stream", headers=AUTH, json={"text": "Un petit hoquet.", "voice": "pocket:ours"})
     assert resp.status_code == 200
-    assert resp.content == pcm_for(fakes.pocket.inputs[-1]["input"][::-1])
-    assert len(fakes.pocket.inputs) == 2 and len(fakes.kyutai.inputs) == kyutai_calls
+    assert resp.content == pcm_for(fakes.pocket.inputs[-1]["input"])
+    assert len(fakes.pocket.inputs) == 2
 
 
 def test_pocket_language_voices_get_their_language(bridge, fakes):
@@ -466,10 +455,8 @@ def test_pocket_language_voices_get_their_language(bridge, fakes):
 
 def test_pocket_down_fails_for_other_languages_instead_of_a_french_voice(bridge, fakes):
     fakes.pocket.status = 503
-    kyutai_calls = len(fakes.kyutai.inputs)
     resp = bridge.post("/v1/tts/stream", headers=AUTH, json={"text": "Hola, ¿qué tal?", "voice": "pocket:es/colibri"})
     assert resp.status_code >= 500
-    assert len(fakes.kyutai.inputs) == kyutai_calls
 
 
 def test_unknown_pocket_language_voice_is_reported_as_unavailable(bridge, fakes):

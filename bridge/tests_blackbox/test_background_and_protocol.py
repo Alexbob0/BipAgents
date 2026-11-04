@@ -70,7 +70,7 @@ def test_the_apps_event_stream_keeps_alive_every_ten_seconds(bridge, fakes):
 @pytest.mark.slow
 def test_a_long_tool_call_keeps_its_stream_alive(bridge, fakes):
     give_token(bridge)
-    fakes.kyutai.delay = 11
+    fakes.pocket.delay = 11
     streamed = rpc(bridge, "tools/call", {"name": "create_audio", "arguments": {"text": "Une phrase lente."}},
                    accept="application/json, text/event-stream")
     assert streamed.text.startswith(": reading aloud\n\n")
@@ -117,7 +117,7 @@ def test_android_devices_of_an_install_without_fcm_go_through_the_relay(bridges,
 def test_an_outbox_audio_still_being_made_says_so(bridges, fakes):
     """GET /v1/outbox/{id}/audio waits 20 s for the synthesis, then answers 202 {"status": "pending"}, Retry-After 3."""
     bridge = bridges.new()
-    fakes.kyutai.delay = 24
+    fakes.pocket.delay = 24
     bridge.start()
     item = boite_message(bridge, fakes, "Un texte lent.")
     assert item["has_audio"] is False

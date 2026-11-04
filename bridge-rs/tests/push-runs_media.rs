@@ -74,7 +74,7 @@ async fn media_route_and_podcast_audio_in_the_outbox() {
     let audio = client.get(&format!("/v1/outbox/{}/audio", item["id"].as_str().unwrap()), &h).await;
     assert_eq!(audio.status, StatusCode::OK);
     assert_eq!(audio.body, b"ID3podcast-audio"); // the podcast, not a synthesis
-    assert!(backend.with(|s| s.kyutai_inputs.is_empty() && s.pocket_inputs.is_empty()));
+    assert!(backend.with(|s| s.pocket_inputs.is_empty()));
     client.shutdown().await;
     backend.release.set();
 }

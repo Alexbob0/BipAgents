@@ -265,7 +265,7 @@ def test_whole_dry_run(monkeypatch, tmp_path, capsys):
     assert "profile create lea" in out and "profile create fougere" in out
     assert "[agents.fougere]" in out and 'display_name = "Fougère"' in out
     assert "API_SERVER_KEY <key>" in out
-    assert "[kyutai]\nenabled = false" in out
+    assert "[kyutai]" not in out
     # The bridge: this version's Rust binaries, nothing of Python's (no venv, no `-m bipbridge`).
     assert "fetch the bridge " in out and "bipbridge-macos-universal.tar.gz" in out
     assert "bridge/.venv" not in out and "-m bipbridge" not in out and "bridge/requirements" not in out
@@ -304,8 +304,7 @@ def test_the_agents_get_their_language_from_the_app(monkeypatch, tmp_path, capsy
 
 
 def test_a_kyutai_server_is_a_voice_model_like_any_other(monkeypatch, tmp_path, capsys):
-    """Kyutai is no engine of its own: one already running (an administrator's, on any GPU) is the person's voice model,
-    given here by its old flag."""
+    """Kyutai is no engine of its own: one already running (an administrator's, on any GPU) is the person's voice model."""
     from bipinstall import __main__ as cli
     from bipinstall import voice_server
     monkeypatch.setenv("HOME", str(tmp_path))
@@ -318,10 +317,9 @@ def test_a_kyutai_server_is_a_voice_model_like_any_other(monkeypatch, tmp_path, 
                                                                                     kind="Kyutai"))
     answers = iter(["1", "1", "", "1,9", "Léa", "Fougère", "suit mes plantes", "", "", "4", "y"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
-    assert cli.main(["--dry-run", "--kyutai-url", "http://127.0.0.1:8097", "--voice-uses", "reading"]) == 0
+    assert cli.main(["--dry-run", "--voice-server", "http://127.0.0.1:8097", "--voice-uses", "reading"]) == 0
     out = capsys.readouterr().out
     assert "Your voice model: Kyutai — http://127.0.0.1:8097" in out
-    assert '[kyutai]\nenabled = false' in out
     assert '[voice_server]\nurl = "http://127.0.0.1:8097"\nmodel = "kyutai-tts"\nlive = false\nreplies = false\nreading = true' in out
 
 
@@ -674,10 +672,10 @@ def test_the_bridge_gets_its_voice_server_and_what_it_speaks_for(tmp_path):
     with pytest.raises(ValueError):
         voice_server.parse_uses("live,podcasts")
     config = tmp_path / "bridge.toml"
-    config.write_text('bridge_key = "k"\n\n[drama]\nurl = "http://127.0.0.1:8099"\n\n[cron]\nwatch = true\n')
+    config.write_text('bridge_key = "k"\n\n[cron]\nwatch = true\n')
     assert voice_server.connect(config, lines, hermes.Runner())
     text = config.read_text()
-    assert "[drama]" not in text and "[cron]\nwatch = true" in text and text.endswith("reading = true\n")
+    assert "[cron]\nwatch = true" in text and text.endswith("reading = true\n")
     voice_server.connect(config, lines, hermes.Runner())
     assert config.read_text().count("[voice_server]") == 1     # replaced, not added twice
     import tomllib

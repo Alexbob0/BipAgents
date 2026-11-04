@@ -1,4 +1,4 @@
-//! Port of tests/test_tts.py: TtsService against fake engines (Kyutai, Pocket, the person's own voice server).
+//! Port of tests/test_tts.py: TtsService against fake engines (Pocket, the person's own voice server).
 
 mod common;
 
@@ -21,7 +21,8 @@ use indexmap::IndexMap;
 use serde_json::{json, Value};
 
 fn service(backend: &FakeBackend, options: TtsOptions) -> Arc<TtsService> {
-    Arc::new(TtsService::new(reqwest::Client::new(), Some(&backend.kyutai_url), "5476", options))
+    let options = TtsOptions { pocket_url: Some(backend.pocket_url.clone()), ..options };
+    Arc::new(TtsService::new(reqwest::Client::new(), "pocket:ours", options))
 }
 
 fn opts() -> SynthOptions {
@@ -29,20 +30,20 @@ fn opts() -> SynthOptions {
 }
 
 fn inputs(backend: &FakeBackend) -> Vec<Value> {
-    backend.with(|s| s.kyutai_inputs.iter().map(|b| b["input"].clone()).collect())
+    backend.with(|s| s.pocket_inputs.iter().map(|b| b["input"].clone()).collect())
 }
 
 #[tokio::test]
-async fn pcm16_strips_wav_header_and_sends_kyutai_params() {
+async fn pcm16_strips_wav_header_and_sends_pocket_params() {
     let backend = FakeBackend::start().await;
     let tts = service(&backend, TtsOptions::default());
     let audio = tts
-        .synthesize("Bonjour **toi** [lien](http://x.y).", Some("4193"), "pcm16", INTERACTIVE, opts())
+        .synthesize("Bonjour **toi** [lien](http://x.y).", Some("pocket:colibri"), "pcm16", INTERACTIVE, opts())
         .await
         .unwrap();
     assert_eq!(
-        backend.with(|s| s.kyutai_inputs.clone()),
-        vec![json!({"model": "kyutai-tts", "input": "Bonjour toi lien.", "voice": "4193", "response_format": "wav"})]
+        backend.with(|s| s.pocket_inputs.clone()),
+        vec![json!({"model": "pocket-tts", "input": "Bonjour toi lien.", "voice": "colibri", "response_format": "wav"})]
     );
     assert_eq!(audio.data.to_vec(), pcm_for("Bonjour toi lien."));
     assert_eq!(
@@ -54,7 +55,7 @@ async fn pcm16_strips_wav_header_and_sends_kyutai_params() {
 #[tokio::test]
 async fn fifo_order_and_no_parallel_calls() {
     let backend = FakeBackend::start().await;
-    backend.with(|s| s.kyutai_delay = Duration::from_millis(20));
+    backend.with(|s| s.pocket_delay = Duration::from_millis(20));
     let tts = service(&backend, TtsOptions::default());
     let texts: Vec<String> = ["un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit"]
         .iter()
@@ -71,14 +72,14 @@ async fn fifo_order_and_no_parallel_calls() {
         results.push(task.await.unwrap().unwrap().data.to_vec());
     }
     assert_eq!(inputs(&backend), texts.iter().map(|t| json!(t)).collect::<Vec<_>>());
-    assert_eq!(backend.kyutai_max_active.load(Ordering::SeqCst), 1);
+    assert_eq!(backend.pocket_max_active.load(Ordering::SeqCst), 1);
     assert_eq!(results, texts.iter().map(|t| pcm_for(t)).collect::<Vec<_>>());
 }
 
 #[tokio::test]
 async fn interactive_overtakes_waiting_background_but_not_running() {
     let backend = FakeBackend::start().await;
-    backend.with(|s| s.kyutai_delay = Duration::from_millis(30));
+    backend.with(|s| s.pocket_delay = Duration::from_millis(30));
     let tts = service(&backend, TtsOptions::default());
     let spawn = |text: &'static str, fmt: &'static str, priority: u8| {
         let tts = tts.clone();
@@ -98,7 +99,7 @@ async fn interactive_overtakes_waiting_background_but_not_running() {
 #[tokio::test]
 async fn cancelled_waiter_leaves_queue() {
     let backend = FakeBackend::start().await;
-    backend.with(|s| s.kyutai_delay = Duration::from_millis(30));
+    backend.with(|s| s.pocket_delay = Duration::from_millis(30));
     let tts = service(&backend, TtsOptions::default());
     let spawn = |text: &'static str| {
         let tts = tts.clone();
@@ -114,7 +115,7 @@ async fn cancelled_waiter_leaves_queue() {
     c.await.unwrap().unwrap();
     assert!(b.await.unwrap_err().is_cancelled());
     assert_eq!(inputs(&backend), vec![json!("Un."), json!("Trois.")]);
-    assert_eq!(tts.scheduler.depth(), 0);
+    assert_eq!(tts.pocket.as_ref().unwrap().scheduler.depth(), 0);
 }
 
 #[tokio::test]
@@ -124,8 +125,8 @@ async fn lru_cache_hits_and_evicts() {
     let first = tts.synthesize("Salut.", None, "pcm16", INTERACTIVE, opts()).await.unwrap();
     let again = tts.synthesize("Salut.", None, "pcm16", INTERACTIVE, opts()).await.unwrap();
     assert!(!first.cached && again.cached && inputs(&backend).len() == 1);
-    tts.synthesize("Salut.", Some("4193"), "pcm16", INTERACTIVE, opts()).await.unwrap(); // other voice = other key
-    tts.synthesize("Autre.", None, "pcm16", INTERACTIVE, opts()).await.unwrap(); // evicts ("5476", "Salut.")
+    tts.synthesize("Salut.", Some("pocket:colibri"), "pcm16", INTERACTIVE, opts()).await.unwrap(); // other voice = other key
+    tts.synthesize("Autre.", None, "pcm16", INTERACTIVE, opts()).await.unwrap(); // evicts ("pocket:ours", "Salut.")
     tts.synthesize("Salut.", None, "pcm16", INTERACTIVE, opts()).await.unwrap();
     assert_eq!(inputs(&backend).len(), 4);
 }
@@ -138,7 +139,7 @@ async fn errors() {
     assert_eq!(empty.status, 400);
     let long = tts.synthesize(&"x ".repeat(50), None, "pcm16", INTERACTIVE, opts()).await.unwrap_err();
     assert_eq!(long.status, 413);
-    backend.with(|s| s.kyutai_status = 500);
+    backend.with(|s| s.pocket_status = 500);
     let upstream = tts.synthesize("Ok.", None, "pcm16", INTERACTIVE, opts()).await.unwrap_err();
     assert_eq!(upstream.status, 502);
     let bad = tts.synthesize("Ok.", None, "flac", INTERACTIVE, opts()).await.unwrap_err();
@@ -146,20 +147,17 @@ async fn errors() {
 }
 
 #[tokio::test]
-async fn pocket_only_routes_everything_to_pocket_and_never_to_kyutai() {
+async fn an_old_kyutai_voice_speaks_with_the_default_bip() {
     let backend = FakeBackend::start().await;
     let tts = Arc::new(TtsService::new(
         reqwest::Client::new(),
-        None,
         "pocket:loutre",
         TtsOptions { pocket_url: Some(backend.pocket_url.clone()), ..Default::default() },
     ));
-    tts.synthesize("Bonjour.", Some("5476"), "pcm16", INTERACTIVE, opts()).await.unwrap(); // a Kyutai voice: the default Bip speaks instead
+    tts.synthesize("Bonjour.", Some("5476"), "pcm16", INTERACTIVE, opts()).await.unwrap();
     assert_eq!(backend.with(|s| s.pocket_inputs.last().unwrap()["voice"].clone()), "loutre");
-    assert!(inputs(&backend).is_empty());
     backend.with(|s| s.pocket_status = 503);
     assert!(tts.synthesize("Encore.", Some("pocket:loutre"), "pcm16", INTERACTIVE, opts()).await.is_err());
-    assert!(inputs(&backend).is_empty());
     assert_eq!(tts.reachable(None).await, None);
 }
 
@@ -202,8 +200,7 @@ fn drama_config(url: &str) -> VoiceServerConfig {
 fn drama_service(backend: &FakeBackend, server: VoiceServerConfig) -> Arc<TtsService> {
     Arc::new(TtsService::new(
         reqwest::Client::new(),
-        Some(&backend.kyutai_url),
-        "5476",
+        "pocket:ours",
         TtsOptions { pocket_url: Some(backend.pocket_url.clone()), voice_server: Some(server), ..Default::default() },
     ))
 }
@@ -313,7 +310,7 @@ async fn drama_whole_files_and_formats_it_cannot_make() {
     let mp3 =
         tts.synthesize("Bonjour à toi.", Some("drama:fr-naturelle-s21"), "mp3", INTERACTIVE, opts()).await.unwrap();
     assert_eq!(last_pocket_voice(&backend), "galet");
-    assert!(mp3.data.starts_with(b"ID3pocket"));
+    assert!(mp3.data.starts_with(b"ID3"));
 }
 
 #[tokio::test]

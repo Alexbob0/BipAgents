@@ -110,9 +110,8 @@ file is readable by group or others. Every secret also accepts the `<name>_file 
 |---|---|---|
 | `bridge_key` | — (required) | the app's single Bearer key (≥ 32 chars, `bipbridge genkey`) |
 | `host`, `port` | `127.0.0.1`, `8643` | local listening address |
-| `[kyutai] enabled`, `url`, `default_voice` | `true`, `http://127.0.0.1:8097`, `5476` | legacy: Kyutai 1.6B as an engine of its own. The installer writes `enabled = false` (Pocket only); a Kyutai server is now a `[voice_server]` like any other |
-| `[pocket] url`, `default_voice` | absent (disabled), `pocket:colibri` | Kyutai Pocket TTS (`pocket/`) for the Bips' voices; `default_voice` is the default voice when `[kyutai]` is off |
-| `[voice_server] url`, `model`, `stream_rate`, `voices`, `live`, `replies`, `reading`, `first_audio_seconds` | absent, `tts-1`, none, `[]`, `true` ×3, `5` | the person's own voice model (OpenAI `/v1/audio/speech`), see below; an earlier `[drama] url` counts as one |
+| `[pocket] url`, `default_voice` | `http://127.0.0.1:8098`, `pocket:ours` | Kyutai Pocket TTS (`pocket/`) for the Bips' voices (an old `[kyutai]` section is ignored: a Kyutai server is a `[voice_server]` like any other) |
+| `[voice_server] url`, `model`, `stream_rate`, `voices`, `live`, `replies`, `reading`, `first_audio_seconds` | absent, `tts-1`, none, `[]`, `true` ×3, `5` | the person's own voice model (OpenAI `/v1/audio/speech`), see below |
 | `[pronunciations.<lang>] <word> = "<respelling>"` | none | words the voices say wrong, respelled (whole words, any case) |
 | `[apns] team_id, key_id, p8_path, bundle_id, environment` | push disabled if empty | |
 | `[push] previews` | `false` | `false`: generic notification body, the text travels over the tailnet |
@@ -141,7 +140,7 @@ The detailed contract (exact payloads) is in the next section.
 ## 4. API contract
 
 ### `GET /health` (public)
-`{"ok": true, "version": "0.1.0", "kyutai": bool, "apns": bool, "tts_queue": n}`
+`{"ok": true, "version": "0.1.0", "pocket": bool, "apns": bool, "tts_queue": n}`
 
 ### `GET /v1/agents`
 `{"agents": [{"id": "wellness", "name": "Wellness", "voice": "5476", "uploads": true, "inbox": true}]}`
@@ -166,9 +165,7 @@ is cached. The app uses it in Live and falls back to `/v1/tts/sentence` if the b
 ### Voices and engines
 `voice` (body of the TTS routes, or an agent's `voice` in the config): a `pocket:<name>` voice (`pocket:colibri`,
 `pocket:mousse`, `pocket:lumen`, `pocket:galet`, `pocket:ours`, see `voices/french/`) goes through Kyutai Pocket TTS
-(CPU, `[pocket]` section), with its own queue. Legacy: with `[kyutai]` on, a Kyutai voice (`5476`, `4193`, `5207`, path
-`cml-tts/fr/…`) goes through Kyutai 1.6B (GPU), and a French Pocket failure falls back to it (that audio is not
-cached). `/health` reports `"pocket": true|false|null`. The apps can also speak with the Bips' voices on the phone
+(CPU, `[pocket]` section), with its own queue; an old Kyutai 1.6B voice (`5476`…) speaks with the default Bip. `/health` reports `"pocket": true|false|null`. The apps can also speak with the Bips' voices on the phone
 itself, without the bridge (`voices/onnx/`).
 
 Own voice model: `server:<language>/<id>` (`server:fr/fr-mascotte-s17`, `server:en/af_bella`) goes to `[voice_server]`, any
@@ -177,14 +174,13 @@ An agent has its Bip (`voice`) and its voice there (`server_voice`); `[voice_ser
 which uses go to the server (`voices.rs`: `use` in the TTS routes, the Live WebSocket, the outbox reading). Down,
 failing before the first sound, or too slow for a Live sentence or a spoken reply (no sound `first_audio_seconds`
 after it is sent, plus the text's length for whole files): the agent's Bip speaks, and goes on for 30 s. `GET /v1/voices` lists its voices (from its
-`GET /v1/audio/voices`, Kyutai's `/v1/voices`, else `voices`) and uses; `PUT /v1/voices/uses` and
+`GET /v1/audio/voices`, a Kyutai server's `/v1/voices`, else `voices`) and uses; `PUT /v1/voices/uses` and
 `PUT /v1/agents/{id}/voices` change them in the config file. The voices of an earlier app (`drama:<id>`) go there too.
 
 Other languages: `pocket:<language>/<name>` (`pocket:en/colibri`, `pocket:es/ours`, `pocket:de/galet`, `pocket:nl/lumen`, see
 `voices/english|spanish|german|dutch/`) goes to the Pocket model for that language; the Pocket server receives `voice` =
 `en/colibri`. The text is prepared in the voice's language (`bridge-rs/src/speech_intl.rs`, numbers via `num2words`:
-"$5" → "five dollars", "23:15 Uhr" → "dreiundzwanzig Uhr fünfzehn"). When Pocket fails (and, in French, no
-legacy Kyutai is on), the bridge returns 502/503 and the app reads the text with the phone's own voice.
+"$5" → "five dollars", "23:15 Uhr" → "dreiundzwanzig Uhr fünfzehn"). When Pocket fails, the bridge returns 502/503 and the app reads the text with the phone's own voice.
 
 ### Scheduled tasks and agent files
 - Every minute, the bridge rereads each agent's `cron_…` sessions and puts the final answer of each

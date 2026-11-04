@@ -15,21 +15,12 @@ public_url = "https://mamachine.tailnet.ts.net:8643"   # the bridge on the tailn
 # message against the links the person allowed. How the agents reach it (default http://127.0.0.1:<port>/peer):
 # peer_url = "http://host.containers.internal:8643/peer"   # agents in containers
 
-# Kyutai TTS 1.6B (Nvidia GPU): "classic" human voice and podcast. Optional: without a GPU (Mac mini, VPS),
-# set `enabled = false` and keep [pocket]; the default voice then becomes `[pocket] default_voice`.
-[kyutai]
-enabled = true
-url = "http://127.0.0.1:8097"
-default_voice = "5476"      # Kyutai alias (default, 5476, 4193, 5207) or path cml-tts/fr/…_enhanced.wav
-timeout_seconds = 120
-
 # Kyutai Pocket TTS (CPU, first sound ≈ 50 ms) for the Bips' voices: the repo's pocket/pocket_server.py server,
 # voices in voices/. "pocket:<name>" (pocket:colibri…) speaks French, "pocket:en/<name>", "pocket:es/<name>",
-# "pocket:de/<name>" the other languages; any other voice goes to Kyutai. In French, Pocket missing or down →
-# default Kyutai voice (if Kyutai is enabled). Remove the section to disable it.
+# "pocket:de/<name>" the other languages. Pocket down: the app reads the text with the phone's own voice.
 [pocket]
 url = "http://127.0.0.1:8098"
-default_voice = "pocket:colibri"   # default voice when Kyutai is disabled
+default_voice = "pocket:colibri"
 # engine = "4.0.1"                 # the Pocket version (default "3.3.0"): below 4, brands and English words are
                                    # respelled; the installer and `bipagents update` set it from the Pocket's /health
 
@@ -231,7 +222,7 @@ public_url = "https://mamachine.tailnet.ts.net:8642"   # its Hermes on the tailn
 hermes_key = "CHANGE-ME-API_SERVER_KEY-of-wellness"
 upload_dir_host = "~/hermes-agent/hermes-home/profiles/wellness/uploads"
 upload_dir_container = "/home/hermes/.hermes/profiles/wellness/uploads"
-voice = "5476"
+voice = "pocket:colibri"
 
 [agents.vie]
 display_name = "Vie"
@@ -239,7 +230,7 @@ hermes_url = "http://127.0.0.1:8644"
 hermes_key = "CHANGE-ME-API_SERVER_KEY-of-vie"
 upload_dir_host = "~/hermes-agent/hermes-home/profiles/vie/uploads"
 upload_dir_container = "/home/hermes/.hermes/profiles/vie/uploads"
-voice = "5476"
+voice = "pocket:mousse"
 # The agents' vault (Réglages → Coffre in the app): an agent may hold logins only when it has its own space
 # (its own container or sandbox), never in a gateway shared with other agents. The bridge writes the items the
 # person allows into the agent's Hermes vault with that agent's Python; the secret goes on stdin, never argv.

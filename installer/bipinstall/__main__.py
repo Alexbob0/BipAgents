@@ -320,7 +320,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--pocket-models", action="store_true",
                         help="the Bips' voices with Pocket's own models instead (PyTorch, about 5.5 GB): only to make "
                              "or serve voices of your own")
-    parser.add_argument("--voice-server", "--kyutai-url",
+    parser.add_argument("--voice-server",
                         help="your own voice model: a TTS server with OpenAI's /v1/audio/speech, Kyutai's included "
                              "(default: look for one on this machine and the local network, then ask)")
     parser.add_argument("--voice-uses", help="what it speaks for, among live, replies, reading (default: asked)")

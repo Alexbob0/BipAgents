@@ -61,7 +61,6 @@ reset before each test. Each one records every request it gets.
 | Fake | Stands in for | Notes |
 |---|---|---|
 | Hermes api_server | Hermes | Several agents: the root one and the hub's `/p/<name>`. It serves sessions, messages, chat, `/v1/runs` (start, status, stop, SSE events from a script with gates, approval), capabilities and toolsets, and counts tokens while a run goes on. |
-| Kyutai TTS | Kyutai | Same fake audio as `tests/conftest.py`. |
 | Pocket TTS | Pocket | Same fake audio as `tests/conftest.py`. |
 | Voice server | The person's own voice server | Drama 3 streaming 44.1 kHz, whole WAV files, mp3, a busy GPU, an endless take, `/v1/audio/voices` or `/v1/voices`. |
 | APNs | Apple's push service | `/production/3/device/<token>` and `/sandbox/3/device/<token>`, over plain HTTP/1.1. Real APNs uses HTTP/2 over TLS, which both bridges negotiate by ALPN. |

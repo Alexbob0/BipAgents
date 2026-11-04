@@ -61,12 +61,8 @@ pub fn bip_in(voice: &str, lang: &str) -> String {
 }
 
 /// The voice of an agent nobody picked one for: its category's Bip in the language it writes in (2026-10-30: the
-/// agents of an English place spoke with the French Bips, the default `pocket:ours`). An install whose default is
-/// not a Bip (a Kyutai voice) keeps it.
+/// agents of an English place spoke with the French Bips, the default `pocket:ours`).
 pub fn default_for(config: &Config, agent: &AgentConfig) -> String {
-    if !config.default_voice.starts_with(crate::tts::POCKET_PREFIX) {
-        return config.default_voice.clone();
-    }
     let bip = format!("{}{}", crate::tts::POCKET_PREFIX, category_bip(agent.category.as_deref()));
     bip_in(&bip, &crate::handback::language_of(config, agent))
 }

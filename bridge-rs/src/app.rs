@@ -129,17 +129,16 @@ impl Services {
         let store = Store::open(&config.outbox.db_path)?;
         let tts = Arc::new(TtsService::new(
             http.clone(),
-            config.kyutai_url.as_deref(),
             &config.default_voice,
             TtsOptions {
                 cache_entries: config.limits.tts_cache_entries,
-                timeout: config.kyutai_timeout,
                 max_chars: config.limits.tts_max_chars,
                 sentence_max_chars: config.limits.sentence_max_chars,
                 pocket_url: config.pocket_url.clone(),
                 pocket_engine: config.pocket_engine.clone(),
                 voice_server: config.voice_server.clone(),
                 words: config.pronunciations.clone(),
+                ..Default::default()
             },
         ));
         let hermes = HermesClient::new(http.clone());
@@ -689,7 +688,7 @@ async fn tts_prepare(State(state): State<AppState>, Json(body): Json<TtsRequest>
     }))
 }
 
-/// A whole reply as one audio file (voice-message mode). Kyutai gets the full text at once, so it batches the
+/// A whole reply as one audio file (voice-message mode). The engine gets the full text at once, so it batches the
 /// sentences on the GPU: far faster per second of audio than sentence by sentence.
 async fn tts_message(State(state): State<AppState>, Json(body): Json<TtsRequest>) -> ApiResult<Response> {
     let config = state.config();
@@ -728,7 +727,7 @@ async fn tts_message(State(state): State<AppState>, Json(body): Json<TtsRequest>
     ))
 }
 
-/// Raw PCM16 (s16le, mono, 24 kHz) streamed as Kyutai produces it: first audio in ~0.75 s.
+/// Raw PCM16 (s16le, mono, 24 kHz) streamed as the engine produces it: first audio in ~0.1 s with Pocket.
 /// Errors before the first chunk are plain HTTP errors; the body is chunked audio only.
 async fn tts_stream(State(state): State<AppState>, Json(body): Json<TtsRequest>) -> ApiResult<Response> {
     let config = state.config();
@@ -1321,8 +1320,7 @@ pub fn build_router() -> Router<AppState> {
 async fn health(State(state): State<AppState>) -> ApiResult<Response> {
     let config = state.config();
     let tts = &state.tts;
-    let (kyutai_ok, pocket_ok, server_ok) = tokio::join!(
-        tts.reachable(None),
+    let (pocket_ok, server_ok) = tokio::join!(
         async {
             match tts.pocket.as_ref() {
                 Some(engine) => tts.reachable(Some(engine)).await,
@@ -1340,12 +1338,12 @@ async fn health(State(state): State<AppState>) -> ApiResult<Response> {
     // for the apps that offered Drama 3's voices by name, only when that server is Drama 3.
     let drama = config.voice_server.as_ref().map(|v| v.model.starts_with("drama")).unwrap_or(false);
     let mut body = json!({
-        "ok": true, "version": VERSION, "kyutai": kyutai_ok, "pocket": pocket_ok,
+        "ok": true, "version": VERSION, "pocket": pocket_ok,
         "voice_server": server_ok, "drama": if drama { json!(server_ok) } else { Value::Null },
         "apns": state.apns.is_some(), "push": state.push_mode,
         // The app registers with the publisher's relay and sends the relay token (environment « relay »).
         "push_relay": state.push_service.is_some(), "fcm": state.fcm.is_some(),
-        "tts_queue": tts.scheduler.depth(),
+        "tts_queue": tts.pocket.as_ref().map(|p| p.scheduler.depth()).unwrap_or(0),
         // The space encrypted at rest (space.rs): « on » or « off » (a locked bridge answers « locked » itself).
         "space": crate::space::health_state(),
         // What this bridge offers that the Python one doesn't (the apps hide the rest).

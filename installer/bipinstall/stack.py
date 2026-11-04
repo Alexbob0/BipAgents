@@ -101,8 +101,6 @@ def bridge_toml(inst: Install) -> str:
         lines += ["cloud = true", f"public_url = {_q(door_url)}"]
     elif inst.public(inst.ports.bridge):
         lines.append(f"public_url = {_q(inst.public(inst.ports.bridge))}")
-    # Kyutai 1.6B is no engine of its own any more: a Kyutai server is the person's voice model, like any other.
-    lines += ["", "[kyutai]", "enabled = false"]
     lines += ["", "[pocket]", f"url = {_q(inst.pocket_url)}", 'default_voice = "pocket:colibri"']
     if inst.pocket_engine:
         lines.append(f"engine = {_q(inst.pocket_engine)}")

@@ -105,9 +105,6 @@ Le `SHA256SUMS` de la release donne l'empreinte de chaque archive.
 Dans `~/.config/hermes-ios/bridge.toml`, pour une machine sans GPU :
 
 ```toml
-[kyutai]
-enabled = false                 # Kyutai 1.6B, si tu le fais tourner, est un [voice_server] comme un autre (cf. la fin)
-
 [pocket]
 url = "http://127.0.0.1:8098"
 default_voice = "pocket:colibri"

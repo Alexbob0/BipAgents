@@ -112,9 +112,8 @@ fichier est lisible par le groupe ou les autres. Chaque secret accepte aussi la 
 |---|---|---|
 | `bridge_key` | — (obligatoire) | clé Bearer unique de l'app (≥ 32 car., `bipbridge genkey`) |
 | `host`, `port` | `127.0.0.1`, `8643` | écoute locale |
-| `[kyutai] enabled`, `url`, `default_voice` | `true`, `http://127.0.0.1:8097`, `5476` | héritage : Kyutai 1.6B comme moteur à part. L'installateur écrit `enabled = false` (Pocket seul) ; un serveur Kyutai est désormais un `[voice_server]` comme un autre |
-| `[pocket] url`, `default_voice` | absent (désactivé), `pocket:colibri` | Kyutai Pocket TTS (`pocket/`) pour les voix des Bips ; `default_voice` est la voix par défaut quand `[kyutai]` est coupé |
-| `[voice_server] url`, `model`, `stream_rate`, `voices`, `live`, `replies`, `reading`, `first_audio_seconds` | absent, `tts-1`, aucun, `[]`, `true` ×3, `5` | le modèle de voix de la personne (OpenAI `/v1/audio/speech`), voir plus bas ; un ancien `[drama] url` en est un |
+| `[pocket] url`, `default_voice` | `http://127.0.0.1:8098`, `pocket:ours` | Kyutai Pocket TTS (`pocket/`) pour les voix des Bips (une ancienne section `[kyutai]` est ignorée : un serveur Kyutai est un `[voice_server]` comme un autre) |
+| `[voice_server] url`, `model`, `stream_rate`, `voices`, `live`, `replies`, `reading`, `first_audio_seconds` | absent, `tts-1`, aucun, `[]`, `true` ×3, `5` | le modèle de voix de la personne (OpenAI `/v1/audio/speech`), voir plus bas |
 | `[pronunciations.<langue>] <mot> = "<graphie>"` | aucun | les mots que les voix disent mal, réécrits (mots entiers, toute casse) |
 | `[apns] team_id, key_id, p8_path, bundle_id, environment` | push désactivé si vide | |
 | `[push] previews` | `false` | `false` : corps de notification générique, le texte transite par le tailnet |
@@ -143,7 +142,7 @@ Le contrat détaillé (payloads exacts) est dans la section suivante.
 ## 4. Contrat d'API
 
 ### `GET /health` (public)
-`{"ok": true, "version": "0.1.0", "kyutai": bool, "apns": bool, "tts_queue": n}`
+`{"ok": true, "version": "0.1.0", "pocket": bool, "apns": bool, "tts_queue": n}`
 
 ### `GET /v1/agents`
 `{"agents": [{"id": "wellness", "name": "Wellness", "voice": "5476", "uploads": true, "inbox": true}]}`
@@ -168,9 +167,8 @@ est mis en cache. L'app l'utilise en Live et retombe sur `/v1/tts/sentence` si l
 ### Voix et moteurs
 `voice` (corps des routes TTS, ou `voice` d'un agent dans la config) : une voix `pocket:<nom>` (`pocket:colibri`,
 `pocket:mousse`, `pocket:lumen`, `pocket:galet`, `pocket:ours`, cf. `voices/french/`) passe par Kyutai Pocket TTS (CPU,
-section `[pocket]`), avec sa propre file d'attente. Héritage : avec `[kyutai]` actif, une voix Kyutai (`5476`, `4193`,
-`5207`, chemin `cml-tts/fr/…`) passe par Kyutai 1.6B (GPU), et un échec de Pocket en français y retombe (cet audio-là
-n'est pas mis en cache). `/health` indique `"pocket": true|false|null`. Les apps peuvent aussi parler avec les voix des
+section `[pocket]`), avec sa propre file d'attente ; une ancienne voix Kyutai 1.6B (`5476`…) parle avec le Bip par
+défaut. `/health` indique `"pocket": true|false|null`. Les apps peuvent aussi parler avec les voix des
 Bips sur le téléphone lui-même, sans le bridge (`voices/onnx/`).
 
 Modèle de voix personnel : `server:<langue>/<id>` (`server:fr/fr-mascotte-s17`, `server:en/af_bella`) va à
@@ -186,8 +184,7 @@ ancienne app (`drama:<id>`) y vont aussi.
 Autres langues : `pocket:<langue>/<nom>` (`pocket:en/colibri`, `pocket:es/ours`, `pocket:de/galet`, `pocket:nl/lumen`, cf.
 `voices/english|spanish|german|dutch/`) passe au modèle Pocket de cette langue ; le serveur Pocket reçoit `voice` =
 `en/colibri`. Le texte est préparé dans la langue de la voix (`bridge-rs/src/speech_intl.rs`, nombres via `num2words` :
-« $5 » → « five dollars », « 23:15 Uhr » → « dreiundzwanzig Uhr fünfzehn »). Quand Pocket échoue (et, en français, sans
-Kyutai hérité actif), le bridge répond 502/503 et l'app lit le texte avec la voix du téléphone.
+« $5 » → « five dollars », « 23:15 Uhr » → « dreiundzwanzig Uhr fünfzehn »). Quand Pocket échoue, le bridge répond 502/503 et l'app lit le texte avec la voix du téléphone.
 
 ### Tâches planifiées et fichiers des agents
 - Le bridge relit toutes les minutes les sessions `cron_…` de chaque agent et met la réponse finale de chaque

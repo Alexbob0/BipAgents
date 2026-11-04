@@ -119,8 +119,7 @@ def parse_uses(text: str) -> Dict[str, bool]:
 
 
 def connect(config_path: Path, lines: Sequence[str], runner: hermes.Runner) -> bool:
-    """This account's bridge uses the voice server: its `[voice_server]` table written (replacing an earlier one, or an
-    earlier installer's `[drama]`)."""
+    """This account's bridge uses the voice server: its `[voice_server]` table written (replacing an earlier one)."""
     if not config_path.exists():
         return False
 
@@ -129,7 +128,7 @@ def connect(config_path: Path, lines: Sequence[str], runner: hermes.Runner) -> b
         for line in text.splitlines():
             header = line.strip()
             if header.startswith("[") and header.endswith("]"):
-                skipping = header in ("[voice_server]", "[drama]")
+                skipping = header == "[voice_server]"
             if not skipping:
                 kept.append(line)
         return "\n".join(kept).rstrip("\n") + "\n\n" + "\n".join(lines) + "\n"

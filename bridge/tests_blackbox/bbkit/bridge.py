@@ -99,7 +99,6 @@ def default_config(root: Path, fakes: Any, p8_path: str) -> Dict[str, Any]:
         "host": "127.0.0.1",
         "port": free_port(),
         "data_dir": str(root / "data"),
-        "kyutai": {"url": fakes.kyutai.url, "default_voice": "5476"},
         "pocket": {"url": fakes.pocket.url},
         "apns": {"team_id": "TEAM123456", "key_id": "TESTKEY123", "p8_path": p8_path,
                  "bundle_id": "io.github.bipagents", "environment": "sandbox",
@@ -123,7 +122,7 @@ def default_config(root: Path, fakes: Any, p8_path: str) -> Dict[str, Any]:
                 "display_name": "Wellness", "hermes_url": fakes.hermes.url, "hermes_key": HERMES_KEY,
                 "upload_dir_host": str(root / "uploads" / "wellness"),
                 "upload_dir_container": "/home/hermes/.hermes/profiles/wellness/uploads",
-                "voice": "4193",
+                "voice": "pocket:colibri",
             },
         },
     }

@@ -76,9 +76,9 @@ async fn a_message_lands_in_outbox_with_audio_and_push() {
 
     // Audio was pre-synthesized as mp3 from the normalized text.
     let mp3: Vec<Value> =
-        backend.with(|s| s.kyutai_inputs.iter().filter(|b| b["response_format"] == "mp3").cloned().collect());
+        backend.with(|s| s.pocket_inputs.iter().filter(|b| b["response_format"] == "mp3").cloned().collect());
     assert_eq!(mp3[0]["input"], "Bonjour Sam, as-tu bien dormi ?");
-    assert_eq!(mp3[0]["voice"], "4193");
+    assert_eq!(mp3[0]["voice"], "colibri");
     let id = first["id"].as_str().unwrap();
     let audio = client.get(&format!("/v1/outbox/{id}/audio"), &h).await;
     assert_eq!(audio.status, StatusCode::OK);

@@ -42,8 +42,8 @@ def test_a_message_lands_in_outbox_with_audio_and_push(bridges, fakes):
     assert items[1]["title"] == "Eau" and items[1]["session_id"] != session
 
     # Audio was pre-synthesized as mp3 from the normalized text.
-    mp3_calls = [b for b in fakes.kyutai.inputs if b["response_format"] == "mp3"]
-    assert mp3_calls[0]["input"] == "Bonjour Sam, as-tu bien dormi ?" and mp3_calls[0]["voice"] == "4193"
+    mp3_calls = [b for b in fakes.pocket.inputs if b["response_format"] == "mp3"]
+    assert mp3_calls[0]["input"] == "Bonjour Sam, as-tu bien dormi ?" and mp3_calls[0]["voice"] == "colibri"
     audio = bridge.get(f"/v1/outbox/{first['id']}/audio", headers=AUTH)
     assert audio.status_code == 200 and audio.headers["content-type"] == "audio/mpeg"
     assert audio.content == b"ID3Bonjour Sam, as-tu bien dormi ?"
@@ -110,7 +110,7 @@ def test_no_words_in_clear_even_with_the_old_previews_setting(bridges, fakes):
 
 def test_outbox_audio_too_long_or_failing(bridges, fakes):
     bridge = bridges.new(change=lambda c: c["outbox"].update(audio_max_chars=20))
-    fakes.kyutai.status = 500
+    fakes.pocket.status = 500
     bridge.start()
     long_item = boite_message(bridge, fakes, "Un texte bien trop long pour être lu à voix haute.")
     short_item = boite_message(bridge, fakes, "Court.")
@@ -119,6 +119,6 @@ def test_outbox_audio_too_long_or_failing(bridges, fakes):
     assert none.status_code == 404 and none.json() == {"detail": "no audio for this message"}
     failed = bridge.get(f"/v1/outbox/{short_item['id']}/audio", headers=AUTH)
     assert failed.status_code == 503 and failed.json() == {"detail": "audio synthesis failed"}
-    fakes.kyutai.status = 200
+    fakes.pocket.status = 200
     ok = bridge.get(f"/v1/outbox/{short_item['id']}/audio", headers=AUTH)
     assert ok.status_code == 200 and ok.content == b"ID3Court."

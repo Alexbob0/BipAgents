@@ -115,7 +115,7 @@ def test_agents_discovery_and_install_qr(bridges, fakes):
     one = bridge.cli("qr", "--json", "--agent", "Wellness")
     assert json.loads(one.stdout) == {"name": "Wellness", "agent": "wellness", "baseURL": "https://box.example.ts.net:8642",
                                       "apiKey": HERMES_KEY, "bridgeURL": "https://box.example.ts.net:8643",
-                                      "bridgeKey": BRIDGE_KEY, "voice": "4193"}
+                                      "bridgeKey": BRIDGE_KEY, "voice": "pocket:colibri"}
     unknown = bridge.cli("qr", "--json", "--agent", "nobody")
     assert unknown.returncode == 2 and unknown.stderr.strip() == "unknown agent: nobody"
 
@@ -193,7 +193,7 @@ def test_the_check_command(bridges, fakes):
     lines = out.stdout.splitlines()
     assert lines[0] == f"config OK: {bridge.config_path}"
     assert f"  listen      127.0.0.1:{bridge.port}" in lines
-    assert f"  kyutai      {fakes.kyutai.url}" in lines and "  voice       5476 (default)" in lines
+    assert f"  pocket      {fakes.pocket.url}" in lines and "  voice       pocket:ours (default)" in lines
     assert "  apns        enabled (sandbox)" in lines and "  lan         off" in lines
     assert any(line.startswith("  agent wellness: hermes=") for line in lines)
     assert len(bridge.cli("genkey").stdout.strip()) == 43

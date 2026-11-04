@@ -1,4 +1,4 @@
-"""The fake servers the bridge talks to, each on its own port of 127.0.0.1: Hermes' api_server, Kyutai TTS, Pocket
+"""The fake servers the bridge talks to, each on its own port of 127.0.0.1: Hermes' api_server, Pocket
 TTS, the person's own voice server, APNs, FCM (with Google's OAuth token endpoint), the publisher's push relay
 and a model's /v1/models. They behave like the fakes of tests/conftest.py (same fake audio, same answers), record
 every request (`.requests`, a list of `Seen`) and are driven from the tests by plain attributes.
@@ -90,10 +90,10 @@ class Fake:
 
 # -- TTS ---------------------------------------------------------------------------------------------------------
 
-class FakeKyutai(Fake):
-    """Kyutai TTS: `/health`, `/v1/audio/speech` (wav: the fake PCM in a WAV; mp3: « ID3 » + the text) and
+class FakePocket(Fake):
+    """Pocket TTS: `/health` (its voices), `/v1/audio/speech` (wav: the fake PCM in a WAV; mp3: « ID3 » + the text) and
     `/v1/audio/stream` (the fake PCM in two chunks)."""
-    name = "kyutai"
+    name = "pocket"
 
     def reset(self) -> None:
         super().reset()
@@ -102,28 +102,31 @@ class FakeKyutai(Fake):
         self.active = 0
         self.max_active = 0
         self.status = 200
+        self.statuses: List[int] = []   # one status per synthesis request, then `status`
         self.streaming = True
+        self.voices = {"fr": ["colibri", "galet", "lumen", "mousse", "ours"]}
 
     async def handle(self, seen: Seen) -> Response:
         if seen.path == "/health":
-            return JSONResponse({"status": "ok"})
+            return JSONResponse({"status": "ok", "voices": self.voices}, status_code=200 if self.status == 200 else 503)
         body = seen.json()
         with self.lock:
             self.active += 1
             self.max_active = max(self.max_active, self.active)
             self.inputs.append(body)
+            status = self.statuses.pop(0) if self.statuses else self.status
         try:
             if self.delay:
                 await asyncio.sleep(self.delay)
         finally:
             with self.lock:
                 self.active -= 1
-        if self.status != 200:
-            return PlainTextResponse("boom", status_code=self.status)
+        if status != 200:
+            return PlainTextResponse("pocket down", status_code=status)
+        pcm = pcm_for(body["input"])
         if seen.path == "/v1/audio/stream":
             if not self.streaming:
                 return JSONResponse({"detail": "Not Found"}, status_code=404)
-            pcm = pcm_for(body["input"])
 
             async def chunks():
                 half = len(pcm) // 2 + 1   # odd split on purpose: chunks need not be sample-aligned
@@ -133,36 +136,8 @@ class FakeKyutai(Fake):
 
             return StreamingResponse(chunks(), media_type="application/octet-stream")
         if body.get("response_format") == "wav":
-            return Response(make_wav(pcm_for(body["input"])), media_type="audio/wav")
-        return Response(b"ID3" + body["input"].encode(), media_type="audio/mpeg")
-
-
-class FakePocket(Fake):
-    """Pocket TTS speaks the Kyutai API; its fake audio is the text reversed (tells engines apart)."""
-    name = "pocket"
-
-    def reset(self) -> None:
-        super().reset()
-        self.inputs: List[Dict[str, Any]] = []
-        self.status = 200
-        self.statuses: List[int] = []   # one status per synthesis request, then `status`
-        self.voices = {"fr": ["colibri", "galet", "lumen", "mousse", "ours"]}
-
-    async def handle(self, seen: Seen) -> Response:
-        if seen.path == "/health":
-            return JSONResponse({"status": "ok", "voices": self.voices}, status_code=200 if self.status == 200 else 503)
-        body = seen.json()
-        with self.lock:
-            self.inputs.append(body)
-            status = self.statuses.pop(0) if self.statuses else self.status
-        if status != 200:
-            return PlainTextResponse("pocket down", status_code=status)
-        pcm = pcm_for(body["input"][::-1])
-        if seen.path == "/v1/audio/stream":
-            return Response(pcm, media_type="application/octet-stream")
-        if body.get("response_format") == "wav":
             return Response(make_wav(pcm), media_type="audio/wav")
-        return Response(b"ID3pocket" + body["input"].encode(), media_type="audio/mpeg")
+        return Response(b"ID3" + body["input"].encode(), media_type="audio/mpeg")
 
 
 def tone(seconds: float, rate: int = 44100) -> bytes:
@@ -867,7 +842,6 @@ class Fakes:
     def __init__(self) -> None:
         from .servers import Dropper
         self.hermes = FakeHermes()
-        self.kyutai = FakeKyutai()
         self.pocket = FakePocket()
         self.voices = FakeVoiceServer()
         self.model = FakeModel()
@@ -876,7 +850,7 @@ class Fakes:
         self.push_service = FakePushService()
         self.admin_relay = FakeAdminRelay()
         self.maps = FakeMaps()
-        self.all: List[Fake] = [self.hermes, self.kyutai, self.pocket, self.voices, self.model, self.apns,
+        self.all: List[Fake] = [self.hermes, self.pocket, self.voices, self.model, self.apns,
                                 self.fcm, self.push_service, self.admin_relay, self.maps]
         self.down = Dropper()
         from .imap import FakeImap

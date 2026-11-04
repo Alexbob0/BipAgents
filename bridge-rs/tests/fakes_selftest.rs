@@ -14,14 +14,14 @@ async fn backend_fakes_answer_like_conftest() {
     let backend = FakeBackend::start().await;
     let http = reqwest::Client::new();
     let r = http
-        .post(format!("{}/v1/audio/speech", backend.kyutai_url))
+        .post(format!("{}/v1/audio/speech", backend.pocket_url))
         .json(&json!({"input": "ab", "response_format": "mp3"}))
         .send()
         .await
         .unwrap();
     assert_eq!(r.bytes().await.unwrap().as_ref(), b"ID3ab");
     let r = http
-        .post(format!("{}/v1/audio/stream", backend.kyutai_url))
+        .post(format!("{}/v1/audio/stream", backend.pocket_url))
         .json(&json!({"input": "abc"}))
         .send()
         .await
@@ -33,8 +33,8 @@ async fn backend_fakes_answer_like_conftest() {
         .send()
         .await
         .unwrap();
-    assert_eq!(r.bytes().await.unwrap().to_vec(), wav(&pcm_for("ba")));
-    assert_eq!(backend.with(|s| s.kyutai_inputs.len()), 2);
+    assert_eq!(r.bytes().await.unwrap().to_vec(), wav(&pcm_for("ab")));
+    assert_eq!(backend.with(|s| s.pocket_inputs.len()), 3);
 
     backend.with(|s| {
         s.runs.insert(

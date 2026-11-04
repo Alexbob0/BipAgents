@@ -239,8 +239,8 @@ async fn an_agent_turns_a_text_into_audio_with_its_voice() {
     let media = text_of(&result).split("MEDIA:").nth(1).unwrap().split_whitespace().next().unwrap().to_string();
     assert!(media.starts_with("/bipagents/audio/wellness/") && media.contains("podcast-du-matin"), "{media}");
     // Read with the agent's reading voice, one paragraph at a time, in the background queue.
-    let voices: Vec<Value> = backend.with(|s| s.kyutai_inputs.iter().map(|b| b["voice"].clone()).collect());
-    assert_eq!(voices, vec![json!("4193"), json!("4193")]);
+    let voices: Vec<Value> = backend.with(|s| s.pocket_inputs.iter().map(|b| b["voice"].clone()).collect());
+    assert_eq!(voices, vec![json!("colibri"), json!("colibri")]);
     // The app gets the file like any MEDIA: file.
     let (k, v) = auth();
     let audio = app.get(&format!("/v1/media?path={}", urlencoding(&media)), &[(k, &v)]).await;
@@ -281,7 +281,7 @@ async fn a_long_call_is_streamed_and_errors_are_the_tools_not_the_protocols() {
     assert_eq!(parsed["result"]["isError"], false);
     let too_long = call(&app, "create_audio", json!({"text": "x".repeat(agent_tools::MAX_CHARS + 1)})).await;
     assert!(too_long["isError"] == true && text_of(&too_long).contains("too long"));
-    backend.with(|s| s.kyutai_status = 500);
+    backend.with(|s| s.pocket_status = 500);
     let failed = call(&app, "create_audio", json!({"text": "Autre phrase."})).await;
     assert_eq!(failed["isError"], true);
     let unknown = rpc(&app, TOKEN, "resources/list", json!({}), Some(1), "application/json").await.json();
@@ -322,22 +322,20 @@ async fn a_podcast_gives_each_host_a_voice_of_their_own() {
     let app = app_with_token(dir.path(), &backend).await;
     let listed = call(&app, "list_voices", json!({})).await;
     let lines: Vec<String> = text_of(&listed).lines().map(str::to_string).collect();
-    assert_eq!(&lines[..2], &["4193 (your voice)", "pocket:colibri (Bip)"]);
+    assert_eq!(&lines[..2], &["pocket:colibri (your voice)", "pocket:galet (Bip)"]);
     let turns = json!([{"speaker": "Max", "text": "Bonjour à tous, bienvenue."},
                        {"speaker": "Léa", "text": "Salut Max ! Alors, quoi de neuf ?"},
                        {"speaker": "Max", "text": "Trois nouvelles aujourd'hui."}]);
     let result = call(&app, "create_podcast", json!({"title": "Le point", "turns": turns})).await;
     assert_eq!(result["isError"], false, "{result}");
-    assert!(text_of(&result).contains("Max: 4193") && text_of(&result).contains("Léa: pocket:colibri"));
+    assert!(text_of(&result).contains("Max: pocket:colibri") && text_of(&result).contains("Léa: pocket:galet"));
     // The first host with the agent's voice, the other with another one; turns read in order.
-    let kyutai: Vec<Value> = backend.with(|s| s.kyutai_inputs.iter().map(|b| b["voice"].clone()).collect());
     let pocket: Vec<Value> = backend.with(|s| s.pocket_inputs.iter().map(|b| b["voice"].clone()).collect());
-    assert_eq!(kyutai, vec![json!("4193"), json!("4193")]);
-    assert_eq!(pocket, vec![json!("colibri")]);
+    assert_eq!(pocket, vec![json!("colibri"), json!("galet"), json!("colibri")]);
     // A voice picked by the agent, from list_voices; an unknown one is refused.
-    let picked = call(&app, "create_podcast", json!({"turns": turns, "voices": {"Léa": "pocket:galet"}})).await;
+    let picked = call(&app, "create_podcast", json!({"turns": turns, "voices": {"Léa": "pocket:lumen"}})).await;
     assert_eq!(picked["isError"], false);
-    assert_eq!(backend.with(|s| s.pocket_inputs.last().unwrap()["voice"].clone()), "galet");
+    assert_eq!(backend.with(|s| s.pocket_inputs.last().unwrap()["voice"].clone()), "lumen");
     let bad = call(&app, "create_podcast", json!({"turns": turns, "voices": {"Léa": "pocket:dragon"}})).await;
     assert!(bad["isError"] == true && text_of(&bad).contains("unknown voice"));
     let empty = call(&app, "create_podcast", json!({"turns": [{"speaker": "Max"}]})).await;

@@ -208,7 +208,7 @@ def test_an_update_brings_the_light_voices_new_packages(monkeypatch, tmp_path):
 def bridge_config(tmp_path, pocket):
     config = tmp_path / ".config" / "bipagents" / "bridge.toml"
     config.parent.mkdir(parents=True, exist_ok=True)
-    config.write_text('bridge_key = "k"\nport = 8643\n\n[kyutai]\nenabled = false\n\n' + pocket + "\n[cron]\nwatch = true\n")
+    config.write_text('bridge_key = "k"\nport = 8643\n\n' + pocket + "\n[cron]\nwatch = true\n")
     return config
 
 

@@ -1,5 +1,5 @@
 //! Shared test support (Python's tests/conftest.py): the config dict the tests start from, an app driven without
-//! a socket, and fake backends (Hermes, Kyutai, APNs…) as small axum servers on 127.0.0.1.
+//! a socket, and fake backends (Hermes, Pocket, APNs…) as small axum servers on 127.0.0.1.
 //!
 //! Each test file declares `mod common;` and uses what it needs; add helpers here only when several groups need
 //! them (other agents edit their own test files).
@@ -50,7 +50,6 @@ pub fn auth() -> (&'static str, String) {
 
 /// Python's `config_dict` fixture, with the backends' URLs given (fakes started by the test, or unreachable ones).
 pub struct Urls {
-    pub kyutai: String,
     pub pocket: String,
     pub hermes: String,
 }
@@ -59,7 +58,6 @@ impl Default for Urls {
     /// Nothing listens there (connections refused at once).
     fn default() -> Self {
         Urls {
-            kyutai: "http://127.0.0.1:9".into(),
             pocket: "http://127.0.0.1:9".into(),
             hermes: "http://127.0.0.1:9".into(),
         }
@@ -79,7 +77,6 @@ pub fn config_dict(dir: &Path, urls: &Urls) -> Value {
     json!({
         "bridge_key": BRIDGE_KEY,
         "data_dir": dir.join("data").to_string_lossy(),
-        "kyutai": {"url": urls.kyutai, "default_voice": "5476"},
         "pocket": {"url": urls.pocket},
         "apns": {"team_id": "TEAM123456", "key_id": "TESTKEY123", "p8_path": p8,
                  "bundle_id": "io.github.bipagents", "environment": "sandbox"},
@@ -96,7 +93,7 @@ pub fn config_dict(dir: &Path, urls: &Urls) -> Value {
                 "display_name": "Wellness", "hermes_url": urls.hermes, "hermes_key": HERMES_KEY,
                 "upload_dir_host": dir.join("uploads").join("wellness").to_string_lossy(),
                 "upload_dir_container": "/home/hermes/.hermes/profiles/wellness/uploads",
-                "voice": "4193",
+                "voice": "pocket:colibri",
             },
         },
     })
