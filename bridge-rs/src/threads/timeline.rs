@@ -508,6 +508,16 @@ pub fn segment_items(
     items
 }
 
+/// An agent's message that only says it has nothing to tell (background_turn.rs `is_silent`), nothing attached.
+pub fn silent_reply(item: &Item) -> bool {
+    let b = &item.body;
+    b.get("kind") == Some(&json!("message"))
+        && b.get("role") == Some(&json!("agent"))
+        && b.get("attachments").and_then(Value::as_array).is_none_or(|a| a.is_empty())
+        && b.get("renamed").is_none()
+        && crate::background_turn::is_silent(b.get("text").and_then(Value::as_str).unwrap_or(""))
+}
+
 /// The copied tail of a continuation: its leading rows that repeat the parent's last ones (same uid, or same role and
 /// words), by message id.
 pub fn copied_tail(agent: &str, session: &str, rows: &[Row], parent: &[Row]) -> HashSet<String> {
@@ -716,6 +726,14 @@ mod tests {
         let a = items(&[plain.clone()]);
         assert!(a[0].id.starts_with("m_") && a[0].id.len() == 26);
         assert_eq!(a, items(&[plain]));
+    }
+
+    #[test]
+    fn a_silent_reply_is_known() {
+        let got = items(&[row(1, "user", json!("Vérifie mes mails")), row(2, "assistant", json!("[PAS UN MOT]")),
+                          row(3, "assistant", json!("[Météo] Soleil."))]);
+        let silent: Vec<bool> = got.iter().map(silent_reply).collect();
+        assert_eq!(silent, vec![false, true, false]);
     }
 
     #[test]

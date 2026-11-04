@@ -36,6 +36,37 @@ use crate::runs::RunHub;
 use crate::tools_knowledge as tk;
 use crate::{py, Dict};
 
+/// The code word a turn without the person answers when there is nothing worth telling: no message, no push.
+pub const SILENT: &str = "[SILENT]";
+
+/// The rule a hidden note gives for it: the same words every run (the prompt cache), and a code word the model must
+/// not translate (Alex 4/11: a French routine answered « [PAS UN MOT] », delivered as a report).
+pub const SILENT_RULE: &str = "answer exactly [SILENT]: a code word for the app, never translated, kept exactly as \
+written (in English, in brackets, nothing else), whatever the conversation's language";
+
+/// A reply that tells the person nothing: empty, the code word (with anything after it), « SILENT » or « NO_REPLY »
+/// without brackets (as Hermes' cron reads them), or only one short bracketed marker in any language (« [PAS UN MOT] »,
+/// « [RIEN] », « [SILENCIO] »: the code word translated). A report that starts with a bracketed tag and goes on is not
+/// silent.
+pub fn is_silent(text: &str) -> bool {
+    static NOTES: std::sync::LazyLock<regex::Regex> =
+        std::sync::LazyLock::new(|| regex::Regex::new(r"<!--[\s\S]*?(?:-->|$)").expect("valid regex"));
+    let bare = NOTES.replace_all(text, "");
+    let t = bare.trim().trim_matches(|c: char| matches!(c, '`' | '*' | '_' | '"' | '«' | '»' | '“' | '”')).trim();
+    if t.is_empty() || bare.trim_start().starts_with(SILENT) {
+        return true;
+    }
+    let t = t.trim_end_matches(['.', '!']).trim();
+    if ["SILENT", "NO_REPLY", "NO REPLY"].iter().any(|w| t.eq_ignore_ascii_case(w)) {
+        return true;
+    }
+    let Some(inner) = t.strip_prefix('[').and_then(|r| r.strip_suffix(']')) else { return false };
+    let inner = inner.trim();
+    inner.chars().count() <= 32
+        && inner.chars().any(char::is_alphabetic)
+        && inner.chars().all(|c| c.is_alphanumeric() || matches!(c, ' ' | '_' | '-' | '.' | '!' | '\'' | '’'))
+}
+
 /// What a starter is (its credit rule, the brake's limits, the logs).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
@@ -441,6 +472,23 @@ mod tests {
         assert!(Kind::Trigger.waits_for_agent() && !Kind::Handback.waits_for_agent());
         assert!(Kind::Task.long() && !Kind::Watcher.long());
         assert!(Kind::AfterCall.needs_credit() && Kind::AfterCall.long() && !Kind::AfterCall.waits_for_agent());
+    }
+
+    #[test]
+    fn silent_replies_in_any_language_and_only_those() {
+        for quiet in ["", "  \n", "[SILENT]", " [SILENT]\n", "[SILENT] rien de neuf", "`[SILENT]`", "**[SILENT]**",
+            "SILENT", "silent.", "no_reply", "[PAS UN MOT]", "[SILENCE]", "[RIEN]", "[SILENCIO]", "[STILL]", "[ Rien. ]",
+            "« [RIEN] »", "[nichts_zu_melden]", "[AUCUN-MESSAGE]", "<!--bip:x-->[RIEN]", "[l’heure du silence]"] {
+            assert!(is_silent(quiet), "{quiet:?} should be silent");
+        }
+        for said in ["[Météo] Soleil toute la journée.", "[RIEN] sauf un e-mail de la banque.", "Rien de neuf.",
+            "SILENT NIGHT est passé à la radio", "[voir le rapport](https://example.com/r)",
+            "[Pièce jointe : devis.pdf (application/pdf, 12 Ko) → /home/x/devis.pdf]",
+            "[ce message est bien trop long pour être un simple marqueur]", "[42]", "[RIEN]\n[RIEN]", "Pas un mot."] {
+            assert!(!is_silent(said), "{said:?} is a report");
+        }
+        // the note's words: the code word itself, the same text every run (the prompt cache)
+        assert!(SILENT_RULE.contains(SILENT) && SILENT_RULE.contains("never translated"));
     }
 
     #[test]

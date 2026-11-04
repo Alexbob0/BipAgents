@@ -61,7 +61,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::app::AppState;
-use crate::background_turn::{Delivery, Kind, Pipeline, Turn};
+use crate::background_turn::{Delivery, Kind, Pipeline, Turn, SILENT_RULE};
 use crate::auth::ClientAddr;
 use crate::config::{AgentConfig, Config};
 use crate::tools_knowledge::{self as tk, tool_text};
@@ -74,7 +74,7 @@ pub const HOOK_PATH: &str = "/hook";
 /// The approval card of a trigger an agent proposed (`/v1/approvals`, `/v1/approve`).
 pub const RUN_PREFIX: &str = "bip-trig-";
 pub const TOOL_NAME: &str = "routine_trigger";
-pub const SILENT: &str = "[SILENT]";
+pub use crate::background_turn::SILENT;
 pub const MAX_PER_AGENT: usize = 20;
 pub const NAME_MAX: usize = 80;
 pub const PROMPT_MAX: usize = 4000;
@@ -448,7 +448,7 @@ pub fn turn_text(t: &Trigger, events: &[Event], dropped: u64) -> String {
         "⚡ {name}\n<!--bip:trigger\nYour routine « {name} » starts because {what}.{lost} Your person set it up and \
 asked you, in their words:\n---\n{prompt}\n---\nDo it now, on your own, with your tools (your person's approvals still \
 apply). Then write ONE short message to your person in their language, in plain words: what came in and what you did. \
-If there is nothing worth telling them, answer exactly {SILENT} and nothing else.\n{UNTRUSTED}\n{blocks}\n-->",
+If there is nothing worth telling them, {SILENT_RULE}.\n{UNTRUSTED}\n{blocks}\n-->",
         name = tk::in_note_line(&t.name),
         prompt = tk::in_note(tk::strip(&t.prompt)),
         blocks = blocks.join("\n"),
@@ -905,7 +905,7 @@ pub async fn fire(state: &AppState, id: &str) {
         }
     };
     let ok = turn.status == "completed" || turn.status == "gone";
-    let silent = turn.text.is_empty() || turn.text.trim().starts_with(SILENT);
+    let silent = crate::background_turn::is_silent(&turn.text);
     let mut message = if !ok { format!("ended {}", turn.status) } else if silent { "silent".into() } else { "sent".into() };
     if ok && !silent {
         // the agent's own message in the routine's conversation, pointed at by the Boîte (no copy of it)

@@ -42,7 +42,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::app::AppState;
-use crate::background_turn::{Delivery, Kind, Pipeline, Turn};
+use crate::background_turn::{is_silent, Delivery, Kind, Pipeline, Turn, SILENT_RULE};
 use crate::config::{AgentConfig, Config};
 use crate::tools_knowledge::tool_text;
 use crate::web::{self, ApiResult, HttpError, QueryMap};
@@ -50,7 +50,7 @@ use crate::{py, Dict};
 
 pub const TOOL_NAME: &str = "routine_schedule";
 /// Nothing new to tell: no message.
-pub const SILENT: &str = "[SILENT]";
+pub use crate::background_turn::SILENT;
 /// How often the clock looks, and how long one run may take.
 const TICK_SECONDS: u64 = 20;
 const TURN_MAX_SECONDS: f64 = 1800.0;
@@ -398,8 +398,8 @@ pub fn note(r: &Routine) -> String {
     format!(
         "{}\n\n<!--bip:routine\nThis is your routine « {} », started by its schedule: your person is not in this \
 conversation. Do it on your own with your tools, then end with a short message for them in their language, written \
-like a background task's report (what you did, what you found or made). If there is nothing new worth telling, answer \
-exactly {SILENT}.{skills}\n-->",
+like a background task's report (what you did, what you found or made). If there is nothing new worth telling, \
+{SILENT_RULE}.{skills}\n-->",
         r.prompt, r.name
     )
 }
@@ -481,13 +481,15 @@ pub async fn fire(state: &AppState, id: &str) {
     let status = match pipeline.work_session(&agent, &title, "").await {
         Err(e) => format!("no conversation ({e})"),
         Ok(session) => {
-            crate::threads::threads_of(state).adopt(&agent, &session, "routine", json!({"kind": "routine", "routine": r.id})).await;
-            let mut turn = Turn::new(&agent, Kind::Routine, &session, note(&r));
+            // the run in its own hidden thread, never at the tip of the conversation the routine was made in
+            let origin = json!({"kind": "routine", "routine": r.id});
+            let thread = crate::threads::threads_of(state).adopt(&agent, &session, &title, "routine", origin).await;
+            let mut turn = Turn::new(&agent, Kind::Routine, thread.as_deref().unwrap_or(&session), note(&r));
             turn.max_seconds = TURN_MAX_SECONDS;
             match pipeline.run(&turn).await {
                 Err(why) => why.to_string(),
                 Ok(ran) if !ran.answered() => format!("ended {}", ran.status),
-                Ok(ran) if ran.text.trim().starts_with(SILENT) => "silent".into(),
+                Ok(ran) if is_silent(&ran.text) => "silent".into(),
                 Ok(ran) => deliver(state, &pipeline, &agent, &r, &ran).await,
             }
         }
@@ -507,9 +509,18 @@ async fn deliver(state: &AppState, pipeline: &Pipeline, agent: &AgentConfig, r: 
         "" => None,
         o => state.hermes.session(agent, o).await.ok().map(|_| o.to_string()),
     };
+    // no conversation of its own (an app's routine, a Hermes job from before 1/11): the main one, so its push opens
+    // the person's conversation on the report, not the run's hidden thread (Alex 4/11 took that one for his main one)
+    let home = match &origin {
+        Some(o) => o.clone(),
+        None => match pipeline.tip(agent, "main").await {
+            tip if tip == "main" || tip.is_empty() => ran.session.clone(),
+            tip => tip,
+        },
+    };
     let delivery = Delivery {
         agent: agent.clone(),
-        session: origin.clone().unwrap_or_else(|| ran.session.clone()),
+        session: home,
         key: format!("routine:{}:{}", r.id, ran.run_id),
         title: r.name.clone(),
         text: ran.text.clone(),
@@ -581,7 +592,18 @@ pub async fn migrate(state: &AppState, agent: &AgentConfig) {
             skills: job.get("skills").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default(),
             enabled,
             notify: !muted.contains(&text("id")),
-            origin: text("origin_session_id"),
+            // where it was made: patch 0019's session, else an older job's api_server chat (the main conversation)
+            origin: match text("origin_session_id") {
+                o if o.is_empty() => job
+                    .get("origin")
+                    .filter(|o| o.get("platform").and_then(Value::as_str) == Some("api_server"))
+                    .and_then(|o| o.get("chat_id"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .trim()
+                    .to_string(),
+                o => o,
+            },
             repeat: times.map(|t| t.saturating_sub(done) as u32),
             last_run: DateTime::parse_from_rfc3339(&text("last_run_at")).ok().map(|d| d.timestamp() as f64),
             last_status: text("last_status"),

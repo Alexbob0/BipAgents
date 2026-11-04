@@ -30,7 +30,7 @@ use crate::push::PushService;
 use crate::runs::RunHub;
 use crate::Dict;
 
-pub const SILENT: &str = "[SILENT]";
+pub use crate::background_turn::SILENT;
 pub const REPORT_PREFIXES: [&str; 3] = ["[ASYNC DELEGATION", "[DELEGATION", "[SUBAGENT"];
 
 /// `^cron_(?P<job>.+?)_(?P<date>\d{8})_(?P<time>\d{6})$` (Python's `$` also matches before a final newline).
@@ -383,7 +383,7 @@ impl CronWatcher {
         if answers_another_agent(messages) {
             return; // an answer to another agent: that agent reports back to the user, one notification
         }
-        if let (Some(push), true) = (&self.push, pyx::strip(&reply) != SILENT) {
+        if let (Some(push), true) = (&self.push, !crate::background_turn::is_silent(&reply)) {
             tracing::info!(agent = %agent.name, session = %sid, chars = pyx::len(&reply), "bot chat push");
             push.notify_reply(&agent.name, &format!("session:{sid}"), &reply, Some(sid)).await;
         }
