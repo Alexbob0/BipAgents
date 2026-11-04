@@ -984,8 +984,14 @@ async fn delete_page(State(state): State<AppState>, Path(page): Path<String>, q:
 
 /// Is each agent's Hermes up, and does the model answer? Lets the app tell « server down » from « model
 /// down » (its machine off, an expired API key).
-async fn status(State(state): State<AppState>) -> ApiResult<Response> {
+/// `?agent=<name>`: that agent's Hermes only (the app refreshes one agent at a time).
+async fn status(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
     let config = state.config();
+    let only = match q.get("agent").filter(|a| !a.is_empty()) {
+        Some(a) => Some(agent_or_404(&config, Some(a))?.name),
+        None => None,
+    };
+    let wanted = |name: &String| only.as_ref().is_none_or(|o| o == name);
     let hermes_ok = |agent: AgentConfig| {
         let state = state.clone();
         async move {
@@ -1007,8 +1013,9 @@ async fn status(State(state): State<AppState>) -> ApiResult<Response> {
             Err(exc) => json!({"ok": false, "error": crate::hermes::httpx_error_name(&exc)}),
         })
     };
-    let names: Vec<String> = config.agents.keys().cloned().collect();
-    let checks = futures::future::join_all(config.agents.values().cloned().map(hermes_ok));
+    let names: Vec<String> = config.agents.keys().filter(|n| wanted(n)).cloned().collect();
+    let checks =
+        futures::future::join_all(config.agents.iter().filter(|(n, _)| wanted(n)).map(|(_, a)| hermes_ok(a.clone())));
     let (results, model) = tokio::join!(checks, model_ok);
     let restarts = crate::agent_restart::status_fields(&config);
     let agents: Map<String, Value> = names

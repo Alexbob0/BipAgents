@@ -135,6 +135,11 @@ def test_status_tells_server_from_model(bridges, fakes):
     assert status["agents"]["panne"] == {"ok": False, "error": "ConnectError"}
     assert status["model"] == {"ok": False, "error": "ConnectError"}
     assert status["protected"] is False and list(status) == ["agents", "model", "protected"]
+    # one agent: only its Hermes is asked
+    asked = len(fakes.hermes.seen("/p/vie/v1/capabilities"))
+    one = bridge.get("/v1/status", headers=AUTH, params={"agent": "Panne"}).json()
+    assert list(one["agents"]) == ["panne"] and len(fakes.hermes.seen("/p/vie/v1/capabilities")) == asked
+    assert bridge.get("/v1/status", headers=AUTH, params={"agent": "nobody"}).status_code == 404
 
 
 def test_status_with_a_model_that_answers(bridges, fakes):
