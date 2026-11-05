@@ -1910,21 +1910,30 @@ async fn mcp(
             return Ok(answer(closed));
         }
     }
-    if crate::agent_shares::relative_turn(&state.config(), &agent.name)
+    let relative_like = crate::agent_shares::relative_turn(&state.config(), &agent.name)
         || crate::rooms_remote::guest_turn_going(&state.config(), &agent.name)
-        || crate::peers::household_turn(&agent.name)
-    {
+        || crate::peers::household_turn(&agent.name);
+    if relative_like {
         // a relative (or a relative's discussion, or another household's agent) talks to this agent: the person's own
         // data stays closed (agent_shares.rs; Hermes closes its own tools for that run, patch 0018)
         if let Some(closed) = crate::agent_shares::closed_tool(&name) {
             tracing::info!(agent = %agent.name, tool = %name, "tool closed during a relative's turn");
             return Ok(answer(closed));
         }
-    } else if crate::read_shares::shared_turn(&state, &agent.name) {
-        // a conversation shown to people the person invited: the same doors closed (read_shares.rs)
-        if let Some(closed) = crate::read_shares::closed_tool(&name) {
+    }
+    // a conversation shown to people the person invited: the same doors closed (read_shares.rs); a project agent keeps
+    // its pages and friends' cards there, and give_file only for a file made in that conversation
+    let shared_turn = !relative_like && crate::read_shares::shared_turn(&state, &agent.name);
+    if shared_turn {
+        let project = crate::project_agent::is_project(&state.config(), &agent.name);
+        if let Some(closed) = crate::read_shares::closed_tool(&name, project) {
             tracing::info!(agent = %agent.name, tool = %name, "tool closed in a shared conversation");
             return Ok(answer(closed));
+        }
+        if name == crate::give_file::TOOL_NAME {
+            if let Some(refused) = crate::read_shares::give_file_refused(&state.config(), &agent.name, &arguments) {
+                return Ok(answer(refused));
+            }
         }
     }
     // The brake (loop_brake.rs), per turn (the run the hub follows, else the routine's): the same write twice, too many
@@ -2005,12 +2014,18 @@ async fn mcp(
     // the cards waiting before the call: those it makes show in its turn's conversation (card_place.rs)
     let cards_before = crate::card_place::waiting(&state, &agent.name);
     let card_state = state.clone();
+    let note_config = state.config();
     let work = tokio::spawn(async move {
         let mut result = call_tool(&maker, &agent, &name, &arguments, Some(push), Some(jobs)).await;
         crate::card_place::place_new(&card_state, &agent, &cards_before, turn_run.as_deref()).await;
         if let Ok(done) = &mut result {
             crate::names::localize_result(done, &work_lang);
             wrote(&agent.name, &name, &arguments, done);
+            if shared_turn && crate::made_files::makes_files(&name) {
+                // made in the shared conversation: give_file may give it there (read_shares.rs `give_file_refused`)
+                let (config, agent_name, paths) = (note_config.clone(), agent.name.clone(), crate::read_shares::made_paths(done));
+                let _ = tokio::task::spawn_blocking(move || crate::read_shares::note_made(&config, &agent_name, &paths)).await;
+            }
             if crate::made_files::makes_files(&name) {
                 let before = turn_run.as_deref().map(|run| crate::made_files::MADE.in_run(&agent.name, run));
                 crate::made_files::MADE.note_result(&agent.name, done, turn_run.as_deref(), py::time_time());
