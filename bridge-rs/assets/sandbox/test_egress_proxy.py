@@ -8,7 +8,9 @@ import hashlib
 import importlib.util
 import json
 import os
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -447,3 +449,74 @@ def test_registries_and_anonymous_clients(tmp_path, monkeypatch):
 
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))
+
+
+def test_phone_exit_hosts_go_to_the_hub_never_direct(tmp_path, monkeypatch):
+    """`BIP_EXIT_HOSTS` go through the hub's unix socket (« EXIT host 443 agent »), counted like any tunnel; the hub's
+    refusal is said (paused: 503, refused: 403); no hub means refused, never the datacenter instead."""
+    # a short folder: a unix socket's path is at most ~104 bytes (macOS), pytest's tmp_path can be longer
+    short = Path(tempfile.mkdtemp(prefix="pe-", dir="/tmp"))
+    sock = short / "hub.sock"
+    proxy, _, _ = load(tmp_path, monkeypatch, AGENTS, LIMITS,
+                       env={"BIP_EXIT_SOCK": str(sock), "BIP_EXIT_HOSTS": "doctolib.fr,*.doctolib.fr"})
+    assert proxy.phone_exit("www.doctolib.fr", "vie") and proxy.phone_exit("doctolib.fr", "vie")
+    assert not proxy.phone_exit("evil-doctolib.fr", "vie") and not proxy.phone_exit("doctolib.fr", None)
+    assert not proxy.phone_exit("api.garmin.example", "conn-c1")
+    asked, direct = [], []
+
+    async def hub(reader, writer):
+        line = (await reader.readline()).decode().split()
+        asked.append(line)
+        if line[1] == "paused.doctolib.fr":
+            writer.write(b"ERR paused\n")
+        elif line[1] == "lan.doctolib.fr":
+            writer.write(b"ERR private\n")
+        else:
+            writer.write(b"OK\n")
+            await writer.drain()
+            data = await reader.read(100)
+            writer.write(b"echo:" + data)
+        await writer.drain()
+        writer.close()
+
+    async def no_direct(addresses, port):
+        direct.append(addresses)
+        raise OSError("must not go direct")
+
+    async def steps():
+        hub_server = await asyncio.start_unix_server(hub, str(sock))
+        monkeypatch.setattr(proxy, "connect", no_direct)
+        server = await asyncio.start_server(proxy.handle, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+        out = {}
+        status, reader, writer = await tunnel(port, "www.doctolib.fr", VIE)
+        writer.write(b"hello")
+        await writer.drain()
+        out["ok"] = (status, await asyncio.wait_for(reader.read(100), 5))
+        writer.close()
+        out["paused"] = (await tunnel(port, "paused.doctolib.fr", VIE))[0]
+        out["private"] = (await tunnel(port, "lan.doctolib.fr", VIE))[0]
+        hub_server.close()
+        await hub_server.wait_closed()
+        if sock.exists():
+            sock.unlink()
+        out["gone"] = (await tunnel(port, "www.doctolib.fr", VIE))[0]
+        # plain HTTP to a phone host: refused (the phone carries TLS only)
+        r, w = await asyncio.open_connection("127.0.0.1", port)
+        w.write(f"GET http://www.doctolib.fr/ HTTP/1.1\r\nHost: www.doctolib.fr\r\nProxy-Authorization: {VIE}\r\n\r\n"
+                .encode())
+        await w.drain()
+        out["http"] = (await asyncio.wait_for(r.readuntil(b"\r\n\r\n"), 5)).split(b"\r\n")[0].decode()
+        w.close()
+        server.close()
+        return out
+
+    out = asyncio.run(steps())
+    assert out["ok"] == ("HTTP/1.1 200 Connection established", b"echo:hello")
+    assert asked[0] == ["EXIT", "www.doctolib.fr", "443", "vie"]
+    assert out["paused"].startswith("HTTP/1.1 503 Phone exit paused")
+    assert out["private"].startswith("HTTP/1.1 403 Site refused by the phone exit")
+    assert out["gone"].startswith("HTTP/1.1 503 Phone exit paused")
+    assert out["http"].startswith("HTTP/1.1 403")
+    assert direct == []
+    shutil.rmtree(short, ignore_errors=True)

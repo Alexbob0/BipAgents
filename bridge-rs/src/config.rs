@@ -739,6 +739,9 @@ pub struct Config {
     /// `[link]` (link_wallet.rs): Link Agent Wallet, off unless switched on and configured. Not serialized either.
     #[serde(skip)]
     pub link: crate::link_wallet::Settings,
+    /// `[phone_exit]` (phone_exit.rs): the prototype phone exit, off unless switched on. Not serialized either.
+    #[serde(skip)]
+    pub phone_exit: crate::phone_exit::Settings,
     /// `[archive_records]` (archives/records_fill.rs): not in the serialized form either.
     #[serde(skip)]
     pub archive_records: ArchiveRecordsConfig,
@@ -844,6 +847,7 @@ impl Config {
             triggers: crate::triggers::Settings::default(),
             agent_restart: crate::agent_restart::Settings::default(),
             link: crate::link_wallet::Settings::default(),
+            phone_exit: crate::phone_exit::Settings::default(),
             archive_records: ArchiveRecordsConfig::default(),
             cards: "auto".into(),
             payments: PaymentsConfig::default(),
@@ -1811,6 +1815,7 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         triggers: crate::triggers::Settings::from_table(table(data, "triggers")),
         agent_restart: crate::agent_restart::Settings::from_table(table(data, "agent_restart")),
         link: crate::link_wallet::Settings::from_table(table(data, "link")),
+        phone_exit: crate::phone_exit::Settings::from_table(table(data, "phone_exit")),
         archive_records,
         cards,
         payments,

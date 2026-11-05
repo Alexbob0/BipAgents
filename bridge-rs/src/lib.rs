@@ -167,6 +167,8 @@ pub mod notebook;
 pub mod notes_import;
 pub mod pages;
 pub mod phone_asks;
+/// The phone exit, phase 0 (prototype, off by default): sites listed in `[phone_exit]` leave through the person's phone.
+pub mod phone_exit;
 pub mod phone_rights;
 pub mod reminders;
 pub mod rooms;
