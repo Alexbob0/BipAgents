@@ -179,7 +179,7 @@ def test_the_agents_usual_style_comes_from_defaults_json(skill_copy, workdir):
     (workdir / "s.json").write_text(json.dumps(spec), encoding="utf-8")
     run = lambda: json.loads(subprocess.run(  # noqa: E731
         [sys.executable, str(scripts / "deck.py"), str(workdir / "s.json"), str(workdir / "s.pptx")],
-        capture_output=True, text=True, check=True, env=dict(os.environ, PATH="/usr/bin:/bin")).stdout)
+        capture_output=True, text=True, check=True, env=dict(os.environ, PATH=str(workdir / "no-bin"))).stdout)
     assert run()["style"] == styles.DEFAULT
     (skill_copy / "slides-styles" / "defaults.json").write_text('{"slides": "terminal"}\n', encoding="utf-8")
     answer = run()
@@ -216,3 +216,45 @@ def test_the_overflow_check_catches_a_box_too_small():
     run.text = "Un titre beaucoup trop long pour une si petite boîte de deux pouces"
     run.font.size, run.font.name = Pt(24), "Georgia"
     assert overflows(prs)
+
+
+def slide_texts(prs):
+    return [" ".join(p.text for sh in s.shapes if sh.has_text_frame for p in sh.text_frame.paragraphs)
+            for s in prs.slides]
+
+
+def test_glm_field_names_still_fill_their_slides(workdir, capsys):
+    """Token lab 5/11 (GLM-5.3 Flash, offer place): a timeline written as `items[{when, text | what}]` and a quote
+    as `text` came out as empty slides. Now they are read, and nothing is reported empty."""
+    spec = json.loads((workdir / "8-glm-velo-timeline-quote.json").read_text(encoding="utf-8"))
+    for style in styles.STYLES:
+        capsys.readouterr()
+        texts = slide_texts(build(workdir, spec, style=style))
+        answer = json.loads(capsys.readouterr().out)
+        assert "1817" in texts[1] and "draisienne" in texts[1].lower(), (style, texts[1])
+        assert "1861" in texts[2] and "Michaux" in texts[2], (style, texts[2])
+        assert "humanité" in texts[-1], (style, texts[-1])
+        assert not any("empty" in p for p in answer.get("check", [])), answer
+
+
+def test_an_empty_slide_and_left_out_fields_are_reported(workdir, capsys):
+    spec = {"style": "suisse", "title": "T", "slides": [
+        {"layout": "timeline", "title": "Étapes", "milestones_wrong": [{"x": 1}]},
+        {"layout": "big_number", "value": "12", "label": "ans", "mood": "joyeux"},
+        {"layout": "bullets", "title": "Points", "bullets": ["a", "b"]},
+    ]}
+    build(workdir, spec)
+    answer = json.loads(capsys.readouterr().out)
+    assert answer["check"] == [
+        {"slide": 1, "layout": "timeline", "empty": "steps | image", "ignored": ["milestones_wrong"]},
+        {"slide": 2, "layout": "big_number", "ignored": ["mood"]},
+    ]
+    assert "fix" in answer
+
+
+def test_the_reference_deck_reports_nothing(workdir, capsys):
+    for fixture in ("2-pitch-boulangerie.json", "3-voyage-bretagne.json", "4-budget-octobre.json"):
+        build(workdir, json.loads((workdir / fixture).read_text(encoding="utf-8")))
+        assert "check" not in json.loads(capsys.readouterr().out), fixture
+    build(workdir, ALL_LAYOUTS)
+    assert "check" not in json.loads(capsys.readouterr().out)

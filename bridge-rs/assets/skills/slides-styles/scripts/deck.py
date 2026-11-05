@@ -166,6 +166,15 @@ def modified(credit):
     return credit
 
 
+def leaves(v):
+    """The texts and numbers inside a field's value."""
+    if isinstance(v, dict):
+        return [x for k in v for x in leaves(v[k])]
+    if isinstance(v, (list, tuple)):
+        return [x for k in v for x in leaves(k)]
+    return [] if v in (None, "") else [v]
+
+
 class Deck:
     def __init__(self, spec, base):
         self.spec, self.base = spec, base
@@ -187,6 +196,7 @@ class Deck:
         self.tmp = tempfile.mkdtemp(prefix="deck-")
         self.n = 0
         self.missing = []
+        self.problems = []   # slides left empty or fields left out (check)
         slides = spec.get("slides", [])
         self.total = len(slides)
         self.sections = [s.get("title", "") for s in slides if s.get("layout") == "section"]
@@ -1791,49 +1801,163 @@ class Deck:
 
     @staticmethod
     def normalize(d):
-        """Accept the field names models often use instead of ours."""
+        """Accept the field names models often use instead of ours (GLM-5.3 Flash on the token lab, 5/11: a timeline's
+        `items[{when, text}]` and a quote's `text` left two of five slides empty)."""
         d = dict(d)
+        lay = d.get("layout")
+
+        def first(*keys, src=None):
+            src = d if src is None else src
+            for k in keys:
+                if src.get(k) not in (None, "", [], {}):
+                    return src[k]
+            return None
+
         for a in ("photo", "picture", "img"):
             if a in d and "image" not in d:
                 d["image"] = d.pop(a)
-        for a in ("items", "points", "list"):
-            if a in d and "bullets" not in d and d.get("layout") != "agenda":
-                d["bullets"] = d.pop(a)
-        if d.get("layout") in ("cover", "section", "closing", "title") and not d.get("subtitle"):
+        lists = ("items", "points", "list", "content", "lines")
+        if lay in ("bullets", "image_text", None) or lay not in Deck.FIELDS:
+            v = first("bullets", *lists)
+            if isinstance(v, list):
+                d["bullets"] = v
+        if lay in ("image_text", "image_full", "two_columns") and not d.get("text"):
+            v = first("body", "paragraph", "description", "content")
+            if isinstance(v, str):
+                d["text"] = v
+        if lay == "agenda" and not d.get("items"):
+            d["items"] = first("bullets", "points", "sections", "list") or []
+        if lay in ("cover", "section", "closing", "title") and not d.get("subtitle"):
             d["subtitle"] = d.get("text") or d.get("description") or ""
-        if d.get("layout") == "timeline":
+        if lay == "closing" and not d.get("contact"):
+            d["contact"] = first("email", "contacts") or ""
+        if lay == "timeline":
             steps = []
-            for st in d.get("steps") or d.get("events") or []:
+            for st in first("steps", "events", "items", "milestones", "timeline", "bullets", "points") or []:
                 st = st if isinstance(st, dict) else {"text": str(st)}
-                when = st.get("date") or st.get("when") or st.get("time")
-                lab = st.get("label") or st.get("title")
-                txt = st.get("text") or st.get("description") or st.get("detail")
-                if when and not txt:
-                    lab, txt = when, lab
-                steps.append({"label": lab or when or "", "text": txt or ""})
+                when = first("date", "when", "year", "time", "period", src=st)
+                lab = first("label", "title", "heading", "name", src=st)
+                txt = first("text", "description", "detail", "details", "body", "content", "what", "event", "summary", src=st)
+                if when and lab and not txt:
+                    txt = lab
+                elif when and lab:
+                    txt = f"{lab} : {txt}"
+                elif lab and not txt and not when:
+                    lab, txt = "", lab
+                steps.append({"label": str(when or lab or ""), "text": str(txt or "")})
             d["steps"] = steps
-        if d.get("layout") == "table":
-            hdr = d.get("headers") or d.get("header") or d.get("columns")
+        if lay == "quote":
+            d["quote"] = first("quote", "text", "body", "content", "citation") or ""
+            d["author"] = first("author", "by", "attribution", "who", "source") or ""
+        if lay == "table":
+            if not d.get("rows"):
+                d["rows"] = first("data", "table", "cells") or []
+            hdr = first("headers", "header", "columns")
             if hdr and isinstance(hdr, list):
                 d["rows"] = [hdr] + list(d.get("rows") or [])
-        if d.get("layout") in ("stats", "table") and not d.get("note"):
-            d["note"] = d.get("takeaway") or ""
-        if d.get("layout") == "big_number" and not d.get("context"):
-            d["context"] = d.get("takeaway") or d.get("text") or ""
-        if d.get("layout") == "stats":
-            d["stats"] = [x if isinstance(x, dict) else {"value": str(x)} for x in d.get("stats") or d.get("numbers") or []]
+            rows = d.get("rows") or []
+            if rows and isinstance(rows[0], dict):
+                head = list(rows[0].keys())
+                d["rows"] = [head] + [[r.get(h, "") for h in head] for r in rows]
+        if lay in ("stats", "table") and not d.get("note"):
+            d["note"] = d.get("takeaway") or d.get("context") or ""
+        if lay == "big_number":
+            if not d.get("value"):
+                d["value"] = first("number", "figure", "stat", "big") or ""
+            if not d.get("label"):
+                d["label"] = first("caption", "subtitle", "title") or ""
+            if not d.get("context"):
+                d["context"] = d.get("takeaway") or d.get("text") or d.get("description") or ""
+        if lay == "stats":
+            d["stats"] = [x if isinstance(x, dict) else {"value": str(x)}
+                          for x in first("stats", "numbers", "items", "metrics", "kpis", "figures") or []]
             for x in d["stats"]:
-                x.setdefault("value", x.get("number", ""))
-                x.setdefault("label", x.get("text") or x.get("description") or "")
-        if d.get("layout") == "people":
-            for x in d.get("people") or []:
+                x.setdefault("value", x.get("number", x.get("figure", "")))
+                x.setdefault("label", x.get("text") or x.get("description") or x.get("title") or "")
+        if lay == "two_columns":
+            cols = first("columns", "cols")
+            if isinstance(cols, list) and len(cols) >= 2:
+                d.setdefault("left", cols[0])
+                d.setdefault("right", cols[1])
+            for key in ("left", "right"):
+                col = d.get(key)
+                if isinstance(col, list):
+                    col = {"bullets": col}
+                elif isinstance(col, str):
+                    col = {"text": col}
+                if isinstance(col, dict):
+                    col = dict(col)
+                    if not col.get("heading") and col.get("title"):
+                        col["heading"] = col["title"]
+                    if not col.get("bullets") and not col.get("text"):
+                        v = first("items", "points", "list", src=col)
+                        if isinstance(v, list):
+                            col["bullets"] = v
+                    d[key] = col
+        if lay == "gallery":
+            ims = []
+            for im in first("images", "photos", "pictures", "items") or []:
+                if isinstance(im, dict):
+                    im = dict(im)
+                    im["path"] = first("path", "image", "photo", "src", src=im) or ""
+                ims.append(im)
+            d["images"] = ims
+        if lay == "people":
+            d["people"] = first("people", "members", "team", "items") or []
+            for x in d["people"]:
                 if isinstance(x, dict):
                     x.setdefault("role", x.get("title", ""))
-                    x.setdefault("text", x.get("bio", ""))
+                    x.setdefault("text", x.get("bio", x.get("description", "")))
+        if lay == "chart" and isinstance(d.get("chart"), dict):
+            c = d["chart"] = dict(d["chart"])
+            if not c.get("categories"):
+                c["categories"] = first("labels", "x", src=c) or []
+            if isinstance(c.get("series"), list):    # [{name, values|data}]
+                c["series"] = {str(s.get("name", f"Série {i + 1}")): s.get("values") or s.get("data") or []
+                               for i, s in enumerate(c["series"]) if isinstance(s, dict)}
+            elif not c.get("series") and isinstance(c.get("values") or c.get("data"), list):
+                c["series"] = {str(c.get("name") or d.get("title") or "Valeurs"): c.get("values") or c.get("data")}
         return d
 
+    # Each layout's fields (the docstring's); what a slide needs to show anything (its first group).
+    FIELDS = {
+        "cover": ("subtitle", "image"), "title": ("subtitle", "image"), "section": ("subtitle", "image"),
+        "agenda": ("items",), "bullets": ("bullets", "image"), "two_columns": ("left", "right"),
+        "big_number": ("value", "label", "context"), "stats": ("stats", "note"),
+        "chart": ("chart", "takeaway", "source"), "table": ("rows", "note", "source"),
+        "image_text": ("text", "bullets", "image", "caption"), "image_full": ("image", "caption"),
+        "gallery": ("images",), "timeline": ("steps", "image"), "people": ("people",), "quote": ("quote", "author"),
+        "code": ("code", "caption"), "closing": ("subtitle", "contact", "image"),
+    }
+    NEEDS = {
+        "bullets": ("bullets",), "two_columns": ("left", "right"), "big_number": ("value",), "stats": ("stats",),
+        "chart": ("chart",), "table": ("rows",), "image_text": ("text", "bullets"), "image_full": ("image",),
+        "gallery": ("images",), "timeline": ("steps", "image"), "people": ("people",), "quote": ("quote",),
+        "code": ("code",),
+    }
+    COMMON = {"layout", "title", "kicker", "notes", "credit"}
+
+    def check(self, index, raw, d):
+        """What the build's answer says about a slide: empty (its content under none of the names we know) and the
+        fields it left out (neither ours for that layout nor read under another name)."""
+        lay = d.get("layout", "bullets")
+        out = {}
+        needs = self.NEEDS.get(lay)
+        if needs and not any(d.get(k) not in (None, "", [], {}) for k in needs):
+            out["empty"] = " | ".join(needs)
+        known = set(self.FIELDS.get(lay, ())) | self.COMMON
+        shown = json.dumps([d.get(k) for k in sorted(known)], ensure_ascii=False)
+        ignored = sorted(k for k, v in raw.items() if k not in known and not all(
+            json.dumps(leaf, ensure_ascii=False).strip('"') in shown for leaf in leaves(v)))
+        if ignored:
+            out["ignored"] = ignored
+        if out:
+            self.problems.append({"slide": index, "layout": lay, **out})
+
     def build(self, slide):
-        slide = self.drop_missing(self.normalize(slide))
+        raw = slide if isinstance(slide, dict) else {}
+        slide = self.drop_missing(self.normalize(raw))
+        self.check(self.n + 1, raw, slide)
         lay = slide.get("layout", "bullets")
         fn = {"cover": self.cover, "title": self.cover, "section": self.section, "agenda": self.agenda,
               "bullets": self.bullets, "two_columns": self.two_columns, "big_number": self.big_number,
@@ -1877,6 +2001,10 @@ def main(argv=None):
     out = {"ok": True, "output": a.output, "style": d.style_name, "slides": d.n}
     if d.missing:
         out["missing_images"] = d.missing
+    if d.problems:
+        out["check"] = d.problems
+        out["fix"] = ("a slide marked `empty` shows nothing: fix it in the spec (fields: deck.py --help) and build "
+                      "again; `ignored` fields are not shown")
     if shutil.which("soffice") or shutil.which("libreoffice"):   # a preview only where LibreOffice is installed
         out["look"] = f"python3 {os.path.join(HERE, 'look.py')} {a.output} --outdir render"
     print(json.dumps(out, ensure_ascii=False))
