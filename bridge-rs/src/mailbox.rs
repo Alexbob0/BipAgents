@@ -1171,7 +1171,7 @@ async fn add(
     }
     tracing::info!(provider = %body.provider, agents = agents_len(&account), "mailbox added");
     crate::mcp_sessions::poke(); // its agents' tools may have changed (mcp_sessions.rs)
-    register_agents(&config, agents).await; // its mail tools in view (tool_diet.rs `MAIL_DIRECT`)
+    reconcile_agents(&config, agents).await; // its mail tools in view (tool_diet.rs `MAIL_DIRECT`)
     Ok(web::json_response(201, &Value::Object(public(&account))))
 }
 
@@ -1186,6 +1186,25 @@ async fn register_agents(config: &Config, mut names: Vec<String>) {
                 tracing::warn!(agent = %agent.name, error = %exc, "agent tools not registered");
             }
         }
+    }
+}
+
+/// Each of these agents' profile brought up to date (profile_files.rs `reconcile`): its mail tools in view when it has
+/// a mailbox, behind the search when it has none (tool_diet.rs `MAIL_DIRECT`). Its tool list itself doesn't change.
+async fn reconcile_agents(config: &Config, mut names: Vec<String>) {
+    names.sort();
+    names.dedup();
+    let agents: Vec<_> = names.iter().filter_map(|name| config.agent(Some(name)).cloned()).collect();
+    let config = config.clone();
+    let done = tokio::task::spawn_blocking(move || {
+        for agent in &agents {
+            if let Err(exc) = crate::profile_files::reconcile(&config, agent) {
+                tracing::warn!(agent = %agent.name, error = %format!("{exc:#}"), "profile settings not brought up to date");
+            }
+        }
+    });
+    if let Err(exc) = done.await {
+        tracing::warn!(error = %exc, "profile settings not brought up to date");
     }
 }
 
@@ -1268,7 +1287,11 @@ async fn change(
         touched.extend(agents_before.iter().filter(|a| !agents_after.contains(a)).cloned());
         touched.extend(agents_after.iter().filter(|a| !agents_before.contains(a)).cloned());
     }
-    register_agents(&config, touched).await;
+    if calendar_before || calendar_after {
+        register_agents(&config, touched).await; // its tool list changed (the calendar's), its profile with it
+    } else {
+        reconcile_agents(&config, touched).await;
+    }
     Ok(web::ok(Value::Object(public(&account))))
 }
 
@@ -1290,7 +1313,7 @@ async fn remove(State(state): State<AppState>, UrlPath(account_id): UrlPath<Stri
     tokio::task::spawn_blocking(move || store.write(&kept)).await.map_err(anyhow::Error::from)??;
     crate::mcp_sessions::poke(); // its agents' tools may have changed (mcp_sessions.rs)
     // their mail tools back behind the search when it was their only mailbox
-    register_agents(&state.config(), gone).await;
+    reconcile_agents(&state.config(), gone).await;
     Ok(web::ok(json!({"ok": true})))
 }
 

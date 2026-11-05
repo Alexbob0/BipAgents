@@ -1301,11 +1301,21 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict, opener: 
         tracing::info!(agent = %agent, card = %card.id, count = card.uids.len(), joined, "mail tidy card");
         let groups: Vec<String> = card.groups.iter().take(5).map(|(g, n)| format!("{g} {n}")).collect();
         let made = if joined { "Added to the card already waiting" } else { "Card made" };
+        // one sender per call: the next ones go together (5/11, token lab, GLM-5.3 Flash with the tool in view: 14
+        // calls, one per domain, until the brake stopped the turn at the 11th)
+        let one_sender = !arguments.get("groups").is_some_and(py::truthy)
+            && (!arg("domain").is_empty() || !arg("from").is_empty() || !arg("list_id").is_empty());
+        let together = if one_sender {
+            " Other senders: one call per action with all of them in groups ([\"domain:a.example\", \
+\"domain:b.example\"]), never one call each: a turn makes only a few calls of this tool."
+        } else {
+            ""
+        };
         return Ok(Called {
             result: tool_text(
                 &format!(
                     "{made} ({}): {} {} e-mails ({}). It waits in the person's approvals; nothing moves before their \
-Oui. Tell them in one sentence.",
+Oui. Tell them in one sentence.{together}",
                     card.id,
                     card.action.as_ref().map(Action::word).unwrap_or_default(),
                     card.uids.len(),
