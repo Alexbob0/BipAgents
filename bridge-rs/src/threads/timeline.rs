@@ -352,9 +352,31 @@ fn calls_of(row: &Row) -> Vec<(Option<String>, String, String)> {
         .collect()
 }
 
-/// A peer's message in the agent's Bot Chat (« Message from … (@x): »): its sender.
-fn peer_of(text: &str) -> Option<String> {
-    crate::cronwatch::TEAMMATE_PREFIX.captures(text).map(|c| c[1].to_string())
+/// A peer's message in the agent's Bot Chat (« Message from 🤖 Vie (@vie): … »): (its sender's id, the name it signed
+/// with without Hermes' emoji badge, its words alone). The apps draw it from these fields; they never read the
+/// « Message from » line (iOS drew it twice).
+fn peer_of(text: &str) -> Option<(String, String, String)> {
+    static PEER: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"^\s*Message from (.+?) \(@([\w.-]+)\):\s*([\s\S]*)$").expect("valid regex"));
+    let caps = PEER.captures(text)?;
+    let signed = caps[1].trim();
+    // « 🤖 Wellness » (Hermes signs with an emoji first) → « Wellness »; « Pub & Acquisition » (the bridge's) as it is
+    let name = match signed.split_once(' ') {
+        Some((badge, rest)) if !badge.chars().any(char::is_alphanumeric) && !rest.trim().is_empty() => rest.trim(),
+        _ => signed,
+    };
+    Some((caps[2].to_string(), name.to_string(), caps[3].trim().to_string()))
+}
+
+/// Which of Hermes' failed-turn lines `text` is, exactly (spaces aside: a reply quoting one stays a reply):
+/// `partial` (something may have run) or `not_processed` (nothing was done). The apps say it in their words from this
+/// (`notice.stopped`, a run's `stopped`), never by reading Hermes' English.
+pub fn stopped_kind(text: &str) -> Option<&'static str> {
+    match text.trim() {
+        FAILED_PARTIAL => Some("partial"),
+        FAILED_NOT_PROCESSED => Some("not_processed"),
+        _ => None,
+    }
 }
 
 /// Which rows a segment shows, as (where it reads, whose words). Hermes v0.22.5 compacts a conversation IN its session
@@ -470,9 +492,11 @@ pub fn segment_items(
                 if steered || row.display_kind.as_deref() == Some("steer") {
                     body["added_during_run"] = json!(true);
                 }
-                if let Some(peer) = peer_of(&text) {
+                if let Some((from, name, words)) = peer_of(&text) {
                     body["role"] = json!("peer");
-                    body["from"] = json!(peer);
+                    body["from"] = json!(from);
+                    body["from_name"] = json!(name);
+                    body["text"] = json!(words);
                 }
                 items.push(item(id, 0, turn, body));
             }
@@ -488,7 +512,8 @@ pub fn segment_items(
                         id,
                         0,
                         turn,
-                        json!({"kind": "notice", "notice": {"code": "failed_turn", "text": trimmed}}),
+                        json!({"kind": "notice", "notice": {"code": "failed_turn", "text": trimmed,
+                                                            "stopped": stopped_kind(trimmed)}}),
                     ));
                     continue;
                 }
@@ -891,6 +916,25 @@ mod tests {
         assert_eq!(got[1].body["notice"]["text"], "J'ai arrêté une boucle.");
         let only_failed = items(&rows[..2]);
         assert_eq!(only_failed[1].body["notice"]["code"], "failed_turn");
+        // which one, for the apps' own words (they never read Hermes' English)
+        assert_eq!(only_failed[1].body["notice"]["stopped"], "partial");
+        let nothing = items(&[row(1, "user", json!("Range")), row(2, "assistant", json!(format!(" {FAILED_NOT_PROCESSED}\n")))]);
+        assert_eq!(nothing[1].body["notice"]["stopped"], "not_processed");
+        assert_eq!(stopped_kind(&format!("Hermes dit : {FAILED_PARTIAL}")), None, "a reply quoting it stays a reply");
+    }
+
+    /// Another agent's message in Bot Mode's conversation: its sender's id, the name it signed with, its words alone
+    /// (iOS drew « Message from … » around the line that already had it).
+    #[test]
+    fn a_peers_message_comes_as_its_words_and_its_sender() {
+        let got = items(&[row(1, "user", json!("Message from 🤖 Vie (@vie): Comment était la nuit ?\n\nBonne journée"))]);
+        assert_eq!(got[0].body["role"], "peer");
+        assert_eq!(got[0].body["from"], "vie");
+        assert_eq!(got[0].body["from_name"], "Vie", "without Hermes' badge");
+        assert_eq!(got[0].text(), "Comment était la nuit ?\n\nBonne journée");
+        let signed = items(&[row(1, "user", json!("Message from Pub & Acquisition (@pub-acq): Ok"))]);
+        assert_eq!((signed[0].body["from"].as_str(), signed[0].body["from_name"].as_str()), (Some("pub-acq"), Some("Pub & Acquisition")));
+        assert_eq!(items(&[row(1, "user", json!("Un message from moi"))])[0].body["role"], "person");
     }
 
     #[test]
