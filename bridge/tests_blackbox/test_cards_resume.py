@@ -10,6 +10,7 @@ waits, and the bridge only resumed the agent for an answer given after the turn 
 - answered just after the turn ended, or long after: one resumed turn;
 - across a bridge restart (the turn still going on, or ended while the bridge was off): one resumed turn;
 - several answers close together in one conversation: one turn telling all of them."""
+import json
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -346,3 +347,95 @@ def test_a_hermes_approval_answered_while_it_waits_reaches_hermes_once_and_start
     time.sleep(QUIET)
     assert [r for r in hermes.started.values() if "<!--bip:card" in str(r.get("input"))] == []
     assert len(hermes.approvals) == 1
+
+
+# -- Alex's Garmin connector, 5/11 ~20:50 (Android, release 7d1154f6): a code typed in a secret card and a card of
+# several sites validated in quick succession while the turn ran; the turn « ran endlessly », he had to validate cards
+# again, stop and ask it to go on. Here: the waiting call gets the code at once, every answered card stays gone, and
+# the sites' answer (no call waits for it) reaches the agent once the turn ends, stopped or not. ---------------------
+
+GARMIN_HOSTS = ["connect.garmin.example", "sso.garmin.example", "diauth.garmin.example", "services.garmin.example",
+                "static.garmin.example"]
+
+
+def answered_cards_stay_gone(bridge, thread, run_ids):
+    """For a few seconds, none of `run_ids` listed again in the Boîte or the conversation."""
+    for _ in range(6):
+        listed = {i["run_id"] for i in bridge.get("/v1/approvals", headers=AUTH, params={"agent": "vie"}).json()["items"]}
+        inline = {a["run_id"] for a in page(bridge, thread, "vie")["pending"]["approvals"] or []}
+        assert not (set(run_ids) & (listed | inline)), (run_ids, listed, inline)
+        time.sleep(0.5)
+
+
+@pytest.mark.parametrize("order", ["secret_then_sites", "sites_then_secret", "stopped_after"])
+def test_alex_garmin_a_secret_and_five_sites_answered_quickly_continue_the_agent_once(bridges, fakes, order):
+    bridge, _, _ = connectors_setup(bridges, fakes)
+    fakes.hermes.add_session("api_gar", [{"role": "user", "content": "Connecte-toi à Garmin"}], title="Garmin")
+    gate = threading.Event()
+    end = "run.cancelled" if order == "stopped_after" else "run.completed"
+    follow(bridge, fakes, "run_gar", "api_gar", "vie", [
+        sse("tool.started", run_id="run_gar", tool=SITES_TOOL, preview="x"),
+        sse("tool.completed", run_id="run_gar", tool=SITES_TOOL),
+        sse("tool.started", run_id="run_gar", tool="mcp_bipagents_connectors_ask_secret", preview="x"), gate,
+        sse("tool.completed", run_id="run_gar", tool="mcp_bipagents_connectors_ask_secret"),
+        sse("message.delta", run_id="run_gar", delta="Je teste la connexion…"),
+        sse(end, run_id="run_gar", output="Je teste la connexion…")])
+    thread = thread_of(bridge, "api_gar", agent="vie")
+    for host in GARMIN_HOSTS:
+        text, error = sandbox_call(bridge, "vie", "sandbox_sites_request", host=host, reason="le connecteur Garmin")
+        assert not error, text
+    with ThreadPoolExecutor(1) as pool:
+        asked = pool.submit(connectors_tool, bridge, "ask_secret",
+                            {"name": "garmin_code", "site": "connect.garmin.com", "kind": "code", "reason": "Le code reçu"})
+        assert wait_until(lambda: waiting_in(bridge, thread, "vie", "bip-secret-")
+                          and waiting_in(bridge, thread, "vie", "bip-site-"), timeout=20), page(bridge, thread, "vie")
+        [secret] = connectors_cards(bridge, "bip-secret-")
+        sites = site_cards(bridge, "vie")
+        assert sorted(h for c in sites for h in c["bip_sites"]) == sorted(GARMIN_HOSTS), sites
+
+        def give_code():
+            sent = bridge.post(f"/v1/vault/secrets/requests/{secret['request_id']}", headers=AUTH,
+                               json={"allow": True, "value": "MFA-7Q4K2Z"})
+            assert sent.status_code == 200, sent.text
+
+        if order == "sites_then_secret":
+            for card in sites:
+                allow_site(bridge, card)
+            give_code()
+        else:
+            give_code()
+            for card in sites:
+                allow_site(bridge, card)
+        started_at = time.time()
+        result = asked.result(timeout=30)   # the waiting call has the code at once, never 330 s
+        assert not result.get("isError") and time.time() - started_at < 10, result
+    answered_cards_stay_gone(bridge, thread, [secret["run_id"], *(c["run_id"] for c in sites)])
+    assert site_cards(bridge, "vie") == [] and connectors_cards(bridge, "bip-secret-") == []
+    # what the turn already did is not repeated: the code was the call's (a code card's answer told once)
+    assert "garmin_code" not in json.dumps(resumed(fakes, "api_gar"))
+    listed = bridge.get("/v1/agents/vie/sandbox/sites", headers=AUTH).json()
+    assert all(h in json.dumps(listed) for h in GARMIN_HOSTS), listed
+    gate.set()   # the turn ends (or the person stops it): the sites' answer, which no call waited for, told once
+    told = once(fakes, "api_gar")
+    assert told.count("»: ALLOWED") + told.count("your request: ALLOWED") == len(sites), told
+    assert "REFUSED" not in told and "garmin.example" in told, told
+    answered_cards_stay_gone(bridge, thread, [secret["run_id"], *(c["run_id"] for c in sites)])
+
+
+def test_a_connector_whose_files_changed_before_its_answer_keeps_its_call_on_the_new_card(bridges, fakes):
+    """Approved after its files changed: a new card (the files approved are the ones shown), and the call waiting for
+    the first one waits for it, answered as soon as it is (5/11: it waited 5 min for a card gone)."""
+    bridge, _, work = connectors_setup(bridges, fakes)
+    with ThreadPoolExecutor(1) as pool:
+        asked = pool.submit(connectors_tool, bridge, "connector_register", REGISTER)
+        assert wait_until(lambda: connectors_cards(bridge, "bip-conn-"), timeout=20)
+        [first] = connectors_cards(bridge, "bip-conn-")
+        (work / "README.md").write_text("Garmin connector, changed\n")
+        changed = bridge.post(f"/v1/connectors/requests/{first['request_id']}", headers=AUTH, json={"allow": True})
+        assert changed.status_code == 409 and changed.json()["detail"] == {"code": "changed"}, changed.text
+        assert wait_until(lambda: [c for c in connectors_cards(bridge, "bip-conn-") if c["run_id"] != first["run_id"]])
+        [again] = connectors_cards(bridge, "bip-conn-")
+        sent = bridge.post(f"/v1/connectors/requests/{again['request_id']}", headers=AUTH, json={"allow": True})
+        assert sent.status_code == 200, sent.text
+        result = asked.result(timeout=30)
+        assert not result.get("isError") and "approved" in result["content"][0]["text"], result
