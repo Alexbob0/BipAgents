@@ -33,6 +33,7 @@ labels, 0008's fall-back fix, 0017, 0009's `!name`, 0013.
 | 0022 tools in one canonical order (`tools.order_first`) | `tools/tool_order.py` (new), `model_tools.py`, `tools/mcp_tool_agent.py` |
 | 0023 a system prompt stable across conversations (prefix cache) | `agent/prompt_cache_notes.py` (new), `agent/system_prompt.py`, `agent/turn_context.py`, `agent/agent_init.py`, `tools/memory_tool_store.py` |
 | 0024 tools refused for one turn (`model_options.closed_tools`) | `agent/closed_tools.py` (new), `agent/agent_runtime_helpers.py`, `agent/tool_executor.py`, `gateway/platforms/api_server.py`, `gateway/run_turn_runner.py` |
+| 0025 a colon mid-sentence no longer holds back a streamed reply | `agent/chat_completion_helpers.py` |
 
 ## How the patches are kept
 
@@ -753,3 +754,25 @@ turns and warm-up (`bridge-rs/src/live_turns.rs` `LIVE_CLOSED_TOOLS`); a Hermes 
 next turn's tools back, exact names and prefixes refused, `invoke_tool` and the policy gate refusing without running
 anything, `_create_agent` marking the agent from its `model_options`. With 0018's tests and the gateway's turn runner
 tests: green on v0.22.5 with the whole set, 0023 under it.
+
+## 0025 — a colon mid-sentence no longer holds back the rest of a reply
+
+**Problem.** Alex 5/11 (TestFlight 20261105.1253, agent Vie on GLM): « le premier mot arrive, puis tout d'un coup ».
+The chat-completions stream holds text back while it may be an SSE block a provider echoed into the content
+(`_provider_stream_text_may_be_sse`: `data: …`, `: comment`). It ran on every delta: a delta starting with a colon in
+the middle of a line was taken for a comment line, and everything after it was held until a newline or the end of the
+response. French typography puts a space before a colon (« fond : vers », a token " :"), so a one-paragraph French
+reply showed its first words, then nothing, then the rest at once. Seen on the wire with a real v0.22.5 and a fake
+model streaming a word every 25 ms: a 1.3 s gap at the " :", then the rest in one burst (Hermes' own `timestamp`s on
+those events are all the same); upstream main (785c2e5110, 4/11) has the same check.
+
+**What the patch does.** The guard starts only on a delta that begins a line (the response's first, or one right after
+a newline); text it holds is judged as before (a real echoed block at a line's start still waits).
+
+**Files.** `agent/chat_completion_helpers.py`, `tests/agent/test_streaming.py`.
+
+**Tests.** `TestColonMidSentenceStreams`: each delta shown before the next chunk is read with « … fond », « : », « vers
+… » (fails without the patch: held from « : » to the end), a `: keepalive` line at a line's start still held.
+`test_streaming.py`, `test_partial_stream_finish_reason.py`, `test_error_classifier.py`: 257 passed, the same 5
+failures as without the patch (Anthropic stream tests, this server's environment). The same fake model through a
+gateway with the set + 0025: max gap 0.14 s (1.29 s without). `scripts/hermes-patches.sh check`: the set applies.
