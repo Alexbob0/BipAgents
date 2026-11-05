@@ -282,6 +282,20 @@ async fn tip_of(state: &AppState, threads: &Threads, agent: &AgentConfig, thread
     Ok(session)
 }
 
+/// A message sent again (its answer lost on the way, or the person's « Réessayer »): `known`, and where it is now, so
+/// the phone does what the first answer would have had it do. Waiting in the queue: `queued` (« En attente » shows
+/// it); its conversation's turn going on: that turn's `run_id` (followed again); else neither (its turn is over: the
+/// timeline has it). Nothing is sent twice. An app from before reads `known` alone (thin apps, 5/11).
+async fn known_now(state: &AppState, threads: &Threads, agent: &AgentConfig, client_id: &str, thread: &str) -> Value {
+    let queued = queues_of(state).get(&agent.name).items.iter().any(|i| i.client_id.as_deref() == Some(client_id));
+    let tip = match threads.get(thread).await {
+        Ok(Some(t)) => threads.line(agent, &t).await.ok().and_then(|line| line.last().map(|s| s.session_id.clone())),
+        _ => None,
+    };
+    let run = tip.as_deref().filter(|_| !queued).and_then(|t| state.hub.session_run(&agent.name, t));
+    json!({"client_id": client_id, "thread": thread, "state": "known", "run_id": run, "tip": tip, "queued": queued})
+}
+
 /// `POST /v1/threads/{thread}/messages`.
 pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>, body: NewMessage) -> ApiResult<Value> {
     let threads = threads_of(state);
@@ -294,7 +308,7 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
         )
         .await?;
     if let Some(row) = known.first() {
-        return Ok(json!({"client_id": body.client_id, "thread": row["thread_id"], "state": "known", "run_id": null, "tip": null}));
+        return Ok(known_now(state, &threads, agent, &body.client_id, row["thread_id"].as_str().unwrap_or("")).await);
     }
     let thread = match thread {
         Some(t) => t,

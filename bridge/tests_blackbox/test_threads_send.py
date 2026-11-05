@@ -68,6 +68,9 @@ def test_a_message_is_its_app_id_from_the_send_to_the_stored_row(bridges, fakes)
     # the same message again (an answer lost on the way): nothing sent twice
     again = send(bridge, thread, "C1D00000-0000-4000-8000-000000000001", "Le train de 9 h ?")
     assert again.json()["state"] == "known" and len(fakes.hermes.started) == 1
+    # and where it is now (thin apps, brick 3): in the turn going on, which the phone follows again
+    assert again.json() == {"client_id": "C1D00000-0000-4000-8000-000000000001", "thread": thread, "state": "known",
+                            "run_id": "r1", "tip": SESSION, "queued": False}
     # Hermes stored the turn: the stored row carries the id, `after=` the item before brings it
     stored(fakes, user("<!--bip:now lundi 9 h-->\n\nLe train de 9 h ?"), agent("Voie 4."))
     gate.set()
@@ -114,6 +117,9 @@ def test_words_during_a_turn_go_into_it_files_wait(bridges, fakes):
     photo = {"kind": "image", "mime": "image/png", "data": "AAAA"}
     queued = send(bridge, thread, "C1D00000-0000-4000-8000-0000000000B3", "Et celle-ci", attachments=[photo])
     assert queued.json()["state"] == "queued"
+    # sent again while it waits: known, still in the queue (no turn to follow for it)
+    again = send(bridge, thread, "C1D00000-0000-4000-8000-0000000000B3", "Et celle-ci", attachments=[photo]).json()
+    assert (again["state"], again["queued"], again["run_id"]) == ("known", True, None)
     now = page(bridge, thread)
     # waiting in the queue (its strip), not as a sent message; the steered one shows at once
     assert [i["client_id"] for i in now["pending"]["queue"]["items"]] == ["C1D00000-0000-4000-8000-0000000000B3"]

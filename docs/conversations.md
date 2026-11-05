@@ -417,7 +417,7 @@ text of a run still comes from `/v1/runs/{run_id}/events` (unchanged).
 POST /v1/threads/{thread|main|new}/messages
      {agent?, client_id, text, attachments?: [{kind: image, name, mime, data (base64)} | {kind: document, name, mime,
       size, path (POST /v1/files)}], notes?, kinds?, after?, instructions?}
-  → {client_id, thread, tip, state: started | steered | queued | known, run_id?}
+  → {client_id, thread, tip, state: started | steered | queued | known, run_id?, queued? (known only)}
 POST /v1/threads/{thread}/stop {agent?}          → {stopped, run_id?}
 POST /v1/approve {agent, run_id, request_id?, choice | answer}   an approval's choice or a question's answer (empty:
                                                                  skipped); the bridge's own cards as before
@@ -425,7 +425,11 @@ POST /v1/approve {agent, run_id, request_id?, choice | answer}   an approval's c
 
 One sending path (threads/send.rs): nothing runs in the conversation → a turn starts (followed at
 `/v1/runs/{run_id}/events`); a turn goes on → words go into it (Hermes' steer), files, `after` (« Après ») or a turn
-that takes no more words → the agent's queue (msg_queue.rs), started next; the same `client_id` again → nothing.
+that takes no more words → the agent's queue (msg_queue.rs), started next; the same `client_id` again → nothing
+is sent, `known` with where the message is now: `queued: true` (still in the queue), or `run_id` of its conversation's
+turn going on (the phone follows it again), or neither (its turn is over: the timeline has it). A message that never
+reached the bridge stays on the phone « Pas envoyé », and a tap sends it again with the same `client_id`: both apps,
+one rule.
 The bridge takes what waited for the message (`live_brief::message_notes`: the time, a Live call's recap, the
 family's news…), adds the app's `notes` (its 👍 / 👎), builds Hermes' input (photos as image parts of one user message,
 documents as `[Pièce jointe : …]` lines), creates the tip session when the thread has none (`new`: a side thread).
