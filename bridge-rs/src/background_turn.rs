@@ -82,7 +82,7 @@ pub enum Kind {
     Routine,
     /// What the agent noted in a voice call to make once it ended (live_calls.rs `after_call`).
     AfterCall,
-    /// A card answered after the turn that asked it ended (card_place.rs `resume`): the agent goes on.
+    /// A card answered that the turn which asked it ended without knowing (card_place.rs `settle`): the agent goes on.
     Card,
 }
 
@@ -420,9 +420,15 @@ impl Pipeline {
 
     /// Starts the turn and follows it to its end.
     pub async fn run(&self, turn: &Turn) -> Result<Ran, NotRun> {
+        self.run_then(turn, |_| {}).await
+    }
+
+    /// `run`, with `started` told the run's id as soon as Hermes took the turn (card_place.rs: an answer told once).
+    pub async fn run_then(&self, turn: &Turn, started: impl FnOnce(&str)) -> Result<Ran, NotRun> {
         let session = self.tip(&turn.agent, &turn.thread).await;
         let before = self.hermes.session(&turn.agent, &session).await.map(|s| tokens_of(&s)).unwrap_or(0);
         let (run_id, session) = self.start(turn).await?;
+        started(&run_id);
         Ok(self.wait(&turn.agent, &run_id, &session, turn.max_seconds, before).await)
     }
 

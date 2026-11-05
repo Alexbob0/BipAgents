@@ -1033,8 +1033,12 @@ fn apply_fields(base: &mut Connector, arguments: &Dict, creating: bool) -> Resul
 }
 
 async fn waited(state: &AppState, card: &str, name: &str, schedule: &Option<Schedule>) -> Dict {
-    let _ = state;
-    match wait_answer(card).await {
+    let answer = wait_answer(card).await;
+    if answer.is_some() {
+        // told in this call: no other turn for it (card_place.rs)
+        crate::card_place::taken(&state.config(), &format!("{RUN_PREFIX}{card}"));
+    }
+    match answer {
         Some(true) => {
             let routine = match schedule {
                 Some(s) if !s.mechanical => format!(
@@ -1231,7 +1235,12 @@ async fn ask_secret_tool(state: &AppState, agent: &AgentConfig, arguments: &Dict
         Err(why) => return Ok(refusal(&why)),
     };
     state.push.notify_bridge_card(&agent.name, &line, "secret_request", &id).await;
-    Ok(match secrets::wait(&id).await {
+    let answer = secrets::wait(&id).await;
+    if answer.is_some() {
+        // told in this call: no other turn for it (card_place.rs)
+        crate::card_place::taken(&config, &format!("{}{id}", secrets::RUN_PREFIX));
+    }
+    Ok(match answer {
         Some(secrets::Outcome::Saved { identifier }) => {
             let with = if gave_identifier { format!(" (identifier {identifier})") } else { String::new() };
             let what = if kind == "code" { "held for the connector's next run, then gone" } else { "kept in the vault" };

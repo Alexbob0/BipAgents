@@ -26,13 +26,16 @@
 //!   a Hermes approval lost with its run): read every minute by `sweep` (notifications.rs `read_gone`), so no badge
 //!   counts a card the Boîte cannot show (Alex's iPhone, 5/11).
 //!
-//! Kept in `<data_dir>/card-places.json` (`{run_id: {agent, session, report, at}}`), the last `KEEP_DAYS`.
+//! - Answered, any way, at any time: the agent goes on exactly once with the answer (`settle`, below).
+//!
+//! Kept in `<data_dir>/card-places.json` (`{run_id: {agent, session, report, at, run, summary, decided, taken}}`), the
+//! last `KEEP_DAYS`.
 //!
 //! No Python counterpart.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -66,6 +69,28 @@ pub struct Place {
     /// What it asks, in the person's words (the card's sentence): told to the agent when it resumes.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub summary: String,
+    /// The person's answer, not told to the agent yet (`settle` resumes it once the asking turn is over).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decided: Option<Decision>,
+    /// The tool call that waited for it (`ask_secret`, `connector_register`) returned the answer to its turn.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub taken: bool,
+}
+
+/// An answer the agent was not told yet.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Decision {
+    pub choice: String,
+    pub at: f64,
+    /// The asking turn as the hub followed it when the answer came: since when, and its tool calls so far (the calls
+    /// after the answer tell whether the turn learnt it by itself).
+    #[serde(default)]
+    pub followed_since: f64,
+    #[serde(default)]
+    pub calls: u32,
+    /// The bridge process that started its resumed turn (`BOOT`): another one's means the bridge restarted meanwhile.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resuming: Option<String>,
 }
 
 impl Place {
@@ -97,12 +122,28 @@ fn keep(config: &Config, run_id: &str, place: Place) -> std::io::Result<()> {
     let now = py::time_time();
     all.retain(|_, p| now - p.at < KEEP_DAYS * 86400.0);
     all.insert(run_id.to_string(), Place { at: now, ..place });
+    save(config, &all)
+}
+
+/// The card `run_id`'s place changed by `change` (kept as it is when there is none). Its result, if any.
+fn update<T>(config: &Config, run_id: &str, change: impl FnOnce(&mut Place) -> T) -> Option<T> {
+    let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut all = load(config);
+    let place = all.get_mut(run_id)?;
+    let out = change(place);
+    if let Err(err) = save(config, &all) {
+        tracing::warn!(run_id, error = %err, "card place not kept");
+    }
+    Some(out)
+}
+
+fn save(config: &Config, all: &BTreeMap<String, Place>) -> std::io::Result<()> {
     let file = path(config);
     if let Some(parent) = file.parent() {
         std::fs::create_dir_all(parent)?;
     }
     let temporary = file.with_extension("tmp");
-    let text = serde_json::to_string(&all).map_err(std::io::Error::other)?;
+    let text = serde_json::to_string(all).map_err(std::io::Error::other)?;
     py::write_with_mode(&temporary.to_string_lossy(), text.as_bytes(), 0o600)?;
     std::fs::rename(&temporary, &file)
 }
@@ -282,7 +323,7 @@ async fn place(state: &AppState, agent: &AgentConfig, made: &[String], run_id: O
         report: report.clone(),
         at: 0.0,
         run: run_id.map(str::to_string),
-        summary: String::new(),
+        ..Place::default()
     };
     let config = state.config();
     let cards = bridge_cards(state, &config, Some(&agent.name));
@@ -359,9 +400,7 @@ pub async fn answered(state: &AppState, agent: &AgentConfig, run_id: &str, choic
         threads.touch(&agent.name, place.session.as_deref(), "answered").await;
     }
     crate::notifications::read_card(state, &agent.name, id, run_id).await;
-    if !place.agent.is_empty() {
-        resume(state, agent, &place, choice);
-    }
+    decide(state, run_id, &place, choice);
 }
 
 /// The cards `answered` did, the last 200 (`watch` leaves them).
@@ -442,6 +481,8 @@ pub async fn watch(state: AppState) {
         }
         let placed = load(&config);
         before = Some(ids.into_iter().filter(|r| placed.contains_key(r)).collect());
+        // the answers not told yet whose turn is over: the agent goes on
+        settle(&state).await;
     }
 }
 
@@ -497,36 +538,94 @@ async fn gone(state: &AppState, agent: &AgentConfig, run_id: &str, place: &Place
         .find(|e| e.get("run_id").and_then(Value::as_str) == Some(run_id))
         .and_then(|e| e.get("choice").and_then(Value::as_str).map(str::to_string));
     if let Some(choice) = decided {
-        resume(state, agent, place, &choice);
+        decide(state, run_id, place, &choice);
     }
 }
 
-// -- a card answered late: the agent goes on -------------------------------------------------------------------------
+// -- a card answered: the agent goes on, once ------------------------------------------------------------------------
 //
 // Alex, 2026-11-05: « Valider une carte bien longtemps après devrait quand même relancer l'agent. Là il s'arrête et
-// attend qu'on lui dise d'y aller. » A card answered once the turn that asked it is over (its tool call stopped
-// waiting: `ask_secret`, `connector_register` after 330 s; a site's or a mail card's call never waits; the bridge
-// restarted; a card with no turn) starts ONE turn of the agent in the conversation that asked (a background task: its
-// own), saying what was decided. Answered while that turn still goes on: nothing more (the waiting call gets it). The
-// cards answered within `RESUME_GATHER` in the same conversation (a folded card's members, several at once) make one
-// turn. The turn goes through background_turn.rs: the month's credit, the brake, `RESUME_BUDGET`, a busy conversation
-// waited for; its reply lands like a hand-back's (pushed unless on screen); « [SILENT] » lands nothing.
+// attend qu'on lui dise d'y aller. » Then, the same evening, « tout de suite » neither: a site's or a mail card's call
+// never waits, so an answer given while the turn still went on (its reply streaming, other tools running) reached
+// nobody, and the agent never learnt it.
+//
+// Every answer (`answered`, or `gone` through the card's own route) is kept with the card's place (`decided`) until
+// the agent knows it:
+// - a tool call waiting for it (`ask_secret`, `connector_register`) returns it to its turn and says so (`taken`):
+//   nothing more;
+// - else, once the turn that asked is over (ended, failed, stopped; unknown to the hub after a restart: as Hermes says
+//   it), ONE turn of the agent in the conversation that asked (a background task: its own) says what was decided,
+//   unless that turn learnt it by itself (it called the card's own tool again after the answer: `told_by`). A card
+//   with no turn: at once.
+// `settle` looks every second (`watch`), an answer being left `TAKE_GRACE` to the call waiting for it. The answers of
+// the same conversation within `RESUME_GATHER` make one turn (a folded card's members, several at once). The turn goes
+// through background_turn.rs: the month's credit, the brake, `RESUME_BUDGET`, a busy conversation waited for (still
+// busy, or Hermes unreachable: tried again); its reply lands like a hand-back's (pushed unless on screen); « [SILENT] »
+// lands nothing. Exactly once: an answer leaves its place when its turn has started (`resuming` holds it meanwhile;
+// another bridge process's `resuming` is a restart before the start: resumed then).
+// Hermes' own approvals are not kept here: Hermes' waiting call gets the answer, and once it stopped waiting the run
+// was told it was refused and the card went (runs.rs `forget_pending`).
 
 /// Answers gathered into one turn.
 const RESUME_GATHER: std::time::Duration = std::time::Duration::from_secs(2);
 /// Tokens a resumed turn may take.
 pub const RESUME_BUDGET: i64 = 300_000;
+/// An answer younger than this is left to the tool call waiting for it (`taken`).
+const TAKE_GRACE: f64 = 1.0;
+/// The same for a secret's or a connector's card asked with no turn the hub follows (a routine of Hermes' cron): its
+/// call may still wait, and a connector's answer reaches it only once its tools are listed (connectors.rs `answer`).
+const TAKE_GRACE_NO_TURN: f64 = 30.0;
 
-/// What each answer said: (what the card asked, allowed), by (agent, conversation), until its turn starts.
-type Decisions = Vec<(String, bool)>;
-static RESUMES: Mutex<BTreeMap<(String, String), Decisions>> = Mutex::new(BTreeMap::new());
-
-/// The turn that asked the card no longer goes on (none, ended, or unknown to this bridge: restarted since).
-fn turn_over(state: &AppState, place: &Place) -> bool {
-    match place.run.as_deref() {
-        None => true,
-        Some(run) => state.hub.subscription(&place.agent, run).is_none_or(|s| s.finished() || s.terminal().is_some()),
+/// Seconds an answer to `card` is left to a call that may wait for it.
+fn take_grace(card: &str, place: &Place) -> f64 {
+    let waits = [crate::secrets::RUN_PREFIX, crate::connectors::RUN_PREFIX].iter().any(|p| card.starts_with(p));
+    if waits && place.run.is_none() {
+        TAKE_GRACE_NO_TURN
+    } else {
+        TAKE_GRACE
     }
+}
+/// Seconds between two questions to Hermes about a turn the hub no longer follows.
+const ASK_HERMES_EVERY: f64 = 10.0;
+
+/// This bridge process (`Decision::resuming`).
+static BOOT: LazyLock<String> = LazyLock::new(py::uuid4_hex);
+
+/// What each answer said: (the card's run id, what it asked, allowed), by (agent, conversation), until its turn starts.
+type Decisions = Vec<(String, String, bool)>;
+static RESUMES: Mutex<BTreeMap<(String, String), Decisions>> = Mutex::new(BTreeMap::new());
+/// When Hermes was last asked about a turn (`turn_now`).
+static ASKED: Mutex<BTreeMap<String, f64>> = Mutex::new(BTreeMap::new());
+
+/// A tool call waiting for card `run_id` returned its answer to the turn: the agent knows it.
+pub fn taken(config: &Config, run_id: &str) {
+    update(config, run_id, |p| p.taken = true);
+}
+
+/// The card `place` answered with `choice`: kept until the agent knows it (`settle`). A card never placed was asked
+/// in no conversation: nobody to tell.
+fn decide(state: &AppState, run_id: &str, place: &Place, choice: &str) {
+    if place.agent.is_empty() {
+        return;
+    }
+    let followed = place.run.as_deref().and_then(|r| state.hub.subscription(&place.agent, r)).map(|sub| {
+        let st = sub.state.lock().unwrap_or_else(|e| e.into_inner());
+        (st.followed_since, st.tool_calls)
+    });
+    let (followed_since, calls) = followed.unwrap_or_default();
+    let decision = Decision { choice: choice.to_string(), at: py::time_time(), followed_since, calls, resuming: None };
+    let config = state.config();
+    if update(&config, run_id, |p| p.decided = Some(decision.clone())).is_none() {
+        // its place dropped meanwhile (`watch` read it before): kept again
+        if let Err(err) = keep(&config, run_id, Place { decided: Some(decision), ..place.clone() }) {
+            tracing::warn!(run_id, error = %err, "card answer not kept");
+        }
+    }
+}
+
+/// The answer leaves the card's place: the agent knows it, or never will.
+fn forget(config: &Config, run_id: &str) {
+    update(config, run_id, |p| p.decided = None);
 }
 
 /// Where the agent goes on: the conversation whose turn asked (a task's own), else the one it showed in, else main.
@@ -549,48 +648,194 @@ pub fn resume_note(decisions: &[(String, bool)]) -> String {
         })
         .collect();
     format!(
-        "<!--bip:card\nNot from the person: they answered in the app after your turn had ended:\n{}\nGo on with what \
-         you were doing from where it stopped, now that you have the answer (don't ask for it again). Refused: don't \
-         do it and don't ask again; say in one short sentence what that changes. If nothing is left to do or say, {}.\n-->",
+        "<!--bip:card\nNot from the person: they answered in the app, and your turn ended before you were told:\n{}\nGo \
+         on with what you were doing from where it stopped, now that you have the answer (don't ask for it again). \
+         Refused: don't do it and don't ask again; say in one short sentence what that changes. If nothing is left to \
+         do or say, {}.\n-->",
         lines.join("\n"),
         crate::background_turn::SILENT_RULE
     )
 }
 
-/// The card `place` answered with `choice`: the agent resumes in its conversation when the turn that asked is over.
-fn resume(state: &AppState, agent: &AgentConfig, place: &Place, choice: &str) {
-    if !turn_over(state, place) {
+/// The card's own tools whose result tells its answer (the site asked again: « You may send to it already »).
+fn telling_tools(card: &str) -> &'static [&'static str] {
+    const SITES: [&str; 2] = [crate::sandbox_sites::REQUEST, crate::sandbox_sites::LIST];
+    const SECRET: [&str; 1] = [crate::connectors::ASK_SECRET];
+    const CONNECTOR: [&str; 1] = [crate::connectors::REGISTER];
+    if card.starts_with(crate::sandbox_sites::RUN_PREFIX) {
+        &SITES
+    } else if card.starts_with(crate::secrets::RUN_PREFIX) {
+        &SECRET
+    } else if card.starts_with(crate::connectors::RUN_PREFIX) {
+        &CONNECTOR
+    } else {
+        &[]
+    }
+}
+
+/// The turn learnt card `card`'s answer by itself: it called the card's own tool after the answer. `recent`, `calls`
+/// and `followed_since`: the turn's last tool names, its count of calls and since when the hub follows it (another
+/// following, after a restart, counts again from its start: not comparable, so not learnt).
+fn told_by(card: &str, recent: &VecDeque<String>, calls: u32, followed_since: f64, decision: &Decision) -> bool {
+    let tools = telling_tools(card);
+    if tools.is_empty() || (followed_since - decision.followed_since).abs() > 1e-3 || calls < decision.calls {
+        return false;
+    }
+    let after = (calls - decision.calls) as usize;
+    // as Hermes names them: `mcp_bipagents_files_sandbox_sites_request`, `mcp_bipagents_connectors_ask_secret`
+    let is = |name: &str, tool: &str| name == tool || name.strip_suffix(tool).is_some_and(|head| head.ends_with('_'));
+    recent.iter().rev().take(after).any(|t| tools.iter().any(|tool| is(crate::loop_brake::bare(t), tool)))
+}
+
+/// Where the turn that asked a card is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TurnNow {
+    /// Still going on: it may learn the answer yet.
+    Going,
+    /// Over, and it learnt the answer by itself.
+    Told,
+    /// Over without knowing it (or no turn).
+    Over,
+}
+
+async fn turn_now(state: &AppState, card: &str, place: &Place, decision: &Decision) -> TurnNow {
+    let Some(run) = place.run.as_deref() else { return TurnNow::Over };
+    let followed = state.hub.subscription(&place.agent, run).and_then(|sub| {
+        let st = sub.state.lock().unwrap_or_else(|e| e.into_inner());
+        if st.terminal.is_some() {
+            let told = told_by(card, &st.recent_tools, st.tool_calls, st.followed_since, decision);
+            Some(if told { TurnNow::Told } else { TurnNow::Over })
+        } else if !st.finished {
+            Some(TurnNow::Going)
+        } else {
+            None // followed no more before its end (the hub's watch gave up): as Hermes says it
+        }
+    });
+    if let Some(now) = followed {
+        return now;
+    }
+    // not followed here (the bridge restarted since, the run long forgotten): its status in Hermes
+    let Some(agent) = state.config().agent(Some(&place.agent)).cloned() else { return TurnNow::Over };
+    {
+        let now = py::time_time();
+        let mut asked = ASKED.lock().unwrap_or_else(|e| e.into_inner());
+        if asked.get(run).is_some_and(|at| now - at < ASK_HERMES_EVERY) {
+            return TurnNow::Going;
+        }
+        asked.retain(|_, at| now - *at < 3600.0);
+        asked.insert(run.to_string(), now);
+    }
+    match state.hermes.run(&agent, run).await {
+        Ok(found) => {
+            let status = found.get("status").and_then(Value::as_str).unwrap_or("");
+            if crate::jobs::TERMINAL.contains(&status) {
+                TurnNow::Over
+            } else {
+                TurnNow::Going
+            }
+        }
+        Err(crate::hermes::HermesError::Http { status: 404 | 410, .. }) => TurnNow::Over,
+        Err(_) => TurnNow::Going, // Hermes restarting: asked again later
+    }
+}
+
+/// Every second (`watch`): each answer not told yet, its turn over, resumed (see above).
+async fn settle(state: &AppState) {
+    let config = state.config();
+    let now = py::time_time();
+    let open: Vec<(String, Place, Decision)> = load(&config)
+        .into_iter()
+        .filter_map(|(run, place)| place.decided.clone().map(|d| (run, place, d)))
+        .collect();
+    for (card, place, decision) in open {
+        if decision.resuming.as_deref() == Some(BOOT.as_str()) {
+            continue; // its turn starting
+        }
+        if place.taken || now - decision.at > STALE_DAYS * 86400.0 {
+            forget(&config, &card);
+            continue;
+        }
+        if now - decision.at < take_grace(&card, &place) {
+            continue;
+        }
+        match turn_now(state, &card, &place, &decision).await {
+            TurnNow::Going => {}
+            TurnNow::Told => {
+                tracing::info!(agent = %place.agent, card = %card, "the turn learnt the card's answer by itself");
+                forget(&config, &card);
+            }
+            TurnNow::Over => resume(state, &card, &place, &decision),
+        }
+    }
+}
+
+/// Card `card`'s answer, not told yet, taken by this process to tell it (false: told, taken by a call, or being told).
+fn claim(config: &Config, card: &str) -> bool {
+    update(config, card, |p| match p.decided.as_mut() {
+        Some(d) if !p.taken && d.resuming.as_deref() != Some(BOOT.as_str()) => {
+            d.resuming = Some(BOOT.clone());
+            true
+        }
+        _ => false,
+    }) == Some(true)
+}
+
+/// The answer `decision` to card `card` claimed by this process, then told in one turn with those of the same
+/// conversation answered within `RESUME_GATHER`.
+fn resume(state: &AppState, card: &str, place: &Place, decision: &Decision) {
+    let config = state.config();
+    let Some(agent) = config.agent(Some(&place.agent)).cloned() else {
+        forget(&config, card);
+        return;
+    };
+    if !claim(&config, card) {
         return;
     }
     let key = (agent.name.clone(), resume_in(place));
     let first = {
         let mut waiting = RESUMES.lock().unwrap_or_else(|e| e.into_inner());
         let list = waiting.entry(key.clone()).or_default();
-        list.push((place.summary.clone(), allowed(choice)));
+        list.push((card.to_string(), place.summary.clone(), allowed(&decision.choice)));
         list.len() == 1
     };
     if !first {
         return;
     }
-    let (state, agent) = (state.clone(), agent.clone());
+    let state = state.clone();
     tokio::spawn(async move {
         tokio::time::sleep(RESUME_GATHER).await;
         let decisions = RESUMES.lock().unwrap_or_else(|e| e.into_inner()).remove(&key).unwrap_or_default();
+        // one a waiting call returned meanwhile is known already
+        let config = state.config();
+        let decisions: Decisions = decisions
+            .into_iter()
+            .filter(|(card, ..)| {
+                let taken = of(&config, card).is_none_or(|p| p.taken || p.decided.is_none());
+                if taken {
+                    forget(&config, card);
+                }
+                !taken
+            })
+            .collect();
         if !decisions.is_empty() {
             resume_turn(&state, &agent, &key.1, &decisions).await;
         }
     });
 }
 
-async fn resume_turn(state: &AppState, agent: &AgentConfig, conversation: &str, decisions: &[(String, bool)]) {
+async fn resume_turn(state: &AppState, agent: &AgentConfig, conversation: &str, decisions: &Decisions) {
     use crate::background_turn::{Delivery, Kind, Pipeline, Turn};
     let pipeline = Pipeline::of(state);
-    let mut turn = Turn::new(agent, Kind::Card, conversation, resume_note(decisions));
+    let told: Vec<(String, bool)> = decisions.iter().map(|(_, what, ok)| (what.clone(), *ok)).collect();
+    let mut turn = Turn::new(agent, Kind::Card, conversation, resume_note(&told));
     turn.budget = Some(RESUME_BUDGET);
-    tracing::info!(agent = %agent.name, conversation, cards = decisions.len(), "a card answered late: the agent resumes");
-    match pipeline.run(&turn).await {
+    tracing::info!(agent = %agent.name, conversation, cards = decisions.len(), "a card answered: the agent resumes");
+    let config = state.config();
+    let cards: Vec<&str> = decisions.iter().map(|(card, ..)| card.as_str()).collect();
+    // started: the answers leave their places (told now, never again)
+    let started = |_: &str| cards.iter().for_each(|card| forget(&config, card));
+    match pipeline.run_then(&turn, started).await {
         Ok(ran) if ran.answered() && !crate::background_turn::is_silent(&ran.text) => {
-            let config = state.config();
             let title = config.agent(Some(&agent.name)).map(|a| a.display_name.clone()).filter(|n| !n.is_empty());
             let delivery = Delivery {
                 agent: agent.clone(),
@@ -606,7 +851,31 @@ async fn resume_turn(state: &AppState, agent: &AgentConfig, conversation: &str, 
             pipeline.deliver(&delivery).await;
         }
         Ok(ran) => tracing::info!(agent = %agent.name, status = %ran.status, "resumed turn: nothing to tell"),
-        Err(why) => tracing::info!(agent = %agent.name, why = %why, "resumed turn not run"),
+        Err(why) if again(&why) => {
+            // the conversation still busy, Hermes unreachable: tried again (`settle`)
+            tracing::info!(agent = %agent.name, why = %why, "resumed turn not run yet: tried again");
+            for card in &cards {
+                update(&config, card, |p| {
+                    if let Some(d) = p.decided.as_mut() {
+                        d.resuming = None;
+                    }
+                });
+            }
+        }
+        Err(why) => {
+            tracing::info!(agent = %agent.name, why = %why, "resumed turn not run");
+            cards.iter().for_each(|card| forget(&config, card));
+        }
+    }
+}
+
+/// A resumed turn that could not start now but may later.
+fn again(why: &crate::background_turn::NotRun) -> bool {
+    use crate::background_turn::NotRun;
+    match why {
+        NotRun::Busy => true,
+        NotRun::Refused(err) => err.is_transport(),
+        NotRun::Credit | NotRun::Gone => false,
     }
 }
 
@@ -650,10 +919,91 @@ mod tests {
         assert!(allowed("once") && allowed("always") && !allowed("deny"));
         let note = resume_note(&[("Vie veut envoyer des données à connect.garmin.com".into(), true), (String::new(), false)]);
         assert!(note.starts_with("<!--bip:card\n") && note.ends_with("-->"));
+        assert!(note.contains("your turn ended before you were told"));
         assert!(note.contains("- « Vie veut envoyer des données à connect.garmin.com »: ALLOWED"));
         assert!(note.contains("- your request: REFUSED") && note.contains("[SILENT]"));
         // kept with the place, read back by an older file too
         let kept: Place = serde_json::from_str(r#"{"agent": "vie", "session": "s", "report": "s", "at": 1.0}"#).unwrap();
-        assert_eq!((kept.run, kept.summary), (None, String::new()));
+        assert_eq!((kept.run, kept.summary, kept.decided, kept.taken), (None, String::new(), None, false));
+    }
+
+    fn config_in(dir: &std::path::Path) -> Config {
+        let mut config = Config::with_key("k");
+        config.outbox.db_path = dir.join("bridge.db").to_string_lossy().into_owned();
+        config
+    }
+
+    fn decision(followed_since: f64, calls: u32) -> Decision {
+        Decision { choice: "once".into(), at: 10.0, followed_since, calls, resuming: None }
+    }
+
+    #[test]
+    fn an_answer_is_kept_until_told_once_whatever_the_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(dir.path());
+        let place = Place { agent: "vie".into(), session: Some("s".into()), run: Some("run_1".into()), ..Place::default() };
+        // no place: nothing kept, nothing to tell
+        assert!(!claim(&config, "bip-site-a"));
+        taken(&config, "bip-site-a");
+        assert_eq!(of(&config, "bip-site-a"), None);
+        keep(&config, "bip-site-a", place.clone()).unwrap();
+        keep(&config, "bip-secret-b", place.clone()).unwrap();
+        // placed, not answered: nothing to claim
+        assert!(!claim(&config, "bip-site-a"));
+        // answered (the turn going on): claimed once, never twice by this process
+        update(&config, "bip-site-a", |p| p.decided = Some(decision(5.0, 2)));
+        assert!(claim(&config, "bip-site-a"));
+        assert!(!claim(&config, "bip-site-a"));
+        assert_eq!(of(&config, "bip-site-a").unwrap().decided.unwrap().resuming.as_deref(), Some(BOOT.as_str()));
+        // its turn started: told, gone
+        forget(&config, "bip-site-a");
+        assert!(!claim(&config, "bip-site-a") && of(&config, "bip-site-a").unwrap().decided.is_none());
+        // a bridge restarted before its turn started: claimed again by the new process
+        update(&config, "bip-site-a", |p| {
+            p.decided = Some(Decision { resuming: Some("another-process".into()), ..decision(5.0, 2) })
+        });
+        assert!(claim(&config, "bip-site-a"));
+        // a waiting call returned it, before or after the answer was kept: never claimed
+        taken(&config, "bip-secret-b");
+        update(&config, "bip-secret-b", |p| p.decided = Some(decision(5.0, 2)));
+        assert!(!claim(&config, "bip-secret-b"));
+        let kept = of(&config, "bip-secret-b").unwrap();
+        assert!(kept.taken && kept.decided.is_some());
+        // a call may wait with no turn followed (Hermes' cron): left to it longer; a site's or a mail card's never waits
+        let turnless = Place { run: None, ..place.clone() };
+        assert_eq!(take_grace("bip-secret-b", &place), TAKE_GRACE);
+        assert_eq!(take_grace("bip-secret-b", &turnless), TAKE_GRACE_NO_TURN);
+        assert_eq!(take_grace("bip-conn-c", &turnless), TAKE_GRACE_NO_TURN);
+        assert_eq!(take_grace("bip-site-a", &turnless), TAKE_GRACE);
+        assert_eq!(take_grace("bip-mail-d", &turnless), TAKE_GRACE);
+        // kept on disk: read back by the next process, its place unchanged
+        let raw: Value = serde_json::from_str(&std::fs::read_to_string(path(&config)).unwrap()).unwrap();
+        assert_eq!(raw["bip-secret-b"]["taken"], json!(true));
+        assert_eq!(raw["bip-secret-b"]["decided"]["choice"], json!("once"));
+        assert_eq!(raw["bip-secret-b"]["session"], json!("s"));
+        assert!(raw["bip-site-a"].get("taken").is_none());
+    }
+
+    #[test]
+    fn a_turn_learnt_the_answer_only_by_calling_the_cards_own_tool_after_it() {
+        let recent = |names: &[&str]| names.iter().map(|n| n.to_string()).collect::<VecDeque<String>>();
+        let tools = recent(&["mcp_bipagents_files_sandbox_sites_request", "terminal", "mcp_bipagents_files_sandbox_sites"]);
+        // two calls since the answer (terminal, the sites' list): learnt
+        assert!(told_by("bip-site-x", &tools, 3, 5.0, &decision(5.0, 1)));
+        // only the call that asked was before the answer: not learnt
+        let asked = recent(&["mcp_bipagents_files_sandbox_sites_request", "terminal"]);
+        assert!(!told_by("bip-site-x", &asked, 2, 5.0, &decision(5.0, 1)));
+        assert!(!told_by("bip-site-x", &tools, 1, 5.0, &decision(5.0, 1)));
+        // the hub follows it again after a restart (its count from the start): not comparable
+        assert!(!told_by("bip-site-x", &tools, 3, 99.0, &decision(5.0, 1)));
+        assert!(!told_by("bip-site-x", &tools, 0, 5.0, &decision(5.0, 1)));
+        // a secret asked again; a mail card has no such tool (always told by a resume)
+        let secret = recent(&["mcp_bipagents_connectors_ask_secret"]);
+        assert!(told_by("bip-secret-x", &secret, 2, 5.0, &decision(5.0, 1)));
+        assert!(!told_by("bip-conn-x", &secret, 2, 5.0, &decision(5.0, 1)));
+        assert!(!told_by("bip-mail-x", &tools, 3, 5.0, &decision(5.0, 0)));
+        // a tool whose name only ends the same way is another tool
+        let other = recent(&["mcp_bipagents_files_notsandbox_sites"]);
+        assert!(!told_by("bip-site-x", &other, 2, 5.0, &decision(5.0, 1)));
     }
 }
