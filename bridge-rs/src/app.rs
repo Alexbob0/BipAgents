@@ -1239,6 +1239,8 @@ async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>
             tracing::warn!(agent = %agent.name, error = %err, "approval decision not kept");
         }
         state.hub.forget_approval(&agent.name, &run_id, request_id);
+        // its notification read on every device: the badges count only what the Boîte shows (5/11)
+        crate::notifications::read_card(&state, &agent.name, request_id.unwrap_or(&run_id), &run_id).await;
         // the answered item in the conversation on every device (the timeline's approvals log)
         crate::threads::threads_of(&state).touch(&agent.name, session.as_deref(), "answered").await;
         // a background task's: also the conversation it reports to, which showed it too (card_place.rs)

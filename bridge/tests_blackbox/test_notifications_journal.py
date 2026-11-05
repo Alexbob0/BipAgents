@@ -67,7 +67,7 @@ def test_read_state_is_the_journals(bridges, fakes):
     main = bridge.get("/v1/threads/main", params={"agent": "wellness"}, headers=AUTH).json()
     assert main["unread"] == 1
     unread = bridge.get("/v1/notifications/unread", headers=AUTH).json()
-    assert unread == {"total": 1, "agents": {"wellness": 1}, "threads": {main["id"]: 1}}
+    assert unread == {"total": 1, "agents": {"wellness": 1}, "threads": {main["id"]: 1}, "boite": {"wellness": 1}}
     done = bridge.post("/v1/notifications/read", headers=AUTH, json={"agent": "wellness", "thread": "main"}).json()
     assert done["read"] == [journal(bridge)[0]["id"]] and done["unread"]["total"] == 0
     # the other devices are told (a silent push), the badge with it

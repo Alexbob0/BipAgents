@@ -22,6 +22,9 @@
 //!   this, Alex's 28/10 card drawn at the end of the Discussion); nor a placed card waiting for more than `STALE_DAYS`.
 //! - A card answered or gone through its own route (the secret's secure field, the site's screen…): `watch` sees it go
 //!   and does what `answered` does (its conversations touched, its notifications read on every device).
+//! - A card's notification still unread when its card waits no more (never placed, gone before `watch` followed it,
+//!   a Hermes approval lost with its run): read every minute by `watch` (notifications.rs `read_gone`), so no badge
+//!   counts a card the Boîte cannot show (Alex's iPhone, 5/11).
 //!
 //! Kept in `<data_dir>/card-places.json` (`{run_id: {agent, session, report, at}}`), the last `KEEP_DAYS`.
 //!
@@ -367,6 +370,7 @@ const WATCH_EVERY: std::time::Duration = std::time::Duration::from_secs(1);
 /// card answered elsewhere than `/v1/approve` (or withdrawn) gone from the conversations that showed it.
 pub async fn watch(state: AppState) {
     let mut before: Option<HashSet<String>> = None;
+    let mut sweeps: u64 = 0;
     loop {
         tokio::time::sleep(WATCH_EVERY).await;
         let (s, config) = (state.clone(), state.config());
@@ -401,9 +405,38 @@ pub async fn watch(state: AppState) {
                 gone(&state, &agent, run, place).await;
             }
         }
+        // every minute (the first a minute after the start: the hub follows its runs again by then): the rows of
+        // cards gone that nothing read (never placed, gone before this watch, a Hermes approval lost with its run)
+        // read, so the badges count only what the Boîte shows
+        sweeps += 1;
+        if sweeps % SWEEP_EVERY == 0 {
+            crate::notifications::read_gone(&state, &waiting_refs(&state, &cards), FRESH_SECONDS as i64).await;
+        }
         let placed = load(&config);
         before = Some(ids.into_iter().filter(|r| placed.contains_key(r)).collect());
     }
+}
+
+/// `watch`'s turns between two sweeps of the cards' rows (a minute).
+const SWEEP_EVERY: u64 = 60;
+
+/// The ids a waiting card's notification has as `ref`: the bridge's cards (their run id, their id, their request id)
+/// and Hermes' approvals (run and request ids), a relative's agent's too.
+fn waiting_refs(state: &AppState, cards: &[Dict]) -> HashSet<String> {
+    let mut refs = HashSet::new();
+    let mut hermes = state.hub.pending_approvals(None);
+    hermes.extend(crate::agent_shares::pending_mine(None));
+    for item in cards.iter().chain(hermes.iter()) {
+        let run = run_id_of(item);
+        if let Some((_, id)) = run.strip_prefix("bip-").and_then(|r| r.split_once('-')) {
+            refs.insert(id.to_string());
+        }
+        if let Some(request) = item.get("request_id").and_then(Value::as_str) {
+            refs.insert(request.to_string());
+        }
+        refs.insert(run);
+    }
+    refs
 }
 
 /// A placed card no longer waiting: the conversations showing it touched, its notifications read on every device.
