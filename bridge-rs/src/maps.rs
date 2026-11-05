@@ -1215,6 +1215,8 @@ pub fn short_card(id: &str) -> String {
 /// the folder of the files it was sent: `/fichiers/cartes/<id>.png` in its sandbox. The tiles are fetched here, by the
 /// bridge, within OpenStreetMap's policy (and cached); a script in the sandbox never fetches tiles itself.
 pub const SANDBOX_SUBFOLDER: &str = "cartes";
+/// How map_image's result names that picture (read_shares.rs reads it back: a file made in a shared conversation).
+pub const PROGRAMS_NOTE: &str = "Picture in your sandbox: ";
 
 /// The picture copied where the agent's programs read it: into its isolated sandbox's files volume (sandbox.rs), else
 /// into its uploads folder (mounted in the sandbox, or read as is); the path as the agent sees it. None: neither.
@@ -1299,7 +1301,7 @@ pub async fn call(config: &Config, agent: &str, arguments: &Dict) -> Dict {
     }
     // the same picture for its programs (a deck's map: slides-styles)
     if let Some(seen) = put_for_programs(config, agent, &id, png) {
-        checks.push_str(&format!("\nPicture in your sandbox: {seen} (for a deck or a document; not for your reply)."));
+        checks.push_str(&format!("\n{PROGRAMS_NOTE}{seen} (for a deck or a document; not for your reply)."));
     }
     let show = match shown {
         Some(path) => format!(

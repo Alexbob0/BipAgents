@@ -12,7 +12,9 @@
 //! What viewers get: the person's typed messages and the agent's final replies (no `MEDIA:` lines, no tool calls,
 //! cards, approvals, reasoning), the pages the replies link to (not the health ones, not the Carnet's) and the map
 //! pictures. While a run goes on in a shared conversation, the agent's private tools are closed as during a
-//! relative's turn (agent_shares.rs `RELATIVE_TOOLS`), and the app adds `instructions` (this view's) to the run.
+//! relative's turn (agent_shares.rs `RELATIVE_TOOLS`; a project agent keeps its pages and friends' cards, and
+//! `give_file` only for a file made in the shared conversation: `SHARED_PROJECT_TOOLS`, `give_file_refused`), and the
+//! app adds `instructions` (this view's) to the run.
 //!
 //! `<data>/read-shares.json` (0600): each share's guichet, writer token, content key, invitations' secrets.
 //!
@@ -199,7 +201,15 @@ fn put_share(config: &Config, id: &str, share: Option<Value>) -> anyhow::Result<
     let mut data = load(&file);
     let shares = data.get_mut("shares").and_then(Value::as_object_mut).expect("an object");
     match share {
-        Some(v) => shares.insert(id.to_string(), v),
+        Some(mut v) => {
+            // the files noted as made in it meanwhile (note_made, during a sync's long round) are kept
+            if let Some(kept) = shares.get(id).and_then(|old| old.get("made")).and_then(Value::as_array) {
+                let mut made: Vec<Value> = v.get("made").and_then(Value::as_array).cloned().unwrap_or_default();
+                made.extend(kept.iter().filter(|m| !made.contains(m)).cloned().collect::<Vec<_>>());
+                v["made"] = json!(made);
+            }
+            shares.insert(id.to_string(), v)
+        }
         None => shares.remove(id),
     };
     save(&file, &data)
@@ -275,16 +285,104 @@ pub fn shared_turn(state: &AppState, agent: &str) -> bool {
     })
 }
 
-/// The answer a closed tool gives in a shared conversation.
-pub fn closed_tool(name: &str) -> Option<Dict> {
-    if crate::agent_shares::RELATIVE_TOOLS.contains(&name) {
+/// What a project agent keeps in its shared thread besides `RELATIVE_TOOLS` (Alex, 5/11: « Oui, sauf fichiers »): a
+/// page and a friends' card are made from what is said in this conversation (the person's own data stays closed, so
+/// nothing personal can reach them), and they are what the friends came for. `give_file` is not among them: it is
+/// checked on its own (`give_file_refused`), and only gives a file made in this shared conversation.
+pub const SHARED_PROJECT_TOOLS: [&str; 2] = [crate::agent_tools::CREATE_PAGE, crate::friends_cards::TOOL_NAME];
+
+/// The answer a closed tool gives in a shared conversation; `project`: the agent is a project agent (its thread is the
+/// shared one).
+pub fn closed_tool(name: &str, project: bool) -> Option<Dict> {
+    if crate::agent_shares::RELATIVE_TOOLS.contains(&name)
+        || (project && (SHARED_PROJECT_TOOLS.contains(&name) || name == crate::give_file::TOOL_NAME))
+    {
         return None;
     }
+    let made_here = if project {
+        " Pages, maps and cards you make from this conversation are fine; give_file only gives a file you made here."
+    } else {
+        ""
+    };
     Some(tk::tool_text(
-        "This conversation is shown to people your person invited: your person's own data and tools (mail, calendar, \
-         contacts, health, notebook, archives, files, pages, tasks) are closed here. Answer from what you know, or say \
-         your person can ask in another conversation.",
+        &format!(
+            "This conversation is shown to people your person invited: your person's own data and tools (mail, \
+             calendar, contacts, health, notebook, archives, files, tasks) are closed here.{made_here} Answer from what \
+             you know, or say your person can ask in another conversation."
+        ),
         true,
+    ))
+}
+
+/// The most files a share remembers as made in it.
+const MADE_MAX: usize = 300;
+
+/// The paths a file-making tool's result hands (its `MEDIA:` line, and a map's picture in the agent's sandbox, maps.rs
+/// `PROGRAMS_NOTE`), as the agent sees them.
+pub fn made_paths(result: &Dict) -> Vec<String> {
+    if result.get("isError").and_then(Value::as_bool).unwrap_or(false) {
+        return Vec::new();
+    }
+    let text = result
+        .get("content")
+        .and_then(|c| c.get(0))
+        .and_then(|c| c.get("text"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let mut paths: Vec<String> = MEDIA_LINE.captures_iter(text).map(|c| c[1].to_string()).collect();
+    paths.extend(text.split(crate::maps::PROGRAMS_NOTE).skip(1).filter_map(|rest| rest.split_whitespace().next()).map(str::to_string));
+    paths
+}
+
+/// A file made by `agent` during a turn of its shared thread: kept with each of its live thread shares, so that
+/// `give_file` may give it there (and only it).
+pub fn note_made(config: &Config, agent: &str, paths: &[String]) {
+    if paths.is_empty() {
+        return;
+    }
+    let at = now();
+    for share in thread_shares(config, agent).into_iter().filter(|v| v["ends"].as_f64().unwrap_or(0.0) > at) {
+        let id = s(&share, "id");
+        let _one = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let file = path(config);
+        let mut data = load(&file);
+        let Some(kept) = data.get_mut("shares").and_then(|v| v.get_mut(&id)) else { continue };
+        let mut made: Vec<Value> = kept.get("made").and_then(Value::as_array).cloned().unwrap_or_default();
+        for p in paths {
+            if !made.iter().any(|m| m.as_str() == Some(p)) {
+                made.push(json!(p));
+            }
+        }
+        let skip = made.len().saturating_sub(MADE_MAX);
+        kept["made"] = json!(made[skip..].to_vec());
+        if let Err(e) = save(&file, &data) {
+            tracing::warn!(error = %e, "a file made in a shared conversation not noted");
+        }
+    }
+}
+
+/// `give_file` in a shared conversation: None when the file was made in it (by this agent, in a turn of the shared
+/// thread: `note_made`); else the refusal. The privacy rule: never a file of the person's own (sent to the agent,
+/// in its folders) nor one made in another conversation, even when the agent names its path.
+pub fn give_file_refused(config: &Config, agent: &str, arguments: &Dict) -> Option<Dict> {
+    let raw = arguments.get("path").map(py::py_str).unwrap_or_default();
+    let wanted = raw.trim().trim_start_matches("MEDIA:").trim();
+    let wanted = wanted.strip_prefix("file://").unwrap_or(wanted);
+    let at = now();
+    let made_here = thread_shares(config, agent).iter().filter(|v| v["ends"].as_f64().unwrap_or(0.0) > at).any(|v| {
+        v.get("made").and_then(Value::as_array).is_some_and(|made| made.iter().any(|m| m.as_str() == Some(wanted)))
+    });
+    if made_here && !wanted.is_empty() {
+        return None;
+    }
+    tracing::info!(agent = %agent, "give_file refused in a shared conversation: not a file made in it");
+    Some(tk::tool_failure(
+        &format!(
+            "{wanted}: not a file you made in this shared conversation. Here you can only give a file you made in it \
+(a map's picture, a page…); your person's files and those of other conversations stay private."
+        ),
+        "This conversation is shown to the people you invited: I can only give here a file I made in it, never one of \
+your own files.",
     ))
 }
 
@@ -1230,7 +1328,26 @@ mod tests {
                 && !guichet_ok("http://evil.test")
                 && guichet_ok("http://127.0.0.1:9")
         );
-        assert!(instructions(4).contains("4 people") && closed_tool("mail_search").is_some());
-        assert!(closed_tool(crate::weather::TOOL_NAME).is_none());
+        assert!(instructions(4).contains("4 people") && closed_tool("mail_search", false).is_some());
+        assert!(closed_tool(crate::weather::TOOL_NAME, false).is_none());
+    }
+
+    #[test]
+    fn a_shared_project_thread_keeps_its_pages_and_cards_but_never_the_person_s_files() {
+        // Alex, 5/11 « Oui, sauf fichiers »: pages and cards open for a project agent, give_file checked on its own
+        for name in [crate::agent_tools::CREATE_PAGE, crate::friends_cards::TOOL_NAME, crate::give_file::TOOL_NAME] {
+            assert!(closed_tool(name, true).is_none(), "{name}");
+            assert!(closed_tool(name, false).is_some(), "{name}");
+        }
+        for name in ["mail_search", "notebook", "files_read", "calendar_list"] {
+            assert!(closed_tool(name, true).is_some(), "{name}");
+        }
+        // the paths a map's result hands: its MEDIA line and its picture in the sandbox
+        let result = tk::tool_text(
+            &format!("MEDIA:/bipagents/maps/bip/m-1.png\nMap ready\n{}/fichiers/cartes/m-1.png (for a deck).", crate::maps::PROGRAMS_NOTE),
+            false,
+        );
+        assert_eq!(made_paths(&result), vec!["/bipagents/maps/bip/m-1.png", "/fichiers/cartes/m-1.png"]);
+        assert!(made_paths(&tk::tool_text("MEDIA:/x.png", true)).is_empty());
     }
 }
