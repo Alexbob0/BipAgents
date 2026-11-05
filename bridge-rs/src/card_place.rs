@@ -23,7 +23,7 @@
 //! - A card answered or gone through its own route (the secret's secure field, the site's screen…): `watch` sees it go
 //!   and does what `answered` does (its conversations touched, its notifications read on every device).
 //! - A card's notification still unread when its card waits no more (never placed, gone before `watch` followed it,
-//!   a Hermes approval lost with its run): read every minute by `watch` (notifications.rs `read_gone`), so no badge
+//!   a Hermes approval lost with its run): read every minute by `sweep` (notifications.rs `read_gone`), so no badge
 //!   counts a card the Boîte cannot show (Alex's iPhone, 5/11).
 //!
 //! Kept in `<data_dir>/card-places.json` (`{run_id: {agent, session, report, at}}`), the last `KEEP_DAYS`.
@@ -370,7 +370,6 @@ const WATCH_EVERY: std::time::Duration = std::time::Duration::from_secs(1);
 /// card answered elsewhere than `/v1/approve` (or withdrawn) gone from the conversations that showed it.
 pub async fn watch(state: AppState) {
     let mut before: Option<HashSet<String>> = None;
-    let mut sweeps: u64 = 0;
     loop {
         tokio::time::sleep(WATCH_EVERY).await;
         let (s, config) = (state.clone(), state.config());
@@ -405,20 +404,25 @@ pub async fn watch(state: AppState) {
                 gone(&state, &agent, run, place).await;
             }
         }
-        // every minute (the first a minute after the start: the hub follows its runs again by then): the rows of
-        // cards gone that nothing read (never placed, gone before this watch, a Hermes approval lost with its run)
-        // read, so the badges count only what the Boîte shows
-        sweeps += 1;
-        if sweeps % SWEEP_EVERY == 0 {
-            crate::notifications::read_gone(&state, &waiting_refs(&state, &cards), FRESH_SECONDS as i64).await;
-        }
         let placed = load(&config);
         before = Some(ids.into_iter().filter(|r| placed.contains_key(r)).collect());
     }
 }
 
-/// `watch`'s turns between two sweeps of the cards' rows (a minute).
-const SWEEP_EVERY: u64 = 60;
+const SWEEP_EVERY: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Every minute (the first a minute after the start: the hub follows its runs again by then), on every install
+/// (Hermes' own approvals too): the rows of cards gone that nothing read (a secret not answered in time, never placed,
+/// gone before `watch` followed it, a Hermes approval lost with its run) read, so the badges count only what the Boîte
+/// shows (Alex's iPhone, 5/11).
+pub async fn sweep(state: AppState) {
+    loop {
+        tokio::time::sleep(SWEEP_EVERY).await;
+        let (s, config) = (state.clone(), state.config());
+        let Ok(cards) = tokio::task::spawn_blocking(move || bridge_cards(&s, &config, None)).await else { continue };
+        crate::notifications::read_gone(&state, &waiting_refs(&state, &cards), FRESH_SECONDS as i64).await;
+    }
+}
 
 /// The ids a waiting card's notification has as `ref`: the bridge's cards (their run id, their id, their request id)
 /// and Hermes' approvals (run and request ids), a relative's agent's too.

@@ -462,7 +462,8 @@ pub async fn read_card(state: &AppState, agent: &str, card: &str, run_id: &str) 
         .store
         .run(
             "SELECT id FROM notifications WHERE agent = ? AND ref_id IN (?, ?) AND type IN \
-             ('approval', 'site', 'login', 'connector', 'secret', 'mail_card') AND (read_at IS NULL OR state != 'answered')",
+             ('approval', 'site', 'login', 'connector', 'secret', 'mail_card') \
+             AND (read_at IS NULL OR state != 'answered')",
             vec![text(agent), text(card), text(run_id)],
         )
         .await;

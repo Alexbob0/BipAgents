@@ -327,6 +327,8 @@ impl AppState {
         self.spawn(async move {
             rooms.resume();
         });
+        // the rows of cards gone that nothing read: read, the badges count what the Boîte shows (card_place.rs)
+        self.spawn(crate::card_place::sweep(self.clone()));
         let jobs = jobs_of(self);
         self.spawn(async move {
             jobs.clone().resume_following().await;
