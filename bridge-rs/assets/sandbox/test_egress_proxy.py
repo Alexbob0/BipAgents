@@ -103,6 +103,18 @@ def test_never_an_address_of_this_machine(tmp_path, monkeypatch):
     assert asyncio.run(proxy.resolve("localhost", 443)) == []
 
 
+def test_never_an_ipv4_wrapped_in_ipv6(tmp_path, monkeypatch):
+    """NAT64 (64:ff9b::/96, and its local-use 64:ff9b:1::/48) and 6to4 (2002::/16) carry an IPv4 address: behind such
+    a gateway, 64:ff9b::c0a8:101 is 192.168.1.1. Refused whatever the IPv4 inside, whatever Python's version says."""
+    proxy, _, _ = load(tmp_path, monkeypatch)
+    for address in ("64:ff9b::c0a8:101", "64:ff9b::a00:1", "64:ff9b::7f00:1", "64:ff9b::808:808",
+                    "64:ff9b:1::c0a8:101", "2002:c0a8:101::1", "2002:a00:1::", "2002:808:808::1",
+                    "::ffff:192.168.1.1", "::ffff:10.0.0.1"):
+        assert not proxy.public(address), address
+    # the IPv4 inside a mapped address is judged as itself; a public IPv6 next to these prefixes stays public
+    assert proxy.public("::ffff:8.8.8.8") and proxy.public("2001:4860:4860::8888") and proxy.public("2003::1")
+
+
 def record(kind, size):
     return bytes([kind, 3, 3]) + size.to_bytes(2, "big") + b"x" * size
 

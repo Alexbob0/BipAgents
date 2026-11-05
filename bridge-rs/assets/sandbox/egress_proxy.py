@@ -229,11 +229,19 @@ def local_name(host):
     return literal(host) or "." not in host or last in LOCAL_SUFFIXES or not last.isalpha() and not last.startswith("xn--")
 
 
+# IPv6 prefixes that carry an IPv4 address (NAT64, its local-use prefix, 6to4): no route of ours goes through them,
+# and behind a NAT64 / 6to4 gateway they reach whatever IPv4 is inside (192.168.1.1 as 64:ff9b::c0a8:101). Python's
+# own verdict on them changed between versions (3.9 calls 2002::/16 global): refused here whatever it says.
+WRAPPED = tuple(ipaddress.ip_network(n) for n in ("64:ff9b::/96", "64:ff9b:1::/48", "2002::/16"))
+
+
 def public(address):
     """An address of the internet, not of this machine or a network it is on."""
     try:
         ip = ipaddress.ip_address(address.split("%", 1)[0])
     except ValueError:
+        return False
+    if ip.version == 6 and any(ip in net for net in WRAPPED):
         return False
     if ip.version == 6 and ip.ipv4_mapped:
         ip = ip.ipv4_mapped
