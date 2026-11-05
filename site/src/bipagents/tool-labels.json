@@ -311,7 +311,7 @@
    "counts": false,
    "target": [],
    "preview": false,
-   "use": "look"
+   "use": null
   },
   {
    "id": "mailSearch",
@@ -867,7 +867,7 @@
    "counts": false,
    "target": [],
    "preview": false,
-   "use": "mood"
+   "use": null
   }
  ],
  "text": {
