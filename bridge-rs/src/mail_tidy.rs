@@ -610,8 +610,13 @@ impl Selector {
         Selector {
             groups: groups.into_iter().filter(|g: &String| !g.is_empty()).collect(),
             from: text_arg(arguments, "from"),
-            domain: text_arg(arguments, "domain"),
-            list_id: text_arg(arguments, "list_id").trim_matches(|c| c == '<' || c == '>').to_string(),
+            // a group id written in the field (`domain: "domain:qonto.example"`, 5/11 token lab: « no message
+            // matches » three times, and Hermes paused all the bridge's tools for a minute): the field's value
+            domain: text_arg(arguments, "domain").trim_start_matches("domain:").trim_start_matches('@').to_string(),
+            list_id: text_arg(arguments, "list_id")
+                .trim_start_matches("list:")
+                .trim_matches(|c| c == '<' || c == '>')
+                .to_string(),
             older_than_days: tk::as_py_int(arguments.get("older_than_days")),
             subject_contains: text_arg(arguments, "subject_contains"),
             unread_only: truthy("unread_only"),
@@ -1197,12 +1202,12 @@ pub fn tools() -> Vec<Value> {
 pub struct Called {
     pub result: Dict,
     pub card: Option<Job>,
-    /// A standing rule's card (mail_rules.rs).
-    pub rule: Option<crate::mail_rules::Rule>,
+    /// Standing rules' cards (mail_rules.rs): one per sender a rule call named.
+    pub rules: Vec<crate::mail_rules::Rule>,
 }
 
 pub fn said(text: &str, error: bool) -> Called {
-    Called { result: tool_text(text, error), card: None, rule: None }
+    Called { result: tool_text(text, error), card: None, rules: Vec::new() }
 }
 
 /// One of the tools, for `agent` (only the mailboxes the person gave it).
@@ -1301,11 +1306,21 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict, opener: 
         tracing::info!(agent = %agent, card = %card.id, count = card.uids.len(), joined, "mail tidy card");
         let groups: Vec<String> = card.groups.iter().take(5).map(|(g, n)| format!("{g} {n}")).collect();
         let made = if joined { "Added to the card already waiting" } else { "Card made" };
+        // one sender per call: the next ones go together (5/11, token lab, GLM-5.3 Flash with the tool in view: 14
+        // calls, one per domain, until the brake stopped the turn at the 11th)
+        let one_sender = !arguments.get("groups").is_some_and(py::truthy)
+            && (!arg("domain").is_empty() || !arg("from").is_empty() || !arg("list_id").is_empty());
+        let together = if one_sender {
+            " Other senders: one call per action with all of them in groups ([\"domain:a.example\", \
+\"domain:b.example\"]), never one call each."
+        } else {
+            ""
+        };
         return Ok(Called {
             result: tool_text(
                 &format!(
                     "{made} ({}): {} {} e-mails ({}). It waits in the person's approvals; nothing moves before their \
-Oui. Tell them in one sentence.",
+Oui. Tell them in one sentence.{together}",
                     card.id,
                     card.action.as_ref().map(Action::word).unwrap_or_default(),
                     card.uids.len(),
@@ -1314,7 +1329,7 @@ Oui. Tell them in one sentence.",
                 false,
             ),
             card: Some(card),
-            rule: None,
+            rules: Vec::new(),
         });
     }
     if name == "mail_overview" {
@@ -1867,6 +1882,9 @@ mod tests {
         assert!(Selector::from_args(&args(json!({"subject_contains": "facture"}))).check(&any).is_err());
         assert!(Selector::from_args(&args(json!({"unread_only": true}))).check(&any).is_err());
         assert!(Selector::from_args(&args(json!({"everything": true}))).check(&any).is_ok());
+        // a group id written in the field: the field's value (5/11)
+        let s = Selector::from_args(&args(json!({"domain": "domain:Qonto.example", "list_id": "list:<news.shop.example>"})));
+        assert_eq!((s.domain.as_str(), s.list_id.as_str()), ("qonto.example", "news.shop.example"));
         assert!(Selector::from_args(&args(json!({"older_than_days": 0}))).check(&any).is_err());
         assert!(Selector::from_args(&args(json!({"older_than_days": 365}))).check(&any).is_ok());
         assert!(Selector::from_args(&args(json!({"domain": "shop.example"}))).check(&any).is_ok());

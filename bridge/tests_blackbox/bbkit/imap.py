@@ -1,6 +1,6 @@
 """A small IMAP4rev1 server for the mailbox tests: plain connection then STARTTLS (as Proton Mail Bridge on this machine,
 whose certificate the bridge does not check) — or plain only with `starttls = False`, as hydroxide without TLS
-options —, LOGIN, LIST, SELECT/EXAMINE, UID SEARCH (ALL, SINCE, BEFORE, FROM, TEXT,
+options —, LOGIN, LIST, SELECT/EXAMINE, UID SEARCH (ALL, SINCE, BEFORE, FROM, TEXT, SUBJECT,
 CHARSET, UID n:*), UID FETCH (RFC822.SIZE, BODY.PEEK[], BODY.PEEK[HEADER.FIELDS (…)], BODY.PEEK[TEXT], partials, `*`),
 APPEND, IDLE (new mail told as `* n EXISTS` while idling; off with `idle = False`), NOOP, LOGOUT; for the mail rules
 (mail_rules.rs): FLAGS (`flags`), UID STORE, UID MOVE, UID COPY, CREATE (listed after), SEARCH HEADER Message-ID. It
@@ -363,7 +363,12 @@ class FakeImap:
                     ok &= (int(low) <= uid <= high_n) or (high == "*" and uid == top)
                     i += 2
                 elif word == "TEXT":
-                    ok &= value.lower() in raw.decode("utf-8", "replace").lower()
+                    # hydroxide matches TEXT on the bodies it holds encrypted and on a header Proton's message list
+                    # leaves empty: nothing (5/11, Alex's box)
+                    ok &= not self.hydroxide and value.lower() in raw.decode("utf-8", "replace").lower()
+                    i += 2
+                elif word == "SUBJECT":
+                    ok &= value.lower() in str(header.get("Subject") or "").lower()
                     i += 2
                 else:
                     i += 1

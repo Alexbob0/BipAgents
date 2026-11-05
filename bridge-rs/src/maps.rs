@@ -1242,10 +1242,29 @@ pub fn put_for_programs(config: &Config, agent: &str, id: &str, png: &[u8]) -> O
 }
 
 /// `map_image`: the map kept for the agent, with how to show it.
+/// Said after a refused map whose arguments name nothing of a map's: the call was meant for another tool. A model whose
+/// tool names are constrained to the request's ends a tool behind the search on this one (`ma…`: mail_read,
+/// mail_overview; 5/11, `map_image {"id": "<box>|INBOX|12"}` and `{"fresh": "true"}`, tool_diet.rs).
+fn not_a_map(arguments: &Dict) -> String {
+    let schema = tool();
+    let known = schema["inputSchema"]["properties"].as_object();
+    let theirs: Vec<&str> =
+        arguments.keys().filter(|k| known.is_none_or(|p| !p.contains_key(*k))).map(String::as_str).collect();
+    if arguments.is_empty() || theirs.len() == arguments.len() {
+        let given = if theirs.is_empty() { String::new() } else { format!(" ({})", theirs.join(", ")) };
+        format!(
+            " map_image only draws maps, and these arguments are not a map's{given}: call the tool you meant by its own \
+name (one behind the tool search: tool_call with its name and arguments)"
+        )
+    } else {
+        String::new()
+    }
+}
+
 pub async fn call(config: &Config, agent: &str, arguments: &Dict) -> Dict {
     let drawn = match draw(config, arguments).await {
         Ok(made) => made,
-        Err(why) => return tool_text(&format!("No map: {why}."), true),
+        Err(why) => return tool_text(&format!("No map: {why}.{}", not_a_map(arguments)), true),
     };
     let png = &drawn.png;
     let id = format!("m-{}", &hex::encode(<sha2::Sha256 as sha2::Digest>::digest(png))[..10]);
@@ -1329,6 +1348,18 @@ line above alone on its own line in your reply (its picture), or paste into crea
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_call_meant_for_another_tool_is_told_so() {
+        // 5/11: map_image {"id": "<box>|INBOX|12"}, {} — mail_read's call ended on this tool's name
+        let args = |pairs: &[(&str, Value)]| -> Dict { pairs.iter().map(|(k, v)| (k.to_string(), v.clone())).collect() };
+        let said = not_a_map(&args(&[("id", json!("fff95795|INBOX|12"))]));
+        assert!(said.contains("only draws maps") && said.contains("(id)") && said.contains("tool_call"), "{said}");
+        assert!(not_a_map(&Dict::new()).contains("only draws maps"));
+        // a map's own arguments, even wrong: no such hint
+        assert_eq!(not_a_map(&args(&[("center", json!("")), ("id", json!("x"))])), "");
+        assert_eq!(not_a_map(&args(&[("markers", json!([]))])), "");
+    }
 
     #[test]
     fn projection_and_fit() {

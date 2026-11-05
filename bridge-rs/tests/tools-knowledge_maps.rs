@@ -111,7 +111,8 @@ async fn a_map_is_drawn_from_osm_tiles_kept_on_disk_and_put_inline_in_a_page() {
         maps::call(&config, "wellness", json!({"markers": [{"place": "Nulle part"}]}).as_object().unwrap()).await;
     assert!(none["isError"] == json!(true) && text(&none).contains("no place found for « Nulle part »"));
     let empty = maps::call(&config, "wellness", json!({}).as_object().unwrap()).await;
-    assert_eq!(text(&empty), "No map: give markers or a center.");
+    // (an empty call is how a call meant for another tool ended on this one's name, 5/11: told so)
+    assert!(text(&empty).starts_with("No map: give markers or a center. map_image only draws maps"), "{}", text(&empty));
     let mut other = data.clone();
     other["maps"]["tiles"] = Value::from("google");
     let refused = maps::call(&parse_config(&other, None).unwrap(), "wellness", arguments.as_object().unwrap()).await;

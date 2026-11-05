@@ -158,7 +158,7 @@ def test_the_agent_searches_reads_and_drafts_in_its_mailboxes_only(bridges, fake
     attached = text_of(call(bridge, "mail_read", {"id": f"{account}|INBOX|102"}, token=TOKEN))
     assert "On mange chez moi ?" in attached and "Attachments (not opened): menu.pdf" in attached
     unknown = call(bridge, "mail_read", {"id": "zz|INBOX|1"}, token=TOKEN)
-    assert unknown["isError"] and text_of(unknown) == "unknown e-mail id (use mail_search first)"
+    assert unknown["isError"] and text_of(unknown).startswith("unknown e-mail id « zz|INBOX|1 »: give the id exactly")
     drafted = text_of(call(bridge, "mail_draft", {"to": "sam@example.com", "subject": "Re: Repas dimanche",
                                                   "body": "Oui, avec plaisir !", "reply_to_id": f"{account}|INBOX|102"},
                            token=TOKEN))
@@ -201,7 +201,7 @@ def test_hydroxide_in_clear_and_an_attachment_saved_into_the_agents_files(bridge
     assert all(c.startswith(("EXAMINE", "UID", "LOGIN", "LOGOUT", "CAPABILITY")) for c in fakes.imap.commands)
     assert "UID FETCH 102 (RFC822.SIZE)" in fakes.imap.commands and "UID FETCH 102 (BODY.PEEK[])" in fakes.imap.commands
     unknown = call(bridge, "mail_attachment", {"id": "zz|INBOX|1"}, token=TOKEN)
-    assert unknown["isError"] and text_of(unknown) == "unknown e-mail id (use mail_search first)"
+    assert unknown["isError"] and text_of(unknown).startswith("unknown e-mail id « zz|INBOX|1 »: give the id exactly")
 
 
 def test_a_mailbox_is_counted_free_then_read_by_steps_into_pages(bridges, fakes):

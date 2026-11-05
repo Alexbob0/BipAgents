@@ -77,9 +77,10 @@ impl Match {
 domain or a list (list_id)"
                 .into());
         }
-        if s.older_than_days.is_some() || s.unread_only || s.everything {
-            return Err("a rule takes a sender (from), a domain or a list (list_id) only: no age, no unread_only, \
-never the whole folder"
+        // unread_only is let through and left out: a rule files every new mail of the sender, which comes unread
+        // (5/11, token lab: refused three times in a row, it paused all the bridge's tools for a minute in Hermes)
+        if s.older_than_days.is_some() || s.everything {
+            return Err("a rule takes a sender (from), a domain or a list (list_id) only: no age, never the whole folder"
                 .into());
         }
         let mut m = Match {
@@ -1032,6 +1033,39 @@ pub fn call(
         }
         _ => {}
     }
+    // several senders in one call (mail_bulk's description asks for one call per action): one rule card each. Before
+    // (5/11, token lab, GLM-5.3 Flash), « a rule takes one domain » three times in a row paused all the bridge's tools
+    // for a minute in Hermes (its MCP circuit breaker: three error results from one server).
+    let groups: Vec<Value> = arguments.get("groups").and_then(Value::as_array).cloned().unwrap_or_default();
+    if groups.len() > 1 {
+        let mut texts = Vec::new();
+        let mut rules = Vec::new();
+        for group in groups.iter().take(MAX_PER_AGENT) {
+            let mut one = arguments.clone();
+            one.insert("groups".into(), Value::Array(vec![group.clone()]));
+            let called = one_rule(config, agent, &one, account, folder, opener)?;
+            let text = called.result["content"][0]["text"].as_str().unwrap_or_default().to_string();
+            let failed = called.result.get("isError").is_some_and(py::truthy);
+            texts.push(if failed { format!("{}: {text}", py::py_str(group)) } else { text });
+            rules.extend(called.rules);
+        }
+        let mut out = said(&texts.join("\n"), rules.is_empty());
+        out.rules = rules;
+        return Ok(out);
+    }
+    one_rule(config, agent, arguments, account, folder, opener)
+}
+
+/// One rule card (mail_bulk `rule: true` naming one sender, domain or list).
+fn one_rule(
+    config: &Config,
+    agent: &str,
+    arguments: &Dict,
+    account: &Dict,
+    folder: &str,
+    opener: &Connect,
+) -> anyhow::Result<Called> {
+    let said = mail_tidy::said;
     let parsed = match Action::parse(&tk::str_or_empty(arguments.get("action"))) {
         Ok(a) => a,
         Err(e) => return Ok(said(&e, true)),
@@ -1078,7 +1112,7 @@ their Oui. Tell them in one sentence.",
             false,
         ),
         card: None,
-        rule: Some(card),
+        rules: vec![card],
     })
 }
 
@@ -1149,6 +1183,8 @@ mod tests {
         assert!(m(json!({"subject_contains": "facture"})).is_err(), "mail content");
         assert!(m(json!({"domain": "hetzner.com", "subject_contains": "server"})).is_err());
         assert!(m(json!({"domain": "hetzner.com", "older_than_days": 30})).is_err());
+        // new mail comes unread: unread_only is left out, not refused (5/11)
+        assert_eq!(m(json!({"domain": "hetzner.com", "unread_only": true})).unwrap().domain, "hetzner.com");
         assert!(m(json!({"everything": true})).is_err());
         assert!(m(json!({"groups": ["promo"]})).is_err(), "a guess, not a sender");
         assert!(m(json!({"from": "hetzner"})).is_err(), "a whole address");

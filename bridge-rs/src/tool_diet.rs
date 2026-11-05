@@ -109,6 +109,27 @@ pub const DIRECT_PAIRS: [(&str, &str); 1] = [("mail_search", "mail_read")];
 pub const CREDENTIALS_DIRECT: [&str; 2] =
     ["!mcp__bipagents_connectors__ask_secret", "!mcp__bipagents_files__sandbox_sites_request"];
 
+/// Reading one mail (mailbox.rs).
+const MAIL_READ: &str = "mail_read";
+
+/// The mail tools in view for an agent the person gave a mailbox (mailbox.rs `of_agent`), whatever its kind and beyond
+/// `MAX_DIRECT`. Behind the search, 5/11 (Alex's new « Admin Kerfy », a custom agent with his Proton box; token lab,
+/// GLM-5.3 Flash, tool names constrained to the request's): after `tool_describe` on them the model still called the
+/// in-view `map_image` (`{"id": "<box>|INBOX|12"}`, `{"center": "Paris"}`: maps made), `knowledge_search` with
+/// mail_search's `sender`, then waited out the brake with `sleep`; the background task's triage never reached the box.
+/// `mail_attachment` stays behind the search.
+pub const MAIL_DIRECT: [&str; 5] = ["mail_overview", "mail_search", "mail_read", "mail_bulk", "mail_draft"];
+
+/// `defer` with the mail tools the agent has in view (`MAIL_DIRECT`), for an agent with a mailbox.
+pub fn with_mail_direct(defer: &mut Vec<String>, bridge_tools: &[String]) {
+    for name in MAIL_DIRECT.iter().filter(|name| bridge_tools.iter().any(|t| t == *name)) {
+        let entry = format!("!{BRIDGE_PREFIX}{name}");
+        if !defer.contains(&entry) {
+            defer.push(entry);
+        }
+    }
+}
+
 /// The guide's own tools in view, besides its daily regime (beyond `MAX_DIRECT`). Its earlier regime of its own (these
 /// and `notebook_search` only, mail, notes, calendar, reminders, pages and tasks behind the search) cost the real-day
 /// bench of 2026-10-30 (GLM-5.3 Flash, the offer's first agent made the guide): 11/16 and two loops on
@@ -489,6 +510,13 @@ pub fn meant<'a>(tools: &'a [Value], name: &'a str, arguments: &crate::Dict) -> 
     if arguments.is_empty() || called.is_none_or(|t| fits(t, arguments)) {
         return name;
     }
+    // a mail's id as mail_search gives it (`<box>|<folder>|<uid>`) and nothing else: reading that mail, though its id
+    // alone also fits mail_attachment, read_page… (5/11: `map_image {"id": "fff95795|INBOX|12"}` five times)
+    if arguments.len() == 1 && arguments.get("id").and_then(Value::as_str).is_some_and(crate::mailbox::is_mail_id) {
+        if let Some(read) = tools.iter().filter_map(|t| t.get("name").and_then(Value::as_str)).find(|n| *n == MAIL_READ) {
+            return read;
+        }
+    }
     let mut others = tools.iter().filter(|t| t.get("name").and_then(Value::as_str) != Some(name) && fits(t, arguments));
     match (others.next(), others.next()) {
         (Some(only), None) => match only.get("name").and_then(Value::as_str) {
@@ -543,6 +571,9 @@ pub fn current(config: &Config, agent: &AgentConfig) -> Option<Diet> {
         .ok()
         .is_some_and(|data| data.get("mcp_servers").and_then(|s| s.get(BROWSER_SERVER)).is_some_and(Yaml::is_map));
     let mut out = diet(&kind, &tools, browser, holds_vault_item(config, agent), writes_skills);
+    if crate::mailbox::of(config).of_agent(&agent.name).is_ok_and(|boxes| !boxes.is_empty()) {
+        with_mail_direct(&mut out.defer, &tools);
+    }
     if crate::connectors::offered(config, agent) {
         for entry in CREDENTIALS_DIRECT {
             if !out.defer.iter().any(|d| d == entry) {
@@ -779,6 +810,42 @@ mod tests {
     }
 
     #[test]
+    fn an_agent_with_a_mailbox_keeps_its_mail_tools_in_view() {
+        // 5/11 (Alex's « Admin Kerfy », a custom agent with his Proton box): every mail tool behind the search, the
+        // calls ended on map_image and knowledge_search, the task's triage never reached the box
+        let tools = names(&[
+            "notebook_search",
+            "map_image",
+            "mail_overview",
+            "mail_search",
+            "mail_read",
+            "mail_bulk",
+            "mail_draft",
+            "mail_attachment",
+        ]);
+        for kind in crate::souls::CATEGORIES.iter().chain(["guide", "custom"].iter()) {
+            let mut d = diet(kind, &tools, false, false, false);
+            with_mail_direct(&mut d.defer, &tools);
+            for name in MAIL_DIRECT {
+                let entry = format!("!{BRIDGE_PREFIX}{name}");
+                assert_eq!(d.defer.iter().filter(|n| **n == entry).count(), 1, "{kind} {name}");
+            }
+            assert!(!d.defer.iter().any(|n| n.ends_with("mail_attachment")) || *kind == "work", "{kind}");
+        }
+        // only the mail tools the agent has
+        let mut defer = Vec::new();
+        with_mail_direct(&mut defer, &names(&["mail_search"]));
+        assert_eq!(defer, vec![format!("!{BRIDGE_PREFIX}mail_search")]);
+        // the names are the bridge's own
+        let listed: Vec<String> = crate::mailbox::mail_tools()
+            .iter()
+            .chain(crate::mail_tidy::tools().iter())
+            .filter_map(|t| t["name"].as_str().map(str::to_string))
+            .collect();
+        assert!(MAIL_DIRECT.iter().all(|n| listed.iter().any(|l| l == n)), "{listed:?}");
+    }
+
+    #[test]
     fn a_call_runs_the_tool_its_arguments_fit() {
         let tool = |name: &str, props: &[&str], required: &[&str]| {
             let properties: serde_json::Map<String, Value> =
@@ -812,6 +879,21 @@ mod tests {
             tool("notebook_read", &["page"], &["page"]),
         ];
         assert_eq!(meant(&cards, "propose_task", &args(&["kind", "name", "role"])), "propose_task");
+        // 5/11: a mail's id under map_image's name, though the id alone also fits mail_attachment: reading that mail
+        let mail = vec![
+            tool("map_image", &["markers", "center"], &[]),
+            tool("mail_read", &["id"], &["id"]),
+            tool("mail_attachment", &["id", "attachment"], &["id"]),
+            tool("read_page", &["id"], &["id"]),
+        ];
+        let id = |value: &str| -> crate::Dict { [("id".to_string(), Value::from(value))].into_iter().collect() };
+        assert_eq!(meant(&mail, "map_image", &id("fff95795|INBOX|12")), "mail_read");
+        assert_eq!(meant(&mail, "map_image", &id("fff95795|Factures/2026|7")), "mail_read");
+        // its own tools keep it; an id of another shape stays ambiguous
+        assert_eq!(meant(&mail, "mail_attachment", &id("fff95795|INBOX|12")), "mail_attachment");
+        assert_eq!(meant(&mail, "read_page", &id("fff95795|INBOX|12")), "read_page");
+        assert_eq!(meant(&mail, "map_image", &id("p-3")), "map_image");
+        assert_eq!(meant(&mail, "map_image", &id("fff95795|INBOX|x")), "map_image");
         assert_eq!(meant(&cards, "notebook_read", &args(&["kind", "name", "role"])), "notebook_read");
     }
 
