@@ -678,6 +678,16 @@ impl Page {
             .collect()
     }
 
+    /// Its `s_` items lost (send.rs `lost`): `not_sent` instead of `sending` (the apps draw « Pas envoyé », a tap sends
+    /// it again under the same id). Called when no turn runs in the conversation.
+    pub fn with_lost(mut self) -> Self {
+        for item in self.items.iter_mut().filter(|i| super::send::lost(i)) {
+            item.body.remove("sending");
+            item.body.insert("not_sent".into(), json!(true));
+        }
+        self
+    }
+
     /// Each page item that draws something gets `day` (its date where the person is, `YYYY-MM-DD`), the first one of
     /// its day in the whole thread `new_day: true` too: the apps put a day divider over it (and over the first dated
     /// row they show). `days`: `days(…)` of the items the page was cut from.
@@ -747,7 +757,7 @@ pub struct Want {
 
 /// The sizes the bridge chooses (`Want::chosen`): the latest page, a catch-up at most (more: the latest page instead),
 /// an older page.
-pub const LATEST_PAGE: usize = 50;
+pub const LATEST_PAGE: usize = 100;
 pub const CATCH_UP_PAGE: usize = 200;
 pub const OLDER_PAGE: usize = 50;
 

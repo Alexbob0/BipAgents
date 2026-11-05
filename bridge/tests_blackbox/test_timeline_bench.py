@@ -76,6 +76,11 @@ def test_timeline_pages_cost(bridges, fakes):
         "catch-up (after a cursor, 10 new)": {"after": whole["items"][-11]["cursor"], "limit": 500},
         "around a message (20 before, all after)": {"around": middle["id"], "before_count": 20, "after_count": "all"},
         "older page (50)": {"before": whole["items"][0]["cursor"], "limit": 50},
+        # the bridge's own sizes (no `limit`: thin apps, brick 4; a bridge from before gives its default 50)
+        "open (bridge's size)": {},
+        "catch-up (bridge's size, 10 new)": {"after": whole["items"][-11]["cursor"]},
+        "catch-up too long (bridge's size)": {"after": whole["items"][0]["cursor"]},
+        "older page (bridge's size)": {"before": whole["items"][0]["cursor"]},
     }
     pid = bridge.process.pid
     for params in screens.values():   # warm

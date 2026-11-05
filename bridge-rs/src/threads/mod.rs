@@ -1178,6 +1178,8 @@ async fn timeline_route(
     }));
     let questions = waiting(state.hub.pending_questions(&agent.name));
     let run = tip.as_deref().and_then(|t| state.hub.session_run_since(&agent.name, t));
+    // a sent message no turn took (nothing runs here now, Hermes never stored it): « Pas envoyé », not « being sent »
+    let page = if run.is_none() { page.with_lost() } else { page };
     let queue =
         tip.as_deref().map(|t| crate::msg_queue::queues_of(&state).get(&agent.name).snapshot_of(&agent.name, t));
     let mut out_thread = thread.to_json();

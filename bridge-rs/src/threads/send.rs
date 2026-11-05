@@ -286,15 +286,37 @@ async fn tip_of(state: &AppState, threads: &Threads, agent: &AgentConfig, thread
 /// the phone does what the first answer would have had it do. Waiting in the queue: `queued` (« En attente » shows
 /// it); its conversation's turn going on: that turn's `run_id` (followed again); else neither (its turn is over: the
 /// timeline has it). Nothing is sent twice. An app from before reads `known` alone (thin apps, 5/11).
-async fn known_now(state: &AppState, threads: &Threads, agent: &AgentConfig, client_id: &str, thread: &str) -> Value {
+/// None: the message was lost (`lost`): sent again for real, under the same id.
+async fn known_now(state: &AppState, threads: &Threads, agent: &AgentConfig, client_id: &str, thread: &str) -> Option<Value> {
     let queued = queues_of(state).get(&agent.name).items.iter().any(|i| i.client_id.as_deref() == Some(client_id));
-    let tip = match threads.get(thread).await {
-        Ok(Some(t)) => threads.line(agent, &t).await.ok().and_then(|line| line.last().map(|s| s.session_id.clone())),
-        _ => None,
+    let found = threads.get(thread).await.ok().flatten();
+    let segments = match &found {
+        Some(t) => threads.line(agent, t).await.ok().unwrap_or_default(),
+        None => Vec::new(),
     };
+    let tip = segments.last().map(|s| s.session_id.clone());
     let run = tip.as_deref().filter(|_| !queued).and_then(|t| state.hub.session_run(&agent.name, t));
-    json!({"client_id": client_id, "thread": thread, "state": "known", "run_id": run, "tip": tip, "queued": queued})
+    if let (Some(t), false, None) = (&found, queued, &run) {
+        // nothing runs it and it waits nowhere: stored since (matched by this read), or lost
+        let items = threads.items(agent, t, &segments).await.ok().unwrap_or_default();
+        if items.iter().any(|i| i.id == format!("s_{client_id}") && lost(i)) {
+            return None;
+        }
+    }
+    Some(json!({"client_id": client_id, "thread": thread, "state": "known", "run_id": run, "tip": tip, "queued": queued}))
 }
+
+/// A sent message no turn took and none will: Hermes never stored it, it waits in no queue, no turn runs in its
+/// conversation, a while after it was sent (5/11, Alex: « Hello? » steered into a turn stuck on a card, then Stop —
+/// the turn never took it; its `s_` item stayed « being sent » at the end of the conversation for two days). Shown
+/// `not_sent` (« Pas envoyé · Toucher pour réessayer »), and the same id sent again goes for real.
+pub fn lost(item: &Item) -> bool {
+    item.body.contains_key("sending") && utcnow().timestamp() as f64 - item.at > LOST_AFTER
+}
+
+/// How long a sent message may wait unstored, nothing running, before it counts as lost (its run is registered by the
+/// same request that sends it: a few seconds cover the clocks).
+const LOST_AFTER: f64 = 10.0;
 
 /// `POST /v1/threads/{thread}/messages`.
 pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>, body: NewMessage) -> ApiResult<Value> {
@@ -308,7 +330,21 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
         )
         .await?;
     if let Some(row) = known.first() {
-        return Ok(known_now(state, &threads, agent, &body.client_id, row["thread_id"].as_str().unwrap_or("")).await);
+        let thread_id = row["thread_id"].as_str().unwrap_or("").to_string();
+        match known_now(state, &threads, agent, &body.client_id, &thread_id).await {
+            Some(answer) => return Ok(answer),
+            None => {
+                // lost: sent again for real, in its own conversation, under the same id
+                state
+                    .store
+                    .run(
+                        "DELETE FROM thread_sends WHERE agent = ? AND client_id = ?",
+                        vec![text(&agent.name), text(&body.client_id)],
+                    )
+                    .await?;
+                tracing::info!(agent = %agent.name, thread = %thread_id, "a lost message sent again");
+            }
+        }
     }
     let thread = match thread {
         Some(t) => t,

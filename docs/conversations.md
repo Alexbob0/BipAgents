@@ -256,7 +256,7 @@ Answer:
 - **How a page goes into the phone's window** (thin apps, 5/11; one rule on both apps): `reset: true` — the page is
   the window (latest, around, and below); else `joins: <cursor>` — an `after=` page goes after the held item at that
   cursor, a `before=` page in front of it, and what the phone held beyond that item is gone (rows the bridge no
-  longer gives there). With no `limit` the bridge chooses the sizes: latest 50, a catch-up 200 at most (more since:
+  longer gives there). With no `limit` the bridge chooses the sizes: latest 100, a catch-up 200 at most (more since:
   the latest page, `reset`), an older page 50; a cursor whose item is gone also gets the latest page, `reset`. A
   `limit` given (a one-off look; apps from before 5/11) pages as before.
 - `replaced` (only when not empty): ids a phone may hold that this page's rows replace. Today the `s_<client_id>` item
