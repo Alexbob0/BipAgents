@@ -50,10 +50,11 @@ def started(bridges, fakes):
 
 
 def waiting_approval(bridge, fakes, run_id="r_wait", request_id="req_wait"):
-    """A Hermes approval waiting (the run held at the gate)."""
+    """A Hermes approval waiting (the run held at the gate: each holds 30 s at most, three outlast the minute's sweep)."""
     gate = threading.Event()
     fakes.hermes.runs[run_id] = [sse("approval.request", run_id=run_id, request_id=request_id, command="rm notes.txt",
-                                     choices=["once", "deny"]), gate, sse("run.completed", run_id=run_id, output="Fait.")]
+                                     choices=["once", "deny"]), gate, gate, gate, gate,
+                                 sse("run.completed", run_id=run_id, output="Fait.")]
     assert bridge.post("/v1/watch", headers=AUTH,
                        json={"agent": "wellness", "run_id": run_id, "session_id": "api_main"}).status_code == 200
     assert wait_until(lambda: [a for a in bridge.get("/v1/approvals", headers=AUTH).json()["items"]
