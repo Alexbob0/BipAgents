@@ -105,6 +105,24 @@ class FakeImap:
         self.flags: Dict[Tuple[str, int], set] = {}   # (folder, uid) → flags
         self.created: List[str] = []
         self.next_uid = 10000  # a moved or copied message's uid in its new folder
+        self.hydroxide = False
+        self.hydroxide_own: List[str] = []
+
+    HYDROXIDE = [("\\Noinferiors", "INBOX"), ("\\Noinferiors \\All", "All Mail"), ("\\Noinferiors \\Archive", "Archive"),
+                 ("\\Noinferiors \\Drafts", "Drafts"), ("\\Noinferiors \\Flagged", "Starred"),
+                 ("\\Noinferiors \\Junk", "Spam"), ("\\Noinferiors \\Sent", "Sent"), ("\\Noinferiors \\Trash", "Trash")]
+
+    def as_hydroxide(self, own=()) -> None:
+        """Answers as hydroxide (emersion/hydroxide on go-imap v1.2.1, measured 2026-11-05 on its own code over a fake
+        Proton API, internal/notes/hydroxide-moves.md): its 8 folders + the Proton folders it saw at login, each
+        `\\Noinferiors`; CREATE « NO not yet implemented »; MOVE/COPY to any other name « NO No such mailbox »;
+        UID EXPUNGE « NO Command unsupported with UID »."""
+        self.hydroxide = True
+        self.hydroxide_own = list(own)
+        for _, name in self.HYDROXIDE:
+            self.folders.setdefault(name, [])
+        for name in own:
+            self.folders.setdefault(name, [])
 
     def add(self, folder: str, uid: int, raw: bytes, flags=()) -> None:
         self.folders.setdefault(folder, []).append((uid, raw))
@@ -217,6 +235,12 @@ class FakeImap:
             finally:
                 self.idling -= 1
             self._ok(state, tag, "IDLE terminated")
+        elif command == "LIST" and self.hydroxide:
+            for flags, name in self.HYDROXIDE + [("\\Noinferiors", n) for n in self.hydroxide_own]:
+                self._send(state, f'* LIST ({flags}) "/" "{name}"\r\n'.encode())
+            self._ok(state, tag)
+        elif command == "CREATE" and self.hydroxide:
+            self._send(state, f"{tag} NO not yet implemented\r\n".encode())
         elif command == "LIST":
             for flags, name in self.FOLDERS + [("\\HasNoChildren", n) for n in self.created]:
                 self._send(state, f'* LIST ({flags}) "/" "{name}"\r\n'.encode())
@@ -261,6 +285,9 @@ class FakeImap:
             elif sub.upper() in ("MOVE", "COPY"):
                 uidset, dest = (_tokens(rest) + ["", ""])[:2]
                 folder = state["folder"] or ""
+                if self.hydroxide and dest not in [n for _, n in self.HYDROXIDE] + self.hydroxide_own:
+                    self._send(state, f"{tag} NO No such mailbox\r\n".encode())
+                    return True
                 if dest not in self.folders:
                     self._send(state, f"{tag} NO [TRYCREATE] no such folder\r\n".encode())
                     return True

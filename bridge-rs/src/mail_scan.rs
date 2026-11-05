@@ -226,7 +226,7 @@ pub fn inventory(account: &Dict, opener: &Connect) -> anyhow::Result<Dict> {
         let mut months: HashMap<String, [i64; 2]> = HashMap::new();
         let folders = folders(conn)?;
         for folder in &folders {
-            if conn.select(&mailbox::quote(folder), true)?.0 != "OK" {
+            if conn.select(&mailbox::quote_box(folder), true)?.0 != "OK" {
                 continue;
             }
             let (status, data) = conn.uid("SEARCH", &["ALL"])?;
@@ -781,7 +781,7 @@ fn personal_uids(
     until: &str,
 ) -> anyhow::Result<Vec<String>> {
     with_connection(opener, account, |conn| {
-        if conn.select(&mailbox::quote(folder), true)?.0 != "OK" {
+        if conn.select(&mailbox::quote_box(folder), true)?.0 != "OK" {
             return Ok(Vec::new());
         }
         let day = |text: &str| -> anyhow::Result<String> {
@@ -801,7 +801,7 @@ fn personal_uids(
 
 fn bodies(opener: &Connect, account: &Dict, folder: &str, uids: &[String]) -> anyhow::Result<Vec<Dict>> {
     with_connection(opener, account, |conn| {
-        if conn.select(&mailbox::quote(folder), true)?.0 != "OK" {
+        if conn.select(&mailbox::quote_box(folder), true)?.0 != "OK" {
             return Ok(Vec::new());
         }
         let spec = format!("(BODY.PEEK[]<0.{}>)", mailbox::FETCH_BYTES);
