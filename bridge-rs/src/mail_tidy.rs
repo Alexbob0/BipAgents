@@ -1307,7 +1307,7 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict, opener: 
             && (!arg("domain").is_empty() || !arg("from").is_empty() || !arg("list_id").is_empty());
         let together = if one_sender {
             " Other senders: one call per action with all of them in groups ([\"domain:a.example\", \
-\"domain:b.example\"]), never one call each: a turn makes only a few calls of this tool."
+\"domain:b.example\"]), never one call each."
         } else {
             ""
         };

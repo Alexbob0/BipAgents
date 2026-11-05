@@ -20,7 +20,8 @@
 //!   (the one that just called this tool when several go on), keyed by its run id, never per agent across
 //!   conversations. Its write tools (calendar, reminders, contacts, Carnet, mail drafts, pages, audio, family news)
 //!   are refused past `writes` writes in that turn, and the very same write (same tool, same arguments) twice in it is
-//!   refused at once with a plain answer the model can act on (« already done »). A turn no run of the hub carries
+//!   refused at once with a plain answer the model can act on (« already done »). A write that only proposes a card
+//!   the person approves (`PROPOSING_TOOLS`: mail_bulk) is held to neither `writes` nor `same_tool`. A turn no run of the hub carries
 //!   (a routine, Hermes' cron) is the agent's calls until it has been quiet `idle_seconds`: there, the cap applies,
 //!   one bridge tool more than `same_tool` times or more than `routine_tool_calls` bridge calls in all are refused
 //!   with « stop and answer with what you have » (the bridge can't stop a cron turn: Hermes has no stop for it).
@@ -288,6 +289,16 @@ pub const WRITE_TOOLS: [&str; 20] = [
 
 pub fn write_tool(tool: &str) -> bool {
     WRITE_TOOLS.contains(&bare(tool))
+}
+
+/// Write tools that only propose: each call makes or joins a card, and nothing changes before the person's « Oui »
+/// (mail_bulk: a waiting card for the same action joins it, mail_tidy.rs). Not held to `same_tool` nor counted in
+/// `writes`; still to the total, and the very same call twice is « already done ». 5/11, token lab (GLM-5.3 Flash,
+/// mail_bulk in view): one call per sender, fourteen at once, and the turn was stopped at the eleventh.
+pub const PROPOSING_TOOLS: [&str; 1] = ["mail_bulk"];
+
+pub fn proposing_tool(tool: &str) -> bool {
+    PROPOSING_TOOLS.contains(&bare(tool))
 }
 
 /// Read-only lookups: searching or reading what is there (Hermes' past conversations, the Carnet, the web, files,
@@ -568,7 +579,7 @@ impl TurnCount {
             }
             near(discovery, limits.discovery_calls, false, &|| Warning::Discovery(discovery, limits.discovery_calls));
         }
-        let work = browser || WORK_TOOLS.contains(&name.as_str());
+        let work = browser || WORK_TOOLS.contains(&name.as_str()) || proposing_tool(&name);
         let same = self.per_tool.entry(name.clone()).or_insert(0);
         *same += 1;
         let same = *same;
@@ -1015,7 +1026,7 @@ it; tell the person what you did.",
                 false,
             ));
         }
-        if entry.writes >= limits.writes {
+        if entry.writes >= limits.writes && !proposing_tool(tool) {
             tracing::info!(agent = %agent, tool = %tool, writes = entry.writes, scheduled = scheduled,
                 "too many writes in this turn: refused");
             return Some(tool_text(&writes_refused(entry.writes, scheduled), true));
@@ -1037,7 +1048,9 @@ it; tell the person what you did.",
         }
         let mut turns = self.turns.lock().unwrap_or_else(|e| e.into_inner());
         let entry = turns.entry(turn_key(agent, turn)).or_default();
-        entry.writes += 1;
+        if !proposing_tool(tool) {
+            entry.writes += 1;
+        }
         entry.seen.insert(signature_of(tool, arguments));
     }
 }
@@ -1216,6 +1229,26 @@ mod tests {
     }
 
     #[test]
+    fn card_proposals_for_many_senders_are_not_a_loop() {
+        // 5/11, token lab: mail_bulk once per sender, fourteen at once, stopped at the eleventh
+        let limits = Settings::default().conversation;
+        let mut turn = TurnCount::default();
+        for i in 0..20 {
+            let args = format!("{{\"action\":\"archive\",\"domain\":\"d{i}.example\"}}");
+            assert_eq!(turn.note("mcp__bipagents__mail_bulk", Some(&args), false, &limits), None, "{i}");
+        }
+        // the very same proposal again and again still is
+        let mut turn = TurnCount::default();
+        let same = "{\"action\":\"archive\",\"domain\":\"a.example\"}";
+        let stopped = (0..10).find_map(|_| turn.note("mcp__bipagents__mail_bulk", Some(same), false, &limits));
+        assert_eq!(stopped, Some(Over::SameCall("mail_bulk".into())));
+        // other writes are still held to same_tool
+        let mut turn = TurnCount::default();
+        let stopped = (0..20).find_map(|i| turn.note("mcp__bipagents__calendar_add", Some(&format!("{i}")), false, &limits));
+        assert_eq!(stopped, Some(Over::SameTool("calendar_add".into())));
+    }
+
+    #[test]
     fn work_tools_and_the_browser_only_count_for_the_total() {
         let limits = Settings::default().conversation;
         let mut turn = TurnCount::default();
@@ -1317,6 +1350,11 @@ mod tests {
         assert!(turns.check(&settings, "coach", run("run_1").as_ref(), "calendar_add", &add(50), 1.0).is_none());
         for n in 1..10 {
             assert!(call(&settings, "coach", run("run_1"), "calendar_add", &add(n), 2.0).is_none(), "{n}");
+        }
+        // a card proposal (mail_bulk) past the writes: not refused, and not counted (5/11)
+        for n in 0..12 {
+            let a = args(&[("action", "archive"), ("domain", &format!("d{n}.example"))]);
+            assert!(call(&settings, "coach", run("run_1"), "mcp__bipagents__mail_bulk", &a, 2.5).is_none(), "{n}");
         }
         let refused = call(&settings, "coach", run("run_1"), "notebook_note", &add(99), 3.0).unwrap();
         assert_eq!(refused["isError"], json!(true));
