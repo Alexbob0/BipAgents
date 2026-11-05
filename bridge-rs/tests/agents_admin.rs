@@ -796,6 +796,29 @@ fn the_soul_is_rendered_in_one_fixed_order() {
 }
 
 #[test]
+fn the_places_rule_of_an_earlier_bridge_becomes_the_facts_rule_once() {
+    // 2026-10-31: the places check (PLACES_RULE, one bridge before) widened to important facts (FACTS_RULE)
+    const PLACES: &str = "A place you recommend by name (restaurant, hotel, shop, venue, practitioner) must exist where you say: unless your person named it, check it first with a quick web search (its own site, a guide, a map listing), and the address, hours, prices or awards you give with it. Name only places you checked, in the area asked; one you could not check, say so in a few words. Never guess a name. Checking a few places is quick: do it here.";
+    let dir = tempfile::tempdir().unwrap();
+    let (config, _) = managed_config(dir.path(), "http://127.0.0.1:8642");
+    let agent = hub_agent(&config);
+    let c = config.get();
+    let folder = profiles(dir.path()).join(&agent.name);
+    std::fs::create_dir_all(&folder).unwrap();
+    let earlier = souls::language_block(Some("fr")).replace(souls::FACTS_RULE, PLACES);
+    assert!(earlier.contains(PLACES) && !earlier.contains(souls::FACTS_RULE));
+    hand_soul(&folder, format!("Tu es Vie.\n\n{earlier}\n"));
+    render_souls(&c);
+    let soul = read_soul(&c, &agent).unwrap();
+    assert!(soul.starts_with("Tu es Vie.\n\n"), "{soul}");
+    assert_eq!(soul.matches(souls::FACTS_RULE).count(), 1, "{soul}");
+    assert!(!soul.contains("A place you recommend by name"), "the places rule is replaced, not kept beside: {soul}");
+    assert_eq!(soul.matches(souls::BLOCK_START).count(), 1);
+    render_souls(&c);
+    assert_eq!(read_soul(&c, &agent).unwrap(), soul, "once");
+}
+
+#[test]
 fn healing_tells_an_agent_whether_its_memory_is_shared() {
     let dir = tempfile::tempdir().unwrap();
     let (config, _) = managed_config(dir.path(), "http://127.0.0.1:8642");

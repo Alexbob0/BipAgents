@@ -450,9 +450,10 @@ def test_a_task_whose_conversation_is_gone_is_told_by_the_template(bridges, fake
     assert wait_until(told, timeout=40)
     item = told()[0]
     assert item["session_id"] == "api_s1"
-    # its words in the agent's language (English here), its key points from the report
+    # its words in the agent's language (English here); the report's page holds the key points, not the text too
+    # (2026-10-31: one message, one version)
     assert item["text"].startswith("Done: “Veste”.") or item["text"].startswith("C'est fait : « Veste ».")
-    assert "\n- Uniqlo : 79 €, laine mérinos\n- Arket : 129 €\n- COS : 145 €" in item["text"]
+    assert "Uniqlo" not in item["text"]
     # the full report's page is the Boîte message's attachment (the apps show its card), no MEDIA line in its words
     page = f"/bipagents/pages/wellness/rapport-{jobs(bridge)[0]['id']}.html"
     assert "MEDIA:" not in item["text"] and [a["path"] for a in item["attachments"]] == [page]

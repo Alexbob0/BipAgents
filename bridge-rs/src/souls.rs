@@ -17,7 +17,9 @@
 //! live page placed in the reply (2026-10-22, `VISUAL_RULE`, by hand in the golden file too); and slow work starts with
 //! one short sentence saying what it understood and will do (2026-10-25, `ACK_RULE`, by hand in the golden too); and
 //! it answers short, in bullet points when there are several items (2026-10-30, `STYLE_RULE`, by hand in the golden
-//! too). `heal_souls` brings existing agents' blocks up to date. An agent given the person's
+//! too); and an important fact (a place, hours, a price, news, a dose, a quote…) is checked with a source first
+//! (2026-10-31, `FACTS_RULE`, by hand in the golden too).
+//! `heal_souls` brings existing agents' blocks up to date. An agent given the person's
 //! health data has a second block (`with_health`): use it to help, never to diagnose. An agent in the person's
 //! circle (shared_memory.rs) knows that what it remembers of them is common to their own agents
 //! (`with_shared_memory`, 2026-10-30).
@@ -174,6 +176,23 @@ pub const VISUAL_RULE: &str = concat!(
     "Carnet page of its subject (create_page's notebook). A map, places to go, a tour or a way somewhere: map_image ",
     "(the places by name or address, it finds them; its result is a live map), never a picture or coordinates of ",
     "your own. A quick answer, a single number or small talk stays plain text."
+);
+
+/// An important fact is checked with a source before the agent states it (Alex, 2026-10-31: « Vie » named Kervarrec, a
+/// starred table near Rennes, for one near the Pyla on the Bassin d'Arcachon; « il faut qu'il y ait une vérification
+/// qui soit faite sur ce genre de fait important »). First places only (`realday_places_*`), then widened the same day
+/// to what the person acts on, what changes, what has consequences and what is easy to invent, with what is never
+/// checked (stable knowledge, writing, opinions, what the person said or their Carnet holds): measured on the token lab
+/// before it went in (scripts/quality-bench real-day.json, `realday_places_*` and `realday_facts_*`). Rust bridge only,
+/// like FAMILY_RULE (in tests/golden/souls.json by hand). Short: it is paid on every call.
+pub const FACTS_RULE: &str = concat!(
+    "Facts: check with a source (web search, news, official page) before stating one your person will act on (a ",
+    "place and where it is, address, hours, price, phone, link, event date, procedure, deadline), one that may have ",
+    "changed (news, who holds a post, results, rates, versions, anything tied to today's date), one with consequences ",
+    "(medicine dose, legal or tax rule, financial figure) or a precise one easy to invent (exact quote, statistic, ",
+    "little-known name). Don't check stable general knowledge, chat, writing, ideas, opinions, or what your person ",
+    "said or their Carnet holds. Never invent an address, link, phone number or quote. Give the source in a word or ",
+    "link when useful; say in one sentence what you couldn't check. Checking is quick: do it here."
 );
 
 /// A quick word before slow work (owner's request 2026-10-25, like Grok's app: « Bonne idée, je lance une recherche… »
@@ -337,7 +356,7 @@ pub fn language_block(lang: Option<&str>) -> String {
     for_language(
         &format!(
             "{BLOCK_START}\nLanguage: answer in the language your person writes in. Always write it with its accents and usual punctuation (routines and notes too), never an ASCII-only version. When you write first (a routine, \
-             a report, a reminder), write in {name}.{names} The current time is at the top of each message (a bip:now line): trust it, never check it in the terminal.\n{CONTENT_RULE}\n{SENDING_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{PROJECT_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{LONG_WORK_RULE}\n{VISUAL_RULE}\n{SPACE_RULE}\n{ACK_RULE}\n{STYLE_RULE}\n{BLOCK_END}"
+             a report, a reminder), write in {name}.{names} The current time is at the top of each message (a bip:now line): trust it, never check it in the terminal.\n{CONTENT_RULE}\n{SENDING_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{PROJECT_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{LONG_WORK_RULE}\n{VISUAL_RULE}\n{FACTS_RULE}\n{SPACE_RULE}\n{ACK_RULE}\n{STYLE_RULE}\n{BLOCK_END}"
         ),
         Some(&code),
     )
@@ -1090,6 +1109,40 @@ mod tests {
         assert_eq!(fresh.matches(STYLE_RULE).count(), 1);
         assert!(fresh.starts_with("Tu es Prof.\n\n") && fresh.contains("write in French."));
         assert_eq!(with_language(&fresh, Some("fr")), fresh);
+    }
+
+    #[test]
+    fn every_agent_checks_an_important_fact_with_a_source() {
+        // Alex 2026-10-31: places first (Vie named a starred table near Rennes for the Pyla), then important facts
+        for needed in [
+            "check with a source",
+            "place and where it is",
+            "today's date",
+            "medicine dose",
+            "exact quote",
+            "Don't check stable general knowledge",
+            "what your person said or their Carnet holds",
+            "Never invent an address, link, phone number or quote",
+            "what you couldn't check",
+        ] {
+            assert!(FACTS_RULE.contains(needed), "missing {needed}");
+        }
+        assert!(FACTS_RULE.len() < 800, "short: paid on every call");
+        for lang in LANGUAGES.iter().chain(["de", "es"].iter()) {
+            for category in CATEGORIES {
+                // the Carnet by its name in the agent's language (names::localize: « Notebook »…)
+                let soul = soul_for("Bip", category, Some(lang)).unwrap();
+                let rule = crate::names::localize(FACTS_RULE, lang);
+                assert_eq!(soul.matches(rule.as_str()).count(), 1, "{category} {lang}");
+            }
+        }
+        // the places rule it replaced is brought to it in place, once
+        let places = "A place you recommend by name (restaurant, hotel, shop, venue, practitioner) must exist where \
+                      you say. Never guess a name. Checking a few places is quick: do it here.";
+        let old = with_language("Tu es Vie.\n", Some("fr")).replace(FACTS_RULE, places);
+        let fresh = with_language(&old, Some("fr"));
+        assert_eq!(fresh.matches(FACTS_RULE).count(), 1);
+        assert!(!fresh.contains("A place you recommend by name") && fresh.starts_with("Tu es Vie.\n\n"));
     }
 
     #[test]
