@@ -213,7 +213,10 @@ def test_a_connector_end_to_end_the_secret_never_reaches_the_agent_the_model_or_
     assert out.startswith("pushed lundi leak=[secret]") and "vars=GARMIN_PASSWORD,GARMIN_USERNAME" in out, out
     for form in forms(PASSWORD):
         assert form not in out
-    runs = [a for a in bridge.commands.of("podman") if a[:3] == ["run", "--rm", "-i"]]
+    # the call's container: it mounts the connector's code; the icon fetch started at the approval runs its own
+    # container without that mount and may start after the call's (a race: 5/11)
+    runs = [a for a in bridge.commands.of("podman") if a[:3] == ["run", "--rm", "-i"] and f"{bridge.state_dir}" in " ".join(a)]
+    assert runs, bridge.commands.of("podman")
     run = runs[-1]
     assert run[run.index("--network") + 1] == "bipagents-connectors" and "--read-only" in run
     assert "GARMIN_PASSWORD" in run and "GARMIN_USERNAME" in run and f"{bridge.state_dir}" in " ".join(run)
