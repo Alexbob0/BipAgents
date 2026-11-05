@@ -1,5 +1,6 @@
 """Boîte messages (outbox): ingestion, audio pre-synthesis, MESSAGE push, outbox routes (tests/test_outbox_push.py,
 over HTTP). The messages are routines' reports, the way the bridge's own producers fill the Boîte."""
+import time
 from bbkit.common import AUTH, boite_message, in_session, boite_items
 from bbkit.servers import wait_until
 
@@ -122,17 +123,18 @@ def test_the_journal_carries_the_boite_message_whole(bridge, fakes):
     assert all("boite" not in r for r in rows if r["type"] != "boite")
 
 
-def test_a_muted_message_is_in_the_journal_without_a_push(bridge, fakes):
-    """The Boîte read from the journal alone shows a muted routine's report too: its row, no push."""
+def test_a_muted_routine_leaves_the_journal_and_the_phone_alone(bridge, fakes):
+    """Alex 5/11: a muted routine's report stays in its run's own conversation: no Boîte row in the journal, no push
+    (the old « Me prévenir » off, which kept the row without a push, is the same switch now)."""
     bridge.post("/v1/devices", headers=AUTH, json={"token": TOKEN, "environment": "sandbox", "agent_ids": ["wellness"]})
-    item = boite_message(bridge, fakes, "Rapport discret.", name="Discret", notify=False)
-
-    def row():
-        rows = bridge.get("/v1/notifications", headers=AUTH, params={"agent": "wellness"}).json()["notifications"]
-        return [r for r in rows if r["type"] == "boite" and r["ref"] == item["id"]]
-
-    assert wait_until(lambda: row() and row()[0]["push"], timeout=15)
-    [found] = row()
-    assert found["push"] == "skipped:muted" and found["boite"]["text"] == "Rapport discret."
-    assert not [p for p in fakes.apns.payloads() if p.get("r") == item["id"]]
-
+    made = bridge.post("/v1/agents/wellness/routines", headers=AUTH,
+                       json={"name": "Discret", "schedule": "every day at 7:00", "prompt": "Fais le point."}).json()["job"]
+    assert bridge.put(f"/v1/cron-jobs/wellness/{made['id']}", headers=AUTH, json={"notify": False}).status_code == 200
+    fakes.hermes.run_output = "Rapport discret."
+    assert bridge.post(f"/v1/routines/{made['id']}/run", headers=AUTH).status_code == 200
+    assert wait_until(lambda: bridge.get("/v1/agents/wellness/routines", headers=AUTH).json()["jobs"][0]["last_status"]
+                      == "muted", timeout=20)
+    time.sleep(1.0)
+    rows = bridge.get("/v1/notifications", headers=AUTH, params={"agent": "wellness"}).json()["notifications"]
+    assert not [r for r in rows if r["type"] == "boite" and "Rapport discret." in str(r.get("boite"))]
+    assert not fakes.apns.payloads()
