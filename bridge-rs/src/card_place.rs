@@ -440,6 +440,8 @@ const WATCH_EVERY: std::time::Duration = std::time::Duration::from_secs(1);
 /// card answered elsewhere than `/v1/approve` (or withdrawn) gone from the conversations that showed it.
 pub async fn watch(state: AppState) {
     let mut before: Option<HashSet<String>> = None;
+    let started = py::time_time();
+    let mut last_look = started;
     loop {
         tokio::time::sleep(WATCH_EVERY).await;
         let (s, config) = (state.clone(), state.config());
@@ -468,17 +470,31 @@ pub async fn watch(state: AppState) {
             let turn = state.hub.turn_of(&agent.name, tool).map(|t| t.run_id);
             place(&state, &agent, &runs, turn.as_deref()).await;
         }
-        // gone without `/v1/approve`: what `answered` does, but the decision (its own route kept it)
-        if let Some(before) = before.take() {
-            for run in before.difference(&ids) {
-                if was_answered(run) {
-                    continue;
-                }
-                let Some(place) = places.get(run) else { continue };
-                let Some(agent) = config.agent(Some(&place.agent)).cloned() else { continue };
-                gone(&state, &agent, run, place).await;
+        // gone without `/v1/approve`: what `answered` does, but the decision (its own route kept it). Seen waiting at
+        // the last look; or never seen (placed since the last look, or this is the first look after a start: answered
+        // within that second) and answered through its own route since.
+        let first = before.is_none();
+        let seen = before.take().unwrap_or_default();
+        for (run, place) in places.iter().filter(|(run, _)| !ids.contains(*run)) {
+            let unseen = !seen.contains(run);
+            let recent = if first { now - place.at < STALE_DAYS * 86400.0 } else { place.at >= last_look - 1.0 };
+            if unseen && !recent {
+                continue;
             }
+            if was_answered(run) {
+                continue;
+            }
+            let Some(agent) = config.agent(Some(&place.agent)).cloned() else { continue };
+            if unseen
+                && (place.decided.is_some()
+                    || place.taken
+                    || decision_since(&config, &agent.name, run, started.max(place.at - 1.0)).is_none())
+            {
+                continue;
+            }
+            gone(&state, &agent, run, place).await;
         }
+        last_look = now;
         let placed = load(&config);
         before = Some(ids.into_iter().filter(|r| placed.contains_key(r)).collect());
         // the answers not told yet whose turn is over: the agent goes on
@@ -531,15 +547,19 @@ async fn gone(state: &AppState, agent: &AgentConfig, run_id: &str, place: &Place
     crate::notifications::read_card(state, &agent.name, id, run_id).await;
     // answered through its own route (the secure field, the sites' or the connector's screen): the decision it kept;
     // none (withdrawn, expired): nobody answered, nothing to resume
-    let config = state.config();
-    let decided = crate::approvals_log::list(&config, &agent.name, None)
+    if let Some(choice) = decision_since(&state.config(), &agent.name, run_id, 0.0) {
+        decide(state, run_id, place, &choice);
+    }
+}
+
+/// The last answer to card `run_id` its own route kept (approvals_log.rs), given at `since` or later.
+fn decision_since(config: &Config, agent: &str, run_id: &str, since: f64) -> Option<String> {
+    crate::approvals_log::list(config, agent, None)
         .into_iter()
         .rev()
         .find(|e| e.get("run_id").and_then(Value::as_str) == Some(run_id))
-        .and_then(|e| e.get("choice").and_then(Value::as_str).map(str::to_string));
-    if let Some(choice) = decided {
-        decide(state, run_id, place, &choice);
-    }
+        .filter(|e| e.get("at").and_then(Value::as_f64).unwrap_or(0.0) >= since)
+        .and_then(|e| e.get("choice").and_then(Value::as_str).map(str::to_string))
 }
 
 // -- a card answered: the agent goes on, once ------------------------------------------------------------------------

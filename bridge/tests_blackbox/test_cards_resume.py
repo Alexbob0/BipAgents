@@ -243,6 +243,21 @@ def connectors_in_a_turn(bridges, fakes, session, run, tool):
 SECRET = {"name": "garmin", "site": "connect.garmin.com", "kind": "password", "reason": "Garmin"}
 
 
+def register_then_restart(bridge, thread):
+    """connector_register called in the turn, its card placed there, then the bridge stopped: the call goes with it
+    (left to fail in the background, its client's timeout is long)."""
+    threading.Thread(target=lambda: _quietly(connectors_tool, bridge, "connector_register", REGISTER), daemon=True).start()
+    assert wait_until(lambda: waiting_in(bridge, thread, "vie", "bip-conn-"), timeout=20)
+    bridge.stop()
+
+
+def _quietly(f, *args):
+    try:
+        f(*args)
+    except Exception:  # noqa: BLE001 - the call dies with the bridge, as expected
+        pass
+
+
 @pytest.mark.parametrize("route", ["secure_field", "boite_refusal"])
 def test_a_secret_answered_while_its_call_waits_is_told_by_that_call_only(bridges, fakes, route):
     bridge, gate = connectors_in_a_turn(bridges, fakes, "api_sec", "run_sec", "mcp_bipagents_connectors_ask_secret")
@@ -284,12 +299,7 @@ def test_a_connector_whose_call_died_in_a_restart_resumes_once_its_turn_ends(bri
     Hermes: answered then, the agent is told once the turn ends."""
     bridge, gate = connectors_in_a_turn(bridges, fakes, "api_cr", "run_cr", "mcp_bipagents_connectors_connector_register")
     thread = thread_of(bridge, "api_cr", agent="vie")
-    with ThreadPoolExecutor(1) as pool:
-        asked = pool.submit(connectors_tool, bridge, "connector_register", REGISTER)
-        assert wait_until(lambda: waiting_in(bridge, thread, "vie", "bip-conn-"), timeout=20)
-        bridge.stop()
-        with pytest.raises(Exception):
-            asked.result(timeout=60)
+    register_then_restart(bridge, thread)
     fakes.hermes.run_info["run_cr"] = {"status": "running", "session_id": "api_cr"}
     bridge.start(write=False)
     [card] = connectors_cards(bridge, "bip-conn-")
@@ -306,12 +316,7 @@ def test_a_connector_answered_long_after_its_turn_ended_resumes_once(bridges, fa
     """Its call stopped waiting (here: a restart), the turn over: answered later, one turn."""
     bridge, gate = connectors_in_a_turn(bridges, fakes, "api_cl", "run_cl", "mcp_bipagents_connectors_connector_register")
     thread = thread_of(bridge, "api_cl", agent="vie")
-    with ThreadPoolExecutor(1) as pool:
-        asked = pool.submit(connectors_tool, bridge, "connector_register", REGISTER)
-        assert wait_until(lambda: waiting_in(bridge, thread, "vie", "bip-conn-"), timeout=20)
-        bridge.stop()
-        with pytest.raises(Exception):
-            asked.result(timeout=60)
+    register_then_restart(bridge, thread)
     gate.set()
     bridge.start(write=False)
     time.sleep(3)
