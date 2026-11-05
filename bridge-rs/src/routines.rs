@@ -7,19 +7,22 @@
 //!
 //! A routine: a name, what the agent does (its prompt), when (a cron expression on the routines' wall clock,
 //! `dates` `routines_zone`; an interval; once at a date), maybe a number of runs, the conversation it was made in
-//! (its report goes there, else to the Boîte of the main conversation), whether it notifies. Each run is a new
-//! hidden conversation (« <name> · 3/11 07:00 », a `routine` thread); its report is a Boîte message, `[SILENT]`
-//! keeps it quiet. While the month's AI credit is used up a due run is skipped (one note per agent, credit.rs).
+//! (its report goes there, else to the Boîte of the main conversation), whether it is muted. Each run is a new
+//! hidden conversation (« <name> · 3/11 07:00 », a `routine` thread); its report is a Boîte message (pushed),
+//! `[SILENT]` keeps it quiet. Muted (Alex 5/11, the apps' « Afficher dans la discussion » off): it still runs and its
+//! report stays in that run's hidden conversation (`last_session`, opened from the routine's page), but no Boîte
+//! message and no push. ONE control: the « Me prévenir » that only stopped the push (`notify`) is folded into it. While the month's AI credit is used up a due run is skipped (one note per agent, credit.rs).
 //!
 //! The agents make them with the bridge's tool `routine_schedule` (Hermes' `cronjob` toolset is turned off in their
 //! profiles, tool_diet.rs); the apps with these routes (the bridge key), in Hermes' job shape so their models stay:
 //!
 //!     GET    /v1/agents/{agent}/routines          {jobs}
 //!     POST   /v1/agents/{agent}/routines          {name, schedule, prompt}  -> {job}
-//!     PATCH  /v1/routines/{id}                    {name?, schedule?, prompt?} -> {job}
+//!     PATCH  /v1/routines/{id}                    {name?, schedule?, prompt?, muted?} -> {job}
 //!     DELETE /v1/routines/{id}
 //!     POST   /v1/routines/{id}/pause | resume | run
-//!     GET    /v1/cron-jobs[?agent=]  PUT /v1/cron-jobs/{agent}/{id} {notify}   the « Me prévenir » of each one
+//!     GET    /v1/cron-jobs[?agent=]  PUT /v1/cron-jobs/{agent}/{id} {notify}   the Boîte's « stop notifying »:
+//!                                                 notify false = muted
 //!
 //! Migration: the first time the bridge sees an agent's Hermes, its jobs are read once (`GET /api/jobs`), kept here
 //! with their schedule, state, conversation and mute, and deleted from Hermes.
@@ -77,7 +80,11 @@ pub struct Routine {
     pub skills: Vec<String>,
     #[serde(default = "yes")]
     pub enabled: bool,
-    #[serde(default = "yes")]
+    /// Its reports kept in their runs' hidden conversations: no Boîte message, no push.
+    #[serde(default)]
+    pub muted: bool,
+    /// Read only: the « Me prévenir » off before 5/11, read as muted (`load`).
+    #[serde(default = "yes", skip_serializing)]
     pub notify: bool,
     /// The conversation it was made in (its report goes there).
     #[serde(default)]
@@ -91,6 +98,9 @@ pub struct Routine {
     pub last_run: Option<f64>,
     #[serde(default)]
     pub last_status: String,
+    /// The last run's conversation (hidden), where its report is even when muted.
+    #[serde(default)]
+    pub last_session: String,
     #[serde(default)]
     pub created: f64,
 }
@@ -121,7 +131,12 @@ fn path(config: &Config) -> std::path::PathBuf {
 }
 
 pub fn load(config: &Config) -> Book {
-    std::fs::read_to_string(path(config)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    let mut book: Book =
+        std::fs::read_to_string(path(config)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    for r in book.routines.iter_mut().filter(|r| !r.notify) {
+        (r.muted, r.notify) = (true, true);
+    }
+    book
 }
 
 /// The apps' « Routines » tile, shown as Hermes' `cronjob` toolset (which the bridge keeps off for every agent):
@@ -337,10 +352,11 @@ pub fn view(r: &Routine, zone: Tz) -> Value {
         "scheduled"
     };
     json!({"id": r.id, "agent": r.agent, "name": r.name, "prompt": r.prompt, "schedule": schedule,
-           "schedule_display": display, "enabled": r.enabled, "state": state, "notify": r.notify,
+           "schedule_display": display, "enabled": r.enabled, "state": state, "muted": r.muted,
            "next_run_at": iso(r.next_run, zone), "last_run_at": iso(r.last_run, zone),
            "last_status": if r.last_status.is_empty() { Value::Null } else { json!(r.last_status) },
            "origin_session_id": if r.origin.is_empty() { Value::Null } else { json!(r.origin) },
+           "last_session_id": if r.last_session.is_empty() { Value::Null } else { json!(r.last_session) },
            "repeat": r.repeat, "skills": r.skills, "deliver": "local"})
 }
 
@@ -371,11 +387,13 @@ pub fn create(
         schedule,
         skills: Vec::new(),
         enabled: true,
+        muted: false,
         notify: true,
         origin: origin.unwrap_or("").to_string(),
         next_run,
         last_run: None,
         last_status: String::new(),
+        last_session: String::new(),
         created: now,
     };
     change(config, |b| b.routines.push(routine.clone()));
@@ -496,9 +514,11 @@ pub async fn fire(state: &AppState, id: &str) {
     let pipeline = Pipeline::of(state);
     let when = zone.timestamp_opt(now as i64, 0).single().map(|d| d.format("%-d/%-m %H:%M").to_string());
     let title = format!("{} · {}", r.name, when.unwrap_or_default());
+    let mut ran_in = String::new();
     let status = match pipeline.work_session(&agent, &title, "").await {
         Err(e) => format!("no conversation ({e})"),
         Ok(session) => {
+            ran_in = session.clone();
             // the run in its own hidden thread, never at the tip of the conversation the routine was made in
             let origin = json!({"kind": "routine", "routine": r.id});
             let thread = crate::threads::threads_of(state).adopt(&agent, &session, &title, "routine", origin).await;
@@ -508,6 +528,8 @@ pub async fn fire(state: &AppState, id: &str) {
                 Err(why) => why.to_string(),
                 Ok(ran) if !ran.answered() => format!("ended {}", ran.status),
                 Ok(ran) if is_silent(&ran.text) => "silent".into(),
+                // muted: the report stays in the run's own conversation, nothing in the person's, no push
+                Ok(_) if r.muted => "muted".into(),
                 Ok(ran) => deliver(state, &pipeline, &agent, &r, &ran).await,
             }
         }
@@ -516,6 +538,9 @@ pub async fn fire(state: &AppState, id: &str) {
     crate::beta_measures::routine_delivered(&config, py::time_time());
     let _ = update(&config, id, |x| {
         x.last_status = status;
+        if !ran_in.is_empty() {
+            x.last_session = ran_in;
+        }
         Ok(())
     });
 }
@@ -544,7 +569,7 @@ async fn deliver(state: &AppState, pipeline: &Pipeline, agent: &AgentConfig, r: 
         text: ran.text.clone(),
         as_written: false,
         run_id: Some(ran.run_id.clone()),
-        notify: r.notify,
+        notify: true,
         files: crate::made_files::MADE.in_run(&agent.name, &ran.run_id),
     };
     if !pipeline.deliver(&delivery).await {
@@ -609,7 +634,8 @@ pub async fn migrate(state: &AppState, agent: &AgentConfig) {
             schedule,
             skills: job.get("skills").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default(),
             enabled,
-            notify: !muted.contains(&text("id")),
+            muted: muted.contains(&text("id")),
+            notify: true,
             // where it was made: patch 0019's session, else an older job's api_server chat (the main conversation)
             origin: match text("origin_session_id") {
                 o if o.is_empty() => job
@@ -625,6 +651,7 @@ pub async fn migrate(state: &AppState, agent: &AgentConfig) {
             repeat: times.map(|t| t.saturating_sub(done) as u32),
             last_run: DateTime::parse_from_rfc3339(&text("last_run_at")).ok().map(|d| d.timestamp() as f64),
             last_status: text("last_status"),
+            last_session: String::new(),
             created: now,
         });
     }
@@ -727,6 +754,7 @@ struct Body {
     name: Option<String>,
     schedule: Option<String>,
     prompt: Option<String>,
+    muted: Option<bool>,
     notify: Option<bool>,
 }
 
@@ -771,8 +799,8 @@ async fn patch_route(State(state): State<AppState>, UrlPath(id): UrlPath<String>
         if let Some(p) = b.prompt.filter(|p| !p.trim().is_empty()) {
             r.prompt = p.trim().into();
         }
-        if let Some(n) = b.notify {
-            r.notify = n;
+        if let Some(m) = b.muted {
+            r.muted = m;
         }
         Ok(())
     });
@@ -813,7 +841,7 @@ async fn action_route(State(state): State<AppState>, UrlPath((id, action)): UrlP
     Ok(job(&config, &r))
 }
 
-/// The routines' « Me prévenir », as the apps' list of scheduled tasks reads it.
+/// The routines as the Boîte's « stop notifying » sees them: `notify` = not muted.
 async fn mutes(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
     let config = state.config();
     let agent = web::query_str(&q, "agent", false, Some(200))?.filter(|a| !a.is_empty());
@@ -822,23 +850,24 @@ async fn mutes(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response
     }
     let rows: Vec<Value> = list(&config, agent.as_deref())
         .iter()
-        .map(|r| json!({"agent": r.agent, "job": r.id, "name": r.name, "notify": r.notify, "last_seen": iso(r.last_run, Tz::UTC)}))
+        .map(|r| json!({"agent": r.agent, "job": r.id, "name": r.name, "notify": !r.muted, "last_seen": iso(r.last_run, Tz::UTC)}))
         .collect();
     Ok(web::ok(json!({"jobs": rows})))
 }
 
+/// The Boîte's « stop notifying » on a report (`notify: false`): the routine muted, as its page's switch does.
 async fn set_mute(State(state): State<AppState>, UrlPath((agent, id)): UrlPath<(String, String)>, body: Bytes) -> ApiResult<Response> {
     let config = state.config();
     agent_of(&state, &agent)?;
     get(&config, &id).ok_or_else(|| HttpError::new(404, "unknown job"))?;
     let notify = parsed(&body)?.notify.ok_or_else(|| HttpError::new(422, "notify is required"))?;
     let r = update(&config, &id, |r| {
-        r.notify = notify;
+        r.muted = !notify;
         Ok(())
     })
     .map_err(|e| HttpError::new(422, e))?
     .ok_or_else(|| HttpError::new(404, "unknown job"))?;
-    Ok(web::ok(json!({"agent": r.agent, "job": r.id, "notify": r.notify})))
+    Ok(web::ok(json!({"agent": r.agent, "job": r.id, "notify": !r.muted})))
 }
 
 pub fn router() -> Router<AppState> {
@@ -901,17 +930,41 @@ mod tests {
             schedule: Schedule::Interval { minutes: 60 },
             skills: Vec::new(),
             enabled: true,
+            muted: false,
             notify: true,
             origin: String::new(),
             repeat: None,
             next_run: None,
             last_run: None,
             last_status: String::new(),
+            last_session: String::new(),
             created: 0.0,
         };
         let n = note(&r);
         assert!(n.starts_with("Dis-moi la météo.\n\n<!--bip:routine\n") && n.contains(SILENT) && n.ends_with("-->"));
         let v = view(&r, Tz::UTC);
         assert_eq!((v["state"].as_str(), v["schedule"]["minutes"].as_u64()), (Some("completed"), Some(60)));
+    }
+
+    #[test]
+    fn muted_is_one_switch_and_the_old_notify_off_reads_as_muted() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::with_key("k");
+        config.outbox.db_path = dir.path().join("bridge.db").to_string_lossy().into_owned();
+        // a routine whose « Me prévenir » was off before 5/11: muted, and written back without `notify`
+        std::fs::write(path(&config), r#"{"routines": [{"id": "r1", "agent": "vie", "name": "Météo", "prompt": "x",
+            "schedule": {"kind": "interval", "minutes": 60}, "notify": false}, {"id": "r2", "agent": "vie",
+            "name": "Agenda", "prompt": "y", "schedule": {"kind": "interval", "minutes": 60}}]}"#).unwrap();
+        let muted: Vec<bool> = list(&config, Some("vie")).iter().map(|r| r.muted).collect();
+        assert_eq!(muted, [true, false]);
+        update(&config, "r2", |r| {
+            r.muted = true;
+            Ok(())
+        })
+        .unwrap();
+        let written = std::fs::read_to_string(path(&config)).unwrap();
+        assert!(!written.contains("notify") && written.matches("\"muted\": true").count() == 2, "{written}");
+        let v = view(&get(&config, "r1").unwrap(), Tz::UTC);
+        assert_eq!((v["muted"].as_bool(), v["last_session_id"].is_null()), (Some(true), true));
     }
 }

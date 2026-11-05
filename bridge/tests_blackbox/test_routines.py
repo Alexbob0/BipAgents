@@ -1,8 +1,8 @@
 """Routines on the bridge's own clock (bridge-rs/src/routines.rs, 2026-11-03): Hermes' cron runs none. Made by the
 agent (`routine_schedule`) in a conversation or by the app (`/v1/agents/{agent}/routines`), kept by the bridge, run as
 one background turn with the conversations' prompt (its rules in a hidden note of its message, never as run
-instructions), in a hidden conversation of its own; its report a Boîte message where it was made (muted: stored
-without a push), `[SILENT]` nothing; each agent's Hermes jobs read once and moved."""
+instructions), in a hidden conversation of its own; its report a Boîte message where it was made (muted: kept in
+its run's conversation only, no Boîte message, no push), `[SILENT]` nothing; each agent's Hermes jobs read once and moved."""
 import threading
 import time
 
@@ -71,17 +71,40 @@ def test_a_routine_made_in_a_conversation_runs_with_the_conversation_prompt_and_
     ran = bridge.get("/v1/agents/wellness/routines", headers=AUTH).json()["jobs"][0]
     assert ran["last_status"] == "sent" and ran["last_run_at"]
 
-    # muted: stored without a push; [SILENT]: nothing
-    assert bridge.put(f"/v1/cron-jobs/wellness/{job['id']}", headers=AUTH, json={"notify": False}).status_code == 200
+    # muted (Alex 5/11, one switch): it runs, its report stays in its run's own conversation, no Boîte message, no push
+    first_run = ran["last_session_id"]
+    assert first_run and first_run != "api_c"
+    muted = bridge.patch(f"/v1/routines/{job['id']}", headers=AUTH, json={"muted": True}).json()["job"]
+    assert muted["muted"] is True
     hermes.run_output = "Pluie l'après-midi."
     pushes = len(fakes.apns.payloads())
     bridge.post(f"/v1/routines/{job['id']}/run", headers=AUTH)
-    assert wait_until(lambda: [i for i in boite(bridge) if i["text"] == "Pluie l'après-midi."], timeout=20)
+    assert wait_until(lambda: len(turns(fakes)) == 2, timeout=20)
+    assert wait_until(lambda: bridge.get("/v1/agents/wellness/routines", headers=AUTH).json()["jobs"][0]["last_status"]
+                      == "muted", timeout=20)
+    quiet = bridge.get("/v1/agents/wellness/routines", headers=AUTH).json()["jobs"][0]
+    assert quiet["last_session_id"] == turns(fakes)[-1]["session_id"] != first_run
     time.sleep(1.5)
+    assert not [i for i in boite(bridge) if i["text"] == "Pluie l'après-midi."]
+    assert not [i for i in timeline(bridge, "main")["items"] if "Pluie" in (i.get("text") or "")]
     assert len(fakes.apns.payloads()) == pushes
+    # the Boîte's « stop notifying » is the same switch (notify = not muted)
+    listed = {j["job"]: j for j in bridge.get("/v1/cron-jobs", headers=AUTH, params={"agent": "wellness"}).json()["jobs"]}
+    assert listed[job["id"]]["notify"] is False
+    # unmuted: the next report shows again, pushed
+    assert bridge.patch(f"/v1/routines/{job['id']}", headers=AUTH, json={"muted": False}).json()["job"]["muted"] is False
+    hermes.run_output = "Vent fort ce soir."
+    bridge.post(f"/v1/routines/{job['id']}/run", headers=AUTH)
+    assert wait_until(lambda: [i for i in boite(bridge) if i["text"] == "Vent fort ce soir."], timeout=20)
+    [loud] = [i for i in boite(bridge) if i["text"] == "Vent fort ce soir."]
+    assert wait_until(lambda: [p for p in fakes.apns.payloads() if p.get("m") == f"o_{loud['id']}"], timeout=20)
+    assert bridge.put(f"/v1/cron-jobs/wellness/{job['id']}", headers=AUTH, json={"notify": False}).json()["notify"] is False
+    assert bridge.get("/v1/agents/wellness/routines", headers=AUTH).json()["jobs"][0]["muted"] is True
+    bridge.patch(f"/v1/routines/{job['id']}", headers=AUTH, json={"muted": False})
+    # [SILENT]: nothing
     hermes.run_output = "[SILENT]"
     bridge.post(f"/v1/routines/{job['id']}/run", headers=AUTH)
-    assert wait_until(lambda: len(turns(fakes)) == 3, timeout=20)
+    assert wait_until(lambda: len(turns(fakes)) == 4, timeout=20)
     assert wait_until(lambda: bridge.get("/v1/agents/wellness/routines", headers=AUTH).json()["jobs"][0]["last_status"]
                       == "silent", timeout=20)
     assert len([i for i in boite(bridge) if i["title"] == "Météo du matin"]) == 2
