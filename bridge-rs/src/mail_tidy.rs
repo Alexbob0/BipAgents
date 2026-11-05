@@ -366,6 +366,9 @@ const TRASH_NAMES: [&str; 9] = [
     "papierkorb",
 ];
 
+/// The hydroxide build that sees today's Proton folders (internal/notes/hydroxide-folders): what the agent points to.
+const HYDROXIDE_FIXED: &str = "https://github.com/Alexbob0/hydroxide/releases";
+
 /// hydroxide's own folders (imap/user.go `systemMailboxes`).
 const HYDROXIDE_FOLDERS: [&str; 8] = ["INBOX", "All Mail", "Archive", "Drafts", "Starred", "Spam", "Sent", "Trash"];
 
@@ -452,7 +455,8 @@ impl Folders {
                     format!("hydroxide (the Proton connection) shows no folder « {wanted} » and cannot make one"),
                     format!(
                         "Ta connexion Proton (hydroxide) ne voit pas le dossier « {wanted} » : je peux archiver ces \
-mails ; si tu viens de créer ce dossier dans Proton, redémarre hydroxide puis redemande-moi."
+mails ; si tu viens de créer ce dossier dans Proton, redémarre hydroxide puis redemande-moi. La version corrigée \
+d'hydroxide ({HYDROXIDE_FIXED}) voit les nouveaux dossiers sans redémarrage et sait en créer."
                     ),
                 )
             } else {
@@ -462,13 +466,15 @@ built-in ones, and cannot make one"
                         .to_string(),
                     format!(
                         "Ta connexion Proton (hydroxide) ne montre aucun de tes dossiers Proton : je peux archiver ces \
-mails, pas les ranger dans « {wanted} ». Pour tes propres dossiers, il faut Proton Mail Bridge à la place."
+mails, pas les ranger dans « {wanted} ». Pour tes propres dossiers, installe la version corrigée d'hydroxide \
+({HYDROXIDE_FIXED}), ou Proton Mail Bridge."
                     ),
                 )
             };
             format!(
-                "Not done: {why}. Folders it can file into: {list}. Propose one of those (Archive keeps the trail), \
-or tell the person plainly: « {tell} »"
+                "Not done: {why}. This is stock hydroxide, which reads Proton folders in an old API shape; a fixed build \
+({HYDROXIDE_FIXED}: the person's folders, sub-folders, CREATE, folders made later) replaces its binary, login kept. \
+Folders it can file into: {list}. Propose one of those (Archive keeps the trail), or tell the person plainly: « {tell} »"
             )
         } else {
             format!(
@@ -1813,6 +1819,10 @@ mod tests {
         let some = hydroxide_folders(&["Factures"]).destination("Copro St Ex").unwrap_err();
         assert!(some.contains("shows no folder « Copro St Ex »") && some.contains("« Factures »"), "{some}");
         assert!(some.contains("redémarre hydroxide"), "{some}");
+        // both point to the fixed hydroxide build, for the agent and in the person's words
+        for text in [&why, &some] {
+            assert_eq!(text.matches(HYDROXIDE_FIXED).count(), 2, "{text}");
+        }
         let account: Dict = serde_json::from_value(json!({"id": "a1", "username": "alex@proton.me"})).unwrap();
         let scan = Scan {
             folder: "INBOX".into(),
