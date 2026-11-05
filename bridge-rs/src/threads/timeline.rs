@@ -635,12 +635,12 @@ impl Page {
     /// `s_<client_id>` until Hermes stores it (send.rs), then its stored row with that `client_id`. A window that read
     /// the `s_` item while the turn ran, then the stored row after its cursor, drew the message twice (iPhone 4/11;
     /// Android never dropped it): the apps remove what `replaced` names, without knowing why. Only rows of the last few
-    /// days: an `s_` item lives two days at most (`SENDS_KEPT_SECONDS`).
+    /// days (an `s_` item lives two days at most, `SENDS_KEPT_SECONDS`), or without a time (an older store).
     fn replaced(&self) -> Vec<String> {
         let since = chrono::Utc::now().timestamp() as f64 - REPLACED_SECONDS;
         self.items
             .iter()
-            .filter(|i| i.kind() == "message" && !i.body.contains_key("sending") && i.at >= since)
+            .filter(|i| i.kind() == "message" && !i.body.contains_key("sending") && (i.at >= since || i.at == 0.0))
             .filter_map(|i| i.body.get("client_id").and_then(Value::as_str))
             .map(|c| format!("s_{c}"))
             .collect()
@@ -671,7 +671,9 @@ pub fn draws(item: &Item) -> bool {
                 || item.body.get("attachments").and_then(Value::as_array).is_some_and(|a| !a.is_empty())
                 || item.body.get("reasoning").and_then(Value::as_str).is_some_and(|r| !r.trim().is_empty())
         }
-        "notice" => item.body.get("notice").and_then(|n| n.get("text")).and_then(Value::as_str).is_some_and(|t| !t.is_empty()),
+        "notice" => {
+            item.body.get("notice").and_then(|n| n.get("text")).and_then(Value::as_str).is_some_and(|t| !t.is_empty())
+        }
         "tool" | "boite" | "approval" | "call" => true,
         _ => false,
     }
@@ -1180,14 +1182,16 @@ not from your person: you have read the page 5 times\n[/OUT-OF-BAND USER MESSAGE
     fn a_stored_sent_message_names_the_item_it_replaces() {
         let now = chrono::Utc::now().timestamp() as f64;
         let all = vec![
-            said("m_old", 1, now - 5.0 * 86_400.0, json!({"kind": "message", "role": "person", "text": "a", "client_id": "C0"})),
+            said("m_old", 1, now - 432_000.0, json!({"kind": "message", "role": "person", "text": "a", "client_id": "C0"})),
             said("m_1", 2, now - 60.0, json!({"kind": "message", "role": "person", "text": "b", "client_id": "C1"})),
             said("m_2", 3, now - 50.0, json!({"kind": "message", "role": "agent", "text": "ok"})),
-            said("s_C2", 4, now, json!({"kind": "message", "role": "person", "text": "c", "client_id": "C2", "sending": true})),
+            said("s_C2", 4, now, json!({"kind": "message", "role": "person", "text": "c", "client_id": "C2",
+                                       "sending": true})),
         ];
-        let json = page(all, &Want { limit: 50, ..Default::default() }).answer(json!({"id": "t_1"}), 1, Value::Null, false);
+        let want = Want { limit: 50, ..Default::default() };
+        let json = page(all, &want).answer(json!({"id": "t_1"}), 1, Value::Null, false);
         assert_eq!(json["replaced"], json!(["s_C1"]));
-        let none = page(vec![], &Want { limit: 50, ..Default::default() }).answer(json!({"id": "t_1"}), 1, Value::Null, false);
+        let none = page(vec![], &want).answer(json!({"id": "t_1"}), 1, Value::Null, false);
         assert!(none.get("replaced").is_none());
     }
 }

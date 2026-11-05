@@ -1133,7 +1133,8 @@ async fn timeline_route(
     let thread = threads.get(&thread.id).await?.unwrap_or(thread);
     let items = threads.items(&agent, &thread, &segments).await.map_err(unavailable)?;
     // the day dividers where the phone is (`tz`, its IANA zone), else where the person said they live
-    let zone = q.get("tz").and_then(|z| crate::dates::parse_zone(z)).unwrap_or_else(|| crate::dates::load(&state.config()).zone());
+    let zone =
+        q.get("tz").and_then(crate::dates::parse_zone).unwrap_or_else(|| crate::dates::load(&state.config()).zone());
     let days = timeline::days(&items, zone);
     let page = timeline::page(items, &want).with_days(&days);
     let tip = segments.last().map(|s| s.session_id.clone());
