@@ -1,0 +1,111 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Alexbob0 <190955252+Alexbob0@users.noreply.github.com>
+Date: Thu, 5 Nov 2026 19:30:00 +0100
+Subject: Streamed replies: a colon mid-sentence no longer holds back the rest
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The chat-completions stream holds text back while it may be an SSE block a provider echoed into the content
+(`data: …`, `: comment`). The check ran on every delta, so a delta starting with a colon in the middle of a line was
+taken for a comment and everything after it was held until a newline or the end of the response. French typography
+puts a space before a colon (« fond : vers », tokenized " :"): a one-paragraph reply showed its first words, then
+nothing, then the rest at once. The guard now starts only on a delta that begins a line (the response's first one,
+or one after a newline); held text is judged as before.
+
+BipAgents patch, documented in hermes/patches/README.md of the BipAgents repository.
+
+Bip-Patch: 0025-stream-colon-mid-sentence
+---
+ agent/chat_completion_helpers.py |  7 ++++-
+ tests/agent/test_streaming.py    | 47 ++++++++++++++++++++++++++++++++
+ 2 files changed, 53 insertions(+), 1 deletion(-)
+
+diff --git a/agent/chat_completion_helpers.py b/agent/chat_completion_helpers.py
+index c355355cc23b2874351d5f6b98767b9adb56d903..255e03561693f25c7d9a5073f50b1bcddd8e6c53 100644
+--- a/agent/chat_completion_helpers.py
++++ b/agent/chat_completion_helpers.py
+@@ -3054,6 +3054,10 @@ class _StreamingCall(StreamingWaitMonitor):
+         refusal_parts: list[str] = []
+         reasoning_details: list = []  # OpenRouter replay data (signatures, encrypted blocks)
+         pending_text_parts: list[str] = []
++        # Whether the content so far ends a line: an echoed SSE block (``data: …``, ``: comment``) can only start
++        # there. A delta in the middle of a sentence that happens to begin with a colon (French typography's
++        # « fond : vers », tokenized " :") is text, not a comment line, and must not hold back the rest of the reply.
++        at_line_start = True
+         from agent.chat_completion_helpers_tool_calls import _ToolCallAccumulator
+         tool_calls = _ToolCallAccumulator()
+         tool_calls_acc = tool_calls.acc
+@@ -3196,12 +3200,13 @@ class _StreamingCall(StreamingWaitMonitor):
+             delta_content = flatten_message_text(getattr(delta, "content", None), sep="")
+             if delta_content:
+                 content_parts.append(delta_content)
++                starts_line, at_line_start = at_line_start, delta_content.endswith(("\n", "\r"))
+                 if content_watch.feed(delta_content):
+                     runaway = "content"
+                     break
+                 if tool_calls_acc:
+                     self._route_suppressed_text(delta_content)
+-                elif (pending_text_parts or _provider_stream_text_may_be_sse(delta_content)
++                elif (pending_text_parts or (starts_line and _provider_stream_text_may_be_sse(delta_content))
+                         # A shim cannot follow text already released to the display, so the
+                         # whole-content re-join runs only until the first emitted delta.
+                         or (not self.deltas_were_sent["yes"] and router_timeout_shim_may_follow("".join(content_parts)))):
+diff --git a/tests/agent/test_streaming.py b/tests/agent/test_streaming.py
+index e3673ac658bd41b316d486b888cca811bbf9de46..b2feeffc013d119c009c41b7fdd57dd363904ef1 100644
+--- a/tests/agent/test_streaming.py
++++ b/tests/agent/test_streaming.py
+@@ -626,6 +626,53 @@ class TestStreamingCallbacks:
+         assert response.choices[0].message.content == "before tool; after tool"
+ 
+ 
++class TestColonMidSentenceStreams:
++    """A delta that starts with a colon in the middle of a line is text, not an echoed SSE comment: the reply goes
++    on streaming (French typography's « fond : vers », tokenized " :"; before, everything after it was held back
++    until the end of the response)."""
++
++    @staticmethod
++    def _stream(words):
++        """The deltas shown by the time each next chunk is read, and the agent's response."""
++        from run_agent import AIAgent
++
++        deltas, seen = [], []
++
++        def chunks():
++            for w in words:
++                seen.append(list(deltas))
++                yield _make_stream_chunk(content=w)
++            seen.append(list(deltas))
++            yield _make_stream_chunk(finish_reason="stop")
++
++        client = MagicMock()
++        client.chat.completions.create.return_value = chunks()
++        with patch("run_agent.AIAgent._create_request_openai_client", return_value=client), \
++                patch("run_agent.AIAgent._close_request_openai_client"):
++            agent = AIAgent(api_key="test-key", base_url="https://openrouter.ai/api/v1", model="test/model",
++                            quiet_mode=True, skip_context_files=True, skip_memory=True,
++                            stream_delta_callback=deltas.append)
++            agent.api_mode = "chat_completions"
++            agent._interrupt_requested = False
++            response = agent._interruptible_streaming_api_call({})
++        return deltas, seen, response
++
++    def test_a_colon_after_a_word_does_not_hold_the_rest(self):
++        words = ["Le réglet", " se règle", " branches écartées à fond", " :", " vers le bas", " moins dur."]
++        deltas, seen, response = self._stream(words)
++        # by the time the chunk after " :" is read, " :" was shown; and so on to the end
++        for index in range(4, len(words) + 1):
++            assert seen[index] == words[:index], (index, seen[index])
++        assert deltas == words
++        assert response.choices[0].message.content == "".join(words)
++
++    def test_a_comment_line_at_a_line_start_is_still_judged_before_it_shows(self):
++        words = ["Voici :", "\n", ": keepalive", "\n", "la suite"]
++        deltas, seen, _ = self._stream(words)
++        assert seen[2] == ["Voici :", "\n"]
++        assert ": keepalive" not in seen[3], "a comment at a line's start is held until judged"
++
++
+ # ── Test: Streaming Fallback ────────────────────────────────────────────
+ 
+ 

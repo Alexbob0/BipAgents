@@ -78,10 +78,17 @@ impl SSEEvent {
 ///
 /// Type comes from the JSON `type` (or `event`) field, else the SSE `event:` line. Comment
 /// lines (`: keepalive`) are ignored. A bare JSON line outside SSE framing is accepted too.
+///
+/// Half an emoji: a delta whose JSON holds a lone UTF-16 surrogate escape (`"\ud83d"`, then `"\ude0a"` in the next
+/// one: a router cutting a JavaScript string between two tokens) is not valid JSON for serde; it was passed on as an
+/// unparsed `message` that both apps dropped, the character lost. Such halves are read here and joined across the
+/// deltas of the stream; a half without its partner becomes U+FFFD.
 #[derive(Debug, Default)]
 pub struct SSEParser {
     event_name: Option<String>,
     data: Vec<String>,
+    /// The high half of a character whose low half should start the next delta.
+    high: Option<u32>,
 }
 
 impl SSEParser {
@@ -99,7 +106,7 @@ impl SSEParser {
         }
         let stripped = line.trim();
         if stripped.starts_with('{') && self.data.is_empty() && self.event_name.is_none() {
-            return Self::build(None, stripped); // bare JSON line (NDJSON-style), tolerated
+            return self.build(None, stripped); // bare JSON line (NDJSON-style), tolerated
         }
         let (name, value) = match line.split_once(':') {
             Some((n, v)) => (n, v),
@@ -125,16 +132,24 @@ impl SSEParser {
         }
         let name = self.event_name.take();
         let payload = std::mem::take(&mut self.data).join("\n");
-        Self::build(name.as_deref(), &payload)
+        self.build(name.as_deref(), &payload)
     }
 
-    fn build(name: Option<&str>, payload: &str) -> Option<SSEEvent> {
+    fn build(&mut self, name: Option<&str>, payload: &str) -> Option<SSEEvent> {
         if payload.trim() == "[DONE]" {
             return Some(SSEEvent::new("done", Map::new(), payload));
         }
         let mut data = Map::new();
+        let mut halves = false;
         if !payload.trim().is_empty() {
-            match serde_json::from_str::<Value>(payload) {
+            let parsed = serde_json::from_str::<Value>(payload).or_else(|err| match mark_lone_surrogates(payload) {
+                Some(marked) => {
+                    halves = true;
+                    serde_json::from_str::<Value>(&marked)
+                }
+                None => Err(err),
+            });
+            match parsed {
                 Ok(Value::Object(parsed)) => data = parsed,
                 Ok(other) => {
                     data.insert("value".into(), other);
@@ -151,8 +166,114 @@ impl SSEParser {
             .map(py::py_str)
             .or_else(|| name.filter(|n| !n.is_empty()).map(str::to_string))
             .unwrap_or_else(|| "message".into());
-        Some(SSEEvent::new(etype, data, payload))
+        if !halves && self.high.is_none() {
+            return Some(SSEEvent::new(etype, data, payload));
+        }
+        if is_delta(&etype) {
+            // the halves joined across deltas; a high half at the end waits for the next one
+            if let Some((key, Value::String(text))) =
+                ["delta", "text", "content"].iter().find_map(|k| data.get(*k).map(|v| (*k, v.clone())))
+            {
+                data.insert(key.into(), Value::String(self.join_halves(&text)));
+            }
+        } else {
+            self.high = None;
+        }
+        let mut value = Value::Object(data);
+        unmark(&mut value);
+        let raw = py::Dumps::new().unicode().dumps(&value);
+        let data = match value {
+            Value::Object(data) => data,
+            _ => Map::new(),
+        };
+        Some(SSEEvent::new(etype, data, raw))
     }
+
+    /// A delta's text with its marked halves (`mark_lone_surrogates`) made characters again: a high half and the low
+    /// half after it (in this delta or the next) one character, a half alone U+FFFD.
+    fn join_halves(&mut self, text: &str) -> String {
+        let mut out = String::with_capacity(text.len());
+        for c in text.chars() {
+            match half(c) {
+                Some(high @ 0xD800..=0xDBFF) => {
+                    if self.high.replace(high).is_some() {
+                        out.push('\u{FFFD}');
+                    }
+                }
+                Some(low) => match self.high.take() {
+                    Some(high) => {
+                        let code = 0x10000 + ((high - 0xD800) << 10) + (low - 0xDC00);
+                        out.push(char::from_u32(code).unwrap_or('\u{FFFD}'));
+                    }
+                    None => out.push('\u{FFFD}'),
+                },
+                None => {
+                    if self.high.take().is_some() {
+                        out.push('\u{FFFD}');
+                    }
+                    out.push(c);
+                }
+            }
+        }
+        out
+    }
+}
+
+/// Where a lone surrogate's mark lives: the private-use character U+F0000 + (surrogate − 0xD800).
+const HALF_MARK: u32 = 0xF0000;
+
+/// The surrogate a mark stands for.
+fn half(c: char) -> Option<u32> {
+    let code = c as u32;
+    (HALF_MARK..HALF_MARK + 0x800).contains(&code).then(|| code - HALF_MARK + 0xD800)
+}
+
+/// Marks left once the halves are joined (outside a delta, or never paired) become U+FFFD.
+fn unmark(value: &mut Value) {
+    match value {
+        Value::String(text) if text.chars().any(|c| half(c).is_some()) => {
+            *text = text.chars().map(|c| if half(c).is_some() { '\u{FFFD}' } else { c }).collect();
+        }
+        Value::Array(items) => items.iter_mut().for_each(unmark),
+        Value::Object(map) => map.values_mut().for_each(unmark),
+        _ => {}
+    }
+}
+
+/// JSON text with each lone UTF-16 surrogate escape (`\ud83d` without its low half after it, or a low half alone)
+/// written as its mark (`HALF_MARK`), so serde reads it; None when it has none.
+fn mark_lone_surrogates(payload: &str) -> Option<String> {
+    fn escape_at(bytes: &[u8], at: usize) -> Option<u32> {
+        let escape = bytes.get(at..at + 6)?;
+        if escape[0] != b'\\' || escape[1] != b'u' {
+            return None;
+        }
+        u32::from_str_radix(std::str::from_utf8(&escape[2..]).ok()?, 16).ok()
+    }
+    let bytes = payload.as_bytes();
+    let mut out = String::with_capacity(payload.len());
+    let (mut at, mut from) = (0, 0);
+    while at < bytes.len() {
+        if bytes[at] != b'\\' {
+            at += 1;
+            continue;
+        }
+        match escape_at(bytes, at) {
+            Some(0xD800..=0xDBFF) if matches!(escape_at(bytes, at + 6), Some(0xDC00..=0xDFFF)) => at += 12,
+            Some(code @ 0xD800..=0xDFFF) => {
+                out.push_str(&payload[from..at]);
+                out.push(char::from_u32(HALF_MARK + code - 0xD800).unwrap_or('\u{FFFD}'));
+                at += 6;
+                from = at;
+            }
+            _ => at += 2, // another escape (`\\`, `\"`, `é`): its first two bytes skipped, the rest is plain
+        }
+    }
+    if from == 0 {
+        return None;
+    }
+    out.push_str(&payload[from..]);
+    Some(out)
 }
 
 /// Incremental UTF-8 decoding with invalid bytes replaced (U+FFFD), a character split across chunks kept whole.
@@ -1060,6 +1181,53 @@ mod tests {
         assert_eq!(numeric[0].r#type, "5");
         let unterminated = parse("event: run.failed\ndata: {}");
         assert_eq!(unterminated[0].r#type, "run.failed");
+    }
+
+    #[test]
+    fn an_emoji_cut_in_two_utf16_halves_across_deltas_is_joined() {
+        // Hermes as a router hands it over (json.dumps, ensure_ascii): 😊 = \ud83d \ude0a, one half per delta
+        let events = parse(concat!(
+            "data: {\"event\": \"message.delta\", \"run_id\": \"r\", \"delta\": \"\\ud83d\"}\n\n",
+            "data: {\"event\": \"message.delta\", \"run_id\": \"r\", \"delta\": \"\\ude0a Bonjour\"}\n\n",
+            "data: {\"event\": \"message.delta\", \"run_id\": \"r\", \"delta\": \" \\u00e9t\\u00e9 \\\\ud83d\"}\n\n",
+            "data: {\"event\": \"message.delta\", \"run_id\": \"r\", \"delta\": \"\\ud83d\\ude0a\"}\n\n",
+        ));
+        let deltas: Vec<String> = events.iter().map(|e| e.text()).collect();
+        assert!(events.iter().all(|e| e.r#type == "message.delta"), "{events:?}");
+        assert_eq!(deltas, ["", "😊 Bonjour", " été \\ud83d", "😊"]);
+        // what the apps get is valid JSON with the whole character
+        let raw: Value = serde_json::from_str(&events[1].raw).unwrap();
+        assert_eq!(raw["delta"], "😊 Bonjour");
+        assert_eq!(raw["run_id"], "r");
+        // an untouched event keeps Hermes' own text
+        assert!(events[3].raw.contains("\\ud83d\\ude0a"));
+        // a half without its partner: U+FFFD, never a lost word or an unparsed event
+        let lone = parse(concat!(
+            "data: {\"event\": \"message.delta\", \"delta\": \"a\\ud83d\"}\n\n",
+            "data: {\"event\": \"message.delta\", \"delta\": \"b\"}\n\n",
+            "data: {\"event\": \"message.delta\", \"delta\": \"\\ude0ac\"}\n\n",
+            "data: {\"event\": \"run.completed\", \"output\": \"x\\ud83d\"}\n\n",
+        ));
+        let texts: Vec<String> = lone.iter().map(|e| e.text()).collect();
+        assert_eq!(texts[..3], ["a", "\u{FFFD}b", "\u{FFFD}c"]);
+        assert_eq!(lone[3].r#type, "run.completed");
+        assert_eq!(lone[3].final_text(), "x\u{FFFD}");
+    }
+
+    #[tokio::test]
+    async fn a_line_after_an_emoji_cut_across_chunks_comes_as_soon_as_it_is_whole() {
+        // 😊's four bytes in two network reads: the line is given at the second read, not held for a later one
+        let line = "data: {\"delta\": \"😊\"}\n\n".as_bytes().to_vec();
+        let cut = line.iter().position(|b| *b == 0xF0).unwrap() + 2;
+        let (tx, rx) = futures::channel::mpsc::unbounded::<Result<bytes::Bytes, std::io::Error>>();
+        let lines = lines_of(rx);
+        futures::pin_mut!(lines);
+        tx.unbounded_send(Ok(bytes::Bytes::from(line[..cut].to_vec()))).unwrap();
+        tx.unbounded_send(Ok(bytes::Bytes::from(line[cut..].to_vec()))).unwrap();
+        let first = tokio::time::timeout(Duration::from_millis(200), lines.next()).await.expect("held back");
+        assert_eq!(first.unwrap().unwrap(), "data: {\"delta\": \"😊\"}");
+        let blank = tokio::time::timeout(Duration::from_millis(200), lines.next()).await.expect("held back");
+        assert_eq!(blank.unwrap().unwrap(), "");
     }
 
     #[test]
