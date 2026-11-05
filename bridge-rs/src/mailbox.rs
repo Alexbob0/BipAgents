@@ -248,6 +248,81 @@ pub fn quote(text: &str) -> String {
     crate::tools_knowledge::imap::quote(text)
 }
 
+/// A folder name as a command argument: IMAP's modified UTF-7 (RFC 3501 5.1.3), quoted. « Impôts » goes as
+/// `"Imp&APQ-ts"`: what every server lists and expects (hydroxide, Dovecot, Gmail…); `list_rows` decodes it back.
+pub fn quote_box(name: &str) -> String {
+    quote(&utf7_encode(name))
+}
+
+const UTF7_B64: base64::engine::GeneralPurpose = base64::engine::GeneralPurpose::new(
+    &match base64::alphabet::Alphabet::new("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+,") {
+        Ok(a) => a,
+        Err(_) => panic!("valid alphabet"),
+    },
+    base64::engine::GeneralPurposeConfig::new()
+        .with_encode_padding(false)
+        .with_decode_padding_mode(base64::engine::DecodePaddingMode::Indifferent),
+);
+
+/// A folder name in IMAP's modified UTF-7.
+pub fn utf7_encode(name: &str) -> String {
+    use base64::Engine;
+    let mut out = String::new();
+    let mut wide: Vec<u16> = Vec::new();
+    let flush = |wide: &mut Vec<u16>, out: &mut String| {
+        if !wide.is_empty() {
+            let bytes: Vec<u8> = wide.iter().flat_map(|u| u.to_be_bytes()).collect();
+            out.push('&');
+            out.push_str(&UTF7_B64.encode(bytes));
+            out.push('-');
+            wide.clear();
+        }
+    };
+    for c in name.chars() {
+        if (' '..='~').contains(&c) {
+            flush(&mut wide, &mut out);
+            if c == '&' {
+                out.push_str("&-");
+            } else {
+                out.push(c);
+            }
+        } else {
+            wide.extend(c.encode_utf16(&mut [0; 2]).iter());
+        }
+    }
+    flush(&mut wide, &mut out);
+    out
+}
+
+/// A listed folder name decoded from IMAP's modified UTF-7 (a name that is not valid mUTF-7 stays as it came).
+pub fn utf7_decode(name: &str) -> String {
+    use base64::Engine;
+    let mut out = String::new();
+    let mut rest = name;
+    while let Some(start) = rest.find('&') {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 1..];
+        let Some(end) = after.find('-') else { return name.to_string() };
+        let chunk = &after[..end];
+        if chunk.is_empty() {
+            out.push('&');
+        } else {
+            let Ok(bytes) = UTF7_B64.decode(chunk) else { return name.to_string() };
+            if bytes.len() % 2 != 0 {
+                return name.to_string();
+            }
+            let units: Vec<u16> = bytes.chunks(2).map(|p| u16::from_be_bytes([p[0], p[1]])).collect();
+            match String::from_utf16(&units) {
+                Ok(text) => out.push_str(&text),
+                Err(_) => return name.to_string(),
+            }
+        }
+        rest = &after[end + 1..];
+    }
+    out.push_str(rest);
+    out
+}
+
 /// `_decode`: a header decoded (RFC 2047).
 pub fn decode(value: Option<&str>) -> String {
     match value {
@@ -392,7 +467,7 @@ pub fn search(
 ) -> anyhow::Result<Vec<Dict>> {
     let mut conn = opened(opener, account)?;
     let result = (|| -> anyhow::Result<Vec<Dict>> {
-        let (status, _) = conn.select(&quote(folder), true)?;
+        let (status, _) = conn.select(&quote_box(folder), true)?;
         if status != "OK" {
             return Err(MailError(format!("no folder {folder}")).into());
         }
@@ -450,7 +525,7 @@ pub fn search(
 pub fn read(account: &Dict, folder: &str, uid: &str, opener: &Connect) -> anyhow::Result<Dict> {
     let mut conn = opened(opener, account)?;
     let result = (|| -> anyhow::Result<Dict> {
-        if conn.select(&quote(folder), true)?.0 != "OK" {
+        if conn.select(&quote_box(folder), true)?.0 != "OK" {
             return Err(MailError(format!("no folder {folder}")).into());
         }
         let (status, data) = conn.uid("FETCH", &[uid, &format!("(BODY.PEEK[]<0.{FETCH_BYTES}>)")])?;
@@ -513,7 +588,7 @@ pub fn attachment(
 ) -> anyhow::Result<(email::Attachment, String)> {
     let mut conn = opened(opener, account)?;
     let result = (|| -> anyhow::Result<(email::Attachment, String)> {
-        if conn.select(&quote(folder), true)?.0 != "OK" {
+        if conn.select(&quote_box(folder), true)?.0 != "OK" {
             return Err(MailError(format!("no folder {folder}")).into());
         }
         let (status, data) = conn.uid("FETCH", &[uid, "(RFC822.SIZE)"])?;
@@ -623,7 +698,7 @@ pub fn list_rows(data: &[Data]) -> Vec<(String, String)> {
             Data::None => "None".into(),
         };
         if let Some(caps) = LIST_ROW.captures(&line) {
-            let name = tk::strip(&caps["name"]).trim_matches('"').to_string();
+            let name = utf7_decode(tk::strip(&caps["name"]).trim_matches('"'));
             rows.push((caps["flags"].to_string(), name));
         }
     }
@@ -662,7 +737,7 @@ pub fn draft(
     let mut conn = opened(opener, account)?;
     let result = (|| -> anyhow::Result<String> {
         let folder = drafts_folder(&mut conn)?;
-        let (status, _) = conn.append(&quote(&folder), "(\\Draft)", &email::internaldate_now(), &message)?;
+        let (status, _) = conn.append(&quote_box(&folder), "(\\Draft)", &email::internaldate_now(), &message)?;
         if status != "OK" {
             return Err(MailError("the draft was refused".into()).into());
         }
@@ -1165,6 +1240,25 @@ pub fn router_with(opener: Option<Connect>) -> Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn folder_names_in_modified_utf7() {
+        for (plain, wire) in [
+            ("Impôts", "Imp&APQ-ts"),
+            ("Copro St Ex", "Copro St Ex"),
+            ("A&B", "A&-B"),
+            ("Éléments envoyés", "&AMk-l&AOk-ments envoy&AOk-s"),
+            ("日本語", "&ZeVnLIqe-"),
+            ("~peter/mail/台北/日本語", "~peter/mail/&U,BTFw-/&ZeVnLIqe-"),
+        ] {
+            assert_eq!(utf7_encode(plain), wire, "{plain}");
+            assert_eq!(utf7_decode(wire), plain, "{wire}");
+        }
+        assert_eq!(utf7_decode("broken&zz"), "broken&zz");
+        assert_eq!(quote_box("Impôts"), "\"Imp&APQ-ts\"");
+        let rows = list_rows(&[Data::Line(b"(\\Noinferiors) \"/\" \"Imp&APQ-ts\"".to_vec())]);
+        assert_eq!(rows[0].1, "Impôts");
+    }
 
     #[test]
     fn quotes_and_rows() {

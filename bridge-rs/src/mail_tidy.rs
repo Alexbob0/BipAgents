@@ -291,7 +291,7 @@ fn numbers(data: &[Data]) -> Vec<u32> {
 /// The headers of the folder's newest messages.
 pub fn scan(conn: &mut Connection, folder: &str, budget: Duration) -> anyhow::Result<Scan> {
     let started = Instant::now();
-    let (status, data) = conn.select(&mailbox::quote(folder), true)?;
+    let (status, data) = conn.select(&mailbox::quote_box(folder), true)?;
     if status != "OK" {
         return Err(MailError(format!("no folder {folder}")).into());
     }
@@ -366,6 +366,9 @@ const TRASH_NAMES: [&str; 9] = [
     "papierkorb",
 ];
 
+/// hydroxide's own folders (imap/user.go `systemMailboxes`).
+const HYDROXIDE_FOLDERS: [&str; 8] = ["INBOX", "All Mail", "Archive", "Drafts", "Starred", "Spam", "Sent", "Trash"];
+
 /// The box's folders with their special-use flags.
 #[derive(Debug, Clone, Default)]
 pub struct Folders(pub Vec<(String, String)>);
@@ -386,6 +389,103 @@ impl Folders {
 
     pub fn exists(&self, name: &str) -> bool {
         self.0.iter().any(|(_, n)| n == name)
+    }
+
+    /// The listed folder meant by `wanted`: the same name, else the same in another case, else under Proton Mail
+    /// Bridge's « Folders/ » (or without it), else the one folder whose last part it is (« Parent/Child » or
+    /// « Child »). None: no such folder.
+    pub fn resolve(&self, wanted: &str) -> Option<String> {
+        let wanted = wanted.trim();
+        if self.exists(wanted) {
+            return Some(wanted.to_string());
+        }
+        let lower = wanted.to_lowercase();
+        let bare = |n: &str| {
+            let l = n.to_lowercase();
+            ["folders/", "labels/", "inbox."].iter().find_map(|p| l.strip_prefix(p).map(str::to_string)).unwrap_or(l)
+        };
+        let names = || self.0.iter().map(|(_, n)| n);
+        if let Some(n) =
+            names().find(|n| n.to_lowercase() == lower).or_else(|| names().find(|n| bare(n) == bare(&lower)))
+        {
+            return Some(n.clone());
+        }
+        let leaf = |n: &str| n.rsplit(['/', '.']).next().unwrap_or(n).to_lowercase();
+        let wanted_leaf = leaf(&lower);
+        let same: Vec<&String> = names().filter(|n| leaf(n) == wanted_leaf).collect();
+        match same.as_slice() {
+            [one] => Some((*one).clone()),
+            _ => None,
+        }
+    }
+
+    /// hydroxide (Proton without Proton Mail Bridge): every folder `\Noinferiors`, « All Mail » `\All` and « Starred »
+    /// `\Flagged` at the top. It makes no folder (CREATE answers « not yet implemented ») and lists only the Proton
+    /// folders the API gave it at its login (measured on its source, 2026-11-05: internal/notes/hydroxide-moves.md).
+    pub fn hydroxide(&self) -> bool {
+        let has = |name: &str, flag: &str| self.0.iter().any(|(f, n)| n == name && f.contains(flag));
+        !self.0.is_empty()
+            && self.0.iter().all(|(f, _)| f.to_lowercase().contains("\\noinferiors"))
+            && has("All Mail", "\\All")
+            && has("Starred", "\\Flagged")
+    }
+
+    /// The folders a move can go to (not Sent, Drafts, All Mail or Starred), as listed.
+    pub fn destinations(&self) -> Vec<String> {
+        let skip = ["\\all", "\\flagged", "\\noselect", "\\nonexistent"];
+        self.0
+            .iter()
+            .filter(|(f, n)| !self.protected(n) && !skip.iter().any(|s| f.to_lowercase().contains(s)))
+            .map(|(_, n)| n.clone())
+            .collect()
+    }
+
+    /// Plain words for the agent when `wanted` is no folder of this mailbox (and the server makes none).
+    pub fn missing(&self, wanted: &str) -> String {
+        let mut names = self.destinations();
+        names.truncate(30);
+        let list = names.iter().map(|n| format!("« {n} »")).collect::<Vec<_>>().join(", ");
+        if self.hydroxide() {
+            let own = names.iter().any(|n| !HYDROXIDE_FOLDERS.contains(&n.as_str()));
+            let (why, tell) = if own {
+                (
+                    format!("hydroxide (the Proton connection) shows no folder « {wanted} » and cannot make one"),
+                    format!(
+                        "Ta connexion Proton (hydroxide) ne voit pas le dossier « {wanted} » : je peux archiver ces \
+mails ; si tu viens de créer ce dossier dans Proton, redémarre hydroxide puis redemande-moi."
+                    ),
+                )
+            } else {
+                (
+                    "hydroxide (the Proton connection) shows none of the person's own Proton folders, only its \
+built-in ones, and cannot make one"
+                        .to_string(),
+                    format!(
+                        "Ta connexion Proton (hydroxide) ne montre aucun de tes dossiers Proton : je peux archiver ces \
+mails, pas les ranger dans « {wanted} ». Pour tes propres dossiers, il faut Proton Mail Bridge à la place."
+                    ),
+                )
+            };
+            format!(
+                "Not done: {why}. Folders it can file into: {list}. Propose one of those (Archive keeps the trail), \
+or tell the person plainly: « {tell} »"
+            )
+        } else {
+            format!(
+                "Not done: this mailbox has no folder « {wanted} » and refused to make it. Its folders: {list}. \
+Propose one of those."
+            )
+        }
+    }
+
+    /// Where a move goes: the listed folder, or the name to make (false: it exists). Err: plain words (hydroxide makes
+    /// no folder: the card would only fail after the person's Oui).
+    pub fn destination(&self, wanted: &str) -> Result<(String, bool), String> {
+        match self.resolve(wanted) {
+            Some(real) => Ok((real, false)),
+            None if self.hydroxide() => Err(self.missing(wanted)),
+            None => Ok((wanted.trim().to_string(), true)),
+        }
     }
 
     pub fn gmail(&self) -> bool {
@@ -986,7 +1086,11 @@ pub fn make_card(
             if folders.protected(f) {
                 return Err(format!("{f} is the sent mail or drafts: not a destination"));
             }
-            (f.clone(), !folders.exists(f))
+            let (real, make) = folders.destination(f)?;
+            if folders.protected(&real) {
+                return Err(format!("{real} is the sent mail or drafts: not a destination"));
+            }
+            (real, make)
         }
         _ => (String::new(), false),
     };
@@ -1360,25 +1464,77 @@ pub fn ok(reply: &Result<crate::tools_knowledge::imap::Reply, ImapError>) -> boo
     matches!(reply, Ok((status, _)) if status == "OK")
 }
 
-pub fn act(conn: &mut Connection, action: &Action, set: &str, dest: &str) -> anyhow::Result<bool> {
-    let quoted = mailbox::quote(dest);
-    Ok(match action {
-        Action::MarkRead => ok(&conn.uid("STORE", &[set, "+FLAGS.SILENT", "(\\Seen)"])),
-        Action::MarkUnread => ok(&conn.uid("STORE", &[set, "-FLAGS.SILENT", "(\\Seen)"])),
-        Action::Copy(_) => ok(&conn.uid("COPY", &[set, &quoted])),
-        Action::Archive | Action::Trash | Action::Move(_) => {
-            if ok(&conn.uid("MOVE", &[set, &quoted])) {
-                true
-            } else if ok(&conn.uid("COPY", &[set, &quoted])) {
-                // a server without MOVE: copied, then only those uids marked and expunged (UIDPLUS)
-                let _ = conn.uid("STORE", &[set, "+FLAGS.SILENT", "(\\Deleted)"]);
-                let _ = conn.uid("EXPUNGE", &[set]);
-                true
-            } else {
-                false
-            }
+/// A server's answer in a few words, for the job's error and the log: « NO No such mailbox » (its status line only,
+/// never message content).
+pub fn reply_text(reply: &Result<crate::tools_knowledge::imap::Reply, ImapError>) -> String {
+    let text = match reply {
+        Ok((status, data)) => {
+            let line = data.iter().find_map(|d| match d {
+                Data::Line(l) => Some(String::from_utf8_lossy(l).into_owned()),
+                _ => None,
+            });
+            format!("{status} {}", line.unwrap_or_default())
         }
-    })
+        Err(e) => e.to_string(),
+    };
+    tk::head(text.trim(), 160).to_string()
+}
+
+/// The action on `set` in the selected folder. Err: the server's refusal (`reply_text`), logged with the folder.
+pub fn act(conn: &mut Connection, action: &Action, set: &str, dest: &str) -> anyhow::Result<Result<(), String>> {
+    let quoted = mailbox::quote_box(dest);
+    let refused = |what: &str, reply: String| {
+        tracing::warn!(target: "mail_tidy", command = what, folder = %dest, reply = %reply, "mailbox refused");
+        Err(reply)
+    };
+    let reply = match action {
+        Action::MarkRead => conn.uid("STORE", &[set, "+FLAGS.SILENT", "(\\Seen)"]),
+        Action::MarkUnread => conn.uid("STORE", &[set, "-FLAGS.SILENT", "(\\Seen)"]),
+        Action::Copy(_) => conn.uid("COPY", &[set, &quoted]),
+        Action::Archive | Action::Trash | Action::Move(_) => {
+            let moved = conn.uid("MOVE", &[set, &quoted]);
+            if ok(&moved) {
+                return Ok(Ok(()));
+            }
+            let copied = conn.uid("COPY", &[set, &quoted]);
+            if !ok(&copied) {
+                // the MOVE's answer says why (the COPY's is the same, or « unsupported »)
+                return Ok(refused("MOVE", reply_text(&moved)));
+            }
+            // a server without MOVE: copied, then only those uids marked and expunged (UIDPLUS)
+            let _ = conn.uid("STORE", &[set, "+FLAGS.SILENT", "(\\Deleted)"]);
+            if !ok(&conn.uid("EXPUNGE", &[set])) {
+                // no UID EXPUNGE (hydroxide answers « Command unsupported with UID »): the mark taken off again, so
+                // that no later plain EXPUNGE deletes them for good; they are copied, the originals stay
+                let _ = conn.uid("STORE", &[set, "-FLAGS.SILENT", "(\\Deleted)"]);
+            }
+            return Ok(Ok(()));
+        }
+    };
+    Ok(if ok(&reply) { Ok(()) } else { refused(&action.word(), reply_text(&reply)) })
+}
+
+/// Before a move: the destination as the mailbox lists it, made first when `make` (or when missing on a server that
+/// makes folders). Err: plain words for the agent with the server's answer (hydroxide: no such folder, none made).
+pub fn ready_dest(conn: &mut Connection, dest: &str, make: bool) -> anyhow::Result<Result<String, String>> {
+    let folders = Folders::of(conn)?;
+    if let Some(real) = folders.resolve(dest) {
+        return Ok(Ok(real));
+    }
+    if folders.0.is_empty() && !make {
+        return Ok(Ok(dest.to_string())); // no LIST answer: the MOVE itself tells
+    }
+    let made = conn.create(&mailbox::quote_box(dest));
+    if ok(&made) {
+        return Ok(Ok(dest.to_string()));
+    }
+    let reply = reply_text(&made);
+    tracing::warn!(target: "mail_tidy", command = "CREATE", folder = %dest, reply = %reply, "mailbox refused");
+    let again = Folders::of(conn)?;
+    if let Some(real) = again.resolve(dest) {
+        return Ok(Ok(real));
+    }
+    Ok(Err(format!("{} (the mailbox answered « {reply} »)", again.missing(dest))))
 }
 
 /// The uids of messages whose Message-ID is in `ids`, in the selected folder.
@@ -1418,7 +1574,7 @@ pub fn run_job(config: &Config, id: &str, opener: &Connect) -> anyhow::Result<()
     let started = Instant::now();
     let mut conn = opener(account)?;
     let result = (|| -> anyhow::Result<()> {
-        let (status, _) = conn.select(&mailbox::quote(&job.folder), false)?;
+        let (status, _) = conn.select(&mailbox::quote_box(&job.folder), false)?;
         if status != "OK" {
             let message = format!("no folder {}", job.folder);
             return fail(config, &mut job, &message);
@@ -1433,9 +1589,15 @@ pub fn run_job(config: &Config, id: &str, opener: &Connect) -> anyhow::Result<()
             save_job(config, &job)?;
         }
         let action = job.action.clone().unwrap_or(Action::Archive);
-        if job.make_dest {
-            let _ = conn.create(&mailbox::quote(&job.dest));
-            job.make_dest = false;
+        if matches!(action, Action::Archive | Action::Trash | Action::Move(_) | Action::Copy(_)) && !job.dest.is_empty()
+        {
+            match ready_dest(&mut conn, &job.dest, job.make_dest)? {
+                Ok(real) => {
+                    job.dest = real;
+                    job.make_dest = false;
+                }
+                Err(why) => return fail(config, &mut job, &why),
+            }
         }
         let undoing = !job.undo_of.is_empty();
         while job.done < job.uids.len() {
@@ -1455,11 +1617,12 @@ pub fn run_job(config: &Config, id: &str, opener: &Connect) -> anyhow::Result<()
             };
             job.skipped += batch.len() - keep.len();
             if !keep.is_empty() {
-                if !act(&mut conn, &action, &uid_set(&keep), &job.dest)? {
-                    job.error = "the mailbox refused part of it".into();
-                    job.skipped += keep.len();
-                } else {
-                    job.acted.extend(&keep);
+                match act(&mut conn, &action, &uid_set(&keep), &job.dest)? {
+                    Ok(()) => job.acted.extend(&keep),
+                    Err(reply) => {
+                        job.error = format!("the mailbox refused {} of them: « {reply} »", keep.len());
+                        job.skipped += keep.len();
+                    }
                 }
             }
             job.done = end;
@@ -1597,6 +1760,85 @@ mod tests {
         for bad in ["move:Factures\r\nA1 DELETE INBOX", "move:a\nb", "move:a\u{0}b", "move:a\tb"] {
             assert!(Action::parse(bad).is_err(), "{bad:?}");
         }
+    }
+
+    /// hydroxide's LIST as measured (internal/notes/hydroxide-moves.md): its 8 folders, no own Proton folder.
+    fn hydroxide_folders(own: &[&str]) -> Folders {
+        let mut rows: Vec<(String, String)> = [
+            ("\\Noinferiors \\Sent", "Sent"),
+            ("\\Noinferiors \\Trash", "Trash"),
+            ("\\Noinferiors", "INBOX"),
+            ("\\Noinferiors \\All", "All Mail"),
+            ("\\Noinferiors \\Archive", "Archive"),
+            ("\\Noinferiors \\Drafts", "Drafts"),
+            ("\\Noinferiors \\Flagged", "Starred"),
+            ("\\Noinferiors \\Junk", "Spam"),
+        ]
+        .iter()
+        .map(|(f, n)| (f.to_string(), n.to_string()))
+        .collect();
+        rows.extend(own.iter().map(|n| ("\\Noinferiors".to_string(), n.to_string())));
+        Folders(rows)
+    }
+
+    #[test]
+    fn a_destination_is_the_folder_as_listed() {
+        let bridge = Folders(
+            ["INBOX", "Folders", "Folders/Copro St Ex", "Folders/Parent/Child", "Labels/Suivi", "Impôts"]
+                .iter()
+                .map(|n| ("\\HasNoChildren".to_string(), n.to_string()))
+                .collect(),
+        );
+        assert!(!bridge.hydroxide());
+        assert_eq!(bridge.resolve("Copro St Ex").as_deref(), Some("Folders/Copro St Ex"));
+        assert_eq!(bridge.resolve("copro st ex").as_deref(), Some("Folders/Copro St Ex"));
+        assert_eq!(bridge.resolve("Child").as_deref(), Some("Folders/Parent/Child"));
+        assert_eq!(bridge.resolve("Parent/Child").as_deref(), Some("Folders/Parent/Child"));
+        assert_eq!(bridge.resolve("impôts").as_deref(), Some("Impôts"));
+        // a server that makes folders: an unknown one is made
+        assert_eq!(bridge.destination("Nouveau"), Ok(("Nouveau".to_string(), true)));
+        let hx = hydroxide_folders(&["Copro St Ex", "Child"]);
+        assert!(hx.hydroxide());
+        assert_eq!(hx.destination("Copro St Ex"), Ok(("Copro St Ex".to_string(), false)));
+        assert_eq!(hx.destination("Parent/Child"), Ok(("Child".to_string(), false)));
+    }
+
+    #[test]
+    fn hydroxide_without_the_folder_says_why_before_any_card() {
+        let hx = hydroxide_folders(&[]);
+        let why = hx.destination("Copro St Ex").unwrap_err();
+        assert!(why.contains("none of the person's own Proton folders"), "{why}");
+        assert!(why.contains("« Archive »") && why.contains("« INBOX »") && !why.contains("« All Mail »"), "{why}");
+        assert!(why.contains("Proton Mail Bridge") && !why.contains("redémarre"), "{why}");
+        let some = hydroxide_folders(&["Factures"]).destination("Copro St Ex").unwrap_err();
+        assert!(some.contains("shows no folder « Copro St Ex »") && some.contains("« Factures »"), "{some}");
+        assert!(some.contains("redémarre hydroxide"), "{some}");
+        let account: Dict = serde_json::from_value(json!({"id": "a1", "username": "alex@proton.me"})).unwrap();
+        let scan = Scan {
+            folder: "INBOX".into(),
+            rows: vec![row(1, "Syndic <syndic@copro.example>", "AG")],
+            ..Scan::default()
+        };
+        let made = make_card(
+            "vie",
+            &account,
+            &scan,
+            &hx,
+            Action::Move("Copro St Ex".into()),
+            &Selector { domain: "copro.example".into(), ..Selector::default() },
+            &[],
+        );
+        assert!(made.unwrap_err().contains("hydroxide"));
+    }
+
+    #[test]
+    fn a_server_answer_in_a_few_words() {
+        let no: Result<crate::tools_knowledge::imap::Reply, ImapError> =
+            Ok(("NO".into(), vec![Data::Line(b"[TRYCREATE] No such mailbox".to_vec())]));
+        assert_eq!(reply_text(&no), "NO [TRYCREATE] No such mailbox");
+        let bad: Result<crate::tools_knowledge::imap::Reply, ImapError> =
+            Err(ImapError::Imap("UID command error".into()));
+        assert!(reply_text(&bad).contains("UID command error"));
     }
 
     #[test]

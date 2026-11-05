@@ -141,6 +141,9 @@ pub struct Run {
     pub moved_ids: Vec<String>,
     pub marked_ids: Vec<String>,
     pub undone: bool,
+    /// Why some were not filed (the server's answer, or no such folder): the rule's error, never stored here.
+    #[serde(skip)]
+    pub refused: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -486,10 +489,11 @@ pub fn propose(
             None => return Err("this mailbox shows no trash folder: file them in a folder instead".into()),
         },
         Some(Action::Move(f)) => {
-            if folders.protected(f) {
+            let real = folders.destination(f)?.0;
+            if folders.protected(f) || folders.protected(&real) {
                 return Err(format!("{f} is the sent mail or drafts: not a destination"));
             }
-            f.clone()
+            real
         }
         Some(_) => return Err("action: move:<folder>, archive, mark_read or trash".into()),
     };
@@ -592,13 +596,14 @@ pub fn apply_rows(conn: &mut Connection, rule: &Rule, rows: &[Row]) -> anyhow::R
     if rows.is_empty() {
         return Ok(run);
     }
-    if !rule.dest.is_empty() {
-        let folders = Folders::of(conn)?;
-        if !folders.exists(&rule.dest) {
-            let _ = conn.create(&mailbox::quote(&rule.dest));
+    let mut dest = rule.dest.clone();
+    if !dest.is_empty() && rule.action.is_some() {
+        match mail_tidy::ready_dest(conn, &rule.dest, true)? {
+            Ok(real) => dest = real,
+            Err(why) => return Err(MailError(why).into()),
         }
     }
-    let (status, _) = conn.select(&mailbox::quote(&rule.folder), false)?;
+    let (status, _) = conn.select(&mailbox::quote_box(&rule.folder), false)?;
     if status != "OK" {
         return Err(MailError(format!("no folder {}", rule.folder)).into());
     }
@@ -625,12 +630,13 @@ pub fn apply_rows(conn: &mut Connection, rule: &Rule, rows: &[Row]) -> anyhow::R
         }
         let set = mail_tidy::uid_set(&keep.iter().map(|r| r.uid).collect::<Vec<_>>());
         match &rule.action {
-            Some(action) => {
-                if mail_tidy::act(conn, action, &set, &rule.dest)? {
+            Some(action) => match mail_tidy::act(conn, action, &set, &dest)? {
+                Ok(()) => {
                     run.count += keep.len();
                     run.moved_ids.extend(keep.iter().map(|r| r.message_id.clone()).filter(|m| !m.is_empty()));
                 }
-            }
+                Err(reply) => run.refused = format!("the mailbox refused to file {} of them: « {reply} »", keep.len()),
+            },
             None => run.count += keep.iter().filter(|r| unseen.contains(&r.uid)).count(),
         }
     }
@@ -709,7 +715,8 @@ pub fn run_existing(config: &Config, id: &str, opener: &Connect) -> anyhow::Resu
     mail_tidy::forget_scans(&rule.account);
     let run = result?;
     tracing::info!(rule = %rule.id, agent = %rule.agent, count = run.count, "mail rule: existing mails filed");
-    record(config, id, run, "")?;
+    let refused = run.refused.clone();
+    record(config, id, run, &refused)?;
     change(config, |s| {
         if let Some(r) = s.rules.iter_mut().find(|r| r.id == id) {
             r.existing_done = true;
@@ -782,7 +789,8 @@ pub fn sort_new(config: &Config, account_id: &str, rows: &[Row], opener: &Connec
             Ok(run) => {
                 filed += run.count;
                 tracing::info!(rule = %rule.id, agent = %rule.agent, count = run.count, "mail rule: new mail filed");
-                let _ = record(config, &rule.id, run, "");
+                let refused = run.refused.clone();
+                let _ = record(config, &rule.id, run, &refused);
             }
             Err(err) => {
                 tracing::warn!(rule = %rule.id, error = %format!("{err:#}"), "mail rule: new mail not filed");
@@ -811,20 +819,22 @@ pub fn undo_last(config: &Config, agent: Option<&str>, id: &str, opener: &Connec
     let done = (|| -> anyhow::Result<usize> {
         let mut back = 0;
         if let Some(action) = rule.action.as_ref().filter(|_| !run.moved_ids.is_empty()) {
-            let (status, _) = conn.select(&mailbox::quote(&rule.dest), false)?;
+            let (status, _) = conn.select(&mailbox::quote_box(&rule.dest), false)?;
             if status == "OK" {
                 let uids = mail_tidy::find_by_ids(&mut conn, &run.moved_ids)?;
                 // Gmail's archive keeps everything in All Mail: copied back into the inbox
                 let gmail_archive = *action == Action::Archive && rule.dest.contains("]/");
                 let back_action =
                     if gmail_archive { Action::Copy(rule.folder.clone()) } else { Action::Move(rule.folder.clone()) };
-                if !uids.is_empty() && mail_tidy::act(&mut conn, &back_action, &mail_tidy::uid_set(&uids), &rule.folder)? {
+                if !uids.is_empty()
+                    && mail_tidy::act(&mut conn, &back_action, &mail_tidy::uid_set(&uids), &rule.folder)?.is_ok()
+                {
                     back = uids.len();
                 }
             }
         }
         if !run.marked_ids.is_empty() {
-            let (status, _) = conn.select(&mailbox::quote(&rule.folder), false)?;
+            let (status, _) = conn.select(&mailbox::quote_box(&rule.folder), false)?;
             if status == "OK" {
                 let uids = mail_tidy::find_by_ids(&mut conn, &run.marked_ids)?;
                 if !uids.is_empty()

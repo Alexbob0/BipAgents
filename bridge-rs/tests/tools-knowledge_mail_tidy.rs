@@ -31,6 +31,11 @@ struct Server {
     /// The flag check of this batch number breaks the connection (counted over the whole server).
     break_at_check: Option<usize>,
     checks: usize,
+    /// Answers as hydroxide does (measured on its own IMAP code, internal/notes/hydroxide-moves.md): CREATE « NO not
+    /// yet implemented », MOVE/COPY to an unknown folder « NO No such mailbox », UID EXPUNGE refused.
+    hydroxide: bool,
+    /// MOVE and COPY refused with this answer.
+    refuse: Option<&'static str>,
 }
 
 type Shared = Arc<Mutex<Server>>;
@@ -122,8 +127,12 @@ impl Imap for Fake {
             "MOVE" | "COPY" => {
                 let uids = set_of(args[0]);
                 let dest = unquote(args[1]);
+                if let Some(why) = s.refuse {
+                    return Ok(("NO".into(), vec![Data::Line(why.as_bytes().to_vec())]));
+                }
                 if !s.folders.contains_key(&dest) {
-                    return Ok(("NO".into(), vec![]));
+                    let why: &[u8] = if s.hydroxide { b"No such mailbox" } else { b"[TRYCREATE] no such folder" };
+                    return Ok(("NO".into(), vec![Data::Line(why.to_vec())]));
                 }
                 let chosen: Vec<Msg> = s.folders[&selected].iter().filter(|m| uids.contains(&m.uid)).cloned().collect();
                 if command == "MOVE" {
@@ -136,6 +145,7 @@ impl Imap for Fake {
                 }
                 Ok(("OK".into(), vec![]))
             }
+            "EXPUNGE" if s.hydroxide => Ok(("NO".into(), vec![Data::Line(b"Command unsupported with UID".to_vec())])),
             _ => Ok(("BAD".into(), vec![])),
         }
     }
@@ -160,6 +170,9 @@ impl Imap for Fake {
     fn create(&mut self, mailbox: &str) -> Result<Reply, ImapError> {
         let mut s = self.server.lock().unwrap();
         s.log.push(format!("CREATE {mailbox}"));
+        if s.hydroxide {
+            return Ok(("NO".into(), vec![Data::Line(b"not yet implemented".to_vec())]));
+        }
         s.folders.entry(unquote(mailbox)).or_default();
         Ok(("OK".into(), vec![]))
     }
@@ -560,4 +573,118 @@ fn another_agents_rules_and_cards_stay_apart() {
     assert!(mail_rules::answer(&config, "coach", &card.id, false, "app").unwrap().is_some());
     assert!(mail_rules::rules_of(&config, None).is_empty() && mail_rules::pending_items(&config, None).is_empty());
     assert!(mail_rules::stop(&config, Some("vie"), &card.id).unwrap().is_none());
+}
+
+/// hydroxide's folders (its 8, each `\\Noinferiors`), the Syndic's mails in the inbox, and the person's own folders.
+fn hydroxide(own: &[&str]) -> Shared {
+    let mut s = Server { next_uid: 1000, hydroxide: true, ..Server::default() };
+    let inbox = (1..=4).map(|uid| message(uid, "Syndic <syndic@copro.example>", None, "AG", &[])).collect();
+    s.folders.insert("INBOX".into(), inbox);
+    for (name, flag) in [
+        ("All Mail", " \\All"),
+        ("Archive", " \\Archive"),
+        ("Drafts", " \\Drafts"),
+        ("Starred", " \\Flagged"),
+        ("Spam", " \\Junk"),
+        ("Sent", " \\Sent"),
+        ("Trash", " \\Trash"),
+    ] {
+        s.folders.insert(name.into(), vec![]);
+        s.specials.insert(name.into(), format!("\\Noinferiors{flag}"));
+    }
+    s.specials.insert("INBOX".into(), "\\Noinferiors".into());
+    for name in own {
+        s.folders.insert(name.to_string(), vec![]);
+        s.specials.insert(name.to_string(), "\\Noinferiors".into());
+    }
+    Arc::new(Mutex::new(s))
+}
+
+#[test]
+fn hydroxide_files_into_the_folders_it_shows_and_says_why_not_otherwise() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = setup(dir.path(), "t9");
+    let bulk = json!({"action": "move:Copro St Ex", "domain": "copro.example"});
+
+    // no such folder through hydroxide: no card, the reason and the folders it can use, nothing sent
+    let srv = hydroxide(&[]);
+    let open = opener(&srv);
+    let (error, said) = text(&mail_tidy::call(&config, "coach", "mail_bulk", &args(bulk.clone()), &open).unwrap());
+    assert!(error, "{said}");
+    assert!(said.contains("hydroxide") && said.contains("« Archive »") && !said.contains("refused part"), "{said}");
+    let mut rule = bulk.clone();
+    rule["rule"] = json!(true);
+    let (error, said) = text(&mail_tidy::call(&config, "coach", "mail_bulk", &args(rule.clone()), &open).unwrap());
+    assert!(error && said.contains("hydroxide"), "{said}");
+    assert!(mail_tidy::pending_items(&config, None).is_empty() && mail_rules::pending_items(&config, None).is_empty());
+    assert!(!srv.lock().unwrap().log.iter().any(|l| l.starts_with("MOVE") || l.starts_with("CREATE")));
+
+    // the folder shown (any case asked): the card, then the move after « Oui »
+    let srv = hydroxide(&["Copro St Ex"]);
+    let open = opener(&srv);
+    let lower = json!({"action": "move:copro st ex", "domain": "copro.example"});
+    let called = mail_tidy::call(&config, "coach", "mail_bulk", &args(lower), &open).unwrap();
+    assert!(!text(&called).0, "{}", text(&called).1);
+    let card = called.card.unwrap();
+    assert_eq!((card.dest.as_str(), card.make_dest), ("Copro St Ex", false));
+    let job = mail_tidy::answer(&config, "coach", &card.id, true, "app").unwrap().unwrap();
+    mail_tidy::run_job(&config, &job.id, &open).unwrap();
+    let done = mail_tidy::jobs_of(&config, "coach").into_iter().find(|j| j.id == job.id).unwrap();
+    assert_eq!((done.status.as_str(), done.acted.len(), done.error.as_str()), ("done", 4, ""));
+    assert_eq!(count(&srv, "Copro St Ex"), 4);
+
+    // a card approved, then the folder gone from hydroxide's view: the job says why, with hydroxide's answer
+    let srv = hydroxide(&["Copro St Ex"]);
+    let open = opener(&srv);
+    let called = mail_tidy::call(&config, "coach", "mail_bulk", &args(bulk.clone()), &open).unwrap();
+    let card = called.card.unwrap();
+    let job = mail_tidy::answer(&config, "coach", &card.id, true, "app").unwrap().unwrap();
+    srv.lock().unwrap().folders.remove("Copro St Ex");
+    mail_tidy::run_job(&config, &job.id, &open).unwrap();
+    let failed = mail_tidy::jobs_of(&config, "coach").into_iter().find(|j| j.id == job.id).unwrap();
+    assert_eq!(failed.status, "failed");
+    assert!(
+        failed.error.contains("hydroxide") && failed.error.contains("« NO not yet implemented »"),
+        "{}",
+        failed.error
+    );
+    assert_eq!(count(&srv, "INBOX"), 4, "nothing moved");
+    let (_, status) =
+        text(&mail_tidy::call(&config, "coach", "mail_bulk", &args(json!({"action": "status"})), &open).unwrap());
+    assert!(status.contains("not yet implemented"), "{status}");
+
+    // a rule the same way: its error says why; once the folder is back, new mail is filed
+    let srv = hydroxide(&["Copro St Ex"]);
+    let open = opener(&srv);
+    let called = mail_tidy::call(&config, "coach", "mail_bulk", &args(rule), &open).unwrap();
+    assert!(!text(&called).0, "{}", text(&called).1);
+    let made = mail_rules::answer(&config, "coach", &called.rule.unwrap().id, true, "app").unwrap().unwrap();
+    srv.lock().unwrap().folders.remove("Copro St Ex");
+    let err = mail_rules::run_existing(&config, &made.id, &open).unwrap_err();
+    assert!(format!("{err:#}").contains("hydroxide"), "{err:#}");
+    let rows = vec![Row { message_id: "<m1@test>".into(), ..new_row(1, "syndic@copro.example") }];
+    assert_eq!(mail_rules::sort_new(&config, "t9", &rows, &open), 0);
+    let stored = mail_rules::rules_of(&config, Some("coach"))[0].clone();
+    assert!(stored.error.contains("hydroxide"), "{}", stored.error);
+    srv.lock().unwrap().folders.insert("Copro St Ex".into(), vec![]);
+    assert_eq!(mail_rules::sort_new(&config, "t9", &rows, &open), 1);
+    assert!(mail_rules::rules_of(&config, Some("coach"))[0].error.is_empty());
+}
+
+#[test]
+fn a_refused_move_keeps_the_servers_answer() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = setup(dir.path(), "t10");
+    let srv = server(false);
+    srv.lock().unwrap().folders.insert("Pub".into(), vec![]);
+    let open = opener(&srv);
+    let bulk = json!({"action": "move:Pub", "domain": "shop.example"});
+    let card = mail_tidy::call(&config, "coach", "mail_bulk", &args(bulk), &open).unwrap().card.unwrap();
+    let job = mail_tidy::answer(&config, "coach", &card.id, true, "app").unwrap().unwrap();
+    srv.lock().unwrap().refuse = Some("[OVERQUOTA] Quota exceeded");
+    mail_tidy::run_job(&config, &job.id, &open).unwrap();
+    let job = mail_tidy::jobs_of(&config, "coach").into_iter().find(|j| j.id == job.id).unwrap();
+    assert!(job.acted.is_empty());
+    assert!(job.error.contains("« NO [OVERQUOTA] Quota exceeded »"), "{}", job.error);
+    assert!(!job.error.contains("Soldes"), "no mail content in it");
 }

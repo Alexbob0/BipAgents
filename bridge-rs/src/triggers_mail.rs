@@ -215,7 +215,7 @@ fn session(config: &Config, id: &str, account: &Dict, stop: &AtomicBool, tx: &Un
         Err(e) => return Ended::Failed(e.0),
     };
     let ended = (|| -> Result<(), String> {
-        let (status, _) = conn.select(&mailbox::quote(FOLDER), true).map_err(|e| e.to_string())?;
+        let (status, _) = conn.select(&mailbox::quote_box(FOLDER), true).map_err(|e| e.to_string())?;
         if status != "OK" {
             return Err("no inbox".into());
         }

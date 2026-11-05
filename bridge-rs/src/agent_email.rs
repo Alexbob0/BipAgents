@@ -974,7 +974,7 @@ pub fn purge(account: &crate::Dict, before: &str) -> anyhow::Result<usize> {
     }
     let mut total = 0;
     for name in folders {
-        let quoted = crate::mailbox::quote(&name);
+        let quoted = crate::mailbox::quote_box(&name);
         if conn.select(&quoted, false).map(|r| r.0 != "OK").unwrap_or(true) {
             continue;
         }

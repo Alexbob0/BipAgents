@@ -275,7 +275,7 @@ pub fn fetch(conn: &mut Connection, uids: &[u64], bytes: usize) -> anyhow::Resul
 
 /// Opens `folder` read-only: its UIDVALIDITY (0 when the server gives none).
 pub fn examine(conn: &mut Connection, folder: &str) -> anyhow::Result<u64> {
-    let (status, _) = conn.select(&mailbox::quote(folder), true)?;
+    let (status, _) = conn.select(&mailbox::quote_box(folder), true)?;
     if status != "OK" {
         return Err(MailError(format!("no folder {folder}")).into());
     }
