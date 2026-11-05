@@ -82,6 +82,8 @@ pub enum Kind {
     Routine,
     /// What the agent noted in a voice call to make once it ended (live_calls.rs `after_call`).
     AfterCall,
+    /// A card answered after the turn that asked it ended (card_place.rs `resume`): the agent goes on.
+    Card,
 }
 
 impl Kind {
@@ -93,6 +95,7 @@ impl Kind {
             Kind::Watcher => "watcher",
             Kind::Routine => "routine",
             Kind::AfterCall => "after_call",
+            Kind::Card => "card",
         }
     }
 

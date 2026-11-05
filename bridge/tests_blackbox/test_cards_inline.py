@@ -19,6 +19,7 @@ from bbkit.servers import wait_until
 from test_connectors import setup as connectors_setup, tool as connectors_tool, cards as connectors_cards
 from test_mail_cards import mail_cards, pending as mail_pending, thread_of
 from test_mailbox import TOKEN as MAIL_TOKEN, add_mailbox, mail_bridge
+from conftest import wait_registered
 from test_sandbox import call as sandbox_call, give_tokens, isolated, site_cards, started
 
 
@@ -176,14 +177,106 @@ def test_a_site_asked_again_on_another_day_shows_in_the_turn_that_asks_it(bridge
         p["at"] -= 2 * 86400
     places.write_text(json.dumps(placed))
     bridge.start(write=False)
+    wait_registered(bridge, ["vie"])
+    give_tokens(bridge, ["vie"])
     fakes.hermes.add_session("api_g", [{"role": "user", "content": "Installe-moi le connecteur Garmin"}], title="Garmin")
     gate = watched(bridge, fakes, "run_g", "api_g", "vie", tool="mcp_bipagents_files_sandbox_sites_request")
     thread = thread_of(bridge, "api_g", agent="vie")
-    assert thread != main
     text, error = sandbox_call(bridge, "vie", "sandbox_sites_request", host="connect.garmin.example", reason="Garmin")
     assert not error and "still waiting" in text, text
     assert wait_until(lambda: waiting_in(bridge, thread, "vie", "bip-site-"), timeout=10), page(bridge, thread, "vie")
     [inline] = waiting_in(bridge, thread, "vie", "bip-site-")
     assert inline["run_id"] == card["run_id"] and inline["created_at"] > time.time() - 60   # asked now
-    assert site_cards(bridge, "vie")[0]["session_id"] == "api_g"
+    assert wait_until(lambda: site_cards(bridge, "vie")[0]["session_id"] == "api_g", timeout=10), site_cards(bridge, "vie")
+    gate.set()
+
+
+# -- a card answered after its turn ended: the agent goes on (Alex 5/11: « Valider une carte bien longtemps après
+# devrait quand même relancer l'agent. Là il s'arrête et attend qu'on lui dise d'y aller. ») ------------------------
+
+def resumed(fakes, session):
+    """The turns the bridge started in `session` to tell a late answer (card_place.rs `resume`)."""
+    return [r for r in list(fakes.hermes.started.values())
+            if r.get("session_id") == session and "<!--bip:card" in str(r.get("input"))]
+
+
+def site_asked_in_a_turn(bridges, fakes, session, run):
+    bridge, hub, _ = isolated(bridges, fakes, agents=("vie", "wellness"))
+    started(bridge, hub, ["vie", "wellness"])
+    give_tokens(bridge, ["vie"])
+    fakes.hermes.add_session(session, [{"role": "user", "content": "Installe-moi le connecteur Garmin"}], title="Garmin")
+    gate = watched(bridge, fakes, run, session, "vie", tool="mcp_bipagents_files_sandbox_sites_request")
+    thread = thread_of(bridge, session, agent="vie")
+    text, error = sandbox_call(bridge, "vie", "sandbox_sites_request", host="connect.garmin.example", reason="Garmin")
+    assert not error, text
+    assert wait_until(lambda: waiting_in(bridge, thread, "vie", "bip-site-"), timeout=10)
+    [card] = site_cards(bridge, "vie")
+    return bridge, gate, card
+
+
+def test_a_site_answered_after_its_turn_ended_resumes_the_agent_once_where_it_asked(bridges, fakes):
+    bridge, gate, card = site_asked_in_a_turn(bridges, fakes, "api_late", "run_late")
+    gate.set()   # the turn ends without the answer (« je te dis quand c'est bon »)
+    time.sleep(2)
+    answered = bridge.post(f"/v1/agents/vie/sandbox/sites/requests/{card['request_id']}", headers=AUTH,
+                           json={"allow": True, "hosts": card["bip_sites"]})
+    assert answered.status_code == 200, answered.text
+    assert wait_until(lambda: resumed(fakes, "api_late"), timeout=15), list(fakes.hermes.started.values())
+    [turn] = resumed(fakes, "api_late")
+    assert "connect.garmin.example" in turn["input"] and "ALLOWED" in turn["input"], turn["input"]
+    time.sleep(3)
+    assert len(resumed(fakes, "api_late")) == 1   # one turn per answer
+
+
+def test_a_card_answered_while_its_turn_waits_starts_no_other_turn(bridges, fakes):
+    bridge, gate, card = site_asked_in_a_turn(bridges, fakes, "api_wait", "run_wait")
+    answered = bridge.post(f"/v1/agents/vie/sandbox/sites/requests/{card['request_id']}", headers=AUTH,
+                           json={"allow": False})
+    assert answered.status_code == 200, answered.text
+    time.sleep(4)
+    assert resumed(fakes, "api_wait") == []   # the turn going on has it
+    gate.set()
+
+
+def test_a_card_answered_after_a_restart_resumes_the_agent(bridges, fakes):
+    """The bridge restarted between the question and the answer (the turn that asked ended meanwhile): the card's
+    place, its turn and its words were kept, the agent resumes where it asked."""
+    bridge, gate, card = site_asked_in_a_turn(bridges, fakes, "api_restart", "run_restart")
+    bridge.stop()
+    gate.set()
+    bridge.start(write=False)
+    time.sleep(2)
+    answered = bridge.post(f"/v1/agents/vie/sandbox/sites/requests/{card['request_id']}", headers=AUTH,
+                           json={"allow": False})
+    assert answered.status_code == 200, answered.text
+    assert wait_until(lambda: resumed(fakes, "api_restart"), timeout=15), list(fakes.hermes.started.values())
+    [turn] = resumed(fakes, "api_restart")
+    assert "REFUSED" in turn["input"] and "connect.garmin.example" in turn["input"], turn["input"]
+
+
+def test_a_renamed_agents_secret_card_shows_live_in_its_conversation(bridges, fakes):
+    """Alex 5/11: Ghibli is the agent `test-agent` (made as « Test », renamed in the app: only its shown name changed).
+    Its secret card, asked by its own turn, is placed and listed by its id, in the conversation the app follows."""
+    bridge, _, _ = connectors_setup(bridges, fakes)
+    bridge.stop()
+    bridge.config["agents"]["vie"]["display_name"] = "Ghibli"
+    bridge.start()
+    wait_registered(bridge, ["vie"])
+    give_tokens(bridge, ["vie"])   # the tools' token, as the app's install gave it
+    listed = {a["id"]: a for a in bridge.get("/v1/agents", headers=AUTH).json()["agents"]}
+    assert "vie" in listed and "Ghibli" in json.dumps(listed["vie"], ensure_ascii=False)
+    fakes.hermes.add_session("api_r", [{"role": "user", "content": "Installe Garmin"}], title="Garmin")
+    gate = watched(bridge, fakes, "run_r", "api_r", "vie")
+    thread = thread_of(bridge, "api_r", agent="vie")
+    with ThreadPoolExecutor(1) as pool:
+        asked = pool.submit(connectors_tool, bridge, "ask_secret",
+                            {"name": "garmin", "site": "connect.garmin.com", "kind": "password", "reason": "Garmin"})
+        assert wait_until(lambda: waiting_in(bridge, thread, "vie", "bip-secret-"), timeout=15), page(bridge, thread, "vie")
+        [card] = connectors_cards(bridge, "bip-secret-")
+        assert card["agent"] == "vie" and card["session_id"] == "api_r"
+        assert "Ghibli" in card["description"]   # its words say its shown name
+        sent = bridge.post(f"/v1/vault/secrets/requests/{card['request_id']}", headers=AUTH,
+                           json={"allow": True, "value": "Fake-Pa55word", "identifier": "alex@example.org"})
+        assert sent.status_code == 200, sent.text
+        assert not asked.result(timeout=60).get("isError")
     gate.set()

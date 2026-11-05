@@ -1071,7 +1071,7 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
         Asked::Card(card, made) => (
             format!(
                 "Your person sees a card asking to let you send data to {}{}. Tell them in one plain sentence why; \
-                 retry once they allowed it.",
+                 retry once they allowed it (answered after your turn ended, you are told here and go on).",
                 card.all_hosts().join(", "),
                 if made { "" } else { " (asked already, still waiting)" }
             ),

@@ -289,7 +289,13 @@ struct Card {
     at: f64,
     answer: Option<Outcome>,
     notify: Arc<Notify>,
+    /// The agent's call stopped waiting (`ASK_TIMEOUT`): the card stays for the person until `LEFT_TTL`, gone once
+    /// answered; the agent goes on then (card_place.rs `resume`).
+    left: bool,
 }
+
+/// A card the agent stopped waiting for: still answerable for so long.
+pub const LEFT_TTL: f64 = 3.0 * 86400.0;
 
 static CARDS: LazyLock<Mutex<IndexMap<String, Card>>> = LazyLock::new(Default::default);
 static RAISED: LazyLock<Mutex<HashMap<String, Vec<Instant>>>> = LazyLock::new(Default::default);
@@ -358,6 +364,9 @@ pub fn sentence_in(lang: &str, shown: &str, request: &Request) -> String {
 /// A new card, or why not (the agent is told). `edit`: opened by the person, no rate limit.
 pub fn open(agent: &str, request: Request) -> Result<String, String> {
     let mut table = cards();
+    // left by the agent's call: gone after LEFT_TTL, or replaced by the same request asked again
+    let now = py::time_time();
+    table.retain(|_, c| !c.left || (now - c.at < LEFT_TTL && !(c.agent == agent && c.request.name == request.name)));
     if table.values().any(|c| c.agent == agent && c.request.name == request.name && c.answer.is_none()) {
         return Err(format!("A card for « {} » is already waiting for the person.", request.name));
     }
@@ -378,7 +387,7 @@ pub fn open(agent: &str, request: Request) -> Result<String, String> {
     tracing::info!(agent, secret = %request.name, kind = %request.kind, edit = request.edit, "secret card raised");
     table.insert(
         id.clone(),
-        Card { agent: agent.to_string(), request, at: py::time_time(), answer: None, notify: Arc::new(Notify::new()) },
+        Card { agent: agent.to_string(), request, at: py::time_time(), answer: None, notify: Arc::new(Notify::new()), left: false },
     );
     drop(table);
     Ok(id)
@@ -399,7 +408,14 @@ pub async fn wait(id: &str) -> Option<Outcome> {
             break None;
         }
     };
-    cards().shift_remove(id);
+    let mut table = cards();
+    match (&outcome, table.get_mut(id)) {
+        // not answered in time: left for the person (Alex 5/11: answered late, the agent goes on)
+        (None, Some(card)) => card.left = true,
+        _ => {
+            table.shift_remove(id);
+        }
+    }
     outcome
 }
 
@@ -436,9 +452,10 @@ fn item_of(config: &Config, id: &str, card: &Card) -> Dict {
 
 /// The cards waiting (`GET /v1/approvals`), oldest first.
 pub fn pending_items(config: &Config, agent: Option<&str>) -> Vec<Dict> {
+    let now = py::time_time();
     cards()
         .iter()
-        .filter(|(_, c)| c.answer.is_none() && agent.is_none_or(|a| a == c.agent))
+        .filter(|(_, c)| c.answer.is_none() && agent.is_none_or(|a| a == c.agent) && !(c.left && now - c.at >= LEFT_TTL))
         .map(|(id, c)| item_of(config, id, c))
         .collect()
 }
@@ -472,7 +489,7 @@ pub fn deny(config: &Config, agent: Option<&str>, id: &str, via: &str) -> bool {
         card.answer = Some(Outcome::Refused);
         card.notify.notify_waiters();
         let out = (card.agent.clone(), card.request.clone());
-        if card.request.edit {
+        if card.request.edit || card.left {
             table.shift_remove(id);
         }
         out
@@ -552,7 +569,7 @@ pub async fn give(
         if let Some(card) = table.get_mut(id) {
             card.answer = Some(Outcome::Saved { identifier: identifier.clone() });
             card.notify.notify_waiters();
-            if card.request.edit {
+            if card.request.edit || card.left {
                 table.shift_remove(id);
             }
         }
@@ -666,6 +683,38 @@ mod tests {
         assert!(cards().get(&a).unwrap().request.identifier_required());
         assert_eq!(cards().values().filter(|c| c.agent == "unit-a").count(), 2);
         cards().retain(|_, c| c.agent != "unit-a");
+    }
+
+    /// Alex 5/11: answered late, the agent goes on. A card whose call stopped waiting stays for the person, is gone
+    /// once answered, replaced when the agent asks the same again, and gone after LEFT_TTL.
+    #[test]
+    fn a_card_the_agent_stopped_waiting_for_stays_answerable() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = crate::config::parse_config(
+            &json!({"bridge_key": "k".repeat(32), "data_dir": dir.path().to_string_lossy()}),
+            None,
+        )
+        .unwrap();
+        let request = |name: &str| Request { name: name.into(), kind: "token".into(), ..Default::default() };
+        let left = |id: &str| cards().get_mut(id).unwrap().left = true;
+        let mine = || pending_items(&config, Some("unit-left")).len();
+        let a = open("unit-left", request("meteo")).unwrap();
+        left(&a);
+        assert_eq!(mine(), 1);
+        // asked again: the new card replaces it
+        let b = open("unit-left", request("meteo")).unwrap();
+        assert!(cards().get(&a).is_none() && mine() == 1);
+        // answered late: kept as decided, then gone (nobody waits to take it away)
+        left(&b);
+        assert!(deny(&config, Some("unit-left"), &b, "app"));
+        assert!(cards().get(&b).is_none() && mine() == 0);
+        assert_eq!(crate::approvals_log::list(&config, "unit-left", None)[0]["choice"], json!("deny"));
+        // never answered: gone from the list after LEFT_TTL
+        let c = open("unit-left", request("strava")).unwrap();
+        left(&c);
+        cards().get_mut(&c).unwrap().at -= LEFT_TTL;
+        assert_eq!(mine(), 0);
+        cards().retain(|_, c| c.agent != "unit-left");
     }
 
     #[test]
