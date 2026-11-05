@@ -41,6 +41,9 @@ use crate::{py, Dict};
 
 /// Each live share is brought up to date this often (new viewers keyed, new messages sent).
 pub const SYNC_SECONDS: u64 = 20;
+/// While its owner has a shared project thread on screen, its viewers are looked at this often (one GET at the
+/// guichet): someone opening their link is keyed, and the owner's « Visible par N personnes » follows, in seconds.
+pub const WATCH_SECONDS: u64 = 2;
 /// A map picture or a page bigger than this stays out: sealed, its base64 in JSON in base64 again stays under the
 /// 4.2 MB the guichet takes per item.
 pub const ITEM_MAX: usize = 1_500_000;
@@ -659,6 +662,7 @@ pub async fn sync(state: &AppState, id: &str, notify: bool) -> Result<Option<Val
         }
     }
     // the viewers as the owner's app shows them
+    let people_before = (share.get("viewers").cloned(), share.get("invites_open").cloned());
     share["viewers"] = json!(viewers
         .iter()
         .map(|v| {
@@ -684,6 +688,12 @@ pub async fn sync(state: &AppState, id: &str, notify: bool) -> Result<Option<Val
     share["invites_open"] = json!(open);
     if let Some(ends) = remote["ends"].as_f64() {
         share["ends"] = json!(ends);
+    }
+    if people_before != (share.get("viewers").cloned(), share.get("invites_open").cloned()) {
+        // someone joined, left or was invited: the owner's open conversation reads the share again (a hint only)
+        let agent = s(&share, "agent");
+        let count = view(&share)["count"].clone();
+        crate::threads::threads_of(state).publish(&agent, "share", json!({"agent": agent, "share": id, "count": count}));
     }
     // the items: what changed since last time
     let messages = match config.agent(Some(&s(&share, "agent"))) {
@@ -762,13 +772,57 @@ pub async fn sync(state: &AppState, id: &str, notify: bool) -> Result<Option<Val
     Ok(Some(share))
 }
 
-/// Every live share kept up to date, forever (only when there are some).
+/// Whether the guichet's viewers differ from those kept (someone joined, left, or waits for their key): then a sync.
+pub fn viewers_changed(kept: &Value, remote: &Value) -> bool {
+    let ids = |all: Option<&Vec<Value>>, key: &str| -> Vec<String> {
+        let mut ids: Vec<String> = all.into_iter().flatten().map(|v| py::py_str(&v[key])).collect();
+        ids.sort();
+        ids
+    };
+    let refused = kept.get("refused").and_then(Value::as_array);
+    let waiting = remote["viewers"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .any(|v| v["keyed"].as_bool() != Some(true) && !refused.is_some_and(|r| r.contains(&v["viewer"])));
+    waiting || ids(remote["viewers"].as_array(), "viewer") != ids(kept.get("viewers").and_then(Value::as_array), "id")
+}
+
+/// A shared project thread its owner has on screen: its viewers looked at (one GET), synced when they changed.
+async fn watch(state: &AppState, id: &str, share: &Value) -> Result<(), HttpError> {
+    let (status, remote) =
+        guichet(state, share, reqwest::Method::GET, "", None).await.map_err(|e| HttpError::new(502, e))?;
+    if status == 200 && !viewers_changed(share, &remote) {
+        return Ok(());
+    }
+    sync(state, id, true).await.map(|_| ())
+}
+
+/// Every live share kept up to date, forever (only when there are some); a shared project thread on its owner's
+/// screen, its viewers every WATCH_SECONDS.
 pub async fn run_forever(state: AppState) {
+    let mut synced = now();
     loop {
-        tokio::time::sleep(Duration::from_secs(SYNC_SECONDS)).await;
-        let ids: Vec<String> = shares_of(&state.config()).keys().cloned().collect();
-        for id in ids {
-            if let Err(e) = sync(&state, &id, true).await {
+        tokio::time::sleep(Duration::from_secs(WATCH_SECONDS)).await;
+        let shares = shares_of(&state.config());
+        if shares.is_empty() {
+            synced = now();
+            continue;
+        }
+        let all = now() - synced >= SYNC_SECONDS as f64 - 0.5;
+        if all {
+            synced = now();
+        }
+        let threads = crate::threads::threads_of(&state);
+        for (id, share) in shares {
+            let done = if all {
+                sync(&state, &id, true).await.map(|_| ())
+            } else if is_thread(&share) && threads.main_on_screen(&s(&share, "agent")).await {
+                watch(&state, &id, &share).await
+            } else {
+                continue;
+            };
+            if let Err(e) = done {
                 tracing::debug!(share = %id, error = ?e.detail, "read share not synced");
             }
         }
@@ -1131,6 +1185,22 @@ mod tests {
         let listed = items_of(&config, &share, std::slice::from_ref(&message));
         assert_eq!(listed[1].1["media"], json!([items[0].0]));
         assert_eq!(listed[1].1["text"], "Regarde");
+    }
+
+    #[test]
+    fn the_owner_s_screen_learns_of_a_viewer_who_opened_their_link() {
+        // nobody yet, then a friend redeemed their link (not keyed yet): a sync is due
+        let kept = json!({"viewers": [], "refused": []});
+        assert!(!viewers_changed(&kept, &json!({"viewers": []})));
+        let joined = json!({"viewers": [{"viewer": "7", "keyed": false}]});
+        assert!(viewers_changed(&kept, &joined));
+        // keyed and kept: nothing to do; a refused key never asks again
+        let keyed = json!({"viewers": [{"id": "7", "state": "ok"}], "refused": []});
+        assert!(!viewers_changed(&keyed, &json!({"viewers": [{"viewer": "7", "keyed": true}]})));
+        let refused = json!({"viewers": [{"id": "7", "state": "refused"}], "refused": ["7"]});
+        assert!(!viewers_changed(&refused, &joined));
+        // the friend left (or was removed): a sync
+        assert!(viewers_changed(&keyed, &json!({"viewers": []})));
     }
 
     #[test]

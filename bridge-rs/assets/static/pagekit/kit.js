@@ -330,7 +330,9 @@
   var MAP_WORDS = {
     open: ANDROID ? { fr: "Ouvrir dans Google Maps", en: "Open in Google Maps", de: "In Google Maps öffnen", es: "Abrir en Google Maps" }
       : { fr: "Ouvrir dans Plans", en: "Open in Maps", de: "In Karten öffnen", es: "Abrir en Mapas" },
+    short: ANDROID ? { en: "Maps" } : { fr: "Plans", en: "Maps", de: "Karten", es: "Mapas" },
     route: { fr: "Itinéraire", en: "Directions", de: "Route", es: "Cómo llegar" },
+    trip: { fr: "Tout le parcours", en: "The whole trip", de: "Die ganze Tour", es: "Todo el recorrido" },
     fingers: { fr: "Deux doigts pour déplacer la carte", en: "Use two fingers to move the map",
       de: "Mit zwei Fingern die Karte bewegen", es: "Usa dos dedos para mover el mapa" },
   };
@@ -477,17 +479,22 @@
         var open = doc.createElement("a");
         open.className = "map-open";
         open.href = "bipmaps:place?lat=" + (+p.lat).toFixed(6) + "&lon=" + (+p.lon).toFixed(6) + "&label=" + shortName(p.label);
-        open.textContent = mapWord("open");
+        open.textContent = mapWord("short");
+        open.setAttribute("aria-label", mapWord("open") + " · " + p.label);
         open.addEventListener("click", function (event) { event.stopPropagation(); });
         p.li.appendChild(open);
       });
+      // the whole map: its itinerary, else the way through its places (`via`; links of 600 signs at most)
       var mode = card.dataset.directions;
-      if (mode && points.length > 1) {
+      if (points.length > 1) {
         var first = points[0], last = points[points.length - 1], route = doc.createElement("a");
+        var via = points.slice(1, 9).slice(0, -1).map(function (p) { return coords(p.lat, p.lon); }).join("|");
+        var link = "bipmaps:route?from=" + coords(first.lat, first.lon) + "&to=" + coords(last.lat, last.lon) +
+          (mode ? "&mode=" + mode : ""), stops = via && "&via=" + encodeURIComponent(via),
+          labels = "&from_label=" + shortName(first.label) + "&to_label=" + shortName(last.label);
         route.className = "map-route";
-        route.href = "bipmaps:route?from=" + coords(first.lat, first.lon) + "&to=" + coords(last.lat, last.lon) +
-          "&mode=" + encodeURIComponent(mode) + "&from_label=" + shortName(first.label) + "&to_label=" + shortName(last.label);
-        route.textContent = mapWord("route") + " · " + mapWord("open");
+        route.href = [link + stops + labels, link + stops, link].filter(function (l) { return l.length <= 600; })[0];
+        route.textContent = mapWord(mode ? "route" : "trip") + " · " + mapWord("open");
         card.appendChild(route);
       }
     });
