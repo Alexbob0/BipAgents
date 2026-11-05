@@ -290,14 +290,20 @@ def test_a_phone_holding_the_sent_item_catches_up_to_one_message(bridges, fakes)
     gate.set()
     assert wait_until(lambda: page(bridge, thread)["items"][-1]["text"] == "Voie 4.", timeout=15)
     answer = page(bridge, thread, after=held[-1]["cursor"])
-    caught = answer["items"]
-    # what the bridge gives after the `s_` cursor: the stored row (same client_id) and the reply, nothing else
+    # the `s_` item is gone (stored now): the phone gets the latest page, as its window (thin apps, brick 4)
+    assert answer["reset"] is True and answer["joins"] is None
+    caught = answer["items"][-2:]
     assert [(i["role"], i["text"], i.get("client_id")) for i in caught] == [
         ("person", "Le train de 9 h ?", client), ("agent", "Voie 4.", None)]
     assert caught[0]["id"].startswith("m_") and "sending" not in caught[0]
+    assert [i["id"] for i in answer["items"] if i.get("client_id") == client] == [caught[0]["id"]]
     # and the item it replaces, named: the phones drop it without knowing about `s_` items (thin apps, 5/11)
     assert answer["replaced"] == [f"s_{client}"]
-    assert "replaced" not in page(bridge, thread, after=caught[-1]["cursor"])
+    after = page(bridge, thread, after=caught[-1]["cursor"])
+    assert "replaced" not in after and after["joins"] == caught[-1]["cursor"] and after["items"] == []
+    # an app from before (its own `limit`): after the `s_` cursor, the stored row and the reply, as before
+    old = page(bridge, thread, after=held[-1]["cursor"], limit=500)["items"]
+    assert [(i["role"], i.get("client_id")) for i in old] == [("person", client), ("agent", None)]
     # the latest page (a phone opening the thread again) has the message once
     latest = page(bridge, thread)["items"]
     assert [i["id"] for i in latest if i.get("client_id") == client] == [caught[0]["id"]]
@@ -325,3 +331,43 @@ def test_a_stopped_turn_and_a_peers_message_come_as_decisions(bridges, fakes):
     assert notice["notice"] == {"code": "failed_turn", "text": PARTIAL, "stopped": "partial"}
     peer = items[-1]
     assert (peer["role"], peer["from"], peer["from_name"], peer["text"]) == ("peer", "vie", "Vie", "Alex dort bien ?")
+
+
+def test_a_message_steered_into_a_turn_that_stops_is_not_sent_and_goes_again(bridges, fakes):
+    # 5/11 ~20:50 (Alex, Android, bridge 7d1154f6): a turn stuck (on a card); « Hello? » sent meanwhile went into it
+    # (steered) and the turn never took it; Stop, then « tu as pu avancer ? » got its answer, but « Hello? » stayed at
+    # the end of the conversation as a message being sent, on every read. Now: « not sent » once nothing runs, and the
+    # same id sent again goes for real (thin apps, brick 4)
+    bridge, thread = setup(bridges, fakes)
+    gate = threading.Event()
+    fakes.hermes.runs["r1"] = [sse("run.started", run_id="r1"), gate, sse("run.cancelled", run_id="r1")]
+    fakes.hermes.runs["r2"] = [sse("run.completed", run_id="r2", output="Pas encore.")]
+    fakes.hermes.runs["r3"] = [sse("run.completed", run_id="r3", output="Oui, je suis là.")]
+    assert send(bridge, thread, "C1D00000-0000-4000-8000-0000000000E1", "Range le carnet").json()["state"] == "started"
+    hello = "C1D00000-0000-4000-8000-0000000000E2"
+    assert send(bridge, thread, hello, "Hello?").json()["state"] == "steered"
+    during = page(bridge, thread)["items"][-1]
+    assert during["id"] == f"s_{hello}" and during["sending"] is True and "not_sent" not in during
+    assert bridge.post(f"/v1/threads/{thread}/stop", headers=AUTH, json={}).json()["stopped"] is True
+    gate.set()
+    assert wait_until(lambda: page(bridge, thread)["pending"]["run"] is None, timeout=15)
+    # the turn stopped without the steered words (no pending_steer from Hermes): not in the queue
+    assert not (page(bridge, thread)["pending"]["queue"] or {}).get("items")
+    stored(fakes, user("Range le carnet"))
+    assert send(bridge, thread, "C1D00000-0000-4000-8000-0000000000E3", "tu as pu avancer ?").json()["state"] == "started"
+    stored(fakes, user("tu as pu avancer ?"), agent("Pas encore."))
+    assert wait_until(lambda: page(bridge, thread)["pending"]["run"] is None, timeout=15)
+    time.sleep(11)   # a while after it was sent, nothing running: lost
+    items = page(bridge, thread)["items"]
+    lost = [i for i in items if i["id"] == f"s_{hello}"]
+    assert len(lost) == 1 and lost[0]["not_sent"] is True and "sending" not in lost[0]
+    assert [i["text"] for i in items if i.get("role") == "person"].count("Hello?") == 1
+    # sent again under the same id (« Pas envoyé » tapped): this time for real
+    again = send(bridge, thread, hello, "Hello?").json()
+    assert again["state"] == "started" and again["run_id"] == "r3", again
+    assert fakes.hermes.started["r3"]["input"].endswith("Hello?")
+    stored(fakes, user("Hello?"), agent("Oui, je suis là."))
+    assert wait_until(lambda: page(bridge, thread)["items"][-1]["text"] == "Oui, je suis là.", timeout=15)
+    final = page(bridge, thread)["items"]
+    assert not any(i["id"].startswith("s_") for i in final), "a sent message stays « being sent » or « not sent »"
+    assert [i.get("client_id") for i in final if i.get("text") == "Hello?"] == [hello]

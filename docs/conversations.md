@@ -253,6 +253,12 @@ Answer:
   cursor of what they have and ask `after=` on each `thread` event. An item that moved or vanished (a restore, a
   rewind) still pages correctly: the cursor's position is used when its item is gone.
 - `anchor` is the `around` item when it was found (else null and the latest page is given).
+- **How a page goes into the phone's window** (thin apps, 5/11; one rule on both apps): `reset: true` — the page is
+  the window (latest, around, and below); else `joins: <cursor>` — an `after=` page goes after the held item at that
+  cursor, a `before=` page in front of it, and what the phone held beyond that item is gone (rows the bridge no
+  longer gives there). With no `limit` the bridge chooses the sizes: latest 100, a catch-up 200 at most (more since:
+  the latest page, `reset`), an older page 50; a cursor whose item is gone also gets the latest page, `reset`. A
+  `limit` given (a one-off look; apps from before 5/11) pages as before.
 - `replaced` (only when not empty): ids a phone may hold that this page's rows replace. Today the `s_<client_id>` item
   of a message sent from a phone, once its stored row (same `client_id`, last three days) is in the page. The apps
   remove those ids from their window before merging, nothing else (4/11: the message showed twice).
