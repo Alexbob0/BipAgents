@@ -93,7 +93,7 @@ async fn cron_job_notification_preference() {
     assert_eq!(listed, [(json!(id), json!("Scan des e-mails"), json!(true))]);
     let resp = client.send_json("PUT", &format!("/v1/cron-jobs/wellness/{id}"), &h, &json!({"notify": false})).await;
     assert_eq!(resp.status, StatusCode::OK);
-    assert!(!bipbridge::routines::get(&config, &id).unwrap().notify); // muted, name kept
+    assert!(bipbridge::routines::get(&config, &id).unwrap().muted); // muted, name kept
     assert_eq!(client.get("/v1/cron-jobs?agent=wellness", &h).await.json()["jobs"][0]["name"], "Scan des e-mails");
     let resp = client.send_json("PUT", "/v1/cron-jobs/wellness/nope", &h, &json!({"notify": false})).await;
     assert_eq!(resp.status, StatusCode::NOT_FOUND);

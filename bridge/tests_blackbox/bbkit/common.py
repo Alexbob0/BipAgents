@@ -103,7 +103,7 @@ def boite_items(bridge, agent=None) -> list:
 
 def boite_message(bridge, fakes, text: str, name: str = "Le point", notify: bool = True) -> dict:
     """A message in the Boîte as the bridge's own producers put one there: a routine's report (made by the app, run
-    now, its turn answering `text`; `notify` False: the routine muted). Returns the Boîte's item once stored."""
+    now, its turn answering `text`; notify False: a muted routine makes none now, see routines.rs). Returns the Boîte's item once stored."""
     from .servers import wait_until
     made = bridge.post("/v1/agents/wellness/routines", headers=AUTH,
                        json={"name": name, "schedule": "every day at 7:00", "prompt": "Fais le point."})

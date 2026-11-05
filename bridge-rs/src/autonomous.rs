@@ -276,7 +276,7 @@ pub fn routine_item(agent: &str, job: &Dict) -> Option<Value> {
     let last_run = match seconds_of(job.get("last_run_at")) {
         Some(at) => {
             let ok = status.is_empty()
-                || ["ok", "success", "succeeded", "completed", "done", "sent", "silent"].contains(&status.as_str());
+                || ["ok", "success", "succeeded", "completed", "done", "sent", "silent", "muted"].contains(&status.as_str());
             let error = if ok {
                 Value::Null
             } else {
@@ -307,7 +307,8 @@ pub fn routine_item(agent: &str, job: &Dict) -> Option<Value> {
         next_run,
         Value::Null,
         actions,
-        json!({"prompt": head(&prompt, 600)}),
+        json!({"prompt": head(&prompt, 600), "muted": job.get("muted").and_then(Value::as_bool).unwrap_or(false),
+               "session_id": job.get("last_session_id").cloned().unwrap_or(Value::Null)}),
     ))
 }
 
@@ -651,6 +652,13 @@ mod tests {
         assert_eq!((paused["state"].as_str(), paused["main_action"].as_str()), (Some("paused"), Some("resume")));
         assert_eq!(paused["title"], "Rappelle-moi l'eau");
         assert!(paused["next_run"].is_null());
+        assert_eq!((paused["detail"]["muted"].as_bool(), paused["detail"]["session_id"].is_null()), (Some(false), true));
+        // muted: a run that kept its report in its own conversation went fine; its page opens that conversation
+        let muted = routine_item("lea", &dict(json!({"id": "j3", "prompt": "Météo", "muted": true, "last_status": "muted",
+                                                       "last_run_at": "2026-10-26T08:00:00+00:00", "last_session_id": "s9"})))
+            .unwrap();
+        assert_eq!((muted["detail"]["muted"].as_bool(), muted["detail"]["session_id"].as_str()), (Some(true), Some("s9")));
+        assert_eq!(muted["last_run"]["ok"], true);
     }
 
     #[test]

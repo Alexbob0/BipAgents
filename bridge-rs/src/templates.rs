@@ -780,12 +780,14 @@ fn template_routine(agent: &str, routine: &Value, skills: &BTreeSet<String>) -> 
         schedule: parsed,
         skills: kept,
         enabled: false,
+        muted: false,
         notify: true,
         origin: String::new(),
         repeat: None,
         next_run: None,
         last_run: None,
         last_status: String::new(),
+        last_session: String::new(),
         created: py::time_time(),
     })
 }
