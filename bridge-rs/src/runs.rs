@@ -298,6 +298,21 @@ fn with_item_id(sub: &RunSubscription, event: SSEEvent) -> SSEEvent {
     SSEEvent::new(event.r#type, data, raw)
 }
 
+/// A turn's end whose output or error is Hermes' failed-turn line (« This turn did not complete… »): `stopped`
+/// (`partial` | `not_processed`, threads::timeline::stopped_kind) says which, so the apps say it in their words without
+/// reading Hermes' English (thin apps, 5/11).
+fn with_stopped(event: SSEEvent) -> SSEEvent {
+    let stopped = ["output", "error"]
+        .iter()
+        .filter_map(|k| as_str(event.data.get(*k)))
+        .find_map(|text| crate::threads::timeline::stopped_kind(&text));
+    let Some(stopped) = stopped else { return event };
+    let mut data = event.data;
+    data.insert("stopped".into(), json!(stopped));
+    let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(data.clone()));
+    SSEEvent::new(event.r#type, data, raw)
+}
+
 /// `_clarify_id(data)`: a question's id (`request_id`: its prompt's, hermes_prompts.rs `named`; or `clarify_id`).
 pub fn clarify_id(data: &Map<String, Value>) -> Option<String> {
     for key in ["request_id", "clarify_id"] {
@@ -893,15 +908,18 @@ impl RunHub {
 
     /// The run going on in this conversation (not ended, its end not reached yet), if the hub follows one.
     pub fn session_run(&self, agent: &str, session_id: &str) -> Option<String> {
+        self.session_run_since(agent, session_id).map(|(run, _)| run)
+    }
+
+    /// `session_run` with when the hub began following it (Unix seconds): the turn's start for a run the bridge started
+    /// (an app's send), the apps' working-line clock (`pending.run.started`) whichever phone follows it.
+    pub fn session_run_since(&self, agent: &str, session_id: &str) -> Option<(String, f64)> {
         let inner = lock(&self.inner);
-        inner
-            .subs
-            .values()
-            .find(|sub| {
-                let st = lock(&sub.state);
-                sub.agent.name == agent && !st.finished && st.terminal.is_none() && st.session_id.as_deref() == Some(session_id)
-            })
-            .map(|sub| sub.run_id.clone())
+        inner.subs.values().find_map(|sub| {
+            let st = lock(&sub.state);
+            (sub.agent.name == agent && !st.finished && st.terminal.is_none() && st.session_id.as_deref() == Some(session_id))
+                .then(|| (sub.run_id.clone(), st.followed_since))
+        })
     }
 
     /// An event for the apps following the agent's runs going on now, live only (not replayed to a later follower:
@@ -1207,6 +1225,7 @@ impl RunHub {
         let event = if matches!(event.r#type.as_str(), "approval.request" | "clarify.request") { with_item_id(sub, event) } else { event };
         let event = if event.r#type == "run.completed" { self.no_reply_in_plain_words(sub, event) } else { event };
         let event = if event.r#type == "run.failed" { self.account_failure_in_plain_words(sub, event) } else { event };
+        let event = if matches!(event.r#type.as_str(), "run.completed" | "run.failed") { with_stopped(event) } else { event };
         // the model's words as Hermes keeps them (to recognise its reply), the apps' without MEDIA lines
         let written = as_str(event.data.get("output"));
         let delta = is_delta(&event.r#type);
@@ -2262,6 +2281,36 @@ mod tests {
         }
         assert_eq!(full.len(), BACKLOG_EVENTS);
         assert_eq!(full[0].r#type, "e3");
+    }
+
+    /// Hermes' failed-turn line as a run's output or error: `stopped` says which, for the apps' own words.
+    #[test]
+    fn a_failed_turns_end_says_which_it_is() {
+        let end = |kind: &str, data: Value| with_stopped(SSEEvent::new(kind, data.as_object().cloned().unwrap(), "{}"));
+        let partial = "This turn did not complete. Some actions may already have run; verify their effects before resending.";
+        assert_eq!(end("run.completed", json!({"output": format!("{partial}\n")})).data["stopped"], "partial");
+        let nothing = "Your request was not processed. Send it again if you still want me to carry it out.";
+        assert_eq!(end("run.failed", json!({"error": nothing})).data["stopped"], "not_processed");
+        let reply = end("run.completed", json!({"output": "Voilà."}));
+        assert!(!reply.data.contains_key("stopped"));
+        assert_eq!(reply.raw, "{}", "an ordinary end passes as it came");
+    }
+
+    #[test]
+    fn a_runs_start_is_when_the_hub_began_following_it() {
+        let hub = RunHub::new(HermesClient::new(reqwest::Client::new()), None, 7200, None);
+        let agent = AgentConfig { name: "vie".into(), ..Default::default() };
+        let sub = Arc::new(RunSubscription::new(agent, "run_1"));
+        let since = {
+            let mut st = lock(&sub.state);
+            st.session_id = Some("api_bot".into());
+            st.followed_since
+        };
+        let key = sub.key();
+        lock(&hub.inner).subs.insert(key, sub);
+        assert_eq!(hub.session_run_since("vie", "api_bot"), Some(("run_1".into(), since)));
+        assert_eq!(hub.session_run("vie", "api_bot").as_deref(), Some("run_1"));
+        assert_eq!(hub.session_run_since("vie", "api_other"), None);
     }
 
     #[tokio::test]

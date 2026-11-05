@@ -237,7 +237,7 @@ Answer:
   "anchor": "m_3f9a…",
   "version": 42,
   "pending": {
-    "run": {"run_id": "r_123", "status": "running"},
+    "run": {"run_id": "r_123", "status": "running", "started": 1762117440.2},
     "queue": {"version": 3, "paused": false, "items": [{"id": "q_…", "text": "…", "created_at": "…"}]},
     "approvals": [{"id": "a_…", "run_id": "r_123", "request_id": "p_9", "command": "…", "choices": ["once", "deny"],
                    "session_id": "api_ccc", "created_at": 1762117450.5}],
@@ -261,12 +261,13 @@ Answer:
   draw a day divider over a `new_day` row and over the first row with a `day` they show; a row without `day` (it
   draws nothing, or the phone made it) never gets one (5/11: empty « Dimanche 1 novembre » dividers).
 - `pending` is what is not a stored message yet: the run going on (attach to `/v1/runs/{run_id}/events` for its live
-  text, as today), the agent's queue for this thread (msg_queue.rs, each item with its `client_id`), the approvals and
+  text, as today; `started`: when the bridge began following it, Unix seconds, the working line's clock on every
+  phone), the agent's queue for this thread (msg_queue.rs, each item with its `client_id`), the approvals and
   the questions waiting (the run hub's). Each card carries `id`: the item it becomes once answered (`a_…`, also
   `item_id` in the run's `approval.request` / `clarify.request` events), so a card is one row on every device and
   an answer given on one replaces it in place on the others (the answer bumps the thread: `thread` hint). Once a run ends
-  its messages are items; the app drops its live bubble when an item with the run's reply arrives (`run_id` on the
-  agent's final message when the bridge knows it).
+  its messages are items; the app reads the page again and draws them in place of its live rows. Items carry no
+  `run_id` (the bridge does not know which stored row a run wrote; the apps never needed it).
 
 ### 6.3 Items
 
@@ -276,13 +277,13 @@ An item that draws something also has `day`, and `new_day` when it opens its day
 
 | `kind` | Fields | From |
 |---|---|---|
-| `message` | `role` (`person` \| `agent`), `text` (visible words only), `attachments`, `client_id`?, `added_during_run`? (a steer), `reasoning`? , `run_id`?, `sending`? (`s_<client_id>`: sent, not stored by Hermes yet) | Hermes user / assistant rows, the bridge's sends |
+| `message` | `role` (`person` \| `agent`), `text` (visible words only), `attachments`, `client_id`?, `added_during_run`? (a steer), `reasoning`? , `sending`? (`s_<client_id>`: sent, not stored by Hermes yet) | Hermes user / assistant rows, the bridge's sends |
 | `tool` | `tool: {name, call_id, arguments, result, status (done \| failed \| running), via}` | assistant `tool_calls` + their tool rows |
-| `notice` | `notice: {code, text}`: `failed_turn` (Hermes' failed-turn row), `loop_rescue` (the bridge's rescue turn), `stopped` | Hermes rows the bridge recognizes |
+| `notice` | `notice: {code, text, stopped?}`: `failed_turn` (Hermes' failed-turn row; `stopped`: `partial` \| `not_processed`, which of Hermes' two lines, the apps say it in their words), `loop_rescue` (the bridge's rescue turn) | Hermes rows the bridge recognizes |
 | `boite` | `text`, `title`, `attachments`, `boite: {outbox_id, audio: bool}` | the bridge's outbox (routine reports, hand-backs, credit, storage, imports) |
 | `approval` | `approval: {run_id, request_id, command, description, topic, choice, state: answered}` | approvals_log.rs (Hermes' history has no approval rows) |
 | `call` | `call`: the Live call's record as `GET /v1/live/calls` gives it | live_calls.rs |
-| (role `peer`) | a `message` with `role: peer`, `from: <agent>`: another agent's message in Bot Mode's conversation | « Message from … (@x): » rows |
+| (role `peer`) | a `message` with `role: peer`, `from: <agent id>`, `from_name` (the name it signed with, Hermes' emoji badge left out), `text` its words alone: another agent's message in Bot Mode's conversation (the apps find the agent by `from`, never by name) | « Message from … (@x): » rows |
 
 **Drawing order: the items' order** (no ordering logic in the apps). Each assistant row gives its words first, then
 its own tool calls (their results folded in); the next row's words come after those calls; the final answer last.

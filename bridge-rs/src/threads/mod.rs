@@ -1176,12 +1176,14 @@ async fn timeline_route(
         Value::Object(a)
     }));
     let questions = waiting(state.hub.pending_questions(&agent.name));
-    let run = tip.as_deref().and_then(|t| state.hub.session_run(&agent.name, t));
+    let run = tip.as_deref().and_then(|t| state.hub.session_run_since(&agent.name, t));
     let queue =
         tip.as_deref().map(|t| crate::msg_queue::queues_of(&state).get(&agent.name).snapshot_of(&agent.name, t));
     let mut out_thread = thread.to_json();
     out_thread["tip"] = json!(tip);
-    let pending = json!({"run": run.map(|r| json!({"run_id": r, "status": "running"})), "queue": queue,
+    // `started`: the working line's clock on every phone, also on one that reopens the conversation mid-turn
+    let run = run.map(|(r, started)| json!({"run_id": r, "status": "running", "started": started}));
+    let pending = json!({"run": run, "queue": queue,
                          "approvals": approvals, "questions": questions});
     Ok(web::ok(page.answer(out_thread, thread.version, pending, q.get("debug").is_some_and(|d| d == "1"))))
 }

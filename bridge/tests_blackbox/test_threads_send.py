@@ -9,7 +9,8 @@ import time
 
 import httpx
 
-from bbkit.common import AUTH, sse
+from bbkit.common import AUTH, read_sse, sse
+from bbkit.fakes import CLOSE
 from bbkit.servers import wait_until
 
 SESSION = "api_main"
@@ -62,7 +63,8 @@ def test_a_message_is_its_app_id_from_the_send_to_the_stored_row(bridges, fakes)
     last = before["items"][-1]
     assert last["id"] == "s_C1D00000-0000-4000-8000-000000000001" and last["client_id"] == last["id"][2:]
     assert last["text"] == "Le train de 9 h ?" and last["role"] == "person" and last["sending"] is True
-    assert before["pending"]["run"] == {"run_id": "r1", "status": "running"}
+    run = before["pending"]["run"]   # with its start (the working line's clock on every phone)
+    assert (run["run_id"], run["status"]) == ("r1", "running") and abs(run["started"] - time.time()) < 60
     # the same message again (an answer lost on the way): nothing sent twice
     again = send(bridge, thread, "C1D00000-0000-4000-8000-000000000001", "Le train de 9 h ?")
     assert again.json()["state"] == "known" and len(fakes.hermes.started) == 1
@@ -271,8 +273,12 @@ def test_a_phone_holding_the_sent_item_catches_up_to_one_message(bridges, fakes)
     fakes.hermes.runs["r1"] = [sse("run.started", run_id="r1"), gate, sse("run.completed", run_id="r1", output="Voie 4.")]
     held = page(bridge, thread)["items"]
     assert send(bridge, thread, client, "Le train de 9 h ?").json()["state"] == "started"
-    during = page(bridge, thread, after=held[-1]["cursor"])["items"]
+    answer = page(bridge, thread, after=held[-1]["cursor"])
+    during = answer["items"]
     assert [i["id"] for i in during] == [f"s_{client}"] and during[0]["client_id"] == client
+    # the run going on, with its start: the working line's clock on every phone (thin apps, brick 2)
+    run = answer["pending"]["run"]
+    assert run["run_id"] == "r1" and run["status"] == "running" and abs(run["started"] - time.time()) < 60
     held += during
     stored(fakes, user("<!--bip:now lundi 9 h-->\n\nLe train de 9 h ?"), agent("Voie 4."))
     gate.set()
@@ -289,3 +295,27 @@ def test_a_phone_holding_the_sent_item_catches_up_to_one_message(bridges, fakes)
     # the latest page (a phone opening the thread again) has the message once
     latest = page(bridge, thread)["items"]
     assert [i["id"] for i in latest if i.get("client_id") == client] == [caught[0]["id"]]
+
+
+PARTIAL = "This turn did not complete. Some actions may already have run; verify their effects before resending."
+
+
+def test_a_stopped_turn_and_a_peers_message_come_as_decisions(bridges, fakes):
+    # thin apps, brick 2: the apps never read Hermes' English failed-turn line nor « Message from … (@x): »; the bridge
+    # says which failed turn it is (`stopped`, on the run's end and on the notice) and who wrote a peer's words
+    bridge, thread = setup(bridges, fakes)
+    fakes.hermes.runs["r1"] = [sse("run.started", run_id="r1"), sse("run.completed", run_id="r1", output=PARTIAL), CLOSE]
+    assert send(bridge, thread, "C2D00000-0000-4000-8000-0000000000D6", "Range le carnet").json()["state"] == "started"
+    ends = []
+    with bridge.stream("GET", "/v1/runs/r1/events?agent=wellness", headers=AUTH, timeout=30) as resp:
+        for name, data in read_sse(resp):
+            if name == "run.completed":
+                ends.append(data)
+                break
+    assert ends and ends[0]["stopped"] == "partial" and ends[0]["output"] == PARTIAL
+    stored(fakes, user("Range le carnet"), agent(PARTIAL), user("Message from 🤖 Vie (@vie): Alex dort bien ?"))
+    items = page(bridge, thread)["items"]
+    notice = next(i for i in items if i["kind"] == "notice")
+    assert notice["notice"] == {"code": "failed_turn", "text": PARTIAL, "stopped": "partial"}
+    peer = items[-1]
+    assert (peer["role"], peer["from"], peer["from_name"], peer["text"]) == ("peer", "vie", "Vie", "Alex dort bien ?")
