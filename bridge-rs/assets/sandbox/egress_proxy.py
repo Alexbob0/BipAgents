@@ -35,6 +35,11 @@ abuse complaint can be traced to an agent.
   its person what it waits for, not that « the proxy » cuts it.
 - **What it counted** (`BIP_USAGE`, written each minute): per agent, today's bytes sent and received, and new
   connections; the bridge shows them.
+- **The phone exit** (prototype, bridge-rs/src/phone_exit.rs; only with `BIP_EXIT_SOCK`): an agent's HTTPS to a host
+  of `BIP_EXIT_HOSTS` (`doctolib.fr`, `*.doctolib.fr`) goes to the bridge's hub over that unix socket instead of out
+  of this machine (« EXIT host 443 agent », then « OK » and the raw stream, or « ERR reason »). The hub and the phone
+  check it again (the name, the address the phone resolves, the ClientHello's server name). Never the datacenter
+  instead: no phone, the tunnel is refused, its reason said. Counted and guarded like any other tunnel.
 
 Run by the bridge with `python3 -u -c <this file>`: standard library only.
 """
@@ -67,6 +72,8 @@ SINK_IDLE = 3.0
 SINK_SECONDS = 30.0
 SINK_MAX = 1 << 30
 USAGE_EVERY = 60
+EXIT_SOCK = os.environ.get("BIP_EXIT_SOCK", "")
+EXIT_HOSTS = [h.strip().lower().rstrip(".") for h in os.environ.get("BIP_EXIT_HOSTS", "").split(",") if h.strip()]
 
 _policy = {"stamp": None, "agents": {}, "browsers": {}, "limits": dict(LIMITS)}
 _blocklist = {"stamp": None, "names": frozenset()}
@@ -229,11 +236,19 @@ def local_name(host):
     return literal(host) or "." not in host or last in LOCAL_SUFFIXES or not last.isalpha() and not last.startswith("xn--")
 
 
+# IPv6 prefixes that carry an IPv4 address (NAT64, its local-use prefix, 6to4): no route of ours goes through them,
+# and behind a NAT64 / 6to4 gateway they reach whatever IPv4 is inside (192.168.1.1 as 64:ff9b::c0a8:101). Python's
+# own verdict on them changed between versions (3.9 calls 2002::/16 global): refused here whatever it says.
+WRAPPED = tuple(ipaddress.ip_network(n) for n in ("64:ff9b::/96", "64:ff9b:1::/48", "2002::/16"))
+
+
 def public(address):
     """An address of the internet, not of this machine or a network it is on."""
     try:
         ip = ipaddress.ip_address(address.split("%", 1)[0])
     except ValueError:
+        return False
+    if ip.version == 6 and any(ip in net for net in WRAPPED):
         return False
     if ip.version == 6 and ip.ipv4_mapped:
         ip = ip.ipv4_mapped
@@ -534,6 +549,9 @@ NOT_HTTPS = "Only HTTPS sites are reachable (https://, port 443)"
 PRIVATE = "Private address not allowed"
 BLOCKED = "Site refused on this service (piracy or torrent tracker)"
 DOWNLOADS = "Download limit for today reached - retry tomorrow, or ask your person"
+PHONE_PAUSED = "Phone exit paused - this site goes through your person's phone, which is not relaying now"
+PHONE_REFUSED = "Site refused by the phone exit"
+PHONE_FAILED = "Bad Gateway (the phone could not reach the site)"
 CONNECTIONS = "Too many new connections - wait a minute"
 UNKNOWN_BROWSER = "Unknown browser"
 BODIES = {
@@ -544,6 +562,8 @@ BODIES = {
     BLOCKED: "Known piracy and torrent tracker sites are refused on BipAgents' servers.",
     DOWNLOADS: "Your downloads for today reached this server's daily limit. Tell your person.",
     CONNECTIONS: "Too many new connections in a minute: wait a moment, then go on more slowly.",
+    PHONE_PAUSED: "Your person set this site to go through their phone. Ask them to start the relay, then retry.",
+    PHONE_REFUSED: "The phone exit refused this site or address.",
 }
 
 
@@ -589,6 +609,45 @@ def headers_of(rest):
         name = line.split(b":", 1)[0].strip().lower().decode("latin-1")
         out.append((name, line))
     return out
+
+
+def phone_exit(host, agent):
+    """This agent's tunnel to this host goes through its person's phone (the hub checks again)."""
+    return bool(EXIT_SOCK) and agent is not None and not connector(agent) and any(
+        host_matches(host, p) for p in EXIT_HOSTS)
+
+
+class PhoneRefused(Exception):
+    pass
+
+
+async def connect_phone(host, port, agent):
+    """The hub's stream to the site through the phone, or PhoneRefused with the hub's reason."""
+    try:
+        reader, writer = await asyncio.wait_for(asyncio.open_unix_connection(EXIT_SOCK), WAIT)
+    except Exception:
+        raise PhoneRefused("paused") from None
+    try:
+        name = "".join(c for c in (agent or "-") if c.isalnum() or c in "-_.")[:64] or "-"
+        writer.write(f"EXIT {host} {port} {name}\n".encode())
+        await writer.drain()
+        line = await asyncio.wait_for(reader.readline(), WAIT)
+    except Exception:
+        close(writer)
+        raise PhoneRefused("paused") from None
+    if line.startswith(b"OK"):
+        return reader, writer
+    close(writer)
+    raise PhoneRefused(line[4:].decode("latin-1").strip()[:40] or "paused")
+
+
+def phone_answer(reason):
+    """The refusal the agent reads: paused (it waits, its person is asked), refused, or the site unreachable."""
+    if reason in ("paused", "off", "timeout", "rate", "limit", "phone"):
+        return 503, PHONE_PAUSED
+    if reason in ("dns", "connect"):
+        return 502, PHONE_FAILED
+    return 403, PHONE_REFUSED
 
 
 async def connect(addresses, port):
@@ -668,6 +727,18 @@ async def handle(reader, writer):
     if agent is not None and too_many_connections(agent):
         log("blocked (connections per minute)", method, target, agent)
         return await answer(writer, 429, CONNECTIONS)
+    if phone_exit(host, agent):
+        if wanted != 443:
+            log("blocked (phone exit: HTTPS only)", method, target, agent)
+            return await answer(writer, 403, NOT_HTTPS)
+        try:
+            up_reader, up_writer = await connect_phone(host, port, agent)
+        except PhoneRefused as exc:
+            status, reason = phone_answer(str(exc))
+            log(f"blocked (phone exit: {exc})", method, target, agent)
+            return await answer(writer, status, reason)
+        log("allowed (phone exit)", method, target, agent)
+        return await tunnel(reader, writer, up_reader, up_writer, method, target, agent, host, b"", counted, browser)
     addresses = await resolve(host, port)
     if addresses == []:
         log("blocked-address", method, target, agent)
@@ -682,6 +753,11 @@ async def handle(reader, writer):
         log(f"failed ({type(exc).__name__}: {str(exc)[:120]})", method, target, agent)
         return await answer(writer, 502, "Bad Gateway (site unreachable)")
     log("allowed", method, target, agent)
+    return await tunnel(reader, writer, up_reader, up_writer, method, target, agent, host, request, counted, browser)
+
+
+async def tunnel(reader, writer, up_reader, up_writer, method, target, agent, host, request, counted, browser):
+    """The client's stream to the site (or the phone exit's), counted and guarded."""
     guard = Guard(agent, host, not validated(agent, host), browser) if counted else None
     if request:
         if guard is not None and not guard.sending(request):

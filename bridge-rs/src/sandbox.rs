@@ -430,6 +430,8 @@ pub fn proxy_command(config: &Config, podman: &str) -> Vec<String> {
             &format!("BIP_BROWSERS={browsers}"),
         ]));
     }
+    // the phone exit (phone_exit.rs, prototype): the hub's socket and the hosts sent to it, when switched on
+    command.extend(crate::phone_exit::proxy_args(config));
     // its own resolv.conf (set_up_network writes it): podman would put the internal networks' resolvers first,
     // which never answer for the internet (aibox 2026-10-28); a file mounted there is left as it is
     let resolv = proxy_resolv(config);

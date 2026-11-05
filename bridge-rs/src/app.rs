@@ -312,6 +312,7 @@ impl AppState {
         // an agent's Hermes restarted when there is a reason, once idle (agent_restart.rs)
         self.spawn(crate::agent_restart::run_forever(self.clone()));
         self.spawn(crate::own_space::tidy_at_start(self.clone())); // others-facing agents left in the hub: out, once
+        self.spawn(crate::phone_exit::serve(self.clone())); // the phone exit's socket for the agents' proxy (off by default)
         if self.sleep.enabled() {
             // a server of the offer: the guichet's seat agent reads whether a run goes on (runs.rs BUSY_MARKER)
             self.spawn(self.hub.clone().mark_busy_forever(self.sleep.home.clone(), 60.0));
@@ -1719,10 +1720,12 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::read_shares::router())
         .merge(crate::project_agent::router())
         .merge(crate::friends_cards::router())
-        .merge(crate::desktop::desktop_admin_router());
+        .merge(crate::desktop::desktop_admin_router())
+        .merge(crate::phone_exit::admin_router());
     // Under /v1 without the bridge key: a computer sending its agents (the app's one-time code instead), and a
     // server the app created until the app claims it (its own proofs).
-    let open = Router::new().merge(import_open).merge(crate::cloud_setup::router());
+    // The phone exit's tunnel (prototype): the phone's own token.
+    let open = Router::new().merge(import_open).merge(crate::cloud_setup::router()).merge(crate::phone_exit::open_router());
 
     let mut app = Router::new()
         .route("/health", get(health))
