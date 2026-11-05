@@ -228,14 +228,20 @@ def test_a_site_answered_after_its_turn_ended_resumes_the_agent_once_where_it_as
     assert len(resumed(fakes, "api_late")) == 1   # one turn per answer
 
 
-def test_a_card_answered_while_its_turn_waits_starts_no_other_turn(bridges, fakes):
+def test_a_card_answered_while_its_turn_goes_on_resumes_the_agent_once_it_ends(bridges, fakes):
+    """A site's call never waits: the turn going on is not told (5/11 evening, « tout de suite » lost); once it ends,
+    one turn (test_cards_resume.py: every kind and timing)."""
     bridge, gate, card = site_asked_in_a_turn(bridges, fakes, "api_wait", "run_wait")
     answered = bridge.post(f"/v1/agents/vie/sandbox/sites/requests/{card['request_id']}", headers=AUTH,
                            json={"allow": False})
     assert answered.status_code == 200, answered.text
     time.sleep(4)
-    assert resumed(fakes, "api_wait") == []   # the turn going on has it
+    assert resumed(fakes, "api_wait") == []   # the turn going on may learn it yet
     gate.set()
+    assert wait_until(lambda: resumed(fakes, "api_wait"), timeout=15), list(fakes.hermes.started.values())
+    time.sleep(3)
+    [turn] = resumed(fakes, "api_wait")
+    assert "REFUSED" in turn["input"], turn["input"]
 
 
 def test_a_card_answered_after_a_restart_resumes_the_agent(bridges, fakes):

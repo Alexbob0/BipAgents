@@ -708,6 +708,11 @@ pub async fn answer(state: &AppState, card_id: &str, allow: bool, via: &str) -> 
         .flatten();
         if let Some((c, card)) = replaced {
             announce(state, &agent, &c, &card).await;
+            // the call waiting for this card waits for the new one
+            REPLACED.lock().unwrap_or_else(|e| e.into_inner()).insert(card_id.to_string(), card.id.clone());
+            if let Some((notify, _)) = waiters().remove(card_id) {
+                notify.notify_waiters();
+            }
         }
         return Answered::Changed;
     };
@@ -754,21 +759,43 @@ pub async fn answer(state: &AppState, card_id: &str, allow: bool, via: &str) -> 
     Answered::Approved
 }
 
-/// The agent's call waits for the person's answer to `card` (None: not yet).
-async fn wait_answer(card: &str) -> Option<bool> {
-    let notify = waiters().get(card).map(|(n, _)| n.clone())?;
+/// The card that replaced a card whose files changed before its answer (`answer`'s `Changed`): the call waiting for
+/// the first one waits for it (Alex 5/11: the call kept waiting 5 min for a card gone, then a card to validate again).
+static REPLACED: LazyLock<Mutex<BTreeMap<String, String>>> = LazyLock::new(Default::default);
+
+fn replaced(card: &str) -> String {
+    let map = REPLACED.lock().unwrap_or_else(|e| e.into_inner());
+    let mut card = card.to_string();
+    for _ in 0..16 {
+        match map.get(&card) {
+            Some(next) => card = next.clone(),
+            None => break,
+        }
+    }
+    card
+}
+
+/// The agent's call waits for the person's answer to `card`, or to the card that replaced it: that card's id and the
+/// answer (None: not yet).
+async fn wait_answer(card: &str) -> (String, Option<bool>) {
     let deadline = tokio::time::Instant::now() + ASK_WAIT;
+    let mut card = card.to_string();
     let outcome = loop {
+        card = replaced(&card);
+        let Some(notify) = waiters().get(&card).map(|(n, _)| n.clone()) else { break None };
         let wakeup = notify.notified();
-        if let Some(answer) = waiters().get(card).and_then(|(_, a)| *a) {
+        if let Some(answer) = waiters().get(&card).and_then(|(_, a)| *a) {
             break Some(answer);
+        }
+        if replaced(&card) != card {
+            continue; // replaced meanwhile
         }
         if tokio::time::timeout_at(deadline, wakeup).await.is_err() {
             break None;
         }
     };
-    waiters().remove(card);
-    outcome
+    waiters().remove(&card);
+    (card, outcome)
 }
 
 // --- the agent's tools -----------------------------------------------------------------------------------------------
@@ -1033,8 +1060,12 @@ fn apply_fields(base: &mut Connector, arguments: &Dict, creating: bool) -> Resul
 }
 
 async fn waited(state: &AppState, card: &str, name: &str, schedule: &Option<Schedule>) -> Dict {
-    let _ = state;
-    match wait_answer(card).await {
+    let (card, answer) = wait_answer(card).await;
+    if answer.is_some() {
+        // told in this call: no other turn for it (card_place.rs)
+        crate::card_place::taken(&state.config(), &format!("{RUN_PREFIX}{card}"));
+    }
+    match answer {
         Some(true) => {
             let routine = match schedule {
                 Some(s) if !s.mechanical => format!(
@@ -1231,7 +1262,12 @@ async fn ask_secret_tool(state: &AppState, agent: &AgentConfig, arguments: &Dict
         Err(why) => return Ok(refusal(&why)),
     };
     state.push.notify_bridge_card(&agent.name, &line, "secret_request", &id).await;
-    Ok(match secrets::wait(&id).await {
+    let answer = secrets::wait(&id).await;
+    if answer.is_some() {
+        // told in this call: no other turn for it (card_place.rs)
+        crate::card_place::taken(&config, &format!("{}{id}", secrets::RUN_PREFIX));
+    }
+    Ok(match answer {
         Some(secrets::Outcome::Saved { identifier }) => {
             let with = if gave_identifier { format!(" (identifier {identifier})") } else { String::new() };
             let what = if kind == "code" { "held for the connector's next run, then gone" } else { "kept in the vault" };
