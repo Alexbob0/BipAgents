@@ -6,8 +6,14 @@
 //!
 //! ```text
 //! GET    /v1/notifications?agent=&thread=&since=&unread=1&limit=     newest first
-//! GET    /v1/notifications/unread                                    {total, agents, threads}
+//! GET    /v1/notifications/unread                                    {total, agents, threads, boite}
 //! GET    /v1/notifications/{id}                                      one row, with its text
+//!
+//! `total` (the badges: the app icon's, the Boîte tab's) counts what the Boîte shows and nothing else (`BOITE_*`):
+//! its messages unread and the cards waiting (a card's row stays unread only while its card waits: `read_gone`).
+//! `boite` is that count by agent (an app adds its own agents'). `agents` and `threads` count every unread row (the
+//! home's dots: a room's reply, a held e-mail…). Alex's iPhone, 5/11: « Boîte 1 » for ever on an empty Boîte, the row
+//! of a card gone counted.
 //!
 //! A `boite` row carries its message as the Boîte shows it (`boite`: title, the whole text, attachments, has_audio,
 //! audio_url — the audio at `/v1/outbox/{id}/audio`): the apps read the Boîte from here alone.
@@ -209,10 +215,28 @@ pub async fn mark_read(store: &Store, id: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Unread rows in all (the app icon's badge).
+/// The rows the Boîte shows: its messages (the types the apps list, InboxStore.swift / Inbox.kt) and the cards
+/// waiting (listed from `/v1/approvals`, each with its row). Not the Boîte's: a room's reply (the room on the home), a
+/// held e-mail (the agent's e-mail screen), a date to find (its own card). The place's own cards (space, tips) have no
+/// row: never counted.
+pub const BOITE_MESSAGES: [&str; 7] = ["boite", "reply", "subtask", "task", "scan", "family", "question"];
+pub const BOITE_CARDS: [&str; 6] = ["approval", "site", "login", "connector", "secret", "mail_card"];
+
+fn quoted(types: &[&str]) -> String {
+    types.iter().map(|t| format!("'{t}'")).collect::<Vec<_>>().join(",")
+}
+
+fn boite_types() -> String {
+    quoted(&[&BOITE_MESSAGES[..], &BOITE_CARDS[..]].concat())
+}
+
+/// Unread rows the Boîte shows (the badges).
 pub async fn unread_total(store: &Store) -> anyhow::Result<i64> {
-    let rows =
-        store.run("SELECT COUNT(*) AS n FROM notifications WHERE read_at IS NULL AND hidden = 0", vec![]).await?;
+    let sql = format!(
+        "SELECT COUNT(*) AS n FROM notifications WHERE read_at IS NULL AND hidden = 0 AND type IN ({})",
+        boite_types()
+    );
+    let rows = store.run(&sql, vec![]).await?;
     Ok(rows.first().and_then(|r| r["n"].as_i64()).unwrap_or(0))
 }
 
@@ -247,25 +271,31 @@ fn served(row: &crate::store::Row, full: bool) -> Value {
 }
 
 async fn counts(store: &Store) -> anyhow::Result<Value> {
-    let rows = store
-        .run(
-            "SELECT agent, thread_id, COUNT(*) AS n FROM notifications WHERE read_at IS NULL AND hidden = 0 \
-             GROUP BY agent, thread_id",
-            vec![],
-        )
-        .await?;
-    let (mut agents, mut threads, mut total) = (Map::new(), Map::new(), 0i64);
+    let sql = format!(
+        "SELECT agent, thread_id, type IN ({}) AS shown, COUNT(*) AS n FROM notifications \
+         WHERE read_at IS NULL AND hidden = 0 GROUP BY agent, thread_id, shown",
+        boite_types()
+    );
+    let rows = store.run(&sql, vec![]).await?;
+    let (mut agents, mut threads, mut boite, mut total) = (Map::new(), Map::new(), Map::new(), 0i64);
+    let add = |map: &mut Map<String, Value>, key: &str, n: i64| {
+        let prior = map.get(key).and_then(Value::as_i64).unwrap_or(0);
+        map.insert(key.to_string(), json!(prior + n));
+    };
     for r in &rows {
         let n = r["n"].as_i64().unwrap_or(0);
-        total += n;
-        let a = r["agent"].as_str().unwrap_or("").to_string();
-        let prior = agents.get(&a).and_then(Value::as_i64).unwrap_or(0);
-        agents.insert(a, json!(prior + n));
+        let a = r["agent"].as_str().unwrap_or("");
+        add(&mut agents, a, n);
         if let Some(t) = r["thread_id"].as_str() {
-            threads.insert(t.to_string(), json!(n));
+            add(&mut threads, t, n);
+        }
+        // the badges: what the Boîte shows only
+        if r["shown"].as_i64().unwrap_or(0) == 1 {
+            total += n;
+            add(&mut boite, a, n);
         }
     }
-    Ok(json!({"total": total, "agents": agents, "threads": threads}))
+    Ok(json!({"total": total, "agents": agents, "threads": threads, "boite": boite}))
 }
 
 /// The rows served, a Boîte row with its message (`boite`, see the module's doc).
@@ -432,7 +462,8 @@ pub async fn read_card(state: &AppState, agent: &str, card: &str, run_id: &str) 
         .store
         .run(
             "SELECT id FROM notifications WHERE agent = ? AND ref_id IN (?, ?) AND type IN \
-             ('site', 'login', 'connector', 'secret', 'mail_card') AND (read_at IS NULL OR state != 'answered')",
+             ('approval', 'site', 'login', 'connector', 'secret', 'mail_card') \
+             AND (read_at IS NULL OR state != 'answered')",
             vec![text(agent), text(card), text(run_id)],
         )
         .await;
@@ -459,6 +490,58 @@ pub async fn read_card(state: &AppState, agent: &str, card: &str, run_id: &str) 
     state.spawn(async move {
         push.notify_silent(&agent, "read", extra).await;
     });
+}
+
+/// The cards' rows still unread whose card waits no more (`waiting`: the run and request ids of every card waiting,
+/// the bridge's and Hermes'): read on every device, `gone`. Answered or withdrawn where nothing read its row (a secret
+/// typed in its field, a card never placed, a Hermes approval lost with its run), one kept « Boîte 1 » on an empty
+/// Boîte (Alex's iPhone, 5/11). A row younger than `fresh` seconds is left: its card may not be listed yet.
+pub async fn read_gone(state: &AppState, waiting: &std::collections::HashSet<String>, fresh: i64) -> usize {
+    let before = iso(utcnow() - chrono::Duration::seconds(fresh));
+    let sql = format!(
+        "SELECT id, agent, ref_id FROM notifications WHERE read_at IS NULL AND type IN ({}) AND created_at < ?",
+        quoted(&BOITE_CARDS)
+    );
+    let Ok(rows) = state.store.run(&sql, vec![text(&before)]).await else { return 0 };
+    let mut by_agent: std::collections::BTreeMap<String, Vec<String>> = Default::default();
+    for r in &rows {
+        if r.get("ref_id").and_then(Value::as_str).is_some_and(|c| waiting.contains(c)) {
+            continue;
+        }
+        by_agent
+            .entry(r["agent"].as_str().unwrap_or("").to_string())
+            .or_default()
+            .push(r["id"].as_str().unwrap_or("").to_string());
+    }
+    let ids: Vec<&String> = by_agent.values().flatten().collect();
+    if ids.is_empty() {
+        return 0;
+    }
+    let mut params = vec![text(&iso(utcnow()))];
+    params.extend(ids.iter().map(|i| text(i)));
+    let sql = format!(
+        "UPDATE notifications SET read_at = ?, state = 'gone' WHERE read_at IS NULL AND id IN ({})",
+        vec!["?"; ids.len()].join(",")
+    );
+    if let Err(err) = state.store.run(&sql, params).await {
+        tracing::warn!(error = %format!("{err:#}"), "gone cards' notifications not read");
+        return 0;
+    }
+    let count = ids.len();
+    tracing::info!(count, "notifications of cards gone read");
+    let unread = counts(&state.store).await.unwrap_or_else(|_| json!({"total": 0}));
+    let threads = crate::threads::threads_of(state);
+    for (agent, read) in by_agent {
+        threads.publish(&agent, "read", json!({"agent": agent, "notifications": read}));
+        let mut extra = Dict::new();
+        extra.insert("n".into(), json!(read.join(",")));
+        extra.insert("unread".into(), unread["total"].clone());
+        let push = state.push.clone();
+        state.spawn(async move {
+            push.notify_silent(&agent, "read", extra).await;
+        });
+    }
+    count
 }
 
 pub fn router() -> Router<AppState> {
@@ -525,5 +608,38 @@ mod tests {
         insert(&store, &files).await.unwrap();
         let rows = store.run("SELECT preview FROM notifications WHERE id = 'n_4'", vec![]).await.unwrap();
         assert_eq!(rows[0]["preview"], json!("Voilà."));
+    }
+
+    #[tokio::test]
+    async fn the_badges_count_what_the_boite_shows() {
+        // Alex's iPhone, 5/11: « Boîte 1 » on an empty Boîte
+        let store = Store::open(":memory:").unwrap();
+        let row = |id: &'static str, agent: &'static str, kind: &'static str, thread: Option<&'static str>| NewRow {
+            id,
+            agent,
+            kind,
+            thread,
+            title: "x",
+            state: "open",
+            dedupe: id,
+            ..Default::default()
+        };
+        for r in [
+            row("n_1", "vie", "reply", Some("t_1")),
+            row("n_2", "ghibli", "secret", None),
+            row("n_3", "vie", "room_reply", Some("room:r1")),
+            row("n_4", "ghibli", "email_held", None),
+            row("n_5", "ghibli", "meet", None),
+        ] {
+            insert(&store, &r).await.unwrap();
+        }
+        let c = counts(&store).await.unwrap();
+        // the home's dots: every unread row
+        assert_eq!(c["agents"], json!({"vie": 2, "ghibli": 3}));
+        assert_eq!(c["threads"], json!({"t_1": 1, "room:r1": 1}));
+        // the badges: a message and a card waiting, not a room's reply, a held e-mail or a date to find
+        assert_eq!(c["total"], 2);
+        assert_eq!(c["boite"], json!({"vie": 1, "ghibli": 1}));
+        assert_eq!(unread_total(&store).await.unwrap(), 2);
     }
 }

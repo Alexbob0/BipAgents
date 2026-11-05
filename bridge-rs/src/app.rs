@@ -327,6 +327,8 @@ impl AppState {
         self.spawn(async move {
             rooms.resume();
         });
+        // the rows of cards gone that nothing read: read, the badges count what the Boîte shows (card_place.rs)
+        self.spawn(crate::card_place::sweep(self.clone()));
         let jobs = jobs_of(self);
         self.spawn(async move {
             jobs.clone().resume_following().await;
@@ -1239,6 +1241,8 @@ async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>
             tracing::warn!(agent = %agent.name, error = %err, "approval decision not kept");
         }
         state.hub.forget_approval(&agent.name, &run_id, request_id);
+        // its notification read on every device: the badges count only what the Boîte shows (5/11)
+        crate::notifications::read_card(&state, &agent.name, request_id.unwrap_or(&run_id), &run_id).await;
         // the answered item in the conversation on every device (the timeline's approvals log)
         crate::threads::threads_of(&state).touch(&agent.name, session.as_deref(), "answered").await;
         // a background task's: also the conversation it reports to, which showed it too (card_place.rs)

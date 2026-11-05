@@ -594,7 +594,7 @@ ship right after): the push carries the pointer only, no legacy field (`run_id` 
 ```text
 GET    /v1/notifications?agent=&thread=&since=<iso>&unread=1&limit=50   the Boîte's list, newest first
 GET    /v1/notifications/{id}                                            one row, `preview` = its whole text
-GET    /v1/notifications/unread                                          {total, agents: {a: n}, threads: {t: n}}
+GET    /v1/notifications/unread                                          {total, agents: {a: n}, threads: {t: n}, boite: {a: n}}
 POST   /v1/notifications/read   {ids?: [...], agent?, thread? (an id or main)}   marks read; answers {read, unread}
 DELETE /v1/notifications/{id}                                            hidden from the Boîte (row kept)
 ```
@@ -603,7 +603,12 @@ DELETE /v1/notifications/{id}                                            hidden 
 - After a read the bridge sends a silent push `reason=read` with `{agent, n: "<id>,<id>,…" (one comma-separated
   string, the same in APNs and FCM data), unread: <total>}` to the person's devices
   (they remove those delivered notifications and set the badge) and a `read` event (§6.5).
-- `unread.total` is the badge.
+- `unread.total` is the badge (the app icon's, the Boîte tab's): what the Boîte shows and nothing else, its messages
+  unread (`boite`, `reply`, `subtask`, `task`, `scan`, `family`, `question`) and the cards waiting (`approval`, `site`,
+  `login`, `connector`, `secret`, `mail_card`: a card's row read when answered, and every minute when its card waits
+  no more). `boite` is the same count by agent (an app adds its own agents'). `agents` and `threads` count every
+  unread row: the home's dots (a room's reply, a held e-mail, a date to find are not the Boîte's). Alex's iPhone,
+  5/11: « Boîte 1 » for ever on an empty Boîte (a card's row whose card had gone).
 
 Journal row as served:
 
