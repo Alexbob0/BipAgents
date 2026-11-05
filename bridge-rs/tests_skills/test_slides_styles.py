@@ -179,7 +179,7 @@ def test_the_agents_usual_style_comes_from_defaults_json(skill_copy, workdir):
     (workdir / "s.json").write_text(json.dumps(spec), encoding="utf-8")
     run = lambda: json.loads(subprocess.run(  # noqa: E731
         [sys.executable, str(scripts / "deck.py"), str(workdir / "s.json"), str(workdir / "s.pptx")],
-        capture_output=True, text=True, check=True, env=dict(os.environ, PATH="/usr/bin:/bin")).stdout)
+        capture_output=True, text=True, check=True, env=dict(os.environ, PATH=str(workdir / "no-bin"))).stdout)
     assert run()["style"] == styles.DEFAULT
     (skill_copy / "slides-styles" / "defaults.json").write_text('{"slides": "terminal"}\n', encoding="utf-8")
     answer = run()
