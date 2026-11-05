@@ -57,6 +57,12 @@ pub struct Place {
     pub report: Option<String>,
     #[serde(default)]
     pub at: f64,
+    /// The turn (run) that asked it; None: no turn, or placed before 5/11 afternoon.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run: Option<String>,
+    /// What it asks, in the person's words (the card's sentence): told to the agent when it resumes.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub summary: String,
 }
 
 impl Place {
@@ -267,10 +273,19 @@ async fn place(state: &AppState, agent: &AgentConfig, made: &[String], run_id: O
         Some(s) => report_of(state, agent, s).await,
         None => None,
     };
-    let place = Place { agent: agent.name.clone(), session: session.clone(), report: report.clone(), at: 0.0 };
+    let place = Place {
+        agent: agent.name.clone(),
+        session: session.clone(),
+        report: report.clone(),
+        at: 0.0,
+        run: run_id.map(str::to_string),
+        summary: String::new(),
+    };
     let config = state.config();
+    let cards = bridge_cards(state, &config, Some(&agent.name));
     for run_id in made {
-        if let Err(err) = keep(&config, run_id, place.clone()) {
+        let summary = cards.iter().find(|i| run_id_of(i) == *run_id).map(summary_of).unwrap_or_default();
+        if let Err(err) = keep(&config, run_id, Place { summary, ..place.clone() }) {
             tracing::warn!(agent = %agent.name, error = %err, "card place not kept");
         }
     }
@@ -341,6 +356,9 @@ pub async fn answered(state: &AppState, agent: &AgentConfig, run_id: &str, choic
         threads.touch(&agent.name, place.session.as_deref(), "answered").await;
     }
     crate::notifications::read_card(state, &agent.name, id, run_id).await;
+    if !place.agent.is_empty() {
+        resume(state, agent, &place, choice);
+    }
 }
 
 /// The cards `answered` did, the last 200 (`watch` leaves them).
@@ -361,6 +379,19 @@ fn was_answered(run_id: &str) -> bool {
     at.and_then(|i| done.remove(i)).is_some()
 }
 
+/// The agent's tool that makes a card of this kind while it runs (`turn_of` prefers the turn calling it).
+fn asking_tool(run_id: &str) -> &'static str {
+    if run_id.starts_with(crate::secrets::RUN_PREFIX) {
+        crate::connectors::ASK_SECRET
+    } else if run_id.starts_with(crate::connectors::RUN_PREFIX) {
+        crate::connectors::REGISTER
+    } else if run_id.starts_with(crate::sandbox_sites::RUN_PREFIX) {
+        crate::sandbox_sites::REQUEST
+    } else {
+        ""
+    }
+}
+
 const WATCH_EVERY: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// Every second: a card made while a tool call still runs (or with no turn) placed in its turn's conversation, and a
@@ -379,15 +410,20 @@ pub async fn watch(state: AppState) {
         let mut made: BTreeMap<String, Vec<String>> = BTreeMap::new();
         for item in &cards {
             let run = run_id_of(item);
-            if places.contains_key(&run) || !placeable(&run) || now - created_at(item) > FRESH_SECONDS {
+            // a card asked again after it was placed (its time moved on: sandbox_sites.rs `ask`) is placed again
+            let placed = places.get(&run).is_some_and(|p| created_at(item) <= p.at + 1.0);
+            if placed || !placeable(&run) || now - created_at(item) > FRESH_SECONDS {
                 continue;
             }
             let agent = item.get("agent").and_then(Value::as_str).unwrap_or("").to_string();
             made.entry(agent).or_default().push(run);
         }
         for (name, runs) in made {
+            // by the agent's id (its profile, `vie`, `test-agent`), never its shown name: a renamed agent's cards too
             let Some(agent) = config.agent(Some(&name)).cloned() else { continue };
-            let turn = state.hub.turn_of(&agent.name, "").map(|t| t.run_id);
+            // the turn whose last call is the tool that makes such a card, else the one that called a tool last
+            let tool = runs.first().map(|r| asking_tool(r)).unwrap_or("");
+            let turn = state.hub.turn_of(&agent.name, tool).map(|t| t.run_id);
             place(&state, &agent, &runs, turn.as_deref()).await;
         }
         // gone without `/v1/approve`: what `answered` does, but the decision (its own route kept it)
@@ -415,6 +451,126 @@ async fn gone(state: &AppState, agent: &AgentConfig, run_id: &str, place: &Place
     }
     let id = run_id.strip_prefix("bip-").and_then(|r| r.split_once('-')).map(|(_, id)| id).unwrap_or(run_id);
     crate::notifications::read_card(state, &agent.name, id, run_id).await;
+    // answered through its own route (the secure field, the sites' or the connector's screen): the decision it kept;
+    // none (withdrawn, expired): nobody answered, nothing to resume
+    let config = state.config();
+    let decided = crate::approvals_log::list(&config, &agent.name, None)
+        .into_iter()
+        .rev()
+        .find(|e| e.get("run_id").and_then(Value::as_str) == Some(run_id))
+        .and_then(|e| e.get("choice").and_then(Value::as_str).map(str::to_string));
+    if let Some(choice) = decided {
+        resume(state, agent, place, &choice);
+    }
+}
+
+// -- a card answered late: the agent goes on -------------------------------------------------------------------------
+//
+// Alex, 2026-11-05: « Valider une carte bien longtemps après devrait quand même relancer l'agent. Là il s'arrête et
+// attend qu'on lui dise d'y aller. » A card answered once the turn that asked it is over (its tool call stopped
+// waiting: `ask_secret`, `connector_register` after 330 s; a site's or a mail card's call never waits; the bridge
+// restarted; a card with no turn) starts ONE turn of the agent in the conversation that asked (a background task: its
+// own), saying what was decided. Answered while that turn still goes on: nothing more (the waiting call gets it). The
+// cards answered within `RESUME_GATHER` in the same conversation (a folded card's members, several at once) make one
+// turn. The turn goes through background_turn.rs: the month's credit, the brake, `RESUME_BUDGET`, a busy conversation
+// waited for; its reply lands like a hand-back's (pushed unless on screen); « [SILENT] » lands nothing.
+
+/// Answers gathered into one turn.
+const RESUME_GATHER: std::time::Duration = std::time::Duration::from_secs(2);
+/// Tokens a resumed turn may take.
+pub const RESUME_BUDGET: i64 = 300_000;
+
+/// What each answer said: (what the card asked, allowed), by (agent, conversation), until its turn starts.
+type Decisions = Vec<(String, bool)>;
+static RESUMES: Mutex<BTreeMap<(String, String), Decisions>> = Mutex::new(BTreeMap::new());
+
+/// The turn that asked the card no longer goes on (none, ended, or unknown to this bridge: restarted since).
+fn turn_over(state: &AppState, place: &Place) -> bool {
+    match place.run.as_deref() {
+        None => true,
+        Some(run) => state.hub.subscription(&place.agent, run).is_none_or(|s| s.finished() || s.terminal().is_some()),
+    }
+}
+
+/// Where the agent goes on: the conversation whose turn asked (a task's own), else the one it showed in, else main.
+pub fn resume_in(place: &Place) -> String {
+    place.session.clone().or_else(|| place.report.clone()).unwrap_or_else(|| "main".to_string())
+}
+
+/// Allowed (`once`, `always`…) or refused (`deny`).
+pub fn allowed(choice: &str) -> bool {
+    !matches!(choice, "deny" | "denied" | "refuse" | "refused" | "no")
+}
+
+/// What the resumed turn reads (a hidden note: not in the conversation's timeline).
+pub fn resume_note(decisions: &[(String, bool)]) -> String {
+    let lines: Vec<String> = decisions
+        .iter()
+        .map(|(what, ok)| {
+            let what = if what.is_empty() { "your request".to_string() } else { format!("« {what} »") };
+            format!("- {what}: {}", if *ok { "ALLOWED" } else { "REFUSED" })
+        })
+        .collect();
+    format!(
+        "<!--bip:card\nNot from the person: they answered in the app after your turn had ended:\n{}\nGo on with what \
+         you were doing from where it stopped, now that you have the answer (don't ask for it again). Refused: don't \
+         do it and don't ask again; say in one short sentence what that changes. If nothing is left to do or say, {}.\n-->",
+        lines.join("\n"),
+        crate::background_turn::SILENT_RULE
+    )
+}
+
+/// The card `place` answered with `choice`: the agent resumes in its conversation when the turn that asked is over.
+fn resume(state: &AppState, agent: &AgentConfig, place: &Place, choice: &str) {
+    if !turn_over(state, place) {
+        return;
+    }
+    let key = (agent.name.clone(), resume_in(place));
+    let first = {
+        let mut waiting = RESUMES.lock().unwrap_or_else(|e| e.into_inner());
+        let list = waiting.entry(key.clone()).or_default();
+        list.push((place.summary.clone(), allowed(choice)));
+        list.len() == 1
+    };
+    if !first {
+        return;
+    }
+    let (state, agent) = (state.clone(), agent.clone());
+    tokio::spawn(async move {
+        tokio::time::sleep(RESUME_GATHER).await;
+        let decisions = RESUMES.lock().unwrap_or_else(|e| e.into_inner()).remove(&key).unwrap_or_default();
+        if !decisions.is_empty() {
+            resume_turn(&state, &agent, &key.1, &decisions).await;
+        }
+    });
+}
+
+async fn resume_turn(state: &AppState, agent: &AgentConfig, conversation: &str, decisions: &[(String, bool)]) {
+    use crate::background_turn::{Delivery, Kind, Pipeline, Turn};
+    let pipeline = Pipeline::of(state);
+    let mut turn = Turn::new(agent, Kind::Card, conversation, resume_note(decisions));
+    turn.budget = Some(RESUME_BUDGET);
+    tracing::info!(agent = %agent.name, conversation, cards = decisions.len(), "a card answered late: the agent resumes");
+    match pipeline.run(&turn).await {
+        Ok(ran) if ran.answered() && !crate::background_turn::is_silent(&ran.text) => {
+            let config = state.config();
+            let title = config.agent(Some(&agent.name)).map(|a| a.display_name.clone()).filter(|n| !n.is_empty());
+            let delivery = Delivery {
+                agent: agent.clone(),
+                session: ran.session.clone(),
+                key: format!("handback:card-{}", ran.run_id),
+                title: title.unwrap_or_else(|| agent.name.clone()),
+                text: ran.text.clone(),
+                as_written: true,
+                run_id: Some(ran.run_id.clone()),
+                notify: true,
+                files: Vec::new(),
+            };
+            pipeline.deliver(&delivery).await;
+        }
+        Ok(ran) => tracing::info!(agent = %agent.name, status = %ran.status, "resumed turn: nothing to tell"),
+        Err(why) => tracing::info!(agent = %agent.name, why = %why, "resumed turn not run"),
+    }
 }
 
 #[cfg(test)]
@@ -428,7 +584,7 @@ mod tests {
             agent: "vie".into(),
             session: s.map(str::to_string),
             report: r.map(str::to_string),
-            at: 0.0,
+            ..Place::default()
         };
         // asked in the main conversation
         assert!(place(Some("s_main"), Some("s_main")).shows_in(&sessions, true));
@@ -440,5 +596,27 @@ mod tests {
         assert!(place(Some("s_task"), Some("s_side")).shows_in(&["s_side"].into_iter().collect(), false));
         // a side conversation's card is not the main one's
         assert!(!place(Some("s_side"), Some("s_side")).shows_in(&sessions, true));
+    }
+
+    #[test]
+    fn a_late_answer_resumes_where_it_was_asked_saying_what_was_decided() {
+        let place = |s: Option<&str>, r: Option<&str>| Place {
+            agent: "vie".into(),
+            session: s.map(str::to_string),
+            report: r.map(str::to_string),
+            ..Place::default()
+        };
+        // a background task in its own conversation, a person's in theirs, no turn in the main one
+        assert_eq!(resume_in(&place(Some("s_task"), Some("s_side"))), "s_task");
+        assert_eq!(resume_in(&place(Some("s_side"), Some("s_side"))), "s_side");
+        assert_eq!(resume_in(&place(None, None)), "main");
+        assert!(allowed("once") && allowed("always") && !allowed("deny"));
+        let note = resume_note(&[("Vie veut envoyer des données à connect.garmin.com".into(), true), (String::new(), false)]);
+        assert!(note.starts_with("<!--bip:card\n") && note.ends_with("-->"));
+        assert!(note.contains("- « Vie veut envoyer des données à connect.garmin.com »: ALLOWED"));
+        assert!(note.contains("- your request: REFUSED") && note.contains("[SILENT]"));
+        // kept with the place, read back by an older file too
+        let kept: Place = serde_json::from_str(r#"{"agent": "vie", "session": "s", "report": "s", "at": 1.0}"#).unwrap();
+        assert_eq!((kept.run, kept.summary), (None, String::new()));
     }
 }

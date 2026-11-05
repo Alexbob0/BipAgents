@@ -585,6 +585,11 @@ pub fn ask(config: &Config, agent: &str, raw: &str, reason: &str, via: &str, byt
                 p.reason = reason.clone();
             }
             p.bytes = p.bytes.max(bytes);
+            if via == "agent" && now - p.at > GROUP_WINDOW {
+                // asked again by the agent (a card left waiting since another day): asked now, in the conversation of
+                // this turn (card_place.rs `watch` places it again), not left in an old one or the Boîte only
+                p.at = now;
+            }
             return Asked::Card(p.clone(), false);
         }
         let entry = store.agents.entry(agent.to_string()).or_default();
@@ -1066,7 +1071,7 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
         Asked::Card(card, made) => (
             format!(
                 "Your person sees a card asking to let you send data to {}{}. Tell them in one plain sentence why; \
-                 retry once they allowed it.",
+                 retry once they allowed it (answered after your turn ended, you are told here and go on).",
                 card.all_hosts().join(", "),
                 if made { "" } else { " (asked already, still waiting)" }
             ),
@@ -1205,6 +1210,26 @@ mod tests {
         assert!(!validated(&config, "vie", "api.meteo.fr"));
         forget(&config, "vie");
         assert!(load(&config).agents.is_empty() && load(&config).pending.is_empty());
+    }
+
+    /// A card left waiting since another day, asked again by the agent: asked now (card_place.rs places it in this
+    /// turn's conversation); the proxy reporting the same host again does not move it.
+    #[test]
+    fn a_site_asked_again_by_the_agent_is_asked_now() {
+        let (_dir, config) = config();
+        let Asked::Card(card, true) = ask(&config, "vie", "connect.garmin.example", "", "agent", 0) else { panic!() };
+        change(&config, |s| s.pending.iter_mut().for_each(|p| p.at -= 86400.0)).unwrap();
+        let old = load(&config).pending[0].at;
+        assert!(matches!(ask(&config, "vie", "connect.garmin.example", "", "proxy", 10), Asked::Card(_, false)));
+        assert_eq!(load(&config).pending[0].at, old);
+        let Asked::Card(again, false) = ask(&config, "vie", "connect.garmin.example", "le connecteur", "agent", 0) else {
+            panic!()
+        };
+        assert_eq!(again.id, card.id);
+        assert!(again.at > old + 86000.0 && load(&config).pending[0].at == again.at);
+        // asked a moment apart: the same card, its time kept
+        assert!(matches!(ask(&config, "vie", "connect.garmin.example", "", "agent", 0), Asked::Card(_, false)));
+        assert_eq!(load(&config).pending[0].at, again.at);
     }
 
     fn with_agents(dir: &tempfile::TempDir, mut agents: Value) -> Config {

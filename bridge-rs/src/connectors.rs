@@ -1052,7 +1052,8 @@ async fn waited(state: &AppState, card: &str, name: &str, schedule: &Option<Sche
             "The person refused « {name} »: it doesn't run. Don't register it again unless they ask you to."
         )),
         None => text(&format!(
-            "« {name} » waits for the person's approval in the app. Tell them it's ready to approve; don't ask again."
+            "« {name} » waits for the person's approval in the app. Tell them it's ready to approve; once they answer, \
+             you're told in this conversation and go on from there. Don't ask again."
         )),
     }
 }
@@ -1240,8 +1241,8 @@ async fn ask_secret_tool(state: &AppState, agent: &AgentConfig, arguments: &Dict
             "The person refused to give « {name} »: don't ask again unless they tell you to."
         )),
         None => refusal(&format!(
-            "The person did not answer in time: nothing was kept. Tell them a card waits for « {name} » in the app \
-             when they're ready, and call again only when they ask."
+            "The person did not answer yet: nothing is kept so far. Tell them a card waits for « {name} » in the app; \
+             once they answer it, you're told in this conversation and go on from there. Don't ask again."
         )),
     })
 }

@@ -160,9 +160,14 @@ def test_an_agent_proposes_a_task_the_person_starts(bridges, fakes):
     assert started.json()["state"] == "running" and started.json()["budget_eur"] == 0.30
     again = bridge.post(f"/v1/jobs/{proposed['id']}/start", headers=AUTH)
     assert again.status_code == 409 and again.json() == {"detail": "this task isn't waiting to start"}
+    # no task in it (5/11, a call meant for ask_secret ended on this name): nothing proposed, the right tools named
+    jobs_before = len(bridge.get("/v1/jobs", headers=AUTH).json()["jobs"])
+    junk = call(bridge, "propose_task", {"title": "x", "prompt": "No"})
+    assert junk["isError"] and "ask_secret" in text_of(junk) and "sandbox_sites_request" in text_of(junk), junk
+    assert len(bridge.get("/v1/jobs", headers=AUTH).json()["jobs"]) == jobs_before
     for _ in range(5):
-        call(bridge, "propose_task", {"title": "Encore", "prompt": "x"})
-    too_many = call(bridge, "propose_task", {"title": "Encore", "prompt": "x"})
+        call(bridge, "propose_task", {"title": "Encore", "prompt": "Encore un dossier à préparer."})
+    too_many = call(bridge, "propose_task", {"title": "Encore", "prompt": "Encore un dossier à préparer."})
     # (a turn no run carries: the brake's note that the same tool comes back often, after the answer)
     assert too_many["isError"] and text_of(too_many).startswith("enough of your proposals are waiting for the person already")
 

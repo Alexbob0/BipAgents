@@ -101,6 +101,14 @@ pub const BROWSER_DIRECT: [&str; 6] =
 /// called `mail_search` again with the same arguments 14 to 17 times, never `tool_call`, until the brake refused.
 pub const DIRECT_PAIRS: [(&str, &str); 1] = [("mail_search", "mail_read")];
 
+/// Asking the person for an access and for the sites it reaches, in view for an agent offered the connectors
+/// (connectors.rs `offered`; an entry its profile lacks matches nothing). Behind the search, 5/11 (Alex, a connector
+/// to install; token lab, GLM-5.3 Flash): the call meant for them ended on the in-view `propose_task` sharing their
+/// `mcp__bipagents` prefix, with {"prompt": "No"}; tasks « x » proposed, the turn stopped going round in circles
+/// before any card. Short schemas (≈ 400 tokens both); `connector_register` stays behind the search.
+pub const CREDENTIALS_DIRECT: [&str; 2] =
+    ["!mcp__bipagents_connectors__ask_secret", "!mcp__bipagents_files__sandbox_sites_request"];
+
 /// The guide's own tools in view, besides its daily regime (beyond `MAX_DIRECT`). Its earlier regime of its own (these
 /// and `notebook_search` only, mail, notes, calendar, reminders, pages and tasks behind the search) cost the real-day
 /// bench of 2026-10-30 (GLM-5.3 Flash, the offer's first agent made the guide): 11/16 and two loops on
@@ -535,6 +543,13 @@ pub fn current(config: &Config, agent: &AgentConfig) -> Option<Diet> {
         .ok()
         .is_some_and(|data| data.get("mcp_servers").and_then(|s| s.get(BROWSER_SERVER)).is_some_and(Yaml::is_map));
     let mut out = diet(&kind, &tools, browser, holds_vault_item(config, agent), writes_skills);
+    if crate::connectors::offered(config, agent) {
+        for entry in CREDENTIALS_DIRECT {
+            if !out.defer.iter().any(|d| d == entry) {
+                out.defer.push(entry.to_string());
+            }
+        }
+    }
     // the connectors the person approved are called like any tool (connectors.rs)
     for entry in crate::connectors::direct_entries(config, agent) {
         if !out.defer.contains(&entry) {
@@ -642,6 +657,16 @@ mod tests {
             assert!(!d.direct.is_empty(), "{kind}");
             assert!(d.direct.len() <= MAX_DIRECT + 2, "{kind}");
         }
+    }
+
+    #[test]
+    fn asking_an_access_and_its_sites_are_named_as_hermes_names_them() {
+        // 5/11: behind the search, the call meant for them ended on propose_task
+        let entry = |server: &str, tool: &str| format!("!mcp__{server}__{tool}");
+        assert_eq!(CREDENTIALS_DIRECT[0], entry(crate::connectors::SERVER_NAME, crate::connectors::ASK_SECRET));
+        assert_eq!(CREDENTIALS_DIRECT[1], entry(crate::sandbox::SERVER_NAME, crate::sandbox_sites::REQUEST));
+        assert!(crate::connectors::tools().iter().any(|t| t["name"] == crate::connectors::ASK_SECRET));
+        assert!(crate::sandbox_sites::tools().iter().any(|t| t["name"] == crate::sandbox_sites::REQUEST));
     }
 
     #[test]
