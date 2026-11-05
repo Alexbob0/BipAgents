@@ -49,7 +49,8 @@ Scripts: `/root/.hermes/skills/slides-styles/scripts/` (always use this full pat
    "chart": {"type": "bar", "categories": ["2026", "2027"], "series": {"CA": [160, 240]}, "unit": "k€"}, "takeaway": "..."},
    {"layout": "closing", "title": "Merci", "contact": "..."}]}`
 5. **Build**: `cd <that folder> && python3 S/deck.py deck.json <name>.pptx`. If it reports `missing_images`, fetch them
-   again or drop them. Only if its answer has a `look` command: run it, then `vision_analyze` on `render/sheet.png`,
+   again or drop them. If it reports `check` (a slide empty, fields left out), fix those slides with the fields of
+   `deck.py --help` and build again. Only if its answer has a `look` command: run it, then `vision_analyze` on `render/sheet.png`,
    fix cut text or wrong photos in deck.json and build again (at most 2 rounds).
 6. **Send the .pptx** to the person with `give_file` (in a background task too: the file must reach the
    conversation). Charts and tables stay editable.

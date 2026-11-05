@@ -131,3 +131,15 @@ def test_the_agents_usual_style_comes_from_defaults_json(skill_copy, workdir):
     assert run()["style"] == "ecole"
     (skill_copy / "docs-styles" / "defaults.json").write_text('{"docs": "bauhaus"}\n', encoding="utf-8")
     assert run()["style"] == doc.DEFAULT   # no such Word style: the scripts' own default
+
+
+def test_glm_paragraph_blocks_are_kept(workdir, capsys):
+    """Token lab 5/11 (GLM-5.3 Flash): every `{"para": "..."}` of a one-page document was left out (headings and
+    bullets only). Now they are paragraphs, and a block shown as nothing is reported."""
+    spec = json.loads((workdir / "9-glm-fiche-para.json").read_text(encoding="utf-8"))
+    text = all_text(build(workdir, spec))
+    assert "Karl von Drais" in text and "Dunlop" in text
+    assert "check" not in json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    build(workdir, {"style": "rapport", "title": "T", "blocks": [{"text": "ok"}, {"mystery": "?"}, {"h2": "Partie"}]})
+    answer = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert answer["check"] == [{"block": 2, "left_out": ["mystery"]}]

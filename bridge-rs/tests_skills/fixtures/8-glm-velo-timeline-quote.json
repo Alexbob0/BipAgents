@@ -1,0 +1,93 @@
+{
+ "style": "editorial",
+ "title": "Histoire du vélo",
+ "slides": [
+  {
+   "layout": "cover",
+   "title": "Histoire du vélo",
+   "subtitle": "De la draisienne au vélo électrique : deux siècles d'inventivité",
+   "image": "photo.jpg",
+   "credit": "Acroterion · CC BY-SA 4.0 · Wikimedia Commons"
+  },
+  {
+   "layout": "timeline",
+   "title": "Les grandes étapes",
+   "items": [
+    {
+     "when": "1817",
+     "text": "La draisienne de Karl von Drais : deux roues, pas de pédales"
+    },
+    {
+     "when": "1861",
+     "text": "Le vélocipède à pédales des frères Michaux, à Paris"
+    },
+    {
+     "when": "1870",
+     "text": "Le grand-bi (penny-farthing) : rapide mais dangereux"
+    },
+    {
+     "when": "1885",
+     "text": "La « sécurité » de John Dunlop : roues égales et pneus"
+    },
+    {
+     "when": "1890",
+     "text": "La chaîne et le dérailleur : le vélo moderne est né"
+    },
+    {
+     "when": "Aujourd'hui",
+     "text": "VTT, vélos de ville et assistance électrique"
+    }
+   ]
+  },
+  {
+   "layout": "timeline",
+   "title": "Les grandes étapes",
+   "items": [
+    {
+     "when": "1817",
+     "what": "La draisienne de Karl von Drais : deux roues, sans pédales"
+    },
+    {
+     "when": "1861",
+     "what": "Le vélocipède à pédales des frères Michaux"
+    },
+    {
+     "when": "1870",
+     "what": "Le grand-bi : roue avant géante, chutes spectaculaires"
+    },
+    {
+     "when": "1885",
+     "what": "La « safety bicycle » : transmission par chaîne, roues égales"
+    },
+    {
+     "when": "1888",
+     "what": "Les pneumatiques de Dunlop : le confort enfin"
+    },
+    {
+     "when": "Aujourd'hui",
+     "what": "Vélos électriques et partagés : nouvelle révolution urbaine"
+    }
+   ]
+  },
+  {
+   "layout": "image_text",
+   "title": "Né en 1817, d'un besoin très concret",
+   "text": "En 1817, l'éruption du volcan Tambora a ruiné les récoltes : plus de chevaux à nourrir. Karl von Drais imagine alors un « vélocipède à deux roues » pour se déplacer sans cheval. La draisienne se pousse avec les pieds, et tient debout par équilibre — le principe du vélo est né.",
+   "image": "photo.jpg",
+   "credit": "Muhammad Mahdi Karim · GFDL 1.2 · Wikimedia Commons"
+  },
+  {
+   "layout": "big_number",
+   "value": "1 milliard",
+   "label": "de vélos dans le monde aujourd'hui",
+   "context": "Deux fois plus que de voitures. En France, plus de vélos sont vendus chaque année que de voitures depuis 2017."
+  },
+  {
+   "layout": "quote",
+   "title": "Un objet toujours d'actualité",
+   "text": "Quand je vois un adulte sur un vélo, je n'ai plus espoir pour l'avenir de l'humanité.",
+   "author": "H. G. Wells, écrivain britannique",
+   "takeaway": "Deux siècles après son invention, le vélo reste un symbole de liberté — et une réponse aux défis d'aujourd'hui."
+  }
+ ]
+}

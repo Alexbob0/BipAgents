@@ -1,0 +1,27 @@
+{
+  "kind": "fiche",
+  "style": "ecole",
+  "title": "Petite histoire du vélo",
+  "subtitle": "Fiche d'une page · 5 novembre 2026",
+  "blocks": [
+    {"heading": "Les débuts : la draisienne (1817)", "level": 2},
+    {"para": "En 1817, l'Allemand Karl von Drais invente la « machine à courir » : deux roues alignées, pas de pédales, on avance en poussant avec les pieds. Cette draisienne est le premier véhicule à deux roues de l'histoire."},
+    {"heading": "Le vélocipède à pédales (1861)", "level": 2},
+    {"para": "Vers 1861, les Français Pierre Michaux et Pierre Lallement fixent des pédales sur la roue avant : c'est le vélocipède, surnommé « bonshommes-os » tant les routes pavées rendaient la marche inconfortable."},
+    {"heading": "Le grand-bi et ses excès (1870)", "level": 2},
+    {"para": "Pour aller plus vite, la roue avant devient gigantesque : c'est le grand-bi, élégant mais dangereux. Chaque trou dans la route pouvait projeter le cycliste par-dessus la roue."},
+    {"heading": "La bicyclette moderne (1885-1888)", "level": 2},
+    {"para": "En 1885, John Kemp Starley présente la Rover « safety bicycle » : deux roues de taille égale, transmission par chaîne à la roue arrière. En 1888, John Boyd Dunlop ajoute le pneumatique gonflé. Le vélo moderne est né : fiable, sûr, et bientôt accessible à tous."},
+    {"heading": "Démocratisation et sport", "level": 2},
+    {"bullets": [
+      "1868 : premières courses de vélos en France.",
+      "1903 : premier Tour de France, créé par le journal L'Auto pour vendre des exemplaires.",
+      "Fin du XIXe siècle : le vélo joue un grand rôle dans l'émancipation des femmes et dans l'essor de la mobilité individuelle."
+    ]},
+    {"heading": "Le vélo aujourd'hui", "level": 2},
+    {"para": "VTT (années 1970), vélos de ville, électriques et partagés : après deux siècles, le vélo s'impose comme un moyen de transport simple, sain et écologique. Il n'a presque pas changé de principe depuis 1885 — preuve d'une invention aboutie."},
+    {"para": "Bon à savoir : au-dessus de 60 km/h, c'est l'air qui freine d'abord — d'où les casques profilés et les vélos couchés des records de vitesse."}
+  ],
+  "footer": "Fiche pédagogique · histoire du vélo"
+}
+

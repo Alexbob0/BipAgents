@@ -344,6 +344,7 @@ def agent_default():
 class Doc:
     def __init__(self, spec, base):
         self.spec, self.base = spec, base
+        self.problems, self.blocks_done = [], 0   # blocks shown as nothing (block)
         name = str(spec.get("style") or "").strip().lower()
         self.style_name = name if name in STYLES else agent_default()
         self.st = st = copy.deepcopy(STYLES[self.style_name])
@@ -841,6 +842,28 @@ class Doc:
             b = {"page_break": True}
         elif t in ("entry", "experience", "job"):
             b = {"entry": b.get("entry") or b}
+        elif not t and not any(k in b for k in Doc.BLOCK_KEYS):
+            # one key under another name (GLM-5.3 Flash on the token lab, 5/11: `{"para": "..."}` paragraphs were
+            # all left out of a one-page document)
+            for k in ("para", "paragraph", "p", "body", "content", "value"):
+                if isinstance(b.get(k), str):
+                    b = {"text": b[k]}
+                    break
+            else:
+                for k, lev in (("h1", 1), ("h2", 2), ("h3", 3), ("title", 1), ("subheading", 2), ("section", 1)):
+                    if isinstance(b.get(k), str):
+                        b = {"heading": b[k], "level": b.get("level", lev)}
+                        break
+                else:
+                    for k in ("list", "points", "ul", "bullet_list"):
+                        if isinstance(b.get(k), list):
+                            b = {"bullets": b[k]}
+                            break
+                    else:
+                        if isinstance(b.get("items"), list) and all(isinstance(x, str) for x in b["items"]):
+                            b = {"bullets": b["items"]}
+                        elif isinstance(b.get("ol"), list):
+                            b = {"numbers": b["ol"]}
         for key in ("items", "table", "actions", "kv"):
             v = b.get(key)
             if isinstance(v, dict) and key == "kv":
@@ -850,8 +873,16 @@ class Doc:
                 b[key] = [head] + [[r.get(h, "") for h in head] for r in v]
         return b
 
+    # The keys a block is shown by (BLOCKS in the docstring).
+    BLOCK_KEYS = ("heading", "text", "bullets", "numbers", "quote", "callout", "table", "items", "kv", "actions",
+                  "image", "entry", "code", "toc", "page_break", "signature")
+
     def block(self, b):
+        raw = b
         b = self.normalize(b)
+        self.blocks_done += 1
+        if not any(k in b for k in self.BLOCK_KEYS):
+            self.problems.append({"block": self.blocks_done, "left_out": sorted(raw) if isinstance(raw, dict) else raw})
         if "heading" in b:
             self.heading(b["heading"], b.get("level", 1))
         elif "text" in b:
@@ -1334,6 +1365,9 @@ def main(argv=None):
     d = Doc(spec, os.path.dirname(os.path.abspath(a.spec)))
     d.build(a.output)
     out = {"ok": True, "output": a.output, "style": d.style_name}
+    if d.problems:
+        out["check"] = d.problems
+        out["fix"] = "these blocks were left out: write them with the block keys of doc.py --help and build again"
     if shutil.which("soffice") or shutil.which("libreoffice"):   # a preview only where LibreOffice is installed
         out["look"] = f"python3 {os.path.join(HERE, 'look.py')} {a.output} --outdir render"
     print(json.dumps(out, ensure_ascii=False))

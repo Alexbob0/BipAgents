@@ -41,7 +41,8 @@ Scripts: `/root/.hermes/skills/docs-styles/scripts/` (always use this full path;
    {"heading": "Conditions", "level": 2}, {"bullets": ["..."]}], "footer": "SIRET ..."}`
    CV: skills, languages and diplomas go in `cv.sidebar`; experience as `entry` blocks.
    Never invent contact details, SIRET or prices: ask, or leave a visible « à compléter ».
-4. **Build**: `cd <that folder> && python3 S/doc.py doc.json <name>.docx`. Only if its answer has a `look` command:
+4. **Build**: `cd <that folder> && python3 S/doc.py doc.json <name>.docx`. If it reports `check` (blocks left out),
+   rewrite them with the block keys of `doc.py --help` and build again. Only if its answer has a `look` command:
    run it, then `vision_analyze` on `render/sheet.png`; fix and build again (at most 2 rounds).
 5. **Send the .docx** to the person with `give_file` (in a background task too: the file must reach the conversation).
    It stays editable: real headings, lists, tables, table of contents.
