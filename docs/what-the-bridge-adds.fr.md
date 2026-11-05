@@ -133,7 +133,8 @@ domaine, avec les modules (`bridge-rs/src/<nom>.rs`) qui le font, et ce qu'il la
 
 ## Travail en autonomie
 
-- `jobs.rs` : tâches de fond avec un budget choisi avant, les jetons montrés après, pause et reprise ; `handback.rs`
+- `jobs.rs` : tâches de fond avec un budget en euros choisi avant, compté comme le crédit IA (lectures du cache à
+  leur prix, `task_cost.rs`), pause et reprise ; `handback.rs`
   rapporte le compte rendu dans la conversation d'origine.
 - `cronwatch.rs` livre la réponse de chaque routine dans l'app ; `autonomous.rs` liste tout ce que les agents font
   sans qu'on le leur demande ; `storage_watch.rs` fait demander aux agents quoi garder ; `feature_tips.rs` fait

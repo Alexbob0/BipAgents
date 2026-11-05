@@ -171,13 +171,7 @@ async fn a_task_runs_in_its_own_conversation_and_ends_with_its_report() {
     let told: Told = Default::default();
     let board = board(&config, Some(&told));
     let job = board
-        .create(
-            &agent,
-            "Écoles du quartier",
-            "Compare les trois écoles près de chez nous.",
-            1_000_000,
-            Some("research"),
-        )
+        .create(&agent, "Écoles du quartier", "Compare les trois écoles près de chez nous.", 0.50, Some("research"))
         .await
         .unwrap();
     assert_eq!((job["state"].as_str(), job["session_id"].as_str()), (Some("running"), Some("s1")));
@@ -223,7 +217,7 @@ async fn a_task_stops_at_its_budget_and_goes_on_with_a_bigger_one() {
     let (config, agent) = setup(dir.path(), &url);
     let told: Told = Default::default();
     let board = board(&config, Some(&told));
-    let job = board.create(&agent, "Gros tri", "Range tout.", 100_000, None).await.unwrap();
+    let job = board.create(&agent, "Gros tri", "Range tout.", 0.05, None).await.unwrap();
     let id = id_of(&job);
     board.wait(&id).await;
     let paused = board.view(&id).unwrap();
@@ -240,7 +234,7 @@ async fn a_task_stops_at_its_budget_and_goes_on_with_a_bigger_one() {
     // Resuming without more budget is refused; with more, the same conversation goes on.
     assert!(board.resume(&id, None, None).await.unwrap_err().downcast_ref::<jobs::JobError>().is_some());
     fake.lock().unwrap().rounds = 2;
-    board.resume(&id, Some(5_000_000), Some("Continue, et termine par ton rapport.")).await.unwrap();
+    board.resume(&id, Some(3.0), Some("Continue, et termine par ton rapport.")).await.unwrap();
     board.wait(&id).await;
     let done = board.view(&id).unwrap();
     assert_eq!((done["state"].as_str(), done["runs"].as_i64()), (Some("done"), Some(2)));
@@ -256,9 +250,9 @@ async fn the_person_pauses_resumes_and_forgets_a_task() {
     let (fake, url) = gateway(1000, 10).await;
     let (config, agent) = setup(dir.path(), &url);
     let board = board(&config, None);
-    let job = board.create(&agent, "Long", "Fais-le.", 1_000_000, None).await.unwrap();
+    let job = board.create(&agent, "Long", "Fais-le.", 0.50, None).await.unwrap();
     let id = id_of(&job);
-    let again = board.create(&agent, "Autre", "Encore.", 1_000_000, None).await.unwrap_err();
+    let again = board.create(&agent, "Autre", "Encore.", 0.50, None).await.unwrap_err();
     assert!(again.to_string().contains("already"));
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     assert_eq!(board.pause(&id).await.unwrap()["state"], "stopping");
@@ -286,15 +280,15 @@ async fn an_agent_proposes_a_task_the_person_starts() {
     let result = jobs::propose_tool(Some(&board), &agent, &arguments).await.unwrap();
     assert_eq!(result["isError"], false);
     assert!(result["content"][0]["text"].as_str().unwrap().contains("Tâches de fond"));
-    assert!(result["content"][0]["text"].as_str().unwrap().contains("300,000"));
+    assert!(result["content"][0]["text"].as_str().unwrap().contains("363,636 tokens"), "small: 0.20 € at home");
     let proposed = board.list(None)[0].clone();
     assert_eq!((proposed["state"].as_str(), proposed["proposed_by"].as_str()), (Some("proposed"), Some("agent")));
-    assert_eq!(proposed["max_tokens"], 300_000);
+    assert_eq!((proposed["budget_eur"].as_f64(), proposed["max_tokens"].as_i64()), (Some(0.20), Some(363_636)));
     assert!(!fake.lock().unwrap().requests.iter().any(|(_, p, _)| p.ends_with("/v1/runs"))); // nothing spent before the go
     let first = told.lock().unwrap()[0].clone();
     assert_eq!((first.3.as_str(), first.1), ("Tâche de fond proposée", None));
     let id = id_of(&proposed);
-    board.start(&id, Some(500_000)).await.unwrap();
+    board.start(&id, Some(0.30)).await.unwrap();
     board.wait(&id).await;
     assert_eq!(board.view(&id).unwrap()["state"], "done");
 }
@@ -305,7 +299,7 @@ async fn after_a_restart_a_finished_run_is_read_from_its_conversation() {
     let (fake, url) = gateway(1000, 40_000).await;
     let (config, agent) = setup(dir.path(), &url);
     let first = board(&config, None);
-    let job = first.create(&agent, "Recherche", "Cherche.", 50_000_000, None).await.unwrap();
+    let job = first.create(&agent, "Recherche", "Cherche.", 50.0, None).await.unwrap();
     let id = id_of(&job);
     first.stop_followers(); // the bridge stops
     {
@@ -365,7 +359,7 @@ async fn the_routes_need_the_bridge_key_and_list_the_jobs() {
     assert_eq!(answer.status, 200);
     assert_eq!(
         answer.json(),
-        json!({"jobs": [], "budgets": {"small": 300_000, "medium": 1_000_000, "large": 3_000_000}})
+        json!({"jobs": [], "budgets_eur": {"small": 0.20, "medium": 0.50, "large": 1.50}, "budgets_tokens": {"small": 363_636, "medium": 909_090, "large": 2_727_272}})
     );
     let missing = app.request("POST", "/v1/jobs/t000000000000/pause", &[(k, &v)], None).await;
     assert_eq!((missing.status.as_u16(), missing.json()), (404, json!({"detail": "unknown job"})));
@@ -399,16 +393,15 @@ fn posted_runs(fake: &Fake) -> Vec<Value> {
 async fn a_finished_task_is_handed_back_to_the_conversation_it_came_from() {
     let dir = tempfile::tempdir().unwrap();
     let (fake, url) = gateway(3, 40_000).await;
-    fake.lock().unwrap().output = "J'ai comparé les écoles.\n\n- **Jules Ferry** : la plus proche\n- Pasteur : cantine bio\n\
+    fake.lock().unwrap().output =
+        "J'ai comparé les écoles.\n\n- **Jules Ferry** : la plus proche\n- Pasteur : cantine bio\n\
 - Curie : classes de 22"
-        .into();
+            .into();
     let (config, agent) = setup(dir.path(), &url);
     let told: Told = Default::default();
     let board = with_handback(&config, &told);
-    let job = board
-        .create_from(&agent, "Écoles", "Compare les écoles.", 1_000_000, None, "asked", Some("api_c"))
-        .await
-        .unwrap();
+    let job =
+        board.create_from(&agent, "Écoles", "Compare les écoles.", 0.50, None, "asked", Some("api_c")).await.unwrap();
     let id = id_of(&job);
     assert_eq!(job["from_session"], "api_c");
     board.wait(&id).await;
@@ -422,7 +415,9 @@ async fn a_finished_task_is_handed_back_to_the_conversation_it_came_from() {
     assert!(note.contains(bipbridge::handback::INSTRUCTIONS));
     let page = format!("/bipagents/pages/coach/rapport-{id}.html");
     assert!(note.starts_with("<!--bip:task\nYour background work « Écoles » is finished."), "{note}");
-    assert!(note.contains("- Pasteur : cantine bio") && note.contains(&format!("MEDIA:{page}")) && note.ends_with("-->"));
+    assert!(
+        note.contains("- Pasteur : cantine bio") && note.contains(&format!("MEDIA:{page}")) && note.ends_with("-->")
+    );
     // the report page, in the agent's pages
     let kept = dir.path().join(format!("data/agent-pages/coach/rapport-{id}.html"));
     let html = std::fs::read_to_string(kept).unwrap();
@@ -446,7 +441,7 @@ async fn a_task_ending_at_its_budget_is_still_handed_back_by_the_agent() {
     let (config, agent) = setup(dir.path(), &url);
     let told: Told = Default::default();
     let board = with_handback(&config, &told);
-    let job = board.create_from(&agent, "Écoles", "Compare.", 110_000, None, "asked", Some("api_c")).await.unwrap();
+    let job = board.create_from(&agent, "Écoles", "Compare.", 0.0605, None, "asked", Some("api_c")).await.unwrap();
     let id = id_of(&job);
     board.wait(&id).await;
     assert_eq!(posted_runs(&fake).len(), 2, "the agent's turn, past the budget");
@@ -454,7 +449,7 @@ async fn a_task_ending_at_its_budget_is_still_handed_back_by_the_agent() {
     assert_eq!((done["state"].as_str(), done["handed_back"]["by_agent"].as_bool()), (Some("done"), Some(true)));
     assert_eq!(done["handed_back"]["why"], Value::Null);
     // without a conversation to go back to: the push as before
-    let other = board.create(&agent, "Autre", "Encore.", 1_000_000, None).await.unwrap();
+    let other = board.create(&agent, "Autre", "Encore.", 0.50, None).await.unwrap();
     board.wait(&id_of(&other)).await;
     assert_eq!(told.lock().unwrap().len(), 1);
 }
@@ -471,7 +466,7 @@ async fn the_month_s_credit_used_stops_a_task_after_its_step_refuses_new_ones_an
     jobs.poll = 0.01;
     jobs.credit_file = Some(credit.clone());
     let board = Arc::new(jobs);
-    let job = board.create(&agent, "Long", "Fais-le.", 1_000_000, None).await.unwrap();
+    let job = board.create(&agent, "Long", "Fais-le.", 0.50, None).await.unwrap();
     let id = id_of(&job);
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     std::fs::write(&credit, json!({"state": "full", "resumes": 4.0e9}).to_string()).unwrap();
@@ -480,7 +475,7 @@ async fn the_month_s_credit_used_stops_a_task_after_its_step_refuses_new_ones_an
     assert_eq!((view["state"].as_str(), view["reason"].as_str()), (Some("paused"), Some("credit")));
     assert_eq!(fake.lock().unwrap().runs["r1"]["status"], "cancelled");
     // no new task meanwhile, said plainly
-    let refused = board.create(&agent, "Autre", "Encore.", 1_000_000, None).await.unwrap_err();
+    let refused = board.create(&agent, "Autre", "Encore.", 0.50, None).await.unwrap_err();
     assert!(refused.to_string().contains("credit is used up"), "{refused}");
     // a stale file (its new month come) pauses nothing; the credit back: the task goes on by itself
     std::fs::write(&credit, json!({"state": "full", "resumes": 1.0}).to_string()).unwrap();
@@ -521,7 +516,7 @@ async fn a_task_is_stopped_on_its_real_tokens_before_a_call_past_its_budget() {
         Jobs::new(SharedConfig::new(config.clone()), HermesClient::new(reqwest::Client::new()), Some(hub), None, None);
     board.poll = 0.05;
     let board = Arc::new(board);
-    let job = board.create(&agent, "Analyse interview", "Résume l'interview.", 100_000, None).await.unwrap();
+    let job = board.create(&agent, "Analyse interview", "Résume l'interview.", 0.05, None).await.unwrap();
     let id = id_of(&job);
     tokio::time::timeout(std::time::Duration::from_secs(20), board.wait(&id)).await.expect("the task stopped");
     let paused = board.view(&id).unwrap();
@@ -544,7 +539,7 @@ async fn without_real_tokens_a_run_is_counted_at_its_end() {
     let (fake, url) = gateway(4, 0).await;
     let (config, agent) = setup(dir.path(), &url);
     let board = board(&config, None);
-    let job = board.create(&agent, "Analyse interview", "Résume l'interview.", 50_000, None).await.unwrap();
+    let job = board.create(&agent, "Analyse interview", "Résume l'interview.", 0.025, None).await.unwrap();
     board.wait(&id_of(&job)).await;
     let done = board.view(&id_of(&job)).unwrap();
     assert_eq!(done["state"], "done");
@@ -580,8 +575,57 @@ async fn every_background_turn_keeps_the_conversations_system_prompt() {
     }
     // the same request a background task sends through its board
     let board = board(&config, None);
-    let job = board.create(&agent, "Écoles", "Compare.", 1_000_000, None).await.unwrap();
+    let job = board.create(&agent, "Écoles", "Compare.", 0.50, None).await.unwrap();
     board.wait(&id_of(&job)).await;
     let task = posted_runs(&fake).pop().unwrap();
     assert!(task.get("instructions").is_none(), "{task}");
+}
+
+/// Alex, 2026-11-04 (offer place): a task stopped at « 5 % of the month », he gave it more, and his credit still
+/// showed about 97 % left. Its budget counted every prompt token at the full input price, while the router bills the
+/// cache reads (nearly all of a task's prompt: its conversation read again at each step) at a fifth of it. Its euros
+/// now are the router's bill for its calls: fresh input, cache reads and output at the model's prices, the numbers
+/// the month's credit is metered with.
+#[tokio::test]
+async fn a_task_counts_its_euros_as_the_month_s_credit_does_cache_reads_included() {
+    let usage = |call: u32, input: i64, total_in: i64, total_cached: i64, total_out: i64| {
+        json!({"event": "model.usage", "call": call, "input_tokens": input, "output_tokens": 300,
+               "totals": {"input_tokens": total_in, "output_tokens": total_out, "cache_read_tokens": total_cached}})
+    };
+    let step = |file: &str| json!({"event": "tool.started", "tool": "read_file", "preview": file});
+    let dir = tempfile::tempdir().unwrap();
+    let (fake, url) = gateway(10_000, 0).await;
+    fake.lock().unwrap().events = vec![
+        usage(1, 95_000, 95_000, 90_000, 900),
+        step("a.md"),
+        usage(2, 300_000, 400_000, 380_000, 3_000),
+        step("b.md"),
+    ];
+    let (mut config, agent) = setup(dir.path(), &url);
+    // GLM-5.3 Flash at EUrouter, as the guichet lists it: 0.10 € fresh, 0.02 € from the cache, 0.35 € out
+    (config.jobs.price_in, config.jobs.price_cached, config.jobs.price_out) = (0.10, 0.02, 0.35);
+    let hub = Arc::new(RunHub::new(HermesClient::new(reqwest::Client::new()), None, 7200, None));
+    let mut board =
+        Jobs::new(SharedConfig::new(config.clone()), HermesClient::new(reqwest::Client::new()), Some(hub), None, None);
+    board.poll = 0.05;
+    let board = Arc::new(board);
+    let job = board.create(&agent, "Connecteur", "Installe le connecteur.", 0.015, None).await.unwrap();
+    let id = id_of(&job);
+    tokio::time::timeout(std::time::Duration::from_secs(20), board.wait(&id)).await.expect("the task stopped");
+    let paused = board.view(&id).unwrap();
+    // its first call (95k read, 90k of it from the cache) cost 0.0026 €: the old count said 0.048 €, three times
+    // this budget, and stopped it there; it went on to its second call (0.0107 €), whose next one would pass 0.015 €
+    assert_eq!((paused["state"].as_str(), paused["reason"].as_str()), (Some("paused"), Some("budget")), "{paused:?}");
+    assert_eq!(paused["tokens"], json!({"input": 400_000, "output": 3_000, "cached": 380_000}));
+    let bill = (20_000.0 * 0.10 + 380_000.0 * 0.02 + 3_000.0 * 0.35) / 1e6;
+    assert!((paused["eur"].as_f64().unwrap() - bill).abs() < 1e-6, "{} vs {bill}", paused["eur"]);
+    assert_eq!(paused["budget_eur"], json!(0.015));
+    assert!(!paused.contains_key("prices"), "its prices stay the bridge's");
+    // « Continuer (+0,20 €) »: its new total, at once
+    fake.lock().unwrap().events = vec![];
+    fake.lock().unwrap().rounds = 2;
+    let resumed = board.resume(&id, Some(0.215), None).await.unwrap();
+    assert_eq!((resumed["state"].as_str(), resumed["budget_eur"].as_f64()), (Some("running"), Some(0.215)));
+    board.wait(&id).await;
+    assert_eq!(board.view(&id).unwrap()["state"], "done");
 }

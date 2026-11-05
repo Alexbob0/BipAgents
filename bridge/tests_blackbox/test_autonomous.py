@@ -69,7 +69,7 @@ def test_one_list_of_what_the_agents_do_on_their_own(bridges, fakes):
     body = answer.json()
     assert body["groups"] == ["schedule", "on_change", "now"]
     assert "unreachable" not in body   # the routines are the bridge's: none « as last seen »
-    assert body["budgets"]["medium"] == 1_000_000
+    assert body["budgets_eur"]["medium"] == 0.50 and body["budgets_tokens"]["medium"] == 909_090
     items = {i["id"]: i for i in body["items"]}
     assert set(items) == {"routine:wellness:j1", "routine:wellness:j2", "task:t0000000000a1", "task:t0000000000a3",
                           "connector:coach:c1"}

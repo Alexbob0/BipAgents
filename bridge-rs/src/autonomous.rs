@@ -15,7 +15,7 @@
 //! hours, minutes, at, text}: the apps put it in their language; `text` is the French one), `state` (`active`,
 //! `paused`, `waiting` for the person, `running`, `done`), `raw_state`, `last_run` ({at, ok, error} or null),
 //! `next_run` (Unix seconds or null), `cost` (null for a routine; `{ai: false}` for a connector's schedule; a task's or
-//! scan's `tokens`, `max_tokens`, `eur`, `budget_eur`, which the apps turn into a share of the month's credit on the
+//! scan's `tokens`, `max_tokens`, `eur`, `budget_eur` (a task's euros as the credit counts them, task_cost.rs), which the apps turn into a share of the month's credit on the
 //! offer, tokens on a self-install, as « Tâches de fond » does), `actions` and `main_action`.
 //!
 //! The actions go through the existing routes, by kind:
@@ -32,7 +32,7 @@
 //!                 `notify`, `last_check`, `last_change` (Unix seconds or null), `broken` (« en panne »), `summary`
 //!                 (what it saw last, plain words), `wakes`, `pending`, `description`, `icon`
 //!
-//!     GET  /v1/autonomous[?agent=]    {items, budgets}
+//!     GET  /v1/autonomous[?agent=]    {items, budgets_eur, budgets_tokens}
 //!
 //! No Python counterpart.
 
@@ -42,7 +42,7 @@ use axum::response::Response;
 use axum::routing::{get, post};
 use axum::Router;
 use chrono::TimeZone;
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 
 use crate::app::AppState;
 use crate::config::AgentConfig;
@@ -550,8 +550,8 @@ async fn list_route(State(state): State<AppState>, q: web::QueryMap) -> ApiResul
         _ => None,
     };
     let items = listing(&state, only.as_deref()).await;
-    let budgets: Map<String, Value> = crate::jobs::BUDGETS.iter().map(|(k, v)| (k.to_string(), json!(v))).collect();
-    Ok(web::ok(json!({"items": items, "budgets": budgets, "groups": GROUPS})))
+    let (euros, tokens) = crate::jobs::budgets(&state.config());
+    Ok(web::ok(json!({"items": items, "budgets_eur": euros, "budgets_tokens": tokens, "groups": GROUPS})))
 }
 
 /// A connector's scheduled call now (« Lancer maintenant »), in the background: its last run says how it went.

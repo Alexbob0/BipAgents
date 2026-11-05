@@ -1075,7 +1075,7 @@ pub fn tools(config: &Config, agent: &AgentConfig) -> Vec<Value> {
 }
 
 /// The guichet: this place's backup address's origin when it is one of the offer, else Kerfy's.
-fn guichet_url(config: &Config) -> String {
+pub(crate) fn guichet_url(config: &Config) -> String {
     let path = PathBuf::from(py::expanduser("~")).join(".config").join("bipagents").join("backup.json");
     let _ = config;
     std::fs::read_to_string(path)

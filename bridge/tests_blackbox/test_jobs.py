@@ -15,7 +15,7 @@ from bbkit.mcp import call, give_token, text_of
 from bbkit.servers import wait_until
 
 TOKEN = "f" * 64
-TASK = {"title": "Écoles du quartier", "prompt": "Compare les trois écoles près de chez nous.", "max_tokens": 1_000_000,
+TASK = {"title": "Écoles du quartier", "prompt": "Compare les trois écoles près de chez nous.", "budget_eur": 0.50,
         "template": "research"}
 NOW = "2026-10-21T08:00:00.000Z"
 
@@ -53,8 +53,8 @@ def test_a_task_runs_in_its_own_conversation_and_ends_with_its_report(bridges, f
     job = started.json()
     assert re.fullmatch(r"t[0-9a-f]{12}", job["id"]) and job["state"] == "running" and job["session_id"] == "api_s1"
     assert set(job) == {"id", "kind", "agent", "title", "prompt", "template", "state", "reason", "error", "created",
-                        "started", "finished", "tokens", "max_tokens", "session_id", "report", "proposed_by", "runs",
-                        "from_session"}
+                        "started", "finished", "tokens", "budget_eur", "eur", "max_tokens", "session_id", "report",
+                        "proposed_by", "runs", "from_session"}
     assert (job["kind"], job["proposed_by"], job["runs"], job["template"]) == ("task", "person", 1, "research")
     assert fakes.hermes.created == [("", {"title": "🧩 Écoles du quartier"})]
     run = fakes.hermes.seen("/v1/runs", "POST")[0].json()
@@ -77,13 +77,15 @@ def test_a_task_runs_in_its_own_conversation_and_ends_with_its_report(bridges, f
     assert done["report"].startswith("Rapport") and done["finished"]
     # The run's own usage at the end, not the counters' guess.
     assert done["tokens"] == {"input": 100_000, "output": 5_000, "cached": 0}
+    assert done["eur"] == pytest.approx(0.0575)   # at the install's prices (0.50 / 1.50 € per million)
     assert wait_until(lambda: fakes.apns.pushes())
     payload = fakes.apns.payloads()[0]
     assert payload["aps"]["alert"]["body"] == "notif.task" and payload["r"] == job["id"]
     assert payload["t"] == "task" and in_session(bridge, payload, "api_s1")
     assert fakes.apns.pushes()[0].header("apns-collapse-id") == f"job:{job['id']}"
     listed = bridge.get("/v1/jobs", headers=AUTH).json()
-    assert listed["budgets"] == {"small": 300_000, "medium": 1_000_000, "large": 3_000_000}
+    assert listed["budgets_eur"] == {"small": 0.20, "medium": 0.50, "large": 1.50}
+    assert listed["budgets_tokens"] == {"small": 363_636, "medium": 909_090, "large": 2_727_272}
     assert "base" not in listed["jobs"][0] and "run_id" not in listed["jobs"][0]
 
 
@@ -101,7 +103,7 @@ def test_a_task_stops_at_its_budget_and_goes_on_with_a_bigger_one(bridges, fakes
     bridge = with_device(bridges)
     french_place(bridge)   # the instructions and the push in French
     fakes.hermes.rounds, fakes.hermes.step = 50, 60_000
-    job = bridge.post("/v1/agents/wellness/jobs", headers=AUTH, json={**TASK, "max_tokens": 100_000}).json()
+    job = bridge.post("/v1/agents/wellness/jobs", headers=AUTH, json={**TASK, "budget_eur": 0.05}).json()
     assert "This is a background task the person gave you from the app (« Tâches de fond »)" in \
         fakes.hermes.started["r1"]["input"]
     assert wait_until(lambda: view(bridge, job["id"])["state"] == "paused", timeout=45)
@@ -114,8 +116,8 @@ def test_a_task_stops_at_its_budget_and_goes_on_with_a_bigger_one(bridges, fakes
     refused = bridge.post(f"/v1/jobs/{job['id']}/resume", headers=AUTH)
     assert refused.status_code == 409 and refused.json() == {"detail": "the budget is used up: give a bigger one"}
     resumed = bridge.post(f"/v1/jobs/{job['id']}/resume", headers=AUTH,
-                          json={"max_tokens": 5_000_000, "message": "Continue, et termine par ton rapport."}).json()
-    assert resumed["state"] == "running" and resumed["runs"] == 2 and resumed["max_tokens"] == 5_000_000
+                          json={"budget_eur": 3.0, "message": "Continue, et termine par ton rapport."}).json()
+    assert resumed["state"] == "running" and resumed["runs"] == 2 and resumed["budget_eur"] == 3.0
     assert words(fakes.hermes.started["r2"]["input"]) == "Continue, et termine par ton rapport."
     assert len(fakes.hermes.created) == 1                      # the same conversation
     gone = bridge.delete(f"/v1/jobs/{job['id']}", headers=AUTH)
@@ -146,16 +148,16 @@ def test_an_agent_proposes_a_task_the_person_starts(bridges, fakes):
     give_token(bridge)
     result = call(bridge, "propose_task", {"title": "Dossier location", "prompt": "Prépare le dossier.", "budget": "small"})
     assert not result["isError"] and "« Background tasks »" in text_of(result)   # the agent's language: English
-    assert text_of(result).startswith("Proposed (budget about 300,000 tokens).")
+    assert text_of(result).startswith("Proposed (budget about 363,636 tokens).")   # « small », 0.20 €, at home
     proposed = bridge.get("/v1/jobs", headers=AUTH).json()["jobs"][0]
-    assert proposed["state"] == "proposed" and proposed["proposed_by"] == "agent" and proposed["max_tokens"] == 300_000
+    assert proposed["state"] == "proposed" and proposed["proposed_by"] == "agent" and proposed["budget_eur"] == 0.20
     assert not fakes.hermes.seen("/v1/runs")                  # nothing spent before the go
     assert wait_until(lambda: fakes.apns.pushes())
     payload = fakes.apns.payloads()[0]
     assert payload["aps"]["alert"]["body"] == "notif.task" and "c" not in payload
     assert payload["t"] == "task" and payload["r"] == proposed["id"]
-    started = bridge.post(f"/v1/jobs/{proposed['id']}/start", headers=AUTH, json={"max_tokens": 500_000})
-    assert started.json()["state"] == "running" and started.json()["max_tokens"] == 500_000
+    started = bridge.post(f"/v1/jobs/{proposed['id']}/start", headers=AUTH, json={"budget_eur": 0.30})
+    assert started.json()["state"] == "running" and started.json()["budget_eur"] == 0.30
     again = bridge.post(f"/v1/jobs/{proposed['id']}/start", headers=AUTH)
     assert again.status_code == 409 and again.json() == {"detail": "this task isn't waiting to start"}
     for _ in range(5):
@@ -202,15 +204,14 @@ def test_mail_scans_are_listed_and_controlled_with_the_tasks(bridges):
 def test_the_routes_need_the_bridge_key_and_check_what_they_get(bridge, fakes):
     assert bridge.get("/v1/jobs").status_code == 401
     answer = bridge.get("/v1/jobs", headers=AUTH)
-    assert answer.status_code == 200 and answer.json() == {"jobs": [], "budgets": {"small": 300_000, "medium": 1_000_000,
-                                                                                   "large": 3_000_000}}
+    assert answer.status_code == 200 and answer.json()["jobs"] == [] and answer.json()["budgets_eur"]["small"] == 0.20
     missing = bridge.post("/v1/jobs/t000000000000/pause", headers=AUTH)
     assert missing.status_code == 404 and missing.json() == {"detail": "unknown job"}
     nothing = bridge.post("/v1/jobs/nonsense/resume", headers=AUTH)
     assert nothing.status_code == 409 and nothing.json() == {"detail": "nothing to resume"}
     assert bridge.delete("/v1/jobs/t000000000000", headers=AUTH).status_code == 404
     assert bridge.post("/v1/agents/ghost/jobs", headers=AUTH, json=TASK).status_code == 404
-    assert bridge.post("/v1/agents/wellness/jobs", headers=AUTH, json={**TASK, "max_tokens": 10}).status_code == 422
+    assert bridge.post("/v1/agents/wellness/jobs", headers=AUTH, json={**TASK, "budget_eur": 0.001}).status_code == 422
     fakes.hermes.keys[""] = "other"
     refused = bridge.post("/v1/agents/wellness/jobs", headers=AUTH, json=TASK)
     assert refused.status_code == 409 and refused.json() == {"detail": "the agent refused the task (401)"}
@@ -234,3 +235,39 @@ def test_a_running_task_says_what_it_does_now_and_jobs_list_by_agent(bridges, fa
     missing = bridge.get("/v1/jobs?agent=nobody", headers=AUTH)
     assert missing.status_code == 404 and missing.json() == {"detail": "unknown agent"}
     assert bridge.delete(f"/v1/jobs/{job['id']}", headers=AUTH).status_code == 200
+
+
+def test_a_task_counts_its_euros_as_the_month_s_credit_does(bridges, fakes):
+    """Alex, 2026-11-04 (offer place): a task paused at « 5 % of the month », his credit still about 97 % left
+    afterwards. Its budget counted every prompt token at the full input price; the router bills the cache reads (most
+    of a task's prompt) at a fifth of it, and the month's credit is the router's count. Now: fresh input, cache reads
+    and output at the model's prices (here `[jobs] price_*`, the guichet's list on an offer place, task_cost.rs), the
+    hub stopping the run before a call past its euros; « Continuer (+0,20 €) » gives it more at once."""
+    from bbkit.common import sse
+
+    bridge = bridges.new()
+    bridge.config["jobs"] = {"price_in": 0.10, "price_cached": 0.02, "price_out": 0.35}   # GLM-5.3 Flash at EUrouter
+    bridge.start()
+    fakes.hermes.rounds = 1000
+
+    def usage(call, last, total_in, cached, out):
+        return sse("model.usage", run_id="r1", call=call, input_tokens=last, output_tokens=300,
+                   totals={"input_tokens": total_in, "output_tokens": out, "cache_read_tokens": cached})
+
+    fakes.hermes.runs["r1"] = [usage(1, 95_000, 95_000, 90_000, 900),
+                               sse("tool.started", run_id="r1", tool="read_file", preview="a.md"),
+                               usage(2, 300_000, 400_000, 380_000, 3_000),
+                               sse("tool.started", run_id="r1", tool="read_file", preview="b.md")]
+    job = bridge.post("/v1/agents/wellness/jobs", headers=AUTH,
+                      json={**TASK, "title": "Connecteur", "budget_eur": 0.015}).json()
+    assert wait_until(lambda: view(bridge, job["id"])["state"] == "paused", timeout=45)
+    paused = view(bridge, job["id"])
+    # counted in full, its first call alone (95.9k tokens) was 0.048 € at the old prices, three times this budget;
+    # billed, it is 0.0026 €: it went on to its second call, whose next one would pass 0.015 €
+    assert paused["reason"] == "budget" and fakes.hermes.seen("/v1/runs/r1/stop", "POST")
+    assert paused["tokens"] == {"input": 400_000, "output": 3_000, "cached": 380_000}
+    bill = (20_000 * 0.10 + 380_000 * 0.02 + 3_000 * 0.35) / 1e6
+    assert paused["eur"] == pytest.approx(bill, abs=1e-6) and paused["budget_eur"] == 0.015
+    resumed = bridge.post(f"/v1/jobs/{job['id']}/resume", headers=AUTH, json={"budget_eur": 0.215}).json()
+    assert resumed["state"] == "running" and resumed["budget_eur"] == 0.215 and resumed["runs"] == 2
+    assert bridge.delete(f"/v1/jobs/{job['id']}", headers=AUTH).json() == {"ok": True}
