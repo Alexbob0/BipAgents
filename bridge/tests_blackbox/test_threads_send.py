@@ -277,11 +277,15 @@ def test_a_phone_holding_the_sent_item_catches_up_to_one_message(bridges, fakes)
     stored(fakes, user("<!--bip:now lundi 9 h-->\n\nLe train de 9 h ?"), agent("Voie 4."))
     gate.set()
     assert wait_until(lambda: page(bridge, thread)["items"][-1]["text"] == "Voie 4.", timeout=15)
-    caught = page(bridge, thread, after=held[-1]["cursor"])["items"]
+    answer = page(bridge, thread, after=held[-1]["cursor"])
+    caught = answer["items"]
     # what the bridge gives after the `s_` cursor: the stored row (same client_id) and the reply, nothing else
     assert [(i["role"], i["text"], i.get("client_id")) for i in caught] == [
         ("person", "Le train de 9 h ?", client), ("agent", "Voie 4.", None)]
     assert caught[0]["id"].startswith("m_") and "sending" not in caught[0]
+    # and the item it replaces, named: the phones drop it without knowing about `s_` items (thin apps, 5/11)
+    assert answer["replaced"] == [f"s_{client}"]
+    assert "replaced" not in page(bridge, thread, after=caught[-1]["cursor"])
     # the latest page (a phone opening the thread again) has the message once
     latest = page(bridge, thread)["items"]
     assert [i["id"] for i in latest if i.get("client_id") == client] == [caught[0]["id"]]

@@ -8,6 +8,8 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
+use chrono::NaiveDate;
+use chrono_tz::Tz;
 use regex::Regex;
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
@@ -593,6 +595,9 @@ pub fn merge(items: Vec<Item>, mut boite: Vec<Item>) -> Vec<Item> {
     out
 }
 
+/// How long a stored message names the `s_` item it replaces (`Page::replaced`): its send's two days, and a day more.
+const REPLACED_SECONDS: f64 = 3.0 * 86_400.0;
+
 /// One page of a timeline.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Page {
@@ -600,13 +605,15 @@ pub struct Page {
     pub more_before: bool,
     pub more_after: bool,
     pub anchor: Option<String>,
+    /// Where the page starts among the thread's items (its days: `with_days`).
+    pub start: usize,
 }
 
 impl Page {
     /// The answer of `GET /v1/threads/{thread}/timeline` (§6.2): a conversation's or a room's.
     pub fn answer(&self, thread: Value, version: i64, pending: Value, debug: bool) -> Value {
         let id = thread["id"].as_str().unwrap_or_default().to_string();
-        json!({
+        let mut out = json!({
             "thread": thread,
             "items": self.items.iter().map(|i| i.to_json(&id, debug)).collect::<Vec<_>>(),
             "first": self.items.first().map(Item::cursor),
@@ -616,8 +623,77 @@ impl Page {
             "anchor": self.anchor,
             "version": version,
             "pending": pending,
-        })
+        });
+        let replaced = self.replaced();
+        if !replaced.is_empty() {
+            out["replaced"] = json!(replaced);
+        }
+        out
     }
+
+    /// The items a phone may still hold that this page's rows replace: a message sent from a phone is the item
+    /// `s_<client_id>` until Hermes stores it (send.rs), then its stored row with that `client_id`. A window that read
+    /// the `s_` item while the turn ran, then the stored row after its cursor, drew the message twice (iPhone 4/11;
+    /// Android never dropped it): the apps remove what `replaced` names, without knowing why. Only rows of the last few
+    /// days: an `s_` item lives two days at most (`SENDS_KEPT_SECONDS`).
+    fn replaced(&self) -> Vec<String> {
+        let since = chrono::Utc::now().timestamp() as f64 - REPLACED_SECONDS;
+        self.items
+            .iter()
+            .filter(|i| i.kind() == "message" && !i.body.contains_key("sending") && i.at >= since)
+            .filter_map(|i| i.body.get("client_id").and_then(Value::as_str))
+            .map(|c| format!("s_{c}"))
+            .collect()
+    }
+
+    /// Each page item that draws something gets `day` (its date where the person is, `YYYY-MM-DD`), the first one of
+    /// its day in the whole thread `new_day: true` too: the apps put a day divider over it (and over the first dated
+    /// row they show). `days`: `days(…)` of the items the page was cut from.
+    pub fn with_days(mut self, days: &[Option<(NaiveDate, bool)>]) -> Self {
+        for (k, item) in self.items.iter_mut().enumerate() {
+            if let Some(Some((day, new))) = days.get(self.start + k) {
+                item.body.insert("day".into(), json!(day.format("%Y-%m-%d").to_string()));
+                if *new {
+                    item.body.insert("new_day".into(), json!(true));
+                }
+            }
+        }
+        self
+    }
+}
+
+/// Whether an item draws something in the apps: words, a file, reasoning, a tool card, a notice, a Boîte message, an
+/// answered card, a call. A message with nothing left to show (its words were notes) draws nothing.
+pub fn draws(item: &Item) -> bool {
+    match item.kind() {
+        "message" => {
+            !item.text().trim().is_empty()
+                || item.body.get("attachments").and_then(Value::as_array).is_some_and(|a| !a.is_empty())
+                || item.body.get("reasoning").and_then(Value::as_str).is_some_and(|r| !r.trim().is_empty())
+        }
+        "notice" => item.body.get("notice").and_then(|n| n.get("text")).and_then(Value::as_str).is_some_and(|t| !t.is_empty()),
+        "tool" | "boite" | "approval" | "call" => true,
+        _ => false,
+    }
+}
+
+/// The day of each item of a thread where the person is (`zone`), and whether it is the first of that day: None for an
+/// item that draws nothing or has no time. The day dividers are decided here, once for every app (5/11: the iPhone drew
+/// dividers over rows that draw nothing, « Dimanche 1 novembre »… with nothing under them; Android still did).
+pub fn days(items: &[Item], zone: Tz) -> Vec<Option<(NaiveDate, bool)>> {
+    let mut previous: Option<NaiveDate> = None;
+    items
+        .iter()
+        .map(|item| {
+            if item.at <= 0.0 || !draws(item) {
+                return None;
+            }
+            let day = chrono::DateTime::from_timestamp(item.at.floor() as i64, 0)?.with_timezone(&zone).date_naive();
+            let new = previous != Some(day);
+            previous = Some(day);
+            Some((day, new))
+        })
+        .collect()
 }
 
 /// What a request asks of the timeline.
@@ -666,7 +742,7 @@ pub fn page(items: Vec<Item>, want: &Want) -> Page {
     let more_before = start > 0;
     let more_after = end < n;
     let items = items.into_iter().skip(start).take(end.saturating_sub(start)).collect();
-    Page { items, more_before, more_after, anchor }
+    Page { items, more_before, more_after, anchor, start }
 }
 
 #[cfg(test)]
@@ -1046,5 +1122,72 @@ not from your person: you have read the page 5 times\n[/OUT-OF-BAND USER MESSAGE
         let gone = cursor_of((all[3].pos.0, all[3].pos.1, all[3].pos.2 + 50));
         let after_gone = page(all.clone(), &Want { limit: 50, after: Some(gone), ..Default::default() });
         assert_eq!(after_gone.items.first().unwrap().id, "o_a");
+    }
+
+    fn said(id: &str, n: i64, at: f64, body: Value) -> Item {
+        Item {
+            id: id.into(),
+            pos: (0, n, 0),
+            at,
+            turn: String::new(),
+            segment: String::new(),
+            row: n,
+            body: body.as_object().unwrap().clone(),
+        }
+    }
+
+    /// 5/11 (Alex, Wellness): « Dimanche 1 novembre »… « Hier » with nothing under them. A day is the person's (their
+    /// zone, not the server's), opened by the first row that draws something; one with nothing to show opens none.
+    #[test]
+    fn days_are_opened_by_rows_that_draw_something_where_the_person_is() {
+        let paris: Tz = "Europe/Paris".parse().unwrap();
+        // 2026-11-01 22:30 UTC = 23:30 in Paris (1/11); 23:30 UTC = 00:30 in Paris (2/11)
+        let sun = 1_793_572_200.0;
+        let all = vec![
+            said("m_1", 1, sun, json!({"kind": "message", "role": "person", "text": "Bonsoir"})),
+            said("m_2", 2, sun + 3600.0, json!({"kind": "message", "role": "agent", "text": "  "})),
+            said("m_3", 3, sun + 3700.0, json!({"kind": "message", "role": "agent", "text": "", "reasoning": "hm"})),
+            said("m_4", 4, sun + 3800.0, json!({"kind": "message", "role": "agent", "text": "Bonne nuit"})),
+            said("m_5", 5, sun + 2.0 * 86_400.0, json!({"kind": "message", "role": "person", "text": ""})),
+            said("m_6", 6, sun + 2.0 * 86_400.0 + 60.0, json!({"kind": "tool", "tool": {"name": "x"}})),
+            said("m_7", 7, 0.0, json!({"kind": "message", "role": "person", "text": "sans heure"})),
+        ];
+        let days = days(&all, paris);
+        let day = |s: &str| NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap();
+        assert_eq!(days[0], Some((day("2026-11-01"), true)));
+        assert_eq!(days[1], None, "blank words draw nothing");
+        assert_eq!(days[2], Some((day("2026-11-02"), true)), "reasoning draws, after midnight in Paris");
+        assert_eq!(days[3], Some((day("2026-11-02"), false)));
+        assert_eq!(days[4], None, "a message with nothing to show");
+        assert_eq!(days[5], Some((day("2026-11-03"), true)));
+        assert_eq!(days[6], None, "no time, no day");
+        // the same rows in UTC: still the 1st at 23:30 UTC
+        assert_eq!(super::days(&all, Tz::UTC)[2], Some((day("2026-11-01"), false)));
+        // a page that starts inside a day: its rows have the day, the divider stays where the day began
+        let p = page(all.clone(), &Want { limit: 4, ..Default::default() }).with_days(&days);
+        let json = p.answer(json!({"id": "t_1"}), 1, Value::Null, false);
+        let items = json["items"].as_array().unwrap();
+        assert_eq!(items[0]["id"], "m_4");
+        assert_eq!(items[0]["day"], "2026-11-02");
+        assert!(items[0].get("new_day").is_none());
+        assert!(items[1].get("day").is_none());
+        assert_eq!(items[2]["new_day"], true);
+    }
+
+    /// 4/11 (iPhone): the message sent showed twice, its `s_` item and its stored row. The page names the `s_` items
+    /// its stored rows replace; a message still being sent replaces nothing; an old one is not named any more.
+    #[test]
+    fn a_stored_sent_message_names_the_item_it_replaces() {
+        let now = chrono::Utc::now().timestamp() as f64;
+        let all = vec![
+            said("m_old", 1, now - 5.0 * 86_400.0, json!({"kind": "message", "role": "person", "text": "a", "client_id": "C0"})),
+            said("m_1", 2, now - 60.0, json!({"kind": "message", "role": "person", "text": "b", "client_id": "C1"})),
+            said("m_2", 3, now - 50.0, json!({"kind": "message", "role": "agent", "text": "ok"})),
+            said("s_C2", 4, now, json!({"kind": "message", "role": "person", "text": "c", "client_id": "C2", "sending": true})),
+        ];
+        let json = page(all, &Want { limit: 50, ..Default::default() }).answer(json!({"id": "t_1"}), 1, Value::Null, false);
+        assert_eq!(json["replaced"], json!(["s_C1"]));
+        let none = page(vec![], &Want { limit: 50, ..Default::default() }).answer(json!({"id": "t_1"}), 1, Value::Null, false);
+        assert!(none.get("replaced").is_none());
     }
 }

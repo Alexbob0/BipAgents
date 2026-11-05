@@ -253,6 +253,13 @@ Answer:
   cursor of what they have and ask `after=` on each `thread` event. An item that moved or vanished (a restore, a
   rewind) still pages correctly: the cursor's position is used when its item is gone.
 - `anchor` is the `around` item when it was found (else null and the latest page is given).
+- `replaced` (only when not empty): ids a phone may hold that this page's rows replace. Today the `s_<client_id>` item
+  of a message sent from a phone, once its stored row (same `client_id`, last three days) is in the page. The apps
+  remove those ids from their window before merging, nothing else (4/11: the message showed twice).
+- `tz` (query, optional): the phone's IANA zone. Each item that draws something gets `day` (`YYYY-MM-DD` there; else
+  in the person's zone, `dates`), and the first such item of each day in the whole thread `new_day: true`. The apps
+  draw a day divider over a `new_day` row and over the first row with a `day` they show; a row without `day` (it
+  draws nothing, or the phone made it) never gets one (5/11: empty « Dimanche 1 novembre » dividers).
 - `pending` is what is not a stored message yet: the run going on (attach to `/v1/runs/{run_id}/events` for its live
   text, as today), the agent's queue for this thread (msg_queue.rs, each item with its `client_id`), the approvals and
   the questions waiting (the run hub's). Each card carries `id`: the item it becomes once answered (`a_…`, also
@@ -265,6 +272,7 @@ Answer:
 
 Every item has `id`, `kind`, `at` (ISO 8601 UTC), `cursor`, `turn` (the id of the person's message that started this
 turn; the first item's own id before any) and `segment` (Hermes session id, for the transition and debugging only).
+An item that draws something also has `day`, and `new_day` when it opens its day (§6.2, `tz`).
 
 | `kind` | Fields | From |
 |---|---|---|
