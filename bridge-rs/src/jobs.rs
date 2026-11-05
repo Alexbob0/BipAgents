@@ -1306,6 +1306,15 @@ fn thousands(n: i64) -> String {
     }
 }
 
+/// A task's prompt shorter than this holds no task (`propose_tool`).
+const MIN_PROMPT: usize = 8;
+
+/// `propose_task` called with no task in it: the tools such a call was meant for, by name.
+const NOT_A_TASK: &str = "Nothing proposed: prompt must say the whole task (the goal, what the person said, what to \
+make). If you meant something else, call that tool instead: a password, API key or code the person must give → \
+mcp__bipagents_connectors__ask_secret; the sites a connector needs → mcp__bipagents_files__sandbox_sites_request; a \
+connector you built → mcp__bipagents_connectors__connector_register (behind the tool search: tool_call with its name).";
+
 /// The `propose_task` MCP tool (agent_tools.rs). Err: what Python lets through (a task file that cannot be written).
 pub async fn propose_tool(jobs: Option<&Jobs>, agent: &AgentConfig, arguments: &Dict) -> anyhow::Result<Dict> {
     let Some(jobs) = jobs else {
@@ -1319,6 +1328,12 @@ pub async fn propose_tool(jobs: Option<&Jobs>, agent: &AgentConfig, arguments: &
         _ => "medium".into(),
     };
     let prompt = tk::str_or_empty(arguments.get("prompt"));
+    if prompt.trim().chars().count() < MIN_PROMPT {
+        // no task in it: a call meant for another tool (5/11, token lab, GLM-5.3 Flash: asked for a connector, the
+        // model ended ask_secret / sandbox_sites_request, then behind the search, on this in-view name with
+        // {"prompt": "No", "title": "x"}; tasks « x » were proposed to the person and the turn went round in circles)
+        return Ok(tool_text(NOT_A_TASK, true));
+    }
     let from = jobs.hub.as_ref().and_then(|hub| hub.asking_session(&agent.name));
     let title = tk::str_or_empty(arguments.get("title"));
     match jobs.propose_from(agent, &title, tk::head(&prompt, 8000), &budget, from.as_deref()).await {

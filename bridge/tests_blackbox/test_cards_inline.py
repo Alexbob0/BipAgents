@@ -150,3 +150,40 @@ def test_a_card_made_before_placements_or_waiting_for_days_stays_in_the_boite_on
     assert sorted(c["run_id"] for c in mail_cards(bridge)) == sorted(f"bip-mail-{c['id']}" for c in (old, stale))
     assert mail_pending(bridge, main)[1] == []
     assert f"bip-mail-{old['id']}" not in json.loads(places.read_text())
+
+
+def test_a_site_asked_again_on_another_day_shows_in_the_turn_that_asks_it(bridges, fakes):
+    """A sites card left waiting since another day (Garmin's « 4 sites », 4/11), asked again by the agent in today's
+    turn: shown in today's conversation while the turn waits, not only in the old one and the Boîte."""
+    bridge, hub, _ = isolated(bridges, fakes, agents=("vie", "wellness"))
+    started(bridge, hub, ["vie", "wellness"])
+    give_tokens(bridge, ["vie"])
+    text, error = sandbox_call(bridge, "vie", "sandbox_sites_request", host="connect.garmin.example", reason="Garmin")
+    assert not error, text
+    [card] = site_cards(bridge, "vie")
+    main = bridge.get("/v1/threads/main", headers=AUTH, params={"agent": "vie"}).json()["id"]
+    assert wait_until(lambda: waiting_in(bridge, main, "vie", "bip-site-"), timeout=10)   # no turn: the main one
+    # two days later, still waiting
+    bridge.stop()
+    store = bridge.state_dir / "sandbox-sites.json"
+    kept = json.loads(store.read_text())
+    for p in kept["pending"]:
+        p["at"] -= 2 * 86400
+    store.write_text(json.dumps(kept))
+    places = bridge.state_dir / "card-places.json"
+    placed = json.loads(places.read_text())
+    for p in placed.values():
+        p["at"] -= 2 * 86400
+    places.write_text(json.dumps(placed))
+    bridge.start(write=False)
+    fakes.hermes.add_session("api_g", [{"role": "user", "content": "Installe-moi le connecteur Garmin"}], title="Garmin")
+    gate = watched(bridge, fakes, "run_g", "api_g", "vie", tool="mcp_bipagents_files_sandbox_sites_request")
+    thread = thread_of(bridge, "api_g", agent="vie")
+    assert thread != main
+    text, error = sandbox_call(bridge, "vie", "sandbox_sites_request", host="connect.garmin.example", reason="Garmin")
+    assert not error and "still waiting" in text, text
+    assert wait_until(lambda: waiting_in(bridge, thread, "vie", "bip-site-"), timeout=10), page(bridge, thread, "vie")
+    [inline] = waiting_in(bridge, thread, "vie", "bip-site-")
+    assert inline["run_id"] == card["run_id"] and inline["created_at"] > time.time() - 60   # asked now
+    assert site_cards(bridge, "vie")[0]["session_id"] == "api_g"
+    gate.set()

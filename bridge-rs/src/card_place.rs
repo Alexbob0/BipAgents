@@ -379,7 +379,9 @@ pub async fn watch(state: AppState) {
         let mut made: BTreeMap<String, Vec<String>> = BTreeMap::new();
         for item in &cards {
             let run = run_id_of(item);
-            if places.contains_key(&run) || !placeable(&run) || now - created_at(item) > FRESH_SECONDS {
+            // a card asked again after it was placed (its time moved on: sandbox_sites.rs `ask`) is placed again
+            let placed = places.get(&run).is_some_and(|p| created_at(item) <= p.at + 1.0);
+            if placed || !placeable(&run) || now - created_at(item) > FRESH_SECONDS {
                 continue;
             }
             let agent = item.get("agent").and_then(Value::as_str).unwrap_or("").to_string();
