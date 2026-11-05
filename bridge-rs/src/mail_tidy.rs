@@ -610,8 +610,13 @@ impl Selector {
         Selector {
             groups: groups.into_iter().filter(|g: &String| !g.is_empty()).collect(),
             from: text_arg(arguments, "from"),
-            domain: text_arg(arguments, "domain"),
-            list_id: text_arg(arguments, "list_id").trim_matches(|c| c == '<' || c == '>').to_string(),
+            // a group id written in the field (`domain: "domain:qonto.example"`, 5/11 token lab: « no message
+            // matches » three times, and Hermes paused all the bridge's tools for a minute): the field's value
+            domain: text_arg(arguments, "domain").trim_start_matches("domain:").trim_start_matches('@').to_string(),
+            list_id: text_arg(arguments, "list_id")
+                .trim_start_matches("list:")
+                .trim_matches(|c| c == '<' || c == '>')
+                .to_string(),
             older_than_days: tk::as_py_int(arguments.get("older_than_days")),
             subject_contains: text_arg(arguments, "subject_contains"),
             unread_only: truthy("unread_only"),
@@ -1877,6 +1882,9 @@ mod tests {
         assert!(Selector::from_args(&args(json!({"subject_contains": "facture"}))).check(&any).is_err());
         assert!(Selector::from_args(&args(json!({"unread_only": true}))).check(&any).is_err());
         assert!(Selector::from_args(&args(json!({"everything": true}))).check(&any).is_ok());
+        // a group id written in the field: the field's value (5/11)
+        let s = Selector::from_args(&args(json!({"domain": "domain:Qonto.example", "list_id": "list:<news.shop.example>"})));
+        assert_eq!((s.domain.as_str(), s.list_id.as_str()), ("qonto.example", "news.shop.example"));
         assert!(Selector::from_args(&args(json!({"older_than_days": 0}))).check(&any).is_err());
         assert!(Selector::from_args(&args(json!({"older_than_days": 365}))).check(&any).is_ok());
         assert!(Selector::from_args(&args(json!({"domain": "shop.example"}))).check(&any).is_ok());

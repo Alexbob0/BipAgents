@@ -58,7 +58,8 @@ def test_mail_calls_that_ended_on_another_tools_name_reach_the_mailbox(bridges, 
     wrong = call(bridge, "mail_read", {"id": "102"}, token=TOKEN)
     assert wrong["isError"] and f"{account}|INBOX|12" in text_of(wrong) and "« 102 »" in text_of(wrong), wrong
     # with mail_bulk in view, the lab's agent filed one sender per call until the brake: told to group them
-    one = text_of(call(bridge, "mail_bulk", {"action": "archive", "domain": "shop.example"}, token=TOKEN))
+    # (its domain written as a group id, as the lab's agent did: the domain all the same)
+    one = text_of(call(bridge, "mail_bulk", {"action": "archive", "domain": "domain:shop.example"}, token=TOKEN))
     assert one.startswith("Card made") and "all of them in groups" in one, one
     grouped = text_of(call(bridge, "mail_bulk", {"action": "archive", "groups": ["domain:example.com"]}, token=TOKEN))
     assert grouped.startswith("Added to the card already waiting") and "all of them in groups" not in grouped, grouped
