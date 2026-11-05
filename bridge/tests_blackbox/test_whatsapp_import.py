@@ -15,11 +15,13 @@ from test_households_and_peers import household
 
 TODAY = date.today()
 SOON = (TODAY + timedelta(days=12)).isoformat()
+# the chat's days stay in one month (the archive keeps a file a month): early in a month, it ends on the last one's
+CHAT_DAY = TODAY if TODAY.day > 7 else TODAY - timedelta(days=TODAY.day)
 
 
 def stamp(days_ago, hour):
     """An iPhone line's date in French: [25/10/2026 14:03:12]."""
-    at = datetime.combine(TODAY - timedelta(days=days_ago), datetime.min.time()).replace(hour=hour)
+    at = datetime.combine(CHAT_DAY - timedelta(days=days_ago), datetime.min.time()).replace(hour=hour)
     return at.strftime("[%d/%m/%Y %H:%M:%S]")
 
 
@@ -78,7 +80,7 @@ def test_a_chat_is_archived_whole_and_fills_the_carnet_then_only_its_new_part(br
     assert summary["chat_title"] == "Léa Martin" and summary["participants"] == ["Léa Martin", "Alex Dubois"]
     assert summary["messages"] == 3 and summary["media_skipped"] == 1 and summary["new_messages"] == 3
     assert summary["already_imported"] is False and summary["already_imported_until"] is None
-    assert summary["period"]["from"].startswith((TODAY - timedelta(days=5)).isoformat())
+    assert summary["period"]["from"].startswith((CHAT_DAY - timedelta(days=5)).isoformat())
     assert summary["notebook"] is True and summary["me"] == "Alex Dubois"
     assert summary["estimate"]["calls"] == 1 and summary["estimate"]["tokens_in"] > 300
     assert summary["model"]["local"] is True          # the fake model is on this machine: free
