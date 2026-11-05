@@ -65,7 +65,7 @@ def test_cron_job_notification_preference(bridges):
     assert resp.status_code == 200 and resp.json() == {"agent": "wellness", "job": scan, "notify": False}
     listed = bridge.get("/v1/cron-jobs?agent=wellness", headers=AUTH).json()["jobs"]
     assert [j["notify"] for j in listed if j["job"] == scan] == [False]
-    assert bridge.get("/v1/agents/wellness/routines", headers=AUTH).json()["jobs"][0]["notify"] is False
+    assert bridge.get("/v1/agents/wellness/routines", headers=AUTH).json()["jobs"][0]["muted"] is True  # one switch
     assert bridge.get("/v1/cron-jobs?agent=ghost", headers=AUTH).status_code == 404
     unknown = bridge.put("/v1/cron-jobs/wellness/nope", headers=AUTH, json={"notify": False})
     assert unknown.status_code == 404 and unknown.json() == {"detail": "unknown job"}
