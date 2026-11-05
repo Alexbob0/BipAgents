@@ -2,15 +2,26 @@
 //! in the conversation whose turn made them, like Hermes' approvals, and in the Boîte; answered in either place, gone
 //! from both on every device (Alex, 2026-11-04: the mail cards were only in the Boîte, never where Vie asked).
 //!
-//! - A card made by a tool call is placed when the call ends (agent_tools.rs): the turn's conversation (`session`) and
+//! - A card made by a tool call is placed when the call ends (agent_tools.rs), or while it runs (`watch`): the turn's
+//!   conversation (`session`) and
 //!   the conversation that one reports to (`report`): itself for a person's conversation, the conversation a
 //!   background task was asked from (jobs.rs `from_session`), none (the main one) for a task asked from nowhere, a
-//!   routine's run or another hidden conversation. A card with no turn (a routine run by Hermes' cron, a card made
-//!   before this) has neither: the main conversation shows it.
+//!   routine's run or another hidden conversation. A card made with no turn (a routine run by Hermes' cron) has
+//!   neither: the main conversation shows it. A card never placed shows in no conversation.
 //! - Hermes' own approvals of a background task follow the same rule (`report_of`): in the task's conversation, and in
 //!   the one it reports to.
 //! - Answered (app.rs `approve`): the conversations it showed in are touched (their `pending` refreshed on every
 //!   device), the decision kept in the conversation it showed in, its notification read everywhere.
+//!
+//! - EVERY card that waits for the person shows inline (Alex, 2026-11-05: a secret card, a site, a connector were in
+//!   the Boîte only, never where the agent asked): the generic ones (mail, rules, triggers) and those with their own
+//!   screen (a secret, a site, a connector, an account), each drawn by the apps' own card. A card made while a tool call
+//!   still runs (`ask_secret` waits for the answer; a site from the egress proxy or the sandbox's tools; a connector)
+//!   is placed by `watch` within a second, with the turn going on. Not placed, so never inline: the place's own cards
+//!   (space, tips: no conversation asked them) and a card older than `FRESH_SECONDS` when first seen (one made before
+//!   this, Alex's 28/10 card drawn at the end of the Discussion); nor a placed card waiting for more than `STALE_DAYS`.
+//! - A card answered or gone through its own route (the secret's secure field, the site's screen…): `watch` sees it go
+//!   and does what `answered` does (its conversations touched, its notifications read on every device).
 //!
 //! Kept in `<data_dir>/card-places.json` (`{run_id: {agent, session, report, at}}`), the last `KEEP_DAYS`.
 //!
@@ -29,6 +40,13 @@ use crate::{py, Dict};
 
 const KEEP_DAYS: f64 = 30.0;
 const FILE: &str = "card-places.json";
+/// A card first seen unplaced later than this after it was made: never placed (made before placements, or while the
+/// bridge was off), the Boîte only.
+const FRESH_SECONDS: f64 = 120.0;
+/// A card waiting longer than this: the Boîte only, no more in a conversation.
+const STALE_DAYS: f64 = 3.0;
+/// The cards of the place itself, asked by no conversation: the Boîte only.
+const NOT_IN_CONVERSATIONS: [&str; 2] = [crate::storage_watch::RUN_PREFIX, crate::feature_tips::RUN_PREFIX];
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Place {
@@ -222,10 +240,25 @@ pub async fn report_of(state: &AppState, agent: &AgentConfig, session: &str) -> 
 /// After a tool call of `agent` in the turn `run_id`: the cards it made (not in `before`) placed in that turn's
 /// conversation.
 pub async fn place_new(state: &AppState, agent: &AgentConfig, before: &HashSet<String>, run_id: Option<&str>) {
-    let made: Vec<String> = waiting(state, &agent.name).into_iter().filter(|r| !before.contains(r)).collect();
+    let placed = load(&state.config());
+    let made: Vec<String> = waiting(state, &agent.name)
+        .into_iter()
+        .filter(|r| !before.contains(r) && !placed.contains_key(r) && placeable(r))
+        .collect();
     if made.is_empty() {
         return;
     }
+    place(state, agent, &made, run_id).await;
+}
+
+/// A card of this kind can show in a conversation.
+fn placeable(run_id: &str) -> bool {
+    !NOT_IN_CONVERSATIONS.iter().any(|p| run_id.starts_with(p))
+}
+
+/// `made` placed in the conversation of the turn `run_id` (None: no turn, the main conversation), those showing it
+/// touched.
+async fn place(state: &AppState, agent: &AgentConfig, made: &[String], run_id: Option<&str>) {
     let session = run_id
         .and_then(|r| state.hub.subscription(&agent.name, r))
         .and_then(|s| s.session_id())
@@ -236,7 +269,7 @@ pub async fn place_new(state: &AppState, agent: &AgentConfig, before: &HashSet<S
     };
     let place = Place { agent: agent.name.clone(), session: session.clone(), report: report.clone(), at: 0.0 };
     let config = state.config();
-    for run_id in &made {
+    for run_id in made {
         if let Err(err) = keep(&config, run_id, place.clone()) {
             tracing::warn!(agent = %agent.name, error = %err, "card place not kept");
         }
@@ -249,26 +282,21 @@ pub async fn place_new(state: &AppState, agent: &AgentConfig, before: &HashSet<S
     }
 }
 
-/// The cards shown inline in a conversation too: the generic ones (a sentence, « Oui » / « Non »), answered there
-/// through `/v1/approve` like Hermes' approvals. The others (a secret, a connector, a site, a space…) have their own
-/// screens: in the Boîte only.
-pub fn inline(config: &Config, agent: &str) -> Vec<Dict> {
-    let mut items = crate::mail_tidy::pending_items(config, Some(agent));
-    items.extend(crate::mail_rules::pending_items(config, Some(agent)));
-    items.extend(crate::triggers::pending_items(config, Some(agent)));
-    items
+fn created_at(item: &Dict) -> f64 {
+    item.get("created_at").and_then(Value::as_f64).unwrap_or(0.0)
 }
 
-/// The generic cards shown in a conversation of `agent` made of `sessions`.
+/// The bridge's cards shown in a conversation of `agent` made of `sessions`: every kind but the place's own, placed
+/// there (`watch`, `place_new`), waiting for less than `STALE_DAYS`. Each keeps its `created_at`: the apps draw it at
+/// its time.
 pub fn cards_in(state: &AppState, agent: &str, sessions: &HashSet<&str>, main: bool) -> Vec<Dict> {
     let config = state.config();
     let places = load(&config);
-    let shown = inline(&config, agent)
+    let now = py::time_time();
+    let shown = bridge_cards(state, &config, Some(agent))
         .into_iter()
-        .filter(|item| match places.get(&run_id_of(item)) {
-            Some(place) => place.shows_in(sessions, main),
-            None => main,
-        })
+        .filter(|item| now - created_at(item) < STALE_DAYS * 86400.0)
+        .filter(|item| places.get(&run_id_of(item)).is_some_and(|place| place.shows_in(sessions, main)))
         .collect();
     fold(&config, shown)
 }
@@ -284,6 +312,7 @@ pub fn with_session(config: &Config, mut item: Dict) -> Dict {
 /// A card answered (any device, the Boîte or the conversation): the conversations showing it touched, the decision
 /// kept in the one it showed in, its notifications read on every device.
 pub async fn answered(state: &AppState, agent: &AgentConfig, run_id: &str, choice: &str) {
+    note_answered(run_id);
     let config = state.config();
     // the card's id: its request id in the approvals' shape, its notification's `ref`
     let id = run_id.strip_prefix("bip-").and_then(|r| r.split_once('-')).map(|(_, id)| id).unwrap_or(run_id);
@@ -311,6 +340,80 @@ pub async fn answered(state: &AppState, agent: &AgentConfig, run_id: &str, choic
     if place.session.is_some() && place.session != place.report {
         threads.touch(&agent.name, place.session.as_deref(), "answered").await;
     }
+    crate::notifications::read_card(state, &agent.name, id, run_id).await;
+}
+
+/// The cards `answered` did, the last 200 (`watch` leaves them).
+static ANSWERED: Mutex<std::collections::VecDeque<String>> = Mutex::new(std::collections::VecDeque::new());
+
+fn note_answered(run_id: &str) {
+    let mut done = ANSWERED.lock().unwrap_or_else(|e| e.into_inner());
+    if done.len() >= 200 {
+        done.pop_front();
+    }
+    done.push_back(run_id.to_string());
+}
+
+/// Answered through `/v1/approve` (`answered` did it all): forgotten here.
+fn was_answered(run_id: &str) -> bool {
+    let mut done = ANSWERED.lock().unwrap_or_else(|e| e.into_inner());
+    let at = done.iter().position(|r| r == run_id);
+    at.and_then(|i| done.remove(i)).is_some()
+}
+
+const WATCH_EVERY: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// Every second: a card made while a tool call still runs (or with no turn) placed in its turn's conversation, and a
+/// card answered elsewhere than `/v1/approve` (or withdrawn) gone from the conversations that showed it.
+pub async fn watch(state: AppState) {
+    let mut before: Option<HashSet<String>> = None;
+    loop {
+        tokio::time::sleep(WATCH_EVERY).await;
+        let (s, config) = (state.clone(), state.config());
+        let Ok(cards) = tokio::task::spawn_blocking(move || bridge_cards(&s, &config, None)).await else { continue };
+        let config = state.config();
+        let places = load(&config);
+        let now = py::time_time();
+        let ids: HashSet<String> = cards.iter().map(run_id_of).collect();
+        // new and unplaced: its turn's conversation (one of each agent's cards at a time: they share the turn)
+        let mut made: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        for item in &cards {
+            let run = run_id_of(item);
+            if places.contains_key(&run) || !placeable(&run) || now - created_at(item) > FRESH_SECONDS {
+                continue;
+            }
+            let agent = item.get("agent").and_then(Value::as_str).unwrap_or("").to_string();
+            made.entry(agent).or_default().push(run);
+        }
+        for (name, runs) in made {
+            let Some(agent) = config.agent(Some(&name)).cloned() else { continue };
+            let turn = state.hub.turn_of(&agent.name, "").map(|t| t.run_id);
+            place(&state, &agent, &runs, turn.as_deref()).await;
+        }
+        // gone without `/v1/approve`: what `answered` does, but the decision (its own route kept it)
+        if let Some(before) = before.take() {
+            for run in before.difference(&ids) {
+                if was_answered(run) {
+                    continue;
+                }
+                let Some(place) = places.get(run) else { continue };
+                let Some(agent) = config.agent(Some(&place.agent)).cloned() else { continue };
+                gone(&state, &agent, run, place).await;
+            }
+        }
+        let placed = load(&config);
+        before = Some(ids.into_iter().filter(|r| placed.contains_key(r)).collect());
+    }
+}
+
+/// A placed card no longer waiting: the conversations showing it touched, its notifications read on every device.
+async fn gone(state: &AppState, agent: &AgentConfig, run_id: &str, place: &Place) {
+    let threads = crate::threads::threads_of(state);
+    threads.touch(&agent.name, place.report.as_deref(), "answered").await;
+    if place.session.is_some() && place.session != place.report {
+        threads.touch(&agent.name, place.session.as_deref(), "answered").await;
+    }
+    let id = run_id.strip_prefix("bip-").and_then(|r| r.split_once('-')).map(|(_, id)| id).unwrap_or(run_id);
     crate::notifications::read_card(state, &agent.name, id, run_id).await;
 }
 

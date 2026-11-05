@@ -336,6 +336,8 @@ impl AppState {
         if config.hermes.enabled() {
             self.spawn(crate::sandbox::isolate_all(self.config.clone(), agents_admin::default_run()));
             self.spawn(crate::sandbox_sites::watch(self.clone()));
+            // a card made while a tool call runs, in its turn's conversation; one answered elsewhere, gone (card_place.rs)
+            self.spawn(crate::card_place::watch(self.clone()));
             self.spawn(crate::send_guard::watch(self.clone()));
             // « what my agents know about me » common to the person's own agents (shared_memory.rs)
             self.spawn(crate::shared_memory::run_forever(self.clone()));
