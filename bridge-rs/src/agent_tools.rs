@@ -1433,7 +1433,7 @@ pub async fn call_tool(
             let run_id = format!("{}{}", crate::mail_tidy::RUN_PREFIX, card.id);
             push.notify_bridge_card(&agent.name, &line, "mail_request", &run_id).await;
         }
-        if let (Some(rule), Some(push)) = (&called.rule, push.as_ref()) {
+        for (rule, push) in called.rules.iter().filter_map(|r| push.as_ref().map(|p| (r, p))) {
             let line = crate::mail_rules::item_of(&config, rule)
                 .get("bip_summary")
                 .and_then(Value::as_str)

@@ -8,6 +8,8 @@ hydroxide's SEARCH TEXT matches nothing. So:
   (its profile's `tools.tool_search.defer`), from the moment the mailbox is added or given to it, until it has none;
 - a mail's id under another tool's name reads that mail; a wrong id says what an id looks like;
 - a word search that TEXT can't answer finds the words in the subject."""
+import json
+
 import yaml
 
 from bbkit.common import AUTH
@@ -72,3 +74,24 @@ def test_a_word_search_hydroxide_cannot_answer_finds_the_words_in_the_subject(br
     # words in no subject: the sender's name is tried too, then nothing
     assert f"{account}|INBOX|103" in text_of(call(bridge, "mail_search", {"query": "shop"}, token=TOKEN))
     assert text_of(call(bridge, "mail_search", {"query": "introuvable"}, token=TOKEN)) == "No e-mail found."
+
+
+def test_a_rule_call_for_several_senders_makes_a_card_each_never_an_error(bridges, fakes):
+    # 5/11 (token lab): « a rule takes one domain » / « no unread_only » three times in a row, and Hermes paused all
+    # the bridge's tools for a minute (its MCP circuit breaker: three error results from one server)
+    fakes.imap.as_hydroxide(own=["Factures"])
+    bridge, _ = mail_bridge(bridges, fakes)
+    add_mailbox(bridge, fakes)
+    made = call(bridge, "mail_bulk", {"action": "move:Factures", "rule": True, "unread_only": True,
+                                      "groups": ["domain:example.com", "domain:shop.example"]}, token=TOKEN)
+    assert not made.get("isError"), made
+    said = text_of(made)
+    assert said.count("Rule card") == 2 and "from example.com" in said and "from shop.example" in said, said
+    # two rules waiting, shown as one folded card in the approvals (card_place.rs)
+    cards = [c for c in bridge.get("/v1/approvals", headers=AUTH).json()["items"]
+             if c["run_id"].startswith("bip-mailrule-")]
+    assert len(cards) == 1 and "(+1 " in json.dumps(cards[0], ensure_ascii=False), cards
+    # a group a rule can't take: said for it alone, the others made
+    mixed = call(bridge, "mail_bulk", {"action": "archive", "rule": True, "groups": ["promo", "domain:banque.example"]},
+                 token=TOKEN)
+    assert not mixed.get("isError") and "promo:" in text_of(mixed) and "Rule card" in text_of(mixed), mixed

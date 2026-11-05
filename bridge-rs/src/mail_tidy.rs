@@ -1197,12 +1197,12 @@ pub fn tools() -> Vec<Value> {
 pub struct Called {
     pub result: Dict,
     pub card: Option<Job>,
-    /// A standing rule's card (mail_rules.rs).
-    pub rule: Option<crate::mail_rules::Rule>,
+    /// Standing rules' cards (mail_rules.rs): one per sender a rule call named.
+    pub rules: Vec<crate::mail_rules::Rule>,
 }
 
 pub fn said(text: &str, error: bool) -> Called {
-    Called { result: tool_text(text, error), card: None, rule: None }
+    Called { result: tool_text(text, error), card: None, rules: Vec::new() }
 }
 
 /// One of the tools, for `agent` (only the mailboxes the person gave it).
@@ -1324,7 +1324,7 @@ Oui. Tell them in one sentence.{together}",
                 false,
             ),
             card: Some(card),
-            rule: None,
+            rules: Vec::new(),
         });
     }
     if name == "mail_overview" {

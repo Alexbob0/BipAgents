@@ -480,7 +480,7 @@ fn a_rule_files_what_is_there_then_new_mail_by_itself() {
     )
     .unwrap();
     assert!(!text(&called).0, "{}", text(&called).1);
-    let card = called.rule.unwrap();
+    let card = called.rules.into_iter().next().unwrap();
     assert_eq!(card.existing, 2);
     let items = mail_rules::pending_items(&config, Some("coach"));
     assert_eq!(items.len(), 1);
@@ -566,8 +566,8 @@ fn another_agents_rules_and_cards_stay_apart() {
         &open,
     )
     .unwrap()
-    .rule
-    .unwrap();
+    .rules
+    .remove(0);
     assert_eq!(card.existing, 449, "unread ones only, the starred one left out");
     assert!(mail_rules::answer(&config, "vie", &card.id, true, "app").unwrap().is_none());
     assert!(mail_rules::answer(&config, "coach", &card.id, false, "app").unwrap().is_some());
@@ -658,7 +658,7 @@ fn hydroxide_files_into_the_folders_it_shows_and_says_why_not_otherwise() {
     let open = opener(&srv);
     let called = mail_tidy::call(&config, "coach", "mail_bulk", &args(rule), &open).unwrap();
     assert!(!text(&called).0, "{}", text(&called).1);
-    let made = mail_rules::answer(&config, "coach", &called.rule.unwrap().id, true, "app").unwrap().unwrap();
+    let made = mail_rules::answer(&config, "coach", &called.rules[0].id, true, "app").unwrap().unwrap();
     srv.lock().unwrap().folders.remove("Copro St Ex");
     let err = mail_rules::run_existing(&config, &made.id, &open).unwrap_err();
     assert!(format!("{err:#}").contains("hydroxide"), "{err:#}");
