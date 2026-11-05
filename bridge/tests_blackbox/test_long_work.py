@@ -67,13 +67,14 @@ def test_start_task_refuses_more_than_the_direct_budget(bridges, fakes):
     assert "propose_task" in text_of(above)
     assert not fakes.hermes.seen("/v1/runs", "POST") and jobs(bridge) == []
     smaller = call(bridge, "start_task", {"title": "Petite recherche", "instructions": "Cherche.", "budget_eur": 0.1})
-    assert not smaller["isError"] and jobs(bridge)[0]["max_tokens"] == DEFAULT_TOKENS // 2
+    assert not smaller["isError"] and jobs(bridge)[0]["budget_eur"] == 0.1
+    assert jobs(bridge)[0]["max_tokens"] == DEFAULT_TOKENS // 2
     assert bridge.delete(f"/v1/jobs/{jobs(bridge)[0]['id']}", headers=AUTH).status_code == 200
 
 
 def test_on_a_place_of_the_offer_the_direct_budget_is_told_in_euros(bridges, fakes):
     # (a task started there waits for the place's room, read from this machine's disk and memory (heavy_work.rs): its
-    # « Started… (budget about 0.20 €, 363,636 tokens) » is jobs.rs' unit test `a_budget_in_euros_on_the_offer…`)
+    # « Started… (budget about 0.20 €) » is jobs.rs' unit test `a_budget_in_euros_on_the_offer…`)
     bridge = bridges.new()
     offer_place(bridge)
     bridge.start()
@@ -204,7 +205,7 @@ def test_a_background_tasks_own_run_is_never_steered(bridges, fakes):
     fakes.hermes.rounds = 1000
     fakes.hermes.runs["r1"] = tools("r1", 8)
     job = bridge.post("/v1/agents/wellness/jobs", headers=AUTH,
-                      json={"title": "Long", "prompt": "Fais-le.", "max_tokens": 1_000_000}).json()
+                      json={"title": "Long", "prompt": "Fais-le.", "budget_eur": 0.50}).json()
     assert wait_until(lambda: len(fakes.hermes.seen("/v1/runs/r1/events")) >= 1)
     time.sleep(1.5)
     assert fakes.hermes.steers == []
@@ -321,7 +322,7 @@ def test_a_refused_start_task_is_proposed_and_said(bridges, fakes):
     fakes.hermes.rounds = 1000
     fakes.hermes.add_session("api_c", [{"role": "user", "content": ASKED}])
     busy = bridge.post("/v1/agents/wellness/jobs", headers=AUTH,
-                       json={"title": "Tri des mails", "prompt": "Trie.", "max_tokens": 1_000_000}).json()
+                       json={"title": "Tri des mails", "prompt": "Trie.", "budget_eur": 0.50}).json()
     refused = "Not started: this agent is already on a background task. Propose it with propose_task instead."
     fakes.hermes.runs["run_f"] = (tools("run_f", 3)
                                   + [sse("tool.started", run_id="run_f", tool="mcp_bipagents_start_task", preview="x"),

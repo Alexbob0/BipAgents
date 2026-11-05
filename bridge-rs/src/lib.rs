@@ -149,6 +149,7 @@ pub mod background_turn;
 pub mod handback;
 pub mod health;
 pub mod jobs;
+pub mod task_cost;
 pub mod mail_scan;
 pub mod mail_rules;
 pub mod mail_tidy;

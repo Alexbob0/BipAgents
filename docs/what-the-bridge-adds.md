@@ -122,7 +122,8 @@ that do it, and what it deliberately leaves to Hermes.
 
 ## Work on its own
 
-- `jobs.rs`: background tasks with a budget chosen first, the tokens shown after, pause and resume; `handback.rs`
+- `jobs.rs`: background tasks with a budget in euros chosen first, counted as the AI credit is (cache reads at their
+  price, `task_cost.rs`), pause and resume; `handback.rs`
   brings the report back to the conversation it came from.
 - `cronwatch.rs` delivers every routine's reply to the app; `autonomous.rs` lists everything agents do without
   being asked; `storage_watch.rs` makes agents ask what to keep; `feature_tips.rs` shows features over time.

@@ -432,6 +432,8 @@ pub struct SubscriptionState {
     /// A room's turn (rooms.rs), a background task's run (jobs.rs): the tokens it may take. Once its real ones and its
     /// next call would pass them, the hub stops it as that call's tool step starts (`capped`).
     pub token_limit: Option<i64>,
+    /// A background task's run (jobs.rs): the euros it may take at its prices (task_cost.rs), checked the same way.
+    pub cost_limit: Option<(crate::task_cost::Prices, f64)>,
     pub capped: bool,
     /// The reply's `MEDIA:` lines, out of what the apps get (media.rs).
     pub media: crate::media::MediaFilter,
@@ -478,6 +480,7 @@ impl Default for SubscriptionState {
             last_tool_at: 0.0,
             usage: None,
             token_limit: None,
+            cost_limit: None,
             capped: false,
             media: Default::default(),
             listeners: Vec::new(),
@@ -697,6 +700,15 @@ impl RunHub {
         let inner = lock(&self.inner);
         if let Some(sub) = inner.subs.get(&(agent.to_string(), run_id.to_string())) {
             lock(&sub.state).token_limit = Some(limit);
+        }
+    }
+
+    /// A background task's run may take `euros` at `prices` (its calls' fresh input, cache reads and output, as the
+    /// month's credit counts them): stopped by the hub before a model call that would pass them (`cap`).
+    pub fn limit_cost(&self, agent: &str, run_id: &str, prices: crate::task_cost::Prices, euros: f64) {
+        let inner = lock(&self.inner);
+        if let Some(sub) = inner.subs.get(&(agent.to_string(), run_id.to_string())) {
+            lock(&sub.state).cost_limit = Some((prices, euros));
         }
     }
 
@@ -1372,13 +1384,16 @@ impl RunHub {
     /// limit. A call that answered asks for none: the turn ends on its own. In the bench of 2026-11-01 a DeepSeek turn reached 249k for
     /// a 200k cap, its calls reading 41k each after big file reads, on an estimate of 20k a call.
     fn cap(&self, sub: &RunSubscription, st: &mut SubscriptionState) {
-        let (Some(limit), Some(usage)) = (st.token_limit, st.usage) else { return };
-        if st.capped || st.finished || usage.after_next_call() < limit {
+        let Some(usage) = st.usage else { return };
+        let past_tokens = st.token_limit.is_some_and(|limit| usage.after_next_call() >= limit);
+        let past_cost = st.cost_limit.is_some_and(|(p, euros)| p.of_usage(&usage) + p.next_call(&usage) >= euros);
+        if st.capped || st.finished || !(past_tokens || past_cost) {
             return;
         }
         st.capped = true;
         tracing::info!(agent = %sub.agent.name, run_id = %sub.run_id, used = usage.total(), next_call = usage.last_input,
-            limit = limit, "a run's next call would pass its token limit, stopped");
+            limit = ?st.token_limit, euros = ?st.cost_limit.map(|(_, e)| e),
+            "a run's next call would pass its limit, stopped");
         let (hermes, agent, run_id) = (self.hermes.clone(), sub.agent.clone(), sub.run_id.clone());
         self.spawn(async move {
             if let Err(err) = hermes.stop_run(&agent, &run_id).await {
@@ -1961,7 +1976,7 @@ impl RunHub {
         };
         let title = rescue_title(&request);
         let prompt = rescue_prompt(&request, &steps, &said);
-        let budget = crate::jobs::direct_budget(&config);
+        let budget = config.jobs.direct_budget_eur;
         let started = tokio::time::timeout(
             Duration::from_secs(45),
             jobs.create_from(&agent, &title, &prompt, budget, None, "asked", session.as_deref()),

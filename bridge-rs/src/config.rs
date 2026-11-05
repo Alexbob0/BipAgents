@@ -529,6 +529,16 @@ pub struct JobsConfig {
     pub handoff_browser_window: u32,
     /// A steered run that ended without handing over: the bridge starts (or proposes) the task itself.
     pub handoff_rescue: bool,
+    /// The offer's region whose model prices the guichet gives (task_cost.rs).
+    #[serde(skip)]
+    pub region: String,
+    /// Euros per million tokens a task is counted at where the guichet doesn't say (0: the `[notebook]` prices).
+    #[serde(skip)]
+    pub price_in: f64,
+    #[serde(skip)]
+    pub price_cached: f64,
+    #[serde(skip)]
+    pub price_out: f64,
 }
 
 impl Default for JobsConfig {
@@ -542,6 +552,10 @@ impl Default for JobsConfig {
             handoff_browser_seconds: 0.0,
             handoff_browser_window: 5,
             handoff_rescue: true,
+            region: "eu".into(),
+            price_in: 0.0,
+            price_cached: 0.0,
+            price_out: 0.0,
         }
     }
 }
@@ -1663,6 +1677,10 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         handoff_browser_window: i(jobs_t, "handoff_browser_window", jd.handoff_browser_window as i64)?.clamp(1, 100)
             as u32,
         handoff_rescue: b(jobs_t, "handoff_rescue", jd.handoff_rescue),
+        region: s(jobs_t, "region", &jd.region),
+        price_in: f(jobs_t, "price_in", 0.0)?.clamp(0.0, 1000.0),
+        price_cached: f(jobs_t, "price_cached", 0.0)?.clamp(0.0, 1000.0),
+        price_out: f(jobs_t, "price_out", 0.0)?.clamp(0.0, 1000.0),
     };
 
     let rooms_t = table(data, "rooms");

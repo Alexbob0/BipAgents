@@ -1,5 +1,5 @@
 //! Background jobs (« Tâches de fond », decided 2026-10-21): long work an agent does apart from the person's
-//! conversations, with its cost shown before (a budget the person chooses) and after (the tokens it took), pause, resume
+//! conversations, with its cost shown before (a budget in euros the person chooses) and after (what it took), pause, resume
 //! and cancel, and a notification when it ends. Two kinds:
 //!
 //!     mail_scan   a mailbox read through by steps (mail_scan.rs): listed and paused here, run there
@@ -12,17 +12,24 @@
 //!                 counters move only at a run's end, so before that a run went on to its end whatever it took (Alex's
 //!                 task of 2026-10-31: about twice its budget)
 //!
+//! A task's budget and spend are euros counted as the month's AI credit counts them (task_cost.rs, 2026-11-04): its
+//! calls' fresh input, cache reads and output at the router's prices for the agent's model (`budget_eur`, `eur`,
+//! `prices` on the task). `max_tokens` in a task's view is that budget in tokens without the cache, for a home
+//! install's screens (its model is the person's own: tokens, not euros, there).
+//!
 //! An agent may propose a task (MCP `propose_task` in agent_tools.rs, for work too long for a reply): it waits, budget and all, until the
 //! person starts it in the app. Since 2026-10-22 (owner's decision: long work never inline) an agent also starts a task
 //! itself (`start_task`, `notebook_fill`), but only for work the person just asked for and within a small budget
-//! (`[jobs] direct_budget_eur`, ≈ 0.20 €, in tokens at the `[notebook]` prices: `direct_budget`); anything bigger,
+//! (`[jobs] direct_budget_eur`, ≈ 0.20 €); anything bigger,
 //! or its own idea, is proposed. The task is marked `proposed_by: "asked"`.
 //!
 //!     GET    /v1/jobs                        every job of every agent: proposals first, then the newest
-//!     POST   /v1/agents/{id}/jobs            {title, prompt, max_tokens, template?}   a task started now
-//!     POST   /v1/jobs/{id}/start             {max_tokens?}       a proposed task started
+//!     GET    /v1/jobs                        … and `budgets_eur` {small, medium, large}, `budgets_tokens` (home)
+//!     POST   /v1/agents/{id}/jobs            {title, prompt, budget_eur, template?}   a task started now
+//!     POST   /v1/jobs/{id}/start             {budget_eur?}       a proposed task started
 //!     POST   /v1/jobs/{id}/pause
-//!     POST   /v1/jobs/{id}/resume            {max_tokens?, message?}   a bigger budget, the words that resume it
+//!     POST   /v1/jobs/{id}/resume            {budget_eur?, message?}   a bigger budget (its new total), the words
+//!                                            that resume it (a mail scan: {max_tokens?})
 //!     DELETE /v1/jobs/{id}                   stopped if it runs, then forgotten (its conversation and pages stay)
 //!
 //! Mail scans keep their own routes for their steps (/v1/agents/{id}/mail-scan…); their job id here is
@@ -51,6 +58,7 @@ use crate::hermes::{HermesClient, HermesError};
 use crate::mail_scan::{self, ScanError, Scans};
 use crate::push::PushService;
 use crate::runs::RunHub;
+use crate::task_cost::{self, Prices};
 use crate::tools_knowledge::{self as tk, tool_text};
 use crate::web::{
     self, body_loc, check_max_len, check_min_len, check_range, ApiResult, FieldError, HttpError, Json, OptionalJson,
@@ -72,8 +80,8 @@ pub const STOP_GRACE: f64 = 120.0;
 /// Finished tasks kept in the list, per agent.
 pub const KEPT_PER_AGENT: usize = 40;
 pub const REPORT_CHARS: usize = 4000;
-/// An agent's proposal: tokens.
-pub const BUDGETS: [(&str, i64); 3] = [("small", 300_000), ("medium", 1_000_000), ("large", 3_000_000)];
+/// The budgets the person picks and an agent proposes, in euros of the month's credit.
+pub const BUDGETS: [(&str, f64); 3] = [("small", 0.20), ("medium", 0.50), ("large", 1.50)];
 pub const TERMINAL: [&str; 5] = ["completed", "failed", "cancelled", "canceled", "interrupted"];
 pub const TITLE_MARK: &str = "🧩 ";
 pub const INSTRUCTIONS: &str =
@@ -115,12 +123,18 @@ fn job_error(message: &str) -> anyhow::Error {
     JobError(message.into()).into()
 }
 
-fn budget_of(name: &str) -> Option<i64> {
+fn budget_of(name: &str) -> Option<f64> {
     BUDGETS.iter().find(|(n, _)| *n == name).map(|(_, v)| *v)
 }
 
-fn budgets() -> Value {
-    Value::Object(BUDGETS.iter().map(|(k, v)| (k.to_string(), json!(v))).collect())
+/// The budgets in euros (`budgets_eur`), and in tokens without the cache at the install's prices (`budgets_tokens`,
+/// a home install's screens).
+pub fn budgets(config: &crate::config::Config) -> (Value, Value) {
+    let prices = task_cost::configured(config);
+    (
+        Value::Object(BUDGETS.iter().map(|(k, v)| (k.to_string(), json!(v))).collect()),
+        Value::Object(BUDGETS.iter().map(|(k, v)| (k.to_string(), json!(prices.tokens_for(*v)))).collect()),
+    )
 }
 
 fn folder(config: &crate::config::Config) -> PathBuf {
@@ -208,12 +222,33 @@ pub fn spent(job: &Dict) -> i64 {
     int_of(tokens.and_then(|t| t.get("input"))) + int_of(tokens.and_then(|t| t.get("output")))
 }
 
-/// What the task's current run may take: its budget less what its earlier runs took.
-fn left_for_run(job: &Dict) -> i64 {
-    let before = job.get("before");
-    int_of(job.get("max_tokens"))
-        - int_of(before.and_then(|t| t.get("input")))
-        - int_of(before.and_then(|t| t.get("output")))
+/// The prices the task is counted at: its own (set at each run's start), else the install's.
+pub fn prices_of(config: &crate::config::Config, job: &Dict) -> Prices {
+    Prices::of_job(job).unwrap_or_else(|| task_cost::configured(config))
+}
+
+/// The task's budget in euros (a task kept from before 2026-11-04: its tokens at the `[notebook]` prices).
+pub fn task_budget(config: &crate::config::Config, job: &Dict) -> f64 {
+    match job.get("budget_eur").and_then(Value::as_f64) {
+        Some(euros) => euros,
+        None => euros_for(config, int_of(job.get("max_tokens"))),
+    }
+}
+
+/// What the task took so far, in euros (task_cost.rs).
+pub fn eur_spent(config: &crate::config::Config, job: &Dict) -> f64 {
+    prices_of(config, job).of_tokens(job.get("tokens"))
+}
+
+/// Its euros kept on it (`eur`), as the apps read them.
+fn set_eur(config: &crate::config::Config, job: &mut Dict) {
+    let euros = eur_spent(config, job);
+    job.insert("eur".into(), json!((euros * 1e6).round() / 1e6));
+}
+
+/// What the task's current run may take, in euros: its budget less what its earlier runs took.
+fn left_for_run(config: &crate::config::Config, job: &Dict) -> f64 {
+    task_budget(config, job) - prices_of(config, job).of_tokens(job.get("before"))
 }
 
 /// A mailbox scan (mail_scan.rs) in the common shape.
@@ -251,7 +286,7 @@ pub fn scan_view(job: &Dict, running: bool) -> Dict {
 }
 
 pub fn task_view(job: &Dict) -> Dict {
-    const KEEP: [&str; 19] = [
+    const KEEP: [&str; 20] = [
         "id",
         "kind",
         "agent",
@@ -265,7 +300,8 @@ pub fn task_view(job: &Dict) -> Dict {
         "started",
         "finished",
         "tokens",
-        "max_tokens",
+        "budget_eur",
+        "eur",
         "session_id",
         "report",
         "proposed_by",
@@ -273,12 +309,20 @@ pub fn task_view(job: &Dict) -> Dict {
         "from_session",
     ];
     // an extraction from an archive (archives/records_fill.rs): its euros, its cap, the documents read
-    const EXTRACT: [&str; 6] = ["archive", "eur", "budget_eur", "progress", "model", "counts"];
+    const EXTRACT: [&str; 5] = ["archive", "progress", "model", "counts", "max_tokens"];
     let extract = crate::archives::records_fill::is_extract(job);
     let mut view: Dict = KEEP.iter()
         .chain(EXTRACT.iter().filter(|_| extract))
         .map(|k| (k.to_string(), job.get(*k).cloned().unwrap_or(Value::Null)))
         .collect();
+    if !extract {
+        // its budget in tokens without the cache, for a home install's screens (the module's doc)
+        let tokens = match (Prices::of_job(job), job.get("budget_eur").and_then(Value::as_f64)) {
+            (Some(prices), Some(euros)) => json!(prices.tokens_for(euros)),
+            _ => job.get("max_tokens").cloned().unwrap_or(Value::Null),
+        };
+        view.insert("max_tokens".into(), tokens);
+    }
     // its words: the files of the report are in its conversation, never as `MEDIA:` lines here (4/11)
     if let Some(Value::String(report)) = view.get_mut("report") {
         *report = crate::media::without_media_lines(report, |_| true);
@@ -486,7 +530,7 @@ impl Jobs {
         agent: &AgentConfig,
         title: &str,
         prompt: &str,
-        max_tokens: i64,
+        budget_eur: f64,
         template: Option<&str>,
         proposed_by: &str,
         from_session: Option<&str>,
@@ -498,7 +542,8 @@ impl Jobs {
         }
         let job = json!({"id": format!("t{}", py::token_hex(6)), "kind": "task", "agent": agent.name, "title": title,
                          "prompt": prompt, "template": template, "state": "proposed", "reason": null, "error": null,
-                         "created": py::time_time(), "started": null, "finished": null, "max_tokens": max_tokens,
+                         "created": py::time_time(), "started": null, "finished": null, "budget_eur": budget_eur,
+                         "eur": 0.0, "prices": task_cost::configured(&self.config.get()).to_value(),
                          "tokens": {"input": 0, "output": 0, "cached": 0}, "session_id": null, "run_id": null,
                          "report": null, "proposed_by": proposed_by, "runs": 0,
                          "from_session": from_session.filter(|s| !s.is_empty())});
@@ -513,10 +558,10 @@ impl Jobs {
         agent: &AgentConfig,
         title: &str,
         prompt: &str,
-        max_tokens: i64,
+        budget_eur: f64,
         template: Option<&str>,
     ) -> anyhow::Result<Dict> {
-        self.create_by(agent, title, prompt, max_tokens, template, "person").await
+        self.create_by(agent, title, prompt, budget_eur, template, "person").await
     }
 
     /// A task started now, by the person (`person`) or by the agent at the person's request (`asked`: start_task,
@@ -526,11 +571,11 @@ impl Jobs {
         agent: &AgentConfig,
         title: &str,
         prompt: &str,
-        max_tokens: i64,
+        budget_eur: f64,
         template: Option<&str>,
         by: &str,
     ) -> anyhow::Result<Dict> {
-        self.create_from(agent, title, prompt, max_tokens, template, by, None).await
+        self.create_from(agent, title, prompt, budget_eur, template, by, None).await
     }
 
     /// `create_by`, from a conversation (`from_session`): the task's result is handed back there when it ends.
@@ -540,13 +585,13 @@ impl Jobs {
         agent: &AgentConfig,
         title: &str,
         prompt: &str,
-        max_tokens: i64,
+        budget_eur: f64,
         template: Option<&str>,
         by: &str,
         from_session: Option<&str>,
     ) -> anyhow::Result<Dict> {
         self.may_run(&agent.name)?;
-        let mut job = self.new_task(agent, title, prompt, max_tokens, template, by, from_session)?;
+        let mut job = self.new_task(agent, title, prompt, budget_eur, template, by, from_session)?;
         let text = format!("{}\n\n{}", tk::str_or_empty(job.get("title")), tk::str_or_empty(job.get("prompt")));
         if let Err(err) = self.launch(&mut job, &text).await {
             if err.downcast_ref::<JobError>().is_some() {
@@ -578,8 +623,10 @@ impl Jobs {
         if waiting >= PROPOSALS_MAX {
             return Err(job_error("enough of your proposals are waiting for the person already"));
         }
-        let max_tokens = budget_of(budget).unwrap_or(1_000_000);
-        let job = self.new_task(agent, title, prompt, max_tokens, None, "agent", from_session)?;
+        let euros = budget_of(budget).or_else(|| budget_of("medium")).unwrap_or(0.5);
+        let mut job = self.new_task(agent, title, prompt, euros, None, "agent", from_session)?;
+        job.insert("prices".into(), task_cost::for_agent(&self.config.get(), agent).await.to_value());
+        save(&self.config.get(), &job)?;
         if let Some(tell) = &self.tell {
             let body = push_body(&self.config.get(), agent, PROPOSED_BODY);
             let line = format!("{body}{} {}", colon(body), tk::str_or_empty(job.get("title")));
@@ -588,7 +635,7 @@ impl Jobs {
         Ok(job)
     }
 
-    pub async fn start(self: &Arc<Self>, job_id: &str, max_tokens: Option<i64>) -> anyhow::Result<Dict> {
+    pub async fn start(self: &Arc<Self>, job_id: &str, budget_eur: Option<f64>) -> anyhow::Result<Dict> {
         let job = load(&self.config.get(), job_id);
         let Some(mut job) = job.filter(|j| state_of(j) == "proposed") else {
             return Err(job_error("this task isn't waiting to start"));
@@ -600,8 +647,8 @@ impl Jobs {
             return crate::archives::records_fill::resume(self.config.get(), job_id, None, self.tell.clone());
         }
         self.may_run(&agent_of(&job))?;
-        if let Some(max) = max_tokens.filter(|m| *m != 0) {
-            job.insert("max_tokens".into(), json!(max));
+        if let Some(euros) = budget_eur.filter(|e| *e > 0.0) {
+            job.insert("budget_eur".into(), json!(euros));
         }
         let text = format!("{}\n\n{}", tk::str_or_empty(job.get("title")), tk::str_or_empty(job.get("prompt")));
         self.launch(&mut job, &text).await?;
@@ -765,6 +812,8 @@ impl Jobs {
                 _ => job_error("the agent can't be reached"),
             }
         };
+        // its prices: the router's for its model now (task_cost.rs), its earlier runs counted at them too
+        job.insert("prices".into(), task_cost::for_agent(&self.config.get(), &agent).await.to_value());
         let pipeline = self.pipeline();
         // Hermes refuses a title another conversation holds (a task asked again after it was cancelled): numbered
         let kept = tk::str_or_empty(job.get("session_id"));
@@ -779,7 +828,6 @@ impl Jobs {
         let mut turn = Turn::new(&agent, Kind::Task, &session_id, format!("{text}\n\n<!--bip:task-rules\n{rules}\n-->"));
         // GLM through EUrouter thinks at « low » in chat since 2026-10-28; tasks stay at « medium » until measured.
         turn.options = crate::agents_admin::task_turn_options(&self.config.get(), &agent);
-        turn.budget = Some(left_for_run(job));
         turn.busy_wait = 0.0; // its own conversation: a route never waits here
         let run_id = match pipeline.start(&turn).await {
             Ok((run_id, _)) => run_id,
@@ -788,6 +836,11 @@ impl Jobs {
             Err(NotRun::Gone) => return Err(refused(HermesError::http(404, ""))),
             Err(why) => return Err(JobError(format!("the agent refused the task ({why})")).into()),
         };
+        // this run may take its budget less what the earlier runs took (its `before`, set below)
+        let left = task_budget(&self.config.get(), job) - eur_spent(&self.config.get(), job);
+        if let Some(hub) = &self.hub {
+            hub.limit_cost(&agent.name, &run_id, prices_of(&self.config.get(), job), left);
+        }
         let now = py::time_time();
         let before = job.get("tokens").cloned().unwrap_or(json!({}));
         let started = job.get("started").filter(|v| py::truthy(v)).cloned().unwrap_or(json!(now));
@@ -810,7 +863,7 @@ impl Jobs {
         save(&self.config.get(), job)?;
         let id = tk::str_or_empty(job.get("id"));
         self.follow(&id);
-        tracing::info!(agent = %agent.name, job = %id, budget = int_of(job.get("max_tokens")), "job started");
+        tracing::info!(agent = %agent.name, job = %id, budget_eur = task_budget(&self.config.get(), job), "job started");
         Ok(())
     }
 
@@ -834,7 +887,10 @@ impl Jobs {
             let Some(agent) = config.agent(Some(&agent_of(&job))) else { continue };
             let (run_id, session) = (tk::str_or_empty(job.get("run_id")), tk::str_or_empty(job.get("session_id")));
             if !run_id.is_empty() {
-                self.pipeline().follow(agent, Kind::Task, &run_id, &session, Some(left_for_run(&job)));
+                self.pipeline().follow(agent, Kind::Task, &run_id, &session, None);
+                if let Some(hub) = &self.hub {
+                    hub.limit_cost(&agent.name, &run_id, prices_of(&config, &job), left_for_run(&config, &job));
+                }
             }
             self.follow(&tk::str_or_empty(job.get("id")));
             count += 1;
@@ -871,7 +927,10 @@ impl Jobs {
             let (run_id, session_id) = (tk::str_or_empty(job.get("run_id")), tk::str_or_empty(job.get("session_id")));
             let end = self.pipeline().status(&agent, &run_id, &session_id).await;
             match self.hermes.session(&agent, &session_id).await {
-                Ok(session) => count(&mut job, &session, self.live_usage(&agent, &run_id).as_ref()),
+                Ok(session) => {
+                    count(&mut job, &session, self.live_usage(&agent, &run_id).as_ref());
+                    set_eur(&config, &mut job);
+                }
                 Err(HermesError::Decode(err)) => {
                     tracing::error!(job = %job_id, exc = %err, "Task exception was never retrieved");
                     return;
@@ -885,7 +944,7 @@ impl Jobs {
             let now = py::time_time();
             if state_of(&job) == "running" {
                 let step_started = job.get("step_started").map(|v| py::py_float(v).unwrap_or(now)).unwrap_or(now);
-                if spent(&job) >= int_of(job.get("max_tokens")) || self.capped(&agent, &run_id) {
+                if eur_spent(&config, &job) >= task_budget(&config, &job) || self.capped(&agent, &run_id) {
                     self.stop(&agent, &mut job, "budget").await;
                 } else if now - step_started >= self.max_seconds {
                     self.stop(&agent, &mut job, "time").await;
@@ -936,6 +995,7 @@ impl Jobs {
         let session_id = tk::str_or_empty(job.get("session_id"));
         let session = self.hermes.session(agent, &session_id).await.unwrap_or_default();
         count(job, &session, usage.as_ref());
+        set_eur(&self.config.get(), job);
         if status == "gone" {
             status = if output.is_empty() { "interrupted".into() } else { "completed".into() };
         }
@@ -967,7 +1027,7 @@ impl Jobs {
         let _ = save(&self.config.get(), job);
         let reason = job.get("reason").cloned().unwrap_or(Value::Null);
         tracing::info!(agent = %agent.name, job = %tk::str_or_empty(job.get("id")), state = %state_of(job),
-            reason = ?crate::logs::J(&reason), tokens = spent(job), "job ended");
+            reason = ?crate::logs::J(&reason), tokens = spent(job), eur = eur_spent(&self.config.get(), job), "job ended");
         let from = job.get("from_session").and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_string);
         if let (true, Some(from), Some(handback)) = (state_of(job) == "done", from, self.handback.clone()) {
             self.hand_back(&handback, agent, job, &from, &full).await;
@@ -1005,7 +1065,9 @@ impl Jobs {
         }
         let mut request = hb::Request::new(agent, from, id.clone(), &title, hb::note("task", &title, report, &links));
         request.links = links.clone();
-        request.budget = Some(int_of(job.get("max_tokens")) - spent(job));
+        // what is left of its budget, in tokens at its prices without the cache (handback.rs counts tokens)
+        let (prices, left) = (prices_of(&config, job), task_budget(&config, job) - eur_spent(&config, job));
+        request.budget = Some(if left >= 0.0 { prices.tokens_for(left) } else { -prices.tokens_for(-left) });
         request.fallback =
             hb::template(&lang, &title, &hb::key_points(report, hb::POINTS_MAX, &lang, hb::today(&config)), &links);
         request.recap = Some(hb::recap(&title, report));
@@ -1018,6 +1080,7 @@ impl Jobs {
             let input = int_of(tokens.get("input")) + outcome.tokens;
             tokens.insert("input".into(), json!(input));
             latest.insert("tokens".into(), Value::Object(tokens));
+            set_eur(&config, &mut latest);
         }
         latest.insert(
             "handed_back".into(),
@@ -1080,16 +1143,17 @@ impl Jobs {
         Ok(task_view(&job))
     }
 
+    /// A task resumed, with its new budget in euros (its new total) when given.
     pub async fn resume(
         self: &Arc<Self>,
         job_id: &str,
-        max_tokens: Option<i64>,
+        budget_eur: Option<f64>,
         message: Option<&str>,
     ) -> anyhow::Result<Dict> {
-        self.resume_with(job_id, max_tokens, message, None).await
+        self.resume_with(job_id, None, message, budget_eur).await
     }
 
-    /// `resume`, with a new cap in euros for an extraction from an archive.
+    /// `resume`: a mail scan's new step budget in tokens (`max_tokens`), a task's or an extraction's in euros.
     pub async fn resume_with(
         self: &Arc<Self>,
         job_id: &str,
@@ -1108,11 +1172,13 @@ impl Jobs {
             return Err(job_error("nothing to resume"));
         };
         self.may_run(&agent_of(&job))?;
-        match max_tokens.filter(|m| *m != 0) {
-            Some(max) => {
-                job.insert("max_tokens".into(), json!(max.max(spent(&job) + 1000)));
+        let config = self.config.get();
+        let spent_now = eur_spent(&config, &job);
+        match budget_eur.filter(|e| *e > 0.0) {
+            Some(euros) => {
+                job.insert("budget_eur".into(), json!(euros.max(spent_now + 0.01)));
             }
-            None if spent(&job) >= int_of(job.get("max_tokens")) => {
+            None if spent_now >= task_budget(&config, &job) => {
                 return Err(job_error("the budget is used up: give a bigger one"))
             }
             None => {}
@@ -1258,8 +1324,8 @@ pub async fn propose_tool(jobs: Option<&Jobs>, agent: &AgentConfig, arguments: &
     match jobs.propose_from(agent, &title, tk::head(&prompt, 8000), &budget, from.as_deref()).await {
         Ok(job) => Ok(tool_text(
             &format!(
-                "Proposed (budget about {} tokens). It starts only when the person starts it in « Tâches de fond »: tell them so in your reply.",
-                thousands(int_of(job.get("max_tokens")))
+                "Proposed (budget about {}). It starts only when the person starts it in « Tâches de fond »: tell them so in your reply.",
+                budget_text(&jobs.config.get(), task_budget(&jobs.config.get(), &job), crate::handover::on_offer())
             ),
             false,
         )),
@@ -1280,7 +1346,7 @@ fn euros_per_token(config: &crate::config::Config) -> f64 {
 pub fn tokens_for(config: &crate::config::Config, euros: f64) -> i64 {
     let per_token = euros_per_token(config);
     if per_token <= 0.0 {
-        return budget_of("small").unwrap_or(300_000);
+        return 300_000;
     }
     ((euros.max(0.0) / per_token) as i64).clamp(10_000, 50_000_000)
 }
@@ -1337,8 +1403,8 @@ pub async fn start_tool(jobs: Option<&Arc<Jobs>>, agent: &AgentConfig, arguments
         ));
     };
     let config = jobs.config.get();
-    let default = direct_budget(&config);
-    let max_tokens = match arguments.get("budget_eur").filter(|v| !v.is_null()).map(|v| py::py_float(v).ok()) {
+    let default = config.jobs.direct_budget_eur;
+    let euros = match arguments.get("budget_eur").filter(|v| !v.is_null()).map(|v| py::py_float(v).ok()) {
         None => default,
         Some(None) => return Ok(tool_text("budget_eur must be a number of euros", true)),
         Some(Some(euros)) if euros > config.jobs.direct_budget_eur * 1.001 => {
@@ -1355,23 +1421,23 @@ instead (they start it with one tap) and tell them so in one plain sentence.",
                 true,
             ));
         }
-        Some(Some(euros)) => tokens_for(&config, euros),
+        Some(Some(euros)) => euros.max(0.01),
     };
     let prompt = tk::str_or_empty(arguments.get("instructions"));
     let title = tk::str_or_empty(arguments.get("title"));
     let from = jobs.hub.as_ref().and_then(|hub| hub.asking_session(&agent.name));
-    let made = jobs.create_from(agent, &title, tk::head(&prompt, 8000), max_tokens, None, "asked", from.as_deref()).await;
+    let made = jobs.create_from(agent, &title, tk::head(&prompt, 8000), euros, None, "asked", from.as_deref()).await;
     started(made, &config, agent)
 }
 
-/// A task's budget as the agent may tell its person: in euros on a place of the offer (« 0.20 €, 363,636 tokens »),
-/// in tokens only on a home install (« 363,636 tokens »), whose model is the person's own (their provider's prices,
-/// or none: a model on their computer), never the `[notebook]` prices the euros are counted at.
-pub fn budget_text(config: &crate::config::Config, tokens: i64, offer: bool) -> String {
+/// A task's budget as the agent may tell its person: in euros on a place of the offer (« 0.20 € »), in tokens only on
+/// a home install (« 363,636 tokens »: the euros at the install's prices without the cache), whose model is the
+/// person's own (their provider's prices, or none: a model on their computer).
+pub fn budget_text(config: &crate::config::Config, euros: f64, offer: bool) -> String {
     if offer {
-        format!("{}, {} tokens", euros_text(euros_for(config, tokens)), thousands(tokens))
+        euros_text(euros)
     } else {
-        format!("{} tokens", thousands(tokens))
+        format!("{} tokens", thousands(task_cost::configured(config).tokens_for(euros)))
     }
 }
 
@@ -1402,15 +1468,15 @@ sentence that it will be done a bit later in the background, and stop here: don'
             ))
         }
         Ok(job) => {
-            let tokens = int_of(job.get("max_tokens"));
-            tracing::info!(agent = %agent.name, job = %tk::str_or_empty(job.get("id")), budget = tokens,
+            let euros = task_budget(config, &job);
+            tracing::info!(agent = %agent.name, job = %tk::str_or_empty(job.get("id")), budget_eur = euros,
                 "job started by the agent");
             Ok(tool_text(
                 &format!(
                     "Started in the background (budget about {}): it works on its own and your person gets \
 your report when it ends; they follow it in « Tâches de fond ». Tell them in one plain sentence that you're on it in \
 the background (e.g. « Je m'en occupe en arrière-plan, je te préviens quand c'est fini. »), and stop here.",
-                    budget_text(config, tokens, offer)
+                    budget_text(config, euros, offer)
                 ),
                 false,
             ))
@@ -1452,8 +1518,7 @@ pub fn jobs_of(state: &AppState) -> Arc<Jobs> {
 pub struct NewTask {
     pub title: String,
     pub prompt: String,
-    #[serde(deserialize_with = "web::lax::int")]
-    pub max_tokens: i64,
+    pub budget_eur: f64,
     #[serde(default)]
     pub template: Option<String>,
 }
@@ -1464,28 +1529,21 @@ impl Validate for NewTask {
         check_max_len(errors, "title", Some(&self.title), 200);
         check_min_len(errors, "prompt", Some(&self.prompt), 1);
         check_max_len(errors, "prompt", Some(&self.prompt), 8000);
-        check_range(
-            errors,
-            body_loc("max_tokens"),
-            self.max_tokens as f64,
-            Some(10_000.0),
-            Some(50_000_000.0),
-            json!(self.max_tokens),
-        );
+        check_range(errors, body_loc("budget_eur"), self.budget_eur, Some(0.01), Some(50.0), json!(self.budget_eur));
         check_max_len(errors, "template", self.template.as_deref(), 40);
     }
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Start {
-    #[serde(default, deserialize_with = "web::lax::opt_int")]
-    pub max_tokens: Option<i64>,
+    #[serde(default)]
+    pub budget_eur: Option<f64>,
 }
 
 impl Validate for Start {
     fn validate(&self, errors: &mut Vec<FieldError>) {
-        if let Some(m) = self.max_tokens {
-            check_range(errors, body_loc("max_tokens"), m as f64, Some(10_000.0), Some(50_000_000.0), json!(m));
+        if let Some(b) = self.budget_eur {
+            check_range(errors, body_loc("budget_eur"), b, Some(0.01), Some(50.0), json!(b));
         }
     }
 }
@@ -1496,7 +1554,7 @@ pub struct Resume {
     pub max_tokens: Option<i64>,
     #[serde(default)]
     pub message: Option<String>,
-    /// An extraction from an archive: its new cap in euros.
+    /// A task's or an extraction's new budget in euros (its new total).
     #[serde(default)]
     pub budget_eur: Option<f64>,
 }
@@ -1534,7 +1592,8 @@ async fn listing(State(state): State<AppState>, q: web::QueryMap) -> ApiResult<R
         None => None,
     };
     let jobs = jobs_of(&state).list(name.as_deref());
-    Ok(web::ok(json!({"jobs": jobs, "budgets": budgets()})))
+    let (euros, tokens) = budgets(&state.config());
+    Ok(web::ok(json!({"jobs": jobs, "budgets_eur": euros, "budgets_tokens": tokens})))
 }
 
 async fn create_route(
@@ -1546,7 +1605,7 @@ async fn create_route(
         return Err(HttpError::new(404, "unknown agent"));
     };
     let job = jobs_of(&state)
-        .create(&agent, &body.title, &body.prompt, body.max_tokens, body.template.as_deref())
+        .create(&agent, &body.title, &body.prompt, body.budget_eur, body.template.as_deref())
         .await
         .map_err(refused)?;
     Ok(web::ok(Value::Object(job)))
@@ -1557,7 +1616,7 @@ async fn start_route(
     UrlPath(job_id): UrlPath<String>,
     OptionalJson(body): OptionalJson<Start>,
 ) -> ApiResult<Response> {
-    let job = jobs_of(&state).start(&job_id, body.and_then(|b| b.max_tokens)).await.map_err(refused)?;
+    let job = jobs_of(&state).start(&job_id, body.and_then(|b| b.budget_eur)).await.map_err(refused)?;
     Ok(web::ok(Value::Object(job)))
 }
 
@@ -1630,24 +1689,38 @@ mod tests {
         // 2026-10-31, Alex's home install (his own model): a task's card said « 0,071 € dépensés · au plus 0,037 € »,
         // euros nobody pays there. At home the agent hears its budget in tokens only.
         let config = crate::config::Config::with_key("k");
-        assert_eq!(budget_text(&config, 363_636, true), "0.20 €, 363,636 tokens");
-        assert_eq!(budget_text(&config, 363_636, false), "363,636 tokens");
+        assert_eq!(budget_text(&config, 0.20, true), "0.20 €");
+        assert_eq!(budget_text(&config, 0.20, false), "363,636 tokens");
         let agent = AgentConfig { name: "vie".into(), ..Default::default() };
-        let job = || -> anyhow::Result<Dict> { Ok(json!({"id": "t000000000001", "max_tokens": 363_636}).as_object().cloned().unwrap()) };
+        let job = || -> anyhow::Result<Dict> {
+            Ok(json!({"id": "t000000000001", "budget_eur": 0.20}).as_object().cloned().unwrap())
+        };
         let said = |offer: bool| {
             let out = started_on(job(), &config, &agent, offer).unwrap();
             out["content"][0]["text"].as_str().unwrap().to_string()
         };
-        assert!(said(true).starts_with("Started in the background (budget about 0.20 €, 363,636 tokens):"), "{}", said(true));
+        assert!(said(true).starts_with("Started in the background (budget about 0.20 €):"), "{}", said(true));
         assert!(said(false).starts_with("Started in the background (budget about 363,636 tokens):"), "{}", said(false));
         assert!(!said(false).contains('€'));
     }
 
     #[test]
-    fn a_run_may_take_its_budget_less_the_earlier_runs() {
-        let job = json!({"max_tokens": 300_000, "before": {"input": 90_000, "output": 10_000, "cached": 50_000},
-                         "tokens": {"input": 150_000, "output": 12_000}});
-        assert_eq!(left_for_run(job.as_object().unwrap()), 200_000);
-        assert_eq!(left_for_run(json!({"max_tokens": 300_000}).as_object().unwrap()), 300_000, "its first run");
+    fn a_task_counts_its_euros_as_the_credit_does() {
+        // Alex, 2026-11-04: « 5 % » of the month for a task whose credit lost under 3 %. Its euros now: fresh input,
+        // cache reads and output at the router's prices, as the key's spending is billed.
+        let config = crate::config::Config::with_key("k");
+        let glm = Prices { input: 0.10, cached: 0.02, output: 0.35 };
+        let job = json!({"budget_eur": 0.20, "prices": glm.to_value(),
+                         "before": {"input": 1_000_000, "output": 20_000, "cached": 900_000},
+                         "tokens": {"input": 1_500_000, "output": 30_000, "cached": 1_350_000}});
+        let job = job.as_object().unwrap();
+        assert!((eur_spent(&config, job) - 0.0525).abs() < 1e-9, "{}", eur_spent(&config, job));
+        assert!((left_for_run(&config, job) - (0.20 - 0.035)).abs() < 1e-9);
+        let view = task_view(job);
+        assert_eq!(view["max_tokens"], json!(glm.tokens_for(0.20)), "its budget in tokens without the cache");
+        // a task kept from before: its tokens budget at the [notebook] prices
+        let old = json!({"max_tokens": 363_636}).as_object().cloned().unwrap();
+        assert!((task_budget(&config, &old) - 0.20).abs() < 0.001);
+        assert!(prices_of(&config, &old) == task_cost::configured(&config));
     }
 }

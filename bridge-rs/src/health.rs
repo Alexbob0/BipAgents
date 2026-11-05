@@ -1007,7 +1007,7 @@ pub fn eu_refusal_at(offer: bool, model: Option<&str>, eu_hosted: &[String]) -> 
 }
 
 /// The agent's model as its Hermes profile names it (`model.default`), else the install's (the hub's config).
-fn model_of(config: &Config, agent: &crate::config::AgentConfig) -> Option<String> {
+pub(crate) fn model_of(config: &Config, agent: &crate::config::AgentConfig) -> Option<String> {
     let named = |folder: PathBuf| {
         let data = crate::shares::profile_config(&folder);
         match data.get("model") {
