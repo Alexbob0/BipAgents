@@ -63,7 +63,8 @@ def test_a_message_is_its_app_id_from_the_send_to_the_stored_row(bridges, fakes)
     last = before["items"][-1]
     assert last["id"] == "s_C1D00000-0000-4000-8000-000000000001" and last["client_id"] == last["id"][2:]
     assert last["text"] == "Le train de 9 h ?" and last["role"] == "person" and last["sending"] is True
-    assert before["pending"]["run"] == {"run_id": "r1", "status": "running"}
+    run = before["pending"]["run"]   # with its start (the working line's clock on every phone)
+    assert (run["run_id"], run["status"]) == ("r1", "running") and abs(run["started"] - time.time()) < 60
     # the same message again (an answer lost on the way): nothing sent twice
     again = send(bridge, thread, "C1D00000-0000-4000-8000-000000000001", "Le train de 9 h ?")
     assert again.json()["state"] == "known" and len(fakes.hermes.started) == 1
