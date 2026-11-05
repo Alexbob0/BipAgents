@@ -1130,8 +1130,10 @@ mod tests {
         assert!(FACTS_RULE.len() < 800, "short: paid on every call");
         for lang in LANGUAGES.iter().chain(["de", "es"].iter()) {
             for category in CATEGORIES {
+                // the Carnet by its name in the agent's language (names::localize: « Notebook »…)
                 let soul = soul_for("Bip", category, Some(lang)).unwrap();
-                assert_eq!(soul.matches(FACTS_RULE).count(), 1, "{category} {lang}");
+                let rule = crate::names::localize(FACTS_RULE, lang);
+                assert_eq!(soul.matches(rule.as_str()).count(), 1, "{category} {lang}");
             }
         }
         // the places rule it replaced is brought to it in place, once

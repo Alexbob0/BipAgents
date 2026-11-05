@@ -807,14 +807,14 @@ fn the_places_rule_of_an_earlier_bridge_becomes_the_facts_rule_once() {
     std::fs::create_dir_all(&folder).unwrap();
     let earlier = souls::language_block(Some("fr")).replace(souls::FACTS_RULE, PLACES);
     assert!(earlier.contains(PLACES) && !earlier.contains(souls::FACTS_RULE));
-    std::fs::write(folder.join("SOUL.md"), format!("Tu es Vie.\n\n{earlier}\n")).unwrap();
-    heal_souls(&c);
+    hand_soul(&folder, format!("Tu es Vie.\n\n{earlier}\n"));
+    render_souls(&c);
     let soul = read_soul(&c, &agent).unwrap();
     assert!(soul.starts_with("Tu es Vie.\n\n"), "{soul}");
     assert_eq!(soul.matches(souls::FACTS_RULE).count(), 1, "{soul}");
     assert!(!soul.contains("A place you recommend by name"), "the places rule is replaced, not kept beside: {soul}");
     assert_eq!(soul.matches(souls::BLOCK_START).count(), 1);
-    heal_souls(&c);
+    render_souls(&c);
     assert_eq!(read_soul(&c, &agent).unwrap(), soul, "once");
 }
 

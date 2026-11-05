@@ -446,7 +446,7 @@ MEDIA:/bipagents/pages/coach/tables-etoilees.html"
     let told: Told = Default::default();
     let board = with_handback(&config, &told);
     let job = board
-        .create_from(&agent, "Vérifier les tables", "Vérifie.", 1_000_000, None, "asked", Some("api_c"))
+        .create_from(&agent, "Vérifier les tables", "Vérifie.", 0.50, None, "asked", Some("api_c"))
         .await
         .unwrap();
     let id = id_of(&job);
