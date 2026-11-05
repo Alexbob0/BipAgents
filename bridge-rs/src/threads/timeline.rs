@@ -632,6 +632,11 @@ pub struct Page {
     pub anchor: Option<String>,
     /// Where the page starts among the thread's items (its days: `with_days`).
     pub start: usize,
+    /// The page is the window: the phone replaces what it holds with it (latest, around, a catch-up too long).
+    pub reset: bool,
+    /// Else the cursor of the item it joins (held by the phone): an `after=` page goes after it (what the phone held
+    /// after it is gone), a `before=` page in front of it (what it held before it is gone).
+    pub joins: Option<String>,
 }
 
 impl Page {
@@ -648,6 +653,8 @@ impl Page {
             "anchor": self.anchor,
             "version": version,
             "pending": pending,
+            "reset": self.reset,
+            "joins": self.joins,
         });
         let replaced = self.replaced();
         if !replaced.is_empty() {
@@ -733,7 +740,16 @@ pub struct Want {
     pub before_count: usize,
     /// None: everything after the anchor.
     pub after_count: Option<usize>,
+    /// The phone gave no `limit`: the bridge chooses the page's size, and a catch-up too long (or a cursor whose item
+    /// is gone) is answered with the latest page, `reset`. The same sizes for every app (thin apps, brick 4).
+    pub chosen: bool,
 }
+
+/// The sizes the bridge chooses (`Want::chosen`): the latest page, a catch-up at most (more: the latest page instead),
+/// an older page.
+pub const LATEST_PAGE: usize = 50;
+pub const CATCH_UP_PAGE: usize = 200;
+pub const OLDER_PAGE: usize = 50;
 
 /// The index of the first item at or after a cursor's position (the item itself, or where it was).
 fn at_cursor(items: &[Item], cursor: &str) -> (usize, bool) {
@@ -746,30 +762,41 @@ fn at_cursor(items: &[Item], cursor: &str) -> (usize, bool) {
 
 pub fn page(items: Vec<Item>, want: &Want) -> Page {
     let n = items.len();
-    let limit = want.limit.max(1);
-    let (start, end, anchor) = if let Some(around) = &want.around {
+    let size = |chosen: usize| if want.chosen { chosen } else { want.limit.max(1) };
+    let latest = |limit: usize| (n.saturating_sub(limit), n, None, true, None);
+    let (start, end, anchor, reset, joins) = if let Some(around) = &want.around {
         match items.iter().position(|i| &i.id == around || i.id.starts_with(&format!("{around}."))) {
             Some(i) => {
                 let start = i.saturating_sub(want.before_count);
                 let end = want.after_count.map(|a| (i + 1 + a).min(n)).unwrap_or(n);
-                (start, end, Some(items[i].id.clone()))
+                (start, end, Some(items[i].id.clone()), true, None)
             }
-            None => (n.saturating_sub(limit), n, None),
+            None => latest(size(LATEST_PAGE)),
         }
     } else if let Some(after) = &want.after {
         let (i, found) = at_cursor(&items, after);
         let start = if found { i + 1 } else { i };
-        (start.min(n), (start + limit).min(n), None)
+        let limit = size(CATCH_UP_PAGE);
+        if want.chosen && (!found || n.saturating_sub(start) > limit) {
+            // the phone's last item gone (a rewind), or too much since: the latest page, as the window
+            latest(LATEST_PAGE)
+        } else {
+            (start.min(n), (start + limit).min(n), None, false, found.then(|| after.clone()))
+        }
     } else if let Some(before) = &want.before {
-        let (i, _) = at_cursor(&items, before);
-        (i.saturating_sub(limit), i, None)
+        let (i, found) = at_cursor(&items, before);
+        if want.chosen && !found {
+            latest(LATEST_PAGE)
+        } else {
+            (i.saturating_sub(size(OLDER_PAGE)), i, None, false, found.then(|| before.clone()))
+        }
     } else {
-        (n.saturating_sub(limit), n, None)
+        latest(size(LATEST_PAGE))
     };
     let more_before = start > 0;
     let more_after = end < n;
     let items = items.into_iter().skip(start).take(end.saturating_sub(start)).collect();
-    Page { items, more_before, more_after, anchor, start }
+    Page { items, more_before, more_after, anchor, start, reset, joins }
 }
 
 #[cfg(test)]
@@ -1237,5 +1264,43 @@ not from your person: you have read the page 5 times\n[/OUT-OF-BAND USER MESSAGE
         assert_eq!(json["replaced"], json!(["s_C1"]));
         let none = page(vec![], &want).answer(json!({"id": "t_1"}), 1, Value::Null, false);
         assert!(none.get("replaced").is_none());
+    }
+
+    /// Thin apps, brick 4: the bridge chooses the sizes and says how a page goes into the phone's window: `reset` (it is
+    /// the window) or `joins` (the cursor it goes after, or in front of). A catch-up too long, or from an item gone, is
+    /// the latest page, `reset`. An app giving `limit` (before this) gets the pages as before.
+    #[test]
+    fn a_page_says_how_it_joins_the_window() {
+        let all: Vec<Item> = (0..300)
+            .map(|n| said(&format!("m_{n}"), n, 1000.0 + n as f64, json!({"kind": "message", "role": "person", "text": "x"})))
+            .collect();
+        let chosen = |w: Want| Want { chosen: true, ..w };
+        let latest = page(all.clone(), &chosen(Want::default()));
+        assert_eq!((latest.items.len(), latest.reset, latest.joins.clone()), (LATEST_PAGE, true, None));
+        // a catch-up: after the cursor, joined to it
+        let cursor = all[280].cursor();
+        let after = page(all.clone(), &chosen(Want { after: Some(cursor.clone()), ..Default::default() }));
+        assert_eq!((after.items.len(), after.reset, after.joins.as_deref()), (19, false, Some(cursor.as_str())));
+        assert!(!after.more_after);
+        // too much since: the latest page instead, as the window
+        let far = page(all.clone(), &chosen(Want { after: Some(all[10].cursor()), ..Default::default() }));
+        assert!(far.reset && far.joins.is_none() && far.items.last().unwrap().id == "m_299" && far.items.len() == LATEST_PAGE);
+        // its item gone (a rewind): the latest page too
+        let gone = cursor_of((all[5].pos.0, all[5].pos.1, all[5].pos.2 + 9));
+        assert!(page(all.clone(), &chosen(Want { after: Some(gone.clone()), ..Default::default() })).reset);
+        // an older page, in front of the window's first item
+        let first = all[250].cursor();
+        let older = page(all.clone(), &chosen(Want { before: Some(first.clone()), ..Default::default() }));
+        assert_eq!((older.items.len(), older.reset, older.joins.as_deref()), (OLDER_PAGE, false, Some(first.as_str())));
+        assert_eq!(older.items.last().unwrap().id, "m_249");
+        assert!(page(all.clone(), &chosen(Want { before: Some(gone), ..Default::default() })).reset);
+        // around a message: the window
+        let around = page(all.clone(), &chosen(Want { around: Some("m_100".into()), before_count: 20, ..Default::default() }));
+        assert!(around.reset && around.items.first().unwrap().id == "m_80");
+        // an app's own limit: as before (no reset for a long catch-up)
+        let own = page(all.clone(), &Want { limit: 500, after: Some(all[10].cursor()), ..Default::default() });
+        assert!(!own.reset && own.items.len() == 289 && own.joins.is_some());
+        let json = after.answer(json!({"id": "t_1"}), 1, Value::Null, false);
+        assert_eq!((json["reset"].clone(), json["joins"].clone()), (json!(false), json!(cursor)));
     }
 }

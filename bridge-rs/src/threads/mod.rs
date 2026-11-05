@@ -1102,6 +1102,7 @@ async fn delete_thread(
 /// A timeline request's page (`limit`, `before`, `after`, `around`, `before_count`, `after_count`).
 pub fn want_of(q: &QueryMap) -> ApiResult<Want> {
     Ok(Want {
+        chosen: q.get("limit").is_none_or(|v| v.is_empty()),
         limit: number(q, "limit", LIMIT_DEFAULT)?.clamp(1, LIMIT_MAX),
         before: q.get("before").filter(|v| !v.is_empty()).map(str::to_string),
         after: q.get("after").filter(|v| !v.is_empty()).map(str::to_string),
