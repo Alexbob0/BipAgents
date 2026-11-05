@@ -203,5 +203,6 @@ fn the_kit_never_outranks_the_agents_own_css() {
             assert!(part.starts_with(":where("), "a kit rule with weight: {part}");
         }
     }
-    assert!(pages::kit_js().contains("__BIP_TINT__") && pages::kit_js().len() < 30_000 && css.len() < 20_000);
+    // (31 000 since 5/11: a map's one link for the whole trip)
+    assert!(pages::kit_js().contains("__BIP_TINT__") && pages::kit_js().len() < 31_000 && css.len() < 20_000);
 }
