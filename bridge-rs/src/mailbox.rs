@@ -13,8 +13,9 @@
 //! hydroxide (emersion/hydroxide, `hydroxide imap`) serves IMAP on 127.0.0.1:1143 in clear unless started with
 //! `-tls-cert`/`-tls-key` (then implicit TLS, never STARTTLS); LOGIN takes the Proton address and the bridge password
 //! `hydroxide auth` printed; its folders are INBOX, All Mail (\All), Archive, Drafts, Starred, Spam, Sent, Trash and
-//! the person's labels by name. Its SEARCH TEXT matches the headers, not the bodies (which it holds
-//! encrypted), and every message it serves is a multipart (`snippet_of`).
+//! the person's labels by name. Its SEARCH TEXT matches neither the bodies (which it holds encrypted) nor, on
+//! Alex's box (5/11), the headers: a word search that finds nothing tries the subject, then the sender (`search`).
+//! Every message it serves is a multipart (`snippet_of`).
 //!
 //! App routes (the bridge key):
 //!
@@ -495,7 +496,21 @@ pub fn search(
             conn.use_utf8();
         }
         let all = if criteria.is_empty() { vec!["ALL".to_string()] } else { criteria };
-        let found = uids(&mut conn, &all, charset)?;
+        let mut found = uids(&mut conn, &all, charset)?;
+        if found.is_empty() && !query.is_empty() {
+            // TEXT found nothing: the words in the subject, then the sender. hydroxide matches TEXT on the bodies it
+            // holds encrypted and on a header Proton's message list leaves empty: on 5/11 every word search of
+            // Alex's agent came back empty while searches by sender found mails.
+            let text_at = all.iter().rposition(|c| c == "TEXT").unwrap_or(0);
+            for key in ["SUBJECT", "FROM"] {
+                let mut again = all.clone();
+                again[text_at] = key.to_string();
+                found = uids(&mut conn, &again, charset)?;
+                if !found.is_empty() {
+                    break;
+                }
+            }
+        }
         let keep = limit.clamp(i64::MIN, SEARCH_MAX as i64).max(1) as usize;
         let found = &found[found.len().saturating_sub(keep)..];
         let mut out = Vec::new();
@@ -818,6 +833,39 @@ pub(crate) fn shown_name(account: &Dict) -> String {
     }
 }
 
+/// Whether `text` has the shape of a mail's id as `mail_search` gives it: `<box>|<folder>|<uid>` (tool_diet.rs `meant`).
+pub fn is_mail_id(text: &str) -> bool {
+    let (account, folder, uid) = split_id(text);
+    text.matches('|').count() == 2
+        && !account.is_empty()
+        && account.chars().all(|c| c.is_ascii_alphanumeric())
+        && !folder.trim().is_empty()
+        && tk::is_digits(&uid)
+}
+
+/// A mail id that names no message of these mailboxes: what an id looks like, so that the next call is right.
+fn unknown_id(accounts: &[Dict], given: &str) -> Dict {
+    let example = accounts.first().map(|a| field(a, "id")).unwrap_or_default();
+    tool_text(
+        &format!(
+            "unknown e-mail id « {} »: give the id exactly as mail_search lists it, « box|folder|uid » (e.g. \
+{example}|INBOX|12)",
+            tk::head(given, 80)
+        ),
+        true,
+    )
+}
+
+/// One IMAP conversation at a time per mailbox for the agents' tools (5/11, Alex's Proton box through hydroxide: of
+/// five `mail_read` called at once, two failed).
+static BOX_LOCKS: LazyLock<std::sync::Mutex<std::collections::HashMap<String, Arc<std::sync::Mutex<()>>>>> =
+    LazyLock::new(Default::default);
+
+fn box_lock(account_id: &str) -> Arc<std::sync::Mutex<()>> {
+    let mut locks = BOX_LOCKS.lock().unwrap_or_else(|e| e.into_inner());
+    locks.entry(account_id.to_string()).or_default().clone()
+}
+
 /// `(text.split("|") + ["", "", ""])[:3]`.
 fn split_id(text: &str) -> (String, String, String) {
     let mut parts: Vec<String> = text.split('|').map(str::to_string).collect();
@@ -836,6 +884,15 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict, opener: 
         ));
     }
     let arg = |k: &str| tk::str_or_empty(arguments.get(k));
+    // the mailbox this call reaches (a draft answering a mail goes to that mail's box), one call at a time on it
+    let reached = match name {
+        "mail_read" | "mail_attachment" => split_id(&arg("id")).0,
+        "mail_draft" if !arg("reply_to_id").is_empty() => split_id(&arg("reply_to_id")).0,
+        _ => pick(&accounts, &arg("mailbox")).map(|a| field(a, "id")).unwrap_or_default(),
+    };
+    let known = accounts.iter().any(|a| field(a, "id") == reached);
+    let lock = box_lock(if known { &reached } else { "" });
+    let _one_at_a_time = lock.lock().unwrap_or_else(|e| e.into_inner());
     let result = (|| -> anyhow::Result<Option<Dict>> {
         if name == "mail_search" {
             let account = pick(&accounts, &arg("mailbox"))?;
@@ -866,7 +923,7 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict, opener: 
             let (account_id, folder, uid) = split_id(&arg("id"));
             let account = accounts.iter().find(|a| field(a, "id") == account_id);
             let Some(account) = account.filter(|_| tk::is_digits(&uid)) else {
-                return Ok(Some(tool_text("unknown e-mail id (use mail_search first)", true)));
+                return Ok(Some(unknown_id(&accounts, &arg("id"))));
             };
             let found = read(account, &folder, &uid, opener)?;
             let g = |k: &str| py::py_str(found.get(k).unwrap_or(&Value::Null));
@@ -893,7 +950,7 @@ pub fn call(config: &Config, agent: &str, name: &str, arguments: &Dict, opener: 
             let (account_id, folder, uid) = split_id(&arg("id"));
             let account = accounts.iter().find(|a| field(a, "id") == account_id);
             let Some(account) = account.filter(|_| tk::is_digits(&uid)) else {
-                return Ok(Some(tool_text("unknown e-mail id (use mail_search first)", true)));
+                return Ok(Some(unknown_id(&accounts, &arg("id"))));
             };
             let wanted = match arguments.get("attachment") {
                 Some(Value::Number(n)) => n.to_string(),
@@ -1114,7 +1171,22 @@ async fn add(
     }
     tracing::info!(provider = %body.provider, agents = agents_len(&account), "mailbox added");
     crate::mcp_sessions::poke(); // its agents' tools may have changed (mcp_sessions.rs)
+    register_agents(&config, agents).await; // its mail tools in view (tool_diet.rs `MAIL_DIRECT`)
     Ok(web::json_response(201, &Value::Object(public(&account))))
+}
+
+/// Each of these agents' tools registered again, its profile's diet with them (agent_tools.rs `register`).
+async fn register_agents(config: &Config, mut names: Vec<String>) {
+    names.sort();
+    names.dedup();
+    let run = crate::agents_admin::default_run();
+    for name in names {
+        if let Some(agent) = config.agent(Some(&name)) {
+            if let Err(exc) = crate::agent_tools::register(config, agent, &run).await {
+                tracing::warn!(agent = %agent.name, error = %exc, "agent tools not registered");
+            }
+        }
+    }
 }
 
 fn agents_len(account: &Dict) -> usize {
@@ -1185,27 +1257,18 @@ async fn change(
     let account = found[index].clone();
     tokio::task::spawn_blocking(move || store.write(&found)).await.map_err(anyhow::Error::from)??;
     crate::mcp_sessions::poke(); // its agents' tools may have changed (mcp_sessions.rs)
-    // Its agents' tools: the calendar's listed or not (a changed entry makes their Hermes fetch the list again).
+    // Its agents' tools: the calendar's listed or not (a changed entry makes their Hermes fetch the list again), and the
+    // mail tools in view for an agent given a mailbox or no longer (tool_diet.rs `MAIL_DIRECT`).
     let calendar_after = account.contains_key("calendar");
-    if calendar_before || calendar_after {
-        let agents_after = agents_of(&account);
-        let mut touched: Vec<&String> = Vec::new();
-        if calendar_before != calendar_after {
-            touched.extend(agents_before.iter().chain(agents_after.iter()));
-        } else {
-            touched.extend(agents_before.iter().filter(|a| !agents_after.contains(a)));
-            touched.extend(agents_after.iter().filter(|a| !agents_before.contains(a)));
-        }
-        touched.dedup();
-        let run = crate::agents_admin::default_run();
-        for name in touched {
-            if let Some(agent) = config.agent(Some(name)) {
-                if let Err(exc) = crate::agent_tools::register(&config, agent, &run).await {
-                    tracing::warn!(agent = %agent.name, error = %exc, "agent tools not registered");
-                }
-            }
-        }
+    let agents_after = agents_of(&account);
+    let mut touched: Vec<String> = Vec::new();
+    if calendar_before != calendar_after {
+        touched.extend(agents_before.iter().chain(agents_after.iter()).cloned());
+    } else {
+        touched.extend(agents_before.iter().filter(|a| !agents_after.contains(a)).cloned());
+        touched.extend(agents_after.iter().filter(|a| !agents_before.contains(a)).cloned());
     }
+    register_agents(&config, touched).await;
     Ok(web::ok(Value::Object(public(&account))))
 }
 
@@ -1218,8 +1281,16 @@ async fn remove(State(state): State<AppState>, UrlPath(account_id): UrlPath<Stri
     if kept.len() == found.len() {
         return Err(HttpError::new(404, "no such mailbox"));
     }
+    let gone: Vec<String> = found
+        .iter()
+        .filter(|a| field(a, "id") == account_id)
+        .flat_map(|a| a.get("agents").and_then(Value::as_array).cloned().unwrap_or_default())
+        .filter_map(|n| n.as_str().map(str::to_string))
+        .collect();
     tokio::task::spawn_blocking(move || store.write(&kept)).await.map_err(anyhow::Error::from)??;
     crate::mcp_sessions::poke(); // its agents' tools may have changed (mcp_sessions.rs)
+    // their mail tools back behind the search when it was their only mailbox
+    register_agents(&state.config(), gone).await;
     Ok(web::ok(json!({"ok": true})))
 }
 
@@ -1240,6 +1311,21 @@ pub fn router_with(opener: Option<Connect>) -> Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_mail_id_has_its_shape() {
+        for id in ["fff95795|INBOX|12", "lab00001|All Mail|3", "a1|Factures/2026|7"] {
+            assert!(is_mail_id(id), "{id}");
+        }
+        for id in ["12", "fff95795|INBOX", "fff95795|INBOX|x", "fff95795||12", "a|b|1|2", "ff-95|INBOX|1", ""] {
+            assert!(!is_mail_id(id), "{id}");
+        }
+        let accounts = vec![[("id".to_string(), json!("fff95795"))].into_iter().collect::<Dict>()];
+        let said = unknown_id(&accounts, "12");
+        let text = said["content"][0]["text"].as_str().unwrap_or_default();
+        assert!(text.contains("« 12 »") && text.contains("fff95795|INBOX|12"), "{text}");
+        assert!(py::truthy(&said["isError"]));
+    }
 
     #[test]
     fn folder_names_in_modified_utf7() {
