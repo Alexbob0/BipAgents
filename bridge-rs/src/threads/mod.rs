@@ -7,7 +7,7 @@
 //! GET  /v1/threads?agent=[&include_hidden=1]                    {threads: [Thread]}
 //! GET  /v1/threads?kind=room                                    {threads: [room thread]} (rooms.rs)
 //! GET  /v1/threads/resolve?agent=&session_id= | &c=             {thread, tip}
-//! GET  /v1/threads/events[?agent=&thread=]                      SSE: thread, notification, read; `thread`: on screen
+//! GET  /v1/threads/events[?agent=&thread=]                      SSE: thread, notification, read, share; `thread`: on screen
 //! GET  /v1/threads/{thread}[?agent=]                            Thread with its segments (`main` needs agent)
 //! PATCH /v1/threads/{thread} {title, agent?}                    renamed
 //! DELETE /v1/threads/{thread}[?agent=]                          its sessions deleted (the main thread stays, empty)
@@ -216,6 +216,17 @@ impl Threads {
         self.on_screen.lock().unwrap_or_else(|e| e.into_inner()).contains_key(thread)
     }
 
+    /// The agent's main thread is on an app's screen (a store read, nothing asked of Hermes): read_shares.rs looks at
+    /// a shared project thread's viewers sooner while its owner has it open.
+    pub async fn main_on_screen(&self, agent: &str) -> bool {
+        if self.on_screen.lock().unwrap_or_else(|e| e.into_inner()).is_empty() {
+            return false;
+        }
+        let sql = "SELECT * FROM threads WHERE agent = ? AND kind = 'main'";
+        let rows = self.store.run(sql, vec![text(agent)]).await.unwrap_or_default();
+        rows.first().map(Thread::of).is_some_and(|main| self.is_on_screen(&main.id))
+    }
+
     pub fn show(self: &Arc<Self>, thread: &str) -> OnScreen {
         *self.on_screen.lock().unwrap_or_else(|e| e.into_inner()).entry(thread.to_string()).or_insert(0) += 1;
         OnScreen { threads: self.clone(), thread: thread.to_string() }
@@ -225,7 +236,7 @@ impl Threads {
         self.events.subscribe()
     }
 
-    /// An event for the apps (`thread`, `notification`, `read`).
+    /// An event for the apps (`thread`, `notification`, `read`, `share`: a read share's people changed, read_shares.rs).
     pub fn publish(&self, agent: &str, kind: &str, data: Value) {
         let _ = self.events.send((agent.to_string(), kind.to_string(), data));
     }
