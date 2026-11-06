@@ -162,6 +162,9 @@ async fn an_agent_gets_its_own_browser_container_and_desktop() {
     assert!(secret.len() == 64 && secret.bytes().all(|b| b.is_ascii_hexdigit()));
     assert_eq!(std::fs::metadata(&secret_file).unwrap().permissions().mode() & 0o777, 0o600);
     assert!(start.contains(&format!("-v {}:/run/bipagents/cdp.token:ro,Z", secret_file.display())));
+    // Its downloads in its profile (the policy written before the unit that mounts it).
+    assert!(place.join("policies").join("bipagents-downloads.json").exists());
+    assert!(start.contains("/etc/opt/chrome/policies/managed/bipagents-downloads.json:ro,Z"));
     assert_eq!(written(&s)["browser"]["cdp_url"], json!(format!("http://127.0.0.1:19602/t/{secret}")));
     assert_eq!(browsers::ports_of(&s.config, "budget").unwrap()["cdp"], 19602);
     assert_eq!(browsers::devtools_secret(19602).as_deref(), Some(&*secret));
@@ -256,12 +259,13 @@ async fn deleting_the_agent_removes_its_browser() {
     assert!(!s.tmp.join("units").join("bipagents-browser-budget.service").exists());
 }
 
-#[tokio::test]
-async fn downloads_go_to_the_profile_through_a_read_only_policy() {
+#[test]
+fn downloads_go_to_the_profile_through_a_read_only_policy() {
     let s = setup();
-    s.setup_budget(&s.host).await;
     let place = s.tmp.join("browsers").join("budget");
-    // written before any unit mounts it (here the unit waits for the first use)
+    std::fs::create_dir_all(place.join("profile")).unwrap();
+    // written by the setup before any unit mounts it (and by bip-browser-mcp's first-use unit, and at each start)
+    browsers::write_downloads_policy(&place).unwrap();
     let policy = place.join("policies").join("bipagents-downloads.json");
     assert_eq!(
         read_json(&policy),
@@ -288,6 +292,23 @@ async fn downloads_go_to_the_profile_through_a_read_only_policy() {
     std::fs::File::options().write(true).open(&old).unwrap().set_modified(long_ago).unwrap();
     assert_eq!(browsers::recent_downloads(&s.config, "budget", 8), ["/telechargements/facture.pdf (2 KB)"]);
     assert!(!old.exists());
+}
+
+#[test]
+fn a_unit_written_before_the_policy_gets_its_mounts_once() {
+    let place = Path::new("/home/x/.local/share/bipagents/browsers/budget");
+    let old = "ExecStart=/usr/bin/podman run --rm -v /p/profile:/home/bip/profile:Z \
+               -v /p/cdp.token:/run/bipagents/cdp.token:ro,Z -p 127.0.0.1:1:9223 img\n";
+    let new = browsers::with_policy_mounts(old, place).unwrap();
+    let policy = place.join("policies").join("bipagents-downloads.json");
+    assert!(new.contains(&format!(
+        "/p/cdp.token:/run/bipagents/cdp.token:ro,Z -v {}:/etc/opt/chrome/policies/managed/bipagents-downloads.json:ro,Z \
+         -v {}:/etc/chromium/policies/managed/bipagents-downloads.json:ro,Z -p 127.0.0.1:1:9223",
+        policy.display(),
+        policy.display()
+    )));
+    assert_eq!(browsers::with_policy_mounts(&new, place), None);   // once
+    assert_eq!(browsers::with_policy_mounts("ExecStart=/usr/bin/podman run img\n", place), None);
 }
 
 #[test]

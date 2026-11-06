@@ -39,6 +39,11 @@ many pages), start a background task (`start_task`) that browses instead, and te
 Do not try to solve it. Ask the person: « A check needs you: open my Bureau in the BipAgents app, take over, complete
 it, then tell me "ok". » Wait for their answer, then read the page again. Do not reload in a loop.
 
+## 3a. A security warning of the browser
+A certificate error (« Your connection is not private »), a « dangerous site » page or any other warning of Chrome
+itself: never get past it (no « Proceed », no typed bypass, no other flag or browser). Stop there and tell the person
+what the page says. Never copy a site's cookies or session out of the browser (to a script, a file, a terminal).
+
 ## 3b. A site that refuses to serve this browser
 Some sites refuse every visitor coming from a server, whatever you do: « Access denied », « 403 », « Request blocked »,
 « unusual traffic from your network », a block page from Cloudflare, Akamai or DataDome, or a page that stays empty
