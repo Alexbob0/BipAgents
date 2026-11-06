@@ -630,6 +630,19 @@ static RESUMES: Mutex<BTreeMap<(String, String), Decisions>> = Mutex::new(BTreeM
 static ASKED: Mutex<BTreeMap<String, f64>> = Mutex::new(BTreeMap::new());
 
 /// A tool call waiting for card `run_id` returned its answer to the turn: the agent knows it.
+/// A waiting card whose content changed (a site joined a sites card already on screen): the conversations showing it
+/// read it again (`thread` hint), so a phone answers the card as it is (5/11, « cartes à revalider »). Never placed:
+/// the main conversation shows it.
+pub async fn changed(state: &AppState, agent: &str, run_id: &str) {
+    let place = load(&state.config()).get(run_id).cloned();
+    let threads = crate::threads::threads_of(state);
+    let (session, report) = place.map(|p| (p.session, p.report)).unwrap_or_default();
+    threads.touch(agent, report.as_deref(), "changed").await;
+    if session.is_some() && session != report {
+        threads.touch(agent, session.as_deref(), "changed").await;
+    }
+}
+
 pub fn taken(config: &Config, run_id: &str) {
     update(config, run_id, |p| p.taken = true);
 }

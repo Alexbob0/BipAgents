@@ -491,6 +491,35 @@ def test_a_send_cut_asks_the_person_once_and_autoriser_validates_the_site(bridge
     assert today["received"] == 5678 and today["sent"] == 1234
 
 
+def test_a_card_a_site_joined_after_it_was_shown_is_answered_as_it_is_now(bridges, fakes):
+    """5/11 (Alex's Garmin test, « cartes à revalider »): the app drew a card with one site; a second site joined it a
+    moment later; « Autoriser » for the card the app saw (its version) does nothing (409) and the conversation is told;
+    the card read again has both sites, same card; « Autoriser » for it validates both, no second card."""
+    bridge, hub, volumes = isolated(bridges, fakes, agents=("vie", "wellness"))
+    started(bridge, hub, ["vie", "wellness"])
+    reports = send_report(bridge, ("vie", "connect.garmin.com", 4000))
+    assert wait_until(lambda: len(site_cards(bridge, "vie")) == 1, timeout=10)
+    shown = site_cards(bridge, "vie")[0]
+    assert shown["bip_sites"] == ["connect.garmin.com"] and shown["bip_sites_version"] == 1
+    main = bridge.get("/v1/threads/main", headers=AUTH, params={"agent": "vie"}).json()
+    send_report(bridge, ("vie", "sso.garmin.com", 2000))
+    assert wait_until(lambda: not reports.exists(), timeout=10)
+    assert wait_until(lambda: site_cards(bridge, "vie")[0]["bip_sites_version"] == 2, timeout=10)
+    # the conversation showing it is told (its version grew: the phones read it again)
+    assert wait_until(lambda: bridge.get("/v1/threads/main", headers=AUTH, params={"agent": "vie"}).json()["version"]
+                      > main["version"], timeout=10)
+    stale = bridge.post(f"/v1/agents/vie/sandbox/sites/requests/{shown['request_id']}", headers=AUTH,
+                        json={"allow": True, "hosts": shown["bip_sites"], "version": 1})
+    assert stale.status_code == 409, stale.text
+    [now] = site_cards(bridge, "vie")
+    assert now["request_id"] == shown["request_id"] and now["bip_sites"] == ["connect.garmin.com", "sso.garmin.com"]
+    answered = bridge.post(f"/v1/agents/vie/sandbox/sites/requests/{now['request_id']}", headers=AUTH,
+                           json={"allow": True, "hosts": now["bip_sites"], "version": now["bip_sites_version"]})
+    assert answered.status_code == 200, answered.text
+    assert sorted(s["host"] for s in answered.json()["sites"]) == ["connect.garmin.com", "sso.garmin.com"]
+    assert site_cards(bridge, "vie") == [], "a second card to answer again"
+
+
 def test_the_sites_kept_before_reading_was_open_stay_validated(bridges, fakes):
     """An install from before 2026-10-28: its « Tous les sites » choices and visited sites are dropped, the sites the
     person allowed are the agent's validated sites, an old reading card still answers."""
