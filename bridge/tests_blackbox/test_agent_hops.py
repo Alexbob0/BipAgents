@@ -50,7 +50,9 @@ def test_a_ping_pong_stops_at_the_cap_and_continuer_starts_it_over(bridges, fake
     assert len(cards) == 1, cards
     card = cards[0]
     assert card["choices"] == ["once", "deny"]
-    assert card["bip_summary"] == "Quotidien et Coach ont échangé 4 messages entre eux sans toi. Continuer l'échange ?"
+    summary = card["bip_summary"]   # in the agent's language: « Quotidien et Coach ont échangé 4 messages… »
+    assert summary.startswith("Quotidien ") and " Coach " in summary and " 4 " in summary, summary
+    assert card["bip_hops"] == {"agents": ["quotidien", "coach"], "hops": 4, "max": 4}
     text, failed = ask(bridge, "quotidien", target="bip/coach", message="Toujours ?")
     assert failed and text.startswith(CAPPED)
     assert len(hop_cards(bridge)) == 1
@@ -64,7 +66,7 @@ def test_a_ping_pong_stops_at_the_cap_and_continuer_starts_it_over(bridges, fake
     # and Quotidien goes on, told the person said yes (card_place.rs `settle`)
     assert wait_until(lambda: [r for r in list(fakes.hermes.started.values())
                                if r["agent"] == "quotidien" and "<!--bip:card" in str(r["input"])
-                               and "Continuer l'échange ?" in str(r["input"]) and "ALLOWED" in str(r["input"])],
+                               and f"« {summary} »: ALLOWED" in str(r["input"])],
                       timeout=20)
     # answered again: gone
     again = bridge.post("/v1/approve", headers=AUTH, json={"agent": "quotidien", "run_id": card["run_id"],

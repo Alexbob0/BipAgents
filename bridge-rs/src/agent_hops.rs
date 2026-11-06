@@ -391,7 +391,9 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0]["run_id"], json!(card));
         assert_eq!(items[0]["choices"], json!(["once", "deny"]));
-        assert!(items[0]["bip_summary"].as_str().unwrap().starts_with("Quotidien et Coach ont échangé 4 messages"));
+        let lang = crate::mail_tidy::language(&config, "quotidien");
+        let expected = sentence(&lang, &["Quotidien".to_string(), "Coach".to_string()], MAX_HOPS);
+        assert_eq!(items[0]["bip_summary"], json!(expected));
         assert!(pending_items(&config, Some("coach")).is_empty());
         let id = card.strip_prefix(RUN_PREFIX).unwrap();
         assert_eq!(answer(&config, "coach", id, true), None, "another agent's card");

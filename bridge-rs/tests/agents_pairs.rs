@@ -108,7 +108,7 @@ async fn the_target_answers_in_the_pairs_own_conversation() {
 /// A fake Hermes whose Coach turns run until `release` (Quotidien's end at once): a turn waiting on another.
 #[derive(Clone, Default)]
 struct Slow {
-    calls: Arc<Mutex<Vec<(String, String, Value)>>>,
+    calls: Calls,
     release: Arc<std::sync::atomic::AtomicBool>,
 }
 
@@ -144,7 +144,9 @@ async fn slow_hermes(State(fake): State<Slow>, request: Request) -> Response {
     }
 }
 
-fn started_by(calls: &Arc<Mutex<Vec<(String, String, Value)>>>, agent: &str) -> usize {
+type Calls = Arc<Mutex<Vec<(String, String, Value)>>>;
+
+fn started_by(calls: &Calls, agent: &str) -> usize {
     let path = format!("/p/{agent}/v1/runs");
     calls.lock().unwrap().iter().filter(|(m, p, _)| m == "POST" && *p == path).count()
 }
