@@ -25,7 +25,7 @@ async fn one_note_while_the_credit_is_used_for_an_agent_with_routines() {
     // no routine: nothing to say
     credit::check(&state, full, Some(false)).await;
     assert!(outbox().await.is_empty());
-    bipbridge::routines::create(&config, &agent.name, "Météo", "0 7 * * *", "Dis-moi la météo.", None).unwrap();
+    bipbridge::routines::create(&config, &agent.name, "Météo", "0 7 * * *", "Dis-moi la météo.", None, bipbridge::routines::Maker::Person { muted: false }).unwrap();
     // ok: nothing said
     credit::check(&state, Credit::OK, None).await;
     assert!(outbox().await.is_empty());

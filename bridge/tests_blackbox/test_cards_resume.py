@@ -124,6 +124,35 @@ def test_a_site_refused_from_the_boite_while_other_tools_run_resumes_once(bridge
     assert "REFUSED" in told and "connect.garmin.example" in told, told
 
 
+@pytest.mark.parametrize("route", ["own_route", "boite"])
+def test_a_site_answered_the_instant_it_is_made_resumes_once(bridges, fakes, route):
+    """The main-next battery (GLM lab, 6/11): a sites card answered less than a second after it appeared, before the
+    1-second watch placed it, was never told (2 runs of 2). Placed when made now, before its notification."""
+    bridge, hub, _ = isolated(bridges, fakes, agents=("vie", "wellness"))
+    started(bridge, hub, ["vie", "wellness"])
+    give_tokens(bridge, ["vie"])
+    fakes.hermes.add_session("api_fast", [{"role": "user", "content": "Installe-moi le connecteur Garmin"}], title="Garmin")
+    gate = threading.Event()
+    follow(bridge, fakes, "run_fast", "api_fast", "vie", [
+        sse("tool.started", run_id="run_fast", tool=SITES_TOOL, preview="x"),
+        sse("tool.completed", run_id="run_fast", tool=SITES_TOOL), gate,
+        sse("run.completed", run_id="run_fast", output="Valide la carte.")])
+    text, error = sandbox_call(bridge, "vie", "sandbox_sites_request", host="connect.garmin.example", reason="Garmin")
+    assert not error, text
+    [card] = site_cards(bridge, "vie")   # at once: no wait for the placing watch
+    if route == "own_route":
+        allow_site(bridge, card)
+    else:
+        answered = bridge.post("/v1/approve", headers=AUTH, json={"agent": "vie", "run_id": card["run_id"],
+                                                                  "request_id": card["request_id"], "choice": "always"})
+        assert answered.status_code == 200, answered.text
+    time.sleep(2)
+    assert resumed(fakes, "api_fast") == []   # the turn goes on
+    gate.set()
+    told = once(fakes, "api_fast")
+    assert "connect.garmin.example" in told and "ALLOWED" in told, told
+
+
 def test_a_site_answered_just_as_the_turn_ends_resumes_once(bridges, fakes):
     gate = threading.Event()
     bridge, card = site_in_a_turn(bridges, fakes, "api_edge", "run_edge",
@@ -439,3 +468,30 @@ def test_a_connector_whose_files_changed_before_its_answer_keeps_its_call_on_the
         assert sent.status_code == 200, sent.text
         result = asked.result(timeout=30)
         assert not result.get("isError") and "approved" in result["content"][0]["text"], result
+
+
+def test_a_bridge_cards_notification_offers_no_button_and_names_the_card(bridges, fakes):
+    """« La notification ouvre la carte » (Alex 5/11): a bridge card's push has the category `BRIDGE_CARD`, which no
+    released app gives a button (« CARD » had « Autoriser une fois » on the iPhone: a sites card allowed its first host
+    only), and names the card (`t`, `r`, `n`) for the tap to open it. Hermes' approvals keep `APPROVAL`."""
+    bridge, _, _ = connectors_setup(bridges, fakes)
+    assert bridge.post("/v1/devices", headers=AUTH, json={"token": "f" * 64, "environment": "sandbox",
+                                                           "agent_ids": ["vie"]}).status_code == 200
+    for host in GARMIN_HOSTS[:2]:
+        text, error = sandbox_call(bridge, "vie", "sandbox_sites_request", host=host, reason="le connecteur Garmin")
+        assert not error, text
+    with ThreadPoolExecutor(1) as pool:
+        asked = pool.submit(connectors_tool, bridge, "connector_register", REGISTER)
+        assert wait_until(lambda: {p.get("t") for p in fakes.apns.payloads()} >= {"site", "connector"}, timeout=20), \
+            fakes.apns.payloads()
+        [card] = connectors_cards(bridge, "bip-conn-")
+        assert bridge.post(f"/v1/connectors/requests/{card['request_id']}", headers=AUTH,
+                           json={"allow": False}).status_code == 200
+        asked.result(timeout=30)
+    [site] = site_cards(bridge, "vie")
+    pushed = {p["t"]: p for p in fakes.apns.payloads() if p.get("t") in ("site", "connector")}
+    for t, payload in pushed.items():
+        assert payload["aps"]["category"] == "BRIDGE_CARD", payload
+        assert payload["agent"] == "vie" and payload["n"].startswith("n_") and payload["r"], payload
+        assert "choices" not in payload, payload   # nothing to answer from it
+    assert pushed["site"]["r"] == site["request_id"] and pushed["connector"]["r"] == card["request_id"]

@@ -139,7 +139,7 @@ the app that answered becomes the exit: it shows the consent sheet the first tim
 the session it got back. An app that cannot relay answers anyway; the session waits `accepted` (streams `paused`)
 until a phone carries it or `idle` ends it.
 
-The push for a new card is a normal card push (category `CARD`, `t: "connector"`): it opens the conversation on the
+The push for a new card is a bridge card push (category `BRIDGE_CARD`, `t: "connector"`, no button): it opens the conversation on the
 card. Tapping « Passer par mon téléphone » there starts the relay (Android: a foreground-service start from a visible
 activity, allowed).
 

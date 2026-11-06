@@ -216,7 +216,7 @@ async fn outbox_and_cron_jobs() {
     assert_eq!(app.get("/v1/outbox/nope/audio", &h).await.json(), json!({"detail": "not found"}));
 
     let config = app.app.state.config();
-    let j1 = bipbridge::routines::create(&config, "wellness", "Matin", "0 7 * * *", "Le point du matin", None).unwrap().id;
+    let j1 = bipbridge::routines::create(&config, "wellness", "Matin", "0 7 * * *", "Le point du matin", None, bipbridge::routines::Maker::Person { muted: false }).unwrap().id;
     let jobs = app.get("/v1/cron-jobs?agent=wellness", &h).await.json();
     assert_eq!(jobs["jobs"][0]["notify"], true);
     let resp = app.send_json("PUT", &format!("/v1/cron-jobs/wellness/{j1}"), &h, &json!({"notify": false})).await;

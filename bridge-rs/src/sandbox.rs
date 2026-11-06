@@ -1180,6 +1180,8 @@ pub fn tools() -> Vec<Value> {
     ]
     .into_iter()
     .chain(crate::sandbox_sites::tools())
+    // a file of the agent's to one of its services (service_files.rs): asked of the person until allowed for good
+    .chain([crate::service_files::tool()])
     .collect()
 }
 
@@ -1440,7 +1442,8 @@ folders between agents, where the person set them up: yours at /partage (write t
 ones shared with you at /lecture/<agent> (read-only). shared_files_list, shared_files_get and shared_files_write reach \
 them too; the person approves each shared_files_delete. To give files to one of your \
 other agents, put them in /envoi then use send_files_to_agent (bipagents tools). To give a file to your person, \
-save it in /envoi and give it with give_file; a page goes through create_page. Your \
+save it in /envoi and give it with give_file; a page goes through create_page. To give a file (a PDF your browser \
+downloaded: /telechargements) to one of your services, use send_file_to_service, never its content in a tool. Your \
 sandbox reaches the package registries (pip, npm…) and the sites your person allowed (sandbox_sites lists them); \
 another site your programs need: sandbox_sites_request asks your person (a site refused to your programs is asked \
 about by itself). Read web pages with your web tools or your browser, never curl or a script; programs only for an \
@@ -1485,6 +1488,9 @@ async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> 
                 Some(Value::Object(map)) => map.clone(),
                 _ => Dict::new(),
             };
+            if name == crate::service_files::TOOL_NAME {
+                return Ok(reply(Value::Object(crate::service_files::call(&config, &agent, &arguments).await)));
+            }
             if [crate::sandbox_sites::LIST, crate::sandbox_sites::REQUEST].contains(&name.as_str()) {
                 let (c, a) = (config.clone(), agent.clone());
                 let (text, is_error, card) =
@@ -1492,6 +1498,9 @@ async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> 
                         .await
                         .map_err(anyhow::Error::from)?;
                 if let Some(card) = card {
+                    // in its turn's conversation before anyone can answer it (card_place.rs)
+                    let run = format!("{}{}", crate::sandbox_sites::RUN_PREFIX, card.id);
+                    crate::card_place::place_made(&state, &agent, &run, crate::sandbox_sites::REQUEST).await;
                     crate::sandbox_sites::notify(&state, &agent, &card).await;
                 }
                 return Ok(reply(Value::Object(tool_text(&text, is_error))));

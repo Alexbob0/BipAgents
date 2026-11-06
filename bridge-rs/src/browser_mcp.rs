@@ -713,7 +713,11 @@ pub fn write_unit(config: &Dict) -> Result<bool, String> {
     let text = unit.get("text").map(crate::py::py_str).unwrap_or_default();
     let written: std::io::Result<()> = (|| {
         if let Some(profile) = config.get("profile").map(crate::py::py_str).filter(|p| !p.is_empty()) {
-            std::fs::create_dir_all(profile)?;
+            std::fs::create_dir_all(&profile)?;
+            // the downloads policy the unit mounts (browsers.rs), in case the bridge's setup has not written it
+            if let Some(place) = Path::new(&profile).parent() {
+                crate::browsers::write_downloads_policy(place)?;
+            }
         }
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;

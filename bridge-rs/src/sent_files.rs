@@ -201,6 +201,11 @@ fn places_of(config: &Config, agent: &AgentConfig, everything: bool) -> Vec<(Str
             }
         }
     }
+    // What its visible browser downloaded (browsers.rs: Chrome's download folder, in its profile).
+    let downloads = crate::browsers::downloads_dir(config, &agent.name);
+    if downloads.parent().is_some_and(Path::is_dir) {
+        out.push((crate::browsers::DOWNLOADS.into(), vec![downloads]));
+    }
     let host = agent.upload_dir_host.as_deref().filter(|h| !h.is_empty());
     if let Some(host) = host {
         let seen = agent.upload_dir_container.as_deref().filter(|c| !c.is_empty()).unwrap_or(host);
@@ -325,6 +330,35 @@ pub(crate) fn open_own(config: &Config, agent: &AgentConfig, path: &str) -> Resu
         }
     }
     Err(why.into())
+}
+
+/// The agent's file behind `path` in its own working places only (`places_of` without its Hermes profile nor the
+/// folders mounted by hand; its browser's downloads included), opened name by name without a link, never hidden or
+/// secret-looking, never copied out of a container: the path as the agent sees it and the file (service_files.rs).
+pub(crate) fn open_working(
+    config: &Config,
+    agent: &AgentConfig,
+    path: &str,
+) -> Result<(String, std::fs::File), &'static str> {
+    let mut why = "not in your files (/telechargements, /envoi, /workspace, /root, /partage, the files you were sent)";
+    for candidate in meant(path) {
+        for (prefix, folders) in places_of(config, agent, false) {
+            let Some(rest) = under(&candidate, &prefix) else { continue };
+            let Some(relative) = plain_relative(rest) else { return Err("not a plain path") };
+            if secret_looking(&relative) {
+                return Err("a hidden or secret-looking file (never sent)");
+            }
+            let newest = folders.iter().filter_map(|folder| open_beneath(folder, &relative).ok()).max_by_key(modified);
+            match newest {
+                Some(file) => return Ok((candidate, file)),
+                None => {
+                    why = "no such file there (or a link)";
+                    break;
+                }
+            }
+        }
+    }
+    Err(why)
 }
 
 /// The copy of the agent's file behind `path`, made or refreshed now: Err(why) when there is none.

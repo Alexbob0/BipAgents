@@ -1182,6 +1182,19 @@ async fn bridge_card(
             None => Err(HttpError::new(404, "no such request (answered already?)")),
         }?));
     }
+    // a routine on a clock an agent proposed (routines.rs): on with « notify », « silent » (or an older app's « Oui »)
+    if let Some(id) = run_id.strip_prefix(crate::routines::RUN_PREFIX) {
+        let choice = body.choice.trim().to_lowercase();
+        let (config, name, id, given) = (state.config(), agent.name.clone(), id.to_string(), choice.clone());
+        let answered = tokio::task::spawn_blocking(move || crate::routines::answer(&config, &name, &id, &given))
+            .await
+            .map_err(anyhow::Error::from)?;
+        return Ok(Some(match answered {
+            Some(r) if crate::card_place::allowed(&choice) => Ok(web::ok(json!({"ok": true, "choice": choice, "muted": r.muted}))),
+            Some(_) => Ok(web::ok(json!({"ok": true, "choice": "deny"}))),
+            None => Err(HttpError::new(404, "no such request (answered already?)")),
+        }?));
+    }
     // a space card (what to keep when the place fills up, storage_watch.rs), answered here
     if let Some(id) = run_id.strip_prefix(crate::storage_watch::RUN_PREFIX) {
         return Ok(Some(crate::storage_watch::approve(state, agent, id, &body.choice).await?));

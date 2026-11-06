@@ -36,7 +36,8 @@
 //!                                                                  reading_open, today}
 //!     POST   /v1/agents/{agent}/sandbox/sites          {host}    added by the person (`*.domain` allowed)
 //!     DELETE /v1/agents/{agent}/sandbox/sites/{host}             removed
-//!     POST   /v1/agents/{agent}/sandbox/sites/requests/{id} {allow, hosts?}   a card answered
+//!     POST   /v1/agents/{agent}/sandbox/sites/requests/{id} {allow, hosts?, version?}   a card answered; `version`
+//!            (the card's `bip_sites_version` as shown) older than the card now (sites joined it): 409, nothing done
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -699,6 +700,7 @@ pub fn pending_items(config: &Config, agent: Option<&str>) -> Vec<Dict> {
                 "session_id": null,
                 "bip_site": p.host,
                 "bip_sites": hosts,
+                "bip_sites_version": version_of(&p),
                 "bip_site_kind": "send",
                 "bip_site_send_bytes": p.bytes,
                 "bip_site_reason": if p.reason.is_empty() { Value::Null } else { json!(p.reason) },
@@ -725,9 +727,46 @@ pub enum Decision {
 /// A card answered: the hosts validated for sending, or refused (not asked again for a while). The decision is kept
 /// with the person's others. None: no such card (answered already, or gone).
 pub fn answer(config: &Config, agent: &str, id: &str, decision: Decision, via: &str) -> std::io::Result<Option<Pending>> {
+    Ok(match answer_seen(config, agent, id, decision, via, None)? {
+        Answered::Done(card) => Some(card),
+        Answered::Changed(_) | Answered::Gone => None,
+    })
+}
+
+/// What became of an answer.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Answered {
+    Done(Pending),
+    /// The card the person saw (`version`) is not the card now: hosts joined it since it was shown. Nothing done;
+    /// the app shows the card as it is and asks again, in place (5/11, Alex's Garmin test: the hosts that joined after
+    /// the card was drawn came back on a second card, « cartes à revalider »).
+    Changed(Pending),
+    Gone,
+}
+
+/// A card's version (`bip_sites_version`): its hosts only grow until it is answered, so their number.
+pub fn version_of(card: &Pending) -> usize {
+    card.all_hosts().len()
+}
+
+/// `answer`, for the card version the app showed (`seen`; None: an older app, which answers what it showed and leaves
+/// the rest on a card of their own).
+pub fn answer_seen(
+    config: &Config,
+    agent: &str,
+    id: &str,
+    decision: Decision,
+    via: &str,
+    seen: Option<usize>,
+) -> std::io::Result<Answered> {
     let now = py::time_time();
+    let mut changed: Option<Pending> = None;
     let decided = change(config, |store| {
         let at = store.pending.iter().position(|p| p.id == id && p.agent == agent)?;
+        if seen.is_some_and(|v| v != version_of(&store.pending[at])) {
+            changed = Some(store.pending[at].clone());
+            return None;
+        }
         let card = store.pending.remove(at);
         let hosts = card.all_hosts();
         let (allow, chosen): (bool, Vec<String>) = match &decision {
@@ -768,7 +807,9 @@ pub fn answer(config: &Config, agent: &str, id: &str, decision: Decision, via: &
         let shown_hosts = if chosen.is_empty() { hosts } else { chosen };
         Some((card, shown_hosts, if allow { "always" } else { "deny" }))
     })?;
-    let Some((card, hosts, choice)) = decided else { return Ok(None) };
+    let Some((card, hosts, choice)) = decided else {
+        return Ok(changed.map_or(Answered::Gone, Answered::Changed));
+    };
     let fields = json!({
         "session_id": null, "run_id": format!("{RUN_PREFIX}{}", card.id), "request_id": card.id,
         "command": hosts.join(", "), "description": card_sentence(config, agent, &hosts, card.bytes),
@@ -780,7 +821,7 @@ pub fn answer(config: &Config, agent: &str, id: &str, decision: Decision, via: &
         }
     }
     tracing::info!(target: "bipbridge::sandbox", agent, hosts = %hosts.join(", "), choice, "sending card answered");
-    Ok(Some(card))
+    Ok(Answered::Done(card))
 }
 
 // --- the proxy's reports -------------------------------------------------------------------------------------------
@@ -851,8 +892,13 @@ pub async fn watch(state: AppState) {
             let asked =
                 tokio::task::spawn_blocking(move || ask(&c, &report.agent, &report.host, "", "proxy", report.bytes))
                     .await;
-            if let Ok(Asked::Card(card, true)) = asked {
-                notify(&state, &found, &card).await;
+            match asked {
+                Ok(Asked::Card(card, true)) => notify(&state, &found, &card).await,
+                // a host joined a card already asked: the phones showing it read it again (no new notification)
+                Ok(Asked::Card(card, false)) => {
+                    crate::card_place::changed(&state, &found.name, &format!("{RUN_PREFIX}{}", card.id)).await
+                }
+                _ => {}
             }
         }
         if ticks.is_multiple_of(10) {
@@ -909,6 +955,9 @@ pub struct Answer {
     /// An older app's « Tous les sites pour <agent> »: every host on the card.
     #[serde(default)]
     pub all_sites: bool,
+    /// The card's version the app showed (`bip_sites_version`): changed since, nothing done (409).
+    #[serde(default)]
+    pub version: Option<usize>,
 }
 
 impl Validate for Answer {
@@ -981,9 +1030,10 @@ async fn answer_route(
 ) -> ApiResult<Response> {
     let config = state.config();
     let agent = agent_of(&config, &name)?;
-    match answer(&config, &agent.name, &id, body.decision(), "app").map_err(anyhow::Error::from)? {
-        Some(_) => Ok(web::ok(view(&config, &agent))),
-        None => Err(HttpError::new(404, "no such request (answered already?)")),
+    match answer_seen(&config, &agent.name, &id, body.decision(), "app", body.version).map_err(anyhow::Error::from)? {
+        Answered::Done(_) => Ok(web::ok(view(&config, &agent))),
+        Answered::Changed(_) => Err(HttpError::new(409, "the card changed since it was shown: read it again")),
+        Answered::Gone => Err(HttpError::new(404, "no such request (answered already?)")),
     }
 }
 
@@ -1258,6 +1308,30 @@ mod tests {
         assert_eq!(sentence("nl", "Dev", &one, 0), "Dev wants to send data to a.com");
         let two = ["a.com".to_string(), "b.com".to_string()];
         assert_eq!(sentence("en", "Dev", &two, 2 * 1024 * 1024), "Dev wants to send data to 2 sites (about 2 MB): a.com, b.com");
+    }
+
+    /// 5/11 (Alex's Garmin test, « cartes à revalider »): a host joined the card after the app drew it; « Autoriser »
+    /// for the card the app saw (its version) does nothing and says it changed; for the card as it is now, every host.
+    #[test]
+    fn a_card_that_grew_since_it_was_shown_is_asked_again_in_place() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = with_agents(&dir, json!({"vie": {"hermes_url": "http://127.0.0.1:9300", "display_name": "Vie"}}));
+        proxy_url(&config, "vie", "http://10.233.80.2:3128").unwrap();
+        ask(&config, "vie", "connect.garmin.com", "", "proxy", 1);
+        let shown = pending_items(&config, Some("vie"))[0].clone();
+        assert_eq!(shown["bip_sites_version"], json!(1));
+        let id = shown["request_id"].as_str().unwrap().to_string();
+        ask(&config, "vie", "sso.garmin.com", "", "proxy", 1); // joins the card already on screen
+        let hosts = vec!["connect.garmin.com".to_string()];
+        let stale = answer_seen(&config, "vie", &id, Decision::Hosts(true, hosts), "app", Some(1)).unwrap();
+        assert!(matches!(stale, Answered::Changed(ref c) if c.all_hosts().len() == 2));
+        assert!(!validated(&config, "vie", "connect.garmin.com"), "nothing done on a card that changed");
+        let now = pending_items(&config, Some("vie"))[0].clone();
+        assert_eq!((now["request_id"].clone(), now["bip_sites_version"].clone()), (json!(id), json!(2)));
+        let all = vec!["connect.garmin.com".to_string(), "sso.garmin.com".to_string()];
+        assert!(matches!(answer_seen(&config, "vie", &id, Decision::Hosts(true, all), "app", Some(2)).unwrap(), Answered::Done(_)));
+        assert!(validated(&config, "vie", "connect.garmin.com") && validated(&config, "vie", "sso.garmin.com"));
+        assert!(load(&config).pending.is_empty(), "no second card to answer again");
     }
 
     #[test]

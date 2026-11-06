@@ -2003,16 +2003,35 @@ async fn mcp(
         wrote(&agent.name, &name, &arguments, &mut result);
         return Ok(answer(result));
     }
+    if name == crate::phone_exit::agent::TOOL_NAME && crate::phone_exit::agent::offered(&state.config(), &agent.name) {
+        // « Passer par mon téléphone pour <site> ? »: its card in this turn's conversation, then pushed (card_place.rs)
+        let cards_before = crate::card_place::waiting(&state, &agent.name);
+        let (c, a, args) = (state.config(), agent.clone(), arguments.clone());
+        let (text, is_error, card) =
+            tokio::task::spawn_blocking(move || crate::phone_exit::agent::call(&c, &a, &args)).await?;
+        if let Some(card) = &card {
+            crate::card_place::place_new(&state, &agent, &cards_before, turn_run.as_deref()).await;
+            crate::phone_exit::agent::notify(&state.push, &state.config(), card).await;
+        }
+        return Ok(answer(tool_text(&text, is_error)));
+    }
     if name == crate::routines::TOOL_NAME {
         if !crate::routines::enabled(&state.config(), &agent.name) {
             return Ok(answer(tool_text("Routines are off for you: the person switches « Routines » on in your page of the app.", true)));
         }
         // made in this conversation: its report goes back there
         let origin = state.hub.asking_session(&agent.name);
-        let (mut result, run) = crate::routines::call(&state.config(), &agent.name, &arguments, origin.as_deref());
-        if let Some(id) = run {
+        let cards_before = crate::card_place::waiting(&state, &agent.name);
+        let called = crate::routines::call(&state.config(), &agent.name, &arguments, origin.as_deref());
+        let mut result = called.result;
+        if let Some(id) = called.run {
             let state = state.clone();
             tokio::spawn(async move { crate::routines::fire(&state, &id).await });
+        }
+        if let Some((line, card)) = called.card {
+            // a proposal: its card in this turn's conversation (card_place.rs) and pushed, as routine_trigger's
+            crate::card_place::place_new(&state, &agent, &cards_before, turn_run.as_deref()).await;
+            state.push.notify_bridge_card(&agent.name, &line, "routine_request", &card).await;
         }
         wrote(&agent.name, &name, &arguments, &mut result);
         return Ok(answer(result));

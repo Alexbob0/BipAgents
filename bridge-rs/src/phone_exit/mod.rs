@@ -937,6 +937,20 @@ async fn tell_boite(state: &AppState) {
     });
 }
 
+/// The browser tool's name in Hermes (the turn browsing is the one a card made by the hub belongs to).
+const BROWSER_TOOL: &str = "mcp__stealth__navigate";
+
+/// A card the hub made (a challenge page, a « Toujours » site with no phone): placed in the turn browsing, after its
+/// item, like the other bridge cards (card_place.rs `place_made`), then pushed.
+async fn place_and_notify(state: &AppState, card: &store::Card) {
+    let config = state.config();
+    if let Some(agent) = config.agent(Some(&card.agent)) {
+        let run = format!("{}{}", store::RUN_PREFIX, card.id);
+        crate::card_place::place_made(state, agent, &run, BROWSER_TOOL).await;
+    }
+    agent::notify(&state.push, &config, card).await;
+}
+
 /// The refusal before the phone is asked for a name and port (None: go on to the sessions).
 pub fn precheck(settings: &Settings, host: &str, port: u16) -> Option<&'static str> {
     if !settings.enabled {
@@ -995,7 +1009,7 @@ async fn decide(state: &AppState, host: &str, agent: &str) -> Result<(String, Ar
             let (c, a, h) = (config.clone(), agent.to_string(), host.to_string());
             let asked = tokio::task::spawn_blocking(move || agent::ask(&c, &a, &h, "relay stopped")).await;
             if let Ok(Ok(agent::Asked::Card(card, true))) = asked {
-                agent::notify(&state.push, &config, &card).await;
+                place_and_notify(state, &card).await;
             }
             return Err("paused".into());
         }
@@ -1033,7 +1047,7 @@ async fn local_stream(state: AppState, conn: tokio::net::UnixStream) {
             let answer = match asked {
                 Ok(Ok(agent::Asked::Card(card, made))) => {
                     if made {
-                        agent::notify(&state.push, &state.config(), &card).await;
+                        place_and_notify(&state, &card).await;
                         tracing::info!(target: "bipbridge::phone_exit", agent = %card.agent, site = %card.site,
                             reason = %card.reason, "phone exit card made (a challenge page)");
                         "CARD\n".to_string()
