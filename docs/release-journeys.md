@@ -119,7 +119,7 @@ la bêta.
 | J39 | « Seulement le critique » : validé pour toi | Une petite tâche de fond lancée sans carte ni notification ; dans la Boîte, « Validé pour toi » dit ce qui a été fait, « Annuler » → « Annulé » (la tâche en pause) | P, i, A |
 | J40 | « Seulement le critique » : le critique reste demandé | La carte d'une commande qui supprime (ce qu'elle fait), « Oui, vas-y », l'agent continue ; rien validé à sa place | P |
 | J41 | Une routine créée, puis une question | La routine en marche tout de suite ; UNE carte dans la conversation : « Veux-tu être au courant de ce que cette routine trouve ? », « Oui, préviens-moi » ; elle s'en va, la routine reste en marche | P, i, A |
-| J42 | Les « Étapes » | Pendant le travail, les étapes viennent de ce que fait l'agent ; dès qu'il écrit sa liste, c'est la sienne : une carte pour le tour, ses lignes et leur état (fait, en cours) | P ; apps : manuel (démo : `StepsCardTests`, `StepsCardTest`) |
+| J42 | Les « Étapes » | Pendant le travail, les étapes viennent de ce que fait l'agent ; dès qu'il écrit sa liste, c'est la sienne : une carte pour le tour, ses lignes et leur état (fait, en cours) | P, i, A |
 | J43 | La limite d'échanges entre agents | Au 5e message entre deux agents : UNE carte « Continuer l'échange ? » dans la conversation ; « Oui, vas-y » : la carte part, l'agent continue | P ; apps : manuel |
 | J44 | Quick Talk suit la réponse | Le message suivi jusqu'à sa réponse (`GET /v1/threads/{t}/sends/{client_id}`) : en cours, puis les mots à dire ; une carte : passé à l'écran | P (le pont seulement) |
 
@@ -156,9 +156,8 @@ la bêta.
   ouvrent alors la conversation comme sa notification l'ouvre ; « Voir » lui-même est vérifié sur l'iPhone.
 
 **Encore à la main (J32 et après)** : les foyers dans les apps (J34–J38 : il faut deux installations servies, l'app
-appairée à celle de Marie, reliée à celle d'Alex : `serve_journeys_people.py` n'en sert qu'une) ; les « Étapes » et la
-limite d'échanges dans les apps (J42, J43 : leurs cartes sont dessinées par le code de toutes les cartes, déjà dans
-J11/J12 et `StepsCardTests` en démo) ; « Visible par N personnes » sur l'iPhone (le projet n'est pas dans le QR code
+appairée à celle de Marie, reliée à celle d'Alex : `serve_journeys_people.py` n'en sert qu'une) ; la limite d'échanges dans
+les apps (J43 : sa carte est dessinée par le code de toutes les cartes, déjà dans J11/J12) ; « Visible par N personnes » sur l'iPhone (le projet n'est pas dans le QR code
 des parcours ; Android le vérifie) ; Quick Talk dans les apps (sa voix : manuel).
 
 
