@@ -134,23 +134,27 @@ la bêta.
   (le 6/11 vers 16 h : quatre exécutions à la fois, sur des arbres différents). Désormais chaque exécution touche toutes
   ses sources, construit sous un verrou et sert SA copie (`<run>/bipbridge`). Les tableaux des exécutions qui en
   chevauchaient une autre sont à refaire.
-- Petit, pas affiché : la vue « Partager avec… » d'Alex (`GET /v1/agents/{a}/shares`) donne le `title` de chaque
-  conversation de Marie, c'est-à-dire ses premiers mots, alors qu'`agent_shares.rs` promet « qui, quand, combien de
-  messages » ; aucune des deux apps ne l'affiche (« avec Marie · N messages »).
-- À vérifier contre un vrai Hermes : `peers.rs` (`bot_chat`) ne lit la liste des sessions que sous `data`, quand
-  `hermes.rs` lit `sessions`, `data` ou `items`, et le faux Hermes répond `sessions`. Si Hermes répond `sessions`,
-  l'agent d'un autre foyer ne joint jamais le Bot Chat (403 « only coach's Bot Chat is reachable ») ; J38 répond
-  `data`, comme le Hermes de `test_households_and_peers.py`.
+- Petit, pas affiché (**corrigé**, branche `people-fixes`) : la vue « Partager avec… » d'Alex
+  (`GET /v1/agents/{a}/shares`) donnait le `title` de chaque conversation de Marie, c'est-à-dire ses premiers mots,
+  alors qu'`agent_shares.rs` promet « qui, quand, combien de messages ». Elle ne le donne plus (J35 le vérifie) ; aucune
+  des deux apps ne l'affichait (« avec Marie · N messages »), Android ne le lit plus.
+- Vérifié contre le vrai Hermes v0.22.5 (bf0203a794, `gateway/platforms/api_server.py` `_handle_list_sessions`, les
+  correctifs de `hermes/patches/` n'y touchent pas) : `GET /api/sessions` répond `{"object": "list", "data": [...]}`,
+  ce que `peers.rs` (`bot_chat`) lisait ; seul le faux Hermes répond `sessions`. `bot_chat` lit maintenant les deux,
+  comme `hermes.rs` (**corrigé**, `people-fixes`) : J38 passe par la liste du faux Hermes (`sessions`),
+  `test_households_and_peers.py` par `data`.
 - `displayable.py` ne connaît pas encore les cartes « Étapes » (`kind: steps`) : il les déclare « no app draws » ;
   `displayable_people.check_page` les vérifie comme les deux apps les dessinent (à reporter dans `displayable.py`).
-- **Android : « Visible par N personnes » ne s'affiche jamais** (J32, Android, pas corrigé) : le pont donne la vue du
+- **Android : « Visible par N personnes » ne s'affichait jamais** (J32, Android, **corrigé** dans `people-fixes` :
+  `session` nullable dans `OwnerShares.View`, tests avec les vraies réponses du pont) : le pont donne la vue du
   partage d'un projet avec `"session": null` (`GET /v1/read-shares?agent=`, de même la réponse de
   `POST /v1/read-shares`) ; Android la lit avec `session: String = ""` non nullable (`readshares/OwnerShares.kt` `View`,
   `net/Json.kt` sans `coerceInputValues`) : `JsonDecodingException: Expected string value for a non-null key 'session',
   got null literal instead at path: $.session`. Chez Alex, le projet que voit Léa dit « Inviter des amis » au lieu de
-  « Visible par 1 personne ». La même lecture (`OwnerShares.keep`) suit la création du partage par « Inviter des
-  amis » : à vérifier sur un téléphone (le partage fait au pont, l'app en erreur). `ProjectAgentTest` passe parce que
-  son exemple n'a pas de `session` ; l'iPhone la lit en optionnel.
+  « Visible par 1 personne ». La même lecture (`OwnerShares.keep`) suivait la création du partage par « Inviter des
+  amis » (le partage fait au pont, l'app en erreur), et chaque changement (invitation annulée, invité retiré, fin) :
+  corrigée de même (`OwnerShares.decodeView`). `ProjectAgentTest` passait parce que son exemple n'avait pas de
+  `session` ; l'iPhone la lit en optionnel (`ReadShareView`, testé avec les mêmes réponses).
 - Sous Robolectric, « Voir » ne navigue pas (la coroutine du bouton reprend hors du fil principal après son appel au
   guichet : « Method setCurrentState must be called on the main thread » ; pas sur un téléphone) : J32/J33 Android
   ouvrent alors la conversation comme sa notification l'ouvre ; « Voir » lui-même est vérifié sur l'iPhone.
