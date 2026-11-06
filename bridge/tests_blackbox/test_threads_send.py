@@ -151,6 +151,38 @@ def test_a_photo_sent_alone_shows_with_its_size_and_its_file(bridges, fakes):
     assert got.status_code == 200 and got.content == jpeg
 
 
+def test_a_document_read_back_has_its_size_in_bytes_and_opens(bridges, fakes):
+    # 6/11 (J04): once Hermes stored it, the document's size came as words (« 3 Ko ») and both apps rejected the page
+    bridge, thread = setup(bridges, fakes)
+    gate = threading.Event()
+    fakes.hermes.runs["r1"] = [sse("run.started", run_id="r1"), gate, sse("run.completed", run_id="r1", output="Lu.")]
+    pdf = b"%PDF-1.4\n% devis\n" + b"0" * 3210
+    up = bridge.post("/v1/files", headers=AUTH, data={"agent": "wellness"},
+                     files={"file": ("devis.pdf", pdf, "application/pdf")})
+    assert up.status_code == 200, up.text
+    path = up.json()["path"]
+    doc = {"kind": "document", "name": "devis.pdf", "mime": "application/pdf", "size": len(pdf), "path": path}
+    assert send(bridge, thread, "C1D00000-0000-4000-8000-0000000000D1", "Le devis", attachments=[doc]).status_code == 200
+    words = fakes.hermes.started["r1"]["input"]
+    assert words.endswith(f"[Pièce jointe : devis.pdf (application/pdf, 3 Ko) → {path}]")
+    # with a document the bridge cannot see (another place): the line's size, about, still a number
+    other = "/elsewhere/x-plan.pdf"
+    stored(fakes, user(words), user(f"Et celui-ci\n\n[Pièce jointe : plan.pdf (application/pdf, 1,2 Mo) → {other}]"),
+           agent("Lu."))
+    gate.set()
+    assert wait_until(lambda: page(bridge, thread)["items"][-1]["text"] == "Lu.", timeout=15)
+    items = page(bridge, thread)["items"]
+    [row] = [i for i in items if i.get("text") == "Le devis"]
+    assert row["id"].startswith("m_") and row["client_id"] == "C1D00000-0000-4000-8000-0000000000D1"
+    [att] = row["attachments"]
+    assert (att["kind"], att["name"], att["path"]) == ("document", "devis.pdf", path)
+    assert att["size"] == len(pdf), "the file's own size, a number"
+    got = fetch(bridge, att["url"])
+    assert got.status_code == 200 and got.content == pdf
+    [plan] = [i for i in items if i.get("text") == "Et celui-ci"]
+    assert plan["attachments"][0]["size"] == 1_200_000
+
+
 def test_a_waiting_message_says_its_files_and_its_voice(bridges, fakes):
     bridge, thread = setup(bridges, fakes)
     gate = threading.Event()

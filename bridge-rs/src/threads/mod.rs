@@ -690,6 +690,7 @@ impl Threads {
         });
         self.with_sends(agent, thread, &mut items, &queued).await?;
         self.with_files(agent, thread, &mut items).await?;
+        with_document_sizes(agent, &mut items).await;
         Ok(items)
     }
 
@@ -1239,6 +1240,46 @@ async fn item_route(
     let (_, thread, items) = all_items(&state, &id, &q).await?;
     let found = items.iter().find(|i| i.id == item).ok_or_else(HttpError::not_found)?;
     Ok(web::ok(found.to_json(&thread, q.get("debug").is_some_and(|d| d == "1"))))
+}
+
+/// The person's documents with their file's own size, when the file is in the agent's uploads as the bridge sees them
+/// (`[Pièce jointe : …]` gives it in words only, rounded): never a size the apps cannot read.
+async fn with_document_sizes(agent: &AgentConfig, items: &mut [Item]) {
+    let (Some(host), Some(seen)) = (
+        agent.upload_dir_host.clone().filter(|h| !h.is_empty()),
+        agent.upload_dir_container.clone().filter(|c| !c.is_empty()),
+    ) else {
+        return;
+    };
+    let root = format!("{}/", seen.trim_end_matches('/'));
+    let mut wanted: Vec<(usize, usize, String)> = Vec::new();
+    for (i, item) in items.iter().enumerate() {
+        let Some(Value::Array(atts)) = item.body.get("attachments") else { continue };
+        for (n, a) in atts.iter().enumerate() {
+            let Some(path) = a.get("path").and_then(Value::as_str).filter(|_| a["kind"] == "document") else { continue };
+            let Some(rest) = path.strip_prefix(&root) else { continue };
+            if rest.split('/').any(|p| p.is_empty() || p == "." || p == "..") {
+                continue;
+            }
+            wanted.push((i, n, format!("{}/{rest}", host.trim_end_matches('/'))));
+        }
+    }
+    if wanted.is_empty() {
+        return;
+    }
+    let sizes = tokio::task::spawn_blocking(move || {
+        wanted
+            .into_iter()
+            .filter_map(|(i, n, p)| std::fs::metadata(&p).ok().filter(|m| m.is_file()).map(|m| (i, n, m.len())))
+            .collect::<Vec<_>>()
+    })
+    .await
+    .unwrap_or_default();
+    for (i, n, size) in sizes {
+        if let Some(Value::Array(atts)) = items[i].body.get_mut("attachments") {
+            atts[n]["size"] = json!(size);
+        }
+    }
 }
 
 async fn attachment_route(
