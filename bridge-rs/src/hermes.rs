@@ -633,6 +633,12 @@ impl HermesClient {
         self.get_json(agent, "/v1/capabilities", &[]).await
     }
 
+    /// The rows of a `GET /api/sessions` answer, whichever key holds them: `data` (Hermes v0.22.5's
+    /// `{"object": "list", "data": [...]}`), `sessions` or `items`, or a bare list.
+    pub fn session_rows(data: Value) -> Vec<Map<String, Value>> {
+        Self::items(data, ["sessions", "data", "items"])
+    }
+
     fn items(data: Value, keys: [&str; 3]) -> Vec<Map<String, Value>> {
         let items = match data {
             Value::Object(mut m) => {

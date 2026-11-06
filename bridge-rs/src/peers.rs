@@ -431,16 +431,16 @@ async fn from_target(state: &AppState, agent: &AgentConfig, path: &str, params: 
 async fn bot_chat(state: &AppState, agent: &AgentConfig) -> Option<Dict> {
     let params = [("limit", "200"), ("title", BOT_CHAT_TITLE), ("include_hidden", "1")]
         .map(|(k, v)| (k.to_string(), v.to_string()));
-    let listing = from_target(state, agent, "api/sessions", &params).await?;
-    let rows = listing.as_object()?.get("data")?;
-    let rows = rows.as_array()?;
-    rows.iter()
-        .filter_map(Value::as_object)
-        .find(|row| {
-            row.get("title").filter(|t| crate::py::truthy(t)).map(crate::py::py_str).unwrap_or_default().trim()
-                == BOT_CHAT_TITLE
-        })
-        .cloned()
+    bot_chat_row(from_target(state, agent, "api/sessions", &params).await?)
+}
+
+/// The Bot Chat among a listing of sessions, read as hermes.rs reads every listing: under `data` (Hermes v0.22.5),
+/// `sessions` or `items`.
+fn bot_chat_row(listing: Value) -> Option<Dict> {
+    crate::hermes::HermesClient::session_rows(listing).into_iter().find(|row| {
+        row.get("title").filter(|t| crate::py::truthy(t)).map(crate::py::py_str).unwrap_or_default().trim()
+            == BOT_CHAT_TITLE
+    })
 }
 
 fn id_of(row: &Dict) -> String {
@@ -1314,6 +1314,27 @@ mod tests {
         assert!(household_turn("cuisine-test") && !household_turn("vie-test"));
         household_turn_ended(turn);
         assert!(!household_turn("cuisine-test"));
+    }
+
+    #[test]
+    fn the_bot_chat_is_found_under_data_as_hermes_v0225_answers() {
+        // Hermes v0.22.5's `GET /api/sessions` (gateway/platforms/api_server.py `_handle_list_sessions`)
+        let listing = json!({"object": "list", "data": [{"id": "s9", "title": "Courses"},
+                                                        {"id": "bot-1", "title": " Bot Chat "}],
+                             "limit": 200, "offset": 0, "has_more": false});
+        assert_eq!(bot_chat_row(listing).map(|r| id_of(&r)).as_deref(), Some("bot-1"));
+        assert!(bot_chat_row(json!({"object": "list", "data": [{"id": "s9", "title": "Courses"}]})).is_none());
+    }
+
+    #[test]
+    fn the_bot_chat_is_found_under_sessions_too() {
+        // the other shape hermes.rs reads (`sessions`, the black-box suite's Hermes), and `items`
+        let listing = json!({"sessions": [{"id": "s9", "title": "Courses"}, {"id": "bot-2", "title": "Bot Chat"}]});
+        assert_eq!(bot_chat_row(listing).map(|r| id_of(&r)).as_deref(), Some("bot-2"));
+        let items = json!({"items": [{"id": "bot-3", "title": "Bot Chat"}]});
+        assert_eq!(bot_chat_row(items).map(|r| id_of(&r)).as_deref(), Some("bot-3"));
+        assert!(bot_chat_row(json!({"sessions": []})).is_none());
+        assert!(bot_chat_row(json!({"detail": "nope"})).is_none());
     }
 
     #[test]

@@ -11,9 +11,10 @@
 //!     DELETE /v1/agents/{agent_id}/shares/conversations/{cid}   {ok}  a relative's conversation ended by the owner
 //!
 //!     share view  {agent, households: [{id, name, shared}], warning: {memory_common: true, private_tools: [name],
-//!                  confirm: bool}, conversations: [{id, household, household_name, title, created, updated,
+//!                  confirm: bool}, conversations: [{id, household, household_name, created, updated,
 //!                  messages, tokens: {input, output}}], tokens: [{household, household_name, input, output}],
 //!                  told: {household: bool}   (PUT only: whether their bridge got the news)}
+//!                  No `title` in `conversations`: a relative's conversation is titled with her first words.
 //!
 //! Only linked households can be chosen. `private_tools` lists what the agent reaches of the owner's data (health,
 //! mail, calendar, contacts, notebook, archives, files); `confirm` is true when it holds more than the Carnet (on by
@@ -319,6 +320,10 @@ pub fn share_view(config: &Config, agent: &AgentConfig) -> Value {
                 .map(|(id, c)| {
                     let household = str_of(c, "household");
                     let mut view = conversation_view(id, c);
+                    // not its title: her first words (the owner sees who, when, how many messages)
+                    if let Some(row) = view.as_object_mut() {
+                        row.remove("title");
+                    }
                     view["household"] = json!(household);
                     view["household_name"] = json!(household_name(&linked, &household));
                     view

@@ -276,6 +276,9 @@ async fn a_relative_talks_to_a_shared_agent_in_her_own_conversation() {
     let view = a.get("/v1/agents/cuisine/shares", &h).await.json();
     assert_eq!(view["conversations"][0]["household_name"], "Marie");
     assert_eq!(view["conversations"][0]["messages"], 2);
+    // who, when, how many messages: not the conversation's title, her first words
+    assert!(view["conversations"][0].get("title").is_none(), "{}", view["conversations"][0]);
+    assert!(!view.to_string().contains("Une idée de dîner"), "{view}");
     assert_eq!(view["tokens"], json!([{"household": "marie", "household_name": "Marie", "input": 1200, "output": 80}]));
     let listed = b.get("/v1/threads?agent=cuisine__alex", &h).await.json();
     assert_eq!(listed["threads"][0]["title"], "Une idée de dîner ?");

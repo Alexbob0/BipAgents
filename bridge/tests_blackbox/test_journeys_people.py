@@ -145,11 +145,12 @@ def test_j35_an_agent_shared_with_a_relative_each_their_own_conversation(homes):
     assert view["households"] == [{"id": "marie", "name": "Marie", "shared": True}], view
     assert wait_until(lambda: (a.get("/v1/agents/cuisine/shares", headers=AUTH).json()["conversations"] or [{}])[0]
                       .get("messages", 0) >= 1, timeout=15), a.get("/v1/agents/cuisine/shares", headers=AUTH).json()
-    # what Alex's app draws: « avec Marie · N messages » (AgentFamilyShareView.swift, FamilyShares.kt), never a title.
-    # (The view also carries the conversation's `title`, her first words, though agent_shares.rs says it gives only
-    # who, when and how many: not drawn by either app, reported 6/11.)
-    [row] = a.get("/v1/agents/cuisine/shares", headers=AUTH).json()["conversations"]
+    # what Alex's app draws: « avec Marie · N messages » (AgentFamilyShareView.swift, FamilyShares.kt); the view has
+    # no `title` (her conversation's is her first words): who, when and how many only (agent_shares.rs)
+    seen = a.get("/v1/agents/cuisine/shares", headers=AUTH).json()
+    [row] = seen["conversations"]
     assert row["household_name"] == "Marie" and isinstance(row["messages"], int) and row["messages"] >= 1, row
+    assert "title" not in row and words not in str(seen) and "Une idée" not in str(seen), seen
     main = a.get("/v1/threads/main", headers=AUTH, params={"agent": "cuisine"}).json()["id"]
     assert words not in str(thread_page(a, main, "cuisine")["items"]), "Marie's words show in Alex's conversation"
 
@@ -230,22 +231,11 @@ def test_j38_agents_of_two_households_write_to_each_other(homes, fakes):
     then the exchange read-only."""
     from test_households_and_peers import give_peer_token
 
-    from starlette.responses import JSONResponse
-    from bbkit.fakes import split_agent
-
     a, b = homes.alex, homes.marie
-    fakes.hermes.add_session("bot-coach", [], title="Bot Chat", agent="coach")   # Coach's own conversation with Marie
-    answer = fakes.hermes.override
-
-    async def bot_chat_listed(seen):
-        # Coach's Bot Chat looked up by title (peers.rs `bot_chat` reads `data`, as test_households_and_peers.py's
-        # Hermes answers; the fake's own listing says `sessions`, which hermes.rs reads too: see the doc, 6/11)
-        agent, path = split_agent(seen.path)
-        if seen.method == "GET" and path.rstrip("/") == "/api/sessions" and "title=Bot" in seen.query:
-            rows = [r for r in fakes.hermes.sessions.get(agent, {}).values() if r.get("title") == "Bot Chat"]
-            return JSONResponse({"object": "list", "data": rows})
-        return await answer(seen)
-    fakes.hermes.override = bot_chat_listed
+    # Coach's own conversation with Marie, found by its title in the fake's listing (`{"sessions": [...]}`; Hermes
+    # v0.22.5 answers `{"object": "list", "data": [...]}`, as test_households_and_peers.py's Hermes: peers.rs
+    # `bot_chat` reads both)
+    fakes.hermes.add_session("bot-coach", [], title="Bot Chat", agent="coach")
     assert a.put("/v1/agent-links", headers=AUTH, json={"links": [{"from": "vie", "to": "coach__marie"}]}).status_code == 200
     assert b.put("/v1/agent-links", headers=AUTH, json={"links": [{"from": "vie__alex", "to": "coach"}]}).status_code == 200
     token = "vie-gateway-token-" + "j" * 22

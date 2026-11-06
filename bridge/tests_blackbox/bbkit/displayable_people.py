@@ -139,9 +139,14 @@ def owner_view_problems(view: Dict[str, Any]) -> List[str]:
     for name in ("viewers", "invites"):
         if not isinstance(view.get(name), list):
             out.append(f"read share: `{name}` is not a list (the iPhone loses the view)")
+    if view.get("session") is not None and not isinstance(view["session"], str):
+        out.append(f"read share: `session` is {view['session']!r} (a conversation's id, or null for a project's)")
     for v in view.get("viewers") or []:
         if not (_text(v.get("id")) and isinstance(v.get("name"), str) and _text(v.get("state"))):
             out.append(f"read share: viewer {v!r:.80} without id, name or state")
+    for i in view.get("invites") or []:
+        if not (_text(i.get("invite")) and isinstance(i.get("name"), str)):
+            out.append(f"read share: invitation {i!r:.80} without invite or name (the iPhone loses the view)")
     return out
 
 
