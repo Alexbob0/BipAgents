@@ -34,6 +34,7 @@ labels, 0008's fall-back fix, 0017, 0009's `!name`, 0013.
 | 0023 a system prompt stable across conversations (prefix cache) | `agent/prompt_cache_notes.py` (new), `agent/system_prompt.py`, `agent/turn_context.py`, `agent/agent_init.py`, `tools/memory_tool_store.py` |
 | 0024 tools refused for one turn (`model_options.closed_tools`) | `agent/closed_tools.py` (new), `agent/agent_runtime_helpers.py`, `agent/tool_executor.py`, `gateway/platforms/api_server.py`, `gateway/run_turn_runner.py` |
 | 0025 a colon mid-sentence no longer holds back a streamed reply | `agent/chat_completion_helpers.py` |
+| 0026 Runs API: `todo.updated`, the agent's task list (backport) | `gateway/platforms/api_server_runs.py` |
 
 ## How the patches are kept
 
@@ -776,3 +777,28 @@ a newline); text it holds is judged as before (a real echoed block at a line's s
 `test_streaming.py`, `test_partial_stream_finish_reason.py`, `test_error_classifier.py`: 257 passed, the same 5
 failures as without the patch (Anthropic stream tests, this server's environment). The same fake model through a
 gateway with the set + 0025: max gap 0.14 s (1.29 s without). `scripts/hermes-patches.sh check`: the set applies.
+
+## 0026 — Runs API: `todo.updated`, the agent's task list (backport)
+
+**Problem.** A Runs API client (the bridge) saw `tool.started` / `tool.completed` for `todo_list` but never the list:
+the canonical turn's completion has no preview, the other path a 500-character cut of the JSON. The app's « Étapes »
+card (bridge `steps.rs`, docs/conversations.md §6.3b) could show the agent's plan only once the turn's rows were stored.
+
+**What the patch does.** After every Todo call that returns a list, the run's stream carries `todo.updated` with the
+full `{todos, revision}` snapshot (`todos`: `{id, content, status, parent?}` as the Todo store keeps them), right after
+the call's `tool.completed`, in both the canonical-turn and the agent paths; contents secret-redacted (the stream is
+the public one); nothing for another tool, a failed write or the unused empty store. **Same name and payload as
+upstream's**: the TUI gateway publishes it already on v0.22.5 (`tui_gateway.tool_progress._normalize_todo_state`,
+reused here) and v0.23.0 for local viewer turns (`gateway/run_turn_progress.py`, `combined_tool_complete_callback`).
+v0.23.0 still has no `todo.updated` on `/v1/runs/{id}/events`: on the move to 0.23 the patch is rebased (same few
+lines), not dropped, unless upstream adds it there; the bridge reads it unchanged either way. Candidate for a small
+upstream PR.
+
+**Files.** `gateway/platforms/api_server_runs.py`; new `tests/gateway/test_api_server_runs_todo.py` (each call followed
+by the whole list, the canonical path without a preview, subtasks and redaction, other tools / failed writes / the
+empty store send nothing more, the legacy name).
+
+**Tests.** The new file and the Runs API / canonical projection / model usage / todo tool suites: 119 passed.
+`tests/tui_gateway`: 9 failures with and without the patch (this server's environment), 2811 passed. Checked against
+a real gateway with a fake model: `todo.updated` after each of three `todo_list` calls, direct and through `tool_call`.
+

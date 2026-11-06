@@ -293,6 +293,7 @@ An item that draws something also has `day`, and `new_day` when it opens its day
 | `boite` | `text`, `title`, `attachments`, `boite: {outbox_id, audio: bool}` | the bridge's outbox (routine reports, hand-backs, credit, storage, imports) |
 | `approval` | `approval: {run_id, request_id, command, description, topic, choice, state: answered}` | approvals_log.rs (Hermes' history has no approval rows) |
 | `call` | `call`: the Live call's record as `GET /v1/live/calls` gives it | live_calls.rs |
+| `steps` | `steps: {items: [{text, status, depth?}], done, total}`: the turn's task list (« Étapes », §6.3b) | the turn's `todo_list` calls (steps.rs) |
 | (role `peer`) | a `message` with `role: peer`, `from: <agent id>`, `from_name` (the name it signed with, Hermes' emoji badge left out), `text` its words alone: another agent's message in Bot Mode's conversation (the apps find the agent by `from`, never by name) | « Message from … (@x): » rows |
 
 **Drawing order: the items' order** (no ordering logic in the apps). Each assistant row gives its words first, then
@@ -336,6 +337,57 @@ Example (`docs/examples/timeline-main.json` has a full page):
  "at": "2026-11-02T20:58:09.000Z", "cursor": "2.000421.m_88ab…", "turn": "m_7c21…", "segment": "api_ccc",
  "attachments": []}
 ```
+
+### 6.3b Steps (« Étapes », 6/11)
+
+For work of several steps the agent keeps a short task list with Hermes' `todo_list` tool (its soul's `STEPS_RULE`).
+The person sees it as one compact card per turn, live while the turn runs, then folded (« 5/5 étapes »).
+
+**The item.** One `steps` item per turn that wrote a list: the list as the turn's last `todo_list` call left it (the
+call's result is always the whole list), placed where that call is, so near the reply. Its id is `<turn>.steps` (the
+person's message that started the turn, then `.steps`): the same item, updated in place, whatever the number of calls;
+its cursor moves forward with the last call. The turn's `todo_list` calls are never served as `tool` items. A call
+through Hermes' tool search (`tool_call` wrapping one `todo_list` call) counts the same; a failed write is left out.
+
+```json
+{"id": "m_7c21….steps", "kind": "steps", "at": "…", "cursor": "2.000431.1", "turn": "m_7c21…",
+ "steps": {"items": [{"text": "Lire les e-mails", "status": "done"},
+                     {"text": "Trier par urgence", "status": "in_progress"},
+                     {"text": "Vérifier les pièces jointes", "status": "pending", "depth": 1},
+                     {"text": "Appeler la banque", "status": "cancelled"}],
+           "done": 1, "total": 3}}
+```
+
+`status`: `done`, `in_progress`, `pending`, `cancelled` (Hermes' `completed` is `done`). `depth`: a sub-step's level
+(Hermes' `parent`), only when not 0. `total` leaves cancelled steps out, `done` counts the done ones. A step's text is
+cut to 200 characters, a list to 30 steps.
+
+**Automatic steps** (Alex, 6/11). A turn of several actions without a list of the agent's own gets one made by the
+bridge from its real calls, in the same item and events (`"auto": true` in `steps`): one step per kind of call
+(consecutive calls of a kind are one step with a count: « Chercher dans tes mails », « Lire 6 mails », « Ouvrir le site
+sncf-connect.com »), the running call the step `in_progress`, the others `done`. Only from the 2nd step (a quick
+answer never gets a card); at most 6 lines, the oldest done steps folded into a first « +N étapes » line (`folded`:
+how many). The words are the bridge's for the tool's kind, in the agent's language (fr, en, de, es), with a count and
+at most a site's domain: never a call's arguments (a mail's subject, an address, a file's words). Calls that are no
+step of the work (the tool search, memory, a question to the person, the list itself) are left out. As soon as the
+agent writes its own list, its list replaces the automatic one for the rest of the turn. Stored: after the turn's last
+call (cursor `<segment>.<row>.99`).
+
+**Live.** While the turn runs, each change reaches the apps in its run's stream as the bridge's `steps.updated`
+(`{"event": "steps.updated", "run_id", "steps": {…as above}}`), made from Hermes' `todo.updated` (Hermes patch 0026;
+Hermes' own event is not passed on). The apps draw it as the live turn's card (at the bottom of the turn, above the
+reply being written); once the run ends the page has the stored item in its place. The open screens of that thread
+also get a `thread` hint with `reason: "steps"`, the `steps` and the `run_id`, **without a new version** (nothing to
+fetch: apps from before 6/11 skip a hint whose version they hold). Without patch 0026 there is no live list: the item
+appears with the turn's rows when the run ends (state.db has the calls).
+
+**Background tasks** (jobs.rs): a running task's `activity` has `steps` (same shape) and `step` (the step in progress,
+else the next one); its conversation's page has the item. **Live Activities** (live_activities.rs): `steps` and
+`stepsDone` in the content state while a list exists, `step` (its words) only with `[push] previews` (the publisher's
+relay keeps the two numbers, never words).
+
+Apps from before 6/11 skip the item (an unknown `kind`) and the event (an unknown type): they show neither the card nor
+the `todo_list` calls.
 
 ### 6.4 One item, attachments
 

@@ -18,7 +18,8 @@
 //! one short sentence saying what it understood and will do (2026-10-25, `ACK_RULE`, by hand in the golden too); and
 //! it answers short, in bullet points when there are several items (2026-10-30, `STYLE_RULE`, by hand in the golden
 //! too); and an important fact (a place, hours, a price, news, a dose, a quote…) is checked with a source first
-//! (2026-10-31, `FACTS_RULE`, by hand in the golden too).
+//! (2026-10-31, `FACTS_RULE`, by hand in the golden too); and work of more than three steps keeps a short task list
+//! the apps show live (« Étapes », 2026-11-06, `STEPS_RULE`, the golden rewritten with `GOLDEN_SOULS_OUT`).
 //! `heal_souls` brings existing agents' blocks up to date. An agent given the person's
 //! health data has a second block (`with_health`): use it to help, never to diagnose. An agent in the person's
 //! circle (shared_memory.rs) knows that what it remembers of them is common to their own agents
@@ -195,6 +196,15 @@ pub const FACTS_RULE: &str = concat!(
     "link when useful; say in one sentence what you couldn't check. Checking is quick: do it here."
 );
 
+/// « Étapes » (Alex 5/11, steps.rs): for work of several steps the agent keeps a short task list with Hermes'
+/// `todo_list`, which the apps show live as one card; never for a simple answer (each call costs a model round).
+/// Rust bridge only (tests/golden/souls.json rewritten with `GOLDEN_SOULS_OUT`). Short: it is paid on every call.
+pub const STEPS_RULE: &str = concat!(
+    "Task list: when a request needs 4 or more actions (searches, tools, pages, reminders…), first call todo_list ",
+    "with its steps (a few words each, the first in_progress), then mark each step completed right after doing it; ",
+    "your person sees the list live. Never for a question or a quick task."
+);
+
 /// A quick word before slow work (owner's request 2026-10-25, like Grok's app: « Bonne idée, je lance une recherche… »
 /// then the answer later), and a short line before each main step of long work (« deux, trois petites bulles » that make
 /// the wait shorter): the apps show these as bubbles above the working line, never read aloud. Rust bridge only,
@@ -356,7 +366,7 @@ pub fn language_block(lang: Option<&str>) -> String {
     for_language(
         &format!(
             "{BLOCK_START}\nLanguage: answer in the language your person writes in. Always write it with its accents and usual punctuation (routines and notes too), never an ASCII-only version. When you write first (a routine, \
-             a report, a reminder), write in {name}.{names} The current time is at the top of each message (a bip:now line): trust it, never check it in the terminal.\n{CONTENT_RULE}\n{SENDING_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{PROJECT_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{LONG_WORK_RULE}\n{VISUAL_RULE}\n{FACTS_RULE}\n{SPACE_RULE}\n{ACK_RULE}\n{STYLE_RULE}\n{BLOCK_END}"
+             a report, a reminder), write in {name}.{names} The current time is at the top of each message (a bip:now line): trust it, never check it in the terminal.\n{CONTENT_RULE}\n{SENDING_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{PROJECT_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{LONG_WORK_RULE}\n{VISUAL_RULE}\n{FACTS_RULE}\n{SPACE_RULE}\n{ACK_RULE}\n{STEPS_RULE}\n{STYLE_RULE}\n{BLOCK_END}"
         ),
         Some(&code),
     )
@@ -793,7 +803,7 @@ pub fn language_block_compact(lang: Option<&str>) -> String {
     for_language(
         &format!(
             "{BLOCK_START}\nLanguage: answer in the language your person writes in. When you write first (a routine, \
-             a report, a reminder), write in {name}.\n{COMPACT_RULES}\n{ACK_RULE}\n{STYLE_RULE}\n{BLOCK_END}"
+             a report, a reminder), write in {name}.\n{COMPACT_RULES}\n{ACK_RULE}\n{STEPS_RULE}\n{STYLE_RULE}\n{BLOCK_END}"
         ),
         Some(&code),
     )

@@ -408,3 +408,92 @@ async fn while_the_month_s_credit_is_used_its_tools_are_refused_without_starting
     assert_eq!(ran(tmp), vec!["start"]);
     proxy.stop_child().await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_phone_exit_s_refusal_and_a_challenge_page_are_said_to_the_agent() {
+    // phone_exit (docs/phone-exit.md §7): a page that failed because the person's phone was not relaying gets the
+    // hub's reason (never « the site blocks servers »); a challenge page gets the card's news; nothing otherwise.
+    let dir = tempfile::tempdir().unwrap();
+    let tmp = dir.path();
+    let mut config = config(tmp);
+    let server = FAKE_SERVER.replace(
+        r#"r = {"content": [{"type": "text", "text": "did " + m["params"]["name"]}]}"#,
+        r#"url = (m["params"].get("arguments") or {}).get("url", "")
+        page = "<title>Just a moment...</title>" if "challenge" in url else "did " + m["params"]["name"]
+        r = {"content": [{"type": "text", "text": page}]}"#,
+    );
+    std::fs::write(tmp.join("server.py"), server).unwrap();
+    // the hub: WHY answers « paused 3 » for ameli.fr, ASK answers CARD; every line kept
+    let short = tempfile::Builder::new().prefix("pe").tempdir_in("/tmp").unwrap();
+    let sock = short.path().join("hub.sock");
+    let asked: Arc<Mutex<Vec<String>>> = Arc::default();
+    let listener = tokio::net::UnixListener::bind(&sock).unwrap();
+    {
+        let asked = asked.clone();
+        tokio::spawn(async move {
+            use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+            loop {
+                let (conn, _) = listener.accept().await.unwrap();
+                let (read, mut write) = conn.into_split();
+                let mut line = String::new();
+                tokio::io::BufReader::new(read).read_line(&mut line).await.unwrap();
+                asked.lock().unwrap().push(line.trim().to_string());
+                let answer = if line.starts_with("WHY vie www.ameli.fr") {
+                    "paused 3\n"
+                } else if line.starts_with("WHY") {
+                    "NONE\n"
+                } else {
+                    "CARD\n"
+                };
+                write.write_all(answer.as_bytes()).await.unwrap();
+            }
+        });
+    }
+    config.insert("agent".into(), json!("vie"));
+    config.insert("exit_sock".into(), json!(sock.to_string_lossy()));
+    let out = Out::default();
+    let proxy = Proxy::new(config, Box::new(out.clone()));
+    proxy.handle(init()).await;
+    let navigate = |id: i64, url: &str| {
+        json!({"jsonrpc": "2.0", "id": id, "method": "tools/call",
+               "params": {"name": "navigate", "arguments": {"url": url}}})
+    };
+    let texts = |out: &Out| -> Vec<String> {
+        let last = out.messages().last().unwrap().clone();
+        last["result"]["content"].as_array().unwrap().iter().map(|c| c["text"].as_str().unwrap().to_string()).collect()
+    };
+    proxy.handle(navigate(1, "https://www.ameli.fr/assure")).await;
+    let said = texts(&out);
+    assert_eq!(said.len(), 2, "{said:?}");
+    assert!(said[1].starts_with("Phone exit (ameli.fr, paused)") && said[1].contains("Do NOT say the site blocks you"));
+    // a later read of the same page: about the same site (the last URL navigated to)
+    proxy.handle(json!({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "get_page_content"}})).await;
+    assert_eq!(texts(&out).len(), 2);
+    // a challenge page: the hub asked, the card said
+    proxy.handle(navigate(3, "https://www.leboncoin.fr/challenge")).await;
+    let said = texts(&out);
+    assert!(said[1].contains("Cloudflare challenge") && said[1].contains("just got a card"), "{said:?}");
+    assert!(said[1].contains("Never solve"));
+    // an ordinary page: nothing added
+    proxy.handle(navigate(4, "https://www.doctolib.fr/")).await;
+    assert_eq!(texts(&out), vec!["did navigate".to_string()]);
+    let asked = asked.lock().unwrap().clone();
+    assert!(asked.contains(&"ASK vie www.leboncoin.fr Cloudflare challenge".to_string()), "{asked:?}");
+    assert!(asked.contains(&"WHY vie www.doctolib.fr".to_string()));
+    proxy.stop_child().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn without_the_phone_exit_nothing_is_added() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = Out::default();
+    let proxy = Proxy::new(config(dir.path()), Box::new(out.clone()));
+    proxy.handle(init()).await;
+    proxy
+        .handle(json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                       "params": {"name": "navigate", "arguments": {"url": "https://www.ameli.fr/"}}}))
+        .await;
+    let last = out.messages().last().unwrap().clone();
+    assert_eq!(last["result"]["content"].as_array().unwrap().len(), 1);
+    proxy.stop_child().await;
+}

@@ -487,18 +487,29 @@ impl Jobs {
             }
         };
         let cut = |value: Option<&Value>| -> String { text(value).chars().take(160).collect() };
+        let mut activity = Value::Null;
         for event in state.backlog.iter().rev() {
             match event.r#type.as_str() {
                 "tool.started" => {
-                    return json!({"tool": text(event.data.get("tool")), "preview": cut(event.data.get("preview"))});
+                    activity = json!({"tool": text(event.data.get("tool")), "preview": cut(event.data.get("preview"))});
+                    break;
                 }
                 "subagent.start" | "subagent.started" => {
-                    return json!({"tool": "delegate_task", "preview": cut(event.data.get("goal"))});
+                    activity = json!({"tool": "delegate_task", "preview": cut(event.data.get("goal"))});
+                    break;
                 }
                 _ => {}
             }
         }
-        Value::Null
+        // the agent's task list (« Étapes », steps.rs): the card's list and the step being done
+        if let Some(steps) = state.steps.as_ref().filter(|s| s["items"].as_array().is_some_and(|i| !i.is_empty())) {
+            if activity.is_null() {
+                activity = json!({});
+            }
+            activity["step"] = json!(crate::steps::current(steps));
+            activity["steps"] = steps.clone();
+        }
+        activity
     }
 
     /// The task's run's real tokens so far, as its model calls end (Hermes patch 0020, followed by the hub), in the
@@ -1444,7 +1455,16 @@ instead (they start it with one tap) and tell them so in one plain sentence.",
     let prompt = tk::str_or_empty(arguments.get("instructions"));
     let title = tk::str_or_empty(arguments.get("title"));
     let from = jobs.hub.as_ref().and_then(|hub| hub.asking_session(&agent.name));
+    // a task started in a chain of messages between agents carries it on (agent_hops.rs): its own messages count too
+    let turn = jobs.hub.as_ref().and_then(|hub| hub.turn_of(&agent.name, START_TASK)).map(|t| t.run_id);
+    let chain = crate::agent_hops::chain_of_turn(&agent.name, turn.as_deref());
     let made = jobs.create_from(agent, &title, tk::head(&prompt, 8000), euros, None, "asked", from.as_deref()).await;
+    if let (Some(chain), Ok(view)) = (chain, &made) {
+        let task = load(&config, &tk::str_or_empty(view.get("id")));
+        if let Some(run_id) = task.as_ref().and_then(|t| t.get("run_id")).and_then(Value::as_str) {
+            crate::agent_hops::follow(run_id, &chain);
+        }
+    }
     started(made, &config, agent)
 }
 

@@ -463,6 +463,10 @@ fn own_tools(config: &Config, agent: &AgentConfig, offer: bool) -> Vec<Value> {
     if crate::heavy_work::offered(agent, offer) {
         tools.extend(crate::heavy_work::tools());
     }
+    // a site refusing servers, opened through the person's own phone after a card (phone_exit)
+    if crate::phone_exit::agent::offered(config, &agent.name) {
+        tools.push(crate::phone_exit::agent::tool());
+    }
     if !crate::routines::enabled(config, &agent.name) {
         tools.retain(|t| t["name"] != crate::routines::TOOL_NAME);
     }
@@ -1444,6 +1448,18 @@ pub async fn call_tool(
         }
         return Ok(called.result);
     }
+    if name == crate::phone_exit::agent::TOOL_NAME {
+        if !crate::phone_exit::agent::offered(&config, &agent.name) {
+            return Ok(tool_text("Browsing through your person's phone is not available to you.", true));
+        }
+        let (c, a, arguments) = (config.clone(), agent.clone(), arguments.clone());
+        let (text, is_error, card) =
+            tokio::task::spawn_blocking(move || crate::phone_exit::agent::call(&c, &a, &arguments)).await?;
+        if let (Some(card), Some(push)) = (&card, push.as_ref()) {
+            crate::phone_exit::agent::notify(push, &config, card).await;
+        }
+        return Ok(tool_text(&text, is_error));
+    }
     if name == crate::triggers::TOOL_NAME {
         let (c, agent_name, arguments) = (config.clone(), agent.name.clone(), arguments.clone());
         let (result, card) = tokio::task::spawn_blocking(move || crate::triggers::call(&c, &agent_name, &arguments)).await?;
@@ -1983,9 +1999,29 @@ async fn mcp(
         return Ok(answer(result));
     }
     if name == crate::agent_messages::TOOL_NAME {
-        let mut result = crate::agent_messages::call(&state.http, Some(state.hub.clone()), &state.config(), &agent, &arguments).await;
+        let called = crate::agent_messages::call(&state.http, Some(state.hub.clone()), &state.config(), &agent, &arguments).await;
+        let mut result = called.result;
+        if let Some(card) = called.card {
+            // the agents at their cap (agent_hops.rs): « Continuer » in the conversation their chain started from
+            if let Some(root) = state.config().agent(Some(&card.agent)).cloned() {
+                crate::card_place::place_for(&state, &root, &card.run_id, card.root_run.as_deref()).await;
+            }
+        }
         wrote(&agent.name, &name, &arguments, &mut result);
         return Ok(answer(result));
+    }
+    if name == crate::phone_exit::agent::TOOL_NAME && crate::phone_exit::agent::offered(&state.config(), &agent.name) {
+        // « Passer par mon téléphone pour <site> ? »: its card in this turn's conversation, then pushed (card_place.rs)
+        let cards_before = crate::card_place::waiting(&state, &agent.name);
+        let (c, a, args) = (state.config(), agent.clone(), arguments.clone());
+        let (text, is_error, card) = tokio::task::spawn_blocking(move || crate::phone_exit::agent::call(&c, &a, &args))
+            .await
+            .map_err(anyhow::Error::from)?;
+        if let Some(card) = &card {
+            crate::card_place::place_new(&state, &agent, &cards_before, turn_run.as_deref()).await;
+            crate::phone_exit::agent::notify(&state.push, &state.config(), card).await;
+        }
+        return Ok(answer(tool_text(&text, is_error)));
     }
     if name == crate::routines::TOOL_NAME {
         if !crate::routines::enabled(&state.config(), &agent.name) {
