@@ -2007,8 +2007,9 @@ async fn mcp(
         // « Passer par mon téléphone pour <site> ? »: its card in this turn's conversation, then pushed (card_place.rs)
         let cards_before = crate::card_place::waiting(&state, &agent.name);
         let (c, a, args) = (state.config(), agent.clone(), arguments.clone());
-        let (text, is_error, card) =
-            tokio::task::spawn_blocking(move || crate::phone_exit::agent::call(&c, &a, &args)).await?;
+        let (text, is_error, card) = tokio::task::spawn_blocking(move || crate::phone_exit::agent::call(&c, &a, &args))
+            .await
+            .map_err(anyhow::Error::from)?;
         if let Some(card) = &card {
             crate::card_place::place_new(&state, &agent, &cards_before, turn_run.as_deref()).await;
             crate::phone_exit::agent::notify(&state.push, &state.config(), card).await;
