@@ -36,6 +36,11 @@ bridge there and point the installer at it with `BIPAGENTS_BRIDGE_BUILD=<folder 
 - **Security first**: a new agent-facing feature must not widen what an agent can reach (links between agents,
   approvals, sandboxes, the vault). See [SECURITY.md](SECURITY.md).
 - **Tests** come with a change to the bridge, the installer or the relay.
+- **Before deleting a code path**, list everything it did for the person (what they saw, what survived a restart,
+  what a notification opened…) and keep one test per item that checks the screen, not only the bridge's input: see
+  [the removal checklist](internal/notes/removal-checklist.md). A release runs the person's journeys against a real
+  bridge on both apps ([docs/release-journeys.md](docs/release-journeys.md), `scripts/release-journeys.sh`); one that
+  fails stops the release.
 - **Commits** in English, saying what changes for the person using it.
 
 ## Contribution terms
