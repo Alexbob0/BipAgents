@@ -326,8 +326,11 @@ Attachment:
 ```
 
 `kind`: `image` (a photo in the message: served by the URL), `document` (`[Pièce jointe : …]` lines: `path` on the
-server), `file` / `page` / `map` / `audio` (the agent's `MEDIA:` lines: `path`, served by the existing file routes;
-`offset`: where the line was in `text`, for inline pages). An app sends a file with `client_id`; the bridge returns
+server, and a `url` like a photo's that goes on to `/v1/media`), `file` / `page` / `map` / `audio` (the agent's `MEDIA:` lines: `path`, served by the existing file routes;
+`offset`: where the line was in `text`, for inline pages). `size` is always a number of bytes or null, never words:
+a document's is its file's when the bridge sees it in the agent's uploads, else read from its line (« 12 Ko » ≈
+12000; 6/11, the line's words made both apps reject the whole page). The apps read `size` leniently all the same
+(a number, a number in a string, « 12 Ko »; else none) and skip an item they cannot read, never the page. An app sends a file with `client_id`; the bridge returns
 it on that message's item whether or not Hermes kept it.
 
 Example (`docs/examples/timeline-main.json` has a full page):

@@ -107,7 +107,9 @@ impl Item {
         }
         if let Some(Value::Array(atts)) = out.get_mut("attachments") {
             for att in atts.iter_mut().filter_map(Value::as_object_mut) {
-                if att.get("kind").and_then(Value::as_str) == Some("image") {
+                // a photo by its bytes; a person's document by its file (the route sends it on to `/v1/media`)
+                let kind = att.get("kind").and_then(Value::as_str);
+                if kind == Some("image") || kind == Some("document") && att.get("path").is_some_and(Value::is_string) {
                     let id = att.get("id").and_then(Value::as_str).unwrap_or("").to_string();
                     att.insert("url".into(), json!(format!("/v1/threads/{thread}/attachments/{id}")));
                 }
@@ -178,6 +180,23 @@ fn words_and_images(content: &Value) -> (String, usize) {
     }
 }
 
+/// A size as the reference line writes it (`storage_watch::size_fr`: « 12 Ko », « 1,2 Mo »; « 12 KB » too) in bytes,
+/// about (the apps read a number: 6/11, `"size": "12 Ko"` made both reject the whole page); none when unreadable. The
+/// file's own size replaces it when the bridge sees the file (mod.rs `with_document_sizes`).
+pub fn bytes_of(words: &str) -> Option<u64> {
+    let words = words.trim();
+    let split = words.find(|c: char| !(c.is_ascii_digit() || c == ',' || c == '.' || c == ' ' || c == '\u{a0}'))?;
+    let number: f64 = words[..split].replace(['\u{a0}', ' '], "").replace(',', ".").parse().ok()?;
+    let unit = match words[split..].trim().to_lowercase().as_str() {
+        "o" | "b" | "octets" | "bytes" => 1.0,
+        "ko" | "kb" => 1e3,
+        "mo" | "mb" => 1e6,
+        "go" | "gb" => 1e9,
+        _ => return None,
+    };
+    Some((number * unit).round() as u64).filter(|b| *b > 0)
+}
+
 fn tidy(text: &str) -> String {
     BLANKS.replace_all(text, "\n\n").trim().to_string()
 }
@@ -203,7 +222,7 @@ pub fn visible(raw: &str, id: &str, images: usize) -> (String, Vec<Value>) {
     for caps in DOCUMENT.captures_iter(&text) {
         let n = attachments.len();
         attachments.push(json!({"id": format!("{id}.a{n}"), "kind": "document", "name": caps[1].to_string(),
-                                "mime": caps[2].to_string(), "size": caps[3].to_string(), "path": caps[4].to_string()}));
+                                "mime": caps[2].to_string(), "size": bytes_of(&caps[3]), "path": caps[4].to_string()}));
     }
     text = DOCUMENT.replace_all(&text, "").to_string();
     let (text, files) = place_media(&text);
@@ -866,6 +885,22 @@ mod tests {
         }
     }
 
+    #[test]
+    fn a_size_in_words_reads_as_bytes() {
+        assert_eq!(bytes_of("12 Ko"), Some(12_000));
+        assert_eq!(bytes_of("1,2 Mo"), Some(1_200_000));
+        assert_eq!(bytes_of("3 Go"), Some(3_000_000_000));
+        assert_eq!(bytes_of("12 KB"), Some(12_000));
+        assert_eq!(bytes_of("0 Ko"), None);
+        assert_eq!(bytes_of("beaucoup"), None);
+        assert_eq!(bytes_of(""), None);
+        // what the bridge writes reads back to about the same
+        for n in [999_u64, 12_345, 1_234_567, 98_765_432] {
+            let back = bytes_of(&crate::storage_watch::size_fr(n)).unwrap() as f64;
+            assert!((back - n as f64).abs() / n as f64 <= 0.05, "{n} → {back}");
+        }
+    }
+
     fn items(rows: &[Row]) -> Vec<Item> {
         segment_items("vie", 0, "s1", rows, &HashSet::new(), &mut String::new())
     }
@@ -879,6 +914,8 @@ mod tests {
         assert_eq!(atts[0]["kind"], "document");
         assert_eq!(atts[0]["id"], "m_1.a0");
         assert_eq!(atts[0]["path"], "/home/x/uploads/devis.pdf");
+        // its size a number of bytes, never the line's words (6/11: « 12 Ko » made the apps reject the whole page)
+        assert_eq!(atts[0]["size"], 12_000);
         assert_eq!(atts[1]["kind"], "page");
         assert_eq!(atts[1]["id"], "m_1.a1");
         assert_eq!(atts[1]["offset"], 14);
