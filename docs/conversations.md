@@ -589,8 +589,16 @@ ship right after): the push carries the pointer only, no legacy field (`run_id` 
   then asks `GET /v1/notifications/{n}`, which has `m` once found).
 - Approvals add what their buttons answer: `run_id`, `request_id`, `choices`; questions `run_id`, `request_id`.
 - `aps.thread-id` is `<agent>/<c>` (the agent's when there is no conversation): one notification group per
-  conversation. `aps.category`: `APPROVAL` for approvals, `CARD` for connector and e-mail cards (never a secret's:
-  it is typed in the app), `MESSAGE` for the rest. `aps.badge`: the journal's unread total.
+  conversation. `aps.category`: `APPROVAL` for Hermes' approvals (« Approuver une fois » / « Refuser »: one
+  command, all of it in the notification); `BRIDGE_CARD` for the bridge's own cards (a site, an account, a
+  connector, a secret, a mail card), never allowed from the notification: a tap opens the card, where all it allows
+  shows (Alex, 2026-11-05: a sites card allowed from its notification allowed its first host only); `MESSAGE` for the
+  rest. `aps.badge`: the journal's unread total.
+  Compatibility (2026-11-06): `BRIDGE_CARD` replaced `CARD` (connector, mail card) and `MESSAGE` (site, account,
+  secret). Apps released before it don't know the name, so they show no button on these (`CARD` gave « Autoriser une
+  fois » on the iPhone, `MESSAGE` « Répondre ») and open the card on a tap as before (they route by `t`, never by
+  the category); newer iPhones register it with « Refuser » only, Android never adds a button to it. The apps still
+  read `CARD` from a bridge before it, with « Refuser » only.
 - The text the extension shows: the sealed `enc` (below); `GET /v1/notifications/{n}` (`preview`, the whole text)
   when the phone is on the tailnet. The alert itself never carries words.
 - Collapse ids only where one notification replaces another: a run's reply (`run_id`), an approval's or question's

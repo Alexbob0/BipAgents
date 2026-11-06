@@ -1491,6 +1491,9 @@ async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> 
                         .await
                         .map_err(anyhow::Error::from)?;
                 if let Some(card) = card {
+                    // in its turn's conversation before anyone can answer it (card_place.rs)
+                    let run = format!("{}{}", crate::sandbox_sites::RUN_PREFIX, card.id);
+                    crate::card_place::place_made(&state, &agent, &run, crate::sandbox_sites::REQUEST).await;
                     crate::sandbox_sites::notify(&state, &agent, &card).await;
                 }
                 return Ok(reply(Value::Object(tool_text(&text, is_error))));

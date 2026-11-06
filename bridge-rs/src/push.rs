@@ -81,15 +81,21 @@ fn object(value: Value) -> Dict {
     }
 }
 
-/// The APNs category of a notification: approvals have « Autoriser une fois / Refuser », accord cards that may be
-/// answered from the notification « Ouvrir » (never a secret's: it is typed in the app), the others « Répondre ».
+/// The APNs category of a notification: Hermes' approvals (one command, all of it in the notification) have
+/// « Approuver une fois / Refuser »; the bridge's own cards (a site, an account, a connector, a secret, a mail card)
+/// `BRIDGE_CARD`, which no released app knows, so they show no button and a tap opens the card (Alex, 2026-11-05: a
+/// sites card allowed from its notification allowed its first host only; « CARD » had « Autoriser une fois » on the
+/// iPhone, « MESSAGE » « Répondre »); the others « Répondre ».
 pub fn category(kind: Kind) -> &'static str {
     match kind {
         Kind::Approval => "APPROVAL",
-        Kind::Connector | Kind::MailCard => "CARD",
+        Kind::Site | Kind::Login | Kind::Connector | Kind::Secret | Kind::MailCard => BRIDGE_CARD,
         _ => "MESSAGE",
     }
 }
+
+/// The category of the bridge's own cards (`category`): never answered from the notification.
+pub const BRIDGE_CARD: &str = "BRIDGE_CARD";
 
 /// A notification's push (docs/conversations.md §9.3): the neutral line (`notif.<type>`: no title, no words; a device
 /// with a key gets them sealed, `PushService::fanout`), `thread-id` per conversation (`<agent>/<c>`, the
@@ -658,11 +664,14 @@ mod tests {
                    "v": 2, "n": "n_1", "t": "reply", "agent": "vie", "c": "t_1", "m": "m_1", "r": "r1"})
         );
         let p = payload(Kind::Connector, "vie", "n_2", None, None, None, 0, &extra);
-        assert_eq!((p["aps"]["category"].as_str(), p["aps"]["thread-id"].as_str()), (Some("CARD"), Some("vie")));
+        assert_eq!((p["aps"]["category"].as_str(), p["aps"]["thread-id"].as_str()), (Some("BRIDGE_CARD"), Some("vie")));
         assert_eq!(p["aps"]["alert"], json!({"loc-key": "notif.connector", "body": "notif.connector"}));
-        assert_eq!(category(Kind::MailCard), "CARD");
-        assert_eq!(category(Kind::Secret), "MESSAGE"); // a secret is typed in the app, never from the notification
-        assert_eq!(category(Kind::Approval), "APPROVAL");
+        // the bridge's own cards: a category no released app gives a button (a tap opens the card)
+        for kind in [Kind::Site, Kind::Login, Kind::Connector, Kind::Secret, Kind::MailCard] {
+            assert_eq!(category(kind), "BRIDGE_CARD", "{kind:?}");
+        }
+        assert_eq!(category(Kind::Approval), "APPROVAL"); // Hermes' own: its buttons stay
+        assert_eq!((category(Kind::Reply), category(Kind::Meet), category(Kind::EmailHeld)), ("MESSAGE", "MESSAGE", "MESSAGE"));
         let mut extra = Map::new();
         extra.insert("run_id".into(), json!("r"));
         extra.insert("gone".into(), Value::Null);

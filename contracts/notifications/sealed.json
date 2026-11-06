@@ -354,7 +354,7 @@
           },
           "thread-id": "vie/t_contract",
           "mutable-content": 1,
-          "category": "CARD",
+          "category": "BRIDGE_CARD",
           "sound": "default",
           "badge": 1
         },
@@ -384,7 +384,7 @@
           },
           "thread-id": "vie/t_contract",
           "mutable-content": 1,
-          "category": "MESSAGE",
+          "category": "BRIDGE_CARD",
           "sound": "default",
           "badge": 1
         },
@@ -414,7 +414,7 @@
           },
           "thread-id": "vie/t_contract",
           "mutable-content": 1,
-          "category": "CARD",
+          "category": "BRIDGE_CARD",
           "sound": "default",
           "badge": 1
         },
@@ -565,7 +565,7 @@
           },
           "thread-id": "vie/t_contract",
           "mutable-content": 1,
-          "category": "MESSAGE",
+          "category": "BRIDGE_CARD",
           "sound": "default",
           "badge": 1
         },
@@ -595,7 +595,7 @@
           },
           "thread-id": "vie/t_contract",
           "mutable-content": 1,
-          "category": "MESSAGE",
+          "category": "BRIDGE_CARD",
           "sound": "default",
           "badge": 1
         },
@@ -840,7 +840,7 @@
           },
           "thread-id": "vie/t_contract",
           "mutable-content": 1,
-          "category": "MESSAGE",
+          "category": "BRIDGE_CARD",
           "sound": "default",
           "badge": 1
         },
