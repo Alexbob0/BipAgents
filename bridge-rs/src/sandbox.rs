@@ -1493,7 +1493,7 @@ async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> 
             }
             if [crate::sandbox_sites::LIST, crate::sandbox_sites::REQUEST].contains(&name.as_str()) {
                 let (c, a) = (config.clone(), agent.clone());
-                let (text, is_error, card) =
+                let (mut text, is_error, card) =
                     tokio::task::spawn_blocking(move || crate::sandbox_sites::call(&c, &a, &name, &arguments))
                         .await
                         .map_err(anyhow::Error::from)?;
@@ -1501,7 +1501,11 @@ async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> 
                     // in its turn's conversation before anyone can answer it (card_place.rs)
                     let run = format!("{}{}", crate::sandbox_sites::RUN_PREFIX, card.id);
                     crate::card_place::place_made(&state, &agent, &run, crate::sandbox_sites::REQUEST).await;
-                    crate::sandbox_sites::notify(&state, &agent, &card).await;
+                    if crate::sandbox_sites::notified(&state, &agent, &card).await {
+                        // validated at once (« Seulement le critique », approval_level.rs): the agent may send now
+                        text = format!("{text}\n\nApproved at once (your person validates only what is critical): you may \
+send to {} now.", card.host);
+                    }
                 }
                 return Ok(reply(Value::Object(tool_text(&text, is_error))));
             }

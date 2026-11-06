@@ -93,12 +93,12 @@ pub const TABLE: &[Rule] = &[
     rule("task_start", false, true, "propose_task (≤ 0,50 €)", "a background task within a small budget of the month's credit; paused from its line"),
     rule("service_write", false, false, "Hermes: MCP tool that creates or changes, on a service the person connected", "writes in the person's own service (a Notion page, a note): nothing sent to anyone, nothing deleted"),
     rule("files_write", false, false, "Hermes: bipagents_files (not delete)", "files in the agent's own space"),
+    rule("site_send", false, false, "bip-site- (the proxy's cut, or the agent's sandbox_sites_request)", "Alex 6/11: not critical: data sent to a site the agent's work needs (an API, an upload); the site validated for that agent, a Boîte line; no « Annuler », the data has left (the site can be removed in « Sites autorisés »); reading sites never asks"),
     // -- critical: always asked
     rule("payment", true, false, "Hermes: card_pay, Link, hand-over elicitations", "spends money or uses a payment card"),
     rule("secret", true, false, "bip-secret-", "a password, key or code typed for the agent"),
     rule("vault_login", true, false, "bip-login-", "uses one of the person's logins and passwords"),
     rule("connector", true, false, "bip-conn-", "runs new code with the person's secrets"),
-    rule("site_send", true, false, "bip-site-", "data leaves to a site the person never validated (an upload, an export): reading sites never asks"),
     rule("mail_trash", true, false, "bip-mail- trash", "deletes (to the trash, then gone)"),
     rule("mail_rule_trash", true, false, "bip-mailrule- trash", "deletes every new matching mail"),
     rule("held_mail", true, false, "agent_email held", "sends an e-mail in the person's name to a new address"),
@@ -113,6 +113,7 @@ pub const TABLE: &[Rule] = &[
     rule("computer_use", true, false, "Hermes: cua:", "acts on the person's computer screen"),
     rule("trigger", true, false, "bip-trig-", "lets an e-mail or a link from outside start the agent"),
     rule("phone_exit", true, false, "bip-exit-", "uses the person's phone and home connection"),
+    rule("agent_hops", true, false, "bip-hops-", "agents went on writing to each other past the cap (« Continuer l'échange ? »): more model calls, no person in the loop"),
     rule("task_large", true, false, "propose_task (> 0,50 €)", "a big part of the month's credit"),
     rule("task_more", true, false, "a task's « Continuer (+…) »", "spends past the budget the person agreed"),
     rule("guide_proposal", true, false, "propose_agent, propose_team, propose_room, suggest_switch, propose_profile", "creates new agents or rooms (new voices that cost credit, named by the person) or rewrites an agent's role"),
@@ -154,7 +155,7 @@ pub fn classify_card(item: &Dict) -> &'static str {
         let known = action.split('+').all(|a| a == "archive" || a == "mark_read" || a.starts_with("move:"));
         return if known && !action.is_empty() { "mail_rule" } else { "mail_rule_trash" };
     }
-    const PREFIXES: [(&str, &str); 10] = [
+    const PREFIXES: [(&str, &str); 11] = [
         (crate::routines::RUN_PREFIX, "routine_way"),
         (crate::sandbox_sites::RUN_PREFIX, "site_send"),
         (crate::vault_logins::RUN_PREFIX, "vault_login"),
@@ -163,7 +164,8 @@ pub fn classify_card(item: &Dict) -> &'static str {
         (crate::storage_watch::RUN_PREFIX, "space"),
         (crate::feature_tips::RUN_PREFIX, "tip"),
         (crate::triggers::RUN_PREFIX, "trigger"),
-        ("bip-exit-", "phone_exit"), // phone_exit (branch phone-exit-mvp)
+        ("bip-exit-", "phone_exit"), // phone_exit/store.rs
+        ("bip-hops-", "agent_hops"), // agent_hops.rs
         ("bip-", "unknown"),
     ];
     PREFIXES.iter().find(|(p, _)| run.starts_with(p)).map(|(_, k)| *k).unwrap_or("unknown")
@@ -521,6 +523,9 @@ fn approving_choice(item: &Dict, kind: &str) -> String {
         let suggested = field(item, "bip_routine", "suggested");
         return if suggested == crate::routines::SILENT_CHOICE { suggested } else { crate::routines::NOTIFY.into() };
     }
+    if kind == "site_send" {
+        return "all_sites".into(); // every host the card gathered (« once » validates its first only)
+    }
     "once".into()
 }
 
@@ -557,34 +562,64 @@ pub async fn settle_new(
     let cards = crate::card_place::bridge_cards(state, &config, Some(&agent.name));
     let mut done = Vec::new();
     for item in cards {
-        let run_id = item.get("run_id").and_then(Value::as_str).unwrap_or("").to_string();
-        let kind = classify_card(&item);
-        if before.contains(&run_id) || !auto_for(&config, &agent.name, kind) {
+        let run_id = item.get("run_id").and_then(Value::as_str).unwrap_or("");
+        if before.contains(run_id) {
             continue;
         }
-        let choice = approving_choice(&item, kind);
-        if !crate::app::answer_bridge_card(state, agent, &run_id, &choice).await {
-            continue;
+        if let Some(summary) = approve_item(state, agent, &item, session).await {
+            done.push(summary);
         }
-        crate::card_place::taken(&config, &run_id);
-        let summary = item.get("bip_summary").and_then(Value::as_str).unwrap_or("").to_string();
-        let place = crate::card_place::of(&config, &run_id);
-        let session = place.and_then(|p| p.report.or(p.session)).or(session.map(str::to_string));
-        record(
-            &config,
-            Line {
-                agent: agent.name.clone(),
-                kind: kind.to_string(),
-                summary: summary.clone(),
-                run_id: Some(run_id),
-                session_id: session,
-                undo: undo_of(&item, kind),
-                ..Line::default()
-            },
-        );
-        done.push(summary);
     }
     done
+}
+
+/// Card `run_id` of `agent`, made outside an agent tool's route (a site: the proxy's cut, or the files' MCP
+/// `sandbox_sites_request`), approved at once when the person's level lets it through: its sentence (the caller
+/// sends no notification then). None: asked as usual.
+pub async fn settle_card(state: &AppState, agent: &AgentConfig, run_id: &str) -> Option<String> {
+    let config = state.config();
+    if level_for(&config, &agent.name) != CRITICAL {
+        return None;
+    }
+    let cards = crate::card_place::bridge_cards(state, &config, Some(&agent.name));
+    let item = cards.into_iter().find(|i| i.get("run_id").and_then(Value::as_str) == Some(run_id))?;
+    approve_item(state, agent, &item, None).await
+}
+
+/// One card answered as the person's « Oui » would, when not critical: logged in the Boîte, `taken` (no turn resumed
+/// for it: the caller tells the agent). Its sentence; None: critical, or not answered.
+async fn approve_item(state: &AppState, agent: &AgentConfig, item: &Dict, session: Option<&str>) -> Option<String> {
+    let config = state.config();
+    let run_id = item.get("run_id").and_then(Value::as_str).unwrap_or("").to_string();
+    let kind = classify_card(item);
+    if !auto_for(&config, &agent.name, kind) {
+        return None;
+    }
+    let choice = approving_choice(item, kind);
+    if !crate::app::answer_bridge_card(state, agent, &run_id, &choice).await {
+        return None;
+    }
+    crate::card_place::taken(&config, &run_id);
+    let summary = ["bip_summary", "description"]
+        .iter()
+        .find_map(|k| item.get(*k).and_then(Value::as_str).filter(|s| !s.is_empty()))
+        .unwrap_or("")
+        .to_string();
+    let place = crate::card_place::of(&config, &run_id);
+    let session = place.and_then(|p| p.report.or(p.session)).or(session.map(str::to_string));
+    record(
+        &config,
+        Line {
+            agent: agent.name.clone(),
+            kind: kind.to_string(),
+            summary: summary.clone(),
+            run_id: Some(run_id),
+            session_id: session,
+            undo: undo_of(item, kind),
+            ..Line::default()
+        },
+    );
+    Some(summary)
 }
 
 /// What the agent reads in its call's result when its cards were approved at once.
@@ -861,15 +896,17 @@ mod tests {
         assert_eq!(kinds.len(), n, "a kind twice");
         // what Alex named critical
         for kind in ["payment", "secret", "vault_login", "held_mail", "family_send", "mail_trash", "files_delete",
-                     "connector", "meet", "command", "phone_exit", "task_more"] {
+                     "connector", "meet", "command", "phone_exit", "agent_hops", "task_more", "guide_proposal"] {
             assert!(rule_of(kind).critical, "{kind}");
         }
-        for kind in ["mail_archive", "mail_move", "mail_mark_read", "mail_rule", "routine_way", "task_start", "files_write"] {
+        for kind in ["mail_archive", "mail_move", "mail_mark_read", "mail_rule", "routine_way", "task_start", "files_write",
+                     "site_send"] {
             assert!(!rule_of(kind).critical, "{kind}");
         }
         assert!(rule_of("never heard of").critical);
         // an undo only where one exists
         assert!(rule_of("mail_archive").undo && rule_of("task_start").undo && !rule_of("routine_way").undo);
+        assert!(!rule_of("site_send").undo, "the data has left");
     }
 
     #[test]
@@ -888,6 +925,7 @@ mod tests {
         assert_eq!(kind("bip-conn-x"), "connector");
         assert_eq!(kind("bip-trig-x"), "trigger");
         assert_eq!(kind("bip-exit-x"), "phone_exit");
+        assert_eq!(kind("bip-hops-x"), "agent_hops");
         assert_eq!(kind("bip-space-x"), "space");
         assert_eq!(kind("bip-new-x"), "unknown");
     }
@@ -985,6 +1023,8 @@ mod tests {
         let it = |s: Value| approving_choice(&item(json!({"bip_routine": {"suggested": s}})), "routine_way");
         assert_eq!((it(json!("silent")), it(json!("notify")), it(Value::Null)), ("silent".into(), "notify".into(), "notify".into()));
         assert_eq!(approving_choice(&item(json!({})), "mail_move"), "once");
+        assert_eq!(approving_choice(&item(json!({})), "site_send"), "all_sites");
+        assert_eq!(undo_of(&item(json!({"request_id": "s1"})), "site_send"), None);
         assert_eq!(undo_of(&item(json!({"request_id": "j1"})), "mail_move"), Some(Undo::MailJob { job: "j1".into() }));
         assert_eq!(undo_of(&item(json!({"request_id": "r1"})), "mail_rule"), Some(Undo::MailRule { rule: "r1".into() }));
         assert_eq!(undo_of(&item(json!({"request_id": "x"})), "routine_way"), None);

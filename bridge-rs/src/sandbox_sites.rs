@@ -916,8 +916,18 @@ pub async fn watch(state: AppState) {
 
 /// The person told (a notification that opens the app's Boîte, where the card is).
 pub async fn notify(state: &AppState, agent: &AgentConfig, card: &Pending) {
+    notified(state, agent, card).await;
+}
+
+/// `notify`; true when the person's level validated the card at once instead (« Seulement le critique », Alex 6/11:
+/// sending to a site is not critical; approval_level.rs: a Boîte line, no notification).
+pub async fn notified(state: &AppState, agent: &AgentConfig, card: &Pending) -> bool {
+    if crate::approval_level::settle_card(state, agent, &format!("{RUN_PREFIX}{}", card.id)).await.is_some() {
+        return true;
+    }
     let lang = crate::handback::language_of(&state.config(), agent);
     state.push.notify_site_request(&agent.name, &push_line(&lang, &card.host, card.bytes), &card.id).await;
+    false
 }
 
 /// The notification's line in the agent's language (Alex, 2026-11-01: French reached an English person): « Veut
