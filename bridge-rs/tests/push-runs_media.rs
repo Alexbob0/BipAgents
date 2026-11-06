@@ -86,7 +86,7 @@ async fn cron_job_notification_preference() {
     let (k, v) = auth();
     let h = [(k, v.as_str())];
     let config = client.app.state.config();
-    let id = bipbridge::routines::create(&config, "wellness", "Scan des e-mails", "every 2h", "Scanne", None).unwrap().id;
+    let id = bipbridge::routines::create(&config, "wellness", "Scan des e-mails", "every 2h", "Scanne", None, bipbridge::routines::Maker::Person { muted: false }).unwrap().id;
     let jobs = client.get("/v1/cron-jobs", &h).await.json()["jobs"].clone();
     let listed: Vec<(Value, Value, Value)> =
         jobs.as_array().unwrap().iter().map(|j| (j["job"].clone(), j["name"].clone(), j["notify"].clone())).collect();

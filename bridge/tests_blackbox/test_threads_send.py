@@ -3,6 +3,7 @@
 as an item carrying that id, then as Hermes' stored row with the same id (never matched by the apps); a retry never
 runs twice; stop; approvals and questions answered through the bridge, the answer seen by every device (the waiting
 card and the answered item share one id, the thread's hint tells the others)."""
+import base64
 import json
 import threading
 import time
@@ -105,6 +106,74 @@ def test_photos_and_documents_go_with_their_message(bridges, fakes):
     assert send(bridge, thread, "C1D00000-0000-4000-8000-0000000000A3", "x", attachments=[{"kind": "image"}]).status_code == 422
 
 
+def fetch(bridge, path):
+    """A file of the timeline, its redirect to `/v1/media` followed."""
+    answer = bridge.get(path, headers=AUTH)
+    if answer.status_code in (302, 303, 307):
+        answer = bridge.get(answer.headers["location"], headers=AUTH)
+    return answer
+
+
+def test_a_photo_sent_alone_shows_with_its_size_and_its_file(bridges, fakes):
+    # 6/11 (Alex): every photo sent showed « 0 Ko », nothing to look at — its `s_` item had no size, no file, and the
+    # bridge kept no bytes; sent while the agent worked, it waited in « En attente » as an empty row
+    bridge, thread = setup(bridges, fakes)
+    gate = threading.Event()
+    fakes.hermes.runs["r1"] = [sse("run.started", run_id="r1"), gate, sse("run.completed", run_id="r1", output="Jolie.")]
+    jpeg = b"\xff\xd8\xff\xe0" + bytes(range(256)) * 12 + b"\xff\xd9"
+    data = base64.b64encode(jpeg).decode()
+    photo = {"kind": "image", "name": "IMG_0042.jpg", "mime": "image/jpeg", "data": data}
+    sent = send(bridge, thread, "C1D00000-0000-4000-8000-0000000000F1", "", attachments=[photo], kinds=["image"])
+    assert sent.status_code == 200, sent.text
+    # Hermes still gets the photo itself (after the time's note)
+    parts = fakes.hermes.started["r1"]["input"][0]["content"]
+    assert parts[-1] == {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + data}}
+    assert [p["type"] for p in parts].count("image_url") == 1
+    # at once: its item with the photo's real size and its file, downloadable
+    item = page(bridge, thread)["items"][-1]
+    assert item["id"] == "s_C1D00000-0000-4000-8000-0000000000F1" and item["text"] == ""
+    shown = item["attachments"][0]
+    assert (shown["kind"], shown["mime"], shown["size"]) == ("image", "image/jpeg", len(jpeg))
+    assert shown["name"].endswith("IMG_0042.jpg") and shown["path"].startswith("/home/hermes/.hermes/profiles/wellness/uploads/")
+    assert "data" not in json.dumps(item), "never the photo's bytes in the timeline"
+    got = fetch(bridge, f"/v1/threads/{thread}/attachments/{shown['id']}")
+    assert got.status_code == 200 and got.content == jpeg
+    # stored by Hermes (its image part only): the stored row, matched by its id, shows the same file
+    stored(fakes, {"role": "user", "content": [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + data}}]},
+           agent("Jolie."))
+    gate.set()
+    assert wait_until(lambda: page(bridge, thread)["items"][-1]["text"] == "Jolie.", timeout=15)
+    row = page(bridge, thread)["items"][-2]
+    assert row["id"].startswith("m_") and row["client_id"] == "C1D00000-0000-4000-8000-0000000000F1"
+    kept = row["attachments"][0]
+    assert (kept["size"], kept["path"], kept["id"]) == (len(jpeg), shown["path"], row["id"] + ".a0")
+    got = fetch(bridge, f"/v1/threads/{thread}/attachments/{kept['id']}")
+    assert got.status_code == 200 and got.content == jpeg
+
+
+def test_a_waiting_message_says_its_files_and_its_voice(bridges, fakes):
+    bridge, thread = setup(bridges, fakes)
+    gate = threading.Event()
+    fakes.hermes.runs["r1"] = [sse("run.started", run_id="r1"), gate, sse("run.completed", run_id="r1", output="Fini.")]
+    send(bridge, thread, "C1D00000-0000-4000-8000-0000000000E1", "Compare trois écoles")
+    jpeg = b"\xff\xd8" + b"\x01" * 3000 + b"\xff\xd9"
+    photo = {"kind": "image", "name": "IMG_0043.jpg", "mime": "image/jpeg", "data": base64.b64encode(jpeg).decode()}
+    queued = send(bridge, thread, "C1D00000-0000-4000-8000-0000000000E2", "", attachments=[photo])
+    assert queued.json()["state"] == "queued"
+    voice = send(bridge, thread, "C1D00000-0000-4000-8000-0000000000E3", "et appelle le garage", after=True, kinds=["voice"])
+    assert voice.json()["state"] == "queued"
+    items = bridge.get("/v1/agents/wellness/queue", headers=AUTH).json()["items"]
+    assert [i["client_id"] for i in items] == ["C1D00000-0000-4000-8000-0000000000E2", "C1D00000-0000-4000-8000-0000000000E3"]
+    files = items[0]["attachments"]
+    assert items[0]["text"] == "" and len(files) == 1 and "voice" not in items[0]
+    assert (files[0]["kind"], files[0]["size"]) == ("image", len(jpeg)) and files[0]["name"].endswith("IMG_0043.jpg")
+    assert "data" not in json.dumps(items), "never the photo's bytes in the queue"
+    assert items[1]["voice"] is True and "attachments" not in items[1]
+    # the timeline's queue the same
+    assert page(bridge, thread)["pending"]["queue"]["items"][0]["attachments"] == files
+    gate.set()
+
+
 def test_words_during_a_turn_go_into_it_files_wait(bridges, fakes):
     bridge, thread = setup(bridges, fakes)
     gate = threading.Event()
@@ -188,6 +257,8 @@ def test_an_approval_answered_on_one_phone_is_answered_on_the_other(bridges, fak
     assert wait_until(lambda: page(bridge, thread)["pending"]["approvals"] != [], timeout=10)
     card = page(bridge, thread)["pending"]["approvals"][0]
     assert card["request_id"] == "req-1" and card["id"].startswith("a_")
+    # where the phones draw it (thin apps, brick 5): after the message that started the turn
+    assert card["after"] == "s_C1D00000-0000-4000-8000-0000000000D1", card
     hints, stop = [], threading.Event()
     other = threading.Thread(target=watch, args=(bridge, thread, hints, stop), daemon=True)
     other.start()
@@ -217,6 +288,7 @@ def test_a_question_waits_on_every_phone_until_answered(bridges, fakes):
     assert wait_until(lambda: page(bridge, thread)["pending"]["questions"] != [], timeout=10)
     question = page(bridge, thread)["pending"]["questions"][0]
     assert question["request_id"] == "q-1" and question["questions"][0]["question"] == "Quel jour ?"
+    assert question["after"] == "s_C1D00000-0000-4000-8000-0000000000E1", question   # placed like a card
     assert page(bridge, thread)["pending"]["approvals"] == [], "a question is no approval"
     answered = bridge.post("/v1/approve", headers=AUTH,
                            json={"agent": "wellness", "run_id": "r1", "request_id": "q-1", "answer": "Lundi"})

@@ -38,7 +38,7 @@ fn routines(app: &TestApp) {
     let config = app.app.state.config();
     let agent = config.agents.values().next().unwrap().name.clone();
     for (name, schedule) in [("Point du matin", "0 7 * * *"), ("Bilan du soir", "0 21 * * *"), ("En pause", "0 9 * * *")] {
-        let id = bipbridge::routines::create(&config, &agent, name, schedule, "…", None).unwrap().id;
+        let id = bipbridge::routines::create(&config, &agent, name, schedule, "…", None, bipbridge::routines::Maker::Person { muted: false }).unwrap().id;
         if name == "En pause" {
             bipbridge::routines::update(&config, &id, |r| {
                 r.enabled = false;

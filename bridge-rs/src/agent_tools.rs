@@ -1993,10 +1993,17 @@ async fn mcp(
         }
         // made in this conversation: its report goes back there
         let origin = state.hub.asking_session(&agent.name);
-        let (mut result, run) = crate::routines::call(&state.config(), &agent.name, &arguments, origin.as_deref());
-        if let Some(id) = run {
+        let cards_before = crate::card_place::waiting(&state, &agent.name);
+        let called = crate::routines::call(&state.config(), &agent.name, &arguments, origin.as_deref());
+        let mut result = called.result;
+        if let Some(id) = called.run {
             let state = state.clone();
             tokio::spawn(async move { crate::routines::fire(&state, &id).await });
+        }
+        if let Some((line, card)) = called.card {
+            // a proposal: its card in this turn's conversation (card_place.rs) and pushed, as routine_trigger's
+            crate::card_place::place_new(&state, &agent, &cards_before, turn_run.as_deref()).await;
+            state.push.notify_bridge_card(&agent.name, &line, "routine_request", &card).await;
         }
         wrote(&agent.name, &name, &arguments, &mut result);
         return Ok(answer(result));

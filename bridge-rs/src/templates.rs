@@ -789,6 +789,8 @@ fn template_routine(agent: &str, routine: &Value, skills: &BTreeSet<String>) -> 
         last_status: String::new(),
         last_session: String::new(),
         created: py::time_time(),
+        card: None,
+        suggested_silent: None,
     })
 }
 

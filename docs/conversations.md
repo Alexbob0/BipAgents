@@ -253,6 +253,10 @@ Answer:
   cursor of what they have and ask `after=` on each `thread` event. An item that moved or vanished (a restore, a
   rewind) still pages correctly: the cursor's position is used when its item is gone.
 - `anchor` is the `around` item when it was found (else null and the latest page is given).
+- **Where a waiting card goes** (thin apps, brick 5): each row of `pending.approvals` / `pending.questions` (any
+  waiting row with a time) carries `after`: the id of the last item that draws something said at or before its
+  `created_at`; null when it was asked before them all; the last item when it has no time. Both apps draw it right
+  after that item's row (above the rows shown when that item is not shown), every card, not only the first.
 - **How a page goes into the phone's window** (thin apps, 5/11; one rule on both apps): `reset: true` — the page is
   the window (latest, around, and below); else `joins: <cursor>` — an `after=` page goes after the held item at that
   cursor, a `before=` page in front of it, and what the phone held beyond that item is gone (rows the bridge no
@@ -444,6 +448,12 @@ one rule.
 The bridge takes what waited for the message (`live_brief::message_notes`: the time, a Live call's recap, the
 family's news…), adds the app's `notes` (its 👍 / 👎), builds Hermes' input (photos as image parts of one user message,
 documents as `[Pièce jointe : …]` lines), creates the tip session when the thread has none (`new`: a side thread).
+A photo also becomes a file with the agent's uploads at once (`keep_photos`, where `POST /v1/files` puts documents;
+6/11: every photo sent showed « 0 Ko », nothing to draw): its `s_` item, its queue item and Hermes' stored row
+(matched by `client_id`) carry `{kind: image, name, mime, size, path}`, served like any path attachment. A queue item
+says what the message carries: `attachments` (the same, never bytes) and `voice: true` (a voice note's transcript);
+a message of files alone has an empty `text`, and the apps' « En attente » row always says something (« Photo ·
+1,2 Mo », the file's name, « Message vocal », else « Pièce jointe »).
 Every answer goes through the bridge, which keeps it (approvals_log.rs) and bumps the thread. Deleted with this:
 `POST /v1/agents/{id}/queue` and `/steer`, `GET/POST /v1/approvals/answered`, the apps' Hermes-direct runs, steers,
 approvals and questions.
@@ -589,8 +599,16 @@ ship right after): the push carries the pointer only, no legacy field (`run_id` 
   then asks `GET /v1/notifications/{n}`, which has `m` once found).
 - Approvals add what their buttons answer: `run_id`, `request_id`, `choices`; questions `run_id`, `request_id`.
 - `aps.thread-id` is `<agent>/<c>` (the agent's when there is no conversation): one notification group per
-  conversation. `aps.category`: `APPROVAL` for approvals, `CARD` for connector and e-mail cards (never a secret's:
-  it is typed in the app), `MESSAGE` for the rest. `aps.badge`: the journal's unread total.
+  conversation. `aps.category`: `APPROVAL` for Hermes' approvals (« Approuver une fois » / « Refuser »: one
+  command, all of it in the notification); `BRIDGE_CARD` for the bridge's own cards (a site, an account, a
+  connector, a secret, a mail card), never allowed from the notification: a tap opens the card, where all it allows
+  shows (Alex, 2026-11-05: a sites card allowed from its notification allowed its first host only); `MESSAGE` for the
+  rest. `aps.badge`: the journal's unread total.
+  Compatibility (2026-11-06): `BRIDGE_CARD` replaced `CARD` (connector, mail card) and `MESSAGE` (site, account,
+  secret). Apps released before it don't know the name, so they show no button on these (`CARD` gave « Autoriser une
+  fois » on the iPhone, `MESSAGE` « Répondre ») and open the card on a tap as before (they route by `t`, never by
+  the category); newer iPhones register it with « Refuser » only, Android never adds a button to it. The apps still
+  read `CARD` from a bridge before it, with « Refuser » only.
 - The text the extension shows: the sealed `enc` (below); `GET /v1/notifications/{n}` (`preview`, the whole text)
   when the phone is on the tailnet. The alert itself never carries words.
 - Collapse ids only where one notification replaces another: a run's reply (`run_id`), an approval's or question's
