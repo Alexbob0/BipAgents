@@ -640,6 +640,19 @@ impl Threads {
         }
     }
 
+    /// The agent's task list in a run of this session changed (steps.rs): the thread's open screens are told, with the
+    /// list, without a new version (nothing new to fetch; the stored item comes with the turn's rows). Apps from
+    /// before 6/11 skip a hint whose version they hold.
+    pub async fn steps_changed(&self, agent: &AgentConfig, session: &str, run_id: &str, steps: Value) {
+        let Some(thread) = self.thread_of(agent, session).await else { return };
+        self.publish(
+            &thread.agent,
+            "thread",
+            json!({"thread": thread.id, "agent": thread.agent, "version": thread.version, "reason": "steps",
+                   "run_id": run_id, "steps": steps}),
+        );
+    }
+
     // -- timeline -------------------------------------------------------------------------------------------------
 
     /// Every item of the thread, in order: its segments' rows, the Boîte's messages among them.
@@ -664,6 +677,7 @@ impl Threads {
             ));
             previous = Some(rows);
         }
+        crate::steps::fold(&mut items, &crate::handback::language_of(&self.config.get(), agent));
         if thread.kind != "main" {
             // a run without the person that had nothing to tell (« [SILENT] », or the code word translated): no reply
             items.retain(|i| !timeline::silent_reply(i));
