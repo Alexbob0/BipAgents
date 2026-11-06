@@ -97,7 +97,8 @@ pub fn answer(config: &Config, agent: &str, id: &str, choice: &str, via: &str) -
         if let Some(live) = s.session_for(agent, &card.site) {
             return Some((card, Some(live.clone())));
         }
-        let session = store::new_session(config, s, agent, vec![card.site.clone()], via);
+        let mut session = store::new_session(config, s, agent, vec![card.site.clone()], via);
+        session.card = Some(format!("{RUN_PREFIX}{}", card.id));
         s.sessions.push(session.clone());
         Some((card, Some(session)))
     })?;

@@ -100,6 +100,13 @@ pub struct Session {
     /// Its line is in the Boîte (ended sessions).
     #[serde(default)]
     pub told: bool,
+    /// Why the phone paused it (`PAUSE`'s `why`: `wifi_only`, `background`, `user`, `network`), kept after the
+    /// tunnel closed (an iPhone pauses, then closes); None once it relays again, or when the tunnel was only lost.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paused_why: Option<String>,
+    /// The card it was accepted on (`bip-exit-<id>`), for the app that answered it to find it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub card: Option<String>,
 }
 
 impl Session {
@@ -119,6 +126,7 @@ impl Session {
             "up": self.up, "down": self.down, "used_bytes": self.up + self.down, "streams": self.streams,
             "hosts": self.hosts, "created_at": self.created_at, "accepted_at": self.accepted_at, "ends_at": ends_at,
             "ended_at": self.ended_at, "ended": self.ended, "network": self.network, "via": self.via,
+            "paused_why": self.paused_why, "card": self.card,
         })
     }
 }

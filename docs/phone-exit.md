@@ -45,7 +45,7 @@ may reconnect (network change, app restart) and the session goes on with the sam
 |---|---|---|
 | `accepted` | The person said yes; no phone carries it yet | refused `paused` |
 | `active` | A tunnel carries it (listed in the phone's `HELLO`/`SESSIONS`, not paused) | opened through the phone |
-| `paused` | It was active; the tunnel is gone, or the phone said `PAUSE` (Wi-Fi only on 4G, person's pause) | refused `paused` (`wifi_only` when that is why) |
+| `paused` | It was active; the tunnel is gone, or the phone said `PAUSE` (Wi-Fi only on 4G, the app put away, person's pause) | refused `paused` (`wifi_only` when that is why) |
 | `ended` | Over, with a reason (below); it is in the journal | refused with the end reason for 10 min, then `not_allowed` |
 
 A card refused (« Non ») makes no session.
@@ -92,7 +92,7 @@ All JSON. `site` values are registrable domains; the bridge normalizes what it i
 | `PUT /v1/exit/settings` | any of `{"allowed": bool, "wifi_only": bool, "minimal_route": bool}` | `Overview` |
 | `PUT /v1/exit/sites/{site}` | `{"mode": "always"\|"never"\|"ask", "minimal": bool?}` | `Overview` |
 | `DELETE /v1/exit/sites/{site}` | — | `Overview` (the site asks again) |
-| `GET /v1/exit/sessions` | — | `{"sessions": [Session]}`: the live ones (`accepted`, `active`, `paused`) |
+| `GET /v1/exit/sessions[?agent=&site=&card=]` | — | `{"sessions": [Session]}`: the live ones (`accepted`, `active`, `paused`). A card answered through `/v1/approve` (or the card's own screen) has its `accepted` session listed at once; `site` may be a host or URL (the session covers it), `card` the card's run id (`bip-exit-<id>`) |
 | `POST /v1/exit/sessions` | `{"agent": id, "sites": [site]}` | `{"session": Session}`: the person starts one from the app |
 | `DELETE /v1/exit/sessions/{id}` | — | `{"stopped": bool}` (`user_stop`) |
 | `DELETE /v1/exit/session` | — | `{"stopped": bool}`: the kill switch, every session ends `user_stop` and the tunnel gets `BYE` |
@@ -118,7 +118,9 @@ All JSON. `site` values are registrable domains; the bridge normalizes what it i
  "up": 120034, "down": 3412991, "used_bytes": 3533025, "streams": 14,
  "hosts": {"www.ameli.fr": 3120044, "assure.ameli.fr": 412981},
  "created_at": 1730000000.0, "accepted_at": 1730000004.2, "ends_at": 1730001804.2,
- "ended_at": null, "ended": null, "network": "wifi", "via": "app"}
+ "ended_at": null, "ended": null, "network": "wifi", "via": "app",
+ "paused_why": null,                   // the phone's PAUSE reason, kept after its tunnel closed (`wifi_only`, `background`…)
+ "card": "bip-exit-7kTzp2SfgolA"}      // the card it was accepted on (absent when started from the app)
 ```
 
 `used_bytes` = `up + down` (shown, never capped).
@@ -167,7 +169,7 @@ app's other requests, a `*.bipagents.com` name has a public certificate).
 | 6 | `WINDOW` | both | id | u32 BE: bytes the receiver consumed (credit given back) |
 | 7 | `FIN` | both | id | empty: this side will send no more |
 | 8 | `RST` | both | id | empty: the stream is dead |
-| 9 | `PAUSE` | phone → bridge | 0 | JSON `{"why": "wifi_only"\|"user"\|"network"}`: refuse new streams until `RESUME` |
+| 9 | `PAUSE` | phone → bridge | 0 | JSON `{"why": "wifi_only"\|"background"\|"user"\|"network"}`: refuse new streams until `RESUME` (or a new tunnel). The phone may then close the tunnel without `BYE`: its sessions stay `paused` with that reason (streams refused `wifi_only` or `paused` at once, not waited for) until it comes back or the idle limit ends them |
 | 10 | `RESUME` | phone → bridge | 0 | empty or `{}` |
 | 11 | `STATS` | phone → bridge, every 5 s | 0 | JSON `{"network", "up", "down", "streams"}` (informative: the bridge counts the MB itself) |
 | 15 | `END` | both | 0 | JSON `{"id", "why"}`: one session over (bridge → phone: `expired`, `idle`, `user_stop`, `off`, `task_done`; phone → bridge: `user_stop`). Its open streams get `RST` |
@@ -185,6 +187,10 @@ way; `RST` on any error.
 **Reconnect.** On a network change the phone reconnects **at once** (no back-off for the first try; then 1 s, 2 s, 5 s,
 10 s) and sends `HELLO` with the same sessions. Streams of the old tunnel are lost (the agent reloads: it is told
 `network_changed`). After `BYE`, an `END` of its last session, or a 401/404, the phone stops and does not reconnect.
+
+**The phone's list only narrows.** `WELCOME` lists only sessions the phone named in `HELLO`/`SESSIONS` (never one it did
+not ask for), and the bridge only `OPEN`s streams for the sessions the tunnel carries. The phone keeps its own list
+(the sites accepted on it) and intersects it with `WELCOME`: a `WELCOME` can withdraw a session or a site, never add one.
 
 ## 6. Checks and refusal codes
 
@@ -234,7 +240,8 @@ never as a refusal.
   the card « Non ».
 - **During a session**: Android, a `specialUse` foreground service (subtype `agent-browsing-relay`) with the
   notification « <Agent> navigue depuis ce téléphone : ameli.fr · 3,2 Mo » and « Arrêter »; iOS, the « Relais »
-  screen (foreground; ~30 s grace in background, then `BYE`).
+  screen (foreground; ~30 s grace in background, then `PAUSE {"why":"background"}` and the tunnel closed, no `BYE`:
+  the sessions stay `paused` until the app is back or the idle limit ends them).
 - **Settings › « Navigation par mon téléphone »**: « Autoriser mes agents à passer par ce téléphone », the per-site
   list (Toujours / Demander / Jamais, minimal route), « Seulement en Wi-Fi » (off by default), the journal (one line per session: agent, sites, MB, duration, how it ended).
 - **Journal**: each ended session is also one Boîte line, e.g. « Vie a navigué via ton téléphone : ameli.fr ·
