@@ -448,6 +448,12 @@ one rule.
 The bridge takes what waited for the message (`live_brief::message_notes`: the time, a Live call's recap, the
 family's news…), adds the app's `notes` (its 👍 / 👎), builds Hermes' input (photos as image parts of one user message,
 documents as `[Pièce jointe : …]` lines), creates the tip session when the thread has none (`new`: a side thread).
+A photo also becomes a file with the agent's uploads at once (`keep_photos`, where `POST /v1/files` puts documents;
+6/11: every photo sent showed « 0 Ko », nothing to draw): its `s_` item, its queue item and Hermes' stored row
+(matched by `client_id`) carry `{kind: image, name, mime, size, path}`, served like any path attachment. A queue item
+says what the message carries: `attachments` (the same, never bytes) and `voice: true` (a voice note's transcript);
+a message of files alone has an empty `text`, and the apps' « En attente » row always says something (« Photo ·
+1,2 Mo », the file's name, « Message vocal », else « Pièce jointe »).
 Every answer goes through the bridge, which keeps it (approvals_log.rs) and bumps the thread. Deleted with this:
 `POST /v1/agents/{id}/queue` and `/steer`, `GET/POST /v1/approvals/answered`, the apps' Hermes-direct runs, steers,
 approvals and questions.
