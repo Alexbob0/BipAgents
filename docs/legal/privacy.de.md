@@ -2,7 +2,7 @@
 
 # Datenschutzerklärung von BipAgents
 
-> Zuletzt aktualisiert: 1. November 2026.
+> Zuletzt aktualisiert: 6. November 2026.
 
 ## Kurz gesagt
 
@@ -361,11 +361,13 @@ Support). Der Dienst von Kerfy Studio, der Konten, Abos und Plätze verwaltet, h
 Weiterleitungsadresse sein); oder, mit einer E-Mail-Adresse, die Einmalcodes, die dir geschickt werden. Die Liste
 deiner freigegebenen Geräte, der öffentliche Schlüssel jedes Geräts (was ein anderes deiner Geräte ihm schickt, ist
 für es versiegelt) und ihre Benachrichtigungstokens, vom
-Relay versiegelt (Abschnitt 4.1): Kerfy Studio sieht sie nie im Klartext. Die Einladungen, die du verschickst (die
-E-Mail-Adresse der eingeladenen Person und ihr Status). Eine laufende Wiederherstellungsanfrage. Die Kopie deines
-Sicherungsschlüssels, mit deinem Wiederherstellungscode verschlüsselt, die Kerfy Studio nicht lesen kann. Gekauftes
-KI-Guthaben, das für ein nächstes Abo aufbewahrt wird (ein Betrag). Das Datum der Löschung des Kontos, wenn du sie
-beantragt hast. Nicht dein Name, nicht dein Foto, nie die Schlüssel zu deinem Platz.
+Relay versiegelt (Abschnitt 4.1): Kerfy Studio sieht sie nie im Klartext. Die Einladungen, die du verschickst: die
+E-Mail-Adresse der eingeladenen Person, ihr Status und, nur wenn du ihn angibst, dein Vorname, den die eingeladene
+Person in der Einladungs-E-Mail und in ihrer App sieht (eine Einladung per Link speichert nur diesen Vornamen, falls
+angegeben, und ihren Status). Eine laufende Wiederherstellungsanfrage. Die Kopie deines Sicherungsschlüssels, mit
+deinem Wiederherstellungscode verschlüsselt, die Kerfy Studio nicht lesen kann. Gekauftes KI-Guthaben, das für ein
+nächstes Abo aufbewahrt wird (ein Betrag). Das Datum der Löschung des Kontos, wenn du sie beantragt hast. Kein anderer
+Name, nicht dein Foto, nie die Schlüssel zu deinem Platz.
 
 **Zwecke.** Dich anmelden, dein Abo und deine Plätze verbinden, deine Geräte freigeben, dein Konto wiederherstellen, dir
 Anmeldecodes, Sicherheitshinweise (neues Gerät, laufende Wiederherstellung), die Bestätigung deines Kaufs, die

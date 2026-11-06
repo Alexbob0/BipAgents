@@ -2,7 +2,7 @@
 
 # Política de privacidad de BipAgents
 
-> Última actualización: 1 de noviembre de 2026.
+> Última actualización: 6 de noviembre de 2026.
 
 ## En resumen
 
@@ -337,11 +337,12 @@ soporte). El servicio de Kerfy Studio que gestiona las cuentas, las suscripcione
 reenvío); o, con una dirección de correo, los códigos de un solo uso que se te envían. La lista de tus dispositivos
 aprobados, la clave pública de cada uno (lo que otro de tus dispositivos le envía va sellado para él) y sus tokens de
 notificación, sellados por el relé
-(sección 4.1): Kerfy Studio nunca los ve en claro. Las invitaciones que envías (la dirección de correo de la persona
-invitada y su estado). Una solicitud de recuperación en curso. La copia de tu clave de copia de seguridad, cifrada con
-tu código de recuperación, que Kerfy Studio no puede leer. El crédito de IA comprado y conservado para una próxima
-suscripción (un importe). La fecha de eliminación de la cuenta, si la has solicitado. Ni tu nombre, ni tu foto, nunca
-las claves de tu plaza.
+(sección 4.1): Kerfy Studio nunca los ve en claro. Las invitaciones que envías: la dirección de correo de la persona
+invitada, su estado y, solo si lo das, tu nombre, que la persona invitada ve en el correo de invitación y en su app
+(una invitación por enlace guarda solo ese nombre, si se da, y su estado). Una solicitud de recuperación en curso. La
+copia de tu clave de copia de seguridad, cifrada con tu código de recuperación, que Kerfy Studio no puede leer. El
+crédito de IA comprado y conservado para una próxima suscripción (un importe). La fecha de eliminación de la cuenta, si
+la has solicitado. Ningún otro nombre, ni tu foto, nunca las claves de tu plaza.
 
 **Finalidades.** Iniciar tu sesión, vincular tu suscripción y tus plazas, aprobar tus dispositivos, recuperar tu
 cuenta, enviarte los códigos de inicio de sesión, los avisos de seguridad (dispositivo nuevo, recuperación en curso),
