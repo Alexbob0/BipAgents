@@ -164,8 +164,8 @@ pub fn classify_card(item: &Dict) -> &'static str {
         (crate::storage_watch::RUN_PREFIX, "space"),
         (crate::feature_tips::RUN_PREFIX, "tip"),
         (crate::triggers::RUN_PREFIX, "trigger"),
-        ("bip-exit-", "phone_exit"), // phone_exit/store.rs
-        ("bip-hops-", "agent_hops"), // agent_hops.rs
+        (crate::phone_exit::store::RUN_PREFIX, "phone_exit"),
+        (crate::agent_hops::RUN_PREFIX, "agent_hops"),
         ("bip-", "unknown"),
     ];
     PREFIXES.iter().find(|(p, _)| run.starts_with(p)).map(|(_, k)| *k).unwrap_or("unknown")
