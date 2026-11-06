@@ -1,4 +1,22 @@
-//! The phone exit (docs/phone-exit.md, protocol v1; behind `[phone_exit] enabled`, off by default): an agent's HTTPS
+//! Th    fn not    /// The last refusal that explains a page on this host (code, seconds ago): one for that host, or one about the
+    /// session of its site.
+    pub fn why(&self, agent: &str, host: &str) -> Option<(String, u64)> {
+        let host = checks::host_of(host);
+        let site = crate::mail_tidy::registrable(&host);
+        let notes = self.notes.lock().unwrap_or_else(|e| e.into_inner());
+        notes
+            .get(agent)?
+            .iter()
+            .rev()
+            .find(|(h, code, at)| {
+                at.elapsed() < NOTE_KEEP
+                    && (*h == host || (SITE_WIDE.contains(&code.as_str()) && crate::mail_tidy::registrable(h) == site))
+            })(&self, agent: &str, host: &str, code: &str) {
+        let mut notes = self.notes.lock().unwrap_or_else(|e| e.into_inner());
+        let list = notes.entry(agent.to_string()).or_default();
+        list.retain(|(h, _, at)| h != host && at.elapsed() < NOTE_KEEP);
+        list.push((host.to_string(), code.to_string(), Instant::now()));
+    } phone exit (docs/phone-exit.md, protocol v1; behind `[phone_exit] enabled`, off by default): an agent's HTTPS
 //! connections to a few sites leave through its person's phone instead of this server's datacenter address, after a
 //! refusal and a card the person accepted. No Tailscale, no VPN: the phone opens ONE outbound WebSocket to this bridge
 //! (`GET /v1/exit/tunnel`), and the TCP streams are multiplexed over it.
@@ -307,15 +325,20 @@ impl Tunnel {
     }
 }
 
-/// A refusal told to the agent: its site, the code, when.
+/// A refusal told to the agent: its host, the code, when.
 type Note = (String, String, Instant);
+
+/// Codes about the whole session (every host of the site): the others (a tracker the home DNS blocks: `private`, a
+/// host down: `dns`, `connect`…) are told only for a page on that very host (lab 6/11: a refused `dd.leboncoin.fr`
+/// made the agent think the page itself had failed).
+const SITE_WIDE: [&str; 7] = ["paused", "wifi_only", "off", "expired", "not_allowed", "rate", "network_changed"];
 
 #[derive(Default)]
 pub struct Hub {
     current: Mutex<Option<Arc<Tunnel>>>,
     tunnels: AtomicU64,
     live: Mutex<HashMap<String, Arc<Live>>>,
-    /// Per agent: (site, refusal code, when) — what the browser tool tells it (`WHY`).
+    /// Per agent: (host, refusal code, when) — what the browser tool tells it (`WHY`).
     notes: Mutex<HashMap<String, Vec<Note>>>,
 }
 
@@ -343,22 +366,27 @@ impl Hub {
     }
 
     fn note(&self, agent: &str, host: &str, code: &str) {
-        let site = crate::mail_tidy::registrable(host);
         let mut notes = self.notes.lock().unwrap_or_else(|e| e.into_inner());
         let list = notes.entry(agent.to_string()).or_default();
-        list.retain(|(s, _, at)| *s != site && at.elapsed() < NOTE_KEEP);
-        list.push((site, code.to_string(), Instant::now()));
+        list.retain(|(h, _, at)| h != host && at.elapsed() < NOTE_KEEP);
+        list.push((host.to_string(), code.to_string(), Instant::now()));
     }
 
-    /// The last refusal for this agent's site (code, seconds ago).
+    /// The last refusal that explains a page on this host (code, seconds ago): one for that very host, or one about
+    /// the session of its site.
     pub fn why(&self, agent: &str, host: &str) -> Option<(String, u64)> {
-        let site = crate::mail_tidy::registrable(&checks::host_of(host));
+        let host = checks::host_of(host);
+        let site = crate::mail_tidy::registrable(&host);
         let notes = self.notes.lock().unwrap_or_else(|e| e.into_inner());
         notes
             .get(agent)?
             .iter()
             .rev()
-            .find(|(s, _, at)| *s == site && at.elapsed() < NOTE_KEEP)
+            .find(|(h, code, at)| {
+                at.elapsed() < NOTE_KEEP
+                    && (*h == host
+                        || (SITE_WIDE.contains(&code.as_str()) && crate::mail_tidy::registrable(h) == site))
+            })
             .map(|(_, code, at)| (code.clone(), at.elapsed().as_secs()))
     }
 

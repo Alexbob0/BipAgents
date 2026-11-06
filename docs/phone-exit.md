@@ -238,7 +238,7 @@ never as a refusal.
 - **Settings › « Navigation par mon téléphone »**: « Autoriser mes agents à passer par ce téléphone », the per-site
   list (Toujours / Demander / Jamais, minimal route), « Seulement en Wi-Fi » (off by default), the journal (one line per session: agent, sites, MB, duration, how it ended).
 - **Journal**: each ended session is also one Boîte line, e.g. « Vie a navigué via ton téléphone : ameli.fr ·
-  6,2 Mo · 4 min · arrêté : tâche finie ».
+  6,2 Mo · 4 min · tâche finie ».
 
 ## 9. bridge.toml
 

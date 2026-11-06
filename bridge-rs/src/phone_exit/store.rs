@@ -362,7 +362,9 @@ pub fn push_line(lang: &str, card: &Card) -> String {
 pub fn megabytes(lang: &str, bytes: u64) -> String {
     // a session that carried a little shows 0,1 Mo, never 0,0
     let mb = if bytes > 0 { (bytes as f64 / 1_000_000.0).max(0.1) } else { 0.0 };
-    let n = if mb < 10.0 { format!("{mb:.1}") } else { format!("{}", mb.round() as u64) };
+    let n = if bytes == 0 {
+        "0".to_string()
+    } else if mb < 10.0 { format!("{mb:.1}") } else { format!("{}", mb.round() as u64) };
     match lang {
         "en" => format!("{n} MB"),
         "fr" => format!("{} Mo", n.replace('.', ",")),
@@ -415,10 +417,10 @@ pub fn journal_line(lang: &str, agent: &str, s: &Session) -> String {
         };
     }
     match lang {
-        "fr" => format!("{agent} a navigué via ton téléphone : {sites} · {mb} · {minutes} min · arrêté : {why}"),
-        "de" => format!("{agent} hat über dein Telefon gesurft: {sites} · {mb} · {minutes} Min. · Ende: {why}"),
-        "es" => format!("{agent} navegó a través de tu teléfono: {sites} · {mb} · {minutes} min · fin: {why}"),
-        _ => format!("{agent} browsed through your phone: {sites} · {mb} · {minutes} min · ended: {why}"),
+        "fr" => format!("{agent} a navigué via ton téléphone : {sites} · {mb} · {minutes} min · {why}"),
+        "de" => format!("{agent} hat über dein Telefon gesurft: {sites} · {mb} · {minutes} Min. · {why}"),
+        "es" => format!("{agent} navegó a través de tu teléfono: {sites} · {mb} · {minutes} min · {why}"),
+        _ => format!("{agent} browsed through your phone: {sites} · {mb} · {minutes} min · {why}"),
     }
 }
 
@@ -538,7 +540,7 @@ mod tests {
         s.down = 6_000_000;
         s.up = 200_000;
         s.ever_active = true;
-        assert_eq!(journal_line("fr", "Vie", &s), "Vie a navigué via ton téléphone : ameli.fr · 6,2 Mo · 4 min · arrêté : tâche finie");
+        assert_eq!(journal_line("fr", "Vie", &s), "Vie a navigué via ton téléphone : ameli.fr · 6,2 Mo · 4 min · tâche finie");
         assert_eq!(megabytes("en", 123_456_789), "123 MB");
         s.ever_active = false;
         assert!(journal_line("de", "Vie", &s).contains("kein Telefon"));

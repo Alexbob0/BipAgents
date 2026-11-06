@@ -314,6 +314,8 @@ def test_the_phone_has_the_last_word_and_the_server_name_must_match(bridges):
         refused, _, w1 = await exit_stream(sock(bridge), f"lan.{SITE}")
         w1.close()
         why = await hub_line(sock(bridge), f"WHY wellness lan.{SITE}")
+        # a tracker refused (`private`) is not a reason for the site's other pages
+        assert await hub_line(sock(bridge), f"WHY wellness {HOST}") == "NONE"
         line, reader, writer = await exit_stream(sock(bridge), HOST)
         assert line == "OK"
         # a ClientHello naming another site on the same CDN: cut before anything reaches it
