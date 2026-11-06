@@ -105,6 +105,14 @@ def test_an_agent_proposes_a_routine_and_the_person_chooses_silent_or_not_on_its
     bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": plain["run_id"], "choice": "once"})
     assert jobs(bridge)["Sans avis"]["muted"] is True
 
+
+def test_a_proposed_routine_refused_or_withdrawn_is_forgotten_and_a_silent_one_says_so(bridges, fakes):
+    """(Apart: the brake counts an agent's calls of one tool without a turn.)"""
+    bridge = bridges.new()
+    bridge.start()
+    give_token(bridge)
+    _, card = propose(bridge, "Archive du soir", silent=True)
+    bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": card["run_id"], "choice": "silent"})
     # « Non »: forgotten
     _, no = propose(bridge, "Refusée")
     assert bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": no["run_id"],
