@@ -1,22 +1,4 @@
-//! Th    fn not    /// The last refusal that explains a page on this host (code, seconds ago): one for that host, or one about the
-    /// session of its site.
-    pub fn why(&self, agent: &str, host: &str) -> Option<(String, u64)> {
-        let host = checks::host_of(host);
-        let site = crate::mail_tidy::registrable(&host);
-        let notes = self.notes.lock().unwrap_or_else(|e| e.into_inner());
-        notes
-            .get(agent)?
-            .iter()
-            .rev()
-            .find(|(h, code, at)| {
-                at.elapsed() < NOTE_KEEP
-                    && (*h == host || (SITE_WIDE.contains(&code.as_str()) && crate::mail_tidy::registrable(h) == site))
-            })(&self, agent: &str, host: &str, code: &str) {
-        let mut notes = self.notes.lock().unwrap_or_else(|e| e.into_inner());
-        let list = notes.entry(agent.to_string()).or_default();
-        list.retain(|(h, _, at)| h != host && at.elapsed() < NOTE_KEEP);
-        list.push((host.to_string(), code.to_string(), Instant::now()));
-    } phone exit (docs/phone-exit.md, protocol v1; behind `[phone_exit] enabled`, off by default): an agent's HTTPS
+//! The phone exit (docs/phone-exit.md, protocol v1; behind `[phone_exit] enabled`, off by default): an agent's HTTPS
 //! connections to a few sites leave through its person's phone instead of this server's datacenter address, after a
 //! refusal and a card the person accepted. No Tailscale, no VPN: the phone opens ONE outbound WebSocket to this bridge
 //! (`GET /v1/exit/tunnel`), and the TCP streams are multiplexed over it.
