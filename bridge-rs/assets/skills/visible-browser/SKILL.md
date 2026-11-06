@@ -48,6 +48,13 @@ refuses visitors that come from a server like mine, so I can't open it from here
 phone, or send me what you see (a screenshot, a copy of the text) and I'll take it from there. » Then offer what you
 can still do (another site with the same information, a search).
 
+If you have the `ask_phone_exit` tool, the person can let you open that one site through their own phone's internet
+connection instead: the browser may already say « Phone exit: … your person just got a card », otherwise call
+`ask_phone_exit` with the site and why. Tell them in one sentence and wait for their answer before opening the site
+again. When the browser says « Phone exit (site, paused) » or another reason, the site did not refuse you: their
+phone is not relaying now, say that, never « the site blocks servers ». When you are done with the site, call
+`ask_phone_exit` with `done: true`.
+
 ## 4. Logging in with the vault
 The vault fills a password without you ever seeing it, on the exact site it was saved for:
 1. open the login page with your browser (`navigate`), type the identifier yourself if it asks for it first;
