@@ -1,7 +1,8 @@
-"""A fake phone for the phone exit (bridge-rs/src/phone_exit.rs): it opens the tunnel's WebSocket like the Android
-demo, answers each OPEN (its own checks first, a test may refuse), connects to a local server standing in for the site,
-checks the ClientHello's server name, and copies bytes both ways within the windows. Also: the agents' proxy's side
-of the hub (its unix socket) and a minimal ClientHello."""
+"""A fake phone for the phone exit (bridge-rs/src/phone_exit/, docs/phone-exit.md protocol v1): it opens the tunnel's
+WebSocket like the apps, says HELLO with the sessions it carries, reads WELCOME / END / USAGE / BYE, answers each OPEN
+(its own checks first, a test may refuse), connects to a local server standing in for the site, checks the
+ClientHello's server name, and copies bytes both ways within the windows. Also: the agents' proxy's side of the hub
+(its unix socket), the browser tool's lines (WHY, ASK) and a minimal ClientHello."""
 from __future__ import annotations
 
 import asyncio
@@ -11,7 +12,8 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from websockets.asyncio.client import connect
 
-HELLO, OPEN, OPEN_OK, OPEN_ERR, DATA, WINDOW, FIN, RST, STATS, BYE = 1, 2, 3, 4, 5, 6, 7, 8, 11, 12
+(HELLO, OPEN, OPEN_OK, OPEN_ERR, DATA, WINDOW, FIN, RST, PAUSE, RESUME, STATS, BYE, WELCOME, SESSIONS, END,
+ USAGE) = range(1, 17)
 START_WINDOW = 256 * 1024
 CHUNK = 16 * 1024
 
@@ -65,16 +67,23 @@ class Stream:
 
 class FakePhone:
     """`site(host, port)` -> (address, port) of the local server to reach; `judge(host, port)` -> None or the refusal
-    reason (the phone's own checks)."""
+    reason (the phone's own checks); `sessions`: the ids it carries (HELLO)."""
 
     def __init__(self, url: str, token: str, site: Callable[[str, int], Tuple[str, int]],
-                 judge: Callable[[str, int], Optional[str]] = lambda h, p: None):
+                 judge: Callable[[str, int], Optional[str]] = lambda h, p: None, sessions: Optional[List[str]] = None,
+                 network: str = "wifi"):
         self.url, self.token, self.site, self.judge = url, token, site, judge
+        self.sessions = list(sessions or [])
+        self.network = network
         self.opens: List[dict] = []
         self.refused: List[Tuple[str, str]] = []
+        self.welcomes: List[dict] = []
+        self.ends: List[dict] = []
+        self.usages: List[dict] = []
         self.resets = 0
         self.bye: Optional[str] = None
         self.ready = asyncio.Event()
+        self.welcomed = asyncio.Event()
         self.closed = asyncio.Event()
         self.streams: Dict[int, Stream] = {}
         self.ws = None
@@ -82,12 +91,16 @@ class FakePhone:
     async def send(self, kind: int, stream: int, payload: bytes = b"") -> None:
         await self.ws.send(frame(kind, stream, payload))
 
+    async def control(self, kind: int, body: dict) -> None:
+        await self.send(kind, 0, json.dumps(body).encode())
+
     async def run(self) -> None:
         try:
             async with connect(self.url, additional_headers={"Authorization": f"Bearer {self.token}"},
                                max_size=None, compression=None, proxy=None, open_timeout=10) as ws:
                 self.ws = ws
-                await self.send(HELLO, 0, json.dumps({"device": "fake", "version": "0", "network": "wifi"}).encode())
+                await self.control(HELLO, {"v": 1, "device": "fake", "platform": "android", "app": "test",
+                                           "network": self.network, "sessions": self.sessions})
                 self.ready.set()
                 async for message in ws:
                     kind, sid, size = struct.unpack(">BII", message[:9])
@@ -104,6 +117,13 @@ class FakePhone:
                     elif kind == WINDOW and sid in self.streams:
                         self.streams[sid].credit += struct.unpack(">I", payload)[0]
                         self.streams[sid].more.set()
+                    elif kind == WELCOME:
+                        self.welcomes.append(json.loads(payload))
+                        self.welcomed.set()
+                    elif kind == END:
+                        self.ends.append(json.loads(payload))
+                    elif kind == USAGE:
+                        self.usages.append(json.loads(payload))
                     elif kind == BYE:
                         self.bye = payload.decode()
                         break
@@ -150,7 +170,7 @@ class FakePhone:
                 if first:
                     first = False
                     if sni_of(payload) != host:
-                        self.refused.append((host, "sni-mismatch"))
+                        self.refused.append((host, "sni_mismatch"))
                         await self.send(RST, sid)
                         writer.close()
                         return
@@ -169,13 +189,23 @@ class FakePhone:
                 t.cancel()
 
 
-async def exit_stream(socket_path: str, host: str, port: int = 443, agent: str = "vie"):
+async def exit_stream(socket_path: str, host: str, port: int = 443, agent: str = "wellness"):
     """The agents' proxy's side: (answer line, reader, writer) for one stream asked of the hub."""
     reader, writer = await asyncio.open_unix_connection(socket_path)
     writer.write(f"EXIT {host} {port} {agent}\n".encode())
     await writer.drain()
     line = (await asyncio.wait_for(reader.readline(), 30)).decode().strip()
     return line, reader, writer
+
+
+async def hub_line(socket_path: str, line: str) -> str:
+    """The browser tool's side: one line (`WHY agent host`, `ASK agent host kind`), its one-line answer."""
+    reader, writer = await asyncio.open_unix_connection(socket_path)
+    writer.write(f"{line}\n".encode())
+    await writer.drain()
+    answer = (await asyncio.wait_for(reader.readline(), 10)).decode().strip()
+    writer.close()
+    return answer
 
 
 async def echo_server():

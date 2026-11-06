@@ -452,16 +452,23 @@ if __name__ == "__main__":
 
 
 def test_phone_exit_hosts_go_to_the_hub_never_direct(tmp_path, monkeypatch):
-    """`BIP_EXIT_HOSTS` go through the hub's unix socket (« EXIT host 443 agent »), counted like any tunnel; the hub's
-    refusal is said (paused: 503, refused: 403); no hub means refused, never the datacenter instead."""
+    """The agent's `phone` sites go through the hub's unix socket (« EXIT host 443 agent »), counted like any tunnel;
+    the minimal route sends a site's static-file hosts direct; the hub's refusal is said (paused: 503, refused: 403);
+    no hub means refused, never the datacenter instead."""
     # a short folder: a unix socket's path is at most ~104 bytes (macOS), pytest's tmp_path can be longer
     short = Path(tempfile.mkdtemp(prefix="pe-", dir="/tmp"))
     sock = short / "hub.sock"
-    proxy, _, _ = load(tmp_path, monkeypatch, AGENTS, LIMITS,
-                       env={"BIP_EXIT_SOCK": str(sock), "BIP_EXIT_HOSTS": "doctolib.fr,*.doctolib.fr"})
+    agents = {**AGENTS, "vie": {**AGENTS["vie"], "phone": [{"site": "doctolib.fr", "minimal": False},
+                                                           {"site": "leboncoin.fr", "minimal": True}]},
+              "conn-c1": {**AGENTS["conn-c1"], "phone": [{"site": "garmin.example", "minimal": False}]}}
+    proxy, _, _ = load(tmp_path, monkeypatch, agents, LIMITS, env={"BIP_EXIT_SOCK": str(sock)})
     assert proxy.phone_exit("www.doctolib.fr", "vie") and proxy.phone_exit("doctolib.fr", "vie")
+    assert proxy.phone_exit("assets.doctolib.fr", "vie")   # no minimal route for this one
+    assert proxy.phone_exit("www.leboncoin.fr", "vie") and proxy.phone_exit("dd.leboncoin.fr", "vie")
+    assert not proxy.phone_exit("img.leboncoin.fr", "vie") and not proxy.phone_exit("x.img.leboncoin.fr", "vie")
     assert not proxy.phone_exit("evil-doctolib.fr", "vie") and not proxy.phone_exit("doctolib.fr", None)
-    assert not proxy.phone_exit("api.garmin.example", "conn-c1")
+    assert not proxy.phone_exit("doctolib.fr", "budget")   # another agent: its own list
+    assert not proxy.phone_exit("api.garmin.example", "conn-c1")   # never a connector's credentials
     asked, direct = [], []
 
     async def hub(reader, writer):

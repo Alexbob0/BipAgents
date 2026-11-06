@@ -463,6 +463,10 @@ fn own_tools(config: &Config, agent: &AgentConfig, offer: bool) -> Vec<Value> {
     if crate::heavy_work::offered(agent, offer) {
         tools.extend(crate::heavy_work::tools());
     }
+    // a site refusing servers, opened through the person's own phone after a card (phone_exit)
+    if crate::phone_exit::agent::offered(config, &agent.name) {
+        tools.push(crate::phone_exit::agent::tool());
+    }
     if !crate::routines::enabled(config, &agent.name) {
         tools.retain(|t| t["name"] != crate::routines::TOOL_NAME);
     }
@@ -1443,6 +1447,18 @@ pub async fn call_tool(
             push.notify_bridge_card(&agent.name, &line, "mail_request", &run_id).await;
         }
         return Ok(called.result);
+    }
+    if name == crate::phone_exit::agent::TOOL_NAME {
+        if !crate::phone_exit::agent::offered(&config, &agent.name) {
+            return Ok(tool_text("Browsing through your person's phone is not available to you.", true));
+        }
+        let (c, a, arguments) = (config.clone(), agent.clone(), arguments.clone());
+        let (text, is_error, card) =
+            tokio::task::spawn_blocking(move || crate::phone_exit::agent::call(&c, &a, &arguments)).await?;
+        if let (Some(card), Some(push)) = (&card, push.as_ref()) {
+            crate::phone_exit::agent::notify(push, &config, card).await;
+        }
+        return Ok(tool_text(&text, is_error));
     }
     if name == crate::triggers::TOOL_NAME {
         let (c, agent_name, arguments) = (config.clone(), agent.name.clone(), arguments.clone());
