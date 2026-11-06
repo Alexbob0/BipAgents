@@ -371,6 +371,32 @@ pub fn lost(item: &Item) -> bool {
 /// same request that sends it: a few seconds cover the clocks).
 const LOST_AFTER: f64 = 10.0;
 
+/// Words steered into a turn that ended before `LOST_AFTER` without taking them (Stop at once) become « Pas envoyé »
+/// when that time passes, with nothing else happening: the phones showing the conversation are told then (a `thread`
+/// hint, `lost`), and read it again (5/11-6/11, Android: « Pas envoyé » never showed while the conversation stayed
+/// open; the bridge only knew it when a page was read). A turn that ends later says it with its own hint (`run`).
+fn tell_if_lost(state: &AppState, agent: &AgentConfig, thread: &Thread, tip: &str, client_id: &str) {
+    let (state, agent, thread, tip, client_id) =
+        (state.clone(), agent.clone(), thread.clone(), tip.to_string(), client_id.to_string());
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs_f64(LOST_AFTER + 1.0)).await;
+        if state.hub.session_run(&agent.name, &tip).is_some() {
+            return; // still running: its end tells
+        }
+        let waiting = state
+            .store
+            .run(
+                "SELECT 1 FROM thread_sends WHERE agent = ? AND client_id = ? AND message_id IS NULL",
+                vec![text(&agent.name), text(&client_id)],
+            )
+            .await
+            .unwrap_or_default();
+        if !waiting.is_empty() {
+            let _ = threads_of(&state).bump(&thread, "lost").await;
+        }
+    });
+}
+
 impl Attachment {
     /// What the apps are shown of it (never its bytes).
     pub fn shown(&self) -> Value {
@@ -485,6 +511,7 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
             .map_err(|_| HttpError::new(502, "your agent isn't answering right now: try again in a moment"))?;
         if let Some(run) = steered {
             threads.bump(&thread, "sent").await?;
+            tell_if_lost(state, agent, &thread, tip, &body.client_id);
             return Ok(answer("steered", Some(&run)));
         }
     }

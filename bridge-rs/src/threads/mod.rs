@@ -1116,6 +1116,9 @@ async fn delete_thread(
     }
     threads.store.run("DELETE FROM thread_segments WHERE thread_id = ?", vec![text(&thread.id)]).await?;
     threads.store.run("DELETE FROM notifications WHERE thread_id = ?", vec![text(&thread.id)]).await?;
+    // its messages sent and never stored go with it: kept, they came back as « Pas envoyé » in the main thread
+    // started again under the same id (6/11, release journeys)
+    threads.store.run("DELETE FROM thread_sends WHERE thread_id = ?", vec![text(&thread.id)]).await?;
     if thread.kind != "main" {
         threads.store.run("DELETE FROM threads WHERE id = ?", vec![text(&thread.id)]).await?;
     }

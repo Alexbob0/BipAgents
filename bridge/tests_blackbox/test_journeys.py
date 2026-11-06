@@ -7,6 +7,7 @@ Alex, 6/11: « Il faudra éviter à tout prix des régressions de ce type-là qu
 the model's input only. These tests check what the person would SEE, before and after Hermes stores the message.
 
 Each test is one journey `Jnn` of the list (the same numbers in the doc and in the apps' journeys)."""
+import json
 import time
 
 import pytest
@@ -273,13 +274,43 @@ def test_j17_a_card_after_stop_leaves_a_conversation_that_still_shows(journey):
 
 # -- « Pas envoyé », « En attente » ------------------------------------------------------------------------------
 
+def thread_hints(journey, seconds):
+    """The `thread` hints of the conversation's event stream for `seconds` (what an open conversation is told)."""
+    import threading
+    import httpx
+    hints, stop = [], threading.Event()
+
+    def watch():
+        with httpx.Client(base_url=journey.bridge.url, headers=AUTH, timeout=30) as client:
+            with client.stream("GET", "/v1/threads/events", params={"agent": AGENT, "thread": journey.thread}) as resp:
+                name = None
+                for line in resp.iter_lines():
+                    if stop.is_set():
+                        return
+                    if line.startswith("event: "):
+                        name = line[7:]
+                    elif line.startswith("data: ") and name == "thread":
+                        hints.append(json.loads(line[6:]))
+    threading.Thread(target=watch, daemon=True).start()
+    return hints, stop
+
+
 def test_j18_a_message_no_turn_took_shows_not_sent_and_goes_again(journey):
     started(journey.send(cid(18), "Raconte-moi tout #lent"))
     assert journey.send(cid(180), "Hello?").json()["state"] == "steered"
+    # a phone holding the conversation: its last item is the message being sent
+    held = the_message(journey.page(), cid(180))
+    assert held.get("sending") is True, held
+    hints, stop_watching = thread_hints(journey, 20)
     assert journey.bridge.post(f"/v1/threads/{journey.thread}/stop", headers=AUTH,
                                json={"agent": AGENT}).json()["stopped"] is True
     journey.idle()
-    time.sleep(11)   # a while after it was sent, nothing running: « Pas envoyé »
+    # a while after it was sent, nothing running: « Pas envoyé », and the open conversation is told (6/11: Android
+    # never showed it, nothing told the phone and its catch-up after that item brought nothing)
+    assert wait_until(lambda: any(h.get("reason") == "lost" for h in hints), timeout=20), hints
+    stop_watching.set()
+    caught_up = journey.page(after=held["cursor"])
+    assert [i.get("not_sent") for i in caught_up["items"] if i.get("client_id") == cid(180)] == [True], caught_up
     page = journey.page()
     lost = the_message(page, cid(180))
     assert lost.get("not_sent") is True, lost
@@ -289,6 +320,23 @@ def test_j18_a_message_no_turn_took_shows_not_sent_and_goes_again(journey):
     page = reply_done(journey, "Bien reçu")
     assert the_message(page, cid(180)).get("not_sent") is None
     displayable.check(journey.bridge, page, AGENT)
+
+
+def test_j18_a_deleted_conversation_forgets_its_messages_not_sent(journey):
+    """6/11: « Pas envoyé » messages of a deleted conversation came back in the main thread started again (kept two
+    days in `thread_sends`, by the thread's id the main one keeps)."""
+    started(journey.send(cid(181), "Raconte-moi tout #lent"))
+    assert journey.send(cid(182), "Hello?").json()["state"] == "steered"
+    journey.bridge.post(f"/v1/threads/{journey.thread}/stop", headers=AUTH, json={"agent": AGENT})
+    journey.idle()
+    time.sleep(11)
+    assert the_message(journey.page(), cid(182)).get("not_sent") is True
+    deleted = journey.bridge.delete(f"/v1/threads/{journey.thread}", headers=AUTH, params={"agent": AGENT})
+    assert deleted.status_code == 204, deleted.text
+    assert journey.page()["items"] == [], journey.page()["items"]
+    started(journey.send(cid(183), "On recommence"))
+    page = reply_done(journey, "Bien reçu")
+    assert [i.get("client_id") for i in person_items(page)] == [cid(183)], person_items(page)
 
 
 def test_j19_the_queue_shows_each_kind_waiting(journey):
