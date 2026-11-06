@@ -12,7 +12,7 @@ sortie), avec un faux Hermes dont le « modèle » répond comme un agent (il é
 fichiers, des pages, des cartes, pose des questions, demande des autorisations). Chaque parcours vérifie ce qui est À
 L'ÉCRAN : la vignette a une image et une taille, le fichier s'ouvre, la carte montre ce qu'elle demande.
 
-**Une seule commande** : `scripts/release-journeys.sh` (≈ 15 min). Elle imprime le tableau ci-dessous rempli
+**Une seule commande** : `scripts/release-journeys.sh` (≈ 20 min). Elle imprime le tableau ci-dessous rempli
 (✅ / ❌). **Une sortie ne part pas si un parcours échoue.**
 
 ## Les trois couches
@@ -93,6 +93,24 @@ la bêta.
 | J30 | Changer d'agent | La conversation du bon agent, son nom, sa couleur | manuel |
 | J31 | Le guide | Le guide répond et propose ses premiers pas | existant : `test_guide.py`, `test_guide_team.py` ; apps : manuel |
 
+## Ce que la suite a trouvé (6/11)
+
+- **Photos « 0 Ko », jamais affichées** (J02, J03, J06) : en échec sur main-next 4665c820, sur les trois couches —
+  l'iPhone montre une puce « A0 · Zéro ko » à la place de l'image, Android rien ; côté pont la photo n'a pas de taille
+  et son adresse répond 404 (Hermes v0.22.5 garde la photo dans un fichier de SON conteneur, que le pont ne lit pas).
+  **Passent** une fois `queue-row-empty` fusionné (main-next 31258042).
+- **Un document envoyé casse la conversation** (J04, pas corrigé) : une fois le message rangé par Hermes, le pont
+  donne la taille du document en mots (`"size": "3 Ko"`, `threads/timeline.rs` `visible()`), les deux apps attendent
+  un nombre : l'iPhone et Android rejettent la page ENTIÈRE (« Ça n’a pas marché », plus rien de neuf n'arrive dans
+  cette conversation). En plus, sur Android, un document relu depuis le pont ne s'ouvre pas (pas d'`url`).
+- **« Pas envoyé »** (J18, apps) : le pont fait juste ; l'iPhone garde « Pas envoyé » sous un message renvoyé avec
+  succès et répondu ; Android ne montre jamais « Pas envoyé » dans une conversation ouverte (le pont ne prévient pas
+  quand les 10 s passent, et la relecture `after=` ne relit pas l'élément).
+- **« En attente »** (J19) : une photo ou un document seuls donnaient une ligne vide ; Android envoyait une photo
+  pendant une réponse sans la photo. Corrigé par `queue-row-empty`.
+- Petit : les messages « Pas envoyé » d'une conversation supprimée reviennent dans la nouvelle (le pont les garde
+  3 jours dans `thread_sends`, sans lien avec la conversation effacée).
+
 ## Ce qu'il manque encore (prochaines étapes)
 
 - Faire passer l'iPhone et Android sur J08–J10, J13–J17 et J20 (déjà vérifiés côté pont).
@@ -104,7 +122,7 @@ la bêta.
 ## Lancer
 
 ```sh
-scripts/release-journeys.sh                 # tout : pont + iPhone + Android (≈ 15 min)
+scripts/release-journeys.sh                 # tout : pont + iPhone + Android (≈ 20 min)
 scripts/release-journeys.sh --no-ios        # sans le simulateur
 scripts/release-journeys.sh --expected J02,J03,J06   # rapport : ces échecs connus marqués ⚠️ (jamais pour une sortie)
 ```
