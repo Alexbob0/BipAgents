@@ -160,6 +160,7 @@ pub fn bridge_cards(state: &AppState, config: &Config, agent: Option<&str>) -> V
     items.extend(crate::mail_rules::pending_items(config, agent));
     items.extend(crate::feature_tips::pending_items(config, agent));
     items.extend(crate::triggers::pending_items(config, agent));
+    items.extend(crate::phone_exit::store::pending_items(config, agent));
     items.extend(crate::routines::pending_items(config, agent));
     items
 }
@@ -441,6 +442,8 @@ fn asking_tool(run_id: &str) -> &'static str {
         crate::connectors::REGISTER
     } else if run_id.starts_with(crate::sandbox_sites::RUN_PREFIX) {
         crate::sandbox_sites::REQUEST
+    } else if run_id.starts_with(crate::phone_exit::store::RUN_PREFIX) {
+        crate::phone_exit::agent::TOOL_NAME
     } else {
         ""
     }
@@ -707,6 +710,10 @@ fn telling_tools(card: &str) -> &'static [&'static str] {
     const SITES: [&str; 2] = [crate::sandbox_sites::REQUEST, crate::sandbox_sites::LIST];
     const SECRET: [&str; 1] = [crate::connectors::ASK_SECRET];
     const CONNECTOR: [&str; 1] = [crate::connectors::REGISTER];
+    const PHONE_EXIT: [&str; 1] = [crate::phone_exit::agent::TOOL_NAME];
+    if card.starts_with(crate::phone_exit::store::RUN_PREFIX) {
+        return &PHONE_EXIT;
+    }
     if card.starts_with(crate::sandbox_sites::RUN_PREFIX) {
         &SITES
     } else if card.starts_with(crate::secrets::RUN_PREFIX) {

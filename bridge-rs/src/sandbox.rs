@@ -962,6 +962,7 @@ pub async fn forget(config: &Config, agent: &str, run: &Run) {
     }
     forget_state(config, agent);
     crate::sandbox_sites::forget(config, agent);
+    crate::phone_exit::forget(config, agent);
 }
 
 // --- the files in the volume ---------------------------------------------------------------------------------------

@@ -1164,6 +1164,24 @@ async fn bridge_card(
             None => Err(HttpError::new(404, "no such request (answered already?)")),
         }?));
     }
+    // « Passer par mon téléphone pour <site> ? » (phone_exit): the session the phone now carries, in the answer
+    if let Some(id) = run_id.strip_prefix(crate::phone_exit::store::RUN_PREFIX) {
+        let (config, name, id, choice) = (state.config(), agent.name.clone(), id.to_string(), body.choice.clone());
+        let answered = tokio::task::spawn_blocking(move || {
+            crate::phone_exit::agent::answer(&config, &name, &id, &choice, "notification")
+        })
+        .await
+        .map_err(anyhow::Error::from)??;
+        return Ok(Some(match answered {
+            Some(Some(session)) => {
+                let choice = if body.choice.trim().eq_ignore_ascii_case("always") { "always" } else { "once" };
+                Ok(web::ok(json!({"ok": true, "choice": choice,
+                    "exit": {"session": session.json(), "tunnel": "/v1/exit/tunnel"}})))
+            }
+            Some(None) => Ok(web::ok(json!({"ok": true, "choice": "deny"}))),
+            None => Err(HttpError::new(404, "no such request (answered already?)")),
+        }?));
+    }
     // a routine on a clock an agent proposed (routines.rs): on with « notify », « silent » (or an older app's « Oui »)
     if let Some(id) = run_id.strip_prefix(crate::routines::RUN_PREFIX) {
         let choice = body.choice.trim().to_lowercase();

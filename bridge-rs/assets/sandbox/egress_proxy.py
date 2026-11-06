@@ -35,11 +35,15 @@ abuse complaint can be traced to an agent.
   its person what it waits for, not that « the proxy » cuts it.
 - **What it counted** (`BIP_USAGE`, written each minute): per agent, today's bytes sent and received, and new
   connections; the bridge shows them.
-- **The phone exit** (prototype, bridge-rs/src/phone_exit.rs; only with `BIP_EXIT_SOCK`): an agent's HTTPS to a host
-  of `BIP_EXIT_HOSTS` (`doctolib.fr`, `*.doctolib.fr`) goes to the bridge's hub over that unix socket instead of out
-  of this machine (« EXIT host 443 agent », then « OK » and the raw stream, or « ERR reason »). The hub and the phone
-  check it again (the name, the address the phone resolves, the ClientHello's server name). Never the datacenter
-  instead: no phone, the tunnel is refused, its reason said. Counted and guarded like any other tunnel.
+- **The phone exit** (bridge-rs/src/phone_exit/, docs/phone-exit.md; only with `BIP_EXIT_SOCK`): an agent's HTTPS
+  to a site of its policy entry's `phone` list (`[{"site": "ameli.fr", "minimal": true}]`: the site and its
+  subdomains; with `minimal`, its static-file hosts such as `assets.` or `img.` still go direct) goes to the bridge's
+  hub over that unix socket instead of out of this machine (« EXIT host 443 agent », then « OK » and the raw stream,
+  or « ERR reason »). The hub and the phone check it again (the sessions, the name, the address the phone resolves,
+  the ClientHello's server name). Never the datacenter instead: no phone, the tunnel is refused, its reason said.
+  Counted and guarded like any other tunnel. When a site starts or stops going through the phone, the tunnels to it
+  still open the other way are closed (`switch_tunnels`, every second): Chrome reuses an open connection, which
+  would otherwise keep showing the datacenter's challenge after the person accepted (lab, 6/11).
 
 Run by the bridge with `python3 -u -c <this file>`: standard library only.
 """
@@ -73,7 +77,9 @@ SINK_SECONDS = 30.0
 SINK_MAX = 1 << 30
 USAGE_EVERY = 60
 EXIT_SOCK = os.environ.get("BIP_EXIT_SOCK", "")
-EXIT_HOSTS = [h.strip().lower().rstrip(".") for h in os.environ.get("BIP_EXIT_HOSTS", "").split(",") if h.strip()]
+# the first label under a routed site that marks static files (bridge-rs phone_exit/checks.rs STATIC_LABELS)
+STATIC_LABELS = frozenset(("assets", "static", "statics", "cdn", "img", "images", "image", "media", "medias", "fonts",
+                           "font", "css", "js", "pics", "photos", "thumbs", "video", "videos"))
 
 _policy = {"stamp": None, "agents": {}, "browsers": {}, "limits": dict(LIMITS)}
 _blocklist = {"stamp": None, "names": frozenset()}
@@ -93,6 +99,10 @@ def normal(host):
 
 def today():
     return time.strftime("%Y-%m-%d", time.gmtime())
+
+
+# the tunnels open now: [agent, host, through the phone, client writer, site writer]
+_open_tunnels = []
 
 
 def load_policy():
@@ -612,9 +622,21 @@ def headers_of(rest):
 
 
 def phone_exit(host, agent):
-    """This agent's tunnel to this host goes through its person's phone (the hub checks again)."""
-    return bool(EXIT_SOCK) and agent is not None and not connector(agent) and any(
-        host_matches(host, p) for p in EXIT_HOSTS)
+    """This agent's tunnel to this host goes through its person's phone (the hub checks again): a site of its
+    `phone` list, but a static-file host of a site with the minimal route goes direct."""
+    if not EXIT_SOCK or agent is None or connector(agent):
+        return False
+    entry = policy().get(agent)
+    routes = entry.get("phone") if isinstance(entry, dict) else None
+    host = normal(host)
+    for route in routes if isinstance(routes, list) else []:
+        site = normal(route.get("site", "")) if isinstance(route, dict) else ""
+        if not site or not (host == site or host.endswith("." + site)):
+            continue
+        if route.get("minimal") and host != site and host[:-len(site) - 1].rsplit(".", 1)[-1] in STATIC_LABELS:
+            return False
+        return True
+    return False
 
 
 class PhoneRefused(Exception):
@@ -642,8 +664,10 @@ async def connect_phone(host, port, agent):
 
 
 def phone_answer(reason):
-    """The refusal the agent reads: paused (it waits, its person is asked), refused, or the site unreachable."""
-    if reason in ("paused", "off", "timeout", "rate", "limit", "phone"):
+    """The refusal the agent reads: paused (it waits, its person is asked), refused, or the site unreachable (the
+    browser tool tells the agent the hub's exact reason, docs/phone-exit.md §7)."""
+    reason = reason.replace("-", "_")
+    if reason in ("paused", "off", "timeout", "rate", "expired", "wifi_only", "phone"):
         return 503, PHONE_PAUSED
     if reason in ("dns", "connect"):
         return 502, PHONE_FAILED
@@ -759,6 +783,37 @@ async def handle(reader, writer):
 async def tunnel(reader, writer, up_reader, up_writer, method, target, agent, host, request, counted, browser):
     """The client's stream to the site (or the phone exit's), counted and guarded."""
     guard = Guard(agent, host, not validated(agent, host), browser) if counted else None
+    entry = [agent, normal(host), phone_exit(host, agent), writer, up_writer]
+    _open_tunnels.append(entry)
+    try:
+        await carry(reader, writer, up_reader, up_writer, method, target, agent, request, guard)
+    finally:
+        if entry in _open_tunnels:
+            _open_tunnels.remove(entry)
+
+
+def switch_tunnels():
+    """The tunnels whose way changed (a site now through the phone, or no longer) closed: the browser opens new ones,
+    which go the new way. Never a site of the phone left on the datacenter."""
+    for entry in list(_open_tunnels):
+        agent, host, phone, writer, up_writer = entry
+        if agent is not None and phone_exit(host, agent) != phone:
+            log("closed (phone exit switched)", "CONNECT", f"{host}:443", agent)
+            close(up_writer)
+            close(writer)
+            _open_tunnels.remove(entry)
+
+
+async def keep_switching():
+    while True:
+        await asyncio.sleep(1)
+        try:
+            switch_tunnels()
+        except Exception as exc:   # never the proxy down for this
+            print(f"switch_tunnels: {exc!r}", flush=True)
+
+
+async def carry(reader, writer, up_reader, up_writer, method, target, agent, request, guard):
     if request:
         if guard is not None and not guard.sending(request):
             guard.pending = len(request)
@@ -817,6 +872,8 @@ async def main():
     print(f"agents' proxy on :{PORT}, registries: {', '.join(sorted(REGISTRIES))}; agents from "
           f"{POLICY or 'nowhere'}; reading open, sending guarded", flush=True)
     asyncio.get_running_loop().create_task(keep_usage())
+    if EXIT_SOCK:
+        asyncio.get_running_loop().create_task(keep_switching())
     async with server:
         await server.serve_forever()
 
