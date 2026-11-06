@@ -124,6 +124,35 @@ def test_a_site_refused_from_the_boite_while_other_tools_run_resumes_once(bridge
     assert "REFUSED" in told and "connect.garmin.example" in told, told
 
 
+@pytest.mark.parametrize("route", ["own_route", "boite"])
+def test_a_site_answered_the_instant_it_is_made_resumes_once(bridges, fakes, route):
+    """The main-next battery (GLM lab, 6/11): a sites card answered less than a second after it appeared, before the
+    1-second watch placed it, was never told (2 runs of 2). Placed when made now, before its notification."""
+    bridge, hub, _ = isolated(bridges, fakes, agents=("vie", "wellness"))
+    started(bridge, hub, ["vie", "wellness"])
+    give_tokens(bridge, ["vie"])
+    fakes.hermes.add_session("api_fast", [{"role": "user", "content": "Installe-moi le connecteur Garmin"}], title="Garmin")
+    gate = threading.Event()
+    follow(bridge, fakes, "run_fast", "api_fast", "vie", [
+        sse("tool.started", run_id="run_fast", tool=SITES_TOOL, preview="x"),
+        sse("tool.completed", run_id="run_fast", tool=SITES_TOOL), gate,
+        sse("run.completed", run_id="run_fast", output="Valide la carte.")])
+    text, error = sandbox_call(bridge, "vie", "sandbox_sites_request", host="connect.garmin.example", reason="Garmin")
+    assert not error, text
+    [card] = site_cards(bridge, "vie")   # at once: no wait for the placing watch
+    if route == "own_route":
+        allow_site(bridge, card)
+    else:
+        answered = bridge.post("/v1/approve", headers=AUTH, json={"agent": "vie", "run_id": card["run_id"],
+                                                                  "request_id": card["request_id"], "choice": "always"})
+        assert answered.status_code == 200, answered.text
+    time.sleep(2)
+    assert resumed(fakes, "api_fast") == []   # the turn goes on
+    gate.set()
+    told = once(fakes, "api_fast")
+    assert "connect.garmin.example" in told and "ALLOWED" in told, told
+
+
 def test_a_site_answered_just_as_the_turn_ends_resumes_once(bridges, fakes):
     gate = threading.Event()
     bridge, card = site_in_a_turn(bridges, fakes, "api_edge", "run_edge",

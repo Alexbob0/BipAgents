@@ -301,6 +301,17 @@ pub async fn place_new(state: &AppState, agent: &AgentConfig, before: &HashSet<S
     place(state, agent, &made, run_id).await;
 }
 
+/// A card just made by the agent's tool `tool` outside the agent tools' route (the files' MCP: `sandbox_sites_request`):
+/// placed now, in the turn calling it, before its notification goes (the main-next battery, 6/11: a sites card
+/// answered within a second, before `watch` placed it, was never told to the agent).
+pub async fn place_made(state: &AppState, agent: &AgentConfig, run_id: &str, tool: &str) {
+    if !placeable(run_id) {
+        return;
+    }
+    let turn = state.hub.turn_of(&agent.name, tool).map(|t| t.run_id);
+    place(state, agent, &[run_id.to_string()], turn.as_deref()).await;
+}
+
 /// A card of this kind can show in a conversation.
 fn placeable(run_id: &str) -> bool {
     !NOT_IN_CONVERSATIONS.iter().any(|p| run_id.starts_with(p))
