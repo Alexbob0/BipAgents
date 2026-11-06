@@ -182,6 +182,39 @@ def test_markers_attachments_tools_and_boite_messages(bridges, fakes):
     assert got.status_code == 200 and got.headers["content-type"] == "image/png" and got.content.startswith(b"\x89PNG")
 
 
+def test_each_turn_over_says_how_it_lays_out(bridges, fakes):
+    """Thin apps, brick 7 (threads/layout.rs): the turns' layout decided once for every app, on each item: the work
+    folds (the call, the commentary between calls), the turn's reply and answer, the app's first word before a turn
+    that went to work without one (the call it names: card and number), never the agent's bookkeeping."""
+    fakes.hermes.v0225 = True
+    call = lambda cid, name, args: {"role": "assistant", "content": "", "tool_calls": [  # noqa: E731
+        {"id": cid, "function": {"name": name, "arguments": json.dumps(args)}}]}
+    result = lambda cid, name: {"role": "tool", "content": "ok", "tool_call_id": cid, "tool_name": name}  # noqa: E731
+    fakes.hermes.add_session("api_main", [
+        user("Les vestes ?"),
+        call("c0", "memory", {"content": "x"}), result("c0", "memory"),
+        call("c1", "web_search", {"query": "vestes enfant"}), result("c1", "web_search"),
+        agent("Je compare."),
+        call("c2", "web_extract", {"url": "https://kiabi.com"}), result("c2", "web_extract"),
+        agent("Voici 3 vestes."),
+        user("Merci"),
+        agent("Avec plaisir !"),
+    ], title="Bot Chat", last_active=10, started_at=1)
+    bridge = bridges.new().start()
+    main = get(bridge, "/v1/threads/main", agent="wellness")
+    items = get(bridge, f"/v1/threads/{main['id']}/timeline")["items"]
+    by = {(i["kind"], i.get("text") or (i.get("tool") or {}).get("name")): i for i in items}
+    first = by[("tool", "memory")]
+    assert first["layout"]["ack"] == {"line": first["id"], "index": 1}, first   # the search, not the memory
+    assert by[("tool", "web_search")]["layout"]["fold"] == first["id"]
+    assert by[("message", "Je compare.")]["layout"]["fold"] == first["id"], "the commentary between calls folds"
+    reply = by[("message", "Voici 3 vestes.")]["layout"]
+    assert reply.get("turn_end") is True and reply.get("answer") is True and "fold" not in reply
+    assert by[("message", "Les vestes ?")]["layout"] == {}
+    last = by[("message", "Avec plaisir !")]["layout"]
+    assert last == {"turn_end": True, "answer": True}, "the agent spoke first: no first word of the app's"
+
+
 def test_the_hermes_store_is_read_without_calling_hermes(bridges, fakes):
     """A managed install: the profile's state.db is read directly (its `message_uid`s, its display order, its
     continuations); opening a conversation costs Hermes no call."""

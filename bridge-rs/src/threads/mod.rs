@@ -29,6 +29,7 @@
 //! No Python counterpart.
 
 pub mod follow;
+pub mod layout;
 pub mod send;
 pub mod source;
 pub mod timeline;
@@ -1151,6 +1152,12 @@ async fn timeline_route(
         q.get("tz").and_then(crate::dates::parse_zone).unwrap_or_else(|| crate::dates::load(&state.config()).zone());
     let days = timeline::days(&items, zone);
     let Waiting { tip, approvals, questions, run } = waiting_here(&state, &agent, &thread, &segments, &items).await;
+    // how each turn that is over lays out (folds, its answer, the app's first word, exchanges), decided once for every
+    // app on the whole thread (thin apps, brick 7)
+    let mut items = items;
+    for (n, fields) in layout::layout(&items, run.is_some()) {
+        items[n].body.insert("layout".into(), Value::Object(fields));
+    }
     let page = timeline::page(items, &want).with_days(&days);
     // a sent message no turn took (nothing runs here now, Hermes never stored it): « Pas envoyé », not « being sent »
     let page = if run.is_none() { page.with_lost() } else { page };
