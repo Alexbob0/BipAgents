@@ -135,6 +135,7 @@ pub mod agent_email;
 pub mod agent_email_smtp;
 pub mod agent_files;
 pub mod give_file;
+pub mod agent_hops;
 pub mod agent_messages;
 pub mod agent_pairs;
 pub mod agent_tools;

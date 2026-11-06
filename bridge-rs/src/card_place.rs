@@ -162,6 +162,7 @@ pub fn bridge_cards(state: &AppState, config: &Config, agent: Option<&str>) -> V
     items.extend(crate::triggers::pending_items(config, agent));
     items.extend(crate::phone_exit::store::pending_items(config, agent));
     items.extend(crate::routines::pending_items(config, agent));
+    items.extend(crate::agent_hops::pending_items(config, agent));
     items
 }
 
@@ -312,6 +313,13 @@ pub async fn place_made(state: &AppState, agent: &AgentConfig, run_id: &str, too
     }
     let turn = state.hub.turn_of(&agent.name, tool).map(|t| t.run_id);
     place(state, agent, &[run_id.to_string()], turn.as_deref()).await;
+}
+
+/// A card made for another conversation than the calling turn's (agent_hops.rs: the one a chain of messages between
+/// agents started from, while another agent's turn hit the cap): placed in the turn `run_id` of `agent` (None: its
+/// main conversation).
+pub async fn place_for(state: &AppState, agent: &AgentConfig, card: &str, run_id: Option<&str>) {
+    place(state, agent, &[card.to_string()], run_id).await;
 }
 
 /// A card of this kind can show in a conversation.
