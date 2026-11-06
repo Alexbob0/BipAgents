@@ -362,6 +362,17 @@ through Hermes' tool search (`tool_call` wrapping one `todo_list` call) counts t
 (Hermes' `parent`), only when not 0. `total` leaves cancelled steps out, `done` counts the done ones. A step's text is
 cut to 200 characters, a list to 30 steps.
 
+**Automatic steps** (Alex, 6/11). A turn of several actions without a list of the agent's own gets one made by the
+bridge from its real calls, in the same item and events (`"auto": true` in `steps`): one step per kind of call
+(consecutive calls of a kind are one step with a count: « Chercher dans tes mails », « Lire 6 mails », « Ouvrir le site
+sncf-connect.com »), the running call the step `in_progress`, the others `done`. Only from the 2nd step (a quick
+answer never gets a card); at most 6 lines, the oldest done steps folded into a first « +N étapes » line (`folded`:
+how many). The words are the bridge's for the tool's kind, in the agent's language (fr, en, de, es), with a count and
+at most a site's domain: never a call's arguments (a mail's subject, an address, a file's words). Calls that are no
+step of the work (the tool search, memory, a question to the person, the list itself) are left out. As soon as the
+agent writes its own list, its list replaces the automatic one for the rest of the turn. Stored: after the turn's last
+call (cursor `<segment>.<row>.99`).
+
 **Live.** While the turn runs, each change reaches the apps in its run's stream as the bridge's `steps.updated`
 (`{"event": "steps.updated", "run_id", "steps": {…as above}}`), made from Hermes' `todo.updated` (Hermes patch 0026;
 Hermes' own event is not passed on). The apps draw it as the live turn's card (at the bottom of the turn, above the

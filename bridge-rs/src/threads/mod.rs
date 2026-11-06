@@ -677,7 +677,7 @@ impl Threads {
             ));
             previous = Some(rows);
         }
-        crate::steps::fold(&mut items);
+        crate::steps::fold(&mut items, &crate::handback::language_of(&self.config.get(), agent));
         if thread.kind != "main" {
             // a run without the person that had nothing to tell (« [SILENT] », or the code word translated): no reply
             items.retain(|i| !timeline::silent_reply(i));

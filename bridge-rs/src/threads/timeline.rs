@@ -1004,7 +1004,7 @@ mod tests {
         rows[8].tool_calls = Some(json!([{"id": "d", "function": {"name": "todo_list", "arguments": "{}"}}]));
         rows[9].tool_call_id = Some("d".into());
         let mut got = items(&rows);
-        crate::steps::fold(&mut got);
+        crate::steps::fold(&mut got, "fr");
         let kinds: Vec<&str> = got.iter().map(Item::kind).collect();
         assert_eq!(kinds, ["message", "message", "tool", "steps", "message", "message", "message"]);
         let steps = &got[3];

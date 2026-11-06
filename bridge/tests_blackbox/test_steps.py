@@ -108,6 +108,54 @@ def test_the_live_list_reaches_the_runs_stream_and_the_open_screens(bridges, fak
     stop.set()
 
 
+def test_a_turn_of_several_actions_without_its_own_list_gets_the_bridges(bridges, fakes):
+    """Alex 6/11: three calls of different kinds, no todo list: the card of three steps from the calls, in the bridge's
+    words (never the calls' arguments), live then stored; a turn with the agent's own list keeps its list."""
+    bridge, thread = setup(bridges, fakes)
+    gate = threading.Event()
+    fakes.hermes.runs["r1"] = [
+        sse("run.started", run_id="r1"),
+        sse("tool.started", run_id="r1", tool="mcp__bipagents__mail_search", tool_call_id="a",
+            preview="from:banque objet:prêt immobilier"),
+        sse("tool.completed", run_id="r1", tool="mcp__bipagents__mail_search", tool_call_id="a", error=False),
+        sse("tool.started", run_id="r1", tool="mcp__stealth__navigate", tool_call_id="b",
+            preview="https://www.sncf-connect.com/app/home"),
+        sse("tool.completed", run_id="r1", tool="mcp__stealth__navigate", tool_call_id="b", error=False),
+        sse("tool.started", run_id="r1", tool="mcp__bipagents__create_page", tool_call_id="c", preview="Mon prêt"),
+        gate,
+        sse("run.completed", run_id="r1", output="Voilà.")]
+    assert send(bridge, thread, "C5D00000-0000-4000-8000-0000000000E2", "Fais le point").json()["state"] == "started"
+    live = []
+    with bridge.stream("GET", "/v1/runs/r1/events?agent=wellness", headers=AUTH, timeout=30) as resp:
+        for name, data in read_sse(resp):
+            if name == "steps.updated":
+                live.append(data["steps"])
+                if len(live[-1]["items"]) == 3:
+                    break
+    assert [i["text"] for i in live[-1]["items"]] == ["Chercher dans tes mails", "Ouvrir le site sncf-connect.com",
+                                                     "Préparer une page"]
+    assert [i["status"] for i in live[-1]["items"]] == ["done", "done", "in_progress"] and live[-1]["auto"] is True
+    assert "banque" not in json.dumps(live) and "prêt" not in json.dumps(live), "never what the calls were about"
+    gate.set()
+    # stored: the same three steps, done, after the turn's last call
+    stored(fakes,
+           user("Fais le point"),
+           {"role": "assistant", "content": "", "tool_calls": [
+               call("a", "mcp__bipagents__mail_search", {"query": "from:banque"}),
+               call("b", "mcp__stealth__navigate", {"url": "https://www.sncf-connect.com/app/home"}),
+               call("c", "mcp__bipagents__create_page", {"title": "Mon prêt"})]},
+           result("a", "2 mails", name="mcp__bipagents__mail_search"),
+           result("b", "ok", name="mcp__stealth__navigate"),
+           result("c", "MEDIA:/x.html", name="mcp__bipagents__create_page"),
+           agent("Voilà."))
+    items = page(bridge, thread)["items"]
+    steps = [i for i in items if i["kind"] == "steps"]
+    assert len(steps) == 1 and steps[0]["steps"]["auto"] is True
+    assert [s["status"] for s in steps[0]["steps"]["items"]] == ["done"] * 3
+    assert items[items.index(steps[0]) + 1].get("text") == "Voilà."
+    assert "banque" not in json.dumps(steps[0])
+
+
 def test_a_background_tasks_activity_has_its_list(bridges, fakes):
     bridge = bridges.new().start()
     fakes.hermes.rounds = 1000
