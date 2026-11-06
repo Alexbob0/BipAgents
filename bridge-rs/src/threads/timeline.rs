@@ -655,6 +655,8 @@ impl Page {
             "pending": pending,
             "reset": self.reset,
             "joins": self.joins,
+            // the phone's copy for when the bridge is out of reach (thin apps brick 6): the same on every phone
+            "copy": {"keep": COPY_KEEP, "pending": false},
         });
         let replaced = self.replaced();
         if !replaced.is_empty() {
@@ -782,6 +784,10 @@ pub struct Want {
 pub const LATEST_PAGE: usize = 100;
 pub const CATCH_UP_PAGE: usize = 200;
 pub const OLDER_PAGE: usize = 50;
+/// The phone's copy of a conversation (`copy` of every page): its latest items kept, this many (two opening pages:
+/// the conversation as last seen, and a little before), without what waits (`pending`: a card or a run is the bridge's
+/// state now, never answered from a copy). Until 6/11 the iPhone kept 300 items with what waited, Android 200 without.
+pub const COPY_KEEP: usize = 2 * LATEST_PAGE;
 
 /// The index of the first item at or after a cursor's position (the item itself, or where it was).
 fn at_cursor(items: &[Item], cursor: &str) -> (usize, bool) {
