@@ -17,6 +17,11 @@
 //! the `client_id` (and, before, the message itself as an item `s_<client_id>` at the end), so an app replaces its
 //! own bubble by id, never by words or time. Photos come inline (`data`, base64) and go to Hermes as image parts;
 //! documents come stored by `POST /v1/files` (`path`) and go as one reference line each.
+//!
+//! A photo is also kept as a file with the agent's uploads at once (`keep_photos`, 6/11: every photo Alex sent showed
+//! « 0 Ko », nothing to draw, and an empty row in « En attente »: the bridge kept no bytes, no size, no path for it).
+//! Its `s_` item, its queue item and, once Hermes stores it, the stored row (matched by `client_id`) all carry that
+//! file (`name`, `mime`, `size`, `path`): every app, the ones already installed too, draws it like any file.
 
 use std::sync::LazyLock;
 
@@ -181,7 +186,9 @@ impl Threads {
                     && i.body.get("role") == Some(&json!("person"))
                     && !claimed.contains_key(&i.id)
                     && (i.at == 0.0 || i.at >= at - CLOCK_SLACK) // a row without its time (an older store): order only
-                    && (if words.is_empty() { i.body.contains_key("attachments") } else { i.text().contains(words) })
+                    // files alone: a row with files (every person's row has the key, most an empty list: a photo
+                    // sent alone took the row of the words sent just before it, 6/11)
+                    && (if words.is_empty() { has_files(i) } else { i.text().contains(words) })
             });
             if let Some((n, item)) = found {
                 from = n + 1;
@@ -196,9 +203,22 @@ impl Threads {
                 waiting.push((client_id, words.to_string(), at, s(row, "attachments")));
             }
         }
+        // the photos kept as files when sent (`keep_photos`): the stored row shows them by their file, in order
+        let photos: std::collections::HashMap<String, Vec<Value>> = rows
+            .iter()
+            .filter_map(|r| {
+                let kept = serde_json::from_str::<Vec<Value>>(&s(r, "attachments")).ok()?;
+                let photos: Vec<Value> =
+                    kept.into_iter().filter(|a| a["kind"] == "image" && a["path"].is_string()).collect();
+                (!photos.is_empty()).then(|| (s(r, "client_id"), photos))
+            })
+            .collect();
         for item in items.iter_mut() {
             if let Some(c) = claimed.get(&item.id) {
                 item.body.insert("client_id".into(), json!(c));
+                if let Some(kept) = photos.get(c) {
+                    with_kept_photos(item, kept);
+                }
             }
         }
         let last = items.last().map(|i| i.pos).unwrap_or((0, 0, 0));
@@ -227,6 +247,39 @@ impl Threads {
             items.push(Item { id, pos, at, turn: String::new(), segment: String::new(), row: 0, body });
         }
         Ok(())
+    }
+}
+
+fn has_files(item: &Item) -> bool {
+    item.body.get("attachments").and_then(Value::as_array).is_some_and(|a| !a.is_empty())
+}
+
+/// A stored row's photos (Hermes' image parts, without a name, size or file) given the files the bridge kept for them
+/// when they were sent, in order; a photo the row has more of stays as it was.
+fn with_kept_photos(item: &mut Item, kept: &[Value]) {
+    let Some(Value::Array(atts)) = item.body.get_mut("attachments") else {
+        // a row read without its photos (none counted): they are the message's
+        let files: Vec<Value> = kept
+            .iter()
+            .enumerate()
+            .map(|(n, a)| {
+                let mut a = a.clone();
+                a["id"] = json!(format!("{}.a{n}", item.id));
+                a
+            })
+            .collect();
+        item.body.insert("attachments".into(), Value::Array(files));
+        return;
+    };
+    let mut kept = kept.iter();
+    for (n, a) in atts.iter_mut().enumerate() {
+        if a["kind"] != "image" || a["path"].is_string() {
+            continue;
+        }
+        let Some(file) = kept.next() else { break };
+        let mut file = file.clone();
+        file["id"] = json!(format!("{}.a{n}", item.id));
+        *a = file;
     }
 }
 
@@ -318,6 +371,68 @@ pub fn lost(item: &Item) -> bool {
 /// same request that sends it: a few seconds cover the clocks).
 const LOST_AFTER: f64 = 10.0;
 
+impl Attachment {
+    /// What the apps are shown of it (never its bytes).
+    pub fn shown(&self) -> Value {
+        json!({"kind": self.kind, "name": self.name, "mime": self.mime, "size": self.size, "path": self.path})
+    }
+}
+
+/// A message's photos as files with the agent's uploads (where `POST /v1/files` puts documents), their bytes still
+/// going to Hermes inline: each gets its real `size` and, stored, its `path` and stored `name`. Undecodable data, or an
+/// agent without uploads: the size alone (the photo still goes to Hermes).
+pub async fn keep_photos(state: &AppState, agent: &AgentConfig, attachments: Vec<Attachment>) -> Vec<Attachment> {
+    if !attachments.iter().any(|a| a.kind == "image" && a.data.is_some() && a.path.is_none()) {
+        return attachments;
+    }
+    let config = state.config();
+    let agent = agent.clone();
+    let given = attachments.clone();
+    let kept = tokio::task::spawn_blocking(move || {
+        let mut stored = false;
+        let out: Vec<Attachment> = attachments
+            .into_iter()
+            .map(|mut a| {
+                if a.kind != "image" || a.path.is_some() {
+                    return a;
+                }
+                let Some(bytes) = a.data.as_deref().and_then(photo_bytes) else { return a };
+                a.size = Some(bytes.len() as u64);
+                let name = a.name.clone().filter(|n| !n.trim().is_empty()).unwrap_or_else(|| "photo.jpg".into());
+                let mut open = || Ok(std::io::Cursor::new(bytes.clone()));
+                let limits = &config.limits;
+                match crate::files::store_upload_from(&agent, &mut open, &name, a.mime.as_deref(), limits, None) {
+                    Ok(file) => {
+                        a.path = file["path"].as_str().map(str::to_string);
+                        a.name = file["filename"].as_str().map(str::to_string).or(a.name);
+                        stored = true;
+                    }
+                    Err(exc) => {
+                        tracing::warn!(agent = %agent.name, status = %exc.status, "a sent photo not kept as a file")
+                    }
+                }
+                a
+            })
+            .collect();
+        if stored {
+            // an isolated sandbox sees a copy of the uploads (sandbox.rs)
+            if let Err(exc) = crate::sandbox::sync_agent(&config, &agent.name) {
+                tracing::warn!(agent = %agent.name, error = %exc, "uploads not copied to the sandbox");
+            }
+        }
+        out
+    });
+    kept.await.unwrap_or(given)
+}
+
+/// A photo's bytes from its base64 (a `data:` URL too).
+fn photo_bytes(data: &str) -> Option<Vec<u8>> {
+    use base64::Engine;
+    let b64 = data.strip_prefix("data:").and_then(|d| d.split_once(',')).map(|(_, b)| b).unwrap_or(data);
+    let clean: String = b64.chars().filter(|c| !c.is_whitespace()).collect();
+    base64::engine::general_purpose::STANDARD.decode(clean.as_bytes()).ok().filter(|b| !b.is_empty())
+}
+
 /// `POST /v1/threads/{thread}/messages`.
 pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>, body: NewMessage) -> ApiResult<Value> {
     let threads = threads_of(state);
@@ -351,6 +466,8 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
         None => threads.create(&agent.name, "side", None, Value::Null, false).await?,
     };
     let words = body.text.trim().to_string();
+    let mut body = body;
+    body.attachments = keep_photos(state, agent, std::mem::take(&mut body.attachments)).await;
     let tip = tip_of(state, &threads, agent, &thread, &words).await?;
     let tip = tip.as_str();
     let answer = |state: &str, run: Option<&str>| {
@@ -378,7 +495,12 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
     if running.is_some() || waits || body.after {
         // first in line when the turn just stopped taking words, else after what waits
         let front = running.is_some() && !body.after && !waits;
-        let sent = Sent { client_id: Some(body.client_id.clone()), input: Some(input) };
+        let sent = Sent {
+            client_id: Some(body.client_id.clone()),
+            input: Some(input),
+            attachments: body.attachments.iter().map(Attachment::shown).collect(),
+            voice: body.kinds.iter().any(|k| k == "voice"),
+        };
         queues
             .add(agent, tip, &words, running.as_deref(), front, sent)
             .map_err(|_| HttpError::new(409, "too many messages waiting"))?;
@@ -445,6 +567,38 @@ mod tests {
         let (words, files) = super::super::timeline::visible(input.as_str().unwrap(), "m_x", 0);
         assert_eq!(words.trim(), "Regarde");
         assert_eq!(files[0]["name"], "devis.pdf");
+    }
+
+    #[test]
+    fn a_photo_reads_from_its_base64_or_its_data_url() {
+        assert_eq!(photo_bytes("AAEC").unwrap(), vec![0, 1, 2]);
+        assert_eq!(photo_bytes("data:image/png;base64,AAEC\n").unwrap(), vec![0, 1, 2]);
+        assert!(photo_bytes("").is_none() && photo_bytes("%%").is_none());
+    }
+
+    #[test]
+    fn a_stored_row_shows_the_photos_kept_when_sent() {
+        // 6/11: Hermes' row of a photo has no name, size or file: the one the bridge kept when it was sent, in order
+        let kept = vec![json!({"kind": "image", "name": "IMG_1.jpg", "mime": "image/jpeg", "size": 2048, "path": "/u/2026-11/a-IMG_1.jpg"})];
+        let mut body = serde_json::Map::new();
+        body.insert("attachments".into(), json!([
+            {"id": "m_1.a0", "kind": "document", "name": "devis.pdf", "path": "/u/devis.pdf"},
+            {"id": "m_1.a1", "kind": "image", "name": null, "mime": "image/jpeg", "size": null, "path": null},
+            {"id": "m_1.a2", "kind": "image", "name": null, "mime": "image/jpeg", "size": null, "path": null},
+        ]));
+        let mut item = Item { id: "m_1".into(), pos: (0, 0, 0), at: 0.0, turn: String::new(), segment: String::new(), row: 0, body };
+        with_kept_photos(&mut item, &kept);
+        let atts = item.body["attachments"].as_array().unwrap();
+        assert_eq!(atts[0]["name"], "devis.pdf");
+        assert_eq!(atts[1], json!({"id": "m_1.a1", "kind": "image", "name": "IMG_1.jpg", "mime": "image/jpeg", "size": 2048,
+                                   "path": "/u/2026-11/a-IMG_1.jpg"}));
+        assert_eq!(atts[2]["path"], Value::Null);
+        // a row read without its photos: the kept ones
+        let mut bare = Item { id: "m_2".into(), pos: (0, 0, 0), at: 0.0, turn: String::new(), segment: String::new(), row: 0,
+                              body: serde_json::Map::new() };
+        with_kept_photos(&mut bare, &kept);
+        assert_eq!(bare.body["attachments"][0]["id"], "m_2.a0");
+        assert_eq!(bare.body["attachments"][0]["size"], 2048);
     }
 
     #[test]

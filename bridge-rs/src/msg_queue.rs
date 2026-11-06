@@ -20,9 +20,12 @@
 //! into the turn going on (a steer), or here with « Après », or when the turn takes no words (files, a turn just
 //! ending).
 //!
-//! The queue: `{agent, version, paused, items: [{id, session_id, text, created_at, late, client_id}], running:
+//! The queue: `{agent, version, paused, items: [{id, session_id, text, created_at, late, client_id, attachments?,
+//! voice?}], running:
 //! {item_id, run_id, session_id, text, started_at} | null}`; `version` grows at each change (an app keeps the highest it saw), `late`:
-//! words a turn no longer took (Hermes' `pending_steer` on its end), first in line.
+//! words a turn no longer took (Hermes' `pending_steer` on its end), first in line. `attachments`: the message's files
+//! as the apps show them (`{kind, name, mime, size, path}`, a photo kept as a file by threads/send.rs), `voice`: sent
+//! as a voice note (its words are the transcript) — a message of files alone has no `text` (6/11: its row was blank).
 //!
 //! What the bridge decides (the run hub tells it each run's end, runs.rs):
 //! - the next item starts when nothing runs in its conversation (the hub's runs, else Hermes asked about the last run
@@ -85,6 +88,12 @@ pub struct Item {
     /// What goes to Hermes when it starts (notes, photos), kept off the apps' answers; else `text`.
     #[serde(default, skip_serializing)]
     pub input: Option<Value>,
+    /// Its files as the apps show them (never their bytes).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<Value>,
+    /// Sent as a voice note.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub voice: bool,
 }
 
 /// A message the sending route hands to the queue: its app id and Hermes' input.
@@ -92,6 +101,9 @@ pub struct Item {
 pub struct Sent {
     pub client_id: Option<String>,
     pub input: Option<Value>,
+    /// Its files as the apps show them (`Attachment::shown`).
+    pub attachments: Vec<Value>,
+    pub voice: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -196,7 +208,7 @@ impl AgentQueue {
         self.steers.retain(|s| s.run_id != run_id);
         if let (Some(s), Some(pending)) = (session.as_deref(), pending_steer.map(str::trim).filter(|p| !p.is_empty())) {
             if let Some(first) = steered.iter().find(|t| pending.contains(t.text.trim())) {
-                let sent = Sent { client_id: first.client_id.clone(), input: None };
+                let sent = Sent { client_id: first.client_id.clone(), ..Sent::default() };
                 self.items.insert(0, new_item(s, pending, true, sent));
                 changed = true;
             }
@@ -231,6 +243,8 @@ fn new_item(session_id: &str, text: &str, late: bool, sent: Sent) -> Item {
         late,
         client_id: sent.client_id,
         input: sent.input,
+        attachments: sent.attachments,
+        voice: sent.voice,
     }
 }
 
@@ -785,7 +799,30 @@ mod tests {
             late: false,
             client_id: None,
             input: None,
+            attachments: Vec::new(),
+            voice: false,
         }
+    }
+
+    #[test]
+    fn a_message_of_files_alone_says_its_files() {
+        // 6/11: a photo sent alone waited as an empty row (« En attente (1) », nothing to read)
+        let photo = json!({"kind": "image", "name": "photo.jpg", "mime": "image/jpeg", "size": 1234, "path": "/u/2026-11/a-photo.jpg"});
+        let sent = Sent { client_id: Some("c1".into()), input: None, attachments: vec![photo.clone()], voice: false };
+        let mut q = queue_of(&[]);
+        q.items.push(new_item("s1", "", false, sent));
+        let shown = q.snapshot("maison");
+        assert_eq!(shown["items"][0]["text"], "");
+        assert_eq!(shown["items"][0]["attachments"][0], photo);
+        assert!(shown["items"][0].get("voice").is_none() && shown["items"][0].get("input").is_none());
+        let voice = Sent { voice: true, ..Sent::default() };
+        q.items.push(new_item("s1", "rappelle-moi", false, voice));
+        let shown = q.snapshot("maison");
+        assert_eq!(shown["items"][1]["voice"], true);
+        assert!(shown["items"][1].get("attachments").is_none());
+        // a queue written by a bridge from before reads back without them
+        let old: Item = serde_json::from_value(json!({"id": "q1", "session_id": "s1", "text": "x", "created_at": "t"})).unwrap();
+        assert!(old.attachments.is_empty() && !old.voice);
     }
 
     fn queue_of(ids: &[(&str, &str)]) -> AgentQueue {

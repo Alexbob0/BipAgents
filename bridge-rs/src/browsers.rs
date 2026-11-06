@@ -139,6 +139,131 @@ pub fn folder(config: &Config, agent: &str) -> PathBuf {
     PathBuf::from(&config.browser.root).join(agent)
 }
 
+/// Where the agent finds what its browser downloaded (sent_files.rs, service_files.rs): `/telechargements/<name>`.
+pub const DOWNLOADS: &str = "/telechargements";
+/// Chrome's download folder in the container: inside its profile, so it is on this machine (and kept between starts).
+pub const DOWNLOADS_IN_CONTAINER: &str = "/home/bip/profile/Downloads";
+/// Chrome's managed policies (Chrome, and Chromium on ARM): the image's own file stays, this one is added.
+const POLICY_DIRS: [&str; 2] = ["/etc/opt/chrome/policies/managed", "/etc/chromium/policies/managed"];
+const POLICY_NAME: &str = "bipagents-downloads.json";
+/// Downloads kept so long (the agent hands them over within its task).
+pub const DOWNLOADS_KEPT_DAYS: u64 = 30;
+
+/// The agent's browser downloads on this machine.
+pub fn downloads_dir(config: &Config, agent: &str) -> PathBuf {
+    folder(config, agent).join("profile").join("Downloads")
+}
+
+/// The policy that sends every download to `DOWNLOADS_IN_CONTAINER` without asking where (no dialog the agent can't
+/// see): outside the profile, which the container writes in, mounted read-only.
+pub fn downloads_policy(place: &Path) -> PathBuf {
+    place.join("policies").join(POLICY_NAME)
+}
+
+/// Writes the downloads policy next to the profile (before any unit that mounts it is written).
+pub fn write_downloads_policy(place: &Path) -> std::io::Result<()> {
+    let path = downloads_policy(place);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let text = format!(
+        "{}\n",
+        // a portal's second invoice is not held back by « download multiple files? » (nobody would see it)
+        json!({"DownloadDirectory": DOWNLOADS_IN_CONTAINER, "PromptForDownloadLocation": false,
+               "DefaultAutomaticDownloadsSetting": 1})
+    );
+    if std::fs::read_to_string(&path).ok().as_deref() != Some(text.as_str()) {
+        std::fs::write(&path, text)?;
+    }
+    Ok(())
+}
+
+/// The two `-v` arguments that mount the downloads policy (`run_args`).
+fn policy_mounts(place: &Path) -> [String; 4] {
+    let policy = downloads_policy(place).to_string_lossy().into_owned();
+    [
+        "-v".into(),
+        format!("{policy}:{}/{POLICY_NAME}:ro,Z", POLICY_DIRS[0]),
+        "-v".into(),
+        format!("{policy}:{}/{POLICY_NAME}:ro,Z", POLICY_DIRS[1]),
+    ]
+}
+
+/// A unit's text with the downloads policy mounted next to the DevTools secret (a unit written before the policy
+/// existed); None when it has it already or has no such mount to follow.
+pub fn with_policy_mounts(text: &str, place: &Path) -> Option<String> {
+    if text.contains(POLICY_NAME) {
+        return None;
+    }
+    let anchor = format!(":{CDP_SECRET_MOUNT}:ro,Z");
+    let at = text.find(&anchor)? + anchor.len();
+    let insert = format!(" {}", pyx::shlex_join(&policy_mounts(place)));
+    Some(format!("{}{insert}{}", &text[..at], &text[at..]))
+}
+
+/// An agent's browser set up before the downloads policy: the policy written, its unit (and the one its MCP proxy
+/// writes at first use) given the mounts. The running container keeps its own until it stops (unused); the next
+/// start has them. Whether a unit file changed (systemd must reload).
+pub fn refresh_downloads(config: &Config, agent: &str) -> bool {
+    let place = folder(config, agent);
+    if !place.is_dir() {
+        return false;
+    }
+    if let Err(exc) = write_downloads_policy(&place) {
+        tracing::warn!(agent = %agent, error = %exc, "browser downloads policy not written");
+        return false;
+    }
+    let mut changed = false;
+    let unit = Host::real(config).unit_path(agent);
+    if let Some(text) = std::fs::read_to_string(&unit).ok().and_then(|t| with_policy_mounts(&t, &place)) {
+        changed = std::fs::write(&unit, text).is_ok();
+    }
+    let settings_path = place.join("mcp.json");
+    if let Ok(Value::Object(mut settings)) =
+        std::fs::read_to_string(&settings_path).map(|t| serde_json::from_str(&t).unwrap_or(Value::Null))
+    {
+        let text = settings.get("unit").and_then(|u| u.get("text")).and_then(Value::as_str).map(str::to_string);
+        if let Some(patched) = text.and_then(|t| with_policy_mounts(&t, &place)) {
+            if let Some(Value::Object(unit)) = settings.get_mut("unit") {
+                unit.insert("text".into(), json!(patched));
+                let _ = std::fs::write(&settings_path, format!("{}\n", crate::py::dumps(&Value::Object(settings))));
+            }
+        }
+    }
+    if changed {
+        tracing::info!(agent = %agent, "browser: downloads go to its profile from its next start");
+    }
+    changed
+}
+
+/// The latest finished downloads, as the agent sees them (« /telechargements/x.pdf (34 KB) »); older than
+/// `DOWNLOADS_KEPT_DAYS` removed on the way. Never through a link.
+pub fn recent_downloads(config: &Config, agent: &str, n: usize) -> Vec<String> {
+    let dir = downloads_dir(config, agent);
+    let Ok(entries) = std::fs::read_dir(&dir) else { return Vec::new() };
+    let keep = Duration::from_secs(DOWNLOADS_KEPT_DAYS * 86400);
+    let mut files: Vec<(std::time::SystemTime, String, u64)> = Vec::new();
+    for entry in entries.flatten() {
+        let Ok(meta) = entry.path().symlink_metadata() else { continue };
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !meta.is_file() || name.starts_with('.') || name.ends_with(".crdownload") {
+            continue;
+        }
+        let at = meta.modified().unwrap_or(std::time::UNIX_EPOCH);
+        if at.elapsed().is_ok_and(|age| age > keep) {
+            let _ = std::fs::remove_file(entry.path());
+            continue;
+        }
+        files.push((at, name, meta.len()));
+    }
+    files.sort_by_key(|f| std::cmp::Reverse(f.0));
+    files
+        .into_iter()
+        .take(n)
+        .map(|(_, name, size)| format!("{DOWNLOADS}/{name} ({} KB)", size.div_ceil(1024)))
+        .collect()
+}
+
 pub fn on_demand(config: &Config) -> bool {
     config.browser.idle_minutes > 0
 }
@@ -537,6 +662,9 @@ pub fn run_args(
         "-e".into(),
         format!("STEALTH_BROWSER_ARGS={}", browser_args.join(";")),
     ];
+    // the downloads policy, right after the DevTools secret (`with_policy_mounts` patches an older unit the same way)
+    let after_secret = args.iter().position(|a| a.ends_with(&format!(":{CDP_SECRET_MOUNT}:ro,Z"))).map_or(0, |i| i + 1);
+    args.splice(after_secret..after_secret, policy_mounts(&place));
     let podman = Path::new(engine).file_name().map(|n| n == "podman").unwrap_or(false);
     if podman {
         // The agent's files stay the person's on the host (uid 1000 in the container is them).
@@ -691,6 +819,8 @@ pub async fn setup_with(
     let deferred = on_demand(config) && !unit.exists();
     std::fs::create_dir_all(if deferred { place.clone() } else { place.join("profile") })?;
     crate::py::chmod(&place.to_string_lossy(), 0o700)?;
+    // mounted by the unit (`run_args`): there before any unit is written, deferred or not
+    write_downloads_policy(&place)?;
     let password = place.join("vnc.pass");
     if !password.exists() {
         std::fs::write(&password, format!("{}\n", vnc_password()))?;
@@ -882,10 +1012,13 @@ pub fn with_proxy(data: &mut Yaml, proxy: &str) {
 /// browsed with Hermes' own browser tools too, which could run while its container was stopped, unseen in « Bureau »).
 /// Agents set up by hand on their server are left as they are.
 pub async fn vault_only_all(config: &Config) {
+    let mut reload = false;
     for agent in config.agents.values() {
         if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) || ports_of(config, &agent.name).is_none() {
             continue;
         }
+        // Its downloads where the agent can hand them over (a browser set up before: its unit given the policy).
+        reload |= refresh_downloads(config, &agent.name);
         let home = crate::agents_admin::home_root(config, agent);
         if state(&home, &agent.name) != Some(true) {
             continue;
@@ -905,6 +1038,9 @@ pub async fn vault_only_all(config: &Config) {
             Ok(()) => tracing::info!(agent = %agent.name, "browser: Hermes' own browser tools off, the vault's kept"),
             Err(exc) => tracing::warn!(agent = %agent.name, error = %exc, "browser.vault_only not set"),
         }
+    }
+    if reload {
+        let _ = tokio::process::Command::new("systemctl").args(["--user", "daemon-reload"]).status().await;
     }
 }
 
