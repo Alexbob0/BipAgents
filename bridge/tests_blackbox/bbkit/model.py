@@ -3,8 +3,9 @@
 
 Installed as `FakeHermes.override`, it takes only the runs it starts (every other route stays the fake Hermes'):
 
-- the person's message is stored in the session as Hermes v0.22.5 stores it (`/api/sessions/{id}/messages`: words as
-  a string; photos as `image_url` parts of the same row, their data URLs as sent);
+- the person's message is stored in the session as Hermes v0.22.5 stores it (`durable`: text only; each photo a file
+  of the profile, `[Image attached at: <path as Hermes sees it>]` and a `[screenshot]` line; without a profile given,
+  the parts as sent, data URLs included);
 - the reply streams word by word (`message.delta`, `word_gap` seconds apart), then is stored, then `run.completed`;
 - what the words ask (a marker anywhere in them) changes the turn:
 
@@ -96,8 +97,13 @@ class ScriptedModel:
 
     def __init__(self, hermes, files_dir: Path, files_root: str = "/home/hermes/.hermes/fichiers",
                  word_gap: float = 0.06, calls: Optional[Dict[str, Callable[[str], str]]] = None,
-                 maps_dir: Optional[Path] = None):
+                 maps_dir: Optional[Path] = None, profile: Optional[Path] = None,
+                 profile_seen_as: Optional[str] = None):
         self.hermes = hermes
+        # where Hermes keeps the agent's profile: on this machine (`profile`), and as Hermes names it in what it
+        # stores (`profile_seen_as`: its container's path for an isolated agent, as on the offer's places)
+        self.profile = Path(profile) if profile else None
+        self.profile_seen_as = (profile_seen_as or (str(profile) if profile else "")).rstrip("/")
         self.files_dir, self.files_root = Path(files_dir), files_root.rstrip("/")
         self.files_dir.mkdir(parents=True, exist_ok=True)
         self.maps_dir = maps_dir
@@ -168,7 +174,7 @@ class ScriptedModel:
         visible = NOTES.sub("", words)
         run = Run(run_id, agent, session, visible, photos, DOC_LINE.findall(visible))
         self.runs[run_id] = run
-        self.store(agent, session, {"role": "user", "content": content, "timestamp": time.time()})
+        self.store(agent, session, {"role": "user", "content": self.durable(content), "timestamp": time.time()})
         threading.Thread(target=self.answer, args=(run,), name=f"model-{run_id}", daemon=True).start()
         return JSONResponse({"run_id": run_id, "status": "started"}, status_code=202)
 
@@ -186,6 +192,39 @@ class ScriptedModel:
             await asyncio.sleep(0.02)
 
     # -- the session ---------------------------------------------------------------------------------------------
+    def durable(self, content: Any) -> Any:
+        """The person's row as Hermes v0.22.5 keeps it (its API turn: gateway/session_api_media.py, then
+        agent/session_persistence.py `_durable_content`): each inline photo committed as a file of the profile
+        (`native-inputs/<sha256>/api_<sha256[:32]>.<ext>`) and named in the words (`[Image attached at: <path>]`, the
+        path as HERMES sees it), the photo itself a `[screenshot]` line; a photo sent with no words gets Hermes' own
+        « What do you see in this image? ». Text only: no data URL stays in the row. Without a profile: as sent."""
+        if not isinstance(content, list) or self.profile is None:
+            return content
+        import base64
+        import hashlib
+        hints = []
+        for part in content:
+            if not isinstance(part, dict) or part.get("type") not in ("image_url", "input_image"):
+                continue
+            ref = part.get("image_url")
+            url = ref.get("url", "") if isinstance(ref, dict) else str(ref or "")
+            head, _, data = url.partition(",")
+            if not head.startswith("data:image/") or ";base64" not in head:
+                hints.append(f"[Image attached: {url}]")
+                continue
+            raw = base64.b64decode(data)
+            ext = {"image/png": ".png", "image/gif": ".gif", "image/webp": ".webp"}.get(head[5:].split(";")[0], ".jpg")
+            digest = hashlib.sha256(raw).hexdigest()
+            name = f"api_{digest[:32]}{ext}"
+            folder = self.profile / "native-inputs" / digest
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / name).write_bytes(raw)
+            hints.append(f"[Image attached at: {self.profile_seen_as}/native-inputs/{digest}/{name}]")
+        texts = [p.get("text", "") for p in content if isinstance(p, dict) and p.get("type") == "text"]
+        words = (texts[0] if texts else "What do you see in this image?") + ("\n\n" + "\n".join(hints) if hints else "")
+        lines = [words] + texts[1:] + ["[screenshot]"] * len(hints)
+        return "\n".join(lines)
+
     def store(self, agent: str, session: str, row: Dict[str, Any]) -> None:
         rows = self.hermes.messages.setdefault((agent, session), [])
         rows.append(row)

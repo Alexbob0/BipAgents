@@ -14,6 +14,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -155,9 +156,15 @@ def journey_bridge(bridges, fakes, word_gap: float = 0.06, name: str = "journeys
         from test_connectors import REGISTER
         return journey.mcp("/v1/agent-tools/connectors", "connector_register", REGISTER)
 
+    # Photos kept as Hermes v0.22.5 keeps them: a file of the profile named in the row, by the path Hermes sees in
+    # its container (an isolated agent, as on every place of the offer). `JOURNEYS_PHOTOS=inline`: data URLs in the
+    # row instead (an older Hermes), to compare.
+    inline = os.environ.get("JOURNEYS_PHOTOS") == "inline"
     journey.model = ScriptedModel(fakes.hermes, files, FILES_ROOT, word_gap=word_gap,
                                   calls={"page": page, "map": map_, "secret": secret, "sites": sites,
-                                         "connector": connector}).install()
+                                         "connector": connector},
+                                  profile=None if inline else profile(hub, AGENT),
+                                  profile_seen_as=f"{agent['hermes_home']}/profiles/{AGENT}").install()
     return journey
 
 
