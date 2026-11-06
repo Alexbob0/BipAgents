@@ -256,6 +256,40 @@ async fn deleting_the_agent_removes_its_browser() {
     assert!(!s.tmp.join("units").join("bipagents-browser-budget.service").exists());
 }
 
+#[tokio::test]
+async fn downloads_go_to_the_profile_through_a_read_only_policy() {
+    let s = setup();
+    s.setup_budget(&s.host).await;
+    let place = s.tmp.join("browsers").join("budget");
+    // written before any unit mounts it (here the unit waits for the first use)
+    let policy = place.join("policies").join("bipagents-downloads.json");
+    assert_eq!(
+        read_json(&policy),
+        json!({"DownloadDirectory": "/home/bip/profile/Downloads", "PromptForDownloadLocation": false})
+    );
+    let ports = [("cdp".to_string(), 1), ("vnc".to_string(), 2)].into_iter().collect();
+    let args = browsers::run_args(&s.config, "budget", &ports, "/usr/bin/podman", false, None);
+    for dir in ["/etc/opt/chrome/policies/managed", "/etc/chromium/policies/managed"] {
+        let mount = format!("{}:{dir}/bipagents-downloads.json:ro,Z", policy.to_string_lossy());
+        assert!(args.contains(&mount), "{args:?}");
+    }
+    assert_eq!(browsers::downloads_dir(&s.config, "budget"), place.join("profile").join("Downloads"));
+    // The latest finished downloads, as the agent sees them; never a partial one, a hidden one or a link; the old
+    // ones removed.
+    let downloads = browsers::downloads_dir(&s.config, "budget");
+    std::fs::create_dir_all(&downloads).unwrap();
+    std::fs::write(downloads.join("facture.pdf"), vec![b'x'; 2048]).unwrap();
+    std::fs::write(downloads.join("suite.pdf.crdownload"), "x").unwrap();
+    std::fs::write(downloads.join(".cache"), "x").unwrap();
+    std::os::unix::fs::symlink("/etc/hosts", downloads.join("hosts.pdf")).unwrap();
+    let old = downloads.join("vieux.pdf");
+    std::fs::write(&old, "x").unwrap();
+    let long_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(40 * 86400);
+    std::fs::File::options().write(true).open(&old).unwrap().set_modified(long_ago).unwrap();
+    assert_eq!(browsers::recent_downloads(&s.config, "budget", 8), ["/telechargements/facture.pdf (2 KB)"]);
+    assert!(!old.exists());
+}
+
 #[test]
 fn with_a_gpu_and_docker() {
     let s = setup();

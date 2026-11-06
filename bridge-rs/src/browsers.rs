@@ -139,6 +139,71 @@ pub fn folder(config: &Config, agent: &str) -> PathBuf {
     PathBuf::from(&config.browser.root).join(agent)
 }
 
+/// Where the agent finds what its browser downloaded (sent_files.rs, service_files.rs): `/telechargements/<name>`.
+pub const DOWNLOADS: &str = "/telechargements";
+/// Chrome's download folder in the container: inside its profile, so it is on this machine (and kept between starts).
+pub const DOWNLOADS_IN_CONTAINER: &str = "/home/bip/profile/Downloads";
+/// Chrome's managed policies (Chrome, and Chromium on ARM): the image's own file stays, this one is added.
+const POLICY_DIRS: [&str; 2] = ["/etc/opt/chrome/policies/managed", "/etc/chromium/policies/managed"];
+const POLICY_NAME: &str = "bipagents-downloads.json";
+/// Downloads kept so long (the agent hands them over within its task).
+pub const DOWNLOADS_KEPT_DAYS: u64 = 30;
+
+/// The agent's browser downloads on this machine.
+pub fn downloads_dir(config: &Config, agent: &str) -> PathBuf {
+    folder(config, agent).join("profile").join("Downloads")
+}
+
+/// The policy that sends every download to `DOWNLOADS_IN_CONTAINER` without asking where (no dialog the agent can't
+/// see): outside the profile, which the container writes in, mounted read-only.
+pub fn downloads_policy(place: &Path) -> PathBuf {
+    place.join("policies").join(POLICY_NAME)
+}
+
+/// Writes the downloads policy next to the profile (before any unit that mounts it is written).
+pub fn write_downloads_policy(place: &Path) -> std::io::Result<()> {
+    let path = downloads_policy(place);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let text = format!(
+        "{}\n",
+        json!({"DownloadDirectory": DOWNLOADS_IN_CONTAINER, "PromptForDownloadLocation": false})
+    );
+    if std::fs::read_to_string(&path).ok().as_deref() != Some(text.as_str()) {
+        std::fs::write(&path, text)?;
+    }
+    Ok(())
+}
+
+/// The latest finished downloads, as the agent sees them (« /telechargements/x.pdf (34 KB) »); older than
+/// `DOWNLOADS_KEPT_DAYS` removed on the way. Never through a link.
+pub fn recent_downloads(config: &Config, agent: &str, n: usize) -> Vec<String> {
+    let dir = downloads_dir(config, agent);
+    let Ok(entries) = std::fs::read_dir(&dir) else { return Vec::new() };
+    let keep = Duration::from_secs(DOWNLOADS_KEPT_DAYS * 86400);
+    let mut files: Vec<(std::time::SystemTime, String, u64)> = Vec::new();
+    for entry in entries.flatten() {
+        let Ok(meta) = entry.path().symlink_metadata() else { continue };
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !meta.is_file() || name.starts_with('.') || name.ends_with(".crdownload") {
+            continue;
+        }
+        let at = meta.modified().unwrap_or(std::time::UNIX_EPOCH);
+        if at.elapsed().is_ok_and(|age| age > keep) {
+            let _ = std::fs::remove_file(entry.path());
+            continue;
+        }
+        files.push((at, name, meta.len()));
+    }
+    files.sort_by_key(|f| std::cmp::Reverse(f.0));
+    files
+        .into_iter()
+        .take(n)
+        .map(|(_, name, size)| format!("{DOWNLOADS}/{name} ({} KB)", size.div_ceil(1024)))
+        .collect()
+}
+
 pub fn on_demand(config: &Config) -> bool {
     config.browser.idle_minutes > 0
 }
@@ -522,6 +587,10 @@ pub fn run_args(
         format!("{}:/run/bipagents/vnc.pass:ro,Z", place.join("vnc.pass").to_string_lossy()),
         "-v".into(),
         format!("{}:{CDP_SECRET_MOUNT}:ro,Z", place.join(CDP_SECRET).to_string_lossy()),
+        "-v".into(),
+        format!("{}:{}/{POLICY_NAME}:ro,Z", downloads_policy(&place).to_string_lossy(), POLICY_DIRS[0]),
+        "-v".into(),
+        format!("{}:{}/{POLICY_NAME}:ro,Z", downloads_policy(&place).to_string_lossy(), POLICY_DIRS[1]),
         "-p".into(),
         format!("127.0.0.1:{}:9223", port("cdp")),
         "-p".into(),
@@ -691,6 +760,8 @@ pub async fn setup_with(
     let deferred = on_demand(config) && !unit.exists();
     std::fs::create_dir_all(if deferred { place.clone() } else { place.join("profile") })?;
     crate::py::chmod(&place.to_string_lossy(), 0o700)?;
+    // mounted by the unit (`run_args`): there before any unit is written, deferred or not
+    write_downloads_policy(&place)?;
     let password = place.join("vnc.pass");
     if !password.exists() {
         std::fs::write(&password, format!("{}\n", vnc_password()))?;
