@@ -298,6 +298,24 @@ fn with_item_id(sub: &RunSubscription, event: SSEEvent) -> SSEEvent {
     SSEEvent::new(event.r#type, data, raw)
 }
 
+/// Hermes' `todo.updated` (patch 0026: the agent's task list after each of its Todo calls) → the bridge's
+/// `steps.updated`, the card's list in the apps' words (steps.rs, docs/conversations.md §6.3b). Hermes' own event is
+/// not passed on.
+fn as_steps(sub: &RunSubscription, event: SSEEvent) -> SSEEvent {
+    let Some(steps) = crate::steps::of_event(&event.data) else { return event };
+    let mut data = Map::new();
+    data.insert("event".into(), json!(crate::steps::EVENT));
+    data.insert("run_id".into(), event.data.get("run_id").cloned().unwrap_or_else(|| json!(sub.run_id)));
+    for key in ["timestamp", "seq"] {
+        if let Some(value) = event.data.get(key) {
+            data.insert(key.into(), value.clone());
+        }
+    }
+    data.insert("steps".into(), steps);
+    let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(data.clone()));
+    SSEEvent::new(crate::steps::EVENT, data, raw)
+}
+
 /// A turn's end whose output or error is Hermes' failed-turn line (« This turn did not complete… »): `stopped`
 /// (`partial` | `not_processed`, threads::timeline::stopped_kind) says which, so the apps say it in their words without
 /// reading Hermes' English (thin apps, 5/11).
@@ -394,6 +412,8 @@ pub struct SubscriptionState {
     pub end_push: bool,
     /// The replay backlog (`deque(maxlen=BACKLOG_EVENTS)`, consecutive deltas merged).
     pub backlog: VecDeque<SSEEvent>,
+    /// The agent's task list as the run left it last (« Étapes », steps.rs): a background task's card reads it.
+    pub steps: Option<Value>,
     /// What was pushed already (approvals by request, questions by `clarify:<id>`).
     pub pushed: HashSet<String>,
     /// The long-work safety net (`handoff`): when the hub began following the run, its tool calls so far, whether the
@@ -468,6 +488,7 @@ impl Default for SubscriptionState {
             output: None,
             end_push: true,
             backlog: VecDeque::new(),
+            steps: None,
             pushed: HashSet::new(),
             followed_since: crate::py::time_time(),
             tool_calls: 0,
@@ -1218,14 +1239,31 @@ impl RunHub {
         }
     }
 
+    /// The open screens of the run's conversation: its list changed (`thread`, `reason: steps`, the version kept).
+    fn steps_hint(&self, sub: &RunSubscription, session: Option<String>, steps: Value) {
+        let (Some(threads), Some(session)) = (crate::threads::upgrade(&self.threads), session) else { return };
+        let (agent, run_id) = (sub.agent.clone(), sub.run_id.clone());
+        self.spawn(async move { threads.steps_changed(&agent, &session, &run_id, steps).await });
+    }
+
     fn dispatch(&self, sub: &Arc<RunSubscription>, event: SSEEvent) {
         let mut inner = lock(&self.inner);
         let mut st = lock(&sub.state);
         let event = if event.r#type == "approval.request" { self.in_plain_words(sub, &st, event) } else { event };
-        let event = if matches!(event.r#type.as_str(), "approval.request" | "clarify.request") { with_item_id(sub, event) } else { event };
+        let event = if matches!(event.r#type.as_str(), "approval.request" | "clarify.request") {
+            with_item_id(sub, event)
+        } else {
+            event
+        };
         let event = if event.r#type == "run.completed" { self.no_reply_in_plain_words(sub, event) } else { event };
         let event = if event.r#type == "run.failed" { self.account_failure_in_plain_words(sub, event) } else { event };
-        let event = if matches!(event.r#type.as_str(), "run.completed" | "run.failed") { with_stopped(event) } else { event };
+        let event =
+            if matches!(event.r#type.as_str(), "run.completed" | "run.failed") { with_stopped(event) } else { event };
+        let event = if event.r#type == crate::steps::HERMES_EVENT { as_steps(sub, event) } else { event };
+        if event.r#type == crate::steps::EVENT {
+            st.steps = event.data.get("steps").cloned();
+            self.steps_hint(sub, st.session_id.clone(), st.steps.clone().unwrap_or_default());
+        }
         // the model's words as Hermes keeps them (to recognise its reply), the apps' without MEDIA lines
         let written = as_str(event.data.get("output"));
         let delta = is_delta(&event.r#type);
@@ -2361,6 +2399,28 @@ mod tests {
         assert!(hub.followed_recently("vie", "api_bot", Some("x"), 600.0));
         lock(&sub.state).finished_at = Some(crate::py::time_time() - 90.0);
         assert!(!hub.followed_recently("vie", "api_bot", Some("x"), 600.0));
+    }
+
+    #[tokio::test]
+    async fn hermes_task_list_reaches_the_apps_as_the_cards_list() {
+        let hub = RunHub::new(HermesClient::new(reqwest::Client::new()), None, 7200, None);
+        let agent = AgentConfig { name: "vie".into(), ..Default::default() };
+        let sub = Arc::new(RunSubscription::new(agent, "run_steps"));
+        lock(&hub.inner).subs.insert(sub.key(), sub.clone());
+        let todos = json!({"event": "todo.updated", "run_id": "run_steps", "seq": 4, "revision": 2,
+                           "todos": [{"id": "1", "content": "Lire", "status": "completed"},
+                                     {"id": "2", "content": "Trier", "status": "in_progress"}]});
+        hub.dispatch(&sub, SSEEvent::new("todo.updated", todos.as_object().cloned().unwrap(), "{}"));
+        let st = lock(&sub.state);
+        let kinds: Vec<&str> = st.backlog.iter().map(|e| e.r#type.as_str()).collect();
+        assert_eq!(kinds, ["steps.updated"], "Hermes' own event is not passed on");
+        let event = &st.backlog[0];
+        assert_eq!(event.data["steps"]["items"][1], json!({"text": "Trier", "status": "in_progress"}));
+        assert_eq!((event.data["seq"].as_i64(), event.data["run_id"].as_str()), (Some(4), Some("run_steps")));
+        let raw: Value = serde_json::from_str(&event.raw).unwrap();
+        assert_eq!(raw["event"], "steps.updated");
+        assert_eq!(raw["steps"]["done"], 1);
+        assert_eq!(st.steps.as_ref().unwrap()["total"], 2, "kept for a background task's card");
     }
 
     #[tokio::test]
