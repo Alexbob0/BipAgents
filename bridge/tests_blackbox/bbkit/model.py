@@ -388,3 +388,100 @@ def picture(path: Path) -> Path:
     path.write_bytes(tiny_png(320, 200, (0x8F, 0xC1, 0xE9)))
     os.chmod(path, 0o644)
     return path
+
+
+# -- the release journeys J32+ (people and this release's features): more markers, in a model of their own ----------
+
+class PeopleModel(ScriptedModel):
+    """The scripted model with this release's turns (test_journeys_people.py, test_journeys_features.py). Every marker
+    of `ScriptedModel` still works; these ones call the bridge's own tools as the agent (`calls[name](run)`, the run
+    given: its agent, its words), each a step of the turn, then say what was done:
+
+| Marker | The turn |
+|---|---|
+| `#routine` | creates a routine (`routine_schedule`), then says so: the routine's one question comes in this turn |
+| `#tache` | starts a small background task (`propose_task`, « small »): a choice the approval level may take |
+| `#famille` | proposes to tell the family (`tell_family`): nothing leaves before the person's « Envoyer » |
+| `#etapes` | two steps of different kinds (a web search, the weather), then its own list (`todo_list` + `todo.updated`) |
+| `#relais` | writes to another agent (`message_agent`) five times in one turn (the hop cap) |
+
+    A run started with `message` instead of `input` (another household's agent through `/peer/…`) is read the same."""
+
+    MARKERS = ("#routine", "#tache", "#famille", "#etapes", "#relais")
+
+    @classmethod
+    def upgrade(cls, model: ScriptedModel) -> "PeopleModel":
+        """The same model (its runs, files, calls), answering with these markers too; installed in its place."""
+        made = cls.__new__(cls)
+        made.__dict__.update(model.__dict__)
+        made.step_results: List[Dict[str, Any]] = []
+        return made.install()
+
+    def start(self, agent: str, body: Dict[str, Any]):
+        if body.get("input") is None and isinstance(body.get("message"), str):
+            body = {**body, "input": body["message"]}
+        return super().start(agent, body)
+
+    def _answer(self, run: Run) -> None:
+        words = run.words.lower()
+        if not any(m in words for m in self.MARKERS):
+            return super()._answer(run)
+        calls: List[Dict] = []
+        results: List[Dict] = []
+        lines: List[str] = []
+        opening = ""
+
+        def step(name: str, tool: str, arguments: Dict[str, Any]) -> str:
+            made = self.tool(run, tool, arguments, lambda: self.calls[name](run), calls, results)
+            self.step_results.append({"run": run.id, "tool": tool, "result": made})
+            return made
+
+        if "#routine" in words and "routine" in self.calls:
+            opening += self.say(run, "Je crée la routine. ")
+            step("routine", "mcp_bipagents_routine_schedule", {"action": "create", "name": "Le point du soir"})
+            lines.append("C’est fait, la routine « Le point du soir » est créée.")
+        if "#tache" in words and "task" in self.calls:
+            opening += self.say(run, "Je lance une petite tâche de fond. ")
+            made = step("task", "mcp_bipagents_propose_task", {"title": "Dossier location", "budget": "small"})
+            lines.append("La tâche est lancée." if "Started" in made or "lancée" in made else "Je te demande avant de la lancer.")
+        if "#famille" in words and "family" in self.calls:
+            opening += self.say(run, "Je prépare un mot pour la famille. ")
+            step("family", "mcp_bipagents_tell_family", {"to": ["marie"]})
+            lines.append("Je te propose de prévenir Marie : rien ne part sans toi.")
+        if "#etapes" in words:
+            opening += self.say(run, "Je m’organise. ")
+            self.tool(run, "web_search", {"query": "météo du week-end"}, lambda: "Beau temps samedi.", calls, results)
+            time.sleep(1.0)   # the automatic « Étapes » card shows meanwhile (two kinds of steps)
+            self.tool(run, "mcp_bipagents_weather", {"place": "Lyon"}, lambda: "Samedi : 21 °C, soleil.", calls, results)
+            time.sleep(1.0)
+            todos = [{"id": "1", "content": "Regarder la météo", "status": "completed"},
+                     {"id": "2", "content": "Choisir le parc", "status": "completed"},
+                     {"id": "3", "content": "Préparer le pique-nique", "status": "in_progress"}]
+            summary = {"total": 3, "pending": 0, "in_progress": 1, "completed": 2, "cancelled": 0}
+            self.tool(run, "todo_list", {"todos": todos},
+                      lambda: json.dumps({"todos": todos, "revision": 1, "summary": summary}), calls, results)
+            run.emit("todo.updated", todos=todos, revision=1, summary=summary)
+            time.sleep(1.0)
+            lines.append("Samedi s’annonce beau : pique-nique au parc de la Tête d’Or.")
+        if "#relais" in words and "relay" in self.calls:
+            opening += self.say(run, "Je demande à Coach. ")
+            for n in range(5):
+                try:
+                    step("relay", "mcp_bipagents_message_agent", {"target": "bip/coach", "n": n + 1})
+                except Exception as exc:  # noqa: BLE001 - the 5th is refused: the tool's error is the step's result
+                    self.step_results.append({"run": run.id, "tool": "message_agent", "error": str(exc)})
+            lines.append("J’ai échangé avec Coach, je te tiens au courant.")
+        body = " ".join(lines) or "Bien reçu."
+        said = self.say(run, body)
+        reply = said
+        if calls:
+            self.store(run.agent, run.session, {"role": "assistant", "content": opening, "tool_calls": calls,
+                                                "timestamp": time.time()})
+            for row in results:
+                self.store(run.agent, run.session, row)
+            self.store(run.agent, run.session, {"role": "assistant", "content": reply, "timestamp": time.time()})
+        else:
+            self.store(run.agent, run.session, {"role": "assistant", "content": opening + reply, "timestamp": time.time()})
+        run.status, run.output = "completed", opening + reply
+        run.emit("run.completed", output=opening + reply, usage={"input_tokens": 1200, "output_tokens": 80})
+        run.finish()

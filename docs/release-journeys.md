@@ -23,13 +23,20 @@ L'ÉCRAN : la vignette a une image et une taille, le fichier s'ouvre, la carte m
 | **iPhone** | L'app réelle (pas la démo), appairée par le QR code de l'installation au pont, sur un simulateur temporaire ; regarde l'écran. | `BipAgentsUITests/ReleaseJourneysTests.swift` (+ `App/Features/Conversation/JourneyProbe.swift`, DEBUG) |
 | **Android** | L'app réelle (MainActivity, ChatScreen) sous Robolectric, contre le pont en vrai HTTP ; regarde l'écran (nœuds Compose). | `android/app/src/test/java/io/github/bipagents/journeys/ReleaseJourneysTest.kt` |
 
+Les parcours avec d'autres personnes et les nouveautés (J32 et après) ont leurs propres fichiers, à côté : pont
+`test_journeys_people.py` et `test_journeys_features.py` (+ `bbkit/people.py` : un guichet pour « Partager en
+lecture », le téléphone d'un ami, deux foyers reliés ; `bbkit/displayable_people.py` : ce que leurs écrans doivent
+pouvoir dessiner), apps `ReleaseJourneysPeopleTests.swift` et `journeys/ReleaseJourneysPeopleTest.kt`, servis par
+`serve_journeys_people.py` (le pont des parcours, un guichet, le projet d'Alex partagé avec sa carte).
+
 Le pont et son faux Hermes : `bridge/tests_blackbox/bbkit/journeys.py` (un pont « comme chez quelqu'un » : agent Vie,
 outils isolés dans le bac à sable, ses fichiers servis, sa porte HTTPS) et `bbkit/model.py` (le « modèle »). Les
 photos y sont gardées comme Hermes v0.22.5 les garde (un fichier du profil nommé dans le message, par le chemin
 qu'Hermes voit dans son conteneur), pas comme le pont l'imagine. `serve_journeys.py` sert ce pont aux apps.
 
 Mots-clés que le faux modèle comprend : `#fichier`, `#page`, `#carte`, `#outil`, `#question`, `#approbation`,
-`#secret`, `#sites`, `#connecteur`, `#lent` (voir `bbkit/model.py`).
+`#secret`, `#sites`, `#connecteur`, `#lent` (voir `bbkit/model.py`) ; et pour J32 et après (`PeopleModel`) :
+`#routine`, `#tache`, `#famille`, `#etapes`, `#relais`.
 
 ## Les parcours
 
@@ -86,12 +93,74 @@ la bêta.
 | J23 | La pastille de la Boîte | Le bon nombre, remis à zéro une fois lu | existant : `test_boite_badge.py` |
 | J24 | Une notification ouvre le bon endroit | La conversation, sur le bon message, les plus récents dessous | existant : `test_notifications_journal.py`, iOS `RealBridgeTimelineTests`, Android `NotificationOpenTest` |
 | J25 | Les salons (plusieurs agents) | Les messages de chacun, qui répond, les fichiers | existant : `test_rooms*.py` ; apps : manuel |
-| J26 | Partager avec un ami (lecture) | Le lien s'ouvre chez l'ami ; « Vu par N personnes » ; la carte partagée | existant : `test_read_shares.py`, `test_read_share_live_count.py` ; apps : manuel |
+| J26 | Partager avec un ami (lecture) | Le lien s'ouvre chez l'ami ; « Vu par N personnes » ; la carte partagée | parcours J32, J33 ; existant : `test_read_shares.py`, `test_read_share_live_count.py` |
 | J27 | Une tâche de fond | Sa progression, puis son rapport dans la conversation | existant : `test_jobs.py`, `test_long_work.py` ; apps : manuel |
 | J28 | Les routines | Créer, « Mode silencieux », glisser → 🗑 « Supprimer ? » | existant : `test_routines.py` ; iOS démo `AutonomousDelete/SwipeTests` ; réel : manuel |
 | J29 | La copie hors ligne | La conversation s'ouvre sans réseau, telle qu'elle était | Android `OfflineCopyTest` (unitaire) ; iPhone : manuel |
 | J30 | Changer d'agent | La conversation du bon agent, son nom, sa couleur | manuel |
 | J31 | Le guide | Le guide répond et propose ses premiers pas | existant : `test_guide.py`, `test_guide_team.py` ; apps : manuel |
+
+### Avec d'autres personnes (amis, foyers)
+
+| N° | Parcours | Ce que la personne doit voir | Automatisé |
+|---|---|---|---|
+| J32 | Un ami ouvre le projet partagé | Son lien : « Alex te montre un projet », « Voir », puis la conversation (les mots d'Alex, les réponses de l'agent), en lecture seule, ouverte avec la clé de SON téléphone ; chez Alex, « Visible par 1 personne » | P, i, A |
+| J33 | L'ami voit la carte du projet | La réponse avec sa carte : la carte native (ses lieux, « Ouvrir l'itinéraire »), pas une page à ouvrir | P, i, A |
+| J34 | Relier deux foyers | Réglages › Famille : « Ton foyer », l'autre parmi « Proches reliés » ; dans « Qui peut écrire à qui », ses agents (« Coach (Marie) ») | P ; apps : manuel |
+| J35 | Un agent partagé avec un proche | Chez Marie : « Alex partage Cuisine avec toi », « Ajouter », SA conversation (ses mots, la réponse mot à mot) ; chez Alex : « avec Marie · N messages », jamais ses mots | P ; apps : manuel |
+| J36 | Prévenir la famille | La carte « Prévenir Marie ? » (les mots, à qui) ; rien ne part avant « Envoyer », même en « Seulement le critique » ; chez Marie : « Alex · … Transmis par Vie », sa Boîte | P ; apps : manuel |
+| J37 | Trouver une date avec un autre foyer | Chez Marie (Boîte) : « Dîner » d'Alex et les soirs libres pour les deux, jamais leurs rendez-vous ; d'accord : réservé dans les deux agendas | P ; apps : manuel |
+| J38 | Les agents de deux foyers s'écrivent | Chez Marie : « Vie (Alex) ⇄ Coach · 2 messages · Voir l'échange », l'échange en lecture ; rien dans SA conversation avec Coach | P ; apps : manuel |
+
+### Nouveautés de cette sortie
+
+| N° | Parcours | Ce que la personne doit voir | Automatisé |
+|---|---|---|---|
+| J39 | « Seulement le critique » : validé pour toi | Une petite tâche de fond lancée sans carte ni notification ; dans la Boîte, « Validé pour toi » dit ce qui a été fait, « Annuler » → « Annulé » (la tâche en pause) | P, i, A |
+| J40 | « Seulement le critique » : le critique reste demandé | La carte d'une commande qui supprime (ce qu'elle fait), « Oui, vas-y », l'agent continue ; rien validé à sa place | P |
+| J41 | Une routine créée, puis une question | La routine en marche tout de suite ; UNE carte dans la conversation : « Veux-tu être au courant de ce que cette routine trouve ? », « Oui, préviens-moi » ; elle s'en va, la routine reste en marche | P, i, A |
+| J42 | Les « Étapes » | Pendant le travail, les étapes viennent de ce que fait l'agent ; dès qu'il écrit sa liste, c'est la sienne : une carte pour le tour, ses lignes et leur état (fait, en cours) | P ; apps : manuel (démo : `StepsCardTests`, `StepsCardTest`) |
+| J43 | La limite d'échanges entre agents | Au 5e message entre deux agents : UNE carte « Continuer l'échange ? » dans la conversation ; « Oui, vas-y » : la carte part, l'agent continue | P ; apps : manuel |
+| J44 | Quick Talk suit la réponse | Le message suivi jusqu'à sa réponse (`GET /v1/threads/{t}/sends/{client_id}`) : en cours, puis les mots à dire ; une carte : passé à l'écran | P (le pont seulement) |
+
+**Ce que les parcours J32 et après ont trouvé (6/11)**
+
+- **Le banc servait parfois le pont d'un autre arbre** (`scripts/release-journeys.sh`, corrigé ici) : toutes les
+  exécutions partagent `~/release-journeys/target`, donc le binaire `target/release/bipbridge`, et chaque test du pont
+  démarre un pont depuis ce chemin. (1) `rsync -a` garde les dates des fichiers du Mac, souvent plus anciennes que la
+  dernière construction (d'un autre arbre) ; seul `src/main.rs` était touché, et cargo gardait la bibliothèque de
+  l'autre arbre (vu : un pont construit pour cette branche sans `/v1/approval-level` ni `/v1/approvals/auto`, pourtant
+  dans ses sources). (2) Une exécution lancée pendant une autre reconstruit ce binaire sous les tests de la première
+  (le 6/11 vers 16 h : quatre exécutions à la fois, sur des arbres différents). Désormais chaque exécution touche toutes
+  ses sources, construit sous un verrou et sert SA copie (`<run>/bipbridge`). Les tableaux des exécutions qui en
+  chevauchaient une autre sont à refaire.
+- Petit, pas affiché : la vue « Partager avec… » d'Alex (`GET /v1/agents/{a}/shares`) donne le `title` de chaque
+  conversation de Marie, c'est-à-dire ses premiers mots, alors qu'`agent_shares.rs` promet « qui, quand, combien de
+  messages » ; aucune des deux apps ne l'affiche (« avec Marie · N messages »).
+- À vérifier contre un vrai Hermes : `peers.rs` (`bot_chat`) ne lit la liste des sessions que sous `data`, quand
+  `hermes.rs` lit `sessions`, `data` ou `items`, et le faux Hermes répond `sessions`. Si Hermes répond `sessions`,
+  l'agent d'un autre foyer ne joint jamais le Bot Chat (403 « only coach's Bot Chat is reachable ») ; J38 répond
+  `data`, comme le Hermes de `test_households_and_peers.py`.
+- `displayable.py` ne connaît pas encore les cartes « Étapes » (`kind: steps`) : il les déclare « no app draws » ;
+  `displayable_people.check_page` les vérifie comme les deux apps les dessinent (à reporter dans `displayable.py`).
+- **Android : « Visible par N personnes » ne s'affiche jamais** (J32, Android, pas corrigé) : le pont donne la vue du
+  partage d'un projet avec `"session": null` (`GET /v1/read-shares?agent=`, de même la réponse de
+  `POST /v1/read-shares`) ; Android la lit avec `session: String = ""` non nullable (`readshares/OwnerShares.kt` `View`,
+  `net/Json.kt` sans `coerceInputValues`) : `JsonDecodingException: Expected string value for a non-null key 'session',
+  got null literal instead at path: $.session`. Chez Alex, le projet que voit Léa dit « Inviter des amis » au lieu de
+  « Visible par 1 personne ». La même lecture (`OwnerShares.keep`) suit la création du partage par « Inviter des
+  amis » : à vérifier sur un téléphone (le partage fait au pont, l'app en erreur). `ProjectAgentTest` passe parce que
+  son exemple n'a pas de `session` ; l'iPhone la lit en optionnel.
+- Sous Robolectric, « Voir » ne navigue pas (la coroutine du bouton reprend hors du fil principal après son appel au
+  guichet : « Method setCurrentState must be called on the main thread » ; pas sur un téléphone) : J32/J33 Android
+  ouvrent alors la conversation comme sa notification l'ouvre ; « Voir » lui-même est vérifié sur l'iPhone.
+
+**Encore à la main (J32 et après)** : les foyers dans les apps (J34–J38 : il faut deux installations servies, l'app
+appairée à celle de Marie, reliée à celle d'Alex : `serve_journeys_people.py` n'en sert qu'une) ; les « Étapes » et la
+limite d'échanges dans les apps (J42, J43 : leurs cartes sont dessinées par le code de toutes les cartes, déjà dans
+J11/J12 et `StepsCardTests` en démo) ; « Visible par N personnes » sur l'iPhone (le projet n'est pas dans le QR code
+des parcours ; Android le vérifie) ; Quick Talk dans les apps (sa voix : manuel).
+
 
 ## Ce que la suite a trouvé (6/11)
 
@@ -125,6 +194,7 @@ la bêta.
 scripts/release-journeys.sh                 # tout : pont + iPhone + Android (≈ 20 min)
 scripts/release-journeys.sh --no-ios        # sans le simulateur
 scripts/release-journeys.sh --expected J02,J03,J06   # rapport : ces échecs connus marqués ⚠️ (jamais pour une sortie)
+JOURNEYS_IOS_PEOPLE_TESTS=testJ32AFriendOpensTheSharedProjectAndSeesItsMessages scripts/release-journeys.sh   # quelques-uns
 ```
 
 Le pont est construit et servi sur le serveur de build (`JOURNEYS_REMOTE`, par défaut `build@100.91.112.69`), dans
@@ -134,6 +204,8 @@ effacé après, sous les créneaux iOS du Mac). Résultats et journaux : `.build
 Le simulateur joint le pont par un tunnel ssh sur le `127.0.0.1` du Mac : lancé depuis Claude Code, le script doit
 tourner HORS du bac à sable de Claude (le simulateur n'atteint pas un port ouvert dans le bac à sable : la requête
 reste suspendue). Les apps de test ne sont pas signées : sous `-journeyBridge`, la clé du pont est gardée en mémoire
-(pas de Trousseau, `App/Model/Keychain.swift`, DEBUG seulement).
+(pas de Trousseau, `App/Model/Keychain.swift`, DEBUG seulement) ; le compte et les clés des partages aussi
+(`OfferVault`, `App/Features/Cloud/Guichet.swift`). L'ami joint le guichet des parcours par `-guichetURL` (un tunnel de
+plus).
 
 Avant de supprimer un chemin de code : [la liste](../internal/notes/removal-checklist.md).
