@@ -160,6 +160,7 @@ pub fn bridge_cards(state: &AppState, config: &Config, agent: Option<&str>) -> V
     items.extend(crate::mail_rules::pending_items(config, agent));
     items.extend(crate::feature_tips::pending_items(config, agent));
     items.extend(crate::triggers::pending_items(config, agent));
+    items.extend(crate::routines::pending_items(config, agent));
     items
 }
 
