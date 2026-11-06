@@ -206,13 +206,16 @@ def test_each_turn_over_says_how_it_lays_out(bridges, fakes):
     by = {(i["kind"], i.get("text") or (i.get("tool") or {}).get("name")): i for i in items}
     first = by[("tool", "memory")]
     assert first["layout"]["ack"] == {"line": first["id"], "index": 1}, first   # the search, not the memory
-    assert by[("tool", "web_search")]["layout"]["fold"] == first["id"]
-    assert by[("message", "Je compare.")]["layout"]["fold"] == first["id"], "the commentary between calls folds"
-    reply = by[("message", "Voici 3 vestes.")]["layout"]
-    assert reply.get("turn_end") is True and reply.get("answer") is True and "fold" not in reply
-    assert by[("message", "Les vestes ?")]["layout"] == {}
+    assert first["layout"]["work"] is True and by[("tool", "web_search")]["layout"]["work"] is True
+    assert by[("message", "Je compare.")]["layout"] == {"work": True}, "the commentary between calls folds"
+    assert get(bridge, f"/v1/threads/{main['id']}/timeline")["layout"] == {"open": None}, "every turn is over"
+    assert by[("message", "Voici 3 vestes.")]["layout"] == {"turn_end": True}
+    assert "layout" not in by[("message", "Les vestes ?")], "a message from the person: nothing to say"
     last = by[("message", "Avec plaisir !")]["layout"]
-    assert last == {"turn_end": True, "answer": True}, "the agent spoke first: no first word of the app's"
+    assert last == {"turn_end": True}, "the agent spoke first: no first word of the app's"
+    # a page gets the fields of its own items, worked out on the whole turn (it began before the page)
+    tail = get(bridge, f"/v1/threads/{main['id']}/timeline", limit=3)["items"]
+    assert [i.get("layout") for i in tail] == [{"turn_end": True}, None, {"turn_end": True}]
 
 
 def test_the_hermes_store_is_read_without_calling_hermes(bridges, fakes):

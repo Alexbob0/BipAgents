@@ -1,14 +1,14 @@
 {
   "thread": {
-    "id": "t_001a1b11e9bdc9720c6d4cca14",
+    "id": "t_001a1b173c47c570e697f0ae54",
     "agent": "wellness",
     "kind": "main",
     "title": null,
     "hidden": false,
     "origin": null,
     "version": 0,
-    "created_at": "2026-11-06T13:48:55.644Z",
-    "updated_at": "2026-11-06T13:48:55.644Z",
+    "created_at": "2026-11-06T15:21:56.604Z",
+    "updated_at": "2026-11-06T15:21:56.604Z",
     "tip": "api_new"
   },
   "items": [
@@ -17,7 +17,6 @@
       "kind": "message",
       "role": "person",
       "text": "Quel train pour Lyon demain ?",
-      "layout": {},
       "at": "1970-01-01T00:00:00.000Z",
       "cursor": "0.0.0"
     },
@@ -33,7 +32,7 @@
         "via": null
       },
       "layout": {
-        "fold": "m_aed5d1f2253f3ca8ed0eace484135a76.t0",
+        "work": true,
         "ack": {
           "line": "m_aed5d1f2253f3ca8ed0eace484135a76.t0",
           "index": 0
@@ -60,8 +59,7 @@
         }
       ],
       "layout": {
-        "turn_end": true,
-        "answer": true
+        "turn_end": true
       },
       "at": "1970-01-01T00:00:00.000Z",
       "cursor": "0.3.0",
@@ -80,10 +78,9 @@
           "mime": "image/jpeg",
           "size": null,
           "path": null,
-          "url": "/v1/threads/t_001a1b11e9bdc9720c6d4cca14/attachments/m_95488776d97d18fb1467e74346f899e8.a0"
+          "url": "/v1/threads/t_001a1b173c47c570e697f0ae54/attachments/m_95488776d97d18fb1467e74346f899e8.a0"
         }
       ],
-      "layout": {},
       "at": "1970-01-01T00:00:00.000Z",
       "cursor": "1.0.0"
     },
@@ -93,8 +90,7 @@
       "role": "agent",
       "text": "C'est un billet pour jeudi.",
       "layout": {
-        "turn_end": true,
-        "answer": true
+        "turn_end": true
       },
       "at": "1970-01-01T00:00:00.000Z",
       "cursor": "1.1.0",
@@ -124,5 +120,8 @@
   "copy": {
     "keep": 200,
     "pending": false
+  },
+  "layout": {
+    "open": null
   }
 }

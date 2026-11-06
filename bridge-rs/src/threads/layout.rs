@@ -1,20 +1,18 @@
 //! How a conversation's turns lay out, decided once for every app (thin apps, brick 7): which lines are the agent's
-//! work (folded into « Détail du travail »), which texts answer the turn (its time and « Écouter », the words a spoken
-//! reply reads), where the app puts its own first word for a turn the agent started working in without one, and how
-//! an exchange with another agent folds. Until 7/11 each app worked this out from the thread itself (iOS
-//! `TurnLayout`, `TurnAcknowledgement`, `RowLayout`, `ConversationView.exchangeOwners`; Android `ThreadLayout`), with
-//! small differences (Android folded answered cards into an exchange; it ended a work fold's « acknowledgement »
-//! window at a message added to the turn, the iPhone did not).
+//! work (folded into « Détail du travail »), which text is a turn's reply (its time and « Écouter »), where the app
+//! puts its own first word for a turn the agent started working in without one, and how an exchange with another agent
+//! folds. Until 7/11 each app worked this out from the thread itself (iOS `TurnLayout`, `TurnAcknowledgement`,
+//! `RowLayout`, `ConversationView.exchangeOwners`; Android `ThreadLayout`), with small differences (Android folded
+//! answered cards into an exchange; it ended a turn's « acknowledgement » window at a message added to it, the iPhone
+//! did not).
 //!
-//! Each item of a turn that is over carries `layout` (docs/conversations.md §6.3), keyed by the screen's lines: an
-//! item draws one line, a message with reasoning two (`<id>.r` above `<id>`), consecutive tools one card (keyed by its
-//! first tool's id):
+//! The items of a page, in the turns that are over, carry `layout` (docs/conversations.md §6.3); keys name the
+//! screen's lines: an item draws one line, a message with reasoning two (`<id>.r` above `<id>`), consecutive tools one
+//! card (keyed by its first tool's id):
 //!
-//! - `fold`: the line opening its work fold (a tool's card, the agent's short commentary between tools);
-//!   `reasoning_fold`: the same for the message's reasoning line;
-//! - `turn_end`: this text is its turn's reply (the last real text before the next message starting a turn);
-//! - `answer`: this text is part of what its turn answers (read aloud after a voice note): never the agent's
-//!   acknowledgement nor its commentary between tools;
+//! - `work: true`: its line is the agent's work (a tool card, the agent's short commentary between calls), folded
+//!   with the work lines right before and after it; `reasoning_work`: the same for the message's reasoning line;
+//! - `turn_end: true`: its text is its turn's reply (the last real text before the next message starting a turn);
 //! - `ack: {line, index}`: the app's own first word goes before this item's first line; `line` is the tool card whose
 //!   call number `index` (among its calls, a `tool_call` batch unwrapped) is the turn's first real call: the app
 //!   words it from that call (« Je lance le navigateur sur kiabi.com… »);
@@ -22,10 +20,13 @@
 //!   this agent something (not answering a `message_agent` it sent); `answers: <name>` on the first reply to a peer's
 //!   request.
 //!
-//! The turn still going (a run in the conversation) carries none: what it is decides as it ends, and a page holding it
-//! is read again then. The apps keep their own rule for the lines they stream live, and for an older bridge.
+//! An item carries `layout` only when there is something to say; the page says which items are decided
+//! (`layout: {open}`, the first item of the turn still going: what it is decides as it ends, and the app keeps its own
+//! rule for it, also for the lines it streams live, and with an older bridge). Lines are worked out over the whole
+//! thread (a turn, an exchange, starts before the page), fields only for the page's items.
 
 use std::collections::HashMap;
+use std::ops::Range;
 use std::sync::LazyLock;
 
 use regex::Regex;
@@ -39,16 +40,19 @@ pub const COMMENTARY_LENGTH: usize = 200;
 /// How far back a peer's message looks for this agent's `message_agent` to that peer (an answer, not a request).
 const ASKED_WITHIN: usize = 40;
 
+/// A call: its name, its arguments, its preview (the result, else the arguments).
+type Call<'a> = (&'a str, Option<&'a str>, Option<&'a str>);
+
 #[derive(Debug, Clone, PartialEq)]
-enum Kind {
+enum Kind<'a> {
     /// A message from the person (or a peer) that starts a turn.
     Prompt,
     /// A message from the person added to the answer in progress.
     Added,
-    /// The agent's words: their length and whether they carry a file.
-    Reply { text: String, length: usize, media: bool },
-    /// Calls: (name, arguments, preview).
-    Tools(Vec<(String, Option<String>, Option<String>)>),
+    /// The agent's words: their length, whether they carry a file, whether they are Hermes' line closing a stopped
+    /// turn (never an answer).
+    Reply { length: usize, media: bool, interruption: bool },
+    Tools(Vec<Call<'a>>),
     Reasoning,
     /// A Boîte message placed at its time (a scheduled report): ends an exchange.
     Scheduled,
@@ -58,14 +62,14 @@ enum Kind {
 }
 
 #[derive(Debug, Clone)]
-struct Line {
+struct Line<'a> {
     /// Its key on screen: the item's id, `<id>.r` for a reasoning line, the first tool's id for a card.
     key: String,
     /// The items it draws (a card: its tools).
     items: Vec<usize>,
-    kind: Kind,
+    kind: Kind<'a>,
     /// A peer's message: its handle and name.
-    peer: Option<(String, String)>,
+    peer: Option<(&'a str, &'a str)>,
 }
 
 fn s<'a>(item: &'a Item, key: &str) -> &'a str {
@@ -73,21 +77,21 @@ fn s<'a>(item: &'a Item, key: &str) -> &'a str {
 }
 
 /// The screen's lines, as the apps draw the items (iOS `chatItems(from:)`, Android `TimelineItems.items`).
-fn lines(items: &[Item]) -> Vec<Line> {
+fn lines(items: &[Item]) -> Vec<Line<'_>> {
     let mut out: Vec<Line> = Vec::new();
     for (n, item) in items.iter().enumerate() {
         let files = item.body.get("attachments").and_then(Value::as_array).is_some_and(|a| !a.is_empty());
-        let line = |key: String, kind: Kind| Line { key, items: vec![n], kind, peer: None };
+        let line = |key: String, kind| Line { key, items: vec![n], kind, peer: None };
         match item.kind() {
             "message" => match s(item, "role") {
                 "agent" | "assistant" => {
                     if !s(item, "reasoning").trim().is_empty() {
                         out.push(line(format!("{}.r", item.id), Kind::Reasoning));
                     }
-                    let text = item.text().to_string();
+                    let text = item.text();
                     if !text.is_empty() || files {
-                        let length = text.trim().chars().count();
-                        out.push(line(item.id.clone(), Kind::Reply { text, length, media: files }));
+                        let (length, interruption) = (text.trim().chars().count(), interruption_line(text));
+                        out.push(line(item.id.clone(), Kind::Reply { length, media: files, interruption }));
                     }
                 }
                 role => {
@@ -97,17 +101,16 @@ fn lines(items: &[Item]) -> Vec<Line> {
                     let added = item.body.get("added_during_run").and_then(Value::as_bool) == Some(true);
                     let mut l = line(item.id.clone(), if added { Kind::Added } else { Kind::Prompt });
                     if role == "peer" {
-                        let handle = item.body.get("from").and_then(Value::as_str).unwrap_or("agent").to_string();
-                        let name = item.body.get("from_name").and_then(Value::as_str).unwrap_or(&handle).to_string();
-                        l.peer = Some((handle, name));
+                        let handle = item.body.get("from").and_then(Value::as_str).unwrap_or("agent");
+                        l.peer = Some((handle, item.body.get("from_name").and_then(Value::as_str).unwrap_or(handle)));
                     }
                     out.push(l);
                 }
             },
             "tool" => {
                 let Some(tool) = item.body.get("tool") else { continue };
-                let field = |k: &str| tool.get(k).and_then(Value::as_str).map(str::to_string);
-                let call = (field("name").unwrap_or_default(), field("arguments"), field("result").or_else(|| field("arguments")));
+                let field = |k: &str| tool.get(k).and_then(Value::as_str);
+                let call = (field("name").unwrap_or(""), field("arguments"), field("result").or_else(|| field("arguments")));
                 match out.last_mut() {
                     Some(Line { kind: Kind::Tools(calls), items, .. }) => {
                         calls.push(call);
@@ -118,6 +121,8 @@ fn lines(items: &[Item]) -> Vec<Line> {
             }
             "boite" => out.push(line(item.id.clone(), Kind::Scheduled)),
             "approval" => out.push(line(item.id.clone(), Kind::Card)),
+            // the agent's « Étapes » card: a line of its own (a card after it is another one)
+            "steps" if item.body.get("steps").is_some_and(|s| !s.is_null()) => out.push(line(item.id.clone(), Kind::Other)),
             _ if super::timeline::draws(item) => out.push(line(item.id.clone(), Kind::Other)),
             _ => {}
         }
@@ -132,7 +137,7 @@ pub fn interruption_line(text: &str) -> bool {
 }
 
 /// The turns: ranges of lines, each from a message starting one (the first may start without one).
-fn turns(lines: &[Line]) -> Vec<std::ops::Range<usize>> {
+fn turns(lines: &[Line]) -> Vec<Range<usize>> {
     let mut out = Vec::new();
     let mut start = 0;
     while start < lines.len() {
@@ -146,62 +151,38 @@ fn turns(lines: &[Line]) -> Vec<std::ops::Range<usize>> {
     out
 }
 
-/// The agent's short commentary between tools: a sentence or two followed in its turn by a tool, then by another real
-/// text (or a tool still running). A turn's last real text — its answer — never is.
-fn commentary(text: &str, length: usize, media: bool, later: &[Line], running: bool) -> bool {
-    if media || length > COMMENTARY_LENGTH || interruption_line(text) {
-        return false;
-    }
-    let tool = later.iter().any(|l| matches!(l.kind, Kind::Tools(_)));
-    let reply = later.iter().any(|l| matches!(&l.kind, Kind::Reply { text, .. } if !interruption_line(text)));
-    tool && (running || reply)
+fn real_reply(kind: &Kind) -> bool {
+    matches!(kind, Kind::Reply { interruption: false, .. })
 }
 
-/// Line → the first line of its work fold (iOS `TurnLayout.workFolds`). Work = tools, reasoning, and the agent's short
-/// commentary between tools; the words before the turn's first tool (its acknowledgement) never are.
-fn work_folds(lines: &[Line], running: bool) -> HashMap<usize, usize> {
-    let mut folds = HashMap::new();
-    let all = turns(lines);
-    let last = all.len();
-    for (t, turn) in all.into_iter().enumerate() {
-        let turn_running = running && t + 1 == last;
-        let mut current: Option<usize> = None;
+/// The agent's work lines (iOS `TurnLayout.workFolds`): tools, reasoning, and the agent's short commentary between
+/// tools — a text followed in its turn by a tool, then by another real text; the words before the turn's first tool
+/// (its acknowledgement) never are. The apps fold consecutive work lines together.
+fn work(lines: &[Line], turns: &[Range<usize>]) -> Vec<bool> {
+    let mut out = vec![false; lines.len()];
+    for turn in turns {
         let mut tools_yet = false;
         for i in turn.clone() {
-            let work = match &lines[i].kind {
+            out[i] = match &lines[i].kind {
                 Kind::Tools(_) => {
                     tools_yet = true;
                     true
                 }
                 Kind::Reasoning => true,
-                Kind::Reply { text, length, media } => {
-                    tools_yet && commentary(text, *length, *media, &lines[i + 1..turn.end], turn_running)
+                Kind::Reply { length, media, interruption } => {
+                    let later = &lines[i + 1..turn.end];
+                    tools_yet
+                        && !media
+                        && !interruption
+                        && *length <= COMMENTARY_LENGTH
+                        && later.iter().any(|l| matches!(l.kind, Kind::Tools(_)))
+                        && later.iter().any(|l| real_reply(&l.kind))
                 }
                 _ => false,
             };
-            if work {
-                let start = *current.get_or_insert(i);
-                folds.insert(i, start);
-            } else {
-                current = None;
-            }
         }
     }
-    folds
-}
-
-/// A turn's answer (iOS `TurnLayout.answer`): its last real text, with the texts right before it when no call came
-/// between (a file sent, then its words).
-fn answer(lines: &[Line], turn: std::ops::Range<usize>) -> Vec<usize> {
-    let mut picked = Vec::new();
-    for i in turn.rev() {
-        match &lines[i].kind {
-            Kind::Reply { text, length, media } if !interruption_line(text) && (*length > 0 || *media) => picked.push(i),
-            Kind::Tools(_) if !picked.is_empty() => break,
-            _ => {}
-        }
-    }
-    picked
+    out
 }
 
 /// Each line that is its turn's reply (iOS `RowLayout.turnEnds`): the last real text before the next message starting
@@ -213,7 +194,7 @@ fn turn_ends(lines: &[Line]) -> Vec<bool> {
         ends[i] = decided.unwrap_or(true);
         match &lines[i].kind {
             Kind::Prompt => decided = Some(true),
-            Kind::Reply { text, .. } if !interruption_line(text) => decided = Some(false),
+            kind if real_reply(kind) => decided = Some(false),
             _ => {}
         }
     }
@@ -307,20 +288,18 @@ fn bookkeeping(tool: &str) -> bool {
 /// The app's own first word (iOS `TurnAcknowledgement.placement`): for a turn whose first real call (not bookkeeping)
 /// came before any word of the agent, the line it goes before (the first of the work leading to that call), the card
 /// and the call's number in it.
-fn acknowledgement(lines: &[Line], turn: std::ops::Range<usize>) -> Option<(usize, usize, usize)> {
+fn acknowledgement(lines: &[Line], turn: Range<usize>) -> Option<(usize, usize, usize)> {
     if lines[turn.start].kind != Kind::Prompt {
         return None;
     }
     for i in turn.start + 1..turn.end {
         match &lines[i].kind {
-            Kind::Reply { text, length, .. } if *length > 0 && !interruption_line(text) => return None,
+            Kind::Reply { length, interruption: false, .. } if *length > 0 => return None,
             Kind::Tools(calls) => {
-                let names: Vec<String> = calls.iter().flat_map(|(n, a, _)| unwrapped(n, a.as_deref())).collect();
+                let names: Vec<String> = calls.iter().flat_map(|(n, a, _)| unwrapped(n, *a)).collect();
                 let Some(first) = names.iter().position(|n| !bookkeeping(n)) else { continue };
                 let mut before = i;
-                while before - 1 > turn.start
-                    && matches!(lines[before - 1].kind, Kind::Tools(_) | Kind::Reasoning)
-                {
+                while before - 1 > turn.start && matches!(lines[before - 1].kind, Kind::Tools(_) | Kind::Reasoning) {
                     before -= 1;
                 }
                 return Some((before, i, first));
@@ -337,59 +316,65 @@ fn asks(lines: &[Line], at: usize, handle: &str) -> bool {
     !lines[at.saturating_sub(ASKED_WITHIN)..at].iter().any(|l| match &l.kind {
         Kind::Tools(calls) => calls
             .iter()
-            .any(|(n, _, p)| n.contains("message_agent") && p.as_deref().unwrap_or("").to_lowercase().contains(&handle)),
+            .any(|(n, _, p)| n.contains("message_agent") && p.unwrap_or("").to_lowercase().contains(&handle)),
         _ => false,
     })
 }
 
-/// `key: value` on the items a line draws (those of a turn that is over).
-fn put(out: &mut HashMap<usize, Map<String, Value>>, line: &Line, key: &str, value: Value) {
-    for n in &line.items {
-        if let Some(fields) = out.get_mut(n) {
-            fields.insert(key.to_string(), value.clone());
-        }
-    }
+/// What the bridge says of a page's layout: each item's fields (only those with something to say), and the first
+/// item of the turn going on (`open`: from it on, nothing is decided).
+#[derive(Debug, Default)]
+pub struct Layout {
+    pub fields: HashMap<usize, Map<String, Value>>,
+    pub open: Option<usize>,
 }
 
-/// Each item's `layout` (the module's doc), for the items of the turns that are over: `running`, a run goes on in the
-/// conversation (its last turn is not decided yet).
-pub fn layout(items: &[Item], running: bool) -> HashMap<usize, Map<String, Value>> {
+/// The `layout` of the items in `page` (indices into `items`, the whole thread), those of the turns that are over
+/// (the module's doc); `running`: a run goes on in the conversation (its last turn is not decided yet).
+pub fn layout(items: &[Item], page: Range<usize>, running: bool) -> Layout {
     let lines = lines(items);
     let all = turns(&lines);
-    // the items of the turn going on: none; a turn starts at its message's item
+    // the items of the turn going on: none (a turn starts at its message's item)
     let open_from = match (running, all.last()) {
         (true, Some(last)) => lines[last.start].items[0],
         (true, None) => 0,
         _ => items.len(),
     };
-    let mut out: HashMap<usize, Map<String, Value>> = (0..open_from).map(|n| (n, Map::new())).collect();
-    for (i, start) in work_folds(&lines, running) {
-        let key = if lines[i].kind == Kind::Reasoning { "reasoning_fold" } else { "fold" };
-        put(&mut out, &lines[i], key, json!(lines[start].key));
+    let shown = page.start..page.end.min(open_from);
+    let mut out: HashMap<usize, Map<String, Value>> = shown.clone().map(|n| (n, Map::new())).collect();
+    // only the lines with an item on the page (and the turns holding one) are worked out field by field
+    let on_page = |l: &Line| l.items.iter().any(|n| shown.contains(n));
+    let put = |out: &mut HashMap<usize, Map<String, Value>>, line: &Line, key: &str, value: Value| {
+        for n in &line.items {
+            if let Some(fields) = out.get_mut(n) {
+                fields.insert(key.to_string(), value.clone());
+            }
+        }
+    };
+    let work = work(&lines, &all);
+    for line in lines.iter().zip(&work).filter(|(l, w)| **w && on_page(l)).map(|(l, _)| l) {
+        let key = if line.kind == Kind::Reasoning { "reasoning_work" } else { "work" };
+        put(&mut out, line, key, json!(true));
     }
     for (i, end) in turn_ends(&lines).into_iter().enumerate() {
-        if end && matches!(lines[i].kind, Kind::Reply { .. }) {
+        if end && matches!(lines[i].kind, Kind::Reply { .. }) && on_page(&lines[i]) {
             put(&mut out, &lines[i], "turn_end", json!(true));
         }
     }
-    for turn in &all {
-        for i in answer(&lines, turn.clone()) {
-            put(&mut out, &lines[i], "answer", json!(true));
-        }
+    for turn in all.iter().filter(|t| lines[t.start..t.end].iter().any(&on_page)) {
         if let Some((before, card, index)) = acknowledgement(&lines, turn.clone()) {
             // on the item whose first line it goes before (a message's reasoning, a card's first tool)
-            let n = lines[before].items[0];
-            if let Some(fields) = out.get_mut(&n) {
+            if let Some(fields) = out.get_mut(&lines[before].items[0]) {
                 fields.insert("ack".into(), json!({"line": lines[card].key, "index": index}));
             }
         }
     }
     // exchanges with other agents (Bot Mode): a peer's request folds with the turn answering it, an answer to this
     // agent's request alone; a scheduled report ends it; an answered card stays in sight
-    let mut current: Option<String> = None;
-    let mut asker: Option<String> = None;
+    let mut current: Option<&str> = None;
+    let mut asker: Option<&str> = None;
     for (i, line) in lines.iter().enumerate() {
-        match (&line.kind, &line.peer) {
+        match (&line.kind, line.peer) {
             (Kind::Prompt | Kind::Added, peer) => {
                 current = None;
                 asker = None;
@@ -397,15 +382,15 @@ pub fn layout(items: &[Item], running: bool) -> HashMap<usize, Map<String, Value
                     put(&mut out, line, "exchange", json!(line.key));
                     if asks(&lines, i, handle) {
                         put(&mut out, line, "request", json!(true));
-                        current = Some(line.key.clone());
-                        asker = Some(name.clone());
+                        current = Some(&line.key);
+                        asker = Some(name);
                     }
                 }
             }
             (Kind::Scheduled, _) => current = None,
             (Kind::Card, _) => {}
             (kind, _) => {
-                if let Some(owner) = &current {
+                if let Some(owner) = current {
                     put(&mut out, line, "exchange", json!(owner));
                 }
                 if matches!(kind, Kind::Reply { .. }) && asker.is_some() {
@@ -414,7 +399,9 @@ pub fn layout(items: &[Item], running: bool) -> HashMap<usize, Map<String, Value
             }
         }
     }
-    out
+    // an item with nothing to say carries nothing (the page's `layout.open` says which are decided)
+    out.retain(|_, fields| !fields.is_empty());
+    Layout { fields: out, open: (open_from < items.len()).then_some(open_from) }
 }
 
 #[cfg(test)]
@@ -444,6 +431,9 @@ mod tests {
     fn tool(id: &str, name: &str, arguments: &str) -> Item {
         item(id, json!({"kind": "tool", "tool": {"name": name, "arguments": arguments, "status": "done"}}))
     }
+    fn all(items: &[Item], running: bool) -> HashMap<usize, Map<String, Value>> {
+        layout(items, 0..items.len(), running).fields
+    }
     fn field<'a>(l: &'a HashMap<usize, Map<String, Value>>, n: usize, key: &str) -> Option<&'a Value> {
         l.get(&n).and_then(|f| f.get(key))
     }
@@ -464,18 +454,19 @@ mod tests {
             agent("m_7", "Coucou Alex ! Je suis là."),
             tool("m_7.t0", "memory", "{}"),
         ];
-        let l = layout(&items, false);
-        let fold = |n| field(&l, n, "fold").and_then(Value::as_str).map(str::to_string);
-        assert_eq!(fold(1), None, "the acknowledgement is in sight");
-        assert_eq!((fold(2), fold(3)), (Some("m_1.t0".into()), Some("m_1.t0".into())));
-        assert_eq!((fold(4), fold(5)), (None, Some("m_3.t0".into())));
-        assert_eq!((fold(6), fold(7), fold(8), fold(9)), (None, None, None, None));
-        assert_eq!(fold(10), Some("m_7.t0".into()));
-        // the turn's reply: its last text; its answer: the texts after the last call
+        let l = all(&items, false);
+        let work = |n| field(&l, n, "work") == Some(&json!(true));
+        assert!(!work(1), "the acknowledgement is in sight");
+        assert!(work(2) && work(3), "the work and the commentary after it");
+        assert!(!work(4) && work(5));
+        assert!(!work(6) && !work(7) && !work(8) && !work(9));
+        assert!(work(10));
+        // the turn's reply: its last text
         assert_eq!(field(&l, 7, "turn_end"), Some(&json!(true)));
         assert_eq!(field(&l, 6, "turn_end"), None);
-        assert_eq!((field(&l, 6, "answer"), field(&l, 7, "answer")), (Some(&json!(true)), Some(&json!(true))));
-        assert_eq!(field(&l, 9, "answer"), Some(&json!(true)), "bookkeeping after it: still the answer");
+        assert_eq!(field(&l, 9, "turn_end"), Some(&json!(true)), "bookkeeping after it: still the reply");
+        // a message from the person says nothing: no layout; the agent's lines one each
+        assert!(!l.contains_key(&0) && !l.contains_key(&4) && !l.contains_key(&1));
         // no acknowledgement: the agent spoke first in both turns
         assert!(l.values().all(|f| !f.contains_key("ack")));
     }
@@ -490,18 +481,18 @@ mod tests {
             tool("m_2.t0", "web_search", "{}"),
             agent("m_3", "Operation interrupted: handling API error (timeout)."),
         ];
-        let l = layout(&items, false);
-        assert_eq!(field(&l, 3, "fold"), None);
+        let l = all(&items, false);
+        assert_eq!(field(&l, 3, "work"), None);
         assert_eq!(field(&l, 3, "turn_end"), Some(&json!(true)));
-        assert_eq!(field(&l, 5, "answer"), None);
-        assert_eq!(field(&l, 3, "answer"), Some(&json!(true)));
+        assert_eq!(field(&l, 5, "turn_end"), Some(&json!(true)), "the end of the thread, as the apps had it");
     }
 
     #[test]
     fn the_turn_going_on_is_not_decided() {
         let items = vec![person("m_0", "A"), agent("m_1", "B"), person("m_2", "C"), tool("m_2.t0", "web_search", "{}")];
-        let l = layout(&items, true);
-        assert_eq!(l.len(), 2, "only the first turn's items: {l:?}");
+        let l = all(&items, true);
+        assert_eq!(l.len(), 1, "only the first turn's agent item: {l:?}");
+        assert_eq!((layout(&items, 0..4, true).open, layout(&items, 0..4, false).open), (Some(2), None));
         assert_eq!(field(&l, 1, "turn_end"), Some(&json!(true)));
     }
 
@@ -517,11 +508,11 @@ mod tests {
             tool("m_1.t1", "browser_click", r#"{"text": "Taille 4 ans"}"#),
             agent("m_2", "Voici les prix des vestes…"),
         ];
-        let l = layout(&items, false);
+        let l = all(&items, false);
         // before the reasoning (the work leading to the call), the call 0 of the card m_1.t0
         assert_eq!(field(&l, 1, "ack"), Some(&json!({"line": "m_1.t0", "index": 0})));
-        assert_eq!(field(&l, 1, "reasoning_fold"), Some(&json!("m_1.r")));
-        assert_eq!((field(&l, 2, "fold"), field(&l, 3, "fold")), (Some(&json!("m_1.r")), Some(&json!("m_1.r"))));
+        assert_eq!(field(&l, 1, "reasoning_work"), Some(&json!(true)));
+        assert_eq!((field(&l, 2, "work"), field(&l, 3, "work")), (Some(&json!(true)), Some(&json!(true))));
         // bookkeeping first, the search in the same card: the search, before the whole card
         let items = vec![
             person("m_0", "Vestes"),
@@ -530,19 +521,45 @@ mod tests {
             tool("m_0.t2", "web_search", r#"{"query": "vestes enfant"}"#),
             agent("m_1", "Voilà."),
         ];
-        assert_eq!(field(&layout(&items, false), 1, "ack"), Some(&json!({"line": "m_0.t0", "index": 2})));
+        assert_eq!(field(&all(&items, false), 1, "ack"), Some(&json!({"line": "m_0.t0", "index": 2})));
         // only bookkeeping, or the agent spoke first: none
         let items = vec![person("m_0", "x"), tool("m_0.t0", "memory", ""), tool("m_0.t1", "skills_list", ""), agent("m_1", "ok")];
-        assert!(layout(&items, false).values().all(|f| !f.contains_key("ack")));
+        assert!(all(&items, false).values().all(|f| !f.contains_key("ack")));
         let items = vec![person("m_0", "x"), agent("m_1", "Je lance."), tool("m_1.t0", "web_search", "{}"), agent("m_2", "ok")];
-        assert!(layout(&items, false).values().all(|f| !f.contains_key("ack")));
+        assert!(all(&items, false).values().all(|f| !f.contains_key("ack")));
         // a batch: its calls unwrapped
         let items = vec![
             person("m_0", "x"),
             tool("m_0.t0", "tool_call", r#"{"calls": [{"name": "memory"}, {"name": "mcp__bipagents__mail_search", "arguments": {"query": "edf"}}]}"#),
             agent("m_1", "ok"),
         ];
-        assert_eq!(field(&layout(&items, false), 1, "ack"), Some(&json!({"line": "m_0.t0", "index": 1})));
+        assert_eq!(field(&all(&items, false), 1, "ack"), Some(&json!({"line": "m_0.t0", "index": 1})));
+    }
+
+    /// Only the page's items get fields; the lines are read on the whole thread (the turn began before the page).
+    #[test]
+    fn a_page_gets_the_fields_of_its_items_only() {
+        let items = vec![person("m_0", "Va"), tool("m_0.t0", "web_search", "{}"), agent("m_1", "Voilà.")];
+        let l = layout(&items, 1..3, false).fields;
+        assert_eq!(l.keys().copied().collect::<std::collections::BTreeSet<_>>(), [1, 2].into());
+        assert_eq!(field(&l, 1, "ack"), Some(&json!({"line": "m_0.t0", "index": 0})));
+        assert_eq!(field(&l, 2, "turn_end"), Some(&json!(true)));
+        assert!(!layout(&items, 2..3, false).fields.contains_key(&1));
+    }
+
+    /// The « Étapes » card is a line of its own, as the apps draw it: the cards on each side are two, two folds.
+    #[test]
+    fn a_steps_card_splits_the_tools_around_it() {
+        let items = vec![
+            person("m_0", "Prépare le voyage"),
+            agent("m_1", "Je m'en occupe."),
+            tool("m_1.t0", "web_search", "{}"),
+            item("m_1.s", json!({"kind": "steps", "steps": {"done": 1, "items": []}})),
+            tool("m_1.t1", "web_search", "{}"),
+            agent("m_2", "Voilà le plan."),
+        ];
+        let l = all(&items, false);
+        assert_eq!((field(&l, 2, "work"), field(&l, 3, "work"), field(&l, 4, "work")), (Some(&json!(true)), None, Some(&json!(true))));
     }
 
     #[test]
@@ -576,7 +593,7 @@ mod tests {
         // the second one answers this agent's message_agent to bip/lea (its preview names her)
         let mut items = items;
         items[6].body["tool"]["result"] = json!("Sent to bip/lea");
-        let l = layout(&items, false);
+        let l = all(&items, false);
         assert_eq!((field(&l, 2, "exchange"), field(&l, 2, "request")), (Some(&json!("m_1")), Some(&json!(true))));
         assert_eq!((field(&l, 3, "exchange"), field(&l, 4, "exchange")), (Some(&json!("m_1")), Some(&json!("m_1"))));
         assert_eq!(field(&l, 4, "answers"), Some(&json!("Léa")));

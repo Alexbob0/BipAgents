@@ -292,12 +292,14 @@ turn; the first item's own id before any) and `segment` (Hermes session id, for 
 An item that draws something also has `day`, and `new_day` when it opens its day (§6.2, `tz`).
 
 **How its turn lays out** (thin apps, brick 7; threads/layout.rs, decided once for every app on the whole thread):
-every item of a turn that is over carries `layout` (`{}` when there is nothing to say; none on the turn still going,
-nor from an older bridge: the apps' own rule then). Keys name the screen's lines: an item's id, `<id>.r` for a
-message's reasoning, a tool card by its first tool's id. `fold` (`reasoning_fold` for the reasoning line): the line
-opening its work fold (tools, reasoning, the agent's short commentary between calls); `turn_end`: this text is its
-turn's reply (its time, « Écouter »); `answer`: part of what the turn answers (read aloud; never the acknowledgement nor
-the commentary); `ack: {line, index}`: the app's own first word goes before this item's first line, worded from call
+the page says `layout: {open}`, the first item of the turn still going (null when none is): the items before it are
+decided, and carry `layout` when there is something to say (none: nothing; the apps give them an empty one as they
+keep them). From `open` on, and on a page without `layout` (an older bridge), the apps' own rule. The lines are worked
+out on the whole thread, the fields given for the page's items only. Keys name the
+screen's lines: an item's id, `<id>.r` for a message's reasoning, a tool card by its first tool's id. `work: true`
+(`reasoning_work` for the reasoning line): the line is the agent's work (tools, reasoning, its short commentary between
+calls), folded with the work lines next to it; `turn_end: true`: this text is its turn's reply (its time, « Écouter »);
+`ack: {line, index}`: the app's own first word goes before this item's first line, worded from call
 `index` of card `line` (a `tool_call` batch unwrapped), the turn's first real call (never the agent's bookkeeping);
 `exchange`: the peer message opening the exchange the line folds into, `request: true` on a peer asking this agent
 something, `answers: <name>` on the first reply to that request. The apps keep their rule for the lines streamed live.
