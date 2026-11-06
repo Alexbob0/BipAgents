@@ -119,6 +119,7 @@ def journey_bridge(bridges, fakes, word_gap: float = 0.06, name: str = "journeys
     door = free_port()
     bridge.config["lan"] = {"enabled": True, "address": "127.0.0.1", "host": "127.0.0.1", "port": door}
     bridge.config["public_url"] = f"https://127.0.0.1:{door}"
+    agent["public_url"] = f"https://127.0.0.1:{door}/hermes/{AGENT}"   # an agent without one is not listed to a phone
     started(bridge, hub, [AGENT])
     token = TOKENS[AGENT]
     path = bridge.state_dir / "agent-tools.json"
