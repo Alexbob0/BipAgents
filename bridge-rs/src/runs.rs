@@ -951,6 +951,21 @@ impl RunHub {
         })
     }
 
+    /// What a run followed now is doing, as a quick talk shows it (threads/follow.rs): the tool going on (None: it
+    /// thinks or writes) and its words so far (the backlog's deltas).
+    pub fn glance(&self, agent: &str, run_id: &str) -> Option<(Option<String>, String)> {
+        let sub = self.subscription(agent, run_id)?;
+        let st = lock(&sub.state);
+        let tool = (st.tools_open > 0 && !st.last_tool.is_empty()).then(|| st.last_tool.clone());
+        let answer = st
+            .backlog
+            .iter()
+            .filter(|e| e.r#type == "message.delta")
+            .filter_map(|e| e.data.get("delta").and_then(Value::as_str))
+            .collect();
+        Some((tool, answer))
+    }
+
     /// An event for the apps following the agent's runs going on now, live only (not replayed to a later follower:
     /// the agent's message queue changed, msg_queue.rs).
     pub fn tell_agent_live(&self, agent: &str, kind: &str, data: Map<String, Value>) {

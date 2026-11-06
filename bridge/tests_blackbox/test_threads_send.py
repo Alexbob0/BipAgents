@@ -64,6 +64,8 @@ def test_a_message_is_its_app_id_from_the_send_to_the_stored_row(bridges, fakes)
     last = before["items"][-1]
     assert last["id"] == "s_C1D00000-0000-4000-8000-000000000001" and last["client_id"] == last["id"][2:]
     assert last["text"] == "Le train de 9 h ?" and last["role"] == "person" and last["sending"] is True
+    # the phone's copy, decided once for every phone (thin apps brick 6): 200 items, nothing that waits
+    assert before["copy"] == {"keep": 200, "pending": False}
     run = before["pending"]["run"]   # with its start (the working line's clock on every phone)
     assert (run["run_id"], run["status"]) == ("r1", "running") and abs(run["started"] - time.time()) < 60
     # the same message again (an answer lost on the way): nothing sent twice
@@ -443,3 +445,55 @@ def test_a_message_steered_into_a_turn_that_stops_is_not_sent_and_goes_again(bri
     final = page(bridge, thread)["items"]
     assert not any(i["id"].startswith("s_") for i in final), "a sent message stays « being sent » or « not sent »"
     assert [i.get("client_id") for i in final if i.get("text") == "Hello?"] == [hello]
+
+
+def where(bridge, thread, client_id):
+    answer = bridge.get(f"/v1/threads/{thread}/sends/{client_id}", headers=AUTH, params={"agent": "wellness"})
+    assert answer.status_code == 200, answer.text
+    return answer.json()
+
+
+def test_a_quick_talk_asks_the_bridge_where_its_words_are_until_the_reply(bridges, fakes):
+    """Thin apps, brick 6 (threads/follow.rs): the quick talk no longer reads the timeline and the run's events with
+    its own rules; the bridge says where the message is, what the turn does meanwhile, and the reply once over."""
+    bridge, thread = setup(bridges, fakes)
+    gate, done = threading.Event(), threading.Event()
+    fakes.hermes.runs["r1"] = [sse("run.started", run_id="r1"), sse("tool.started", run_id="r1", tool="web_search"),
+                               gate, sse("tool.completed", run_id="r1", tool="web_search"),
+                               sse("message.delta", run_id="r1", delta="Demain à Bordeaux : "), done,
+                               sse("message.delta", run_id="r1", delta="18 °C."),
+                               sse("run.completed", run_id="r1", output="Demain à Bordeaux : 18 °C.")]
+    client_id = "Q7000000-0000-4000-8000-000000000001"
+    assert where(bridge, thread, client_id)["state"] == "unknown"
+    assert bridge.get(f"/v1/threads/{thread}/sends/x!", headers=AUTH, params={"agent": "wellness"}).status_code in (404, 422)
+    assert send(bridge, thread, client_id, "Quel temps demain à Bordeaux ?").json()["state"] == "started"
+    # the turn goes on: the tool it uses now, asked again within a second
+    assert wait_until(lambda: (where(bridge, thread, client_id)["run"] or {}).get("tool") == "web_search", timeout=10)
+    now = where(bridge, thread, client_id)
+    assert (now["state"], now["message"], now["next"]) == ("running", f"s_{client_id}", 1000), now
+    gate.set()
+    # then its words as they come
+    assert wait_until(lambda: (where(bridge, thread, client_id)["run"] or {}).get("answer") == "Demain à Bordeaux : ",
+                      timeout=10)
+    assert where(bridge, thread, client_id)["run"]["tool"] is None
+    stored(fakes, user("Quel temps demain à Bordeaux ?"), agent("Demain à Bordeaux : 18 °C."))
+    done.set()
+    assert wait_until(lambda: where(bridge, thread, client_id)["state"] == "reply", timeout=15)
+    reply = where(bridge, thread, client_id)
+    assert reply["reply"]["text"] == "Demain à Bordeaux : 18 °C." and reply["reply"]["needs"] is None, reply
+    assert reply["message"].startswith("m_") and reply["reply"]["id"].startswith("m_") and reply["next"] is None
+    assert reply["reply"]["id"] == page(bridge, thread)["items"][-1]["id"]
+
+
+def test_a_quick_talk_whose_turn_asks_an_approval_is_handed_over(bridges, fakes):
+    bridge, thread = setup(bridges, fakes)
+    gate = threading.Event()
+    fakes.hermes.runs["r1"] = [
+        sse("approval.request", run_id="r1", request_id="req-1", command="rm -rf build/", choices=["once", "deny"]),
+        gate, sse("run.completed", run_id="r1", output="Fait.")]
+    client_id = "Q7000000-0000-4000-8000-000000000002"
+    send(bridge, thread, client_id, "Nettoie")
+    assert wait_until(lambda: where(bridge, thread, client_id)["state"] == "needs", timeout=10)
+    now = where(bridge, thread, client_id)
+    assert (now["needs"], now["message"], now["next"]) == ("approval", f"s_{client_id}", None), now
+    gate.set()
