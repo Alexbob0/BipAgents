@@ -113,4 +113,9 @@ Le pont est construit et servi sur le serveur de build (`JOURNEYS_REMOTE`, par d
 son propre dossier effacé après ; Android y tourne aussi ; le Mac ne fait que l'iPhone (un simulateur temporaire,
 effacé après, sous les créneaux iOS du Mac). Résultats et journaux : `.build/release-journeys/<date>/`.
 
+Le simulateur joint le pont par un tunnel ssh sur le `127.0.0.1` du Mac : lancé depuis Claude Code, le script doit
+tourner HORS du bac à sable de Claude (le simulateur n'atteint pas un port ouvert dans le bac à sable : la requête
+reste suspendue). Les apps de test ne sont pas signées : sous `-journeyBridge`, la clé du pont est gardée en mémoire
+(pas de Trousseau, `App/Model/Keychain.swift`, DEBUG seulement).
+
 Avant de supprimer un chemin de code : [la liste](../internal/notes/removal-checklist.md).
