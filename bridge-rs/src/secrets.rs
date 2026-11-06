@@ -32,7 +32,7 @@ use base64::Engine;
 use indexmap::IndexMap;
 use serde_json::{json, Value};
 use tokio::sync::Notify;
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::app::AppState;
 use crate::config::{AgentConfig, Config};
@@ -262,6 +262,9 @@ pub struct Request {
     /// Opened by the person from a connector's page (no agent waits for it).
     pub edit: bool,
     pub connector: Option<String>,
+    /// A login for the agent's visible browser on `origin` (a supplier's portal): kept as a vault login the agent
+    /// fills with `browser_vault`, not as a connector's secret. Same card.
+    pub browser_login: bool,
 }
 
 impl Request {
@@ -552,6 +555,26 @@ pub async fn give(
             value: None,
         };
         state.vault.save_secret(&config, &holder, &new).await.map_err(GiveError::Failed)?;
+    } else if request.browser_login && request.kind == "password" && !request.origin.is_empty() {
+        // A site login for its browser: the vault's own login item (filled on that exact site by `browser_vault`),
+        // given to this agent only, as the person's « Coffre » would.
+        let Some(holder) = config.agent(Some(&agent)).cloned() else { return Err(GiveError::NoCard) };
+        let mut body = Dict::new();
+        body.insert("kind".into(), json!("login"));
+        body.insert("label".into(), json!(request.host()));
+        body.insert("site".into(), json!(request.origin));
+        body.insert("identifier_type".into(), json!(crate::vault::identifier_type_of(&identifier)));
+        body.insert("identifier".into(), json!(identifier));
+        body.insert("password".into(), json!(value.as_str()));
+        body.insert("agents".into(), json!([holder.name]));
+        if confirmed_others {
+            body.insert("confirmed_others".into(), json!(true));
+        }
+        let made = state.vault.create(&config, &body).await;
+        if let Some(Value::String(p)) = body.get_mut("password") {
+            p.zeroize();
+        }
+        made.map_err(GiveError::Failed)?;
     } else {
         let Some(holder) = config.agent(Some(&agent)).cloned() else { return Err(GiveError::NoCard) };
         let new = crate::vault::NewSecret {

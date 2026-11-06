@@ -26,6 +26,11 @@
 //! agent's Hermes connects without starting anything), `ready_seconds` (how long its container may take to start),
 //! and `unit` (`{path, text}`), `profile` and `reload`: the container's systemd unit and its Chrome profile folder,
 //! written at the first start rather than with the agent (browsers.rs), then `reload` run once.
+//!
+//! The phone exit (phone_exit, `agent` and `exit_sock`): a page that failed because the person's phone refused or was
+//! not relaying gets one plain line saying why (`WHY`), and a challenge/block page for servers gets one too, after the
+//! hub asked the person (`ASK`: a card). So the agent never says « the site blocks servers » wrongly, never solves a
+//! CAPTCHA, and waits for the card.
 
 use std::collections::HashMap;
 use std::io::Write;
@@ -178,6 +183,8 @@ pub struct Proxy {
     switching: tokio::sync::Mutex<()>,
     /// /proc/net/tcp and tcp6 (tests give their own)
     pub tcp_tables: Mutex<Vec<String>>,
+    /// The last URL navigated to (the page a later read is about), for the phone exit's lines.
+    last_url: Mutex<String>,
 }
 
 impl Proxy {
@@ -214,6 +221,7 @@ impl Proxy {
             starting: Mutex::new(None),
             switching: tokio::sync::Mutex::new(()),
             tcp_tables: Mutex::new(TCP_TABLES.iter().map(|s| s.to_string()).collect()),
+            last_url: Mutex::new(String::new()),
         })
     }
 
@@ -325,6 +333,9 @@ impl Proxy {
                 }
             }
             response.insert("id".into(), ident.clone());
+            if calling {
+                self.phone_exit_lines(message.get("params"), &mut response).await;
+            }
             self.to_client(&Value::Object(response));
             Ok(())
         }
@@ -335,6 +346,72 @@ impl Proxy {
         if calling {
             self.calls.fetch_sub(1, Ordering::SeqCst);
             self.touch();
+        }
+    }
+
+    /// The hub's socket and the agent's name: this config's, else its file read again (one written before the phone
+    /// exit was switched on gets them at the bridge's next start, phone_exit `serve`, while this process goes on).
+    fn exit_keys(&self) -> (String, String) {
+        let pick = |c: &Dict| {
+            let text = |k: &str| c.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+            (text("exit_sock"), text("agent"))
+        };
+        let (sock, agent) = pick(&self.config);
+        if !sock.is_empty() {
+            return (sock, agent);
+        }
+        let Some(path) = self.config.get("config_path").and_then(Value::as_str) else { return Default::default() };
+        match std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) {
+            Some(Value::Object(file)) => pick(&file),
+            _ => Default::default(),
+        }
+    }
+
+    /// The phone exit's lines added to a tool's result: why the person's phone refused this page's site lately, or
+    /// what was done about a challenge page (a card for the person). Nothing when the phone exit is off here.
+    async fn phone_exit_lines(&self, params: Option<&Value>, response: &mut Dict) {
+        let (sock, agent) = self.exit_keys();
+        if sock.is_empty() || agent.is_empty() {
+            return;
+        }
+        let url = params.and_then(|p| p.get("arguments")).and_then(|a| a.get("url")).and_then(Value::as_str);
+        let url = match url {
+            Some(u) if u.starts_with("http") => {
+                *self.last_url.lock().unwrap_or_else(|e| e.into_inner()) = u.to_string();
+                u.to_string()
+            }
+            _ => self.last_url.lock().unwrap_or_else(|e| e.into_inner()).clone(),
+        };
+        let host = crate::phone_exit::checks::host_of(&url);
+        if host.is_empty() || crate::phone_exit::name_refused(&host).is_some() {
+            return;
+        }
+        let site = crate::mail_tidy::registrable(&host);
+        let Some(result) = response.get_mut("result").and_then(Value::as_object_mut) else { return };
+        let text = result.get("content").map(Value::to_string).unwrap_or_default();
+        let mut lines = Vec::new();
+        if let Some(answer) = ask_hub(&sock, &format!("WHY {agent} {host}")).await {
+            let mut words = answer.split_whitespace();
+            if let (Some(code), Some(ago)) = (words.next(), words.next().and_then(|a| a.parse::<u64>().ok())) {
+                if code != "NONE" && ago <= 60 {
+                    lines.push(crate::phone_exit::agent::refusal_text(code, &site));
+                }
+            }
+        }
+        if lines.is_empty() {
+            if let Some(kind) = crate::phone_exit::agent::challenge_kind(&text) {
+                if let Some(answer) = ask_hub(&sock, &format!("ASK {agent} {host} {kind}")).await {
+                    lines.push(crate::phone_exit::agent::challenge_text(kind, &site, &answer));
+                }
+            }
+        }
+        if lines.is_empty() {
+            return;
+        }
+        if let Some(Value::Array(content)) = result.get_mut("content") {
+            for line in lines {
+                content.push(json!({"type": "text", "text": line}));
+            }
         }
     }
 
@@ -595,6 +672,19 @@ their language: « I can't open web pages right now; I'll try again in a moment.
     }
 }
 
+/// One line to the phone exit's hub and its one-line answer (None: no hub, or no answer within 3 s).
+async fn ask_hub(sock: &str, line: &str) -> Option<String> {
+    let talk = async {
+        let mut conn = tokio::net::UnixStream::connect(sock).await.ok()?;
+        conn.write_all(format!("{line}\n").as_bytes()).await.ok()?;
+        let mut reader = tokio::io::BufReader::new(conn);
+        let mut answer = String::new();
+        reader.read_line(&mut answer).await.ok()?;
+        Some(answer.trim().to_string())
+    };
+    tokio::time::timeout(Duration::from_secs(3), talk).await.ok().flatten()
+}
+
 fn read_cache(path: &Path) -> Dict {
     match std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) {
         Some(Value::Object(map)) => map,
@@ -623,7 +713,11 @@ pub fn write_unit(config: &Dict) -> Result<bool, String> {
     let text = unit.get("text").map(crate::py::py_str).unwrap_or_default();
     let written: std::io::Result<()> = (|| {
         if let Some(profile) = config.get("profile").map(crate::py::py_str).filter(|p| !p.is_empty()) {
-            std::fs::create_dir_all(profile)?;
+            std::fs::create_dir_all(&profile)?;
+            // the downloads policy the unit mounts (browsers.rs), in case the bridge's setup has not written it
+            if let Some(place) = Path::new(&profile).parent() {
+                crate::browsers::write_downloads_policy(place)?;
+            }
         }
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -672,7 +766,7 @@ pub fn main(args: Vec<String>) -> i32 {
         eprintln!("usage: bip-browser-mcp <config.json>");
         return 1;
     };
-    let config = match std::fs::read_to_string(path)
+    let mut config = match std::fs::read_to_string(path)
         .map_err(|e| e.to_string())
         .and_then(|t| serde_json::from_str::<Value>(&t).map_err(|e| e.to_string()))
     {
@@ -686,6 +780,7 @@ pub fn main(args: Vec<String>) -> i32 {
             return 1;
         }
     };
+    config.insert("config_path".into(), json!(path)); // read again for the phone exit's keys (`exit_keys`)
     // Hermes starts MCP servers with few variables: `systemctl --user` and rootless podman find the session here.
     // SAFETY: getuid cannot fail.
     let runtime_dir = PathBuf::from(format!("/run/user/{}", unsafe { libc::getuid() }));

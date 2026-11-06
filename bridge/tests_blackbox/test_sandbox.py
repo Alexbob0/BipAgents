@@ -250,7 +250,8 @@ def test_the_shared_folders_are_volumes_and_the_file_tools_follow_the_links(brid
     hints = {t["name"]: t["annotations"]["readOnlyHint"] for t in listed}
     # Writing in its own shared folder is never asked (it writes it directly anyway); deleting is.
     assert hints == {"shared_files_list": True, "shared_files_get": True, "shared_files_write": True,
-                     "shared_files_delete": False, "sandbox_sites": True, "sandbox_sites_request": True}
+                     "shared_files_delete": False, "sandbox_sites": True, "sandbox_sites_request": True,
+                     "send_file_to_service": False}
     assert bridge.post(FILES_PATH, json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
                        headers={"Authorization": "Bearer nope"}).status_code == 401
     # Wellness shares a text and a file it made (from /envoi).

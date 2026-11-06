@@ -114,6 +114,7 @@ pub mod sandbox_adopt;
 pub mod sandbox_sites;
 pub mod send_guard;
 pub mod sent_files;
+pub mod service_files;
 pub mod services;
 pub mod shares;
 pub mod names; // the app's things by their names in the person's language
@@ -134,6 +135,7 @@ pub mod agent_email;
 pub mod agent_email_smtp;
 pub mod agent_files;
 pub mod give_file;
+pub mod agent_hops;
 pub mod agent_messages;
 pub mod agent_pairs;
 pub mod agent_tools;
