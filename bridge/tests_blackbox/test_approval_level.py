@@ -104,6 +104,8 @@ def test_a_routines_question_is_asked_or_answered_with_its_suggestion(bridges, f
 
 def test_mail_moves_and_rules_go_alone_with_an_undo_and_a_trash_is_asked(bridges, fakes):
     bridge, _ = mail_bridge(bridges, fakes)
+    fakes.imap.folders.setdefault("Trash", [])
+    fakes.imap.created.append("Trash")   # listed: the box has a trash
     assert add_mailbox(bridge, fakes).status_code == 201
     level(bridge, "critical")
     # a move: done at once, the agent told, no card, no notification
