@@ -736,7 +736,7 @@ pub fn place_waiting(items: &[Item], rows: &mut [Value]) {
         };
         let after = match asked.filter(|a| *a > 0.0) {
             // in display order: the last drawing item said by then (an item without its time counts as earlier)
-            Some(at) => items.iter().filter(|i| draws(i) && i.at <= at).last().map(|i| i.id.clone()),
+            Some(at) => items.iter().rev().find(|i| draws(i) && i.at <= at).map(|i| i.id.clone()),
             None => last.clone(),
         };
         fields.insert("after".into(), after.map_or(Value::Null, Value::String));
