@@ -439,3 +439,30 @@ def test_a_connector_whose_files_changed_before_its_answer_keeps_its_call_on_the
         assert sent.status_code == 200, sent.text
         result = asked.result(timeout=30)
         assert not result.get("isError") and "approved" in result["content"][0]["text"], result
+
+
+def test_a_bridge_cards_notification_offers_no_button_and_names_the_card(bridges, fakes):
+    """« La notification ouvre la carte » (Alex 5/11): a bridge card's push has the category `BRIDGE_CARD`, which no
+    released app gives a button (« CARD » had « Autoriser une fois » on the iPhone: a sites card allowed its first host
+    only), and names the card (`t`, `r`, `n`) for the tap to open it. Hermes' approvals keep `APPROVAL`."""
+    bridge, _, _ = connectors_setup(bridges, fakes)
+    assert bridge.post("/v1/devices", headers=AUTH, json={"token": "f" * 64, "environment": "sandbox",
+                                                           "agent_ids": ["vie"]}).status_code == 200
+    for host in GARMIN_HOSTS[:2]:
+        text, error = sandbox_call(bridge, "vie", "sandbox_sites_request", host=host, reason="le connecteur Garmin")
+        assert not error, text
+    with ThreadPoolExecutor(1) as pool:
+        asked = pool.submit(connectors_tool, bridge, "connector_register", REGISTER)
+        assert wait_until(lambda: {p.get("t") for p in fakes.apns.payloads()} >= {"site", "connector"}, timeout=20), \
+            fakes.apns.payloads()
+        [card] = connectors_cards(bridge, "bip-conn-")
+        assert bridge.post(f"/v1/connectors/requests/{card['request_id']}", headers=AUTH,
+                           json={"allow": False}).status_code == 200
+        asked.result(timeout=30)
+    [site] = site_cards(bridge, "vie")
+    pushed = {p["t"]: p for p in fakes.apns.payloads() if p.get("t") in ("site", "connector")}
+    for t, payload in pushed.items():
+        assert payload["aps"]["category"] == "BRIDGE_CARD", payload
+        assert payload["agent"] == "vie" and payload["n"].startswith("n_") and payload["r"], payload
+        assert "choices" not in payload, payload   # nothing to answer from it
+    assert pushed["site"]["r"] == site["request_id"] and pushed["connector"]["r"] == card["request_id"]
