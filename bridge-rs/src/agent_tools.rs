@@ -1983,7 +1983,14 @@ async fn mcp(
         return Ok(answer(result));
     }
     if name == crate::agent_messages::TOOL_NAME {
-        let mut result = crate::agent_messages::call(&state.http, Some(state.hub.clone()), &state.config(), &agent, &arguments).await;
+        let called = crate::agent_messages::call(&state.http, Some(state.hub.clone()), &state.config(), &agent, &arguments).await;
+        let mut result = called.result;
+        if let Some(card) = called.card {
+            // the agents at their cap (agent_hops.rs): « Continuer » in the conversation their chain started from
+            if let Some(root) = state.config().agent(Some(&card.agent)).cloned() {
+                crate::card_place::place_for(&state, &root, &card.run_id, card.root_run.as_deref()).await;
+            }
+        }
         wrote(&agent.name, &name, &arguments, &mut result);
         return Ok(answer(result));
     }

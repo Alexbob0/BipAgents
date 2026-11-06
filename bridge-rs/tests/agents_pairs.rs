@@ -104,3 +104,101 @@ async fn the_target_answers_in_the_pairs_own_conversation() {
     assert_eq!(app.get("/v1/agent-pairs?agent=coach", &[]).await.status, 401);
     assert_eq!(app.get("/v1/agent-pairs?agent=ghost", &[(name, value.as_str())]).await.status, 404);
 }
+
+/// A fake Hermes whose Coach turns run until `release` (Quotidien's end at once): a turn waiting on another.
+#[derive(Clone, Default)]
+struct Slow {
+    calls: Arc<Mutex<Vec<(String, String, Value)>>>,
+    release: Arc<std::sync::atomic::AtomicBool>,
+}
+
+async fn slow_hermes(State(fake): State<Slow>, request: Request) -> Response {
+    let method = request.method().as_str().to_string();
+    let path = request.uri().path().to_string();
+    let bytes = axum::body::to_bytes(request.into_body(), usize::MAX).await.unwrap();
+    let body: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+    let n = {
+        let mut calls = fake.calls.lock().unwrap();
+        calls.push((method.clone(), path.clone(), body));
+        calls.len()
+    };
+    match (method.as_str(), path.as_str()) {
+        ("POST", p) if p.ends_with("/api/sessions") => {
+            (axum::http::StatusCode::CREATED, axum::Json(json!({"session": {"id": format!("s{n}")}}))).into_response()
+        }
+        ("PATCH", _) => axum::Json(json!({})).into_response(),
+        ("POST", p) if p.ends_with("/v1/runs") => {
+            (axum::http::StatusCode::ACCEPTED, axum::Json(json!({"run_id": format!("r{n}")}))).into_response()
+        }
+        ("GET", p) if p.starts_with("/p/coach/v1/runs/") => {
+            if fake.release.load(std::sync::atomic::Ordering::SeqCst) {
+                axum::Json(json!({"status": "completed", "output": "Sept heures."})).into_response()
+            } else {
+                axum::Json(json!({"status": "running"})).into_response()
+            }
+        }
+        ("GET", p) if p.contains("/v1/runs/") => {
+            axum::Json(json!({"status": "completed", "output": "Oui, le menu est prêt."})).into_response()
+        }
+        _ => (axum::http::StatusCode::NOT_FOUND, "no").into_response(),
+    }
+}
+
+fn started_by(calls: &Arc<Mutex<Vec<(String, String, Value)>>>, agent: &str) -> usize {
+    let path = format!("/p/{agent}/v1/runs");
+    calls.lock().unwrap().iter().filter(|(m, p, _)| m == "POST" && *p == path).count()
+}
+
+#[tokio::test]
+async fn a_reply_back_never_waits_on_the_pair_and_a_cycle_is_told_at_once() {
+    use bipbridge::agent_hops::{self, Step};
+    let fake = Slow::default();
+    let url = spawn_fake(Router::new().fallback(slow_hermes).with_state(fake.clone())).await;
+    let dir = tempfile::tempdir().unwrap();
+    let mut d = config_dict(dir.path(), &Urls::default());
+    d["agents"] = json!({
+        "Quotidien": {"hermes_url": format!("{url}/p/quotidien"), "hermes_key": "q".repeat(32)},
+        "Coach": {"hermes_url": format!("{url}/p/coach"), "hermes_key": "c".repeat(32)},
+    });
+    let config = parse_config(&d, None).unwrap();
+    let quotidien = config.agent(Some("quotidien")).unwrap().clone();
+    let coach = config.agent(Some("coach")).unwrap().clone();
+    let http = reqwest::Client::new();
+
+    // Quotidien's turn asks Coach (hop 1): Coach's turn goes on
+    let root = format!("root-{}", std::process::id());
+    let Step::Go { chain, hop: 1 } = agent_hops::step("quotidien", Some(&root), "coach", 1.0) else { panic!("refused") };
+    let first = {
+        let (http, config, q, c, chain) = (http.clone(), config.clone(), quotidien.clone(), coach.clone(), chain.clone());
+        tokio::spawn(async move { agent_pairs::ask_in(&http, None, &config, &q, &c, "Combien ?", 30.0, Some(&chain)).await })
+    };
+    let since = std::time::Instant::now();
+    while started_by(&fake.calls, "coach") == 0 {
+        assert!(since.elapsed().as_secs() < 5, "Coach's turn never started");
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+
+    // from that turn, Coach writes back to Quotidien (A → B → A): answered in Quotidien's conversation of the pair,
+    // at once, never waiting on Coach's turn (until 6/11: the pair's lock, 600 s)
+    let back = std::time::Instant::now();
+    let answer = agent_pairs::ask_in(&http, None, &config, &coach, &quotidien, "Le menu ?", 30.0, Some(&chain)).await;
+    assert_eq!(answer, Answer::Text("Oui, le menu est prêt.".into()));
+    assert!(back.elapsed().as_secs_f64() < 5.0, "waited {:?}", back.elapsed());
+
+    // and Quotidien writing to Coach again in this exchange (B → A → B): Coach waits for it, told at once
+    let cycle = std::time::Instant::now();
+    let answer = agent_pairs::ask_in(&http, None, &config, &quotidien, &coach, "Et hier ?", 30.0, Some(&chain)).await;
+    assert_eq!(answer, Answer::Cycle);
+    assert!(cycle.elapsed().as_secs_f64() < 1.0, "waited {:?}", cycle.elapsed());
+    assert_eq!(started_by(&fake.calls, "coach"), 1, "nothing sent to Coach");
+
+    // Coach's turn ends: the first ask gets its answer; the thread has the four messages, not the refused one
+    fake.release.store(true, std::sync::atomic::Ordering::SeqCst);
+    assert_eq!(first.await.unwrap(), Answer::Text("Sept heures.".into()));
+    let pair = agent_pairs::get(&config, &agent_pairs::pair_id("quotidien", "coach")).unwrap();
+    let kinds: Vec<_> = pair.messages.iter().map(|m| (m.from.as_str(), m.kind.as_str())).collect();
+    assert_eq!(kinds, [("quotidien", "ask"), ("coach", "ask"), ("quotidien", "answer"), ("coach", "answer")]);
+    // the conversation free again: a new message of the chain goes
+    let answer = agent_pairs::ask_in(&http, None, &config, &quotidien, &coach, "Et hier ?", 30.0, Some(&chain)).await;
+    assert_eq!(answer, Answer::Text("Sept heures.".into()));
+}
