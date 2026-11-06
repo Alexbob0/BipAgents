@@ -15,8 +15,8 @@ async fn drain_refuses_the_apps_writes_and_resume_catches_the_routines_up() {
     let key = [(k, v.as_str())];
     let c = app.app.state.config();
     let agent = c.agents.values().next().unwrap().name.clone();
-    let soon = bipbridge::routines::create(&c, &agent, "every five minutes", "every 5m", "x", None).unwrap().id;
-    bipbridge::routines::create(&c, &agent, "tonight", "every 5h", "y", None).unwrap();
+    let soon = bipbridge::routines::create(&c, &agent, "every five minutes", "every 5m", "x", None, bipbridge::routines::Maker::Person { muted: false }).unwrap().id;
+    bipbridge::routines::create(&c, &agent, "tonight", "every 5h", "y", None, bipbridge::routines::Maker::Person { muted: false }).unwrap();
 
     let status = app.get("/v1/place/move", &key).await.json();
     assert_eq!(status["state"], "idle");
