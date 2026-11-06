@@ -2,7 +2,7 @@ English · [Français](privacy.fr.md) · [Deutsch](privacy.de.md) · [Español](
 
 # BipAgents privacy policy
 
-> Last updated: 1 November 2026.
+> Last updated: 6 November 2026.
 
 ## In short
 
@@ -330,10 +330,11 @@ subscriptions and places is called the guichet.
 **Data.** The identifier Apple or Google gives you and your email address (with Apple, it may be a relay address); or,
 with an email address, the one-time codes sent to you. The list of your approved devices, the public key of each
 (what another of your devices sends it is sealed for it) and their notification tokens, sealed by the relay (section 4.1): Kerfy Studio never sees them in clear. The
-invitations you send (the invited person's email address and their status). A recovery request in progress. The copy
-of your backup key, encrypted with your recovery code, which Kerfy Studio cannot read. The AI credit bought and kept
-for a future subscription (an amount). The account deletion date, if you asked for it. Not your name, not your photo,
-never the keys to your place.
+invitations you send: the invited person's email address, their status and, only if you give it, your first name,
+which the invited person sees in the invitation email and in their app (an invitation by link keeps only that first
+name, if given, and its status). A recovery request in progress. The copy of your backup key, encrypted with your
+recovery code, which Kerfy Studio cannot read. The AI credit bought and kept for a future subscription (an amount). The
+account deletion date, if you asked for it. No other name, not your photo, never the keys to your place.
 
 **Purposes.** Signing you in, linking your subscription and your places, approving your devices, recovering your
 account, sending you sign-in codes, security notices (new device, recovery in progress), the confirmation of your

@@ -2,7 +2,7 @@
 
 # Politique de confidentialité de BipAgents
 
-> Dernière mise à jour : 1er novembre 2026.
+> Dernière mise à jour : 6 novembre 2026.
 
 ## En bref
 
@@ -346,11 +346,12 @@ Kerfy Studio qui gère les comptes, les abonnements et les places s'appelle le g
 relais) ; ou, avec une adresse e-mail, les codes à usage unique qui te sont envoyés. La liste de tes appareils
 approuvés, la clé publique de chacun (ce qu'un autre de tes appareils lui envoie est scellé pour lui) et leurs jetons
 de notification, scellés par le relais
-(section 4.1) : Kerfy Studio ne les voit jamais en clair. Les invitations que tu envoies (l'adresse e-mail de la
-personne invitée et leur état). Une demande de récupération en cours. La copie de ta clé de sauvegarde, chiffrée par ton
-code de récupération, que Kerfy Studio ne peut pas lire. Le crédit d'IA acheté et gardé pour un prochain abonnement (un
-montant). La date de suppression du compte, si tu l'as demandée. Pas ton nom, pas ta photo, jamais les clés de ta
-place.
+(section 4.1) : Kerfy Studio ne les voit jamais en clair. Les invitations que tu envoies : l'adresse e-mail de la
+personne invitée, leur état et, seulement si tu le donnes, ton prénom, que la personne invitée voit dans l'e-mail
+d'invitation et dans son app (une invitation par lien garde seulement ce prénom, s'il est donné, et son état). Une
+demande de récupération en cours. La copie de ta clé de sauvegarde, chiffrée par ton code de récupération, que Kerfy
+Studio ne peut pas lire. Le crédit d'IA acheté et gardé pour un prochain abonnement (un montant). La date de suppression
+du compte, si tu l'as demandée. Pas d'autre nom, pas ta photo, jamais les clés de ta place.
 
 **Finalités.** Te connecter, relier ton abonnement et tes places, approuver tes appareils, récupérer ton compte,
 t'envoyer les codes de connexion, les avis de sécurité (nouvel appareil, récupération en cours), la confirmation de ton
