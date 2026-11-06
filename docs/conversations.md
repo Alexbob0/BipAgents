@@ -243,7 +243,8 @@ Answer:
                    "session_id": "api_ccc", "created_at": 1762117450.5}],
     "questions": [{"id": "a_…", "kind": "question", "run_id": "r_123", "request_id": "c_2", "questions": […],
                    "execution_generation": 1, "session_id": "api_ccc"}]
-  }
+  },
+  "copy": {"keep": 200, "pending": false}
 }
 ```
 
@@ -263,6 +264,11 @@ Answer:
   longer gives there). With no `limit` the bridge chooses the sizes: latest 100, a catch-up 200 at most (more since:
   the latest page, `reset`), an older page 50; a cursor whose item is gone also gets the latest page, `reset`. A
   `limit` given (a one-off look; apps from before 5/11) pages as before.
+- **The phone's copy** (thin apps, brick 6): every page carries `copy: {keep, pending}`, the same for every phone:
+  keep the conversation's latest `keep` items (200: two opening pages) for when the bridge is out of reach, and
+  what waits (`pending`: cards, the run) only when `pending` is true — false today: a card is the bridge's state now,
+  never answered from a copy. Until 6/11 the iPhone kept 300 items with what waited, Android 200 without; a page
+  without `copy` (an older bridge): each app as before.
 - `replaced` (only when not empty): ids a phone may hold that this page's rows replace. Today the `s_<client_id>` item
   of a message sent from a phone, once its stored row (same `client_id`, last three days) is in the page. The apps
   remove those ids from their window before merging, nothing else (4/11: the message showed twice).
@@ -509,6 +515,24 @@ a message of files alone has an empty `text`, and the apps' « En attente » row
 Every answer goes through the bridge, which keeps it (approvals_log.rs) and bumps the thread. Deleted with this:
 `POST /v1/agents/{id}/queue` and `/steer`, `GET/POST /v1/approvals/answered`, the apps' Hermes-direct runs, steers,
 approvals and questions.
+
+**A sent message followed until its reply** (threads/follow.rs, thin apps brick 6: the quick talk, iPhone and
+Android, the same rule once):
+
+```text
+GET /v1/threads/{thread}/sends/{client_id}?agent=
+  → {client_id, thread, state: unknown | queued | sending | running | needs | reply | not_sent, message,
+     run: {run_id, tool, answer} | null, needs: approval | payment | question | pick | task | null,
+     reply: {id, text, needs: media | pick | null} | null, next: <ms> | null}
+```
+
+`message` is the person's item (where the app opens); `run` while the turn goes on: the tool in use now (raw name,
+null: it thinks or writes) and the answer's words so far, as the bridge follows the run (the apps no longer follow the
+run's events for a quick talk); `needs`: a card of this turn (placed after the person's words: an older card waiting
+is not this turn's), or a tool whose card is to act on (a payment, a task, an agent proposed, a question, a secret);
+`reply`: the agent's messages after the person's, joined, once the turn is over (`needs`: a card or a file the voice
+can't say); `next`: when to ask again (1 s while it runs, 1.5 s while it waits; null: settled). The thread's hint is a
+reason to ask sooner. An older bridge answers 404: the apps read the timeline as before.
 
 Run state comes from the timeline only: `pending.run` (is the turn still going?), `pending.approvals` /
 `pending.questions` (what it waits for) and the events stream; the apps ask Hermes nothing about a run (their

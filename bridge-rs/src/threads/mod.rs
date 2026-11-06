@@ -17,6 +17,7 @@
 //! GET  /v1/threads/{thread}/attachments/{attachment}
 //! POST /v1/threads/{thread}/messages {client_id, text, attachments?…}   the person's message (send.rs)
 //! POST /v1/threads/{thread}/stop                                        the turn going on stopped
+//! GET  /v1/threads/{thread}/sends/{client_id}?agent=                    a sent message until its reply (follow.rs)
 //! ```
 //!
 //! A shared agent's (`agent=<agent>__<household>`): the list and timeline pages relayed to the owner's bridge
@@ -27,6 +28,7 @@
 //!
 //! No Python counterpart.
 
+pub mod follow;
 pub mod send;
 pub mod source;
 pub mod timeline;
@@ -1162,6 +1164,31 @@ async fn timeline_route(
     let zone =
         q.get("tz").and_then(crate::dates::parse_zone).unwrap_or_else(|| crate::dates::load(&state.config()).zone());
     let days = timeline::days(&items, zone);
+    let Waiting { tip, approvals, questions, run } = waiting_here(&state, &agent, &thread, &segments, &items).await;
+    let page = timeline::page(items, &want).with_days(&days);
+    // a sent message no turn took (nothing runs here now, Hermes never stored it): « Pas envoyé », not « being sent »
+    let page = if run.is_none() { page.with_lost() } else { page };
+    let queue =
+        tip.as_deref().map(|t| crate::msg_queue::queues_of(&state).get(&agent.name).snapshot_of(&agent.name, t));
+    let mut out_thread = thread.to_json();
+    out_thread["tip"] = json!(tip);
+    // `started`: the working line's clock on every phone, also on one that reopens the conversation mid-turn
+    let run = run.map(|(r, started)| json!({"run_id": r, "status": "running", "started": started}));
+    let pending = json!({"run": run, "queue": queue,
+                         "approvals": approvals, "questions": questions});
+    Ok(web::ok(page.answer(out_thread, thread.version, pending, q.get("debug").is_some_and(|d| d == "1"))))
+}
+
+/// What waits for the person in a conversation: its tip, its cards placed among its items (`after`), the run going on
+/// there (the timeline's `pending`; a sent message's follower, follow.rs).
+struct Waiting {
+    tip: Option<String>,
+    approvals: Vec<Value>,
+    questions: Vec<Value>,
+    run: Option<(String, f64)>,
+}
+
+async fn waiting_here(state: &AppState, agent: &AgentConfig, thread: &Thread, segments: &[Segment], items: &[Item]) -> Waiting {
     let tip = segments.last().map(|s| s.session_id.clone());
     let sessions: HashSet<&str> = segments.iter().map(|s| s.session_id.as_str()).collect();
     // what waits for the person here, each with the id of the item it becomes once answered (one card on every device)
@@ -1185,14 +1212,14 @@ async fn timeline_route(
             continue;
         }
         // a background task's or a routine's (its own hidden conversation): also where it reports (card_place.rs)
-        let report = crate::card_place::report_of(&state, &agent, &session).await;
+        let report = crate::card_place::report_of(state, agent, &session).await;
         let place = crate::card_place::Place { session: Some(session.clone()), report, ..Default::default() };
         if place.report.as_deref() != Some(session.as_str()) && place.shows_in(&sessions, main) {
             elsewhere.push(approval);
         }
     }
     // the bridge's own cards made in this conversation's turns, or by work that reports here (card_place.rs)
-    elsewhere.extend(crate::card_place::cards_in(&state, &agent.name, &sessions, main));
+    elsewhere.extend(crate::card_place::cards_in(state, &agent.name, &sessions, main));
     let mut approvals = waiting(asked);
     approvals.extend(elsewhere.into_iter().map(|mut a| {
         let id = answered_id(a.get("run_id").and_then(Value::as_str), a.get("request_id").and_then(Value::as_str));
@@ -1202,21 +1229,39 @@ async fn timeline_route(
     }));
     let mut questions = waiting(state.hub.pending_questions(&agent.name));
     // where each waiting card goes among the items (`after`), decided once for every app (thin apps, brick 5)
-    timeline::place_waiting(&items, &mut approvals);
-    timeline::place_waiting(&items, &mut questions);
-    let page = timeline::page(items, &want).with_days(&days);
+    timeline::place_waiting(items, &mut approvals);
+    timeline::place_waiting(items, &mut questions);
     let run = tip.as_deref().and_then(|t| state.hub.session_run_since(&agent.name, t));
-    // a sent message no turn took (nothing runs here now, Hermes never stored it): « Pas envoyé », not « being sent »
-    let page = if run.is_none() { page.with_lost() } else { page };
-    let queue =
-        tip.as_deref().map(|t| crate::msg_queue::queues_of(&state).get(&agent.name).snapshot_of(&agent.name, t));
-    let mut out_thread = thread.to_json();
-    out_thread["tip"] = json!(tip);
-    // `started`: the working line's clock on every phone, also on one that reopens the conversation mid-turn
-    let run = run.map(|(r, started)| json!({"run_id": r, "status": "running", "started": started}));
-    let pending = json!({"run": run, "queue": queue,
-                         "approvals": approvals, "questions": questions});
-    Ok(web::ok(page.answer(out_thread, thread.version, pending, q.get("debug").is_some_and(|d| d == "1"))))
+    Waiting { tip, approvals, questions, run }
+}
+
+/// `GET /v1/threads/{thread}/sends/{client_id}`: where a sent message is, until its reply (follow.rs: the quick talk).
+async fn sends_route(
+    State(state): State<AppState>,
+    UrlPath((id, client_id)): UrlPath<(String, String)>,
+    q: QueryMap,
+) -> ApiResult<Response> {
+    if !send::CLIENT_ID.is_match(&client_id) {
+        return Err(HttpError::new(422, "client_id: 8 to 64 letters, digits, - or _"));
+    }
+    if let Some(relayed) = shared(&state, &q, &format!("{id}/sends/{client_id}")).await {
+        return relayed;
+    }
+    let threads = threads_of(&state);
+    let (agent, thread) = threads.named(agent_param(&state, &q)?.as_ref(), &id).await?;
+    let segments = threads.line(&agent, &thread).await.map_err(unavailable)?;
+    let items = threads.items(&agent, &thread, &segments).await.map_err(unavailable)?;
+    let Waiting { approvals, questions, run, .. } = waiting_here(&state, &agent, &thread, &segments, &items).await;
+    let live = run.and_then(|(run_id, _)| {
+        let (tool, answer) = state.hub.glance(&agent.name, &run_id)?;
+        Some(follow::Live { run_id, tool, answer })
+    });
+    let queued = crate::msg_queue::queues_of(&state)
+        .get(&agent.name)
+        .items
+        .iter()
+        .any(|i| i.client_id.as_deref().is_some_and(|c| c.eq_ignore_ascii_case(&client_id)));
+    Ok(web::ok(follow::state_of(&items, &approvals, &questions, live.as_ref(), queued, &client_id, &thread.id)))
 }
 
 /// A thread's items and the agent whose files they are: a conversation's, or a room's (`None`: each item's `from`).
@@ -1385,6 +1430,7 @@ pub fn router() -> Router<AppState> {
         .route("/threads/{thread}/attachments/{attachment}", get(attachment_route))
         .route("/threads/{thread}/messages", post(send_route))
         .route("/threads/{thread}/stop", post(stop_route))
+        .route("/threads/{thread}/sends/{client_id}", get(sends_route))
 }
 
 /// The person's message (send.rs); a shared agent's goes to its owner's bridge (agent_shares.rs).
