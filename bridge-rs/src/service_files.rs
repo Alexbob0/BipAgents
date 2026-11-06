@@ -47,9 +47,10 @@ pub fn tool() -> Value {
     json!({
         "name": TOOL_NAME,
         "description": format!("Hand one of your files to one of your services that takes files (e.g. « compta »): \
-    a PDF your browser downloaded ({}/<name>), or a file in /envoi, /workspace or the files you were sent. The bridge \
+    a PDF your browser downloaded ({d}/<name>), or a file in /envoi, /workspace or the files you were sent. The bridge \
     sends it with the service's own access; you get back an upload id to give to that service's tool (for compta: \
-    piece_add with `upload`). Never read a file to paste its content into a tool.", crate::browsers::DOWNLOADS),
+    piece_add with `upload`). Your browser's downloads are not in your terminal: give `path: {d}` alone to list \
+    them. Never read a file to paste its content into a tool.", d = crate::browsers::DOWNLOADS),
         "inputSchema": {"type": "object", "properties": {
             "service": {"type": "string", "description": "the service's name, as in your tools (e.g. compta)"},
             "path": {"type": "string", "description": format!("the file as you see it, e.g. {}/facture-2026-10.pdf", crate::browsers::DOWNLOADS)},
@@ -174,6 +175,21 @@ pub async fn call(config: &Config, agent: &AgentConfig, arguments: &Dict) -> Dic
     let path = arguments.get("path").map(crate::py::py_str).unwrap_or_default();
     if service.is_empty() || path.trim().is_empty() {
         return tool_text("Give `service` (e.g. compta) and `path` (your file as you see it).", true);
+    }
+    // the browser's downloads listed (the agent's terminal does not see them)
+    if path.trim().trim_end_matches('/') == crate::browsers::DOWNLOADS {
+        let (c, name) = (config.clone(), agent.name.clone());
+        let listed = tokio::task::spawn_blocking(move || crate::browsers::recent_downloads(&c, &name, 20))
+            .await
+            .unwrap_or_default();
+        return tool_text(
+            &if listed.is_empty() {
+                "Your browser has downloaded nothing yet (or the download is still running).".to_string()
+            } else {
+                format!("Your browser's latest downloads, newest first:\n{}", listed.join("\n"))
+            },
+            false,
+        );
     }
     let (url, token) = match service_of(config, agent, &service) {
         Ok(found) => found,

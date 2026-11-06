@@ -115,6 +115,10 @@ def test_a_downloaded_invoice_goes_to_the_service_and_nothing_else_can(bridges, 
         assert sent["headers"]["x-filename"] == "facture%2D2026%2D10%2Epdf"
         assert sent["headers"]["x-sha256"] == hashlib.sha256(PDF).hexdigest()
         # A file it made, from /envoi.
+        # Its downloads listed (its terminal doesn't see them): finished files only, never a link.
+        text, failed = call(bridge, "vie", "send_file_to_service", service="compta", path="/telechargements/")
+        assert not failed and "/telechargements/facture-2026-10.pdf" in text and "/telechargements/gros.pdf" in text
+        assert "crdownload" not in text and "hosts.pdf" not in text
         text, failed = call(bridge, "vie", "send_file_to_service", service="compta", path="/envoi/releve.csv")
         assert not failed and service.requests[-1]["body"] == b"date;montant\n"
 

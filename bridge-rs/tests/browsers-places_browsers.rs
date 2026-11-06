@@ -269,7 +269,8 @@ fn downloads_go_to_the_profile_through_a_read_only_policy() {
     let policy = place.join("policies").join("bipagents-downloads.json");
     assert_eq!(
         read_json(&policy),
-        json!({"DownloadDirectory": "/home/bip/profile/Downloads", "PromptForDownloadLocation": false})
+        json!({"DownloadDirectory": "/home/bip/profile/Downloads", "PromptForDownloadLocation": false,
+               "DefaultAutomaticDownloadsSetting": 1})
     );
     let ports = [("cdp".to_string(), 1), ("vnc".to_string(), 2)].into_iter().collect();
     let args = browsers::run_args(&s.config, "budget", &ports, "/usr/bin/podman", false, None);

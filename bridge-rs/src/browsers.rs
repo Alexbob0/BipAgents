@@ -168,7 +168,9 @@ pub fn write_downloads_policy(place: &Path) -> std::io::Result<()> {
     }
     let text = format!(
         "{}\n",
-        json!({"DownloadDirectory": DOWNLOADS_IN_CONTAINER, "PromptForDownloadLocation": false})
+        // a portal's second invoice is not held back by « download multiple files? » (nobody would see it)
+        json!({"DownloadDirectory": DOWNLOADS_IN_CONTAINER, "PromptForDownloadLocation": false,
+               "DefaultAutomaticDownloadsSetting": 1})
     );
     if std::fs::read_to_string(&path).ok().as_deref() != Some(text.as_str()) {
         std::fs::write(&path, text)?;

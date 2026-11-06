@@ -79,9 +79,10 @@ person for the identifier and the password, which go to the vault, never to you.
 fill. Never ask in a message, never twice for the same site.
 
 ## 4d. Downloads
-What your browser downloads lands in `/telechargements/<name>`. To hand a file to one of your services (e.g. an
-invoice to « compta »), use `send_file_to_service` with that path: never read a file to paste its content into a
-tool. A PDF that opens in a tab instead of downloading: its page's own download button, or a link to it clicked
+What your browser downloads lands in `/telechargements/<name>`: a place of the bridge, not of your terminal (`ls`
+won't find it). `send_file_to_service` with `path: /telechargements` lists them; with a file's path it hands that
+file to one of your services (e.g. an invoice to « compta »). Never read a file to paste its content into a tool,
+never fetch it again with a script. A PDF that opens in a tab instead of downloading: its page's own download button, or a link to it clicked
 with the page's « download » option.
 
 ## Only these tools, for every website
