@@ -475,6 +475,114 @@ def test_browsers_set_up_before_learn_where_the_hub_is(bridges):
     assert json.loads(config.read_text())["server"] == ["true"]   # the rest kept
 
 
+def live_sessions(bridge, **query) -> list:
+    return bridge.get("/v1/exit/sessions", headers=AUTH, params=query).json()["sessions"]
+
+
+def test_a_pause_outlives_the_tunnel_until_the_phone_comes_back(bridges):
+    """An iPhone put away says `PAUSE background`, then closes its tunnel (no BYE): its session stays `paused` with
+    that reason (streams refused at once, never direct) until the phone comes back; « Seulement en Wi-Fi » on mobile
+    data the same, refused `wifi_only`."""
+    bridge = exit_bridge(bridges)
+    away, wifi = start_session(bridge), start_session(bridge, ["second.example"])
+
+    async def put_away(phone, got):
+        await phone.control(PAUSE, {"why": "background"})
+        await asyncio.sleep(0.3)
+        await phone.ws.close()
+        await asyncio.wait_for(phone.closed.wait(), 10)
+        await asyncio.sleep(0.5)
+        started = time.time()
+        line, _, w = await exit_stream(sock(bridge), HOST)
+        w.close()
+        return line, time.time() - started
+
+    line, took = asyncio.run(with_phone(bridge, put_away, [away["id"]]))
+    [kept] = [s for s in live_sessions(bridge) if s["id"] == away["id"]]
+    assert kept["state"] == "paused" and kept["paused_why"] == "background", kept
+    assert line == "ERR paused" and took < 2.0
+
+    async def mobile_data(phone, got):
+        await phone.control(PAUSE, {"why": "wifi_only"})
+        await asyncio.sleep(0.3)
+        await phone.ws.close()
+        await asyncio.wait_for(phone.closed.wait(), 10)
+        await asyncio.sleep(0.5)
+        line, _, w = await exit_stream(sock(bridge), "www.second.example")
+        w.close()
+        return line
+
+    assert asyncio.run(with_phone(bridge, mobile_data, [wifi["id"]])) == "ERR wifi_only"
+    assert [s for s in live_sessions(bridge) if s["id"] == wifi["id"]][0]["paused_why"] == "wifi_only"
+
+    async def back(phone, got):
+        state = [s for s in live_sessions(bridge) if s["id"] == away["id"]][0]
+        return state, await carry(bridge, 1000)
+
+    state, carried = asyncio.run(with_phone(bridge, back, [away["id"]]))
+    assert state["state"] == "active" and state["paused_why"] is None and carried
+    assert bridge.get("/v1/exit/journal", headers=AUTH).json()["sessions"] == []   # never ended
+
+
+def test_a_paused_session_ends_at_the_idle_limit(bridges):
+    bridge = exit_bridge(bridges, idle_minutes=0.05)
+    session = start_session(bridge)
+
+    async def put_away(phone, got):
+        await phone.control(PAUSE, {"why": "background"})
+        await phone.ws.close()
+        await asyncio.wait_for(phone.closed.wait(), 10)
+
+    asyncio.run(with_phone(bridge, put_away, [session["id"]]))
+    ended = wait_for(lambda: bridge.get("/v1/exit/journal", headers=AUTH).json()["sessions"], 15)
+    assert ended[0]["id"] == session["id"] and ended[0]["ended"] == "idle" and ended[0]["paused_why"] == "background"
+
+
+def test_an_answered_card_s_session_is_listed_at_once(bridges):
+    """The card answered through the common card path: its `accepted` session is in GET /v1/exit/sessions at once, so
+    the phone that answered finds it (and never starts a second one)."""
+    bridge = exit_bridge(bridges)
+    call(bridge, "ask_phone_exit", {"site": f"https://www.{SITE}/espace", "reason": "Cloudflare"})
+    [card] = cards(bridge)
+    assert live_sessions(bridge) == []
+    answer = bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": card["run_id"],
+                                                             "choice": "once", "request_id": card["request_id"]})
+    assert answer.status_code == 200, answer.text
+    [listed] = live_sessions(bridge)
+    assert listed["id"] == answer.json()["exit"]["session"]["id"] and listed["state"] == "accepted"
+    assert listed["card"] == card["run_id"] and listed["sites"] == [SITE] and listed["agent"] == "wellness"
+    # found by the phone's own words: the agent, the card's host or URL, the card
+    assert [s["id"] for s in live_sessions(bridge, agent="wellness", site=f"www.{SITE}")] == [listed["id"]]
+    assert [s["id"] for s in live_sessions(bridge, site=f"https://{HOST}/x?y=1")] == [listed["id"]]
+    assert [s["id"] for s in live_sessions(bridge, card=card["run_id"])] == [listed["id"]]
+    assert live_sessions(bridge, site="other.example") == [] and live_sessions(bridge, agent="nobody") == []
+    # started from the app: no card on it
+    assert start_session(bridge, ["other.example"]).get("card") is None
+
+
+def test_welcome_only_narrows_the_phone_s_list(bridges):
+    """WELCOME lists only the sessions the phone named, never another; the bridge opens streams only for the sessions
+    the tunnel carries."""
+    bridge = exit_bridge(bridges)
+    mine, other = start_session(bridge), start_session(bridge, ["other.example"])
+
+    async def steps(phone, got):
+        first = phone.welcomes[0]
+        refused, _, w = await exit_stream(sock(bridge), "www.other.example")
+        w.close()
+        await phone.control(SESSIONS, {"sessions": [mine["id"], "made-up"]})
+        await asyncio.sleep(0.3)
+        ok = await carry(bridge, 1000)
+        return first, refused, phone.welcomes[-1], [o["host"] for o in phone.opens], ok
+
+    first, refused, last, opened, ok = asyncio.run(with_phone(bridge, steps, [mine["id"]]))
+    assert [s["id"] for s in first["sessions"]] == [mine["id"]] and first["refused"] == []
+    assert refused == "ERR paused" and ok   # the other session is not carried: never opened on this phone
+    assert [s["id"] for s in last["sessions"]] == [mine["id"]]
+    assert last["refused"] == [{"id": "made-up", "why": "unknown"}]
+    assert opened == [HOST] and other["id"] not in str(first) + str(last)
+
+
 def test_settings_and_sites(bridges):
     bridge = exit_bridge(bridges)
     over = bridge.get("/v1/exit", headers=AUTH).json()

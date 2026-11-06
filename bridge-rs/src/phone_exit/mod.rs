@@ -419,7 +419,9 @@ fn flush(config: &Config, only: Option<&str>) {
 }
 
 /// Sessions' states (`active`/`paused`) as the tunnel says.
-fn set_states(config: &Config, ids: &[String], state: &str, tunnel: Option<&Tunnel>) {
+/// `why`: the phone's pause reason (`PAUSE`), kept on the sessions; `active` clears it; `paused` without one (the
+/// tunnel lost or closed) keeps the one they had.
+fn set_states(config: &Config, ids: &[String], state: &str, tunnel: Option<&Tunnel>, why: Option<&str>) {
     if ids.is_empty() {
         return;
     }
@@ -435,6 +437,11 @@ fn set_states(config: &Config, ids: &[String], state: &str, tunnel: Option<&Tunn
     let _ = store::change(config, |s| {
         for session in s.sessions.iter_mut().filter(|x| ids.contains(&x.id)) {
             session.state = state.into();
+            match (state, why) {
+                ("active", _) => session.paused_why = None,
+                (_, Some(why)) => session.paused_why = Some(why.to_string()),
+                _ => {}
+            }
             if let (Some(t), Some(network)) = (tunnel, network.as_ref()) {
                 session.ever_active = true;
                 session.network = network.clone();
@@ -598,7 +605,7 @@ async fn read_phone(state: AppState, tunnel: Arc<Tunnel>, mut stream: futures::s
                 let why = info().get("why").and_then(Value::as_str).map(checks::code_of).unwrap_or_else(|| "user".into());
                 *tunnel.paused.lock().unwrap_or_else(|e| e.into_inner()) = (kind == T_PAUSE).then(|| why.clone());
                 let state_name = if kind == T_PAUSE { "paused" } else { "active" };
-                set_states(&state.config(), &tunnel.carried(), state_name, Some(&tunnel));
+                set_states(&state.config(), &tunnel.carried(), state_name, Some(&tunnel), Some(&why));
                 tracing::info!(target: "bipbridge::phone_exit", tunnel = tunnel.id, why = %why, state = state_name,
                     "phone exit: the phone paused or resumed");
             }
@@ -611,9 +618,10 @@ async fn read_phone(state: AppState, tunnel: Arc<Tunnel>, mut stream: futures::s
                 for s in &carry {
                     hub().live_of(s);
                 }
-                set_states(&config, &dropped, "paused", None);
-                let resumed = if tunnel.pause_reason().is_some() { "paused" } else { "active" };
-                set_states(&config, &now, resumed, Some(&tunnel));
+                set_states(&config, &dropped, "paused", None, None);
+                let paused = tunnel.pause_reason();
+                let resumed = if paused.is_some() { "paused" } else { "active" };
+                set_states(&config, &now, resumed, Some(&tunnel), paused.as_deref());
                 for s in carry.iter_mut() {
                     s.state = resumed.into();
                 }
@@ -720,7 +728,7 @@ async fn run_tunnel(state: AppState, socket: WebSocket) {
     for s in &carry {
         the_hub.live_of(s);
     }
-    set_states(&config, &tunnel.carried(), "active", Some(&tunnel));
+    set_states(&config, &tunnel.carried(), "active", Some(&tunnel), None);
     for s in carry.iter_mut() {
         s.state = "active".into();
     }
@@ -800,7 +808,7 @@ async fn run_tunnel(state: AppState, socket: WebSocket) {
     flush(&config, None);
     let live_ids: Vec<String> = store::load(&config).sessions.iter().map(|s| s.id.clone()).collect();
     let waiting: Vec<String> = waiting.into_iter().filter(|id| live_ids.contains(id)).collect();
-    set_states(&config, &waiting, "paused", None);
+    set_states(&config, &waiting, "paused", None, None);
     tracing::info!(target: "bipbridge::phone_exit", tunnel = tunnel.id, device = %tunnel.device,
         seconds = tunnel.started.elapsed().as_secs(), up = tunnel.up.load(Ordering::Relaxed),
         down = tunnel.down.load(Ordering::Relaxed), streams = tunnel.opened.load(Ordering::Relaxed), ended = %why,
@@ -986,6 +994,12 @@ async fn decide(state: &AppState, host: &str, agent: &str) -> Result<(String, Ar
                     Some(_) => Err("paused".into()),
                     None => Ok((s.id.clone(), t)),
                 };
+            }
+            // paused by the phone itself (Wi-Fi only on mobile data, the app put away): said, not waited for
+            match s.paused_why.as_deref() {
+                Some("wifi_only") => return Err("wifi_only".into()),
+                Some(_) => return Err("paused".into()),
+                None => {}
             }
             let live = hub().live_of(s);
             let paused_recently =
@@ -1459,9 +1473,22 @@ async fn site_delete_route(State(state): State<AppState>, UrlPath(raw): UrlPath<
     Ok(web::ok(overview(&config)))
 }
 
-async fn sessions_route(State(state): State<AppState>) -> Response {
+/// `GET /v1/exit/sessions[?agent=…&site=…&card=…]`: the live ones (`accepted` from the moment a card is answered,
+/// `active`, `paused`); `site` may be a host or a URL (the session covers it), `card` the card's run id.
+async fn sessions_route(State(state): State<AppState>, Query(q): Query<HashMap<String, String>>) -> Response {
     let store = store::load(&state.config());
-    web::ok(json!({"sessions": store.sessions.iter().map(session_json).collect::<Vec<_>>()}))
+    let agent = q.get("agent").map(|a| a.trim().to_lowercase()).filter(|a| !a.is_empty());
+    let host = q.get("site").map(|s| checks::host_of(s)).filter(|h| !h.is_empty());
+    let card = q.get("card").map(|c| c.trim().to_string()).filter(|c| !c.is_empty());
+    let sessions: Vec<Value> = store
+        .sessions
+        .iter()
+        .filter(|s| agent.as_ref().is_none_or(|a| s.agent == *a))
+        .filter(|s| host.as_ref().is_none_or(|h| s.covers(h)))
+        .filter(|s| card.as_ref().is_none_or(|c| s.card.as_deref() == Some(c.as_str())))
+        .map(session_json)
+        .collect();
+    web::ok(json!({"sessions": sessions}))
 }
 
 /// `POST /v1/exit/sessions`: the person starts one from the app (`{"agent", "sites"}`).
