@@ -191,7 +191,8 @@ def test_hermes_is_pinned_and_patched(tmp_path, monkeypatch):
         "0017-vault-address-contact-fields.patch", "0018-guest-turns-closed-tools-no-user-profile.patch",
         "0019-routines-report-to-their-conversation.patch", "0020-runs-model-usage-per-call.patch",
         "0021-api-bot-chat-stays-api.patch", "0022-tool-order-common-first.patch",
-        "0023-prompt-cache-stable-across-conversations.patch", "0024-closed-tools-per-turn.patch"]
+        "0023-prompt-cache-stable-across-conversations.patch", "0024-closed-tools-per-turn.patch",
+        "0025-stream-colon-mid-sentence.patch"]
 
 
 def test_bot_mode_marker(tmp_path):

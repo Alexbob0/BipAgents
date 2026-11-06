@@ -162,6 +162,9 @@ async fn an_agent_gets_its_own_browser_container_and_desktop() {
     assert!(secret.len() == 64 && secret.bytes().all(|b| b.is_ascii_hexdigit()));
     assert_eq!(std::fs::metadata(&secret_file).unwrap().permissions().mode() & 0o777, 0o600);
     assert!(start.contains(&format!("-v {}:/run/bipagents/cdp.token:ro,Z", secret_file.display())));
+    // Its downloads in its profile (the policy written before the unit that mounts it).
+    assert!(place.join("policies").join("bipagents-downloads.json").exists());
+    assert!(start.contains("/etc/opt/chrome/policies/managed/bipagents-downloads.json:ro,Z"));
     assert_eq!(written(&s)["browser"]["cdp_url"], json!(format!("http://127.0.0.1:19602/t/{secret}")));
     assert_eq!(browsers::ports_of(&s.config, "budget").unwrap()["cdp"], 19602);
     assert_eq!(browsers::devtools_secret(19602).as_deref(), Some(&*secret));
@@ -254,6 +257,59 @@ async fn deleting_the_agent_removes_its_browser() {
     assert!(ran.contains(&v(&["/usr/bin/podman", "rm", "-f", "bipagents-browser-budget"])));
     assert!(!s.tmp.join("browsers").join("budget").exists());
     assert!(!s.tmp.join("units").join("bipagents-browser-budget.service").exists());
+}
+
+#[test]
+fn downloads_go_to_the_profile_through_a_read_only_policy() {
+    let s = setup();
+    let place = s.tmp.join("browsers").join("budget");
+    std::fs::create_dir_all(place.join("profile")).unwrap();
+    // written by the setup before any unit mounts it (and by bip-browser-mcp's first-use unit, and at each start)
+    browsers::write_downloads_policy(&place).unwrap();
+    let policy = place.join("policies").join("bipagents-downloads.json");
+    assert_eq!(
+        read_json(&policy),
+        json!({"DownloadDirectory": "/home/bip/profile/Downloads", "PromptForDownloadLocation": false,
+               "DefaultAutomaticDownloadsSetting": 1})
+    );
+    let ports = [("cdp".to_string(), 1), ("vnc".to_string(), 2)].into_iter().collect();
+    let args = browsers::run_args(&s.config, "budget", &ports, "/usr/bin/podman", false, None);
+    for dir in ["/etc/opt/chrome/policies/managed", "/etc/chromium/policies/managed"] {
+        let mount = format!("{}:{dir}/bipagents-downloads.json:ro,Z", policy.to_string_lossy());
+        assert!(args.contains(&mount), "{args:?}");
+    }
+    assert_eq!(browsers::downloads_dir(&s.config, "budget"), place.join("profile").join("Downloads"));
+    // The latest finished downloads, as the agent sees them; never a partial one, a hidden one or a link; the old
+    // ones removed.
+    let downloads = browsers::downloads_dir(&s.config, "budget");
+    std::fs::create_dir_all(&downloads).unwrap();
+    std::fs::write(downloads.join("facture.pdf"), vec![b'x'; 2048]).unwrap();
+    std::fs::write(downloads.join("suite.pdf.crdownload"), "x").unwrap();
+    std::fs::write(downloads.join(".cache"), "x").unwrap();
+    std::os::unix::fs::symlink("/etc/hosts", downloads.join("hosts.pdf")).unwrap();
+    let old = downloads.join("vieux.pdf");
+    std::fs::write(&old, "x").unwrap();
+    let long_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(40 * 86400);
+    std::fs::File::options().write(true).open(&old).unwrap().set_modified(long_ago).unwrap();
+    assert_eq!(browsers::recent_downloads(&s.config, "budget", 8), ["/telechargements/facture.pdf (2 KB)"]);
+    assert!(!old.exists());
+}
+
+#[test]
+fn a_unit_written_before_the_policy_gets_its_mounts_once() {
+    let place = Path::new("/home/x/.local/share/bipagents/browsers/budget");
+    let old = "ExecStart=/usr/bin/podman run --rm -v /p/profile:/home/bip/profile:Z \
+               -v /p/cdp.token:/run/bipagents/cdp.token:ro,Z -p 127.0.0.1:1:9223 img\n";
+    let new = browsers::with_policy_mounts(old, place).unwrap();
+    let policy = place.join("policies").join("bipagents-downloads.json");
+    assert!(new.contains(&format!(
+        "/p/cdp.token:/run/bipagents/cdp.token:ro,Z -v {}:/etc/opt/chrome/policies/managed/bipagents-downloads.json:ro,Z \
+         -v {}:/etc/chromium/policies/managed/bipagents-downloads.json:ro,Z -p 127.0.0.1:1:9223",
+        policy.display(),
+        policy.display()
+    )));
+    assert_eq!(browsers::with_policy_mounts(&new, place), None);   // once
+    assert_eq!(browsers::with_policy_mounts("ExecStart=/usr/bin/podman run img\n", place), None);
 }
 
 #[test]

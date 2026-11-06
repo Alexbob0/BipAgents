@@ -160,6 +160,7 @@ pub fn bridge_cards(state: &AppState, config: &Config, agent: Option<&str>) -> V
     items.extend(crate::mail_rules::pending_items(config, agent));
     items.extend(crate::feature_tips::pending_items(config, agent));
     items.extend(crate::triggers::pending_items(config, agent));
+    items.extend(crate::routines::pending_items(config, agent));
     items
 }
 
@@ -299,6 +300,17 @@ pub async fn place_new(state: &AppState, agent: &AgentConfig, before: &HashSet<S
         return;
     }
     place(state, agent, &made, run_id).await;
+}
+
+/// A card just made by the agent's tool `tool` outside the agent tools' route (the files' MCP: `sandbox_sites_request`):
+/// placed now, in the turn calling it, before its notification goes (the main-next battery, 6/11: a sites card
+/// answered within a second, before `watch` placed it, was never told to the agent).
+pub async fn place_made(state: &AppState, agent: &AgentConfig, run_id: &str, tool: &str) {
+    if !placeable(run_id) {
+        return;
+    }
+    let turn = state.hub.turn_of(&agent.name, tool).map(|t| t.run_id);
+    place(state, agent, &[run_id.to_string()], turn.as_deref()).await;
 }
 
 /// A card of this kind can show in a conversation.
@@ -618,6 +630,19 @@ static RESUMES: Mutex<BTreeMap<(String, String), Decisions>> = Mutex::new(BTreeM
 static ASKED: Mutex<BTreeMap<String, f64>> = Mutex::new(BTreeMap::new());
 
 /// A tool call waiting for card `run_id` returned its answer to the turn: the agent knows it.
+/// A waiting card whose content changed (a site joined a sites card already on screen): the conversations showing it
+/// read it again (`thread` hint), so a phone answers the card as it is (5/11, « cartes à revalider »). Never placed:
+/// the main conversation shows it.
+pub async fn changed(state: &AppState, agent: &str, run_id: &str) {
+    let place = load(&state.config()).get(run_id).cloned();
+    let threads = crate::threads::threads_of(state);
+    let (session, report) = place.map(|p| (p.session, p.report)).unwrap_or_default();
+    threads.touch(agent, report.as_deref(), "changed").await;
+    if session.is_some() && session != report {
+        threads.touch(agent, session.as_deref(), "changed").await;
+    }
+}
+
 pub fn taken(config: &Config, run_id: &str) {
     update(config, run_id, |p| p.taken = true);
 }

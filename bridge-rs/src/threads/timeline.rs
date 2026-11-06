@@ -733,6 +733,28 @@ pub fn draws(item: &Item) -> bool {
     }
 }
 
+/// Where each waiting row (a card, a question, any `pending` item that has a time) goes among the thread's items, as
+/// the apps draw it: `after` — the id of the last item that draws something said at or before its `created_at` (Unix
+/// seconds, or ISO), null when it was asked before all of them; a row without a time goes after the last item. The
+/// apps draw it there (5/11: the iPhone placed cards by time itself, Android showed one card at the bottom).
+pub fn place_waiting(items: &[Item], rows: &mut [Value]) {
+    let last = items.iter().rev().find(|i| draws(i)).map(|i| i.id.clone());
+    for row in rows.iter_mut() {
+        let Some(fields) = row.as_object_mut() else { continue };
+        let asked = match fields.get("created_at") {
+            Some(Value::Number(n)) => n.as_f64(),
+            Some(Value::String(s)) => crate::store::parse_since(s).ok().map(|d| d.timestamp_micros() as f64 / 1e6),
+            _ => None,
+        };
+        let after = match asked.filter(|a| *a > 0.0) {
+            // in display order: the last drawing item said by then (an item without its time counts as earlier)
+            Some(at) => items.iter().rev().find(|i| draws(i) && i.at <= at).map(|i| i.id.clone()),
+            None => last.clone(),
+        };
+        fields.insert("after".into(), after.map_or(Value::Null, Value::String));
+    }
+}
+
 /// The day of each item of a thread where the person is (`zone`), and whether it is the first of that day: None for an
 /// item that draws nothing or has no time. The day dividers are decided here, once for every app (5/11: the iPhone drew
 /// dividers over rows that draw nothing, « Dimanche 1 novembre »… with nothing under them; Android still did).
@@ -1370,5 +1392,28 @@ not from your person: you have read the page 5 times\n[/OUT-OF-BAND USER MESSAGE
         assert!(!own.reset && own.items.len() == 289 && own.joins.is_some());
         let json = after.answer(json!({"id": "t_1"}), 1, Value::Null, false);
         assert_eq!((json["reset"].clone(), json["joins"].clone()), (json!(false), json!(cursor)));
+    }
+
+    /// Thin apps, brick 5: each waiting card says after which item it goes (the last item that draws something said by
+    /// its time); before them all, null; without a time, after the last one. Any waiting row can carry it.
+    #[test]
+    fn a_waiting_card_says_where_it_goes() {
+        let all = vec![
+            said("m_1", 1, 1000.0, json!({"kind": "message", "role": "person", "text": "Range mes mails"})),
+            said("m_2", 2, 1010.0, json!({"kind": "message", "role": "agent", "text": "Je regarde."})),
+            said("m_3", 3, 1020.0, json!({"kind": "message", "role": "agent", "text": " "})),
+            said("m_4", 4, 1100.0, json!({"kind": "message", "role": "person", "text": "Et la facture ?"})),
+        ];
+        let mut rows = vec![
+            json!({"id": "a_1", "created_at": 1030.5}),
+            json!({"id": "a_2", "created_at": 500.0}),
+            json!({"id": "a_3"}),
+            json!({"id": "a_4", "created_at": "1970-01-01T00:18:20Z"}),
+            json!({"id": "q_1", "kind": "question", "created_at": 2000.0}),
+        ];
+        place_waiting(&all, &mut rows);
+        let after: Vec<Value> = rows.iter().map(|r| r["after"].clone()).collect();
+        // m_3 draws nothing: the card asked at 1030 goes after m_2
+        assert_eq!(after, vec![json!("m_2"), Value::Null, json!("m_4"), json!("m_4"), json!("m_4")]);
     }
 }

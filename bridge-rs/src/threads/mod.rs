@@ -1162,7 +1162,6 @@ async fn timeline_route(
     let zone =
         q.get("tz").and_then(crate::dates::parse_zone).unwrap_or_else(|| crate::dates::load(&state.config()).zone());
     let days = timeline::days(&items, zone);
-    let page = timeline::page(items, &want).with_days(&days);
     let tip = segments.last().map(|s| s.session_id.clone());
     let sessions: HashSet<&str> = segments.iter().map(|s| s.session_id.as_str()).collect();
     // what waits for the person here, each with the id of the item it becomes once answered (one card on every device)
@@ -1201,7 +1200,11 @@ async fn timeline_route(
         a.insert("session_id".into(), json!(tip)); // shown here, at the conversation's end
         Value::Object(a)
     }));
-    let questions = waiting(state.hub.pending_questions(&agent.name));
+    let mut questions = waiting(state.hub.pending_questions(&agent.name));
+    // where each waiting card goes among the items (`after`), decided once for every app (thin apps, brick 5)
+    timeline::place_waiting(&items, &mut approvals);
+    timeline::place_waiting(&items, &mut questions);
+    let page = timeline::page(items, &want).with_days(&days);
     let run = tip.as_deref().and_then(|t| state.hub.session_run_since(&agent.name, t));
     // a sent message no turn took (nothing runs here now, Hermes never stored it): « Pas envoyé », not « being sent »
     let page = if run.is_none() { page.with_lost() } else { page };
