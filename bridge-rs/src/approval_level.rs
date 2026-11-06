@@ -814,14 +814,14 @@ async fn get_auto(State(state): State<AppState>, q: QueryMap) -> ApiResult<Respo
 }
 
 async fn post_undo(State(state): State<AppState>, UrlPath(id): UrlPath<String>) -> ApiResult<Response> {
+    // a refusal's `code` at the top level ({code, detail}: what the apps read)
+    let refused = |code: &str, detail: &str| Ok(web::json_response(409, &json!({"code": code, "detail": detail})));
     match undo(&state, &id).await {
         Ok(line) => Ok(web::ok(json!({"ok": true, "item": line_view(&line)}))),
         Err(UndoRefused::NotFound) => Err(HttpError::not_found()),
-        Err(UndoRefused::NotUndoable) => {
-            Err(HttpError::json(409, json!({"code": "not_undoable", "detail": "this one can't be undone from here"})))
-        }
-        Err(UndoRefused::Undone) => Err(HttpError::json(409, json!({"code": "undone", "detail": "undone already"}))),
-        Err(UndoRefused::Failed(why)) => Err(HttpError::json(409, json!({"code": "not_undoable", "detail": why}))),
+        Err(UndoRefused::NotUndoable) => refused("not_undoable", "this one can't be undone from here"),
+        Err(UndoRefused::Undone) => refused("undone", "undone already"),
+        Err(UndoRefused::Failed(why)) => refused("not_undoable", &why),
     }
 }
 

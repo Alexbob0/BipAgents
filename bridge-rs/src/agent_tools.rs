@@ -2026,6 +2026,8 @@ async fn mcp(
             let auto = crate::approval_level::settle_new(&state, &agent, &cards_before, session.as_deref()).await;
             if auto.is_empty() {
                 state.push.notify_bridge_card(&agent.name, &line, "routine_request", &card).await;
+            } else {
+                crate::loop_brake::add_note(&mut result, &crate::approval_level::told(&auto));
             }
         }
         wrote(&agent.name, &name, &arguments, &mut result);
