@@ -291,6 +291,7 @@ impl AppState {
         self.spawn(crate::storage_watch::run_forever(self.clone()));
         self.spawn(crate::mail_tidy::run_forever(self.clone())); // mail tidy jobs a restart left behind
         self.spawn(crate::mail_rules::run_forever(self.clone())); // standing mail rules: resumes, weekly line
+        self.spawn(crate::approval_level::run_forever(self.clone())); // the auto approvals' daily message
         self.spawn(crate::door_tls::announce_forever(self.clone())); // our door's certificate to linked households
         self.spawn(crate::notebook::tidy::scheduler(self.clone()));
         self.spawn(crate::dates::run_forever(self.clone()));
@@ -1164,7 +1165,26 @@ async fn bridge_card(
             None => Err(HttpError::new(404, "no such request (answered already?)")),
         }?));
     }
-    // a routine on a clock an agent proposed (routines.rs): on with « notify », « silent » (or an older app's « Oui »)
+    // « Passer par mon téléphone pour <site> ? » (phone_exit): the session the phone now carries, in the answer
+    if let Some(id) = run_id.strip_prefix(crate::phone_exit::store::RUN_PREFIX) {
+        let (config, name, id, choice) = (state.config(), agent.name.clone(), id.to_string(), body.choice.clone());
+        let answered = tokio::task::spawn_blocking(move || {
+            crate::phone_exit::agent::answer(&config, &name, &id, &choice, "notification")
+        })
+        .await
+        .map_err(anyhow::Error::from)??;
+        return Ok(Some(match answered {
+            Some(Some(session)) => {
+                let choice = if body.choice.trim().eq_ignore_ascii_case("always") { "always" } else { "once" };
+                Ok(web::ok(json!({"ok": true, "choice": choice,
+                    "exit": {"session": session.json(), "tunnel": "/v1/exit/tunnel"}})))
+            }
+            Some(None) => Ok(web::ok(json!({"ok": true, "choice": "deny"}))),
+            None => Err(HttpError::new(404, "no such request (answered already?)")),
+        }?));
+    }
+    // the question of a routine its agent made (routines.rs): « notify » / « silent » (an older app's « Oui » / « Non »)
+    // only change how its reports come; it is never deleted here
     if let Some(id) = run_id.strip_prefix(crate::routines::RUN_PREFIX) {
         let choice = body.choice.trim().to_lowercase();
         let (config, name, id, given) = (state.config(), agent.name.clone(), id.to_string(), choice.clone());
@@ -1172,8 +1192,19 @@ async fn bridge_card(
             .await
             .map_err(anyhow::Error::from)?;
         return Ok(Some(match answered {
-            Some(r) if crate::card_place::allowed(&choice) => Ok(web::ok(json!({"ok": true, "choice": choice, "muted": r.muted}))),
-            Some(_) => Ok(web::ok(json!({"ok": true, "choice": "deny"}))),
+            Some(r) => Ok(web::ok(json!({"ok": true, "choice": choice, "muted": r.muted}))),
+            None => Err(HttpError::new(404, "no such request (answered already?)")),
+        }?));
+    }
+    // agents at their cap of messages between them (agent_hops.rs): « Oui » is « Continuer », the chain starts over
+    if let Some(id) = run_id.strip_prefix(crate::agent_hops::RUN_PREFIX) {
+        let allow = crate::card_place::allowed(&body.choice.trim().to_lowercase());
+        let (config, name, id) = (state.config(), agent.name.clone(), id.to_string());
+        let answered = tokio::task::spawn_blocking(move || crate::agent_hops::answer(&config, &name, &id, allow))
+            .await
+            .map_err(anyhow::Error::from)?;
+        return Ok(Some(match answered {
+            Some(_) => Ok(web::ok(json!({"ok": true, "choice": if allow { "once" } else { "deny" }}))),
             None => Err(HttpError::new(404, "no such request (answered already?)")),
         }?));
     }
@@ -1182,6 +1213,29 @@ async fn bridge_card(
         return Ok(Some(crate::storage_watch::approve(state, agent, id, &body.choice).await?));
     }
     Ok(None)
+}
+
+/// A card of the bridge's own answered by the bridge itself, as `/v1/approve` would (approval_level.rs: a
+/// non-critical card under « Seulement le critique »). True when it was answered.
+pub(crate) async fn answer_bridge_card(state: &AppState, agent: &AgentConfig, run_id: &str, choice: &str) -> bool {
+    let body = ApproveRequest {
+        agent: agent.name.clone(),
+        run_id: run_id.to_string(),
+        choice: choice.to_string(),
+        request_id: None,
+        answer: None,
+    };
+    match bridge_card(state, agent, run_id, &body).await {
+        Ok(Some(r)) if r.status().is_success() => {
+            crate::card_place::answered_via(state, agent, run_id, choice, Some("auto")).await;
+            true
+        }
+        Ok(_) => false,
+        Err(err) => {
+            tracing::warn!(agent = %agent.name, run_id, error = ?err, "card not answered by the approval level");
+            false
+        }
+    }
 }
 
 async fn approve(State(state): State<AppState>, Json(body): Json<ApproveRequest>) -> ApiResult<Response> {
@@ -1685,6 +1739,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::autonomous::router())
         .merge(crate::triggers::router())
         .merge(crate::routines::router())
+        .merge(crate::approval_level::router())
         .merge(crate::handover::app_router())
         .merge(crate::link_wallet::app_router())
         .merge(crate::place_backup::router())

@@ -252,6 +252,11 @@ pub fn policy_of(config: &Config, store: &Store) -> Value {
         if entry.reset > 0.0 {
             item["reset"] = json!(entry.reset);
         }
+        // the sites its browsing sends through its person's phone (phone_exit: live sessions, « Toujours » sites)
+        let phone = crate::phone_exit::store::routes_for(config, name);
+        if !phone.is_empty() {
+            item["phone"] = json!(phone);
+        }
         agents.insert(name.clone(), item);
     }
     // the connectors the person approved (connectors.rs): their own credentials, their sites only

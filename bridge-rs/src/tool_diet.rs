@@ -59,6 +59,11 @@ pub const HERMES_DEFAULT_DEFERRED: [&str; 18] = [
     "focus_pane",
 ];
 
+/// Hermes' default-deferred tools kept in view for every kind: `todo_list`, the task list the apps show as the turn's
+/// « Étapes » card (steps.rs, `souls::STEPS_RULE`): behind the search, each turn that keeps one spent a discovery
+/// round-trip first (6/11).
+pub const KEPT_IN_VIEW: [&str; 1] = ["todo_list"];
+
 /// Marks a defer list as written by this bridge (a `!name` that is no tool).
 pub const MARK: &str = "!bipagents";
 
@@ -143,7 +148,7 @@ pub const MAX_TURNS: u32 = 150;
 /// first in each agent's tool list in this order (Hermes' sorted order of their names), so that any agent's first call
 /// reads them from the cache another agent left (`tools.order_first`, Hermes patch 0022). Those of the bridge are in
 /// view for every kind ([`diet`]); a tool an agent lacks is skipped (the prefix stops being common there).
-pub const COMMON_FIRST: [&str; 25] = [
+pub const COMMON_FIRST: [&str; 26] = [
     "clarify",
     "manage_connections",
     // in view for a voice call's turns, where what it notes can't be made (live_calls.rs, 4/11)
@@ -165,6 +170,7 @@ pub const COMMON_FIRST: [&str; 25] = [
     "skill_view",
     "skills_list",
     "terminal",
+    "todo_list",
     "tool_call",
     "tool_describe",
     "vision_analyze",
@@ -418,7 +424,7 @@ pub fn diet(kind: &str, bridge_tools: &[String], browser: bool, holds_vault_item
             defer.push(name.to_string());
         }
     };
-    HERMES_DEFAULT_DEFERRED.iter().for_each(|n| add(n));
+    HERMES_DEFAULT_DEFERRED.iter().filter(|n| !KEPT_IN_VIEW.contains(n)).for_each(|n| add(n));
     ALWAYS_DEFERRED.iter().for_each(|n| add(n));
     plan.deferred.iter().for_each(|n| add(n));
     if !holds_vault_item {
@@ -717,8 +723,9 @@ mod tests {
         let d = diet("daily", &tools, false, false, false);
         assert_eq!(d.defer[0], MARK);
         for name in HERMES_DEFAULT_DEFERRED.iter().chain(ALWAYS_DEFERRED.iter()).chain(VAULT_TOOLS.iter()) {
-            assert!(d.defer.contains(&name.to_string()), "{name}");
+            assert_eq!(d.defer.contains(&name.to_string()), !KEPT_IN_VIEW.contains(name), "{name}");
         }
+        assert!(!d.defer.contains(&"todo_list".to_string()), "the « Étapes » card's tool stays in view");
         assert!(d.defer.contains(&"skill_manage".to_string()));
         assert!(d.defer.contains(&"execute_code".to_string()));
         assert!(!d.defer.contains(&"terminal".to_string()));

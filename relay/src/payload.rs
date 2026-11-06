@@ -208,6 +208,12 @@ pub fn scrub_live(payload: &Value) -> Result<Value, &'static str> {
         let n = state.get(key).and_then(Value::as_i64).unwrap_or(0).clamp(0, 999);
         kept.insert(key.into(), Value::from(n));
     }
+    // the agent's task list (« Étapes », 6/11): its numbers only, when the bridge sent them; never the step's words
+    for key in ["steps", "stepsDone"] {
+        if let Some(n) = state.get(key).and_then(Value::as_i64) {
+            kept.insert(key.into(), Value::from(n.clamp(0, 999)));
+        }
+    }
     clean.insert("content-state".into(), Value::Object(kept));
     let mut out = Map::new();
     out.insert("aps".into(), Value::Object(clean));
@@ -323,6 +329,12 @@ mod tests {
         assert_eq!(
             scrub_live(&end).unwrap()["aps"]["content-state"],
             json!({"phase": "working", "subtasks": 0, "subtasksDone": 0})
+        );
+        let steps = json!({"aps": {"timestamp": 1002, "event": "update",
+            "content-state": {"phase": "working", "steps": 5, "stepsDone": 2, "step": "Trier les e-mails de la banque"}}});
+        assert_eq!(
+            scrub_live(&steps).unwrap()["aps"]["content-state"],
+            json!({"phase": "working", "subtasks": 0, "subtasksDone": 0, "steps": 5, "stepsDone": 2})
         );
         assert!(scrub_live(&json!({"aps": {"event": "start", "content-state": {}}})).is_err());
         assert!(scrub_live(&json!({"aps": {"event": "update"}})).is_err());

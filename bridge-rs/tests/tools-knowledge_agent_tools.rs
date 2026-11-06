@@ -415,7 +415,8 @@ fn the_tools_version_is_the_pythons() {
     // reorder (the way along the streets, 2026-11-01), routine_trigger (routines started by an e-mail or a link,
     // 2026-11-02), routine_schedule (routines on a clock, the bridge's own, 2026-11-03), after_call (what to make once a
     // voice call ends, 2026-11-04), start_task never for a later time (2026-11-04, release bench), mail_bulk's ONE call for
-    // several senders (2026-11-04), routine_schedule proposes and asks silent or not (`silent`, 2026-11-06).
+    // several senders (2026-11-04), routine_schedule proposes and asks silent or not (`silent`, 2026-11-06), then makes it
+    // at once with the suggestion (2026-11-06 afternoon).
     let expected = include_str!("golden/agent_tools_version.txt").trim();
     assert_eq!(agent_tools::tools_version(), expected);
 }

@@ -78,11 +78,26 @@ pub struct LiveState {
     pub speaker: Option<String>,
     pub subtasks: u32,
     pub subtasks_done: u32,
+    /// The agent's task list (« Étapes », steps.rs): its steps (cancelled left out) and those done, 0 without a list.
+    pub steps: u32,
+    pub steps_done: u32,
+    /// The step being done (its words): sent only with `[push] previews`, like `detail`.
+    pub step: Option<String>,
 }
 
 impl Default for LiveState {
     fn default() -> Self {
-        LiveState { phase: "working".into(), tool: None, detail: None, speaker: None, subtasks: 0, subtasks_done: 0 }
+        LiveState {
+            phase: "working".into(),
+            tool: None,
+            detail: None,
+            speaker: None,
+            subtasks: 0,
+            subtasks_done: 0,
+            steps: 0,
+            steps_done: 0,
+            step: None,
+        }
     }
 }
 
@@ -118,6 +133,13 @@ impl LiveState {
         }
         state.insert("subtasks".into(), json!(self.subtasks));
         state.insert("subtasksDone".into(), json!(self.subtasks_done));
+        if self.steps > 0 {
+            state.insert("steps".into(), json!(self.steps));
+            state.insert("stepsDone".into(), json!(self.steps_done));
+        }
+        if let (true, Some(step)) = (previews, &self.step) {
+            state.insert("step".into(), json!(step));
+        }
         Value::Object(state)
     }
 
@@ -150,6 +172,13 @@ impl LiveState {
             "subagent.complete" | "subagent.completed" => {
                 self.subtasks_done += 1;
                 self.subtasks = self.subtasks.max(self.subtasks_done);
+            }
+            crate::steps::EVENT => {
+                let steps = data.get("steps").cloned().unwrap_or(Value::Null);
+                let (done, total) = crate::steps::counts(&steps);
+                self.steps = total.min(999) as u32;
+                self.steps_done = done.min(999) as u32;
+                self.step = crate::steps::current(&steps).map(|s| crate::push::pyx::head(&s, 80).to_string());
             }
             "approval.request" => self.phase = "approval".into(),
             "clarify.request" => self.phase = "question".into(),
@@ -368,6 +397,13 @@ pub fn android_payload(agent: &str, key: &str, state: &LiveState, previews: bool
     }
     if let Some(speaker) = &state.speaker {
         payload["speaker"] = json!(speaker);
+    }
+    if state.steps > 0 {
+        payload["steps"] = json!(state.steps.to_string());
+        payload["steps_done"] = json!(state.steps_done.to_string());
+    }
+    if let (true, Some(step)) = (previews, &state.step) {
+        payload["step"] = json!(step);
     }
     payload
 }
@@ -801,6 +837,7 @@ mod tests {
             speaker: None,
             subtasks: 2,
             subtasks_done: 1,
+            ..LiveState::default()
         };
         assert_eq!(
             s.content_state(false),
@@ -821,6 +858,26 @@ mod tests {
             (Some("live"), Some("job:j1"), Some("2"), Some("0"))
         );
         assert!(a.get("detail").is_none());
+    }
+
+    #[test]
+    fn the_task_list_gives_the_step_its_words_only_with_previews() {
+        let mut s = LiveState::default();
+        let steps = json!({"steps": {"items": [{"text": "Lire", "status": "done"},
+                                              {"text": "Trier par urgence", "status": "in_progress"},
+                                              {"text": "Résumer", "status": "pending"}], "done": 1, "total": 3}});
+        assert_eq!(s.apply(crate::steps::EVENT, &data(steps.clone()), false), Change::Step);
+        assert_eq!(s.apply(crate::steps::EVENT, &data(steps), false), Change::None, "the same list: nothing to send");
+        let plain = s.content_state(false);
+        assert_eq!((plain["steps"].as_u64(), plain["stepsDone"].as_u64()), (Some(3), Some(1)));
+        assert!(plain.get("step").is_none(), "never the agent's words through Apple without previews");
+        assert_eq!(s.content_state(true)["step"], "Trier par urgence");
+        let a = android_payload("vie", "run:r1", &s, false, false);
+        assert_eq!((a["steps"].as_str(), a["steps_done"].as_str()), (Some("3"), Some("1")));
+        assert!(a.get("step").is_none());
+        assert_eq!(android_payload("vie", "run:r1", &s, true, false)["step"], "Trier par urgence");
+        // no list: the content state is as before (older apps, the relay)
+        assert!(LiveState::default().content_state(true).get("steps").is_none());
     }
 
     #[test]

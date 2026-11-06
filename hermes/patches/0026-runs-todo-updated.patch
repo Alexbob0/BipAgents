@@ -1,0 +1,187 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: steps <steps@local>
+Date: Fri, 6 Nov 2026 07:03:35 +0100
+Subject: Runs API: todo.updated carries the agent's task list after each Todo
+ call
+
+A run-stream client got tool.started / tool.completed for todo_list with no list (the canonical turn's completion has no preview, the other path a 500-character cut of the JSON), so it could not show the plan the agent keeps. After every Todo call that returns a list, the stream now carries todo.updated: the whole list as the call left it (id, content, status, parent), its revision and summary, right after the call's tool.completed; contents secret-redacted. The ACP adapter already sends the same list as a plan update.
+
+Bip-Patch: 0026-runs-todo-updated
+---
+ gateway/platforms/api_server_runs.py       | 43 +++++++++-
+ tests/gateway/test_api_server_runs_todo.py | 98 ++++++++++++++++++++++
+ 2 files changed, 140 insertions(+), 1 deletion(-)
+ create mode 100644 tests/gateway/test_api_server_runs_todo.py
+
+diff --git a/gateway/platforms/api_server_runs.py b/gateway/platforms/api_server_runs.py
+index d3de00fced04f99f83c01602e7c21a7e5f1e061e..d1b35e4f81d34853c223463a3c05db7a8519cea4 100644
+--- a/gateway/platforms/api_server_runs.py
++++ b/gateway/platforms/api_server_runs.py
+@@ -114,6 +114,40 @@ def _tool_completed_preview(result: Any, redact_sensitive_text: Callable[..., st
+     return preview if len(preview) <= limit else preview[: limit - 3] + "..."
+ 
+ 
++def _todo_updated_fields(tool_name: Any, result: Any, redact_sensitive_text: Callable[..., str]) -> Optional[dict[str, Any]]:
++    """``todo.updated`` payload after a Todo tool call: the whole list as the call left it (``todos``: ``id``,
++    ``content``, ``status``, ``parent``?), its ``revision`` and ``summary``, so a run-stream client can show the
++    agent's plan live (the ACP adapter's ``plan`` update, for Runs API clients). None for any other tool or a failed
++    write (an error result). Contents are model-written: secrets redacted."""
++    from tools.todo_tool import is_todo_tool_name
++    if not is_todo_tool_name(tool_name) or result is None:
++        return None
++    data = result
++    if isinstance(result, str):
++        try:
++            data = json.loads(result)
++        except (TypeError, ValueError):
++            return None
++    if not isinstance(data, dict) or not isinstance(data.get("todos"), list):
++        return None
++    todos = []
++    for item in data["todos"]:
++        if not isinstance(item, dict) or not str(item.get("content") or "").strip():
++            continue
++        entry = {"id": str(item.get("id") or ""),
++                 "content": redact_sensitive_text(str(item["content"]), force=True),
++                 "status": str(item.get("status") or "pending")}
++        if item.get("parent"):
++            entry["parent"] = str(item["parent"])
++        todos.append(entry)
++    fields: dict[str, Any] = {"todos": todos}
++    if isinstance(data.get("revision"), int):
++        fields["revision"] = data["revision"]
++    if isinstance(data.get("summary"), dict):
++        fields["summary"] = data["summary"]
++    return fields
++
++
+ _RUN_STREAM_SUBSCRIBER_OVERFLOW = object()
+ _RUN_STREAM_WRITE_TIMEOUT = 5.0
+ 
+@@ -343,6 +377,11 @@ def _make_run_event_callback(self, run_id: str, loop: asyncio.AbstractEventLoop,
+                 event_fields["preview"] = _tool_completed_preview(
+                     kwargs.get("result"), redact_sensitive_text)
+             _push(_run_event(run_id, event_type, **event_fields))
++            if event_type == "tool.completed":
++                todo = _todo_updated_fields(
++                    tool_name, kwargs.get("result", kwargs.get("raw_result")), redact_sensitive_text)
++                if todo is not None:
++                    _push(_run_event(run_id, "todo.updated", **todo))
+         elif event_type == "model.usage":
+             _push(_run_event(run_id, event_type, **kwargs["usage"]))
+         elif event_type in {"subagent.start", "subagent.complete"}:
+@@ -1120,7 +1159,9 @@ async def _execute_run(self, run: _RunLaunch, *, _api_server) -> None:
+             def _tool_complete(call_id, name, args, result):
+                 from agent.display import _detect_tool_failure
+                 is_error, _ = _detect_tool_failure(name, result)
+-                tool_cb("tool.completed", name, None, args, tool_call_id=call_id, is_error=bool(is_error))
++                # raw_result: for the events derived from a result (todo.updated); this path's preview stays empty.
++                tool_cb("tool.completed", name, None, args, tool_call_id=call_id, is_error=bool(is_error),
++                        raw_result=result)
+ 
+             with observe_api_controls(run.admission, _control_cb):
+                 result, usage = await observe_api_turn(
+diff --git a/tests/gateway/test_api_server_runs_todo.py b/tests/gateway/test_api_server_runs_todo.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..bb0fc6e72418366fa84ebc56c73a5c491afab6af
+--- /dev/null
++++ b/tests/gateway/test_api_server_runs_todo.py
+@@ -0,0 +1,98 @@
++"""``todo.updated`` on the Runs API: the agent's task list after each Todo tool call.
++
++A run-stream client saw ``tool.started`` / ``tool.completed`` for ``todo_list`` with no list (the canonical turn's
++completion carries no preview, the other path a 500-character cut of the JSON): it could not show the plan the agent
++keeps. After every Todo call that returns a list, the stream now carries ``todo.updated`` with the whole list as the
++call left it, right after the call's ``tool.completed``. ACP clients get the same list as a ``plan`` update.
++"""
++import asyncio
++import json
++
++import pytest
++
++from gateway.platforms.api_server_runs import _RunStream, _todo_updated_fields
++from tools.todo_tool import TodoStore, todo_tool
++
++from tests.gateway.test_api_server_runs import _make_adapter
++
++
++def _redact(text, force=False):
++    return text.replace("sk-abcdefghijklmnopqrstuvwxyz", "sk-***")
++
++
++def _list(*items, merge=False, store=None):
++    store = store or TodoStore()
++    return store, todo_tool(todos=list(items), merge=merge, store=store)
++
++
++async def _events(adapter, run_id, *calls):
++    loop = asyncio.get_running_loop()
++    adapter._run_streams[run_id] = _RunStream()
++    callback = adapter._make_run_event_callback(run_id, loop)
++    for args, kwargs in calls:
++        callback(*args, **kwargs)
++    await asyncio.sleep(0)  # the callback hops onto the loop via call_soon_threadsafe
++    return [event for _, event in adapter._run_streams[run_id].backlog]
++
++
++@pytest.mark.asyncio
++async def test_each_todo_call_is_followed_by_the_whole_list():
++    store, first = _list({"id": "1", "content": "Lire les e-mails", "status": "in_progress"},
++                         {"id": "2", "content": "Trier", "status": "pending"})
++    _, second = _list({"id": "1", "content": "Lire les e-mails", "status": "completed"},
++                      {"id": "2", "content": "Trier", "status": "in_progress"}, merge=True, store=store)
++    events = await _events(
++        _make_adapter(), "run_todo",
++        (("tool.completed", "todo_list"), {"duration": 0.01, "is_error": False, "result": first}),
++        (("tool.completed", "todo_list"), {"duration": 0.01, "is_error": False, "result": second}),
++    )
++    assert [e["event"] for e in events] == ["tool.completed", "todo.updated", "tool.completed", "todo.updated"]
++    assert events[1]["todos"] == [{"id": "1", "content": "Lire les e-mails", "status": "in_progress"},
++                                  {"id": "2", "content": "Trier", "status": "pending"}]
++    assert [t["status"] for t in events[3]["todos"]] == ["completed", "in_progress"]
++    assert events[3]["revision"] == 2
++    assert events[3]["summary"]["completed"] == 1 and events[3]["summary"]["total"] == 2
++    assert events[3]["run_id"] == "run_todo"
++
++
++@pytest.mark.asyncio
++async def test_the_canonical_turns_completion_carries_the_list_but_still_no_preview():
++    _, result = _list({"id": "a", "content": "Réserver le train", "status": "pending"})
++    events = await _events(
++        _make_adapter(), "run_canonical",
++        (("tool.completed", "todo_list", None, None), {"tool_call_id": "c1", "is_error": False, "raw_result": result}),
++    )
++    assert [e["event"] for e in events] == ["tool.completed", "todo.updated"]
++    assert events[0]["preview"] == ""
++    assert events[1]["todos"][0]["content"] == "Réserver le train"
++
++
++@pytest.mark.asyncio
++async def test_subtasks_keep_their_parent_and_secrets_are_redacted():
++    _, result = _list({"id": "p", "content": "Voyage", "status": "in_progress"},
++                      {"id": "c", "content": "Clé sk-abcdefghijklmnopqrstuvwxyz", "status": "pending", "parent": "p"})
++    fields = _todo_updated_fields("todo_list", result, _redact)
++    assert fields["todos"][1]["parent"] == "p"
++    assert "abcdefghijklmnopqrstuvwxyz" not in json.dumps(fields)
++
++
++@pytest.mark.asyncio
++async def test_other_tools_failed_writes_and_unparsable_results_send_nothing_more():
++    _, result = _list({"id": "1", "content": "x", "status": "pending"})
++    failed = todo_tool(todos=[{"id": "1", "content": "", "status": "pending"}], store=TodoStore())
++    events = await _events(
++        _make_adapter(), "run_other",
++        (("tool.completed", "read_file"), {"is_error": False, "result": result}),
++        (("tool.completed", "todo_list"), {"is_error": True, "result": failed}),
++        (("tool.completed", "todo_list"), {"is_error": False, "result": "not json"}),
++        (("tool.started", "todo_list", "planning 1 task(s)"), {}),
++    )
++    assert [e["event"] for e in events] == ["tool.completed"] * 3 + ["tool.started"]
++
++
++def test_the_legacy_name_and_a_dict_result_are_understood():
++    store = TodoStore()
++    store.write([{"id": "1", "content": "Étape", "status": "completed"}])
++    fields = _todo_updated_fields("todo", {"todos": store.read(), "revision": 1}, _redact)
++    assert fields == {"todos": [{"id": "1", "content": "Étape", "status": "completed"}], "revision": 1}
++    assert _todo_updated_fields("todo_list", None, _redact) is None

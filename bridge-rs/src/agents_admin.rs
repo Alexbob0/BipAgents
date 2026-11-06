@@ -2149,6 +2149,7 @@ pub fn soul_text(config: &Config, agent: &AgentConfig, personality: &str, lang: 
     let text = crate::souls::with_health(&text, !closed && crate::health::enabled(config, &agent.name));
     let circle = if closed { None } else { crate::shared_memory::membership(config, &agent.name) };
     let text = crate::souls::with_shared_memory(&text, circle);
+    let text = if closed { crate::approval_level::split_block(&text).0 } else { crate::approval_level::with_block(config, &agent.name, &text) };
     let text = crate::family_agent::with_family(&text, family);
     let text = crate::project_agent::with_project(&text, project);
     let text = crate::guide::with_blocks(config, agent, &text);
@@ -2162,6 +2163,7 @@ pub fn personality_of(soul: &str) -> (String, Option<String>) {
     let (soul, _) = crate::souls::split_health(&soul);
     let (soul, _) = crate::souls::split_notebook(&soul);
     let (soul, _) = crate::souls::split_shared_memory(&soul);
+    let (soul, _) = crate::approval_level::split_block(&soul);
     let (soul, _) = crate::skill_library::split_block(&soul);
     let (soul, _) = crate::souls::split_archives(&soul);
     let soul = crate::souls::split_server(&crate::souls::split_payments(&soul));

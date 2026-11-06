@@ -160,7 +160,9 @@ pub fn bridge_cards(state: &AppState, config: &Config, agent: Option<&str>) -> V
     items.extend(crate::mail_rules::pending_items(config, agent));
     items.extend(crate::feature_tips::pending_items(config, agent));
     items.extend(crate::triggers::pending_items(config, agent));
+    items.extend(crate::phone_exit::store::pending_items(config, agent));
     items.extend(crate::routines::pending_items(config, agent));
+    items.extend(crate::agent_hops::pending_items(config, agent));
     items
 }
 
@@ -313,6 +315,13 @@ pub async fn place_made(state: &AppState, agent: &AgentConfig, run_id: &str, too
     place(state, agent, &[run_id.to_string()], turn.as_deref()).await;
 }
 
+/// A card made for another conversation than the calling turn's (agent_hops.rs: the one a chain of messages between
+/// agents started from, while another agent's turn hit the cap): placed in the turn `run_id` of `agent` (None: its
+/// main conversation).
+pub async fn place_for(state: &AppState, agent: &AgentConfig, card: &str, run_id: Option<&str>) {
+    place(state, agent, &[card.to_string()], run_id).await;
+}
+
 /// A card of this kind can show in a conversation.
 fn placeable(run_id: &str) -> bool {
     !NOT_IN_CONVERSATIONS.iter().any(|p| run_id.starts_with(p))
@@ -383,6 +392,11 @@ pub fn with_session(config: &Config, mut item: Dict) -> Dict {
 /// A card answered (any device, the Boîte or the conversation): the conversations showing it touched, the decision
 /// kept in the one it showed in, its notifications read on every device.
 pub async fn answered(state: &AppState, agent: &AgentConfig, run_id: &str, choice: &str) {
+    answered_via(state, agent, run_id, choice, None).await;
+}
+
+/// `answered`, saying how (`via`: « auto » for one approved by the person's level, approval_level.rs).
+pub async fn answered_via(state: &AppState, agent: &AgentConfig, run_id: &str, choice: &str, via: Option<&str>) {
     note_answered(run_id);
     let config = state.config();
     // the card's id: its request id in the approvals' shape, its notification's `ref`
@@ -403,6 +417,9 @@ pub async fn answered(state: &AppState, agent: &AgentConfig, run_id: &str, choic
         fields.insert("request_id".into(), json!(id));
         fields.insert("choice".into(), json!(choice));
         fields.insert("session_id".into(), json!(session));
+        if let Some(via) = via {
+            fields.insert("via".into(), json!(via));
+        }
         if let Err(err) = crate::approvals_log::record(&config, &agent.name, &fields) {
             tracing::debug!(agent = %agent.name, error = %err, "card decision not placed");
         }
@@ -441,6 +458,8 @@ fn asking_tool(run_id: &str) -> &'static str {
         crate::connectors::REGISTER
     } else if run_id.starts_with(crate::sandbox_sites::RUN_PREFIX) {
         crate::sandbox_sites::REQUEST
+    } else if run_id.starts_with(crate::phone_exit::store::RUN_PREFIX) {
+        crate::phone_exit::agent::TOOL_NAME
     } else {
         ""
     }
@@ -707,6 +726,10 @@ fn telling_tools(card: &str) -> &'static [&'static str] {
     const SITES: [&str; 2] = [crate::sandbox_sites::REQUEST, crate::sandbox_sites::LIST];
     const SECRET: [&str; 1] = [crate::connectors::ASK_SECRET];
     const CONNECTOR: [&str; 1] = [crate::connectors::REGISTER];
+    const PHONE_EXIT: [&str; 1] = [crate::phone_exit::agent::TOOL_NAME];
+    if card.starts_with(crate::phone_exit::store::RUN_PREFIX) {
+        return &PHONE_EXIT;
+    }
     if card.starts_with(crate::sandbox_sites::RUN_PREFIX) {
         &SITES
     } else if card.starts_with(crate::secrets::RUN_PREFIX) {

@@ -531,6 +531,18 @@ pub fn segment_items(
                     items.push(item(id.clone(), 0, turn, body));
                 }
                 for (n, (call_id, name, args)) in calls.into_iter().enumerate() {
+                    if crate::steps::is_todo_call(&name, &args) {
+                        // the agent's task list: a `steps` item per call, one per turn after `steps::fold` (§6.3b)
+                        let list = call_id
+                            .as_deref()
+                            .and_then(|c| results.get(c))
+                            .and_then(|r| crate::steps::of_result(&words_and_images(&r.content).0));
+                        if let Some(steps) = list {
+                            let body = json!({"kind": "steps", "steps": steps});
+                            items.push(item(format!("{id}.t{n}"), 1 + n as u32, turn, body));
+                        }
+                        continue;
+                    }
                     let result = call_id
                         .as_deref()
                         .and_then(|c| results.get(c))
@@ -959,6 +971,52 @@ mod tests {
                 "Voici le comparatif."
             ]
         );
+    }
+
+    #[test]
+    fn a_turns_todo_calls_are_one_steps_item_where_its_last_call_is() {
+        let list = |s1: &str, s2: &str| {
+            json!(format!(
+                r#"{{"todos": [{{"id": "1", "content": "Lire", "status": "{s1}"}}, {{"id": "2", "content": "Trier", "status": "{s2}"}}], "revision": 1}}"#
+            ))
+        };
+        let mut rows = vec![
+            row(1, "user", json!("Trie mes e-mails")),
+            row(2, "assistant", json!("Je m'en occupe.")),
+            row(3, "tool", list("in_progress", "pending")),
+            row(4, "assistant", json!("")),
+            row(5, "tool", json!("12 e-mails")),
+            row(6, "tool", list("completed", "completed")),
+            row(7, "assistant", json!("C'est trié.")),
+            row(8, "user", json!("Merci")),
+            row(9, "assistant", json!("")),
+            row(10, "tool", json!(r#"{"error": "Todo item '1' has empty or missing content."}"#)),
+            row(11, "assistant", json!("De rien.")),
+        ];
+        // directly, then through the tool search with another call in the same row, then a failed write
+        rows[1].tool_calls = Some(json!([{"id": "a", "function": {"name": "todo_list", "arguments": "{}"}}]));
+        rows[2].tool_call_id = Some("a".into());
+        let wrapped = r#"{"calls": [{"name": "todo_list", "arguments": {"todos": []}}]}"#;
+        rows[3].tool_calls = Some(json!([{"id": "b", "function": {"name": "mail_search", "arguments": "{}"}},
+                                         {"id": "c", "function": {"name": "tool_call", "arguments": wrapped}}]));
+        rows[4].tool_call_id = Some("b".into());
+        rows[5].tool_call_id = Some("c".into());
+        rows[8].tool_calls = Some(json!([{"id": "d", "function": {"name": "todo_list", "arguments": "{}"}}]));
+        rows[9].tool_call_id = Some("d".into());
+        let mut got = items(&rows);
+        crate::steps::fold(&mut got, "fr");
+        let kinds: Vec<&str> = got.iter().map(Item::kind).collect();
+        assert_eq!(kinds, ["message", "message", "tool", "steps", "message", "message", "message"]);
+        let steps = &got[3];
+        let turn = got[0].id.clone();
+        assert_eq!(steps.id, format!("{turn}.steps"));
+        assert_eq!(steps.turn, turn);
+        assert_eq!(steps.body["steps"]["done"], 2);
+        assert_eq!(steps.body["steps"]["items"][1], json!({"text": "Trier", "status": "done"}));
+        // where the last call is: after the mail search of the same row, before the reply
+        assert_eq!(steps.pos, (0, 4, 2));
+        assert!(got.iter().all(|i| i.body.get("tool").is_none_or(|t| t["name"] != "todo_list")));
+        assert!(!draws(steps), "no day of its own: an older app never loses a day divider to it");
     }
 
     #[test]

@@ -773,6 +773,13 @@ pub fn proxy_config(config: &Config, agent: &str, engine: &str, ports: &IndexMap
         "ended": place.join("ended").to_string_lossy(), "after_run": crate::browser_mcp::AFTER_RUN_SECONDS,
         "shared_cache": PathBuf::from(&config.browser.root).join("mcp-cache.json").to_string_lossy(),
         "ready_seconds": crate::browser_mcp::READY_SECONDS,
+        // the phone exit's hub (phone_exit): why a page failed (`WHY`), a challenge page asked about (`ASK`)
+        "agent": agent,
+        "exit_sock": if config.phone_exit.enabled {
+            crate::phone_exit::socket_path(config).to_string_lossy().to_string()
+        } else {
+            String::new()
+        },
     })
 }
 

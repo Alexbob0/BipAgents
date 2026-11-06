@@ -45,6 +45,7 @@ pub mod notifications;
 // -- push-runs -------------------------------------------------------------------------------------
 pub mod apns;
 pub mod approval_command;
+pub mod approval_level;
 pub mod approval_text;
 pub mod approvals_log;
 pub mod made_files;
@@ -122,6 +123,7 @@ pub mod souls;
 pub mod space;
 pub mod spaces;
 pub mod ssh_keys;
+pub mod steps;
 /// The styled documents skills (decks and Word documents), in place of Hermes' `powerpoint` and `docx`.
 pub mod style_skills;
 /// What each kind of agent keeps in view of Hermes' tools (token diet, phase 2).
@@ -135,6 +137,7 @@ pub mod agent_email;
 pub mod agent_email_smtp;
 pub mod agent_files;
 pub mod give_file;
+pub mod agent_hops;
 pub mod agent_messages;
 pub mod agent_pairs;
 pub mod agent_tools;

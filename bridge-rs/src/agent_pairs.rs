@@ -13,6 +13,12 @@
 //!   which shows inside the person's main conversation with that agent, as for the rooms. The asker gets the answer in
 //!   the same call; a turn waiting for the person past `agent_messages::ANSWER_SECONDS` goes on, and its answer is
 //!   kept here (the asker is told so).
+//! - **One turn at a time in each agent's conversation of the pair**, never a wait on a turn that waits on the ask
+//!   (6/11; until then one lock per pair, and A → B → A waited on it for `ANSWER_SECONDS`, 600 s): A → B → A answers
+//!   in B's then A's conversation; a message to an agent whose conversation is held by a turn of the same chain of
+//!   messages (agent_hops.rs: B → A → B, B waiting for A's answer) is refused at once (`Cycle`); held by another
+//!   exchange, the ask waits `BUSY_WAIT` at most, then is queued (`Queued`, its answer kept here). The target's turn
+//!   is its asker's chain's: what it writes to an agent counts against the hop cap.
 //! - **The bridge keeps the pair's thread** (`<data>/agent-pairs.json`, 0600): the asks and the answers, with who and
 //!   when, the last `MESSAGES_KEPT`; the person reads it in the app, read-only, from a compact line in the main
 //!   conversation of either agent (« Pub & Acquisition ⇄ Bot Kerfy · 3 messages · Voir l'échange »), placed at the
@@ -78,10 +84,18 @@ const POLL_SECONDS: f64 = 1.0;
 /// An answer kept, at most (characters).
 pub const TEXT_MAX: usize = 16000;
 
+/// How long an ask waits for the target's conversation of the pair when another exchange holds it (seconds): then it
+/// is queued (its answer kept in the pair's thread) and the asker told so at once, never waiting on a turn that may
+/// itself wait on it.
+pub const BUSY_WAIT: f64 = 20.0;
+
 static LOCK: Mutex<()> = Mutex::new(());
-/// One turn at a time per pair (two asks at once would meet in the same Hermes conversation).
+/// One turn at a time in each agent's conversation of a pair (two asks at once would meet in the same Hermes
+/// conversation): by `<pair id>/<target>`. A → B → A uses B's then A's: never the same one.
 static TURNS: LazyLock<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+/// The chain (agent_hops.rs) whose turn holds each of them.
+static HOLDERS: LazyLock<Mutex<HashMap<String, String>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct Message {
@@ -264,10 +278,24 @@ pub enum Answer {
     Waiting,
     /// It couldn't be reached or its turn failed.
     Unreachable,
+    /// Its conversation of the pair is held by a turn of this same chain (agent_hops.rs): it is itself waiting for
+    /// this exchange (A → B → A → B), so the message can't be answered there. Told at once, nothing sent.
+    Cycle,
+    /// Another exchange holds its conversation of the pair past `BUSY_WAIT`: queued, its answer kept in the thread.
+    Queued,
 }
 
-fn turn_lock(id: &str) -> Arc<tokio::sync::Mutex<()>> {
-    TURNS.lock().unwrap_or_else(|e| e.into_inner()).entry(id.to_string()).or_default().clone()
+fn turn_lock(key: &str) -> Arc<tokio::sync::Mutex<()>> {
+    TURNS.lock().unwrap_or_else(|e| e.into_inner()).entry(key.to_string()).or_default().clone()
+}
+
+/// The lock of `target`'s conversation of pair `id`.
+fn lock_key(id: &str, target: &str) -> String {
+    format!("{id}/{target}")
+}
+
+fn holders() -> std::sync::MutexGuard<'static, HashMap<String, String>> {
+    HOLDERS.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 /// `asker` asks `target` in their pair's conversation: the target's answer within `wait` seconds (its turn goes on
@@ -281,31 +309,82 @@ pub async fn ask(
     message: &str,
     wait: f64,
 ) -> Answer {
+    ask_in(http, hub, config, asker, target, message, wait, None).await
+}
+
+/// `ask`, as a message of `chain` (agent_hops.rs): the target's turn is the chain's (what it writes counts there).
+/// Never waits on a turn that waits on this ask: the target's conversation held by the same chain is a `Cycle`, told
+/// at once; held by another exchange, the ask waits `BUSY_WAIT` at most, then is `Queued`.
+#[allow(clippy::too_many_arguments)]
+pub async fn ask_in(
+    http: &reqwest::Client,
+    hub: Option<Arc<RunHub>>,
+    config: &Config,
+    asker: &AgentConfig,
+    target: &AgentConfig,
+    message: &str,
+    wait: f64,
+    chain: Option<&str>,
+) -> Answer {
     let id = pair_id(&asker.name, &target.name);
+    let key = lock_key(&id, &target.name);
+    let lock = turn_lock(&key);
+    let held = lock.clone().try_lock_owned().ok();
+    match (&held, chain) {
+        (Some(_), Some(chain)) => {
+            holders().insert(key.clone(), chain.to_string());
+        }
+        (Some(_), None) => {
+            holders().remove(&key);
+        }
+        (None, Some(chain)) if holders().get(&key).is_some_and(|h| h == chain) => {
+            tracing::info!(agent = %asker.name, target = %target.name, "agent pair: a cycle in one exchange, told at once");
+            return Answer::Cycle;
+        }
+        (None, _) => {}
+    }
     if let Err(exc) = record(config, &asker.name, &target.name, "ask", message, py::time_time()) {
         tracing::warn!(agent = %asker.name, target = %target.name, error = %exc, "agent pair: the ask not kept");
     }
+    let (started_tx, started_rx) = tokio::sync::oneshot::channel::<()>();
     let (tx, rx) = tokio::sync::oneshot::channel::<Answer>();
-    let (http, config, asker, target, message) =
-        (http.clone(), config.clone(), asker.clone(), target.clone(), message.to_string());
+    let (http, config, asker, target, message, chain) =
+        (http.clone(), config.clone(), asker.clone(), target.clone(), message.to_string(), chain.map(str::to_string));
     tokio::spawn(async move {
-        let lock = turn_lock(&id);
-        let _turn = lock.lock().await;
-        let answer = turn(&http, hub, &config, &id, &asker, &target, &message, wait).await;
+        let _turn = match held {
+            Some(guard) => guard,
+            None => {
+                let guard = lock.lock_owned().await;
+                match &chain {
+                    Some(chain) => holders().insert(key.clone(), chain.clone()),
+                    None => holders().remove(&key),
+                };
+                guard
+            }
+        };
+        let _ = started_tx.send(());
+        let answer = turn(&http, hub, &config, &id, &asker, &target, &message, wait, chain.as_deref()).await;
+        holders().remove(&key);
         let at = py::time_time();
         let kept = match &answer {
             Answer::Text(text) => record(&config, &target.name, &asker.name, "answer", text, at),
             Answer::Empty => record(&config, &target.name, &asker.name, "notice", "answered nothing", at),
             Answer::Unreachable => record(&config, &target.name, &asker.name, "notice", "couldn't answer", at),
-            Answer::Waiting => Ok((0, 0)),
+            Answer::Waiting | Answer::Cycle | Answer::Queued => Ok((0, 0)),
         };
         if let Err(exc) = kept {
             tracing::warn!(agent = %asker.name, target = %target.name, error = %exc, "agent pair: the answer not kept");
         }
         let _ = tx.send(answer);
     });
+    // its conversation held by another exchange: queued past BUSY_WAIT, the asker told at once
+    let since = py::time_time();
+    if tokio::time::timeout(Duration::from_secs_f64(BUSY_WAIT), started_rx).await.is_err() {
+        return Answer::Queued;
+    }
+    let left = (wait - (py::time_time() - since)).max(1.0);
     // a turn waiting for the person goes on past `wait` (the task keeps its answer): the asker is told so
-    match tokio::time::timeout(Duration::from_secs_f64(wait + 5.0), rx).await {
+    match tokio::time::timeout(Duration::from_secs_f64(left + 5.0), rx).await {
         Ok(Ok(answer)) => answer,
         _ => Answer::Waiting,
     }
@@ -357,6 +436,7 @@ async fn turn(
     target: &AgentConfig,
     message: &str,
     wait: f64,
+    chain: Option<&str>,
 ) -> Answer {
     let hermes = HermesClient::new(http.clone());
     let input = crate::dates::now::stamped(config, target, &framed(asker, message));
@@ -383,6 +463,26 @@ async fn turn(
         }
     }
     let Some((run_id, session)) = started else { return Answer::Unreachable };
+    // what the target writes to an agent in this turn counts in the asker's chain (agent_hops.rs)
+    if let Some(chain) = chain {
+        crate::agent_hops::follow(&run_id, chain);
+    }
+    let answer = follow_turn(&hermes, hub, target, &run_id, &session, wait).await;
+    crate::agent_hops::forget_run(&run_id);
+    answer
+}
+
+/// The target's run `run_id` followed until it ends: stopped after `wait` seconds, or `APPROVAL_WAIT` while it waits
+/// for the person.
+async fn follow_turn(
+    hermes: &HermesClient,
+    hub: Option<Arc<RunHub>>,
+    target: &AgentConfig,
+    run_id: &str,
+    session: &str,
+    wait: f64,
+) -> Answer {
+    let (run_id, session) = (run_id.to_string(), session.to_string());
     if let Some(hub) = &hub {
         // approvals and questions nobody follows are pushed (the Boîte); the answer goes back to the asker
         hub.watch(target, &run_id, Some(&session), false);
