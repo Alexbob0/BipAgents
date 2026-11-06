@@ -458,6 +458,21 @@ def test_the_kill_switches_the_journal_and_the_boite(bridges):
     assert ("Mo" in carried or "MB" in carried) and "min" in carried
 
 
+def test_browsers_set_up_before_learn_where_the_hub_is(bridges):
+    """An agent's browser tool set up before the phone exit was switched on (its mcp.json) is told the hub's socket
+    at the bridge's start, so it can tell the agent why a page failed."""
+    bridge = bridges.new()
+    config = bridge.state_dir / "browsers" / "wellness" / "mcp.json"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_text(json.dumps({"server": ["true"], "busy": "/nonexistent"}))
+    bridge.config["phone_exit"] = {"enabled": True}
+    bridge.start()
+    written = wait_for(lambda: json.loads(config.read_text()).get("exit_sock"))
+    assert written == sock(bridge)
+    assert json.loads(config.read_text())["agent"] == "wellness"
+    assert json.loads(config.read_text())["server"] == ["true"]   # the rest kept
+
+
 def test_settings_and_sites(bridges):
     bridge = exit_bridge(bridges)
     over = bridge.get("/v1/exit", headers=AUTH).json()

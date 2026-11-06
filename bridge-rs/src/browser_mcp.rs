@@ -349,11 +349,28 @@ impl Proxy {
         }
     }
 
+    /// The hub's socket and the agent's name: this config's, else its file read again (one written before the phone
+    /// exit was switched on gets them at the bridge's next start, phone_exit `serve`, while this process goes on).
+    fn exit_keys(&self) -> (String, String) {
+        let pick = |c: &Dict| {
+            let text = |k: &str| c.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+            (text("exit_sock"), text("agent"))
+        };
+        let (sock, agent) = pick(&self.config);
+        if !sock.is_empty() {
+            return (sock, agent);
+        }
+        let Some(path) = self.config.get("config_path").and_then(Value::as_str) else { return Default::default() };
+        match std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) {
+            Some(Value::Object(file)) => pick(&file),
+            _ => Default::default(),
+        }
+    }
+
     /// The phone exit's lines added to a tool's result: why the person's phone refused this page's site lately, or
     /// what was done about a challenge page (a card for the person). Nothing when the phone exit is off here.
     async fn phone_exit_lines(&self, params: Option<&Value>, response: &mut Dict) {
-        let sock = self.config.get("exit_sock").and_then(Value::as_str).unwrap_or("").to_string();
-        let agent = self.config.get("agent").and_then(Value::as_str).unwrap_or("").to_string();
+        let (sock, agent) = self.exit_keys();
         if sock.is_empty() || agent.is_empty() {
             return;
         }
@@ -745,7 +762,7 @@ pub fn main(args: Vec<String>) -> i32 {
         eprintln!("usage: bip-browser-mcp <config.json>");
         return 1;
     };
-    let config = match std::fs::read_to_string(path)
+    let mut config = match std::fs::read_to_string(path)
         .map_err(|e| e.to_string())
         .and_then(|t| serde_json::from_str::<Value>(&t).map_err(|e| e.to_string()))
     {
@@ -759,6 +776,7 @@ pub fn main(args: Vec<String>) -> i32 {
             return 1;
         }
     };
+    config.insert("config_path".into(), json!(path)); // read again for the phone exit's keys (`exit_keys`)
     // Hermes starts MCP servers with few variables: `systemctl --user` and rootless podman find the session here.
     // SAFETY: getuid cannot fail.
     let runtime_dir = PathBuf::from(format!("/run/user/{}", unsafe { libc::getuid() }));

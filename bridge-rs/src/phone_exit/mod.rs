@@ -825,12 +825,38 @@ pub async fn serve(state: AppState) {
     };
     // the proxy's file with the routes as they are now (a session that outlived a restart)
     let _ = crate::sandbox_sites::ensure_policy(&config);
+    refresh_browser_configs(&config);
     tracing::info!(target: "bipbridge::phone_exit", "phone exit: on");
     tokio::spawn(watch(state.clone()));
     loop {
         let Ok((conn, _)) = listener.accept().await else { continue };
         let state = state.clone();
         tokio::spawn(async move { local_stream(state, conn).await });
+    }
+}
+
+/// The agents' browser tools (bip-browser-mcp's `mcp.json`, written when each browser was set up) told where the hub
+/// is, for the agents set up before the phone exit was switched on.
+fn refresh_browser_configs(config: &Config) {
+    let sock = socket_path(config).to_string_lossy().to_string();
+    for name in config.agents.keys() {
+        let path = crate::browsers::folder(config, name).join("mcp.json");
+        let Some(Value::Object(mut settings)) =
+            std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok())
+        else {
+            continue;
+        };
+        if settings.get("exit_sock").and_then(Value::as_str) == Some(sock.as_str())
+            && settings.get("agent").and_then(Value::as_str) == Some(name.as_str())
+        {
+            continue;
+        }
+        settings.insert("agent".into(), json!(name));
+        settings.insert("exit_sock".into(), json!(sock));
+        let body = format!("{}\n", crate::py::Dumps::new().indent(2).dumps(&Value::Object(settings)));
+        if let Err(exc) = std::fs::write(&path, body) {
+            tracing::warn!(target: "bipbridge::phone_exit", agent = %name, error = %exc, "phone exit: browser config not updated");
+        }
     }
 }
 

@@ -258,9 +258,13 @@ they can do this step themselves (« Prendre la main »).",
 /// themselves, not of the scripts ordinary pages load (DataDome's tag is on leboncoin's every page).
 pub fn challenge_kind(text: &str) -> Option<&'static str> {
     let has = |s: &str| text.contains(s);
-    if has("Just a moment...") || has("Just a moment…") || has("cf_chl_opt") || has("cf-chl-widget")
-        || has("Attention Required! | Cloudflare")
-    {
+    // Cloudflare's challenge page, its title in the visitor's language (« Vérification de sécurité » for ameli, 6/11)
+    const CLOUDFLARE: [&str; 12] = [
+        "Just a moment...", "Just a moment…", "cf_chl_opt", "cf-chl-widget", "Attention Required! | Cloudflare",
+        "Vérification de sécurité", "Security verification", "Un instant…", "Un instant...",
+        "Sicherheitsüberprüfung", "Verificación de seguridad", "Einen Moment…",
+    ];
+    if CLOUDFLARE.iter().any(|m| has(m)) {
         return Some("Cloudflare challenge");
     }
     if has("captcha-delivery.com") {
@@ -285,6 +289,7 @@ mod tests {
     #[test]
     fn challenge_pages_not_ordinary_ones() {
         assert_eq!(challenge_kind("<title>Just a moment...</title>"), Some("Cloudflare challenge"));
+        assert_eq!(challenge_kind("{\"title\": \"Vérification de sécurité\"}"), Some("Cloudflare challenge"));
         assert_eq!(challenge_kind("{\"title\": \"Attention Required! | Cloudflare\"}"), Some("Cloudflare challenge"));
         assert_eq!(challenge_kind("<iframe src=\"https://geo.captcha-delivery.com/captcha/?x\">"), Some("DataDome"));
         assert_eq!(challenge_kind("<div id=\"px-captcha\">"), Some("PerimeterX"));
