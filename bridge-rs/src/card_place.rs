@@ -383,6 +383,11 @@ pub fn with_session(config: &Config, mut item: Dict) -> Dict {
 /// A card answered (any device, the Boîte or the conversation): the conversations showing it touched, the decision
 /// kept in the one it showed in, its notifications read on every device.
 pub async fn answered(state: &AppState, agent: &AgentConfig, run_id: &str, choice: &str) {
+    answered_via(state, agent, run_id, choice, None).await;
+}
+
+/// `answered`, saying how (`via`: « auto » for one approved by the person's level, approval_level.rs).
+pub async fn answered_via(state: &AppState, agent: &AgentConfig, run_id: &str, choice: &str, via: Option<&str>) {
     note_answered(run_id);
     let config = state.config();
     // the card's id: its request id in the approvals' shape, its notification's `ref`
@@ -403,6 +408,9 @@ pub async fn answered(state: &AppState, agent: &AgentConfig, run_id: &str, choic
         fields.insert("request_id".into(), json!(id));
         fields.insert("choice".into(), json!(choice));
         fields.insert("session_id".into(), json!(session));
+        if let Some(via) = via {
+            fields.insert("via".into(), json!(via));
+        }
         if let Err(err) = crate::approvals_log::record(&config, &agent.name, &fields) {
             tracing::debug!(agent = %agent.name, error = %err, "card decision not placed");
         }

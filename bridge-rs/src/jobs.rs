@@ -618,6 +618,29 @@ impl Jobs {
         budget: &str,
         from_session: Option<&str>,
     ) -> anyhow::Result<Dict> {
+        let job = self.propose_quiet(agent, title, prompt, budget, from_session).await?;
+        self.tell_proposed(agent, &job).await;
+        Ok(job)
+    }
+
+    /// The person told of a proposal (« Tâche de fond proposée »).
+    pub async fn tell_proposed(&self, agent: &AgentConfig, job: &Dict) {
+        if let Some(tell) = &self.tell {
+            let body = push_body(&self.config.get(), agent, PROPOSED_BODY);
+            let line = format!("{body}{} {}", colon(body), tk::str_or_empty(job.get("title")));
+            tell(agent.name.clone(), None, line, tk::str_or_empty(job.get("id")), body.into()).await;
+        }
+    }
+
+    /// `propose_from` without telling the person (approval_level.rs starts it at once, or tells them itself).
+    pub async fn propose_quiet(
+        &self,
+        agent: &AgentConfig,
+        title: &str,
+        prompt: &str,
+        budget: &str,
+        from_session: Option<&str>,
+    ) -> anyhow::Result<Dict> {
         let waiting =
             tasks(&self.config.get()).iter().filter(|j| agent_of(j) == agent.name && state_of(j) == "proposed").count();
         if waiting >= PROPOSALS_MAX {
@@ -627,11 +650,6 @@ impl Jobs {
         let mut job = self.new_task(agent, title, prompt, euros, None, "agent", from_session)?;
         job.insert("prices".into(), task_cost::for_agent(&self.config.get(), agent).await.to_value());
         save(&self.config.get(), &job)?;
-        if let Some(tell) = &self.tell {
-            let body = push_body(&self.config.get(), agent, PROPOSED_BODY);
-            let line = format!("{body}{} {}", colon(body), tk::str_or_empty(job.get("title")));
-            tell(agent.name.clone(), None, line, tk::str_or_empty(job.get("id")), body.into()).await;
-        }
         Ok(job)
     }
 
@@ -1310,7 +1328,7 @@ fn thousands(n: i64) -> String {
 }
 
 /// A task's prompt shorter than this holds no task (`propose_tool`).
-const MIN_PROMPT: usize = 8;
+pub(crate) const MIN_PROMPT: usize = 8;
 
 /// `propose_task` called with no task in it: the tools such a call was meant for, by name.
 const NOT_A_TASK: &str = "Nothing proposed: prompt must say the whole task (the goal, what the person said, what to \

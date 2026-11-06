@@ -1,0 +1,229 @@
+"""How much the person validates (bridge-rs/src/approval_level.rs, Alex 6/11: « me faire valider la plupart » /
+« que les critiques »; « je parle de manière générale dans toute l'app »). « Tout valider moi-même » (`all`, the
+default, what an older app gets) asks every card; « Seulement le critique » (`critical`) has the bridge approve what
+is not critical at once, as the person's « Oui » would (same code, same caps), with no notification, an « auto » line
+in the Boîte (`/v1/approvals/auto`, « Annuler » where it can be undone) and one daily Boîte message; what is critical
+is asked as before. Each kind × both levels: mail archive/move/mark read (undo: put back), mail trash (asked), a sort
+rule (undo: stopped), a trash rule (asked), a routine's question (the suggestion kept), a small background task
+(started; undo: paused), a big one (proposed), Hermes' approvals: a write in the person's own service (answered
+« once »), a command, a payment, a deletion (asked)."""
+import threading
+import time
+
+from bbkit.common import AUTH, boite_items, sse
+from bbkit.mcp import call, give_token, text_of
+from bbkit.servers import wait_until
+from test_mailbox import TOKEN as MAIL_TOKEN, add_mailbox, mail_bridge
+
+TOKEN = "c" * 64
+NOW = "2026-11-06T08:00:00.000Z"
+
+
+def level(bridge, value, agent=None):
+    path = f"/v1/agents/{agent}/approval-level" if agent else "/v1/approval-level"
+    put = bridge.put(path, headers=AUTH, json={"level": value})
+    assert put.status_code == 200, put.text
+    return put.json()
+
+
+def auto_lines(bridge, agent=None):
+    params = {"agent": agent} if agent else {}
+    return bridge.get("/v1/approvals/auto", headers=AUTH, params=params).json()["items"]
+
+
+def cards(bridge, prefix, agent):
+    items = bridge.get("/v1/approvals", headers=AUTH, params={"agent": agent}).json()["items"]
+    return [c for c in items if c["run_id"].startswith(prefix)]
+
+
+def card_pushes(fakes, ref):
+    return [p for p in fakes.apns.payloads() if ref in str(p)]
+
+
+def with_device(bridges, **env):
+    bridge = bridges.new()
+    bridge.env_extra.update(env)
+    bridge.seed_db([("INSERT INTO devices (token, environment, agent_ids, created_at, updated_at) VALUES (?,?,?,?,?)",
+                     (TOKEN, "sandbox", "[]", NOW, NOW))])
+    return bridge
+
+
+def test_the_level_is_everything_until_a_newer_app_sets_it_and_an_agent_may_differ(bridges, fakes):
+    bridge = with_device(bridges).start()
+    view = bridge.get("/v1/approval-level", headers=AUTH).json()
+    assert (view["level"], view["chosen"], view["agents"]) == ("all", False, {})
+    kinds = {k["kind"]: k for k in view["kinds"]}
+    assert kinds["mail_archive"] == {"kind": "mail_archive", "critical": False, "undo": True}
+    for critical in ["payment", "secret", "vault_login", "held_mail", "mail_trash", "connector", "command", "phone_exit"]:
+        assert kinds[critical]["critical"] is True, critical
+    assert level(bridge, "critical")["chosen"] is True
+    assert level(bridge, "all", agent="wellness")["agents"] == {"wellness": "all"}
+    assert level(bridge, None, agent="wellness")["agents"] == {}
+    assert bridge.put("/v1/approval-level", headers=AUTH, json={"level": "most"}).status_code == 422
+    assert bridge.put("/v1/agents/nobody/approval-level", headers=AUTH, json={"level": "all"}).status_code == 404
+    assert bridge.get("/v1/approval-level").status_code in (401, 403)   # the bridge key
+
+
+def test_a_routines_question_is_asked_or_answered_with_its_suggestion(bridges, fakes):
+    bridge = with_device(bridges).start()
+    give_token(bridge)
+
+    def made(name, silent):
+        result = call(bridge, "routine_schedule", {"action": "create", "name": name, "schedule": "every day at 23:00",
+                                                   "prompt": f"{name} : fais-le.", "silent": silent})
+        assert not result["isError"], text_of(result)
+        return result
+
+    # « Tout valider »: its card waits and is pushed
+    made("Archive", True)
+    [card] = cards(bridge, "bip-rout-", "wellness")
+    assert wait_until(lambda: card_pushes(fakes, card["request_id"]), timeout=20)
+    assert auto_lines(bridge) == []
+    # « Seulement le critique »: answered with the suggestion, not pushed, a line in the Boîte
+    level(bridge, "critical")
+    result = made("Nettoyage", True)
+    assert "Approved at once" in text_of(result), text_of(result)
+    jobs = {j["name"]: j for j in bridge.get("/v1/agents/wellness/routines", headers=AUTH).json()["jobs"]}
+    assert jobs["Nettoyage"]["muted"] is True
+    made("Brief", False)
+    jobs = {j["name"]: j for j in bridge.get("/v1/agents/wellness/routines", headers=AUTH).json()["jobs"]}
+    assert jobs["Brief"]["muted"] is False
+    assert [c["bip_routine"]["name"] for c in cards(bridge, "bip-rout-", "wellness")] == ["Archive"]
+    lines = auto_lines(bridge, "wellness")
+    assert [(l["kind"], l["undo"]) for l in lines] == [("routine_way", False), ("routine_way", False)]
+    assert "a créé la routine « Brief »" in lines[0]["summary"]
+    time.sleep(1.5)
+    assert not [p for p in fakes.apns.payloads() if "Nettoyage" in str(p) or "Brief" in str(p)]
+    undo = bridge.post(f"/v1/approvals/auto/{lines[0]['id']}/undo", headers=AUTH)
+    assert undo.status_code == 409 and undo.json()["code"] == "not_undoable"
+    # back to « Tout valider »: the next one is asked at once
+    level(bridge, "all")
+    made("Encore", True)
+    assert {c["bip_routine"]["name"] for c in cards(bridge, "bip-rout-", "wellness")} == {"Archive", "Encore"}
+
+
+def test_mail_moves_and_rules_go_alone_with_an_undo_and_a_trash_is_asked(bridges, fakes):
+    bridge, _ = mail_bridge(bridges, fakes)
+    assert add_mailbox(bridge, fakes).status_code == 201
+    level(bridge, "critical")
+    # a move: done at once, the agent told, no card, no notification
+    moved = call(bridge, "mail_bulk", {"action": "move:Tri", "domain": "banque.example"}, token=MAIL_TOKEN)
+    assert not moved.get("isError") and "Approved at once" in text_of(moved), moved
+    assert cards(bridge, "bip-mail-", "coach") == []
+    assert wait_until(lambda: fakes.imap.message_ids("Tri") == ["<r1@banque.example>"], timeout=20), fakes.imap.commands
+    [line] = auto_lines(bridge, "coach")
+    assert (line["kind"], line["undo"], line["undone"], line["agent"]) == ("mail_move", True, False, "coach")
+    assert line["run_id"].startswith("bip-mail-") and "banque.example" in line["summary"]
+    rows = [r for r in bridge.get("/v1/notifications", headers=AUTH).json()["notifications"] if r["type"] == "mail_card"]
+    assert rows == []
+    # « Annuler »: put back
+    undone = bridge.post(f"/v1/approvals/auto/{line['id']}/undo", headers=AUTH)
+    assert undone.status_code == 200 and undone.json()["item"]["undone"] is True, undone.text
+    assert wait_until(lambda: "<r1@banque.example>" in fakes.imap.message_ids("INBOX"), timeout=20), fakes.imap.commands
+    again = bridge.post(f"/v1/approvals/auto/{line['id']}/undo", headers=AUTH)
+    assert again.status_code == 409 and again.json()["code"] == "undone"
+    # the trash: critical, a card as before (and its notification)
+    trashed = call(bridge, "mail_bulk", {"action": "trash", "domain": "shop.example"}, token=MAIL_TOKEN)
+    assert not trashed.get("isError") and "Approved at once" not in text_of(trashed), trashed
+    [card] = cards(bridge, "bip-mail-", "coach")
+    assert card["bip_mail"]["action"] == "trash"
+    assert wait_until(lambda: [r for r in bridge.get("/v1/notifications", headers=AUTH).json()["notifications"]
+                               if r["type"] == "mail_card"], timeout=10)
+    assert "<p1@shop.example>" in fakes.imap.message_ids("INBOX")
+    # a sort rule: on at once; « Annuler » stops it
+    rule = call(bridge, "mail_bulk", {"action": "archive", "domain": "example.com", "rule": True}, token=MAIL_TOKEN)
+    assert not rule.get("isError") and "Approved at once" in text_of(rule), rule
+    assert cards(bridge, "bip-mailrule-", "coach") == []
+    rules = bridge.get("/v1/mail/rules", headers=AUTH, params={"agent": "coach"}).json()["items"]
+    assert len(rules) == 1
+    [rule_line] = [l for l in auto_lines(bridge, "coach") if l["kind"] == "mail_rule"]
+    assert bridge.post(f"/v1/approvals/auto/{rule_line['id']}/undo", headers=AUTH).status_code == 200
+    assert bridge.get("/v1/mail/rules", headers=AUTH, params={"agent": "coach"}).json()["items"] == []
+    # a trash rule: asked
+    call(bridge, "mail_bulk", {"action": "trash", "domain": "banque.example", "rule": True}, token=MAIL_TOKEN)
+    assert len(cards(bridge, "bip-mailrule-", "coach")) == 1
+    # the agent set to « Tout valider »: its archive is asked again
+    level(bridge, "all", agent="coach")
+    call(bridge, "mail_bulk", {"action": "archive", "from": "sam@example.com"}, token=MAIL_TOKEN)
+    assert [c["bip_mail"]["action"] for c in cards(bridge, "bip-mail-", "coach")] == ["trash", "archive"]
+
+
+def test_a_small_background_task_starts_alone_and_a_big_one_is_proposed(bridges, fakes):
+    bridge = with_device(bridges).start()
+    give_token(bridge)
+    level(bridge, "critical")
+    small = call(bridge, "propose_task", {"title": "Dossier location", "prompt": "Prépare le dossier.", "budget": "small"})
+    assert not small["isError"] and text_of(small).startswith("Started at once"), small
+    jobs = bridge.get("/v1/jobs", headers=AUTH).json()["jobs"]
+    [task] = [j for j in jobs if j["title"].endswith("Dossier location")]
+    assert task["state"] == "running" and task["budget_eur"] == 0.20
+    assert wait_until(lambda: fakes.hermes.seen("/v1/runs"), timeout=10)
+    [line] = auto_lines(bridge)
+    assert (line["kind"], line["undo"]) == ("task_start", True) and "Dossier location" in line["summary"]
+    assert not [p for p in fakes.apns.payloads() if p.get("t") == "task"]
+    # « Annuler »: paused
+    assert bridge.post(f"/v1/approvals/auto/{line['id']}/undo", headers=AUTH).status_code == 200
+    assert wait_until(lambda: next(j for j in bridge.get("/v1/jobs", headers=AUTH).json()["jobs"]
+                                   if j["id"] == task["id"])["state"] != "running", timeout=10)
+    # a big one: proposed and told, as before
+    big = call(bridge, "propose_task", {"title": "Grand dossier", "prompt": "Compare tout le marché.", "budget": "large"})
+    assert not big["isError"] and text_of(big).startswith("Proposed"), big
+    assert next(j for j in bridge.get("/v1/jobs", headers=AUTH).json()["jobs"]
+                if j["title"].endswith("Grand dossier"))["state"] == "proposed"
+    assert wait_until(lambda: [p for p in fakes.apns.payloads() if p.get("t") == "task"], timeout=10)
+
+
+def hermes_approval(bridge, fakes, run_id, request_id, **fields):
+    gate = threading.Event()
+    fakes.hermes.runs[run_id] = [sse("approval.request", run_id=run_id, request_id=request_id, choices=["once", "deny"],
+                                     **fields), gate, sse("run.completed", run_id=run_id, output="Fait.")]
+    assert bridge.post("/v1/watch", headers=AUTH,
+                       json={"agent": "wellness", "run_id": run_id, "session_id": "api_main"}).status_code == 200
+    return gate
+
+
+def test_hermes_approvals_only_a_write_in_ones_own_service_goes_alone(bridges, fakes):
+    fakes.hermes.add_session("api_main", [{"role": "user", "content": "Bonjour"}], title="Bot Chat",
+                             last_active=10, started_at=1)
+    bridge = with_device(bridges).start()
+    level(bridge, "critical")
+    gates = [hermes_approval(bridge, fakes, "r_write", "q_write", pattern_key="mcp_elicitation",
+                             command="MCP tool 'notion_create_page' on UNTRUSTED server 'notion' wants to run "
+                                     "(no readOnlyHint=true annotation) and may modify external state.")]
+    assert wait_until(lambda: [a for a in fakes.hermes.approvals if a["run_id"] == "r_write"], timeout=10)
+    [answered] = [a for a in fakes.hermes.approvals if a["run_id"] == "r_write"]
+    assert answered["body"]["choice"] == "once" and answered["body"]["request_id"] == "q_write"
+    assert wait_until(lambda: [l for l in auto_lines(bridge) if l["kind"] == "service_write"], timeout=10)
+    assert not [p for p in fakes.apns.payloads() if "q_write" in str(p) or "r_write" in str(p)]
+    # critical: a command, a payment, a deletion in a service: asked and pushed, never answered by the bridge
+    for run, req, fields in [("r_cmd", "q_cmd", {"command": "rm -rf build/", "pattern_key": "recursive delete"}),
+                             ("r_pay", "q_pay", {"command": "Card payment pay_1: 34,90 € on shop.example",
+                                                 "pattern_key": "mcp_elicitation"}),
+                             ("r_del", "q_del", {"command": "MCP tool 'delete_page' on UNTRUSTED server 'notion' wants",
+                                                 "pattern_key": "mcp_elicitation"})]:
+        gates.append(hermes_approval(bridge, fakes, run, req, **fields))
+        assert wait_until(lambda: [a for a in bridge.get("/v1/approvals", headers=AUTH).json()["items"]
+                                   if a.get("request_id") == req], timeout=10), req
+    time.sleep(1)
+    assert {a["run_id"] for a in fakes.hermes.approvals} == {"r_write"}
+    assert [l["kind"] for l in auto_lines(bridge)] == ["service_write"]
+    for gate in gates:
+        gate.set()
+
+
+def test_the_day_is_summed_up_in_one_boite_message(bridges, fakes):
+    bridge = with_device(bridges, BIPAGENTS_APPROVAL_DIGEST_HOUR="0", BIPAGENTS_APPROVAL_DIGEST_EVERY="1").start()
+    give_token(bridge)
+    level(bridge, "critical")
+    for name in ["Archive", "Nettoyage"]:
+        call(bridge, "routine_schedule", {"action": "create", "name": name, "schedule": "every day at 23:00",
+                                          "prompt": "Fais-le.", "silent": True})
+    assert wait_until(lambda: [m for m in boite_items(bridge) if "auto-digest" in str(m) or
+                               "sans te demander" in m.get("text", "") or "without asking" in m.get("text", "")],
+                      timeout=15), boite_items(bridge)
+    [digest] = [m for m in boite_items(bridge) if "without asking" in m.get("text", "") or
+                "sans te demander" in m.get("text", "")]
+    assert "Archive" in digest["text"] and "Nettoyage" in digest["text"]
+    time.sleep(2.5)
+    assert len([m for m in boite_items(bridge) if "without asking" in m.get("text", "") or
+                "sans te demander" in m.get("text", "")]) == 1, "once a day"

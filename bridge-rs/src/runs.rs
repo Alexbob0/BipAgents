@@ -2227,7 +2227,35 @@ touche « Démarrer » pour reprendre."
                 tracing::warn!(agent = %sub.agent.name, error = %err, "approval request not kept");
             }
         }
+        // not critical, and the person validates only what is: answered « once » at once, nothing pushed, a line in the
+        // Boîte (approval_level.rs); kept waiting until Hermes settles it, so a failed answer still shows in the Boîte
+        let auto = self.config.as_ref().map(|c| c.get()).and_then(|config| {
+            crate::approval_level::auto_hermes(&config, &sub.agent.name, &sub.run_id, data).map(|kind| (config, kind))
+        });
+        let answering = auto.map(|(config, kind)| (config, kind, item.clone()));
         inner.pending.insert((sub.agent.name.clone(), sub.run_id.clone(), dedupe.clone()), item);
+        if let Some((config, kind, mut fields)) = answering {
+            let (hermes, agent, run_id) = (self.hermes.clone(), sub.agent.clone(), sub.run_id.clone());
+            let (summary, session) = (shown.clone().unwrap_or_default(), st.session_id.clone());
+            tracing::info!(agent = %agent.name, run_id = %run_id, kind, "approval answered by the level");
+            self.spawn(async move {
+                match hermes.answer_prompt(&agent, &run_id, "approval", "once", request_id.as_deref()).await {
+                    Ok((status, _)) if (200..300).contains(&status) => {
+                        fields.insert("choice".into(), json!("once"));
+                        fields.insert("via".into(), json!("auto"));
+                        fields.remove("created_at");
+                        if let Err(err) = crate::approvals_log::record(&config, &agent.name, &fields) {
+                            tracing::warn!(agent = %agent.name, error = %err, "approval decision not kept");
+                        }
+                        crate::approval_level::record_hermes(&config, &agent.name, kind, &summary, &run_id, session.as_deref());
+                    }
+                    other => {
+                        tracing::warn!(agent = %agent.name, run_id = %run_id, answer = ?other.map(|r| r.0), "approval not answered by the level: left to the person");
+                    }
+                }
+            });
+            return;
+        }
         let followers = st.followers();
         let push = match self.push.clone() {
             Some(push) if st.watched && followers == 0 && !st.pushed.contains(&dedupe) => push,

@@ -696,6 +696,7 @@ fn last_chars(text: &str, n: usize) -> String {
 pub fn forget(config: &Config, name: &str) {
     pages::forget(config, name);
     crate::approvals_log::forget(config, name);
+    crate::approval_level::forget(config, name);
     crate::maps::forget(config, name);
     crate::notebook::forget(config, name);
     crate::archives::forget(config, name);
@@ -1392,6 +1393,13 @@ pub async fn call_tool(
     jobs: Option<Arc<Jobs>>,
 ) -> anyhow::Result<Dict> {
     if name == PROPOSE_TASK {
+        // a small task under « Seulement le critique »: started at once (approval_level.rs)
+        if let Some(started) = match jobs.as_ref() {
+            Some(jobs) => crate::approval_level::auto_task(jobs, agent, arguments).await,
+            None => None,
+        } {
+            return Ok(started);
+        }
         return crate::jobs::propose_tool(jobs.as_deref(), agent, arguments).await;
     }
     if name == crate::jobs::START_TASK {
@@ -1423,7 +1431,9 @@ pub async fn call_tool(
             crate::mail_tidy::call(&c, &agent_name, &name_c, &arguments, &mailbox::default_connect())
         })
         .await??;
-        if let (Some(card), Some(push)) = (&called.card, push.as_ref()) {
+        // a card the person's level approves at once (approval_level.rs, after the call): no notification
+        let asked = |item: &Dict| !crate::approval_level::auto_card(&config, &agent.name, item);
+        if let (Some(card), Some(push)) = (called.card.as_ref().filter(|c| asked(&crate::mail_tidy::item_of(&config, c))), push.as_ref()) {
             let line = crate::mail_tidy::item_of(&config, card)
                 .get("bip_summary")
                 .and_then(Value::as_str)
@@ -1433,7 +1443,12 @@ pub async fn call_tool(
             let run_id = format!("{}{}", crate::mail_tidy::RUN_PREFIX, card.id);
             push.notify_bridge_card(&agent.name, &line, "mail_request", &run_id).await;
         }
-        for (rule, push) in called.rules.iter().filter_map(|r| push.as_ref().map(|p| (r, p))) {
+        for (rule, push) in called
+            .rules
+            .iter()
+            .filter(|r| asked(&crate::mail_rules::item_of(&config, r)))
+            .filter_map(|r| push.as_ref().map(|p| (r, p)))
+        {
             let line = crate::mail_rules::item_of(&config, rule)
                 .get("bip_summary")
                 .and_then(Value::as_str)
@@ -2001,9 +2016,17 @@ async fn mcp(
             tokio::spawn(async move { crate::routines::fire(&state, &id).await });
         }
         if let Some((line, card)) = called.card {
-            // a proposal: its card in this turn's conversation (card_place.rs) and pushed, as routine_trigger's
+            // its question: in this turn's conversation (card_place.rs) and pushed, as routine_trigger's; the agent
+            // knows the routine is on, so no turn resumes to tell it the answer (`taken`); under « Seulement le
+            // critique » answered with the suggestion at once (approval_level.rs), nothing pushed
             crate::card_place::place_new(&state, &agent, &cards_before, turn_run.as_deref()).await;
-            state.push.notify_bridge_card(&agent.name, &line, "routine_request", &card).await;
+            let run_id = format!("{}{card}", crate::routines::RUN_PREFIX);
+            crate::card_place::taken(&state.config(), &run_id);
+            let session = state.hub.asking_session(&agent.name);
+            let auto = crate::approval_level::settle_new(&state, &agent, &cards_before, session.as_deref()).await;
+            if auto.is_empty() {
+                state.push.notify_bridge_card(&agent.name, &line, "routine_request", &card).await;
+            }
         }
         wrote(&agent.name, &name, &arguments, &mut result);
         return Ok(answer(result));
@@ -2025,6 +2048,12 @@ async fn mcp(
     let work = tokio::spawn(async move {
         let mut result = call_tool(&maker, &agent, &name, &arguments, Some(push), Some(jobs)).await;
         crate::card_place::place_new(&card_state, &agent, &cards_before, turn_run.as_deref()).await;
+        // the cards the person's level approves at once (approval_level.rs): answered, told in the result
+        let session = turn_run.as_deref().and_then(|r| card_state.hub.subscription(&agent.name, r)).and_then(|s| s.session_id());
+        let auto = crate::approval_level::settle_new(&card_state, &agent, &cards_before, session.as_deref()).await;
+        if let (Ok(done), false) = (&mut result, auto.is_empty()) {
+            crate::loop_brake::add_note(done, &crate::approval_level::told(&auto));
+        }
         if let Ok(done) = &mut result {
             crate::names::localize_result(done, &work_lang);
             wrote(&agent.name, &name, &arguments, done);
