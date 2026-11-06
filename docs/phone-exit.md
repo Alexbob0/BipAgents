@@ -23,7 +23,7 @@ agent's Chrome ─CONNECT─▶ bipagents-egress ─(unix socket « EXIT host 44
 2. **Per site, in Settings.** A site the person set to « Toujours » goes through the phone whenever an agent of theirs
    opens it; « Jamais » never asks again. Anything else asks (a card) after a refusal.
 3. **Never a silent fallback.** A site routed to the phone never leaves from the datacenter instead. No phone: the
-   stream is refused with its reason (`paused`, `not_allowed`, `cap`…), and the agent is told that reason (§7), so
+   stream is refused with its reason (`paused`, `not_allowed`, `wifi_only`…), and the agent is told that reason (§7), so
    it never says « the site blocks servers » wrongly.
 4. **Only the agent's owner.** Never for a shared agent, a family/household agent, a project agent, or an agent linked
    with another household (`vault::others_facing`): the tool is not offered, the card is never made, the hub refuses
@@ -31,12 +31,14 @@ agent's Chrome ─CONNECT─▶ bipagents-egress ─(unix socket « EXIT host 44
 5. **Visible and stoppable.** A foreground notification (Android) or the « Relais » screen (iOS) shows the site and
    the MB while it relays, with « Arrêter ». Stopping on the phone, in the app's Settings, or from the bridge
    (`DELETE /v1/exit/session`) ends it at once.
-6. **Guardrails kept.** No CAPTCHA solving (a CAPTCHA goes to the person: « Prendre la main »), caps per session,
-   human pace (new streams per minute), no mass scraping, no IP rotation, never for anyone else.
+6. **Guardrails kept.** No CAPTCHA solving (a CAPTCHA goes to the person: « Prendre la main »), the idle stop and an
+   internal time limit per session, human pace (a fixed limit of new streams per minute), the agent's loop brake, no
+   mass scraping, no IP rotation, never for anyone else. **No data cap** (Alex, 6/11: « trop compliqué »): the MB are
+   shown live and in the journal instead.
 
 ## 2. Sessions
 
-A **session** is what a person accepted: one agent, one or more sites, its caps. It is *not* a WebSocket: the phone
+A **session** is what a person accepted: one agent, one or more sites, its limits. It is *not* a WebSocket: the phone
 may reconnect (network change, app restart) and the session goes on with the same counters.
 
 | State | Meaning | Streams |
@@ -49,23 +51,21 @@ may reconnect (network change, app restart) and the session goes on with the sam
 A card refused (« Non ») makes no session.
 
 **End reasons** (`ended`, also `BYE`/`END` payloads): `user_stop` (Arrêter on the phone, Settings, or the bridge's
-kill switch), `cap` (data cap), `expired` (time cap), `idle` (no stream for `idle_minutes`), `off` (the person
+kill switch), `expired` (the internal time limit), `idle` (no stream for `idle_minutes`), `off` (the person
 switched « Autoriser » off, or the place switched the feature off), `task_done` (the agent said it is done:
 `ask_phone_exit` with `done`), `replaced` (a newer session for the same agent and sites).
 
-**Caps, per session** (counted by the bridge on the bytes it carries both ways for that session, across
-reconnects):
+**Limits, per session** (none is a setting of the person; counted by the bridge across reconnects):
 
-| Cap | Default | Where set |
+| Limit | Value | Where |
 |---|---|---|
-| Data | **50 MB**; the person picks 50 MB / 200 MB / 1 GB / Sans limite (`cap_mb`: 50, 200, 1000, 0 = no data cap) | app Settings (`PUT /v1/exit/settings`), copied into each session when accepted |
-| Time | 30 min from acceptance | bridge.toml `[phone_exit] max_minutes` |
-| Idle | 10 min without any stream open | bridge.toml `idle_minutes` |
+| Idle | 10 min without any stream open → `idle` | bridge.toml `idle_minutes` |
+| Time | 2 h from acceptance → `expired` (generous, a brake for a forgotten session) | bridge.toml `max_minutes` |
 | New streams | 120 per minute per tunnel (refused `rate` beyond) | bridge.toml `connections_per_minute` |
 
-« Sans limite » turns the **data** cap off only; time, idle and the per-minute limit stay. The MB used are shown in
-the notification and the journal either way. « Wi-Fi seulement » is independent of the cap: on mobile data the phone
-sends `PAUSE {"why":"wifi_only"}` and refuses opens with `wifi_only`.
+**No data cap.** The MB a session carried (`used_bytes` = up + down) are shown live in the notification and in the
+journal. The person's only network setting is « Seulement en Wi-Fi » (off by default): on mobile data the phone sends
+`PAUSE {"why":"wifi_only"}` and refuses opens with `wifi_only`.
 
 ## 3. Routing
 
@@ -89,7 +89,7 @@ All JSON. `site` values are registrable domains; the bridge normalizes what it i
 | Route | Body | Answer |
 |---|---|---|
 | `GET /v1/exit` | — | `Overview` |
-| `PUT /v1/exit/settings` | any of `{"allowed": bool, "cap_mb": 0\|50\|200\|1000, "wifi_only": bool, "minimal_route": bool}` | `Overview` |
+| `PUT /v1/exit/settings` | any of `{"allowed": bool, "wifi_only": bool, "minimal_route": bool}` | `Overview` |
 | `PUT /v1/exit/sites/{site}` | `{"mode": "always"\|"never"\|"ask", "minimal": bool?}` | `Overview` |
 | `DELETE /v1/exit/sites/{site}` | — | `Overview` (the site asks again) |
 | `GET /v1/exit/sessions` | — | `{"sessions": [Session]}`: the live ones (`accepted`, `active`, `paused`) |
@@ -105,8 +105,7 @@ All JSON. `site` values are registrable domains; the bridge normalizes what it i
 
 ```json
 {"enabled": true,               // the feature exists on this place ([phone_exit] enabled)
- "settings": {"allowed": true, "cap_mb": 50, "wifi_only": false, "minimal_route": true},
- "cap_choices": [50, 200, 1000, 0],
+ "settings": {"allowed": true, "wifi_only": false, "minimal_route": true},
  "sites": [{"site": "ameli.fr", "mode": "always", "minimal": true, "at": 1730000000.0}],
  "sessions": [Session], "tunnel": {"connected": true, "device": "…", "network": "wifi"}}
 ```
@@ -115,14 +114,14 @@ All JSON. `site` values are registrable domains; the bridge normalizes what it i
 
 ```json
 {"id": "Xk3…", "agent": "vie", "sites": ["ameli.fr"], "state": "active",
- "cap_mb": 50, "max_minutes": 30, "wifi_only": false, "minimal": true,
+ "max_minutes": 120, "wifi_only": false, "minimal": true,
  "up": 120034, "down": 3412991, "used_bytes": 3533025, "streams": 14,
  "hosts": {"www.ameli.fr": 3120044, "assure.ameli.fr": 412981},
  "created_at": 1730000000.0, "accepted_at": 1730000004.2, "ends_at": 1730001804.2,
  "ended_at": null, "ended": null, "network": "wifi", "via": "app"}
 ```
 
-`used_bytes` = `up + down`; the data cap applies to it (none when `cap_mb` is 0).
+`used_bytes` = `up + down` (shown, never capped).
 
 ### The card (in `GET /v1/approvals`, the conversation and the Boîte)
 
@@ -132,7 +131,7 @@ All JSON. `site` values are registrable domains; the bridge normalizes what it i
  "description": "Ameli refuse les serveurs. Vie peut passer par ta connexion pour ameli.fr.",
  "bip_exit": {"site": "ameli.fr", "host": "www.ameli.fr", "reason": "Cloudflare challenge",
               "kind": "ask",                       // "ask": after a refusal; "restart": a « Toujours » site, no phone
-              "cap_mb": 50, "wifi_only": false}}
+              "wifi_only": false}}
 ```
 
 Buttons: `once` « Passer par mon téléphone », `always` « Toujours pour ce site », `deny` « Non ». On `once`/`always`
@@ -170,9 +169,9 @@ app's other requests, a `*.bipagents.com` name has a public certificate).
 | 8 | `RST` | both | id | empty: the stream is dead |
 | 9 | `PAUSE` | phone → bridge | 0 | JSON `{"why": "wifi_only"\|"user"\|"network"}`: refuse new streams until `RESUME` |
 | 10 | `RESUME` | phone → bridge | 0 | empty or `{}` |
-| 11 | `STATS` | phone → bridge, every 5 s | 0 | JSON `{"network", "up", "down", "streams"}` (informative: the bridge counts the caps itself) |
-| 15 | `END` | both | 0 | JSON `{"id", "why"}`: one session over (bridge → phone: `cap`, `expired`, `idle`, `user_stop`, `off`, `task_done`; phone → bridge: `user_stop`). Its open streams get `RST` |
-| 16 | `USAGE` | bridge → phone, every 5 s while relaying | 0 | JSON `{"sessions": [{"id", "used_bytes", "cap_mb", "state"}]}`: for the notification's MB |
+| 11 | `STATS` | phone → bridge, every 5 s | 0 | JSON `{"network", "up", "down", "streams"}` (informative: the bridge counts the MB itself) |
+| 15 | `END` | both | 0 | JSON `{"id", "why"}`: one session over (bridge → phone: `expired`, `idle`, `user_stop`, `off`, `task_done`; phone → bridge: `user_stop`). Its open streams get `RST` |
+| 16 | `USAGE` | bridge → phone, every 5 s while relaying | 0 | JSON `{"sessions": [{"id", "used_bytes", "state"}]}`: for the notification's MB |
 | 12 | `BYE` | both | 0 | reason: `user_stop`, `off`, `replaced`, `no_session` (nothing left to carry), `protocol` |
 
 **Flow control.** Each side may have `WINDOW` = 256 KiB of a stream unacknowledged; the receiver sends `WINDOW n`
@@ -204,8 +203,7 @@ Codes (snake_case; `OPEN_ERR` payloads, the hub's answers to the proxy, the agen
 | `paused` | bridge | no phone carries a session for this site now (stopped, network lost, not started) |
 | `wifi_only` | both | the phone is on mobile data and the person allows Wi-Fi only |
 | `not_allowed` | both | the site is not in a live session or « Toujours » for this agent (or the agent is not the person's own) |
-| `cap` | bridge | the session's data cap is reached |
-| `expired` | bridge | the session's time cap is reached |
+| `expired` | bridge | the session's time limit is reached |
 | `off` | bridge | the person (« Autoriser ») or the place switched it off |
 | `rate` | bridge | too many new streams this minute |
 | `literal_ip`, `local_name`, `bad_name`, `port` | both | the name or port |
@@ -231,15 +229,14 @@ never as a refusal.
 
 - **Consent, once per phone** (plain words; Play's prominent disclosure): what goes through the phone (encrypted
   connections of your own agent to the sites you accept, only while you allow it), what the phone sees (the site's
-  name and volumes, never the content), that the site sees your internet address, that mobile data may be used up to
-  your cap, that you can stop at any time, and that it is never for someone else. An explicit tap; refusing answers
+  name and volumes, never the content), that the site sees your internet address, that it may use mobile data (or
+  Wi-Fi only, if chosen), that you can stop at any time, and that it is never for someone else. An explicit tap; refusing answers
   the card « Non ».
 - **During a session**: Android, a `specialUse` foreground service (subtype `agent-browsing-relay`) with the
   notification « <Agent> navigue depuis ce téléphone : ameli.fr · 3,2 Mo » and « Arrêter »; iOS, the « Relais »
   screen (foreground; ~30 s grace in background, then `BYE`).
 - **Settings › « Navigation par mon téléphone »**: « Autoriser mes agents à passer par ce téléphone », the per-site
-  list (Toujours / Demander / Jamais, minimal route), « Wi-Fi seulement », the cap per session (50 Mo / 200 Mo / 1 Go /
-  Sans limite), the journal (one line per session: agent, sites, MB, duration, how it ended).
+  list (Toujours / Demander / Jamais, minimal route), « Seulement en Wi-Fi » (off by default), the journal (one line per session: agent, sites, MB, duration, how it ended).
 - **Journal**: each ended session is also one Boîte line, e.g. « Vie a navigué via ton téléphone : ameli.fr ·
   6,2 Mo · 4 min · arrêté : tâche finie ».
 
@@ -248,10 +245,9 @@ never as a refusal.
 ```toml
 [phone_exit]
 enabled = true            # the feature on this place (off by default)
-max_minutes = 30          # time cap per session
+max_minutes = 120         # internal time limit per session (not a setting of the person)
 idle_minutes = 10
 connections_per_minute = 120
-default_cap_mb = 50       # the person's cap until they choose one
 # token_sha256 = "…"      # tests and debug builds only: SHA-256 of a debug token accepted instead of the bridge key
 # hub_resolve = true      # the hub also resolves and refuses names pointing to private addresses here
 ```
