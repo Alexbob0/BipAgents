@@ -850,6 +850,12 @@ pub fn page(items: Vec<Item>, want: &Want) -> Page {
             // the phone's last item gone (a rewind), or too much since: the latest page, as the window
             latest(LATEST_PAGE)
         } else {
+            // the messages sent and not stored yet (`s_` items, always at the end) come again in every catch-up: their
+            // state changes where they stand (« being sent » → « Pas envoyé »), and a phone whose last item is one of
+            // them read nothing after it (5/11, Android: « Pas envoyé » never showed in an open conversation). The
+            // apps drop what they held of the page's ids before joining it.
+            let sending = items.iter().position(|i| i.body.contains_key("sending")).unwrap_or(n);
+            let start = start.min(sending);
             (start.min(n), (start + limit).min(n), None, false, found.then(|| after.clone()))
         }
     } else if let Some(before) = &want.before {
@@ -1435,6 +1441,31 @@ not from your person: you have read the page 5 times\n[/OUT-OF-BAND USER MESSAGE
         assert!(!own.reset && own.items.len() == 289 && own.joins.is_some());
         let json = after.answer(json!({"id": "t_1"}), 1, Value::Null, false);
         assert_eq!((json["reset"].clone(), json["joins"].clone()), (json!(false), json!(cursor)));
+    }
+
+    /// 6/11 (release journeys, J18): a phone whose last item is a message being sent (`s_`, at the end) read nothing
+    /// after it, so « Pas envoyé » never reached it. Every catch-up gives the messages not stored yet again, joined to
+    /// the same cursor (the apps drop what they held of the page's ids); stored rows only after the cursor.
+    #[test]
+    fn a_catch_up_gives_the_messages_being_sent_again() {
+        let mut all: Vec<Item> = (0..5)
+            .map(|n| said(&format!("m_{n}"), n, 1000.0 + n as f64, json!({"kind": "message", "role": "person", "text": "x"})))
+            .collect();
+        let mut sending = said("s_C1", 4, 1010.0, json!({"kind": "message", "role": "person", "text": "Hello?", "sending": true}));
+        sending.pos = (all[4].pos.0, all[4].pos.1, all[4].pos.2 + 1);
+        all.push(sending);
+        let chosen = |w: Want| Want { chosen: true, ..w };
+        // the phone holds the `s_` item last: it comes again (its state may have changed), joined to it
+        let held = all[5].cursor();
+        let again = page(all.clone(), &chosen(Want { after: Some(held.clone()), ..Default::default() }));
+        assert_eq!(again.items.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), vec!["s_C1"]);
+        assert_eq!((again.reset, again.joins.as_deref()), (false, Some(held.as_str())));
+        // the phone holds a stored row before it: the rows after it, then the `s_` item, once
+        let before = page(all.clone(), &chosen(Want { after: Some(all[3].cursor()), ..Default::default() }));
+        assert_eq!(before.items.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), vec!["m_4", "s_C1"]);
+        // nothing being sent: as before
+        let plain = page(all[..5].to_vec(), &chosen(Want { after: Some(all[4].cursor()), ..Default::default() }));
+        assert!(plain.items.is_empty());
     }
 
     /// Thin apps, brick 5: each waiting card says after which item it goes (the last item that draws something said by

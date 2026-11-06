@@ -177,11 +177,15 @@ des parcours ; Android le vérifie) ; Quick Talk dans les apps (sa voix : manuel
   cette conversation). En plus, sur Android, un document relu depuis le pont ne s'ouvre pas (pas d'`url`).
 - **« Pas envoyé »** (J18, apps) : le pont fait juste ; l'iPhone garde « Pas envoyé » sous un message renvoyé avec
   succès et répondu ; Android ne montre jamais « Pas envoyé » dans une conversation ouverte (le pont ne prévient pas
-  quand les 10 s passent, et la relecture `after=` ne relit pas l'élément).
+  quand les 10 s passent, et la relecture `after=` ne relit pas l'élément). **Corrigé** par `not-sent-fix` : le pont
+  redonne les messages pas encore rangés dans chaque relecture `after=` et prévient (`thread`, `lost`) quand les 10 s
+  passent ; l'iPhone ne reporte plus « Pas envoyé » d'une relecture à l'autre.
 - **« En attente »** (J19) : une photo ou un document seuls donnaient une ligne vide ; Android envoyait une photo
   pendant une réponse sans la photo. Corrigé par `queue-row-empty`.
 - Petit : les messages « Pas envoyé » d'une conversation supprimée reviennent dans la nouvelle (le pont les garde
-  3 jours dans `thread_sends`, sans lien avec la conversation effacée).
+  3 jours dans `thread_sends`, sans lien avec la conversation effacée). **Corrigé** par `not-sent-fix`.
+- À regarder (Android) : vider la conversation principale depuis le pont (`DELETE`), puis la rouvrir pendant une
+  réponse, montre une conversation vide. Les parcours Android ont chacun leur propre conversation (pas de `DELETE`).
 
 ## Ce qu'il manque encore (prochaines étapes)
 

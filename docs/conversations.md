@@ -263,7 +263,10 @@ Answer:
   cursor, a `before=` page in front of it, and what the phone held beyond that item is gone (rows the bridge no
   longer gives there). With no `limit` the bridge chooses the sizes: latest 100, a catch-up 200 at most (more since:
   the latest page, `reset`), an older page 50; a cursor whose item is gone also gets the latest page, `reset`. A
-  `limit` given (a one-off look; apps from before 5/11) pages as before.
+  `limit` given (a one-off look; apps from before 5/11) pages as before. Every `after=` page also gives again the
+  messages sent and not stored yet (`s_` items, always at the end), even the one at the cursor: their state changes
+  where they stand (`sending` → `not_sent`), and a phone whose last item was one read nothing after it (6/11, Android
+  never showed « Pas envoyé »). The apps drop what they held of the page's ids before joining it, as for any page.
 - **The phone's copy** (thin apps, brick 6): every page carries `copy: {keep, pending}`, the same for every phone:
   keep the conversation's latest `keep` items (200: two opening pages) for when the bridge is out of reach, and
   what waits (`pending`: cards, the run) only when `pending` is true — false today: a card is the bridge's state now,
@@ -416,7 +419,7 @@ thread's too: the app knows it from `GET /v1/threads/main`) and `item` (`m_…`)
 
 ```text
 GET /v1/threads/events[?agent=<id>]      SSE, keepalive comment every 10 s
-event: thread         data: {"thread": "t_…", "agent": "vie", "version": 43, "reason": "run|boite|segment|call"}
+event: thread         data: {"thread": "t_…", "agent": "vie", "version": 43, "reason": "run|boite|segment|call|lost"}
 event: notification   data: {"n": "n_…", "agent": "vie", "t": "reply", "c": "t_…", "m": "m_…", "state": "open"}
 event: read           data: {"agent": "vie", "thread": "t_…", "notifications": ["n_…"]}
 event: lagged         data: {}                    (the app missed events: refetch what it shows)
@@ -424,7 +427,10 @@ event: lagged         data: {}                    (the app missed events: refetc
 
 `thread` is sent today when a run of the thread ends (`run`: the run hub), a Boîte message for it is stored
 (`boite`), a Live call is recorded in it (`call`, live_calls.rs: its item is in the next `after=` page; no journal
-row) and Hermes continued it in a new session (`segment`). The agent's queue keeps its own stream
+row), Hermes continued it in a new session (`segment`), and words steered into a turn that stopped without taking
+them become « Pas envoyé » (`lost`: 11 s after the send, nothing running, the message not stored; a turn that ends
+later says it with its own `run`). A deleted thread forgets its messages not stored (`thread_sends`): the main thread
+starts again under the same id without them. The agent's queue keeps its own stream
 (`/v1/agents/{id}/queue/events`, msg_queue.rs); the timeline's `pending.queue` gives its state at each read.
 
 **Presence**: `GET /v1/threads/events?agent=<a>&thread=<id|main>` means « this conversation is on screen » for as
