@@ -10,7 +10,7 @@ from email.utils import format_datetime
 
 import yaml
 
-from bbkit.common import AUTH
+from bbkit.common import AUTH, HERMES_KEY
 from bbkit.mcp import call, give_token, rpc, text_of
 from bbkit.servers import wait_until
 from conftest import managed_install, profile, wait_registered
@@ -53,22 +53,34 @@ def archives_of(bridge, agent="wellness"):
     return bridge.get(f"/v1/agents/{agent}/archives", headers=AUTH).json()["archives"]
 
 
-def wait_ready(bridge, agent, archive_id, documents=None):
-    def ready():
+def wait_ready(bridge, agent, archive_id, documents=None, after=None):
+    """The archive once indexed: ready, with `documents`, by a run that ended after `after` (a refresh's own run, not
+    the previous one's « ready »). A failed run is said at once, with its error."""
+    def over():
         found = [a for a in archives_of(bridge, agent) if a["id"] == archive_id]
-        return found and found[0]["state"] in ("ready", "error") and (documents is None or found[0]["documents"] == documents)
-    assert wait_until(ready, timeout=30), archives_of(bridge, agent)
-    return [a for a in archives_of(bridge, agent) if a["id"] == archive_id][0]
+        if not found:
+            return False
+        archive = found[0]
+        return archive["state"] == "error" or (
+            archive["state"] == "ready" and (documents is None or archive["documents"] == documents)
+            and (after is None or (archive["updated"] or 0) > after))
+    assert wait_until(over, timeout=30), archives_of(bridge, agent)
+    archive = [a for a in archives_of(bridge, agent) if a["id"] == archive_id][0]
+    assert archive["state"] == "ready" and archive["error"] is None, archive
+    return archive
 
 
-def test_a_folder_is_indexed_and_searched_by_its_agent_only(bridges):
-    bridge = bridges.new().start()
+def test_a_folder_is_indexed_and_searched_by_its_agent_only(bridges, fakes):
+    bridge = bridges.new()
+    bridge.config["agents"]["coach"] = {"display_name": "Coach", "hermes_url": f"{fakes.hermes.url}/p/coach",
+                                        "hermes_key": HERMES_KEY}
+    bridge.start()
     folder = notes(bridge.root)
     added = bridge.post("/v1/agents/wellness/archives", json={"name": "Mails mémoire", "folder": str(folder)}, headers=AUTH)
     assert added.status_code == 201, added.text
     assert added.json()["id"] == "mails-memoire" and added.json()["kind"] == "folder"
     archive = wait_ready(bridge, "wellness", "mails-memoire", documents=6)   # md, html, eml, 2 in the mbox, txt
-    assert archive["state"] == "ready" and archive["error"] is None and archive["index_bytes"] > 0
+    assert archive["index_bytes"] > 0
     assert archive["folder"] == str(folder) and isinstance(archive["updated"], float)
     listing = bridge.get("/v1/agents/wellness/archives", headers=AUTH).json()
     assert ".md" in listing["formats"] and ".eml" in listing["formats"] and listing["mailboxes"] == []
@@ -120,6 +132,13 @@ def test_a_folder_is_indexed_and_searched_by_its_agent_only(bridges):
     # another agent's reference, a made-up one
     assert call(bridge, "archive_read", {"ref": "coach/mails/0123456789abcdef"})["isError"] is True
     assert "no such document" in text_of(call(bridge, "archive_read", {"ref": "wellness/mails-memoire/0123456789abcdef"}))
+    # another agent of the same bridge neither searches nor reads Wellness's archive
+    coach = "coach-token-" + "c" * 30
+    give_token(bridge, "coach", coach)
+    assert "archive_search" not in [t["name"] for t in rpc(bridge, "tools/list", token=coach).json()["result"]["tools"]]
+    for name, arguments in (("archive_search", {"query": "velo electrique"}), ("archive_read", {"ref": reference})):
+        other = call(bridge, name, arguments, token=coach)
+        assert other["isError"] is True and "No archive is connected to you" in text_of(other), other
 
     # the app opens a document (a Carnet link), read-only
     doc = bridge.get("/v1/archives/document", params={"ref": reference}, headers=AUTH).json()
@@ -132,7 +151,7 @@ def test_a_folder_is_indexed_and_searched_by_its_agent_only(bridges):
     (folder / "2023" / "train.html").unlink()
     (folder / "2024" / "facture.md").write_text("# Facture électricien\nDate : 03/06/2024\nTableau refait.")
     assert bridge.post("/v1/agents/wellness/archives/mails-memoire/refresh", headers=AUTH).status_code == 200
-    wait_ready(bridge, "wellness", "mails-memoire", documents=6)
+    wait_ready(bridge, "wellness", "mails-memoire", documents=6, after=archive["updated"])   # 6 before it too
     assert "Facture électricien" in text_of(call(bridge, "archive_search", {"query": "electricien"}))
     assert "Nothing found" in text_of(call(bridge, "archive_search", {"query": "voiture"}))
 
