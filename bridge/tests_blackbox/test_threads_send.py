@@ -188,6 +188,8 @@ def test_an_approval_answered_on_one_phone_is_answered_on_the_other(bridges, fak
     assert wait_until(lambda: page(bridge, thread)["pending"]["approvals"] != [], timeout=10)
     card = page(bridge, thread)["pending"]["approvals"][0]
     assert card["request_id"] == "req-1" and card["id"].startswith("a_")
+    # where the phones draw it (thin apps, brick 5): after the message that started the turn
+    assert card["after"] == "s_C1D00000-0000-4000-8000-0000000000D1", card
     hints, stop = [], threading.Event()
     other = threading.Thread(target=watch, args=(bridge, thread, hints, stop), daemon=True)
     other.start()
@@ -217,6 +219,7 @@ def test_a_question_waits_on_every_phone_until_answered(bridges, fakes):
     assert wait_until(lambda: page(bridge, thread)["pending"]["questions"] != [], timeout=10)
     question = page(bridge, thread)["pending"]["questions"][0]
     assert question["request_id"] == "q-1" and question["questions"][0]["question"] == "Quel jour ?"
+    assert question["after"] == "s_C1D00000-0000-4000-8000-0000000000E1", question   # placed like a card
     assert page(bridge, thread)["pending"]["approvals"] == [], "a question is no approval"
     answered = bridge.post("/v1/approve", headers=AUTH,
                            json={"agent": "wellness", "run_id": "r1", "request_id": "q-1", "answer": "Lundi"})

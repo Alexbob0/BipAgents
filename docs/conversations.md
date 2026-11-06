@@ -253,6 +253,10 @@ Answer:
   cursor of what they have and ask `after=` on each `thread` event. An item that moved or vanished (a restore, a
   rewind) still pages correctly: the cursor's position is used when its item is gone.
 - `anchor` is the `around` item when it was found (else null and the latest page is given).
+- **Where a waiting card goes** (thin apps, brick 5): each row of `pending.approvals` / `pending.questions` (any
+  waiting row with a time) carries `after`: the id of the last item that draws something said at or before its
+  `created_at`; null when it was asked before them all; the last item when it has no time. Both apps draw it right
+  after that item's row (above the rows shown when that item is not shown), every card, not only the first.
 - **How a page goes into the phone's window** (thin apps, 5/11; one rule on both apps): `reset: true` — the page is
   the window (latest, around, and below); else `joins: <cursor>` — an `after=` page goes after the held item at that
   cursor, a `before=` page in front of it, and what the phone held beyond that item is gone (rows the bridge no
