@@ -527,3 +527,35 @@ def test_phone_exit_hosts_go_to_the_hub_never_direct(tmp_path, monkeypatch):
     assert out["http"].startswith("HTTP/1.1 403")
     assert direct == []
     shutil.rmtree(short, ignore_errors=True)
+
+
+def test_a_site_switched_to_the_phone_closes_its_direct_tunnels(tmp_path, monkeypatch):
+    """Chrome reuses an open connection: once the person accepted the card, the site's tunnels still open direct are
+    closed (and the phone's once the session ended), so the next page goes the new way (lab, 6/11)."""
+    proxy, _, _ = load(tmp_path, monkeypatch, AGENTS, LIMITS, env={"BIP_EXIT_SOCK": "/nonexistent/hub.sock"})
+    policy = tmp_path / "sites.json"
+
+    class Writer:
+        closed = False
+
+        def close(self):
+            self.closed = True
+
+    def rewrite(agents, bump):
+        policy.write_text(json.dumps({"agents": agents, "limits": LIMITS}))
+        stamp = os.stat(policy).st_mtime_ns + bump
+        os.utime(policy, ns=(stamp, stamp))
+
+    direct, other, phone = [Writer(), Writer()], [Writer(), Writer()], [Writer(), Writer()]
+    proxy._open_tunnels[:] = [["vie", "www.ameli.fr", False, *direct], ["vie", "www.doctolib.fr", False, *other]]
+    proxy.switch_tunnels()
+    assert not direct[0].closed and len(proxy._open_tunnels) == 2   # nothing changed yet
+    rewrite({**AGENTS, "vie": {**AGENTS["vie"], "phone": [{"site": "ameli.fr", "minimal": True}]}}, 1_000_000)
+    proxy._open_tunnels.append(["vie", "www.ameli.fr", True, *phone])
+    proxy.switch_tunnels()
+    assert direct[0].closed and direct[1].closed and not other[0].closed and not phone[0].closed
+    assert [e[1:3] for e in proxy._open_tunnels] == [["www.doctolib.fr", False], ["www.ameli.fr", True]]
+    # the session over: its phone tunnels closed too
+    rewrite(AGENTS, 2_000_000)
+    proxy.switch_tunnels()
+    assert phone[0].closed and not other[0].closed

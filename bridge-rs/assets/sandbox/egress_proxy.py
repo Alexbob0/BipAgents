@@ -41,7 +41,9 @@ abuse complaint can be traced to an agent.
   hub over that unix socket instead of out of this machine (« EXIT host 443 agent », then « OK » and the raw stream,
   or « ERR reason »). The hub and the phone check it again (the sessions, the name, the address the phone resolves,
   the ClientHello's server name). Never the datacenter instead: no phone, the tunnel is refused, its reason said.
-  Counted and guarded like any other tunnel.
+  Counted and guarded like any other tunnel. When a site starts or stops going through the phone, the tunnels to it
+  still open the other way are closed (`switch_tunnels`, every second): Chrome reuses an open connection, which
+  would otherwise keep showing the datacenter's challenge after the person accepted (lab, 6/11).
 
 Run by the bridge with `python3 -u -c <this file>`: standard library only.
 """
@@ -97,6 +99,10 @@ def normal(host):
 
 def today():
     return time.strftime("%Y-%m-%d", time.gmtime())
+
+
+# the tunnels open now: [agent, host, through the phone, client writer, site writer]
+_open_tunnels = []
 
 
 def load_policy():
@@ -777,6 +783,37 @@ async def handle(reader, writer):
 async def tunnel(reader, writer, up_reader, up_writer, method, target, agent, host, request, counted, browser):
     """The client's stream to the site (or the phone exit's), counted and guarded."""
     guard = Guard(agent, host, not validated(agent, host), browser) if counted else None
+    entry = [agent, normal(host), phone_exit(host, agent), writer, up_writer]
+    _open_tunnels.append(entry)
+    try:
+        await carry(reader, writer, up_reader, up_writer, method, target, agent, request, guard)
+    finally:
+        if entry in _open_tunnels:
+            _open_tunnels.remove(entry)
+
+
+def switch_tunnels():
+    """The tunnels whose way changed (a site now through the phone, or no longer) closed: the browser opens new ones,
+    which go the new way. Never a site of the phone left on the datacenter."""
+    for entry in list(_open_tunnels):
+        agent, host, phone, writer, up_writer = entry
+        if agent is not None and phone_exit(host, agent) != phone:
+            log("closed (phone exit switched)", "CONNECT", f"{host}:443", agent)
+            close(up_writer)
+            close(writer)
+            _open_tunnels.remove(entry)
+
+
+async def keep_switching():
+    while True:
+        await asyncio.sleep(1)
+        try:
+            switch_tunnels()
+        except Exception as exc:   # never the proxy down for this
+            print(f"switch_tunnels: {exc!r}", flush=True)
+
+
+async def carry(reader, writer, up_reader, up_writer, method, target, agent, request, guard):
     if request:
         if guard is not None and not guard.sending(request):
             guard.pending = len(request)
@@ -835,6 +872,8 @@ async def main():
     print(f"agents' proxy on :{PORT}, registries: {', '.join(sorted(REGISTRIES))}; agents from "
           f"{POLICY or 'nowhere'}; reading open, sending guarded", flush=True)
     asyncio.get_running_loop().create_task(keep_usage())
+    if EXIT_SOCK:
+        asyncio.get_running_loop().create_task(keep_switching())
     async with server:
         await server.serve_forever()
 
