@@ -132,8 +132,8 @@ def test_a_turn_of_several_actions_without_its_own_list_gets_the_bridges(bridges
                 live.append(data["steps"])
                 if len(live[-1]["items"]) == 3:
                     break
-    assert [i["text"] for i in live[-1]["items"]] == ["Chercher dans tes mails", "Ouvrir le site sncf-connect.com",
-                                                     "Préparer une page"]
+    # the bridge's words in the agent's language (this test agent writes English)
+    assert [i["text"] for i in live[-1]["items"]] == ["Search your mail", "Open sncf-connect.com", "Make a page"]
     assert [i["status"] for i in live[-1]["items"]] == ["done", "done", "in_progress"] and live[-1]["auto"] is True
     assert "banque" not in json.dumps(live) and "prêt" not in json.dumps(live), "never what the calls were about"
     gate.set()

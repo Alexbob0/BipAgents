@@ -431,7 +431,7 @@ fn with_auto(items: &mut Vec<Item>, own: &std::collections::HashSet<String>, lan
             }))
         })
         .collect();
-    after.sort_by(|a, b| b.0.cmp(&a.0));
+    after.sort_by_key(|a| std::cmp::Reverse(a.0));
     for (last, item) in after {
         items.insert(last + 1, item);
     }
