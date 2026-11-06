@@ -200,9 +200,9 @@ pub const FACTS_RULE: &str = concat!(
 /// `todo_list`, which the apps show live as one card; never for a simple answer (each call costs a model round).
 /// Rust bridge only (tests/golden/souls.json rewritten with `GOLDEN_SOULS_OUT`). Short: it is paid on every call.
 pub const STEPS_RULE: &str = concat!(
-    "Work of more than 3 steps: first write a short task list with todo_list (a few words per step), then update it ",
-    "as you go (one step in_progress, mark it completed when really done); your person sees it live. Never for a ",
-    "simple answer or a quick task."
+    "Task list: when a request needs 4 or more actions (searches, tools, pages, reminders…), first call todo_list ",
+    "with its steps (a few words each, the first in_progress), then mark each step completed right after doing it; ",
+    "your person sees the list live. Never for a question or a quick task."
 );
 
 /// A quick word before slow work (owner's request 2026-10-25, like Grok's app: « Bonne idée, je lance une recherche… »
