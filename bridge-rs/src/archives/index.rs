@@ -127,8 +127,13 @@ impl Index {
         Ok(())
     }
 
+    /// A batch's write transaction. IMMEDIATE: the write lock is taken here, waiting (busy timeout) while another
+    /// connection holds it. A deferred BEGIN took it at the batch's first write, after a read (`file_state`, `locs_of`):
+    /// SQLite never waits to turn a read into a write, so a walk failed at once with « database is locked » when the
+    /// app's view was making the tables of the index just created, and the new archive stayed unindexed for an hour
+    /// (2026-11-06).
     pub fn begin(&self) -> rusqlite::Result<()> {
-        self.conn.execute_batch("BEGIN")
+        self.conn.execute_batch("BEGIN IMMEDIATE")
     }
 
     pub fn commit(&self) -> rusqlite::Result<()> {

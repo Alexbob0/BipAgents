@@ -426,6 +426,40 @@ mod tests {
         assert_eq!(index.count(), 1);
     }
 
+    /// Another connection holds the index's write lock when a batch starts (the app's view making the tables of the
+    /// index a new archive's update has just created, 2026-11-06): the walk waits for it and indexes everything. It
+    /// failed at once with « database is locked » (its first write came after a read) and the archive stayed
+    /// unindexed for an hour.
+    #[test]
+    fn a_walk_waits_for_another_connection_writing() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(dir.path()).unwrap().join("docs");
+        std::fs::create_dir_all(&root).unwrap();
+        let files = BATCH + 50; // a second batch, started while the other connection writes
+        for n in 0..files {
+            std::fs::write(root.join(format!("{n}.md")), format!("# Note {n}\nvélo électrique")).unwrap();
+        }
+        let path = dir.path().join("i.sqlite");
+        let index = Index::open(&path).unwrap();
+        let other = std::cell::RefCell::new(Some(rusqlite::Connection::open(&path).unwrap()));
+        let release = std::cell::RefCell::new(None);
+        // the first batch committed: the other connection takes the write lock and keeps it a moment
+        let progress = |_: usize| {
+            if let Some(conn) = other.borrow_mut().take() {
+                conn.execute_batch("BEGIN IMMEDIATE; INSERT INTO meta(key, value) VALUES('view', '1');").unwrap();
+                *release.borrow_mut() = Some(std::thread::spawn(move || {
+                    std::thread::sleep(Duration::from_millis(300));
+                    conn.execute_batch("COMMIT").unwrap();
+                }));
+            }
+        };
+        let report = index_folder(&root, &index, None, &progress).unwrap();
+        release.take().expect("the lock was taken between two batches").join().unwrap();
+        assert_eq!((report.files, report.read, report.unreadable, report.complete), (files, files, 0, true));
+        assert_eq!(index.count(), files as i64);
+        assert_eq!(index.meta("view").as_deref(), Some("1"));
+    }
+
     /// An archive in a folder its agent's sandbox writes in (`/workspace/notes`): the sandbox swaps that folder for a
     /// link to this machine's files after it was checked. The walk and the reads refuse it (security audit
     /// 2026-10-27).
