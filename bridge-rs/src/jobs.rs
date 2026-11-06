@@ -487,18 +487,29 @@ impl Jobs {
             }
         };
         let cut = |value: Option<&Value>| -> String { text(value).chars().take(160).collect() };
+        let mut activity = Value::Null;
         for event in state.backlog.iter().rev() {
             match event.r#type.as_str() {
                 "tool.started" => {
-                    return json!({"tool": text(event.data.get("tool")), "preview": cut(event.data.get("preview"))});
+                    activity = json!({"tool": text(event.data.get("tool")), "preview": cut(event.data.get("preview"))});
+                    break;
                 }
                 "subagent.start" | "subagent.started" => {
-                    return json!({"tool": "delegate_task", "preview": cut(event.data.get("goal"))});
+                    activity = json!({"tool": "delegate_task", "preview": cut(event.data.get("goal"))});
+                    break;
                 }
                 _ => {}
             }
         }
-        Value::Null
+        // the agent's task list (« Étapes », steps.rs): the card's list and the step being done
+        if let Some(steps) = state.steps.as_ref().filter(|s| s["items"].as_array().is_some_and(|i| !i.is_empty())) {
+            if activity.is_null() {
+                activity = json!({});
+            }
+            activity["step"] = json!(crate::steps::current(steps));
+            activity["steps"] = steps.clone();
+        }
+        activity
     }
 
     /// The task's run's real tokens so far, as its model calls end (Hermes patch 0020, followed by the hub), in the
