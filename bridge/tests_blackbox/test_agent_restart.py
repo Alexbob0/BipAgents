@@ -163,6 +163,8 @@ def test_a_turn_only_its_hermes_knows_holds_the_restart_too(bridges, fakes):
     assert restarts(bridge) == []
     fakes.hermes.busy[""] = 0   # its turn ended
     assert wait_until(lambda: len(restarts(bridge)) == 1, timeout=15)
+    # the status names the restart once it is over, a moment after its command ran (public CI 7/11)
+    assert wait_until(lambda: last_restart(bridge) is not None, timeout=15)
     assert last_restart(bridge)["reason"] == "requested: tools"
 
 
