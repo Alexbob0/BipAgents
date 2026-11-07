@@ -9,7 +9,7 @@ import time
 import zipfile
 
 from bbkit.common import AUTH
-from bbkit.mcp import call, give_token, text_of
+from bbkit.mcp import call, give_token, rpc, text_of
 from conftest import managed_install, profile, wait_registered
 
 
@@ -198,7 +198,8 @@ def test_the_iphone_shares_its_reminders_and_does_what_the_agents_ask(bridges, f
     assert [(op["op"], op["args"].get("title") or op["args"].get("id")) for op in queue] == [
         ("add", "Rendez-vous banque"), ("complete", "r1")]
     assert set(queue[0]) == {"id", "op", "args", "agent", "created"} and queue[0]["agent"] == "coach"
-    assert queue[0]["args"] == {"title": "Rendez-vous banque", "due": "2026-10-30T10:00", "list": "Maison", "notes": ""}
+    # the time as the phone reads it (7/11: the iPhone took « 2026-10-30T10:00 » for the day alone)
+    assert queue[0]["args"] == {"title": "Rendez-vous banque", "due": "2026-10-30T10:00:00", "list": "Maison", "notes": ""}
     assert bridge.post(f"/v1/reminders/queue/{queue[0]['id']}", json={"done": True}, headers=AUTH).json() == {"ok": True}
     assert bridge.post("/v1/reminders/queue/nope", json={"done": True}, headers=AUTH).status_code == 404
     assert [op["op"] for op in bridge.get("/v1/reminders/queue", headers=AUTH).json()["queue"]] == ["complete"]
@@ -209,8 +210,9 @@ def test_the_iphone_shares_its_reminders_and_does_what_the_agents_ask(bridges, f
     assert oct(os.stat(stored).st_mode & 0o777) == "0o600"
     # A reminder by place: the person's phone does it, whichever it is (7/11: « the person's iPhone » for an Android one).
     by_place = text_of(call(bridge, "reminders_add", {"title": "Acheter du pain", "place": "Boulangerie Dupont"}, token=token))
-    assert by_place.startswith("Asked: the person's phone does it at its next sync") and "iPhone" not in by_place
-    assert "the person's iPhone does it" in text_of(asked)
+    assert by_place.startswith("Asked: the person's phone reminds them on arriving at « Boulangerie Dupont »")
+    assert "iPhone" not in by_place
+    assert "the Reminders app of their iPhone for 2026-10-30 10:00, with an alert at that time" in text_of(asked)
     give_token(bridge)
     assert call(bridge, "reminders_add", {"title": "x"})["isError"]   # another agent (wellness): not shared
 
@@ -219,3 +221,70 @@ def test_the_iphone_shares_its_reminders_and_does_what_the_agents_ask(bridges, f
     seen = bridge.get("/v1/reminders", headers=AUTH).json()
     assert seen["items"] == 0 and seen["lists"] == 0 and seen["at"] is None and seen["pending"] == 2
     assert "Lait" not in stored.read_text() and "plombier" not in stored.read_text()
+
+
+def test_a_reminder_at_two_goes_to_the_phone_that_does_it_and_the_agent_says_where(bridges, fakes):
+    """7/11, Alex: on the iPhone « rappelle-moi à 14 h » came without its time; on Android the agent said « c'est
+    noté » for a reminder no phone would do, then gave iPhone steps. Now: an iPhone's Reminders when one shares them,
+    else the Android phone's calendar (« Dans l'agenda »), never both; with neither, plainly not set."""
+    bridge, _ = coach(bridges, fakes)
+    bridge.start()
+    wait_registered(bridge, ["coach"])
+    token = "coach-token-" + "c" * 30
+    give_token(bridge, "coach", token)
+    # The tool an agent sees, from either phone: the time goes in due, nothing sends the person to a phone's settings.
+    tools = {t["name"]: t for t in rpc(bridge, "tools/list", token=token).json()["result"]["tools"]}
+    add = tools["reminders_add"]
+    assert add["inputSchema"]["additionalProperties"] is False
+    assert "2026-11-07T14:00" in add["inputSchema"]["properties"]["due"]["description"]
+    assert all("Settings" not in json.dumps(tools[n]) for n in ("reminders_list", "reminders_add", "reminders_complete"))
+    not_shared = text_of(call(bridge, "reminders_add", {"title": "Appeler Paul", "due": "2026-11-07T14:00"}, token=token))
+    assert "tool on your page" in not_shared and "Settings" not in not_shared and "iPhone" not in not_shared
+    assert bridge.put("/v1/reminders/agents", json={"agents": ["coach"]}, headers=AUTH).status_code == 200
+    queue = lambda phone=None: bridge.get("/v1/reminders/queue" + (f"?phone={phone}" if phone else ""),
+                                          headers=AUTH).json()["queue"]
+
+    # No phone does reminders at a time yet (an Android app from before 7/11): not asked, said plainly.
+    none = call(bridge, "reminders_add", {"title": "Appeler Paul", "due": "2026-11-07T14:00"}, token=token)
+    assert none["isError"] and text_of(none).startswith("Not added") and "isn't set" in text_of(none)
+    assert "Settings" not in text_of(none) and queue() == [] and queue("android") == []
+    # The time somewhere the bridge doesn't read: refused, not lost.
+    lost = call(bridge, "reminders_add", {"title": "Appeler Paul", "due": "2026-11-07", "time": "14:00"}, token=token)
+    assert lost["isError"] and "unknown argument time" in text_of(lost)
+
+    # The Android app says it may write to its calendar: there, at 14:00, with an alert, for it alone.
+    assert bridge.put("/v1/reminders/android", json={"calendar": True, "items": []}, headers=AUTH).json() == {"items": 0}
+    android = call(bridge, "reminders_add", {"title": "Appeler Paul", "due": "2026-11-07T14:00"}, token=token)
+    said = text_of(android)
+    assert not android["isError"] and "in their calendar at 2026-11-07 14:00, with an alert" in said
+    assert "iPhone" not in said
+    asked = queue("android")
+    assert [(o["op"], o["args"]["due"], o["phone"], o["agent"]) for o in asked] == [
+        ("add", "2026-11-07T14:00:00", "android", "coach")]
+    assert queue() == []   # an iPhone never sees it
+    assert bridge.post(f"/v1/reminders/queue/{asked[0]['id']}", json={"done": True}, headers=AUTH).json() == {"ok": True}
+    # Its copy: the reminders it put in the calendar, listed for the agent, ticked off there.
+    copy = {"calendar": True, "items": [{"id": asked[0]["id"], "title": "Appeler Paul", "due": "2026-11-07T14:00:00+01:00"}]}
+    assert bridge.put("/v1/reminders/android", json=copy, headers=AUTH).json() == {"items": 1}
+    listed = text_of(call(bridge, "reminders_list", {}, token=token))
+    assert "Android phone's calendar" in listed and f"id {asked[0]['id']} · Appeler Paul · due 2026-11-07T14:00" in listed
+    again = call(bridge, "reminders_add", {"title": "appeler Paul", "due": "2026-11-07T14:00"}, token=token)
+    assert text_of(again).startswith("Already in the reminders")
+    call(bridge, "reminders_complete", {"id": asked[0]["id"]}, token=token)
+    assert [(o["op"], o["args"], o["phone"]) for o in queue("android")] == [("complete", {"id": asked[0]["id"]}, "android")]
+    # A reminder by place: either phone (the Android app reads it with its own).
+    call(bridge, "reminders_add", {"title": "Lait", "place": "Monoprix République"}, token=token)
+    assert [o["args"].get("title") for o in queue("android")] == [None, "Lait"]
+    assert [o["args"]["title"] for o in queue()] == ["Lait"]
+
+    # The calendar not allowed on the Android phone: it waits, and the agent says so (no iPhone steps).
+    bridge.put("/v1/reminders/android", json={"calendar": False, "items": []}, headers=AUTH)
+    waits = text_of(call(bridge, "reminders_add", {"title": "Vaccin", "due": "2026-11-20"}, token=token))
+    assert waits.startswith("Asked, but not set yet") and "iPhone" not in waits
+
+    # An iPhone shares its Reminders too: the next reminder goes there, never also to the Android calendar.
+    assert bridge.put("/v1/reminders", json={"lists": [], "items": []}, headers=AUTH).json() == {"items": 0}
+    iphone = text_of(call(bridge, "reminders_add", {"title": "Banque", "due": "2026-11-08T10:00"}, token=token))
+    assert "the Reminders app of their iPhone for 2026-11-08 10:00, with an alert at that time" in iphone
+    assert "Banque" in [o["args"]["title"] for o in queue()]
+    assert "Banque" not in [o["args"].get("title") for o in queue("android")]

@@ -78,15 +78,25 @@ de l’offre tout compris. Tout ce qui est personnel va ici, avec la clé de ce 
   journées ne gardent que les catégories qu’au moins un agent lit (une catégorie que plus aucun ne lit en est effacée),
   et chaque agent qui a l’interrupteur activé ne lit que ses catégories (`bridge-rs/src/health.rs`, `Day::restricted`).
 - **Rappels de l’iPhone** (`App/Features/Settings/RemindersSync.swift`) : une copie des rappels part aux bridges choisis
-  par la personne, et l’app exécute les demandes que les agents ont mises en attente. Cette fonction n’existe que sur
-  iOS. Un rappel par lieu (le `place` de `reminders_add`) devient une alarme de lieu EventKit : c’est Rappels qui
-  surveille le lieu, l’app n’a pas accès à la position ; le nom d’un lieu est cherché avec Plans d’Apple
-  (`MKLocalSearch`).
-- **Rappels par lieu sur Android** (`reminders/PlaceReminders.kt`) : les rappels des agents qui ont un lieu sont lus
-  dans la file du bridge (`/v1/reminders/queue`) et gardés sur le téléphone comme geofences (localisation des services
-  Google Play ; le nom cherché avec le `Geocoder` du téléphone). La permission de position (avec l’arrière-plan) n’est
-  demandée qu’une fois un tel rappel créé ; la position ne quitte jamais le téléphone. Les autres rappels restent en
-  attente pour un iPhone.
+  par la personne, et l’app exécute les demandes que les agents ont mises en attente. Un rappel à une heure reçoit sa
+  date avec l’heure, dans le fuseau du téléphone, et une alerte à ce moment-là (`HermesKit/ReminderDue.swift`). Un
+  rappel par lieu (le `place` de `reminders_add`) devient une alarme de lieu EventKit : c’est Rappels qui surveille le
+  lieu, l’app n’a pas accès à la position ; le nom d’un lieu est cherché avec Plans d’Apple (`MKLocalSearch`). Quand un
+  iPhone partage ses Rappels avec un bridge, tous les rappels à une heure ou à une date de ce bridge y vont, jamais
+  aussi sur un téléphone Android.
+- **Rappels sur Android** (`reminders/PlaceReminders.kt`, `reminders/CalendarReminders.kt`) : Android n’a pas d’app
+  Rappels. Les rappels des agents qui ont un lieu sont lus dans la file du bridge (`/v1/reminders/queue?phone=android`)
+  et gardés sur le téléphone comme geofences (localisation des services Google Play ; le nom cherché avec le `Geocoder`
+  du téléphone). La permission de position (avec l’arrière-plan) n’est demandée qu’une fois un tel rappel créé, après
+  un écran de l’app qui dit pourquoi (chaînes `places_allow_*`) ; les rappels sont listés et supprimés dans Réglages ›
+  Rappels par lieu. La position ne quitte jamais le téléphone. Un rappel à une heure ou à une date (envoyé au téléphone Android seulement
+  quand aucun iPhone ne partage ses Rappels avec ce bridge) devient un événement de l’agenda du téléphone
+  (CalendarContract), dans l’agenda synchronisé avec le compte de la personne (jamais un agenda gardé sur le téléphone
+  seul) : un quart d’heure à cette heure-là avec une alerte, ou un événement « toute la journée » avec une alerte à
+  9 h ; sa description dit quel agent l’a demandé (« Rappel de … ») et porte la marque de l’app (`BipAgents ^r…`). Il
+  faut la permission de l’agenda ; sans elle le rappel attend et l’app la demande. L’app envoie au bridge si elle peut
+  écrire dans un agenda, et le titre et l’heure de ses propres rappels à venir (`PUT /v1/reminders/android`), rien
+  d’autre de l’agenda. Coché par un agent : supprimé s’il est à venir, son alerte retirée une fois commencé.
 - **Partagé vers l’app** (`ShareExtension/`, `App/Model/SharedInbox.swift`, Android `ui/SharedMessage.kt`) : un message
   ou des captures partagés vers BipAgents vont à l’agent que la personne choisit, en brouillon et pièces jointes dans sa
   conversation, envoyés seulement quand elle touche Envoyer. L’extension de partage iOS les écrit dans l’App Group

@@ -253,7 +253,8 @@ The suite makes about 800 requests in 28 files.
 | `GET /v1/reminders` | reminders | memory_and_notes (1) |
 | `PUT /v1/reminders` | reminders | memory_and_notes (1) |
 | `PUT /v1/reminders/agents` | reminders | memory_and_notes (1) |
-| `GET /v1/reminders/queue` | reminders | memory_and_notes (1) |
+| `PUT /v1/reminders/android` | reminders | memory_and_notes (1) |
+| `GET /v1/reminders/queue` | reminders | memory_and_notes (2) |
 | `POST /v1/reminders/queue/{op_id}` | reminders | memory_and_notes (1) |
 | `GET /v1/ssh` | ssh_keys | place (1) |
 | `POST /v1/ssh/keys` | ssh_keys | place (2) |

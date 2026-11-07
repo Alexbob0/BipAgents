@@ -158,7 +158,12 @@ phone then adds or ticks off the reminder. The agent's AI model receives the rem
 Kerfy Studio does not read them (with the offer, it hosts your place without accessing it, section 5.1). **Legal
 basis**: your consent (GDPR article 6.1.a), which you give by turning Reminders on and allowing it on your iPhone.
 **Stopping**: turn Reminders off for the agent, or remove the permission in the iPhone's settings (nothing more is
-sent). On Android, which has no Reminders app, only reminders by place exist (below).
+sent). On Android, which has no Reminders app, a reminder at a time or on a day that you ask an agent for goes into
+your phone's calendar (your account's, Google Calendar for instance), with an alert, if you allow BipAgents to use the
+calendar; like any event of that calendar, it is synced by your account's provider. The app then sends your server
+only the title and time of those reminders, to come, so the agent knows what it already asked for, and nothing else
+from your calendar (unless you also share Calendar). If you have both an iPhone and an Android phone, these reminders
+go into the iPhone's Reminders app. Reminders by place are described below.
 
 **Your Carnet (Notebook).** Your agents keep a notebook of what you tell them that will still matter (the people
 in your life, your projects, important dates, the tasks you ask for), as text pages **only on your server** (or your

@@ -1608,7 +1608,7 @@ the BipAgents app.",
         let failed = result.get("isError").map(py::truthy).unwrap_or(false);
         if let Some(push) = push {
             if name != "reminders_list" && !failed {
-                // The person's iPhone woken to do it now (a silent push; else when the app opens).
+                // The person's phone woken to do it now (a silent push; else when the app opens).
                 let agent_name = agent.name.clone();
                 tokio::spawn(async move {
                     push.notify_silent(&agent_name, "reminders", Dict::new()).await;

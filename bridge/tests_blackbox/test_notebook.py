@@ -204,6 +204,7 @@ def test_tasks_stay_few_and_follow_the_phone_reminders(bridge):
     give_token(bridge)
     in_french(bridge)
     assert bridge.put("/v1/reminders/agents", json={"agents": ["Wellness"]}, headers=AUTH).status_code == 200
+    assert bridge.put("/v1/reminders", json={"lists": [], "items": []}, headers=AUTH).status_code == 200   # an iPhone
     added = call(bridge, "notebook_task", {"action": "add", "title": "Appeler le plombier", "due": "2026-11-03T09:00",
                                            "page": "Maison", "origin": "asked"})
     assert "phone reminders" in text_of(added)
@@ -258,6 +259,7 @@ def test_a_task_is_added_once_and_takes_its_reminder_when_it_leaves(bridge):
     give_token(bridge)
     in_french(bridge)
     assert bridge.put("/v1/reminders/agents", json={"agents": ["Wellness"]}, headers=AUTH).status_code == 200
+    assert bridge.put("/v1/reminders", json={"lists": [], "items": []}, headers=AUTH).status_code == 200   # an iPhone
     queue = lambda: bridge.get("/v1/reminders/queue", headers=AUTH).json()["queue"]
     first = text_of(call(bridge, "notebook_task", {"action": "add", "title": "Appeler le dentiste", "due": "2026-11-03"}))
     task_id = re.search(r"id (t[0-9a-f]+)", first).group(1)
@@ -296,6 +298,7 @@ def test_reminders_left_by_removed_tasks_are_cleaned_at_start(bridge):
     give_token(bridge)
     in_french(bridge)
     assert bridge.put("/v1/reminders/agents", json={"agents": ["Wellness"]}, headers=AUTH).status_code == 200
+    assert bridge.put("/v1/reminders", json={"lists": [], "items": []}, headers=AUTH).status_code == 200   # an iPhone
     kept = re.search(r"id (t[0-9a-f]+)", text_of(call(bridge, "notebook_task", {
         "action": "add", "title": "Rendez-vous banque", "due": "2026-11-05"}))).group(1)
     # Archived (moved under « Archivées »): not gone, nothing asked.

@@ -3113,6 +3113,9 @@ fn link_reminder(config: &Config, task: &Task, due: &str, who: &Who) -> anyhow::
         Some(agent) => allowed.contains(agent),
         None => !allowed.is_empty(),
     };
+    // Only an iPhone does a dated reminder (an Android phone, those by place only): without one sharing its
+    // Reminders, the task stays in the Carnet and nobody is told it is on their phone.
+    let ok = ok && crate::reminders::iphone_syncs(&data, py::time_time());
     if !ok || links(&read_state(config)).contains_key(&task.id) {
         return Ok(false);
     }
@@ -3968,6 +3971,7 @@ mod tests {
         .unwrap();
         let mut data = Dict::new();
         data.insert("agents".into(), json!(["lea"]));
+        data.insert("at".into(), json!(py::time_time())); // an iPhone shares its Reminders
         crate::reminders::write(&config, &data).unwrap();
         let who = lea();
         // the same task asked again (case, accents, punctuation, the page's link): the first one returned

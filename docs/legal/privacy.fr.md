@@ -166,7 +166,13 @@ ton téléphone qui ajoute ou coche le rappel. Le modèle d'IA de l'agent reçoi
 répondre. Kerfy Studio ne les lit pas (avec l'offre, il héberge ta place sans y accéder, section 5.1). **Base
 légale** : ton consentement (article 6.1.a du RGPD), que tu donnes en activant « Rappels » et en l'autorisant sur ton
 iPhone. **Arrêter** : désactive « Rappels » pour l'agent, ou retire l'autorisation dans les réglages de l'iPhone (plus
-rien n'est envoyé). Sur Android, qui n'a pas d'app Rappels, seuls les rappels par lieu existent (ci-dessous).
+rien n'est envoyé). Sur Android, qui n'a pas d'app Rappels, un rappel à une heure ou à une date que tu demandes à un
+agent va dans l'agenda de ton téléphone (celui de ton compte, Google Agenda par exemple), avec une alerte, si tu
+autorises BipAgents à utiliser l'agenda ; comme tout événement de cet agenda, il est synchronisé par le fournisseur de
+ton compte. L'app envoie alors à ton serveur seulement le titre et l'heure de ces rappels-là, à venir, pour que l'agent
+sache ce qu'il a déjà demandé, et rien d'autre de ton agenda (sauf si tu partages aussi « Calendrier »). Si tu as un
+iPhone et un téléphone Android, ces rappels vont dans l'app Rappels de l'iPhone. Les rappels par lieu sont décrits
+ci-dessous.
 
 **Ton Carnet.** Tes agents tiennent un carnet de ce que tu leur dis qui comptera encore (les personnes de ta vie,
 tes projets, les dates importantes, les tâches que tu demandes), en pages de texte **uniquement sur ton serveur** (ou

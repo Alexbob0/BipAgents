@@ -171,8 +171,13 @@ hinzu oder hakt sie ab. Das KI-Modell des Agenten erhält die Erinnerungen, die 
 Kerfy Studio liest sie nicht (beim Angebot hostet es deinen Platz, ohne darauf zuzugreifen, Abschnitt 5.1).
 **Rechtsgrundlage**: deine Einwilligung (Art. 6 Abs. 1 lit. a DSGVO), die du gibst, indem du Erinnerungen einschaltest
 und es auf deinem iPhone erlaubst. **Beenden**: schalte Erinnerungen für den Agenten aus oder entziehe die Erlaubnis in
-den Einstellungen des iPhones (dann wird nichts mehr gesendet). Auf Android, das keine Erinnerungen-App hat, gibt es
-nur Erinnerungen an Orten (unten).
+den Einstellungen des iPhones (dann wird nichts mehr gesendet). Auf Android, das keine Erinnerungen-App hat, kommt eine
+Erinnerung zu einer Uhrzeit oder an einem Tag, um die du einen Agenten bittest, in den Kalender deines Handys (den
+deines Kontos, zum Beispiel Google Kalender), mit einem Alarm, wenn du BipAgents erlaubst, den Kalender zu nutzen; wie
+jeder Termin dieses Kalenders wird sie vom Anbieter deines Kontos synchronisiert. Die App sendet deinem Server dann nur
+Titel und Uhrzeit dieser Erinnerungen, die noch kommen, damit der Agent weiß, worum er schon gebeten hat, und sonst
+nichts aus deinem Kalender (außer du teilst auch „Kalender“). Hast du ein iPhone und ein Android-Handy, kommen diese
+Erinnerungen in die Erinnerungen-App des iPhones. Erinnerungen an Orten werden unten beschrieben.
 
 **Dein Notizbuch (« Carnet »).** Deine Agenten führen ein Notizbuch mit dem, was du ihnen sagst und was wichtig
 bleibt (die Menschen in deinem Leben, deine Projekte, wichtige Daten, die Aufgaben, um die du bittest), als Textseiten
