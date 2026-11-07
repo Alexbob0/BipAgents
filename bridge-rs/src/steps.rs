@@ -146,8 +146,10 @@ pub fn counts(steps: &Value) -> (u64, u64) {
 // -- automatic steps --------------------------------------------------------------------------------------------------
 //
 // Alex 6/11: a turn of several actions without a list of the agent's own still gets its card, made by the bridge from
-// what the agent really did: one step per kind of action (consecutive calls of a kind are one step, with a count),
-// the call running the current step. Only from the 2nd step (a quick answer never gets one), at most `AUTO_VISIBLE`
+// what the agent really did: one step per kind of action for the whole turn (its calls counted together), the call
+// running the current step. Since 7/11 (Alex: « pas très utile ») only steps the person recognises count — never the
+// agent's workings (calculations, files, its notes: `backstage` in tool_kinds.rs) — and only from the 3rd useful step
+// (`AUTO_MIN_STEPS`: a quick answer or a short turn never gets one); at most `AUTO_VISIBLE`
 // lines (older done steps folded into « +N »). Labels are the words of the tool's kind (scripts/tool-labels.py, in
 // tool_kinds.rs: every tool an agent can call has one), a count, at most a site's domain or a connector's name: never
 // an argument (a mail's subject, an address, a file's words) nor a tool's own name. The agent's own list wins.
@@ -213,8 +215,19 @@ pub fn site_of(tool: &str, words: &str) -> Option<String> {
     (step_of(tool) == Some(SITE_STEP)).then(|| crate::live_activities::site(words)).flatten()
 }
 
-/// The automatic list of these calls (None: fewer than 2 steps). `running`: whether a running call is the current
-/// step (a stored turn that ended: every step done).
+/// A backstage step: the agent's own workings (calculations, files, its notes…: `backstage` in tool_kinds.rs), never
+/// counted in an automatic list (Alex 7/11).
+fn backstage(step: &str) -> bool {
+    crate::tool_kinds::STEPS.iter().any(|s| s.id == step && s.backstage)
+}
+
+/// Useful steps an automatic list needs before it is shown (Alex 7/11: fewer is no plan worth a card).
+pub const AUTO_MIN_STEPS: usize = 3;
+
+/// The automatic list of these calls (None: fewer than `AUTO_MIN_STEPS` useful steps). One line per step for the
+/// whole turn, in the order of its first call, its calls counted together (« Lire 3 mails » whatever came between);
+/// a step with a call running is the current one (a stored turn that ended: every step done). Steps only grow within
+/// a turn, so a live card, once shown, stays.
 pub fn auto_steps(actions: &[Action], lang: &str) -> Option<Value> {
     struct Run<'a> {
         step: &'static str,
@@ -227,25 +240,25 @@ pub fn auto_steps(actions: &[Action], lang: &str) -> Option<Value> {
     }
     let mut steps: Vec<Run> = Vec::new();
     for action in actions {
-        let Some(step) = step_of(&action.tool) else { continue };
+        let Some(step) = step_of(&action.tool).filter(|s| !backstage(s)) else { continue };
         let service = action.service.as_deref();
-        match steps.last_mut() {
-            // a connector's calls: one step per connector
-            Some(last) if last.step == step && (step != "unknown" || last.service == service) => {
-                last.n += 1;
-                if last.site.is_none() {
-                    last.site = action.site.clone();
-                } else if action.site.is_some() && action.site != last.site {
-                    last.same = false;
+        // a connector's calls: one step per connector
+        match steps.iter_mut().find(|r| r.step == step && (step != "unknown" || r.service == service)) {
+            Some(run) => {
+                run.n += 1;
+                if run.site.is_none() {
+                    run.site = action.site.clone();
+                } else if action.site.is_some() && action.site != run.site {
+                    run.same = false;
                 }
-                last.running |= action.running;
+                run.running |= action.running;
             }
-            _ => {
+            None => {
                 steps.push(Run { step, n: 1, site: action.site.clone(), same: true, service, running: action.running })
             }
         }
     }
-    if steps.len() < 2 {
+    if steps.len() < AUTO_MIN_STEPS {
         return None;
     }
     let total = steps.len();
@@ -573,6 +586,96 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// Alex 7/11 on Wellness: « Faire un calcul / Utiliser un outil / Faire un calcul / Noter dans ton Carnet » —
+    /// « ce genre de todo, pas très utile ». The workings don't count: one useful step left, no card.
+    #[test]
+    fn backstage_steps_never_make_a_card() {
+        let alex = [
+            act("execute_code", None, false),
+            act("read_file", None, false),
+            act("execute_code", None, false),
+            act("mcp__bipagents__notebook_note", None, false),
+        ];
+        assert!(auto_steps(&alex, "fr").is_none());
+        // three useful steps among calculations and files: a card of those three
+        let useful = [
+            act("mcp__bipagents__mail_search", None, false),
+            act("execute_code", None, false),
+            act("web_search", None, false),
+            act("write_file", None, false),
+            act("terminal", None, false),
+            act("mcp__bipagents__create_page", None, true),
+        ];
+        assert_eq!(
+            texts(&auto_steps(&useful, "fr").unwrap()),
+            [
+                pair("Chercher dans tes mails", "done"),
+                pair("Chercher sur le web", "done"),
+                pair("Préparer une page", "in_progress")
+            ]
+        );
+        // every backstage step is one of the table's, and the web, a connector, a page made never are
+        for id in ["compute", "readFile", "prepareFile", "knowledge", "spaceEstimate", "sitesList", "voices"] {
+            assert!(backstage(id), "{id}");
+        }
+        for id in ["webSearch", "browser", "unknown", "createPage", "mailRead", "notebookNote", "payment"] {
+            assert!(!backstage(id), "{id}");
+        }
+    }
+
+    #[test]
+    fn a_step_is_one_line_for_the_whole_turn() {
+        let calls = [
+            act("mcp__bipagents__mail_read", None, false),
+            act("web_search", None, false),
+            act("mcp__bipagents__mail_read", None, false),
+            act("mcp__bipagents__calendar_list", None, false),
+            act("mcp__bipagents__mail_read", None, true),
+            act("web_search", None, false),
+        ];
+        let steps = auto_steps(&calls, "fr").unwrap();
+        assert_eq!(
+            texts(&steps),
+            [
+                pair("Lire 3 mails", "in_progress"),
+                pair("Faire 2 recherches sur le web", "done"),
+                pair("Regarder ton agenda", "done")
+            ]
+        );
+        assert_eq!((steps["done"].as_u64(), steps["total"].as_u64()), (Some(2), Some(3)));
+    }
+
+    /// Live: no card until the 3rd useful step starts; from then on it stays (steps only grow in a turn).
+    #[test]
+    fn the_live_card_appears_at_the_third_useful_step_and_stays() {
+        let turn = [
+            ("mcp__bipagents__mail_search", true),
+            ("mcp__bipagents__mail_search", false),
+            ("execute_code", true),
+            ("execute_code", false),
+            ("mcp__bipagents__mail_read", true),
+            ("mcp__bipagents__mail_read", false),
+            ("mcp__bipagents__mail_search", true),
+            ("mcp__bipagents__mail_search", false),
+            ("mcp__bipagents__reminders_add", true),
+            ("mcp__bipagents__reminders_add", false),
+            ("mcp__bipagents__mail_read", true),
+        ];
+        let mut actions: Vec<Action> = Vec::new();
+        let mut shown = Vec::new();
+        for (tool, started) in turn {
+            if started {
+                actions.push(act(tool, None, true));
+            } else if let Some(open) = actions.iter_mut().find(|a| a.running && a.tool == tool) {
+                open.running = false;
+            }
+            shown.push(auto_steps(&actions, "fr").map(|s| s["items"].as_array().unwrap().len()));
+        }
+        assert_eq!(shown, [None, None, None, None, None, None, None, None, Some(3), Some(3), Some(3)]);
+        let last = auto_steps(&actions, "fr").unwrap();
+        assert_eq!(last["items"][1], json!({"text": "Lire 2 mails", "status": "in_progress"}));
     }
 
     fn item_of(id: &str, turn: &str, pos: (u32, i64, u32), body: Value) -> Item {

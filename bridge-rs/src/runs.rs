@@ -2614,16 +2614,24 @@ mod tests {
         assert!(steps_events(&sub).is_empty(), "one step: no card");
         hub.dispatch(&sub, event("tool.started", json!({"tool": "mcp__stealth__navigate", "tool_call_id": "b",
                                                         "preview": "https://www.sncf-connect.com/billets"})));
+        hub.dispatch(&sub, event("tool.completed", json!({"tool": "mcp__stealth__navigate", "tool_call_id": "b"})));
+        // a calculation is the agent's own workings: still two useful steps, no card
+        hub.dispatch(&sub, event("tool.started", json!({"tool": "execute_code", "tool_call_id": "x"})));
+        hub.dispatch(&sub, event("tool.completed", json!({"tool": "execute_code", "tool_call_id": "x"})));
+        assert!(steps_events(&sub).is_empty(), "two useful steps: no card");
+        // the 3rd useful step starts: the card
+        hub.dispatch(&sub, event("tool.started", json!({"tool": "mcp__bipagents__create_page", "tool_call_id": "p"})));
         let got = steps_events(&sub);
         assert_eq!(got.len(), 1);
         let items = &got[0].data["steps"]["items"];
         assert_eq!(items[0], json!({"text": "Chercher dans tes mails", "status": "done"}));
-        assert_eq!(items[1], json!({"text": "Ouvrir le site sncf-connect.com", "status": "in_progress"}));
+        assert_eq!(items[1], json!({"text": "Ouvrir le site sncf-connect.com", "status": "done"}));
+        assert_eq!(items[2], json!({"text": "Préparer une page", "status": "in_progress"}));
         let raw: Value = serde_json::from_str(&got[0].raw).unwrap();
         assert_eq!(raw["event"], "steps.updated");
-        hub.dispatch(&sub, event("tool.completed", json!({"tool": "mcp__stealth__navigate", "tool_call_id": "b"})));
+        hub.dispatch(&sub, event("tool.completed", json!({"tool": "mcp__bipagents__create_page", "tool_call_id": "p"})));
         assert_eq!(steps_events(&sub).len(), 2);
-        assert_eq!(steps_events(&sub)[1].data["steps"]["done"], 2);
+        assert_eq!(steps_events(&sub)[1].data["steps"]["done"], 3);
         // the agent's own list: it wins for the rest of the run
         let todos = json!({"todos": [{"id": "1", "content": "Mon plan", "status": "in_progress"}], "revision": 1});
         hub.dispatch(&sub, event("todo.updated", todos));

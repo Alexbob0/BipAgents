@@ -391,10 +391,15 @@ through Hermes' tool search (`tool_call` wrapping one `todo_list` call) counts t
 cut to 200 characters, a list to 30 steps.
 
 **Automatic steps** (Alex, 6/11). A turn of several actions without a list of the agent's own gets one made by the
-bridge from its real calls, in the same item and events (`"auto": true` in `steps`): one step per kind of call
-(consecutive calls of a kind are one step with a count: « Chercher dans tes mails », « Lire 6 mails », « Ouvrir le site
-sncf-connect.com »), the running call the step `in_progress`, the others `done`. Only from the 2nd step (a quick
-answer never gets a card); at most 6 lines, the oldest done steps folded into a first « +N étapes » line (`folded`:
+bridge from its real calls, in the same item and events (`"auto": true` in `steps`): one line per kind of call for the
+whole turn, in the order of its first call, its calls counted together (« Chercher dans tes mails », « Lire 6 mails »,
+« Ouvrir le site sncf-connect.com »), a line with a call running `in_progress`, the others `done`. Only useful steps
+count (7/11, Alex: « Faire un calcul / Faire un calcul / Noter dans ton Carnet », « pas très utile »): never the agent's
+workings — calculations and code, files, the terminal, re-reading its notes, pages or group talks, its task board,
+choosing a voice, estimating space, checking the allowed sites, going through the phone (`BACKSTAGE` in
+scripts/tool-labels.py, `backstage` in tool_kinds.rs). Shown only from 3 distinct useful steps, live and stored alike
+(stored cards are made at each read, old conversations too): live, the card comes when the 3rd useful step starts and
+stays (steps only grow in a turn). At most 6 lines, the oldest done steps folded into a first « +N étapes » line (`folded`:
 how many). The words are the bridge's for the tool's kind, in the agent's language (fr, en, de, es), with a count and
 at most a site's domain: never a call's arguments (a mail's subject, an address, a file's words). Calls that are no
 step of the work (the tool search, memory, a question to the person, the list itself) are left out. As soon as the

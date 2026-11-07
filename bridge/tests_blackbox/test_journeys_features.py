@@ -138,13 +138,15 @@ def test_j41_a_routine_is_made_first_then_one_question(journey):
 # -- « Étapes » -------------------------------------------------------------------------------------------------------
 
 def test_j42_the_steps_card_follows_the_agents_actions_then_its_own_list(journey):
-    """While Vie works, « Étapes » comes from what it does (two kinds of actions); once it writes its own list, that
-    list is the card, live and once the turn is stored: one card for the turn, its lines and states."""
+    """While Vie works, « Étapes » comes from what it does, from its 3rd useful step (a calculation never counts); once
+    it writes its own list, that list is the card, live and once the turn is stored: one card for the turn."""
     run = journey.send(cid(42), "Organise le pique-nique de samedi #etapes").json()["run_id"]
     events = journey.run_events(run)
     updates = [d.get("steps") for name, d in events if name == "steps.updated"]
     assert updates, [name for name, _ in events]
-    assert updates[0].get("auto") is True and len(updates[0]["items"]) >= 2, updates[0]   # from its actions
+    first = updates[0]
+    assert first.get("auto") is True and len(first["items"]) == 3, first   # from its actions, the useful ones only
+    assert not [s for s in first["items"] if "calcul" in s["text"].lower()], first
     final = updates[-1]
     assert not final.get("auto"), final   # its own list wins
     assert [s["text"] for s in final["items"]] == ["Regarder la météo", "Choisir le parc", "Préparer le pique-nique"]

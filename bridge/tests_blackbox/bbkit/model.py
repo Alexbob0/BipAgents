@@ -417,7 +417,7 @@ class PeopleModel(ScriptedModel):
 | `#routine` | creates a routine (`routine_schedule`), then says so: the routine's one question comes in this turn |
 | `#tache` | starts a small background task (`propose_task`, « small »): a choice the approval level may take |
 | `#famille` | proposes to tell the family (`tell_family`): nothing leaves before the person's « Envoyer » |
-| `#etapes` | two steps of different kinds (a web search, the weather), then its own list (`todo_list` + `todo.updated`) |
+| `#etapes` | three useful steps (a web search, the weather, the agenda) and a calculation, then its own list (`todo_list` + `todo.updated`) |
 | `#relais` | writes to another agent (`message_agent`) five times in one turn (the hop cap) |
 
     A run started with `message` instead of `input` (another household's agent through `/peer/…`) is read the same."""
@@ -466,8 +466,10 @@ class PeopleModel(ScriptedModel):
         if "#etapes" in words:
             opening += self.say(run, "Je m’organise. ")
             self.tool(run, "web_search", {"query": "météo du week-end"}, lambda: "Beau temps samedi.", calls, results)
-            time.sleep(1.0)   # the automatic « Étapes » card shows meanwhile (two kinds of steps)
+            self.tool(run, "execute_code", {"code": "print(21 - 3)"}, lambda: "18", calls, results)   # backstage
             self.tool(run, "mcp_bipagents_weather", {"place": "Lyon"}, lambda: "Samedi : 21 °C, soleil.", calls, results)
+            # the automatic « Étapes » card shows from its 3rd useful step (the calculation doesn't count)
+            self.tool(run, "mcp_bipagents_calendar_list", {"days": 2}, lambda: "Samedi : libre.", calls, results)
             time.sleep(1.0)
             todos = [{"id": "1", "content": "Regarder la météo", "status": "completed"},
                      {"id": "2", "content": "Choisir le parc", "status": "completed"},
