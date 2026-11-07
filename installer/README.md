@@ -181,6 +181,16 @@ checks that each one answers. When an agent no longer answers, it offers to go b
 `--check` checks without changing anything. When a BipAgents update brings a new patch, `--fixes-only` puts it on
 the Hermes you have, without updating Hermes, then restarts and checks the agents.
 
+**Your own Hermes** (installed before BipAgents): only the patches you chose are put back; the ones BipAgents added
+since are offered, with a question, when they fit your version (`--fixes-only`, and `bipagents update` when the
+patches change; a refusal is remembered). When your Hermes isn't the version BipAgents is built and tested on,
+`--check` says so, and `bipagents hermes-update --to-bipagents` moves it there with every patch: it shows the plan
+and asks, backs up first (`~/.local/state/bipagents/hermes-move/<time>/`: your conversations, profiles, memory,
+skills and settings, Hermes' code and environment as they are), waits for the turns going on, stops the gateways
+(the hub and your agents' spaces), runs that version's own Hermes installer (`--commit`: its dependencies and
+migrations, as a fresh install), puts every patch on, checks your model and settings are unchanged, restarts and
+checks every agent. Any failure puts everything back by itself. `--undo-move` takes a finished move back.
+
 ## Uninstall
 
 `bipagents uninstall` removes the services, the tailnet

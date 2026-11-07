@@ -11,6 +11,11 @@
 `--check` does 1 and 4 only, without changing anything. `--fixes-only` puts on the BipAgents patches the current Hermes
 doesn't have yet (a BipAgents update brought new ones), without updating Hermes, then does 3 and 4; the same is offered
 when Hermes is already up to date.
+
+On a Hermes the person had before BipAgents (existing.py), only the fixes they chose are put back; the fixes BipAgents
+added since are offered, with a question, when they fit their Hermes (`offer_new`; refused ones are remembered and not
+asked again by `bipagents update`). `--to-bipagents` moves such a Hermes onto the version BipAgents is built and
+tested on, with every fix, keeping the person's model and settings (to_bipagents.py); `--undo-move` takes it back.
 """
 from __future__ import annotations
 
@@ -22,6 +27,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Dict, List, Optional, Tuple
 
 import httpx
@@ -48,9 +54,50 @@ def patches() -> List[Path]:
 
 
 def applied_now() -> List[Path]:
-    """Our patches the Hermes code has right now (in whichever version fits it)."""
-    return [v for p in patches() for v in hermes.patch_variants(p)
-            if git("apply", "--reverse", "--check", str(v)).returncode == 0]
+    """Our patches the Hermes code has right now (in whichever version fits it). Each one that reverse-applies alone;
+    and when the whole set is on (`whole_set_on`), every one of it: a patch whose lines a later one changed again no
+    longer reverse-applies alone (0018 under 0019 and 0024, measured on v0.22.5), yet it is there."""
+    alone = [v for p in patches() for v in hermes.patch_variants(p)
+             if git("apply", "--reverse", "--check", str(v)).returncode == 0]
+    if len(alone) < len(patches()):
+        whole = whole_set_on()
+        if whole is not None:
+            return whole
+    return alone
+
+
+def whole_set_on() -> Optional[List[Path]]:
+    """The patches, applied in order on HEAD in a temporary index (nothing of the checkout changes): when the
+    result is the code as it is, for every file they touch, all of them are on. None otherwise."""
+    checkout = hermes.hermes_checkout()
+    folder = Path(tempfile.mkdtemp(prefix="bipagents-index-"))
+    env = {**os.environ, "GIT_INDEX_FILE": str(folder / "index")}
+    run = lambda *a: subprocess.run(["git", "-C", str(checkout), *a], capture_output=True, text=True, env=env)
+    try:
+        if run("read-tree", "HEAD").returncode != 0:
+            return None
+        applied: List[Path] = []
+        touched: List[str] = []
+        for patch in patches():
+            fit = next((v for v in hermes.patch_variants(patch)
+                        if run("apply", "--cached", "--check", str(v)).returncode == 0), None)
+            if fit is None or run("apply", "--cached", str(fit)).returncode != 0:
+                return None
+            applied.append(fit)
+            listed = run("apply", "--numstat", str(fit)).stdout
+            touched += [line.split("\t", 2)[2] for line in listed.splitlines() if line.count("\t") >= 2]
+        for path in dict.fromkeys(touched):
+            staged = run("ls-files", "-s", "--", path).stdout.split()
+            on_disk = checkout / path
+            if not staged:
+                if on_disk.exists():
+                    return None   # deleted by the set, still there
+                continue
+            if not on_disk.is_file() or run("hash-object", str(on_disk)).stdout.strip() != staged[1]:
+                return None
+        return applied
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
 
 
 def channel(out: str) -> str:
@@ -235,6 +282,103 @@ def remember_patches(paths: List[str]) -> None:
     record.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
+def recorded_declined() -> List[str]:
+    """The fixes the person said no to on their own Hermes (asked again only when they run --fixes-only)."""
+    record = Path.home() / ".config" / "bipagents" / RECORD
+    try:
+        return list(json.loads(record.read_text(encoding="utf-8")).get("declined", []))
+    except (OSError, ValueError):
+        return []
+
+
+def remember_declined(names: List[str]) -> None:
+    record = Path.home() / ".config" / "bipagents" / RECORD
+    try:
+        data = json.loads(record.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    data["declined"] = sorted(set(data.get("declined", [])) | set(names))
+    record.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
+def title(patch: Path) -> str:
+    """A fix's one-line title (its Subject), for the question."""
+    try:
+        for line in patch.read_text(encoding="utf-8", errors="replace").splitlines()[:12]:
+            if line.startswith("Subject:"):
+                return re.sub(r"^\[PATCH[^\]]*\]\s*", "", line[len("Subject:"):].strip())
+    except OSError:
+        pass
+    return patch.stem[5:].replace("-", " ")
+
+
+def new_fixes(chosen: Optional[List[str]], mine: List[Path], declined: List[str],
+              include_declined: bool) -> List[Path]:
+    """On the person's own Hermes: BipAgents' fixes neither chosen nor on it (BipAgents added them since, or they
+    were refused), in order; none for a Hermes that came with BipAgents (it gets them all anyway)."""
+    if chosen is None:
+        return []
+    skip = {Path(c).name for c in chosen} | {m.name for m in mine}
+    if not include_declined:
+        skip |= set(declined)
+    return [p for p in patches() if p.name not in skip]
+
+
+def fitting(candidates: List[Path], mine: List[Path]) -> List[Path]:
+    """Those of the candidates that go on the current code, tried on a temporary copy of it (its commit, our fixes
+    on it as now), in order, each on top of the ones before: nothing of the install changes."""
+    if not candidates:
+        return []
+    folder = Path(tempfile.mkdtemp(prefix="bipagents-fit-"))
+    found: List[Path] = []
+    try:
+        git("worktree", "add", "--detach", "--force", str(folder / "copy"), "HEAD", check=True)
+        runner = hermes.Runner()
+        for patch in mine:
+            hermes.apply_fitting(runner, folder / "copy", [patch])
+        for patch in candidates:
+            if hermes.apply_fitting(runner, folder / "copy", hermes.patch_variants(patch)) is not None:
+                found.append(patch)
+    except subprocess.CalledProcessError:
+        return []
+    finally:
+        git("worktree", "remove", "--force", str(folder / "copy"))
+        shutil.rmtree(folder, ignore_errors=True)
+    return found
+
+
+def pick(answer: str, offered: List[Path]) -> List[Path]:
+    """y / yes: all; n / no / nothing: none; else the numbers given (« 0005, 0017 » or « 5,17 »)."""
+    answer = answer.strip().lower()
+    if answer in ("y", "yes", "o", "oui"):
+        return list(offered)
+    numbers = {int(n) for n in re.findall(r"\d+", answer)}
+    return [p for p in offered if p.name[:4].isdigit() and int(p.name[:4]) in numbers]
+
+
+def offer_new(args, agents: List[Dict[str, str]], mine: List[Path], chosen: List[str], offered: List[Path],
+              ask=input) -> int:
+    """The new fixes that fit, offered with a question; those taken put on (fixes_only), the others remembered as
+    refused."""
+    say(ui.note("BipAgents fixes that fit your Hermes and aren't on it:"))
+    for patch in offered:
+        say(f"    {patch.name[:4]}  {title(patch)}")
+    try:
+        answer = ask(ui.question("Put them on? Your agents restart (1 to 2 minutes). "
+                                 "(y = all, n = none, or their numbers)") + " [n]: ")
+    except EOFError:
+        answer = ""
+    taken = pick(answer, offered)
+    refused = [p.name for p in offered if p not in taken]
+    if refused:
+        remember_declined(refused)
+    if not taken:
+        say("Nothing was changed." + (" (Not asked again; bipagents hermes-update --fixes-only offers them.)"
+                                      if refused else ""))
+        return 1
+    return fixes_only(SimpleNamespace(yes=True), agents, mine, taken, chosen)
+
+
 def main(argv: List[str]) -> int:
     import argparse
     parser = argparse.ArgumentParser(prog="bipinstall hermes-update",
@@ -244,6 +388,11 @@ def main(argv: List[str]) -> int:
     parser.add_argument("--yes", action="store_true", help="no question (for a scheduled update)")
     parser.add_argument("--fixes-only", action="store_true",
                         help="only put on the BipAgents fixes the current Hermes doesn't have yet (no Hermes update)")
+    parser.add_argument("--to-bipagents", action="store_true",
+                        help="move your own Hermes onto the version BipAgents is built and tested on, with every fix "
+                             "(backup first, your model and settings kept, rolled back by itself on any failure)")
+    parser.add_argument("--undo-move", action="store_true", help="undo the last --to-bipagents, from its backup")
+    parser.add_argument("--from-update", action="store_true", help=argparse.SUPPRESS)   # bipagents update's call
     args = parser.parse_args(argv)
     if (hermes.hermes_home() / "shared").is_symlink():
         say(ui.note("This Hermes is shared by the server's places and read-only: its administrator updates it "
@@ -265,11 +414,27 @@ def main(argv: List[str]) -> int:
     missing = missing_fixes(wanted, mine)
     fixes = ", ".join(p.name[:4] for p in mine)
     say(ui.note(f"Current version: {before}; fixes in place: {fixes or 'none'}."))
+    from . import to_bipagents
+    if args.undo_move:
+        return to_bipagents.undo(args, agents, check_agents)
+    if args.to_bipagents:
+        return to_bipagents.run(args, config, agents, mine, PATCHES, check_agents, remember_patches)
+    # The person's own Hermes: the fixes BipAgents added since they chose, when they fit (asked, never with --yes).
+    offered = [] if args.yes else fitting(
+        new_fixes(chosen, mine, recorded_declined(), include_declined=args.fixes_only and not args.from_update), mine)
     if args.fixes_only:
+        if missing:
+            code = fixes_only(args, agents, mine, missing, chosen)
+            if code != 0 or not offered:
+                return code
+            mine, chosen = applied_now(), recorded_patches()
+        if offered:
+            return offer_new(args, agents, mine, chosen or [], offered)
+        if chosen is not None and not missing and to_bipagents.advice(mine, PATCHES):
+            return 0
         if not missing:
             say(ui.done("Every BipAgents fix is already on this Hermes."))
-            return 0
-        return fixes_only(args, agents, mine, missing, chosen)
+        return 0
     out = subprocess.run([hermes.hermes_bin(), "update", "--check"], capture_output=True, text=True).stdout
     branch = channel(out)
     late = behind(out)
@@ -286,13 +451,22 @@ def main(argv: List[str]) -> int:
                         "updating Hermes: bipagents hermes-update --fixes-only"))
     if late == 0 and missing and not args.check:
         return fixes_only(args, agents, mine, missing, chosen)
+    if late == 0 and offered and not args.check:
+        return offer_new(args, agents, mine, chosen or [], offered)
     if args.check or not late:
         if missing:
             say(ui.note(f"BipAgents fixes not on this Hermes yet: {', '.join(p.name[:4] for p in missing)} "
                         "(bipagents hermes-update --fixes-only)."))
+        if offered and args.check:
+            say(ui.note(f"New BipAgents fixes that fit your Hermes: {', '.join(p.name[:4] for p in offered)} "
+                        "(bipagents hermes-update --fixes-only asks)."))
+        if chosen is not None:
+            to_bipagents.advice(mine, PATCHES)
         say("\nYour agents, now:")
         report(agents, check_agents(agents, expect_clarify=any(p.name.startswith("0001") for p in mine)))
         return 0
+    if chosen is not None and to_bipagents.advice(mine, PATCHES):
+        say(ui.note("This update goes to Hermes' latest, not BipAgents' version."))
     if not args.yes:
         if not confirm("Update Hermes now? Your agents restart (1 to 2 minutes)."):
             say("Nothing was changed.")

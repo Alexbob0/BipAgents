@@ -202,7 +202,8 @@ COMMAND_HELP = """BipAgents, in this account:
   bipagents qr [ACCOUNT]     show the code to scan in the app again (ACCOUNT: another install, with sudo)
   bipagents voice            connect your own voice model (a TTS server on the network)
   bipagents console          a one-time link opening your agents in a computer's browser
-  bipagents hermes-update    update Hermes and keep BipAgents working
+  bipagents hermes-update    update Hermes and keep BipAgents working (--to-bipagents: your own Hermes moved
+                             to the version BipAgents is tested on, with every patch; --undo-move: back)
   bipagents bridge [CMD …]   which bridge version runs; `bridge rust` fetches it again; `bridge check`, `bridge
                              browser add --all`…: the bridge's own commands
   bipagents family add NAME  prepare a family member's install on this server
@@ -399,6 +400,11 @@ def main(argv: List[str]) -> int:
         elif own_hermes() and Path(hermes.hermes_bin()).exists() and not runner.dry:
             from . import update as hermes_update
             hermes_update.main(["--fixes-only", "--yes", "--config", str(config)])
+        elif not args.auto and Path(hermes.hermes_bin()).exists() and not runner.dry:
+            # The person's own Hermes: the new fixes that fit it are offered, with a question (refused ones are
+            # remembered); those they chose before and lost are put back.
+            from . import update as hermes_update
+            hermes_update.main(["--fixes-only", "--from-update", "--config", str(config)])
         else:
             commands.append("bipagents hermes-update --fixes-only   # BipAgents' Hermes patches changed")
     if touched("App/", "Packages/", "Widgets/", "NotificationService/"):
