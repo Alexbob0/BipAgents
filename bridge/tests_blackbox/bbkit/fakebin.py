@@ -169,8 +169,14 @@ def ffmpeg():
         shutil.copyfile(source, ARGS[-1])
 
 def gateway():
-    """`fake-gateway <HERMES_HOME>`: a space's gateway (`[spaces] start`), on the port its .env gives, for a minute."""
-    env = dict(l.split("=", 1) for l in Path(ARGS[0], ".env").read_text().splitlines() if "=" in l)
+    """`fake-gateway <HERMES_HOME>`: a space's gateway (`[spaces] start`), on the port its .env gives, for a minute.
+    Its conversations and runs as Hermes' API serves them (`/p/<agent>/api/sessions`, `/p/<agent>/v1/runs`), a run
+    answering at once with `fake-gateway.json`'s `output`. A run in a conversation whose owner record in the profile's
+    state.db (`gateway.api.binding.v1.<id>`, as Hermes v0.22.5 keeps it) names another profile home is refused with
+    409 `profile_mismatch`, as Hermes refuses one made in the hub before the agent moved; `refuse` in
+    fake-gateway.json refuses every run with that code. Runs are logged in `fake-gateway-runs.jsonl`."""
+    home = Path(ARGS[0])
+    env = dict(l.split("=", 1) for l in Path(home, ".env").read_text().splitlines() if "=" in l)
     port = int(env["API_SERVER_PORT"])
     if os.fork():
         return
@@ -180,21 +186,69 @@ def gateway():
     devnull = os.open(os.devnull, os.O_RDWR)
     for fd in (0, 1, 2):   # the bridge waits for its command's output to end: the server keeps none of it
         os.dup2(devnull, fd)
-    import http.server, threading
+    import http.server, sqlite3, threading
+    made = {"sessions": 0, "runs": 0}
+
+    def settings():
+        try:
+            return json.loads(Path(home, "fake-gateway.json").read_text())
+        except (OSError, ValueError):
+            return {}
+
+    def refusal(agent, session_id):
+        if settings().get("refuse"):
+            return settings()["refuse"]
+        profile = Path(home, "profiles", agent)
+        if not session_id or not Path(profile, "state.db").exists():
+            return None
+        with sqlite3.connect(Path(profile, "state.db")) as db:
+            row = db.execute("SELECT value FROM state_meta WHERE key=?",
+                             ("gateway.api.binding.v1." + session_id,)).fetchone()
+        if row is not None and json.loads(row[0]).get("profile_id") != str(profile.resolve()):
+            return "profile_mismatch"
+        return None
+
     class Handler(http.server.BaseHTTPRequestHandler):
-        def answer(self, status=200):
-            length = int(self.headers.get("content-length") or 0)
-            if length:
-                self.rfile.read(length)
-            body = json.dumps({"runs": True, "object": "hermes.session", "session": {"id": "space-1"}}).encode()
+        def send(self, status, payload):
+            body = json.dumps(payload).encode()
             self.send_response(status)
             self.send_header("content-type", "application/json")
             self.send_header("content-length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+        def read(self):
+            length = int(self.headers.get("content-length") or 0)
+            return self.rfile.read(length) if length else b""
+        def parts(self):
+            return self.path.split("?")[0].strip("/").split("/")
+        def answer(self, status=200):
+            self.read()
+            self.send(status, {"runs": True, "object": "hermes.session", "session": {"id": "space-1"}})
         def do_GET(self):
+            parts = self.parts()
+            if len(parts) == 5 and parts[0] == "p" and parts[2:4] == ["v1", "runs"]:
+                return self.send(200, {"status": "completed",
+                                       "output": settings().get("output", "Réponse depuis son espace.")})
+            self.answer()
+        def do_PATCH(self):
             self.answer()
         def do_POST(self):
+            parts = self.parts()
+            if len(parts) == 4 and parts[0] == "p" and parts[2:] == ["api", "sessions"]:
+                self.read()
+                made["sessions"] += 1
+                return self.send(201, {"object": "hermes.session", "session": {"id": f"space-{made['sessions']}"}})
+            if len(parts) == 4 and parts[0] == "p" and parts[2:] == ["v1", "runs"]:
+                body = json.loads(self.read() or b"{}")
+                refused = refusal(parts[1], body.get("session_id"))
+                with open(Path(home, "fake-gateway-runs.jsonl"), "a", encoding="utf-8") as log:
+                    log.write(json.dumps({"agent": parts[1], "session_id": body.get("session_id"),
+                                          "refused": refused}) + "\n")
+                if refused:
+                    return self.send(409, {"error": {"message": refused, "type": "invalid_request_error",
+                                                     "code": refused}})
+                made["runs"] += 1
+                return self.send(202, {"run_id": f"space-run-{made['runs']}", "status": "started"})
             self.answer(201 if self.path.endswith("/api/sessions") else 200)
         def log_message(self, *args):
             pass

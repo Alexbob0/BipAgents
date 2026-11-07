@@ -175,6 +175,7 @@ send it again: its answer will be in your conversation with {shown}, which your 
             false,
         ),
         crate::agent_pairs::Answer::Unreachable => unreachable(&shown),
+        crate::agent_pairs::Answer::NotDelivered => not_delivered(&shown),
         crate::agent_pairs::Answer::Cycle => tool_text(
             &format!(
                 "{shown} is itself waiting for your answer in this same exchange: it can't read another message now, \
@@ -225,6 +226,17 @@ to another agent now and don't retry: answer your person with what you have, or 
             crate::agent_hops::MAX_HOPS
         ),
         "Nous avons échangé plusieurs messages entre agents : je m'arrête là. Dis-moi si on continue.",
+    )
+}
+
+/// A refusal of ours (agent_pairs.rs `Answer::NotDelivered`): said as it is, never as the other agent's silence.
+fn not_delivered(shown: &str) -> Dict {
+    tool_failure(
+        &format!(
+            "Your message did not reach {shown}: a problem on the app's side, not {shown}'s (it has been noted). \
+Don't retry now."
+        ),
+        &format!("I couldn't pass your message on to {shown} just now: a problem on my side, not {shown}'s."),
     )
 }
 
