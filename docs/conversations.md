@@ -278,7 +278,10 @@ Answer:
 - `tz` (query, optional): the phone's IANA zone. Each item that draws something gets `day` (`YYYY-MM-DD` there; else
   in the person's zone, `dates`), and the first such item of each day in the whole thread `new_day: true`. The apps
   draw a day divider over a `new_day` row and over the first row with a `day` they show; a row without `day` (it
-  draws nothing, or the phone made it) never gets one (5/11: empty « Dimanche 1 novembre » dividers).
+  draws nothing, or the phone made it) never gets one (5/11: empty « Dimanche 1 novembre » dividers). The iPhone
+  reads the same places from the rows' `day` alone (HermesKit `DayDividers`: the first dated row shown, and each
+  whose day is not the previous dated row's), so a window still holding rows of an older bridge, with the `new_day`
+  of then, never says a day twice (7/11: a second « Vendredi 6 novembre » while the phone's copy gave way to the page).
 - `pending` is what is not a stored message yet: the run going on (attach to `/v1/runs/{run_id}/events` for its live
   text, as today; `started`: when the bridge began following it, Unix seconds, the working line's clock on every
   phone), the agent's queue for this thread (msg_queue.rs, each item with its `client_id`), the approvals and
