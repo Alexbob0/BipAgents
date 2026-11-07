@@ -455,8 +455,9 @@ On `thread`, an app showing that thread asks `timeline?after=<its last cursor>`;
 text of a run still comes from `/v1/runs/{run_id}/events` (unchanged): every delta as Hermes gives it, nothing held
 but a line that may still become a `MEDIA:` line (until its newline); a character Hermes passed in two UTF-16 halves
 over two deltas (a lone surrogate escape each) is joined, a half alone becomes U+FFFD (hermes.rs `SSEParser`). The
-apps draw the reply as it comes (iOS: at most 20 times a second, in its own bubble), its new words fading in
-(`StreamReveal`), and show their working line under a reply whose words stopped for 2.5 s (`ReplyPause`: Hermes sends
+apps draw the reply as it comes (iOS: at most 20 times a second, in its own bubble), with no cursor after it, its
+new words fading in from 30 % to full in 250 ms (`StreamReveal`; none with Reduce Motion or Android's animations
+removed), and show their working line under a reply whose words stopped for 2.5 s (`ReplyPause`: Hermes sends
 nothing while the model writes a call's arguments or its own notes).
 
 ### 6.6 Rooms and shared agents
