@@ -169,7 +169,7 @@ def test_j09_a_trips_page_holding_its_map_shows_the_map_once(journey):
     # the reply; the bridge handed over the map's own page at the end too (made_files.rs): the map twice
     started(journey.send(cid(91), "Prépare-moi la balade #trajet"))
     page = reply_done(journey, "Voici ton trajet")
-    # its two calls make the turn's steps card (steps.rs): the check that knows it
+    # two calls are no steps card any more (steps.rs: from 3 useful steps); the check knows `steps` items if any
     check_page(journey.bridge, page, AGENT)
     [reply] = [i for i in agent_items(page) if "Voici ton trajet" in i["text"]]
     [att] = reply["attachments"]
