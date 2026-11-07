@@ -192,6 +192,7 @@ async fn an_agent_gets_its_own_browser_container_and_desktop() {
     assert_eq!(proxy["idle"], 600);
     assert_eq!(proxy["after_run"], 180);
     assert_eq!(proxy["ended"], json!(place.join("ended").to_string_lossy()));
+    assert_eq!(proxy["rescue"], json!(place.join("rescue").to_string_lossy())); // the brake's rescue turn (runs.rs)
     assert_eq!(proxy["cdp_port"], 19602);
     assert_eq!(proxy["busy"], json!(place.join("busy").to_string_lossy()));
     assert_eq!(proxy["unit"]["path"], json!(unit_file.to_string_lossy()));
@@ -243,6 +244,26 @@ async fn a_browser_kept_running() {
     let mcp = written(&s)["mcp_servers"]["stealth"].clone();
     assert_eq!(mcp["command"], "/usr/bin/podman");
     assert_eq!(mcp["args"], json!(["exec", "-i", "bipagents-browser-budget", "/opt/stealth/mcp.sh"]));
+}
+
+#[tokio::test]
+async fn the_brakes_rescue_turn_is_told_to_the_agents_browser() {
+    // runs.rs `loop_rescue` (token lab of 2026-11-07): bip-browser-mcp refuses page reads until the deadline written.
+    let mut s = setup();
+    let rescue = s.tmp.join("browsers").join("budget").join("rescue");
+    // a browser never set up (no folder): nothing written
+    assert!(!browsers::rescue_started(&s.config, "budget", 4.0e9));
+    assert!(!rescue.exists());
+    s.setup_budget(&s.host.clone()).await;
+    assert!(browsers::rescue_started(&s.config, "budget", 1_794_047_391.6));
+    assert_eq!(std::fs::read_to_string(&rescue).unwrap(), "1794047392\n");
+    browsers::rescue_ended(&s.config, "budget");
+    assert!(!rescue.exists());
+    browsers::rescue_ended(&s.config, "budget"); // already gone: nothing to do
+    // a browser kept running is driven without bip-browser-mcp: no file
+    s.config.browser.idle_minutes = 0;
+    assert!(!browsers::rescue_started(&s.config, "budget", 4.0e9));
+    assert!(!rescue.exists());
 }
 
 #[tokio::test]

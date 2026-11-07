@@ -4,6 +4,7 @@ the conversation gets a plain line (`bridge.notice`, code `loop_stopped`); the a
 write twice in a turn, and too many writes. `[brake]` in bridge.toml."""
 import json
 import threading
+import time
 
 from bbkit.common import AUTH, HERMES_KEY, read_sse, sse, in_session
 from bbkit.mcp import call, give_token, media_of, text_of
@@ -332,6 +333,73 @@ def test_a_rescue_turn_that_loops_is_not_rescued_again(bridges, fakes):
     assert wait_until(lambda: fakes.hermes.seen("/v1/runs/r1/stop", "POST"))
     assert list(fakes.hermes.started) == ["r1"], "never a rescue of the rescue"
     assert bridge.logged("going round in circles: the rescue turn did not answer")
+
+
+def test_the_rescue_turn_of_a_page_it_couldnt_read_gets_no_page_from_the_browser(bridges, fakes):
+    """Token lab of 2026-11-07 (GLM-5.3 Flash, the French Wikipedia page of the Eiffel tower, too large to come back
+    whole): stopped after 16 reads, its rescue turn read the page again and waited 120 s. While the rescue turn goes on,
+    the agent's browser folder holds its deadline (`rescue`, read by bip-browser-mcp: page reads refused at once);
+    gone at its end."""
+    bridge = bridges.new()
+    root = bridge.data / "browsers"
+    (root / "wellness").mkdir(parents=True)
+    bridge.config.setdefault("browser", {})["root"] = str(root)
+    bridge.start()
+    fakes.hermes.runs["run_page"] = (
+        [sse("tool.started", run_id="run_page", tool="mcp_stealth_get_page_content", preview="") for _ in range(16)]
+        + [sse("run.cancelled", run_id="run_page")])
+    gate = threading.Event()
+    reply = "Je n'ai pas réussi à lire la page : elle est trop grande pour mon navigateur. Veux-tu que je cherche ailleurs ?"
+    fakes.hermes.runs["r1"] = [gate, sse("message.delta", run_id="r1", delta=reply),
+                               sse("run.completed", run_id="r1", output=reply)]
+    got = []
+    follower = threading.Thread(target=lambda: got.append(follow(bridge, "run_page")), daemon=True)
+    follower.start()
+    rescue = root / "wellness" / "rescue"
+    try:
+        assert wait_until(lambda: rescue.exists(), timeout=30)
+        deadline = float(rescue.read_text())
+        assert time.time() + 120 < deadline < time.time() + 200, "the rescue's 180 s and a margin"
+    finally:
+        gate.set()
+    follower.join(60)
+    said = notices(got[0])
+    assert [n["code"] for n in said] == ["loop_stopped", "loop_rescue_started"]
+    assert said[0]["reason"] == "the browser read the page too many times"
+    assert "Don't use the browser again in this turn." in fakes.hermes.started["r1"]["input"]
+    assert got[0][-1][0] == "run.completed"
+    assert wait_until(lambda: not rescue.exists())
+    assert bridge.logged("rescue turn: its browser reads no page")
+
+
+def test_a_rescue_turn_leaves_the_browser_to_another_run_of_the_agent(bridges, fakes):
+    # a background task of the same agent browsing meanwhile: its page reads are not refused
+    bridge = bridges.new()
+    root = bridge.data / "browsers"
+    (root / "wellness").mkdir(parents=True)
+    bridge.config.setdefault("browser", {})["root"] = str(root)
+    bridge.start()
+    task = threading.Event()
+    fakes.hermes.runs["run_task"] = [sse("tool.started", run_id="run_task", tool="mcp_stealth_navigate",
+                                         preview="https://fr.wikipedia.org/"), task,
+                                     sse("run.completed", run_id="run_task", output="ok")]
+    task_events = []
+    tasks = threading.Thread(target=lambda: task_events.append(follow(bridge, "run_task")), daemon=True)
+    tasks.start()
+    assert wait_until(lambda: fakes.hermes.seen("/v1/runs/run_task/events", "GET"))
+    fakes.hermes.runs["run_vie"] = diagnosis("run_vie", 5)
+    reply = "Je n'ai pas trouvé l'erreur."
+    fakes.hermes.runs["r1"] = [sse("message.delta", run_id="r1", delta=reply),
+                               sse("run.completed", run_id="r1", output=reply)]
+    try:
+        events = follow(bridge, "run_vie")
+        assert not (root / "wellness" / "rescue").exists()
+    finally:
+        task.set()
+        tasks.join(30)
+    assert [n["code"] for n in notices(events)] == ["loop_stopped", "loop_rescue_started"]
+    assert task_events and task_events[0][-1][0] == "run.completed", "the other run goes on to its own end"
+    assert not bridge.logged("rescue turn: its browser reads no page")
 
 
 def test_a_turn_nobody_follows_gets_no_rescue_turn(bridges, fakes):

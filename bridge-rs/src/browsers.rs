@@ -289,6 +289,20 @@ pub fn run_ended(config: &Config, agent: &str) {
     }
 }
 
+/// The brake's rescue turn (runs.rs `loop_rescue`) goes on for the agent until `deadline` (unix seconds): its browser
+/// reads no page meanwhile (bip-browser-mcp reads `rescue`, refuses at once), so the rescue can't hang on the page it
+/// was stopped for. Only for an agent whose browser starts on demand (bip-browser-mcp in between) and was set up (its
+/// folder there). Returns whether it was written.
+pub fn rescue_started(config: &Config, agent: &str, deadline: f64) -> bool {
+    let place = folder(config, agent);
+    on_demand(config) && place.is_dir() && std::fs::write(place.join("rescue"), format!("{deadline:.0}\n")).is_ok()
+}
+
+/// The rescue turn over: the agent's browser reads pages again.
+pub fn rescue_ended(config: &Config, agent: &str) {
+    let _ = std::fs::remove_file(folder(config, agent).join("rescue"));
+}
+
 fn has_ports(config: &Config, agent: &str) -> bool {
     ports_of(config, agent).map(|p| !p.is_empty()).unwrap_or(false)
 }
@@ -771,6 +785,7 @@ pub fn proxy_config(config: &Config, agent: &str, engine: &str, ports: &IndexMap
         "cdp_port": ports.get("cdp").copied().unwrap_or(0),
         "idle": config.browser.idle_minutes as u64 * 60,
         "ended": place.join("ended").to_string_lossy(), "after_run": crate::browser_mcp::AFTER_RUN_SECONDS,
+        "rescue": place.join("rescue").to_string_lossy(),
         "shared_cache": PathBuf::from(&config.browser.root).join("mcp-cache.json").to_string_lossy(),
         "ready_seconds": crate::browser_mcp::READY_SECONDS,
         // the phone exit's hub (phone_exit): why a page failed (`WHY`), a challenge page asked about (`ASK`)

@@ -1742,6 +1742,28 @@ impl RunHub {
             st.rescue_of = Some(sub.run_id.clone());
             st.turn.banned = crate::loop_brake::stopped_tool(&over);
         }
+        // Its browser reads no page until its end (bip-browser-mcp refuses at once): the token lab's rescue turn
+        // (2026-11-07) read the page it was stopped for again and waited the full 120 s. Not while another run of the
+        // agent goes on (a background task browsing): the browser is the agent's, not the turn's.
+        let browser_held = {
+            let inner = lock(&self.inner);
+            let others = inner.subs.values().any(|other| {
+                other.agent.name == agent.name && other.run_id != sub.run_id && other.run_id != rescue_id && {
+                    let st = lock(&other.state);
+                    !st.finished && st.terminal.is_none()
+                }
+            });
+            match (others, self.config.as_ref()) {
+                (false, Some(shared)) => {
+                    let deadline = crate::py::time_time() + settings.rescue_seconds + 5.0;
+                    crate::browsers::rescue_started(&shared.get(), &agent.name, deadline)
+                }
+                _ => false,
+            }
+        };
+        if browser_held {
+            tracing::info!(agent = %agent.name, run_id = %rescue_id, "rescue turn: its browser reads no page");
+        }
         let mut listener = self.subscribe(&agent, &rescue_id, "forward", false);
         let mut data = Map::new();
         data.insert("type".into(), json!(NOTICE));
@@ -1777,6 +1799,11 @@ impl RunHub {
         }
         let braked = lock(&listener.sub.state).braked;
         listener.close();
+        if browser_held {
+            if let Some(shared) = self.config.as_ref() {
+                crate::browsers::rescue_ended(&shared.get(), &agent.name);
+            }
+        }
         match end {
             Some(end)
                 if end.r#type == "run.completed"
