@@ -31,6 +31,16 @@
 //! not relaying gets one plain line saying why (`WHY`), and a challenge/block page for servers gets one too, after the
 //! hub asked the person (`ASK`: a card). So the agent never says « the site blocks servers » wrongly, never solves a
 //! CAPTCHA, and waits for the card.
+//!
+//! A page too large to come back whole (token lab of 2026-11-07, GLM-5.3 Flash on the French Wikipedia page of the
+//! Eiffel tower, 1.4 MB): the real server saves it to a file inside the container and answers with its path
+//! (`SAVED_TO_FILE`), which none of the agent's tools reach; the agent read the page 16 times until the brake stopped
+//! it. That answer is replaced by plain guidance (`too_large_text`): don't read it again, take only the part needed
+//! with `execute_script` (`AROUND_A_WORD`, also in the visible-browser skill, § 2).
+//!
+//! The brake's rescue turn (runs.rs `loop_rescue`): while the bridge's `rescue` file (beside `busy`, browsers.rs
+//! `rescue_started`) holds a deadline still ahead, page reads are refused at once (`RESCUE_REFUSED`), the real server
+//! never asked: in the same lab the rescue turn read the page again, waited the full 120 s, and never answered.
 
 use std::collections::HashMap;
 use std::io::Write;
@@ -55,6 +65,65 @@ pub const READY_SECONDS: u64 = 90;
 pub const TCP_TABLES: [&str; 2] = ["/proc/net/tcp", "/proc/net/tcp6"];
 /// How long after the end of the work that used it the browser stops, unless used again (`after_run`).
 pub const AFTER_RUN_SECONDS: u64 = 180;
+
+/// stealth-browser-mcp's answer when a result is too big for its client: the result saved to a file inside the
+/// browser's container, its path in the answer.
+pub const SAVED_TO_FILE: &str = "Response too large, automatically saved to file";
+
+/// The script given to the agent for a page too large to come back whole (and in the visible-browser skill, § 2):
+/// the page's visible text around a word, a slice of 2,000 characters at most. It only reads; `word` is the agent's.
+pub const AROUND_A_WORD: &str =
+    "(() => { const t = document.body.innerText; const i = t.search(/word/i); return i < 0 \
+? 'not found' : t.slice(Math.max(0, i - 500), i + 1500); })()";
+
+/// A page read refused during the brake's rescue turn.
+pub const RESCUE_REFUSED: &str = "Refused: you were stopped for going round in circles, so your browser reads no page \
+in this turn. Answer your person now with what you already have: what you found, what blocked you, and one or two ways \
+forward.";
+
+/// What the agent reads instead of a result saved to a file (`SAVED_TO_FILE`): its size when known, that its copy is
+/// out of reach, not to read it again, and how to take only the part it needs.
+pub fn too_large_text(tool: &str, size_kb: Option<f64>) -> String {
+    let size = match size_kb {
+        Some(kb) if kb >= 1024.0 => format!(" (about {:.1} MB)", kb / 1024.0),
+        Some(kb) if kb > 0.0 => format!(" (about {kb:.0} KB)"),
+        _ => String::new(),
+    };
+    let out_of_reach =
+        "and the copy the browser saved of it is out of your reach (not in your terminal, not in your files)";
+    if tool.contains("execute_script") {
+        format!(
+            "Your script's result is too large to come back whole{size}, {out_of_reach}. Don't run it again as it is: \
+make it return only the part you need, a short slice of a few thousand characters at most, for instance the text \
+around a word you look for, in place of `word`: {AROUND_A_WORD}"
+        )
+    } else {
+        format!(
+            "This page is too large to come back whole{size}, {out_of_reach}. Don't read it again: the answer would be \
+the same. Take only the part you need with execute_script (through tool_call when it isn't in your tool list), for \
+instance the text around a word you look for, in place of `word`: {AROUND_A_WORD}"
+        )
+    }
+}
+
+/// A tool's result the real server saved to a file (`SAVED_TO_FILE`), replaced by `too_large_text`: the file's path
+/// and its structured copy dropped. Returns whether it was.
+pub fn rewrite_too_large(tool: &str, response: &mut Dict) -> bool {
+    let Some(result) = response.get_mut("result").and_then(Value::as_object_mut) else { return false };
+    let Some(Value::Array(content)) = result.get("content") else { return false };
+    let saved = content
+        .iter()
+        .filter_map(|item| item.get("text").and_then(Value::as_str))
+        .find(|text| text.contains(SAVED_TO_FILE))
+        .map(str::to_string);
+    let Some(saved) = saved else { return false };
+    let size_kb = serde_json::from_str::<Value>(&saved)
+        .ok()
+        .and_then(|answer| answer.get("file_size_kb").and_then(Value::as_f64));
+    result.insert("content".into(), json!([{"type": "text", "text": too_large_text(tool, size_kb)}]));
+    result.remove("structuredContent");
+    true
+}
 
 /// What Hermes asks while connecting, answered without starting anything once the real server has said it (the
 /// others, never asked while it ran, as empty).
@@ -169,6 +238,9 @@ pub struct Proxy {
     /// Seconds after the end of the run that used it (the `ended` file, beside `busy` unless set); 0: never sooner.
     pub after_run: f64,
     pub ended_path: PathBuf,
+    /// The brake's rescue turn: its deadline (unix seconds) while it goes on (the `rescue` file, beside `busy` unless
+    /// set; browsers.rs `rescue_started`).
+    pub rescue_path: PathBuf,
     pub cache_path: PathBuf,
     pub cache: Mutex<Dict>,
     output: Mutex<Box<dyn Write + Send>>,
@@ -197,6 +269,10 @@ impl Proxy {
             Some(path) => PathBuf::from(path),
             None => busy.parent().map(|p| p.join("ended")).unwrap_or_else(|| PathBuf::from("ended")),
         };
+        let rescue_path = match config.get("rescue").map(crate::py::py_str).filter(|p| !p.is_empty()) {
+            Some(path) => PathBuf::from(path),
+            None => busy.parent().map(|p| p.join("rescue")).unwrap_or_else(|| PathBuf::from("rescue")),
+        };
         let cache_path = PathBuf::from(config.get("cache").map(crate::py::py_str).unwrap_or_default());
         let mut cache = read_cache(&cache_path);
         if !cache.contains_key("initialize") {
@@ -210,6 +286,7 @@ impl Proxy {
             idle,
             after_run,
             ended_path,
+            rescue_path,
             cache_path,
             cache: Mutex::new(cache),
             output: Mutex::new(output),
@@ -320,6 +397,14 @@ impl Proxy {
                 "content": [{"type": "text", "text": crate::credit::BROWSER_REFUSED}], "isError": true}}));
             return;
         }
+        let tool = message.get("params").and_then(|p| p.get("name")).and_then(Value::as_str).unwrap_or("").to_string();
+        if calling && crate::loop_brake::page_read_tool(&tool) && self.rescuing() {
+            // The brake's rescue turn: answered with what the agent has, never a page it couldn't read (nor a hang).
+            log(&format!("{tool} refused: the brake's rescue turn"));
+            self.to_client(&json!({"jsonrpc": "2.0", "id": ident, "result": {
+                "content": [{"type": "text", "text": RESCUE_REFUSED}], "isError": true}}));
+            return;
+        }
         if calling {
             self.calls.fetch_add(1, Ordering::SeqCst);
             self.touch();
@@ -334,6 +419,9 @@ impl Proxy {
             }
             response.insert("id".into(), ident.clone());
             if calling {
+                if rewrite_too_large(&tool, &mut response) {
+                    log(&format!("{tool}: a result too large, plain guidance instead of its file"));
+                }
                 self.phone_exit_lines(message.get("params"), &mut response).await;
             }
             self.to_client(&Value::Object(response));
@@ -413,6 +501,15 @@ impl Proxy {
                 content.push(json!({"type": "text", "text": line}));
             }
         }
+    }
+
+    /// The brake's rescue turn goes on for this agent: the `rescue` file holds a deadline still ahead (a file left by a
+    /// bridge that stopped meanwhile refuses nothing once past it).
+    pub fn rescuing(&self) -> bool {
+        std::fs::read_to_string(&self.rescue_path)
+            .ok()
+            .and_then(|text| text.trim().parse::<f64>().ok())
+            .is_some_and(|deadline| deadline > crate::py::time_time())
     }
 
     /// The plan's AI credit used: the config's `credit` file (tests), else the place's own (credit.rs).
@@ -827,5 +924,89 @@ mod tests {
         .unwrap();
         assert!(!devtools_connected(Some(&json!(19602)), &tables)); // TIME_WAIT: gone
         assert!(!devtools_connected(None, &tables));
+    }
+
+    /// stealth-browser-mcp's answer for the French Wikipedia page of the Eiffel tower (token lab of 2026-11-07).
+    fn saved_to_file() -> Dict {
+        let answer = json!({"file_path": "/opt/stealth/stealth-browser-mcp/element_clones/page_content_20261107.json",
+                            "filename": "page_content_20261107.json", "file_size_kb": 1399.12,
+                            "estimated_tokens": 353880, "reason": SAVED_TO_FILE,
+                            "metadata": {"instance_id": "319ceedb", "include_frames": false}});
+        let message = json!({"jsonrpc": "2.0", "id": 7, "result": {
+            "content": [{"type": "text", "text": answer.to_string()}], "structuredContent": {"result": answer}}});
+        message.as_object().unwrap().clone()
+    }
+
+    #[test]
+    fn a_page_too_large_to_come_back_is_said_plainly_never_its_file() {
+        let mut response = saved_to_file();
+        assert!(rewrite_too_large("get_page_content", &mut response));
+        let result = response["result"].as_object().unwrap();
+        assert!(!result.contains_key("structuredContent"));
+        let content = result["content"].as_array().unwrap();
+        assert_eq!(content.len(), 1);
+        let text = content[0]["text"].as_str().unwrap();
+        let head = "This page is too large to come back whole (about 1.4 MB), and the copy the browser saved of it is \
+out of your reach";
+        assert!(text.starts_with(head), "{text}");
+        assert!(text.contains("Don't read it again") && text.contains("execute_script") && text.contains("tool_call"));
+        assert!(text.ends_with(AROUND_A_WORD));
+        assert!(!Value::Object(response.clone()).to_string().contains("element_clones"), "its path never shown");
+        assert_eq!(response["id"], json!(7));
+        // read again: rewritten again, the same words
+        let mut again = saved_to_file();
+        assert!(rewrite_too_large("get_page_content", &mut again));
+        assert_eq!(again["result"], response["result"]);
+        // a script that returned too much: told to return less
+        let mut script = saved_to_file();
+        assert!(rewrite_too_large("execute_script", &mut script));
+        let text = script["result"]["content"][0]["text"].as_str().unwrap().to_string();
+        assert!(text.starts_with("Your script's result is too large to come back whole (about 1.4 MB)"), "{text}");
+        assert!(text.contains("Don't run it again as it is") && text.ends_with(AROUND_A_WORD));
+        // the size as it comes, or none
+        assert!(too_large_text("take_screenshot", Some(312.4)).contains("whole (about 312 KB), and"));
+        assert!(too_large_text("get_page_content", None).starts_with("This page is too large to come back whole, and"));
+    }
+
+    #[test]
+    fn other_answers_are_left_as_they_are() {
+        for message in [
+            json!({"jsonrpc": "2.0", "id": 1, "result": {"content": [{"type": "text", "text": "{\"title\": \"Tour\"}"}]}}),
+            json!({"jsonrpc": "2.0", "id": 2, "result": {"content": [{"type": "image", "data": "iVBOR"}]}}),
+            json!({"jsonrpc": "2.0", "id": 3, "error": {"code": -32603, "message": "boom"}}),
+            json!({"jsonrpc": "2.0", "id": 4, "result": {"structuredContent": {"reason": SAVED_TO_FILE}}}),
+        ] {
+            let mut response = message.as_object().unwrap().clone();
+            assert!(!rewrite_too_large("get_page_content", &mut response));
+            assert_eq!(Value::Object(response), message);
+        }
+    }
+
+    #[test]
+    fn the_skill_gives_the_same_script() {
+        let skill = crate::browsers::skill();
+        assert!(skill.contains(&format!("`{AROUND_A_WORD}`")), "visible-browser/SKILL.md § 2 and AROUND_A_WORD");
+        assert!(skill.contains("version: 1.10.0"));
+    }
+
+    #[test]
+    fn a_rescue_turn_is_read_from_its_file_until_its_deadline() {
+        let dir = tempfile::tempdir().unwrap();
+        let busy = dir.path().join("busy").to_string_lossy().into_owned();
+        let proxy = Proxy::new(json!({"busy": busy, "idle": 600}).as_object().unwrap().clone(), Box::new(Vec::new()));
+        assert_eq!(proxy.rescue_path, dir.path().join("rescue"), "beside `busy` unless set");
+        assert!(!proxy.rescuing(), "no file: no rescue turn");
+        let now = crate::py::time_time();
+        std::fs::write(&proxy.rescue_path, format!("{:.0}\n", now + 180.0)).unwrap();
+        assert!(proxy.rescuing());
+        // a bridge that stopped meanwhile left it: past its deadline, nothing refused
+        std::fs::write(&proxy.rescue_path, format!("{:.0}\n", now - 1.0)).unwrap();
+        assert!(!proxy.rescuing());
+        std::fs::write(&proxy.rescue_path, "soon").unwrap();
+        assert!(!proxy.rescuing());
+        // its own path when set
+        let other = dir.path().join("elsewhere");
+        let set = json!({"busy": busy, "rescue": other.to_string_lossy()});
+        assert_eq!(Proxy::new(set.as_object().unwrap().clone(), Box::new(Vec::new())).rescue_path, other);
     }
 }

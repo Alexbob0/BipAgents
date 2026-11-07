@@ -409,6 +409,84 @@ async fn while_the_month_s_credit_is_used_its_tools_are_refused_without_starting
     proxy.stop_child().await;
 }
 
+fn now() -> f64 {
+    SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs_f64()
+}
+
+fn read_page(id: i64) -> Value {
+    json!({"jsonrpc": "2.0", "id": id, "method": "tools/call",
+           "params": {"name": "get_page_content", "arguments": {"instance_id": "319ceedb"}}})
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_page_too_large_to_come_back_is_said_plainly_and_a_rescue_turn_reads_no_page() {
+    // Token lab of 2026-11-07 (GLM-5.3 Flash, the French Wikipedia page of the Eiffel tower): the real server saved the
+    // page to a file of its container and gave its path, out of the agent's reach; it read the page 16 times, then its
+    // rescue turn read it again and waited the full 120 s.
+    let dir = tempfile::tempdir().unwrap();
+    let tmp = dir.path();
+    let config = config(tmp);
+    let server = FAKE_SERVER.replace(
+        r#"r = {"content": [{"type": "text", "text": "did " + m["params"]["name"]}]}"#,
+        r#"if m["params"]["name"] == "get_page_content":
+            text = json.dumps({"file_path": "/opt/stealth/stealth-browser-mcp/element_clones/page_content_1.json",
+                               "file_size_kb": 1399.12, "estimated_tokens": 353880,
+                               "reason": "Response too large, automatically saved to file"})
+        else:
+            text = "did " + m["params"]["name"]
+        r = {"content": [{"type": "text", "text": text}]}"#,
+    );
+    std::fs::write(tmp.join("server.py"), server).unwrap();
+    let out = Out::default();
+    let proxy = Proxy::new(config.clone(), Box::new(out.clone()));
+    proxy.handle(init()).await;
+    proxy.handle(read_page(1)).await;
+    let answer = out.messages().last().unwrap().clone();
+    assert_eq!(answer["id"], json!(1));
+    let content = answer["result"]["content"].as_array().unwrap();
+    assert_eq!(content.len(), 1);
+    let text = content[0]["text"].as_str().unwrap();
+    assert!(text.starts_with("This page is too large to come back whole (about 1.4 MB)"), "{text}");
+    assert!(text.contains("Don't read it again") && text.contains(browser_mcp::AROUND_A_WORD));
+    assert!(!answer.to_string().contains("element_clones"), "its path never shown");
+    // the other answers as they are
+    proxy.handle(json!({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "navigate"}})).await;
+    assert_eq!(out.messages().last().unwrap()["result"]["content"][0]["text"], "did navigate");
+
+    // The brake's rescue turn (the bridge's `rescue` file, beside `busy`): page reads refused at once, other calls go on.
+    let rescue = tmp.join("rescue");
+    assert_eq!(proxy.rescue_path, rescue);
+    std::fs::write(&rescue, format!("{:.0}\n", now() + 180.0)).unwrap();
+    for (id, name) in [(3, "get_page_content"), (4, "take_screenshot")] {
+        proxy.handle(json!({"jsonrpc": "2.0", "id": id, "method": "tools/call", "params": {"name": name}})).await;
+        let refused = out.messages().last().unwrap().clone();
+        assert_eq!(refused["id"], json!(id));
+        assert_eq!(refused["result"]["isError"], json!(true));
+        assert_eq!(refused["result"]["content"][0]["text"], browser_mcp::RESCUE_REFUSED);
+    }
+    assert!(browser_mcp::RESCUE_REFUSED.contains("Answer your person now with what you already have"));
+    proxy.handle(json!({"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "navigate"}})).await;
+    assert_eq!(out.messages().last().unwrap()["result"]["content"][0]["text"], "did navigate");
+    // past its deadline (a bridge stopped meanwhile), or gone: the page read again
+    std::fs::write(&rescue, format!("{:.0}\n", now() - 1.0)).unwrap();
+    proxy.handle(read_page(6)).await;
+    assert!(out.messages().last().unwrap()["result"]["content"][0]["text"].as_str().unwrap().starts_with("This page"));
+    std::fs::remove_file(&rescue).unwrap();
+    proxy.handle(read_page(7)).await;
+    assert!(out.messages().last().unwrap()["result"]["content"][0]["text"].as_str().unwrap().starts_with("This page"));
+    proxy.stop_child().await;
+
+    // Straight away: a browser stopped meanwhile is not started for a refused read.
+    std::fs::remove_file(tmp.join("log")).unwrap();
+    std::fs::write(&rescue, format!("{:.0}\n", now() + 180.0)).unwrap();
+    let out = Out::default();
+    let proxy = Proxy::new(config, Box::new(out.clone()));
+    proxy.handle(init()).await; // from its cache: nothing started
+    proxy.handle(read_page(8)).await;
+    assert_eq!(out.messages().last().unwrap()["result"]["content"][0]["text"], browser_mcp::RESCUE_REFUSED);
+    assert!(ran(tmp).is_empty() && !proxy.running());
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn the_phone_exit_s_refusal_and_a_challenge_page_are_said_to_the_agent() {
     // phone_exit (docs/phone-exit.md §7): a page that failed because the person's phone was not relaying gets the
