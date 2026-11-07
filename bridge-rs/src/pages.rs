@@ -401,6 +401,27 @@ pub fn list_pages(config: &Config, agent: &str) -> Vec<Dict> {
     found
 }
 
+/// The maps (`m-<hex>`, maps.rs) a page of `agent` shows, by its `MEDIA:` path: its map cards' ids (`data-map`, as
+/// `expand_maps` rebuilt them). Empty for anything else or a page not kept (made_files.rs: each map once in a reply).
+pub fn maps_of(config: &Config, agent: &str, path: &str) -> Vec<String> {
+    let Some(page) = path.strip_prefix(&format!("{PREFIX}/{agent}/")).and_then(|p| p.strip_suffix(".html")) else {
+        return Vec::new();
+    };
+    if !ID.is_match(page) || page.ends_with('\n') {
+        return Vec::new();
+    }
+    let Ok(html) = std::fs::read_to_string(root(config).join(agent).join(format!("{page}.html"))) else {
+        return Vec::new();
+    };
+    let mut out: Vec<String> = Vec::new();
+    for found in MAP_ID.captures_iter(&html) {
+        if !out.iter().any(|m| m == &found[1]) {
+            out.push(found[1].to_string());
+        }
+    }
+    out
+}
+
 pub fn source(config: &Config, agent: &str, page: &str) -> anyhow::Result<String> {
     let page = normalize(page);
     if !ID.is_match(&page) {
@@ -468,6 +489,26 @@ pub fn age(meta: &Dict, now: Option<f64>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_pages_maps_are_its_cards_ids() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::with_key("k");
+        config.outbox.db_path = dir.path().join("bridge.db").to_string_lossy().into_owned();
+        let folder = root(&config).join("vie");
+        std::fs::create_dir_all(&folder).unwrap();
+        let card = |id: &str| {
+            format!("<figure class=\"map-card\" data-map=\"{id}\"><img src=\"data:image/png;base64,AA\"></figure>")
+        };
+        let html = format!("<h1>Trajet</h1>{}{}{}", card("m-0123456789"), card("m-aaaaaaaaaa"), card("m-0123456789"));
+        std::fs::write(folder.join("trajet.html"), html).unwrap();
+        assert_eq!(maps_of(&config, "vie", "/bipagents/pages/vie/trajet.html"), vec!["m-0123456789", "m-aaaaaaaaaa"]);
+        // another agent's, another folder's, a page not kept, a name that is not a page's
+        assert!(maps_of(&config, "lea", "/bipagents/pages/vie/trajet.html").is_empty());
+        assert!(maps_of(&config, "vie", "/envoi/trajet.html").is_empty());
+        assert!(maps_of(&config, "vie", "/bipagents/pages/vie/absente.html").is_empty());
+        assert!(maps_of(&config, "vie", "/bipagents/pages/vie/../vie/trajet.html").is_empty());
+    }
 
     #[test]
     fn slugs_and_ages() {

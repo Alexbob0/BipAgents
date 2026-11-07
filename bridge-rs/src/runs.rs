@@ -1803,7 +1803,12 @@ impl RunHub {
         made.extend(crate::vault_contacts::used_marks(&written, &listed));
         let (marks, files): (Vec<String>, Vec<String>) = made.into_iter().partition(|m| crate::made_files::is_mark(m));
         // files: the lines the old hand-over would have added or dropped, as items
-        let fixed = crate::made_files::fix_reply(&written, agent, &files).unwrap_or_else(|| written.clone());
+        // each map once: what the reply's pages hold of the turn's maps (read only when it made one)
+        let pages_config = self.config.as_ref().map(|shared| shared.get());
+        let maps_of =
+            |path: &str| pages_config.as_ref().map(|c| crate::pages::maps_of(c, agent, path)).unwrap_or_default();
+        let fixed =
+            crate::made_files::fix_reply_with(&written, agent, &files, &maps_of).unwrap_or_else(|| written.clone());
         let (_, before) = crate::media::extract_media(&written);
         let (_, after) = crate::media::extract_media(&fixed);
         let mut added: Vec<String> = after.iter().filter(|p| !before.contains(p)).cloned().collect();
