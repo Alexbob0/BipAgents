@@ -1746,6 +1746,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::link_wallet::app_router())
         .merge(crate::place_backup::router())
         .merge(crate::place_move::router())
+        .merge(crate::update_drain::router())
         .merge(import_admin)
         .merge(crate::ssh_keys::router())
         .merge(crate::device_keys::router())

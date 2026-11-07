@@ -211,6 +211,7 @@ pub mod place_backup;
 pub mod place_cert;
 pub mod proxy_header;
 pub mod place_move;
+pub mod update_drain;
 pub mod place_import;
 pub mod vault;
 pub mod vault_contacts;

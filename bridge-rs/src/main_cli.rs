@@ -908,6 +908,8 @@ pub async fn serve(config: Config) -> i32 {
         _ = &mut main_task => true,
     };
     tracing::info!(target: UVICORN, "Shutting down");
+    // the agents' tool calls that still come in: « try again in a minute », not a failure (update_drain.rs)
+    crate::update_drain::stopping();
     if !ended_alone {
         exit_after(STOP_HARD);
     }

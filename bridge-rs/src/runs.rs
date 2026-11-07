@@ -890,6 +890,22 @@ impl RunHub {
         inner.subs.iter().filter(|(key, sub)| !skip.contains(&key.1) && !lock(&sub.state).finished).count()
     }
 
+    /// Runs the hub follows that work now: not ended, not waiting for their person's answer (a card, a question), but
+    /// those in `skip` (background tasks' runs). What an update waits for before the bridge restarts
+    /// (update_drain.rs): a run waiting for its person loses nothing then (Hermes keeps it, the hub resumes it).
+    pub fn working(&self, skip: &[String]) -> usize {
+        let inner = lock(&self.inner);
+        inner
+            .subs
+            .iter()
+            .filter(|(key, sub)| {
+                !skip.contains(&key.1)
+                    && !lock(&sub.state).finished
+                    && !inner.pending.keys().any(|(agent, run, _)| *agent == key.0 && *run == key.1)
+            })
+            .count()
+    }
+
     /// A run of the agent goes on now (a turn, a room's, a Live call's, a background task's): agent_restart.rs waits.
     pub fn agent_running(&self, agent: &str) -> bool {
         let inner = lock(&self.inner);
