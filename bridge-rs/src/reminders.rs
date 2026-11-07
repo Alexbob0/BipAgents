@@ -195,6 +195,11 @@ pub fn call(
             let asked: Vec<String> = crate::phone_asks::unseen_adds(&queue, agent, at.as_f64())
                 .into_iter()
                 .filter_map(|op| {
+                    // One the Android phone put in its calendar and lists in its own copy: listed there, not twice.
+                    let in_android = android.iter().any(|i| field(i, "id").is_some() && field(i, "id") == field(op, "id"));
+                    if field(op, "phone").and_then(Value::as_str) == Some(ANDROID) && in_android {
+                        return None;
+                    }
                     let args = field(op, "args")?;
                     let text = |k: &str| field(args, k).map(py::py_str).unwrap_or_default();
                     let list = text("list");
@@ -1143,9 +1148,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let items = json!([{"id": "a42", "title": "Appeler Paul", "due": "2026-11-07T14:00:00+01:00"}]);
         let config = shared(dir.path(), json!({"android": {"at": NOW - 60.0, "calendar": true, "items": items}}));
+        // the request it came from, done: listed once, from the phone's copy
+        let mut data = read(&config);
+        data.insert("queue".into(), json!([{"id": "a42", "op": "add", "agent": "coach", "created": NOW - 120.0, "phone": "android",
+            "state": "done", "finished": NOW - 100.0, "args": {"title": "Appeler Paul", "due": "2026-11-07T14:00:00"}}]));
+        write(&config, &data).unwrap();
         let listed = call(&config, "coach", "reminders_list", &Dict::new(), None, Some(NOW)).unwrap();
         let listed = listed["content"][0]["text"].as_str().unwrap().to_string();
         assert!(listed.contains("Android phone's calendar") && listed.contains("- id a42 · Appeler Paul · due 2026-11-07T14:00"));
+        assert_eq!(listed.matches("a42").count(), 1, "{listed}");
         let (_, said, _) = add(&config, json!({"title": "appeler paul", "due": "2026-11-07T14:00"}));
         assert!(said.starts_with("Already in the reminders: id a42"), "{said}");
         let arguments: Dict = serde_json::from_value(json!({"id": "a42"})).unwrap();
