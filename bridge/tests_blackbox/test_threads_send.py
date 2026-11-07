@@ -532,3 +532,47 @@ def test_a_quick_talk_whose_turn_asks_an_approval_is_handed_over(bridges, fakes)
     now = where(bridge, thread, client_id)
     assert (now["needs"], now["message"], now["next"]) == ("approval", f"s_{client_id}", None), now
     gate.set()
+
+
+def test_a_reminder_goes_to_the_phone_the_message_came_from(bridges, fakes):
+    """Alex, 7/11: with an iPhone and an Android phone, a reminder at a time goes to the phone the person asked from
+    (the message's `phone`): the Android phone's calendar, or the iPhone's Reminders; never both. A turn no phone
+    asked (a routine): the iPhone first."""
+    from bbkit.mcp import call, give_token, text_of
+    bridge, thread = setup(bridges, fakes)
+    give_token(bridge)
+    assert bridge.put("/v1/reminders/agents", json={"agents": ["wellness"]}, headers=AUTH).status_code == 200
+    assert bridge.put("/v1/reminders", json={"lists": [], "items": []}, headers=AUTH).json() == {"items": 0}
+    assert bridge.put("/v1/reminders/android", json={"calendar": True, "items": []}, headers=AUTH).json() == {"items": 0}
+    queue = lambda phone=None: bridge.get("/v1/reminders/queue" + (f"?phone={phone}" if phone else ""),
+                                          headers=AUTH).json()["queue"]
+    for n, (phone, title) in enumerate([("android", "Appeler Paul"), ("ios", "Appeler Marie")], start=1):
+        run = f"r{n}"
+        gate = threading.Event()
+        fakes.hermes.runs[run] = [sse("tool.started", run_id=run, tool="mcp__bipagents__reminders_add", preview="{}"),
+                                  gate, sse("run.completed", run_id=run, output=f"Noté {n}.")]
+        before = len(fakes.hermes.event_requests)
+        sent = send(bridge, thread, f"C1D00000-0000-4000-8000-00000000000{n}", f"Rappelle-moi à 14 h : {title}",
+                    phone=phone)
+        assert sent.status_code == 200 and sent.json()["run_id"] == run, sent.text
+        assert wait_until(lambda: len(fakes.hermes.event_requests) > before)
+        time.sleep(0.5)   # the hub has read the run's tool.started
+        said = text_of(call(bridge, "reminders_add", {"title": title, "due": "2026-11-08T14:00"}))
+        if phone == "android":
+            assert "in their calendar at 2026-11-08 14:00, with an alert" in said and "iPhone" not in said, said
+            assert [o["args"]["title"] for o in queue("android")] == [title]
+            assert title not in [o["args"].get("title") for o in queue()]
+        else:
+            assert "the Reminders app of their iPhone for 2026-11-08 14:00" in said, said
+            assert [o["args"]["title"] for o in queue()] == [title]
+            assert title not in [o["args"].get("title") for o in queue("android")]
+        stored(fakes, user(f"Rappelle-moi à 14 h : {title}"), agent(f"Noté {n}."))
+        gate.set()
+        assert wait_until(lambda: page(bridge, thread)["items"][-1]["text"] == f"Noté {n}.", timeout=15)
+        assert wait_until(lambda: not (page(bridge, thread).get("pending") or {}).get("run"), timeout=15)
+    # a message saying a phone the bridge doesn't know: refused
+    odd = send(bridge, thread, "C1D00000-0000-4000-8000-000000000009", "Bonjour", phone="watch")
+    assert odd.status_code == 422
+    # no phone in the turn (a routine, no run): the iPhone first
+    said = text_of(call(bridge, "reminders_add", {"title": "Arroser les plantes", "due": "2026-11-09T09:00"}))
+    assert "the Reminders app of their iPhone" in said, said

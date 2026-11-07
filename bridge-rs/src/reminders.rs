@@ -63,9 +63,10 @@ pub fn reminder_tools() -> Vec<Value> {
             "name": "reminders_add",
             "description": "Add a reminder for the person, done by their phone at its next sync (usually within minutes): \
         at a time or on a day (due), or by place (« when I get to the supermarket… »). The date and time always go in \
-        due, never only in the title or the notes. A reminder at a time or on a day goes into an iPhone's Reminders app; \
-        a reminder by place is done by an iPhone or an Android phone. This tool's answer says what happened: tell the \
-        person that, never steps to do it by hand on a phone. list: a list's name, optional. By place: place, the \
+        due, never only in the title or the notes. A reminder at a time or on a day goes into an iPhone's Reminders app or \
+        an Android phone's calendar, with an alert (the phone the person asked from, when they have both); a reminder \
+        by place is done by either. This tool's answer says where it went: tell the person that, never steps to do it \
+        by hand on a phone. list: a list's name, optional. By place: place, the \
         place's name or address as the person says it (their phone finds it), latitude and longitude only when you \
         know them, when: arriving (default) or leaving, radius in metres (default 150).",
             "inputSchema": {"type": "object", "properties": {
@@ -134,7 +135,7 @@ fn field<'a>(item: &'a Value, key: &str) -> Option<&'a Value> {
     item.as_object().and_then(|m| m.get(key))
 }
 
-/// One of the reminder tools, for `agent`. Err: a file that cannot be written (Python's OSError).
+/// One of the reminder tools, for `agent`, in a turn no phone asked (a routine, another agent): `call_from`.
 pub fn call(
     config: &Config,
     agent: &str,
@@ -142,6 +143,20 @@ pub fn call(
     arguments: &Dict,
     wake: Option<&Wake>,
     now: Option<f64>,
+) -> anyhow::Result<Dict> {
+    call_from(config, agent, name, arguments, wake, now, None)
+}
+
+/// One of the reminder tools, for `agent`, in a turn asked from `asking` (« ios », « android »: the person's message,
+/// threads/send.rs), None when no phone asked. Err: a file that cannot be written (Python's OSError).
+pub fn call_from(
+    config: &Config,
+    agent: &str,
+    name: &str,
+    arguments: &Dict,
+    wake: Option<&Wake>,
+    now: Option<f64>,
+    asking: Option<&str>,
 ) -> anyhow::Result<Dict> {
     let now = now.filter(|n| *n != 0.0).unwrap_or_else(py::time_time);
     let said = {
@@ -321,7 +336,7 @@ pub fn call(
             // A reminder at a time or on a day: in an iPhone's Reminders app when one shares them here, else in the
             // Android phone's calendar (Alex, 7/11: « Dans l'agenda »), never both. With neither, it would wait forever
             // while the agent told the person « c'est noté pour 14 h » (7/11): not asked, and the agent told why.
-            let phone = if by_place { Phone::Any } else { phone_for(&data, now) };
+            let phone = if by_place { Phone::Any } else { phone_for(&data, now, asking) };
             if phone == Phone::None {
                 return Ok(tool_text(NO_PHONE, true));
             }
@@ -437,21 +452,39 @@ pub enum Phone {
 
 /// Who does a reminder at a time or on a day: an iPhone sharing its Reminders here, else the Android phone that said
 /// it puts them in its calendar (`PUT /v1/reminders/android`, less than `IPHONE_DAYS` old), else none.
-pub fn phone_for(data: &Dict, now: f64) -> Phone {
-    if iphone_syncs(data, now) {
-        return Phone::Iphone;
-    }
+/// The phone the person asked from goes first (Alex, 7/11: from Android, the Android phone's calendar; from the
+/// iPhone, its Reminders), when it takes reminders here; else, or when no phone asked (a routine, another agent),
+/// the iPhone, then the Android phone. Never both: a request is for one of them.
+pub fn phone_for(data: &Dict, now: f64, asking: Option<&str>) -> Phone {
+    let iphone = iphone_syncs(data, now);
     let android = data.get(ANDROID);
     let at = android.and_then(|a| a.get("at")).and_then(Value::as_f64);
-    if !at.is_some_and(|at| now - at < IPHONE_DAYS * 86400.0) {
-        return Phone::None;
-    }
-    if android.and_then(|a| a.get("calendar")).and_then(Value::as_bool) == Some(true) {
-        Phone::Android
-    } else {
-        Phone::AndroidWaiting
+    let android = at.is_some_and(|at| now - at < IPHONE_DAYS * 86400.0).then(|| {
+        if android.and_then(|a| a.get("calendar")).and_then(Value::as_bool) == Some(true) {
+            Phone::Android
+        } else {
+            Phone::AndroidWaiting
+        }
+    });
+    match (asking.and_then(phone_named), iphone, android) {
+        (Some(ANDROID), _, Some(android)) => android,
+        (_, true, _) => Phone::Iphone,
+        (_, false, Some(android)) => android,
+        (_, false, None) => Phone::None,
     }
 }
+
+/// A phone as the apps name it in their messages: « ios » (also « iphone », « ipad »), « android »; None otherwise.
+pub fn phone_named(name: &str) -> Option<&'static str> {
+    match name.trim().to_lowercase().as_str() {
+        "ios" | "iphone" | "ipad" => Some(IOS),
+        "android" => Some(ANDROID),
+        _ => None,
+    }
+}
+
+/// The iPhone, as a message names it (`phone_named`).
+pub const IOS: &str = "ios";
 
 /// The Android phone's reminders: the events it added to its calendar for the agents, to come.
 fn android_items(data: &Dict) -> Vec<Value> {
@@ -1164,6 +1197,42 @@ mod tests {
         assert_eq!(done["isError"], json!(false));
         let op = list_of(&read(&config), "queue").last().cloned().unwrap();
         assert_eq!((&op["op"], &op["phone"], &op["args"]), (&json!("complete"), &json!("android"), &json!({"id": "a42"})));
+    }
+
+    /// Alex, 7/11: with both phones, a reminder at a time goes to the phone the person asked from; no phone in the turn
+    /// (a routine, another agent): the iPhone first. Never both.
+    #[test]
+    fn with_both_phones_the_reminder_goes_to_the_one_asked_from() {
+        let dir = tempfile::tempdir().unwrap();
+        let both = json!({"at": NOW - 60.0, "android": {"at": NOW - 60.0, "calendar": true}});
+        let asked = |config: &Config, asking: Option<&str>, title: &str| {
+            let arguments: Dict = serde_json::from_value(json!({"title": title, "due": "2026-11-07T14:00"})).unwrap();
+            let said = call_from(config, "coach", "reminders_add", &arguments, None, Some(NOW), asking).unwrap();
+            let op = list_of(&read(config), "queue").last().cloned().unwrap();
+            (said["content"][0]["text"].as_str().unwrap().to_string(), op.get("phone").cloned())
+        };
+        let config = shared(dir.path(), both.clone());
+        let (said, phone) = asked(&config, Some("android"), "Appeler Paul");
+        assert!(said.contains("in their calendar at 2026-11-07 14:00") && !said.contains("iPhone"), "{said}");
+        assert_eq!(phone, Some(json!("android")));
+        let (said, phone) = asked(&config, Some("ios"), "Appeler Marie");
+        assert!(said.contains("the Reminders app of their iPhone"), "{said}");
+        assert_eq!(phone, None);
+        let (said, phone) = asked(&config, None, "Appeler Léa");
+        assert!(said.contains("the Reminders app of their iPhone") && phone.is_none(), "{said}");
+        // the phone asked from doesn't take them here (an Android app from before 7/11, an iPhone not sharing): the
+        // other one, and the agent says which
+        let config = shared(dir.path(), json!({"at": NOW - 60.0}));
+        let (said, phone) = asked(&config, Some("android"), "Banque");
+        assert!(said.contains("the Reminders app of their iPhone") && phone.is_none(), "{said}");
+        let config = shared(dir.path(), json!({"android": {"at": NOW - 60.0, "calendar": true}}));
+        let (said, phone) = asked(&config, Some("ios"), "Banque");
+        assert!(said.contains("in their calendar") && phone == Some(json!("android")), "{said}");
+        // asked from Android, its calendar not allowed yet: it waits there (the agent says why), not on the iPhone
+        let config = shared(dir.path(), json!({"at": NOW - 60.0, "android": {"at": NOW - 60.0, "calendar": false}}));
+        let (said, phone) = asked(&config, Some("android"), "Vaccin");
+        assert!(said.starts_with("Asked, but not set yet") && phone == Some(json!("android")), "{said}");
+        assert_eq!((phone_named("iPhone"), phone_named(" Android "), phone_named("watch")), (Some("ios"), Some("android"), None));
     }
 
     #[test]

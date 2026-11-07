@@ -445,6 +445,9 @@ pub struct SubscriptionState {
     pub rescued: bool,
     /// The group discussion whose hidden conversation runs this (rooms.rs): its approvals open the room.
     pub room_id: Option<String>,
+    /// The phone the person's message came from (« ios », « android »: threads/send.rs), when it said: where a
+    /// reminder asked in this turn goes (reminders.rs `phone_for`).
+    pub phone: Option<String>,
     /// The run called the agent's browser tools: at its end, its browser stops soon unless used again
     /// (browsers::run_ended).
     pub used_browser: bool,
@@ -512,6 +515,7 @@ impl Default for SubscriptionState {
             handoff_failed: false,
             rescued: false,
             room_id: None,
+            phone: None,
             used_browser: false,
             background: false,
             turn: crate::loop_brake::TurnCount::default(),
@@ -570,6 +574,11 @@ impl RunSubscription {
 
     pub fn session_id(&self) -> Option<String> {
         lock(&self.state).session_id.clone()
+    }
+
+    /// The phone the turn was asked from (`RunHub::set_phone`).
+    pub fn phone(&self) -> Option<String> {
+        lock(&self.state).phone.clone()
     }
 
     pub fn watched(&self) -> bool {
@@ -998,6 +1007,14 @@ impl RunHub {
 
     pub fn subscription(&self, agent: &str, run_id: &str) -> Option<Arc<RunSubscription>> {
         lock(&self.inner).subs.get(&(agent.to_string(), run_id.to_string())).cloned()
+    }
+
+    /// The phone the person's latest words in this run came from (a message that started it, or words steered into
+    /// it); nothing said (an older app), the run keeps what it had.
+    pub fn set_phone(&self, agent: &str, run_id: &str, phone: Option<&str>) {
+        if let (Some(phone), Some(sub)) = (phone, self.subscription(agent, run_id)) {
+            lock(&sub.state).phone = Some(phone.to_string());
+        }
     }
 
     /// The approvals Hermes waits for, each with `created_at` in Unix seconds.

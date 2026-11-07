@@ -94,6 +94,9 @@ pub struct Item {
     /// Sent as a voice note.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub voice: bool,
+    /// The phone it was sent from (threads/send.rs), for its turn (`RunHub::set_phone`); not shown to the apps.
+    #[serde(default, skip_serializing)]
+    pub phone: Option<String>,
 }
 
 /// A message the sending route hands to the queue: its app id and Hermes' input.
@@ -104,6 +107,8 @@ pub struct Sent {
     /// Its files as the apps show them (`Attachment::shown`).
     pub attachments: Vec<Value>,
     pub voice: bool,
+    /// The phone it was sent from (« ios », « android »), when the app said.
+    pub phone: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -245,6 +250,7 @@ fn new_item(session_id: &str, text: &str, late: bool, sent: Sent) -> Item {
         input: sent.input,
         attachments: sent.attachments,
         voice: sent.voice,
+        phone: sent.phone,
     }
 }
 
@@ -594,6 +600,7 @@ impl Queues {
         // watched: kept across a restart, « reply ready » pushed at the end if nobody looks (and nothing follows)
         self.hub.watch(agent, &run_id, Some(&item.session_id), true);
         self.hub.keep(agent, &run_id, Some(&item.session_id));
+        self.hub.set_phone(&agent.name, &run_id, item.phone.as_deref());
         let started = crate::store::iso(crate::store::utcnow());
         self.update(&agent.name, |q| {
             q.items.retain(|i| i.id != item.id);
@@ -628,6 +635,7 @@ impl Queues {
             false => None,
         };
         if let Some(run) = steered {
+            self.hub.set_phone(&agent.name, &run, item.phone.as_deref());
             let queue = self.remove(&agent.name, item_id).unwrap_or_else(|| self.get(&agent.name));
             return Ok(json!({"steered": true, "run_id": run, "queue": queue.snapshot(&agent.name)}));
         }
@@ -801,6 +809,7 @@ mod tests {
             input: None,
             attachments: Vec::new(),
             voice: false,
+            phone: None,
         }
     }
 
@@ -808,7 +817,7 @@ mod tests {
     fn a_message_of_files_alone_says_its_files() {
         // 6/11: a photo sent alone waited as an empty row (« En attente (1) », nothing to read)
         let photo = json!({"kind": "image", "name": "photo.jpg", "mime": "image/jpeg", "size": 1234, "path": "/u/2026-11/a-photo.jpg"});
-        let sent = Sent { client_id: Some("c1".into()), input: None, attachments: vec![photo.clone()], voice: false };
+        let sent = Sent { client_id: Some("c1".into()), input: None, attachments: vec![photo.clone()], voice: false, phone: None };
         let mut q = queue_of(&[]);
         q.items.push(new_item("s1", "", false, sent));
         let shown = q.snapshot("maison");
