@@ -201,6 +201,14 @@ une toutes les 5 minutes), un autre composant l'a demandé, ou, à l'heure la pl
 une fois par nuit pour la mémoire. `[agent_restart] enabled = false` le coupe ; il est coupé d'office sur un Hermes que
 vous aviez avant BipAgents. Le dernier redémarrage et sa raison sont dans `GET /v1/status` (`last_restart`).
 
+Toutes les 6 heures, le pont range l'espace de travail des agents (`space_tidy.rs`) : il efface les brouillons de
+`/workspace/brouillons` restés 7 jours sans changement, le dossier d'une tâche de fond 24 heures après sa fin (jamais
+pendant qu'elle tourne ou est en pause), les téléchargements du navigateur de plus de 30 jours et les caches de paquets
+du bac à sable (pip, uv, npm, yarn) inutilisés depuis 14 jours. Rien d'autre : jamais les fichiers envoyés ou donnés à
+la personne, ses pages, ses Archives, ses dossiers partagés. Un passage qui libère plus de 200 Mo laisse une ligne
+discrète dans la Boîte de l'agent (sans notification, une fois par semaine au plus). `[tidy]` : `enabled`,
+`every_hours`, `scratch_days`, `task_hours`, `cache_days`, `line_mb`.
+
 Les fiches (achats, abonnements, contrats, papiers, réservations) peuvent être remplies depuis une archive d'un agent :
 `bipagents archive extract <agent> --archive <id> --sample 50` lit 50 documents probables avec le modèle de l'agent et
 affiche ce qu'il ajouterait et l'estimation pour toute l'archive, sans rien écrire ; `--run --budget <€>` les remplit

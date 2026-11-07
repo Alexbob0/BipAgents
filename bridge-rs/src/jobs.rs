@@ -93,6 +93,21 @@ PDF, each version or style asked) given with give_file, and the MEDIA line it gi
 has a budget; if you are told to continue, pick up where you stopped instead of starting again. End with a short
 report in the person's language: what you did, what you found or made and where it is, what is left or uncertain.";
 pub const CONTINUE: &str = "Continue the task where you stopped (don't start again), then end with your report.";
+
+/// The task's own drafts folder, for an agent whose tools run in Hermes' docker sandbox (its persistent
+/// `/workspace`): space_tidy.rs empties it `[tidy] task_hours` after the task ends. None: no such sandbox.
+pub fn drafts_line(config: &crate::config::Config, agent: &crate::config::AgentConfig, job_id: &str) -> Option<String> {
+    let profile = crate::shares::profile_dir(config, agent)?;
+    if crate::shares::terminal_backend(&profile).as_deref() != Some("docker") || !JOB_ID.is_match(job_id) {
+        return None;
+    }
+    Some(format!(
+        "Your working files for this task (drafts, data you process, test scripts) go in {}/{job_id}: it is \
+         emptied a day after the task ends; what you give with give_file or create_page stays.",
+        crate::space_tidy::SCRATCH_SEEN
+    ))
+}
+
 /// The pushes' bodies in French; in the agent's language they come from names.rs (`push_body`).
 pub const DONE_BODY: &str = "Tâche de fond terminée";
 pub const PAUSED_BODY: &str = "Tâche de fond en pause";
@@ -853,7 +868,11 @@ impl Jobs {
         // the task's rules in its message (a note the apps hide), never as run instructions: the system prompt stays
         // the agent's conversations' own, and so does the model server's prompt cache; « Tâches de fond » by its name
         // in the agent's language (names.rs)
-        let rules = crate::names::localize(INSTRUCTIONS, &crate::handback::language_of(&self.config.get(), &agent));
+        let mut rules = crate::names::localize(INSTRUCTIONS, &crate::handback::language_of(&self.config.get(), &agent));
+        // a folder of its own for its working files, emptied a day after it ends (space_tidy.rs)
+        if let Some(line) = drafts_line(&self.config.get(), &agent, &tk::str_or_empty(job.get("id"))) {
+            rules = format!("{rules}\n{line}");
+        }
         let mut turn = Turn::new(&agent, Kind::Task, &session_id, format!("{text}\n\n<!--bip:task-rules\n{rules}\n-->"));
         // GLM through EUrouter thinks at « low » in chat since 2026-10-28; tasks stay at « medium » until measured.
         turn.options = crate::agents_admin::task_turn_options(&self.config.get(), &agent);
