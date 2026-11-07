@@ -150,7 +150,10 @@ async fn finish(state: AppState, agent: String, hub_url: String, new_url: String
     let source = crate::spaces::hub_profile(&config, &agent);
     if let (true, false, Some(home)) = (had_turns, space_used, home) {
         let target = PathBuf::from(home);
-        let copied = tokio::task::spawn_blocking(move || crate::spaces::resync_database(&source, &target)).await;
+        let root = config.agent(Some(&agent)).and_then(|a| a.space.clone()).map(PathBuf::from).unwrap_or_default();
+        let profile_id = crate::spaces::hermes_profile_id(&config, &root, &agent);
+        let copied =
+            tokio::task::spawn_blocking(move || crate::spaces::resync_database(&source, &target, &profile_id)).await;
         if !matches!(copied, Ok(Ok(()))) {
             tracing::warn!(target: "bipbridge::own_space", agent = %agent, "the hub turn's end not copied into the space");
         }
@@ -158,7 +161,10 @@ async fn finish(state: AppState, agent: String, hub_url: String, new_url: String
     let spaces = crate::spaces::Spaces::new(crate::agents_admin::default_run());
     match spaces.forget_in_hub(&config, &agent).await {
         Ok(()) => tracing::info!(target: "bipbridge::own_space", agent = %agent, "the hub forgot the moved agent"),
-        Err(exc) => tracing::warn!(target: "bipbridge::own_space", agent = %agent, error = %exc, "the hub kept the moved agent's profile"),
+        Err(exc) => {
+            tracing::warn!(target: "bipbridge::own_space", agent = %agent, error = %exc, "the hub kept the moved agent's profile: tried again later");
+            spaces.forget_later(&config, &agent);
+        }
     }
 }
 

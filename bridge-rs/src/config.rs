@@ -282,6 +282,10 @@ pub struct SpacesConfig {
     /// still live in the shared hub are moved out (default 300; the tests shorten it).
     #[serde(skip)]
     pub tidy_after: f64,
+    /// spaces.rs `forget_later`: seconds before the hub's copy of a moved agent is deleted again after a failure
+    /// (then 4 times longer each time; default 60, the tests shorten it).
+    #[serde(skip)]
+    pub forget_again: f64,
 }
 
 impl Default for SpacesConfig {
@@ -294,6 +298,7 @@ impl Default for SpacesConfig {
             stop: None,
             container_home: String::new(),
             tidy_after: 300.0,
+            forget_again: 60.0,
         }
     }
 }
@@ -1564,6 +1569,7 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         stop: opt_s(spaces_t, "stop"),
         container_home: py::rstrip_slash(&s(spaces_t, "container_home", "")),
         tidy_after: f(spaces_t, "tidy_after", 300.0)?.max(0.0),
+        forget_again: f(spaces_t, "forget_again", 60.0)?.max(0.1),
     };
     if spaces.sandbox != "auto" && spaces.sandbox != "none" {
         return Err(ConfigError::new("spaces.sandbox must be 'auto' or 'none'"));

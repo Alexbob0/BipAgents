@@ -278,6 +278,8 @@ pub enum Answer {
     Waiting,
     /// It couldn't be reached or its turn failed.
     Unreachable,
+    /// Its Hermes refused what this bridge asked (a request of ours it won't take): not the target's doing.
+    NotDelivered,
     /// Its conversation of the pair is held by a turn of this same chain (agent_hops.rs): it is itself waiting for
     /// this exchange (A → B → A → B), so the message can't be answered there. Told at once, nothing sent.
     Cycle,
@@ -370,6 +372,7 @@ pub async fn ask_in(
             Answer::Text(text) => record(&config, &target.name, &asker.name, "answer", text, at),
             Answer::Empty => record(&config, &target.name, &asker.name, "notice", "answered nothing", at),
             Answer::Unreachable => record(&config, &target.name, &asker.name, "notice", "couldn't answer", at),
+            Answer::NotDelivered => record(&config, &target.name, &asker.name, "notice", "message not delivered", at),
             Answer::Waiting | Answer::Cycle | Answer::Queued => Ok((0, 0)),
         };
         if let Err(exc) = kept {
@@ -441,12 +444,13 @@ async fn turn(
     let hermes = HermesClient::new(http.clone());
     let input = crate::dates::now::stamped(config, target, &framed(asker, message));
     let mut started = None;
+    let mut refused = None;
     for _ in 0..2 {
         let session = match session_for(&hermes, config, id, target).await {
             Ok(session) => session,
             Err(exc) => {
                 tracing::warn!(agent = %asker.name, target = %target.name, error = %exc, "agent pair: no conversation");
-                return Answer::Unreachable;
+                return answer_to(&exc);
             }
         };
         match hermes.start_run(target, &input, &session, None).await {
@@ -454,15 +458,22 @@ async fn turn(
                 started = Some((run_id, session));
                 break;
             }
-            // the conversation is gone (deleted from Hermes): a new one
-            Err(HermesError::Http { status: 404, .. }) => forget_session(config, id, &target.name),
+            // the conversation is gone (deleted from Hermes), or another profile home's (made in the hub before the
+            // agent moved into its own space, spaces.rs `rebind_api_sessions`): a new one
+            Err(exc) if not_its_conversation(&exc) => {
+                tracing::info!(agent = %asker.name, target = %target.name, error = %exc, body = %body_of(&exc), "agent pair: its conversation unusable, a new one");
+                forget_session(config, id, &target.name);
+                refused = Some(exc);
+            }
             Err(exc) => {
-                tracing::warn!(agent = %asker.name, target = %target.name, error = %exc, "agent pair: no turn");
-                return Answer::Unreachable;
+                tracing::warn!(agent = %asker.name, target = %target.name, error = %exc, body = %body_of(&exc), "agent pair: no turn");
+                return answer_to(&exc);
             }
         }
     }
-    let Some((run_id, session)) = started else { return Answer::Unreachable };
+    let Some((run_id, session)) = started else {
+        return refused.as_ref().map(answer_to).unwrap_or(Answer::Unreachable);
+    };
     // what the target writes to an agent in this turn counts in the asker's chain (agent_hops.rs)
     if let Some(chain) = chain {
         crate::agent_hops::follow(&run_id, chain);
@@ -522,6 +533,36 @@ async fn follow_turn(
             let _ = hermes.stop_run(target, &run_id).await;
             return Answer::Unreachable;
         }
+    }
+}
+
+/// Hermes refused the run for the conversation itself: gone (404), or not this profile's (409 `profile_mismatch`,
+/// `admission_conflict`: a conversation of the hub's, before a move). Never a busy one (409 too): that one waits.
+fn not_its_conversation(exc: &HermesError) -> bool {
+    match exc {
+        HermesError::Http { status: 404, .. } => true,
+        HermesError::Http { status: 409, body } => {
+            ["profile_mismatch", "admission_conflict", "not_found"].iter().any(|code| body.contains(code))
+        }
+        _ => false,
+    }
+}
+
+fn body_of(exc: &HermesError) -> String {
+    match exc {
+        HermesError::Http { body, .. } => tk::head(body, 300).to_string(),
+        _ => String::new(),
+    }
+}
+
+/// What a failed ask means for the asker: its Hermes unreachable or busy (it may answer later), or a refusal of ours
+/// (a request this bridge made that Hermes won't take): never « it didn't answer » then.
+fn answer_to(exc: &HermesError) -> Answer {
+    match exc {
+        HermesError::Http { status, body } if (400..500).contains(status) && !body.contains("busy") => {
+            Answer::NotDelivered
+        }
+        _ => Answer::Unreachable,
     }
 }
 
@@ -703,6 +744,20 @@ pub fn router() -> Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_refusal_of_ours_is_never_the_other_agents_silence() {
+        let http = |status: u16, body: &str| HermesError::http(status, body);
+        let mismatch = r#"{"error": {"message": "profile_mismatch", "code": "profile_mismatch"}}"#;
+        assert!(not_its_conversation(&http(409, mismatch)) && not_its_conversation(&http(404, "")));
+        assert!(!not_its_conversation(&http(409, r#"{"error": {"code": "session_busy"}}"#)));
+        assert!(!not_its_conversation(&http(502, "")));
+        assert_eq!(answer_to(&http(409, mismatch)), Answer::NotDelivered);
+        assert_eq!(answer_to(&http(400, "invalid_params")), Answer::NotDelivered);
+        assert_eq!(answer_to(&http(409, r#"{"error": {"code": "session_busy"}}"#)), Answer::Unreachable);
+        assert_eq!(answer_to(&http(503, "")), Answer::Unreachable);
+        assert_eq!(answer_to(&HermesError::ReadTimeout), Answer::Unreachable);
+    }
 
     #[test]
     fn the_pair_is_the_same_whoever_asks() {

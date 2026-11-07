@@ -41,6 +41,9 @@ pub const SKIP: [&str; 9] = [
 #[error("{0}")]
 pub struct SpaceError(pub String);
 
+/// How many times the hub's copy of a moved agent is deleted again after a failure (`Spaces::forget_later`).
+const FORGET_TRIES: usize = 4;
+
 pub fn unit_name(agent: &str) -> String {
     format!("bipagents-space-{agent}")
 }
@@ -197,23 +200,80 @@ pub fn copy_profile(source: &Path, target: &Path) -> anyhow::Result<()> {
 }
 
 /// The hub's copy of the conversations again into the space (SQLite backup), after a turn that went on in the hub
-/// while the agent moved: its end is kept too.
-pub fn resync_database(source: &Path, target: &Path) -> anyhow::Result<()> {
+/// while the agent moved: its end is kept too. Its API conversations are then the space's (`rebind_api_sessions`).
+pub fn resync_database(source: &Path, target: &Path, profile_id: &str) -> anyhow::Result<()> {
     let database = source.join("state.db");
     if !database.exists() {
         return Ok(());
     }
     let src = rusqlite::Connection::open_with_flags(&database, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
     let mut dst = rusqlite::Connection::open(target.join("state.db"))?;
-    let backup = rusqlite::backup::Backup::new(&src, &mut dst)?;
-    loop {
-        match backup.step(-1)? {
-            rusqlite::backup::StepResult::Done => break,
-            rusqlite::backup::StepResult::More => {}
-            _ => std::thread::sleep(Duration::from_millis(250)),
+    {
+        let backup = rusqlite::backup::Backup::new(&src, &mut dst)?;
+        loop {
+            match backup.step(-1)? {
+                rusqlite::backup::StepResult::Done => break,
+                rusqlite::backup::StepResult::More => {}
+                _ => std::thread::sleep(Duration::from_millis(250)),
+            }
         }
     }
+    drop(dst);
+    rebind_api_sessions(target, profile_id)?;
     Ok(())
+}
+
+/// Hermes' record of an API conversation's owner (`state_meta`, gateway/session_api.py `_BINDING_PREFIX`, v0.22.5):
+/// `{"profile_id": <the serving profile's home, resolved>, "session_id", "route", "entry"}`.
+pub const API_BINDING_PREFIX: &str = "gateway.api.binding.v1.";
+
+/// The profile's home as the space's Hermes names it (its `profile_id`, gateway/run_runtime.py: the resolved home):
+/// inside its container when the space runs in one (`[spaces] container_home`).
+pub fn hermes_profile_id(config: &Config, root: &Path, agent: &str) -> String {
+    if !config.spaces.container_home.is_empty() {
+        return format!("{}/profiles/{agent}", config.spaces.container_home);
+    }
+    let home = root.join("profiles").join(agent);
+    std::fs::canonicalize(&home).unwrap_or(home).to_string_lossy().into_owned()
+}
+
+/// The API conversations of a profile's database (copied from the hub) made the space's: Hermes refuses a run in a
+/// conversation another profile home owns (`restore_api_session`: HTTP 409 `profile_mismatch`), and every
+/// conversation made in the hub names the hub's home. Seen on the token lab (2026-11-07): after its move, an agent
+/// answered no message of its pair conversation with another agent (agent_pairs.rs), « Coach didn't answer ».
+/// Returns how many were rewritten. A database without Hermes' table is left alone.
+pub fn rebind_api_sessions(profile: &Path, profile_id: &str) -> rusqlite::Result<usize> {
+    let database = profile.join("state.db");
+    if !database.exists() {
+        return Ok(0);
+    }
+    let conn = rusqlite::Connection::open(&database)?;
+    let has_table: bool = conn
+        .query_row("SELECT 1 FROM sqlite_master WHERE type='table' AND name='state_meta'", [], |_| Ok(true))
+        .or_else(|e| if e == rusqlite::Error::QueryReturnedNoRows { Ok(false) } else { Err(e) })?;
+    if !has_table {
+        return Ok(0);
+    }
+    let rows: Vec<(String, String)> = {
+        let mut stmt = conn.prepare("SELECT key, value FROM state_meta WHERE substr(key, 1, ?1) = ?2")?;
+        let found = stmt.query_map(rusqlite::params![API_BINDING_PREFIX.len() as i64, API_BINDING_PREFIX], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+        })?;
+        found.collect::<rusqlite::Result<_>>()?
+    };
+    let mut changed = 0;
+    for (key, value) in rows {
+        let Ok(serde_json::Value::Object(mut receipt)) = serde_json::from_str::<serde_json::Value>(&value) else {
+            continue;
+        };
+        if receipt.get("profile_id").and_then(serde_json::Value::as_str) == Some(profile_id) {
+            continue;
+        }
+        receipt.insert("profile_id".into(), serde_json::Value::String(profile_id.to_string()));
+        let text = serde_json::to_string(&receipt).unwrap_or(value);
+        changed += conn.execute("UPDATE state_meta SET value = ?1 WHERE key = ?2", rusqlite::params![text, key])?;
+    }
+    Ok(changed)
 }
 
 /// The hub's folder of an agent's profile.
@@ -339,8 +399,40 @@ impl Spaces {
         http: &reqwest::Client,
     ) -> anyhow::Result<AgentConfig> {
         let moved = self.move_agent_keeping_hub(config, agent, http).await?;
-        self.forget_in_hub(config, &agent.name).await?;
+        // Its space serves it now: the move stands. Until 2026-11-07 a failed delete here failed the whole move with
+        // the space left running and the bridge still pointing at the hub (whose copy Hermes had already marked
+        // deleted), and each try again then met « a space with this name already exists » (token lab).
+        if let Err(exc) = self.forget_in_hub(config, &agent.name).await {
+            tracing::warn!(agent = %agent.name, error = %exc, "the hub's copy of the moved agent not deleted yet: tried again later");
+            self.forget_later(config, &agent.name);
+        }
         Ok(moved)
+    }
+
+    /// The hub's copy of a moved agent deleted later, a few times (`[spaces] forget_again`, then 4 times longer each
+    /// time): what kept it (« a running gateway still owns this profile ») settles. Done once it is gone.
+    pub fn forget_later(&self, config: &Config, agent: &str) {
+        let (spaces, config, agent) = (Spaces::new(self.run.clone()), config.clone(), agent.to_string());
+        tokio::spawn(async move {
+            let mut wait = config.spaces.forget_again;
+            for _ in 0..FORGET_TRIES {
+                tokio::time::sleep(Duration::from_secs_f64(wait)).await;
+                if !hub_profile(&config, &agent).is_dir() {
+                    return;
+                }
+                match spaces.forget_in_hub(&config, &agent).await {
+                    Ok(()) => {
+                        tracing::info!(agent = %agent, "the hub forgot the moved agent");
+                        return;
+                    }
+                    Err(exc) => {
+                        tracing::warn!(agent = %agent, error = %exc, "the hub's copy of the moved agent still not deleted")
+                    }
+                }
+                wait *= 4.0;
+            }
+            tracing::warn!(agent = %agent, "the hub keeps a copy of the moved agent: `hermes profile delete <agent> --yes` removes it");
+        });
     }
 
     /// The move without its last step: the hub still serves the profile, so a turn going on there ends there (the
@@ -362,7 +454,16 @@ impl Spaces {
         }
         let root = PathBuf::from(&config.spaces.root).join(&agent.name);
         if root.exists() {
-            return Err(SpaceError("a space with this name already exists".into()).into());
+            // Not its space (the bridge serves it from the hub): what a move that didn't finish left, a copy never
+            // used. Its gateway stopped and the folder removed, the move made again from the hub.
+            if agent.space.as_deref().is_some_and(|s| Path::new(s) == root) {
+                return Err(SpaceError("a space with this name already exists".into()).into());
+            }
+            tracing::warn!(agent = %agent.name, space = %root.display(), "a space left by a move that didn't finish: removed, the move made again");
+            if let Err(stop) = self.service(config, &agent.name, &root.to_string_lossy(), false).await {
+                tracing::debug!(error = %stop, "the left space's service not stopped");
+            }
+            std::fs::remove_dir_all(&root)?;
         }
         let port = free_port(config)?;
         let space_key = crate::py::token_urlsafe(32);
@@ -390,7 +491,12 @@ impl Spaces {
                     ("API_SERVER_KEY", space_key.clone()),
                 ],
             )?;
-            copy_profile(&source, &root.join("profiles").join(&agent.name))?;
+            let profile = root.join("profiles").join(&agent.name);
+            copy_profile(&source, &profile)?;
+            let rebound = rebind_api_sessions(&profile, &hermes_profile_id(config, &root, &agent.name))?;
+            if rebound > 0 {
+                tracing::info!(agent = %agent.name, conversations = rebound, "its API conversations made its space's");
+            }
             let env = BTreeMap::from([("HERMES_HOME".to_string(), root.to_string_lossy().into_owned())]);
             let has_start = config.spaces.start.as_deref().map(|s| !s.is_empty()).unwrap_or(false);
             let sandboxed = has_start || sandbox_available(config);
@@ -487,6 +593,43 @@ impl Spaces {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_hubs_api_conversations_become_the_spaces() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(rebind_api_sessions(dir.path(), "/space/profiles/coach").unwrap(), 0); // no database
+        let conn = rusqlite::Connection::open(dir.path().join("state.db")).unwrap();
+        conn.execute_batch("CREATE TABLE sessions (id TEXT)").unwrap();
+        drop(conn);
+        assert_eq!(rebind_api_sessions(dir.path(), "/space/profiles/coach").unwrap(), 0); // no Hermes table
+        let conn = rusqlite::Connection::open(dir.path().join("state.db")).unwrap();
+        conn.execute_batch("CREATE TABLE state_meta (key TEXT PRIMARY KEY, value TEXT)").unwrap();
+        let receipt = |id: &str, home: &str| {
+            serde_json::json!({"profile_id": home, "session_id": id, "route": "agent:main:api:dm",
+                               "entry": {"session_id": id, "origin": {"profile": "coach"}}})
+            .to_string()
+        };
+        let put = |key: String, value: String| {
+            conn.execute("INSERT INTO state_meta VALUES (?1, ?2)", rusqlite::params![key, value]).unwrap();
+        };
+        put(format!("{API_BINDING_PREFIX}api_1"), receipt("api_1", "/hub/profiles/coach"));
+        put(format!("{API_BINDING_PREFIX}api_2"), receipt("api_2", "/space/profiles/coach"));
+        put("gateway.local_policy.v1:local-1".into(), receipt("local-1", "/hub/profiles/coach"));
+        put(format!("{API_BINDING_PREFIX}api_3"), "not json".into());
+        drop(conn);
+        assert_eq!(rebind_api_sessions(dir.path(), "/space/profiles/coach").unwrap(), 1);
+        let conn = rusqlite::Connection::open(dir.path().join("state.db")).unwrap();
+        let value = |key: &str| -> serde_json::Value {
+            let text: String =
+                conn.query_row("SELECT value FROM state_meta WHERE key = ?1", [key], |r| r.get(0)).unwrap();
+            serde_json::from_str(&text).unwrap_or(serde_json::Value::Null)
+        };
+        let moved = value(&format!("{API_BINDING_PREFIX}api_1"));
+        assert_eq!(moved["profile_id"], "/space/profiles/coach");
+        assert_eq!(moved["entry"]["origin"]["profile"], "coach"); // the rest as it was
+        assert_eq!(value("gateway.local_policy.v1:local-1")["profile_id"], "/hub/profiles/coach"); // not an API one
+        assert_eq!(rebind_api_sessions(dir.path(), "/space/profiles/coach").unwrap(), 0); // once
+    }
 
     #[test]
     fn quoting_and_commands() {

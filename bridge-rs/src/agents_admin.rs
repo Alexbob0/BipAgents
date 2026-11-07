@@ -434,10 +434,30 @@ pub async fn run_hermes(args: Vec<String>, env: BTreeMap<String, String>) -> any
     };
     if !output.status.success() {
         let shown = args.iter().take(4).cloned().collect::<Vec<_>>().join(" ");
-        let err = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("{shown} failed: {}", tail(err.trim(), 300));
+        anyhow::bail!("{shown} failed: {}", why_failed(&output.stdout, &output.stderr));
     }
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// What a failed command said: its error output, else the error lines of its output (Hermes' CLI prints its
+/// « Error: … » there, e.g. `hermes profile delete`: the move of 2026-11-07 on the token lab logged « failed: » and
+/// nothing else). Only those lines: the rest of a command's output may hold what it was given (a key).
+pub fn why_failed(stdout: &[u8], stderr: &[u8]) -> String {
+    let err = String::from_utf8_lossy(stderr);
+    if !err.trim().is_empty() {
+        return tail(err.trim(), 300);
+    }
+    let out = String::from_utf8_lossy(stdout);
+    let errors: Vec<&str> = out
+        .lines()
+        .map(str::trim)
+        .filter(|l| l.starts_with("Error") || l.starts_with('⚠') || l.starts_with("✗"))
+        .collect();
+    if errors.is_empty() {
+        "(no error output)".to_string()
+    } else {
+        tail(&errors.join(" "), 300)
+    }
 }
 
 /// [`run_hermes`] on a blocking thread (the commands that write a profile, under its lock: profile_files::hermes).
@@ -475,7 +495,7 @@ pub fn run_hermes_blocking(args: &[String], env: &BTreeMap<String, String>) -> a
     let (stdout, stderr) = (stdout.join().unwrap_or_default(), stderr.join().unwrap_or_default());
     if !status.success() {
         let shown = args.iter().take(4).cloned().collect::<Vec<_>>().join(" ");
-        anyhow::bail!("{shown} failed: {}", tail(String::from_utf8_lossy(&stderr).trim(), 300));
+        anyhow::bail!("{shown} failed: {}", why_failed(&stdout, &stderr));
     }
     Ok(String::from_utf8_lossy(&stdout).into_owned())
 }
@@ -2754,6 +2774,18 @@ pub fn router() -> Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_failed_command_says_why() {
+        assert_eq!(why_failed(b"", b"boom\n"), "boom");
+        let hermes = "Deleting coach\nError: a running gateway still owns this profile; retry the delete once it settles\n";
+        assert_eq!(
+            why_failed(hermes.as_bytes(), b""),
+            "Error: a running gateway still owns this profile; retry the delete once it settles"
+        );
+        // never the rest of its output (what it was given may be there)
+        assert_eq!(why_failed(b"Set API_SERVER_KEY = sk-secret\n", b""), "(no error output)");
+    }
 
     #[test]
     fn titles_and_tails() {
