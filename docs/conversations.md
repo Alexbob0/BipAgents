@@ -744,6 +744,9 @@ DELETE /v1/notifications/{id}                                            hidden 
   no more). `boite` is the same count by agent (an app adds its own agents'). `agents` and `threads` count every
   unread row: the home's dots (a room's reply, a held e-mail, a date to find are not the Boîte's). Alex's iPhone,
   5/11: « Boîte 1 » for ever on an empty Boîte (a card's row whose card had gone).
+- A `boite` row's `created_at` is its message's arrival (the outbox's stamp, one per millisecond), not its push's
+  (which waits for the message's audio): the apps list the Boîte by `created_at`, so its messages keep the order they
+  came in. The list's tie-breaker is the row's `id`.
 
 Journal row as served:
 

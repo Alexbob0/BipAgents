@@ -220,6 +220,8 @@ pub struct Event {
     pub extra: Dict,
     /// The collapse id of a notification that replaces an earlier one (an approval's request); None for the others.
     pub collapse: Option<String>,
+    /// When it happened, when not now: a Boîte message's arrival (its row's `created_at`, the order the Boîte shows).
+    pub at: Option<String>,
 }
 
 impl Event {
@@ -240,6 +242,7 @@ impl Event {
             from: None,
             extra: Dict::new(),
             collapse: None,
+            at: None,
         }
     }
 
@@ -362,6 +365,7 @@ impl PushService {
             text: event.text.as_deref(),
             state: "open",
             dedupe: &key,
+            created_at: event.at.as_deref(),
         };
         match crate::notifications::insert(&self.store, &row).await {
             Ok(true) => {}
@@ -496,6 +500,15 @@ impl PushService {
         let Some(mut event) = notice.event(agent, &self.context(agent)) else { return 0 };
         event.from = Some(from);
         event.quiet = !notify;
+        // dated by its arrival (the outbox's stamp, one per millisecond), not by its push, which waits for its audio
+        // and its conversation: two messages stored 84 ms apart came to the Boîte the other way round (7/11)
+        event.at = match self.store.get_outbox(outbox_id).await {
+            Ok(row) => row.and_then(|r| r.get("created_at").and_then(Value::as_str).map(str::to_string)),
+            Err(exc) => {
+                tracing::warn!(id = %outbox_id, exc = %format!("{exc:#}"), "outbox message not read");
+                None
+            }
+        };
         self.emit(event).await
     }
 

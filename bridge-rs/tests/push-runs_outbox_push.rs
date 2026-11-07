@@ -60,8 +60,12 @@ async fn a_message_lands_in_outbox_with_audio_and_push() {
     let first = boite("m1", "Bonjour **Sam**, as-tu bien dormi ?", Some("Check-in"), Some("sess_42"));
     assert!(outbox.ingest(&agent, first.clone(), true).await.unwrap().is_some());
     assert!(outbox.ingest(&agent, first, true).await.unwrap().is_none()); // the same key again: stored once
+    // m1 -> TOKEN + DEAD (410, then deleted). m2 once m1 is pushed: two deliveries in flight read their audio and
+    // reach APNs in either order (the Boîte keeps the arrival order: the test below), so m1's synthesis, push and
+    // badge are the first ones here.
+    assert!(wait_until(|| ends_with(&sandbox, TOKEN) >= 1, Duration::from_secs(10)).await);
     outbox.ingest(&agent, boite("m2", "Pense à boire de l'eau.", None, None), true).await.unwrap();
-    // m1 -> TOKEN + DEAD (410, then deleted), m2 -> TOKEN (+ DEAD if it raced the deletion)
+    // m2 -> TOKEN (+ DEAD if it raced the deletion)
     assert!(wait_until(|| ends_with(&sandbox, TOKEN) >= 2, Duration::from_secs(10)).await);
 
     let items = boite_items(&client).await;
@@ -103,6 +107,10 @@ async fn a_message_lands_in_outbox_with_audio_and_push() {
     assert_eq!(pushed.header("apns-topic").as_deref(), Some("io.github.bipagents"));
     assert_eq!(pushed.header("apns-push-type").as_deref(), Some("alert"));
     assert_eq!(pushed.path, format!("/3/device/{TOKEN}"));
+    // m2's push: its own pointer, both messages unread
+    let second = sandbox.requests.lock().unwrap()[1].json();
+    assert_eq!(second["r"], items[1]["id"]);
+    assert_eq!(second["aps"]["badge"], 2);
     // The 410 token was deleted after its first failure.
     let dead_calls = ends_with(&production, DEAD);
     assert!((1..=2).contains(&dead_calls), "{dead_calls}");
@@ -114,6 +122,34 @@ async fn a_message_lands_in_outbox_with_audio_and_push() {
     }
 
     assert_eq!(client.get("/v1/outbox/nope/audio", &h).await.status, StatusCode::NOT_FOUND);
+    client.shutdown().await;
+    backend.release.set();
+}
+
+/// The Boîte lists its messages as they came, whichever was pushed first (each push waits for its own audio). 7/11:
+/// m1 stored 84 ms before m2, m2's push journaled first, the Boîte showed m2 then m1 (the test above, under load).
+#[tokio::test]
+async fn the_boite_keeps_the_arrival_order_whatever_the_push_order() {
+    let dir = tempfile::tempdir().unwrap();
+    let backend = FakeBackend::start().await;
+    let config = parse_config(&config_dict(dir.path(), &backend.urls()), None).unwrap();
+    let client = TestApp::new(config);
+    let state = &client.app.state;
+    let key = |k: &str| bipbridge::store::NewOutbox { ntfy_id: Some(k.into()), ..Default::default() };
+    let first = state.store.add_outbox("wellness", "Arrivé le premier.", key("m1")).await.unwrap().unwrap();
+    let second = state.store.add_outbox("wellness", "Arrivé le second.", key("m2")).await.unwrap().unwrap();
+    for item in [&second, &first] {
+        let id = item["id"].as_str().unwrap();
+        state.push.notify_message("wellness", id, "…", None, bipbridge::notifications::BoiteFrom::Other, true).await;
+        tokio::time::sleep(Duration::from_millis(5)).await; // the second push strictly later
+    }
+
+    let items = boite_items(&client).await;
+    let texts: Vec<&str> = items.iter().map(|i| i["text"].as_str().unwrap()).collect();
+    assert_eq!(texts, ["Arrivé le premier.", "Arrivé le second."]);
+    // each row dated by its message's arrival, not by its push
+    assert_eq!(items[0]["created_at"], first["created_at"]);
+    assert_eq!(items[1]["created_at"], second["created_at"]);
     client.shutdown().await;
     backend.release.set();
 }
