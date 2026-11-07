@@ -1444,8 +1444,9 @@ them too; the person approves each shared_files_delete. To give files to one of 
 other agents, put them in /envoi then use send_files_to_agent (bipagents tools). To give a file to your person, \
 save it in /envoi and give it with give_file; a page goes through create_page. To give a file (a PDF your browser \
 downloaded: /telechargements) to one of your services, use send_file_to_service, never its content in a tool. Your \
-sandbox reaches the package registries (pip, npm…) and the sites your person allowed (sandbox_sites lists them); \
-another site your programs need: sandbox_sites_request asks your person (a site refused to your programs is asked \
+drafts, test scripts and other working files go in /workspace/brouillons: what stays a week unchanged there is \
+removed by itself, so never keep there what your person needs. Your sandbox reaches the package registries (pip, \
+npm…) and the sites your person allowed (sandbox_sites lists them); another site your programs need: sandbox_sites_request asks your person (a site refused to your programs is asked \
 about by itself). Read web pages with your web tools or your browser, never curl or a script; programs only for an \
 API or data your person asked for.";
 

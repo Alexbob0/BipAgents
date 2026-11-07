@@ -136,9 +136,10 @@ sie bewusst Hermes überlässt.
 
 - `jobs.rs`: Hintergrundaufgaben mit vorher gewähltem Budget, danach angezeigten Token, Pause und Fortsetzen;
   `handback.rs` bringt den Bericht in das Gespräch zurück, aus dem er kam.
-- `cronwatch.rs` liefert die Antwort jeder Routine in die App; `autonomous.rs` listet alles, was Agenten
-  unaufgefordert tun; `storage_watch.rs` lässt Agenten fragen, was sie behalten sollen; `feature_tips.rs` zeigt
-  Funktionen nach und nach.
+- `cronwatch.rs` liefert die Antwort jeder Routine in die App; `autonomous.rs` listet alles, was Agenten unaufgefordert
+  tun; `storage_watch.rs` lässt Agenten fragen, was sie behalten sollen; `space_tidy.rs` löscht von selbst, was in ihrem
+  Bereich nur vorübergehend ist (alte Entwürfe, der Ordner einer beendeten Aufgabe, alte Downloads, Caches), nie die
+  Dateien der Person; `feature_tips.rs` zeigt Funktionen nach und nach.
 
 ## Kostenkontrolle
 

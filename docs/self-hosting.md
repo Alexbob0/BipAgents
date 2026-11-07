@@ -195,6 +195,13 @@ browser more than `chrome_mb` (1536). At most once an hour, once a night for mem
 turns it off; it is off by itself on a Hermes you had before BipAgents. The last restart and its reason show in
 `GET /v1/status` (`last_restart`).
 
+Every 6 hours the bridge tidies the agents' working space (`space_tidy.rs`): drafts in `/workspace/brouillons` left 7
+days unchanged, a background task's folder 24 hours after it ended (never while it runs or is paused), browser
+downloads older than 30 days and the sandbox's package caches (pip, uv, npm, yarn) unused for 14 days. Nothing else:
+never the files sent to or given to the person, their pages, Archives or shared folders. A pass that frees more than
+200 MB leaves one quiet line in the agent's Boîte (no notification, at most once a week). `[tidy]`: `enabled`,
+`every_hours`, `scratch_days`, `task_hours`, `cache_days`, `line_mb`.
+
 The records (« Fiches »: purchases, subscriptions, contracts, papers, bookings) can be filled from an agent's archive:
 `bipagents archive extract <agent> --archive <id> --sample 50` reads 50 likely documents with the agent's model and
 prints what it would record and the estimate for the whole archive, writing nothing; `--run --budget <€>` then fills

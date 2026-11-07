@@ -736,6 +736,9 @@ pub struct Config {
     /// `[agent_restart]` (agent_restart.rs): not in the serialized form either.
     #[serde(skip)]
     pub agent_restart: crate::agent_restart::Settings,
+    /// `[tidy]` (space_tidy.rs): the agents' working space tidied by itself. Not serialized either.
+    #[serde(skip)]
+    pub tidy: crate::space_tidy::Settings,
     /// `[link]` (link_wallet.rs): Link Agent Wallet, off unless switched on and configured. Not serialized either.
     #[serde(skip)]
     pub link: crate::link_wallet::Settings,
@@ -846,6 +849,7 @@ impl Config {
             watchers: crate::watchers::Settings::default(),
             triggers: crate::triggers::Settings::default(),
             agent_restart: crate::agent_restart::Settings::default(),
+            tidy: crate::space_tidy::Settings::default(),
             link: crate::link_wallet::Settings::default(),
             phone_exit: crate::phone_exit::Settings::default(),
             archive_records: ArchiveRecordsConfig::default(),
@@ -1814,6 +1818,7 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         watchers: crate::watchers::Settings::from_table(table(data, "watchers")),
         triggers: crate::triggers::Settings::from_table(table(data, "triggers")),
         agent_restart: crate::agent_restart::Settings::from_table(table(data, "agent_restart")),
+        tidy: crate::space_tidy::Settings::from_table(table(data, "tidy")),
         link: crate::link_wallet::Settings::from_table(table(data, "link")),
         phone_exit: crate::phone_exit::Settings::from_table(table(data, "phone_exit")),
         archive_records,

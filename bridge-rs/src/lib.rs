@@ -35,6 +35,7 @@ pub mod logs;
 pub mod loop_brake;
 pub mod main_cli;
 pub mod storage_watch;
+pub mod space_tidy;
 pub mod heavy_work;
 pub mod feature_tips;
 pub mod beta_measures;

@@ -133,8 +133,9 @@ toevoegt, met de modules (`bridge-rs/src/<naam>.rs`) die het doen, en wat hij be
 - `jobs.rs`: achtergrondtaken met een vooraf gekozen budget, de tokens achteraf getoond, pauzeren en hervatten;
   `handback.rs` brengt het verslag terug naar het gesprek waar het vandaan kwam.
 - `cronwatch.rs` levert het antwoord van elke routine in de app; `autonomous.rs` toont alles wat agents doen zonder dat
-  het gevraagd is; `storage_watch.rs` laat agents vragen wat ze moeten bewaren; `feature_tips.rs` laat functies
-  geleidelijk ontdekken.
+  het gevraagd is; `storage_watch.rs` laat agents vragen wat ze moeten bewaren; `space_tidy.rs` ruimt vanzelf op wat
+  tijdelijk is in hun ruimte (oude concepten, de map van een afgeronde taak, oude downloads, caches), nooit de bestanden
+  van de persoon; `feature_tips.rs` laat functies geleidelijk ontdekken.
 
 ## Kostenbeheersing
 

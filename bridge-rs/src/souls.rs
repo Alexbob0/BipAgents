@@ -19,7 +19,9 @@
 //! it answers short, in bullet points when there are several items (2026-10-30, `STYLE_RULE`, by hand in the golden
 //! too); and an important fact (a place, hours, a price, news, a dose, a quote…) is checked with a source first
 //! (2026-10-31, `FACTS_RULE`, by hand in the golden too); and work of more than three steps keeps a short task list
-//! the apps show live (« Étapes », 2026-11-06, `STEPS_RULE`, the golden rewritten with `GOLDEN_SOULS_OUT`).
+//! the apps show live (« Étapes », 2026-11-06, `STEPS_RULE`, the golden rewritten with `GOLDEN_SOULS_OUT`); and at
+//! the end of a task it deletes the working files it no longer needs, never the person's own (2026-11-07,
+//! `TIDY_RULE`, the golden rewritten the same way; space_tidy.rs removes what is temporary by itself).
 //! `heal_souls` brings existing agents' blocks up to date. An agent given the person's
 //! health data has a second block (`with_health`): use it to help, never to diagnose. An agent in the person's
 //! circle (shared_memory.rs) knows that what it remembers of them is common to their own agents
@@ -145,6 +147,18 @@ pub const PLAIN_RULE: &str = concat!(
 /// is paid on every call (≤ 25 tokens).
 pub const FILES_RULE: &str =
     "A file you make for your person: give it with give_file; never tell them it's in a folder on your server.";
+
+/// Tidying up after a task (Alex, 2026-11-07: agents in other bot apps never clean up after themselves, « il faut une
+/// règle pour nos agents dans BipAgents »): the agent deletes the working files it made, keeps the result and what the
+/// person asked to keep, never touches the person's own files; when unsure, keeps. The bridge removes what is
+/// temporary by nature by itself (space_tidy.rs). Rust bridge only (tests/golden/souls.json rewritten with
+/// `GOLDEN_SOULS_OUT`). Short: it is paid on every call.
+pub const TIDY_RULE: &str = concat!(
+    "Tidy up: at the end of a task, delete the working files you made and no longer need (drafts, test scripts, ",
+    "intermediate data); keep the result and what your person asked you to keep. Never delete, move or rename their ",
+    "own files (what they sent you, their archives, shared folders) to tidy up. When unsure, keep it. No need to ",
+    "mention it."
+);
 
 /// Long work goes to a background task, never inline (owner's decision 2026-10-22, after an agent filled the Carnet in
 /// the conversation for a long time: dozens of tool rows, the chat blocked, the end never shown). `start_task` within
@@ -366,7 +380,7 @@ pub fn language_block(lang: Option<&str>) -> String {
     for_language(
         &format!(
             "{BLOCK_START}\nLanguage: answer in the language your person writes in. Always write it with its accents and usual punctuation (routines and notes too), never an ASCII-only version. When you write first (a routine, \
-             a report, a reminder), write in {name}.{names} The current time is at the top of each message (a bip:now line): trust it, never check it in the terminal.\n{CONTENT_RULE}\n{SENDING_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{PROJECT_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{LONG_WORK_RULE}\n{VISUAL_RULE}\n{FACTS_RULE}\n{SPACE_RULE}\n{ACK_RULE}\n{STEPS_RULE}\n{STYLE_RULE}\n{BLOCK_END}"
+             a report, a reminder), write in {name}.{names} The current time is at the top of each message (a bip:now line): trust it, never check it in the terminal.\n{CONTENT_RULE}\n{SENDING_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{PROJECT_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{TIDY_RULE}\n{LONG_WORK_RULE}\n{VISUAL_RULE}\n{FACTS_RULE}\n{SPACE_RULE}\n{ACK_RULE}\n{STEPS_RULE}\n{STYLE_RULE}\n{BLOCK_END}"
         ),
         Some(&code),
     )
@@ -803,7 +817,7 @@ pub fn language_block_compact(lang: Option<&str>) -> String {
     for_language(
         &format!(
             "{BLOCK_START}\nLanguage: answer in the language your person writes in. When you write first (a routine, \
-             a report, a reminder), write in {name}.\n{COMPACT_RULES}\n{ACK_RULE}\n{STEPS_RULE}\n{STYLE_RULE}\n{BLOCK_END}"
+             a report, a reminder), write in {name}.\n{COMPACT_RULES}\n{TIDY_RULE}\n{ACK_RULE}\n{STEPS_RULE}\n{STYLE_RULE}\n{BLOCK_END}"
         ),
         Some(&code),
     )
@@ -1153,6 +1167,33 @@ mod tests {
         let fresh = with_language(&old, Some("fr"));
         assert_eq!(fresh.matches(FACTS_RULE).count(), 1);
         assert!(!fresh.contains("A place you recommend by name") && fresh.starts_with("Tu es Vie.\n\n"));
+    }
+
+    #[test]
+    fn every_agent_tidies_up_after_a_task_and_never_touches_the_persons_files() {
+        // Alex 2026-11-07: « il faut une règle pour nos agents dans BipAgents »
+        for needed in [
+            "at the end of a task, delete the working files you made and no longer need",
+            "keep the result and what your person asked you to keep",
+            "Never delete, move or rename their own files",
+            "When unsure, keep it.",
+        ] {
+            assert!(TIDY_RULE.contains(needed), "missing {needed}");
+        }
+        assert!(TIDY_RULE.len() < 420, "short: paid on every call");
+        for lang in LANGUAGES.iter().chain(["de", "es"].iter()) {
+            for category in CATEGORIES {
+                let soul = soul_for("Bip", category, Some(lang)).unwrap();
+                assert_eq!(soul.matches(for_language(TIDY_RULE, Some(lang)).as_str()).count(), 1, "{category} {lang}");
+            }
+        }
+        assert_eq!(language_block_compact(Some("fr")).matches(TIDY_RULE).count(), 1);
+        // an agent made before the rule gets it in place, once, after the files rule
+        let old = with_language("Tu es Vie.\n", Some("fr")).replace(&format!("\n{TIDY_RULE}"), "");
+        assert!(!old.contains(TIDY_RULE));
+        let fresh = with_language(&old, Some("fr"));
+        assert_eq!(fresh.matches(TIDY_RULE).count(), 1);
+        assert!(fresh.contains(&format!("{FILES_RULE}\n{TIDY_RULE}\n")) && fresh.starts_with("Tu es Vie.\n\n"));
     }
 
     #[test]

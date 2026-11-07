@@ -289,6 +289,8 @@ impl AppState {
         self.spawn(purge_loop(self.clone()));
         // what takes the place's space, measured; the 80/95 % cards, the pause when full (storage_watch.rs)
         self.spawn(crate::storage_watch::run_forever(self.clone()));
+        // the agents' drafts, finished tasks' folders, old downloads and package caches removed by themselves
+        self.spawn(crate::space_tidy::run_forever(self.clone()));
         self.spawn(crate::mail_tidy::run_forever(self.clone())); // mail tidy jobs a restart left behind
         self.spawn(crate::mail_rules::run_forever(self.clone())); // standing mail rules: resumes, weekly line
         self.spawn(crate::approval_level::run_forever(self.clone())); // the auto approvals' daily message

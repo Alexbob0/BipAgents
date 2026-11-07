@@ -50,6 +50,9 @@ pub struct Stat {
     pub uid: u32,
     pub mtime: i64,
     pub mtime_nsec: i64,
+    /// The last status change (seconds): set by the system when the name arrives or changes, never by a program
+    /// (space_tidy.rs: a file unpacked with its old date counts from its arrival).
+    pub ctime: i64,
     pub dev: u64,
     pub ino: u64,
 }
@@ -74,6 +77,7 @@ impl Stat {
             uid: st.st_uid,
             mtime: st.st_mtime as i64,
             mtime_nsec: st.st_mtime_nsec as i64,
+            ctime: st.st_ctime as i64,
             dev: st.st_dev as u64,
             ino: st.st_ino as u64,
         }
