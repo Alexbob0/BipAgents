@@ -241,9 +241,11 @@ def test_a_scratch_session_written_back_is_deleted_again(bridge, fakes):
     assert wait_until(lambda: len(hermes.deleted) == 2, timeout=30)
     assert hermes.deleted == [scratch, scratch] and scratch not in hermes.sessions[""]
     assert "s1" in hermes.sessions[""]
-    assert bridge.logged("notes session still there, deleted again")
-    kept = json.loads((bridge.state_dir / "briefs" / "scratch.json").read_text())
-    assert [s["id"] for s in kept["sessions"]] == [scratch]   # still checked over the next half hour
+    # logged once Hermes answered the delete (the fake counts it when asked): waited for, not read at once
+    assert wait_until(lambda: bridge.logged("notes session still there, deleted again"), timeout=10)
+    def kept():
+        return [s["id"] for s in json.loads((bridge.state_dir / "briefs" / "scratch.json").read_text())["sessions"]]
+    assert wait_until(lambda: kept() == [scratch], timeout=10), kept()   # still checked over the next half hour
 
 
 @pytest.mark.slow

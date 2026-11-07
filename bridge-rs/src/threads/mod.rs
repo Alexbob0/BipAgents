@@ -29,6 +29,7 @@
 //! No Python counterpart.
 
 pub mod follow;
+pub mod layout;
 pub mod send;
 pub mod source;
 pub mod timeline;
@@ -1169,6 +1170,16 @@ async fn timeline_route(
         q.get("tz").and_then(crate::dates::parse_zone).unwrap_or_else(|| crate::dates::load(&state.config()).zone());
     let days = timeline::days(&items, zone);
     let Waiting { tip, approvals, questions, run } = waiting_here(&state, &agent, &thread, &segments, &items).await;
+    // how each turn that is over lays out (its work, its reply, the app's first word, exchanges), decided once for every
+    // app on the whole thread (thin apps, brick 7); `layout.open`: the first item of the turn going on, undecided
+    let mut items = items;
+    let shown = timeline::range(&items, &want);
+    let decided = layout::layout(&items, shown.clone(), run.is_some());
+    // named among the page's items (the page's first when the turn began before it), none when it begins after it
+    let open = decided.open.filter(|n| *n < shown.end).map(|n| items[n.max(shown.start)].id.clone());
+    for (n, fields) in decided.fields {
+        items[n].body.insert("layout".into(), Value::Object(fields));
+    }
     let page = timeline::page(items, &want).with_days(&days);
     // a sent message no turn took (nothing runs here now, Hermes never stored it): « Pas envoyé », not « being sent »
     let page = if run.is_none() { page.with_lost() } else { page };
@@ -1180,7 +1191,9 @@ async fn timeline_route(
     let run = run.map(|(r, started)| json!({"run_id": r, "status": "running", "started": started}));
     let pending = json!({"run": run, "queue": queue,
                          "approvals": approvals, "questions": questions});
-    Ok(web::ok(page.answer(out_thread, thread.version, pending, q.get("debug").is_some_and(|d| d == "1"))))
+    let mut answer = page.answer(out_thread, thread.version, pending, q.get("debug").is_some_and(|d| d == "1"));
+    answer["layout"] = json!({"open": open});
+    Ok(web::ok(answer))
 }
 
 /// What waits for the person in a conversation: its tip, its cards placed among its items (`after`), the run going on
