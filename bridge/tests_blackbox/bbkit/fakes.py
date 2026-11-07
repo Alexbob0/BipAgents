@@ -305,6 +305,7 @@ class FakeHermes(Fake):
         self.revive, self.revive_after = 0, 1.0
         self.chat_reply = "- Alex prépare un podcast pour jeudi.\n- Il dort mal depuis lundi."
         self.capabilities: Dict[str, int] = {}          # agent -> status (default 200)
+        self.busy: Dict[str, int] = {}                  # agent -> the work its gateway counts (GET /health/detailed)
         self.toolsets = [{"name": "web", "label": "Web", "description": "Search", "enabled": True,
                           "configured": True, "tools": ["web_search"]}]
         self.started: Dict[str, Dict[str, Any]] = {}    # runs made by POST /v1/runs
@@ -361,6 +362,10 @@ class FakeHermes(Fake):
             return JSONResponse({"runs": True} if status == 200 else {"error": "down"}, status_code=status)
         if path == "/v1/toolsets":
             return JSONResponse({"data": self.toolsets})
+        if path == "/health/detailed":   # Hermes v0.22.5: what its gateway does now, by its own count
+            busy = self.busy.get(agent, 0)
+            return JSONResponse({"status": "ok", "gateway_busy": busy > 0, "active_agents": busy,
+                                 "readiness": {"checks": {"background_queues": {"active_api_runs": busy}}}})
         if parts[:2] == ["v1", "runs"]:
             return await self._runs(seen, agent, parts, method)
         if parts[:2] == ["api", "sessions"]:

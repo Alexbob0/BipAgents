@@ -12,10 +12,17 @@
 //! ([`NEW_AGENT_TOOLS`]: agents_admin.rs `tools_loaded` restarts the hub's gateway itself as soon as it is calm, and
 //! hands it here only when it stays busy). Without a reason: no restart.
 //!
-//! Only when the agent does nothing: no turn going on (conversations, rooms, Live calls: the run hub), no Live call in
-//! the last 15 minutes, no background task or archive extraction (jobs.rs), no mail scan (mail_scan.rs), no watcher
-//! check (watchers.rs), no Hermes routine running or due within `routine_margin_minutes`. Busy: tried again in 10
-//! minutes (2 for a soon reason); a night's memory restart not done by `window_end` waits for the next night.
+//! Only when the agent does nothing: no turn going on (conversations, rooms, Live calls: the run hub, and its Hermes'
+//! own count, `GET /health/detailed`: a bridge that restarted doesn't follow the turns started before it), no Live
+//! call in the last 15 minutes, no background task or archive extraction (jobs.rs), no mail scan (mail_scan.rs), no
+//! watcher check (watchers.rs), no Hermes routine running or due within `routine_margin_minutes`. Busy: tried again in
+//! 10 minutes (2 for a soon reason); a night's memory restart not done by `window_end` waits for the next night. A soon
+//! reason held only by turns waits at most `turn_wait_seconds` (10 minutes), then the restart is done all the same (a
+//! turn that long is stuck, or waits for an answer that may never come). 2026-11-06: right after a release, the bridge
+//! restarted by `bipagents update` asked for « tools » restarts while a turn it no longer followed went on.
+//!
+//! Reasons asked for while one waits (tools, a new agent's tools, unhealthy…) make one restart, its record naming them
+//! all (`; `).
 //!
 //! The restart is the bridge's own (`agents_admin::restart_gateway`, the path settings changes take; agents sharing the
 //! hub's gateway restart together, so all of them must be idle), then the agent's browser container with
@@ -69,6 +76,10 @@ pub struct Settings {
     pub jitter_minutes: u32,
     /// Busy: tried again after this many seconds (a soon reason: a fifth of it).
     pub retry_seconds: f64,
+    /// A soon restart held only by turns going on waits at most this long, then is done all the same.
+    pub turn_wait_seconds: f64,
+    /// An agent whose tools changed and whose Hermes hasn't listed them again after this long: restarted once idle.
+    pub stale_tools_seconds: f64,
 }
 
 impl Default for Settings {
@@ -89,9 +100,14 @@ impl Default for Settings {
             measure_seconds: 600.0,
             jitter_minutes: 20,
             retry_seconds: 600.0,
+            turn_wait_seconds: TURN_WAIT_SECONDS,
+            stale_tools_seconds: STALE_TOOLS_SECONDS,
         }
     }
 }
+
+/// `turn_wait_seconds` by default: 10 minutes.
+pub const TURN_WAIT_SECONDS: f64 = 600.0;
 
 impl Settings {
     pub fn from_table(table: &Value) -> Settings {
@@ -122,6 +138,8 @@ impl Settings {
             measure_seconds: f("measure_seconds", d.measure_seconds, 0.2, 86_400.0),
             jitter_minutes: f("jitter_minutes", d.jitter_minutes as f64, 0.0, 59.0) as u32,
             retry_seconds: f("retry_seconds", d.retry_seconds, 0.2, 86_400.0),
+            turn_wait_seconds: f("turn_wait_seconds", d.turn_wait_seconds, 0.0, 86_400.0),
+            stale_tools_seconds: f("stale_tools_seconds", d.stale_tools_seconds, 0.2, 86_400.0),
         }
     }
 }
@@ -142,7 +160,8 @@ pub fn enabled(config: &Config) -> bool {
 
 // --- requests from other code ----------------------------------------------------------------------------------------
 
-static REQUESTS: LazyLock<Mutex<HashMap<String, String>>> = LazyLock::new(Default::default);
+/// Each agent's reasons asked for, in order, each once: one restart does them all.
+static REQUESTS: LazyLock<Mutex<HashMap<String, Vec<String>>>> = LazyLock::new(Default::default);
 static LIVE: LazyLock<Mutex<HashMap<String, f64>>> = LazyLock::new(Default::default);
 /// A Live call this recent: the agent is not idle.
 pub const LIVE_SECONDS: f64 = 900.0;
@@ -159,18 +178,52 @@ pub fn loop_running() -> bool {
     APP.get().is_some()
 }
 
-/// Asks for the agent's Hermes to be restarted soon, once it is idle (at most once per `gap_minutes`).
+/// Asks for the agent's Hermes to be restarted soon, once it is idle (at most once per `gap_minutes`). A reason asked
+/// for again while it waits is not asked twice; another one joins it (one restart).
 pub fn request_restart(agent: &str, reason: &str) {
-    tracing::info!(target: "bipbridge::restart", agent, reason, "restart requested");
-    REQUESTS.lock().unwrap_or_else(|e| e.into_inner()).insert(agent.to_string(), reason.to_string());
+    let mut all = REQUESTS.lock().unwrap_or_else(|e| e.into_inner());
+    let reasons = all.entry(agent.to_string()).or_default();
+    if !reasons.iter().any(|r| r == reason) {
+        tracing::info!(target: "bipbridge::restart", agent, reason, "restart requested");
+        reasons.push(reason.to_string());
+    }
 }
 
+/// The agent's reasons waiting (none: empty).
+fn pending(agent: &str) -> Vec<String> {
+    REQUESTS.lock().unwrap_or_else(|e| e.into_inner()).get(agent).cloned().unwrap_or_default()
+}
+
+/// Several agents' reasons, each once, in order (the agents sharing one gateway: one restart).
+pub fn merged<'a>(lists: impl IntoIterator<Item = &'a [String]>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for reason in lists.into_iter().flatten() {
+        if !out.contains(reason) {
+            out.push(reason.clone());
+        }
+    }
+    out
+}
+
+#[cfg(test)]
 fn requested(agent: &str) -> Option<String> {
-    REQUESTS.lock().unwrap_or_else(|e| e.into_inner()).get(agent).cloned()
+    let reasons = pending(agent);
+    (!reasons.is_empty()).then(|| reasons.join("; "))
 }
 
 fn clear_request(agent: &str) {
     REQUESTS.lock().unwrap_or_else(|e| e.into_inner()).remove(agent);
+}
+
+/// The reasons a restart did, taken off (one asked for while it ran stays for the next).
+fn clear_done(agent: &str, done: &[String]) {
+    let mut all = REQUESTS.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(reasons) = all.get_mut(agent) {
+        reasons.retain(|r| !done.contains(r));
+        if reasons.is_empty() {
+            all.remove(agent);
+        }
+    }
 }
 
 /// A Live call of the agent going on now (live_brief.rs).
@@ -235,6 +288,8 @@ pub fn in_night_slot(minute_of_day: u32, hour: u32, jitter: u32, window_end: u32
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Activity {
     pub turn: bool,
+    /// Its Hermes says it works (a turn the hub doesn't follow: one from before the bridge restarted).
+    pub hermes: bool,
     pub live: bool,
     pub job: bool,
     pub scan: bool,
@@ -247,6 +302,7 @@ impl Activity {
     pub fn busy(&self) -> Option<&'static str> {
         [
             (self.turn, "a turn is going on"),
+            (self.hermes, "its Hermes runs a turn"),
             (self.live, "a Live call"),
             (self.job, "a background task runs"),
             (self.scan, "a mail scan runs"),
@@ -256,6 +312,34 @@ impl Activity {
         .into_iter()
         .find(|(on, _)| *on)
         .map(|(_, why)| why)
+    }
+
+    /// Busy with turns only (the ones a soon restart waits for at most `turn_wait_seconds`).
+    pub fn only_turns(&self) -> bool {
+        !(self.live || self.job || self.scan || self.watcher || self.routine)
+    }
+}
+
+/// Hermes' own count of what its gateway does now (`GET /health/detailed`, v0.22.5): `gateway_busy`, `active_agents`
+/// (turns, API runs, cron jobs), the API server's runs (`readiness.checks.background_queues.active_api_runs`). None:
+/// none of them said (an older Hermes, or no answer).
+pub fn hermes_busy_of(data: &Value) -> Option<bool> {
+    let count = |v: Option<&Value>| v.and_then(|v| v.as_f64().or_else(|| v.as_str()?.trim().parse().ok()));
+    let flag = data.get("gateway_busy").and_then(Value::as_bool);
+    let active = count(data.get("active_agents"));
+    let runs = count(data.pointer("/readiness/checks/background_queues/active_api_runs"));
+    if flag.is_none() && active.is_none() && runs.is_none() {
+        return None;
+    }
+    Some(flag == Some(true) || active.is_some_and(|n| n > 0.0) || runs.is_some_and(|n| n > 0.0))
+}
+
+/// Whether the agent's Hermes works now, by its own count (None: it didn't say within a few seconds).
+pub async fn hermes_busy(state: &AppState, agent: &AgentConfig) -> Option<bool> {
+    let answer = tokio::time::timeout(Duration::from_secs(5), state.hermes.get_value(agent, "/health/detailed")).await;
+    match answer {
+        Ok(Ok(data)) => hermes_busy_of(&data),
+        _ => None,
     }
 }
 
@@ -305,11 +389,15 @@ pub fn reason(
     s: &Settings,
 ) -> Option<Reason> {
     let gap_ok = since_last.is_none_or(|t| t >= s.gap_minutes as f64 * 60.0);
-    if gap_ok || requested == Some(NEW_AGENT_TOOLS) {
+    let new_agent = requested.is_some_and(|r| r.split("; ").any(|one| one == NEW_AGENT_TOOLS));
+    if gap_ok || new_agent {
+        let unhealthy = failures >= s.unhealthy_pings;
         if let Some(why) = requested {
-            return Some(Reason::Requested(why.to_string()));
+            // both: one restart, both named
+            let why = if unhealthy { format!("{why}; {}", Reason::Unhealthy.text()) } else { why.to_string() };
+            return Some(Reason::Requested(why));
         }
-        if failures >= s.unhealthy_pings {
+        if unhealthy {
             return Some(Reason::Unhealthy);
         }
     }
@@ -370,6 +458,8 @@ struct Group {
     start: Option<(String, f64, Option<f64>)>,
     next_try: f64,
     quiet: Option<(u32, u32)>, // (day of year, hour)
+    /// Since when a soon restart waits for turns only (`turn_wait_seconds`).
+    turn_wait: Option<f64>,
 }
 
 /// The agents grouped by the gateway serving them: their space, or the hub's ("").
@@ -488,8 +578,11 @@ pub(crate) async fn activity(state: &AppState, config: &Config, agent: &AgentCon
         .filter_map(|r| crate::autonomous::routine_item(name, crate::routines::view(r, zone).as_object()?))
         .collect();
     let routine = routine_busy(&items, now, config.agent_restart.routine_margin_minutes);
+    let turn = state.hub.agent_running(name);
     Activity {
-        turn: state.hub.agent_running(name),
+        turn,
+        // asked only when the hub follows none: the hub's own word is enough to wait
+        hermes: !turn && hermes_busy(state, agent).await == Some(true),
         live: live_recently(name, now),
         job,
         scan: state.scans.get().is_some_and(|s| s.running(name)),
@@ -546,15 +639,18 @@ pub async fn run_forever(state: AppState) {
 }
 
 /// An agent whose tools changed and whose Hermes hasn't listed them again by then (it ignores `tools/list_changed`:
-/// an older Hermes) is restarted once idle (agent_tools.rs `stale_agents`).
+/// an older Hermes, or one whose stream broke when the bridge restarted) is restarted once idle (agent_tools.rs
+/// `stale_agents`). `stale_tools_seconds` by default.
 pub const STALE_TOOLS_SECONDS: f64 = 120.0;
+/// The reason a tools change asks for.
+pub const TOOLS: &str = "tools";
 
 async fn tick(state: &AppState, config: &Config, memory: &mut HashMap<String, Group>) {
     let s = &config.agent_restart;
     let now = py::time_time();
     for (agent, since) in crate::agent_tools::stale_agents(config) {
-        if now - since >= STALE_TOOLS_SECONDS && requested(&agent).is_none() {
-            request_restart(&agent, "tools");
+        if now - since >= s.stale_tools_seconds && !pending(&agent).iter().any(|r| r == TOOLS) {
+            request_restart(&agent, TOOLS);
         }
     }
     let zone = crate::dates::load(config).zone();
@@ -589,32 +685,51 @@ async fn tick(state: &AppState, config: &Config, memory: &mut HashMap<String, Gr
             .filter_map(|n| kept.get(n).and_then(|r| r["at"].as_f64()))
             .fold(None, |acc: Option<f64>, at| Some(acc.map_or(at, |a| a.max(at))))
             .map(|at| now - at);
-        let asked = names.iter().find_map(|n| requested(n));
+        // every reason of the agents sharing this gateway: one restart
+        let taken: Vec<(String, Vec<String>)> = names.iter().map(|n| (n.clone(), pending(n))).collect();
+        let asked = merged(taken.iter().map(|(_, r)| r.as_slice()));
+        let asked = (!asked.is_empty()).then(|| asked.join("; "));
         let Some(why) = reason(asked.as_deref(), group.failures, night, &group.sizes, since_last, s) else {
+            group.turn_wait = None;
             continue;
         };
         if now < group.next_try {
             continue;
         }
         let mut busy = None;
+        let mut only_turns = true;
         for agent in &agents {
-            if let Some(what) = activity(state, config, agent, now).await.busy() {
-                busy = Some((agent.name.clone(), what));
-                break;
+            let doing = activity(state, config, agent, now).await;
+            if let Some(what) = doing.busy() {
+                busy.get_or_insert((agent.name.clone(), what));
+                only_turns &= doing.only_turns();
             }
         }
-        if let Some((agent, what)) = busy {
-            group.next_try = now + if why.soon() { s.retry_seconds / 5.0 } else { s.retry_seconds };
-            tracing::info!(target: "bipbridge::restart", agent = %agent, reason = %why.text(), busy = what, "restart waits");
-            continue;
+        match busy {
+            None => group.turn_wait = None,
+            Some((agent, what)) => {
+                // a soon reason held only by turns: waited for at most `turn_wait_seconds`
+                let capped = why.soon() && only_turns;
+                let waited = if capped { now - *group.turn_wait.get_or_insert(now) } else { 0.0 };
+                if !capped {
+                    group.turn_wait = None;
+                }
+                if !capped || waited < s.turn_wait_seconds {
+                    group.next_try = now + if why.soon() { s.retry_seconds / 5.0 } else { s.retry_seconds };
+                    tracing::info!(target: "bipbridge::restart", agent = %agent, reason = %why.text(), busy = what, "restart waits");
+                    continue;
+                }
+                tracing::warn!(target: "bipbridge::restart", agent = %agent, reason = %why.text(), busy = what,
+                    waited = waited.round(), "restart after waiting for the turns to end: its ceiling reached");
+            }
         }
         let text = why.text();
         match restart(config, &agents).await {
             Ok(()) => {
                 tracing::info!(target: "bipbridge::restart", agents = %names.join(","), reason = %text, "agent restarted");
                 record(config, &names, &text, now);
-                for name in &names {
-                    clear_request(name);
+                for (name, done) in &taken {
+                    clear_done(name, done);
                 }
                 *group = Group { last_ping: now, last_measure: now, quiet: group.quiet, ..Group::default() };
             }
@@ -671,6 +786,7 @@ mod tests {
         assert_eq!(Activity::default().busy(), None);
         for (activity, why) in [
             (Activity { turn: true, ..Default::default() }, "a turn is going on"),
+            (Activity { hermes: true, ..Default::default() }, "its Hermes runs a turn"),
             (Activity { live: true, ..Default::default() }, "a Live call"),
             (Activity { job: true, ..Default::default() }, "a background task runs"),
             (Activity { scan: true, ..Default::default() }, "a mail scan runs"),
@@ -729,6 +845,15 @@ mod tests {
             Some(Reason::Requested(NEW_AGENT_TOOLS.into()))
         );
         assert!(Reason::Unhealthy.soon() && !Reason::Memory(String::new()).soon());
+        // several reasons merged: one restart naming them all; a new agent's among them still skips the gap
+        assert_eq!(
+            reason(Some("tools; new agent without its tools"), 0, false, &small, Some(60.0), &s),
+            Some(Reason::Requested("tools; new agent without its tools".into()))
+        );
+        assert_eq!(
+            reason(Some("tools"), 3, false, &small, None, &s),
+            Some(Reason::Requested("tools; unhealthy: Hermes does not answer".into()))
+        );
     }
 
     #[test]
@@ -737,6 +862,59 @@ mod tests {
         assert_eq!(requested("unit-test-agent").as_deref(), Some("tools changed"));
         clear_request("unit-test-agent");
         assert_eq!(requested("unit-test-agent"), None);
+    }
+
+    #[test]
+    fn reasons_asked_while_one_waits_make_one_restart() {
+        let agent = "unit-test-merge";
+        request_restart(agent, TOOLS);
+        request_restart(agent, TOOLS); // asked again: once
+        request_restart(agent, NEW_AGENT_TOOLS);
+        assert_eq!(requested(agent).as_deref(), Some("tools; new agent without its tools"));
+        // the agents of one gateway: each reason once, in order
+        let other = vec![NEW_AGENT_TOOLS.to_string(), "settings".to_string()];
+        assert_eq!(merged([pending(agent).as_slice(), other.as_slice()]), vec![TOOLS, NEW_AGENT_TOOLS, "settings"]);
+        // the restart did these two; one asked for meanwhile stays for the next
+        let done = pending(agent);
+        request_restart(agent, "settings");
+        clear_done(agent, &done);
+        assert_eq!(requested(agent).as_deref(), Some("settings"));
+        clear_done(agent, &["settings".to_string()]);
+        assert_eq!(requested(agent), None);
+    }
+
+    #[test]
+    fn only_turns_are_waited_for_with_a_ceiling() {
+        assert!(Activity { turn: true, hermes: true, ..Default::default() }.only_turns());
+        for other in [
+            Activity { turn: true, live: true, ..Default::default() },
+            Activity { turn: true, job: true, ..Default::default() },
+            Activity { scan: true, ..Default::default() },
+            Activity { watcher: true, ..Default::default() },
+            Activity { routine: true, ..Default::default() },
+        ] {
+            assert!(!other.only_turns(), "{other:?}");
+        }
+        assert_eq!(Settings::default().turn_wait_seconds, 600.0);
+        assert_eq!(Settings::default().stale_tools_seconds, STALE_TOOLS_SECONDS);
+    }
+
+    #[test]
+    fn hermes_says_whether_its_gateway_works() {
+        // Hermes v0.22.5's GET /health/detailed
+        let idle = json!({"status": "ok", "gateway_busy": false, "active_agents": 0,
+            "readiness": {"checks": {"background_queues": {"active_api_runs": 0}}}});
+        assert_eq!(hermes_busy_of(&idle), Some(false));
+        assert_eq!(hermes_busy_of(&json!({"gateway_busy": true})), Some(true));
+        assert_eq!(hermes_busy_of(&json!({"gateway_busy": false, "active_agents": 2})), Some(true));
+        assert_eq!(hermes_busy_of(&json!({"active_agents": "1"})), Some(true));
+        assert_eq!(
+            hermes_busy_of(&json!({"readiness": {"checks": {"background_queues": {"active_api_runs": 1}}}})),
+            Some(true)
+        );
+        // an older Hermes, or something else: nothing said
+        assert_eq!(hermes_busy_of(&json!({"status": "ok"})), None);
+        assert_eq!(hermes_busy_of(&json!({"error": "no route"})), None);
     }
 
     #[test]
@@ -749,6 +927,8 @@ mod tests {
         assert_eq!(s.routine_margin_minutes, 45);
         assert_eq!((s.hermes_mb, s.chrome_mb), (700.0, 2000.0));
         assert_eq!(Settings::from_table(&json!({})), Settings::default());
+        let fast = Settings::from_table(&json!({"turn_wait_seconds": 2, "stale_tools_seconds": 0.5}));
+        assert_eq!((fast.turn_wait_seconds, fast.stale_tools_seconds), (2.0, 0.5));
     }
 
     #[test]

@@ -1482,6 +1482,9 @@ async fn mcp(State(state): State<AppState>, headers: HeaderMap, body: Bytes) -> 
         }
         "ping" => Ok(reply(json!({}))),
         "tools/list" => Ok(reply(json!({"tools": tools()}))),
+        "tools/call" if crate::update_drain::closing() => {
+            Ok(reply(crate::update_drain::busy_result(&crate::names::agent_language(&config, &agent.name))))
+        }
         "tools/call" => {
             let name = params.get("name").and_then(Value::as_str).unwrap_or("").to_string();
             let arguments = match params.get("arguments") {

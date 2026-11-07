@@ -1416,6 +1416,9 @@ async fn connector_mcp(
         }
         "ping" => Ok(rpc(&rid, json!({}))),
         "tools/list" => Ok(rpc(&rid, json!({"tools": conn.tools}))),
+        "tools/call" if crate::update_drain::closing() => {
+            Ok(rpc(&rid, crate::update_drain::busy_result(&crate::names::agent_language(&config, &agent.name))))
+        }
         "tools/call" => {
             let tool = params.get("name").and_then(Value::as_str).unwrap_or("").to_string();
             let arguments = params.get("arguments").and_then(Value::as_object).cloned().unwrap_or_default();

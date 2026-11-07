@@ -199,7 +199,15 @@ une toutes les 5 minutes), un autre composant l'a demandé, ou, à l'heure la pl
 `window_start` 1 h et `window_end` 6 h, ou `hour`), son Hermes prend plus de `hermes_mb` (900) Mo ou `hermes_growth`
 (2,5) fois sa taille après le démarrage, ou son navigateur plus de `chrome_mb` (1536) Mo. Au plus une fois par heure,
 une fois par nuit pour la mémoire. `[agent_restart] enabled = false` le coupe ; il est coupé d'office sur un Hermes que
-vous aviez avant BipAgents. Le dernier redémarrage et sa raison sont dans `GET /v1/status` (`last_restart`).
+vous aviez avant BipAgents. Le dernier redémarrage et sa raison sont dans `GET /v1/status` (`last_restart`). Un tour
+compte même quand seul son Hermes le connaît (`GET /health/detailed` : un tour commencé avant que le pont redémarre) ;
+un redémarrage demandé pendant des tours les attend au plus `turn_wait_seconds` (600), puis se fait quand même, et les
+raisons demandées entre-temps font ce seul redémarrage.
+
+Avant de redémarrer le pont ou le Hermes des agents, `bipagents update` attend la fin des tours en cours, 5 minutes en
+tout au plus (`POST /v1/update/drain` au pont, qui répond alors aux appels d'outil des agents « Mise à jour en cours :
+réessaie dans une minute » jusqu'à son redémarrage : un résultat ordinaire, que le disjoncteur MCP de Hermes ne compte
+pas).
 
 Les fiches (achats, abonnements, contrats, papiers, réservations) peuvent être remplies depuis une archive d'un agent :
 `bipagents archive extract <agent> --archive <id> --sample 50` lit 50 documents probables avec le modèle de l'agent et

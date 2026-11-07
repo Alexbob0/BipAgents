@@ -633,6 +633,11 @@ impl HermesClient {
         self.get_json(agent, "/v1/capabilities", &[]).await
     }
 
+    /// A `GET` of Hermes' API answered in JSON (`/health/detailed`: agent_restart.rs `hermes_busy`).
+    pub async fn get_value(&self, agent: &AgentConfig, path: &str) -> Result<Value, HermesError> {
+        self.get_json(agent, path, &[]).await
+    }
+
     /// The rows of a `GET /api/sessions` answer, whichever key holds them: `data` (Hermes v0.22.5's
     /// `{"object": "list", "data": [...]}`), `sessions` or `items`, or a bare list.
     pub fn session_rows(data: Value) -> Vec<Map<String, Value>> {

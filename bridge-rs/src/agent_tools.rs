@@ -1912,6 +1912,13 @@ async fn mcp(
     }
     // its results name the app's parts in its language (names.rs: « Notebook », not « Carnet »)
     let lang = crate::names::agent_language(&state.config(), &agent.name);
+    if crate::update_drain::closing() {
+        // the bridge restarts for an update in a moment: « try again in a minute », not an error (update_drain.rs)
+        tracing::info!(target: "bipbridge::update", agent = %agent.name, tool = %tk::str_or_empty(params.get("name")),
+            "a tool call while the bridge closes for an update: try again in a minute");
+        let result = tool_text(crate::update_drain::busy_text(&lang), false);
+        return Ok(crate::web::json_response(200, &rpc_result(&request_id, Value::Object(result))));
+    }
     let answer = |mut result: Dict| {
         crate::names::localize_result(&mut result, &lang);
         crate::web::json_response(200, &rpc_result(&request_id, Value::Object(result)))
