@@ -82,6 +82,10 @@ pub struct NewMessage {
     /// This turn's instructions (a read-only share's, read_shares.rs).
     #[serde(default)]
     pub instructions: Option<String>,
+    /// The phone it is sent from: « ios » or « android » (apps from 7/11 on). A reminder asked in its turn goes to
+    /// that phone (reminders.rs `phone_for`); none said, the bridge's own rule.
+    #[serde(default)]
+    pub phone: Option<String>,
 }
 
 impl Validate for NewMessage {
@@ -89,6 +93,9 @@ impl Validate for NewMessage {
         check_max_len(errors, "text", Some(&self.text), crate::msg_queue::TEXT_MAX);
         check_max_len(errors, "notes", self.notes.as_deref(), crate::msg_queue::TEXT_MAX);
         check_max_len(errors, "instructions", self.instructions.as_deref(), crate::msg_queue::TEXT_MAX);
+        if self.phone.as_deref().is_some_and(|p| crate::reminders::phone_named(p).is_none()) {
+            errors.push(field("phone", "« ios » or « android »"));
+        }
         if !CLIENT_ID.is_match(&self.client_id) {
             errors.push(field("client_id", "8 to 64 letters, digits, - or _"));
         }
@@ -492,6 +499,7 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
         None => threads.create(&agent.name, "side", None, Value::Null, false).await?,
     };
     let words = body.text.trim().to_string();
+    let phone = body.phone.as_deref().and_then(crate::reminders::phone_named);
     let mut body = body;
     body.attachments = keep_photos(state, agent, std::mem::take(&mut body.attachments)).await;
     let tip = tip_of(state, &threads, agent, &thread, &words).await?;
@@ -510,6 +518,8 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
             .await
             .map_err(|_| HttpError::new(502, "your agent isn't answering right now: try again in a moment"))?;
         if let Some(run) = steered {
+            // the latest words decide where a reminder asked in this turn goes
+            state.hub.set_phone(&agent.name, &run, phone);
             threads.bump(&thread, "sent").await?;
             tell_if_lost(state, agent, &thread, tip, &body.client_id);
             return Ok(answer("steered", Some(&run)));
@@ -527,6 +537,7 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
             input: Some(input),
             attachments: body.attachments.iter().map(Attachment::shown).collect(),
             voice: body.kinds.iter().any(|k| k == "voice"),
+            phone: phone.map(str::to_string),
         };
         queues
             .add(agent, tip, &words, running.as_deref(), front, sent)
@@ -545,6 +556,7 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
     // followed by the hub whoever looks (the brake, « reply ready »), and the queue waits for it
     state.hub.watch(agent, &run, Some(tip), true);
     state.hub.keep(agent, &run, Some(tip));
+    state.hub.set_phone(&agent.name, &run, phone);
     tracing::info!(agent = %agent.name, run_id = %run, "message sent: a turn started");
     threads.bump(&thread, "sent").await?;
     Ok(answer("started", Some(&run)))
@@ -639,5 +651,19 @@ mod tests {
             serde_json::from_value(json!({"client_id": "0F0E-1A2B-3C4D", "attachments": [{"kind": "image", "data": "AA"}]})).unwrap();
         body.validate(&mut errors);
         assert!(errors.is_empty());
+    }
+
+    /// The phone a message is sent from (7/11: where a reminder asked in its turn goes): « ios » or « android ».
+    #[test]
+    fn a_message_says_its_phone_or_nothing() {
+        let check = |phone: Value| {
+            let mut errors = Vec::new();
+            let body: NewMessage = serde_json::from_value(json!({"client_id": "0F0E-1A2B-3C4D", "text": "Rappelle-moi",
+                                                                  "phone": phone})).unwrap();
+            body.validate(&mut errors);
+            errors.len()
+        };
+        assert_eq!((check(json!("ios")), check(json!("android")), check(Value::Null)), (0, 0, 0));
+        assert_eq!(check(json!("watch")), 1);
     }
 }

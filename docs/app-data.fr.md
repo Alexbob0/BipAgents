@@ -53,7 +53,9 @@ de l’offre tout compris. Tout ce qui est personnel va ici, avec la clé de ce 
 
 - **Conversations :** les messages, le texte des notes vocales et des appels Live (reconnu sur le téléphone, ou en
   ligne seulement si la personne l’a accepté, voir §4), les photos et fichiers (`/v1/runs`, `/v1/files`, `/v1/media`), les approbations et réponses, les
-  événements en direct (SSE). **L’audio d’une note vocale reste sur le téléphone.** Les apps n’utilisent pas de
+  événements en direct (SSE). Chaque message dit le type de téléphone d’où il part (`phone` : « ios » ou « android »,
+  rien d’autre sur l’appareil), pour qu’un rappel demandé dans son tour aille sur ce téléphone. **L’audio d’une note
+  vocale reste sur le téléphone.** Les apps n’utilisent pas de
   WebSocket.
 - **Agents :** réglages, modèle, langue, apparence, outils, services connectés, pages de mémoire (lues et modifiées),
   import de notes, pages, tâches de fond, tâches planifiées, partages entre agents, liens familiaux (`/v1/family/*`).
@@ -81,16 +83,17 @@ de l’offre tout compris. Tout ce qui est personnel va ici, avec la clé de ce 
   par la personne, et l’app exécute les demandes que les agents ont mises en attente. Un rappel à une heure reçoit sa
   date avec l’heure, dans le fuseau du téléphone, et une alerte à ce moment-là (`HermesKit/ReminderDue.swift`). Un
   rappel par lieu (le `place` de `reminders_add`) devient une alarme de lieu EventKit : c’est Rappels qui surveille le
-  lieu, l’app n’a pas accès à la position ; le nom d’un lieu est cherché avec Plans d’Apple (`MKLocalSearch`). Quand un
-  iPhone partage ses Rappels avec un bridge, tous les rappels à une heure ou à une date de ce bridge y vont, jamais
-  aussi sur un téléphone Android.
+  lieu, l’app n’a pas accès à la position ; le nom d’un lieu est cherché avec Plans d’Apple (`MKLocalSearch`). Un rappel à
+  une heure ou à une date va sur le téléphone d’où la personne l’a demandé (chaque message dit « ios » ou « android »,
+  ci-dessous), s’il les prend ; sinon, et dans un tour qu’aucun téléphone n’a demandé (une routine), d’abord sur
+  l’iPhone. Jamais sur les deux.
 - **Rappels sur Android** (`reminders/PlaceReminders.kt`, `reminders/CalendarReminders.kt`) : Android n’a pas d’app
   Rappels. Les rappels des agents qui ont un lieu sont lus dans la file du bridge (`/v1/reminders/queue?phone=android`)
   et gardés sur le téléphone comme geofences (localisation des services Google Play ; le nom cherché avec le `Geocoder`
   du téléphone). La permission de position (avec l’arrière-plan) n’est demandée qu’une fois un tel rappel créé, après
   un écran de l’app qui dit pourquoi (chaînes `places_allow_*`) ; les rappels sont listés et supprimés dans Réglages ›
-  Rappels par lieu. La position ne quitte jamais le téléphone. Un rappel à une heure ou à une date (envoyé au téléphone Android seulement
-  quand aucun iPhone ne partage ses Rappels avec ce bridge) devient un événement de l’agenda du téléphone
+  Rappels par lieu. La position ne quitte jamais le téléphone. Un rappel à une heure ou à une date (envoyé au téléphone Android quand la
+  personne l’a demandé depuis lui, ou quand aucun iPhone ne partage ses Rappels avec ce bridge) devient un événement de l’agenda du téléphone
   (CalendarContract), dans l’agenda synchronisé avec le compte de la personne (jamais un agenda gardé sur le téléphone
   seul) : un quart d’heure à cette heure-là avec une alerte, ou un événement « toute la journée » avec une alerte à
   9 h ; sa description dit quel agent l’a demandé (« Rappel de … ») et porte la marque de l’app (`BipAgents ^r…`). Il

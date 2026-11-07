@@ -166,7 +166,8 @@ o en un día que pides a un agente va al calendario de tu teléfono (el de tu cu
 una alerta, si permites que BipAgents use el calendario; como cualquier evento de ese calendario, lo sincroniza el
 proveedor de tu cuenta. La app envía entonces a tu servidor solo el título y la hora de esos recordatorios, por venir,
 para que el agente sepa lo que ya pidió, y nada más de tu calendario (salvo si también compartes Calendario). Si tienes
-un iPhone y un teléfono Android, estos recordatorios van a la app Recordatorios del iPhone. Los recordatorios por lugar
+un iPhone y un teléfono Android, estos recordatorios van al teléfono desde el que los pides (la app le dice a tu
+servidor desde qué tipo de teléfono sale un mensaje, nada más). Los recordatorios por lugar
 se describen más abajo.
 
 **Tu Cuaderno (« Carnet »).** Tus agentes llevan un cuaderno con lo que les cuentas que seguirá importando (las

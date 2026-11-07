@@ -1395,6 +1395,7 @@ pub async fn call_tool(
     arguments: &Dict,
     push: Option<Arc<PushService>>,
     jobs: Option<Arc<Jobs>>,
+    asking: Option<String>,
 ) -> anyhow::Result<Dict> {
     if name == PROPOSE_TASK {
         // a small task under « Seulement le critique »: started at once (approval_level.rs)
@@ -1604,7 +1605,10 @@ the BipAgents app.",
     }
     if reminders::REMINDER_TOOL_NAMES.contains(&name) {
         let result =
-            blocking(move || reminders::call(&config, &agent_c.name, &name_c, &arguments_c, None, None)).await?;
+            blocking(move || {
+                reminders::call_from(&config, &agent_c.name, &name_c, &arguments_c, None, None, asking.as_deref())
+            })
+            .await?;
         let failed = result.get("isError").map(py::truthy).unwrap_or(false);
         if let Some(push) = push {
             if name != "reminders_list" && !failed {
@@ -2091,8 +2095,10 @@ async fn mcp(
     let cards_before = crate::card_place::waiting(&state, &agent.name);
     let card_state = state.clone();
     let note_config = state.config();
+    // the phone the person asked from in this turn (threads/send.rs): where a reminder goes (reminders.rs)
+    let asking = turn_run.as_deref().and_then(|r| state.hub.subscription(&agent.name, r)).and_then(|s| s.phone());
     let work = tokio::spawn(async move {
-        let mut result = call_tool(&maker, &agent, &name, &arguments, Some(push), Some(jobs)).await;
+        let mut result = call_tool(&maker, &agent, &name, &arguments, Some(push), Some(jobs), asking).await;
         crate::card_place::place_new(&card_state, &agent, &cards_before, turn_run.as_deref()).await;
         // the cards the person's level approves at once (approval_level.rs): answered, told in the result
         let session = turn_run.as_deref().and_then(|r| card_state.hub.subscription(&agent.name, r)).and_then(|s| s.session_id());
