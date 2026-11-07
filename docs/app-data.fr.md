@@ -87,8 +87,9 @@ de l’offre tout compris. Tout ce qui est personnel va ici, avec la clé de ce 
 - **Rappels sur Android** (`reminders/PlaceReminders.kt`, `reminders/CalendarReminders.kt`) : Android n’a pas d’app
   Rappels. Les rappels des agents qui ont un lieu sont lus dans la file du bridge (`/v1/reminders/queue?phone=android`)
   et gardés sur le téléphone comme geofences (localisation des services Google Play ; le nom cherché avec le `Geocoder`
-  du téléphone). La permission de position (avec l’arrière-plan) n’est demandée qu’une fois un tel rappel créé ; la
-  position ne quitte jamais le téléphone. Un rappel à une heure ou à une date (envoyé au téléphone Android seulement
+  du téléphone). La permission de position (avec l’arrière-plan) n’est demandée qu’une fois un tel rappel créé, après
+  un écran de l’app qui dit pourquoi (chaînes `places_allow_*`) ; les rappels sont listés et supprimés dans Réglages ›
+  Rappels par lieu. La position ne quitte jamais le téléphone. Un rappel à une heure ou à une date (envoyé au téléphone Android seulement
   quand aucun iPhone ne partage ses Rappels avec ce bridge) devient un événement de l’agenda du téléphone
   (CalendarContract), dans l’agenda synchronisé avec le compte de la personne (jamais un agenda gardé sur le téléphone
   seul) : un quart d’heure à cette heure-là avec une alerte, ou un événement « toute la journée » avec une alerte à

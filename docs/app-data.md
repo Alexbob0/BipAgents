@@ -81,8 +81,9 @@ their place on the all-included offer. Everything personal goes here, with that 
 - **Reminders on Android** (`reminders/PlaceReminders.kt`, `reminders/CalendarReminders.kt`): Android has no Reminders
   app. The agents' reminders that have a place are read from the bridge's queue (`/v1/reminders/queue?phone=android`)
   and kept on the phone as geofences (Google Play services location; the name looked up with the phone's `Geocoder`).
-  The location permission (with background) is asked only once such a reminder exists; the position never leaves the
-  phone. A reminder at a time or on a day (sent to the Android phone only when no iPhone shares its Reminders with that
+  The location permission (with background) is asked only once such a reminder exists, after the app's own screen
+  saying why (strings `places_allow_*`); the reminders are listed and deleted in Settings › Reminders by place. The
+  position never leaves the phone. A reminder at a time or on a day (sent to the Android phone only when no iPhone shares its Reminders with that
   bridge) becomes an event in the phone's calendar (CalendarContract), in the calendar synced with the person's account
   (never one kept on the phone only): a quarter of an hour at that time with an alert then, or an all-day event with an
   alert at 9:00; its description says which agent asked (« Rappel de … ») and carries the app's mark
