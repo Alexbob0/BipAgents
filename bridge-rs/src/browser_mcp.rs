@@ -106,8 +106,32 @@ instance the text around a word you look for, in place of `word`: {AROUND_A_WORD
     }
 }
 
-/// A tool's result the real server saved to a file (`SAVED_TO_FILE`), replaced by `too_large_text`: the file's path
-/// and its structured copy dropped. Returns whether it was.
+/// What the structured copy of such an answer says instead of its reason.
+pub const OUT_OF_REACH: &str = "too large to come back whole; its saved copy is out of your reach";
+
+/// The structured copy of a result saved to a file, without the file: its keys and the types of its values kept (a
+/// tool with an output schema must still answer one that fits it, or Hermes' MCP client refuses the whole result:
+/// « has an output schema but did not return structured content », lab of 2026-11-07), the path and the file's name
+/// emptied, the reason in plain words; a text holding the answer (a wrapped result) becomes `text`.
+fn without_the_file(value: &mut Value, text: &str) {
+    match value {
+        Value::Object(map) if map.get("reason").and_then(Value::as_str).is_some_and(|r| r.contains(SAVED_TO_FILE)) => {
+            for key in ["file_path", "filename"] {
+                if let Some(path) = map.get_mut(key).filter(|v| v.is_string()) {
+                    *path = json!("");
+                }
+            }
+            map.insert("reason".into(), json!(OUT_OF_REACH));
+        }
+        Value::Object(map) => map.values_mut().for_each(|v| without_the_file(v, text)),
+        Value::Array(items) => items.iter_mut().for_each(|v| without_the_file(v, text)),
+        Value::String(s) if s.contains(SAVED_TO_FILE) => *s = text.to_string(),
+        _ => {}
+    }
+}
+
+/// A tool's result the real server saved to a file (`SAVED_TO_FILE`), replaced by `too_large_text`; its structured
+/// copy, when it has one, kept without the file (`without_the_file`). Returns whether it was.
 pub fn rewrite_too_large(tool: &str, response: &mut Dict) -> bool {
     let Some(result) = response.get_mut("result").and_then(Value::as_object_mut) else { return false };
     let Some(Value::Array(content)) = result.get("content") else { return false };
@@ -120,8 +144,11 @@ pub fn rewrite_too_large(tool: &str, response: &mut Dict) -> bool {
     let size_kb = serde_json::from_str::<Value>(&saved)
         .ok()
         .and_then(|answer| answer.get("file_size_kb").and_then(Value::as_f64));
-    result.insert("content".into(), json!([{"type": "text", "text": too_large_text(tool, size_kb)}]));
-    result.remove("structuredContent");
+    let text = too_large_text(tool, size_kb);
+    if let Some(structured) = result.get_mut("structuredContent") {
+        without_the_file(structured, &text);
+    }
+    result.insert("content".into(), json!([{"type": "text", "text": text}]));
     true
 }
 
@@ -927,13 +954,18 @@ mod tests {
     }
 
     /// stealth-browser-mcp's answer for the French Wikipedia page of the Eiffel tower (token lab of 2026-11-07).
+    fn saved_answer() -> Value {
+        json!({"file_path": "/opt/stealth/stealth-browser-mcp/element_clones/page_content_20261107.json",
+               "filename": "page_content_20261107.json", "file_size_kb": 1399.12,
+               "estimated_tokens": 353880, "reason": SAVED_TO_FILE,
+               "metadata": {"instance_id": "319ceedb", "include_frames": false}})
+    }
+
+    /// Its tool's output schema asks for structured content: the answer itself (as the lab's get_page_content).
     fn saved_to_file() -> Dict {
-        let answer = json!({"file_path": "/opt/stealth/stealth-browser-mcp/element_clones/page_content_20261107.json",
-                            "filename": "page_content_20261107.json", "file_size_kb": 1399.12,
-                            "estimated_tokens": 353880, "reason": SAVED_TO_FILE,
-                            "metadata": {"instance_id": "319ceedb", "include_frames": false}});
+        let answer = saved_answer();
         let message = json!({"jsonrpc": "2.0", "id": 7, "result": {
-            "content": [{"type": "text", "text": answer.to_string()}], "structuredContent": {"result": answer}}});
+            "content": [{"type": "text", "text": answer.to_string()}], "structuredContent": answer}});
         message.as_object().unwrap().clone()
     }
 
@@ -942,7 +974,13 @@ mod tests {
         let mut response = saved_to_file();
         assert!(rewrite_too_large("get_page_content", &mut response));
         let result = response["result"].as_object().unwrap();
-        assert!(!result.contains_key("structuredContent"));
+        // the structured copy still fits the tool's output schema (same keys, same types), without the file
+        let structured = result["structuredContent"].as_object().unwrap();
+        let keys = |v: &Value| v.as_object().unwrap().keys().cloned().collect::<Vec<_>>();
+        assert_eq!(keys(&result["structuredContent"]), keys(&saved_answer()));
+        assert_eq!((structured["file_path"].clone(), structured["filename"].clone()), (json!(""), json!("")));
+        assert_eq!(structured["reason"], json!(OUT_OF_REACH));
+        assert_eq!(structured["file_size_kb"], json!(1399.12));
         let content = result["content"].as_array().unwrap();
         assert_eq!(content.len(), 1);
         let text = content[0]["text"].as_str().unwrap();
@@ -963,6 +1001,20 @@ out of your reach";
         let text = script["result"]["content"][0]["text"].as_str().unwrap().to_string();
         assert!(text.starts_with("Your script's result is too large to come back whole (about 1.4 MB)"), "{text}");
         assert!(text.contains("Don't run it again as it is") && text.ends_with(AROUND_A_WORD));
+        // a wrapped result (`{"result": …}`), as the answer or as its text: the same, inside
+        for wrapped in [json!({"result": saved_answer()}), json!({"result": saved_answer().to_string()})] {
+            let mut response = saved_to_file();
+            response["result"]["structuredContent"] = wrapped.clone();
+            assert!(rewrite_too_large("get_page_content", &mut response));
+            let inside = &response["result"]["structuredContent"]["result"];
+            assert!(!Value::Object(response.clone()).to_string().contains("element_clones"), "{response:?}");
+            assert_eq!(inside.is_string(), wrapped["result"].is_string());
+            if let Some(text) = inside.as_str() {
+                assert_eq!(text, response["result"]["content"][0]["text"].as_str().unwrap());
+            } else {
+                assert_eq!(inside["reason"], json!(OUT_OF_REACH));
+            }
+        }
         // the size as it comes, or none
         assert!(too_large_text("take_screenshot", Some(312.4)).contains("whole (about 312 KB), and"));
         assert!(too_large_text("get_page_content", None).starts_with("This page is too large to come back whole, and"));

@@ -429,12 +429,12 @@ async fn a_page_too_large_to_come_back_is_said_plainly_and_a_rescue_turn_reads_n
     let server = FAKE_SERVER.replace(
         r#"r = {"content": [{"type": "text", "text": "did " + m["params"]["name"]}]}"#,
         r#"if m["params"]["name"] == "get_page_content":
-            text = json.dumps({"file_path": "/opt/stealth/stealth-browser-mcp/element_clones/page_content_1.json",
-                               "file_size_kb": 1399.12, "estimated_tokens": 353880,
-                               "reason": "Response too large, automatically saved to file"})
+            saved = {"file_path": "/opt/stealth/stealth-browser-mcp/element_clones/page_content_1.json",
+                     "file_size_kb": 1399.12, "estimated_tokens": 353880,
+                     "reason": "Response too large, automatically saved to file"}
+            r = {"content": [{"type": "text", "text": json.dumps(saved)}], "structuredContent": saved}
         else:
-            text = "did " + m["params"]["name"]
-        r = {"content": [{"type": "text", "text": text}]}"#,
+            r = {"content": [{"type": "text", "text": "did " + m["params"]["name"]}]}"#,
     );
     std::fs::write(tmp.join("server.py"), server).unwrap();
     let out = Out::default();
@@ -449,6 +449,9 @@ async fn a_page_too_large_to_come_back_is_said_plainly_and_a_rescue_turn_reads_n
     assert!(text.starts_with("This page is too large to come back whole (about 1.4 MB)"), "{text}");
     assert!(text.contains("Don't read it again") && text.contains(browser_mcp::AROUND_A_WORD));
     assert!(!answer.to_string().contains("element_clones"), "its path never shown");
+    // its structured copy kept for the tool's output schema (Hermes' MCP client refuses a result without one)
+    assert_eq!(answer["result"]["structuredContent"]["file_path"], json!(""));
+    assert_eq!(answer["result"]["structuredContent"]["reason"], json!(browser_mcp::OUT_OF_REACH));
     // the other answers as they are
     proxy.handle(json!({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "navigate"}})).await;
     assert_eq!(out.messages().last().unwrap()["result"]["content"][0]["text"], "did navigate");
