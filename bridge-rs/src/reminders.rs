@@ -133,6 +133,7 @@ pub fn call(
     now: Option<f64>,
 ) -> anyhow::Result<Dict> {
     let now = now.filter(|n| *n != 0.0).unwrap_or_else(py::time_time);
+    let phone;
     {
         let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut data = read(config);
@@ -190,16 +191,17 @@ pub fn call(
                     if !text("due").is_empty() {
                         line += &format!(" · due {}", text("due"));
                     }
-                    line += if crate::phone_asks::waiting(op) {
-                        " · asked by you, not on the iPhone yet (added at its next sync)"
+                    let phone = doer(Some(args));
+                    line += &if crate::phone_asks::waiting(op) {
+                        format!(" · asked by you, not on the {phone} yet (added at its next sync)")
                     } else {
-                        " · added by the iPhone just now (not in this copy yet)"
+                        format!(" · added by the {phone} just now (not in this copy yet)")
                     };
                     Some(line)
                 })
                 .collect();
             if rows.is_empty() && !asked.is_empty() {
-                return Ok(tool_text(&format!("Not in the iPhone's copy yet:\n{}", asked.join("\n")), false));
+                return Ok(tool_text(&format!("Not in the phone's copy yet:\n{}", asked.join("\n")), false));
             }
             let asked = if asked.is_empty() { String::new() } else { format!("\n{}", asked.join("\n")) };
             if rows.is_empty() {
@@ -271,7 +273,11 @@ pub fn call(
                         "Already asked: id {} · {} ({}). Not added again: nothing more to do for this reminder.",
                         text(twin, "id"),
                         title,
-                        if crate::phone_asks::waiting(twin) { "the iPhone adds it at its next sync" } else { "the iPhone added it a moment ago" }
+                        if crate::phone_asks::waiting(twin) {
+                            format!("the {} adds it at its next sync", doer(field(twin, "args")))
+                        } else {
+                            format!("the {} added it a moment ago", doer(field(twin, "args")))
+                        }
                     ),
                     false,
                 ));
@@ -291,6 +297,7 @@ pub fn call(
             Some(Value::Array(q)) => q.clone(),
             _ => Vec::new(),
         };
+        phone = doer(field(&op, "args"));
         queue.push(op);
         data.insert("queue".into(), Value::Array(queue));
         write(config, &data)?;
@@ -298,10 +305,23 @@ pub fn call(
     if let Some(wake) = wake {
         wake();
     }
-    Ok(tool_text(
-        "Asked: the person's iPhone does it at its next sync (usually within minutes, or when the app opens).",
-        false,
-    ))
+    Ok(tool_text(&asked_text(phone), false))
+}
+
+/// Which of the person's phones does a request: a reminder by place, whichever they have (an Android phone does those
+/// as its own « rappels par lieu »); the rest, their iPhone (7/11: the agent was told « the person's iPhone » for a
+/// reminder by place made on an Android phone).
+fn doer(args: Option<&Value>) -> &'static str {
+    if args.and_then(|a| field(a, "place")).is_some() {
+        "phone"
+    } else {
+        "iPhone"
+    }
+}
+
+/// What the agent is told once its request waits for the phone.
+fn asked_text(phone: &str) -> String {
+    format!("Asked: the person's {phone} does it at its next sync (usually within minutes, or when the app opens).")
 }
 
 /// A request for the phone added by the bridge itself (the Carnet's dated tasks, notebook/mod.rs): `op` « add »,
@@ -727,6 +747,47 @@ mod tests {
         assert_eq!(data["items"].as_array().map(Vec::len), Some(1));
         set_agents_in(&mut data, &[]);
         assert_eq!(Value::Object(data), json!({"agents": [], "queue": [{"id": "q1", "op": "add", "state": "pending"}]}));
+    }
+
+    fn config_in(dir: &std::path::Path) -> Config {
+        let mut config = Config::with_key("k");
+        config.outbox.db_path = dir.join("bridge.db").to_string_lossy().into_owned();
+        config
+    }
+
+    /// 7/11: a reminder by place made by an Android phone, the agent told « the person's iPhone » does it. A reminder
+    /// by place is the person's phone's (either kind does it), the others their iPhone's (Android has no Reminders app).
+    #[test]
+    fn a_reminder_by_place_is_the_phones_the_others_the_iphones() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(dir.path());
+        let mut data = Dict::new();
+        data.insert("agents".into(), json!(["coach"]));
+        write(&config, &data).unwrap();
+        let run = |name: &str, arguments: Value| {
+            let result = call(&config, "coach", name, arguments.as_object().unwrap(), None, Some(1000.0)).unwrap();
+            assert_eq!(result["isError"], json!(false), "{result:?}");
+            result["content"][0]["text"].as_str().unwrap().to_string()
+        };
+        let bread = json!({"title": "Acheter du pain", "place": "Boulangerie Dupont"});
+        let asked = run("reminders_add", bread.clone());
+        assert_eq!(
+            asked,
+            "Asked: the person's phone does it at its next sync (usually within minutes, or when the app opens)."
+        );
+        assert!(!asked.contains("iPhone"));
+        assert!(run("reminders_add", bread).contains("(the phone adds it at its next sync)"));
+        let bank = run("reminders_add", json!({"title": "Rendez-vous banque", "due": "2026-11-09T10:00"}));
+        assert_eq!(
+            bank,
+            "Asked: the person's iPhone does it at its next sync (usually within minutes, or when the app opens)."
+        );
+        let listed = run("reminders_list", json!({}));
+        assert!(listed.contains("Acheter du pain · asked by you, not on the phone yet"), "{listed}");
+        assert!(
+            listed.contains("Rendez-vous banque · due 2026-11-09T10:00 · asked by you, not on the iPhone yet"),
+            "{listed}"
+        );
     }
 
     #[test]
