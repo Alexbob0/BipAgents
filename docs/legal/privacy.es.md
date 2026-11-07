@@ -161,8 +161,13 @@ volver a preguntarte. Es entonces tu teléfono quien añade o marca el recordato
 los recordatorios que el agente lee para responderte. Kerfy Studio no los lee (con la oferta, aloja tu plaza sin
 acceder a ella, sección 5.1). **Base jurídica**: tu consentimiento (artículo 6.1.a del RGPD), que das al activar
 Recordatorios y permitirlo en tu iPhone. **Dejarlo**: desactiva Recordatorios para el agente, o retira el permiso en
-los ajustes del iPhone (ya no se envía nada). En Android, que no tiene app Recordatorios, solo existen los
-recordatorios por lugar (más abajo).
+los ajustes del iPhone (ya no se envía nada). En Android, que no tiene app Recordatorios, un recordatorio a una hora
+o en un día que pides a un agente va al calendario de tu teléfono (el de tu cuenta, Google Calendar por ejemplo), con
+una alerta, si permites que BipAgents use el calendario; como cualquier evento de ese calendario, lo sincroniza el
+proveedor de tu cuenta. La app envía entonces a tu servidor solo el título y la hora de esos recordatorios, por venir,
+para que el agente sepa lo que ya pidió, y nada más de tu calendario (salvo si también compartes Calendario). Si tienes
+un iPhone y un teléfono Android, estos recordatorios van a la app Recordatorios del iPhone. Los recordatorios por lugar
+se describen más abajo.
 
 **Tu Cuaderno (« Carnet »).** Tus agentes llevan un cuaderno con lo que les cuentas que seguirá importando (las
 personas de tu vida, tus proyectos, las fechas importantes, las tareas que pides), en páginas de texto **solo en tu

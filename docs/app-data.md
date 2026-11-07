@@ -73,13 +73,23 @@ their place on the all-included offer. Everything personal goes here, with that 
   agent reads (one no agent reads any more is wiped from them), and each agent with the switch on reads only its own
   categories (`bridge-rs/src/health.rs`, `Day::restricted`).
 - **iPhone Reminders** (`App/Features/Settings/RemindersSync.swift`): a copy of the reminders goes to the bridges the
-  person chose, and the requests the agents queued are carried out. This feature exists only on iOS. A reminder by
-  place (`reminders_add`'s `place`) becomes an EventKit location alarm: Reminders watches the place, the app has no
-  location access; a place's name is looked up with Apple Maps (`MKLocalSearch`).
-- **Reminders by place on Android** (`reminders/PlaceReminders.kt`): the agents' reminders that have a place are read
-  from the bridge's queue (`/v1/reminders/queue`) and kept on the phone as geofences (Google Play services location;
-  the name looked up with the phone's `Geocoder`). The location permission (with background) is asked only once such a
-  reminder exists; the position never leaves the phone. The other reminders stay queued for an iPhone.
+  person chose, and the requests the agents queued are carried out. A reminder at a time gets its due date with the
+  hour, in the phone's time zone, and an alert then (`HermesKit/ReminderDue.swift`). A reminder by place
+  (`reminders_add`'s `place`) becomes an EventKit location alarm: Reminders watches the place, the app has no
+  location access; a place's name is looked up with Apple Maps (`MKLocalSearch`). When an iPhone shares its Reminders
+  with a bridge, every reminder at a time or on a day from that bridge goes there, never also to an Android phone.
+- **Reminders on Android** (`reminders/PlaceReminders.kt`, `reminders/CalendarReminders.kt`): Android has no Reminders
+  app. The agents' reminders that have a place are read from the bridge's queue (`/v1/reminders/queue?phone=android`)
+  and kept on the phone as geofences (Google Play services location; the name looked up with the phone's `Geocoder`).
+  The location permission (with background) is asked only once such a reminder exists; the position never leaves the
+  phone. A reminder at a time or on a day (sent to the Android phone only when no iPhone shares its Reminders with that
+  bridge) becomes an event in the phone's calendar (CalendarContract), in the calendar synced with the person's account
+  (never one kept on the phone only): a quarter of an hour at that time with an alert then, or an all-day event with an
+  alert at 9:00; its description says which agent asked (« Rappel de … ») and carries the app's mark
+  (`BipAgents ^r…`). It needs the calendar permission; without it the reminder waits and the person is asked. The app
+  sends the bridge whether it may write to a calendar and the title and time of its own reminder events to come
+  (`PUT /v1/reminders/android`), nothing else from the calendar. Ticked off by an agent: deleted while it is to come,
+  its alert taken off once it has begun.
 - **Shared to the app** (`ShareExtension/`, `App/Model/SharedInbox.swift`, Android `ui/SharedMessage.kt`): a message or
   screenshots shared to BipAgents are handed to the agent the person picks, as a draft and attachments in its
   conversation, sent only when the person taps Send. The iOS share extension writes them to the App Group
