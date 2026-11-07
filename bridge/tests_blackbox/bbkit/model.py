@@ -15,6 +15,7 @@ Installed as `FakeHermes.override`, it takes only the runs it starts (every othe
 | `#fichier` | writes a PDF in its files and names it (`MEDIA:` line) |
 | `#page` | makes a page with the bridge's `create_page` tool, names it |
 | `#carte` | a map with the bridge's `map_image` tool (else a picture in the maps' folder), names it |
+| `#trajet` | a map with `map_image`, its card pasted into a `create_page` page, names the page only (as agents do) |
 | `#outil` | a tool call (`tool.started` / `tool.completed`, stored as Hermes' tool rows) before its words |
 | `#question` | asks a question (`clarify.request`) and waits for the answer, then says it |
 | `#approbation` | asks to run a command (`approval.request`), waits, says what was decided |
@@ -23,8 +24,9 @@ Installed as `FakeHermes.override`, it takes only the runs it starts (every othe
 | `#connecteur` | registers a connector (`connector_register`, a connector card) and waits |
 | `#lent` | a long reply, slowly (to be stopped, or to queue messages behind it) |
 
-`calls`: the agent's own tool calls to the bridge (MCP), given by the harness (`secret`, `sites`, `page`, `map`), each
-a function of the run's words returning the text of its result. They run in the run's thread, while the turn waits."""
+`calls`: the agent's own tool calls to the bridge (MCP), given by the harness (`secret`, `sites`, `page`, `map`,
+`page_with`: a page of the given HTML), each a function of the run's words returning the text of its result. They run
+in the run's thread, while the turn waits."""
 from __future__ import annotations
 
 import asyncio
@@ -339,6 +341,19 @@ class ScriptedModel:
             line = self.media_line(made)
             if line:
                 lines.append("Voici la carte.")
+                media.append(line)
+        if "#trajet" in words and "map" in self.calls and "page_with" in self.calls:
+            # as the agents are told (VISUAL_RULE, create_page): the map's card pasted into the trip's page, whose
+            # line alone the reply gives (7/11: the bridge added the map's own page at the end, the map twice)
+            markers = {"markers": [{"place": "Tour Eiffel"}, {"place": "Louvre"}], "area": "Paris"}
+            made = self.tool(run, "mcp_bipagents_map_image", markers, lambda: self.calls["map"](run.id), calls, results)
+            card = re.search(r'<figure class="map-card">.*?</figure>', made)
+            html = f"<h1>Ton trajet</h1><p>Deux étapes à pied.</p>{card.group(0) if card else ''}<p>Bonne balade !</p>"
+            page = self.tool(run, "mcp_bipagents_create_page", {"html": html, "title": f"Trajet {run.id}"},
+                             lambda: self.calls["page_with"](run.id, html), calls, results)
+            line = self.media_line(page)
+            if line:
+                lines.append("Voici ton trajet.")
                 media.append(line)
         if "#lent" in words:
             lines.append(" ".join(["Je prends le temps de bien tout vérifier, point par point."] * 12))

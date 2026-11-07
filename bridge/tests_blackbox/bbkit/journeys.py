@@ -135,6 +135,9 @@ def journey_bridge(bridges, fakes, word_gap: float = 0.06, name: str = "journeys
                 f"<p>Page {run}.</p>")
         return journey.mcp("/v1/agent-tools/mcp", "create_page", {"html": html, "title": f"Résumé {run}"})
 
+    def page_with(run: str, html: str) -> str:
+        return journey.mcp("/v1/agent-tools/mcp", "create_page", {"html": html, "title": f"Trajet {run}"})
+
     def map_(run: str) -> str:
         try:
             return journey.mcp("/v1/agent-tools/mcp", "map_image",
@@ -163,7 +166,7 @@ def journey_bridge(bridges, fakes, word_gap: float = 0.06, name: str = "journeys
     inline = os.environ.get("JOURNEYS_PHOTOS") == "inline"
     journey.model = ScriptedModel(fakes.hermes, files, FILES_ROOT, word_gap=word_gap,
                                   calls={"page": page, "map": map_, "secret": secret, "sites": sites,
-                                         "connector": connector},
+                                         "connector": connector, "page_with": page_with},
                                   profile=None if inline else profile(hub, AGENT),
                                   profile_seen_as=f"{agent['hermes_home']}/profiles/{AGENT}").install()
     return journey

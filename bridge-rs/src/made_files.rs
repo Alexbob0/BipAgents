@@ -21,7 +21,14 @@
 //!   podcast » came out at 1 min 21, the agent made it again, twice, and left all three `MEDIA:` lines, so the person
 //!   got three files). A version is an audio file of the turn with the same title as a later one (its name without
 //!   the time stamp: `20261030-101503-mars.m4a` and `20261030-101722-mars.m4a`): the earlier one's line goes. Two
-//!   podcasts with different titles, pages, documents: all kept.
+//!   podcasts with different titles, pages, documents: all kept;
+//! - shows each map once (7/11, Alex's Fairphone: a trip's map in the page placed in the text, and again at the
+//!   reply's end). Since 31/10 `map_image`'s line is a page holding the map alone (`/bipagents/pages/<agent>/carte-
+//!   <hex>.html`, the map `m-<hex>`), which the rule above added like any page whenever the reply didn't carry it,
+//!   even when the map was pasted into a create_page page the reply carries (as the agents are told to). That page
+//!   is now optional, as the map's picture was: not added when the reply already shows a map of the turn (another
+//!   map's page, a remade map; or a page it carries holding one, its card's `data-map`), and its line goes when a
+//!   page the reply carries holds that same map (`fix_reply_with`: the pages' maps read by the caller).
 //!
 //! In memory only: a restart forgets files made before it (the model's own lines are then kept as they are).
 //!
@@ -147,29 +154,77 @@ pub fn media_path_of(result: &crate::Dict) -> Option<String> {
 static MEDIA_LINE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^[ \t]*MEDIA:[ \t]*(\S+)[ \t]*$").expect("valid regex"));
 
+/// The map a map's page shows: `map_image`'s page `…/carte-<hex>.html` is the map `m-<hex>` (maps.rs `call`).
+pub fn map_of_page(path: &str) -> Option<String> {
+    let name = path.strip_prefix(crate::pages::PREFIX)?.rsplit('/').next()?;
+    let hex = name.strip_prefix("carte-")?.strip_suffix(".html")?;
+    (!hex.is_empty() && hex.bytes().all(|b| b.is_ascii_hexdigit())).then(|| format!("m-{hex}"))
+}
+
 /// `reply` handing over the files `made` in its turn by `agent` (see the module's rules); None when it already does,
-/// or when nothing was made.
+/// or when nothing was made. The pages' maps unread: [`fix_reply_with`] for those.
 pub fn fix_reply(reply: &str, agent: &str, made: &[String]) -> Option<String> {
+    fix_reply_with(reply, agent, made, &|_| Vec::new())
+}
+
+/// [`fix_reply`], `maps_of` giving the maps (`m-<hex>`) a page of the agent shows (pages.rs `maps_of`): asked only
+/// when the turn made a map.
+pub fn fix_reply_with(
+    reply: &str,
+    agent: &str,
+    made: &[String],
+    maps_of: &dyn Fn(&str) -> Vec<String>,
+) -> Option<String> {
     if made.is_empty() {
         return None;
     }
     // the earlier versions of a file remade in the turn: their lines dropped, never added back
     let input = reply;
-    let replaced = superseded(made);
+    let mut dropped = superseded(made);
+    let made: Vec<String> = made.iter().filter(|m| !dropped.contains(m)).cloned().collect();
+    let made = made.as_slice();
+    // each map once: the turn's maps, and what the reply's own pages hold of them
+    let turn_maps: Vec<String> =
+        made.iter().filter(|m| kind_of(m, agent).is_some()).filter_map(|m| map_of_page(m.as_str())).collect();
+    let mut shows_map = false;
+    if !turn_maps.is_empty() {
+        let carried: Vec<String> = MEDIA_LINE.captures_iter(reply).map(|c| c[1].to_string()).collect();
+        let pages: Vec<(&String, Vec<String>)> = carried
+            .iter()
+            .filter(|c| kind_of(c, agent).is_some_and(|(prefix, _)| prefix == crate::pages::PREFIX))
+            .map(|c| (c, if map_of_page(c).is_some() { Vec::new() } else { maps_of(c) }))
+            .collect();
+        for (page, held) in &pages {
+            let map = map_of_page(page);
+            // a map's page whose map a page of the reply holds: that page shows it
+            if let Some(id) = &map {
+                if pages.iter().any(|(other, maps)| other != page && maps.contains(id)) && !dropped.contains(*page) {
+                    dropped.push((*page).clone());
+                    continue;
+                }
+            }
+            shows_map |= map.into_iter().chain(held.iter().cloned()).any(|id| turn_maps.contains(&id));
+        }
+    }
     let without_old;
-    let reply = if replaced.is_empty() {
+    let reply = if dropped.is_empty() {
         reply
     } else {
-        without_old = drop_lines(reply, &replaced);
+        without_old = drop_lines(reply, &dropped);
         without_old.as_str()
     };
-    let made: Vec<String> = made.iter().filter(|m| !replaced.contains(m)).cloned().collect();
-    let made = made.as_slice();
     let marks = missing_marks(reply, made);
     let carried: Vec<String> = MEDIA_LINE.captures_iter(reply).map(|c| c[1].to_string()).collect();
     let mut missing: Vec<String> = Vec::new();
     for path in made {
-        if !carried.contains(path) && !missing.contains(path) && kind_of(path, agent).is_some() {
+        // a map's page when the reply shows a map of the turn already: never added (another one would be twice)
+        let optional = shows_map && map_of_page(path).is_some();
+        if !carried.contains(path)
+            && !missing.contains(path)
+            && !dropped.contains(path)
+            && !optional
+            && kind_of(path, agent).is_some()
+        {
             missing.push(path.clone());
         }
     }
@@ -290,6 +345,48 @@ mod tests {
         assert_eq!(fix_reply(&format!("Le plan.\nMEDIA:{PAGE}"), "vie", &[MAP.into(), PAGE.into()]), None);
         let stale = format!("La carte.\nMEDIA:{OLD_MAP}");
         assert_eq!(fix_reply(&stale, "vie", &[MAP.into()]).unwrap(), format!("La carte.\nMEDIA:{MAP}"));
+    }
+
+    /// map_image's page (since 31/10) and the map it holds alone.
+    const CARTE: &str = "/bipagents/pages/vie/carte-0123456789.html";
+    const CARTE_ID: &str = "m-0123456789";
+    const TRIP: &str = "/bipagents/pages/vie/trajet-paris.html";
+
+    #[test]
+    fn a_map_pasted_into_a_page_is_not_added_again() {
+        // 7/11, Alex's Fairphone: map_image, then the trip's page with its card pasted (as the agents are told),
+        // the page's line in the reply; the map's own page went at the end too: the map twice
+        let reply = format!("Voici ton trajet :\nMEDIA:{TRIP}\nBonne balade !");
+        let made: Vec<String> = vec![CARTE.into(), TRIP.into()];
+        let trip_holds = |path: &str| if path == TRIP { vec![CARTE_ID.to_string()] } else { Vec::new() };
+        // the pages unread: as before
+        assert_eq!(fix_reply(&reply, "vie", &made).unwrap(), format!("{reply}\nMEDIA:{CARTE}"));
+        assert_eq!(fix_reply_with(&reply, "vie", &made, &trip_holds), None);
+        // the map's page written too, beside the page holding it: its line goes (the page shows the map)
+        let both = format!("Voici ton trajet :\nMEDIA:{TRIP}\nLa carte seule :\nMEDIA:{CARTE}");
+        assert_eq!(
+            fix_reply_with(&both, "vie", &made, &trip_holds).unwrap(),
+            format!("Voici ton trajet :\nMEDIA:{TRIP}\nLa carte seule :")
+        );
+        // a page without the map: the map's page still added (it would be lost)
+        assert_eq!(fix_reply_with(&reply, "vie", &made, &|_| Vec::new()).unwrap(), format!("{reply}\nMEDIA:{CARTE}"));
+    }
+
+    #[test]
+    fn a_remade_map_shows_once() {
+        // the map made again in the turn (a place found better): the reply carries the last one, the first stays out
+        let first = "/bipagents/pages/vie/carte-aaaaaaaaaa.html";
+        let made: Vec<String> = vec![first.into(), CARTE.into()];
+        assert_eq!(fix_reply_with(&format!("La carte :\nMEDIA:{CARTE}"), "vie", &made, &|_| Vec::new()), None);
+        // none carried: the map's page added, as any page (the model showed none)
+        assert_eq!(
+            fix_reply_with("La carte.", "vie", std::slice::from_ref(&made[1]), &|_| Vec::new()).unwrap(),
+            format!("La carte.\nMEDIA:{CARTE}")
+        );
+        assert_eq!(map_of_page(CARTE).as_deref(), Some(CARTE_ID));
+        assert_eq!(map_of_page(TRIP), None);
+        assert_eq!(map_of_page("/envoi/carte-0123456789.html"), None);
+        assert_eq!(map_of_page("/bipagents/pages/vie/carte-xyz.html"), None);
     }
 
     #[test]

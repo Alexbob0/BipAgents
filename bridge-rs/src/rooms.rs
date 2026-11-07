@@ -2392,7 +2392,8 @@ impl Rooms {
 /// so the person can open them even once its sandbox is reset.
 pub async fn hand_over_files(config: &Config, agent: &AgentConfig, run_id: &str, output: &str) -> String {
     let made = crate::made_files::MADE.in_run(&agent.name, run_id);
-    let text = match crate::made_files::fix_reply(output, &agent.name, &made) {
+    let maps_of = |path: &str| crate::pages::maps_of(config, &agent.name, path);
+    let text = match crate::made_files::fix_reply_with(output, &agent.name, &made, &maps_of) {
         Some(fixed) => tk::strip(&fixed).to_string(),
         _ => output.to_string(),
     };

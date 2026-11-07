@@ -693,6 +693,7 @@ impl Threads {
         });
         self.with_sends(agent, thread, &mut items, &queued).await?;
         self.with_files(agent, thread, &mut items).await?;
+        with_maps_once(self.config.get(), agent, &mut items).await;
         with_document_sizes(agent, &mut items).await;
         Ok(items)
     }
@@ -1305,6 +1306,48 @@ async fn item_route(
 
 /// The person's documents with their file's own size, when the file is in the agent's uploads as the bridge sees them
 /// (`[Pièce jointe : …]` gives it in words only, rounded): never a size the apps cannot read.
+/// Each map once in a message (7/11, Alex's Fairphone: a trip's map in the page placed in the text, and again at the
+/// reply's end): a map's own page (`map_image`'s `carte-<hex>`, made_files.rs `map_of_page`) left out of a message
+/// whose other page holds that map (its card, pages.rs `maps_of`), as the turn's hand-over no longer adds it; this
+/// one for the replies kept before. The other attachments keep their ids.
+async fn with_maps_once(config: Arc<crate::config::Config>, agent: &AgentConfig, items: &mut [Item]) {
+    let prefix = format!("{}/{}/", crate::pages::PREFIX, agent.name);
+    let mut wanted: Vec<(usize, Vec<String>)> = Vec::new();
+    for (i, item) in items.iter().enumerate() {
+        let Some(Value::Array(atts)) = item.body.get("attachments") else { continue };
+        let pages: Vec<&str> = atts.iter().filter_map(|a| own_page(a, &prefix)).collect();
+        let (maps, others): (Vec<&str>, Vec<&str>) =
+            pages.into_iter().partition(|p| crate::made_files::map_of_page(p).is_some());
+        if !maps.is_empty() && !others.is_empty() {
+            wanted.push((i, others.into_iter().map(str::to_string).collect()));
+        }
+    }
+    if wanted.is_empty() {
+        return;
+    }
+    let name = agent.name.clone();
+    let held = tokio::task::spawn_blocking(move || {
+        let maps_of = |pages: &[String]| -> Vec<String> {
+            pages.iter().flat_map(|p| crate::pages::maps_of(&config, &name, p)).collect()
+        };
+        wanted.into_iter().map(|(i, pages)| (i, maps_of(&pages))).collect::<Vec<(usize, Vec<String>)>>()
+    })
+    .await
+    .unwrap_or_default();
+    for (i, maps) in held {
+        if let Some(Value::Array(atts)) = items[i].body.get_mut("attachments") {
+            atts.retain(|a| {
+                own_page(a, &prefix).and_then(crate::made_files::map_of_page).is_none_or(|id| !maps.contains(&id))
+            });
+        }
+    }
+}
+
+/// An attachment's path when it is one of the agent's pages (`prefix`: `/bipagents/pages/<agent>/`).
+fn own_page<'a>(attachment: &'a Value, prefix: &str) -> Option<&'a str> {
+    attachment.get("path").and_then(Value::as_str).filter(|p| p.starts_with(prefix))
+}
+
 async fn with_document_sizes(agent: &AgentConfig, items: &mut [Item]) {
     let (Some(host), Some(seen)) = (
         agent.upload_dir_host.clone().filter(|h| !h.is_empty()),
@@ -1548,4 +1591,53 @@ pub type Link = std::sync::OnceLock<Weak<Threads>>;
 
 pub fn upgrade(link: &Link) -> Option<Arc<Threads>> {
     link.get().and_then(Weak::upgrade)
+}
+
+#[cfg(test)]
+mod maps_once_tests {
+    use super::*;
+
+    fn reply(id: &str, paths: &[&str]) -> Item {
+        let atts: Vec<Value> = paths
+            .iter()
+            .enumerate()
+            .map(|(n, p)| json!({"id": format!("{id}.a{n}"), "kind": "page", "path": p}))
+            .collect();
+        let body = json!({"kind": "message", "role": "agent", "text": "Voici ton trajet.", "attachments": atts});
+        Item {
+            id: id.into(),
+            pos: (0, 0, 0),
+            at: 0.0,
+            turn: id.into(),
+            segment: "s".into(),
+            row: 0,
+            body: body.as_object().cloned().unwrap_or_default(),
+        }
+    }
+
+    fn paths(item: &Item) -> Vec<String> {
+        item.body["attachments"].as_array().unwrap().iter().map(|a| a["path"].as_str().unwrap().to_string()).collect()
+    }
+
+    #[tokio::test]
+    async fn a_kept_reply_shows_its_map_once() {
+        // a reply kept before the hand-over's fix: the trip's page holding the map, and the map's own page at the end
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = crate::config::Config::with_key("k");
+        config.outbox.db_path = dir.path().join("bridge.db").to_string_lossy().into_owned();
+        let folder = crate::pages::root(&config).join("vie");
+        std::fs::create_dir_all(&folder).unwrap();
+        let card = "<figure class=\"map-card\" data-map=\"m-0123456789\"></figure>";
+        std::fs::write(folder.join("trajet.html"), card).unwrap();
+        let agent = AgentConfig { name: "vie".into(), ..AgentConfig::default() };
+        let (trip, carte) = ("/bipagents/pages/vie/trajet.html", "/bipagents/pages/vie/carte-0123456789.html");
+        let other = "/bipagents/pages/vie/carte-aaaaaaaaaa.html";
+        let mut items = vec![reply("m_1", &[trip, carte]), reply("m_2", &[carte]), reply("m_3", &[trip, other])];
+        with_maps_once(Arc::new(config), &agent, &mut items).await;
+        assert_eq!(paths(&items[0]), vec![trip.to_string()]);
+        assert_eq!(items[0].body["attachments"][0]["id"], "m_1.a0");
+        // the map alone, or another map than the page's: kept
+        assert_eq!(paths(&items[1]), vec![carte.to_string()]);
+        assert_eq!(paths(&items[2]), vec![trip.to_string(), other.to_string()]);
+    }
 }
