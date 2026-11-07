@@ -2284,6 +2284,78 @@ mod tests {
         }
     }
 
+    /// Every tool the bridge can give an agent, whatever its settings: each MCP server's list (`bipagents`, the
+    /// Carnet's, the guide's, the family's and project agents', `bipagents_files`, `_pay`, `_link`, `_vault`,
+    /// `_checkout`, `_connectors`), by name.
+    fn every_served_tool() -> Vec<String> {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::with_key("k".repeat(40));
+        config.hermes.home = dir.path().join("hermes").to_string_lossy().into_owned();
+        config.outbox.db_path = dir.path().join("data/outbox.db").to_string_lossy().into_owned();
+        let agent = AgentConfig { name: "vie".into(), display_name: "Vie".into(), ..Default::default() };
+        config.agents.insert(agent.name.clone(), agent.clone());
+        let mut tools: Vec<Value> = tools().to_vec();
+        tools.extend(crate::family_news::tools());
+        tools.extend(crate::notebook::tools::tools(true));
+        tools.push(crate::notebook::fill::tool());
+        tools.push(crate::weather::weather_tool());
+        tools.push(crate::health::health_tool(&[]));
+        tools.extend(crate::calendar::tools());
+        tools.push(crate::meet::tool());
+        tools.extend(crate::contacts::tools());
+        tools.push(crate::agent_files::tool());
+        tools.push(crate::agent_messages::tool());
+        tools.extend(crate::archives::tools(&config, &agent.name));
+        tools.push(crate::archives::records_fill::tool(&config, &agent.name));
+        tools.extend(crate::guide::every_tool(&config));
+        tools.push(json!({"name": crate::templates::FIND_TOOL})); // the guide's only (templates::tools)
+        tools.push(crate::skill_library::tool());
+        tools.extend(crate::heavy_work::tools());
+        tools.push(crate::phone_exit::agent::tool());
+        tools.extend(crate::family_agent::tools(&config));
+        tools.extend(crate::project_agent::tools(&config));
+        tools.extend(crate::sandbox::tools());
+        tools.extend(crate::card_pay::tools());
+        tools.extend(crate::link_wallet::tools());
+        tools.extend(crate::vault_logins::tools());
+        tools.extend(crate::handover::tools());
+        tools.extend(crate::connectors::tools());
+        let mut names: Vec<String> = tools.iter().map(|t| t["name"].as_str().unwrap().to_string()).collect();
+        names.sort();
+        names.dedup();
+        names
+    }
+
+    /// Alex, 2026-11-07: « J'utilise « Routine schedule » », « J'utilise « Give file » » in the working line, « Utiliser
+    /// un outil » in the « Étapes ». Every tool an agent can be given — the bridge's, each server's list, and Hermes'
+    /// own (tool_kinds::HERMES_TOOLS: v0.22.5 and its patches) — has its words in scripts/tool-labels.py: a kind by its
+    /// exact name or a prefix (the apps' row and working line, never the tool's name), and the « Étapes » step that
+    /// kind makes (or none, said so). A new tool without them fails here.
+    #[test]
+    fn every_tool_an_agent_can_call_has_its_words() {
+        use crate::tool_kinds::{HERMES_TOOLS, KINDS, STEPS};
+        let served = every_served_tool();
+        assert!(served.len() > 90 && served.contains(&crate::routines::TOOL_NAME.to_string()), "{served:?}");
+        let hermes = HERMES_TOOLS.iter().map(|t| t.to_string());
+        let unworded: Vec<String> = served
+            .iter()
+            .cloned()
+            .chain(hermes)
+            .filter(|name| {
+                !KINDS.iter().any(|k| k.names.contains(&name.as_str()) || k.prefixes.iter().any(|p| name.starts_with(p)))
+            })
+            .collect();
+        assert_eq!(unworded, Vec::<String>::new(), "give them a kind (and a step) in scripts/tool-labels.py");
+        // as Hermes names them (`mcp__bipagents__…`, the agent's browser's), still worded
+        for tool in ["mcp__bipagents__routine_schedule", "mcp__bipagents_files__shared_files_list", "mcp__stealth__navigate"] {
+            assert_ne!(crate::threads::layout::kind_of(tool), "unknown", "{tool}");
+        }
+        for kind in KINDS {
+            assert!(kind.step.is_none_or(|s| STEPS.iter().any(|w| w.id == s)), "{}: no words for its step", kind.id);
+        }
+        assert!(STEPS.iter().any(|w| w.id == "unknown"), "a connector's tool has its step");
+    }
+
     #[test]
     fn a_long_text_is_read_in_short_pieces_paragraph_by_paragraph() {
         let text = format!(

@@ -276,9 +276,25 @@ pub fn kind_of(tool: &str) -> &'static str {
         return "browser";
     }
     if name.contains("mail") || name.contains("inbox") {
-        return "mail";
+        return mail_kind(&name);
     }
     "unknown"
+}
+
+/// Another server's mail tool by its verb (the apps' `ToolLabel.mailKind`): a draft or a sending, an attachment, a
+/// reading, else a search.
+fn mail_kind(name: &str) -> &'static str {
+    let words: Vec<&str> = name.split(|c: char| !c.is_alphabetic()).collect();
+    let any = |of: &[&str]| words.iter().any(|w| of.contains(w));
+    if any(&["draft", "drafts", "send", "compose", "reply", "forward"]) {
+        "mailDraft"
+    } else if name.contains("attachment") {
+        "mailAttachment"
+    } else if any(&["read", "get", "fetch", "open", "message", "thread"]) {
+        "mailRead"
+    } else {
+        "mailSearch"
+    }
 }
 
 fn bookkeeping(tool: &str) -> bool {
@@ -568,7 +584,12 @@ mod tests {
         assert_eq!(kind_of("mcp_bipagents_files_shared_files_read"), "sharedFiles");
         assert_eq!(kind_of("mcp__stealth__navigate"), "browser");
         assert_eq!(kind_of("todo_write"), "todo");
-        assert_eq!(kind_of("gmail_get_message"), "mail");
+        assert_eq!(kind_of("gmail_get_message"), "mailRead");
+        assert_eq!(kind_of("mcp__gmail__send_email"), "mailDraft");
+        assert_eq!(kind_of("mcp__gmail__search_emails"), "mailSearch");
+        assert_eq!(kind_of("mcp__bipagents__routine_schedule"), "routine");
+        assert_eq!(kind_of("mcp__bipagents__give_file"), "giveFile");
+        assert_eq!(kind_of("mcp__bipconn_garmin__get_activities"), "unknown");
         assert_eq!(kind_of(""), "tool");
         assert_eq!(kind_of("fetch_invoices"), "unknown");
         assert!(bookkeeping("tool_search") && bookkeeping("tool_call") && !bookkeeping("web_search"));

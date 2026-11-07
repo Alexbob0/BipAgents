@@ -1285,6 +1285,21 @@ impl RunHub {
         self.spawn(async move { threads.steps_changed(&agent, &session, &run_id, steps).await });
     }
 
+    /// A connector's call with its connector's name (`service`: « Garmin », connectors::service_of): the apps and the
+    /// automatic « Étapes » say it instead of the tool's own name.
+    fn with_service(&self, sub: &RunSubscription, event: SSEEvent) -> SSEEvent {
+        let tool = crate::loop_brake::event_tool(&event.data);
+        if crate::connectors::slug_of_tool(&tool).is_none() || event.data.contains_key("service") {
+            return event;
+        }
+        let Some(shared) = self.config.as_ref() else { return event };
+        let Some(service) = crate::connectors::service_of(&shared.get(), &sub.agent.name, &tool) else { return event };
+        let mut data = event.data;
+        data.insert("service".into(), json!(service));
+        let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(data.clone()));
+        SSEEvent::new(event.r#type, data, raw)
+    }
+
     /// A call started or ended in a run without a list of the agent's own: the automatic list (steps.rs), as a
     /// `steps.updated` when it changed (only from its 2nd step).
     fn auto_steps(&self, sub: &RunSubscription, st: &mut SubscriptionState, event: &SSEEvent) -> Option<SSEEvent> {
@@ -1293,7 +1308,8 @@ impl RunHub {
         if event.r#type == "tool.started" {
             let preview = event.data.get("preview").and_then(Value::as_str).unwrap_or("");
             let site = crate::steps::site_of(&tool, preview);
-            st.actions.push(crate::steps::Action { tool, site, running: true, call_id });
+            let service = event.data.get("service").and_then(Value::as_str).map(str::to_string);
+            st.actions.push(crate::steps::Action { tool, site, service, running: true, call_id });
         } else {
             let open = st.actions.iter().position(|a| a.running && call_id.is_some() && a.call_id == call_id);
             let open = open.or_else(|| st.actions.iter().position(|a| a.running && a.tool == tool));
@@ -1323,6 +1339,11 @@ impl RunHub {
         let event = if event.r#type == "approval.request" { self.in_plain_words(sub, &st, event) } else { event };
         let event = if matches!(event.r#type.as_str(), "approval.request" | "clarify.request") {
             with_item_id(sub, event)
+        } else {
+            event
+        };
+        let event = if matches!(event.r#type.as_str(), "tool.started" | "tool.completed" | "tool.failed") {
+            self.with_service(sub, event)
         } else {
             event
         };
