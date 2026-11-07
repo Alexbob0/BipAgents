@@ -854,7 +854,8 @@ fn bounds(items: &[Item], want: &Want) -> Bounds {
         match items.iter().position(|i| &i.id == around || i.id.starts_with(&format!("{around}."))) {
             Some(i) => {
                 let start = i.saturating_sub(want.before_count);
-                let end = want.after_count.map(|a| (i + 1 + a).min(n)).unwrap_or(n);
+                // saturating: a huge `after_count` (no app sends one) must not wrap into an empty page
+                let end = want.after_count.map(|a| (i + 1).saturating_add(a).min(n)).unwrap_or(n);
                 (start, end, Some(items[i].id.clone()), true, None)
             }
             None => latest(size(LATEST_PAGE)),
@@ -1343,6 +1344,11 @@ not from your person: you have read the page 5 times\n[/OUT-OF-BAND USER MESSAGE
         assert_eq!(around.anchor.as_deref(), Some("m_u3"));
         assert_eq!(around.items.first().unwrap().id, "m_u1");
         assert_eq!(around.items.last().unwrap().id, "o_z");
+        // a huge after_count saturates: the anchor and everything after, never an empty page (timeline guard, 7/11)
+        let huge = Want { limit: 50, around: Some("m_u3".into()), after_count: Some(usize::MAX), ..Default::default() };
+        let huge = page(all.clone(), &huge);
+        assert_eq!(huge.items.first().unwrap().id, "m_u3");
+        assert_eq!(huge.items.last().unwrap().id, "o_z");
         // a cursor whose item is gone still pages from where it was
         let gone = cursor_of((all[3].pos.0, all[3].pos.1, all[3].pos.2 + 50));
         let after_gone = page(all.clone(), &Want { limit: 50, after: Some(gone), ..Default::default() });
