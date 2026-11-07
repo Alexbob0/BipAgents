@@ -16,7 +16,9 @@
 //! of a card gone counted.
 //!
 //! A `boite` row carries its message as the Boîte shows it (`boite`: title, the whole text, attachments, has_audio,
-//! audio_url — the audio at `/v1/outbox/{id}/audio`): the apps read the Boîte from here alone.
+//! audio_url — the audio at `/v1/outbox/{id}/audio`): the apps read the Boîte from here alone. Its `created_at` is
+//! the message's arrival (the outbox's, one per millisecond), not its push's: the apps list by it, so the Boîte shows
+//! its messages in the order they came, however long each one's audio took (`since` sees it by that date too).
 //! POST   /v1/notifications/read  {ids?, agent?, thread?}             → {read: [ids], unread}
 //! DELETE /v1/notifications/{id}                                      hidden from the Boîte
 //! ```
@@ -164,6 +166,8 @@ pub struct NewRow<'a> {
     pub text: Option<&'a str>,
     pub state: &'a str,
     pub dedupe: &'a str,
+    /// When it happened, when that is not now (`created_at`, `iso`): a Boîte message's arrival.
+    pub created_at: Option<&'a str>,
 }
 
 /// Inserts the row unless its dedupe key is taken: false then (the event was journaled already).
@@ -187,7 +191,7 @@ pub async fn insert(store: &Store, row: &NewRow<'_>) -> anyhow::Result<bool> {
                 text(&format!("notif.{}", row.kind)),
                 opt(cut.as_deref()),
                 text(row.state),
-                text(&iso(utcnow())),
+                text(&row.created_at.map_or_else(|| iso(utcnow()), str::to_string)),
                 text(row.dedupe),
             ],
         )
