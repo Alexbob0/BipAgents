@@ -13,6 +13,7 @@ import time
 import pytest
 
 from bbkit import displayable
+from bbkit.displayable_people import check_page
 from bbkit.common import AUTH
 from bbkit.journeys import AGENT, journey_bridge, photo
 from bbkit.servers import wait_until
@@ -161,6 +162,18 @@ def test_j09_a_reply_with_a_map_shows(journey):
     # (MapCard.isMapPage / AgentMaps); a picture under `/bipagents/maps/` is a `map`
     [att] = reply["attachments"]
     assert att["kind"] == "map" or (att["kind"] == "page" and "/carte" in att["path"]), reply
+
+
+def test_j09_a_trips_page_holding_its_map_shows_the_map_once(journey):
+    # 7/11 (Alex's Fairphone): the map's card pasted into the trip's page (as the agents are told), the page's line in
+    # the reply; the bridge handed over the map's own page at the end too (made_files.rs): the map twice
+    started(journey.send(cid(91), "Prépare-moi la balade #trajet"))
+    page = reply_done(journey, "Voici ton trajet")
+    # its two calls make the turn's steps card (steps.rs): the check that knows it
+    check_page(journey.bridge, page, AGENT)
+    [reply] = [i for i in agent_items(page) if "Voici ton trajet" in i["text"]]
+    [att] = reply["attachments"]
+    assert att["kind"] == "page" and "/trajet-" in att["path"], reply
 
 
 def test_j10_the_agents_steps_show_between_its_words(journey):
