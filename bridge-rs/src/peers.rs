@@ -289,7 +289,7 @@ pub fn apply(
 const CONTACTS: &str = "---
 name: agent-contacts
 description: \"The other agents you may write to with message_agent or give files to with send_files_to_agent, and how to address them.\"
-version: 1.1.0
+version: 1.2.0
 author: BipAgents
 license: MIT
 ---
@@ -303,9 +303,9 @@ Use `message_agent` with one of these targets (the person allowed exactly these;
 An answer arrives in your « Bot Chat ». A message from another household's agent is signed with its household,
 for example « Message from Vie (Alex) (@vie__alex) »: answer it at `bip/vie__alex`.
 
-Another agent never sees your files, nor a path you write to it, and there is no common folder to look for. To give
-files to one of your person's agents, use `send_files_to_agent` (it says where that agent finds them), then tell it
-with `message_agent`, giving those paths. Another household's agents get no files.
+Another agent never sees your files, your shared folder /partage included, nor a path of yours you write to it. To
+give files to one of your person's agents, use `send_files_to_agent` (it says the path that agent reads them at),
+then tell it with `message_agent`, giving those paths. Another household's agents get no files.
 ";
 
 pub fn contacts_skill_path(home: &Path, agent: &str) -> PathBuf {

@@ -130,6 +130,18 @@ async fn answer(
             &format!("I can't write to {shown} yet: you can allow it in the app, under « Qui peut écrire à qui »."),
         );
     }
+    // a path of the sender's own folders: the target sees none of them (not counted as a hop: nothing is sent)
+    if let Some(path) = own_path(config, agent, &target, &message) {
+        tracing::info!(agent = %agent.name, target = %target.name, "message to an agent: refused, a path of its own folders");
+        return tool_text(
+            &format!(
+                "Nothing was sent: {shown} sees none of your folders, so {path} means nothing to it. Give it the file \
+with {} first (it tells you the path {shown} reads it at), then write again with that path.",
+                crate::agent_files::TOOL_NAME
+            ),
+            true,
+        );
+    }
     // the hop cap (agent_hops.rs): this turn's chain of messages between agents, since the person last spoke
     let run = hub.as_ref().and_then(|hub| hub.turn_of(&agent.name, TOOL_NAME)).map(|t| t.run_id);
     let chain = match crate::agent_hops::step(&agent.name, run.as_deref(), &target.name, crate::py::time_time()) {
@@ -181,6 +193,28 @@ again: its answer will be in your conversation with {shown}, which your person c
     }
 }
 
+/// A path in a message that only the sender sees: its outbox, shared folder or sandbox folders (token lab of
+/// 2026-11-07: « dans /envoi/analyses.pdf », four times, the file never given; the owner's agents the same morning,
+/// with a copy in its shared folder). Its shared folder still counts when `target` reads it (shares.rs: it is
+/// `/lecture/<sender>` there), or, for a group discussion's folder, when both take part in it. Its received files
+/// (`/fichiers/…`) are left alone: that is also where the target reads what it was given.
+fn own_path(config: &Config, sender: &AgentConfig, target: &AgentConfig, message: &str) -> Option<String> {
+    static PATH: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r#"(?:^|[\s«"'(\[`<])(/(?:envoi|partage|workspace|root)/[^\s»"')\]`>]+)"#)
+            .expect("valid regex")
+    });
+    let reads = crate::shares::load(config).iter().any(|(r, s)| *r == target.name && *s == sender.name);
+    let rooms = crate::rooms::mates(config, &sender.name).remove(&target.name).unwrap_or_default();
+    let shared = |path: &str| {
+        let Some(rest) = path.strip_prefix("/partage/") else { return false };
+        let room = rest.strip_prefix(&format!("{}/", crate::rooms::SHARED_SUBFOLDER)).and_then(|r| r.split('/').next());
+        reads || room.is_some_and(|id| rooms.contains(id))
+    };
+    PATH.captures_iter(message)
+        .map(|c| c[1].trim_end_matches(['.', ',', ';', ':', '!', '?']).to_string())
+        .find(|path| !shared(path))
+}
+
 /// The cap reached (agent_hops.rs): refused, and what to do instead.
 fn capped() -> Dict {
     tool_failure(
@@ -212,6 +246,27 @@ mod tests {
         assert_eq!(text, "Message from Quotidien (@quotidien): combien d'heures ?");
         assert_eq!(&crate::peers::SIGNATURE.captures(&text).unwrap()[1], "quotidien");
         assert_eq!(tool()["inputSchema"]["required"], json!(["target", "message"]));
+    }
+
+    #[test]
+    fn a_path_of_the_senders_own_folders_is_caught() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = crate::config::parse_config(
+            &json!({"bridge_key": "k".repeat(32), "data_dir": dir.path().to_string_lossy()}),
+            None,
+        )
+        .unwrap();
+        let vie = AgentConfig { name: "vie".into(), display_name: "Vie".into(), ..Default::default() };
+        let wellness = AgentConfig { name: "wellness".into(), display_name: "Wellness".into(), ..Default::default() };
+        let caught = |text: &str| own_path(&config, &vie, &wellness, text);
+        assert_eq!(caught("Le PDF est dans /envoi/analyses-2026.pdf."), Some("/envoi/analyses-2026.pdf".into()));
+        let shared = Some("/partage/bloodwork/eurofins.pdf".to_string());
+        assert_eq!(caught("copié dans « /partage/bloodwork/eurofins.pdf »"), shared);
+        assert_eq!(caught("(/workspace/out/graph.png)"), Some("/workspace/out/graph.png".into()));
+        // where the target reads what it was given, a web address, a mere mention of the folder: left alone
+        assert_eq!(caught("tu le trouves ici : /fichiers/2026-11/092a3c29dbc1-eurofins.pdf"), None);
+        assert_eq!(caught("voir https://exemple.fr/envoi/x.pdf"), None);
+        assert_eq!(caught("mon dossier /partage est à moi"), None);
     }
 
     #[test]

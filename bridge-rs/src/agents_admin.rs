@@ -2688,6 +2688,16 @@ pub async fn move_into_space(state: &AppState, agent: &AgentConfig, keep_hub: bo
         }
     };
     save_agent(&state.config, &moved)?;
+    // Its sandbox in the space as in the hub: its files' volume at /fichiers, its outbox, its shared folders, and the
+    // bridge naming its received files by that path. Until 2026-11-07 that waited for the bridge's next start, and
+    // the files another agent gave it were named by its space's folder, which its sandbox doesn't mount.
+    let moved = match mount_uploads(&state.config, &moved, &run, true).await {
+        Ok(mounted) => mounted,
+        Err(exc) => {
+            tracing::warn!(target: "bipbridge::agents", agent = %moved.name, error = %tail(&exc.to_string(), 200), "uploads not mounted in the new space's sandbox (the bridge's next start tries again)");
+            moved
+        }
+    };
     give_tools(&state.config(), &moved, &run).await?; // its profile is a new one, in its space
     Ok(moved)
 }

@@ -495,6 +495,20 @@ fn run(command: &[String]) -> Result<Vec<u8>, String> {
 /// The agent's own Hermes sandbox containers, the running ones first: labelled for its profile by Hermes, and holding
 /// its folders (its `/root` or `/workspace` under its profile, or its `/envoi`). Never another agent's.
 fn sandbox_containers(config: &Config, agent: &AgentConfig, podman: &str) -> Result<Vec<String>, String> {
+    Ok(sandboxes(config, agent, podman)?.into_iter().map(|c| c.id).collect())
+}
+
+/// One of an agent's Hermes sandbox containers (`sandboxes`).
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Sandbox {
+    pub id: String,
+    pub running: bool,
+    /// Where its mounts are, inside it.
+    pub mounts: Vec<String>,
+}
+
+/// The agent's own Hermes sandbox containers, the running ones first (`sandbox_containers`), with their mounts.
+pub(crate) fn sandboxes(config: &Config, agent: &AgentConfig, podman: &str) -> Result<Vec<Sandbox>, String> {
     let profile = crate::shares::profile_dir(config, agent).ok_or("no Hermes profile of the bridge's")?;
     let label = label_value(&agent.name);
     let listed = run(&[
@@ -512,7 +526,7 @@ fn sandbox_containers(config: &Config, agent: &AgentConfig, podman: &str) -> Res
     let canonical = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
     let sandboxes = canonical(&profile.join(SANDBOXES));
     let outbox = crate::sandbox::volumes_of(config, &agent.name).map(|(_, o)| canonical(&o));
-    let mut found: Vec<(bool, String)> = Vec::new();
+    let mut found: Vec<Sandbox> = Vec::new();
     for item in listed.as_array().into_iter().flatten() {
         let id = item.get("Id").and_then(Value::as_str).unwrap_or_default();
         if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric()) {
@@ -536,11 +550,32 @@ fn sandbox_containers(config: &Config, agent: &AgentConfig, podman: &str) -> Res
         });
         if ours {
             let running = c.pointer("/State/Running").and_then(Value::as_bool).unwrap_or(false);
-            found.push((!running, id.to_string()));
+            let mounts = c.get("Mounts").and_then(Value::as_array).into_iter().flatten();
+            let mounts = mounts.filter_map(|m| m.get("Destination").and_then(Value::as_str).map(str::to_string));
+            found.push(Sandbox { id: id.to_string(), running, mounts: mounts.collect() });
         }
     }
-    found.sort_by_key(|(stopped, _)| *stopped);
-    Ok(found.into_iter().map(|(_, id)| id).collect())
+    found.sort_by_key(|c| !c.running);
+    Ok(found)
+}
+
+/// A file of this machine copied into a running sandbox at `target` (an absolute plain path, its folder made first),
+/// readable by the sandbox's user: `podman exec -u 0 … mkdir -p`, `podman cp`, `chmod 0644`. No shell anywhere.
+pub(crate) fn copy_into(podman: &str, container: &str, source: &Path, target: &str) -> Result<(), String> {
+    let folder = Path::new(target).parent().and_then(Path::to_str).filter(|f| f.starts_with('/')).ok_or("no folder")?;
+    if target.split('/').any(|p| p == "..") || !container.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return Err("not a plain path".into());
+    }
+    let exec = |args: &[&str]| -> Result<Vec<u8>, String> {
+        let mut command: Vec<String> = [podman, "exec", "-u", "0", container].iter().map(|s| s.to_string()).collect();
+        command.extend(args.iter().map(|s| s.to_string()));
+        run(&command)
+    };
+    exec(&["mkdir", "-p", folder])?;
+    exec(&["chmod", "0755", folder])?;
+    let source = source.to_str().ok_or("not a plain path")?;
+    run(&[podman.into(), "cp".into(), source.into(), format!("{container}:{target}")])?;
+    exec(&["chmod", "0644", target]).map(|_| ())
 }
 
 /// The agent's file at `path` in its sandbox, copied to `target` (`podman cp <container>:<path> -`, a tar stream

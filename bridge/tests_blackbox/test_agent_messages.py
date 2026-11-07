@@ -60,6 +60,8 @@ def test_a_linked_agent_gets_message_agent_and_its_call_brings_the_answer(bridge
     # its Hermes was given the new list (a new tools URL) and keeps the tool out of the tool search
     config = yaml.safe_load((profile(hub, "quotidien") / "config.yaml").read_text())
     assert "!mcp__bipagents__message_agent" in config["tools"]["tool_search"]["defer"]
+    # and giving it files, offered along (token lab of 2026-11-07: behind the search, the file never left)
+    assert "!mcp__bipagents__send_files_to_agent" in config["tools"]["tool_search"]["defer"]
     assert "?v=" in servers(profile(hub, "quotidien"))["bipagents"]["url"]
     # the call: in Quotidien and Coach's own conversation (agent_pairs.rs, test_agent_pairs.py), signed as a peer's
     # message, its answer brought back
@@ -73,6 +75,12 @@ def test_a_linked_agent_gets_message_agent_and_its_call_brings_the_answer(bridge
     assert runs[-1]["input"].endswith(
         "Message from Quotidien (@quotidien): Combien d'heures a-t-il dormi cette semaine ?")
     assert not [c for c in fakes.hermes.chats if c["agent"] == "coach"]      # nothing in its Bot Chat
+    # A path of Quotidien's own folders: Coach sees none of them, so nothing is sent (no hop counted) and Quotidien is
+    # told to give the file first (token lab of 2026-11-07: « dans /envoi/analyses.pdf », four times).
+    runs = len(fakes.hermes.started)
+    text, failed = ask(bridge, "quotidien", target="bip/coach", message="Lis /envoi/analyses.pdf, la ferritine ?")
+    assert failed and text.startswith("Nothing was sent: Coach sees none of your folders") and "send_files_to_agent" in text
+    assert len(fakes.hermes.started) == runs
     # the same conversation again, by name too
     text, failed = ask(bridge, "quotidien", target="Coach", message="Et la semaine d'avant ?")
     assert not failed and len([b for a, b in fakes.hermes.created if a == "coach"]) == 1

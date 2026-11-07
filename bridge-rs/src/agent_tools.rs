@@ -1821,7 +1821,8 @@ gives a MEDIA: line for your reply. Any other file you made (a spreadsheet, a do
 the person with give_file: their cloud drive's link, or a MEDIA: line for your reply (without it: save the file in \
 /envoi and end your reply with MEDIA:/envoi/<name>). mail_search, mail_read, mail_attachment and mail_draft reach the \
 mailboxes the person connected for you (drafts only: you never send). send_files_to_agent gives files to \
-another of your person's agents (it can't see your files); message_agent asks one of them and brings back its answer.";
+another of your person's agents: it sees none of your folders, your /partage included, so that tool is the way; \
+message_agent asks one of them and brings back its answer.";
 
 /// The `Mcp-Session-Id` the client sent.
 fn session_header(headers: &HeaderMap) -> Option<String> {
