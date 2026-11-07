@@ -91,6 +91,8 @@ def push_relay_service(runner: hermes.Runner, home: Path) -> str:
     if not runner.dry:
         bridgeconf.update(config, changed)
         (config.parent / "relay-clients").unlink(missing_ok=True)
+        from . import drain
+        drain.until_quiet(config, "bridge")   # the turns going on end first (drain.py)
     runner.run(bridge_restart(home), check=False)
     return ("notifications now go through the publisher's push relay" if member
             else "this bridge no longer relays other installs' notifications") + " (bridge restarted)"

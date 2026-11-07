@@ -46,6 +46,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -1982,6 +1983,57 @@ def _account_exists(user):
         return False
 
 
+def beat_of(server, disk, moves=True):
+    """The beat's body: each place's health (and whether 443 reaches its door), the server's vitals, each place's
+    memory, disk and what its bridge's files say, and (`moves`) the planned moves' phases."""
+    seats = health()
+    for number in doors_reached():
+        if str(number) in seats:
+            seats[str(number)]["door443"] = True
+    beat = {"seats": seats, "server": server, "places": with_disk(places_activity(places_memory()), disk)}
+    if moves:
+        add_moves(beat)
+    return beat
+
+
+# A run whose orders take long (a place's update waiting up to 5 minutes for its turns to end, then restarting what
+# changed; the next place's after it; an install; a move) beats again this often from a thread: the timer starts no
+# other run meanwhile, and the guichet takes a server silent for its down_minutes (10) for down (2026-11-07).
+BEAT_EVERY = 120.0
+
+
+class Beating(object):
+    """While the orders run: the beat again every `every` seconds, its answer left (the run's orders, settings and
+    credit are its first beat's). Without the moves: their cleanup and states belong to the run's own thread, and
+    the next run reports them."""
+
+    def __init__(self, conf, disk, every=None, send=None):
+        self.conf, self.disk = conf, disk
+        self.every = BEAT_EVERY if every is None else every
+        self.send = send or self._beat
+        self.stop = threading.Event()
+        self.thread = threading.Thread(target=self._loop, name="beat", daemon=True)
+
+    def _beat(self):
+        call(self.conf, "POST", "/v1/server/beat", beat_of(vitals(), self.disk, moves=False))
+
+    def _loop(self):
+        while not self.stop.wait(self.every):
+            try:
+                self.send()
+            except Exception as exc:   # never the orders' loss
+                log("beat between orders not sent: %s" % exc)
+
+    def __enter__(self):
+        self.thread.start()
+        return self
+
+    def __exit__(self, *exc):
+        self.stop.set()
+        self.thread.join(timeout=1)   # a beat under way ends with the process (a daemon thread)
+        return False
+
+
 def main(argv=()):
     if "--sample" in argv:
         return sample()
@@ -2024,13 +2076,7 @@ def main(argv=()):
     memory_settled(server)
     disk = disk_settled()
     try:
-        seats = health()
-        for number in doors_reached():
-            if str(number) in seats:
-                seats[str(number)]["door443"] = True
-        beat = {"seats": seats, "server": server, "places": with_disk(places_activity(places_memory()), disk)}
-        add_moves(beat)
-        answer = call(conf, "POST", "/v1/server/beat", beat)
+        answer = call(conf, "POST", "/v1/server/beat", beat_of(server, disk))
         orders = answer.get("orders") or []
     except (OSError, ValueError) as exc:
         log("guichet unreachable: %s" % exc)
@@ -2047,43 +2093,44 @@ def main(argv=()):
         log("doors on 443 not set: %s" % exc)
     memory_settled(server)
     done = read_done()
-    for order in orders:
-        if int(order.get("id", 0)) in done:
-            body = None
-        elif not verified(str(order.get("body", "")), str(order.get("signature", ""))):
-            log("order %s refused: not signed by the guichet" % order.get("id"))
-            continue
-        else:
-            body = accepted(order, conf["server"], done, time.time())
-            if body is None:
+    with Beating(conf, disk):   # a long order (an update waiting for its turns...): the server still beats
+        for order in orders:
+            if int(order.get("id", 0)) in done:
+                body = None
+            elif not verified(str(order.get("body", "")), str(order.get("signature", ""))):
+                log("order %s refused: not signed by the guichet" % order.get("id"))
                 continue
-            if body["action"] == "update":
-                if not update_order(int(body["seat"]), body["commit"]):
-                    continue   # held while the place moves: neither noted nor told done
-            elif body["action"] in MOVE_ACTIONS:
-                try:
-                    move(body)
-                except (OSError, ValueError, subprocess.SubprocessError) as exc:
-                    log("move order %s stopped: %s" % (order.get("id"), exc))
-            elif body["action"] == "remove":
-                try:
-                    remove(int(body["seat"]), body)
-                except OSError as exc:
-                    log("removing place %s stopped: %s" % (body["seat"], exc))
-            elif body["action"] == "reopen":
-                try:
-                    reopen(int(body["seat"]), body["pair"])
-                except OSError as exc:
-                    log("reopening place %s stopped: %s" % (body["seat"], exc))
             else:
-                reset(int(body["seat"]), body["setup"])
-            os.makedirs(os.path.dirname(DONE), exist_ok=True)
-            with open(DONE, "a") as fh:
-                fh.write("%d\n" % int(order["id"]))
-        try:
-            call(conf, "POST", "/v1/server/orders/%d/done" % int(order["id"]))
-        except (OSError, ValueError) as exc:
-            log("done not told yet (next round): %s" % exc)
+                body = accepted(order, conf["server"], done, time.time())
+                if body is None:
+                    continue
+                if body["action"] == "update":
+                    if not update_order(int(body["seat"]), body["commit"]):
+                        continue   # held while the place moves: neither noted nor told done
+                elif body["action"] in MOVE_ACTIONS:
+                    try:
+                        move(body)
+                    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+                        log("move order %s stopped: %s" % (order.get("id"), exc))
+                elif body["action"] == "remove":
+                    try:
+                        remove(int(body["seat"]), body)
+                    except OSError as exc:
+                        log("removing place %s stopped: %s" % (body["seat"], exc))
+                elif body["action"] == "reopen":
+                    try:
+                        reopen(int(body["seat"]), body["pair"])
+                    except OSError as exc:
+                        log("reopening place %s stopped: %s" % (body["seat"], exc))
+                else:
+                    reset(int(body["seat"]), body["setup"])
+                os.makedirs(os.path.dirname(DONE), exist_ok=True)
+                with open(DONE, "a") as fh:
+                    fh.write("%d\n" % int(order["id"]))
+            try:
+                call(conf, "POST", "/v1/server/orders/%d/done" % int(order["id"]))
+            except (OSError, ValueError) as exc:
+                log("done not told yet (next round): %s" % exc)
     zram()   # last: installing it may take a minute, once
     return 0
 

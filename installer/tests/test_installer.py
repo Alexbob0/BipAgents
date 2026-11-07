@@ -552,6 +552,8 @@ def test_a_bridge_relaying_for_another_moves_to_the_publishers_relay(tmp_path, m
     runner.dry = False
     ran = []
     runner.run = lambda args, **kw: ran.append(list(args)) or ""
+    from bipinstall import drain
+    monkeypatch.setattr(drain, "until_quiet", lambda path, what: ran.append(["drain", what, str(path)]) or "")
     monkeypatch.setattr(stack, "PUSH_SERVICE_URL", "")
     with pytest.raises(migrations.NotYet):
         migrations.push_relay_service(runner, tmp_path)
@@ -559,7 +561,7 @@ def test_a_bridge_relaying_for_another_moves_to_the_publishers_relay(tmp_path, m
     monkeypatch.setattr(stack, "PUSH_SERVICE_URL", "https://push.example.com")
     assert "publisher's push relay" in migrations.push_relay_service(runner, tmp_path)
     assert config.read_text() == 'bridge_key = "k"\n\n[push]\nservice_url = "https://push.example.com"\n[cron]\nwatch = true\n'
-    assert len(ran) == 1   # the bridge restarted
+    assert ran[0] == ["drain", "bridge", str(config)] and len(ran) == 2   # its turns waited for, then restarted
     # the administrator's side: its [relay] table and key file go
     config.write_text('bridge_key = "k"\n\n[relay]\nclients_file = "/x/relay-clients"\n\n[cron]\nwatch = true\n')
     (config.parent / "relay-clients").write_text("chi key\n")
