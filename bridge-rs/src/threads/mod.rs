@@ -33,6 +33,8 @@ pub mod layout;
 pub mod send;
 pub mod source;
 pub mod timeline;
+#[cfg(test)]
+mod timeline_guard;
 
 use std::collections::HashSet;
 use std::sync::{Arc, Weak};
@@ -1172,18 +1174,7 @@ async fn timeline_route(
         q.get("tz").and_then(crate::dates::parse_zone).unwrap_or_else(|| crate::dates::load(&state.config()).zone());
     let days = timeline::days(&items, zone);
     let Waiting { tip, approvals, questions, run } = waiting_here(&state, &agent, &thread, &segments, &items).await;
-    // how each turn that is over lays out (its work, its reply, the app's first word, exchanges), decided once for every
-    // app on the whole thread (thin apps, brick 7); `layout.open`: the first item of the turn going on, undecided
-    let mut items = items;
-    let shown = timeline::range(&items, &want);
-    let decided = layout::layout(&items, shown.clone(), run.is_some());
-    let open = open_on_page(&items, decided.open, &shown);
-    for (n, fields) in decided.fields {
-        items[n].body.insert("layout".into(), Value::Object(fields));
-    }
-    let page = timeline::page(items, &want).with_days(&days);
-    // a sent message no turn took (nothing runs here now, Hermes never stored it): « Pas envoyé », not « being sent »
-    let page = if run.is_none() { page.with_lost() } else { page };
+    let (page, open) = conversation_page(items, &want, &days, run.is_some());
     let queue =
         tip.as_deref().map(|t| crate::msg_queue::queues_of(&state).get(&agent.name).snapshot_of(&agent.name, t));
     let mut out_thread = thread.to_json();
@@ -1195,6 +1186,30 @@ async fn timeline_route(
     let mut answer = page.answer(out_thread, thread.version, pending, q.get("debug").is_some_and(|d| d == "1"));
     answer["layout"] = json!({"open": open});
     Ok(web::ok(answer))
+}
+
+/// A conversation's page as `timeline_route` serves it, and its `layout.open`: the items `want` asks for among the
+/// thread's (`items`), dated (`days`, of the whole thread), laid out; `running`: a turn goes on in the conversation.
+/// Pure: the guard (`timeline_guard.rs`) reads every small conversation every way through it (7/11: a page built here
+/// was a 500 that neither the unit tests nor the black-box suite had asked for).
+fn conversation_page(
+    mut items: Vec<Item>,
+    want: &Want,
+    days: &[Option<(chrono::NaiveDate, bool)>],
+    running: bool,
+) -> (timeline::Page, Option<String>) {
+    // how each turn that is over lays out (its work, its reply, the app's first word, exchanges), decided once for every
+    // app on the whole thread (thin apps, brick 7); `layout.open`: the first item of the turn going on, undecided
+    let shown = timeline::range(&items, want);
+    let decided = layout::layout(&items, shown.clone(), running);
+    let open = open_on_page(&items, decided.open, &shown);
+    for (n, fields) in decided.fields {
+        items[n].body.insert("layout".into(), Value::Object(fields));
+    }
+    let page = timeline::page(items, want).with_days(days);
+    // a sent message no turn took (nothing runs here now, Hermes never stored it): « Pas envoyé », not « being sent »
+    let page = if running { page } else { page.with_lost() };
+    (page, open)
 }
 
 /// The page's `layout.open`: the first item of the turn going on, named among the page's items (the page's first when
