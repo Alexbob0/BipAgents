@@ -281,6 +281,22 @@ fn may_rename_self(config: &Config, agent: &AgentConfig) -> bool {
         && !crate::project_agent::is_project(config, &agent.name)
 }
 
+/// Every tool [`tools`] may give, whoever the agent is (agent_tools.rs: each one has its words in the apps).
+#[cfg(test)]
+pub(crate) fn every_tool(config: &Config) -> Vec<Value> {
+    vec![
+        propose_agent_tool(),
+        suggest_switch_tool(),
+        propose_room_tool(),
+        crate::guide_team::tool(config),
+        asked_agent_tool(),
+        propose_profile_tool(),
+        propose_style_tool(),
+        create_project_tool(),
+        rename_yourself_tool(),
+    ]
+}
+
 fn rename_yourself_tool() -> Value {
     json!({
         "name": RENAME_SELF,

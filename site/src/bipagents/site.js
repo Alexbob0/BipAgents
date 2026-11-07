@@ -235,7 +235,8 @@ function workingPhrase(label, site, prompt) {
   if (label.use) {
     const verb = label.use === "mood" ? moodOf(prompt) : label.use, topic = topicOf(prompt);
     if (topic && TOOLS.topics?.[topic]?.[verb]) return TOOLS.topics[topic][verb];
-    if (label.use === "mood" && TOOLS.generic?.[verb]) return TOOLS.generic[verb];
+    // a connector's call with no topic: its own phrase (« J’utilise un service connecté… »), as in the apps
+    if (label.use === "mood" && label.kind !== "unknown" && TOOLS.generic?.[verb]) return TOOLS.generic[verb];
   }
   return words.now;
 }

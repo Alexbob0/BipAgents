@@ -680,6 +680,7 @@ impl Threads {
             ));
             previous = Some(rows);
         }
+        with_services(&self.config.get(), &agent.name, &mut items);
         crate::steps::fold(&mut items, &crate::handback::language_of(&self.config.get(), agent));
         if thread.kind != "main" {
             // a run without the person that had nothing to tell (« [SILENT] », or the code word translated): no reply
@@ -1301,6 +1302,31 @@ async fn item_route(
     let (_, thread, items) = all_items(&state, &id, &q).await?;
     let found = items.iter().find(|i| i.id == item).ok_or_else(HttpError::not_found)?;
     Ok(web::ok(found.to_json(&thread, q.get("debug").is_some_and(|d| d == "1"))))
+}
+
+/// A connector's calls with their connector's name (`tool.service`, connectors::service_in): the apps and the
+/// automatic « Étapes » say it instead of the tool's own name. A call through the tool search by the call it wraps.
+fn with_services(config: &crate::config::Config, agent: &str, items: &mut [Item]) {
+    let mut connectors = None;
+    for item in items.iter_mut().filter(|i| i.kind() == "tool") {
+        let Some(tool) = item.body.get_mut("tool").and_then(Value::as_object_mut) else { continue };
+        let mut name = tool.get("name").and_then(Value::as_str).unwrap_or("").to_string();
+        if name == "tool_call" {
+            let args = tool.get("arguments").and_then(Value::as_str).unwrap_or("");
+            let inner = serde_json::from_str::<Value>(args).ok().and_then(|a| {
+                let call = a.get("calls").and_then(|c| c.get(0)).cloned().unwrap_or(a);
+                call.get("name").and_then(Value::as_str).map(str::to_string)
+            });
+            name = inner.unwrap_or(name);
+        }
+        if crate::connectors::slug_of_tool(&name).is_none() {
+            continue;
+        }
+        let list = connectors.get_or_insert_with(|| crate::connectors::of_agent(config, agent));
+        if let Some(service) = crate::connectors::service_in(list, &name) {
+            tool.insert("service".into(), json!(service));
+        }
+    }
 }
 
 /// The person's documents with their file's own size, when the file is in the agent's uploads as the bridge sees them

@@ -148,8 +148,9 @@ pub fn counts(steps: &Value) -> (u64, u64) {
 // Alex 6/11: a turn of several actions without a list of the agent's own still gets its card, made by the bridge from
 // what the agent really did: one step per kind of action (consecutive calls of a kind are one step, with a count),
 // the call running the current step. Only from the 2nd step (a quick answer never gets one), at most `AUTO_VISIBLE`
-// lines (older done steps folded into « +N »). Labels are the bridge's words for the tool's kind, a count and at most a
-// site's domain: never an argument (a mail's subject, an address, a file's words). The agent's own list wins.
+// lines (older done steps folded into « +N »). Labels are the words of the tool's kind (scripts/tool-labels.py, in
+// tool_kinds.rs: every tool an agent can call has one), a count, at most a site's domain or a connector's name: never
+// an argument (a mail's subject, an address, a file's words) nor a tool's own name. The agent's own list wins.
 
 /// Lines an automatic list shows at most (the oldest done steps folded into a first « +N » line).
 pub const AUTO_VISIBLE: usize = 6;
@@ -160,208 +161,108 @@ pub struct Action {
     pub tool: String,
     /// The site a browsing call is on (its domain only).
     pub site: Option<String>,
+    /// The connector a connector's tool belongs to, by its name (« Météo du Grand-Est »: connectors::service_of).
+    pub service: Option<String>,
     pub running: bool,
     pub call_id: Option<String>,
 }
 
-/// The kind of step a tool makes (None: a call that is no step of the work: the tool search, memory, a question…).
-fn kind_of(tool: &str) -> Option<&'static str> {
-    let bare = crate::loop_brake::bare(tool);
-    let bare = bare.strip_prefix("mcp__stealth__").or_else(|| bare.strip_prefix("mcp_stealth_")).map_or(bare, |_| "site");
-    Some(match bare {
-        "site" | "browser_navigate" | "browser_click" | "browser_type" | "browser_snapshot" | "browser_scroll"
-        | "browser_exec" | "web_extract" => "site",
-        "mail_search" | "mail_overview" | "mail_list" => "mail_search",
-        "mail_read" => "mail_read",
-        "mail_draft" | "mail_send" | "mail_reply" => "mail_write",
-        "mail_bulk" | "mail_tidy" | "mail_rules" | "mail_move" => "mail_tidy",
-        "web_search" => "web_search",
-        "notebook_search" | "notebook_read" | "notebook_list" => "notebook_read",
-        "notebook_note" | "notebook_fill" | "notebook_write" => "notebook_write",
-        "calendar_list" => "calendar_read",
-        "calendar_add" | "calendar_update" => "calendar_write",
-        "reminders_list" => "reminders_read",
-        "reminders_add" => "reminders_write",
-        "contacts_search" => "contacts",
-        "create_page" => "page",
-        "map_image" => "map",
-        "weather" => "weather",
-        "read_file" | "search_files" | "list_files" => "files_read",
-        "write_file" | "patch" | "give_file" => "files_write",
-        "terminal" | "execute_code" => "compute",
-        "vision_analyze" => "image",
-        "start_task" | "propose_task" => "task",
-        "ask_agent" | "message_agent" => "agent",
-        "create_audio" | "create_podcast" => "audio",
-        "tool_search" | "tool_describe" | "tool_call" | "skill_view" | "skills_list" | "memory" | "clarify"
-        | "session_search" | "todo_list" | "todo" | "after_call" => return None,
-        _ => "other",
-    })
+/// The step a tool's calls make (tool_kinds.rs, its kind's): None for a call that is no step of the work (the tool
+/// search, memory, a question…), `unknown` for a connector's tool.
+fn step_of(tool: &str) -> Option<&'static str> {
+    let kind = crate::threads::layout::kind_of(tool);
+    if kind == "unknown" {
+        return Some("unknown");
+    }
+    crate::tool_kinds::KINDS.iter().find(|k| k.id == kind).and_then(|k| k.step)
 }
 
-/// A step's words in the agent's language (fr, en, de, es; others English): its kind, its count, its site.
-fn label(kind: &str, n: usize, site: Option<&str>, lang: &str) -> String {
-    let l = match lang {
+/// The step that names its site (« Ouvrir le site kiabi.fr »): the browser's and a web page read.
+const SITE_STEP: &str = "browser";
+
+/// fr, en, de, es (others English).
+fn lang_index(lang: &str) -> usize {
+    match lang {
         "fr" => 0,
         "de" => 2,
         "es" => 3,
         _ => 1,
-    };
-    let pick = |one: [&str; 4], many: [&str; 4]| {
-        if n > 1 {
-            many[l].replace("{n}", &n.to_string())
-        } else {
-            one[l].to_string()
-        }
-    };
-    match kind {
-        "site" => match (site, n) {
-            (Some(s), 1) => ["Ouvrir le site {s}", "Open {s}", "{s} öffnen", "Abrir {s}"][l].replace("{s}", s),
-            (Some(s), _) => ["Naviguer sur {s}", "Browse {s}", "Auf {s} navigieren", "Navegar por {s}"][l].replace("{s}", s),
-            (None, _) => pick(
-                ["Ouvrir un site", "Open a site", "Eine Website öffnen", "Abrir un sitio"],
-                ["Naviguer sur le web", "Browse the web", "Im Web navigieren", "Navegar por la web"],
-            ),
-        },
-        "mail_search" => pick(
-            ["Chercher dans tes mails", "Search your mail", "In deinen Mails suchen", "Buscar en tu correo"],
-            ["Chercher dans tes mails", "Search your mail", "In deinen Mails suchen", "Buscar en tu correo"],
-        ),
-        "mail_read" => pick(
-            ["Lire un mail", "Read an email", "Eine Mail lesen", "Leer un correo"],
-            ["Lire {n} mails", "Read {n} emails", "{n} Mails lesen", "Leer {n} correos"],
-        ),
-        "mail_write" => pick(
-            ["Écrire un mail", "Write an email", "Eine Mail schreiben", "Escribir un correo"],
-            ["Écrire {n} mails", "Write {n} emails", "{n} Mails schreiben", "Escribir {n} correos"],
-        ),
-        "mail_tidy" => pick(
-            ["Ranger tes mails", "Sort your mail", "Deine Mails ordnen", "Ordenar tu correo"],
-            ["Ranger tes mails", "Sort your mail", "Deine Mails ordnen", "Ordenar tu correo"],
-        ),
-        "web_search" => pick(
-            ["Chercher sur le web", "Search the web", "Im Web suchen", "Buscar en la web"],
-            ["Faire {n} recherches sur le web", "Run {n} web searches", "{n} Websuchen", "Hacer {n} búsquedas en la web"],
-        ),
-        "notebook_read" => pick(
-            ["Chercher dans ton Carnet", "Look in your Notebook", "In deinem Notizbuch suchen", "Buscar en tu Cuaderno"],
-            ["Chercher dans ton Carnet", "Look in your Notebook", "In deinem Notizbuch suchen", "Buscar en tu Cuaderno"],
-        ),
-        "notebook_write" => pick(
-            ["Noter dans ton Carnet", "Note it in your Notebook", "Im Notizbuch notieren", "Anotar en tu Cuaderno"],
-            ["Noter dans ton Carnet", "Note it in your Notebook", "Im Notizbuch notieren", "Anotar en tu Cuaderno"],
-        ),
-        "calendar_read" => pick(
-            ["Regarder ton agenda", "Check your calendar", "Deinen Kalender ansehen", "Mirar tu agenda"],
-            ["Regarder ton agenda", "Check your calendar", "Deinen Kalender ansehen", "Mirar tu agenda"],
-        ),
-        "calendar_write" => pick(
-            ["Ajouter à ton agenda", "Add to your calendar", "In den Kalender eintragen", "Añadir a tu agenda"],
-            ["Ajouter {n} événements", "Add {n} events", "{n} Termine eintragen", "Añadir {n} eventos"],
-        ),
-        "reminders_read" => pick(
-            ["Regarder tes rappels", "Check your reminders", "Deine Erinnerungen ansehen", "Mirar tus recordatorios"],
-            ["Regarder tes rappels", "Check your reminders", "Deine Erinnerungen ansehen", "Mirar tus recordatorios"],
-        ),
-        "reminders_write" => pick(
-            ["Créer un rappel", "Set a reminder", "Eine Erinnerung anlegen", "Crear un recordatorio"],
-            ["Créer {n} rappels", "Set {n} reminders", "{n} Erinnerungen anlegen", "Crear {n} recordatorios"],
-        ),
-        "contacts" => pick(
-            ["Chercher dans tes contacts", "Look in your contacts", "In deinen Kontakten suchen", "Buscar en tus contactos"],
-            ["Chercher dans tes contacts", "Look in your contacts", "In deinen Kontakten suchen", "Buscar en tus contactos"],
-        ),
-        "page" => pick(
-            ["Préparer une page", "Make a page", "Eine Seite erstellen", "Preparar una página"],
-            ["Préparer {n} pages", "Make {n} pages", "{n} Seiten erstellen", "Preparar {n} páginas"],
-        ),
-        "map" => pick(
-            ["Faire une carte", "Make a map", "Eine Karte erstellen", "Hacer un mapa"],
-            ["Faire {n} cartes", "Make {n} maps", "{n} Karten erstellen", "Hacer {n} mapas"],
-        ),
-        "weather" => pick(
-            ["Regarder la météo", "Check the weather", "Das Wetter ansehen", "Mirar el tiempo"],
-            ["Regarder la météo", "Check the weather", "Das Wetter ansehen", "Mirar el tiempo"],
-        ),
-        "files_read" => pick(
-            ["Lire un fichier", "Read a file", "Eine Datei lesen", "Leer un archivo"],
-            ["Lire {n} fichiers", "Read {n} files", "{n} Dateien lesen", "Leer {n} archivos"],
-        ),
-        "files_write" => pick(
-            ["Préparer un fichier", "Make a file", "Eine Datei erstellen", "Preparar un archivo"],
-            ["Préparer {n} fichiers", "Make {n} files", "{n} Dateien erstellen", "Preparar {n} archivos"],
-        ),
-        "compute" => pick(
-            ["Faire un calcul", "Run a calculation", "Etwas berechnen", "Hacer un cálculo"],
-            ["Faire des calculs", "Run calculations", "Berechnungen durchführen", "Hacer cálculos"],
-        ),
-        "image" => pick(
-            ["Regarder une image", "Look at an image", "Ein Bild ansehen", "Mirar una imagen"],
-            ["Regarder {n} images", "Look at {n} images", "{n} Bilder ansehen", "Mirar {n} imágenes"],
-        ),
-        "task" => pick(
-            ["Lancer une tâche de fond", "Start a background task", "Eine Hintergrundaufgabe starten", "Iniciar una tarea de fondo"],
-            ["Lancer une tâche de fond", "Start a background task", "Eine Hintergrundaufgabe starten", "Iniciar una tarea de fondo"],
-        ),
-        "agent" => pick(
-            ["Demander à un autre agent", "Ask another agent", "Einen anderen Agenten fragen", "Preguntar a otro agente"],
-            ["Demander à d'autres agents", "Ask other agents", "Andere Agenten fragen", "Preguntar a otros agentes"],
-        ),
-        "audio" => pick(
-            ["Préparer l'audio", "Make the audio", "Das Audio erstellen", "Preparar el audio"],
-            ["Préparer l'audio", "Make the audio", "Das Audio erstellen", "Preparar el audio"],
-        ),
-        _ => pick(
-            ["Utiliser un outil", "Use a tool", "Ein Werkzeug benutzen", "Usar una herramienta"],
-            ["Utiliser {n} outils", "Use {n} tools", "{n} Werkzeuge benutzen", "Usar {n} herramientas"],
-        ),
+    }
+}
+
+/// A step's words in the agent's language: its count, its site, its connector.
+fn label(step: &str, n: usize, site: Option<&str>, service: Option<&str>, lang: &str) -> String {
+    use crate::tool_kinds::{STEPS, STEP_SERVICE, STEP_SITE_MANY, STEP_SITE_ONE};
+    let l = lang_index(lang);
+    match (step, site, service) {
+        (SITE_STEP, Some(s), _) => return (if n == 1 { STEP_SITE_ONE } else { STEP_SITE_MANY })[l].replace("{s}", s),
+        ("unknown", _, Some(s)) => return STEP_SERVICE[l].replace("{s}", s),
+        _ => {}
+    }
+    let words = STEPS.iter().find(|w| w.id == step).or_else(|| STEPS.iter().find(|w| w.id == "unknown"));
+    let Some(words) = words else { return String::new() };
+    if n > 1 {
+        words.many[l].replace("{n}", &n.to_string())
+    } else {
+        words.one[l].to_string()
     }
 }
 
 /// The site of a browsing call: the domain of the first web address in its words (arguments or preview), nothing else.
 pub fn site_of(tool: &str, words: &str) -> Option<String> {
-    (kind_of(tool) == Some("site")).then(|| crate::live_activities::site(words)).flatten()
+    (step_of(tool) == Some(SITE_STEP)).then(|| crate::live_activities::site(words)).flatten()
 }
 
 /// The automatic list of these calls (None: fewer than 2 steps). `running`: whether a running call is the current
 /// step (a stored turn that ended: every step done).
 pub fn auto_steps(actions: &[Action], lang: &str) -> Option<Value> {
-    // (kind, count, site, same site throughout, running)
-    let mut steps: Vec<(&'static str, usize, Option<String>, bool, bool)> = Vec::new();
+    struct Run<'a> {
+        step: &'static str,
+        n: usize,
+        site: Option<String>,
+        /// the same site throughout
+        same: bool,
+        service: Option<&'a str>,
+        running: bool,
+    }
+    let mut steps: Vec<Run> = Vec::new();
     for action in actions {
-        let Some(kind) = kind_of(&action.tool) else { continue };
+        let Some(step) = step_of(&action.tool) else { continue };
+        let service = action.service.as_deref();
         match steps.last_mut() {
-            Some(last) if last.0 == kind => {
-                last.1 += 1;
-                if last.2.is_none() {
-                    last.2 = action.site.clone();
-                } else if action.site.is_some() && action.site != last.2 {
-                    last.3 = false;
+            // a connector's calls: one step per connector
+            Some(last) if last.step == step && (step != "unknown" || last.service == service) => {
+                last.n += 1;
+                if last.site.is_none() {
+                    last.site = action.site.clone();
+                } else if action.site.is_some() && action.site != last.site {
+                    last.same = false;
                 }
-                last.4 |= action.running;
+                last.running |= action.running;
             }
-            _ => steps.push((kind, 1, action.site.clone(), true, action.running)),
+            _ => {
+                steps.push(Run { step, n: 1, site: action.site.clone(), same: true, service, running: action.running })
+            }
         }
     }
     if steps.len() < 2 {
         return None;
     }
     let total = steps.len();
-    let done = steps.iter().filter(|s| !s.4).count();
+    let done = steps.iter().filter(|s| !s.running).count();
+    let l = lang_index(lang);
     let mut items: Vec<Value> = steps
         .iter()
-        .map(|(kind, n, site, same, running)| {
+        .map(|run| {
             // several sites in one step: a count, no domain
-            let site = site.as_deref().filter(|_| *same);
-            let n = if *kind == "site" && !*same { (*n).max(2) } else { *n };
-            let text = if *kind == "site" && site.is_none() && n > 1 {
-                ["Ouvrir {n} sites", "Open {n} sites", "{n} Websites öffnen", "Abrir {n} sitios"]
-                    [match lang { "fr" => 0, "de" => 2, "es" => 3, _ => 1 }]
-                    .replace("{n}", &n.to_string())
+            let site = run.site.as_deref().filter(|_| run.same);
+            let n = if run.step == SITE_STEP && !run.same { run.n.max(2) } else { run.n };
+            let text = if run.step == SITE_STEP && site.is_none() && n > 1 {
+                crate::tool_kinds::STEP_SITES[l].replace("{n}", &n.to_string())
             } else {
-                label(kind, n, site, lang)
+                label(run.step, n, site, run.service, lang)
             };
-            json!({"text": text, "status": if *running { "in_progress" } else { "done" }})
+            json!({"text": text, "status": if run.running { "in_progress" } else { "done" }})
         })
         .collect();
     if items.len() > AUTO_VISIBLE {
@@ -369,9 +270,7 @@ pub fn auto_steps(actions: &[Action], lang: &str) -> Option<Value> {
         let fold = items.len() - (AUTO_VISIBLE - 1);
         let folded = items[..fold].iter().all(|i| i["status"] == "done");
         if folded {
-            let more = ["+{n} étapes", "+{n} steps", "+{n} Schritte", "+{n} pasos"]
-                [match lang { "fr" => 0, "de" => 2, "es" => 3, _ => 1 }]
-                .replace("{n}", &fold.to_string());
+            let more = crate::tool_kinds::STEP_MORE[l].replace("{n}", &fold.to_string());
             items.splice(..fold, [json!({"text": more, "status": "done", "folded": fold})]);
         }
     }
@@ -395,6 +294,7 @@ fn action_of(item: &Item) -> Option<Action> {
         running: tool.get("status").and_then(Value::as_str) == Some("running"),
         tool: name,
         site,
+        service: tool.get("service").and_then(Value::as_str).map(str::to_string),
         call_id: tool.get("call_id").and_then(Value::as_str).map(str::to_string),
     })
 }
@@ -545,7 +445,7 @@ mod tests {
     }
 
     fn act(tool: &str, site: Option<&str>, running: bool) -> Action {
-        Action { tool: tool.into(), site: site.map(str::to_string), running, call_id: None }
+        Action { tool: tool.into(), site: site.map(str::to_string), service: None, running, call_id: None }
     }
 
     fn texts(steps: &Value) -> Vec<(String, String)> {
@@ -629,6 +529,50 @@ mod tests {
             act("mcp__stealth__navigate", Some("b.fr"), false),
         ];
         assert_eq!(texts(&auto_steps(&calls, "fr").unwrap())[2].0, "Ouvrir 2 sites");
+    }
+
+    /// Alex 7/11: « Utiliser un outil » for a tool the bridge didn't know. Every tool's step is in its words (the
+    /// table, scripts/tool-labels.py); a connector's by its connector's name, else a neutral phrase: never a tool's
+    /// own name.
+    #[test]
+    fn every_step_has_its_words_never_a_tools_name() {
+        let with = |tool: &str, service: Option<&str>| Action {
+            tool: tool.into(),
+            site: None,
+            service: service.map(str::to_string),
+            running: false,
+            call_id: None,
+        };
+        let calls = [
+            with("mcp__bipagents__routine_schedule", None),
+            with("mcp__bipagents__give_file", None),
+            with("mcp__bipagents__give_file", None),
+            with("mcp__bipconn_meteo_du_grand_est__forecast", Some("Météo du Grand-Est")),
+            with("mcp__bipconn_meteo_du_grand_est__alerts", Some("Météo du Grand-Est")),
+            with("mcp__acme__fetch_invoices", None),
+            with("upcoming_dates", None),
+        ];
+        assert_eq!(
+            texts(&auto_steps(&calls, "fr").unwrap()),
+            [
+                pair("Mettre à jour une routine", "done"),
+                pair("Donner 2 fichiers", "done"),
+                pair("Utiliser Météo du Grand-Est", "done"),
+                pair("Utiliser un service connecté", "done"),
+                pair("Regarder les dates à venir", "done"),
+            ]
+        );
+        let english: Vec<String> = texts(&auto_steps(&calls, "en").unwrap()).into_iter().map(|t| t.0).collect();
+        assert_eq!(english[..2], ["Update a routine".to_string(), "Hand over 2 files".to_string()]);
+        for lang in ["fr", "en", "de", "es"] {
+            for kind in crate::tool_kinds::KINDS {
+                let Some(step) = kind.step else { continue };
+                for n in [1, 3] {
+                    let text = label(step, n, None, None, lang);
+                    assert!(!text.is_empty() && !text.contains('_') && !text.contains('{'), "{lang} {step}: {text}");
+                }
+            }
+        }
     }
 
     fn item_of(id: &str, turn: &str, pos: (u32, i64, u32), body: Value) -> Item {
