@@ -171,7 +171,8 @@ agent va dans l'agenda de ton téléphone (celui de ton compte, Google Agenda pa
 autorises BipAgents à utiliser l'agenda ; comme tout événement de cet agenda, il est synchronisé par le fournisseur de
 ton compte. L'app envoie alors à ton serveur seulement le titre et l'heure de ces rappels-là, à venir, pour que l'agent
 sache ce qu'il a déjà demandé, et rien d'autre de ton agenda (sauf si tu partages aussi « Calendrier »). Si tu as un
-iPhone et un téléphone Android, ces rappels vont dans l'app Rappels de l'iPhone. Les rappels par lieu sont décrits
+iPhone et un téléphone Android, ces rappels vont sur le téléphone d'où tu les demandes (l'app dit à ton serveur de
+quel type de téléphone part un message, rien de plus). Les rappels par lieu sont décrits
 ci-dessous.
 
 **Ton Carnet.** Tes agents tiennent un carnet de ce que tu leur dis qui comptera encore (les personnes de ta vie,

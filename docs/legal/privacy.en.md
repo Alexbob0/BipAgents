@@ -163,7 +163,7 @@ your phone's calendar (your account's, Google Calendar for instance), with an al
 calendar; like any event of that calendar, it is synced by your account's provider. The app then sends your server
 only the title and time of those reminders, to come, so the agent knows what it already asked for, and nothing else
 from your calendar (unless you also share Calendar). If you have both an iPhone and an Android phone, these reminders
-go into the iPhone's Reminders app. Reminders by place are described below.
+go to the phone you asked from (the app tells your server which kind of phone a message comes from, nothing more). Reminders by place are described below.
 
 **Your Carnet (Notebook).** Your agents keep a notebook of what you tell them that will still matter (the people
 in your life, your projects, important dates, the tasks you ask for), as text pages **only on your server** (or your

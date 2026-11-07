@@ -177,7 +177,8 @@ deines Kontos, zum Beispiel Google Kalender), mit einem Alarm, wenn du BipAgents
 jeder Termin dieses Kalenders wird sie vom Anbieter deines Kontos synchronisiert. Die App sendet deinem Server dann nur
 Titel und Uhrzeit dieser Erinnerungen, die noch kommen, damit der Agent weiß, worum er schon gebeten hat, und sonst
 nichts aus deinem Kalender (außer du teilst auch „Kalender“). Hast du ein iPhone und ein Android-Handy, kommen diese
-Erinnerungen in die Erinnerungen-App des iPhones. Erinnerungen an Orten werden unten beschrieben.
+Erinnerungen auf das Handy, von dem aus du darum bittest (die App sagt deinem Server, von welcher Art Handy eine
+Nachricht kommt, sonst nichts). Erinnerungen an Orten werden unten beschrieben.
 
 **Dein Notizbuch (« Carnet »).** Deine Agenten führen ein Notizbuch mit dem, was du ihnen sagst und was wichtig
 bleibt (die Menschen in deinem Leben, deine Projekte, wichtige Daten, die Aufgaben, um die du bittest), als Textseiten
