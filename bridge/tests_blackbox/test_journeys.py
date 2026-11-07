@@ -8,6 +8,7 @@ the model's input only. These tests check what the person would SEE, before and 
 
 Each test is one journey `Jnn` of the list (the same numbers in the doc and in the apps' journeys)."""
 import json
+import socket
 import time
 
 import pytest
@@ -375,6 +376,21 @@ def test_j19_the_queue_shows_each_kind_waiting(journey):
     assert len(queue["items"]) == 3, queue
     displayable.check(journey.bridge, journey.page(), AGENT)
     journey.bridge.post(f"/v1/threads/{journey.thread}/stop", headers=AUTH, json={"agent": AGENT})
+
+
+def test_j19_a_message_whose_phone_goes_away_as_it_is_sent_still_gets_its_turn(journey):
+    """J19 closes the app right after « Envoyer »: a phone gone mid-send (killed, its network lost) must not leave its
+    message half-sent. 7/11: the request dropped with its connection, the message kept « being sent » with no turn
+    started (cut 10 ms in), or not kept at all."""
+    body = json.dumps({"agent": AGENT, "client_id": cid(194), "text": "Bonjour, tu es là ?", "phone": "ios"}).encode()
+    with socket.create_connection(("127.0.0.1", journey.bridge.port), timeout=10) as phone:
+        phone.sendall((f"POST /v1/threads/{journey.thread}/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                       f"Authorization: {AUTH['Authorization']}\r\nContent-Type: application/json\r\n"
+                       f"Content-Length: {len(body)}\r\n\r\n").encode() + body)
+    # gone at once: the bridge carries the message out whole all the same
+    page = reply_done(journey, "Bien reçu")
+    assert the_message(page, cid(194)).get("not_sent") is None
+    displayable.check(journey.bridge, page, AGENT)
 
 
 # -- the Boîte ---------------------------------------------------------------------------------------------------

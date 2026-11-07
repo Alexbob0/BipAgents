@@ -40,7 +40,7 @@ use std::time::Duration;
 
 use axum::body::Body;
 use axum::extract::{Path as UrlPath, State};
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::Router;
 use base64::Engine;
@@ -1593,6 +1593,32 @@ async fn send_route(
     Ok(web::ok(send::send(&state, &agent, thread, body).await?))
 }
 
+/// A person's message (`POST /v1/threads/{thread}/messages`) carried out whole even when its phone goes away meanwhile
+/// (the app killed right after « Envoyer », its network lost). The server drops a request with its connection: one
+/// dropped half-way left the message « being sent » with no turn started, or not kept at all (7/11: cut 10 ms in;
+/// release journeys J19, the conversation reopened empty). Its body read first, the request then runs apart from the
+/// connection, to its end. The outermost layer (app.rs): every await of the request is behind it.
+pub async fn send_whole(request: axum::extract::Request, next: axum::middleware::Next) -> Response {
+    if !is_send(request.method(), request.uri().path()) {
+        return next.run(request).await;
+    }
+    let limit = crate::body_limit::limit_for(request.uri().path()).unwrap_or(crate::body_limit::DEFAULT_BYTES);
+    let (parts, body) = request.into_parts();
+    let bytes = match axum::body::to_bytes(body, limit as usize).await {
+        Ok(bytes) => bytes,
+        Err(err) if crate::body_limit::is_too_large(&err) => return crate::body_limit::too_large_response(),
+        Err(_) => return HttpError::new(400, "the message did not arrive whole").into_response(),
+    };
+    let whole = tokio::spawn(next.run(axum::extract::Request::from_parts(parts, Body::from(bytes))));
+    whole.await.unwrap_or_else(|_| HttpError::internal().into_response())
+}
+
+/// `POST /v1/threads/{thread}/messages`.
+fn is_send(method: &axum::http::Method, path: &str) -> bool {
+    let thread = path.strip_prefix("/v1/threads/").and_then(|rest| rest.strip_suffix("/messages"));
+    method == axum::http::Method::POST && thread.is_some_and(|t| !t.is_empty() && !t.contains('/'))
+}
+
 async fn stop_route(
     State(state): State<AppState>,
     UrlPath(id): UrlPath<String>,
@@ -1709,5 +1735,23 @@ mod page_open_tests {
         assert_eq!(open_on_page(&items, Some(2), &(3..3)), None);
         assert_eq!(open_on_page(&[], Some(0), &(0..0)), None);
         assert_eq!(open_on_page(&items, None, &(0..3)), None);
+    }
+}
+
+#[cfg(test)]
+mod send_whole_tests {
+    use super::is_send;
+    use axum::http::Method;
+
+    #[test]
+    fn only_a_message_sent_runs_apart_from_its_connection() {
+        assert!(is_send(&Method::POST, "/v1/threads/main/messages"));
+        assert!(is_send(&Method::POST, "/v1/threads/t_001a1b5c/messages"));
+        assert!(is_send(&Method::POST, "/v1/threads/room:abc/messages"));
+        assert!(!is_send(&Method::GET, "/v1/threads/main/messages"));
+        assert!(!is_send(&Method::POST, "/v1/threads/main/stop"));
+        assert!(!is_send(&Method::POST, "/v1/threads//messages"));
+        assert!(!is_send(&Method::POST, "/v1/threads/main/items/x/messages"));
+        assert!(!is_send(&Method::POST, "/v1/messages"));
     }
 }
