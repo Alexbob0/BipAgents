@@ -4,7 +4,8 @@
   {
    "id": "notebookSearch",
    "names": [
-    "notebook_search"
+    "notebook_search",
+    "notebook_list"
    ],
    "prefixes": [],
    "keys": [
@@ -36,7 +37,8 @@
   {
    "id": "notebookNote",
    "names": [
-    "notebook_note"
+    "notebook_note",
+    "notebook_write"
    ],
    "prefixes": [],
    "keys": [
@@ -316,7 +318,8 @@
   {
    "id": "mailSearch",
    "names": [
-    "mail_search"
+    "mail_search",
+    "mail_list"
    ],
    "prefixes": [],
    "keys": [
@@ -349,7 +352,9 @@
   {
    "id": "mailDraft",
    "names": [
-    "mail_draft"
+    "mail_draft",
+    "mail_send",
+    "mail_reply"
    ],
    "prefixes": [],
    "keys": [
@@ -428,7 +433,8 @@
   {
    "id": "messageAgent",
    "names": [
-    "message_agent"
+    "message_agent",
+    "ask_agent"
    ],
    "prefixes": [],
    "keys": [
@@ -553,7 +559,8 @@
    "id": "readFile",
    "names": [
     "read_file",
-    "search_files"
+    "search_files",
+    "list_files"
    ],
    "prefixes": [],
    "keys": [
@@ -851,6 +858,561 @@
    "keys": [
     "queries",
     "names"
+   ],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "giveFile",
+   "names": [
+    "give_file"
+   ],
+   "prefixes": [],
+   "keys": [
+    "title",
+    "path"
+   ],
+   "counts": true,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "routine",
+   "names": [
+    "routine_schedule",
+    "routine_trigger"
+   ],
+   "prefixes": [],
+   "keys": [
+    "name"
+   ],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "mailOverview",
+   "names": [
+    "mail_overview"
+   ],
+   "prefixes": [],
+   "keys": [],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "mailBulk",
+   "names": [
+    "mail_bulk",
+    "mail_tidy",
+    "mail_rules",
+    "mail_move"
+   ],
+   "prefixes": [],
+   "keys": [],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "map",
+   "names": [
+    "map_image"
+   ],
+   "prefixes": [],
+   "keys": [
+    "title",
+    "place",
+    "center"
+   ],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "notebookRecord",
+   "names": [
+    "notebook_record"
+   ],
+   "prefixes": [],
+   "keys": [],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "archiveSearch",
+   "names": [
+    "archive_search"
+   ],
+   "prefixes": [],
+   "keys": [
+    "query"
+   ],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "archiveRead",
+   "names": [
+    "archive_read"
+   ],
+   "prefixes": [],
+   "keys": [],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "archiveRecords",
+   "names": [
+    "archive_records"
+   ],
+   "prefixes": [],
+   "keys": [
+    "archive"
+   ],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "upcomingDates",
+   "names": [
+    "upcoming_dates"
+   ],
+   "prefixes": [],
+   "keys": [],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "findDate",
+   "names": [
+    "find_date"
+   ],
+   "prefixes": [],
+   "keys": [
+    "title"
+   ],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "tellFamily",
+   "names": [
+    "tell_family"
+   ],
+   "prefixes": [],
+   "keys": [
+    "to"
+   ],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "familyMembers",
+   "names": [
+    "family_members"
+   ],
+   "prefixes": [],
+   "keys": [],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "familyNotebookRead",
+   "names": [
+    "family_notebook_read"
+   ],
+   "prefixes": [],
+   "keys": [],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "familyNotebookWrite",
+   "names": [
+    "family_notebook_write"
+   ],
+   "prefixes": [],
+   "keys": [
+    "list",
+    "title",
+    "text"
+   ],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "friendsCard",
+   "names": [
+    "friends_card"
+   ],
+   "prefixes": [],
+   "keys": [
+    "title"
+   ],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "roomHistory",
+   "names": [
+    "room_history"
+   ],
+   "prefixes": [],
+   "keys": [
+    "query"
+   ],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "proposeRoom",
+   "names": [
+    "propose_room"
+   ],
+   "prefixes": [],
+   "keys": [
+    "title"
+   ],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "proposeTeam",
+   "names": [
+    "propose_team"
+   ],
+   "prefixes": [],
+   "keys": [
+    "subject"
+   ],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "suggestSwitch",
+   "names": [
+    "suggest_switch"
+   ],
+   "prefixes": [],
+   "keys": [],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "proposeProfile",
+   "names": [
+    "propose_profile"
+   ],
+   "prefixes": [],
+   "keys": [],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "projectAgent",
+   "names": [
+    "create_project_agent"
+   ],
+   "prefixes": [],
+   "keys": [
+    "name"
+   ],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "renameSelf",
+   "names": [
+    "rename_yourself"
+   ],
+   "prefixes": [],
+   "keys": [
+    "name"
+   ],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "findTemplate",
+   "names": [
+    "find_template"
+   ],
+   "prefixes": [],
+   "keys": [
+    "need"
+   ],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "handOver",
+   "names": [
+    "hand_over_payment"
+   ],
+   "prefixes": [],
+   "keys": [
+    "site"
+   ],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "account",
+   "names": [
+    "vault_create_login",
+    "vault_confirm_login"
+   ],
+   "prefixes": [],
+   "keys": [
+    "site"
+   ],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "contactDetailsRead",
+   "names": [
+    "vault_contact_details"
+   ],
+   "prefixes": [],
+   "keys": [],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "contactDetailsSave",
+   "names": [
+    "vault_save_contact_details"
+   ],
+   "prefixes": [],
+   "keys": [],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "phoneExit",
+   "names": [
+    "ask_phone_exit"
+   ],
+   "prefixes": [],
+   "keys": [
+    "site"
+   ],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "sitesList",
+   "names": [
+    "sandbox_sites"
+   ],
+   "prefixes": [],
+   "keys": [],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "sitesRequest",
+   "names": [
+    "sandbox_sites_request"
+   ],
+   "prefixes": [],
+   "keys": [
+    "host"
+   ],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "sendToService",
+   "names": [
+    "send_file_to_service"
+   ],
+   "prefixes": [],
+   "keys": [
+    "service",
+    "path"
+   ],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "spaceEstimate",
+   "names": [
+    "space_estimate"
+   ],
+   "prefixes": [],
+   "keys": [],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "heavyWork",
+   "names": [
+    "heavy_work"
+   ],
+   "prefixes": [],
+   "keys": [
+    "what"
+   ],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "heavyWorkDone",
+   "names": [
+    "heavy_work_done"
+   ],
+   "prefixes": [],
+   "keys": [],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "connections",
+   "names": [
+    "manage_connections"
+   ],
+   "prefixes": [],
+   "keys": [],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "kanban",
+   "names": [],
+   "prefixes": [
+    "kanban_"
+   ],
+   "keys": [
+    "title"
+   ],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "computer",
+   "names": [
+    "computer_use"
+   ],
+   "prefixes": [],
+   "keys": [],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "xSearch",
+   "names": [
+    "x_search"
+   ],
+   "prefixes": [],
+   "keys": [
+    "query"
+   ],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "video",
+   "names": [
+    "video_analyze"
+   ],
+   "prefixes": [],
+   "keys": [
+    "question"
+   ],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
+   "id": "videoCreate",
+   "names": [
+    "video_generate",
+    "xai_video_edit",
+    "xai_video_extend"
+   ],
+   "prefixes": [],
+   "keys": [
+    "prompt"
    ],
    "counts": false,
    "target": [],
@@ -1170,6 +1732,211 @@
      "many": null,
      "now": "Je cherche le bon outil…"
     },
+    "giveFile": {
+     "one": "Te donne un fichier",
+     "many": "Te donne {n} fichiers",
+     "now": "Je te donne un fichier…"
+    },
+    "routine": {
+     "one": "Met à jour une routine",
+     "many": "Met à jour {n} routines",
+     "now": "Je mets à jour ta routine…"
+    },
+    "mailOverview": {
+     "one": "Fait le point sur tes e-mails",
+     "many": null,
+     "now": "Je fais le point sur tes mails…"
+    },
+    "mailBulk": {
+     "one": "Range tes e-mails",
+     "many": null,
+     "now": "Je range tes mails…"
+    },
+    "map": {
+     "one": "Prépare une carte",
+     "many": "Prépare {n} cartes",
+     "now": "Je prépare une carte…"
+    },
+    "notebookRecord": {
+     "one": "Note un achat ou un papier",
+     "many": "Note {n} achats ou papiers",
+     "now": "Je note un achat ou un papier dans ton Carnet…"
+    },
+    "archiveSearch": {
+     "one": "Cherche dans tes archives",
+     "many": "Cherche {n} fois dans tes archives",
+     "now": "Je cherche dans tes archives…"
+    },
+    "archiveRead": {
+     "one": "Lit un document archivé",
+     "many": "Lit {n} documents archivés",
+     "now": "Je lis un document de tes archives…"
+    },
+    "archiveRecords": {
+     "one": "Remplit le Carnet depuis tes archives",
+     "many": null,
+     "now": "Je remplis ton Carnet depuis tes archives…"
+    },
+    "upcomingDates": {
+     "one": "Regarde les dates à venir",
+     "many": null,
+     "now": "Je regarde les dates à venir…"
+    },
+    "findDate": {
+     "one": "Cherche une date avec tes proches",
+     "many": null,
+     "now": "Je cherche une date qui arrange tout le monde…"
+    },
+    "tellFamily": {
+     "one": "Propose un mot pour ta famille",
+     "many": null,
+     "now": "Je prépare un mot pour ta famille…"
+    },
+    "familyMembers": {
+     "one": "Regarde qui est dans ta famille",
+     "many": null,
+     "now": "Je regarde qui est dans ta famille…"
+    },
+    "familyNotebookRead": {
+     "one": "Lit le Carnet de la famille",
+     "many": null,
+     "now": "Je lis le Carnet de la famille…"
+    },
+    "familyNotebookWrite": {
+     "one": "Note dans le Carnet de la famille",
+     "many": null,
+     "now": "Je note dans le Carnet de la famille…"
+    },
+    "friendsCard": {
+     "one": "Prépare un vote ou une liste",
+     "many": null,
+     "now": "Je prépare un vote ou une liste…"
+    },
+    "roomHistory": {
+     "one": "Relit vos discussions de groupe",
+     "many": null,
+     "now": "Je relis nos discussions de groupe…"
+    },
+    "proposeRoom": {
+     "one": "Propose une discussion de groupe",
+     "many": null,
+     "now": "Je prépare une discussion de groupe…"
+    },
+    "proposeTeam": {
+     "one": "Propose une équipe d’agents",
+     "many": null,
+     "now": "Je prépare une équipe d’agents…"
+    },
+    "suggestSwitch": {
+     "one": "Propose de continuer avec un autre agent",
+     "many": null,
+     "now": "Je te propose un autre agent…"
+    },
+    "proposeProfile": {
+     "one": "Propose un réglage",
+     "many": null,
+     "now": "Je te propose un réglage…"
+    },
+    "projectAgent": {
+     "one": "Prépare un agent de projet",
+     "many": null,
+     "now": "Je prépare un agent de projet…"
+    },
+    "renameSelf": {
+     "one": "Change de prénom",
+     "many": null,
+     "now": "Je change de prénom…"
+    },
+    "findTemplate": {
+     "one": "Cherche un modèle d’agent",
+     "many": null,
+     "now": "Je cherche un modèle d’agent…"
+    },
+    "handOver": {
+     "one": "Te laisse payer",
+     "many": null,
+     "now": "Je te laisse payer…"
+    },
+    "account": {
+     "one": "Crée un compte",
+     "many": null,
+     "now": "Je crée un compte…"
+    },
+    "contactDetailsRead": {
+     "one": "Regarde tes coordonnées",
+     "many": null,
+     "now": "Je regarde tes coordonnées…"
+    },
+    "contactDetailsSave": {
+     "one": "Enregistre tes coordonnées",
+     "many": null,
+     "now": "J’enregistre tes coordonnées…"
+    },
+    "phoneExit": {
+     "one": "Te demande de passer par ton téléphone",
+     "many": null,
+     "now": "Je te demande de passer par ton téléphone…"
+    },
+    "sitesList": {
+     "one": "Vérifie les sites autorisés",
+     "many": null,
+     "now": "Je vérifie les sites autorisés…"
+    },
+    "sitesRequest": {
+     "one": "Te demande d’autoriser un site",
+     "many": null,
+     "now": "Je te demande d’autoriser un site…"
+    },
+    "sendToService": {
+     "one": "Envoie un fichier à un service",
+     "many": "Envoie {n} fichiers à un service",
+     "now": "J’envoie un fichier à un service…"
+    },
+    "spaceEstimate": {
+     "one": "Estime la place nécessaire",
+     "many": null,
+     "now": "J’estime la place nécessaire…"
+    },
+    "heavyWork": {
+     "one": "Demande le feu vert pour un gros travail",
+     "many": null,
+     "now": "Je demande le feu vert pour un gros travail…"
+    },
+    "heavyWorkDone": {
+     "one": "Termine un gros travail",
+     "many": null,
+     "now": "Je termine un gros travail…"
+    },
+    "connections": {
+     "one": "Gère tes services connectés",
+     "many": null,
+     "now": "Je regarde tes services connectés…"
+    },
+    "kanban": {
+     "one": "Met à jour le tableau des tâches",
+     "many": null,
+     "now": "Je mets à jour le tableau des tâches…"
+    },
+    "computer": {
+     "one": "Utilise l’ordinateur",
+     "many": "Utilise l’ordinateur ({n} étapes)",
+     "now": "J’utilise l’ordinateur…"
+    },
+    "xSearch": {
+     "one": "Cherche sur X",
+     "many": "Cherche {n} fois sur X",
+     "now": "Je cherche sur X…"
+    },
+    "video": {
+     "one": "Regarde une vidéo",
+     "many": "Regarde {n} vidéos",
+     "now": "Je regarde la vidéo…"
+    },
+    "videoCreate": {
+     "one": "Crée une vidéo",
+     "many": "Crée {n} vidéos",
+     "now": "Je crée une vidéo…"
+    },
     "tool": {
      "one": "Utilise un outil",
      "many": null,
@@ -1178,18 +1945,19 @@
     "unknown": {
      "one": null,
      "many": null,
-     "now": "Je travaille…"
+     "now": "J’utilise un service connecté…"
     }
    },
    "extra": {
-    "toolrow_unknown": "Outil : {}",
+    "toolrow_unknown": "Utilise {}",
     "toolrow_times": "{} ({n} fois)",
     "toolrow_technical": "Détail technique",
     "toolrow_show_technical": "Voir le détail technique",
     "toolrow_now_thinking": "Je réfléchis…",
     "toolrow_now_browsing": "Je navigue sur {}…",
     "toolrow_now_reading": "Je lis {}…",
-    "toolrow_now_writing_to": "J’écris à {}…"
+    "toolrow_now_writing_to": "J’écris à {}…",
+    "toolrow_now_service": "J’utilise {}…"
    },
    "thinking": [
     "Je réfléchis…",
@@ -1592,6 +2360,211 @@
      "many": null,
      "now": "Finding the right tool…"
     },
+    "giveFile": {
+     "one": "Gives you a file",
+     "many": "Gives you {n} files",
+     "now": "Giving you a file…"
+    },
+    "routine": {
+     "one": "Updates a routine",
+     "many": "Updates {n} routines",
+     "now": "Updating your routine…"
+    },
+    "mailOverview": {
+     "one": "Goes over your e-mails",
+     "many": null,
+     "now": "Going over your emails…"
+    },
+    "mailBulk": {
+     "one": "Sorts your e-mails",
+     "many": null,
+     "now": "Sorting your emails…"
+    },
+    "map": {
+     "one": "Makes a map",
+     "many": "Makes {n} maps",
+     "now": "Making a map…"
+    },
+    "notebookRecord": {
+     "one": "Records a purchase or a document",
+     "many": "Records {n} purchases or documents",
+     "now": "Recording a purchase or a document in your Notebook…"
+    },
+    "archiveSearch": {
+     "one": "Searches your archives",
+     "many": "Searches your archives {n} times",
+     "now": "Searching your archives…"
+    },
+    "archiveRead": {
+     "one": "Reads an archived document",
+     "many": "Reads {n} archived documents",
+     "now": "Reading a document from your archives…"
+    },
+    "archiveRecords": {
+     "one": "Fills the Notebook from your archives",
+     "many": null,
+     "now": "Filling your Notebook from your archives…"
+    },
+    "upcomingDates": {
+     "one": "Checks the coming dates",
+     "many": null,
+     "now": "Checking the coming dates…"
+    },
+    "findDate": {
+     "one": "Looks for a date with your relatives",
+     "many": null,
+     "now": "Looking for a date that suits everyone…"
+    },
+    "tellFamily": {
+     "one": "Suggests a word for your family",
+     "many": null,
+     "now": "Preparing a word for your family…"
+    },
+    "familyMembers": {
+     "one": "Checks who is in your family",
+     "many": null,
+     "now": "Checking who is in your family…"
+    },
+    "familyNotebookRead": {
+     "one": "Reads the family notebook",
+     "many": null,
+     "now": "Reading the family notebook…"
+    },
+    "familyNotebookWrite": {
+     "one": "Notes in the family notebook",
+     "many": null,
+     "now": "Noting it in the family notebook…"
+    },
+    "friendsCard": {
+     "one": "Makes a vote or a list",
+     "many": null,
+     "now": "Making a vote or a list…"
+    },
+    "roomHistory": {
+     "one": "Reads your group discussions",
+     "many": null,
+     "now": "Going over our group discussions…"
+    },
+    "proposeRoom": {
+     "one": "Suggests a group discussion",
+     "many": null,
+     "now": "Preparing a group discussion…"
+    },
+    "proposeTeam": {
+     "one": "Suggests a team of agents",
+     "many": null,
+     "now": "Preparing a team of agents…"
+    },
+    "suggestSwitch": {
+     "one": "Suggests going on with another agent",
+     "many": null,
+     "now": "Suggesting another agent…"
+    },
+    "proposeProfile": {
+     "one": "Suggests a setting",
+     "many": null,
+     "now": "Suggesting a setting…"
+    },
+    "projectAgent": {
+     "one": "Prepares a project agent",
+     "many": null,
+     "now": "Preparing a project agent…"
+    },
+    "renameSelf": {
+     "one": "Changes its name",
+     "many": null,
+     "now": "Changing my name…"
+    },
+    "findTemplate": {
+     "one": "Looks for an agent model",
+     "many": null,
+     "now": "Looking for an agent model…"
+    },
+    "handOver": {
+     "one": "Lets you pay",
+     "many": null,
+     "now": "Letting you pay…"
+    },
+    "account": {
+     "one": "Creates an account",
+     "many": null,
+     "now": "Creating an account…"
+    },
+    "contactDetailsRead": {
+     "one": "Looks at your contact details",
+     "many": null,
+     "now": "Looking at your contact details…"
+    },
+    "contactDetailsSave": {
+     "one": "Saves your contact details",
+     "many": null,
+     "now": "Saving your contact details…"
+    },
+    "phoneExit": {
+     "one": "Asks to go through your phone",
+     "many": null,
+     "now": "Asking to go through your phone…"
+    },
+    "sitesList": {
+     "one": "Checks the allowed sites",
+     "many": null,
+     "now": "Checking the allowed sites…"
+    },
+    "sitesRequest": {
+     "one": "Asks you to allow a site",
+     "many": null,
+     "now": "Asking you to allow a site…"
+    },
+    "sendToService": {
+     "one": "Sends a file to a service",
+     "many": "Sends {n} files to a service",
+     "now": "Sending a file to a service…"
+    },
+    "spaceEstimate": {
+     "one": "Estimates the space needed",
+     "many": null,
+     "now": "Estimating the space needed…"
+    },
+    "heavyWork": {
+     "one": "Asks the go-ahead for a big job",
+     "many": null,
+     "now": "Asking the go-ahead for a big job…"
+    },
+    "heavyWorkDone": {
+     "one": "Finishes a big job",
+     "many": null,
+     "now": "Finishing a big job…"
+    },
+    "connections": {
+     "one": "Manages your connected services",
+     "many": null,
+     "now": "Checking your connected services…"
+    },
+    "kanban": {
+     "one": "Updates the task board",
+     "many": null,
+     "now": "Updating the task board…"
+    },
+    "computer": {
+     "one": "Uses the computer",
+     "many": "Uses the computer ({n} steps)",
+     "now": "Using the computer…"
+    },
+    "xSearch": {
+     "one": "Searches X",
+     "many": "Searches X {n} times",
+     "now": "Searching X…"
+    },
+    "video": {
+     "one": "Watches a video",
+     "many": "Watches {n} videos",
+     "now": "Watching the video…"
+    },
+    "videoCreate": {
+     "one": "Creates a video",
+     "many": "Creates {n} videos",
+     "now": "Creating a video…"
+    },
     "tool": {
      "one": "Uses a tool",
      "many": null,
@@ -1600,18 +2573,19 @@
     "unknown": {
      "one": null,
      "many": null,
-     "now": "Working…"
+     "now": "Using a connected service…"
     }
    },
    "extra": {
-    "toolrow_unknown": "Tool: {}",
+    "toolrow_unknown": "Uses {}",
     "toolrow_times": "{} ({n} times)",
     "toolrow_technical": "Technical detail",
     "toolrow_show_technical": "Show the technical detail",
     "toolrow_now_thinking": "Thinking…",
     "toolrow_now_browsing": "Browsing {}…",
     "toolrow_now_reading": "Reading {}…",
-    "toolrow_now_writing_to": "Writing to {}…"
+    "toolrow_now_writing_to": "Writing to {}…",
+    "toolrow_now_service": "Using {}…"
    },
    "thinking": [
     "Thinking…",
@@ -2014,6 +2988,211 @@
      "many": null,
      "now": "Ich suche das passende Werkzeug…"
     },
+    "giveFile": {
+     "one": "Gibt dir eine Datei",
+     "many": "Gibt dir {n} Dateien",
+     "now": "Ich gebe dir eine Datei…"
+    },
+    "routine": {
+     "one": "Aktualisiert eine Routine",
+     "many": "Aktualisiert {n} Routinen",
+     "now": "Ich aktualisiere deine Routine…"
+    },
+    "mailOverview": {
+     "one": "Sieht deine E-Mails durch",
+     "many": null,
+     "now": "Ich sehe deine E-Mails durch…"
+    },
+    "mailBulk": {
+     "one": "Ordnet deine E-Mails",
+     "many": null,
+     "now": "Ich ordne deine E-Mails…"
+    },
+    "map": {
+     "one": "Erstellt eine Karte",
+     "many": "Erstellt {n} Karten",
+     "now": "Ich erstelle eine Karte…"
+    },
+    "notebookRecord": {
+     "one": "Notiert einen Kauf oder ein Dokument",
+     "many": "Notiert {n} Käufe oder Dokumente",
+     "now": "Ich notiere einen Kauf oder ein Dokument in deinem Notizbuch…"
+    },
+    "archiveSearch": {
+     "one": "Sucht in deinen Archiven",
+     "many": "Sucht {n}-mal in deinen Archiven",
+     "now": "Ich suche in deinen Archiven…"
+    },
+    "archiveRead": {
+     "one": "Liest ein archiviertes Dokument",
+     "many": "Liest {n} archivierte Dokumente",
+     "now": "Ich lese ein Dokument aus deinen Archiven…"
+    },
+    "archiveRecords": {
+     "one": "Füllt das Notizbuch aus deinen Archiven",
+     "many": null,
+     "now": "Ich fülle dein Notizbuch aus deinen Archiven…"
+    },
+    "upcomingDates": {
+     "one": "Schaut die kommenden Termine an",
+     "many": null,
+     "now": "Ich schaue die kommenden Termine an…"
+    },
+    "findDate": {
+     "one": "Sucht einen Termin mit deinen Angehörigen",
+     "many": null,
+     "now": "Ich suche einen Termin, der allen passt…"
+    },
+    "tellFamily": {
+     "one": "Schlägt eine Nachricht für deine Familie vor",
+     "many": null,
+     "now": "Ich bereite eine Nachricht für deine Familie vor…"
+    },
+    "familyMembers": {
+     "one": "Schaut, wer zu deiner Familie gehört",
+     "many": null,
+     "now": "Ich schaue, wer zu deiner Familie gehört…"
+    },
+    "familyNotebookRead": {
+     "one": "Liest das Familien-Notizbuch",
+     "many": null,
+     "now": "Ich lese das Familien-Notizbuch…"
+    },
+    "familyNotebookWrite": {
+     "one": "Notiert im Familien-Notizbuch",
+     "many": null,
+     "now": "Ich notiere es im Familien-Notizbuch…"
+    },
+    "friendsCard": {
+     "one": "Erstellt eine Abstimmung oder eine Liste",
+     "many": null,
+     "now": "Ich erstelle eine Abstimmung oder eine Liste…"
+    },
+    "roomHistory": {
+     "one": "Liest eure Gruppendiskussionen",
+     "many": null,
+     "now": "Ich lese unsere Gruppendiskussionen…"
+    },
+    "proposeRoom": {
+     "one": "Schlägt eine Gruppendiskussion vor",
+     "many": null,
+     "now": "Ich bereite eine Gruppendiskussion vor…"
+    },
+    "proposeTeam": {
+     "one": "Schlägt ein Team von Agenten vor",
+     "many": null,
+     "now": "Ich stelle ein Team von Agenten zusammen…"
+    },
+    "suggestSwitch": {
+     "one": "Schlägt vor, mit einem anderen Agenten weiterzumachen",
+     "many": null,
+     "now": "Ich schlage dir einen anderen Agenten vor…"
+    },
+    "proposeProfile": {
+     "one": "Schlägt eine Einstellung vor",
+     "many": null,
+     "now": "Ich schlage dir eine Einstellung vor…"
+    },
+    "projectAgent": {
+     "one": "Bereitet einen Projekt-Agenten vor",
+     "many": null,
+     "now": "Ich bereite einen Projekt-Agenten vor…"
+    },
+    "renameSelf": {
+     "one": "Ändert seinen Namen",
+     "many": null,
+     "now": "Ich ändere meinen Namen…"
+    },
+    "findTemplate": {
+     "one": "Sucht eine Agentenvorlage",
+     "many": null,
+     "now": "Ich suche eine Agentenvorlage…"
+    },
+    "handOver": {
+     "one": "Lässt dich bezahlen",
+     "many": null,
+     "now": "Ich lasse dich bezahlen…"
+    },
+    "account": {
+     "one": "Legt ein Konto an",
+     "many": null,
+     "now": "Ich lege ein Konto an…"
+    },
+    "contactDetailsRead": {
+     "one": "Sieht deine Kontaktdaten an",
+     "many": null,
+     "now": "Ich sehe mir deine Kontaktdaten an…"
+    },
+    "contactDetailsSave": {
+     "one": "Speichert deine Kontaktdaten",
+     "many": null,
+     "now": "Ich speichere deine Kontaktdaten…"
+    },
+    "phoneExit": {
+     "one": "Bittet, über dein Handy zu gehen",
+     "many": null,
+     "now": "Ich bitte darum, über dein Handy zu gehen…"
+    },
+    "sitesList": {
+     "one": "Prüft die erlaubten Websites",
+     "many": null,
+     "now": "Ich prüfe die erlaubten Websites…"
+    },
+    "sitesRequest": {
+     "one": "Bittet dich, eine Website zu erlauben",
+     "many": null,
+     "now": "Ich bitte dich, eine Website zu erlauben…"
+    },
+    "sendToService": {
+     "one": "Schickt eine Datei an einen Dienst",
+     "many": "Schickt {n} Dateien an einen Dienst",
+     "now": "Ich schicke eine Datei an einen Dienst…"
+    },
+    "spaceEstimate": {
+     "one": "Schätzt den nötigen Platz",
+     "many": null,
+     "now": "Ich schätze den nötigen Platz…"
+    },
+    "heavyWork": {
+     "one": "Holt grünes Licht für eine große Arbeit ein",
+     "many": null,
+     "now": "Ich hole grünes Licht für eine große Arbeit ein…"
+    },
+    "heavyWorkDone": {
+     "one": "Beendet eine große Arbeit",
+     "many": null,
+     "now": "Ich beende eine große Arbeit…"
+    },
+    "connections": {
+     "one": "Verwaltet deine verbundenen Dienste",
+     "many": null,
+     "now": "Ich sehe mir deine verbundenen Dienste an…"
+    },
+    "kanban": {
+     "one": "Aktualisiert die Aufgabentafel",
+     "many": null,
+     "now": "Ich aktualisiere die Aufgabentafel…"
+    },
+    "computer": {
+     "one": "Benutzt den Computer",
+     "many": "Benutzt den Computer ({n} Schritte)",
+     "now": "Ich benutze den Computer…"
+    },
+    "xSearch": {
+     "one": "Sucht auf X",
+     "many": "Sucht {n}-mal auf X",
+     "now": "Ich suche auf X…"
+    },
+    "video": {
+     "one": "Sieht sich ein Video an",
+     "many": "Sieht sich {n} Videos an",
+     "now": "Ich sehe mir das Video an…"
+    },
+    "videoCreate": {
+     "one": "Erstellt ein Video",
+     "many": "Erstellt {n} Videos",
+     "now": "Ich erstelle ein Video…"
+    },
     "tool": {
      "one": "Benutzt ein Werkzeug",
      "many": null,
@@ -2022,18 +3201,19 @@
     "unknown": {
      "one": null,
      "many": null,
-     "now": "Ich arbeite…"
+     "now": "Ich nutze einen verbundenen Dienst…"
     }
    },
    "extra": {
-    "toolrow_unknown": "Werkzeug: {}",
+    "toolrow_unknown": "Nutzt {}",
     "toolrow_times": "{} ({n}-mal)",
     "toolrow_technical": "Technische Details",
     "toolrow_show_technical": "Technische Details anzeigen",
     "toolrow_now_thinking": "Ich denke nach…",
     "toolrow_now_browsing": "Ich bin auf {}…",
     "toolrow_now_reading": "Ich lese {}…",
-    "toolrow_now_writing_to": "Ich schreibe {}…"
+    "toolrow_now_writing_to": "Ich schreibe {}…",
+    "toolrow_now_service": "Ich nutze {}…"
    },
    "thinking": [
     "Ich denke nach…",
@@ -2436,6 +3616,211 @@
      "many": null,
      "now": "Buscando la herramienta adecuada…"
     },
+    "giveFile": {
+     "one": "Te da un archivo",
+     "many": "Te da {n} archivos",
+     "now": "Dándote un archivo…"
+    },
+    "routine": {
+     "one": "Actualiza una rutina",
+     "many": "Actualiza {n} rutinas",
+     "now": "Actualizando tu rutina…"
+    },
+    "mailOverview": {
+     "one": "Repasa tus correos",
+     "many": null,
+     "now": "Repasando tus correos…"
+    },
+    "mailBulk": {
+     "one": "Ordena tus correos",
+     "many": null,
+     "now": "Ordenando tus correos…"
+    },
+    "map": {
+     "one": "Prepara un mapa",
+     "many": "Prepara {n} mapas",
+     "now": "Preparando un mapa…"
+    },
+    "notebookRecord": {
+     "one": "Anota una compra o un documento",
+     "many": "Anota {n} compras o documentos",
+     "now": "Anotando una compra o un documento en tu Cuaderno…"
+    },
+    "archiveSearch": {
+     "one": "Busca en tus archivos",
+     "many": "Busca {n} veces en tus archivos",
+     "now": "Buscando en tus archivos…"
+    },
+    "archiveRead": {
+     "one": "Lee un documento archivado",
+     "many": "Lee {n} documentos archivados",
+     "now": "Leyendo un documento de tus archivos…"
+    },
+    "archiveRecords": {
+     "one": "Rellena el Cuaderno con tus archivos",
+     "many": null,
+     "now": "Rellenando tu Cuaderno con tus archivos…"
+    },
+    "upcomingDates": {
+     "one": "Mira las próximas fechas",
+     "many": null,
+     "now": "Mirando las próximas fechas…"
+    },
+    "findDate": {
+     "one": "Busca una fecha con tus familiares",
+     "many": null,
+     "now": "Buscando una fecha que convenga a todos…"
+    },
+    "tellFamily": {
+     "one": "Propone un mensaje para tu familia",
+     "many": null,
+     "now": "Preparando un mensaje para tu familia…"
+    },
+    "familyMembers": {
+     "one": "Mira quién está en tu familia",
+     "many": null,
+     "now": "Mirando quién está en tu familia…"
+    },
+    "familyNotebookRead": {
+     "one": "Lee el Cuaderno de la familia",
+     "many": null,
+     "now": "Leyendo el Cuaderno de la familia…"
+    },
+    "familyNotebookWrite": {
+     "one": "Anota en el Cuaderno de la familia",
+     "many": null,
+     "now": "Anotando en el Cuaderno de la familia…"
+    },
+    "friendsCard": {
+     "one": "Prepara una votación o una lista",
+     "many": null,
+     "now": "Preparando una votación o una lista…"
+    },
+    "roomHistory": {
+     "one": "Lee vuestras conversaciones de grupo",
+     "many": null,
+     "now": "Repasando nuestras conversaciones de grupo…"
+    },
+    "proposeRoom": {
+     "one": "Propone una conversación de grupo",
+     "many": null,
+     "now": "Preparando una conversación de grupo…"
+    },
+    "proposeTeam": {
+     "one": "Propone un equipo de agentes",
+     "many": null,
+     "now": "Preparando un equipo de agentes…"
+    },
+    "suggestSwitch": {
+     "one": "Propone seguir con otro agente",
+     "many": null,
+     "now": "Proponiéndote otro agente…"
+    },
+    "proposeProfile": {
+     "one": "Propone un ajuste",
+     "many": null,
+     "now": "Proponiéndote un ajuste…"
+    },
+    "projectAgent": {
+     "one": "Prepara un agente de proyecto",
+     "many": null,
+     "now": "Preparando un agente de proyecto…"
+    },
+    "renameSelf": {
+     "one": "Cambia de nombre",
+     "many": null,
+     "now": "Cambiando de nombre…"
+    },
+    "findTemplate": {
+     "one": "Busca un modelo de agente",
+     "many": null,
+     "now": "Buscando un modelo de agente…"
+    },
+    "handOver": {
+     "one": "Te deja pagar",
+     "many": null,
+     "now": "Dejándote pagar…"
+    },
+    "account": {
+     "one": "Crea una cuenta",
+     "many": null,
+     "now": "Creando una cuenta…"
+    },
+    "contactDetailsRead": {
+     "one": "Mira tus datos de contacto",
+     "many": null,
+     "now": "Mirando tus datos de contacto…"
+    },
+    "contactDetailsSave": {
+     "one": "Guarda tus datos de contacto",
+     "many": null,
+     "now": "Guardando tus datos de contacto…"
+    },
+    "phoneExit": {
+     "one": "Pide pasar por tu teléfono",
+     "many": null,
+     "now": "Pidiendo pasar por tu teléfono…"
+    },
+    "sitesList": {
+     "one": "Revisa los sitios permitidos",
+     "many": null,
+     "now": "Revisando los sitios permitidos…"
+    },
+    "sitesRequest": {
+     "one": "Te pide permitir un sitio",
+     "many": null,
+     "now": "Pidiéndote permitir un sitio…"
+    },
+    "sendToService": {
+     "one": "Envía un archivo a un servicio",
+     "many": "Envía {n} archivos a un servicio",
+     "now": "Enviando un archivo a un servicio…"
+    },
+    "spaceEstimate": {
+     "one": "Estima el espacio necesario",
+     "many": null,
+     "now": "Estimando el espacio necesario…"
+    },
+    "heavyWork": {
+     "one": "Pide luz verde para un trabajo grande",
+     "many": null,
+     "now": "Pidiendo luz verde para un trabajo grande…"
+    },
+    "heavyWorkDone": {
+     "one": "Termina un trabajo grande",
+     "many": null,
+     "now": "Terminando un trabajo grande…"
+    },
+    "connections": {
+     "one": "Gestiona tus servicios conectados",
+     "many": null,
+     "now": "Mirando tus servicios conectados…"
+    },
+    "kanban": {
+     "one": "Actualiza el tablero de tareas",
+     "many": null,
+     "now": "Actualizando el tablero de tareas…"
+    },
+    "computer": {
+     "one": "Usa el ordenador",
+     "many": "Usa el ordenador ({n} pasos)",
+     "now": "Usando el ordenador…"
+    },
+    "xSearch": {
+     "one": "Busca en X",
+     "many": "Busca {n} veces en X",
+     "now": "Buscando en X…"
+    },
+    "video": {
+     "one": "Ve un vídeo",
+     "many": "Ve {n} vídeos",
+     "now": "Viendo el vídeo…"
+    },
+    "videoCreate": {
+     "one": "Crea un vídeo",
+     "many": "Crea {n} vídeos",
+     "now": "Creando un vídeo…"
+    },
     "tool": {
      "one": "Usa una herramienta",
      "many": null,
@@ -2444,18 +3829,19 @@
     "unknown": {
      "one": null,
      "many": null,
-     "now": "Trabajando…"
+     "now": "Usando un servicio conectado…"
     }
    },
    "extra": {
-    "toolrow_unknown": "Herramienta: {}",
+    "toolrow_unknown": "Usa {}",
     "toolrow_times": "{} ({n} veces)",
     "toolrow_technical": "Detalle técnico",
     "toolrow_show_technical": "Ver el detalle técnico",
     "toolrow_now_thinking": "Pensando…",
     "toolrow_now_browsing": "Navegando por {}…",
     "toolrow_now_reading": "Leyendo {}…",
-    "toolrow_now_writing_to": "Escribiendo a {}…"
+    "toolrow_now_writing_to": "Escribiendo a {}…",
+    "toolrow_now_service": "Usando {}…"
    },
    "thinking": [
     "Pensando…",

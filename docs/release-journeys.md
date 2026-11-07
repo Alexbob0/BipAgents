@@ -34,7 +34,7 @@ outils isolés dans le bac à sable, ses fichiers servis, sa porte HTTPS) et `bb
 photos y sont gardées comme Hermes v0.22.5 les garde (un fichier du profil nommé dans le message, par le chemin
 qu'Hermes voit dans son conteneur), pas comme le pont l'imagine. `serve_journeys.py` sert ce pont aux apps.
 
-Mots-clés que le faux modèle comprend : `#fichier`, `#page`, `#carte`, `#outil`, `#question`, `#approbation`,
+Mots-clés que le faux modèle comprend : `#fichier`, `#page`, `#carte`, `#trajet` (la carte collée dans une page), `#outil`, `#question`, `#approbation`,
 `#secret`, `#sites`, `#connecteur`, `#lent` (voir `bbkit/model.py`) ; et pour J32 et après (`PeopleModel`) :
 `#routine`, `#tache`, `#famille`, `#etapes`, `#relais`.
 
@@ -61,7 +61,7 @@ la bêta.
 |---|---|---|---|
 | J07 | Une réponse avec un fichier | La ligne du fichier ; il s'ouvre | P, i, A |
 | J08 | Une réponse avec une page | La page dans la conversation, avec son contenu | P, i |
-| J09 | Une réponse avec une carte | La carte | P, i |
+| J09 | Une réponse avec une carte | La carte, une seule fois (seule, ou dans la page du trajet qui la tient : jamais une deuxième fois à la fin, 7/11) | P, i, A |
 | J10 | Les étapes de l'agent (outils) | Ses étapes entre ses mots, dans l'ordre | P |
 
 ### Cartes

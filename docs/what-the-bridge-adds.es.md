@@ -133,9 +133,10 @@ solo programa en Rust, `bipbridge`). Esta página recoge lo que añade, área po
 
 - `jobs.rs`: tareas en segundo plano con un presupuesto elegido antes, los tokens mostrados después, pausa y
   reanudación; `handback.rs` devuelve el informe a la conversación de la que salió.
-- `cronwatch.rs` entrega la respuesta de cada rutina en la app; `autonomous.rs` lista todo lo que los agentes hacen
-  sin que se lo pidan; `storage_watch.rs` hace que los agentes pregunten qué guardar; `feature_tips.rs` muestra
-  funciones poco a poco.
+- `cronwatch.rs` entrega la respuesta de cada rutina en la app; `autonomous.rs` lista todo lo que los agentes hacen sin
+  que se lo pidan; `storage_watch.rs` hace que los agentes pregunten qué guardar; `space_tidy.rs` borra por sí solo lo
+  temporal de su espacio (borradores viejos, la carpeta de una tarea terminada, descargas viejas, cachés), nunca los
+  archivos de la persona; `feature_tips.rs` muestra funciones poco a poco.
 
 ## Control de costes
 

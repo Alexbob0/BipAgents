@@ -890,6 +890,22 @@ impl RunHub {
         inner.subs.iter().filter(|(key, sub)| !skip.contains(&key.1) && !lock(&sub.state).finished).count()
     }
 
+    /// Runs the hub follows that work now: not ended, not waiting for their person's answer (a card, a question), but
+    /// those in `skip` (background tasks' runs). What an update waits for before the bridge restarts
+    /// (update_drain.rs): a run waiting for its person loses nothing then (Hermes keeps it, the hub resumes it).
+    pub fn working(&self, skip: &[String]) -> usize {
+        let inner = lock(&self.inner);
+        inner
+            .subs
+            .iter()
+            .filter(|(key, sub)| {
+                !skip.contains(&key.1)
+                    && !lock(&sub.state).finished
+                    && !inner.pending.keys().any(|(agent, run, _)| *agent == key.0 && *run == key.1)
+            })
+            .count()
+    }
+
     /// A run of the agent goes on now (a turn, a room's, a Live call's, a background task's): agent_restart.rs waits.
     pub fn agent_running(&self, agent: &str) -> bool {
         let inner = lock(&self.inner);
@@ -1269,6 +1285,21 @@ impl RunHub {
         self.spawn(async move { threads.steps_changed(&agent, &session, &run_id, steps).await });
     }
 
+    /// A connector's call with its connector's name (`service`: « Garmin », connectors::service_of): the apps and the
+    /// automatic « Étapes » say it instead of the tool's own name.
+    fn with_service(&self, sub: &RunSubscription, event: SSEEvent) -> SSEEvent {
+        let tool = crate::loop_brake::event_tool(&event.data);
+        if crate::connectors::slug_of_tool(&tool).is_none() || event.data.contains_key("service") {
+            return event;
+        }
+        let Some(shared) = self.config.as_ref() else { return event };
+        let Some(service) = crate::connectors::service_of(&shared.get(), &sub.agent.name, &tool) else { return event };
+        let mut data = event.data;
+        data.insert("service".into(), json!(service));
+        let raw = crate::py::Dumps::new().unicode().dumps(&Value::Object(data.clone()));
+        SSEEvent::new(event.r#type, data, raw)
+    }
+
     /// A call started or ended in a run without a list of the agent's own: the automatic list (steps.rs), as a
     /// `steps.updated` when it changed (only from its 2nd step).
     fn auto_steps(&self, sub: &RunSubscription, st: &mut SubscriptionState, event: &SSEEvent) -> Option<SSEEvent> {
@@ -1277,7 +1308,8 @@ impl RunHub {
         if event.r#type == "tool.started" {
             let preview = event.data.get("preview").and_then(Value::as_str).unwrap_or("");
             let site = crate::steps::site_of(&tool, preview);
-            st.actions.push(crate::steps::Action { tool, site, running: true, call_id });
+            let service = event.data.get("service").and_then(Value::as_str).map(str::to_string);
+            st.actions.push(crate::steps::Action { tool, site, service, running: true, call_id });
         } else {
             let open = st.actions.iter().position(|a| a.running && call_id.is_some() && a.call_id == call_id);
             let open = open.or_else(|| st.actions.iter().position(|a| a.running && a.tool == tool));
@@ -1307,6 +1339,11 @@ impl RunHub {
         let event = if event.r#type == "approval.request" { self.in_plain_words(sub, &st, event) } else { event };
         let event = if matches!(event.r#type.as_str(), "approval.request" | "clarify.request") {
             with_item_id(sub, event)
+        } else {
+            event
+        };
+        let event = if matches!(event.r#type.as_str(), "tool.started" | "tool.completed" | "tool.failed") {
+            self.with_service(sub, event)
         } else {
             event
         };
@@ -1803,7 +1840,12 @@ impl RunHub {
         made.extend(crate::vault_contacts::used_marks(&written, &listed));
         let (marks, files): (Vec<String>, Vec<String>) = made.into_iter().partition(|m| crate::made_files::is_mark(m));
         // files: the lines the old hand-over would have added or dropped, as items
-        let fixed = crate::made_files::fix_reply(&written, agent, &files).unwrap_or_else(|| written.clone());
+        // each map once: what the reply's pages hold of the turn's maps (read only when it made one)
+        let pages_config = self.config.as_ref().map(|shared| shared.get());
+        let maps_of =
+            |path: &str| pages_config.as_ref().map(|c| crate::pages::maps_of(c, agent, path)).unwrap_or_default();
+        let fixed =
+            crate::made_files::fix_reply_with(&written, agent, &files, &maps_of).unwrap_or_else(|| written.clone());
         let (_, before) = crate::media::extract_media(&written);
         let (_, after) = crate::media::extract_media(&fixed);
         let mut added: Vec<String> = after.iter().filter(|p| !before.contains(p)).cloned().collect();

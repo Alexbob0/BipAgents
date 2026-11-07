@@ -26,7 +26,7 @@ from typing import Dict, List, Optional, Tuple
 
 import httpx
 
-from . import hermes, ui
+from . import drain, hermes, ui
 from .existing import RECORD
 from .family import confirm, find_config
 
@@ -99,6 +99,10 @@ def gateway_units() -> List[Tuple[str, str]]:
 
 
 def restart(runner: hermes.Runner) -> None:
+    """Every gateway restarted, once the turns going on ended (drain.py: a gateway's restart ends its runs), at most
+    5 minutes (what is left of `bipagents update`'s); then the bridge serves the agents' tools again."""
+    if not runner.dry:
+        say(ui.note(drain.until_quiet(what="gateways")))
     for how, name in gateway_units():
         if how == "systemd":
             runner.run(["systemctl", "--user", "restart", name], check=False)
@@ -106,6 +110,8 @@ def restart(runner: hermes.Runner) -> None:
             runner.run(["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/{name}"], check=False)
         else:
             runner.run([hermes.hermes_bin(), "gateway", "restart"], check=False)
+    if not runner.dry:
+        drain.done()
 
 
 def agents_of(config_path: Path) -> List[Dict[str, str]]:

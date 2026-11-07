@@ -46,6 +46,10 @@ jobs:
         # scripts/ stays private (scripts/public-paths.txt): the public repository has no such test to run
         if: hashFiles('scripts/test_demo_voices.py') != ''
         run: python scripts/test_demo_voices.py
+      - name: Tool labels (every tool has its words, the apps' and the bridge's generated files are the table's)
+        # the bridge's own tools are checked by its unit test (agent_tools.rs every_tool_an_agent_can_call_has_its_words)
+        if: hashFiles('scripts/tool-labels.py') != ''
+        run: python -I scripts/tool-labels.py . --check
       - name: Bridge (black-box suite, the HTTP contract)
         working-directory: bridge
         # The runner's /usr/bin/chromium is a bare snapshot without a setuid sandbox (« No usable sandbox! », the VM

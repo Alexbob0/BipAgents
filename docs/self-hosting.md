@@ -193,7 +193,20 @@ minutes), other code asked for it, or, at the agent's quietest night hour (betwe
 or `hour`), its gateway takes more than `hermes_mb` (900) or `hermes_growth` (2.5) times its size after start, or its
 browser more than `chrome_mb` (1536). At most once an hour, once a night for memory. `[agent_restart] enabled = false`
 turns it off; it is off by itself on a Hermes you had before BipAgents. The last restart and its reason show in
-`GET /v1/status` (`last_restart`).
+`GET /v1/status` (`last_restart`). A turn counts even when only its Hermes knows of it (`GET /health/detailed`: a turn
+started before the bridge restarted); a restart asked for while turns go on waits for them at most
+`turn_wait_seconds` (600), then is done all the same, and the reasons asked for meanwhile make that one restart.
+
+Before `bipagents update` restarts the bridge or the agents' Hermes, it waits for the turns going on to end, 5 minutes
+in all at most (`POST /v1/update/drain` to the bridge, which then answers the agents' tool calls « Update in progress:
+try again in a minute » until it restarts: a plain result, which Hermes' MCP circuit breaker doesn't count).
+
+Every 6 hours the bridge tidies the agents' working space (`space_tidy.rs`): drafts in `/workspace/brouillons` left 7
+days unchanged, a background task's folder 24 hours after it ended (never while it runs or is paused), browser
+downloads older than 30 days and the sandbox's package caches (pip, uv, npm, yarn) unused for 14 days. Nothing else:
+never the files sent to or given to the person, their pages, Archives or shared folders. A pass that frees more than
+200 MB leaves one quiet line in the agent's Boîte (no notification, at most once a week). `[tidy]`: `enabled`,
+`every_hours`, `scratch_days`, `task_hours`, `cache_days`, `line_mb`.
 
 The records (« Fiches »: purchases, subscriptions, contracts, papers, bookings) can be filled from an agent's archive:
 `bipagents archive extract <agent> --archive <id> --sample 50` reads 50 likely documents with the agent's model and

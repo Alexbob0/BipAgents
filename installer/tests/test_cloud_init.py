@@ -430,6 +430,59 @@ def test_the_beat_s_body_and_its_order(tmp_path, monkeypatch):
     assert json.loads((tmp_path / "settings.json").read_text()) == {"memory_high_share": 0.3}
 
 
+def test_a_long_order_keeps_the_server_beating(tmp_path, monkeypatch):
+    # 2026-11-07: a place's update waits up to 5 minutes for its turns, several in a row; the timer starts no other
+    # run meanwhile and the guichet takes 10 minutes of silence for down. The run beats again from a thread.
+    import time
+    agent = _seat_agent()
+    conf = tmp_path / "guichet.json"
+    conf.write_text('{"url": "https://g", "token": "t", "server": "vps-1"}')
+    for name, value in (("CONF", conf), ("SETTINGS", tmp_path / "settings.json"), ("DONE", tmp_path / "done")):
+        monkeypatch.setattr(agent, name, str(value))
+    monkeypatch.setattr(agent, "BEAT_EVERY", 0.1)
+    monkeypatch.setattr(agent, "health", lambda: {"1": {"up": True}, "2": {"up": True}})
+    monkeypatch.setattr(agent, "vitals", lambda: {"memory_mb": 7812})
+    monkeypatch.setattr(agent, "places_memory", lambda: {"1": {"mem_mb": 812}})
+    monkeypatch.setattr(agent, "places_activity", lambda memory: memory)
+    monkeypatch.setattr(agent, "memory_settled", lambda server: None)
+    monkeypatch.setattr(agent, "disk_settled", lambda: {"1": {"disk_mb": 900}})
+    monkeypatch.setattr(agent, "zram", lambda: None)
+    monkeypatch.setattr(agent, "add_moves", lambda beat: beat.__setitem__("moves", {"m1": {"phase": "copy"}}))
+    monkeypatch.setattr(agent, "verified", lambda body, signature: True)
+    monkeypatch.setattr(agent, "accepted", lambda order, server, done, now: json.loads(order["body"]))
+    updated = []
+    monkeypatch.setattr(agent, "update_order", lambda seat, commit: updated.append(seat) or time.sleep(0.35) or True)
+    orders = [{"id": n, "body": json.dumps({"action": "update", "seat": n, "commit": "a" * 40}), "signature": "s"}
+              for n in (1, 2)]
+    sent = []
+
+    def call(conf, method, path, body=None):
+        sent.append((path, body))
+        return {"orders": orders if len(sent) == 1 else [{"id": 99}], "settings": {}}
+
+    monkeypatch.setattr(agent, "call", call)
+    assert agent.main([]) == 0
+    assert updated == [1, 2]   # the later beats' orders are left: the first beat's are done
+    paths = [path for path, _ in sent]
+    assert paths[0] == "/v1/server/beat" and sent[0][1]["moves"] == {"m1": {"phase": "copy"}}
+    first_done, second_done = paths.index("/v1/server/orders/1/done"), paths.index("/v1/server/orders/2/done")
+    # during each place's update, and between them: beats again, without the moves (the run's own thread's)
+    assert paths[1:first_done].count("/v1/server/beat") >= 2
+    assert paths[first_done + 1:second_done].count("/v1/server/beat") >= 2
+    again = [body for path, body in sent[1:] if path == "/v1/server/beat"]
+    assert all(body == {"seats": {"1": {"up": True}, "2": {"up": True}}, "server": {"memory_mb": 7812},
+                        "places": {"1": {"mem_mb": 812, "disk_mb": 900}}} for body in again)
+    count = len(sent)
+    time.sleep(0.3)
+    assert len(sent) == count   # the run over: no more beats
+    # a beat that fails never stops the orders
+    agent.log = lambda text: logged.append(text)
+    logged = []
+    with agent.Beating({}, {}, every=0.05, send=lambda: 1 / 0):
+        time.sleep(0.2)
+    assert logged and all(line.startswith("beat between orders not sent") for line in logged)
+
+
 def test_the_beat_carries_the_beta_measures_times_and_counts_only(tmp_path):
     agent = _seat_agent()
     home = tmp_path / "bip"

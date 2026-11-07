@@ -199,7 +199,23 @@ une toutes les 5 minutes), un autre composant l'a demandé, ou, à l'heure la pl
 `window_start` 1 h et `window_end` 6 h, ou `hour`), son Hermes prend plus de `hermes_mb` (900) Mo ou `hermes_growth`
 (2,5) fois sa taille après le démarrage, ou son navigateur plus de `chrome_mb` (1536) Mo. Au plus une fois par heure,
 une fois par nuit pour la mémoire. `[agent_restart] enabled = false` le coupe ; il est coupé d'office sur un Hermes que
-vous aviez avant BipAgents. Le dernier redémarrage et sa raison sont dans `GET /v1/status` (`last_restart`).
+vous aviez avant BipAgents. Le dernier redémarrage et sa raison sont dans `GET /v1/status` (`last_restart`). Un tour
+compte même quand seul son Hermes le connaît (`GET /health/detailed` : un tour commencé avant que le pont redémarre) ;
+un redémarrage demandé pendant des tours les attend au plus `turn_wait_seconds` (600), puis se fait quand même, et les
+raisons demandées entre-temps font ce seul redémarrage.
+
+Avant de redémarrer le pont ou le Hermes des agents, `bipagents update` attend la fin des tours en cours, 5 minutes en
+tout au plus (`POST /v1/update/drain` au pont, qui répond alors aux appels d'outil des agents « Mise à jour en cours :
+réessaie dans une minute » jusqu'à son redémarrage : un résultat ordinaire, que le disjoncteur MCP de Hermes ne compte
+pas).
+
+Toutes les 6 heures, le pont range l'espace de travail des agents (`space_tidy.rs`) : il efface les brouillons de
+`/workspace/brouillons` restés 7 jours sans changement, le dossier d'une tâche de fond 24 heures après sa fin (jamais
+pendant qu'elle tourne ou est en pause), les téléchargements du navigateur de plus de 30 jours et les caches de paquets
+du bac à sable (pip, uv, npm, yarn) inutilisés depuis 14 jours. Rien d'autre : jamais les fichiers envoyés ou donnés à
+la personne, ses pages, ses Archives, ses dossiers partagés. Un passage qui libère plus de 200 Mo laisse une ligne
+discrète dans la Boîte de l'agent (sans notification, une fois par semaine au plus). `[tidy]` : `enabled`,
+`every_hours`, `scratch_days`, `task_hours`, `cache_days`, `line_mb`.
 
 Les fiches (achats, abonnements, contrats, papiers, réservations) peuvent être remplies depuis une archive d'un agent :
 `bipagents archive extract <agent> --archive <id> --sample 50` lit 50 documents probables avec le modèle de l'agent et

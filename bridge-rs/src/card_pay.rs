@@ -1010,6 +1010,10 @@ pub async fn serve(
             crate::names::localize_tools(&mut tools, &crate::handback::language_of(&config, &agent));
             Ok(web::json_response(200, &rpc(&id, json!({"tools": tools}))))
         }
+        "tools/call" if crate::update_drain::closing() => Ok(web::json_response(
+            200,
+            &rpc(&id, crate::update_drain::busy_result(&crate::handback::language_of(&config, &agent))),
+        )),
         "tools/call" => {
             let lang = crate::handback::language_of(&config, &agent);
             let name = params.get("name").and_then(Value::as_str).unwrap_or("").to_string();

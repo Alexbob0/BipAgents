@@ -22,7 +22,7 @@ import subprocess
 from pathlib import Path
 from typing import List, Optional
 
-from . import hermes, migrations, rustbridge, ui
+from . import drain, hermes, migrations, rustbridge, ui
 from .existing import RECORD
 
 REPO = Path(__file__).resolve().parents[2]
@@ -269,6 +269,18 @@ def install_timer(runner: hermes.Runner) -> None:
     runner.run(["systemctl", "--user", "enable", "--now", f"{TIMER}.timer"])
 
 
+def restart_bridge(runner: hermes.Runner, config: Optional[Path], rust: Optional[str]) -> None:
+    """The bridge restarted once the person's turns going on ended (drain.py: at most what is left of the update's
+    5 minutes); its agents' tool calls meanwhile told « try again in a minute », not failed."""
+    from .family import bridge_restart
+    if not runner.dry:
+        say(ui.note(drain.until_quiet(config, "bridge")))
+    if rust:
+        rustbridge.restart(Path.home())   # the service may name new binaries: read again, then restarted
+    else:
+        runner.run(bridge_restart(), check=False)
+
+
 def main(argv: List[str]) -> int:
     import argparse
     from .__main__ import venv
@@ -286,6 +298,7 @@ def main(argv: List[str]) -> int:
         from .account import session_env
         os.environ.update(session_env(os.getuid()))
     runner = hermes.Runner(dry=args.dry_run)
+    drain.start_budget()   # the turns going on: waited for before each restart, 5 minutes in all (drain.py)
     ask = (lambda question: False) if args.auto else confirm
     commands: List[str] = []
 
@@ -332,9 +345,7 @@ def main(argv: List[str]) -> int:
         rust = rustbridge.keep_in_step(Path.home(), wait=300 if args.auto else 0) if not runner.dry else None
         if rust:
             say(ui.note(rust))
-            rustbridge.restart(Path.home())   # the service may name new binaries: read again, then restarted
-        else:
-            runner.run(bridge_restart(), check=False)
+        restart_bridge(runner, config, rust)
         say(ui.done("Bridge restarted."))
     if touched("installer/requirements.txt") and (REPO / "installer" / ".venv").exists():
         venv(REPO / "installer", runner)   # what the timers and the bridge run the installer with

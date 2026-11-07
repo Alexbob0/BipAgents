@@ -206,10 +206,11 @@ pub fn call(
                     if !text("due").is_empty() {
                         line += &format!(" · due {}", text("due"));
                     }
-                    line += if crate::phone_asks::waiting(op) {
-                        " · asked by you, not on the phone yet (added at its next sync)"
+                    let phone = doer(op);
+                    line += &if crate::phone_asks::waiting(op) {
+                        format!(" · asked by you, not on the {phone} yet (added at its next sync)")
                     } else {
-                        " · added by the phone just now (not in this copy yet)"
+                        format!(" · added by the {phone} just now (not in this copy yet)")
                     };
                     Some(line)
                 })
@@ -347,7 +348,11 @@ pub fn call(
                         "Already asked: id {} · {} ({}). Not added again: nothing more to do for this reminder.",
                         text(twin, "id"),
                         title,
-                        if crate::phone_asks::waiting(twin) { "the phone adds it at its next sync" } else { "the phone added it a moment ago" }
+                        if crate::phone_asks::waiting(twin) {
+                            format!("the {} adds it at its next sync", doer(twin))
+                        } else {
+                            format!("the {} added it a moment ago", doer(twin))
+                        }
                     ),
                     false,
                 ));
@@ -520,6 +525,19 @@ fn asked_add(due: Option<Moment>, phone: Phone, place: &str, leaving: bool) -> S
              them plainly it isn't in their calendar yet and why, without steps for another phone{}.",
             at.map(|(at, _)| format!("; then it goes in at {at}")).unwrap_or_default()
         ),
+    }
+}
+
+/// Which of the person's phones does a request, as the agent is told: a reminder by place, whichever they have (both
+/// do those); one for the Android phone's calendar, it; the rest, their iPhone (7/11: the agent was told « the
+/// person's iPhone » for a reminder by place made on an Android phone).
+fn doer(op: &Value) -> &'static str {
+    if field(op, "args").and_then(|a| field(a, "place")).is_some() {
+        "phone"
+    } else if field(op, "phone").and_then(Value::as_str) == Some(ANDROID) {
+        "Android phone"
+    } else {
+        "iPhone"
     }
 }
 
@@ -1152,6 +1170,42 @@ mod tests {
             let words = tool.to_string();
             assert!(!words.contains("Settings") && !words.contains("Réglages"), "{words}");
         }
+    }
+
+    fn config_in(dir: &std::path::Path) -> Config {
+        let mut config = Config::with_key("k");
+        config.outbox.db_path = dir.join("bridge.db").to_string_lossy().into_owned();
+        config
+    }
+
+    /// 7/11: a reminder by place made by an Android phone, the agent told « the person's iPhone » does it. A reminder
+    /// by place is the person's phone's (either kind does it), the others their iPhone's (Android has no Reminders app).
+    #[test]
+    fn a_reminder_by_place_is_the_phones_the_others_the_iphones() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(dir.path());
+        let mut data = Dict::new();
+        data.insert("agents".into(), json!(["coach"]));
+        data.insert("at".into(), json!(940.0)); // an iPhone shares its Reminders (7/11: else no phone takes « banque »)
+        write(&config, &data).unwrap();
+        let run = |name: &str, arguments: Value| {
+            let result = call(&config, "coach", name, arguments.as_object().unwrap(), None, Some(1000.0)).unwrap();
+            assert_eq!(result["isError"], json!(false), "{result:?}");
+            result["content"][0]["text"].as_str().unwrap().to_string()
+        };
+        let bread = json!({"title": "Acheter du pain", "place": "Boulangerie Dupont"});
+        let asked = run("reminders_add", bread.clone());
+        assert!(asked.starts_with("Asked: the person's phone reminds them on arriving at « Boulangerie Dupont »"), "{asked}");
+        assert!(!asked.contains("iPhone"));
+        assert!(run("reminders_add", bread).contains("(the phone adds it at its next sync)"));
+        let bank = run("reminders_add", json!({"title": "Rendez-vous banque", "due": "2026-11-09T10:00"}));
+        assert!(bank.starts_with("Asked: it goes into the iPhone's Reminders (Rappels) for 2026-11-09 10:00"), "{bank}");
+        let listed = run("reminders_list", json!({}));
+        assert!(listed.contains("Acheter du pain · asked by you, not on the phone yet"), "{listed}");
+        assert!(
+            listed.contains("Rendez-vous banque · due 2026-11-09T10:00:00 · asked by you, not on the iPhone yet"),
+            "{listed}"
+        );
     }
 
     #[test]

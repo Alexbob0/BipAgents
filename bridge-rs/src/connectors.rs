@@ -359,6 +359,27 @@ pub fn entry_name(slug: &str) -> String {
     format!("{ENTRY_PREFIX}{slug}")
 }
 
+/// The connector's slug in one of its tools' names as Hermes gives them (`mcp__bipconn_garmin__get_activities` →
+/// `garmin`); None for any other tool.
+pub fn slug_of_tool(tool: &str) -> Option<&str> {
+    let (slug, name) = tool.strip_prefix("mcp__")?.strip_prefix(ENTRY_PREFIX)?.split_once("__")?;
+    (!slug.is_empty() && !name.is_empty()).then_some(slug)
+}
+
+/// A connector's tool → its connector's name as the person reads it (« Météo du Grand-Est »), among `connectors`
+/// (the agent's): what the apps and the automatic « Étapes » say instead of the tool's own name (scripts/tool-labels.py:
+/// « J'utilise Météo du Grand-Est… », « Utiliser Météo du Grand-Est »). None for any other tool.
+pub fn service_in(connectors: &[Connector], tool: &str) -> Option<String> {
+    let slug = slug_of_tool(tool)?;
+    connectors.iter().find(|c| c.slug == slug).map(|c| c.name.trim().to_string()).filter(|n| !n.is_empty())
+}
+
+/// [`service_in`] the connectors of `agent` (read only for a connector's tool).
+pub fn service_of(config: &Config, agent: &str, tool: &str) -> Option<String> {
+    slug_of_tool(tool)?;
+    service_in(&of_agent(config, agent), tool)
+}
+
 fn connector_url(config: &Config, conn: &Connector) -> String {
     format!("{}{CONNECTOR_PATH}/{}?v={}", base_url(config), conn.id, &conn.fingerprint[..conn.fingerprint.len().min(12)])
 }
@@ -1416,6 +1437,9 @@ async fn connector_mcp(
         }
         "ping" => Ok(rpc(&rid, json!({}))),
         "tools/list" => Ok(rpc(&rid, json!({"tools": conn.tools}))),
+        "tools/call" if crate::update_drain::closing() => {
+            Ok(rpc(&rid, crate::update_drain::busy_result(&crate::names::agent_language(&config, &agent.name))))
+        }
         "tools/call" => {
             let tool = params.get("name").and_then(Value::as_str).unwrap_or("").to_string();
             let arguments = params.get("arguments").and_then(Value::as_object).cloned().unwrap_or_default();
@@ -1665,6 +1689,17 @@ pub fn settings_listing(state: &AppState, config: &Config, agent: &AgentConfig) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_connectors_tool_reads_by_its_connectors_name() {
+        let conn = Connector { name: "Météo du Grand-Est".into(), slug: slug("Météo du Grand-Est"), ..Default::default() };
+        assert_eq!(slug_of_tool("mcp__bipconn_meteo_du_grand_est__forecast"), Some("meteo_du_grand_est"));
+        assert_eq!(service_in(std::slice::from_ref(&conn), "mcp__bipconn_meteo_du_grand_est__forecast").as_deref(),
+                   Some("Météo du Grand-Est"));
+        assert_eq!(service_in(std::slice::from_ref(&conn), "mcp__bipconn_garmin__activities"), None);
+        assert_eq!(slug_of_tool("mcp__bipagents__routine_schedule"), None);
+        assert_eq!(slug_of_tool("mcp__bipconn_x__"), None);
+    }
 
     #[test]
     fn slugs_and_icons() {

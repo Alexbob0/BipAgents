@@ -136,9 +136,10 @@ domaine, avec les modules (`bridge-rs/src/<nom>.rs`) qui le font, et ce qu'il la
 - `jobs.rs` : tâches de fond avec un budget en euros choisi avant, compté comme le crédit IA (lectures du cache à
   leur prix, `task_cost.rs`), pause et reprise ; `handback.rs`
   rapporte le compte rendu dans la conversation d'origine.
-- `cronwatch.rs` livre la réponse de chaque routine dans l'app ; `autonomous.rs` liste tout ce que les agents font
-  sans qu'on le leur demande ; `storage_watch.rs` fait demander aux agents quoi garder ; `feature_tips.rs` fait
-  découvrir les fonctions au fil du temps.
+- `cronwatch.rs` livre la réponse de chaque routine dans l'app ; `autonomous.rs` liste tout ce que les agents font sans
+  qu'on le leur demande ; `storage_watch.rs` fait demander aux agents quoi garder ; `space_tidy.rs` efface tout seul ce
+  qui est temporaire dans leur espace (vieux brouillons, dossier d'une tâche finie, vieux téléchargements, caches),
+  jamais les fichiers de la personne ; `feature_tips.rs` fait découvrir les fonctions au fil du temps.
 
 ## Maîtrise des coûts
 
