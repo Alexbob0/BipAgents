@@ -597,12 +597,17 @@ def install_on_existing(args, runner: hermes.Runner, machine: Machine, existing)
         browser = yes(ask("Give your agents a visible browser? (y/n)",
                           "y"))
     patch = False
+    declined: List[str] = []
     if same_version(existing, hermes.HERMES_COMMIT):
         patch = yes(ask("Apply the BipAgents fixes to your Hermes (the agent's questions in the app, photos kept,\n"
                            "  vault after a browser restart)? `hermes update` takes them off. (y/n)", "y"))
+        if not patch:   # refused: not offered again by updates (bipagents hermes-update --fixes-only still can)
+            declined = [p.name for p in hermes.set_patches(REPO / "hermes" / "patches")]
     else:
         say(ui.note(f"Your Hermes ({existing.commit or 'unknown version'}) isn't the tested version "
                        f"({hermes.HERMES_COMMIT}): no BipAgents fixes, the app works without these features."))
+        say(ui.note("Afterwards: bipagents hermes-update --fixes-only offers those that fit it, and "
+                    "bipagents hermes-update --to-bipagents moves it to the tested version with all of them."))
 
     changes = plan_changes(existing, [p.name for p in shown], hub_port)
     say("\nWhat I change in your Hermes:")
@@ -634,7 +639,7 @@ def install_on_existing(args, runner: hermes.Runner, machine: Machine, existing)
         skipped = hermes.apply_patches(runner, REPO / "hermes" / "patches", applied=patched)
         if skipped:
             say(ui.note(f"Fixes not applied: {', '.join(skipped)} (the app works, without these features)."))
-    apply_changes(runner, changes, inst.config_dir / RECORD, existing.gateway, patched)
+    apply_changes(runner, changes, inst.config_dir / RECORD, existing.gateway, patched, declined)
     for profile in shown:
         inst.agents.append(AgentEntry(profile.name, names[profile.name], key_of(existing, changes, profile.name) or "",
                                       root=profile.name == hermes.HUB_PROFILE))

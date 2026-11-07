@@ -155,13 +155,14 @@ def plan_changes(existing: Existing, shown: List[str], port: int) -> List[Tuple[
 
 
 def apply_changes(runner: Runner, changes: List[Tuple[str, str, str, Optional[str]]], record: Path,
-                  gateway: str, patched: Optional[List[str]] = None) -> None:
+                  gateway: str, patched: Optional[List[str]] = None, declined: Optional[List[str]] = None) -> None:
     """Writes them through Hermes' own `config set`, after noting what to put back: the settings, the patches
-    applied to its code, how the gateway ran."""
+    applied to its code, how the gateway ran; and the fixes the person refused (not offered again by updates)."""
     runner.log.append(f"write {record}")
     if not runner.dry:
         record.parent.mkdir(parents=True, exist_ok=True)
-        record.write_text(json.dumps({"preexisting": True, "gateway": gateway, "patched": patched or [], "restore": [
+        record.write_text(json.dumps({"preexisting": True, "gateway": gateway, "patched": patched or [],
+                                      "declined": sorted(declined or []), "restore": [
             {"profile": p, "key": k, "before": before} for p, k, _, before in changes]}, indent=2) + "\n",
                           encoding="utf-8")
         record.chmod(0o600)   # the values before may include a key

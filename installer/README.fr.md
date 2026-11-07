@@ -190,6 +190,18 @@ de revenir à la version précédente. `--check` vérifie sans rien changer. Qua
 apporte un nouveau correctif, `--fixes-only` le pose sur le Hermes que tu as, sans mettre Hermes à jour, puis
 redémarre et vérifie les agents.
 
+**Ton propre Hermes** (installé avant BipAgents) : seuls les correctifs que tu as choisis sont remis ; ceux que
+BipAgents a ajoutés depuis te sont proposés, avec une question, quand ils vont sur ta version (`--fixes-only`, et
+`bipagents update` quand les correctifs changent ; un refus est retenu). Quand ton Hermes n'est pas la version sur
+laquelle BipAgents est construit et testé, `--check` le dit, et `bipagents hermes-update --to-bipagents` l'y amène
+avec tous les correctifs : il montre le plan et demande, sauvegarde d'abord
+(`~/.local/state/bipagents/hermes-move/<heure>/` : conversations, profils, mémoire, compétences et réglages, le code
+de Hermes et son environnement tels quels), attend les tours en cours, arrête les gateways (le hub et les espaces de
+tes agents), lance l'installeur de Hermes de cette version (`--commit` : ses dépendances et ses migrations, comme une
+installation neuve), pose tous les correctifs, vérifie que ton modèle et tes réglages n'ont pas bougé, redémarre et
+vérifie chaque agent. Au moindre échec, tout est remis comme avant tout seul. `--undo-move` défait un déplacement
+terminé.
+
 ## Désinstaller
 
 `bipagents uninstall` retire les services, la publication
