@@ -1844,6 +1844,8 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .layer(middleware::from_fn(crate::body_limit::body_limit))
         .layer(axum::extract::DefaultBodyLimit::disable())
         .layer(tower_http::catch_panic::CatchPanicLayer::custom(internal_error))
+        // a person's message carried out whole even when the phone goes away meanwhile: outside every other layer
+        .layer(middleware::from_fn(crate::threads::send_whole))
 }
 
 /// A route that panicked (a bug, or a `todo!()` not ported yet): Starlette's 500, uvicorn's log line.
