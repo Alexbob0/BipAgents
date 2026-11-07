@@ -226,6 +226,11 @@ def test_j13_a_secret_card_shows_in_the_conversation_and_goes_once_typed(journey
     started(journey.send(cid(13), "Connecte-toi à mon compte #secret"))
     card = waiting(journey, "approvals", "bip-secret-")
     displayable.check(journey.bridge, journey.page(), AGENT)
+    # a phone catching up on the card's hint: placed with no item, nothing comes after its last one (7/11: that page
+    # was a 500, the iPhone never showed the card and said « Ton ordinateur a eu un souci »)
+    caught_up = journey.page(after=journey.page()["items"][-1]["cursor"])
+    assert [c["request_id"] for c in caught_up["pending"]["approvals"]
+            if c["run_id"].startswith("bip-secret-")] == [card["request_id"]], caught_up["pending"]
     typed = journey.bridge.post(f"/v1/vault/secrets/requests/{card['request_id']}", headers=AUTH,
                                 json={"allow": True, "value": "Fake-Pa55word", "identifier": "alex@example.org"})
     assert typed.status_code == 200, typed.text
@@ -355,7 +360,11 @@ def test_j18_a_deleted_conversation_forgets_its_messages_not_sent(journey):
 def test_j19_the_queue_shows_each_kind_waiting(journey):
     """« En attente »: a photo, a document, words sent with « Après » while the agent answers: each row has
     something to show (a photo alone showed an empty row)."""
-    started(journey.send(cid(19), "Raconte-moi tout #lent"))
+    run = started(journey.send(cid(19), "Raconte-moi tout #lent"))["run_id"]
+    # a phone reopened mid-turn on its copy: its catch-up, with nothing new, says the turn goes on (7/11: that page
+    # was a 500, the iPhone never showed the answer going on nor its « Arrêter »)
+    caught_up = journey.page(after=journey.page()["items"][-1]["cursor"])
+    assert (caught_up["pending"].get("run") or {}).get("run_id") == run, caught_up
     assert journey.send(cid(191), "", photos=[photo(19)]).json()["state"] == "queued"
     pdf = b"%PDF-1.4\n% facture\n" + b"1" * 800
     stored = journey.upload("facture.pdf", pdf, "application/pdf")

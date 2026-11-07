@@ -1177,8 +1177,7 @@ async fn timeline_route(
     let mut items = items;
     let shown = timeline::range(&items, &want);
     let decided = layout::layout(&items, shown.clone(), run.is_some());
-    // named among the page's items (the page's first when the turn began before it), none when it begins after it
-    let open = decided.open.filter(|n| *n < shown.end).map(|n| items[n.max(shown.start)].id.clone());
+    let open = open_on_page(&items, decided.open, &shown);
     for (n, fields) in decided.fields {
         items[n].body.insert("layout".into(), Value::Object(fields));
     }
@@ -1196,6 +1195,17 @@ async fn timeline_route(
     let mut answer = page.answer(out_thread, thread.version, pending, q.get("debug").is_some_and(|d| d == "1"));
     answer["layout"] = json!({"open": open});
     Ok(web::ok(answer))
+}
+
+/// The page's `layout.open`: the first item of the turn going on, named among the page's items (the page's first when
+/// the turn began before it), none when it begins after the page or when the page holds no item. A catch-up with
+/// nothing new while a turn goes on (`after=` its last item) is such a page: it was a 500 (7/11, release journeys
+/// J13 and J19: the iPhone, catching up on a card placed with no item, or reopened on its copy mid-turn, lost the
+/// card, the run going on and its « Arrêter », and said « Ton ordinateur a eu un souci »).
+fn open_on_page(items: &[Item], open: Option<usize>, shown: &std::ops::Range<usize>) -> Option<String> {
+    open.filter(|n| !shown.is_empty() && *n < shown.end)
+        .and_then(|n| items.get(n.max(shown.start)))
+        .map(|i| i.id.clone())
 }
 
 /// What waits for the person in a conversation: its tip, its cards placed among its items (`after`), the run going on
@@ -1665,5 +1675,39 @@ mod maps_once_tests {
         // the map alone, or another map than the page's: kept
         assert_eq!(paths(&items[1]), vec![carte.to_string()]);
         assert_eq!(paths(&items[2]), vec![trip.to_string(), other.to_string()]);
+    }
+}
+
+#[cfg(test)]
+mod page_open_tests {
+    use super::*;
+
+    fn message(id: &str) -> Item {
+        let body = json!({"kind": "message", "role": "person", "text": "Raconte"});
+        Item {
+            id: id.into(),
+            pos: (0, 0, 0),
+            at: 0.0,
+            turn: id.into(),
+            segment: "s".into(),
+            row: 0,
+            body: body.as_object().cloned().unwrap_or_default(),
+        }
+    }
+
+    #[test]
+    fn a_page_names_the_turn_going_on_only_among_its_items() {
+        let items: Vec<Item> = ["m_1", "m_2", "m_3"].into_iter().map(message).collect();
+        // the turn going on began at m_2: named on the latest page, the first item of a page that starts after it
+        // began, none on a page that ends before it
+        assert_eq!(open_on_page(&items, Some(1), &(0..3)).as_deref(), Some("m_2"));
+        assert_eq!(open_on_page(&items, Some(1), &(2..3)).as_deref(), Some("m_3"));
+        assert_eq!(open_on_page(&items, Some(1), &(0..1)), None);
+        // a catch-up with nothing new while it goes on (`after=` the last item): no item to name, never a panic (a 500
+        // the iPhone showed as « Ton ordinateur a eu un souci », its card and « Arrêter » lost, 7/11)
+        assert_eq!(open_on_page(&items, Some(1), &(3..3)), None);
+        assert_eq!(open_on_page(&items, Some(2), &(3..3)), None);
+        assert_eq!(open_on_page(&[], Some(0), &(0..0)), None);
+        assert_eq!(open_on_page(&items, None, &(0..3)), None);
     }
 }
