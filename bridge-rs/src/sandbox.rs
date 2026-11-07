@@ -1281,6 +1281,13 @@ pub fn call(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) 
                     who.join(", ")
                 ));
             }
+            if crate::agent_files::offered(config, &agent.name) {
+                out.push(format!(
+                    "Other agents see nothing else of yours: to give one of them a file, use {} (it says where that \
+agent reads it).",
+                    crate::agent_files::TOOL_NAME
+                ));
+            }
             for (_, source) in reads.iter().filter(|(r, _)| r == &agent.name) {
                 let shown =
                     config.agent(Some(source)).map(|a| a.display_name.clone()).unwrap_or_else(|| source.clone());
