@@ -128,6 +128,7 @@ pub mod steps;
 pub mod style_skills;
 /// What each kind of agent keeps in view of Hermes' tools (token diet, phase 2).
 pub mod tool_diet;
+pub mod tool_kinds;
 /// The providers EUrouter tries first, for its prompt cache.
 pub mod model_route;
 pub mod model_choice;

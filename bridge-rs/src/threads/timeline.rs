@@ -830,10 +830,27 @@ fn at_cursor(items: &[Item], cursor: &str) -> (usize, bool) {
 }
 
 pub fn page(items: Vec<Item>, want: &Want) -> Page {
+    let (start, end, anchor, reset, joins) = bounds(&items, want);
+    let more_before = start > 0;
+    let more_after = end < items.len();
+    let items = items.into_iter().skip(start).take(end.saturating_sub(start)).collect();
+    Page { items, more_before, more_after, anchor, start, reset, joins }
+}
+
+/// The items a page holds (`page`), as a range of the thread's.
+pub fn range(items: &[Item], want: &Want) -> std::ops::Range<usize> {
+    let (start, end, ..) = bounds(items, want);
+    start..end
+}
+
+type Bounds = (usize, usize, Option<String>, bool, Option<String>);
+
+/// Where a page starts and ends among the thread's items, its anchor, whether it is the window, the cursor it joins.
+fn bounds(items: &[Item], want: &Want) -> Bounds {
     let n = items.len();
     let size = |chosen: usize| if want.chosen { chosen } else { want.limit.max(1) };
     let latest = |limit: usize| (n.saturating_sub(limit), n, None, true, None);
-    let (start, end, anchor, reset, joins) = if let Some(around) = &want.around {
+    if let Some(around) = &want.around {
         match items.iter().position(|i| &i.id == around || i.id.starts_with(&format!("{around}."))) {
             Some(i) => {
                 let start = i.saturating_sub(want.before_count);
@@ -843,7 +860,7 @@ pub fn page(items: Vec<Item>, want: &Want) -> Page {
             None => latest(size(LATEST_PAGE)),
         }
     } else if let Some(after) = &want.after {
-        let (i, found) = at_cursor(&items, after);
+        let (i, found) = at_cursor(items, after);
         let start = if found { i + 1 } else { i };
         let limit = size(CATCH_UP_PAGE);
         if want.chosen && (!found || n.saturating_sub(start) > limit) {
@@ -859,7 +876,7 @@ pub fn page(items: Vec<Item>, want: &Want) -> Page {
             (start.min(n), (start + limit).min(n), None, false, found.then(|| after.clone()))
         }
     } else if let Some(before) = &want.before {
-        let (i, found) = at_cursor(&items, before);
+        let (i, found) = at_cursor(items, before);
         if want.chosen && !found {
             latest(LATEST_PAGE)
         } else {
@@ -867,11 +884,7 @@ pub fn page(items: Vec<Item>, want: &Want) -> Page {
         }
     } else {
         latest(size(LATEST_PAGE))
-    };
-    let more_before = start > 0;
-    let more_after = end < n;
-    let items = items.into_iter().skip(start).take(end.saturating_sub(start)).collect();
-    Page { items, more_before, more_after, anchor, start, reset, joins }
+    }
 }
 
 #[cfg(test)]
