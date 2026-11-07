@@ -212,7 +212,7 @@ def test_the_iphone_shares_its_reminders_and_does_what_the_agents_ask(bridges, f
     by_place = text_of(call(bridge, "reminders_add", {"title": "Acheter du pain", "place": "Boulangerie Dupont"}, token=token))
     assert by_place.startswith("Asked: the person's phone reminds them on arriving at « Boulangerie Dupont »")
     assert "iPhone" not in by_place
-    assert "the iPhone's Reminders (Rappels) for 2026-10-30 10:00, with an alert at that time" in text_of(asked)
+    assert "the Reminders app of their iPhone for 2026-10-30 10:00, with an alert at that time" in text_of(asked)
     give_token(bridge)
     assert call(bridge, "reminders_add", {"title": "x"})["isError"]   # another agent (wellness): not shared
 
@@ -285,6 +285,6 @@ def test_a_reminder_at_two_goes_to_the_phone_that_does_it_and_the_agent_says_whe
     # An iPhone shares its Reminders too: the next reminder goes there, never also to the Android calendar.
     assert bridge.put("/v1/reminders", json={"lists": [], "items": []}, headers=AUTH).json() == {"items": 0}
     iphone = text_of(call(bridge, "reminders_add", {"title": "Banque", "due": "2026-11-08T10:00"}, token=token))
-    assert "the iPhone's Reminders (Rappels) for 2026-11-08 10:00, with an alert at that time" in iphone
+    assert "the Reminders app of their iPhone for 2026-11-08 10:00, with an alert at that time" in iphone
     assert "Banque" in [o["args"]["title"] for o in queue()]
-    assert "Banque" not in [o["args"]["title"] for o in queue("android")]
+    assert "Banque" not in [o["args"].get("title") for o in queue("android")]

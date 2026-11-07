@@ -506,7 +506,7 @@ fn asked_add(due: Option<Moment>, phone: Phone, place: &str, leaving: bool) -> S
                 Some((day, false)) => format!(" for {day} (a day, no time)"),
                 None => String::new(),
             };
-            format!("Asked: it goes into the iPhone's Reminders (Rappels){when}, {next}.")
+            format!("Asked: it goes into the Reminders app of their iPhone{when}, {next}.")
         }
         Phone::Android => {
             let when = match at {
@@ -1076,7 +1076,7 @@ mod tests {
             assert!(!failed, "{said}");
             assert_eq!(op["args"]["due"], json!(written), "{due}");
             assert_eq!(op.get("phone"), None, "an iPhone's: every app reads it");
-            assert!(said.contains("the iPhone's Reminders"), "{said}");
+            assert!(said.contains("the Reminders app of their iPhone"), "{said}");
             if due.len() > 10 {
                 assert!(said.contains("14:00, with an alert at that time"), "{said}");
             } else {
@@ -1132,7 +1132,7 @@ mod tests {
         let both = json!({"at": NOW - 60.0, "android": {"at": NOW - 60.0, "calendar": true}});
         let config = shared(dir.path(), both);
         let (_, said, op) = add(&config, json!({"title": "Appeler Paul", "due": "2026-11-07T14:00"}));
-        assert!(op.unwrap().get("phone").is_none() && said.contains("the iPhone's Reminders (Rappels)"), "{said}");
+        assert!(op.unwrap().get("phone").is_none() && said.contains("the Reminders app of their iPhone"), "{said}");
         // An iPhone not heard of for a month: taken as gone.
         let config = shared(dir.path(), json!({"at": NOW - 40.0 * 86400.0}));
         assert!(add(&config, json!({"title": "x", "due": "2026-11-07T14:00"})).0);
@@ -1199,7 +1199,7 @@ mod tests {
         assert!(!asked.contains("iPhone"));
         assert!(run("reminders_add", bread).contains("(the phone adds it at its next sync)"));
         let bank = run("reminders_add", json!({"title": "Rendez-vous banque", "due": "2026-11-09T10:00"}));
-        assert!(bank.starts_with("Asked: it goes into the iPhone's Reminders (Rappels) for 2026-11-09 10:00"), "{bank}");
+        assert!(bank.starts_with("Asked: it goes into the Reminders app of their iPhone for 2026-11-09 10:00"), "{bank}");
         let listed = run("reminders_list", json!({}));
         assert!(listed.contains("Acheter du pain · asked by you, not on the phone yet"), "{listed}");
         assert!(
