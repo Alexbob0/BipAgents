@@ -62,7 +62,8 @@ struct Answer {
 static QUEUES: LazyLock<Mutex<HashMap<String, VecDeque<Pending>>>> = LazyLock::new(Default::default);
 static BELLS: LazyLock<Mutex<HashMap<String, Arc<Notify>>>> = LazyLock::new(Default::default);
 /// Requests taken, waiting for their answer: id → (household, where the answer goes).
-static WAITING: LazyLock<Mutex<HashMap<String, (String, oneshot::Sender<Answer>)>>> = LazyLock::new(Default::default);
+type Taken = (String, oneshot::Sender<Answer>);
+static WAITING: LazyLock<Mutex<HashMap<String, Taken>>> = LazyLock::new(Default::default);
 /// The loopback listener's port.
 static PORT: OnceLock<u16> = OnceLock::new();
 /// This bridge's routes, for the requests a pulling household runs in-process.
@@ -78,7 +79,14 @@ fn bell(household: &str) -> Arc<Notify> {
 fn kept(name: &str) -> bool {
     !matches!(
         name,
-        "host" | "connection" | "keep-alive" | "transfer-encoding" | "te" | "trailer" | "upgrade" | "content-length"
+        "host"
+            | "connection"
+            | "keep-alive"
+            | "transfer-encoding"
+            | "te"
+            | "trailer"
+            | "upgrade"
+            | "content-length"
             | "proxy-connection"
     ) && !name.starts_with("x-bip-relay-")
 }
@@ -258,11 +266,7 @@ async fn next(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Re
 
 /// `POST /family/relay/answer/<id>` (the household's key): the answer's status and headers in `x-bip-relay-status`
 /// and `x-bip-relay-headers` (a JSON list of pairs), its body streamed as it comes.
-async fn answer(
-    State(state): State<AppState>,
-    UrlPath(id): UrlPath<String>,
-    request: Request,
-) -> ApiResult<Response> {
+async fn answer(State(state): State<AppState>, UrlPath(id): UrlPath<String>, request: Request) -> ApiResult<Response> {
     let household = caller(&state, request.headers())?;
     let waiting = {
         let mut waiting = WAITING.lock().unwrap_or_else(|e| e.into_inner());
@@ -364,7 +368,8 @@ async fn run(state: AppState, entry: Dict, job: Value) {
     let id = job.get("id").and_then(Value::as_str).unwrap_or_default().to_string();
     let path = job.get("path").and_then(Value::as_str).unwrap_or("/").to_string();
     let method = job.get("method").and_then(Value::as_str).unwrap_or("GET");
-    let pairs: Vec<(String, String)> = job.get("headers").cloned().and_then(|h| serde_json::from_value(h).ok()).unwrap_or_default();
+    let pairs: Vec<(String, String)> =
+        job.get("headers").cloned().and_then(|h| serde_json::from_value(h).ok()).unwrap_or_default();
     let body = job
         .get("body")
         .and_then(Value::as_str)
