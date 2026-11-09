@@ -170,7 +170,8 @@
       },
       "suggestions": [
         "weekend_lisbon",
-        "lisbon_map"
+        "lisbon_map",
+        "lisbon_expenses"
       ],
       "shared": 3
     },
@@ -2482,6 +2483,77 @@
         "de": "Hier sind die fünf Orte, die ihr in Lissabon nicht verpassen solltet, von der Burg São Jorge bis zum Turm von Belém.",
         "es": "Aquí tenéis los cinco sitios imprescindibles de Lisboa, del castillo de San Jorge a la torre de Belém."
       }
+    },
+    "lisbon_expenses": {
+      "prompt": {
+        "fr": "Qui doit combien à qui ? 💶",
+        "en": "Who owes whom? 💶",
+        "de": "Wer schuldet wem was? 💶",
+        "es": "¿Quién debe cuánto a quién? 💶"
+      },
+      "keywords": {
+        "fr": [
+          "dépenses",
+          "doit",
+          "rembourser",
+          "comptes",
+          "payé"
+        ],
+        "en": [
+          "expenses",
+          "owes",
+          "owe",
+          "pay back",
+          "paid"
+        ],
+        "de": [
+          "ausgaben",
+          "schuldet",
+          "zurückzahlen",
+          "bezahlt"
+        ],
+        "es": [
+          "gastos",
+          "debe",
+          "devolver",
+          "cuentas",
+          "pagado"
+        ]
+      },
+      "steps": [
+        {
+          "tool": "expense",
+          "seconds": 0.6,
+          "preview": {
+            "fr": "Taxi aéroport · 31 € · Sam",
+            "en": "Airport taxi · €31 · Sam",
+            "de": "Taxi zum Flughafen · 31 € · Sam",
+            "es": "Taxi al aeropuerto · 31 € · Sam"
+          }
+        },
+        {
+          "say": {
+            "fr": "C’est noté. Les comptes sont faits au centime près, pour que chacun rembourse en un minimum de virements :",
+            "en": "Noted. The account is worked out to the cent, so everyone pays back in as few transfers as possible:",
+            "de": "Notiert. Die Rechnung stimmt auf den Cent, damit jeder mit so wenigen Überweisungen wie möglich zurückzahlt:",
+            "es": "Anotado. Las cuentas están hechas al céntimo, para que cada uno devuelva con el mínimo de transferencias:"
+          }
+        },
+        {
+          "show": {
+            "fr": "/demo/card/lisbon_expenses",
+            "en": "/demo/card/lisbon_expenses",
+            "de": "/demo/card/lisbon_expenses",
+            "es": "/demo/card/lisbon_expenses"
+          }
+        }
+      ],
+      "spoken": {
+        "fr": "C’est noté. Max rembourse soixante-sept euros cinquante et un à Léa, et Sam en doit encore à Léa et à Inès.",
+        "en": "Noted. Max pays Léa back sixty-seven euros fifty-one, and Sam still owes Léa and Inès.",
+        "de": "Notiert. Max zahlt Léa siebenundsechzig Euro einundfünfzig zurück, und Sam schuldet Léa und Inès noch etwas.",
+        "es": "Anotado. Max le devuelve sesenta y siete euros con cincuenta y uno a Léa, y Sam aún les debe a Léa y a Inès."
+      }
     }
   },
   "fallback": [
@@ -3476,6 +3548,539 @@
           "after": 1.0
         }
       ]
+    },
+    "lisbon_expenses": {
+      "type": "expenses",
+      "title": {
+        "fr": "Dépenses partagées",
+        "en": "Shared expenses",
+        "de": "Geteilte Ausgaben",
+        "es": "Gastos compartidos"
+      },
+      "people": [
+        "Léa",
+        "Sam",
+        "Inès",
+        "Max"
+      ],
+      "expenses": [
+        {
+          "what": {
+            "fr": "Appart Alfama · 2 nuits",
+            "en": "Alfama flat · 2 nights",
+            "de": "Wohnung Alfama · 2 Nächte",
+            "es": "Piso Alfama · 2 noches"
+          },
+          "by": "Léa",
+          "amount": 184,
+          "for": null
+        },
+        {
+          "what": {
+            "fr": "Billets de tram",
+            "en": "Tram tickets",
+            "de": "Straßenbahntickets",
+            "es": "Billetes de tranvía"
+          },
+          "by": "Sam",
+          "amount": 26.4,
+          "for": null
+        },
+        {
+          "what": {
+            "fr": "Dîner à Alfama",
+            "en": "Dinner in Alfama",
+            "de": "Abendessen in Alfama",
+            "es": "Cena en Alfama"
+          },
+          "by": "Inès",
+          "amount": 97.5,
+          "for": null
+        },
+        {
+          "what": {
+            "fr": "Pastéis de Belém",
+            "en": "Pastéis de Belém",
+            "de": "Pastéis de Belém",
+            "es": "Pastéis de Belém"
+          },
+          "by": "Max",
+          "amount": 14.2,
+          "for": [
+            "Léa",
+            "Sam",
+            "Max"
+          ]
+        },
+        {
+          "what": {
+            "fr": "Taxi aéroport",
+            "en": "Airport taxi",
+            "de": "Taxi zum Flughafen",
+            "es": "Taxi al aeropuerto"
+          },
+          "by": "Sam",
+          "amount": 31,
+          "for": [
+            "Sam",
+            "Inès"
+          ]
+        }
+      ],
+      "views": {
+        "fr": {
+          "currency": "EUR",
+          "total": "353,10 €",
+          "expenses": [
+            {
+              "id": "e5",
+              "what": "Taxi aéroport",
+              "by": "Sam",
+              "amount": "31,00 €",
+              "for": [
+                "Sam",
+                "Inès"
+              ],
+              "all": false
+            },
+            {
+              "id": "e4",
+              "what": "Pastéis de Belém",
+              "by": "Max",
+              "amount": "14,20 €",
+              "for": [
+                "Léa",
+                "Sam",
+                "Max"
+              ],
+              "all": false
+            },
+            {
+              "id": "e3",
+              "what": "Dîner à Alfama",
+              "by": "Inès",
+              "amount": "97,50 €",
+              "for": [
+                "Léa",
+                "Sam",
+                "Inès",
+                "Max"
+              ],
+              "all": true
+            },
+            {
+              "id": "e2",
+              "what": "Billets de tram",
+              "by": "Sam",
+              "amount": "26,40 €",
+              "for": [
+                "Léa",
+                "Sam",
+                "Inès",
+                "Max"
+              ],
+              "all": true
+            },
+            {
+              "id": "e1",
+              "what": "Appart Alfama · 2 nuits",
+              "by": "Léa",
+              "amount": "184,00 €",
+              "for": [
+                "Léa",
+                "Sam",
+                "Inès",
+                "Max"
+              ],
+              "all": true
+            }
+          ],
+          "balances": [
+            {
+              "name": "Inès",
+              "cents": 502,
+              "amount": "+5,02 €"
+            },
+            {
+              "name": "Léa",
+              "cents": 10230,
+              "amount": "+102,30 €"
+            },
+            {
+              "name": "Max",
+              "cents": -6751,
+              "amount": "−67,51 €"
+            },
+            {
+              "name": "Sam",
+              "cents": -3981,
+              "amount": "−39,81 €"
+            }
+          ],
+          "transfers": [
+            {
+              "from": "Max",
+              "to": "Léa",
+              "amount": "67,51 €"
+            },
+            {
+              "from": "Sam",
+              "to": "Inès",
+              "amount": "5,02 €"
+            },
+            {
+              "from": "Sam",
+              "to": "Léa",
+              "amount": "34,79 €"
+            }
+          ],
+          "id": "demo",
+          "card": "demo",
+          "type": "expenses",
+          "title": "Dépenses partagées",
+          "open": true,
+          "options": []
+        },
+        "en": {
+          "currency": "EUR",
+          "total": "€353.10",
+          "expenses": [
+            {
+              "id": "e5",
+              "what": "Airport taxi",
+              "by": "Sam",
+              "amount": "€31.00",
+              "for": [
+                "Sam",
+                "Inès"
+              ],
+              "all": false
+            },
+            {
+              "id": "e4",
+              "what": "Pastéis de Belém",
+              "by": "Max",
+              "amount": "€14.20",
+              "for": [
+                "Léa",
+                "Sam",
+                "Max"
+              ],
+              "all": false
+            },
+            {
+              "id": "e3",
+              "what": "Dinner in Alfama",
+              "by": "Inès",
+              "amount": "€97.50",
+              "for": [
+                "Léa",
+                "Sam",
+                "Inès",
+                "Max"
+              ],
+              "all": true
+            },
+            {
+              "id": "e2",
+              "what": "Tram tickets",
+              "by": "Sam",
+              "amount": "€26.40",
+              "for": [
+                "Léa",
+                "Sam",
+                "Inès",
+                "Max"
+              ],
+              "all": true
+            },
+            {
+              "id": "e1",
+              "what": "Alfama flat · 2 nights",
+              "by": "Léa",
+              "amount": "€184.00",
+              "for": [
+                "Léa",
+                "Sam",
+                "Inès",
+                "Max"
+              ],
+              "all": true
+            }
+          ],
+          "balances": [
+            {
+              "name": "Inès",
+              "cents": 502,
+              "amount": "+€5.02"
+            },
+            {
+              "name": "Léa",
+              "cents": 10230,
+              "amount": "+€102.30"
+            },
+            {
+              "name": "Max",
+              "cents": -6751,
+              "amount": "−€67.51"
+            },
+            {
+              "name": "Sam",
+              "cents": -3981,
+              "amount": "−€39.81"
+            }
+          ],
+          "transfers": [
+            {
+              "from": "Max",
+              "to": "Léa",
+              "amount": "€67.51"
+            },
+            {
+              "from": "Sam",
+              "to": "Inès",
+              "amount": "€5.02"
+            },
+            {
+              "from": "Sam",
+              "to": "Léa",
+              "amount": "€34.79"
+            }
+          ],
+          "id": "demo",
+          "card": "demo",
+          "type": "expenses",
+          "title": "Shared expenses",
+          "open": true,
+          "options": []
+        },
+        "de": {
+          "currency": "EUR",
+          "total": "353,10 €",
+          "expenses": [
+            {
+              "id": "e5",
+              "what": "Taxi zum Flughafen",
+              "by": "Sam",
+              "amount": "31,00 €",
+              "for": [
+                "Sam",
+                "Inès"
+              ],
+              "all": false
+            },
+            {
+              "id": "e4",
+              "what": "Pastéis de Belém",
+              "by": "Max",
+              "amount": "14,20 €",
+              "for": [
+                "Léa",
+                "Sam",
+                "Max"
+              ],
+              "all": false
+            },
+            {
+              "id": "e3",
+              "what": "Abendessen in Alfama",
+              "by": "Inès",
+              "amount": "97,50 €",
+              "for": [
+                "Léa",
+                "Sam",
+                "Inès",
+                "Max"
+              ],
+              "all": true
+            },
+            {
+              "id": "e2",
+              "what": "Straßenbahntickets",
+              "by": "Sam",
+              "amount": "26,40 €",
+              "for": [
+                "Léa",
+                "Sam",
+                "Inès",
+                "Max"
+              ],
+              "all": true
+            },
+            {
+              "id": "e1",
+              "what": "Wohnung Alfama · 2 Nächte",
+              "by": "Léa",
+              "amount": "184,00 €",
+              "for": [
+                "Léa",
+                "Sam",
+                "Inès",
+                "Max"
+              ],
+              "all": true
+            }
+          ],
+          "balances": [
+            {
+              "name": "Inès",
+              "cents": 502,
+              "amount": "+5,02 €"
+            },
+            {
+              "name": "Léa",
+              "cents": 10230,
+              "amount": "+102,30 €"
+            },
+            {
+              "name": "Max",
+              "cents": -6751,
+              "amount": "−67,51 €"
+            },
+            {
+              "name": "Sam",
+              "cents": -3981,
+              "amount": "−39,81 €"
+            }
+          ],
+          "transfers": [
+            {
+              "from": "Max",
+              "to": "Léa",
+              "amount": "67,51 €"
+            },
+            {
+              "from": "Sam",
+              "to": "Inès",
+              "amount": "5,02 €"
+            },
+            {
+              "from": "Sam",
+              "to": "Léa",
+              "amount": "34,79 €"
+            }
+          ],
+          "id": "demo",
+          "card": "demo",
+          "type": "expenses",
+          "title": "Geteilte Ausgaben",
+          "open": true,
+          "options": []
+        },
+        "es": {
+          "currency": "EUR",
+          "total": "353,10 €",
+          "expenses": [
+            {
+              "id": "e5",
+              "what": "Taxi al aeropuerto",
+              "by": "Sam",
+              "amount": "31,00 €",
+              "for": [
+                "Sam",
+                "Inès"
+              ],
+              "all": false
+            },
+            {
+              "id": "e4",
+              "what": "Pastéis de Belém",
+              "by": "Max",
+              "amount": "14,20 €",
+              "for": [
+                "Léa",
+                "Sam",
+                "Max"
+              ],
+              "all": false
+            },
+            {
+              "id": "e3",
+              "what": "Cena en Alfama",
+              "by": "Inès",
+              "amount": "97,50 €",
+              "for": [
+                "Léa",
+                "Sam",
+                "Inès",
+                "Max"
+              ],
+              "all": true
+            },
+            {
+              "id": "e2",
+              "what": "Billetes de tranvía",
+              "by": "Sam",
+              "amount": "26,40 €",
+              "for": [
+                "Léa",
+                "Sam",
+                "Inès",
+                "Max"
+              ],
+              "all": true
+            },
+            {
+              "id": "e1",
+              "what": "Piso Alfama · 2 noches",
+              "by": "Léa",
+              "amount": "184,00 €",
+              "for": [
+                "Léa",
+                "Sam",
+                "Inès",
+                "Max"
+              ],
+              "all": true
+            }
+          ],
+          "balances": [
+            {
+              "name": "Inès",
+              "cents": 502,
+              "amount": "+5,02 €"
+            },
+            {
+              "name": "Léa",
+              "cents": 10230,
+              "amount": "+102,30 €"
+            },
+            {
+              "name": "Max",
+              "cents": -6751,
+              "amount": "−67,51 €"
+            },
+            {
+              "name": "Sam",
+              "cents": -3981,
+              "amount": "−39,81 €"
+            }
+          ],
+          "transfers": [
+            {
+              "from": "Max",
+              "to": "Léa",
+              "amount": "67,51 €"
+            },
+            {
+              "from": "Sam",
+              "to": "Inès",
+              "amount": "5,02 €"
+            },
+            {
+              "from": "Sam",
+              "to": "Léa",
+              "amount": "34,79 €"
+            }
+          ],
+          "id": "demo",
+          "card": "demo",
+          "type": "expenses",
+          "title": "Gastos compartidos",
+          "open": true,
+          "options": []
+        }
+      }
     }
   },
   "maps": {

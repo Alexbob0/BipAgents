@@ -105,7 +105,7 @@ domaine, avec les modules (`bridge-rs/src/<nom>.rs`) qui le font, et ce qu'il la
 - `households.rs` (avec `door_tls.rs`) relie volontairement deux installations ; `family_agent.rs`,
   `family_news.rs`, `agent_shares.rs`, `meet.rs` : un agent commun à la famille, des nouvelles transmises seulement
   après accord, des agents partagés, deux agents qui trouvent une date. `read_shares.rs`, `project_agent.rs`,
-  `friends_cards.rs` et `templates.rs` (avec `templates_scrub.rs`) partagent une conversation en lecture, l'agent d'une
+  `friends_cards.rs` (avec `shared_expenses.rs`) et `templates.rs` (avec `templates_scrub.rs`) partagent une conversation en lecture, l'agent d'une
   occasion ou un agent comme modèle.
 
 ## Connecteurs et tes données

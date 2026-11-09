@@ -84,6 +84,7 @@ pub const KINDS: &[Kind] = &[
     Kind { id: "familyNotebookRead", names: &["family_notebook_read"], prefixes: &[], step: Some("familyNotebookRead") },
     Kind { id: "familyNotebookWrite", names: &["family_notebook_write"], prefixes: &[], step: Some("familyNotebookWrite") },
     Kind { id: "friendsCard", names: &["friends_card"], prefixes: &[], step: Some("friendsCard") },
+    Kind { id: "sharedExpense", names: &["expense"], prefixes: &[], step: Some("sharedExpense") },
     Kind { id: "roomHistory", names: &["room_history"], prefixes: &[], step: Some("roomHistory") },
     Kind { id: "proposeRoom", names: &["propose_room"], prefixes: &[], step: Some("proposeRoom") },
     Kind { id: "proposeTeam", names: &["propose_team"], prefixes: &[], step: Some("proposeTeam") },
@@ -496,6 +497,12 @@ pub const STEPS: &[Step] = &[
         id: "friendsCard",
         one: ["Préparer un vote ou une liste", "Make a vote or a list", "Eine Abstimmung oder eine Liste erstellen", "Preparar una votación o una lista"],
         many: ["Préparer un vote ou une liste", "Make a vote or a list", "Eine Abstimmung oder eine Liste erstellen", "Preparar una votación o una lista"],
+        backstage: false,
+    },
+    Step {
+        id: "sharedExpense",
+        one: ["Noter une dépense partagée", "Note a shared expense", "Eine geteilte Ausgabe notieren", "Anotar un gasto compartido"],
+        many: ["Noter {n} dépenses partagées", "Note {n} shared expenses", "{n} geteilte Ausgaben notieren", "Anotar {n} gastos compartidos"],
         backstage: false,
     },
     Step {
