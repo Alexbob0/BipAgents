@@ -698,9 +698,11 @@ characters of this page. To read on, run execute_script with: "
     std::fs::remove_file(tmp.join("calls.jsonl")).unwrap();
     proxy.handle(tool(4, "click_element", json!({"instance_id": "319ceedb", "selector": "a"}))).await;
     assert_eq!(calls(tmp).len(), 2);
+    assert_eq!(calls(tmp)[0]["arguments"]["timeout"], json!(3000), "3 s to find it, not the real server's 10");
     proxy.handle(tool(5, "list_tabs", json!({"instance_id": "319ceedb"}))).await;
-    proxy.handle(tool(6, "click_element", json!({"selector": "a"}))).await;
+    proxy.handle(tool(6, "click_element", json!({"selector": "a", "timeout": 8000}))).await;
     assert_eq!(calls(tmp).len(), 4);
+    assert_eq!(calls(tmp)[3]["arguments"]["timeout"], json!(8000), "the agent's own time kept");
 
     // a screenshot: an image block, the agent's path never passed on (it would land in the container)
     std::fs::remove_file(tmp.join("calls.jsonl")).unwrap();

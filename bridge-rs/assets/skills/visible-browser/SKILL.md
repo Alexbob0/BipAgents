@@ -32,7 +32,8 @@ many pages), start a background task (`start_task`) that browses instead, and te
 
 ## 2. Browse
 - `navigate` and `click_element` answer once the page has loaded: read it right away, without a pause of your own.
-  Only on a site that checks for robots, wait 5 to 10 seconds before reading it.
+  Only on a site that checks for robots, wait 5 to 10 seconds before reading it. To follow a link whose address the
+  page's text gives you, `navigate` to that address: it is surer than a click.
 - Read pages as text (`get_page_content`) rather than with screenshots when you can. It gives the page's readable
   text (its main content), then its links and buttons; a long page comes in parts, and its answer gives the script
   for the next part. Never read the same page twice in a row: the answer would be the same.

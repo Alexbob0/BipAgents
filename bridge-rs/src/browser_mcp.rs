@@ -287,6 +287,9 @@ pub fn loads_a_page(tool: &str) -> bool {
     matches!(tool, "navigate" | "click_element" | "go_back" | "go_forward" | "reload_page")
 }
 
+/// How long `click_element` looks for its element when the agent gives no time (the real server's default: 10 s).
+pub const CLICK_TIMEOUT_MS: u64 = 3000;
+
 /// How long the proxy waits for a page to be loaded after `navigate` (and the other tools of `loads_a_page`).
 pub const SETTLE_SECONDS: f64 = 8.0;
 
@@ -662,7 +665,8 @@ impl Proxy {
     /// - `take_screenshot`: the image as an image block, never base64 text nor a file of the container (fetched from
     ///   it), whatever path the agent asked;
     /// - `navigate` and the other tools of `loads_a_page`: answered once the page is loaded (`settle`), so the agent
-    ///   reads it at once instead of pausing; `networkidle` (the real server's blind 2 s) waits for that too.
+    ///   reads it at once instead of pausing; `networkidle` (the real server's blind 2 s) waits for that too;
+    ///   `click_element` looks for its element 3 s, not 10, unless the agent gives a time (`CLICK_TIMEOUT_MS`).
     async fn call_tool(&self, tool: &str, params: Option<&Value>) -> Result<Dict, String> {
         let args = params.and_then(|p| p.get("arguments")).and_then(Value::as_object).cloned().unwrap_or_default();
         let instance = args.get("instance_id").and_then(Value::as_str).unwrap_or("").to_string();
@@ -708,6 +712,13 @@ impl Proxy {
         if tool == "navigate" && args.get("wait_until").and_then(Value::as_str) == Some("networkidle") {
             if let Some(p) = sent.as_mut() {
                 p["arguments"]["wait_until"] = json!("domcontentloaded");
+            }
+        }
+        if tool == "click_element" && !args.contains_key("timeout") {
+            // the page is loaded already (`settle`): an element still missing after 3 s is not coming (the real
+            // server's own 10 s were the lab's slowest step, 9/11)
+            if let Some(Value::Object(arguments)) = sent.as_mut().and_then(|p| p.get_mut("arguments")) {
+                arguments.insert("timeout".into(), json!(CLICK_TIMEOUT_MS));
             }
         }
         let response = self.request("tools/call", sent.as_ref()).await?;
