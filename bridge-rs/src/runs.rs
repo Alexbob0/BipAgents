@@ -2337,7 +2337,11 @@ touche « Démarrer » pour reprendre."
     /// A run that ended on Hermes' own « ⚠️ No reply: … /model » explanation ends on our plain line instead
     /// (no_reply.rs), marked `bip_no_reply` for the apps.
     fn no_reply_in_plain_words(&self, sub: &RunSubscription, event: SSEEvent) -> SSEEvent {
-        if !as_str(event.data.get("output")).is_some_and(|o| crate::no_reply::is_hermes_no_reply(&o)) {
+        let output = as_str(event.data.get("output")).unwrap_or_default();
+        let no_reply = crate::no_reply::is_hermes_no_reply(&output);
+        // a thinking turn without an answer: the agent's next turns answer without thinking (turn_thinking.rs)
+        crate::turn_thinking::run_ended(&sub.agent.name, &sub.run_id, !no_reply && !output.trim().is_empty());
+        if !no_reply {
             return event;
         }
         let lang = match &self.config {
