@@ -18,7 +18,7 @@
 //!                                              (ask.rs: the fact written in the person's name, no agent runs)
 //!     POST   /v1/notebook/follow/{id}          {answer: done|tomorrow|drop|never}   a follow-up answered (followups.rs)
 //!     GET    /v1/notebook/review?lang=         « Ta semaine dans le Carnet », or 204 (review.rs); POST …/review/done {off?}
-//!     POST   /v1/notebook/paper                {text, image? (base64), lang?}   a paper photographed, read on the phone
+//!     POST   /v1/notebook/paper?lang=          {text, image? (base64)}   a paper photographed, read on the phone
 //!                                              (papers.rs: no number kept, two reminders); GET …/papers/{id}/photo
 //!     GET    /v1/notebook/page?path=           a page: frontmatter apart, « En bref », facts with attribution, links,
 //!                                              its `rev` (the app writes over what it read), `emails`, `phones`
