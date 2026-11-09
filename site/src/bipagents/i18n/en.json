@@ -26,7 +26,7 @@
     "sub": "Your Bips make bookings, sort your email and keep your Notebook, in your own space in Europe.",
     "eu": "Servers in the EU, or at home",
     "badge": "Built on Hermes Agent",
-    "proof2": "<b>Your OK first</b>, always",
+    "proof2": "<b>Your OK</b> before paying or sending",
     "cta": "Choose my plan",
     "watch": "See the demo",
     "price": "Free beta on iPhone and Android · limited places · no card needed",
@@ -69,93 +69,10 @@
     "soon": "Coming soon to",
     "get": "Download on"
   },
-  "show": {
-    "a11y": "Examples: you ask, your agent answers with a useful card",
-    "more": "See the full demo",
-    "saved": "≈ {amount} saved a month",
-    "cancelBoth": "Cancel both",
-    "choose": "Choose",
-    "go": "See it in the demo"
-  },
-  "vs": {
-    "kicker": "Compared",
-    "title": "Muse, dots, Grok Bot, or BipAgents?",
-    "sub": "As of 24 October 2026, from the makers’ pages and the press: sources are under the table.",
-    "what": "What changes",
-    "c1": "Muse (Meta)",
-    "c2": "dots (OpenAI)",
-    "c3": "Grok Bot (xAI)",
-    "c4": "BipAgents",
-    "sources": "Sources as of 24 October 2026",
-    "pick": "Compare with:",
-    "n1": "Muse",
-    "n2": "dots",
-    "n3": "Grok Bot",
-    "all": "All",
-    "g1": "What it does",
-    "g2": "Your privacy",
-    "grokFr": "Grok Bot usable from France, checked on 24 October 2026",
-    "r1": {
-      "label": "For individuals in Europe",
-      "c1": "No: US and Canada",
-      "c2": "No: ChatGPT Pro excludes Europe",
-      "c3": "Yes",
-      "c4": "Yes, from the beta’s opening"
-    },
-    "r2": {
-      "label": "Price to get the agent",
-      "c1": "Limited free tier, then $20 or $100 a month",
-      "c2": "With ChatGPT Pro, $100 or more a month",
-      "c3": "Included in X Premium, about $30 a month, plus credit beyond",
-      "c4": "From {{p.from}} a month, AI credit included"
-    },
-    "r3": {
-      "label": "Where your data lives",
-      "c1": "Region not published",
-      "c2": "Region not published",
-      "c3": "Region not published",
-      "c4": "Your own space on a server in the EU, or your computer"
-    },
-    "r4": {
-      "label": "A plan for the family",
-      "c1": "No",
-      "c2": "No",
-      "c3": "No: shared agents for companies only",
-      "c4": "Duo and Family, up to 6 people, each with their own space"
-    },
-    "r5": {
-      "label": "Family agents keep each other posted",
-      "c1": "No",
-      "c2": "No",
-      "c3": "No: its agents talk to each other, not between family members",
-      "c4": "Yes, with your OK: nothing goes without « Send »"
-    },
-    "r6": {
-      "label": "What it keeps for you",
-      "c1": "A memory you can view",
-      "c2": "A memory, not viewable item by item",
-      "c3": "Summaries per agent",
-      "c4": "The Notebook: reminders, trips, warranties, contracts, archives"
-    },
-    "r7": {
-      "label": "Open source, at home",
-      "c1": "No, on Meta’s servers",
-      "c2": "No, on OpenAI’s servers",
-      "c3": "No, on Cursor’s servers",
-      "c4": "Yes: built on Hermes Agent, free on your computer"
-    },
-    "r8": {
-      "label": "Your conversations train an AI",
-      "c1": "Yes by default, can be turned off",
-      "c2": "Depends on the « Improve the model » setting",
-      "c3": "Depends on Privacy Mode",
-      "c4": "Never by Kerfy Studio"
-    }
-  },
   "demo": {
     "kicker": "In action",
     "title": "You ask. It handles it. You decide.",
-    "sub": "This is the app’s own demo, as is: your agent thinks, uses its tools, drops a map or a mini app into its reply, and waits for your OK before anything that matters.",
+    "sub": "This is the app’s own demo, as is: your agent thinks, uses its tools, drops a map or a mini app into its reply, and waits for your OK before paying or sending.",
     "tabs": "Demo scenarios",
     "tab1": "Book a table",
     "tab2": "A walk",
@@ -165,7 +82,7 @@
     "tab6": "My subscriptions",
     "point1": "Every step in plain sight",
     "point2": "Maps and mini apps right in its replies",
-    "point3": "Your OK before booking, paying or sending",
+    "point3": "Your OK before paying or sending",
     "chatSub": "Chat",
     "chatLabel": "The demo playing",
     "replay": "Replay",
@@ -181,19 +98,29 @@
     "deny": "Deny"
   },
   "private": {
-    "ask": "Where is your data? Who can read it?",
-    "more": "See more",
-    "less": "See less",
     "whereTitle": "Where is your data?",
     "where1": "In your own space, separate from everyone else’s, on a server in the European Union (OVHcloud or Hetzner). Or on your own computer, if you install it at home.",
-    "where2": "With All included, an encrypted backup a few minutes after each activity, and at least once a day, with a key only your devices hold: we keep it without being able to read it.",
-    "where3": "It’s all yours: you can take everything and leave whenever you like.",
+    "where2": "With All included, your space is backed up, encrypted, a few minutes after each activity, and at least once a day. The copy kept on our backup server can’t be read without the key, which stays in your space and on your devices.",
     "whoTitle": "Who can read it?",
-    "who1": "Not us: Kerfy Studio doesn’t read your conversations and trains no AI with them. No ads, no tracking.",
-    "who2": "The AI reads what your agent sends it, to answer you: through EUrouter, a European AI router, then the company running the model you chose. The app names them before your first message.",
+    "who2": "The AI reads what your agent sends it, to answer you: through EUrouter, a European AI router, then the provider running the model you chose. Before your first message, the app names the router and the model.",
     "who3": "Our limit, said plainly: as with any rented server, the host and we could technically get in. Our software doesn’t, and we only would if the law required it.",
     "compare": "Compared with ChatGPT, Gemini and others, with sources →",
-    "href": "https://github.com/Alexbob0/BipAgents/blob/main/docs/privacy-compare.md"
+    "href": "https://github.com/Alexbob0/BipAgents/blob/main/docs/privacy-compare.md",
+    "title": "Yours. Not everyone’s.",
+    "classic": "A usual assistant",
+    "theirs": "Their servers",
+    "theirsSub": "see your information and may train their AI with it",
+    "you": "You",
+    "ai": "The AI",
+    "space": "Your space",
+    "spaceSub": "private, yours alone",
+    "picA11y": "A usual assistant: your messages go to their servers, which see your information and may train their AI with it. BipAgents: your messages go to your space, private, yours alone.",
+    "f1": "<b>Not read by us</b>, no AI trained on it",
+    "f2": "<b>No ads</b>, no tracking",
+    "f4": "<b>It’s all yours</b>: take it with you whenever you like",
+    "detail": "See the details",
+    "limitTitle": "What we don’t promise",
+    "detailTitle": "The details, plainly"
   },
   "pricing": {
     "kicker": "Pricing",
@@ -339,7 +266,7 @@
     },
     "4": {
       "q": "Who can read my conversations?",
-      "a": "Not us: Kerfy Studio doesn’t read them or train any AI on them. To answer you, the AI reads what your agent sends it: through EUrouter, a European AI router, then the company running the chosen model, which the app names before your first message. As we rent the server, we could technically enter your space: our software doesn’t, and we only would if the law required it."
+      "a": "Not us: Kerfy Studio doesn’t read them or train any AI on them. To answer you, the AI reads what your agent sends it: through EUrouter, a European AI router, then the provider running the chosen model; the app names the router and the model before your first message. As we rent the server, we could technically enter your space: our software doesn’t, and we only would if the law required it."
     },
     "5": {
       "q": "How do Duo and Family work?",
@@ -438,7 +365,7 @@
   "page": {
     "demo": {
       "title": "The demo — BipAgents",
-      "description": "The BipAgents app’s own demo, as is: four scenarios where your agent thinks, uses its tools and waits for your OK before anything that matters."
+      "description": "The BipAgents app’s own demo, as is: four scenarios where your agent thinks, uses its tools and waits for your OK before paying or sending."
     },
     "faq": {
       "title": "Questions — BipAgents",
@@ -512,19 +439,17 @@
     }
   },
   "family": {
-    "kicker": "Duo, Family and friends",
     "title": "Together, your agents make a team.",
     "sub": "Everyone has their own private space; you share only what you want.",
     "s1t": "A place for everyone",
     "s1": "Own space, own agents, one shared AI credit",
     "s2t": "Your agents talk",
-    "s2": "Your agent lets your people know, in one tap",
+    "s2": "Only if you allow it, and a message to the family waits for your “Send”",
     "s3t": "The family’s agent",
     "s3": "Lists, shopping, dates; never what’s private",
     "s4t": "An agent shared with your friends, for free!",
     "s4": "For a trip, a party: up to 20 friends follow it, with nothing to pay and no subscription",
     "lock": "What your friends follow of your project agent is end-to-end encrypted (even Kerfy Studio can’t read it) and stops on the date you choose.",
-    "cta": "See Duo and Family",
     "a11y": "In the conversation, the Daily agent offers: let Sam know? The words “The school called: Léa has a fever, I’m picking her up”, Sam as the recipient, and the Send and No thanks buttons. At Sam’s, the notification arrives.",
     "mock": {
       "agent": "Daily",
@@ -536,5 +461,14 @@
       "at": "At Sam’s",
       "notif": "Camille: The school called: Léa has a fever, I’m picking her up."
     }
+  },
+  "home": {
+    "tour": "Take the tour.",
+    "pick": "What you want to see",
+    "doPick": "Pick an example:",
+    "friends": "With friends",
+    "close": "Close",
+    "dialog": "The app’s demo",
+    "self": "Or on your computer:"
   }
 }

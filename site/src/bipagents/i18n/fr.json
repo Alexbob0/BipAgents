@@ -69,93 +69,10 @@
     "soon": "Bientôt sur",
     "get": "Télécharger sur"
   },
-  "show": {
-    "a11y": "Exemples : tu demandes, ton agent répond avec une carte utile",
-    "more": "Voir la démo complète",
-    "saved": "≈ {amount} par mois économisés",
-    "cancelBoth": "Résilier les deux",
-    "choose": "Choisir",
-    "go": "Voir dans la démo"
-  },
-  "vs": {
-    "kicker": "Comparer",
-    "title": "Muse, dots, Grok Bot ou BipAgents ?",
-    "sub": "Au 24 octobre 2026, d’après les pages des éditeurs et la presse : les sources sont sous le tableau.",
-    "what": "Ce qui change",
-    "c1": "Muse (Meta)",
-    "c2": "dots (OpenAI)",
-    "c3": "Grok Bot (xAI)",
-    "c4": "BipAgents",
-    "sources": "Sources au 24 octobre 2026",
-    "pick": "Comparer avec :",
-    "n1": "Muse",
-    "n2": "dots",
-    "n3": "Grok Bot",
-    "all": "Tous",
-    "g1": "Ce qu’il fait",
-    "g2": "Ta vie privée",
-    "grokFr": "Grok Bot utilisable depuis la France, vérifié le 24/10/2026",
-    "r1": {
-      "label": "Pour les particuliers en Europe",
-      "c1": "Non : États-Unis et Canada",
-      "c2": "Non : ChatGPT Pro exclut l’Europe",
-      "c3": "Oui",
-      "c4": "Oui, dès l’ouverture de la bêta"
-    },
-    "r2": {
-      "label": "Prix pour avoir l’agent",
-      "c1": "Gratuit limité, puis 20 $ ou 100 $ par mois",
-      "c2": "Avec ChatGPT Pro, 100 $ ou plus par mois",
-      "c3": "Inclus dans X Premium, environ 30 $ par mois, plus du crédit au-delà",
-      "c4": "Dès {{p.from}} par mois, crédit d’IA compris"
-    },
-    "r3": {
-      "label": "Où sont tes données",
-      "c1": "Région non publiée",
-      "c2": "Région non publiée",
-      "c3": "Région non publiée",
-      "c4": "Ton espace sur un serveur dans l’UE, ou ton ordinateur"
-    },
-    "r4": {
-      "label": "Formule pour la famille",
-      "c1": "Non",
-      "c2": "Non",
-      "c3": "Non : agents partagés en entreprise seulement",
-      "c4": "Duo et Famille, jusqu’à 6 personnes, chacune son espace"
-    },
-    "r5": {
-      "label": "Les agents de la famille se préviennent",
-      "c1": "Non",
-      "c2": "Non",
-      "c3": "Non : ses agents se parlent, mais pas entre membres d’une famille",
-      "c4": "Oui, là où tu le permets ; un message à la famille attend ton « Envoyer »"
-    },
-    "r6": {
-      "label": "Ce qu’il garde pour toi",
-      "c1": "Une mémoire consultable",
-      "c2": "Une mémoire, pas consultable une à une",
-      "c3": "Des résumés par agent",
-      "c4": "Le Carnet : rappels, voyages, garanties, contrats, archives"
-    },
-    "r7": {
-      "label": "Code ouvert, chez toi",
-      "c1": "Non, sur les serveurs de Meta",
-      "c2": "Non, sur les serveurs d’OpenAI",
-      "c3": "Non, sur les serveurs de Cursor",
-      "c4": "Oui : construit sur Hermes Agent, gratuit sur ton ordinateur"
-    },
-    "r8": {
-      "label": "Tes conversations servent à entraîner une IA",
-      "c1": "Oui par défaut, désactivable",
-      "c2": "Selon le réglage « Améliorer le modèle »",
-      "c3": "Selon le mode confidentialité",
-      "c4": "Jamais par Kerfy Studio"
-    }
-  },
   "demo": {
     "kicker": "En action",
     "title": "Tu demandes. Il s’en occupe. Tu décides.",
-    "sub": "C’est la démo de l’app, telle quelle : ton agent réfléchit, utilise ses outils, glisse une carte ou une mini-app dans sa réponse, et attend ton accord avant tout ce qui compte.",
+    "sub": "C’est la démo de l’app, telle quelle : ton agent réfléchit, utilise ses outils, glisse une carte ou une mini-app dans sa réponse, et attend ton accord avant de payer ou d’envoyer.",
     "tabs": "Scénarios de la démo",
     "tab1": "Réserver une table",
     "tab2": "Une balade",
@@ -181,19 +98,29 @@
     "deny": "Refuser"
   },
   "private": {
-    "ask": "Où sont tes données ? Qui peut les lire ?",
-    "more": "Voir plus",
-    "less": "Voir moins",
     "whereTitle": "Où sont tes données ?",
     "where1": "Dans ton propre espace, séparé de celui des autres, sur un serveur dans l’Union européenne (OVHcloud ou Hetzner). Ou sur ton propre ordinateur, si tu l’installes chez toi.",
     "where2": "Avec Tout compris, ton espace est sauvegardé chiffré quelques minutes après chaque activité, et au moins une fois par jour. La copie gardée sur notre serveur de sauvegarde est illisible sans la clé, qui reste dans ton espace et sur tes appareils.",
-    "where3": "Tout est à toi : tu peux tout récupérer et partir quand tu veux.",
     "whoTitle": "Qui peut les lire ?",
-    "who1": "Pas nous : Kerfy Studio ne lit pas tes conversations et n’entraîne aucune IA avec. Sans pub ni pistage.",
     "who2": "L’IA lit ce que ton agent lui envoie, pour te répondre : via EUrouter, un routeur d’IA européen, puis le fournisseur qui fait tourner le modèle choisi. Avant ton premier message, l’app te nomme le routeur et le modèle.",
     "who3": "Notre limite, dite franchement : comme pour tout serveur loué, l’hébergeur et nous pourrions techniquement y entrer. Notre logiciel ne le fait pas, et nous ne le ferions que si la loi l’exige.",
     "compare": "Comparer avec ChatGPT, Gemini et les autres, sources à l’appui →",
-    "href": "https://github.com/Alexbob0/BipAgents/blob/main/docs/privacy-compare.fr.md"
+    "href": "https://github.com/Alexbob0/BipAgents/blob/main/docs/privacy-compare.fr.md",
+    "title": "À toi. Pas à tout le monde.",
+    "classic": "Un assistant classique",
+    "theirs": "Leurs serveurs",
+    "theirsSub": "voient tes infos et peuvent entraîner leur IA avec",
+    "you": "Toi",
+    "ai": "L’IA",
+    "space": "Ton espace",
+    "spaceSub": "privé, rien qu’à toi",
+    "picA11y": "Un assistant classique : tes messages vont sur leurs serveurs, qui voient tes infos et peuvent entraîner leur IA avec. BipAgents : tes messages vont dans ton espace, privé, rien qu’à toi.",
+    "f1": "<b>Pas lu par nous</b>, ni IA entraînée avec",
+    "f2": "<b>Sans pub</b> ni pistage",
+    "f4": "<b>Tout est à toi</b> : tu pars avec quand tu veux",
+    "detail": "Voir le détail",
+    "limitTitle": "Ce que nous ne promettons pas",
+    "detailTitle": "Le détail, sans détour"
   },
   "pricing": {
     "kicker": "Prix",
@@ -512,7 +439,6 @@
     }
   },
   "family": {
-    "kicker": "Duo, Famille et amis",
     "title": "Ensemble, vos agents font équipe.",
     "sub": "Chacun son espace privé ; on ne partage que ce qu’on veut.",
     "s1t": "Chacun sa place",
@@ -524,7 +450,6 @@
     "s4t": "Un agent partagé avec tes amis, gratuitement !",
     "s4": "Pour un voyage, une fête : jusqu’à 20 amis le suivent, sans rien payer ni s’abonner",
     "lock": "Ce que tes amis suivent de ton agent de projet est chiffré de bout en bout (même Kerfy Studio ne peut pas le lire) et s’arrête à la date que tu choisis.",
-    "cta": "Voir Duo et Famille",
     "a11y": "Dans la conversation, l’agent Quotidien propose : prévenir Sam ? Les mots « L’école a appelé : Léa a de la fièvre, je vais la chercher », Sam comme destinataire, et les boutons Envoyer et Non merci. Chez Sam, la notification arrive.",
     "mock": {
       "agent": "Quotidien",
@@ -536,5 +461,14 @@
       "at": "Chez Sam",
       "notif": "Camille : L’école a appelé : Léa a de la fièvre, je vais la chercher."
     }
+  },
+  "home": {
+    "tour": "Fais le tour.",
+    "pick": "Ce que tu veux voir",
+    "doPick": "Choisis un exemple :",
+    "friends": "Entre amis",
+    "close": "Fermer",
+    "dialog": "La démo de l’app",
+    "self": "Ou sur ton ordinateur :"
   }
 }

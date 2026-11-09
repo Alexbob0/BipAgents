@@ -311,88 +311,6 @@ def demo_page(demo: Dict[str, Any], name: str, lang: str) -> str:
     return re.sub(r"\{\{(\w+)\}\}", lambda m: values.get(m.group(1), m.group(0)), page["template"])
 
 
-def small_map(source: Path) -> str:
-    """A smaller copy of the walk's map for the home's first screen (≈ 440 px wide), when sips is there; else the map
-    itself. Returns the file's name."""
-    target = source.with_name("walk-map-small.jpg")
-    if source.exists() and shutil.which("sips"):
-        done = subprocess.run(["sips", "-Z", "440", "-s", "format", "jpeg", "-s", "formatOptions", "62", str(source),
-                               "--out", str(target)], capture_output=True)
-        if done.returncode == 0 and target.exists():
-            return target.name
-    return source.name
-
-
-def hero_show(demo: Dict[str, Any], t: Dict[str, Any], lang: str, map_file: str, demo_href: str) -> str:
-    """The home's first screen, on the right: what one asks and what the agent answers with, taken from the app's own
-    demo (demo.json): the walk's map, the booking (its 3 finds, then the approval), the subscriptions to cancel. A loose
-    stack on a computer, one column on a phone; each exchange fades in once, one after another (none with reduced
-    motion). A tap on one opens the demo page on that same scenario (/demo/#walk: site.js picks the tab from the address)."""
-    tidy = french_spaces if lang == "fr" else (lambda s: s)
-    e = lambda s: html.escape(tidy(s), quote=False)
-    agents = {a["id"]: a for a in demo["agents"]}
-    scen = {k: localized(v, lang) for k, v in demo["scenarios"].items()}
-
-    def head(agent: str) -> str:
-        a = agents[agent]
-        return (f'<p class="ex-from"><span class="ex-av" data-bip-static="{a["category"]}"></span>'
-                f'<b>{e(localized(a["name"], lang))}</b><span class="ai">{e(t["ai"])}</span>'
-                f'<span class="ex-arrow" aria-hidden="true">→</span></p>')
-
-    def one(i: int, agent: str, tone: str, ask: str, card: str, kind: str, scenario: str) -> str:
-        # The whole exchange is the link: the ask's link stretched over it (the runs card's own link stays on top).
-        go = (f'<a class="ex-go" href="{demo_href}#{scenario}">{e(ask)}'
-              f'<span class="vh"> · {e(t["show"]["go"])}</span></a>')
-        return (f'<li class="ex ex--{kind}" style="--i:{i};--tint:var(--{tone}-tint)">'
-                f'<p class="ex-ask">{go}</p><div class="ex-card">{head(agent)}{card}</div></li>')
-
-    # The booking: the agent found 3 places (the three as chips, the second picked, as in the demo's own run), then
-    # asks before sending: the approval with its detail (« Pasta Mia · 20 h 30 · 2 personnes · vendredi soir »).
-    book = scen["book_table"]
-    asked = next(s for s in book["steps"] if "ask" in s)
-    choices = asked["ask"]["choices"]
-    answer = choices[1]
-    found = re.split(r"(?<=[.?!])\s", asked["ask"]["question"])[0]
-    approve = next(s for s in asked["then"] if "approve" in s)["approve"]
-    where = answer.split(" · ★")[0]
-    detail = " · ".join([where] + approve["command"].split("\n")[1:])
-    c = t["control"]
-    chips = "".join(f'<li{" class=on" if x == answer else ""}>{e(x)}</li>' for x in choices)
-    approval = (f'<p class="ex-line">{e(found)}</p><ul class="ex-chips" aria-hidden="true">{chips}</ul>'
-                f'<div class="ex-ok"><p class="ex-say">{e(approve["description"])}</p>'
-                f'<p class="ex-detail">{e(detail)}</p>'
-                f'<p class="ex-btns" aria-hidden="true"><span class="on">{e(c["once"])}</span><span>{e(c["deny"])}</span></p></div>')
-    # The walk: the map with its numbered stops (the main picture).
-    walk = {k: localized(v, lang) for k, v in demo["pages"]["walk"]["values"].items()}
-    stops = re.findall(r'<li data-x="([\d.]+)" data-y="([\d.]+)"[^>]*data-color="(#\w+)">\{\{(\w+)\}\}</li>',
-                       demo["pages"]["walk"]["template"])
-    pins = "".join(f'<i style="left:{x}%;top:{y}%;--c:{col}">{n}</i>' for n, (x, y, col, _) in enumerate(stops, 1))
-    names = " · ".join(e(walk[k]) for *_, k in stops)
-    walk_card = (f'<p class="ex-title">🌳 {e(walk["title"])}</p>'
-                 f'<div class="ex-map"><img src="/assets/showcase/{map_file}" alt="{e(walk["alt"])} · {names}" '
-                 f'width="440" height="293" decoding="async">{pins}</div>')
-    # The subscriptions: the two the agent found asleep, read from its question (« CinéPlus (13,99 €/mois, pas ouvert
-    # depuis juillet) »), what cancelling both saves a month, and the choice.
-    subs_q = next(s for s in scen["subscriptions"]["steps"] if "ask" in s)["ask"]["question"]
-    subs = re.findall(r"([A-Z][\w\u00C0-\u024F]*(?: [A-Z][\w\u00C0-\u024F]*)*) \(([^()]*?\d[.,]\d\d[^,()]*), ([^()]+)\)", subs_q)
-    if len(subs) != 2:
-        raise ValueError(f"demo.json subscriptions ({lang}): expected two « Name (price, since) », got {subs}")
-    euros = sum(float(re.search(r"\d+[.,]\d+", price).group().replace(",", ".")) for _, price, _ in subs)
-    rows = "".join(f'<li><b>{e(name)}</b><span>{e(price)}</span><small>{e(since)}</small></li>' for name, price, since in subs)
-    subs_card = (f'<ul class="ex-subs">{rows}</ul>'
-                 f'<p class="ex-save">{e(t["show"]["saved"].replace("{amount}", money(round(euros), lang, cents=False)))}</p>'
-                 f'<p class="ex-btns" aria-hidden="true"><span class="on">{e(t["show"]["cancelBoth"])}</span>'
-                 f'<span>{e(t["show"]["choose"])}</span></p>')
-    # Three exchanges: the walk's map on the left (the main picture), the booking and the subscriptions on the right.
-    left = one(0, "daily", "coral", scen["walk"]["prompt"], walk_card, "map", "walk")
-    right = (one(1, "daily", "coral", book["prompt"], approval, "approve", "book_table")
-             + one(2, "budget", "gold", scen["subscriptions"]["prompt"], subs_card, "subs", "subscriptions"))
-    return f'<ul class="ex-col">{left}</ul><ul class="ex-col">{right}</ul>'
-
-
-# -- bipagents.com ---------------------------------------------------------------------------------------------------
-
-# The demo page's tabs (scenario, agent); /demo/#<scenario> opens on one (the home's first-screen cards link there).
 DEMO_TABS = (("book_table", "daily"), ("walk", "daily"), ("runs_weeks", "coach"), ("heating", "home"),
              ("bins", "home"), ("subscriptions", "budget"))
 # The pages: (name, template, path under the language's root). The home sells, and its prices hold the self-install
@@ -401,9 +319,6 @@ DEMO_TABS = (("book_table", "daily"), ("walk", "daily"), ("runs_weeks", "coach")
 PAGES = (("home", "index.html", ""), ("demo", "demo.html", "demo/"), ("faq", "faq.html", "faq/"),
          ("install", "install.html", "install/"), ("beta", "beta.html", "beta/"),
          ("grokbot", "grok-bot.html", "grok-bot/"), ("status", "status.html", "status/"))
-# Proposals for the home (2026-11-09, Alex's « on refait une passe »): four ways to tell privacy, what the Bips do,
-# the Carnet and friends after the same living room, at /fr/variantes/<x>/ (French only, not in the sitemap, noindex).
-VARIANTS = ("a", "b", "c", "d")
 # The status page reads the guichet's public snapshot (guichet-rs/src/public_status.rs in the guichet's repo).
 STATUS_API = "https://guichet.bipagents.com/v1/public-status"
 FAQ_HOME = (1, 3, 2, 6, 5, 11)  # what's included, AI credit, free week, stopping, Duo/Famille, the AI model
@@ -418,7 +333,7 @@ def bipagents(version: str) -> Path:
         shutil.rmtree(out)
     assets = out / "assets"
     assets.mkdir(parents=True)
-    for name in ("site.css", "site.js", "notfound.js", "variants.css"):
+    for name in ("site.css", "site.js", "notfound.js"):
         copy(src / name, assets / name)
     # The home's living room: its script, the painting, the Bips' sprites (scripts/salon-sprites/) and the easel's
     # handwriting (Caveat, SIL OFL 1.1), all served from here like everything else.
@@ -442,16 +357,14 @@ def bipagents(version: str) -> Path:
 
     demo = json.loads((REPO / "App" / "Resources" / "Demo" / "demo.json").read_text(encoding="utf-8"))
     map_file = walk_map(demo, assets / "showcase" / "walk-map.jpg")
-    map_small = small_map(assets / "showcase" / map_file) if map_file else ""
     agents = {a["id"]: a for a in demo["agents"]}
     partials = {p.stem: p.read_text(encoding="utf-8") for p in (src / "partials").glob("*.html")}
-    def with_partials(file: str) -> str:   # a partial may hold another (the variants' demo window holds the demo)
+    def with_partials(file: str) -> str:   # a partial may hold another
         page = (src / file).read_text(encoding="utf-8")
         while "{{>" in page:
             page = re.sub(r"\{\{>(\w+)\}\}", lambda m: partials[m.group(1)], page)
         return page
     templates = {name: with_partials(file) for name, file, _ in PAGES}
-    variants = {v: with_partials(f"variants/{v}.html") for v in VARIANTS}
     texts = {lang: json.loads((src / "i18n" / f"{lang}.json").read_text(encoding="utf-8")) for lang in LANGS}
     # Pages with texts of their own (i18n/<page>.<lang>.json), kept apart from the home's.
     for lang in LANGS:
@@ -494,7 +407,6 @@ def bipagents(version: str) -> Path:
         values["currencyoptions"] = "".join(
             f'<option value="{code}"{" selected" if code == default_currency else ""}>{html.escape(c["symbol"])} {code}</option>'
             for code, c in currencies.items())
-        values["heroshow"] = hero_show(demo, t, lang, map_small, f"{paths[lang]}demo/")
         default_url = checkout_url(cfg, "famille", "year", lang)
         badges = store_badges(cfg["stores"]["bipagents"], t["store"]["soon"], t["store"]["get"])
         # The public beta (site/config.json « beta »): TestFlight and Google Play's testing links once they are set.
@@ -507,9 +419,6 @@ def bipagents(version: str) -> Path:
                                  for n in numbers)
         values.update({
             "lang": lang, "home": paths[lang], "version": version,
-            # the living room's « See the demo » (the home: its cards below; a variant: the demo's window) and the demo's
-            # title (the demo page's h1; a section's h2 in that window); the variants' own stylesheet, never indexed
-            "watchhref": "#results", "watchattr": "", "watcharrow": "↓", "demoh": "h1", "extracss": "", "robots": "",
             "demohref": f"{paths[lang]}demo/", "faqhref": f"{paths[lang]}faq/", "installhref": f"{paths[lang]}#install",
             "legalprefix": "" if lang == "fr" else f"/{lang}",
             "storebadges": badges,
@@ -569,6 +478,7 @@ def bipagents(version: str) -> Path:
                                         "stops": [{"x": float(x), "y": float(y), "color": c, "name": walk[k]}
                                                   for x, y, c, k in stops]}}},
         }
+        data["home"] = {**data["home"], **data["demo"]}   # the home plays the demo too (its phone, its window)
         for name, _, sub in PAGES:
             here = {l: paths[l] + sub for l in LANGS}
             page_values = dict(values)
@@ -587,24 +497,6 @@ def bipagents(version: str) -> Path:
             page = fill(fill(templates[name], page_values, f"bipagents/{lang}/{name}"), page_values,
                         f"bipagents/{lang}/{name} (texts)")
             target = out / here[lang].strip("/") / "index.html"
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(page, encoding="utf-8")
-        for v in VARIANTS if lang == "fr" else ():
-            page_values = dict(values)
-            page_values.update({
-                "pagename": "home", "path": f"{paths[lang]}variantes/{v}/",
-                "pagetitle": f'{values["meta.title"]} · {values["v.name"]} {v.upper()}', "pagedesc": values["meta.description"],
-                "hreflang": "", "langmenu": lang_menu(paths, lang, texts, regions, currencies),
-                "cur.demo": "", "cur.faq": "", "cur.beta": "",
-                "watchhref": values["demohref"], "watchattr": " data-demo-open", "watcharrow": "▶", "demoh": "h2",
-                "extracss": f'\n<link rel="stylesheet" href="/assets/variants.css?v={version}">',
-                "robots": '\n<meta name="robots" content="noindex">',
-                # the home's prices and the demo's scenarios: both play on these pages
-                "data": json.dumps({**data["home"], **data["demo"]}, ensure_ascii=False).replace("</", "<\\/"),
-            })
-            page = fill(fill(variants[v], page_values, f"bipagents/{lang}/variant-{v}"), page_values,
-                        f"bipagents/{lang}/variant-{v} (texts)")
-            target = out / lang / "variantes" / v / "index.html"
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(page, encoding="utf-8")
         og_image(t, lang, assets / f"og-{lang}.png")

@@ -26,7 +26,7 @@
     "sub": "Tus Bips reservan, ordenan tu correo y llevan tu Cuaderno, en tu propio espacio en Europa.",
     "eu": "Servidores en la UE, o en tu casa",
     "badge": "Construido sobre Hermes Agent",
-    "proof2": "<b>Primero tu permiso</b>, siempre",
+    "proof2": "<b>Tu permiso</b> antes de pagar o enviar",
     "cta": "Elegir mi plan",
     "watch": "Ver la demo",
     "price": "Beta gratuita en iPhone y Android · plazas limitadas · sin tarjeta",
@@ -69,93 +69,10 @@
     "soon": "Muy pronto en",
     "get": "Descárgalo en"
   },
-  "show": {
-    "a11y": "Ejemplos: tú pides, tu agente responde con una tarjeta útil",
-    "more": "Ver la demo completa",
-    "saved": "≈ {amount} ahorrados al mes",
-    "cancelBoth": "Cancelar las dos",
-    "choose": "Elegir",
-    "go": "Verlo en la demo"
-  },
-  "vs": {
-    "kicker": "Comparar",
-    "title": "¿Muse, dots, Grok Bot o BipAgents?",
-    "sub": "A 24 de octubre de 2026, según las páginas de los fabricantes y la prensa: las fuentes están debajo de la tabla.",
-    "what": "Lo que cambia",
-    "c1": "Muse (Meta)",
-    "c2": "dots (OpenAI)",
-    "c3": "Grok Bot (xAI)",
-    "c4": "BipAgents",
-    "sources": "Fuentes a 24 de octubre de 2026",
-    "pick": "Comparar con:",
-    "n1": "Muse",
-    "n2": "dots",
-    "n3": "Grok Bot",
-    "all": "Todos",
-    "g1": "Lo que hace",
-    "g2": "Tu privacidad",
-    "grokFr": "Grok Bot utilizable desde Francia, comprobado el 24 de octubre de 2026",
-    "r1": {
-      "label": "Para particulares en Europa",
-      "c1": "No: Estados Unidos y Canadá",
-      "c2": "No: ChatGPT Pro excluye Europa",
-      "c3": "Sí",
-      "c4": "Sí, desde la apertura de la beta"
-    },
-    "r2": {
-      "label": "Precio para tener el agente",
-      "c1": "Gratis limitado, luego 20 $ o 100 $ al mes",
-      "c2": "Con ChatGPT Pro, 100 $ o más al mes",
-      "c3": "Incluido en X Premium, unos 30 $ al mes, más crédito si te pasas",
-      "c4": "Desde {{p.from}} al mes, crédito de IA incluido"
-    },
-    "r3": {
-      "label": "Dónde están tus datos",
-      "c1": "Región no publicada",
-      "c2": "Región no publicada",
-      "c3": "Región no publicada",
-      "c4": "Tu propio espacio en un servidor de la UE, o tu ordenador"
-    },
-    "r4": {
-      "label": "Un plan para la familia",
-      "c1": "No",
-      "c2": "No",
-      "c3": "No: agentes compartidos solo para empresas",
-      "c4": "Dúo y Familia, hasta 6 personas, cada una con su espacio"
-    },
-    "r5": {
-      "label": "Los agentes de la familia se avisan",
-      "c1": "No",
-      "c2": "No",
-      "c3": "No: sus agentes hablan entre ellos, pero no entre miembros de una familia",
-      "c4": "Sí, con tu permiso: nada sale sin «Enviar»"
-    },
-    "r6": {
-      "label": "Lo que guarda para ti",
-      "c1": "Una memoria que puedes consultar",
-      "c2": "Una memoria, no consultable una a una",
-      "c3": "Resúmenes por agente",
-      "c4": "El Cuaderno: recordatorios, viajes, garantías, contratos, archivo"
-    },
-    "r7": {
-      "label": "Código abierto, en tu casa",
-      "c1": "No, en los servidores de Meta",
-      "c2": "No, en los servidores de OpenAI",
-      "c3": "No, en los servidores de Cursor",
-      "c4": "Sí: construido sobre Hermes Agent, gratis en tu ordenador"
-    },
-    "r8": {
-      "label": "Tus conversaciones sirven para entrenar una IA",
-      "c1": "Sí por defecto, desactivable",
-      "c2": "Según el ajuste «Mejorar el modelo»",
-      "c3": "Según el modo de privacidad",
-      "c4": "Nunca por Kerfy Studio"
-    }
-  },
   "demo": {
     "kicker": "En acción",
     "title": "Tú pides. Él se encarga. Tú decides.",
-    "sub": "Es la demo de la app, tal cual: tu agente piensa, usa sus herramientas, mete un mapa o una mini app en su respuesta y espera tu visto bueno antes de lo importante.",
+    "sub": "Es la demo de la app, tal cual: tu agente piensa, usa sus herramientas, mete un mapa o una mini app en su respuesta y espera tu visto bueno antes de pagar o enviar.",
     "tabs": "Escenarios de la demo",
     "tab1": "Reservar mesa",
     "tab2": "Un paseo",
@@ -165,7 +82,7 @@
     "tab6": "Mis suscripciones",
     "point1": "Cada paso a la vista",
     "point2": "Mapas y mini apps en sus respuestas",
-    "point3": "Tu visto bueno antes de reservar, pagar o enviar",
+    "point3": "Tu visto bueno antes de pagar o enviar",
     "chatSub": "Conversación",
     "chatLabel": "La demo en curso",
     "replay": "Repetir",
@@ -181,19 +98,29 @@
     "deny": "Rechazar"
   },
   "private": {
-    "ask": "¿Dónde están tus datos? ¿Quién puede leerlos?",
-    "more": "Ver más",
-    "less": "Ver menos",
     "whereTitle": "¿Dónde están tus datos?",
     "where1": "En tu propio espacio, separado del de los demás, en un servidor de la Unión Europea (OVHcloud o Hetzner). O en tu propio ordenador, si lo instalas en casa.",
-    "where2": "Con Todo incluido, una copia de seguridad cifrada unos minutos después de cada actividad, y al menos una vez al día, con una clave que solo tienen tus dispositivos: la guardamos sin poder leerla.",
-    "where3": "Todo es tuyo: puedes llevártelo todo e irte cuando quieras.",
+    "where2": "Con Todo incluido, tu espacio se guarda cifrado unos minutos después de cada actividad, y al menos una vez al día. La copia que se guarda en nuestro servidor de copias de seguridad es ilegible sin la clave, que se queda en tu espacio y en tus dispositivos.",
     "whoTitle": "¿Quién puede leerlos?",
-    "who1": "Nosotros no: Kerfy Studio no lee tus conversaciones ni entrena ninguna IA con ellas. Sin anuncios ni rastreo.",
-    "who2": "La IA lee lo que tu agente le envía, para responderte: a través de EUrouter, un enrutador de IA europeo, y luego la empresa del modelo elegido. La app te los nombra antes de tu primer mensaje.",
+    "who2": "La IA lee lo que tu agente le envía, para responderte: a través de EUrouter, un enrutador de IA europeo, y luego el proveedor que ejecuta el modelo elegido. Antes de tu primer mensaje, la app te nombra el enrutador y el modelo.",
     "who3": "Nuestro límite, dicho claro: como con cualquier servidor alquilado, el proveedor y nosotros podríamos técnicamente entrar. Nuestro software no lo hace, y solo lo haríamos si la ley nos obliga.",
     "compare": "Comparado con ChatGPT, Gemini y otros, con fuentes →",
-    "href": "https://github.com/Alexbob0/BipAgents/blob/main/docs/privacy-compare.md"
+    "href": "https://github.com/Alexbob0/BipAgents/blob/main/docs/privacy-compare.md",
+    "title": "Tuyo. No de todos.",
+    "classic": "Un asistente clásico",
+    "theirs": "Sus servidores",
+    "theirsSub": "ven tu información y pueden entrenar su IA con ella",
+    "you": "Tú",
+    "ai": "La IA",
+    "space": "Tu espacio",
+    "spaceSub": "privado, solo tuyo",
+    "picA11y": "Un asistente clásico: tus mensajes van a sus servidores, que ven tu información y pueden entrenar su IA con ella. BipAgents: tus mensajes van a tu espacio, privado, solo tuyo.",
+    "f1": "<b>No lo leemos</b>, ni entrenamos IA con ello",
+    "f2": "<b>Sin anuncios</b> ni rastreo",
+    "f4": "<b>Todo es tuyo</b>: llévatelo cuando quieras",
+    "detail": "Ver el detalle",
+    "limitTitle": "Lo que no prometemos",
+    "detailTitle": "El detalle, sin rodeos"
   },
   "pricing": {
     "kicker": "Precios",
@@ -339,7 +266,7 @@
     },
     "4": {
       "q": "¿Quién puede leer mis conversaciones?",
-      "a": "Nosotros no: Kerfy Studio no las lee ni entrena ninguna IA con ellas. Para responderte, la IA lee lo que tu agente le envía: a través de EUrouter, un enrutador de IA europeo, y luego la empresa del modelo elegido, que la app nombra antes de tu primer mensaje. Como alquilamos el servidor, técnicamente podríamos entrar en tu espacio: nuestro software no lo hace, y solo lo haríamos si la ley nos obliga."
+      "a": "Nosotros no: Kerfy Studio no las lee ni entrena ninguna IA con ellas. Para responderte, la IA lee lo que tu agente le envía: a través de EUrouter, un enrutador de IA europeo, y luego el proveedor que ejecuta el modelo elegido; la app nombra el enrutador y el modelo antes de tu primer mensaje. Como alquilamos el servidor, técnicamente podríamos entrar en tu espacio: nuestro software no lo hace, y solo lo haríamos si la ley nos obliga."
     },
     "5": {
       "q": "¿Cómo funcionan Dúo y Familia?",
@@ -438,7 +365,7 @@
   "page": {
     "demo": {
       "title": "La demo — BipAgents",
-      "description": "La demo de la app BipAgents, tal cual: cuatro escenarios en los que tu agente piensa, usa sus herramientas y espera tu visto bueno antes de lo importante."
+      "description": "La demo de la app BipAgents, tal cual: cuatro escenarios en los que tu agente piensa, usa sus herramientas y espera tu visto bueno antes de pagar o enviar."
     },
     "faq": {
       "title": "Preguntas — BipAgents",
@@ -512,19 +439,17 @@
     }
   },
   "family": {
-    "kicker": "Dúo, Familia y amigos",
     "title": "Juntos, vuestros agentes hacen equipo.",
     "sub": "Cada uno tiene su espacio privado; solo se comparte lo que tú quieras.",
     "s1t": "Cada uno su sitio",
     "s1": "Su espacio, sus agentes, un crédito de IA común",
     "s2t": "Vuestros agentes hablan",
-    "s2": "Tu agente avisa a los tuyos, con un toque",
+    "s2": "Solo si lo permites, y un mensaje a la familia espera tu «Enviar»",
     "s3t": "El agente de la familia",
     "s3": "Listas, compras, fechas; nunca lo privado",
     "s4t": "¡Un agente compartido con tus amigos, gratis!",
     "s4": "Para un viaje, una fiesta: hasta 20 amigos lo siguen, sin pagar nada ni suscribirse",
     "lock": "Lo que tus amigos siguen de tu agente de proyecto va cifrado de extremo a extremo (ni Kerfy Studio puede leerlo) y termina en la fecha que elijas.",
-    "cta": "Ver Dúo y Familia",
     "a11y": "En la conversación, el agente Día a día propone: ¿avisar a Sam? El texto «Ha llamado el colegio: Léa tiene fiebre, voy a recogerla», Sam como destinatario y los botones Enviar y No, gracias. En casa de Sam llega la notificación.",
     "mock": {
       "agent": "Día a día",
@@ -536,5 +461,14 @@
       "at": "En casa de Sam",
       "notif": "Camille: Ha llamado el colegio: Léa tiene fiebre, voy a recogerla."
     }
+  },
+  "home": {
+    "tour": "Echa un vistazo.",
+    "pick": "Lo que quieres ver",
+    "doPick": "Elige un ejemplo:",
+    "friends": "Entre amigos",
+    "close": "Cerrar",
+    "dialog": "La demo de la app",
+    "self": "O en tu ordenador:"
   }
 }
