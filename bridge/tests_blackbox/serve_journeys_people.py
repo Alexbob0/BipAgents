@@ -45,8 +45,8 @@ def test_serve_people(bridges, fakes):
         return tool, arguments, lambda: mcp_as(bridge, journey.token, "/v1/agent-tools/mcp", tool, arguments)
     journey.model.calls["carnet"] = lambda run: [
         as_vie("notebook_read", {"page": "Léa"}),
-        as_vie("notebook_write", {"page": "Léa", "section": "tastes", "facts": ["Aime le jazz"]}),
-        as_vie("notebook_write", {"page": "Léa", "section": "tastes",
+        # the fact and the question in one call: a section filled before the call is never asked about (ask.rs)
+        as_vie("notebook_write", {"page": "Léa", "section": "tastes", "facts": ["Aime le jazz"],
                                   "ask": {"question": "Léa chausse du combien ?", "chips": ["35", "36", "37"]}}),
     ]
     guichet = Guichet().start()
