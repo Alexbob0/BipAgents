@@ -1168,12 +1168,24 @@ async fn invite(State(state): State<AppState>, request: Request) -> ApiResult<Re
             }
         }
     };
+    let (url, fingerprint) = family_address(&config, url);
     let mut invitation = json!({"v": 1, "kind": "family", "url": url, "code": code, "name": state.households.name()});
     // our address is a door with a self-signed certificate: the other bridge pins it, as the apps do
-    if let Some(fingerprint) = crate::door_tls::door_fingerprint(&config) {
+    if let Some(fingerprint) = fingerprint {
         invitation["fingerprint"] = json!(fingerprint);
     }
     Ok(web::ok(invitation))
+}
+
+/// Where another household's bridge reaches this one, and the certificate to pin there. A place of the offer with
+/// its own name (`<label>.p.bipagents.com`, place_cert.rs) is reached by that name on 443, with its publicly trusted
+/// certificate: a home network that lets out only 443 (Alex's, 30/10) never reaches the IP door on 444+.
+fn family_address(config: &Config, public: String) -> (String, Option<String>) {
+    let now = crate::py::time_time() as i64;
+    if let Some(held) = crate::place_cert::held_for(config).filter(|h| config.cloud && h.expires > now) {
+        return (format!("https://{}", held.host), None);
+    }
+    (public, crate::door_tls::door_fingerprint(config))
 }
 
 /// The other household's invitation, scanned in the app: this bridge introduces itself to theirs.
@@ -1199,8 +1211,9 @@ async fn join(State(state): State<AppState>, request: Request) -> ApiResult<Resp
         return Err(HttpError::new(409, "this invitation is too old: ask for a new one (and update the app)"));
     }
     let key = crate::py::token_urlsafe(32);
+    let (mine, own) = family_address(&config, mine);
     let mut payload = json!({"code": code, "name": state.households.name(), "url": mine, "key": key});
-    if let Some(own) = crate::door_tls::door_fingerprint(&config) {
+    if let Some(own) = own {
         payload["fingerprint"] = json!(own);
     }
     // our address can't be reached from the internet (a home): theirs keeps its calls for us (family_relay.rs)
@@ -1328,6 +1341,24 @@ pub fn household_admin_router() -> Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_place_with_its_own_name_is_reached_by_it_on_443() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::with_key("k".repeat(40));
+        config.lan.enabled = true;
+        config.lan.cert_dir = dir.path().to_string_lossy().into_owned();
+        let door = "https://51.75.1.2:444".to_string();
+        assert_eq!(family_address(&config, door.clone()).0, door);
+        for name in [crate::place_cert::CERT_NAME, crate::place_cert::KEY_NAME] {
+            std::fs::write(dir.path().join(name), "x").unwrap();
+        }
+        let meta = json!({"host": "k3x9q2.p.bipagents.com", "expires": crate::py::time_time() as i64 + 86400});
+        std::fs::write(dir.path().join(crate::place_cert::META_NAME), meta.to_string()).unwrap();
+        assert_eq!(family_address(&config, door.clone()).0, door); // a self-install keeps its own address
+        config.cloud = true;
+        assert_eq!(family_address(&config, door), ("https://k3x9q2.p.bipagents.com".to_string(), None));
+    }
 
     #[test]
     fn a_households_message_is_marked_and_closes_the_tools_while_it_goes_on() {
