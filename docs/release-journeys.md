@@ -35,7 +35,9 @@ photos y sont gardées comme Hermes v0.22.5 les garde (un fichier du profil nomm
 qu'Hermes voit dans son conteneur), pas comme le pont l'imagine. `serve_journeys.py` sert ce pont aux apps.
 
 Mots-clés que le faux modèle comprend : `#fichier`, `#page`, `#carte`, `#trajet` (la carte collée dans une page), `#outil`, `#question`, `#approbation`,
-`#secret`, `#sites`, `#connecteur`, `#lent` (voir `bbkit/model.py`) ; et pour J32 et après (`PeopleModel`) :
+`#secret`, `#sites`, `#connecteur`, `#lent`, `#jours` (au premier tour d'une conversation : un historique sur trois
+jours, réponses avec leur `reasoning`), `#reel` (le rythme de GLM par Hermes : 1,5 s d'attente puis 1 à 3 mots toutes
+les 60–200 ms) (voir `bbkit/model.py`) ; et pour J32 et après (`PeopleModel`) :
 `#routine`, `#tache`, `#famille`, `#etapes`, `#relais`.
 
 ## Les parcours
@@ -122,6 +124,7 @@ la bêta.
 | J42 | Les « Étapes » | Pendant le travail, les étapes viennent de ce que fait l'agent ; dès qu'il écrit sa liste, c'est la sienne : une carte pour le tour, ses lignes et leur état (fait, en cours) | P, i, A |
 | J43 | La limite d'échanges entre agents | Au 5e message entre deux agents : UNE carte « Continuer l'échange ? » dans la conversation ; « Oui, vas-y » : la carte part, l'agent continue | P ; apps : manuel |
 | J44 | Quick Talk suit la réponse | Le message suivi jusqu'à sa réponse (`GET /v1/threads/{t}/sends/{client_id}`) : en cours, puis les mots à dire ; une carte : passé à l'écran | P (le pont seulement) |
+| J45 | L'écran pendant le tour | Dans une conversation de plusieurs jours (`#jours`), une réponse au rythme d'un vrai modèle (`#reel`), l'écran regardé PENDANT le tour : jamais une date (« Hier », « Jeudi 5 novembre ») sans rien dessous, jamais une date sous son message ; la réponse grandit (jamais un seul mot plus d'1 s) ; ses mots ne disparaissent jamais, même quand elle devient le message gardé | P, i, A — ⚠️ attendu tant que `turn-layout` n'est pas fusionné (`known=` dans `scripts/release-journeys.sh`) |
 
 **Ce que les parcours J32 et après ont trouvé (6/11)**
 
@@ -202,7 +205,12 @@ scripts/release-journeys.sh                 # tout : pont + iPhone + Android (�
 scripts/release-journeys.sh --no-ios        # sans le simulateur
 scripts/release-journeys.sh --expected J02,J03,J06   # rapport : ces échecs connus marqués ⚠️ (jamais pour une sortie)
 JOURNEYS_IOS_PEOPLE_TESTS=testJ32AFriendOpensTheSharedProjectAndSeesItsMessages scripts/release-journeys.sh   # quelques-uns
+JOURNEYS_IOS_TESTS=ReleaseJourneysTurnTests JOURNEYS_ANDROID_TESTS='*ReleaseJourneysTest.j45*' scripts/release-journeys.sh   # J45 seul
 ```
+
+J45 contre un autre pont (un vrai modèle, ses mots imprévisibles) : `TEST_RUNNER_JOURNEYS_TURN='{"pairing": {…QR…},
+"message": "…"}'` et `-only-testing:BipAgentsUITests/ReleaseJourneysTurnTests` ; seules les quatre vérifications de
+l'écran tournent (sans `#jours` : la conversation de l'agent telle qu'elle est).
 
 Le pont est construit et servi sur le serveur de build (`JOURNEYS_REMOTE`, par défaut `build@100.91.112.69`), dans
 son propre dossier effacé après ; Android y tourne aussi ; le Mac ne fait que l'iPhone (un simulateur temporaire,

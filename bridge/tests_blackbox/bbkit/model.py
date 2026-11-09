@@ -24,6 +24,8 @@ Installed as `FakeHermes.override`, it takes only the runs it starts (every othe
 | `#connecteur` | registers a connector (`connector_register`, a connector card) and waits |
 | `#podcast` | makes its podcast (an .m4a in its files, as `create_podcast` gives) and names it |
 | `#lent` | a long reply, slowly (to be stopped, or to queue messages behind it) |
+| `#jours` | first run of its session: a history stored before the person's row (2 days ago, yesterday, today ~1 h ago; replies with `reasoning`, one after a tool call), then a short reply |
+| `#reel` | streams as GLM through Hermes: ~1.5 s before the first words, then 1–3 words every 60–200 ms (the same each run), ~50 words, stored with `reasoning` |
 
 `calls`: the agent's own tool calls to the bridge (MCP), given by the harness (`secret`, `sites`, `page`, `map`,
 `page_with`: a page of the given HTML), each a function of the run's words returning the text of its result. They run
@@ -33,6 +35,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import random
 import re
 import threading
 import time
@@ -177,6 +180,9 @@ class ScriptedModel:
         visible = NOTES.sub("", words)
         run = Run(run_id, agent, session, visible, photos, DOC_LINE.findall(visible))
         self.runs[run_id] = run
+        if "#jours" in visible.lower() and not self.hermes.messages.get((agent, session)):
+            for row in history():
+                self.store(agent, session, row)
         self.store(agent, session, {"role": "user", "content": self.durable(content), "timestamp": time.time()})
         threading.Thread(target=self.answer, args=(run,), name=f"model-{run_id}", daemon=True).start()
         return JSONResponse({"run_id": run_id, "status": "started"}, status_code=202)
@@ -245,6 +251,18 @@ class ScriptedModel:
             run.emit("message.delta", delta=word)
             said += word
             time.sleep(self.word_gap if gap is None else gap)
+        return said
+
+    def say_real(self, run: Run, text: str) -> str:
+        """`#reel`: as GLM's words come through Hermes: a wait, then chunks of 1 to 3 words, 60 to 200 ms apart."""
+        pace, words, said = random.Random(run.id), re.findall(r"\S+\s*", text), ""
+        run.stopped.wait(1.5)
+        while words and not run.stopped.is_set():
+            n = pace.randint(1, 3)
+            chunk, words = "".join(words[:n]), words[n:]
+            run.emit("message.delta", delta=chunk)
+            said += chunk
+            time.sleep(pace.uniform(0.06, 0.2))
         return said
 
     def wait(self, run: Run, kind: str, prompt_id: str, **event: Any) -> Optional[Dict[str, Any]]:
@@ -361,6 +379,10 @@ class ScriptedModel:
             if line:
                 lines.append("Voici ton trajet.")
                 media.append(line)
+        if "#jours" in words:
+            lines.append("Noté, je garde tout ça en tête.")
+        if "#reel" in words:
+            lines.append(REEL)
         if "#lent" in words:
             lines.append(" ".join(["Je prends le temps de bien tout vérifier, point par point."] * 12))
         if not lines:
@@ -372,7 +394,8 @@ class ScriptedModel:
             lines.append("Bien reçu" + (f" : {' et '.join(what)}." if what else ".")
                          + " Merci, je regarde ça tout de suite et je te réponds en détail très bientôt.")
         body = " ".join(lines)
-        said = self.say(run, body, gap=0.25 if "#lent" in words else None)
+        said = self.say_real(run, body) if "#reel" in words else self.say(run, body, gap=0.25 if "#lent" in words else None)
+        thought = {"reasoning": "Une réponse courte et utile."} if "#reel" in words or "#jours" in words else {}
         if run.stopped.is_set():
             if calls:
                 self.store(run.agent, run.session, {"role": "assistant", "content": opening, "tool_calls": calls,
@@ -394,13 +417,50 @@ class ScriptedModel:
                                                 "timestamp": time.time()})
             for row in results:
                 self.store(run.agent, run.session, row)
-            self.store(run.agent, run.session, {"role": "assistant", "content": reply, "timestamp": time.time()})
+            self.store(run.agent, run.session, {"role": "assistant", "content": reply, "timestamp": time.time(),
+                                                **thought})
         else:
             self.store(run.agent, run.session, {"role": "assistant", "content": opening + reply,
-                                                "timestamp": time.time()})
+                                                "timestamp": time.time(), **thought})
         run.status, run.output = "completed", opening + reply
         run.emit("run.completed", output=opening + reply, usage={"input_tokens": 1200, "output_tokens": 80})
         run.finish()
+
+
+REEL = ("Bonne idée ! Pour ton week-end à Lyon, commence samedi matin par le marché de la Croix-Rousse, puis balade-toi "
+        "sur les quais de Saône jusqu’au Vieux Lyon. L’après-midi, le parc de la Tête d’Or est parfait s’il fait beau. "
+        "Dimanche, garde du temps pour les traboules et un bouchon lyonnais à midi.")
+
+
+def history(zone: str = "Europe/Paris") -> List[Dict[str, Any]]:
+    """`#jours`: three earlier turns as Hermes keeps them (2 days ago, yesterday, today about an hour ago, in `zone`,
+    never later than now even just after midnight), each reply with its `reasoning`, the first after a tool call."""
+    import datetime as dt
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo(zone)
+    now = dt.datetime.now(tz)
+    midnight = dt.datetime.combine(now.date(), dt.time(), tz).timestamp()
+    today = max(now.timestamp() - 3600, (midnight + now.timestamp()) / 2)
+    step = min(2.0, (now.timestamp() - today) / 4)
+
+    def day(ago: int, hour: int) -> float:
+        return dt.datetime.combine(now.date() - dt.timedelta(days=ago), dt.time(hour), tz).timestamp()
+
+    rows: List[Dict[str, Any]] = []
+    turns = [(day(2, 15), "Rappelle-moi le rendez-vous chez le dentiste.", "C’est jeudi à 9 h 30, chez le Dr Martin."),
+             (day(1, 10), "Quel temps demain ?", "Demain : soleil, 18 °C l’après-midi."),
+             (today, "Pense aux courses ce soir.", "D’accord, je te le rappelle à 18 h.")]
+    for n, (at, asked, said) in enumerate(turns):
+        rows.append({"role": "user", "content": asked, "timestamp": at})
+        if n == 0:
+            call = {"id": "call_jours", "type": "function",
+                    "function": {"name": "mcp_bipagents_calendar_list", "arguments": '{"days": 7}'}}
+            rows += [{"role": "assistant", "content": "", "tool_calls": [call], "timestamp": at + step,
+                      "reasoning": "Je regarde son agenda de la semaine."},
+                     {"role": "tool", "tool_call_id": "call_jours", "tool_name": call["function"]["name"],
+                      "content": "Jeudi 9 h 30 : dentiste (Dr Martin).", "timestamp": at + step}]
+        rows.append({"role": "assistant", "content": said, "timestamp": at + 2 * step, "reasoning": f"Réponse : {said}"})
+    return rows
 
 
 def picture(path: Path) -> Path:
