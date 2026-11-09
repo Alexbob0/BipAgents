@@ -919,15 +919,17 @@ impl HermesClient {
     }
 
     /// [`Self::start_run`] with an `input` as Hermes takes it: a string, or a list of messages (photos: one user message
-    /// whose content is the text and image parts, threads/send.rs).
+    /// whose content is the text and image parts, threads/send.rs), and the turn's `model_options` (its thinking:
+    /// turn_thinking.rs).
     pub async fn start_run_input(
         &self,
         agent: &AgentConfig,
         input: Value,
         session_id: &str,
         instructions: Option<&str>,
+        model_options: Option<Value>,
     ) -> Result<String, HermesError> {
-        self.start_run_body(agent, input, session_id, instructions, None, None).await
+        self.start_run_body(agent, input, session_id, instructions, model_options, None).await
     }
 
     /// [`Self::start_run`] for a turn someone other than the agent's person writes (a relative, a member of the
