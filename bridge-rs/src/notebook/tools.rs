@@ -224,7 +224,7 @@ fn call_in(config: &Config, agent: &str, name: &str, arguments: &Dict, turn: &Tu
     let result = match name {
         SEARCH => search(config, agent, arguments, turn, health),
         READ => read(config, agent, arguments, turn, health),
-        WRITE => write(config, agent, arguments, health),
+        WRITE => write(config, agent, arguments, turn, health),
         TASK => task(config, agent, arguments, health),
         RECORD => record(config, agent, arguments, turn),
         _ => Ok(tool_text(&format!("unknown tool: {name}"), true)),
@@ -452,6 +452,15 @@ fn read(config: &Config, agent: &str, arguments: &Dict, turn: &Turn, health: boo
     Ok(tool_text(out.trim_end(), false))
 }
 
+/// Whether section `section` of page `page` (main part) has a fact already.
+fn section_filled(config: &Config, page: &str, section: &str) -> bool {
+    let Ok(Some(found)) = one_page(config, &[Part::Main], page, "") else { return false };
+    let kind = found.page.kind();
+    let Some(id) = super::template::resolve(&kind, section) else { return false };
+    let title = super::template::title(&kind, id, &super::language(config));
+    !section_lines(&super::in_outline(config, &found.page), &title).is_empty()
+}
+
 /// The lines of section `title` in `body` (none: empty).
 fn section_lines(body: &str, title: &str) -> String {
     let mut inside = false;
@@ -470,7 +479,7 @@ fn section_lines(body: &str, title: &str) -> String {
 
 // -- write -----------------------------------------------------------------------------------------------------------
 
-fn write(config: &Config, agent: &str, arguments: &Dict, health: bool) -> anyhow::Result<Dict> {
+fn write(config: &Config, agent: &str, arguments: &Dict, turn: &Turn, health: bool) -> anyhow::Result<Dict> {
     let page = s(arguments, "page");
     if page.is_empty() {
         return Ok(tool_text("give the page", true));
@@ -508,6 +517,9 @@ fn write(config: &Config, agent: &str, arguments: &Dict, health: bool) -> anyhow
     let (start, end) = (s(arguments, "start"), s(arguments, "end"));
     let close = arguments.get("close").and_then(Value::as_bool);
     let mut out: Vec<String> = Vec::new();
+    // the question of the day: only for a section still empty before this call (ask.rs)
+    let ask = arguments.get("ask").filter(|a| !a.is_null());
+    let filled = ask.is_some() && section_filled(config, &page, &s(arguments, "section"));
     let writes = !facts.is_empty()
         || !summary.is_empty()
         || !aliases.is_empty()
@@ -534,6 +546,12 @@ fn write(config: &Config, agent: &str, arguments: &Dict, health: bool) -> anyhow
                 }
                 Ok(written)
             })?;
+        if !written.path.is_empty() && written.part == Some(Part::Main) {
+            if let Some(text) = super::read_page_text(config, Part::Main, &written.path) {
+                let id = super::Page::parse(&text, "").id();
+                reads::wrote(agent, turn, if id.is_empty() { &written.path } else { &id });
+            }
+        }
         let apart = if written.apart > 0 { " Health facts saved apart: not in the shared part." } else { "" };
         if written.path.is_empty() {
             out.push("Saved apart (health): not in the shared part.".into());
@@ -585,8 +603,12 @@ fn write(config: &Config, agent: &str, arguments: &Dict, health: bool) -> anyhow
             out.push(format!("Fixed: {} ({done}).{told}", found.page.title));
         }
     }
-    if arguments.get("ask").is_some_and(|a| !a.is_null()) {
-        out.push("No question now.".into());
+    if let Some(ask) = ask {
+        let answer = match one_page(config, &[Part::Main], &page, "") {
+            Ok(Some(found)) => super::ask::from_agent(config, agent, turn, &found, &s(arguments, "section"), ask, filled, crate::py::time_time())?,
+            _ => super::ask::NO.to_string(),
+        };
+        out.push(answer);
     }
     let forget = args_list(arguments, "forget");
     if !forget.is_empty() {
@@ -804,7 +826,13 @@ fn record(config: &Config, agent: &str, arguments: &Dict, turn: &Turn) -> anyhow
             if numbered {
                 return Ok(tool_text(ID_NUMBER, true));
             }
+            if kind.id == "paper" {
+                super::papers::clean_fields(config, &mut fields);
+            }
             let (record, done) = records::upsert(config, kind, &s(arguments, "id"), &fields, action == "update", &who)?;
+            if kind.id == "paper" && done != Upserted::Same {
+                super::papers::remind(config, &record, &who, chrono::Local::now().date_naive())?;
+            }
             let line = written_line(kind, &record);
             let id = tk::str_or_empty(record.get("id"));
             let (what, told) = match done {
@@ -886,7 +914,7 @@ mod tests {
     }
 
     fn turn(run_id: &str) -> Turn {
-        Turn { run: Some(run_id.into()), session: Some(format!("s-{run_id}")), cap: reads::PAGES_PER_TURN }
+        Turn { run: Some(run_id.into()), session: Some(format!("s-{run_id}")), cap: reads::PAGES_PER_TURN, busy: false }
     }
 
     fn pages(config: &Config) -> Vec<String> {

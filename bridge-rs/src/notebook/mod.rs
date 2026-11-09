@@ -37,7 +37,9 @@
 
 pub mod api;
 pub mod archive;
+pub mod ask;
 pub mod fill;
+pub mod followups;
 pub mod forget;
 pub mod groups;
 pub mod known;
@@ -48,7 +50,9 @@ pub mod subscriptions;
 pub mod template;
 pub mod news;
 pub mod offline;
+pub mod papers;
 pub mod reads;
+pub mod review;
 pub mod tidy;
 pub mod tools;
 pub mod trip;
@@ -410,7 +414,7 @@ pub fn update_state(config: &Config, change: impl FnOnce(&mut Dict)) -> std::io:
     Ok(state)
 }
 
-fn strings(value: Option<&Value>) -> Vec<String> {
+pub(crate) fn strings(value: Option<&Value>) -> Vec<String> {
     match value {
         Some(Value::Array(items)) => items.iter().filter_map(Value::as_str).map(str::to_string).collect(),
         _ => Vec::new(),
@@ -2700,6 +2704,92 @@ pub fn set_important(config: &Config, id: &str, important: bool) -> std::io::Res
 /// Whether task `id` is marked important.
 pub fn is_important(config: &Config, id: &str) -> bool {
     task_meta(&read_state(config)).get(id).and_then(|m| m.get("important")).map(py::truthy).unwrap_or(false)
+}
+
+/// Whether a phone reminder is linked to task `id` (a follow-up is then not needed: followups.rs).
+pub fn reminder_linked(state: &Dict, id: &str) -> bool {
+    links(state).contains_key(id)
+}
+
+/// Task `id`'s line in the main part changed by `change` (under the lock). Returns the task as it is now.
+fn change_task_locked(
+    config: &Config,
+    id: &str,
+    who: &Who,
+    action: &str,
+    change: impl FnOnce(&mut Task),
+) -> anyhow::Result<Option<Task>> {
+    let w = words(&language(config));
+    let path = w.tasks_path();
+    let Some(before) = read_page_text(config, Part::Main, &path) else { return Ok(None) };
+    let mut doc = Page::parse(&before, w.tasks);
+    let mut lines = body_lines(&doc.body);
+    let Some(index) = lines.iter().position(|l| Task::parse(l, Part::Main).is_some_and(|t| t.id == id)) else {
+        return Ok(None);
+    };
+    let mut task = Task::parse(&lines[index], Part::Main).expect("matched");
+    change(&mut task);
+    lines[index] = task.render();
+    doc.body = lines.join("\n") + "\n";
+    doc.touch();
+    commit(config, Part::Main, &path, Some(&before), Some(&doc.render()), who, action, &task.title)?;
+    Ok(Some(task))
+}
+
+/// A task moved to another day (a follow-up's « Demain »: followups.rs).
+pub fn set_task_due(config: &Config, id: &str, due: &str, who: &Who) -> anyhow::Result<Option<Task>> {
+    let _guard = lock();
+    change_task_locked(config, id, who, "task_due", |t| t.due = due.to_string())
+}
+
+/// A task let go (a follow-up's « Laisse tomber »: followups.rs): moved under the tasks page's « Archivées », open,
+/// never deleted. Returns the task.
+pub fn archive_task(config: &Config, id: &str, who: &Who) -> anyhow::Result<Option<Task>> {
+    let _guard = lock();
+    let w = words(&language(config));
+    let path = w.tasks_path();
+    let Some(before) = read_page_text(config, Part::Main, &path) else { return Ok(None) };
+    let mut doc = Page::parse(&before, w.tasks);
+    let mut lines = body_lines(&doc.body);
+    let Some(index) = lines.iter().position(|l| Task::parse(l, Part::Main).is_some_and(|t| t.id == id)) else {
+        return Ok(None);
+    };
+    let line = lines.remove(index);
+    match section_index(&lines, w.archived) {
+        Some(start) => {
+            let end = section_end(&lines, start);
+            lines.insert(end, line.clone());
+        }
+        None => {
+            lines.push(String::new());
+            lines.push(format!("## {}", w.archived));
+            lines.push(line.clone());
+        }
+    }
+    doc.body = lines.join("\n") + "\n";
+    doc.touch();
+    let mut task = Task::parse(&line, Part::Main).expect("matched");
+    commit(config, Part::Main, &path, Some(&before), Some(&doc.render()), who, "archive", &task.title)?;
+    task.archived = true;
+    Ok(Some(task))
+}
+
+/// Change `change` taken back (the « Annuler » of a Carnet card, ask.rs): its page as it was before it, when nothing
+/// changed the page since. Returns whether it was.
+pub fn undo_change(config: &Config, change: &str, who: &Who) -> anyhow::Result<bool> {
+    let _guard = lock();
+    let Some(entry) = history(config, None, None, usize::MAX).into_iter().find(|e| tk::str_or_empty(e.get("id")) == change)
+    else {
+        return Ok(false);
+    };
+    let part = Part::parse(&tk::str_or_empty(entry.get("part")));
+    let path = tk::str_or_empty(entry.get("path"));
+    let now = read_page_text(config, part, &path);
+    let after = entry.get("after").and_then(Value::as_str).and_then(|id| version_text(config, id));
+    let before = entry.get("before").and_then(Value::as_str).and_then(|id| version_text(config, id));
+    let (Some(before), true) = (before, now.is_some() && now == after) else { return Ok(false) };
+    commit(config, part, &path, now.as_deref(), Some(&before), who, "restore", &tk::str_or_empty(entry.get("summary")))?;
+    Ok(true)
 }
 
 pub fn set_task_done(

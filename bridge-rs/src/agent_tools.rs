@@ -1401,7 +1401,8 @@ where
 }
 
 /// The Carnet's view of a tool call's turn (notebook/reads.rs): its run, its Hermes session, and its page cap — 20
-/// for « Remplir mon Carnet »'s background task (notebook/fill.rs), else 6.
+/// for « Remplir mon Carnet »'s background task (notebook/fill.rs), else 6 — and whether it is busy (a background task,
+/// a routine, a Live call: the Carnet asks no question then, notebook/ask.rs).
 fn carnet_turn(state: &AppState, agent: &str, turn: Option<&crate::loop_brake::Turn>) -> crate::notebook::reads::Turn {
     use crate::notebook::reads;
     let Some(turn) = turn else { return reads::Turn::default() };
@@ -1412,7 +1413,12 @@ fn carnet_turn(state: &AppState, agent: &str, turn: Option<&crate::loop_brake::T
                 && tk::str_or_empty(job.get("template")) == crate::notebook::fill::TEMPLATE
         });
     let cap = if fill { reads::PAGES_PER_FILL } else { reads::PAGES_PER_TURN };
-    reads::Turn { run: Some(turn.run_id.clone()), session, cap }
+    let live = session.as_deref().is_some_and(|s| {
+        crate::live_calls::LiveCalls::of(&state.briefs).open_calls().iter().any(|c| c.agent == agent && c.live_session == s)
+    });
+    let routine = session.as_deref().is_some_and(|s| s.starts_with("cron_"));
+    let busy = turn.background || live || routine;
+    reads::Turn { run: Some(turn.run_id.clone()), session, cap, busy }
 }
 
 /// One tool call. Err: what Python lets through (a store that cannot be read or written): a 500.

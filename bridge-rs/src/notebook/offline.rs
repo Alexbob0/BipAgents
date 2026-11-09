@@ -107,11 +107,14 @@ fn words_of(parts: &[&str]) -> Vec<String> {
     out
 }
 
-/// Whether a page may be in the copy: the main part's pages of a kind, not archived, not health.
+/// Whether a page may be in the copy: the main part's pages of a kind, not archived, not health, never the papers
+/// (papers.rs: what someone's ID is, even without its number, stays on the place).
 fn shareable(config: &Config, path: &str, page: &super::Page) -> bool {
-    let w = super::words(&super::language(config));
+    let lang = super::language(config);
+    let w = super::words(&lang);
     let kind = page.kind();
-    let kinds_ok = super::KINDS.contains(&kind.as_str()) || kind == "records";
+    let papers = super::records::kind("paper").is_some_and(|t| path == super::records::path_of(&lang, t));
+    let kinds_ok = (super::KINDS.contains(&kind.as_str()) || kind == "records") && !papers;
     let health = fold(&page.title) == fold(w.health) || fold(&page.title) == "health" || lexicon::is_health(&page.title);
     kinds_ok && !health && !w.archived(path)
 }

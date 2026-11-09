@@ -1335,7 +1335,8 @@ async fn item_route(
 /// automatic « Étapes » say it instead of the tool's own name. A call through the tool search by the call it wraps.
 /// Under each turn that read or wrote in the Carnet, after its last item, one `carnet_line` item: « A consulté 2 pages
 /// · Noté dans Léa » (notebook/reads.rs `lines`, contract.md §4), then its `carnet_card` items (an « Oublie ça »
-/// to confirm: notebook/forget.rs `cards`). Only for a timeline with a Carnet tool call in it.
+/// to confirm, the question of the day: notebook/forget.rs `cards`); a follow-up's card at the head of its turn
+/// (notebook/followups.rs). Only for a timeline with a Carnet tool call or a Carnet card in it.
 fn with_carnet_lines(config: &crate::config::Config, agent: &AgentConfig, items: &mut Vec<Item>) {
     let carnet = |i: &Item| {
         i.kind() == "tool"
@@ -1343,16 +1344,18 @@ fn with_carnet_lines(config: &crate::config::Config, agent: &AgentConfig, items:
                 ["name", "arguments"].iter().any(|k| t.get(*k).and_then(Value::as_str).is_some_and(|n| n.contains("notebook_")))
             })
     };
-    if !items.iter().any(carnet) {
+    if !items.iter().any(carnet) && !crate::notebook::ask::has_cards(config, &agent.name) {
         return;
     }
     // each turn: its session, its first time, its last item
     let mut spans: Vec<crate::notebook::reads::Span> = Vec::new();
     let mut last: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut first: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     for (i, item) in items.iter().enumerate() {
         if item.turn.is_empty() {
             continue;
         }
+        first.entry(item.turn.clone()).or_insert(i);
         if !spans.iter().any(|s| s.turn == item.turn) {
             spans.push(crate::notebook::reads::Span {
                 turn: item.turn.clone(),
@@ -1384,9 +1387,12 @@ fn with_carnet_lines(config: &crate::config::Config, agent: &AgentConfig, items:
         .into_iter()
         .enumerate()
         .filter_map(|(order, (turn, id, body))| {
-            let at = &items[*last.get(&turn)?];
+            // a follow-up at the head of the answer (after the person's message), the rest after its last item
+            let head = body.get("card").and_then(Value::as_str) == Some("follow");
+            let index = if head { *first.get(&turn)? } else { *last.get(&turn)? };
+            let at = &items[index];
             let Value::Object(body) = body else { return None };
-            Some((*last.get(&turn)?, order, Item {
+            Some((index, order, Item {
                 id,
                 pos: (at.pos.0, at.pos.1, at.pos.2 + 1),
                 at: at.at,

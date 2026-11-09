@@ -20,8 +20,9 @@
 //! Obsidian is kept.
 //!
 //! The nightly pass proposes reminders (never adds them by itself): a warranty ending within 30 days, a renewal within
-//! 7, a contract's end within 30, a paper expiring within 60 — as Carnet task proposals (mod.rs `propose`, within its
-//! weekly budget), each record's date once.
+//! 7, a contract's end within 30 — as Carnet task proposals (mod.rs `propose`, within its weekly budget), each record's
+//! date once. A paper gets two real tasks when it is filed (papers.rs: 3 months and 1 month before its end), no
+//! proposal.
 //!
 //! What is past moves to the same table in the archives (`Archives/Fiches/Achats.md`, archive.rs decides when): the
 //! row as it was, its id kept. `records` reads the live table, `archived_records` the other; the tool's list shows both.
@@ -162,7 +163,7 @@ pub const TYPES: [Kind; 5] = [
         ],
         next: "expires",
         keys: &[&["document", "holder"], &["document"]],
-        window: 60,
+        window: 0,
         proposal: "expiry",
     },
     Kind {
@@ -1293,11 +1294,7 @@ pub fn propose_due(config: &Config, today: NaiveDate) -> anyhow::Result<usize> {
                 continue;
             }
             // the task's day: a little before the date, never in the past
-            let before = match t.id {
-                "subscription" => 2,
-                "paper" => 30,
-                _ => 7,
-            };
+            let before = if t.id == "subscription" { 2 } else { 7 };
             let due = (date - chrono::Duration::days(before)).max(today);
             let title = proposal_title(&lang, t, &record, date);
             let page = t.titles[lang_index(&lang)];

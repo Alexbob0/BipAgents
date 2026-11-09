@@ -43,8 +43,6 @@ pub const TOKEN_SECONDS: f64 = 600.0;
 pub const TEXTS_MAX: usize = 5;
 /// A whole page's fingerprint lasts this long.
 const PAGE_DAYS: f64 = 30.0;
-/// The cards kept in `state.json`.
-const CARDS_MAX: usize = 100;
 /// Fingerprints kept at most.
 const FORGOTTEN_MAX: usize = 2000;
 /// What an erased line becomes in the history.
@@ -918,6 +916,8 @@ pub fn confirm(config: &Config, token: &str, person: &str) -> anyhow::Result<Opt
         Err(_) => return Ok(Some(texts(&pending.lang).done.to_string())),
     };
     apply(config, &target, &pending.lang, person)?;
+    // a paper's record forgotten: its photo too (papers.rs)
+    super::papers::sweep(config);
     if let Some(card) = &pending.card {
         set_card(config, card, "done")?;
     }
@@ -950,14 +950,7 @@ pub fn ask_from_agent(config: &Config, agent: &str, page: &str, texts_asked: &[S
     let (session, run) = super::reads::current().unwrap_or((None, None));
     let card = json!({"id": id, "at": py::time_time(), "agent": agent, "session": session, "run": run, "card": "forget",
                       "state": "open", "request": request, "view": shown});
-    super::update_state(config, |state| {
-        let list = state.entry("cards").or_insert_with(|| json!([]));
-        if let Value::Array(items) = list {
-            items.push(card);
-            let extra = items.len().saturating_sub(CARDS_MAX);
-            items.drain(..extra);
-        }
-    })?;
+    super::update_state(config, |state| super::ask::push_card(state, card))?;
     Ok("Shown to the person: they confirm in the app.".into())
 }
 
@@ -990,30 +983,49 @@ pub fn card_request(config: &Config, id: &str) -> Option<Request> {
     serde_json::from_value(card.get("request")?.clone()).ok()
 }
 
-/// The `carnet_card` items of `agent`'s turns (contract.md §4), by turn, in the order they were made.
+/// The `carnet_card` items of `agent`'s turns (contract.md §4), by turn, in the order they were made: « Oublie ça »'s
+/// preview (here), the question of the day (ask.rs, under the answer) and a follow-up (followups.rs, at the head of
+/// the answer: it is made just before the turn starts).
 pub fn cards(config: &Config, agent: &str, lang: &str, spans: &[Span]) -> HashMap<String, Vec<Value>> {
     let mut out: HashMap<String, Vec<Value>> = HashMap::new();
     let state = super::read_state(config);
     let Some(Value::Array(items)) = state.get("cards") else { return out };
     let t = texts(lang);
+    let now = py::time_time();
     for c in items.iter().filter(|c| c.get("agent").and_then(Value::as_str) == Some(agent)) {
+        let Some(card) = c.as_object() else { continue };
         let at = c.get("at").and_then(Value::as_f64).unwrap_or(0.0);
         let session = tk::str_or_empty(c.get("session"));
-        let Some(span) = spans.iter().rev().find(|s| s.session == session && at >= s.from - 1.0 && at < s.to) else { continue };
-        let state = tk::str_or_empty(c.get("state"));
-        let mut body = json!({"kind": "carnet_card", "card": "forget", "id": c.get("id"), "state": state});
-        match state.as_str() {
-            "open" => {
-                if let Some(Value::Object(view)) = c.get("view") {
-                    for (k, v) in view {
-                        body[k] = v.clone();
+        let kind = tk::str_or_empty(c.get("card"));
+        let span = if kind == "follow" {
+            spans.iter().find(|s| s.session == session && s.from >= at - 5.0)
+        } else {
+            spans.iter().rev().find(|s| s.session == session && at >= s.from - 1.0 && at < s.to)
+        };
+        let Some(span) = span else { continue };
+        let body = match kind.as_str() {
+            "ask" => super::ask::view(card, lang, now),
+            "follow" => super::followups::view(card, lang),
+            _ => {
+                let state = tk::str_or_empty(c.get("state"));
+                let mut body = json!({"kind": "carnet_card", "card": "forget", "id": c.get("id"), "state": state});
+                match state.as_str() {
+                    "open" => {
+                        if let Some(Value::Object(view)) = c.get("view") {
+                            for (k, v) in view {
+                                body[k] = v.clone();
+                            }
+                        }
                     }
+                    "done" => body["text"] = json!(t.done),
+                    _ => {}
                 }
+                Some(body)
             }
-            "done" => body["text"] = json!(t.done),
-            _ => {}
+        };
+        if let Some(body) = body {
+            out.entry(span.turn.clone()).or_default().push(body);
         }
-        out.entry(span.turn.clone()).or_default().push(body);
     }
     out
 }
@@ -1078,7 +1090,7 @@ mod tests {
         super::super::note(config, Part::Main, "person", "Léa Martin", "", &["Pointure : 36".into(), "Aime le chocolat".into()], &["Léa".into()], "", "", &who).unwrap();
         super::super::note(config, Part::Main, "person", "Marc Dupont", "", &["Pointure : 36".into()], &[], "", "", &who).unwrap();
         let found = super::super::find(config, &[Part::Main], "Léa Martin").unwrap();
-        let turn = super::super::reads::Turn { run: Some("r1".into()), session: Some("s1".into()), cap: 6 };
+        let turn = super::super::reads::Turn { run: Some("r1".into()), session: Some("s1".into()), cap: 6, busy: false };
         super::super::reads::log(config, "quotidien", &turn, Part::Main, &found.page.id(), None, "read");
         memory(config, "cuisine", "user", &["Léa fait du 36", "Alex habite Lyon"]);
         memory(config, "budget", "notes", &["Léa chausse du 36 depuis l'été", "Cadeau : elle fait du 36", "Loyer : 800 €"]);
@@ -1202,7 +1214,7 @@ mod tests {
         let nothing = Request { texts: vec!["Aime le ski".into()], page: Some("Marc Dupont".into()), private: false };
         assert_eq!(view(&config, &nothing, "fr", "").unwrap_err(), Refused::Nothing);
         // the agent: a preview in a card, never a token, nothing erased
-        let turn = super::super::reads::Turn { run: Some("r9".into()), session: Some("s9".into()), cap: 6 };
+        let turn = super::super::reads::Turn { run: Some("r9".into()), session: Some("s9".into()), cap: 6, busy: false };
         let answer = super::super::reads::with_turn(&turn, || {
             ask_from_agent(&config, "quotidien", "Léa Martin", &["Pointure : 36".into()], false).unwrap()
         });

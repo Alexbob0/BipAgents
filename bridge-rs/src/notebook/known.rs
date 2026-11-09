@@ -255,7 +255,7 @@ mod tests {
     fn the_page_shows_names_never_page_text_and_ninety_days() {
         let (_dir, config) = super::super::offline::tests::carnet();
         let lea = super::super::find(&config, &[Part::Main], "Léa Martin").unwrap();
-        let turn = super::super::reads::Turn { run: Some("r1".into()), session: Some("s1".into()), cap: 6 };
+        let turn = super::super::reads::Turn { run: Some("r1".into()), session: Some("s1".into()), cap: 6, busy: false };
         super::super::reads::log(&config, "quotidien", &turn, Part::Main, &lea.page.id(), Some("tastes"), "read");
         super::super::reads::log(&config, "ancien", &turn, Part::Main, "p-gone", None, "read");
         let folder = crate::agents_admin::profile_folder(&config, config.agent(Some("quotidien")).unwrap());

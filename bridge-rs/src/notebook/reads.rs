@@ -40,11 +40,13 @@ pub struct Turn {
     pub run: Option<String>,
     pub session: Option<String>,
     pub cap: usize,
+    /// A background task's run, a routine's or a Live call's: the Carnet asks nothing then (ask.rs).
+    pub busy: bool,
 }
 
 impl Default for Turn {
     fn default() -> Self {
-        Turn { run: None, session: None, cap: PAGES_PER_TURN }
+        Turn { run: None, session: None, cap: PAGES_PER_TURN, busy: false }
     }
 }
 
@@ -71,6 +73,7 @@ struct Seen {
     at: f64,
     logged: HashSet<String>,
     read: HashSet<String>,
+    written: HashSet<String>,
 }
 
 static TURNS: LazyLock<Mutex<HashMap<String, Seen>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -102,6 +105,18 @@ pub fn may_read(agent: &str, turn: &Turn, id: &str) -> bool {
         s.read.insert(id.to_string());
         true
     })
+}
+
+/// Page `id` written in `turn` (notebook_write): the question of the day may ask about it (ask.rs).
+pub fn wrote(agent: &str, turn: &Turn, id: &str) {
+    seen(agent, turn, py::time_time(), |s| {
+        s.written.insert(id.to_string());
+    })
+}
+
+/// Whether `turn` read or wrote page `id`.
+pub fn touched(agent: &str, turn: &Turn, id: &str) -> bool {
+    seen(agent, turn, py::time_time(), |s| s.read.contains(id) || s.logged.contains(id) || s.written.contains(id))
 }
 
 /// Unix seconds to the millisecond: a read made just after the person's message stays in its turn.
@@ -407,13 +422,13 @@ mod tests {
 
     #[test]
     fn a_turn_reads_six_pages_at_most_and_its_reads_are_logged_once() {
-        let turn = Turn { run: Some("run_cap".into()), session: Some("s1".into()), cap: PAGES_PER_TURN };
+        let turn = Turn { run: Some("run_cap".into()), session: Some("s1".into()), cap: PAGES_PER_TURN, busy: false };
         for i in 0..6 {
             assert!(may_read("cap-agent", &turn, &format!("p{i}")));
         }
         assert!(may_read("cap-agent", &turn, "p0"), "a page read again is no new page");
         assert!(!may_read("cap-agent", &turn, "p6"));
-        let fill = Turn { run: Some("run_fill".into()), session: None, cap: PAGES_PER_FILL };
+        let fill = Turn { run: Some("run_fill".into()), session: None, cap: PAGES_PER_FILL, busy: false };
         assert!((0..20).all(|i| may_read("cap-agent", &fill, &format!("p{i}"))));
         assert!(!may_read("cap-agent", &fill, "p20"));
         let other = Turn { run: Some("run_other".into()), ..turn.clone() };
@@ -424,7 +439,7 @@ mod tests {
     fn the_journal_keeps_ninety_days() {
         let dir = tempfile::tempdir().unwrap();
         let config = crate::notebook::tests_config(dir.path());
-        let turn = Turn { run: Some("run_j".into()), session: Some("s".into()), cap: 6 };
+        let turn = Turn { run: Some("run_j".into()), session: Some("s".into()), cap: 6, busy: false };
         log(&config, "lea", &turn, Part::Main, "p1", Some("tastes"), "read");
         log(&config, "lea", &turn, Part::Main, "p1", None, "read");
         log(&config, "lea", &turn, Part::Health, "p2", None, "search");

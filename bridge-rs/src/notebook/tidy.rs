@@ -353,6 +353,12 @@ async fn run_inner(
     if archived > 0 {
         record.insert("archived".into(), json!(archived));
     }
+    // the photos of papers whose record is gone (papers.rs)
+    tokio::task::spawn_blocking({
+        let c = config.clone();
+        move || super::papers::sweep(&c)
+    })
+    .await?;
     // the journal of the agents' reads: 90 days (reads.rs)
     tokio::task::spawn_blocking({
         let c = config.clone();

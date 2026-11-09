@@ -8,7 +8,7 @@
 //! salted hashes only).
 //!
 //! Rules: one proposal a day; never while a run of that agent goes on in the conversation or one of its background
-//! tasks runs, never at night (22:00–08:00), never in a routine's run; « Pas pour moi » never again for that feature,
+//! tasks runs, never at the place's quiet hours (22:00–08:00 by default: notebook/ask.rs), never in a routine's run; « Pas pour moi » never again for that feature,
 //! « Plus tard » not before 7 days; the guide (« Bip ») proposes when there is one, else the agent written to most.
 //!
 //!     GET  /v1/tips                 {enabled, day, features, costumes, stats}
@@ -45,8 +45,6 @@ pub const LATER: f64 = 7.0 * DAY;
 /// A card left unanswered goes after this long (as « Plus tard »); a noticed moment waits this long at most.
 pub const CARD_TTL: f64 = 3.0 * DAY;
 pub const QUEUE_TTL: f64 = 3.0 * DAY;
-/// Quiet hours (local): from 22:00 to 08:00.
-pub const QUIET: [u32; 2] = [22, 8];
 /// Friday (chrono's Monday = 1).
 pub const PODCAST_DAY: u32 = 5;
 /// Nothing from the calendar after this day.
@@ -502,9 +500,8 @@ struct Store {
     /// The last « Essayer » (feature, when): a routine made right after counts for it.
     #[serde(default)]
     last_try: Option<(String, f64)>,
-    /// Quiet hours and the podcast's day (settings kept here; the defaults are QUIET and PODCAST_DAY).
-    #[serde(default)]
-    quiet: Option<[u32; 2]>,
+    /// The podcast's day (a setting kept here; the default is PODCAST_DAY). The quiet hours are the place's, one
+    /// setting with the Carnet's cards (notebook/ask.rs).
     #[serde(default)]
     podcast_day: Option<u32>,
 }
@@ -589,18 +586,6 @@ fn days_between(from: f64, to: f64) -> i64 {
     let a = local(from).date_naive();
     let b = local(to).date_naive();
     (b - a).num_days()
-}
-
-fn quiet(store: &Store, hour: u32) -> bool {
-    let [from, to] = store.quiet.unwrap_or(QUIET);
-    if from == to {
-        return false;
-    }
-    if from < to {
-        hour >= from && hour < to
-    } else {
-        hour >= from || hour < to
-    }
 }
 
 // --- uses and adoption ---------------------------------------------------------------------------------------------------
@@ -946,6 +931,7 @@ pub fn on_message(
     let text: String = text.chars().take(TEXT_MAX).collect();
     // the notes in English, the app's parts by their names in the agent's language (names.rs)
     let lang = crate::names::agent_language(config, agent);
+    let quiet = crate::notebook::ask::is_quiet(config, now);
     let out = change(config, |store| {
         if !store.enabled {
             return None;
@@ -963,7 +949,7 @@ pub fn on_message(
         let mut lines = store.notes.remove(agent).unwrap_or_default();
         let today = day_of(now);
         let allowed = !moment.busy
-            && !quiet(store, hour_of(now))
+            && !quiet
             && store.last_day.as_deref() != Some(today.as_str())
             && store.cards.is_empty()
             && proposer(store, config, moment, agent) == agent;

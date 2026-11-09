@@ -20,9 +20,16 @@ def tweak(bridge, **fields):
     path.write_text(json.dumps(state))
 
 
+def quiet_hours(bridge, start, end):
+    """The place's quiet hours (one setting with the Carnet's cards: notebook/ask.rs); the same hour twice: never."""
+    done = bridge.patch("/v1/notebook/settings", headers=AUTH, json={"quiet": {"from": start, "to": end}})
+    assert done.status_code == 200, done.text
+
+
 def daytime(bridge):
     """Never quiet, no Friday podcast: the triggers alone."""
-    tweak(bridge, quiet=[0, 0], podcast_day=9)
+    quiet_hours(bridge, "03:00", "03:00")
+    tweak(bridge, podcast_day=9)
 
 
 def say(bridge, text, kinds=None, session="s1"):
@@ -86,7 +93,11 @@ def test_one_a_day_and_later(bridge):
 
 
 def test_quiet_hours_routines_and_busy_conversations_wait(bridge):
-    tweak(bridge, quiet=[0, 24], podcast_day=9)   # always night
+    import datetime
+    now = datetime.datetime.now()
+    hour = lambda d: (now + datetime.timedelta(hours=d)).strftime("%H:%M")
+    quiet_hours(bridge, hour(-1), hour(1))   # night now
+    tweak(bridge, podcast_day=9)
     assert say(bridge, "rappelle-moi d'appeler le garage") is None
     assert tip_cards(bridge) == []
     daytime(bridge)

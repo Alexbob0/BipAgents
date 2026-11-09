@@ -215,6 +215,8 @@ pub async fn require_bridge_key(State(state): State<AppState>, request: Request,
         crate::cloud_setup::bridge_key_used(&config);
     }
     if matched || device.is_some() {
+        // the Carnet's weekly review counts the days the app was opened (notebook/ask.rs: once a day, nothing else)
+        crate::notebook::ask::app_seen_soon(&config);
         parts.extensions.insert(Caller { console: false, device });
         // A request from an app: a place asleep (sleep.py) wakes its Hermes first.
         state.sleep.awake().await;
