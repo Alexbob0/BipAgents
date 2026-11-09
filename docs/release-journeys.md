@@ -121,6 +121,7 @@ la bêta.
 | J41 | Une routine créée, puis une question | La routine en marche tout de suite ; UNE carte dans la conversation : « Veux-tu être au courant de ce que cette routine trouve ? », « Oui, préviens-moi » ; elle s'en va, la routine reste en marche | P, i, A |
 | J42 | Les « Étapes » | Pendant le travail, les étapes viennent de ce que fait l'agent ; dès qu'il écrit sa liste, c'est la sienne : une carte pour le tour, ses lignes et leur état (fait, en cours) | P, i, A |
 | J43 | La limite d'échanges entre agents | Au 5e message entre deux agents : UNE carte « Continuer l'échange ? » dans la conversation ; « Oui, vas-y » : la carte part, l'agent continue | P ; apps : manuel |
+| J46 | Oublier une tâche depuis la Boîte | Une tâche lancée par l'agent, dans « En cours » de la Boîte ; un toucher : SA page ; « Oublier cette tâche » : la question près du bouton (jamais en haut de l'écran) ; « Oublier » : la tâche quitte le pont et la Boîte | i, A |
 | J44 | Quick Talk suit la réponse | Le message suivi jusqu'à sa réponse (`GET /v1/threads/{t}/sends/{client_id}`) : en cours, puis les mots à dire ; une carte : passé à l'écran | P (le pont seulement) |
 
 **Ce que les parcours J32 et après ont trouvé (6/11)**
