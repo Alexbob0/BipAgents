@@ -35,8 +35,7 @@
   "salon": {
     "alt": "A cosy living room in the evening: on the sofa, a phone calls Pasta Mia; on the coffee table, a tablet shows €11.99 a month of subscriptions cut; by the window, a laptop with flights and a hotel, and an easel with the week’s wellness notes. Four Bips are taking care of it all.",
     "a11y": "What the Bips in the living room are doing",
-    "tip": "Drag a Bip to spin it",
-    "hint": "Swipe to look around · drag a Bip to spin it",
+    "hint": "Swipe to look around",
     "dinners": {
       "name": "Dinners",
       "line": "Full at 8, so I booked 8:30 and told Julie."

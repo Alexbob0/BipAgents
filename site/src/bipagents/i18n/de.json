@@ -35,8 +35,7 @@
   "salon": {
     "alt": "Ein gemütliches Wohnzimmer am Abend: Auf dem Sofa ruft ein Handy bei Pasta Mia an, auf dem Couchtisch zeigt ein Tablet 11,99 € weniger Abos im Monat, am Fenster ein Laptop mit Flügen und Hotel und eine Staffelei mit dem Wohlbefinden der Woche. Vier Bips kümmern sich darum.",
     "a11y": "Was die Bips im Wohnzimmer tun",
-    "tip": "Zieh an einem Bip, um ihn zu drehen",
-    "hint": "Wischen, um dich umzusehen · Bip mit dem Finger drehen",
+    "hint": "Wischen, um dich umzusehen",
     "dinners": {
       "name": "Essen",
       "line": "Um 20 Uhr ausgebucht, also habe ich 20:30 reserviert und Julie Bescheid gesagt."

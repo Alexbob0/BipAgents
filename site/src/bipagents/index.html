@@ -1,6 +1,6 @@
 {{>top}}
 <!-- ============================================================ HERO: the promise, what the Bips do, where they live,
-     the beta; then the living room, where four Bips are at work (salon/salon.js, Three.js served from this site). -->
+     the beta; then the living room, where four Bips are at work (pre-rendered sprites, CSS animation, salon/salon.js picks whose turn). -->
 <section class="hero">
   <h1>{{hero.slogan}}</h1>
   <p class="lede">{{hero.sub}}</p>
@@ -34,14 +34,21 @@
         <text class="s-mid" x="922" y="322" data-max="54">{{salon.paint.laptop2}}</text>
       </g>
     </svg>
-    <canvas class="salon-canvas" aria-hidden="true"></canvas>
+    <!-- The four Bips, drawn once from the former 3D scene (scripts/salon-sprites/), in depth order, each followed by
+         its contact shadow; the coins on the coffee table and the one Budget tosses. -->
+    <i class="salon-shade cs1"></i><i class="salon-shade cs2"></i><i class="salon-shade cs3"></i>
+    <div class="salon-bip b-dinners"><div class="bip-hop"><div class="bip-body"><div class="bip-nb"><img class="bip-n" src="/assets/salon/sprites/dinners-n.webp?v={{version}}" alt="" decoding="async"><img class="bip-b" src="/assets/salon/sprites/dinners-b.webp?v={{version}}" alt="" decoding="async"></div><img class="bip-q" src="/assets/salon/sprites/dinners-q.webp?v={{version}}" alt="" decoding="async" fetchpriority="low"><img class="bip-s" src="/assets/salon/sprites/dinners-s.webp?v={{version}}" alt="" decoding="async" fetchpriority="low"></div></div></div><i class="salon-shade"></i>
+    <div class="salon-bip b-wellness"><div class="bip-hop"><div class="bip-body"><div class="bip-nb"><img class="bip-n" src="/assets/salon/sprites/wellness-n.webp?v={{version}}" alt="" decoding="async"><img class="bip-b" src="/assets/salon/sprites/wellness-b.webp?v={{version}}" alt="" decoding="async"></div><img class="bip-q" src="/assets/salon/sprites/wellness-q.webp?v={{version}}" alt="" decoding="async" fetchpriority="low"><img class="bip-s" src="/assets/salon/sprites/wellness-s.webp?v={{version}}" alt="" decoding="async" fetchpriority="low"></div></div></div><i class="salon-shade"></i>
+    <div class="salon-bip b-budget"><div class="bip-hop"><div class="bip-body"><div class="bip-nb"><img class="bip-n" src="/assets/salon/sprites/budget-n.webp?v={{version}}" alt="" decoding="async"><img class="bip-b" src="/assets/salon/sprites/budget-b.webp?v={{version}}" alt="" decoding="async"></div><img class="bip-q" src="/assets/salon/sprites/budget-q.webp?v={{version}}" alt="" decoding="async" fetchpriority="low"><img class="bip-s" src="/assets/salon/sprites/budget-s.webp?v={{version}}" alt="" decoding="async" fetchpriority="low"></div></div></div><i class="salon-shade"></i>
+    <div class="salon-coins"><img src="/assets/salon/sprites/coins.webp?v={{version}}" alt="" decoding="async"></div>
+    <div class="salon-coin"><img src="/assets/salon/sprites/coin.webp?v={{version}}" alt="" decoding="async"></div>
+    <div class="salon-bip b-trips"><div class="bip-hop"><div class="bip-body"><div class="bip-nb"><img class="bip-n" src="/assets/salon/sprites/trips-n.webp?v={{version}}" alt="" decoding="async"><img class="bip-b" src="/assets/salon/sprites/trips-b.webp?v={{version}}" alt="" decoding="async"></div><img class="bip-q" src="/assets/salon/sprites/trips-q.webp?v={{version}}" alt="" decoding="async" fetchpriority="low"><img class="bip-s" src="/assets/salon/sprites/trips-s.webp?v={{version}}" alt="" decoding="async" fetchpriority="low"></div></div></div><i class="salon-shade"></i>
     <ul class="salon-tags" aria-label="{{salon.a11y}}">
       <li class="salon-tag"><b><i></i>{{salon.dinners.name}}</b><span>{{salon.dinners.line}}</span></li>
       <li class="salon-tag"><b><i></i>{{salon.budget.name}}</b><span>{{salon.budget.line}}</span></li>
       <li class="salon-tag"><b><i></i>{{salon.wellness.name}}</b><span>{{salon.wellness.line}}</span></li>
       <li class="salon-tag"><b><i></i>{{salon.trips.name}}</b><span>{{salon.trips.line}}</span></li>
     </ul>
-    <p class="salon-tip" aria-hidden="true">{{salon.tip}}</p>
   </div>
 </div>
 <p class="salon-hint" aria-hidden="true">{{salon.hint}}</p>

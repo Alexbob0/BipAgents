@@ -159,8 +159,9 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
   .hero .cta-row .pill { width: 100%; }
 }
 
-/* -- The living room: the painting (1280×720) and, in the same frame, the easel's words, the Bips' contact shadows,
-   the 3D Bips and their labels. Wider than a phone: it scrolls sideways inside its band, never the page. */
+/* -- The living room: the painting (1280×720) and, in the same frame, the easel's words, the Bips (pre-rendered
+   sprites, salon/sprites/), their contact shadows and their labels. Only transform and opacity move (the GPU's own
+   work), nothing off screen or with reduced motion. Wider than a phone: it scrolls sideways inside its band. */
 @font-face {
   font-family: "Caveat";
   src: url("/assets/salon/caveat-600.woff2") format("woff2");
@@ -171,9 +172,8 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
   -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
 .salon::-webkit-scrollbar { display: none; }
 @media (min-width: 1441px) { .salon { border-radius: var(--radius); } }
-.salon-stage { position: relative; width: max(100%, 780px); aspect-ratio: 16 / 9; user-select: none; -webkit-user-select: none; }
-.salon-stage > img, .salon-easel, .salon-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; max-width: none; }
-.salon-canvas { touch-action: pan-y; }
+.salon-stage { position: relative; width: max(100%, 780px); aspect-ratio: 16 / 9; user-select: none; -webkit-user-select: none; overflow: hidden; }
+.salon-stage > img, .salon-easel { position: absolute; inset: 0; width: 100%; height: 100%; display: block; max-width: none; }
 .salon-easel { pointer-events: none; overflow: visible; }
 .salon-easel text { font-family: "Caveat", "Segoe Print", "Bradley Hand", cursive; font-weight: 600; font-size: 16px; fill: #2A1D19; fill-opacity: .9; }
 .salon-easel .e-title { font-size: 21px; }
@@ -183,10 +183,70 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
 .salon-easel .screen .s-big { font-size: 21px; }
 .salon-easel .screen .s-mid { font-size: 18px; }
 .salon-easel .screen .s-small { font-size: 15px; }
-.salon-shade { position: absolute; transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none;
+/* A Bip: its box (the sprite's, placed by the block below) > the hop > the breathing > its frames: n (normal),
+   b (eyes closed, over the face only), q (squash), s (stretch). Behind them, in depth order, the shadows. */
+.salon-shade { position: absolute; z-index: 0; transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none;
   background: radial-gradient(closest-side, rgba(10, 4, 7, .62), rgba(10, 4, 7, .34) 55%, rgba(10, 4, 7, 0)); }
+.salon-bip, .salon-coins, .salon-coin { position: absolute; z-index: 1; }
+.b-wellness { z-index: 2; } .b-budget { z-index: 3; } .salon-coins, .salon-coin { z-index: 4; } .b-trips { z-index: 5; }
+.salon-bip img, .salon-coins img, .salon-coin img { position: absolute; display: block; max-width: none; pointer-events: none; }
+.bip-hop, .bip-body, .bip-nb { position: absolute; inset: 0; }
+.bip-n, .bip-q, .bip-s, .salon-coins img, .salon-coin img { inset: 0; width: 100%; height: 100%; }
+.bip-q, .bip-s, .bip-b { opacity: 0; }
+/* breathing: 1.4 % up and down around the feet (the live scene's sin(2.4 t)), in 4 steps each way and all four Bips
+   together: the picture changes 3 times a second instead of at the screen's rate (smooth, it cost as much as the 3D) */
+.bip-body { animation: salon-breathe 1.31s steps(4) infinite alternate; }
+@keyframes salon-breathe { from { transform: scale(1.007, .986); } to { transform: scale(.993, 1.014); } }
+/* a blink now and then: 0.14 s, every 4 to 6 s */
+.bip-b { animation: salon-blink 4.7s step-end infinite; }
+.b-budget .bip-b { animation-duration: 5.9s; animation-delay: -2s; } .b-wellness .bip-b { animation-duration: 5.3s; animation-delay: -4s; }
+.b-trips .bip-b { animation-duration: 6.4s; animation-delay: -1s; }
+@keyframes salon-blink { 0% { opacity: 0; } 97% { opacity: 1; } }
+/* its turn (.on): a hop — squash, up stretched, down, squash — and its label */
+.salon-bip { pointer-events: auto; }
+.salon-bip.on .bip-hop { animation: salon-hop .95s linear; }
+.salon-bip.on .bip-q { animation: salon-q .95s step-end; }
+.salon-bip.on .bip-s { animation: salon-s .95s step-end; }
+.salon-bip.on .bip-nb { animation: salon-nb .95s step-end; }
+.salon-bip.on + .salon-shade { animation: salon-shade .95s linear; }
+@keyframes salon-hop {
+  0%, 12% { transform: none; animation-timing-function: cubic-bezier(.33, .66, .66, 1); }
+  34% { transform: translateY(var(--hop)); animation-timing-function: cubic-bezier(.33, 0, .66, .33); }
+  56%, 100% { transform: none; } }
+@keyframes salon-q { 0% { opacity: 1; } 15% { opacity: 0; } 56% { opacity: 1; } 68% { opacity: 0; } }
+@keyframes salon-s { 0% { opacity: 0; } 15% { opacity: 1; } 52% { opacity: 0; } }
+@keyframes salon-nb { 0% { opacity: 0; } 52% { opacity: 1; } 56% { opacity: 0; } 68% { opacity: 1; } }
+@keyframes salon-shade { 0%, 12%, 56%, 100% { transform: translate(-50%, -50%); opacity: 1; animation-timing-function: ease-out; }
+  34% { transform: translate(-50%, -50%) scale(.68); opacity: .68; animation-timing-function: ease-in; } }
+/* Wellness jogs: three quick little hops */
+.b-wellness.on .bip-hop { animation: salon-jog 1.2s linear; }
+.b-wellness.on .bip-q, .b-wellness.on .bip-s, .b-wellness.on .bip-nb { animation: none; }
+.b-wellness.on + .salon-shade { animation: salon-jog-shade 1.2s linear; }
+@keyframes salon-jog {
+  0%, 33.3%, 66.6%, 100% { transform: none; animation-timing-function: cubic-bezier(.33, .66, .66, 1); }
+  16.6%, 50%, 83.3% { transform: translateY(var(--hop)); animation-timing-function: cubic-bezier(.33, 0, .66, .33); } }
+@keyframes salon-jog-shade { 0%, 33.3%, 66.6%, 100% { transform: translate(-50%, -50%); opacity: 1; }
+  16.6%, 50%, 83.3% { transform: translate(-50%, -50%) scale(.82); opacity: .82; } }
+/* Budget tosses the top coin of its stack: up, three flips, back */
+.b-budget.on ~ .salon-coin img { animation: salon-toss 1.05s linear; transform-origin: 50% 50%; }
+@keyframes salon-toss {
+  0% { transform: none; }
+  8.3% { transform: translate(-2.6%, calc(var(--toss) * .259)) scaleY(.05); }
+  16.7% { transform: translate(-5%, calc(var(--toss) * .5)) scaleY(-1); }
+  25% { transform: translate(-7.1%, calc(var(--toss) * .707)) scaleY(.05); }
+  33.3% { transform: translate(-8.7%, calc(var(--toss) * .866)) scaleY(1); }
+  41.7% { transform: translate(-9.7%, calc(var(--toss) * .966)) scaleY(.05); }
+  50% { transform: translate(-10%, var(--toss)) scaleY(-1); }
+  58.3% { transform: translate(-9.7%, calc(var(--toss) * .966)) scaleY(.05); }
+  66.7% { transform: translate(-8.7%, calc(var(--toss) * .866)) scaleY(1); }
+  75% { transform: translate(-7.1%, calc(var(--toss) * .707)) scaleY(.05); }
+  83.3% { transform: translate(-5%, calc(var(--toss) * .5)) scaleY(-1); }
+  91.7% { transform: translate(-2.6%, calc(var(--toss) * .259)) scaleY(.05); }
+  100% { transform: none; } }
+/* off screen or in a background tab: everything stands still */
+.salon-stage.idle *, .salon-stage.idle *::after { animation-play-state: paused !important; }
 .salon-tags { list-style: none; margin: 0; padding: 0; }
-.salon-tag { position: absolute; z-index: 2; width: max-content; max-width: min(270px, 64vw); padding: 8px 12px 9px; border-radius: 12px;
+.salon-tag { position: absolute; z-index: 6; width: max-content; max-width: min(270px, 64vw); padding: 8px 12px 9px; border-radius: 12px;
   background: #FFFFFF; color: #1D1F24; box-shadow: 0 10px 30px rgba(20, 12, 16, .32); font-size: clamp(12px, 1.05vw, 14px); line-height: 1.32;
   transform: translate(-50%, calc(-100% - 10px)) scale(.92); opacity: 0; pointer-events: none; transition: opacity .25s ease, transform .25s ease; }
 .salon-tag.on { opacity: 1; transform: translate(-50%, calc(-100% - 10px)) scale(1); }
@@ -195,14 +255,41 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
 .salon-tag span { display: block; margin-top: 1px; color: #50555F; font-weight: 700; }
 .salon-tag::after { content: ""; position: absolute; left: 50%; bottom: -6px; width: 12px; height: 12px; background: #FFFFFF;
   transform: translateX(-50%) rotate(45deg); border-radius: 2px; }
-/* without the 3D (no script, no WebGL) the labels never show: the room alone, its words in the picture's alt */
-.salon-stage:not(.live) .salon-tag, .salon-stage:not(.live) .salon-tip { display: none; }
-.salon-tip { position: absolute; left: 50%; bottom: 3.2%; z-index: 2; transform: translateX(-50%); padding: 7px 13px; border-radius: 999px;
-  background: rgba(18, 12, 14, .62); color: #F4EFEA; font-size: 13px; font-weight: 800; white-space: nowrap; pointer-events: none; transition: opacity .6s ease; }
-.salon-tip.off { opacity: 0; }
+/* without the script the labels never show: the room and its Bips alone, their words in the picture's alt */
+.salon-stage:not(.live) .salon-tag { display: none; }
 .salon-hint { display: none; padding: 10px 16px 0; text-align: center; color: var(--muted); font-size: 13.5px; font-weight: 700; }
-@media (max-width: 780px) { .salon-tip { display: none; } .salon-hint { display: block; } }
-@media (prefers-reduced-motion: reduce) { .salon-tag, .salon-tip { transition: none; } }
+@media (max-width: 780px) { .salon-hint { display: block; } }
+@media (prefers-reduced-motion: reduce) {
+  .salon-stage *, .salon-stage *::after { animation: none !important; }
+  .salon-tag { transition: none; }
+}
+/* salon-sprites:begin (written by scripts/salon-sprites/make.mjs) */
+.b-dinners { left: 13.047%; top: 32.639%; width: 13.281%; height: 27.083%; --hop: -9.092%; }
+.b-dinners .bip-body { transform-origin: 50% 89.744%; }
+.b-dinners .bip-b { left: 37.647%; top: 38.974%; width: 42.941%; height: 17.949%; }
+.b-dinners + .salon-shade { left: 19.688%; top: 57.466%; width: 12.384%; height: 5.504%; }
+.salon-tag:nth-child(1) { left: 19.688%; top: 34.06%; --c: #ff6a48; }
+.b-budget { left: 37.5%; top: 58.75%; width: 11.875%; height: 24.444%; --hop: -8.969%; }
+.b-budget .bip-body { transform-origin: 50% 89.205%; }
+.b-budget .bip-b { left: 38.158%; top: 39.773%; width: 42.763%; height: 17.614%; }
+.b-budget + .salon-shade { left: 43.438%; top: 81.02%; width: 11.027%; height: 4.901%; }
+.salon-tag:nth-child(2) { left: 43.438%; top: 60.179%; --c: #ffc01c; }
+.b-wellness { left: 43.516%; top: 39.861%; width: 10.469%; height: 19.722%; --hop: -4.105%; }
+.b-wellness .bip-body { transform-origin: 52.985% 88.028%; }
+.b-wellness .bip-b { left: 44.03%; top: 38.028%; width: 36.567%; height: 18.31%; }
+.b-wellness + .salon-shade { left: 49.063%; top: 57.587%; width: 8.652%; height: 3.845%; }
+.salon-tag:nth-child(3) { left: 49.063%; top: 41.234%; --c: #1fcb7c; }
+.b-trips { left: 74.063%; top: 54.861%; width: 16.25%; height: 31.806%; --hop: -7.848%; }
+.b-trips .bip-body { transform-origin: 50% 91.266%; }
+.b-trips .bip-b { left: 25%; top: 46.725%; width: 36.058%; height: 15.284%; }
+.b-trips + .salon-shade { left: 82.188%; top: 84.417%; width: 12.554%; height: 5.579%; }
+.salon-tag:nth-child(4) { left: 82.188%; top: 55.698%; --c: #4677ff; }
+.salon-coins { left: 37.578%; top: 79.583%; width: 15.078%; height: 4.722%; }
+.salon-shade.cs1 { left: 48.906%; top: 82.708%; width: 3.187%; height: 1.417%; }
+.salon-shade.cs2 { left: 51.25%; top: 83.542%; width: 3.187%; height: 1.417%; }
+.salon-shade.cs3 { left: 38.906%; top: 82.431%; width: 3.187%; height: 1.417%; }
+.salon-coin { left: 47.656%; top: 79.028%; width: 2.578%; height: 2.5%; --toss: -511.111%; }
+/* salon-sprites:end */
 /* The hero, on the right: one asks, the agent answers with something useful — three cards of the app's own demo (the
    walk's map, big, on the left; the booking and the subscriptions on the right). One column on a phone; each
    exchange fades in once, quickly, one after another; with reduced motion they are simply there. */

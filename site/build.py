@@ -416,10 +416,12 @@ def bipagents(version: str) -> Path:
     assets.mkdir(parents=True)
     for name in ("site.css", "site.js", "notfound.js"):
         copy(src / name, assets / name)
-    # The home's living room: its script, the painting, Three.js r128 (MIT, its notice kept in the file) and the
-    # easel's handwriting (Caveat, SIL OFL 1.1), all served from here like everything else.
-    for name in ("salon.js", "salon-bg.webp", "three.min.js", "caveat-600.woff2", "OFL-caveat.txt", "LICENSE-three.txt"):
+    # The home's living room: its script, the painting, the Bips' sprites (scripts/salon-sprites/) and the easel's
+    # handwriting (Caveat, SIL OFL 1.1), all served from here like everything else.
+    for name in ("salon.js", "salon-bg.webp", "caveat-600.woff2", "OFL-caveat.txt"):
         copy(src / "salon" / name, assets / "salon" / name)
+    for sprite in sorted((src / "salon" / "sprites").glob("*.webp")):
+        copy(sprite, assets / "salon" / "sprites" / sprite.name)
     bips_engine(assets)
     copy(REPO / "android" / "app" / "src" / "main" / "res" / "font" / "nunito.ttf", assets / "nunito.ttf")
     (assets / "favicon.svg").write_text(favicon(), encoding="utf-8")
