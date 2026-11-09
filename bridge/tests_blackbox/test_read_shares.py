@@ -225,10 +225,11 @@ def test_a_share_needs_an_https_guichet_and_a_known_agent(bridge):
     assert bridge.post("/v1/read-shares", headers=AUTH, json=dict(body, ends=1)).status_code == 422
 
 
-def test_the_agent_s_private_tools_close_while_it_answers_in_a_shared_conversation(bridge, fakes):
+def test_the_person_s_own_turn_in_a_shared_conversation_keeps_every_tool_and_marks_its_pages(bridge, fakes):
+    """Alex, 2026-11-09 (« quand Alex demande, tout est permis »): the person's turn in a conversation shown to friends
+    is theirs, every tool open as in their other conversations; a page made then is the group's (shared_pages.rs)."""
     from bbkit.common import sse
     from bbkit.mcp import call, give_token, text_of
-    from bbkit.servers import wait_until
 
     guichet = FakeGuichet().start()
     try:
@@ -238,19 +239,21 @@ def test_the_agent_s_private_tools_close_while_it_answers_in_a_shared_conversati
             "share": "share0123456789abcdef", "writer": "writer-token-0123456789", "guichet": guichet.url,
             "ends": time.time() + 30 * 86400})
         assert made.status_code == 200, made.text
+        assert "with all your tools" in made.json()["instructions"]
         give_token(bridge)
-        assert "shown to people" not in json.dumps(call(bridge, "mail_search", {"query": "x"}))
         gate = threading.Event()
         fakes.hermes.runs["run_s"] = [sse("tool.started", run_id="run_s", tool="mail_search"), gate,
                                       sse("run.completed", run_id="run_s", output="Samedi !")]
         watched = bridge.post("/v1/watch", headers=AUTH, json={"agent": "wellness", "run_id": "run_s",
                                                                "session_id": "sess-fete"})
         assert watched.status_code == 200, watched.text
-        closed = call(bridge, "mail_search", {"query": "banque"})
-        assert closed["isError"] is True and "shown to people your person invited" in text_of(closed)
-        assert "shown to people" not in json.dumps(call(bridge, "weather", {"place": "Lisbonne"}))
+        for name, args in [("mail_search", {"query": "banque"}), ("notebook_search", {"query": "fête"})]:
+            answer = json.dumps(call(bridge, name, args))
+            assert "shown to people" not in answer and "closed during their turn" not in answer, (name, answer)
+        page = call(bridge, "create_page", {"html": "<h1>Fête de samedi</h1>", "title": "Fête de samedi"})
+        assert page["isError"] is False, text_of(page)
+        listed = {p["page"]: p for p in bridge.get("/v1/pages", headers=AUTH, params={"agent": "wellness"}).json()["pages"]}
+        assert listed["fete-de-samedi"]["group"] is True and "asked_by" not in listed["fete-de-samedi"]
         gate.set()
-        assert wait_until(lambda: "shown to people" not in json.dumps(call(bridge, "mail_search", {"query": "x"})),
-                          timeout=15)
     finally:
         guichet.stop()

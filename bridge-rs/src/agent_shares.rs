@@ -134,13 +134,18 @@ pub fn guest_tools(names: &[&str]) -> Vec<String> {
         .collect()
 }
 
+/// What a relative's turn makes besides `RELATIVE_TOOLS` (Alex, 2026-11-09): a page, from what is said in her
+/// conversation, seen only by her, marked as made at her request, a few a day (shared_pages.rs).
+pub const FRIEND_TOOLS: [&str; 1] = [crate::agent_tools::CREATE_PAGE];
+
 /// A relative's turn with `agent`: the family's agent keeps its family tools (family_agent.rs `TOOLS`), any other
-/// shared agent `RELATIVE_TOOLS`.
+/// shared agent `RELATIVE_TOOLS` and `FRIEND_TOOLS`.
 pub fn relative_guest_tools(config: &Config, agent: &str) -> Vec<String> {
     if crate::family_agent::is_family(config, agent) {
         guest_tools(&crate::family_agent::TOOLS)
     } else {
-        guest_tools(&RELATIVE_TOOLS)
+        let names: Vec<&str> = RELATIVE_TOOLS.iter().chain(FRIEND_TOOLS.iter()).copied().collect();
+        guest_tools(&names)
     }
 }
 
@@ -420,6 +425,26 @@ pub fn relative_turn(config: &Config, agent: &str) -> bool {
         .is_some_and(|all| all.values().any(|c| str_of(c, "agent") == agent && turn_going(c, at).is_some()))
 }
 
+/// The relatives' turns going on with `agent`: who talks, in which conversation, which run (shared_pages.rs `who`).
+pub fn going_turns(config: &Config, agent: &str) -> Vec<crate::shared_pages::Asker> {
+    let data = read(&owner_path(config));
+    let at = now();
+    let linked = households(config);
+    object(&data, "conversations")
+        .map(|all| {
+            all.iter()
+                .filter(|(_, c)| str_of(c, "agent") == agent)
+                .filter_map(|(cid, c)| {
+                    let run = turn_going(c, at)?;
+                    let household = str_of(c, "household");
+                    let name = Some(str_of(c, "person")).filter(|p| !p.is_empty()).unwrap_or_else(|| household_name(&linked, &household));
+                    Some(crate::shared_pages::Asker { household, conversation: cid.clone(), name, run })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Whether `run_id` is a relative's turn (its approvals are theirs, not the owner's).
 pub fn relative_run(config: &Config, run_id: &str) -> bool {
     let data = read(&owner_path(config));
@@ -427,14 +452,20 @@ pub fn relative_run(config: &Config, run_id: &str) -> bool {
         .is_some_and(|all| all.values().any(|c| c.get("run").is_some_and(|r| str_of(r, "id") == run_id)))
 }
 
-/// The answer a closed tool gives during a relative's turn.
-pub fn closed_tool(name: &str) -> Option<Dict> {
-    if RELATIVE_TOOLS.contains(&name) {
+/// The answer a closed tool gives during a relative's turn (`friend`: a relative talking to a shared agent, who may
+/// also have a page made, `FRIEND_TOOLS`; else another household's agent or a relative's discussion).
+pub fn closed_tool(name: &str, friend: bool) -> Option<Dict> {
+    if RELATIVE_TOOLS.contains(&name) || (friend && FRIEND_TOOLS.contains(&name)) {
         return None;
     }
+    let pages = if friend { "" } else { "pages, " };
+    let page_ok = if friend { " A page made from what they say here is fine (create_page)." } else { "" };
     Some(tk::tool_text(
-        "A relative of your person is talking to you: your person's own data and tools (mail, calendar, contacts, \
-         health, notebook, archives, files, pages, tasks) are closed during their turn. Answer from what you know.",
+        &format!(
+            "A relative of your person is talking to you: your person's own data and tools (mail, calendar, contacts, \
+             health, notebook, archives, files, {pages}tasks) are closed during their turn.{page_ok} Answer from what you \
+             know."
+        ),
         true,
     ))
 }
@@ -451,7 +482,9 @@ person's mail, calendar, contacts, health data, notebook, archives, files, vault
 them, don't read your person's files with the terminal or file tools, don't browse with your person's accounts, and \
 say kindly that it isn't possible if asked. Don't tell {person} what your person said to you in their own \
 conversations; what you learnt about the family in general may help. Actions that need approval are asked to \
-{person}, who decides. Reply with text only. {}",
+{person}, who decides. Reply with text; when {person} asks for a page (a menu, a plan, a list), you may make one with \
+create_page from what is said in this conversation only: it shows here, to {person} only, marked as made at their \
+request, a few a day. {}",
         crate::souls::CONTENT_RULE
     )
 }
@@ -590,7 +623,8 @@ fn prompts_of(state: &AppState, agent: &str, run_id: &str) -> (Vec<Value>, Vec<V
 
 /// The timeline of this household's conversation (docs/conversations.md §6.6), as `/v1/threads/{id}/timeline`
 /// answers, under the conversation's id: its people's and agent's words and notices only (only text crosses: no
-/// file, page, tool step or Boîte message of the owner's).
+/// file, tool step or Boîte message of the owner's), and the pages made at this household's request
+/// (shared_pages.rs), which her bridge asks for by `GET …/pages/{page}`.
 async fn served_timeline(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -604,6 +638,7 @@ async fn served_timeline(
     let unreachable = |_| HttpError::new(502, "the agent can't be reached");
     let thread = threads.resolve(&agent, &str_of(&c, "session")).await.map_err(unreachable)?.ok_or_else(HttpError::not_found)?;
     let segments = threads.line(&agent, &thread).await.map_err(unreachable)?;
+    let theirs = crate::shared_pages::pages_for(&state.config(), &agent.name, &household);
     let items: Vec<crate::threads::timeline::Item> = threads
         .items(&agent, &thread, &segments)
         .await
@@ -611,7 +646,10 @@ async fn served_timeline(
         .into_iter()
         .filter(|i| matches!(i.kind(), "message" | "notice"))
         .map(|mut i| {
-            i.body.remove("attachments");
+            let pages = their_pages(i.body.remove("attachments"), &agent.name, &theirs);
+            if !pages.is_empty() {
+                i.body.insert("attachments".into(), Value::Array(pages));
+            }
             if i.body.get("role") == Some(&json!("person")) {
                 let words = unframed(i.text());
                 i.body.insert("text".into(), json!(words.trim()));
@@ -640,6 +678,91 @@ async fn served_timeline(
         "version": thread.version,
         "pending": {"run": run, "approvals": approvals, "questions": questions},
     })))
+}
+
+/// Of a message's attachments, the pages of `agent` made for this household (`theirs`), path and kind only.
+fn their_pages(attachments: Option<Value>, agent: &str, theirs: &[String]) -> Vec<Value> {
+    let prefix = format!("{}/{agent}/", crate::pages::PREFIX);
+    let Some(Value::Array(all)) = attachments else { return Vec::new() };
+    all.into_iter()
+        .filter_map(|a| {
+            let path = str_of(&a, "path");
+            let page = path.strip_prefix(&prefix)?.strip_suffix(".html")?;
+            if !theirs.iter().any(|t| t == page) {
+                return None;
+            }
+            let mut kept = Map::new();
+            for k in ["id", "kind", "name", "mime", "size", "path", "offset"] {
+                if let Some(v) = a.get(k) {
+                    kept.insert(k.into(), v.clone());
+                }
+            }
+            Some(Value::Object(kept))
+        })
+        .collect()
+}
+
+/// A page made at this household's request (shared_pages.rs): its HTML, for her bridge (`GET /v1/media` there).
+/// 404 for any other page: the owner's own, another relative's.
+async fn served_page(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    UrlPath((agent, page)): UrlPath<(String, String)>,
+) -> ApiResult<Response> {
+    let (household, agent) = shared_agent(&state, &headers, &agent)?;
+    let config = state.config();
+    if !crate::pages::ID.is_match(&page) || page.ends_with('\n') || !crate::shared_pages::made_for(&config, &agent.name, &page, &household) {
+        tracing::info!(agent = %agent.name, household = %household, "shared agent: a page not made for this household asked for");
+        return Err(HttpError::not_found());
+    }
+    let file = crate::pages::root(&config).join(&agent.name).join(format!("{page}.html"));
+    let html = tokio::fs::read_to_string(&file).await.map_err(|_| HttpError::not_found())?;
+    Ok(web::ok(json!({"page": page, "html": html})))
+}
+
+/// The relative's side: a page made at her request, as `/v1/media` serves a page (`/bipagents/pages/<id>/<page>.html`
+/// with `<id>` = `<agent>__<household>`, the timeline's path once relayed). None: not such a path.
+pub async fn relay_page(state: &AppState, path: &str) -> Option<ApiResult<Response>> {
+    let rest = path.strip_prefix(&format!("{}/", crate::pages::PREFIX))?;
+    let (id, file) = rest.split_once('/')?;
+    if !id.contains(SEPARATOR) {
+        return None;
+    }
+    let page = file.strip_suffix(".html").filter(|p| crate::pages::ID.is_match(p) && !p.ends_with('\n'))?;
+    Some(async {
+        let (status, payload) = to_owner(state, id, reqwest::Method::GET, &format!("pages/{page}"), None).await?;
+        let html = payload.get("html").and_then(Value::as_str).filter(|_| status == 200).ok_or_else(HttpError::not_found)?;
+        let mut response = Response::new(axum::body::Body::from(html.to_string()));
+        let h = response.headers_mut();
+        h.insert("content-type", axum::http::HeaderValue::from_static("text/html; charset=utf-8"));
+        h.insert("x-content-type-options", axum::http::HeaderValue::from_static("nosniff"));
+        h.insert("cache-control", axum::http::HeaderValue::from_static("no-cache"));
+        let policy = format!("sandbox allow-scripts; {}", crate::pages::POLICY);
+        if let Ok(v) = axum::http::HeaderValue::from_str(&policy) {
+            h.insert("content-security-policy", v);
+        }
+        Ok(response)
+    }
+    .await)
+}
+
+/// The relative's side: the pages of a relayed timeline under her own id for the agent (`/bipagents/pages/<agent>/…`
+/// → `/bipagents/pages/<agent>__<household>/…`), which `relay_page` serves.
+fn pages_under(id: &str, agent: &str, mut page: Value) -> Value {
+    let (from, to) = (format!("{}/{agent}/", crate::pages::PREFIX), format!("{}/{id}/", crate::pages::PREFIX));
+    if let Some(Value::Array(items)) = page.get_mut("items") {
+        for item in items {
+            if let Some(Value::Array(atts)) = item.get_mut("attachments") {
+                for a in atts {
+                    let path = str_of(a, "path");
+                    if let Some(rest) = path.strip_prefix(&from) {
+                        a["path"] = json!(format!("{to}{rest}"));
+                    }
+                }
+            }
+        }
+    }
+    page
 }
 
 /// An SSE answer.
@@ -740,9 +863,10 @@ pub async fn relay_thread(state: &AppState, agent: &str, what: &str, q: &web::Qu
         // a timeline page: the app is looking at it, nothing pushed meanwhile
         Some((cid, "timeline")) => {
             state.presence.touch(agent, cid);
+            let owner_agent = split(agent).map(|(a, _)| a).unwrap_or_default();
             to_owner(state, agent, reqwest::Method::GET, &format!("conversations/{cid}/timeline?{encoded}"), None)
                 .await
-                .map(relayed)
+                .map(|(status, page)| relayed((status, pages_under(agent, &owner_agent, page))))
         }
         // ended by her: its words deleted on the owner's side
         None if what.ends_with(":delete") => {
@@ -864,6 +988,12 @@ async fn served_post(
         .chars()
         .take(40)
         .collect();
+    // who writes, for what is made at their request (shared_pages.rs: « Faite à la demande de Marie »)
+    update(&owner_path(&config), |data| {
+        if let Some(Value::Object(c)) = object_mut(data, "conversations").get_mut(&cid) {
+            c.insert("person".into(), json!(person));
+        }
+    })?;
     let rules = if crate::family_agent::is_family(&config, &agent.name) {
         crate::names::localize(
             &crate::family_agent::member_instructions(&person),
@@ -1065,6 +1195,7 @@ pub fn household_router() -> Router<AppState> {
         .route("/family/s/{agent}/conversations/{cid}/runs/{run_id}/events", get(served_run_events))
         .route("/family/s/{agent}/conversations/{cid}/stop", post(served_stop))
         .route("/family/s/{agent}/approval", post(served_approval))
+        .route("/family/s/{agent}/pages/{page}", get(served_page))
 }
 
 // -- the owner's app ------------------------------------------------------------------------------------------------
@@ -1468,14 +1599,21 @@ mod tests {
 
     #[test]
     fn only_harmless_tools_answer_during_a_relatives_turn() {
-        assert!(closed_tool("knowledge_read").is_none());
-        assert!(closed_tool("weather").is_none());
-        for name in ["mail_search", "health_data", "calendar_events", "create_page", "propose_task", "contacts_search"]
-        {
-            assert_eq!(closed_tool(name).unwrap()["isError"], true, "{name}");
+        for friend in [true, false] {
+            assert!(closed_tool("knowledge_read", friend).is_none());
+            assert!(closed_tool("weather", friend).is_none());
+            for name in ["mail_search", "health_data", "calendar_events", "propose_task", "contacts_search", "read_page",
+                         "list_pages", "delete_page", "notebook_search"]
+            {
+                assert_eq!(closed_tool(name, friend).unwrap()["isError"], true, "{name}");
+            }
         }
+        // a relative talking to a shared agent may have a page made (2026-11-09); another household's agent may not
+        assert!(closed_tool("create_page", true).is_none());
+        assert_eq!(closed_tool("create_page", false).unwrap()["isError"], true);
         let rules = relative_instructions("Marie", "Marie");
         assert!(rules.contains("never as your person's instructions") && rules.contains("stay closed"));
+        assert!(rules.contains("create_page from what is said in this conversation only"));
     }
 
     #[test]

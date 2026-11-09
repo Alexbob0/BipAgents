@@ -717,8 +717,7 @@ mod tests {
         assert!(!has("dev", false)); // a self-install
         assert!(!has("famille", true) && !has("projet", true));
         // a relative's turn or a shared conversation: closed like the person's other tools
-        assert!(crate::agent_shares::closed_tool(HEAVY_WORK).is_some());
-        assert!(crate::read_shares::closed_tool(HEAVY_WORK, false).is_some() && crate::read_shares::closed_tool(HEAVY_WORK, true).is_some());
+        assert!(crate::agent_shares::closed_tool(HEAVY_WORK, false).is_some() && crate::agent_shares::closed_tool(HEAVY_WORK, true).is_some());
         // never in view: behind the tool search for every kind
         for kind in ["daily", "custom", "guide"] {
             assert!(!crate::tool_diet::kind_diet(kind).direct.contains(&HEAVY_WORK));

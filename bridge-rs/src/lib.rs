@@ -167,6 +167,7 @@ pub mod meet;
 pub mod maps;
 pub mod memory_edit;
 pub mod shared_memory;
+pub mod shared_pages;
 pub mod memory_language;
 pub mod message_search;
 pub mod notebook;
