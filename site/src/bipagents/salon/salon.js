@@ -48,8 +48,8 @@ function start(pannable) {
   const THREE = window.THREE;
   if (!THREE) return;
   const canvas = stage.querySelector(".salon-canvas"), tip = stage.querySelector(".salon-tip");
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+  // the integrated GPU is plenty for this (and a laptop's big one is not woken up for it)
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: "low-power" });
   renderer.setClearColor(0x000000, 0);
   stage.classList.add("live");
 
@@ -200,6 +200,7 @@ function start(pannable) {
   function startToss() {
     if (toss >= 0 || reduce) return;
     toss = 0; stackA.coins[stackA.coins.length - 1].visible = false; flying.visible = true;
+    wake();
   }
   function stepToss(dt) {
     if (toss < 0) return;
@@ -248,7 +249,7 @@ function start(pannable) {
 
   let hover = -1, cycle = 0, nextCycle = 1.2, last = performance.now() / 1000, panVel = 0, drag = null;
   function frame(t) {
-    const dt = Math.min(0.05, Math.max(0, t - last)); last = t;
+    const dt = Math.min(0.1, Math.max(0, t - last)); last = t;
     bips.forEach((b, i) => {
       if (b.partyAt && t >= b.partyAt) { b.partyAt = 0; b.hop = -1; hop(i); b.vel = (i % 2 ? -1 : 1) * 17; b.travel = 0; }
       // a spin follows the finger, coasts, then settles back facing its job
@@ -288,24 +289,43 @@ function start(pannable) {
     if (Math.abs(panVel) > 12) { room.scrollLeft -= panVel * dt; panVel *= Math.exp(-4 * dt); } else panVel = 0;
     renderer.render(scene, cam);
   }
-  function resize() { renderer.setSize(stage.clientWidth, stage.clientHeight, false); frame(performance.now() / 1000); }
+  // Drawn only when the picture changes, and never more than the eye needs: 60 a second while something moves (a hop,
+  // a spin, a coin, a blink, a finger), 20 while they only breathe (a quarter of a pixel each step), nothing at all
+  // with reduced motion, off screen or in a background tab. The canvas has at most 1.5 pixels per CSS pixel and
+  // about 2.4 million in all: a full-width 3D layer at the screen's 2 or 3 was 4 to 9 times the work for the same look.
+  const ratio = () => Math.min(devicePixelRatio || 1, 1.5, Math.sqrt(2.4e6 / Math.max(1, stage.clientWidth * stage.clientHeight)));
+  function resize() { renderer.setPixelRatio(ratio()); renderer.setSize(stage.clientWidth, stage.clientHeight, false); frame(performance.now() / 1000); }
   function inView(b) {
     const x = b.d.x / W0 * stage.clientWidth - room.scrollLeft;
     return x > 70 && x < room.clientWidth - 70;
   }
-  let running = true;
+  const moving = () => drag || toss >= 0 || panVel !== 0 ||
+    bips.some(b => b.hop >= 0 || b.dragging || b.vel !== 0 || b.spin !== 0 || b.partyAt || b.blink > 0);
+  let onScreen = true, raf = 0, timer = 0, tick = last, drawn = 0;
+  function wake() {
+    if (!onScreen || document.hidden || raf) return;
+    clearTimeout(timer); timer = 0;
+    raf = requestAnimationFrame(loop);
+  }
+  function sleep() { cancelAnimationFrame(raf); clearTimeout(timer); raf = timer = 0; }
   function loop() {
-    if (!running) return;
-    const t = performance.now() / 1000;
+    raf = 0;
+    if (!onScreen || document.hidden) return;
+    const t = performance.now() / 1000, gone = Math.min(0.1, t - tick);
+    tick = t;
     if (!reduce && hover < 0 && !drag) {
-      nextCycle -= Math.min(0.05, t - last);
+      nextCycle -= gone;
       if (nextCycle <= 0) {   // on a phone, only the Bips in view take their turn
         for (let n = 0; n < bips.length && !inView(bips[cycle]); n++) cycle = (cycle + 1) % bips.length;
         hop(cycle); showTag(cycle); cycle = (cycle + 1) % bips.length; nextCycle = 3.6;
       }
     }
-    frame(t);
-    requestAnimationFrame(loop);
+    const due = t - drawn >= (moving() ? 1 / 60 : 1 / 20) - 0.004;
+    if (due) { frame(t); drawn = t; }
+    if (raf) return;   // a coin toss already asked for the next one
+    if (moving()) raf = requestAnimationFrame(loop);
+    // reduced motion and nothing moving: no frame until a finger or the mouse asks for one
+    else if (!reduce || !due) timer = setTimeout(wake, Math.max(0, (drawn + 1 / 20 - performance.now() / 1000) * 1000 - 4));
   }
 
   // -- Pointer: tap a Bip to say hi, drag a Bip to spin it, drag the room to look around (or to spin them all)
@@ -328,6 +348,7 @@ function start(pannable) {
              target: i >= 0 ? i : (pannable() ? "pan" : "all") };
     panVel = 0;
     try { canvas.setPointerCapture(ev.pointerId); } catch (e) { /* already released */ }
+    wake();
   });
   canvas.addEventListener("pointermove", ev => {
     if (drag && ev.pointerId === drag.id) {
@@ -343,16 +364,18 @@ function start(pannable) {
         drag.vx = drag.vx * 0.6 + (dx / dtm * 1000) * 0.4;
       }
       drag.lx = ev.clientX; drag.lt = now;
+      wake();
       return;
     }
     if (ev.pointerType !== "mouse") return;
     const h = pick(ev);
     canvas.style.cursor = h >= 0 ? "grab" : (pannable() ? "default" : "ew-resize");
-    if (h !== hover) { hover = h; if (h >= 0) { showTag(h); hop(h); } else nextCycle = 2.4; }
+    if (h !== hover) { hover = h; if (h >= 0) { showTag(h); hop(h); } else nextCycle = 2.4; wake(); }
   });
   function end(ev) {
     if (!drag || ev.pointerId !== drag.id) return;
     const d = drag; drag = null;
+    wake();
     if (!d.moved) {
       const i = pick(ev);
       if (i >= 0) { showTag(i); hop(i); cycle = (i + 1) % bips.length; nextCycle = 4.5; } else showTag(-1);
@@ -364,16 +387,18 @@ function start(pannable) {
   }
   canvas.addEventListener("pointerup", end);
   canvas.addEventListener("pointercancel", end);
-  canvas.addEventListener("pointerleave", () => { if (!drag) { hover = -1; nextCycle = 2.4; canvas.style.cursor = "default"; } });
+  canvas.addEventListener("pointerleave", () => { if (!drag) { hover = -1; nextCycle = 2.4; canvas.style.cursor = "default"; wake(); } });
 
   new ResizeObserver(resize).observe(stage);
   resize();
-  // drawn only while the room is on screen
+  // drawn only while the room is on screen and the tab in front
   new IntersectionObserver(entries => {
-    const vis = entries[0].isIntersecting;
-    if (vis && !running) { running = true; last = performance.now() / 1000; requestAnimationFrame(loop); }
-    else if (!vis) running = false;
+    onScreen = entries[0].isIntersecting;
+    if (onScreen) { tick = performance.now() / 1000; wake(); } else sleep();
   }).observe(stage);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) sleep(); else { tick = performance.now() / 1000; wake(); }
+  });
   if (reduce) showTag(0);
-  requestAnimationFrame(loop);
+  wake();
 }
