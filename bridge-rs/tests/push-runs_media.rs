@@ -39,7 +39,7 @@ fn extract_and_resolve_media() {
 }
 
 #[tokio::test]
-async fn media_route_and_podcast_audio_in_the_outbox() {
+async fn media_route_and_a_podcast_in_the_outbox() {
     let dir = tempfile::tempdir().unwrap();
     let backend = FakeBackend::start().await;
     let root = dir.path().join("simplex");
@@ -70,10 +70,13 @@ async fn media_route_and_podcast_audio_in_the_outbox() {
         .await
         .unwrap()
         .unwrap();
+    // the podcast is one of its files, and no reading of its words is made on top (Alex 8/11: two audio files)
     assert_eq!(item["text"], "Point du matin");
+    let files: Value = serde_json::from_str(item["attachments"].as_str().unwrap()).unwrap();
+    assert_eq!(files[0]["path"], "/home/hermes/simplex-files/point.mp3");
+    assert_eq!(files[0]["kind"], "audio");
     let audio = client.get(&format!("/v1/outbox/{}/audio", item["id"].as_str().unwrap()), &h).await;
-    assert_eq!(audio.status, StatusCode::OK);
-    assert_eq!(audio.body, b"ID3podcast-audio"); // the podcast, not a synthesis
+    assert_eq!(audio.status, StatusCode::NOT_FOUND);
     assert!(backend.with(|s| s.pocket_inputs.is_empty()));
     client.shutdown().await;
     backend.release.set();
