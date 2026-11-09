@@ -9,9 +9,49 @@ const room = document.querySelector(".salon");
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 if (stage && room) {
+  // the room is wider than the hero and cropped by it: nothing may ever scroll it (that slid the promise off screen)
+  const hero = room.closest(".hero");
+  hero?.addEventListener("scroll", () => { hero.scrollLeft = 0; hero.scrollTop = 0; }, { passive: true });
+  whenLoaded();
   fitEasel();
   document.fonts?.ready.then(fitEasel);
   turns();
+}
+
+// Each Bip (and the coins) shows once all its pictures are loaded and decoded, never half drawn nor with a missing
+// picture's frame; a picture that failed is asked again (twice, a little later each time). The painting too: hidden
+// while it fails, asked again; the Bips wait for it.
+function whenLoaded() {
+  const again = (img, n) => { const u = new URL(img.src); u.searchParams.set("r", n); img.src = u.href; };
+  for (const group of stage.querySelectorAll(".salon-bip, .salon-coins, .salon-coin")) {
+    const imgs = [...group.querySelectorAll("img")];
+    (async () => {
+      for (let n = 1; n <= 3; n++) {
+        try {
+          await Promise.all(imgs.map(img => img.decode()));
+          group.classList.add("ready");
+          if (group.classList.contains("salon-coins")) stage.classList.add("coins-ready");
+          return;
+        } catch (e) {
+          if (n === 3) return;   // stays hidden
+          await new Promise(r => setTimeout(r, 700 * n));
+          for (const img of imgs) if (img.complete && !img.naturalWidth) again(img, n);   // broken, not still coming
+        }
+      }
+    })();
+  }
+  const bg = stage.querySelector(":scope > img");
+  let tries = 0;
+  const failed = () => {
+    bg.style.visibility = "hidden";
+    if (++tries <= 2) setTimeout(() => again(bg, tries), 700 * tries);
+  };
+  // the Bips, their shadows and the easel's words wait for the painting
+  const shown = () => { bg.style.visibility = ""; stage.classList.add("bg-ready"); };
+  if (!bg) return stage.classList.add("bg-ready");
+  bg.addEventListener("error", failed);
+  bg.addEventListener("load", shown);
+  if (bg.complete) bg.naturalWidth ? shown() : failed();
 }
 
 // The easel's and the screens' lines are the page's text: a line too long for its spot (a long word in another
@@ -53,9 +93,8 @@ function turns() {
     timer = 0;
     if (!onScreen || document.hidden) return;
     let i = next;
-    for (let n = 0; n < bips.length && !inView(bips[i]); n++) i = (i + 1) % bips.length;
-    show(i);
-    next = (i + 1) % bips.length;
+    for (let n = 0; n < bips.length && !(inView(bips[i]) && bips[i].classList.contains("ready")); n++) i = (i + 1) % bips.length;
+    if (bips[i].classList.contains("ready")) { show(i); next = (i + 1) % bips.length; }
     timer = setTimeout(tick, 3600);
   }
   function play(on) {
@@ -69,6 +108,7 @@ function turns() {
   // pointing at a Bip (mouse) or tapping it: its turn now
   bips.forEach((b, i) => {
     const go = () => {
+      if (!b.classList.contains("ready")) return;
       show(i); next = (i + 1) % bips.length;
       if (!reduce && onScreen) { clearTimeout(timer); timer = setTimeout(tick, 4500); }
     };

@@ -168,7 +168,7 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
    scrolls past it. The hero is the painting at night in both looks. */
 .hero {
   --hh: clamp(560px, 100svh, 1080px); --fx: .45; --night: 24, 15, 18;
-  position: relative; isolation: isolate; overflow: hidden; height: var(--hh); margin-top: calc(-1 * var(--top-h, 67px));
+  position: relative; isolation: isolate; overflow: hidden; overflow: clip; height: var(--hh); margin-top: calc(-1 * var(--top-h, 67px));
   background: #241A1D; color: #FFFFFF;
 }
 .hero .salon { position: absolute; inset: 0; }
@@ -221,7 +221,9 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
   font-weight: 600;
   font-display: swap;
 }
-.salon-stage { user-select: none; -webkit-user-select: none; overflow: hidden; }
+/* clip, not hidden: a hidden overflow is still a scroll box the browser can scroll (focus, restoring a reload), and the
+   wider room then slid the promise off the screen's left edge */
+.salon-stage { user-select: none; -webkit-user-select: none; overflow: hidden; overflow: clip; }
 .salon-stage > img, .salon-easel { position: absolute; inset: 0; width: 100%; height: 100%; display: block; max-width: none; }
 .salon-easel { pointer-events: none; overflow: visible; }
 .salon-easel text { font-family: "Caveat", "Segoe Print", "Bradley Hand", cursive; font-weight: 600; font-size: 16px; fill: #2A1D19; fill-opacity: .9; }
@@ -236,7 +238,12 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
    b (eyes closed, over the face only), q (squash), s (stretch). Behind them, in depth order, the shadows. */
 .salon-shade { position: absolute; z-index: 0; transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none;
   background: radial-gradient(closest-side, rgba(10, 4, 7, .62), rgba(10, 4, 7, .34) 55%, rgba(10, 4, 7, 0)); }
-.salon-bip, .salon-coins, .salon-coin { position: absolute; z-index: 1; }
+.salon-bip, .salon-coins, .salon-coin { position: absolute; z-index: 1; opacity: 0; transition: opacity .4s ease; }
+/* each Bip (and the coins) shows only once all its pictures are loaded and decoded (salon.js: .ready), with a short
+   fade: never half a Bip, nor a missing picture's frame; its shadow with it. Without the script: <noscript> in the page */
+.salon-stage.bg-ready :is(.salon-bip, .salon-coins, .salon-coin).ready { opacity: 1; }
+.salon-bip:not(.ready) + .salon-shade, .salon-stage:not(.coins-ready) .salon-shade[class*="cs"],
+.salon-stage:not(.bg-ready) :is(.salon-shade, .salon-easel) { visibility: hidden; }
 .b-wellness { z-index: 2; } .b-budget { z-index: 3; } .salon-coins, .salon-coin { z-index: 4; } .b-trips { z-index: 5; }
 .salon-bip img, .salon-coins img, .salon-coin img { position: absolute; display: block; max-width: none; pointer-events: none; }
 .bip-hop, .bip-body, .bip-nb { position: absolute; inset: 0; }
@@ -308,7 +315,7 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
 .salon-stage:not(.live) .salon-tag { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .salon-stage *, .salon-stage *::after { animation: none !important; }
-  .salon-tag { transition: none; }
+  .salon-tag, .salon-bip, .salon-coins, .salon-coin { transition: none; }
 }
 /* salon-sprites:begin (written by scripts/salon-sprites/make.mjs) */
 .b-dinners { left: 13.047%; top: 32.639%; width: 13.281%; height: 27.083%; --hop: -9.092%; }

@@ -667,9 +667,12 @@ def main(argv: List[str]) -> int:
             def log_message(self, *args: Any) -> None:
                 pass
 
+        class Server(http.server.ThreadingHTTPServer):
+            request_queue_size = 128   # the default 5 drops connections when a page asks for its ~30 files at once
+
         for port, path in zip((8770, 8771), built):
             handler = functools.partial(Fresh, directory=str(path))
-            server = http.server.ThreadingHTTPServer(("127.0.0.1", port), handler)
+            server = Server(("127.0.0.1", port), handler)
             threading.Thread(target=server.serve_forever, daemon=True).start()
             servers.append(server)
             print(f"serving {path.name} on http://127.0.0.1:{port}")
