@@ -450,7 +450,7 @@ def test_the_units_look_every_5_minutes_at_their_own_minute_and_the_button_still
     assert "FixedRandomDelay=true\n" in timer and "Unit=bipagents-backup-check.service\n" in timer
     assert "hourly" not in timer and "Persistent" not in timer
     assert "--keep-within" in backup.KEEP and backup.KEEP[backup.KEEP.index("--keep-within") + 1] == "2h"
-    assert backup.KEEP[2:] == ["--keep-hourly", "48", "--keep-daily", "30"]
+    assert backup.KEEP[2:] == ["--keep-within-hourly", "48h", "--keep-within-daily", "30d"]
 
 
 def test_the_history_is_thinned_once_a_day_and_at_once_under_a_new_rule():
@@ -464,12 +464,16 @@ def test_the_history_is_thinned_once_a_day_and_at_once_under_a_new_rule():
 
 def test_no_backup_rule_keeps_anything_past_30_days():
     """« Oublie ça » says « Disparaît aussi des sauvegardes sous 30 jours »: no restic rule may keep a snapshot longer
-    (no weekly, monthly or yearly one, no --keep-last), the daily one 30 days at most."""
+    in calendar days, even on a place that was off for a while: --keep-within-* rules only (never --keep-daily N,
+    which counts days that have a snapshot, nor weekly, monthly, yearly or --keep-last)."""
     rules = dict(zip(backup.KEEP[0::2], backup.KEEP[1::2]))
-    assert set(rules) == {"--keep-within", "--keep-hourly", "--keep-daily"}
-    assert int(rules["--keep-daily"]) <= backup.KEEP_DAYS == 30
-    assert int(rules["--keep-hourly"]) <= 24 * backup.KEEP_DAYS
-    assert rules["--keep-within"].endswith("h") and int(rules["--keep-within"][:-1]) <= 24 * backup.KEEP_DAYS
+    assert set(rules) == {"--keep-within", "--keep-within-hourly", "--keep-within-daily"}
+    assert all(r.startswith("--keep-within") for r in rules)
+
+    def hours(span):
+        return int(span[:-1]) * {"h": 1, "d": 24}[span[-1]]
+    assert all(hours(v) <= 24 * backup.KEEP_DAYS for v in rules.values()) and backup.KEEP_DAYS == 30
+    assert hours(rules["--keep-within-daily"]) == 24 * 30
 
 
 def _seat_agent():

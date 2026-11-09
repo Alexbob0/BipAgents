@@ -48,10 +48,12 @@ STAGE = Path(".local") / "state" / "bipagents" / "backup-stage"
 HOST = "place"                      # the same on every server the place lives on: restic finds its last backup
 # Carnet v2 (Alex, 9/11): nothing older than 30 days, so « Oublie ça » can say « Disparaît aussi des sauvegardes sous
 # 30 jours » (bridge-rs notebook/forget.rs). `RETENTION` is the rule's version: a place whose last thinning was made
-# under another one thins at its next backup, without waiting a day.
-KEEP = ["--keep-within", "2h", "--keep-hourly", "48", "--keep-daily", "30"]
+# under another one thins at its next backup, without waiting a day. Calendar-bounded rules only (--keep-within-*,
+# restic >= 0.13; Ubuntu 24.04 has 0.16, Debian 13 0.18): « the last 30 days that have a snapshot » would keep older
+# ones on a place that was off or moving for some days.
+KEEP = ["--keep-within", "2h", "--keep-within-hourly", "48h", "--keep-within-daily", "30d"]
 KEEP_DAYS = 30
-RETENTION = 2
+RETENTION = 3
 PRUNE_EVERY = 23 * 3600            # once a day: a quiet place's daily backup comes a minute early, never a day late
 SQLITE = b"SQLite format 3\x00"
 UNIT = "bipagents-backup"          # .service: a backup now (the app's button, `bipagents backup`)

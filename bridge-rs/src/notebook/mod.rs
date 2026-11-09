@@ -606,6 +606,32 @@ pub fn links_in(text: &str) -> Vec<String> {
     out
 }
 
+/// Whether `name` can be the person (or place) of `page`, beyond a shared phone or e-mail: the same name or alias,
+/// the same first name (« Marc » / « Marc Dupont », a nickname « Mat » / « Mathieu »), or a name alone that is one
+/// of the page's (« Dupont »). Two first names that differ never agree (« Léa Dupont » / « Marc Dupont »).
+pub fn names_agree(page: &Page, name: &str) -> bool {
+    let wanted = fold(name);
+    if wanted.is_empty() {
+        return false;
+    }
+    let nick = |a: &str, b: &str| a == b || (a.len().min(b.len()) >= 3 && (a.starts_with(b) || b.starts_with(a)));
+    std::iter::once(page.title.clone()).chain(page.aliases()).any(|known| {
+        let known = fold(&known);
+        let (a, b): (Vec<&str>, Vec<&str>) = (known.split(' ').collect(), wanted.split(' ').collect());
+        if known.is_empty() {
+            return false;
+        }
+        if known == wanted {
+            return true;
+        }
+        match (a.len(), b.len()) {
+            (1, _) => b.iter().any(|t| nick(t, a[0])),
+            (_, 1) => a.iter().any(|t| nick(t, b[0])),
+            _ => nick(a[0], b[0]),
+        }
+    })
+}
+
 /// Lower-case, accents and punctuation folded, spaces squeezed: what « the same name » or « the same fact » means.
 /// A curly apostrophe (« aujourd’hui ») folds like a straight one (« aujourd'hui »): both a space, never dropped (the
 /// ASCII folding alone dropped it, so « aujourd’hui » and « aujourd'hui » were not the same name).
@@ -1678,11 +1704,19 @@ pub(crate) fn note_locked(
     // a health fact never goes to the shared part (lexicon::is_health): to the private health part when an agent of
     // the person's holds it, else to « À ranger », which the other agents don't read (Carnet v2, socle §0)
     // what the person asked to forget is not written back by an old turn, even said another way (forget.rs)
+    // « En bref » goes through the same two filters as the facts (a health summary is filed apart, never shared)
     let facts: Vec<String> = facts.iter().filter(|f| !forget::is_forgotten(config, f, &title)).cloned().collect();
-    let (health_facts, facts): (Vec<String>, Vec<String>) = if part == Part::Main {
+    let summary = if forget::is_forgotten(config, summary, &title) { "" } else { summary };
+    let (mut health_facts, facts): (Vec<String>, Vec<String>) = if part == Part::Main {
         facts.iter().cloned().partition(|f| lexicon::is_health(f))
     } else {
         (Vec::new(), facts.to_vec())
+    };
+    let summary = if part == Part::Main && !summary.trim().is_empty() && lexicon::is_health(summary) {
+        health_facts.extend(summary.lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from));
+        ""
+    } else {
+        summary
     };
     let apart = if health_facts.is_empty() {
         0
@@ -1711,10 +1745,17 @@ pub(crate) fn note_locked(
             let found = candidates(config, &[part], contact.trim(), "");
             (found.len() == 1).then(|| found.into_iter().next()).flatten()
         };
+        // a family landline or e-mail is shared: a contact joins two pages only when their names agree too
+        let same_contact = |other: &Found| {
+            format!("Same contact as « {} »: ask if it is the same person.", other.page.title)
+        };
         match named.into_iter().next() {
             // an e-mail or a phone already on another page: that page joins this one (merged now, not at night)
             Some(f) if !contact.trim().is_empty() => match by_contact() {
                 Some(other) if other.path != f.path && other.page.kind() == f.page.kind() => {
+                    if !names_agree(&other.page, &f.page.title) && !names_agree(&other.page, &title) {
+                        return refuse(same_contact(&other));
+                    }
                     merge_locked(config, part, &other.path, &f.path, who)?;
                     find(config, &[part], &f.path)
                 }
@@ -1722,7 +1763,10 @@ pub(crate) fn note_locked(
             },
             Some(f) => Some(f),
             None if contact.trim().is_empty() => None,
-            None => by_contact(),
+            None => match by_contact() {
+                Some(other) if !is_self && !names_agree(&other.page, &title) => return refuse(same_contact(&other)),
+                found => found,
+            },
         }
     };
     // one trip page per journey: never a list of trips
@@ -1980,6 +2024,41 @@ pub fn edit(
     let lang = language(config);
     let w = words(&lang);
     let kind = page.kind();
+    // an agent's fix or « En bref » goes through the facts' filters: what the person asked to forget is not written
+    // back, a health text is filed apart (private health part, or « À ranger »), never on the shared page
+    let mut apart: Vec<String> = Vec::new();
+    let (new, brief) = if who.agent.is_some() && found.part == Part::Main {
+        if !new.trim().is_empty() && forget::is_forgotten(config, new, &page.title) {
+            return refuse("the person asked to forget this: not written back");
+        }
+        let brief = if forget::is_forgotten(config, brief, &page.title) { "" } else { brief };
+        let new = if !new.trim().is_empty() && lexicon::is_health(new) {
+            apart.push(new.trim().to_string());
+            ""
+        } else {
+            new
+        };
+        let brief = if !brief.trim().is_empty() && lexicon::is_health(brief) {
+            apart.extend(brief.lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from));
+            ""
+        } else {
+            brief
+        };
+        (new, brief)
+    } else {
+        (new, brief)
+    };
+    if !apart.is_empty() {
+        if any_health_agent(config) {
+            note_locked(config, Part::Health, &kind, &page.title, "", &apart, &[], "", "", who)?;
+        } else {
+            inbox_add_as(config, who, &apart, "note")?;
+        }
+        if old.trim().is_empty() && text.is_none() && brief.trim().is_empty() {
+            let written = Written { part: Some(found.part), path: found.path, title: page.title, apart: apart.len(), ..Default::default() };
+            return Ok((written, String::new()));
+        }
+    }
     let (body, action, summary) = match text {
         None if old.trim().is_empty() && !brief.trim().is_empty() => {
             (page.body.clone(), "brief", format!("{} : {}", w.brief, tk::head(&tk::squeeze(brief), 200)))
@@ -2026,7 +2105,7 @@ pub fn edit(
     commit(config, found.part, &found.path, before.as_deref(), Some(&rendered), who, action, &summary)?;
     archive_logs(config, found.part, &found.path, &mut page, &lang)?;
     Ok((
-        Written { part: Some(found.part), path: found.path, title: page.title, ..Default::default() },
+        Written { part: Some(found.part), path: found.path, title: page.title, apart: apart.len(), ..Default::default() },
         summary,
     ))
 }

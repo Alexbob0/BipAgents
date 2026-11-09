@@ -454,8 +454,7 @@
             "values": {
               "document": "Passeport",
               "expires": "{day+420}",
-              "source": "Photo du passeport",
-              "photo": "Voir la photo"
+              "source": "Photo du passeport"
             },
             "next_in": 420,
             "legal": false
@@ -988,8 +987,7 @@
             "values": {
               "document": "Passport",
               "expires": "{day+420}",
-              "source": "Photo of the passport",
-              "photo": "See the photo"
+              "source": "Photo of the passport"
             },
             "next_in": 420,
             "legal": false
@@ -1522,8 +1520,7 @@
             "values": {
               "document": "Reisepass",
               "expires": "{day+420}",
-              "source": "Foto des Passes",
-              "photo": "Foto ansehen"
+              "source": "Foto des Passes"
             },
             "next_in": 420,
             "legal": false
@@ -2056,8 +2053,7 @@
             "values": {
               "document": "Pasaporte",
               "expires": "{day+420}",
-              "source": "Foto del pasaporte",
-              "photo": "Ver la foto"
+              "source": "Foto del pasaporte"
             },
             "next_in": 420,
             "legal": false
