@@ -35,13 +35,13 @@ pub const NO_REPLY_PAUSE: Duration = Duration::from_secs(30 * 60);
 pub const THINKING_TURN: &str = crate::agents_admin::DEFAULT_THINKING;
 
 /// A calculation: two numbers with an operator between them (« 137/3 », « 20 % de 45 », « 3 x 12 »).
-static ARITHMETIC: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\d\s*(?:[+*/×÷=^x]|\s-)\s*\d|\d\s*[%‰]").expect("valid regex")
-});
+static ARITHMETIC: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\d\s*(?:[+*/×÷=^x]|\s-)\s*\d|\d\s*[%‰]").expect("valid regex"));
 
 /// Words that ask for a calculation, a conversion, date arithmetic, a plan, a comparison or a reasoning, in the
 /// apps' languages (fr, en, de, es, nl, it). Matched on the lowercased words, at a word's start.
 static ASKS_TO_THINK: LazyLock<Regex> = LazyLock::new(|| {
+    #[rustfmt::skip]
     let stems = [
         // calculations, splits, money
         "calcul", "combien", "divis", "partag", "rembours", "solde", "pourcent", "moyenne", "total", "somme",
@@ -117,7 +117,7 @@ pub fn run_ended(agent: &str, run_id: &str, answered: bool) {
         at.map(|i| runs.remove(i)).is_some()
     };
     if was_thinking && !answered {
-        tracing::warn!(agent, run_id, "a thinking turn ended without an answer: the next turns answer without thinking");
+        tracing::warn!(agent, run_id, "thinking turn without an answer: next turns without thinking");
         record_no_reply(agent);
     }
 }
