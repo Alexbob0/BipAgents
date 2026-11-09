@@ -1068,6 +1068,9 @@ pub fn stale_proxies(config: &Config) -> Vec<String> {
 
 /// [`stale_proxies`] over the processes given: (its binary, its arguments).
 pub fn stale_of(config: &Config, proxy: &Path, running: &[(PathBuf, Vec<String>)]) -> Vec<String> {
+    // the agents, and the spare ones the hub's gateway serves too (agent_pool.rs: their own browser, not in `[agents]`)
+    let mut served: Vec<String> = config.agents.values().map(|a| a.name.clone()).collect();
+    served.extend(crate::agent_pool::spares(config).into_iter().map(|s| s.id));
     let mut out: Vec<String> = Vec::new();
     for (exe, args) in running {
         let shown = exe.to_string_lossy();
@@ -1076,12 +1079,28 @@ pub fn stale_of(config: &Config, proxy: &Path, running: &[(PathBuf, Vec<String>)
             continue;
         }
         let Some(settings) = args.get(1) else { continue };
-        let found = config.agents.values().find(|a| folder(config, &a.name).join("mcp.json") == Path::new(settings));
-        if let Some(agent) = found.filter(|a| !out.contains(&a.name)) {
-            out.push(agent.name.clone());
+        let found = served.iter().find(|name| folder(config, name).join("mcp.json") == Path::new(settings));
+        if let Some(name) = found.filter(|n| !out.contains(n)) {
+            out.push(name.clone());
         }
     }
     out
+}
+
+/// [`with_proxy`] in each spare agent's profile (agent_pool.rs): not in `[agents]`, so not reconciled, but served by
+/// the hub's gateway, which starts their browser proxy too (9/11 lab: five spares kept the old one after the wave).
+pub fn spares_follow(config: &Config) {
+    let proxy = proxy_binary();
+    if !Path::new(&proxy).exists() {
+        return;
+    }
+    for spare in crate::agent_pool::spares(config) {
+        let agent = spare.agent(config, "");
+        let path = crate::agents_admin::profile_folder(config, &agent).join("config.yaml");
+        if let Err(exc) = crate::profile_files::edit(&path, |data| with_proxy(data, &proxy)) {
+            tracing::warn!(agent = %spare.id, error = %format!("{exc:#}"), "spare's browser proxy not brought up to date");
+        }
+    }
 }
 
 /// At the bridge's start: every agent whose visible browser is on gets `browser.vault_only` (those set up before it

@@ -344,6 +344,19 @@ fn after_an_update_the_agents_browser_follows_the_bridges_own_proxy() {
     // twice the same agent: once
     let twice = [proc(old, &[old, &settings]), proc(old, &[old, &settings])];
     assert_eq!(browsers::stale_of(&s.config, &new, &twice), ["budget"]);
+    // a spare agent (agent_pool.rs): served by the hub's gateway with its own browser, not in [agents]
+    let spare = "agent_0ef89906";
+    let profile = s.hub.join("profiles").join(spare);
+    std::fs::create_dir_all(&profile).unwrap();
+    std::fs::write(profile.join("config.yaml"), format!("mcp_servers:\n  stealth:\n    command: {old}\n")).unwrap();
+    std::fs::write(s.tmp.join("spare-agents.json"), format!(r#"[{{"id": "{spare}", "key": "{}"}}]"#, "s".repeat(32))).unwrap();
+    let spare_settings = s.tmp.join("browsers").join(spare).join("mcp.json").to_string_lossy().into_owned();
+    assert_eq!(browsers::stale_of(&s.config, &new, &[proc(old, &[old, &spare_settings])]), [spare]);
+    browsers::spares_follow(&s.config);
+    let written = pyyaml::to_json(&pyyaml::load(&std::fs::read_to_string(profile.join("config.yaml")).unwrap()).unwrap());
+    if Path::new(&browsers::proxy_binary()).exists() {
+        assert_eq!(written["mcp_servers"]["stealth"]["command"], browsers::proxy_binary());
+    }
 }
 
 #[test]

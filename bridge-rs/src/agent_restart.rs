@@ -680,7 +680,10 @@ async fn tick(state: &AppState, config: &Config, memory: &mut HashMap<String, Gr
     }
     let kept = records(config);
     if config.browser.enabled {
-        for agent in crate::browsers::stale_proxies(config) {
+        for found in crate::browsers::stale_proxies(config) {
+            // a spare agent (not in `[agents]`): the hub's gateway serves it, restarted through a hub agent
+            let hub = || config.agents.values().find(|a| a.space.as_deref().is_none_or(str::is_empty)).map(|a| a.name.clone());
+            let Some(agent) = (if config.agents.contains_key(&found) { Some(found) } else { hub() }) else { continue };
             if ask_follow(kept.get(&agent), now, s) {
                 request_restart(&agent, BRIDGE_PROGRAMS);
             }

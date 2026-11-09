@@ -392,6 +392,7 @@ pub fn reconcile_all(config: &Config) {
             tracing::warn!(target: "bipbridge::agents", agent = %agent.name, error = %format!("{exc:#}"), "profile settings not brought up to date");
         }
     }
+    crate::browsers::spares_follow(config); // the spare agents' browser proxy: this bridge's too
 }
 
 #[cfg(test)]
