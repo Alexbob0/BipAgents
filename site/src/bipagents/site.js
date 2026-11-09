@@ -24,13 +24,17 @@ for (const el of $$("[data-bip-static]")) el.innerHTML = staticBip(el.dataset.bi
 for (const el of $$("[data-bip-icon]")) el.innerHTML = iconSVG();   // the app's icon (the brand)
 
 // -- Header, progress, reveals, parallax ---------------------------------------------------------------------------
-const top = $(".top"), bar = $(".progress i");
+const top = $(".top"), bar = $(".progress i"), hero = $(".hero");
+// the home's living room lies under the header: its height pulls the room up, and the header stays light-on-dark over it
+const topHeight = () => document.documentElement.style.setProperty("--top-h", top.offsetHeight + "px");
+if (hero) { topHeight(); addEventListener("resize", topHeight, { passive: true }); }
 const parallax = REDUCED ? [] : $$("[data-parallax]");
 let ticking = false;
 function onScroll() {
   ticking = false;
   const y = scrollY, max = document.documentElement.scrollHeight - innerHeight;
   top.classList.toggle("scrolled", y > 8);
+  if (hero) top.classList.toggle("off-hero", y >= hero.offsetHeight - top.offsetHeight);
   bar.style.transform = `scaleX(${max > 0 ? y / max : 0})`;
   for (const el of parallax) el.style.transform = `translateY(${(y * +el.dataset.parallax).toFixed(1)}px)`;
 }

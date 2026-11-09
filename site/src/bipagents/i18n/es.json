@@ -35,7 +35,6 @@
   "salon": {
     "alt": "Un salón acogedor por la noche: en el sofá, un móvil llama a Pasta Mia; en la mesa baja, una tableta muestra 11,99 € al mes menos en suscripciones; junto a la ventana, un portátil con vuelos y hotel, y un caballete con el bienestar de la semana. Cuatro Bips se encargan de todo.",
     "a11y": "Lo que hacen los Bips del salón",
-    "hint": "Desliza para ver el salón",
     "dinners": {
       "name": "Cenas",
       "line": "Lleno a las 20:00, así que reservé a las 20:30 y avisé a Julie."

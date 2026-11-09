@@ -1,57 +1,58 @@
 {{>top}}
-<!-- ============================================================ HERO: the promise, what the Bips do, where they live,
-     the beta; then the living room, where four Bips are at work (pre-rendered sprites, CSS animation, salon/salon.js picks whose turn). -->
+<!-- ============================================================ HERO: the whole first screen is the living room, where
+     four Bips are at work (pre-rendered sprites, CSS animation, salon/salon.js picks whose turn); the promise, where
+     the Bips live and the beta sit on it. The header lies over it until the page scrolls past it. -->
 <section class="hero">
-  <h1>{{hero.slogan}}</h1>
-  <p class="lede">{{hero.sub}}</p>
-  <p class="eu-line"><svg class="eu-flag" viewBox="0 0 30 20" aria-hidden="true"><rect width="30" height="20" rx="2" fill="#1F3FA8"/><g fill="#FFD43B"><circle cx="15" cy="4" r=".9"/><circle cx="18" cy="4.8" r=".9"/><circle cx="20.2" cy="7" r=".9"/><circle cx="21" cy="10" r=".9"/><circle cx="20.2" cy="13" r=".9"/><circle cx="18" cy="15.2" r=".9"/><circle cx="15" cy="16" r=".9"/><circle cx="12" cy="15.2" r=".9"/><circle cx="9.8" cy="13" r=".9"/><circle cx="9" cy="10" r=".9"/><circle cx="9.8" cy="7" r=".9"/><circle cx="12" cy="4.8" r=".9"/></g></svg><span>{{hero.eu}}</span></p>
-  <div class="cta-row center">
-    <a class="pill pill-buy" href="{{betahref}}">{{nav.cta}} <span aria-hidden="true">→</span></a>
-    <a class="pill pill-soft" href="#results">{{hero.watch}} <span aria-hidden="true">↓</span></a>
+  <div class="hero-text">
+    <h1>{{hero.slogan}}</h1>
+    <p class="lede">{{hero.sub}}</p>
+    <p class="eu-line"><svg class="eu-flag" viewBox="0 0 30 20" aria-hidden="true"><rect width="30" height="20" rx="2" fill="#1F3FA8"/><g fill="#FFD43B"><circle cx="15" cy="4" r=".9"/><circle cx="18" cy="4.8" r=".9"/><circle cx="20.2" cy="7" r=".9"/><circle cx="21" cy="10" r=".9"/><circle cx="20.2" cy="13" r=".9"/><circle cx="18" cy="15.2" r=".9"/><circle cx="15" cy="16" r=".9"/><circle cx="12" cy="15.2" r=".9"/><circle cx="9.8" cy="13" r=".9"/><circle cx="9" cy="10" r=".9"/><circle cx="9.8" cy="7" r=".9"/><circle cx="12" cy="4.8" r=".9"/></g></svg><span>{{hero.eu}}</span></p>
+    <div class="cta-row">
+      <a class="pill pill-buy" href="{{betahref}}">{{nav.cta}} <span aria-hidden="true">→</span></a>
+      <a class="pill pill-soft" href="#results">{{hero.watch}} <span aria-hidden="true">↓</span></a>
+    </div>
+  </div>
+  <div class="salon">
+    <div class="salon-stage">
+      <img src="/assets/salon/salon-bg.webp?v={{version}}" alt="{{salon.alt}}" width="1280" height="720" fetchpriority="high" decoding="async">
+      <!-- The easel: the painting's board is blank; its words are the page's, in a handwriting, drawn on the board's own
+           slant (the same 1280×720 frame as the picture, so they stay on it at every width). -->
+      <svg class="salon-easel" viewBox="0 0 1280 720" preserveAspectRatio="none" aria-hidden="true">
+        <g transform="matrix(1.335 .05 -.1808 1.3385 734.25 137)">
+          <text class="e-title" x="50" y="28" text-anchor="middle" data-max="84">{{salon.easel.title}}</text>
+          <path class="e-under" d="M20 35 q15 -2.6 30 -.8 t32 -.6" />
+          <text x="18" y="60" data-max="76">{{salon.easel.l1}}</text>
+          <text x="18" y="82" data-max="76">{{salon.easel.l2}}</text>
+          <text x="18" y="104" data-max="76">{{salon.easel.l3}}</text>
+          <path class="e-tick" d="M6 55 l2.8 3.2 l4.8 -7 M6 77 l2.8 3.2 l4.8 -7 M6 99 l2.8 3.2 l4.8 -7" />
+        </g>
+        <!-- The phone's bubble, the tablet and the laptop screen are blank in the painting too: their words are the page's. -->
+        <g class="screen">
+          <text class="s-big" x="254" y="88" data-max="148">{{salon.paint.phone1}}</text>
+          <text x="254" y="113" data-max="148">{{salon.paint.phone2}}</text>
+          <text class="s-small" x="707" y="460" transform="rotate(2 707 460)" data-max="162">{{salon.paint.tablet}}</text>
+          <text class="s-mid" x="922" y="299" data-max="54">{{salon.paint.laptop1}}</text>
+          <text class="s-mid" x="922" y="322" data-max="54">{{salon.paint.laptop2}}</text>
+        </g>
+      </svg>
+      <!-- The four Bips, drawn once from the former 3D scene (scripts/salon-sprites/), in depth order, each followed by
+           its contact shadow; the coins on the coffee table and the one Budget tosses. -->
+      <i class="salon-shade cs1"></i><i class="salon-shade cs2"></i><i class="salon-shade cs3"></i>
+      <div class="salon-bip b-dinners"><div class="bip-hop"><div class="bip-body"><div class="bip-nb"><img class="bip-n" src="/assets/salon/sprites/dinners-n.webp?v={{version}}" alt="" decoding="async"><img class="bip-b" src="/assets/salon/sprites/dinners-b.webp?v={{version}}" alt="" decoding="async"></div><img class="bip-q" src="/assets/salon/sprites/dinners-q.webp?v={{version}}" alt="" decoding="async" fetchpriority="low"><img class="bip-s" src="/assets/salon/sprites/dinners-s.webp?v={{version}}" alt="" decoding="async" fetchpriority="low"></div></div></div><i class="salon-shade"></i>
+      <div class="salon-bip b-wellness"><div class="bip-hop"><div class="bip-body"><div class="bip-nb"><img class="bip-n" src="/assets/salon/sprites/wellness-n.webp?v={{version}}" alt="" decoding="async"><img class="bip-b" src="/assets/salon/sprites/wellness-b.webp?v={{version}}" alt="" decoding="async"></div><img class="bip-q" src="/assets/salon/sprites/wellness-q.webp?v={{version}}" alt="" decoding="async" fetchpriority="low"><img class="bip-s" src="/assets/salon/sprites/wellness-s.webp?v={{version}}" alt="" decoding="async" fetchpriority="low"></div></div></div><i class="salon-shade"></i>
+      <div class="salon-bip b-budget"><div class="bip-hop"><div class="bip-body"><div class="bip-nb"><img class="bip-n" src="/assets/salon/sprites/budget-n.webp?v={{version}}" alt="" decoding="async"><img class="bip-b" src="/assets/salon/sprites/budget-b.webp?v={{version}}" alt="" decoding="async"></div><img class="bip-q" src="/assets/salon/sprites/budget-q.webp?v={{version}}" alt="" decoding="async" fetchpriority="low"><img class="bip-s" src="/assets/salon/sprites/budget-s.webp?v={{version}}" alt="" decoding="async" fetchpriority="low"></div></div></div><i class="salon-shade"></i>
+      <div class="salon-coins"><img src="/assets/salon/sprites/coins.webp?v={{version}}" alt="" decoding="async"></div>
+      <div class="salon-coin"><img src="/assets/salon/sprites/coin.webp?v={{version}}" alt="" decoding="async"></div>
+      <div class="salon-bip b-trips"><div class="bip-hop"><div class="bip-body"><div class="bip-nb"><img class="bip-n" src="/assets/salon/sprites/trips-n.webp?v={{version}}" alt="" decoding="async"><img class="bip-b" src="/assets/salon/sprites/trips-b.webp?v={{version}}" alt="" decoding="async"></div><img class="bip-q" src="/assets/salon/sprites/trips-q.webp?v={{version}}" alt="" decoding="async" fetchpriority="low"><img class="bip-s" src="/assets/salon/sprites/trips-s.webp?v={{version}}" alt="" decoding="async" fetchpriority="low"></div></div></div><i class="salon-shade"></i>
+      <ul class="salon-tags" aria-label="{{salon.a11y}}">
+        <li class="salon-tag"><b><i></i>{{salon.dinners.name}}</b><span>{{salon.dinners.line}}</span></li>
+        <li class="salon-tag"><b><i></i>{{salon.budget.name}}</b><span>{{salon.budget.line}}</span></li>
+        <li class="salon-tag"><b><i></i>{{salon.wellness.name}}</b><span>{{salon.wellness.line}}</span></li>
+        <li class="salon-tag"><b><i></i>{{salon.trips.name}}</b><span>{{salon.trips.line}}</span></li>
+      </ul>
+    </div>
   </div>
 </section>
-
-<div class="salon">
-  <div class="salon-stage">
-    <img src="/assets/salon/salon-bg.webp?v={{version}}" alt="{{salon.alt}}" width="1280" height="720" fetchpriority="high" decoding="async">
-    <!-- The easel: the painting's board is blank; its words are the page's, in a handwriting, drawn on the board's own
-         slant (the same 1280×720 frame as the picture, so they stay on it at every width). -->
-    <svg class="salon-easel" viewBox="0 0 1280 720" preserveAspectRatio="none" aria-hidden="true">
-      <g transform="matrix(1.335 .05 -.1808 1.3385 734.25 137)">
-        <text class="e-title" x="50" y="28" text-anchor="middle" data-max="84">{{salon.easel.title}}</text>
-        <path class="e-under" d="M20 35 q15 -2.6 30 -.8 t32 -.6" />
-        <text x="18" y="60" data-max="76">{{salon.easel.l1}}</text>
-        <text x="18" y="82" data-max="76">{{salon.easel.l2}}</text>
-        <text x="18" y="104" data-max="76">{{salon.easel.l3}}</text>
-        <path class="e-tick" d="M6 55 l2.8 3.2 l4.8 -7 M6 77 l2.8 3.2 l4.8 -7 M6 99 l2.8 3.2 l4.8 -7" />
-      </g>
-      <!-- The phone's bubble, the tablet and the laptop screen are blank in the painting too: their words are the page's. -->
-      <g class="screen">
-        <text class="s-big" x="254" y="88" data-max="148">{{salon.paint.phone1}}</text>
-        <text x="254" y="113" data-max="148">{{salon.paint.phone2}}</text>
-        <text class="s-small" x="707" y="460" transform="rotate(2 707 460)" data-max="162">{{salon.paint.tablet}}</text>
-        <text class="s-mid" x="922" y="299" data-max="54">{{salon.paint.laptop1}}</text>
-        <text class="s-mid" x="922" y="322" data-max="54">{{salon.paint.laptop2}}</text>
-      </g>
-    </svg>
-    <!-- The four Bips, drawn once from the former 3D scene (scripts/salon-sprites/), in depth order, each followed by
-         its contact shadow; the coins on the coffee table and the one Budget tosses. -->
-    <i class="salon-shade cs1"></i><i class="salon-shade cs2"></i><i class="salon-shade cs3"></i>
-    <div class="salon-bip b-dinners"><div class="bip-hop"><div class="bip-body"><div class="bip-nb"><img class="bip-n" src="/assets/salon/sprites/dinners-n.webp?v={{version}}" alt="" decoding="async"><img class="bip-b" src="/assets/salon/sprites/dinners-b.webp?v={{version}}" alt="" decoding="async"></div><img class="bip-q" src="/assets/salon/sprites/dinners-q.webp?v={{version}}" alt="" decoding="async" fetchpriority="low"><img class="bip-s" src="/assets/salon/sprites/dinners-s.webp?v={{version}}" alt="" decoding="async" fetchpriority="low"></div></div></div><i class="salon-shade"></i>
-    <div class="salon-bip b-wellness"><div class="bip-hop"><div class="bip-body"><div class="bip-nb"><img class="bip-n" src="/assets/salon/sprites/wellness-n.webp?v={{version}}" alt="" decoding="async"><img class="bip-b" src="/assets/salon/sprites/wellness-b.webp?v={{version}}" alt="" decoding="async"></div><img class="bip-q" src="/assets/salon/sprites/wellness-q.webp?v={{version}}" alt="" decoding="async" fetchpriority="low"><img class="bip-s" src="/assets/salon/sprites/wellness-s.webp?v={{version}}" alt="" decoding="async" fetchpriority="low"></div></div></div><i class="salon-shade"></i>
-    <div class="salon-bip b-budget"><div class="bip-hop"><div class="bip-body"><div class="bip-nb"><img class="bip-n" src="/assets/salon/sprites/budget-n.webp?v={{version}}" alt="" decoding="async"><img class="bip-b" src="/assets/salon/sprites/budget-b.webp?v={{version}}" alt="" decoding="async"></div><img class="bip-q" src="/assets/salon/sprites/budget-q.webp?v={{version}}" alt="" decoding="async" fetchpriority="low"><img class="bip-s" src="/assets/salon/sprites/budget-s.webp?v={{version}}" alt="" decoding="async" fetchpriority="low"></div></div></div><i class="salon-shade"></i>
-    <div class="salon-coins"><img src="/assets/salon/sprites/coins.webp?v={{version}}" alt="" decoding="async"></div>
-    <div class="salon-coin"><img src="/assets/salon/sprites/coin.webp?v={{version}}" alt="" decoding="async"></div>
-    <div class="salon-bip b-trips"><div class="bip-hop"><div class="bip-body"><div class="bip-nb"><img class="bip-n" src="/assets/salon/sprites/trips-n.webp?v={{version}}" alt="" decoding="async"><img class="bip-b" src="/assets/salon/sprites/trips-b.webp?v={{version}}" alt="" decoding="async"></div><img class="bip-q" src="/assets/salon/sprites/trips-q.webp?v={{version}}" alt="" decoding="async" fetchpriority="low"><img class="bip-s" src="/assets/salon/sprites/trips-s.webp?v={{version}}" alt="" decoding="async" fetchpriority="low"></div></div></div><i class="salon-shade"></i>
-    <ul class="salon-tags" aria-label="{{salon.a11y}}">
-      <li class="salon-tag"><b><i></i>{{salon.dinners.name}}</b><span>{{salon.dinners.line}}</span></li>
-      <li class="salon-tag"><b><i></i>{{salon.budget.name}}</b><span>{{salon.budget.line}}</span></li>
-      <li class="salon-tag"><b><i></i>{{salon.wellness.name}}</b><span>{{salon.wellness.line}}</span></li>
-      <li class="salon-tag"><b><i></i>{{salon.trips.name}}</b><span>{{salon.trips.line}}</span></li>
-    </ul>
-  </div>
-</div>
-<p class="salon-hint" aria-hidden="true">{{salon.hint}}</p>
 
 <!-- ============================================================ PRIVATE: where your data is, who can read it
      (docs/legal/offer.en.md §9, privacy.en.md §5.4, docs/privacy-compare.md « What BipAgents does not promise »).

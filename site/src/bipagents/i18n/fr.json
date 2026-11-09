@@ -35,7 +35,6 @@
   "salon": {
     "alt": "Un salon douillet, le soir : sur le canapé, un téléphone appelle Pasta Mia ; sur la table basse, une tablette montre 11,99 € par mois d’abonnement en moins ; près de la fenêtre, un ordinateur avec des vols et un hôtel, et un chevalet avec le bilan bien-être de la semaine. Quatre Bips s’en occupent.",
     "a11y": "Ce que font les Bips du salon",
-    "hint": "Glisse pour voir tout le salon",
     "dinners": {
       "name": "Dîners",
       "line": "Complet à 20 h, j’ai réservé 20 h 30 et prévenu Julie."

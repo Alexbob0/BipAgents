@@ -1,21 +1,14 @@
 // bipagents.com, the home's living room: a painted room (salon-bg.webp, 1280×720) and four Bips drawn once from the
 // former 3D scene (sprites/, scripts/salon-sprites/). They breathe and blink in CSS; this only says whose turn it is
 // (every 3.6 s one Bip hops and shows what it just did; the labels are the page's own HTML, in its language), pauses
-// everything off screen or in a background tab, and fits the easel's words. On a phone the room is wider than the
-// screen: a horizontal swipe looks around and only the Bips in view take their turn. With reduced motion nothing
+// everything off screen or in a background tab, and fits the easel's words. The room fills the hero and is cropped
+// at its edges (on a phone, to the coffee table): only the Bips in view take their turn. With reduced motion nothing
 // moves and the Dinners label stays; pointing at or tapping a Bip shows its label.
 const stage = document.querySelector(".salon-stage");
 const room = document.querySelector(".salon");
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 if (stage && room) {
-  // on a narrow screen the room opens on the sofa and the coffee table
-  const centerRoom = () => {
-    const sw = stage.clientWidth, rw = room.clientWidth;
-    if (sw > rw + 2) room.scrollLeft = Math.max(0, Math.min(sw - rw, sw * (600 / 1280) - rw / 2));
-  };
-  centerRoom();
-  addEventListener("resize", centerRoom, { passive: true });
   fitEasel();
   document.fonts?.ready.then(fitEasel);
   turns();
@@ -70,7 +63,7 @@ function turns() {
     stage.classList.toggle("idle", !on);
     if (on && !reduce) timer = setTimeout(tick, cur < 0 ? 1200 : 2400);
   }
-  if (reduce) show(0);
+  if (reduce) show(Math.max(0, bips.findIndex(inView)));   // Dinners, or the first Bip in view (phone)
   new IntersectionObserver(entries => { onScreen = entries[0].isIntersecting; play(onScreen && !document.hidden); }).observe(stage);
   document.addEventListener("visibilitychange", () => play(onScreen && !document.hidden));
   // pointing at a Bip (mouse) or tapping it: its turn now
