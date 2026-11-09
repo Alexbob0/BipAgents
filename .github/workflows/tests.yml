@@ -50,6 +50,12 @@ jobs:
         # the bridge's own tools are checked by its unit test (agent_tools.rs every_tool_an_agent_can_call_has_its_words)
         if: hashFiles('scripts/tool-labels.py') != ''
         run: python -I scripts/tool-labels.py . --check
+      - name: Working line films (the apps' frame data is the generator's)
+        if: hashFiles('scripts/pixel/working.py') != ''
+        run: python -I scripts/pixel/working.py --check
+      - name: Working line scenes (the apps' scene data is the gallery v3b's engine, square for square)
+        if: hashFiles('scripts/pixel/working-scenes.mjs') != ''
+        run: node scripts/pixel/working-scenes.mjs --check
       - name: Bridge (black-box suite, the HTTP contract)
         working-directory: bridge
         # The runner's /usr/bin/chromium is a bare snapshot without a setuid sandbox (« No usable sandbox! », the VM
