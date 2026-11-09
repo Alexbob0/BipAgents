@@ -66,7 +66,7 @@ and whether any payment influences their order; this change will be announced as
 
 ## 6. Licence and open source
 
-- BipAgents' **source code** is published under the **MIT licence**: [repository URL]. You may use, copy, modify and
+- BipAgents' **source code** is published under the **MIT licence**: https://github.com/Alexbob0/BipAgents. You may use, copy, modify and
   redistribute it under that licence, which prevails over these terms for everything about the source code.
 - The **Bips themselves** are not under the MIT licence: their drawings, the app's icon, their babble, their voices,
   the demo's recordings (the podcast, recorded with Fish Audio Drama 3 — "Built with Fish Audio") and the screenshots.

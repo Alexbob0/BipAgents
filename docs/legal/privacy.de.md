@@ -33,7 +33,7 @@ Kontakt: **privacy@bipagents.com**.
 
 Kerfy Studio hat keinen Datenschutzbeauftragten benannt: Für seine Tätigkeit ist das nicht vorgeschrieben (Art. 37
 DSGVO). Für alle Fragen zu deinen Daten: privacy@bipagents.com. Für das Recht von Singapur (Personal Data Protection
-Act), das eine für den Datenschutz zuständige Person verlangt, ist das der Präsident von Kerfy Studio, [Vorname Name],
+Act), das eine für den Datenschutz zuständige Person verlangt, ist das der Präsident von Kerfy Studio,
 erreichbar unter derselben Adresse.
 
 Kerfy Studio ist Verantwortlicher für die Verarbeitungen, die die App durchführt, um zu funktionieren, so wie Kerfy
@@ -769,7 +769,7 @@ Das Relay akzeptiert nur verschlüsselte Verbindungen (HTTPS), versiegelt die To
 Datenbank und schreibt nie ein Token im Klartext. In der App sind die Schlüssel deiner Agenten durch den
 Schlüsselbund oder den Keystore geschützt, und die Verbindung zu deinem Server läuft über Tailscale oder über eine
 HTTPS-Tür in deinem lokalen Netz, die nur das Zertifikat deines Servers akzeptiert. Der Code der App, der
-Serverseite und des Relays ist öffentlich: [URL des Repositorys]. Um eine Sicherheitslücke zu melden:
+Serverseite und des Relays ist öffentlich: https://github.com/Alexbob0/BipAgents. Um eine Sicherheitslücke zu melden:
 **security@bipagents.com** (siehe die Datei SECURITY.md im Repository).
 
 Mit dem Alles-inklusive-Angebot ist jeder Platz ein eigenes Konto auf dem Server, ohne Administratorrechte; Kerfy

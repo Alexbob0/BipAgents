@@ -33,8 +33,7 @@ social en [dirección del domicilio social], inscrita en el RCS de [ciudad del r
 
 Kerfy Studio no ha designado un delegado de protección de datos: no es obligatorio para su actividad (artículo 37 del
 RGPD). Para cualquier pregunta sobre tus datos: privacy@bipagents.com. Para la ley de Singapur (Personal Data
-Protection Act), que exige una persona encargada de la protección de datos, es el presidente de Kerfy Studio,
-[nombre y apellidos], a quien puedes contactar en la misma dirección.
+Protection Act), que exige una persona encargada de la protección de datos, es el presidente de Kerfy Studio, a quien puedes contactar en la misma dirección.
 
 Kerfy Studio es responsable de los tratamientos que la app realiza para funcionar, tal como Kerfy Studio los ha
 diseñado (secciones 3, 4 y 7), incluso cuando se quedan en tu teléfono y Kerfy Studio no tiene acceso a ellos, y de
@@ -728,7 +727,7 @@ de correos: todavía no en servicio; su país y la garantía aplicable se indica
 El relé solo acepta conexiones cifradas (HTTPS), sella los tokens (XChaCha20-Poly1305), no tiene base de datos y
 nunca escribe un token en claro. En la app, las claves de tus agentes están protegidas por el Llavero o el Keystore,
 y la conexión con tu servidor pasa por Tailscale o por una puerta HTTPS en tu red local, que solo acepta el
-certificado de tu servidor. El código de la app, del servidor y del relé es público: [URL del repositorio]. Para
+certificado de tu servidor. El código de la app, del servidor y del relé es público: https://github.com/Alexbob0/BipAgents. Para
 informar de un fallo de seguridad: **security@bipagents.com** (consulta el archivo SECURITY.md del repositorio).
 
 Con la oferta todo incluido, cada plaza es una cuenta separada del servidor, sin derechos de administrador; Kerfy

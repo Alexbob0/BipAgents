@@ -33,7 +33,7 @@
 Kerfy Studio n'a pas désigné de délégué à la protection des données : ce n'est pas obligatoire pour son activité
 (article 37 du RGPD). Pour toute question sur tes données : privacy@bipagents.com. Pour la loi de Singapour (Personal
 Data Protection Act), qui demande une personne chargée de la protection des données, c'est le président de Kerfy
-Studio, [Prénom Nom], joignable à la même adresse. Il est aussi la personne responsable de la protection des
+Studio, joignable à la même adresse. Il est aussi la personne responsable de la protection des
 renseignements personnels au sens de la loi du Québec, et la personne chargée de veiller au respect de la loi
 canadienne (Loi sur la protection des renseignements personnels et les documents électroniques), à la même adresse.
 
@@ -752,7 +752,7 @@ service ; son pays et la garantie applicable seront indiqués ici avant sa mise 
 Le relais n'accepte que des connexions chiffrées (HTTPS), scelle les jetons (XChaCha20-Poly1305), n'a pas de base de
 données et n'écrit jamais un jeton en clair. Dans l'app, les clés de tes agents sont protégées par le Trousseau ou le
 Keystore, et la connexion à ton serveur passe par Tailscale ou par une porte HTTPS sur ton réseau local, qui
-n'accepte que le certificat de ton serveur. Le code de l'app, du serveur et du relais est public : [URL du dépôt].
+n'accepte que le certificat de ton serveur. Le code de l'app, du serveur et du relais est public : https://github.com/Alexbob0/BipAgents.
 Pour signaler une faille de sécurité : **security@bipagents.com** (voir le fichier SECURITY.md du dépôt).
 
 Avec l'offre tout compris, chaque place est un compte séparé du serveur, sans droits d'administrateur ; Kerfy Studio
