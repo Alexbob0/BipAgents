@@ -437,3 +437,33 @@ def test_j20_a_routines_podcast_is_its_one_audio_file(journey):
     [item] = [i for i in page["items"] if i["kind"] == "boite" and i.get("title") == "Podcast du matin"]
     assert item["boite"]["audio"] is False and [a["kind"] for a in item["attachments"]] == ["audio"], item
     displayable.check(journey.bridge, page, AGENT)
+
+
+# -- the screen during a turn -------------------------------------------------------------------------------------
+
+def test_j45_a_turn_in_a_conversation_of_several_days(journey):
+    """J45, the bridge's half (the apps check the screen): three days of history whose replies carry reasoning; while a
+    GLM-paced reply streams, every page read keeps the other days above the person's message, and the reply comes in
+    chunks of 1–3 words, stored with its reasoning."""
+    started(journey.send(cid(45), "On reprend ? #jours"))
+    page = reply_done(journey, "Noté, je garde")
+    days = [i["day"] for i in page["items"] if i.get("day")]
+    assert len(set(days)) == 3 and days == sorted(days), days
+    assert sum(1 for i in agent_items(page) if i.get("reasoning")) >= 3, page["items"]
+    displayable.check(journey.bridge, page, AGENT)
+    run = started(journey.send(cid(46), "Un week-end à Lyon ? #reel"))["run_id"]
+    pages, until = [], time.monotonic() + 60
+    while journey.page()["pending"].get("run") is not None and time.monotonic() < until:
+        pages.append(journey.page())
+        time.sleep(0.3)
+    for seen in pages + [journey.idle()]:
+        ids = [i.get("client_id") for i in seen["items"]]
+        after = seen["items"][ids.index(cid(46)):] if cid(46) in ids else []
+        assert all(i.get("day", days[-1]) == days[-1] for i in after), [(i["id"], i.get("day")) for i in after]
+    # as Hermes streamed them (the bridge's replay of an ended run gives its words whole)
+    hermes_run = journey.model.runs.get(run) or list(journey.model.runs.values())[-1]
+    events = [json.loads(e.split("data: ", 1)[1]) for e in hermes_run.events]
+    deltas = [e["delta"] for e in events if e["event"] == "message.delta"]
+    assert len(deltas) >= 15 and all(1 <= len(d.split()) <= 3 for d in deltas), deltas
+    [reply] = [i for i in agent_items(journey.page()) if "Croix-Rousse" in (i.get("text") or "")]
+    assert reply.get("reasoning") and 40 <= len(reply["text"].split()) <= 60, reply
