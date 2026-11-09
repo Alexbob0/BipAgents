@@ -1385,6 +1385,66 @@ pub fn check_permissions(path: &str) {
     }
 }
 
+/// The Python Hermes runs on now, in its official install under `<home>/tools`: the one its package manager pins
+/// (`tools/facts.json`, packages.python.entry), else the newest `python-<version>…` there by version (3.14.10 after
+/// 3.14.9). An update of Hermes may pin another one (517b5e10f → bf0203a794: 3.14.7 → 3.14.9) and keep the old
+/// folder: an older interpreter then re-runs itself on the pinned one, without what was on its stdin (2026-11-09).
+pub fn tool_python(home: &str) -> Option<String> {
+    let tools = std::path::Path::new(home).join("tools");
+    let pinned = std::fs::read_to_string(tools.join("facts.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .and_then(|facts| facts.pointer("/packages/python/entry").and_then(|e| e.as_str()).map(str::to_string))
+        .filter(|entry| !entry.is_empty() && !entry.contains('/'))
+        .map(|entry| tools.join(entry).join("bin").join("python3"))
+        .filter(|path| path.is_file());
+    if let Some(path) = pinned {
+        return Some(path.to_string_lossy().into_owned());
+    }
+    let pattern = tools.join("python-*").join("bin").join("python3");
+    let mut found: Vec<std::path::PathBuf> = glob::glob(&pattern.to_string_lossy())
+        .map(|paths| paths.filter_map(|p| p.ok()).collect())
+        .unwrap_or_default();
+    found.sort_by_key(|path| python_version(path));
+    found.last().map(|p| p.to_string_lossy().into_owned())
+}
+
+/// `…/tools/python-3.14.9+20261021-linux-x64/bin/python3` → [3, 14, 9, 20261021]: what to sort them by.
+fn python_version(path: &std::path::Path) -> Vec<u64> {
+    let folder = path.parent().and_then(|bin| bin.parent()).and_then(|f| f.file_name()).map(|f| f.to_string_lossy());
+    let folder = folder.unwrap_or_default();
+    let rest = folder.strip_prefix("python-").unwrap_or(&folder);
+    let version = rest.split('-').next().unwrap_or("");
+    version.split(['.', '+']).map(|part| part.parse().unwrap_or(0)).collect()
+}
+
+/// `python` as it should run now: an interpreter of Hermes' own `<home>/tools` (written down when an agent got its
+/// space) is replaced by the one Hermes runs on today (`tool_python`), its other arguments kept. Anything else (a
+/// container's Python, a path set by hand) stays as it is.
+pub fn current_python(home: &str, python: &[String]) -> Vec<String> {
+    let Some((program, rest)) = python.split_first() else { return python.to_vec() };
+    if home.is_empty() {
+        return python.to_vec();
+    }
+    let tools = std::path::Path::new(home).join("tools");
+    let path = std::path::Path::new(program);
+    let ours = path.starts_with(&tools)
+        && path.strip_prefix(&tools).ok().and_then(|p| p.components().next()).is_some_and(|first| {
+            first.as_os_str().to_string_lossy().starts_with("python-")
+        });
+    if !ours {
+        return python.to_vec();
+    }
+    match tool_python(home) {
+        Some(current) if current != *program => {
+            let mut out = vec![current];
+            out.extend(rest.iter().cloned());
+            out
+        }
+        _ => python.to_vec(),
+    }
+}
+
 /// `"podman exec -i x python"` or `["podman", "exec", ...]`.
 fn command(value: Option<&Value>) -> Vec<String> {
     match value {
@@ -1549,15 +1609,10 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
     };
     if !hermes.home.is_empty() && hermes.python.is_empty() {
         // Hermes' official install: its own Python under <home>/tools, its code in <home>/hermes-agent.
-        let pattern = py::join(&py::join(&hermes.home, "tools"), "python-*/bin/python3");
-        let mut found: Vec<String> = glob::glob(&pattern)
-            .map(|paths| paths.filter_map(|p| p.ok()).map(|p| p.to_string_lossy().into_owned()).collect())
-            .unwrap_or_default();
-        found.sort();
         let code = py::join(&hermes.home, "hermes-agent");
-        if let Some(last) = found.last() {
+        if let Some(current) = tool_python(&hermes.home) {
             if std::path::Path::new(&code).is_dir() {
-                hermes.python = vec![last.clone(), "-I".into()];
+                hermes.python = vec![current, "-I".into()];
                 if hermes.root.is_empty() {
                     hermes.root = code;
                 }
@@ -1958,6 +2013,42 @@ mod tests {
         assert!(shared.get().agent(Some(" LEA ")).is_some());
         assert!(shared.remove_agent("lea").is_some());
         assert!(shared.get().agents.is_empty());
+    }
+
+    fn tool(home: &std::path::Path, folder: &str) -> String {
+        let bin = home.join("tools").join(folder).join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(bin.join("python3"), "").unwrap();
+        bin.join("python3").to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn hermes_python_is_the_one_it_runs_on_today() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().to_string_lossy().into_owned();
+        assert_eq!(tool_python(&home), None);
+        let before = tool(dir.path(), "python-3.14.7+20260901-linux-x64");
+        let after = tool(dir.path(), "python-3.14.9+20261021-linux-x64");
+        let later = tool(dir.path(), "python-3.14.10+20261201-linux-x64");
+        // no record of Hermes' package manager: the newest by version, not by spelling (3.14.10 after 3.14.9)
+        assert_eq!(tool_python(&home), Some(later.clone()));
+        // its record names the pinned one
+        std::fs::write(dir.path().join("tools/facts.json"),
+                       r#"{"packages": {"python": {"entry": "python-3.14.9+20261021-linux-x64"}}}"#).unwrap();
+        assert_eq!(tool_python(&home), Some(after.clone()));
+        // a space's Python written down before Hermes moved (bipagents hermes-update --to-bipagents, 2026-11-09)
+        let written = vec![before.clone(), "-I".to_string()];
+        assert_eq!(current_python(&home, &written), vec![after.clone(), "-I".to_string()]);
+        assert_eq!(current_python(&home, &[after.clone(), "-I".into()]), vec![after.clone(), "-I".to_string()]);
+        // a container's Python, one set by hand, or none: as they are
+        let podman: Vec<String> = ["podman", "exec", "-i", "hermes-vie", "/opt/hermes/venv/bin/python"].map(String::from).into();
+        assert_eq!(current_python(&home, &podman), podman);
+        assert_eq!(current_python(&home, &["/usr/bin/python3".to_string()]), vec!["/usr/bin/python3".to_string()]);
+        assert!(current_python(&home, &[]).is_empty());
+        assert_eq!(current_python("", &written), written);
+        // the pinned folder gone: the newest there
+        std::fs::remove_dir_all(dir.path().join("tools/python-3.14.9+20261021-linux-x64")).unwrap();
+        assert_eq!(tool_python(&home), Some(later));
     }
 
     #[test]

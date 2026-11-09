@@ -304,6 +304,33 @@ def test_an_agent_not_answering_rolls_back(account, monkeypatch):
     assert code == 1 and git(checkout, "rev-parse", "HEAD") == old
 
 
+def test_a_vault_out_of_reach_after_the_move_rolls_back(account, monkeypatch):
+    """Alex's move of 7/11: every agent answered, but the spaces' vault Python was the one before (3.14.7 kept,
+    Hermes on 3.14.9): every login given to them was refused. The move now checks the vault too."""
+    monkeypatch.setattr(tb, "vault_problems", lambda config: ["kerfy-studio"])
+    code, p, remembered, drain, hh, checkout, old = run_move(account, monkeypatch)
+    assert code == 1 and remembered == [] and git(checkout, "rev-parse", "HEAD") == old
+    assert tb.read_journal(Path(p.backup))["step"] == "rolled-back"
+
+
+def test_the_vault_check_reads_the_bridges_answer(tmp_path, monkeypatch):
+    config = tmp_path / "bridge.toml"
+    assert tb.vault_problems(None) == [] and tb.vault_problems(config) == []   # no bridge here
+    config.write_text("[agents.vie]\n")
+    monkeypatch.setattr("bipinstall.rustbridge.cli", lambda home, repo=None: ["bipbridge"])
+
+    def answer(code, out):
+        return lambda args, **kw: subprocess.CompletedProcess(args, code, out, "")
+    out = "vie: vault OK\nkerfy-studio: vault out of reach (kerfy-studio: the agent's vault could not be reached)\n"
+    assert tb.vault_problems(config, run=answer(1, out)) == ["kerfy-studio"]
+    assert tb.vault_problems(config, run=answer(0, "vie: vault OK\n")) == []
+    # a bridge from before vault-check: argparse's « invalid choice » (2), not a problem of the move
+    assert tb.vault_problems(config, run=answer(2, "")) == []
+    seen = []
+    tb.vault_problems(config, run=lambda args, **kw: seen.append(args) or subprocess.CompletedProcess(args, 0, "", ""))
+    assert seen == [["bipbridge", "vault-check", "--config", str(config)]]
+
+
 def test_ctrl_c_mid_way_rolls_back(account, monkeypatch):
     def interrupted(p, runner):
         commit(Path(p.checkout), "hermes_cli.py", "half\n")
