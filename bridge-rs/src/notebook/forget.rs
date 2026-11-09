@@ -1225,7 +1225,7 @@ mod tests {
         let made = cards(&config, "quotidien", "fr", &[span]);
         assert_eq!(made["t1"][0]["state"], "done");
         assert_eq!(made["t1"][0]["text"], "Oublié.");
-        assert!(!super::super::read_state(&config)["cards"].to_string().contains("36"), "answered: nothing of it kept");
+        assert!(!super::super::read_state(&config)["cards"].to_string().contains("Pointure"), "answered: nothing of it kept");
         assert!(card_request(&config, &id).is_none());
     }
 
