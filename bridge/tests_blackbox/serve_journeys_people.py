@@ -45,7 +45,7 @@ def test_serve_people(bridges, fakes):
         return tool, arguments, lambda: mcp_as(bridge, journey.token, "/v1/agent-tools/mcp", tool, arguments)
     journey.model.calls["carnet"] = lambda run: [
         as_vie("notebook_read", {"page": "Léa"}),
-        as_vie("notebook_write", {"page": "Léa", "section": "tastes", "facts": ["Aime le jazz"]}),
+        as_vie("notebook_write", {"page": "Léa", "section": "who", "facts": ["Prof de musique"]}),
         as_vie("notebook_write", {"page": "Léa", "section": "tastes",
                                   "ask": {"question": "Léa chausse du combien ?", "chips": ["35", "36", "37"]}}),
     ]

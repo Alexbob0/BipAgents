@@ -179,6 +179,26 @@ def _item(bridge, item: Dict[str, Any], agent: Optional[str], out: List[str], fe
     elif kind == "call":
         if not item.get("call"):
             out.append(f"{where}: a call without its record")
+    elif kind == "carnet_line":
+        # « A consulté N pages · Noté dans … » (Carnet v2): its words, the pages a tap shows
+        if not (item.get("text") or "").strip():
+            out.append(f"{where}: a Carnet line with no words")
+        if not isinstance(item.get("pages"), list) or not isinstance(item.get("noted", []), list):
+            out.append(f"{where}: a Carnet line without its pages")
+        for page in item.get("pages") or []:
+            if not (isinstance(page, dict) and page.get("title")):
+                out.append(f"{where}: a Carnet line page without a title: {page!r}")
+    elif kind == "carnet_card":
+        # the Carnet's cards (question of the day, follow-up, « Oublie ça »): open with what to tap, else folded words
+        card, state = item.get("card"), item.get("state")
+        if card not in ("ask", "follow", "forget") or not isinstance(state, str) or not item.get("id"):
+            out.append(f"{where}: a Carnet card the apps can't read (card {card!r}, state {state!r})")
+        elif state == "open" and card == "ask" and not (item.get("question") and item.get("chips")):
+            out.append(f"{where}: an open question with nothing to answer")
+        elif state == "open" and card == "follow" and not (item.get("text") and item.get("chips")):
+            out.append(f"{where}: an open follow-up with nothing to answer")
+        elif state != "open" and card != "forget" and not (item.get("text") or "").strip():
+            out.append(f"{where}: a folded Carnet card with no words")
     else:
         out.append(f"{where}: kind {kind!r} no app draws (left out silently)")
 

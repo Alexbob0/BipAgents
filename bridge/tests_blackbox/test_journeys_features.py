@@ -10,7 +10,7 @@ bbkit/displayable.py):
 - the hop cap: agents writing to each other stop at the 5th message, one « Continuer l'échange ? » card, « Oui » starts
   the count over;
 - Quick Talk follows a message to its reply (`GET /v1/threads/{t}/sends/{client_id}`), bridge only;
-- the Carnet under an answer (J47): « A consulté 1 page · Noté dans Léa Martin », the question of the day answered in
+- the Carnet under an answer (J47): « A consulté 1 page · Noté dans Léa », the question of the day answered in
   one tap (no agent run), « Annuler », then « Oublie ça » from the app (preview, confirmation) — the conversation kept.
 
 Each test is one journey `Jnn`."""
@@ -285,7 +285,7 @@ def test_j44_quick_talk_follows_a_message_to_its_reply(journey):
 
 def test_j47_the_carnet_under_the_answer_a_question_in_one_tap_then_forgotten(journey):
     """Vie reads Léa's page, files a fact and asks one question: under its answer the person sees « A consulté 1 page ·
-    Noté dans Léa Martin » and the question card; a tap writes the answer in the person's name (no agent run),
+    Noté dans Léa » and the question card; a tap writes the answer in the person's name (no agent run),
     « Annuler » takes it back; « Oublie ça » from the app (preview, then confirm) erases the fact everywhere but the
     conversation."""
     bridge = journey.bridge
@@ -298,7 +298,7 @@ def test_j47_the_carnet_under_the_answer_a_question_in_one_tap_then_forgotten(jo
         return tool, arguments, lambda: mcp_as(bridge, journey.token, "/v1/agent-tools/mcp", tool, arguments)
     journey.model.calls["carnet"] = lambda run: [
         as_vie("notebook_read", {"page": "Léa"}),
-        as_vie("notebook_write", {"page": "Léa", "section": "tastes", "facts": ["Aime le jazz"]}),
+        as_vie("notebook_write", {"page": "Léa", "section": "who", "facts": ["Prof de musique"]}),
         as_vie("notebook_write", {"page": "Léa", "section": "tastes",
                                   "ask": {"question": "Léa chausse du combien ?", "chips": ["35", "36", "37"]}}),
     ]
@@ -307,7 +307,7 @@ def test_j47_the_carnet_under_the_answer_a_question_in_one_tap_then_forgotten(jo
     shown.check_page(bridge, page, AGENT)
     items = page["items"]
     lines = [i for i in items if i["kind"] == "carnet_line"]
-    assert len(lines) == 1 and lines[0]["text"] == "A consulté 1 page · Noté dans Léa Martin", lines
+    assert len(lines) == 1 and lines[0]["text"] == "A consulté 1 page · Noté dans Léa", lines
     assert not [i for i in items if i["kind"] == "steps"], [i["kind"] for i in items]   # backstage
     cards = [i for i in items if i["kind"] == "carnet_card" and i.get("card") == "ask"]
     assert len(cards) == 1 and cards[0]["question"] == "Léa chausse du combien ?", [i["kind"] for i in items]
@@ -317,18 +317,18 @@ def test_j47_the_carnet_under_the_answer_a_question_in_one_tap_then_forgotten(jo
     tapped = bridge.post(f"/v1/notebook/ask/{card['id']}", params={"lang": "fr"}, json={"choice": "36"}, headers=AUTH)
     assert tapped.status_code == 200 and tapped.json()["text"] == "Noté : 36", tapped.text
     lea = bridge.state_dir / "notebook" / "carnet" / "Personnes" / "Léa Martin.md"
-    assert "Pointure : 36" in lea.read_text() and "Aime le jazz" in lea.read_text()
+    assert "Pointure : 36" in lea.read_text() and "Prof de musique" in lea.read_text()
     time.sleep(0.5)
     assert len(journey.fakes.hermes.started) == runs
     # « Annuler »: only the answer goes, Vie's fact stays
     undone = bridge.post(f"/v1/notebook/ask/{card['id']}", params={"lang": "fr"}, json={"undo": True}, headers=AUTH)
     assert undone.status_code == 200 and undone.json()["state"] == "open", undone.text
-    assert "Pointure" not in lea.read_text() and "Aime le jazz" in lea.read_text()
+    assert "Pointure" not in lea.read_text() and "Prof de musique" in lea.read_text()
     # « Oublie ça » from the app: preview, then confirm; the conversation keeps what was said
     preview = bridge.post("/v1/notebook/forget/preview", params={"lang": "fr"}, headers=AUTH,
-                          json={"texts": ["Aime le jazz"], "page": "Léa Martin"})
+                          json={"texts": ["Prof de musique"], "page": "Léa Martin"})
     assert preview.status_code == 200 and preview.json()["token"], preview.text
     confirmed = bridge.post("/v1/notebook/forget/confirm", headers=AUTH, json={"token": preview.json()["token"]})
     assert confirmed.status_code in (200, 204), confirmed.text
-    assert "jazz" not in lea.read_text()
+    assert "musique" not in lea.read_text()
     assert "Je cherche un cadeau pour Léa" in str(journey.page()["items"])

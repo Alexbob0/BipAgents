@@ -175,15 +175,16 @@ pub fn active_bits(state: &Dict, today: chrono::NaiveDate) -> u32 {
 /// kept: no time, no screen, no content.
 pub fn app_seen(config: &Config, now: f64) {
     let today = day_of(now);
+    // no Carnet yet: not counted, and the day stays to count at a later request (once the Carnet is there)
+    if !super::root(config).is_dir() {
+        return;
+    }
     {
         let mut seen = SEEN_TODAY.lock().unwrap_or_else(|e| e.into_inner());
         if seen.as_deref() == Some(today.as_str()) {
             return;
         }
         *seen = Some(today.clone());
-    }
-    if !super::root(config).is_dir() {
-        return;
     }
     let date = local(now).date_naive();
     let _guard = super::lock();
