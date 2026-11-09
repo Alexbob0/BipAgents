@@ -32,7 +32,7 @@ if (stage && room) {
   io.observe(stage);
 }
 
-// The easel's lines are the page's text in a handwriting: a line too long for the board (a long word in another
+// The easel's and the screens' lines are the page's text: a line too long for its spot (a long word in another
 // language) is drawn a little narrower instead of running off it.
 function fitEasel() {
   for (const t of document.querySelectorAll(".salon-easel text[data-max]")) {

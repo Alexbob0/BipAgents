@@ -4,7 +4,7 @@
     "name": "Deutsch"
   },
   "meta": {
-    "title": "BipAgents — private und sichere KI-Agenten, in Europa oder bei dir zu Hause",
+    "title": "BipAgents — Deine Sachen gehen nur dich etwas an.",
     "description": "BipAgents gibt dir deine eigenen KI-Agenten, die Bips: privat und sicher, in Europa oder bei dir zu Hause. Sie reservieren, sortieren deine Mails, führen Kalender und Notizbuch und fragen, bevor sie handeln. Ohne Werbung und Tracking. Gebaut auf Hermes Agent."
   },
   "a11y": {
@@ -24,7 +24,7 @@
   "hero": {
     "slogan": "Deine Sachen gehen nur dich etwas an.",
     "sub": "Deine Bips reservieren, sortieren deine Mails und führen dein Notizbuch, in deinem eigenen Bereich in Europa.",
-    "eu": "Server in der EU, oder bei dir zu Hause",
+    "eu": "Server in der EU oder bei dir zu Hause",
     "badge": "Gebaut auf Hermes Agent",
     "proof2": "<b>Erst dein OK</b>, immer",
     "cta": "Tarif wählen",
@@ -33,7 +33,7 @@
     "beta": "Kostenlose Beta"
   },
   "salon": {
-    "alt": "Ein gemütliches Wohnzimmer am Abend: Auf dem Sofa ruft ein Handy bei Pasta Mia an, auf dem Couchtisch zeigt ein Tablet 24 € gesparte Abos, am Fenster ein Laptop mit Flügen und Hotel und eine Staffelei mit dem Wohlbefinden der Woche. Vier Bips kümmern sich darum.",
+    "alt": "Ein gemütliches Wohnzimmer am Abend: Auf dem Sofa ruft ein Handy bei Pasta Mia an, auf dem Couchtisch zeigt ein Tablet 11,99 € weniger Abos im Monat, am Fenster ein Laptop mit Flügen und Hotel und eine Staffelei mit dem Wohlbefinden der Woche. Vier Bips kümmern sich darum.",
     "a11y": "Was die Bips im Wohnzimmer tun",
     "tip": "Zieh an einem Bip, um ihn zu drehen",
     "hint": "Wischen, um dich umzusehen · Bip mit dem Finger drehen",
@@ -51,13 +51,20 @@
     },
     "trips": {
       "name": "Reisen",
-      "line": "Fahr Dienstag statt Freitag: 140 € weniger, gleiches Hotel."
+      "line": "Flieg Dienstag statt Freitag: 140 € weniger, gleiches Hotel."
     },
     "easel": {
       "title": "Wohlbefinden",
       "l1": "Nächte: 7 Std.",
       "l2": "9.400 Schritte",
       "l3": "3 Läufe"
+    },
+    "paint": {
+      "phone1": "Freitag",
+      "phone2": "20:30 · 2 Pers.",
+      "tablet": "Abos: −11,99 €/Monat",
+      "laptop1": "Flüge",
+      "laptop2": "Hotel"
     }
   },
   "store": {
@@ -227,7 +234,6 @@
     "inc3": "Live, die Stimmen der Bips und der Morgen-Podcast",
     "inc4": "Notizbuch, Mails, Kalender, Erinnerungen, Browser und Hintergrundaufgaben",
     "inc5": "Eine verschlüsselte Sicherung nach jeder Aktivität",
-    "inc6": "Dein Bereich auf einem Server in Europa",
     "currencyLabel": "Währung",
     "fineTax": "Preise in Euro inkl. MwSt.",
     "fine": "Ohne Bindung: Kündige, wann du willst, das Abo endet mit dem bezahlten Zeitraum. Jährlich: einmal für 12 Monate bezahlt. 14 Tage Widerrufsrecht. Im Web verkauft Kerfy Studio; in der App der App Store oder Google Play.",
@@ -514,7 +520,7 @@
     "s1t": "Jeder hat seinen Platz",
     "s1": "Eigener Bereich, eigene Agenten, ein gemeinsames KI-Guthaben",
     "s2t": "Eure Agenten reden",
-    "s2": "Nichts geht raus ohne dein „Senden“",
+    "s2": "Dein Agent gibt deinen Leuten Bescheid, mit einem Tipp",
     "s3t": "Der Agent der Familie",
     "s3": "Listen, Einkäufe, Termine; nie das Private",
     "s4t": "Ein Agent, den du mit deinen Freunden teilst – kostenlos!",

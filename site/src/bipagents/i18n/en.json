@@ -4,7 +4,7 @@
     "name": "English"
   },
   "meta": {
-    "title": "BipAgents — private and secure AI agents, in Europe or at home",
+    "title": "BipAgents — Your business stays your business.",
     "description": "BipAgents gives you your own AI agents, the Bips: private and secure, in Europe or at home. They book, sort your email, keep your calendar and your Notebook, and ask before they act. No ads, no tracking. Built on Hermes Agent."
   },
   "a11y": {
@@ -33,7 +33,7 @@
     "beta": "Free beta"
   },
   "salon": {
-    "alt": "A cosy living room in the evening: on the sofa, a phone calls Pasta Mia; on the coffee table, a tablet shows €24 of subscriptions saved; by the window, a laptop with flights and a hotel, and an easel with the week’s wellness notes. Four Bips are taking care of it all.",
+    "alt": "A cosy living room in the evening: on the sofa, a phone calls Pasta Mia; on the coffee table, a tablet shows €11.99 a month of subscriptions cut; by the window, a laptop with flights and a hotel, and an easel with the week’s wellness notes. Four Bips are taking care of it all.",
     "a11y": "What the Bips in the living room are doing",
     "tip": "Drag a Bip to spin it",
     "hint": "Swipe to look around · drag a Bip to spin it",
@@ -58,6 +58,13 @@
       "l1": "Nights: 7 h",
       "l2": "9,400 steps",
       "l3": "3 runs"
+    },
+    "paint": {
+      "phone1": "Friday",
+      "phone2": "8:30 pm · 2 people",
+      "tablet": "Subscriptions: −€11.99/mo",
+      "laptop1": "Flights",
+      "laptop2": "Hotel"
     }
   },
   "store": {
@@ -227,7 +234,6 @@
     "inc3": "Live, the Bips’ voices and the morning podcast",
     "inc4": "Notebook, email, calendar, reminders, browser and background tasks",
     "inc5": "An encrypted backup after each activity",
-    "inc6": "Your space on a server in Europe",
     "currencyLabel": "Currency",
     "fineTax": "Prices in euros including VAT.",
     "fine": "No commitment: cancel whenever you like, the subscription ends at the end of the paid period. Yearly: paid once for 12 months. 14 days to change your mind. On the web the seller is Kerfy Studio; in the app, the App Store or Google Play.",
@@ -514,7 +520,7 @@
     "s1t": "A place for everyone",
     "s1": "Own space, own agents, one shared AI credit",
     "s2t": "Your agents talk",
-    "s2": "Nothing leaves without your “Send”",
+    "s2": "Your agent lets your people know, in one tap",
     "s3t": "The family’s agent",
     "s3": "Lists, shopping, dates; never what’s private",
     "s4t": "An agent shared with your friends, for free!",

@@ -402,7 +402,8 @@ PAGES = (("home", "index.html", ""), ("demo", "demo.html", "demo/"), ("faq", "fa
          ("grokbot", "grok-bot.html", "grok-bot/"), ("status", "status.html", "status/"))
 # The status page reads the guichet's public snapshot (guichet-rs/src/public_status.rs in the guichet's repo).
 STATUS_API = "https://guichet.bipagents.com/v1/public-status"
-FAQ_HOME = (1, 3, 2, 6, 4, 5)   # what's included, AI credit, free week, stopping, privacy, Duo/Famille
+FAQ_HOME = (1, 3, 2, 6, 5, 11)  # what's included, AI credit, free week, stopping, Duo/Famille, the AI model
+#                                  (who reads what is the privacy section's, so not repeated here)
 FAQ_COUNT = 11
 
 

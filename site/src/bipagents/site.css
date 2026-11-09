@@ -179,6 +179,10 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
 .salon-easel .e-title { font-size: 21px; }
 .salon-easel path { fill: none; stroke: #2A1D19; stroke-opacity: .8; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .salon-easel .e-tick { stroke: #3E7D4F; stroke-opacity: .9; }
+.salon-easel .screen text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-weight: 600; font-size: 20px; fill: #1C1D21; letter-spacing: -.2px; }
+.salon-easel .screen .s-big { font-size: 21px; }
+.salon-easel .screen .s-mid { font-size: 18px; }
+.salon-easel .screen .s-small { font-size: 15px; }
 .salon-shade { position: absolute; transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none;
   background: radial-gradient(closest-side, rgba(10, 4, 7, .62), rgba(10, 4, 7, .34) 55%, rgba(10, 4, 7, 0)); }
 .salon-tags { list-style: none; margin: 0; padding: 0; }

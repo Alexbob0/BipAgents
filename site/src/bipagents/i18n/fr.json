@@ -4,7 +4,7 @@
     "name": "Français"
   },
   "meta": {
-    "title": "BipAgents — des agents IA privés et sécurisés, en Europe ou chez toi",
+    "title": "BipAgents — Tes affaires restent tes affaires.",
     "description": "BipAgents, ce sont tes propres agents IA, les Bips : privés et sécurisés, en Europe ou chez toi. Ils réservent, trient tes mails, tiennent ton agenda et ton Carnet, et te demandent avant d’agir. Sans pub ni pistage. Construit sur Hermes Agent."
   },
   "a11y": {
@@ -33,7 +33,7 @@
     "beta": "Bêta gratuite"
   },
   "salon": {
-    "alt": "Un salon douillet, le soir : sur le canapé, un téléphone appelle Pasta Mia ; sur la table basse, une tablette montre 24 € d’abonnements économisés ; près de la fenêtre, un ordinateur avec des vols et un hôtel, et un chevalet avec le bilan bien-être de la semaine. Quatre Bips s’en occupent.",
+    "alt": "Un salon douillet, le soir : sur le canapé, un téléphone appelle Pasta Mia ; sur la table basse, une tablette montre 11,99 € par mois d’abonnement en moins ; près de la fenêtre, un ordinateur avec des vols et un hôtel, et un chevalet avec le bilan bien-être de la semaine. Quatre Bips s’en occupent.",
     "a11y": "Ce que font les Bips du salon",
     "tip": "Fais tourner un Bip en le glissant",
     "hint": "Glisse pour voir tout le salon · fais tourner un Bip du doigt",
@@ -58,6 +58,13 @@
       "l1": "Nuits : 7 h",
       "l2": "9 400 pas",
       "l3": "3 footings"
+    },
+    "paint": {
+      "phone1": "Vendredi",
+      "phone2": "20 h 30 · 2 pers.",
+      "tablet": "Abonnements : −11,99 €/mois",
+      "laptop1": "Vols",
+      "laptop2": "Hôtel"
     }
   },
   "store": {
@@ -227,7 +234,6 @@
     "inc3": "Live, les voix des Bips et le podcast du matin",
     "inc4": "Carnet, mails, agenda, rappels, navigateur et tâches de fond",
     "inc5": "Une sauvegarde chiffrée après chaque activité",
-    "inc6": "Ton espace sur un serveur en Europe",
     "currencyLabel": "Devise",
     "fineTax": "Prix TTC en euros.",
     "fine": "Sans engagement : tu résilies quand tu veux, l’abonnement s’arrête à la fin de la période payée. À l’année : payé en une fois pour 12 mois. 14 jours pour changer d’avis. Sur le web, le vendeur est Kerfy Studio ; dans l’app, l’App Store ou Google Play.",
@@ -514,7 +520,7 @@
     "s1t": "Chacun sa place",
     "s1": "Son espace, ses agents, un crédit d’IA commun",
     "s2t": "Vos agents se parlent",
-    "s2": "Rien ne part sans ton « Envoyer »",
+    "s2": "Ton agent prévient les tiens, en un geste",
     "s3t": "L’agent de la famille",
     "s3": "Listes, courses, dates ; jamais le privé",
     "s4t": "Un agent partagé avec tes amis, gratuitement !",

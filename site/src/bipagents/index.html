@@ -25,6 +25,14 @@
         <text x="18" y="104" data-max="76">{{salon.easel.l3}}</text>
         <path class="e-tick" d="M6 55 l2.8 3.2 l4.8 -7 M6 77 l2.8 3.2 l4.8 -7 M6 99 l2.8 3.2 l4.8 -7" />
       </g>
+      <!-- The phone's bubble, the tablet and the laptop screen are blank in the painting too: their words are the page's. -->
+      <g class="screen">
+        <text class="s-big" x="254" y="88" data-max="148">{{salon.paint.phone1}}</text>
+        <text x="254" y="113" data-max="148">{{salon.paint.phone2}}</text>
+        <text class="s-small" x="707" y="460" transform="rotate(2 707 460)" data-max="162">{{salon.paint.tablet}}</text>
+        <text class="s-mid" x="922" y="299" data-max="54">{{salon.paint.laptop1}}</text>
+        <text class="s-mid" x="922" y="322" data-max="54">{{salon.paint.laptop2}}</text>
+      </g>
     </svg>
     <canvas class="salon-canvas" aria-hidden="true"></canvas>
     <ul class="salon-tags" aria-label="{{salon.a11y}}">
@@ -355,7 +363,6 @@
         <li><span aria-hidden="true">🎙️</span>{{pricing.inc3}}</li>
         <li><span aria-hidden="true">📓</span>{{pricing.inc4}}</li>
         <li><span aria-hidden="true">🛡️</span>{{pricing.inc5}}</li>
-        <li><span aria-hidden="true">🇪🇺</span>{{pricing.inc6}}</li>
       </ul>
     </div>
     <p class="fine-print"><span class="fine-tax">{{pricing.fineTax}}</span> {{pricing.fine}} <a href="https://kerfystudio.com{{legalprefix}}/offer/">{{pricing.terms}}</a> · <a href="https://kerfystudio.com{{legalprefix}}/terms/">{{foot.terms}}</a> · <a href="https://kerfystudio.com{{legalprefix}}/privacy/">{{foot.privacy}}</a></p>
