@@ -139,7 +139,7 @@ fn save(path: &PathBuf, data: &Dict) -> anyhow::Result<()> {
 }
 
 /// The whole file changed under the lock.
-fn update<T>(config: &Config, change: impl FnOnce(&mut Dict) -> T) -> anyhow::Result<T> {
+pub(crate) fn update<T>(config: &Config, change: impl FnOnce(&mut Dict) -> T) -> anyhow::Result<T> {
     let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let file = path(config);
     let mut data = load(&file);
@@ -232,7 +232,7 @@ pub fn call(config: &Config, agent: &AgentConfig, arguments: &Dict) -> Dict {
     if texts.len() < least || texts.len() > most {
         return tk::tool_text(&format!("options: {least} to {most} different short texts for a {kind}."), true);
     }
-    let id = hex::encode(rand_bytes::<5>());
+    let id = new_id();
     let options: Vec<Value> =
         texts.iter().enumerate().map(|(n, t)| json!({"id": format!("o{}", n + 1), "text": t, "by": []})).collect();
     let made = json!({"id": id, "type": kind, "title": title, "options": options, "made": now()});
@@ -243,6 +243,7 @@ pub fn call(config: &Config, agent: &AgentConfig, arguments: &Dict) -> Dict {
         while mine.len() >= CARDS_MAX {
             let oldest = mine
                 .iter()
+                .filter(|(_, c)| s(c, "type") != crate::shared_expenses::KIND) // the project's account stays
                 .min_by(|a, b| a.1["made"].as_f64().unwrap_or(0.0).total_cmp(&b.1["made"].as_f64().unwrap_or(0.0)))
                 .map(|(k, _)| k.clone());
             match oldest {
@@ -263,6 +264,11 @@ pub fn call(config: &Config, agent: &AgentConfig, arguments: &Dict) -> Dict {
         ),
         false,
     )
+}
+
+/// A new card's id (10 hex signs).
+pub(crate) fn new_id() -> String {
+    hex::encode(rand_bytes::<5>())
 }
 
 fn rand_bytes<const N: usize>() -> [u8; N] {
@@ -286,10 +292,18 @@ pub fn open(config: &Config, agent: &str) -> bool {
         .is_some_and(|e| e["archived"].is_null() && e["ends"].as_f64().unwrap_or(0.0) > now())
 }
 
-/// The card as the apps show it (owner and friends): `{id, type, title, options: [{id, text, by: [{v, name}]}], open}`.
+/// The card as the apps show it (owner and friends): `{id, type, title, options: [{id, text, by: [{v, name}]}], open}`;
+/// a shared expenses card adds its account, ready to draw (shared_expenses.rs `view_fields`).
 pub fn view(config: &Config, agent: &str, card: &Value) -> Value {
-    json!({"id": card["id"], "type": card["type"], "title": card["title"],
-           "options": card.get("options").cloned().unwrap_or_else(|| json!([])), "open": open(config, agent)})
+    let mut out = json!({"id": card["id"], "type": card["type"], "title": card["title"],
+           "options": card.get("options").cloned().unwrap_or_else(|| json!([])), "open": open(config, agent)});
+    if s(card, "type") == crate::shared_expenses::KIND {
+        let lang = crate::project_agent::entry(config, agent).map(|e| s(&e, "lang")).unwrap_or_default();
+        if let Value::Object(m) = &mut out {
+            m.extend(crate::shared_expenses::view_fields(card, &lang));
+        }
+    }
+    out
 }
 
 /// The share's item for a card's `MEDIA:` path (read_shares.rs `media_item`).
@@ -331,6 +345,9 @@ pub fn apply(config: &Config, agent: &str, card_id: &str, option: &str, voter: &
             return Err("no such card".to_string());
         };
         let kind = s(card, "type");
+        if kind == crate::shared_expenses::KIND {
+            return Err("no such option".to_string()); // the account is only read: nothing to tap
+        }
         let title = s(card, "title");
         let Some(options) = card.get_mut("options").and_then(Value::as_array_mut) else {
             return Err("no such card".to_string());
@@ -366,16 +383,21 @@ pub fn apply(config: &Config, agent: &str, card_id: &str, option: &str, voter: &
             }
             words(&lang, if ticked { Said::Unticked } else { Said::Ticked }, &voter.name, &text, &title, "")
         };
-        let news = data.get_mut("news").and_then(Value::as_object_mut).expect("an object");
-        let lines = news.entry(agent.to_string()).or_insert_with(|| json!([]));
-        if let Some(lines) = lines.as_array_mut() {
-            lines.push(json!(line));
-            let extra = lines.len().saturating_sub(NEWS_MAX);
-            lines.drain(..extra);
-        }
+        queue_news(data, agent, line.clone());
         Ok(Some(line))
     })
     .map_err(|e| e.to_string())?
+}
+
+/// A line for the agent's next turn (the newest `NEWS_MAX` kept), inside `update`.
+pub(crate) fn queue_news(data: &mut Dict, agent: &str, line: String) {
+    let news = data.get_mut("news").and_then(Value::as_object_mut).expect("an object");
+    let lines = news.entry(agent.to_string()).or_insert_with(|| json!([]));
+    if let Some(lines) = lines.as_array_mut() {
+        lines.push(json!(line));
+        let extra = lines.len().saturating_sub(NEWS_MAX);
+        lines.drain(..extra);
+    }
 }
 
 /// An option's first words for a tally (« Alfama » of « Alfama · terrasse sur le Tage · 92 €/nuit »).
@@ -552,7 +574,7 @@ pub async fn take_actions(
         }
         seen_now.push(action_id);
         let card_type = card(&config, &agent, &card_id).map(|c| s(&c, "type")).unwrap_or_default();
-        if (kind == "vote") != (card_type == "vote") {
+        if (kind == "vote") != (card_type == "vote") || card_type == crate::shared_expenses::KIND {
             tracing::debug!(share = %id, "a friend's action of the wrong kind for its card: dropped");
             continue;
         }
@@ -636,17 +658,21 @@ async fn tap(
         Err(why) if why == "the project has ended" => return Err(HttpError::new(409, why)),
         Err(why) => return Err(HttpError::new(422, why)),
     }
-    // the friends see it at once (not waiting for the next round)
-    if let Some(sh) = share {
+    sync_soon(&state, &config, &agent);
+    let found = card(&config, &agent, &id).ok_or_else(|| HttpError::new(404, "no such card"))?;
+    Ok(web::ok(view(&config, &agent, &found)))
+}
+
+/// The friends see a card's change at once (not waiting for the share's next round).
+pub(crate) fn sync_soon(state: &AppState, config: &Config, agent: &str) {
+    if let Some(sh) = crate::read_shares::thread_share(config, agent) {
         let (state2, sid) = (state.clone(), s(&sh, "id"));
         state.spawn(async move {
             if let Err(e) = crate::read_shares::sync(&state2, &sid, false).await {
-                tracing::debug!(error = ?e.detail, "read share not synced after a tap");
+                tracing::debug!(error = ?e.detail, "read share not synced after a card change");
             }
         });
     }
-    let found = card(&config, &agent, &id).ok_or_else(|| HttpError::new(404, "no such card"))?;
-    Ok(web::ok(view(&config, &agent, &found)))
 }
 
 pub fn router() -> Router<AppState> {

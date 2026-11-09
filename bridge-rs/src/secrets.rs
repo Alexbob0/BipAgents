@@ -627,6 +627,10 @@ async fn answer_route(State(state): State<AppState>, Path(id): Path<String>, bod
             Err(GiveError::Invalid(why)) => return Err(HttpError::new(400, why)),
             Err(GiveError::Failed(exc)) => {
                 tracing::warn!(request = %id, error = %crate::agents_admin::tail(&exc.to_string(), 200), "secret not kept");
+                // The agent's vault out of reach is the server's to fix, not « not possible for this agent ».
+                if let Some(crate::vault::VaultError::Unavailable(agent)) = exc.downcast_ref::<crate::vault::VaultError>() {
+                    return Err(HttpError::json(503, json!({"code": "vault_unavailable", "agents": [agent]})));
+                }
                 return Err(HttpError::new(409, "the secret could not be kept"));
             }
         }

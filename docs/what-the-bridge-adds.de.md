@@ -105,7 +105,7 @@ sie bewusst Hermes überlässt.
   dem Agenten eines Angehörigen.
 - `households.rs` (mit `door_tls.rs`) verbindet zwei Installationen bewusst; `family_agent.rs`, `family_news.rs`,
   `agent_shares.rs`, `meet.rs`: ein gemeinsamer Familienagent, Neuigkeiten erst nach Zustimmung weitergegeben, geteilte
-  Agenten, zwei Agenten, die einen Termin finden. `read_shares.rs`, `project_agent.rs`, `friends_cards.rs` und
+  Agenten, zwei Agenten, die einen Termin finden. `read_shares.rs`, `project_agent.rs`, `friends_cards.rs` (mit `shared_expenses.rs`) und
   `templates.rs` (mit `templates_scrub.rs`) teilen ein Gespräch zum Lesen, den Agenten eines Anlasses oder einen
   Agenten als Vorlage.
 

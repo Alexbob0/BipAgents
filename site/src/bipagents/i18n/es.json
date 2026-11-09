@@ -27,7 +27,7 @@
     "line2": "privados y seguros.",
     "lede": "Delega en tu equipo: ¡ellos se encargan de todo!",
     "proof1": "<b>Actúan</b>: correo, agenda, reservas",
-    "proof2": "<b>Primero tu permiso</b>, siempre",
+    "proof2": "<b>Tu permiso</b> antes de pagar o enviar",
     "proof3": "<b>Tu propio espacio</b>, en Europa",
     "cta": "Elegir mi plan",
     "watch": "Ver la demo",
@@ -104,7 +104,7 @@
       "c1": "No",
       "c2": "No",
       "c3": "No: sus agentes hablan entre ellos, pero no entre miembros de una familia",
-      "c4": "Sí, con tu permiso: nada sale sin «Enviar»"
+      "c4": "Sí, donde lo permitas; un mensaje a la familia espera tu «Enviar»"
     },
     "r6": {
       "label": "Lo que guarda para ti",
@@ -141,7 +141,7 @@
     "tab6": "Mis suscripciones",
     "point1": "Cada paso a la vista",
     "point2": "Mapas y mini apps en sus respuestas",
-    "point3": "Tu visto bueno antes de reservar, pagar o enviar",
+    "point3": "Tu visto bueno antes de pagar o enviar",
     "chatSub": "Conversación",
     "chatLabel": "La demo en curso",
     "replay": "Repetir",
@@ -162,11 +162,11 @@
     "less": "Ver menos",
     "whereTitle": "¿Dónde están tus datos?",
     "where1": "En tu propio espacio, separado del de los demás, en un servidor de la Unión Europea (OVHcloud o Hetzner). O en tu propio ordenador, si lo instalas en casa.",
-    "where2": "Con Todo incluido, una copia de seguridad cifrada unos minutos después de cada actividad, y al menos una vez al día, con una clave que solo tienen tus dispositivos: la guardamos sin poder leerla.",
+    "where2": "Con Todo incluido, tu espacio se guarda cifrado unos minutos después de cada actividad, y al menos una vez al día. La copia que se guarda en nuestro servidor de copias de seguridad es ilegible sin la clave, que se queda en tu espacio y en tus dispositivos.",
     "where3": "Todo es tuyo: puedes llevártelo todo e irte cuando quieras.",
     "whoTitle": "¿Quién puede leerlos?",
     "who1": "Nosotros no: Kerfy Studio no lee tus conversaciones ni entrena ninguna IA con ellas. Sin anuncios ni rastreo.",
-    "who2": "La IA lee lo que tu agente le envía, para responderte: a través de EUrouter, un enrutador de IA europeo, y luego la empresa del modelo elegido. La app te los nombra antes de tu primer mensaje.",
+    "who2": "La IA lee lo que tu agente le envía, para responderte: a través de EUrouter, un enrutador de IA europeo, y luego el proveedor que ejecuta el modelo elegido. Antes de tu primer mensaje, la app te nombra el enrutador y el modelo.",
     "who3": "Nuestro límite, dicho claro: como con cualquier servidor alquilado, el proveedor y nosotros podríamos técnicamente entrar. Nuestro software no lo hace, y solo lo haríamos si la ley nos obliga.",
     "compare": "Comparado con ChatGPT, Gemini y otros, con fuentes →",
     "href": "https://github.com/Alexbob0/BipAgents/blob/main/docs/privacy-compare.md"
@@ -316,7 +316,7 @@
     },
     "4": {
       "q": "¿Quién puede leer mis conversaciones?",
-      "a": "Nosotros no: Kerfy Studio no las lee ni entrena ninguna IA con ellas. Para responderte, la IA lee lo que tu agente le envía: a través de EUrouter, un enrutador de IA europeo, y luego la empresa del modelo elegido, que la app nombra antes de tu primer mensaje. Como alquilamos el servidor, técnicamente podríamos entrar en tu espacio: nuestro software no lo hace, y solo lo haríamos si la ley nos obliga."
+      "a": "Nosotros no: Kerfy Studio no las lee ni entrena ninguna IA con ellas. Para responderte, la IA lee lo que tu agente le envía: a través de EUrouter, un enrutador de IA europeo, y luego el proveedor que ejecuta el modelo elegido; la app nombra el enrutador y el modelo antes de tu primer mensaje. Como alquilamos el servidor, técnicamente podríamos entrar en tu espacio: nuestro software no lo hace, y solo lo haríamos si la ley nos obliga."
     },
     "5": {
       "q": "¿Cómo funcionan Dúo y Familia?",
@@ -495,7 +495,7 @@
     "s1t": "Cada uno su sitio",
     "s1": "Su espacio, sus agentes, un crédito de IA común",
     "s2t": "Vuestros agentes hablan",
-    "s2": "Nada sale sin tu «Enviar»",
+    "s2": "Solo si lo permites, y un mensaje a la familia espera tu «Enviar»",
     "s3t": "El agente de la familia",
     "s3": "Listas, compras, fechas; nunca lo privado",
     "s4t": "¡Un agente compartido con tus amigos, gratis!",

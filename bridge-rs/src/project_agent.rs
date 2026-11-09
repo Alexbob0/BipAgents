@@ -48,7 +48,7 @@ use crate::web::{self, ApiResult, HttpError};
 use crate::{py, Dict};
 
 /// The bridge's MCP tools a project agent may use, in every turn.
-pub const TOOLS: [&str; 8] = [
+pub const TOOLS: [&str; 9] = [
     crate::agent_tools::KNOWLEDGE_READ,
     crate::agent_tools::KNOWLEDGE_SEARCH,
     crate::weather::TOOL_NAME,
@@ -56,6 +56,7 @@ pub const TOOLS: [&str; 8] = [
     crate::maps::TOOL_NAME,
     crate::agent_tools::CREATE_PAGE,
     crate::friends_cards::TOOL_NAME,
+    crate::shared_expenses::TOOL_NAME,
     crate::give_file::TOOL_NAME,
 ];
 /// The default length of a project (and of a restored one).
@@ -213,6 +214,7 @@ pub fn tools(config: &Config) -> Vec<Value> {
         out.push(crate::weather::weather_tool());
     }
     out.push(crate::friends_cards::tool()); // the friends' votes and checklists (friends_cards.rs)
+    out.push(crate::shared_expenses::tool()); // the group's account (shared_expenses.rs)
     out
 }
 
@@ -559,6 +561,10 @@ mod tests {
         let names: Vec<String> = tools(&config).iter().filter_map(|t| t["name"].as_str().map(str::to_string)).collect();
         assert!(names.iter().all(|n| TOOLS.contains(&n.as_str())), "{names:?}");
         assert!(names.contains(&"create_page".to_string()) && names.contains(&"weather".to_string()));
+        // its friends' cards and the group's account (shared_expenses.rs), listed and open in every turn of its own
+        for own in [crate::friends_cards::TOOL_NAME, crate::shared_expenses::TOOL_NAME] {
+            assert!(names.contains(&own.to_string()) && closed_tool(own).is_none(), "{own}");
+        }
     }
 
     #[test]

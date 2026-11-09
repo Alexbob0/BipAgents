@@ -210,6 +210,17 @@ pub const FACTS_RULE: &str = concat!(
     "link when useful; say in one sentence what you couldn't check. Checking is quick: do it here."
 );
 
+/// No mental arithmetic (Alex 9/11: « Pour les queens » split trip expenses in its head and corrected itself in the
+/// reply, « … non attends, sur cet exemple Fabien n'a encore rien payé… »): any calculation goes through python (the
+/// terminal is in view for every kind, execute_code behind the search), then only the result is told. The model's
+/// thinking on such turns: turn_thinking.rs. Rust bridge only (tests/golden/souls.json rewritten with
+/// `GOLDEN_SOULS_OUT`). Short: it is paid on every call. Bench: internal/notes/reply-no-selfcorrect.md.
+pub const CALC_RULE: &str = concat!(
+    "Calculations (sums, splits, conversions, dates, percentages): never in your head; compute them with python ",
+    "(terminal or execute_code), then give only the final result, without your attempts or corrections (never « non ",
+    "attends »)."
+);
+
 /// « Étapes » (Alex 5/11, steps.rs): for work of several steps the agent keeps a short task list with Hermes'
 /// `todo_list`, which the apps show live as one card; never for a simple answer (each call costs a model round).
 /// Rust bridge only (tests/golden/souls.json rewritten with `GOLDEN_SOULS_OUT`). Short: it is paid on every call.
@@ -380,7 +391,7 @@ pub fn language_block(lang: Option<&str>) -> String {
     for_language(
         &format!(
             "{BLOCK_START}\nLanguage: answer in the language your person writes in. Always write it with its accents and usual punctuation (routines and notes too), never an ASCII-only version. When you write first (a routine, \
-             a report, a reminder), write in {name}.{names} The current time is at the top of each message (a bip:now line): trust it, never check it in the terminal.\n{CONTENT_RULE}\n{SENDING_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{PROJECT_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{TIDY_RULE}\n{LONG_WORK_RULE}\n{VISUAL_RULE}\n{FACTS_RULE}\n{SPACE_RULE}\n{ACK_RULE}\n{STEPS_RULE}\n{STYLE_RULE}\n{BLOCK_END}"
+             a report, a reminder), write in {name}.{names} The current time is at the top of each message (a bip:now line): trust it, never check it in the terminal.\n{CONTENT_RULE}\n{SENDING_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{PROJECT_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{TIDY_RULE}\n{LONG_WORK_RULE}\n{VISUAL_RULE}\n{FACTS_RULE}\n{CALC_RULE}\n{SPACE_RULE}\n{ACK_RULE}\n{STEPS_RULE}\n{STYLE_RULE}\n{BLOCK_END}"
         ),
         Some(&code),
     )
@@ -390,7 +401,8 @@ pub fn language_block(lang: Option<&str>) -> String {
 /// were French for every agent (Alex, 2026-10-30: his wife's place, iPhone and app in English, had a reply in
 /// French): « Je m'en occupe en arrière-plan… » or « un veilleur » were the very
 /// words its rules gave it to say. The Carnet's « Toi » and « En bref » take the agent's language's names.
-const ENGLISH_EXAMPLES: [(&str, &str); 21] = [
+const ENGLISH_EXAMPLES: [(&str, &str); 22] = [
+    ("« non attends »", "« wait, no »"),
     ("« Je m'en occupe en arrière-plan, je te préviens quand c'est fini. »", "« I'm on it in the background, I'll tell you when it's done. »"),
     ("« remplis mon Carnet »", "« fill my Carnet »"),
     ("« trie mes mails »", "« sort my e-mails »"),
@@ -1130,6 +1142,21 @@ mod tests {
         let fresh = with_language(&old, Some("fr"));
         assert_eq!(fresh.matches(FACTS_RULE).count(), 1);
         assert!(!fresh.contains("A place you recommend by name") && fresh.starts_with("Tu es Vie.\n\n"));
+    }
+
+    #[test]
+    fn every_agent_computes_with_python_and_tells_only_the_result() {
+        // Alex 2026-11-09: « … non attends, sur cet exemple Fabien n'a encore rien payé… » in a reply
+        for needed in ["never in your head", "python", "only the final result", "« non attends »"] {
+            assert!(CALC_RULE.contains(needed), "missing {needed}");
+        }
+        assert!(CALC_RULE.len() < 260, "short: paid on every call");
+        for category in CATEGORIES {
+            let fr = soul_for("Bip", category, Some("fr")).unwrap();
+            assert_eq!(fr.matches(CALC_RULE).count(), 1, "{category}");
+            let en = soul_for("Bip", category, Some("en")).unwrap();
+            assert!(en.contains("(never « wait, no »)") && !en.contains("non attends"), "{category}");
+        }
     }
 
     #[test]

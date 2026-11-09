@@ -102,7 +102,7 @@ toevoegt, met de modules (`bridge-rs/src/<naam>.rs`) die het doen, en wat hij be
   agent van een familielid.
 - `households.rs` (met `door_tls.rs`) koppelt bewust twee installaties; `family_agent.rs`, `family_news.rs`,
   `agent_shares.rs`, `meet.rs`: een gezamenlijke gezinsagent, nieuws pas na toestemming doorgegeven, gedeelde agents,
-  twee agents die een datum vinden. `read_shares.rs`, `project_agent.rs`, `friends_cards.rs` en `templates.rs` (met
+  twee agents die een datum vinden. `read_shares.rs`, `project_agent.rs`, `friends_cards.rs` (met `shared_expenses.rs`) en `templates.rs` (met
   `templates_scrub.rs`) delen een gesprek alleen-lezen, de agent van een gelegenheid of een agent als sjabloon.
 
 ## Connectors en jouw gegevens

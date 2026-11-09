@@ -27,7 +27,7 @@
     "line2": "privés et sécurisés.",
     "lede": "Délègue à ton équipe, ils s’occupent de tout !",
     "proof1": "<b>Ils agissent</b> : mails, agenda, réservations",
-    "proof2": "<b>Rien ne part</b> sans ton accord",
+    "proof2": "<b>Ton accord</b> avant de payer ou d’envoyer",
     "proof3": "<b>Ton propre espace</b>, en Europe",
     "cta": "Choisir ma formule",
     "watch": "Voir la démo",
@@ -104,7 +104,7 @@
       "c1": "Non",
       "c2": "Non",
       "c3": "Non : ses agents se parlent, mais pas entre membres d’une famille",
-      "c4": "Oui, avec ton accord : rien ne part sans « Envoyer »"
+      "c4": "Oui, là où tu le permets ; un message à la famille attend ton « Envoyer »"
     },
     "r6": {
       "label": "Ce qu’il garde pour toi",
@@ -141,7 +141,7 @@
     "tab6": "Mes abonnements",
     "point1": "Chaque étape visible",
     "point2": "Des cartes et des mini-apps dans ses réponses",
-    "point3": "Ton accord avant de réserver, payer ou envoyer",
+    "point3": "Ton accord avant de payer ou d’envoyer",
     "chatSub": "Discussion",
     "chatLabel": "La démo en cours",
     "replay": "Rejouer",
@@ -162,11 +162,11 @@
     "less": "Voir moins",
     "whereTitle": "Où sont tes données ?",
     "where1": "Dans ton propre espace, séparé de celui des autres, sur un serveur dans l’Union européenne (OVHcloud ou Hetzner). Ou sur ton propre ordinateur, si tu l’installes chez toi.",
-    "where2": "Avec Tout compris, une sauvegarde chiffrée quelques minutes après chaque activité, et au moins une fois par jour, avec une clé que seuls tes appareils ont : nous la gardons sans pouvoir la lire.",
+    "where2": "Avec Tout compris, ton espace est sauvegardé chiffré quelques minutes après chaque activité, et au moins une fois par jour. La copie gardée sur notre serveur de sauvegarde est illisible sans la clé, qui reste dans ton espace et sur tes appareils.",
     "where3": "Tout est à toi : tu peux tout récupérer et partir quand tu veux.",
     "whoTitle": "Qui peut les lire ?",
     "who1": "Pas nous : Kerfy Studio ne lit pas tes conversations et n’entraîne aucune IA avec. Sans pub ni pistage.",
-    "who2": "L’IA lit ce que ton agent lui envoie, pour te répondre : via EUrouter, un routeur d’IA européen, puis l’entreprise du modèle choisi. L’app te les nomme avant ton premier message.",
+    "who2": "L’IA lit ce que ton agent lui envoie, pour te répondre : via EUrouter, un routeur d’IA européen, puis le fournisseur qui fait tourner le modèle choisi. Avant ton premier message, l’app te nomme le routeur et le modèle.",
     "who3": "Notre limite, dite franchement : comme pour tout serveur loué, l’hébergeur et nous pourrions techniquement y entrer. Notre logiciel ne le fait pas, et nous ne le ferions que si la loi l’exige.",
     "compare": "Comparer avec ChatGPT, Gemini et les autres, sources à l’appui →",
     "href": "https://github.com/Alexbob0/BipAgents/blob/main/docs/privacy-compare.fr.md"
@@ -316,7 +316,7 @@
     },
     "4": {
       "q": "Qui peut lire mes conversations ?",
-      "a": "Pas nous : Kerfy Studio ne les lit pas et n’entraîne aucune IA avec. Pour te répondre, l’IA lit ce que ton agent lui envoie : via EUrouter, un routeur d’IA européen, puis l’entreprise du modèle choisi, que l’app nomme avant ton premier message. Comme nous louons le serveur, nous pourrions techniquement entrer dans ton espace : notre logiciel ne le fait pas, et nous ne le ferions que si la loi nous y oblige."
+      "a": "Pas nous : Kerfy Studio ne les lit pas et n’entraîne aucune IA avec. Pour te répondre, l’IA lit ce que ton agent lui envoie : via EUrouter, un routeur d’IA européen, puis le fournisseur qui fait tourner le modèle choisi ; l’app nomme le routeur et le modèle avant ton premier message. Comme nous louons le serveur, nous pourrions techniquement entrer dans ton espace : notre logiciel ne le fait pas, et nous ne le ferions que si la loi nous y oblige."
     },
     "5": {
       "q": "Comment marchent Duo et Famille ?",
@@ -495,7 +495,7 @@
     "s1t": "Chacun sa place",
     "s1": "Son espace, ses agents, un crédit d’IA commun",
     "s2t": "Vos agents se parlent",
-    "s2": "Rien ne part sans ton « Envoyer »",
+    "s2": "Seulement si tu le permets, et un message à la famille attend ton « Envoyer »",
     "s3t": "L’agent de la famille",
     "s3": "Listes, courses, dates ; jamais le privé",
     "s4t": "Un agent partagé avec tes amis, gratuitement !",

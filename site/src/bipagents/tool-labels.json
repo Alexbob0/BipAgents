@@ -1067,6 +1067,20 @@
    "use": null
   },
   {
+   "id": "sharedExpense",
+   "names": [
+    "expense"
+   ],
+   "prefixes": [],
+   "keys": [
+    "what"
+   ],
+   "counts": false,
+   "target": [],
+   "preview": false,
+   "use": null
+  },
+  {
    "id": "roomHistory",
    "names": [
     "room_history"
@@ -1789,6 +1803,11 @@
      "many": null,
      "now": "Je prépare un vote ou une liste…"
     },
+    "sharedExpense": {
+     "one": "Note une dépense partagée",
+     "many": "Note {n} dépenses partagées",
+     "now": "Je note la dépense…"
+    },
     "roomHistory": {
      "one": "Relit vos discussions de groupe",
      "many": null,
@@ -2410,6 +2429,11 @@
      "one": "Makes a vote or a list",
      "many": null,
      "now": "Making a vote or a list…"
+    },
+    "sharedExpense": {
+     "one": "Notes a shared expense",
+     "many": "Notes {n} shared expenses",
+     "now": "Noting the expense…"
     },
     "roomHistory": {
      "one": "Reads your group discussions",
@@ -3033,6 +3057,11 @@
      "many": null,
      "now": "Ich erstelle eine Abstimmung oder eine Liste…"
     },
+    "sharedExpense": {
+     "one": "Notiert eine geteilte Ausgabe",
+     "many": "Notiert {n} geteilte Ausgaben",
+     "now": "Ich notiere die Ausgabe…"
+    },
     "roomHistory": {
      "one": "Liest eure Gruppendiskussionen",
      "many": null,
@@ -3654,6 +3683,11 @@
      "one": "Prepara una votación o una lista",
      "many": null,
      "now": "Preparando una votación o una lista…"
+    },
+    "sharedExpense": {
+     "one": "Anota un gasto compartido",
+     "many": "Anota {n} gastos compartidos",
+     "now": "Anotando el gasto…"
     },
     "roomHistory": {
      "one": "Lee vuestras conversaciones de grupo",

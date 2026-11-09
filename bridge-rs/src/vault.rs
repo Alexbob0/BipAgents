@@ -79,6 +79,11 @@ pub enum VaultError {
     /// `ConfirmOthers(agents)`: other people talk to these agents and the person did not confirm (`confirmed_others`).
     #[error("other people talk to these agents: the person must confirm")]
     ConfirmOthers(Vec<String>),
+    /// `Unavailable(agent)`: the agent's Hermes vault could not be reached (its Python missing, or failing before it
+    /// read the item): nothing the person typed is wrong, the server has to be fixed (a 503, never « vérifie ce que
+    /// tu as écrit »).
+    #[error("{0}: the agent's vault could not be reached")]
+    Unavailable(String),
 }
 
 /// A card found for an agent (`Vault::card_for`): its numbers stay in the bridge.
@@ -319,8 +324,16 @@ pub fn hub_holders_at_risk(config: &Config, records: &[Dict]) -> Vec<String> {
 }
 
 /// The agent as the vault reaches its Hermes: an agent holding credentials in the hub gets the hub's Python and its
-/// profile's HERMES_HOME (as that Python sees it), the others are as they are.
+/// profile's HERMES_HOME (as that Python sees it), the others are as they are. Either way the Python is the one
+/// Hermes runs on today (config.rs `current_python`): a space's, written down when it was made, may name the one
+/// before an update of Hermes (`bipagents hermes-update --to-bipagents`, 2026-11-09: every item refused).
 pub fn vault_target(config: &Config, agent: &AgentConfig) -> AgentConfig {
+    let mut target = vault_target_as_written(config, agent);
+    target.python = crate::config::current_python(&config.hermes.home, &target.python);
+    target
+}
+
+fn vault_target_as_written(config: &Config, agent: &AgentConfig) -> AgentConfig {
     if agent.isolated || !in_hub(config, agent) || config.hermes.python.is_empty() {
         return agent.clone();
     }
@@ -378,13 +391,21 @@ pub async fn run_in_hermes(agent: AgentConfig, request: Dict) -> anyhow::Result<
     let Some((program, rest)) = agent.python.split_first() else {
         return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "no python for this agent").into());
     };
-    let mut child = tokio::process::Command::new(program)
+    let spawned = tokio::process::Command::new(program)
         .args(rest)
         .args(["-c", HERMES_SCRIPT])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
-        .spawn()?;
+        .spawn();
+    let mut child = match spawned {
+        Ok(child) => child,
+        Err(exc) => {
+            tracing::warn!(agent = %agent.name, python = %program, error = %exc,
+                "vault: the agent's Hermes Python does not start");
+            return Err(VaultError::Unavailable(agent.name.clone()).into());
+        }
+    };
     let mut payload = Dict::new();
     payload.insert("home".into(), json!(agent.hermes_home));
     payload.insert("root".into(), json!(agent.hermes_root));
@@ -407,6 +428,13 @@ pub async fn run_in_hermes(agent: AgentConfig, request: Dict) -> anyhow::Result<
         let err = String::from_utf8_lossy(&output.stderr).into_owned();
         let lines = crate::hermes::splitlines(pyx::strip(&err));
         let last = lines.last().cloned().unwrap_or_else(|| "?".into());
+        if !refused_by_vault(&last) {
+            // Not the vault judging the item: its Python failing before (an import, the request never read…).
+            tracing::warn!(agent = %agent.name, python = %program, error = %pyx::tail(&last, 200),
+                "vault: the agent's Hermes vault could not be reached");
+            return Err(VaultError::Unavailable(agent.name.clone()).into());
+        }
+        tracing::info!(agent = %agent.name, error = %pyx::tail(&last, 200), "vault: Hermes refused the item");
         return Err(VaultError::Invalid(format!(
             "{}: Hermes refused the item ({})",
             agent.name,
@@ -421,6 +449,13 @@ pub async fn run_in_hermes(agent: AgentConfig, request: Dict) -> anyhow::Result<
         Value::Object(map) => Ok(map),
         other => Err(anyhow::anyhow!("TypeError: {} is not a dict", crate::py::py_repr(&other))),
     }
+}
+
+/// Whether stderr's last line is Hermes' vault refusing the item itself (`agent.vault_store.VaultError: …`, what the
+/// person may change), not its Python failing before it got there.
+pub fn refused_by_vault(last_line: &str) -> bool {
+    let line = last_line.trim_start();
+    line.starts_with("agent.vault_store.VaultError") || line.starts_with("VaultError")
 }
 
 /// `[str(a) for a in value]` (a str gives its characters, a dict its keys; a number cannot be iterated).
@@ -679,6 +714,7 @@ impl Vault {
         let mut reasons = IndexMap::new();
         for agent_id in agent_ids {
             let Some(agent) = config.agent(Some(agent_id)) else {
+                tracing::info!(agent = %agent_id, "vault item refused: unknown agent");
                 return Err(VaultError::Invalid(format!("unknown agent {agent_id}")));
             };
             if let Some(why) = holder(config, agent) {
@@ -687,6 +723,7 @@ impl Vault {
             agents.push(agent.clone());
         }
         if !reasons.is_empty() {
+            tracing::info!(agents = ?reasons, "vault item refused: these agents cannot hold credentials");
             return Err(VaultError::CannotHold(reasons));
         }
         Ok(agents)
@@ -1430,6 +1467,9 @@ fn answer(exc: anyhow::Error) -> HttpError {
             VaultError::ConfirmOthers(agents) => HttpError::json(409, json!({"code": crate::secrets::CONFIRM_OTHERS,
                 "agents": agents, "message": crate::secrets::CONFIRM_OTHERS_TEXT})),
             VaultError::Invalid(text) => HttpError::new(400, text.clone()),
+            VaultError::Unavailable(agent) => {
+                HttpError::json(503, json!({"code": "vault_unavailable", "agents": [agent]}))
+            }
         };
     }
     if exc.downcast_ref::<NoSuchItem>().is_some() {
@@ -1601,6 +1641,50 @@ mod tests {
         no_python.hermes.python.clear();
         assert!(!may(&no_python, "coach"));
         assert_eq!(holder(&no_python, &no_python.agents["coach"]).as_deref(), Some("needs_own_space"));
+    }
+
+    #[test]
+    fn a_space_reaches_its_vault_with_the_python_hermes_runs_on_today() {
+        // Alex's install, 2026-11-09: spaces made on Hermes 517b5e10f (Python 3.14.7), then the move onto bf0203a794
+        // (3.14.9, the old folder kept): every item given to a space was refused.
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = place(dir.path(), &["admin-kerfy"]);
+        let home = dir.path().join("hermes");
+        let python = |folder: &str| {
+            let bin = home.join("tools").join(folder).join("bin");
+            std::fs::create_dir_all(&bin).unwrap();
+            std::fs::write(bin.join("python3"), "").unwrap();
+            bin.join("python3").to_string_lossy().into_owned()
+        };
+        let before = python("python-3.14.7+20260901-linux-x64");
+        let after = python("python-3.14.9+20261021-linux-x64");
+        std::fs::write(home.join("tools/facts.json"),
+                       r#"{"packages": {"python": {"entry": "python-3.14.9+20261021-linux-x64"}}}"#).unwrap();
+        config.hermes.python = vec![before.clone(), "-I".into()]; // the bridge not restarted since the move
+        let space = AgentConfig {
+            name: "kerfy-studio".into(),
+            hermes_url: "http://127.0.0.1:8660/p/kerfy-studio".into(),
+            isolated: true,
+            sandboxed: true,
+            space: Some("/spaces/kerfy-studio".into()),
+            python: vec![before.clone(), "-I".into()],
+            hermes_home: Some("/spaces/kerfy-studio/profiles/kerfy-studio".into()),
+            ..Default::default()
+        };
+        config.agents.insert(space.name.clone(), space.clone());
+        assert_eq!(holder(&config, &space), None);
+        assert_eq!(vault_target(&config, &space).python, vec![after.clone(), "-I".to_string()]);
+        assert_eq!(vault_target(&config, &config.agents["admin-kerfy"]).python, vec![after, "-I".to_string()]);
+    }
+
+    #[test]
+    fn only_the_vault_s_own_refusal_is_the_person_s_to_change() {
+        assert!(refused_by_vault("agent.vault_store.VaultError: login items require identifier and password"));
+        assert!(refused_by_vault("VaultError: origin not allowed"));
+        // its Python failing before it read the item: the server's to fix (a 503, vault_unavailable)
+        assert!(!refused_by_vault("json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)"));
+        assert!(!refused_by_vault("ModuleNotFoundError: No module named 'agent'"));
+        assert!(!refused_by_vault("?"));
     }
 
     #[test]

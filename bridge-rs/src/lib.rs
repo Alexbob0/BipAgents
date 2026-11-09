@@ -98,6 +98,7 @@ pub mod door_tls;
 pub mod family_agent;
 /// « L'agent de projet »: an agent for one occasion whose thread friends follow (no Python counterpart).
 pub mod friends_cards; // friends tap a shared project's votes and checklists
+pub mod shared_expenses; // a shared project's account: who paid what, balances, the fewest transfers
 pub mod project_agent;
 pub mod family_news;
 pub mod body_limit;
@@ -129,6 +130,7 @@ pub mod steps;
 pub mod style_skills;
 /// What each kind of agent keeps in view of Hermes' tools (token diet, phase 2).
 pub mod tool_diet;
+pub mod turn_thinking;
 pub mod tool_kinds;
 /// The providers EUrouter tries first, for its prompt cache.
 pub mod model_route;
@@ -167,6 +169,7 @@ pub mod meet;
 pub mod maps;
 pub mod memory_edit;
 pub mod shared_memory;
+pub mod shared_pages;
 pub mod memory_language;
 pub mod message_search;
 pub mod notebook;

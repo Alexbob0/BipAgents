@@ -95,7 +95,7 @@ that do it, and what it deliberately leaves to Hermes.
   relative's agent included.
 - `households.rs` (with `door_tls.rs`) links two installs on purpose; `family_agent.rs`, `family_news.rs`,
   `agent_shares.rs`, `meet.rs`: an agent common to the family, news passed on only after approval, shared agents,
-  two agents finding a date. `read_shares.rs`, `project_agent.rs`, `friends_cards.rs` and `templates.rs` (with
+  two agents finding a date. `read_shares.rs`, `project_agent.rs`, `friends_cards.rs` (with `shared_expenses.rs`) and `templates.rs` (with
   `templates_scrub.rs`) share a conversation read-only, an occasion's agent or an agent as a template.
 
 ## Connectors and your data

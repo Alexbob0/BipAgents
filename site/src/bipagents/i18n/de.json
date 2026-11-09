@@ -27,7 +27,7 @@
     "line2": "privat und sicher.",
     "lede": "Gib ab an dein Team – es kümmert sich um alles!",
     "proof1": "<b>Sie handeln</b>: Mails, Kalender, Buchungen",
-    "proof2": "<b>Erst dein OK</b>, immer",
+    "proof2": "<b>Dein OK</b>, bevor er zahlt oder sendet",
     "proof3": "<b>Dein eigener Bereich</b>, in Europa",
     "cta": "Tarif wählen",
     "watch": "Demo ansehen",
@@ -104,7 +104,7 @@
       "c1": "Nein",
       "c2": "Nein",
       "c3": "Nein: seine Agenten sprechen miteinander, aber nicht zwischen Familienmitgliedern",
-      "c4": "Ja, mit deinem OK: Nichts geht ohne „Senden“ raus"
+      "c4": "Ja, wo du es erlaubst; eine Nachricht an die Familie wartet auf dein „Senden“"
     },
     "r6": {
       "label": "Was er für dich aufbewahrt",
@@ -141,7 +141,7 @@
     "tab6": "Meine Abos",
     "point1": "Jeder Schritt sichtbar",
     "point2": "Karten und Mini-Apps direkt in der Antwort",
-    "point3": "Dein Okay, bevor er bucht, zahlt oder sendet",
+    "point3": "Dein Okay, bevor er zahlt oder sendet",
     "chatSub": "Unterhaltung",
     "chatLabel": "Die laufende Demo",
     "replay": "Nochmal",
@@ -162,11 +162,11 @@
     "less": "Weniger sehen",
     "whereTitle": "Wo sind deine Daten?",
     "where1": "In deinem eigenen Bereich, getrennt von dem der anderen, auf einem Server in der Europäischen Union (OVHcloud oder Hetzner). Oder auf deinem eigenen Computer, wenn du es bei dir installierst.",
-    "where2": "Mit Alles inklusive eine verschlüsselte Sicherung wenige Minuten nach jeder Aktivität und mindestens einmal am Tag, mit einem Schlüssel, den nur deine Geräte haben: Wir bewahren sie auf, ohne sie lesen zu können.",
+    "where2": "Mit Alles inklusive wird dein Bereich wenige Minuten nach jeder Aktivität und mindestens einmal am Tag verschlüsselt gesichert. Die Kopie auf unserem Sicherungsserver ist ohne den Schlüssel unlesbar, und der bleibt in deinem Bereich und auf deinen Geräten.",
     "where3": "Alles gehört dir: Du kannst jederzeit alles mitnehmen und gehen.",
     "whoTitle": "Wer kann sie lesen?",
     "who1": "Wir nicht: Kerfy Studio liest deine Unterhaltungen nicht und trainiert keine KI damit. Ohne Werbung, ohne Tracking.",
-    "who2": "Die KI liest, was dein Agent ihr schickt, um dir zu antworten: über EUrouter, einen europäischen KI-Router, dann beim Anbieter des gewählten Modells. Die App nennt sie dir vor deiner ersten Nachricht.",
+    "who2": "Die KI liest, was dein Agent ihr schickt, um dir zu antworten: über EUrouter, einen europäischen KI-Router, dann beim Anbieter, der das gewählte Modell betreibt. Vor deiner ersten Nachricht nennt dir die App den Router und das Modell.",
     "who3": "Unsere Grenze, offen gesagt: Wie bei jedem gemieteten Server könnten der Hoster und wir technisch hinein. Unsere Software tut es nicht, und wir täten es nur, wenn das Gesetz es verlangt.",
     "compare": "Im Vergleich mit ChatGPT, Gemini und anderen, mit Quellen →",
     "href": "https://github.com/Alexbob0/BipAgents/blob/main/docs/privacy-compare.md"
@@ -316,7 +316,7 @@
     },
     "4": {
       "q": "Wer kann meine Unterhaltungen lesen?",
-      "a": "Wir nicht: Kerfy Studio liest sie nicht und trainiert keine KI damit. Um zu antworten, liest die KI, was dein Agent ihr schickt: über EUrouter, einen europäischen KI-Router, dann beim Anbieter des gewählten Modells, den die App vor deiner ersten Nachricht nennt. Da wir den Server mieten, könnten wir technisch in deinen Bereich: Unsere Software tut es nicht, und wir täten es nur, wenn das Gesetz es verlangt."
+      "a": "Wir nicht: Kerfy Studio liest sie nicht und trainiert keine KI damit. Um zu antworten, liest die KI, was dein Agent ihr schickt: über EUrouter, einen europäischen KI-Router, dann beim Anbieter, der das gewählte Modell betreibt; die App nennt den Router und das Modell vor deiner ersten Nachricht. Da wir den Server mieten, könnten wir technisch in deinen Bereich: Unsere Software tut es nicht, und wir täten es nur, wenn das Gesetz es verlangt."
     },
     "5": {
       "q": "Wie funktionieren Duo und Familie?",
@@ -495,7 +495,7 @@
     "s1t": "Jeder hat seinen Platz",
     "s1": "Eigener Bereich, eigene Agenten, ein gemeinsames KI-Guthaben",
     "s2t": "Eure Agenten reden",
-    "s2": "Nichts geht raus ohne dein „Senden“",
+    "s2": "Nur wenn du es erlaubst, und eine Nachricht an die Familie wartet auf dein „Senden“",
     "s3t": "Der Agent der Familie",
     "s3": "Listen, Einkäufe, Termine; nie das Private",
     "s4t": "Ein Agent, den du mit deinen Freunden teilst – kostenlos!",

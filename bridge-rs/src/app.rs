@@ -861,6 +861,10 @@ async fn get_outbox_audio(
 async fn get_media(State(state): State<AppState>, q: QueryMap, headers: HeaderMap) -> ApiResult<Response> {
     let path = web::query_str(&q, "path", true, Some(1024))?.unwrap_or_default();
     let agent = web::query_str(&q, "agent", false, Some(64))?.filter(|a| !a.is_empty());
+    // a page a relative's shared agent made at this person's request: from its owner's bridge (agent_shares.rs)
+    if let Some(answer) = crate::agent_shares::relay_page(&state, &path).await {
+        return answer;
+    }
     let config = state.config();
     let host = match crate::agent_tools::served_media(&config, &path) {
         Some(host) => host,
@@ -931,8 +935,8 @@ async fn list_pages(State(state): State<AppState>, q: QueryMap) -> ApiResult<Res
             for k in ["page", "path", "title", "created", "updated", "version", "bytes"] {
                 out.insert(k.into(), p.get(k).cloned().unwrap_or(Value::Null));
             }
-            // its place in the Carnet, when it has one
-            for k in ["notebook", "private"] {
+            // its place in the Carnet, when it has one; made in a shared conversation, at whose request (shared_pages.rs)
+            for k in ["notebook", "private", "group", "asked_by"] {
                 if let Some(v) = p.get(k) {
                     out.insert(k.into(), v.clone());
                 }
@@ -1802,6 +1806,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::read_shares::router())
         .merge(crate::project_agent::router())
         .merge(crate::friends_cards::router())
+        .merge(crate::shared_expenses::router())
         .merge(crate::desktop::desktop_admin_router())
         .merge(crate::phone_exit::admin_router());
     // Under /v1 without the bridge key: a computer sending its agents (the app's one-time code instead), and a

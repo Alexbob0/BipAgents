@@ -789,6 +789,10 @@ def run(args, config: Optional[Path], agents: List[Dict[str, str]], applied: Lis
         if lost:
             raise MoveFailed("; ".join(lost))
         say(ui.done("Your conversations are all there."))
+        out_of_reach = vault_problems(config)
+        if out_of_reach:
+            raise MoveFailed("the vault of " + ", ".join(out_of_reach) + " is out of reach after the move")
+        say(ui.done("Your agents' vault answers."))
     except (MoveFailed, RuntimeError, OSError, KeyboardInterrupt) as exc:
         reason = "stopped by hand (Ctrl-C)" if isinstance(exc, KeyboardInterrupt) else str(exc)
         say(ui.sad(f"The move didn't go through: {reason}"))
@@ -810,6 +814,25 @@ def run(args, config: Optional[Path], agents: List[Dict[str, str]], applied: Lis
     write_journal(folder, journal)
     report_done(p, folder)
     return 0
+
+
+def vault_problems(config: Optional[Path], run=subprocess.run) -> List[str]:
+    """The agents that may keep credentials but whose vault is out of reach (`bipbridge vault-check`: each one's
+    Hermes Python run the way the vault writes). 2026-11-09: a move pinned a newer Python and every item given to a
+    space was refused, though every agent answered. Empty when there is no bridge here, or its version has no
+    vault-check yet (2: unknown command)."""
+    if config is None or not Path(config).is_file():
+        return []
+    from . import rustbridge
+    try:
+        done = run(rustbridge.cli(Path.home()) + ["vault-check", "--config", str(config)], capture_output=True,
+                   text=True, timeout=180)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if done.returncode != 1:
+        return []
+    marker = ": vault out of reach"
+    return [line.split(marker)[0].strip() for line in (done.stdout or "").splitlines() if marker in line]
 
 
 def failing_at(step: str) -> None:

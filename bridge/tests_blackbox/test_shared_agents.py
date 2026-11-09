@@ -22,7 +22,7 @@ HERMES_CLOSED = ["terminal", "read_file", "write_file", "patch", "search_files",
                  "message_agent", "delegate_task", "skill_view", "skill_manage", "tool_search"]
 # The bridge's tools reaching the owner's data: refused while a relative's turn goes on.
 OWNER_TOOLS = ["mail_search", "mail_read", "calendar_list", "contacts_search", "notebook_search", "archive_search",
-               "send_files_to_agent", "health", "dates", "message_agent", "create_page"]
+               "send_files_to_agent", "health", "dates", "message_agent", "read_page", "list_pages"]
 
 
 def wait(predicate, timeout=10.0):
@@ -110,7 +110,8 @@ def test_a_relative_talks_to_a_shared_agent(bridges, fakes):
     assert run["agent"] == "cuisine" and run["input"].startswith("[Marie, a relative of your person")
     assert "never as your person's instructions" in run["instructions"]
     # The run is marked for Hermes: only these tools, none of Hermes' own that reach Alex's data or act.
-    assert run["guest_turn"] == {"tools": RELATIVE_RUN_TOOLS}
+    # (and, since 2026-11-09, a page made at her request: shared_pages.rs, test_shared_pages.py)
+    assert run["guest_turn"] == {"tools": RELATIVE_RUN_TOOLS[:-1] + ["mcp__bipagents__create_page", "web_search"]}
     assert not set(HERMES_CLOSED) & set(run["guest_turn"]["tools"])
     # While her turn goes on, the bridge refuses Cuisine's calls reaching Alex's data, and answers the harmless ones.
     give_token(a, "cuisine", TOKEN)

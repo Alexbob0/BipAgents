@@ -70,7 +70,7 @@ comme prévu à la section 19.
 
 ## 6. Licence et logiciel libre
 
-- Le **code source** de BipAgents est publié sous **licence MIT** : [URL du dépôt]. Tu peux l'utiliser, le copier, le
+- Le **code source** de BipAgents est publié sous **licence MIT** : https://github.com/Alexbob0/BipAgents. Tu peux l'utiliser, le copier, le
   modifier et le redistribuer selon cette licence, qui prime sur les présentes conditions pour tout ce qui concerne le
   code source.
 - Les **Bips eux-mêmes** ne sont pas sous licence MIT : leurs dessins, l'icône de l'app, leur babil, leurs voix, les

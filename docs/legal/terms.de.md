@@ -74,7 +74,7 @@ diese Änderung wird wie in Abschnitt 19 vorgesehen angekündigt.
 
 ## 6. Lizenz und freie Software
 
-- Der **Quellcode** von BipAgents ist unter der **MIT-Lizenz** veröffentlicht: [URL des Repositorys]. Du darfst ihn
+- Der **Quellcode** von BipAgents ist unter der **MIT-Lizenz** veröffentlicht: https://github.com/Alexbob0/BipAgents. Du darfst ihn
   nach dieser Lizenz nutzen, kopieren, ändern und weitergeben; sie hat für alles, was den Quellcode betrifft, Vorrang
   vor diesen Bedingungen.
 - Die **Bips selbst** stehen nicht unter der MIT-Lizenz: ihre Zeichnungen, das Icon der App, ihr Geplapper, ihre
