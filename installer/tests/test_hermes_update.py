@@ -1,7 +1,19 @@
 import subprocess
 from types import SimpleNamespace
 
+import pytest
+
 from bipinstall import hermes, update
+
+
+@pytest.fixture(autouse=True)
+def fictional_home(tmp_path, monkeypatch):
+    """Every test here in a fictional account: never the Mac's ~/.config/bipagents or ~/.hermes."""
+    home = tmp_path / "account"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("HERMES_HOME", raising=False)   # ~/.hermes of that account, not one set outside
+    return home
 
 
 def repo_with_patches(tmp_path):
@@ -106,8 +118,7 @@ def test_without_yes_it_asks_first(tmp_path, monkeypatch):
 
 
 def check_run(tmp_path, monkeypatch, capsys, pinned):
-    """`hermes-update --check` with no existing-hermes.json (a fictional home), on a Hermes that is or isn't the pin."""
-    monkeypatch.setenv("HOME", str(tmp_path / "account"))   # no ~/.config/bipagents/existing-hermes.json there
+    """`hermes-update --check` with no existing-hermes.json (the fictional home), on a Hermes that is or isn't the pin."""
     monkeypatch.setattr(update, "check_agents", lambda agents, expect_clarify: {})
     checkout = tmp_path / "hermes-agent"
     if pinned:   # the pin is what the checkout is on (repo_with_patches makes it inside update_run)
