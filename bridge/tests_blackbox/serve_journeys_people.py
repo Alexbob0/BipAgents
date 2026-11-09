@@ -35,6 +35,20 @@ def test_serve_people(bridges, fakes):
         "prompt": "Fais le point de la journée.", "silent": True})
     journey.model.calls["task"] = lambda run: mcp_as(bridge, journey.token, "/v1/agent-tools/mcp", "propose_task", {
         "title": "Dossier location", "prompt": "Prépare le dossier de location #lent", "budget": "small"})
+    # J47, the Carnet: Léa's page, the question of the day at any hour (quiet hours of one minute), Vie's calls
+    assert bridge.patch("/v1/notebook/settings", headers=AUTH,
+                        json={"quiet": {"from": "03:00", "to": "03:01"}}).status_code == 200
+    mcp_as(bridge, journey.token, "/v1/agent-tools/mcp", "notebook_write",
+           {"page": "Léa Martin", "kind": "person", "aliases": ["Léa"], "facts": ["Sœur, vit à Lyon"]})
+
+    def as_vie(tool, arguments):
+        return tool, arguments, lambda: mcp_as(bridge, journey.token, "/v1/agent-tools/mcp", tool, arguments)
+    journey.model.calls["carnet"] = lambda run: [
+        as_vie("notebook_read", {"page": "Léa"}),
+        as_vie("notebook_write", {"page": "Léa", "section": "tastes", "facts": ["Aime le jazz"]}),
+        as_vie("notebook_write", {"page": "Léa", "section": "tastes",
+                                  "ask": {"question": "Léa chausse du combien ?", "chips": ["35", "36", "37"]}}),
+    ]
     guichet = Guichet().start()
     try:
         shared = project_share(journey, guichet)
