@@ -190,6 +190,15 @@ des parcours ; Android le vérifie) ; Quick Talk dans les apps (sa voix : manuel
 - À regarder (Android) : vider la conversation principale depuis le pont (`DELETE`), puis la rouvrir pendant une
   réponse, montre une conversation vide. Les parcours Android ont chacun leur propre conversation (pas de `DELETE`).
 
+## J45 sur main-next (9/11, avant `turn-layout`)
+
+- iPhone : une date sous le message envoyé (« Samedi 7 novembre », 8 relevés sur 27, dès 7,4 s, juste avant la fin du
+  tour) dans 1 exécution sur 5 : elle ne vient que si une page est relue pendant le tour (un signal du pont, la fin du
+  tour), d'où deux tours par exécution. Une ligne dessinée deux fois (même id) n'est qu'une fois dans l'arbre
+  d'accessibilité : ce qui est sous le message est aussi LU sur une capture (Vision).
+- Android : passe (≈ 940 relevés, « samedi 7 novembre », « Hier », « Aujourd'hui » vus à leur place).
+- Pont : passe (aucun élément d'un autre jour après le message pendant le tour).
+
 ## Ce qu'il manque encore (prochaines étapes)
 
 - Faire passer l'iPhone et Android sur J08–J10, J13–J17 et J20 (déjà vérifiés côté pont).
