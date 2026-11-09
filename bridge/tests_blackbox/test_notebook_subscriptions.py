@@ -28,7 +28,7 @@ def test_one_service_under_three_names_is_one_record(bridge):
     in_french(bridge)
     add(bridge, service="Max plan - 20x", price="€196.57", period="monthly", renewal=iso(20), source="archive:a/b/1")
     second = add(bridge, service="Claude Max 20x (Anthropic, PBC)", price="196,57 € TTC")
-    assert second.startswith("Updated in the Carnet"), second
+    assert second.startswith("Updated ["), second
     add(bridge, service="Claude Max 20x (Ultra)")
     add(bridge, service="Anthropic Max plan - 5x", price="98 €", period="mensuel", renewal=iso(-38))
     items = subscriptions(bridge)

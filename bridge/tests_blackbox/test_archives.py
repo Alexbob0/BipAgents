@@ -214,9 +214,10 @@ def test_a_declared_archive_the_command_line_and_the_carnet_link(bridges):
     assert "Unknown" not in hit and "« Facture plombier »" in hit
     assert "No archive « Banque »" in text_of(call(bridge, "archive_search", {"query": "x", "archive": "Banque"}))
     # a fact in the Carnet points to its source document
-    filed = call(bridge, "notebook_note", {"page": "Maison", "kind": "area", "facts": [f"Fuite réparée [[archive:{reference}|voir la facture]]"]})
+    filed = call(bridge, "notebook_write", {"page": "Maison", "kind": "area", "facts": [f"Fuite réparée [[archive:{reference}|voir la facture]]"]})
     assert filed["isError"] is False, text_of(filed)
-    path = re.search(r"new page, ([^)]+)\)", text_of(filed)).group(1)
+    assert "new page" in text_of(filed)
+    path = next(p["path"] for p in bridge.get("/v1/notebook/search", params={"q": "Maison"}, headers=AUTH).json()["pages"])
     page = bridge.get("/v1/notebook/page", params={"path": path}, headers=AUTH).json()
     facts = [f for s in page["sections"] for f in s["facts"]]
     link = [l for f in facts for l in f["links"]][0]

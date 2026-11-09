@@ -380,6 +380,7 @@ def test_with_restic_backups_follow_the_changes_and_keep_the_last_two_hours(tmp_
     second = backup.check(home, now=T + 10 * MIN, server=lock)
     assert second["backup"] is True and second["why"] == "nothing more changed for 5 minutes"
     assert len(snapshots()) == 2 and second["pruned"] == T   # thinned once a day only
+    assert second["retention"] == backup.RETENTION
     # What restic got is the new message.
     out = tmp_path / "restored"
     subprocess.run(["restic", "restore", "latest", "--target", str(out)], env=env, check=True, capture_output=True)
@@ -394,6 +395,23 @@ def test_with_restic_backups_follow_the_changes_and_keep_the_last_two_hours(tmp_
     # --keep-within 2h where --keep-hourly alone would keep one.
     assert len(snapshots()) == 3
     assert json.loads((home / backup.CHECK).read_text())["backed"]["at"] == T + 10 * MIN + 24 * 3600
+    T2 = T + 10 * MIN + 24 * 3600 + 10 * MIN
+    # A place thinned under the old rule (12 weekly snapshots) thins at its next backup, not a day later.
+    state_file = home / backup.STATE
+    old_rule = json.loads(state_file.read_text())
+    old_rule.pop("retention")
+    state_file.write_text(json.dumps(old_rule))
+    db.execute("INSERT INTO messages VALUES ('encore')")
+    db.commit()
+    for name in ("state.db", "state.db-wal"):
+        age(home / ".hermes" / name, 6 * MIN, T2)
+    moved = backup.check(home, now=T2, server=lock)
+    assert moved["backup"] is True and moved["pruned"] == T2 and moved["retention"] == backup.RETENTION
+    db.execute("DELETE FROM messages WHERE text = 'encore'")
+    db.commit()
+    for name in ("state.db", "state.db-wal"):
+        age(home / ".hermes" / name, 6 * MIN, T2 + 7 * MIN)
+    assert backup.check(home, now=T2 + 7 * MIN, server=lock)["pruned"] == T2   # then once a day again
 
 
 @pytest.mark.skipif(shutil.which("restic") is None, reason="no restic here")
@@ -432,7 +450,30 @@ def test_the_units_look_every_5_minutes_at_their_own_minute_and_the_button_still
     assert "FixedRandomDelay=true\n" in timer and "Unit=bipagents-backup-check.service\n" in timer
     assert "hourly" not in timer and "Persistent" not in timer
     assert "--keep-within" in backup.KEEP and backup.KEEP[backup.KEEP.index("--keep-within") + 1] == "2h"
-    assert backup.KEEP[2:] == ["--keep-hourly", "48", "--keep-daily", "30", "--keep-weekly", "12"]
+    assert backup.KEEP[2:] == ["--keep-within-hourly", "48h", "--keep-within-daily", "30d"]
+
+
+def test_the_history_is_thinned_once_a_day_and_at_once_under_a_new_rule():
+    now = 1_800_000_000.0
+    assert backup.thin_due({}, now)
+    assert not backup.thin_due({"pruned": now - 3600, "retention": backup.RETENTION}, now)
+    assert backup.thin_due({"pruned": now - backup.PRUNE_EVERY, "retention": backup.RETENTION}, now)
+    # thinned yesterday under the old rule (12 weekly snapshots): thinned now, not in 23 hours
+    assert backup.thin_due({"pruned": now - 3600}, now)
+
+
+def test_no_backup_rule_keeps_anything_past_30_days():
+    """« Oublie ça » says « Disparaît aussi des sauvegardes sous 30 jours »: no restic rule may keep a snapshot longer
+    in calendar days, even on a place that was off for a while: --keep-within-* rules only (never --keep-daily N,
+    which counts days that have a snapshot, nor weekly, monthly, yearly or --keep-last)."""
+    rules = dict(zip(backup.KEEP[0::2], backup.KEEP[1::2]))
+    assert set(rules) == {"--keep-within", "--keep-within-hourly", "--keep-within-daily"}
+    assert all(r.startswith("--keep-within") for r in rules)
+
+    def hours(span):
+        return int(span[:-1]) * {"h": 1, "d": 24}[span[-1]]
+    assert all(hours(v) <= 24 * backup.KEEP_DAYS for v in rules.values()) and backup.KEEP_DAYS == 30
+    assert hours(rules["--keep-within-daily"]) == 24 * 30
 
 
 def _seat_agent():

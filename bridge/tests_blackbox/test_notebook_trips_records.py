@@ -18,27 +18,27 @@ def test_an_agent_makes_a_trip_page_the_apps_lay_out(bridge):
     give_token(bridge)
     in_french(bridge)
     start, end = iso(12), iso(15)
-    made = call(bridge, "notebook_note", {"page": "Week-end à Lisbonne", "kind": "trip", "start": start, "end": end,
-                                          "destination": "Lisbonne, Portugal", "section": "transport",
+    made = call(bridge, "notebook_write", {"page": "Lisbonne, week-end", "kind": "trip", "start": start, "end": end,
+                                           "section": "transport",
                                           "facts": [f"Vol TP433 le {start} à 07:15, réf X7K2PQ"]})
-    assert made["isError"] is False and "new page, Voyages/Week-end à Lisbonne.md" in text_of(made)
+    assert made["isError"] is False and text_of(made) == "Saved: Lisbonne, week-end › transport (1 fact, new page).", text_of(made)
     for section, facts in [("itinerary", ["J2 : Belém, la tour et le monastère", "J1 : Alfama, arrivée"]),
                            ("lodging", ["Hôtel Alfama, Rua X 12, check-in 15:00, réservation 88123"]),
                            ("packing", ["Passeport", "Adaptateur"]),
                            ("onsite", ["Restaurant Ramiro : fruits de mer"])]:
-        assert call(bridge, "notebook_note", {"page": "Week-end à Lisbonne", "section": section, "facts": facts})["isError"] is False
-    page = (notebook(bridge) / "carnet" / "Voyages" / "Week-end à Lisbonne.md").read_text()
-    assert "type: trip" in page and f"start: {start}" in page and 'destination: "Lisbonne, Portugal"' in page
+        assert call(bridge, "notebook_write", {"page": "Lisbonne, week-end", "section": section, "facts": facts})["isError"] is False
+    page = (notebook(bridge) / "carnet" / "Voyages" / "Lisbonne, week-end.md").read_text()
+    assert "type: trip" in page and f"start: {start}" in page and "destination: Lisbonne\n" in page
     assert "## À emporter\n- [ ] Passeport" in page
     # The same thing to pack is not added twice, ticked or not.
-    ticked = bridge.post("/v1/notebook/check", json={"path": "Voyages/Week-end à Lisbonne.md", "item": "Passeport",
+    ticked = bridge.post("/v1/notebook/check", json={"path": "Voyages/Lisbonne, week-end.md", "item": "Passeport",
                                                      "done": True}, headers=AUTH)
     assert ticked.status_code == 200
-    again = call(bridge, "notebook_note", {"page": "Week-end à Lisbonne", "section": "packing", "facts": ["Passeport"]})
-    assert text_of(again).startswith("Already in the Carnet")
-    view = bridge.get("/v1/notebook/page", params={"path": "Voyages/Week-end à Lisbonne.md"}, headers=AUTH).json()
+    again = call(bridge, "notebook_write", {"page": "Lisbonne, week-end", "section": "packing", "facts": ["Passeport"]})
+    assert text_of(again).startswith("Already there")
+    view = bridge.get("/v1/notebook/page", params={"path": "Voyages/Lisbonne, week-end.md"}, headers=AUTH).json()
     trip = view["trip"]
-    assert (trip["start"], trip["end"], trip["days_count"], trip["destination"]) == (start, end, 4, "Lisbonne, Portugal")
+    assert (trip["start"], trip["end"], trip["days_count"], trip["destination"]) == (start, end, 4, "Lisbonne")
     assert [(d["day"], d["text"]) for d in trip["days"]] == [(1, "Alfama, arrivée"), (2, "Belém, la tour et le monastère")]
     assert trip["days"][1]["date"] == iso(13)
     flight = trip["bookings"][0]
@@ -47,11 +47,11 @@ def test_an_agent_makes_a_trip_page_the_apps_lay_out(bridge):
     assert trip["packing"] == [{"text": "Passeport", "done": True}, {"text": "Adaptateur", "done": False}]
     assert {"Alfama", "Hôtel Alfama", "Restaurant Ramiro"} <= {p["name"] for p in trip["places"]}
     assert trip["map_page"] is None
-    assert bridge.post("/v1/notebook/check", json={"path": "Voyages/Week-end à Lisbonne.md", "item": "Crème",
+    assert bridge.post("/v1/notebook/check", json={"path": "Voyages/Lisbonne, week-end.md", "item": "Crème",
                                                    "done": True}, headers=AUTH).status_code == 404
     # The home shows it while it is within 30 days; trips have their own section, apart from the subjects.
     home = bridge.get("/v1/notebook", headers=AUTH).json()
-    assert [(t["title"], t["in_days"], t["day"]) for t in home["trips"]] == [("Week-end à Lisbonne", 12, None)]
+    assert [(t["title"], t["in_days"], t["day"]) for t in home["trips"]] == [("Lisbonne, week-end", 12, None)]
     assert next(s for s in home["sections"] if s["kind"] == "subject")["count"] == 0
     assert next(s for s in home["sections"] if s["kind"] == "trip") == {"kind": "trip", "title": "Voyages", "count": 1,
                                                                         "archived": 0}
@@ -61,7 +61,7 @@ def test_an_agent_makes_a_trip_page_the_apps_lay_out(bridge):
     # Its reminders are tasks like any other (no duplicate).
     for _ in range(2):
         added = bridge.post("/v1/notebook/tasks", json={"title": "Check-in en ligne", "due": iso(11),
-                                                        "page": "Week-end à Lisbonne"}, headers=AUTH)
+                                                        "page": "Lisbonne, week-end"}, headers=AUTH)
         assert added.status_code == 200
     assert len(bridge.get("/v1/notebook/tasks", headers=AUTH).json()["open"]) == 1
 
@@ -94,9 +94,9 @@ def test_a_subject_becomes_a_trip_with_everything_kept(bridges, fakes):
     # Turned back into a subject by the person: left so.
     (folder / "Japon.md").write_text(page.replace("type: trip", "type: subject"))
     assert "trips" not in tidy(bridge)
-    # The agent's judgement: notebook_note with kind trip on the subject.
-    turned = call(bridge, "notebook_note", {"page": "Japon", "kind": "trip"})
-    assert turned["isError"] is False and "trip page is up to date" in text_of(turned)
+    # The agent's judgement: notebook_write with kind trip on the subject.
+    turned = call(bridge, "notebook_write", {"page": "Japon", "kind": "trip"})
+    assert turned["isError"] is False and text_of(turned) == "Saved: Japon.", text_of(turned)
     assert "type: trip" in (folder / "Japon.md").read_text()
 
 
@@ -107,11 +107,11 @@ def test_records_are_tables_merged_on_their_key(bridge):
                                              "fields": {"date": "2025-03-12", "item": "Lave-linge Bosch", "store": "Darty",
                                                         "price": "499 €", "source": "arch:42"}})
     assert added["isError"] is False
-    rid = re.search(r"\(id (r[0-9a-f]{6})\)", text_of(added)).group(1)
+    rid = re.search(r"\[(r[0-9a-f]{6})\]", text_of(added)).group(1)
     assert "2027-03-12 (légale)" in text_of(added)
     same = call(bridge, "notebook_record", {"action": "add", "type": "purchase",
                                             "fields": {"date": "12/03/2025", "item": "lave linge bosch", "price": "479 €"}})
-    assert text_of(same).startswith(f"Updated in the Carnet: purchase (id {rid})")
+    assert text_of(same).startswith(f"Updated [{rid}]: purchase · ")
     page = (notebook(bridge) / "carnet" / "Fiches" / "Achats.md").read_text()
     assert "type: records\nrecords: purchase" in page
     assert ("| Date | Objet | Magasin | Prix | Catégorie | Fin de garantie | Source | id |\n"
@@ -131,7 +131,7 @@ def test_records_are_tables_merged_on_their_key(bridge):
     call(bridge, "notebook_record", {"action": "add", "type": "paper", "fields": {"document": "Passeport", "expires": iso(40)}})
     call(bridge, "notebook_record", {"action": "add", "type": "paper", "fields": {"document": "Permis", "expires": iso(400)}})
     listed = text_of(call(bridge, "notebook_record", {"action": "list"}))
-    assert "subscription id r" in listed and "Passeport" in listed
+    assert "- subscription [r" in listed and "Musique+ · 10,99 €" in listed and "Passeport" in listed
     view = bridge.get("/v1/notebook/records", headers=AUTH).json()
     papers = next(t for t in view["types"] if t["type"] == "paper")
     assert [i["document"] for i in papers["items"]] == ["Passeport", "Permis"] and papers["items"][0]["in_days"] == 40
@@ -142,13 +142,13 @@ def test_records_are_tables_merged_on_their_key(bridge):
     shown = bridge.get("/v1/notebook/page", params={"path": "Fiches/Papiers.md"}, headers=AUTH).json()
     assert shown["records"]["type"] == "paper"
     removed = call(bridge, "notebook_record", {"action": "remove", "type": "paper", "id": papers["items"][1]["id"]})
-    assert text_of(removed).startswith("Removed from the Carnet: Permis")
+    assert text_of(removed).startswith("Removed: paper · Permis")
 
 
 def test_bookings_feed_their_trip(bridge):
     give_token(bridge)
     in_french(bridge)
-    call(bridge, "notebook_note", {"page": "Rome", "kind": "trip", "start": iso(3), "end": iso(6), "facts": ["Colisée"]})
+    call(bridge, "notebook_write", {"page": "Rome", "kind": "trip", "start": iso(3), "end": iso(6), "facts": ["Colisée"]})
     call(bridge, "notebook_record", {"action": "add", "type": "booking",
                                      "fields": {"date": f"{iso(4)} 09:30", "what": "Visite du Colisée", "provider": "Coop",
                                                 "reference": "COL123", "trip": "[[Rome]]", "source": "arch:7"}})
@@ -178,7 +178,7 @@ def test_reminders_are_proposed_at_night_and_answered_in_the_app(bridges, fakes)
     # Each date once: not proposed again.
     assert "proposed" not in tidy(bridge)
     # The agents see them waiting.
-    assert "Proposed by the Carnet" in text_of(call(bridge, "notebook_task", {"action": "list"}))
+    assert "Waiting for the person's answer" in text_of(call(bridge, "notebook_task", {"action": "list"}))
     yes = bridge.post(f"/v1/notebook/proposals/{warranty['id']}", json={"accept": True}, headers=AUTH)
     assert yes.status_code == 200 and yes.json()["task"]["origin"] == "accepted"
     assert "[[Achats]]" in yes.json()["task"]["title"]

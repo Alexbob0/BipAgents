@@ -6,10 +6,27 @@
 //!                                              the trips within 30 days or under way, the records, the open proposals
 //!     GET    /v1/notebook/pages?kind=          a section's pages (kind: person, subject, trip, area, other), with what their card
 //!                                              shows (close, next_date, status, facts)
-//!     GET    /v1/notebook/search?q=            pages, and the facts that answer (for a short answer on top)
-//!     GET    /v1/notebook/page?path=           a page: frontmatter apart, « En bref », facts with attribution, links
-//!     PUT    /v1/notebook/page                 {path, text, private?}   the person's edit (« toi » in its history)
-//!     PUT    /v1/notebook/section              {path, section (its id), text, private?}   « Modifier » on one section
+//!     GET    /v1/notebook/search?q=&lang=      the facts that answer, ready to show ({label, answer, page, path, date,
+//!                                              when}: tools::answers, the agents' search too), then the pages
+//!     GET    /v1/notebook/offline              the copy the phone answers from offline (offline.rs; ETag, 304)
+//!     GET    /v1/notebook/known?agent=&lang=   « Ce que tes agents savent de toi » (known.rs)
+//!     POST   /v1/notebook/forget/preview       {texts? (≤ 5), page?, private?, card?}   « Oublie ça »: where it is, and a
+//!                                              token for 10 minutes, once (forget.rs)
+//!     POST   /v1/notebook/forget/confirm       {token}   erased everywhere (never the conversations)
+//!     POST   /v1/notebook/forget/cancel        {card}    the card an agent put in the conversation, dismissed
+//!     POST   /v1/notebook/ask/{id}             {choice} · {skip} · {never} · {undo}   the question of the day answered
+//!                                              (ask.rs: the fact written in the person's name, no agent runs)
+//!     POST   /v1/notebook/follow/{id}          {answer: done|tomorrow|drop|never}   a follow-up answered (followups.rs)
+//!     GET    /v1/notebook/review?lang=         « Ta semaine dans le Carnet », or 204 (review.rs); POST …/review/done {off?}
+//!     POST   /v1/notebook/paper?lang=          {text, image? (base64)}   a paper photographed, read on the phone
+//!                                              (papers.rs: no number kept, two reminders); GET …/papers/{id}/photo
+//!     GET    /v1/notebook/page?path=           a page: frontmatter apart, « En bref », facts with attribution, links,
+//!                                              its `rev` (the app writes over what it read), `emails`, `phones`
+//!     POST   /v1/notebook/page                 {kind, title, private?}   a new page, its Markdown written by the bridge
+//!                                              (201 {path, rev}; 409 page_exists: the page of that name, the app opens it)
+//!     PUT    /v1/notebook/section              {path, section (its id), text, rev, private?}   « Modifier » on one
+//!                                              section (409 page_changed: an agent wrote since `rev`; the section as
+//!                                              it is now comes with it, the app keeps what the person typed)
 //!     DELETE /v1/notebook/page?path=
 //!     GET    /v1/notebook/history?path=        changes (a page's, or all), the newest first
 //!     POST   /v1/notebook/restore              {change}   the page as it was after that change
@@ -30,8 +47,8 @@
 //!     GET    /v1/notebook/documents?private=   the files the agents made or received and their web pages, by agent,
 //!                                              with their subjects (the private part's pages only with private=1)
 //!     GET    /v1/notebook/settings             {mentions, nightly, language, cap…}
-//!     PATCH  /v1/notebook/settings             {mentions?, nightly?, language? (a Carnet with pages: its folders
-//!                                              and pages moved to the new names, relanguage.rs)}
+//!     PATCH  /v1/notebook/settings             {mentions?, nightly?, questions?, quiet? {from, to}, language? (a Carnet
+//!                                              with pages: its folders and pages moved to the new names, relanguage.rs)}
 //!     GET    /v1/notebook/export?health=       a zip of the vault, for Obsidian
 //!     POST   /v1/notebook/tidy                 the nightly pass now; GET /v1/notebook/runs its runs and this month's cost
 //!     GET    /v1/notebook/fill                 « Remplir mon Carnet »: where it is; POST starts it {agents?}, DELETE stops
@@ -162,7 +179,8 @@ async fn home(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response>
         Ok(json!({"language": lang, "shown_language": shown, "sections": sections, "recent": recent, "upcoming": upcoming, "archives": archives,
                   "dates": dates.into_iter().take(10).collect::<Vec<_>>(),
                   "inbox": inbox.len(), "settings": settings_view(&config), "trips": trips, "records": records,
-                  "proposals": proposals}))
+                  "proposals": proposals, "known_tile": super::known::tile(&config, &shown, crate::py::time_time()),
+                  "review": super::review::view(&config, &shown, crate::py::time_time())?.map(|r| r["card"].clone())}))
     })
     .await?;
     Ok(web::ok(view))
@@ -252,39 +270,20 @@ async fn list_pages(State(state): State<AppState>, q: QueryMap) -> ApiResult<Res
 async fn search(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
     let config = state.config();
     let part = part_of(&q);
+    let shown = shown_language(&config, &q);
     let words = web::query_str(&q, "q", true, Some(200))?.unwrap_or_default();
     let view = blocking(move || {
         let w = super::words(&super::language(&config));
+        // the answers by the one rule the agents' search and the offline copy follow (offline.rs): split by the
+        // bridge, the apps show them as they come
+        let answers: Vec<Value> = super::tools::answers(&config, &[part], &words)
+            .into_iter()
+            .map(|a| {
+                json!({"label": a.label, "answer": a.answer, "page": a.page, "path": a.path, "date": a.date,
+                       "when": super::offline::when(&a.date, &shown), "part": a.part.as_str()})
+            })
+            .collect();
         let found = super::search(&config, &[part], &words, "");
-        let wanted: Vec<String> = super::fold(&words).split(' ').filter(|x| x.len() > 1).map(str::to_string).collect();
-        // the facts that answer: the words not in the page's name found in the fact (« anniversaire marc » → Marc's
-        // birthday line), for a short answer on top
-        let mut answers: Vec<Value> = Vec::new();
-        for (part, path, page, _) in &found {
-            let names = super::fold(&format!("{} {}", page.title, page.aliases().join(" ")));
-            let rest: Vec<&String> = wanted.iter().filter(|x| !names.contains(x.as_str())).collect();
-            if rest.is_empty() {
-                continue;
-            }
-            for (section, facts) in page.sections() {
-                if super::fold(&section) == super::fold(w.brief) {
-                    continue;
-                }
-                for fact in facts {
-                    let folded = super::fold(&format!("{section} {}", fact.text));
-                    if rest.iter().all(|x| folded.contains(x.as_str())) {
-                        let short =
-                            fact.text.split_once(':').map(|(_, v)| v.trim().to_string()).filter(|v| !v.is_empty());
-                        answers.push(
-                            json!({"page": page.title, "path": path, "part": part.as_str(), "section": section,
-                                            "fact": fact.text, "answer": short.unwrap_or_else(|| fact.text.clone()),
-                                            "by": fact.who, "date": fact.date}),
-                        );
-                    }
-                }
-            }
-        }
-        answers.truncate(5);
         let pages: Vec<Value> = found
             .iter()
             .take(50)
@@ -294,6 +293,7 @@ async fn search(State(state): State<AppState>, q: QueryMap) -> ApiResult<Respons
                 v
             })
             .collect();
+        let (wanted, _) = super::lexicon::query(&words);
         let tasks: Vec<Value> = super::tasks(&config, part)
             .iter()
             .filter(|t| !wanted.is_empty() && wanted.iter().all(|x| super::fold(&t.title).contains(x.as_str())))
@@ -303,6 +303,288 @@ async fn search(State(state): State<AppState>, q: QueryMap) -> ApiResult<Respons
     })
     .await?;
     Ok(web::ok(view))
+}
+
+/// The copy the phone answers from offline (contract.md §6): 304 when the app has it already.
+async fn offline(State(state): State<AppState>, q: QueryMap, headers: axum::http::HeaderMap) -> ApiResult<Response> {
+    let config = state.config();
+    let shown = shown_language(&config, &q);
+    let (body, etag) = blocking(move || Ok(super::offline::snapshot(&config, &shown, crate::py::time_time()))).await?;
+    let unchanged = headers.get("if-none-match").and_then(|v| v.to_str().ok()).is_some_and(|v| v.trim() == etag);
+    let mut response = if unchanged {
+        let mut r = Response::new(Body::empty());
+        *r.status_mut() = axum::http::StatusCode::NOT_MODIFIED;
+        r
+    } else {
+        web::ok(body)
+    };
+    if let Ok(v) = HeaderValue::from_str(&etag) {
+        response.headers_mut().insert("etag", v);
+    }
+    response.headers_mut().insert("cache-control", HeaderValue::from_static("no-store"));
+    Ok(response)
+}
+
+async fn known(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
+    let config = state.config();
+    let shown = shown_language(&config, &q);
+    let agent = web::query_str(&q, "agent", false, Some(80))?.unwrap_or_default();
+    let view = blocking(move || Ok(super::known::view(&config, &agent, &shown, crate::py::time_time()))).await?;
+    Ok(web::ok(view))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ForgetPreview {
+    #[serde(default)]
+    pub texts: Vec<String>,
+    #[serde(default)]
+    pub page: Option<String>,
+    #[serde(default, deserialize_with = "web::lax::bool")]
+    pub private: bool,
+    /// The card an agent put in the conversation (`bip-forget-…`): its request, confirmed here.
+    #[serde(default)]
+    pub card: Option<String>,
+}
+
+impl Validate for ForgetPreview {
+    fn validate(&self, errors: &mut Vec<FieldError>) {
+        web::check_max_items(errors, "texts", Some(&self.texts), super::forget::TEXTS_MAX);
+        for text in &self.texts {
+            check_max_len(errors, "texts", Some(text), 500);
+        }
+        check_max_len(errors, "page", self.page.as_deref(), 200);
+        check_max_len(errors, "card", self.card.as_deref(), 40);
+    }
+}
+
+fn refused(refusal: super::forget::Refused, lang: &str) -> HttpError {
+    use super::forget::Refused;
+    match refusal {
+        Refused::PageGone => carnet_error(404, "page_gone", lang, json!({})),
+        Refused::Several(names) => {
+            let text = match lang {
+                "fr" => format!("Plusieurs pages : {}.", names.join(", ")),
+                "de" => format!("Mehrere Seiten: {}.", names.join(", ")),
+                "es" => format!("Varias páginas: {}.", names.join(", ")),
+                _ => format!("Several pages: {}.", names.join(", ")),
+            };
+            HttpError::json(409, json!({"code": "several_pages", "text": text, "pages": names}))
+        }
+        Refused::Nothing => {
+            HttpError::json(404, json!({"code": "nothing_found", "text": super::forget::texts(lang).nothing}))
+        }
+    }
+}
+
+/// « Oublie ça »: what would be erased, and the token that erases it (10 minutes, once). The only route that gives a
+/// token: an agent's `notebook_write {forget}` gets a card, never one.
+async fn forget_preview(State(state): State<AppState>, q: QueryMap, Json(body): Json<ForgetPreview>) -> ApiResult<Response> {
+    let config = state.config();
+    let shown = shown_language(&config, &q);
+    let person = state.households.name();
+    let lang = shown.clone();
+    let out = blocking(move || {
+        let request = match body.card.as_deref() {
+            Some(card) => match super::forget::card_request(&config, card) {
+                Some(r) => r,
+                None => return Ok(Err(super::forget::Refused::Nothing)),
+            },
+            None => super::forget::Request { texts: body.texts, page: body.page, private: body.private },
+        };
+        Ok(super::forget::preview(&config, &request, &lang, &person, body.card))
+    })
+    .await?;
+    match out {
+        Ok(v) => Ok(web::ok(v)),
+        Err(r) => Err(refused(r, &shown)),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ForgetConfirm {
+    pub token: String,
+}
+
+impl Validate for ForgetConfirm {
+    fn validate(&self, errors: &mut Vec<FieldError>) {
+        check_max_len(errors, "token", Some(&self.token), 64);
+    }
+}
+
+async fn forget_confirm(State(state): State<AppState>, q: QueryMap, Json(body): Json<ForgetConfirm>) -> ApiResult<Response> {
+    let config = state.config();
+    let shown = shown_language(&config, &q);
+    let person = state.households.name();
+    let done = blocking(move || super::forget::confirm(&config, body.token.trim(), &person)).await?;
+    match done {
+        Some(text) => Ok(web::ok(json!({"done": true, "text": text}))),
+        None => Err(carnet_error(410, "token_expired", &shown, json!({}))),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ForgetCancel {
+    pub card: String,
+}
+
+impl Validate for ForgetCancel {
+    fn validate(&self, errors: &mut Vec<FieldError>) {
+        check_max_len(errors, "card", Some(&self.card), 40);
+    }
+}
+
+async fn forget_cancel(State(state): State<AppState>, Json(body): Json<ForgetCancel>) -> ApiResult<Response> {
+    let config = state.config();
+    let found = blocking(move || Ok(super::forget::set_card(&config, &body.card, "cancelled")?)).await?;
+    if found {
+        Ok(web::no_content())
+    } else {
+        Err(HttpError::not_found())
+    }
+}
+
+// -- what the Carnet says to the person (ask.rs, followups.rs, review.rs, papers.rs) --------------------------------
+
+#[derive(Debug, Deserialize)]
+pub struct AskAnswer {
+    #[serde(default)]
+    pub choice: Option<String>,
+    #[serde(default, deserialize_with = "web::lax::bool")]
+    pub skip: bool,
+    #[serde(default, deserialize_with = "web::lax::bool")]
+    pub never: bool,
+    #[serde(default, deserialize_with = "web::lax::bool")]
+    pub undo: bool,
+}
+
+impl Validate for AskAnswer {
+    fn validate(&self, errors: &mut Vec<FieldError>) {
+        check_max_len(errors, "choice", self.choice.as_deref(), 80);
+    }
+}
+
+fn card_refused(r: super::ask::Refused) -> HttpError {
+    match r {
+        super::ask::Refused::Missing => HttpError::not_found(),
+        super::ask::Refused::Gone(card) => HttpError::json(410, json!({"code": "card_gone", "card": card})),
+    }
+}
+
+/// The question of the day answered: the fact written in the person's name (no agent runs, nothing pushed).
+async fn ask_answer(State(state): State<AppState>, UrlPath(id): UrlPath<String>, q: QueryMap, Json(body): Json<AskAnswer>) -> ApiResult<Response> {
+    let config = state.config();
+    let shown = shown_language(&config, &q);
+    use super::ask::Answer;
+    let answer = if body.undo {
+        Answer::Undo
+    } else if body.never {
+        Answer::Never
+    } else if body.skip {
+        Answer::Skip
+    } else {
+        match body.choice.filter(|c| !c.trim().is_empty()) {
+            Some(c) => Answer::Choice(c),
+            None => return Err(HttpError::new(422, "choice, skip, never or undo")),
+        }
+    };
+    let out = blocking(move || super::ask::answer(&config, &id, answer, &shown, crate::py::time_time())).await?;
+    out.map(web::ok).map_err(card_refused)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FollowAnswer {
+    pub answer: String,
+}
+
+impl Validate for FollowAnswer {
+    fn validate(&self, errors: &mut Vec<FieldError>) {
+        if !super::followups::ANSWERS.contains(&self.answer.as_str()) {
+            errors.push(FieldError::new("value_error", web::body_loc("answer"), "Value error, done, tomorrow, drop or never", json!(self.answer)));
+        }
+    }
+}
+
+/// A follow-up answered: « C'est fait », « Demain », « Laisse tomber », « Ne plus me relancer ».
+async fn follow_answer(State(state): State<AppState>, UrlPath(id): UrlPath<String>, q: QueryMap, Json(body): Json<FollowAnswer>) -> ApiResult<Response> {
+    let config = state.config();
+    let shown = shown_language(&config, &q);
+    let out = blocking(move || super::followups::answer(&config, &id, &body.answer, &shown)).await?;
+    out.map(web::ok).map_err(card_refused)
+}
+
+/// « Ta semaine dans le Carnet », when it is due (else 204).
+async fn review(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
+    let config = state.config();
+    let shown = shown_language(&config, &q);
+    let view = blocking(move || super::review::view(&config, &shown, crate::py::time_time())).await?;
+    Ok(view.map(web::ok).unwrap_or_else(web::no_content))
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct ReviewDone {
+    #[serde(default, deserialize_with = "web::lax::bool")]
+    pub off: bool,
+}
+
+impl Validate for ReviewDone {}
+
+async fn review_done(State(state): State<AppState>, OptionalJson(body): OptionalJson<ReviewDone>) -> ApiResult<Response> {
+    let config = state.config();
+    let off = body.map(|b| b.off).unwrap_or(false);
+    blocking(move || Ok(super::review::done(&config, off, crate::py::time_time())?)).await?;
+    Ok(web::no_content())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Paper {
+    pub text: String,
+    /// The photo, base64 (JPEG or PNG): kept apart, never given to the model.
+    #[serde(default)]
+    pub image: Option<String>,
+}
+
+impl Validate for Paper {
+    fn validate(&self, errors: &mut Vec<FieldError>) {
+        check_max_len(errors, "text", Some(&self.text), super::papers::TEXT_MAX * 2);
+    }
+}
+
+/// A paper photographed: the text the phone read filed (no number kept), its photo kept apart, two reminders.
+async fn paper(State(state): State<AppState>, q: QueryMap, Json(body): Json<Paper>) -> ApiResult<Response> {
+    use base64::Engine;
+    let config = state.config();
+    let shown = shown_language(&config, &q);
+    let image = match body.image.as_deref().map(str::trim).filter(|i| !i.is_empty()) {
+        Some(b64) => {
+            let b64 = b64.split_once("base64,").map(|(_, b)| b).unwrap_or(b64);
+            match base64::engine::general_purpose::STANDARD.decode(b64) {
+                Ok(bytes) if bytes.len() <= super::papers::PHOTO_MAX => Some(bytes),
+                _ => return Err(HttpError::new(422, "image: a JPEG or a PNG, in base64")),
+            }
+        }
+        None => None,
+    };
+    let lang = shown.clone();
+    let out = blocking(move || {
+        super::papers::file(&config, &body.text, image.as_deref(), &lang, chrono::Local::now().date_naive())
+    })
+    .await?;
+    match out {
+        Ok(view) => Ok(web::ok(view)),
+        Err(_) => Err(carnet_error(422, "paper_unreadable", &shown, json!({}))),
+    }
+}
+
+/// A paper's photo (the app shows it after Face ID or the fingerprint).
+async fn paper_photo(State(state): State<AppState>, UrlPath(id): UrlPath<String>) -> ApiResult<Response> {
+    let config = state.config();
+    let found = blocking(move || Ok(super::papers::photo(&config, &id))).await?;
+    let Some((bytes, kind)) = found else { return Err(HttpError::not_found()) };
+    let mut response = Response::new(Body::from(bytes));
+    let headers = response.headers_mut();
+    headers.insert("content-type", HeaderValue::from_static(kind));
+    headers.insert("cache-control", HeaderValue::from_static("no-store"));
+    Ok(response)
 }
 
 /// A page for the app: its frontmatter apart, its « En bref », its sections with each fact's attribution, its
@@ -347,7 +629,9 @@ pub fn page_view_in(config: &Config, part: Part, path: &str, shown: &str) -> any
                 .iter()
                 .map(|f| {
                     let links: Vec<Value> = super::links_in(&f.text).iter().map(|l| resolve(l)).collect();
-                    json!({"text": f.text, "by": if f.who.is_empty() { Value::Null } else { json!(f.who) },
+                    let (label, answer) = super::lexicon::split_label(&f.text).unwrap_or_default();
+                    json!({"text": f.text, "label": label, "answer": answer, "when": super::offline::when(&f.date, shown),
+                           "by": if f.who.is_empty() { Value::Null } else { json!(f.who) },
                            "date": if f.date.is_empty() { Value::Null } else { json!(f.date) }, "item": f.item, "links": links})
                 })
                 .collect();
@@ -405,7 +689,8 @@ pub fn page_view_in(config: &Config, part: Part, path: &str, shown: &str) -> any
               "updated": page.front.get("updated").cloned().unwrap_or(Value::Null),
               "summary": super::summary_of(&page.body, w.brief), "sections": sections, "outline": outline, "links": links,
               "backlinks": backlinks, "tasks": tasks, "documents": documents, "id": page.id(), "close": page.close(),
-              "icon": page.icon(), "shared_with": super::shares_of(config, part, path, &page), "text": text}))
+              "icon": page.icon(), "shared_with": super::shares_of(config, part, path, &page),
+              "emails": page.emails(), "phones": page.phones(), "rev": super::rev(&text), "text": text}))
 }
 
 async fn read_page(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
@@ -426,25 +711,76 @@ async fn read_page(State(state): State<AppState>, q: QueryMap) -> ApiResult<Resp
 }
 
 #[derive(Debug, Deserialize)]
-pub struct PageEdit {
-    pub path: String,
-    pub text: String,
+pub struct NewPage {
+    pub kind: String,
+    pub title: String,
     #[serde(default, deserialize_with = "web::lax::bool")]
     pub private: bool,
 }
 
-impl Validate for PageEdit {
+impl Validate for NewPage {
     fn validate(&self, errors: &mut Vec<FieldError>) {
-        check_max_len(errors, "path", Some(&self.path), 300);
-        check_max_len(errors, "text", Some(&self.text), 200_000);
+        check_max_len(errors, "kind", Some(&self.kind), 20);
+        check_max_len(errors, "title", Some(&self.title), 200);
     }
 }
 
-async fn write_page(State(state): State<AppState>, Json(body): Json<PageEdit>) -> ApiResult<Response> {
+/// The texts of the Carnet's errors for the app (contract.md §5), in the app's language.
+fn error_text(code: &str, lang: &str) -> &'static str {
+    match (code, lang) {
+        ("page_changed", "fr") => "Un agent vient d'écrire ici. Vérifie avant d'enregistrer.",
+        ("page_changed", "de") => "Ein Agent hat hier gerade geschrieben. Prüfe es vor dem Speichern.",
+        ("page_changed", "es") => "Un agente acaba de escribir aquí. Revísalo antes de guardar.",
+        ("page_changed", _) => "An agent just wrote here. Check before saving.",
+        ("page_exists", "fr") => "Cette page existe déjà.",
+        ("page_exists", "de") => "Diese Seite gibt es schon.",
+        ("page_exists", "es") => "Esta página ya existe.",
+        ("page_exists", _) => "This page already exists.",
+        ("number_refused", "fr") => "Les numéros ne sont jamais gardés.",
+        ("number_refused", "de") => "Nummern werden nie gespeichert.",
+        ("number_refused", "es") => "Los números nunca se guardan.",
+        ("number_refused", _) => "Numbers are never kept.",
+        ("token_expired", "fr") => "C'est trop ancien. Recommence.",
+        ("token_expired", "de") => "Das ist zu alt. Fang neu an.",
+        ("token_expired", "es") => "Es demasiado antiguo. Empieza de nuevo.",
+        ("token_expired", _) => "That's too old. Start again.",
+        ("page_gone", "fr") => "Page oubliée",
+        ("page_gone", "de") => "Vergessene Seite",
+        ("page_gone", "es") => "Página olvidada",
+        ("page_gone", _) => "Forgotten page",
+        ("paper_unreadable", "fr") => "Je n'ai pas pu lire ce papier. Corrige à la main.",
+        ("paper_unreadable", "de") => "Ich konnte dieses Dokument nicht lesen. Korrigiere es von Hand.",
+        ("paper_unreadable", "es") => "No pude leer este documento. Corrígelo a mano.",
+        ("paper_unreadable", _) => "I couldn't read this paper. Fix it by hand.",
+        _ => "",
+    }
+}
+
+fn carnet_error(status: u16, code: &str, lang: &str, extra: Value) -> HttpError {
+    let mut detail = json!({"code": code, "text": error_text(code, lang)});
+    if let (Value::Object(d), Value::Object(e)) = (&mut detail, extra) {
+        d.extend(e);
+    }
+    HttpError::json(status, json!(detail))
+}
+
+/// A new page from the app: the bridge writes its Markdown (the apps never do).
+async fn new_page(State(state): State<AppState>, q: QueryMap, Json(body): Json<NewPage>) -> ApiResult<Response> {
     let config = state.config();
+    let shown = shown_language(&config, &q);
     let part = if body.private { Part::Health } else { Part::Main };
-    let entry = blocking(move || super::write_page(&config, part, &body.path, &body.text, &Who::you(&config))).await?;
-    Ok(web::ok(json!({"change": entry})))
+    let made = blocking(move || {
+        let made = super::new_page(&config, part, body.kind.trim(), &body.title, &Who::you(&config))?;
+        Ok(made.map(|path| {
+            let rev = super::read_page_text(&config, part, &path).map(|t| super::rev(&t)).unwrap_or_default();
+            (path, rev)
+        }))
+    })
+    .await?;
+    match made {
+        Ok((path, rev)) => Ok(web::json_response(201, &json!({"path": path, "rev": rev}))),
+        Err(path) => Err(carnet_error(409, "page_exists", &shown, json!({"path": path}))),
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -454,6 +790,8 @@ pub struct SectionEdit {
     pub section: String,
     /// Its new lines (« - … »; empty: the section is emptied). A line unchanged keeps its attribution.
     pub text: String,
+    /// The page's revision the app read (`GET page`).
+    pub rev: String,
     #[serde(default, deserialize_with = "web::lax::bool")]
     pub private: bool,
 }
@@ -463,23 +801,57 @@ impl Validate for SectionEdit {
         check_max_len(errors, "path", Some(&self.path), 300);
         check_max_len(errors, "section", Some(&self.section), 80);
         check_max_len(errors, "text", Some(&self.text), 50_000);
+        check_max_len(errors, "rev", Some(&self.rev), 16);
     }
 }
 
-/// The person's « Modifier » on one section of a page.
+/// The person's « Modifier » on one section of a page, over the revision they read: the page as it is now, its new
+/// `rev` and the change's id. An agent wrote since: 409 `page_changed` with the section as it is now.
 async fn write_section(State(state): State<AppState>, q: QueryMap, Json(body): Json<SectionEdit>) -> ApiResult<Response> {
     let config = state.config();
     let shown = shown_language(&config, &q);
     let part = if body.private { Part::Health } else { Part::Main };
-    let view = blocking(move || {
+    if super::lexicon::id_number(&body.text) {
+        return Err(carnet_error(422, "number_refused", &shown, json!({})));
+    }
+    let lang = shown.clone();
+    let done = tokio::task::spawn_blocking(move || -> anyhow::Result<Result<Value, (String, Value)>> {
         super::checked(&body.path)?;
         let who = Who::you(&config);
-        let (written, _) =
-            super::edit(&config, &[part], &body.path, "", "", &body.section, Some(&body.text), "", &who)?;
-        page_view_in(&config, part, &written.path, &shown)
+        let edited =
+            super::edit(&config, &[part], &body.path, "", "", &body.section, Some(&body.text), "", Some(&body.rev), &who);
+        match edited {
+            Ok((written, _)) => {
+                let mut view = page_view_in(&config, part, &written.path, &lang)?;
+                let change = super::history(&config, Some(part), Some(&written.path), 1);
+                view["change_id"] = json!(change.first().map(|c| tk::str_or_empty(c.get("id"))));
+                Ok(Ok(view))
+            }
+            Err(err) => match err.downcast_ref::<super::PageChanged>() {
+                Some(changed) => {
+                    let view = page_view_in(&config, part, &body.path, &lang)?;
+                    let section = view["sections"]
+                        .as_array()
+                        .and_then(|list| list.iter().find(|s| s["id"] == json!(body.section)).cloned())
+                        .unwrap_or_else(|| json!({"id": body.section, "facts": []}));
+                    Ok(Err((changed.0.clone(), section)))
+                }
+                None => Err(err),
+            },
+        }
     })
-    .await?;
-    Ok(web::ok(view))
+    .await
+    .map_err(anyhow::Error::from)?;
+    match done {
+        Ok(Ok(view)) => Ok(web::ok(view)),
+        Ok(Err((rev, section))) => {
+            Err(carnet_error(409, "page_changed", &shown, json!({"rev": rev, "section": section})))
+        }
+        Err(err) => match err.downcast_ref::<super::NotebookError>() {
+            Some(message) => Err(HttpError::new(400, message.0.clone())),
+            None => Err(err.into()),
+        },
+    }
 }
 
 async fn delete_page(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
@@ -789,7 +1161,10 @@ async fn documents(State(state): State<AppState>, q: QueryMap) -> ApiResult<Resp
 
 pub fn settings_view(config: &Config) -> Value {
     let spend = super::tidy::spending(config);
+    let state = super::read_state(config);
+    let [from, to] = super::ask::quiet_hours(&state);
     json!({"mentions": super::mentions(config), "nightly": super::nightly(config), "nightly_choices": super::NIGHTLY,
+           "questions": super::ask::questions_on(&state), "quiet": {"from": from, "to": to},
            "language": super::language(config),
            "monthly_cap": config.notebook.monthly_cap, "spent_this_month": spend.get("eur").cloned().unwrap_or(json!(0.0)),
            "model": config.notebook.model})
@@ -809,10 +1184,35 @@ pub struct Settings {
     pub nightly: Option<String>,
     #[serde(default)]
     pub language: Option<String>,
+    /// « Questions pour le Carnet » (ask.rs).
+    #[serde(default, deserialize_with = "web::lax::opt_bool")]
+    pub questions: Option<bool>,
+    /// The place's quiet hours, « HH:MM » (the Carnet's cards, the review, the tips).
+    #[serde(default)]
+    pub quiet: Option<Quiet>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Quiet {
+    pub from: String,
+    pub to: String,
+}
+
+fn hhmm(text: &str) -> bool {
+    text.split_once(':').is_some_and(|(h, m)| {
+        h.len() == 2 && m.len() == 2 && h.parse::<u32>().is_ok_and(|h| h < 24) && m.parse::<u32>().is_ok_and(|m| m < 60)
+    })
 }
 
 impl Validate for Settings {
     fn validate(&self, errors: &mut Vec<FieldError>) {
+        if let Some(q) = &self.quiet {
+            for (k, v) in [("from", &q.from), ("to", &q.to)] {
+                if !hhmm(v) {
+                    errors.push(FieldError::new("value_error", web::body_loc(k), "Value error, HH:MM", json!(v)));
+                }
+            }
+        }
         if let Some(n) = &self.nightly {
             if !super::NIGHTLY.contains(&n.as_str()) {
                 errors.push(FieldError::new(
@@ -850,6 +1250,12 @@ async fn set_settings(State(state): State<AppState>, Json(body): Json<Settings>)
             }
             if let Some(n) = &body.nightly {
                 s.insert("nightly".into(), json!(n));
+            }
+            if let Some(q) = body.questions {
+                s.insert("questions".into(), json!(q));
+            }
+            if let Some(q) = &body.quiet {
+                s.insert("quiet".into(), json!({"from": q.from, "to": q.to}));
             }
         })?;
         Ok(settings_view(&config))
@@ -932,7 +1338,18 @@ pub fn router() -> Router<AppState> {
         .route("/notebook", get(home))
         .route("/notebook/pages", get(list_pages))
         .route("/notebook/search", get(search))
-        .route("/notebook/page", get(read_page).put(write_page).delete(delete_page))
+        .route("/notebook/offline", get(offline))
+        .route("/notebook/known", get(known))
+        .route("/notebook/forget/preview", post(forget_preview))
+        .route("/notebook/forget/confirm", post(forget_confirm))
+        .route("/notebook/forget/cancel", post(forget_cancel))
+        .route("/notebook/ask/{id}", post(ask_answer))
+        .route("/notebook/follow/{id}", post(follow_answer))
+        .route("/notebook/review", get(review))
+        .route("/notebook/review/done", post(review_done))
+        .route("/notebook/paper", post(paper))
+        .route("/notebook/papers/{id}/photo", get(paper_photo))
+        .route("/notebook/page", get(read_page).post(new_page).delete(delete_page))
         .route("/notebook/section", axum::routing::put(write_section))
         .route("/notebook/history", get(history))
         .route("/notebook/restore", post(restore))

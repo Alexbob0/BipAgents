@@ -207,7 +207,7 @@ mod tests {
         }
         for quick in [crate::agent_tools::PROPOSE_TASK, crate::agent_tools::KNOWLEDGE_SEARCH, crate::maps::TOOL_NAME,
             crate::routes::TOOL_NAME, crate::weather::TOOL_NAME, crate::agent_messages::TOOL_NAME,
-            crate::notebook::tools::SEARCH, crate::notebook::tools::NOTE, "calendar_list", "reminders_add", "mail_search",
+            crate::notebook::tools::SEARCH, crate::notebook::tools::WRITE, "calendar_list", "reminders_add", "mail_search",
             "mail_read", crate::agent_tools::LIST_PAGES, crate::agent_tools::READ_PAGE, crate::live_calls::AFTER_CALL]
         {
             assert!(!closes(&bridge(quick)), "{quick}");

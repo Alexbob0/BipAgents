@@ -94,10 +94,6 @@ def test_left_as_it_is_no_card_again(bridge):
     assert [p["state"] for p in splits(bridge)] == ["declined"]
     assert bridge.get("/v1/notebook", headers=AUTH).json()["proposals"] == []
     assert bridge.get("/v1/notebook/pages", params={"kind": "trip"}, headers=AUTH).json()["pages"] == []
-    # The person asks their agent: proposed again.
-    asked = call(bridge, "notebook_edit", {"page": "Voyages", "split_trips": True})
-    assert asked["isError"] is False and "Proposed to the person" in text_of(asked) and QUESTION in text_of(asked)
-    assert [p["state"] for p in splits(bridge)] == ["open", "declined"]
 
 
 ALEX = ("---\ntype: subject\n---\n# Voyages\n\n## Où on en est\n"
@@ -110,8 +106,10 @@ def test_alex_s_page_is_split_by_places_and_leaves_no_status_lines(bridge):
     """What Alex saw on 2026-11-03: « Où on en est » holding « et retour vendredi, déc. 2026 : 20 déc. 2026 » by « toi »."""
     give_token(bridge)
     in_french(bridge)
-    put = bridge.put("/v1/notebook/page", json={"path": "Sujets/Voyages.md", "text": ALEX}, headers=AUTH)
-    assert put.status_code == 200, put.text
+    # written by hand (Obsidian): the apps write sections only
+    folder = bridge.state_dir / "notebook" / "carnet" / "Sujets"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "Voyages.md").write_text(ALEX)
     assert tidy(bridge).get("splits") == 1
     card = splits(bridge)[0]
     assert [t["title"] for t in card["trips"]] == ["Amsterdam, déc. 2021", "Amsterdam, déc. 2026"], card

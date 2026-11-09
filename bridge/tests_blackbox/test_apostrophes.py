@@ -16,10 +16,10 @@ FACT = "C'est l’été, aujourd’hui on relit l'enquête"
 def test_a_carnet_page_keeps_its_apostrophes(bridge):
     give_token(bridge)
     in_french(bridge)
-    made = call(bridge, "notebook_note", {"page": TITLE, "kind": "subject", "section": "Décisions", "facts": [FACT],
-                                          "summary": "C'est l’affaire du voisin."})
+    made = call(bridge, "notebook_write", {"page": TITLE, "kind": "subject", "section": "decisions", "facts": [FACT],
+                                           "summary": "C'est l’affaire du voisin."})
     assert made["isError"] is False, text_of(made)
-    assert TITLE in text_of(made) and FACT in text_of(made)
+    assert TITLE in text_of(made)
     files = list((notebook(bridge) / "carnet" / "Sujets").glob("*.md"))
     assert [f.name for f in files] == [f"{TITLE}.md"]
     text = files[0].read_text()
@@ -39,7 +39,7 @@ def test_a_carnet_page_keeps_its_apostrophes(bridge):
     home = bridge.get("/v1/notebook", headers=AUTH).json()
     assert TITLE in json.dumps(home["recent"], ensure_ascii=False)
     # a correction keeps them too
-    fixed = call(bridge, "notebook_edit", {"page": TITLE, "old": FACT, "new": "Aujourd’hui c'est fini"})
+    fixed = call(bridge, "notebook_write", {"page": TITLE, "fix": [{"old": FACT, "new": "Aujourd’hui c'est fini"}]})
     assert fixed["isError"] is False
     assert "Aujourd’hui c'est fini" in (notebook(bridge) / "carnet" / path).read_text()
 

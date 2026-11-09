@@ -97,7 +97,7 @@ fn wrote_notebook(message: &Dict) -> bool {
                 .or_else(|| c.get("name"))
                 .and_then(Value::as_str)
                 .unwrap_or("");
-            name.contains("notebook_note") || name.contains("notebook_edit") || name.contains("notebook_task")
+            name.contains("notebook_write") || name.contains("notebook_task")
         }),
         _ => false,
     }
@@ -353,6 +353,18 @@ async fn run_inner(
     if archived > 0 {
         record.insert("archived".into(), json!(archived));
     }
+    // the photos of papers whose record is gone (papers.rs)
+    tokio::task::spawn_blocking({
+        let c = config.clone();
+        move || super::papers::sweep(&c)
+    })
+    .await?;
+    // the journal of the agents' reads: 90 days (reads.rs)
+    tokio::task::spawn_blocking({
+        let c = config.clone();
+        move || super::reads::purge(&c, crate::py::time_time())
+    })
+    .await??;
     // the phone reminders of tasks no longer in the Carnet (an edit outside the bridge, an older bridge): taken off
     tokio::task::spawn_blocking({
         let c = config.clone();
@@ -645,8 +657,9 @@ pub fn apply(
         let part = Part::Main;
         let result: anyhow::Result<bool> = match s("op").as_str() {
             "note" => {
+                // never a health fact (lexicon.rs): the health agent's, in the private part
                 let facts: Vec<String> = match op.get("facts") {
-                    Some(Value::Array(f)) => f.iter().map(py::py_str).collect(),
+                    Some(Value::Array(f)) => f.iter().map(py::py_str).filter(|f| !super::lexicon::is_health(f)).collect(),
                     _ => Vec::new(),
                 };
                 let kind = if super::KINDS.contains(&s("kind").as_str()) { s("kind") } else { "subject".into() };
@@ -736,7 +749,7 @@ mod tests {
         let mut filed = message("assistant", "Noté.");
         filed.insert(
             "tool_calls".into(),
-            json!([{"function": {"name": "mcp_bipagents_notebook_note", "arguments": "{}"}}]),
+            json!([{"function": {"name": "mcp_bipagents_notebook_write", "arguments": "{}"}}]),
         );
         let all = turns(&[
             message("user", "Rendez-vous chez le dentiste le 3 novembre"),

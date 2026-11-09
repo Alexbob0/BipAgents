@@ -1,7 +1,7 @@
 """« Nouvelles du Carnet » (bridge-rs/src/notebook/news.rs, 2026-10-29): when an agent files a fact in the Carnet, the
 person's other agents it concerns (the page's area by their category or name, the agents that wrote the page before)
 get it as one hidden note at the top of their next turn, once, without any model call; the tool's answer names them
-for the one-line mention; an agent other people talk to (the family's agent) never gets the person's news."""
+(« Passed on to Budget. »); an agent other people talk to (the family's agent) never gets the person's news."""
 import json
 
 from bbkit.common import AUTH
@@ -27,7 +27,7 @@ def team(bridges, fakes):
 
 
 def note(bridge, who, arguments):
-    result = rpc(bridge, who, "tools/call", {"name": "notebook_note", "arguments": arguments})["result"]
+    result = rpc(bridge, who, "tools/call", {"name": "notebook_write", "arguments": arguments})["result"]
     assert result["isError"] is False, result
     return result["content"][0]["text"]
 
@@ -40,9 +40,8 @@ def test_a_fact_on_budget_s_area_reaches_budget_s_next_turn_once(bridges, fakes)
     bridge = team(bridges, fakes)
     filed = note(bridge, "quotidien", {"page": "Argent", "kind": "area",
                                        "facts": ["Loyer : 950 € à partir du 1er décembre"]})
-    # the mention names the agents told (the bridge's names, not the model's), never the family's agent
-    assert "« Noté dans ton Carnet : Argent — Loyer : 950 € à partir du 1er décembre · Budget est au courant »" in filed
-    assert "don't message them about it" in filed and "Coach" not in filed
+    # the answer names the agents told (the bridge's names, not the model's), never the family's agent
+    assert filed == "Saved: Argent › other (1 fact, new page). Passed on to Budget.", filed
 
     # Budget's next message: the time line, then the Carnet's note, hidden
     first = recap(bridge, "budget")
@@ -66,9 +65,9 @@ def test_a_turn_the_bridge_starts_carries_the_note_too(bridges, fakes):
                       json={"links": [{"from": "quotidien", "to": "budget"}]}).status_code == 200
     give_tokens(bridge, TOKENS)
     # a person's page: nobody concerned at first; Budget writes it, then Quotidien adds to it
-    assert "au courant" not in note(bridge, "budget", {"page": "Léa", "facts": ["Anniversaire : 12 mars"]})
+    assert "Passed on" not in note(bridge, "budget", {"page": "Léa", "facts": ["Anniversaire : 12 mars"]})
     added = note(bridge, "quotidien", {"page": "Léa", "facts": ["Aime le jazz"]})
-    assert "· Budget est au courant" in added
+    assert added.endswith(" Passed on to Budget."), added
     fakes.hermes.run_output = "D'accord."
     text, failed = ask(bridge, "quotidien", target="bip/budget", message="Peux-tu prévoir un cadeau ?")
     assert not failed, text

@@ -460,10 +460,10 @@ mod tests {
         let items = vec![
             person("m_0", "Remplis mon Carnet"),
             agent("m_1", "Je commence."),
-            tool("m_1.t0", "notebook_note", "{}"),
+            tool("m_1.t0", "notebook_write", "{}"),
             agent("m_2", "Je continue."),
             added("m_3", "Tu as fini ?"),
-            tool("m_3.t0", "notebook_note", "{}"),
+            tool("m_3.t0", "notebook_write", "{}"),
             agent("m_4", "Presque, encore une page."),
             agent("m_5", "Ton Carnet est rempli, voilà ce qu'il contient : 12 pages."),
             person("m_6", "Hello ?"),
@@ -580,7 +580,7 @@ mod tests {
 
     #[test]
     fn kinds_by_name() {
-        assert_eq!(kind_of("mcp__bipagents__notebook_note"), "notebookNote");
+        assert_eq!(kind_of("mcp__bipagents__notebook_write"), "notebookNote");
         assert_eq!(kind_of("mcp_bipagents_files_shared_files_read"), "sharedFiles");
         assert_eq!(kind_of("mcp__stealth__navigate"), "browser");
         assert_eq!(kind_of("todo_write"), "todo");

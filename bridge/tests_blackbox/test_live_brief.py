@@ -30,7 +30,7 @@ LIVE_CLOSED = ["browser_*", "computer_use", "delegate_task", "image_generate", "
                "text_to_speech", "video_generate", "write_file", "xai_video_edit", "xai_video_extend"]
 LIVE_OPTIONS = {"reasoning": {"enabled": False}, "closed_tools": LIVE_CLOSED}
 # The quick ones a call keeps.
-LIVE_KEPT = ["web_search", "web_extract", "mcp__bipagents__notebook_search", "mcp__bipagents__notebook_note",
+LIVE_KEPT = ["web_search", "web_extract", "mcp__bipagents__notebook_search", "mcp__bipagents__notebook_write",
              "mcp__bipagents__calendar_list", "mcp__bipagents__calendar_add", "mcp__bipagents__reminders_add",
              "mcp__bipagents__mail_search", "mcp__bipagents__mail_read", "mcp__bipagents__map_image",
              "mcp__bipagents__route", "mcp__bipagents__weather", "mcp__bipagents__message_agent",

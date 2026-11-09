@@ -5,7 +5,7 @@
 //!     Fiches/Achats.md                    purchases: date, item, store, price, end of warranty, source
 //!     Fiches/Abonnements.md               subscriptions: service, price, period, next renewal, how to cancel, source
 //!     Fiches/Contrats et assurances.md    contracts and insurance: type, provider, number, end, source
-//!     Fiches/Papiers.md                   papers: document, expiry, source
+//!     Fiches/Papiers.md                   papers: document, holder, expiry, source
 //!     Fiches/Réservations.md              bookings: date, what, with whom, reference, trip, source (they feed trips)
 //!
 //! Each row has a stable id (`r` and 6 hex digits, its last column). The agents add and update rows through
@@ -20,8 +20,9 @@
 //! Obsidian is kept.
 //!
 //! The nightly pass proposes reminders (never adds them by itself): a warranty ending within 30 days, a renewal within
-//! 7, a contract's end within 30, a paper expiring within 60 — as Carnet task proposals (mod.rs `propose`, within its
-//! weekly budget), each record's date once.
+//! 7, a contract's end within 30 — as Carnet task proposals (mod.rs `propose`, within its weekly budget), each record's
+//! date once. A paper gets two real tasks when it is filed (papers.rs: 3 months and 1 month before its end), no
+//! proposal.
 //!
 //! What is past moves to the same table in the archives (`Archives/Fiches/Achats.md`, archive.rs decides when): the
 //! row as it was, its id kept. `records` reads the live table, `archived_records` the other; the tool's list shows both.
@@ -155,12 +156,14 @@ pub const TYPES: [Kind; 5] = [
         ],
         fields: &[
             Field { id: "document", titles: ["Document", "Document", "Dokument", "Documento"] },
+            // whose paper it is (Carnet v2: one record per document and holder; never its number)
+            Field { id: "holder", titles: ["Titulaire", "Holder", "Inhaber", "Titular"] },
             Field { id: "expires", titles: ["Expiration", "Expires", "Gültig bis", "Caduca"] },
             SOURCE,
         ],
         next: "expires",
-        keys: &[&["document"]],
-        window: 60,
+        keys: &[&["document", "holder"], &["document"]],
+        window: 0,
         proposal: "expiry",
     },
     Kind {
@@ -1167,7 +1170,17 @@ pub fn type_view(config: &Config, t: &Kind, today: NaiveDate) -> Value {
             super::date_in(&tk::str_or_empty(r.get("date"))).and_then(|(m, d, y)| NaiveDate::from_ymd_opt(y?, m, d))
         }))
     });
-    let views: Vec<Value> = items.iter().map(|r| item_view(t, r, today, min_eur, false, &lang)).collect();
+    let mut views: Vec<Value> = items.iter().map(|r| item_view(t, r, today, min_eur, false, &lang)).collect();
+    // a paper filed with its photo: « Voir la photo » on its line (papers.rs)
+    if t.id == "paper" {
+        for (view, record) in views.iter_mut().zip(&items) {
+            if let (Some(view), Some(label)) =
+                (view.as_object_mut(), super::papers::photo_label(config, &tk::str_or_empty(record.get("id")), &lang))
+            {
+                view.insert("photo".into(), json!(label));
+            }
+        }
+    }
     let important = views.iter().filter(|v| v.get("important").map(py::truthy).unwrap_or(false)).count();
     json!({"type": t.id, "title": t.titles[i], "path": path_of(&lang, t), "fields": fields, "next": t.next,
            "next_title": next_title, "count": items.len(), "important_count": important,
@@ -1291,11 +1304,7 @@ pub fn propose_due(config: &Config, today: NaiveDate) -> anyhow::Result<usize> {
                 continue;
             }
             // the task's day: a little before the date, never in the past
-            let before = match t.id {
-                "subscription" => 2,
-                "paper" => 30,
-                _ => 7,
-            };
+            let before = if t.id == "subscription" { 2 } else { 7 };
             let due = (date - chrono::Duration::days(before)).max(today);
             let title = proposal_title(&lang, t, &record, date);
             let page = t.titles[lang_index(&lang)];

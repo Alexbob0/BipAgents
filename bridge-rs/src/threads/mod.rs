@@ -684,6 +684,7 @@ impl Threads {
         }
         with_services(&self.config.get(), &agent.name, &mut items);
         crate::steps::fold(&mut items, &crate::handback::language_of(&self.config.get(), agent));
+        with_carnet_lines(&self.config.get(), agent, &mut items);
         if thread.kind != "main" {
             // a run without the person that had nothing to tell (« [SILENT] », or the code word translated): no reply
             items.retain(|i| !timeline::silent_reply(i));
@@ -1332,6 +1333,83 @@ async fn item_route(
 
 /// A connector's calls with their connector's name (`tool.service`, connectors::service_in): the apps and the
 /// automatic « Étapes » say it instead of the tool's own name. A call through the tool search by the call it wraps.
+/// Under each turn that read or wrote in the Carnet, after its last item, one `carnet_line` item: « A consulté 2 pages
+/// · Noté dans Léa » (notebook/reads.rs `lines`, contract.md §4), then its `carnet_card` items (an « Oublie ça »
+/// to confirm, the question of the day: notebook/forget.rs `cards`); a follow-up's card at the head of its turn
+/// (notebook/followups.rs). Only for a timeline with a Carnet tool call or a Carnet card in it.
+fn with_carnet_lines(config: &crate::config::Config, agent: &AgentConfig, items: &mut Vec<Item>) {
+    let carnet = |i: &Item| {
+        i.kind() == "tool"
+            && i.body.get("tool").is_some_and(|t| {
+                ["name", "arguments"].iter().any(|k| t.get(*k).and_then(Value::as_str).is_some_and(|n| n.contains("notebook_")))
+            })
+    };
+    if !items.iter().any(carnet) && !crate::notebook::ask::has_cards(config, &agent.name) {
+        return;
+    }
+    // each turn: its session, its first time, its last item
+    let mut spans: Vec<crate::notebook::reads::Span> = Vec::new();
+    let mut last: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut first: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for (i, item) in items.iter().enumerate() {
+        if item.turn.is_empty() {
+            continue;
+        }
+        first.entry(item.turn.clone()).or_insert(i);
+        if !spans.iter().any(|s| s.turn == item.turn) {
+            spans.push(crate::notebook::reads::Span {
+                turn: item.turn.clone(),
+                session: item.segment.clone(),
+                from: item.at,
+                to: f64::MAX,
+            });
+        }
+        last.insert(item.turn.clone(), i);
+    }
+    for i in 1..spans.len() {
+        spans[i - 1].to = spans[i].from;
+    }
+    let lang = crate::handback::language_of(config, agent);
+    let lines = crate::notebook::reads::lines(config, &agent.name, &lang, &spans);
+    // and the Carnet's cards of the turn (« Oublie ça »'s preview: notebook/forget.rs), under its line
+    let mut cards = crate::notebook::forget::cards(config, &agent.name, &lang, &spans);
+    let mut bodies: Vec<(String, String, Value)> =
+        lines.into_iter().map(|(turn, body)| (turn.clone(), format!("{turn}.carnet"), body)).collect();
+    for (turn, list) in cards.drain() {
+        for body in list {
+            let id = format!("{turn}.{}", body.get("id").and_then(Value::as_str).unwrap_or("card"));
+            bodies.push((turn.clone(), id, body));
+        }
+    }
+    // the line first, then the cards in the order they were made
+    bodies.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.ends_with(".carnet").cmp(&a.1.ends_with(".carnet"))));
+    let mut after: Vec<(usize, usize, Item)> = bodies
+        .into_iter()
+        .enumerate()
+        .filter_map(|(order, (turn, id, body))| {
+            // a follow-up at the head of the answer (after the person's message), the rest after its last item
+            let head = body.get("card").and_then(Value::as_str) == Some("follow");
+            let index = if head { *first.get(&turn)? } else { *last.get(&turn)? };
+            let at = &items[index];
+            let Value::Object(body) = body else { return None };
+            Some((index, order, Item {
+                id,
+                pos: (at.pos.0, at.pos.1, at.pos.2 + 1),
+                at: at.at,
+                turn,
+                segment: at.segment.clone(),
+                row: at.row,
+                body,
+            }))
+        })
+        .collect();
+    // inserted from the end, each turn's last first, so the turn keeps its order
+    after.sort_by_key(|a| (std::cmp::Reverse(a.0), std::cmp::Reverse(a.1)));
+    for (index, _, item) in after {
+        items.insert(index + 1, item);
+    }
+}
+
 fn with_services(config: &crate::config::Config, agent: &str, items: &mut [Item]) {
     let mut connectors = None;
     for item in items.iter_mut().filter(|i| i.kind() == "tool") {

@@ -7,7 +7,7 @@
 //! `localize` puts them in a text written for the model (the souls' blocks: souls.rs `for_language`; the tools'
 //! descriptions and results: agent_tools.rs, card_pay.rs `serve`; the background tasks' instructions: jobs.rs) for an
 //! agent writing in another language than French; French texts are left as they are. The tools' own names
-//! (`notebook_note`…) are identifiers and stay. A Carnet's page and folder names are the person's data: never renamed
+//! (`notebook_write`…) are identifiers and stay. A Carnet's page and folder names are the person's data: never renamed
 //! (a Carnet takes the place's language when it is made: notebook/mod.rs `WORDS`); the language block tells the agent
 //! to say them in the person's language (`RULE`).
 //!
@@ -55,8 +55,6 @@ pub struct Names {
     pub google_calendar: &'static str,
     /// The background task that fills the Carnet (notebook/fill.rs): « Remplir le Carnet ».
     pub fill_notebook: &'static str,
-    /// The line after filing: « Noté dans ton Carnet ».
-    pub noted: &'static str,
     /// After it, the person's other agents told: « Léa est au courant », « … sont au courant ».
     pub knows: (&'static str, &'static str),
     /// A link to an archived document in a fact: « [[archive:…|voir le document]] ».
@@ -85,7 +83,6 @@ pub const NAMES: [Names; 4] = [
         connector: "connecteur",
         google_calendar: "Google Agenda",
         fill_notebook: "Remplir le Carnet",
-        noted: "Noté dans ton Carnet",
         knows: ("est au courant", "sont au courant"),
         see_document: "voir le document",
     },
@@ -110,7 +107,6 @@ pub const NAMES: [Names; 4] = [
         connector: "connector",
         google_calendar: "Google Calendar",
         fill_notebook: "Fill the Notebook",
-        noted: "Noted in your Notebook",
         knows: ("knows", "know"),
         see_document: "see the document",
     },
@@ -135,7 +131,6 @@ pub const NAMES: [Names; 4] = [
         connector: "Connector",
         google_calendar: "Google Kalender",
         fill_notebook: "Notizbuch füllen",
-        noted: "Im Notizbuch notiert",
         knows: ("weiß Bescheid", "wissen Bescheid"),
         see_document: "Dokument ansehen",
     },
@@ -160,7 +155,6 @@ pub const NAMES: [Names; 4] = [
         connector: "conector",
         google_calendar: "Google Calendar",
         fill_notebook: "Rellenar el Cuaderno",
-        noted: "Anotado en tu Cuaderno",
         knows: ("está al tanto", "están al tanto"),
         see_document: "ver el documento",
     },
@@ -173,9 +167,8 @@ pub fn names(lang: &str) -> &'static Names {
 }
 
 /// The French names in the bridge's texts for the models, each with its counterpart: the longest first.
-fn table(n: &'static Names) -> [(&'static str, &'static str); 14] {
+fn table(n: &'static Names) -> [(&'static str, &'static str); 13] {
     [
-        ("Noté dans ton Carnet", n.noted),
         ("Remplir le Carnet", n.fill_notebook),
         ("|voir le document]]", n.see_document),
         ("Paiements par tes agents", n.agent_payments),
@@ -369,13 +362,13 @@ mod tests {
         assert_eq!(names("nl").notebook, "Notebook", "another language: English");
         let text = "Filed in the Carnet. The person turns it on in the app (Réglages › Coffre des agents); \
                     they follow it in « Tâches de fond », in their Boîte, or « Archives ». See your settings › Boîtes \
-                    mail and « Coffre-fort » → « Coordonnées ». Their Rappels. e.g. « Noté dans ton Carnet : x ». \
+                    mail and « Coffre-fort » → « Coordonnées ». Their Rappels. \
                     [[archive:r1|voir le document]] Google Agenda";
         assert_eq!(
             localize(text, "en"),
             "Filed in the Notebook. The person turns it on in the app (Settings › Agents’ vault); they follow it in \
              « Background tasks », in their Inbox, or « Archives ». See your settings › Mailboxes and « Vault » → \
-             « Contact details ». Their Reminders. e.g. « Noted in your Notebook : x ». [[archive:r1|see the \
+             « Contact details ». Their Reminders. [[archive:r1|see the \
              document]] Google Calendar"
         );
         assert!(localize(text, "de").contains("in the Notizbuch") && localize(text, "de").contains("« Archive »"));
@@ -421,12 +414,12 @@ mod tests {
 
     #[test]
     fn tool_lists_and_results() {
-        let mut tools = vec![serde_json::json!({"name": "notebook_note", "description": "File it in the Carnet.",
+        let mut tools = vec![serde_json::json!({"name": "notebook_write", "description": "File it in the Carnet.",
             "inputSchema": {"properties": {"page": {"type": "string", "description": "a Carnet page"}}}})];
         localize_tools(&mut tools, "de");
         assert_eq!(tools[0]["description"], "File it in the Notizbuch.");
         assert_eq!(tools[0]["inputSchema"]["properties"]["page"]["description"], "a Notizbuch page");
-        assert_eq!(tools[0]["name"], "notebook_note", "an identifier");
+        assert_eq!(tools[0]["name"], "notebook_write", "an identifier");
         let mut result = crate::tools_knowledge::tool_text("Nothing found in the Carnet.", false);
         localize_result(&mut result, "es");
         assert_eq!(result["content"][0]["text"], "Nothing found in the Cuaderno.");

@@ -49,15 +49,17 @@ pub const KEPT_DONE: usize = 200;
 pub const QUEUE_DAYS: i64 = 14;
 pub const REMINDER_TOOL_NAMES: [&str; 3] = ["reminders_list", "reminders_add", "reminders_complete"];
 
+/// Reminders `reminders_list` gives at most (the rest counted: narrowed with `words`).
+pub const LIST_MAX: usize = 30;
+
 /// `REMINDER_TOOLS`: the MCP tool definitions (reminders_list, reminders_add, reminders_complete).
 pub fn reminder_tools() -> Vec<Value> {
     vec![
         json!({
             "name": "reminders_list",
-            "description": "The person's reminders as their iPhone last shared them (its Reminders app): open ones, and \
-        those done in the last 30 days, with the ones you asked for that it hasn't added yet. Optional: a list's name, or \
-        include_done.",
-            "inputSchema": {"type": "object", "properties": {"list": {"type": "string"}, "include_done": {"type": "boolean"}}},
+            "description": "The person's reminders as their phone last shared them: open ones (include_done: those done \
+        in the last 30 days too), and those you asked for not added yet. words or list narrow it; 30 at most.",
+            "inputSchema": {"type": "object", "properties": {"words": {"type": "string"}, "list": {"type": "string"}, "include_done": {"type": "boolean"}}},
         }),
         json!({
             "name": "reminders_add",
@@ -195,6 +197,18 @@ pub fn call_from(
         if name == "reminders_list" {
             let wanted = tk::str_or_empty(arguments.get("list")).to_lowercase();
             let done = arguments.get("include_done").map(py::truthy).unwrap_or(false);
+            // words: only the reminders that have them all (title, notes, list), folded (Carnet v2, 8)
+            let words: Vec<String> = crate::notebook::fold(&tk::str_or_empty(arguments.get("words")))
+                .split(' ')
+                .filter(|w| !w.is_empty() && !crate::notebook::lexicon::STOP.contains(w))
+                .map(str::to_string)
+                .collect();
+            let has_words = |i: &Value| {
+                let text = |k: &str| field(i, k).map(py::py_str).unwrap_or_default();
+                let list = list_title(field(i, "list")).map(|t| py::py_str(&t)).unwrap_or_default();
+                let all = crate::notebook::fold(&format!("{} {} {list}", text("title"), text("notes")));
+                words.iter().all(|w| all.split(' ').any(|x| x.starts_with(w.as_str())))
+            };
             let rows: Vec<&Value> = items
                 .iter()
                 .filter(|i| {
@@ -202,6 +216,7 @@ pub fn call_from(
                         && (wanted.is_empty()
                             || list_title(field(i, "list")).map(|t| py::py_str(&t)).unwrap_or_default().to_lowercase()
                                 == wanted)
+                        && has_words(i)
                 })
                 .collect();
             let at = data.get("at").cloned().unwrap_or(Value::Null);
@@ -271,9 +286,9 @@ pub fn call_from(
                 };
                 return Ok(tool_text(&format!("No reminder.{since}"), false));
             }
-            let lines: Vec<String> = rows
+            let mut lines: Vec<String> = rows
                 .iter()
-                .take(200)
+                .take(LIST_MAX)
                 .map(|i| {
                     let get = |k: &str| field(i, k).cloned().unwrap_or(Value::Null);
                     let list = list_title(field(i, "list")).map(|t| py::py_str(&t)).unwrap_or_else(|| "?".into());
@@ -290,6 +305,9 @@ pub fn call_from(
                     line
                 })
                 .collect();
+            if rows.len() > LIST_MAX {
+                lines.push(format!("… and {} more: narrow with words.", rows.len() - LIST_MAX));
+            }
             let shared = if py::truthy(&at) { py::py_float(&at).unwrap_or(now) } else { now };
             return Ok(tool_text(
                 &format!("As the iPhone shared them {} ago:\n{}{asked}{in_calendar}", age(now - shared), lines.join("\n")),
@@ -1081,6 +1099,25 @@ mod tests {
         data.extend(serde_json::from_value::<Dict>(extra).unwrap());
         write(&config, &data).unwrap();
         config
+    }
+
+    #[test]
+    fn the_list_is_narrowed_by_words_and_capped() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut items: Vec<Value> = (0..40).map(|n| json!({"id": format!("r{n}"), "list": "L", "title": format!("Courses {n}")})).collect();
+        items.push(json!({"id": "rp", "list": "L", "title": "Appeler le plombier", "notes": "fuite cuisine"}));
+        let config = shared(dir.path(), json!({"items": items, "at": NOW - 60.0}));
+        let text = |arguments: Value| {
+            let arguments: Dict = serde_json::from_value(arguments).unwrap();
+            let done = call(&config, "coach", "reminders_list", &arguments, None, Some(NOW)).unwrap();
+            done["content"][0]["text"].as_str().unwrap().to_string()
+        };
+        let all = text(json!({}));
+        assert_eq!(all.lines().filter(|l| l.starts_with("- id ")).count(), LIST_MAX);
+        assert!(all.contains("… and 11 more: narrow with words."), "{all}");
+        let found = text(json!({"words": "plombier cuisine"}));
+        assert!(found.contains("Appeler le plombier") && !found.contains("Courses"), "{found}");
+        assert_eq!(found.lines().filter(|l| l.starts_with("- id ")).count(), 1);
     }
 
     fn add(config: &Config, arguments: Value) -> (bool, String, Option<Value>) {
