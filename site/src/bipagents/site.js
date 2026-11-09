@@ -1,4 +1,4 @@
-// bipagents.com: the hero's results and its « See more » on privacy, the agents' cards, the comparison, the
+// bipagents.com: « See more » on privacy, the agents' cards, the comparison, the
 // two ways and the plan picker; on their own pages, the agent at work (the app's own demo scenarios, with its map and its pages) and the
 // install. One script for every page: each part runs where its elements are. No framework, no network but this site.
 import { Bip, CATEGORIES, REDUCED, iconSVG, nextEpisode, pixelSVG, staticBip, thinkingNow, thinkingVariant } from "./bips.js";
@@ -24,13 +24,17 @@ for (const el of $$("[data-bip-static]")) el.innerHTML = staticBip(el.dataset.bi
 for (const el of $$("[data-bip-icon]")) el.innerHTML = iconSVG();   // the app's icon (the brand)
 
 // -- Header, progress, reveals, parallax ---------------------------------------------------------------------------
-const top = $(".top"), bar = $(".progress i");
+const top = $(".top"), bar = $(".progress i"), hero = $(".hero");
+// the home's living room lies under the header: its height pulls the room up, and the header stays light-on-dark over it
+const topHeight = () => document.documentElement.style.setProperty("--top-h", top.offsetHeight + "px");
+if (hero) { topHeight(); addEventListener("resize", topHeight, { passive: true }); }
 const parallax = REDUCED ? [] : $$("[data-parallax]");
 let ticking = false;
 function onScroll() {
   ticking = false;
   const y = scrollY, max = document.documentElement.scrollHeight - innerHeight;
   top.classList.toggle("scrolled", y > 8);
+  if (hero) top.classList.toggle("off-hero", y >= hero.offsetHeight - top.offsetHeight);
   bar.style.transform = `scaleX(${max > 0 ? y / max : 0})`;
   for (const el of parallax) el.style.transform = `translateY(${(y * +el.dataset.parallax).toFixed(1)}px)`;
 }
@@ -42,7 +46,7 @@ const revealer = new IntersectionObserver(entries => {
 $$(".reveal").forEach(el => revealer.observe(el));
 
 // -- An agent at work: the app's demo scenarios, played in a chat --------------------------------------------------
-const chat = $(".chat"), body = $(".chat-body"), wrap = $(".chat-wrap");
+const chat = $(".chat"), body = $(".chat-body");
 let run = 0;
 // Tool rows in plain words, as the apps word them (ToolLabel.swift / ToolLabel.kt; the wording comes from
 // scripts/tool-labels.py): never a tool's own name. The working line under the thread says what the agent does now.
@@ -278,7 +282,7 @@ function pageCard(name) {
 async function play(id) {
   const mine = ++run;
   const scenario = data.scenarios[id], category = scenario.category, c = CATEGORIES[category];
-  for (const el of [chat, wrap]) el.style.setProperty("--chat-tint", `var(--${TONE[category]}-tint)`);
+  for (const el of [chat, chat.closest(".chat-wrap")]) el.style.setProperty("--chat-tint", `var(--${TONE[category]}-tint)`);
   chat.style.setProperty("--chat-main", c.main);
   chat.style.setProperty("--chat-deep", `var(--${TONE[category]}-deep)`);   // the text-safe shade (site.css)
   $(".chat-avatar").innerHTML = staticBip(category);
@@ -413,45 +417,107 @@ async function play(id) {
 }
 
 let current = "book_table";
+// The scenarios' tabs (the home has two rows of them, beside the phone and in the demo's window): the one playing is
+// selected in both; the arrows move within a row (WAI-ARIA tabs).
 const tabs = $$(".tab");
-tabs.forEach((tab, i) => {
-  tab.addEventListener("click", () => {
-    tabs.forEach(t => { t.classList.toggle("active", t === tab); t.setAttribute("aria-selected", String(t === tab)); t.tabIndex = t === tab ? 0 : -1; });
-    current = tab.dataset.scenario;
-    play(current);
-  });
-  tab.tabIndex = i ? -1 : 0;
-  tab.addEventListener("keydown", e => {   // arrows move between the tabs (WAI-ARIA tabs)
+const pick = id => {
+  current = id;
+  for (const t of tabs) { const on = t.dataset.scenario === id; t.classList.toggle("active", on); t.setAttribute("aria-selected", String(on)); t.tabIndex = on ? 0 : -1; }
+};
+tabs.forEach(tab => {
+  tab.addEventListener("click", () => { pick(tab.dataset.scenario); play(current); });
+  tab.addEventListener("keydown", e => {
     const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
     if (!step) return;
     e.preventDefault();
-    const next = tabs[(i + step + tabs.length) % tabs.length];
+    const row = $$(".tab", tab.parentElement), next = row[(row.indexOf(tab) + step + row.length) % row.length];
     next.focus(); next.click();
   });
 });
-// /demo/#walk opens on that scenario (the home's first-screen cards link here): chosen before it first plays.
+if (tabs.length) pick(current);
+// /demo/#walk opens on that scenario: chosen before it first plays.
 const tabFor = h => tabs.find(t => "#" + t.dataset.scenario === h);
 const fromAddress = tabFor(location.hash);
 if (fromAddress) {
-  tabs.forEach(t => { t.classList.toggle("active", t === fromAddress); t.setAttribute("aria-selected", String(t === fromAddress)); t.tabIndex = t === fromAddress ? 0 : -1; });
-  current = fromAddress.dataset.scenario;
+  pick(fromAddress.dataset.scenario);
   // on a phone the chat is under the tabs: brought into view so it plays at once
   if (chat) addEventListener("load", () => chat.scrollIntoView({ block: "nearest", behavior: "instant" }), { once: true });
 }
 addEventListener("hashchange", () => tabFor(location.hash)?.click());
 $(".replay")?.addEventListener("click", () => play(current));
-if (chat) once(chat, () => play(current), 0.35);   // the demo has its own page (/demo/)
+
+// -- The home: a phone and three tabs; « What they do » plays the demo in the phone, once in view -------------------
+const stories = $$("[data-story]");
+const storyOn = name => stories.some(t => t.dataset.story === name && t.getAttribute("aria-selected") === "true");
+if (stories.length) {
+  const show = (tab, focus) => {
+    const name = tab.dataset.story;
+    for (const t of stories) { const on = t === tab; t.setAttribute("aria-selected", String(on)); t.tabIndex = on ? 0 : -1; }
+    for (const p of $$("[data-story-panel]")) p.hidden = p.dataset.storyPanel !== name;
+    if (focus) tab.focus();
+    if (name === "do") play(current); else run++;
+  };
+  stories.forEach((tab, i) => {
+    tab.addEventListener("click", () => show(tab));
+    tab.addEventListener("keydown", e => {
+      const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+      if (!step) return;
+      e.preventDefault();
+      show(stories[(i + step + stories.length) % stories.length], true);
+    });
+  });
+}
+
+// -- « See the demo »: the app's whole demo in a window over the page; the phone's chat moves into it while it is
+// open, and back after. Without the script the link opens /demo/. --------------------------------------------------
+const demoWindow = $(".v-demo");
+if (chat && !stories.length) once(chat, () => play(current), 0.35);   // the page /demo/
+if (chat && stories.length) once(chat, () => { if (storyOn("do") && !demoWindow?.open) play(current); }, 0.35);
+if (demoWindow && chat) {
+  const slot = $(".v-demo-slot", demoWindow), home = chat.parentElement;
+  document.addEventListener("click", e => {
+    if (!e.target.closest("[data-demo-open]")) return;
+    e.preventDefault();
+    slot.append(chat);
+    demoWindow.showModal();
+    play(current);
+  });
+  // back in the phone at once (the close event may come late, and Escape closes without the button)
+  const back = () => {
+    if (chat.parentElement === home) return;
+    run++;   // the thread stops where it is
+    home.append(chat);
+    if (storyOn("do")) play(current);
+  };
+  const shut = () => { demoWindow.close(); back(); };
+  $(".v-demo-close", demoWindow).addEventListener("click", shut);
+  demoWindow.addEventListener("click", e => { if (e.target === demoWindow) shut(); });   // the backdrop
+  demoWindow.addEventListener("close", back);
+}
+
+// -- Private: « See the details » opens where the data is, who reads it and our limit in a window (#private-detail
+// too); without the script its link shows them under the strip. ---------------------------------------------------
+const privDetail = $(".pv-detail");
+if (privDetail) {
+  const openDetail = () => { if (!privDetail.open) privDetail.showModal(); };
+  document.addEventListener("click", e => {
+    if (!e.target.closest('a[href="#private-detail"]')) return;
+    e.preventDefault();
+    openDetail();
+  });
+  if (location.hash === "#private-detail") openDetail();
+  $(".v-demo-close", privDetail).addEventListener("click", () => privDetail.close());
+  privDetail.addEventListener("click", e => { if (e.target === privDetail) privDetail.close(); });   // the backdrop
+}
 
 // -- Open in place: a button that shows or hides the part it controls (aria-expanded), opened as well by its address
-// (#private, #install) on arrival and from any link to it on the page. Its label may change (« See more » / « See less »).
+// (#install) on arrival and from any link to it on the page.
 function disclosure(button, { hash, onOpen } = {}) {
   const panel = document.getElementById(button.getAttribute("aria-controls"));
   if (!panel) return null;
-  const label = $(".priv-label", button) || null;
   function set(open, { scroll = false, instant = false } = {}) {
     button.setAttribute("aria-expanded", String(open));
     panel.hidden = !open;
-    if (label && button.dataset.more) label.textContent = open ? button.dataset.less : button.dataset.more;
     if (open) {
       $$(".reveal", panel).forEach(el => el.classList.add("in"));
       if (onOpen) onOpen(panel);
@@ -475,39 +541,6 @@ function disclosure(button, { hash, onOpen } = {}) {
   }
   return { set };
 }
-
-// -- Hero: « See more », where your data is and who can read it, under the first screen ------------------------------
-const privMore = $(".priv-more");
-if (privMore) disclosure(privMore, { hash: "#private" });
-
-// -- What they do: a grid on a computer, a row to swipe on a phone (focusable only when it scrolls) ----------------
-const uses = $(".uses");
-if (uses) {
-  const focusable = () => {
-    const scrolls = uses.scrollWidth > uses.clientWidth + 2;
-    if (scrolls) uses.setAttribute("tabindex", "0"); else uses.removeAttribute("tabindex");
-  };
-  focusable();
-  addEventListener("resize", focusable, { passive: true });
-}
-
-// -- Compared: one product face to face with BipAgents (Grok Bot first, the closest), or all of them. Without the
-// script the whole table shows and the control stays hidden. ---------------------------------------------------------
-(() => {
-  const vs = $(".vs"), pick = vs && $(".vs-pick", vs);
-  if (!pick) return;
-  const buttons = $$("button[data-pick]", pick);
-  const show = (which, animate) => {
-    vs.dataset.pick = which;
-    for (const b of buttons) b.setAttribute("aria-pressed", String(b.dataset.pick === which));
-    // a fixed table counts its columns from the widest row: the group headings span only what shows
-    for (const th of $$(".vs-group th", vs)) th.colSpan = which === "all" ? 5 : 3;
-    if (animate) { vs.classList.remove("switched"); void vs.offsetWidth; vs.classList.add("switched"); }
-  };
-  for (const b of buttons) b.addEventListener("click", () => show(b.dataset.pick, true));
-  pick.hidden = false;
-  show("c3", false);
-})();
 
 // -- The visitor's region: the menu's language and country, the currency that follows ------------------------------
 // A choice made here before (the menu or the price picker), else where the visitor most likely is: the time zone

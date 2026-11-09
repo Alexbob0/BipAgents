@@ -1,0 +1,149 @@
+<!-- The home's end: the plans (site.js prices them), the free install in one line (it opens in place; #install opens
+     it too), the questions that settle a purchase. -->
+<section class="section pricing-section v-end" id="pricing">
+  <div class="section-head reveal">
+    <p class="kicker">{{pricing.kicker}}</p>
+    <h2 class="h2-small">{{pricing.ways.plansTitle}}</h2>
+    <p class="after-beta">{{pricing.afterBeta}} <a href="{{betahref}}">{{nav.cta}}</a></p>
+  </div>
+  <span class="mode-anchor" id="plans"></span>
+  <div class="pricing reveal">
+    <div class="pricing-bar">
+      <div class="period" role="radiogroup" aria-label="{{pricing.periodLabel}}">
+        <button type="button" role="radio" aria-checked="false" data-period="month">{{pricing.monthly}}</button>
+        <button type="button" role="radio" aria-checked="true" data-period="year">{{pricing.yearly}} <span class="gift">{{pricing.yearlyBadge}}</span></button>
+      </div>
+      <label class="currency" title="{{pricing.currencyLabel}}"><span class="currency-label">{{pricing.currencyLabel}}</span>
+        <select data-currency>{{currencyoptions}}</select></label>
+    </div>
+    <div class="plans" role="radiogroup" aria-label="{{pricing.planLabel}}">
+      <button type="button" class="plan" role="radio" aria-checked="false" data-plan="solo" style="--main:var(--coral);--tint:var(--coral-tint)">
+        <span class="plan-bips" aria-hidden="true"><i data-bip-static="daily"></i></span>
+        <span class="plan-name">{{pricing.solo.name}}</span>
+        <span class="plan-who">{{pricing.solo.who}}</span>
+        <span class="plan-price"><b data-price="solo">{{p.web.year.solo}}</b><small data-unit>{{pricing.perYear}}</small></span>
+        <span class="plan-equiv" data-equiv="solo">{{pricing.equivPrefix}} {{p.web.yearmonth.solo}} {{pricing.perMonthShort}}</span>
+        <span class="plan-store" data-store="solo">{{pricing.inApp}} {{p.store.year.solo}}</span>
+        <span class="plan-blurb">{{pricing.solo.blurb}}</span>
+      </button>
+      <button type="button" class="plan" role="radio" aria-checked="false" data-plan="duo" style="--main:var(--blue);--tint:var(--blue-tint)">
+        <span class="plan-bips" aria-hidden="true"><i data-bip-static="daily"></i><i data-bip-static="work"></i></span>
+        <span class="plan-name">{{pricing.duo.name}}</span>
+        <span class="plan-who">{{pricing.duo.who}}</span>
+        <span class="plan-price"><b data-price="duo">{{p.web.year.duo}}</b><small data-unit>{{pricing.perYear}}</small></span>
+        <span class="plan-equiv" data-equiv="duo">{{pricing.equivPrefix}} {{p.web.yearmonth.duo}} {{pricing.perMonthShort}}</span>
+        <span class="plan-store" data-store="duo">{{pricing.inApp}} {{p.store.year.duo}}</span>
+        <span class="plan-blurb">{{pricing.duo.blurb}}</span>
+      </button>
+      <button type="button" class="plan plan-best" role="radio" aria-checked="true" data-plan="famille" style="--main:var(--green);--tint:var(--green-tint)">
+        <span class="plan-flag">{{pricing.famille.flag}}</span>
+        <span class="plan-bips" aria-hidden="true"><i data-bip-static="daily"></i><i data-bip-static="wellness"></i><i data-bip-static="finance"></i><i data-bip-static="home"></i></span>
+        <span class="plan-name">{{pricing.famille.name}}</span>
+        <span class="plan-who">{{pricing.famille.who}}</span>
+        <span class="plan-price"><b data-price="famille">{{p.web.year.famille}}</b><small data-unit>{{pricing.perYear}}</small></span>
+        <span class="plan-equiv" data-equiv="famille">{{pricing.equivPrefix}} {{p.web.yearmonth.famille}} {{pricing.perMonthShort}}</span>
+        <span class="plan-store" data-store="famille">{{pricing.inApp}} {{p.store.year.famille}}</span>
+        <span class="plan-blurb">{{pricing.famille.blurb}}</span>
+      </button>
+    </div>
+
+    <div class="checkout">
+      <div class="checkout-copy">
+        <p class="sum" aria-live="polite"><span class="sum-plan">{{pricing.famille.name}}</span> · <span class="sum-price">{{p.web.year.famille}}</span><span class="sum-unit"> {{pricing.perYear}}</span></p>
+        <p class="save" aria-live="polite"></p>
+        <p class="trial">🎁 {{pricing.trial}}</p>
+        <p class="trial">🧳 {{pricing.cancel}}</p>
+      </div>
+      <div class="checkout-act">{{buy}}</div>
+    </div>
+
+    <div class="included">
+      <h3>{{pricing.includedTitle}}</h3>
+      <ul>
+        <li><span aria-hidden="true">🤖</span>{{pricing.inc1}}</li>
+        <li><span aria-hidden="true">✦</span>{{pricing.inc2}}</li>
+        <li><span aria-hidden="true">🎙️</span>{{pricing.inc3}}</li>
+        <li><span aria-hidden="true">📓</span>{{pricing.inc4}}</li>
+        <li><span aria-hidden="true">🛡️</span>{{pricing.inc5}}</li>
+      </ul>
+    </div>
+    <p class="fine-print"><span class="fine-tax">{{pricing.fineTax}}</span> {{pricing.fine}} <a href="https://kerfystudio.com{{legalprefix}}/offer/">{{pricing.terms}}</a> · <a href="https://kerfystudio.com{{legalprefix}}/terms/">{{foot.terms}}</a> · <a href="https://kerfystudio.com{{legalprefix}}/privacy/">{{foot.privacy}}</a></p>
+  </div>
+  <span class="mode-anchor" id="install"></span>
+  <p class="v-self reveal">💻 {{home.self}} <b>{{pricing.ways.selfPrice}}</b> · <button type="button" class="way-open v-self-open" aria-expanded="false" aria-controls="panel-self">{{pricing.ways.selfCta}}<i aria-hidden="true"></i></button></p>
+  <div class="self-panel" id="panel-self" role="region" aria-label="{{pricing.ways.selfTitle}}" hidden>
+  <div class="own">
+    <div class="own-cards">
+      <div class="own-card">
+        <h3>{{install.whatTitle}}</h3>
+        <ul class="own-list">
+          <li><span aria-hidden="true">🆓</span>{{install.what1}}</li>
+          <li><span aria-hidden="true">💻</span>{{install.what2}}</li>
+          <li><span aria-hidden="true">🧠</span>{{install.what3}}</li>
+          <li><span aria-hidden="true">🎙️</span>{{install.what4}}</li>
+        </ul>
+      </div>
+      <div class="own-card">
+        <h3>{{install.needTitle}}</h3>
+        <ul class="own-list">
+          <li><span aria-hidden="true">🖥️</span>{{install.need1}}</li>
+          <li><span aria-hidden="true">🧮</span>{{install.need2}}</li>
+          <li><span aria-hidden="true">🔒</span>{{install.need3}}</li>
+          <li><span aria-hidden="true">🔑</span>{{install.need4}}</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="own-install">
+      <div class="own-steps">
+        <h3>{{install.stepsTitle}}</h3>
+        <ol>
+          <li><span aria-hidden="true">1</span><p>{{install.step1}}</p></li>
+          <li><span aria-hidden="true">2</span><p>{{install.step2}}</p></li>
+          <li><span aria-hidden="true">3</span><p>{{install.step3}}</p></li>
+        </ol>
+        <p class="hermes-line">🧩 {{install.hermes}}</p>
+        <a class="badge" href="https://github.com/NousResearch/hermes-agent" rel="noopener"><span class="badge-dot"></span>{{hero.badge}}</a>
+      </div>
+      <div class="terminal">
+        <div class="term-bar"><i></i><i></i><i></i><span>bash</span></div>
+        <pre><code><span class="prompt">$</span> <span class="typed" data-command="curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash"></span><span class="caret"></span>
+<span class="out o1">{{install.out1}}</span><span class="out o2">{{install.out2}}</span><span class="out o3">{{install.out3}}</span></code></pre>
+        <button class="copy" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.sh | bash" data-done="{{install.copied}}">{{install.copy}}</button>
+      </div>
+    </div>
+    <p class="windows">{{install.windows}} <code>irm https://raw.githubusercontent.com/Alexbob0/BipAgents/main/install.ps1 | iex</code> · <a href="https://github.com/Alexbob0/BipAgents/blob/main/docs/self-hosting.md" rel="noopener">{{install.guide}}</a></p>
+
+    <div class="own-card own-yourself">
+      <div class="own-yourself-head">
+        <h3>{{install.yourselfTitle}}</h3>
+        <p>{{install.yourselfSub}}</p>
+      </div>
+      <ul class="own-list">
+        <li><span aria-hidden="true">🔄</span>{{install.yourself1}}</li>
+        <li><span aria-hidden="true">🛡️</span>{{install.yourself2}}</li>
+        <li><span aria-hidden="true">📶</span>{{install.yourself3}}</li>
+        <li><span aria-hidden="true">💳</span>{{install.yourself4}}</li>
+      </ul>
+    </div>
+  </div>
+  </div>
+
+</section>
+
+<!-- ============================================================ FAQ -->
+<section class="section faq-section" id="faq">
+  <div class="section-head reveal">
+    <p class="kicker">{{faq.kicker}}</p>
+    <h2>{{faq.title}}</h2>
+  </div>
+  <div class="faq reveal">
+    {{faqhome}}
+  </div>
+  <p class="faq-more"><a href="{{faqhref}}">{{faq.all}}</a></p>
+</section>
+
+<div class="sticky-buy" aria-hidden="true">
+  <span class="sb-copy"><b class="sb-plan">{{beta.sticky}}</b><span class="sb-price">{{beta.stickySub}}</span></span>
+  <a class="pill pill-buy small top-cta" href="{{betahref}}" tabindex="-1"><span class="cta-long">{{nav.cta}}</span><span class="cta-short">{{nav.ctaShort}}</span></a>
+</div>

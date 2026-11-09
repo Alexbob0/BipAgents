@@ -966,13 +966,17 @@ async fn routes_for_settings_thinking_and_model() {
     );
     assert_eq!(
         app.get("/v1/agents/wellness/thinking", &h).await.json(),
-        json!({"id": "wellness", "thinking": "medium"})
+        json!({"id": "wellness", "thinking": "auto"})
     );
     let bad = app.send_json("PUT", "/v1/agents/wellness/thinking", &h, &json!({"level": "ultra"})).await;
     assert_eq!(bad.status, 422);
     assert_eq!(bad.json()["detail"][0]["type"], "string_pattern_mismatch");
     let put = app.send_json("PUT", "/v1/agents/wellness/thinking", &h, &json!({"level": "low"})).await;
     assert_eq!(put.json(), json!({"id": "wellness", "thinking": "low"}));
+    let back = app.send_json("PUT", "/v1/agents/wellness/thinking", &h, &json!({"level": "auto"})).await;
+    assert_eq!(back.json(), json!({"id": "wellness", "thinking": "auto"}));
+    assert_eq!(app.get("/v1/agents/wellness/thinking", &h).await.json()["thinking"], "auto");
+    app.send_json("PUT", "/v1/agents/wellness/thinking", &h, &json!({"level": "low"})).await;
     let model =
         app.send_json("PUT", "/v1/agents/wellness/model", &h, &json!({"name": "minimax-m3", "vision": "yes"})).await;
     assert_eq!(model.json(), json!({"id": "wellness", "model": {"name": "minimax-m3", "vision": true}}));
@@ -1332,4 +1336,60 @@ async fn a_team_is_made_as_one_batch() {
     let made = agents_admin::create_agents(&config6, &twice, &http, &slow_run(Duration::ZERO)).await;
     let ids: Vec<String> = made.iter().map(|r| r.as_ref().map(|a| a.name.clone()).unwrap_or_default()).collect();
     assert!(!ids[0].is_empty() && ids[0] != ids[1], "{ids:?}");
+}
+
+#[test]
+fn automatic_thinking_is_everyones_default_and_a_choice_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let (config, _) = managed_config(dir.path(), "http://127.0.0.1:8642");
+    let agent = hub_agent(&config);
+    let c = config.get();
+    let folder = profiles(dir.path()).join(&agent.name);
+    std::fs::create_dir_all(&folder).unwrap();
+    let path = folder.join("config.yaml");
+    let shown = || agents_admin::shown_thinking(&c, &agent);
+    let auto = || agents_admin::auto_thinking(&c, &agent);
+    // a model the bridge can't set: no choice at all, « auto » refused like a level
+    std::fs::write(&path, "model:\n  provider: openrouter\n  default: x\n").unwrap();
+    assert_eq!(shown(), None);
+    let refused = agents_admin::choose_thinking(&c, &agent, "auto").unwrap_err();
+    assert!(refused.downcast_ref::<agents_admin::LookupError>().is_some());
+    // a custom server, nothing chosen: « auto » (over Hermes' template « medium » too)
+    let custom =
+        "model:\n  provider: custom\n  default: qwen\n  base_url: http://gpu:8888/v1\nagent:\n  max_turns: 60\n";
+    std::fs::write(&path, format!("{custom}  reasoning_effort: medium\n")).unwrap();
+    assert_eq!(shown().as_deref(), Some("auto"));
+    assert_eq!(read_thinking(&c, &agent).as_deref(), Some("medium"));
+    // a level chosen, then « Automatique »: the record forgotten, the default written, decided turn by turn again
+    for level in ["none", "high", "xhigh", "low"] {
+        agents_admin::choose_thinking(&c, &agent, level).unwrap();
+        assert_eq!(shown().as_deref(), Some(level));
+        assert_eq!(auto(), None);
+        assert_eq!(agents_admin::choose_thinking(&c, &agent, "auto").unwrap(), "auto");
+        assert_eq!(agents_admin::chosen_thinking(&folder), None);
+        assert_eq!(shown().as_deref(), Some("auto"));
+        assert_eq!(auto(), Some(agents_admin::AutoThinking { floor: false }));
+        let data = load(&path);
+        assert_eq!(data["agent"]["reasoning_effort"], "medium");
+        assert!(data.get("providers").is_none(), "{level}: the thinking entry stayed after « auto »");
+    }
+    // « xhigh » written by a bridge before the record (the person's): shown as such until « Automatique »
+    std::fs::write(&path, format!("{custom}  reasoning_effort: xhigh\n")).unwrap();
+    assert_eq!(shown().as_deref(), Some("xhigh"));
+    agents_admin::choose_thinking(&c, &agent, "auto").unwrap();
+    assert_eq!(shown().as_deref(), Some("auto"));
+    // GLM through EUrouter: back to its floor « low », still automatic (« low » on every turn, turn_thinking.rs)
+    std::fs::write(&path, GLM_EU).unwrap();
+    assert_eq!(shown().as_deref(), Some("auto"));
+    agents_admin::choose_thinking(&c, &agent, "medium").unwrap();
+    assert_eq!(shown().as_deref(), Some("medium"));
+    agents_admin::choose_thinking(&c, &agent, "auto").unwrap();
+    assert_eq!(load(&path)["agent"]["reasoning_effort"], "low");
+    assert_eq!(auto(), Some(agents_admin::AutoThinking { floor: true }));
+    bipbridge::profile_files::reconcile_all(&c);
+    assert_eq!(shown().as_deref(), Some("auto"));
+    // set up by hand: its level is its administrator's, never automatic
+    let mut by_hand = agent.clone();
+    by_hand.host_home = Some(dir.path().join("home").display().to_string());
+    assert!(agents_admin::choose_thinking(&c, &by_hand, "auto").is_err());
 }

@@ -515,6 +515,19 @@ pub async fn undo(state: &AppState, id: &str) -> Result<Line, UndoRefused> {
     done.ok_or(UndoRefused::NotFound)
 }
 
+/// A task forgotten (« Oublier cette tâche », jobs.rs `forget`): its « Tâche de fond lancée » line says « Annulé »,
+/// never an « Annuler » left on a task that is gone (9/11: the line kept it in the Boîte, the task seemed to stay).
+pub fn task_forgotten(config: &Config, job_id: &str) {
+    let now = py::time_time();
+    change(config, |b| {
+        for line in b.lines.iter_mut().filter(|l| l.undone_at.is_none()) {
+            if matches!(&line.undo, Some(Undo::Task { job }) if job == job_id) {
+                line.undone_at = Some(now);
+            }
+        }
+    });
+}
+
 // -- what the bridge approves at once ---------------------------------------------------------------------------------
 
 /// The choice that approves a card of this kind (the routine's question: its suggestion).
@@ -989,6 +1002,22 @@ mod tests {
         set_agent_level(&config, "vie", Some("all")).unwrap();
         assert_eq!(with_block(&config, "vie", &with).trim_end(), "Tu es Vie.");
         assert_eq!(split_block(&with).0.trim_end(), "Tu es Vie.");
+    }
+
+    #[test]
+    fn a_forgotten_task_s_line_says_annule() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(&dir);
+        // a task forgotten: its line « Annulé », no « Annuler »; another task's line untouched
+        record(&config, Line { agent: "vie".into(), kind: "task_start".into(), summary: "T1".into(),
+                               undo: Some(Undo::Task { job: "t000000000001".into() }), ..Line::default() });
+        record(&config, Line { agent: "vie".into(), kind: "task_start".into(), summary: "T2".into(),
+                               undo: Some(Undo::Task { job: "t000000000002".into() }), ..Line::default() });
+        task_forgotten(&config, "t000000000001");
+        let tasks: Vec<Value> = lines(&config, Some("vie"), 10).iter().filter(|l| l.kind == "task_start").map(line_view).collect();
+        let of = |s: &str| tasks.iter().find(|v| v["summary"] == s).cloned().unwrap();
+        assert_eq!((of("T1")["undo"].as_bool(), of("T1")["undone"].as_bool()), (Some(false), Some(true)));
+        assert_eq!((of("T2")["undo"].as_bool(), of("T2")["undone"].as_bool()), (Some(true), Some(false)));
     }
 
     #[test]

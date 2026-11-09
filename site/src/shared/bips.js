@@ -696,9 +696,15 @@ export class Bip {
     this.fig = this.box.querySelector("g");
     this.items = [];
     if (options.interactive) this.listen();
-    if ("IntersectionObserver" in W) new IntersectionObserver(([entry]) => { this.visible = entry.isIntersecting; }, { rootMargin: "120px" }).observe(this.el);
+    // off screen a Bip stands still: no frame drawn for it, its element's own CSS motion (a bob…) paused
+    if ("IntersectionObserver" in W) new IntersectionObserver(([entry]) => {
+      this.visible = entry.isIntersecting;
+      this.el.style.animationPlayState = this.visible ? "" : "paused";
+      if (this.visible) wake();
+    }, { rootMargin: "120px" }).observe(this.el);
     else this.visible = true;
     living.add(this);
+    wake();
     this.render();
   }
 
@@ -833,19 +839,20 @@ export class Bip {
   }
 }
 
-if (W) {
-  let last = 0;
-  const frame = now => {
-    // At most 30 frames a second; nothing for Bips off screen (the browser stops frames in a hidden tab).
-    if (last && now - last < 32) { requestAnimationFrame(frame); return; }
-    const dt = last ? Math.min(0.1, (now - last) / 1000) : 0;
-    last = now;
-    for (const bip of living) {
-      if (!bip.visible) continue;
-      if (!REDUCED) bip.tick(dt); else if (bip.reaction || bip.moment) bip.tick(dt);
-      if (!REDUCED || bip.reaction || !bip.key) bip.render();
-    }
-    requestAnimationFrame(frame);
-  };
-  requestAnimationFrame(frame);
+// At most 30 frames a second, and none at all while no Bip is on screen (the loop stops; a Bip coming into view
+// starts it again; the browser stops frames in a hidden tab).
+let raf = 0, last = 0;
+function frame(now) {
+  raf = 0;
+  if (![...living].some(bip => bip.visible)) { last = 0; return; }
+  raf = requestAnimationFrame(frame);
+  if (last && now - last < 32) return;
+  const dt = last ? Math.min(0.1, (now - last) / 1000) : 0;
+  last = now;
+  for (const bip of living) {
+    if (!bip.visible) continue;
+    if (!REDUCED) bip.tick(dt); else if (bip.reaction || bip.moment) bip.tick(dt);
+    if (!REDUCED || bip.reaction || !bip.key) bip.render();
+  }
 }
+function wake() { if (W && !raf) raf = requestAnimationFrame(frame); }

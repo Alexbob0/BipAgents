@@ -315,7 +315,7 @@ impl Validate for AgentLanguage {
     }
 }
 
-const THINKING_PATTERN: &str = "^(none|low|medium|high|xhigh)$";
+const THINKING_PATTERN: &str = "^(auto|none|low|medium|high|xhigh)$";
 static THINKING_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(THINKING_PATTERN).expect("valid regex"));
 const MODEL_PATTERN: &str = r"^[A-Za-z0-9._:/@+-]{1,120}$";
 static MODEL_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(MODEL_PATTERN).expect("valid regex"));
@@ -1654,6 +1654,10 @@ pub fn set_language(config: &Config, agent: &AgentConfig, lang: &str) -> anyhow:
 
 pub const THINKING_PROVIDER: &str = "bipagents-thinking";
 pub const THINKING_LEVELS: [&str; 5] = ["none", "low", "medium", "high", "xhigh"];
+/// « Automatique » (the apps' first choice, everyone's default): no level of the person's, the bridge decides each
+/// turn (turn_thinking.rs). What the routes report for such an agent ([`shown_thinking`]) and the value that clears a
+/// chosen level ([`choose_thinking`]).
+pub const AUTO_THINKING: &str = "auto";
 /// What Hermes asks a custom server for when nothing is set.
 pub const DEFAULT_THINKING: &str = "medium";
 /// GLM's level through EUrouter when nothing is chosen, and what « none » becomes there (see [`keeps_thinking_on`]).
@@ -1827,8 +1831,30 @@ fn thinking_of(data: &Yaml, chosen: Option<&str>) -> Option<String> {
     Some(if THINKING_LEVELS.contains(&effort.as_str()) { effort } else { default.into() })
 }
 
+/// What the app shows in « Réflexion »: « auto » when the bridge decides each turn ([`auto_thinking`]), else the level
+/// ([`read_thinking`]); None when its model can't be set from the app.
+pub fn shown_thinking(config: &Config, agent: &AgentConfig) -> Option<String> {
+    let level = read_thinking(config, agent)?;
+    Some(if auto_thinking(config, agent).is_some() { AUTO_THINKING.into() } else { level })
+}
+
 /// The level the person chose from the app or the console: recorded (their settings record), then written.
+/// « auto » ([`AUTO_THINKING`]): their level forgotten and the default written (no thinking entry; GLM's « low »), so
+/// the bridge decides each turn again ([`auto_thinking`]).
 pub fn choose_thinking(config: &Config, agent: &AgentConfig, level: &str) -> anyhow::Result<String> {
+    if level == AUTO_THINKING {
+        // set up by hand: its level is its administrator's, never decided turn by turn (auto_thinking)
+        if read_thinking(config, agent).is_none() || agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
+            return Err(LookupError(agent.name.clone()).into());
+        }
+        let folder = profile_folder(config, agent);
+        crate::profile_files::update_settings(&folder, |s| s.thinking = None)?;
+        crate::profile_files::edit(&folder.join("config.yaml"), |data| {
+            let default = if thinking_floor(data) { GLM_THINKING } else { DEFAULT_THINKING };
+            write_thinking(data, default, None, &config.model_provider_order);
+        })?;
+        return Ok(AUTO_THINKING.into());
+    }
     if !THINKING_LEVELS.contains(&level) || read_thinking(config, agent).is_none() {
         return Err(LookupError(agent.name.clone()).into());
     }
@@ -1988,7 +2014,7 @@ pub async fn read_settings(config: &Config, agent: &AgentConfig, http: &reqwest:
     if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
         // set up by hand: its tools are its administrator's
         return Ok(json!({"id": agent.name, "name": agent.display_name, "soul": soul.trim(), "language": lang,
-                         "thinking": read_thinking(config, agent), "model": null, "by_hand": true, "toolsets": [],
+                         "thinking": shown_thinking(config, agent), "model": null, "by_hand": true, "toolsets": [],
                          "isolated": agent.isolated, "guide": guide, "notify": notify,
                          "answer_style": crate::answer_style::view(agent),
                          "protected": true, "services": []}));
@@ -2026,7 +2052,7 @@ pub async fn read_settings(config: &Config, agent: &AgentConfig, http: &reqwest:
         _ => Vec::new(),
     };
     Ok(json!({"id": agent.name, "name": agent.display_name, "soul": soul.trim(), "language": lang,
-              "thinking": read_thinking(config, agent), "model": read_model(config, agent), "toolsets": toolsets,
+              "thinking": shown_thinking(config, agent), "model": read_model(config, agent), "toolsets": toolsets,
               "isolated": agent.isolated,
               "protected": config.hermes.isolated,
               "services": crate::services::listing(config, agent), "skills": crate::skill_library::annotate(config, &agent.name, crate::own_skills::listing(&profile_folder(config, agent))),
@@ -2442,7 +2468,7 @@ async fn put_language(
 async fn get_thinking(State(state): State<AppState>, UrlPath(agent_id): UrlPath<String>) -> ApiResult<Response> {
     let config = state.config();
     let agent = editable(&config, &agent_id).map_err(|_| not_managed())?;
-    Ok(web::ok(json!({"id": agent.name, "thinking": read_thinking(&config, &agent)})))
+    Ok(web::ok(json!({"id": agent.name, "thinking": shown_thinking(&config, &agent)})))
 }
 
 /// The thinking level, from the app, between two messages.

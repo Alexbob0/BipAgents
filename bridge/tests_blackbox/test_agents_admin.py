@@ -323,7 +323,8 @@ def test_thinking_level_is_set_in_the_agents_config(bridges, fakes):
     assert refused.status_code == 409 and refused.json() == {"detail": "this agent's model can't be switched from here"}
     (folder / "config.yaml").write_text("model:\n  provider: custom\n  default: glm\n  base_url: http://gpu:8888/v1\n"
                                         "agent:\n  max_turns: 60\n")
-    assert bridge.get("/v1/agents/coach/thinking", headers=AUTH).json()["thinking"] == "medium"
+    # nothing chosen: « Automatique » (decided turn by turn, turn_thinking.rs)
+    assert bridge.get("/v1/agents/coach/thinking", headers=AUTH).json()["thinking"] == "auto"
     assert bridge.put("/v1/agents/coach/thinking", headers=AUTH, json={"level": "xhigh"}).json() == {
         "id": "coach", "thinking": "xhigh"}
     data = yaml.safe_load((folder / "config.yaml").read_text())
@@ -352,7 +353,7 @@ def test_glm_through_eurouter_thinks_low_and_never_none(bridges, fakes):
     bridge.start()
     wait_registered(bridge, ["coach"])
     assert wait_until(lambda: yaml.safe_load((folder / "config.yaml").read_text())["agent"].get("reasoning_effort") == "low")
-    assert bridge.get("/v1/agents/coach/thinking", headers=AUTH).json() == {"id": "coach", "thinking": "low"}
+    assert bridge.get("/v1/agents/coach/thinking", headers=AUTH).json() == {"id": "coach", "thinking": "auto"}
     assert bridge.put("/v1/agents/coach/thinking", headers=AUTH, json={"level": "none"}).json() == {
         "id": "coach", "thinking": "none"}
     data = yaml.safe_load((folder / "config.yaml").read_text())
@@ -391,6 +392,8 @@ def test_an_agent_set_up_by_hand_gets_its_personality_and_thinking_changed(bridg
     assert refused.status_code == 400
     assert refused.json() == {"detail": "the tools of an agent set up by hand are changed on its server"}
     assert bridge.put("/v1/agents/vie/thinking", headers=AUTH, json={"level": "high"}).json()["thinking"] == "high"
+    # its level is its administrator's: never decided turn by turn
+    assert bridge.put("/v1/agents/vie/thinking", headers=AUTH, json={"level": "auto"}).status_code == 409
     assert bridge.put("/v1/agents/vie/model", headers=AUTH, json={"name": "other"}).status_code == 409
     assert bridge.delete("/v1/agents/vie", headers=AUTH).status_code == 404
     assert bridge.get("/v1/agents/wellness/settings", headers=AUTH).status_code == 404   # by hand, no home: nothing
