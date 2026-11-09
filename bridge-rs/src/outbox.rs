@@ -103,6 +103,12 @@ impl OutboxService {
                 files.push(crate::threads::timeline::file_attachment(path, None));
             }
         }
+        // a page of the bridge that isn't here (a name the model made up): never offered, it would open on a 404
+        let config = self.config.get();
+        files.retain(|f| !f["path"].as_str().is_some_and(|p| crate::pages::missing(&config, p)));
+        if text.is_empty() && files.is_empty() {
+            return Ok(None);
+        }
         for file in files.iter_mut() {
             file.as_object_mut().map(|f| f.remove("id"));
         }
