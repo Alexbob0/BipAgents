@@ -75,6 +75,13 @@ AddDefaultCharset utf-8
   AddType text/plain .txt
   AddCharset utf-8 .html .css .js .json .txt .svg .xml
 </IfModule>
+# OVH's Apache already gzips HTML, CSS and JS; the font (277 KB, preloaded by every page: 127 KB gzipped), the SVGs and
+# the JSON were sent raw.
+<IfModule mod_deflate.c>
+  <IfModule mod_filter.c>
+    AddOutputFilterByType DEFLATE font/ttf image/svg+xml application/json text/plain application/xml
+  </IfModule>
+</IfModule>
 # The universal links file has no extension; Apple wants it as JSON, without redirect.
 <Files "apple-app-site-association">
   ForceType application/json
