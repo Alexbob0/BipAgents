@@ -1604,6 +1604,7 @@ const FIRST_ROUTE_METHODS: &[(&str, &str)] = &[
     ("/v1/live/brief", "GET"),
     ("/v1/live/calls", ""),
     ("/v1/live/calls/start", "POST"),
+    ("/v1/voice/escalate", "POST"),
     ("/v1/favicon/{host}", "GET"),
     ("/v1/console/pairings/{code}", "POST"),
     ("/v1/console/devices", "GET"),
@@ -1778,6 +1779,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::voices::router())
         .merge(crate::live_brief::router())
         .merge(crate::live_turns::router())
+        .merge(crate::voice_escalate::router())
         .merge(crate::favicons::router())
         .merge(crate::map_tiles::router())
         .merge(crate::message_search::router())

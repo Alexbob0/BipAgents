@@ -1,0 +1,3040 @@
+[
+{
+"lang": "de",
+"mode": "live",
+"agent": "Ours",
+"context": [],
+"utterance": "Ich hätte gern ein Brötchen mit Käse",
+"label": "ecouter",
+"case": "practice_ambiguous",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Ours",
+"context": [
+"Ich hätte gern ein Brötchen mit Käse"
+],
+"utterance": "ich hätte gern ein Brötchen mit Käse",
+"label": "ecouter",
+"case": "practice",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Ours",
+"context": [
+"Ich hätte gern ein Brötchen mit Käse",
+"ich hätte gern ein Brötchen mit Käse"
+],
+"utterance": "ich hätte gern zwei Brötchen mit Käse bitte",
+"label": "ecouter",
+"case": "practice_near_repeat",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Ours",
+"context": [
+"ich hätte gern ein Brötchen mit Käse",
+"ich hätte gern zwei Brötchen mit Käse bitte"
+],
+"utterance": "Ours, klingt mein ü bei Brötchen richtig?",
+"label": "lancer",
+"case": "practice_question",
+"rule": "lancer"
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Ours",
+"context": [],
+"utterance": "Fischers Fritz fischt frische Fische",
+"label": "ecouter",
+"case": "tongue_twister",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Luna",
+"context": [
+"ich lese jetzt den Text vor, bitte nicht antworten"
+],
+"utterance": "Der Herbst ist die schönste Jahreszeit.",
+"label": "ecouter",
+"case": "reading",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Luna",
+"context": [
+"ich lese jetzt den Text vor, bitte nicht antworten",
+"Der Herbst ist die schönste Jahreszeit."
+],
+"utterance": "Wer hat nicht schon einmal buntes Laub gesammelt?",
+"label": "ecouter",
+"case": "reading_question_in_text",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Luna",
+"context": [
+"Der Herbst ist die schönste Jahreszeit.",
+"Wer hat nicht schon einmal buntes Laub gesammelt?"
+],
+"utterance": "so fertig, Luna, war das flüssig genug?",
+"label": "lancer",
+"case": "reading_end_question",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Luna",
+"context": [],
+"utterance": "wie spät ist es in New York",
+"label": "lancer",
+"case": "question_short",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Luna",
+"context": [],
+"utterance": "stell einen Timer auf zwanzig Minuten",
+"label": "lancer",
+"case": "command_short",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Félix",
+"context": [],
+"utterance": "äh",
+"label": "ecouter",
+"case": "hesitation",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Félix",
+"context": [
+"äh"
+],
+"utterance": "warte mal",
+"label": "ecouter",
+"case": "hesitation",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Félix",
+"context": [],
+"utterance": "kannst du mir helfen einen",
+"label": "preparer",
+"case": "request_cut",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Félix",
+"context": [
+"kannst du mir helfen einen"
+],
+"utterance": "ähm einen Brief an die Krankenkasse",
+"label": "preparer",
+"case": "request_cut",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Félix",
+"context": [
+"kannst du mir helfen einen",
+"ähm einen Brief an die Krankenkasse"
+],
+"utterance": "zu schreiben, wegen der Rechnung vom August?",
+"label": "lancer",
+"case": "request_long_end",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "ich hab mal eine Frage",
+"label": "preparer",
+"case": "announce",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Kiki",
+"context": [
+"ich hab mal eine Frage"
+],
+"utterance": "wie lange hält sich gekochter Reis",
+"label": "lancer",
+"case": "announce_then_question",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "notier dir dass der Schornsteinfeger am Freitag kommt",
+"label": "noter",
+"case": "note_explicit",
+"rule": "noter"
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "zur Info, das Elterngespräch ist auf den 12. verschoben",
+"label": "noter",
+"case": "note_explicit",
+"rule": "noter"
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "merk dir dass Jonas keine Nüsse verträgt",
+"label": "noter",
+"case": "note_explicit",
+"rule": "noter"
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "merk dir bitte",
+"label": "preparer",
+"case": "note_cut",
+"rule": "preparer"
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Kiki",
+"context": [
+"merk dir bitte"
+],
+"utterance": "der Ersatzschlüssel liegt unter dem Blumentopf",
+"label": "noter",
+"case": "note_split",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "der Zahnarzttermin ist jetzt am Dienstag um neun",
+"label": "noter",
+"case": "note_implicit",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "erinnere mich morgen um acht an den Anruf beim Amt",
+"label": "lancer",
+"case": "reminder_not_note",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Robin",
+"context": [],
+"utterance": "Mia zieh bitte deine Jacke an",
+"label": "ecouter",
+"case": "side_talk",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Robin",
+"context": [
+"Mia zieh bitte deine Jacke an"
+],
+"utterance": "Schatz hast du den Autoschlüssel gesehen?",
+"label": "ecouter",
+"case": "side_talk_question",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Robin",
+"context": [
+"Mia zieh bitte deine Jacke an",
+"Schatz hast du den Autoschlüssel gesehen?"
+],
+"utterance": "Robin, gibt es Stau auf der A9?",
+"label": "lancer",
+"case": "side_talk_then_name_question",
+"rule": "lancer"
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Robin",
+"context": [],
+"utterance": "ja ja ich ruf dich gleich zurück tschüss",
+"label": "ecouter",
+"case": "side_talk_phone",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Robin",
+"context": [
+"wie hoch ist die Zugspitze"
+],
+"utterance": "warte, nicht antworten",
+"label": "ecouter",
+"case": "override_stop",
+"rule": "ecouter"
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Robin",
+"context": [
+"kannst du mal das Fenster aufmachen"
+],
+"utterance": "nicht du Robin, ich meinte meinen Sohn",
+"label": "ecouter",
+"case": "override_stop",
+"rule": "ecouter"
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Nina",
+"context": [
+"ich brauche eine Mail an den Vermieter",
+"die Heizung ist kaputt",
+"seit Montag schon"
+],
+"utterance": "los",
+"label": "lancer",
+"case": "override_go",
+"rule": "lancer"
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Nina",
+"context": [
+"Einkaufsliste",
+"Tomaten",
+"Nudeln"
+],
+"utterance": "und noch",
+"label": "preparer",
+"case": "list_hesitation",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Nina",
+"context": [
+"Einkaufsliste",
+"Tomaten",
+"Nudeln",
+"und noch"
+],
+"utterance": "Milch, das war's",
+"label": "lancer",
+"case": "list_end_go",
+"rule": "lancer"
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Nina",
+"context": [],
+"utterance": "hm wie sag ich das jetzt",
+"label": "ecouter",
+"case": "thinking_aloud",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Nina",
+"context": [],
+"utterance": "Nina was ist der Unterschied zwischen Hase und Kaninchen",
+"label": "lancer",
+"case": "name_question",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Nina",
+"context": [],
+"utterance": "Mist, schon wieder den Regenschirm vergessen",
+"label": "ecouter",
+"case": "chat_statement",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Nina",
+"context": [
+"das Rezept: 300 Gramm Mehl",
+"zwei Eier und ein Päckchen Hefe"
+],
+"utterance": "speicher das im Carnet",
+"label": "noter",
+"case": "note_after_list",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "micro",
+"agent": "Ours",
+"context": [],
+"utterance": "sehr geehrte Frau Müller",
+"label": "ecouter",
+"case": "dictation",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "micro",
+"agent": "Ours",
+"context": [
+"sehr geehrte Frau Müller"
+],
+"utterance": "bezüglich der Rechnung vom Oktober",
+"label": "ecouter",
+"case": "dictation",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "micro",
+"agent": "Ours",
+"context": [
+"sehr geehrte Frau Müller",
+"bezüglich der Rechnung vom Oktober"
+],
+"utterance": "möchte ich auf einen Fehler hinweisen",
+"label": "ecouter",
+"case": "dictation",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "micro",
+"agent": "Ours",
+"context": [
+"sehr geehrte Frau Müller",
+"bezüglich der Rechnung vom Oktober",
+"möchte ich auf einen Fehler hinweisen"
+],
+"utterance": "das war's, schick ab",
+"label": "lancer",
+"case": "dictation_go",
+"rule": "lancer"
+},
+{
+"lang": "de",
+"mode": "micro",
+"agent": "Ours",
+"context": [],
+"utterance": "fass mir bitte",
+"label": "preparer",
+"case": "micro_request_cut",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "micro",
+"agent": "Ours",
+"context": [
+"fass mir bitte"
+],
+"utterance": "die letzte Mail der Schule zusammen",
+"label": "lancer",
+"case": "micro_request_end",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "micro",
+"agent": "Félix",
+"context": [],
+"utterance": "übersetze ins Englische es tut mir leid für die Verspätung",
+"label": "lancer",
+"case": "micro_command",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "micro",
+"agent": "Félix",
+"context": [],
+"utterance": "zur Info ich habe das Essensgeld für November bezahlt",
+"label": "noter",
+"case": "micro_note",
+"rule": "noter"
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Félix",
+"context": [
+"Where is the train station please",
+"where is the train station please"
+],
+"utterance": "where is the train station, please?",
+"label": "ecouter",
+"case": "practice_foreign_question",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Félix",
+"context": [
+"where is the train station please",
+"where is the train station, please?"
+],
+"utterance": "Félix sag du den Satz mal langsam vor",
+"label": "lancer",
+"case": "practice_ask_model",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Félix",
+"context": [],
+"utterance": "also was ich eigentlich möchte ist",
+"label": "preparer",
+"case": "request_cut",
+"rule": null
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Félix",
+"context": [
+"also was ich eigentlich möchte ist"
+],
+"utterance": "ach nee, vergiss es",
+"label": "ecouter",
+"case": "override_cancel",
+"rule": "ecouter"
+},
+{
+"lang": "de",
+"mode": "live",
+"agent": "Félix",
+"context": [],
+"utterance": "ich bin heute so müde",
+"label": "ecouter",
+"case": "chat_statement",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Ours",
+"context": [],
+"utterance": "Je m'appelle Sarah et j'habite à Londres",
+"label": "ecouter",
+"case": "practice_foreign",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Ours",
+"context": [
+"Je m'appelle Sarah et j'habite à Londres"
+],
+"utterance": "je m'appelle Sarah et j'habite à Londres",
+"label": "ecouter",
+"case": "practice_foreign",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Ours",
+"context": [
+"Je m'appelle Sarah et j'habite à Londres",
+"je m'appelle Sarah et j'habite à Londres"
+],
+"utterance": "Ours, how was my French R that time?",
+"label": "lancer",
+"case": "practice_question",
+"rule": "lancer"
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Ours",
+"context": [],
+"utterance": "The thirty-three thieves thought that they thrilled the throne",
+"label": "ecouter",
+"case": "tongue_twister",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Ours",
+"context": [
+"The thirty-three thieves thought that they thrilled the throne"
+],
+"utterance": "the thirty three thieves thought that they thrilled the throne throughout thursday",
+"label": "ecouter",
+"case": "practice_near_repeat",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Luna",
+"context": [
+"ok I'm going to read my speech out loud just listen"
+],
+"utterance": "Good evening everyone and thank you for coming.",
+"label": "ecouter",
+"case": "reading",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Luna",
+"context": [
+"ok I'm going to read my speech out loud just listen",
+"Good evening everyone and thank you for coming."
+],
+"utterance": "What would we do without our volunteers?",
+"label": "ecouter",
+"case": "reading_question_in_text",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Luna",
+"context": [
+"Good evening everyone and thank you for coming.",
+"What would we do without our volunteers?"
+],
+"utterance": "alright that's the end, was that too long for two minutes?",
+"label": "lancer",
+"case": "reading_end_question",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Luna",
+"context": [],
+"utterance": "what's twelve percent of eighty",
+"label": "lancer",
+"case": "question_short",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Luna",
+"context": [],
+"utterance": "turn off the alarm for tomorrow",
+"label": "lancer",
+"case": "command_short",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Félix",
+"context": [],
+"utterance": "um",
+"label": "ecouter",
+"case": "hesitation",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Félix",
+"context": [
+"um"
+],
+"utterance": "hang on",
+"label": "ecouter",
+"case": "hesitation",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Félix",
+"context": [],
+"utterance": "could you help me write a",
+"label": "preparer",
+"case": "request_cut",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Félix",
+"context": [
+"could you help me write a"
+],
+"utterance": "uh a short note for my neighbour about the noise",
+"label": "preparer",
+"case": "request_cut",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Félix",
+"context": [
+"could you help me write a",
+"uh a short note for my neighbour about the noise"
+],
+"utterance": "something polite, not too long",
+"label": "lancer",
+"case": "request_long_end",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "I've got a question for you",
+"label": "preparer",
+"case": "announce",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Kiki",
+"context": [
+"I've got a question for you"
+],
+"utterance": "how long can cooked rice stay in the fridge",
+"label": "lancer",
+"case": "announce_then_question",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "note that the boiler service is on the 14th",
+"label": "noter",
+"case": "note_explicit",
+"rule": "noter"
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "just so you know, swimming is cancelled this week",
+"label": "noter",
+"case": "note_explicit",
+"rule": "noter"
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "remember that Mia's shoe size is now 31",
+"label": "noter",
+"case": "note_explicit",
+"rule": "noter"
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "for the record",
+"label": "preparer",
+"case": "note_cut",
+"rule": "preparer"
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Kiki",
+"context": [
+"for the record"
+],
+"utterance": "I lent the drill to the neighbours",
+"label": "noter",
+"case": "note_split",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "the parcel locker code is 4471 by the way",
+"label": "noter",
+"case": "note_implicit",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "remind me at six to call grandma",
+"label": "lancer",
+"case": "reminder_not_note",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Robin",
+"context": [],
+"utterance": "Jake stop kicking your sister",
+"label": "ecouter",
+"case": "side_talk",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Robin",
+"context": [
+"Jake stop kicking your sister"
+],
+"utterance": "do you want pasta or rice tonight?",
+"label": "ecouter",
+"case": "side_talk_question",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Robin",
+"context": [
+"Jake stop kicking your sister",
+"do you want pasta or rice tonight?"
+],
+"utterance": "Robin, how long do I boil fusilli?",
+"label": "lancer",
+"case": "side_talk_then_name_question",
+"rule": "lancer"
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Robin",
+"context": [],
+"utterance": "yeah yeah I'll be there in ten, see you",
+"label": "ecouter",
+"case": "side_talk_phone",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Robin",
+"context": [
+"what's the population of Canada"
+],
+"utterance": "wait don't answer that",
+"label": "ecouter",
+"case": "override_stop",
+"rule": "ecouter"
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Robin",
+"context": [
+"can you pass me the salt"
+],
+"utterance": "not you Robin, I was talking to my husband",
+"label": "ecouter",
+"case": "override_stop",
+"rule": "ecouter"
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Nina",
+"context": [
+"I need an email to my landlord",
+"about the leaking tap",
+"it's been two weeks"
+],
+"utterance": "go ahead",
+"label": "lancer",
+"case": "override_go",
+"rule": "lancer"
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Nina",
+"context": [
+"shopping list",
+"apples",
+"bread"
+],
+"utterance": "and also",
+"label": "preparer",
+"case": "list_hesitation",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Nina",
+"context": [
+"shopping list",
+"apples",
+"bread",
+"and also"
+],
+"utterance": "cheese, that's all",
+"label": "lancer",
+"case": "list_end_go",
+"rule": "lancer"
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Nina",
+"context": [],
+"utterance": "hmm let me think",
+"label": "ecouter",
+"case": "thinking_aloud",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Nina",
+"context": [],
+"utterance": "Nina why is the sky blue",
+"label": "lancer",
+"case": "name_question",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Nina",
+"context": [],
+"utterance": "ugh I spilled coffee on my shirt again",
+"label": "ecouter",
+"case": "chat_statement",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Nina",
+"context": [
+"the wifi password at grandpa's is on the router",
+"it's the long one starting with K"
+],
+"utterance": "keep that somewhere",
+"label": "noter",
+"case": "note_after_info",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "micro",
+"agent": "Ours",
+"context": [],
+"utterance": "hi Tom just wanted to say",
+"label": "ecouter",
+"case": "dictation",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "micro",
+"agent": "Ours",
+"context": [
+"hi Tom just wanted to say"
+],
+"utterance": "thanks for the lift yesterday",
+"label": "ecouter",
+"case": "dictation",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "micro",
+"agent": "Ours",
+"context": [
+"hi Tom just wanted to say",
+"thanks for the lift yesterday"
+],
+"utterance": "and see you Saturday",
+"label": "ecouter",
+"case": "dictation",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "micro",
+"agent": "Ours",
+"context": [
+"hi Tom just wanted to say",
+"thanks for the lift yesterday",
+"and see you Saturday"
+],
+"utterance": "that's it send it",
+"label": "lancer",
+"case": "dictation_go",
+"rule": "lancer"
+},
+{
+"lang": "en",
+"mode": "micro",
+"agent": "Ours",
+"context": [],
+"utterance": "can you summarise",
+"label": "preparer",
+"case": "micro_request_cut",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "micro",
+"agent": "Ours",
+"context": [
+"can you summarise"
+],
+"utterance": "the article I shared this morning",
+"label": "lancer",
+"case": "micro_request_end",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "micro",
+"agent": "Félix",
+"context": [],
+"utterance": "translate into Spanish where is the nearest pharmacy",
+"label": "lancer",
+"case": "micro_command",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "micro",
+"agent": "Félix",
+"context": [],
+"utterance": "FYI I paid the council tax today",
+"label": "noter",
+"case": "micro_note",
+"rule": "noter"
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Félix",
+"context": [
+"Où est la gare s'il vous plaît",
+"où est la gare s'il vous plaît"
+],
+"utterance": "où est la gare s'il vous plaît ?",
+"label": "ecouter",
+"case": "practice_foreign_question",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Félix",
+"context": [
+"où est la gare s'il vous plaît",
+"où est la gare s'il vous plaît ?"
+],
+"utterance": "Félix say it once slowly so I can copy you",
+"label": "lancer",
+"case": "practice_ask_model",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Félix",
+"context": [],
+"utterance": "so basically what I want is",
+"label": "preparer",
+"case": "request_cut",
+"rule": null
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Félix",
+"context": [
+"so basically what I want is"
+],
+"utterance": "no wait forget it",
+"label": "ecouter",
+"case": "override_cancel",
+"rule": "ecouter"
+},
+{
+"lang": "en",
+"mode": "live",
+"agent": "Félix",
+"context": [],
+"utterance": "I'm so tired today",
+"label": "ecouter",
+"case": "chat_statement",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Ours",
+"context": [],
+"utterance": "Quisiera un café con leche, por favor",
+"label": "ecouter",
+"case": "practice_ambiguous",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Ours",
+"context": [
+"Quisiera un café con leche, por favor"
+],
+"utterance": "quisiera un café con leche por favor",
+"label": "ecouter",
+"case": "practice",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Ours",
+"context": [
+"Quisiera un café con leche, por favor",
+"quisiera un café con leche por favor"
+],
+"utterance": "quisiera dos cafés con leche por favor",
+"label": "ecouter",
+"case": "practice_near_repeat",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Ours",
+"context": [
+"quisiera un café con leche por favor",
+"quisiera dos cafés con leche por favor"
+],
+"utterance": "Ours, ¿pronuncio bien la doble ere?",
+"label": "lancer",
+"case": "practice_question",
+"rule": "lancer"
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Ours",
+"context": [],
+"utterance": "Tres tristes tigres tragaban trigo en un trigal",
+"label": "ecouter",
+"case": "tongue_twister",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Luna",
+"context": [
+"voy a leer en voz alta, no contestes"
+],
+"utterance": "En un lugar de la Mancha vivía un hidalgo.",
+"label": "ecouter",
+"case": "reading",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Luna",
+"context": [
+"voy a leer en voz alta, no contestes",
+"En un lugar de la Mancha vivía un hidalgo."
+],
+"utterance": "¿Quién no ha soñado alguna vez con ser caballero?",
+"label": "ecouter",
+"case": "reading_question_in_text",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Luna",
+"context": [
+"En un lugar de la Mancha vivía un hidalgo.",
+"¿Quién no ha soñado alguna vez con ser caballero?"
+],
+"utterance": "ya está, Luna, ¿leí demasiado rápido?",
+"label": "lancer",
+"case": "reading_end_question",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Luna",
+"context": [],
+"utterance": "qué tiempo hace mañana en Sevilla",
+"label": "lancer",
+"case": "question_short",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Luna",
+"context": [],
+"utterance": "pon una alarma a las siete",
+"label": "lancer",
+"case": "command_short",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Félix",
+"context": [],
+"utterance": "eh",
+"label": "ecouter",
+"case": "hesitation",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Félix",
+"context": [
+"eh"
+],
+"utterance": "espera",
+"label": "ecouter",
+"case": "hesitation",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Félix",
+"context": [],
+"utterance": "me podrías ayudar a organizar",
+"label": "preparer",
+"case": "request_cut",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Félix",
+"context": [
+"me podrías ayudar a organizar"
+],
+"utterance": "este... el cumpleaños de mi hija",
+"label": "preparer",
+"case": "request_cut",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Félix",
+"context": [
+"me podrías ayudar a organizar",
+"este... el cumpleaños de mi hija"
+],
+"utterance": "para doce niños, el sábado por la tarde, ¿qué juegos me recomiendas?",
+"label": "lancer",
+"case": "request_long_end",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "tengo una pregunta",
+"label": "preparer",
+"case": "announce",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Kiki",
+"context": [
+"tengo una pregunta"
+],
+"utterance": "cuánto tiempo se hierve un huevo duro",
+"label": "lancer",
+"case": "announce_then_question",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "apunta que el fontanero viene el jueves a las cuatro",
+"label": "noter",
+"case": "note_explicit",
+"rule": "noter"
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "para que lo sepas, la reunión del colegio se movió al día 12",
+"label": "noter",
+"case": "note_explicit",
+"rule": "noter"
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "recuerda que Lucas es alérgico a las nueces",
+"label": "noter",
+"case": "note_explicit",
+"rule": "noter"
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "apunta que",
+"label": "preparer",
+"case": "note_cut",
+"rule": "preparer"
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Kiki",
+"context": [
+"apunta que"
+],
+"utterance": "la llave del trastero está en el cajón azul",
+"label": "noter",
+"case": "note_split",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "la cita del dentista ahora es el martes a las nueve",
+"label": "noter",
+"case": "note_implicit",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "recuérdame mañana a las ocho llamar al ayuntamiento",
+"label": "lancer",
+"case": "reminder_not_note",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Robin",
+"context": [],
+"utterance": "Pablo ponte los zapatos que nos vamos",
+"label": "ecouter",
+"case": "side_talk",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Robin",
+"context": [
+"Pablo ponte los zapatos que nos vamos"
+],
+"utterance": "cariño ¿has visto las llaves del coche?",
+"label": "ecouter",
+"case": "side_talk_question",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Robin",
+"context": [
+"Pablo ponte los zapatos que nos vamos",
+"cariño ¿has visto las llaves del coche?"
+],
+"utterance": "Robin, ¿hay atasco en la M-30?",
+"label": "lancer",
+"case": "side_talk_then_name_question",
+"rule": "lancer"
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Robin",
+"context": [],
+"utterance": "sí sí luego te llamo, venga, un beso",
+"label": "ecouter",
+"case": "side_talk_phone",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Robin",
+"context": [
+"cuál es la capital de Australia"
+],
+"utterance": "espera, no contestes",
+"label": "ecouter",
+"case": "override_stop",
+"rule": "ecouter"
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Robin",
+"context": [
+"me pasas la sal"
+],
+"utterance": "no te hablaba a ti Robin",
+"label": "ecouter",
+"case": "override_stop",
+"rule": "ecouter"
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Nina",
+"context": [
+"quiero escribir un correo al casero",
+"la calefacción no funciona",
+"desde el lunes"
+],
+"utterance": "adelante",
+"label": "lancer",
+"case": "override_go",
+"rule": "lancer"
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Nina",
+"context": [
+"la lista de la compra",
+"tomates",
+"arroz"
+],
+"utterance": "y también",
+"label": "preparer",
+"case": "list_hesitation",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Nina",
+"context": [
+"la lista de la compra",
+"tomates",
+"arroz",
+"y también"
+],
+"utterance": "leche y huevos, eso es todo",
+"label": "lancer",
+"case": "list_end_go",
+"rule": "lancer"
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Nina",
+"context": [],
+"utterance": "mmm no sé cómo decirlo",
+"label": "ecouter",
+"case": "thinking_aloud",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Nina",
+"context": [],
+"utterance": "Nina cuál es la diferencia entre un cocodrilo y un caimán",
+"label": "lancer",
+"case": "name_question",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Nina",
+"context": [],
+"utterance": "vaya, otra vez se me olvidó el paraguas",
+"label": "ecouter",
+"case": "chat_statement",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Nina",
+"context": [
+"la receta es 200 gramos de harina",
+"tres huevos"
+],
+"utterance": "guárdalo en el Carnet",
+"label": "noter",
+"case": "note_after_list",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "micro",
+"agent": "Ours",
+"context": [],
+"utterance": "estimada señora le escribo",
+"label": "ecouter",
+"case": "dictation",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "micro",
+"agent": "Ours",
+"context": [
+"estimada señora le escribo"
+],
+"utterance": "en relación con la factura de octubre",
+"label": "ecouter",
+"case": "dictation",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "micro",
+"agent": "Ours",
+"context": [
+"estimada señora le escribo",
+"en relación con la factura de octubre"
+],
+"utterance": "que tiene un error en el importe",
+"label": "ecouter",
+"case": "dictation",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "micro",
+"agent": "Ours",
+"context": [
+"estimada señora le escribo",
+"en relación con la factura de octubre",
+"que tiene un error en el importe"
+],
+"utterance": "eso es todo, envíalo",
+"label": "lancer",
+"case": "dictation_go",
+"rule": "lancer"
+},
+{
+"lang": "es",
+"mode": "micro",
+"agent": "Ours",
+"context": [],
+"utterance": "me puedes resumir",
+"label": "preparer",
+"case": "micro_request_cut",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "micro",
+"agent": "Ours",
+"context": [
+"me puedes resumir"
+],
+"utterance": "el último correo del colegio",
+"label": "lancer",
+"case": "micro_request_end",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "micro",
+"agent": "Félix",
+"context": [],
+"utterance": "traduce al francés siento llegar tarde",
+"label": "lancer",
+"case": "micro_command",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "micro",
+"agent": "Félix",
+"context": [],
+"utterance": "para tu información ya pagué el comedor de noviembre",
+"label": "noter",
+"case": "micro_note",
+"rule": "noter"
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Félix",
+"context": [
+"Where is the bus stop please",
+"where is the bus stop please"
+],
+"utterance": "where is the bus stop, please?",
+"label": "ecouter",
+"case": "practice_foreign_question",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Félix",
+"context": [
+"where is the bus stop please",
+"where is the bus stop, please?"
+],
+"utterance": "Félix dímelo tú despacio para que lo copie",
+"label": "lancer",
+"case": "practice_ask_model",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Félix",
+"context": [],
+"utterance": "bueno lo que quiero es",
+"label": "preparer",
+"case": "request_cut",
+"rule": null
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Félix",
+"context": [
+"bueno lo que quiero es"
+],
+"utterance": "no, déjalo, olvídalo",
+"label": "ecouter",
+"case": "override_cancel",
+"rule": "ecouter"
+},
+{
+"lang": "es",
+"mode": "live",
+"agent": "Félix",
+"context": [],
+"utterance": "hoy estoy muy cansada",
+"label": "ecouter",
+"case": "chat_statement",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Ours",
+"context": [],
+"utterance": "I would like a cup of tea please",
+"label": "ecouter",
+"case": "practice",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Ours",
+"context": [
+"I would like a cup of tea please"
+],
+"utterance": "I would like a cup of tea please",
+"label": "ecouter",
+"case": "practice",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Ours",
+"context": [
+"I would like a cup of tea please",
+"I would like a cup of tea please"
+],
+"utterance": "I would like a cup of tea, please.",
+"label": "ecouter",
+"case": "practice",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Ours",
+"context": [
+"I would like a cup of tea please",
+"I would like a cup of tea please"
+],
+"utterance": "Ours, est-ce que je prononce bien le th de the ?",
+"label": "lancer",
+"case": "practice_question",
+"rule": "lancer"
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Luna",
+"context": [],
+"utterance": "Je voudrais réserver une table pour deux personnes.",
+"label": "ecouter",
+"case": "practice_ambiguous",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Luna",
+"context": [
+"Je voudrais réserver une table pour deux personnes.",
+"je voudrais réserver une table pour deux personnes"
+],
+"utterance": "je voudrais réserver une table pour deux personnes ce soir",
+"label": "ecouter",
+"case": "practice_near_repeat",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Luna",
+"context": [
+"bon je vais m'entraîner à lire à voix haute ne réponds pas"
+],
+"utterance": "Il était une fois une petite fille qui vivait au bord de la forêt.",
+"label": "ecouter",
+"case": "reading",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Luna",
+"context": [
+"bon je vais m'entraîner à lire à voix haute ne réponds pas",
+"Il était une fois une petite fille qui vivait au bord de la forêt."
+],
+"utterance": "Chaque matin, elle allait chercher de l'eau au puits.",
+"label": "ecouter",
+"case": "reading",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Luna",
+"context": [
+"Il était une fois une petite fille qui vivait au bord de la forêt.",
+"Chaque matin, elle allait chercher de l'eau au puits."
+],
+"utterance": "Pourquoi le loup ne la mange-t-il pas ?",
+"label": "ecouter",
+"case": "reading_question_in_text",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Luna",
+"context": [
+"Chaque matin, elle allait chercher de l'eau au puits.",
+"Pourquoi le loup ne la mange-t-il pas ?"
+],
+"utterance": "voilà j'ai fini Luna tu as trouvé que je lisais trop vite ?",
+"label": "lancer",
+"case": "reading_end_question",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Félix",
+"context": [],
+"utterance": "quel temps il fait demain à Lyon",
+"label": "lancer",
+"case": "question_short",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Félix",
+"context": [],
+"utterance": "mets un minuteur de dix minutes",
+"label": "lancer",
+"case": "command_short",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Félix",
+"context": [],
+"utterance": "euh",
+"label": "ecouter",
+"case": "hesitation",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Félix",
+"context": [
+"euh"
+],
+"utterance": "attends",
+"label": "ecouter",
+"case": "hesitation",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Félix",
+"context": [],
+"utterance": "j'aimerais que tu m'aides à préparer",
+"label": "preparer",
+"case": "request_cut",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Félix",
+"context": [
+"j'aimerais que tu m'aides à préparer"
+],
+"utterance": "euh le voyage à Porto en mars",
+"label": "preparer",
+"case": "request_cut",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Félix",
+"context": [
+"j'aimerais que tu m'aides à préparer",
+"euh le voyage à Porto en mars"
+],
+"utterance": "avec les enfants, en train si possible, tu peux me faire un plan sur trois jours ?",
+"label": "lancer",
+"case": "request_long_end",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "j'ai une question",
+"label": "preparer",
+"case": "announce",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Kiki",
+"context": [
+"j'ai une question"
+],
+"utterance": "combien de temps on cuit un œuf mollet",
+"label": "lancer",
+"case": "announce_then_question",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "note que le plombier passe jeudi à 14 h",
+"label": "noter",
+"case": "note_explicit",
+"rule": "noter"
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "pour info la réunion de parents est décalée au 12",
+"label": "noter",
+"case": "note_explicit",
+"rule": "noter"
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "rappelle-toi que Paul est allergique aux noix",
+"label": "noter",
+"case": "note_explicit",
+"rule": "noter"
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "retiens que",
+"label": "preparer",
+"case": "note_cut",
+"rule": "preparer"
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Kiki",
+"context": [
+"retiens que"
+],
+"utterance": "la clé de la cave est dans le pot bleu",
+"label": "noter",
+"case": "note_split",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "le rendez-vous chez le dentiste est déplacé à mardi 9 h",
+"label": "noter",
+"case": "note_implicit",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "rappelle-moi demain à 8 h d'appeler la mairie",
+"label": "lancer",
+"case": "reminder_not_note",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Robin",
+"context": [],
+"utterance": "Léo mets tes chaussures on part dans cinq minutes",
+"label": "ecouter",
+"case": "side_talk",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Robin",
+"context": [
+"Léo mets tes chaussures on part dans cinq minutes"
+],
+"utterance": "non pas celles-là les bleues",
+"label": "ecouter",
+"case": "side_talk",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Robin",
+"context": [
+"Léo mets tes chaussures on part dans cinq minutes",
+"non pas celles-là les bleues"
+],
+"utterance": "Robin, il y a des bouchons sur la route de l'école ?",
+"label": "lancer",
+"case": "side_talk_then_name_question",
+"rule": "lancer"
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Robin",
+"context": [],
+"utterance": "chéri tu peux sortir les poubelles ?",
+"label": "ecouter",
+"case": "side_talk_question",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Robin",
+"context": [],
+"utterance": "oui oui je suis au téléphone là je te rappelle",
+"label": "ecouter",
+"case": "side_talk_phone",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Robin",
+"context": [
+"quelle est la capitale de l'Australie"
+],
+"utterance": "attends ne réponds pas",
+"label": "ecouter",
+"case": "override_stop",
+"rule": "ecouter"
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Robin",
+"context": [
+"chéri tu peux sortir les poubelles ?"
+],
+"utterance": "je parlais pas à toi Robin",
+"label": "ecouter",
+"case": "override_stop",
+"rule": "ecouter"
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Nina",
+"context": [
+"je voudrais écrire un mail à la propriétaire",
+"pour lui dire que le chauffage ne marche plus",
+"depuis lundi"
+],
+"utterance": "vas-y",
+"label": "lancer",
+"case": "override_go",
+"rule": "lancer"
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Nina",
+"context": [
+"alors pour les courses",
+"des tomates",
+"du riz"
+],
+"utterance": "et aussi",
+"label": "preparer",
+"case": "list_hesitation",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Nina",
+"context": [
+"alors pour les courses",
+"des tomates",
+"du riz",
+"et aussi"
+],
+"utterance": "du lait et des œufs c'est tout",
+"label": "lancer",
+"case": "list_end_go",
+"rule": "lancer"
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Nina",
+"context": [],
+"utterance": "hmm je sais pas trop comment dire",
+"label": "ecouter",
+"case": "thinking_aloud",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Nina",
+"context": [],
+"utterance": "Nina c'est quoi la différence entre un crocodile et un alligator",
+"label": "lancer",
+"case": "name_question",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Nina",
+"context": [],
+"utterance": "ah zut j'ai encore oublié mon parapluie",
+"label": "ecouter",
+"case": "chat_statement",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Nina",
+"context": [
+"la recette c'est 200 g de farine",
+"trois œufs"
+],
+"utterance": "note ça dans le Carnet",
+"label": "noter",
+"case": "note_after_list",
+"rule": "noter"
+},
+{
+"lang": "fr",
+"mode": "micro",
+"agent": "Ours",
+"context": [],
+"utterance": "bonjour madame je vous écris",
+"label": "ecouter",
+"case": "dictation",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "micro",
+"agent": "Ours",
+"context": [
+"bonjour madame je vous écris"
+],
+"utterance": "au sujet de la facture du mois d'octobre",
+"label": "ecouter",
+"case": "dictation",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "micro",
+"agent": "Ours",
+"context": [
+"bonjour madame je vous écris",
+"au sujet de la facture du mois d'octobre"
+],
+"utterance": "qui comporte une erreur sur le montant",
+"label": "ecouter",
+"case": "dictation",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "micro",
+"agent": "Ours",
+"context": [
+"bonjour madame je vous écris",
+"au sujet de la facture du mois d'octobre",
+"qui comporte une erreur sur le montant"
+],
+"utterance": "c'est tout, envoie",
+"label": "lancer",
+"case": "dictation_go",
+"rule": "lancer"
+},
+{
+"lang": "fr",
+"mode": "micro",
+"agent": "Ours",
+"context": [],
+"utterance": "tu peux me résumer",
+"label": "preparer",
+"case": "micro_request_cut",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "micro",
+"agent": "Ours",
+"context": [
+"tu peux me résumer"
+],
+"utterance": "le dernier mail de l'école",
+"label": "lancer",
+"case": "micro_request_end",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "micro",
+"agent": "Félix",
+"context": [],
+"utterance": "traduis en anglais je suis désolée pour le retard",
+"label": "lancer",
+"case": "micro_command",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "micro",
+"agent": "Félix",
+"context": [],
+"utterance": "pour info j'ai payé la cantine pour novembre",
+"label": "noter",
+"case": "micro_note",
+"rule": "noter"
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Félix",
+"context": [
+"the weather is nice today",
+"the weather is nice today"
+],
+"utterance": "the weather is nice today isn't it",
+"label": "ecouter",
+"case": "practice_tag_question",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Félix",
+"context": [
+"the weather is nice today",
+"the weather is nice today isn't it"
+],
+"utterance": "Félix répète la phrase toi pour que j'entende",
+"label": "lancer",
+"case": "practice_ask_model",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Ours",
+"context": [],
+"utterance": "Ik wil graag een kopje koffie",
+"label": "ecouter",
+"case": "practice_ambiguous",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Ours",
+"context": [
+"Ik wil graag een kopje koffie"
+],
+"utterance": "ik wil graag een kopje koffie",
+"label": "ecouter",
+"case": "practice",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Ours",
+"context": [
+"Ik wil graag een kopje koffie",
+"ik wil graag een kopje koffie"
+],
+"utterance": "ik wil graag twee kopjes koffie alstublieft",
+"label": "ecouter",
+"case": "practice_near_repeat",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Ours",
+"context": [
+"ik wil graag een kopje koffie",
+"ik wil graag twee kopjes koffie alstublieft"
+],
+"utterance": "Ours, klinkt mijn g goed bij graag?",
+"label": "lancer",
+"case": "practice_question",
+"rule": "lancer"
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Ours",
+"context": [],
+"utterance": "Achtentachtig prachtige grachten",
+"label": "ecouter",
+"case": "tongue_twister",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Luna",
+"context": [
+"ik ga nu hardop voorlezen, niet antwoorden"
+],
+"utterance": "Het was een koude ochtend in november.",
+"label": "ecouter",
+"case": "reading",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Luna",
+"context": [
+"ik ga nu hardop voorlezen, niet antwoorden",
+"Het was een koude ochtend in november."
+],
+"utterance": "Wie had kunnen denken dat het zou gaan sneeuwen?",
+"label": "ecouter",
+"case": "reading_question_in_text",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Luna",
+"context": [
+"Het was een koude ochtend in november.",
+"Wie had kunnen denken dat het zou gaan sneeuwen?"
+],
+"utterance": "klaar, Luna, las ik te snel?",
+"label": "lancer",
+"case": "reading_end_question",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Luna",
+"context": [],
+"utterance": "wat voor weer wordt het morgen in Utrecht",
+"label": "lancer",
+"case": "question_short",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Luna",
+"context": [],
+"utterance": "zet een timer van tien minuten",
+"label": "lancer",
+"case": "command_short",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Félix",
+"context": [],
+"utterance": "eh",
+"label": "ecouter",
+"case": "hesitation",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Félix",
+"context": [
+"eh"
+],
+"utterance": "wacht even",
+"label": "ecouter",
+"case": "hesitation",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Félix",
+"context": [],
+"utterance": "kun je me helpen met het plannen van",
+"label": "preparer",
+"case": "request_cut",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Félix",
+"context": [
+"kun je me helpen met het plannen van"
+],
+"utterance": "uh een weekendje Gent",
+"label": "preparer",
+"case": "request_cut",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Félix",
+"context": [
+"kun je me helpen met het plannen van",
+"uh een weekendje Gent"
+],
+"utterance": "met de trein, voor twee personen, wat moeten we zeker zien?",
+"label": "lancer",
+"case": "request_long_end",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "ik heb een vraag",
+"label": "preparer",
+"case": "announce",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Kiki",
+"context": [
+"ik heb een vraag"
+],
+"utterance": "hoe lang moet een zacht gekookt ei koken",
+"label": "lancer",
+"case": "announce_then_question",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "noteer dat de loodgieter donderdag om twee uur komt",
+"label": "noter",
+"case": "note_explicit",
+"rule": "noter"
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "ter info, de ouderavond is verschoven naar de twaalfde",
+"label": "noter",
+"case": "note_explicit",
+"rule": "noter"
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "onthoud dat Sem allergisch is voor noten",
+"label": "noter",
+"case": "note_explicit",
+"rule": "noter"
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "onthoud even",
+"label": "preparer",
+"case": "note_cut",
+"rule": "preparer"
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Kiki",
+"context": [
+"onthoud even"
+],
+"utterance": "de reservesleutel ligt onder de bloempot",
+"label": "noter",
+"case": "note_split",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "de afspraak bij de tandarts is nu dinsdag om negen uur",
+"label": "noter",
+"case": "note_implicit",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Kiki",
+"context": [],
+"utterance": "herinner me morgen om acht uur om de gemeente te bellen",
+"label": "lancer",
+"case": "reminder_not_note",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Robin",
+"context": [],
+"utterance": "Daan doe je schoenen aan we gaan zo",
+"label": "ecouter",
+"case": "side_talk",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Robin",
+"context": [
+"Daan doe je schoenen aan we gaan zo"
+],
+"utterance": "schat heb jij de autosleutels gezien?",
+"label": "ecouter",
+"case": "side_talk_question",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Robin",
+"context": [
+"Daan doe je schoenen aan we gaan zo",
+"schat heb jij de autosleutels gezien?"
+],
+"utterance": "Robin, staat er file op de A12?",
+"label": "lancer",
+"case": "side_talk_then_name_question",
+"rule": "lancer"
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Robin",
+"context": [],
+"utterance": "ja ja ik bel je zo terug, doei",
+"label": "ecouter",
+"case": "side_talk_phone",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Robin",
+"context": [
+"wat is de hoofdstad van Australië"
+],
+"utterance": "wacht, niet antwoorden",
+"label": "ecouter",
+"case": "override_stop",
+"rule": "ecouter"
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Robin",
+"context": [
+"kun je het raam opendoen"
+],
+"utterance": "niet jij Robin, ik had het tegen mijn zoon",
+"label": "ecouter",
+"case": "override_stop",
+"rule": "ecouter"
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Nina",
+"context": [
+"ik wil een mail aan de verhuurder",
+"de verwarming doet het niet",
+"al sinds maandag"
+],
+"utterance": "ga je gang",
+"label": "lancer",
+"case": "override_go",
+"rule": "lancer"
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Nina",
+"context": [
+"boodschappenlijst",
+"tomaten",
+"rijst"
+],
+"utterance": "en ook nog",
+"label": "preparer",
+"case": "list_hesitation",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Nina",
+"context": [
+"boodschappenlijst",
+"tomaten",
+"rijst",
+"en ook nog"
+],
+"utterance": "melk en eieren, dat is alles",
+"label": "lancer",
+"case": "list_end_go",
+"rule": "lancer"
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Nina",
+"context": [],
+"utterance": "hmm hoe zeg ik dat",
+"label": "ecouter",
+"case": "thinking_aloud",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Nina",
+"context": [],
+"utterance": "Nina wat is het verschil tussen een haas en een konijn",
+"label": "lancer",
+"case": "name_question",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Nina",
+"context": [],
+"utterance": "balen, mijn paraplu weer vergeten",
+"label": "ecouter",
+"case": "chat_statement",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Nina",
+"context": [
+"het recept is 200 gram bloem",
+"drie eieren"
+],
+"utterance": "zet dat in het Carnet",
+"label": "noter",
+"case": "note_after_list",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "micro",
+"agent": "Ours",
+"context": [],
+"utterance": "beste mevrouw ik schrijf u",
+"label": "ecouter",
+"case": "dictation",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "micro",
+"agent": "Ours",
+"context": [
+"beste mevrouw ik schrijf u"
+],
+"utterance": "over de factuur van oktober",
+"label": "ecouter",
+"case": "dictation",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "micro",
+"agent": "Ours",
+"context": [
+"beste mevrouw ik schrijf u",
+"over de factuur van oktober"
+],
+"utterance": "waar een fout in het bedrag staat",
+"label": "ecouter",
+"case": "dictation",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "micro",
+"agent": "Ours",
+"context": [
+"beste mevrouw ik schrijf u",
+"over de factuur van oktober",
+"waar een fout in het bedrag staat"
+],
+"utterance": "dat is alles, verstuur maar",
+"label": "lancer",
+"case": "dictation_go",
+"rule": "lancer"
+},
+{
+"lang": "nl",
+"mode": "micro",
+"agent": "Ours",
+"context": [],
+"utterance": "kun je samenvatten",
+"label": "preparer",
+"case": "micro_request_cut",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "micro",
+"agent": "Ours",
+"context": [
+"kun je samenvatten"
+],
+"utterance": "de laatste mail van school",
+"label": "lancer",
+"case": "micro_request_end",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "micro",
+"agent": "Félix",
+"context": [],
+"utterance": "vertaal naar het Engels sorry dat ik te laat ben",
+"label": "lancer",
+"case": "micro_command",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "micro",
+"agent": "Félix",
+"context": [],
+"utterance": "ter info ik heb het overblijfgeld voor november betaald",
+"label": "noter",
+"case": "micro_note",
+"rule": "noter"
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Félix",
+"context": [
+"Où est la boulangerie s'il vous plaît",
+"où est la boulangerie s'il vous plaît"
+],
+"utterance": "où est la boulangerie, s'il vous plaît ?",
+"label": "ecouter",
+"case": "practice_foreign_question",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Félix",
+"context": [
+"où est la boulangerie s'il vous plaît",
+"où est la boulangerie, s'il vous plaît ?"
+],
+"utterance": "Félix zeg jij de zin eens langzaam voor",
+"label": "lancer",
+"case": "practice_ask_model",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Félix",
+"context": [],
+"utterance": "nou wat ik eigenlijk wil is",
+"label": "preparer",
+"case": "request_cut",
+"rule": null
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Félix",
+"context": [
+"nou wat ik eigenlijk wil is"
+],
+"utterance": "nee laat maar, vergeet het",
+"label": "ecouter",
+"case": "override_cancel",
+"rule": "ecouter"
+},
+{
+"lang": "nl",
+"mode": "live",
+"agent": "Félix",
+"context": [],
+"utterance": "ik ben zo moe vandaag",
+"label": "ecouter",
+"case": "chat_statement",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Ours",
+"context": [],
+"utterance": "Vas-y.",
+"label": null,
+"case": "",
+"rule": "lancer"
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Ours",
+"context": [],
+"utterance": "c'est tout",
+"label": null,
+"case": "",
+"rule": "lancer"
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Ours",
+"context": [],
+"utterance": "Ours, quelle heure est-il ?",
+"label": null,
+"case": "",
+"rule": "lancer"
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Ours",
+"context": [],
+"utterance": "Note que le dentiste est jeudi",
+"label": null,
+"case": "",
+"rule": "noter"
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Ours",
+"context": [],
+"utterance": "note ça",
+"label": null,
+"case": "",
+"rule": "noter"
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Ours",
+"context": [],
+"utterance": "retiens que",
+"label": null,
+"case": "",
+"rule": "preparer"
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Ours",
+"context": [],
+"utterance": "ne réponds pas",
+"label": null,
+"case": "",
+"rule": "ecouter"
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Ours",
+"context": [],
+"utterance": "je parlais pas à toi",
+"label": null,
+"case": "",
+"rule": "ecouter"
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Ours",
+"context": [],
+"utterance": "Hey Luna what time is it?",
+"label": null,
+"case": "",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Ours",
+"context": [],
+"utterance": "go ahead",
+"label": null,
+"case": "",
+"rule": "lancer"
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Ours",
+"context": [],
+"utterance": "das war's",
+"label": null,
+"case": "",
+"rule": "lancer"
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Ours",
+"context": [],
+"utterance": "eso es todo",
+"label": null,
+"case": "",
+"rule": "lancer"
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Ours",
+"context": [],
+"utterance": "ga je gang",
+"label": null,
+"case": "",
+"rule": "lancer"
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Ours",
+"context": [],
+"utterance": "pour info la réunion est à 10 h",
+"label": null,
+"case": "",
+"rule": "noter"
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Ours",
+"context": [],
+"utterance": "Euh note que Paul arrive",
+"label": null,
+"case": "",
+"rule": "noter"
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Ours",
+"context": [],
+"utterance": "send it please now ok and then something more and more",
+"label": null,
+"case": "",
+"rule": null
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Ours",
+"context": [],
+"utterance": "C'EST TOUT !",
+"label": null,
+"case": "",
+"rule": "lancer"
+},
+{
+"lang": "fr",
+"mode": "live",
+"agent": "Ours",
+"context": [],
+"utterance": "noteer dat",
+"label": null,
+"case": "",
+"rule": "noter"
+}
+]
