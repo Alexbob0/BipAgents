@@ -124,6 +124,7 @@ la bêta.
 | J46 | Oublier une tâche depuis la Boîte | Une tâche lancée par l'agent, dans « En cours » de la Boîte ; un toucher : SA page ; « Oublier cette tâche » : la question près du bouton (jamais en haut de l'écran) ; « Oublier » : la tâche quitte le pont et la Boîte (et y reste absente) | P, i, A |
 | J44 | Quick Talk suit la réponse | Le message suivi jusqu'à sa réponse (`GET /v1/threads/{t}/sends/{client_id}`) : en cours, puis les mots à dire ; une carte : passé à l'écran | P (le pont seulement) |
 | J47 | Le Carnet sous la réponse | Sous la réponse de Vie : « A consulté 1 page · Noté dans Léa » (pas d'« Étapes » pour le Carnet) et UNE question du jour ; un toucher sur « 36 » écrit « Pointure : 36 » au nom de la personne, sans relancer l'agent ; « Annuler » ne retire que cette réponse ; « Oublie ça » depuis l'app (aperçu puis confirmation) efface le fait, la conversation garde ce qui a été dit | P, i, A |
+| J50 | Chercher dans le Carnet sans réseau | La copie du Carnet venue du pont (à l'ouverture du Carnet) répond quand le réseau est vraiment coupé : « Pointure de Léa ? » donne « 38 » et « Hors connexion · à jour du … » ; la copie part avec le dernier agent de ce serveur | A (iPhone : manuel) |
 
 **Ce que les parcours J32 et après ont trouvé (6/11)**
 
