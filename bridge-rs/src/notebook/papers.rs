@@ -247,6 +247,11 @@ fn photo_path(config: &Config, id: &str) -> Option<PathBuf> {
     ["jpg", "png"].iter().map(|e| dir(config).join(format!("{id}.{e}"))).find(|p| p.is_file())
 }
 
+/// « Voir la photo » on paper record `id` in the Papiers list, when its photo is kept (the app opens it after Face ID).
+pub fn photo_label(config: &Config, id: &str, lang: &str) -> Option<&'static str> {
+    photo_path(config, id).map(|_| texts(lang).photo)
+}
+
 /// The photo of paper record `id` and its type.
 pub fn photo(config: &Config, id: &str) -> Option<(Vec<u8>, &'static str)> {
     let path = photo_path(config, id)?;
@@ -504,6 +509,11 @@ P<FRAMARTIN<<LEA<MARIE<<<<<<<<<<<<<<<<<<<<<<\n19AB123458FRA9004035F3103128<<<<<<
         assert_eq!(out["card"]["title"], "Passeport · Léa");
         assert_eq!(out["card"]["lines"], json!(["Fin : 12 mars 2031", "Rappels : 12 déc. 2030 et 12 févr. 2031"]));
         assert_eq!(out["photo"], "Voir la photo");
+        // the Papiers list says it too, on the record that has a photo
+        let id = out["record"]["id"].as_str().unwrap().to_string();
+        let papers = super::super::records::type_view(&config, super::super::records::kind("paper").unwrap(), today());
+        let item = papers["items"].as_array().unwrap().iter().find(|r| r["id"] == id.as_str()).unwrap();
+        assert_eq!(item["photo"], "Voir la photo");
         assert_eq!(out["tasks"].as_array().unwrap().len(), 2);
         let id = out["record"]["id"].as_str().unwrap();
         let (bytes, kind) = photo(&config, id).unwrap();

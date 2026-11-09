@@ -1170,7 +1170,17 @@ pub fn type_view(config: &Config, t: &Kind, today: NaiveDate) -> Value {
             super::date_in(&tk::str_or_empty(r.get("date"))).and_then(|(m, d, y)| NaiveDate::from_ymd_opt(y?, m, d))
         }))
     });
-    let views: Vec<Value> = items.iter().map(|r| item_view(t, r, today, min_eur, false, &lang)).collect();
+    let mut views: Vec<Value> = items.iter().map(|r| item_view(t, r, today, min_eur, false, &lang)).collect();
+    // a paper filed with its photo: « Voir la photo » on its line (papers.rs)
+    if t.id == "paper" {
+        for (view, record) in views.iter_mut().zip(&items) {
+            if let (Some(view), Some(label)) =
+                (view.as_object_mut(), super::papers::photo_label(config, &tk::str_or_empty(record.get("id")), &lang))
+            {
+                view.insert("photo".into(), json!(label));
+            }
+        }
+    }
     let important = views.iter().filter(|v| v.get("important").map(py::truthy).unwrap_or(false)).count();
     json!({"type": t.id, "title": t.titles[i], "path": path_of(&lang, t), "fields": fields, "next": t.next,
            "next_title": next_title, "count": items.len(), "important_count": important,
