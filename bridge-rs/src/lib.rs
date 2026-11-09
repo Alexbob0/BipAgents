@@ -74,6 +74,7 @@ pub mod pronunciations;
 pub mod speech_intl;
 pub mod textproc;
 pub mod tts;
+pub mod voice_escalate;
 /// Private helpers of the voice-speech modules (Python's `re`/`str` semantics, num2words).
 pub mod voice_speech;
 pub mod voices;
