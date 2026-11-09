@@ -238,6 +238,70 @@ fn unknown(page: &str) -> anyhow::Error {
 
 /// Keeps a new page, or a new version of `page` (same path: the person's link shows the new one).
 pub fn save(config: &Config, agent: &str, html: &str, title: &str, page: Option<&str>) -> anyhow::Result<Dict> {
+    save_marked(config, agent, html, title, page, None)
+}
+
+/// What a page made in a shared conversation carries (shared_pages.rs): `group`, seen only by that conversation's
+/// people (`GROUP_META` in its head: the apps offer no « Partager » for it); `asked_by`, made at a relative's request
+/// (a line at its top says so, in the agent's language `lang`). Both kept across its versions.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Mark {
+    pub group: bool,
+    pub asked_by: Option<String>,
+    pub lang: String,
+}
+
+/// The mark of a page seen only by a shared conversation's people (the apps read it in the HTML).
+pub const GROUP_META: &str = "<meta name=\"bipagents-group\" content=\"1\">";
+/// The class of the line saying whose request the page was made at.
+pub const ASKED_CLASS: &str = "bip-asked";
+
+static BODY_TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)<body\b[^>]*>").expect("valid regex"));
+
+/// « Faite à la demande de Marie » in the agent's language.
+pub fn asked_line(name: &str, lang: &str) -> String {
+    let name = escape(name);
+    match lang.split(['-', '_']).next().unwrap_or("") {
+        "fr" => format!("Faite à la demande de {name}"),
+        "de" => format!("Auf Wunsch von {name} erstellt"),
+        "es" => format!("Hecha a petición de {name}"),
+        "nl" => format!("Gemaakt op verzoek van {name}"),
+        _ => format!("Made at {name}\u{2019}s request"),
+    }
+}
+
+/// The locked page with its mark: the group's meta right after the policy, the request's line first in its body
+/// (styled inline and `!important`, so the page's own CSS doesn't hide it by accident).
+pub fn apply_mark(locked: &str, mark: &Mark) -> String {
+    let mut out = locked.to_string();
+    if mark.group && !out.contains(GROUP_META) {
+        out = out.replacen(HEAD.as_str(), &format!("{}{GROUP_META}", *HEAD), 1);
+    }
+    if let Some(name) = mark.asked_by.as_deref().filter(|n| !n.trim().is_empty()) {
+        let line = format!(
+            "<div class=\"{ASKED_CLASS}\" role=\"note\" style=\"display:block!important;visibility:visible!important;\
+opacity:1!important;position:static!important;margin:10px 12px 0!important;padding:6px 12px!important;\
+border-radius:999px!important;background:rgba(127,127,127,.16)!important;color:inherit!important;\
+font:600 12.5px/1.35 -apple-system,system-ui,sans-serif!important;width:fit-content!important\">{}</div>",
+            asked_line(name, &mark.lang)
+        );
+        out = match BODY_TAG.find(&out) {
+            Some(tag) => format!("{}{line}{}", &out[..tag.end()], &out[tag.end()..]),
+            None => format!("{out}{line}"),
+        };
+    }
+    out
+}
+
+/// [`save`], with the mark of a page made in a shared conversation (None: the page keeps the one it had).
+pub fn save_marked(
+    config: &Config,
+    agent: &str,
+    html: &str,
+    title: &str,
+    page: Option<&str>,
+    mark: Option<&Mark>,
+) -> anyhow::Result<Dict> {
     let html = tk::strip(html);
     if html.is_empty() {
         return Err(ValueError("the page is empty: give its whole HTML".into()).into());
@@ -295,6 +359,15 @@ pub fn save(config: &Config, agent: &str, html: &str, title: &str, page: Option<
     let with_maps = expand_maps(config, agent, html)?;
     let (locked, outside) = lock_with(&with_maps, &title, tint.as_deref());
     let locked = inline_maps(config, agent, &locked);
+    // the mark it had stays; a new one adds to it
+    let kept = Mark {
+        group: known.get("group").map(py::truthy).unwrap_or(false) || mark.is_some_and(|m| m.group),
+        asked_by: mark
+            .and_then(|m| m.asked_by.clone())
+            .or_else(|| Some(tk::str_or_empty(known.get("asked_by"))).filter(|n| !n.is_empty())),
+        lang: mark.map(|m| m.lang.clone()).unwrap_or_else(|| crate::names::agent_language(config, agent)),
+    };
+    let locked = apply_mark(&locked, &kept);
     std::fs::create_dir_all(&folder)?;
     let now = tk::now_iso_seconds();
     let version = match known.get("version") {
@@ -316,6 +389,12 @@ pub fn save(config: &Config, agent: &str, html: &str, title: &str, page: Option<
         if let Some(v) = known.get(key) {
             meta.insert(key.into(), v.clone());
         }
+    }
+    if kept.group {
+        meta.insert("group".into(), json!(true));
+    }
+    if let Some(name) = &kept.asked_by {
+        meta.insert("asked_by".into(), json!(name));
     }
     let record = py::dumps(&Value::Object(meta.clone())) + "\n";
     for (name, text) in [
@@ -522,5 +601,39 @@ mod tests {
         assert_eq!(age(&meta, Some(t + 7300.0)), "2 h");
         assert_eq!(age(&meta, Some(t + 5.0 * 86400.0)), "5 d");
         assert_eq!(age(&Dict::new(), None), "?");
+    }
+
+    #[test]
+    fn a_page_made_for_a_relative_is_marked_and_keeps_its_mark() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::with_key("k");
+        config.outbox.db_path = dir.path().join("bridge.db").to_string_lossy().into_owned();
+        let mark = Mark { group: true, asked_by: Some("Marie <3".into()), lang: "fr".into() };
+        let made = save_marked(&config, "cuisine", "<h1>Menu</h1>", "Menu", None, Some(&mark)).unwrap();
+        let page = made["page"].as_str().unwrap().to_string();
+        assert_eq!(made["group"], json!(true));
+        assert_eq!(made["asked_by"], json!("Marie <3"));
+        let html = std::fs::read_to_string(root(&config).join("cuisine").join(format!("{page}.html"))).unwrap();
+        // the policy first, the group's mark right after it, the line first in the body (her name escaped)
+        assert!(html.contains(&format!("{}{GROUP_META}", *HEAD)));
+        let body = html.find("<body>").unwrap();
+        assert!(html[body..].starts_with("<body><div class=\"bip-asked\""));
+        assert!(html.contains("Faite à la demande de Marie &lt;3</div><h1>Menu</h1>"));
+        // the owner changes it later: still marked, once
+        let again = save(&config, "cuisine", "<h1>Menu v2</h1>", "Menu", Some(&page)).unwrap();
+        assert_eq!((again["version"].as_i64(), again["group"].clone()), (Some(2), json!(true)));
+        let html = std::fs::read_to_string(root(&config).join("cuisine").join(format!("{page}.html"))).unwrap();
+        assert_eq!(html.matches(GROUP_META).count(), 1);
+        assert_eq!(html.matches("bip-asked").count(), 1);
+        // a page of the owner's own: no mark at all
+        let own = save(&config, "cuisine", "<h1>Budget</h1>", "Budget", None).unwrap();
+        assert!(own.get("group").is_none() && own.get("asked_by").is_none());
+        let html = std::fs::read_to_string(root(&config).join("cuisine").join("budget.html")).unwrap();
+        assert!(!html.contains(GROUP_META) && !html.contains("bip-asked"));
+        // a whole document of the agent's: the line right after its own <body …>
+        let doc = apply_mark("<html><body class=\"x\"><p>a</p></body></html>",
+                             &Mark { group: false, asked_by: Some("Paul".into()), lang: "en".into() });
+        assert!(doc.starts_with("<html><body class=\"x\"><div class=\"bip-asked\""));
+        assert!(doc.contains("Made at Paul\u{2019}s request</div><p>a</p>"));
     }
 }

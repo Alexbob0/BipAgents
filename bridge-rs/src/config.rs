@@ -744,6 +744,9 @@ pub struct Config {
     /// `[tidy]` (space_tidy.rs): the agents' working space tidied by itself. Not serialized either.
     #[serde(skip)]
     pub tidy: crate::space_tidy::Settings,
+    /// `[shared_pages]` (shared_pages.rs): pages a relative may ask for in a day. Not serialized either.
+    #[serde(skip)]
+    pub shared_pages: crate::shared_pages::Settings,
     /// `[link]` (link_wallet.rs): Link Agent Wallet, off unless switched on and configured. Not serialized either.
     #[serde(skip)]
     pub link: crate::link_wallet::Settings,
@@ -855,6 +858,7 @@ impl Config {
             triggers: crate::triggers::Settings::default(),
             agent_restart: crate::agent_restart::Settings::default(),
             tidy: crate::space_tidy::Settings::default(),
+            shared_pages: crate::shared_pages::Settings::default(),
             link: crate::link_wallet::Settings::default(),
             phone_exit: crate::phone_exit::Settings::default(),
             archive_records: ArchiveRecordsConfig::default(),
@@ -1825,6 +1829,7 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         triggers: crate::triggers::Settings::from_table(table(data, "triggers")),
         agent_restart: crate::agent_restart::Settings::from_table(table(data, "agent_restart")),
         tidy: crate::space_tidy::Settings::from_table(table(data, "tidy")),
+        shared_pages: crate::shared_pages::Settings::from_table(table(data, "shared_pages")),
         link: crate::link_wallet::Settings::from_table(table(data, "link")),
         phone_exit: crate::phone_exit::Settings::from_table(table(data, "phone_exit")),
         archive_records,

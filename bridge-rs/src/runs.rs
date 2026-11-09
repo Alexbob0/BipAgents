@@ -1991,6 +1991,23 @@ impl RunHub {
         }
     }
 
+    /// The agent's runs going on that are inside a call of the bridge's tool `tool` right now (their last
+    /// `tool.started` was it, not yet completed): who a tool call may belong to when several people's turns go on at
+    /// once (shared_pages.rs `who`). Empty when the hub has not seen the call start yet.
+    pub fn runs_in_tool(&self, agent: &str, tool: &str) -> Vec<String> {
+        let tool = crate::loop_brake::bare(tool);
+        let inner = lock(&self.inner);
+        let mut runs: Vec<String> = Vec::new();
+        for sub in inner.subs.values().filter(|sub| sub.agent.name == agent) {
+            let st = lock(&sub.state);
+            let inside = !st.finished && st.terminal.is_none() && st.tools_open > 0 && st.last_tool == tool;
+            if inside && !runs.contains(&sub.run_id) {
+                runs.push(sub.run_id.clone());
+            }
+        }
+        runs
+    }
+
     /// The turn a call of the bridge's tool `tool` by `agent` belongs to (loop_brake.rs, its MCP counts): the agent's
     /// run going on that the hub follows; with several, the one whose last call was this tool, else the one that
     /// called a tool last. None: no run of the agent followed (a routine, Hermes' cron).

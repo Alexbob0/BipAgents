@@ -356,12 +356,13 @@ fn chip_line(mark: &str) -> String {
     format!("End your reply with this line, exactly as it is (the app shows it as a button to the entry): {mark}")
 }
 
-/// Whether the person's own data is closed for `agent` right now (a relative's turn, a shared conversation).
-fn closed_now(state: &crate::app::AppState, agent: &str) -> bool {
-    crate::agent_shares::relative_turn(&state.config(), agent) || crate::read_shares::shared_turn(state, agent)
+/// Whether the person's own data is closed for this call of `tool` (someone else's turn: a relative's, another
+/// household's agent; shared_pages.rs `who`). The person's own turns, shared conversations included, are open.
+fn closed_now(state: &crate::app::AppState, agent: &str, tool: &str) -> bool {
+    crate::shared_pages::who(state, agent, tool) != crate::shared_pages::Who::Owner
 }
 
-const CLOSED: &str = "Your person's own data, the vault included, is closed in this conversation: other people read it. \
+const CLOSED: &str = "Your person's own data, the vault included, is closed in this conversation: someone else is talking to you. \
 Answer from what you know.";
 
 /// The entry's mark noted for the reply that ends the agent's turn (made_files.rs): « Coordonnées » saved or used, a
@@ -373,7 +374,7 @@ pub fn note_mark(state: &crate::app::AppState, agent: &str, tool: &str, mark: &s
 
 pub async fn call(state: &crate::app::AppState, agent: &AgentConfig, name: &str, arguments: &Dict) -> Dict {
     use crate::tools_knowledge::tool_text;
-    if closed_now(state, &agent.name) {
+    if closed_now(state, &agent.name, name) {
         return tool_text(CLOSED, true);
     }
     let config = state.config();
