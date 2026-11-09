@@ -2,7 +2,7 @@
 
 # Politique de confidentialité de BipAgents
 
-> Dernière mise à jour : 6 novembre 2026.
+> Dernière mise à jour : 9 novembre 2026.
 
 ## En bref
 
@@ -19,7 +19,7 @@
   2. ce que tu choisis de nous envoyer : un **e-mail** au support, ou le **signalement** d'une réponse depuis l'app ;
   3. des **rapports de plantage**, seulement si tu as activé leur partage dans les réglages de ton téléphone.
 - Avec l'offre tout compris, Kerfy Studio traite aussi ton compte, l'état de ton abonnement, des données techniques
-  sur ta place (jamais son contenu) et tes sauvegardes, chiffrées avec une clé qu'il n'a pas ; il héberge ta place
+  sur ta place (jamais son contenu) et tes sauvegardes, illisibles sans leur clé, qui reste sur ta place et sur tes appareils (section 5.5) ; il héberge ta place
   sans y accéder (section 5). Si tu donnes à un agent sa propre adresse e-mail, Kerfy Studio garde aussi les e-mails
   de cette adresse sur son serveur de messagerie (section 5.8).
 - Sur un forfait Duo ou Famille, le crédit d'IA est celui de toute la famille : **la personne qui paie voit combien

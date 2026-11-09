@@ -2,7 +2,7 @@
 
 # Política de privacidad de BipAgents
 
-> Última actualización: 6 de noviembre de 2026.
+> Última actualización: 9 de noviembre de 2026.
 
 ## En resumen
 
@@ -19,7 +19,7 @@
   2. lo que decidas enviarnos: un **correo** al soporte o la **denuncia** de una respuesta desde la app;
   3. **informes de fallos**, solo si has activado su envío en los ajustes de tu teléfono.
 - Con la oferta todo incluido, Kerfy Studio trata además tu cuenta, el estado de tu suscripción, datos técnicos sobre
-  tu plaza (nunca su contenido) y tus copias de seguridad, cifradas con una clave que no tiene; aloja tu plaza sin
+  tu plaza (nunca su contenido) y tus copias de seguridad, ilegibles sin su clave, que se queda en tu plaza y en tus dispositivos (sección 5.5); aloja tu plaza sin
   acceder a ella (sección 5). Si das a un agente su propia dirección de correo, Kerfy Studio guarda además los correos
   de esa dirección en su servidor de correo (sección 5.8).
 - En un plan Duo o Familia, el crédito de IA es de toda la familia: **la persona que paga ve cuánto usa cada persona**

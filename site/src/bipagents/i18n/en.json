@@ -27,7 +27,7 @@
     "line2": "private and secure.",
     "lede": "Delegate to your team: they take care of everything!",
     "proof1": "<b>They act</b>: email, calendar, bookings",
-    "proof2": "<b>Your OK first</b>, always",
+    "proof2": "<b>Your OK</b> before paying or sending",
     "proof3": "<b>Your own space</b>, in Europe",
     "cta": "Choose my plan",
     "watch": "See the demo",
@@ -104,7 +104,7 @@
       "c1": "No",
       "c2": "No",
       "c3": "No: its agents talk to each other, not between family members",
-      "c4": "Yes, with your OK: nothing goes without « Send »"
+      "c4": "Yes, where you allow it; a message to the family waits for your « Send »"
     },
     "r6": {
       "label": "What it keeps for you",
@@ -141,7 +141,7 @@
     "tab6": "My subscriptions",
     "point1": "Every step in plain sight",
     "point2": "Maps and mini apps right in its replies",
-    "point3": "Your OK before booking, paying or sending",
+    "point3": "Your OK before paying or sending",
     "chatSub": "Chat",
     "chatLabel": "The demo playing",
     "replay": "Replay",
@@ -162,11 +162,11 @@
     "less": "See less",
     "whereTitle": "Where is your data?",
     "where1": "In your own space, separate from everyone else’s, on a server in the European Union (OVHcloud or Hetzner). Or on your own computer, if you install it at home.",
-    "where2": "With All included, an encrypted backup a few minutes after each activity, and at least once a day, with a key only your devices hold: we keep it without being able to read it.",
+    "where2": "With All included, your space is backed up, encrypted, a few minutes after each activity, and at least once a day. The copy kept on our backup server can’t be read without the key, which stays in your space and on your devices.",
     "where3": "It’s all yours: you can take everything and leave whenever you like.",
     "whoTitle": "Who can read it?",
     "who1": "Not us: Kerfy Studio doesn’t read your conversations and trains no AI with them. No ads, no tracking.",
-    "who2": "The AI reads what your agent sends it, to answer you: through EUrouter, a European AI router, then the company running the model you chose. The app names them before your first message.",
+    "who2": "The AI reads what your agent sends it, to answer you: through EUrouter, a European AI router, then the provider running the model you chose. Before your first message, the app names the router and the model.",
     "who3": "Our limit, said plainly: as with any rented server, the host and we could technically get in. Our software doesn’t, and we only would if the law required it.",
     "compare": "Compared with ChatGPT, Gemini and others, with sources →",
     "href": "https://github.com/Alexbob0/BipAgents/blob/main/docs/privacy-compare.md"
@@ -316,7 +316,7 @@
     },
     "4": {
       "q": "Who can read my conversations?",
-      "a": "Not us: Kerfy Studio doesn’t read them or train any AI on them. To answer you, the AI reads what your agent sends it: through EUrouter, a European AI router, then the company running the chosen model, which the app names before your first message. As we rent the server, we could technically enter your space: our software doesn’t, and we only would if the law required it."
+      "a": "Not us: Kerfy Studio doesn’t read them or train any AI on them. To answer you, the AI reads what your agent sends it: through EUrouter, a European AI router, then the provider running the chosen model; the app names the router and the model before your first message. As we rent the server, we could technically enter your space: our software doesn’t, and we only would if the law required it."
     },
     "5": {
       "q": "How do Duo and Family work?",
@@ -495,7 +495,7 @@
     "s1t": "A place for everyone",
     "s1": "Own space, own agents, one shared AI credit",
     "s2t": "Your agents talk",
-    "s2": "Nothing leaves without your “Send”",
+    "s2": "Only if you allow it, and a message to the family waits for your “Send”",
     "s3t": "The family’s agent",
     "s3": "Lists, shopping, dates; never what’s private",
     "s4t": "An agent shared with your friends, for free!",

@@ -2,7 +2,7 @@ English · [Français](privacy.fr.md) · [Deutsch](privacy.de.md) · [Español](
 
 # BipAgents privacy policy
 
-> Last updated: 6 November 2026.
+> Last updated: 9 November 2026.
 
 ## In short
 
@@ -17,7 +17,7 @@ English · [Français](privacy.fr.md) · [Deutsch](privacy.de.md) · [Español](
   2. what you choose to send us: an **email** to support, or a **report** of a reply from the app;
   3. **crash reports**, only if you turned on sharing them in your phone's settings.
 - With the all-included offer, Kerfy Studio also processes your account, the state of your subscription, technical
-  data about your place (never its content) and your backups, encrypted with a key it does not have; it hosts your
+  data about your place (never its content) and your backups, unreadable without their key, which stays on your place and on your devices (section 5.5); it hosts your
   place without accessing it (section 5). If you give an agent its own e-mail address, Kerfy Studio also keeps that
   address's mails on its mail server (section 5.8).
 - On a Duo or a Family plan, the AI credit belongs to the whole family: **the person who pays sees how much each

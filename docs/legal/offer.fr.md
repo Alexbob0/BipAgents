@@ -2,7 +2,7 @@
 
 # Conditions générales de vente de l'offre tout compris
 
-> Dernière mise à jour : 27 octobre 2026.
+> Dernière mise à jour : 9 novembre 2026.
 
 ## 1. Objet
 
@@ -230,8 +230,8 @@ crédit (tu peux en ajouter, section 6) ; les services que tu relies à tes agen
   (facultatif, dans Réglages › Compte), ou au bout de **24 heures**, tes appareils et ton adresse en étant prévenus.
   Ce code ouvre aussi
   la copie de ta clé de sauvegarde que Kerfy Studio garde chiffrée et ne peut pas lire sans lui. **Garde-le en lieu
-  sûr** : Kerfy Studio ne le connaît pas et ne peut pas le retrouver. Sans appareil ni code de récupération, personne
-  ne peut ouvrir tes sauvegardes.
+  sûr** : Kerfy Studio ne le connaît pas et ne peut pas le retrouver. Si ta place est perdue, sans appareil ni code de
+  récupération, tu ne peux plus ouvrir tes sauvegardes.
 - Tu es responsable de la sécurité de tes appareils, de ton compte Apple, Google ou e-mail, et de ton code de
   récupération.
 - **Supprimer ton compte** : dans l'app, Réglages › Compte › Supprimer mon compte, ou sur la page
@@ -274,9 +274,9 @@ crédit (tu peux en ajouter, section 6) ; les services que tu relies à tes agen
   L'accès aux comptes de Kerfy Studio chez les hébergeurs est réservé à la société. Un accès au contenu d'une place
   n'aurait lieu que pour répondre à une obligation légale, et tu en serais informé quand la loi le permet. Comme tout
   hébergeur, OVHcloud et Hetzner ont un accès physique à leurs serveurs.
-- **Sauvegardes** : ta place se sauvegarde quelques minutes après chaque activité, et au moins une fois par jour, chiffrée sur la place avec une clé que seuls tes
-  appareils détiennent (plus la copie chiffrée que ton code de récupération ouvre, section 7). Kerfy Studio garde ces
-  sauvegardes sans pouvoir les lire : celles des 2 dernières heures, puis une par heure pendant 48 heures, une par jour pendant 30 jours, une par semaine
+- **Sauvegardes** : ta place se sauvegarde quelques minutes après chaque activité, et au moins une fois par jour, chiffrée sur la place avant de partir, avec une
+  clé qui reste sur ta place et sur tes appareils (plus la copie chiffrée que ton code de récupération ouvre, section 7).
+  Kerfy Studio garde ces sauvegardes sur son serveur de sauvegarde, illisibles sans cette clé : celles des 2 dernières heures, puis une par heure pendant 48 heures, une par jour pendant 30 jours, une par semaine
   pendant 12 semaines. Réglages › Offre tout compris › Sauvegardes montre la dernière et en lance une tout de suite.
 - **L'image quotidienne d'OVHcloud** : sur ses serveurs, OVHcloud fait aussi, de son côté, une image quotidienne du
   serveur entier, qu'il garde chez lui (un point de restauration par jour, non chiffré par Kerfy Studio). Quand une
