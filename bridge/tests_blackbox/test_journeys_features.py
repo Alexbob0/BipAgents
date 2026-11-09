@@ -1,4 +1,4 @@
-"""The release journeys of this release's new features (docs/release-journeys.md, J39–J44, column « Pont »), as the
+"""The release journeys of this release's new features (docs/release-journeys.md, J39–J46, column « Pont »), as the
 apps do them over HTTP, each page and line checked as the person SEES it (bbkit/displayable_people.py,
 bbkit/displayable.py):
 
@@ -86,6 +86,35 @@ def test_j39_only_the_critical_a_small_task_is_validated_for_the_person_with_ann
     assert undone.status_code == 200 and undone.json()["item"]["undone"] is True, undone.text   # « Annulé »
     assert not shown.auto_line_problems(undone.json()["item"]), undone.json()
     assert wait_until(lambda: task()["state"] != "running", timeout=15), task()   # the task stopped
+
+
+def test_j46_a_running_task_forgotten_leaves_and_stays_gone(journey):
+    """« Oublier cette tâche » (the Boîte's « En cours » › its page): the task the agent started, still running, is
+    gone from `/v1/jobs` and « Ce que tes agents font tout seuls » at once, its « Validé pour toi » line « Annulé », and stays gone (its watch never saves it
+    back once its file is removed)."""
+    level(journey.bridge, "critical")
+    journey.model.calls["task"] = lambda run: mcp_as(journey.bridge, journey.token, "/v1/agent-tools/mcp", "propose_task", {
+        "title": "Dossier location", "prompt": "Prépare le dossier de location #lent", "budget": "small"})
+    assert journey.send(cid(46), "Prépare mon dossier de location #tache").status_code == 200
+    reply_done(journey, "La tâche est lancée")
+
+    def jobs():
+        return journey.bridge.get("/v1/jobs", headers=AUTH).json()["jobs"]
+    [task] = [j for j in jobs() if j["title"].endswith("Dossier location")]
+    assert task["state"] == "running", task
+    started = time.time()
+    gone = journey.bridge.delete(f"/v1/jobs/{task['id']}", headers=AUTH)
+    assert gone.status_code == 200 and gone.json() == {"ok": True}, gone.text
+    assert time.time() - started < 5, "« Oublier » waited on the run"
+    # its « Validé pour toi » line: « Annulé », no « Annuler » left on a task that is gone (9/11)
+    [line] = [x for x in auto_lines(journey.bridge) if x["kind"] == "task_start"]
+    assert line["undone"] is True and line["undo"] is False, line
+    assert not shown.auto_line_problems(line), shown.auto_line_problems(line)
+    for _ in range(8):   # past a round of its watch (bbkit: a fast poll)
+        assert task["id"] not in [j["id"] for j in jobs()], jobs()
+        items = journey.bridge.get("/v1/autonomous", headers=AUTH).json()["items"]
+        assert f"task:{task['id']}" not in [i["id"] for i in items], items
+        time.sleep(0.5)
 
 
 def test_j40_only_the_critical_a_critical_card_is_still_asked(journey):
