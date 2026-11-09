@@ -2,7 +2,7 @@
 
 # Condiciones generales de venta de la oferta todo incluido
 
-> Última actualización: 27 de octubre de 2026.
+> Última actualización: 9 de noviembre de 2026.
 
 ## 1. Objeto
 
@@ -222,8 +222,8 @@ enseguida. Las reglas propias de las personas que viven fuera de la Unión está
 - **Ningún dispositivo**: recuperas tu cuenta al cabo de **24 horas**, y se avisa a tus antiguos dispositivos y a tu
   dirección de correo; o **enseguida** con tu **código de recuperación**, que la app te propone crear justo después
   de la compra. Ese código abre también la copia de tu clave de copia de seguridad que Kerfy Studio guarda cifrada y
-  no puede leer sin él. **Guárdalo en un lugar seguro**: Kerfy Studio no lo conoce y no puede recuperarlo. Sin
-  dispositivo ni código de recuperación, nadie puede abrir tus copias de seguridad.
+  no puede leer sin él. **Guárdalo en un lugar seguro**: Kerfy Studio no lo conoce y no puede recuperarlo. Si
+  tu plaza se pierde, sin dispositivo ni código de recuperación ya no puedes abrir tus copias de seguridad.
 - Eres responsable de la seguridad de tus dispositivos, de tu cuenta de Apple, de Google o de correo, y de tu código
   de recuperación.
 - **Eliminar tu cuenta**: en la app, Ajustes › Cuenta › Eliminar mi cuenta, o en la página
@@ -266,9 +266,9 @@ enseguida. Las reglas propias de las personas que viven fuera de la Unión está
   acceso a las cuentas de Kerfy Studio en los proveedores de alojamiento está reservado a la sociedad. Solo se
   accedería al contenido de una plaza para cumplir una obligación legal, y se te informaría cuando la ley lo permita.
   Como todo proveedor de alojamiento, OVHcloud y Hetzner tienen acceso físico a sus servidores.
-- **Copias de seguridad**: tu plaza hace una copia de seguridad unos minutos después de cada actividad, y al menos una vez al día, cifrada en la plaza con una clave que solo
-  tienen tus dispositivos (más la copia cifrada que abre tu código de recuperación, sección 7). Kerfy Studio guarda
-  estas copias sin poder leerlas: las de las 2 últimas horas, luego una por hora durante 48 horas, una por día durante 30 días, una por semana durante
+- **Copias de seguridad**: tu plaza hace una copia de seguridad unos minutos después de cada actividad, y al menos una vez al día, cifrada en la plaza antes de salir, con una
+  clave que se queda en tu plaza y en tus dispositivos (más la copia cifrada que abre tu código de recuperación,
+  sección 7). Kerfy Studio guarda estas copias en su servidor de copias de seguridad, ilegibles sin esa clave: las de las 2 últimas horas, luego una por hora durante 48 horas, una por día durante 30 días, una por semana durante
   12 semanas. Ajustes › Plan todo incluido › Copias de seguridad muestra la última y lanza una enseguida.
 - **La imagen diaria de OVHcloud**: en sus servidores, OVHcloud hace además, por su parte, una imagen diaria del
   servidor entero, que guarda en sus instalaciones (un punto de restauración por día, no cifrado por Kerfy Studio).

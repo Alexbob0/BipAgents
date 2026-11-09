@@ -2,7 +2,7 @@
 
 # Allgemeine Verkaufsbedingungen des Alles-inklusive-Angebots
 
-> Zuletzt aktualisiert: 27. Oktober 2026.
+> Zuletzt aktualisiert: 9. November 2026.
 
 ## 1. Gegenstand
 
@@ -230,7 +230,8 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
   E-Mail-Adresse werden darüber informiert; oder **sofort** mit deinem **Wiederherstellungscode**, dessen Erstellung dir
   die App direkt nach dem Kauf anbietet. Dieser Code öffnet auch die Kopie deines Sicherungsschlüssels, die Kerfy Studio
   verschlüsselt aufbewahrt und ohne ihn nicht lesen kann. **Bewahre ihn sicher auf**: Kerfy Studio kennt ihn nicht und
-  kann ihn nicht wiederherstellen. Ohne Gerät und ohne Wiederherstellungscode kann niemand deine Sicherungen öffnen.
+  kann ihn nicht wiederherstellen. Geht dein Platz verloren, kannst du deine Sicherungen ohne Gerät
+  und ohne Wiederherstellungscode nicht mehr öffnen.
 - Du bist verantwortlich für die Sicherheit deiner Geräte, deines Apple-, Google- oder E-Mail-Kontos und deines
   Wiederherstellungscodes.
 - **Dein Konto löschen**: in der App, Einstellungen › Konto › Mein Konto löschen, oder auf der Seite
@@ -276,9 +277,10 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
   Unternehmen vorbehalten. Auf den Inhalt eines Platzes würde nur zugegriffen, um eine gesetzliche Pflicht zu erfüllen,
   und du würdest informiert, wenn das Gesetz es erlaubt. Wie jeder Hoster haben OVHcloud und Hetzner physischen Zugang
   zu ihren Servern.
-- **Sicherungen**: Dein Platz sichert sich wenige Minuten nach jeder Aktivität und mindestens einmal am Tag, verschlüsselt auf dem Platz mit einem Schlüssel, den nur deine
-  Geräte haben (plus die verschlüsselte Kopie, die dein Wiederherstellungscode öffnet, Abschnitt 7). Kerfy Studio
-  bewahrt diese Sicherungen auf, ohne sie lesen zu können: die der letzten 2 Stunden, dann eine pro Stunde für 48 Stunden, eine pro Tag für 30 Tage,
+- **Sicherungen**: Dein Platz sichert sich wenige Minuten nach jeder Aktivität und mindestens einmal am Tag, verschlüsselt auf dem Platz, bevor sie ihn verlässt,
+  mit einem Schlüssel, der auf deinem Platz und auf deinen Geräten bleibt (plus die verschlüsselte Kopie, die dein
+  Wiederherstellungscode öffnet, Abschnitt 7). Kerfy Studio bewahrt diese Sicherungen auf seinem Sicherungsserver auf,
+  ohne diesen Schlüssel unlesbar: die der letzten 2 Stunden, dann eine pro Stunde für 48 Stunden, eine pro Tag für 30 Tage,
   eine pro Woche für 12 Wochen. Einstellungen › Alles-inklusive-Angebot › Sicherungen zeigt die letzte und startet
   sofort eine.
 - **Das tägliche Abbild von OVHcloud**: Auf seinen Servern erstellt OVHcloud außerdem selbst ein tägliches Abbild des
