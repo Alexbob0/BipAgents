@@ -176,7 +176,7 @@ async fn stopped_once_nobody_uses_it() {
 async fn stopped_soon_after_the_run_that_used_it_ended_unless_used_again() {
     let dir = tempfile::tempdir().unwrap();
     let tmp = dir.path();
-    let config = config(tmp); // idle 600 s, `ended` beside `busy`, after_run 180 s by default
+    let config = config(tmp); // idle 600 s, `ended` beside `busy`, after_run 480 s by default
     let proxy = Proxy::new(config.clone(), Box::new(Out::default()));
     assert_eq!(proxy.after_run, browser_mcp::AFTER_RUN_SECONDS as f64);
     assert_eq!(proxy.ended_path, tmp.join("ended"));
@@ -184,11 +184,12 @@ async fn stopped_soon_after_the_run_that_used_it_ended_unless_used_again() {
     // No run told its end: only the 600 s rule.
     set_mtime(&busy, 400);
     assert!(!proxy.done_with());
-    // The run ended 2 minutes ago, its last call before: not yet.
-    set_mtime(&ended, 120);
+    // The run ended 7 minutes ago, its last call before: not yet (warm for the person's next message).
+    set_mtime(&busy, 900);
+    set_mtime(&ended, 420);
     assert!(!proxy.done_with());
-    // 3 minutes: done with.
-    set_mtime(&ended, 181);
+    // 8 minutes: done with.
+    set_mtime(&ended, 481);
     assert!(proxy.done_with());
     // Used since the end (a new call, the person watching or driving its desktop): the 600 s rule again.
     set_mtime(&busy, 100);
@@ -548,7 +549,9 @@ async fn the_phone_exit_s_refusal_and_a_challenge_page_are_said_to_the_agent() {
     assert_eq!(said.len(), 2, "{said:?}");
     assert!(said[1].starts_with("Phone exit (ameli.fr, paused)") && said[1].contains("Do NOT say the site blocks you"));
     // a later read of the same page: about the same site (the last URL navigated to)
-    proxy.handle(json!({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "get_page_content"}})).await;
+    proxy
+        .handle(json!({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "get_page_content"}}))
+        .await;
     assert_eq!(texts(&out).len(), 2);
     // a challenge page: the hub asked, the card said
     proxy.handle(navigate(3, "https://www.leboncoin.fr/challenge")).await;
@@ -576,5 +579,152 @@ async fn without_the_phone_exit_nothing_is_added() {
         .await;
     let last = out.messages().last().unwrap().clone();
     assert_eq!(last["result"]["content"].as_array().unwrap().len(), 1);
+    proxy.stop_child().await;
+}
+
+/// The real server for the browser-speed answers: `execute_script` runs the page's scripts (its readable text,
+/// `document.readyState`), `take_screenshot` gives its image inline or, with `"full_page": true`, saved in its
+/// container; every call written to `calls.jsonl`.
+const SPEED_SERVER: &str = r#"
+import json, os, sys
+here = os.path.dirname(os.path.abspath(__file__))
+page = {"title": "Boîte de réception", "url": "https://mail.example.test/inbox", "total": 40,
+        "text": "Facture d'octobre — Portail Exemple", "main": True, "links": ["Écrire"]}
+states = ["loading", "interactive", "complete"]
+for line in sys.stdin:
+    m = json.loads(line)
+    if "id" not in m:
+        continue
+    if m["method"] == "initialize":
+        r = {"protocolVersion": m["params"]["protocolVersion"], "capabilities": {"tools": {}},
+             "serverInfo": {"name": "stealth", "version": "1"}}
+    elif m["method"] == "tools/list":
+        r = {"tools": []}
+    else:
+        name, args = m["params"]["name"], m["params"].get("arguments", {})
+        with open(os.path.join(here, "calls.jsonl"), "a") as f:
+            f.write(json.dumps({"name": name, "arguments": args}) + "\n")
+        if name == "execute_script" and args["script"] == "document.readyState":
+            answer = {"success": True, "result": states.pop(0) if states else "complete", "error": None}
+            r = {"content": [{"type": "text", "text": json.dumps(answer)}], "structuredContent": answer}
+        elif name == "execute_script" and "JSON.stringify" in args["script"]:
+            answer = {"success": True, "result": json.dumps(page), "error": None}
+            r = {"content": [{"type": "text", "text": json.dumps(answer)}], "structuredContent": answer}
+        elif name == "take_screenshot" and args.get("full_page"):
+            saved = {"file_path": "/opt/stealth/stealth-browser-mcp/element_clones/screenshot_1.jpeg",
+                     "filename": "screenshot_1.jpeg", "file_size_kb": 180.2,
+                     "reason": "Screenshot too large, automatically saved to file"}
+            r = {"content": [{"type": "text", "text": json.dumps(saved)}], "structuredContent": {"result": saved}}
+        elif name == "take_screenshot":
+            data = "/9j/" + "A" * 200
+            r = {"content": [{"type": "text", "text": data}], "structuredContent": {"result": data}}
+        else:
+            r = {"content": [{"type": "text", "text": "did " + name}]}
+    print(json.dumps({"jsonrpc": "2.0", "id": m["id"], "result": r}), flush=True)
+"#;
+
+/// `<exec prefix> cat|rm <path in the container>`: the container's clone folder is `clones/` here.
+const FAKE_EXEC: &str = r#"
+import os, sys
+here = os.path.dirname(os.path.abspath(__file__))
+command, path = sys.argv[1], sys.argv[-1]
+local = os.path.join(here, "clones", os.path.basename(path))
+if command == "cat":
+    sys.stdout.buffer.write(open(local, "rb").read())
+elif command == "rm":
+    os.remove(local)
+"#;
+
+fn calls(tmp: &Path) -> Vec<Value> {
+    std::fs::read_to_string(tmp.join("calls.jsonl"))
+        .unwrap_or_default()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect()
+}
+
+fn tool(id: i64, name: &str, arguments: Value) -> Value {
+    json!({"jsonrpc": "2.0", "id": id, "method": "tools/call", "params": {"name": name, "arguments": arguments}})
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn pages_come_back_as_text_screenshots_as_images_and_navigation_once_loaded() {
+    // Alex's case of 8/11 (a test mailbox read after 3–4 minutes): a page « set aside », a screenshot « in the wrong
+    // place », a pause after the click; each one more model call.
+    let dir = tempfile::tempdir().unwrap();
+    let tmp = dir.path();
+    let mut config = config(tmp);
+    std::fs::write(tmp.join("server.py"), SPEED_SERVER).unwrap();
+    std::fs::write(tmp.join("exec.py"), FAKE_EXEC).unwrap();
+    config.insert("exec".into(), json!([python(), tmp.join("exec.py").to_string_lossy()]));
+    let out = Out::default();
+    let proxy = Proxy::new(config, Box::new(out.clone()));
+    proxy.handle(init()).await;
+
+    // the page read: its readable text, never its HTML; the structured copy small (Hermes would send it too)
+    proxy.handle(tool(1, "get_page_content", json!({"instance_id": "319ceedb"}))).await;
+    let answer = out.messages().last().unwrap().clone();
+    assert_eq!(answer["id"], json!(1));
+    let text = answer["result"]["content"][0]["text"].as_str().unwrap();
+    assert_eq!(
+        text,
+        "Boîte de réception\nhttps://mail.example.test/inbox\n\nFacture d'octobre — Portail Exemple\n\n[5 more \
+characters of this page. To read on, run execute_script with: "
+            .to_string()
+            + &browser_mcp::readable_script(35, browser_mcp::READABLE_CHARS)
+            + " — or only the part around a word, in place of `word`: "
+            + browser_mcp::AROUND_A_WORD
+            + "]\n\nLinks and buttons: Écrire"
+    );
+    assert_eq!(answer["result"]["structuredContent"]["html"], json!(""));
+    assert_eq!(answer["result"]["structuredContent"]["url"], json!("https://mail.example.test/inbox"));
+    assert_eq!(calls(tmp).iter().map(|c| c["name"].as_str().unwrap()).collect::<Vec<_>>(), ["execute_script"]);
+    // with its frames: the real tool
+    proxy.handle(tool(2, "get_page_content", json!({"instance_id": "319ceedb", "include_frames": true}))).await;
+    assert_eq!(out.messages().last().unwrap()["result"]["content"][0]["text"], "did get_page_content");
+
+    // navigate: answered once the page is loaded; `networkidle` (the real server's blind 2 s) not passed on
+    std::fs::remove_file(tmp.join("calls.jsonl")).unwrap();
+    let url = "https://mail.example.test/";
+    proxy
+        .handle(tool(3, "navigate", json!({"instance_id": "319ceedb", "url": url, "wait_until": "networkidle"})))
+        .await;
+    assert_eq!(out.messages().last().unwrap()["result"]["content"][0]["text"], "did navigate");
+    let seen = calls(tmp);
+    assert_eq!(seen[0]["arguments"]["wait_until"], json!("domcontentloaded"));
+    let states: Vec<_> = seen[1..].iter().map(|c| c["arguments"]["script"].as_str().unwrap()).collect();
+    assert_eq!(states, ["document.readyState"; 3], "loading, interactive, complete");
+    // a click too; a call without an instance waits for nothing
+    std::fs::remove_file(tmp.join("calls.jsonl")).unwrap();
+    proxy.handle(tool(4, "click_element", json!({"instance_id": "319ceedb", "selector": "a"}))).await;
+    assert_eq!(calls(tmp).len(), 2);
+    assert_eq!(calls(tmp)[0]["arguments"]["timeout"], json!(3000), "3 s to find it, not the real server's 10");
+    proxy.handle(tool(5, "list_tabs", json!({"instance_id": "319ceedb"}))).await;
+    proxy.handle(tool(6, "click_element", json!({"selector": "a", "timeout": 8000}))).await;
+    assert_eq!(calls(tmp).len(), 4);
+    assert_eq!(calls(tmp)[3]["arguments"]["timeout"], json!(8000), "the agent's own time kept");
+
+    // a screenshot: an image block, the agent's path never passed on (it would land in the container)
+    std::fs::remove_file(tmp.join("calls.jsonl")).unwrap();
+    proxy.handle(tool(7, "take_screenshot", json!({"instance_id": "319ceedb", "file_path": "/root/shot.png"}))).await;
+    let answer = out.messages().last().unwrap().clone();
+    assert_eq!(answer["id"], json!(7));
+    let content = answer["result"]["content"].as_array().unwrap();
+    assert_eq!(content[0]["type"], "image");
+    assert_eq!(content[0]["mimeType"], "image/jpeg");
+    assert!(content[1]["text"].as_str().unwrap().contains("not written to /root/shot.png"));
+    assert_eq!(calls(tmp)[0]["arguments"], json!({"instance_id": "319ceedb", "format": "jpeg"}));
+    // too large for the real server: saved in its container, fetched from it and removed there
+    std::fs::create_dir_all(tmp.join("clones")).unwrap();
+    std::fs::write(tmp.join("clones").join("screenshot_1.jpeg"), [0xFF, 0xD8, 0xFF, 0xE0]).unwrap();
+    proxy.handle(tool(8, "take_screenshot", json!({"instance_id": "319ceedb", "full_page": true}))).await;
+    let answer = out.messages().last().unwrap().clone();
+    assert_eq!(answer["result"]["content"][0], json!({"type": "image", "data": "/9j/4A==", "mimeType": "image/jpeg"}));
+    assert!(!answer.to_string().contains("element_clones"));
+    assert!(!tmp.join("clones").join("screenshot_1.jpeg").exists(), "removed from the container");
+    // gone before it was fetched: the real answer, as it was
+    proxy.handle(tool(9, "take_screenshot", json!({"instance_id": "319ceedb", "full_page": true}))).await;
+    let answer = out.messages().last().unwrap().clone();
+    assert!(answer["result"]["content"][0]["text"].as_str().unwrap().contains("too large"));
     proxy.stop_child().await;
 }
