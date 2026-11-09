@@ -172,13 +172,20 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
   background: #241A1D; color: #FFFFFF;
 }
 .hero .salon { position: absolute; inset: 0; }
+/* The room's foot: the page's ground rises in a soft wave, a lighter veil of it first, so the evening melts into
+   the page instead of stopping on a straight line (Alex, 2026-11-09: « une coupure brutale »). */
+.hero { --edge: clamp(46px, 6.5vw, 104px); }
+.hero::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: var(--edge); z-index: 7; pointer-events: none;
+  background: var(--ground);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 100' preserveAspectRatio='none'%3E%3Cpath d='M0 34C220 6 420 2 720 22s560 34 720 0V100H0z' fill-opacity='.3'/%3E%3Cpath d='M0 60C260 32 470 30 740 48s520 30 700 4V100H0z'/%3E%3C/svg%3E") 0 100% / 100% 100% no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 100' preserveAspectRatio='none'%3E%3Cpath d='M0 34C220 6 420 2 720 22s560 34 720 0V100H0z' fill-opacity='.3'/%3E%3Cpath d='M0 60C260 32 470 30 740 48s520 30 700 4V100H0z'/%3E%3C/svg%3E") 0 100% / 100% 100% no-repeat; }
 .hero .salon-stage {
   --w: max(100%, calc(var(--hh) * 16 / 9));
   position: absolute; bottom: 0; width: var(--w); aspect-ratio: 16 / 9; left: clamp(calc(100% - var(--w)), calc(50% - var(--fx) * var(--w)), 0px);
 }
 /* the text: low on the left, on the sofa — the one corner of the room without a Bip or a screen (centred at the top,
    over the wall, it hid the phone's bubble and the easel: the wall is too low in the painting) */
-.hero-text { position: absolute; z-index: 8; left: max(24px, 3.4vw); bottom: clamp(22px, 4svh, 56px); width: min(470px, 36vw);
+.hero-text { position: absolute; z-index: 8; left: max(24px, 3.4vw); bottom: calc(var(--edge) * .55 + clamp(10px, 2.4svh, 34px)); width: min(470px, 36vw);
   text-shadow: 0 1px 14px rgba(var(--night), .5); }
 /* the shade: over the painting, under the Bips and their labels; behind the text and the header */
 .hero .salon::after { content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none; background:
