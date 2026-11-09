@@ -22,24 +22,43 @@
     "ctaShort": "The beta"
   },
   "hero": {
+    "slogan": "Your business stays your business.",
+    "sub": "Your Bips make bookings, sort your email and keep your Notebook, in your own space in Europe.",
+    "eu": "Servers in the EU, or at home",
     "badge": "Built on Hermes Agent",
-    "line1": "Your AI agents,",
-    "line2": "private and secure.",
-    "lede": "Delegate to your team: they take care of everything!",
-    "proof1": "<b>They act</b>: email, calendar, bookings",
     "proof2": "<b>Your OK first</b>, always",
-    "proof3": "<b>Your own space</b>, in Europe",
     "cta": "Choose my plan",
     "watch": "See the demo",
-    "watchTime": "1 min",
     "price": "Free beta on iPhone and Android · limited places · no card needed",
-    "beta": "Free beta",
-    "bandTag": "iPhone and Android · limited places",
-    "free": "Free",
-    "freeWhere": "on your computer",
-    "fromPre": "or all included from",
-    "fromPost": " a month",
-    "self": "Or install it free on your computer"
+    "beta": "Free beta"
+  },
+  "salon": {
+    "alt": "A cosy living room in the evening: on the sofa, a phone calls Pasta Mia; on the coffee table, a tablet shows €24 of subscriptions saved; by the window, a laptop with flights and a hotel, and an easel with the week’s wellness notes. Four Bips are taking care of it all.",
+    "a11y": "What the Bips in the living room are doing",
+    "tip": "Drag a Bip to spin it",
+    "hint": "Swipe to look around · drag a Bip to spin it",
+    "dinners": {
+      "name": "Dinners",
+      "line": "Full at 8, so I booked 8:30 and told Julie."
+    },
+    "budget": {
+      "name": "Budget",
+      "line": "Disney+ unused since June. Cancel it? €11.99 a month back."
+    },
+    "wellness": {
+      "name": "Wellness",
+      "line": "You slept 6 h 10. Tomorrow: an easy 30 min, no intervals."
+    },
+    "trips": {
+      "name": "Trips",
+      "line": "Fly Tuesday, not Friday: €140 less, same hotel."
+    },
+    "easel": {
+      "title": "Wellness",
+      "l1": "Nights: 7 h",
+      "l2": "9,400 steps",
+      "l3": "3 runs"
+    }
   },
   "store": {
     "soon": "Coming soon to",

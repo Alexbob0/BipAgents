@@ -22,24 +22,43 @@
     "ctaShort": "Zur Beta"
   },
   "hero": {
+    "slogan": "Deine Sachen gehen nur dich etwas an.",
+    "sub": "Deine Bips reservieren, sortieren deine Mails und führen dein Notizbuch, in deinem eigenen Bereich in Europa.",
+    "eu": "Server in der EU, oder bei dir zu Hause",
     "badge": "Gebaut auf Hermes Agent",
-    "line1": "Deine KI-Agenten,",
-    "line2": "privat und sicher.",
-    "lede": "Gib ab an dein Team – es kümmert sich um alles!",
-    "proof1": "<b>Sie handeln</b>: Mails, Kalender, Buchungen",
     "proof2": "<b>Erst dein OK</b>, immer",
-    "proof3": "<b>Dein eigener Bereich</b>, in Europa",
     "cta": "Tarif wählen",
     "watch": "Demo ansehen",
-    "watchTime": "1 Min.",
     "price": "Kostenlose Beta für iPhone und Android · begrenzte Plätze · ohne Kreditkarte",
-    "beta": "Kostenlose Beta",
-    "bandTag": "iPhone und Android · begrenzte Plätze",
-    "free": "Kostenlos",
-    "freeWhere": "auf deinem Computer",
-    "fromPre": "oder alles inklusive ab",
-    "fromPost": " im Monat",
-    "self": "Oder kostenlos auf deinem Computer installieren"
+    "beta": "Kostenlose Beta"
+  },
+  "salon": {
+    "alt": "Ein gemütliches Wohnzimmer am Abend: Auf dem Sofa ruft ein Handy bei Pasta Mia an, auf dem Couchtisch zeigt ein Tablet 24 € gesparte Abos, am Fenster ein Laptop mit Flügen und Hotel und eine Staffelei mit dem Wohlbefinden der Woche. Vier Bips kümmern sich darum.",
+    "a11y": "Was die Bips im Wohnzimmer tun",
+    "tip": "Zieh an einem Bip, um ihn zu drehen",
+    "hint": "Wischen, um dich umzusehen · Bip mit dem Finger drehen",
+    "dinners": {
+      "name": "Essen",
+      "line": "Um 20 Uhr ausgebucht, also habe ich 20:30 reserviert und Julie Bescheid gesagt."
+    },
+    "budget": {
+      "name": "Budget",
+      "line": "Disney+ seit Juni ungenutzt. Kündigen? 11,99 € im Monat zurück."
+    },
+    "wellness": {
+      "name": "Wohlbefinden",
+      "line": "Du hast 6 Std. 10 geschlafen. Morgen: 30 Min. locker, keine Intervalle."
+    },
+    "trips": {
+      "name": "Reisen",
+      "line": "Fahr Dienstag statt Freitag: 140 € weniger, gleiches Hotel."
+    },
+    "easel": {
+      "title": "Wohlbefinden",
+      "l1": "Nächte: 7 Std.",
+      "l2": "9.400 Schritte",
+      "l3": "3 Läufe"
+    }
   },
   "store": {
     "soon": "Bald im",

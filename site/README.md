@@ -1,12 +1,6 @@
 # The websites
 
-- **bipagents.com** sells the all-included offer, honestly. The home is short (reworked 2026-10-24 after a user
-  review): the hero — on the left why, private and in Europe, with a « See more » that opens in place where your data
-  is and who can read it (`#private` opens it, right under its button, so privacy comes first on the page as in the
-  header; lightened 2026-10-27: short points, two buttons, the self-install as a small link); on the right « What
-  they do » (`#results`): three things one asks and the card the agent answers with, taken from the app's demo by
-  `hero_show()` in build.py (the walk's map, the booking's approval, a reminder), fading in once — each one a link to
-  the demo on that scenario (`/demo/#walk`, `#book_table`, `#bins`) —, the Carnet, « Duo, Family and friends » as one
+- **bipagents.com** sells the all-included offer, honestly. The home (reworked 2026-11-09, « salon »): the hero, centred — the promise (`hero.slogan`, one key so it can be swapped), what the Bips do and where (`hero.sub`), the EU flag line, « Join the beta » and « See the demo » (down to `#results`) —, then the living room: a painting (`src/bipagents/salon/salon-bg.webp`, 1280×720, its easel painted blank) with, in the same frame, the easel's words (`salon.easel.*`, an SVG drawn on the board's slant in Caveat, a handwriting served from here) and four Bips in 3D (`salon/salon.js` on Three.js r128, both served from here and fetched only when the room comes near the screen): each in turn hops and shows what it just did (`salon.<bip>.*`), drag a Bip to spin it, drag the room to spin them all, two turns and everyone spins; on a phone the room scrolls sideways inside its band and only the Bips in view take their turn. Then privacy (`#private`: the question, three points, « See more » opening where your data is and who can read it, the comparison link), the Carnet, « In action » (`#results`: three things one asks and the card the agent answers with, taken from the app's demo by `hero_show()` in build.py, each a link to the demo on that scenario), « Duo, Family and friends » as one
   story in four tiles (places + shared credit, agents passing news on, the family's agent, sharing one conversation
   with friends), the comparison (`#compared`), the prices as two ways side by side — « All included » (the
   plans: monthly/yearly, Solo/Duo/Famille, web price against the stores' price, computed live) and « On your
@@ -77,7 +71,7 @@ same engine as `scripts/pixel/icon.py`, the PNGs from its iOS 1024). `/play/` (`
 with the eight Bips. Both sites use the engine. Tablée's colours are its « Table dressée » palette; its icon is redrawn
 in SVG.
 
-**Privacy**: no cookie, no tracker, no third-party request (the font, Nunito, is served from the site). So no consent
+**Privacy**: no cookie, no tracker, no third-party request (the fonts, Nunito and the easel's Caveat (SIL OFL, `salon/OFL-caveat.txt`), and Three.js r128 (MIT, its notice kept in `three.min.js`, `salon/LICENSE-three.txt`) are served from the site). So no consent
 banner is needed.
 
 **Accessibility and motion**: everything works with the keyboard (demo tabs and plan picker are ARIA tab/radio groups

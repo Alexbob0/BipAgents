@@ -22,24 +22,43 @@
     "ctaShort": "La bêta"
   },
   "hero": {
+    "slogan": "Tes affaires restent tes affaires.",
+    "sub": "Tes Bips réservent, trient tes mails et tiennent ton Carnet, dans ton propre espace en Europe.",
+    "eu": "Serveurs dans l’UE, ou chez toi",
     "badge": "Construit sur Hermes Agent",
-    "line1": "Tes agents IA,",
-    "line2": "privés et sécurisés.",
-    "lede": "Délègue à ton équipe, ils s’occupent de tout !",
-    "proof1": "<b>Ils agissent</b> : mails, agenda, réservations",
     "proof2": "<b>Rien ne part</b> sans ton accord",
-    "proof3": "<b>Ton propre espace</b>, en Europe",
     "cta": "Choisir ma formule",
     "watch": "Voir la démo",
-    "watchTime": "1 min",
     "price": "Bêta gratuite sur iPhone et Android · places limitées · sans carte bancaire",
-    "beta": "Bêta gratuite",
-    "bandTag": "iPhone et Android · places limitées",
-    "free": "Gratuit",
-    "freeWhere": "sur ton ordinateur",
-    "fromPre": "ou tout compris dès",
-    "fromPost": " par mois",
-    "self": "Ou l’installer gratuitement sur ton ordinateur"
+    "beta": "Bêta gratuite"
+  },
+  "salon": {
+    "alt": "Un salon douillet, le soir : sur le canapé, un téléphone appelle Pasta Mia ; sur la table basse, une tablette montre 24 € d’abonnements économisés ; près de la fenêtre, un ordinateur avec des vols et un hôtel, et un chevalet avec le bilan bien-être de la semaine. Quatre Bips s’en occupent.",
+    "a11y": "Ce que font les Bips du salon",
+    "tip": "Fais tourner un Bip en le glissant",
+    "hint": "Glisse pour voir tout le salon · fais tourner un Bip du doigt",
+    "dinners": {
+      "name": "Dîners",
+      "line": "Complet à 20 h, j’ai réservé 20 h 30 et prévenu Julie."
+    },
+    "budget": {
+      "name": "Budget",
+      "line": "Disney+ inutilisé depuis juin. Je résilie ? 11,99 € par mois récupérés."
+    },
+    "wellness": {
+      "name": "Bien-être",
+      "line": "Tu as dormi 6 h 10. Demain : 30 min tranquilles, pas de fractionné."
+    },
+    "trips": {
+      "name": "Voyages",
+      "line": "Pars mardi, pas vendredi : 140 € de moins, même hôtel."
+    },
+    "easel": {
+      "title": "Bien-être",
+      "l1": "Nuits : 7 h",
+      "l2": "9 400 pas",
+      "l3": "3 footings"
+    }
   },
   "store": {
     "soon": "Bientôt sur",

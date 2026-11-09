@@ -182,7 +182,7 @@ p {{ font-size: 26px; font-weight: 800; color: #555B68; margin: 20px 0 0; max-wi
 .b {{ width: 176px; height: 176px; }} .b svg {{ width: 100%; height: 100%; overflow: visible; display: block; }}
 .b1, .b3 {{ width: 150px; height: 150px; }}
 </style><div class="copy"><div class="brand"><span class="icon">{icon}</span><span>Bip<b>Agents</b></span></div>
-<h1>{html.escape(t["hero"]["line1"])} {html.escape(t["hero"]["line2"])}</h1>
+<h1>{html.escape(t["hero"]["slogan"])}</h1>
 <p>{html.escape(t["hero"]["badge"])}</p></div><div class="row">{bips}</div>""", encoding="utf-8")
     render_png(page, target, 1200, 630)
     page.unlink(missing_ok=True)
@@ -415,6 +415,10 @@ def bipagents(version: str) -> Path:
     assets.mkdir(parents=True)
     for name in ("site.css", "site.js", "notfound.js"):
         copy(src / name, assets / name)
+    # The home's living room: its script, the painting, Three.js r128 (MIT, its notice kept in the file) and the
+    # easel's handwriting (Caveat, SIL OFL 1.1), all served from here like everything else.
+    for name in ("salon.js", "salon-bg.webp", "three.min.js", "caveat-600.woff2", "OFL-caveat.txt", "LICENSE-three.txt"):
+        copy(src / "salon" / name, assets / "salon" / name)
     bips_engine(assets)
     copy(REPO / "android" / "app" / "src" / "main" / "res" / "font" / "nunito.ttf", assets / "nunito.ttf")
     (assets / "favicon.svg").write_text(favicon(), encoding="utf-8")

@@ -1,4 +1,4 @@
-// bipagents.com: the hero's results and its « See more » on privacy, the agents' cards, the comparison, the
+// bipagents.com: « See more » on privacy, the agents' cards, the comparison, the
 // two ways and the plan picker; on their own pages, the agent at work (the app's own demo scenarios, with its map and its pages) and the
 // install. One script for every page: each part runs where its elements are. No framework, no network but this site.
 import { Bip, CATEGORIES, REDUCED, iconSVG, nextEpisode, pixelSVG, staticBip, thinkingNow, thinkingVariant } from "./bips.js";
@@ -443,7 +443,7 @@ $(".replay")?.addEventListener("click", () => play(current));
 if (chat) once(chat, () => play(current), 0.35);   // the demo has its own page (/demo/)
 
 // -- Open in place: a button that shows or hides the part it controls (aria-expanded), opened as well by its address
-// (#private, #install) on arrival and from any link to it on the page. Its label may change (« See more » / « See less »).
+// (#install) on arrival and from any link to it on the page. Its label may change (« See more » / « See less »).
 function disclosure(button, { hash, onOpen } = {}) {
   const panel = document.getElementById(button.getAttribute("aria-controls"));
   if (!panel) return null;
@@ -476,9 +476,9 @@ function disclosure(button, { hash, onOpen } = {}) {
   return { set };
 }
 
-// -- Hero: « See more », where your data is and who can read it, under the first screen ------------------------------
+// -- Private: « See more », where your data is and who can read it, opened in place under the three points ----------
 const privMore = $(".priv-more");
-if (privMore) disclosure(privMore, { hash: "#private" });
+if (privMore) disclosure(privMore);
 
 // -- What they do: a grid on a computer, a row to swipe on a phone (focusable only when it scrolls) ----------------
 const uses = $(".uses");

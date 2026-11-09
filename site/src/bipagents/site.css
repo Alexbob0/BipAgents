@@ -135,32 +135,9 @@ section[id] { scroll-margin-top: 72px; }
 .store-kicker { font-size: 12px; font-weight: 800; opacity: .7; }
 .store-name { font-size: 20px; font-weight: 1000; letter-spacing: -.01em; }
 
-/* -- Hero ------------------------------------------------------------------------------------------------------ */
-.hero {
-  position: relative; display: grid; gap: 30px; padding: 40px 20px 80px; max-width: 1240px; margin: 0 auto; align-items: center;
-}
-@media (min-width: 1040px) { .hero { grid-template-columns: 1.05fr .95fr; padding: 16px 32px 56px; min-height: calc(100svh - 70px); align-items: start; } }
-/* The beta band: friendly, seen first, the whole band a link to the beta page. */
-.hero-band { position: relative; display: inline-flex; align-items: center; gap: 12px; max-width: 100%; margin-bottom: 14px;
-  padding: 8px 14px 8px 8px; border-radius: 22px; text-decoration: none; color: var(--ink); overflow: hidden;
-  background: linear-gradient(100deg, var(--green-tint), var(--gold-tint) 55%, var(--coral-tint));
-  box-shadow: 0 0 0 1px var(--line), var(--shadow); transition: transform .2s ease, box-shadow .2s ease; }
-.hero-band:hover { transform: translateY(-1px); box-shadow: 0 0 0 1px var(--green), var(--shadow); }
-.hero-band::after { content: ""; position: absolute; inset: 0; pointer-events: none;
-  background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, .55) 50%, transparent 70%);
-  transform: translateX(-120%); animation: band-shine 5s ease-in-out 1.2s infinite; }
-@keyframes band-shine { 0%, 70% { transform: translateX(-120%); } 100% { transform: translateX(120%); } }
-.band-bip { flex: 0 0 46px; height: 46px; border-radius: 15px; background: var(--card); touch-action: auto; }
-.band-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.band-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; font-size: 17px; }
-.band-top b { font-weight: 900; color: var(--green-deep); }
-.band-tag { font-size: 13.5px; font-weight: 800; color: var(--ink2); }
-.band-sub { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 7px; font-size: 14.5px; font-weight: 700; color: var(--ink2); }
-.band-sub b { color: var(--ink); font-weight: 900; }
-.band-sub .dot { color: var(--muted); }
-.band-go { flex: 0 0 auto; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%;
-  background: var(--ink); color: var(--card); font-weight: 900; }
-@media (prefers-reduced-motion: reduce) { .hero-band::after { animation: none; } .hero-band { transition: none; } }
+/* -- Hero: the promise, what the Bips do, where they live, the beta; centred, then the living room -------------- */
+.hero { position: relative; max-width: 900px; margin: 0 auto; padding: 44px 20px 34px; text-align: center; }
+@media (min-width: 900px) { .hero { padding: 60px 32px 40px; } }
 .chip-beta { display: inline-flex; align-items: center; height: 32px; padding: 0 14px; border-radius: 16px; margin-bottom: 20px;
   background: var(--green-tint); color: var(--green-deep); font-size: 14px; font-weight: 900; }
 
@@ -170,53 +147,58 @@ section[id] { scroll-margin-top: 72px; }
 }
 .badge-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 4px var(--green-tint); }
 h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em; margin: 0 0 18px; overflow-wrap: break-word; }
-.h-line { display: block; }
-.h-mark { position: relative; width: fit-content; z-index: 0; }
-.h-mark::after {
-  content: ""; position: absolute; left: -.06em; right: -.08em; bottom: .06em; height: .32em; z-index: -1; border-radius: .2em;
-  transform-origin: left; transform: scaleX(0); transition: transform .9s cubic-bezier(.2, .9, .2, 1) .35s;
-}
-.mark-green::after { background: color-mix(in srgb, var(--green) 45%, transparent); }
-.mark-coral::after { background: color-mix(in srgb, var(--coral) 45%, transparent); transition-delay: .6s; }
-.in .h-mark::after { transform: scaleX(1); }
-/* A highlight that follows the words when the line wraps (the hero's second half). */
-.h-hl { background: linear-gradient(color-mix(in srgb, var(--coral) 55%, transparent), color-mix(in srgb, var(--coral) 55%, transparent)) no-repeat 0 88% / 0% .3em;
-  -webkit-box-decoration-break: clone; box-decoration-break: clone; transition: background-size .9s cubic-bezier(.2, .9, .2, 1) .5s; }
-.in .h-hl { background-size: 100% .3em; }
-@media (prefers-reduced-motion: reduce) { .h-hl { transition: none; } }
-.lede { font-size: clamp(18px, 1.6vw, 21px); color: var(--ink2); max-width: 560px; line-height: 1.5; }
+.hero h1 { font-size: clamp(38px, 6vw, 72px); line-height: 1.03; text-wrap: balance; }
+.lede { font-size: clamp(18px, 1.7vw, 21px); color: var(--ink2); max-width: 560px; line-height: 1.5; }
+.hero .lede { max-width: 36em; margin: 0 auto; text-wrap: balance; }
+.eu-line { display: inline-flex; align-items: center; gap: 10px; margin-top: 18px; font-size: 15px; font-weight: 800; color: var(--ink2); }
+.eu-flag { flex: none; width: 30px; height: 20px; display: block; }
 .cta-row { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 22px; align-items: center; }
 .cta-row.center { justify-content: center; }
-/* The hero's three buttons on one line on a computer: a little tighter than the other pills. */
-@media (min-width: 900px) {
-  .hero .cta-row { gap: 10px; flex-wrap: nowrap; }
-  .hero .cta-row .pill { padding: 0 16px; font-size: 15px; gap: 7px; }
-}
-/* Three proof points, then the house words (Bips, Live, Carnet) explained once. */
-.proofs { list-style: none; padding: 0; margin: 18px 0 0; display: grid; gap: 10px; max-width: 560px; }
-.proofs li { display: flex; gap: 12px; align-items: center; font-weight: 700; color: var(--ink2); font-size: 16.5px; line-height: 1.4; }
-.proofs li > span { flex: none; width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; font-size: 18px; background: var(--card); box-shadow: var(--shadow); }
-.proofs b { color: var(--ink); font-weight: 1000; }
-.hero-alt { margin-top: 14px; font-size: 14.5px; font-weight: 800; }
-.hero-alt a { color: var(--ink2); text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
-.hero-alt a:hover { color: var(--ink); text-decoration-color: currentColor; }
-.pill-time { font-size: 12.5px; font-weight: 900; padding: 3px 8px; border-radius: 999px; background: var(--ground2); color: var(--ink2); }
-@media (max-width: 520px) {   /* the three buttons stack, full width, on a phone */
+@media (max-width: 520px) {   /* the two buttons stack, full width, on a phone */
   .hero .cta-row { display: grid; grid-template-columns: 1fr; }
   .hero .cta-row .pill { width: 100%; }
 }
 
-.hero-stage { position: relative; height: 640px; display: grid; place-items: center; scroll-margin-top: 72px; }
-@media (max-width: 1039px) { .hero-stage { height: auto; padding: 36px 0 48px; } }
-@media (max-width: 520px) { .hero-stage { padding: 28px 0 40px; } }
-.phone {
-  position: relative; border-radius: 56px; padding: 11px; background: #0D0E11;
-  box-shadow: var(--shadow-big), inset 0 0 0 2px #2A2C33;
+/* -- The living room: the painting (1280×720) and, in the same frame, the easel's words, the Bips' contact shadows,
+   the 3D Bips and their labels. Wider than a phone: it scrolls sideways inside its band, never the page. */
+@font-face {
+  font-family: "Caveat";
+  src: url("/assets/salon/caveat-600.woff2") format("woff2");
+  font-weight: 600;
+  font-display: swap;
 }
-.phone::before { content: ""; position: absolute; left: 50%; top: 22px; width: 34%; height: 30px; transform: translateX(-50%);
-  background: #000; border-radius: 20px; z-index: 2; }
-.phone-screen { border-radius: 46px; overflow: hidden; background: var(--ground); }
-.phone-screen img { width: 100%; height: auto; }
+.salon { max-width: 1440px; margin: 0 auto; background: #2B2124; overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
+  -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+.salon::-webkit-scrollbar { display: none; }
+@media (min-width: 1441px) { .salon { border-radius: var(--radius); } }
+.salon-stage { position: relative; width: max(100%, 780px); aspect-ratio: 16 / 9; user-select: none; -webkit-user-select: none; }
+.salon-stage > img, .salon-easel, .salon-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; max-width: none; }
+.salon-canvas { touch-action: pan-y; }
+.salon-easel { pointer-events: none; overflow: visible; }
+.salon-easel text { font-family: "Caveat", "Segoe Print", "Bradley Hand", cursive; font-weight: 600; font-size: 16px; fill: #2A1D19; fill-opacity: .9; }
+.salon-easel .e-title { font-size: 21px; }
+.salon-easel path { fill: none; stroke: #2A1D19; stroke-opacity: .8; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.salon-easel .e-tick { stroke: #3E7D4F; stroke-opacity: .9; }
+.salon-shade { position: absolute; transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none;
+  background: radial-gradient(closest-side, rgba(10, 4, 7, .62), rgba(10, 4, 7, .34) 55%, rgba(10, 4, 7, 0)); }
+.salon-tags { list-style: none; margin: 0; padding: 0; }
+.salon-tag { position: absolute; z-index: 2; width: max-content; max-width: min(270px, 64vw); padding: 8px 12px 9px; border-radius: 12px;
+  background: #FFFFFF; color: #1D1F24; box-shadow: 0 10px 30px rgba(20, 12, 16, .32); font-size: clamp(12px, 1.05vw, 14px); line-height: 1.32;
+  transform: translate(-50%, calc(-100% - 10px)) scale(.92); opacity: 0; pointer-events: none; transition: opacity .25s ease, transform .25s ease; }
+.salon-tag.on { opacity: 1; transform: translate(-50%, calc(-100% - 10px)) scale(1); }
+.salon-tag b { display: flex; align-items: center; gap: 7px; font-weight: 900; }
+.salon-tag b i { width: 9px; height: 9px; border-radius: 2px; background: var(--c, #1D1F24); }
+.salon-tag span { display: block; margin-top: 1px; color: #50555F; font-weight: 700; }
+.salon-tag::after { content: ""; position: absolute; left: 50%; bottom: -6px; width: 12px; height: 12px; background: #FFFFFF;
+  transform: translateX(-50%) rotate(45deg); border-radius: 2px; }
+/* without the 3D (no script, no WebGL) the labels never show: the room alone, its words in the picture's alt */
+.salon-stage:not(.live) .salon-tag, .salon-stage:not(.live) .salon-tip { display: none; }
+.salon-tip { position: absolute; left: 50%; bottom: 3.2%; z-index: 2; transform: translateX(-50%); padding: 7px 13px; border-radius: 999px;
+  background: rgba(18, 12, 14, .62); color: #F4EFEA; font-size: 13px; font-weight: 800; white-space: nowrap; pointer-events: none; transition: opacity .6s ease; }
+.salon-tip.off { opacity: 0; }
+.salon-hint { display: none; padding: 10px 16px 0; text-align: center; color: var(--muted); font-size: 13.5px; font-weight: 700; }
+@media (max-width: 780px) { .salon-tip { display: none; } .salon-hint { display: block; } }
+@media (prefers-reduced-motion: reduce) { .salon-tag, .salon-tip { transition: none; } }
 /* The hero, on the right: one asks, the agent answers with something useful — three cards of the app's own demo (the
    walk's map, big, on the left; the booking and the subscriptions on the right). One column on a phone; each
    exchange fades in once, quickly, one after another; with reduced motion they are simply there. */
@@ -270,7 +252,7 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
   .ex:hover .ex-arrow { color: var(--ink); translate: 3px 0; }
 }
 .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.show-more { position: relative; z-index: 2; margin-top: 18px; text-align: center; font-weight: 900; font-size: 14.5px; }
+.show-more { position: relative; z-index: 2; margin-top: 28px; text-align: center; font-weight: 900; font-size: 14.5px; }
 .show-more a { color: var(--ink); }
 @media (max-width: 640px) {   /* a phone: one column, in the order they come in */
   .hero-show { display: flex; flex-direction: column; gap: 14px; width: 100%; }
@@ -812,33 +794,32 @@ a.store:hover { transform: translateY(-2px); }
 .fam-lock span { flex: none; }
 .fam-cta { margin-top: 20px; }
 
-/* -- Hero: « See more » on privacy — where your data is, who can read it. The answers open in place, right under the
-   button, in the left column: privacy comes first on the page as in the header (« Private », then « What they do »,
-   the right column), on a computer as on a phone. ------------------------------------------------------------------ */
-@media (min-width: 1040px) {
-  .hero-copy { grid-column: 1; grid-row: 1; }
-  .hero-stage { grid-column: 2; grid-row: 1 / span 2; align-self: center; height: auto; }
-  .priv { grid-column: 1; grid-row: 2; }
-}
-/* while one reads the privacy answers, the agents' cards stay in view beside them */
-@media (min-width: 1040px) and (min-height: 760px) { .hero-stage { position: sticky; top: 80px; } }
-.priv-ask { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 16px; max-width: 560px; font-weight: 900; font-size: 16px; }
+/* -- Private: where your data is, who can read it — three points, then « See more » opens the details in place. */
+.priv-points { list-style: none; margin: 0 auto; padding: 0; max-width: 1040px; display: grid; gap: 14px; }
+@media (min-width: 860px) { .priv-points { grid-template-columns: repeat(3, 1fr); gap: 18px; } }
+.priv-points li { display: flex; gap: 14px; align-items: flex-start; padding: 20px 22px; border-radius: 24px; background: var(--card); box-shadow: var(--shadow); }
+.priv-points li > span { flex: none; width: 40px; height: 40px; border-radius: 13px; display: grid; place-items: center; font-size: 20px; background: var(--green-tint); }
+.priv-points p { color: var(--ink2); font-weight: 700; font-size: 16px; line-height: 1.45; }
+.priv-points b { color: var(--ink); font-weight: 1000; }
+.priv-ask { display: flex; justify-content: center; margin-top: 22px; }
 .priv-more, .way-open { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font: inherit; }
-.priv-more { height: 40px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--ink); color: var(--ground); font-weight: 900; font-size: 15px; }
+.priv-more { height: 44px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--ink); color: var(--ground); font-weight: 900; font-size: 15px; }
 .priv-more i, .way-open i { width: 8px; height: 8px; border-right: 2.5px solid currentColor; border-bottom: 2.5px solid currentColor; transform: translateY(-2px) rotate(45deg); transition: transform .25s; }
 .priv-more[aria-expanded="true"] i, .way-open[aria-expanded="true"] i { transform: translateY(2px) rotate(-135deg); }
-.priv { display: grid; gap: 14px; scroll-margin-top: 100px; animation: pop-in .45s cubic-bezier(.2, .8, .3, 1) both; }
+.priv { display: grid; gap: 14px; max-width: 1040px; margin: 22px auto 0; animation: pop-in .45s cubic-bezier(.2, .8, .3, 1) both; }
 .priv[hidden], .self-panel[hidden] { display: none; }
-@media (min-width: 760px) and (max-width: 1039px) { .priv { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 760px) { .priv { grid-template-columns: 1fr 1fr; gap: 18px; } }
 .priv-card { border-radius: 26px; padding: 22px 22px 24px; background: var(--card); box-shadow: var(--shadow); }
 .priv-where { background: var(--green-tint); box-shadow: none; }
-.priv-card h2 { display: flex; align-items: center; gap: 10px; font-size: 21px; line-height: 1.2; letter-spacing: -.01em; }
+.priv-card h3 { display: flex; align-items: center; gap: 10px; font-size: 21px; line-height: 1.2; letter-spacing: -.01em; }
 .priv-card ul { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 10px; }
 .priv-card li { position: relative; padding-left: 24px; color: var(--ink2); font-weight: 700; font-size: 15.5px; line-height: 1.5; }
 .priv-card li::before { content: "✓"; position: absolute; left: 0; color: var(--green-deep); font-weight: 1000; }
-.priv-links { grid-column: 1 / -1; font-size: 14px; font-weight: 800; color: var(--muted); }
+.priv-links { margin-top: 18px; text-align: center; font-size: 14px; font-weight: 800; color: var(--muted); }
 .priv-links a { color: var(--ink); font-weight: 900; }
 @media (prefers-reduced-motion: reduce) { .priv { animation: none; } .priv-more i, .way-open i { transition: none; } }
+/* In action: the demo's three cards, centred under their title, then the whole demo. */
+.show-section .hero-show { margin-inline: auto; }
 
 /* -- Prices: two ways side by side, all included first (the main path), free on one's own computer next to it ------ */
 .mode-anchor { position: absolute; top: 0; left: 0; scroll-margin-top: 72px; }

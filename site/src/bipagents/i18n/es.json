@@ -22,24 +22,43 @@
     "ctaShort": "La beta"
   },
   "hero": {
+    "slogan": "Tus cosas son cosa tuya.",
+    "sub": "Tus Bips reservan, ordenan tu correo y llevan tu Cuaderno, en tu propio espacio en Europa.",
+    "eu": "Servidores en la UE, o en tu casa",
     "badge": "Construido sobre Hermes Agent",
-    "line1": "Tus agentes de IA,",
-    "line2": "privados y seguros.",
-    "lede": "Delega en tu equipo: ¡ellos se encargan de todo!",
-    "proof1": "<b>Actúan</b>: correo, agenda, reservas",
     "proof2": "<b>Primero tu permiso</b>, siempre",
-    "proof3": "<b>Tu propio espacio</b>, en Europa",
     "cta": "Elegir mi plan",
     "watch": "Ver la demo",
-    "watchTime": "1 min",
     "price": "Beta gratuita en iPhone y Android · plazas limitadas · sin tarjeta",
-    "beta": "Beta gratuita",
-    "bandTag": "iPhone y Android · plazas limitadas",
-    "free": "Gratis",
-    "freeWhere": "en tu ordenador",
-    "fromPre": "o todo incluido desde",
-    "fromPost": " al mes",
-    "self": "O instálalo gratis en tu ordenador"
+    "beta": "Beta gratuita"
+  },
+  "salon": {
+    "alt": "Un salón acogedor por la noche: en el sofá, un móvil llama a Pasta Mia; en la mesa baja, una tableta muestra 24 € ahorrados en suscripciones; junto a la ventana, un portátil con vuelos y hotel, y un caballete con el bienestar de la semana. Cuatro Bips se encargan de todo.",
+    "a11y": "Lo que hacen los Bips del salón",
+    "tip": "Arrastra un Bip para hacerlo girar",
+    "hint": "Desliza para ver el salón · gira un Bip con el dedo",
+    "dinners": {
+      "name": "Cenas",
+      "line": "Lleno a las 20:00, así que reservé a las 20:30 y avisé a Julie."
+    },
+    "budget": {
+      "name": "Presupuesto",
+      "line": "Disney+ sin usar desde junio. ¿Lo cancelo? 11,99 € al mes de vuelta."
+    },
+    "wellness": {
+      "name": "Bienestar",
+      "line": "Dormiste 6 h 10. Mañana: 30 min suaves, sin series."
+    },
+    "trips": {
+      "name": "Viajes",
+      "line": "Sal el martes, no el viernes: 140 € menos, mismo hotel."
+    },
+    "easel": {
+      "title": "Bienestar",
+      "l1": "Noches: 7 h",
+      "l2": "9.400 pasos",
+      "l3": "3 carreras"
+    }
   },
   "store": {
     "soon": "Muy pronto en",
