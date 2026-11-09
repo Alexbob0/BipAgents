@@ -5,7 +5,8 @@
 **En bref :** les conversations, fichiers, transcriptions de notes vocales, données de santé, rappels, contacts et la mémoire des
 agents ne vont qu’au serveur de la personne (son bridge et Hermes). Les services de Kerfy Studio reçoivent des données
 de compte, d’achat et d’acheminement des notifications, ainsi que des paquets scellés qu’ils ne peuvent pas ouvrir. Les
-apps n’intègrent aucun SDK de mesure d’audience ni de rapport de plantage. Apple et Google reçoivent ce qu’exigent leurs
+apps n’intègrent aucun SDK de mesure d’audience ni de rapport de plantage pour nous ; sur Android, le SDK Google Maps
+(cartes) et le scanner de documents ML Kit envoient à Google leurs propres données techniques (§4). Apple et Google reçoivent ce qu’exigent leurs
 boutiques, la connexion et les notifications, et la voix pour la dictée seulement si la personne a accepté la dictée en
 ligne. Avec l’offre tout compris, l’adresse e-mail propre d’un agent garde ses e-mails sur le
 serveur de messagerie de Kerfy Studio ; c’est le bridge de la place qui parle à ce serveur, pas l’app.
@@ -32,7 +33,9 @@ d’après le contrat d’interface du bridge, avant le code des apps qui s’en
   kotlinx-serialization, CameraX, Media3, Glance, ZXing, ONNX Runtime, le client Health Connect, et ces bibliothèques
   Google : Play Billing, Play Asset Delivery, Play Integrity, Play Install Referrer (`installreferrer`, lu une fois,
   ci-dessous), Credential Manager + Google ID, le scanner de documents
-  ML Kit (services Play) et **Firebase Cloud Messaging seul** (`firebase-messaging` ; ni Analytics, ni Crashlytics, ni
+  ML Kit (services Play), la localisation des services Play (les geofences des rappels par lieu), le **SDK Google Maps**
+  (`maps-compose` : les cartes des réponses, dessinées seulement si le build a une clé Maps, ce qu’ont les builds de
+  publication) et **Firebase Cloud Messaging seul** (`firebase-messaging` ; ni Analytics, ni Crashlytics, ni
   plugin `google-services`).
 - La télémétrie d’usage d’ONNX Runtime vers Microsoft est coupée deux fois sur Android : son `TelemetryInitializer` est
   retiré du manifeste (`AndroidManifest.xml`) et `PocketEngine.kt` appelle `setTelemetry(false)`. L’app iOS n’a pas
@@ -55,12 +58,14 @@ de l’offre tout compris. Tout ce qui est personnel va ici, avec la clé de ce 
   ligne seulement si la personne l’a accepté, voir §4), les photos et fichiers (`/v1/runs`, `/v1/files`, `/v1/media`), les approbations et réponses, les
   événements en direct (SSE). Chaque message dit le type de téléphone d’où il part (`phone` : « ios » ou « android »,
   rien d’autre sur l’appareil), pour qu’un rappel demandé dans son tour aille sur ce téléphone. **L’audio d’une note
-  vocale reste sur le téléphone.** Les apps n’utilisent pas de
-  WebSocket.
+  vocale reste sur le téléphone** (seule sa transcription part). Le seul WebSocket est celui du passage par le téléphone
+  (ci-dessous).
 - **Agents :** réglages, modèle, langue, apparence, outils, services connectés, pages de mémoire (lues et modifiées),
   import de notes, pages, tâches de fond, tâches planifiées, partages entre agents, liens familiaux (`/v1/family/*`).
 - **Secrets saisis par la personne :** mots de passe des boîtes mail (`/v1/mail/accounts`, et la boîte propre d’un
-  agent chez le fournisseur de la personne dans `/v1/agents/{id}/email`), éléments du coffre (`/v1/vault`), clés SSH
+  agent chez le fournisseur de la personne dans `/v1/agents/{id}/email`), éléments du coffre (`/v1/vault` ; sur le serveur de la personne, le numéro, l’expiration, le titulaire et le code
+  postal d’une carte de paiement y vont aussi, `bridge-rs/src/cards.rs` ; sur une place de l’offre, ils restent sur le
+  téléphone et ne partent, avec le code de sécurité tapé, que pour un paiement que la personne valide), clés SSH
   publiques (`/v1/ssh/keys`), réglages d’un serveur de voix.
 - **Santé** (`App/Features/Settings/HealthSync.swift`, `android/.../health/HealthSync.kt`) : un résumé par jour,
   envoyé par `PUT /v1/health-data/days` à chaque bridge dont au moins un agent a « Santé » activé, avec seulement les
@@ -138,6 +143,11 @@ de l’offre tout compris. Tout ce qui est personnel va ici, avec la clé de ce 
   gardé.
 - **Le navigateur visible de l’agent** (`App/Features/Agents/DesktopView.swift`) : une vue web de la page de
   visualisation du bridge, sans données de site conservées.
+- **Le passage par le téléphone** (`docs/phone-exit.md` ; Android `phoneexit/`, iOS `App/Features/PhoneExit/`) : pour un
+  site que la personne a accepté, le téléphone ouvre un WebSocket sortant vers son bridge et fait sortir par sa propre
+  connexion les flux TLS de l’agent vers ce site. Le site voit l’adresse IP du téléphone ; le TLS reste de bout en bout
+  entre le Chrome de l’agent et le site, et le téléphone ne lit que le nom du serveur. Montré par une notification
+  (Android) ou l’écran « Relais » (iOS), avec « Arrêter » ; jamais pour un agent partagé ou du foyer.
 - **Appairage d’une place de l’offre** (`App/Features/Cloud/CloudPairing.swift`, `android/.../cloud/CloudPairing.kt`) :
   `GET /v1/setup?nonce=`, puis `POST /v1/setup/claim` sur le certificat prouvé puis épinglé. La demande contient le
   modèle, **la clé d’IA que le guichet a créée pour cette place** (transmise par le téléphone), les agents à créer et la
@@ -292,6 +302,13 @@ Il n’est utilisé que si la version de l’app définit un hôte de relais (`B
 - **Scanner de documents ML Kit sur Android** (services Play) : la numérisation se fait sur le téléphone, et le PDF est
   joint comme n’importe quel fichier. Selon Google, ML Kit peut envoyer des données d’usage et de diagnostic. L’app ne
   modifie pas ce comportement.
+- **Cartes des réponses sur Android** (`ui/NativeMaps.kt`, `ui/LinkPreviewCard.kt`) : le SDK Google Maps dessine les
+  lieux et itinéraires d’une réponse (pas de « Ma position » : la position de la personne n’est jamais sur ces cartes).
+  Ce que Google déclare pour ce SDK : métadonnées de l’appareil et de la requête, adresse IP, un identifiant du SDK,
+  traces de plantage, et les déplacements et zooms de la carte quand les API de caméra servent (l’app cadre la carte
+  sur les points). L’iPhone les dessine avec MapKit. Les cartes des pages des agents viennent du bridge (`/v1/maps/…`,
+  OpenFreeMap derrière) ; la personne qui lit un partage en lecture les demande directement à OpenFreeMap
+  (`readshares/ReadShareMaps.kt`).
 - Les rapports de plantage et d’usage d’Apple et de Google (partagés avec les développeurs si la personne l’a accepté
   dans les réglages du système) dépendent d’un réglage du système, pas d’un code de l’app.
 

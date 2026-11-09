@@ -4,7 +4,8 @@
 
 **In short:** conversations, files, voice-note transcripts, health data, reminders, contacts and the agents' memory go only to the
 person's own server (their bridge and Hermes). Kerfy Studio's services get account, purchase and push-routing data,
-plus sealed boxes they cannot open. There are no analytics or crash SDKs. Apple and Google get what their stores,
+plus sealed boxes they cannot open. There are no analytics or crash SDKs of ours; on Android, the Google Maps SDK (map cards) and the ML Kit
+document scanner send Google their own technical data (§4). Apple and Google get what their stores,
 sign-in and push need, and the voice for dictation only where the person agreed to online dictation. With the
 all-included offer, an agent's own e-mail address keeps its mail on Kerfy Studio's mail server; the place's bridge
 talks to that server, not the app.
@@ -30,7 +31,8 @@ the bridge's interface contract, before the apps' code for it.
   kotlinx-serialization, CameraX, Media3, Glance, ZXing, ONNX Runtime, Health Connect client, and these Google
   libraries: Play Billing, Play Asset Delivery, Play Integrity, Play Install Referrer (`installreferrer`, read once,
   below), Credential Manager + Google ID, ML Kit document scanner
-  (Play services) and **Firebase Cloud Messaging only** (`firebase-messaging`; no Analytics, no Crashlytics, no
+  (Play services), Play services location (the geofences of reminders by place), the **Google Maps SDK**
+  (`maps-compose`: the map cards in replies, drawn only when the build has a Maps key, which release builds have) and **Firebase Cloud Messaging only** (`firebase-messaging`; no Analytics, no Crashlytics, no
   `google-services` plugin).
 - ONNX Runtime's Android usage telemetry to Microsoft is turned off twice: its `TelemetryInitializer` is removed from
   the manifest (`AndroidManifest.xml`), and `PocketEngine.kt` calls `setTelemetry(false)`. The iOS app has no such call.
@@ -52,11 +54,14 @@ their place on the all-included offer. Everything personal goes here, with that 
   the person allowed it, see §4), photos and files (`/v1/runs`, `/v1/files`, `/v1/media`), approvals and answers, live events (SSE).
   Each message says the kind of phone it is sent from (`phone`: « ios » or « android », nothing more about the
   device), so that a reminder asked in its turn goes to that phone.
-  **The audio of a voice note stays on the phone.** The apps do not use WebSockets.
+  **The audio of a voice note stays on the phone** (only its transcript is sent). The only WebSocket is the phone exit's
+  (below).
 - **Agents:** settings, model, language, appearance, tools, connected services, memory pages (read and edited), notes
   import, pages, background jobs, scheduled tasks, shares between agents, family links (`/v1/family/*`).
 - **Secrets the person enters:** e-mail account passwords (`/v1/mail/accounts`, and an agent's own mailbox at the
-  person's provider in `/v1/agents/{id}/email`), vault items (`/v1/vault`), SSH public keys (`/v1/ssh/keys`), voice
+  person's provider in `/v1/agents/{id}/email`), vault items (`/v1/vault`; on the person's own server, a payment card's number, expiry, holder and postcode go
+  there too, `bridge-rs/src/cards.rs`; on a place of the offer they stay on the phone and are sent, with the security
+  code typed, only for a payment the person approves), SSH public keys (`/v1/ssh/keys`), voice
   server settings.
 - **Health ("Santé")** (`App/Features/Settings/HealthSync.swift`, `android/.../health/HealthSync.kt`): one summary a
   day, sent with `PUT /v1/health-data/days` to every bridge where at least one agent has "Santé" turned on, with only
@@ -128,6 +133,11 @@ their place on the all-included offer. Everything personal goes here, with that 
   mode and times go to Google's Routes API for its duration and distance; nothing is kept.
 - **The agent's visible browser** (`App/Features/Agents/DesktopView.swift`): a web view of the bridge's viewer page,
   with no stored website data.
+- **The phone exit** (`docs/phone-exit.md`; Android `phoneexit/`, iOS `App/Features/PhoneExit/`): for a site the person
+  accepted, the phone opens one outbound WebSocket to its bridge and carries the agent's TLS streams to that site from
+  its own connection. The site sees the phone's IP address; TLS stays end to end between the agent's Chrome and the
+  site, and the phone reads only the server name. Shown by a foreground notification (Android) or the « Relais »
+  screen (iOS), with « Arrêter »; never for a shared or household agent.
 - **Pairing a place of the offer** (`App/Features/Cloud/CloudPairing.swift`, `android/.../cloud/CloudPairing.kt`):
   `GET /v1/setup?nonce=`, then `POST /v1/setup/claim` over the certificate that was proved and pinned. The claim
   carries the model, **the AI key the guichet issued for this place** (from the phone), the agents to create and the
@@ -271,6 +281,12 @@ Used only when the build sets a relay host (`BIPPushRelayHost` / `push.relayHost
   The accurate dictation (Parakeet) takes no hints; the phone puts the person's names right in its text afterwards.
 - **Android ML Kit document scanner** (Play services): the scan is done on the phone, and the PDF is attached like any
   file. Google says ML Kit may send usage and diagnostic data. The app does not change this.
+- **Android map cards** (`ui/NativeMaps.kt`, `ui/LinkPreviewCard.kt`): the Google Maps SDK draws the places and routes of
+  a reply (no « My location »: the person's position is never on these maps). Google's Play disclosure for the SDK:
+  device and request metadata, IP address, an SDK identifier, crash stack traces, and map pan/zoom events when the
+  camera APIs are used (the app moves the camera to frame the points). The iPhone draws them with MapKit. The maps of
+  agents' pages come from the bridge (`/v1/maps/…`, OpenFreeMap behind it); a read-only share's viewer fetches them
+  from OpenFreeMap directly (`readshares/ReadShareMaps.kt`).
 - Apple's and Google's own crash and usage reports (shared with developers if the person allowed it in the system
   settings) are a system setting, not code in the app.
 

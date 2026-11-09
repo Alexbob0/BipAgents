@@ -11,7 +11,9 @@
   Studio loue à un hébergeur partenaire. Tes conversations, tes fichiers, ta voix et la mémoire de tes agents restent
   sur ce serveur et chez le fournisseur de modèle d'IA qui leur répond. **Kerfy Studio, l'éditeur de l'app, ne les lit
   pas.**
-- Pas de publicité, pas de statistiques d'usage, pas de pistage. Pas de compte avec ton propre serveur ; un compte pour
+- Pas de publicité, pas de pistage entre apps ou sites. Nous comptons seulement d'où viennent nos abonnés, par campagne
+  et par semaine (section 5.11). Sur Android, les services Google intégrés à l'app (cartes, scanner de documents)
+  envoient à Google leurs propres données techniques (section 7). Pas de compte avec ton propre serveur ; un compte pour
   l'offre tout compris.
 - Avec ton propre serveur, Kerfy Studio ne peut recevoir que trois choses :
   1. de quoi acheminer tes **notifications** par son relais : un jeton d'appareil scellé, jamais le texte de tes
@@ -69,6 +71,12 @@ Avec ton propre ordinateur ou ton propre serveur :
   fournisseur de messagerie. Son mot de passe reste sur ton serveur ; l'agent ne lit que les e-mails des adresses que
   tu as autorisées et te demande ton accord avant d'écrire à une nouvelle. Les conditions de ce fournisseur
   s'appliquent, et Kerfy Studio n'en garde rien.
+- **Une carte de paiement pour tes agents.** « Paiements par tes agents » est désactivé par défaut. Sur ton propre
+  serveur, si tu l'actives et ajoutes une carte (une carte virtuelle avec un plafond, jamais ta carte principale), son
+  numéro, sa date d'expiration, le nom du titulaire et le code postal vont dans le coffre chiffré de ton serveur, où seul
+  le bridge les lit pour remplir un paiement que tu as validé. Le code de sécurité n'est jamais gardé : tu le tapes à
+  chaque paiement. L'agent (le modèle d'IA) ne voit jamais ces numéros, et Kerfy Studio n'en reçoit rien. Avec l'offre
+  tout compris, la carte reste sur ton téléphone (section 5.10).
 - **Plusieurs personnes sur un même serveur** (fonction famille) : chaque personne a sa propre installation, séparée
   des autres. La personne qui administre le serveur en est responsable vis-à-vis des autres.
 
@@ -121,7 +129,8 @@ pleine conscience, humeurs notées sur iPhone) ; et, **désactivées tant que tu
 glycémie et le cycle (flux des règles, début des règles), plus sensibles. Un agent qui reçoit « Santé » commence avec
 activité, sommeil et cœur ; « Tout partager » laisse la glycémie et le cycle de côté. Certaines données n'existent que
 sur iPhone (heures debout, température du poignet, IMC, humeurs). Elle envoie les 30 derniers jours la première fois,
-puis les jours qui ont changé, **uniquement à ton serveur** (ou à ta place avec l'offre tout compris), où ils sont
+puis les jours qui ont changé (sur Android, seulement quand l'app est ouverte ; sur iPhone, aussi en arrière-plan, au
+plus une fois par jour, quand Apple Santé a de nouvelles données), **uniquement à ton serveur** (ou à ta place avec l'offre tout compris), où ils sont
 gardés un fichier par jour, 400 jours au plus, avec seulement les catégories qu'au moins un agent y lit (une catégorie
 que plus aucun agent ne lit est effacée des journées gardées). Chaque agent ne lit que ses catégories, pour t'aider sur
 ton sommeil, ton activité, ton entraînement et tes habitudes ; ils ne posent pas de diagnostic. Le modèle d'IA de
@@ -216,7 +225,8 @@ pour trouver ses coordonnées. Sur Android, qui n'a pas d'app Rappels, BipAgents
 demande la permission de position (y compris en arrière-plan) seulement quand un agent en a créé un, cherche le lieu
 avec le service de géocodage du téléphone, et confie le cercle autour du lieu aux services de localisation de Google
 Play sur le téléphone (geofencing). Ta position reste sur le téléphone : elle n'est envoyée ni à ton serveur, ni à
-l'agent, ni à Kerfy Studio, et ne sert qu'à te prévenir en arrivant ou en partant. **Base légale** : ton consentement
+l'agent, ni à Kerfy Studio, et ne sert qu'à te prévenir en arrivant ou en partant, même quand l'app est fermée. Les
+cartes de l'app (section 7) ne montrent jamais ta position. **Base légale** : ton consentement
 (article 6.1.a du RGPD), que tu donnes en autorisant la position. **Arrêter** : supprime le rappel (Réglages › Rappels
 par lieu), ou retire la permission de position dans les réglages du téléphone.
 
@@ -225,6 +235,14 @@ WhatsApp, Signal, Messages…), il va à l'agent que tu choisis, sur ton serveur
 toi-même ; il peut contenir les mots d'autres personnes, partage seulement ce dont tu as besoin. Le brouillon de
 réponse que l'agent écrit n'est jamais envoyé par l'app : le bouton « Envoyer avec… » ouvre l'app de ton choix, et
 c'est toi qui envoies.
+
+**Passer par ton téléphone pour un site.** Certains sites refusent les serveurs. Pour un site que tu acceptes (une
+fois, ou toujours, depuis la carte que l'agent te montre ; réglable dans Réglages), le navigateur de ton agent peut
+passer par la connexion de ton téléphone : le site voit alors l'adresse IP de ton téléphone. La connexion reste
+chiffrée entre le navigateur de l'agent et le site : ton téléphone et ton serveur ne font que transmettre les données
+et ne lisent que le nom du site. Une notification (Android) ou l'écran « Relais » (iPhone) le montre tant que ça dure,
+avec « Arrêter ». Jamais pour un agent partagé ou familial. Kerfy Studio n'en reçoit rien. **Base légale** : te
+fournir la fonction que tu choisis (article 6.1.b du RGPD).
 
 ## 4. Ce que Kerfy Studio peut recevoir
 
@@ -251,15 +269,15 @@ oublie tout.
 **Ce qui est conservé.** Le relais n'a pas de base de données. Le jeton scellé est conservé sur ton téléphone et sur
 ton serveur ; avec l'offre tout compris, le guichet de Kerfy Studio le garde aussi, toujours scellé (section 5.6). Les
 journaux techniques du relais contiennent la plateforme, une empreinte de 4 octets du jeton et la réponse d'Apple ou
-de Google ; ils sont conservés **6 mois au plus**. L'hébergeur du relais peut journaliser les adresses IP des requêtes. Le relais n'est pas encore en service : son
-hébergeur, ce qu'il journalise et pendant combien de temps seront indiqués ici avant sa mise en service.
+de Google ; ils sont conservés **6 mois au plus**. Le relais tourne, avec le guichet de Kerfy Studio (section 5), sur un serveur que Kerfy Studio
+loue chez OVHcloud (OVH SAS, France), dans l'Union européenne, et qu'il administre lui-même ; l'hébergeur peut
+journaliser les adresses IP des requêtes.
 
 **Finalités et bases légales.** Acheminer les notifications que tu as activées : exécution des conditions
 d'utilisation (article 6.1.b du RGPD). Limiter les abus et protéger le service : intérêt légitime de Kerfy Studio
 (article 6.1.f).
 
-**Sous-traitants.** L'hébergeur du relais, dans l'Union européenne (pas encore en service ; il sera indiqué ici avant
-sa mise en service), et Google (Firebase Cloud Messaging), liés à Kerfy
+**Sous-traitants.** L'hébergeur du relais, OVHcloud, dans l'Union européenne, et Google (Firebase Cloud Messaging), liés à Kerfy
 Studio par un contrat conforme à l'article 28 du RGPD. Apple achemine les notifications vers les iPhone par son
 service APNs.
 
@@ -303,8 +321,9 @@ Si tu as activé, dans les réglages de ton téléphone, le partage des données
 (iPhone : Réglages › Confidentialité et sécurité › Analyse et améliorations › Partager avec les développeurs d'apps ;
 Android : partage des données d'utilisation et de diagnostic), Apple ou Google peuvent transmettre à Kerfy Studio des
 rapports de plantage et des mesures techniques (modèle, version du système, endroit du code où l'app a planté).
-L'app ne contient aucun outil de statistiques ou de rapport de plantage de tiers : ces rapports viennent uniquement
-d'Apple ou de Google.
+L'app n'a pas d'outil de statistiques ou de rapport de plantage pour nous : ces rapports viennent uniquement d'Apple ou
+de Google. Sur Android, les services Google intégrés à l'app (cartes et scanner de documents) envoient en plus à
+Google, pour lui, leurs propres données techniques et de plantage (section 7) ; Kerfy Studio ne les reçoit pas.
 
 **Finalité.** Corriger les bugs.
 **Base légale.** Intérêt légitime de Kerfy Studio à corriger les bugs (article 6.1.f du RGPD). Ces rapports ne nous
@@ -355,10 +374,15 @@ approuvés, la clé publique de chacun (ce qu'un autre de tes appareils lui envo
 de notification, scellés par le relais
 (section 4.1) : Kerfy Studio ne les voit jamais en clair. Les invitations que tu envoies : l'adresse e-mail de la
 personne invitée, leur état et, seulement si tu le donnes, ton prénom, que la personne invitée voit dans l'e-mail
-d'invitation et dans son app (une invitation par lien garde seulement ce prénom, s'il est donné, et son état). Une
+d'invitation et dans son app (une invitation par lien garde seulement ce prénom, s'il est donné, et son état). Les liens
+famille : l'adresse e-mail de l'autre personne, le nom du foyer que tu donnes et une invitation scellée pour chacun de
+ses appareils, que Kerfy Studio ne peut pas ouvrir. Une conversation que tu partages en lecture (« Partager en
+lecture », 20 personnes au plus, jusqu'à la date de fin que tu choisis) : sa copie chiffrée par ton serveur (ou ta
+place) avant de partir, que Kerfy Studio garde sans pouvoir la lire, les noms que tu as tapés pour les personnes
+invitées et le prénom qui leur est montré, qui a rejoint et quand, les tailles et les heures. Une
 demande de récupération en cours. La copie de ta clé de sauvegarde, chiffrée par ton code de récupération, que Kerfy
 Studio ne peut pas lire. Le crédit d'IA acheté et gardé pour un prochain abonnement (un montant). La date de suppression
-du compte, si tu l'as demandée. Pas d'autre nom, pas ta photo, jamais les clés de ta place.
+du compte, si tu l'as demandée. Pas ta photo, jamais les clés de ta place.
 
 **Finalités.** Te connecter, relier ton abonnement et tes places, approuver tes appareils, récupérer ton compte,
 t'envoyer les codes de connexion, les avis de sécurité (nouvel appareil, récupération en cours), la confirmation de ton
@@ -369,8 +393,11 @@ publicitaire : un message commercial ne partirait qu'avec ton accord coché.
 s'arrêtent dès la demande, et tu peux changer d'avis jusque-là), avec ses places et leurs sauvegardes, sauf ce que la
 loi oblige à garder : comme hébergeur, Kerfy Studio garde à part, et seulement pour répondre aux autorités judiciaires,
 ton adresse e-mail 5 ans et ton identifiant Apple ou Google 1 an après la fin du contrat (loi pour la confiance dans
-l'économie numérique, article 6, II ; décret n° 2021-1362, articles 2, 3 et 8). Codes à usage unique : le temps de leur
-validité. Invitation non acceptée : 30 jours.
+l'économie numérique, article 6, II ; décret n° 2021-1362, articles 2, 3 et 8). L'empreinte de ton appareil Android
+(section 5.3) n'est pas reliée à ton compte : elle n'est pas effacée avec lui et reste jusqu'à la fin de ses 24 mois,
+pour empêcher d'enchaîner les semaines gratuites. Codes à usage unique : le temps de leur validité. Invitation non
+acceptée : 30 jours ; invitation d'un lien famille : 7 jours, ou jusqu'à la réponse. Partage en lecture : effacé à sa
+date de fin, quand tu l'arrêtes ou avec ton compte.
 **Supprimer ton compte.** Dans l'app, Réglages › Compte › Supprimer mon compte, ou, si tu n'as plus l'app, sur la page
 https://guichet.bipagents.com/account/delete avec un code envoyé à ton adresse e-mail. Les personnes avec qui tu
 partages ton forfait sont prévenues par e-mail : leurs places s'arrêtent le jour où ton compte est effacé.
@@ -433,7 +460,8 @@ site : encaisser le paiement et calculer les taxes, exécution du contrat (artic
 intérêt légitime (article 6.1.f) ; factures et pièces comptables, obligation légale (article 6.1.c).
 **Durée.** Données d'abonnement et d'achat, y compris celles d'un achat sur le site : pendant l'abonnement, puis 5 ans
 en archive, pour la preuve du contrat (article 2224 du Code civil). Factures et pièces de paiement : 10 ans
-(article L123-22 du Code de commerce) ; Stripe garde les factures. Empreinte de l'appareil Android : 24 mois. Adresse IP : jamais enregistrée ; son empreinte, en
+(article L123-22 du Code de commerce) ; Stripe garde les factures. Empreinte de l'appareil Android : 24 mois à compter du premier marquage du téléphone (sa
+semaine gratuite, ou le premier abonnement pris depuis lui), sans lien avec ton compte. Adresse IP : jamais enregistrée ; son empreinte, en
 mémoire, 15 minutes au plus. Les bits de DeviceCheck sont gardés par Apple.
 
 ### 5.4 Ta place et le modèle d'IA
@@ -447,11 +475,13 @@ que ton téléphone s'y connecte et pour la déplacer en cas de panne.
 
 **Le modèle d'IA.** Les messages que tes agents envoient au modèle (avec les fichiers et les photos qu'ils lui
 montrent) passent par un routeur d'IA, **EUrouter** (EUrouter B.V., Amsterdam, Pays-Bas), pour toutes les personnes de
-l'offre, puis par le fournisseur qui fait tourner le modèle choisi : [à compléter : fournisseurs des modèles proposés et
-pays où ils tournent]. EUrouter indique ne garder par défaut ni les requêtes ni les réponses, et garder leurs
+l'offre, puis par l'hébergeur qui fait tourner le modèle. Aujourd'hui, l'offre utilise un seul modèle, GLM-5.3 Flash
+(fabricant : Z.ai) ; s'il était retiré, le modèle de remplacement prévu est DeepSeek V4.1 Flash (fabricant :
+DeepSeek). EUrouter indique les faire tourner uniquement chez ses hébergeurs partenaires établis dans l'Union
+européenne, sur des serveurs dans l'Union ; les fabricants de ces modèles ne reçoivent pas tes messages. Nous ne
+proposerons pas d'autre modèle sur l'offre sans avoir d'abord mis à jour cette section. EUrouter indique ne garder par défaut ni les requêtes ni les réponses, et garder leurs
 métadonnées (heure, modèle, nombre de jetons, coût, adresse IP) jusqu'à 12 mois. Ils agissent pour le compte de Kerfy
-Studio. **Avant le premier message, l'app nomme le routeur et le fabricant du modèle et te demande ton accord** ; la
-liste des modèles indique le fabricant de chacun. **Pour « Santé »**, seulement un modèle qui tourne dans l'Union
+Studio. **Avant le premier message, l'app nomme le routeur et le fabricant du modèle et te demande ton accord**. **Pour « Santé »**, seulement un modèle qui tourne dans l'Union
 européenne : ta place refuse de donner tes données de santé à un agent dont le modèle n'est pas marqué comme tel, même
 si le modèle a changé après que tu as activé « Santé » (section 3).
 
@@ -565,9 +595,9 @@ BipAgents n'y efface rien et Kerfy Studio n'en garde rien.
 | OVHcloud (OVH SAS, Roubaix, France) | Héberge les serveurs des places ; image quotidienne de chaque serveur | Contenu des places | Union européenne |
 | Hetzner Online GmbH (Gunzenhausen, Allemagne) | Héberge des serveurs de places et le serveur de messagerie des agents | Contenu des places ; boîtes e-mail des agents et journaux de sécurité du serveur de messagerie | Allemagne, Finlande |
 | EUrouter B.V. (Amsterdam, Pays-Bas) | Routeur d'IA | Messages envoyés au modèle, métadonnées | Union européenne |
-| Fournisseurs des modèles : [à compléter] | Font tourner le modèle choisi | Messages envoyés au modèle | [à compléter] |
+| Hébergeurs des modèles, partenaires d'EUrouter | Font tourner le modèle (aujourd'hui GLM-5.3 Flash) | Messages envoyés au modèle, avec les fichiers et les photos qu'il voit | Union européenne, selon EUrouter |
 | Scaleway SAS (Paris, France) | Stockage objet des sauvegardes (région fr-par, Paris) | Sauvegardes chiffrées des places, illisibles pour lui et pour Kerfy Studio ; copies chiffrées de la base du guichet ; une version remplacée ou effacée est gardée 30 jours | Union européenne (France) |
-| Hébergeur du guichet et du relais : pas encore en service ; il sera indiqué ici avant sa mise en service | Héberge le guichet et le relais | Compte, abonnement, données techniques | Union européenne |
+| OVHcloud (OVH SAS, Roubaix, France) | Héberge le serveur du guichet et du relais | Compte, abonnement, données techniques, jetons scellés | Union européenne |
 | Prestataire d'envoi des e-mails : pas encore en service ; il sera indiqué ici avant sa mise en service | Envoie les codes, les avis de sécurité, les invitations, la confirmation d'achat, l'accusé de rétractation et les avis de suppression | Adresse e-mail, contenu de ces e-mails | Indiqué avec lui |
 | Stripe Payments Europe, Ltd. (Dublin, Irlande) | Paiement des achats sur le site bipagents.com, calcul des taxes, contrôles contre la fraude, factures | Adresse e-mail, adresse ou pays de facturation, données de carte, adresse IP | Union européenne ; possiblement hors de l'Union (section 11) |
 
@@ -598,10 +628,34 @@ C'est une fonction expérimentale : certaines banques considèrent que confier l
 une négligence et peuvent refuser un remboursement en cas de litige. C'est pourquoi l'app demande une carte virtuelle
 avec un plafond, jamais ta carte principale.
 
+### 5.11 D'où tu nous as connus (mesure de nos campagnes)
+
+Pour savoir quelles campagnes nous amènent des abonnés, et arrêter les autres, ton compte et ton abonnement gardent au
+plus **un nom de campagne** (un libellé court, par exemple « insta-nov-a »), sa source et sa date. Il vient d'une seule
+de ces sources :
+
+- sur Android, le nom de campagne du lien Google Play qui t'a fait installer l'app (seulement ce nom), lu une fois au
+  premier lancement ;
+- sur iPhone, le numéro de la campagne Apple Search Ads : pendant les 30 premiers jours, l'app demande à Apple un jeton
+  d'attribution (AdServices), que le guichet échange auprès d'Apple contre ce numéro, sans garder le jeton ;
+- le lien du site par lequel tu t'es abonné, ou le lot de ton code bêta ;
+- ta réponse à « Comment nous as-tu connus ? », si tu y réponds.
+
+Le premier nom reçu est gardé, jamais remplacé. L'app ne l'envoie qu'une fois, et seulement si tu as un compte ou
+l'offre tout compris : rien pour une installation sur ton propre serveur sans compte. Jamais d'identifiant
+publicitaire ni d'identifiant de clic, aucun outil publicitaire dans l'app, rien envoyé à Meta ni à un annonceur.
+
+**Usage.** Uniquement un décompte par campagne et par semaine, qui ne contient jamais de personne. Jamais pour t'écrire,
+te faire une offre ou te profiler, et ce nom n'est transmis à personne. **Base légale.** Intérêt légitime de Kerfy
+Studio à savoir quelles campagnes sont utiles (article 6.1.f du RGPD) ; lire le lien Google Play et demander le jeton
+d'Apple sur ton téléphone sert uniquement à cette mesure d'audience. **Durée.** 13 mois après son enregistrement, ou
+moins si ton compte ou ton abonnement est effacé avant. **T'y opposer.** Écris à privacy@bipagents.com : nous effaçons
+le tien et n'en enregistrons plus pour ton compte et tes abonnements.
+
 ## 6. Ce que Kerfy Studio ne fait pas
 
-- Pas de publicité, pas d'outil de statistiques, pas de pistage entre apps ou sites. Pas de compte, sauf pour l'offre
-  tout compris.
+- Pas de publicité, pas d'identifiant publicitaire, pas de pistage entre apps ou sites. Pas d'outil de statistiques
+  dans l'app : seulement le décompte de nos campagnes (section 5.11). Pas de compte, sauf pour l'offre tout compris.
 - Pas de vente ni de location de données.
 - Pas d'entraînement de modèles d'IA sur tes données par Kerfy Studio.
 - Pas d'accès à ton serveur, au contenu de ta place, à tes conversations ni à tes fichiers.
@@ -624,6 +678,14 @@ est ensuite responsable de ce qu'il en fait.
   règles. Si ton serveur a une clé Google Maps (pas l'offre tout compris pour l'instant), les lieux et l'heure de
   l'itinéraire partent aussi chez Google (Google LLC, possiblement aux États-Unis, certifiée au « EU-U.S. Data Privacy
   Framework ») pour en calculer la durée ; rien n'en est gardé.
+- **Les cartes.** Les cartes des pages de tes agents viennent de ton serveur (ou de ta place), qui en récupère les
+  morceaux chez OpenFreeMap : ton téléphone ne contacte pas OpenFreeMap. Pour une conversation qu'on te partage en
+  lecture, ton téléphone les demande lui-même à OpenFreeMap, qui voit alors son adresse IP et la zone de la carte. Les
+  cartes des réponses (lieux, itinéraires) sont celles de Plans d'Apple (MapKit) sur iPhone et du SDK Google Maps sur
+  Android. Quand une telle carte s'affiche sur Android, Google reçoit des informations sur l'appareil et la requête,
+  l'adresse IP, un identifiant propre au SDK, les rapports de plantage du SDK et, quand la carte bouge ou zoome, ces
+  événements ; Google indique s'en servir pour faire fonctionner et améliorer ses services. Ces cartes montrent les
+  lieux de la réponse, jamais ta position. Google LLC peut traiter ces données aux États-Unis.
 - **Reconnaissance vocale.** Les notes vocales et le Live utilisent la reconnaissance vocale de ton téléphone. L'app
   demande la reconnaissance sur l'appareil quand ton téléphone la propose pour ta langue. Sinon, Apple ou Google (sur
   Android, le service de reconnaissance du système, souvent celui de Google) traitent l'audio sur leurs serveurs, sous
@@ -675,8 +737,7 @@ sera annoncé comme indiqué à la section 17.
 
 ## 11. Transferts hors de l'Union européenne
 
-Le relais de notifications sera hébergé dans l'Union européenne (pas encore en service ; son hébergeur sera indiqué
-ici avant sa mise en service). Pour acheminer les
+Le relais de notifications est hébergé dans l'Union européenne (section 4.1). Pour acheminer les
 notifications, Apple et Google peuvent traiter le jeton et la notification hors de l'Union européenne, notamment aux
 États-Unis :
 
@@ -686,8 +747,10 @@ notifications, Apple et Google peuvent traiter le jeton et la notification hors 
   adoptées par la Commission européenne.
 
 **L'offre tout compris.** Les serveurs des places, le serveur de messagerie des agents et les sauvegardes (Scaleway,
-France) sont dans l'Union européenne, pour toutes les personnes de l'offre. EUrouter traite les messages dans l'Union européenne
-[à compléter : pays où tournent les modèles proposés, et garantie si l'un est hors de l'Union]. Apple et Google
+France) sont dans l'Union européenne, pour toutes les personnes de l'offre. EUrouter traite tes messages dans l'Union
+européenne, et indique faire tourner les modèles de l'offre uniquement chez des hébergeurs de l'Union (section 5.4). Si
+un modèle de l'offre devait un jour tourner hors de l'Union, cette section dirait où et avec quelle garantie avant
+qu'il soit proposé. Apple et Google
 (connexion, stores, DeviceCheck, Play Integrity) peuvent traiter des données aux États-Unis, avec les garanties
 indiquées ci-dessus. Pour un achat sur le site, Stripe peut traiter des données hors de l'Union européenne, notamment
 aux États-Unis, avec les garanties que décrit sa politique de confidentialité (https://stripe.com/privacy).
@@ -734,7 +797,10 @@ service ; son pays et la garantie applicable seront indiqués ici avant sa mise 
 | Abonnement et achats | Pendant l'abonnement, puis 5 ans en archive |
 | Achat sur le site (adresse e-mail donnée au paiement, identifiants Stripe, forfait et période, pays de facturation, langue) | Pendant l'abonnement, puis 5 ans en archive |
 | Factures et pièces de paiement d'un achat sur le site | 10 ans (article L123-22 du Code de commerce) ; factures gardées par Stripe |
-| Empreinte de l'appareil Android, hachée avec une clé secrète (semaine gratuite) | 24 mois |
+| Empreinte de l'appareil Android, hachée avec une clé secrète (semaine gratuite) | 24 mois après le premier marquage du téléphone ; pas effacée avec le compte, auquel elle n'est pas reliée |
+| Invitation d'un lien famille | 7 jours, ou jusqu'à la réponse |
+| Partage en lecture (copie chiffrée, personnes invitées) | Jusqu'à sa date de fin, son arrêt ou l'effacement du compte |
+| Nom de campagne (section 5.11) | 13 mois après son enregistrement, ou avec le compte ou l'abonnement |
 | Adresse IP à la réservation d'une semaine gratuite | Jamais enregistrée ; en mémoire, sous forme d'empreinte, 15 minutes au plus |
 | Contenu de ta place | Pendant l'abonnement, puis 30 jours (3 jours après une semaine gratuite non poursuivie) |
 | Sauvegardes | 2 heures (toutes), puis 48 heures (horaires), 30 jours (quotidiennes), 12 semaines (hebdomadaires) ; effacées avec la place |
@@ -777,7 +843,7 @@ portabilité, et donner des directives sur le sort de tes données après ton d�
 
 **Droit d'opposition.** Tu peux t'opposer à tout moment, pour des raisons tenant à ta situation particulière, aux
 traitements fondés sur notre intérêt légitime (limitation des abus, e-mails, signalements, rapports de plantage,
-limite des semaines gratuites).
+limite des semaines gratuites, mesure de nos campagnes).
 
 **Retirer ton consentement.** Pour Santé, Calendrier, Contacts, Rappels, la localisation des rappels par lieu et le
 scanner de documents d'Android, tu retires ton accord quand tu veux, aussi simplement que tu l'as donné : désactive
