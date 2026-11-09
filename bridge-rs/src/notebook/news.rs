@@ -125,6 +125,24 @@ fn change<R>(config: &Config, work: impl FnOnce(&mut Stored) -> R) -> std::io::R
     Ok(out)
 }
 
+/// « Oublie ça » (forget.rs): the waiting lines `matches` (path, text) takes out; `dry`: only counted. Returns how many.
+pub fn forget_facts(config: &Config, matches: &dyn Fn(&str, &str) -> bool, dry: bool) -> usize {
+    if dry {
+        let stored = load(config);
+        return stored.agents.values().flatten().filter(|e| matches(&e.path, &e.text)).count();
+    }
+    change(config, |stored| {
+        let mut gone = 0;
+        for entries in stored.agents.values_mut() {
+            let before = entries.len();
+            entries.retain(|e| !matches(&e.path, &e.text));
+            gone += before - entries.len();
+        }
+        gone
+    })
+    .unwrap_or(0)
+}
+
 // -- who is concerned ------------------------------------------------------------------------------------------------
 
 /// A domain of the person's life: the agents' categories that take care of it, and the words (folded, any of the

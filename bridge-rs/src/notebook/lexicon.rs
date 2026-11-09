@@ -217,14 +217,14 @@ pub const STOP: &[&str] = &[
     // fr
     "de", "du", "la", "le", "les", "des", "d", "l", "un", "une", "au", "aux", "et", "a", "en", "pour", "sur", "ma", "mon",
     "mes", "ta", "ton", "tes", "sa", "son", "ses", "quel", "quelle", "quels", "quelles", "est", "c", "qu", "que", "qui",
-    "quoi", "combien", "elle", "il",
+    "quoi", "combien", "elle", "il", "quand",
     // en
     "the", "of", "an", "and", "to", "is", "what", "which", "who", "how", "many", "much", "my", "your", "his", "her",
-    "does",
+    "does", "s", "when", "has",
     // de
-    "der", "die", "das", "den", "dem", "von", "ein", "eine", "und", "ist", "was", "wie", "welche",
+    "der", "die", "das", "den", "dem", "von", "ein", "eine", "und", "ist", "was", "wie", "welche", "hat", "wann",
     // es
-    "el", "los", "las", "del", "y", "es", "cual", "cuanto",
+    "el", "los", "las", "del", "y", "es", "cual", "cuanto", "cuando", "tiene",
 ];
 
 /// Health words (folded): a word that starts with one of them, or a phrase; the stems end with `*`.

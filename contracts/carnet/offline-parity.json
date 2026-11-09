@@ -1,0 +1,697 @@
+{
+ "about": "Carnet v2 offline answers (contract.md §6): the same questions give the same answers on the bridge (online), in HermesKit and on Android (offline, from `snapshot`). The rule: fold the question (lower case, no accents, anything not a letter or digit a space, spaces squeezed: `fold`), replace each phrase of `snapshot.labels` (the longest first, whole words) by its key, drop `snapshot.stop`, keep the facts whose `words` hold every word left and at least one word that is not of the page's title, the latest `date` first. `answer`: the offline answer (null: none); `online`, when given, the bridge's own search (it also reads what the copy leaves out). Made by bridge-rs src/notebook/offline.rs `the_parity_file_is_the_bridges_rule` (BIPAGENTS_WRITE_PARITY=1 prints the snapshot).",
+ "fold": [
+  [
+   "Léa chausse du combien ?",
+   "lea chausse du combien"
+  ],
+  [
+   "Größe",
+   "grosse"
+  ],
+  [
+   "l’été",
+   "l ete"
+  ],
+  [
+   "Cumpleaños",
+   "cumpleanos"
+  ],
+  [
+   "  E-MAIL  ",
+   "e mail"
+  ],
+  [
+   "1,62 m",
+   "1 62 m"
+  ]
+ ],
+ "snapshot": {
+  "v": 1,
+  "lang": "fr",
+  "pages": [
+   {
+    "title": "Léa Martin",
+    "path": "Personnes/Léa Martin.md",
+    "kind": "person",
+    "aliases": [
+     "lea"
+    ]
+   },
+   {
+    "title": "Marc Dupont",
+    "path": "Personnes/Marc Dupont.md",
+    "kind": "person",
+    "aliases": []
+   },
+   {
+    "title": "Voiture",
+    "path": "Sujets/Voiture.md",
+    "kind": "subject",
+    "aliases": []
+   },
+   {
+    "title": "Toi",
+    "path": "Toi.md",
+    "kind": "self",
+    "aliases": []
+   }
+  ],
+  "none": "Rien trouvé hors connexion.",
+  "stop": [
+   "de",
+   "du",
+   "la",
+   "le",
+   "les",
+   "des",
+   "d",
+   "l",
+   "un",
+   "une",
+   "au",
+   "aux",
+   "et",
+   "a",
+   "en",
+   "pour",
+   "sur",
+   "ma",
+   "mon",
+   "mes",
+   "ta",
+   "ton",
+   "tes",
+   "sa",
+   "son",
+   "ses",
+   "quel",
+   "quelle",
+   "quels",
+   "quelles",
+   "est",
+   "c",
+   "qu",
+   "que",
+   "qui",
+   "quoi",
+   "combien",
+   "elle",
+   "il",
+   "quand",
+   "the",
+   "of",
+   "an",
+   "and",
+   "to",
+   "is",
+   "what",
+   "which",
+   "who",
+   "how",
+   "many",
+   "much",
+   "my",
+   "your",
+   "his",
+   "her",
+   "does",
+   "s",
+   "when",
+   "has",
+   "der",
+   "die",
+   "das",
+   "den",
+   "dem",
+   "von",
+   "ein",
+   "eine",
+   "und",
+   "ist",
+   "was",
+   "wie",
+   "welche",
+   "hat",
+   "wann",
+   "el",
+   "los",
+   "las",
+   "del",
+   "y",
+   "es",
+   "cual",
+   "cuanto",
+   "cuando",
+   "tiene"
+  ],
+  "labels": {
+   "adresse": [
+    "address",
+    "anschrift",
+    "direccion",
+    "domicilio"
+   ],
+   "allergies": [
+    "alergia",
+    "alergias",
+    "allergic",
+    "allergie",
+    "allergien",
+    "allergique",
+    "allergy"
+   ],
+   "animal": [
+    "animal de compagnie",
+    "haustier",
+    "mascota",
+    "pet"
+   ],
+   "anniversaire": [
+    "anniv",
+    "birthday",
+    "born on",
+    "cumpleanos",
+    "date de naissance",
+    "date of birth",
+    "fecha de nacimiento",
+    "geboren am",
+    "geburtstag",
+    "nacida el",
+    "nacido el",
+    "nacio el",
+    "ne le",
+    "nee le"
+   ],
+   "anniversaire de mariage": [
+    "aniversario de boda",
+    "boda",
+    "casados el",
+    "hochzeit",
+    "hochzeitstag",
+    "mariage",
+    "marie le",
+    "mariee le",
+    "maries le",
+    "married on",
+    "verheiratet seit",
+    "wedding",
+    "wedding anniversary"
+   ],
+   "boisson preferee": [
+    "bebida favorita",
+    "favorite drink",
+    "favourite drink",
+    "lieblingsgetrank"
+   ],
+   "classe": [
+    "curso",
+    "grade",
+    "klasse",
+    "school year"
+   ],
+   "conjoint": [
+    "compagne",
+    "compagnon",
+    "conjointe",
+    "ehefrau",
+    "ehemann",
+    "epouse",
+    "epoux",
+    "esposa",
+    "esposo",
+    "husband",
+    "marido",
+    "pareja",
+    "partner",
+    "partnerin",
+    "spouse",
+    "wife"
+   ],
+   "couleur preferee": [
+    "color favorito",
+    "color preferido",
+    "favorite color",
+    "favourite colour",
+    "lieblingsfarbe"
+   ],
+   "e mail": [
+    "adresse e mail",
+    "adresse mail",
+    "correo",
+    "correo electronico",
+    "courriel",
+    "email",
+    "mail"
+   ],
+   "ecole": [
+    "colegio",
+    "college",
+    "escuela",
+    "lycee",
+    "school",
+    "schule"
+   ],
+   "employeur": [
+    "arbeitgeber",
+    "employer",
+    "empresa"
+   ],
+   "enfants": [
+    "children",
+    "hijos",
+    "kids",
+    "kinder"
+   ],
+   "fete": [
+    "fete le",
+    "fetee le",
+    "name day",
+    "name day on",
+    "namenstag",
+    "namenstag am",
+    "onomastica",
+    "santo",
+    "su santo es el"
+   ],
+   "groupe sanguin": [
+    "blood group",
+    "blood type",
+    "blutgruppe",
+    "grupo sanguineo"
+   ],
+   "langue": [
+    "idioma",
+    "language",
+    "sprache"
+   ],
+   "medecin": [
+    "arzt",
+    "docteur",
+    "doctor",
+    "gp",
+    "hausarzt",
+    "medecin traitant",
+    "medico"
+   ],
+   "metier": [
+    "beruf",
+    "job",
+    "occupation",
+    "oficio",
+    "profesion",
+    "profession",
+    "trabajo"
+   ],
+   "plat prefere": [
+    "comida favorita",
+    "favorite dish",
+    "favorite food",
+    "favourite food",
+    "lieblingsessen",
+    "lieblingsgericht",
+    "plato favorito"
+   ],
+   "pointure": [
+    "calza",
+    "calza el",
+    "calza un",
+    "chausse",
+    "chausse du",
+    "schuhgrosse",
+    "shoe size",
+    "taille de chaussures",
+    "talla de zapatos",
+    "wears size"
+   ],
+   "regime alimentaire": [
+    "diet",
+    "dieta",
+    "ernahrung",
+    "regime"
+   ],
+   "surnom": [
+    "apodo",
+    "nickname",
+    "spitzname"
+   ],
+   "taille": [
+    "altura",
+    "grosse",
+    "height",
+    "is tall",
+    "ist gross",
+    "mesure",
+    "mide",
+    "tall"
+   ],
+   "taille de vetements": [
+    "clothes size",
+    "clothing size",
+    "kleidergrosse",
+    "konfektionsgrosse",
+    "taille vetements",
+    "talla de ropa"
+   ],
+   "telephone": [
+    "cell",
+    "celular",
+    "handy",
+    "handynummer",
+    "mobile",
+    "movil",
+    "phone",
+    "portable",
+    "tel",
+    "telefon",
+    "telefono"
+   ],
+   "tour de doigt": [
+    "ring size",
+    "ringgrosse",
+    "taille de bague",
+    "talla de anillo"
+   ],
+   "ville": [
+    "city",
+    "ciudad",
+    "stadt",
+    "wohnort"
+   ],
+   "voiture": [
+    "auto",
+    "car",
+    "coche"
+   ]
+  },
+  "facts": [
+   {
+    "page": "Léa Martin",
+    "path": "Personnes/Léa Martin.md",
+    "label": "Anniversaire",
+    "answer": "12 mars",
+    "date": "2026-10-03",
+    "when": "noté le 3 oct.",
+    "words": [
+     "lea",
+     "martin",
+     "anniversaire",
+     "12",
+     "mars"
+    ]
+   },
+   {
+    "page": "Léa Martin",
+    "path": "Personnes/Léa Martin.md",
+    "label": "Pointure",
+    "answer": "36",
+    "date": "2026-10-03",
+    "when": "noté le 3 oct.",
+    "words": [
+     "lea",
+     "martin",
+     "pointure",
+     "36"
+    ]
+   },
+   {
+    "page": "Léa Martin",
+    "path": "Personnes/Léa Martin.md",
+    "label": "Taille",
+    "answer": "1,62 m",
+    "date": "2026-10-03",
+    "when": "noté le 3 oct.",
+    "words": [
+     "lea",
+     "martin",
+     "taille",
+     "1",
+     "62",
+     "m"
+    ]
+   },
+   {
+    "page": "Marc Dupont",
+    "path": "Personnes/Marc Dupont.md",
+    "label": "Anniversaire",
+    "answer": "3 juin",
+    "date": "2026-10-03",
+    "when": "noté le 3 oct.",
+    "words": [
+     "marc",
+     "dupont",
+     "anniversaire",
+     "3",
+     "juin"
+    ]
+   },
+   {
+    "page": "Marc Dupont",
+    "path": "Personnes/Marc Dupont.md",
+    "label": "Métier",
+    "answer": "boulanger",
+    "date": "2026-10-03",
+    "when": "noté le 3 oct.",
+    "words": [
+     "marc",
+     "dupont",
+     "metier",
+     "boulanger"
+    ]
+   },
+   {
+    "page": "Marc Dupont",
+    "path": "Personnes/Marc Dupont.md",
+    "label": "Pointure",
+    "answer": "43",
+    "date": "2026-10-03",
+    "when": "noté le 3 oct.",
+    "words": [
+     "marc",
+     "dupont",
+     "pointure",
+     "43"
+    ]
+   },
+   {
+    "page": "Toi",
+    "path": "Toi.md",
+    "label": "Ville",
+    "answer": "Lyon",
+    "date": "2026-10-03",
+    "when": "noté le 3 oct.",
+    "words": [
+     "toi",
+     "ville",
+     "lyon"
+    ]
+   }
+  ]
+ },
+ "cases": [
+  {
+   "q": "Pointure de Léa ?",
+   "lang": "fr",
+   "answer": "36"
+  },
+  {
+   "q": "Léa chausse du combien ?",
+   "lang": "fr",
+   "answer": "36"
+  },
+  {
+   "q": "Quand est l'anniversaire de Marc ?",
+   "lang": "fr",
+   "answer": "3 juin"
+  },
+  {
+   "q": "Anniversaire de Léa",
+   "lang": "fr",
+   "answer": "12 mars"
+  },
+  {
+   "q": "Taille de Léa",
+   "lang": "fr",
+   "answer": "1,62 m"
+  },
+  {
+   "q": "Pointure de Marc",
+   "lang": "fr",
+   "answer": "43"
+  },
+  {
+   "q": "Métier de Marc",
+   "lang": "fr",
+   "answer": "boulanger"
+  },
+  {
+   "q": "Ma ville ?",
+   "lang": "fr",
+   "answer": "Lyon"
+  },
+  {
+   "q": "Allergies de Léa",
+   "lang": "fr",
+   "answer": null,
+   "online": "arachides"
+  },
+  {
+   "q": "Léa",
+   "lang": "fr",
+   "answer": null
+  },
+  {
+   "q": "Léa's shoe size?",
+   "lang": "en",
+   "answer": "36"
+  },
+  {
+   "q": "What is Marc's shoe size?",
+   "lang": "en",
+   "answer": "43"
+  },
+  {
+   "q": "When is Marc's birthday?",
+   "lang": "en",
+   "answer": "3 juin"
+  },
+  {
+   "q": "Léa's birthday",
+   "lang": "en",
+   "answer": "12 mars"
+  },
+  {
+   "q": "Léa's height",
+   "lang": "en",
+   "answer": "1,62 m"
+  },
+  {
+   "q": "Marc's job",
+   "lang": "en",
+   "answer": "boulanger"
+  },
+  {
+   "q": "My city?",
+   "lang": "en",
+   "answer": "Lyon"
+  },
+  {
+   "q": "Léa's allergies",
+   "lang": "en",
+   "answer": null,
+   "online": "arachides"
+  },
+  {
+   "q": "Marc",
+   "lang": "en",
+   "answer": null
+  },
+  {
+   "q": "Léa's favourite colour",
+   "lang": "en",
+   "answer": null
+  },
+  {
+   "q": "Schuhgröße von Léa",
+   "lang": "de",
+   "answer": "36"
+  },
+  {
+   "q": "Wann hat Marc Geburtstag?",
+   "lang": "de",
+   "answer": "3 juin"
+  },
+  {
+   "q": "Geburtstag von Léa",
+   "lang": "de",
+   "answer": "12 mars"
+  },
+  {
+   "q": "Größe von Léa",
+   "lang": "de",
+   "answer": "1,62 m"
+  },
+  {
+   "q": "Beruf von Marc",
+   "lang": "de",
+   "answer": "boulanger"
+  },
+  {
+   "q": "Schuhgröße von Marc",
+   "lang": "de",
+   "answer": "43"
+  },
+  {
+   "q": "Stadt",
+   "lang": "de",
+   "answer": "Lyon"
+  },
+  {
+   "q": "Allergien von Léa",
+   "lang": "de",
+   "answer": null,
+   "online": "arachides"
+  },
+  {
+   "q": "Léa",
+   "lang": "de",
+   "answer": null
+  },
+  {
+   "q": "Lieblingsfarbe von Marc",
+   "lang": "de",
+   "answer": null
+  },
+  {
+   "q": "¿Cuál es la talla de zapatos de Léa?",
+   "lang": "es",
+   "answer": "36"
+  },
+  {
+   "q": "¿Cuándo es el cumpleaños de Marc?",
+   "lang": "es",
+   "answer": "3 juin"
+  },
+  {
+   "q": "Cumpleaños de Léa",
+   "lang": "es",
+   "answer": "12 mars"
+  },
+  {
+   "q": "Altura de Léa",
+   "lang": "es",
+   "answer": "1,62 m"
+  },
+  {
+   "q": "Profesión de Marc",
+   "lang": "es",
+   "answer": "boulanger"
+  },
+  {
+   "q": "Talla de zapatos de Marc",
+   "lang": "es",
+   "answer": "43"
+  },
+  {
+   "q": "Ciudad",
+   "lang": "es",
+   "answer": "Lyon"
+  },
+  {
+   "q": "Alergias de Léa",
+   "lang": "es",
+   "answer": null,
+   "online": "arachides"
+  },
+  {
+   "q": "Marc",
+   "lang": "es",
+   "answer": null
+  },
+  {
+   "q": "Color favorito de Léa",
+   "lang": "es",
+   "answer": null
+  }
+ ]
+}

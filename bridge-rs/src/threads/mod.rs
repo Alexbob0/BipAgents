@@ -1334,7 +1334,8 @@ async fn item_route(
 /// A connector's calls with their connector's name (`tool.service`, connectors::service_in): the apps and the
 /// automatic « Étapes » say it instead of the tool's own name. A call through the tool search by the call it wraps.
 /// Under each turn that read or wrote in the Carnet, after its last item, one `carnet_line` item: « A consulté 2 pages
-/// · Noté dans Léa » (notebook/reads.rs `lines`, contract.md §4). Only for a timeline with a Carnet tool call in it.
+/// · Noté dans Léa » (notebook/reads.rs `lines`, contract.md §4), then its `carnet_card` items (an « Oublie ça »
+/// to confirm: notebook/forget.rs `cards`). Only for a timeline with a Carnet tool call in it.
 fn with_carnet_lines(config: &crate::config::Config, agent: &AgentConfig, items: &mut Vec<Item>) {
     let carnet = |i: &Item| {
         i.kind() == "tool"
@@ -1367,13 +1368,26 @@ fn with_carnet_lines(config: &crate::config::Config, agent: &AgentConfig, items:
     }
     let lang = crate::handback::language_of(config, agent);
     let lines = crate::notebook::reads::lines(config, &agent.name, &lang, &spans);
-    let mut after: Vec<(usize, Item)> = lines
+    // and the Carnet's cards of the turn (« Oublie ça »'s preview: notebook/forget.rs), under its line
+    let mut cards = crate::notebook::forget::cards(config, &agent.name, &lang, &spans);
+    let mut bodies: Vec<(String, String, Value)> =
+        lines.into_iter().map(|(turn, body)| (turn.clone(), format!("{turn}.carnet"), body)).collect();
+    for (turn, list) in cards.drain() {
+        for body in list {
+            let id = format!("{turn}.{}", body.get("id").and_then(Value::as_str).unwrap_or("card"));
+            bodies.push((turn.clone(), id, body));
+        }
+    }
+    // the line first, then the cards in the order they were made
+    bodies.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.ends_with(".carnet").cmp(&a.1.ends_with(".carnet"))));
+    let mut after: Vec<(usize, usize, Item)> = bodies
         .into_iter()
-        .filter_map(|(turn, body)| {
+        .enumerate()
+        .filter_map(|(order, (turn, id, body))| {
             let at = &items[*last.get(&turn)?];
             let Value::Object(body) = body else { return None };
-            Some((*last.get(&turn)?, Item {
-                id: format!("{turn}.carnet"),
+            Some((*last.get(&turn)?, order, Item {
+                id,
                 pos: (at.pos.0, at.pos.1, at.pos.2 + 1),
                 at: at.at,
                 turn,
@@ -1383,8 +1397,9 @@ fn with_carnet_lines(config: &crate::config::Config, agent: &AgentConfig, items:
             }))
         })
         .collect();
-    after.sort_by_key(|a| std::cmp::Reverse(a.0));
-    for (index, item) in after {
+    // inserted from the end, each turn's last first, so the turn keeps its order
+    after.sort_by_key(|a| (std::cmp::Reverse(a.0), std::cmp::Reverse(a.1)));
+    for (index, _, item) in after {
         items.insert(index + 1, item);
     }
 }

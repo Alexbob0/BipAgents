@@ -450,7 +450,7 @@ Studio cannot open. On the all-included offer the place is on a server Kerfy Stu
 technically the host as well as Kerfy Studio could access it; our software reads neither your place nor its backups,
 and we would only do so if the law required it. Kerfy Studio keeps these
 backups at **Scaleway** (Scaleway SAS, France; object storage in Paris, region fr-par) without being able to read them:
-those of the last 2 hours, then one per hour for 48 hours, one per day for 30 days, one per week for 12 weeks. They are erased with your place. At
+those of the last 2 hours, then one per hour for 48 hours, one per day for 30 days, nothing older. They are erased with your place. At
 Scaleway, a replaced or deleted version of a file is kept 30 days, then erased. The data stays in the European Union.
 
 **The guichet's backups.** The guichet (your account, your subscription, the places' technical data) is backed up at
@@ -700,7 +700,7 @@ safeguard will be stated here before it goes into service. You can ask us for a 
 | Keyed fingerprint of the Android device (free week) | 24 months |
 | IP address when a free week is reserved | Never stored; in memory, as a fingerprint, 15 minutes at most |
 | Content of your place | During the subscription, then 30 days (3 days after a free week that was not continued) |
-| Backups | 2 hours (all), then 48 hours (hourly), 30 days (daily), 12 weeks (weekly); erased with the place |
+| Backups | 2 hours (all), then 48 hours (hourly), 30 days (daily), nothing older; erased with the place |
 | Replaced or deleted versions at Scaleway (the places' backups, encrypted copies of the guichet's database) | 30 days |
 | OVHcloud's daily image | One point per day, replaced within about a day after the place is reinstalled |
 | Servers' technical data | Latest values only |

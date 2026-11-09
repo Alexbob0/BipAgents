@@ -8,7 +8,8 @@
 //!                       pages a turn (reads.rs)
 //!     notebook_write    facts on a page found by name, nickname, contact, e-mail or phone (made if missing; several
 //!                       match: refused, the agent asks), a label said again replaces the old fact, `fix` corrects;
-//!                       `ask` and `forget` in the schema already (Carnet v2 B2/B3)
+//!                       `forget` only shows the person what would be erased, in a card they confirm in the app
+//!                       (forget.rs); `ask` in the schema already (B3)
 //!     notebook_task     list, add (with a date: a phone reminder too; `important`), tick off, propose, decline
 //!     notebook_record   precise records: purchases, subscriptions, contracts, papers, bookings; short list, `get`
 //!     notebook_fill     (fill.rs) « Remplir mon Carnet » in the background
@@ -587,8 +588,9 @@ fn write(config: &Config, agent: &str, arguments: &Dict, health: bool) -> anyhow
     if arguments.get("ask").is_some_and(|a| !a.is_null()) {
         out.push("No question now.".into());
     }
-    if !args_list(arguments, "forget").is_empty() {
-        out.push("Not available yet.".into());
+    let forget = args_list(arguments, "forget");
+    if !forget.is_empty() {
+        out.push(super::forget::ask_from_agent(config, agent, &page, &forget, health)?);
     }
     if out.is_empty() {
         return Ok(tool_text("give facts, fix or summary", true));

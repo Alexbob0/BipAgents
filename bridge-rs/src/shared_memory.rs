@@ -624,6 +624,39 @@ pub fn undo(stored: &mut Stored, agent: &str, before: &[String], given: &[String
     }
 }
 
+/// The common entries' texts, the oldest first (« Toujours en tête », notebook/known.rs).
+pub fn common_texts(config: &Config) -> Vec<String> {
+    load(config).common.into_iter().map(|c| c.text).collect()
+}
+
+/// « Oublie ça » (notebook/forget.rs): the common entries `matches` takes out, and every trace of them in the bridge's
+/// records (the removed keys, each agent's last entries and given keys, the « Toi » page's: they are folded texts, so
+/// none may stay); the caller takes them out of the files, and the common memory's next round (`sync`) never takes
+/// them back (notebook::forget::is_forgotten). `dry`: only counted. Returns how many common entries.
+pub fn forget(config: &Config, matches: &dyn Fn(&str) -> bool, dry: bool) -> usize {
+    let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut stored = load(config);
+    let gone = stored.common.iter().filter(|c| matches(&c.text)).count();
+    let traces = stored.toi_page.iter().chain(stored.toi.iter()).any(|f| matches(f))
+        || stored.removed.iter().any(|(k, _)| matches(k))
+        || stored.agents.values().any(|s| s.last.iter().chain(s.seen.iter()).any(|e| matches(e)));
+    if dry || (gone == 0 && !traces) {
+        return gone;
+    }
+    stored.common.retain(|c| !matches(&c.text));
+    stored.removed.retain(|(k, _)| !matches(k));
+    stored.toi_page.retain(|f| !matches(f));
+    stored.toi.retain(|f| !matches(f));
+    for seen in stored.agents.values_mut() {
+        seen.last.retain(|e| !matches(e));
+        seen.seen.retain(|e| !matches(e));
+    }
+    if let Err(err) = save(config, &stored) {
+        tracing::warn!(error = %err, "shared memory state not saved after a forget");
+    }
+    gone
+}
+
 /// One round now: the circle read, the changes written under Hermes' lock, the new entries filed on « Toi ».
 /// `edited`: the agent whose USER.md the person just edited in the app (its new entries are the person's). Best
 /// effort: an error is logged. Returns how many agents' files were written.
@@ -637,6 +670,21 @@ pub fn sync(config: &Config, now: f64, edited: Option<&str>) -> usize {
         let mut current = BTreeMap::new();
         for m in &members {
             if let Some(entries) = memory_edit::read_locked(&m.folder, "user") {
+                // what the person asked to forget, written back by an old turn: taken out again, never shared
+                let forgotten = |e: &String| notebook::forget::is_forgotten(config, e, "");
+                let entries = if entries.iter().any(forgotten) {
+                    let kept: Vec<String> = entries.iter().filter(|e| !forgotten(e)).cloned().collect();
+                    let done = memory_edit::update_entries(&m.folder, "user", |now| {
+                        let next: Vec<String> = now.iter().filter(|e| !forgotten(e)).cloned().collect();
+                        (next.len() != now.len()).then_some(next)
+                    });
+                    if let Err(err) = done {
+                        tracing::warn!(agent = %m.name, error = %err, "a forgotten entry not taken out");
+                    }
+                    kept
+                } else {
+                    entries
+                };
                 current.insert(m.name.clone(), entries);
             }
         }

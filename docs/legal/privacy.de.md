@@ -493,7 +493,7 @@ liegt der Platz auf einem von Kerfy Studio gemieteten Server: Der Schlüssel ist
 technisch könnten der Hoster wie Kerfy Studio darauf zugreifen; unsere Software liest weder deinen Platz noch seine
 Sicherungen, und wir täten es nur, wenn das Gesetz uns dazu verpflichtet. Kerfy Studio bewahrt diese Sicherungen bei
 **Scaleway** auf (Scaleway SAS, Frankreich; Objektspeicher in Paris, Region fr-par), ohne sie lesen zu können: die der
-letzten 2 Stunden, dann eine pro Stunde für 48 Stunden, eine pro Tag für 30 Tage, eine pro Woche für 12 Wochen. Sie werden mit deinem Platz gelöscht.
+letzten 2 Stunden, dann eine pro Stunde für 48 Stunden, eine pro Tag für 30 Tage, nichts Älteres. Sie werden mit deinem Platz gelöscht.
 Bei Scaleway wird eine ersetzte oder gelöschte Version einer Datei 30 Tage aufbewahrt und dann gelöscht. Die Daten
 bleiben in der Europäischen Union.
 
@@ -753,7 +753,7 @@ und die geltende Garantie werden hier vor der Inbetriebnahme angegeben. Du kanns
 | Fingerabdruck des Android-Geräts, mit einem geheimen Schlüssel gehasht (kostenlose Woche) | 24 Monate |
 | IP-Adresse bei der Reservierung einer kostenlosen Woche | Nie gespeichert; im Arbeitsspeicher, als Fingerabdruck, höchstens 15 Minuten |
 | Inhalt deines Platzes | Während des Abos, dann 30 Tage (3 Tage nach einer nicht fortgesetzten kostenlosen Woche) |
-| Sicherungen | 2 Stunden (alle), dann 48 Stunden (stündlich), 30 Tage (täglich), 12 Wochen (wöchentlich); mit dem Platz gelöscht |
+| Sicherungen | 2 Stunden (alle), dann 48 Stunden (stündlich), 30 Tage (täglich), nichts Älteres; mit dem Platz gelöscht |
 | Ersetzte oder gelöschte Versionen bei Scaleway (Sicherungen der Plätze, verschlüsselte Kopien der Datenbank des Guichets) | 30 Tage |
 | Tägliches Abbild von OVHcloud | Ein Punkt pro Tag, innerhalb von etwa einem Tag nach der Neuinstallation des Platzes ersetzt |
 | Technische Daten der Server | Nur die letzten Werte |

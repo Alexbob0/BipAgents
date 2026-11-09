@@ -268,8 +268,7 @@ enseguida. Las reglas propias de las personas que viven fuera de la Unión está
   Como todo proveedor de alojamiento, OVHcloud y Hetzner tienen acceso físico a sus servidores.
 - **Copias de seguridad**: tu plaza hace una copia de seguridad unos minutos después de cada actividad, y al menos una vez al día, cifrada en la plaza con una clave que solo
   tienen tus dispositivos (más la copia cifrada que abre tu código de recuperación, sección 7). Kerfy Studio guarda
-  estas copias sin poder leerlas: las de las 2 últimas horas, luego una por hora durante 48 horas, una por día durante 30 días, una por semana durante
-  12 semanas. Ajustes › Plan todo incluido › Copias de seguridad muestra la última y lanza una enseguida.
+  estas copias sin poder leerlas: las de las 2 últimas horas, luego una por hora durante 48 horas, una por día durante 30 días, nada más antiguo. Ajustes › Plan todo incluido › Copias de seguridad muestra la última y lanza una enseguida.
 - **La imagen diaria de OVHcloud**: en sus servidores, OVHcloud hace además, por su parte, una imagen diaria del
   servidor entero, que guarda en sus instalaciones (un punto de restauración por día, no cifrado por Kerfy Studio).
   Cuando una plaza se reinstala para otra persona, la imagen que la contenía se sustituye en un día aproximadamente.

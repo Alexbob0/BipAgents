@@ -261,7 +261,7 @@ section 6); the services you connect to your agents and their own subscriptions.
   OVHcloud and Hetzner have physical access to their servers.
 - **Backups**: your place backs itself up a few minutes after each activity, and at least once a day, encrypted on the place with a key that only your devices hold
   (plus the encrypted copy that your recovery code opens, section 7). Kerfy Studio keeps these backups without being
-  able to read them: those of the last 2 hours, then one per hour for 48 hours, one per day for 30 days, one per week for 12 weeks. Settings ›
+  able to read them: those of the last 2 hours, then one per hour for 48 hours, one per day for 30 days, nothing older. Settings ›
   All-included plan › Backups shows the latest one and starts one at once.
 - **OVHcloud's daily image**: on its servers, OVHcloud also makes, on its side, a daily image of the whole server,
   which it keeps on its premises (one restore point per day, not encrypted by Kerfy Studio). When a place is

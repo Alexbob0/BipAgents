@@ -399,6 +399,17 @@ async fn purge_loop(state: AppState) {
                     }
                 }
             }
+            // the photos sent in a conversation and never filed: 30 days, whatever the choice (Carnet v2)
+            let c = config.clone();
+            let (removed, agents) =
+                tokio::task::spawn_blocking(move || crate::files_kept::purge_photos(&c, crate::py::time_time())).await?;
+            if removed > 0 {
+                tracing::info!(removed = removed, "sent photos never filed purged");
+                for name in agents {
+                    let c = config.clone();
+                    tokio::task::spawn_blocking(move || crate::sandbox::sync_agent(&c, &name)).await??;
+                }
+            }
             let days = crate::files_kept::kept_days(&config);
             if days > 0 {
                 let c = config.clone();

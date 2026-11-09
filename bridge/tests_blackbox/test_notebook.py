@@ -68,10 +68,11 @@ def test_an_agent_files_facts_that_read_well_in_obsidian(bridge):
     assert text_of(replaced) == "Saved: Marc Dupont › tastes (1 fact, 1 replaced)."
     page = (notebook(bridge) / "carnet" / "Personnes" / "Marc Dupont.md").read_text()
     assert "- Pointure : 42" in page and "Pointure : 41" not in page
-    # ask and forget are in the schema already, not there yet
+    # ask is in the schema already, not there yet (B3); forget only shows the person (they confirm in the app)
     later = call(bridge, "notebook_write", {"page": "Marc Dupont", "ask": {"question": "Sa pointure ?", "chips": ["41", "42"]},
                                             "forget": ["Aime le jazz"]})
-    assert text_of(later) == "No question now.\nNot available yet." and "jazz" in page
+    assert text_of(later) == "No question now.\nShown to the person: they confirm in the app."
+    assert "jazz" in (notebook(bridge) / "carnet" / "Personnes" / "Marc Dupont.md").read_text()
     # ID numbers are never kept
     refused = call(bridge, "notebook_write", {"page": "Marc Dupont", "facts": ["Passeport : 12AB34567"]})
     assert refused["isError"] and text_of(refused) == "Not saved: ID numbers are never kept."
@@ -157,10 +158,14 @@ def test_the_app_reads_searches_edits_and_restores(bridge):
     # A short answer on top when a fact answers the question.
     found = bridge.get("/v1/notebook/search", params={"q": "anniversaire marc"}, headers=AUTH).json()
     assert found["answers"][0]["answer"] == "14 novembre" and found["answers"][0]["page"] == "Marc Dupont"
-    assert found["answers"][0]["by"] == "Wellness" and found["pages"][0]["title"] == "Marc Dupont"
+    assert found["answers"][0]["label"] == "Anniversaire" and found["pages"][0]["title"] == "Marc Dupont"
     view = bridge.get("/v1/notebook/page", params={"path": "Personnes/Marc Dupont.md"}, headers=AUTH).json()
     assert view["summary"] == "Ami d'enfance." and view["aliases"] == ["Marco"] and view["contact"] == "C-1"
+    # each fact split by the bridge too (Carnet v2 B2: the apps show `label`, `answer`, `when` as they come)
+    day = datetime.strptime(TODAY, "%Y-%m-%d")
+    when = f"noté le {day.day} {['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'][day.month - 1]}"
     assert view["sections"] == [{"id": "dates", "title": "Dates", "facts": [{"text": "Anniversaire : 14 novembre",
+                                 "label": "Anniversaire", "answer": "14 novembre", "when": when,
                                  "by": "Wellness", "date": TODAY, "item": True, "links": []}]}]
     assert [s["id"] for s in view["outline"]] == ["who", "dates", "family", "work", "tastes", "gifts", "agreed",
                                                    "exchanges", "remember", "other"]

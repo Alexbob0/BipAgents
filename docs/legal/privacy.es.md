@@ -464,7 +464,7 @@ Studio: la clave también está allí y,
 técnicamente, el proveedor y Kerfy Studio podrían acceder a ella; nuestro software no lee ni tu plaza ni sus copias, y
 solo lo haríamos si la ley nos obligara. Kerfy Studio guarda estas copias en **Scaleway** (Scaleway SAS, Francia;
 almacenamiento de objetos en París, región fr-par) sin poder leerlas: las de las 2 últimas horas, luego una por hora durante 48 horas, una por día durante
-30 días, una por semana durante 12 semanas. Se borran con tu plaza. En Scaleway, una versión sustituida o borrada de
+30 días, nada más antiguo. Se borran con tu plaza. En Scaleway, una versión sustituida o borrada de
 un archivo se guarda 30 días y luego se borra. Los datos se quedan en la Unión Europea.
 
 **Las copias de seguridad del guichet.** El guichet (tu cuenta, tu suscripción, los datos técnicos de las plazas)
@@ -713,7 +713,7 @@ de correos: todavía no en servicio; su país y la garantía aplicable se indica
 | Huella del dispositivo Android, calculada con una clave secreta (semana gratis) | 24 meses |
 | Dirección IP al reservar una semana gratis | Nunca se guarda; en memoria, como huella, 15 minutos como máximo |
 | Contenido de tu plaza | Durante la suscripción y después 30 días (3 días después de una semana gratis que no continuó) |
-| Copias de seguridad | 2 horas (todas), luego 48 horas (por hora), 30 días (diarias), 12 semanas (semanales); se borran con la plaza |
+| Copias de seguridad | 2 horas (todas), luego 48 horas (por hora), 30 días (diarias), nada más antiguo; se borran con la plaza |
 | Versiones sustituidas o borradas en Scaleway (copias de seguridad de las plazas, copias cifradas de la base de datos del guichet) | 30 días |
 | Imagen diaria de OVHcloud | Un punto por día, sustituido en un día aproximadamente después de reinstalar la plaza |
 | Datos técnicos de los servidores | Solo los últimos valores |

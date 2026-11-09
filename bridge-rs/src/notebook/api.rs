@@ -6,7 +6,14 @@
 //!                                              the trips within 30 days or under way, the records, the open proposals
 //!     GET    /v1/notebook/pages?kind=          a section's pages (kind: person, subject, trip, area, other), with what their card
 //!                                              shows (close, next_date, status, facts)
-//!     GET    /v1/notebook/search?q=            pages, and the facts that answer (for a short answer on top)
+//!     GET    /v1/notebook/search?q=&lang=      the facts that answer, ready to show ({label, answer, page, path, date,
+//!                                              when}: tools::answers, the agents' search too), then the pages
+//!     GET    /v1/notebook/offline              the copy the phone answers from offline (offline.rs; ETag, 304)
+//!     GET    /v1/notebook/known?agent=&lang=   « Ce que tes agents savent de toi » (known.rs)
+//!     POST   /v1/notebook/forget/preview       {texts? (≤ 5), page?, private?, card?}   « Oublie ça »: where it is, and a
+//!                                              token for 10 minutes, once (forget.rs)
+//!     POST   /v1/notebook/forget/confirm       {token}   erased everywhere (never the conversations)
+//!     POST   /v1/notebook/forget/cancel        {card}    the card an agent put in the conversation, dismissed
 //!     GET    /v1/notebook/page?path=           a page: frontmatter apart, « En bref », facts with attribution, links,
 //!                                              its `rev` (the app writes over what it read), `emails`, `phones`
 //!     POST   /v1/notebook/page                 {kind, title, private?}   a new page, its Markdown written by the bridge
@@ -166,7 +173,7 @@ async fn home(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response>
         Ok(json!({"language": lang, "shown_language": shown, "sections": sections, "recent": recent, "upcoming": upcoming, "archives": archives,
                   "dates": dates.into_iter().take(10).collect::<Vec<_>>(),
                   "inbox": inbox.len(), "settings": settings_view(&config), "trips": trips, "records": records,
-                  "proposals": proposals}))
+                  "proposals": proposals, "known_tile": super::known::tile(&config, &shown, crate::py::time_time())}))
     })
     .await?;
     Ok(web::ok(view))
@@ -256,39 +263,20 @@ async fn list_pages(State(state): State<AppState>, q: QueryMap) -> ApiResult<Res
 async fn search(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
     let config = state.config();
     let part = part_of(&q);
+    let shown = shown_language(&config, &q);
     let words = web::query_str(&q, "q", true, Some(200))?.unwrap_or_default();
     let view = blocking(move || {
         let w = super::words(&super::language(&config));
+        // the answers by the one rule the agents' search and the offline copy follow (offline.rs): split by the
+        // bridge, the apps show them as they come
+        let answers: Vec<Value> = super::tools::answers(&config, &[part], &words)
+            .into_iter()
+            .map(|a| {
+                json!({"label": a.label, "answer": a.answer, "page": a.page, "path": a.path, "date": a.date,
+                       "when": super::offline::when(&a.date, &shown), "part": a.part.as_str()})
+            })
+            .collect();
         let found = super::search(&config, &[part], &words, "");
-        let wanted: Vec<String> = super::fold(&words).split(' ').filter(|x| x.len() > 1).map(str::to_string).collect();
-        // the facts that answer: the words not in the page's name found in the fact (« anniversaire marc » → Marc's
-        // birthday line), for a short answer on top
-        let mut answers: Vec<Value> = Vec::new();
-        for (part, path, page, _) in &found {
-            let names = super::fold(&format!("{} {}", page.title, page.aliases().join(" ")));
-            let rest: Vec<&String> = wanted.iter().filter(|x| !names.contains(x.as_str())).collect();
-            if rest.is_empty() {
-                continue;
-            }
-            for (section, facts) in page.sections() {
-                if super::fold(&section) == super::fold(w.brief) {
-                    continue;
-                }
-                for fact in facts {
-                    let folded = super::fold(&format!("{section} {}", fact.text));
-                    if rest.iter().all(|x| folded.contains(x.as_str())) {
-                        let short =
-                            fact.text.split_once(':').map(|(_, v)| v.trim().to_string()).filter(|v| !v.is_empty());
-                        answers.push(
-                            json!({"page": page.title, "path": path, "part": part.as_str(), "section": section,
-                                            "fact": fact.text, "answer": short.unwrap_or_else(|| fact.text.clone()),
-                                            "by": fact.who, "date": fact.date}),
-                        );
-                    }
-                }
-            }
-        }
-        answers.truncate(5);
         let pages: Vec<Value> = found
             .iter()
             .take(50)
@@ -298,6 +286,7 @@ async fn search(State(state): State<AppState>, q: QueryMap) -> ApiResult<Respons
                 v
             })
             .collect();
+        let (wanted, _) = super::lexicon::query(&words);
         let tasks: Vec<Value> = super::tasks(&config, part)
             .iter()
             .filter(|t| !wanted.is_empty() && wanted.iter().all(|x| super::fold(&t.title).contains(x.as_str())))
@@ -307,6 +296,144 @@ async fn search(State(state): State<AppState>, q: QueryMap) -> ApiResult<Respons
     })
     .await?;
     Ok(web::ok(view))
+}
+
+/// The copy the phone answers from offline (contract.md §6): 304 when the app has it already.
+async fn offline(State(state): State<AppState>, q: QueryMap, headers: axum::http::HeaderMap) -> ApiResult<Response> {
+    let config = state.config();
+    let shown = shown_language(&config, &q);
+    let (body, etag) = blocking(move || Ok(super::offline::snapshot(&config, &shown, crate::py::time_time()))).await?;
+    let unchanged = headers.get("if-none-match").and_then(|v| v.to_str().ok()).is_some_and(|v| v.trim() == etag);
+    let mut response = if unchanged {
+        let mut r = Response::new(Body::empty());
+        *r.status_mut() = axum::http::StatusCode::NOT_MODIFIED;
+        r
+    } else {
+        web::ok(body)
+    };
+    if let Ok(v) = HeaderValue::from_str(&etag) {
+        response.headers_mut().insert("etag", v);
+    }
+    response.headers_mut().insert("cache-control", HeaderValue::from_static("no-store"));
+    Ok(response)
+}
+
+async fn known(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
+    let config = state.config();
+    let shown = shown_language(&config, &q);
+    let agent = web::query_str(&q, "agent", false, Some(80))?.unwrap_or_default();
+    let view = blocking(move || Ok(super::known::view(&config, &agent, &shown, crate::py::time_time()))).await?;
+    Ok(web::ok(view))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ForgetPreview {
+    #[serde(default)]
+    pub texts: Vec<String>,
+    #[serde(default)]
+    pub page: Option<String>,
+    #[serde(default, deserialize_with = "web::lax::bool")]
+    pub private: bool,
+    /// The card an agent put in the conversation (`bip-forget-…`): its request, confirmed here.
+    #[serde(default)]
+    pub card: Option<String>,
+}
+
+impl Validate for ForgetPreview {
+    fn validate(&self, errors: &mut Vec<FieldError>) {
+        web::check_max_items(errors, "texts", Some(&self.texts), super::forget::TEXTS_MAX);
+        for text in &self.texts {
+            check_max_len(errors, "texts", Some(text), 500);
+        }
+        check_max_len(errors, "page", self.page.as_deref(), 200);
+        check_max_len(errors, "card", self.card.as_deref(), 40);
+    }
+}
+
+fn refused(refusal: super::forget::Refused, lang: &str) -> HttpError {
+    use super::forget::Refused;
+    match refusal {
+        Refused::PageGone => carnet_error(404, "page_gone", lang, json!({})),
+        Refused::Several(names) => {
+            let text = match lang {
+                "fr" => format!("Plusieurs pages : {}.", names.join(", ")),
+                "de" => format!("Mehrere Seiten: {}.", names.join(", ")),
+                "es" => format!("Varias páginas: {}.", names.join(", ")),
+                _ => format!("Several pages: {}.", names.join(", ")),
+            };
+            HttpError::json(409, json!({"code": "several_pages", "text": text, "pages": names}))
+        }
+        Refused::Nothing => {
+            HttpError::json(404, json!({"code": "nothing_found", "text": super::forget::texts(lang).nothing}))
+        }
+    }
+}
+
+/// « Oublie ça »: what would be erased, and the token that erases it (10 minutes, once). The only route that gives a
+/// token: an agent's `notebook_write {forget}` gets a card, never one.
+async fn forget_preview(State(state): State<AppState>, q: QueryMap, Json(body): Json<ForgetPreview>) -> ApiResult<Response> {
+    let config = state.config();
+    let shown = shown_language(&config, &q);
+    let person = state.households.name();
+    let lang = shown.clone();
+    let out = blocking(move || {
+        let request = match body.card.as_deref() {
+            Some(card) => match super::forget::card_request(&config, card) {
+                Some(r) => r,
+                None => return Ok(Err(super::forget::Refused::Nothing)),
+            },
+            None => super::forget::Request { texts: body.texts, page: body.page, private: body.private },
+        };
+        Ok(super::forget::preview(&config, &request, &lang, &person, body.card))
+    })
+    .await?;
+    match out {
+        Ok(v) => Ok(web::ok(v)),
+        Err(r) => Err(refused(r, &shown)),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ForgetConfirm {
+    pub token: String,
+}
+
+impl Validate for ForgetConfirm {
+    fn validate(&self, errors: &mut Vec<FieldError>) {
+        check_max_len(errors, "token", Some(&self.token), 64);
+    }
+}
+
+async fn forget_confirm(State(state): State<AppState>, q: QueryMap, Json(body): Json<ForgetConfirm>) -> ApiResult<Response> {
+    let config = state.config();
+    let shown = shown_language(&config, &q);
+    let person = state.households.name();
+    let done = blocking(move || super::forget::confirm(&config, body.token.trim(), &person)).await?;
+    match done {
+        Some(text) => Ok(web::ok(json!({"done": true, "text": text}))),
+        None => Err(carnet_error(410, "token_expired", &shown, json!({}))),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ForgetCancel {
+    pub card: String,
+}
+
+impl Validate for ForgetCancel {
+    fn validate(&self, errors: &mut Vec<FieldError>) {
+        check_max_len(errors, "card", Some(&self.card), 40);
+    }
+}
+
+async fn forget_cancel(State(state): State<AppState>, Json(body): Json<ForgetCancel>) -> ApiResult<Response> {
+    let config = state.config();
+    let found = blocking(move || Ok(super::forget::set_card(&config, &body.card, "cancelled")?)).await?;
+    if found {
+        Ok(web::no_content())
+    } else {
+        Err(HttpError::not_found())
+    }
 }
 
 /// A page for the app: its frontmatter apart, its « En bref », its sections with each fact's attribution, its
@@ -351,7 +478,9 @@ pub fn page_view_in(config: &Config, part: Part, path: &str, shown: &str) -> any
                 .iter()
                 .map(|f| {
                     let links: Vec<Value> = super::links_in(&f.text).iter().map(|l| resolve(l)).collect();
-                    json!({"text": f.text, "by": if f.who.is_empty() { Value::Null } else { json!(f.who) },
+                    let (label, answer) = super::lexicon::split_label(&f.text).unwrap_or_default();
+                    json!({"text": f.text, "label": label, "answer": answer, "when": super::offline::when(&f.date, shown),
+                           "by": if f.who.is_empty() { Value::Null } else { json!(f.who) },
                            "date": if f.date.is_empty() { Value::Null } else { json!(f.date) }, "item": f.item, "links": links})
                 })
                 .collect();
@@ -460,6 +589,14 @@ fn error_text(code: &str, lang: &str) -> &'static str {
         ("number_refused", "de") => "Nummern werden nie gespeichert.",
         ("number_refused", "es") => "Los números nunca se guardan.",
         ("number_refused", _) => "Numbers are never kept.",
+        ("token_expired", "fr") => "C'est trop ancien. Recommence.",
+        ("token_expired", "de") => "Das ist zu alt. Fang neu an.",
+        ("token_expired", "es") => "Es demasiado antiguo. Empieza de nuevo.",
+        ("token_expired", _) => "That's too old. Start again.",
+        ("page_gone", "fr") => "Page oubliée",
+        ("page_gone", "de") => "Vergessene Seite",
+        ("page_gone", "es") => "Página olvidada",
+        ("page_gone", _) => "Forgotten page",
         _ => "",
     }
 }
@@ -1012,6 +1149,11 @@ pub fn router() -> Router<AppState> {
         .route("/notebook", get(home))
         .route("/notebook/pages", get(list_pages))
         .route("/notebook/search", get(search))
+        .route("/notebook/offline", get(offline))
+        .route("/notebook/known", get(known))
+        .route("/notebook/forget/preview", post(forget_preview))
+        .route("/notebook/forget/confirm", post(forget_confirm))
+        .route("/notebook/forget/cancel", post(forget_cancel))
         .route("/notebook/page", get(read_page).post(new_page).delete(delete_page))
         .route("/notebook/section", axum::routing::put(write_section))
         .route("/notebook/history", get(history))

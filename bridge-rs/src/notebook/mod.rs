@@ -38,13 +38,16 @@
 pub mod api;
 pub mod archive;
 pub mod fill;
+pub mod forget;
 pub mod groups;
+pub mod known;
 pub mod lexicon;
 pub mod records;
 pub mod relanguage;
 pub mod subscriptions;
 pub mod template;
 pub mod news;
+pub mod offline;
 pub mod reads;
 pub mod tidy;
 pub mod tools;
@@ -1372,11 +1375,7 @@ fn commit_with(
         entry.insert("run".into(), json!(run));
     }
     entry.extend(extra);
-    let log = history_dir(config).join("log.jsonl");
-    std::fs::create_dir_all(history_dir(config))?;
-    let mut fh = std::fs::OpenOptions::new().append(true).create(true).open(&log)?;
-    fh.write_all((py::Dumps::new().unicode().dumps(&Value::Object(entry.clone())) + "\n").as_bytes())?;
-    py::chmod(&log.to_string_lossy(), 0o600)?;
+    append_log(config, &entry)?;
     // a tasks page's change, whoever made it and however (a tool, the app, a restore, a page deleted): the tasks that
     // left the Carnet take their phone reminders with them (moved under « Archivées » or to the other part: not gone)
     if is_tasks_path(path) {
@@ -1394,6 +1393,15 @@ fn commit_with(
         }
     }
     Ok(entry)
+}
+
+/// One line added to `log.jsonl` (0600).
+fn append_log(config: &Config, entry: &Dict) -> std::io::Result<()> {
+    let log = history_dir(config).join("log.jsonl");
+    std::fs::create_dir_all(history_dir(config))?;
+    let mut fh = std::fs::OpenOptions::new().append(true).create(true).open(&log)?;
+    fh.write_all((py::Dumps::new().unicode().dumps(&Value::Object(entry.clone())) + "\n").as_bytes())?;
+    py::chmod(&log.to_string_lossy(), 0o600)
 }
 
 /// The changes, the newest first: all of them, a part's, or one page's.
@@ -1665,6 +1673,8 @@ pub(crate) fn note_locked(
     let is_self = kind == "self" || self_word(&title);
     // a health fact never goes to the shared part (lexicon::is_health): to the private health part when an agent of
     // the person's holds it, else to « À ranger », which the other agents don't read (Carnet v2, socle §0)
+    // what the person asked to forget is not written back by an old turn, even said another way (forget.rs)
+    let facts: Vec<String> = facts.iter().filter(|f| !forget::is_forgotten(config, f, &title)).cloned().collect();
     let (health_facts, facts): (Vec<String>, Vec<String>) = if part == Part::Main {
         facts.iter().cloned().partition(|f| lexicon::is_health(f))
     } else {
@@ -3824,7 +3834,8 @@ fn inbox_add_as(config: &Config, who: &Who, entries: &[String], action: &str) ->
             p
         }
     };
-    let (body, added) = add_facts(&page.body, &who.name, entries, who, &today());
+    let entries: Vec<String> = entries.iter().filter(|e| !forget::is_forgotten(config, e, "")).cloned().collect();
+    let (body, added) = add_facts(&page.body, &who.name, &entries, who, &today());
     if added.is_empty() {
         return Ok(0);
     }

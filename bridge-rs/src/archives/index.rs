@@ -1,6 +1,11 @@
 //! An archive's full-text index: one SQLite file (FTS5, `unicode61 remove_diacritics 2`: « eleve » finds « élève »).
 //! Contentless: the words are indexed, the texts are not kept (a hit's snippet is read again from its file, or fetched
 //! from the mailbox), so the index stays a fraction of the archive's size. Derived data: deleted, it is made again.
+//!
+//! « Oublie ça » (notebook/forget.rs): the documents holding a forgotten fact are taken out, and their keys written in
+//! `<index>.forgotten` (one per line, 0600), which survives a rebuild: a resync never puts them back (`insert`).
+
+use std::collections::HashSet;
 
 use std::path::{Path, PathBuf};
 
@@ -14,6 +19,8 @@ const SCHEMA: &str = "2";
 pub struct Index {
     pub conn: Connection,
     pub path: PathBuf,
+    /// The keys « Oublie ça » took out (never indexed again).
+    forgotten: HashSet<String>,
 }
 
 /// One document found.
@@ -43,6 +50,20 @@ pub struct Row {
 /// mailbox), the same across rebuilds.
 pub fn key_of(loc: &str) -> String {
     hex::encode(Sha256::digest(loc.as_bytes()))[..16].to_string()
+}
+
+fn forgotten_path(index: &Path) -> PathBuf {
+    index.with_extension("forgotten")
+}
+
+fn forgotten_keys(index: &Path) -> HashSet<String> {
+    std::fs::read_to_string(forgotten_path(index))
+        .unwrap_or_default()
+        .lines()
+        .map(str::trim)
+        .filter(|k| !k.is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 /// The schema's version written in `meta`, None when there is no `meta` table yet.
@@ -94,7 +115,8 @@ impl Index {
         }
         let conn = Connection::open(path)?;
         conn.busy_timeout(std::time::Duration::from_secs(30))?;
-        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")?;
+        // secure_delete: a document taken out (« Oublie ça ») leaves nothing in the file's free pages
+        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA secure_delete=ON;")?;
         // The app's view opens the index while the update writes it: a failed read is an error, never a reason to
         // start the tables again (that wiped a finished index), and the tables are made once, under the write lock.
         if schema_of(&conn)?.as_deref() != Some(SCHEMA) {
@@ -106,7 +128,8 @@ impl Index {
             })?;
         }
         std::fs::set_permissions(path, std::os::unix::fs::PermissionsExt::from_mode(0o600))?;
-        Ok(Index { conn, path: path.to_path_buf() })
+        let forgotten = forgotten_keys(path);
+        Ok(Index { conn, path: path.to_path_buf(), forgotten })
     }
 
     /// Every document and meta value dropped (the archive's source changed), in place: the files stay, as other
@@ -181,7 +204,33 @@ impl Index {
         rows.collect()
     }
 
-    /// One document added (or replaced).
+    /// The documents matching `expr` (an FTS5 query): their key and title.
+    pub fn matching(&self, expr: &str) -> rusqlite::Result<Vec<(String, String)>> {
+        let mut stmt = self.conn.prepare("SELECT d.key, d.title FROM fts JOIN docs d ON d.id = fts.rowid WHERE fts MATCH ?1")?;
+        let rows = stmt.query_map([expr], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        rows.collect()
+    }
+
+    /// « Oublie ça »: the documents matching `expr` taken out of the index and never indexed again. Returns how many.
+    pub fn forget(&mut self, expr: &str) -> anyhow::Result<usize> {
+        let keys: Vec<String> = self.matching(expr)?.into_iter().map(|(k, _)| k).collect();
+        if keys.is_empty() {
+            return Ok(0);
+        }
+        for key in &keys {
+            self.remove_where("key=?1", key)?;
+            self.forgotten.insert(key.clone());
+        }
+        let mut all: Vec<&String> = self.forgotten.iter().collect();
+        all.sort();
+        let text: String = all.iter().map(|k| format!("{k}\n")).collect();
+        crate::py::write_with_mode(&forgotten_path(&self.path).to_string_lossy(), text.as_bytes(), 0o600)?;
+        // and out of the journal too
+        self.conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+        Ok(keys.len())
+    }
+
+    /// One document added (or replaced); never one « Oublie ça » took out.
     #[allow(clippy::too_many_arguments)]
     pub fn insert(
         &self,
@@ -194,6 +243,9 @@ impl Index {
         pass: i64,
     ) -> rusqlite::Result<()> {
         self.remove_loc(loc)?;
+        if self.forgotten.contains(&key_of(loc)) {
+            return Ok(());
+        }
         let preview = extract::cut(&crate::tools_knowledge::squeeze(&doc.text), extract::PREVIEW_CHARS);
         self.conn.execute(
             "INSERT INTO docs(key, loc, file, size, mtime, kind, title, sender, date, category, preview, seen)
@@ -422,5 +474,27 @@ mod tests {
         let (expr, _) = match_expr("train", false).unwrap();
         assert_eq!(index.search(Some(&expr), "", "", 10, false).unwrap().1, 0);
         assert_eq!(index.count(), 1);
+    }
+
+    #[test]
+    fn a_forgotten_document_is_never_indexed_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("i.sqlite");
+        let doc = Doc { title: "Chaussures".into(), sender: "Shop".into(), date: "2024-05-02".into(), text: "Léa pointure 36".into() };
+        let mut index = Index::open(&path).unwrap();
+        index.insert("a.md", "a.md", 1, 1, "note", &doc, 1).unwrap();
+        let (expr, _) = match_expr("lea 36", false).unwrap();
+        assert_eq!(index.forget(&expr).unwrap(), 1);
+        assert_eq!(index.count(), 0);
+        // the archive rebuilt (its tables made again), then synced: the document stays out
+        index.reset().unwrap();
+        drop(index);
+        let index = Index::open(&path).unwrap();
+        index.insert("a.md", "a.md", 1, 1, "note", &doc, 2).unwrap();
+        assert_eq!(index.count(), 0);
+        index.insert("b.md", "b.md", 1, 1, "note", &Doc { text: "autre".into(), ..doc.clone() }, 2).unwrap();
+        assert_eq!(index.count(), 1);
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(std::fs::metadata(forgotten_path(&path)).unwrap().permissions().mode() & 0o777, 0o600);
     }
 }

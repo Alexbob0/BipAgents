@@ -213,6 +213,29 @@ pub fn purge(config: &Config, now: f64) -> std::io::Result<usize> {
     Ok(gone)
 }
 
+/// « Oublie ça » of a whole page (forget.rs): its reads dropped from the journal. Returns how many.
+pub fn drop_page(config: &Config, id: &str) -> std::io::Result<usize> {
+    let file = path(config);
+    let Ok(text) = tk::read_text(&file) else { return Ok(0) };
+    let mut kept: Vec<&str> = Vec::new();
+    let mut gone = 0;
+    for line in text.lines() {
+        let page = serde_json::from_str::<Value>(line).ok().and_then(|v| v.get("page_id").and_then(Value::as_str).map(str::to_string));
+        if page.as_deref() == Some(id) {
+            gone += 1;
+        } else {
+            kept.push(line);
+        }
+    }
+    if gone > 0 {
+        let body = if kept.is_empty() { String::new() } else { kept.join("\n") + "\n" };
+        let temporary = file.with_extension("tmp");
+        py::write_with_mode(&temporary.to_string_lossy(), body.as_bytes(), 0o600)?;
+        std::fs::rename(&temporary, &file)?;
+    }
+    Ok(gone)
+}
+
 // -- the line under the answer ---------------------------------------------------------------------------------------
 
 /// A turn of a conversation: its first item's id, its Hermes session, from when to when.
@@ -242,7 +265,7 @@ fn texts(lang: &str) -> Texts {
 }
 
 /// A page as the line names it: a person by their first name, the person's own page « Toi », else its title.
-fn short(page: &super::Page, lang: &str) -> String {
+pub(crate) fn short(page: &super::Page, lang: &str) -> String {
     match page.kind().as_str() {
         "self" => super::words(lang).me.to_string(),
         "person" => page.title.split_whitespace().next().unwrap_or(&page.title).to_string(),
