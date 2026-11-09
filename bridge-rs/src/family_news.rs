@@ -298,7 +298,7 @@ pub async fn members(http: &reqwest::Client, config: &Config) -> Vec<Member> {
         let id = h.get("id").map(py::py_str).unwrap_or_default();
         let name = h.get("name").map(py::py_str).unwrap_or_default();
         let entry = linked.get(&id).unwrap_or_default();
-        let url = entry.get("url").map(py::py_str).unwrap_or_default();
+        let url = crate::family_relay::reach_url(&entry);
         let key = entry.get("key_out").map(py::py_str).unwrap_or_default();
         let http = crate::door_tls::household_client(http, &entry);
         async move {
@@ -617,7 +617,7 @@ pub async fn send(
         let body = json!({"agent": target, "from_agent": tk::in_note_line(&shown), "text": tk::in_note(&text)});
         async move {
             let Some(entry) = entry else { return false };
-            let url = entry.get("url").map(py::py_str).unwrap_or_default();
+            let url = crate::family_relay::reach_url(&entry);
             let key = entry.get("key_out").map(py::py_str).unwrap_or_default();
             match crate::door_tls::household_client(http, &entry)
                 .post(format!("{url}/family/tell"))

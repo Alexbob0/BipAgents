@@ -288,6 +288,23 @@ impl Households {
         Ok(true)
     }
 
+    /// One field of a linked household's entry (family_relay.rs: `relay`, `pull`); false when there is no such
+    /// household.
+    pub fn mark(&self, household: &str, key: &str, value: Value) -> anyhow::Result<bool> {
+        let mut data = self.load();
+        let Some(entry) = data
+            .get_mut("households")
+            .and_then(Value::as_object_mut)
+            .and_then(|h| h.get_mut(household))
+            .and_then(Value::as_object_mut)
+        else {
+            return Ok(false);
+        };
+        entry.insert(key.into(), value);
+        self.save(&data)?;
+        Ok(true)
+    }
+
     pub fn get(&self, household: &str) -> Option<Dict> {
         let data = self.load();
         data.get("households")?.as_object()?.get(household)?.as_object().cloned()
@@ -374,9 +391,60 @@ pub fn own_url(config: &Config) -> Option<String> {
     config.public_url.clone()
 }
 
+/// An address the internet can't reach: a home network's, a tailnet's (100.64.0.0/10, `*.ts.net`), a link-local one,
+/// a local name (`.local`, `.lan`, `.home.arpa`, `.internal`, a single label). Loopback is not counted (one machine,
+/// tests). A bridge at such an address asks the other household to keep its calls for it (family_relay.rs).
+pub fn private_address(url: &str) -> bool {
+    let Ok(parsed) = url::Url::parse(url) else { return false };
+    match parsed.host() {
+        Some(url::Host::Ipv4(ip)) => {
+            let o = ip.octets();
+            ip.is_private() || ip.is_link_local() || (o[0] == 100 && (64..128).contains(&o[1]))
+        }
+        Some(url::Host::Ipv6(ip)) => {
+            let first = ip.segments()[0];
+            (first & 0xfe00) == 0xfc00 || (first & 0xffc0) == 0xfe80
+        }
+        Some(url::Host::Domain(name)) => {
+            let name = name.trim_end_matches('.').to_ascii_lowercase();
+            if name == "localhost" || name.ends_with(".localhost") {
+                return false;
+            }
+            !name.contains('.')
+                || [".ts.net", ".local", ".lan", ".home.arpa", ".internal", ".home"].iter().any(|s| name.ends_with(s))
+        }
+        None => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn addresses_the_internet_cannot_reach() {
+        for url in [
+            "http://100.91.112.69:8642",
+            "https://aibox.tail1234.ts.net:8642",
+            "http://192.168.1.20:8642",
+            "http://10.0.0.4",
+            "http://aibox.local:8642",
+            "http://aibox:8642",
+            "http://[fd7a:115c::1]:8642",
+        ] {
+            assert!(private_address(url), "{url}");
+        }
+        for url in [
+            "https://k3j9.p.bipagents.com",
+            "https://203.0.113.4:443",
+            "http://127.0.0.1:8642",
+            "http://localhost:8642",
+            "http://100.128.0.1",
+            "not a url",
+        ] {
+            assert!(!private_address(url), "{url}");
+        }
+    }
 
     #[test]
     fn slugs_and_targets() {

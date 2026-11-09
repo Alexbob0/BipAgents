@@ -32,7 +32,8 @@ pub fn limit_for(path: &str) -> Option<u64> {
     if path == crate::files::UPLOAD_PATH || path == "/v1/import/archive" {
         return None;
     }
-    if path.starts_with("/hermes/") {
+    // a home's answer to a call its place kept for it (family_relay.rs): a shared file can be in it
+    if path.starts_with("/hermes/") || path.starts_with("/family/relay/answer/") {
         return Some(HERMES_BYTES);
     }
     let import = path.starts_with("/v1/import/whatsapp/")

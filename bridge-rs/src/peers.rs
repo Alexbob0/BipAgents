@@ -818,7 +818,7 @@ async fn to_household(
         }
     }
     tracing::info!(sender = %sender, target = %target, "household message");
-    let url = format!("{}/family/p/{agent}/{path}", household.get("url").map(crate::py::py_str).unwrap_or_default());
+    let url = format!("{}/family/p/{agent}/{path}", crate::family_relay::reach_url(household));
     let http = crate::door_tls::household_client(&state.http, household);
     forward_with(&http, method, &url, query, body, headers).await
 }
@@ -953,6 +953,13 @@ async fn family_accept(State(state): State<AppState>, request: Request) -> ApiRe
     let fingerprint = Some(fingerprint.as_str()).filter(|f| !f.is_empty());
     match state.households.accept(&code, &name, &url, &key, fingerprint, current.as_deref()) {
         Ok(mut answer) => {
+            // their address can't be reached from here (a home): their bridge will fetch our calls (family_relay.rs)
+            if body.get("pull").and_then(Value::as_bool) == Some(true) {
+                let household = crate::households::slug(&name);
+                if state.households.mark(&household, "relay", json!(crate::family_relay::new_token()))? {
+                    answer.insert("relay".into(), json!(true));
+                }
+            }
             family_tools_changed(&state);
             if let Some(own) = crate::door_tls::door_fingerprint(&state.config()) {
                 answer.insert("fingerprint".into(), json!(own));
@@ -1196,6 +1203,23 @@ async fn join(State(state): State<AppState>, request: Request) -> ApiResult<Resp
     if let Some(own) = crate::door_tls::door_fingerprint(&config) {
         payload["fingerprint"] = json!(own);
     }
+    // our address can't be reached from the internet (a home): theirs keeps its calls for us (family_relay.rs)
+    let pull = crate::households::private_address(&mine);
+    if pull {
+        payload["pull"] = json!(true);
+    }
+    // theirs can't be reached from here: a home's invitation scanned on a place of the offer (the apps say who
+    // should scan whose invitation instead)
+    let out_of_reach = || {
+        HttpError::json(
+            502,
+            json!({"code": "their_side_unreachable", "private": crate::households::private_address(&url),
+                   "message": "their side does not answer right now: try again later"}),
+        )
+    };
+    if config.cloud && crate::households::private_address(&url) {
+        return Err(out_of_reach()); // a place of the offer never reaches a home network or a tailnet
+    }
     let mut call = crate::door_tls::client_for(&state.http, fingerprint.as_deref())
         .post(format!("{url}/family/accept"))
         .timeout(std::time::Duration::from_secs(15))
@@ -1211,20 +1235,24 @@ async fn join(State(state): State<AppState>, request: Request) -> ApiResult<Resp
     if let Some(current) = current {
         call = call.bearer_auth(current);
     }
-    let resp = call.send().await.map_err(|_| HttpError::new(502, "their side does not answer right now: try again later"))?;
+    let resp = call.send().await.map_err(|_| out_of_reach())?;
     if resp.status().as_u16() == 409 {
         return Err(HttpError::new(409, "their bridge is already linked to a household with this name"));
     }
     if resp.status().as_u16() != 200 {
         return Err(HttpError::new(403, "the invitation was refused (expired?)"));
     }
-    let bytes = resp.bytes().await.map_err(|_| HttpError::new(502, "their side does not answer right now: try again later"))?;
+    let bytes = resp.bytes().await.map_err(|_| out_of_reach())?;
     let answer: Value =
         serde_json::from_slice(&bytes).map_err(|e| HttpError::from(anyhow::anyhow!("JSONDecodeError: {e}")))?;
     let name = body_str(&answer, "name")?;
     let key_in = body_str(&answer, "key")?;
     let household = match state.households.joined(&name, &url, &key, &key_in, fingerprint.as_deref()) {
         Ok(h) => {
+            // they keep their calls for us: we fetch them (an older bridge doesn't answer `relay`)
+            if pull && answer.get("relay").and_then(Value::as_bool) == Some(true) {
+                state.households.mark(&h, "pull", json!(true))?;
+            }
             family_tools_changed(&state);
             h
         }

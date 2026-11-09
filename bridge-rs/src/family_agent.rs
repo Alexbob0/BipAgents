@@ -563,7 +563,7 @@ async fn ask(
     body: Option<Value>,
 ) -> Option<(u16, Value)> {
     let entry = state.households.get(household)?;
-    let url = format!("{}/family/fa{path}", entry.get("url").map(py::py_str).unwrap_or_default());
+    let url = format!("{}/family/fa{path}", crate::family_relay::reach_url(&entry));
     let key = entry.get("key_out").map(py::py_str).unwrap_or_default();
     let http = crate::door_tls::household_client(&state.http, &entry);
     let mut request = http.request(method, url).timeout(Duration::from_secs(15)).bearer_auth(key);
@@ -683,7 +683,7 @@ async fn tell_all(state: &AppState, agent: &AgentConfig, shared: bool) {
     for h in households(&config).public() {
         let household = h.get("id").map(py::py_str).unwrap_or_default();
         let Some(entry) = state.households.get(&household) else { continue };
-        let url = entry.get("url").map(py::py_str).unwrap_or_default();
+        let url = crate::family_relay::reach_url(&entry);
         let key = entry.get("key_out").map(py::py_str).unwrap_or_default();
         let body = json!({"agent": agent.name, "name": agent.display_name, "category": agent.category,
                           "color": agent.color, "shared": shared, "family": true});
@@ -1004,7 +1004,7 @@ pub fn after_unlink(state: &AppState, household: &str, entry: Option<Dict>) {
     let http = state.http.clone();
     let household = household.to_string();
     state.spawn(async move {
-        let url = entry.get("url").map(py::py_str).unwrap_or_default();
+        let url = crate::family_relay::reach_url(&entry);
         let key = entry.get("key_out").map(py::py_str).unwrap_or_default();
         let sent = crate::door_tls::household_client(&http, &entry)
             .post(format!("{url}/family/fa/handover"))
