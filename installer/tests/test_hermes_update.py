@@ -1,7 +1,19 @@
 import subprocess
 from types import SimpleNamespace
 
+import pytest
+
 from bipinstall import hermes, update
+
+
+@pytest.fixture(autouse=True)
+def fictional_home(tmp_path, monkeypatch):
+    """Every test here in a fictional account: never the Mac's ~/.config/bipagents or ~/.hermes."""
+    home = tmp_path / "account"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("HERMES_HOME", raising=False)   # ~/.hermes of that account, not one set outside
+    return home
 
 
 def repo_with_patches(tmp_path):
@@ -103,3 +115,29 @@ def test_without_yes_it_asks_first(tmp_path, monkeypatch):
     code, ran = update_run(tmp_path, monkeypatch, [])
     assert code == 1 and len(asked) == 1
     assert not [c for c in ran if isinstance(c, list) and "--keep-stash" in c]
+
+
+def check_run(tmp_path, monkeypatch, capsys, pinned):
+    """`hermes-update --check` with no existing-hermes.json (the fictional home), on a Hermes that is or isn't the pin."""
+    monkeypatch.setattr(update, "check_agents", lambda agents, expect_clarify: {})
+    checkout = tmp_path / "hermes-agent"
+    if pinned:   # the pin is what the checkout is on (repo_with_patches makes it inside update_run)
+        monkeypatch.setattr(hermes, "HERMES_COMMIT", "HEAD")
+    else:        # a version this checkout has never seen, like Alex's own 517b5e10f against bf0203a794
+        monkeypatch.setattr(hermes, "HERMES_COMMIT", "bf0203a794")
+    code, ran = update_run(tmp_path, monkeypatch, ["--check"])
+    assert code == 0 and not [c for c in ran if isinstance(c, list) and "--keep-stash" in c]
+    assert checkout.exists()
+    return capsys.readouterr().out
+
+
+def test_check_offers_the_move_on_a_foreign_hermes_without_the_record(tmp_path, monkeypatch, capsys):
+    out = check_run(tmp_path, monkeypatch, capsys, pinned=False)
+    assert "is NOT the version BipAgents is built and tested on" in out
+    assert "bipagents hermes-update --to-bipagents" in out
+    assert "backs up" in out and "goes back as it was by itself" in out
+
+
+def test_check_says_nothing_of_the_move_on_bipagents_version(tmp_path, monkeypatch, capsys):
+    out = check_run(tmp_path, monkeypatch, capsys, pinned=True)
+    assert "--to-bipagents" not in out and "NOT the version" not in out
