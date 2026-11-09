@@ -199,7 +199,9 @@ une toutes les 5 minutes), un autre composant l'a demandé, ou, à l'heure la pl
 `window_start` 1 h et `window_end` 6 h, ou `hour`), son Hermes prend plus de `hermes_mb` (900) Mo ou `hermes_growth`
 (2,5) fois sa taille après le démarrage, ou son navigateur plus de `chrome_mb` (1536) Mo. Au plus une fois par heure,
 une fois par nuit pour la mémoire. `[agent_restart] enabled = false` le coupe ; il est coupé d'office sur un Hermes que
-vous aviez avant BipAgents. Le dernier redémarrage et sa raison sont dans `GET /v1/status` (`last_restart`). Un tour
+vous aviez avant BipAgents, sauf pour une raison : après une mise à jour, une passerelle qui fait encore tourner l'aide
+du navigateur de l'ancien pont (`bip-browser-mcp`) redémarre dès qu'elle est au repos, sans la limite horaire, pour que
+le navigateur des agents tourne avec cette version. Le dernier redémarrage et sa raison sont dans `GET /v1/status` (`last_restart`). Un tour
 compte même quand seul son Hermes le connaît (`GET /health/detailed` : un tour commencé avant que le pont redémarre) ;
 un redémarrage demandé pendant des tours les attend au plus `turn_wait_seconds` (600), puis se fait quand même, et les
 raisons demandées entre-temps font ce seul redémarrage.

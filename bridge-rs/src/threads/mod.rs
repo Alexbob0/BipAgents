@@ -698,6 +698,7 @@ impl Threads {
         self.with_sends(agent, thread, &mut items, &queued).await?;
         self.with_files(agent, thread, &mut items).await?;
         with_maps_once(self.config.get(), agent, &mut items).await;
+        without_missing_pages(self.config.get(), &mut items).await;
         with_document_sizes(agent, &mut items).await;
         Ok(items)
     }
@@ -1468,6 +1469,43 @@ async fn with_maps_once(config: Arc<crate::config::Config>, agent: &AgentConfig,
             atts.retain(|a| {
                 own_page(a, &prefix).and_then(crate::made_files::map_of_page).is_none_or(|id| !maps.contains(&id))
             });
+        }
+    }
+}
+
+/// The bridge's pages an item names that aren't kept here left out (pages::missing: a name the model made up, a page
+/// deleted since): never a page that opens on a 404. Its ids numbered again.
+async fn without_missing_pages(config: Arc<crate::config::Config>, items: &mut [Item]) {
+    let prefix = format!("{}/", crate::pages::PREFIX);
+    let wanted: Vec<String> = items
+        .iter()
+        .filter_map(|i| i.body.get("attachments").and_then(Value::as_array))
+        .flatten()
+        .filter_map(|a| a.get("path").and_then(Value::as_str).filter(|p| p.starts_with(&prefix)).map(str::to_string))
+        .collect();
+    if wanted.is_empty() {
+        return;
+    }
+    let missing = tokio::task::spawn_blocking(move || {
+        wanted.into_iter().filter(|p| crate::pages::missing(&config, p)).collect::<HashSet<String>>()
+    })
+    .await
+    .unwrap_or_default();
+    if missing.is_empty() {
+        return;
+    }
+    for item in items.iter_mut() {
+        let Some(Value::Array(atts)) = item.body.get_mut("attachments") else { continue };
+        let before = atts.len();
+        atts.retain(|a| !a.get("path").and_then(Value::as_str).is_some_and(|p| missing.contains(p)));
+        if atts.len() == before {
+            continue;
+        }
+        for (n, a) in atts.iter_mut().enumerate() {
+            a["id"] = json!(format!("{}.a{n}", item.id));
+        }
+        if atts.is_empty() {
+            item.body.remove("attachments");
         }
     }
 }

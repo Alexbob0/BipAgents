@@ -1031,16 +1031,75 @@ pub fn set_vault_only(home: &str, agent: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// The visible browser's MCP server run by this bridge's program (`proxy`) when the one it names is gone (an older
-/// version's folder, removed when old versions are cleaned): Hermes starts the new command at its next connection
-/// (aibox 2026-10-26: Vie's and Kerfy Studio's spaces had lost their browser after an update). profile_files::reconcile.
+/// The visible browser's MCP server run by this bridge's program (`proxy`) when it names another one: an older
+/// version's (each version's binaries are in a folder of their own, the one before kept), or one gone (aibox
+/// 2026-10-26: Vie's and Kerfy Studio's spaces had lost their browser after an update). Hermes starts the command at
+/// its gateway's next start: a gateway still running the old one is restarted once idle ([`stale_proxies`],
+/// agent_restart.rs). profile_files::reconcile.
 pub fn with_proxy(data: &mut Yaml, proxy: &str) {
     let Some(server) = data.get_mut("mcp_servers").and_then(|m| m.get_mut("stealth")).filter(|s| s.is_map()) else {
         return;
     };
     let Some(command) = server.get("command").and_then(|c| c.as_str()) else { return };
-    if command.ends_with(PROXY_BINARY) && command != proxy && !Path::new(command).exists() {
+    if command.ends_with(PROXY_BINARY) && command != proxy {
         server.insert("command", Yaml::str(proxy));
+    }
+}
+
+/// The agents whose browser tools run now through another program than this bridge's `bip-browser-mcp`: a
+/// `bip-browser-mcp` of this account (Hermes' gateway starts it with the agent's `mcp.json`) whose binary isn't this
+/// bridge's (an older version's folder, or replaced: « (deleted) »). 9/11: after a wave the bridge was new and the
+/// gateways kept the old proxy, so the release's browser fixes never reached people. Linux only (/proc).
+pub fn stale_proxies(config: &Config) -> Vec<String> {
+    let Ok(proxy) = Path::new(&proxy_binary()).canonicalize() else { return Vec::new() };
+    let mut running = Vec::new();
+    for entry in std::fs::read_dir("/proc").into_iter().flatten().flatten() {
+        if !entry.file_name().to_string_lossy().bytes().all(|b| b.is_ascii_digit()) {
+            continue;
+        }
+        // another account's process: its binary can't be read (and isn't this bridge's business)
+        let Ok(exe) = std::fs::read_link(entry.path().join("exe")) else { continue };
+        let Ok(raw) = std::fs::read(entry.path().join("cmdline")) else { continue };
+        let args = raw.split(|b| *b == 0).map(|a| String::from_utf8_lossy(a).into_owned()).collect();
+        running.push((exe, args));
+    }
+    stale_of(config, &proxy, &running)
+}
+
+/// [`stale_proxies`] over the processes given: (its binary, its arguments).
+pub fn stale_of(config: &Config, proxy: &Path, running: &[(PathBuf, Vec<String>)]) -> Vec<String> {
+    // the agents, and the spare ones the hub's gateway serves too (agent_pool.rs: their own browser, not in `[agents]`)
+    let mut served: Vec<String> = config.agents.values().map(|a| a.name.clone()).collect();
+    served.extend(crate::agent_pool::spares(config).into_iter().map(|s| s.id));
+    let mut out: Vec<String> = Vec::new();
+    for (exe, args) in running {
+        let shown = exe.to_string_lossy();
+        let plain = shown.strip_suffix(" (deleted)").unwrap_or(&shown);
+        if Path::new(plain).file_name().is_none_or(|n| n != PROXY_BINARY) || exe.as_path() == proxy {
+            continue;
+        }
+        let Some(settings) = args.get(1) else { continue };
+        let found = served.iter().find(|name| folder(config, name).join("mcp.json") == Path::new(settings));
+        if let Some(name) = found.filter(|n| !out.contains(n)) {
+            out.push(name.clone());
+        }
+    }
+    out
+}
+
+/// [`with_proxy`] in each spare agent's profile (agent_pool.rs): not in `[agents]`, so not reconciled, but served by
+/// the hub's gateway, which starts their browser proxy too (9/11 lab: five spares kept the old one after the wave).
+pub fn spares_follow(config: &Config) {
+    let proxy = proxy_binary();
+    if !Path::new(&proxy).exists() {
+        return;
+    }
+    for spare in crate::agent_pool::spares(config) {
+        let agent = spare.agent(config, "");
+        let path = crate::agents_admin::profile_folder(config, &agent).join("config.yaml");
+        if let Err(exc) = crate::profile_files::edit(&path, |data| with_proxy(data, &proxy)) {
+            tracing::warn!(agent = %spare.id, error = %format!("{exc:#}"), "spare's browser proxy not brought up to date");
+        }
     }
 }
 

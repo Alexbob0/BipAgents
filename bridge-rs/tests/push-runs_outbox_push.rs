@@ -154,6 +154,34 @@ async fn the_boite_keeps_the_arrival_order_whatever_the_push_order() {
     backend.release.set();
 }
 
+#[tokio::test]
+async fn a_report_never_offers_a_page_that_isnt_here() {
+    // 9/11, routine reports: the model named pages it never made (placeholder.html, x.html), the apps got a 404
+    let dir = tempfile::tempdir().unwrap();
+    let backend = FakeBackend::start().await;
+    let config = parse_config(&config_dict(dir.path(), &backend.urls()), None).unwrap();
+    let folder = bipbridge::pages::root(&config).join("wellness");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("point-du-jour.html"), "<h1>Point</h1>").unwrap();
+    let client = TestApp::new(config.clone());
+    let outbox = client.app.state.outbox.clone();
+    let agent = config.agent(Some("wellness")).cloned().unwrap();
+    let text = "Ton point du jour.\nMEDIA:/bipagents/pages/wellness/point-du-jour.html\n\
+                MEDIA:/bipagents/pages/wellness/placeholder.html\nMEDIA:/bipagents/pages/wellness/x.html";
+    assert!(bipbridge::pages::missing(&config, "/bipagents/pages/wellness/x.html"));
+    assert!(!bipbridge::pages::missing(&client.app.state.config.get(), "/bipagents/pages/wellness/point-du-jour.html"));
+    let item = outbox.ingest(&agent, boite("r1", text, Some("Point du jour"), None), false).await.unwrap().unwrap();
+    let kept: Value = serde_json::from_str(item["attachments"].as_str().unwrap()).unwrap();
+    let paths: Vec<&str> = kept.as_array().unwrap().iter().map(|a| a["path"].as_str().unwrap()).collect();
+    assert_eq!(paths, ["/bipagents/pages/wellness/point-du-jour.html"]);
+    assert_eq!(item["text"], "Ton point du jour.");
+    // nothing left at all: no message
+    let empty = boite("r2", "MEDIA:/bipagents/pages/wellness/x.html", None, None);
+    assert!(outbox.ingest(&agent, empty, false).await.unwrap().is_none());
+    client.shutdown().await;
+    backend.release.set();
+}
+
 #[test]
 fn push_previews_and_silent_payloads() {
     use bipbridge::push::silent_payload;
