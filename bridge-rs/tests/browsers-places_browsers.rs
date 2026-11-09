@@ -190,7 +190,7 @@ async fn an_agent_gets_its_own_browser_container_and_desktop() {
         json!(["--user", "stop", "bipagents-browser-budget"]).as_array().unwrap()[..]
     );
     assert_eq!(proxy["idle"], 600);
-    assert_eq!(proxy["after_run"], 180);
+    assert_eq!(proxy["after_run"], 480);
     assert_eq!(proxy["ended"], json!(place.join("ended").to_string_lossy()));
     assert_eq!(proxy["rescue"], json!(place.join("rescue").to_string_lossy())); // the brake's rescue turn (runs.rs)
     assert_eq!(proxy["cdp_port"], 19602);
@@ -260,7 +260,7 @@ async fn the_brakes_rescue_turn_is_told_to_the_agents_browser() {
     browsers::rescue_ended(&s.config, "budget");
     assert!(!rescue.exists());
     browsers::rescue_ended(&s.config, "budget"); // already gone: nothing to do
-    // a browser kept running is driven without bip-browser-mcp: no file
+                                                 // a browser kept running is driven without bip-browser-mcp: no file
     s.config.browser.idle_minutes = 0;
     assert!(!browsers::rescue_started(&s.config, "budget", 4.0e9));
     assert!(!rescue.exists());
@@ -291,7 +291,8 @@ fn downloads_go_to_the_profile_through_a_read_only_policy() {
     assert_eq!(
         read_json(&policy),
         json!({"DownloadDirectory": "/home/bip/profile/Downloads", "PromptForDownloadLocation": false,
-               "DefaultAutomaticDownloadsSetting": 1})
+               "DefaultAutomaticDownloadsSetting": 1, "GenAILocalFoundationalModelSettings": 1,
+               "ComponentUpdatesEnabled": false, "TranslateEnabled": false})
     );
     let ports = [("cdp".to_string(), 1), ("vnc".to_string(), 2)].into_iter().collect();
     let args = browsers::run_args(&s.config, "budget", &ports, "/usr/bin/podman", false, None);
@@ -329,7 +330,7 @@ fn a_unit_written_before_the_policy_gets_its_mounts_once() {
         policy.display(),
         policy.display()
     )));
-    assert_eq!(browsers::with_policy_mounts(&new, place), None);   // once
+    assert_eq!(browsers::with_policy_mounts(&new, place), None); // once
     assert_eq!(browsers::with_policy_mounts("ExecStart=/usr/bin/podman run img\n", place), None);
 }
 
@@ -358,7 +359,8 @@ fn through_the_agents_proxy_webrtc_kept_to_it() {
     assert!(!flags(&direct).iter().any(|f| f.starts_with("--proxy-server")));
     // through the proxy: its own address on the browsers' network, Chrome's proxy flag, CONNECT only (no certificate
     // of ours anywhere)
-    let egress = ("bipagents-browsers:ip=10.233.82.10".to_string(), "--proxy-server=http://10.233.82.2:3128".to_string());
+    let egress =
+        ("bipagents-browsers:ip=10.233.82.10".to_string(), "--proxy-server=http://10.233.82.2:3128".to_string());
     let args = browsers::run_args(&s.config, "budget", &ports, "/usr/bin/podman", false, Some(&egress));
     let at = args.iter().position(|a| a == "--network").unwrap();
     assert_eq!(args[at + 1], "bipagents-browsers:ip=10.233.82.10");

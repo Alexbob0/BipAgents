@@ -168,9 +168,13 @@ pub fn write_downloads_policy(place: &Path) -> std::io::Result<()> {
     }
     let text = format!(
         "{}\n",
-        // a portal's second invoice is not held back by « download multiple files? » (nobody would see it)
+        // a portal's second invoice is not held back by « download multiple files? » (nobody would see it).
+        // Chrome's optional components (~80 MB per agent that browses, agents-tidy.md; downloaded while the agent
+        // browses): no on-device AI model, no component updates (its text-to-speech engine…; Chrome keeps updating
+        // the ones its security needs, CRLSet and Safe Browsing), no translation offers. With OPTIONAL_OFF.
         json!({"DownloadDirectory": DOWNLOADS_IN_CONTAINER, "PromptForDownloadLocation": false,
-               "DefaultAutomaticDownloadsSetting": 1})
+               "DefaultAutomaticDownloadsSetting": 1, "GenAILocalFoundationalModelSettings": 1,
+               "ComponentUpdatesEnabled": false, "TranslateEnabled": false})
     );
     if std::fs::read_to_string(&path).ok().as_deref() != Some(text.as_str()) {
         std::fs::write(&path, text)?;
@@ -599,6 +603,13 @@ fn first_part(lang: &str) -> &str {
     lang.split('-').next().unwrap_or(lang)
 }
 
+/// Chrome's optional downloads that no policy stops (the optimization guide's models and hints, 47 MB, data files
+/// the component policy exempts), off: less disk, and less traffic and CPU while the agent's first pages load.
+/// Chrome only reads the last `--disable-features`: this one, after nodriver's, keeps nodriver's two (site isolation
+/// off: fewer processes, less memory).
+pub const OPTIONAL_OFF: &str = "--disable-features=IsolateOrigins,site-per-process,OptimizationGuideModelDownloading,\
+OptimizationHintsFetching,OptimizationTargetPrediction,OptimizationHints";
+
 /// Chrome's WebRTC kept to proxied traffic: no UDP of its own, so an in-page torrent client (WebTorrent) reaches no
 /// peer, and no address of this machine leaks to a page (send-guard.md, 2026-10-28).
 pub const WEBRTC_FLAG: &str = "--force-webrtc-ip-handling-policy=disable_non_proxied_udp";
@@ -615,7 +626,8 @@ pub fn run_args(
 ) -> Vec<String> {
     let place = folder(config, agent);
     let lang = language(config);
-    let mut flags = vec![format!("--accept-lang={lang},{}", first_part(&lang)), WEBRTC_FLAG.to_string()];
+    let mut flags =
+        vec![format!("--accept-lang={lang},{}", first_part(&lang)), WEBRTC_FLAG.to_string(), OPTIONAL_OFF.to_string()];
     if let Some((_, proxy)) = egress {
         flags.push(proxy.clone());
     }
@@ -780,6 +792,8 @@ pub fn proxy_config(config: &Config, agent: &str, engine: &str, ports: &IndexMap
         "ready": [engine, "exec", container(agent), "test", "-e", SCREEN],
         "active": [systemctl, "--user", "is-active", "--quiet", unit],
         "server": [engine, "exec", "-i", container(agent), "/opt/stealth/mcp.sh"],
+        // a command run in the container (a screenshot the real server saved there, fetched for the agent)
+        "exec": [engine, "exec", container(agent)],
         "stop": [systemctl, "--user", "stop", unit],
         "cache": place.join("mcp-cache.json").to_string_lossy(), "busy": place.join("busy").to_string_lossy(),
         "cdp_port": ports.get("cdp").copied().unwrap_or(0),

@@ -1,7 +1,7 @@
 ---
 name: visible-browser
 description: "Browse the web with your own visible browser: a real Chrome on your desktop, which the person can watch and take over from the BipAgents app. Use its `stealth` tools for every website, including sites that block automated browsers."
-version: 1.10.0
+version: 1.11.0
 author: BipAgents
 license: MIT
 metadata:
@@ -31,11 +31,16 @@ only comes back when the person writes again, so for them the work just stops. W
 many pages), start a background task (`start_task`) that browses instead, and tell the person in one sentence.
 
 ## 2. Browse
-- After opening a page of a site that checks for robots, wait 5 to 10 seconds before reading it.
-- Read pages as text (`get_page_content`) rather than with screenshots when you can.
-- A page too large to come back whole (its answer says so, or « saved to file »): the copy saved of it is out of
-  your reach, so never read it again. Take only the part you need with `execute_script` (through `tool_call` when it
-  isn't in your tool list), for instance the text around a word you look for, in place of `word`:
+- `navigate` and `click_element` answer once the page has loaded: read it right away, without a pause of your own.
+  Only on a site that checks for robots, wait 5 to 10 seconds before reading it.
+- Read pages as text (`get_page_content`) rather than with screenshots when you can. It gives the page's readable
+  text (its main content), then its links and buttons; a long page comes in parts, and its answer gives the script
+  for the next part. Never read the same page twice in a row: the answer would be the same.
+- `take_screenshot` shows you the page as an image in its answer. Never give it a `file_path`: a file your browser
+  writes is out of your reach.
+- A result too large to come back whole (its answer says so, or « saved to file »): the copy saved of it is out of
+  your reach, so never ask for it again. Take only the part you need with `execute_script` (through `tool_call` when
+  it isn't in your tool list), for instance the text around a word you look for, in place of `word`:
   `(() => { const t = document.body.innerText; const i = t.search(/word/i); return i < 0 ? 'not found' : t.slice(Math.max(0, i - 500), i + 1500); })()`
 - Cookie banners: choose the option that refuses non-essential cookies.
 

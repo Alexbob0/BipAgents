@@ -9,7 +9,7 @@
 //! Sooner when the work that used it is over (2026-10-26, a server's memory shared by its places): the bridge touches
 //! the `ended` file when a run that called the browser's tools completes or fails and no other run of the agent that
 //! used it still goes on (runs.rs, a background task's included); nobody using it since (`busy` older than `ended`:
-//! no call, nobody watching or driving its desktop), it stops `after_run` seconds (180) after that end.
+//! no call, nobody watching or driving its desktop), it stops `after_run` seconds (480) after that end.
 //!
 //! « Using » is shared through the `busy` file, touched at each call (and every 30 s of a long one) by every copy of
 //! this server (the agent's gateway, a `hermes chat` beside it), every minute by the bridge while the person watches or
@@ -41,6 +41,13 @@
 //! The brake's rescue turn (runs.rs `loop_rescue`): while the bridge's `rescue` file (beside `busy`, browsers.rs
 //! `rescue_started`) holds a deadline still ahead, page reads are refused at once (`RESCUE_REFUSED`), the real server
 //! never asked: in the same lab the rescue turn read the page again, waited the full 120 s, and never answered.
+//!
+//! Fewer round-trips (browser-speed, 2026-11-09; Alex's case of 8/11: a test mailbox read after 3–4 minutes): every
+//! extra step of the agent is a model call of ~19k tokens. `get_page_content` answers the page's readable text
+//! (`readable_script`, 15,000 characters, then slices), never its HTML nor a file; `take_screenshot` answers an image
+//! block (a capture saved in the container fetched from it, `exec`), never a path the agent can't read; `navigate`
+//! and the clicks answer once the page is loaded (`settle`), so the agent doesn't pause on its own. Each call's time
+//! is logged (`<tool>: <s> s`).
 
 use std::collections::HashMap;
 use std::io::Write;
@@ -63,8 +70,10 @@ pub const LINE_LIMIT: usize = 64 * 1024 * 1024;
 /// at once, memory in swap) takes far longer than the few seconds of an idle one.
 pub const READY_SECONDS: u64 = 90;
 pub const TCP_TABLES: [&str; 2] = ["/proc/net/tcp", "/proc/net/tcp6"];
-/// How long after the end of the work that used it the browser stops, unless used again (`after_run`).
-pub const AFTER_RUN_SECONDS: u64 = 180;
+/// How long after the end of the work that used it the browser stops, unless used again (`after_run`): 8 minutes
+/// (3 until browser-speed, 2026-11-09), so the person's next message usually finds it warm, on the page it left
+/// (a cold start costs the start itself, and the agent's steps to open that page again).
+pub const AFTER_RUN_SECONDS: u64 = 480;
 
 /// stealth-browser-mcp's answer when a result is too big for its client: the result saved to a file inside the
 /// browser's container, its path in the answer.
@@ -105,6 +114,181 @@ instance the text around a word you look for, in place of `word`: {AROUND_A_WORD
         )
     }
 }
+
+/// How much of a page's readable text one `get_page_content` gives (about 4,000 tokens): the rest by slices.
+pub const READABLE_CHARS: usize = 15_000;
+/// Links and buttons listed after a page's text, at most.
+pub const READABLE_LINKS: usize = 25;
+
+/// The script that reads a page as text (`get_page_content`, browser-speed 2026-11-09): its main content (`main`,
+/// `[role=main]` or `article` when it holds at least 30 % of the page's text), else the whole body, spaces folded,
+/// from `start` for `limit` characters; on the first slice, the visible links and buttons too. It only reads.
+pub fn readable_script(start: usize, limit: usize) -> String {
+    format!(
+        "(() => {{ const f = s => (s || '').replace(/[ \\t\\u00a0]+/g, ' ').replace(/ *\\n */g, '\\n')\
+.replace(/\\n{{3,}}/g, '\\n\\n').trim(); const b = document.body; const all = b ? f(b.innerText) : ''; \
+const m = document.querySelector('main, [role=main], article'); const mt = m ? f(m.innerText) : ''; \
+const main = mt.length >= 400 && mt.length >= all.length * 0.3; const t = main ? mt : all; const links = []; \
+if ({start} === 0 && b) {{ const seen = new Set(); for (const e of b.querySelectorAll('a[href], button, \
+[role=button], input[type=submit]')) {{ if (links.length >= {READABLE_LINKS}) break; if (!e.getClientRects().length) \
+continue; const n = f(e.innerText || e.value || e.getAttribute('aria-label') || '').slice(0, 60); if (!n || \
+seen.has(n)) continue; seen.add(n); const h = e.tagName === 'A' ? e.href : ''; links.push(h && !h.startsWith('javascript') \
+? n + ' -> ' + h.slice(0, 120) : n); }} }} return JSON.stringify({{title: document.title, url: location.href, \
+total: t.length, text: t.slice({start}, {end}), main, links}}); }})()",
+        end = start + limit
+    )
+}
+
+/// What the agent reads for `get_page_content`: the page's title and address, its readable text (`readable_script`'s
+/// answer), how to read on when it was cut, and its links and buttons. None when the answer isn't the script's.
+pub fn readable_text(answer: &Value, start: usize, limit: usize) -> Option<String> {
+    let page = match answer {
+        Value::String(s) => serde_json::from_str::<Value>(s).ok()?,
+        other => other.clone(),
+    };
+    let text = page.get("text")?.as_str()?;
+    let field = |k: &str| page.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+    let total = page.get("total").and_then(Value::as_u64).unwrap_or(0) as usize;
+    let mut out = format!("{}\n{}\n\n", field("title"), field("url"));
+    if text.is_empty() {
+        out.push_str("(this page shows no text yet: it may still be loading; read it again in a few seconds)");
+    } else {
+        out.push_str(text);
+    }
+    let end = start + text.encode_utf16().count(); // JavaScript counts UTF-16 units
+    if total > end {
+        out.push_str(&format!(
+            "\n\n[{} more characters of this page. To read on, run execute_script with: {} — or only the part around \
+a word, in place of `word`: {AROUND_A_WORD}]",
+            total - end,
+            readable_script(end, limit)
+        ));
+    }
+    let links: Vec<&str> = page
+        .get("links")
+        .and_then(Value::as_array)
+        .map(|l| l.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    if !links.is_empty() {
+        out.push_str("\n\nLinks and buttons: ");
+        out.push_str(&links.join(" | "));
+    }
+    Some(out)
+}
+
+/// The screenshot's note beside its image; `asked`: the path the agent wanted it written to.
+pub fn screenshot_note(asked: Option<&str>) -> String {
+    let mut note = "The screenshot of your browser's page is attached to this answer as an image: look at it directly."
+        .to_string();
+    if let Some(path) = asked.filter(|p| !p.is_empty()) {
+        note.push_str(&format!(
+            " It was not written to {path}: your browser's files are out of your reach, so never look for it there \
+and never take it again for that."
+        ));
+    }
+    note
+}
+
+/// The real server saves a screenshot over ~60 KB to a file of this folder of its container (`clone_dir`).
+pub const CLONES_IN_CONTAINER: &str = "/opt/stealth/stealth-browser-mcp/element_clones/";
+
+/// The image a screenshot answer carries, as base64 (inline) or as a file of the container (`CLONES_IN_CONTAINER`).
+#[derive(Debug, PartialEq)]
+pub enum Shot {
+    Inline(String),
+    InContainer(String),
+}
+
+/// What the real server's `take_screenshot` answered: its image, inline or saved; None for anything else.
+pub fn shot_of(response: &Dict) -> Option<Shot> {
+    let result = response.get("result")?;
+    if result.get("isError").and_then(Value::as_bool) == Some(true) {
+        return None;
+    }
+    let text = result.get("content")?.as_array()?.iter().find_map(|c| c.get("text").and_then(Value::as_str))?;
+    let text = text.trim();
+    if let Ok(Value::Object(saved)) = serde_json::from_str::<Value>(text) {
+        let path = saved.get("file_path").and_then(Value::as_str)?;
+        let ok = path.starts_with(CLONES_IN_CONTAINER) && !path.contains("..") && !path.contains('\n');
+        return ok.then(|| Shot::InContainer(path.to_string()));
+    }
+    let base64 = text.len() > 64 && text.bytes().all(|b| b.is_ascii_alphanumeric() || b"+/=".contains(&b));
+    base64.then(|| Shot::Inline(text.to_string()))
+}
+
+/// The image's type from its first bytes (base64 of a PNG starts « iVBOR », of a JPEG « /9j/ »).
+pub fn image_type(base64: &str) -> &'static str {
+    if base64.starts_with("iVBOR") {
+        "image/png"
+    } else if base64.starts_with("R0lG") {
+        "image/gif"
+    } else if base64.starts_with("UklG") {
+        "image/webp"
+    } else {
+        "image/jpeg"
+    }
+}
+
+/// A screenshot answer rewritten for the agent: the image as an MCP image block (Hermes hands it to the model, or
+/// caches it as a file of its own), the note beside it; its structured copy, when it has one, keeps its shape (a
+/// string or an object) with the note in place of the image or the file.
+pub fn rewrite_screenshot(response: &mut Dict, base64: String, asked: Option<&str>) {
+    let note = screenshot_note(asked);
+    let Some(result) = response.get_mut("result").and_then(Value::as_object_mut) else { return };
+    let mime = image_type(&base64);
+    result.insert(
+        "content".into(),
+        json!([{"type": "image", "data": base64, "mimeType": mime}, {"type": "text", "text": note}]),
+    );
+    fn shaped(value: &mut Value, note: &str) {
+        match value {
+            Value::String(s) => *s = note.to_string(),
+            Value::Object(map) if map.contains_key("file_path") || map.contains_key("reason") => {
+                for key in ["file_path", "filename"] {
+                    if let Some(v) = map.get_mut(key).filter(|v| v.is_string()) {
+                        *v = json!("");
+                    }
+                }
+                for key in ["reason", "message"] {
+                    if let Some(v) = map.get_mut(key).filter(|v| v.is_string()) {
+                        *v = json!(note);
+                    }
+                }
+            }
+            Value::Object(map) => map.values_mut().for_each(|v| shaped(v, note)),
+            _ => {}
+        }
+    }
+    if let Some(structured) = result.get_mut("structuredContent") {
+        shaped(structured, &note);
+    }
+}
+
+/// `execute_script`'s answer: its `result` when it succeeded (`{"success", "result", "error"}`, structured or as
+/// the text of its first block).
+pub fn script_result(response: &Dict) -> Option<Value> {
+    let result = response.get("result")?;
+    if result.get("isError").and_then(Value::as_bool) == Some(true) {
+        return None;
+    }
+    let answer = match result.get("structuredContent") {
+        Some(Value::Object(s)) if s.contains_key("success") => Value::Object(s.clone()),
+        Some(Value::Object(s)) if s.get("result").is_some_and(Value::is_object) => s["result"].clone(),
+        _ => {
+            let text = result.get("content")?.as_array()?.iter().find_map(|c| c.get("text").and_then(Value::as_str))?;
+            serde_json::from_str::<Value>(text).ok()?
+        }
+    };
+    (answer.get("success").and_then(Value::as_bool) == Some(true)).then(|| answer.get("result").cloned()).flatten()
+}
+
+/// Tools after which the page may be loading: the proxy waits for it before answering (`settle`).
+pub fn loads_a_page(tool: &str) -> bool {
+    matches!(tool, "navigate" | "click_element" | "go_back" | "go_forward" | "reload_page")
+}
+
+/// How long the proxy waits for a page to be loaded after `navigate` (and the other tools of `loads_a_page`).
+pub const SETTLE_SECONDS: f64 = 8.0;
 
 /// What the structured copy of such an answer says instead of its reason.
 pub const OUT_OF_REACH: &str = "too large to come back whole; its saved copy is out of your reach";
@@ -436,9 +620,14 @@ impl Proxy {
             self.calls.fetch_add(1, Ordering::SeqCst);
             self.touch();
         }
+        let started = crate::py::monotonic();
         let result: Result<(), String> = async {
             self.ensure_server().await?;
-            let mut response = self.request(&method, message.get("params")).await?;
+            let mut response = if calling {
+                self.call_tool(&tool, message.get("params")).await?
+            } else {
+                self.request(&method, message.get("params")).await?
+            };
             if LISTS.contains(&method.as_str()) {
                 if let Some(result) = response.get("result").cloned() {
                     self.remember(&method, result);
@@ -459,8 +648,137 @@ impl Proxy {
             self.fail(&ident, &exc);
         }
         if calling {
+            // one line per call with its time (the browser-speed measures read them in the gateway's log)
+            log(&format!("{tool}: {:.2} s", crate::py::monotonic() - started));
             self.calls.fetch_sub(1, Ordering::SeqCst);
             self.touch();
+        }
+    }
+
+    /// A tool call, as the real server answers it, except (browser-speed, 2026-11-09):
+    /// - `get_page_content`: the page's readable text (`readable_script`) in place of its HTML and text, which came
+    ///   back as tens of thousands of tokens, or as a file out of reach for most real pages; the real tool when the
+    ///   script can't run (frames asked for, no such instance);
+    /// - `take_screenshot`: the image as an image block, never base64 text nor a file of the container (fetched from
+    ///   it), whatever path the agent asked;
+    /// - `navigate` and the other tools of `loads_a_page`: answered once the page is loaded (`settle`), so the agent
+    ///   reads it at once instead of pausing; `networkidle` (the real server's blind 2 s) waits for that too.
+    async fn call_tool(&self, tool: &str, params: Option<&Value>) -> Result<Dict, String> {
+        let args = params.and_then(|p| p.get("arguments")).and_then(Value::as_object).cloned().unwrap_or_default();
+        let instance = args.get("instance_id").and_then(Value::as_str).unwrap_or("").to_string();
+        if tool == "get_page_content"
+            && !instance.is_empty()
+            && !crate::py::truthy(args.get("include_frames").unwrap_or(&Value::Null))
+        {
+            if let Some(answer) = self.script(&instance, &readable_script(0, READABLE_CHARS)).await {
+                if let Some(text) = readable_text(&answer, 0, READABLE_CHARS) {
+                    let page = match &answer {
+                        Value::String(s) => serde_json::from_str::<Value>(s).unwrap_or(Value::Null),
+                        other => other.clone(),
+                    };
+                    let field = |k: &str| page.get(k).cloned().unwrap_or(json!(""));
+                    return Ok(json!({"jsonrpc": "2.0", "result": {
+                        "content": [{"type": "text", "text": text}],
+                        "structuredContent": {"html": "", "text": "(the page's readable text is in this answer)",
+                                              "url": field("url"), "title": field("title")}}})
+                    .as_object()
+                    .cloned()
+                    .unwrap_or_default());
+                }
+            }
+        }
+        if tool == "take_screenshot" {
+            let mut args = args.clone();
+            let asked = args.remove("file_path").and_then(|p| p.as_str().map(str::to_string));
+            args.insert("format".into(), json!("jpeg"));
+            let mut sent = params.cloned().unwrap_or_else(|| json!({}));
+            sent["arguments"] = Value::Object(args);
+            let mut response = self.request("tools/call", Some(&sent)).await?;
+            let image = match shot_of(&response) {
+                Some(Shot::Inline(data)) => Some(data),
+                Some(Shot::InContainer(path)) => self.fetch_from_container(&path).await,
+                None => None,
+            };
+            if let Some(image) = image {
+                rewrite_screenshot(&mut response, image, asked.as_deref());
+            }
+            return Ok(response);
+        }
+        let mut sent = params.cloned();
+        if tool == "navigate" && args.get("wait_until").and_then(Value::as_str) == Some("networkidle") {
+            if let Some(p) = sent.as_mut() {
+                p["arguments"]["wait_until"] = json!("domcontentloaded");
+            }
+        }
+        let response = self.request("tools/call", sent.as_ref()).await?;
+        if loads_a_page(tool) && !instance.is_empty() {
+            let failed = response.contains_key("error")
+                || response.get("result").and_then(|r| r.get("isError")).and_then(Value::as_bool) == Some(true);
+            if !failed {
+                self.settle(&instance, tool != "navigate").await;
+            }
+        }
+        Ok(response)
+    }
+
+    /// A script run in the page through the real server's `execute_script`: its result, None when it failed.
+    async fn script(&self, instance: &str, script: &str) -> Option<Value> {
+        let params = json!({"name": "execute_script", "arguments": {"instance_id": instance, "script": script}});
+        let response = self.request("tools/call", Some(&params)).await.ok()?;
+        script_result(&response)
+    }
+
+    /// Waits until the page is loaded (`document.readyState` « complete »), `SETTLE_SECONDS` at most; after a click,
+    /// first a moment for the navigation it may start.
+    async fn settle(&self, instance: &str, after_click: bool) {
+        let started = crate::py::monotonic();
+        if after_click {
+            tokio::time::sleep(Duration::from_millis(400)).await;
+        }
+        loop {
+            match self.script(instance, "document.readyState").await {
+                Some(Value::String(state)) if state == "complete" => break,
+                None => break, // no page to ask (an instance gone): nothing to wait for
+                _ => {}
+            }
+            if crate::py::monotonic() - started > SETTLE_SECONDS {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+        log(&format!("page settled in {:.2} s", crate::py::monotonic() - started));
+    }
+
+    /// A file the real server saved in its container (`CLONES_IN_CONTAINER`), as base64, then removed there: through
+    /// the config's `exec` (the command prefix that runs one in the container; `[]`: on this machine), else the one
+    /// `server` gives (`podman exec -i <container> …`).
+    async fn fetch_from_container(&self, path: &str) -> Option<String> {
+        use base64::Engine;
+        let prefix: Vec<String> = match self.config.get("exec") {
+            Some(v) => strs(Some(v)),
+            None => {
+                let server = self.command("server");
+                let i = server.iter().position(|a| a == "exec")?;
+                let container = server.iter().skip(i + 1).find(|a| !a.starts_with('-'))?;
+                vec![server[0].clone(), "exec".into(), container.clone()]
+            }
+        };
+        let mut cat = prefix.clone();
+        cat.extend(["cat".to_string(), path.to_string()]);
+        let (program, rest) = cat.split_first()?;
+        let output =
+            tokio::process::Command::new(program).args(rest).stderr(std::process::Stdio::null()).output().await;
+        let mut rm = prefix;
+        rm.extend(["rm".to_string(), "-f".to_string(), path.to_string()]);
+        let _ = run(&rm, false).await;
+        match output {
+            Ok(out) if out.status.success() && !out.stdout.is_empty() => {
+                Some(base64::engine::general_purpose::STANDARD.encode(out.stdout))
+            }
+            _ => {
+                log("a screenshot saved in the container could not be read");
+                None
+            }
         }
     }
 
@@ -1035,10 +1353,95 @@ out of your reach";
     }
 
     #[test]
+    fn a_page_is_read_as_its_readable_text_with_the_way_to_read_on() {
+        let script = readable_script(0, READABLE_CHARS);
+        assert!(script.contains("t.slice(0, 15000)") && script.contains("main, [role=main], article"));
+        assert!(script.contains("0 === 0 && b"), "links on the first slice only");
+        assert!(readable_script(15000, 15000).contains("t.slice(15000, 30000)"));
+        assert!(!script.contains("innerHTML") && !script.contains(".value ="), "it only reads");
+        let page = json!({"title": "Tour Eiffel — Wikipédia", "url": "https://fr.wikipedia.org/wiki/Tour_Eiffel",
+                          "total": 98000, "text": "La tour Eiffel est inaugurée en 1889.", "main": true,
+                          "links": ["Accueil -> https://fr.wikipedia.org/", "Rechercher"]});
+        // execute_script gives the script's JSON as a string
+        let text = readable_text(&json!(page.to_string()), 0, READABLE_CHARS).unwrap();
+        assert!(
+            text.starts_with("Tour Eiffel — Wikipédia\nhttps://fr.wikipedia.org/wiki/Tour_Eiffel\n\nLa tour Eiffel")
+        );
+        let rest = 98000 - "La tour Eiffel est inaugurée en 1889.".encode_utf16().count();
+        assert!(text.contains(&format!("[{rest} more characters of this page. To read on, run execute_script with: ")));
+        assert!(text.contains(&readable_script(98000 - rest, READABLE_CHARS)) && text.contains(AROUND_A_WORD));
+        assert!(text.ends_with("Links and buttons: Accueil -> https://fr.wikipedia.org/ | Rechercher"), "{text}");
+        // a short page: nothing more to read, no links
+        let short =
+            json!({"title": "Connexion", "url": "https://a.test/", "total": 11, "text": "Identifiant", "links": []});
+        assert_eq!(readable_text(&short, 0, READABLE_CHARS).unwrap(), "Connexion\nhttps://a.test/\n\nIdentifiant");
+        let empty = json!({"title": "", "url": "https://a.test/", "total": 0, "text": ""});
+        assert!(readable_text(&empty, 0, READABLE_CHARS).unwrap().contains("may still be loading"));
+        assert_eq!(readable_text(&json!("did execute_script"), 0, 10), None);
+    }
+
+    #[test]
+    fn a_script_s_result_is_read_structured_or_from_its_text() {
+        let answer = json!({"success": true, "result": "complete", "error": null});
+        let structured = json!({"result": {"content": [{"type": "text", "text": answer.to_string()}],
+                                           "structuredContent": answer}});
+        assert_eq!(script_result(structured.as_object().unwrap()), Some(json!("complete")));
+        let text_only = json!({"result": {"content": [{"type": "text", "text": answer.to_string()}]}});
+        assert_eq!(script_result(text_only.as_object().unwrap()), Some(json!("complete")));
+        let wrapped = json!({"result": {"content": [], "structuredContent": {"result": answer}}});
+        assert_eq!(script_result(wrapped.as_object().unwrap()), Some(json!("complete")));
+        let failed = json!({"success": false, "result": null, "error": "Instance not found"});
+        let failed = json!({"result": {"content": [{"type": "text", "text": failed.to_string()}]}});
+        assert_eq!(script_result(failed.as_object().unwrap()), None);
+        let error = json!({"result": {"isError": true, "content": [{"type": "text", "text": "boom"}]}});
+        assert_eq!(script_result(error.as_object().unwrap()), None);
+    }
+
+    #[test]
+    fn a_screenshot_comes_back_as_an_image_never_a_path() {
+        let jpeg = format!("/9j/{}", "A".repeat(200));
+        let inline = json!({"result": {"content": [{"type": "text", "text": jpeg}],
+                                       "structuredContent": {"result": jpeg}}});
+        let mut response = inline.as_object().unwrap().clone();
+        assert_eq!(shot_of(&response), Some(Shot::Inline(jpeg.clone())));
+        rewrite_screenshot(&mut response, jpeg.clone(), Some("/tmp/shot.png"));
+        let content = response["result"]["content"].as_array().unwrap();
+        assert_eq!(content[0], json!({"type": "image", "data": jpeg, "mimeType": "image/jpeg"}));
+        let note = content[1]["text"].as_str().unwrap();
+        assert!(note.contains("attached to this answer as an image") && note.contains("not written to /tmp/shot.png"));
+        assert_eq!(response["result"]["structuredContent"], json!({"result": note}), "its shape kept, no base64");
+        // too large for the real server: saved in its container (fetched by the proxy), its path never shown
+        let saved = json!({"file_path": format!("{CLONES_IN_CONTAINER}screenshot_1_319ceedb.jpeg"),
+                           "filename": "screenshot_1_319ceedb.jpeg", "file_size_kb": 180.2, "estimated_tokens": 61000,
+                           "reason": "Screenshot too large, automatically saved to file",
+                           "message": "Screenshot saved. AI agents should use the Read tool"});
+        let big = json!({"result": {"content": [{"type": "text", "text": saved.to_string()}],
+                                    "structuredContent": {"result": saved}}});
+        let mut response = big.as_object().unwrap().clone();
+        assert_eq!(
+            shot_of(&response),
+            Some(Shot::InContainer(format!("{CLONES_IN_CONTAINER}screenshot_1_319ceedb.jpeg")))
+        );
+        rewrite_screenshot(&mut response, "iVBORw0KGgo".into(), None);
+        assert_eq!(response["result"]["content"][0]["mimeType"], "image/png");
+        assert!(!Value::Object(response.clone()).to_string().contains("element_clones"));
+        assert_eq!(response["result"]["structuredContent"]["result"]["file_size_kb"], json!(180.2));
+        // anything else is left alone: an error, a path elsewhere, a plain line
+        for other in [
+            json!({"result": {"isError": true, "content": [{"type": "text", "text": jpeg}]}}),
+            json!({"result": {"content": [{"type": "text", "text": "{\"file_path\": \"/etc/shadow\"}"}]}}),
+            json!({"result": {"content": [{"type": "text", "text": format!("{{\"file_path\": \"{CLONES_IN_CONTAINER}../x\"}}")}]}}),
+            json!({"result": {"content": [{"type": "text", "text": "Instance not found"}]}}),
+        ] {
+            assert_eq!(shot_of(other.as_object().unwrap()), None, "{other}");
+        }
+    }
+
+    #[test]
     fn the_skill_gives_the_same_script() {
         let skill = crate::browsers::skill();
         assert!(skill.contains(&format!("`{AROUND_A_WORD}`")), "visible-browser/SKILL.md § 2 and AROUND_A_WORD");
-        assert!(skill.contains("version: 1.10.0"));
+        assert!(skill.contains("version: 1.11.0"));
     }
 
     #[test]
