@@ -60,6 +60,23 @@ def test_calculations_think_and_plain_chat_answers_at_once(bridges, fakes):
     assert yaml.safe_load((folder / "config.yaml").read_text())["agent"]["reasoning_effort"] == "high"
     assert options(bridge, fakes, 6, split) is None
     assert options(bridge, fakes, 7, "Salut") is None
+    assert bridge.get("/v1/agents/coach/thinking", headers=AUTH).json()["thinking"] == "high"
+    # « Automatique » (the apps' first choice): back to the decision turn by turn, shown as such
+    back = bridge.put("/v1/agents/coach/thinking", headers=AUTH, json={"level": "auto"})
+    assert back.json() == {"id": "coach", "thinking": "auto"}
+    assert bridge.get("/v1/agents/coach/thinking", headers=AUTH).json()["thinking"] == "auto"
+    assert bridge.get("/v1/agents/coach/settings", headers=AUTH).json()["thinking"] == "auto"
+    assert yaml.safe_load((folder / "config.yaml").read_text())["agent"]["reasoning_effort"] == "medium"
+    assert options(bridge, fakes, 8, split) == THINK
+    assert options(bridge, fakes, 9, "Salut") == OFF
+
+
+def test_a_new_agent_is_automatic(bridges, fakes):
+    bridge, _ = start(bridges, fakes, SPARK)
+    assert bridge.get("/v1/agents/coach/thinking", headers=AUTH).json() == {"id": "coach", "thinking": "auto"}
+    # GLM through EUrouter too (its floor « low » on every turn)
+    bridge2, _ = start(bridges, fakes, EUROUTER)
+    assert bridge2.get("/v1/agents/coach/thinking", headers=AUTH).json() == {"id": "coach", "thinking": "auto"}
 
 
 def test_glm_through_eurouter_keeps_its_floor_on_every_turn(bridges, fakes):
