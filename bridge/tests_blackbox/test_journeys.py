@@ -409,3 +409,31 @@ def test_j20_a_routines_report_shows_in_the_boite_and_the_conversation(journey):
     assert unread["total"] >= 1, unread
     for thread in {r.get("c") for r in boite() if r.get("c")}:
         displayable.check(journey.bridge, journey.page(thread), AGENT)
+    # its reading is « Écouter » (`audio`), never one of its files: only the PDF it made (Alex 8/11: a file to play)
+    [row] = boite()
+    assert row["boite"]["has_audio"] is True, row["boite"]
+    assert [a["kind"] for a in row["boite"]["attachments"]] == ["file"], row["boite"]
+    [item] = [i for i in journey.page(row["c"])["items"] if i["kind"] == "boite"]
+    assert item["boite"]["audio"] is True and [a["kind"] for a in item["attachments"]] == ["file"], item
+
+
+def test_j20_a_routines_podcast_is_its_one_audio_file(journey):
+    """Alex 8/11: a podcast in two audio files, the reading of the report's text and the podcast. A report bringing its
+    own audio gets no reading on top: one audio file, the podcast, and « Écouter » reads its words on the phone."""
+    made = journey.bridge.post(f"/v1/agents/{AGENT}/routines", headers=AUTH,
+                               json={"name": "Podcast du matin", "schedule": "every day at 7:00",
+                                     "prompt": "Fais le podcast du matin #podcast"})
+    assert made.status_code == 200, made.text
+    assert journey.bridge.post(f"/v1/routines/{made.json()['job']['id']}/run", headers=AUTH).status_code == 200
+
+    def boite():
+        rows = journey.bridge.get("/v1/notifications", headers=AUTH, params={"limit": 50}).json()["notifications"]
+        return [r for r in rows if r["type"] == "boite" and r["boite"]["title"] == "Podcast du matin"]
+    assert wait_until(boite, timeout=60), "no report in the Boîte"
+    [row] = boite()
+    assert row["boite"]["has_audio"] is False, row["boite"]
+    assert [a["kind"] for a in row["boite"]["attachments"]] == ["audio"], row["boite"]
+    page = journey.page(row["c"])
+    [item] = [i for i in page["items"] if i["kind"] == "boite" and i.get("title") == "Podcast du matin"]
+    assert item["boite"]["audio"] is False and [a["kind"] for a in item["attachments"]] == ["audio"], item
+    displayable.check(journey.bridge, page, AGENT)

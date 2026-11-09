@@ -81,6 +81,23 @@ def test_a_message_lands_in_outbox_with_audio_and_push(bridges, fakes):
     assert bridge.get(f"/v1/outbox/{first['id']}", headers=AUTH).status_code == 404   # the journal has the message
 
 
+def test_a_routine_report_is_read_on_demand_and_its_podcast_is_its_one_audio_file(bridges, fakes):
+    """Alex 8/11: a routine's report came with an audio FILE instead of « Écouter », and a podcast in two audio files
+    (the reading of its text and the podcast). A report's reading is its `has_audio` (« Écouter »), never one of its
+    files; a report bringing its own audio (create_podcast's .m4a) gets no reading on top: one audio file, the podcast."""
+    bridge = bridges.new().start()
+    plain = boite_message(bridge, fakes, "Trois rendez-vous aujourd'hui, rien d'urgent.", name="Point du matin")
+    assert plain["has_audio"] is True and plain["attachments"] == []
+    podcast = "/bipagents/audio/wellness/20261109-070000-point-du-matin.m4a"
+    item = boite_message(bridge, fakes, f"Ton podcast du matin est prêt.\nMEDIA:{podcast}", name="Podcast du matin")
+    assert item["text"] == "Ton podcast du matin est prêt." and item["has_audio"] is False
+    assert [(a["kind"], a["path"]) for a in item["attachments"]] == [("audio", podcast)]
+    assert bridge.get(f"/v1/outbox/{item['id']}/audio", headers=AUTH).status_code == 404
+    time.sleep(1.0)
+    readings = [b["input"] for b in fakes.pocket.inputs if b["response_format"] == "mp3"]
+    assert readings == ["Trois rendez-vous aujourd'hui, rien d'urgent."], readings
+
+
 def test_no_words_in_clear_even_with_the_old_previews_setting(bridges, fakes):
     # `[push] previews` is gone (sealed notifications): a phone without a key gets the neutral line only
     bridge = bridges.new(change=lambda c: c.update(push={"previews": True}))
