@@ -6,7 +6,10 @@
 //!   when set; a few minutes of jitter per agent) until `window_end`, at most once in 12 hours;
 //! - **unhealthy**: its Hermes did not answer `unhealthy_pings` pings in a row (one every 5 minutes). Acted on soon;
 //! - **requested**: other code called [`request_restart`] (e.g. tools changed and this Hermes did not list them again).
-//!   Acted on soon.
+//!   Acted on soon;
+//! - **the bridge's programs**: its Hermes runs a program of an older bridge (the browser proxy `bip-browser-mcp`,
+//!   browsers::stale_proxies), checked each tick: after an update the gateway keeps the binary it started with
+//!   (9/11, the release's browser fixes never reached people). Acted on soon, whatever `gap_minutes`.
 //!
 //! « Soon » reasons: at most once per `gap_minutes` (an hour) per agent, except a new agent's tools
 //! ([`NEW_AGENT_TOOLS`]: agents_admin.rs `tools_loaded` restarts the hub's gateway itself as soon as it is calm, and
@@ -30,7 +33,8 @@
 //! routines on disk (HERMES_HOME); a restart loses no conversation.
 //!
 //! Off for an existing Hermes the person brought (`existing-hermes.json` with `preexisting` next to the bridge's
-//! config): that is their machine. `[agent_restart] enabled` overrides.
+//! config): that is their machine, only the bridge's programs are followed there (its own tools).
+//! `[agent_restart] enabled` overrides (false: none at all).
 //!
 //!     data_dir/agent_restarts.json      {agent: {at, reason}}: the last restart of each agent (diagnostics, /v1/status)
 
@@ -169,6 +173,12 @@ pub const LIVE_SECONDS: f64 = 900.0;
 /// A new agent on the hub's gateway whose Hermes did not load the bridge's tools: never held back by `gap_minutes`
 /// (2026-10-30 bench: two agents made within the hour, the second never restarted, its first turns without tools).
 pub const NEW_AGENT_TOOLS: &str = "new agent without its tools";
+
+/// Its Hermes runs a program of an older bridge (the browser proxy, browsers::stale_proxies): the bridge was updated,
+/// the gateway kept the binary it started with (9/11). Never held back by `gap_minutes` either (the bridge's own
+/// « tools » restart right after an update must not keep the old proxy for an hour), and done for an existing Hermes
+/// the person brought too: these are the bridge's own tools.
+pub const BRIDGE_PROGRAMS: &str = "the bridge's programs changed";
 
 /// The bridge's state, for [`group_calm`] (set when the loop starts; None in tests and before).
 static APP: std::sync::OnceLock<AppState> = std::sync::OnceLock::new();
@@ -389,7 +399,7 @@ pub fn reason(
     s: &Settings,
 ) -> Option<Reason> {
     let gap_ok = since_last.is_none_or(|t| t >= s.gap_minutes as f64 * 60.0);
-    let new_agent = requested.is_some_and(|r| r.split("; ").any(|one| one == NEW_AGENT_TOOLS));
+    let new_agent = requested.is_some_and(|r| r.split("; ").any(|one| one == NEW_AGENT_TOOLS || one == BRIDGE_PROGRAMS));
     if gap_ok || new_agent {
         let unhealthy = failures >= s.unhealthy_pings;
         if let Some(why) = requested {
@@ -631,8 +641,11 @@ pub async fn run_forever(state: AppState) {
     let mut memory: HashMap<String, Group> = HashMap::new();
     loop {
         let config = state.config();
-        if enabled(&config) && !(state.sleep.enabled() && state.sleep.asleep()) {
-            tick(&state, &config, &mut memory).await;
+        // restarts off by default (an existing Hermes the person brought): only its gateway following the bridge's
+        // own programs; off by the setting: none at all
+        let follow_only = !enabled(&config) && config.agent_restart.enabled.is_none();
+        if (enabled(&config) || follow_only) && !(state.sleep.enabled() && state.sleep.asleep()) {
+            tick(&state, &config, &mut memory, follow_only).await;
         }
         tokio::time::sleep(Duration::from_secs_f64(config.agent_restart.tick_seconds)).await;
     }
@@ -645,18 +658,37 @@ pub const STALE_TOOLS_SECONDS: f64 = 120.0;
 /// The reason a tools change asks for.
 pub const TOOLS: &str = "tools";
 
-async fn tick(state: &AppState, config: &Config, memory: &mut HashMap<String, Group>) {
+/// Whether to ask for a [`BRIDGE_PROGRAMS`] restart: not when the agent's last one, within `gap_minutes`, was for
+/// that already (its gateway started the old program again: its profile wasn't brought up to date), else it would be
+/// restarted every minute.
+pub fn ask_follow(last: Option<&Value>, now: f64, s: &Settings) -> bool {
+    let Some(last) = last else { return true };
+    let recent = last["at"].as_f64().is_some_and(|at| now - at < s.gap_minutes as f64 * 60.0);
+    !(recent && last["reason"].as_str().is_some_and(|r| r.contains(BRIDGE_PROGRAMS)))
+}
+
+/// `follow_only`: restarts are off here (an existing Hermes the person brought), only [`BRIDGE_PROGRAMS`] is acted on.
+async fn tick(state: &AppState, config: &Config, memory: &mut HashMap<String, Group>, follow_only: bool) {
     let s = &config.agent_restart;
     let now = py::time_time();
-    for (agent, since) in crate::agent_tools::stale_agents(config) {
-        if now - since >= s.stale_tools_seconds && !pending(&agent).iter().any(|r| r == TOOLS) {
-            request_restart(&agent, TOOLS);
+    if !follow_only {
+        for (agent, since) in crate::agent_tools::stale_agents(config) {
+            if now - since >= s.stale_tools_seconds && !pending(&agent).iter().any(|r| r == TOOLS) {
+                request_restart(&agent, TOOLS);
+            }
+        }
+    }
+    let kept = records(config);
+    if config.browser.enabled {
+        for agent in crate::browsers::stale_proxies(config) {
+            if ask_follow(kept.get(&agent), now, s) {
+                request_restart(&agent, BRIDGE_PROGRAMS);
+            }
         }
     }
     let zone = crate::dates::load(config).zone();
     let local = zone.from_utc_datetime(&chrono::Utc::now().naive_utc());
     let minute = local.hour() * 60 + local.minute();
-    let kept = records(config);
     for (key, agents) in groups(config) {
         // first ping and measure one period after the bridge starts (a starting Hermes is not unhealthy)
         let group = memory.entry(key.clone()).or_insert_with(|| Group { last_ping: now, last_measure: now, ..Group::default() });
@@ -686,10 +718,14 @@ async fn tick(state: &AppState, config: &Config, memory: &mut HashMap<String, Gr
             .fold(None, |acc: Option<f64>, at| Some(acc.map_or(at, |a| a.max(at))))
             .map(|at| now - at);
         // every reason of the agents sharing this gateway: one restart
-        let taken: Vec<(String, Vec<String>)> = names.iter().map(|n| (n.clone(), pending(n))).collect();
+        let taken: Vec<(String, Vec<String>)> = names
+            .iter()
+            .map(|n| (n.clone(), pending(n).into_iter().filter(|r| !follow_only || r == BRIDGE_PROGRAMS).collect()))
+            .collect();
         let asked = merged(taken.iter().map(|(_, r)| r.as_slice()));
         let asked = (!asked.is_empty()).then(|| asked.join("; "));
-        let Some(why) = reason(asked.as_deref(), group.failures, night, &group.sizes, since_last, s) else {
+        let (failures, night) = if follow_only { (0, false) } else { (group.failures, night) };
+        let Some(why) = reason(asked.as_deref(), failures, night, &group.sizes, since_last, s) else {
             group.turn_wait = None;
             continue;
         };
@@ -844,6 +880,11 @@ mod tests {
             reason(Some(NEW_AGENT_TOOLS), 0, false, &small, Some(60.0), &s),
             Some(Reason::Requested(NEW_AGENT_TOOLS.into()))
         );
+        // the bridge's programs changed (an update): whatever the last restart (its « tools » one right after)
+        assert_eq!(
+            reason(Some(BRIDGE_PROGRAMS), 0, false, &small, Some(60.0), &s),
+            Some(Reason::Requested(BRIDGE_PROGRAMS.into()))
+        );
         assert!(Reason::Unhealthy.soon() && !Reason::Memory(String::new()).soon());
         // several reasons merged: one restart naming them all; a new agent's among them still skips the gap
         assert_eq!(
@@ -854,6 +895,17 @@ mod tests {
             reason(Some("tools"), 3, false, &small, None, &s),
             Some(Reason::Requested("tools; unhealthy: Hermes does not answer".into()))
         );
+    }
+
+    #[test]
+    fn following_the_bridges_programs_is_asked_once() {
+        let s = Settings::default();
+        assert!(ask_follow(None, 10_000.0, &s));
+        assert!(ask_follow(Some(&json!({"at": 9_000.0, "reason": "requested: tools"})), 10_000.0, &s));
+        // restarted for it a minute ago and still the old program: not again within the gap
+        let just = json!({"at": 9_940.0, "reason": format!("requested: tools; {BRIDGE_PROGRAMS}")});
+        assert!(!ask_follow(Some(&just), 10_000.0, &s));
+        assert!(ask_follow(Some(&just), 9_940.0 + 3_601.0, &s));
     }
 
     #[test]

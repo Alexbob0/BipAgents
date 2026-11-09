@@ -318,6 +318,35 @@ fn downloads_go_to_the_profile_through_a_read_only_policy() {
 }
 
 #[test]
+fn after_an_update_the_agents_browser_follows_the_bridges_own_proxy() {
+    // 9/11: the wave put the bridge on its new binaries, the agents kept the old version's bip-browser-mcp
+    let s = setup();
+    let new = PathBuf::from("/home/p/.local/share/bipagents/bridge/new/bip-browser-mcp");
+    let old = "/home/p/.local/share/bipagents/bridge/old/bip-browser-mcp";
+    // the profile names the new one, whether the old one is still there or not
+    let mut data = pyyaml::load(&format!("mcp_servers:\n  stealth:\n    command: {old}\n    args: [x]\n")).unwrap();
+    browsers::with_proxy(&mut data, &new.to_string_lossy());
+    assert_eq!(pyyaml::to_json(&data)["mcp_servers"]["stealth"], json!({"command": new.to_string_lossy(), "args": ["x"]}));
+    // a container's own server (no proxy) is left as it is
+    let mut direct = pyyaml::load("mcp_servers:\n  stealth:\n    command: podman\n").unwrap();
+    browsers::with_proxy(&mut direct, &new.to_string_lossy());
+    assert_eq!(pyyaml::to_json(&direct)["mcp_servers"]["stealth"]["command"], "podman");
+    // the running proxies: the agent whose Hermes still runs the old program (or a replaced one) is to restart
+    let settings = s.tmp.join("browsers").join("budget").join("mcp.json").to_string_lossy().into_owned();
+    let proc = |exe: &str, args: &[&str]| (PathBuf::from(exe), args.iter().map(|a| a.to_string()).collect::<Vec<_>>());
+    assert_eq!(browsers::stale_of(&s.config, &new, &[proc(old, &[old, &settings])]), ["budget"]);
+    let replaced = format!("{} (deleted)", new.display());
+    assert_eq!(browsers::stale_of(&s.config, &new, &[proc(&replaced, &[&replaced, &settings])]), ["budget"]);
+    assert!(browsers::stale_of(&s.config, &new, &[proc(&new.to_string_lossy(), &["x", &settings])]).is_empty());
+    // another program, or another install's agent: not this bridge's business
+    assert!(browsers::stale_of(&s.config, &new, &[proc("/usr/bin/python3", &["python3", &settings])]).is_empty());
+    assert!(browsers::stale_of(&s.config, &new, &[proc(old, &[old, "/elsewhere/budget/mcp.json"])]).is_empty());
+    // twice the same agent: once
+    let twice = [proc(old, &[old, &settings]), proc(old, &[old, &settings])];
+    assert_eq!(browsers::stale_of(&s.config, &new, &twice), ["budget"]);
+}
+
+#[test]
 fn a_unit_written_before_the_policy_gets_its_mounts_once() {
     let place = Path::new("/home/x/.local/share/bipagents/browsers/budget");
     let old = "ExecStart=/usr/bin/podman run --rm -v /p/profile:/home/bip/profile:Z \
