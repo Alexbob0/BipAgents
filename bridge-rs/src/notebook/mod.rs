@@ -1057,7 +1057,11 @@ pub fn set_section(body: &str, section: &str, text: &str, who: &Who, date: &str)
         .lines()
         .map(|l| {
             let trimmed = l.trim_end();
-            if let Some(item) = trimmed.strip_prefix("- ") {
+            // the app sends plain lines (it writes no Markdown): each one a fact, « - … — *toi, date* », like an
+            // agent's, so it answers a search and goes in the offline copy; a heading, a table or a quote stays as is
+            let plain = !trimmed.trim().is_empty() && !trimmed.trim_start().starts_with(['#', '|', '>', '-', '*']);
+            let item = if plain { Some(trimmed.trim()) } else { trimmed.strip_prefix("- ") };
+            if let Some(item) = item {
                 if split_attribution(item).1.is_none() && !item.trim().is_empty() {
                     let same = old.iter().find(|o| {
                         let (text, by) = split_attribution(o.trim().trim_start_matches("- "));
@@ -1067,6 +1071,9 @@ pub fn set_section(body: &str, section: &str, text: &str, who: &Who, date: &str)
                         return same.trim_end().to_string();
                     }
                     return format!("- {}{}", item.trim(), attribution(who, date));
+                }
+                if plain && !item.trim().is_empty() {
+                    return format!("- {}", item.trim());
                 }
             }
             trimmed.to_string()
@@ -4120,6 +4127,12 @@ mod tests {
         assert!(correct_fact(&fixed, "nowhere", "", &lea(), "2026-10-24").is_none());
         let replaced = set_section(&fixed, "Infos", "- Né le 13 mars", &lea(), "2026-10-25");
         assert!(replaced.starts_with("## Infos\n- Né le 13 mars — *Léa, 2026-10-25*\n\n## Famille"));
+        // the app's plain lines (no Markdown): facts like an agent's, the one kept as it was
+        let typed = set_section(&replaced, "Infos", "Né le 13 mars\nPointure : 38\n", &lea(), "2026-10-26");
+        assert!(typed.starts_with("## Infos\n- Né le 13 mars — *Léa, 2026-10-25*\n- Pointure : 38 — *Léa, 2026-10-26*\n"), "{typed}");
+        // a plain line that has its attribution already stays a fact, its attribution kept
+        let kept = set_section(&typed, "Infos", "Pointure : 38 — *Léa, 2026-10-26*\n", &lea(), "2026-10-27");
+        assert!(kept.starts_with("## Infos\n- Pointure : 38 — *Léa, 2026-10-26*\n"), "{kept}");
     }
 
     #[test]
