@@ -463,7 +463,8 @@ def test_the_history_is_thinned_once_a_day_and_at_once_under_a_new_rule():
 
 
 def test_no_backup_rule_keeps_anything_past_30_days():
-    """« Oublie ça » says « Disparaît aussi des sauvegardes sous 30 jours »: no restic rule may keep a snapshot longer
+    """« Oublie ça » says « Disparaît aussi des sauvegardes sous 60 jours » (30 days of snapshots here + 30 days of
+    replaced versions kept by the storage provider): no restic rule may keep a snapshot longer than 30
     in calendar days, even on a place that was off for a while: --keep-within-* rules only (never --keep-daily N,
     which counts days that have a snapshot, nor weekly, monthly, yearly or --keep-last)."""
     rules = dict(zip(backup.KEEP[0::2], backup.KEEP[1::2]))

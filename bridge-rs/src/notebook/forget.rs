@@ -106,7 +106,7 @@ pub fn texts(lang: &str) -> Texts {
             common: "Mémoire commune de tes agents", history: "Historique du Carnet",
             archive: "Archive {x} (retiré de la recherche)", family: "Carnet de la famille (visible par ta famille)",
             conversation: "Reste dans la conversation où tu l'as dit.", mail: "Le mail lui-même reste dans ta boîte.",
-            backups: "Disparaît aussi des sauvegardes sous 30 jours.", confirm: "Oublier", cancel: "Annuler",
+            backups: "Disparaît aussi des sauvegardes sous 60 jours.", confirm: "Oublier", cancel: "Annuler",
             warning: "On ne pourra pas le remettre.", done: "Oublié.", nothing: "Rien à oublier ici.", health: "Santé",
         },
         "de" => Texts {
@@ -116,7 +116,7 @@ pub fn texts(lang: &str) -> Texts {
             archive: "Archiv {x} (aus der Suche entfernt)", family: "Familien-Notizbuch (für deine Familie sichtbar)",
             conversation: "Bleibt im Gespräch, in dem du es gesagt hast.",
             mail: "Die E-Mail selbst bleibt in deinem Postfach.",
-            backups: "Verschwindet auch innerhalb von 30 Tagen aus den Sicherungen.", confirm: "Vergessen",
+            backups: "Verschwindet auch innerhalb von 60 Tagen aus den Sicherungen.", confirm: "Vergessen",
             cancel: "Abbrechen", warning: "Das lässt sich nicht rückgängig machen.", done: "Vergessen.",
             nothing: "Hier gibt es nichts zu vergessen.", health: "Gesundheit",
         },
@@ -126,7 +126,7 @@ pub fn texts(lang: &str) -> Texts {
             common: "Memoria común de tus agentes", history: "Historial del Cuaderno",
             archive: "Archivo {x} (quitado de la búsqueda)", family: "Cuaderno de la familia (visible para tu familia)",
             conversation: "Se queda en la conversación donde lo dijiste.", mail: "El correo en sí se queda en tu buzón.",
-            backups: "También desaparece de las copias de seguridad en 30 días.", confirm: "Olvidar",
+            backups: "También desaparece de las copias de seguridad en 60 días.", confirm: "Olvidar",
             cancel: "Cancelar", warning: "No se podrá recuperar.", done: "Olvidado.", nothing: "Nada que olvidar aquí.",
             health: "Salud",
         },
@@ -136,7 +136,7 @@ pub fn texts(lang: &str) -> Texts {
             common: "Your agents' shared memory", history: "Notebook history",
             archive: "Archive {x} (taken out of search)", family: "Family notebook (seen by your family)",
             conversation: "Stays in the conversation where you said it.",
-            mail: "The e-mail itself stays in your mailbox.", backups: "Also gone from the backups within 30 days.",
+            mail: "The e-mail itself stays in your mailbox.", backups: "Also gone from the backups within 60 days.",
             confirm: "Forget", cancel: "Cancel", warning: "It can't be put back.", done: "Forgotten.",
             nothing: "Nothing to forget here.", health: "Health",
         },
@@ -1140,7 +1140,7 @@ mod tests {
         assert!(places.contains(&"Archive Mails (retiré de la recherche)"), "{places:?}");
         assert_eq!(v["notes"][1], "Le mail lui-même reste dans ta boîte.");
         assert_eq!(v["notes"][0], "Reste dans la conversation où tu l'as dit.");
-        assert_eq!(v["notes"].as_array().unwrap().last().unwrap(), "Disparaît aussi des sauvegardes sous 30 jours.");
+        assert_eq!(v["notes"].as_array().unwrap().last().unwrap(), "Disparaît aussi des sauvegardes sous 60 jours.");
         // the token: once, for the app's route only
         let shown = preview(&config, &request, "fr", "Alex", None).unwrap();
         let token = shown["token"].as_str().unwrap().to_string();
