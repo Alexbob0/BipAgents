@@ -5,6 +5,7 @@ import json
 
 from bbkit.common import AUTH
 from bbkit.mcp import call, give_token, text_of
+from bbkit.servers import wait_until
 
 
 def test_an_occasional_use_gets_no_review_and_the_days_are_counted(bridges, fakes):
@@ -16,7 +17,10 @@ def test_an_occasional_use_gets_no_review_and_the_days_are_counted(bridges, fake
     assert bridge.get("/v1/notebook/review", params={"lang": "fr"}, headers=AUTH).status_code == 204
     home = bridge.get("/v1/notebook", params={"lang": "fr"}, headers=AUTH).json()
     assert home["review"] is None
-    # the app's day: one bit, no time, no screen
+    # the app's day (counted off the request, once the Carnet is there): one bit, no time, no screen
+    def counted():
+        return json.loads((bridge.state_dir / "notebook" / "state.json").read_text()).get("active_days")
+    assert wait_until(counted, timeout=5), "the app's day is not counted"
     state = json.loads((bridge.state_dir / "notebook" / "state.json").read_text())
     assert state["active_days"]["bits"] & 1 == 1 and set(state["active_days"]) == {"day", "bits"}
     assert bridge.post("/v1/notebook/review/done", json={"off": True}, headers=AUTH).status_code == 204
