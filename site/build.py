@@ -2,6 +2,7 @@
 
     python3 site/build.py            # everything
     python3 site/build.py --serve    # then serves site/dist/<site> on http://127.0.0.1:8770 (bipagents) and :8771 (kerfy)
+    python3 site/build.py --serve --port 8785   # the same on 8785 and 8786 (another checkout serving beside)
 
 Standard library only (the legal texts' Markdown is converted here). Texts come from site/src/<site>/i18n/*.json, the
 demo's scenarios from App/Resources/Demo/demo.json, the podcasts from the apps' own files: nothing is copied
@@ -400,6 +401,9 @@ DEMO_TABS = (("book_table", "daily"), ("walk", "daily"), ("runs_weeks", "coach")
 PAGES = (("home", "index.html", ""), ("demo", "demo.html", "demo/"), ("faq", "faq.html", "faq/"),
          ("install", "install.html", "install/"), ("beta", "beta.html", "beta/"),
          ("grokbot", "grok-bot.html", "grok-bot/"), ("status", "status.html", "status/"))
+# Proposals for the home (2026-11-09, Alex's « on refait une passe »): four ways to tell privacy, what the Bips do,
+# the Carnet and friends after the same living room, at /fr/variantes/<x>/ (French only, not in the sitemap, noindex).
+VARIANTS = ("a", "b", "c", "d")
 # The status page reads the guichet's public snapshot (guichet-rs/src/public_status.rs in the guichet's repo).
 STATUS_API = "https://guichet.bipagents.com/v1/public-status"
 FAQ_HOME = (1, 3, 2, 6, 5, 11)  # what's included, AI credit, free week, stopping, Duo/Famille, the AI model
@@ -414,7 +418,7 @@ def bipagents(version: str) -> Path:
         shutil.rmtree(out)
     assets = out / "assets"
     assets.mkdir(parents=True)
-    for name in ("site.css", "site.js", "notfound.js"):
+    for name in ("site.css", "site.js", "notfound.js", "variants.css"):
         copy(src / name, assets / name)
     # The home's living room: its script, the painting, the Bips' sprites (scripts/salon-sprites/) and the easel's
     # handwriting (Caveat, SIL OFL 1.1), all served from here like everything else.
@@ -441,8 +445,13 @@ def bipagents(version: str) -> Path:
     map_small = small_map(assets / "showcase" / map_file) if map_file else ""
     agents = {a["id"]: a for a in demo["agents"]}
     partials = {p.stem: p.read_text(encoding="utf-8") for p in (src / "partials").glob("*.html")}
-    templates = {name: re.sub(r"\{\{>(\w+)\}\}", lambda m: partials[m.group(1)], (src / file).read_text(encoding="utf-8"))
-                 for name, file, _ in PAGES}
+    def with_partials(file: str) -> str:   # a partial may hold another (the variants' demo window holds the demo)
+        page = (src / file).read_text(encoding="utf-8")
+        while "{{>" in page:
+            page = re.sub(r"\{\{>(\w+)\}\}", lambda m: partials[m.group(1)], page)
+        return page
+    templates = {name: with_partials(file) for name, file, _ in PAGES}
+    variants = {v: with_partials(f"variants/{v}.html") for v in VARIANTS}
     texts = {lang: json.loads((src / "i18n" / f"{lang}.json").read_text(encoding="utf-8")) for lang in LANGS}
     # Pages with texts of their own (i18n/<page>.<lang>.json), kept apart from the home's.
     for lang in LANGS:
@@ -498,6 +507,9 @@ def bipagents(version: str) -> Path:
                                  for n in numbers)
         values.update({
             "lang": lang, "home": paths[lang], "version": version,
+            # the living room's « See the demo » (the home: its cards below; a variant: the demo's window) and the demo's
+            # title (the demo page's h1; a section's h2 in that window); the variants' own stylesheet, never indexed
+            "watchhref": "#results", "watchattr": "", "watcharrow": "↓", "demoh": "h1", "extracss": "", "robots": "",
             "demohref": f"{paths[lang]}demo/", "faqhref": f"{paths[lang]}faq/", "installhref": f"{paths[lang]}#install",
             "legalprefix": "" if lang == "fr" else f"/{lang}",
             "storebadges": badges,
@@ -575,6 +587,24 @@ def bipagents(version: str) -> Path:
             page = fill(fill(templates[name], page_values, f"bipagents/{lang}/{name}"), page_values,
                         f"bipagents/{lang}/{name} (texts)")
             target = out / here[lang].strip("/") / "index.html"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(page, encoding="utf-8")
+        for v in VARIANTS if lang == "fr" else ():
+            page_values = dict(values)
+            page_values.update({
+                "pagename": "home", "path": f"{paths[lang]}variantes/{v}/",
+                "pagetitle": f'{values["meta.title"]} · {values["v.name"]} {v.upper()}', "pagedesc": values["meta.description"],
+                "hreflang": "", "langmenu": lang_menu(paths, lang, texts, regions, currencies),
+                "cur.demo": "", "cur.faq": "", "cur.beta": "",
+                "watchhref": values["demohref"], "watchattr": " data-demo-open", "watcharrow": "▶", "demoh": "h2",
+                "extracss": f'\n<link rel="stylesheet" href="/assets/variants.css?v={version}">',
+                "robots": '\n<meta name="robots" content="noindex">',
+                # the home's prices and the demo's scenarios: both play on these pages
+                "data": json.dumps({**data["home"], **data["demo"]}, ensure_ascii=False).replace("</", "<\\/"),
+            })
+            page = fill(fill(variants[v], page_values, f"bipagents/{lang}/variant-{v}"), page_values,
+                        f"bipagents/{lang}/variant-{v} (texts)")
+            target = out / lang / "variantes" / v / "index.html"
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(page, encoding="utf-8")
         og_image(t, lang, assets / f"og-{lang}.png")
@@ -667,9 +697,11 @@ def main(argv: List[str]) -> int:
             def log_message(self, *args: Any) -> None:
                 pass
 
-        for port, path in zip((8770, 8771), built):
+        base = int(argv[argv.index("--port") + 1]) if "--port" in argv else 8770
+        for port, path in zip((base, base + 1), built):
             handler = functools.partial(Fresh, directory=str(path))
-            server = http.server.ThreadingHTTPServer(("127.0.0.1", port), handler)
+            # a backlog above the default 5: a page's burst of images (the living room's sprites) was getting resets
+            server = type("Server", (http.server.ThreadingHTTPServer,), {"request_queue_size": 128})(("127.0.0.1", port), handler)
             threading.Thread(target=server.serve_forever, daemon=True).start()
             servers.append(server)
             print(f"serving {path.name} on http://127.0.0.1:{port}")

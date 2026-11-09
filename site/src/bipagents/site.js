@@ -444,7 +444,57 @@ if (fromAddress) {
 }
 addEventListener("hashchange", () => tabFor(location.hash)?.click());
 $(".replay")?.addEventListener("click", () => play(current));
-if (chat) once(chat, () => play(current), 0.35);   // the demo has its own page (/demo/)
+// The demo plays once in view (its page /demo/); in the home variants' window or tab, when that opens.
+const demoWindow = $(".v-demo"), inStory = chat && chat.closest("[data-story-panel]");
+if (chat && !demoWindow && !inStory) once(chat, () => play(current), 0.35);
+
+// -- The home variants: « Voir la démo » opens the whole demo in a window over the page (a card's link: on its
+// scenario); where the demo lives in a tab (variant C), that tab opens instead. Without the script: /demo/. ---------
+const demoLink = e => e.target.closest("[data-demo-open], a.ex-go");
+if (demoWindow) {
+  const open = scenario => {
+    if (!demoWindow.open) demoWindow.showModal();
+    const tab = scenario && tabs.find(t => t.dataset.scenario === scenario);
+    if (tab) tab.click(); else play(current);
+  };
+  document.addEventListener("click", e => {
+    const a = demoLink(e);
+    if (!a) return;
+    e.preventDefault();
+    open(a.classList.contains("ex-go") ? new URL(a.href).hash.slice(1) : null);
+  });
+  $(".v-demo-close", demoWindow).addEventListener("click", () => demoWindow.close());
+  demoWindow.addEventListener("click", e => { if (e.target === demoWindow) demoWindow.close(); });   // the backdrop
+  demoWindow.addEventListener("close", () => { run++; });   // the thread stops where it is
+}
+// Story tabs (variant C): each shows its words and its screen; the demo's tab plays the demo.
+const stories = $$("[data-story]");
+if (stories.length) {
+  const show = (tab, focus) => {
+    const name = tab.dataset.story;
+    for (const t of stories) { const on = t === tab; t.setAttribute("aria-selected", String(on)); t.tabIndex = on ? 0 : -1; }
+    for (const p of $$("[data-story-panel]")) p.hidden = p.dataset.storyPanel !== name;
+    if (focus) tab.focus();
+    if (name === "do") play(current); else run++;
+  };
+  stories.forEach((tab, i) => {
+    tab.addEventListener("click", () => show(tab));
+    tab.addEventListener("keydown", e => {   // arrows move between the tabs (WAI-ARIA tabs)
+      const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+      if (!step) return;
+      e.preventDefault();
+      show(stories[(i + step + stories.length) % stories.length], true);
+    });
+  });
+  const go = stories.find(t => t.dataset.story === "do");
+  document.addEventListener("click", e => {
+    const a = demoLink(e);
+    if (!a || !go) return;
+    e.preventDefault();
+    show(go);
+    go.closest("section").scrollIntoView({ behavior: REDUCED ? "auto" : "smooth", block: "start" });
+  });
+}
 
 // -- Open in place: a button that shows or hides the part it controls (aria-expanded), opened as well by its address
 // (#install) on arrival and from any link to it on the page. Its label may change (« See more » / « See less »).

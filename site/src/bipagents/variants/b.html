@@ -1,0 +1,85 @@
+{{>top}}
+<!-- Variant B « Mosaïque »: the living room, then everything on one board of tiles, each with something alive in it —
+     privacy first and biggest (dark), the Carnet ticking its day, the demo's cards, the family's message waiting for
+     « Envoyer ». Then the plans and the questions. -->
+{{>salon}}
+
+<section class="section vb-sec" id="results">
+  <div class="section-head reveal">
+    <h2 class="h2-small">{{v.b.title}}</h2>
+  </div>
+  <div class="vb-grid">
+    <article class="vb vb-priv reveal" id="private" aria-labelledby="vb-priv-h">
+      <p class="kicker">{{nav.privacy}}</p>
+      <h3 class="vb-h" id="vb-priv-h">{{v.privTitle}}</h3>
+      <ul class="vb-pts">
+        <li><span aria-hidden="true">🙈</span><p>{{private.who1}}</p></li>
+        <li><span aria-hidden="true">✋</span><p>{{hero.proof2}}</p></li>
+        <li><span aria-hidden="true">🎒</span><p>{{private.where3}}</p></li>
+      </ul>
+      <details class="v-more">
+        <summary>{{private.ask}}</summary>
+        <div class="v-more-in">
+          <div><h4>{{private.whereTitle}}</h4><p>{{private.where1}}</p><p>{{private.where2}}</p></div>
+          <div><h4>{{private.whoTitle}}</h4><p>{{private.who2}}</p><p>{{private.who3}}</p></div>
+          <p class="v-more-links"><a href="{{private.href}}">{{private.compare}}</a> · <a href="https://kerfystudio.com{{legalprefix}}/privacy/">{{foot.privacy}}</a></p>
+        </div>
+      </details>
+      <div class="vb-priv-bip" aria-hidden="true"><img src="/assets/salon/sprites/budget-n.webp?v={{version}}" alt="" width="304" height="352" loading="lazy" decoding="async"></div>
+    </article>
+
+    <article class="vb vb-nb reveal" id="notebook" aria-labelledby="vb-nb-h">
+      <p class="kicker">{{notebook.kicker}}</p>
+      <h3 class="vb-h" id="vb-nb-h">{{notebook.title}}</h3>
+      <p class="vb-sub">{{notebook.sub}}</p>
+      <div class="vb-nb-card" aria-hidden="true">
+        <p class="nbs-label">{{notebook.shot.today}}</p>
+        <p class="nbs-task vb-tick"><i></i><span>{{notebook.shot.t1}}</span><small>{{notebook.shot.t1s}}</small></p>
+        <p class="nbs-task vb-tick vb-tick2"><i></i><span>{{notebook.shot.t2}}</span></p>
+        <p class="nbs-task done"><i></i><span>{{notebook.shot.t3}}</span></p>
+        <div class="nbs-trip"><span class="nbs-trip-bip" data-bip-static="home"></span><span><b>{{notebook.shot.trip}}</b><small>{{notebook.shot.tripSub}}</small></span></div>
+      </div>
+      <ul class="vb-chips">
+        <li>{{notebook.i1}}</li><li>{{notebook.i2}}</li><li>{{notebook.i3}}</li><li>{{notebook.i4}}</li><li>{{notebook.i5}}</li><li>{{notebook.i6}}</li>
+      </ul>
+      <p class="vb-small">🗂️ {{notebook.line1}} {{notebook.line2}}</p>
+    </article>
+
+    <article class="vb vb-do reveal" aria-labelledby="vb-do-h">
+      <div class="vb-do-copy">
+        <p class="kicker">{{nav.features}}</p>
+        <h3 class="vb-h" id="vb-do-h">{{demo.title}}</h3>
+        <p class="vb-sub">{{v.b.doSub}}</p>
+        <ul class="checks"><li>{{demo.point1}}</li><li>{{demo.point2}}</li></ul>
+        <p class="vb-cta"><a class="pill pill-ink" href="{{demohref}}" data-demo-open>{{show.more}} <span aria-hidden="true">▶</span></a></p>
+      </div>
+      <div class="hero-show" role="group" aria-label="{{show.a11y}}">{{heroshow}}</div>
+    </article>
+
+    <article class="vb vb-fam reveal" id="family" aria-labelledby="vb-fam-h">
+      <div class="vb-fam-copy">
+        <p class="kicker">{{family.kicker}}</p>
+        <h3 class="vb-h" id="vb-fam-h">{{family.title}}</h3>
+        <p class="vb-sub">{{family.sub}}</p>
+        <ul class="vb-fam-list">
+          <li><span aria-hidden="true">🏠</span><p><b>{{family.s1t}}</b> · {{family.s1}}</p></li>
+          <li><span aria-hidden="true">💬</span><p><b>{{family.s2t}}</b> · {{family.s2}}</p></li>
+          <li><span aria-hidden="true">🛒</span><p><b>{{family.s3t}}</b> · {{family.s3}}</p></li>
+        </ul>
+      </div>
+      <div class="vb-fam-pic">
+{{>fammock}}
+      </div>
+    </article>
+
+    <article class="vb vb-friends reveal">
+        <span class="vb-friends-bips" aria-hidden="true"><i data-bip-static="daily"></i><i data-bip-static="learning"></i><i data-bip-static="creative"></i><i data-bip-static="home"></i></span>
+        <div><b>{{family.s4t}}</b><p>{{family.s4}}</p><p class="vb-small">🔒 {{family.lock}}</p></div>
+      </article>
+  </div>
+</section>
+
+{{>vend}}
+{{>vdemo}}
+<script type="module" src="/assets/salon/salon.js?v={{version}}"></script>
+{{>foot}}
