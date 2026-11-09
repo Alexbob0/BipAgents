@@ -430,7 +430,7 @@ def main(argv: List[str]) -> int:
             mine, chosen = applied_now(), recorded_patches()
         if offered:
             return offer_new(args, agents, mine, chosen or [], offered)
-        if chosen is not None and not missing and to_bipagents.advice(mine, PATCHES):
+        if not missing and to_bipagents.advice(mine, PATCHES):
             return 0
         if not missing:
             say(ui.done("Every BipAgents fix is already on this Hermes."))
@@ -460,12 +460,11 @@ def main(argv: List[str]) -> int:
         if offered and args.check:
             say(ui.note(f"New BipAgents fixes that fit your Hermes: {', '.join(p.name[:4] for p in offered)} "
                         "(bipagents hermes-update --fixes-only asks)."))
-        if chosen is not None:
-            to_bipagents.advice(mine, PATCHES)
+        to_bipagents.advice(mine, PATCHES)   # whatever existing-hermes.json says
         say("\nYour agents, now:")
         report(agents, check_agents(agents, expect_clarify=any(p.name.startswith("0001") for p in mine)))
         return 0
-    if chosen is not None and to_bipagents.advice(mine, PATCHES):
+    if to_bipagents.advice(mine, PATCHES):
         say(ui.note("This update goes to Hermes' latest, not BipAgents' version."))
     if not args.yes:
         if not confirm("Update Hermes now? Your agents restart (1 to 2 minutes)."):

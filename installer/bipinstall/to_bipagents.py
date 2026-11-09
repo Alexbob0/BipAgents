@@ -858,24 +858,31 @@ def undo(args, agents: List[Dict[str, str]], check_agents: Callable, drain_modul
 
 
 def advice(applied: List[Path], patches_dir: Path, say: Callable[[str], None] = say) -> bool:
-    """For `--check` on a Hermes the person had before: whether it is on BipAgents' version, and what to run when
-    it isn't. True when it isn't."""
+    """For `hermes-update --check` (and before an update): whether this Hermes is on BipAgents' version, and what to
+    run when it isn't. Asked of every Hermes, whatever existing-hermes.json says (a person's own Hermes can be there
+    without it, measured on Alex's account 7/11). Silent when it is on it; True when it isn't. Changes nothing (no
+    fetch: a version not fetched yet is offered too, --to-bipagents fetches it)."""
     checkout = hermes.hermes_checkout()
     current = git(checkout, "rev-parse", "HEAD").stdout.strip()
     target = full_target(checkout, hermes.HERMES_COMMIT, patches_dir / "BASE")
-    if current == target:
-        say(ui.done(f"Your Hermes is on the version BipAgents is built and tested on ({target[:10]})."))
+    if not current or current == target:
         return False
     rel, behind = relation(checkout, current, target)
     total = len(hermes.set_patches(patches_dir))
     when = git(checkout, "log", "-1", "--format=%cs", current).stdout.strip()
     say(ui.note(f"Your Hermes ({current[:9]}{', ' + when if when else ''}) is NOT the version BipAgents is built and "
                 f"tested on ({target[:10]}): {len(applied)} of {total} BipAgents fixes are on it."))
-    if rel == "behind":
-        say(ui.note(f"It is {behind:,} changes behind. To move it there with all {total} fixes, keeping your model "
-                    "and every setting:" if behind else "To move it there with all fixes:"))
+    if rel in ("behind", "unknown"):
+        gap = f"It is {behind:,} changes behind. " if rel == "behind" and behind else ""
+        say(ui.note(f"{gap}To move it there with all {total} fixes:"))
         say("    bipagents hermes-update --to-bipagents")
+        say(ui.note("It shows its plan and asks first. It backs up your Hermes (code, conversations, memory, "
+                    "settings), keeps your model and every setting, and goes back as it was by itself if anything "
+                    "fails (bipagents hermes-update --undo-move takes it back later)."))
         say(ui.note("(Plain `hermes update` goes to Hermes' latest instead, where BipAgents' fixes may not apply.)"))
     elif rel == "ahead":
         say(ui.note("It is newer than BipAgents' version: keep it, a BipAgents update will catch up."))
+    else:
+        say(ui.note("It isn't on the line of BipAgents' version (a fork, or commits of your own): it can't be moved "
+                    "there by itself."))
     return True
