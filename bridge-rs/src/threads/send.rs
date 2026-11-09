@@ -86,6 +86,10 @@ pub struct NewMessage {
     /// that phone (reminders.rs `phone_for`); none said, the bridge's own rule.
     #[serde(default)]
     pub phone: Option<String>,
+    /// The phone's decision for this turn's thinking (a decider on the phone): true thinks, false answers at once;
+    /// none, the bridge's rule (turn_thinking.rs). Followed only for an agent whose level the person never chose.
+    #[serde(default)]
+    pub thinking: Option<bool>,
 }
 
 impl Validate for NewMessage {
@@ -538,6 +542,7 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
             attachments: body.attachments.iter().map(Attachment::shown).collect(),
             voice: body.kinds.iter().any(|k| k == "voice"),
             phone: phone.map(str::to_string),
+            thinking: body.thinking,
         };
         queues
             .add(agent, tip, &words, running.as_deref(), front, sent)
@@ -548,10 +553,15 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
     crate::cloud_setup::READINESS.wait(&agent.name, crate::cloud_setup::READY_WAIT).await;
     crate::mcp_sessions::SESSIONS.first_turn(&agent.name, crate::mcp_sessions::FIRST_TURN_WAIT).await;
     let instructions = body.instructions.as_deref().filter(|i| !i.trim().is_empty());
-    let run = state.hermes.start_run_input(agent, input, tip, instructions).await.map_err(|exc| match exc.status() {
+    let options = crate::turn_thinking::turn_options(&state.config(), agent, &words, body.thinking);
+    let thinks = crate::turn_thinking::thought(options.as_ref());
+    let run = state.hermes.start_run_input(agent, input, tip, instructions, options).await.map_err(|exc| match exc.status() {
         Some(status @ (400 | 413 | 415 | 422)) => HttpError::new(status, "your agent refused this message"),
         _ => HttpError::new(502, "your agent isn't answering right now: try again in a moment"),
     })?;
+    if thinks {
+        crate::turn_thinking::thinking_run(&run);
+    }
     crate::welcome::done(&state.config(), &agent.name, Some(tip));
     // followed by the hub whoever looks (the brake, « reply ready »), and the queue waits for it
     state.hub.watch(agent, &run, Some(tip), true);

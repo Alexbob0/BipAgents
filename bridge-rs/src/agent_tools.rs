@@ -699,6 +699,7 @@ fn last_chars(text: &str, n: usize) -> String {
 /// A deleted agent: its token goes, and its pages.
 pub fn forget(config: &Config, name: &str) {
     pages::forget(config, name);
+    crate::shared_pages::forget(config, name);
     crate::approvals_log::forget(config, name);
     crate::approval_level::forget(config, name);
     crate::maps::forget(config, name);
@@ -1259,6 +1260,17 @@ fn duration(seconds: f64) -> String {
 
 /// create_page, list_pages, read_page, delete_page. Err: what Python lets through (an OSError writing the page).
 pub fn page_tool(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) -> anyhow::Result<Dict> {
+    page_tool_marked(config, agent, name, arguments, None)
+}
+
+/// [`page_tool`]; `mark`: a page made in a shared conversation (shared_pages.rs).
+pub fn page_tool_marked(
+    config: &Config,
+    agent: &AgentConfig,
+    name: &str,
+    arguments: &Dict,
+    mark: Option<&pages::Mark>,
+) -> anyhow::Result<Dict> {
     let page = tk::strip(&tk::str_or_empty(arguments.get("page"))).to_string();
     let caught = |err: anyhow::Error| -> anyhow::Result<Dict> {
         match err.downcast_ref::<pages::ValueError>() {
@@ -1298,12 +1310,13 @@ pub fn page_tool(config: &Config, agent: &AgentConfig, name: &str, arguments: &D
         tracing::info!(agent = %agent.name, page = %page, "agent page deleted");
         return Ok(tool_text(&format!("Page {page} deleted."), false));
     }
-    let made = match pages::save(
+    let made = match pages::save_marked(
         config,
         &agent.name,
         &tk::str_or_empty(arguments.get("html")),
         &tk::str_or_empty(arguments.get("title")),
         if page.is_empty() { None } else { Some(&page) },
+        mark,
     ) {
         Ok(made) => made,
         Err(err) => return caught(err),
@@ -1957,32 +1970,45 @@ async fn mcp(
             return Ok(answer(closed));
         }
     }
-    let relative_like = crate::agent_shares::relative_turn(&state.config(), &agent.name)
-        || crate::rooms_remote::guest_turn_going(&state.config(), &agent.name)
-        || crate::peers::household_turn(&agent.name);
-    if relative_like {
-        // a relative (or a relative's discussion, or another household's agent) talks to this agent: the person's own
-        // data stays closed (agent_shares.rs; Hermes closes its own tools for that run, patch 0018)
-        if let Some(closed) = crate::agent_shares::closed_tool(&name) {
-            tracing::info!(agent = %agent.name, tool = %name, "tool closed during a relative's turn");
-            return Ok(answer(closed));
+    // Whose turn this call is (shared_pages.rs, 2026-11-09): the person's own turns are open everywhere, conversations
+    // shown to friends included; a relative's turn keeps the person's data closed (agent_shares.rs; Hermes closes its
+    // own tools for that run, patch 0018) but may make a page, marked and counted; another household's agent or a
+    // relative's discussion closes the agent while it goes on.
+    let mut page_mark: Option<pages::Mark> = None;
+    let mut asker: Option<crate::shared_pages::Asker> = None;
+    let arguments = match crate::shared_pages::who(&state, &agent.name, &name) {
+        crate::shared_pages::Who::Guest => {
+            if let Some(closed) = crate::agent_shares::closed_tool(&name, false) {
+                tracing::info!(agent = %agent.name, tool = %name, "tool closed during another household's turn");
+                return Ok(answer(closed));
+            }
+            arguments
         }
-    }
-    // a conversation shown to people the person invited: the same doors closed (read_shares.rs); a project agent keeps
-    // its pages and friends' cards there, and give_file only for a file made in that conversation
-    let shared_turn = !relative_like && crate::read_shares::shared_turn(&state, &agent.name);
-    if shared_turn {
-        let project = crate::project_agent::is_project(&state.config(), &agent.name);
-        if let Some(closed) = crate::read_shares::closed_tool(&name, project) {
-            tracing::info!(agent = %agent.name, tool = %name, "tool closed in a shared conversation");
-            return Ok(answer(closed));
-        }
-        if name == crate::give_file::TOOL_NAME {
-            if let Some(refused) = crate::read_shares::give_file_refused(&state.config(), &agent.name, &arguments) {
-                return Ok(answer(refused));
+        crate::shared_pages::Who::Friend(friend) => {
+            if let Some(closed) = crate::agent_shares::closed_tool(&name, true) {
+                tracing::info!(agent = %agent.name, tool = %name, "tool closed during a relative's turn");
+                return Ok(answer(closed));
+            }
+            if name != CREATE_PAGE {
+                arguments
+            } else {
+                let config = state.config();
+                if let Some(refused) = crate::shared_pages::refused(&config, &agent.name, &friend, &arguments) {
+                    return Ok(answer(refused));
+                }
+                page_mark = Some(crate::shared_pages::mark_for(&config, &agent.name, &friend));
+                asker = Some(friend);
+                crate::shared_pages::friend_arguments(&arguments)
             }
         }
-    }
+        crate::shared_pages::Who::Owner => {
+            // a page made in a conversation shown to friends: theirs to see, not to pass on (read_shares.rs)
+            if name == CREATE_PAGE && crate::read_shares::shared_turn(&state, &agent.name) {
+                page_mark = Some(pages::Mark { group: true, asked_by: None, lang: lang.clone() });
+            }
+            arguments
+        }
+    };
     // The brake (loop_brake.rs), per turn (the run the hub follows, else the routine's): the same write twice, too many
     // writes, or a routine going round in circles, refused in plain words.
     let turn = state.hub.turn_of(&agent.name, &name);
@@ -2102,7 +2128,14 @@ async fn mcp(
     // the phone the person asked from in this turn (threads/send.rs): where a reminder goes (reminders.rs)
     let asking = turn_run.as_deref().and_then(|r| state.hub.subscription(&agent.name, r)).and_then(|s| s.phone());
     let work = tokio::spawn(async move {
-        let mut result = call_tool(&maker, &agent, &name, &arguments, Some(push), Some(jobs), asking).await;
+        let mut result = match page_mark {
+            // a page made in a shared conversation: its mark (shared_pages.rs)
+            Some(mark) if name == CREATE_PAGE => {
+                let (c, a, n, args) = (note_config.clone(), agent.clone(), name.clone(), arguments.clone());
+                blocking(move || page_tool_marked(&c, &a, &n, &args, Some(&mark))).await
+            }
+            _ => call_tool(&maker, &agent, &name, &arguments, Some(push), Some(jobs), asking).await,
+        };
         crate::card_place::place_new(&card_state, &agent, &cards_before, turn_run.as_deref()).await;
         // the cards the person's level approves at once (approval_level.rs): answered, told in the result
         let session = turn_run.as_deref().and_then(|r| card_state.hub.subscription(&agent.name, r)).and_then(|s| s.session_id());
@@ -2113,10 +2146,14 @@ async fn mcp(
         if let Ok(done) = &mut result {
             crate::names::localize_result(done, &work_lang);
             wrote(&agent.name, &name, &arguments, done);
-            if shared_turn && crate::made_files::makes_files(&name) {
-                // made in the shared conversation: give_file may give it there (read_shares.rs `give_file_refused`)
-                let (config, agent_name, paths) = (note_config.clone(), agent.name.clone(), crate::read_shares::made_paths(done));
-                let _ = tokio::task::spawn_blocking(move || crate::read_shares::note_made(&config, &agent_name, &paths)).await;
+            if let (Some(friend), false) = (&asker, done.get("isError").map(py::truthy).unwrap_or(false)) {
+                // made for a relative: hers to see, counted in her day (shared_pages.rs)
+                let page = crate::made_files::media_path_of(done)
+                    .and_then(|p| p.strip_suffix(".html").and_then(|p| p.rsplit('/').next()).map(str::to_string));
+                if let Some(page) = page {
+                    let (config, agent_name, friend) = (note_config.clone(), agent.name.clone(), friend.clone());
+                    let _ = tokio::task::spawn_blocking(move || crate::shared_pages::note(&config, &agent_name, &page, &friend)).await;
+                }
             }
             if crate::made_files::makes_files(&name) {
                 let before = turn_run.as_deref().map(|run| crate::made_files::MADE.in_run(&agent.name, run));

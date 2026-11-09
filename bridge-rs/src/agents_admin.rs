@@ -1757,6 +1757,39 @@ pub fn task_turn_options(config: &Config, agent: &AgentConfig) -> Option<Value> 
         .then(|| json!({"reasoning": {"enabled": true, "effort": DEFAULT_THINKING}}))
 }
 
+/// An agent whose thinking the bridge decides turn by turn (turn_thinking.rs).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AutoThinking {
+    /// Its model can't think less than « low » (GLM through EUrouter, [`keeps_thinking_on`]).
+    pub floor: bool,
+}
+
+/// Whether the bridge decides `agent`'s thinking turn by turn: a model it sets (provider `custom` with an address,
+/// see [`read_thinking`]) and no level the person chose ([`chosen_thinking`]: a chosen level stays every turn's).
+pub fn auto_thinking(config: &Config, agent: &AgentConfig) -> Option<AutoThinking> {
+    if agent.host_home.as_deref().is_some_and(|h| !h.is_empty()) {
+        return None; // set up by hand: its level is its administrator's
+    }
+    let data = load_or_empty(&profile_config_path(config, agent)).ok()?;
+    auto_thinking_of(&data, chosen_thinking(&profile_folder(config, agent)).as_deref())
+}
+
+/// [`auto_thinking`] of a config, `chosen` the person's level.
+pub fn auto_thinking_of(data: &Yaml, chosen: Option<&str>) -> Option<AutoThinking> {
+    if chosen.is_some() {
+        return None;
+    }
+    thinking_of(data, None)?;
+    // a level only a person writes, from a bridge before the record (« high », « xhigh », « none » with the chat
+    // template's thinking off): theirs
+    let written = written_thinking(data);
+    let entry = data.get("providers").and_then(|p| p.get(THINKING_PROVIDER)).is_some();
+    if matches!(written.as_deref(), Some("high" | "xhigh")) || (written.as_deref() == Some("none") && entry) {
+        return None;
+    }
+    Some(AutoThinking { floor: thinking_floor(data) })
+}
+
 fn profile_config_path(config: &Config, agent: &AgentConfig) -> PathBuf {
     profile_folder(config, agent).join("config.yaml")
 }

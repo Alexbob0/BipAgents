@@ -97,6 +97,9 @@ pub struct Item {
     /// The phone it was sent from (threads/send.rs), for its turn (`RunHub::set_phone`); not shown to the apps.
     #[serde(default, skip_serializing)]
     pub phone: Option<String>,
+    /// The phone's decision for its turn's thinking (turn_thinking.rs); not shown to the apps.
+    #[serde(default, skip_serializing)]
+    pub thinking: Option<bool>,
 }
 
 /// A message the sending route hands to the queue: its app id and Hermes' input.
@@ -109,6 +112,8 @@ pub struct Sent {
     pub voice: bool,
     /// The phone it was sent from (« ios », « android »), when the app said.
     pub phone: Option<String>,
+    /// The phone's decision for its turn's thinking (turn_thinking.rs), when it sent one.
+    pub thinking: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -251,6 +256,7 @@ fn new_item(session_id: &str, text: &str, late: bool, sent: Sent) -> Item {
         attachments: sent.attachments,
         voice: sent.voice,
         phone: sent.phone,
+        thinking: sent.thinking,
     }
 }
 
@@ -590,13 +596,18 @@ impl Queues {
     /// Starts an item as a turn of its conversation (taken out of the list once Hermes has it).
     async fn start(&self, agent: &AgentConfig, item: &Item) -> Option<String> {
         let input = item.input.clone().unwrap_or_else(|| Value::String(item.text.clone()));
-        let run_id = match self.hermes.start_run_input(agent, input, &item.session_id, None).await {
+        let options = crate::turn_thinking::turn_options(&self.config.get(), agent, &item.text, item.thinking);
+        let thinks = crate::turn_thinking::thought(options.as_ref());
+        let run_id = match self.hermes.start_run_input(agent, input, &item.session_id, None, options).await {
             Ok(run_id) => run_id,
             Err(exc) => {
                 tracing::warn!(agent = %agent.name, error = %exc, "queue: the next message did not start (tried again soon)");
                 return None;
             }
         };
+        if thinks {
+            crate::turn_thinking::thinking_run(&run_id);
+        }
         // watched: kept across a restart, « reply ready » pushed at the end if nobody looks (and nothing follows)
         self.hub.watch(agent, &run_id, Some(&item.session_id), true);
         self.hub.keep(agent, &run_id, Some(&item.session_id));
@@ -810,6 +821,7 @@ mod tests {
             attachments: Vec::new(),
             voice: false,
             phone: None,
+            thinking: None,
         }
     }
 
@@ -817,7 +829,7 @@ mod tests {
     fn a_message_of_files_alone_says_its_files() {
         // 6/11: a photo sent alone waited as an empty row (« En attente (1) », nothing to read)
         let photo = json!({"kind": "image", "name": "photo.jpg", "mime": "image/jpeg", "size": 1234, "path": "/u/2026-11/a-photo.jpg"});
-        let sent = Sent { client_id: Some("c1".into()), input: None, attachments: vec![photo.clone()], voice: false, phone: None };
+        let sent = Sent { client_id: Some("c1".into()), input: None, attachments: vec![photo.clone()], voice: false, phone: None, thinking: None };
         let mut q = queue_of(&[]);
         q.items.push(new_item("s1", "", false, sent));
         let shown = q.snapshot("maison");

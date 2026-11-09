@@ -135,6 +135,69 @@ def test_hermes_refusing_an_item_is_said_without_the_secret(bridges, fakes):
     assert bridge.get("/v1/vault", headers=AUTH).json()["items"] == []
 
 
+def test_a_python_failing_before_the_vault_is_not_the_persons_input(bridges, fakes):
+    """Not « vérifie ce que tu as écrit » (a 400) when the agent's Hermes Python fails before its vault read the item:
+    a 503 `vault_unavailable` naming the agent, nothing kept (Alex's install, 2026-11-09)."""
+    bridge = vault_bridge(bridges, fakes)
+    bridge.commands.clear_rules()
+    bridge.commands.rule("podman", ["exec"], exit=1,
+                         stderr="Traceback…\njson.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)\n")
+    refused = bridge.post("/v1/vault", headers=AUTH, json={**LOGIN, "agents": ["vie"]})
+    assert refused.status_code == 503, refused.text
+    assert refused.json() == {"detail": {"code": "vault_unavailable", "agents": ["vie"]}}
+    assert "s3cret" not in refused.text
+    assert bridge.get("/v1/vault", headers=AUTH).json()["items"] == []
+
+
+def _tool_python(home, folder, script):
+    path = home / "tools" / folder / "bin" / "python3"
+    path.parent.mkdir(parents=True)
+    path.write_text("#!/bin/sh\n" + script)
+    path.chmod(0o755)
+    return str(path)
+
+
+def test_a_space_made_before_hermes_moved_keeps_reaching_its_vault(bridges, fakes, tmp_path):
+    """A space's Python is written down when the agent gets it (bridge.toml `python`, under Hermes' own
+    ~/.hermes/tools). `bipagents hermes-update --to-bipagents` (517b5e10f → bf0203a794) pins a newer Python and keeps
+    the old folder, whose interpreter then re-runs itself on the new one without the request it had on stdin: every
+    item given to a space was refused. The bridge runs the Python Hermes runs on today (tools/facts.json)."""
+    home = tmp_path / "hermes"
+    got = tmp_path / "request.json"
+    old = _tool_python(home, "python-3.14.7+20260901-linux-x64",
+                       "echo 'json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)' >&2\nexit 1\n")
+    _tool_python(home, "python-3.14.9+20261021-linux-x64", f"cat > {got}\necho '{{\"id\": \"vault_1\"}}'\n")
+    (home / "tools" / "facts.json").write_text(json.dumps(
+        {"packages": {"python": {"entry": "python-3.14.9+20261021-linux-x64"}}}))
+    bridge = bridges.new()
+    bridge.config["agents"]["kerfy-studio"] = {
+        "display_name": "Kerfy Studio", "hermes_url": fakes.down.url, "hermes_key": "k" * 32, "isolated": True,
+        "sandboxed": True, "space": str(tmp_path / "spaces" / "kerfy-studio"), "python": [old, "-I"],
+        "hermes_home": str(tmp_path / "spaces" / "kerfy-studio" / "profiles" / "kerfy-studio"),
+        "hermes_root": str(home / "hermes-agent")}
+    bridge.config["hermes"] = {"isolated": True, "bin": str(bridge.fakebin / "hermes"), "hub_url": fakes.hermes.url,
+                               "home": str(home)}
+    bridge.start()
+    agents = {a["id"]: a for a in bridge.get("/v1/vault", headers=AUTH).json()["agents"]}
+    assert agents["kerfy-studio"]["can_hold"] is True
+    made = bridge.post("/v1/vault", headers=AUTH, json={**LOGIN, "agents": ["kerfy-studio"]})
+    assert made.status_code == 201, made.text
+    request = json.loads(got.read_text())
+    assert request["op"] == "add" and request["home"].endswith("profiles/kerfy-studio")
+    assert made.json()["agents"] == ["kerfy-studio"]
+    # `bipbridge vault-check` (run after a move by `--to-bipagents`): the space reaches its vault
+    checked = bridge.cli("vault-check")
+    assert checked.returncode == 0 and "kerfy-studio: vault OK" in checked.stdout, checked.stdout + checked.stderr
+    assert json.loads(got.read_text())["op"] == "list"
+    # the Python Hermes runs on gone too: out of reach, said, exit 1
+    (home / "tools" / "python-3.14.9+20261021-linux-x64" / "bin" / "python3").write_text(
+        "#!/bin/sh\necho 'ModuleNotFoundError: No module named agent' >&2\nexit 1\n")
+    failing = bridge.cli("vault-check")
+    assert failing.returncode == 1 and "kerfy-studio: vault out of reach" in failing.stdout, failing.stdout
+    refused = bridge.post("/v1/vault", headers=AUTH, json={**LOGIN, "label": "Ameli", "agents": ["kerfy-studio"]})
+    assert refused.status_code == 503 and refused.json()["detail"]["code"] == "vault_unavailable", refused.text
+
+
 def test_an_install_whose_agents_can_read_the_bridge_keeps_no_credentials(bridge):
     listing = bridge.get("/v1/vault", headers=AUTH).json()
     assert listing == {"protected": False, "items": [], "cards": False, "cards_allowed": False,

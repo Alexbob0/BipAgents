@@ -2,7 +2,7 @@
 
 # Datenschutzerklärung von BipAgents
 
-> Zuletzt aktualisiert: 6. November 2026.
+> Zuletzt aktualisiert: 9. November 2026.
 
 ## Kurz gesagt
 
@@ -19,8 +19,8 @@
   2. was du uns schicken möchtest: eine **E-Mail** an den Support oder die **Meldung** einer Antwort aus der App;
   3. **Absturzberichte**, nur wenn du ihre Weitergabe in den Einstellungen deines Telefons eingeschaltet hast.
 - Mit dem Alles-inklusive-Angebot verarbeitet Kerfy Studio außerdem dein Konto, den Status deines Abos, technische
-  Daten über deinen Platz (nie seinen Inhalt) und deine Sicherungen, verschlüsselt mit einem Schlüssel, den es nicht
-  hat; es hostet deinen Platz, ohne darauf zuzugreifen (Abschnitt 5). Wenn du einem Agenten eine eigene E-Mail-Adresse
+  Daten über deinen Platz (nie seinen Inhalt) und deine Sicherungen, ohne ihren Schlüssel unlesbar, der auf deinem Platz und auf deinen
+  Geräten bleibt (Abschnitt 5.5); es hostet deinen Platz, ohne darauf zuzugreifen (Abschnitt 5). Wenn du einem Agenten eine eigene E-Mail-Adresse
   gibst, bewahrt Kerfy Studio außerdem die E-Mails dieser Adresse auf seinem Mailserver auf (Abschnitt 5.8).
 - Bei einem Duo- oder Familien-Tarif gehört das KI-Guthaben der ganzen Familie: **Die Person, die zahlt, sieht, wie
   viel jede Person davon verbraucht** (ein Betrag), **nie, was sie schreibt** (Abschnitt 5.3).
@@ -33,7 +33,7 @@ Kontakt: **privacy@bipagents.com**.
 
 Kerfy Studio hat keinen Datenschutzbeauftragten benannt: Für seine Tätigkeit ist das nicht vorgeschrieben (Art. 37
 DSGVO). Für alle Fragen zu deinen Daten: privacy@bipagents.com. Für das Recht von Singapur (Personal Data Protection
-Act), das eine für den Datenschutz zuständige Person verlangt, ist das der Präsident von Kerfy Studio, [Vorname Name],
+Act), das eine für den Datenschutz zuständige Person verlangt, ist das der Präsident von Kerfy Studio,
 erreichbar unter derselben Adresse.
 
 Kerfy Studio ist Verantwortlicher für die Verarbeitungen, die die App durchführt, um zu funktionieren, so wie Kerfy
@@ -769,7 +769,7 @@ Das Relay akzeptiert nur verschlüsselte Verbindungen (HTTPS), versiegelt die To
 Datenbank und schreibt nie ein Token im Klartext. In der App sind die Schlüssel deiner Agenten durch den
 Schlüsselbund oder den Keystore geschützt, und die Verbindung zu deinem Server läuft über Tailscale oder über eine
 HTTPS-Tür in deinem lokalen Netz, die nur das Zertifikat deines Servers akzeptiert. Der Code der App, der
-Serverseite und des Relays ist öffentlich: [URL des Repositorys]. Um eine Sicherheitslücke zu melden:
+Serverseite und des Relays ist öffentlich: https://github.com/Alexbob0/BipAgents. Um eine Sicherheitslücke zu melden:
 **security@bipagents.com** (siehe die Datei SECURITY.md im Repository).
 
 Mit dem Alles-inklusive-Angebot ist jeder Platz ein eigenes Konto auf dem Server, ohne Administratorrechte; Kerfy

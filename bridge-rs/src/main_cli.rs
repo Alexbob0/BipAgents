@@ -17,7 +17,7 @@ use crate::config::{config_path, load_config, Config, SharedConfig};
 use crate::logs::setup_logging;
 use crate::py;
 
-const COMMANDS: [&str; 12] = [
+const COMMANDS: [&str; 13] = [
     "serve",
     "check",
     "genkey",
@@ -30,6 +30,7 @@ const COMMANDS: [&str; 12] = [
     "adopt",
     "sandbox",
     "agent-tools",
+    "vault-check",
 ];
 
 const ACTIONS: [&str; 3] = ["add", "remove", "start"];
@@ -48,7 +49,7 @@ pub struct Args {
 
 const USAGE: &str = "usage: bipbridge [-h] [--config CONFIG] [--agent AGENT] [--png PNG] [--json]
                  [--all]
-                 [{serve,check,genkey,qr,peer-token,browser,shares-mounts,console,spaces,adopt,sandbox,agent-tools}]
+                 [{serve,check,genkey,qr,peer-token,browser,shares-mounts,console,spaces,adopt,sandbox,agent-tools,vault-check}]
                  [{add,remove,start}]
 ";
 
@@ -56,7 +57,7 @@ const HELP: &str = "
 BipAgents bridge for Hermes agents
 
 positional arguments:
-  {serve,check,genkey,qr,peer-token,browser,shares-mounts,console,spaces,adopt,sandbox,agent-tools}
+  {serve,check,genkey,qr,peer-token,browser,shares-mounts,console,spaces,adopt,sandbox,agent-tools,vault-check}
                         serve (default), check the config, print a new random
                         bridge key, show an agent's pairing QR code for the
                         app, (peer-token --agent X) give an agent set up by
@@ -72,7 +73,9 @@ positional arguments:
                         place), or (sandbox) isolate the agents' sandboxes
                         now and print what each one got, or (agent-tools
                         --agent X) give an agent set up by hand the bridge's
-                        tools (files to other agents, voices, pages...)
+                        tools (files to other agents, voices, pages...), or
+                        (vault-check) check that every agent which may keep
+                        credentials reaches its vault
   {add,remove,start}    browser: add or remove; spaces: start
 
 options:
@@ -319,6 +322,7 @@ pub fn main(argv: Vec<String>) -> i32 {
         "agent-tools" => agent_tools_entry(&config, &args),
         "browser" => runtime.block_on(browser(config, &args)),
         "spaces" => runtime.block_on(spaces(&config)),
+        "vault-check" => runtime.block_on(vault_check(&config)),
         "adopt" => runtime.block_on(adopt(config)),
         "sandbox" => runtime.block_on(sandbox(config)),
         "console" => console(&config),
@@ -623,6 +627,33 @@ async fn adopt(config: Config) -> i32 {
 
 /// Each agent with a space of its own (spaces.py) gets its gateway's service again: after `bipagents import`
 /// brought the install to this machine (the spaces' folders came with it, their services did not).
+/// (vault-check) Every agent that may keep credentials reaches its Hermes vault: its list read the way the vault
+/// writes (vault.rs `vault_target`, `run_in_hermes`), nothing printed of it. 1 when one doesn't (`bipagents
+/// hermes-update --to-bipagents` checks it after a move; 2026-11-09: a move left every space's vault out of reach).
+async fn vault_check(config: &Config) -> i32 {
+    let mut failed = 0;
+    let mut checked = 0;
+    for agent in config.agents.values() {
+        if crate::vault::holder(config, agent).is_some() {
+            continue;
+        }
+        checked += 1;
+        let mut request = serde_json::Map::new();
+        request.insert("op".into(), serde_json::json!("list"));
+        match crate::vault::run_in_hermes(crate::vault::vault_target(config, agent), request).await {
+            Ok(_) => println!("{}: vault OK", agent.name),
+            Err(exc) => {
+                println!("{}: vault out of reach ({})", agent.name, crate::agents_admin::tail(&exc.to_string(), 200));
+                failed += 1;
+            }
+        }
+    }
+    if checked == 0 {
+        println!("no agent keeps credentials here");
+    }
+    i32::from(failed > 0)
+}
+
 async fn spaces(config: &Config) -> i32 {
     let spaces = crate::spaces::Spaces::new(crate::agents_admin::default_run());
     let mut failed = 0;
@@ -1039,8 +1070,8 @@ mod tests {
             Err(ArgsExit::Error(m)) => m,
             other => panic!("{l}: {other:?}"),
         };
-        assert_eq!(err("add"), "argument command: invalid choice: 'add' (choose from serve, check, genkey, qr, peer-token, browser, shares-mounts, console, spaces, adopt, sandbox, agent-tools)");
-        assert_eq!(err("-5"), "argument command: invalid choice: '-5' (choose from serve, check, genkey, qr, peer-token, browser, shares-mounts, console, spaces, adopt, sandbox, agent-tools)");
+        assert_eq!(err("add"), "argument command: invalid choice: 'add' (choose from serve, check, genkey, qr, peer-token, browser, shares-mounts, console, spaces, adopt, sandbox, agent-tools, vault-check)");
+        assert_eq!(err("-5"), "argument command: invalid choice: '-5' (choose from serve, check, genkey, qr, peer-token, browser, shares-mounts, console, spaces, adopt, sandbox, agent-tools, vault-check)");
         assert_eq!(err("check extra"), "argument action: invalid choice: 'extra' (choose from add, remove, start)");
         assert_eq!(err("spaces start extra"), "unrecognized arguments: extra");
         assert_eq!(err("--bogus"), "unrecognized arguments: --bogus");

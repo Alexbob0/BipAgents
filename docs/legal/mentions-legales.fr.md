@@ -52,7 +52,7 @@ Pour les autorités : **contact@kerfystudio.com** ; pour les utilisateurs : **su
 
 ## Logiciel libre et marques
 
-Le code source de BipAgents est publié sous **licence MIT** : [URL du dépôt]. Les composants tiers restent sous leur
+Le code source de BipAgents est publié sous **licence MIT** : https://github.com/Alexbob0/BipAgents. Les composants tiers restent sous leur
 propre licence, indiquée dans le dépôt.
 
 BipAgents est construit sur **Hermes Agent, logiciel libre de Nous Research**

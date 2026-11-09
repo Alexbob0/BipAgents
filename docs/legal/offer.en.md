@@ -2,7 +2,7 @@ English · [Français](offer.fr.md) · [Deutsch](offer.de.md) · [Español](offe
 
 # Terms of sale of the all-included offer
 
-> Last updated: 27 October 2026.
+> Last updated: 9 November 2026.
 
 ## 1. Purpose
 
@@ -216,8 +216,8 @@ section 6); the services you connect to your agents and their own subscriptions.
 - **No access to your email any more**: you get your account back **at once** with your **recovery code** (optional,
   in Settings › Account), or after **24 hours**, your devices and your email address being told about it. This code
   also opens the copy of your backup key that Kerfy Studio keeps encrypted and cannot read without
-  it. **Keep it somewhere safe**: Kerfy Studio does not know it and cannot recover it. With no device and no recovery
-  code, nobody can open your backups.
+  it. **Keep it somewhere safe**: Kerfy Studio does not know it and cannot recover it. If your place is lost, with no device and
+  no recovery code, you can no longer open your backups.
 - You are responsible for the security of your devices, of your Apple, Google or email account, and of your recovery
   code.
 - **Deleting your account**: in the app, Settings › Account › Delete my account, or on the page
@@ -259,9 +259,9 @@ section 6); the services you connect to your agents and their own subscriptions.
   Studio's accounts at the hosting providers is restricted to the company. The content of a place would only be
   accessed to meet a legal obligation, and you would be told when the law allows it. Like any hosting provider,
   OVHcloud and Hetzner have physical access to their servers.
-- **Backups**: your place backs itself up a few minutes after each activity, and at least once a day, encrypted on the place with a key that only your devices hold
-  (plus the encrypted copy that your recovery code opens, section 7). Kerfy Studio keeps these backups without being
-  able to read them: those of the last 2 hours, then one per hour for 48 hours, one per day for 30 days, one per week for 12 weeks. Settings ›
+- **Backups**: your place backs itself up a few minutes after each activity, and at least once a day, encrypted on the place before it leaves, with a key
+  that stays on your place and on your devices (plus the encrypted copy that your recovery code opens, section 7).
+  Kerfy Studio keeps these backups on its backup server, unreadable without that key: those of the last 2 hours, then one per hour for 48 hours, one per day for 30 days, one per week for 12 weeks. Settings ›
   All-included plan › Backups shows the latest one and starts one at once.
 - **OVHcloud's daily image**: on its servers, OVHcloud also makes, on its side, a daily image of the whole server,
   which it keeps on its premises (one restore point per day, not encrypted by Kerfy Studio). When a place is

@@ -2,7 +2,7 @@ English · [Français](privacy.fr.md) · [Deutsch](privacy.de.md) · [Español](
 
 # BipAgents privacy policy
 
-> Last updated: 6 November 2026.
+> Last updated: 9 November 2026.
 
 ## In short
 
@@ -17,7 +17,7 @@ English · [Français](privacy.fr.md) · [Deutsch](privacy.de.md) · [Español](
   2. what you choose to send us: an **email** to support, or a **report** of a reply from the app;
   3. **crash reports**, only if you turned on sharing them in your phone's settings.
 - With the all-included offer, Kerfy Studio also processes your account, the state of your subscription, technical
-  data about your place (never its content) and your backups, encrypted with a key it does not have; it hosts your
+  data about your place (never its content) and your backups, unreadable without their key, which stays on your place and on your devices (section 5.5); it hosts your
   place without accessing it (section 5). If you give an agent its own e-mail address, Kerfy Studio also keeps that
   address's mails on its mail server (section 5.8).
 - On a Duo or a Family plan, the AI credit belongs to the whole family: **the person who pays sees how much each
@@ -31,7 +31,7 @@ registered with the RCS of [registry city] under number [SIREN] ("Kerfy Studio",
 
 Kerfy Studio has not appointed a data protection officer: its activity does not require one (GDPR article 37). For
 any question about your data: privacy@bipagents.com. For Singapore's law (Personal Data Protection Act), which
-requires a person in charge of data protection, this is Kerfy Studio's president, [first and last name], reachable
+requires a person in charge of data protection, this is Kerfy Studio's president, reachable
 at the same address. He is also the person in charge of the protection of personal information under Quebec's law,
 and the individual accountable for compliance with Canada's law (Personal Information Protection and Electronic
 Documents Act), at the same address.
@@ -715,7 +715,7 @@ safeguard will be stated here before it goes into service. You can ask us for a 
 The relay only accepts encrypted connections (HTTPS), seals tokens (XChaCha20-Poly1305), has no database and never
 writes a token in clear. In the app, your agents' keys are protected by the Keychain or the Keystore, and the
 connection to your server goes through Tailscale or through an HTTPS door on your local network that only accepts your
-server's certificate. The code of the app, the server side and the relay is public: [repository URL]. To report a
+server's certificate. The code of the app, the server side and the relay is public: https://github.com/Alexbob0/BipAgents. To report a
 security flaw: **security@bipagents.com** (see the SECURITY.md file in the repository).
 
 With the all-included offer, each place is a separate account on the server, without administrator rights; Kerfy

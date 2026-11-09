@@ -561,6 +561,10 @@ mod tests {
         let names: Vec<String> = tools(&config).iter().filter_map(|t| t["name"].as_str().map(str::to_string)).collect();
         assert!(names.iter().all(|n| TOOLS.contains(&n.as_str())), "{names:?}");
         assert!(names.contains(&"create_page".to_string()) && names.contains(&"weather".to_string()));
+        // its friends' cards and the group's account (shared_expenses.rs), listed and open in every turn of its own
+        for own in [crate::friends_cards::TOOL_NAME, crate::shared_expenses::TOOL_NAME] {
+            assert!(names.contains(&own.to_string()) && closed_tool(own).is_none(), "{own}");
+        }
     }
 
     #[test]
