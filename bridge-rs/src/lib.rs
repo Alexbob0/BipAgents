@@ -98,6 +98,7 @@ pub mod door_tls;
 pub mod family_agent;
 /// « L'agent de projet »: an agent for one occasion whose thread friends follow (no Python counterpart).
 pub mod friends_cards; // friends tap a shared project's votes and checklists
+pub mod shared_expenses; // a shared project's account: who paid what, balances, the fewest transfers
 pub mod project_agent;
 pub mod family_news;
 pub mod body_limit;

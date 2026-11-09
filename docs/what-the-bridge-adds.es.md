@@ -102,7 +102,7 @@ solo programa en Rust, `bipbridge`). Esta página recoge lo que añade, área po
   incluido el agente de un familiar.
 - `households.rs` (con `door_tls.rs`) une dos instalaciones a propósito; `family_agent.rs`, `family_news.rs`,
   `agent_shares.rs`, `meet.rs`: un agente común a la familia, noticias transmitidas solo tras aprobación, agentes
-  compartidos, dos agentes que encuentran una fecha. `read_shares.rs`, `project_agent.rs`, `friends_cards.rs` y
+  compartidos, dos agentes que encuentran una fecha. `read_shares.rs`, `project_agent.rs`, `friends_cards.rs` (con `shared_expenses.rs`) y
   `templates.rs` (con `templates_scrub.rs`) comparten una conversación en solo lectura, el agente de una ocasión o un
   agente como plantilla.
 

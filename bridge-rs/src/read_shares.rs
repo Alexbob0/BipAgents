@@ -289,7 +289,8 @@ pub fn shared_turn(state: &AppState, agent: &str) -> bool {
 /// page and a friends' card are made from what is said in this conversation (the person's own data stays closed, so
 /// nothing personal can reach them), and they are what the friends came for. `give_file` is not among them: it is
 /// checked on its own (`give_file_refused`), and only gives a file made in this shared conversation.
-pub const SHARED_PROJECT_TOOLS: [&str; 2] = [crate::agent_tools::CREATE_PAGE, crate::friends_cards::TOOL_NAME];
+pub const SHARED_PROJECT_TOOLS: [&str; 3] =
+    [crate::agent_tools::CREATE_PAGE, crate::friends_cards::TOOL_NAME, crate::shared_expenses::TOOL_NAME];
 
 /// The answer a closed tool gives in a shared conversation; `project`: the agent is a project agent (its thread is the
 /// shared one).
@@ -1335,7 +1336,12 @@ mod tests {
     #[test]
     fn a_shared_project_thread_keeps_its_pages_and_cards_but_never_the_person_s_files() {
         // Alex, 5/11 « Oui, sauf fichiers »: pages and cards open for a project agent, give_file checked on its own
-        for name in [crate::agent_tools::CREATE_PAGE, crate::friends_cards::TOOL_NAME, crate::give_file::TOOL_NAME] {
+        for name in [
+            crate::agent_tools::CREATE_PAGE,
+            crate::friends_cards::TOOL_NAME,
+            crate::shared_expenses::TOOL_NAME,
+            crate::give_file::TOOL_NAME,
+        ] {
             assert!(closed_tool(name, true).is_none(), "{name}");
             assert!(closed_tool(name, false).is_some(), "{name}");
         }

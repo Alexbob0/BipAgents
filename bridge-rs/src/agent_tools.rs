@@ -1524,6 +1524,10 @@ pub async fn call_tool(
         let (config, agent, arguments) = (config.clone(), agent.clone(), arguments.clone());
         return blocking(move || Ok(crate::friends_cards::call(&config, &agent, &arguments))).await;
     }
+    if name == crate::shared_expenses::TOOL_NAME {
+        let (config, agent, arguments) = (config.clone(), agent.clone(), arguments.clone());
+        return blocking(move || Ok(crate::shared_expenses::call(&config, &agent, &arguments))).await;
+    }
     if name == crate::skill_library::TOOL_NAME {
         let (config, agent, arguments) = (config.clone(), agent.clone(), arguments.clone());
         return blocking(move || Ok(crate::skill_library::call(&config, &agent, &arguments))).await;
