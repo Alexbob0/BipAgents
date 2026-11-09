@@ -159,6 +159,9 @@ def test_markers_attachments_tools_and_boite_messages(bridges, fakes):
         user("[OUT-OF-BAND USER MESSAGE from the user]\nEt la suite ?\n[/OUT-OF-BAND USER MESSAGE]"),
     ], title="Bot Chat", last_active=10, started_at=1)
     bridge = bridges.new().start()
+    pages = bridge.state_dir / "agent-pages" / "wellness"  # the page the agent made (a made-up one is left out)
+    pages.mkdir(parents=True, exist_ok=True)
+    (pages / "carnet.html").write_text("<h1>Carnet</h1>", encoding="utf-8")
     main = get(bridge, "/v1/threads/main", agent="wellness")
     # a routine's report in the Boîte, without a conversation of its own: shown in the main thread
     bridge.db().execute("INSERT INTO outbox (id, agent, ntfy_id, title, text, created_at, session_id) VALUES "
