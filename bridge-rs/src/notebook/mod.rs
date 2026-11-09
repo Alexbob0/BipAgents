@@ -21,6 +21,8 @@
 //!     notebook/private/                  the private health part: the same layout, read only by the agents the person
 //!                                        gave their health to (health.rs) and by the person (the app)
 //!     notebook/history/log.jsonl         every change: who (an agent, « you », the nightly pass), when, which page
+//!                                        (an agent's: the session and run of its turn, reads.rs)
+//!     notebook/history/reads.jsonl       which page each agent read, when (never the content; 90 days: reads.rs)
 //!     notebook/history/versions/<h>.md   each page's text before and after each change (by content hash)
 //!     notebook/state.json                settings (language, mentions, nightly), agents with it off, the nightly
 //!                                        pass's cursors, spending and runs, the tasks' reminder links
@@ -37,11 +39,13 @@ pub mod api;
 pub mod archive;
 pub mod fill;
 pub mod groups;
+pub mod lexicon;
 pub mod records;
 pub mod relanguage;
 pub mod subscriptions;
 pub mod template;
 pub mod news;
+pub mod reads;
 pub mod tidy;
 pub mod tools;
 pub mod trip;
@@ -513,6 +517,11 @@ pub fn health_agent(config: &Config, agent: &str) -> bool {
     crate::health::enabled(config, agent)
 }
 
+/// Whether one of the person's agents holds their health (a health fact then goes to the private health part).
+pub fn any_health_agent(config: &Config) -> bool {
+    config.agents.values().any(|a| health_agent(config, &a.name))
+}
+
 // -- who -----------------------------------------------------------------------------------------------------------
 
 /// Who made a change: an agent (`by` its id), the person (`you`), or the nightly pass on an agent's behalf.
@@ -765,6 +774,43 @@ impl Page {
         }
     }
 
+    /// Its e-mail addresses (frontmatter `emails`, lower case).
+    pub fn emails(&self) -> Vec<String> {
+        strings(self.front.get("emails")).into_iter().map(|e| e.to_lowercase()).collect()
+    }
+
+    /// Its phone numbers (frontmatter `phones`, E.164).
+    pub fn phones(&self) -> Vec<String> {
+        strings(self.front.get("phones"))
+    }
+
+    /// `contact` kept on the page: an e-mail in `emails`, a phone number in `phones` (E.164, national numbers by
+    /// `lang`), else the phone contact's id (`contact`, when it has none). Whether it changed.
+    pub fn add_contact(&mut self, contact: &str, lang: &str) -> bool {
+        let contact = contact.trim();
+        if contact.is_empty() {
+            return false;
+        }
+        let (key, value) = match (lexicon::email(contact), lexicon::phone(contact, lang)) {
+            (Some(mail), _) => ("emails", mail),
+            (None, Some(number)) => ("phones", number),
+            (None, None) => {
+                if !self.contact().is_empty() {
+                    return false;
+                }
+                self.front.insert("contact".into(), json!(tk::head(contact, 200)));
+                return true;
+            }
+        };
+        let mut list = strings(self.front.get(key));
+        if list.contains(&value) {
+            return false;
+        }
+        list.push(value);
+        self.front.insert(key.into(), json!(list));
+        true
+    }
+
     pub fn set_aliases(&mut self, aliases: &[String]) {
         let mut kept: Vec<String> = Vec::new();
         for a in aliases {
@@ -780,14 +826,19 @@ impl Page {
         self.front.insert("updated".into(), json!(today()));
     }
 
-    /// Whether `query` names this page: its title, an alias, its contact id or its own id.
+    /// Whether `query` names this page: its title, an alias, its contact id, an e-mail, a phone number or its own id.
     pub fn named(&self, query: &str) -> bool {
         let wanted = fold(query);
         !wanted.is_empty()
             && (fold(&self.title) == wanted
                 || (!self.id().is_empty() && self.id() == query.trim())
                 || self.aliases().iter().any(|a| fold(a) == wanted)
-                || (!self.contact().is_empty() && self.contact() == query.trim()))
+                || (!self.contact().is_empty() && self.contact() == query.trim())
+                || lexicon::email(query).is_some_and(|m| self.emails().contains(&m))
+                || self.phones().iter().any(|p| lexicon::phone(query, "fr").as_ref() == Some(p)
+                    || lexicon::phone(query, "en").as_ref() == Some(p)
+                    || lexicon::phone(query, "de").as_ref() == Some(p)
+                    || lexicon::phone(query, "es").as_ref() == Some(p)))
     }
 
     /// The facts, by section: (section, [(fact, who, date)]); lines before any section under « ».
@@ -1132,7 +1183,65 @@ pub fn find(config: &Config, parts: &[Part], query: &str) -> Option<Found> {
             }
         }
     }
+    // a first name alone, when one person has it
+    let mut first = first_named(config, parts, query);
+    if first.len() == 1 {
+        return first.pop();
+    }
     None
+}
+
+/// The people whose first name is `query` (one word), in the given parts.
+fn first_named(config: &Config, parts: &[Part], query: &str) -> Vec<Found> {
+    let wanted = fold(query);
+    if wanted.is_empty() || wanted.contains(' ') || self_word(query) {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for part in parts {
+        for (path, page) in all_pages(config, *part) {
+            let first = fold(&page.title);
+            if page.kind() == "person" && first.split(' ').count() > 1 && first.split(' ').next() == Some(wanted.as_str()) {
+                out.push(Found { part: *part, path, page });
+            }
+        }
+    }
+    out
+}
+
+/// Every page `query` may name, in the given parts: by its path, title, alias, contact id, e-mail or phone number;
+/// else by a first name alone (« Léa » → « Léa Martin », « Léa Petit »). `kind`: its pages first, when some match.
+/// More than one: the caller asks which (Carnet v2, 17: never a guess, never a page « Léa 2 »).
+pub fn candidates(config: &Config, parts: &[Part], query: &str, kind: &str) -> Vec<Found> {
+    let query = query.trim();
+    if query.is_empty() {
+        return Vec::new();
+    }
+    if query.ends_with(".md") || query.contains('/') {
+        return find(config, parts, query).into_iter().collect();
+    }
+    let mut named: Vec<Found> = Vec::new();
+    for part in parts {
+        for (path, page) in all_pages(config, *part) {
+            if page.named(query) {
+                named.push(Found { part: *part, path, page });
+            }
+        }
+    }
+    // a first name alone: every person who has it (a nickname « Léa » given when there was one Léa no longer decides
+    // once there are two)
+    for f in first_named(config, parts, query) {
+        if !named.iter().any(|n| n.part == f.part && n.path == f.path) {
+            named.push(f);
+        }
+    }
+    if !kind.is_empty() && named.len() > 1 {
+        let same: Vec<Found> = named.iter().filter(|f| f.page.kind() == kind).cloned().collect();
+        if !same.is_empty() {
+            named = same;
+        }
+    }
+    named
 }
 
 // -- family shares (phase 2: storage only) --------------------------------------------------------------------------
@@ -1166,6 +1275,11 @@ pub fn new_page_id() -> String {
 }
 
 // -- history -------------------------------------------------------------------------------------------------------
+
+/// A page's revision (16 hex digits of its text's hash): the app writes a section only over the text it read.
+pub fn rev(text: &str) -> String {
+    hex::encode(Sha256::digest(text.as_bytes()))[..16].to_string()
+}
 
 fn version_id(text: &str) -> String {
     hex::encode(Sha256::digest(text.as_bytes()))[..20].to_string()
@@ -1252,6 +1366,11 @@ fn commit_with(
     entry.insert("summary".into(), json!(tk::head(&tk::squeeze(summary), 300)));
     entry.insert("before".into(), json!(before_id));
     entry.insert("after".into(), json!(after_id));
+    // an agent's turn: its session and run, for the line under its answer (reads.rs)
+    if let (Some((session, run)), Some(_)) = (reads::current(), who.agent.as_ref()) {
+        entry.insert("session".into(), json!(session));
+        entry.insert("run".into(), json!(run));
+    }
     entry.extend(extra);
     let log = history_dir(config).join("log.jsonl");
     std::fs::create_dir_all(history_dir(config))?;
@@ -1460,8 +1579,48 @@ pub struct Written {
     pub added: Vec<String>,
     /// The sections the facts went to (their titles).
     pub sections: Vec<String>,
+    /// … by their ids in the page's outline.
+    pub section_ids: Vec<String>,
+    /// The facts a label said again replaced (« Pointure : 36 » over « Pointure : 35 »).
+    pub replaced: usize,
+    /// Health facts filed apart: in the private health part, or « À ranger » (never in the shared part).
+    pub apart: usize,
     /// A subject made a trip by this write, or a trip's details changed (trip.rs).
     pub changed: bool,
+}
+
+/// The sections where a label said again replaces the old fact (one value: « Pointure : 36 »), besides any label of
+/// the lexicon's table: never the lists (tastes, gifts, exchanges, history…) nor a group's « Name : fact » lines.
+const ONE_VALUE: [&str; 8] = ["who", "dates", "work", "about", "budget", "lodging", "transport", "status"];
+
+/// `body` without the facts of `section` whose label `facts` say again (`id`: the section's id), and how many.
+fn without_restated(body: &str, section: &str, id: &str, facts: &[String]) -> (String, usize) {
+    let keys: Vec<String> = facts
+        .iter()
+        .filter_map(|f| lexicon::split_label(f))
+        .filter(|(label, _)| lexicon::label_of(label).is_some() || ONE_VALUE.contains(&id))
+        .map(|(label, _)| lexicon::label_key(&label))
+        .collect();
+    if keys.is_empty() {
+        return (body.to_string(), 0);
+    }
+    let mut lines = body_lines(body);
+    let Some(start) = section_index(&lines, section) else { return (body.to_string(), 0) };
+    let end = section_end(&lines, start);
+    let same = |line: &str| {
+        let item = line.trim().strip_prefix("- ").unwrap_or(line.trim());
+        let (text, _) = split_attribution(item);
+        // the very same fact stays (nothing replaced, nothing added)
+        if facts.iter().any(|f| fold(f) == fold(&text)) {
+            return false;
+        }
+        lexicon::split_label(&text).is_some_and(|(label, _)| keys.contains(&lexicon::label_key(&label)))
+    };
+    let before = end - start;
+    let kept: Vec<String> = lines[start + 1..end].iter().filter(|l| !same(l)).cloned().collect();
+    let gone = before - 1 - kept.len();
+    lines.splice(start + 1..end, kept);
+    (lines.join("\n") + "\n", gone)
 }
 
 /// Facts filed about `title` (a person, a subject or an area): its page found by title, alias or contact id (in this
@@ -1504,17 +1663,53 @@ pub(crate) fn note_locked(
     }
     // the person themself: their one « Toi » page, whatever name the agent gives it
     let is_self = kind == "self" || self_word(&title);
+    // a health fact never goes to the shared part (lexicon::is_health): to the private health part when an agent of
+    // the person's holds it, else to « À ranger », which the other agents don't read (Carnet v2, socle §0)
+    let (health_facts, facts): (Vec<String>, Vec<String>) = if part == Part::Main {
+        facts.iter().cloned().partition(|f| lexicon::is_health(f))
+    } else {
+        (Vec::new(), facts.to_vec())
+    };
+    let apart = if health_facts.is_empty() {
+        0
+    } else if any_health_agent(config) {
+        note_locked(config, Part::Health, kind, &title, section, &health_facts, aliases, "", "", who)?;
+        health_facts.len()
+    } else {
+        inbox_add_as(config, who, &health_facts, "note")?;
+        health_facts.len()
+    };
+    let facts = facts.as_slice();
+    if facts.is_empty() && apart > 0 && summary.trim().is_empty() && aliases.is_empty() && contact.trim().is_empty() {
+        return Ok(Written { part: Some(part), title, apart, ..Default::default() });
+    }
     let found = if is_self {
         find(config, &[part], &w.self_path())
     } else {
-        find(config, &[part], &title).or_else(|| {
-            let contact = contact.trim();
-            if contact.is_empty() {
-                None
-            } else {
-                find(config, &[part], contact)
-            }
-        })
+        // by its name, a nickname, a contact, an e-mail or a phone; a first name alone when one person has it; never
+        // a guess between several pages (Carnet v2, 17)
+        let named = candidates(config, &[part], &title, kind);
+        if named.len() > 1 {
+            let names: Vec<String> = named.iter().map(|f| f.page.title.clone()).collect();
+            return refuse(format!("Several pages: {}. Ask which one.", names.join(", ")));
+        }
+        let by_contact = || {
+            let found = candidates(config, &[part], contact.trim(), "");
+            (found.len() == 1).then(|| found.into_iter().next()).flatten()
+        };
+        match named.into_iter().next() {
+            // an e-mail or a phone already on another page: that page joins this one (merged now, not at night)
+            Some(f) if !contact.trim().is_empty() => match by_contact() {
+                Some(other) if other.path != f.path && other.page.kind() == f.page.kind() => {
+                    merge_locked(config, part, &other.path, &f.path, who)?;
+                    find(config, &[part], &f.path)
+                }
+                _ => Some(f),
+            },
+            Some(f) => Some(f),
+            None if contact.trim().is_empty() => None,
+            None => by_contact(),
+        }
     };
     // one trip page per journey: never a list of trips
     if kind == "trip"
@@ -1555,13 +1750,12 @@ pub(crate) fn note_locked(
             let Some(folder) = w.folder(kind).filter(|_| KINDS.contains(&kind)) else {
                 return refuse("kind is person, subject, area, self or trip");
             };
-            let mut path = format!("{folder}/{}.md", file_name(&title));
-            let mut n = 2;
-            while part_root(config, part).join(&path).exists() {
-                path = format!("{folder}/{} {n}.md", file_name(&title));
-                n += 1;
+            // never « Marc 2.md »: a file of that name is this page (its title written otherwise)
+            let path = format!("{folder}/{}.md", file_name(&title));
+            match read_page_text(config, part, &path) {
+                Some(text) => (path, Some(text.clone()), Page::parse(&text, &file_name(&title)), false),
+                None => (path, None, Page::new(kind, &title), true),
             }
-            (path, None, Page::new(kind, &title), true)
         }
     };
     page.ensure_id();
@@ -1578,14 +1772,15 @@ pub(crate) fn note_locked(
         names.push(title.clone());
     }
     page.set_aliases(&names);
-    if !contact.trim().is_empty() && page.contact().is_empty() {
-        page.front.insert("contact".into(), json!(tk::head(contact.trim(), 200)));
-    }
+    let contact_changed = page.add_contact(contact, &lang);
     // each fact, one a line, under the section of the page's outline it belongs to
     let page_kind = if KINDS.contains(&page.kind().as_str()) { page.kind() } else { kind.to_string() };
     let mut groups: Vec<(String, Vec<String>)> = Vec::new();
+    let mut ids: Vec<(String, &'static str)> = Vec::new();
     for fact in facts {
         for piece in template::split_fact(fact) {
+            // « Chausse du 36 » → « Pointure : 36 »: a label said again then replaces the old one
+            let piece = lexicon::reshape(&piece, &lang);
             let id = template::place(&page_kind, section, &piece);
             // a trip's packing list: one thing to tick a line
             let piece = if page_kind == "trip" && id == "packing" { trip::unticked(&piece) } else { piece };
@@ -1598,6 +1793,9 @@ pub(crate) fn note_locked(
             } else {
                 template::title(&page_kind, id, &lang)
             };
+            if !ids.iter().any(|(t, _)| *t == title) {
+                ids.push((title.clone(), id));
+            }
             match groups.iter_mut().find(|(t, _)| *t == title) {
                 Some((_, list)) => list.push(piece),
                 None => groups.push((title, vec![piece])),
@@ -1607,13 +1805,23 @@ pub(crate) fn note_locked(
     let mut body = page.body.clone();
     let mut added: Vec<String> = Vec::new();
     let mut sections: Vec<String> = Vec::new();
+    let mut section_ids: Vec<String> = Vec::new();
+    let mut replaced = 0;
     let status = (page_kind == "subject").then(|| template::title("subject", "status", &lang));
+    let group_page = page_kind == "area" && groups::is_group(&page.title);
     for (title, list) in &groups {
         // « Où on en est » says where it stands now: a new state sends the one before to « Historique »
         let before_status = (Some(title) == status.as_ref()).then(|| body.clone());
+        let id = ids.iter().find(|(t, _)| t == title).map(|(_, id)| *id).unwrap_or("other");
+        if !group_page {
+            let (kept, gone) = without_restated(&body, title, id, list);
+            body = kept;
+            replaced += gone;
+        }
         let (next, new) = add_facts(&body, title, list, who, &today());
         if !new.is_empty() {
             sections.push(title.clone());
+            section_ids.push(id.to_string());
         }
         body = match before_status {
             Some(was) if !new.is_empty() => {
@@ -1626,9 +1834,10 @@ pub(crate) fn note_locked(
     let body = set_summary(&body, w.brief, summary);
     let body = template::normalize(&page_kind, &lang, w.brief, &body).body;
     let summary_changed = summary_of(&body, w.brief) != summary_of(&page.body, w.brief);
-    let aliases_changed = before.as_deref().map(|b| Page::parse(b, "").aliases() != page.aliases()).unwrap_or(false);
+    let aliases_changed = before.as_deref().map(|b| Page::parse(b, "").aliases() != page.aliases()).unwrap_or(false)
+        || contact_changed;
     if added.is_empty() && !created && !aliases_changed && !summary_changed && !converted {
-        return Ok(Written { part: Some(part), path, title: page.title, created, added, sections, changed: false });
+        return Ok(Written { part: Some(part), path, title: page.title, created, added, sections, apart, ..Default::default() });
     }
     // no page with nothing in it (an empty card in the app: Alex's « Famille », 2026-11-03)
     if created && added.is_empty() && summary_of(&body, w.brief).is_empty() && kind != "self" && kind != "trip" {
@@ -1671,7 +1880,18 @@ pub(crate) fn note_locked(
             path = to;
         }
     }
-    Ok(Written { part: Some(part), path, title: page.title, created, added, sections, changed: converted })
+    Ok(Written {
+        part: Some(part),
+        path,
+        title: page.title,
+        created,
+        added,
+        sections,
+        section_ids,
+        replaced,
+        apart,
+        changed: converted,
+    })
 }
 
 /// The page's dated logs (« Derniers échanges », « Historique ») cut to their latest lines, as a change of its own
@@ -1703,8 +1923,20 @@ pub fn in_outline(config: &Config, page: &Page) -> String {
     template::normalize(&page.kind(), &lang, words(&lang).brief, &page.body).body
 }
 
+/// The page changed since the revision the app read (`rev`): its revision now.
+#[derive(Debug)]
+pub struct PageChanged(pub String);
+
+impl std::fmt::Display for PageChanged {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "the page changed (now {})", self.0)
+    }
+}
+
+impl std::error::Error for PageChanged {}
+
 /// A fact corrected (`new` empty: removed), or a section replaced (`section` and `text`), and/or the page's « En
-/// bref » rewritten (`brief`).
+/// bref » rewritten (`brief`). `rev`: the page's revision the app read (another one: `PageChanged`, nothing written).
 #[allow(clippy::too_many_arguments)]
 pub fn edit(
     config: &Config,
@@ -1715,13 +1947,20 @@ pub fn edit(
     section: &str,
     text: Option<&str>,
     brief: &str,
+    rev_read: Option<&str>,
     who: &Who,
 ) -> anyhow::Result<(Written, String)> {
     let _guard = lock();
     let Some(found) = find(config, parts, query) else {
-        return refuse(format!("no page « {query} » in the Carnet (search first, or file it with notebook_note)"));
+        return refuse(format!("no page « {query} » in the Carnet (search first, or write it with notebook_write)"));
     };
     let before = read_page_text(config, found.part, &found.path);
+    if let Some(wanted) = rev_read {
+        let now = before.as_deref().map(rev).unwrap_or_default();
+        if now != wanted {
+            return Err(PageChanged(now).into());
+        }
+    }
     let mut page = found.page;
     let date = today();
     let lang = language(config);
@@ -1773,41 +2012,49 @@ pub fn edit(
     commit(config, found.part, &found.path, before.as_deref(), Some(&rendered), who, action, &summary)?;
     archive_logs(config, found.part, &found.path, &mut page, &lang)?;
     Ok((
-        Written {
-            part: Some(found.part),
-            path: found.path,
-            title: page.title,
-            created: false,
-            added: Vec::new(),
-            sections: Vec::new(),
-            changed: false,
-        },
+        Written { part: Some(found.part), path: found.path, title: page.title, ..Default::default() },
         summary,
     ))
 }
 
-/// The person's own edit of a page (its whole text), or a new page. Recorded as theirs.
-pub fn write_page(config: &Config, part: Part, path: &str, text: &str, who: &Who) -> anyhow::Result<Dict> {
+/// A new page made by the person in the app (`POST /v1/notebook/page`): its Markdown written by the bridge. Err(path)
+/// inside: a page of that name, alias, e-mail or phone is there already (the app opens it).
+pub fn new_page(config: &Config, part: Part, kind: &str, title: &str, who: &Who) -> anyhow::Result<Result<String, String>> {
     let _guard = lock();
-    checked(path)?;
-    if text.len() > 200_000 {
-        return refuse("the page is too long (200 KB at most)");
+    let lang = fix_language(config)?;
+    let w = words(&lang);
+    let title = tk::head(&tk::squeeze(title.trim()), 80).to_string();
+    if title.is_empty() {
+        return refuse("give the page's name");
     }
-    let before = read_page_text(config, part, path);
-    let text = if text.ends_with('\n') { text.to_string() } else { format!("{text}\n") };
-    if before.as_deref() == Some(text.as_str()) {
-        return refuse("nothing changed");
+    // the person's own page: one, « Toi »
+    if kind == "self" {
+        let path = w.self_path();
+        if read_page_text(config, part, &path).is_some() {
+            return Ok(Err(path));
+        }
+        let mut page = Page::new("self", w.me);
+        page.touch();
+        commit(config, part, &path, None, Some(&page.render()), who, "create", "")?;
+        return Ok(Ok(path));
     }
-    commit(
-        config,
-        part,
-        path,
-        before.as_deref(),
-        Some(&text),
-        who,
-        if before.is_some() { "edit" } else { "create" },
-        "",
-    )
+    let Some(folder) = w.folder(kind).filter(|_| KINDS.contains(&kind)) else {
+        return refuse("kind is person, subject, area, self or trip");
+    };
+    if let Some(there) = candidates(config, &[part], &title, kind).into_iter().find(|f| f.page.title == title || f.page.named(&title)) {
+        return Ok(Err(there.path));
+    }
+    let path = format!("{folder}/{}.md", file_name(&title));
+    if read_page_text(config, part, &path).is_some() {
+        return Ok(Err(path));
+    }
+    let mut page = Page::new(kind, &title);
+    if kind == "trip" {
+        trip::make_trip(&mut page, &lang);
+    }
+    page.touch();
+    commit(config, part, &path, None, Some(&page.render()), who, "create", "")?;
+    Ok(Ok(path))
 }
 
 pub fn delete_page(config: &Config, part: Part, path: &str, who: &Who) -> anyhow::Result<Dict> {
@@ -1833,6 +2080,9 @@ pub fn merge_locked(config: &Config, part: Part, from: &str, into: &str, who: &W
     page.set_aliases(&names);
     if page.contact().is_empty() && !a.page.contact().is_empty() {
         page.front.insert("contact".into(), json!(a.page.contact()));
+    }
+    for contact in a.page.emails().iter().chain(a.page.phones().iter()) {
+        page.add_contact(contact, "en");
     }
     let mut body = page.body.clone();
     for (section, facts) in a.page.sections() {
@@ -2422,6 +2672,26 @@ pub(crate) fn add_task_locked(
 
 /// A task done (or open again). `from_phone`: ticked on the phone (its reminder is already done: nothing is sent
 /// back). Returns the task, None when no task has this id.
+/// A task marked important (the person insisted): the follow-ups of Carnet v2 (14) only ever concern these.
+pub fn set_important(config: &Config, id: &str, important: bool) -> std::io::Result<()> {
+    let _guard = lock();
+    update_state(config, |s| {
+        let mut meta = task_meta(s);
+        if let Some(Value::Object(m)) = meta.get_mut(id) {
+            m.insert("important".into(), json!(important));
+        } else {
+            meta.insert(id.to_string(), json!({"origin": "asked", "important": important}));
+        }
+        s.insert("tasks".into(), Value::Object(meta));
+    })
+    .map(|_| ())
+}
+
+/// Whether task `id` is marked important.
+pub fn is_important(config: &Config, id: &str) -> bool {
+    task_meta(&read_state(config)).get(id).and_then(|m| m.get("important")).map(py::truthy).unwrap_or(false)
+}
+
 pub fn set_task_done(
     config: &Config,
     parts: &[Part],
@@ -3536,9 +3806,14 @@ fn inbox_add_locked(
     if entries.is_empty() {
         return Ok(0);
     }
+    inbox_add_as(config, &Who::agent(config, &agent.name), entries, action)
+}
+
+/// `entries` (health facts with no health agent to hold them) added to « À ranger » under `who`'s name: the other
+/// agents never read it (Carnet v2, socle §0).
+fn inbox_add_as(config: &Config, who: &Who, entries: &[String], action: &str) -> anyhow::Result<usize> {
     let lang = fix_language(config)?;
     let w = words(&lang);
-    let who = Who::agent(config, &agent.name);
     let path = w.inbox_path();
     let before = read_page_text(config, Part::Main, &path);
     let mut page = match &before {
@@ -3549,22 +3824,14 @@ fn inbox_add_locked(
             p
         }
     };
-    let (body, added) = add_facts(&page.body, &agent.display_name, entries, &who, &today());
+    let (body, added) = add_facts(&page.body, &who.name, entries, who, &today());
     if added.is_empty() {
         return Ok(0);
     }
     page.body = body;
     page.touch();
-    commit(
-        config,
-        Part::Main,
-        &path,
-        before.as_deref(),
-        Some(&page.render()),
-        &who,
-        action,
-        &format!("{} entries", added.len()),
-    )?;
+    let summary = format!("{} entries", added.len());
+    commit(config, Part::Main, &path, before.as_deref(), Some(&page.render()), who, action, &summary)?;
     Ok(added.len())
 }
 
@@ -3630,6 +3897,15 @@ pub(crate) fn inbox_remove_locked(config: &Config, lines: &[String], who: &Who) 
         &format!("{} lines", lines.len()),
     )?;
     Ok(())
+}
+
+/// A bare configuration in `dir`, for the Carnet's unit tests.
+#[cfg(test)]
+pub(crate) fn tests_config(dir: &Path) -> Config {
+    let mut config = Config::with_key("k".repeat(32));
+    config.hermes.home = dir.join("hermes").to_string_lossy().into_owned();
+    config.outbox.db_path = dir.join("data/outbox.db").to_string_lossy().into_owned();
+    config
 }
 
 #[cfg(test)]
@@ -3778,7 +4054,7 @@ mod tests {
         let archived = history(&config, None, None, 10).into_iter().rfind(|c| c["action"] == "archive").unwrap();
         assert!(archived["summary"].as_str().unwrap().contains("appel numéro 1"));
         // the section to rewrite is one of the outline's
-        let refused = edit(&config, &[Part::Main], "Marc", "", "", "Voyages", Some("- x"), "", &who);
+        let refused = edit(&config, &[Part::Main], "Marc", "", "", "Voyages", Some("- x"), "", None, &who);
         assert!(refused.unwrap_err().to_string().contains("one of who, dates"));
         edit(
             &config,
@@ -3789,6 +4065,7 @@ mod tests {
             "dates",
             Some("- Anniversaire : 14 novembre\n- Fête : 25 avril"),
             "",
+            None,
             &who,
         )
         .unwrap();
@@ -3994,7 +4271,7 @@ mod tests {
         assert_eq!(tasks(&config, Part::Main).iter().filter(|t| t.title.starts_with("Payer")).count(), 1);
         assert_eq!(queue_of(&config).len(), 4);
         // removed while its add still waits: the add cancelled, nothing sent
-        edit(&config, &[Part::Main], "Tâches", "Appeler le garage", "", "", None, "", &who).unwrap();
+        edit(&config, &[Part::Main], "Tâches", "Appeler le garage", "", "", None, "", None, &who).unwrap();
         let queue = queue_of(&config);
         assert_eq!(queue.iter().filter(|(op, state, _)| op == "add" && state == "cancelled").count(), 1);
         assert!(queue.iter().all(|(op, _, _)| op == "add"));
@@ -4007,7 +4284,7 @@ mod tests {
                 let _ = crate::reminders::cancel_pending(&config, &id); // as if done by the phone
             }
         }
-        edit(&config, &[Part::Main], "Tâches", "Appeler le dentiste", "", "", None, "", &who).unwrap();
+        edit(&config, &[Part::Main], "Tâches", "Appeler le dentiste", "", "", None, "", None, &who).unwrap();
         let removes: Vec<Value> =
             queue_of(&config).into_iter().filter(|(op, _, _)| op == "remove").map(|(_, _, a)| a).collect();
         assert_eq!(removes, vec![json!({"id": "r1", "mark": mark})]);
@@ -4016,7 +4293,11 @@ mod tests {
         let before = queue_of(&config).len();
         let text = read_page_text(&config, Part::Main, "Tâches/Tâches.md").unwrap();
         let moved = text.replace(&next.task.render(), "") + &format!("\n## Archivées\n{}\n", next.task.render());
-        write_page(&config, Part::Main, "Tâches/Tâches.md", &moved, &Who::you(&config)).unwrap();
+        {
+            let _guard = lock();
+            commit(&config, Part::Main, "Tâches/Tâches.md", Some(&text), Some(&moved), &Who::you(&config), "edit", "")
+                .unwrap();
+        }
         assert!(tasks(&config, Part::Main).iter().any(|t| t.id == next.task.id && t.archived));
         assert_eq!(queue_of(&config).len(), before);
         // the cleanup: an orphan link (removed before this fix), duplicates of one mark, another Carnet's mark

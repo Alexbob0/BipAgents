@@ -684,6 +684,7 @@ impl Threads {
         }
         with_services(&self.config.get(), &agent.name, &mut items);
         crate::steps::fold(&mut items, &crate::handback::language_of(&self.config.get(), agent));
+        with_carnet_lines(&self.config.get(), agent, &mut items);
         if thread.kind != "main" {
             // a run without the person that had nothing to tell (« [SILENT] », or the code word translated): no reply
             items.retain(|i| !timeline::silent_reply(i));
@@ -1332,6 +1333,62 @@ async fn item_route(
 
 /// A connector's calls with their connector's name (`tool.service`, connectors::service_in): the apps and the
 /// automatic « Étapes » say it instead of the tool's own name. A call through the tool search by the call it wraps.
+/// Under each turn that read or wrote in the Carnet, after its last item, one `carnet_line` item: « A consulté 2 pages
+/// · Noté dans Léa » (notebook/reads.rs `lines`, contract.md §4). Only for a timeline with a Carnet tool call in it.
+fn with_carnet_lines(config: &crate::config::Config, agent: &AgentConfig, items: &mut Vec<Item>) {
+    let carnet = |i: &Item| {
+        i.kind() == "tool"
+            && i.body.get("tool").is_some_and(|t| {
+                ["name", "arguments"].iter().any(|k| t.get(*k).and_then(Value::as_str).is_some_and(|n| n.contains("notebook_")))
+            })
+    };
+    if !items.iter().any(carnet) {
+        return;
+    }
+    // each turn: its session, its first time, its last item
+    let mut spans: Vec<crate::notebook::reads::Span> = Vec::new();
+    let mut last: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for (i, item) in items.iter().enumerate() {
+        if item.turn.is_empty() {
+            continue;
+        }
+        if !spans.iter().any(|s| s.turn == item.turn) {
+            spans.push(crate::notebook::reads::Span {
+                turn: item.turn.clone(),
+                session: item.segment.clone(),
+                from: item.at,
+                to: f64::MAX,
+            });
+        }
+        last.insert(item.turn.clone(), i);
+    }
+    for i in 1..spans.len() {
+        spans[i - 1].to = spans[i].from;
+    }
+    let lang = crate::handback::language_of(config, agent);
+    let lines = crate::notebook::reads::lines(config, &agent.name, &lang, &spans);
+    let mut after: Vec<(usize, Item)> = lines
+        .into_iter()
+        .filter_map(|(turn, body)| {
+            let at = &items[*last.get(&turn)?];
+            let Value::Object(body) = body else { return None };
+            Some((*last.get(&turn)?, Item {
+                id: format!("{turn}.carnet"),
+                pos: (at.pos.0, at.pos.1, at.pos.2 + 1),
+                at: at.at,
+                turn,
+                segment: at.segment.clone(),
+                row: at.row,
+                body,
+            }))
+        })
+        .collect();
+    after.sort_by_key(|a| std::cmp::Reverse(a.0));
+    for (index, item) in after {
+        items.insert(index + 1, item);
+    }
+}
+
 fn with_services(config: &crate::config::Config, agent: &str, items: &mut [Item]) {
     let mut connectors = None;
     for item in items.iter_mut().filter(|i| i.kind() == "tool") {

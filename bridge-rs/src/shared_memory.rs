@@ -33,7 +33,7 @@
 //!   turn note tells the agent what changed since), the news line reaches the ongoing ones at once. A removal
 //!   is not mirrored (the page keeps its history; the person corrects it there);
 //! - **« Toi » → USER.md** (the real-day bench, 2026-10-29: told « je déménage à Nantes », GLM and DeepSeek filed it in
-//!   the Carnet with notebook_note, never with Hermes' memory tool, so the common memory never saw it): a fact that
+//!   the Carnet with notebook_write, never with Hermes' memory tool, so the common memory never saw it): a fact that
 //!   appears on the person's « Toi » page (the main part only: the private health part is never read) joins the
 //!   common list too, and so every agent's USER.md, under the same limit and headroom. Only the sections of short,
 //!   lasting facts about the person count (`TOI_SECTIONS`: « Qui tu es », « Famille », « Travail », « Goûts et
@@ -44,7 +44,7 @@
 //!   there when it is mirrored, and a fact already in a common entry (the same folded words, or contained in one: the
 //!   Carnet splits « a ; b » into two facts) is not added again, so nothing goes round. An entry removed from USER.md
 //!   stays out even though the page keeps it; written on the page again later, it counts again. The first look takes
-//!   the page as it is, once (what was removed stays out). Not queued as news: notebook_note already did that;
+//!   the page as it is, once (what was removed stays out). Not queued as news: notebook_write already did that;
 //! - **one version of a fact** (the night bench, 2026-10-29: with DeepSeek the old version of a fact stayed next to
 //!   the new one and « (noté le 29/10/2026) » ended most entries, so USER.md was full and the oldest facts fell out),
 //!   still without a model: date and attribution stamps are left out of the key and of what is given
@@ -530,7 +530,7 @@ fn in_common(stored: &Stored, k: &str) -> bool {
     stored.common.iter().any(|c| format!(" {} ", key(&c.text)).contains(&padded))
 }
 
-/// The keys gone from the « Toi » page since the last look that were edited or replaced there (notebook_edit's
+/// The keys gone from the « Toi » page since the last look that were edited or replaced there (notebook_write's fix,
 /// correction, the person's edit in the app, a section rewritten): a new fact took their place (the same kept fact
 /// before both, in the page's order) or clearly updates them (`updates`). A fact only taken off the page is not one:
 /// the memory keeps it, as before.
@@ -1068,7 +1068,7 @@ mod tests {
         let r = plan(&mut stored, &members, &now, 1.0);
         apply(&mut now, &r);
         assert_eq!(now["coach"], page);
-        // corrected in place (notebook_edit, or the person in the app): too different for `updates`, same place
+        // corrected in place (notebook_write's fix, or the person in the app): too different for `updates`, same place
         let edited_page = ["Habite à Villeurbanne", "Déménagement repoussé à mai 2027", "Chat : Biscotte"];
         assert_eq!(toi(&mut stored, &edited_page, 2.0), 1);
         let r = plan(&mut stored, &members, &now, 2.0);
@@ -1289,7 +1289,7 @@ mod tests {
     fn a_fact_filed_on_toi_reaches_every_user_md() {
         let (_dir, config) = place();
         assert_eq!(sync(&config, 1.0, None), 0);
-        // what the real-day bench's agents do: notebook_note, not the memory tool
+        // what the real-day bench's agents do: notebook_write, not the memory tool
         let who = Who::agent(&config, "budget");
         let fact = vec!["Déménage à Nantes en janvier".to_string()];
         notebook::note(&config, Part::Main, "self", "Toi", "", &fact, &[], "", "", &who).unwrap();

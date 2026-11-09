@@ -9,7 +9,7 @@ from test_notebook import in_french, notebook
 def test_a_list_of_trips_is_refused_and_read_as_a_subject(bridge):
     give_token(bridge)
     in_french(bridge)
-    refused = call(bridge, "notebook_note", {"page": "Voyages", "kind": "trip", "section": "transport",
+    refused = call(bridge, "notebook_write", {"page": "Voyages", "kind": "trip", "section": "transport",
                                              "facts": ["Parking aéroport le 22/07/2022"]})
     assert refused["isError"] is True and "one trip page per journey" in text_of(refused)
     # A page already of kind trip with such a name (made before the rule) is shown as a subject: no countdown.
@@ -29,7 +29,7 @@ def test_a_list_of_trips_is_refused_and_read_as_a_subject(bridge):
 def test_a_trip_s_dates_are_its_bookings_not_the_refund_months_later(bridge):
     give_token(bridge)
     in_french(bridge)
-    made = call(bridge, "notebook_note", {"page": "Amsterdam, déc. 2021", "kind": "trip", "section": "transport",
+    made = call(bridge, "notebook_write", {"page": "Amsterdam, déc. 2021", "kind": "trip", "section": "transport",
                                           "facts": ["Vol AF1240 Paris → Amsterdam le 18/12/2021 à 07:15",
                                                     "Vol retour le 22/12/2021",
                                                     "Remboursement Air France le 15/03/2022 : 120 €"]})

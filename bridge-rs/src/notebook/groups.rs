@@ -6,7 +6,7 @@
 //! DeepSeek V4.1 Flash): someone mentioned once yields two facts (who they are, one detail), someone who comes back
 //! three or more; a family chat's peripheral people (a godfather, a neighbour) one each.
 //!
-//! - The agents follow it from notebook_note's description; the WhatsApp import (whatsapp_import/fill.rs) applies it
+//! - The agents follow it from notebook_write's description; the WhatsApp import (whatsapp_import/fill.rs) applies it
 //!   itself through `file_person`.
 //! - At each nightly pass (`settle_locked`, free): a group's lines about someone who has their own page move there
 //!   (a fact is never on two pages), and those about someone with `PROMOTE_FACTS` lines or more become their page. A

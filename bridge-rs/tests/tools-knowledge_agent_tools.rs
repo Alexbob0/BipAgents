@@ -418,7 +418,7 @@ fn the_tools_version_is_the_pythons() {
     // several senders (2026-11-04), routine_schedule proposes and asks silent or not (`silent`, 2026-11-06), then makes it
     // at once with the suggestion (2026-11-06 afternoon), reminders_add's time in `due` and no phone named for
     // the steps (2026-11-07), then the Android phone's calendar and the phone asked from (2026-11-07), named in
-    // reminders_add's description (2026-11-07 afternoon).
+    // reminders_add's description (2026-11-07 afternoon), reminders_list's `words` and 30 at most (Carnet v2, 2026-11-09).
     let expected = include_str!("golden/agent_tools_version.txt").trim();
     assert_eq!(agent_tools::tools_version(), expected);
 }

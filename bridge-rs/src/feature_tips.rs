@@ -1547,7 +1547,7 @@ mod tests {
     #[test]
     fn adoption_from_tools_and_the_switch() {
         let (_dir, config) = setup();
-        tool_used(&config, "mcp_bipagents_notebook_note", at(0, 10));
+        tool_used(&config, "mcp_bipagents_notebook_write", at(0, 10));
         tool_used(&config, "notebook_search", at(1, 10));
         assert_eq!(view(&config)["features"][2]["state"], json!("tried"));
         tool_used(&config, "notebook_search", at(2, 10));

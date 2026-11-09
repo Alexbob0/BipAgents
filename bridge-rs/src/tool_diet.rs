@@ -83,7 +83,7 @@ pub const MAX_DIRECT: usize = 12;
 
 /// The kind's frequent bridge tools in view. First measure (2026-10-26, eight cheap ones in view): the model (GLM-5.3
 /// Flash via EUrouter, tool names constrained to the request's) also called the deferred ones directly, each call
-/// landing on the in-view tool sharing the longest prefix with the other tool's arguments (`notebook_note` →
+/// landing on the in-view tool sharing the longest prefix with the other tool's arguments (the Carnet's write →
 /// `notebook_read`, `map_image` → `mail_search`): 14 misrouted calls in 22 tasks. Since then the frequent tools are all
 /// in view (fewer deferred ones to mistake) and the bridge runs the tool a call's arguments fit (`reroute`).
 pub const DIRECT_BRIDGE_TOOLS: bool = true;
@@ -201,14 +201,12 @@ pub fn kind_diet(kind: &str) -> KindDiet {
         "daily" | "guide" => KindDiet {
             deferred: CODE_AND_EDITS,
             direct: &[
-                "notebook_search",
                 "calendar_list",
                 "reminders_list",
                 "weather",
                 "reminders_add",
                 "calendar_add",
                 "start_task",
-                "notebook_note",
                 "create_page",
                 "map_image",
                 "tell_family",
@@ -228,9 +226,6 @@ pub fn kind_diet(kind: &str) -> KindDiet {
             deferred: NO_FILE_WRITES,
             direct: &[
                 "health",
-                "notebook_search",
-                "notebook_note",
-                "notebook_read",
                 "reminders_add",
                 "weather",
                 "start_task",
@@ -248,17 +243,10 @@ pub fn kind_diet(kind: &str) -> KindDiet {
                 "productivity",
             ],
         },
-        // the records (subscriptions, purchases, contracts) and their corrections in view: behind the search, the
-        // carnet review's lab (2026-11-03, GLM-5.3 Flash) filed seven subscriptions as notes on « person » pages named
-        // « Abonnements » and « Anthropic », and wrote its corrections as facts (« Remplacer la ligne… »)
+        // the Carnet's tools: `notebook_direct`
         "finance" => KindDiet {
             deferred: &["patch", "search_files"],
             direct: &[
-                "notebook_search",
-                "notebook_record",
-                "notebook_read",
-                "notebook_note",
-                "notebook_edit",
                 "archive_search",
                 "create_page",
                 "start_task",
@@ -271,8 +259,6 @@ pub fn kind_diet(kind: &str) -> KindDiet {
         "home" => KindDiet {
             deferred: NO_FILE_WRITES,
             direct: &[
-                "notebook_search",
-                "notebook_note",
                 "reminders_add",
                 "reminders_list",
                 "calendar_list",
@@ -302,8 +288,6 @@ pub fn kind_diet(kind: &str) -> KindDiet {
                 "mail_read",
                 "mail_attachment",
                 "mail_draft",
-                "notebook_search",
-                "notebook_note",
                 "start_task",
                 "propose_task",
                 "create_page",
@@ -314,8 +298,6 @@ pub fn kind_diet(kind: &str) -> KindDiet {
         "learning" => KindDiet {
             deferred: CODE_AND_EDITS,
             direct: &[
-                "notebook_search",
-                "notebook_note",
                 "create_podcast",
                 "create_audio",
                 "list_voices",
@@ -333,8 +315,6 @@ pub fn kind_diet(kind: &str) -> KindDiet {
                 "create_audio",
                 "create_podcast",
                 "list_voices",
-                "notebook_search",
-                "notebook_note",
                 "start_task",
                 "propose_task",
             ],
@@ -343,8 +323,6 @@ pub fn kind_diet(kind: &str) -> KindDiet {
         "tech" => KindDiet {
             deferred: &[],
             direct: &[
-                "notebook_search",
-                "notebook_note",
                 "start_task",
                 "propose_task",
                 "create_page",
@@ -356,8 +334,6 @@ pub fn kind_diet(kind: &str) -> KindDiet {
         _ => KindDiet {
             deferred: CODE_AND_EDITS,
             direct: &[
-                "notebook_search",
-                "notebook_note",
                 "start_task",
                 "propose_task",
                 "reminders_add",
@@ -367,6 +343,18 @@ pub fn kind_diet(kind: &str) -> KindDiet {
             ],
             compact_skills: NOT_CODING,
         },
+    }
+}
+
+/// The Carnet's tools in view, by kind, beyond `MAX_DIRECT` (Carnet v2, contract.md §2: read and write in view for
+/// every agent, so no lookup round-trip to read or correct; tasks for the everyday kinds, records where money is kept:
+/// behind the search, the carnet review's lab of 2026-11-03 filed seven subscriptions as notes on « person » pages).
+/// `notebook_fill` stays behind the search (rare). `notebook_search` is also in `COMMON_FIRST`.
+pub fn notebook_direct(kind: &str) -> &'static [&'static str] {
+    match kind {
+        "finance" => &["notebook_search", "notebook_read", "notebook_write", "notebook_record"],
+        "wellness" => &["notebook_search", "notebook_read", "notebook_write"],
+        _ => &["notebook_search", "notebook_read", "notebook_write", "notebook_task"],
     }
 }
 
@@ -438,6 +426,10 @@ pub fn diet(kind: &str, bridge_tools: &[String], browser: bool, holds_vault_item
             .iter()
             .filter(|name| bridge_tools.iter().any(|t| t == *name))
             .take(MAX_DIRECT)
+            .for_each(|name| add(&format!("!{BRIDGE_PREFIX}{name}")));
+        notebook_direct(kind)
+            .iter()
+            .filter(|name| bridge_tools.iter().any(|t| t == *name))
             .for_each(|name| add(&format!("!{BRIDGE_PREFIX}{name}")));
         // asking another agent (agent_messages.rs), whatever the kind: behind the search, the real-day bench's agent
         // hunted for it with 9 tool searches
@@ -516,7 +508,7 @@ pub const NEVER_REROUTED: [&str; 10] = [
 /// The tool a call was meant for, among `tools`: `name` when its arguments fit it (or fit nothing better), else the
 /// only other tool they fit. With some bridge tools in view and the others behind the search, a model whose tool names
 /// are constrained to the request's ends a deferred tool's name on the in-view one sharing its longest prefix
-/// (`notebook_note` → `notebook_read`), its arguments still the deferred tool's: measured on 2026-10-26.
+/// (the Carnet's write → `notebook_read`), its arguments still the deferred tool's: measured on 2026-10-26.
 pub fn meant<'a>(tools: &'a [Value], name: &'a str, arguments: &crate::Dict) -> &'a str {
     let called = tools.iter().find(|t| t.get("name").and_then(Value::as_str) == Some(name));
     if arguments.is_empty() || called.is_none_or(|t| fits(t, arguments)) {
@@ -760,11 +752,18 @@ mod tests {
         }
         let without = diet("finance", &names(&["create_page"]), false, false, false);
         assert!(!without.defer.iter().any(|n| n.ends_with("map_image")));
-        // the records and their corrections in view where money is kept (carnet review, 2026-11-03)
-        let tools = names(&["notebook_record", "notebook_edit", "notebook_note"]);
-        let finance = diet("finance", &tools, false, false, false);
-        for tool in ["notebook_record", "notebook_edit"] {
-            assert!(finance.defer.contains(&format!("!{BRIDGE_PREFIX}{tool}")), "{tool}: {:?}", finance.defer);
+        // the records in view where money is kept (carnet review, 2026-11-03); reading and writing for every kind
+        let tools = names(&["notebook_search", "notebook_read", "notebook_write", "notebook_task", "notebook_record", "notebook_fill"]);
+        let in_view = |kind: &str| -> Vec<String> {
+            let d = diet(kind, &tools, false, false, false);
+            let mut v: Vec<String> = tools.iter().filter(|t| d.defer.contains(&format!("!{BRIDGE_PREFIX}{t}"))).cloned().collect();
+            v.sort();
+            v
+        };
+        assert_eq!(in_view("finance"), ["notebook_read", "notebook_record", "notebook_search", "notebook_write"]);
+        assert_eq!(in_view("wellness"), ["notebook_read", "notebook_search", "notebook_write"]);
+        for kind in ["daily", "guide", "home", "work", "learning", "creative", "tech", "custom"] {
+            assert_eq!(in_view(kind), ["notebook_read", "notebook_search", "notebook_task", "notebook_write"], "{kind}");
         }
     }
 
@@ -782,7 +781,7 @@ mod tests {
         let expected: Vec<String> = GUIDE_DIRECT.iter().map(|n| format!("!{BRIDGE_PREFIX}{n}")).collect();
         assert_eq!(extra, expected.iter().collect::<Vec<_>>(), "only its cards on top of the daily regime");
         assert!(daily.defer.iter().all(|d| guide.defer.contains(d)));
-        for name in ["mail_search", "mail_read", "notebook_note", "calendar_list", "reminders_add", "create_page", "start_task"] {
+        for name in ["mail_search", "mail_read", "calendar_list", "reminders_add", "create_page", "start_task"] {
             assert!(guide.defer.contains(&format!("!{BRIDGE_PREFIX}{name}")), "{name}");
         }
         // the rare ones stay behind the search
@@ -868,7 +867,7 @@ mod tests {
         let tools = vec![
             tool("notebook_search", &["words", "kind"], &[]),
             tool("notebook_read", &["page"], &["page"]),
-            tool("notebook_note", &["page", "facts", "section"], &["page", "facts"]),
+            tool("notebook_write", &["page", "facts", "section"], &["page"]),
             tool("mail_search", &["words", "days"], &[]),
             tool("map_image", &["markers", "title", "line", "color"], &["markers"]),
         ];
@@ -877,9 +876,10 @@ mod tests {
         // its own arguments: itself
         assert_eq!(meant(&tools, "notebook_read", &args(&["page"])), "notebook_read");
         // the 2026-10-26 lab's misroutes
-        assert_eq!(meant(&tools, "notebook_read", &args(&["page", "facts", "section"])), "notebook_note");
+        assert_eq!(meant(&tools, "notebook_read", &args(&["page", "facts", "section"])), "notebook_write");
         assert_eq!(meant(&tools, "mail_search", &args(&["markers", "line", "color"])), "map_image");
-        assert_eq!(meant(&tools, "notebook_search", &args(&["page"])), "notebook_read");
+        // a page alone fits reading and writing: left as called
+        assert_eq!(meant(&tools, "notebook_search", &args(&["page"])), "notebook_search");
         // nothing else fits, two others fit, no arguments, or an unknown tool: left as called
         assert_eq!(meant(&tools, "mail_search", &args(&["zzz"])), "mail_search");
         assert_eq!(meant(&tools, "map_image", &args(&["words"])), "map_image");
@@ -914,7 +914,7 @@ mod tests {
     fn at_most_eight_bridge_tools_direct() {
         let all: Vec<String> = kind_diet("daily").direct.iter().map(|s| s.to_string()).collect();
         let d = diet("daily", &all, false, false, false);
-        let expected = if DIRECT_BRIDGE_TOOLS { MAX_DIRECT } else { 0 };
+        let expected = if DIRECT_BRIDGE_TOOLS { all.len().min(MAX_DIRECT) } else { 0 };
         assert_eq!(d.defer.iter().filter(|n| n.starts_with("!mcp__")).count(), expected);
     }
 

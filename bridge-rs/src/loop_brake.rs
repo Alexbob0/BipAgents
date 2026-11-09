@@ -264,7 +264,7 @@ pub fn page_read_tool(tool: &str) -> bool {
 }
 
 /// The bridge's tools that change something for the person.
-pub const WRITE_TOOLS: [&str; 20] = [
+pub const WRITE_TOOLS: [&str; 19] = [
     "calendar_add",
     "calendar_update",
     "calendar_delete",
@@ -272,8 +272,7 @@ pub const WRITE_TOOLS: [&str; 20] = [
     "reminders_complete",
     "contacts_add",
     "contacts_update",
-    "notebook_note",
-    "notebook_edit",
+    "notebook_write",
     "notebook_task",
     "notebook_record",
     "mail_draft",
@@ -1356,7 +1355,7 @@ mod tests {
             let a = args(&[("action", "archive"), ("domain", &format!("d{n}.example"))]);
             assert!(call(&settings, "coach", run("run_1"), "mcp__bipagents__mail_bulk", &a, 2.5).is_none(), "{n}");
         }
-        let refused = call(&settings, "coach", run("run_1"), "notebook_note", &add(99), 3.0).unwrap();
+        let refused = call(&settings, "coach", run("run_1"), "notebook_write", &add(99), 3.0).unwrap();
         assert_eq!(refused["isError"], json!(true));
         // another agent, or the next turn: counted afresh
         assert!(call(&settings, "other", run("run_1"), "calendar_add", &add(0), 3.0).is_none());
@@ -1398,12 +1397,12 @@ mod tests {
         })
     }
 
-    const NOTE: &str = "mcp__bipagents__notebook_note";
+    const NOTE: &str = "mcp__bipagents__notebook_write";
     const SEARCH: &str = "mcp__bipagents__notebook_search";
     const READ_PAGE: &str = "mcp__stealth__get_page_content";
 
     fn birthday() -> Vec<String> {
-        // glm-all-2, birthday_lookup: 20 notebook_note (6 identical), 11 min, no answer
+        // glm-all-2, birthday_lookup: 20 Carnet writes (6 identical), 11 min, no answer
         sequence(&[
             (SEARCH, 1), (NOTE, 1), ("tool_search", 1), (NOTE, 2), ("mcp__bipagents__notebook_read", 1), ("terminal", 1),
             (NOTE, 1), ("tool_call", 1), ("tool_search", 1), (NOTE, 1), ("terminal", 1), (NOTE, 4), ("terminal", 1),
@@ -1415,14 +1414,14 @@ mod tests {
     fn the_bench_birthday_loop_is_stopped() {
         let tools = birthday();
         assert_eq!((tools.len(), tools.iter().filter(|t| *t == NOTE).count()), (30, 20));
-        // the bench's events carry no arguments: at the 11th notebook_note
+        // the bench's events carry no arguments: at the 11th write
         let (at, over) = stopped(&tools, |_| None).unwrap();
-        assert_eq!(over, Over::SameTool("notebook_note".into()));
+        assert_eq!(over, Over::SameTool("notebook_write".into()));
         assert_eq!(tools[..=at].iter().filter(|t| *t == NOTE).count(), 11);
         assert_eq!(notice_text(&over, "fr"), "Je me suis arrêté : je tournais en rond sur le Carnet. Dis-moi si tu veux que je réessaie.");
         // with its arguments (the same note again): at the 3rd identical call
         let (at, over) = stopped(&tools, |t| (t == NOTE).then(|| "{\"title\":\"Julie\"}".to_string())).unwrap();
-        assert_eq!(over, Over::SameCall("notebook_note".into()));
+        assert_eq!(over, Over::SameCall("notebook_write".into()));
         assert_eq!(tools[..=at].iter().filter(|t| *t == NOTE).count(), 3);
         // and at the MCP: the 11th write of the turn refused, the same note again answered « already done »
         let turns = Turns::default();
@@ -1751,7 +1750,7 @@ exactly the same session_search call 3 times in this turn; at 5 the turn is stop
         call("mcp_bipagents_mail_attachment", args(&[("id", "m3"), ("n", "1")]), i);
         i += 1;
         for n in 0..2 {
-            call("mcp_bipagents_notebook_note", args(&[("text", &format!("n{n}"))]), i);
+            call("mcp_bipagents_notebook_write", args(&[("text", &format!("n{n}"))]), i);
             i += 1;
         }
         assert!(refused.is_empty(), "{refused:?}");

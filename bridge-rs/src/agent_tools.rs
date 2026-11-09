@@ -1387,7 +1387,23 @@ where
     tokio::task::spawn_blocking(work).await?
 }
 
+/// The Carnet's view of a tool call's turn (notebook/reads.rs): its run, its Hermes session, and its page cap — 20
+/// for « Remplir mon Carnet »'s background task (notebook/fill.rs), else 6.
+fn carnet_turn(state: &AppState, agent: &str, turn: Option<&crate::loop_brake::Turn>) -> crate::notebook::reads::Turn {
+    use crate::notebook::reads;
+    let Some(turn) = turn else { return reads::Turn::default() };
+    let session = state.hub.subscription(agent, &turn.run_id).and_then(|s| s.session_id());
+    let fill = turn.background
+        && crate::jobs::tasks(&state.config()).iter().any(|job| {
+            tk::str_or_empty(job.get("run_id")) == turn.run_id
+                && tk::str_or_empty(job.get("template")) == crate::notebook::fill::TEMPLATE
+        });
+    let cap = if fill { reads::PAGES_PER_FILL } else { reads::PAGES_PER_TURN };
+    reads::Turn { run: Some(turn.run_id.clone()), session, cap }
+}
+
 /// One tool call. Err: what Python lets through (a store that cannot be read or written): a 500.
+#[allow(clippy::too_many_arguments)]
 pub async fn call_tool(
     maker: &AudioMaker,
     agent: &AgentConfig,
@@ -1396,6 +1412,7 @@ pub async fn call_tool(
     push: Option<Arc<PushService>>,
     jobs: Option<Arc<Jobs>>,
     asking: Option<String>,
+    carnet: crate::notebook::reads::Turn,
 ) -> anyhow::Result<Dict> {
     if name == PROPOSE_TASK {
         // a small task under « Seulement le critique »: started at once (approval_level.rs)
@@ -1584,13 +1601,14 @@ the BipAgents app.",
     }
     if crate::notebook::tools::TOOL_NAMES.contains(&name) {
         let result =
-            blocking(move || crate::notebook::tools::call(&config, &agent_c.name, &name_c, &arguments_c)).await?;
+            blocking(move || crate::notebook::tools::call(&config, &agent_c.name, &name_c, &arguments_c, &carnet))
+                .await?;
         let reminder = result
             .get("content")
             .and_then(|c| c.get(0))
             .and_then(|c| c.get("text"))
             .and_then(Value::as_str)
-            .is_some_and(|t| t.contains("phone reminders"));
+            .is_some_and(|t| t.contains("Phone reminder too"));
         if let (Some(push), true) = (push, reminder) {
             // The person's phone woken to add the task's reminder now (a silent push; else when the app opens).
             let agent_name = agent.name.clone();
@@ -1984,6 +2002,8 @@ async fn mcp(
     let turn = state.hub.turn_of(&agent.name, &name);
     // the files made in this turn (audio, pages, maps), for the reply that ends it (made_files.rs)
     let turn_run = turn.as_ref().map(|t| t.run_id.clone());
+    // the Carnet's tools: the turn's pages, capped, and its session for the line under the answer (notebook/reads.rs)
+    let carnet = carnet_turn(&state, &agent.name, turn.as_ref());
     if let Some(refused) = crate::loop_brake::TURNS.check(
         &state.config().brake,
         &agent.name,
@@ -2098,7 +2118,7 @@ async fn mcp(
     // the phone the person asked from in this turn (threads/send.rs): where a reminder goes (reminders.rs)
     let asking = turn_run.as_deref().and_then(|r| state.hub.subscription(&agent.name, r)).and_then(|s| s.phone());
     let work = tokio::spawn(async move {
-        let mut result = call_tool(&maker, &agent, &name, &arguments, Some(push), Some(jobs), asking).await;
+        let mut result = call_tool(&maker, &agent, &name, &arguments, Some(push), Some(jobs), asking, carnet).await;
         crate::card_place::place_new(&card_state, &agent, &cards_before, turn_run.as_deref()).await;
         // the cards the person's level approves at once (approval_level.rs): answered, told in the result
         let session = turn_run.as_deref().and_then(|r| card_state.hub.subscription(&agent.name, r)).and_then(|s| s.session_id());
@@ -2266,13 +2286,14 @@ mod tests {
                 ("member", crate::names::localize(&crate::family_agent::member_instructions("Léa"), lang)),
             ];
             assert_eq!(family.as_deref(), Some(lang));
-            // the Carnet's answers: an empty search, then a fact filed (with its one-line mention)
+            // the Carnet's answers: an empty search, then a fact filed
             for (name, arguments) in [
                 (crate::notebook::tools::SEARCH, json!({})),
-                (crate::notebook::tools::NOTE, json!({"page": "Marc", "kind": "person", "facts": ["Likes jazz"]})),
+                (crate::notebook::tools::WRITE, json!({"page": "Marc", "kind": "person", "facts": ["Likes jazz"]})),
             ] {
                 let Value::Object(arguments) = arguments else { unreachable!() };
-                let mut result = crate::notebook::tools::call(&config, &agent.name, name, &arguments).unwrap();
+                let turn = crate::notebook::reads::Turn::default();
+                let mut result = crate::notebook::tools::call(&config, &agent.name, name, &arguments, &turn).unwrap();
                 crate::names::localize_result(&mut result, &crate::names::agent_language(&config, &agent.name));
                 texts.push((name, result["content"][0]["text"].as_str().unwrap().to_string()));
             }

@@ -34,9 +34,9 @@ pub const PROMPT: &str = "Fill your person's Carnet from what you already know a
 and the people they mention, work, home, health, money, projects and plans, tastes and habits) and the names that \
 come up, and read what matters.
 3. File every durable fact in the Carnet with the notebook tools, following your Carnet rules: notebook_search \
-first, then notebook_note under the right section of the page's outline (their « Toi » page for facts about \
-themself), notebook_edit to correct what changed. Skip what is already there, small talk, one-off questions, \
-passwords or codes. Add no task unless your person clearly committed to something with a date.
+first, then notebook_write under the right section of the page's outline (their « Toi » page for facts about \
+themself; its fix to correct what changed). You may read 20 pages. Skip what is already there, small talk, one-off \
+questions, passwords or codes. Add no task unless your person clearly committed to something with a date.
 Don't ask questions. End with a short report in your person's language: how many pages you made or completed, \
 which ones, and what you weren't sure about.";
 
@@ -48,11 +48,8 @@ pub fn title(config: &Config, agent: &str) -> &'static str {
 pub fn tool() -> Value {
     json!({
         "name": TOOL_NAME,
-        "description": "Start « Remplir le Carnet » in the background: you go through your memory and your past \
-    conversations with your person and file everything durable in their Carnet, on your own, within the default budget; \
-    they get your report when it ends. Use it when your person asks you to fill, complete or update their Carnet from \
-    what you know: never do that here in the conversation. Then tell them in one plain sentence that you're on it in \
-    the background, and stop.",
+        "description": "When the person asks you to fill or update their Carnet from what you know: starts it in the \
+background (your memory and past conversations). Say so in one sentence and stop.",
         "inputSchema": {"type": "object", "properties": {}},
     })
 }

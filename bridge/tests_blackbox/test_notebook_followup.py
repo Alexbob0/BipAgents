@@ -6,7 +6,7 @@ from test_notebook import in_french, notebook, tidy
 
 
 def note(bridge, page, facts, section="who"):
-    done = call(bridge, "notebook_note", {"page": page, "kind": "person", "section": section, "facts": facts})
+    done = call(bridge, "notebook_write", {"page": page, "kind": "person", "section": section, "facts": facts})
     assert done["isError"] is False, text_of(done)
 
 
@@ -37,11 +37,11 @@ def test_a_trip_called_off_is_archived_at_night(bridge):
     in_french(bridge)
     for page, facts in [("Lyon, nov. 2030", ["Week-end chez mes parents du 27 au 29 novembre 2030"]),
                         ("Rome, mai 2030", ["Voyage du 3 au 8 mai 2030", "Vol AZ333 annulé, remplacé par AZ335"])]:
-        done = call(bridge, "notebook_note", {"page": page, "kind": "trip", "section": "dates", "facts": facts,
+        done = call(bridge, "notebook_write", {"page": page, "kind": "trip", "section": "dates", "facts": facts,
                                               "start": facts[0][-4:] + ("-11-27" if "Lyon" in page else "-05-03"),
                                               "end": facts[0][-4:] + ("-11-29" if "Lyon" in page else "-05-08")})
         assert done["isError"] is False, text_of(done)
-    edit = call(bridge, "notebook_note", {"page": "Lyon, nov. 2030", "kind": "trip",
+    edit = call(bridge, "notebook_write", {"page": "Lyon, nov. 2030", "kind": "trip",
                                           "facts": ["Week-end annulé : mes parents ne seront pas là"]})
     assert edit["isError"] is False, text_of(edit)
     tidy(bridge)

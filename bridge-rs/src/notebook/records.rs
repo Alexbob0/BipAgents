@@ -5,7 +5,7 @@
 //!     Fiches/Achats.md                    purchases: date, item, store, price, end of warranty, source
 //!     Fiches/Abonnements.md               subscriptions: service, price, period, next renewal, how to cancel, source
 //!     Fiches/Contrats et assurances.md    contracts and insurance: type, provider, number, end, source
-//!     Fiches/Papiers.md                   papers: document, expiry, source
+//!     Fiches/Papiers.md                   papers: document, holder, expiry, source
 //!     Fiches/Réservations.md              bookings: date, what, with whom, reference, trip, source (they feed trips)
 //!
 //! Each row has a stable id (`r` and 6 hex digits, its last column). The agents add and update rows through
@@ -155,11 +155,13 @@ pub const TYPES: [Kind; 5] = [
         ],
         fields: &[
             Field { id: "document", titles: ["Document", "Document", "Dokument", "Documento"] },
+            // whose paper it is (Carnet v2: one record per document and holder; never its number)
+            Field { id: "holder", titles: ["Titulaire", "Holder", "Inhaber", "Titular"] },
             Field { id: "expires", titles: ["Expiration", "Expires", "Gültig bis", "Caduca"] },
             SOURCE,
         ],
         next: "expires",
-        keys: &[&["document"]],
+        keys: &[&["document", "holder"], &["document"]],
         window: 60,
         proposal: "expiry",
     },

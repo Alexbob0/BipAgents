@@ -7,9 +7,13 @@
 //!     GET    /v1/notebook/pages?kind=          a section's pages (kind: person, subject, trip, area, other), with what their card
 //!                                              shows (close, next_date, status, facts)
 //!     GET    /v1/notebook/search?q=            pages, and the facts that answer (for a short answer on top)
-//!     GET    /v1/notebook/page?path=           a page: frontmatter apart, « En bref », facts with attribution, links
-//!     PUT    /v1/notebook/page                 {path, text, private?}   the person's edit (« toi » in its history)
-//!     PUT    /v1/notebook/section              {path, section (its id), text, private?}   « Modifier » on one section
+//!     GET    /v1/notebook/page?path=           a page: frontmatter apart, « En bref », facts with attribution, links,
+//!                                              its `rev` (the app writes over what it read), `emails`, `phones`
+//!     POST   /v1/notebook/page                 {kind, title, private?}   a new page, its Markdown written by the bridge
+//!                                              (201 {path, rev}; 409 page_exists: the page of that name, the app opens it)
+//!     PUT    /v1/notebook/section              {path, section (its id), text, rev, private?}   « Modifier » on one
+//!                                              section (409 page_changed: an agent wrote since `rev`; the section as
+//!                                              it is now comes with it, the app keeps what the person typed)
 //!     DELETE /v1/notebook/page?path=
 //!     GET    /v1/notebook/history?path=        changes (a page's, or all), the newest first
 //!     POST   /v1/notebook/restore              {change}   the page as it was after that change
@@ -405,7 +409,8 @@ pub fn page_view_in(config: &Config, part: Part, path: &str, shown: &str) -> any
               "updated": page.front.get("updated").cloned().unwrap_or(Value::Null),
               "summary": super::summary_of(&page.body, w.brief), "sections": sections, "outline": outline, "links": links,
               "backlinks": backlinks, "tasks": tasks, "documents": documents, "id": page.id(), "close": page.close(),
-              "icon": page.icon(), "shared_with": super::shares_of(config, part, path, &page), "text": text}))
+              "icon": page.icon(), "shared_with": super::shares_of(config, part, path, &page),
+              "emails": page.emails(), "phones": page.phones(), "rev": super::rev(&text), "text": text}))
 }
 
 async fn read_page(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
@@ -426,25 +431,64 @@ async fn read_page(State(state): State<AppState>, q: QueryMap) -> ApiResult<Resp
 }
 
 #[derive(Debug, Deserialize)]
-pub struct PageEdit {
-    pub path: String,
-    pub text: String,
+pub struct NewPage {
+    pub kind: String,
+    pub title: String,
     #[serde(default, deserialize_with = "web::lax::bool")]
     pub private: bool,
 }
 
-impl Validate for PageEdit {
+impl Validate for NewPage {
     fn validate(&self, errors: &mut Vec<FieldError>) {
-        check_max_len(errors, "path", Some(&self.path), 300);
-        check_max_len(errors, "text", Some(&self.text), 200_000);
+        check_max_len(errors, "kind", Some(&self.kind), 20);
+        check_max_len(errors, "title", Some(&self.title), 200);
     }
 }
 
-async fn write_page(State(state): State<AppState>, Json(body): Json<PageEdit>) -> ApiResult<Response> {
+/// The texts of the Carnet's errors for the app (contract.md §5), in the app's language.
+fn error_text(code: &str, lang: &str) -> &'static str {
+    match (code, lang) {
+        ("page_changed", "fr") => "Un agent vient d'écrire ici. Vérifie avant d'enregistrer.",
+        ("page_changed", "de") => "Ein Agent hat hier gerade geschrieben. Prüfe es vor dem Speichern.",
+        ("page_changed", "es") => "Un agente acaba de escribir aquí. Revísalo antes de guardar.",
+        ("page_changed", _) => "An agent just wrote here. Check before saving.",
+        ("page_exists", "fr") => "Cette page existe déjà.",
+        ("page_exists", "de") => "Diese Seite gibt es schon.",
+        ("page_exists", "es") => "Esta página ya existe.",
+        ("page_exists", _) => "This page already exists.",
+        ("number_refused", "fr") => "Les numéros ne sont jamais gardés.",
+        ("number_refused", "de") => "Nummern werden nie gespeichert.",
+        ("number_refused", "es") => "Los números nunca se guardan.",
+        ("number_refused", _) => "Numbers are never kept.",
+        _ => "",
+    }
+}
+
+fn carnet_error(status: u16, code: &str, lang: &str, extra: Value) -> HttpError {
+    let mut detail = json!({"code": code, "text": error_text(code, lang)});
+    if let (Value::Object(d), Value::Object(e)) = (&mut detail, extra) {
+        d.extend(e);
+    }
+    HttpError::json(status, json!(detail))
+}
+
+/// A new page from the app: the bridge writes its Markdown (the apps never do).
+async fn new_page(State(state): State<AppState>, q: QueryMap, Json(body): Json<NewPage>) -> ApiResult<Response> {
     let config = state.config();
+    let shown = shown_language(&config, &q);
     let part = if body.private { Part::Health } else { Part::Main };
-    let entry = blocking(move || super::write_page(&config, part, &body.path, &body.text, &Who::you(&config))).await?;
-    Ok(web::ok(json!({"change": entry})))
+    let made = blocking(move || {
+        let made = super::new_page(&config, part, body.kind.trim(), &body.title, &Who::you(&config))?;
+        Ok(made.map(|path| {
+            let rev = super::read_page_text(&config, part, &path).map(|t| super::rev(&t)).unwrap_or_default();
+            (path, rev)
+        }))
+    })
+    .await?;
+    match made {
+        Ok((path, rev)) => Ok(web::json_response(201, &json!({"path": path, "rev": rev}))),
+        Err(path) => Err(carnet_error(409, "page_exists", &shown, json!({"path": path}))),
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -454,6 +498,8 @@ pub struct SectionEdit {
     pub section: String,
     /// Its new lines (« - … »; empty: the section is emptied). A line unchanged keeps its attribution.
     pub text: String,
+    /// The page's revision the app read (`GET page`).
+    pub rev: String,
     #[serde(default, deserialize_with = "web::lax::bool")]
     pub private: bool,
 }
@@ -463,23 +509,57 @@ impl Validate for SectionEdit {
         check_max_len(errors, "path", Some(&self.path), 300);
         check_max_len(errors, "section", Some(&self.section), 80);
         check_max_len(errors, "text", Some(&self.text), 50_000);
+        check_max_len(errors, "rev", Some(&self.rev), 16);
     }
 }
 
-/// The person's « Modifier » on one section of a page.
+/// The person's « Modifier » on one section of a page, over the revision they read: the page as it is now, its new
+/// `rev` and the change's id. An agent wrote since: 409 `page_changed` with the section as it is now.
 async fn write_section(State(state): State<AppState>, q: QueryMap, Json(body): Json<SectionEdit>) -> ApiResult<Response> {
     let config = state.config();
     let shown = shown_language(&config, &q);
     let part = if body.private { Part::Health } else { Part::Main };
-    let view = blocking(move || {
+    if super::lexicon::id_number(&body.text) {
+        return Err(carnet_error(422, "number_refused", &shown, json!({})));
+    }
+    let lang = shown.clone();
+    let done = tokio::task::spawn_blocking(move || -> anyhow::Result<Result<Value, (String, Value)>> {
         super::checked(&body.path)?;
         let who = Who::you(&config);
-        let (written, _) =
-            super::edit(&config, &[part], &body.path, "", "", &body.section, Some(&body.text), "", &who)?;
-        page_view_in(&config, part, &written.path, &shown)
+        let edited =
+            super::edit(&config, &[part], &body.path, "", "", &body.section, Some(&body.text), "", Some(&body.rev), &who);
+        match edited {
+            Ok((written, _)) => {
+                let mut view = page_view_in(&config, part, &written.path, &lang)?;
+                let change = super::history(&config, Some(part), Some(&written.path), 1);
+                view["change_id"] = json!(change.first().map(|c| tk::str_or_empty(c.get("id"))));
+                Ok(Ok(view))
+            }
+            Err(err) => match err.downcast_ref::<super::PageChanged>() {
+                Some(changed) => {
+                    let view = page_view_in(&config, part, &body.path, &lang)?;
+                    let section = view["sections"]
+                        .as_array()
+                        .and_then(|list| list.iter().find(|s| s["id"] == json!(body.section)).cloned())
+                        .unwrap_or_else(|| json!({"id": body.section, "facts": []}));
+                    Ok(Err((changed.0.clone(), section)))
+                }
+                None => Err(err),
+            },
+        }
     })
-    .await?;
-    Ok(web::ok(view))
+    .await
+    .map_err(anyhow::Error::from)?;
+    match done {
+        Ok(Ok(view)) => Ok(web::ok(view)),
+        Ok(Err((rev, section))) => {
+            Err(carnet_error(409, "page_changed", &shown, json!({"rev": rev, "section": section})))
+        }
+        Err(err) => match err.downcast_ref::<super::NotebookError>() {
+            Some(message) => Err(HttpError::new(400, message.0.clone())),
+            None => Err(err.into()),
+        },
+    }
 }
 
 async fn delete_page(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
@@ -932,7 +1012,7 @@ pub fn router() -> Router<AppState> {
         .route("/notebook", get(home))
         .route("/notebook/pages", get(list_pages))
         .route("/notebook/search", get(search))
-        .route("/notebook/page", get(read_page).put(write_page).delete(delete_page))
+        .route("/notebook/page", get(read_page).post(new_page).delete(delete_page))
         .route("/notebook/section", axum::routing::put(write_section))
         .route("/notebook/history", get(history))
         .route("/notebook/restore", post(restore))

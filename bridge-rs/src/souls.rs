@@ -388,9 +388,9 @@ pub fn language_block(lang: Option<&str>) -> String {
 
 /// The rules' examples of what to say, in English for an agent that writes in another language than French. They
 /// were French for every agent (Alex, 2026-10-30: his wife's place, iPhone and app in English, had a reply in
-/// French): « Je m'en occupe en arrière-plan… », « Noté dans ton Carnet : … » or « un veilleur » were the very
+/// French): « Je m'en occupe en arrière-plan… » or « un veilleur » were the very
 /// words its rules gave it to say. The Carnet's « Toi » and « En bref » take the agent's language's names.
-const ENGLISH_EXAMPLES: [(&str, &str); 22] = [
+const ENGLISH_EXAMPLES: [(&str, &str); 21] = [
     ("« Je m'en occupe en arrière-plan, je te préviens quand c'est fini. »", "« I'm on it in the background, I'll tell you when it's done. »"),
     ("« remplis mon Carnet »", "« fill my Carnet »"),
     ("« trie mes mails »", "« sort my e-mails »"),
@@ -401,7 +401,6 @@ const ENGLISH_EXAMPLES: [(&str, &str); 22] = [
     ("« Coach sportif »", "« Sports coach »"),
     ("« rappelle-moi… »", "« remind me… »"),
     ("« Amsterdam, déc. 2021 »", "« Amsterdam, Dec 2021 »"),
-    ("« Noté dans ton Carnet : … »", "« Noted in your Carnet: … »"),
     ("« quand ai-je acheté… »", "« when did I buy… »"),
     ("« qui m'avait écrit pour… »", "« who wrote to me about… »"),
     ("|voir le document]]", "|see the document]]"),
@@ -587,31 +586,17 @@ pub const NOTEBOOK_START: &str = "<!-- bipagents:notebook -->";
 pub const NOTEBOOK_END: &str = "<!-- /bipagents:notebook -->";
 
 /// For an agent with the Carnet's tools on (notebook/, decided 2026-10-22; on by default): file durable facts without
-/// being asked. Rust bridge only, like FAMILY_RULE (tests/golden/souls.json: its case added by hand).
+/// being asked. Carnet v2 (internal/notes/carnet-v2/contract.md §2, text exact): the « what » and the « never »
+/// only, the « how » is in the tools; the line under the answer says what was read and filed (notebook/reads.rs).
+/// Rust bridge only, like FAMILY_RULE (tests/golden/souls.json: its case added by hand).
 pub const NOTEBOOK_RULE: &str = concat!(
-    "You keep your person's Carnet (their notebook, shared by all their agents) with the notebook tools. Without being ",
-    "asked, file at once what will still matter later: dates and appointments, decisions, preferences and habits, ",
-    "commitments and what was agreed, money matters (amounts, bills, contracts), people's details (birthday, family, ",
-    "what they like), a subject or project's status and next steps. A fact is not a task: a birthday or someone else's ",
-    "deadline is a dated fact on its page. Add a task only when your person asks (« rappelle-moi… ») or states their ",
-    "own commitment with a deadline; propose one yourself only when clearly useful, through the tool (it says when you ",
-    "may), and never again a kind they declined. Don't file small talk, one-off questions, passwords or codes (the vault ",
-    "keeps those), what your person told you in confidence, or anything they ask you not to keep. ",
-    "Search first and update the page that exists rather than making another; file each fact under the right section of ",
-    "the page's fixed outline, one short fact per line. Facts about your person themself go to their « Toi » page, and ",
-    "so does any change in their own life (a move, a new job, a birth, an allergy, how they want their agents to talk ",
-    "to them): note it on « Toi », and on the subject's page too when it is also a project; correct facts that changed, ",
-    "and refresh ",
-    "the page's « En bref » summary when what matters most changes. Each journey gets its own trip page (kind trip, ",
-    "named by place and month, « Amsterdam, déc. 2021 », with its start and end): its days, flights and trains with times and booking numbers, where they stay, papers, what to ",
-    "pack. Precise facts go in records (notebook_record): a purchase and its warranty, a subscription and its renewal, ",
-    "a contract or an insurance, a paper and its expiry, a booking; the Carnet proposes their reminders itself. ",
-    "After filing, tell your person in one short line ",
-    "(« Noté dans ton Carnet : … », in their language, with the agents the tool names as told) unless the tool says ",
-    "they turned these mentions off. Your person's other agents concerned learn what you file at their next turn: never ",
-    "message another agent just so it knows; message_agent only when it must do something now, after filing. Health ",
-    "facts go only to the private health part, and only if you are the agent your person chose for their health. The ",
-    "Carnet is your person's alone: never write in another person's, even in the family."
+    "You keep your person's Carnet, the notebook all their agents share. File at once, unasked, what will still ",
+    "matter: dates, decisions, preferences and habits, commitments, money matters, people's details, a project's status ",
+    "and next steps; what changes in your person's own life goes to « Toi ». Not small talk, one-off questions, ",
+    "passwords or codes, confidences, or what they ask you not to keep. Search before reading or writing. A purchase, ",
+    "subscription, contract, paper or booking is a record. Health facts only in the private health part, and only if ",
+    "you are their health agent. Never write in another person's Carnet. The app shows what you read and filed: don't ",
+    "mention it."
 );
 
 /// The personality without the notebook block (the person never sees it), and whether it had one.
@@ -776,8 +761,8 @@ pub fn with_server(soul: &str, on: bool) -> String {
 
 // --- token diet prototype (2026-10-24, not wired in)-------------------------------------------------------------
 //
-// The same commitments as the language block and the notebook rule, in about half the tokens (scripts/token-anatomy.py
-// counts both). Nothing uses them yet: switching `language_block` / `with_notebook` to them waits for Alex's go and a
+// The same commitments as the language block, in about half the tokens (scripts/token-anatomy.py counts both; the
+// notebook rule got its own short v2, notebook/tools.rs). Nothing uses them yet: switching `language_block` waits for Alex's go and a
 // before/after run of the quality bench (scripts/quality-bench). `split_language` still finds « write in {name}. ».
 
 pub const COMPACT_RULES: &str = concat!(
@@ -822,21 +807,6 @@ pub fn language_block_compact(lang: Option<&str>) -> String {
         Some(&code),
     )
 }
-
-pub const COMPACT_NOTEBOOK_RULE: &str = concat!(
-    "You keep your person's Carnet (their notebook, shared by their agents) with the notebook tools. Without being ",
-    "asked, file what will still matter: about a person (birthday, family, preferences, what was agreed) or a subject ",
-    "(decisions, status, next steps); facts about your person, and any change in their own life (a move, a new job, a ",
-    "birth, an allergy, how they want to be spoken to), go to their « Toi » page (and to the subject's too if it is ",
-    "also a project). Search first and update the ",
-    "existing page; one short fact per line in the right section; correct what changed and refresh « En bref ». A ",
-    "journey gets its own trip page (kind trip, named by place and month, start and end). Purchases, warranties, subscriptions, contracts, papers and ",
-    "bookings go in records (notebook_record). A fact is not a task: add a task only when your person asks or commits ",
-    "to a deadline; propose one only when the tool says you may, never a kind they declined. Never file small talk, ",
-    "passwords or codes, or what they asked not to keep. After filing, one short line (« Noté dans ton Carnet : … ») ",
-    "unless the tool says those are off. Health facts only to the private health part, and only if you are their ",
-    "health agent. Never write in another person's Carnet."
-);
 
 /// `agent_templates.yaml` as PyYAML reads it (parsed once).
 static RAW: LazyLock<Vec<Yaml>> = LazyLock::new(|| match pyyaml::load(TEMPLATES_YAML) {
@@ -982,15 +952,15 @@ mod tests {
     #[test]
     fn a_language_change_brings_the_blocks_examples_along() {
         let soul = with_notebook(&with_language("Tu es Vie.\n", Some("fr")), true);
-        assert!(soul.contains("« Noté dans ton Carnet : … »"));
+        assert!(soul.contains("your person's Carnet"));
         let english = relanguage_blocks(&with_language(&soul, Some("en")));
-        assert!(english.contains("« Noted in your Notebook: … »") && !english.contains("Noté dans"), "{english}");
+        assert!(english.contains("your person's Notebook"), "{english}");
         // the app's parts by their names in the agent's language (names.rs), never the French ones
         assert!(!english.contains("Carnet") && english.contains("the Notebook, the Inbox"), "{english}");
         let german = relanguage_blocks(&with_language(&english, Some("de")));
         assert!(german.contains("Notizbuch") && !german.contains("Notebook") && !german.contains("Carnet"), "{german}");
         let back = relanguage_blocks(&with_language(&english, Some("fr")));
-        assert!(back.contains("« Noté dans ton Carnet : … »") && !back.contains("Noted in"), "{back}");
+        assert!(back.contains("your person's Carnet") && !back.contains("Notebook"), "{back}");
     }
 
     #[test]
@@ -1044,21 +1014,14 @@ mod tests {
             assert!(block.to_lowercase().contains(&needed.to_lowercase()), "missing {needed}");
         }
         assert!(block.len() * 10 < language_block(Some("fr")).len() * 7, "at least 30 % shorter");
-        for needed in ["notebook_record", "« Toi »", "En bref", "kind trip", "passwords", "health"] {
-            assert!(COMPACT_NOTEBOOK_RULE.contains(needed), "missing {needed}");
-        }
-        assert!(COMPACT_NOTEBOOK_RULE.len() * 10 < NOTEBOOK_RULE.len() * 8);
     }
 
     #[test]
     fn a_change_in_the_person_s_life_goes_to_toi() {
         // the real-day bench (2026-10-29): « je déménage à Nantes » filed only on a subject page, the common memory
         // never saw it
-        for rule in [NOTEBOOK_RULE, COMPACT_NOTEBOOK_RULE] {
-            for needed in ["change in their own life", "a move", "a new job", "an allergy", "« Toi »", "also a project"]
-            {
-                assert!(rule.contains(needed), "missing {needed}");
-            }
+        for needed in ["changes in your person's own life", "« Toi »", "record", "Search before"] {
+            assert!(NOTEBOOK_RULE.contains(needed), "missing {needed}");
         }
     }
 
