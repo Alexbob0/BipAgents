@@ -22,6 +22,7 @@ Installed as `FakeHermes.override`, it takes only the runs it starts (every othe
 | `#secret` | calls the bridge's `ask_secret` (a card in the conversation) and waits for the person |
 | `#sites` | asks the bridge for two sites (`sandbox_sites_request`, a sites card) and waits |
 | `#connecteur` | registers a connector (`connector_register`, a connector card) and waits |
+| `#podcast` | makes its podcast (an .m4a in its files, as `create_podcast` gives) and names it |
 | `#lent` | a long reply, slowly (to be stopped, or to queue messages behind it) |
 
 `calls`: the agent's own tool calls to the bridge (MCP), given by the harness (`secret`, `sites`, `page`, `map`,
@@ -327,6 +328,11 @@ class ScriptedModel:
             name = f"rapport-{run.id}.pdf"
             (self.files_dir / name).write_bytes(minimal_pdf(f"Rapport {run.id}"))
             lines.append("Voici le rapport du jour.")
+            media.append(f"MEDIA:{self.files_root}/{name}")
+        if "#podcast" in words:
+            name = f"podcast-{run.id}.m4a"
+            (self.files_dir / name).write_bytes(b"\x00\x00\x00\x18ftypM4A podcast")
+            lines.append("Ton podcast est prêt.")
             media.append(f"MEDIA:{self.files_root}/{name}")
         if "#page" in words:
             made = self.tool(run, "mcp_bipagents_create_page", {"title": f"Résumé {run.id}"},

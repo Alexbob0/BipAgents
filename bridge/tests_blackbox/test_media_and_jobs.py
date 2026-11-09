@@ -1,4 +1,4 @@
-"""MEDIA: files (`/v1/media`), a podcast's own mp3 as an outbox message's audio, the scheduled tasks' push setting
+"""MEDIA: files (`/v1/media`), a podcast in a Boîte message (its file, no reading on top), the scheduled tasks' push setting
 (tests/test_media_and_jobs.py, over HTTP)."""
 
 from bbkit.common import AUTH, boite_message
@@ -19,7 +19,7 @@ def with_media(bridges):
     return bridge
 
 
-def test_media_route_and_podcast_audio_in_the_outbox(bridges, fakes):
+def test_media_route_and_a_podcast_in_the_outbox(bridges, fakes):
     bridge = with_media(bridges)
     bridge.start()
     resp = bridge.get("/v1/media", params={"path": "/home/hermes/simplex-files/point.mp3"}, headers=AUTH)
@@ -35,10 +35,12 @@ def test_media_route_and_podcast_audio_in_the_outbox(bridges, fakes):
     assert bridge.get("/v1/media", headers=AUTH).status_code == 422
     assert bridge.get("/v1/media", params={"path": "x" * 1025}, headers=AUTH).status_code == 422
     assert bridge.get("/v1/media", params={"path": "/home/hermes/simplex-files/point.mp3"}).status_code == 401
+    # a report bringing its podcast: the podcast is its one audio file, and no reading of its words is made on top
+    # (Alex 8/11: a podcast in two audio files, the reading of the text and the podcast)
     item = boite_message(bridge, fakes, "MEDIA:/home/hermes/simplex-files/point.mp3\n\nPoint du matin")
-    assert item["text"] == "Point du matin" and item["has_audio"] is True
-    audio = bridge.get(f"/v1/outbox/{item['id']}/audio", headers=AUTH)
-    assert audio.status_code == 200 and audio.content == b"ID3podcast-audio"  # the podcast, not a synthesis
+    assert item["text"] == "Point du matin" and item["has_audio"] is False
+    assert [(a["kind"], a["path"]) for a in item["attachments"]] == [("audio", "/home/hermes/simplex-files/point.mp3")]
+    assert bridge.get(f"/v1/outbox/{item['id']}/audio", headers=AUTH).status_code == 404
     assert fakes.pocket.inputs == []
 
 

@@ -8,11 +8,11 @@ use std::time::Duration;
 
 use futures::future::{BoxFuture, Shared};
 use futures::FutureExt;
-use serde_json::{json, Value};
+use serde_json::Value;
 use tokio::task::{AbortHandle, JoinHandle};
 
 use crate::config::{AgentConfig, SharedConfig};
-use crate::media::{extract_media, resolve, without_media_lines};
+use crate::media::extract_media;
 use crate::notifications::BoiteFrom;
 use crate::push::pyx;
 use crate::push::PushService;
@@ -22,6 +22,15 @@ use crate::tts::{SynthOptions, TtsService, BACKGROUND};
 /// Whether a `MEDIA:` path is an audio file (by its extension).
 fn is_audio(path: &str) -> bool {
     crate::media::content_type_of(path).is_some_and(|t| t.starts_with("audio/"))
+}
+
+/// The paths of a stored message's attachments (its `attachments` column, a JSON list of `{path, …}`).
+fn attachment_paths(item: &Row) -> Vec<String> {
+    let Some(Value::Array(list)) = item.get("attachments").and_then(Value::as_str).and_then(|a| serde_json::from_str(a).ok())
+    else {
+        return Vec::new();
+    };
+    list.iter().filter_map(|a| a.get("path").and_then(Value::as_str).map(str::to_string)).collect()
 }
 
 /// A message's audio being made (`ensure_audio`): the mp3's path once done, None when it failed. Clones await the
@@ -43,14 +52,6 @@ impl BoiteMessage {
     pub fn new(text: impl Into<String>) -> Self {
         BoiteMessage { text: text.into(), ..Default::default() }
     }
-}
-
-/// `shutil.copyfile`: the content only (the new file gets the default mode, not the source's).
-fn copyfile(src: &str, dst: &str) -> std::io::Result<()> {
-    let mut input = std::fs::File::open(src)?;
-    let mut output = std::fs::File::create(dst)?;
-    std::io::copy(&mut input, &mut output)?;
-    Ok(())
 }
 
 /// Stores messages, synthesizes their audio and sends the push.
@@ -92,12 +93,11 @@ impl OutboxService {
             return Ok(None);
         }
         // The files the apps show are the message's attachments (2026-11-03: items, no `MEDIA:` line left in its
-        // text; `offset` keeps a page's place in it), and those `files` the sender gives; the first mp3 the bridge
-        // serves is the message's own audio instead (`attach_media_audio`). Any other audio (a podcast in .m4a or
-        // .wav, an mp3 the bridge can't reach) stays a file the app plays.
-        let own_mp3 = self.own_mp3(&media_paths);
-        let kept = without_media_lines(&text, |path| own_mp3.as_ref().is_some_and(|(p, _)| p == path));
-        let (mut text, mut files) = crate::threads::timeline::visible(&kept, "", 0);
+        // text; `offset` keeps a page's place in it), and those `files` the sender gives. Its own audio (a podcast,
+        // whatever its format) is one of them, a file the app plays: the message's audio (`audio_path`, « Écouter »)
+        // is only ever the reading of its words, and none is made when it brings its own (`ensure_audio`). Until 9/11
+        // an mp3 the bridge served became that audio, so the apps drew a podcast as the reading's « Écouter ».
+        let (mut text, mut files) = crate::threads::timeline::visible(&text, "", 0);
         for path in &message.files {
             if !files.iter().any(|f| f["path"] == path.as_str()) {
                 files.push(crate::threads::timeline::file_attachment(path, None));
@@ -106,7 +106,7 @@ impl OutboxService {
         for file in files.iter_mut() {
             file.as_object_mut().map(|f| f.remove("id"));
         }
-        if text.is_empty() && files.is_empty() {
+        if text.is_empty() && files.iter().all(|f| f["kind"] == "audio") {
             text = "🎧".into();
         }
         let attachments = (!files.is_empty()).then(|| Value::Array(files).to_string());
@@ -116,39 +116,12 @@ impl OutboxService {
             return Ok(None); // duplicate (already ingested)
         };
         tracing::info!(agent = %agent.name, id = %crate::py::py_str(&item["id"]), chars = pyx::len(&text), "outbox message stored");
-        let item = match &own_mp3 {
-            Some((_, host)) => self.attach_media_audio(item, host).await?,
-            None => item,
-        };
         let (this, agent, delivered) = (self.clone(), agent.clone(), item.clone());
         let handle = tokio::spawn(async move { this.deliver(&agent, &delivered, notify).await });
         let mut tasks = self.tasks.lock().unwrap_or_else(|e| e.into_inner());
         tasks.retain(|t| !t.is_finished());
         tasks.push(handle);
         Ok(Some(item))
-    }
-
-    /// The first mp3 among `paths` the bridge serves (`[media] roots`, its own audio folder…): `(path, host file)`.
-    fn own_mp3(&self, paths: &[String]) -> Option<(String, String)> {
-        let config = self.config.get();
-        paths.iter().filter(|p| p.to_lowercase().ends_with(".mp3")).find_map(|path| {
-            let host =
-                resolve(path, &config.media_roots).or_else(|| crate::agent_tools::served_media(&config, path))?;
-            Some((path.clone(), host))
-        })
-    }
-
-    /// The message's own mp3 (a podcast, `host`) becomes its audio instead of a synthesized reading.
-    async fn attach_media_audio(&self, item: Row, host: &str) -> anyhow::Result<Row> {
-        let id = crate::py::py_str(&item["id"]);
-        let target = self.audio_file(&id);
-        crate::py::makedirs(&crate::py::dirname(&target), 0o700)?;
-        let (src, dst) = (host.to_string(), target.clone());
-        tokio::task::spawn_blocking(move || copyfile(&src, &dst)).await??;
-        self.store.set_outbox_audio(&id, &target).await?;
-        let mut item = item;
-        item.insert("audio_path".into(), json!(target));
-        Ok(item)
     }
 
     /// Wait (bounded) for the pre-synthesized audio, then push.
@@ -203,10 +176,12 @@ impl OutboxService {
         }
         let config = self.config.get();
         // its words read, not its files' lines
-        let (text, files) = extract_media(item.get("text").and_then(Value::as_str).unwrap_or(""));
+        let (text, mut files) = extract_media(item.get("text").and_then(Value::as_str).unwrap_or(""));
         if text.is_empty() || pyx::len(&text) > config.outbox.audio_max_chars {
             return None;
         }
+        // since 4/11 its files are its attachments, no `MEDIA:` line left in its text (a541193ca): read there too
+        files.extend(attachment_paths(item));
         if files.iter().any(|f| is_audio(f)) {
             // a message that brings its own audio (a routine's podcast in .m4a) is never read aloud on top: the
             // iPhone took the reading for the message's audio and left the podcast out (aibox 2026-10-30: the
