@@ -323,6 +323,9 @@ pub fn answers(config: &Config, parts: &[Part], text: &str) -> Vec<Answer> {
     found.into_iter().map(|(_, a)| a).take(ANSWERS).collect()
 }
 
+/// A search answer from a page past the turn's cap: its title only.
+const LIMIT: &str = "limit reached (ask the person if needed)";
+
 fn search(config: &Config, agent: &str, arguments: &Dict, turn: &Turn, health: bool) -> anyhow::Result<Dict> {
     let words = s(arguments, "words");
     let kind = s(arguments, "kind");
@@ -372,20 +375,39 @@ fn search(config: &Config, agent: &str, arguments: &Dict, turn: &Turn, health: b
         return Ok(tool_text("Nothing found in the Carnet.", false));
     }
     let mut out: Vec<String> = Vec::new();
+    // every page whose content a search shows counts against the turn's cap and goes to the reads journal; past the
+    // cap, its title only
+    let shown = |part: Part, id: &str| {
+        let ok = reads::may_read(agent, turn, id);
+        if ok {
+            reads::log(config, agent, turn, part, id, None, "search");
+        }
+        ok
+    };
     if !found.is_empty() {
         out.push("Answers:".into());
         for a in &found {
+            let id = if a.page_id.is_empty() { a.path.as_str() } else { a.page_id.as_str() };
+            if !shown(a.part, id) {
+                out.push(format!("{}: {LIMIT}{}", a.page, marker(a.part)));
+                continue;
+            }
             let head = if a.label.is_empty() { a.page.clone() } else { format!("{} · {}", a.label, a.page) };
             let date = if a.date.is_empty() { String::new() } else { format!(" ({})", a.date) };
             out.push(format!("{head}: {}{date}{}", a.answer, marker(a.part)));
-            reads::log(config, agent, turn, a.part, &a.page_id, None, "search");
         }
     }
     if !pages.is_empty() {
         out.push("Pages:".into());
         for (part, path, page, lines) in &pages {
             let past = if w.archived(path) { " [archived]" } else { "" };
-            out.push(format!("{} ({}, {path}){}{past}", page.title, page.kind(), marker(*part)));
+            let id = if page.id().is_empty() { path.clone() } else { page.id() };
+            let open = shown(*part, &id);
+            let limit = if open { "" } else { " — limit reached" };
+            out.push(format!("{} ({}, {path}){}{past}{limit}", page.title, page.kind(), marker(*part)));
+            if !open {
+                continue;
+            }
             for line in lines.iter().take(LINES) {
                 out.push(format!("  {}", super::split_attribution(line.trim_start_matches("- ")).0));
             }
@@ -588,12 +610,17 @@ fn write(config: &Config, agent: &str, arguments: &Dict, turn: &Turn, health: bo
         let mut changes: Vec<String> = Vec::new();
         for (old, new) in &fixes {
             match super::edit(config, &[found.part], &found.path, old, new, "", None, "", None, &who) {
-                Ok((_, change)) => {
+                Ok((written, change)) => {
                     done += 1;
-                    changes.push(change);
+                    if !change.is_empty() {
+                        changes.push(change);
+                    }
+                    if written.apart > 0 {
+                        out.push("Health facts saved apart: not in the shared part.".into());
+                    }
                 }
                 Err(err) if err.downcast_ref::<super::NotebookError>().is_some() => {
-                    out.push(format!("Not found on {}: « {old} ».", found.page.title));
+                    out.push(format!("Not changed on {}: « {old} » ({err}).", found.page.title));
                 }
                 Err(err) => return Err(err),
             }
@@ -919,6 +946,103 @@ mod tests {
 
     fn pages(config: &Config) -> Vec<String> {
         super::super::all_pages(config, Part::Main).into_iter().map(|(p, _)| p).collect()
+    }
+
+    fn page_text(config: &Config, path: &str) -> String {
+        super::super::read_page_text(config, Part::Main, path).unwrap_or_default()
+    }
+
+    #[test]
+    fn a_shared_landline_or_family_email_never_joins_two_people() {
+        let (_dir, config) = setup();
+        let t = turn("run_family");
+        let w = |args: Value| run(&config, "quotidien", WRITE, args, &t);
+        w(json!({"page": "Marc Dupont", "kind": "person", "facts": ["Voisin"], "contact": "01 23 45 67 89"}));
+        // a new person with the family's landline: not written on Marc's page, the agent asks
+        let (said, error) =
+            w(json!({"page": "Léa Dupont", "kind": "person", "facts": ["Aime le jazz"], "contact": "01 23 45 67 89"}));
+        assert!(error && said.contains("Same contact as « Marc Dupont »"), "{said}");
+        assert!(!page_text(&config, "Personnes/Marc Dupont.md").contains("jazz"));
+        assert_eq!(pages(&config), vec!["Personnes/Marc Dupont.md".to_string()]);
+        // both pages there: the shared landline or the family e-mail never merges them
+        w(json!({"page": "Léa Dupont", "kind": "person", "facts": ["Aime le jazz"]}));
+        w(json!({"page": "Marc Dupont", "kind": "person", "facts": ["Joue au foot"], "contact": "famille.dupont@example.org"}));
+        for contact in ["+33 1 23 45 67 89", "Famille.Dupont@example.org"] {
+            let (said, error) = w(json!({"page": "Léa Dupont", "kind": "person", "facts": ["Aime le thé"], "contact": contact}));
+            assert!(error && said.contains("Same contact as « Marc Dupont »"), "{contact}: {said}");
+            assert_eq!(pages(&config).len(), 2, "{:?}", pages(&config));
+        }
+        assert!(!page_text(&config, "Personnes/Marc Dupont.md").contains("Léa"));
+        // a nickname of Marc with that landline: Marc's page
+        let (said, _) = w(json!({"page": "Marco", "kind": "person", "facts": ["Aime le vélo"], "contact": "01 23 45 67 89"}));
+        assert!(said.starts_with("Saved: Marc Dupont"), "{said}");
+    }
+
+    #[test]
+    fn a_summary_or_a_fix_goes_through_the_health_and_forget_filters() {
+        let (_dir, config) = setup();
+        let t = turn("run_filters");
+        let w = |args: Value| run(&config, "quotidien", WRITE, args, &t);
+        let lea = "Personnes/Léa Martin.md";
+        w(json!({"page": "Léa Martin", "kind": "person", "facts": ["Aime le dessin", "Aime le jazz"]}));
+        let (said, _) = w(json!({"page": "Léa Martin", "summary": "Diabétique, sous insuline"}));
+        assert!(said.contains("apart"), "{said}");
+        let (said, _) = w(json!({"page": "Léa Martin", "fix": [{"old": "Aime le dessin", "new": "Allergique à la pénicilline"}]}));
+        assert!(said.contains("apart"), "{said}");
+        let text = page_text(&config, lea);
+        assert!(!text.contains("insuline") && !text.contains("pénicilline"), "{text}");
+        let (found, _) = run(&config, "quotidien", SEARCH, json!({"words": "insuline pénicilline"}), &turn("run_look"));
+        assert!(!found.contains("insuline") && !found.contains("pénicilline"), "{found}");
+        // forgotten: an old turn's summary or fix does not write it back
+        let request = super::super::forget::Request { texts: vec!["Pointure : 36".into()], page: Some("Léa Martin".into()), private: false };
+        w(json!({"page": "Léa Martin", "section": "tastes", "facts": ["Pointure : 36"]}));
+        let shown = super::super::forget::preview(&config, &request, "fr", "Alex", None).unwrap();
+        super::super::forget::confirm(&config, shown["token"].as_str().unwrap(), "Alex").unwrap().unwrap();
+        w(json!({"page": "Léa Martin", "summary": "Pointure : 36"}));
+        let (said, _) = w(json!({"page": "Léa Martin", "fix": [{"old": "Aime le jazz", "new": "Pointure : 36"}]}));
+        assert!(said.contains("not written back"), "{said}");
+        let text = page_text(&config, lea);
+        assert!(!text.contains("36") && text.contains("Aime le jazz"), "{text}");
+    }
+
+    #[test]
+    fn searches_count_against_the_turns_cap_and_go_to_the_journal() {
+        let (_dir, config) = setup();
+        let t = turn("run_fill");
+        for n in 0..10 {
+            let page = format!("Ami {n} Martin");
+            let fact = if n < 5 { "Aime le jazz" } else { "Joue du piano" };
+            run(&config, "quotidien", WRITE, json!({"page": page, "kind": "person", "facts": [fact]}), &t);
+        }
+        let look = turn("run_two_searches");
+        let (first, _) = run(&config, "quotidien", SEARCH, json!({"words": "jazz"}), &look);
+        let (second, _) = run(&config, "quotidien", SEARCH, json!({"words": "piano"}), &look);
+        // the pages whose lines were shown (an indented line under them, or a direct answer)
+        let mut opened: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for out in [&first, &second] {
+            let lines: Vec<&str> = out.lines().collect();
+            for (i, line) in lines.iter().enumerate() {
+                let Some(name) = line.split(" (").next().filter(|n| n.starts_with("Ami ")) else { continue };
+                let shown = lines.get(i + 1).is_some_and(|next| next.starts_with("  "));
+                if shown {
+                    opened.insert(name.to_string());
+                }
+            }
+            for line in lines.iter().filter(|l| l.contains(" · Ami ") || (l.starts_with("Ami ") && l.contains(": ") && !l.contains("limit"))) {
+                if let Some(name) = line.split(" · ").nth(1).or(Some(line)).and_then(|l| l.split(':').next()) {
+                    opened.insert(name.trim().to_string());
+                }
+            }
+        }
+        assert!(opened.len() <= reads::PAGES_PER_TURN, "{} pages shown: {opened:?}\n{first}\n{second}", opened.len());
+        assert!(first.contains("limit reached") || second.contains("limit reached"), "{first}\n{second}");
+        let logged: std::collections::HashSet<String> = reads::entries(&config)
+            .iter()
+            .filter(|e| e.get("run").and_then(Value::as_str) == Some("run_two_searches"))
+            .map(|e| tk::str_or_empty(e.get("page_id")))
+            .collect();
+        assert!(logged.len() <= reads::PAGES_PER_TURN && logged.len() >= opened.len(), "{logged:?} vs {opened:?}");
+        assert!(reads::entries(&config).iter().any(|e| e.get("how").and_then(Value::as_str) == Some("search")));
     }
 
     #[test]

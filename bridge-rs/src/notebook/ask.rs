@@ -445,10 +445,13 @@ pub fn answer(config: &Config, id: &str, answer: Answer, lang: &str, now: f64) -
     match answer {
         Answer::Undo => {
             let change = tk::str_or_empty(card.get("change_id"));
-            if tk::str_or_empty(card.get("state")) != "done" || change.is_empty() {
+            if tk::str_or_empty(card.get("state")) != "done" {
                 return Ok(Err(Refused::Gone(shown.unwrap_or(Value::Null))));
             }
-            super::undo_change(config, &change, &who)?;
+            // no change id: the fact was there already, the page stays as it is
+            if !change.is_empty() {
+                super::undo_change(config, &change, &who)?;
+            }
             let _guard = super::lock();
             let after = super::update_state(config, |s| {
                 if let Some(c) = card_mut(s, id) {
@@ -469,8 +472,11 @@ pub fn answer(config: &Config, id: &str, answer: Answer, lang: &str, now: f64) -
             let kind = tk::str_or_empty(card.get("kind"));
             let title = tk::str_or_empty(card.get("title"));
             let section = tk::str_or_empty(card.get("section"));
-            let written = super::note(config, Part::Main, &kind, &title, &section, &[fact], &[], "", "", &who)?;
-            let change = if written.path.is_empty() {
+            // the write and its change id under one lock: « Annuler » undoes this change, never another one; a fact
+            // already there wrote nothing, so there is nothing to undo
+            let _guard = super::lock();
+            let written = super::note_locked(config, Part::Main, &kind, &title, &section, &[fact], &[], "", "", &who)?;
+            let change = if written.path.is_empty() || written.added.is_empty() {
                 String::new()
             } else {
                 super::history(config, None, Some(&written.path), 1)
@@ -478,7 +484,6 @@ pub fn answer(config: &Config, id: &str, answer: Answer, lang: &str, now: f64) -
                     .map(|e| tk::str_or_empty(e.get("id")))
                     .unwrap_or_default()
             };
-            let _guard = super::lock();
             let after = super::update_state(config, |s| {
                 if let Some(c) = card_mut(s, id) {
                     c.insert("state".into(), json!("done"));
@@ -667,6 +672,23 @@ mod tests {
         // the next day, unanswered: « Passée »
         let later = folded(&super::super::read_state(&config), &id, "fr", at(1, 9));
         assert_eq!((later["state"].as_str(), later["text"].as_str()), (Some("skipped"), Some("Passée")));
+    }
+
+    #[test]
+    fn undo_of_a_fact_already_there_reverts_nothing_else() {
+        let (_d, config) = setup();
+        let now = at(0, 14);
+        ask_in(&config, "r1", "Léa chausse du combien ?", &["35", "36", "37"], now);
+        let id = card_id(&config);
+        // an agent files the same fact before the tap
+        let agent = Who::agent(&config, "quotidien");
+        super::super::note(&config, Part::Main, "person", "Léa Martin", "tastes", &["Pointure : 36".into()], &[], "", "", &agent).unwrap();
+        let done = answer(&config, &id, Answer::Choice("36".into()), "fr", now + 5.0).unwrap().unwrap();
+        assert_eq!(done["state"], "done");
+        let undone = answer(&config, &id, Answer::Undo, "fr", now + 7.0).unwrap().unwrap();
+        assert_eq!(undone["state"], "open");
+        let text = std::fs::read_to_string(super::super::root(&config).join("carnet/Personnes/Léa Martin.md")).unwrap();
+        assert!(text.contains("Pointure : 36"), "the agent's change was reverted: {text}");
     }
 
     #[test]
