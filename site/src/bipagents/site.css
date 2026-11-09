@@ -212,6 +212,23 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
   .hero .salon-stage { --w: auto; width: auto; height: calc(100% + 90px); left: 50%; transform: translateX(-46%); }
   .hero .salon::after { inset: -90px 0 auto; height: 240px; background: linear-gradient(#241A1D 100px, rgba(36, 26, 29, 0)); }
 }
+/* A phone (Alex, 2026-11-09: « le salon est un peu coupé »): the room zoomed out so its useful part (x 140 to 1170 of
+   the 1280 frame: the four Bips whole, the phone, the tablet, the easel) fills the width, still one block; it sits low,
+   its wall melting up into the text's night, the wave under it. The labels anchor towards the inside so none spills
+   off the screen. */
+@media (max-width: 600px) and (max-aspect-ratio: 1 / 1) {
+  .hero { --sw: calc(100vw * 1280 / 1030); }
+  .hero .hero-text { margin-block: auto; }   /* a tall phone: the room's height stays, the text sits in the middle of the night above it */
+  .hero .salon { flex: 0 0 auto; min-height: 0; height: calc(var(--sw) * 9 / 16 + var(--edge) * .5); }
+  .hero .salon-stage { --w: var(--sw); width: var(--sw); height: auto; bottom: calc(var(--edge) * .5); left: calc(50vw - var(--sw) * 655 / 1280); transform: none; }
+  .hero .salon::after { inset: auto 0 calc(var(--edge) * .5); height: calc(var(--sw) * 9 / 16 * .42);
+    background: linear-gradient(#241A1D, rgba(36, 26, 29, .55) 40%, rgba(36, 26, 29, 0)); }
+  .hero .salon-tag { width: min(232px, 60vw); max-width: none; --ax: 50%; transform: translate(calc(-1 * var(--ax)), calc(-100% - 10px)) scale(.92); }
+  .hero .salon-tag.on { transform: translate(calc(-1 * var(--ax)), calc(-100% - 10px)) scale(1); }
+  .hero .salon-tag::after { left: var(--ax); }
+  .hero .salon-tag:nth-child(1) { --ax: 12%; }
+  .hero .salon-tag:nth-child(4) { --ax: 90%; }
+}
 @media (max-width: 520px) {
   .hero h1 { font-size: clamp(32px, 9.4vw, 40px); }
   .hero .lede { font-size: 16.5px; }

@@ -87,7 +87,8 @@ function turns() {
   }
   const inView = b => {
     const r = b.getBoundingClientRect(), v = room.getBoundingClientRect(), x = (r.left + r.right) / 2;
-    return x > v.left + 40 && x < v.right - 40;
+    const m = Math.min(40, v.width * .05);   // a phone's zoomed-out room shows Dinners close to the edge
+    return x > v.left + m && x < v.right - m;
   };
   function tick() {
     timer = 0;
