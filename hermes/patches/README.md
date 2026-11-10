@@ -45,9 +45,9 @@ name>` trailer, which names the file (stable numbers: a dropped patch leaves a g
 NousResearch/hermes-agent (`git clone --filter=blob:none` is enough):
 
 ```sh
-scripts/hermes-patches.sh branch  ~/src/hermes hermes/patches                    # bip/patches-v0.22.5 from the files
+scripts/hermes-patches.sh branch  ~/src/hermes hermes/patches                    # bip/patches-v0.23.1 from the files
 # … fix, test, commit (git commit --fixup=<commit> + git rebase -i --autosquash for a change to one patch) …
-scripts/hermes-patches.sh export  ~/src/hermes bip/patches-v0.22.5 hermes/patches
+scripts/hermes-patches.sh export  ~/src/hermes bip/patches-v0.23.1 hermes/patches
 scripts/hermes-patches.sh check   ~/src/hermes hermes/patches                    # the installer's own apply, on BASE
 ```
 
@@ -539,6 +539,52 @@ v0.22.5 with this branch's bridge (`lab.py hermes` + `local --commit 6961a432 --
 `clarify.settled` → « Tu as choisi le train de 14 h. ») in that same main conversation (same id, from before the
 upgrade), in a new side conversation, in a second agent's main conversation, and in the main conversation of an agent
 made afterwards (a spare taken: `clarify` written when it got its tools).
+
+## Moving to v0.23.1 (2026-11-10)
+
+The series rebased from v0.22.5 (`bf0203a794`) on v0.23.1 (`3b42157858`), branch `bip/patches-v0.23.1`, the installer
+pins v0.23.1 (`HERMES_COMMIT`). Analysis and Alex's decisions: BipAgents-reprise `hermes-0.23-final.md` (§3, §6 3-4).
+18 patches, every one applies with `git apply` on `3b42157858`, in order (`scripts/hermes-patches.sh check`).
+
+| Patch | On v0.23.1 |
+|---|---|
+| 0005 vault fills after the browser restarted | **rebased on #136660's head** (`7d21b3b98a`, written for these modules): applies as is |
+| 0006 synchronous peer reply | **retired** (0016 + the bridge's hop cap) |
+| 0007 `browser.vault_only` | kept; its test names v0.23's browser tools (`browser_exec`, `browser_cdp`) |
+| 0008 time zone | **routine half retired** (`cron.timezone`, one run per wall-clock time; #146444 upstream); terminal `TZ` and the zone followed without a restart kept, keyed by `config_backend`'s version; file renamed `0008-timezone-terminal-followed` |
+| 0009 `!name`, compact categories | rebased: v0.23.1 builds the group heading at the end (none for a one-tool group); the count dropped there, upstream's layout test follows |
+| 0010 empty replies | rebased: `apply_one_shot_changes` beside v0.23.1's `_apply_user_turn_request_headers`; the request builder is now `build_request_payload` (also used by `ctx.side_question`) |
+| 0011 titles with GLM | applies as is; upstream's new wire snapshot (`tests/fixtures/provider_wire_snapshot_variants.json`, `aux:zai` « off ») follows the floor |
+| 0013, 0016, 0017, 0020, 0023, 0025, 0026 | apply as is (0023 needs 0018's `agent/guest_turn.py`) |
+| 0015 time anchor | **(c) retired** (routine prompts; upstream's `[CURRENT RUN TIME]`); (a), (b), (d) kept |
+| 0018 guest turns | rebased: v0.23.1 removed `browser_control` from `prepare_api_execution` (still accepted in a stored admission); `guest_tools` added there alone |
+| 0019 routines report to their conversation | **retired** (the bridge no longer writes `cron.session_reports`) |
+| 0021 API Bot Chat stays API | rebased: `displaceable_bot_chat` takes a `subject` and checks hand-offs (#143286), `_kept_local_history` decides on the tip; `api_bot_chat` still returns first; #144300's archived check (`_bot_chat_creation_id`) untouched |
+| 0022 canonical tool order | rebased: v0.23.1 holds back a tool new only because its `check_fn` flipped (`held`); both merges keep that and insert the others at their canonical place (not the tail) |
+| 0024 closed tools | applies after 0018 |
+
+**Retired files.** A Hermes patched by an older BipAgents keeps those patches' files changed; they are listed in
+`installer/bipinstall/to_bipagents.py` `EARLIER_FIX_FILES` (the 2026-11-01 switch did the same for 0001/0004), so a
+move to BipAgents' Hermes parks them in `git stash` instead of refusing them as the person's own changes.
+
+**Tests (v0.23.1).** (2026-11-10, build server, Python 3.14.8, `uv sync --frozen --extra messaging --extra anthropic
+--extra mcp --extra cron --extra web --group dev` on `3b42157858` with the set; `scripts/run_tests.sh -j 4`, `nice 19`):
+- the patches' own tests (23 files): all pass (588 passed, 4 skipped once `anthropic` is installed);
+- `tests/tools` + the patches' files: 11 924 passed, 11 failed, 7 errors. Unpatched v0.23.1 fails the same
+  `test_search_*` (4 + 1), `test_plugin_guard.py` (6 errors, « requires real uv ») and `test_fal_sdk.py` (no SDK).
+  **Open:** 6 failures come from 0022 itself: upstream's new `test_refresh_agent_mcp_tools.py` (3) and
+  `test_tool_defs_memo_availability.py` (3) assert that a late tool is appended at the tail, which 0022 replaces by
+  its canonical place. To do: decide (keep 0022's rule and adapt those tests in the patch) before the bench;
+- `tests/agent`, `tests/cron`, the gateway's Runs API / session / TurnRunner / agent cache / Bot Chat / peer suites
+  and the first part of `tests/hermes_state` (run stopped at 57 % for the day's end): 17 781 passed; 10 files
+  failing: 6 the same on unpatched v0.23.1 (`test_conversation_compression_manual`, `test_vault_key_storage` without
+  `keyring`, `test_session_client_env`, `test_session_edit_policy`, `test_session_mutation_model`,
+  `test_session_policy_refusal_fields`), `test_shell_hooks_tree_kill` (a 5 s signal deadline under load; passes
+  alone unpatched, to rerun alone patched), and `test_provider_wire_snapshot_variants` (`aux:zai` « off »: 0011's
+  floor, by design; the snapshot fixture is updated in 0011 since);
+- not run yet: the rest of `tests/hermes_state`, and the two order test files again after the decision;
+- `installer/tests`: 339 passed, 2 skipped; `scripts/hermes-patches.sh check` passes; `branch` then `export` gives the
+  same bytes.
 
 ## Moving to v0.22.5 (2026-11-01)
 
