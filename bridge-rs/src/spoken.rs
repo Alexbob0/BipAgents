@@ -29,10 +29,10 @@ const CLOSE: &str = "-->";
 
 /// What the agent reads in its soul (souls.rs, the language block): a spoken version for structured replies only.
 /// Short: paid on every call.
-pub const SAY_RULE: &str = "A written reply with a list of more than 3 items, a table, several links or over 150 \
-words: end it with its hidden spoken version, read aloud when it is listened to, the sentences inside the mark: \
-<!--bip:say 2 or 3 short spoken sentences, what is there and the essential, never the list itself-->. Never for a \
-short reply, never in a voice call.";
+pub const SAY_RULE: &str = "Only a long structured written reply (a list of more than 3 items, a table, several \
+links, or over 150 words) ends with its hidden spoken version, read aloud when it is listened to, the sentences inside \
+the mark: <!--bip:say 2 or 3 short spoken sentences, what is there and the essential, never the list itself-->. Any \
+other reply has none (a short answer, a number, thanks, small talk), nor a voice call.";
 
 /// A text without its spoken versions, and those (joined; a mark never closed takes the rest of the text).
 pub fn split(text: &str) -> (String, Option<String>) {
@@ -609,6 +609,6 @@ cher, A, a une terrasse : 95 euros.-->";
         }
         assert!(radio_rule("fr", true).contains("« environ 420 euros »"));
         assert!(radio_rule("de", true).contains("« etwa 420 Euro »"));
-        assert!(SAY_RULE.contains(OPEN) && SAY_RULE.len() < 400, "{}", SAY_RULE.len());
+        assert!(SAY_RULE.contains(OPEN) && SAY_RULE.len() < 420, "{}", SAY_RULE.len());
     }
 }
