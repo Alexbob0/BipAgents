@@ -26,7 +26,8 @@ sont édités par
   France, 1007 depuis la France, +33 9 72 10 10 07 depuis l'étranger ; serveur (VPS) en France.
 - **Serveurs des places de l'offre tout compris** : OVH SAS, 2 rue Kellermann, 59100 Roubaix, France, 1007 depuis la
   France, +33 9 72 10 10 07 depuis l'étranger ; Hetzner Online GmbH, Industriestr. 25, 91710 Gunzenhausen, Allemagne, +49 9831 505-0.
-- **Sauvegardes chiffrées des places** : Scaleway SAS, Paris, France (stockage objet, région fr-par, Paris).
+- **Sauvegardes chiffrées des places** : Scaleway SAS, au capital de 142 050 €, SIREN 433 115 904 RCS Paris, 8 rue de la
+  Ville-l'Évêque, 75008 Paris, France ; assistance par ticket (stockage objet, région fr-par, Paris).
 
 Avec leur propre ordinateur ou serveur, les agents et les conversations des utilisateurs s'y trouvent, et
 l'utilisateur en a la maîtrise. Avec l'offre tout compris, ils se trouvent sur la place de chaque utilisateur, sur les
