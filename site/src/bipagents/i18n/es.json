@@ -106,8 +106,8 @@
     "weekend_lisbon": {
       "tab": "Un finde con amigos",
       "title": "organiza un finde con amigos",
-      "cap": "Compartido con tres amigos: votan en sus tarjetas desde su enlace, primero la fecha y luego el piso.",
-      "alt": "Grabación de la pantalla de la app. Un agente compartido con tres amigos: Léa, Sam e Inès. Escribes «Lisboa con Léa, Sam e Inès: haznos votar». El agente publica una tarjeta de votación «¿Qué finde?»; llegan los votos de los amigos y gana el finde del 21 de noviembre. Busca pisos y lanza una segunda votación: Alfama, terraza, 92 € la noche, o Bairro Alto, azotea, 105 € la noche, y llegan los votos."
+      "cap": "Compartido con tres amigos: votan en sus tarjetas desde su enlace, primero la fecha y luego el piso, y cada uno tiene su tarea.",
+      "alt": "Grabación de la pantalla de la app. Un agente compartido con tres amigos: Léa, Sam e Inès. Escribes «Lisboa con Léa, Sam e Inès: haznos votar». El agente publica una tarjeta de votación «¿Qué finde?»; llegan los votos de los amigos y gana el finde del 21 de noviembre. Busca pisos y lanza una segunda votación: Alfama, terraza, 92 € la noche, o Bairro Alto, azotea, 105 € la noche, y llegan los votos. Gana Alfama y el agente muestra la lista del finde: una tarea para cada uno."
     }
   },
   "control": {

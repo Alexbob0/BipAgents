@@ -7,6 +7,10 @@
 # record: a Debug build of the app (it has `-demoRecord`, App/Features/Demo/DemoRecording.swift) installed on a booted
 # simulator; each scenario of App/Resources/Demo/demo.json is typed, played and its cards answered by the app itself
 # (first choice, approvals accepted), in the four languages; the status bar is set to 9:41, light appearance.
+# The app must have the demo greeting's fix (its bubble written to the end, then the request typed): without it the
+# greeting stops at its first words until the request is sent (the 10/11 clips were made with that fix applied).
+# The Lisbon weekend's list is a web page: recordVideo alone filmed it blank; with `simctl io screenshot` taken in a
+# loop during the recording (every ~0.4 s from 12 s on) the recording shows it. Its clip ends on that list (1.4×).
 # On iOS, take a simulator slot first (/private/tmp/claude-501/ios-slot.sh on the owner's Mac).
 # encode: 590 px wide, 30 fps, H.264 without sound, faststart; the last frame held 1.5 s so the answer can be read
 # before the loop; the poster is that last frame. Speed > 1 shortens a long one (the Lisbon weekend: 1.25).

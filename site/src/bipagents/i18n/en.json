@@ -106,8 +106,8 @@
     "weekend_lisbon": {
       "tab": "A weekend with friends",
       "title": "plans a weekend with friends",
-      "cap": "Shared with three friends: they vote on its cards from their link, for the date, then the flat.",
-      "alt": "Screen recording of the app. An agent shared with three friends, Léa, Sam and Inès. You write “Lisbon with Léa, Sam and Inès: get us voting”. The agent posts a vote card, “Which weekend?”; the friends’ votes come in and the weekend of 21 November wins. It looks for flats and posts a second vote: Alfama, terrace, €92 a night, or Bairro Alto, rooftop, €105 a night, and the votes come in."
+      "cap": "Shared with three friends: they vote on its cards from their link, for the date, then the flat, and each gets a task.",
+      "alt": "Screen recording of the app. An agent shared with three friends, Léa, Sam and Inès. You write “Lisbon with Léa, Sam and Inès: get us voting”. The agent posts a vote card, “Which weekend?”; the friends’ votes come in and the weekend of 21 November wins. It looks for flats and posts a second vote: Alfama, terrace, €92 a night, or Bairro Alto, rooftop, €105 a night, and the votes come in. Alfama wins and the agent shows the weekend list, a task for each of them."
     }
   },
   "control": {

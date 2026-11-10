@@ -106,8 +106,8 @@
     "weekend_lisbon": {
       "tab": "Ein Wochenende mit Freunden",
       "title": "plant ein Wochenende mit Freunden",
-      "cap": "Mit drei Freunden geteilt: Sie stimmen über ihren Link auf seinen Karten ab, erst übers Datum, dann über die Wohnung.",
-      "alt": "Bildschirmaufnahme der App. Ein Agent, geteilt mit drei Freunden: Léa, Sam und Inès. Du schreibst „Lissabon mit Léa, Sam und Inès: lass uns abstimmen“. Der Agent postet eine Abstimmungskarte „Welches Wochenende?“; die Stimmen der Freunde kommen an, und das Wochenende vom 21. November gewinnt. Er sucht Wohnungen und startet eine zweite Abstimmung: Alfama, Terrasse, 92 € pro Nacht, oder Bairro Alto, Dachterrasse, 105 € pro Nacht, und die Stimmen kommen an."
+      "cap": "Mit drei Freunden geteilt: Sie stimmen über ihren Link auf seinen Karten ab, erst übers Datum, dann über die Wohnung, und jeder bekommt eine Aufgabe.",
+      "alt": "Bildschirmaufnahme der App. Ein Agent, geteilt mit drei Freunden: Léa, Sam und Inès. Du schreibst „Lissabon mit Léa, Sam und Inès: lass uns abstimmen“. Der Agent postet eine Abstimmungskarte „Welches Wochenende?“; die Stimmen der Freunde kommen an, und das Wochenende vom 21. November gewinnt. Er sucht Wohnungen und startet eine zweite Abstimmung: Alfama, Terrasse, 92 € pro Nacht, oder Bairro Alto, Dachterrasse, 105 € pro Nacht, und die Stimmen kommen an. Alfama gewinnt, und der Agent zeigt die Liste fürs Wochenende: eine Aufgabe für jeden."
     }
   },
   "control": {

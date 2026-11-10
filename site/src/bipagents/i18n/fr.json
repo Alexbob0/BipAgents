@@ -106,8 +106,8 @@
     "weekend_lisbon": {
       "tab": "Un week-end entre amis",
       "title": "organise un week-end entre amis",
-      "cap": "Partagé avec trois amis : ils votent sur ses cartes depuis leur lien, pour la date puis l’appart.",
-      "alt": "Enregistrement de l’écran de l’app. Un agent partagé avec trois amis, Léa, Sam et Inès. Tu écris « On part à Lisbonne avec Léa, Sam et Inès : fais-nous voter ». L’agent publie une carte de vote « Quel week-end ? » ; les votes des amis arrivent et le week-end du 21 novembre l’emporte. Il cherche des apparts et lance un second vote : Alfama, terrasse, 92 € la nuit, ou Bairro Alto, rooftop, 105 € la nuit, et les votes arrivent."
+      "cap": "Partagé avec trois amis : ils votent sur ses cartes depuis leur lien, pour la date puis l’appart, et chacun a sa tâche.",
+      "alt": "Enregistrement de l’écran de l’app. Un agent partagé avec trois amis, Léa, Sam et Inès. Tu écris « On part à Lisbonne avec Léa, Sam et Inès : fais-nous voter ». L’agent publie une carte de vote « Quel week-end ? » ; les votes des amis arrivent et le week-end du 21 novembre l’emporte. Il cherche des apparts et lance un second vote : Alfama, terrasse, 92 € la nuit, ou Bairro Alto, rooftop, 105 € la nuit, et les votes arrivent. Alfama l’emporte et l’agent montre la liste du week-end : une tâche pour chacun."
     }
   },
   "control": {
