@@ -95,7 +95,8 @@ def test_forget_is_shown_by_the_agent_and_confirmed_only_in_the_app(bridges, fak
     assert bridge.get("/v1/notebook/offline", headers={**AUTH, "If-None-Match": etag}).status_code == 200
     # an old turn writes it back, said another way: not written
     mcp_call(bridge, "notebook_write", {"page": "Léa", "facts": ["Chausse du 36"]})
-    assert "36" not in lea.read_text()
+    # (the page's random id, « id: p44ae601367 », may hold « 36 »: only the page's text is read)
+    assert "36" not in "\n".join(line for line in lea.read_text().splitlines() if not line.startswith("id: "))
     # nothing to forget, or two Léa: said so
     nothing = bridge.post("/v1/notebook/forget/preview", json={"texts": ["Aime le ski"], "page": "Léa"}, headers=AUTH)
     assert nothing.status_code == 404 and nothing.json()["detail"]["code"] == "nothing_found"
