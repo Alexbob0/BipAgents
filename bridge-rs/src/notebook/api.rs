@@ -1508,7 +1508,7 @@ async fn targets(State(state): State<AppState>, q: QueryMap) -> ApiResult<Respon
                 .cmp(&(b.0 == Part::Health, order(&b.2.kind()), super::fold(&b.2.title)))
         });
         let mut suggested: Vec<Value> = Vec::new();
-        let mut suggest = |v: Value, out: &mut Vec<Value>| {
+        let suggest = |v: Value, out: &mut Vec<Value>| {
             if out.len() < 3 && !out.iter().any(|o| o["path"] == v["path"] && o["title"] == v["title"]) {
                 out.push(v);
             }

@@ -115,7 +115,7 @@ pub fn find(config: &Config) -> Vec<Value> {
     let state = super::read_state(config);
     let left = super::strings(state.get("misplaced").and_then(|m| m.get("left")));
     let mut out: Vec<Value> = Vec::new();
-    let mut push = |v: Value, out: &mut Vec<Value>| {
+    let push = |v: Value, out: &mut Vec<Value>| {
         let id = tk::str_or_empty(v.get("id"));
         if out.len() < ITEMS_MAX && !left.contains(&id) && !out.iter().any(|o| o["id"] == json!(id)) {
             out.push(v);

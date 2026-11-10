@@ -234,7 +234,7 @@ const HEALTH: &[&str] = &[
     "allerg*", "medicament*", "maladi*", "malade", "malades", "ordonnance*", "medecin*", "hopital", "hopitaux",
     "grossesse*", "enceinte de", "diabet*", "asthm*", "psychiatr*", "psychologue*", "therapeute*", "vaccin*",
     "tension arterielle", "cholesterol", "migraine*", "epileps*", "insomni*", "kine", "kines", "kinesitherap*",
-    "dentist*", "gyneco*", "pediatr*", "ophtalmo*", "orthodont*", "osteopath*", "infirmi*", "thyroid*", "groupe sanguin",
+    "dentist*", "gyneco*", "pediatr*", "ophtalmo*", "orthodont*", "osteopath*", "thyroid*", "groupe sanguin",
     "intoleran*", "coeliaq*", "perte de poids", "prise de poids", "sous traitement", "traitement pour",
     "traitement contre", "en traitement", "opere du", "operee du", "opere de la", "operee de la", "opere d", "operee d",
     "cancer du", "cancer de", "en depression", "blesse au", "blessee au", "blessure au", "douleur au", "douleurs au",
@@ -614,6 +614,7 @@ mod tests {
             "Thérapie de groupe pour l'équipe : non",
             "Health check of the server every night",
             "Krebs essen am Freitag",
+            "Emma, cousine : infirmière à Lille",
         ] {
             assert!(!is_health(fact), "{fact}");
         }
