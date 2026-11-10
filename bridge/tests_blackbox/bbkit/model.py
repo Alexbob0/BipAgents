@@ -486,10 +486,11 @@ class PeopleModel(ScriptedModel):
 | `#etapes` | three useful steps (a web search, the weather, the agenda) and a calculation, then its own list (`todo_list` + `todo.updated`) |
 | `#relais` | writes to another agent (`message_agent`) five times in one turn (the hop cap) |
 | `#carnet` | reads a page of the Carnet, files a fact, asks the question of the day (`notebook_read`, `notebook_write`) |
+| `#rangement` | files a fact on the Carnet's « Famille » page again (`notebook_write`): J52, after the person moved one like it |
 
     A run started with `message` instead of `input` (another household's agent through `/peer/…`) is read the same."""
 
-    MARKERS = ("#routine", "#tache", "#famille", "#etapes", "#relais", "#carnet")
+    MARKERS = ("#routine", "#tache", "#famille", "#etapes", "#relais", "#carnet", "#rangement")
 
     @classmethod
     def upgrade(cls, model: ScriptedModel) -> "PeopleModel":
@@ -555,6 +556,12 @@ class PeopleModel(ScriptedModel):
                 except Exception as exc:  # noqa: BLE001 - the 5th is refused: the tool's error is the step's result
                     self.step_results.append({"run": run.id, "tool": "message_agent", "error": str(exc)})
             lines.append("J’ai échangé avec Coach, je te tiens au courant.")
+        if "#rangement" in words and "rangement" in self.calls:
+            opening += self.say(run, "Je note ça. ")
+            for tool, arguments, act in self.calls["rangement"](run):
+                made = self.tool(run, "mcp_bipagents_" + tool, arguments, act, calls, results)
+                self.step_results.append({"run": run.id, "tool": tool, "result": made})
+            lines.append("C’est noté dans ton Carnet.")
         if "#carnet" in words and "carnet" in self.calls:
             # the Carnet's calls are backstage: the person sees the line under the answer, not « Étapes »
             opening += self.say(run, "Je regarde ton Carnet. ")

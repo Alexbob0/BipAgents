@@ -24,6 +24,13 @@ from bbkit.model import PeopleModel
 from bbkit.people import Guichet, mcp_as, project_share
 
 
+# J52's pages: (page, kind, section, facts)
+JOURNEY_J52_PAGES = [
+    ("BipAgents", "subject", "status", ["Bêta publique le 19 novembre"]),
+    ("Famille", "area", "matters", ["Judo de Zoé : mercredi 14 h", "BipAgents : panorama concurrentiel livré le 25/10"]),
+]
+
+
 def test_serve_people(bridges, fakes):
     journey = journey_bridge(bridges, fakes, word_gap=float(os.environ.get("JOURNEYS_WORD_GAP", "0.12")),
                              name="journeys-people")
@@ -48,6 +55,15 @@ def test_serve_people(bridges, fakes):
         as_vie("notebook_write", {"page": "Léa", "section": "who", "facts": ["Prof de musique"]}),
         as_vie("notebook_write", {"page": "Léa", "section": "tastes",
                                   "ask": {"question": "Léa chausse du combien ?", "chips": ["35", "36", "37"]}}),
+    ]
+    # J52, moving a point: « Famille » holds a work point of Vie's, « BipAgents » exists (proposed first);
+    # `#rangement` makes Vie file one like it on « Famille » again (it goes where the person moved the first one)
+    for page, kind, section, facts in JOURNEY_J52_PAGES:
+        mcp_as(bridge, journey.token, "/v1/agent-tools/mcp", "notebook_write",
+               {"page": page, "kind": kind, "section": section, "facts": facts})
+    journey.model.calls["rangement"] = lambda run: [
+        as_vie("notebook_write", {"page": "Famille", "kind": "area", "section": "matters",
+                                  "facts": ["BipAgents : panorama concurrentiel mis à jour le 9/11"]}),
     ]
     guichet = Guichet().start()
     try:
