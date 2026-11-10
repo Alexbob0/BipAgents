@@ -796,8 +796,11 @@ impl Threads {
             for (n, a) in attachments.iter_mut().enumerate() {
                 a["id"] = json!(format!("{id}.a{n}"));
             }
-            let body = json!({"kind": "boite", "text": words, "title": row["title"], "attachments": attachments,
-                              "boite": {"outbox_id": row["id"], "audio": !row["audio_path"].is_null()}});
+            let mut body = json!({"kind": "boite", "text": words, "title": row["title"], "attachments": attachments,
+                                  "boite": {"outbox_id": row["id"], "audio": !row["audio_path"].is_null()}});
+            if let Some(said) = row["text"].as_str().and_then(|t| crate::spoken::split(t).1) {
+                body["spoken"] = json!(said); // its hidden spoken version (spoken.rs), for « Écouter »
+            }
             out.push(Item {
                 id,
                 pos: (0, 0, 0),

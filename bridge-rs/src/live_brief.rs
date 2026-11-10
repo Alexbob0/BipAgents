@@ -154,7 +154,8 @@ fn is_hermes_http(err: &anyhow::Error) -> bool {
 }
 
 pub fn visible(text: &str) -> String {
-    pystr::strip(&HIDDEN.replace_all(text, "")).to_string()
+    // a reply's spoken version out first, even one never closed (spoken.rs)
+    pystr::strip(&HIDDEN.replace_all(&crate::spoken::strip(text), "")).to_string()
 }
 
 /// A call's recap as the apps frame it (« <!--bip:call\n…\n--> »): the turns inside may quote anything (a page, a
@@ -898,7 +899,8 @@ async fn live_brief(State(state): State<AppState>, q: QueryMap) -> ApiResult<Res
     let agent = web::query_required(&q, "agent")?;
     let session = web::query_str(&q, "session", false, None)?;
     let config = setup(&state, &agent)?;
-    let now = crate::dates::now::line(&state.config(), &config); // the call's start time (dates/now.rs)
+    // the call's radio rules (spoken.rs: for the ear, one place for both apps), then its start time (dates/now.rs)
+    let now = format!("{}\n\n{}", live_rules(&state, &config), crate::dates::now::line(&state.config(), &config));
     // What the call's turns send as `model_options` (the apps since 2026-10-28; before, always thinking off): GLM
     // through EUrouter can't switch thinking off and answers nothing to « none », so it gets « low ».
     let options = crate::agents_admin::quick_turn_options(&state.config(), &config);
@@ -1002,6 +1004,11 @@ async fn live_calls_list(State(state): State<AppState>, q: QueryMap) -> ApiResul
     Ok(web::ok(crate::live_calls::listed(records)))
 }
 
+/// A call's radio rules (spoken.rs `radio_rule`), in the agent's language: stable, before the call's time.
+fn live_rules(state: &AppState, agent: &AgentConfig) -> String {
+    crate::spoken::radio_rule(&crate::handback::language_of(&state.config(), agent), true)
+}
+
 /// What waited for the person's next message in `session`, for the agent only (the message sending route,
 /// threads/send.rs): the current time, a Live call's recap, the family's news, what is
 /// new in the Carnet, the rooms, friends' taps, the place's space, a feature to propose (`text` and `kinds`: the
@@ -1045,6 +1052,8 @@ pub async fn message_notes(state: &AppState, agent: &AgentConfig, session: &str,
                 crate::friends_cards::take_note(&config, &agent.name), // friends' taps on its cards (friends_cards.rs)
                 named(crate::storage_watch::take_note(&config, &agent.name)), // the place's space (storage_watch.rs)
                 crate::feature_tips::on_message(&config, &agent.name, &session, &text, &kinds, &moment, crate::py::time_time()),
+                // a voice message: its reply will be listened to (spoken.rs, the radio rules)
+                kinds.iter().any(|k| k == "voice").then(|| crate::spoken::voice_note(&lang)),
             ]
                 .into_iter()
                 .flatten()

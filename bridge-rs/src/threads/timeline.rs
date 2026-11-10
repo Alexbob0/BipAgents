@@ -544,6 +544,10 @@ pub fn segment_items(
                     if !renamed.is_empty() {
                         body["renamed"] = Value::Array(renamed);
                     }
+                    // its hidden spoken version (spoken.rs), out of `text` with the other notes: « Écouter » reads it
+                    if let Some(said) = crate::spoken::split(&raw).1 {
+                        body["spoken"] = json!(said);
+                    }
                     if let Some(r) = &row.reasoning {
                         body["reasoning"] = json!(r);
                     }
@@ -987,6 +991,22 @@ mod tests {
         let a = items(&[plain.clone()]);
         assert!(a[0].id.starts_with("m_") && a[0].id.len() == 26);
         assert_eq!(a, items(&[plain]));
+    }
+
+    /// A reply's hidden spoken version (spoken.rs): out of its words, given beside them as `spoken`.
+    #[test]
+    fn a_replys_spoken_version_is_given_beside_its_words() {
+        let rows = vec![
+            row(1, "user", json!("Mes courses ?")),
+            row(2, "assistant", json!("- lait\n- œufs\n- pain\n- riz\n\n<!--bip:say Quatre choses : lait, œufs, pain et riz.-->")),
+            row(3, "user", json!("Merci")),
+            row(4, "assistant", json!("De rien <!--bip:say")),
+        ];
+        let got = items(&rows);
+        assert_eq!(got[1].text(), "- lait\n- œufs\n- pain\n- riz");
+        assert_eq!(got[1].body["spoken"], "Quatre choses : lait, œufs, pain et riz.");
+        assert_eq!((got[3].text(), got[3].body.get("spoken")), ("De rien", None));
+        assert!(!got.iter().any(|i| i.text().contains("bip:")));
     }
 
     #[test]

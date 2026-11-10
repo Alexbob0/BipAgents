@@ -552,8 +552,10 @@ impl PushService {
     /// A run ended while nobody followed it; also a turn the agent took on its own in its main conversation
     /// (cronwatch.rs, `run_id` « session:<id> ») and a hand-back's reply (handback.rs): the same reply from two of
     /// them is one notification (its message's id).
+    /// Its words only, never a reply's hidden spoken version (spoken.rs), whoever sends it.
     pub async fn notify_reply(&self, agent: &str, run_id: &str, text: &str, session_id: Option<&str>) -> usize {
-        self.notify(agent, Notice::Reply { run_id: run_id.into(), text: text.into(), session_id: own(session_id) })
+        let text = crate::spoken::strip(text);
+        self.notify(agent, Notice::Reply { run_id: run_id.into(), text, session_id: own(session_id) })
             .await
     }
 
@@ -563,7 +565,7 @@ impl PushService {
         let notice = Notice::Room {
             room_id: room_id.into(),
             room_title: room_title.into(),
-            text: text.into(),
+            text: crate::spoken::strip(text),
             message: message.into(),
         };
         self.notify(agent, notice).await
