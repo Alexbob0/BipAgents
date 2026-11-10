@@ -28,6 +28,15 @@
 //!                                              section (409 page_changed: an agent wrote since `rev`; the section as
 //!                                              it is now comes with it, the app keeps what the person typed)
 //!     DELETE /v1/notebook/page?path=
+//!     GET    /v1/notebook/targets?path=&private=&text=   « Déplacer vers… »: the pages proposed first (where such
+//!                                              points went before, the page their label names, « Travail » for a work
+//!                                              agent's), then every page, each with the section its words point to
+//!     POST   /v1/notebook/move                 {path, private?, rev?, texts? | section, to: {path? | title+kind,
+//!                                              private?}, to_section?}   points or a whole section moved, their lines
+//!                                              kept (moves.rs) → {page, to, move, toast, learnt, undo}
+//!     POST   /v1/notebook/move/undo            {move}   « Annuler » → {page}
+//!     POST   /v1/notebook/misplaced            {action: move|leave, ids?}   the misplaced points' card answered
+//!                                              (misplaced.rs) → {moved, toast, card}
 //!     GET    /v1/notebook/history?path=        changes (a page's, or all), the newest first
 //!     POST   /v1/notebook/restore              {change}   the page as it was after that change
 //!     GET    /v1/notebook/tasks                open and recent tasks
@@ -180,7 +189,8 @@ async fn home(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response>
                   "dates": dates.into_iter().take(10).collect::<Vec<_>>(),
                   "inbox": inbox.len(), "settings": settings_view(&config), "trips": trips, "records": records,
                   "proposals": proposals, "known_tile": super::known::tile(&config, &shown, crate::py::time_time()),
-                  "review": super::review::view(&config, &shown, crate::py::time_time())?.map(|r| r["card"].clone())}))
+                  "review": super::review::view(&config, &shown, crate::py::time_time())?.map(|r| r["card"].clone()),
+                  "misplaced": super::misplaced::card(&config, &shown)}))
     })
     .await?;
     Ok(web::ok(view))
@@ -631,6 +641,7 @@ pub fn page_view_in(config: &Config, part: Part, path: &str, shown: &str) -> any
                     let links: Vec<Value> = super::links_in(&f.text).iter().map(|l| resolve(l)).collect();
                     let (label, answer) = super::lexicon::split_label(&f.text).unwrap_or_default();
                     json!({"text": f.text, "label": label, "answer": answer, "when": super::offline::when(&f.date, shown),
+                           "fresh": fresh(&f.date), "noted": noted(&f.who, &f.date, shown),
                            "by": if f.who.is_empty() { Value::Null } else { json!(f.who) },
                            "date": if f.date.is_empty() { Value::Null } else { json!(f.date) }, "item": f.item, "links": links})
                 })
@@ -752,6 +763,22 @@ fn error_text(code: &str, lang: &str) -> &'static str {
         ("paper_unreadable", "de") => "Ich konnte dieses Dokument nicht lesen. Korrigiere es von Hand.",
         ("paper_unreadable", "es") => "No pude leer este documento. Corrígelo a mano.",
         ("paper_unreadable", _) => "I couldn't read this paper. Fix it by hand.",
+        ("health_stays", "fr") => "Les infos de santé restent dans Santé.",
+        ("health_stays", "de") => "Gesundheitsangaben bleiben in Gesundheit.",
+        ("health_stays", "es") => "La información de salud se queda en Salud.",
+        ("health_stays", _) => "Health information stays in Health.",
+        ("nothing_to_move", "fr") => "Ce point n'est plus là.",
+        ("nothing_to_move", "de") => "Dieser Punkt ist nicht mehr da.",
+        ("nothing_to_move", "es") => "Este punto ya no está.",
+        ("nothing_to_move", _) => "This point is no longer there.",
+        ("no_such_page", "fr") => "Cette page n'existe plus.",
+        ("no_such_page", "de") => "Diese Seite gibt es nicht mehr.",
+        ("no_such_page", "es") => "Esta página ya no existe.",
+        ("no_such_page", _) => "This page no longer exists.",
+        ("move_gone", "fr") => "Ce déplacement ne peut plus être annulé.",
+        ("move_gone", "de") => "Das lässt sich nicht mehr rückgängig machen.",
+        ("move_gone", "es") => "Este movimiento ya no se puede deshacer.",
+        ("move_gone", _) => "This move can no longer be undone.",
         _ => "",
     }
 }
@@ -1351,6 +1378,10 @@ pub fn router() -> Router<AppState> {
         .route("/notebook/papers/{id}/photo", get(paper_photo))
         .route("/notebook/page", get(read_page).post(new_page).delete(delete_page))
         .route("/notebook/section", axum::routing::put(write_section))
+        .route("/notebook/targets", get(targets))
+        .route("/notebook/move", post(move_points))
+        .route("/notebook/move/undo", post(move_undo))
+        .route("/notebook/misplaced", post(misplaced))
         .route("/notebook/history", get(history))
         .route("/notebook/restore", post(restore))
         .route("/notebook/tasks", get(list_tasks).post(add_task))
@@ -1367,4 +1398,330 @@ pub fn router() -> Router<AppState> {
         .route("/notebook/export", get(export))
         .route("/notebook/tidy", post(tidy_now))
         .route("/notebook/fill", get(fill_view).post(fill_all).delete(fill_stop))
+}
+
+// -- « Déplacer vers… » (moves.rs) and the misplaced points' card (misplaced.rs) ---------------------------------------
+
+/// Days a point is « nouveau » on its page.
+pub const FRESH_DAYS: i64 = 7;
+
+/// Whether a fact noted on `date` (YYYY-MM-DD) is less than `FRESH_DAYS` old.
+fn fresh(date: &str) -> bool {
+    chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d")
+        .map(|d| (chrono::Local::now().date_naive() - d).num_days() < FRESH_DAYS)
+        .unwrap_or(false)
+}
+
+/// « Noté par Kerfy Studio le 25 oct. 2026 » (the long press), null without a date.
+fn noted(who: &str, date: &str, lang: &str) -> Value {
+    let Ok(d) = chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d") else { return Value::Null };
+    use chrono::Datelike;
+    let day = format!("{} {}", super::offline::day(d, lang), d.year());
+    let text = match (lang, who.is_empty()) {
+        ("fr", false) => format!("Noté par {who} le {day}"),
+        ("fr", true) => format!("Noté le {day}"),
+        ("de", false) => format!("Notiert von {who} am {day}"),
+        ("de", true) => format!("Notiert am {day}"),
+        ("es", false) => format!("Anotado por {who} el {day}"),
+        ("es", true) => format!("Anotado el {day}"),
+        (_, false) => format!("Noted by {who} on {day}"),
+        (_, true) => format!("Noted on {day}"),
+    };
+    json!(text)
+}
+
+fn move_texts(lang: &str) -> (&'static str, &'static str, &'static str) {
+    match lang {
+        "fr" => ("Déplacé vers « {} ».", "{} range ça là désormais.", "Annuler"),
+        "de" => ("Nach « {} » verschoben.", "{} legt so etwas künftig dort ab.", "Rückgängig"),
+        "es" => ("Movido a « {} ».", "{} lo guardará ahí a partir de ahora.", "Deshacer"),
+        _ => ("Moved to « {} ».", "{} will file such points there from now on.", "Undo"),
+    }
+}
+
+fn move_refused(err: anyhow::Error, lang: &str) -> HttpError {
+    use super::moves::Refused;
+    match err.downcast_ref::<Refused>() {
+        Some(Refused::NoPage) => carnet_error(404, "no_such_page", lang, json!({})),
+        Some(Refused::Nothing) => carnet_error(404, "nothing_to_move", lang, json!({})),
+        Some(Refused::Health) => carnet_error(422, "health_stays", lang, json!({})),
+        Some(Refused::Gone) => carnet_error(410, "move_gone", lang, json!({})),
+        None => match err.downcast_ref::<super::PageChanged>() {
+            Some(changed) => carnet_error(409, "page_changed", lang, json!({"rev": changed.0})),
+            None => match err.downcast_ref::<super::NotebookError>() {
+                Some(message) => HttpError::new(400, message.0.clone()),
+                None => err.into(),
+            },
+        },
+    }
+}
+
+fn target_view(part: Part, path: &str, page: &super::Page, text: &str, shown: &str) -> Value {
+    let kind = page.kind();
+    let section = if text.is_empty() || super::template::outline(&kind).is_empty() {
+        Value::Null
+    } else {
+        json!(super::template::place(&kind, "", text))
+    };
+    let title = if kind == "self" { super::words(shown).me.to_string() } else { page.title.clone() };
+    json!({"path": path, "part": part.as_str(), "title": title, "kind": kind, "section": section})
+}
+
+/// « Déplacer vers… »: the pages proposed first, then all of them (« Toi » first, then by kind and name), and each
+/// kind's outline (for the section step).
+async fn targets(State(state): State<AppState>, q: QueryMap) -> ApiResult<Response> {
+    let config = state.config();
+    let shown = shown_language(&config, &q);
+    let part = part_of(&q);
+    let path = web::query_str(&q, "path", true, Some(300))?.unwrap_or_default();
+    let text = web::query_str(&q, "text", false, Some(600))?.unwrap_or_default();
+    let view = blocking(move || {
+        super::checked(&path)?;
+        let lang = super::language(&config);
+        let w = super::words(&lang);
+        let Some(source_text) = super::read_page_text(&config, part, &path) else {
+            return Err(super::NotebookError("no such page".into()).into());
+        };
+        let source = super::Page::parse(&source_text, "");
+        // who noted the point: where that agent's points went before, or where it writes
+        let who = source
+            .sections()
+            .into_iter()
+            .flat_map(|(_, facts)| facts)
+            .find(|f| !text.is_empty() && super::fold(&f.text) == super::fold(&text))
+            .map(|f| f.who)
+            .unwrap_or_default();
+        let agent = super::assign::agent_named(&config, &who);
+        let mut pages: Vec<(Part, String, super::Page)> = Vec::new();
+        for p in [Part::Main, Part::Health] {
+            for (pp, page) in super::all_pages(&config, p) {
+                let kind = page.kind();
+                if !super::KINDS.contains(&kind.as_str()) || w.archived(&pp) || (p == part && pp == path) {
+                    continue;
+                }
+                pages.push((p, pp, page));
+            }
+        }
+        let order = |k: &str| ["self", "subject", "area", "person", "trip"].iter().position(|x| *x == k).unwrap_or(9);
+        pages.sort_by(|a, b| {
+            (a.0 == Part::Health, order(&a.2.kind()), super::fold(&a.2.title))
+                .cmp(&(b.0 == Part::Health, order(&b.2.kind()), super::fold(&b.2.title)))
+        });
+        let mut suggested: Vec<Value> = Vec::new();
+        let mut suggest = |v: Value, out: &mut Vec<Value>| {
+            if out.len() < 3 && !out.iter().any(|o| o["path"] == v["path"] && o["title"] == v["title"]) {
+                out.push(v);
+            }
+        };
+        let state_now = super::read_state(&config);
+        if let Some(agent) = agent.as_deref() {
+            // where the person moved this agent's points from this page before
+            for c in state_now.get("corrections").and_then(Value::as_array).into_iter().flatten().rev() {
+                if tk::str_or_empty(c.get("agent")) == agent && tk::str_or_empty(c.get("from_path")) == path {
+                    let to = tk::str_or_empty(c.get("to_path"));
+                    if let Some((p, pp, page)) = pages.iter().find(|(_, pp, _)| *pp == to) {
+                        suggest(target_view(*p, pp, page, &text, &shown), &mut suggested);
+                    }
+                }
+            }
+        }
+        // the page the point's label names
+        if let Some((label, _)) = super::lexicon::split_label(&text) {
+            if let Some((p, pp, page)) = pages.iter().find(|(_, _, page)| super::fold(&page.title) == super::fold(&label)) {
+                suggest(target_view(*p, pp, page, &text, &shown), &mut suggested);
+            }
+        }
+        // out of the health part: the page of the same name
+        if part == Part::Health {
+            if let Some((p, pp, page)) = pages.iter().find(|(p, _, page)| *p == Part::Main && super::fold(&page.title) == super::fold(&source.title)) {
+                suggest(target_view(*p, pp, page, &text, &shown), &mut suggested);
+            }
+        }
+        // a work agent's: « Travail »
+        if agent.as_deref().is_some_and(|a| super::assign::is_work_agent(&config, a)) {
+            let area = super::assign::work_area(&lang);
+            match pages.iter().find(|(p, _, page)| *p == Part::Main && super::fold(&page.title) == super::fold(area)) {
+                Some((p, pp, page)) => suggest(target_view(*p, pp, page, &text, &shown), &mut suggested),
+                None => suggest(json!({"path": null, "part": "main", "title": area, "kind": "area",
+                                       "section": null}), &mut suggested),
+            }
+        }
+        // the pages this agent wrote on lately
+        if let Some(agent) = agent.as_deref() {
+            let mut seen: Vec<String> = Vec::new();
+            for entry in super::history(&config, None, None, 400) {
+                if tk::str_or_empty(entry.get("agent")) != agent {
+                    continue;
+                }
+                let pp = tk::str_or_empty(entry.get("path"));
+                if seen.contains(&pp) || pp == path {
+                    continue;
+                }
+                seen.push(pp.clone());
+                if let Some((p, pp, page)) = pages.iter().find(|(_, x, page)| *x == pp && !super::assign::is_family_page(page)) {
+                    suggest(target_view(*p, pp, page, &text, &shown), &mut suggested);
+                }
+            }
+        }
+        let all: Vec<Value> = pages.iter().map(|(p, pp, page)| target_view(*p, pp, page, &text, &shown)).collect();
+        let outlines: serde_json::Map<String, Value> = super::KINDS
+            .iter()
+            .map(|k| {
+                let items: Vec<Value> = super::template::outline(k)
+                    .iter()
+                    .map(|s| json!({"id": s.id, "title": super::template::title(k, s.id, &shown)}))
+                    .collect();
+                (k.to_string(), Value::Array(items))
+            })
+            .collect();
+        let kinds: Vec<Value> = ["subject", "area", "person"]
+            .iter()
+            .map(|k| json!({"kind": k, "title": super::words(&shown).folder(k).unwrap_or(k)}))
+            .collect();
+        Ok(json!({"suggested": suggested, "pages": all, "outlines": outlines, "new_kinds": kinds}))
+    })
+    .await?;
+    Ok(web::ok(view))
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct MoveTo {
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub kind: Option<String>,
+    #[serde(default, deserialize_with = "web::lax::bool")]
+    pub private: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MoveBody {
+    pub path: String,
+    #[serde(default, deserialize_with = "web::lax::bool")]
+    pub private: bool,
+    #[serde(default)]
+    pub rev: Option<String>,
+    #[serde(default)]
+    pub texts: Vec<String>,
+    #[serde(default)]
+    pub section: Option<String>,
+    pub to: MoveTo,
+    #[serde(default)]
+    pub to_section: Option<String>,
+}
+
+impl Validate for MoveBody {
+    fn validate(&self, errors: &mut Vec<FieldError>) {
+        check_max_len(errors, "path", Some(&self.path), 300);
+        check_max_len(errors, "rev", self.rev.as_deref(), 16);
+        web::check_max_items(errors, "texts", Some(&self.texts), super::moves::POINTS_MAX);
+        for text in &self.texts {
+            check_max_len(errors, "texts", Some(text), 700);
+        }
+        check_max_len(errors, "section", self.section.as_deref(), 120);
+        check_max_len(errors, "to.path", self.to.path.as_deref(), 300);
+        check_max_len(errors, "to.title", self.to.title.as_deref(), 200);
+        check_max_len(errors, "to.kind", self.to.kind.as_deref(), 20);
+        check_max_len(errors, "to_section", self.to_section.as_deref(), 80);
+    }
+}
+
+/// « Déplacer vers… »: the page as it is now, where the points went, the toast and « Annuler ».
+async fn move_points(State(state): State<AppState>, q: QueryMap, Json(body): Json<MoveBody>) -> ApiResult<Response> {
+    let config = state.config();
+    let shown = shown_language(&config, &q);
+    let lang = shown.clone();
+    let part = if body.private { Part::Health } else { Part::Main };
+    let done = tokio::task::spawn_blocking(move || -> anyhow::Result<Value> {
+        let to = super::moves::Target {
+            part: Some(if body.to.private { Part::Health } else { Part::Main }),
+            path: body.to.path.clone().unwrap_or_default(),
+            title: body.to.title.clone().unwrap_or_default(),
+            kind: body.to.kind.clone().unwrap_or_default(),
+        };
+        let moved = super::moves::move_points(
+            &config,
+            part,
+            &body.path,
+            body.rev.as_deref(),
+            &body.texts,
+            body.section.as_deref(),
+            &to,
+            body.to_section.as_deref().unwrap_or(""),
+            &Who::you(&config),
+            true,
+        )?;
+        let page = page_view_in(&config, part, &body.path, &lang)?;
+        let (toast, learnt, undo) = move_texts(&lang);
+        let learnt = if moved.learnt.is_empty() { Value::Null } else { json!(learnt.replace("{}", &moved.learnt.join(", "))) };
+        Ok(json!({"page": page, "moved": moved.moved, "move": moved.id, "undo": undo,
+                  "to": {"path": moved.to_path, "part": moved.to_part.unwrap_or(part).as_str(), "title": moved.to_title},
+                  "toast": toast.replace("{}", &moved.to_title), "learnt": learnt}))
+    })
+    .await
+    .map_err(anyhow::Error::from)?;
+    match done {
+        Ok(view) => Ok(web::ok(view)),
+        Err(err) => Err(move_refused(err, &shown)),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MoveUndo {
+    #[serde(rename = "move")]
+    pub id: String,
+}
+
+impl Validate for MoveUndo {
+    fn validate(&self, errors: &mut Vec<FieldError>) {
+        check_max_len(errors, "move", Some(&self.id), 40);
+    }
+}
+
+async fn move_undo(State(state): State<AppState>, q: QueryMap, Json(body): Json<MoveUndo>) -> ApiResult<Response> {
+    let config = state.config();
+    let shown = shown_language(&config, &q);
+    let lang = shown.clone();
+    let done = tokio::task::spawn_blocking(move || -> anyhow::Result<Value> {
+        let (part, path) = super::moves::undo(&config, &body.id, &Who::you(&config))?;
+        Ok(json!({"page": page_view_in(&config, part, &path, &lang)?}))
+    })
+    .await
+    .map_err(anyhow::Error::from)?;
+    match done {
+        Ok(view) => Ok(web::ok(view)),
+        Err(err) => Err(move_refused(err, &shown)),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Misplaced {
+    pub action: String,
+    #[serde(default)]
+    pub ids: Vec<String>,
+}
+
+impl Validate for Misplaced {
+    fn validate(&self, errors: &mut Vec<FieldError>) {
+        if self.action != "move" && self.action != "leave" {
+            errors.push(FieldError::new("value_error", web::body_loc("action"), "Value error, move or leave", json!(self.action)));
+        }
+        web::check_max_items(errors, "ids", Some(&self.ids), super::misplaced::ITEMS_MAX);
+        for id in &self.ids {
+            check_max_len(errors, "ids", Some(id), 40);
+        }
+    }
+}
+
+async fn misplaced(State(state): State<AppState>, q: QueryMap, Json(body): Json<Misplaced>) -> ApiResult<Response> {
+    let config = state.config();
+    let shown = shown_language(&config, &q);
+    let view = blocking(move || {
+        let (moved, toast, card) = super::misplaced::answer(&config, &body.action, &body.ids, &shown)?;
+        Ok(json!({"moved": moved, "toast": if toast.is_empty() { Value::Null } else { json!(toast) }, "card": card}))
+    })
+    .await?;
+    Ok(web::ok(view))
 }

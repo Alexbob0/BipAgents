@@ -227,26 +227,74 @@ pub const STOP: &[&str] = &[
     "el", "los", "las", "del", "y", "es", "cual", "cuanto", "cuando", "tiene",
 ];
 
-/// Health words (folded): a word that starts with one of them, or a phrase; the stems end with `*`.
+/// Health words (folded) that say health on their own: a word that starts with one of them, or a phrase; the stems
+/// end with `*`.
 const HEALTH: &[&str] = &[
     // fr
-    "allerg*", "medicament*", "traitement*", "maladi*", "malade*", "diagnost*", "symptom*", "ordonnance*", "medecin*",
-    "hopital", "hopitaux", "chirurg*", "opere", "operee", "grossesse*", "enceinte", "diabet*", "asthm*", "cancer*",
-    "depressi*", "therap*", "psychiatr*", "psycholog*", "vaccin*", "blessure*", "blesse", "blessee", "douleur*",
-    "tension arterielle", "cholesterol", "migraine*", "epileps*", "insomni*", "kine", "kinesitherap*", "dentist*",
-    "gyneco*", "sante", "handicap*", "groupe sanguin", "intoleran*", "coeliaq*", "perte de poids", "prise de poids",
+    "allerg*", "medicament*", "maladi*", "malade", "malades", "ordonnance*", "medecin*", "hopital", "hopitaux",
+    "grossesse*", "enceinte de", "diabet*", "asthm*", "psychiatr*", "psychologue*", "therapeute*", "vaccin*",
+    "tension arterielle", "cholesterol", "migraine*", "epileps*", "insomni*", "kine", "kines", "kinesitherap*",
+    "dentist*", "gyneco*", "pediatr*", "ophtalmo*", "orthodont*", "osteopath*", "infirmi*", "thyroid*", "groupe sanguin",
+    "intoleran*", "coeliaq*", "perte de poids", "prise de poids", "sous traitement", "traitement pour",
+    "traitement contre", "en traitement", "opere du", "operee du", "opere de la", "operee de la", "opere d", "operee d",
+    "cancer du", "cancer de", "en depression", "blesse au", "blessee au", "blessure au", "douleur au", "douleurs au",
+    "mal au dos", "mal de dos", "en therapie", "seance de therapie", "seances de therapie",
     // en
-    "medication*", "medicine*", "treatment*", "disease*", "illness*", "sick", "diagnos*", "prescription*", "doctor*",
-    "hospital*", "surgery", "pregnan*", "asthma", "depress*", "injur*", "blood pressure", "migraines", "epilep*",
-    "insomnia", "physio*", "health", "disabilit*", "blood type", "celiac", "weight loss",
+    "medication*", "prescription*", "doctor*", "hospital*", "pregnan*", "asthma", "blood pressure", "migraines",
+    "epilep*", "insomnia", "blood type", "celiac", "weight loss", "illness*", "disease*", "physiotherap*",
+    "under treatment", "treatment for",
     // de
-    "medikament*", "behandlung*", "krankheit*", "krank", "arzt", "arztin", "krankenhaus*", "klinik*", "schwanger*",
-    "krebs", "impf*", "verletz*", "schmerz*", "blutdruck", "cholesterin", "migran*", "schlaflos*", "zahnarzt*",
-    "gesundheit*", "behinder*", "blutgruppe", "unvertraglich*",
+    "medikament*", "krankheit*", "krank", "arzt", "arztin", "krankenhaus*", "schwanger*", "impf*", "blutdruck",
+    "cholesterin", "migran*", "schlaflos*", "zahnarzt*", "blutgruppe", "unvertraglich*",
     // es
-    "alerg*", "tratamiento*", "enfermedad*", "enfermo", "enferma", "medico", "cirug*", "embaraz*", "asma", "vacun*",
-    "dolor*", "salud",
+    "alerg*", "enfermedad*", "enfermo", "enferma", "medico", "embaraz*", "asma", "vacun*",
 ];
+
+/// Words that say health only beside another health word: alone they are as often something else (« traitement de
+/// texte », « diagnostic du serveur », « handicap au golf », « signe : Cancer », « symptôme d'un bug », « santé
+/// financière »). Alex's Carnet, 10/11: a question on the 2027 presidential candidates filed in Santé.
+const HEALTH_WEAK: &[&str] = &[
+    // fr
+    "traitement*", "diagnost*", "symptom*", "chirurg*", "opere", "operee", "cancer*", "depressi*", "therap*",
+    "psycholog*", "blessure*", "blesse", "blessee", "douleur*", "sante", "handicap*", "enceinte",
+    // en
+    "medicine*", "treatment*", "sick", "diagnos*", "surgery", "depress*", "injur*", "physio*", "health",
+    "disabilit*",
+    // de
+    "behandlung*", "klinik*", "krebs", "verletz*", "schmerz*", "gesundheit*", "behinder*",
+    // es
+    "tratamiento*", "cirug*", "dolor*", "salud",
+];
+
+/// Phrases that are never health, taken out before the words are looked for.
+const NOT_HEALTH: &[&str] = &[
+    "traitement de texte", "traitement des donnees", "traitement de donnees", "traitement de l information",
+    "traitement mediatique", "diagnostic de performance energetique", "diagnostic energetique", "diagnostic immobilier",
+    "enceinte bluetooth", "enceinte connectee", "enceinte de la", "enceinte de l", "opere par", "operee par",
+    "sante financiere", "sante economique", "signe astrologique", "word processing", "data processing", "health check",
+];
+
+/// The different words (or phrases) of padded folded `padded` (« ␣mots␣ ») that `list` holds: a stem `x*` matches a
+/// word starting with it, an entry without a star the word or phrase itself. Two stems matching the same word count
+/// once (« diagnostic »: diagnost* and diagnos*).
+fn hits(padded: &str, list: &[&str]) -> usize {
+    let mut found: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for entry in list {
+        match entry.strip_suffix('*') {
+            Some(stem) => {
+                for word in padded.split(' ').filter(|w| !w.is_empty() && w.starts_with(stem)) {
+                    found.insert(word.to_string());
+                }
+            }
+            None => {
+                if padded.contains(&format!(" {entry} ")) {
+                    found.insert((*entry).to_string());
+                }
+            }
+        }
+    }
+    found.len()
+}
 
 /// Money words (folded), the same way; with `news::mentions_money` (an amount next to a currency).
 const MONEY: &[&str] = &[
@@ -259,17 +307,27 @@ const MONEY: &[&str] = &[
 
 /// Whether folded `text` holds one of `list`'s entries (a stem `x*` at a word's start, else the word or phrase).
 fn holds(text: &str, list: &[&str]) -> bool {
-    let padded = format!(" {} ", fold(text));
-    list.iter().any(|entry| match entry.strip_suffix('*') {
-        Some(stem) => padded.contains(&format!(" {stem}")),
-        None => padded.contains(&format!(" {entry} ")),
-    })
+    hits(&format!(" {} ", fold(text)), list) > 0
 }
 
 /// A health fact (body, care, treatments, illnesses, pregnancy…): wherever it would be written, it goes to the
-/// private health part (or « À ranger » without a health agent), never to the shared part.
+/// private health part (or « À ranger » without a health agent), never to the shared part. Strict: a word of
+/// `HEALTH`, or two of `HEALTH_WEAK`, once the phrases of `NOT_HEALTH` are taken out.
 pub fn is_health(text: &str) -> bool {
-    holds(text, HEALTH) || split_label(text).and_then(|(l, _)| label_of(&l)).is_some_and(|l| l.health)
+    let mut padded = format!(" {} ", fold(text));
+    for phrase in NOT_HEALTH {
+        padded = padded.replace(&format!(" {phrase} "), " ");
+    }
+    hits(&padded, HEALTH) > 0
+        || hits(&padded, HEALTH_WEAK) >= 2
+        || split_label(text).and_then(|(l, _)| label_of(&l)).is_some_and(|l| l.health)
+}
+
+/// Whether a text might touch health, for what is only held back (the phone's offline copy, the week's review, the
+/// questions, « Toujours en tête »): any health word, even one that alone is often something else. Filing uses the
+/// strict `is_health`.
+pub fn touches_health(text: &str) -> bool {
+    is_health(text) || holds(text, HEALTH_WEAK)
 }
 
 /// A money fact (budget, salary, rent, loans…, or an amount).
@@ -524,6 +582,42 @@ mod tests {
         for fact in ["Aime le jazz", "Pointure : 36", "Chat : Minou", "Pain au chocolat le dimanche", "Joue au tennis"] {
             assert!(!is_health(fact), "{fact}");
         }
+        for fact in ["Kiné le mardi 18 h", "Opéré du genou en mars", "Dépression : suivie par une psychologue",
+                     "Cancer du sein en 2019", "Douleur au dos, voir l'ostéopathe", "Vaccin grippe : fait le 12 oct.",
+                     "Under treatment for asthma", "Ist schwanger", "Rendez-vous chez le dentiste de Zoé"] {
+            assert!(is_health(fact), "{fact}");
+        }
+    }
+
+    /// Alex's Carnet, 10/11: things that are not health, filed in Santé by one word each.
+    #[test]
+    fn words_that_are_often_something_else_are_not_health() {
+        for fact in [
+            "Question : qui sont les candidats à la présidentielle 2027 ?",
+            "Comparer les programmes santé des candidats à la présidentielle 2027",
+            "Présidentielle 2027 : candidats déclarés, traitement médiatique à suivre",
+            "Diagnostic de performance énergétique (DPE) : classe D",
+            "Diagnostic du serveur VPS-2 fait le 3/11",
+            "Traitement de texte : préfère LibreOffice",
+            "Traitement des données hébergé en UE (RGPD)",
+            "Achète une enceinte Bluetooth pour le salon",
+            "Vol opéré par Air France",
+            "Handicap au golf : 18",
+            "Signe astrologique : Cancer",
+            "Psychologie du consommateur : étude livrée",
+            "Frappe chirurgicale dans le débat",
+            "Bonne santé financière de Kerfy Studio",
+            "Symptôme d'un bug : l'app se ferme",
+            "Healthcheck du guichet toutes les 5 min",
+            "Douleur du client : trop de jetons",
+            "Dépression tropicale sur la Réunion",
+            "Thérapie de groupe pour l'équipe : non",
+            "Health check of the server every night",
+            "Krebs essen am Freitag",
+        ] {
+            assert!(!is_health(fact), "{fact}");
+        }
+        assert!(touches_health("Comparer les programmes santé des candidats"));
         assert!(is_money("Loyer : 950 €") && is_money("Budget vacances 2 000 €") && is_money("Rent is due"));
         assert!(!is_money("Rentrée le 2 septembre"));
     }

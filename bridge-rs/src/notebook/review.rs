@@ -110,7 +110,7 @@ fn new_facts(config: &Config, now: f64) -> Vec<(Dict, String)> {
         let path = tk::str_or_empty(entry.get("path"));
         let text = texts.entry(path.clone()).or_insert_with(|| super::read_page_text(config, Part::Main, &path).unwrap_or_default());
         for fact in tk::str_or_empty(entry.get("summary")).split(" · ").map(str::trim).filter(|f| !f.is_empty()) {
-            if lexicon::is_health(fact) || !text.lines().any(|l| l.trim_start_matches("- ").starts_with(fact)) {
+            if lexicon::touches_health(fact) || !text.lines().any(|l| l.trim_start_matches("- ").starts_with(fact)) {
                 continue;
             }
             out.push((entry.clone(), fact.to_string()));

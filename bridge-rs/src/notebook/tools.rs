@@ -575,7 +575,14 @@ fn write(config: &Config, agent: &str, arguments: &Dict, turn: &Turn, health: bo
             }
         }
         let apart = if written.apart > 0 { " Health facts saved apart: not in the shared part." } else { "" };
-        if written.path.is_empty() {
+        // the person moved such facts elsewhere before (moves.rs): they went there, and the agent is told
+        if !written.elsewhere.is_empty() {
+            let names: Vec<String> = written.elsewhere.iter().map(|t| format!("« {t} »")).collect();
+            out.push(format!("Filed on {} instead: your person moved such facts there.", names.join(", ")));
+        }
+        if !written.elsewhere.is_empty() && written.added.is_empty() && !written.created {
+            // nothing more to say about the page named
+        } else if written.path.is_empty() {
             out.push("Saved apart (health): not in the shared part.".into());
         } else if !written.added.is_empty() {
             let n = written.added.len();

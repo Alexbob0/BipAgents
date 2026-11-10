@@ -234,7 +234,7 @@ pub fn on_message(agent: &str, session: &str, text: &str, now: f64) {
     if session.is_empty() {
         return;
     }
-    let m = Mention { at: now, health: lexicon::is_health(text), money: lexicon::is_money(text) };
+    let m = Mention { at: now, health: lexicon::touches_health(text), money: lexicon::is_money(text) };
     let mut all = MENTIONS.lock().unwrap_or_else(|e| e.into_inner());
     all.retain(|_, v| now - v.at < 4.0 * 3600.0);
     all.insert(mention_key(agent, session), m);
@@ -333,7 +333,7 @@ pub fn from_agent(
     // health or money: only when the person's message of this turn talked about it
     let said = mentioned(agent, &session);
     let all = std::iter::once(&question).chain(chips.iter());
-    let (health, money) = all.fold((false, false), |(h, m), t| (h || lexicon::is_health(t), m || lexicon::is_money(t)));
+    let (health, money) = all.fold((false, false), |(h, m), t| (h || lexicon::touches_health(t), m || lexicon::is_money(t)));
     if (health && !said.health) || (money && !said.money) {
         return Ok(NO.into());
     }

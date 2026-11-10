@@ -112,7 +112,7 @@ fn always(config: &Config, agent: &str) -> Vec<String> {
     let entries = if common.is_empty() { from_files() } else { common };
     for e in entries {
         let text = crate::shared_memory::strip_stamps(e.trim());
-        if text.is_empty() || lexicon::is_health(&text) {
+        if text.is_empty() || lexicon::touches_health(&text) {
             continue;
         }
         if !lines.iter().any(|l| super::fold(l) == super::fold(&text)) {
