@@ -18,7 +18,9 @@
 //! and `state.json` `forgotten`: fingerprints (hashes, never the text) of the texts and of their label and value with
 //! the page's names, read by `note`, « À ranger », the nightly pass and the common memory (`is_forgotten`), so an old
 //! turn does not write it back, even said another way. A whole page's fingerprint lasts 30 days (the person may start
-//! a page of that name again later). The erasure is logged as `forgotten`, without its text. The offline copy's ETag
+//! a page of that name again later). `state.json` itself keeps no text of it afterwards (`scrub_state`): the agents'
+//! open « Oublie ça » cards about it closed, the question, follow-up and proposal cards about it removed, the nightly
+//! pass's tried lines kept as fingerprints. The erasure is logged as `forgotten`, without its text. The offline copy's ETag
 //! changes with the content (offline.rs).
 //!
 //!     notebook/state.json   forgotten: [{t: [hash], f: [hash], n: [hash], until?}], cards: [{id, at, agent, session,
@@ -145,7 +147,7 @@ pub fn texts(lang: &str) -> Texts {
 
 // -- what matches ------------------------------------------------------------------------------------------------------
 
-fn hash(text: &str) -> String {
+pub(super) fn hash(text: &str) -> String {
     hex::encode(Sha256::digest(text.as_bytes()))[..16].to_string()
 }
 
@@ -843,7 +845,14 @@ pub fn apply(config: &Config, target: &Target, lang: &str, person: &str) -> anyh
     }
     let now = py::time_time();
     let print = fingerprint(target, now);
+    // the agents' own « Oublie ça » cards with nothing left to forget: closed with this one (bench O1, 9/11)
+    let moot: HashSet<String> = open_forget_cards(config)
+        .into_iter()
+        .filter(|(_, request)| matches!(view(config, request, lang, person), Err(Refused::Nothing | Refused::PageGone)))
+        .map(|(id, _)| id)
+        .collect();
     super::update_state(config, |state| {
+        erased += scrub_state(state, target, &moot);
         let list = state.entry("forgotten").or_insert_with(|| json!([]));
         if let Value::Array(items) = list {
             items.retain(|p| p.get("until").and_then(Value::as_f64).is_none_or(|u| u >= now));
@@ -854,6 +863,102 @@ pub fn apply(config: &Config, target: &Target, lang: &str, person: &str) -> anyh
     })?;
     tracing::info!(places = erased, "Carnet: forgotten");
     Ok(erased)
+}
+
+/// The open « Oublie ça » cards of `state.json`: (id, request).
+fn open_forget_cards(config: &Config) -> Vec<(String, Request)> {
+    let state = super::read_state(config);
+    let Some(Value::Array(items)) = state.get("cards") else { return Vec::new() };
+    items
+        .iter()
+        .filter(|c| tk::str_or_empty(c.get("card")) == "forget" && tk::str_or_empty(c.get("state")) == "open")
+        .filter_map(|c| {
+            let request = serde_json::from_value(c.get("request")?.clone()).ok()?;
+            Some((tk::str_or_empty(c.get("id")), request))
+        })
+        .collect()
+}
+
+/// Every string of a JSON value.
+fn strings_in(value: &Value, out: &mut Vec<String>) {
+    match value {
+        Value::String(s) => out.push(s.clone()),
+        Value::Array(items) => items.iter().for_each(|v| strings_in(v, out)),
+        Value::Object(map) => map.values().for_each(|v| strings_in(v, out)),
+        _ => {}
+    }
+}
+
+/// Whether one of `value`'s texts is what `target` forgets; `path`: the page it is about, if any.
+fn holds(target: &Target, value: &Value, path: &str) -> bool {
+    let on_page = !path.is_empty()
+        && (target.pages.iter().any(|(_, p)| p == path) || target.whole.as_ref().is_some_and(|(_, w, _)| w == path));
+    if on_page && target.whole.is_some() {
+        return true;
+    }
+    let mut texts = Vec::new();
+    strings_in(value, &mut texts);
+    // a question of the day answered keeps its label and the choice apart: the fact they make
+    let (label, choice) = (tk::str_or_empty(value.get("label")), tk::str_or_empty(value.get("choice")));
+    if !label.is_empty() && !choice.is_empty() {
+        texts.push(format!("{label} : {choice}"));
+    }
+    texts.iter().any(|t| target.hit(t, on_page, false).is_some())
+}
+
+/// What `state.json` itself still says of the target (audit of 10/11, bench O1): every text the Carnet's own state
+/// keeps of it goes, the conversations' cards included (the messages themselves stay in the conversation):
+/// - « Oublie ça » cards: an open one about it (or in `moot`: nothing left to forget) is closed as done, its text
+///   gone (an answered one never keeps its text);
+/// - a question of the day's card or a follow-up's card about it: removed (its question, choice or task title);
+/// - a task proposal about it (its title, page, a split's trips): removed;
+/// - `refile_tried` keeps fingerprints since 10/11: an older entry (a raw text) is dropped.
+///
+/// Returns how many entries changed.
+fn scrub_state(state: &mut Dict, target: &Target, moot: &HashSet<String>) -> usize {
+    let mut changed = 0;
+    if let Some(Value::Array(items)) = state.get_mut("cards") {
+        let before = items.len();
+        items.retain(|c| tk::str_or_empty(c.get("card")) == "forget" || !holds(target, c, &tk::str_or_empty(c.get("path"))));
+        changed += before - items.len();
+        for c in items.iter_mut().filter(|c| tk::str_or_empty(c.get("card")) == "forget") {
+            let open = tk::str_or_empty(c.get("state")) == "open";
+            let page = c.get("request").and_then(|r| r.get("page")).and_then(Value::as_str).unwrap_or("");
+            let about = target.anywhere || target.names.contains(&fold(page));
+            let hit = moot.contains(&tk::str_or_empty(c.get("id")))
+                || c.get("request").is_some_and(|r| {
+                    let mut texts = Vec::new();
+                    strings_in(r, &mut texts);
+                    texts.iter().any(|t| target.hit(t, about, false).is_some())
+                });
+            if open && !hit {
+                continue;
+            }
+            if let Value::Object(card) = c {
+                let had = card.remove("view").is_some() | card.remove("request").is_some();
+                if open {
+                    card.insert("state".into(), json!("done"));
+                }
+                changed += usize::from(had || open);
+            }
+        }
+    }
+    if let Some(Value::Array(items)) = state.get_mut("proposals") {
+        let before = items.len();
+        items.retain(|p| !holds(target, p, &tk::str_or_empty(p.get("page"))));
+        changed += before - items.len();
+    }
+    if let Some(Value::Array(items)) = state.get_mut("refile_tried") {
+        let before = items.len();
+        items.retain(|t| t.as_str().is_some_and(is_print));
+        changed += before - items.len();
+    }
+    changed
+}
+
+/// Whether `text` is a fingerprint (`hash`), not a text.
+pub(super) fn is_print(text: &str) -> bool {
+    text.len() == 16 && text.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
 }
 
 // -- the preview, the token ----------------------------------------------------------------------------------------
@@ -1239,6 +1344,58 @@ mod tests {
         assert_eq!(made["t1"][0]["text"], "Oublié.");
         assert!(!super::super::read_state(&config)["cards"].to_string().contains("Pointure"), "answered: nothing of it kept");
         assert!(card_request(&config, &id).is_none());
+    }
+
+    /// Bench O1 (9/11): the agent's own cards stayed open after the app's confirmation and `refile_tried` kept the
+    /// text. Nothing of it is left in `state.json` now: cards, proposals, the nightly pass's tried lines.
+    #[test]
+    fn the_carnets_own_state_keeps_nothing_of_it() {
+        let (_dir, config) = setup();
+        written(&config);
+        let lea = super::super::find(&config, &[Part::Main], "Léa Martin").unwrap().path;
+        let marc = super::super::find(&config, &[Part::Main], "Marc Dupont").unwrap().path;
+        let turn = super::super::reads::Turn { run: Some("r9".into()), session: Some("s9".into()), cap: 6, busy: false };
+        let answers = super::super::reads::with_turn(&turn, || {
+            [ask_from_agent(&config, "quotidien", "Léa Martin", &["Pointure : 36".into()], false).unwrap(),
+             ask_from_agent(&config, "quotidien", "Léa Martin", &["Léa chausse du 36".into()], false).unwrap()]
+        });
+        assert_eq!(answers, ["Shown to the person: they confirm in the app."; 2]);
+        super::super::mark_tried(&config, &[super::super::Unsorted { page: "Marc Dupont".into(), kind: "person".into(), fact: "Aime le vin".into() }]).unwrap();
+        super::super::update_state(&config, |s| {
+            let cards = s.get_mut("cards").unwrap().as_array_mut().unwrap();
+            cards.push(json!({"id": "bip-ask-1", "card": "ask", "agent": "quotidien", "state": "done", "path": lea,
+                              "title": "Léa Martin", "label": "Pointure", "choice": "36", "question": "Léa chausse du combien ?"}));
+            cards.push(json!({"id": "bip-ask-2", "card": "ask", "agent": "quotidien", "state": "done", "path": marc,
+                              "title": "Marc Dupont", "label": "Plat préféré", "choice": "pizza", "question": "Son plat ?"}));
+            cards.push(json!({"id": "bip-follow-1", "card": "follow", "agent": "quotidien", "state": "open",
+                              "title": "Acheter des chaussures pointure 36 pour Léa"}));
+            s.insert("proposals".into(), json!([{"id": "q1", "title": "Offrir des chaussures pointure 36 à Léa", "page": "", "state": "open"},
+                                                {"id": "q2", "title": "Appeler le plombier", "page": "", "state": "open"}]));
+            let mut tried = s["refile_tried"].as_array().unwrap().clone();
+            tried.push(json!("lea pointure 36"));
+            s.insert("refile_tried".into(), json!(tried));
+        })
+        .unwrap();
+        // the app confirms its own preview (not the agent's cards)
+        let request = Request { texts: vec!["Pointure : 36".into()], page: Some("Léa".into()), private: false };
+        let shown = preview(&config, &request, "fr", "Alex", None).unwrap();
+        confirm(&config, shown["token"].as_str().unwrap(), "Alex").unwrap().unwrap();
+        let state = super::super::read_state(&config);
+        let text = fold(&Value::Object(state.clone()).to_string());
+        for gone in ["pointure", "chausse", "chaussures", "lea martin"] {
+            assert!(!text.contains(gone), "{gone} still in state.json: {text}");
+        }
+        let cards = state["cards"].as_array().unwrap();
+        let forget: Vec<&Value> = cards.iter().filter(|c| c["card"] == "forget").collect();
+        assert_eq!(forget.len(), 2);
+        assert!(forget.iter().all(|c| c["state"] == "done" && c.get("view").is_none() && c.get("request").is_none()), "{forget:?}");
+        let ids: Vec<&str> = cards.iter().filter(|c| c["card"] != "forget").filter_map(|c| c["id"].as_str()).collect();
+        assert_eq!(ids, ["bip-ask-2"], "Marc's question stays");
+        let proposals: Vec<&str> = state["proposals"].as_array().unwrap().iter().filter_map(|p| p["id"].as_str()).collect();
+        assert_eq!(proposals, ["q2"]);
+        let tried = super::super::strings(state.get("refile_tried"));
+        assert_eq!(tried.len(), 1);
+        assert!(is_print(&tried[0]), "{tried:?}");
     }
 
     #[test]
