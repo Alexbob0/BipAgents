@@ -1,9 +1,9 @@
 {
  "_doc": "The voice decider's package for the phones (9/11, phase 2): a GitHub release of the public repo, made by scripts/publish-voice-decider-phone.sh (with Alex's OK). The apps pin `manifest_sha256` (VoiceDeciderPackage.swift, VoiceDeciderPackage.kt: their tests check they match this file); decider.json lists each file's sha256 and size.",
- "version": "2026-11-09-k42-w4",
- "release": "voice-decider-phone-2026-11-09-k42-w4",
- "base_url": "https://github.com/Alexbob0/BipAgents/releases/download/voice-decider-phone-2026-11-09-k42-w4/",
- "manifest_sha256": "6cef2abca19c3ed311788cbcd309d81588536d1943770c28c39708922d14ded8",
+ "version": "2026-11-10-ctx",
+ "release": "voice-decider-phone-2026-11-10-ctx",
+ "base_url": "https://github.com/Alexbob0/BipAgents/releases/download/voice-decider-phone-2026-11-10-ctx/",
+ "manifest_sha256": "9837ac158350bf77ae2a0463f8a099ae5a09c2d545a8544f5cb223eb46eef73d",
  "files": ["decider.json", "model.onnx", "tokenizer.json"],
- "build_server_folder": "voice-decider/phone/2026-11-09-k42-w4"
+ "build_server_folder": "voice-decider/phone/2026-11-10-ctx"
 }
