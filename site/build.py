@@ -437,7 +437,7 @@ def bipagents(version: str) -> Path:
         for extra in sorted((src / "i18n").glob(f"*.{lang}.json")):
             texts[lang] = merged(texts[lang], json.loads(extra.read_text(encoding="utf-8")))
     paths = {lang: "/" if lang == "en" else f"/{lang}/" for lang in LANGS}
-    prices, company, grok = cfg["prices"], cfg["company"], cfg["compare"]["grokbot"]
+    prices, company, other = cfg["prices"], cfg["company"], cfg["compare"]
     # Built in the default currency (the one without countries); the script switches to the visitor's.
     currencies = prices["currencies"]
     default_currency = next(code for code, c in currencies.items() if not c.get("countries"))
@@ -492,12 +492,16 @@ def bipagents(version: str) -> Path:
             "biproster": bip_roster(t), "bipcards": bip_cards(t, f"{paths[lang]}demo/"),
             "demotabs": demo_tabs(agents),
             "familytabs": demo_tabs(agents, FAMILY_TABS, "chat-family", "family.tab"),
-            # The comparison the home makes (site/config.json « compare »): the other offer's price, where it was read
-            # and when, written here once so no price is typed in a page; the Family price follows the visitor's
-            # currency (site.js).
+            # The comparison the home makes (site/config.json « compare »): the other offers' prices, where they were
+            # read and when, written here once so no price is typed in a page; the Family and Solo prices follow the
+            # visitor's currency (site.js).
             "note.famille": f'<span data-famille-month>{money(base["web"]["month"]["famille"], lang)}</span>',
-            "note.grokbot": (f'${grok["price"]["USD"]:g}' if lang == "en" else f'{grok["price"]["USD"]:g} $'),
-            "note.source": html.escape(re.sub(r"^https?://", "", grok["source"])), "note.date": html.escape(grok["date"]),
+            "note.chatgptplus": money(other["chatgpt"]["plus"], lang, cents=False),
+            "note.chatgptgo": money(other["chatgpt"]["go"], lang, cents=False),
+            "note.claudepro": money(other["claude"]["pro"], lang, cents=False),
+            "note.chatgptsource": html.escape(re.sub(r"^https?://", "", other["chatgpt"]["source"])),
+            "note.claudesource": html.escape(re.sub(r"^https?://", "", other["claude"]["source"])),
+            "note.date": html.escape(other["date"]),
             # The home's action under the plans: the checkout once it is open; until then nothing here, the beta's
             # button is in the strip above the plans (once on the page).
             "homebuy": (f'<a class="pill pill-buy" id="buy" href="{html.escape(default_url)}" rel="noopener">'

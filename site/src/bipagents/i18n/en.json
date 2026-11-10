@@ -24,7 +24,7 @@
   },
   "hero": {
     "slogan": "Personal agents that never share your data.",
-    "sub": "For everyone in the family, for less than one person on Grok Bot.",
+    "sub": "Free for the whole family, or cheaper than a ChatGPT or Claude subscription.",
     "eu": "Servers in the EU, or at home",
     "badge": "Built on Hermes Agent",
     "proof2": "<b>Your OK</b> before paying or sending",
@@ -656,7 +656,7 @@
     "self": "Or on your computer:"
   },
   "compare": {
-    "note": "Family plan: {{note.famille}} a month for up to 6 people. Grok Bot Premium: {{note.grokbot}} a month per person in the US ({{note.source}}, read on {{note.date}}). Subscriptions open after the beta.",
+    "note": "Free: during the beta, and on your own computer, where you only pay for your AI model. Family plan: {{note.famille}} a month for up to 6 people; Solo: {{p.from}}. ChatGPT Plus: {{note.chatgptplus}} a month per person, ChatGPT Go: {{note.chatgptgo}} ({{note.chatgptsource}}). Claude Pro: {{note.claudepro}} a month before tax, per person ({{note.claudesource}}). Prices read in France on {{note.date}}. Subscriptions open after the beta.",
     "noteLabel": "See the note"
   },
   "glance": {
