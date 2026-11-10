@@ -216,10 +216,10 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
 
 - **Abschließen**: Du musst volljährig sein oder das Einverständnis eines Elternteils haben (der Store kann dieses
   Einverständnis vor dem Kauf verlangen). Jede Person, die einen Platz nutzt, muss mindestens 16 Jahre alt sein, wie
-  für die App; zwischen 16 und 18 Jahren mit dem Einverständnis eines Elternteils. Ein Kind unter 16 Jahren darf einen
-  Platz nur nutzen, wenn ein Elternteil oder ein für das Kind verantwortlicher Erwachsener ihn eingerichtet hat und
-  beaufsichtigt: Dieser Erwachsene akzeptiert diese Bedingungen für das Kind und bleibt für dessen Nutzung
-  verantwortlich (Nutzungsbedingungen, Abschnitt 4). **In den USA darf keine Person unter 13 Jahren einen Platz
+  für die App; zwischen 16 und 18 Jahren mit dem Einverständnis eines Elternteils. Das Alles-inklusive-Angebot steht
+  Personen unter 16 Jahren nicht zur Verfügung, auch nicht unter Aufsicht. Ein Kind unter 16 Jahren darf BipAgents nur
+  auf dem Computer oder Server eines Elternteils oder einer verantwortlichen erwachsenen Person nutzen, gemäß den
+  Nutzungsbedingungen (Abschnitt 4). **In den USA darf keine Person unter 13 Jahren einen Platz
   nutzen**, auch nicht unter Aufsicht.
 - **Dein Konto**: Du erstellst es mit „Mit Apple anmelden“, mit Google oder mit einer E-Mail-Adresse (ein Einmalcode,
   der an diese Adresse geht). Es enthält deine Identität (Apple- oder Google-Kennung, E-Mail-Adresse), die Verbindung zu deinem

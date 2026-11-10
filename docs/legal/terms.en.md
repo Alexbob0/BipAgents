@@ -2,7 +2,7 @@ English · [Français](terms.fr.md) · [Deutsch](terms.de.md) · [Español](term
 
 # BipAgents terms of use
 
-> Last updated: 24 October 2026.
+> Last updated: 10 November 2026.
 
 ## 1. Purpose
 
@@ -44,9 +44,10 @@ See also the [mentions légales](mentions-legales.fr.md) (in French).
 ## 4. Minimum age
 
 To use BipAgents, you must be **at least 16**. Between 16 and 18, you need a parent's agreement, and the minimum age
-set by your model provider applies to you. A child under 16 may only use the app on an install set up and supervised
-by a parent or an adult in charge of the child (the family feature): that adult accepts these terms for the child and
-remains responsible for the child's use. This age follows the app's App Store rating (16+), due to the unrestricted
+set by your model provider applies to you. A child under 16 may only use the app on the computer or server of a
+parent or an adult in charge of the child, on an install set up and supervised by that adult (the family feature):
+that adult accepts these terms for the child and remains responsible for the child's use. The all-included offer is
+not available to anyone under 16. This age follows the app's App Store rating (16+), due to the unrestricted
 web access of the Desktop view. For the all-included offer, see also its terms (section 7).
 
 ## 5. Price

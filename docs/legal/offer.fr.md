@@ -214,9 +214,9 @@ crédit (tu peux en ajouter, section 6) ; les services que tu relies à tes agen
 
 - **Souscrire** : il faut être majeur, ou avoir l'accord d'un parent (le store peut demander cet accord avant
   l'achat). Toute personne qui utilise une place doit avoir au moins 16 ans, comme pour l'app ; entre 16 et 18 ans,
-  avec l'accord d'un parent. Un enfant de moins de 16 ans ne peut utiliser une place que si un parent ou un adulte qui
-  en a la charge l'a préparée et la supervise : cet adulte accepte ces conditions pour lui et reste responsable de son
-  usage (conditions d'utilisation, section 4). **Aux États-Unis, aucune personne de moins de 13 ans ne peut utiliser une
+  avec l'accord d'un parent. L'offre tout compris n'est pas proposée aux personnes de moins de 16 ans, même supervisées.
+  Un enfant de moins de 16 ans ne peut utiliser BipAgents que sur l'ordinateur ou le serveur d'un parent ou d'un adulte
+  qui en a la charge, selon les conditions d'utilisation (section 4). **Aux États-Unis, aucune personne de moins de 13 ans ne peut utiliser une
   place**, même supervisée.
 - **Ton compte** : tu le crées avec « Se connecter avec Apple », avec Google ou avec une adresse e-mail (un code à
   usage unique envoyé à cette adresse). Il contient ton identité (identifiant Apple ou Google, adresse

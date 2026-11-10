@@ -203,8 +203,9 @@ section 6); the services you connect to your agents and their own subscriptions.
 
 - **Subscribing**: you must be an adult, or have a parent's agreement (the store may ask for this agreement before the
   purchase). Anyone who uses a place must be at least 16, as for the app; between 16 and 18, with a parent's agreement.
-  A child under 16 may only use a place that a parent or an adult in charge of the child has set up and supervises:
-  that adult accepts these terms for the child and remains responsible for the child's use (terms of use, section 4).
+  The all-included offer is not available to anyone under 16, even under supervision. A child under 16 may only use
+  BipAgents on the computer or server of a parent or an adult in charge of the child, under the terms of use (section
+  4).
   **In the United States, nobody under 13 may use a place**, even supervised.
 - **Your account**: you create it with "Sign in with Apple", with Google or with an email address (a one-time code sent to
   that address). It holds your identity (Apple or Google identifier, email address), the link with your subscription, the

@@ -22,10 +22,11 @@ sont édités par
 
 - **Sites kerfystudio.com et bipagents.com** : OVH SAS, 2 rue Kellermann, 59100 Roubaix, France, téléphone : 1007
   depuis la France, +33 9 72 10 10 07 depuis l'étranger.
-- **Relais de notifications de l'app et guichet de l'offre tout compris** : pas encore en service ; l'hébergeur, situé dans l'Union européenne, sera indiqué ici avant leur mise en service.
+- **Relais de notifications de l'app et guichet de l'offre tout compris** : OVH SAS, 2 rue Kellermann, 59100 Roubaix,
+  France, 1007 depuis la France, +33 9 72 10 10 07 depuis l'étranger ; serveur (VPS) en France.
 - **Serveurs des places de l'offre tout compris** : OVH SAS, 2 rue Kellermann, 59100 Roubaix, France, 1007 depuis la
   France, +33 9 72 10 10 07 depuis l'étranger ; Hetzner Online GmbH, Industriestr. 25, 91710 Gunzenhausen, Allemagne, +49 9831 505-0.
-- **Sauvegardes chiffrées des places** : pas encore en service ; l'hébergeur sera indiqué ici avant leur mise en service.
+- **Sauvegardes chiffrées des places** : Scaleway SAS, Paris, France (stockage objet, région fr-par, Paris).
 
 Avec leur propre ordinateur ou serveur, les agents et les conversations des utilisateurs s'y trouvent, et
 l'utilisateur en a la maîtrise. Avec l'offre tout compris, ils se trouvent sur la place de chaque utilisateur, sur les
@@ -34,9 +35,9 @@ serveurs que Kerfy Studio loue aux hébergeurs ci-dessus ; Kerfy Studio n'accèd
 ## Stockage des données traitées par Kerfy Studio
 
 Article 1-1, I, 5° de la loi pour la confiance dans l'économie numérique : messagerie de contact@kerfystudio.com, support@bipagents.com, privacy@bipagents.com, security@bipagents.com et
-abuse@bipagents.com : Proton AG, Route de la Galaise 32, 1228 Plan-les-Ouates, Genève, Suisse ; e-mails de connexion et d'invitation de
-l'offre tout compris : pas encore en service, prestataire indiqué ici avant sa mise en service ; comptes et abonnements de l'offre tout compris : pas encore en service, hébergeur indiqué ici avant sa mise en
-service.
+abuse@bipagents.com : Proton AG, Route de la Galaise 32, 1228 Plan-les-Ouates, Genève, Suisse ; e-mails de connexion, d'invitation et
+d'avis de l'offre tout compris : Proton AG (même adresse), depuis une adresse bipagents.com ; comptes et abonnements
+de l'offre tout compris : OVH SAS (adresse ci-dessus), sur un serveur en France.
 
 ## Distribution de l'application
 
