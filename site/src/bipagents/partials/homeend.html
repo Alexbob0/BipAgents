@@ -1,9 +1,12 @@
-<!-- The home's end: the plans (site.js prices them; name, people, price) and the free install in one line (it opens
-     in place; #install opens it too). -->
+<!-- The home's end: the beta (free, the one action), then the plans (site.js prices them: who it is for, name, price,
+     one line) and beside them the free install as a fourth card, which opens it in place (#install opens it too). -->
 <section class="screen pricing-section v-end" id="pricing" aria-labelledby="price-h">
   <div class="screen-head reveal">
-    <h2 id="price-h">{{pricing.headline}}<a class="note-mark" href="#note" aria-label="{{compare.noteLabel}}">*</a></h2>
-    <p>{{pricing.line}}</p>
+    <h2 id="price-h">{{pricing.headline}}</h2>
+  </div>
+  <div class="beta-strip reveal">
+    <p><b>{{pricing.betaTitle}}</b><span>{{pricing.betaLine}}</span></p>
+    <a class="pill pill-buy" href="{{betahref}}">{{nav.cta}} <span aria-hidden="true">→</span></a>
   </div>
   <span class="mode-anchor" id="plans"></span>
   <div class="pricing reveal">
@@ -17,30 +20,45 @@
     </div>
     <div class="plans" role="radiogroup" aria-label="{{pricing.planLabel}}">
       <button type="button" class="plan" role="radio" aria-checked="false" data-plan="solo">
+        <span class="plan-ppl" aria-hidden="true"><u style="--c:var(--coral)"></u></span>
         <span class="plan-name">{{pricing.solo.name}}</span>
         <span class="plan-who">{{pricing.solo.who}}</span>
         <span class="plan-price"><b data-price="solo">{{p.web.month.solo}}</b><small data-unit>{{pricing.perMonthShort}}</small></span>
+        <span class="plan-blurb">{{pricing.solo.blurb}}</span>
         <span data-equiv="solo" hidden></span><span data-store="solo" hidden></span>
       </button>
       <button type="button" class="plan" role="radio" aria-checked="false" data-plan="duo">
+        <span class="plan-ppl" aria-hidden="true"><u style="--c:var(--coral)"></u><u style="--c:var(--green)"></u></span>
         <span class="plan-name">{{pricing.duo.name}}</span>
         <span class="plan-who">{{pricing.duo.who}}</span>
         <span class="plan-price"><b data-price="duo">{{p.web.month.duo}}</b><small data-unit>{{pricing.perMonthShort}}</small></span>
+        <span class="plan-blurb">{{pricing.duo.blurb}}</span>
         <span data-equiv="duo" hidden></span><span data-store="duo" hidden></span>
       </button>
       <button type="button" class="plan" role="radio" aria-checked="true" data-plan="famille">
+        <span class="plan-ppl" aria-hidden="true"><u style="--c:var(--coral)"></u><u style="--c:var(--green)"></u><u style="--c:var(--violet)"></u><u style="--c:var(--gold)"></u><u style="--c:var(--teal)"></u><u style="--c:var(--blue)"></u></span>
         <span class="plan-name">{{pricing.famille.name}}</span>
         <span class="plan-who">{{pricing.famille.who}}</span>
         <span class="plan-price"><b data-price="famille">{{p.web.month.famille}}</b><small data-unit>{{pricing.perMonthShort}}</small></span>
+        <span class="plan-blurb">{{pricing.famille.blurb}}</span>
         <span data-equiv="famille" hidden></span><span data-store="famille" hidden></span>
+      </button>
+      <!-- the fourth card is not a plan: on your own computer, free; it opens the install below -->
+      <button type="button" class="plan-free way-open" aria-expanded="false" aria-controls="panel-self">
+        <span class="plan-name">{{pricing.free.name}}</span>
+        <span class="plan-who">{{pricing.free.who}}</span>
+        <span class="plan-price"><b>{{pricing.ways.selfPrice}}</b></span>
+        <span class="plan-blurb">{{pricing.free.blurb}}</span>
+        <span class="plan-more">{{pricing.ways.selfCta}}<i aria-hidden="true"></i></span>
       </button>
     </div>
     <!-- what the script keeps up to date for the checkout (the chosen plan and its price), not shown on the home -->
     <p hidden><span class="sum-plan"></span><span class="sum-price"></span><span class="sum-unit"></span><span class="save"></span></p>
+    <!-- the checkout's button once it is open; until then the beta's button is the one in the strip above -->
     <div class="price-act">{{homebuy}}</div>
+    <p class="price-note">{{pricing.line}}</p>
   </div>
   <span class="mode-anchor" id="install"></span>
-  <p class="v-self reveal">{{home.self}} <b>{{pricing.ways.selfPrice}}</b> · <button type="button" class="way-open v-self-open" aria-expanded="false" aria-controls="panel-self">{{pricing.ways.selfCta}}<i aria-hidden="true"></i></button></p>
   <div class="self-panel" id="panel-self" role="region" aria-label="{{pricing.ways.selfTitle}}" hidden>
   <div class="own">
     <div class="own-cards">

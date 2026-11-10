@@ -317,9 +317,9 @@ def demo_page(demo: Dict[str, Any], name: str, lang: str) -> str:
 DEMO_TABS = (("inbox", "daily"), ("dentist", "daily"), ("weekend", "budget"), ("subscriptions", "budget"),
              ("dinner", "home"), ("papers", "home"), ("price_watch", "budget"), ("weekend_lisbon", "lisbon"),
              ("sleep_week", "coach"), ("podcast", "daily"))
-# The family's phone on the home: what several people need together, answered by the family's agent (« family_money »
-# is the site's own example too).
-FAMILY_TABS = (("family_week", "family"), ("family_money", "family"), ("groceries_week", "family"),
+# The second phone on the home (« Together, they make a team »): one Bip asking another (the apps' « ask_budget »),
+# then what several people need together, answered by the family's agent (« family_money » is the site's own example).
+FAMILY_TABS = (("ask_budget", "daily"), ("family_week", "family"), ("family_money", "family"), ("groceries_week", "family"),
                ("party_parents", "parents"))   # an agent shared with other parents, who follow from their link
 
 
@@ -460,12 +460,11 @@ def bipagents(version: str) -> Path:
             "note.famille": f'<span data-famille-month>{money(base["web"]["month"]["famille"], lang)}</span>',
             "note.grokbot": (f'${grok["price"]["USD"]:g}' if lang == "en" else f'{grok["price"]["USD"]:g} $'),
             "note.source": html.escape(re.sub(r"^https?://", "", grok["source"])), "note.date": html.escape(grok["date"]),
-            # The home's one action under the plans: the checkout once it is open, the beta until then.
+            # The home's action under the plans: the checkout once it is open; until then nothing here, the beta's
+            # button is in the strip above the plans (once on the page).
             "homebuy": (f'<a class="pill pill-buy" id="buy" href="{html.escape(default_url)}" rel="noopener">'
                         f'<span class="buy-label">{html.escape(t["pricing"]["cta"])}</span><span aria-hidden="true">→</span></a>'
-                        if default_url else
-                        f'<a class="pill pill-buy" href="{paths[lang]}beta/">{html.escape(t["nav"]["cta"])} '
-                        f'<span aria-hidden="true">→</span></a>'),
+                        if default_url else ""),
             "betahref": f"{paths[lang]}beta/",
             "grokbothref": f"{paths[lang]}grok-bot/",
             "statushref": f"{paths[lang]}status/",

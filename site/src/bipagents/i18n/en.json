@@ -20,7 +20,7 @@
     "faq": "Questions",
     "cta": "Join the beta",
     "ctaShort": "The beta",
-    "family": "Family"
+    "family": "Together"
   },
   "hero": {
     "slogan": "Personal agents that never share your data.",
@@ -230,8 +230,15 @@
       "selfCta": "See how to install it",
       "plansTitle": "The All included plans"
     },
-    "headline": "Your whole family for less than one Grok Bot seat.",
-    "line": "Free during the beta. Then a free week to start, and cancel anytime."
+    "headline": "Solo, as a pair, or the whole family.",
+    "line": "Subscriptions open after the beta: a free week to start, and cancel anytime.",
+    "betaTitle": "The beta is open: it’s free.",
+    "betaLine": "iPhone and Android · limited places · no card needed",
+    "free": {
+      "name": "At home",
+      "who": "on your computer",
+      "blurb": "One command installs everything, with Hermes Agent. You only pay for your AI model."
+    }
   },
   "install": {
     "title": "Your own computer? The app is free.",
@@ -477,11 +484,42 @@
       "notif": "Camille: The school called: Léa has a fever, I’m picking her up."
     },
     "line": "Share one with your family, your friends or other parents, only when you choose. They follow for free.",
-    "tab1": "The week",
-    "tab2": "The money",
-    "tab3": "The shopping",
-    "tabs": "The family’s examples",
-    "tab4": "Other parents"
+    "tab1": "Between Bips",
+    "tab2": "The week",
+    "tab3": "The money",
+    "tabs": "Examples with several",
+    "tab4": "The shopping",
+    "tab5": "Other parents"
+  },
+  "team": {
+    "title": "Together, they make a team.",
+    "line": "Put several in the same conversation: each one brings what it knows.",
+    "p1t": "Call them.",
+    "p1": "In Live, you talk to them as you would to a person: they let you finish your sentences.",
+    "p2t": "They work without you.",
+    "p2": "The morning briefing at 7:30, Monday’s reminder, the research that keeps running in the background.",
+    "p3t": "They keep it all in one place.",
+    "p3": "The Notebook: what matters about you and your people. You read it, fix it, take it with you.",
+    "p4t": "Your friends can follow.",
+    "p4": "A Bip shared for a trip or a party: up to 20 friends, at no cost to them."
+  },
+  "rules": {
+    "title": "The house rules.",
+    "line": "Your Bips live at your place: in your own space, separate from everyone else’s.",
+    "where": "A private server in Europe, ready in a minute. Or your own computer.",
+    "alt": "Your space: a house where your Bips live, under the European flag.",
+    "r1t": "They ask before paying or sending.",
+    "r1": "A booking, an email, a cancellation: they wait for your yes.",
+    "r2t": "Nobody reads over their shoulder.",
+    "r2": "Kerfy Studio doesn’t read your space, and trains no AI on it.",
+    "r3t": "No ads, no tracking.",
+    "r3": "Not in the app, not on this site: no cookies, no trackers.",
+    "r4t": "The AI runs in Europe.",
+    "r4": "It only receives what your agent sends it, through EUrouter, a European AI router. The model’s makers never receive your messages.",
+    "r5t": "Everything is yours.",
+    "r5": "Leave whenever you want, with your agents, their memory and your Notebook.",
+    "r6t": "And what we can’t promise.",
+    "r6": "As with any rented server, the host and we could technically get in. Our software doesn’t, and we only would if the law required it."
   },
   "home": {
     "tour": "Take the tour.",

@@ -1026,6 +1026,87 @@ html:has(.pv-detail[open]) { overflow: hidden; }
   .keys i { grid-row: span 2; margin: 0; }
   .keys b { align-self: end; } .keys span { align-self: start; }
 }
+/* ---- The rest of the home (2026-11-10): the Bips as a team, the house rules, the plans, in the same look. ---- */
+/* rows of tinted tiles: a small white square (a number, a Bip), a title, one line */
+.rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; text-align: left; align-content: center; }
+.rows li { display: grid; grid-template-columns: 52px minmax(0, 1fr); column-gap: 16px; align-items: center; border-radius: 26px;
+  padding: 16px 20px 17px 16px; background: var(--tint); transition: transform .35s cubic-bezier(.3, 1.4, .5, 1), opacity .8s ease; }
+.rows li:hover { transform: translateY(-3px); }
+.rows i { grid-row: span 2; width: 52px; height: 52px; border-radius: 17px; display: grid; place-items: center; background: var(--card);
+  color: var(--deep); box-shadow: var(--shadow); font-style: normal; font-weight: 1000; font-size: 25px; }
+.rows i svg { width: 40px; height: 40px; display: block; }
+.rows b { align-self: end; font-size: clamp(19px, 1.7vw, 22px); font-weight: 900; letter-spacing: -.02em; line-height: 1.18; }
+.rows span { align-self: start; margin-top: 3px; font-size: 16px; line-height: 1.4; color: var(--ink2); text-wrap: pretty; }
+.rows li.reveal:nth-child(2) { transition-delay: .08s; } .rows li.reveal:nth-child(3) { transition-delay: .16s; } .rows li.reveal:nth-child(4) { transition-delay: .24s; }
+
+/* together: the second phone and its examples on one side, what the Bips do as a team on the other */
+.team-grid { margin-top: 34px; display: grid; gap: 34px; }
+.team .fam-tabs { margin-top: 0; }
+@media (min-width: 960px) {
+  .team-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 56px; align-items: center; margin-top: 48px; }
+  .perks { gap: 14px; }
+  .perks li { padding: 20px 24px 21px 20px; }
+}
+
+/* the house rules: your space as a house under the European flag, and what holds there */
+.rules { margin-top: clamp(30px, 4vw, 48px); display: grid; gap: 30px; }
+.house { margin: 0 auto; width: min(100%, 380px); }
+.house-pic { position: relative; padding-top: 52px; }
+.house-roof { display: block; width: 100%; height: auto; position: relative; z-index: 1; }
+.house-roof path { fill: var(--pink); stroke: var(--pink); stroke-width: 22; stroke-linejoin: round; }
+.house-flag { position: absolute; left: 50%; top: 0; z-index: 0; }
+.house-flag i { position: absolute; left: -1.5px; top: 0; width: 3px; height: 96px; border-radius: 2px; background: var(--ink2); }
+.house-flag svg { position: absolute; left: 4px; top: 3px; width: 72px; height: 48px; border-radius: 5px; box-shadow: 0 0 0 1px rgba(29, 31, 36, .08);
+  transform-origin: 0 50%; animation: flag 3.4s ease-in-out infinite; }
+@keyframes flag { 0%, 100% { transform: skewY(-3deg) scaleX(1); } 50% { transform: skewY(4deg) scaleX(.96); } }
+.house-walls { margin: -9px 20px 0; padding: 46px 18px 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; background: var(--ground);
+  border-radius: 0 0 30px 30px; box-shadow: inset 0 0 0 1.5px var(--line); overflow: hidden; }
+.house-walls i { display: block; padding: 10px 8px 0; border-radius: 18px 18px 0 0; background: var(--tint); box-shadow: inset 0 0 0 1.5px var(--line); }
+.house-walls svg { display: block; width: 100%; height: auto; margin-bottom: -2px; }
+.house figcaption { margin-top: 16px; font-size: 16px; line-height: 1.4; color: var(--ink2); text-wrap: balance; }
+.rule-limit { background: none; box-shadow: inset 0 0 0 2px var(--line); }
+.rule-limit i { background: var(--gold-tint); color: var(--gold-deep); box-shadow: none; }
+@media (min-width: 900px) { .rules { grid-template-columns: minmax(0, 380px) minmax(0, 1.25fr); gap: clamp(36px, 5vw, 64px); align-items: center; } }
+@media (prefers-reduced-motion: reduce) { .house-flag svg { animation: none; } .rows li { transition: none; } }
+
+/* the plans: the beta first (free, the one action), then who each plan is for, and the free install as a fourth card */
+.beta-strip { margin-top: 40px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 28px; text-align: left;
+  border-radius: 34px; padding: 24px 26px 24px 30px; color: #FFFFFF;
+  background: radial-gradient(70% 140% at 88% 90%, #43305C 0%, rgba(67, 48, 92, 0) 70%), linear-gradient(180deg, #14121F, #251B33); }
+.beta-strip p { display: grid; gap: 4px; }
+.beta-strip b { font-size: clamp(24px, 2.6vw, 32px); font-weight: 900; letter-spacing: -.025em; line-height: 1.1; }
+.beta-strip p span { font-size: 16px; color: rgba(255, 255, 255, .8); }
+.beta-strip .pill-buy { background: #FFFFFF; color: #1D1F24; }
+.beta-strip :focus-visible { outline-color: #FFFFFF; }
+.screen.pricing-section .pricing { margin-top: 30px; }
+.plan-ppl { display: flex; justify-content: center; gap: 4px; margin-bottom: 10px; }
+.plan-ppl u { width: 15px; height: 15px; border-radius: 4.5px; background: var(--c); text-decoration: none; }
+.screen .plan-blurb { margin-top: 12px; text-wrap: balance; }
+.plan-free { position: relative; font: inherit; color: var(--ink); cursor: pointer; border: 0; border-radius: 30px; padding: 30px 20px; background: none;
+  box-shadow: inset 0 0 0 2px var(--line); display: grid; gap: 4px; align-content: start; justify-items: center; text-align: center;
+  transition: transform .35s cubic-bezier(.3, 1.4, .5, 1), background .3s; }
+.plan-free:hover { transform: translateY(-4px); background: var(--card); }
+.plan-free .plan-price { margin-top: 12px; }
+.plan-more { margin-top: 12px; display: inline-flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 1000; text-decoration: underline; text-underline-offset: 3px; }
+.price-act:empty { display: none; }
+.price-note { max-width: 640px; font-size: 16px; line-height: 1.45; color: var(--ink2); text-wrap: balance; }
+@media (min-width: 860px) {
+  .screen .plans { grid-template-columns: repeat(2, 1fr); }
+  .plan-free { padding-top: calc(30px + 25px); }   /* its name on the plans' line (they have the people's squares above) */
+}
+@media (min-width: 1040px) { .screen .plans { grid-template-columns: repeat(4, 1fr); } .screen .plan, .plan-free { padding-inline: 16px; } }
+@media (max-width: 859px) {   /* on a phone: compact rows, like the plans */
+  .plan-ppl { display: none; }
+  .screen .plan { text-align: left; justify-items: start; }
+  .screen .plan-blurb { margin-top: 6px; }
+  .plan-free { grid-template-columns: 1fr auto; column-gap: 12px; padding: 18px 16px; text-align: left; justify-items: start; }
+  .plan-free .plan-name { font-size: 22px; grid-column: 1; } .plan-free .plan-who { grid-column: 1; font-size: 14px; }
+  .plan-free .plan-price { grid-column: 2; grid-row: 1 / span 2; margin: 0; align-self: center; } .plan-free .plan-price b { font-size: 26px; }
+  .plan-free .plan-blurb, .plan-more { grid-column: 1 / -1; }
+  .plan-free .plan-blurb { margin-top: 6px; font-size: 14px; }
+  .beta-strip { border-radius: 28px; padding: 22px 20px; }
+}
+
 /* the family's phone: its three examples above it, the chat already answered */
 .fam-tabs { margin: 34px 0 0; justify-content: center; gap: 8px; }
 .fam-tabs .tab { height: 44px; padding: 0 16px 0 6px; font-size: 15px; }
