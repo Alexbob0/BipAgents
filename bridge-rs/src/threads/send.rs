@@ -577,7 +577,9 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
     let run = match state.hermes.start_run_input(agent, input.clone(), tip, instructions, options).await {
         Ok(run) => run,
         Err(exc) => match exc.status() {
-            Some(status @ (400 | 413 | 415 | 422)) => return Err(HttpError::new(status, "your agent refused this message")),
+            Some(status @ (400 | 413 | 415 | 422)) => {
+                return Err(HttpError::new(status, "your agent refused this message"))
+            }
             _ if down_for_restart(agent, &exc) => {
                 // its gateway restarted by the bridge a moment ago (agent_restart.rs): the message waits in line and
                 // starts when Hermes answers again (« En attente », msg_queue.rs), it never fails for that

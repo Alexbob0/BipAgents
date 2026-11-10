@@ -18,7 +18,8 @@
 //! Only when the agent does nothing: no turn going on nor one ended in the last `quiet_after_turn_seconds` (30 s: the
 //! person reads the answer and writes again; 10/11 a restart the moment a turn ended made the next message fail), and
 //! a message that still finds its gateway down right after the bridge restarted it waits in line (threads/send.rs)
-//! instead of « isn't answering ». No turn going on means (conversations, rooms, Live calls: the run hub, and its Hermes'
+//! instead of « isn't answering ». No turn going on means (conversations, rooms, Live calls: the run hub, and its
+//! Hermes'
 //! own count, `GET /health/detailed`: a bridge that restarted doesn't follow the turns started before it), no Live
 //! call in the last 15 minutes, no background task or archive extraction (jobs.rs), no mail scan (mail_scan.rs), no
 //! watcher check (watchers.rs), no Hermes routine running or due within `routine_margin_minutes`. Busy: tried again in
@@ -247,7 +248,7 @@ fn clear_done(agent: &str, done: &[String]) {
     }
 }
 
-// --- restarts going on ------------------------------------------------------------------------------------------------
+// --- restarts going on -----------------------------------------------------------------------------------------------
 
 /// When the bridge last restarted each gateway itself (agents_admin::restart_gateway: this loop, a new agent's tools,
 /// a settings change, a move…), by the gateway's key: the agent's space, or "" for the hub's (its agents together).
@@ -647,7 +648,8 @@ pub(crate) async fn activity(state: &AppState, config: &Config, agent: &AgentCon
         .collect();
     let routine = routine_busy(&items, now, config.agent_restart.routine_margin_minutes);
     // a turn going on, or one that just ended: its person is reading the answer and may write again at once
-    let turn = state.hub.agent_running(name) || turn_ended_within(name, now, config.agent_restart.quiet_after_turn_seconds);
+    let quiet = config.agent_restart.quiet_after_turn_seconds;
+    let turn = state.hub.agent_running(name) || turn_ended_within(name, now, quiet);
     Activity {
         turn,
         // asked only when the hub follows none: the hub's own word is enough to wait
@@ -862,7 +864,8 @@ mod tests {
     fn a_gateway_restarted_by_the_bridge_is_restarting_for_a_while_its_agents_together() {
         let hub = AgentConfig { name: "restart-hub-a".into(), ..Default::default() };
         let other_on_hub = AgentConfig { name: "restart-hub-b".into(), ..Default::default() };
-        let spaced = AgentConfig { name: "restart-space".into(), space: Some("/tmp/space-x".into()), ..Default::default() };
+        let spaced =
+            AgentConfig { name: "restart-space".into(), space: Some("/tmp/space-x".into()), ..Default::default() };
         let now = py::time_time();
         assert!(!restarting_at(&spaced, now));
         restart_began(&spaced);
