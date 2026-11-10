@@ -25,6 +25,12 @@
 //!   register`, which also routes an agent just cloned), at a claim, and when the person changes the model or the
 //!   thinking level. The hub's own config.yaml (agents are cloned from it) only at a claim or a new AI key;
 //! - the bridge's own calls (Carnet, rooms' router, records, mail scan, WhatsApp import): [`add_to_body`].
+//!
+//! Privacy (2026-11-10, Alex): every call to EUrouter also asks for no training on it and zero retention
+//! ([`privacy`]: `data_collection: "deny"`, `max_retention_days: 0`, EUrouter docs « Routing › Data controls »), even
+//! with pinning off: the `provider` object is then that alone. Benched 2026-11-10 (GLM-5.3 Flash on Entrim, DeepSeek
+//! V4.1 Flash on GreenPT, 12 calls each, before/after): every call answered, same provider, same cache (99.8 % / ≈ 95-98
+//! %), same latency and cost; Entrim, GreenPT and Inceptron all serve with it and `allow_fallbacks: false`.
 
 use serde_json::{json, Value};
 
@@ -60,10 +66,24 @@ pub fn order_for(order: &[String], model: &str) -> Vec<String> {
     }
 }
 
-/// The request's `provider` object for `model` at `base_url`, or None (not EUrouter, or no order set).
+/// What every call to EUrouter asks, pinned or not: no training on it, zero retention (EUrouter then routes only to
+/// the providers whose terms say so; a request can't loosen it, an account rule can only make it stricter).
+pub fn privacy() -> Value {
+    json!({"data_collection": "deny", "max_retention_days": 0})
+}
+
+/// The request's `provider` object for `model` at `base_url`, or None (not EUrouter): the order to try when one is
+/// set, and always the privacy settings ([`privacy`]).
 pub fn routing(order: &[String], base_url: &str, model: &str) -> Option<Value> {
+    if !pins(base_url) {
+        return None;
+    }
     let order = order_for(order, model);
-    (!order.is_empty() && pins(base_url)).then(|| json!({"order": order, "allow_fallbacks": true}))
+    let mut provider = if order.is_empty() { json!({}) } else { json!({"order": order, "allow_fallbacks": true}) };
+    if let (Some(map), Value::Object(extra)) = (provider.as_object_mut(), privacy()) {
+        map.extend(extra);
+    }
+    Some(provider)
 }
 
 /// `body["provider"]` set for a call to `base_url` (left alone when it isn't routed), and GLM's thinking floor
@@ -160,10 +180,15 @@ mod tests {
         assert!(!pins("https://openrouter.ai/api/v1"));
         assert!(!pins("http://gpu:8888/v1"));
         assert!(!pins("not a url"));
-        assert_eq!(routing(&[], "https://api.eurouter.ai/api/v1", "m"), None);
+        // pinning off: the privacy settings alone
+        assert_eq!(routing(&[], "https://api.eurouter.ai/api/v1", "m"), Some(privacy()));
         let mut body = json!({"model": "m"});
         add_to_body(&order(), "https://api.eurouter.ai/api/v1", &mut body);
-        assert_eq!(body["provider"], json!({"order": ["entrim", "greenpt", "inceptron"], "allow_fallbacks": true}));
+        assert_eq!(
+            body["provider"],
+            json!({"order": ["entrim", "greenpt", "inceptron"], "allow_fallbacks": true,
+                   "data_collection": "deny", "max_retention_days": 0})
+        );
         let mut other = json!({"model": "m"});
         add_to_body(&order(), "http://gpu:8888/v1", &mut other);
         assert!(other.get("provider").is_none());
@@ -174,10 +199,11 @@ mod tests {
     fn deepseek_has_its_own_order_and_glm_keeps_the_places() {
         let eu = "https://api.eurouter.ai/api/v1";
         assert_eq!(routing(&order(), eu, "glm-5.3-flash").unwrap()["order"], json!(["entrim", "greenpt", "inceptron"]));
-        let deepseek = json!({"order": ["greenpt"], "allow_fallbacks": true});
+        let deepseek =
+            json!({"order": ["greenpt"], "allow_fallbacks": true, "data_collection": "deny", "max_retention_days": 0});
         assert_eq!(routing(&order(), eu, "deepseek/deepseek-v4-flash").unwrap(), deepseek);
         assert_eq!(routing(&order(), eu, "DeepSeek-V4").unwrap(), deepseek);
-        assert_eq!(routing(&[], eu, "deepseek-v4"), None); // pinning off stays off
+        assert_eq!(routing(&[], eu, "deepseek-v4"), Some(privacy())); // pinning off stays off, privacy stays on
         let profile = pyyaml::load(&EU.replace("glm-5.3-flash", "deepseek-v4-flash")).unwrap();
         let routed = pyyaml::dump(&with_routing(&profile, &order(), None).unwrap());
         assert!(routed.contains("- greenpt\n") && !routed.contains("entrim"), "{routed}");
@@ -185,6 +211,32 @@ mod tests {
 
     /// GLM through EUrouter thinks at « low » (agents_admin::keeps_thinking_on).
     const LOW: &str = "agent:\n  reasoning_effort: low\n";
+    /// Pinning off: the router's entry with the privacy settings alone.
+    const PRIV: &str = "providers:\n  bipagents-route:\n    api: https://api.eurouter.ai/api/v1\n    extra_body:\n      provider:\n        data_collection: deny\n        max_retention_days: 0\n";
+
+    /// No training, zero retention: on every call to EUrouter, pinned or not, its thinking entry included; never
+    /// elsewhere.
+    #[test]
+    fn every_call_to_eurouter_asks_for_no_training_and_zero_retention() {
+        let eu = "https://api.eurouter.ai/api/v1";
+        for order in [order(), vec![]] {
+            for model in ["glm-5.3-flash", "deepseek/deepseek-v4.1-flash", "anything"] {
+                let p = routing(&order, eu, model).unwrap();
+                assert_eq!((p["data_collection"].as_str(), p["max_retention_days"].as_i64()), (Some("deny"), Some(0)));
+                let mut body = json!({"model": model});
+                add_to_body(&order, eu, &mut body);
+                assert_eq!(body["provider"]["data_collection"], "deny", "{model}");
+            }
+            assert_eq!(routing(&order, "http://gpu:8888/v1", "glm-5.3"), None);
+        }
+        let text = format!(
+            "{EU}providers:\n  bipagents-thinking:\n    api: https://api.eurouter.ai/api/v1\n    extra_body:\n      chat_template_kwargs:\n        enable_thinking: false\n"
+        );
+        let routed = with_routing(&pyyaml::load(&text).unwrap(), &[], None).unwrap();
+        let provider = routed.get("providers").and_then(|p| p.get("bipagents-thinking")).and_then(|e| e.get("extra_body")).and_then(|e| e.get("provider")).unwrap();
+        assert_eq!(provider.get("max_retention_days"), Some(&Yaml::Int(0)));
+        assert_eq!(provider.get("data_collection").and_then(Yaml::as_str), Some("deny"));
+    }
 
     #[test]
     fn a_profile_gets_one_entry_for_the_router_and_keeps_it() {
@@ -193,7 +245,7 @@ mod tests {
         assert_eq!(
             pyyaml::dump(&routed),
             format!(
-                "{EU}{LOW}providers:\n  bipagents-route:\n    api: https://api.eurouter.ai/api/v1\n    extra_body:\n      provider:\n        order:\n        - entrim\n        - greenpt\n        - inceptron\n        allow_fallbacks: true\n"
+                "{EU}{LOW}providers:\n  bipagents-route:\n    api: https://api.eurouter.ai/api/v1\n    extra_body:\n      provider:\n        order:\n        - entrim\n        - greenpt\n        - inceptron\n        allow_fallbacks: true\n        data_collection: deny\n        max_retention_days: 0\n"
             )
         );
         assert_eq!(with_routing(&routed, &order(), None), None); // nothing more to do
@@ -201,31 +253,32 @@ mod tests {
         let old = pyyaml::dump(&routed).replace("- greenpt\n        - inceptron\n", "- melious\n");
         let again = with_routing(&pyyaml::load(&old).unwrap(), &order(), None).unwrap();
         assert_eq!(pyyaml::dump(&again), pyyaml::dump(&routed));
-        // turned off: the entry goes, and `providers` with it; GLM's floor stays
-        assert_eq!(pyyaml::dump(&with_routing(&routed, &[], None).unwrap()), format!("{EU}{LOW}"));
+        // pinning turned off: the entry keeps the privacy settings only; GLM's floor stays
+        assert_eq!(pyyaml::dump(&with_routing(&routed, &[], None).unwrap()), format!("{EU}{LOW}{PRIV}"));
     }
 
     #[test]
     fn glm_through_the_router_never_goes_below_low() {
         // nothing chosen, or « none » (GLM answers nothing to it there): « low »; pinning off changes nothing to that
+        // (the router's entry then holds the privacy settings alone: PRIV)
         for effort in ["", "agent:\n  reasoning_effort: none\n", "agent:\n  reasoning_effort: false\n"] {
             let data = pyyaml::load(&format!("{EU}{effort}")).unwrap();
-            assert_eq!(pyyaml::dump(&with_routing(&data, &[], None).unwrap()), format!("{EU}{LOW}"), "{effort}");
+            assert_eq!(pyyaml::dump(&with_routing(&data, &[], None).unwrap()), format!("{EU}{LOW}{PRIV}"), "{effort}");
         }
         // Hermes' template « medium » is no choice (real-day bench 2026-10-28): « low » too, unless the person chose it
-        let medium = pyyaml::load(&format!("{EU}agent:\n  reasoning_effort: medium\n")).unwrap();
-        assert_eq!(pyyaml::dump(&with_routing(&medium, &[], None).unwrap()), format!("{EU}{LOW}"));
+        let medium = pyyaml::load(&format!("{EU}agent:\n  reasoning_effort: medium\n{PRIV}")).unwrap();
+        assert_eq!(pyyaml::dump(&with_routing(&medium, &[], None).unwrap()), format!("{EU}{LOW}{PRIV}"));
         assert_eq!(with_routing(&medium, &[], Some("medium")), None);
         // a chosen level a rewrite lost comes back; « none » chosen is written « low »
-        let low = pyyaml::load(&format!("{EU}{LOW}")).unwrap();
+        let low = pyyaml::load(&format!("{EU}{LOW}{PRIV}")).unwrap();
         let back = with_routing(&low, &[], Some("high")).unwrap();
-        assert_eq!(pyyaml::dump(&back), format!("{EU}agent:\n  reasoning_effort: high\n"));
+        assert_eq!(pyyaml::dump(&back), format!("{EU}agent:\n  reasoning_effort: high\n{PRIV}"));
         assert_eq!(with_routing(&low, &[], Some("none")), None);
-        assert_eq!(pyyaml::dump(&with_routing(&medium, &[], Some("none")).unwrap()), format!("{EU}{LOW}"));
+        assert_eq!(pyyaml::dump(&with_routing(&medium, &[], Some("none")).unwrap()), format!("{EU}{LOW}{PRIV}"));
         // a level above that only a person writes, another model or another server: untouched
         for text in [
-            format!("{EU}agent:\n  reasoning_effort: high\n"),
-            EU.replace("glm-5.3-flash", "deepseek/deepseek-v4.1-flash"),
+            format!("{EU}agent:\n  reasoning_effort: high\n{PRIV}"),
+            format!("{}{PRIV}", EU.replace("glm-5.3-flash", "deepseek/deepseek-v4.1-flash")),
             EU.replace("https://api.eurouter.ai/api/v1", "http://sparks:8000/v1"),
             format!("{}agent:\n  reasoning_effort: none\n", EU.replace("https://api.eurouter.ai/api/v1", "http://sparks:8000/v1")),
         ] {

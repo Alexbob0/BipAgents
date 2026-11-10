@@ -6,6 +6,9 @@ installer makes (the hub, every agent cloned from it) and in existing ones (migr
 Hermes merges a custom endpoint's `extra_body` (a `providers:` entry whose `api` is the model's address) into every
 request to it, the auxiliary ones included. It takes the FIRST matching entry: when the bridge's thinking entry is
 there, it carries the routing and the routing entry is left out.
+
+Privacy (2026-11-10): every call to EUrouter also asks for no training on it and zero retention (`PRIVACY`), even with
+pinning off (the `provider` object is then that alone), as the bridge does.
 """
 from __future__ import annotations
 
@@ -18,6 +21,8 @@ import yaml
 DEFAULT_ORDER = ["entrim", "greenpt", "inceptron"]   # bridge-rs/src/model_route.rs DEFAULT_ORDER (2026-10-31)
 ROUTE_ENTRY = "bipagents-route"
 THINKING_ENTRY = "bipagents-thinking"
+# no training on the request, zero retention (EUrouter docs « Routing › Data controls »; model_route.rs privacy)
+PRIVACY = {"data_collection": "deny", "max_retention_days": 0}
 
 
 def pins(base_url: str) -> bool:
@@ -30,10 +35,13 @@ def pins(base_url: str) -> bool:
 
 
 def routing(order: List[str], base_url: str) -> Optional[dict]:
-    """The request's `provider` object, or None (not EUrouter, or no order). Availability still wins."""
-    if not order or not pins(base_url):
+    """The request's `provider` object, or None (not EUrouter): the order when one is set (availability still wins),
+    and always the privacy settings."""
+    if not pins(base_url):
         return None
-    return {"order": list(order), "allow_fallbacks": True}
+    route = {"order": list(order), "allow_fallbacks": True} if order else {}
+    route.update(PRIVACY)
+    return route
 
 
 def with_routing(data: dict, order: List[str]) -> bool:

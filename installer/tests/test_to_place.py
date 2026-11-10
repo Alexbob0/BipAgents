@@ -220,7 +220,8 @@ def test_a_bipagents_computer_s_agents_replace_the_place_s(computer, place, tmp_
         assert list(settings["providers"]) == ["bipagents-route"] and "8673" in settings["mcp_servers"]["bipagents"]["url"]
         assert settings["providers"]["bipagents-route"] == {
             "api": "https://api.eurouter.ai/v1",
-            "extra_body": {"provider": {"order": ["entrim", "greenpt", "inceptron"], "allow_fallbacks": True}}}
+            "extra_body": {"provider": {"order": ["entrim", "greenpt", "inceptron"], "allow_fallbacks": True,
+                                        "data_collection": "deny", "max_retention_days": 0}}}
         env = (profiles / name / ".env").read_text()
         assert f"API_SERVER_KEY={key}" in env and "CUSTOM_MODEL_API_KEY=offer-key" in env
         assert "HERMES_DOCKER_BINARY=/usr/bin/podman" in env and "API_SERVER_PORT" not in env
