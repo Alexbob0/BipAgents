@@ -199,8 +199,11 @@ fn re(pattern: &str) -> Regex {
 
 const NUM: &str = r"\d+(?:[,.]\d+)?";
 static GROUPED: LazyLock<Regex> =
-    // a decimal part after the groups too (« 1 796,34 € », 10/11: read « un sept cent… »), never three digits more
-    LazyLock::new(|| re("(?<![\\d,.])(\\d{1,3}(?:[ \u{a0}\u{202f}]\\d{3})+)(?![\\d]|[,.]\\d{3})"));
+    // or with cents after the groups (« 1 796,34 € », 10/11: read « un sept cent… »), after no sign nor time
+    LazyLock::new(|| {
+        re("(?<![\\d,.])(\\d{1,3}(?:[ \u{a0}\u{202f}]\\d{3})+)(?![\\d]|[,.]\\d)\
+            |(?<![\\d,.:-])(\\d{1,3}(?:[ \u{a0}\u{202f}]\\d{3})+)(?=,\\d{2}(?!\\d))")
+    });
 static GROUP_SPACES: LazyLock<Regex> = LazyLock::new(|| re("[ \u{a0}\u{202f}]"));
 static ORDINAL: LazyLock<Regex> = LazyLock::new(|| re(r"\b(\d+)(er|re|ère|ème|eme|e)\b"));
 static TIME_H: LazyLock<Regex> = LazyLock::new(|| re(r"\b([01]?\d|2[0-3]) ?[hH](?: ?([0-5]\d))?\b"));
@@ -381,7 +384,7 @@ pub fn spell_numbers(text: &str) -> String {
         return text.to_string();
     }
     let text = durations::spell_durations(text, "fr"); // « 5:10 par km »: minutes, not hours
-    let text = GROUPED.replace_with(&text, |m| GROUP_SPACES.replace(&m.group(1), ""));
+    let text = GROUPED.replace_with(&text, |m| GROUP_SPACES.replace(&m.whole(), ""));
     let text = PER.replace_with(&text, per);
     let text = DATE_DASHED
         .replace_with(&text, |m| date(&m.group(1), &m.group(2), Some(&m.group(3))).unwrap_or_else(|| m.whole()));
