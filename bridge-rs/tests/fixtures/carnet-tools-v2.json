@@ -1,0 +1,308 @@
+{
+ "notebook_search": {
+  "name": "notebook_search",
+  "description": "Search the person's Carnet (the notebook all their agents share). Gives direct answers first (label, answer, page), then up to 5 pages with their matching lines. Without words: pages per kind and the 10 latest.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "words": {
+     "type": "string",
+     "description": "names or a few words"
+    },
+    "kind": {
+     "type": "string",
+     "enum": [
+      "person",
+      "subject",
+      "area",
+      "self",
+      "trip"
+     ]
+    }
+   }
+  }
+ },
+ "notebook_read": {
+  "name": "notebook_read",
+  "description": "Read one page: its « En bref » and the section asked, or the whole page. Only pages that help answer: 6 a turn at most.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "page": {
+     "type": "string",
+     "description": "name, nickname or path"
+    },
+    "section": {
+     "type": "string",
+     "description": "a section id, as in notebook_write"
+    }
+   },
+   "required": [
+    "page"
+   ]
+  }
+ },
+ "notebook_write": {
+  "name": "notebook_write",
+  "description": "Write on a Carnet page, found by name, nickname, contact id, e-mail or phone (made if missing; several match: you get their names, ask which). One section per call, one short fact per item, « Label : value » when short (« Pointure : 36 »): a label already there is replaced, nothing is repeated. Close family and friends get a person page; others are one line on their group's area page. fix corrects; forget only shows the person what would be erased (they confirm in the app). ask: one question for a missing fact of this page, never health or money unless they raised it. Never passwords, codes or ID numbers.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "page": {
+     "type": "string",
+     "description": "« Léa Martin », « Rénovation cuisine », « Maison »"
+    },
+    "kind": {
+     "type": "string",
+     "description": "for a new page; self: « Toi »; trip: one journey, « Kyoto, avr. 2026 »",
+     "enum": [
+      "person",
+      "subject",
+      "area",
+      "self",
+      "trip"
+     ]
+    },
+    "section": {
+     "type": "string",
+     "description": "person: who dates family work tastes gifts agreed exchanges remember; subject: status decisions next people budget documents history; area: matters habits contacts ongoing; self: about family work habits goals agents; trip: dates itinerary transport lodging documents packing budget onsite",
+     "enum": [
+      "who",
+      "dates",
+      "family",
+      "work",
+      "tastes",
+      "gifts",
+      "agreed",
+      "exchanges",
+      "remember",
+      "other",
+      "status",
+      "decisions",
+      "next",
+      "people",
+      "budget",
+      "documents",
+      "history",
+      "matters",
+      "habits",
+      "contacts",
+      "ongoing",
+      "about",
+      "goals",
+      "agents",
+      "itinerary",
+      "transport",
+      "lodging",
+      "packing",
+      "onsite"
+     ]
+    },
+    "facts": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "maxItems": 20
+    },
+    "summary": {
+     "type": "string",
+     "description": "new « En bref », 2–3 lines"
+    },
+    "fix": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "old": {
+        "type": "string"
+       },
+       "new": {
+        "type": "string",
+        "description": "empty removes"
+       }
+      },
+      "required": [
+       "old",
+       "new"
+      ]
+     }
+    },
+    "forget": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "maxItems": 5,
+     "description": "facts to forget; the page's name: all of it"
+    },
+    "ask": {
+     "type": "object",
+     "properties": {
+      "question": {
+       "type": "string"
+      },
+      "chips": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       },
+       "minItems": 2,
+       "maxItems": 4
+      }
+     },
+     "required": [
+      "question",
+      "chips"
+     ]
+    },
+    "aliases": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "contact": {
+     "type": "string",
+     "description": "contact id, e-mail or phone"
+    },
+    "close": {
+     "type": "boolean",
+     "description": "family or close friend"
+    },
+    "start": {
+     "type": "string",
+     "description": "trip, YYYY-MM-DD"
+    },
+    "end": {
+     "type": "string",
+     "description": "trip, YYYY-MM-DD"
+    }
+   },
+   "required": [
+    "page"
+   ]
+  }
+ },
+ "notebook_task": {
+  "name": "notebook_task",
+  "description": "The person's tasks, few and real (a birthday or someone else's deadline is a fact). add only when they ask (origin asked) or commit to a deadline (own); title in the infinitive; due also sets a phone reminder when shared; important only when they insisted. An idea of yours: propose first (the answer says if you may), ask in one sentence, then add with origin accepted and its proposal id, or decline (never: not this kind again). done and list (open tasks, waiting proposals).",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "action": {
+     "type": "string",
+     "enum": [
+      "add",
+      "done",
+      "list",
+      "propose",
+      "decline"
+     ]
+    },
+    "title": {
+     "type": "string"
+    },
+    "due": {
+     "type": "string",
+     "description": "YYYY-MM-DD or YYYY-MM-DDTHH:MM"
+    },
+    "page": {
+     "type": "string"
+    },
+    "origin": {
+     "type": "string",
+     "enum": [
+      "asked",
+      "own",
+      "accepted"
+     ]
+    },
+    "important": {
+     "type": "boolean"
+    },
+    "kind": {
+     "type": "string",
+     "description": "for propose",
+     "enum": [
+      "birthday",
+      "anniversary",
+      "gift",
+      "follow_up",
+      "deadline",
+      "other",
+      "warranty",
+      "renewal",
+      "expiry"
+     ]
+    },
+    "proposal": {
+     "type": "string"
+    },
+    "never": {
+     "type": "boolean"
+    },
+    "id": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "action"
+   ]
+  }
+ },
+ "notebook_record": {
+  "name": "notebook_record",
+  "description": "Precise records, merged when given twice. Fields by type: purchase date item store price class (goods, service, ticket, food, digital, travel, fee, other) warranty_end (only if known); subscription service price period renewal cancel; contract what provider number end; paper document holder expires (never its number); booking date (YYYY-MM-DD HH:MM) what with reference trip. Dates YYYY-MM-DD; source: the document's reference. list gives short lines, get one record. Reminders come by themselves. Never card numbers or codes.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {
+    "action": {
+     "type": "string",
+     "enum": [
+      "add",
+      "update",
+      "remove",
+      "list",
+      "get"
+     ]
+    },
+    "type": {
+     "type": "string",
+     "enum": [
+      "purchase",
+      "subscription",
+      "contract",
+      "paper",
+      "booking"
+     ]
+    },
+    "id": {
+     "type": "string"
+    },
+    "fields": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "string"
+     }
+    }
+   },
+   "required": [
+    "action"
+   ]
+  }
+ },
+ "notebook_fill": {
+  "name": "notebook_fill",
+  "description": "When the person asks you to fill or update their Carnet from what you know: starts it in the background (your memory and past conversations). Say so in one sentence and stop.",
+  "inputSchema": {
+   "type": "object",
+   "properties": {}
+  }
+ },
+ "private": {
+  "type": "boolean",
+  "description": "health fact (body, sport, sleep, care): their private health part, never elsewhere"
+ },
+ "NOTEBOOK_RULE": "You keep your person's Carnet, the notebook all their agents share. File at once, unasked, what will still matter: dates, decisions, preferences and habits, commitments, money matters, people's details, a project's status and next steps; what changes in your person's own life goes to « Toi ». Not small talk, one-off questions, passwords or codes, confidences, or what they ask you not to keep. Search before reading or writing. A purchase, subscription, contract, paper or booking is a record. Health facts only in the private health part, and only if you are their health agent. Never write in another person's Carnet. The app shows what you read and filed: don't mention it."
+}

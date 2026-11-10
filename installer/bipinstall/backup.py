@@ -46,7 +46,14 @@ SETTINGS = Path(".config") / "bipagents" / "backup.json"
 STATE = Path(".local") / "state" / "bipagents" / "backup.json"
 STAGE = Path(".local") / "state" / "bipagents" / "backup-stage"
 HOST = "place"                      # the same on every server the place lives on: restic finds its last backup
-KEEP = ["--keep-within", "2h", "--keep-hourly", "48", "--keep-daily", "30", "--keep-weekly", "12"]
+# Carnet v2 (Alex, 9/11): nothing older than 30 days, so « Oublie ça » can say « Disparaît aussi des sauvegardes sous
+# 30 jours » (bridge-rs notebook/forget.rs). `RETENTION` is the rule's version: a place whose last thinning was made
+# under another one thins at its next backup, without waiting a day. Calendar-bounded rules only (--keep-within-*,
+# restic >= 0.13; Ubuntu 24.04 has 0.16, Debian 13 0.18): « the last 30 days that have a snapshot » would keep older
+# ones on a place that was off or moving for some days.
+KEEP = ["--keep-within", "2h", "--keep-within-hourly", "48h", "--keep-within-daily", "30d"]
+KEEP_DAYS = 30
+RETENTION = 3
 PRUNE_EVERY = 23 * 3600            # once a day: a quiet place's daily backup comes a minute early, never a day late
 SQLITE = b"SQLite format 3\x00"
 UNIT = "bipagents-backup"          # .service: a backup now (the app's button, `bipagents backup`)
@@ -567,10 +574,11 @@ def run(base: Optional[Path] = None, config: Optional[Path] = None, now: Optiona
         looked = read_json(base / CHECK)
         looked["backed"] = {"sum": found["sum"], "areas": found["areas"], "at": now}
         write_private(base / CHECK, looked)
-        if now - float(state.get("pruned") or 0) >= PRUNE_EVERY:
+        if thin_due(state, now):
             thinned = restic(["forget", "--host", HOST, "--prune", *KEEP], env)
             if thinned.returncode == 0:
                 state["pruned"] = now
+                state["retention"] = RETENTION
     except BackupError as exc:
         state["last_error"] = str(exc)
         state["failed_at"] = now
@@ -578,6 +586,11 @@ def run(base: Optional[Path] = None, config: Optional[Path] = None, now: Optiona
         raise
     write_private(state_path, state)
     return state
+
+
+def thin_due(state: Dict, now: float) -> bool:
+    """Whether this backup thins the history too: once a day, or at once under a new rule (`RETENTION`)."""
+    return now - float(state.get("pruned") or 0) >= PRUNE_EVERY or state.get("retention") != RETENTION
 
 
 def _summary(output: str) -> Dict:

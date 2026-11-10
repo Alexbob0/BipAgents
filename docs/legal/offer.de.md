@@ -280,8 +280,7 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
 - **Sicherungen**: Dein Platz sichert sich wenige Minuten nach jeder Aktivität und mindestens einmal am Tag, verschlüsselt auf dem Platz, bevor sie ihn verlässt,
   mit einem Schlüssel, der auf deinem Platz und auf deinen Geräten bleibt (plus die verschlüsselte Kopie, die dein
   Wiederherstellungscode öffnet, Abschnitt 7). Kerfy Studio bewahrt diese Sicherungen auf seinem Sicherungsserver auf,
-  ohne diesen Schlüssel unlesbar: die der letzten 2 Stunden, dann eine pro Stunde für 48 Stunden, eine pro Tag für 30 Tage,
-  eine pro Woche für 12 Wochen. Einstellungen › Alles-inklusive-Angebot › Sicherungen zeigt die letzte und startet
+  ohne diesen Schlüssel unlesbar: die der letzten 2 Stunden, dann eine pro Stunde für 48 Stunden, eine pro Tag für 30 Tage, nichts Älteres. Einstellungen › Alles-inklusive-Angebot › Sicherungen zeigt die letzte und startet
   sofort eine.
 - **Das tägliche Abbild von OVHcloud**: Auf seinen Servern erstellt OVHcloud außerdem selbst ein tägliches Abbild des
   ganzen Servers, das es bei sich aufbewahrt (ein Wiederherstellungspunkt pro Tag, nicht von Kerfy Studio

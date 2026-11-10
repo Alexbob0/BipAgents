@@ -457,7 +457,8 @@
               "source": "Photo du passeport"
             },
             "next_in": 420,
-            "legal": false
+            "legal": false,
+            "photo": "Voir la photo"
           }
         ]
       },
@@ -990,7 +991,8 @@
               "source": "Photo of the passport"
             },
             "next_in": 420,
-            "legal": false
+            "legal": false,
+            "photo": "See the photo"
           }
         ]
       },
@@ -1523,7 +1525,8 @@
               "source": "Foto des Passes"
             },
             "next_in": 420,
-            "legal": false
+            "legal": false,
+            "photo": "Foto ansehen"
           }
         ]
       },
@@ -2056,7 +2059,8 @@
               "source": "Foto del pasaporte"
             },
             "next_in": 420,
-            "legal": false
+            "legal": false,
+            "photo": "Ver la foto"
           }
         ]
       },

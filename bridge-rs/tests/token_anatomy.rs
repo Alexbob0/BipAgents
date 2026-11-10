@@ -4,6 +4,8 @@
 //! Hermes receives them. Written as JSON for scripts/token-anatomy.py to count. Ignored by default:
 //!
 //!     TOKEN_ANATOMY_OUT=/some/dir cargo test --test token_anatomy -- --ignored
+//!
+//! Its `carnet` part is what the Carnet costs every message by kind of agent (scripts/token-anatomy.py --carnet-gate).
 
 mod common;
 
@@ -43,7 +45,6 @@ fn dump_the_bridge_share_of_a_prompt() {
         "NOTEBOOK_RULE": souls::NOTEBOOK_RULE, "ARCHIVES_RULE": souls::ARCHIVES_RULE, "HEALTH_RULE": souls::HEALTH_RULE,
         "SHARED_MEMORY_RULE": souls::SHARED_MEMORY_RULE, "SHARED_MEMORY_HEALTH_RULE": souls::SHARED_MEMORY_HEALTH_RULE,
         "prototype/language_block_compact_en": souls::language_block_compact(Some("en")),
-        "prototype/COMPACT_NOTEBOOK_RULE": souls::COMPACT_NOTEBOOK_RULE,
     });
 
     let tools = json!({
@@ -64,7 +65,19 @@ fn dump_the_bridge_share_of_a_prompt() {
         "bipagents_files/sites": sandbox_sites::tools(),
     });
 
-    let all = json!({"souls": souls_out, "blocks": blocks, "tools": tools});
+    // the Carnet's share by kind of agent (Carnet v2, contract.md §1-2): its tools in view (tool_diet.rs), the
+    // others behind the search; scripts/token-anatomy.py --carnet-gate compares with scripts/token-lab/carnet-baseline.json
+    let kinds = ["daily", "guide", "home", "work", "learning", "creative", "tech", "custom", "wellness", "finance"];
+    let in_view: serde_json::Map<String, Value> =
+        kinds.iter().map(|k| (k.to_string(), json!(bipbridge::tool_diet::notebook_direct(k)))).collect();
+    let mut carnet_tools = notebook::tools::tools(false);
+    carnet_tools.push(notebook::fill::tool());
+    let mut carnet_health = notebook::tools::tools(true);
+    carnet_health.push(notebook::fill::tool());
+    let carnet = json!({"tools": carnet_tools, "health_tools": carnet_health, "in_view": in_view,
+                        "health_kinds": ["wellness"], "rule": souls::NOTEBOOK_RULE,
+                        "shared_memory_rule": souls::SHARED_MEMORY_RULE});
+    let all = json!({"souls": souls_out, "blocks": blocks, "tools": tools, "carnet": carnet});
     std::fs::create_dir_all(&out).unwrap();
     std::fs::write(format!("{out}/bridge-share.json"), serde_json::to_string_pretty(&all).unwrap()).unwrap();
     let _: &Value = &all;

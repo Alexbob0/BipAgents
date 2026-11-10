@@ -54,8 +54,8 @@ def test_the_protocol_and_the_tokens(bridge):
                                           "reminders_complete", "propose_task", "after_call", "start_task", "route", "map_image", "upcoming_dates", "space_estimate",
                                           "give_file", "room_history", "routine_trigger", "routine_schedule",
                                           # the Carnet's (on by default)
-                                          "notebook_search", "notebook_read", "notebook_note", "notebook_edit",
-                                          "notebook_task", "notebook_record", "notebook_fill"]
+                                          "notebook_search", "notebook_read", "notebook_write", "notebook_task",
+                                          "notebook_record", "notebook_fill"]
     assert all(set(t) >= {"name", "description", "inputSchema"} for t in tools)
     missing = rpc(bridge, "resources/list").json()
     assert missing == {"jsonrpc": "2.0", "id": 1, "error": {"code": -32601, "message": "method not found: resources/list"}}

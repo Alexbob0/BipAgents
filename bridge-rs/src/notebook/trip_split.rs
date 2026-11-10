@@ -2,7 +2,7 @@
 //! filing mails from the archives put an Amsterdam flight of December 2021, an airport parking of July 2022 and a car
 //! rental of October 2022 on one « Voyages » page; nothing grouped them into trips.
 //!
-//! - **Detection** (the nightly pass, and on demand by an agent: notebook_edit `split_trips`): a trip page, or a list
+//! - **Detection** (the nightly pass): a trip page, or a list
 //!   of trips (« Voyages », trip.rs `is_collection`), whose dated lines and booking records (those naming it in their
 //!   « trip ») form 2 or more clusters: dates more than `GAP_DAYS` apart start a new one, each with at least one
 //!   booking (trip.rs `weight` 3, or a record). A refund or an invoice (weight 0) goes with the trip it follows (within
@@ -366,9 +366,8 @@ fn trips_view(trips: &[Trip]) -> Value {
         .collect::<Vec<_>>())
 }
 
-/// The split of one page proposed (the caller holds the lock). `asked`: an agent asked for it (the person's word), so
-/// a page left as it is is proposed again.
-pub fn propose_locked(config: &Config, path: &str, page: &Page, asked: bool) -> anyhow::Result<Proposed> {
+/// The split of one page proposed (the caller holds the lock).
+pub fn propose_locked(config: &Config, path: &str, page: &Page) -> anyhow::Result<Proposed> {
     let trips = plan(config, page);
     if trips.is_empty() {
         return Ok(Proposed::Nothing);
@@ -377,15 +376,13 @@ pub fn propose_locked(config: &Config, path: &str, page: &Page, asked: bool) -> 
     let key = key_of(path, page);
     let (count, dated) = measure(config, page, &trips);
     let state = super::read_state(config);
-    if !asked {
-        if let Some(old) = state.get("split_declined").and_then(|d| d.get(&key)) {
-            let (old_trips, old_items) = (
-                old.get("trips").and_then(Value::as_u64).unwrap_or(0) as usize,
-                old.get("items").and_then(Value::as_u64).unwrap_or(0) as usize,
-            );
-            if count <= old_trips && dated < old_items + (old_items / 2).max(3) {
-                return Ok(Proposed::Declined);
-            }
+    if let Some(old) = state.get("split_declined").and_then(|d| d.get(&key)) {
+        let (old_trips, old_items) = (
+            old.get("trips").and_then(Value::as_u64).unwrap_or(0) as usize,
+            old.get("items").and_then(Value::as_u64).unwrap_or(0) as usize,
+        );
+        if count <= old_trips && dated < old_items + (old_items / 2).max(3) {
+            return Ok(Proposed::Declined);
         }
     }
     let text = question(&page.title, &trips, &lang);
@@ -436,20 +433,11 @@ pub fn detect(config: &Config) -> anyhow::Result<usize> {
         if !splittable(&page) {
             continue;
         }
-        if let Proposed::Made(..) = propose_locked(config, &path, &page, false)? {
+        if let Proposed::Made(..) = propose_locked(config, &path, &page)? {
             made += 1;
         }
     }
     Ok(made)
-}
-
-/// An agent asks for it (notebook_edit split_trips): the page's split proposed to the person.
-pub fn propose(config: &Config, query: &str) -> anyhow::Result<Proposed> {
-    let _guard = super::lock();
-    let Some(found) = super::find(config, &[Part::Main], query) else {
-        return super::refuse("No such page in the Carnet (notebook_search finds pages by name or words).");
-    };
-    propose_locked(config, &found.path, &found.page, true)
 }
 
 fn set_state(config: &Config, id: &str, to: &str, made: Option<Value>) -> std::io::Result<Dict> {

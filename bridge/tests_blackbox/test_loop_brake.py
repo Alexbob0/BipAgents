@@ -117,9 +117,9 @@ def bench_turn(run_id, tools):
 
 
 def test_the_benchs_birthday_loop_started_through_the_door_is_stopped(bridges, fakes):
-    # glm-all-2, birthday_lookup: 20 notebook_note (the bench's real sequence), 11 min, no answer
+    # glm-all-2, birthday_lookup: 20 Carnet writes (the bench's real sequence), 11 min, no answer
     bridge = bridges.new().start()
-    note = "mcp__bipagents__notebook_note"
+    note = "mcp__bipagents__notebook_write"
     tools = (["mcp__bipagents__notebook_search", note, "tool_search", note, note, "mcp__bipagents__notebook_read",
               "terminal", note, "tool_call", "tool_search", note, "terminal"] + [note] * 4 + ["terminal"] + [note] * 3
              + ["terminal"] + [note] * 8 + ["terminal"])
@@ -132,7 +132,7 @@ def test_the_benchs_birthday_loop_started_through_the_door_is_stopped(bridges, f
         at = names.index("bridge.notice")
         assert [data.get("tool") for name, data in events[:at]].count(note) == 11, "right after the 11th note"
         notice = events[at][1]
-        assert notice["code"] == "loop_stopped" and notice["reason"] == "same tool too many times (notebook_note)"
+        assert notice["code"] == "loop_stopped" and notice["reason"] == "same tool too many times (notebook_write)"
     assert wait_until(lambda: fakes.hermes.seen("/v1/runs/r1/stop", "POST"))
     turn = [s for s in fakes.hermes.event_requests if s.path == "/v1/runs/r1/events"]
     assert len(turn) == 1, "one Hermes subscription for the hub, the app and the lab (the rescue turn's apart)"

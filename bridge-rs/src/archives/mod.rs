@@ -984,20 +984,21 @@ fn write_overview(config: &Config, archive: &Archive, index: &Index) -> anyhow::
         ),
     };
     let text = lines.iter().map(|l| format!("- {l}")).collect::<Vec<_>>().join("\n");
-    let mut edit = Dict::new();
-    edit.insert("page".into(), json!(title));
-    edit.insert("section".into(), json!("budget"));
-    edit.insert("text".into(), json!(text));
-    edit.insert("summary".into(), json!(summary));
-    let result = crate::notebook::tools::call(config, &archive.agent, crate::notebook::tools::EDIT, &edit)?;
-    if result.get("isError").map(py::truthy).unwrap_or(false) {
-        let mut note = Dict::new();
-        note.insert("page".into(), json!(title));
-        note.insert("kind".into(), json!("subject"));
-        note.insert("section".into(), json!("budget"));
-        note.insert("facts".into(), json!(lines));
-        note.insert("summary".into(), json!(summary));
-        crate::notebook::tools::call(config, &archive.agent, crate::notebook::tools::NOTE, &note)?;
+    // its subject page in the Carnet: the overview's section rewritten, else the page made with it
+    use crate::notebook::{self, NotebookError, Part, Who};
+    if !notebook::enabled(config, &archive.agent) {
+        return Ok(());
+    }
+    let who = Who::agent(config, &archive.agent);
+    match notebook::edit(config, &[Part::Main], &title, "", "", "budget", Some(&text), &summary, None, &who) {
+        Ok(_) => {}
+        Err(err) if err.downcast_ref::<NotebookError>().is_some() => {
+            match notebook::note(config, Part::Main, "subject", &title, "budget", &lines, &[], "", &summary, &who) {
+                Err(err) if err.downcast_ref::<NotebookError>().is_none() => return Err(err),
+                _ => {}
+            }
+        }
+        Err(err) => return Err(err),
     }
     Ok(())
 }

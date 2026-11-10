@@ -1021,6 +1021,15 @@ pub async fn message_notes(state: &AppState, agent: &AgentConfig, session: &str,
             let to_guide = moment.guide.as_deref() == Some(agent.name.as_str());
             crate::beta_measures::person_message(&config, to_guide, crate::py::time_time());
         }
+        // the Carnet: whether the message talked about health or money (a question of the day needs it; the text is
+        // dropped), and a follow-up due put at the head of the answer (notebook/ask.rs, followups.rs)
+        let now = crate::py::time_time();
+        crate::notebook::ask::on_message(&agent.name, &session, &text, now);
+        if crate::notebook::enabled(&config, &agent.name) {
+            if let Err(err) = crate::notebook::followups::on_message(&config, &agent.name, &session, moment.busy, now) {
+                tracing::warn!(error = %err, "Carnet follow-up not made");
+            }
+        }
         // The family news waiting for the agent (family_news.rs) joins the same message, the same way.
         // The current time first (dates/now.rs), then what waited for this message. The bridge's own notes name the
         // app's parts in the agent's language (names.rs); the others carry people's words, left as they are.

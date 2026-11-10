@@ -455,6 +455,17 @@ pub fn link(meta: &Dict) -> Option<(String, String)> {
     (!id.is_empty()).then(|| (id, tk::str_or_empty(n.get("part"))))
 }
 
+/// A `MEDIA:` path that names a page of this bridge (`/bipagents/pages/<agent>/<page>.html`) not kept here: a name
+/// the model made up (9/11, routine reports on 63a8dec4 and after: `placeholder.html`, `x.html`… opened on a 404)
+/// or a page deleted since. False for any other path (not the bridge's to say).
+pub fn missing(config: &Config, path: &str) -> bool {
+    let Some(rest) = path.strip_prefix(PREFIX).and_then(|r| r.strip_prefix('/')) else { return false };
+    let Some((agent, file)) = rest.split_once('/') else { return true };
+    let Some(page) = file.strip_suffix(".html") else { return false };
+    let safe = |part: &str| !part.is_empty() && part != "." && part != ".." && !part.contains(['/', '\\', '\0']);
+    !(safe(agent) && ID.is_match(page) && !page.ends_with('\n') && root(config).join(agent).join(file).is_file())
+}
+
 /// The agent's pages, the last changed first.
 pub fn list_pages(config: &Config, agent: &str) -> Vec<Dict> {
     let folder = root(config).join(agent);
@@ -587,6 +598,26 @@ mod tests {
         assert!(maps_of(&config, "vie", "/envoi/trajet.html").is_empty());
         assert!(maps_of(&config, "vie", "/bipagents/pages/vie/absente.html").is_empty());
         assert!(maps_of(&config, "vie", "/bipagents/pages/vie/../vie/trajet.html").is_empty());
+    }
+
+    #[test]
+    fn a_page_the_model_named_without_making_it_is_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::with_key("k");
+        config.outbox.db_path = dir.path().join("bridge.db").to_string_lossy().into_owned();
+        let folder = root(&config).join("vie");
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("point-du-jour.html"), "<h1>Point</h1>").unwrap();
+        assert!(!missing(&config, "/bipagents/pages/vie/point-du-jour.html"));
+        // 9/11, routine reports: names made up, never made
+        for path in ["/bipagents/pages/vie/placeholder.html", "/bipagents/pages/vie/x.html", "/bipagents/pages/lea/point-du-jour.html",
+                     "/bipagents/pages/vie/../vie/point-du-jour.html", "/bipagents/pages/x.html", "/bipagents/pages/vie/Point.html"] {
+            assert!(missing(&config, path), "{path}");
+        }
+        // not the bridge's pages: not its to say
+        for path in ["/envoi/x.html", "/bipagents/audio/vie/x.mp3", "/bipagents/pagesx/vie/x.html"] {
+            assert!(!missing(&config, path), "{path}");
+        }
     }
 
     #[test]

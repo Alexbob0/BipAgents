@@ -42,7 +42,8 @@ pub fn limit_for(path: &str) -> Option<u64> {
     if import {
         return Some(IMPORT_BYTES);
     }
-    if path == "/v1/health-data/days" {
+    // a paper's photo (notebook/papers.rs), in the JSON
+    if path == "/v1/health-data/days" || path == "/v1/notebook/paper" {
         return Some(HEALTH_BYTES);
     }
     Some(DEFAULT_BYTES)

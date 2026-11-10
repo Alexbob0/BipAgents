@@ -1,6 +1,6 @@
 //! « Nouvelles du Carnet » (Alex, 2026-10-29: « quand on parle à un agent, il faut que les informations importantes
 //! partent dans le Carnet et que les autres agents concernés soient à jour »). When an agent files something in the
-//! Carnet (notebook_note, notebook_edit, notebook_task add, notebook_record add/update: tools.rs), the bridge works
+//! Carnet (notebook_write, notebook_task add, notebook_record add/update: tools.rs), the bridge works
 //! out which of the person's OTHER agents it concerns and queues one short line for each, without any model call:
 //!
 //! - the page's area, by a small table (`DOMAINS`): an area or subject page named « Argent », « Budget »… concerns the
@@ -9,7 +9,7 @@
 //!   agent is in a domain by its category (souls::CATEGORIES, the Bip chosen in the app) or by its name (an agent the
 //!   person named « Budget »);
 //! - the person's own « Toi » page (who they are, how their agents should behave): every agent;
-//! - the agents that wrote that page before (the history log; reads are not logged, so a reader is not counted);
+//! - the agents that wrote that page before (the history log; a reader is not counted);
 //! - the private health part: only the agents the person gave their health to, whatever the page;
 //! - never an agent other people talk to (vault::others_facing: the family's agent, a project agent, an agent shared
 //!   with relatives or linked to another household): a person's own news never reaches them (family news keep their
@@ -123,6 +123,24 @@ fn change<R>(config: &Config, work: impl FnOnce(&mut Stored) -> R) -> std::io::R
     let out = work(&mut stored);
     save(config, &stored)?;
     Ok(out)
+}
+
+/// « Oublie ça » (forget.rs): the waiting lines `matches` (path, text) takes out; `dry`: only counted. Returns how many.
+pub fn forget_facts(config: &Config, matches: &dyn Fn(&str, &str) -> bool, dry: bool) -> usize {
+    if dry {
+        let stored = load(config);
+        return stored.agents.values().flatten().filter(|e| matches(&e.path, &e.text)).count();
+    }
+    change(config, |stored| {
+        let mut gone = 0;
+        for entries in stored.agents.values_mut() {
+            let before = entries.len();
+            entries.retain(|e| !matches(&e.path, &e.text));
+            gone += before - entries.len();
+        }
+        gone
+    })
+    .unwrap_or(0)
 }
 
 // -- who is concerned ------------------------------------------------------------------------------------------------
@@ -486,6 +504,9 @@ pub fn take(config: &Config, agent: &str, now: f64) -> Option<String> {
         .filter(|e| now - e.at < KEPT_SECONDS)
         .filter(|e| health || e.part != Part::Health.as_str())
         .collect();
+    // what the agent is given of the Carnet, in the journal of reads (reads.rs, `how: news`)
+    let pages: Vec<(Part, String)> = kept.iter().map(|e| (Part::parse(&e.part), e.path.clone())).collect();
+    super::reads::log_news(config, agent, &pages);
     note_of(kept)
 }
 

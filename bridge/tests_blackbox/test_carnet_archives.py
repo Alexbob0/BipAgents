@@ -120,9 +120,9 @@ def test_the_extractions_trips_are_put_right_and_the_past_archived(bridges, fake
     assert {b["reference"] for b in shown["trip"]["bookings"] if b["kind"] == "booking"} == {"LIS7Q2", "LIS9Z8"}
     # the agents still find what is archived, marked so
     found = text_of(call(bridge, "notebook_search", {"words": "Lisbonne"}))
-    assert f"{title} (Archives/Voyages/{title}.md) [archived: past]" in found
+    assert f"{title} (trip, Archives/Voyages/{title}.md) [archived]" in found, found
     listed = text_of(call(bridge, "notebook_record", {"action": "list", "type": "booking"}))
-    assert "r000001 [archived]" in listed and "r000004 ·" in listed
+    assert "[r000001] (archived)" in listed and "[r000004] " in listed, listed
 
     # again: nothing more to do
     before = len(history(bridge, f"Archives/Voyages/{title}.md"))
@@ -150,8 +150,9 @@ def test_the_extractions_trips_are_put_right_and_the_past_archived(bridges, fake
     assert "Grille-pain" in (carnet / "Fiches" / "Achats.md").read_text()
     assert bridge.post("/v1/notebook/records/archive", json={"type": "purchase", "id": "r999999", "archived": True},
                        headers=AUTH).status_code == 404
-    assert text_of(call(bridge, "notebook_record", {"action": "archive", "type": "purchase", "id": "r000012"})).startswith(
-        "Archived: ")
+    # archiving is the nightly pass's and the person's, not an agent's
+    refused = call(bridge, "notebook_record", {"action": "archive", "type": "purchase", "id": "r000012"})
+    assert refused["isError"] and text_of(refused) == "action is add, update, remove, list or get"
 
 
 def test_trips_from_bookings_follow_the_rule(bridges, fakes):

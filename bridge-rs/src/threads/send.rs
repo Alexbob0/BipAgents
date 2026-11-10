@@ -441,6 +441,12 @@ pub async fn keep_photos(state: &AppState, agent: &AgentConfig, attachments: Vec
                 match crate::files::store_upload_from(&agent, &mut open, &name, a.mime.as_deref(), limits, None) {
                     Ok(file) => {
                         a.path = file["path"].as_str().map(str::to_string);
+                        // erased after 30 days unless the Carnet holds it (files_kept.rs `purge_photos`)
+                        if let Some(path) = &a.path {
+                            if let Err(err) = crate::files_kept::note_photo(&config, &agent.name, path, crate::py::time_time()) {
+                                tracing::warn!(agent = %agent.name, error = %err, "a sent photo not noted for its 30 days");
+                            }
+                        }
                         a.name = file["filename"].as_str().map(str::to_string).or(a.name);
                         stored = true;
                     }

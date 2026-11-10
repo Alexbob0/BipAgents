@@ -518,7 +518,7 @@ mod tests {
             "calendar_list",
             "reminders_add",
             "mail_read",
-            "notebook_note",
+            "give_file",
         ];
         let calls: Vec<Action> = kinds.iter().enumerate().map(|(i, k)| act(k, None, i == 7)).collect();
         let steps = auto_steps(&calls, "fr").unwrap();
@@ -596,7 +596,7 @@ mod tests {
             act("execute_code", None, false),
             act("read_file", None, false),
             act("execute_code", None, false),
-            act("mcp__bipagents__notebook_note", None, false),
+            act("mcp__bipagents__notebook_write", None, false),
         ];
         assert!(auto_steps(&alex, "fr").is_none());
         // three useful steps among calculations and files: a card of those three
@@ -617,10 +617,12 @@ mod tests {
             ]
         );
         // every backstage step is one of the table's, and the web, a connector, a page made never are
-        for id in ["compute", "readFile", "prepareFile", "knowledge", "spaceEstimate", "sitesList", "voices"] {
+        for id in ["compute", "readFile", "prepareFile", "knowledge", "spaceEstimate", "sitesList", "voices", "notebookSearch",
+            "notebookNote", "notebookTask", "notebookRecord"]
+        {
             assert!(backstage(id), "{id}");
         }
-        for id in ["webSearch", "browser", "unknown", "createPage", "mailRead", "notebookNote", "payment"] {
+        for id in ["webSearch", "browser", "unknown", "createPage", "mailRead", "giveFile", "payment"] {
             assert!(!backstage(id), "{id}");
         }
     }

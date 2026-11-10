@@ -2171,7 +2171,7 @@
           }
         },
         {
-          "tool": "notebook_note",
+          "tool": "notebook_write",
           "seconds": 0.8,
           "preview": {
             "fr": "Carnet · anniversaire de Jade · 7 novembre",

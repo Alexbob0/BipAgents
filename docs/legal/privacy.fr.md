@@ -501,8 +501,7 @@ Kerfy Studio : la clé y est donc présente, et
 techniquement l'hébergeur comme Kerfy Studio pourraient y accéder ; notre logiciel ne lit ni ta place ni ses
 sauvegardes, et nous ne le ferions que si la loi nous y oblige.
 Kerfy Studio garde ces sauvegardes chez **Scaleway** (Scaleway SAS, France ; stockage objet à Paris, région fr-par)
-sans pouvoir les lire : celles des 2 dernières heures, puis une par heure pendant 48 heures, une par jour pendant 30 jours, une par semaine pendant
-12 semaines. Elles sont effacées avec ta place. Chez Scaleway, une version remplacée ou effacée d'un fichier est
+sans pouvoir les lire : celles des 2 dernières heures, puis une par heure pendant 48 heures, une par jour pendant 30 jours, rien au-delà. Elles sont effacées avec ta place. Chez Scaleway, une version remplacée ou effacée d'un fichier est
 gardée 30 jours, puis effacée. Les données restent dans l'Union européenne.
 
 **Les sauvegardes du guichet.** Le guichet (ton compte, ton abonnement, les données techniques des places) est
@@ -803,7 +802,7 @@ service ; son pays et la garantie applicable seront indiqués ici avant sa mise 
 | Nom de campagne (section 5.11) | 13 mois après son enregistrement, ou avec le compte ou l'abonnement |
 | Adresse IP à la réservation d'une semaine gratuite | Jamais enregistrée ; en mémoire, sous forme d'empreinte, 15 minutes au plus |
 | Contenu de ta place | Pendant l'abonnement, puis 30 jours (3 jours après une semaine gratuite non poursuivie) |
-| Sauvegardes | 2 heures (toutes), puis 48 heures (horaires), 30 jours (quotidiennes), 12 semaines (hebdomadaires) ; effacées avec la place |
+| Sauvegardes | 2 heures (toutes), puis 48 heures (horaires), 30 jours (quotidiennes), rien au-delà ; effacées avec la place |
 | Versions remplacées ou effacées chez Scaleway (sauvegardes des places, copies chiffrées de la base du guichet) | 30 jours |
 | Image quotidienne d'OVHcloud | Un point par jour, remplacé dans la journée environ après la réinstallation de la place |
 | Données techniques des serveurs | Dernières valeurs seulement |

@@ -6,7 +6,7 @@
 //! (`- [ ] Passeport` / `- [x] Passeport`, Obsidian's checkboxes), its places, and the agents' page with a live map
 //! linked to it when there is one.
 //!
-//! A subject becomes a trip by the agent's judgement (notebook_note with kind trip on it) or, at night, when its words
+//! A subject becomes a trip by the agent's judgement (notebook_write with kind trip on it) or, at night, when its words
 //! clearly say so (`looks_like_trip`: a date, and a trip word with a booking, or both a way of getting there and a
 //! place to stay), once per page. Nothing is dropped: each line moves to the trip's section its heading or its words
 //! point to, the rest to « Notes » with its old heading in front.
@@ -295,14 +295,13 @@ fn trip_word(lang: &str) -> &'static str {
     }
 }
 
-/// A trip's dates and destination set by an agent (notebook_note's start, end, destination): in its frontmatter.
+/// A trip's dates set by an agent (notebook_write's start and end), its destination from its name: in its frontmatter.
 pub fn set_details(
     config: &Config,
     part: Part,
     path: &str,
     start: &str,
     end: &str,
-    destination: &str,
     who: &Who,
 ) -> anyhow::Result<bool> {
     let _guard = super::lock();
@@ -319,16 +318,17 @@ pub fn set_details(
         let date = super::due_date(value)?;
         page.front.insert(key.into(), json!(date));
     }
-    let destination = tk::head(&tk::squeeze(destination.trim()), 120).to_string();
-    if !destination.is_empty() {
-        page.front.insert("destination".into(), json!(destination));
+    // its destination from its name (« Kyoto, avr. 2026 » → « Kyoto »), when it has none
+    let named = page.title.split([',', '—']).next().unwrap_or("").trim().to_string();
+    if tk::str_or_empty(page.front.get("destination")).is_empty() && !named.is_empty() && !is_collection(&page.title) {
+        page.front.insert("destination".into(), json!(tk::head(&named, 120)));
     }
     let after = page.render();
     if after == before {
         return Ok(false);
     }
     let summary =
-        [start, end, destination.as_str()].iter().filter(|v| !v.trim().is_empty()).cloned().collect::<Vec<_>>();
+        [start, end].iter().filter(|v| !v.trim().is_empty()).cloned().collect::<Vec<_>>();
     super::commit(config, part, path, Some(&before), Some(&after), who, "trip", &summary.join(" → "))?;
     Ok(true)
 }
