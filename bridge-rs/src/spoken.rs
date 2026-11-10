@@ -365,7 +365,8 @@ fn re(pattern: &str) -> Regex {
     Regex::new(pattern).expect("valid regex")
 }
 
-static FENCE: LazyLock<Regex> = LazyLock::new(|| re(r"(?s)```.*?(?:```|\z)"));
+/// A code block with code in it (a lone fence, a call's sentence cut there, is left to the speech rules).
+static FENCE: LazyLock<Regex> = LazyLock::new(|| re(r"(?s)```[^\n]*\n(.*?)(?:```|\z)"));
 static ITEM: LazyLock<Regex> = LazyLock::new(|| re(r"^(\s*)(?:[-*+•▪◦]|\d{1,3}[.)])\s+(.*)$"));
 static HEADING: LazyLock<Regex> = LazyLock::new(|| re(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$"));
 static BOLD_LINE: LazyLock<Regex> = LazyLock::new(|| re(r"^\s*(?:\*\*|__)([^*_\n.!?]{1,40}?)(?:\*\*|__)\s*:?\s*$"));
@@ -389,7 +390,10 @@ fn cells(line: &str) -> Vec<String> {
 pub fn structure(text: &str, lang: &str) -> String {
     let w = words(lang);
     let text = text.replace("\r\n", "\n");
-    let text = FENCE.replace_all(&text, |_: &regex::Captures| format!("\n\n{}\n\n", w.code));
+    let text = FENCE.replace_all(&text, |c: &regex::Captures| match c[1].trim().is_empty() {
+        true => c[0].to_string(),
+        false => format!("\n\n{}\n\n", w.code),
+    });
     let text = LINK.replace_all(&text, "$1");
     let text = AUTOLINK.replace_all(&text, "$1");
     let urls = BARE_URL.find_iter(&text).count();
@@ -583,6 +587,7 @@ cher, A, a une terrasse : 95 euros.-->";
             structure("Voilà :\n```sh\nls -la\n```", "en"),
             "Voilà :\n\nThere is a piece of code in the message."
         );
+        assert_eq!(structure("```", "fr"), "```", "a lone fence (a call's sentence): left to the speech rules");
         assert_eq!(
             structure("Lis [cet article](https://a.b/c) et https://x.y/z ou www.w.fr", "fr"),
             "Lis cet article et ou\n\nLes liens sont dans le message."

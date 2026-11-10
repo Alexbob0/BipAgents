@@ -137,7 +137,7 @@ async fn lru_cache_hits_and_evicts() {
 async fn errors() {
     let backend = FakeBackend::start().await;
     let tts = service(&backend, TtsOptions { max_chars: 20, ..Default::default() });
-    let empty = tts.synthesize("```\ncode\n```", None, "pcm16", INTERACTIVE, opts()).await.unwrap_err();
+    let empty = tts.synthesize("---\n**", None, "pcm16", INTERACTIVE, opts()).await.unwrap_err();
     assert_eq!(empty.status, 400);
     let long = tts.synthesize(&"x ".repeat(50), None, "pcm16", INTERACTIVE, opts()).await.unwrap_err();
     assert_eq!(long.status, 413);
