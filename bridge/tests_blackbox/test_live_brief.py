@@ -58,6 +58,7 @@ def test_a_brief_is_the_last_exchanges_without_tools_or_hidden_text(bridge, fake
     now, text = split_brief_now(got["text"])
     assert now is not None   # the call's start time, last (bridge-rs/src/dates/now.rs; what changes most, last)
     assert text.startswith("This is a voice call with the person. It continues the conversation summed up below")
+    assert "Something to keep (a fact, a date, a size): file it at once with notebook_write" in text.split("\n\n")[0]
     assert "Its last exchanges:\n" in text and "- The person: Et demain ?" in text and "- You: Grand soleil." in text
     assert "message 11" in text and "message 5" not in text   # the last ones only
     assert "result" not in text and "bip:" not in text and "invisible" not in text
@@ -97,7 +98,8 @@ def test_no_conversation_yet_and_hermes_errors(bridge, fakes):
     # model_options: what the call's turns send (thinking off; « low » for GLM through EUrouter, test_agents_admin)
     got = brief(bridge).json()
     now, rest = split_brief_now(got.pop("text"))
-    assert now is not None and rest == ""   # the call's start time alone
+    # the call's Carnet line (filing at once, no search first) and its start time
+    assert now is not None and rest.startswith("Something to keep") and "notebook_write" in rest and "\n" not in rest.strip()
     assert got == {"session": None, "points_at": None, "model_options": {"reasoning": {"enabled": False}}}
     fakes.hermes.keys[""] = "other"
     refused = brief(bridge, session="s1")
@@ -197,6 +199,20 @@ def test_a_second_call_in_the_same_second_gets_its_own_session(bridge, fakes):
     assert again.status_code == 200 and again.json()["live_session"] != live
     sent = bridge.post("/v1/live/turns", headers=AUTH, json={"agent": "wellness", "live_session": live, "text": "Hello"})
     assert sent.status_code == 200 and hermes.streams[-1]["input"] == "Hello"
+
+
+def test_a_turn_to_file_is_told_the_carnet_s_tool_by_the_bridge(bridge, fakes):
+    """10/11: the phones' voice decider (9/11) sends a turn to file, not answer, with a hidden note naming a Carnet v1
+    tool (`notebook_note`, gone): the bridge puts its own words in the note, whatever the app wrote (live_turns.rs)."""
+    hermes = fakes.hermes
+    live = bridge.post("/v1/live/calls/start", headers=AUTH, json={"agent": "wellness"}).json()["live_session"]
+    old = ("<!--bip:note\nYour person said this to have it filed, not answered: keep it in the Carnet (notebook_note), "
+           "then answer only « OK, noté » in your language, nothing more.\n-->\npour info le plombier vient jeudi")
+    assert bridge.post("/v1/live/turns", headers=AUTH, json={"agent": "wellness", "live_session": live,
+                                                              "text": old}).status_code == 200
+    said = hermes.streams[-1]["input"]
+    assert said.startswith("<!--bip:note\n") and said.endswith("-->\npour info le plombier vient jeudi")
+    assert "notebook_write" in said and "notebook_note" not in said and said.count("-->") == 1
 
 
 @pytest.mark.slow

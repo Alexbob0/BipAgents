@@ -100,6 +100,11 @@ const GHOST_PAGE: i64 = 200;
 const GHOST_PAGES: i64 = 10;
 static SCRATCH_LOCK: Mutex<()> = Mutex::new(());
 pub const LIVE_TITLE: &str = "Live";
+/// A call's Carnet line, in its brief (the apps put the brief in the call's prelude): filing fast while the person
+/// waits on the line, one notebook_write without a search first (10/11: the agents' rule says search first, a second
+/// model call before « noté »). A turn the phone sent to be filed has its own note (live_turns.rs `NOTE`).
+pub const CARNET: &str = "Something to keep (a fact, a date, a size): file it at once with notebook_write, one call \
+a page, no notebook_search before, then only « OK, noté » or the like, nothing added.";
 /// What the apps put in a message for the agent only (a call's opening, a call's recap): never shown to the person.
 static HIDDEN: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new(r"(?s)<!--\s*bip:.*?-->").unwrap());
 
@@ -441,6 +446,9 @@ impl Briefs {
              conversation, briefly, as one does on the phone: short spoken sentences, no lists."
                 .to_string(),
         ];
+        if crate::notebook::enabled(&self.config.get(), &agent.name) {
+            parts[0] = format!("{} {CARNET}", parts[0]);
+        }
         if let Some(points) = state.get("points").filter(|v| py::truthy(v)) {
             parts.push(format!(
                 "Key points of the conversation so far (your own notes):\n{}",
@@ -907,7 +915,8 @@ async fn live_brief(State(state): State<AppState>, q: QueryMap) -> ApiResult<Res
         None => state.briefs.latest(&config).await.map_err(hermes_error)?,
     };
     let Some(chosen) = chosen else {
-        return Ok(web::ok(json!({"session": null, "text": now, "points_at": null, "model_options": options})));
+        let text = if crate::notebook::enabled(&state.config(), &config.name) { format!("{CARNET}\n\n{now}") } else { now };
+        return Ok(web::ok(json!({"session": null, "text": text, "points_at": null, "model_options": options})));
     };
     let mut brief = state.briefs.brief(&config, &chosen).await.map_err(hermes_error)?;
     let text = brief.get("text").and_then(Value::as_str).unwrap_or("").to_string();

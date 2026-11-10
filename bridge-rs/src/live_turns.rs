@@ -10,6 +10,10 @@
 //! The first turn's text starts with the call's prelude (the time, the call's rules, its brief, the greeting said: a
 //! hidden note the apps write, LiveLines.prelude); photos come inline and documents by path, as in a written message
 //! (threads/send.rs). Approvals and questions are answered through `POST /v1/approve`.
+//!
+//! A turn the phone's voice decider sent to be filed, not answered (`noter`, 9/11), starts with a hidden
+//! `<!--bip:note … -->`: whatever the app wrote in it (the 9/11 apps named a Carnet v1 tool, `notebook_note`, that is
+//! gone), the bridge puts its own words there (`NOTE`), so the tools' names live here only.
 
 use axum::extract::State;
 use axum::response::Response;
@@ -102,13 +106,37 @@ pub fn live_turn_options(config: &crate::config::Config, agent: &crate::config::
     options
 }
 
+/// What the agent reads for a turn to file (`with_note`): one notebook_write per page, no search first, the label
+/// said again replacing the old fact, never a code; then two words.
+pub const NOTE: &str = "<!--bip:note\nYour person said this to have it filed, not answered. File it now with notebook_write, \
+one call per page (its name, a first name is enough, no search first; a place or subject is not a person: give its \
+kind): « Label : value », the same label replaces the \
+old fact, a correction too. Never a code or password: say in a few words you don't keep those. Then answer only « OK, \
+noté » in your language.\n-->";
+
+/// `text` with its `<!--bip:note … -->` (wherever it is: the first turn has the call's prelude before it) in the
+/// bridge's words; other hidden notes (`<!--bip:notes-->`…) and a text without one unchanged.
+pub fn with_note(text: &str) -> std::borrow::Cow<'_, str> {
+    const OPEN: &str = "<!--bip:note";
+    let mut from = 0;
+    while let Some(at) = text[from..].find(OPEN).map(|i| i + from) {
+        let after = &text[at + OPEN.len()..];
+        if after.starts_with(char::is_whitespace) || after.starts_with("-->") {
+            let end = after.find("-->").map_or(text.len(), |i| at + OPEN.len() + i + 3);
+            return format!("{}{NOTE}{}", &text[..at], &text[end..]).into();
+        }
+        from = at + OPEN.len();
+    }
+    text.into()
+}
+
 const UNREACHABLE: &str = "your agent isn't answering right now: try again in a moment";
 
 async fn turn(State(state): State<AppState>, Json(body): Json<Turn>) -> ApiResult<Response> {
     let config = state.config();
     let agent = crate::app::agent_or_404(&config, Some(&body.agent))?;
     // `chat/stream` takes the parts of one message (photos), not a list of messages as `/v1/runs` does
-    let input = match input_of(None, &body.text, &body.attachments) {
+    let input = match input_of(None, &with_note(&body.text), &body.attachments) {
         Value::Array(mut messages) => messages.swap_remove(0)["content"].take(),
         words => words,
     };
@@ -192,6 +220,24 @@ mod tests {
             Some(prefix) => name.starts_with(prefix),
             None => name == *c,
         })
+    }
+
+    #[test]
+    fn a_note_to_file_gets_the_bridges_words() {
+        // what the 9/11 apps send (VoiceDecider noteTurn), a v1 tool's name in it
+        let old = "<!--bip:note\nYour person said this to have it filed, not answered: keep it in the Carnet (notebook_note), then \
+answer only « OK, noté » in your language, nothing more.\n-->\npour info le plombier vient jeudi";
+        assert_eq!(with_note(old), format!("{NOTE}\npour info le plombier vient jeudi"));
+        // after the call's prelude, in the first turn
+        let first = "<!--bip:now x-->\n<!--bip:live\nrules <!--bip:end-->\n\n<!--bip:note\nkeep it\n-->\nnote que Léa chausse du 36";
+        assert_eq!(with_note(first), format!("<!--bip:now x-->\n<!--bip:live\nrules <!--bip:end-->\n\n{NOTE}\nnote que Léa chausse du 36"));
+        for same in ["bonjour", "<!--bip:notes-->[Request]", "<!--bip:notebook x-->", "je note que <!--bip:noted"] {
+            assert_eq!(with_note(same), same);
+        }
+        assert!(NOTE.contains(crate::notebook::tools::WRITE) && !NOTE.contains("notebook_note"));
+        assert!(NOTE.ends_with("-->") && NOTE.matches("-->").count() == 1);
+        // a note never closed: the rest is the note's
+        assert_eq!(with_note("<!--bip:note\nkeep it"), NOTE);
     }
 
     #[test]
