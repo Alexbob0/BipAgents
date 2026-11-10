@@ -107,5 +107,6 @@ def test_the_radio_rules_go_with_a_call_and_a_voice_message(bridge, fakes):
     assert "« about 420 euros »" in rules   # its examples in the agent's language (English here)
     voice = taken_notes(bridge, kinds=("voice",))
     assert "<!--bip:voice\nYour person sent a voice message: your reply will be listened to." in voice
-    assert "bip:say" in voice and voice.count("-->") == voice.count("<!--")
+    # never the mark's name in a note (10/11: the Spark then echoed the whole note)
+    assert "hidden spoken version" in voice and "bip:say" not in voice and voice.count("-->") == voice.count("<!--")
     assert "bip:voice" not in taken_notes(bridge, text="Et sinon ?")

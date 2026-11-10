@@ -185,9 +185,9 @@ pub fn radio_rule(lang: &str, live: bool) -> String {
     let [three, eight, date, round, again] = examples(lang);
     let show = if live {
         "note it with the after_call tool (it lands in the conversation when the call ends; all you write here is \
-said aloud, no bip:say)"
+said aloud)"
     } else {
-        "keep it in your written reply with its spoken version (bip:say)"
+        "keep it in your written reply with its hidden spoken version"
     };
     format!(
         "Spoken, for the ear: the essential first in one sentence, details only if asked. Short sentences, one idea \
@@ -604,6 +604,8 @@ cher, A, a une terrasse : 95 euros.-->";
             let rule = radio_rule(lang, true);
             assert!(rule.contains("after_call") && rule.len() < 900, "{lang}: {}", rule.len());
             assert!(!radio_rule(lang, false).contains("after_call"));
+            // never the mark's name in a note: the Spark then echoed the whole note (bench 10/11)
+            assert!(!radio_rule(lang, true).contains("bip:") && !voice_note(lang).contains("bip:say"));
             let note = voice_note(lang);
             assert!(note.starts_with("<!--bip:voice\n") && note.ends_with("\n-->") && note.matches("-->").count() == 1);
         }
