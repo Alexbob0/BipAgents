@@ -6,7 +6,10 @@ import { Bip, CATEGORIES, REDUCED, iconSVG, nextEpisode, pixelSVG, staticBip, th
 const data = JSON.parse(document.getElementById("site-data").textContent);
 const $ = (s, root = document) => root.querySelector(s);
 const $$ = (s, root = document) => [...root.querySelectorAll(s)];
-const wait = ms => new Promise(r => setTimeout(r, REDUCED ? Math.min(ms, 120) : ms));
+// The demo's pauses: a third of the apps' own pace and never more than half a second, so an example reaches its answer in
+// a few seconds (the example drawn on arrival has none at all: each player's own `pause`).
+const SPEED = 0.3, LONGEST = 500;
+const wait = ms => new Promise(r => setTimeout(r, REDUCED ? Math.min(ms, 120) : Math.min(ms * SPEED, LONGEST)));
 const TONE = { daily: "coral", wellness: "green", finance: "gold", home: "teal", work: "blue", learning: "violet", creative: "pink", tech: "blue" };
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const once = (el, fn, threshold = 0.3) => new IntersectionObserver((entries, io) => {
@@ -46,8 +49,6 @@ const revealer = new IntersectionObserver(entries => {
 $$(".reveal").forEach(el => revealer.observe(el));
 
 // -- An agent at work: the app's demo scenarios, played in a chat --------------------------------------------------
-const chat = $(".chat"), body = $(".chat-body");
-let run = 0;
 // Tool rows in plain words, as the apps word them (ToolLabel.swift / ToolLabel.kt; the wording comes from
 // scripts/tool-labels.py): never a tool's own name. The working line under the thread says what the agent does now.
 const TOOLS = data.tools ?? { list: [], words: {}, extra: {} };
@@ -247,253 +248,233 @@ function workingPhrase(label, site, prompt) {
 
 const md = s => esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/\n\n/g, "<br><br>").replace(/\n/g, "<br>");
 
-// The working line stays under the thread while the agent works (WorkingLine in the apps).
-let workingLine = null;
-function add(html, cls, tag = "div") {
-  const el = document.createElement(tag);
-  el.className = cls;
-  el.innerHTML = html;
-  if (workingLine?.isConnected) body.insertBefore(el, workingLine); else body.append(el);
-  while (body.scrollHeight > body.clientHeight + 2 && body.children.length > 1) body.firstElementChild.remove();
-  return el;
-}
-const avatar = category => `<span class="av">${staticBip(category)}</span>`;
-
-// A page the agent made, as the app shows it under the reply: the map of the walk, or the page kit's real page.
-function pageCard(name) {
-  const page = data.pages[name];
-  if (name === "walk") {
-    const pins = page.stops.map((s, i) => `<button type="button" class="pin" style="left:${s.x}%;top:${s.y}%;--c:${s.color}" aria-label="${esc(s.name)}" data-i="${i}"></button>`).join("");
-    const list = page.stops.map((s, i) => `<li data-i="${i}" style="--c:${s.color}"><i>${i + 1}</i>${esc(s.name)}</li>`).join("");
-    const el = add(`<p class="pc-title">🌳 ${esc(page.title)}</p><p class="pc-sub">${esc(page.subtitle)}</p>`
-      + `<div class="map"><img src="${page.src}" alt="${esc(page.alt)}" width="600" height="400" loading="lazy">${pins}</div>`
-      + `<ol class="stops">${list}</ol><p class="pc-tip">${esc(page.tip)}</p><p class="pc-src">${esc(page.source)}</p>`, "page-card map-card");
-    const pick = i => {
-      $$(".pin", el).forEach(p => p.classList.toggle("on", +p.dataset.i === i));
-      $$(".stops li", el).forEach(p => p.classList.toggle("on", +p.dataset.i === i));
-    };
-    $$(".pin, .stops li", el).forEach(p => p.addEventListener("click", () => pick(+p.dataset.i)));
+// A page may hold several phones (the home: the first screen's, the family's): each `[data-demo]` part is a player
+// of its own, with its chat, its examples' buttons and its own turn.
+function demoUnit(unit) {
+  const chat = $(".chat", unit), body = chat && $(".chat-body", chat), tabs = $$(".tab", unit);
+  if (!chat) return;
+  let run = 0, instant = false;
+  const pause = ms => instant ? Promise.resolve() : wait(ms);   // none for the example drawn on arrival
+  // The working line stays under the thread while the agent works (WorkingLine in the apps).
+  let workingLine = null;
+  function add(html, cls, tag = "div") {
+    const el = document.createElement(tag);
+    el.className = cls;
+    el.innerHTML = html;
+    if (workingLine?.isConnected) body.insertBefore(el, workingLine); else body.append(el);
+    // A real thread: nothing leaves it. While a turn plays, the newest line stays in view; the example drawn on
+    // arrival stays at its top (the question, then its answer), and the visitor scrolls like in any chat.
+    body.scrollTop = instant ? 0 : body.scrollHeight;
     return el;
   }
-  return add(`<div class="frame"><iframe src="${page.src}" title="${esc(page.title)}" loading="lazy"></iframe></div>`
-    + `<a class="pc-open" href="${page.src}" target="_blank" rel="noopener">${esc(page.title)} · ${esc(data.labels.open)} ↗</a>`, "page-card kit-card");
-}
+  const avatar = category => `<span class="av">${staticBip(category)}</span>`;
 
-async function play(id) {
-  const mine = ++run;
-  const scenario = data.scenarios[id], category = scenario.category, c = CATEGORIES[category];
-  for (const el of [chat, chat.closest(".chat-wrap")]) el.style.setProperty("--chat-tint", `var(--${TONE[category]}-tint)`);
-  chat.style.setProperty("--chat-main", c.main);
-  chat.style.setProperty("--chat-deep", `var(--${TONE[category]}-deep)`);   // the text-safe shade (site.css)
-  $(".chat-avatar").innerHTML = staticBip(category);
-  $(".chat-name").textContent = scenario.agent;
-  body.innerHTML = "";
-  const alive = () => mine === run;
-  await wait(500); if (!alive()) return;
-  add(esc(scenario.prompt), "msg you");
-  // The turn's start: past 20 s the working line ends with how long it has run (« · 45 s », « · 2 min »); a scenario
-  // can show its turn as running for a while already (demo.json's `elapsed`).
-  const started = Date.now() - (scenario.elapsed ?? 0) * 1000;
-  let answer = "", madePage = null, site = null;
-  const fill = s => s.replaceAll("{answer}", answer);
-  workingLine = null;
-  // « Je réfléchis… », « Je navigue sur pastamia.fr… »: one line, a light sweeping across it, the Bip alive beside
-  // it (WorkingLine in the apps). No call running (`label` null): the thinking phrases rotate every 2.5 s, from a
-  // random one, never the same twice in a row. Nothing of the work stays under the reply.
-  const THINKING = TOOLS.thinking?.length ? TOOLS.thinking : [workingPhrase(null)];
-  let thinkingAt = Math.floor(Math.random() * THINKING.length), rotation = null, busy = false, bipFrame = null;
-  const nextThinking = () => {
-    const pick = Math.floor(Math.random() * (THINKING.length - 1));
-    thinkingAt = THINKING.length < 2 ? 0 : pick >= thinkingAt ? pick + 1 : pick;
-  };
-  function bip(now) {
-    if (!alive() || !workingLine?.isConnected) { bipFrame = null; return; }
-    // Busy with a tool: the apps' « work » state (eyes scanning, a light passing); else « think ».
-    // Each turn the next thinking animation of the rotation, among those readable small, then the next ones in turn
-    // while it lasts (at most 30 frames a second).
-    if (now - (workingLine.drawnAt || 0) >= 32) {
-      workingLine.drawnAt = now;
-      workingLine.variantAt ??= now;
-      const [motion, mt] = thinkingNow(workingLine.episode, (now - workingLine.variantAt) / 1000, true);
-      $(".av", workingLine).innerHTML = pixelSVG({ category, mood: busy ? "work" : "think", t: now / 1000, size: 30, motion, mt });
+  // A page the agent made, as the app shows it under the reply: the map of the walk, or the page kit's real page.
+  function pageCard(name) {
+    const page = data.pages[name];
+    if (name === "walk") {
+      const pins = page.stops.map((s, i) => `<button type="button" class="pin" style="left:${s.x}%;top:${s.y}%;--c:${s.color}" aria-label="${esc(s.name)}" data-i="${i}"></button>`).join("");
+      const list = page.stops.map((s, i) => `<li data-i="${i}" style="--c:${s.color}"><i>${i + 1}</i>${esc(s.name)}</li>`).join("");
+      const el = add(`<p class="pc-title">🌳 ${esc(page.title)}</p><p class="pc-sub">${esc(page.subtitle)}</p>`
+        + `<div class="map"><img src="${page.src}" alt="${esc(page.alt)}" width="600" height="400" loading="lazy">${pins}</div>`
+        + `<ol class="stops">${list}</ol><p class="pc-tip">${esc(page.tip)}</p><p class="pc-src">${esc(page.source)}</p>`, "page-card map-card");
+      const pick = i => {
+        $$(".pin", el).forEach(p => p.classList.toggle("on", +p.dataset.i === i));
+        $$(".stops li", el).forEach(p => p.classList.toggle("on", +p.dataset.i === i));
+      };
+      $$(".pin, .stops li", el).forEach(p => p.addEventListener("click", () => pick(+p.dataset.i)));
+      return el;
     }
-    bipFrame = requestAnimationFrame(bip);
-  }
-  let clock = null;
-  function elapsed() {
-    const el = workingLine?.isConnected && $(".el", workingLine);
-    if (!alive() || !el) { clearInterval(clock); clock = null; return; }
-    const s = Math.floor((Date.now() - started) / 1000);
-    el.textContent = s < 20 ? "" : s < 60 ? `· ${s} s` : `· ${Math.floor(s / 60)} ${document.documentElement.lang.startsWith("de") ? "Min." : "min"}`;
-  }
-  function working(label = null) {
-    if (!alive()) return;
-    if (!workingLine?.isConnected) {
-      workingLine = add(`<span class="av">${staticBip(category, "thinking")}</span><span class="ph"></span><span class="el"></span>`, "working");
-      workingLine.setAttribute("role", "status");
-      workingLine.episode = nextEpisode(category);
-      if (REDUCED) $(".av", workingLine).innerHTML = pixelSVG({ category, mood: "think", size: 30,
-        motion: thinkingVariant(workingLine.episode, true) });
-    }
-    elapsed();
-    if (!clock) clock = setInterval(elapsed, 1000);
-    busy = !!label;
-    if (!REDUCED && bipFrame == null) bipFrame = requestAnimationFrame(bip);
-    const ph = $(".ph", workingLine);
-    if (label) {
-      clearInterval(rotation); rotation = null;
-      ph.textContent = workingPhrase(label, site, scenario.prompt);
-    } else {
-      ph.textContent = THINKING[thinkingAt];
-      if (!rotation) rotation = setInterval(() => {
-        if (!alive() || !workingLine?.isConnected) { clearInterval(rotation); rotation = null; return; }
-        nextThinking();
-        $(".ph", workingLine).textContent = THINKING[thinkingAt];
-      }, 2500);
-    }
-  }
-  function rest() {
-    if (!alive()) return;
-    clearInterval(rotation); rotation = null;
-    workingLine?.remove(); workingLine = null;
+    return add(`<div class="frame"><iframe src="${page.src}" title="${esc(page.title)}" loading="lazy"></iframe></div>`
+      + `<a class="pc-open" href="${page.src}" target="_blank" rel="noopener">${esc(page.title)} · ${esc(data.labels.open)} ↗</a>`, "page-card kit-card");
   }
 
-  async function say(text) {
-    working();
-    await wait(1000); rest();
-    if (!alive()) return;
-    add(`${avatar(category)}<span class="txt">${md(text)}</span>`, "msg bot");
-    await wait(1100);
-  }
-
-  async function steps(list) {
-    for (const step of list) {
-      if (!alive()) return false;
-      if (step.think) {
-        // Its reasoning stays its own: the thinking phrases while it thinks.
-        working();
-        await wait(2400);
-      } else if (step.tool || step.page) {
-        // In plain words as the app shows it: what it does now on the working line.
-        const label = toolLabel(step.tool ?? "create_page", fill(step.arguments ?? step.preview ?? ""));
-        if (label.kind === "browser" || label.kind === "webRead") site = label.site ?? (label.kind === "browser" ? site : null);
-        working(label);
-        await wait(Math.max(700, (step.seconds ?? 1) * 1000));
-        if (!alive()) return false;
-        if (step.page) madePage = step.page;
-        await wait(250);
-      } else if (step.ask) {
-        rest();
-        const card = add(`<p>${esc(step.ask.question)}</p><div class="opts">${step.ask.choices.map(o => `<span class="opt">${esc(o)}</span>`).join("")}</div>`, "card-q");
-        await wait(1700); if (!alive()) return false;
-        const choice = $$(".opt", card)[Math.min(1, step.ask.choices.length - 1)];
-        choice.classList.add("chosen");
-        answer = choice.textContent.replace(/ · ★.*$/, "");
-        await wait(900);
-        if (step.then && !(await steps(step.then))) return false;
-      } else if (step.approve) {
-        rest();
-        const card = add(`<p>${esc(fill(step.approve.description))}</p><code>${esc(fill(step.approve.command))}</code>`
-          + `<div class="btns"><span>${esc(data.labels.once)}</span><span>${esc(data.labels.session)}</span><span>${esc(data.labels.deny)}</span></div>`, "card-a");
-        await wait(1900); if (!alive()) return false;
-        $(".btns span", card).classList.add("chosen");
-        await wait(800);
-        if (step.then && !(await steps(step.then))) return false;
-      } else if (step.say) {
-        await say(fill(step.say));
-      } else if (step.show) {
-        // a file placed in the reply (demo.json's `show`): the page the agent made, where the app shows it
-        if (madePage && step.show.startsWith(`/demo/page/${madePage}/`) && data.pages[madePage]) {
-          pageCard(madePage); await wait(2200);
-        }
-      } else if (step.pause) {
-        await wait(step.pause * 1000);
+  async function play(id, atOnce = false) {
+    const mine = ++run;
+    instant = atOnce;
+    const scenario = data.scenarios[id], category = scenario.category, c = CATEGORIES[category];
+    for (const el of [chat, chat.closest(".chat-wrap")]) el.style.setProperty("--chat-tint", `var(--${TONE[category]}-tint)`);
+    chat.style.setProperty("--chat-main", c.main);
+    chat.style.setProperty("--chat-deep", `var(--${TONE[category]}-deep)`);   // the text-safe shade (site.css)
+    $(".chat-avatar", chat).innerHTML = staticBip(category);
+    $(".chat-name", chat).textContent = scenario.agent;
+    body.innerHTML = "";
+    const alive = () => mine === run;
+    add(esc(scenario.prompt), "msg you");
+    // The turn's start: past 20 s the working line ends with how long it has run (« · 45 s », « · 2 min »); a scenario
+    // can show its turn as running for a while already (demo.json's `elapsed`).
+    const started = Date.now() - (scenario.elapsed ?? 0) * 1000;
+    let answer = "", madePage = null, site = null;
+    const fill = s => s.replaceAll("{answer}", answer);
+    workingLine = null;
+    // « Je réfléchis… », « Je navigue sur pastamia.fr… »: one line, a light sweeping across it, the Bip alive beside
+    // it (WorkingLine in the apps). No call running (`label` null): the thinking phrases rotate every 2.5 s, from a
+    // random one, never the same twice in a row. Nothing of the work stays under the reply.
+    const THINKING = TOOLS.thinking?.length ? TOOLS.thinking : [workingPhrase(null)];
+    let thinkingAt = Math.floor(Math.random() * THINKING.length), rotation = null, busy = false, bipFrame = null;
+    const nextThinking = () => {
+      const pick = Math.floor(Math.random() * (THINKING.length - 1));
+      thinkingAt = THINKING.length < 2 ? 0 : pick >= thinkingAt ? pick + 1 : pick;
+    };
+    function bip(now) {
+      if (!alive() || !workingLine?.isConnected) { bipFrame = null; return; }
+      // Busy with a tool: the apps' « work » state (eyes scanning, a light passing); else « think ».
+      // Each turn the next thinking animation of the rotation, among those readable small, then the next ones in turn
+      // while it lasts (at most 30 frames a second).
+      if (now - (workingLine.drawnAt || 0) >= 32) {
+        workingLine.drawnAt = now;
+        workingLine.variantAt ??= now;
+        const [motion, mt] = thinkingNow(workingLine.episode, (now - workingLine.variantAt) / 1000, true);
+        $(".av", workingLine).innerHTML = pixelSVG({ category, mood: busy ? "work" : "think", t: now / 1000, size: 30, motion, mt });
+      }
+      bipFrame = requestAnimationFrame(bip);
+    }
+    let clock = null;
+    function elapsed() {
+      const el = workingLine?.isConnected && $(".el", workingLine);
+      if (!alive() || !el) { clearInterval(clock); clock = null; return; }
+      const s = Math.floor((Date.now() - started) / 1000);
+      el.textContent = s < 20 ? "" : s < 60 ? `· ${s} s` : `· ${Math.floor(s / 60)} ${document.documentElement.lang.startsWith("de") ? "Min." : "min"}`;
+    }
+    function working(label = null) {
+      if (!alive()) return;
+      if (!workingLine?.isConnected) {
+        workingLine = add(`<span class="av">${staticBip(category, "thinking")}</span><span class="ph"></span><span class="el"></span>`, "working");
+        workingLine.setAttribute("role", "status");
+        workingLine.episode = nextEpisode(category);
+        if (REDUCED) $(".av", workingLine).innerHTML = pixelSVG({ category, mood: "think", size: 30,
+          motion: thinkingVariant(workingLine.episode, true) });
+      }
+      elapsed();
+      if (!clock) clock = setInterval(elapsed, 1000);
+      busy = !!label;
+      if (!REDUCED && bipFrame == null) bipFrame = requestAnimationFrame(bip);
+      const ph = $(".ph", workingLine);
+      if (label) {
+        clearInterval(rotation); rotation = null;
+        ph.textContent = workingPhrase(label, site, scenario.prompt);
+      } else {
+        ph.textContent = THINKING[thinkingAt];
+        if (!rotation) rotation = setInterval(() => {
+          if (!alive() || !workingLine?.isConnected) { clearInterval(rotation); rotation = null; return; }
+          nextThinking();
+          $(".ph", workingLine).textContent = THINKING[thinkingAt];
+        }, 2500);
       }
     }
-    return true;
+    function rest() {
+      if (!alive()) return;
+      clearInterval(rotation); rotation = null;
+      workingLine?.remove(); workingLine = null;
+    }
+
+    async function say(text) {
+      working();
+      await pause(1000); rest();
+      if (!alive()) return;
+      add(`${avatar(category)}<span class="txt">${md(text)}</span>`, "msg bot");
+      await pause(1100);
+    }
+
+    async function steps(list) {
+      for (const step of list) {
+        if (!alive()) return false;
+        if (step.think) {
+          // Its reasoning stays its own: the thinking phrases while it thinks.
+          working();
+          await pause(2400);
+        } else if (step.tool || step.page) {
+          // In plain words as the app shows it: what it does now on the working line.
+          const label = toolLabel(step.tool ?? "create_page", fill(step.arguments ?? step.preview ?? ""));
+          if (label.kind === "browser" || label.kind === "webRead") site = label.site ?? (label.kind === "browser" ? site : null);
+          working(label);
+          await pause(Math.max(700, (step.seconds ?? 1) * 1000));
+          if (!alive()) return false;
+          if (step.page) madePage = step.page;
+          await pause(250);
+        } else if (instant && (step.ask || step.approve)) {
+          // drawn at once (on arrival): the question and the answer only; the cards in between are for the played turn
+          if (step.ask) answer = step.ask.choices[Math.min(1, step.ask.choices.length - 1)].replace(/ · ★.*$/, "");
+          if (step.then && !(await steps(step.then))) return false;
+        } else if (step.ask) {
+          rest();
+          const card = add(`<p>${esc(step.ask.question)}</p><div class="opts">${step.ask.choices.map(o => `<span class="opt">${esc(o)}</span>`).join("")}</div>`, "card-q");
+          await pause(1700); if (!alive()) return false;
+          const choice = $$(".opt", card)[Math.min(1, step.ask.choices.length - 1)];
+          choice.classList.add("chosen");
+          answer = choice.textContent.replace(/ · ★.*$/, "");
+          await pause(900);
+          if (step.then && !(await steps(step.then))) return false;
+        } else if (step.approve) {
+          rest();
+          const card = add(`<p>${esc(fill(step.approve.description))}</p><code>${esc(fill(step.approve.command))}</code>`
+            + `<div class="btns"><span>${esc(data.labels.once)}</span><span>${esc(data.labels.session)}</span><span>${esc(data.labels.deny)}</span></div>`, "card-a");
+          await pause(1900); if (!alive()) return false;
+          $(".btns span", card).classList.add("chosen");
+          await pause(800);
+          if (step.then && !(await steps(step.then))) return false;
+        } else if (step.say) {
+          await say(fill(step.say));
+        } else if (step.show) {
+          // a file placed in the reply (demo.json's `show`): the page the agent made, where the app shows it
+          if (madePage && step.show.startsWith(`/demo/page/${madePage}/`) && data.pages[madePage]) {
+            pageCard(madePage); await pause(2200);
+          } else if (step.show.startsWith("/demo/card/")) {
+            // a vote the friends of a shared agent answer from their link: the card, then the choice that wins
+            const vote = data.cards?.[step.show.slice(11)];
+            if (vote) {
+              const card = add("<p>" + esc(vote.title) + '</p><div class="opts">'
+                + vote.options.map(o => '<span class="opt">' + esc(o) + "</span>").join("") + "</div>", "card-q");
+              await pause(1700); if (!alive()) return false;
+              const last = {};   // each friend's last vote counts
+              for (const v of vote.votes) last[v.who] = v.option;
+              const counts = vote.options.map((_, i) => Object.values(last).filter(o => o === i).length);
+              $$(".opt", card)[counts.indexOf(Math.max(...counts))].classList.add("chosen");
+            }
+          }
+        } else if (step.pause) {
+          await pause(step.pause * 1000);
+        }
+      }
+      return true;
+    }
+    await steps(scenario.steps);
+    if (alive()) { rest(); instant = false; }
   }
-  await steps(scenario.steps);
-  if (alive()) rest();
-}
 
-let current = "book_table";
-// The scenarios' tabs (the home has two rows of them, beside the phone and in the demo's window): the one playing is
-// selected in both; the arrows move within a row (WAI-ARIA tabs).
-const tabs = $$(".tab");
-const pick = id => {
-  current = id;
-  for (const t of tabs) { const on = t.dataset.scenario === id; t.classList.toggle("active", on); t.setAttribute("aria-selected", String(on)); t.tabIndex = on ? 0 : -1; }
-};
-tabs.forEach(tab => {
-  tab.addEventListener("click", () => { pick(tab.dataset.scenario); play(current); });
-  tab.addEventListener("keydown", e => {
-    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
-    if (!step) return;
-    e.preventDefault();
-    const row = $$(".tab", tab.parentElement), next = row[(row.indexOf(tab) + step + row.length) % row.length];
-    next.focus(); next.click();
-  });
-});
-if (tabs.length) pick(current);
-// /demo/#walk opens on that scenario: chosen before it first plays.
-const tabFor = h => tabs.find(t => "#" + t.dataset.scenario === h);
-const fromAddress = tabFor(location.hash);
-if (fromAddress) {
-  pick(fromAddress.dataset.scenario);
-  // on a phone the chat is under the tabs: brought into view so it plays at once
-  if (chat) addEventListener("load", () => chat.scrollIntoView({ block: "nearest", behavior: "instant" }), { once: true });
-}
-addEventListener("hashchange", () => tabFor(location.hash)?.click());
-$(".replay")?.addEventListener("click", () => play(current));
-
-// -- The home: a phone and three tabs; « What they do » plays the demo in the phone, once in view -------------------
-const stories = $$("[data-story]");
-const storyOn = name => stories.some(t => t.dataset.story === name && t.getAttribute("aria-selected") === "true");
-if (stories.length) {
-  const show = (tab, focus) => {
-    const name = tab.dataset.story;
-    for (const t of stories) { const on = t === tab; t.setAttribute("aria-selected", String(on)); t.tabIndex = on ? 0 : -1; }
-    for (const p of $$("[data-story-panel]")) p.hidden = p.dataset.storyPanel !== name;
-    if (focus) tab.focus();
-    if (name === "do") play(current); else run++;
+  let current = tabs[0]?.dataset.scenario;   // the first example's
+  // The scenarios' tabs (the home has two rows of them, beside the phone and in the demo's window): the one playing is
+  // selected in both; the arrows move within a row (WAI-ARIA tabs).
+  const pick = id => {
+    current = id;
+    for (const t of tabs) { const on = t.dataset.scenario === id; t.classList.toggle("active", on); t.setAttribute("aria-selected", String(on)); t.tabIndex = on ? 0 : -1; }
   };
-  stories.forEach((tab, i) => {
-    tab.addEventListener("click", () => show(tab));
+  tabs.forEach(tab => {
+    tab.addEventListener("click", () => { pick(tab.dataset.scenario); play(current); });
     tab.addEventListener("keydown", e => {
       const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
       if (!step) return;
       e.preventDefault();
-      show(stories[(i + step + stories.length) % stories.length], true);
+      const row = $$(".tab", tab.parentElement), next = row[(row.indexOf(tab) + step + row.length) % row.length];
+      next.focus(); next.click();
     });
   });
+  if (tabs.length) pick(current);
+  // /demo/#walk opens on that scenario: chosen before it first plays.
+  const tabFor = h => tabs.find(t => "#" + t.dataset.scenario === h);
+  const fromAddress = tabFor(location.hash);
+  if (fromAddress) {
+    pick(fromAddress.dataset.scenario);
+    // on a phone the chat is under the tabs: brought into view so it plays at once
+    if (chat) addEventListener("load", () => chat.scrollIntoView({ block: "nearest", behavior: "instant" }), { once: true });
+  }
+  addEventListener("hashchange", () => tabFor(location.hash)?.click());
+  $(".replay", chat)?.addEventListener("click", () => play(current));
+  // On arrival the first example is there at once, its question and its answer: nothing to wait for, nothing empty.
+  if (current) play(current, true);
 }
+$$("[data-demo]").forEach(demoUnit);
 
-// -- « See the demo »: the app's whole demo in a window over the page; the phone's chat moves into it while it is
-// open, and back after. Without the script the link opens /demo/. --------------------------------------------------
-const demoWindow = $(".v-demo");
-if (chat && !stories.length) once(chat, () => play(current), 0.35);   // the page /demo/
-if (chat && stories.length) once(chat, () => { if (storyOn("do") && !demoWindow?.open) play(current); }, 0.35);
-if (demoWindow && chat) {
-  const slot = $(".v-demo-slot", demoWindow), home = chat.parentElement;
-  document.addEventListener("click", e => {
-    if (!e.target.closest("[data-demo-open]")) return;
-    e.preventDefault();
-    slot.append(chat);
-    demoWindow.showModal();
-    play(current);
-  });
-  // back in the phone at once (the close event may come late, and Escape closes without the button)
-  const back = () => {
-    if (chat.parentElement === home) return;
-    run++;   // the thread stops where it is
-    home.append(chat);
-    if (storyOn("do")) play(current);
-  };
-  const shut = () => { demoWindow.close(); back(); };
-  $(".v-demo-close", demoWindow).addEventListener("click", shut);
-  demoWindow.addEventListener("click", e => { if (e.target === demoWindow) shut(); });   // the backdrop
-  demoWindow.addEventListener("close", back);
-}
 
 // -- Private: « See the details » opens where the data is, who reads it and our limit in a window (#private-detail
 // too); without the script its link shows them under the strip. ---------------------------------------------------
@@ -627,7 +608,7 @@ const region = (function () {
   const say = (template, x) => template.replace("{x}", x);
 
   // The visitor's currency (the region above): the picker and the header's menu stay together.
-  const state = { plan: "famille", period: "year", currency: P.currencies[region.currency] ? region.currency : P.default };
+  const state = { plan: "famille", period: "month", currency: P.currencies[region.currency] ? region.currency : P.default };
   const buy = $("#buy"), sticky = $(".sticky-buy"), picker = $("select[data-currency]", root);
   const fineTax = $(".fine-tax"), fineDefault = fineTax && fineTax.textContent;
 
@@ -685,6 +666,7 @@ const region = (function () {
       $(".buy-label", buy).textContent = L.buy.replace("{plan}", L.names[plan]).replace("{period}", L.period[period]);
     }
     $$("[data-from]").forEach(el => { el.textContent = m(web.month[P.plans[0]]); });
+    $$("[data-famille-month]").forEach(el => { el.textContent = m(web.month.famille); });   // the footnote's price
     if (fineTax) {
       const name = (L.currencies || {})[currency] || currency;
       fineTax.textContent = currency === P.default ? fineDefault

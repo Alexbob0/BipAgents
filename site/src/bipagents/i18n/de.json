@@ -4,8 +4,8 @@
     "name": "Deutsch"
   },
   "meta": {
-    "title": "BipAgents — Deine Sachen gehen nur dich etwas an.",
-    "description": "BipAgents gibt dir deine eigenen KI-Agenten, die Bips: privat und sicher, in Europa oder bei dir zu Hause. Sie reservieren, sortieren deine Mails, führen Kalender und Notizbuch und fragen, bevor sie handeln. Ohne Werbung und Tracking. Gebaut auf Hermes Agent."
+    "title": "BipAgents — Persönliche Agenten, die deine Daten nie weitergeben.",
+    "description": "Persönliche KI-Agenten für die ganze Familie: privat, in deinem eigenen Bereich in Europa oder bei dir zu Hause, und günstiger als ein einziger Platz anderswo. Gebaut auf Hermes Agent."
   },
   "a11y": {
     "skip": "Zum Inhalt",
@@ -19,18 +19,20 @@
     "pricing": "Preise",
     "faq": "Fragen",
     "cta": "An der Beta teilnehmen",
-    "ctaShort": "Zur Beta"
+    "ctaShort": "Zur Beta",
+    "family": "Familie"
   },
   "hero": {
-    "slogan": "Deine Sachen gehen nur dich etwas an.",
-    "sub": "Deine Bips reservieren, sortieren deine Mails und führen dein Notizbuch, in deinem eigenen Bereich in Europa.",
+    "slogan": "Persönliche Agenten, die deine Daten nie weitergeben.",
+    "sub": "Für die ganze Familie, für weniger als eine Person bei Grok Bot.",
     "eu": "Server in der EU oder bei dir zu Hause",
     "badge": "Gebaut auf Hermes Agent",
     "proof2": "<b>Dein OK</b>, bevor er zahlt oder sendet",
     "cta": "Tarif wählen",
     "watch": "Demo ansehen",
     "price": "Kostenlose Beta für iPhone und Android · begrenzte Plätze · ohne Kreditkarte",
-    "beta": "Kostenlose Beta"
+    "beta": "Kostenlose Beta",
+    "get": "App holen"
   },
   "salon": {
     "alt": "Ein gemütliches Wohnzimmer am Abend: Auf dem Sofa ruft ein Handy bei Pasta Mia an, auf dem Couchtisch zeigt ein Tablet 11,99 € weniger Abos im Monat, am Fenster ein Laptop mit Flügen und Hotel und eine Staffelei mit dem Wohlbefinden der Woche. Vier Bips kümmern sich darum.",
@@ -74,12 +76,6 @@
     "title": "Du fragst. Er kümmert sich. Du entscheidest.",
     "sub": "Das ist die Demo der App, unverändert: Dein Agent denkt nach, nutzt seine Werkzeuge, legt eine Karte oder eine Mini-App in seine Antwort und wartet auf dein Okay, bevor er zahlt oder sendet.",
     "tabs": "Demo-Szenarien",
-    "tab1": "Tisch reservieren",
-    "tab2": "Ein Spaziergang",
-    "tab3": "Meine Läufe",
-    "tab4": "Es ist kalt",
-    "tab5": "Eine Erinnerung",
-    "tab6": "Meine Abos",
     "point1": "Jeder Schritt sichtbar",
     "point2": "Karten und Mini-Apps direkt in der Antwort",
     "point3": "Dein Okay, bevor er zahlt oder sendet",
@@ -89,7 +85,17 @@
     "placeholder": "Nachricht …",
     "open": "Öffnen",
     "ctaTitle": "Deine Bips, ganz echt.",
-    "work": "Arbeitsdetails"
+    "work": "Arbeitsdetails",
+    "tab1": "E-Mails",
+    "tab2": "Termine",
+    "tab3": "Mein Budget",
+    "tab4": "Abos",
+    "tab5": "Abendessen",
+    "tab6": "Unterlagen",
+    "tab7": "Bester Preis",
+    "tab8": "Reisen",
+    "tab9": "Schlaf",
+    "tab10": "Mein Morgen"
   },
   "ai": "KI",
   "control": {
@@ -120,7 +126,14 @@
     "f4": "<b>Alles gehört dir</b>: Nimm es mit, wann du willst",
     "detail": "Details ansehen",
     "limitTitle": "Was wir nicht versprechen",
-    "detailTitle": "Die Details, ohne Umschweife"
+    "detailTitle": "Die Details, ohne Umschweife",
+    "line": "Deine Agenten leben in deinem eigenen Bereich, in Europa oder bei dir zu Hause.",
+    "k1t": "Von uns nicht gelesen",
+    "k1": "Keine KI wird damit trainiert.",
+    "k2t": "Keine Werbung",
+    "k2": "Kein Tracking, keine Ablenkung.",
+    "k3t": "Deine Erlaubnis",
+    "k3": "Bevor etwas bezahlt oder gesendet wird."
   },
   "pricing": {
     "kicker": "Preise",
@@ -216,7 +229,9 @@
       "self3": "Du hast schon Hermes Agent? Derselbe Befehl verbindet die App damit",
       "selfCta": "So installierst du es",
       "plansTitle": "Die Tarife „Alles inklusive“"
-    }
+    },
+    "headline": "Deine ganze Familie für weniger als einen Grok-Bot-Platz.",
+    "line": "Während der Beta kostenlos. Danach eine Gratiswoche zum Start, jederzeit kündbar."
   },
   "install": {
     "title": "Dein eigener Computer? Die App ist gratis.",
@@ -439,7 +454,7 @@
     }
   },
   "family": {
-    "title": "Gemeinsam sind eure Agenten ein Team.",
+    "title": "Alle haben ihre eigenen Agenten.",
     "sub": "Jeder hat seinen privaten Bereich; geteilt wird nur, was du willst.",
     "s1t": "Jeder hat seinen Platz",
     "s1": "Eigener Bereich, eigene Agenten, ein gemeinsames KI-Guthaben",
@@ -460,7 +475,13 @@
       "no": "Nein danke",
       "at": "Bei Sam",
       "notif": "Camille: Die Schule hat angerufen: Léa hat Fieber, ich hole sie ab."
-    }
+    },
+    "line": "Teile einen mit deiner Familie, Freunden oder anderen Eltern, nur wenn du es willst. Sie folgen kostenlos.",
+    "tab1": "Die Woche",
+    "tab2": "Das Geld",
+    "tab3": "Der Einkauf",
+    "tabs": "Die Beispiele der Familie",
+    "tab4": "Andere Eltern"
   },
   "home": {
     "tour": "Schau dich um.",
@@ -470,5 +491,16 @@
     "close": "Schließen",
     "dialog": "Die Demo der App",
     "self": "Oder auf deinem Computer:"
+  },
+  "compare": {
+    "note": "Familientarif: {{note.famille}} pro Monat für bis zu 6 Personen. Grok Bot Premium: {{note.grokbot}} pro Monat und Person in den USA ({{note.source}}, gelesen am {{note.date}}). Abos starten nach der Beta.",
+    "noteLabel": "Zur Anmerkung"
+  },
+  "glance": {
+    "alt": "Vier Bips, jeder mit der Aufgabe, die er gerade erledigt hat: ein Tisch reserviert, ein Abo gekündigt, ein Lauf geplant, günstigere Flüge gefunden.",
+    "dinners": "Tisch für 20:30 reserviert",
+    "budget": "11,99 € im Monat gespart",
+    "wellness": "Lockerer Lauf geplant",
+    "trips": "Flüge 140 € günstiger"
   }
 }

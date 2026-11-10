@@ -1,76 +1,46 @@
-<!-- The home's end: the plans (site.js prices them), the free install in one line (it opens in place; #install opens
-     it too), the questions that settle a purchase. -->
-<section class="section pricing-section v-end" id="pricing">
-  <div class="section-head reveal">
-    <p class="kicker">{{pricing.kicker}}</p>
-    <h2 class="h2-small">{{pricing.ways.plansTitle}}</h2>
-    <p class="after-beta">{{pricing.afterBeta}} <a href="{{betahref}}">{{nav.cta}}</a></p>
+<!-- The home's end: the plans (site.js prices them; name, people, price) and the free install in one line (it opens
+     in place; #install opens it too). -->
+<section class="screen pricing-section v-end" id="pricing" aria-labelledby="price-h">
+  <div class="screen-head reveal">
+    <h2 id="price-h">{{pricing.headline}}<a class="note-mark" href="#note" aria-label="{{compare.noteLabel}}">*</a></h2>
+    <p>{{pricing.line}}</p>
   </div>
   <span class="mode-anchor" id="plans"></span>
   <div class="pricing reveal">
     <div class="pricing-bar">
       <div class="period" role="radiogroup" aria-label="{{pricing.periodLabel}}">
-        <button type="button" role="radio" aria-checked="false" data-period="month">{{pricing.monthly}}</button>
-        <button type="button" role="radio" aria-checked="true" data-period="year">{{pricing.yearly}} <span class="gift">{{pricing.yearlyBadge}}</span></button>
+        <button type="button" role="radio" aria-checked="true" data-period="month">{{pricing.monthly}}</button>
+        <button type="button" role="radio" aria-checked="false" data-period="year">{{pricing.yearly}}</button>
       </div>
       <label class="currency" title="{{pricing.currencyLabel}}"><span class="currency-label">{{pricing.currencyLabel}}</span>
         <select data-currency>{{currencyoptions}}</select></label>
     </div>
     <div class="plans" role="radiogroup" aria-label="{{pricing.planLabel}}">
-      <button type="button" class="plan" role="radio" aria-checked="false" data-plan="solo" style="--main:var(--coral);--tint:var(--coral-tint)">
-        <span class="plan-bips" aria-hidden="true"><i data-bip-static="daily"></i></span>
+      <button type="button" class="plan" role="radio" aria-checked="false" data-plan="solo">
         <span class="plan-name">{{pricing.solo.name}}</span>
         <span class="plan-who">{{pricing.solo.who}}</span>
-        <span class="plan-price"><b data-price="solo">{{p.web.year.solo}}</b><small data-unit>{{pricing.perYear}}</small></span>
-        <span class="plan-equiv" data-equiv="solo">{{pricing.equivPrefix}} {{p.web.yearmonth.solo}} {{pricing.perMonthShort}}</span>
-        <span class="plan-store" data-store="solo">{{pricing.inApp}} {{p.store.year.solo}}</span>
-        <span class="plan-blurb">{{pricing.solo.blurb}}</span>
+        <span class="plan-price"><b data-price="solo">{{p.web.month.solo}}</b><small data-unit>{{pricing.perMonthShort}}</small></span>
+        <span data-equiv="solo" hidden></span><span data-store="solo" hidden></span>
       </button>
-      <button type="button" class="plan" role="radio" aria-checked="false" data-plan="duo" style="--main:var(--blue);--tint:var(--blue-tint)">
-        <span class="plan-bips" aria-hidden="true"><i data-bip-static="daily"></i><i data-bip-static="work"></i></span>
+      <button type="button" class="plan" role="radio" aria-checked="false" data-plan="duo">
         <span class="plan-name">{{pricing.duo.name}}</span>
         <span class="plan-who">{{pricing.duo.who}}</span>
-        <span class="plan-price"><b data-price="duo">{{p.web.year.duo}}</b><small data-unit>{{pricing.perYear}}</small></span>
-        <span class="plan-equiv" data-equiv="duo">{{pricing.equivPrefix}} {{p.web.yearmonth.duo}} {{pricing.perMonthShort}}</span>
-        <span class="plan-store" data-store="duo">{{pricing.inApp}} {{p.store.year.duo}}</span>
-        <span class="plan-blurb">{{pricing.duo.blurb}}</span>
+        <span class="plan-price"><b data-price="duo">{{p.web.month.duo}}</b><small data-unit>{{pricing.perMonthShort}}</small></span>
+        <span data-equiv="duo" hidden></span><span data-store="duo" hidden></span>
       </button>
-      <button type="button" class="plan plan-best" role="radio" aria-checked="true" data-plan="famille" style="--main:var(--green);--tint:var(--green-tint)">
-        <span class="plan-flag">{{pricing.famille.flag}}</span>
-        <span class="plan-bips" aria-hidden="true"><i data-bip-static="daily"></i><i data-bip-static="wellness"></i><i data-bip-static="finance"></i><i data-bip-static="home"></i></span>
+      <button type="button" class="plan" role="radio" aria-checked="true" data-plan="famille">
         <span class="plan-name">{{pricing.famille.name}}</span>
         <span class="plan-who">{{pricing.famille.who}}</span>
-        <span class="plan-price"><b data-price="famille">{{p.web.year.famille}}</b><small data-unit>{{pricing.perYear}}</small></span>
-        <span class="plan-equiv" data-equiv="famille">{{pricing.equivPrefix}} {{p.web.yearmonth.famille}} {{pricing.perMonthShort}}</span>
-        <span class="plan-store" data-store="famille">{{pricing.inApp}} {{p.store.year.famille}}</span>
-        <span class="plan-blurb">{{pricing.famille.blurb}}</span>
+        <span class="plan-price"><b data-price="famille">{{p.web.month.famille}}</b><small data-unit>{{pricing.perMonthShort}}</small></span>
+        <span data-equiv="famille" hidden></span><span data-store="famille" hidden></span>
       </button>
     </div>
-
-    <div class="checkout">
-      <div class="checkout-copy">
-        <p class="sum" aria-live="polite"><span class="sum-plan">{{pricing.famille.name}}</span> · <span class="sum-price">{{p.web.year.famille}}</span><span class="sum-unit"> {{pricing.perYear}}</span></p>
-        <p class="save" aria-live="polite"></p>
-        <p class="trial">🎁 {{pricing.trial}}</p>
-        <p class="trial">🧳 {{pricing.cancel}}</p>
-      </div>
-      <div class="checkout-act">{{buy}}</div>
-    </div>
-
-    <div class="included">
-      <h3>{{pricing.includedTitle}}</h3>
-      <ul>
-        <li><span aria-hidden="true">🤖</span>{{pricing.inc1}}</li>
-        <li><span aria-hidden="true">✦</span>{{pricing.inc2}}</li>
-        <li><span aria-hidden="true">🎙️</span>{{pricing.inc3}}</li>
-        <li><span aria-hidden="true">📓</span>{{pricing.inc4}}</li>
-        <li><span aria-hidden="true">🛡️</span>{{pricing.inc5}}</li>
-      </ul>
-    </div>
-    <p class="fine-print"><span class="fine-tax">{{pricing.fineTax}}</span> {{pricing.fine}} <a href="https://kerfystudio.com{{legalprefix}}/offer/">{{pricing.terms}}</a> · <a href="https://kerfystudio.com{{legalprefix}}/terms/">{{foot.terms}}</a> · <a href="https://kerfystudio.com{{legalprefix}}/privacy/">{{foot.privacy}}</a></p>
+    <!-- what the script keeps up to date for the checkout (the chosen plan and its price), not shown on the home -->
+    <p hidden><span class="sum-plan"></span><span class="sum-price"></span><span class="sum-unit"></span><span class="save"></span></p>
+    <div class="price-act">{{homebuy}}</div>
   </div>
   <span class="mode-anchor" id="install"></span>
-  <p class="v-self reveal">💻 {{home.self}} <b>{{pricing.ways.selfPrice}}</b> · <button type="button" class="way-open v-self-open" aria-expanded="false" aria-controls="panel-self">{{pricing.ways.selfCta}}<i aria-hidden="true"></i></button></p>
+  <p class="v-self reveal">{{home.self}} <b>{{pricing.ways.selfPrice}}</b> · <button type="button" class="way-open v-self-open" aria-expanded="false" aria-controls="panel-self">{{pricing.ways.selfCta}}<i aria-hidden="true"></i></button></p>
   <div class="self-panel" id="panel-self" role="region" aria-label="{{pricing.ways.selfTitle}}" hidden>
   <div class="own">
     <div class="own-cards">
@@ -129,18 +99,6 @@
   </div>
   </div>
 
-</section>
-
-<!-- ============================================================ FAQ -->
-<section class="section faq-section" id="faq">
-  <div class="section-head reveal">
-    <p class="kicker">{{faq.kicker}}</p>
-    <h2>{{faq.title}}</h2>
-  </div>
-  <div class="faq reveal">
-    {{faqhome}}
-  </div>
-  <p class="faq-more"><a href="{{faqhref}}">{{faq.all}}</a></p>
 </section>
 
 <div class="sticky-buy" aria-hidden="true">

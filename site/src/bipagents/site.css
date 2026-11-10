@@ -409,7 +409,7 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
 .ai { font-size: 10px; font-weight: 1000; padding: 2px 6px; border-radius: 6px; background: var(--chat-tint, var(--coral-tint)); color: var(--chat-deep, var(--coral-deep)); vertical-align: 2px; }
 .replay { margin-left: auto; width: 38px; height: 38px; border-radius: 50%; border: 0; background: var(--ground2); color: var(--ink); font-size: 18px; font-weight: 900; cursor: pointer; }
 .chat-body { flex: 1; overflow: hidden; padding: 18px 16px; display: flex; flex-direction: column; gap: 10px; }
-.chat-body > :first-child { margin-top: auto; }   /* the thread sits at the bottom; what no longer fits leaves at the top */
+/* the thread starts at the top of the phone (nothing empty above it); what no longer fits leaves at the top */
 .chat-input { margin: 0 14px 14px; height: 48px; border-radius: 24px; background: var(--card); display: flex; align-items: center; padding: 0 6px 0 18px; color: var(--muted); font-size: 15px; box-shadow: inset 0 0 0 1px var(--line); }
 .chat-input .mic { margin-left: auto; width: 36px; height: 36px; border-radius: 50%; background: var(--chat-main, var(--coral)); }
 .msg { max-width: 86%; animation: pop-in .45s cubic-bezier(.25, 1.4, .4, 1) both; font-size: 15.5px; line-height: 1.45; }
@@ -945,3 +945,186 @@ html:has(.pv-detail[open]) { overflow: hidden; }
 @media (max-width: 640px) { .pv-detail { width: 100%; max-width: 100%; height: 100%; max-height: 100%; border-radius: 0; margin: 0; padding: 22px 16px 24px; } }
 @media (prefers-reduced-motion: reduce) { .pv-detail[open] { animation: none; } }
 .pv + .section { padding-top: 64px; }
+
+/* ================================================================================================================
+   The home, « less is more » (2026-11-09): one big line, one picture, one action per screen; the rest is behind a
+   link. The first screen says the value and shows the demo already answered; then privacy, the family, the price.
+   ================================================================================================================ */
+.first { max-width: 1180px; margin: 0 auto; padding: clamp(14px, 3svh, 44px) 20px 0; display: grid; gap: 18px;
+  grid-template-areas: "text" "tabs" "demo"; justify-items: center; }
+.first-text { grid-area: text; text-align: center; min-width: 0; }
+.first h1 { font-size: clamp(32px, 4.6vw, 62px); line-height: 1.04; margin: 0 0 12px; text-wrap: balance; }
+.first .lede { margin: 0 auto; font-size: clamp(16.5px, 1.6vw, 21px); text-wrap: balance; }
+/* the page's one job: get the app (the beta's page until the stores have it) */
+.first-text .pill { margin-top: 18px; height: 50px; }
+.note-mark { text-decoration: none; color: var(--muted); font-weight: 900; padding: 0 2px; }
+.first-demo { grid-area: demo; min-width: 0; width: 100%; display: grid; justify-items: center; }
+.first .vc-phone { height: auto; }
+.first .vc-screen { min-height: 0; }
+.first .vc-s-do .chat { height: clamp(430px, calc(100svh - 330px), 560px); }
+/* the examples: one quiet row, which slides sideways where it does not fit */
+.first-tabs { grid-area: tabs; margin: 0; flex-wrap: nowrap; gap: 6px; max-width: 100%; overflow-x: auto; padding: 4px 2px;
+  scrollbar-width: none; scroll-snap-type: x proximity; }
+.first-tabs::-webkit-scrollbar { display: none; }
+.first-tabs .tab { flex: none; height: 38px; padding: 0 12px 0 5px; gap: 5px; font-size: 13.5px; scroll-snap-align: start; }
+.first-tabs .tab-bip { width: 24px; height: 24px; }
+@media (min-width: 960px) {
+  .first { grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); grid-template-areas: "text demo" "tabs tabs";
+    column-gap: 56px; row-gap: 20px; align-items: center; min-height: calc(100svh - 68px); padding-bottom: 18px; }
+  .first-text { text-align: left; justify-self: start; }
+  .first .lede { margin: 0; max-width: 520px; }
+  .first-text .pill { margin-top: 26px; height: 58px; }
+  .first .vc-phone { height: clamp(460px, calc(100svh - 210px), 640px); }
+  .first .vc-screen { height: 100%; }
+  .first .vc-s-do .chat { height: 100%; }
+  .first-tabs { justify-self: center; }
+}
+
+/* a screen: its headline, one line, its picture */
+.screen { max-width: 1080px; margin: 0 auto; padding: clamp(88px, 13vw, 168px) 20px 0; text-align: center; }
+.screen-head h2 { font-size: clamp(34px, 5.4vw, 66px); line-height: 1.03; text-wrap: balance; }
+.screen-head p { margin: 18px auto 0; max-width: 640px; font-size: clamp(18px, 1.8vw, 23px); line-height: 1.4; color: var(--ink2); text-wrap: balance; }
+.more { display: inline-block; margin-top: 16px; font-size: clamp(17px, 1.6vw, 20px); font-weight: 900; color: var(--blue-deep); text-decoration: none; }
+.more:hover { text-decoration: underline; text-underline-offset: 4px; }
+.screen.pv { position: static; z-index: auto; margin: 0 auto; max-width: 1080px; padding: clamp(88px, 13vw, 168px) 20px 0; }
+.screen .pv-pic { max-width: 720px; margin: 44px auto 0; text-align: left; }
+.fam-pic { margin-top: 44px; display: grid; justify-items: center; text-align: left; }
+
+/* the plans: a name, who it is for, its price */
+.screen.pricing-section .pricing { margin-top: 40px; gap: 26px; }
+.screen .plan { text-align: center; justify-items: center; padding: 30px 20px; }
+.screen .plan[aria-checked="true"] { background: var(--card); }
+.screen .plan-price { justify-content: center; }
+.price-act { display: grid; justify-items: center; }
+.screen.v-end .v-self { margin-top: 34px; }
+.screen .self-panel { text-align: left; }
+
+/* the home's footer: one line, and the note the « * » point to */
+.foot-home { margin-top: clamp(88px, 13vw, 168px); padding: 26px 20px 34px; text-align: center; }
+.foot-line { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 22px; font-size: 14.5px; font-weight: 800; }
+.foot-line a { text-decoration: none; color: var(--ink2); }
+.foot-line a:hover { color: var(--ink); }
+.foot-note { margin: 14px auto 0; max-width: 760px; font-size: 12.5px; font-weight: 700; line-height: 1.5; color: var(--muted); }
+.screen-head h2 .note-mark { font-size: .45em; vertical-align: super; letter-spacing: 0; }
+/* privacy: one panel that holds the headline, its line and three plain facts, each on its own tinted tile */
+.pv-panel { background: var(--card); border-radius: 44px; box-shadow: var(--shadow-big);
+  padding: clamp(40px, 6vw, 76px) clamp(18px, 4vw, 56px) clamp(30px, 4vw, 46px); }
+.keys { list-style: none; margin: clamp(30px, 4vw, 48px) 0 0; padding: 0; display: grid; gap: 12px; text-align: left; }
+.keys li { display: grid; gap: 4px; align-content: start; border-radius: 28px; padding: 22px 22px 24px; background: var(--tint);
+  transition: transform .35s cubic-bezier(.3, 1.4, .5, 1); }
+.keys li:hover { transform: translateY(-4px); }
+.keys i { width: 52px; height: 52px; margin-bottom: 16px; border-radius: 17px; display: grid; place-items: center; background: var(--card);
+  color: var(--deep); box-shadow: var(--shadow); }
+.keys svg { width: 26px; height: 26px; }
+.keys b { font-size: clamp(21px, 2vw, 25px); font-weight: 900; letter-spacing: -.02em; line-height: 1.15; }
+.keys span { font-size: 16px; line-height: 1.4; color: var(--ink2); }
+.pv-panel .more { margin-top: 26px; }
+@media (min-width: 760px) { .keys { grid-template-columns: repeat(3, 1fr); gap: 14px; } .keys li { padding: 26px 26px 30px; } }
+@media (max-width: 759px) {
+  .pv-panel { border-radius: 34px; }
+  .keys li { grid-template-columns: 52px 1fr; column-gap: 16px; align-items: center; padding: 16px 18px; }
+  .keys i { grid-row: span 2; margin: 0; }
+  .keys b { align-self: end; } .keys span { align-self: start; }
+}
+/* the family's phone: its three examples above it, the chat already answered */
+.fam-tabs { margin: 34px 0 0; justify-content: center; gap: 8px; }
+.fam-tabs .tab { height: 44px; padding: 0 16px 0 6px; font-size: 15px; }
+.fam-tabs .tab-bip { width: 30px; height: 30px; }
+.fam-demo { margin-top: 26px; display: grid; justify-items: center; text-align: left; }
+.fam .vc-phone { height: auto; }
+.fam .vc-screen { min-height: 0; }
+.fam .vc-s-do .chat { height: clamp(520px, 80svh, 680px); }
+/* in a phone on the home, a page the agent made is shorter, so the reply after it stays in view */
+.first .frame, .fam .frame { height: 250px; }
+/* the thread scrolls like a chat (nothing is taken out of it), without a scrollbar drawn in the phone */
+.chat-body { overflow-y: auto; scrollbar-width: none; }
+.chat-body::-webkit-scrollbar { display: none; }
+.chat-body > * { flex-shrink: 0; }
+/* the living room is the first screen again: every Bip's task is written beside it at once on a computer (one
+   glance), in turn on a phone, where only two are in view */
+.hero .note-mark { color: rgba(255, 255, 255, .72); }
+@media (min-width: 900px) {
+  .hero .salon-stage.live .salon-tag { opacity: 1; transform: translate(-50%, calc(-100% - 10px)) scale(1); }
+}
+/* the demo, now a screen of its own under it */
+.first { padding-top: clamp(64px, 9vw, 120px); }
+.first h2 { font-size: clamp(32px, 4.6vw, 62px); line-height: 1.04; margin: 0; text-wrap: balance; }
+
+/* ---- The first screen, one simple picture (2026-11-09): the promise on the left, four Bips on the right, each with
+   the task it just finished above it; an evening ground, nothing else. ---- */
+.hero.glance { display: grid; grid-template-columns: minmax(0, .82fr) minmax(0, 1.18fr); align-items: center; column-gap: clamp(24px, 4vw, 72px);
+  padding: var(--top-h, 67px) max(24px, 5vw) var(--edge);
+  background: radial-gradient(60% 55% at 76% 68%, #43305C 0%, rgba(67, 48, 92, 0) 70%), linear-gradient(180deg, #14121F, #1D1830 60%, #251B33); }
+.glance-text { position: relative; z-index: 8; max-width: 600px; }
+.hero.glance h1 { font-size: clamp(36px, 4.5vw, 70px); line-height: 1.03; margin-bottom: 18px; }
+.hero.glance .lede { font-size: clamp(17px, 1.5vw, 21px); max-width: 480px; }
+.hero.glance .cta-row { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 12px; }
+.glance-art { position: relative; z-index: 2; display: flex; align-items: flex-end; justify-content: center; gap: 5%;
+  height: min(64svh, 580px); padding: 0 0 5%; }
+/* the ground they stand on: a soft pool of light */
+.glance-art::before { content: ""; position: absolute; left: 2%; right: 2%; bottom: 0; height: 22%; border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(255, 214, 170, .30), rgba(255, 214, 170, 0)); }
+.g-bip { position: relative; margin: 0; flex: 0 1 auto; display: grid; justify-items: center; animation: g-bob 5s ease-in-out infinite; }
+.g-bip img { width: 100%; height: auto; filter: drop-shadow(0 18px 18px rgba(0, 0, 0, .38)); }
+.g-dinners { width: 21.5%; }
+.g-budget { width: 18.5%; animation-delay: -1.2s; }
+.g-wellness { width: 16.5%; animation-delay: -2.6s; }
+.g-trips { width: 24%; animation-delay: -3.8s; }
+.g-bip figcaption { width: max-content; max-width: 150%; margin-bottom: 14px; padding: 9px 13px 10px; border-radius: 14px; background: #FFFFFF; color: #1D1F24;
+  font-size: clamp(12px, 1vw, 14.5px); line-height: 1.3; text-align: left; box-shadow: 0 12px 28px -14px rgba(0, 0, 0, .7); position: relative; }
+.g-bip figcaption::after { content: ""; position: absolute; left: 50%; bottom: -5px; width: 12px; height: 12px; margin-left: -6px; background: #FFFFFF; transform: rotate(45deg); border-radius: 2px; }
+.g-bip figcaption b { display: flex; align-items: center; gap: 7px; font-weight: 900; }
+.g-bip figcaption b i { width: 9px; height: 9px; border-radius: 2px; background: var(--c); }
+.g-bip figcaption span { display: block; color: #50555F; font-weight: 700; }
+/* the labels at two heights, so neighbours never touch */
+.g-budget figcaption, .g-trips figcaption { margin-bottom: 58px; }
+@keyframes g-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+
+@media (max-aspect-ratio: 1 / 1), (max-width: 899px) {
+  /* as tall as what it holds: no empty stretch between the buttons and the Bips; the next screen shows under it */
+  .hero.glance { display: flex; flex-direction: column; align-items: stretch; height: auto; min-height: 0;
+    padding: calc(var(--top-h, 67px) + clamp(18px, 5svh, 44px)) 20px var(--edge); }
+  .glance-text { max-width: 620px; }
+  .glance-art { flex: 0 0 auto; height: auto; margin-top: 34px; }
+  /* a phone: the four Bips still in one row, each in its own column with its whole label right above it (a narrow
+     card that wraps, its top edge in the Bip's colour, its pointer on the Bip) */
+  .glance-art { display: flex; align-items: flex-end; justify-content: center; gap: 6px; min-height: 0; padding: 0 0 5%; }
+  .g-bip, .g-dinners, .g-budget, .g-wellness, .g-trips { flex: 1 1 0; width: auto; min-width: 0; }
+  .g-bip img { width: 100%; max-width: 92px; height: auto; }
+  .g-bip figcaption, .g-budget figcaption, .g-trips figcaption { width: 100%; max-width: none; margin-bottom: 11px; padding: 7px 7px 8px;
+    border-top: 3px solid var(--c); border-radius: 12px; font-size: 11.5px; line-height: 1.25; overflow-wrap: anywhere; hyphens: auto; }
+  .g-bip figcaption b { display: block; margin-bottom: 2px; }
+  .g-bip figcaption b i { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .g-bip, .g-bip img { animation: none !important; } }
+
+/* Home, barely drawn: a sofa behind the Bips, a window with the moon, a hanging lamp; all in the evening's own
+   shades, a little lighter than the wall, so the labels stay the only thing to read. */
+.g-bip { z-index: 2; }
+/* the sofa (drawn in the page, partials/glance.html): its back and cushions show between and above the Bips, who sit
+   on its seat between its two arms; its front and legs show under them */
+.g-sofa { position: absolute; z-index: 1; left: 0; bottom: 1%; width: 100%; height: auto; overflow: visible;
+  filter: drop-shadow(0 22px 22px rgba(0, 0, 0, .45)); }
+.s-leg { fill: #2A2140; } .s-back { fill: #3E3259; } .s-cush { fill: #4A3D69; } .s-seat { fill: #58497B; }
+.s-arm { fill: #645489; } .s-line { stroke: #46396A; stroke-width: 3; stroke-linecap: round; fill: none; }
+/* the Bips, a little smaller, on the seat and inside the arms */
+.hero.glance .glance-art { padding: 0 14% 14.2%; }
+.glance-art::before { display: none; }
+.g-window { position: absolute; z-index: 0; right: 9%; top: 3%; width: 21%; aspect-ratio: .86; border-radius: 12px; border: 5px solid #3B2F55;
+  background:
+    radial-gradient(circle at 68% 30%, #F6E7C4 0 9%, rgba(246, 231, 196, .22) 10% 17%, rgba(246, 231, 196, 0) 18%),
+    radial-gradient(circle at 22% 22%, #D9D3EE 0 1.6%, transparent 2%), radial-gradient(circle at 40% 62%, #D9D3EE 0 1.3%, transparent 1.8%),
+    radial-gradient(circle at 80% 74%, #D9D3EE 0 1.5%, transparent 2%),
+    linear-gradient(#3B2F55, #3B2F55) 50% 0 / 5px 100% no-repeat, linear-gradient(#3B2F55, #3B2F55) 0 50% / 100% 5px no-repeat,
+    #1A1730; }
+.g-lamp { position: absolute; z-index: 0; left: 44%; top: 0; width: 2px; height: 9%; background: #4B3D69; }
+.g-lamp::before { content: ""; position: absolute; left: 50%; top: 100%; width: 74px; height: 34px; margin-left: -37px;
+  clip-path: polygon(22% 0, 78% 0, 100% 100%, 0 100%); background: #E9B872; }
+.g-lamp::after { content: ""; position: absolute; left: 50%; top: calc(100% + 30px); width: 420px; height: 300px; margin-left: -210px; pointer-events: none;
+  background: radial-gradient(50% 60% at 50% 0, rgba(255, 208, 150, .22), rgba(255, 208, 150, 0) 70%); }
+@media (max-aspect-ratio: 1 / 1), (max-width: 899px) {
+  .g-window, .g-lamp { display: none; }   /* the labels take that room on a phone: the sofa alone says home */
+  /* wider than the row, so its arms stand outside the Bips, who keep their width for their labels */
+  .g-sofa { left: -5%; width: 110%; bottom: 3%; }
+  .hero.glance .glance-art { padding: 0 3% 16.5%; }
+}

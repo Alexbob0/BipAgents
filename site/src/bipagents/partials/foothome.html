@@ -1,0 +1,15 @@
+</main>
+
+<!-- The home's footer, one line: the publisher (its site has the company's details, the legal texts and support),
+     and the note the two « * » point to. The other pages keep the whole footer (foot.html). -->
+<footer class="foot foot-home">
+  <p class="foot-line"><a href="https://kerfystudio.com{{legalprefix}}/">© 2026 Kerfy Studio <span aria-hidden="true">›</span></a>
+    <a href="https://kerfystudio.com{{legalprefix}}/privacy/">{{foot.privacy}}</a>
+    <a href="https://kerfystudio.com{{legalprefix}}/terms/">{{foot.terms}}</a></p>
+  <p class="foot-note" id="note">* {{compare.note}}</p>
+</footer>
+
+<script type="application/json" id="site-data">{{data}}</script>
+<script type="module" src="/assets/site.js?v={{version}}"></script>
+</body>
+</html>

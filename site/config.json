@@ -200,5 +200,17 @@
         "store": null
       }
     }
+  },
+  "compare": {
+    "_readme": "Another offer's price the home compares with (its hero, its pricing headline and the footnote). One place, with where it was read and when; check it again before each publication. A comparison to remove: take the lines out of the i18n files (hero.sub, pricing.headline, compare.note).",
+    "grokbot": {
+      "name": "Grok Bot Premium",
+      "price": {
+        "USD": 30
+      },
+      "per": "month, per person",
+      "source": "https://x.ai/bot",
+      "date": "2026-11-09"
+    }
   }
 }

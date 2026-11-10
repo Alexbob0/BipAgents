@@ -311,8 +311,31 @@ def demo_page(demo: Dict[str, Any], name: str, lang: str) -> str:
     return re.sub(r"\{\{(\w+)\}\}", lambda m: values.get(m.group(1), m.group(0)), page["template"])
 
 
-DEMO_TABS = (("book_table", "daily"), ("walk", "daily"), ("runs_weeks", "coach"), ("heating", "home"),
-             ("bins", "home"), ("subscriptions", "budget"))
+# The demo's examples, in the order of their buttons: the chores that come back every week, and the agent that takes
+# each. Most are the apps' own (demo.json); « inbox », « papers », « price_watch » are the site's
+# (src/bipagents/demo-extra.json, same shape).
+DEMO_TABS = (("inbox", "daily"), ("dentist", "daily"), ("weekend", "budget"), ("subscriptions", "budget"),
+             ("dinner", "home"), ("papers", "home"), ("price_watch", "budget"), ("weekend_lisbon", "lisbon"),
+             ("sleep_week", "coach"), ("podcast", "daily"))
+# The family's phone on the home: what several people need together, answered by the family's agent (« family_money »
+# is the site's own example too).
+FAMILY_TABS = (("family_week", "family"), ("family_money", "family"), ("groceries_week", "family"),
+               ("party_parents", "parents"))   # an agent shared with other parents, who follow from their link
+
+
+def pages_made(steps: List[Dict[str, Any]]) -> List[str]:
+    """The pages a scenario's agent makes (its `page` steps, all the way down)."""
+    return [name for step in steps
+            for name in ([step["page"]] if "page" in step else []) + pages_made(step.get("then", []))]
+
+
+def demo_tabs(agents: Dict[str, Any], tabs: Any = None, chat: str = "chat", key: str = "demo.tab") -> str:
+    """The examples' buttons ({{demotabs}}), one row: each with its agent's Bip and its short name (demo.tab1…,
+    filled with the page's texts)."""
+    return "\n".join(
+        f'<button class="tab{" active" if i == 0 else ""}" role="tab" aria-selected="{"true" if i == 0 else "false"}" '
+        f'aria-controls="{chat}" data-scenario="{scenario}"><span class="tab-bip" data-bip-static="{agents[agent]["category"]}">'
+        f'</span>{{{{{key}{i + 1}}}}}</button>' for i, (scenario, agent) in enumerate(tabs or DEMO_TABS))
 # The pages: (name, template, path under the language's root). The home sells, and its prices hold the self-install
 # too (« on my computer », #install); the demo and every question have their own pages, sharing the header and the
 # footer (src/bipagents/partials/). /install/ only sends to the home's #install (old links keep working).
@@ -356,6 +379,12 @@ def bipagents(version: str) -> Path:
                                              encoding="utf-8")
 
     demo = json.loads((REPO / "App" / "Resources" / "Demo" / "demo.json").read_text(encoding="utf-8"))
+    # the site's own examples, beside the apps' (which stay as they are)
+    extra = json.loads((src / "demo-extra.json").read_text(encoding="utf-8"))
+    demo["scenarios"].update(extra["scenarios"])
+    demo["cards"].update(extra.get("cards", {}))
+    demo["agents"] = demo["agents"] + extra.get("agents", [])
+    made = sorted({name for scenario, _ in DEMO_TABS + FAMILY_TABS for name in pages_made(demo["scenarios"][scenario]["steps"])} | {"runs"})
     map_file = walk_map(demo, assets / "showcase" / "walk-map.jpg")
     agents = {a["id"]: a for a in demo["agents"]}
     partials = {p.stem: p.read_text(encoding="utf-8") for p in (src / "partials").glob("*.html")}
@@ -371,7 +400,7 @@ def bipagents(version: str) -> Path:
         for extra in sorted((src / "i18n").glob(f"*.{lang}.json")):
             texts[lang] = merged(texts[lang], json.loads(extra.read_text(encoding="utf-8")))
     paths = {lang: "/" if lang == "en" else f"/{lang}/" for lang in LANGS}
-    prices, company = cfg["prices"], cfg["company"]
+    prices, company, grok = cfg["prices"], cfg["company"], cfg["compare"]["grokbot"]
     # Built in the default currency (the one without countries); the script switches to the visitor's.
     currencies = prices["currencies"]
     default_currency = next(code for code, c in currencies.items() if not c.get("countries"))
@@ -389,8 +418,9 @@ def bipagents(version: str) -> Path:
     (assets / "pages").mkdir()
     for lang in LANGS:
         t = texts[lang]
-        # A page the demo's agent makes (the page kit's real output), shown in a frame in the chat.
-        (assets / "pages" / f"runs-{lang}.html").write_text(demo_page(demo, "runs", lang), encoding="utf-8")
+        # The pages the demo's agents make (the page kit's real output), shown in a frame in the chat.
+        for name in made:
+            (assets / "pages" / f"{name}-{lang}.html").write_text(demo_page(demo, name, lang), encoding="utf-8")
         values = flatten({k: v for k, v in t.items() if k != "lines"})
         for where in ("web", "store"):
             for period in ("month", "year"):
@@ -422,6 +452,20 @@ def bipagents(version: str) -> Path:
             "demohref": f"{paths[lang]}demo/", "faqhref": f"{paths[lang]}faq/", "installhref": f"{paths[lang]}#install",
             "legalprefix": "" if lang == "fr" else f"/{lang}",
             "storebadges": badges,
+            "demotabs": demo_tabs(agents),
+            "familytabs": demo_tabs(agents, FAMILY_TABS, "chat-family", "family.tab"),
+            # The comparison the home makes (site/config.json « compare »): the other offer's price, where it was read
+            # and when, written here once so no price is typed in a page; the Family price follows the visitor's
+            # currency (site.js).
+            "note.famille": f'<span data-famille-month>{money(base["web"]["month"]["famille"], lang)}</span>',
+            "note.grokbot": (f'${grok["price"]["USD"]:g}' if lang == "en" else f'{grok["price"]["USD"]:g} $'),
+            "note.source": html.escape(re.sub(r"^https?://", "", grok["source"])), "note.date": html.escape(grok["date"]),
+            # The home's one action under the plans: the checkout once it is open, the beta until then.
+            "homebuy": (f'<a class="pill pill-buy" id="buy" href="{html.escape(default_url)}" rel="noopener">'
+                        f'<span class="buy-label">{html.escape(t["pricing"]["cta"])}</span><span aria-hidden="true">→</span></a>'
+                        if default_url else
+                        f'<a class="pill pill-buy" href="{paths[lang]}beta/">{html.escape(t["nav"]["cta"])} '
+                        f'<span aria-hidden="true">→</span></a>'),
             "betahref": f"{paths[lang]}beta/",
             "grokbothref": f"{paths[lang]}grok-bot/",
             "statushref": f"{paths[lang]}status/",
@@ -447,7 +491,7 @@ def bipagents(version: str) -> Path:
                   "currencies": list(currencies)}
         tool_labels = json.loads((SRC / "bipagents" / "tool-labels.json").read_text())
         scenarios = {}
-        for scenario, agent in DEMO_TABS:
+        for scenario, agent in DEMO_TABS + FAMILY_TABS:
             s = localized(demo["scenarios"][scenario], lang)
             scenarios[scenario] = {"agent": localized(agents[agent]["name"], lang), "category": agents[agent]["category"],
                                    "prompt": s["prompt"], "steps": s["steps"], "elapsed": s.get("elapsed", 0)}
@@ -471,8 +515,11 @@ def bipagents(version: str) -> Path:
                                "thinking": tool_labels["text"][lang]["thinking"],
                                "topics": tool_labels["text"][lang]["topics"],
                                "generic": tool_labels["text"][lang]["generic"], "lexicon": tool_labels["lexicon"]},
-                     "pages": {"runs": {"src": f"/assets/pages/runs-{lang}.html",
-                                        "title": localized(demo["pages"]["runs"]["values"]["title"], lang)},
+                     # the friends' votes of a shared agent (demo.json's cards)
+                     "cards": {k: localized(c, lang) for k, c in demo["cards"].items() if c.get("type") == "vote"},
+                     "pages": {**{name: {"src": f"/assets/pages/{name}-{lang}.html",
+                                         "title": localized(demo["pages"][name]["values"]["title"], lang)}
+                                  for name in made},
                                "walk": {"src": f"/assets/showcase/{map_file}", "title": walk["title"], "subtitle": walk["subtitle"],
                                         "alt": walk["alt"], "tip": walk["tip"], "source": walk["source"],
                                         "stops": [{"x": float(x), "y": float(y), "color": c, "name": walk[k]}

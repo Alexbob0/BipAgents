@@ -4,8 +4,8 @@
     "name": "Français"
   },
   "meta": {
-    "title": "BipAgents — Tes affaires restent tes affaires.",
-    "description": "BipAgents, ce sont tes propres agents IA, les Bips : privés et sécurisés, en Europe ou chez toi. Ils réservent, trient tes mails, tiennent ton agenda et ton Carnet, et te demandent avant d’agir. Sans pub ni pistage. Construit sur Hermes Agent."
+    "title": "BipAgents — Des agents personnels qui ne partagent jamais tes données.",
+    "description": "Des agents IA personnels pour toute la famille : privés, dans ton propre espace en Europe ou chez toi, et moins chers qu’une seule place ailleurs. Construit sur Hermes Agent."
   },
   "a11y": {
     "skip": "Aller au contenu",
@@ -19,18 +19,20 @@
     "pricing": "Prix",
     "faq": "Questions",
     "cta": "Rejoindre la bêta",
-    "ctaShort": "La bêta"
+    "ctaShort": "La bêta",
+    "family": "Famille"
   },
   "hero": {
-    "slogan": "Tes affaires restent tes affaires.",
-    "sub": "Tes Bips réservent, trient tes mails et tiennent ton Carnet, dans ton propre espace en Europe.",
+    "slogan": "Des agents personnels qui ne partagent jamais tes données.",
+    "sub": "Pour toute la famille, pour moins cher qu’une seule personne sur Grok Bot.",
     "eu": "Serveurs dans l’UE, ou chez toi",
     "badge": "Construit sur Hermes Agent",
     "proof2": "<b>Ton accord</b> avant de payer ou d’envoyer",
     "cta": "Choisir ma formule",
     "watch": "Voir la démo",
     "price": "Bêta gratuite sur iPhone et Android · places limitées · sans carte bancaire",
-    "beta": "Bêta gratuite"
+    "beta": "Bêta gratuite",
+    "get": "Obtenir l’app"
   },
   "salon": {
     "alt": "Un salon douillet, le soir : sur le canapé, un téléphone appelle Pasta Mia ; sur la table basse, une tablette montre 11,99 € par mois d’abonnement en moins ; près de la fenêtre, un ordinateur avec des vols et un hôtel, et un chevalet avec le bilan bien-être de la semaine. Quatre Bips s’en occupent.",
@@ -74,12 +76,6 @@
     "title": "Tu demandes. Il s’en occupe. Tu décides.",
     "sub": "C’est la démo de l’app, telle quelle : ton agent réfléchit, utilise ses outils, glisse une carte ou une mini-app dans sa réponse, et attend ton accord avant de payer ou d’envoyer.",
     "tabs": "Scénarios de la démo",
-    "tab1": "Réserver une table",
-    "tab2": "Une balade",
-    "tab3": "Mes sorties",
-    "tab4": "Il fait froid",
-    "tab5": "Un rappel",
-    "tab6": "Mes abonnements",
     "point1": "Chaque étape visible",
     "point2": "Des cartes et des mini-apps dans ses réponses",
     "point3": "Ton accord avant de payer ou d’envoyer",
@@ -89,7 +85,17 @@
     "placeholder": "Message…",
     "open": "Ouvrir",
     "ctaTitle": "Tes Bips, pour de vrai.",
-    "work": "Détail du travail"
+    "work": "Détail du travail",
+    "tab1": "Mails",
+    "tab2": "Rendez-vous",
+    "tab3": "Mon budget",
+    "tab4": "Abonnements",
+    "tab5": "Dîner",
+    "tab6": "Papiers",
+    "tab7": "Meilleur prix",
+    "tab8": "Voyages",
+    "tab9": "Sommeil",
+    "tab10": "Mon matin"
   },
   "ai": "IA",
   "control": {
@@ -120,7 +126,14 @@
     "f4": "<b>Tout est à toi</b> : tu pars avec quand tu veux",
     "detail": "Voir le détail",
     "limitTitle": "Ce que nous ne promettons pas",
-    "detailTitle": "Le détail, sans détour"
+    "detailTitle": "Le détail, sans détour",
+    "line": "Tes agents vivent dans ton propre espace, en Europe ou chez toi.",
+    "k1t": "Pas lu par nous",
+    "k1": "Aucune IA entraînée dessus.",
+    "k2t": "Pas de pub",
+    "k2": "Pas de pistage, pas de distraction.",
+    "k3t": "Ton accord",
+    "k3": "Avant de payer ou d’envoyer quoi que ce soit."
   },
   "pricing": {
     "kicker": "Prix",
@@ -216,7 +229,9 @@
       "self3": "Tu as déjà Hermes Agent ? La même commande y branche l’app",
       "selfCta": "Voir comment l’installer",
       "plansTitle": "Les formules Tout compris"
-    }
+    },
+    "headline": "Toute ta famille pour moins cher qu’une place Grok Bot.",
+    "line": "Gratuit pendant la bêta. Ensuite une semaine offerte, et tu arrêtes quand tu veux."
   },
   "install": {
     "title": "Ton propre ordinateur ? L’app est gratuite.",
@@ -439,7 +454,7 @@
     }
   },
   "family": {
-    "title": "Ensemble, vos agents font équipe.",
+    "title": "À chacun ses agents.",
     "sub": "Chacun son espace privé ; on ne partage que ce qu’on veut.",
     "s1t": "Chacun sa place",
     "s1": "Son espace, ses agents, un crédit d’IA commun",
@@ -460,7 +475,13 @@
       "no": "Non merci",
       "at": "Chez Sam",
       "notif": "Camille : L’école a appelé : Léa a de la fièvre, je vais la chercher."
-    }
+    },
+    "line": "Partages-en un avec ta famille, tes amis ou d’autres parents, seulement si tu le choisis. Ils suivent gratuitement.",
+    "tab1": "La semaine",
+    "tab2": "L’argent",
+    "tab3": "Les courses",
+    "tabs": "Les exemples de la famille",
+    "tab4": "Les autres parents"
   },
   "home": {
     "tour": "Fais le tour.",
@@ -470,5 +491,16 @@
     "close": "Fermer",
     "dialog": "La démo de l’app",
     "self": "Ou sur ton ordinateur :"
+  },
+  "compare": {
+    "note": "Formule Famille : {{note.famille}} par mois pour 6 personnes au plus. Grok Bot Premium : {{note.grokbot}} par mois et par personne aux États-Unis ({{note.source}}, lu le {{note.date}}). Les abonnements ouvrent après la bêta.",
+    "noteLabel": "Voir la note"
+  },
+  "glance": {
+    "alt": "Quatre Bips, chacun avec la tâche qu’il vient de finir : une table réservée, un abonnement résilié, un footing prévu, des vols moins chers.",
+    "dinners": "Table réservée à 20 h 30",
+    "budget": "11,99 € gagnés par mois",
+    "wellness": "Footing léger prévu",
+    "trips": "Vols 140 € moins chers"
   }
 }

@@ -4,8 +4,8 @@
     "name": "English"
   },
   "meta": {
-    "title": "BipAgents — Your business stays your business.",
-    "description": "BipAgents gives you your own AI agents, the Bips: private and secure, in Europe or at home. They book, sort your email, keep your calendar and your Notebook, and ask before they act. No ads, no tracking. Built on Hermes Agent."
+    "title": "BipAgents — Personal agents that never share your data.",
+    "description": "Personal AI agents for everyone in the family: private, in your own space in Europe or at home, and cheaper than one seat elsewhere. Built on Hermes Agent."
   },
   "a11y": {
     "skip": "Skip to content",
@@ -19,18 +19,20 @@
     "pricing": "Pricing",
     "faq": "Questions",
     "cta": "Join the beta",
-    "ctaShort": "The beta"
+    "ctaShort": "The beta",
+    "family": "Family"
   },
   "hero": {
-    "slogan": "Your business stays your business.",
-    "sub": "Your Bips make bookings, sort your email and keep your Notebook, in your own space in Europe.",
+    "slogan": "Personal agents that never share your data.",
+    "sub": "For everyone in the family, for less than one person on Grok Bot.",
     "eu": "Servers in the EU, or at home",
     "badge": "Built on Hermes Agent",
     "proof2": "<b>Your OK</b> before paying or sending",
     "cta": "Choose my plan",
     "watch": "See the demo",
     "price": "Free beta on iPhone and Android · limited places · no card needed",
-    "beta": "Free beta"
+    "beta": "Free beta",
+    "get": "Get the app"
   },
   "salon": {
     "alt": "A cosy living room in the evening: on the sofa, a phone calls Pasta Mia; on the coffee table, a tablet shows €11.99 a month of subscriptions cut; by the window, a laptop with flights and a hotel, and an easel with the week’s wellness notes. Four Bips are taking care of it all.",
@@ -74,12 +76,6 @@
     "title": "You ask. It handles it. You decide.",
     "sub": "This is the app’s own demo, as is: your agent thinks, uses its tools, drops a map or a mini app into its reply, and waits for your OK before paying or sending.",
     "tabs": "Demo scenarios",
-    "tab1": "Book a table",
-    "tab2": "A walk",
-    "tab3": "My runs",
-    "tab4": "It’s cold",
-    "tab5": "A reminder",
-    "tab6": "My subscriptions",
     "point1": "Every step in plain sight",
     "point2": "Maps and mini apps right in its replies",
     "point3": "Your OK before paying or sending",
@@ -89,7 +85,17 @@
     "placeholder": "Message…",
     "open": "Open",
     "ctaTitle": "Your Bips, for real.",
-    "work": "Work details"
+    "work": "Work details",
+    "tab1": "Email",
+    "tab2": "Appointments",
+    "tab3": "My budget",
+    "tab4": "Subscriptions",
+    "tab5": "Dinner",
+    "tab6": "Papers",
+    "tab7": "Best price",
+    "tab8": "Trips",
+    "tab9": "Sleep",
+    "tab10": "My morning"
   },
   "ai": "AI",
   "control": {
@@ -120,7 +126,14 @@
     "f4": "<b>It’s all yours</b>: take it with you whenever you like",
     "detail": "See the details",
     "limitTitle": "What we don’t promise",
-    "detailTitle": "The details, plainly"
+    "detailTitle": "The details, plainly",
+    "line": "Your agents live in your own space, in Europe or at home.",
+    "k1t": "Not read by us",
+    "k1": "No AI is trained on it.",
+    "k2t": "No ads",
+    "k2": "No tracking, no distraction.",
+    "k3t": "Your permission",
+    "k3": "Before paying or sending anything."
   },
   "pricing": {
     "kicker": "Pricing",
@@ -216,7 +229,9 @@
       "self3": "Already have Hermes Agent? The same command plugs the app into it",
       "selfCta": "See how to install it",
       "plansTitle": "The All included plans"
-    }
+    },
+    "headline": "Your whole family for less than one Grok Bot seat.",
+    "line": "Free during the beta. Then a free week to start, and cancel anytime."
   },
   "install": {
     "title": "Your own computer? The app is free.",
@@ -439,7 +454,7 @@
     }
   },
   "family": {
-    "title": "Together, your agents make a team.",
+    "title": "Everyone gets their own agents.",
     "sub": "Everyone has their own private space; you share only what you want.",
     "s1t": "A place for everyone",
     "s1": "Own space, own agents, one shared AI credit",
@@ -460,7 +475,13 @@
       "no": "No thanks",
       "at": "At Sam’s",
       "notif": "Camille: The school called: Léa has a fever, I’m picking her up."
-    }
+    },
+    "line": "Share one with your family, your friends or other parents, only when you choose. They follow for free.",
+    "tab1": "The week",
+    "tab2": "The money",
+    "tab3": "The shopping",
+    "tabs": "The family’s examples",
+    "tab4": "Other parents"
   },
   "home": {
     "tour": "Take the tour.",
@@ -470,5 +491,16 @@
     "close": "Close",
     "dialog": "The app’s demo",
     "self": "Or on your computer:"
+  },
+  "compare": {
+    "note": "Family plan: {{note.famille}} a month for up to 6 people. Grok Bot Premium: {{note.grokbot}} a month per person in the US ({{note.source}}, read on {{note.date}}). Subscriptions open after the beta.",
+    "noteLabel": "See the note"
+  },
+  "glance": {
+    "alt": "Four Bips, each with the task it just finished: a table booked, a subscription cancelled, a run planned, cheaper flights found.",
+    "dinners": "Table booked for 8:30",
+    "budget": "€11.99 a month saved",
+    "wellness": "Easy run planned",
+    "trips": "Flights €140 cheaper"
   }
 }
