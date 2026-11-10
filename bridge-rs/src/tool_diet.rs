@@ -723,7 +723,7 @@ mod tests {
 
     #[test]
     fn deferred_not_removed_and_bridge_tools_out_of_the_search() {
-        let tools = names(&["notebook_search", "calendar_list", "create_podcast", "weather"]);
+        let tools = names(&["notebook_search", "calendar_list", "create_audio", "create_podcast", "weather"]);
         let d = diet("daily", &tools, false, false, false);
         assert_eq!(d.defer[0], MARK);
         for name in HERMES_DEFAULT_DEFERRED.iter().chain(ALWAYS_DEFERRED.iter()).chain(VAULT_TOOLS.iter()) {
@@ -737,7 +737,9 @@ mod tests {
         assert_eq!(d.defer.contains(&"!mcp__bipagents__notebook_search".to_string()), DIRECT_BRIDGE_TOOLS);
         assert_eq!(d.defer.contains(&"!mcp__bipagents__weather".to_string()), DIRECT_BRIDGE_TOOLS);
         // a tool it doesn't have, or one its kind doesn't use much, stays behind the search
-        assert!(!d.defer.iter().any(|n| n.ends_with("reminders_add") || n.ends_with("create_podcast")));
+        assert!(!d.defer.iter().any(|n| n.ends_with("reminders_add") || n.ends_with("create_audio")));
+        // but the podcast is in view for every kind (10/11: its direct call ended on create_page)
+        assert!(d.defer.contains(&"!mcp__bipagents__create_podcast".to_string()));
         // an agent holding a vault item, or writing skills, keeps those tools
         let d = diet("daily", &tools, false, true, true);
         assert!(!d.defer.iter().any(|n| n.starts_with("browser_vault") || n == "skill_manage"));
