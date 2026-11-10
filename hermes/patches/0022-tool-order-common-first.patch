@@ -10,17 +10,17 @@ Bip-Patch: 0022-tool-order-common-first
 ---
  model_tools.py                 |  5 +++-
  tests/tools/test_tool_order.py | 44 ++++++++++++++++++++++++++++
- tools/mcp_tool_agent.py        | 17 ++++++++---
+ tools/mcp_tool_agent.py        | 25 ++++++++++------
  tools/tool_order.py            | 52 ++++++++++++++++++++++++++++++++++
- 4 files changed, 113 insertions(+), 5 deletions(-)
+ 4 files changed, 117 insertions(+), 9 deletions(-)
  create mode 100644 tests/tools/test_tool_order.py
  create mode 100644 tools/tool_order.py
 
 diff --git a/model_tools.py b/model_tools.py
-index 1a4d469891223591757aa8c664c8cb073ab62114..e65498144011ecd1b6a58a3f755b62d5defa25c4 100644
+index d45d4ea824d7da30cbd87736a069f0197851cd81..43f09e42bb219f1f5d7ac0fb5d21d0f4e435cf78 100644
 --- a/model_tools.py
 +++ b/model_tools.py
-@@ -553,7 +553,10 @@ def _compute_tool_definitions(enabled_toolsets: Optional[list[str]] = None, disa
+@@ -575,7 +575,10 @@ def _compute_tool_definitions(enabled_toolsets: Optional[list[str]] = None, disa
      except Exception as e:  # pragma: no cover — never break tool loading
          logger.warning("Tool search assembly skipped: %s", e)
  
@@ -83,51 +83,59 @@ index 0000000000000000000000000000000000000000..e53b17eb696407fbfed251b655cd5fb5
 +    monkeypatch.setattr(tool_order, "configured_first", lambda: [])
 +    assert _names(ordered(_defs("b", "a", "c"))) == ["a", "b", "c"]
 diff --git a/tools/mcp_tool_agent.py b/tools/mcp_tool_agent.py
-index fe0e6f40f1f10dd00f50439ef08494e7b9d11bda..81b99992964e56a18066393dc0dce634a3a85021 100644
+index 16d95ff21d336282c5818b3a66874e1a4a44a24e..7c5ca86107d2423e060fe7c65cf02c47a2cacad6 100644
 --- a/tools/mcp_tool_agent.py
 +++ b/tools/mcp_tool_agent.py
-@@ -238,7 +238,8 @@ def restore_agent_tool_prefix(agent, saved) -> bool:
+@@ -330,10 +330,10 @@ def restore_agent_tool_prefix(agent, saved) -> bool:
      catalog, per-surface dynamic parameters, the ``-q`` footprint): tools[] heads every request.
      Pinned by other code (``hermes update``, a legacy name list) a tool's contract may have moved,
      so each takes its current definition. A pinned tool this process did not build is carried
--    only while its toolset config allows it here; deregistered tools drop, new tools append."""
+-    only while its toolset config allows it here; deregistered tools drop, new tools append. In the
+-    process that wrote the pin a pinned Tool Search bridge tool keeps its slot (it is synthesized, never
+-    registered, exactly as the between-turns refresh keeps it) and a tool new only because its ``check_fn``
+-    flipped stays out (``_pin_restore_held``)."""
 +    only while its toolset config allows it here; deregistered tools drop, new tools take their canonical place
-+    (tools.tool_order, BipAgents 0022)."""
++    (tools.tool_order, BipAgents 0022). In the process that wrote the pin a pinned Tool Search bridge tool keeps its
++    slot (it is synthesized, never registered, exactly as the between-turns refresh keeps it) and a tool new only
++    because its ``check_fn`` flipped stays out (``_pin_restore_held``)."""
      pinned, same_code, pinned_defs = _pinned_tool_defs(saved, {_def_name(t): t for t in _agent_tool_defs(agent)})
      if not pinned:
          return False
-@@ -250,7 +251,11 @@ def restore_agent_tool_prefix(agent, saved) -> bool:
-     carried &= _config_permitted_names(agent) if carried else set()
+@@ -349,7 +349,11 @@ def restore_agent_tool_prefix(agent, saved) -> bool:
+         carried |= {_def_name(d) for d in pinned_defs if _def_name(d) in BRIDGE_TOOL_NAMES}
      merged = [d for d in pinned_defs if _def_name(d) in fresh or _def_name(d) in carried]
      pinned_names = {_def_name(d) for d in merged}
--    merged.extend(t for t in fresh_defs if _def_name(t) not in pinned_names)
+-    merged.extend(t for t in fresh_defs if _def_name(t) not in pinned_names and _def_name(t) not in held)
 +    from tools.tool_order import configured_first, insert_in_order
 +    first = configured_first()
 +    for t in fresh_defs:
-+        if _def_name(t) not in pinned_names:
++        if _def_name(t) not in pinned_names and _def_name(t) not in held:
 +            insert_in_order(merged, t, first)  # at its canonical place, never at the tail (BipAgents 0022)
      merged = _drop_gated_carried_tools(merged, carried)
      merged_names = {_def_name(t) for t in merged}
      _reinject_authorized_dynamic_tools(agent, merged, merged_names)
-@@ -269,7 +274,8 @@ def _merge_preserving_prefix(current_defs: list, new_defs: list, registered_name
+@@ -374,8 +378,9 @@ def _merge_preserving_prefix(current_defs: list, new_defs: list, registered_name
      """Fold a fresh tool snapshot into a live one without moving existing bytes. Ordered by
      ``current_defs`` (the cached request prefix): a name already sent keeps its slot and the
      schema bytes already sent; a name only in the live list is kept if still registered
--    (``check_fn`` flapped), else dropped; a name only in the fresh list is appended at the tail.
+-    (``check_fn`` flapped), else dropped; a name only in the fresh list is appended at the tail
+-    unless it is in ``held`` (a name that can only be new because a ``check_fn`` flipped).
 +    (``check_fn`` flapped), else dropped; a name only in the fresh list takes its canonical place
-+    (tools.tool_order, BipAgents 0022): the live list stays the one a new session builds.
++    (tools.tool_order, BipAgents 0022: the live list stays the one a new session builds) unless it is in
++    ``held`` (a name that can only be new because a ``check_fn`` flipped).
  
      A refreshed schema is not substituted in place. Tool JSON is rendered ahead of the
      conversation, so one changed description means the next prompt no longer starts with the
-@@ -291,7 +297,10 @@ def _merge_preserving_prefix(current_defs: list, new_defs: list, registered_name
+@@ -397,7 +402,11 @@ def _merge_preserving_prefix(current_defs: list, new_defs: list, registered_name
          replacement = fresh.pop(name, None)
          if replacement is not None or name in BRIDGE_TOOL_NAMES or (name and name in registered_names):
              merged.append(entry)
--    merged.extend(fresh.values())
+-    merged.extend(entry for name, entry in fresh.items() if name not in held)
 +    from tools.tool_order import configured_first, insert_in_order
 +    first = configured_first()
-+    for entry in fresh.values():
-+        insert_in_order(merged, entry, first)  # at its canonical place, never at the tail (BipAgents 0022)
++    for name, entry in fresh.items():
++        if name not in held:
++            insert_in_order(merged, entry, first)  # at its canonical place, never at the tail (BipAgents 0022)
      return merged, {_def_name(t) for t in merged}
  
  

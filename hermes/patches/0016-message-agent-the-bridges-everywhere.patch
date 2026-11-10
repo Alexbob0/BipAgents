@@ -163,10 +163,10 @@ index 0000000000000000000000000000000000000000..92fae92bff66dd45b7e05b7461c8abd0
 +    agent = _FakeAgent(home, "Bot Chat", names=("mcp__bipagents__health", "tool_call"))
 +    assert bot_mode_dm.ensure_message_agent_tool(agent) is True
 diff --git a/tools/bot_mode_dm.py b/tools/bot_mode_dm.py
-index 18abf2bf851b6d23b4954b09b4c1adad360a2c3b..fe187c897ab45cf8b927cebe99763ae8a59be09e 100644
+index 4faabf7517c418903d0ff26b49425eb242a6a2b0..b0a4830a97f98524d6df53282c4c0d30db76b8aa 100644
 --- a/tools/bot_mode_dm.py
 +++ b/tools/bot_mode_dm.py
-@@ -137,6 +137,55 @@ def message_agent_authorized(agent: Any) -> bool:
+@@ -141,6 +141,55 @@ def message_agent_authorized(agent: Any) -> bool:
          return False
  
  
@@ -222,7 +222,7 @@ index 18abf2bf851b6d23b4954b09b4c1adad360a2c3b..fe187c897ab45cf8b927cebe99763ae8
  def ensure_message_agent_tool(agent: Any) -> bool:
      """Inject the ``message_agent`` schema into a Bot Chat agent's tool list (once per turn).
      Idempotent and deterministic for the session's life (the gate is stable from the
-@@ -145,6 +194,10 @@ def ensure_message_agent_tool(agent: Any) -> bool:
+@@ -149,6 +198,10 @@ def ensure_message_agent_tool(agent: Any) -> bool:
          if not getattr(agent, "_bot_mode_protocol", True):
              return False
          tools = getattr(agent, "tools", None)
@@ -234,10 +234,10 @@ index 18abf2bf851b6d23b4954b09b4c1adad360a2c3b..fe187c897ab45cf8b927cebe99763ae8
              isinstance(t, dict) and t.get("function", {}).get("name") == MESSAGE_AGENT_TOOL_NAME
              for t in tools
 diff --git a/tools/mcp_tool_agent.py b/tools/mcp_tool_agent.py
-index e74f1510b57f110aa7069409398fb4a15677730d..fe0e6f40f1f10dd00f50439ef08494e7b9d11bda 100644
+index 99565558abf482209a1e7cb6577ed365087973d4..16d95ff21d336282c5818b3a66874e1a4a44a24e 100644
 --- a/tools/mcp_tool_agent.py
 +++ b/tools/mcp_tool_agent.py
-@@ -299,11 +299,14 @@ def _reinject_authorized_dynamic_tools(agent, tools_list: list, name_set: set) -
+@@ -405,11 +405,14 @@ def _reinject_authorized_dynamic_tools(agent, tools_list: list, name_set: set) -
      """``message_agent`` is injected by an auth gate, never registered, so a registry-derived
      rebuild drops it. Scrub any stale copy from the STAGED pair and re-add it only when the live
      gate re-authorizes, so the publisher exposes a coherent ``(tools, valid_tool_names)``."""

@@ -7,20 +7,19 @@ BipAgents patch, documented in hermes/patches/README.md of the BipAgents reposit
 
 Bip-Patch: 0015-time-anchor
 ---
- agent/prompt_builder.py           |  4 --
- agent/system_prompt.py            | 14 ++++--
- cron/scheduler_prompt.py          | 13 ++++-
- hermes_state_common.py            |  5 +-
- tests/agent/test_now_line.py      | 81 +++++++++++++++++++++++++++++++
- tests/agent/test_system_prompt.py |  9 ++--
- 6 files changed, 113 insertions(+), 13 deletions(-)
+ agent/prompt_builder.py           |  4 ----
+ agent/system_prompt.py            | 14 +++++++++++---
+ hermes_state_common.py            |  5 ++++-
+ tests/agent/test_now_line.py      | 30 ++++++++++++++++++++++++++++++
+ tests/agent/test_system_prompt.py |  9 +++++----
+ 5 files changed, 50 insertions(+), 12 deletions(-)
  create mode 100644 tests/agent/test_now_line.py
 
 diff --git a/agent/prompt_builder.py b/agent/prompt_builder.py
-index 4ba0650b51531b6a5825dc00eb961e07b6f892f2..5d13d35863c362b09710711e547e80165fc08f3b 100644
+index e25b5281d4135534635835db48c02f8ca91c0ce1..5f47000e6d4855c6aeea8a4c98815f9eadcbc8b0 100644
 --- a/agent/prompt_builder.py
 +++ b/agent/prompt_builder.py
-@@ -446,7 +446,6 @@ OPENAI_MODEL_EXECUTION_GUIDANCE = (
+@@ -443,7 +443,6 @@ OPENAI_MODEL_EXECUTION_GUIDANCE = (
      "NEVER answer these from memory or mental computation — ALWAYS use a tool:\n"
      "- Arithmetic, math, calculations → use terminal or execute_code\n"
      "- Hashes, encodings, checksums → use terminal (e.g. sha256sum, base64)\n"
@@ -28,7 +27,7 @@ index 4ba0650b51531b6a5825dc00eb961e07b6f892f2..5d13d35863c362b09710711e547e8016
      "- System state: OS, CPU, memory, disk, ports, processes → use terminal\n"
      "- File contents, sizes, line counts → use read_file, search_files, or terminal\n"
      "- Git history, branches, diffs → use terminal\n"
-@@ -459,7 +458,6 @@ OPENAI_MODEL_EXECUTION_GUIDANCE = (
+@@ -456,7 +455,6 @@ OPENAI_MODEL_EXECUTION_GUIDANCE = (
      "Examples:\n"
      "- 'Is port 443 open?' → check THIS machine (don't ask 'open where?')\n"
      "- 'What OS am I running?' → check the live system (don't use user profile)\n"
@@ -36,7 +35,7 @@ index 4ba0650b51531b6a5825dc00eb961e07b6f892f2..5d13d35863c362b09710711e547e8016
      "Only ask for clarification when the ambiguity genuinely changes what tool you would call.\n"
      "</act_dont_ask>\n\n"
      "<prerequisite_checks>\n"
-@@ -507,7 +505,6 @@ OPENAI_MODEL_EXECUTION_GUIDANCE = (
+@@ -504,7 +502,6 @@ OPENAI_MODEL_EXECUTION_GUIDANCE = (
  _EXECUTION_GUIDANCE_LINE_TOOLS = {
      "- Arithmetic, math, calculations → use terminal or execute_code\n": {"terminal", "execute_code"},
      "- Hashes, encodings, checksums → use terminal (e.g. sha256sum, base64)\n": {"terminal"},
@@ -44,7 +43,7 @@ index 4ba0650b51531b6a5825dc00eb961e07b6f892f2..5d13d35863c362b09710711e547e8016
      "- System state: OS, CPU, memory, disk, ports, processes → use terminal\n": {"terminal"},
      "- File contents, sizes, line counts → use read_file, search_files, or terminal\n": {
          "read_file",
-@@ -515,7 +512,6 @@ _EXECUTION_GUIDANCE_LINE_TOOLS = {
+@@ -512,7 +509,6 @@ _EXECUTION_GUIDANCE_LINE_TOOLS = {
          "terminal",
      },
      "- Git history, branches, diffs → use terminal\n": {"terminal"},
@@ -53,10 +52,10 @@ index 4ba0650b51531b6a5825dc00eb961e07b6f892f2..5d13d35863c362b09710711e547e8016
  
  
 diff --git a/agent/system_prompt.py b/agent/system_prompt.py
-index 03ede0060d239d9ecca197ed29d039d205fc230e..f614d05ffedc314be8d68220f075278167bde94a 100644
+index 3b946fad6ef1ba1f156fe280ecf32786e8ac1d47..21c96673478dc6d160fa7b5ad0bf889854024d6c 100644
 --- a/agent/system_prompt.py
 +++ b/agent/system_prompt.py
-@@ -492,6 +492,14 @@ def _zone_bits(now: Any, tz: Any) -> list[str]:
+@@ -505,6 +505,14 @@ def _zone_bits(now: Any, tz: Any) -> list[str]:
      return bits
  
  
@@ -71,7 +70,7 @@ index 03ede0060d239d9ecca197ed29d039d205fc230e..f614d05ffedc314be8d68220f0752781
  def _timestamp_line(agent: Any) -> str:
      """Date-only so the prompt is byte-stable for the day; zone + offset so
      tools needn't guess EST vs EDT. Long-lived sessions get an "as of" line on
-@@ -509,9 +517,9 @@ def _timestamp_line(agent: Any) -> str:
+@@ -522,9 +530,9 @@ def _timestamp_line(agent: Any) -> str:
      # of' refreshes exactly when the cache prefix is already being invalidated (compaction), so the added
      # line costs no extra cache churn. Same-day sessions skip the second line entirely — nothing to correct,
      # and the single-line shape stays byte-identical for the day (prefix-cache safe).
@@ -84,39 +83,8 @@ index 03ede0060d239d9ecca197ed29d039d205fc230e..f614d05ffedc314be8d68220f0752781
      if getattr(agent, "_bot_chat_timeless_prompt", False):
          timestamp_line = f"Timezone: {', '.join(_bits)}" if _bits else ""
      trailer = (("Session ID", agent.session_id if agent.pass_session_id else None), ("Model", agent.model),
-diff --git a/cron/scheduler_prompt.py b/cron/scheduler_prompt.py
-index 1ef34b18f005b1e46641b5762c6edea3c999a2e5..ce0611e5a2cad9053621124c76978a60ec7bd1ab 100644
---- a/cron/scheduler_prompt.py
-+++ b/cron/scheduler_prompt.py
-@@ -280,6 +280,17 @@ _CRON_HINT = (
- )
- 
- 
-+def now_line(at=None) -> str:
-+    """``<!--bip:now Sunday, October 25, 2026, 07:00, Europe/Paris (UTC+01:00)-->``: the run's time in the routines'
-+    zone (``cron.timezone``, else the profile's), as the client puts it at the top of each conversation message."""
-+    import hermes_time
-+    zone = getattr(hermes_time, "get_cron_timezone", hermes_time.get_timezone)()
-+    at = (at or _hermes_now()).astimezone(zone)  # zone None: the machine's
-+    offset = at.strftime("%z")
-+    name = getattr(zone, "key", None) or at.strftime("%Z")
-+    return f"<!--bip:now {at.strftime('%A, %B %d, %Y, %H:%M')}, {name} (UTC{offset[:3]}:{offset[3:]})-->"
-+
-+
- def _build_job_prompt(
-     job: dict, prerun_script: Optional[tuple] = None, extra_prompt: Optional[str] = None,
-     runtime_data_prompt: Optional[str] = None,
-@@ -333,7 +344,7 @@ def _build_job_prompt(
-         prompt = f"{notepad_section}{prompt}"
-         has_injected_data = True
- 
--    prompt = _CRON_HINT + prompt
-+    prompt = _CRON_HINT + now_line() + "\n" + prompt
-     skill_names = _job_skill_names(job)
-     if not skill_names:
-         return _scan_assembled_cron_prompt(
 diff --git a/hermes_state_common.py b/hermes_state_common.py
-index c31526f02c6516cdd25cd611df8a388098564366..87f97e699cc69a69f4d3e03521ccff9c5184b92a 100644
+index 47642b7fb7e888ff7812f0ac630c52ef7848c62f..8d925651a0a67725186646e762137437c0f1879f 100644
 --- a/hermes_state_common.py
 +++ b/hermes_state_common.py
 @@ -58,7 +58,10 @@ def escape_like(text: str) -> str:
@@ -133,63 +101,12 @@ index c31526f02c6516cdd25cd611df8a388098564366..87f97e699cc69a69f4d3e03521ccff9c
  # No LIKE wildcards in either prefix, so no ESCAPE clause is needed.
 diff --git a/tests/agent/test_now_line.py b/tests/agent/test_now_line.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..77a21429579eb851ee83675d9066bb403e9eac90
+index 0000000000000000000000000000000000000000..b75e5a11112be75eb99364846648243476439727
 --- /dev/null
 +++ b/tests/agent/test_now_line.py
-@@ -0,0 +1,81 @@
-+"""The current time comes with each message, never from the terminal: each routine run's prompt
-+starts with a now line in the routines' zone (``cron.timezone``), right across clock changes, and
-+the prompt no longer sends the model to ``date``; a session's preview skips the line."""
-+
-+from datetime import datetime
-+from zoneinfo import ZoneInfo
-+
-+import pytest
-+
-+import hermes_time
-+from cron import scheduler_prompt
-+
-+UTC = ZoneInfo("UTC")
-+
-+
-+@pytest.fixture
-+def zones(monkeypatch, tmp_path):
-+    def use(profile: str, routines: str):
-+        (tmp_path / "config.yaml").write_text(f"timezone: {profile}\ncron:\n  timezone: {routines}\n")
-+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
-+        monkeypatch.delenv("HERMES_TIMEZONE", raising=False)
-+        hermes_time.reset_cache()
-+
-+    yield use
-+    hermes_time.reset_cache()
-+
-+
-+def _prompt_at(monkeypatch, at: datetime) -> str:
-+    monkeypatch.setattr(scheduler_prompt, "_hermes_now", lambda: at)
-+    return scheduler_prompt._build_job_prompt({"id": "j1", "name": "Matin", "prompt": "Résume ma journée."})
-+
-+
-+@pytest.mark.parametrize("at, line", [
-+    # Europe/Paris, 2026-10-25: 03:00 CEST becomes 02:00 CET, the 02:xx hour is lived twice
-+    (datetime(2026, 10, 25, 0, 30, tzinfo=UTC), "Sunday, October 25, 2026, 02:30, Europe/Paris (UTC+02:00)"),
-+    (datetime(2026, 10, 25, 1, 30, tzinfo=UTC), "Sunday, October 25, 2026, 02:30, Europe/Paris (UTC+01:00)"),
-+    (datetime(2026, 10, 25, 6, 0, tzinfo=UTC), "Sunday, October 25, 2026, 07:00, Europe/Paris (UTC+01:00)"),
-+])
-+def test_a_routine_run_gets_the_time_in_its_zone_across_autumn_change(zones, monkeypatch, at, line):
-+    zones("Asia/Tokyo", "Europe/Paris")  # the person travels, the routines stay at home time
-+    prompt = _prompt_at(monkeypatch, at)
-+    assert f"<!--bip:now {line}-->\nRésume ma journée." in prompt
-+    assert prompt.count("<!--bip:now ") == 1
-+
-+
-+@pytest.mark.parametrize("at, line", [
-+    # America/New_York, 2026-03-08: 02:00 EST jumps to 03:00 EDT
-+    (datetime(2026, 3, 8, 6, 30, tzinfo=UTC), "Sunday, March 08, 2026, 01:30, America/New_York (UTC-05:00)"),
-+    (datetime(2026, 3, 8, 7, 30, tzinfo=UTC), "Sunday, March 08, 2026, 03:30, America/New_York (UTC-04:00)"),
-+])
-+def test_a_routine_run_gets_the_time_in_its_zone_across_spring_change(zones, monkeypatch, at, line):
-+    zones("America/New_York", "America/New_York")
-+    assert f"<!--bip:now {line}-->" in _prompt_at(monkeypatch, at)
+@@ -0,0 +1,30 @@
++"""The current time comes with each message, never from the terminal: the prompt no longer sends the model to
++``date`` and says how to read a ``bip:now`` line; a session's preview skips the line."""
 +
 +
 +def test_the_prompt_sends_nobody_to_the_terminal_for_the_time():

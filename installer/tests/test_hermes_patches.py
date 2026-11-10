@@ -1,4 +1,4 @@
-"""BipAgents' Hermes patches (hermes/patches/, made on the pinned Hermes v0.22.5): put on as is, and a patch whose
+"""BipAgents' Hermes patches (hermes/patches/, made on the pinned Hermes v0.23.1): put on as is, and a patch whose
 context moved (a Hermes updated past the pin) merged only when that merge is clean."""
 import subprocess
 from pathlib import Path
@@ -16,9 +16,9 @@ def git(checkout: Path, *args: str) -> str:
 def test_the_patches_are_made_on_the_pinned_hermes():
     folder = ROOT / "hermes" / "patches"
     base = (folder / "BASE").read_text().split()
-    assert base[0].startswith(hermes.HERMES_COMMIT) and base[1] == "v0.22.5"
+    assert base[0].startswith(hermes.HERMES_COMMIT) and base[1] == "v0.23.1"
     names = [p.name for p in hermes.set_patches(folder)]
-    assert names[0].startswith("0005-") and not any(n.startswith(("0001-", "0004-", "0012-")) for n in names)
+    assert names[0].startswith("0005-") and not any(n.startswith(("0001-", "0004-", "0006-", "0012-", "0019-")) for n in names)
 
 
 def moved_context(tmp_path):

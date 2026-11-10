@@ -66,11 +66,16 @@ MANAGED_KEYS = {"_config_version"}
 KEPT_FILES = ("SOUL.md", "profile.yaml", "memories")
 SPARE_GB = 1.5   # beyond the copies: the target's own new tools (a Python, a Node: ~0.6 GB measured)
 # Hermes files that BipAgents fixes of earlier sets changed and today's don't (0001, 0004, 0012, 0014, older variants;
-# from the history of hermes/patches/): a Hermes patched with an older BipAgents may still carry them.
+# on the move to v0.23.1: 0006, 0019, the routine parts of 0008 and 0015; from the history of hermes/patches/): a
+# Hermes patched with an older BipAgents may still carry them.
 EARLIER_FIX_FILES = frozenset({
     "agent/image_store.py", "agent/session_persistence.py", "cli-config.yaml.example", "gateway/run.py",
     "gateway/run_state_db_housekeeping.py", "hermes_state_maintenance.py", "hermes_state_sessions.py",
     "tests/agent/test_image_store.py", "tests/agent/test_image_store_local.py", "tests/tools/test_cronjob_accents.py",
+    "cron/jobs.py", "cron/scheduler_prompt.py", "hermes_cli/config_defaults.py", "tools/cronjob_job_args.py",
+    "tools/cronjob_tools.py", "tools/tool_labels.py", "tests/cron/test_cron_wall_clock_once_and_zone.py",
+    "tests/gateway/test_api_server_jobs.py", "tests/tools/test_bot_mode_dm_sync_peer.py",
+    "tests/tools/test_cronjob_session_reports.py",
 })
 
 
