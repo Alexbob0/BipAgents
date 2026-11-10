@@ -33,6 +33,9 @@ pub struct Texts {
     pub health_line: &'static str,
     pub archives_line: &'static str,
     pub footer: &'static str,
+    /// added to the footer on a place of the offer only (its AI calls ask for no training: model_route::privacy); a
+    /// self-install may use any provider
+    pub no_training: &'static str,
     pub gone: &'static str,
     pub old_agent: &'static str,
     pub health: &'static str,
@@ -41,8 +44,9 @@ pub struct Texts {
     pub tile_many: &'static str,
 }
 
-/// The footer is the app's one sentence of honesty: only what is true by contract (no « pas d'entraînement »: the
-/// model's provider is not fixed in the privacy policy yet, internal/notes/carnet-v2/build-notes.md B2).
+/// The footer is the app's one sentence of honesty: only what is true by contract. « No training » only on a place of
+/// the offer, where every AI call goes to EUrouter asking for it (model_route::privacy, privacy policy « EUrouter »).
+/// The model makers never receive the messages: the European host does.
 pub fn texts(lang: &str) -> Texts {
     match lang {
         "fr" => Texts {
@@ -51,6 +55,7 @@ pub fn texts(lang: &str) -> Texts {
             empty: "Aucune lecture pour l'instant.", unseen: "Ce qu'ils ne voient pas",
             health_line: "Ta santé : seulement ton agent Santé.", archives_line: "Tes archives : seulement l'agent relié.",
             footer: "Pour te répondre, le modèle d'IA reçoit seulement ce que ton agent lui envoie. Kerfy Studio ne lit pas ton Carnet. Pas de pub.",
+            no_training: "Ni Kerfy Studio ni l'hébergeur européen qui fait tourner l'IA n'entraînent de modèle avec tes informations.",
             gone: "Page oubliée", old_agent: "Ancien agent", health: "Santé", tile: "Ce que tes agents savent",
             tile_one: "1 page lue ces 7 jours", tile_many: "{n} pages lues ces 7 jours",
         },
@@ -60,6 +65,7 @@ pub fn texts(lang: &str) -> Texts {
             unseen: "Was sie nicht sehen", health_line: "Deine Gesundheit: nur dein Gesundheits-Agent.",
             archives_line: "Deine Archive: nur der verbundene Agent.",
             footer: "Um dir zu antworten, bekommt das KI-Modell nur, was dein Agent ihm schickt. Kerfy Studio liest dein Notizbuch nicht. Keine Werbung.",
+            no_training: "Weder Kerfy Studio noch der europäische Anbieter, der die KI betreibt, trainiert ein Modell mit deinen Informationen.",
             gone: "Vergessene Seite", old_agent: "Früherer Agent", health: "Gesundheit", tile: "Was deine Agenten wissen",
             tile_one: "1 Seite in 7 Tagen gelesen", tile_many: "{n} Seiten in 7 Tagen gelesen",
         },
@@ -69,6 +75,7 @@ pub fn texts(lang: &str) -> Texts {
             empty: "Ninguna lectura por ahora.", unseen: "Lo que no ven", health_line: "Tu salud: solo tu agente de Salud.",
             archives_line: "Tus archivos: solo el agente vinculado.",
             footer: "Para responderte, el modelo de IA solo recibe lo que tu agente le envía. Kerfy Studio no lee tu Cuaderno. Sin publicidad.",
+            no_training: "Ni Kerfy Studio ni el proveedor europeo que hace funcionar la IA entrenan ningún modelo con tu información.",
             gone: "Página olvidada", old_agent: "Agente anterior", health: "Salud", tile: "Lo que saben tus agentes",
             tile_one: "1 página leída en 7 días", tile_many: "{n} páginas leídas en 7 días",
         },
@@ -78,6 +85,7 @@ pub fn texts(lang: &str) -> Texts {
             unseen: "What they don't see", health_line: "Your health: only your Health agent.",
             archives_line: "Your archives: only the agent they're linked to.",
             footer: "To answer you, the AI model only gets what your agent sends it. Kerfy Studio doesn't read your Notebook. No ads.",
+            no_training: "Neither Kerfy Studio nor the European host that runs the AI trains a model on your information.",
             gone: "Forgotten page", old_agent: "Former agent", health: "Health", tile: "What your agents know",
             tile_one: "1 page read in 7 days", tile_many: "{n} pages read in 7 days",
         },
@@ -133,6 +141,11 @@ fn pages_by_id(config: &Config) -> HashMap<String, (Part, String, super::Page)> 
 
 /// The page, ready to show (contract.md §3.4).
 pub fn view(config: &Config, agent: &str, lang: &str, now: f64) -> Value {
+    view_on(config, agent, lang, now, crate::handover::on_offer())
+}
+
+/// [`view`], with whether this is a place of the offer given (its footer says no model is trained on what it sends).
+pub fn view_on(config: &Config, agent: &str, lang: &str, now: f64, offer: bool) -> Value {
     let t = texts(lang);
     let mut agents = vec![json!({"id": "", "name": t.all})];
     for a in config.agents.values().filter(|a| super::enabled(config, &a.name)) {
@@ -226,7 +239,7 @@ pub fn view(config: &Config, agent: &str, lang: &str, now: f64) -> Value {
            "reads": {"title": t.reads, "days": days, "older": if empty { Value::Null } else { json!(t.older) },
                      "empty": if empty { json!(t.empty) } else { Value::Null }},
            "unseen": {"title": t.unseen, "lines": unseen},
-           "footer": t.footer})
+           "footer": if offer { format!("{} {}", t.footer, t.no_training) } else { t.footer.to_string() }})
 }
 
 /// The home's tile: {title, text} (the pages read in the last 7 days).
@@ -276,6 +289,15 @@ mod tests {
         assert_eq!((old["name"].as_str(), old["text"].as_str()), (Some("Ancien agent"), Some("Page oubliée")));
         assert_eq!(v["reads"]["older"], "Plus ancien : effacé après 90 jours.");
         assert!(v["footer"].as_str().unwrap().starts_with("Pour te répondre"));
+        // « no training »: on the offer only (a self-install may use any provider)
+        assert!(!view_on(&config, "", "fr", now, false)["footer"].as_str().unwrap().contains("entraînent"));
+        let offer = view_on(&config, "", "fr", now, true);
+        assert!(offer["footer"].as_str().unwrap().ends_with(
+            "Pas de pub. Ni Kerfy Studio ni l'hébergeur européen qui fait tourner l'IA n'entraînent de modèle avec tes informations."));
+        for lang in ["en", "de", "es"] {
+            let t = texts(lang);
+            assert_eq!(view_on(&config, "", lang, now, true)["footer"], format!("{} {}", t.footer, t.no_training));
+        }
         // no page text: the facts of the pages read never appear
         let text = v.to_string();
         assert!(!text.contains("36") && !text.contains("12 mars") && !text.contains("arachides"), "{text}");

@@ -2,7 +2,7 @@ English · [Français](privacy.fr.md) · [Deutsch](privacy.de.md) · [Español](
 
 # BipAgents privacy policy
 
-> Last updated: 9 November 2026.
+> Last updated: 10 November 2026.
 
 ## In short
 
@@ -458,7 +458,9 @@ planned replacement is DeepSeek V4.1 Flash (maker: DeepSeek). EUrouter states th
 hosting providers established in the European Union, on servers in the Union; the makers of these models do not
 receive your messages. We will not offer any other model on the offer without first updating this section.
 EUrouter states that by default it keeps neither the requests nor the replies, and keeps their metadata (time, model,
-number of tokens, cost, IP address) for up to 12 months. They act on Kerfy Studio's behalf. **Before the first
+number of tokens, cost, IP address) for up to 12 months. On every request of the offer, your place also asks EUrouter
+for **no training** of any model on your messages and **no retention** of them: EUrouter then gives it only to a
+hosting provider it states follows both rules. They act on Kerfy Studio's behalf. **Before the first
 message, the app names the router and the model's maker and asks for your agreement**. **For Health**, only a model that runs in the European Union: your place refuses to give your health data
 to an agent whose model is not marked as such, even if the model changed after you turned Health on (section 3).
 
@@ -477,8 +479,8 @@ Studio cannot open. On the all-included offer the place is on a server Kerfy Stu
 technically the host as well as Kerfy Studio could access it; our software reads neither your place nor its backups,
 and we would only do so if the law required it. Kerfy Studio keeps these
 backups at **Scaleway** (Scaleway SAS, France; object storage in Paris, region fr-par) without being able to read them:
-those of the last 2 hours, then one per hour for 48 hours, one per day for 30 days, nothing older. They are erased with your place. At
-Scaleway, a replaced or deleted version of a file is kept 30 days, then erased. The data stays in the European Union.
+those of the last 2 hours, then one per hour for 48 hours, one per day for 30 days, nothing older. They are erased with your place. What a place deletes from its backups is first set aside 30 days by the guichet (against a malicious deletion), then
+erased; at Scaleway, a replaced or deleted version of a file is kept 1 day, then erased. The data stays in the European Union.
 
 **The guichet's backups.** The guichet (your account, your subscription, the places' technical data) is backed up at
 Scaleway too, in copies Kerfy Studio encrypts before they leave; old versions are erased after 30 days.
@@ -565,7 +567,7 @@ Kerfy Studio keeps nothing of it.
 | Hetzner Online GmbH (Gunzenhausen, Germany) | Hosts some of the places' servers and the agents' mail server | Content of the places; the agents' mailboxes and the mail server's security logs | Germany, Finland |
 | EUrouter B.V. (Amsterdam, Netherlands) | AI router | Messages sent to the model, metadata | European Union |
 | Model hosting providers, EUrouter's partners | Run the model (today GLM-5.3 Flash) | Messages sent to the model, with the files and photos it is shown | European Union, according to EUrouter |
-| Scaleway SAS (Paris, France) | Object storage for the backups (region fr-par, Paris) | The places' encrypted backups, unreadable for it and for Kerfy Studio; encrypted copies of the guichet's database; a replaced or deleted version is kept 30 days | European Union (France) |
+| Scaleway SAS (Paris, France) | Object storage for the backups (region fr-par, Paris) | The places' encrypted backups, unreadable for it and for Kerfy Studio; encrypted copies of the guichet's database; a replaced or deleted version is kept 1 day | European Union (France) |
 | OVHcloud (OVH SAS, Roubaix, France) | Hosts the server of the guichet and the relay | Account, subscription, technical data, sealed tokens | European Union |
 | Email sending provider: not in service yet; it will be named here before it goes into service | Sends the codes, the security notices, the invitations, the purchase confirmation, the withdrawal acknowledgement and the deletion notices | Email address, content of these emails | Stated with it |
 | Stripe Payments Europe, Ltd. (Dublin, Ireland) | Payment of purchases on the bipagents.com website, tax calculation, fraud checks, invoices | Email address, billing address or country, card details, IP address | European Union; possibly outside the Union (section 11) |
@@ -764,7 +766,8 @@ safeguard will be stated here before it goes into service. You can ask us for a 
 | IP address when a free week is reserved | Never stored; in memory, as a fingerprint, 15 minutes at most |
 | Content of your place | During the subscription, then 30 days (3 days after a free week that was not continued) |
 | Backups | 2 hours (all), then 48 hours (hourly), 30 days (daily), nothing older; erased with the place |
-| Replaced or deleted versions at Scaleway (the places' backups, encrypted copies of the guichet's database) | 30 days |
+| Backup files a place deletes, set aside by the guichet | 30 days |
+| Replaced or deleted versions at Scaleway (the places' backups, encrypted copies of the guichet's database) | 1 day |
 | OVHcloud's daily image | One point per day, replaced within about a day after the place is reinstalled |
 | Servers' technical data | Latest values only |
 | The guichet's event log | 12 months |
