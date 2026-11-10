@@ -148,12 +148,18 @@ pub const MAX_TURNS: u32 = 150;
 /// first in each agent's tool list in this order (Hermes' sorted order of their names), so that any agent's first call
 /// reads them from the cache another agent left (`tools.order_first`, Hermes patch 0022). Those of the bridge are in
 /// view for every kind ([`diet`]); a tool an agent lacks is skipped (the prefix stops being common there).
-pub const COMMON_FIRST: [&str; 26] = [
+pub const COMMON_FIRST: [&str; 27] = [
     "clarify",
     "manage_connections",
     // in view for a voice call's turns, where what it notes can't be made (live_calls.rs, 4/11)
     "mcp__bipagents__after_call",
     "mcp__bipagents__create_page",
+    // in view for every kind (10/11, the upgrade journey's routine, GLM-5.3 Flash): behind the search, after
+    // tool_describe on it (and often a first tool_call), the model called it directly and its call ended on the
+    // in-view create_page (the longest common prefix): pages « x », « placeholder », « final1…35 », the same page asked
+    // again, 3 routines of 10 stopped by the brake with no report. Its reasoning: « I meant create_podcast but typed
+    // create_page ».
+    "mcp__bipagents__create_podcast",
     "mcp__bipagents__give_file",
     "mcp__bipagents__map_image",
     "mcp__bipagents__notebook_search",
@@ -717,7 +723,7 @@ mod tests {
 
     #[test]
     fn deferred_not_removed_and_bridge_tools_out_of_the_search() {
-        let tools = names(&["notebook_search", "calendar_list", "create_podcast", "weather"]);
+        let tools = names(&["notebook_search", "calendar_list", "create_audio", "create_podcast", "weather"]);
         let d = diet("daily", &tools, false, false, false);
         assert_eq!(d.defer[0], MARK);
         for name in HERMES_DEFAULT_DEFERRED.iter().chain(ALWAYS_DEFERRED.iter()).chain(VAULT_TOOLS.iter()) {
@@ -731,7 +737,9 @@ mod tests {
         assert_eq!(d.defer.contains(&"!mcp__bipagents__notebook_search".to_string()), DIRECT_BRIDGE_TOOLS);
         assert_eq!(d.defer.contains(&"!mcp__bipagents__weather".to_string()), DIRECT_BRIDGE_TOOLS);
         // a tool it doesn't have, or one its kind doesn't use much, stays behind the search
-        assert!(!d.defer.iter().any(|n| n.ends_with("reminders_add") || n.ends_with("create_podcast")));
+        assert!(!d.defer.iter().any(|n| n.ends_with("reminders_add") || n.ends_with("create_audio")));
+        // but the podcast is in view for every kind (10/11: its direct call ended on create_page)
+        assert!(d.defer.contains(&"!mcp__bipagents__create_podcast".to_string()));
         // an agent holding a vault item, or writing skills, keeps those tools
         let d = diet("daily", &tools, false, true, true);
         assert!(!d.defer.iter().any(|n| n.starts_with("browser_vault") || n == "skill_manage"));

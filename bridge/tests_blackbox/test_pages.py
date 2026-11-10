@@ -132,6 +132,13 @@ def test_an_update_keeps_the_path_and_a_new_page_never_takes_another_s(bridge):
     assert big["isError"] is True and "too big" in big["content"][0]["text"]
     empty = call(bridge, "create_page", {"html": " ", "title": "vide"})
     assert empty["content"][0]["text"] == "the page is empty: give its whole HTML"
+    # 10/11: a call meant for create_podcast that ended on create_page (« placeholder », « x »): nothing made, the
+    # model told how to reach the tool it meant
+    before = sorted(p.name for p in pages_dir(bridge).iterdir())
+    junk = call(bridge, "create_page", {"html": "placeholder", "title": "x"})
+    assert junk["isError"] is True and junk["content"][0]["text"].startswith("No page made: « placeholder »")
+    assert "tool_call" in junk["content"][0]["text"] and "create_podcast" in junk["content"][0]["text"]
+    assert sorted(p.name for p in pages_dir(bridge).iterdir()) == before
     assert call(bridge, "delete_page", {"page": "suivi-2"})["content"][0]["text"] == "Page suivi-2 deleted."
     gone = call(bridge, "delete_page", {"page": "suivi-2"})
     assert gone["isError"] is True and gone["content"][0]["text"] == "unknown page id: suivi-2 (see list_pages)"
