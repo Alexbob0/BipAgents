@@ -1868,9 +1868,9 @@ pub(crate) fn note_locked(
             // « Chausse du 36 » → « Pointure : 36 »: a label said again then replaces the old one
             let piece = lexicon::reshape(&piece, &lang);
             let id = template::place(&page_kind, section, &piece);
-            // no section said: where the page already has this label (10/11, Live: « Pointure : 37 » went to « Autres »
-            // beside the old « Pointure : 35 » of « Qui c'est », both kept)
-            let id = if id == "other" && template::resolve(&page_kind, section).is_none() {
+            // no section said, or « other »: where the page already has this label (10/11, Live: « Pointure : 37 » went
+            // to « Autres » beside the old « Pointure : 35 » of « Qui c'est », both kept)
+            let id = if id == "other" {
                 labelled_in(&page.body, &page_kind, &piece).unwrap_or(id)
             } else {
                 id
@@ -4304,8 +4304,8 @@ mod tests {
         let config = config_in(dir.path());
         let who = lea();
         let page = note(&config, Part::Main, "person", "Léa", "who", &["Sœur".into(), "Pointure : 35".into()], &[], "", "", &who).unwrap();
-        for size in ["Pointure : 36", "Pointure : 37"] {
-            let done = note(&config, Part::Main, "person", "Léa", "", &[size.into()], &[], "", "", &who).unwrap();
+        for (size, section) in [("Pointure : 36", ""), ("Pointure : 37", "other")] {
+            let done = note(&config, Part::Main, "person", "Léa", section, &[size.into()], &[], "", "", &who).unwrap();
             assert_eq!(done.replaced, 1, "{size}");
         }
         let text = read_page_text(&config, Part::Main, &page.path).unwrap();
