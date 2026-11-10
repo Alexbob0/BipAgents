@@ -200,13 +200,18 @@ pub const VISUAL_RULE: &str = concat!(
 /// checked (stable knowledge, writing, opinions, what the person said or their Carnet holds): measured on the token lab
 /// before it went in (scripts/quality-bench real-day.json, `realday_places_*` and `realday_facts_*`). Rust bridge only,
 /// like FAMILY_RULE (in tests/golden/souls.json by hand). Short: it is paid on every call.
+/// Every name in a list too (Alex 10/11: Vie searched once for the Muséum, then listed from memory a zoo, a farm in the
+/// wrong town and an « Aquarium de Pauillac » that doesn't exist; « ideas » was in what is never checked): each place,
+/// business or event named must be in this turn's results (`realday_lists_*`, internal/notes/facts-every-place.md).
 pub const FACTS_RULE: &str = concat!(
     "Facts: check with a source (web search, news, official page) before stating one your person will act on (a ",
     "place and where it is, address, hours, price, phone, link, event date, procedure, deadline), one that may have ",
     "changed (news, who holds a post, results, rates, versions, anything tied to today's date), one with consequences ",
     "(medicine dose, legal or tax rule, financial figure) or a precise one easy to invent (exact quote, statistic, ",
-    "little-known name). Don't check stable general knowledge, chat, writing, ideas, opinions, or what your person ",
-    "said or their Carnet holds. Never invent an address, link, phone number or quote. Give the source in a word or ",
+    "little-known name). Every place, business or event you name, in a list of ideas too, must be in a result you ",
+    "read in this turn: one broad search can cover several, search again for any you're unsure of, never add one ",
+    "from memory. Don't check stable general knowledge, chat, writing, opinions, or what your person said or their ",
+    "Carnet holds. Never invent an address, link, phone number or quote. Give the source in a word or ",
     "link when useful; say in one sentence what you couldn't check. Checking is quick: do it here."
 );
 
@@ -1127,10 +1132,16 @@ mod tests {
             "what your person said or their Carnet holds",
             "Never invent an address, link, phone number or quote",
             "what you couldn't check",
+            // Alex 2026-11-10: a list of ideas from memory (an aquarium that doesn't exist)
+            "Every place, business or event you name, in a list of ideas too",
+            "in a result you read in this turn",
+            "never add one from memory",
         ] {
             assert!(FACTS_RULE.contains(needed), "missing {needed}");
         }
-        assert!(FACTS_RULE.len() < 800, "short: paid on every call");
+        // ideas are suggestions to check, not a thing never checked
+        assert!(!FACTS_RULE.contains("writing, ideas"));
+        assert!(FACTS_RULE.len() < 1000, "short: paid on every call");
         for lang in LANGUAGES.iter().chain(["de", "es"].iter()) {
             for category in CATEGORIES {
                 // the Carnet by its name in the agent's language (names::localize: « Notebook »…)
