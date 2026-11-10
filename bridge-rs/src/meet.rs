@@ -424,7 +424,7 @@ fn book(config: &Config, m: &Value) -> bool {
 /// A call to the other household's bridge. Err: it could not be reached, or said no (its words).
 async fn tell(state: &AppState, household: &str, path: &str, body: Value) -> Result<(), (u16, String)> {
     let entry = state.households.get(household).ok_or((404, "no such household linked".to_string()))?;
-    let url = format!("{}/family/meet{path}", entry.get("url").map(py::py_str).unwrap_or_default());
+    let url = format!("{}/family/meet{path}", crate::family_relay::reach_url(&entry));
     let key = entry.get("key_out").map(py::py_str).unwrap_or_default();
     let answer = crate::door_tls::household_client(&state.http, &entry)
         .post(url)

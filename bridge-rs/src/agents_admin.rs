@@ -2566,7 +2566,7 @@ async fn agent_links(State(state): State<AppState>) -> ApiResult<Response> {
         let id = household.get("id").map(crate::py::py_str).unwrap_or_default();
         let hname = household.get("name").map(crate::py::py_str).unwrap_or_default();
         let entry = state.households.get(&id).unwrap_or_default();
-        let url = entry.get("url").map(crate::py::py_str).unwrap_or_default();
+        let url = crate::family_relay::reach_url(&entry);
         let key_out = entry.get("key_out").map(crate::py::py_str).unwrap_or_default();
         let listed: Vec<Value> = match crate::door_tls::household_client(&state.http, &entry)
             .get(format!("{url}/family/agents"))

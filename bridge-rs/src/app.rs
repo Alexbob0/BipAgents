@@ -295,6 +295,9 @@ impl AppState {
         self.spawn(crate::mail_rules::run_forever(self.clone())); // standing mail rules: resumes, weekly line
         self.spawn(crate::approval_level::run_forever(self.clone())); // the auto approvals' daily message
         self.spawn(crate::door_tls::announce_forever(self.clone())); // our door's certificate to linked households
+        // a household that can't be reached (a home) and one that can (a place): the calls kept for it, fetched by it
+        self.spawn(crate::family_relay::serve_loopback(self.clone()));
+        self.spawn(crate::family_relay::pull_forever(self.clone()));
         self.spawn(crate::notebook::tidy::scheduler(self.clone()));
         self.spawn(crate::dates::run_forever(self.clone()));
         self.spawn(crate::read_shares::run_forever(self.clone())); // shared conversations' encrypted copies
@@ -1728,6 +1731,7 @@ pub fn create_app(config: Config, options: AppOptions) -> anyhow::Result<App> {
     agent_names.sort();
     tracing::info!(version = VERSION, agents = ?J(&agent_names), apns = state.apns.is_some(), "bridge started");
     let router = assemble(&state, &config);
+    crate::family_relay::set_router(router.clone()); // the calls a linked household keeps for us, run here
     Ok(App { router, state })
 }
 
@@ -1840,6 +1844,7 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(crate::triggers::hook_router()) // a routine's link: its secret token is the key (POST only)
         .merge(crate::peers::family_router()) // the linked households' bridges, with the key each was given
         .merge(crate::family_news::household_router()) // their family news, the same key
+        .merge(crate::family_relay::household_router()) // a home's bridge fetching our calls for it, the same key
         .merge(crate::agent_shares::household_router()) // the agents shared with them, the same key
         .merge(crate::family_agent::household_router()) // the family's agent and its Carnet, the same key
         .merge(crate::rooms_remote::household_router()) // their agents in this person's discussions, the same key

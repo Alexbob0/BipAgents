@@ -1213,7 +1213,7 @@ async fn get_shares(State(state): State<AppState>, UrlPath(agent): UrlPath<Strin
 /// Tells a relative's bridge an agent is shared with them, or not any more.
 async fn tell_relative(state: &AppState, household: &str, agent: &AgentConfig, shared: bool) -> bool {
     let Some(entry) = state.households.get(household) else { return false };
-    let url = entry.get("url").map(py::py_str).unwrap_or_default();
+    let url = crate::family_relay::reach_url(&entry);
     let key = entry.get("key_out").map(py::py_str).unwrap_or_default();
     let body = json!({"agent": agent.name, "name": agent.display_name, "category": agent.category,
                       "color": agent.color, "shared": shared});
@@ -1367,7 +1367,7 @@ async fn to_owner(
     let entry = state.households.get(&household).ok_or_else(|| HttpError::new(404, "no such shared agent"))?;
     let url = format!(
         "{}/family/s/{}/{path}",
-        entry.get("url").map(py::py_str).unwrap_or_default(),
+        crate::family_relay::reach_url(&entry),
         str_of(&shared, "agent")
     );
     let key = entry.get("key_out").map(py::py_str).unwrap_or_default();
@@ -1515,7 +1515,7 @@ pub async fn relay_stream(state: &AppState, id: &str, cid: &str, path: &str) -> 
     let config = state.config();
     let shared = mine(&config, id, true)?;
     let entry = state.households.get(&str_of(&shared, "household")).ok_or_else(|| HttpError::new(404, "no such shared agent"))?;
-    let url = format!("{}/family/s/{}/conversations/{cid}/{path}", entry.get("url").map(py::py_str).unwrap_or_default(),
+    let url = format!("{}/family/s/{}/conversations/{cid}/{path}", crate::family_relay::reach_url(&entry),
                       str_of(&shared, "agent"));
     let key = entry.get("key_out").map(py::py_str).unwrap_or_default();
     let resp = crate::door_tls::household_client(&state.http, &entry)

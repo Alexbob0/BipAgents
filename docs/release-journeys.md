@@ -113,6 +113,7 @@ la bêta.
 | J36 | Prévenir la famille | La carte « Prévenir Marie ? » (les mots, à qui) ; rien ne part avant « Envoyer », même en « Seulement le critique » ; chez Marie : « Alex · … Transmis par Vie », sa Boîte | P ; apps : manuel |
 | J37 | Trouver une date avec un autre foyer | Chez Marie (Boîte) : « Dîner » d'Alex et les soirs libres pour les deux, jamais leurs rendez-vous ; d'accord : réservé dans les deux agendas | P ; apps : manuel |
 | J38 | Les agents de deux foyers s'écrivent | Chez Marie : « Vie (Alex) ⇄ Coach · 2 messages · Voir l'échange », l'échange en lecture ; rien dans SA conversation avec Coach | P ; apps : manuel |
+| J51 | La famille avec un ordinateur à la maison éteint | Réglages › Famille s'ouvre sur ce qui répond (« Ton foyer », « Proches reliés ») ; une ligne simple : « Ton ordinateur à la maison ne répond pas pour l'instant… » ; jamais « … ont eu un souci » en rouge. Une maison (tailnet) et une place : la maison scanne l'invitation de la place, la place la joint par le relais | P (`test_family_relay.py`), i, A |
 
 ### Nouveautés de cette sortie
 
