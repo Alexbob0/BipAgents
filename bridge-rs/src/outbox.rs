@@ -62,6 +62,9 @@ pub struct OutboxService {
     pub push: Arc<PushService>,
     audio_tasks: Mutex<HashMap<String, (AudioTask, AbortHandle)>>,
     tasks: Mutex<Vec<JoinHandle<()>>>,
+    /// The hidden spoken version of a message just stored (spoken.rs), read for its audio instead of its words; never
+    /// stored with it (its text is what the person reads). A reading made again later reads the words.
+    spoken: Mutex<HashMap<String, String>>,
 }
 
 impl OutboxService {
@@ -73,6 +76,7 @@ impl OutboxService {
             push,
             audio_tasks: Mutex::new(HashMap::new()),
             tasks: Mutex::new(Vec::new()),
+            spoken: Mutex::new(HashMap::new()),
         }
     }
 
@@ -87,7 +91,7 @@ impl OutboxService {
         message: BoiteMessage,
         notify: bool,
     ) -> anyhow::Result<Option<Row>> {
-        let text = pyx::strip(&message.text).to_string();
+        let (text, said) = crate::spoken::split(pyx::strip(&message.text));
         let (spoken, media_paths) = extract_media(&text);
         if spoken.is_empty() && media_paths.is_empty() {
             return Ok(None);
@@ -121,6 +125,13 @@ impl OutboxService {
         let Some(item) = self.store.add_outbox(&agent.name, &text, extra).await? else {
             return Ok(None); // duplicate (already ingested)
         };
+        if let Some(said) = said {
+            let mut kept = self.spoken.lock().unwrap_or_else(|e| e.into_inner());
+            if kept.len() >= 64 {
+                kept.clear(); // read within seconds of being stored: a few at most wait
+            }
+            kept.insert(crate::py::py_str(&item["id"]), said);
+        }
         tracing::info!(agent = %agent.name, id = %crate::py::py_str(&item["id"]), chars = pyx::len(&text), "outbox message stored");
         let (this, agent, delivered) = (self.clone(), agent.clone(), item.clone());
         let handle = tokio::spawn(async move { this.deliver(&agent, &delivered, notify).await });
@@ -183,6 +194,8 @@ impl OutboxService {
         let config = self.config.get();
         // its words read, not its files' lines
         let (text, mut files) = extract_media(item.get("text").and_then(Value::as_str).unwrap_or(""));
+        let kept = self.spoken.lock().unwrap_or_else(|e| e.into_inner()).get(&crate::py::py_str(&item["id"])).cloned();
+        let text = kept.unwrap_or(text);
         if text.is_empty() || pyx::len(&text) > config.outbox.audio_max_chars {
             return None;
         }

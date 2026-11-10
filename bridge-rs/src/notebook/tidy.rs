@@ -129,7 +129,7 @@ pub fn turns(messages: &[Dict]) -> Vec<Turn> {
                     if wrote_notebook(message) {
                         turn.covered = true;
                     }
-                    let text = tk::squeeze(&content(message));
+                    let text = tk::squeeze(&crate::spoken::strip(&content(message))); // its words (spoken.rs)
                     if !text.is_empty() {
                         turn.reply = text;
                     }

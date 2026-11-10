@@ -201,6 +201,11 @@ pub fn state_of(
     let paths: Vec<String> = answer.iter().flat_map(|i| files(i)).collect();
     out["state"] = json!("reply");
     out["reply"] = json!({"id": last.id, "text": text.join("\n\n"), "needs": files_reason(&paths)});
+    // what the voice says: each reply's spoken version where it has one (spoken.rs), its words elsewhere
+    if answer.iter().any(|i| i.body.contains_key("spoken")) {
+        let said: Vec<&str> = answer.iter().map(|i| i.body.get("spoken").and_then(Value::as_str).unwrap_or(i.text())).collect();
+        out["reply"]["spoken"] = json!(said.into_iter().filter(|t| !t.is_empty()).collect::<Vec<_>>().join("\n\n"));
+    }
     out["next"] = Value::Null;
     out
 }
@@ -238,6 +243,12 @@ mod tests {
         assert_eq!(done["state"], "reply");
         assert_eq!(done["reply"], json!({"id": "m_5", "text": "Demain : soleil.\n\nPrends une veste.", "needs": null}));
         assert_eq!(done["next"], Value::Null);
+        // a reply's spoken version (spoken.rs): what the voice says, its words elsewhere
+        let mut spoken = items.clone();
+        spoken[4].body.insert("spoken".into(), json!("Mets une veste."));
+        let said = state_of(&spoken, &[], &[], None, false, "QT-1", "t");
+        assert_eq!(said["reply"]["spoken"], "Demain : soleil.\n\nMets une veste.");
+        assert_eq!(said["reply"]["text"], "Demain : soleil.\n\nPrends une veste.");
         // a message sent meanwhile starts another turn: the reply stops before it
         items.insert(4, item("m_6", 6, 201.5, json!({"kind": "message", "role": "person", "text": "et lundi ?"})));
         assert_eq!(state_of(&items, &[], &[], None, false, "QT-1", "t")["reply"]["text"], "Demain : soleil.");

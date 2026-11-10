@@ -55,7 +55,7 @@ def test_lru_cache_hits_and_evicts(bridges, fakes):
 
 def test_errors(bridges, fakes):
     bridge = bridges.new(change=lambda c: c["limits"].update(tts_max_chars=20)).start()
-    empty = sentence(bridge, text="```\ncode\n```")
+    empty = sentence(bridge, text="---\n**")   # nothing to say (a code block is named since spoken.rs)
     assert empty.status_code == 400
     long = sentence(bridge, text="x " * 50)
     assert long.status_code == 413
