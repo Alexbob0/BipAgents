@@ -1,5 +1,5 @@
 {
- "_doc": "The overrides beyond core.json (10/11): goodbyes never held, and an answer to the Bip's question. `agent_line`: the Bip's last line before this pause, when this is the first pause since it (VoiceDeciderRules.asks / Rules.asks tells if it asked something). `rule`: the override, null when the model decides. Read by VoiceDeciderTests.swift and RulesTest.kt.",
+ "_doc": "The overrides beyond core.json (10/11): goodbyes never held, and an answer to the Bip's question. `agent_line`: the Bip's last line before this pause, when this is the first pause since it (VoiceDeciderRules.asks / Rules.asks tells if it asked something). `rule`: the override, null when the model decides. Read by VoiceDeciderTests.swift and RulesTest.kt. 10/11 v2: `asks` is a real question only (4 words at least, not a check-in: the greetings here never ask); `cases_v2`: the rules with a v2 package loaded (`readsBot`): no answer rule (the model reads the Bip's line), an explicit end of the call → raccrocher, a bare goodbye → the model (null).",
  "asks": [
   {"line": "Comment s'appelle ta fille ?", "asks": true},
   {"line": "Question suivante : quel est ton plat préféré ? Je t'écoute.", "asks": true},
@@ -8,7 +8,18 @@
   {"line": "¿Cómo se llama tu perro?", "asks": true},
   {"line": "C'est noté. Je l'ajoute au Carnet.", "asks": false},
   {"line": "Tu m'as demandé si ça allait ? Oui. Il fait beau. Bonne journée.", "asks": false},
-  {"line": "", "asks": false}
+  {"line": "", "asks": false},
+  {"line": "Oui ?", "asks": false},
+  {"line": "Ça va ?", "asks": false},
+  {"line": "Tu m'entends ?", "asks": false},
+  {"line": "Hi, how can I help?", "asks": false},
+  {"line": "Coucou, c'est Vie, ton agent IA. Ça va ?", "asks": false},
+  {"line": "Hey, Vie here, your AI agent. What's up?", "asks": false},
+  {"line": "Hallo, hier ist Vie, dein KI-Agent. Wie geht's?", "asks": false},
+  {"line": "¡Buenas! Soy Vie, tu agente de IA. ¿Cómo estás?", "asks": false},
+  {"line": "Hé, Vie hier, je AI-agent. Wat is er?", "asks": false},
+  {"line": "Lequel ?", "asks": false},
+  {"line": "Tu préfères la courte ou la longue ?", "asks": true}
  ],
  "cases": [
   {"utterance": "Elle s'appelle Léa, elle a 8 ans.", "agent": "Vie", "agent_line": "Comment s'appelle ta fille ?", "rule": "lancer"},
@@ -35,5 +46,20 @@
   {"utterance": "Laten we hier stoppen", "agent": "Luna", "rule": "lancer"},
   {"utterance": "Arrête de parler", "agent": "Vie", "rule": null},
   {"utterance": "On va arrêter là pour le texte et passer à la suite de l'histoire", "agent": "Vie", "rule": null}
+ ],
+ "cases_v2": [
+  {"utterance": "Elle s'appelle Léa, elle a 8 ans.", "agent": "Vie", "agent_line": "Comment s'appelle ta fille ?", "rule": null},
+  {"utterance": "on va arrêter là", "agent": "Vie", "rule": "raccrocher"},
+  {"utterance": "bon ben on va arrêter là pour aujourd'hui", "agent": "Vie", "rule": "raccrocher"},
+  {"utterance": "je te laisse", "agent": "Vie", "rule": "raccrocher"},
+  {"utterance": "I'll let you go", "agent": "Vie", "rule": "raccrocher"},
+  {"utterance": "tschüss bis morgen", "agent": "Vie", "rule": null},
+  {"utterance": "bonne soirée", "agent": "Vie", "rule": null},
+  {"utterance": "salut", "agent": "Vie", "rule": null},
+  {"utterance": "ok bye", "agent": "Vie", "rule": null},
+  {"utterance": "vas-y", "agent": "Vie", "rule": "lancer"},
+  {"utterance": "ne réponds pas", "agent": "Vie", "rule": "ecouter"},
+  {"utterance": "Note que le dentiste est jeudi", "agent": "Vie", "rule": "noter"},
+  {"utterance": "lass uns hier aufhören", "agent": "Vie", "rule": "raccrocher"}
  ]
 }
