@@ -307,6 +307,24 @@ impl Pipeline {
             return Err(NotRun::Credit);
         }
         let agent = &turn.agent;
+        let session = self.wait_idle(turn).await?;
+        let text = crate::dates::now::stamped(&self.config.get(), agent, &turn.prompt);
+        let run_id = self.hermes.start_run_with(agent, &text, &session, None, turn.options.clone()).await.map_err(
+            |e| match e {
+                HermesError::Http { status: 404 | 410, .. } => NotRun::Gone,
+                e => NotRun::Refused(e),
+            },
+        )?;
+        self.follow(agent, turn.kind, &run_id, &session, turn.budget);
+        tracing::info!(target: "bipbridge::background_turn", agent = %agent.name, kind = turn.kind.as_str(),
+            run_id = %run_id, session = %session, "background turn started");
+        Ok((run_id, session))
+    }
+
+    /// The session the turn goes to (its thread's tip) once nothing runs there any more (for a trigger: in the
+    /// agent), waited for up to `busy_wait`.
+    pub async fn wait_idle(&self, turn: &Turn) -> Result<String, NotRun> {
+        let agent = &turn.agent;
         let session = self.tip(agent, &turn.thread).await;
         let mut waited = 0.0;
         while let Some(hub) = self.hub.as_ref().filter(|_| turn.busy_wait > 0.0) {
@@ -324,17 +342,7 @@ impl Pipeline {
             tokio::time::sleep(Duration::from_secs_f64(self.poll)).await;
             waited += self.poll;
         }
-        let text = crate::dates::now::stamped(&self.config.get(), agent, &turn.prompt);
-        let run_id = self.hermes.start_run_with(agent, &text, &session, None, turn.options.clone()).await.map_err(
-            |e| match e {
-                HermesError::Http { status: 404 | 410, .. } => NotRun::Gone,
-                e => NotRun::Refused(e),
-            },
-        )?;
-        self.follow(agent, turn.kind, &run_id, &session, turn.budget);
-        tracing::info!(target: "bipbridge::background_turn", agent = %agent.name, kind = turn.kind.as_str(),
-            run_id = %run_id, session = %session, "background turn started");
-        Ok((run_id, session))
+        Ok(session)
     }
 
     /// The run hub follows the turn's run (again after a restart): approvals and questions pushed, the brake's

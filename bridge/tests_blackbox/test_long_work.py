@@ -390,6 +390,7 @@ def test_a_finished_task_is_handed_back_to_the_conversation_that_asked(bridges, 
     # its rules in the note: the system prompt, and the conversation's prompt cache, untouched
     assert turn["session_id"] == "api_c" and not turn.get("instructions") and "Write ONE short message" in turn["input"]
     assert turn["input"].startswith("<!--bip:task\nYour background work « Veste en laine » is finished.")
+    assert "bip:newer" not in turn["input"], "nothing came since it started: the note as always"
     assert "- Arket : 129 €" in turn["input"] and turn["input"].endswith(f"MEDIA:{page}\n-->")
 
     # the agent's message is the conversation's own item (background_turn.rs: no Boîte copy of it), its journal row
@@ -504,3 +505,64 @@ def test_a_hand_back_while_its_conversation_is_on_screen_is_not_pushed(bridges, 
     assert not [p for p in fakes.apns.payloads() if p.get("t") == "reply"]
     stop.set()
     viewer.join(timeout=15)
+
+
+def started_task_then_photo(bridges, fakes, reply):
+    """A task started from a conversation; while it works the person sends a photo there and the agent answers it
+    (rows as Hermes keeps them, after the task's start); the agent's hand-back turn then replies `reply`."""
+    bridge = with_device(bridges, {})
+    give_token(bridge)
+    hermes = fakes.hermes
+    hermes.rounds = 1
+    hermes.add_session("api_c", [{"role": "user", "content": ASKED, "timestamp": time.time() - 30}], title="Veste")
+    gate = threading.Event()
+    hermes.runs["run_c"] = [sse("tool.started", run_id="run_c", tool="mcp_bipagents_start_task", preview="x"), gate,
+                            sse("run.completed", run_id="run_c", output="Je m'en occupe en arrière-plan.")]
+    bridge.post("/v1/watch", headers=AUTH, json={"agent": "wellness", "run_id": "run_c", "session_id": "api_c"})
+    assert wait_until(lambda: hermes.seen("/v1/runs/run_c/events"))
+    time.sleep(0.3)
+    assert not call(bridge, "start_task", {"title": "Veste en laine", "instructions": ASKED})["isError"]
+    after = time.time() + 1
+    hermes.add_session("api_c", [
+        {"role": "user", "content": ASKED, "timestamp": after - 31},
+        {"role": "assistant", "content": "Je m'en occupe en arrière-plan.", "timestamp": after - 30},
+        {"role": "user", "content": [{"type": "text", "text": "<!--bip:now x-->"}, {"type": "image_url"}],
+         "timestamp": after},
+        {"role": "assistant", "content": "Sur ta photo c'est une veste verte : la Arket verte, 129 €.",
+         "timestamp": after + 1},
+    ], title="Veste")
+    hermes.run_outputs = {"r1": REPORT, "r2": reply}
+    gate.set()
+    assert wait_until(lambda: "r2" in hermes.started, timeout=40)
+    return bridge, hermes.started["r2"]
+
+
+@pytest.mark.slow
+def test_a_task_that_started_before_the_persons_photo_is_reconciled_at_hand_back(bridges, fakes):
+    """10/11 (Alex): a background task started on his voice note, before his photo; the agent answered rightly once
+    the photo came, then the task's stale answer landed after it. Now the hand-back turn knows the person wrote since
+    (a photo) and that it answered: it tells only what is still new, saying the work started before."""
+    reply = "Ma recherche avait commencé avant ta photo : en vert, seule la Arket reste, 129 €."
+    bridge, turn = started_task_then_photo(bridges, fakes, reply)
+    assert turn["session_id"] == "api_c" and turn["input"].startswith("<!--bip:task\nYour background work « Veste en laine »")
+    assert "<!--bip:newer\nCareful: this work started before your person's latest messages here." in turn["input"]
+    assert "sent a message with a photo or a file it never saw and you have answered since" in turn["input"]
+    assert "[SILENT]" in turn["input"]
+    assert wait_until(lambda: bridge.logged("handback delivered"), timeout=20)
+    assert bridge.logged("handback: the person wrote after the work started")[0]["files"] == 1
+
+
+@pytest.mark.slow
+def test_a_task_its_conversation_already_answered_lands_nothing(bridges, fakes):
+    """The agent finds nothing still useful in the task's result (its answer with the photo covered it): it answers
+    [SILENT], nothing is posted or pushed, and the task says it was superseded."""
+    bridge, turn = started_task_then_photo(bridges, fakes, "[SILENT]")
+    assert "<!--bip:newer" in turn["input"]
+    assert wait_until(lambda: bridge.logged("handback delivered"), timeout=20)
+    assert bridge.logged("handback: superseded by newer messages")
+    time.sleep(1.0)
+    # only the first turn's reply (« Je m'en occupe… ») was ever pushed: nothing of the hand-back's turn (r2)
+    assert not [p for p in fakes.apns.payloads() if p.get("r") == "r2"]
+    assert not [p for p in fakes.apns.payloads() if p.get("r") != "run_c"]
+    assert not boite_items(bridge) and not [e for e in bridge.logged("reply push") if e.get("run_id") == "r2"]
+    assert jobs(bridge)[0]["state"] == "done", "its report stays with the task (« Tâches de fond »)"

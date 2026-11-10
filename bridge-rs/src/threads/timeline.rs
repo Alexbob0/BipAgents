@@ -321,6 +321,23 @@ fn person_words(raw: &str) -> Result<Option<(String, bool)>, String> {
     Ok((!words.is_empty()).then_some((words, steered.is_some())))
 }
 
+/// A user row's content as the person's message (words of theirs, or files they sent): `Some(files)`, whether it
+/// carries files; None when nothing of it is theirs (the bridge's notes, steers and marks, Hermes' notices, a
+/// sub-agent's report). For the bridge's own reading of a conversation (handback.rs: what came after a work started).
+pub fn person_message(content: &Value) -> Option<bool> {
+    let (raw, images) = words_and_images(content);
+    if crate::cronwatch::REPORT_PREFIXES.iter().any(|p| raw.trim_start().starts_with(p)) {
+        return None;
+    }
+    let (_, attachments) = visible(&raw, "m", images);
+    let files = !attachments.is_empty();
+    match person_words(&raw) {
+        Ok(Some(_)) => Some(files),
+        Ok(None) if files => Some(true),
+        _ => None,
+    }
+}
+
 /// A tool's result as served: the app's notes and the bridge's words to the agent joined to it (the brake's warning
 /// after a result, a steer Hermes added to it) left out.
 fn result_words(raw: &str) -> String {

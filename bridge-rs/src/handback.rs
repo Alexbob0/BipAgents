@@ -34,6 +34,14 @@
 //! item (no Boîte copy of it any more: the thread showed it twice), its journal row points at it and is pushed unless
 //! that thread is on screen; the work's files and the report's page are attachments of that message even when the
 //! agent forgot their lines. Only the template is a Boîte message.
+//!
+//! 2026-11-10 (Alex: a voice note, then a photo while the agent worked; the agent started a background task without
+//! the photo, answered rightly once the photo came, and then the task's stale answer landed after the right one): a
+//! work that started before the person's latest messages in that conversation is told so in its note
+//! ([`newer_rule`]: what came since, and that the agent has answered it): it posts only what is still new and useful,
+//! says it started before their latest message, or answers [SILENT] (nothing delivered, `Outcome::superseded`). The
+//! template then starts with « Commencé avant ton dernier message ». No model call more: one read of the
+//! conversation, and the note grows only when something came since.
 
 use std::sync::LazyLock;
 
@@ -498,6 +506,8 @@ pub struct Request {
     /// How long the agent's turn may take, and a busy conversation be waited for.
     pub turn_max: f64,
     pub busy_wait: f64,
+    /// When the work started (seconds since the epoch): the person's messages after it are ones it never saw.
+    pub since: Option<f64>,
 }
 
 impl Request {
@@ -515,6 +525,7 @@ impl Request {
             fallback_session: None,
             turn_max: 360.0,
             busy_wait: 600.0,
+            since: None,
         }
     }
 }
@@ -528,6 +539,92 @@ pub struct Outcome {
     /// Tokens the agent's turn took.
     pub tokens: i64,
     pub why: Option<String>,
+    /// The agent found nothing still worth telling (its later answers covered it): nothing delivered.
+    pub superseded: bool,
+}
+
+/// The person's messages in the conversation after a work started (that it never saw).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Newer {
+    pub messages: usize,
+    /// How many of them carry a photo or a file.
+    pub with_files: usize,
+    /// The agent replied after the last of them.
+    pub answered: bool,
+}
+
+/// A row's time (Hermes: `timestamp`, seconds), when it has one.
+fn row_time(row: &crate::Dict) -> Option<f64> {
+    ["timestamp", "created_at", "ts"].iter().find_map(|k| match row.get(*k) {
+        Some(serde_json::Value::Number(n)) => n.as_f64(),
+        Some(serde_json::Value::String(s)) => s.trim().parse().ok(),
+        _ => None,
+    })
+}
+
+/// What the person sent in `rows` (a conversation, oldest first) after `since`, and whether the agent answered it.
+pub fn newer_than(rows: &[crate::Dict], since: f64) -> Newer {
+    let mut newer = Newer::default();
+    for row in rows {
+        if !row_time(row).is_some_and(|at| at > since) {
+            continue;
+        }
+        let role = row.get("role").and_then(serde_json::Value::as_str).unwrap_or("");
+        match role {
+            "user" => {
+                let content = row.get("content").cloned().unwrap_or(serde_json::Value::Null);
+                if let Some(files) = crate::threads::timeline::person_message(&content) {
+                    newer.messages += 1;
+                    newer.with_files += usize::from(files);
+                    newer.answered = false;
+                }
+            }
+            "assistant" if newer.messages > 0 => {
+                let calls = row.get("tool_calls").is_some_and(crate::py::truthy);
+                if !calls && !crate::cronwatch::message_text(row).is_empty() {
+                    newer.answered = true;
+                }
+            }
+            _ => {}
+        }
+    }
+    newer
+}
+
+/// What the note adds when the person wrote after the work started (none: nothing added, the note as always).
+pub fn newer_rule(newer: &Newer) -> Option<String> {
+    if newer.messages == 0 {
+        return None;
+    }
+    let what = match (newer.messages, newer.with_files) {
+        (1, 0) => "a message".to_string(),
+        (1, _) => "a message with a photo or a file".to_string(),
+        (n, 0) => format!("{n} messages"),
+        (n, f) => format!("{n} messages ({f} with a photo or a file)"),
+    };
+    let answered = if newer.answered {
+        " and you have answered since"
+    } else {
+        ""
+    };
+    Some(format!(
+        "<!--bip:newer\nCareful: this work started before your person's latest messages here. Since it started they \
+sent {what} it never saw{answered} (above). Its result may be outdated, wrong given what they sent, or already said \
+in your later answers: your later answers stand. Never repeat them, and never bring back what they no longer need (an \
+option they set aside, a question they answered). Tell only what is truly new and useful to them now, in a few words, \
+saying it started before their latest message. If nothing is, {}.\n-->",
+        crate::background_turn::SILENT_RULE
+    ))
+}
+
+/// The template's first line when the work started before the person's latest message.
+pub fn started_before(lang: &str) -> &'static str {
+    match lang {
+        "fr" => "Commencé avant ton dernier message : ce résultat ne le prend pas en compte.",
+        "de" => "Vor deiner letzten Nachricht begonnen: Dieses Ergebnis berücksichtigt sie nicht.",
+        "es" => "Empezado antes de tu último mensaje: este resultado no lo tiene en cuenta.",
+        _ => "Started before your latest message: this result doesn't take it into account.",
+    }
 }
 
 /// The agent's turn in the conversation (background_turn.rs), else the template in the Boîte; the message pushed
@@ -537,11 +634,37 @@ pub async fn deliver(pipeline: &Pipeline, request: &Request) -> Outcome {
     let mut turn = Turn::new(agent, Kind::Handback, &request.session, request.note.clone());
     turn.max_seconds = request.turn_max;
     turn.busy_wait = request.busy_wait;
-    let ran = match request.budget {
-        Some(b) if b < -OVERRUN_MAX => Err("budget spent".to_string()),
-        _ => pipeline.run(&turn).await.map_err(|why| why.to_string()),
+    // what the person sent after the work started, read once the conversation is free (the turn that answers it
+    // ended): only then does the note grow
+    let mut newer = Newer::default();
+    let idle = match (request.since, request.budget) {
+        (_, Some(b)) if b < -OVERRUN_MAX => Err("budget spent".to_string()),
+        (Some(since), _) => match pipeline.wait_idle(&turn).await {
+            Ok(tip) => {
+                if let Ok(rows) = pipeline.hermes.session_messages(agent, &tip).await {
+                    newer = newer_than(&rows, since);
+                }
+                Ok(())
+            }
+            Err(why) => Err(why.to_string()),
+        },
+        _ => Ok(()),
+    };
+    if let Some(rule) = newer_rule(&newer) {
+        turn.prompt = format!("{}\n{rule}", turn.prompt);
+        tracing::info!(agent = %agent.name, session = %request.session, messages = newer.messages,
+            files = newer.with_files, answered = newer.answered, "handback: the person wrote after the work started");
+    }
+    let ran = match idle {
+        Err(why) => Err(why),
+        Ok(()) => pipeline.run(&turn).await.map_err(|why| why.to_string()),
     };
     let outcome = match ran {
+        Ok(ran) if ran.answered() && newer.messages > 0 && crate::background_turn::is_silent(&ran.text) => {
+            // the agent's later answers covered it: nothing lands (the work's report stays in its own place)
+            tracing::info!(agent = %agent.name, session = %request.session, "handback: superseded by newer messages");
+            Outcome { by_agent: true, text: String::new(), tokens: ran.tokens, why: Some("superseded".into()), superseded: true }
+        }
         Ok(ran) if ran.answered() => {
             let delivery = Delivery {
                 agent: agent.clone(),
@@ -555,7 +678,7 @@ pub async fn deliver(pipeline: &Pipeline, request: &Request) -> Outcome {
                 files: request.links.clone(),
             };
             pipeline.deliver(&delivery).await;
-            Outcome { by_agent: true, text: ran.text, tokens: ran.tokens, why: None }
+            Outcome { by_agent: true, text: ran.text, tokens: ran.tokens, why: None, superseded: false }
         }
         ran => {
             let (why, tokens) = match ran {
@@ -575,19 +698,25 @@ pub async fn deliver(pipeline: &Pipeline, request: &Request) -> Outcome {
                 (Some(other), true) => other.clone(),
                 _ => request.session.clone(),
             };
+            let text = if newer.messages > 0 {
+                let lang = language_of(&pipeline.config.get(), agent);
+                format!("{}\n\n{}", started_before(&lang), request.fallback)
+            } else {
+                request.fallback.clone()
+            };
             let delivery = Delivery {
                 agent: agent.clone(),
                 session,
                 key: format!("handback:{}", request.key),
                 title: request.title.clone(),
-                text: request.fallback.clone(),
+                text: text.clone(),
                 as_written: false,
                 run_id: None,
                 notify: true,
                 files: request.links.clone(),
             };
             pipeline.deliver(&delivery).await;
-            Outcome { by_agent: false, text: request.fallback.clone(), tokens, why: Some(why) }
+            Outcome { by_agent: false, text, tokens, why: Some(why), superseded: false }
         }
     };
     tracing::info!(agent = %agent.name, session = %request.session, by_agent = outcome.by_agent,
@@ -695,6 +824,34 @@ calendrier Garmin).\n- Ancien workout 1742300001 supprimé, `delete_workout` →
             "---\nFait.\n---\nEnd your message with these lines:\nMEDIA:/bipagents/pages/vie/rapport-t1.html\n-->"
         ));
         assert!(note.ends_with("-->"));
+    }
+
+    #[test]
+    fn the_person_s_messages_after_a_work_started() {
+        let row = |role: &str, content: serde_json::Value, at: f64| {
+            serde_json::json!({"role": role, "content": content, "timestamp": at}).as_object().cloned().unwrap()
+        };
+        let rows = vec![
+            row("user", serde_json::json!("<!--bip:now x-->Compare ces deux vestes"), 10.0),
+            row("assistant", serde_json::json!("Je lance une recherche en arrière-plan."), 12.0),
+            // a photo alone (its words only the bridge's note), then the agent's answer with it
+            row("user", serde_json::json!([{"type": "text", "text": "<!--bip:now x-->"}, {"type": "image_url"}]), 20.0),
+            row("assistant", serde_json::json!(""), 21.0),
+            row("assistant", serde_json::json!("Sur ta photo, la verte."), 22.0),
+            // the bridge's notes and a sub-agent's report are not the person's
+            row("user", serde_json::json!("<!--bip:task\nYour background work…\n-->"), 30.0),
+            row("user", serde_json::json!("[ASYNC DELEGATION RESULT] trois vestes"), 31.0),
+        ];
+        assert_eq!(newer_than(&rows, 11.0), Newer { messages: 1, with_files: 1, answered: true });
+        assert_eq!(newer_than(&rows, 25.0), Newer::default());
+        assert_eq!(newer_than(&rows, 5.0).messages, 2);
+        assert!(newer_rule(&Newer::default()).is_none(), "nothing came since: the note as always");
+        let rule = newer_rule(&Newer { messages: 1, with_files: 1, answered: true }).unwrap();
+        assert!(rule.starts_with("<!--bip:newer\n") && rule.ends_with("\n-->"));
+        assert!(rule.contains("a message with a photo or a file it never saw and you have answered since"));
+        assert!(rule.contains("[SILENT]"));
+        assert!(!newer_rule(&Newer { messages: 2, with_files: 0, answered: false }).unwrap().contains("answered since"));
+        assert!(started_before("fr").starts_with("Commencé avant ton dernier message"));
     }
 
     #[test]

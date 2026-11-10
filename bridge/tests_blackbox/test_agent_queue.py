@@ -300,3 +300,94 @@ def test_the_queue_answers_for_known_agents_only_and_keeps_its_limits(bridges, f
     assert send(bridge, "one more", after=True).status_code == 409
     assert bridge.post("/v1/agents/wellness/queue/zzz/now", headers=AUTH).status_code == 404
     gate.set()
+
+
+PHOTO = {"kind": "image", "name": "veste.jpg", "mime": "image/jpeg",
+         "data": "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP" + "A" * 40 + "/9k="}
+
+
+def photo_parts(run_input):
+    """The image parts of a turn's input (Hermes gets the photo itself, not words about it)."""
+    if not isinstance(run_input, list):
+        return []
+    return [p for m in run_input for p in (m.get("content") if isinstance(m.get("content"), list) else [])
+            if p.get("type") == "image_url"]
+
+
+def test_a_photo_pushed_into_a_running_turn_is_told_to_it_and_goes_right_after(bridges, fakes):
+    """10/11 (Alex): a photo sent while the agent worked on his voice note waited « En attente »; « Pousser » did
+    nothing he could see (Hermes' steer takes words only: the photo only went first in line, without a word), and the
+    turn went on without it. Now the turn is told a photo waits, then, pushed, to wrap up; the photo starts the moment
+    the turn ends, even stopped, and its row says it was pushed."""
+    bridge = bridges.new().start()
+    fakes.hermes.rounds = 1000
+    gate = threading.Event()
+    fakes.hermes.runs["r1"] = turn("r1", gate, end="run.cancelled")
+    fakes.hermes.runs["r2"] = turn("r2", output="Sur ta photo : la verte.")
+    start(bridge, text="(note vocale) Laquelle je prends ?")
+    assert wait_until(lambda: bridge.post("/v1/watch", headers=AUTH,
+                                          json={"agent": "wellness", "run_id": "r1"}).status_code == 200)
+    sent = send(bridge, "", attachments=[PHOTO], kinds=["image"])
+    assert sent.status_code == 200, sent.text
+    assert sent.json()["state"] == "queued"
+    # the turn knows a photo waits for it (hidden from the apps: the bridge's mark), and no words were steered
+    assert wait_until(lambda: len(fakes.hermes.steers) == 1)
+    told = fakes.hermes.steers[0]
+    assert told["run_id"] == "r1" and told["body"]["input"].startswith("[bipagents:files_waiting] Your person has just sent you a photo")
+    [item] = queue(bridge)["items"]
+    assert item["attachments"][0]["kind"] == "image" and "pushed" not in item
+    # « Pousser »: the turn is told to wrap up, the photo is first in line and marked pushed
+    now = bridge.post(f"/v1/agents/wellness/queue/{item['id']}/now", headers=AUTH)
+    assert now.status_code == 200, now.text
+    answer = now.json()
+    assert answer["steered"] is False and answer["pushed"] is True and answer["run_id"] == "r1"
+    assert answer["queue"]["items"][0]["id"] == item["id"] and answer["queue"]["items"][0]["pushed"] is True
+    assert fakes.hermes.steers[-1]["body"]["input"].startswith("[bipagents:files_next] Your person has just sent you a photo")
+    assert "Wrap up now" in fakes.hermes.steers[-1]["body"]["input"]
+    assert len(fakes.hermes.started) == 1, "the turn going on is not doubled"
+    # the turn ends stopped: no pause behind it for a pushed photo, which starts with the photo itself
+    gate.set()
+    assert wait_until(lambda: "r2" in fakes.hermes.started, timeout=15)
+    run = fakes.hermes.started["r2"]
+    assert run["session_id"] == SESSION and len(photo_parts(run["input"])) == 1
+    assert wait_until(lambda: queue(bridge)["items"] == [] and queue(bridge)["paused"] is False, timeout=10)
+
+
+def test_a_turn_that_does_not_wrap_up_for_a_pushed_photo_is_stopped(bridges, fakes):
+    """A turn told to wrap up that still goes on (a tool running for minutes: the steer waits for it) is stopped a
+    while later (`BIPAGENTS_PUSH_STOP_SECONDS` here), so the photo the person pushed goes."""
+    bridge = bridges.new()
+    bridge.env_extra.update({"BIPAGENTS_PUSH_STOP_SECONDS": "1"})
+    bridge.start()
+    fakes.hermes.rounds = 1000
+    gate = threading.Event()
+    fakes.hermes.runs["r1"] = turn("r1", gate)
+    start(bridge)
+    assert wait_until(lambda: bridge.post("/v1/watch", headers=AUTH,
+                                          json={"agent": "wellness", "run_id": "r1"}).status_code == 200)
+    assert send(bridge, "Et celle-ci ?", attachments=[PHOTO], kinds=["image"]).json()["state"] == "queued"
+    [item] = queue(bridge)["items"]
+    assert bridge.post(f"/v1/agents/wellness/queue/{item['id']}/now", headers=AUTH).json()["pushed"] is True
+    assert wait_until(lambda: fakes.hermes.seen("/v1/runs/r1/stop", "POST"), timeout=10)
+    gate.set()
+
+
+def test_a_photo_pushed_when_the_turn_takes_no_more_words_still_goes_next(bridges, fakes):
+    """The turn refuses the steer (it is ending): the photo is still first in line, pushed, and goes at its end."""
+    bridge = bridges.new().start()
+    fakes.hermes.rounds = 1000
+    gate = threading.Event()
+    fakes.hermes.runs["r1"] = turn("r1", gate, output="Fini.")
+    fakes.hermes.runs["r2"] = turn("r2", output="Vu.")
+    start(bridge)
+    assert wait_until(lambda: bridge.post("/v1/watch", headers=AUTH,
+                                          json={"agent": "wellness", "run_id": "r1"}).status_code == 200)
+    add(bridge, "Avant", run_id="r1")
+    fakes.hermes.steer_status = 409
+    assert send(bridge, "", attachments=[PHOTO], kinds=["image"]).json()["state"] == "queued"
+    photo = [i for i in queue(bridge)["items"] if i.get("attachments")][0]
+    answer = bridge.post(f"/v1/agents/wellness/queue/{photo['id']}/now", headers=AUTH).json()
+    assert answer["pushed"] is True and [i["id"] for i in answer["queue"]["items"]][0] == photo["id"]
+    gate.set()
+    assert wait_until(lambda: "r2" in fakes.hermes.started, timeout=15)
+    assert len(photo_parts(fakes.hermes.started["r2"]["input"])) == 1

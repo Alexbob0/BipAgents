@@ -1123,6 +1123,8 @@ impl Jobs {
             hb::template(&lang, &title, &hb::key_points(report, hb::POINTS_MAX, &lang, hb::today(&config)), &links);
         request.recap = Some(hb::recap(&title, report));
         request.fallback_session = job.get("session_id").and_then(Value::as_str).map(str::to_string);
+        // the person's messages there after it started are ones it never saw (handback.rs `newer_rule`)
+        request.since = job.get("created").and_then(Value::as_f64);
         let outcome = hb::deliver(handback, &request).await;
         // the turn is part of the task's cost
         let mut latest = load(&config, &id).unwrap_or_else(|| job.clone());
@@ -1135,7 +1137,7 @@ impl Jobs {
         }
         latest.insert(
             "handed_back".into(),
-            json!({"session": from, "by_agent": outcome.by_agent, "why": outcome.why, "at": py::time_time(),
+            json!({"session": from, "by_agent": outcome.by_agent, "why": outcome.why, "superseded": outcome.superseded, "at": py::time_time(),
                 "links": links}),
         );
         let _ = save(&config, &latest);
