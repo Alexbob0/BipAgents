@@ -1033,7 +1033,8 @@ html:has(.pv-detail[open]) { overflow: hidden; }
 .sec-head h2 { font-size: clamp(34px, 5.4vw, 64px); line-height: 1.03; text-wrap: balance; }
 .sec-head p { margin-top: 16px; max-width: 37em; font-size: clamp(18px, 1.8vw, 22px); line-height: 1.4; color: var(--ink2); text-wrap: pretty; }
 .stage-say small, .fiche small, .room-h small { font-size: 12.5px; font-weight: 900; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
-.hero + .sec { padding-top: clamp(56px, 7vw, 96px); }
+/* arriving on it from the menu, the header is already past the first screen (dark on light) */
+.hero + .sec { padding-top: clamp(56px, 7vw, 96px); scroll-margin-top: 40px; }
 
 /* build your team: the picked Bip on its stage, the tiles, its card */
 .pick-grid { --c: var(--coral); --cd: var(--coral-deep); --ct: var(--coral-tint); margin-top: 30px; display: grid; gap: 14px; }
