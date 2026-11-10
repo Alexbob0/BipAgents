@@ -332,3 +332,79 @@ def test_j47_the_carnet_under_the_answer_a_question_in_one_tap_then_forgotten(jo
     assert confirmed.status_code in (200, 204), confirmed.text
     assert "musique" not in lea.read_text()
     assert "Je cherche un cadeau pour Léa" in str(journey.page()["items"])
+
+
+def test_j52_a_point_moved_from_famille_and_vie_files_the_next_one_there(journey):
+    """« Famille » holds a work point of Vie's: the page shows it in one line (label, answer, `fresh`, `noted`); moved
+    to « BipAgents » (proposed first) it leaves Famille with its line kept, both histories say so, « Annuler » puts it
+    back; moved again, Vie files a like point on Famille: it lands on BipAgents and Vie is told."""
+    bridge = journey.bridge
+    def write(arguments):
+        return mcp_as(bridge, journey.token, "/v1/agent-tools/mcp", "notebook_write", arguments)
+    assert write({"page": "BipAgents", "kind": "subject", "section": "status", "facts": ["Bêta publique le 19 novembre"]}).startswith("Saved")
+    assert write({"page": "Famille", "kind": "area", "section": "matters",
+                  "facts": ["Judo de Zoé : mercredi 14 h", "BipAgents : panorama concurrentiel livré le 25/10"]}).startswith("Saved")
+    famille = "Domaines/Famille.md"
+    page = bridge.get("/v1/notebook/page", params={"path": famille, "lang": "fr"}, headers=AUTH).json()
+    facts = [f for s in page["sections"] for f in s["facts"]]
+    point = next(f for f in facts if f["label"] == "BipAgents")
+    assert point["answer"] == "panorama concurrentiel livré le 25/10" and point["fresh"] is True, point
+    assert point["noted"].startswith("Noté par Vie le "), point
+    targets = bridge.get("/v1/notebook/targets", headers=AUTH,
+                         params={"path": famille, "text": point["text"], "lang": "fr"}).json()
+    assert targets["suggested"][0]["title"] == "BipAgents", targets["suggested"]
+    to = targets["suggested"][0]
+    def move():
+        moved = bridge.post("/v1/notebook/move", params={"lang": "fr"}, headers=AUTH,
+                            json={"path": famille, "texts": [point["text"]],
+                                  "to": {"path": to["path"]}, "to_section": "status"})
+        assert moved.status_code == 200, moved.text
+        return moved.json()
+    moved = move()
+    assert moved["toast"] == "Déplacé vers « BipAgents »." and moved["learnt"] == "Vie range ça là désormais.", moved
+    assert "panorama" not in str(moved["page"]["sections"])
+    root = bridge.state_dir / "notebook" / "carnet"
+    assert "- panorama concurrentiel livré le 25/10 — *Vie, " in (root / to["path"]).read_text()
+    history = bridge.get("/v1/notebook/history", params={"path": famille}, headers=AUTH).json()["changes"]
+    assert history[0]["action"] == "move" and "Déplacé vers « BipAgents »" in history[0]["summary"], history[0]
+    # « Annuler »
+    undone = bridge.post("/v1/notebook/move/undo", params={"lang": "fr"}, headers=AUTH, json={"move": moved["move"]})
+    assert undone.status_code == 200 and "panorama" in str(undone.json()["page"]["sections"]), undone.text
+    again = bridge.post("/v1/notebook/move/undo", params={"lang": "fr"}, headers=AUTH, json={"move": moved["move"]})
+    assert again.status_code == 410 and again.json()["detail"]["code"] == "move_gone", again.text
+    # moved again: Vie's next like point goes to BipAgents, and Vie is told
+    move()
+    told = write({"page": "Famille", "kind": "area", "section": "matters",
+                  "facts": ["BipAgents : panorama concurrentiel mis à jour le 9/11"]})
+    assert "Filed on « BipAgents » instead" in told, told
+    assert "mis à jour le 9/11" in (root / to["path"]).read_text()
+    assert "mis à jour" not in (root / famille).read_text()
+    # a refused move says why
+    gone = bridge.post("/v1/notebook/move", params={"lang": "fr"}, headers=AUTH,
+                       json={"path": famille, "texts": ["Rien de tel"], "to": {"path": to["path"]}})
+    assert gone.status_code == 404 and gone.json()["detail"]["code"] == "nothing_to_move", gone.text
+
+
+def test_j52_a_work_agent_stays_off_famille_and_the_card_proposes_the_old_points(journey):
+    """A work agent (group « Pro ») cannot write on « Famille »; what it wrote there before is proposed in the home's
+    card « N points semblent mal rangés », moved only on « Tout déplacer »."""
+    bridge = journey.bridge
+    assert mcp_as(bridge, journey.token, "/v1/agent-tools/mcp", "notebook_write",
+                  {"page": "Famille", "kind": "area", "section": "matters",
+                   "facts": ["Promotion : Buffer, plan gratuit"]}).startswith("Saved")
+    assert bridge.put(f"/v1/agents/{AGENT}/group", headers=AUTH, json={"group": "Pro"}).status_code == 200
+    with pytest.raises(RuntimeError, match="^Not filed: work facts never go on the family's pages"):
+        mcp_as(bridge, journey.token, "/v1/agent-tools/mcp", "notebook_write",
+               {"page": "Famille", "kind": "area", "facts": ["Concurrents : aucun ne cumule tout"]})
+    assert bridge.post("/v1/notebook/tidy", headers=AUTH).status_code in (200, 202)
+    def card():
+        return bridge.get("/v1/notebook", params={"lang": "fr"}, headers=AUTH).json().get("misplaced")
+    assert wait_until(card, timeout=30), "no misplaced card"
+    shown_card = card()
+    assert shown_card["title"] == "Un point semble mal rangé", shown_card
+    assert shown_card["groups"][0]["from"] == "Famille" and shown_card["groups"][0]["to"] == "Travail", shown_card
+    answered = bridge.post("/v1/notebook/misplaced", params={"lang": "fr"}, headers=AUTH, json={"action": "move"})
+    assert answered.status_code == 200 and answered.json() == {"moved": 1, "toast": "Déplacé.", "card": None}, answered.text
+    root = bridge.state_dir / "notebook" / "carnet"
+    assert "Promotion" in (root / "Domaines" / "Travail.md").read_text()
+    assert "Promotion" not in (root / "Domaines" / "Famille.md").read_text()

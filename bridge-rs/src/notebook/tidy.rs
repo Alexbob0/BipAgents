@@ -44,7 +44,10 @@ steps), an area of life. A fact is not a task: a birthday or someone else's dead
 Add a task only when the person asked for it (« remind me… », « I have to… »: origin asked) or stated their own \
 commitment with a deadline (origin own); never invent one. Skip small talk, one-off questions, passwords and codes, and \
 anything the person asked not to keep. Use an existing page's exact name when the fact is about it. Write each fact \
-short (one fact an item), in the person's language. Never file health facts. Every page has fixed sections, named by \
+short (one fact an item), in the person's language. Never file health facts. Each turn and line is tagged with its \
+agent and the agent's group (« Pro », « Perso », « Famille »… or work): a Pro or work agent's facts go on the project's \
+subject page or the « Travail » area, never on a family page (« Famille », « Famille élargie », « Toi »'s family). \
+Every page has fixed sections, named by \
 id: person: who (how they relate, how they met, contact details), dates, family, work, tastes (likes, dislikes, food \
 allergies), gifts, agreed (promises, loans, appointments), exchanges (short dated lines), remember; subject: status, \
 decisions, next, people, budget, documents, history; area: matters, habits, contacts, ongoing; self (the person \
@@ -54,7 +57,7 @@ trains: times, booking numbers), lodging, documents, packing, budget, onsite (co
 nothing fits. You may also get lines filed under « other »: move each to its section when one clearly fits. A subject \
 that is clearly a trip (dates, bookings, a destination) becomes one with a « trip » line. Answer \
 with JSON lines only, one per line, nothing else:
-{\"op\": \"note\", \"agent\": \"<agent id>\", \"kind\": \"person|subject|area|self|trip\", \"page\": \"<name>\", \"section\": \"<section id>\", \"facts\": [\"...\"], \"summary\": \"<2-3 short lines, optional>\"}
+{\"op\": \"note\", \"agent\": \"<the agent id of its tag>\", \"kind\": \"person|subject|area|self|trip\", \"page\": \"<name>\", \"section\": \"<section id>\", \"facts\": [\"...\"], \"summary\": \"<2-3 short lines, optional>\"}
 {\"op\": \"refile\", \"page\": \"<name>\", \"fact\": \"<the line, exactly>\", \"section\": \"<section id>\"}
 {\"op\": \"task\", \"agent\": \"<agent id>\", \"origin\": \"asked|own\", \"title\": \"...\", \"due\": \"YYYY-MM-DD\", \"page\": \"<name, optional>\"}
 {\"op\": \"merge\", \"from\": \"<page name>\", \"into\": \"<page name>\"}   (two pages about the same person or subject)
@@ -422,6 +425,15 @@ async fn run_inner(
     if refiled > 0 {
         record.insert("refiled".into(), json!(refiled));
     }
+    // the points clearly in the wrong place: proposed in a card, never moved here (misplaced.rs, no model)
+    let misplaced = tokio::task::spawn_blocking({
+        let c = config.clone();
+        move || super::misplaced::detect(&c)
+    })
+    .await??;
+    if misplaced > 0 {
+        record.insert("misplaced".into(), json!(misplaced));
+    }
     let unsorted = super::unsorted(config, super::REFILE_PER_NIGHT);
     record.insert("unsorted".into(), json!(unsorted.len()));
     let tidy = tidy_state(&super::read_state(config));
@@ -497,8 +509,8 @@ async fn run_inner(
     for g in &gathered {
         for turn in &g.kept {
             blocks.push(format!(
-                "[agent {}]\nPerson: {}\nAgent: {}",
-                g.agent.name,
+                "[{}]\nPerson: {}\nAgent: {}",
+                agent_tag(config, &g.agent.name),
                 clip(&turn.person, TURN_CHARS),
                 clip(&turn.reply, TURN_CHARS / 2)
             ));
@@ -554,15 +566,8 @@ async fn run_inner(
         if kept_blocks.is_empty() { "(none)".into() } else { kept_blocks.join("\n\n") }
     );
     if !sent_inbox.is_empty() {
-        let first = gathered
-            .first()
-            .map(|g| g.agent.name.clone())
-            .or_else(|| config.agents.keys().next().cloned())
-            .unwrap_or_default();
-        user.push_str(&format!(
-            "\n\nTo sort (from the agents' memories; use agent {first} unless a line names another):\n{}",
-            sent_inbox.join("\n")
-        ));
+        let tagged: Vec<String> = sent_inbox.iter().map(|line| inbox_line(config, line)).collect();
+        user.push_str(&format!("\n\nTo sort (from the agents' memories):\n{}", tagged.join("\n")));
     }
     if !sent_unsorted.is_empty() {
         let lines: Vec<String> =
@@ -611,10 +616,8 @@ async fn run_inner(
         .to_string();
     let c = config.clone();
     let agents: Vec<(String, bool)> = gathered.iter().map(|g| (g.agent.name.clone(), g.health)).collect();
-    let fallback =
-        agents.first().map(|a| a.0.clone()).or_else(|| config.agents.keys().next().cloned()).unwrap_or_default();
     let applied = tokio::task::spawn_blocking(move || {
-        let applied = apply(&c, &answer, &agents, &fallback, &sent_inbox)?;
+        let applied = apply(&c, &answer, &agents, &sent_inbox)?;
         let _guard = super::lock();
         super::mark_tried(&c, &sent_unsorted)?;
         anyhow::Ok(applied)
@@ -626,12 +629,31 @@ async fn run_inner(
     Ok(())
 }
 
+/// A turn's or a line's tag for the model: « agent kerfy · Pro » (its group, or work for the work Bip).
+fn agent_tag(config: &Config, agent: &str) -> String {
+    let group = super::assign::group_label(config, agent);
+    if group.is_empty() {
+        format!("agent {agent}")
+    } else {
+        format!("agent {agent} · {group}")
+    }
+}
+
+/// A line of « À ranger » with the tag of the agent whose memory it came from (its attribution, « — *Kerfy
+/// Studio, 2026-10-25* »); a line no agent of this install wrote is sent untagged.
+fn inbox_line(config: &Config, line: &str) -> String {
+    let (_, by) = super::split_attribution(line.trim_start_matches("- "));
+    match by.and_then(|(name, _)| super::assign::agent_named(config, &name)) {
+        Some(agent) => format!("- [{}] {}", agent_tag(config, &agent), line.trim_start_matches("- ")),
+        None => line.to_string(),
+    }
+}
+
 /// The model's lines applied (each checked as an agent's write would be). Returns how many changed something.
 pub fn apply(
     config: &Config,
     answer: &str,
     agents: &[(String, bool)],
-    fallback: &str,
     inbox: &[String],
 ) -> anyhow::Result<usize> {
     let _guard = super::lock();
@@ -643,11 +665,9 @@ pub fn apply(
         }
         let Ok(Value::Object(op)) = serde_json::from_str::<Value>(line) else { continue };
         let s = |k: &str| tk::str_or_empty(op.get(k)).trim().to_string();
-        let mut agent = s("agent");
-        if config.agent(Some(&agent)).is_none() {
-            agent = fallback.to_string();
-        }
-        let who = Who::nightly(config, &agent);
+        // the agent its tag named; none known: the nightly pass's own line, never another agent's name
+        let agent = s("agent");
+        let who = if config.agent(Some(&agent)).is_some() { Who::nightly(config, &agent) } else { Who::tidy(config) };
         let private = op.get("private").map(py::truthy).unwrap_or(false);
         let w = super::words(&super::language(config));
         let page = s("page");
@@ -684,8 +704,7 @@ pub fn apply(
         }
     }
     if !inbox.is_empty() {
-        let who = Who::nightly(config, fallback);
-        super::inbox_remove_locked(config, inbox, &who)?;
+        super::inbox_remove_locked(config, inbox, &Who::tidy(config))?;
     }
     Ok(applied)
 }

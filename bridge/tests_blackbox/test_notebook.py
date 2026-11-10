@@ -165,7 +165,8 @@ def test_the_app_reads_searches_edits_and_restores(bridge):
     day = datetime.strptime(TODAY, "%Y-%m-%d")
     when = f"noté le {day.day} {['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'][day.month - 1]}"
     assert view["sections"] == [{"id": "dates", "title": "Dates", "facts": [{"text": "Anniversaire : 14 novembre",
-                                 "label": "Anniversaire", "answer": "14 novembre", "when": when,
+                                 "label": "Anniversaire", "answer": "14 novembre", "when": when, "fresh": True,
+                                 "noted": f"Noté par Wellness le {when.removeprefix('noté le ')} {day.year}",
                                  "by": "Wellness", "date": TODAY, "item": True, "links": []}]}]
     assert [s["id"] for s in view["outline"]] == ["who", "dates", "family", "work", "tastes", "gifts", "agreed",
                                                    "exchanges", "remember", "other"]

@@ -115,7 +115,7 @@ fn shareable(config: &Config, path: &str, page: &super::Page) -> bool {
     let kind = page.kind();
     let papers = super::records::kind("paper").is_some_and(|t| path == super::records::path_of(&lang, t));
     let kinds_ok = (super::KINDS.contains(&kind.as_str()) || kind == "records") && !papers;
-    let health = fold(&page.title) == fold(w.health) || fold(&page.title) == "health" || lexicon::is_health(&page.title);
+    let health = fold(&page.title) == fold(w.health) || fold(&page.title) == "health" || lexicon::touches_health(&page.title);
     kinds_ok && !health && !w.archived(path)
 }
 
@@ -131,12 +131,12 @@ pub fn facts(config: &Config, shown: &str) -> Vec<Value> {
         let mut names = vec![page.title.clone()];
         names.extend(page.aliases());
         for (section, list) in page.sections() {
-            if fold(&section) == brief || lexicon::is_health(&section) {
+            if fold(&section) == brief || lexicon::touches_health(&section) {
                 continue;
             }
             for fact in list.iter().filter(|f| f.item) {
                 let text = fact.text.trim();
-                if text.is_empty() || lexicon::is_health(text) || numbered(text) || text.contains("[[archive:") {
+                if text.is_empty() || lexicon::touches_health(text) || numbered(text) || text.contains("[[archive:") {
                     continue;
                 }
                 let (label, answer) = lexicon::split_label(text).unwrap_or((String::new(), text.to_string()));

@@ -37,6 +37,7 @@
 
 pub mod api;
 pub mod archive;
+pub mod assign;
 pub mod ask;
 pub mod fill;
 pub mod followups;
@@ -44,6 +45,8 @@ pub mod forget;
 pub mod groups;
 pub mod known;
 pub mod lexicon;
+pub mod misplaced;
+pub mod moves;
 pub mod records;
 pub mod relanguage;
 pub mod subscriptions;
@@ -910,12 +913,12 @@ pub struct Fact {
 }
 
 /// The section's line index in `lines` (`## name`, compared folded).
-fn section_index(lines: &[String], section: &str) -> Option<usize> {
+pub(crate) fn section_index(lines: &[String], section: &str) -> Option<usize> {
     let wanted = fold(section);
     lines.iter().position(|l| l.strip_prefix("## ").map(|n| fold(n) == wanted).unwrap_or(false))
 }
 
-fn section_end(lines: &[String], start: usize) -> usize {
+pub(crate) fn section_end(lines: &[String], start: usize) -> usize {
     lines[start + 1..]
         .iter()
         .position(|l| l.starts_with("## ") || l.starts_with("# "))
@@ -923,7 +926,7 @@ fn section_end(lines: &[String], start: usize) -> usize {
         .unwrap_or(lines.len())
 }
 
-fn body_lines(body: &str) -> Vec<String> {
+pub(crate) fn body_lines(body: &str) -> Vec<String> {
     body.trim_matches('\n').lines().map(str::to_string).collect()
 }
 
@@ -1363,7 +1366,7 @@ pub fn commit(
 
 /// [`commit`] with more fields in the log's line (a move's other path: `moved_to`, `moved_from`).
 #[allow(clippy::too_many_arguments)]
-fn commit_with(
+pub(crate) fn commit_with(
     config: &Config,
     part: Part,
     path: &str,
@@ -1632,6 +1635,8 @@ pub struct Written {
     pub apart: usize,
     /// A subject made a trip by this write, or a trip's details changed (trip.rs).
     pub changed: bool,
+    /// The pages facts went to instead, by the person's corrections (moves.rs).
+    pub elsewhere: Vec<String>,
 }
 
 /// The sections where a label said again replaces the old fact (one value: « Pointure : 36 »), besides any label of
@@ -1823,6 +1828,47 @@ pub(crate) fn note_locked(
             }
         }
     };
+    // the person's corrections (moves.rs): what they moved away from this page goes where they put it
+    let mut elsewhere: Vec<String> = Vec::new();
+    let mut apart = apart;
+    let stayed: Vec<String>;
+    let facts: &[String] = match who.agent.as_deref() {
+        Some(agent) if !facts.is_empty() => {
+            let (stay, away) = moves::redirect(config, agent, part, &path, &page, section, facts);
+            for (to, list) in away {
+                let to_kind = if KINDS.contains(&to.kind.as_str()) { to.kind.clone() } else { "subject".to_string() };
+                let done = moves::deeper(|| {
+                    note_locked(config, to.part, &to_kind, &to.page, &to.section, &list, &[], "", "", who)
+                })?;
+                apart += done.apart;
+                if !done.added.is_empty() && !elsewhere.contains(&done.title) {
+                    elsewhere.push(done.title);
+                }
+            }
+            stayed = stay;
+            &stayed
+        }
+        _ => facts,
+    };
+    // a work agent never writes on the family's pages (assign.rs: Alex's « Famille », 10/11)
+    let facts: &[String] = match who.agent.as_deref() {
+        Some(agent)
+            if part == Part::Main
+                && !facts.is_empty()
+                && assign::is_work_agent(config, agent)
+                && assign::lands_in_family(&page, section, facts) =>
+        {
+            if elsewhere.is_empty() {
+                return refuse(assign::refused(&lang));
+            }
+            &[]
+        }
+        _ => facts,
+    };
+    if facts.is_empty() && !elsewhere.is_empty() && summary.trim().is_empty() && aliases.is_empty() && contact.trim().is_empty() {
+        let path = if created { String::new() } else { path };
+        return Ok(Written { part: Some(part), path, title: page.title, apart, elsewhere, ..Default::default() });
+    }
     page.ensure_id();
     // the agent's judgement: a subject that is a trip becomes one (its content kept, put in the trip's outline)
     let converted = kind == "trip" && page.kind() == "subject";
@@ -1902,7 +1948,7 @@ pub(crate) fn note_locked(
     let aliases_changed = before.as_deref().map(|b| Page::parse(b, "").aliases() != page.aliases()).unwrap_or(false)
         || contact_changed;
     if added.is_empty() && !created && !aliases_changed && !summary_changed && !converted {
-        return Ok(Written { part: Some(part), path, title: page.title, created, added, sections, apart, ..Default::default() });
+        return Ok(Written { part: Some(part), path, title: page.title, created, added, sections, apart, elsewhere, ..Default::default() });
     }
     // no page with nothing in it (an empty card in the app: Alex's « Famille », 2026-11-03)
     if created && added.is_empty() && summary_of(&body, w.brief).is_empty() && kind != "self" && kind != "trip" {
@@ -1956,6 +2002,7 @@ pub(crate) fn note_locked(
         replaced,
         apart,
         changed: converted,
+        elsewhere,
     })
 }
 
