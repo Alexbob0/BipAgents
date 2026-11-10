@@ -167,10 +167,16 @@ pub fn call_from(
         if !tk::py_in(agent, data.get("agents").unwrap_or(&json!([]))) {
             // The same words for both phones: the turn may come from either, and the « Rappels » tool is on the agent's
             // page in both apps (7/11, Android: the agent gave iPhone steps from « on an iPhone: Settings › Rappels »).
+            // Something to remember with no phone to remind it: a Carnet task (with its date, `important` when they
+            // insisted: the Carnet's follow-up, decision 14 of internal/notes/carnet-v2/spec.md; bench U1, 10/11)
+            let task = name == "reminders_add" && crate::notebook::enabled(config, agent);
             return Ok(tool_text(
-                "The person hasn't shared their reminders with you, so nothing was done. They can turn on the « Rappels » \
-                 tool on your page in the BipAgents app: tell them so in one sentence, without steps for a particular \
-                 phone.",
+                &format!(
+                    "The person hasn't shared their reminders with you, so nothing was done. {}They can turn on the \
+                     « Rappels » tool on your page in the BipAgents app: tell them so in one sentence, without steps for \
+                     a particular phone.",
+                    if task { "Keep it now as a Carnet task (notebook_task add, its due date, important if they insisted). " } else { "" }
+                ),
                 true,
             ));
         }
