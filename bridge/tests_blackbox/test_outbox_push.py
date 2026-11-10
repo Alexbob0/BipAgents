@@ -98,6 +98,25 @@ def test_a_routine_report_is_read_on_demand_and_its_podcast_is_its_one_audio_fil
     assert readings == ["Trois rendez-vous aujourd'hui, rien d'urgent."], readings
 
 
+def test_a_report_with_a_pdf_and_its_podcast_gets_no_reading_on_top(bridges, fakes):
+    """Release battery 10/11 (upgrade journey): the « Point du jour » routine's report, a PDF and a two-voice podcast
+    (.wav), showed « Écouter » beside its podcast. A report bringing its own audio gets no reading, whatever else it
+    brings with it."""
+    bridge = bridges.new().start()
+    podcast = "/bipagents/audio/wellness/20261110-130821-point-du-jour-testville.wav"
+    text = ("Point du jour préparé. Le PDF de trois lignes sur la météo de Testville est prêt, et le podcast (23 s, "
+            "deux voix) l'accompagne — les deux fichiers sont ci-dessous.\n"
+            f"MEDIA:/workspace/point_du_jour_testville.pdf\nMEDIA:{podcast}")
+    item = boite_message(bridge, fakes, text, name="Point du jour")
+    assert sorted(a["kind"] for a in item["attachments"]) == ["audio", "file"], item["attachments"]
+    time.sleep(1.0)
+    assert bridge.get(f"/v1/outbox/{item['id']}/audio", headers=AUTH).status_code == 404
+    rows = bridge.get("/v1/notifications", headers=AUTH, params={"agent": "wellness"}).json()["notifications"]
+    [row] = [r for r in rows if r["type"] == "boite" and r["ref"] == item["id"]]
+    assert row["boite"]["has_audio"] is False, row["boite"]
+    assert not [b for b in fakes.pocket.inputs if b["response_format"] == "mp3"]
+
+
 def test_no_words_in_clear_even_with_the_old_previews_setting(bridges, fakes):
     # `[push] previews` is gone (sealed notifications): a phone without a key gets the neutral line only
     bridge = bridges.new(change=lambda c: c.update(push={"previews": True}))

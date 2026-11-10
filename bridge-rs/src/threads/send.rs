@@ -324,6 +324,14 @@ pub async fn keep(
     Ok(())
 }
 
+/// Seconds a new conversation's first message waits for a gateway the bridge is restarting (the tip is made then).
+const RESTART_WAIT: u64 = 90;
+
+/// Hermes not reached, or its door answering that it is not up, while the bridge restarts its gateway.
+fn down_for_restart(agent: &AgentConfig, exc: &crate::hermes::HermesError) -> bool {
+    (exc.is_transport() || matches!(exc.status(), Some(502..=504))) && crate::agent_restart::restarting(agent)
+}
+
 /// The conversation's tip, made when it has none yet (its first message): a Hermes session titled from the words.
 async fn tip_of(state: &AppState, threads: &Threads, agent: &AgentConfig, thread: &Thread, words: &str) -> ApiResult<String> {
     if let Some(tip) = threads.line(agent, thread).await.map_err(unavailable)?.last() {
@@ -333,12 +341,17 @@ async fn tip_of(state: &AppState, threads: &Threads, agent: &AgentConfig, thread
     // Hermes refuses a title another conversation holds (400 `invalid_title`): a new conversation opened with the same
     // words as an earlier one (« Bonjour », the console's « ＋ », a relative's) failed with « isn't answering » and left
     // an empty thread (release bench of 4/11). Numbered then, as the background turns' work conversations are.
-    let mut attempt = 1;
+    let (mut attempt, mut waited) = (1, 0);
     let session = loop {
         let title = if attempt == 1 { first.clone() } else { format!("{first} ({attempt})") };
         match state.hermes.create_session(agent, &title).await {
             Ok(session) => break session,
             Err(crate::hermes::HermesError::Http { status: 400 | 409, .. }) if attempt < 9 => attempt += 1,
+            // its gateway restarting (the bridge's own restart): the conversation made once Hermes answers again
+            Err(exc) if down_for_restart(agent, &exc) && waited < RESTART_WAIT => {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                waited += 2;
+            }
             Err(_) => return Err(HttpError::new(502, "your agent isn't answering right now: try again in a moment")),
         }
     };
@@ -561,10 +574,33 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
     let instructions = body.instructions.as_deref().filter(|i| !i.trim().is_empty());
     let options = crate::turn_thinking::turn_options(&state.config(), agent, &words, body.thinking);
     let thinks = crate::turn_thinking::thought(options.as_ref());
-    let run = state.hermes.start_run_input(agent, input, tip, instructions, options).await.map_err(|exc| match exc.status() {
-        Some(status @ (400 | 413 | 415 | 422)) => HttpError::new(status, "your agent refused this message"),
-        _ => HttpError::new(502, "your agent isn't answering right now: try again in a moment"),
-    })?;
+    let run = match state.hermes.start_run_input(agent, input.clone(), tip, instructions, options).await {
+        Ok(run) => run,
+        Err(exc) => match exc.status() {
+            Some(status @ (400 | 413 | 415 | 422)) => {
+                return Err(HttpError::new(status, "your agent refused this message"))
+            }
+            _ if down_for_restart(agent, &exc) => {
+                // its gateway restarted by the bridge a moment ago (agent_restart.rs): the message waits in line and
+                // starts when Hermes answers again (« En attente », msg_queue.rs), it never fails for that
+                let sent = Sent {
+                    client_id: Some(body.client_id.clone()),
+                    input: Some(input),
+                    attachments: body.attachments.iter().map(Attachment::shown).collect(),
+                    voice: body.kinds.iter().any(|k| k == "voice"),
+                    phone: phone.map(str::to_string),
+                    thinking: body.thinking,
+                };
+                queues
+                    .add(agent, tip, &words, None, false, sent)
+                    .map_err(|_| HttpError::new(409, "too many messages waiting"))?;
+                tracing::info!(agent = %agent.name, "message sent while its gateway restarts: it waits in line");
+                threads.bump(&thread, "sent").await?;
+                return Ok(answer("queued", None));
+            }
+            _ => return Err(HttpError::new(502, "your agent isn't answering right now: try again in a moment")),
+        },
+    };
     if thinks {
         crate::turn_thinking::thinking_run(&run);
     }

@@ -1491,6 +1491,8 @@ pub async fn mount_uploads(
 /// one, else Hermes' own command in its HERMES_HOME), or the hub's (cloud_setup's `restart_command`). The hub's
 /// gateway serves all its agents: they all restart.
 pub async fn restart_gateway(config: &Config, agent: &AgentConfig, run: &Run) -> anyhow::Result<()> {
+    // a message that finds it down in the next moments waits in line (threads/send.rs), never « isn't answering »
+    crate::agent_restart::restart_began(agent);
     let mut env = BTreeMap::new();
     let units = crate::place_backup::home().join(".config").join("systemd").join("user");
     let command = match agent.space.as_deref().filter(|s| !s.is_empty()) {

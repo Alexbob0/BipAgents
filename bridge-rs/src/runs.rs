@@ -1483,6 +1483,8 @@ impl RunHub {
                 let (agent, session) = (sub.agent.name.clone(), st.session_id.clone());
                 self.spawn(async move { threads.touch(&agent, session.as_deref(), "run").await });
             }
+            // not idle yet for a restart (agent_restart.rs): its person reads the answer and may write again at once
+            crate::agent_restart::note_turn_end(&sub.agent.name);
             // the agent's message queue: what waits starts now, and while more follows here no « reply ready »
             let follows = self.queues.get().and_then(std::sync::Weak::upgrade).is_some_and(|queues| {
                 let pending = as_str(event.data.get("pending_steer"));
