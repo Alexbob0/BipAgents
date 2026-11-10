@@ -11,9 +11,6 @@
 //! ago, after 3 passes in a row (14 days off), with « Questions pour le Carnet » off, or for health or money the
 //! person's message of that turn did not talk about (`on_message` keeps only that it did, never the text).
 //!
-//! While the day's question is free, the first write of the day on such a page says so in its answer (`FREE`, once a
-//! day: `ask.hinted`), since GLM asked in its reply or with `clarify` instead (bench Q1, 10/11).
-//!
 //!     POST /v1/notebook/ask/{id}   {choice} · {skip} · {never} · {undo}   → the card folded (api.rs)
 //!     notebook/state.json          quiet {from, to}, questions, slot {day, kind}, ask {declined[], skipped{},
 //!                                  skips_in_row, paused_until}, active_days {day, bits}, cards [{card: ask|follow…}]
@@ -121,35 +118,6 @@ pub fn questions_on(state: &Dict) -> bool {
 /// Whether the day's Carnet card is still free.
 pub fn slot_free(state: &Dict, now: f64) -> bool {
     state.get("slot").and_then(|s| s.get("day")).and_then(Value::as_str) != Some(day_of(now).as_str())
-}
-
-/// The line a write on « Toi », a person or an area adds to its answer when the day's question is still free (bench
-/// Q1, 10/11: GLM never filled `ask` unprompted and asked in its reply or with `clarify`, so no card): at most one
-/// such line a day reaches the model, the gate of `from_agent` decides the rest.
-pub const FREE: &str = "Today's Carnet question is free: if this page lacks a fact that matters, ask it now \
-(notebook_write ask on this page, 2-4 chips) rather than in your reply.";
-
-/// Whether `FREE` goes with a write of `turn` now (the cheap part of `from_agent`'s gate), once a day: noted as given.
-pub fn hint_once(config: &Config, turn: &Turn, now: f64) -> std::io::Result<bool> {
-    let session = turn.session.clone().unwrap_or_default();
-    if turn.busy || session.is_empty() || session.starts_with("cron_") {
-        return Ok(false);
-    }
-    let _guard = super::lock();
-    let state = super::read_state(config);
-    let a = state.get("ask").and_then(Value::as_object).cloned().unwrap_or_default();
-    let paused = a.get("paused_until").and_then(Value::as_f64).is_some_and(|t| now < t);
-    let today = day_of(now);
-    let hinted = a.get("hinted").and_then(Value::as_str) == Some(today.as_str());
-    if hinted || paused || !questions_on(&state) || !slot_free(&state, now) || quiet_in(&state, now) {
-        return Ok(false);
-    }
-    super::update_state(config, |s| {
-        let mut a = a.clone();
-        a.insert("hinted".into(), json!(today));
-        s.insert("ask".into(), Value::Object(a));
-    })?;
-    Ok(true)
 }
 
 pub fn take_slot(state: &mut Dict, kind: &str, now: f64) {
@@ -641,21 +609,6 @@ mod tests {
     fn card_id(config: &Config) -> String {
         let state = super::super::read_state(config);
         tk::str_or_empty(state["cards"].as_array().unwrap().last().unwrap().get("id"))
-    }
-
-    #[test]
-    fn the_free_question_is_said_once_a_day_and_never_when_taken() {
-        let (_d, config) = setup();
-        let now = at(0, 14);
-        assert!(!hint_once(&config, &Turn { busy: true, ..turn("r0") }, now).unwrap());
-        assert!(!hint_once(&config, &Turn { session: Some("cron_x".into()), ..turn("r0") }, now).unwrap());
-        assert!(!hint_once(&config, &turn("r0"), at(0, 23)).unwrap(), "quiet hours");
-        assert!(hint_once(&config, &turn("r1"), now).unwrap());
-        assert!(!hint_once(&config, &turn("r2"), now + 60.0).unwrap(), "once a day");
-        // the next day, the day's question already asked: no
-        let next = at(1, 14);
-        assert_eq!(ask_in(&config, "r3", "Léa chausse du combien ?", &["35", "36"], next), "Question shown to the person under your answer.");
-        assert!(!hint_once(&config, &turn("r4"), next + 60.0).unwrap());
     }
 
     #[test]

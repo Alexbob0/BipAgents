@@ -550,7 +550,6 @@ fn write(config: &Config, agent: &str, arguments: &Dict, turn: &Turn, health: bo
         || !start.is_empty()
         || !end.is_empty()
         || kind == "trip";
-    let mut free_question = false;
     if writes {
         let written = super::note(config, part, &kind, &page, &s(arguments, "section"), &facts, &aliases, &contact, &summary, &who)
             .and_then(|written| {
@@ -571,13 +570,8 @@ fn write(config: &Config, agent: &str, arguments: &Dict, turn: &Turn, health: bo
             })?;
         if !written.path.is_empty() && written.part == Some(Part::Main) {
             if let Some(text) = super::read_page_text(config, Part::Main, &written.path) {
-                let parsed = super::Page::parse(&text, "");
-                let id = parsed.id();
+                let id = super::Page::parse(&text, "").id();
                 reads::wrote(agent, turn, if id.is_empty() { &written.path } else { &id });
-                free_question = ask.is_none()
-                    && (written.created || !written.added.is_empty())
-                    && ["self", "person", "area"].contains(&parsed.kind().as_str())
-                    && super::ask::hint_once(config, turn, crate::py::time_time())?;
             }
         }
         let apart = if written.apart > 0 { " Health facts saved apart: not in the shared part." } else { "" };
@@ -642,8 +636,6 @@ fn write(config: &Config, agent: &str, arguments: &Dict, turn: &Turn, health: bo
             _ => super::ask::NO.to_string(),
         };
         out.push(answer);
-    } else if free_question {
-        out.push(super::ask::FREE.to_string());
     }
     let forget = args_list(arguments, "forget");
     if !forget.is_empty() {
@@ -1060,8 +1052,7 @@ mod tests {
         let w = |args: Value| run(&config, "quotidien", WRITE, args, &t);
         let (said, _) = w(json!({"page": "Léa Martin", "kind": "person", "section": "tastes", "facts": ["Pointure : 35"],
                                  "contact": "Lea@Example.org"}));
-        // the day's question still free: said once, with the first write on a person
-        assert_eq!(said, format!("Saved: Léa Martin › tastes (1 fact, new page).\n{}", super::super::ask::FREE));
+        assert_eq!(said, "Saved: Léa Martin › tastes (1 fact, new page).");
         // the same e-mail under another name: the same page, the name kept as a nickname
         let (said, _) = w(json!({"page": "Léa M.", "contact": "lea@example.org", "facts": ["Aime le jazz"]}));
         assert!(said.starts_with("Saved: Léa Martin › "), "{said}");
