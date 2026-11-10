@@ -1,16 +1,17 @@
 {{>top}}
-<!-- ============================================================ DEMO: the real app, recorded on an iPhone playing its own
-     demo (App/Resources/Demo/demo.json), one short clip per Bip of the home's « Build your team » (build.py CLIPS,
-     /demo/#<scenario>), in the page's language. Each clip plays while in view; with reduced motion, its poster and a
-     play button (site.js). -->
+<!-- ============================================================ DEMO: the real app, filmed on the iOS simulator playing its
+     own demo (App/Resources/Demo/demo.json): one phone, and a button per example (one per Bip of the home's « Build
+     your team », build.py CLIPS; /demo/#<scenario> opens on it) that puts its clip, in the page's language, in the
+     phone. The chosen clip plays while in view; with reduced motion, its poster and a play button (site.js). -->
 <section class="section page-section demo-section" id="demo" aria-labelledby="demo-h">
-  <div class="demo-head reveal">
-    <p class="kicker">{{demo.kicker}}</p>
-    <h1 class="page-h1" id="demo-h">{{demo.title}}</h1>
-    <p class="sub">{{demo.sub}}</p>
-  </div>
-  <div class="clips" data-clips data-play="{{demo.play}}" data-pause="{{demo.pause}}">
-{{democlips}}
+  <div class="demo-grid" data-clips data-play="{{demo.play}}" data-pause="{{demo.pause}}">
+    <div class="demo-head reveal">
+      <p class="kicker">{{demo.kicker}}</p>
+      <h1 class="page-h1" id="demo-h">{{demo.title}}</h1>
+      <p class="sub">{{demo.sub}}</p>
+{{demopicker}}
+    </div>
+{{demophone}}
   </div>
 </section>
 

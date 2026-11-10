@@ -314,26 +314,37 @@ def bip_cards(t: Dict[str, Any], demo_href: str) -> str:
     return "\n".join(out)
 
 
-def demo_clips(t: Dict[str, Any]) -> str:
-    """The demo page's clips ({{democlips}}): each a recording of the app in a phone, its Bip, what happens and, for
-    screen readers, what the screen shows. The video waits (preload="none", its poster first); site.js plays it while
-    it is in view, never with reduced motion (a play button instead)."""
-    e, out, cats = html.escape, [], {example: (key, cat) for key, cat, _, example in BIPS if example}
-    for clip in CLIPS:
+def demo_clips(t: Dict[str, Any]) -> Dict[str, str]:
+    """The demo page's picker ({{demopicker}}) and its one phone ({{demophone}}): a button per clip (its Bip's face and its example in a
+    few words, `id` = the clip, so /demo/#<clip> opens on it); the phone plays the chosen one, in the page's language,
+    with what happens under it and, for screen readers, what the screen shows. Without the script the first clip is
+    there (preload="none": its poster first); site.js swaps the clip, plays it while in view, never by itself with
+    reduced motion (the play button)."""
+    e, cats, demo = html.escape, {example: (key, cat) for key, cat, _, example in BIPS if example}, t["demo"]
+
+    def words(clip: str) -> Dict[str, str]:
         key, cat = cats[clip]
-        words, name = t["demo"][clip], t["bips"][key]["n"]
-        src = f'/assets/demo/{clip}-{{{{lang}}}}'
-        out.append(
-            f'<figure class="clip" id="{clip}" style="--tint:var(--{COLORS[cat][2]}-tint)">'
-            f'<div class="clip-phone"><video muted playsinline loop preload="none" width="590" height="1282" '
-            f'poster="{src}.jpg" aria-label="{e(name)} {e(words["title"])}" aria-describedby="{clip}-alt">'
-            f'<source src="{src}.mp4" type="video/mp4"></video>'
-            f'<button type="button" class="clip-play" aria-pressed="false" hidden>'
-            f'<span class="sr">{e(t["demo"]["play"])}</span></button></div>'
-            f'<figcaption><i data-bip-static="{cat}" aria-hidden="true"></i><span><b>{e(name)}</b> '
-            f'{e(words["title"])}</span><small>{e(words["cap"])}</small></figcaption>'
-            f'<p class="sr" id="{clip}-alt">{e(words["alt"])}</p></figure>')
-    return "\n".join(out)
+        w = demo[clip]
+        return {"clip": clip, "cat": cat, "tone": COLORS[cat][2], "name": t["bips"][key]["n"], "title": w["title"],
+                "cap": w["cap"], "alt": w["alt"], "src": f"/assets/demo/{clip}-{{{{lang}}}}"}
+
+    buttons = "\n".join(
+        f'<button type="button" class="ex" id="{w["clip"]}" aria-pressed="{"true" if i == 0 else "false"}" '
+        f'aria-controls="clip-video" data-clip="{w["clip"]}" data-cat="{w["cat"]}" data-tone="{w["tone"]}" '
+        f'data-name="{e(w["name"])}" data-title="{e(w["title"])}" data-cap="{e(w["cap"])}" data-alt="{e(w["alt"])}" '
+        f'data-src="{w["src"]}"><i data-bip-static="{w["cat"]}" aria-hidden="true"></i>{e(demo[w["clip"]]["tab"])}</button>'
+        for i, w in enumerate(words(c) for c in CLIPS))
+    w = words(CLIPS[0])
+    return {"demopicker": f'<div class="ex-row" role="group" aria-label="{e(demo["pick"])}">\n{buttons}\n</div>',
+            "demophone": f'<figure class="clip" style="--tint:var(--{w["tone"]}-tint)">'
+            f'<div class="clip-stage"><div class="clip-phone"><video id="clip-video" muted playsinline loop preload="none" '
+            f'width="590" height="1282" poster="{w["src"]}.jpg" aria-label="{e(w["name"])} {e(w["title"])}" '
+            f'aria-describedby="clip-alt"><source src="{w["src"]}.mp4" type="video/mp4"></video></div></div>'
+            f'<figcaption><i data-bip-static="{w["cat"]}" aria-hidden="true"></i><span><b>{e(w["name"])}</b> '
+            f'{e(w["title"])}</span><small>{e(w["cap"])}</small>'
+            f'<button type="button" class="clip-play" aria-pressed="false" aria-controls="clip-video" hidden>'
+            f'<span class="sr">{e(demo["play"])}</span></button></figcaption>'
+            f'<p class="sr" id="clip-alt">{e(w["alt"])}</p></figure>'}
 
 
 # The pages: (name, template, path under the language's root). The home sells, and its prices hold the self-install
@@ -441,7 +452,7 @@ def bipagents(version: str) -> Path:
             "legalprefix": "" if lang == "fr" else f"/{lang}",
             "storebadges": badges,
             "biproster": bip_roster(t), "bipcards": bip_cards(t, f"{paths[lang]}demo/"),
-            "democlips": demo_clips(t),
+            **demo_clips(t),
             # The comparison the home makes (site/config.json « compare »): the other offers' prices, where they were
             # read and when, written here once so no price is typed in a page; the Family and Solo prices follow the
             # visitor's currency (site.js).

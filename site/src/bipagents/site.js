@@ -44,30 +44,60 @@ const revealer = new IntersectionObserver(entries => {
 }, { threshold: 0.12 });
 $$(".reveal").forEach(el => revealer.observe(el));
 
-// -- The demo's clips: the real app, recorded. A clip plays while it is in view and stops when it leaves; with reduced
-// motion nothing starts by itself (its poster, a play button). The button plays or pauses it either way.
-for (const clip of $$(".clip")) {
-  const video = $("video", clip), button = $(".clip-play", clip), box = clip.closest("[data-clips]");
-  let seen = false;
+// -- The demo: one phone, the real app recorded; each example's button puts its clip in it (/demo/#<clip> opens on
+// it). Only the chosen clip loads. It plays while in view and stops when it leaves; with reduced motion nothing starts
+// by itself (its poster, a play button). The button plays or pauses it either way.
+const clips = $("[data-clips]");
+if (clips) {
+  const clip = $(".clip", clips), video = $("video", clip), button = $(".clip-play", clip), cap = $("figcaption", clip);
+  const exs = $$(".ex", clips);
+  let seen = false, held = false;
   const show = () => {
     const on = !video.paused;
     button.setAttribute("aria-pressed", on ? "true" : "false");
-    button.firstElementChild.textContent = on ? box.dataset.pause : box.dataset.play;
+    button.firstElementChild.textContent = on ? clips.dataset.pause : clips.dataset.play;
     clip.classList.toggle("playing", on);
   };
   const play = () => video.play().catch(() => {});
+  const wants = () => seen && !REDUCED && !held && !document.hidden;
   video.addEventListener("play", show);
   video.addEventListener("pause", show);
   button.hidden = false;
+  show();
   button.addEventListener("click", () => {
-    if (video.paused) { clip.dataset.held = ""; play(); } else { clip.dataset.held = "paused"; video.pause(); }
+    if (video.paused) { held = false; play(); } else { held = true; video.pause(); }
   });
+  function choose(ex, { focus = false } = {}) {
+    if (ex.getAttribute("aria-pressed") === "true" && video.currentSrc) return;
+    for (const other of exs) other.setAttribute("aria-pressed", other === ex ? "true" : "false");
+    const d = ex.dataset;
+    clip.style.setProperty("--tint", `var(--${d.tone}-tint)`);
+    video.pause();
+    video.poster = `${d.src}.jpg`;
+    $("source", video).src = `${d.src}.mp4`;
+    video.setAttribute("aria-label", `${d.name} ${d.title}`);
+    video.load();
+    $("i", cap).innerHTML = staticBip(d.cat);
+    $("span", cap).innerHTML = `<b>${esc(d.name)}</b> ${esc(d.title)}`;
+    $("small", cap).textContent = d.cap;
+    $("#clip-alt", clip).textContent = d.alt;
+    held = false;
+    if (wants()) play();
+    if (focus) ex.focus({ preventScroll: true });
+  }
+  for (const ex of exs) ex.addEventListener("click", () => {
+    choose(ex);
+    history.replaceState(null, "", `#${ex.id}`);
+    ex.scrollIntoView({ block: "nearest", inline: "nearest" });   // a phone: the row slides to it
+  });
+  const fromHash = () => { const ex = exs.find(x => `#${x.id}` === location.hash); if (ex) choose(ex); };
+  fromHash();
+  addEventListener("hashchange", fromHash);
   new IntersectionObserver(([entry]) => {
     seen = entry.isIntersecting;
-    if (!seen) video.pause();
-    else if (!REDUCED && clip.dataset.held !== "paused") play();
+    if (wants()) play(); else video.pause();
   }, { threshold: 0.5 }).observe(video);
-  addEventListener("visibilitychange", () => { if (document.hidden) video.pause(); else if (seen && !REDUCED && clip.dataset.held !== "paused") play(); });
+  addEventListener("visibilitychange", () => { if (wants()) play(); else video.pause(); });
 }
 
 

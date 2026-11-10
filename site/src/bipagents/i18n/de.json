@@ -74,31 +74,37 @@
   "demo": {
     "kicker": "Die echte App",
     "title": "Du fragst. Er kümmert sich. Du entscheidest.",
-    "sub": "Auf einem iPhone gefilmt: Die App spielt ihre eingebaute Demo, mit Beispiel-Agenten und denselben Bildschirmen wie bei dir. Nichts wird gesendet.",
+    "sub": "Die iPhone-App, gefilmt während ihrer eingebauten Demo: Beispiel-Agenten und dieselben Bildschirme wie bei dir. Nichts wird gesendet.",
+    "pick": "Die Beispiele",
     "play": "Abspielen",
     "pause": "Pausieren",
     "ctaTitle": "Deine Bips, ganz echt.",
     "book_table": {
+      "tab": "Ein Tisch am Freitag",
       "title": "reserviert einen Tisch",
       "cap": "Drei Restaurants mit freien Tischen: Du wählst, er fragt, bevor er in deinem Namen reserviert.",
       "alt": "Bildschirmaufnahme der App. Du schreibst „Reservier einen Tisch für Freitagabend“. Der Agent Alltag öffnet eine Reservierungsseite mit drei italienischen Restaurants mit freien Tischen und fragt, welches er reservieren soll. Da Vinci um 20 Uhr wird gewählt. Eine Karte bittet um dein OK, die Reservierung in deinem Namen zu senden, und es wird gegeben. Der Agent antwortet, dass Da Vinci für Freitag, für 2, reserviert und in deinem Kalender eingetragen ist."
     },
     "sleep_week": {
+      "tab": "Mein Schlaf",
       "title": "fasst deine Schlafwoche zusammen",
       "cap": "Er liest deine Schlafdaten, zeichnet die Grafik und schlägt eine Sache für heute Abend vor.",
       "alt": "Bildschirmaufnahme der App. Du fragst „Wie habe ich diese Woche geschlafen?“. Der Agent Coach liest deine letzten 7 Nächte und zeigt die Grafik der Woche. Er antwortet: im Schnitt 7 h 12, 25 Minuten mehr als letzte Woche; in den Nächten, in denen du nach Mitternacht ins Bett gehst, verlierst du über eine Stunde Schlaf; heute Bildschirm aus um 22:30?"
     },
     "subscriptions": {
+      "tab": "Meine Abos",
       "title": "kündigt vergessene Abos",
       "cap": "Er findet zwei, die du nicht mehr öffnest, du wählst, und nichts geht ohne dein OK raus.",
       "alt": "Bildschirmaufnahme der App. Du schreibst „Kündige die Abos, die ich nicht nutze“. Der Agent Budget findet CinePlus (13,99 € im Monat, seit Juli nicht geöffnet) und FitApp Premium (9,99 € im Monat, letztes Training im Juni) und fragt, welche er kündigen soll; beide werden gewählt. Eine Karte bittet um dein OK, die Kündigung in deinem Namen zu senden, und es wird gegeben. Der Agent bestätigt beide Kündigungen: bis zu 288 € Ersparnis im Jahr."
     },
     "dinner": {
+      "tab": "Das Abendessen",
       "title": "findet das Abendessen",
       "cap": "Mit dem, was noch im Kühlschrank ist: ein Rezept in 20 Minuten und was für die Liste fehlt.",
       "alt": "Bildschirmaufnahme der App. Du fragst „Was essen wir heute Abend?“. Der Agent Zuhause schaut, was vom Einkauf am Dienstag übrig ist, sucht ein schnelles Rezept und schlägt Pasta mit Zucchini, Feta und Zitrone für 4 vor, in 20 Minuten, mit den drei Schritten. Es fehlen nur Basilikum und Parmesan: Er bietet an, sie auf die Einkaufsliste zu setzen."
     },
     "weekend_lisbon": {
+      "tab": "Ein Wochenende mit Freunden",
       "title": "plant ein Wochenende mit Freunden",
       "cap": "Mit drei Freunden geteilt: Sie stimmen über ihren Link auf seinen Karten ab, erst übers Datum, dann über die Wohnung.",
       "alt": "Bildschirmaufnahme der App. Ein Agent, geteilt mit drei Freunden: Léa, Sam und Inès. Du schreibst „Lissabon mit Léa, Sam und Inès: lass uns abstimmen“. Der Agent postet eine Abstimmungskarte „Welches Wochenende?“; die Stimmen der Freunde kommen an, und das Wochenende vom 21. November gewinnt. Er sucht Wohnungen und startet eine zweite Abstimmung: Alfama, Terrasse, 92 € pro Nacht, oder Bairro Alto, Dachterrasse, 105 € pro Nacht, und die Stimmen kommen an."

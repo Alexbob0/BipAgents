@@ -579,26 +579,39 @@ a.store:hover { transform: translateY(-2px); }
 @media (min-width: 900px) { .page-section { padding-top: 72px; } }
 .page-h1 { font-size: clamp(34px, 5vw, 60px); line-height: 1.02; letter-spacing: -.035em; margin: 0; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-/* the demo: the real app, filmed, each clip in a plain phone (no brand's device), its Bip and what happens under it */
-.demo-head { max-width: 760px; }
-/* three on a row at most, the last ones centred */
-.clips { display: flex; flex-wrap: wrap; justify-content: center; gap: 56px clamp(24px, 4vw, 56px); margin-top: 48px; }
-.clip { margin: 0; flex: 0 1 300px; min-width: 0; display: grid; justify-items: center; align-content: start; gap: 22px; scroll-margin-top: calc(var(--top-h, 67px) + 20px); }
-.clip-phone { position: relative; isolation: isolate; width: min(270px, 100%); padding: 8px; border-radius: 44px; background: #1D1F24;
+/* the demo: the real app, filmed, in one plain phone (no brand's device); the examples beside it, one button each */
+.demo-grid { display: grid; gap: 36px; align-items: start; }
+@media (min-width: 960px) { .demo-grid { grid-template-columns: minmax(0, 1fr) 400px; gap: 64px; } }
+.demo-head { max-width: 640px; min-width: 0; }
+.ex-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 28px; }
+/* a phone: one row that slides sideways inside itself, never the page */
+@media (max-width: 599px) {
+  .ex-row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x proximity; margin: 24px -20px 0; padding: 2px 20px 6px; }
+  .ex-row::-webkit-scrollbar { display: none; }
+}
+.ex { flex: none; display: inline-flex; align-items: center; gap: 8px; height: 48px; padding: 0 16px 0 6px; border: 0; border-radius: 999px; cursor: pointer;
+  font: inherit; font-weight: 900; font-size: 15px; background: var(--card); color: var(--ink2); box-shadow: inset 0 0 0 1.5px var(--line);
+  scroll-snap-align: start; scroll-margin-top: calc(var(--top-h, 67px) + 24px); transition: background .25s, color .25s; }
+.ex i { width: 34px; height: 34px; } .ex svg { width: 100%; height: 100%; display: block; }
+.ex:hover { color: var(--ink); }
+.ex[aria-pressed="true"] { background: var(--ink); color: var(--ground); box-shadow: none; }
+.ex:focus-visible, .clip-play:focus-visible { outline: 3px solid var(--blue-deep); outline-offset: 3px; }
+.clip { margin: 0; min-width: 0; display: grid; justify-items: center; gap: 20px; }
+/* the phone stands whole on a tinted card (its Bip's colour), nothing over it */
+.clip-stage { width: 100%; max-width: 400px; display: grid; place-items: center; padding: 28px 0; border-radius: 40px;
+  background: var(--tint, var(--coral-tint)); transition: background .35s; }
+.clip-phone { width: min(290px, calc(100% - 40px)); padding: 8px; border-radius: 44px; background: #1D1F24;
   box-shadow: 0 30px 60px -34px rgba(29, 31, 36, .55), inset 0 0 0 2px #3A3D45; }
-.clip-phone::before { content: ""; position: absolute; inset: 9% -9% 5% 12%; z-index: -1; border-radius: 40px; background: var(--tint, var(--coral-tint)); transform: rotate(3deg); }
 .clip video { display: block; width: 100%; height: auto; border-radius: 36px; background: var(--ground); }
-/* play / pause: on the frame's edge, outside the screen, so it never reads as part of the app */
-.clip-play { position: absolute; right: -16px; bottom: 76px; width: 44px; height: 44px; border: 0; border-radius: 50%; cursor: pointer;
-  background: var(--card); box-shadow: var(--shadow-big), 0 0 0 1px var(--line); display: grid; place-items: center; }
-.clip-play::before { content: ""; margin-left: 4px; border-style: solid; border-width: 8px 0 8px 13px; border-color: transparent transparent transparent var(--ink); }
-.clip.playing .clip-play::before { margin: 0; width: 13px; height: 15px; border: 0; border-left: 4px solid var(--ink); border-right: 4px solid var(--ink); }
-.clip-play:focus-visible { outline: 3px solid var(--blue-deep); outline-offset: 3px; }
-.clip figcaption { position: relative; display: grid; grid-template-columns: 44px minmax(0, 1fr); column-gap: 12px; row-gap: 2px; max-width: 330px; width: 100%; }
+.clip figcaption { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; column-gap: 12px; row-gap: 2px; align-items: start; max-width: 400px; width: 100%; }
 .clip figcaption i { grid-row: span 2; width: 44px; height: 44px; } .clip figcaption svg { width: 100%; height: 100%; display: block; }
 .clip figcaption span { font-weight: 800; font-size: 17px; line-height: 1.3; }
 .clip figcaption b { font-weight: 1000; }
-.clip figcaption small { font-size: 15px; line-height: 1.45; color: var(--ink2); font-weight: 700; }
+.clip figcaption small { grid-column: 2; font-size: 15px; line-height: 1.45; color: var(--ink2); font-weight: 700; }
+.clip-play { grid-column: 3; grid-row: 1 / span 2; width: 44px; height: 44px; border: 0; border-radius: 50%; cursor: pointer;
+  background: var(--card); box-shadow: var(--shadow-big); display: grid; place-items: center; }
+.clip-play::before { content: ""; margin-left: 4px; border-style: solid; border-width: 8px 0 8px 13px; border-color: transparent transparent transparent var(--ink); }
+.clip.playing .clip-play::before { margin: 0; width: 13px; height: 15px; border: 0; border-left: 4px solid var(--ink); border-right: 4px solid var(--ink); }
 @media (prefers-color-scheme: dark) { .clip-phone { box-shadow: 0 30px 60px -34px rgba(0, 0, 0, .8), inset 0 0 0 2px #4A4E58; } }
 .install-more { max-width: 940px; margin: 26px auto 0; text-align: center; font-weight: 800; color: var(--ink2); }
 .install-more a { color: var(--ink); font-weight: 1000; }

@@ -74,31 +74,37 @@
   "demo": {
     "kicker": "La vraie app",
     "title": "Tu demandes. Il s’en occupe. Tu décides.",
-    "sub": "Filmée sur un iPhone : l’app joue sa démo intégrée, avec des agents d’exemple et les mêmes écrans que chez toi. Rien n’est envoyé.",
+    "sub": "L’app iPhone, filmée pendant sa démo intégrée : des agents d’exemple et les mêmes écrans que chez toi. Rien n’est envoyé.",
+    "pick": "Les exemples",
     "play": "Lire",
     "pause": "Pause",
     "ctaTitle": "Tes Bips, pour de vrai.",
     "book_table": {
+      "tab": "Une table vendredi",
       "title": "réserve une table",
       "cap": "Trois restaurants avec de la place : tu choisis, il demande avant de réserver en ton nom.",
       "alt": "Enregistrement de l’écran de l’app. Tu écris « Réserve une table vendredi soir ». L’agent Quotidien ouvre un site de réservation qui montre trois restaurants italiens avec des tables libres, puis demande lequel réserver. Da Vinci à 20 h est choisi. Une carte demande ton accord pour envoyer la réservation en ton nom, et il est donné. L’agent répond que Da Vinci est réservé vendredi, pour 2, et noté dans ton agenda."
     },
     "sleep_week": {
+      "tab": "Mon sommeil",
       "title": "fait le point sur ton sommeil",
       "cap": "Il lit tes données de sommeil, trace le graphique et propose une chose à essayer ce soir.",
       "alt": "Enregistrement de l’écran de l’app. Tu demandes « Comment j’ai dormi cette semaine ? ». L’agent Coach lit tes 7 dernières nuits et montre le graphique de la semaine. Il répond : 7 h 12 en moyenne, 25 minutes de plus que la semaine dernière ; les soirs où tu te couches après minuit, tu perds plus d’une heure de sommeil ; ce soir, écrans coupés à 22 h 30 ?"
     },
     "subscriptions": {
+      "tab": "Mes abonnements",
       "title": "résilie les abonnements oubliés",
       "cap": "Il en trouve deux que tu n’ouvres plus, tu choisis, et rien ne part sans ton accord.",
       "alt": "Enregistrement de l’écran de l’app. Tu écris « Résilie les abonnements que je n’utilise plus ». L’agent Budget trouve CinéPlus (13,99 € par mois, pas ouvert depuis juillet) et FitApp Premium (9,99 € par mois, dernière séance en juin) et demande lesquels résilier ; les deux sont choisis. Une carte demande ton accord pour envoyer la résiliation en ton nom, et il est donné. L’agent confirme les deux résiliations : jusqu’à 288 € économisés par an."
     },
     "dinner": {
+      "tab": "Le dîner",
       "title": "trouve le dîner de ce soir",
       "cap": "Avec ce qui reste dans le frigo : une recette en 20 minutes, et ce qui manque pour la liste.",
       "alt": "Enregistrement de l’écran de l’app. Tu demandes « Qu’est-ce qu’on mange ce soir ? ». L’agent Maison regarde ce qui reste des courses de mardi, cherche une recette rapide et propose des pâtes courgette, feta et citron pour 4, en 20 minutes, avec les trois étapes. Il ne manque que le basilic et le parmesan : il propose de les ajouter à la liste de courses."
     },
     "weekend_lisbon": {
+      "tab": "Un week-end entre amis",
       "title": "organise un week-end entre amis",
       "cap": "Partagé avec trois amis : ils votent sur ses cartes depuis leur lien, pour la date puis l’appart.",
       "alt": "Enregistrement de l’écran de l’app. Un agent partagé avec trois amis, Léa, Sam et Inès. Tu écris « On part à Lisbonne avec Léa, Sam et Inès : fais-nous voter ». L’agent publie une carte de vote « Quel week-end ? » ; les votes des amis arrivent et le week-end du 21 novembre l’emporte. Il cherche des apparts et lance un second vote : Alfama, terrasse, 92 € la nuit, ou Bairro Alto, rooftop, 105 € la nuit, et les votes arrivent."

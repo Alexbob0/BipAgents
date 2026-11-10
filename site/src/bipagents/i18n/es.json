@@ -74,31 +74,37 @@
   "demo": {
     "kicker": "La app de verdad",
     "title": "Tú pides. Él se encarga. Tú decides.",
-    "sub": "Grabada en un iPhone: la app reproduce su demo integrada, con agentes de ejemplo y las mismas pantallas que tendrás. No se envía nada.",
+    "sub": "La app de iPhone, grabada durante su demo integrada: agentes de ejemplo y las mismas pantallas que tendrás. No se envía nada.",
+    "pick": "Los ejemplos",
     "play": "Reproducir",
     "pause": "Pausa",
     "ctaTitle": "Tus Bips, de verdad.",
     "book_table": {
+      "tab": "Una mesa el viernes",
       "title": "reserva una mesa",
       "cap": "Tres restaurantes con mesa libre: eliges uno y te pregunta antes de reservar en tu nombre.",
       "alt": "Grabación de la pantalla de la app. Escribes «Reserva una mesa el viernes por la noche». El agente Día a día abre una web de reservas con tres restaurantes italianos con mesa libre y pregunta cuál reservar. Se elige Da Vinci a las 20 h. Una tarjeta pide tu permiso para enviar la reserva en tu nombre, y se da. El agente responde que Da Vinci está reservado el viernes, para 2, y apuntado en tu agenda."
     },
     "sleep_week": {
+      "tab": "Mi sueño",
       "title": "resume tu semana de sueño",
       "cap": "Lee tus datos de sueño, dibuja el gráfico y te propone algo para probar esta noche.",
       "alt": "Grabación de la pantalla de la app. Preguntas «¿Cómo he dormido esta semana?». El agente Coach lee tus 7 últimas noches y muestra el gráfico de la semana. Responde: 7 h 12 de media, 25 minutos más que la semana pasada; las noches que te acuestas después de medianoche pierdes más de una hora de sueño; ¿esta noche, pantallas fuera a las 22:30?"
     },
     "subscriptions": {
+      "tab": "Mis suscripciones",
       "title": "cancela las suscripciones olvidadas",
       "cap": "Encuentra dos que ya no abres, eliges tú y nada sale sin tu permiso.",
       "alt": "Grabación de la pantalla de la app. Escribes «Cancela las suscripciones que no uso». El agente Presupuesto encuentra CinePlus (13,99 € al mes, sin abrir desde julio) y FitApp Premium (9,99 € al mes, último entreno en junio) y pregunta cuáles cancelar; se eligen las dos. Una tarjeta pide tu permiso para enviar la baja en tu nombre, y se da. El agente confirma las dos bajas: hasta 288 € de ahorro al año."
     },
     "dinner": {
+      "tab": "La cena",
       "title": "encuentra la cena de esta noche",
       "cap": "Con lo que queda en la nevera: una receta en 20 minutos y lo que falta para la lista.",
       "alt": "Grabación de la pantalla de la app. Preguntas «¿Qué cenamos esta noche?». El agente Casa mira lo que queda de la compra del martes, busca una receta rápida y propone pasta con calabacín, feta y limón para 4, en 20 minutos, con sus tres pasos. Solo faltan albahaca y parmesano: propone añadirlos a la lista de la compra."
     },
     "weekend_lisbon": {
+      "tab": "Un finde con amigos",
       "title": "organiza un finde con amigos",
       "cap": "Compartido con tres amigos: votan en sus tarjetas desde su enlace, primero la fecha y luego el piso.",
       "alt": "Grabación de la pantalla de la app. Un agente compartido con tres amigos: Léa, Sam e Inès. Escribes «Lisboa con Léa, Sam e Inès: haznos votar». El agente publica una tarjeta de votación «¿Qué finde?»; llegan los votos de los amigos y gana el finde del 21 de noviembre. Busca pisos y lanza una segunda votación: Alfama, terraza, 92 € la noche, o Bairro Alto, azotea, 105 € la noche, y llegan los votos."

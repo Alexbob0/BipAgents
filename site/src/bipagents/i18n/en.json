@@ -74,31 +74,37 @@
   "demo": {
     "kicker": "The real app",
     "title": "You ask. It handles it. You decide.",
-    "sub": "Filmed on an iPhone: the app playing its built-in demo, with sample agents and the same screens you’ll have. Nothing is sent.",
+    "sub": "The iPhone app, filmed playing its built-in demo: sample agents and the same screens you’ll have. Nothing is sent.",
+    "pick": "The examples",
     "play": "Play",
     "pause": "Pause",
     "ctaTitle": "Your Bips, for real.",
     "book_table": {
+      "tab": "A table on Friday",
       "title": "books a table",
       "cap": "Three restaurants with room: you pick one, it asks before booking in your name.",
       "alt": "Screen recording of the app. You write “Book a table for Friday night”. The Daily agent opens a booking site showing three Italian restaurants with free tables and asks which one to book. Da Vinci at 8 pm is chosen. A card asks for your OK to send the booking in your name, and it is given. The agent answers that Da Vinci is booked for Friday, for 2, and added to your calendar."
     },
     "sleep_week": {
+      "tab": "My sleep",
       "title": "sums up your week of sleep",
       "cap": "It reads your sleep data, draws the chart and suggests one thing to try tonight.",
       "alt": "Screen recording of the app. You ask “How did I sleep this week?”. The Coach agent reads your last 7 nights of sleep and shows a chart of the week. It answers: 7 h 12 on average, 25 minutes more than last week; on the nights you go to bed after midnight you lose over an hour of sleep; tonight, screens off at 10:30 pm?"
     },
     "subscriptions": {
+      "tab": "My subscriptions",
       "title": "cancels the subscriptions you forgot",
       "cap": "It finds two you no longer open, you choose, and nothing is sent without your OK.",
       "alt": "Screen recording of the app. You write “Cancel the subscriptions I don’t use”. The Budget agent finds CinePlus (€13.99 a month, not opened since July) and FitApp Premium (€9.99 a month, last workout in June) and asks which ones to cancel; both are chosen. A card asks for your OK to send the cancellation in your name, and it is given. The agent confirms both cancellations: up to €288 saved a year."
     },
     "dinner": {
+      "tab": "Dinner",
       "title": "finds tonight’s dinner",
       "cap": "With what’s left in the fridge: a 20-minute recipe, and what’s missing for the list.",
       "alt": "Screen recording of the app. You ask “What’s for dinner tonight?”. The Home agent checks what’s left from Tuesday’s shopping, looks up a quick recipe and suggests courgette, feta and lemon pasta for 4, in 20 minutes, with its three steps. Only basil and parmesan are missing: it offers to add them to the shopping list."
     },
     "weekend_lisbon": {
+      "tab": "A weekend with friends",
       "title": "plans a weekend with friends",
       "cap": "Shared with three friends: they vote on its cards from their link, for the date, then the flat.",
       "alt": "Screen recording of the app. An agent shared with three friends, Léa, Sam and Inès. You write “Lisbon with Léa, Sam and Inès: get us voting”. The agent posts a vote card, “Which weekend?”; the friends’ votes come in and the weekend of 21 November wins. It looks for flats and posts a second vote: Alfama, terrace, €92 a night, or Bairro Alto, rooftop, €105 a night, and the votes come in."
