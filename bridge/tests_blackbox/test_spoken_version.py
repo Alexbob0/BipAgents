@@ -103,7 +103,7 @@ def test_the_search_never_finds_its_words(bridges, fakes):
 
 def test_the_radio_rules_go_with_a_call_and_a_voice_message(bridge, fakes):
     _, rules = split_brief_now(bridge.get("/v1/live/brief", params={"agent": "wellness"}, headers=AUTH).json()["text"])
-    assert rules.startswith("Spoken, for the ear: the essential first") and "after_call" in rules
+    assert "Spoken, for the ear: the essential first" in rules and "after_call" in rules   # after the Carnet line
     assert "« about 420 euros »" in rules   # its examples in the agent's language (English here)
     voice = taken_notes(bridge, kinds=("voice",))
     assert "<!--bip:voice\nYour person sent a voice message: your reply will be listened to." in voice
