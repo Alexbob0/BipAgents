@@ -132,7 +132,7 @@ fn take(body: &str, kind: &str, texts: &[String], section: Option<&str>) -> (Vec
                 Some(h) => fold(h) == fold(&current),
                 None => {
                     let f = fold(&text);
-                    wanted.iter().any(|w| *w == f) && !taken.iter().any(|t| fold(&t.text) == f)
+                    wanted.contains(&f) && !taken.iter().any(|t| fold(&t.text) == f)
                 }
             };
         if chosen {

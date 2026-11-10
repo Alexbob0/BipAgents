@@ -160,7 +160,7 @@ pub fn find(config: &Config) -> Vec<Value> {
             .filter(|(section, _, who)| misfiled(section, who))
             .filter_map(|(_, text, _)| lexicon::split_label(text).map(|(l, _)| l))
             .collect();
-        for (section, text, who) in all.iter().cloned() {
+        for (section, text, who) in all {
             let Some(agent) = assign::agent_named(config, &who) else { continue };
             if misfiled(&section, &who) {
                 let to = work_target(config, &text, &page, &labels);
