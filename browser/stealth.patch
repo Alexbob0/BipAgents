@@ -1,5 +1,5 @@
 diff --git a/src/browser_manager.py b/src/browser_manager.py
-index a614108..37d8328 100644
+index a614108..b1b7ae5 100644
 --- a/src/browser_manager.py
 +++ b/src/browser_manager.py
 @@ -56,6 +56,207 @@ def _parse_nonnegative_int_env(
@@ -416,10 +416,31 @@ index a614108..37d8328 100644
 -            await self.close_instance(instance_id)
 +            await self.close_instance(instance_id, keep_pages=True)   # BipAgents: the server ends, Chrome stays
 diff --git a/src/server.py b/src/server.py
-index b5ad386..b0c4c28 100644
+index b5ad386..1deefa1 100644
 --- a/src/server.py
 +++ b/src/server.py
-@@ -183,7 +183,8 @@ async def spawn_browser(
+@@ -3,6 +3,7 @@
+ import asyncio
+ import base64
+ import importlib
++import inspect
+ import json
+ import os
+ import signal
+@@ -83,7 +84,11 @@ def section_tool(section: str):
+     """Decorator that registers tools and tracks section membership."""
+     def decorator(func):
+         SECTION_TOOLS[section].append(func.__name__)
+-        return mcp.tool(func)
++        # BipAgents: the whole docstring stays the tool's description, as FastMCP 2 gave it (FastMCP 3 would keep
++        # only its first paragraph and move the Args lines into the schema): the agent reads the same text.
++        description = inspect.getdoc(func)
++        func.__doc__ = None
++        return mcp.tool(func, description=description)
+     return decorator
+ 
+ 
+@@ -183,7 +188,8 @@ async def spawn_browser(
      sandbox: Optional[Any] = None
  ) -> Dict[str, Any]:
      """
@@ -429,7 +450,7 @@ index b5ad386..b0c4c28 100644
  
      Args:
          headless (bool): Run in headless mode.
-@@ -230,10 +231,11 @@ async def spawn_browser(
+@@ -230,10 +236,11 @@ async def spawn_browser(
          )
          instance = await browser_manager.spawn_browser(options)
          tab = await browser_manager.get_tab(instance.instance_id)
@@ -442,7 +463,7 @@ index b5ad386..b0c4c28 100644
          spawn_diagnostics = await browser_manager.get_spawn_diagnostics(instance.instance_id)
          return {
              "instance_id": instance.instance_id,
-@@ -277,17 +279,19 @@ async def list_instances() -> List[Dict[str, Any]]:
+@@ -277,17 +284,19 @@ async def list_instances() -> List[Dict[str, Any]]:
      return result
  
  @section_tool("browser-management")

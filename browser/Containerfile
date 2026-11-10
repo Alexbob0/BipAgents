@@ -56,7 +56,8 @@ RUN chmod 755 /opt/stealth/entrypoint.sh /opt/stealth/mcp.sh /opt/stealth/open_b
 # WebSocket from a web page), a browser always shown on the screen (an agent's headless ignored), and
 # how long a starting Chrome may take to open its DevTools (nodriver's own ~3 s failed cold starts on a loaded server).
 # BROWSER_IDLE_TIMEOUT=0: the server's own reaper never lets go of the agent's browser; the bridge stops the whole
-# container once nobody uses it (bip-browser-mcp's `idle`).
+# container once nobody uses it (bip-browser-mcp's `idle`). FastMCP (3) shows no banner and never asks PyPI for a newer
+# version at each start.
 ENV DISPLAY=:99 \
     STEALTH_CDP_PORT=9222 \
     STEALTH_USER_DATA_DIR=/home/bip/profile \
@@ -65,6 +66,8 @@ ENV DISPLAY=:99 \
     STEALTH_HEADFUL=1 \
     STEALTH_CONNECT_SECONDS=45 \
     BROWSER_IDLE_TIMEOUT=0 \
+    FASTMCP_SHOW_SERVER_BANNER=false \
+    FASTMCP_CHECK_FOR_UPDATES=off \
     PYTHONWARNINGS=ignore \
     PYTHONUNBUFFERED=1
 
