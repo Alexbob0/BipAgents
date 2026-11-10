@@ -563,9 +563,18 @@ pub async fn send(state: &AppState, agent: &AgentConfig, thread: Option<Thread>,
             phone: phone.map(str::to_string),
             thinking: body.thinking,
         };
+        let shown = sent.attachments.clone();
         queues
             .add(agent, tip, &words, running.as_deref(), front, sent)
             .map_err(|_| HttpError::new(409, "too many messages waiting"))?;
+        if let (Some(run), false, false) = (running.as_deref(), body.after, shown.is_empty()) {
+            // files Hermes' steer cannot carry: the turn going on knows they wait for it (10/11: a background task
+            // started without Alex's photo, and its answer came after the right one)
+            let note = crate::msg_queue::files_steer(&shown, false);
+            if let Err(exc) = state.hermes.steer_run(agent, run, &note).await {
+                tracing::info!(agent = %agent.name, run_id = %run, error = %exc, "the turn not told of the files waiting");
+            }
+        }
         threads.bump(&thread, "sent").await?;
         return Ok(answer("queued", None));
     }

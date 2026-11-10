@@ -11,7 +11,9 @@
 //!     GET    /v1/agents/{id}/queue                    the agent's queue (below)
 //!     POST   /v1/agents/{id}/queue/order              {ids: [...]}  those first, in that order; the rest after
 //!     DELETE /v1/agents/{id}/queue/{item}             cancelled
-//!     POST   /v1/agents/{id}/queue/{item}/now         into the turn going on (a steer), else started at once
+//!     POST   /v1/agents/{id}/queue/{item}/now         into the turn going on (a steer), else started at once; with
+//!                                                     files (Hermes' steer takes words only): `pushed`, the turn
+//!                                                     told to wrap up, the message started the moment it ends
 //!     POST   /v1/agents/{id}/queue/pause | resume     paused, nothing new starts (the turn going on finishes)
 //!     GET    /v1/agents/{id}/queue/events             SSE: `queue` (the whole queue, at once and at each change),
 //!                                                     `queue.started` {run_id, session_id, item_id, text}
@@ -62,6 +64,13 @@ use crate::hermes::{HermesClient, HermesError};
 use crate::runs::RunHub;
 use crate::web::{self, ApiResult, FieldError, HttpError, Json, Validate};
 
+/// The steer's mark when the person pushes a message with files (the timeline hides `[bipagents:` steers).
+pub const PUSH_MARK: &str = "[bipagents:files_next]";
+/// The same when such a message just waits for the turn's end (threads/send.rs).
+pub const WAIT_MARK: &str = "[bipagents:files_waiting]";
+/// How long a turn told to wrap up for a pushed message may still go on before the bridge stops it (a tool call
+/// that runs for minutes: the steer waits for it). `BIPAGENTS_PUSH_STOP_SECONDS` in the tests.
+pub const PUSH_STOP_SECONDS: f64 = 90.0;
 /// Items an agent's queue holds at most.
 pub const ITEMS_MAX: usize = 30;
 /// One item's words at most (a message, not a document).
@@ -100,6 +109,11 @@ pub struct Item {
     /// The phone's decision for its turn's thinking (turn_thinking.rs); not shown to the apps.
     #[serde(default, skip_serializing)]
     pub thinking: Option<bool>,
+    /// « Pousser » on a message Hermes' steer cannot carry (files: its steer takes words only): the turn going on was
+    /// told to wrap up, and this one starts the moment it ends, whatever its end (a stop too) and even paused. The
+    /// apps say so on its row (« Part dès la fin de l'étape en cours »).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pushed: bool,
 }
 
 /// A message the sending route hands to the queue: its app id and Hermes' input.
@@ -232,6 +246,7 @@ impl AgentQueue {
         if self.waits_in(&s)
             && matches!(kind, "run.cancelled" | "run.canceled" | "run.interrupted" | "run.failed")
             && !self.paused
+            && !self.items.iter().any(|i| i.session_id == s && i.pushed)
         {
             // stopped by the person, or failed: nothing goes on behind it until « Reprendre »
             self.paused = true;
@@ -240,7 +255,21 @@ impl AgentQueue {
         if changed {
             self.changed();
         }
-        (changed, !self.paused && self.waits_in(&s))
+        let pushed = self.items.iter().any(|i| i.session_id == s && i.pushed);
+        (changed, (!self.paused || pushed) && self.waits_in(&s))
+    }
+
+    /// The item first in line, pushed (« Pousser »).
+    fn push_first(&mut self, item_id: &str) -> bool {
+        let Some(at) = self.items.iter().position(|i| i.id == item_id) else { return false };
+        let mut item = self.items.remove(at);
+        let changed = at != 0 || !item.pushed;
+        item.pushed = true;
+        self.items.insert(0, item);
+        if changed {
+            self.changed();
+        }
+        changed
     }
 }
 
@@ -257,6 +286,50 @@ fn new_item(session_id: &str, text: &str, late: bool, sent: Sent) -> Item {
         voice: sent.voice,
         phone: sent.phone,
         thinking: sent.thinking,
+        pushed: false,
+    }
+}
+
+/// What a message carries that Hermes' steer cannot (it takes words only), as the turn going on is told it.
+pub fn files_said(attachments: &[Value]) -> String {
+    let photos = attachments.iter().filter(|a| a.get("kind").and_then(Value::as_str) == Some("image")).count();
+    let others = attachments.len() - photos;
+    let mut parts = Vec::new();
+    match photos {
+        0 => {}
+        1 => parts.push("a photo".to_string()),
+        n => parts.push(format!("{n} photos")),
+    }
+    match others {
+        0 => {}
+        1 => parts.push("a file".to_string()),
+        n => parts.push(format!("{n} files")),
+    }
+    if parts.is_empty() {
+        "a message".to_string()
+    } else {
+        parts.join(" and ")
+    }
+}
+
+/// The steer that tells the turn going on of a message with files it cannot take (hidden in the apps: the bridge's
+/// mark). `pushed`: the person asked for it now (« Pousser »): the turn wraps up and it starts right after; else it
+/// only waits for the turn's end, and the turn knows not to finish or hand off the work without it.
+pub fn files_steer(attachments: &[Value], pushed: bool) -> String {
+    let what = files_said(attachments);
+    if pushed {
+        format!(
+            "{PUSH_MARK} Your person has just sent you {what}. It is on its way: you see it in their next message, the \
+moment this turn ends (not in this turn). Wrap up now: start no new tool, background task or sub-agent; end this turn \
+in one or two short sentences in their language: where you are, and that you look at it right after. Never ask them \
+to send it: it is sent."
+        )
+    } else {
+        format!(
+            "{WAIT_MARK} Your person has just sent you {what} while you work. It is on its way: you see it in their next \
+message, right after this turn ends (not in this turn). If your work depends on it, keep this turn short and don't \
+start a background task or sub-agent without it. Never ask them to send it: it is sent."
+        )
     }
 }
 
@@ -581,7 +654,8 @@ impl Queues {
         let _one = self.advancing.lock().await;
         let Some(agent) = self.config.get().agent(Some(agent_name)).cloned() else { return };
         let queue = self.get(&agent.name);
-        let Some(head) = queue.items.first().cloned().filter(|_| !queue.paused) else { return };
+        // a pushed message goes even paused (the person asked for it now)
+        let Some(head) = queue.items.first().cloned().filter(|h| !queue.paused || h.pushed) else { return };
         if self.busy(&agent, &head.session_id).await {
             return;
         }
@@ -636,33 +710,71 @@ impl Queues {
         Some(run_id)
     }
 
-    /// « Envoyer maintenant »: into the turn going on in its conversation, else started at once (even paused).
+    /// « Envoyer maintenant » / « Pousser »: words into the turn going on in its conversation; a message with files
+    /// (Hermes' steer takes words only, 10/11: Alex's photo « poussée » several times reached nothing, it only went
+    /// first in line without a word) is told to that turn, which wraps up, and starts the moment it ends (`pushed`;
+    /// stopped after `PUSH_STOP_SECONDS` if it goes on); nothing going on: started at once (even paused).
+    /// Answer: `{steered, pushed, run_id?, queue}`.
     pub async fn send_now(&self, agent: &AgentConfig, item_id: &str) -> Result<Value, HttpError> {
         let queue = self.get(&agent.name);
         let item = queue.items.iter().find(|i| i.id == item_id).cloned().ok_or_else(HttpError::not_found)?;
-        let steerable = item.input.as_ref().is_none_or(Value::is_string);
-        let steered = match steerable {
-            true => self.steer(agent, &item.session_id, None, &item.text, item.client_id.as_deref()).await.map_err(hermes_error)?,
-            false => None,
-        };
-        if let Some(run) = steered {
-            self.hub.set_phone(&agent.name, &run, item.phone.as_deref());
-            let queue = self.remove(&agent.name, item_id).unwrap_or_else(|| self.get(&agent.name));
-            return Ok(json!({"steered": true, "run_id": run, "queue": queue.snapshot(&agent.name)}));
+        let steerable = item.input.as_ref().is_none_or(Value::is_string) && item.attachments.is_empty();
+        if steerable {
+            let steered =
+                self.steer(agent, &item.session_id, None, &item.text, item.client_id.as_deref()).await.map_err(hermes_error)?;
+            if let Some(run) = steered {
+                self.hub.set_phone(&agent.name, &run, item.phone.as_deref());
+                let queue = self.remove(&agent.name, item_id).unwrap_or_else(|| self.get(&agent.name));
+                return Ok(json!({"steered": true, "pushed": false, "run_id": run, "queue": queue.snapshot(&agent.name)}));
+            }
+        } else if let Some(run) = self.running_run(&agent.name, &item.session_id) {
+            // first in line and pushed before the turn hears of it: its end, however quick, starts it
+            let (queue, _) = self.update(&agent.name, |q| (q.push_first(item_id), ()));
+            let told = self.hermes.steer_run(agent, &run, &files_steer(&item.attachments, true)).await;
+            match &told {
+                Ok(()) => self.stop_if_still_going(agent, &item, &run),
+                Err(exc) => tracing::info!(agent = %agent.name, run_id = %run, error = %exc,
+                    "queue: the turn could not be told of a pushed message (it starts at its end)"),
+            }
+            tracing::info!(agent = %agent.name, run_id = %run, told = told.is_ok(), "queue: a message with files pushed");
+            self.kick(&agent.name); // the turn may have ended meanwhile
+            return Ok(json!({"steered": false, "pushed": true, "run_id": run, "queue": queue.snapshot(&agent.name)}));
         }
         let _one = self.advancing.lock().await;
         if self.busy(agent, &item.session_id).await {
-            // a turn just started there and takes no words yet: first in line instead
-            let mut ids = vec![item.id.clone()];
-            ids.extend(self.get(&agent.name).items.iter().map(|i| i.id.clone()));
-            let queue = self.reorder(&agent.name, &ids);
-            return Ok(json!({"steered": false, "queue": queue.snapshot(&agent.name)}));
+            // a turn just started there and takes no words yet (or one the hub doesn't follow): first in line,
+            // pushed, starts at its end
+            let (queue, _) = self.update(&agent.name, |q| (q.push_first(item_id), ()));
+            return Ok(json!({"steered": false, "pushed": true, "queue": queue.snapshot(&agent.name)}));
         }
         let run = self
             .start(agent, &item)
             .await
             .ok_or_else(|| HttpError::new(502, "your agent isn't answering right now: try again in a moment"))?;
-        Ok(json!({"steered": false, "run_id": run, "queue": self.get(&agent.name).snapshot(&agent.name)}))
+        Ok(json!({"steered": false, "pushed": false, "run_id": run, "queue": self.get(&agent.name).snapshot(&agent.name)}))
+    }
+
+    /// The turn told to wrap up for a pushed message, stopped if it still goes on a while later (the message still
+    /// waiting for it): the person asked for their message now.
+    fn stop_if_still_going(&self, agent: &AgentConfig, item: &Item, run: &str) {
+        let (Some(me), Ok(runtime)) = (self.me.upgrade(), tokio::runtime::Handle::try_current()) else { return };
+        let wait = std::env::var("BIPAGENTS_PUSH_STOP_SECONDS")
+            .ok()
+            .and_then(|s| s.trim().parse::<f64>().ok())
+            .filter(|s| s.is_finite() && *s >= 0.0)
+            .unwrap_or(PUSH_STOP_SECONDS);
+        let (agent, item_id, session, run) = (agent.clone(), item.id.clone(), item.session_id.clone(), run.to_string());
+        runtime.spawn(async move {
+            tokio::time::sleep(Duration::from_secs_f64(wait)).await;
+            let waits = me.get(&agent.name).items.iter().any(|i| i.id == item_id && i.pushed);
+            if !waits || me.running_run(&agent.name, &session).as_deref() != Some(run.as_str()) {
+                return;
+            }
+            tracing::info!(agent = %agent.name, run_id = %run, "queue: the turn did not wrap up for a pushed message: stopped");
+            if let Err(exc) = me.hermes.stop_run(&agent, &run).await {
+                tracing::warn!(agent = %agent.name, run_id = %run, error = %exc, "queue: the turn could not be stopped");
+            }
+        });
     }
 
     /// Every agent with items waiting, looked at again (a run's end the hub never saw, a start that failed, a restart).
@@ -679,7 +791,11 @@ impl Queues {
         loop {
             let agents: Vec<String> = {
                 let state = lock(&self.state);
-                state.iter().filter(|(_, q)| !q.items.is_empty() && !q.paused).map(|(a, _)| a.clone()).collect()
+                state
+                    .iter()
+                    .filter(|(_, q)| q.items.first().is_some_and(|i| !q.paused || i.pushed))
+                    .map(|(a, _)| a.clone())
+                    .collect()
             };
             for agent in agents {
                 self.advance(&agent).await;
@@ -822,7 +938,43 @@ mod tests {
             voice: false,
             phone: None,
             thinking: None,
+            pushed: false,
         }
+    }
+
+    #[test]
+    fn a_pushed_message_goes_first_and_right_after_even_a_stop() {
+        // 10/11: Alex's photo pushed during a turn stayed « En attente » without a word
+        let mut q = queue_of(&[("a", "s1"), ("b", "s1")]);
+        assert!(q.push_first("b"));
+        assert_eq!(q.items.iter().map(|i| (i.id.as_str(), i.pushed)).collect::<Vec<_>>(), [("b", true), ("a", false)]);
+        assert!(!q.push_first("b"), "pushed twice: nothing changes");
+        assert!(!q.push_first("nope"));
+        // the turn stopped (by the bridge, or the person) or failed: no pause, the pushed one follows
+        let (_, follows) = q.run_ended("r1", Some("s1"), "run.cancelled", None);
+        assert!(follows && !q.paused);
+        // the person's pause holds the rest, not a pushed message
+        q.paused = true;
+        assert!(q.run_ended("r2", Some("s1"), "run.completed", None).1);
+        q.items.remove(0);
+        assert!(!q.run_ended("r3", Some("s1"), "run.completed", None).1);
+        let shown = q.snapshot("maison");
+        assert!(shown["items"][0].get("pushed").is_none());
+        q.push_first("a");
+        assert_eq!(q.snapshot("maison")["items"][0]["pushed"], true);
+    }
+
+    #[test]
+    fn the_turn_is_told_what_it_cannot_see() {
+        let photo = json!({"kind": "image", "name": "p.jpg"});
+        let doc = json!({"kind": "document", "name": "devis.pdf"});
+        assert_eq!(files_said(std::slice::from_ref(&photo)), "a photo");
+        assert_eq!(files_said(&[photo.clone(), photo.clone(), doc.clone()]), "2 photos and a file");
+        let pushed = files_steer(std::slice::from_ref(&photo), true);
+        assert!(pushed.starts_with("[bipagents:files_next] Your person has just sent you a photo") && pushed.contains("Wrap up now"));
+        let waiting = files_steer(&[doc], false);
+        assert!(waiting.starts_with("[bipagents:files_waiting] Your person has just sent you a file while you work"));
+        assert!(!waiting.contains("Wrap up"));
     }
 
     #[test]

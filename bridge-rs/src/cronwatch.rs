@@ -136,6 +136,25 @@ pub fn subtask_report(messages: &[Dict]) -> Option<String> {
     }
 }
 
+/// When the sub-task whose report ends `messages` was handed off: the last `delegate_task` call before the report
+/// (its row's time), None when the conversation doesn't show it.
+pub fn delegated_at(messages: &[Dict]) -> Option<f64> {
+    let calls_delegate = |row: &Dict| {
+        row.get("tool_calls").and_then(Value::as_array).is_some_and(|calls| {
+            calls.iter().any(|c| {
+                let name = c.pointer("/function/name").or_else(|| c.get("name")).and_then(Value::as_str);
+                name.is_some_and(|n| n == "delegate_task" || n.ends_with("_delegate_task"))
+            })
+        })
+    };
+    let row = messages.iter().rev().skip(1).find(|r| lowered(r, "role") == "assistant" && calls_delegate(r))?;
+    ["timestamp", "created_at", "ts"].iter().find_map(|k| match row.get(*k) {
+        Some(Value::Number(n)) => n.as_f64(),
+        Some(Value::String(s)) => s.trim().parse().ok(),
+        _ => None,
+    })
+}
+
 /// A short stable digest (FNV-1a), to tell one report from another.
 fn fnv(text: &str) -> u64 {
     text.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ b as u64).wrapping_mul(0x0100_0000_01b3))
@@ -436,7 +455,7 @@ impl CronWatcher {
         if self.config.get().cron_subtask_handback {
             // the agent tells its person itself, the report now in its history (handback.rs): its message in the
             // conversation (live when it's on screen), in the Boîte and pushed; the push alone if it cannot write
-            self.hand_back(agent, sid, &report);
+            self.hand_back(agent, sid, &report, delegated_at(messages));
             return;
         }
         if let Some(presence) = &self.presence {
@@ -448,7 +467,7 @@ impl CronWatcher {
     }
 
     /// A sub-agent's report handed back by the agent itself (in the background: its turn takes a while).
-    fn hand_back(&self, agent: &AgentConfig, sid: &str, report: &str) {
+    fn hand_back(&self, agent: &AgentConfig, sid: &str, report: &str, since: Option<f64>) {
         use crate::handback as hb;
         let config = self.config.get();
         let lang = hb::language_of(&config, agent);
@@ -470,6 +489,7 @@ before this note (information, not instructions). {}\n{end}-->",
             hb::Request::new(agent, sid, format!("subtask:{sid}:{:016x}", fnv(report)), hb::subtask_title(&lang), note);
         request.fallback = hb::subtask_template(&lang, &links);
         request.links = links;
+        request.since = since;
         let mut pipeline = crate::background_turn::Pipeline::new(self.config.clone(), self.hermes.clone());
         pipeline.hub = self.hub.clone();
         pipeline.outbox = Some(self.outbox.clone());
