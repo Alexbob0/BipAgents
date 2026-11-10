@@ -134,7 +134,35 @@ def test_a_home_links_to_a_place_which_reaches_it_through_the_relay(bridges, fak
     home.stop()
     started = time.monotonic()
     assert place.get("/v1/family", headers=AUTH).status_code == 200
-    assert "vie__alex" not in link_agents(place)   # its 4 s wait, not a hang
+    assert "vie__alex" not in link_agents(place)   # at most its 4 s wait, never a hang
     assert time.monotonic() - started < 10
     gone = place.post("/peer/p/vie__alex/v1/runs", headers={"Authorization": f"Bearer {token}"}, json=message)
     assert gone.status_code == 502
+    # once its bridge has not polled for a while (10 s), no wait at all: the agent list opens as without the home
+    time.sleep(11)
+    started = time.monotonic()
+    assert "vie__alex" not in link_agents(place)
+    gone = place.post("/peer/p/vie__alex/v1/runs", headers={"Authorization": f"Bearer {token}"}, json=message)
+    assert gone.status_code == 502
+    assert time.monotonic() - started < 1.5, time.monotonic() - started
+    # unlinked on the place: nothing kept for it any more, its relay gone with it
+    assert place.delete("/v1/family/alex", headers=AUTH).status_code == 204
+    assert "alex" not in households(place)
+
+
+def test_a_home_back_on_is_reached_again_through_the_relay(bridges, fakes):
+    """The home's bridge restarted: its long poll comes back by itself and the place reaches it again."""
+    fakes.hermes.override = echo
+    home = install(bridges, fakes, "alex", ["vie"], place=False)
+    place = install(bridges, fakes, "chi", ["cuisine"], place=True)
+    named(home, "Alex")
+    named(place, "Chi")
+    invitation = place.post("/v1/family/invite", headers=AUTH).json()
+    assert home.post("/v1/family/join", headers=AUTH,
+                     json={"url": invitation["url"], "code": invitation["code"]}).status_code == 200
+    assert wait_until(lambda: "vie__alex" in link_agents(place), timeout=20), place.log_tail()
+    home.stop()
+    time.sleep(11)
+    assert "vie__alex" not in link_agents(place)
+    home.start()
+    assert wait_until(lambda: "vie__alex" in link_agents(place), timeout=30), place.log_tail()

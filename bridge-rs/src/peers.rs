@@ -1265,6 +1265,7 @@ async fn join(State(state): State<AppState>, request: Request) -> ApiResult<Resp
             // they keep their calls for us: we fetch them (an older bridge doesn't answer `relay`)
             if pull && answer.get("relay").and_then(Value::as_bool) == Some(true) {
                 state.households.mark(&h, "pull", json!(true))?;
+                crate::family_relay::start_pulling(&state, &h);
             }
             family_tools_changed(&state);
             h
@@ -1284,6 +1285,8 @@ async fn unlink(state: &AppState, household: &str) -> ApiResult<Response> {
     if state.households.remove(household).is_err() {
         return Err(HttpError::new(404, "no such household"));
     }
+    // the calls kept for it (a home that fetched them, family_relay.rs) fail at once
+    crate::family_relay::forget(household);
     // the family's agent held here: that member gets what is the family's (family_agent.rs)
     crate::family_agent::after_unlink(state, household, entry);
     let mut data = state.links.load();

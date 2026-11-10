@@ -41,6 +41,9 @@ pub const PICKUP: Duration = Duration::from_secs(15);
 pub const ANSWER: Duration = Duration::from_secs(660);
 /// One long poll.
 pub const POLL: Duration = Duration::from_secs(25);
+/// A household whose bridge has had no long poll open for this long is not polling (switched off, out of reach): its
+/// calls fail at once instead of waiting [`PICKUP`] (the place's pages list its agents without a wait).
+pub const AWAY: Duration = Duration::from_secs(10);
 
 struct Pending {
     id: String,
@@ -70,6 +73,68 @@ static PORT: OnceLock<u16> = OnceLock::new();
 static ROUTER: Mutex<Option<Router>> = Mutex::new(None);
 /// The households a long poll runs for.
 static PULLING: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Default::default);
+/// Each household's long polls: how many are open, and when one last began or ended.
+static SEEN: LazyLock<Mutex<HashMap<String, (usize, tokio::time::Instant)>>> = LazyLock::new(Default::default);
+
+/// How long a call may wait for this household's bridge to take it: [`PICKUP`] while a long poll is open, what is
+/// left of [`AWAY`] just after one ended (a bridge that polls opens the next one at once: one switched off a moment
+/// ago fails its calls within that), None when it does not poll.
+fn pickup(household: &str) -> Option<Duration> {
+    let seen = SEEN.lock().unwrap_or_else(|e| e.into_inner());
+    let (open, last) = seen.get(household)?;
+    if *open > 0 {
+        return Some(PICKUP);
+    }
+    AWAY.checked_sub(last.elapsed()).filter(|left| !left.is_zero())
+}
+
+/// Whether this household's bridge polls right now (a long poll open, or one ended a moment ago).
+#[cfg(test)]
+fn polling(household: &str) -> bool {
+    pickup(household).is_some()
+}
+
+/// One open long poll, counted while it lasts (also when its connection drops).
+struct Polling(String);
+
+impl Polling {
+    fn open(household: &str) -> Self {
+        let mut seen = SEEN.lock().unwrap_or_else(|e| e.into_inner());
+        let entry = seen.entry(household.to_string()).or_insert((0, tokio::time::Instant::now()));
+        *entry = (entry.0 + 1, tokio::time::Instant::now());
+        Polling(household.to_string())
+    }
+}
+
+impl Drop for Polling {
+    fn drop(&mut self) {
+        if let Some(entry) = SEEN.lock().unwrap_or_else(|e| e.into_inner()).get_mut(&self.0) {
+            *entry = (entry.0.saturating_sub(1), tokio::time::Instant::now());
+        }
+    }
+}
+
+/// A kept call, taken out of the queue and the answers awaited when its caller goes away, whenever that is.
+struct Kept {
+    household: String,
+    id: String,
+}
+
+impl Drop for Kept {
+    fn drop(&mut self) {
+        if let Some(queue) = QUEUES.lock().unwrap_or_else(|e| e.into_inner()).get_mut(&self.household) {
+            queue.retain(|p| p.id != self.id);
+        }
+        WAITING.lock().unwrap_or_else(|e| e.into_inner()).remove(&self.id);
+    }
+}
+
+/// A household unlinked: its kept calls fail at once (their callers get the 502 of a household that doesn't answer).
+pub fn forget(household: &str) {
+    QUEUES.lock().unwrap_or_else(|e| e.into_inner()).remove(household);
+    WAITING.lock().unwrap_or_else(|e| e.into_inner()).retain(|_, (owner, _)| owner != household);
+    SEEN.lock().unwrap_or_else(|e| e.into_inner()).remove(household);
+}
 
 fn bell(household: &str) -> Arc<Notify> {
     BELLS.lock().unwrap_or_else(|e| e.into_inner()).entry(household.to_string()).or_default().clone()
@@ -187,12 +252,17 @@ async fn relay_in(State(state): State<AppState>, request: Request) -> Response {
     let Some(household) = household_of_token(&state, token) else {
         return axum::response::IntoResponse::into_response(HttpError::not_found());
     };
+    let Some(wait) = pickup(&household) else {
+        tracing::info!(household = %household, "family relay: their bridge does not poll");
+        return unreachable();
+    };
     let method = request.method().as_str().to_string();
     let headers = header_pairs(request.headers());
     let Ok(body) = axum::body::to_bytes(request.into_body(), crate::body_limit::HERMES_BYTES as usize).await else {
         return axum::response::IntoResponse::into_response(HttpError::new(413, "request body too large"));
     };
     let id = crate::py::token_urlsafe(16);
+    let _kept = Kept { household: household.clone(), id: id.clone() };
     let (picked_tx, picked_rx) = oneshot::channel();
     let (answer_tx, answer_rx) = oneshot::channel();
     let pending = Pending {
@@ -206,23 +276,16 @@ async fn relay_in(State(state): State<AppState>, request: Request) -> Response {
     };
     QUEUES.lock().unwrap_or_else(|e| e.into_inner()).entry(household.clone()).or_default().push_back(pending);
     bell(&household).notify_one();
-    if !matches!(tokio::time::timeout(PICKUP, picked_rx).await, Ok(Ok(()))) {
-        // nobody took it: the household's bridge is off or out of reach
-        if let Some(queue) = QUEUES.lock().unwrap_or_else(|e| e.into_inner()).get_mut(&household) {
-            queue.retain(|p| p.id != id);
-        }
+    if !matches!(tokio::time::timeout(wait, picked_rx).await, Ok(Ok(()))) {
+        // nobody took it: the household's bridge is off or out of reach (or unlinked meanwhile)
         tracing::info!(household = %household, "family relay: not taken (their bridge does not poll)");
         return unreachable();
     }
-    let answer = match tokio::time::timeout(ANSWER, answer_rx).await {
-        Ok(Ok(answer)) => answer,
-        _ => {
-            WAITING.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
-            return unreachable();
-        }
-    };
+    let Ok(Ok(answer)) = tokio::time::timeout(ANSWER, answer_rx).await else { return unreachable() };
     let mut response = Response::new(answer.body);
-    *response.status_mut() = StatusCode::from_u16(answer.status).unwrap_or(StatusCode::BAD_GATEWAY);
+    // a final status only (an informational one is no answer)
+    *response.status_mut() =
+        StatusCode::from_u16(answer.status).ok().filter(|s| !s.is_informational()).unwrap_or(StatusCode::BAD_GATEWAY);
     put_headers(response.headers_mut(), &answer.headers);
     response
 }
@@ -242,6 +305,7 @@ fn caller(state: &AppState, headers: &HeaderMap) -> ApiResult<String> {
 /// `GET /family/relay/next` (the household's key): the next request for it, or 204 after [`POLL`].
 async fn next(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<Response> {
     let household = caller(&state, &headers)?;
+    let _open = Polling::open(&household);
     let bell = bell(&household);
     let deadline = tokio::time::Instant::now() + POLL;
     loop {
@@ -316,17 +380,21 @@ pub async fn pull_forever(state: AppState) {
         let data = state.households.load();
         if let Some(households) = data.get("households").and_then(Value::as_object) {
             for (id, entry) in households {
-                let Some(entry) = entry.as_object() else { continue };
-                if !pulls(entry) {
-                    continue;
-                }
-                let fresh = PULLING.lock().unwrap_or_else(|e| e.into_inner()).insert(id.clone());
-                if fresh {
-                    tokio::spawn(poll(state.clone(), id.clone()));
+                if entry.as_object().is_some_and(pulls) {
+                    start_pulling(&state, id);
                 }
             }
         }
         tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+}
+
+/// The long poll for this household, unless one runs already (peers.rs `join`: at once, so that the other side
+/// reaches us from the first second of the link).
+pub fn start_pulling(state: &AppState, household: &str) {
+    let fresh = PULLING.lock().unwrap_or_else(|e| e.into_inner()).insert(household.to_string());
+    if fresh {
+        tokio::spawn(poll(state.clone(), household.to_string()));
     }
 }
 
@@ -346,7 +414,7 @@ async fn poll(state: AppState, household: String) {
             Ok(resp) if resp.status() == StatusCode::OK => {
                 pause = Duration::from_secs(2);
                 if let Ok(job) = resp.json::<Value>().await {
-                    tokio::spawn(run(state.clone(), entry, job));
+                    tokio::spawn(run(state.clone(), household.clone(), entry, job));
                 }
             }
             Ok(resp) if resp.status() == StatusCode::NO_CONTENT => pause = Duration::from_secs(2),
@@ -363,8 +431,33 @@ async fn poll(state: AppState, household: String) {
     PULLING.lock().unwrap_or_else(|e| e.into_inner()).remove(&household);
 }
 
+/// The address of a request the other household's bridge had for us, when we run it: only what a linked household may
+/// call anyway, never the relay itself, and only with that very household's key (the one it calls us with), whatever
+/// else its bridge would put in.
+fn allowed(
+    caller: impl Fn(&str) -> Option<String>,
+    household: &str,
+    path: &str,
+    pairs: &[(String, String)],
+) -> Option<axum::http::Uri> {
+    if !path.starts_with("/family/") || path.starts_with("/family/relay/") || path.contains("/../") {
+        return None;
+    }
+    let uri: axum::http::Uri = path.parse().ok()?;
+    if uri.path() != path.split('?').next().unwrap_or_default() {
+        return None;
+    }
+    let mut keys = pairs.iter().filter(|(n, _)| n.eq_ignore_ascii_case("authorization"));
+    let (_, key) = keys.next()?;
+    if keys.next().is_some() {
+        return None;
+    }
+    let key = key.strip_prefix("Bearer ").unwrap_or(key).trim();
+    (!key.is_empty() && caller(key).as_deref() == Some(household)).then_some(uri)
+}
+
 /// One request the other household's bridge had for us: run through our own routes, its answer posted back.
-async fn run(state: AppState, entry: Dict, job: Value) {
+async fn run(state: AppState, household: String, entry: Dict, job: Value) {
     let id = job.get("id").and_then(Value::as_str).unwrap_or_default().to_string();
     let path = job.get("path").and_then(Value::as_str).unwrap_or("/").to_string();
     let method = job.get("method").and_then(Value::as_str).unwrap_or("GET");
@@ -376,13 +469,12 @@ async fn run(state: AppState, entry: Dict, job: Value) {
         .and_then(|b| base64::engine::general_purpose::STANDARD.decode(b).ok())
         .unwrap_or_default();
     let router = ROUTER.lock().unwrap_or_else(|e| e.into_inner()).clone();
-    // only what a linked household may call anyway (its key is checked there), never the relay itself
-    let allowed = path.starts_with("/family/") && !path.starts_with("/family/relay/") && !path.contains("/../");
-    let response = match (router, allowed, axum::http::Method::from_bytes(method.as_bytes())) {
-        (Some(router), true, Ok(method)) => {
+    let uri = allowed(|key| state.households.caller(key), &household, &path, &pairs);
+    let response = match (router, uri, axum::http::Method::from_bytes(method.as_bytes())) {
+        (Some(router), Some(uri), Ok(method)) => {
             let mut request = Request::new(Body::from(body));
             *request.method_mut() = method;
-            *request.uri_mut() = path.parse().unwrap_or_default();
+            *request.uri_mut() = uri;
             put_headers(request.headers_mut(), &pairs);
             match tower::ServiceExt::oneshot(router, request).await {
                 Ok(r) => r,
@@ -427,5 +519,92 @@ mod tests {
         let _ = PORT.set(4321);
         assert!(reach_url(&entry).starts_with("http://127.0.0.1:4321/"));
         assert!(kept("authorization") && !kept("host") && !kept("x-bip-relay-status"));
+    }
+
+    #[test]
+    fn a_kept_call_runs_only_on_the_family_routes_with_that_households_own_key() {
+        let caller = |key: &str| match key {
+            "chi-key" => Some("chi".to_string()),
+            "lea-key" => Some("lea".to_string()),
+            _ => None,
+        };
+        let auth = |key: &str| vec![("authorization".to_string(), format!("Bearer {key}"))];
+        assert!(allowed(caller, "chi", "/family/agents", &auth("chi-key")).is_some());
+        let uri = allowed(caller, "chi", "/family/s/vie/conversations?limit=5", &auth("chi-key")).unwrap();
+        assert_eq!(uri.query(), Some("limit=5"));
+        // another household's key, none, two, or the app's routes: never run
+        assert!(allowed(caller, "chi", "/family/agents", &auth("lea-key")).is_none());
+        assert!(allowed(caller, "chi", "/family/agents", &auth("the-bridge-key")).is_none());
+        assert!(allowed(caller, "chi", "/family/agents", &[]).is_none());
+        let two = [auth("chi-key"), auth("lea-key")].concat();
+        assert!(allowed(caller, "chi", "/family/agents", &two).is_none());
+        for path in [
+            "/v1/agents",
+            "/family/relay/next",
+            "/family/p/x/../../v1/agents",
+            "/family/ x",
+            "family/agents",
+            "//family/agents",
+            "/familyx/agents",
+            "http://127.0.0.1/family/agents",
+        ] {
+            assert!(allowed(caller, "chi", path, &auth("chi-key")).is_none(), "{path}");
+        }
+    }
+
+    fn pending(id: &str) -> (Pending, oneshot::Receiver<()>, oneshot::Receiver<Answer>) {
+        let (picked, picked_rx) = oneshot::channel();
+        let (answer, answer_rx) = oneshot::channel();
+        let (method, path, headers, body) = ("GET".to_string(), "/family/agents".to_string(), Vec::new(), Bytes::new());
+        let p = Pending { id: id.into(), method, path, headers, body, picked, answer };
+        (p, picked_rx, answer_rx)
+    }
+
+    #[test]
+    fn a_call_kept_for_a_household_goes_when_its_caller_goes() {
+        let household = "relay-test-gone";
+        let (p, _picked, _answer) = pending("id-1");
+        QUEUES.lock().unwrap().entry(household.into()).or_default().push_back(p);
+        let kept = Kept { household: household.into(), id: "id-1".into() };
+        assert_eq!(QUEUES.lock().unwrap()[household].len(), 1);
+        drop(kept); // the caller's request dropped (its own timeout), not only after PICKUP
+        assert!(QUEUES.lock().unwrap()[household].is_empty());
+        let (answer, _answer_rx) = oneshot::channel();
+        WAITING.lock().unwrap().insert("id-2".into(), (household.into(), answer));
+        drop(Kept { household: household.into(), id: "id-2".into() });
+        assert!(!WAITING.lock().unwrap().contains_key("id-2"));
+    }
+
+    #[test]
+    fn an_unlinked_households_calls_fail_at_once() {
+        let household = "relay-test-unlinked";
+        let (p, mut picked_rx, _a) = pending("id-3");
+        QUEUES.lock().unwrap().entry(household.into()).or_default().push_back(p);
+        let (answer, mut answer_rx) = oneshot::channel();
+        WAITING.lock().unwrap().insert("id-4".into(), (household.into(), answer));
+        forget(household);
+        // closed: their callers answer 502 now
+        assert!(picked_rx.try_recv().is_err() && answer_rx.try_recv().is_err());
+        assert!(!QUEUES.lock().unwrap().contains_key(household) && !WAITING.lock().unwrap().contains_key("id-4"));
+    }
+
+    #[test]
+    fn a_household_polls_while_a_long_poll_is_open_and_a_moment_after() {
+        let household = "relay-test-polling";
+        assert!(!polling(household)); // never polled: its calls fail at once
+        let open = Polling::open(household);
+        assert!(polling(household));
+        drop(open);
+        assert!(polling(household)); // between two polls
+        let long_ago = tokio::time::Instant::now().checked_sub(AWAY + Duration::from_secs(1)).unwrap();
+        SEEN.lock().unwrap().insert(household.into(), (0, long_ago));
+        assert!(!polling(household)); // switched off
+        SEEN.lock().unwrap().insert(household.into(), (1, long_ago));
+        assert!(polling(household)); // one poll open for long
+        assert_eq!(pickup(household), Some(PICKUP));
+        let a_moment_ago = tokio::time::Instant::now().checked_sub(Duration::from_secs(4)).unwrap();
+        SEEN.lock().unwrap().insert(household.into(), (0, a_moment_ago));
+        let left = pickup(household).unwrap(); // just switched off: its calls wait only what is left of AWAY
+        assert!(left <= AWAY - Duration::from_secs(4) && left > Duration::from_secs(5), "{left:?}");
     }
 }
