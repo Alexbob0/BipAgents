@@ -56,6 +56,7 @@ la bêta.
 | J04 | Envoyer un document | Son nom et sa vraie taille ; il s'ouvre ; la conversation reste lisible ensuite | P, i, A |
 | J05 | Envoyer une note vocale | La bulle vocale (durée, ses mots) ; elle se réécoute | P (ses mots) ; bulle et audio : manuel |
 | J06 | Photo + texte | Les deux, dans la même bulle | P, i, A |
+| J53 | Photo + note vocale | Le micro reste à côté d'« Envoyer » quand une photo est choisie ; la photo reste pendant l'enregistrement ; ses mots et la photo partent en UN message | P (`test_threads_send.py`), i, A (`ComposerVoiceWithFilesTest`) |
 
 ### Recevoir
 

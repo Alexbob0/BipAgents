@@ -111,6 +111,43 @@ def test_photos_and_documents_go_with_their_message(bridges, fakes):
     assert send(bridge, thread, "C1D00000-0000-4000-8000-0000000000A3", "x", attachments=[{"kind": "image"}]).status_code == 422
 
 
+def test_a_voice_note_and_a_photo_go_as_one_message(bridges, fakes):
+    # 10/11 (Alex, J53): a photo picked, then a voice note — they went apart, the mic gone once a photo was picked. One
+    # message now: the model gets the spoken words and the photo together (vision), the thread shows both in one item.
+    bridge, thread = setup(bridges, fakes)
+    gate = threading.Event()
+    fakes.hermes.runs["r1"] = [sse("run.started", run_id="r1"), gate, sse("run.completed", run_id="r1", output="Un compteur.")]
+    jpeg = b"\xff\xd8\xff\xe0" + bytes(range(256)) * 8 + b"\xff\xd9"
+    data = base64.b64encode(jpeg).decode()
+    photo = {"kind": "image", "name": "IMG_0050.jpg", "mime": "image/jpeg", "data": data}
+    words = "Qu'est-ce que tu vois sur cette photo ?"
+    sent = send(bridge, thread, "C1D00000-0000-4000-8000-0000000000B1", words, attachments=[photo], kinds=["voice", "image"])
+    assert sent.status_code == 200, sent.text
+    assert sent.json()["state"] == "started" and len(fakes.hermes.started) == 1
+    # the model's input: one user message, the spoken words then the photo itself
+    message, = fakes.hermes.started["r1"]["input"]
+    assert message["role"] == "user"
+    parts = message["content"]
+    assert [p["type"] for p in parts] == ["text", "image_url"]
+    assert parts[0]["text"].endswith(words)
+    assert parts[1] == {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + data}}
+    # the thread at once: one item with both
+    items = [i for i in page(bridge, thread)["items"] if i["role"] == "person"]
+    mine = items[-1]
+    assert mine["id"] == "s_C1D00000-0000-4000-8000-0000000000B1" and mine["text"] == words
+    assert [(a["kind"], a["size"]) for a in mine["attachments"]] == [("image", len(jpeg))]
+    assert [i["text"] for i in items].count(words) == 1
+    # stored by Hermes: still one row with both, matched by its id
+    stored(fakes, {"role": "user", "content": [{"type": "text", "text": words},
+                                               {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + data}}]},
+           agent("Un compteur."))
+    gate.set()
+    assert wait_until(lambda: page(bridge, thread)["items"][-1]["text"] == "Un compteur.", timeout=15)
+    row = page(bridge, thread)["items"][-2]
+    assert row["client_id"] == "C1D00000-0000-4000-8000-0000000000B1" and row["text"] == words
+    assert [a["kind"] for a in row["attachments"]] == ["image"]
+
+
 def fetch(bridge, path):
     """A file of the timeline, its redirect to `/v1/media` followed."""
     answer = bridge.get(path, headers=AUTH)
