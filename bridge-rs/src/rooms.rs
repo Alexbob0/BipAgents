@@ -1718,7 +1718,7 @@ impl Rooms {
         tracing::info!(room = %id, agent = %agent.name, status = %status, tool_steps = calls, braked = braked, capped = capped,
             steered = steered, tokens = tokens.input + tokens.output, real = real.is_some(), per_call = per_call,
             "rooms: run ended");
-        let mut text = hand_over_files(&config, &agent, &run_id, tk::strip(&output)).await;
+        let mut text = hand_over_files(&config, &agent, &run_id, tk::strip(&crate::spoken::strip(&output))).await; // never its spoken version (spoken.rs)
         let mut status = status;
         let answered = (status == "completed" || status == "gone") && !text.is_empty();
         if !answered && status != "stopped" && config.rooms.handoff && self.still(id, turn) {

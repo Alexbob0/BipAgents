@@ -56,6 +56,7 @@ pub mod cronwatch;
 pub mod no_reply;
 pub mod fcm;
 pub mod media;
+pub mod spoken;
 pub mod outbox;
 pub mod live_activities;
 pub mod push;

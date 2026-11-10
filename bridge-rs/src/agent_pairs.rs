@@ -567,7 +567,8 @@ fn answer_to(exc: &HermesError) -> Answer {
 }
 
 fn answer_of(output: &str) -> Answer {
-    let text = tk::strip(output);
+    let output = crate::spoken::strip(output); // the words, never a hidden spoken version (spoken.rs)
+    let text = tk::strip(&output);
     if text.is_empty() {
         Answer::Empty
     } else {

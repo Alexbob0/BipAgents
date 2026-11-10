@@ -98,8 +98,8 @@ def test_no_conversation_yet_and_hermes_errors(bridge, fakes):
     # model_options: what the call's turns send (thinking off; « low » for GLM through EUrouter, test_agents_admin)
     got = brief(bridge).json()
     now, rest = split_brief_now(got.pop("text"))
-    # the call's Carnet line (filing at once, no search first) and its start time
-    assert now is not None and rest.startswith("Something to keep") and "notebook_write" in rest and "\n" not in rest.strip()
+    # the call's Carnet line (filing at once, no search first), its radio rules (spoken.rs) and its start time
+    assert now is not None and "Something to keep" in rest and "notebook_write" in rest and "Spoken, for the ear" in rest
     assert got == {"session": None, "points_at": None, "model_options": {"reasoning": {"enabled": False}}}
     fakes.hermes.keys[""] = "other"
     refused = brief(bridge, session="s1")

@@ -224,6 +224,10 @@ pub const CALC_RULE: &str = concat!(
 /// « Étapes » (Alex 5/11, steps.rs): for work of several steps the agent keeps a short task list with Hermes'
 /// `todo_list`, which the apps show live as one card; never for a simple answer (each call costs a model round).
 /// Rust bridge only (tests/golden/souls.json rewritten with `GOLDEN_SOULS_OUT`). Short: it is paid on every call.
+/// A hidden spoken version of a very structured reply, for when it is listened to (Alex 10/11, spoken.rs; the golden
+/// rewritten with `GOLDEN_SOULS_OUT`): the bridge takes it out of every text it passes on.
+pub use crate::spoken::SAY_RULE;
+
 pub const STEPS_RULE: &str = concat!(
     "Task list: when a request needs 4 or more actions (searches, tools, pages, reminders…), first call todo_list ",
     "with its steps (a few words each, the first in_progress), then mark each step completed right after doing it; ",
@@ -391,7 +395,7 @@ pub fn language_block(lang: Option<&str>) -> String {
     for_language(
         &format!(
             "{BLOCK_START}\nLanguage: answer in the language your person writes in. Always write it with its accents and usual punctuation (routines and notes too), never an ASCII-only version. When you write first (a routine, \
-             a report, a reminder), write in {name}.{names} The current time is at the top of each message (a bip:now line): trust it, never check it in the terminal.\n{CONTENT_RULE}\n{SENDING_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{PROJECT_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{TIDY_RULE}\n{LONG_WORK_RULE}\n{VISUAL_RULE}\n{FACTS_RULE}\n{CALC_RULE}\n{SPACE_RULE}\n{ACK_RULE}\n{STEPS_RULE}\n{STYLE_RULE}\n{BLOCK_END}"
+             a report, a reminder), write in {name}.{names} The current time is at the top of each message (a bip:now line): trust it, never check it in the terminal.\n{CONTENT_RULE}\n{SENDING_RULE}\n{AI_RULE}\n{CARE_RULE}\n{FAMILY_RULE}\n{PROJECT_RULE}\n{DRAFT_RULE}\n{PLAIN_RULE}\n{FILES_RULE}\n{TIDY_RULE}\n{LONG_WORK_RULE}\n{VISUAL_RULE}\n{FACTS_RULE}\n{CALC_RULE}\n{SPACE_RULE}\n{ACK_RULE}\n{STEPS_RULE}\n{SAY_RULE}\n{STYLE_RULE}\n{BLOCK_END}"
         ),
         Some(&code),
     )
@@ -814,7 +818,7 @@ pub fn language_block_compact(lang: Option<&str>) -> String {
     for_language(
         &format!(
             "{BLOCK_START}\nLanguage: answer in the language your person writes in. When you write first (a routine, \
-             a report, a reminder), write in {name}.\n{COMPACT_RULES}\n{TIDY_RULE}\n{ACK_RULE}\n{STEPS_RULE}\n{STYLE_RULE}\n{BLOCK_END}"
+             a report, a reminder), write in {name}.\n{COMPACT_RULES}\n{TIDY_RULE}\n{ACK_RULE}\n{STEPS_RULE}\n{SAY_RULE}\n{STYLE_RULE}\n{BLOCK_END}"
         ),
         Some(&code),
     )

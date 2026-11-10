@@ -331,7 +331,7 @@ impl Audio {
 
 /// A text as a Bip reads it on the phone (Pocket 4: the raw words), without the server's own lexicon.
 pub fn spoken_text(text: &str, lang: &str) -> String {
-    let clean = normalize_for_speech(&strip_emoji(text), 180, true);
+    let clean = normalize_for_speech(&crate::spoken::structure(&strip_emoji(text), lang), 180, true);
     if lang == "fr" {
         crate::numbers_fr::prepare_for_synthesis(&clean)
     } else {
@@ -735,6 +735,8 @@ impl TtsService {
         let clean = if normalized {
             pystr::strip(&text).to_string()
         } else {
+            // markdown's structure said in words first (spoken.rs: lists, tables, headings, links, code)
+            let text = crate::spoken::structure(&text, language);
             normalize_for_speech(&text, self.options.sentence_max_chars, paragraphs)
         };
         let clean = self.words.apply(&clean, language); // « Garmin » as it is said, before numbers
@@ -1400,6 +1402,15 @@ mod tests {
     fn spoken_text_reads_as_a_bip_on_the_phone() {
         assert_eq!(spoken_text("Rendez-vous à **9h30** 🎉", "fr"), "Rendez-vous à neuf heures trente.");
         assert_eq!(spoken_text("See you at 5.", "en"), "See you at five.");
+        // markdown's structure said in words (spoken.rs), then the speech rules
+        assert_eq!(
+            spoken_text("À prendre :\n- 2 L de lait\n- du pain\n\nInfos : https://x.fr/a", "fr"),
+            "À prendre :\nD'abord, deux litres de lait.\nEnsuite, du pain.\nInfos :\nLe lien est dans le message."
+        );
+        assert_eq!(
+            spoken_text("| Day | Time |\n|---|---|\n| Mon | 9:00 |\n| Tue | 10:00 |", "en"),
+            "A table with two rows. First row: Day: Mon, Time: nine o'clock. The details are in the message."
+        );
     }
 
     fn tone(seconds: f64, rate: u32) -> Vec<u8> {

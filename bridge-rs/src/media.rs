@@ -152,12 +152,14 @@ pub fn content_type_of(path: &str) -> Option<String> {
 /// [`FILE`] event at once, where it was, so a page shows in its place while the reply is written; a whole text (an
 /// interim, the end's `output`) loses them at once, the end's files added to its `attachments` (`offset`: where each
 /// line was). What the model wrote is kept whole (`said`) for the bridge's own reading of the reply (made_files.rs,
-/// sent_files.rs).
+/// sent_files.rs). The reply's hidden spoken version (`<!--bip:say …-->`, spoken.rs) goes out the same way, given
+/// at the end as the end event's `spoken`.
 #[derive(Debug, Default)]
 pub struct MediaFilter {
     held: String,
     mid_line: bool,
     said: String,
+    say: crate::spoken::SayFilter,
     /// Characters of the words passed on so far (a file event's `offset`).
     shown: usize,
 }
@@ -183,6 +185,11 @@ impl MediaFilter {
     /// A delta's text without its MEDIA lines, each one a file in its place.
     pub fn text(&mut self, chunk: &str) -> Vec<Piece> {
         self.said.push_str(chunk);
+        let shown = self.say.feed(chunk);
+        self.lines(&shown)
+    }
+
+    fn lines(&mut self, chunk: &str) -> Vec<Piece> {
         let text = std::mem::take(&mut self.held) + chunk;
         let mut out = Vec::new();
         let mut rest = text.as_str();
@@ -232,11 +239,13 @@ impl MediaFilter {
 
     /// What is held back, given at the reply's end: words, or the file of a last MEDIA line.
     pub fn flush(&mut self) -> Vec<Piece> {
+        let rest = self.say.finish();
+        let mut out = if rest.is_empty() { Vec::new() } else { self.lines(&rest) };
         let held = std::mem::take(&mut self.held);
         if let Some(path) = media_path(&held) {
-            return vec![Piece::File(path)];
+            out.push(Piece::File(path));
+            return out;
         }
-        let mut out = Vec::new();
         self.words(&mut out, &held);
         self.mid_line = !held.is_empty();
         out
@@ -306,14 +315,26 @@ impl MediaFilter {
         let mut data = event.data;
         let mut changed = false;
         let mut placed: Option<Vec<Value>> = None;
+        let mut spoken = None;
         for key in TEXT_KEYS {
-            let Some(Value::String(text)) = data.get(key).cloned() else { continue };
+            let Some(Value::String(mut text)) = data.get(key).cloned() else { continue };
+            if text.contains(crate::spoken::OPEN) {
+                let (shown, said) = crate::spoken::split(&text);
+                spoken = spoken.or(said);
+                text = shown;
+                data.insert(key.into(), Value::String(text.clone()));
+                changed = true;
+            }
             if !MEDIA_RE.is_match(&text) {
                 continue;
             }
             let (shown, files) = crate::threads::timeline::place_media(&text);
             data.insert(key.into(), Value::String(shown));
             placed.get_or_insert(files);
+            changed = true;
+        }
+        if let Some(said) = spoken.or_else(|| self.say.spoken()).filter(|_| end) {
+            data.insert("spoken".into(), Value::String(said));
             changed = true;
         }
         if let (true, Some(files)) = (end, placed) {
@@ -461,6 +482,44 @@ mod tests {
             .event(SSEEvent::new("run.completed", json!({"output": "Ok"}).as_object().cloned().unwrap(), "RAW"))
             .remove(0);
         assert_eq!(plain.raw, "RAW");
+    }
+
+    /// The hidden spoken version (spoken.rs) never reaches the apps' words, whatever the deltas' cuts, a MEDIA line
+    /// next to it; the end gives it as `spoken`, its `output` without it.
+    #[test]
+    fn the_spoken_version_leaves_the_stream_and_ends_as_spoken() {
+        let reply = "Trois hôtels :\n- A\n- B\n- C\n- D\nMEDIA:/p/h.html\n<!--bip:say J'en ai trouvé quatre, la liste est \
+dans la conversation.-->";
+        let delta = |text: &str| {
+            SSEEvent::new("message.delta", json!({"run_id": "r", "delta": text}).as_object().cloned().unwrap(), "{}")
+        };
+        for step in [1, 2, 3, 4, 9, 200] {
+            let mut filter = MediaFilter::default();
+            let chars: Vec<char> = reply.chars().collect();
+            let mut events = Vec::new();
+            for piece in chars.chunks(step) {
+                events.extend(filter.event(delta(&piece.iter().collect::<String>())));
+            }
+            events.extend(filter.flush_events("message.delta", &json!("r")));
+            let words: String = events.iter().filter(|e| e.r#type == "message.delta").map(|e| e.text()).collect();
+            assert_eq!(words, "Trois hôtels :\n- A\n- B\n- C\n- D\n", "step {step}");
+            assert!(events.iter().all(|e| !e.raw.contains("bip:") && !e.raw.contains("-->")), "step {step}");
+            assert_eq!(events.iter().filter(|e| e.r#type == FILE).count(), 1);
+            assert_eq!(filter.said(), reply, "the model's words kept whole");
+            // the end: its output without it, the spoken version beside it
+            let end = filter
+                .event(SSEEvent::new("run.completed", json!({"output": reply}).as_object().cloned().unwrap(), "{}"))
+                .remove(0);
+            assert_eq!(end.data["output"], "Trois hôtels :\n- A\n- B\n- C\n- D");
+            assert_eq!(end.data["spoken"], "J'en ai trouvé quatre, la liste est dans la conversation.");
+            assert!(!end.raw.contains("bip:say"));
+        }
+        // a reply without one: no `spoken`, the end as it came
+        let mut filter = MediaFilter::default();
+        let end = filter
+            .event(SSEEvent::new("run.completed", json!({"output": "Ok <!--bip:end-->"}).as_object().cloned().unwrap(), "RAW"))
+            .remove(0);
+        assert_eq!((end.raw.as_str(), end.data.get("spoken")), ("RAW", None));
     }
 
     #[test]

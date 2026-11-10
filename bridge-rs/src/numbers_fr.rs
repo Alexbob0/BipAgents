@@ -199,7 +199,11 @@ fn re(pattern: &str) -> Regex {
 
 const NUM: &str = r"\d+(?:[,.]\d+)?";
 static GROUPED: LazyLock<Regex> =
-    LazyLock::new(|| re("(?<![\\d,.])(\\d{1,3}(?:[ \u{a0}\u{202f}]\\d{3})+)(?![\\d]|[,.]\\d)"));
+    // or with cents after the groups (« 1 796,34 € », 10/11: read « un sept cent… »), after no sign nor time
+    LazyLock::new(|| {
+        re("(?<![\\d,.])(\\d{1,3}(?:[ \u{a0}\u{202f}]\\d{3})+)(?![\\d]|[,.]\\d)\
+            |(?<![\\d,.:-])(\\d{1,3}(?:[ \u{a0}\u{202f}]\\d{3})+)(?=,\\d{2}(?!\\d))")
+    });
 static GROUP_SPACES: LazyLock<Regex> = LazyLock::new(|| re("[ \u{a0}\u{202f}]"));
 static ORDINAL: LazyLock<Regex> = LazyLock::new(|| re(r"\b(\d+)(er|re|ère|ème|eme|e)\b"));
 static TIME_H: LazyLock<Regex> = LazyLock::new(|| re(r"\b([01]?\d|2[0-3]) ?[hH](?: ?([0-5]\d))?\b"));
@@ -380,7 +384,7 @@ pub fn spell_numbers(text: &str) -> String {
         return text.to_string();
     }
     let text = durations::spell_durations(text, "fr"); // « 5:10 par km »: minutes, not hours
-    let text = GROUPED.replace_with(&text, |m| GROUP_SPACES.replace(&m.group(1), ""));
+    let text = GROUPED.replace_with(&text, |m| GROUP_SPACES.replace(&m.whole(), ""));
     let text = PER.replace_with(&text, per);
     let text = DATE_DASHED
         .replace_with(&text, |m| date(&m.group(1), &m.group(2), Some(&m.group(3))).unwrap_or_else(|| m.whole()));
@@ -450,6 +454,8 @@ static LEXICON: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
         (r"\bapprox\.".into(), "environ"),
         (r"\bp\. ?ex\.".into(), "par exemple"),
         (r"\bc\.?-à-d\.?".into(), "c'est-à-dire"),
+        (r"\b[cC]\. ?à soupe\b".into(), "cuillère à soupe"),
+        (r"\b[cC]\. ?à café\b".into(), "cuillère à café"),
         (r"\betc\.(?=\s*\S)".into(), "et cetera,"),
         (r"\betc\.".into(), "et cetera."),
         (r"\bcf\.".into(), "voir"),
@@ -677,6 +683,8 @@ mod tests {
                 "rendez-vous avec Madame Martin et Monsieur Durand, Docteur Lopez absent.",
             ),
             ("Comptez env. 2 h, p. ex. le matin, c.-à-d. tôt.", "Comptez environ deux heures, par exemple le matin, c'est-à-dire tôt."),
+            ("2 c. à soupe de sucre, 3 c. à café de sel.", "deux cuillère à soupe de sucre, trois cuillère à café de sel."),
+            ("Dépenses : 1 796,34 €, reste 1 043,66 €.", "Dépenses : mille sept cent quatre-vingt-seize virgule trente-quatre euros, reste mille quarante-trois virgule soixante-six euros."),
             ("Pommes, poires, etc. Puis le dessert.", "Pommes, poires, et cetera, Puis le dessert."),
             (
                 "Ligne n°4, Sainte-Anne & Ste Marie, ≈ 30 min, ≥ 5 km.",
