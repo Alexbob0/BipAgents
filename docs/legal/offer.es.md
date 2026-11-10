@@ -210,9 +210,9 @@ enseguida. Las reglas propias de las personas que viven fuera de la Unión está
 
 - **Contratar**: tienes que ser mayor de edad o tener el acuerdo de uno de tus padres (la tienda puede pedir ese
   acuerdo antes de la compra). Toda persona que usa una plaza debe tener al menos 16 años, como para la app; entre los
-  16 y los 18 años, con el acuerdo de uno de sus padres. Un menor de 16 años solo puede usar una plaza que uno de sus
-  padres o un adulto a su cargo haya preparado y supervise: ese adulto acepta estas condiciones por el menor y sigue
-  siendo responsable de su uso (condiciones de uso, sección 4). **En Estados Unidos, ninguna persona menor de 13 años
+  16 y los 18 años, con el acuerdo de uno de sus padres. La oferta todo incluido no se ofrece a personas menores de 16
+  años, ni siquiera con supervisión. Un menor de 16 años solo puede usar BipAgents en el ordenador o el servidor de uno
+  de sus padres o de un adulto a su cargo, según las condiciones de uso (sección 4). **En Estados Unidos, ninguna persona menor de 13 años
   puede usar una plaza**, ni siquiera supervisada.
 - **Tu cuenta**: la creas con «Iniciar sesión con Apple», con Google o con una dirección de correo (un código de un
   solo uso enviado a esa dirección). Contiene tu identidad (identificador de Apple o de Google, dirección de

@@ -260,13 +260,13 @@ olvida todo.
 la oferta todo incluido, el guichet de Kerfy Studio también lo guarda, siempre sellado (sección 5.6). Los registros
 técnicos del relé contienen la plataforma, una huella de 4 bytes del token y la respuesta de Apple o de Google; se
 conservan **6 meses como máximo**. El relé funciona, junto con el guichet de Kerfy Studio (sección 5), en un
-servidor que Kerfy Studio alquila a OVHcloud (OVH SAS, Francia), en la Unión Europea, y administra él mismo; el
-proveedor de alojamiento puede registrar las direcciones IP de las solicitudes.
+servidor que Kerfy Studio alquila a OVHcloud (OVH SAS), un VPS en Francia, y administra él mismo; el proveedor de
+alojamiento puede registrar las direcciones IP de las solicitudes, en sus registros de explotación.
 
 **Finalidades y bases jurídicas.** Entregar las notificaciones que has activado: ejecución de las condiciones de uso
 (artículo 6.1.b del RGPD). Limitar abusos y proteger el servicio: interés legítimo de Kerfy Studio (artículo 6.1.f).
 
-**Encargados del tratamiento.** El proveedor de alojamiento del relé, OVHcloud, en la Unión Europea, y Google (Firebase Cloud
+**Encargados del tratamiento.** El proveedor de alojamiento del relé, OVHcloud, en Francia, y Google (Firebase Cloud
 Messaging), vinculados a Kerfy Studio por un contrato conforme al artículo 28 del RGPD. Apple entrega las
 notificaciones a los iPhone a través de su servicio APNs.
 
@@ -346,8 +346,11 @@ soporte). El servicio de Kerfy Studio que gestiona las cuentas, las suscripcione
   sus servidores. Si tu plaza contiene datos de salud, los de Salud o lo que cuentas de tu salud a tus agentes, Kerfy
   Studio solo los aloja y los hace tratar por el modelo de IA con tu consentimiento explícito (artículo 9.2.a del
   RGPD): para Salud, el que das al activarla para un agente (sección 3), y solo con un modelo que funciona en la Unión
-  Europea; para tus conversaciones, [a completar con el abogado: la base del artículo 9 para lo que cuentas de tu salud
-  a tus agentes].
+  Europea; para tus conversaciones, el consentimiento explícito que das al elegir hablar de tu salud con tus agentes,
+  después de haber sido informado en esta política: esas palabras se alojan en tu plaza y las trata el modelo de IA
+  solo para responderte, solo con un modelo que funciona en la Unión Europea, y nunca para publicidad. No estás
+  obligado a hablar de ello. Puedes borrarlas al suprimir las conversaciones o tu plaza, y dejar de hablar de ello en
+  cualquier momento.
 - **Apple y Google** son responsables de sus propios tratamientos cuando inicias sesión con ellos y cuando pagas en su
   tienda.
 - **Stripe** (Stripe Payments Europe, Ltd., Irlanda) procesa el pago cuando compras en el sitio bipagents.com
@@ -587,8 +590,8 @@ no borra nada en él y Kerfy Studio no guarda nada de él.
 | EUrouter B.V. (Ámsterdam, Países Bajos) | Enrutador de IA | Mensajes enviados al modelo, metadatos | Unión Europea |
 | Proveedores de alojamiento de los modelos, socios de EUrouter | Hacen funcionar el modelo (hoy GLM-5.3 Flash) | Mensajes enviados al modelo, con los archivos y las fotos que ve | Unión Europea, según EUrouter |
 | Scaleway SAS (París, Francia) | Almacenamiento de objetos de las copias de seguridad (región fr-par, París) | Copias de seguridad cifradas de las plazas, ilegibles para él y para Kerfy Studio; copias cifradas de la base de datos del guichet; una versión sustituida o borrada se guarda 1 día | Unión Europea (Francia) |
-| OVHcloud (OVH SAS, Roubaix, Francia) | Aloja el servidor del guichet y del relé | Cuenta, suscripción, datos técnicos, tokens sellados | Unión Europea |
-| Proveedor de envío de correos: todavía no en servicio; se indicará aquí antes de su puesta en servicio | Envía los códigos, los avisos de seguridad, las invitaciones, la confirmación de compra, el acuse de desistimiento y los avisos de eliminación | Dirección de correo, contenido de esos correos | Se indicará con él |
+| OVHcloud (OVH SAS, Roubaix, Francia) | Aloja el guichet y el relé, en un VPS en Francia | Cuenta, suscripción, datos técnicos; tokens sellados y los registros del relé (secciones 4.1 y 5.6) | Francia |
+| Proton AG (Ginebra, Suiza) | Envía, desde una dirección bipagents.com, los códigos, los avisos de seguridad, las invitaciones, la confirmación de compra, el acuse de desistimiento y los avisos de eliminación; también aloja el buzón de soporte (sección 4.2) | Dirección de correo, contenido de esos correos | Suiza (decisión de adecuación, sección 11) |
 | Stripe Payments Europe, Ltd. (Dublín, Irlanda) | Pago de las compras en el sitio bipagents.com, cálculo de impuestos, controles contra el fraude, facturas | Dirección de correo, dirección o país de facturación, datos de tarjeta, dirección IP | Unión Europea; posiblemente fuera de la Unión (sección 11) |
 
 Están vinculados a Kerfy Studio por un contrato conforme al artículo 28 del RGPD; Stripe actúa además como responsable
@@ -725,7 +728,7 @@ anunciará como se indica en la sección 17.
 
 ## 11. Transferencias fuera de la Unión Europea
 
-El relé de notificaciones está alojado en la Unión Europea (sección 4.1). Para entregar las
+El relé de notificaciones está alojado en Francia, en OVHcloud (OVH SAS) (sección 4.1). Para entregar las
 notificaciones, Apple y Google pueden tratar el token y la notificación fuera de la Unión Europea, en particular en
 Estados Unidos:
 
@@ -749,10 +752,11 @@ Europea, donde Kerfy Studio los trata conforme al RGPD, que se aplica a todos su
 reconocen que la Unión Europea ofrece una protección adecuada; para Singapur, ese nivel de protección y nuestros
 contratos con nuestros prestadores dan la protección comparable que exige la ley de Singapur.
 
-Proveedor de correo: Proton AG, en Suiza, país que la Comisión Europea reconoce como con un nivel de protección
-adecuado (Decisión 2000/518/CE, mantenida en vigor por el artículo 45, apartado 9, del RGPD). Proveedor de
-alojamiento de las copias de seguridad: Scaleway, en Francia, sin transferencia fuera de la Unión. Proveedor de envío
-de correos: todavía no en servicio; su país y la garantía aplicable se indicarán aquí antes de su puesta en servicio. Puedes pedirnos una copia de las garantías aplicables.
+Proveedor de correo, que también envía los correos del guichet (códigos, avisos de seguridad, invitaciones,
+confirmaciones, avisos de eliminación): Proton AG, en Suiza, país que la Comisión Europea reconoce como con un nivel
+de protección adecuado (Decisión 2000/518/CE, mantenida en vigor por el artículo 45, apartado 9, del RGPD). Proveedor
+de alojamiento del guichet y del relé: OVHcloud, en Francia. Proveedor de alojamiento de las copias de seguridad:
+Scaleway, en Francia, sin transferencia fuera de la Unión. Puedes pedirnos una copia de las garantías aplicables.
 
 ## 12. Plazos de conservación
 
@@ -857,21 +861,25 @@ Commission (https://www.pdpc.gov.sg).
 
 BipAgents está dirigida a personas **de 16 años o más**. Entre los 16 y los 18 años, úsala con el acuerdo de uno de
 tus padres y respeta la edad mínima de tu proveedor de modelos (a menudo 18 años). **Antes de los 16 años, la app solo
-debe usarse en una instalación preparada y supervisada por uno de los padres o un adulto a cargo del menor** (función
-familia): ese adulto elige los agentes, sus accesos y el modelo, acepta las condiciones de uso por el menor y sigue
-siendo responsable de su uso.
+debe usarse en tu propio ordenador o en tu propio servidor, en una instalación preparada y supervisada por uno de los
+padres o un adulto a cargo del menor** (función familia): ese adulto elige los agentes, sus accesos y el modelo,
+acepta las condiciones de uso por el menor y sigue siendo responsable de su uso. La oferta todo incluido (una plaza
+alojada por Kerfy Studio) no se ofrece a personas menores de 16 años, ni siquiera con supervisión. Una persona
+invitada en la oferta debe tener al menos 16 años.
 
 Kerfy Studio no pregunta la edad. Algunas funciones se basan en tu consentimiento: Salud, Calendario, Contactos,
 Recordatorios, la ubicación de los recordatorios por lugar (sección 3) y el escáner de documentos de Android, por lo
-que Google recibe de él (sección 7). Antes de los 15 años, el adulto que preparó la instalación lo da junto con el
-menor (artículo 45 de la ley francesa de protección de datos). Si un menor nos ha escrito, uno de sus padres puede
+que Google recibe de él (sección 7). Antes de los 15 años, en una instalación en tu propio ordenador o tu propio
+servidor, el adulto que la preparó lo da junto con el menor (artículo 45 de la ley francesa de protección de datos). Si un menor nos ha escrito, uno de sus padres puede
 pedirnos que borremos su mensaje.
 
-**Oferta todo incluido**: la contrata un adulto, o se contrata con el acuerdo de uno de los padres. Una persona
-invitada debe tener al menos 16 años; antes de los 16 años, una plaza solo puede usarse si uno de los padres o un
-adulto a cargo del menor la ha preparado y la supervisa ([condiciones de la oferta](offer.es.md), sección 7). **En
-Estados Unidos, ninguna persona menor de 13 años puede usar una plaza**, y Kerfy Studio no recoge a sabiendas ningún
-dato de un menor de 13 años (Children's Online Privacy Protection Act); si ha ocurrido, escríbenos y lo borramos.
+**Oferta todo incluido**: la contrata un adulto, o se contrata con el acuerdo de uno de los padres; toda persona que
+usa una plaza, personas invitadas incluidas, tiene al menos 16 años ([condiciones de la oferta](offer.es.md), sección
+7). **En Estados Unidos, ninguna persona menor de 13 años puede usar una plaza**, y Kerfy Studio no recoge a sabiendas
+ningún dato de un menor de 13 años (Children's Online Privacy Protection Act); si ha ocurrido, escríbenos y lo
+borramos. **En Quebec**, los datos de un menor de 14 años solo se recogen con el consentimiento de uno de sus padres o
+del tutor: el adulto que prepara y supervisa su instalación, en su propio ordenador o su propio servidor, lo da por él
+(artículos 4.1 y 14 de la ley de Quebec).
 
 ## 17. Cambios
 

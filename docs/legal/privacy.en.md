@@ -254,13 +254,13 @@ everything.
 all-included offer, Kerfy Studio's guichet keeps it too, still sealed (section 5.6).
 The relay's technical logs contain the platform, a 4-byte fingerprint of the token and Apple's or Google's answer;
 they are kept for **6 months at most**. The relay runs, with Kerfy Studio's guichet (section 5), on a server Kerfy Studio rents from OVHcloud
-(OVH SAS, France), in the European Union, and administers itself; the hosting provider may log the IP addresses of
-requests.
+(OVH SAS), on a VPS in France, and administers itself; the hosting provider may log the IP addresses of requests, in
+its operating logs.
 
 **Purposes and legal bases.** Delivering the notifications you turned on: performance of the terms of use (GDPR
 article 6(1)(b)). Limiting abuse and protecting the service: Kerfy Studio's legitimate interest (article 6(1)(f)).
 
-**Processors.** The relay's hosting provider, OVHcloud, in the European Union, and Google (Firebase Cloud Messaging), bound to Kerfy Studio
+**Processors.** The relay's hosting provider, OVHcloud, in France, and Google (Firebase Cloud Messaging), bound to Kerfy Studio
 by a contract that complies with GDPR article 28. Apple delivers notifications to iPhones through its APNs service.
 
 **Without notifications.** You can refuse or turn off notifications in your phone's settings: the app works without
@@ -338,8 +338,10 @@ subscriptions and places is called the guichet.
   place holds health data, Health's or what you tell your agents about your health, Kerfy Studio hosts it and has it
   processed by the AI model only with your explicit consent (GDPR article 9(2)(a)): for Health, the one you give when
   you turn it on for an agent (section 3), and only with a model that runs in the European Union; for your
-  conversations, [to be completed with the lawyer: the article 9 basis for what you tell your agents about your
-  health].
+  conversations, the explicit consent you give by choosing to tell your agents about your health, after being
+  informed in this policy: those words are hosted on your place and processed by the AI model only to answer you, only
+  with a model that runs in the European Union, and never for advertising. You do not have to talk about it. You can
+  erase it by deleting the conversations or your place, and you can stop talking about it at any time.
 - **Apple and Google** are responsible for their own processing when you sign in with them and when you pay in their
   store.
 - **Stripe** (Stripe Payments Europe, Ltd., Ireland) processes the payment when you buy on the bipagents.com website
@@ -568,8 +570,8 @@ Kerfy Studio keeps nothing of it.
 | EUrouter B.V. (Amsterdam, Netherlands) | AI router | Messages sent to the model, metadata | European Union |
 | Model hosting providers, EUrouter's partners | Run the model (today GLM-5.3 Flash) | Messages sent to the model, with the files and photos it is shown | European Union, according to EUrouter |
 | Scaleway SAS (Paris, France) | Object storage for the backups (region fr-par, Paris) | The places' encrypted backups, unreadable for it and for Kerfy Studio; encrypted copies of the guichet's database; a replaced or deleted version is kept 1 day | European Union (France) |
-| OVHcloud (OVH SAS, Roubaix, France) | Hosts the server of the guichet and the relay | Account, subscription, technical data, sealed tokens | European Union |
-| Email sending provider: not in service yet; it will be named here before it goes into service | Sends the codes, the security notices, the invitations, the purchase confirmation, the withdrawal acknowledgement and the deletion notices | Email address, content of these emails | Stated with it |
+| OVHcloud (OVH SAS, Roubaix, France) | Hosts the guichet and the relay, on a VPS in France | Account, subscription, technical data; sealed tokens and the relay's logs (sections 4.1 and 5.6) | France |
+| Proton AG (Geneva, Switzerland) | Sends, from a bipagents.com address, the codes, the security notices, the invitations, the purchase confirmation, the withdrawal acknowledgement and the deletion notices; also hosts the support mailbox (section 4.2) | Email address, content of these emails | Switzerland (adequacy decision, section 11) |
 | Stripe Payments Europe, Ltd. (Dublin, Ireland) | Payment of purchases on the bipagents.com website, tax calculation, fraud checks, invoices | Email address, billing address or country, card details, IP address | European Union; possibly outside the Union (section 11) |
 
 They are bound to Kerfy Studio by a contract that complies with GDPR article 28; Stripe also acts as an independent
@@ -701,7 +703,7 @@ be announced as described in section 17.
 
 ## 11. Transfers outside the European Union
 
-The notification relay is hosted in the European Union (section 4.1). To deliver notifications, Apple and
+The notification relay is hosted in France, at OVHcloud (OVH SAS) (section 4.1). To deliver notifications, Apple and
 Google may process the token and the notification outside the European Union, notably in the United States:
 
 - Google LLC (Firebase Cloud Messaging) is certified under the "EU-U.S. Data Privacy Framework", recognised as
@@ -733,10 +735,11 @@ legal framework of the country of destination) and makes the transfer only if th
 protection (section 17 of the Act respecting the protection of personal information in the private sector). You can
 ask us for a summary of this assessment.
 
-Email provider: Proton AG, in Switzerland, a country the European Commission recognises as providing adequate
-protection (decision 2000/518/EC, kept in force by GDPR article 45(9)). Backup hosting provider: Scaleway, in France,
-with no transfer outside the Union. Email sending provider: not in service yet; its country and the applicable
-safeguard will be stated here before it goes into service. You can ask us for a copy of the applicable safeguards.
+Email provider, which also sends the guichet's emails (codes, security notices, invitations, confirmations, deletion
+notices): Proton AG, in Switzerland, a country the European Commission recognises as providing adequate protection
+(decision 2000/518/EC, kept in force by GDPR article 45(9)). Hosting provider of the guichet and the relay: OVHcloud,
+in France. Backup hosting provider: Scaleway, in France, with no transfer outside the Union. You can ask us for a copy
+of the applicable safeguards.
 
 ## 12. Retention periods
 
@@ -847,22 +850,23 @@ Canada (https://www.priv.gc.ca, 1-800-282-1376); in Quebec, the Commission d'acc
 ## 16. Children
 
 BipAgents is meant for people **aged 16 and over**. Between 16 and 18, use it with a parent's agreement and respect
-your model provider's minimum age (often 18). **Under 16, the app may only be used on an install set up and
-supervised by a parent or an adult in charge of the child** (the family feature): that adult chooses the agents,
-their access and the model, accepts the terms of use for the child and remains responsible for their use.
+your model provider's minimum age (often 18). **Under 16, the app may only be used on your own computer or your own
+server, on an install set up and supervised by a parent or an adult in charge of the child** (the family feature):
+that adult chooses the agents, their access and the model, accepts the terms of use for the child and remains
+responsible for their use. The all-included offer (a place hosted by Kerfy Studio) is not available to anyone under
+16, even under supervision. An invited person on the offer must be at least 16.
 
 Kerfy Studio does not ask for anyone's age. Some features rely on your consent: Health, Calendar, Contacts, Reminders,
 the location of reminders by place (section 3) and Android's document scanner, for what Google receives from it
-(section 7). Under 15, the adult who set up the install gives it together with the child (article 45 of the French
-Data Protection Act). If a child wrote to us, a parent can ask us to delete the message.
+(section 7). Under 15, on an install on your own computer or your own server, the adult who set it up gives it
+together with the child (article 45 of the French Data Protection Act). If a child wrote to us, a parent can ask us to delete the message.
 
-**All-included offer**: it is subscribed by an adult, or with a parent's agreement. An invited person must be at least
-16; under 16, a place may only be used if a parent or an adult in charge of the child has set it up and supervises it
-([terms of the offer](offer.en.md), section 7). **In the United States, nobody under 13 may use a place**, and Kerfy
+**All-included offer**: it is subscribed by an adult, or with a parent's agreement; anyone who uses a place, invited
+people included, is at least 16 ([terms of the offer](offer.en.md), section 7). **In the United States, nobody under 13 may use a place**, and Kerfy
 Studio does not knowingly collect any data from a child under 13 (Children's Online Privacy Protection Act); if that
 happened, write to us and we will erase it. **In Quebec**, the data of a child under 14 is only collected with the
-consent of a parent or tutor: the adult who sets up and supervises the child's place gives it for the child
-(sections 4.1 and 14 of Quebec's law).
+consent of a parent or tutor: the adult who sets up and supervises the child's install, on their own computer or
+their own server, gives it for the child (sections 4.1 and 14 of Quebec's law).
 
 ## 17. Changes
 

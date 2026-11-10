@@ -2,7 +2,7 @@
 
 # Conditions générales d'utilisation de BipAgents
 
-> Dernière mise à jour : 24 octobre 2026.
+> Dernière mise à jour : 10 novembre 2026.
 
 ## 1. Objet
 
@@ -47,8 +47,9 @@ président. Contact : **support@bipagents.com** ; signalement d'abus : **abuse@b
 
 Pour utiliser BipAgents, tu dois avoir **au moins 16 ans**. Entre 16 et 18 ans, il te faut l'accord d'un parent, et
 l'âge minimum fixé par ton fournisseur de modèle s'impose à toi. Un enfant de moins de 16 ans ne peut utiliser l'app
-que sur une installation préparée et supervisée par un parent ou un adulte qui en a la charge (fonction famille) :
-cet adulte accepte ces conditions pour lui et reste responsable de son usage. Cet âge suit la classification de l'app
+que sur l'ordinateur ou le serveur d'un parent ou d'un adulte qui en a la charge, sur une installation préparée et
+supervisée par cet adulte (fonction famille) : il accepte ces conditions pour l'enfant et reste responsable de son
+usage. L'offre tout compris n'est pas proposée aux personnes de moins de 16 ans. Cet âge suit la classification de l'app
 sur l'App Store (16+), due à l'accès libre au web de la vue Bureau. Pour l'offre tout compris, voir aussi ses
 conditions (section 7).
 

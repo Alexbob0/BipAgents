@@ -278,14 +278,14 @@ Server gespeichert; mit dem Alles-inklusive-Angebot bewahrt es auch der Guichet 
 versiegelt (Abschnitt 5.6). Die technischen Protokolle des Relays enthalten die Plattform, einen 4-Byte-
 Fingerabdruck des Tokens und die Antwort von Apple oder Google; sie werden **höchstens 6 Monate** aufbewahrt. Das
 Relay läuft, zusammen mit dem Guichet von Kerfy Studio (Abschnitt 5), auf einem Server, den Kerfy Studio bei OVHcloud
-(OVH SAS, Frankreich) in der Europäischen Union mietet und selbst verwaltet; der Hoster kann die IP-Adressen der
-Anfragen protokollieren.
+(OVH SAS) als VPS in Frankreich mietet und selbst verwaltet; der Hoster kann die IP-Adressen der Anfragen in seinen
+Betriebsprotokollen speichern.
 
 **Zwecke und Rechtsgrundlagen.** Die Benachrichtigungen zustellen, die du eingeschaltet hast: Erfüllung der
 Nutzungsbedingungen (Art. 6 Abs. 1 lit. b DSGVO). Missbrauch begrenzen und den Dienst schützen: berechtigtes Interesse
 von Kerfy Studio (Art. 6 Abs. 1 lit. f DSGVO).
 
-**Auftragsverarbeiter.** Der Hoster des Relays, OVHcloud, in der Europäischen Union, und Google (Firebase Cloud Messaging), mit Kerfy
+**Auftragsverarbeiter.** Der Hoster des Relays, OVHcloud, in Frankreich, und Google (Firebase Cloud Messaging), mit Kerfy
 Studio durch einen Vertrag nach Art. 28 DSGVO verbunden. Apple stellt die Benachrichtigungen über seinen Dienst APNs
 auf iPhones zu.
 
@@ -372,8 +372,12 @@ Support). Der Dienst von Kerfy Studio, der Konten, Abos und Plätze verwaltet, h
   Servern. Enthält dein Platz Gesundheitsdaten, die von Gesundheit oder das, was du deinen Agenten über deine
   Gesundheit sagst, hostet Kerfy Studio sie und lässt sie vom KI-Modell nur mit deiner ausdrücklichen Einwilligung
   verarbeiten (Art. 9 Abs. 2 lit. a DSGVO): für Gesundheit die, die du beim Einschalten für einen Agenten gibst
-  (Abschnitt 3), und nur mit einem Modell, das in der Europäischen Union läuft; für deine Gespräche [mit dem Anwalt zu
-  ergänzen: die Grundlage nach Art. 9 für das, was du deinen Agenten über deine Gesundheit sagst].
+  (Abschnitt 3), und nur mit einem Modell, das in der Europäischen Union läuft; für deine Gespräche die ausdrückliche
+  Einwilligung, die du gibst, indem du dich entscheidest, deinen Agenten von deiner Gesundheit zu erzählen, nachdem du
+  in dieser Richtlinie darüber informiert wurdest: Diese Äußerungen werden auf deinem Platz gespeichert und vom
+  KI-Modell nur verarbeitet, um dir zu antworten, nur mit einem Modell, das in der Europäischen Union läuft, und
+  niemals für Werbung. Du musst nicht darüber sprechen. Du kannst sie löschen, indem du die Gespräche oder deinen Platz
+  löschst, und jederzeit aufhören, darüber zu sprechen.
 - **Apple und Google** sind für ihre eigenen Verarbeitungen verantwortlich, wenn du dich bei ihnen anmeldest und wenn
   du in ihrem Store bezahlst.
 - **Stripe** (Stripe Payments Europe, Ltd., Irland) wickelt die Zahlung ab, wenn du auf der Website bipagents.com kaufst
@@ -625,8 +629,8 @@ dieses Anbieters, BipAgents löscht darin nichts, und Kerfy Studio bewahrt nicht
 | EUrouter B.V. (Amsterdam, Niederlande) | KI-Router | An das Modell geschickte Nachrichten, Metadaten | Europäische Union |
 | Hoster der Modelle, Partner von EUrouter | Betreiben das Modell (heute GLM-5.3 Flash) | An das Modell geschickte Nachrichten, mit den Dateien und Fotos, die es sieht | Europäische Union, laut EUrouter |
 | Scaleway SAS (Paris, Frankreich) | Objektspeicher für die Sicherungen (Region fr-par, Paris) | Verschlüsselte Sicherungen der Plätze, für ihn und für Kerfy Studio unlesbar; verschlüsselte Kopien der Datenbank des Guichets; eine ersetzte oder gelöschte Version wird 1 Tag aufbewahrt | Europäische Union (Frankreich) |
-| OVHcloud (OVH SAS, Roubaix, Frankreich) | Hostet den Server des Guichets und des Relays | Konto, Abo, technische Daten, versiegelte Tokens | Europäische Union |
-| Anbieter für den E-Mail-Versand: noch nicht in Betrieb; er wird hier vor der Inbetriebnahme genannt | Verschickt die Codes, die Sicherheitshinweise, die Einladungen, die Kaufbestätigung, die Eingangsbestätigung eines Widerrufs und die Hinweise zur Löschung | E-Mail-Adresse, Inhalt dieser E-Mails | Mit ihm angegeben |
+| OVHcloud (OVH SAS, Roubaix, Frankreich) | Hostet den Guichet und das Relay, auf einem VPS in Frankreich | Konto, Abo, technische Daten; versiegelte Tokens und die Protokolle des Relays (Abschnitte 4.1 und 5.6) | Frankreich |
+| Proton AG (Genf, Schweiz) | Verschickt von einer bipagents.com-Adresse die Codes, die Sicherheitshinweise, die Einladungen, die Kaufbestätigung, die Eingangsbestätigung eines Widerrufs und die Hinweise zur Löschung; hostet auch das Support-Postfach (Abschnitt 4.2) | E-Mail-Adresse, Inhalt dieser E-Mails | Schweiz (Angemessenheitsbeschluss, Abschnitt 11) |
 | Stripe Payments Europe, Ltd. (Dublin, Irland) | Zahlung der Käufe auf der Website bipagents.com, Steuerberechnung, Betrugsprüfung, Rechnungen | E-Mail-Adresse, Rechnungsadresse oder -land, Kartendaten, IP-Adresse | Europäische Union; möglicherweise außerhalb der Union (Abschnitt 11) |
 
 Sie sind mit Kerfy Studio durch einen Vertrag nach Art. 28 DSGVO verbunden; Stripe handelt außerdem für seine eigenen
@@ -769,7 +773,7 @@ wird wie in Abschnitt 17 beschrieben angekündigt.
 
 ## 11. Übermittlungen außerhalb der Europäischen Union
 
-Das Relay für Benachrichtigungen wird in der Europäischen Union gehostet (Abschnitt 4.1). Um Benachrichtigungen
+Das Relay für Benachrichtigungen wird in Frankreich bei OVHcloud (OVH SAS) gehostet (Abschnitt 4.1). Um Benachrichtigungen
 zuzustellen, können Apple und Google das Token und die Benachrichtigung außerhalb der Europäischen Union verarbeiten,
 insbesondere in den USA:
 
@@ -794,10 +798,11 @@ Vereinigte Königreich und Israel erkennen an, dass die Europäische Union ein a
 Singapur sorgen dieses Schutzniveau und unsere Verträge mit unseren Dienstleistern für den vergleichbaren Schutz, den
 das Recht von Singapur verlangt.
 
-E-Mail-Anbieter: Proton AG, in der Schweiz, einem Land, dem die Europäische Kommission ein angemessenes Schutzniveau
-bescheinigt (Entscheidung 2000/518/EG, nach Art. 45 Abs. 9 DSGVO weiter in Kraft). Hoster der Sicherungen: Scaleway, in
-Frankreich, ohne Übermittlung außerhalb der Union. Anbieter für den E-Mail-Versand: noch nicht in Betrieb; sein Land
-und die geltende Garantie werden hier vor der Inbetriebnahme angegeben. Du kannst bei uns eine Kopie der geltenden Garantien anfordern.
+E-Mail-Anbieter, der auch die E-Mails des Guichets verschickt (Codes, Sicherheitshinweise, Einladungen,
+Bestätigungen, Hinweise zur Löschung): Proton AG, in der Schweiz, einem Land, dem die Europäische Kommission ein
+angemessenes Schutzniveau bescheinigt (Entscheidung 2000/518/EG, nach Art. 45 Abs. 9 DSGVO weiter in Kraft). Hoster
+des Guichets und des Relays: OVHcloud, in Frankreich. Hoster der Sicherungen: Scaleway, in Frankreich, ohne
+Übermittlung außerhalb der Union. Du kannst bei uns eine Kopie der geltenden Garantien anfordern.
 
 ## 12. Speicherdauer
 
@@ -904,22 +909,28 @@ Commission (https://www.pdpc.gov.sg).
 
 BipAgents richtet sich an Personen **ab 16 Jahren**. Zwischen 16 und 18 Jahren nutze die App mit dem Einverständnis
 eines Elternteils und beachte das Mindestalter deines Modellanbieters (oft 18 Jahre). **Unter 16 Jahren darf die App
-nur auf einer Installation genutzt werden, die ein Elternteil oder ein für das Kind verantwortlicher Erwachsener
-eingerichtet hat und beaufsichtigt** (Familienfunktion): Dieser Erwachsene wählt die Agenten, ihre Zugänge und das
-Modell, akzeptiert die Nutzungsbedingungen für das Kind und bleibt für dessen Nutzung verantwortlich.
+nur auf deinem eigenen Computer oder deinem eigenen Server genutzt werden, auf einer Installation, die ein Elternteil
+oder eine für das Kind verantwortliche erwachsene Person eingerichtet hat und beaufsichtigt** (Familienfunktion):
+Diese Person wählt die Agenten, ihre Zugänge und das Modell, akzeptiert die Nutzungsbedingungen für das Kind und
+bleibt für dessen Nutzung verantwortlich. Das Alles-inklusive-Angebot (ein von Kerfy Studio gehosteter Platz) steht
+Personen unter 16 Jahren nicht zur Verfügung, auch nicht unter Aufsicht. Eine eingeladene Person des Angebots muss
+mindestens 16 Jahre alt sein.
 
 Kerfy Studio fragt nicht nach dem Alter. Manche Funktionen beruhen auf deiner Einwilligung: Gesundheit, Kalender,
 Kontakte, Erinnerungen, der Standort der Erinnerungen an Orten (Abschnitt 3) und der Dokumentenscanner unter Android,
-für das, was Google davon erhält (Abschnitt 7). Unter 15 Jahren gibt sie der Erwachsene, der die Installation
-eingerichtet hat, gemeinsam mit dem Kind (Art. 45 des französischen Datenschutzgesetzes). Wenn ein Kind uns
+für das, was Google davon erhält (Abschnitt 7). Unter 15 Jahren gibt sie bei einer Installation auf deinem eigenen
+Computer oder deinem eigenen Server der Erwachsene, der sie eingerichtet hat, gemeinsam mit dem Kind (Art. 45 des
+französischen Datenschutzgesetzes). Wenn ein Kind uns
 geschrieben hat, kann ein Elternteil verlangen, dass wir die Nachricht löschen.
 
-**Alles-inklusive-Angebot**: Es wird von einem Erwachsenen abgeschlossen oder mit dem Einverständnis eines Elternteils.
-Eine eingeladene Person muss mindestens 16 Jahre alt sein; unter 16 Jahren darf ein Platz nur genutzt werden, wenn ein
-Elternteil oder ein für das Kind verantwortlicher Erwachsener ihn eingerichtet hat und beaufsichtigt
+**Alles-inklusive-Angebot**: Es wird von einem Erwachsenen abgeschlossen oder mit dem Einverständnis eines
+Elternteils; jede Person, die einen Platz nutzt, eingeladene Personen eingeschlossen, ist mindestens 16 Jahre alt
 ([Bedingungen des Angebots](offer.de.md), Abschnitt 7). **In den USA darf keine Person unter 13 Jahren einen Platz
 nutzen**, und Kerfy Studio erhebt wissentlich keine Daten eines Kindes unter 13 Jahren (Children's Online Privacy
-Protection Act); falls es doch geschehen ist, schreib uns, und wir löschen sie.
+Protection Act); falls es doch geschehen ist, schreib uns, und wir löschen sie. **In Québec** werden die Daten eines
+Kindes unter 14 Jahren nur mit der Einwilligung eines Elternteils oder des Vormunds erhoben: Der Erwachsene, der seine
+Installation auf dem eigenen Computer oder Server einrichtet und beaufsichtigt, gibt sie für das Kind (Art. 4.1 und 14
+des Gesetzes von Québec).
 
 ## 17. Änderungen
 
