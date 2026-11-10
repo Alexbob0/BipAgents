@@ -103,8 +103,8 @@ pub const LIVE_TITLE: &str = "Live";
 /// A call's Carnet line, in its brief (the apps put the brief in the call's prelude): filing fast while the person
 /// waits on the line, one notebook_write without a search first (10/11: the agents' rule says search first, a second
 /// model call before « noté »). A turn the phone sent to be filed has its own note (live_turns.rs `NOTE`).
-pub const CARNET: &str = "Something to keep (a fact, a date, a size): file it at once with notebook_write, no search \
-first, then just confirm in a few words.";
+pub const CARNET: &str = "Something to keep (a fact, a date, a size): file it at once with notebook_write, one call \
+a page, no notebook_search before, then only « OK, noté » or the like, nothing added.";
 /// What the apps put in a message for the agent only (a call's opening, a call's recap): never shown to the person.
 static HIDDEN: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new(r"(?s)<!--\s*bip:.*?-->").unwrap());
 

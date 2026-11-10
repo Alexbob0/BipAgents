@@ -1868,13 +1868,12 @@ pub(crate) fn note_locked(
             // « Chausse du 36 » → « Pointure : 36 »: a label said again then replaces the old one
             let piece = lexicon::reshape(&piece, &lang);
             let id = template::place(&page_kind, section, &piece);
-            // no section said, or « other »: where the page already has this label (10/11, Live: « Pointure : 37 » went
-            // to « Autres » beside the old « Pointure : 35 » of « Qui c'est », both kept)
-            let id = if id == "other" {
-                labelled_in(&page.body, &page_kind, &piece).unwrap_or(id)
-            } else {
-                id
-            };
+            // where the page already has this label (10/11, Live: « Pointure : 37 » went to « Autres » or « À ne pas
+            // oublier » beside the old « Pointure : 35 » of « Qui c'est », both kept): with no section said or
+            // « other », any label; a label of the lexicon's table (one value a page: size, birthday…) wherever the
+            // agent put it
+            let known = lexicon::split_label(&piece).is_some_and(|(label, _)| lexicon::label_of(&label).is_some());
+            let id = if id == "other" || known { labelled_in(&page.body, &page_kind, &piece).unwrap_or(id) } else { id };
             // a trip's packing list: one thing to tick a line
             let piece = if page_kind == "trip" && id == "packing" { trip::unticked(&piece) } else { piece };
             let title = if template::outline(&page_kind).is_empty() {
@@ -4304,13 +4303,13 @@ mod tests {
         let config = config_in(dir.path());
         let who = lea();
         let page = note(&config, Part::Main, "person", "Léa", "who", &["Sœur".into(), "Pointure : 35".into()], &[], "", "", &who).unwrap();
-        for (size, section) in [("Pointure : 36", ""), ("Pointure : 37", "other")] {
+        for (size, section) in [("Pointure : 36", ""), ("Pointure : 37", "other"), ("Pointure : 38", "remember")] {
             let done = note(&config, Part::Main, "person", "Léa", section, &[size.into()], &[], "", "", &who).unwrap();
             assert_eq!(done.replaced, 1, "{size}");
         }
         let text = read_page_text(&config, Part::Main, &page.path).unwrap();
         assert_eq!(text.matches("Pointure").count(), 1, "{text}");
-        assert!(text.contains("Pointure : 37") && !text.contains("## Other") && !text.contains("## Autres"), "{text}");
+        assert!(text.contains("Pointure : 38") && !text.contains("## Other") && !text.contains("## Autres"), "{text}");
         // a label not on the page yet: « other », as before
         note(&config, Part::Main, "person", "Léa", "", &["Couleur préférée : vert".into()], &[], "", "", &who).unwrap();
         assert!(labelled_in(&read_page_text(&config, Part::Main, &page.path).unwrap(), "person", "Couleur préférée : bleu").is_none());
