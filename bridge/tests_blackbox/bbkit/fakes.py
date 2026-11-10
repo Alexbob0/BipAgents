@@ -309,6 +309,7 @@ class FakeHermes(Fake):
         self.toolsets = [{"name": "web", "label": "Web", "description": "Search", "enabled": True,
                           "configured": True, "tools": ["web_search"]}]
         self.started: Dict[str, Dict[str, Any]] = {}    # runs made by POST /v1/runs
+        self.start_failures = 0   # POST /v1/runs answered 502 this many times first (a gateway restarting)
         self.rounds, self.step = 3, 40_000
         self.run_output = "Rapport : trois écoles comparées, page « Écoles »."
         self.run_outputs: Dict[str, str] = {}   # run id -> its own output (else run_output)
@@ -374,6 +375,10 @@ class FakeHermes(Fake):
 
     async def _runs(self, seen: Seen, agent: str, parts: List[str], method: str) -> Response:
         if len(parts) == 2 and method == "POST":
+            with self.lock:
+                failing, self.start_failures = self.start_failures > 0, max(0, self.start_failures - 1)
+            if failing:
+                return JSONResponse({"error": "gateway restarting"}, status_code=502)
             body = seen.json() or {}
             now, text = split_now(body.get("input"))
             with self.lock:

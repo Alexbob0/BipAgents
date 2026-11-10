@@ -10,7 +10,7 @@ from bbkit.common import AUTH, sse
 from bbkit.servers import wait_until
 
 FAST = {"tick_seconds": 0.3, "ping_seconds": 0.3, "measure_seconds": 0.3, "unhealthy_pings": 2,
-        "retry_seconds": 1, "jitter_minutes": 0}
+        "retry_seconds": 1, "jitter_minutes": 0, "quiet_after_turn_seconds": 0}
 
 
 def start(bridges, fakes, existing=False, name="bridge", **settings):
@@ -179,3 +179,48 @@ def test_a_turn_past_the_ceiling_does_not_hold_the_restart_for_ever(bridges, fak
     assert "its ceiling reached" in bridge.log_tail(200)
     gate.set()
     follower.join(timeout=10)
+
+
+def test_a_turn_that_just_ended_holds_the_restart_a_moment(bridges, fakes):
+    """Release battery 10/11: the hub's gateway restarted the moment a turn ended (« calm »), and the person's next
+    message, 2 s later, found it down. A turn that just ended keeps its agent busy `quiet_after_turn_seconds` more."""
+    bridge = start(bridges, fakes, quiet_after_turn_seconds=4).start()
+    gate, follower = follow_gated(bridge, fakes)
+    fakes.hermes.capabilities[""] = 503
+    assert wait_until(lambda: "restart waits" in bridge.log_tail(200), timeout=15)
+    gate.set()
+    follower.join(timeout=10)
+    ended = time.time()
+    assert wait_until(lambda: len(restarts(bridge)) == 1, timeout=20)
+    assert time.time() - ended >= 3.5, "restarted right after the turn ended"
+    fakes.hermes.capabilities[""] = 200
+
+
+def test_a_message_sent_while_the_bridge_restarts_its_gateway_waits_in_line(bridges, fakes):
+    """Release battery 10/11 (upgrade journey, seed): a message sent 2 s after a turn ended, while the bridge restarted
+    the gateway it had found idle, got « your agent isn't answering right now ». A message finding the gateway down
+    just after the bridge's own restart waits in line (`queued`, « En attente ») and starts once Hermes answers again;
+    without a restart of the bridge's, Hermes not answering is still an error."""
+    import uuid
+    bridge = start(bridges, fakes).start()
+
+    def send(text):
+        thread = bridge.get("/v1/threads/resolve", headers=AUTH,
+                            params={"agent": "wellness", "session_id": "api_r"}).json()["thread"]["id"]
+        return bridge.post(f"/v1/threads/{thread}/messages", headers=AUTH,
+                           json={"agent": "wellness", "client_id": str(uuid.uuid4()), "text": text})
+
+    fakes.hermes.start_failures = 1   # no restart of the bridge's: the plain error, as before
+    failed = send("Avant le redémarrage")
+    assert failed.status_code == 502, failed.text
+    fakes.hermes.capabilities[""] = 503   # unhealthy: the bridge restarts its gateway
+    assert wait_until(lambda: len(restarts(bridge)) == 1, timeout=15)
+    fakes.hermes.capabilities[""] = 200
+    fakes.hermes.start_failures = 2   # still coming back: its door refuses the next two starts
+    answer = send("Pour Testville, une idée ?")
+    assert answer.status_code == 200, answer.text
+    assert answer.json()["state"] == "queued" and answer.json()["run_id"] is None, answer.json()
+    # started by the queue once Hermes takes it (tried again every few seconds)
+    assert wait_until(lambda: any("Pour Testville" in str(r["input"]) for r in fakes.hermes.started.values()),
+                      timeout=40)
+    assert bridge.get("/v1/agents/wellness/queue", headers=AUTH).json()["items"] == []

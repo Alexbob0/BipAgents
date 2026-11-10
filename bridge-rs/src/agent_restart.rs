@@ -15,7 +15,10 @@
 //! ([`NEW_AGENT_TOOLS`]: agents_admin.rs `tools_loaded` restarts the hub's gateway itself as soon as it is calm, and
 //! hands it here only when it stays busy). Without a reason: no restart.
 //!
-//! Only when the agent does nothing: no turn going on (conversations, rooms, Live calls: the run hub, and its Hermes'
+//! Only when the agent does nothing: no turn going on nor one ended in the last `quiet_after_turn_seconds` (30 s: the
+//! person reads the answer and writes again; 10/11 a restart the moment a turn ended made the next message fail), and
+//! a message that still finds its gateway down right after the bridge restarted it waits in line (threads/send.rs)
+//! instead of « isn't answering ». No turn going on means (conversations, rooms, Live calls: the run hub, and its Hermes'
 //! own count, `GET /health/detailed`: a bridge that restarted doesn't follow the turns started before it), no Live
 //! call in the last 15 minutes, no background task or archive extraction (jobs.rs), no mail scan (mail_scan.rs), no
 //! watcher check (watchers.rs), no Hermes routine running or due within `routine_margin_minutes`. Busy: tried again in
@@ -84,6 +87,8 @@ pub struct Settings {
     pub turn_wait_seconds: f64,
     /// An agent whose tools changed and whose Hermes hasn't listed them again after this long: restarted once idle.
     pub stale_tools_seconds: f64,
+    /// A turn of one of its agents ended this recently: not idle yet (the person reads the answer and writes again).
+    pub quiet_after_turn_seconds: f64,
 }
 
 impl Default for Settings {
@@ -106,9 +111,14 @@ impl Default for Settings {
             retry_seconds: 600.0,
             turn_wait_seconds: TURN_WAIT_SECONDS,
             stale_tools_seconds: STALE_TOOLS_SECONDS,
+            quiet_after_turn_seconds: QUIET_AFTER_TURN_SECONDS,
         }
     }
 }
+
+/// `quiet_after_turn_seconds` by default. Release battery 10/11: the hub's gateway was restarted for a new agent's
+/// tools the moment the turn going on ended (« calm »), and the person's next message, 2 s later, found it down.
+pub const QUIET_AFTER_TURN_SECONDS: f64 = 30.0;
 
 /// `turn_wait_seconds` by default: 10 minutes.
 pub const TURN_WAIT_SECONDS: f64 = 600.0;
@@ -144,6 +154,7 @@ impl Settings {
             retry_seconds: f("retry_seconds", d.retry_seconds, 0.2, 86_400.0),
             turn_wait_seconds: f("turn_wait_seconds", d.turn_wait_seconds, 0.0, 86_400.0),
             stale_tools_seconds: f("stale_tools_seconds", d.stale_tools_seconds, 0.2, 86_400.0),
+            quiet_after_turn_seconds: f("quiet_after_turn_seconds", d.quiet_after_turn_seconds, 0.0, 3600.0),
         }
     }
 }
@@ -234,6 +245,53 @@ fn clear_done(agent: &str, done: &[String]) {
             all.remove(agent);
         }
     }
+}
+
+// --- restarts going on ------------------------------------------------------------------------------------------------
+
+/// When the bridge last restarted each gateway itself (agents_admin::restart_gateway: this loop, a new agent's tools,
+/// a settings change, a move…), by the gateway's key: the agent's space, or "" for the hub's (its agents together).
+static RESTARTED: LazyLock<Mutex<HashMap<String, f64>>> = LazyLock::new(Default::default);
+
+/// How long after the bridge restarted a gateway a message finding it down waits in line for it (threads/send.rs)
+/// instead of failing: a restart takes 10-90 s before Hermes answers again (lab 10/11: 90 s on a cpx32 with four
+/// agents and their browsers).
+pub const RESTART_GRACE_SECONDS: f64 = 180.0;
+
+fn gateway_key(agent: &AgentConfig) -> String {
+    agent.space.clone().filter(|s| !s.is_empty()).unwrap_or_default()
+}
+
+/// The bridge restarts the agent's gateway now.
+pub fn restart_began(agent: &AgentConfig) {
+    RESTARTED.lock().unwrap_or_else(|e| e.into_inner()).insert(gateway_key(agent), py::time_time());
+}
+
+/// Whether the bridge restarted the agent's gateway within [`RESTART_GRACE_SECONDS`]: Hermes not answering then is
+/// that restart, not a broken agent (release battery 10/11: the seed's second message, 2 s after the first turn,
+/// got « your agent isn't answering » while the gateway restarted once idle).
+pub fn restarting(agent: &AgentConfig) -> bool {
+    restarting_at(agent, py::time_time())
+}
+
+fn restarting_at(agent: &AgentConfig, now: f64) -> bool {
+    RESTARTED
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(&gateway_key(agent))
+        .is_some_and(|at| now - at >= 0.0 && now - at < RESTART_GRACE_SECONDS)
+}
+
+/// When each agent's last turn ended (runs.rs, at every run's end).
+static TURN_ENDS: LazyLock<Mutex<HashMap<String, f64>>> = LazyLock::new(Default::default);
+
+/// A turn of the agent just ended (runs.rs).
+pub fn note_turn_end(agent: &str) {
+    TURN_ENDS.lock().unwrap_or_else(|e| e.into_inner()).insert(agent.to_string(), py::time_time());
+}
+
+fn turn_ended_within(agent: &str, now: f64, seconds: f64) -> bool {
+    seconds > 0.0 && TURN_ENDS.lock().unwrap_or_else(|e| e.into_inner()).get(agent).is_some_and(|at| now - at < seconds)
 }
 
 /// A Live call of the agent going on now (live_brief.rs).
@@ -588,7 +646,8 @@ pub(crate) async fn activity(state: &AppState, config: &Config, agent: &AgentCon
         .filter_map(|r| crate::autonomous::routine_item(name, crate::routines::view(r, zone).as_object()?))
         .collect();
     let routine = routine_busy(&items, now, config.agent_restart.routine_margin_minutes);
-    let turn = state.hub.agent_running(name);
+    // a turn going on, or one that just ended: its person is reading the answer and may write again at once
+    let turn = state.hub.agent_running(name) || turn_ended_within(name, now, config.agent_restart.quiet_after_turn_seconds);
     Activity {
         turn,
         // asked only when the hub follows none: the hub's own word is enough to wait
@@ -631,6 +690,10 @@ pub async fn group_calm(config: &Config, agent: &AgentConfig) -> Option<Vec<Stri
         if activity(state, config, other, now).await.busy().is_some() {
             return None;
         }
+    }
+    // a turn started while the others were asked (each up to a few seconds): not calm after all
+    if agents.iter().any(|a| state.hub.agent_running(&a.name)) {
+        return None;
     }
     Some(agents.iter().map(|a| a.name.clone()).collect())
 }
@@ -744,6 +807,7 @@ async fn tick(state: &AppState, config: &Config, memory: &mut HashMap<String, Gr
                 only_turns &= doing.only_turns();
             }
         }
+        let was_idle = busy.is_none();
         match busy {
             None => group.turn_wait = None,
             Some((agent, what)) => {
@@ -761,6 +825,10 @@ async fn tick(state: &AppState, config: &Config, memory: &mut HashMap<String, Gr
                 tracing::warn!(target: "bipbridge::restart", agent = %agent, reason = %why.text(), busy = what,
                     waited = waited.round(), "restart after waiting for the turns to end: its ceiling reached");
             }
+        }
+        // a turn started while the agents were looked at (each up to a few seconds): tried again at the next tick
+        if was_idle && agents.iter().any(|a| state.hub.agent_running(&a.name)) {
+            continue;
         }
         let text = why.text();
         match restart(config, &agents).await {
@@ -789,6 +857,20 @@ pub fn status_fields(config: &Config) -> BTreeMap<String, Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_gateway_restarted_by_the_bridge_is_restarting_for_a_while_its_agents_together() {
+        let hub = AgentConfig { name: "restart-hub-a".into(), ..Default::default() };
+        let other_on_hub = AgentConfig { name: "restart-hub-b".into(), ..Default::default() };
+        let spaced = AgentConfig { name: "restart-space".into(), space: Some("/tmp/space-x".into()), ..Default::default() };
+        let now = py::time_time();
+        assert!(!restarting_at(&spaced, now));
+        restart_began(&spaced);
+        assert!(restarting_at(&spaced, now + 1.0) && restarting_at(&spaced, now + RESTART_GRACE_SECONDS - 5.0));
+        assert!(!restarting_at(&spaced, now + RESTART_GRACE_SECONDS + 5.0)); // over: a real outage is an error again
+        restart_began(&hub);
+        assert!(restarting_at(&other_on_hub, now + 1.0)); // the hub's gateway serves them both
+    }
 
     #[test]
     fn the_quiet_hour_is_the_least_active_of_the_window() {
