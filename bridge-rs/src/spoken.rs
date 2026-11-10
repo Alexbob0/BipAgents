@@ -17,7 +17,7 @@
 //!   before the speech-text rules (tts.rs `prepare`, also `/v1/tts/prepare` for the phones' Bip voices): lists as
 //!   « d'abord… ensuite… enfin » (three or fewer) or « premièrement… deuxièmement… » (announced), headings as short
 //!   transitions, tables as « un tableau de N lignes » and their first row, code blocks and bare links named, not
-//!   read, parentheses as commas.
+//!   read (parentheses, abbreviations and numbers: numbers_fr.rs / speech_intl.rs, as before).
 
 use std::sync::LazyLock;
 
@@ -373,8 +373,6 @@ static TABLE_SEP: LazyLock<Regex> = LazyLock::new(|| re(r"^\s*\|?\s*:?-{2,}:?\s*
 static LINK: LazyLock<Regex> = LazyLock::new(|| re(r"!?\[([^\]\n]+)\]\([^)\n]*\)"));
 static AUTOLINK: LazyLock<Regex> = LazyLock::new(|| re(r"<((?:https?://|www\.)[^>\s]+)>"));
 static BARE_URL: LazyLock<Regex> = LazyLock::new(|| re(r"\b(?:https?://|www\.)[^\s)\]>]+"));
-static PARENS: LazyLock<Regex> = LazyLock::new(|| re(r"\s\(([^()\n]{1,120})\)"));
-static COMMA_BEFORE_STOP: LazyLock<Regex> = LazyLock::new(|| re(r",\s*([.,;:!?…])"));
 static BLANKS: LazyLock<Regex> = LazyLock::new(|| re(r"\n{3,}"));
 static SPACES: LazyLock<Regex> = LazyLock::new(|| re(r"[ \t]{2,}"));
 
@@ -480,8 +478,6 @@ pub fn structure(text: &str, lang: &str) -> String {
         i += 1;
     }
     let mut text = out.iter().map(|l| SPACES.replace_all(l.trim_end(), " ")).collect::<Vec<_>>().join("\n");
-    text = PARENS.replace_all(&text, ", $1,").into_owned();
-    text = COMMA_BEFORE_STOP.replace_all(&text, "$1").into_owned();
     if urls > 0 {
         text.push_str("\n\n");
         text.push_str(if urls == 1 { w.link } else { w.links });
@@ -577,7 +573,7 @@ cher, A, a une terrasse : 95 euros.-->";
     }
 
     #[test]
-    fn tables_code_links_headings_and_parentheses() {
+    fn tables_code_links_and_headings() {
         let table = "| Hôtel | Prix |\n|---|---:|\n| Ibis | 95 € |\n| Mercure | 120 € |\n| Novotel | 140 € |";
         assert_eq!(
             structure(table, "fr"),
@@ -593,9 +589,6 @@ cher, A, a une terrasse : 95 euros.-->";
         );
         assert_eq!(structure("## Mardi\nPiscine", "fr"), "Mardi :\nPiscine");
         assert_eq!(structure("**Budget :**\n420 €", "fr"), "Budget :\n420 €");
-        assert_eq!(structure("Le gîte (avec piscine) est libre.", "fr"), "Le gîte, avec piscine, est libre.");
-        assert_eq!(structure("Le gîte (avec piscine).", "fr"), "Le gîte, avec piscine.");
-        assert_eq!(structure("ami(e)s", "fr"), "ami(e)s");
     }
 
     #[test]
