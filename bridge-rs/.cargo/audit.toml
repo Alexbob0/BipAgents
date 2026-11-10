@@ -1,0 +1,16 @@
+# cargo audit's settings for this crate (the « Dependency audit » workflow runs `cargo audit` in bridge-rs/).
+# Each ignore says why it can't reach the bridge; look at them again when the dependencies are bumped.
+[advisories]
+ignore = [
+    # rsa 0.9 (Marvin attack, timing of RSA decryption): a dev-dependency only, tests/push-runs_fcm.rs makes a
+    # throwaway Google service-account key with it. The bridge never links rsa (jsonwebtoken signs with ring). rsa
+    # 0.10 fixes it but drags a whole new RustCrypto generation (rand_core 0.10, digest 0.11) into the tests.
+    "RUSTSEC-2023-0071",
+    # crypto-bigint 0.5 (timing variability): only under the dev-dependency p256 0.13 (tests/notifications_sealed.rs
+    # opens a sealed notification as the phones do); the fixed 0.7 needs p256 0.14, the same new generation as above.
+    "RUSTSEC-2026-0387",
+    # unsafe-libyaml is unmaintained (a warning, no known flaw): under serde_yaml 0.9 (deprecated too), which reads
+    # the bridge's own catalog, the notebook's front matter and memory files. To replace with a maintained YAML crate
+    # in a change of its own (the parsing of every file it reads to compare).
+    "RUSTSEC-2024-0449",
+]

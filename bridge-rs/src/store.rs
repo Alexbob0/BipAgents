@@ -342,7 +342,7 @@ impl Store {
         let guard = self.inner.conn.lock().unwrap_or_else(|e| e.into_inner());
         let conn = guard.as_ref().ok_or_else(|| anyhow!("Cannot operate on a closed database."))?;
         let mut stmt = conn.prepare(sql)?;
-        let names: Vec<String> = stmt.column_names().into_iter().map(str::to_string).collect();
+        let names: Vec<String> = stmt.column_names().map(str::to_string).collect();
         let rows = stmt.query_map(params_from_iter(params.iter()), |row| row_to_map(row, &names))?;
         Ok(rows.collect::<rusqlite::Result<Vec<Row>>>()?)
     }

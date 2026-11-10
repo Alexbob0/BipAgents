@@ -1,0 +1,12 @@
+# cargo audit's settings for this crate (the « Dependency audit » workflow runs `cargo audit` in relay/).
+# Each ignore says why it can't reach the relay; look at them again when the dev-dependencies are bumped.
+[advisories]
+ignore = [
+    # rsa 0.9 (Marvin attack, timing of RSA decryption): a dev-dependency only, tests/relay.rs makes a throwaway
+    # Google service-account key with it. The relay never links rsa (jsonwebtoken signs with ring). rsa 0.10 fixes
+    # it but drags a whole new RustCrypto generation (rand_core 0.10, digest 0.11) into the tests.
+    "RUSTSEC-2023-0071",
+    # crypto-bigint 0.5 (timing variability): only under the dev-dependency p256 0.13 (tests/relay.rs makes a
+    # throwaway Apple key); the fixed 0.7 needs p256 0.14, the same new generation as above.
+    "RUSTSEC-2026-0387",
+]
