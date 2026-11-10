@@ -50,8 +50,9 @@ HOST = "place"                      # the same on every server the place lives o
 # option B: really within 30 days, every copy counted). What a place forgets leaves its backups in four steps:
 #   its last snapshot holding it, kept 21 days (KEEP_DAYS)                                          21 d
 #   the next thinning, at a backup once a day (PRUNE_EVERY; a quiet place backs up once a day)      + 1 d 5 min
-#   the guichet's trash for what a place deletes (guichet `backup_trash_days` 6, purged hourly)     + 6 d 1 h
-#   the bucket's replaced or deleted versions (guichet `backups versions --apply`: 1 day)           + 1 d
+#   the guichet's trash for what a place deletes (guichet `backup_trash_days` 5, purged hourly)     + 5 d 1 h
+#   the bucket's replaced or deleted versions (guichet `backups versions --apply`: 1 day; counted 2,  + 2 d
+#   as Scaleway doesn't say when its daily pass runs)
 #   worst case, the place running                                                                     29 d 1 h 5 min
 # `RETENTION` is the rule's version: a place whose last thinning was made under another one thins at its next backup,
 # without waiting a day. Calendar-bounded rules only (--keep-within-*, restic >= 0.13; Ubuntu 24.04 has 0.16, Debian 13

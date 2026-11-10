@@ -464,7 +464,7 @@ def test_the_history_is_thinned_once_a_day_and_at_once_under_a_new_rule():
 
 def test_no_backup_rule_keeps_anything_past_30_days():
     """« Oublie ça » says « Disparaît aussi des sauvegardes sous 30 jours », every copy counted (Alex 10/11, option B):
-    the last snapshot holding it 21 days, the next daily thinning, the guichet's trash 6 days (`backup_trash_days`,
+    the last snapshot holding it 21 days, the next daily thinning, the guichet's trash 5 days (`backup_trash_days`,
     purged hourly), the bucket's old versions 1 day (guichet `backups versions --apply`). No restic rule may keep a
     snapshot longer than 21 calendar days, even on a place that was off for a while: --keep-within-* rules only (never
     --keep-daily N, which counts days that have a snapshot, nor weekly, monthly, yearly or --keep-last); and the prune
@@ -480,7 +480,7 @@ def test_no_backup_rule_keeps_anything_past_30_days():
     assert backup.PRUNE == ["--max-unused", "0"]
     # the next thinning: at most a day and a timer's look after (a quiet place backs up once a day)
     thinning = (max(backup.PRUNE_EVERY, backup.SAFETY) + 5 * MIN) / 86400
-    trash_days, trash_round, versions_days = 6, 1 / 24, 1   # the guichet's backup_trash_days, its hourly purge, the bucket
+    trash_days, trash_round, versions_days = 5, 1 / 24, 2   # backup_trash_days, its purge, the bucket (1 day, late: 2)
     worst = backup.KEEP_DAYS + thinning + trash_days + trash_round + versions_days
     assert worst <= 30, worst
 

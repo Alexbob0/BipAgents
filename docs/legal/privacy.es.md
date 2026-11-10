@@ -496,7 +496,7 @@ Studio: la clave también está allí y,
 técnicamente, el proveedor y Kerfy Studio podrían acceder a ella; nuestro software no lee ni tu plaza ni sus copias, y
 solo lo haríamos si la ley nos obligara. Kerfy Studio guarda estas copias en **Scaleway** (Scaleway SAS, Francia;
 almacenamiento de objetos en París, región fr-par) sin poder leerlas: las de las 2 últimas horas, luego una por hora durante 48 horas, una por día durante
-21 días, nada más antiguo. Se borran con tu plaza. Lo que una plaza borra de sus copias, el guichet lo aparta primero 6 días (contra un borrado malintencionado) y
+21 días, nada más antiguo. Se borran con tu plaza. Lo que una plaza borra de sus copias, el guichet lo aparta primero 5 días (contra un borrado malintencionado) y
 luego se borra; en Scaleway, una versión sustituida o borrada de un archivo se guarda 1 día y luego se borra. Así, lo que borras o pides a un agente que olvide ha salido de las copias de seguridad, todas sus copias incluidas, **en 30 días**. Los datos se quedan en la Unión Europea.
 
 **Las copias de seguridad del guichet.** El guichet (tu cuenta, tu suscripción, los datos técnicos de las plazas)
@@ -782,7 +782,7 @@ de correos: todavía no en servicio; su país y la garantía aplicable se indica
 | Dirección IP al reservar una semana gratis | Nunca se guarda; en memoria, como huella, 15 minutos como máximo |
 | Contenido de tu plaza | Durante la suscripción y después 30 días (3 días después de una semana gratis que no continuó) |
 | Copias de seguridad | 2 horas (todas), luego 48 horas (por hora), 21 días (diarias), nada más antiguo; se borran con la plaza; lo que borras ha salido de ellas en 30 días, todas las copias incluidas |
-| Archivos de copia que una plaza borra, apartados por el guichet | 6 días |
+| Archivos de copia que una plaza borra, apartados por el guichet | 5 días |
 | Versiones sustituidas o borradas en Scaleway (copias de seguridad de las plazas, copias cifradas de la base de datos del guichet) | 1 día |
 | Imagen diaria de OVHcloud | Un punto por día, sustituido en un día aproximadamente después de reinstalar la plaza |
 | Datos técnicos de los servidores | Solo los últimos valores |

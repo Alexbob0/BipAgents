@@ -503,7 +503,7 @@ Kerfy Studio : la clé y est donc présente, et
 techniquement l'hébergeur comme Kerfy Studio pourraient y accéder ; notre logiciel ne lit ni ta place ni ses
 sauvegardes, et nous ne le ferions que si la loi nous y oblige.
 Kerfy Studio garde ces sauvegardes chez **Scaleway** (Scaleway SAS, France ; stockage objet à Paris, région fr-par)
-sans pouvoir les lire : celles des 2 dernières heures, puis une par heure pendant 48 heures, une par jour pendant 21 jours, rien au-delà. Elles sont effacées avec ta place. Ce qu'une place efface de ses sauvegardes est d'abord mis de côté 6 jours par le guichet (contre un effacement
+sans pouvoir les lire : celles des 2 dernières heures, puis une par heure pendant 48 heures, une par jour pendant 21 jours, rien au-delà. Elles sont effacées avec ta place. Ce qu'une place efface de ses sauvegardes est d'abord mis de côté 5 jours par le guichet (contre un effacement
 malveillant), puis effacé ; chez Scaleway, une version remplacée ou effacée d'un fichier est gardée 1 jour, puis effacée. Ainsi, ce que tu effaces ou demandes à un agent d'oublier a quitté les sauvegardes, toutes leurs copies comprises, **sous 30 jours**. Les données restent dans l'Union européenne.
 
 **Les sauvegardes du guichet.** Le guichet (ton compte, ton abonnement, les données techniques des places) est
@@ -805,7 +805,7 @@ service ; son pays et la garantie applicable seront indiqués ici avant sa mise 
 | Adresse IP à la réservation d'une semaine gratuite | Jamais enregistrée ; en mémoire, sous forme d'empreinte, 15 minutes au plus |
 | Contenu de ta place | Pendant l'abonnement, puis 30 jours (3 jours après une semaine gratuite non poursuivie) |
 | Sauvegardes | 2 heures (toutes), puis 48 heures (horaires), 21 jours (quotidiennes), rien au-delà ; effacées avec la place ; ce que tu effaces en est parti sous 30 jours, toutes copies comprises |
-| Fichiers de sauvegarde qu'une place efface, mis de côté par le guichet | 6 jours |
+| Fichiers de sauvegarde qu'une place efface, mis de côté par le guichet | 5 jours |
 | Versions remplacées ou effacées chez Scaleway (sauvegardes des places, copies chiffrées de la base du guichet) | 1 jour |
 | Image quotidienne d'OVHcloud | Un point par jour, remplacé dans la journée environ après la réinstallation de la place |
 | Données techniques des serveurs | Dernières valeurs seulement |
