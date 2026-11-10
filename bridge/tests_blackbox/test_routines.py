@@ -9,7 +9,7 @@ import time
 from starlette.responses import JSONResponse
 
 from bbkit.common import AUTH, sse, boite_items
-from bbkit.mcp import call, give_token, text_of
+from bbkit.mcp import call, give_token, media_of, text_of
 from bbkit.servers import wait_until
 
 TOKEN = "c" * 64
@@ -406,3 +406,81 @@ def test_a_routine_moved_from_a_hermes_job_of_the_main_conversation_runs_apart(b
     assert [i for i in boite(bridge)] and not [i for i in boite(bridge) if "PAS UN MOT" in i["text"]]
     time.sleep(1.5)
     assert len([p for p in fakes.apns.payloads() if p.get("m")]) == 1
+
+
+def routine_runs(fakes):
+    return [rid for rid, r in fakes.hermes.started.items() if "<!--bip:routine" in (r.get("input") or "")]
+
+
+def test_a_routine_the_brake_stops_tells_the_person_where_its_reports_land(bridges, fakes):
+    """10/11, the release battery's upgrade journey: GLM kept asking for create_page in a routine, was told « already
+    done » with no link, asked again, the brake stopped the run, and nobody was told (no report, nothing in the Boîte).
+    Now the same page asked again gets its MEDIA: line back (one page), a page deleted in the turn may be made again,
+    and a run that still ends without its report leaves a short plain notice where its reports land: what happened,
+    when it tries again, how to run it now."""
+    bridge = bridges.new()
+    bridge.seed_db([("INSERT INTO devices (token, environment, agent_ids, created_at, updated_at) VALUES (?,?,?,?,?)",
+                     (TOKEN, "sandbox", "[]", NOW, NOW))])
+    bridge.start()
+    give_token(bridge)
+    hermes = fakes.hermes
+    hermes.rounds = 10_000   # runs until stopped
+    hermes.add_session("api_main", [{"role": "user", "content": "Bonjour"}], title="Bot Chat")
+    job = bridge.post("/v1/agents/wellness/routines", headers=AUTH,
+                      json={"name": "Le point du soir", "schedule": "every day at 19:00", "prompt": "Fais le point."}
+                      ).json()["job"]
+    gate = threading.Event()
+    hermes.runs["r1"] = [sse("tool.started", run_id="r1", tool="mcp_bipagents_create_page", preview=""), gate]
+    assert bridge.post(f"/v1/routines/{job['id']}/run", headers=AUTH).status_code == 200
+    assert wait_until(lambda: routine_runs(fakes) == ["r1"], timeout=20)
+    assert wait_until(lambda: hermes.seen("/v1/runs/r1/events"), timeout=20)
+    time.sleep(0.5)
+    page = {"title": "Point du soir", "html": "<h1>Soir</h1>"}
+    first = call(bridge, "create_page", page)
+    assert not first["isError"], text_of(first)
+    # asked again: not made twice, its link given back
+    again = call(bridge, "create_page", page)
+    assert not again["isError"] and text_of(again).startswith("Already done"), text_of(again)
+    assert media_of(again) == media_of(first)
+    assert len([line for line in text_of(call(bridge, "list_pages", {})).splitlines() if line.strip()]) == 1
+    # deleted, then asked again: made again (new work, not a loop), then the same one again: its link
+    page_id = media_of(first).rsplit("/", 1)[1].removesuffix(".html")
+    assert not call(bridge, "delete_page", {"page": page_id})["isError"]
+    remade = call(bridge, "create_page", page)
+    assert not remade["isError"] and not text_of(remade).startswith("Already done"), text_of(remade)
+    # and still again and again: the brake stops the run (a routine: the task's same_call, 5)
+    for _ in range(5):
+        call(bridge, "create_page", page)
+    assert wait_until(lambda: hermes.started["r1"]["status"] == "cancelled", timeout=20)
+    assert wait_until(lambda: [i for i in boite(bridge) if i["title"] == "Le point du soir"], timeout=30)
+    [notice] = [i for i in boite(bridge) if i["title"] == "Le point du soir"]
+    assert notice["text"].startswith("The routine “Le point du soir” couldn't finish: it was going round in circles."), notice
+    assert "It will try again " in notice["text"] and "“Run now” on its page" in notice["text"]
+    assert notice["session_id"] == "api_main"
+    assert wait_until(lambda: [p for p in fakes.apns.payloads() if p.get("m") == f"o_{notice['id']}"], timeout=20)
+    assert bridge.get("/v1/agents/wellness/routines", headers=AUTH).json()["jobs"][0]["last_status"] == \
+        "ended cancelled, told"
+    gate.set()
+
+
+def test_a_routine_that_fails_says_so_and_a_muted_one_stays_quiet(bridges, fakes):
+    bridge = bridges.new()
+    bridge.start()
+    hermes = fakes.hermes
+    hermes.add_session("api_main", [{"role": "user", "content": "Bonjour"}], title="Bot Chat")
+    # Hermes says each run failed (the runs are r1, r2: the order they are started)
+    hermes.run_info["r1"] = {"status": "failed", "error": "model unreachable"}
+    hermes.run_info["r2"] = {"status": "failed", "error": "model unreachable"}
+    for n, (name, muted) in enumerate([("Courriels", False), ("Archive", True)], start=1):
+        job = bridge.post("/v1/agents/wellness/routines", headers=AUTH,
+                          json={"name": name, "schedule": "every 2h", "prompt": "Regarde.", "muted": muted}).json()["job"]
+        assert bridge.post(f"/v1/routines/{job['id']}/run", headers=AUTH).status_code == 200
+        assert wait_until(lambda: len(routine_runs(fakes)) == n, timeout=20)
+        assert wait_until(lambda: [j for j in bridge.get("/v1/agents/wellness/routines", headers=AUTH).json()["jobs"]
+                                   if j["name"] == name][0]["last_status"], timeout=20)
+    time.sleep(1.0)
+    texts = {i["title"]: i["text"] for i in boite(bridge)}
+    assert texts["Courriels"].startswith("The routine “Courriels” couldn't finish: something stopped it."), texts
+    assert "Archive" not in texts
+    statuses = {j["name"]: j["last_status"] for j in bridge.get("/v1/agents/wellness/routines", headers=AUTH).json()["jobs"]}
+    assert statuses == {"Courriels": "ended failed, told", "Archive": "ended failed"}, statuses

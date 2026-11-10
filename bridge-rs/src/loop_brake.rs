@@ -869,6 +869,9 @@ pub struct Turn {
 struct BridgeTurn {
     writes: u32,
     seen: HashSet<String>,
+    /// What each write done in this turn answered (its first text, by signature): the same write asked again gets
+    /// it back (a page's MEDIA: line), so the model has what it called for and goes on (10/11, the upgrade journey).
+    answers: HashMap<String, String>,
     /// The same write asked again after its « already done »: its calls in all, by signature (the hub stops the run
     /// at `same_call`: `RunHub::same_write_again`).
     again: HashMap<String, u32>,
@@ -1019,9 +1022,14 @@ what you have, and say plainly what you couldn't find or do (no limits or tools 
             let calls = entry.again.entry(signature_of(tool, arguments)).or_insert(1);
             *calls += 1;
             tracing::info!(agent = %agent, tool = %tool, calls = *calls, "the same write again in this turn: refused");
+            let done = "Already done in this turn with exactly these arguments: not done again.";
             return Some(tool_text(
-                "Already done in this turn with exactly these arguments: not done again. There is nothing more to do for \
-it; tell the person what you did.",
+                &match entry.answers.get(&signature_of(tool, arguments)) {
+                    Some(answer) => format!(
+                        "{done} If you meant another tool, call that one now. Its result, the same as before:\n{answer}"
+                    ),
+                    None => format!("{done} There is nothing more to do for it; tell the person what you did."),
+                },
                 false,
             ));
         }
@@ -1051,6 +1059,51 @@ it; tell the person what you did.",
             entry.writes += 1;
         }
         entry.seen.insert(signature_of(tool, arguments));
+    }
+
+    /// [`record`](Self::record), with what the write answered: kept for the same write asked again (`check`). A page
+    /// deleted in the turn forgets the calls that made it: making it again is new work, not a loop (10/11, the
+    /// upgrade journey: GLM made two pages, deleted them, asked for them again and was told « already done » until
+    /// the brake stopped the routine).
+    pub fn record_answer(&self, agent: &str, turn: Option<&Turn>, tool: &str, arguments: &Dict, result: &Dict) {
+        if !write_tool(tool) {
+            return;
+        }
+        self.record(agent, turn, tool, arguments);
+        let text = result
+            .get("content")
+            .and_then(Value::as_array)
+            .and_then(|c| c.first())
+            .and_then(|c| c.get("text"))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let mut turns = self.turns.lock().unwrap_or_else(|e| e.into_inner());
+        let entry = turns.entry(turn_key(agent, turn)).or_default();
+        if bare(tool) == "delete_page" {
+            let page = arguments.get("page").and_then(Value::as_str).unwrap_or("").trim().to_string();
+            if page.is_empty() {
+                return;
+            }
+            let made = format!("/{page}.html");
+            let gone: Vec<String> = entry
+                .answers
+                .iter()
+                .filter(|(sig, answer)| sig.starts_with("create_page\u{1f}") && answer.contains(&made))
+                .map(|(sig, _)| sig.clone())
+                .collect();
+            for sig in gone {
+                entry.answers.remove(&sig);
+                entry.seen.remove(&sig);
+                entry.again.remove(&sig);
+            }
+            // the delete itself may come again later for a page made again
+            entry.seen.remove(&signature_of(tool, arguments));
+            return;
+        }
+        if !text.is_empty() {
+            entry.answers.insert(signature_of(tool, arguments), crate::tools_knowledge::head(&text, 1500).to_string());
+        }
     }
 }
 
@@ -1138,6 +1191,32 @@ mod tests {
             }
         }
         assert_eq!(stopped, Some((20, Over::SameTool("calendar_add".into()))));
+    }
+
+    #[test]
+    fn the_same_page_asked_again_gets_its_link_and_a_deleted_one_may_be_made_again() {
+        // 10/11, the upgrade journey: GLM made its pages, deleted them, asked for them again, and was told « already
+        // done » (no link) until the brake stopped the routine
+        let turns = Turns::default();
+        let settings = Settings::default();
+        let turn = Some(Turn { run_id: "run_r".into(), background: true, banned: None });
+        let page = json!({"title": "Point du jour", "html": "<p>Soleil</p>"}).as_object().cloned().unwrap();
+        let made = tool_text("MEDIA:/bipagents/pages/daily/point-du-jour.html\nPage ready: id point-du-jour, version 1.", false);
+        assert!(turns.check(&settings, "daily", turn.as_ref(), "create_page", &page, 1.0).is_none());
+        turns.record_answer("daily", turn.as_ref(), "mcp__bipagents__create_page", &page, &made);
+        let again = turns.check(&settings, "daily", turn.as_ref(), "create_page", &page, 2.0).expect("not made twice");
+        let text = again["content"][0]["text"].as_str().unwrap();
+        assert!(text.starts_with("Already done") && text.contains("MEDIA:/bipagents/pages/daily/point-du-jour.html"), "{text}");
+        assert_eq!(again["isError"], json!(false));
+        // deleted in the turn: making it again is new work
+        let gone = json!({"page": "point-du-jour"}).as_object().cloned().unwrap();
+        assert!(turns.check(&settings, "daily", turn.as_ref(), "delete_page", &gone, 3.0).is_none());
+        turns.record_answer("daily", turn.as_ref(), "delete_page", &gone, &tool_text("Page point-du-jour deleted.", false));
+        assert!(turns.check(&settings, "daily", turn.as_ref(), "create_page", &page, 4.0).is_none());
+        assert_eq!(turns.same_write_calls("daily", turn.as_ref(), "create_page", &page), 0);
+        turns.record_answer("daily", turn.as_ref(), "create_page", &page, &made);
+        // and deleted again later in the same turn: allowed too
+        assert!(turns.check(&settings, "daily", turn.as_ref(), "delete_page", &gone, 5.0).is_none());
     }
 
     #[test]

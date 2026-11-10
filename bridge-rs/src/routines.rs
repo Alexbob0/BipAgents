@@ -680,8 +680,40 @@ pub async fn fire(state: &AppState, id: &str) {
             let mut turn = Turn::new(&agent, Kind::Routine, thread.as_deref().unwrap_or(&session), note(&r));
             turn.max_seconds = TURN_MAX_SECONDS;
             match pipeline.run(&turn).await {
-                Err(why) => why.to_string(),
-                Ok(ran) if !ran.answered() => format!("ended {}", ran.status),
+                // the month's credit: its own note (credit.rs); muted: the person asked to hear nothing
+                Err(why @ crate::background_turn::NotRun::Credit) => why.to_string(),
+                Err(why) if r.muted => why.to_string(),
+                Err(why) => {
+                    let lang = crate::handback::language_of(&config, &agent);
+                    let text = ended_notice(&r.name, Ended::NotStarted, next.map(|t| (t, now)), zone, &lang);
+                    let run = format!("{}", now as i64);
+                    let told = tell_ended(state, &pipeline, &agent, &r, &run, &ran_in, &text).await;
+                    format!("{why}{}", if told { ", told" } else { "" })
+                }
+                // an empty reply after a turn that went to its end: nothing to tell, like [SILENT]
+                Ok(ran) if ran.status == "completed" && ran.text.is_empty() => format!("ended {}", ran.status),
+                Ok(ran) if !ran.answered() && r.muted => format!("ended {}", ran.status),
+                Ok(ran) if !ran.answered() => {
+                    // ended without its report (the brake stopped it, too long, failed): the person told where its
+                    // reports land, in plain words, with when it tries again (10/11: a routine the brake stopped
+                    // left nothing anywhere)
+                    let braked = pipeline
+                        .hub
+                        .as_ref()
+                        .and_then(|h| h.run_progress(&agent.name, &ran.run_id))
+                        .is_some_and(|p| p.braked);
+                    let why = if braked {
+                        Ended::Looping
+                    } else if ran.status == "timeout" {
+                        Ended::TooLong
+                    } else {
+                        Ended::Failed
+                    };
+                    let lang = crate::handback::language_of(&config, &agent);
+                    let text = ended_notice(&r.name, why, next.map(|t| (t, now)), zone, &lang);
+                    let told = tell_ended(state, &pipeline, &agent, &r, &ran.run_id, &ran.session, &text).await;
+                    format!("ended {}{}", ran.status, if told { ", told" } else { "" })
+                }
                 Ok(ran) if is_silent(&ran.text) => "silent".into(),
                 // muted: the report stays in the run's own conversation, nothing in the person's, no push
                 Ok(_) if r.muted => "muted".into(),
@@ -700,9 +732,113 @@ pub async fn fire(state: &AppState, id: &str) {
     });
 }
 
-/// The report where the routine was made (that conversation still there), else under the main conversation; the
-/// agent finds what it said there with the person's next message.
-async fn deliver(state: &AppState, pipeline: &Pipeline, agent: &AgentConfig, r: &Routine, ran: &crate::background_turn::Ran) -> String {
+/// Why a run ended without its report.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Ended {
+    /// The brake stopped it (loop_brake.rs).
+    Looping,
+    /// Past its `TURN_MAX_SECONDS`.
+    TooLong,
+    /// Failed, cancelled, interrupted: anything else.
+    Failed,
+    /// It could not start (the conversation busy or gone, the agent unreachable).
+    NotStarted,
+}
+
+/// When it tries again, in words: « demain à 7:00 », « à 19:00 », « le 14/11 à 7:00 » (`next`: its next run and now).
+fn next_words(next: Option<(f64, f64)>, zone: Tz, lang: &str) -> Option<String> {
+    let (at, now) = next?;
+    let at = zone.timestamp_opt(at as i64, 0).single()?;
+    let today = zone.timestamp_opt(now as i64, 0).single()?.date_naive();
+    let hour = at.format("%-H:%M").to_string();
+    let days = (at.date_naive() - today).num_days();
+    let date = at.format("%-d/%-m").to_string();
+    Some(match (lang, days) {
+        ("fr", 0) => format!("à {hour}"),
+        ("fr", 1) => format!("demain à {hour}"),
+        ("fr", _) => format!("le {date} à {hour}"),
+        ("de", 0) => format!("um {hour}"),
+        ("de", 1) => format!("morgen um {hour}"),
+        ("de", _) => format!("am {date}. um {hour}"),
+        ("es", 0) => format!("a las {hour}"),
+        ("es", 1) => format!("mañana a las {hour}"),
+        ("es", _) => format!("el {date} a las {hour}"),
+        (_, 0) => format!("at {hour}"),
+        (_, 1) => format!("tomorrow at {hour}"),
+        (_, _) => format!("on {date} at {hour}"),
+    })
+}
+
+/// The short notice of a run that ended without its report (fr, en, de, es; else English): what happened, when it
+/// tries again, and the routine page's « Lancer maintenant » to run it now.
+pub fn ended_notice(name: &str, why: Ended, next: Option<(f64, f64)>, zone: Tz, lang: &str) -> String {
+    let lang = crate::souls::agent_language(Some(lang));
+    let lang = lang.as_str();
+    let what = match (lang, why) {
+        ("fr", Ended::Looping) => format!("La routine « {name} » n'a pas pu finir : elle tournait en rond."),
+        ("fr", Ended::TooLong) => format!("La routine « {name} » n'a pas pu finir : elle prenait trop de temps."),
+        ("fr", Ended::Failed) => format!("La routine « {name} » n'a pas pu finir : un problème l'a arrêtée."),
+        ("fr", Ended::NotStarted) => format!("La routine « {name} » n'a pas pu démarrer."),
+        ("de", Ended::Looping) => {
+            format!("Die Routine „{name}“ konnte nicht fertig werden: Sie hat sich im Kreis gedreht.")
+        }
+        ("de", Ended::TooLong) => format!("Die Routine „{name}“ konnte nicht fertig werden: Sie hat zu lange gedauert."),
+        ("de", Ended::Failed) => {
+            format!("Die Routine „{name}“ konnte nicht fertig werden: Ein Problem hat sie gestoppt.")
+        }
+        ("de", Ended::NotStarted) => format!("Die Routine „{name}“ konnte nicht starten."),
+        ("es", Ended::Looping) => format!("La rutina «{name}» no ha podido terminar: estaba dando vueltas en círculo."),
+        ("es", Ended::TooLong) => format!("La rutina «{name}» no ha podido terminar: estaba tardando demasiado."),
+        ("es", Ended::Failed) => format!("La rutina «{name}» no ha podido terminar: un problema la detuvo."),
+        ("es", Ended::NotStarted) => format!("La rutina «{name}» no ha podido empezar."),
+        (_, Ended::Looping) => format!("The routine “{name}” couldn't finish: it was going round in circles."),
+        (_, Ended::TooLong) => format!("The routine “{name}” couldn't finish: it was taking too long."),
+        (_, Ended::Failed) => format!("The routine “{name}” couldn't finish: something stopped it."),
+        (_, Ended::NotStarted) => format!("The routine “{name}” couldn't start."),
+    };
+    let again = match (lang, next_words(next, zone, lang)) {
+        ("fr", Some(w)) => format!(" Elle réessaiera {w}."),
+        ("de", Some(w)) => format!(" Sie versucht es {w} wieder."),
+        ("es", Some(w)) => format!(" Lo volverá a intentar {w}."),
+        (_, Some(w)) => format!(" It will try again {w}."),
+        (_, None) => String::new(),
+    };
+    let now = match lang {
+        "fr" => " Pour la relancer tout de suite : « Lancer maintenant » sur sa page.",
+        "de" => " Um sie sofort zu starten: „Jetzt ausführen“ auf ihrer Seite.",
+        "es" => " Para lanzarla ahora: «Ejecutar ahora» en su página.",
+        _ => " To run it right away: “Run now” on its page.",
+    };
+    format!("{what}{again}{now}")
+}
+
+/// The notice where the routine's reports land (`report_home`), a Boîte message in the bridge's words, pushed like a
+/// report. False when the Boîte refused it.
+async fn tell_ended(state: &AppState, pipeline: &Pipeline, agent: &AgentConfig, r: &Routine, run: &str, ran_in: &str, text: &str) -> bool {
+    let (home, _) = report_home(state, pipeline, agent, r, ran_in).await;
+    let delivery = Delivery {
+        agent: agent.clone(),
+        session: home,
+        key: format!("routine:{}:{run}:ended", r.id),
+        title: r.name.clone(),
+        text: text.to_string(),
+        as_written: false,
+        run_id: None,
+        notify: true,
+        files: Vec::new(),
+    };
+    pipeline.deliver(&delivery).await
+}
+
+/// Where a routine's reports land: the conversation it was made in (still there), else the main one, else `ran_in`
+/// (its run's own); and that origin when it is still there.
+async fn report_home(
+    state: &AppState,
+    pipeline: &Pipeline,
+    agent: &AgentConfig,
+    r: &Routine,
+    ran_in: &str,
+) -> (String, Option<String>) {
     let origin = match r.origin.as_str() {
         "" => None,
         o => state.hermes.session(agent, o).await.ok().map(|_| o.to_string()),
@@ -712,10 +848,17 @@ async fn deliver(state: &AppState, pipeline: &Pipeline, agent: &AgentConfig, r: 
     let home = match &origin {
         Some(o) => o.clone(),
         None => match pipeline.tip(agent, "main").await {
-            tip if tip == "main" || tip.is_empty() => ran.session.clone(),
+            tip if tip == "main" || tip.is_empty() => ran_in.to_string(),
             tip => tip,
         },
     };
+    (home, origin)
+}
+
+/// The report where the routine was made (that conversation still there), else under the main conversation; the
+/// agent finds what it said there with the person's next message.
+async fn deliver(state: &AppState, pipeline: &Pipeline, agent: &AgentConfig, r: &Routine, ran: &crate::background_turn::Ran) -> String {
+    let (home, origin) = report_home(state, pipeline, agent, r, &ran.session).await;
     let delivery = Delivery {
         agent: agent.clone(),
         session: home,
@@ -1104,6 +1247,26 @@ pub fn router() -> Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_run_without_its_report_says_why_and_when_it_tries_again() {
+        let zone = Tz::Europe__Paris;
+        let now = at("2026-11-10 17:00");
+        let tomorrow = Some((at("2026-11-11 07:00"), now));
+        assert_eq!(
+            ended_notice("Le point du soir", Ended::Looping, tomorrow, zone, "fr"),
+            "La routine « Le point du soir » n'a pas pu finir : elle tournait en rond. Elle réessaiera demain à 7:00. \
+Pour la relancer tout de suite : « Lancer maintenant » sur sa page."
+        );
+        let tonight = Some((at("2026-11-10 19:30"), now));
+        assert!(ended_notice("Mails", Ended::TooLong, tonight, zone, "en")
+            .starts_with("The routine “Mails” couldn't finish: it was taking too long. It will try again at 19:30."));
+        assert!(ended_notice("Mails", Ended::Failed, None, zone, "de").contains("Ein Problem hat sie gestoppt. Um sie"));
+        let later = Some((at("2026-11-14 07:00"), now));
+        assert!(ended_notice("Mails", Ended::NotStarted, later, zone, "es")
+            .starts_with("La rutina «Mails» no ha podido empezar. Lo volverá a intentar el 14/11 a las 7:00."));
+        assert!(ended_notice("Mails", Ended::Looping, None, zone, "it").starts_with("The routine"));
+    }
 
     fn at(text: &str) -> f64 {
         Tz::Europe__Paris.from_local_datetime(&NaiveDateTime::parse_from_str(text, "%Y-%m-%d %H:%M").unwrap()).unwrap().timestamp() as f64

@@ -148,12 +148,18 @@ pub const MAX_TURNS: u32 = 150;
 /// first in each agent's tool list in this order (Hermes' sorted order of their names), so that any agent's first call
 /// reads them from the cache another agent left (`tools.order_first`, Hermes patch 0022). Those of the bridge are in
 /// view for every kind ([`diet`]); a tool an agent lacks is skipped (the prefix stops being common there).
-pub const COMMON_FIRST: [&str; 26] = [
+pub const COMMON_FIRST: [&str; 27] = [
     "clarify",
     "manage_connections",
     // in view for a voice call's turns, where what it notes can't be made (live_calls.rs, 4/11)
     "mcp__bipagents__after_call",
     "mcp__bipagents__create_page",
+    // in view for every kind (10/11, the upgrade journey's routine, GLM-5.3 Flash): behind the search, after
+    // tool_describe on it (and often a first tool_call), the model called it directly and its call ended on the
+    // in-view create_page (the longest common prefix): pages « x », « placeholder », « final1…35 », the same page asked
+    // again, 3 routines of 10 stopped by the brake with no report. Its reasoning: « I meant create_podcast but typed
+    // create_page ».
+    "mcp__bipagents__create_podcast",
     "mcp__bipagents__give_file",
     "mcp__bipagents__map_image",
     "mcp__bipagents__notebook_search",

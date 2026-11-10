@@ -1258,6 +1258,27 @@ fn duration(seconds: f64) -> String {
     }
 }
 
+/// A create_page call with no page in it (`html` with no tag at all and a few words: « placeholder », « x »), its
+/// refusal. 10/11, the release battery's upgrade journey (GLM-5.3 Flash, a routine asking for a PDF and a podcast,
+/// `create_podcast` behind the tool search): the model meant to call `create_podcast` directly, its call ended on the
+/// in-view `create_page` (the tool names are constrained to the request's, the longest common prefix wins:
+/// tool_diet.rs) with `{"html": "placeholder", "title": "x"}`, and its own reasoning said « I meant create_podcast but
+/// typed create_page ». Each such call made a page (`x`, `unused`, `stop`, `no`…, the « placeholder.html » of 9/11),
+/// the model deleted them, asked again, was told « already done », until the brake stopped the routine. Nothing is
+/// made now, and the model is told how to reach the tool it meant.
+pub fn no_page_in(html: &str) -> Option<String> {
+    let html = html.trim();
+    if html.is_empty() || html.contains('<') || html.chars().count() > 200 {
+        return None;
+    }
+    Some(format!(
+        "No page made: « {} » is not a page (create_page needs the page's HTML). If you meant another tool that is not \
+in your list (create_podcast, create_audio, list_voices…), call it through tool_call, e.g. tool_call {{\"calls\": \
+[{{\"name\": \"mcp__bipagents__create_podcast\", \"arguments\": {{…}}}}]}}. Don't call create_page again for it.",
+        tk::head(html, 40)
+    ))
+}
+
 /// create_page, list_pages, read_page, delete_page. Err: what Python lets through (an OSError writing the page).
 pub fn page_tool(config: &Config, agent: &AgentConfig, name: &str, arguments: &Dict) -> anyhow::Result<Dict> {
     page_tool_marked(config, agent, name, arguments, None)
@@ -1309,6 +1330,10 @@ pub fn page_tool_marked(
         }
         tracing::info!(agent = %agent.name, page = %page, "agent page deleted");
         return Ok(tool_text(&format!("Page {page} deleted."), false));
+    }
+    if let Some(refused) = no_page_in(&tk::str_or_empty(arguments.get("html"))) {
+        tracing::info!(agent = %agent.name, "create_page with no page in it: nothing made (another tool meant)");
+        return Ok(tool_text(&refused, true));
     }
     let made = match pages::save_marked(
         config,
@@ -2060,7 +2085,7 @@ async fn mcp(
     }
     let wrote = move |agent: &str, name: &str, arguments: &Dict, result: &mut Dict| {
         if !result.get("isError").map(py::truthy).unwrap_or(false) {
-            crate::loop_brake::TURNS.record(agent, turn.as_ref(), name, arguments);
+            crate::loop_brake::TURNS.record_answer(agent, turn.as_ref(), name, arguments, result);
         }
         // a routine's limits getting close: told with this call's result
         if let Some(note) = crate::loop_brake::TURNS.take_note(agent, turn.as_ref()) {
