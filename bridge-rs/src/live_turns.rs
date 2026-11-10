@@ -109,7 +109,8 @@ pub fn live_turn_options(config: &crate::config::Config, agent: &crate::config::
 /// What the agent reads for a turn to file (`with_note`): one notebook_write per page, no search first, the label
 /// said again replacing the old fact, never a code; then two words.
 pub const NOTE: &str = "<!--bip:note\nYour person said this to have it filed, not answered. File it now with notebook_write, \
-one call per page (its name, a first name is enough; no search first): « Label : value », the same label replaces the \
+one call per page (its name, a first name is enough, no search first; a place or subject is not a person: give its \
+kind): « Label : value », the same label replaces the \
 old fact, a correction too. Never a code or password: say in a few words you don't keep those. Then answer only « OK, \
 noté » in your language.\n-->";
 

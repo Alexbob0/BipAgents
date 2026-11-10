@@ -1638,6 +1638,27 @@ pub struct Written {
 /// the lexicon's table: never the lists (tastes, gifts, exchanges, history…) nor a group's « Name : fact » lines.
 const ONE_VALUE: [&str; 8] = ["who", "dates", "work", "about", "budget", "lodging", "transport", "status"];
 
+/// The section of `body` (a page of `kind`) that already has a fact with `fact`'s label (« Pointure : 37 » → the
+/// section of « Pointure : 35 »), its id; none for a fact without a label or a label not there yet.
+fn labelled_in(body: &str, kind: &str, fact: &str) -> Option<&'static str> {
+    let (label, _) = lexicon::split_label(fact)?;
+    let key = lexicon::label_key(&label);
+    let mut current: Option<&'static str> = None;
+    for line in body.lines() {
+        if let Some(title) = line.strip_prefix("## ") {
+            current = template::resolve(kind, title.trim());
+            continue;
+        }
+        let item = line.trim().strip_prefix("- ").unwrap_or("");
+        let (text, _) = split_attribution(item);
+        let same = lexicon::split_label(&text).is_some_and(|(l, _)| lexicon::label_key(&l) == key);
+        if same && current.is_some_and(|id| id != "other") {
+            return current;
+        }
+    }
+    None
+}
+
 /// `body` without the facts of `section` whose label `facts` say again (`id`: the section's id), and how many.
 fn without_restated(body: &str, section: &str, id: &str, facts: &[String]) -> (String, usize) {
     let keys: Vec<String> = facts
@@ -1847,6 +1868,13 @@ pub(crate) fn note_locked(
             // « Chausse du 36 » → « Pointure : 36 »: a label said again then replaces the old one
             let piece = lexicon::reshape(&piece, &lang);
             let id = template::place(&page_kind, section, &piece);
+            // no section said: where the page already has this label (10/11, Live: « Pointure : 37 » went to « Autres »
+            // beside the old « Pointure : 35 » of « Qui c'est », both kept)
+            let id = if id == "other" && template::resolve(&page_kind, section).is_none() {
+                labelled_in(&page.body, &page_kind, &piece).unwrap_or(id)
+            } else {
+                id
+            };
             // a trip's packing list: one thing to tick a line
             let piece = if page_kind == "trip" && id == "packing" { trip::unticked(&piece) } else { piece };
             let title = if template::outline(&page_kind).is_empty() {
@@ -4267,6 +4295,25 @@ mod tests {
             text.contains("## Dates\n- Anniversaire : 14 novembre — *Léa, ")
                 && text.contains("- Fête : 25 avril — *Léa, ")
         );
+    }
+
+    #[test]
+    fn a_label_said_again_without_a_section_replaces_it_where_it_is() {
+        // 10/11, a Live call: « la pointure de Léa est 36 », then « non, c'est 37 », no section given each time
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(dir.path());
+        let who = lea();
+        let page = note(&config, Part::Main, "person", "Léa", "who", &["Sœur".into(), "Pointure : 35".into()], &[], "", "", &who).unwrap();
+        for size in ["Pointure : 36", "Pointure : 37"] {
+            let done = note(&config, Part::Main, "person", "Léa", "", &[size.into()], &[], "", "", &who).unwrap();
+            assert_eq!(done.replaced, 1, "{size}");
+        }
+        let text = read_page_text(&config, Part::Main, &page.path).unwrap();
+        assert_eq!(text.matches("Pointure").count(), 1, "{text}");
+        assert!(text.contains("Pointure : 37") && !text.contains("## Other") && !text.contains("## Autres"), "{text}");
+        // a label not on the page yet: « other », as before
+        note(&config, Part::Main, "person", "Léa", "", &["Couleur préférée : vert".into()], &[], "", "", &who).unwrap();
+        assert!(labelled_in(&read_page_text(&config, Part::Main, &page.path).unwrap(), "person", "Couleur préférée : bleu").is_none());
     }
 
     #[test]
