@@ -30,8 +30,9 @@ const CLOSE: &str = "-->";
 /// What the agent reads in its soul (souls.rs, the language block): a spoken version for structured replies only.
 /// Short: paid on every call.
 pub const SAY_RULE: &str = "A written reply with a list of more than 3 items, a table, several links or over 150 \
-words: end it with a hidden spoken version, read aloud when it is listened to: <!--bip:say 2 or 3 short spoken \
-sentences: what is there and the essential, never the list itself-->. Never for a short reply, never in a voice call.";
+words: end it with its hidden spoken version, read aloud when it is listened to, the sentences inside the mark: \
+<!--bip:say 2 or 3 short spoken sentences, what is there and the essential, never the list itself-->. Never for a \
+short reply, never in a voice call.";
 
 /// A text without its spoken versions, and those (joined; a mark never closed takes the rest of the text).
 pub fn split(text: &str) -> (String, Option<String>) {
@@ -56,6 +57,8 @@ pub fn strip(text: &str) -> String {
 pub struct SayFilter {
     held: String,
     inside: bool,
+    /// An empty mark met (`<!--bip:say-->`, 10/11: GLM wrote its spoken version after it): the rest is spoken.
+    rest: bool,
     spoken: Vec<String>,
 }
 
@@ -67,11 +70,16 @@ impl SayFilter {
         let mut out = String::new();
         let mut rest = text.as_str();
         loop {
+            if self.rest {
+                self.held = rest.to_string();
+                return out;
+            }
             if self.inside {
                 let Some(end) = rest.find(CLOSE) else {
                     self.held = rest.to_string();
                     return out;
                 };
+                self.rest = rest[..end].trim().is_empty();
                 self.said(&rest[..end]);
                 self.inside = false;
                 rest = &rest[end + CLOSE.len()..];
@@ -99,8 +107,8 @@ impl SayFilter {
     /// The end of the text: what was held back and never became a mark (a mark never closed is spoken, not shown).
     pub fn finish(&mut self) -> String {
         let held = std::mem::take(&mut self.held);
-        if self.inside {
-            self.inside = false;
+        if self.inside || self.rest {
+            (self.inside, self.rest) = (false, false);
             self.said(&held);
             return String::new();
         }
@@ -176,7 +184,8 @@ fn opening(text: &str) -> Option<Option<usize>> {
 pub fn radio_rule(lang: &str, live: bool) -> String {
     let [three, eight, date, round, again] = examples(lang);
     let show = if live {
-        "note it with after_call (it lands in the conversation when the call ends)"
+        "note it with the after_call tool (it lands in the conversation when the call ends; all you write here is \
+said aloud, no bip:say)"
     } else {
         "keep it in your written reply with its spoken version (bip:say)"
     };
@@ -535,7 +544,14 @@ cher, A, a une terrasse : 95 euros.-->";
         }
         assert_eq!(split("Voilà.\n<!--bip:say La suite"), ("Voilà.".to_string(), Some("La suite".to_string())));
         assert_eq!(streamed("Voilà.\n<!-- bip:say\nDeux\nlignes -->\nFin", 2).1, Some("Deux lignes".to_string()));
-        assert_eq!(split("<!--bip:say-->x"), ("x".to_string(), None));
+        // an empty mark (GLM, 10/11): what follows it is the spoken version
+        let glm = "| a | b |\n\n<!--bip:say-->\nTu as quatre hôtels.\nLe moins cher : 95 euros.";
+        let spoken = Some("Tu as quatre hôtels. Le moins cher : 95 euros.".to_string());
+        assert_eq!(split(glm), ("| a | b |".to_string(), spoken.clone()));
+        for step in [1, 2, 5] {
+            assert_eq!(streamed(glm, step).1, spoken, "step {step}");
+            assert_eq!(streamed(glm, step).0.trim_end(), "| a | b |");
+        }
         assert_eq!(strip("Ok <!--bip:say un--> et <!--bip:say deux-->"), "Ok  et");
         assert_eq!(split("Ok <!--bip:say un--> et <!--bip:say deux-->").1.as_deref(), Some("un deux"));
     }
@@ -593,6 +609,6 @@ cher, A, a une terrasse : 95 euros.-->";
         }
         assert!(radio_rule("fr", true).contains("« environ 420 euros »"));
         assert!(radio_rule("de", true).contains("« etwa 420 Euro »"));
-        assert!(SAY_RULE.contains(OPEN) && SAY_RULE.len() < 360);
+        assert!(SAY_RULE.contains(OPEN) && SAY_RULE.len() < 400, "{}", SAY_RULE.len());
     }
 }
