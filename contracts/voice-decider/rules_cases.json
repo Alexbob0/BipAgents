@@ -1,0 +1,39 @@
+{
+ "_doc": "The overrides beyond core.json (10/11): goodbyes never held, and an answer to the Bip's question. `agent_line`: the Bip's last line before this pause, when this is the first pause since it (VoiceDeciderRules.asks / Rules.asks tells if it asked something). `rule`: the override, null when the model decides. Read by VoiceDeciderTests.swift and RulesTest.kt.",
+ "asks": [
+  {"line": "Comment s'appelle ta fille ?", "asks": true},
+  {"line": "Question suivante : quel est ton plat préféré ? Je t'écoute.", "asks": true},
+  {"line": "D'accord, c'est noté. Et ton fils, il a quel âge ?!", "asks": true},
+  {"line": "What's your favourite colour?", "asks": true},
+  {"line": "¿Cómo se llama tu perro?", "asks": true},
+  {"line": "C'est noté. Je l'ajoute au Carnet.", "asks": false},
+  {"line": "Tu m'as demandé si ça allait ? Oui. Il fait beau. Bonne journée.", "asks": false},
+  {"line": "", "asks": false}
+ ],
+ "cases": [
+  {"utterance": "Elle s'appelle Léa, elle a 8 ans.", "agent": "Vie", "agent_line": "Comment s'appelle ta fille ?", "rule": "lancer"},
+  {"utterance": "Les lasagnes de ma mère", "agent": "Vie", "agent_line": "Question suivante : quel est ton plat préféré ? Je t'écoute.", "rule": "lancer"},
+  {"utterance": "Blue, I think", "agent": "Ours", "agent_line": "What's your favourite colour?", "rule": "lancer"},
+  {"utterance": "Se llama Toby", "agent": "Luna", "agent_line": "¿Cómo se llama tu perro?", "rule": "lancer"},
+  {"utterance": "Elle s'appelle Léa, elle a 8 ans.", "agent": "Vie", "agent_line": "C'est noté. Je l'ajoute au Carnet.", "rule": null},
+  {"utterance": "Elle s'appelle Léa, elle a 8 ans.", "agent": "Vie", "rule": null},
+  {"utterance": "Attends, je réfléchis", "agent": "Vie", "agent_line": "Comment s'appelle ta fille ?", "rule": null},
+  {"utterance": "Euh attends", "agent": "Vie", "agent_line": "Comment s'appelle ta fille ?", "rule": null},
+  {"utterance": "Je te lis le texte : il était une fois", "agent": "Vie", "agent_line": "Tu veux me lire ton texte ?", "rule": null},
+  {"utterance": "Wait, let me check", "agent": "Ours", "agent_line": "What's your favourite colour?", "rule": null},
+  {"utterance": "Je parlais pas à toi", "agent": "Vie", "agent_line": "Comment s'appelle ta fille ?", "rule": "ecouter"},
+  {"utterance": "Note que le dentiste est jeudi", "agent": "Vie", "agent_line": "Autre chose ?", "rule": "noter"},
+  {"utterance": "On va arrêter là", "agent": "Vie", "rule": "lancer"},
+  {"utterance": "Bon, on s'arrête là pour aujourd'hui", "agent": "Vie", "rule": "lancer"},
+  {"utterance": "Merci, je te laisse", "agent": "Vie", "rule": "lancer"},
+  {"utterance": "c'est bon pour moi", "agent": "Vie", "rule": "lancer"},
+  {"utterance": "Bonne soirée", "agent": "Vie", "rule": "lancer"},
+  {"utterance": "Let's stop here for today", "agent": "Ours", "rule": "lancer"},
+  {"utterance": "I'll let you go", "agent": "Ours", "rule": "lancer"},
+  {"utterance": "Lass uns hier aufhören", "agent": "Ours", "rule": "lancer"},
+  {"utterance": "Lo dejamos aquí", "agent": "Luna", "rule": "lancer"},
+  {"utterance": "Laten we hier stoppen", "agent": "Luna", "rule": "lancer"},
+  {"utterance": "Arrête de parler", "agent": "Vie", "rule": null},
+  {"utterance": "On va arrêter là pour le texte et passer à la suite de l'histoire", "agent": "Vie", "rule": null}
+ ]
+}
