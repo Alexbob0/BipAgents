@@ -4,8 +4,8 @@
     "name": "English"
   },
   "meta": {
-    "title": "BipAgents — Your business stays your business.",
-    "description": "BipAgents gives you your own AI agents, the Bips: private and secure, in Europe or at home. They book, sort your email, keep your calendar and your Notebook, and ask before they act. No ads, no tracking. Built on Hermes Agent."
+    "title": "BipAgents — Personal agents that never share your data.",
+    "description": "Personal AI agents for everyone in the family: private, in your own space in Europe or at home, and cheaper than one seat elsewhere. Built on Hermes Agent."
   },
   "a11y": {
     "skip": "Skip to content",
@@ -19,18 +19,20 @@
     "pricing": "Pricing",
     "faq": "Questions",
     "cta": "Join the beta",
-    "ctaShort": "The beta"
+    "ctaShort": "The beta",
+    "family": "Together"
   },
   "hero": {
-    "slogan": "Your business stays your business.",
-    "sub": "Your Bips make bookings, sort your email and keep your Notebook, in your own space in Europe.",
+    "slogan": "Personal agents that never share your data.",
+    "sub": "Free for the whole family, or cheaper than a ChatGPT or Claude subscription.",
     "eu": "Servers in the EU, or at home",
     "badge": "Built on Hermes Agent",
     "proof2": "<b>Your OK</b> before paying or sending",
     "cta": "Choose my plan",
     "watch": "See the demo",
     "price": "Free beta on iPhone and Android · limited places · no card needed",
-    "beta": "Free beta"
+    "beta": "Free beta",
+    "get": "Get the app"
   },
   "salon": {
     "alt": "A cosy living room in the evening: on the sofa, a phone calls Pasta Mia; on the coffee table, a tablet shows €11.99 a month of subscriptions cut; by the window, a laptop with flights and a hotel, and an easel with the week’s wellness notes. Four Bips are taking care of it all.",
@@ -70,31 +72,46 @@
     "get": "Download on"
   },
   "demo": {
-    "kicker": "In action",
+    "kicker": "The real app",
     "title": "You ask. It handles it. You decide.",
-    "sub": "This is the app’s own demo, as is: your agent thinks, uses its tools, drops a map or a mini app into its reply, and waits for your OK before paying or sending.",
-    "tabs": "Demo scenarios",
-    "tab1": "Book a table",
-    "tab2": "A walk",
-    "tab3": "My runs",
-    "tab4": "It’s cold",
-    "tab5": "A reminder",
-    "tab6": "My subscriptions",
-    "point1": "Every step in plain sight",
-    "point2": "Maps and mini apps right in its replies",
-    "point3": "Your OK before paying or sending",
-    "chatSub": "Chat",
-    "chatLabel": "The demo playing",
-    "replay": "Replay",
-    "placeholder": "Message…",
-    "open": "Open",
+    "sub": "The iPhone app, filmed playing its built-in demo: sample agents and the same screens you’ll have. Nothing is sent.",
+    "pick": "The examples",
+    "play": "Play",
+    "pause": "Pause",
     "ctaTitle": "Your Bips, for real.",
-    "work": "Work details"
+    "book_table": {
+      "tab": "A table on Friday",
+      "title": "books a table",
+      "cap": "Three restaurants with room: you pick one, it asks before booking in your name.",
+      "alt": "Screen recording of the app. You write “Book a table for Friday night”. The Daily agent opens a booking site showing three Italian restaurants with free tables and asks which one to book. Da Vinci at 8 pm is chosen. A card asks for your OK to send the booking in your name, and it is given. The agent answers that Da Vinci is booked for Friday, for 2, and added to your calendar."
+    },
+    "sleep_week": {
+      "tab": "My sleep",
+      "title": "sums up your week of sleep",
+      "cap": "It reads your sleep data, draws the chart and suggests one thing to try tonight.",
+      "alt": "Screen recording of the app. You ask “How did I sleep this week?”. The Coach agent reads your last 7 nights of sleep and shows a chart of the week. It answers: 7 h 12 on average, 25 minutes more than last week; on the nights you go to bed after midnight you lose over an hour of sleep; tonight, screens off at 10:30 pm?"
+    },
+    "subscriptions": {
+      "tab": "My subscriptions",
+      "title": "cancels the subscriptions you forgot",
+      "cap": "It finds two you no longer open, you choose, and nothing is sent without your OK.",
+      "alt": "Screen recording of the app. You write “Cancel the subscriptions I don’t use”. The Budget agent finds CinePlus (€13.99 a month, not opened since July) and FitApp Premium (€9.99 a month, last workout in June) and asks which ones to cancel; both are chosen. A card asks for your OK to send the cancellation in your name, and it is given. The agent confirms both cancellations: up to €288 saved a year."
+    },
+    "dinner": {
+      "tab": "Dinner",
+      "title": "finds tonight’s dinner",
+      "cap": "With what’s left in the fridge: a 20-minute recipe, and what’s missing for the list.",
+      "alt": "Screen recording of the app. You ask “What’s for dinner tonight?”. The Home agent checks what’s left from Tuesday’s shopping, looks up a quick recipe and suggests courgette, feta and lemon pasta for 4, in 20 minutes, with its three steps. Only basil and parmesan are missing: it offers to add them to the shopping list."
+    },
+    "weekend_lisbon": {
+      "tab": "A weekend with friends",
+      "title": "plans a weekend with friends",
+      "cap": "Shared with three friends: they vote on its cards from their link, for the date, then the flat, and each gets a task.",
+      "alt": "Screen recording of the app. An agent shared with three friends, Léa, Sam and Inès. You write “Lisbon with Léa, Sam and Inès: get us voting”. The agent posts a vote card, “Which weekend?”; the friends’ votes come in and the weekend of 21 November wins. It looks for flats and posts a second vote: Alfama, terrace, €92 a night, or Bairro Alto, rooftop, €105 a night, and the votes come in. Alfama wins and the agent shows the weekend list, a task for each of them."
+    }
   },
-  "ai": "AI",
   "control": {
     "once": "Once",
-    "session": "This session",
     "deny": "Deny"
   },
   "private": {
@@ -120,7 +137,14 @@
     "f4": "<b>It’s all yours</b>: take it with you whenever you like",
     "detail": "See the details",
     "limitTitle": "What we don’t promise",
-    "detailTitle": "The details, plainly"
+    "detailTitle": "The details, plainly",
+    "line": "Your agents live in your own space, in Europe or at home.",
+    "k1t": "Not read by us",
+    "k1": "No AI is trained on it.",
+    "k2t": "No ads",
+    "k2": "No tracking, no distraction.",
+    "k3t": "Your permission",
+    "k3": "Before paying or sending anything."
   },
   "pricing": {
     "kicker": "Pricing",
@@ -216,7 +240,18 @@
       "self3": "Already have Hermes Agent? The same command plugs the app into it",
       "selfCta": "See how to install it",
       "plansTitle": "The All included plans"
-    }
+    },
+    "headline": "Solo, as a pair, or the whole family.",
+    "line": "Subscriptions open after the beta: a free week to start, and cancel anytime.",
+    "betaTitle": "The beta is open: it’s free.",
+    "betaLine": "iPhone and Android · limited places · no card needed",
+    "free": {
+      "name": "At home",
+      "who": "on your computer",
+      "blurb": "One command installs everything, with Hermes Agent. You only pay for your AI model.",
+      "kicker": "Free mode"
+    },
+    "yearNote": "Yearly: 2 months free."
   },
   "install": {
     "title": "Your own computer? The app is free.",
@@ -365,7 +400,7 @@
   "page": {
     "demo": {
       "title": "The demo — BipAgents",
-      "description": "The BipAgents app’s own demo, as is: four scenarios where your agent thinks, uses its tools and waits for your OK before paying or sending."
+      "description": "The BipAgents app, filmed on a phone playing its own demo: five short examples where your Bips search, suggest and wait for your OK."
     },
     "faq": {
       "title": "Questions — BipAgents",
@@ -439,7 +474,7 @@
     }
   },
   "family": {
-    "title": "Together, your agents make a team.",
+    "title": "Everyone gets their own agents.",
     "sub": "Everyone has their own private space; you share only what you want.",
     "s1t": "A place for everyone",
     "s1": "Own space, own agents, one shared AI credit",
@@ -460,15 +495,175 @@
       "no": "No thanks",
       "at": "At Sam’s",
       "notif": "Camille: The school called: Léa has a fever, I’m picking her up."
+    },
+    "line": "Share one with your family, your friends or other parents, only when you choose. They follow for free."
+  },
+  "pick": {
+    "title": "Build your team.",
+    "line": "One Bip for each corner of your life, each with its own character and voice. Pick yours: they’re ready in a minute.",
+    "voice": "Voice",
+    "asks": "It asks you before",
+    "tools": "Its tools",
+    "add": "Add to the team",
+    "added": "In the team",
+    "see": "See it at work",
+    "roster": "The Bips",
+    "demo": "See the app in action"
+  },
+  "bips": {
+    "daily": {
+      "n": "Daily",
+      "tag": "the organiser",
+      "voice": "Colibri",
+      "line": "Fully booked at 8, so I booked 8:30 and told Julie.",
+      "d1": "Sorts your email and drafts the replies",
+      "d2": "Keeps your calendar, books, makes appointments",
+      "d3": "Gives you your morning briefing, as a podcast if you like",
+      "ask": "sending an email or booking in your name.",
+      "tools": "Email|Calendar|Reminders|Web|Podcast"
+    },
+    "wellness": {
+      "n": "Wellness",
+      "tag": "the coach",
+      "voice": "Mousse",
+      "line": "You slept 6 h 10. Tomorrow: 30 easy minutes, no intervals.",
+      "d1": "Tracks your sleep and your workouts",
+      "d2": "Builds your plan and adapts it to how you feel",
+      "d3": "Sums up your week on one page",
+      "ask": "reading your health data: you switch it on.",
+      "tools": "Health|Routines|Pages|Reminders"
+    },
+    "finance": {
+      "n": "Budget",
+      "tag": "the accountant",
+      "voice": "Ours",
+      "line": "CinePlus, not opened since July. Shall I cancel? €13.99 a month back.",
+      "d1": "Shows where the month’s money goes",
+      "d2": "Spots the forgotten subscription, the odd charge",
+      "d3": "Tells you what you can spend this weekend",
+      "ask": "paying or cancelling anything.",
+      "tools": "Email|Web|Pages|Notebook"
+    },
+    "home": {
+      "n": "Home",
+      "tag": "the steward",
+      "voice": "Ours",
+      "line": "The washing machine finished 10 minutes ago. Remember to hang the laundry.",
+      "d1": "Reminders, shopping, laundry",
+      "d2": "Dinner with what’s left in the fridge",
+      "d3": "The heating, if your home is connected",
+      "ask": "changing a setting at home.",
+      "tools": "Reminders|Routines|Lists|Smart home"
+    },
+    "work": {
+      "n": "Work",
+      "tag": "the right hand",
+      "voice": "Galet",
+      "line": "I’ve read the three documents. The summary fits on one page.",
+      "d1": "Searches, reads and sums up for you",
+      "d2": "Prepares your meetings and their follow-ups",
+      "d3": "Works in the background while you do something else",
+      "ask": "sending anything in your name.",
+      "tools": "Email|Calendar|Web|Pages|Background tasks"
+    },
+    "family": {
+      "n": "Family",
+      "tag": "the conductor",
+      "voice": "Lumen",
+      "line": "Everyone knows: each gets their reminder the day before.",
+      "d1": "The whole household’s schedule",
+      "d2": "The shopping list, ticked off by whoever goes",
+      "d3": "Never what’s private",
+      "ask": "telling the family: the message waits for your “Send”.",
+      "tools": "Calendar|Lists|Reminders|Notebook"
+    },
+    "trips": {
+      "n": "Trips",
+      "tag": "the scout",
+      "voice": "Lumen",
+      "line": "Leave Tuesday, not Friday: €140 less, same hotel.",
+      "d1": "Compares dates, flights, hotels",
+      "d2": "Gets your friends to vote and keeps the accounts",
+      "d3": "Draws the map of the places not to miss",
+      "ask": "booking or paying.",
+      "tools": "Web|Maps|Pages|Sharing"
+    },
+    "own": {
+      "n": "Yours",
+      "tag": "made to measure",
+      "voice": "your choice",
+      "line": "An English teacher? A vegetable garden? Describe me in one sentence, I’m on my way.",
+      "d1": "You describe it in one sentence",
+      "d2": "It arrives with its own character and colour",
+      "d3": "You choose what it is allowed to do",
+      "ask": "anything you decide.",
+      "tools": "The ones you give it"
     }
   },
+  "room": {
+    "title": "Weekend in Lyon",
+    "count": "3 Bips",
+    "me": "Can we do Lyon on Saturday?",
+    "m1": "The 9:34 train, two hours there. Back on Sunday at 6 pm.",
+    "m2": "Yes: with the 9:34 train, €95 is left for the weekend.",
+    "m3": "Nothing in your calendar on Saturday. Shall I book the tickets?",
+    "ask": "Book the tickets in your name",
+    "a11y": "A conversation with several Bips"
+  },
+  "team": {
+    "title": "Together, they make a team.",
+    "line": "Put several in the same conversation: each one brings what it knows.",
+    "p1t": "Call them.",
+    "p1": "In Live, you talk to them as you would to a person: they let you finish your sentences.",
+    "p2t": "They work without you.",
+    "p2": "The morning briefing at 7:30, Monday’s reminder, the research that keeps running in the background.",
+    "p3t": "They keep it all in one place.",
+    "p3": "The Notebook: what matters about you and your people. You read it, fix it, take it with you.",
+    "p4t": "Your friends can follow.",
+    "p4": "A Bip shared for a trip or a party: up to 20 friends, at no cost to them."
+  },
+  "rules": {
+    "title": "The house rules.",
+    "line": "Your Bips live at your place: in your own space, separate from everyone else’s.",
+    "where": "A private server in Europe, ready in a minute. Or your own computer.",
+    "alt": "Your space: a house where your Bips live, under the European flag.",
+    "r1t": "They ask before paying or sending.",
+    "r1": "A booking, an email, a cancellation: they wait for your yes.",
+    "r2t": "We don’t read over their shoulder.",
+    "r2": "Kerfy Studio doesn’t read your space, and trains no AI on it.",
+    "r3t": "No ads, no tracking.",
+    "r3": "Not in the app, not on this site: no cookies, no trackers.",
+    "r4t": "The AI runs in Europe.",
+    "r4": "It only receives what your agent sends it, through EUrouter, a European AI router. The model’s makers never receive your messages.",
+    "r5t": "Everything is yours.",
+    "r5": "Leave whenever you want, with your agents, their memory and your Notebook."
+  },
+  "dock": {
+    "label": "Your team",
+    "one": "{n} Bip, ready in a minute",
+    "many": "{n} Bips, ready in a minute",
+    "none": "Pick your first Bip"
+  },
+  "end": {
+    "title": "Ready?",
+    "one": "{names} is waiting for you.",
+    "many": "{names} are waiting for you.",
+    "none": "Pick your first Bip.",
+    "and": "and"
+  },
   "home": {
-    "tour": "Take the tour.",
-    "pick": "What you want to see",
-    "doPick": "Pick an example:",
-    "friends": "With friends",
     "close": "Close",
-    "dialog": "The app’s demo",
     "self": "Or on your computer:"
+  },
+  "compare": {
+    "note": "Free: during the beta, and on your own computer, where you only pay for your AI model. Family plan: {{note.famille}} a month for up to 6 people; Solo: {{p.from}}. ChatGPT Plus: {{note.chatgptplus}} a month per person, ChatGPT Go: {{note.chatgptgo}} ({{note.chatgptsource}}). Claude Pro: {{note.claudepro}} a month before tax, per person ({{note.claudesource}}). Prices read in France on {{note.date}}. Subscriptions open after the beta.",
+    "noteLabel": "See the note"
+  },
+  "glance": {
+    "alt": "Four Bips, each with the task it just finished: a table booked, a subscription cancelled, a run planned, cheaper flights found.",
+    "dinners": "Table booked for 8:30",
+    "budget": "€11.99 a month saved",
+    "wellness": "Easy run planned",
+    "trips": "Flights €140 cheaper"
   }
 }

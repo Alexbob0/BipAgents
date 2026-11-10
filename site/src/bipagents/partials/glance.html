@@ -1,0 +1,47 @@
+<!-- ============================================================ FIRST SCREEN: the promise on the left; on the right,
+     one simple picture: four Bips (the living room's own, scripts/salon-sprites/) in a row at home in the evening,
+     each with the task it just finished written above it. Nothing overlaps the text; on a phone the picture sits
+     under it. The header lies over it, light on dark, until the page scrolls past it. -->
+<section class="hero glance">
+  <div class="glance-text">
+    <h1>{{hero.slogan}}</h1>
+    <p class="lede">{{hero.sub}}<a class="note-mark" href="#note" aria-label="{{compare.noteLabel}}">*</a></p>
+    <div class="cta-row">
+      <a class="pill pill-buy" href="{{betahref}}">{{hero.get}} <span aria-hidden="true">→</span></a>
+      <a class="pill pill-soft" href="{{demohref}}">{{hero.watch}} <span aria-hidden="true">→</span></a>
+    </div>
+  </div>
+  <div class="glance-art" role="img" aria-label="{{glance.alt}}">
+    <!-- home, in a few quiet shapes the colour of the evening: a sofa behind the Bips, a window with the moon, a
+         lamp. Nothing to read: the labels stay the only words. -->
+    <i class="g-window" aria-hidden="true"></i><i class="g-lamp" aria-hidden="true"></i>
+    <svg class="g-sofa" viewBox="0 0 660 262" aria-hidden="true">
+      <!-- legs, back and its three cushions, arms, seat and its three cushions -->
+      <path class="s-leg" d="M84 232h20l-3 28h-14zM556 232h20l-3 28h-14zM322 236h16l-2 24h-12z"/>
+      <rect class="s-back" x="52" y="14" width="556" height="190" rx="44"/>
+      <rect class="s-cush" x="70" y="30" width="170" height="150" rx="30"/>
+      <rect class="s-cush" x="245" y="30" width="170" height="150" rx="30"/>
+      <rect class="s-cush" x="420" y="30" width="170" height="150" rx="30"/>
+      <rect class="s-seat" x="60" y="158" width="540" height="82" rx="22"/>
+      <path class="s-line" d="M240 164v70M420 164v70"/>
+      <rect class="s-arm" x="6" y="92" width="84" height="150" rx="38"/>
+      <rect class="s-arm" x="570" y="92" width="84" height="150" rx="38"/>
+    </svg>
+    <figure class="g-bip g-dinners" style="--c:#ff6a48">
+      <figcaption><b><i></i>{{salon.dinners.name}}</b><span>{{glance.dinners}}</span></figcaption>
+      <img src="/assets/salon/sprites/dinners-n.webp?v={{version}}" alt="" decoding="async">
+    </figure>
+    <figure class="g-bip g-budget" style="--c:#ffc01c">
+      <figcaption><b><i></i>{{salon.budget.name}}</b><span>{{glance.budget}}</span></figcaption>
+      <img src="/assets/salon/sprites/budget-n.webp?v={{version}}" alt="" decoding="async">
+    </figure>
+    <figure class="g-bip g-wellness" style="--c:#1fcb7c">
+      <figcaption><b><i></i>{{salon.wellness.name}}</b><span>{{glance.wellness}}</span></figcaption>
+      <img src="/assets/salon/sprites/wellness-n.webp?v={{version}}" alt="" decoding="async">
+    </figure>
+    <figure class="g-bip g-trips" style="--c:#4677ff">
+      <figcaption><b><i></i>{{salon.trips.name}}</b><span>{{glance.trips}}</span></figcaption>
+      <img src="/assets/salon/sprites/trips-n.webp?v={{version}}" alt="" decoding="async">
+    </figure>
+  </div>
+</section>

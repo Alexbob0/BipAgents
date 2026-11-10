@@ -1,46 +1,95 @@
 {{>top}}
-<!-- The home (Alex's mix, 2026-11-09): the living room; right under it a visual privacy strip (the apps' picture, four
-     short facts, the detail in a window); a phone with three tabs (the real demo, the Carnet, with friends); the plans,
-     the free install in one line, the questions. Each fact once on the page. -->
-{{>salon}}
+<!-- The home: the first screen says the value beside one simple picture (four Bips, each with the task it just did:
+     partials/glance.html, 2026-11-09). Under it (2026-11-10), the format of the « team » concept in the site's look:
+     build your team (pick your Bips), together they make a team (several Bips in one conversation), the house rules
+     (privacy), the plans, « Ready? », and the team one picked in a bar at the bottom. No phone: the app's demo has its
+     own page (/demo/, each Bip's card links to its example). Each fact once on the page. -->
 
-<!-- ============================================================ PRIVATE: the apps' picture (App/Features/Settings/
-     PrivacyExplainer.swift, PrivacyDiagram) and four facts; « See the details » opens where the data is, who reads it
-     and our limit (docs/legal/offer.en.md §9, privacy.en.md §5.4, docs/privacy-compare.md). Without the script the
-     link shows the details under the strip (:target). -->
-<section class="pv" id="private" aria-labelledby="pv-h">
-  <div class="pv-in reveal">
-    <figure class="pv-pic" role="img" aria-label="{{private.picA11y}}">
-      <div class="pv-row pv-them" aria-hidden="true">
-        <p class="pv-row-t"><i class="pv-tag">🏢</i>{{private.classic}}</p>
-        <div class="pv-flow">
-          <span class="pv-node"><i class="pv-phone"></i><b>{{private.you}}</b></span>
-          <span class="pv-arrow"></span>
-          <span class="pv-node pv-mid"><i class="pv-servers"><s></s><s></s></i><b>{{private.theirs}}</b><small>{{private.theirsSub}}</small></span>
-          <span class="pv-arrow pv-both"></span>
-          <span class="pv-node"><i class="pv-ai">✦</i><b>{{private.ai}}</b></span>
+{{>glance}}
+
+<!-- ============================================================ BUILD YOUR TEAM: the Bips one can pick (build.py BIPS,
+     texts in bips.*). A stage shows the picked one, alive, saying its line; its tile is on, its card says what it
+     does, what it asks before and its tools; « Add to the team » puts it in the bar at the bottom (site.js). Without
+     the script the first Bip's card shows. Under it, a small link to the demo page (the real app, filmed). -->
+<section class="sec pick" id="bips" aria-labelledby="pick-h">
+  <div class="sec-head reveal">
+    <h2 id="pick-h">{{pick.title}}</h2>
+    <p>{{pick.line}}</p>
+  </div>
+  <div class="pick-grid reveal" data-pick data-tone="coral">
+    <div class="stage">
+      <span class="stage-bip" data-stage-bip></span>
+      <p class="stage-say" aria-live="polite"><small></small><span></span></p>
+    </div>
+    <div class="roster" role="group" aria-label="{{pick.roster}}">
+{{biproster}}
+    </div>
+    <div class="fiche">
+{{bipcards}}
+      <button type="button" class="pill pill-buy fiche-add" aria-pressed="false" data-add="{{pick.add}}" data-added="{{pick.added}}"><span>{{pick.add}}</span><i aria-hidden="true"></i></button>
+    </div>
+  </div>
+  <p class="pick-demo reveal"><a class="more" href="{{demohref}}">{{pick.demo}} <span aria-hidden="true">›</span></a></p>
+</section>
+
+<!-- ============================================================ TOGETHER: several Bips in one conversation, each
+     bringing what it knows, and the one that would send something asking first; beside it, four things they do as a
+     team: Live, routines, the Carnet, an agent friends follow (bridge-rs family_news.rs, peers.rs, shares.rs). -->
+<section class="sec team" id="family" aria-labelledby="fam-h">
+  <div class="sec-head reveal">
+    <h2 id="fam-h">{{team.title}}</h2>
+    <p>{{team.line}}</p>
+  </div>
+  <div class="team-grid">
+    <div class="room reveal" role="group" aria-label="{{room.a11y}}">
+      <p class="room-h"><b>{{room.title}}</b><small>{{room.count}}</small></p>
+      <p class="msg me"><span>{{room.me}}</span></p>
+      <p class="msg" style="--tint:var(--pink-tint);--deep:var(--pink-deep)"><i data-bip-static="creative" aria-hidden="true"></i><span><b>{{bips.trips.n}}</b>{{room.m1}}</span></p>
+      <p class="msg" style="--tint:var(--gold-tint);--deep:var(--gold-deep)"><i data-bip-static="finance" aria-hidden="true"></i><span><b>{{bips.finance.n}}</b>{{room.m2}}</span></p>
+      <p class="msg" style="--tint:var(--coral-tint);--deep:var(--coral-deep)"><i data-bip-static="daily" aria-hidden="true"></i><span><b>{{bips.daily.n}}</b>{{room.m3}}</span></p>
+      <p class="okbar" aria-hidden="true"><span>{{room.ask}}</span><b>{{control.once}}</b><b class="no">{{control.deny}}</b></p>
+    </div>
+    <ul class="perks">
+      <li class="reveal"><i data-bip-static="wellness" aria-hidden="true"></i><b>{{team.p1t}}</b><span>{{team.p1}}</span></li>
+      <li class="reveal"><i data-bip-static="home" aria-hidden="true"></i><b>{{team.p2t}}</b><span>{{team.p2}}</span></li>
+      <li class="reveal"><i data-bip-static="learning" aria-hidden="true"></i><b>{{team.p3t}}</b><span>{{team.p3}}</span></li>
+      <li class="reveal"><i data-bip-static="creative" aria-hidden="true"></i><b>{{team.p4t}}</b><span>{{team.p4}}</span></li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============================================================ THE HOUSE RULES (privacy). The Bips live at your
+     place: a house of squares under the European flag (your space: a private server in the EU, or your own computer),
+     and what holds there, as five rules, each a thing we do (rule 2: we don't read, not « nobody can »). Our limit
+     (private.who3) is said once, in « See the details », which opens where the data is, who reads it and that limit
+     (docs/legal/offer.en.md §9, privacy.en.md §5.4,
+     docs/privacy-compare.md); without the script the link shows them under the rules (:target). -->
+<section class="sec pv-rules" id="private" aria-labelledby="pv-h">
+  <div class="sec-head reveal">
+    <h2 id="pv-h">{{rules.title}}</h2>
+    <p>{{rules.line}}</p>
+  </div>
+  <div class="rules">
+    <figure class="house reveal" role="img" aria-label="{{rules.alt}}">
+      <div class="house-pic" aria-hidden="true">
+        <span class="house-flag"><i></i><svg viewBox="0 0 30 20"><rect width="30" height="20" fill="#1F3FA8"/><path fill="#FFD43B" d="M15.00 2.35L15.29 3.20L16.19 3.21L15.48 3.75L15.73 4.61L15.00 4.10L14.27 4.61L14.52 3.75L13.81 3.21L14.71 3.20ZM18.20 3.21L18.49 4.05L19.39 4.07L18.68 4.61L18.93 5.47L18.20 4.96L17.47 5.47L17.72 4.61L17.01 4.07L17.91 4.05ZM20.54 5.55L20.84 6.40L21.73 6.41L21.02 6.95L21.28 7.81L20.54 7.30L19.81 7.81L20.07 6.95L19.35 6.41L20.25 6.40ZM21.40 8.75L21.69 9.60L22.59 9.61L21.88 10.15L22.13 11.01L21.40 10.50L20.67 11.01L20.92 10.15L20.21 9.61L21.11 9.60ZM20.54 11.95L20.84 12.80L21.73 12.81L21.02 13.35L21.28 14.21L20.54 13.70L19.81 14.21L20.07 13.35L19.35 12.81L20.25 12.80ZM18.20 14.29L18.49 15.14L19.39 15.16L18.68 15.70L18.93 16.55L18.20 16.04L17.47 16.55L17.72 15.70L17.01 15.16L17.91 15.14ZM15.00 15.15L15.29 16.00L16.19 16.01L15.48 16.55L15.73 17.41L15.00 16.90L14.27 17.41L14.52 16.55L13.81 16.01L14.71 16.00ZM11.80 14.29L12.09 15.14L12.99 15.16L12.28 15.70L12.53 16.55L11.80 16.04L11.07 16.55L11.32 15.70L10.61 15.16L11.51 15.14ZM9.46 11.95L9.75 12.80L10.65 12.81L9.93 13.35L10.19 14.21L9.46 13.70L8.72 14.21L8.98 13.35L8.27 12.81L9.16 12.80ZM8.60 8.75L8.89 9.60L9.79 9.61L9.08 10.15L9.33 11.01L8.60 10.50L7.87 11.01L8.12 10.15L7.41 9.61L8.31 9.60ZM9.46 5.55L9.75 6.40L10.65 6.41L9.93 6.95L10.19 7.81L9.46 7.30L8.72 7.81L8.98 6.95L8.27 6.41L9.16 6.40ZM11.80 3.21L12.09 4.05L12.99 4.07L12.28 4.61L12.53 5.47L11.80 4.96L11.07 5.47L11.32 4.61L10.61 4.07L11.51 4.05Z"/></svg></span>
+        <div class="house-roof"><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="house-walls">
+          <i data-bip-static="daily" style="--tint:var(--coral-tint)"></i>
+          <i data-bip-static="finance" style="--tint:var(--gold-tint)"></i>
+          <i data-bip-static="home" style="--tint:var(--teal-tint)"></i>
         </div>
       </div>
-      <div class="pv-row pv-ours" aria-hidden="true">
-        <p class="pv-row-t"><i class="pv-tag">🔒</i>BipAgents</p>
-        <div class="pv-flow">
-          <span class="pv-node"><i class="pv-phone"></i><b>{{private.you}}</b></span>
-          <span class="pv-arrow"></span>
-          <span class="pv-node pv-mid"><i class="pv-house"><span data-bip-static="wellness"></span><em>🔒</em></i><b>{{private.space}}</b><small>{{private.spaceSub}}</small></span>
-          <span class="pv-arrow pv-both"></span>
-          <span class="pv-node"><i class="pv-ai">✦</i><b>{{private.ai}}</b></span>
-        </div>
-      </div>
+      <figcaption>{{rules.where}}</figcaption>
     </figure>
-    <div class="pv-side">
-      <h2 class="pv-h" id="pv-h">{{private.title}}</h2>
-      <ul class="pv-facts">
-        <li><span aria-hidden="true">🙈</span><p>{{private.f1}}</p></li>
-        <li><span aria-hidden="true">🚫</span><p>{{private.f2}}</p></li>
-        <li><span aria-hidden="true">✋</span><p>{{hero.proof2}}</p></li>
-        <li><span aria-hidden="true">🎒</span><p>{{private.f4}}</p></li>
-      </ul>
-      <a class="pv-more" href="#private-detail" aria-haspopup="dialog">{{private.detail}} <span aria-hidden="true">→</span></a>
+    <div class="rules-side">
+      <ol class="rule-list">
+        <li class="reveal" style="--c:var(--coral)"><i aria-hidden="true">1</i><b>{{rules.r1t}}</b><span>{{rules.r1}}</span></li>
+        <li class="reveal" style="--c:var(--green)"><i aria-hidden="true">2</i><b>{{rules.r2t}}</b><span>{{rules.r2}}</span></li>
+        <li class="reveal" style="--c:var(--gold)"><i aria-hidden="true">3</i><b>{{rules.r3t}}</b><span>{{rules.r3}}</span></li>
+        <li class="reveal" style="--c:var(--teal)"><i aria-hidden="true">4</i><b>{{rules.r4t}}</b><span>{{rules.r4}}</span></li>
+        <li class="reveal" style="--c:var(--violet)"><i aria-hidden="true">5</i><b>{{rules.r5t}}</b><span>{{rules.r5}}</span></li>      </ol>
+      <a class="more" href="#private-detail" aria-haspopup="dialog">{{private.detail}} <span aria-hidden="true">›</span></a>
     </div>
   </div>
 </section>
@@ -66,107 +115,5 @@
   <p class="pv-links"><a href="{{private.href}}" rel="noopener">{{private.compare}}</a> · <a href="https://kerfystudio.com{{legalprefix}}/privacy/">{{foot.privacy}}</a></p>
 </dialog>
 
-<!-- ============================================================ THE TOUR: a phone and three tabs. « What they do »
-     plays the app's real demo in the phone (all its scenarios), the Carnet and with friends show their screens. On a
-     computer the phone stays in view while the words beside it change. -->
-<section class="section vc-sec" id="results">
-  <div class="section-head reveal">
-    <h2 class="h2-small">{{home.tour}}</h2>
-  </div>
-  <div class="vc-grid">
-    <div class="vc-side">
-      <div class="vc-tabs" role="tablist" aria-label="{{home.pick}}">
-        <button type="button" class="vc-tab" role="tab" id="vc-t-do" aria-selected="true" aria-controls="vc-p-do" data-story="do"><i aria-hidden="true">✨</i>{{nav.features}}</button>
-        <button type="button" class="vc-tab" role="tab" id="vc-t-nb" aria-selected="false" aria-controls="vc-p-nb" data-story="nb" tabindex="-1"><i aria-hidden="true">📓</i>{{notebook.kicker}}</button>
-        <button type="button" class="vc-tab" role="tab" id="vc-t-fam" aria-selected="false" aria-controls="vc-p-fam" data-story="fam" tabindex="-1"><i aria-hidden="true">👋</i>{{home.friends}}</button>
-      </div>
-
-      <div class="vc-panel" role="tabpanel" id="vc-p-do" aria-labelledby="vc-t-do" data-story-panel="do">
-        <h3 class="vc-h">{{demo.title}}</h3>
-        <p class="vc-sub">{{home.doPick}}</p>
-        <div class="tabs" role="tablist" aria-label="{{demo.tabs}}">
-          <button class="tab active" role="tab" aria-selected="true" aria-controls="chat" data-scenario="book_table"><span class="tab-bip" data-bip-static="daily"></span>{{demo.tab1}}</button>
-          <button class="tab" role="tab" aria-selected="false" aria-controls="chat" data-scenario="walk"><span class="tab-bip" data-bip-static="daily"></span>{{demo.tab2}}</button>
-          <button class="tab" role="tab" aria-selected="false" aria-controls="chat" data-scenario="runs_weeks"><span class="tab-bip" data-bip-static="wellness"></span>{{demo.tab3}}</button>
-          <button class="tab" role="tab" aria-selected="false" aria-controls="chat" data-scenario="heating"><span class="tab-bip" data-bip-static="home"></span>{{demo.tab4}}</button>
-          <button class="tab" role="tab" aria-selected="false" aria-controls="chat" data-scenario="bins"><span class="tab-bip" data-bip-static="home"></span>{{demo.tab5}}</button>
-          <button class="tab" role="tab" aria-selected="false" aria-controls="chat" data-scenario="subscriptions"><span class="tab-bip" data-bip-static="finance"></span>{{demo.tab6}}</button>
-        </div>
-        <ul class="checks"><li>{{demo.point1}}</li><li>{{demo.point2}}</li></ul>
-      </div>
-      <div class="vc-panel" role="tabpanel" id="vc-p-nb" aria-labelledby="vc-t-nb" data-story-panel="nb" hidden>
-        <h3 class="vc-h">{{notebook.title}}</h3>
-        <p class="vc-sub">{{notebook.sub}}</p>
-        <ul class="nb-list">
-          <li><span aria-hidden="true">🔔</span>{{notebook.i1}}</li><li><span aria-hidden="true">✈️</span>{{notebook.i2}}</li>
-          <li><span aria-hidden="true">🧾</span>{{notebook.i3}}</li><li><span aria-hidden="true">🔁</span>{{notebook.i4}}</li>
-          <li><span aria-hidden="true">📄</span>{{notebook.i5}}</li><li><span aria-hidden="true">📅</span>{{notebook.i6}}</li>
-        </ul>
-        <p class="nb-line"><span aria-hidden="true">🗂️</span>{{notebook.line1}}</p>
-        <p class="nb-line"><span aria-hidden="true">🔎</span>{{notebook.line2}}</p>
-      </div>
-      <!-- Duo/Famille and friends (bridge-rs family_news.rs, peers.rs, shares.rs; no group chats yet) -->
-      <div class="vc-panel" role="tabpanel" id="vc-p-fam" aria-labelledby="vc-t-fam" data-story-panel="fam" hidden>
-        <h3 class="vc-h">{{family.title}}</h3>
-        <p class="vc-sub">{{family.sub}}</p>
-        <ul class="fam-tiles">
-          <li style="--tint:var(--coral-tint)"><span class="fam-ic" aria-hidden="true">🏠</span><h4>{{family.s1t}}</h4><p>{{family.s1}}</p></li>
-          <li style="--tint:var(--teal-tint)"><span class="fam-ic" aria-hidden="true">💬</span><h4>{{family.s2t}}</h4><p>{{family.s2}}</p></li>
-          <li style="--tint:var(--gold-tint)"><span class="fam-ic" aria-hidden="true">🛒</span><h4>{{family.s3t}}</h4><p>{{family.s3}}</p></li>
-          <li style="--tint:var(--violet-tint)"><span class="fam-ic" aria-hidden="true">🧳</span><h4>{{family.s4t}}</h4><p>{{family.s4}}</p></li>
-        </ul>
-        <p class="fam-lock"><span aria-hidden="true">🔒</span>{{family.lock}}</p>
-      </div>
-    </div>
-
-    <div class="vc-phone-wrap">
-      <div class="vc-phone">
-        <div class="vc-screen vc-s-do chat-wrap" data-story-panel="do">
-          <div class="chat" id="chat" role="tabpanel" aria-label="{{demo.chatLabel}}">
-            <div class="chat-head">
-              <span class="chat-avatar" data-bip-chat></span>
-              <span class="chat-title"><span><b class="chat-name"></b> <span class="ai">{{ai}}</span></span><small>{{demo.chatSub}}</small></span>
-              <button class="replay" type="button" aria-label="{{demo.replay}}">↻</button>
-            </div>
-            <div class="chat-body"></div>
-            <div class="chat-input" aria-hidden="true"><span>{{demo.placeholder}}</span><i class="mic"></i></div>
-          </div>
-        </div>
-        <div class="vc-screen vc-s-nb" data-story-panel="nb" hidden>
-{{>nbshot}}
-        </div>
-        <div class="vc-screen vc-s-fam" data-story-panel="fam" hidden>
-          <div class="vc-fam-bips" aria-hidden="true"><i data-bip-static="daily"></i><i data-bip-static="wellness"></i><i data-bip-static="home"></i></div>
-{{>fammock}}
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
 {{>homeend}}
-<script type="module" src="/assets/salon/salon.js?v={{version}}"></script>
-<!-- « See the demo »: the app's whole demo (every scenario) in a window over the page; the phone's chat moves into it
-     while it is open (site.js). Without the script the link opens /demo/. -->
-<dialog class="v-demo" id="v-demo" aria-label="{{home.dialog}}">
-  <button type="button" class="v-demo-close" aria-label="{{home.close}}"><span aria-hidden="true">×</span></button>
-  <div class="v-demo-in">
-    <div class="demo-grid">
-      <div class="demo-copy">
-        <p class="kicker">{{demo.kicker}}</p>
-        <h2 class="page-h1">{{demo.title}}</h2>
-        <p class="sub">{{demo.sub}}</p>
-        <div class="tabs" role="tablist" aria-label="{{demo.tabs}}">
-          <button class="tab" role="tab" aria-selected="true" aria-controls="chat" data-scenario="book_table"><span class="tab-bip" data-bip-static="daily"></span>{{demo.tab1}}</button>
-          <button class="tab" role="tab" aria-selected="false" aria-controls="chat" data-scenario="walk"><span class="tab-bip" data-bip-static="daily"></span>{{demo.tab2}}</button>
-          <button class="tab" role="tab" aria-selected="false" aria-controls="chat" data-scenario="runs_weeks"><span class="tab-bip" data-bip-static="wellness"></span>{{demo.tab3}}</button>
-          <button class="tab" role="tab" aria-selected="false" aria-controls="chat" data-scenario="heating"><span class="tab-bip" data-bip-static="home"></span>{{demo.tab4}}</button>
-          <button class="tab" role="tab" aria-selected="false" aria-controls="chat" data-scenario="bins"><span class="tab-bip" data-bip-static="home"></span>{{demo.tab5}}</button>
-          <button class="tab" role="tab" aria-selected="false" aria-controls="chat" data-scenario="subscriptions"><span class="tab-bip" data-bip-static="finance"></span>{{demo.tab6}}</button>
-        </div>
-      </div>
-      <div class="chat-wrap v-demo-slot"></div>
-    </div>
-  </div>
-</dialog>
-{{>foot}}
+{{>foothome}}

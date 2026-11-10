@@ -5,8 +5,8 @@
     python3 site/build.py --serve --port 8785   # the same on 8785 and 8786 (another checkout serving beside)
 
 Standard library only (the legal texts' Markdown is converted here). Texts come from site/src/<site>/i18n/*.json, the
-demo's scenarios from App/Resources/Demo/demo.json, the podcasts from the apps' own files: nothing is copied
-twice in the repository.
+demo page's clips are recordings of the app itself (site/src/bipagents/demo/, made by site/demo-clips.sh): nothing is
+copied twice in the repository.
 """
 from __future__ import annotations
 
@@ -69,17 +69,6 @@ def fill(template: str, values: Dict[str, Any], where: str) -> str:
         value = values[key]
         return value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
     return re.sub(r"\{\{([\w.]+)\}\}", one, template)
-
-
-def localized(value: Any, lang: str) -> Any:
-    """demo.json's { "fr": …, "en": … } values, in one language, all the way down."""
-    if isinstance(value, dict) and value and set(value) <= set(LANGS):
-        return value.get(lang) or value.get("en")
-    if isinstance(value, dict):
-        return {k: localized(v, lang) for k, v in value.items()}
-    if isinstance(value, list):
-        return [localized(v, lang) for v in value]
-    return value
 
 
 def copy(source: Path, target: Path) -> None:
@@ -267,25 +256,6 @@ def store_badges(links: Dict[str, str], soon: str, get: str, apple: str = "App S
     return "".join(out)
 
 
-def walk_map(demo: Dict[str, Any], target: Path) -> str:
-    """The map of the demo's « Sunday walk » page (an OpenStreetMap drawing the app embeds), as a small JPEG when sips
-    is there, else the PNG itself. Returns the file's name."""
-    import base64
-    found = re.search(r"data:image/png;base64,([A-Za-z0-9+/=]+)", demo["pages"]["walk"]["template"])
-    if not found:
-        return ""
-    target.parent.mkdir(parents=True, exist_ok=True)
-    png = target.with_suffix(".png")
-    png.write_bytes(base64.b64decode(found.group(1)))
-    if shutil.which("sips"):
-        done = subprocess.run(["sips", "-s", "format", "jpeg", "-s", "formatOptions", "60", str(png), "--out", str(target)],
-                              capture_output=True)
-        if done.returncode == 0 and target.exists():
-            png.unlink()
-            return target.name
-    return png.name
-
-
 def merged(base: Dict[str, Any], extra: Dict[str, Any]) -> Dict[str, Any]:
     """`extra` laid over `base`, dict by dict (a page's own texts file next to the site's)."""
     out = dict(base)
@@ -303,16 +273,80 @@ def migrate_prompt(lang: str) -> str:
     return found.group(1)
 
 
-def demo_page(demo: Dict[str, Any], name: str, lang: str) -> str:
-    """One of the demo's pages (made with the page kit, like the agents' own pages), filled in one language."""
-    page = demo["pages"][name]
-    values = {k: localized(v, lang) for k, v in page.get("values", {}).items()}
-    values["lang"] = lang
-    return re.sub(r"\{\{(\w+)\}\}", lambda m: values.get(m.group(1), m.group(0)), page["template"])
+# The home's « Build your team »: the Bips one can pick, in the order of their tiles: (its texts' key in bips.*, the
+# kind of agent that draws it (shared/bips.js CATEGORIES: its colour), the page's tone (site.css --<tone>), and the
+# demo page's clip that shows it at work, when there is one (/demo/#<clip>, one of CLIPS)).
+BIPS = (("daily", "daily", "coral", "book_table"), ("wellness", "wellness", "green", "sleep_week"),
+        ("finance", "finance", "gold", "subscriptions"), ("home", "home", "teal", "dinner"), ("work", "work", "blue", ""),
+        ("family", "learning", "violet", ""), ("trips", "creative", "pink", "weekend_lisbon"), ("own", "tech", "grey", ""))
+# The demo page: short screen recordings of the real app (iPhone) playing its own demo's scenarios
+# (App/Resources/Demo/demo.json, `-demoRecord <scenario>`), one per Bip above that has one, in each language:
+# src/bipagents/demo/<scenario>-<lang>.mp4 and its poster .jpg (site/demo-clips.sh). Their words: demo.<scenario>.*.
+CLIPS = tuple(example for _, _, _, example in BIPS if example)
 
 
-DEMO_TABS = (("book_table", "daily"), ("walk", "daily"), ("runs_weeks", "coach"), ("heating", "home"),
-             ("bins", "home"), ("subscriptions", "budget"))
+def bip_roster(t: Dict[str, Any]) -> str:
+    """The tiles of « Build your team » ({{biproster}}): a Bip and its name; the script shows the picked one."""
+    e = html.escape
+    return "\n".join(
+        f'<button type="button" class="rost" aria-pressed="{"true" if i == 0 else "false"}" data-id="{key}" data-cat="{cat}" '
+        f'data-tone="{tone}" data-name="{e(t["bips"][key]["n"])}" data-line="{e(t["bips"][key]["line"])}">'
+        f'<i data-bip-static="{cat}"></i><b>{e(t["bips"][key]["n"])}</b><span class="rost-in" aria-hidden="true">✓</span></button>'
+        for i, (key, cat, tone, _) in enumerate(BIPS))
+
+
+def bip_cards(t: Dict[str, Any], demo_href: str) -> str:
+    """Each Bip's card ({{bipcards}}): what it does, what it asks before, its tools; the first one shows without
+    the script."""
+    e, pick, out = html.escape, t["pick"], []
+    for i, (key, _, _, example) in enumerate(BIPS):
+        b = t["bips"][key]
+        see = (f'<a class="fiche-see" href="{demo_href}#{example}">{e(pick["see"])} <span aria-hidden="true">›</span></a>'
+               if example else "")
+        out.append(
+            f'<article class="fiche-card" data-card="{key}"{"" if i == 0 else " hidden"}>'
+            f'<div class="fiche-h"><h3>{e(b["n"])}</h3><span class="fiche-tag">{e(b["tag"])}</span>'
+            f'<span class="fiche-voice">{e(pick["voice"])} {e(b["voice"])}</span></div>'
+            f'<ul class="fiche-does">{"".join(f"<li>{e(b[k])}</li>" for k in ("d1", "d2", "d3"))}</ul>'
+            f'<p class="fiche-asks"><small>{e(pick["asks"])}</small>{e(b["ask"])}</p>'
+            f'<div class="fiche-tools"><small>{e(pick["tools"])}</small><ul>'
+            f'{"".join(f"<li>{e(x)}</li>" for x in b["tools"].split("|"))}</ul></div>{see}</article>')
+    return "\n".join(out)
+
+
+def demo_clips(t: Dict[str, Any]) -> Dict[str, str]:
+    """The demo page's picker ({{demopicker}}) and its one phone ({{demophone}}): a button per clip (its Bip's face and its example in a
+    few words, `id` = the clip, so /demo/#<clip> opens on it); the phone plays the chosen one, in the page's language,
+    with what happens under it and, for screen readers, what the screen shows. Without the script the first clip is
+    there (preload="none": its poster first); site.js swaps the clip, plays it while in view, never by itself with
+    reduced motion (the play button)."""
+    e, cats, demo = html.escape, {example: (key, cat) for key, cat, _, example in BIPS if example}, t["demo"]
+
+    def words(clip: str) -> Dict[str, str]:
+        key, cat = cats[clip]
+        w = demo[clip]
+        return {"clip": clip, "cat": cat, "tone": COLORS[cat][2], "name": t["bips"][key]["n"], "title": w["title"],
+                "cap": w["cap"], "alt": w["alt"], "src": f"/assets/demo/{clip}-{{{{lang}}}}"}
+
+    buttons = "\n".join(
+        f'<button type="button" class="ex" id="{w["clip"]}" aria-pressed="{"true" if i == 0 else "false"}" '
+        f'aria-controls="clip-video" data-clip="{w["clip"]}" data-cat="{w["cat"]}" data-tone="{w["tone"]}" '
+        f'data-name="{e(w["name"])}" data-title="{e(w["title"])}" data-cap="{e(w["cap"])}" data-alt="{e(w["alt"])}" '
+        f'data-src="{w["src"]}"><i data-bip-static="{w["cat"]}" aria-hidden="true"></i>{e(demo[w["clip"]]["tab"])}</button>'
+        for i, w in enumerate(words(c) for c in CLIPS))
+    w = words(CLIPS[0])
+    return {"demopicker": f'<div class="ex-row" role="group" aria-label="{e(demo["pick"])}">\n{buttons}\n</div>',
+            "demophone": f'<figure class="clip" style="--tint:var(--{w["tone"]}-tint)">'
+            f'<div class="clip-stage"><div class="clip-phone"><video id="clip-video" muted playsinline loop preload="none" '
+            f'width="590" height="1282" poster="{w["src"]}.jpg" aria-label="{e(w["name"])} {e(w["title"])}" '
+            f'aria-describedby="clip-alt"><source src="{w["src"]}.mp4" type="video/mp4"></video></div></div>'
+            f'<figcaption><i data-bip-static="{w["cat"]}" aria-hidden="true"></i><span><b>{e(w["name"])}</b> '
+            f'{e(w["title"])}</span><small>{e(w["cap"])}</small>'
+            f'<button type="button" class="clip-play" aria-pressed="false" aria-controls="clip-video" hidden>'
+            f'<span class="sr">{e(demo["play"])}</span></button></figcaption>'
+            f'<p class="sr" id="clip-alt">{e(w["alt"])}</p></figure>'}
+
+
 # The pages: (name, template, path under the language's root). The home sells, and its prices hold the self-install
 # too (« on my computer », #install); the demo and every question have their own pages, sharing the header and the
 # footer (src/bipagents/partials/). /install/ only sends to the home's #install (old links keep working).
@@ -347,17 +381,15 @@ def bipagents(version: str) -> Path:
     app_icons(assets)
     for shot in (src / "shots").glob("*"):
         copy(shot, assets / "shots" / shot.name)
-    media = assets / "media"
-    for lang in LANGS:
-        copy(REPO / "App" / "Resources" / "Demo" / f"podcast-morning-{lang}.m4a", media / f"podcast-morning-{lang}.m4a")
+    for clip in CLIPS:
+        for lang in LANGS:
+            for ext in ("mp4", "jpg"):
+                copy(src / "demo" / f"{clip}-{lang}.{ext}", assets / "demo" / f"{clip}-{lang}.{ext}")
     # /play/: the Bips to play with (src/bipagents/play.html, the same engine as every page).
     (out / "play").mkdir(parents=True, exist_ok=True)
     (out / "play" / "index.html").write_text((src / "play.html").read_text(encoding="utf-8").replace("{{version}}", version),
                                              encoding="utf-8")
 
-    demo = json.loads((REPO / "App" / "Resources" / "Demo" / "demo.json").read_text(encoding="utf-8"))
-    map_file = walk_map(demo, assets / "showcase" / "walk-map.jpg")
-    agents = {a["id"]: a for a in demo["agents"]}
     partials = {p.stem: p.read_text(encoding="utf-8") for p in (src / "partials").glob("*.html")}
     def with_partials(file: str) -> str:   # a partial may hold another
         page = (src / file).read_text(encoding="utf-8")
@@ -371,7 +403,7 @@ def bipagents(version: str) -> Path:
         for extra in sorted((src / "i18n").glob(f"*.{lang}.json")):
             texts[lang] = merged(texts[lang], json.loads(extra.read_text(encoding="utf-8")))
     paths = {lang: "/" if lang == "en" else f"/{lang}/" for lang in LANGS}
-    prices, company = cfg["prices"], cfg["company"]
+    prices, company, other = cfg["prices"], cfg["company"], cfg["compare"]
     # Built in the default currency (the one without countries); the script switches to the visitor's.
     currencies = prices["currencies"]
     default_currency = next(code for code, c in currencies.items() if not c.get("countries"))
@@ -386,11 +418,8 @@ def bipagents(version: str) -> Path:
                 "currency": next((code for code, c in currencies.items() if country and country in c.get("countries", [])),
                                  default_currency)}
                for l, rid, country, _, short in REGIONS]
-    (assets / "pages").mkdir()
     for lang in LANGS:
         t = texts[lang]
-        # A page the demo's agent makes (the page kit's real output), shown in a frame in the chat.
-        (assets / "pages" / f"runs-{lang}.html").write_text(demo_page(demo, "runs", lang), encoding="utf-8")
         values = flatten({k: v for k, v in t.items() if k != "lines"})
         for where in ("web", "store"):
             for period in ("month", "year"):
@@ -422,6 +451,23 @@ def bipagents(version: str) -> Path:
             "demohref": f"{paths[lang]}demo/", "faqhref": f"{paths[lang]}faq/", "installhref": f"{paths[lang]}#install",
             "legalprefix": "" if lang == "fr" else f"/{lang}",
             "storebadges": badges,
+            "biproster": bip_roster(t), "bipcards": bip_cards(t, f"{paths[lang]}demo/"),
+            **demo_clips(t),
+            # The comparison the home makes (site/config.json « compare »): the other offers' prices, where they were
+            # read and when, written here once so no price is typed in a page; the Family and Solo prices follow the
+            # visitor's currency (site.js).
+            "note.famille": f'<span data-famille-month>{money(base["web"]["month"]["famille"], lang)}</span>',
+            "note.chatgptplus": money(other["chatgpt"]["plus"], lang, cents=False),
+            "note.chatgptgo": money(other["chatgpt"]["go"], lang, cents=False),
+            "note.claudepro": money(other["claude"]["pro"], lang, cents=False),
+            "note.chatgptsource": html.escape(re.sub(r"^https?://", "", other["chatgpt"]["source"])),
+            "note.claudesource": html.escape(re.sub(r"^https?://", "", other["claude"]["source"])),
+            "note.date": html.escape(other["date"]),
+            # The home's action under the plans: the checkout once it is open; until then nothing here, the beta's
+            # button is in the strip above the plans (once on the page).
+            "homebuy": (f'<a class="pill pill-buy" id="buy" href="{html.escape(default_url)}" rel="noopener">'
+                        f'<span class="buy-label">{html.escape(t["pricing"]["cta"])}</span><span aria-hidden="true">→</span></a>'
+                        if default_url else ""),
             "betahref": f"{paths[lang]}beta/",
             "grokbothref": f"{paths[lang]}grok-bot/",
             "statushref": f"{paths[lang]}status/",
@@ -445,16 +491,7 @@ def bipagents(version: str) -> Path:
         })
         common = {"lang": lang, "lines": t["lines"], "regions": regions, "currency": default_currency,
                   "currencies": list(currencies)}
-        tool_labels = json.loads((SRC / "bipagents" / "tool-labels.json").read_text())
-        scenarios = {}
-        for scenario, agent in DEMO_TABS:
-            s = localized(demo["scenarios"][scenario], lang)
-            scenarios[scenario] = {"agent": localized(agents[agent]["name"], lang), "category": agents[agent]["category"],
-                                   "prompt": s["prompt"], "steps": s["steps"], "elapsed": s.get("elapsed", 0)}
-        walk = {k: localized(v, lang) for k, v in demo["pages"]["walk"]["values"].items()}
-        stops = re.findall(r'<li data-x="([\d.]+)" data-y="([\d.]+)"[^>]*data-color="(#\w+)">\{\{(\w+)\}\}</li>',
-                           demo["pages"]["walk"]["template"])
-        # Each page gets the data its script needs: the home its prices, the demo its scenarios.
+        # Each page gets the data its script needs: the home its prices.
         data = {
             "status": {**common, "status": t["status"]["js"], "statusApi": STATUS_API},
             "home": {**common, "prices": {**{k: v for k, v in prices.items() if not k.startswith("_")},
@@ -462,23 +499,7 @@ def bipagents(version: str) -> Path:
                      "checkout": {plan: {period: checkout_url(cfg, plan, period, lang) for period in ("month", "year")}
                                   for plan in prices["plans"]},
                      "pricing": t["pricing"]["js"]},
-            "demo": {**common, "scenarios": scenarios,
-                     "labels": {"once": t["control"]["once"], "session": t["control"]["session"], "deny": t["control"]["deny"],
-                                "open": t["demo"]["open"]},
-                     # tool rows and the working line in plain words, as the apps word them (scripts/tool-labels.py)
-                     "tools": {"list": tool_labels["kinds"], "words": tool_labels["text"][lang]["kinds"],
-                               "extra": tool_labels["text"][lang]["extra"],
-                               "thinking": tool_labels["text"][lang]["thinking"],
-                               "topics": tool_labels["text"][lang]["topics"],
-                               "generic": tool_labels["text"][lang]["generic"], "lexicon": tool_labels["lexicon"]},
-                     "pages": {"runs": {"src": f"/assets/pages/runs-{lang}.html",
-                                        "title": localized(demo["pages"]["runs"]["values"]["title"], lang)},
-                               "walk": {"src": f"/assets/showcase/{map_file}", "title": walk["title"], "subtitle": walk["subtitle"],
-                                        "alt": walk["alt"], "tip": walk["tip"], "source": walk["source"],
-                                        "stops": [{"x": float(x), "y": float(y), "color": c, "name": walk[k]}
-                                                  for x, y, c, k in stops]}}},
         }
-        data["home"] = {**data["home"], **data["demo"]}   # the home plays the demo too (its phone, its window)
         for name, _, sub in PAGES:
             here = {l: paths[l] + sub for l in LANGS}
             page_values = dict(values)
