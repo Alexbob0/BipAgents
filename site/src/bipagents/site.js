@@ -689,7 +689,9 @@ const region = (function () {
   });
   render();
 
-  // The bar at the bottom of a phone's screen: once past the top, until the prices are in view.
+  // The bar at the bottom of a phone's screen: once past the top, until the prices are in view (the home has the
+  // team's bar instead).
+  if (!sticky) return;
   const seen = new Set(), section = $("#pricing");
   const showSticky = () => {
     const show = scrollY > 300 && !seen.size;
@@ -702,6 +704,78 @@ const region = (function () {
     showSticky();
   });
   [$(".hero"), section, $(".foot")].forEach(el => el && io.observe(el));
+})();
+
+// -- Build your team (the home): pick a Bip — it stands on the stage, alive, and says its line; its tile is on, its
+// card shows; « Add to the team » puts it in the bar at the bottom, which names the team, and « Ready? » says who waits.
+// Left alone, the Bips introduce themselves in turn until one is picked.
+(function team() {
+  const root = $("[data-pick]");
+  if (!root) return;
+  const tiles = $$(".rost", root), cards = $$(".fiche-card", root), add = $(".fiche-add", root);
+  const stage = $("[data-stage-bip]", root), sayName = $(".stage-say small", root), sayText = $(".stage-say span", root);
+  const dock = $("[data-dock]"), bench = $("[data-bench]"), dockN = $("[data-dock-n]"), end = $("[data-end]");
+  const picked = new Set([tiles[0].dataset.id]);
+  let current = null, bip = null, typing = 0, touched = false;
+
+  function say(text) {
+    const run = ++typing;
+    if (REDUCED) { sayText.textContent = text; return; }
+    sayText.textContent = "";
+    bip.mood = "speaking";
+    let k = 0;
+    (function step() {
+      if (run !== typing) return;
+      sayText.textContent = text.slice(0, ++k);
+      if (k < text.length) setTimeout(step, 22); else bip.mood = "idle";
+    })();
+  }
+  function select(tile) {
+    current = tile;
+    root.dataset.tone = tile.dataset.tone;
+    tiles.forEach(t => t.setAttribute("aria-pressed", String(t === tile)));
+    cards.forEach(c => { c.hidden = c.dataset.card !== tile.dataset.id; });
+    if (bip) bip.remove();
+    bip = new Bip(stage, tile.dataset.cat, { interactive: true, lines: data.lines });
+    sayName.textContent = tile.dataset.name;
+    say(tile.dataset.line);
+    render();
+  }
+  function render() {
+    const on = picked.has(current.dataset.id), team = tiles.filter(t => picked.has(t.dataset.id)), n = team.length;
+    add.setAttribute("aria-pressed", String(on));
+    $("span", add).textContent = on ? add.dataset.added : add.dataset.add;
+    tiles.forEach(t => t.classList.toggle("in-team", picked.has(t.dataset.id)));
+    const count = d => (n ? (n > 1 ? d.many : d.one) : d.none).replace("{n}", n);
+    if (dock) {
+      bench.innerHTML = n ? team.map(t => `<i title="${esc(t.dataset.name)}">${staticBip(t.dataset.cat)}</i>`).join("")
+        : '<i class="empty"></i><i class="empty"></i><i class="empty"></i>';
+      dockN.textContent = count(dock.dataset);
+    }
+    if (end) {
+      const names = team.map(t => t.dataset.name);
+      const list = n > 1 ? names.slice(0, -1).join(", ") + " " + end.dataset.and + " " + names[n - 1] : names[0];
+      end.textContent = count(end.dataset).replace("{names}", list);
+    }
+  }
+  tiles.forEach(t => t.addEventListener("click", () => { touched = true; select(t); }));
+  add.addEventListener("click", () => {
+    touched = true;
+    const id = current.dataset.id;
+    picked.has(id) ? picked.delete(id) : picked.add(id);
+    render();
+    if (picked.has(id)) bip.react("boing");
+  });
+  stage.addEventListener("click", () => { touched = true; });
+  select(tiles[0]);
+  if (!REDUCED) {
+    let seen = false;
+    new IntersectionObserver(([e]) => { seen = e.isIntersecting; }, { threshold: 0.4 }).observe(root);
+    setInterval(() => {
+      if (touched || !seen || document.hidden) return;
+      select(tiles[(tiles.indexOf(current) + 1) % tiles.length]);
+    }, 5200);
+  }
 })();
 
 // -- Prices: « On your computer » opens its install in place (#install opens it too) --------------------------------

@@ -237,8 +237,10 @@
     "free": {
       "name": "Bei dir",
       "who": "auf deinem Computer",
-      "blurb": "Ein Befehl installiert alles, mit Hermes Agent. Du zahlst nur dein KI-Modell."
-    }
+      "blurb": "Ein Befehl installiert alles, mit Hermes Agent. Du zahlst nur dein KI-Modell.",
+      "kicker": "Freier Modus"
+    },
+    "yearNote": "Jährlich: 2 Monate geschenkt."
   },
   "install": {
     "title": "Dein eigener Computer? Die App ist gratis.",
@@ -484,12 +486,122 @@
       "notif": "Camille: Die Schule hat angerufen: Léa hat Fieber, ich hole sie ab."
     },
     "line": "Teile einen mit deiner Familie, Freunden oder anderen Eltern, nur wenn du es willst. Sie folgen kostenlos.",
-    "tab1": "Unter Bips",
-    "tab2": "Die Woche",
-    "tab3": "Das Geld",
-    "tabs": "Beispiele zu mehreren",
-    "tab4": "Der Einkauf",
-    "tab5": "Andere Eltern"
+    "tab1": "Die Woche",
+    "tab2": "Das Geld",
+    "tab3": "Der Einkauf",
+    "tabs": "Die Beispiele der Familie",
+    "tab4": "Andere Eltern"
+  },
+  "pick": {
+    "title": "Stell dein Team zusammen.",
+    "line": "Ein Bip für jeden Bereich deines Lebens, jeder mit eigenem Charakter und eigener Stimme. Such dir deine aus: In einer Minute sind sie bereit.",
+    "voice": "Stimme",
+    "asks": "Vorher fragt er dich",
+    "tools": "Seine Werkzeuge",
+    "add": "Ins Team holen",
+    "added": "Im Team",
+    "see": "In Aktion ansehen",
+    "roster": "Die Bips"
+  },
+  "bips": {
+    "daily": {
+      "n": "Alltag",
+      "tag": "der Organisierte",
+      "voice": "Colibri",
+      "line": "Um 20 Uhr ausgebucht: Ich habe 20:30 Uhr reserviert und Julie Bescheid gesagt.",
+      "d1": "Sortiert deine Mails und bereitet die Antworten vor",
+      "d2": "Führt deinen Kalender, reserviert, macht Termine",
+      "d3": "Gibt dir deinen Morgenüberblick, auf Wunsch als Podcast",
+      "ask": "Eine Mail senden oder in deinem Namen reservieren.",
+      "tools": "Mails|Kalender|Erinnerungen|Web|Podcast"
+    },
+    "wellness": {
+      "n": "Wohlbefinden",
+      "tag": "der Coach",
+      "voice": "Mousse",
+      "line": "Du hast 6 Std. 10 geschlafen. Morgen: 30 lockere Minuten, keine Intervalle.",
+      "d1": "Behält deinen Schlaf und dein Training im Blick",
+      "d2": "Erstellt deinen Plan und passt ihn deiner Form an",
+      "d3": "Fasst deine Woche auf einer Seite zusammen",
+      "ask": "Deine Gesundheitsdaten lesen: Du schaltest es selbst ein.",
+      "tools": "Gesundheit|Routinen|Seiten|Erinnerungen"
+    },
+    "finance": {
+      "n": "Budget",
+      "tag": "der Buchhalter",
+      "voice": "Ours",
+      "line": "CinePlus, seit Juli nicht geöffnet. Soll ich kündigen? 13,99 € im Monat zurück.",
+      "d1": "Zeigt dir, wohin das Geld des Monats geht",
+      "d2": "Findet das vergessene Abo, die seltsame Abbuchung",
+      "d3": "Sagt dir, was du am Wochenende ausgeben kannst",
+      "ask": "Etwas bezahlen oder kündigen.",
+      "tools": "Mails|Web|Seiten|Notizbuch"
+    },
+    "home": {
+      "n": "Zuhause",
+      "tag": "der Hausverwalter",
+      "voice": "Ours",
+      "line": "Die Waschmaschine ist seit 10 Minuten fertig. Denk daran, die Wäsche aufzuhängen.",
+      "d1": "Erinnerungen, Einkäufe, Wäsche",
+      "d2": "Das Abendessen aus dem, was noch im Kühlschrank ist",
+      "d3": "Die Heizung, wenn dein Zuhause vernetzt ist",
+      "ask": "Eine Einstellung im Haus ändern.",
+      "tools": "Erinnerungen|Routinen|Listen|Smart Home"
+    },
+    "work": {
+      "n": "Arbeit",
+      "tag": "die rechte Hand",
+      "voice": "Galet",
+      "line": "Ich habe die drei Dokumente gelesen. Die Zusammenfassung passt auf eine Seite.",
+      "d1": "Sucht, liest und fasst für dich zusammen",
+      "d2": "Bereitet deine Termine vor und was danach kommt",
+      "d3": "Arbeitet im Hintergrund, während du etwas anderes tust",
+      "ask": "Etwas in deinem Namen senden.",
+      "tools": "Mails|Kalender|Web|Seiten|Hintergrundaufgaben"
+    },
+    "family": {
+      "n": "Familie",
+      "tag": "der Dirigent",
+      "voice": "Lumen",
+      "line": "Alle wissen Bescheid: Jeder bekommt seine Erinnerung am Vorabend.",
+      "d1": "Der Plan für den ganzen Haushalt",
+      "d2": "Die Einkaufsliste, abgehakt von dem, der einkauft",
+      "d3": "Nie das, was privat ist",
+      "ask": "Die Familie benachrichtigen: Die Nachricht wartet auf dein „Senden“.",
+      "tools": "Kalender|Listen|Erinnerungen|Notizbuch"
+    },
+    "trips": {
+      "n": "Reisen",
+      "tag": "der Kundschafter",
+      "voice": "Lumen",
+      "line": "Flieg am Dienstag, nicht am Freitag: 140 € weniger, gleiches Hotel.",
+      "d1": "Vergleicht Daten, Flüge, Hotels",
+      "d2": "Lässt deine Freunde abstimmen und rechnet ab",
+      "d3": "Zeichnet die Karte der Orte, die du sehen musst",
+      "ask": "Reservieren oder bezahlen.",
+      "tools": "Web|Karten|Seiten|Teilen"
+    },
+    "own": {
+      "n": "Deiner",
+      "tag": "nach Maß",
+      "voice": "nach Wahl",
+      "line": "Ein Englischlehrer? Ein Gemüsegarten? Beschreib mich in einem Satz, ich komme.",
+      "d1": "Du beschreibst ihn in einem Satz",
+      "d2": "Er kommt mit eigenem Charakter und eigener Farbe",
+      "d3": "Du bestimmst, was er tun darf",
+      "ask": "Alles, was du festlegst.",
+      "tools": "Die, die du ihm gibst"
+    }
+  },
+  "room": {
+    "title": "Wochenende in Lyon",
+    "count": "3 Bips",
+    "me": "Schaffen wir Lyon am Samstag?",
+    "m1": "Zug um 9:34 Uhr, zwei Stunden Fahrt. Zurück am Sonntag um 18 Uhr.",
+    "m2": "Ja: Mit dem Zug um 9:34 Uhr bleiben 95 € fürs Wochenende.",
+    "m3": "Am Samstag steht nichts in deinem Kalender. Soll ich die Tickets buchen?",
+    "ask": "Die Tickets in deinem Namen buchen",
+    "a11y": "Ein Gespräch mit mehreren Bips"
   },
   "team": {
     "title": "Zusammen sind sie ein Team.",
@@ -520,6 +632,19 @@
     "r5": "Du gehst, wann du willst, mit deinen Agenten, ihrem Gedächtnis und deinem Notizbuch.",
     "r6t": "Und was wir nicht versprechen können.",
     "r6": "Wie bei jedem gemieteten Server könnten der Hoster und wir technisch hinein. Unsere Software tut es nicht, und wir täten es nur, wenn das Gesetz es verlangt."
+  },
+  "dock": {
+    "label": "Dein Team",
+    "one": "{n} Bip, in einer Minute bereit",
+    "many": "{n} Bips, in einer Minute bereit",
+    "none": "Wähle deinen ersten Bip"
+  },
+  "end": {
+    "title": "Bereit?",
+    "one": "{names} wartet auf dich.",
+    "many": "{names} warten auf dich.",
+    "none": "Wähle deinen ersten Bip.",
+    "and": "und"
   },
   "home": {
     "tour": "Schau dich um.",

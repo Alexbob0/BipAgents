@@ -1026,86 +1026,198 @@ html:has(.pv-detail[open]) { overflow: hidden; }
   .keys i { grid-row: span 2; margin: 0; }
   .keys b { align-self: end; } .keys span { align-self: start; }
 }
-/* ---- The rest of the home (2026-11-10): the Bips as a team, the house rules, the plans, in the same look. ---- */
-/* rows of tinted tiles: a small white square (a number, a Bip), a title, one line */
-.rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; text-align: left; align-content: center; }
-.rows li { display: grid; grid-template-columns: 52px minmax(0, 1fr); column-gap: 16px; align-items: center; border-radius: 26px;
-  padding: 16px 20px 17px 16px; background: var(--tint); transition: transform .35s cubic-bezier(.3, 1.4, .5, 1), opacity .8s ease; }
-.rows li:hover { transform: translateY(-3px); }
-.rows i { grid-row: span 2; width: 52px; height: 52px; border-radius: 17px; display: grid; place-items: center; background: var(--card);
-  color: var(--deep); box-shadow: var(--shadow); font-style: normal; font-weight: 1000; font-size: 25px; }
-.rows i svg { width: 40px; height: 40px; display: block; }
-.rows b { align-self: end; font-size: clamp(19px, 1.7vw, 22px); font-weight: 900; letter-spacing: -.02em; line-height: 1.18; }
-.rows span { align-self: start; margin-top: 3px; font-size: 16px; line-height: 1.4; color: var(--ink2); text-wrap: pretty; }
-.rows li.reveal:nth-child(2) { transition-delay: .08s; } .rows li.reveal:nth-child(3) { transition-delay: .16s; } .rows li.reveal:nth-child(4) { transition-delay: .24s; }
+/* ---- The rest of the home (2026-11-10): the format of the « team » concept in the site's look. Under the first
+   screen: build your team, together they make a team, the house rules, the plans, « Ready? », and the team one picked
+   in a bar at the bottom. Headlines on the left, white cards with hairlines, the categories' pale colours. ---- */
+.sec { max-width: 1180px; margin: 0 auto; padding: clamp(76px, 10vw, 136px) 20px 0; }
+.sec-head h2 { font-size: clamp(34px, 5.4vw, 64px); line-height: 1.03; text-wrap: balance; }
+.sec-head p { margin-top: 16px; max-width: 37em; font-size: clamp(18px, 1.8vw, 22px); line-height: 1.4; color: var(--ink2); text-wrap: pretty; }
+.stage-say small, .fiche small, .room-h small { font-size: 12.5px; font-weight: 900; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.hero + .sec { padding-top: clamp(56px, 7vw, 96px); }
 
-/* together: the second phone and its examples on one side, what the Bips do as a team on the other */
-.team-grid { margin-top: 34px; display: grid; gap: 34px; }
-.team .fam-tabs { margin-top: 0; }
+/* build your team: the picked Bip on its stage, the tiles, its card */
+.pick-grid { --c: var(--coral); --cd: var(--coral-deep); --ct: var(--coral-tint); margin-top: 30px; display: grid; gap: 14px; }
+.pick-grid[data-tone="green"] { --c: var(--green); --cd: var(--green-deep); --ct: var(--green-tint); }
+.pick-grid[data-tone="gold"] { --c: var(--gold); --cd: var(--gold-deep); --ct: var(--gold-tint); }
+.pick-grid[data-tone="teal"] { --c: var(--teal); --cd: var(--teal-deep); --ct: var(--teal-tint); }
+.pick-grid[data-tone="blue"] { --c: var(--blue); --cd: var(--blue-deep); --ct: var(--blue-tint); }
+.pick-grid[data-tone="violet"] { --c: var(--violet); --cd: var(--violet-deep); --ct: var(--violet-tint); }
+.pick-grid[data-tone="pink"] { --c: var(--pink); --cd: var(--pink-deep); --ct: var(--pink-tint); }
+.pick-grid[data-tone="grey"] { --c: #C3C8D3; --cd: var(--ink2); --ct: var(--ground2); }
+.stage { position: relative; overflow: hidden; border-radius: 34px; background: var(--ct); box-shadow: var(--shadow); transition: background .35s;
+  display: grid; grid-template-columns: clamp(132px, 38%, 300px) minmax(0, 1fr); align-items: end; gap: 6px; padding: 22px 16px 0 10px; min-height: 236px; }
+.stage::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 40px; background: color-mix(in srgb, var(--c) 62%, var(--ct)); transition: background .35s; }
+.stage-bip { position: relative; z-index: 1; width: 100%; aspect-ratio: 1; margin-bottom: 6px; }
+.stage-say { position: relative; z-index: 1; align-self: end; margin: 0 0 clamp(84px, 13vw, 150px); padding: 14px 18px 16px; border-radius: 22px; background: var(--card); box-shadow: var(--shadow-big);
+  font-size: clamp(16.5px, 1.9vw, 20px); line-height: 1.35; font-weight: 800; min-height: 4.6em; }
+.stage-say::before { content: ""; position: absolute; left: -7px; bottom: 22px; width: 16px; height: 16px; background: var(--card); transform: rotate(45deg); border-radius: 0 0 0 4px; box-shadow: -1px 1px 0 var(--line); }
+.stage-say small { display: block; margin-bottom: 3px; color: var(--cd); transition: color .35s; }
+.roster { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.rost { position: relative; font: inherit; color: var(--ink); cursor: pointer; border: 0; border-radius: 20px; padding: 9px 2px 8px; background: var(--card); box-shadow: var(--shadow);
+  display: grid; justify-items: center; gap: 2px; transition: transform .3s cubic-bezier(.3, 1.4, .5, 1), box-shadow .25s, background .25s; }
+.rost i { width: min(54px, 64%); aspect-ratio: 1; display: block; }
+.rost i svg { width: 100%; height: 100%; display: block; }
+.rost b { max-width: 100%; padding: 0 3px; font-size: 12.5px; font-weight: 900; line-height: 1.15; text-align: center; overflow-wrap: anywhere; hyphens: auto; }
+.rost:hover { transform: translateY(-3px); }
+.rost[aria-pressed="true"] { background: var(--ct); box-shadow: var(--shadow-big), inset 0 0 0 2px var(--ink); transform: translateY(-3px); }
+.rost-in { position: absolute; top: -7px; right: -5px; width: 24px; height: 24px; border-radius: 50%; background: var(--ink); color: var(--ground); font-size: 13px; font-weight: 1000;
+  display: grid; place-items: center; transform: scale(0); transition: transform .25s cubic-bezier(.3, 1.8, .5, 1); }
+.rost.in-team .rost-in { transform: scale(1); }
+.fiche { border-radius: 34px; background: var(--card); box-shadow: var(--shadow-big); padding: 22px 20px 22px; display: flex; flex-direction: column; gap: 16px; }
+.fiche-card { display: grid; gap: 16px; align-content: start; }
+.fiche-card[hidden] { display: none; }
+.fiche-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.fiche-h h3 { font-size: clamp(30px, 3.2vw, 38px); font-weight: 1000; letter-spacing: -.03em; line-height: 1; }
+.fiche-tag { font-weight: 900; color: var(--cd); }
+.fiche-voice { margin-left: auto; display: inline-flex; align-items: center; gap: 7px; font-size: 13.5px; font-weight: 900; padding: 5px 12px 5px 10px; border-radius: 999px; box-shadow: inset 0 0 0 1.5px var(--line); white-space: nowrap; }
+.fiche-voice::before { content: ""; border: 5px solid transparent; border-left: 8px solid var(--ink); border-right: 0; }
+.fiche-does { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.fiche-does li { position: relative; padding-left: 24px; line-height: 1.35; }
+.fiche-does li::before { content: ""; position: absolute; left: 2px; top: .38em; width: 11px; height: 11px; border-radius: 3.5px; background: var(--c); }
+.fiche-asks { border-radius: 18px; padding: 12px 16px 14px; background: var(--ct); font-weight: 900; line-height: 1.35; }
+.fiche-asks small { display: block; margin-bottom: 2px; }
+.fiche-tools ul { list-style: none; margin: 7px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.fiche-tools li { font-size: 13.5px; font-weight: 800; padding: 4px 11px; border-radius: 999px; background: var(--ground); box-shadow: inset 0 0 0 1px var(--line); }
+.fiche-see { justify-self: start; font-weight: 900; color: var(--blue-deep); text-decoration: none; }
+.fiche-see:hover { text-decoration: underline; text-underline-offset: 4px; }
+.fiche-add { margin-top: auto; width: 100%; gap: 10px; cursor: pointer; border: 0; font-family: inherit; }
+.fiche-add i { font-style: normal; font-weight: 1000; }
+.fiche-add i::before { content: "+"; }
+.fiche-add[aria-pressed="true"] { background: var(--card); color: var(--ink); box-shadow: inset 0 0 0 2px var(--ink); }
+.fiche-add[aria-pressed="true"] i::before { content: "✓"; }
 @media (min-width: 960px) {
-  .team-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 56px; align-items: center; margin-top: 48px; }
-  .perks { gap: 14px; }
-  .perks li { padding: 20px 24px 21px 20px; }
+  .pick-grid { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); grid-template-rows: 1fr auto; gap: 18px 22px; margin-top: 40px; }
+  .stage { grid-column: 1; grid-row: 1; min-height: 320px; padding: 30px 30px 0 20px; grid-template-columns: clamp(200px, 44%, 320px) minmax(0, 1fr); }
+  .stage::before { height: 54px; }
+  .stage-say { padding: 18px 22px 20px; }
+  .roster { grid-column: 1; grid-row: 2; grid-template-columns: repeat(8, 1fr); gap: 10px; }
+  .fiche { grid-column: 2; grid-row: 1 / span 2; padding: 30px 30px 30px; }
 }
 
-/* the house rules: your space as a house under the European flag, and what holds there */
-.rules { margin-top: clamp(30px, 4vw, 48px); display: grid; gap: 30px; }
-.house { margin: 0 auto; width: min(100%, 380px); }
-.house-pic { position: relative; padding-top: 52px; }
-.house-roof { display: block; width: 100%; height: auto; position: relative; z-index: 1; }
-.house-roof path { fill: var(--pink); stroke: var(--pink); stroke-width: 22; stroke-linejoin: round; }
-.house-flag { position: absolute; left: 50%; top: 0; z-index: 0; }
-.house-flag i { position: absolute; left: -1.5px; top: 0; width: 3px; height: 96px; border-radius: 2px; background: var(--ink2); }
+/* together: several Bips in one conversation, and what they do as a team */
+.team-grid { margin-top: 30px; display: grid; gap: 16px; }
+.room { border-radius: 34px; background: var(--card); box-shadow: var(--shadow-big); padding: 20px 18px 22px; display: grid; gap: 10px; align-content: start; }
+.room-h { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding-bottom: 12px; margin-bottom: 4px; border-bottom: 1.5px solid var(--line); }
+.room-h b { font-size: 21px; font-weight: 1000; letter-spacing: -.02em; }
+.msg { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 8px; align-items: end; }
+.msg i { width: 38px; height: 38px; display: block; }
+.msg i svg { width: 100%; height: 100%; display: block; }
+.msg span { justify-self: start; border-radius: 20px 20px 20px 6px; padding: 9px 15px 11px; background: var(--tint); font-size: 16px; line-height: 1.35; font-weight: 700; }
+.msg span b { display: block; font-size: 12.5px; font-weight: 900; letter-spacing: .07em; text-transform: uppercase; color: var(--deep); }
+.msg.me { grid-template-columns: minmax(0, 1fr); }
+.msg.me span { justify-self: end; border-radius: 20px 20px 6px 20px; background: var(--ink); color: var(--ground); padding: 10px 16px 11px; }
+.okbar { margin: 4px 0 0 46px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; border-radius: 20px; padding: 10px 10px 10px 16px; background: var(--gold-tint); font-size: 15px; font-weight: 900; }
+.okbar span { margin-right: auto; }
+.okbar b { font-weight: 900; font-size: 14.5px; padding: 8px 16px; border-radius: 999px; background: var(--ink); color: var(--ground); }
+.okbar b.no { background: var(--card); color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--line); }
+.perks { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.perks li { display: grid; grid-template-columns: 50px minmax(0, 1fr); column-gap: 16px; align-items: center; border-radius: 26px; padding: 16px 20px 18px 18px; background: var(--card); box-shadow: var(--shadow); }
+.perks i { grid-row: span 2; width: 50px; height: 50px; display: block; }
+.perks i svg { width: 100%; height: 100%; display: block; }
+.perks b { align-self: end; font-size: clamp(20px, 1.8vw, 23px); font-weight: 1000; letter-spacing: -.02em; line-height: 1.15; }
+.perks span { align-self: start; margin-top: 3px; font-size: 16px; line-height: 1.4; color: var(--ink2); }
+@media (min-width: 900px) { .team-grid { grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); gap: 22px; margin-top: 40px; } .room { padding: 26px 26px 28px; } }
+
+/* the house rules: your space as a house of squares under the European flag, and what holds there */
+.rules { margin-top: 30px; display: grid; gap: 26px; align-items: start; }
+.house { margin: 0 auto; width: min(100%, 380px); text-align: center; }
+.house-pic { position: relative; padding-top: 64px; }
+.house-flag { position: absolute; left: 50%; top: 0; }
+.house-flag i { position: absolute; left: -1.5px; top: 0; width: 3px; height: 70px; border-radius: 2px; background: var(--ink2); }
 .house-flag svg { position: absolute; left: 4px; top: 3px; width: 72px; height: 48px; border-radius: 5px; box-shadow: 0 0 0 1px rgba(29, 31, 36, .08);
   transform-origin: 0 50%; animation: flag 3.4s ease-in-out infinite; }
 @keyframes flag { 0%, 100% { transform: skewY(-3deg) scaleX(1); } 50% { transform: skewY(4deg) scaleX(.96); } }
-.house-walls { margin: -9px 20px 0; padding: 46px 18px 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; background: var(--ground);
-  border-radius: 0 0 30px 30px; box-shadow: inset 0 0 0 1.5px var(--line); overflow: hidden; }
-.house-walls i { display: block; padding: 10px 8px 0; border-radius: 18px 18px 0 0; background: var(--tint); box-shadow: inset 0 0 0 1.5px var(--line); }
+.house-roof { position: relative; display: grid; justify-items: center; }
+.house-roof i { display: block; height: 22px; border-radius: 8px 8px 0 0; background: var(--pink); box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--pink-deep) 20%, var(--pink)); }
+.house-roof i:nth-child(1) { width: 20%; } .house-roof i:nth-child(2) { width: 40%; } .house-roof i:nth-child(3) { width: 60%; }
+.house-roof i:nth-child(4) { width: 80%; } .house-roof i:nth-child(5) { width: 100%; }
+.house-walls { margin: 0 12px; padding: 30px 16px 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; background: var(--card);
+  border-radius: 0 0 30px 30px; box-shadow: var(--shadow); overflow: hidden; }
+.house-walls i { display: block; padding: 12px 8px 0; border-radius: 18px 18px 0 0; background: var(--tint); }
 .house-walls svg { display: block; width: 100%; height: auto; margin-bottom: -2px; }
 .house figcaption { margin-top: 16px; font-size: 16px; line-height: 1.4; color: var(--ink2); text-wrap: balance; }
-.rule-limit { background: none; box-shadow: inset 0 0 0 2px var(--line); }
-.rule-limit i { background: var(--gold-tint); color: var(--gold-deep); box-shadow: none; }
-@media (min-width: 900px) { .rules { grid-template-columns: minmax(0, 380px) minmax(0, 1.25fr); gap: clamp(36px, 5vw, 64px); align-items: center; } }
-@media (prefers-reduced-motion: reduce) { .house-flag svg { animation: none; } .rows li { transition: none; } }
+.rule-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.rule-list li { display: grid; grid-template-columns: 48px minmax(0, 1fr); column-gap: 16px; align-items: start; border-radius: 24px; padding: 16px 20px 18px 16px; background: var(--card); box-shadow: var(--shadow); }
+.rule-list i { grid-row: span 2; width: 48px; height: 48px; border-radius: 15px; display: grid; place-items: center; background: var(--c); color: var(--on-pale); font-style: normal; font-weight: 1000; font-size: 24px; }
+.rule-list b { font-size: clamp(20px, 1.8vw, 23px); font-weight: 1000; letter-spacing: -.02em; line-height: 1.18; }
+.rule-list span { margin-top: 3px; font-size: 16px; line-height: 1.4; color: var(--ink2); }
+.rule-list .rule-limit { background: var(--gold-tint); box-shadow: none; outline: 2px dashed color-mix(in srgb, var(--gold-deep) 45%, transparent); outline-offset: -2px; }
+.rule-limit i { background: var(--card); color: var(--ink); box-shadow: var(--shadow); }
+.rules-side .more { margin: 18px 0 0 6px; }
+@media (min-width: 900px) {
+  .rules { grid-template-columns: minmax(0, 4fr) minmax(0, 7fr); gap: clamp(30px, 4vw, 56px); margin-top: 40px; }
+  .house { position: sticky; top: calc(var(--top-h, 67px) + 24px); }
+}
+@media (prefers-reduced-motion: reduce) { .house-flag svg { animation: none; } }
 
-/* the plans: the beta first (free, the one action), then who each plan is for, and the free install as a fourth card */
-.beta-strip { margin-top: 40px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 28px; text-align: left;
-  border-radius: 34px; padding: 24px 26px 24px 30px; color: #FFFFFF;
+/* the plans: the beta first (free), then who each plan is for, its name and price, one line; the free install as a
+   fourth card. Until the web checkout opens the plans are only read: no choice to make, no period, no currency. */
+.beta-strip { margin-top: 26px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; border-radius: 28px; padding: 20px 22px 20px 28px; color: #FFFFFF;
   background: radial-gradient(70% 140% at 88% 90%, #43305C 0%, rgba(67, 48, 92, 0) 70%), linear-gradient(180deg, #14121F, #251B33); }
-.beta-strip p { display: grid; gap: 4px; }
-.beta-strip b { font-size: clamp(24px, 2.6vw, 32px); font-weight: 900; letter-spacing: -.025em; line-height: 1.1; }
+.beta-strip p { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 20px; margin-right: auto; }
+.beta-strip b { font-size: clamp(24px, 2.8vw, 34px); font-weight: 1000; letter-spacing: -.025em; line-height: 1.1; }
 .beta-strip p span { font-size: 16px; color: rgba(255, 255, 255, .8); }
 .beta-strip .pill-buy { background: #FFFFFF; color: #1D1F24; }
 .beta-strip :focus-visible { outline-color: #FFFFFF; }
-.screen.pricing-section .pricing { margin-top: 30px; }
-.plan-ppl { display: flex; justify-content: center; gap: 4px; margin-bottom: 10px; }
-.plan-ppl u { width: 15px; height: 15px; border-radius: 4.5px; background: var(--c); text-decoration: none; }
-.screen .plan-blurb { margin-top: 12px; text-wrap: balance; }
-.plan-free { position: relative; font: inherit; color: var(--ink); cursor: pointer; border: 0; border-radius: 30px; padding: 30px 20px; background: none;
-  box-shadow: inset 0 0 0 2px var(--line); display: grid; gap: 4px; align-content: start; justify-items: center; text-align: center;
+.sec .pricing { max-width: none; margin: 14px 0 0; justify-items: stretch; gap: 14px; }
+.sec .pricing-bar { justify-content: flex-start; }
+.sec .plans { margin: 0; gap: 12px; grid-template-columns: minmax(0, 1fr); }
+.sec .plan, .plan-free { display: flex; flex-wrap: wrap; align-items: baseline; align-content: flex-start; gap: 2px 12px; text-align: left; border-radius: 28px; padding: 20px 22px 22px; }
+.plan-free { position: relative; font: inherit; color: var(--ink); cursor: pointer; border: 0; background: none; outline: 2px dashed var(--line); outline-offset: -2px;
   transition: transform .35s cubic-bezier(.3, 1.4, .5, 1), background .3s; }
 .plan-free:hover { transform: translateY(-4px); background: var(--card); }
-.plan-free .plan-price { margin-top: 12px; }
-.plan-more { margin-top: 12px; display: inline-flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 1000; text-decoration: underline; text-underline-offset: 3px; }
+.plan-ppl { flex: 0 0 100%; display: flex; align-items: center; gap: 4px; margin: 0 0 6px; height: auto; }
+.plan-ppl u { width: 14px; height: 14px; border-radius: 4.5px; background: var(--c); text-decoration: none; }
+.plan-ppl em { font-style: normal; font-size: 12.5px; font-weight: 900; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.plan-ppl u + em { margin-left: 4px; }
+.sec .plan-name { margin-right: auto; font-size: clamp(27px, 2.6vw, 31px); }
+.sec .plan-price { margin: 0; flex-direction: row; align-items: baseline; align-self: baseline; gap: 4px; white-space: nowrap; }
+.sec .plan-price b { font-size: clamp(24px, 2.3vw, 29px); }
+.sec .plan-price small { font-size: 14px; }
+.sec .plan-blurb, .sec .plan-store, .plan-more { flex: 0 0 100%; }
+.sec .plan-blurb { margin-top: 8px; font-size: 16px; line-height: 1.4; }
+.sec .plan-store { margin-top: 6px; }
+.sec .plan-store:empty { display: none; }
+.plan-more { margin-top: 10px; display: inline-flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 1000; text-decoration: underline; text-underline-offset: 3px; }
 .price-act:empty { display: none; }
-.price-note { max-width: 640px; font-size: 16px; line-height: 1.45; color: var(--ink2); text-wrap: balance; }
-@media (min-width: 860px) {
-  .screen .plans { grid-template-columns: repeat(2, 1fr); }
-  .plan-free { padding-top: calc(30px + 25px); }   /* its name on the plans' line (they have the people's squares above) */
+.price-note { font-size: 15px; line-height: 1.45; color: var(--muted); }
+body[data-checkout="off"] .sec .pricing-bar { display: none; }
+body[data-checkout="off"] .sec .plan { pointer-events: none; transform: none; background: var(--card); box-shadow: var(--shadow), inset 0 0 0 2px var(--line); }
+body[data-checkout="off"] .sec .plan::after { display: none; }
+@media (min-width: 700px) { .sec .plans { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1060px) {
+  .sec .plans { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .sec .plan, .plan-free { padding-inline: 18px; }
+  .sec .plan-name { font-size: 26px; } .sec .plan-price b { font-size: 23px; }
 }
-@media (min-width: 1040px) { .screen .plans { grid-template-columns: repeat(4, 1fr); } .screen .plan, .plan-free { padding-inline: 16px; } }
-@media (max-width: 859px) {   /* on a phone: compact rows, like the plans */
-  .plan-ppl { display: none; }
-  .screen .plan { text-align: left; justify-items: start; }
-  .screen .plan-blurb { margin-top: 6px; }
-  .plan-free { grid-template-columns: 1fr auto; column-gap: 12px; padding: 18px 16px; text-align: left; justify-items: start; }
-  .plan-free .plan-name { font-size: 22px; grid-column: 1; } .plan-free .plan-who { grid-column: 1; font-size: 14px; }
-  .plan-free .plan-price { grid-column: 2; grid-row: 1 / span 2; margin: 0; align-self: center; } .plan-free .plan-price b { font-size: 26px; }
-  .plan-free .plan-blurb, .plan-more { grid-column: 1 / -1; }
-  .plan-free .plan-blurb { margin-top: 6px; font-size: 14px; }
-  .beta-strip { border-radius: 28px; padding: 22px 20px; }
+@media (min-width: 900px) { .beta-strip { flex-wrap: nowrap; } .beta-strip p { min-width: 0; } }
+
+/* « Ready? », and the team in a bar: at the bottom of the screen once past the first screen, at rest at the end */
+.end { text-align: center; padding-bottom: 6px; }
+.end h2 { font-size: clamp(56px, 12vw, 132px); font-weight: 1000; line-height: .95; letter-spacing: -.04em; }
+.end-line { margin-top: 16px; font-size: clamp(18px, 1.8vw, 22px); color: var(--ink2); text-wrap: balance; }
+.dock { position: sticky; bottom: max(12px, env(safe-area-inset-bottom)); z-index: 40; max-width: 1140px; margin: 30px auto 0; width: calc(100% - 24px);
+  display: flex; align-items: center; gap: 14px; border-radius: 26px; padding: 9px 9px 9px 22px; background: color-mix(in srgb, var(--card) 92%, transparent);
+  backdrop-filter: saturate(1.6) blur(18px); -webkit-backdrop-filter: saturate(1.6) blur(18px); box-shadow: var(--shadow-big);
+  opacity: 0; transform: translateY(24px); pointer-events: none; transition: opacity .3s, transform .45s cubic-bezier(.3, 1.3, .5, 1); }
+.top.off-hero ~ main .dock { opacity: 1; transform: none; pointer-events: auto; }
+.dock-label { display: grid; white-space: nowrap; }
+.dock-label b { font-size: 12.5px; font-weight: 900; letter-spacing: .07em; text-transform: uppercase; }
+.dock-label small { font-size: 13.5px; font-weight: 800; letter-spacing: 0; text-transform: none; color: var(--muted); }
+.dock-bench { display: flex; align-items: center; gap: 2px; margin-right: auto; min-height: 42px; min-width: 0; }
+.dock-bench i { width: 40px; height: 40px; flex: none; animation: dock-pop .35s cubic-bezier(.3, 1.8, .5, 1); }
+.dock-bench i svg { width: 100%; height: 100%; display: block; }
+.dock-bench .empty { width: 34px; height: 34px; margin: 0 3px; border-radius: 11px; outline: 2px dashed var(--line); outline-offset: -2px; animation: none; }
+@keyframes dock-pop { from { transform: scale(0); } }
+.dock .pill { flex: none; }
+.foot-home { margin-top: clamp(40px, 6vw, 72px); }
+@media (max-width: 600px) {
+  .dock { gap: 8px; padding-left: 12px; border-radius: 24px; }
+  .dock-label { display: none; }
+  .dock-bench i { width: 32px; height: 32px; }
+  .dock-bench i:nth-child(n+6) { display: none; }
 }
+@media (prefers-reduced-motion: reduce) { .dock { transition: none; } .dock-bench i { animation: none; } }
 
 /* the family's phone: its three examples above it, the chat already answered */
 .fam-tabs { margin: 34px 0 0; justify-content: center; gap: 8px; }

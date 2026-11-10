@@ -237,8 +237,10 @@
     "free": {
       "name": "At home",
       "who": "on your computer",
-      "blurb": "One command installs everything, with Hermes Agent. You only pay for your AI model."
-    }
+      "blurb": "One command installs everything, with Hermes Agent. You only pay for your AI model.",
+      "kicker": "Free mode"
+    },
+    "yearNote": "Yearly: 2 months free."
   },
   "install": {
     "title": "Your own computer? The app is free.",
@@ -484,12 +486,122 @@
       "notif": "Camille: The school called: Léa has a fever, I’m picking her up."
     },
     "line": "Share one with your family, your friends or other parents, only when you choose. They follow for free.",
-    "tab1": "Between Bips",
-    "tab2": "The week",
-    "tab3": "The money",
-    "tabs": "Examples with several",
-    "tab4": "The shopping",
-    "tab5": "Other parents"
+    "tab1": "The week",
+    "tab2": "The money",
+    "tab3": "The shopping",
+    "tabs": "The family’s examples",
+    "tab4": "Other parents"
+  },
+  "pick": {
+    "title": "Build your team.",
+    "line": "One Bip for each corner of your life, each with its own character and voice. Pick yours: they’re ready in a minute.",
+    "voice": "Voice",
+    "asks": "It asks you before",
+    "tools": "Its tools",
+    "add": "Add to the team",
+    "added": "In the team",
+    "see": "See it at work",
+    "roster": "The Bips"
+  },
+  "bips": {
+    "daily": {
+      "n": "Daily",
+      "tag": "the organiser",
+      "voice": "Colibri",
+      "line": "Fully booked at 8, so I booked 8:30 and told Julie.",
+      "d1": "Sorts your email and drafts the replies",
+      "d2": "Keeps your calendar, books, makes appointments",
+      "d3": "Gives you your morning briefing, as a podcast if you like",
+      "ask": "sending an email or booking in your name.",
+      "tools": "Email|Calendar|Reminders|Web|Podcast"
+    },
+    "wellness": {
+      "n": "Wellness",
+      "tag": "the coach",
+      "voice": "Mousse",
+      "line": "You slept 6 h 10. Tomorrow: 30 easy minutes, no intervals.",
+      "d1": "Tracks your sleep and your workouts",
+      "d2": "Builds your plan and adapts it to how you feel",
+      "d3": "Sums up your week on one page",
+      "ask": "reading your health data: you switch it on.",
+      "tools": "Health|Routines|Pages|Reminders"
+    },
+    "finance": {
+      "n": "Budget",
+      "tag": "the accountant",
+      "voice": "Ours",
+      "line": "CinePlus, not opened since July. Shall I cancel? €13.99 a month back.",
+      "d1": "Shows where the month’s money goes",
+      "d2": "Spots the forgotten subscription, the odd charge",
+      "d3": "Tells you what you can spend this weekend",
+      "ask": "paying or cancelling anything.",
+      "tools": "Email|Web|Pages|Notebook"
+    },
+    "home": {
+      "n": "Home",
+      "tag": "the steward",
+      "voice": "Ours",
+      "line": "The washing machine finished 10 minutes ago. Remember to hang the laundry.",
+      "d1": "Reminders, shopping, laundry",
+      "d2": "Dinner with what’s left in the fridge",
+      "d3": "The heating, if your home is connected",
+      "ask": "changing a setting at home.",
+      "tools": "Reminders|Routines|Lists|Smart home"
+    },
+    "work": {
+      "n": "Work",
+      "tag": "the right hand",
+      "voice": "Galet",
+      "line": "I’ve read the three documents. The summary fits on one page.",
+      "d1": "Searches, reads and sums up for you",
+      "d2": "Prepares your meetings and their follow-ups",
+      "d3": "Works in the background while you do something else",
+      "ask": "sending anything in your name.",
+      "tools": "Email|Calendar|Web|Pages|Background tasks"
+    },
+    "family": {
+      "n": "Family",
+      "tag": "the conductor",
+      "voice": "Lumen",
+      "line": "Everyone knows: each gets their reminder the day before.",
+      "d1": "The whole household’s schedule",
+      "d2": "The shopping list, ticked off by whoever goes",
+      "d3": "Never what’s private",
+      "ask": "telling the family: the message waits for your “Send”.",
+      "tools": "Calendar|Lists|Reminders|Notebook"
+    },
+    "trips": {
+      "n": "Trips",
+      "tag": "the scout",
+      "voice": "Lumen",
+      "line": "Leave Tuesday, not Friday: €140 less, same hotel.",
+      "d1": "Compares dates, flights, hotels",
+      "d2": "Gets your friends to vote and keeps the accounts",
+      "d3": "Draws the map of the places not to miss",
+      "ask": "booking or paying.",
+      "tools": "Web|Maps|Pages|Sharing"
+    },
+    "own": {
+      "n": "Yours",
+      "tag": "made to measure",
+      "voice": "your choice",
+      "line": "An English teacher? A vegetable garden? Describe me in one sentence, I’m on my way.",
+      "d1": "You describe it in one sentence",
+      "d2": "It arrives with its own character and colour",
+      "d3": "You choose what it is allowed to do",
+      "ask": "anything you decide.",
+      "tools": "The ones you give it"
+    }
+  },
+  "room": {
+    "title": "Weekend in Lyon",
+    "count": "3 Bips",
+    "me": "Can we do Lyon on Saturday?",
+    "m1": "The 9:34 train, two hours there. Back on Sunday at 6 pm.",
+    "m2": "Yes: with the 9:34 train, €95 is left for the weekend.",
+    "m3": "Nothing in your calendar on Saturday. Shall I book the tickets?",
+    "ask": "Book the tickets in your name",
+    "a11y": "A conversation with several Bips"
   },
   "team": {
     "title": "Together, they make a team.",
@@ -520,6 +632,19 @@
     "r5": "Leave whenever you want, with your agents, their memory and your Notebook.",
     "r6t": "And what we can’t promise.",
     "r6": "As with any rented server, the host and we could technically get in. Our software doesn’t, and we only would if the law required it."
+  },
+  "dock": {
+    "label": "Your team",
+    "one": "{n} Bip, ready in a minute",
+    "many": "{n} Bips, ready in a minute",
+    "none": "Pick your first Bip"
+  },
+  "end": {
+    "title": "Ready?",
+    "one": "{names} is waiting for you.",
+    "many": "{names} are waiting for you.",
+    "none": "Pick your first Bip.",
+    "and": "and"
   },
   "home": {
     "tour": "Take the tour.",

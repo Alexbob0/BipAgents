@@ -317,10 +317,47 @@ def demo_page(demo: Dict[str, Any], name: str, lang: str) -> str:
 DEMO_TABS = (("inbox", "daily"), ("dentist", "daily"), ("weekend", "budget"), ("subscriptions", "budget"),
              ("dinner", "home"), ("papers", "home"), ("price_watch", "budget"), ("weekend_lisbon", "lisbon"),
              ("sleep_week", "coach"), ("podcast", "daily"))
-# The second phone on the home (« Together, they make a team »): one Bip asking another (the apps' « ask_budget »),
-# then what several people need together, answered by the family's agent (« family_money » is the site's own example).
-FAMILY_TABS = (("ask_budget", "daily"), ("family_week", "family"), ("family_money", "family"), ("groceries_week", "family"),
+# The family's examples: what several people need together, answered by the family's agent (« family_money »
+# is the site's own example too).
+FAMILY_TABS = (("family_week", "family"), ("family_money", "family"), ("groceries_week", "family"),
                ("party_parents", "parents"))   # an agent shared with other parents, who follow from their link
+
+
+# The home's « Build your team »: the Bips one can pick, in the order of their tiles: (its texts' key in bips.*, the
+# kind of agent that draws it (shared/bips.js CATEGORIES: its colour), the page's tone (site.css --<tone>), and the
+# demo's example that shows it at work, when there is one (/demo/#<example>)).
+BIPS = (("daily", "daily", "coral", "inbox"), ("wellness", "wellness", "green", "sleep_week"),
+        ("finance", "finance", "gold", "subscriptions"), ("home", "home", "teal", "dinner"), ("work", "work", "blue", ""),
+        ("family", "learning", "violet", ""), ("trips", "creative", "pink", "weekend_lisbon"), ("own", "tech", "grey", ""))
+
+
+def bip_roster(t: Dict[str, Any]) -> str:
+    """The tiles of « Build your team » ({{biproster}}): a Bip and its name; the script shows the picked one."""
+    e = html.escape
+    return "\n".join(
+        f'<button type="button" class="rost" aria-pressed="{"true" if i == 0 else "false"}" data-id="{key}" data-cat="{cat}" '
+        f'data-tone="{tone}" data-name="{e(t["bips"][key]["n"])}" data-line="{e(t["bips"][key]["line"])}">'
+        f'<i data-bip-static="{cat}"></i><b>{e(t["bips"][key]["n"])}</b><span class="rost-in" aria-hidden="true">✓</span></button>'
+        for i, (key, cat, tone, _) in enumerate(BIPS))
+
+
+def bip_cards(t: Dict[str, Any], demo_href: str) -> str:
+    """Each Bip's card ({{bipcards}}): what it does, what it asks before, its tools; the first one shows without
+    the script."""
+    e, pick, out = html.escape, t["pick"], []
+    for i, (key, _, _, example) in enumerate(BIPS):
+        b = t["bips"][key]
+        see = (f'<a class="fiche-see" href="{demo_href}#{example}">{e(pick["see"])} <span aria-hidden="true">›</span></a>'
+               if example else "")
+        out.append(
+            f'<article class="fiche-card" data-card="{key}"{"" if i == 0 else " hidden"}>'
+            f'<div class="fiche-h"><h3>{e(b["n"])}</h3><span class="fiche-tag">{e(b["tag"])}</span>'
+            f'<span class="fiche-voice">{e(pick["voice"])} {e(b["voice"])}</span></div>'
+            f'<ul class="fiche-does">{"".join(f"<li>{e(b[k])}</li>" for k in ("d1", "d2", "d3"))}</ul>'
+            f'<p class="fiche-asks"><small>{e(pick["asks"])}</small>{e(b["ask"])}</p>'
+            f'<div class="fiche-tools"><small>{e(pick["tools"])}</small><ul>'
+            f'{"".join(f"<li>{e(x)}</li>" for x in b["tools"].split("|"))}</ul></div>{see}</article>')
+    return "\n".join(out)
 
 
 def pages_made(steps: List[Dict[str, Any]]) -> List[str]:
@@ -452,6 +489,7 @@ def bipagents(version: str) -> Path:
             "demohref": f"{paths[lang]}demo/", "faqhref": f"{paths[lang]}faq/", "installhref": f"{paths[lang]}#install",
             "legalprefix": "" if lang == "fr" else f"/{lang}",
             "storebadges": badges,
+            "biproster": bip_roster(t), "bipcards": bip_cards(t, f"{paths[lang]}demo/"),
             "demotabs": demo_tabs(agents),
             "familytabs": demo_tabs(agents, FAMILY_TABS, "chat-family", "family.tab"),
             # The comparison the home makes (site/config.json « compare »): the other offer's price, where it was read

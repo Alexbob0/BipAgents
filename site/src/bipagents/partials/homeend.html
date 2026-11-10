@@ -1,7 +1,7 @@
 <!-- The home's end: the beta (free, the one action), then the plans (site.js prices them: who it is for, name, price,
      one line) and beside them the free install as a fourth card, which opens it in place (#install opens it too). -->
-<section class="screen pricing-section v-end" id="pricing" aria-labelledby="price-h">
-  <div class="screen-head reveal">
+<section class="sec pricing-section v-end" id="pricing" aria-labelledby="price-h">
+  <div class="sec-head reveal">
     <h2 id="price-h">{{pricing.headline}}</h2>
   </div>
   <div class="beta-strip reveal">
@@ -10,6 +10,8 @@
   </div>
   <span class="mode-anchor" id="plans"></span>
   <div class="pricing reveal">
+    <!-- paying by the month or the year, the currency: shown once the web checkout is open (until then the visitor's
+         region picks the currency, and the plans are only read) -->
     <div class="pricing-bar">
       <div class="period" role="radiogroup" aria-label="{{pricing.periodLabel}}">
         <button type="button" role="radio" aria-checked="true" data-period="month">{{pricing.monthly}}</button>
@@ -20,33 +22,30 @@
     </div>
     <div class="plans" role="radiogroup" aria-label="{{pricing.planLabel}}">
       <button type="button" class="plan" role="radio" aria-checked="false" data-plan="solo">
-        <span class="plan-ppl" aria-hidden="true"><u style="--c:var(--coral)"></u></span>
+        <span class="plan-ppl"><u style="--c:var(--coral)"></u><em>{{pricing.solo.who}}</em></span>
         <span class="plan-name">{{pricing.solo.name}}</span>
-        <span class="plan-who">{{pricing.solo.who}}</span>
         <span class="plan-price"><b data-price="solo">{{p.web.month.solo}}</b><small data-unit>{{pricing.perMonthShort}}</small></span>
         <span class="plan-blurb">{{pricing.solo.blurb}}</span>
-        <span data-equiv="solo" hidden></span><span data-store="solo" hidden></span>
+        <span class="plan-store" data-store="solo"></span><span data-equiv="solo" hidden></span>
       </button>
       <button type="button" class="plan" role="radio" aria-checked="false" data-plan="duo">
-        <span class="plan-ppl" aria-hidden="true"><u style="--c:var(--coral)"></u><u style="--c:var(--green)"></u></span>
+        <span class="plan-ppl"><u style="--c:var(--green)"></u><u style="--c:var(--green)"></u><em>{{pricing.duo.who}}</em></span>
         <span class="plan-name">{{pricing.duo.name}}</span>
-        <span class="plan-who">{{pricing.duo.who}}</span>
         <span class="plan-price"><b data-price="duo">{{p.web.month.duo}}</b><small data-unit>{{pricing.perMonthShort}}</small></span>
         <span class="plan-blurb">{{pricing.duo.blurb}}</span>
-        <span data-equiv="duo" hidden></span><span data-store="duo" hidden></span>
+        <span class="plan-store" data-store="duo"></span><span data-equiv="duo" hidden></span>
       </button>
       <button type="button" class="plan" role="radio" aria-checked="true" data-plan="famille">
-        <span class="plan-ppl" aria-hidden="true"><u style="--c:var(--coral)"></u><u style="--c:var(--green)"></u><u style="--c:var(--violet)"></u><u style="--c:var(--gold)"></u><u style="--c:var(--teal)"></u><u style="--c:var(--blue)"></u></span>
+        <span class="plan-ppl"><u style="--c:var(--violet)"></u><u style="--c:var(--violet)"></u><u style="--c:var(--violet)"></u><u style="--c:var(--violet)"></u><u style="--c:var(--violet)"></u><u style="--c:var(--violet)"></u><em>{{pricing.famille.who}}</em></span>
         <span class="plan-name">{{pricing.famille.name}}</span>
-        <span class="plan-who">{{pricing.famille.who}}</span>
         <span class="plan-price"><b data-price="famille">{{p.web.month.famille}}</b><small data-unit>{{pricing.perMonthShort}}</small></span>
         <span class="plan-blurb">{{pricing.famille.blurb}}</span>
-        <span data-equiv="famille" hidden></span><span data-store="famille" hidden></span>
+        <span class="plan-store" data-store="famille"></span><span data-equiv="famille" hidden></span>
       </button>
       <!-- the fourth card is not a plan: on your own computer, free; it opens the install below -->
       <button type="button" class="plan-free way-open" aria-expanded="false" aria-controls="panel-self">
+        <span class="plan-ppl"><em>{{pricing.free.kicker}}</em></span>
         <span class="plan-name">{{pricing.free.name}}</span>
-        <span class="plan-who">{{pricing.free.who}}</span>
         <span class="plan-price"><b>{{pricing.ways.selfPrice}}</b></span>
         <span class="plan-blurb">{{pricing.free.blurb}}</span>
         <span class="plan-more">{{pricing.ways.selfCta}}<i aria-hidden="true"></i></span>
@@ -56,7 +55,7 @@
     <p hidden><span class="sum-plan"></span><span class="sum-price"></span><span class="sum-unit"></span><span class="save"></span></p>
     <!-- the checkout's button once it is open; until then the beta's button is the one in the strip above -->
     <div class="price-act">{{homebuy}}</div>
-    <p class="price-note">{{pricing.line}}</p>
+    <p class="price-note">{{pricing.line}} <span class="fine-tax">{{pricing.fineTax}}</span> {{pricing.yearNote}}</p>
   </div>
   <span class="mode-anchor" id="install"></span>
   <div class="self-panel" id="panel-self" role="region" aria-label="{{pricing.ways.selfTitle}}" hidden>
@@ -119,7 +118,14 @@
 
 </section>
 
-<div class="sticky-buy" aria-hidden="true">
-  <span class="sb-copy"><b class="sb-plan">{{beta.sticky}}</b><span class="sb-price">{{beta.stickySub}}</span></span>
-  <a class="pill pill-buy small top-cta" href="{{betahref}}" tabindex="-1"><span class="cta-long">{{nav.cta}}</span><span class="cta-short">{{nav.ctaShort}}</span></a>
+<!-- ============================================================ READY? and the team one picked: a bar that stays
+     at the bottom of the screen once past the first screen, and rests here at the end (site.js fills both). -->
+<section class="sec end" aria-labelledby="end-h">
+  <h2 class="reveal" id="end-h">{{end.title}}</h2>
+  <p class="end-line reveal" data-end data-one="{{end.one}}" data-many="{{end.many}}" data-none="{{end.none}}" data-and="{{end.and}}">{{end.none}}</p>
+</section>
+<div class="dock" data-dock data-one="{{dock.one}}" data-many="{{dock.many}}" data-none="{{dock.none}}">
+  <p class="dock-label"><b>{{dock.label}}</b><small data-dock-n>{{dock.none}}</small></p>
+  <div class="dock-bench" data-bench aria-live="polite"></div>
+  <a class="pill pill-buy small" href="{{betahref}}">{{nav.cta}} <span aria-hidden="true">→</span></a>
 </div>
