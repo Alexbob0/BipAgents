@@ -1,7 +1,17 @@
 {{>top}}
-<!-- ============================================================ DEMO (the app's own demo scenarios) -->
-<section class="section page-section demo-section" id="demo">
-{{>demoapp}}
+<!-- ============================================================ DEMO: the real app, recorded on an iPhone playing its own
+     demo (App/Resources/Demo/demo.json), one short clip per Bip of the home's « Build your team » (build.py CLIPS,
+     /demo/#<scenario>), in the page's language. Each clip plays while in view; with reduced motion, its poster and a
+     play button (site.js). -->
+<section class="section page-section demo-section" id="demo" aria-labelledby="demo-h">
+  <div class="demo-head reveal">
+    <p class="kicker">{{demo.kicker}}</p>
+    <h1 class="page-h1" id="demo-h">{{demo.title}}</h1>
+    <p class="sub">{{demo.sub}}</p>
+  </div>
+  <div class="clips" data-clips data-play="{{demo.play}}" data-pause="{{demo.pause}}">
+{{democlips}}
+  </div>
 </section>
 
 <!-- ============================================================ TO THE PRICES -->
@@ -12,7 +22,7 @@
     <p class="sub">{{hero.price}}</p>
     <div class="cta-row center">
       <a class="pill pill-buy" href="{{betahref}}">{{nav.cta}} <span aria-hidden="true">→</span></a>
-      <a class="pill pill-soft" href="{{home}}#results">{{nav.features}}</a>
+      <a class="pill pill-soft" href="{{home}}#bips">{{nav.features}}</a>
     </div>
   </div>
 </section>

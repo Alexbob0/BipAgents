@@ -375,84 +375,13 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
 .section-head.left { text-align: left; margin: 0 0 40px; }
 .kicker { font-size: 14px; font-weight: 1000; letter-spacing: .12em; text-transform: uppercase; color: var(--coral-deep); margin-bottom: 14px; }
 .sub { font-size: clamp(18px, 1.5vw, 20px); color: var(--ink2); margin-top: 18px; line-height: 1.55; }
-.checks { list-style: none; padding: 0; margin: 28px 0 0; display: grid; gap: 12px; }
-.checks li { display: flex; gap: 12px; font-weight: 800; color: var(--ink2); }
-.checks li::before { content: "✓"; flex: 0 0 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 14px;
-  background: var(--green-tint); color: var(--green-deep); font-weight: 1000; }
 
 .reveal { opacity: 0; transform: translateY(28px); transition: opacity .8s ease, transform .9s cubic-bezier(.2, .9, .2, 1); }
 .reveal.in { opacity: 1; transform: none; }
 @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } }
 
-/* -- Demo chat ------------------------------------------------------------------------------------------------- */
-.demo-grid { display: grid; gap: 50px; align-items: center; }
-@media (min-width: 1000px) { .demo-grid { grid-template-columns: .9fr 1.1fr; gap: 70px; } }
-.tabs { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 30px; }
-.tab {
-  display: inline-flex; align-items: center; gap: 8px; height: 50px; padding: 0 18px 0 8px; border-radius: 999px; border: 0; cursor: pointer;
-  font: inherit; font-weight: 900; font-size: 15px; background: var(--card); color: var(--ink2); box-shadow: inset 0 0 0 1.5px var(--line);
-}
-.tab.active { background: var(--ink); color: var(--ground); box-shadow: none; }
-.tab-bip { width: 36px; height: 36px; }
-.tab-bip svg { width: 100%; height: 100%; }
-.chat-wrap { position: relative; }
-.chat-wrap::before { content: ""; position: absolute; inset: 8% -6% -6% 10%; border-radius: 40px; background: var(--chat-tint, var(--coral-tint)); z-index: -1; transform: rotate(3deg); transition: background .5s; }
-.chat {
-  border-radius: 34px; background: var(--ground); box-shadow: var(--shadow-big); overflow: hidden; height: 640px; display: flex; flex-direction: column;
-  border: 1px solid var(--line);
-}
-.chat-head { display: flex; align-items: center; gap: 10px; padding: 16px 18px; background: var(--card); border-bottom: 1px solid var(--line); }
-.chat-avatar { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: var(--chat-tint, var(--coral-tint)); }
-.chat-avatar svg { width: 36px; height: 36px; }
-.chat-title { display: grid; line-height: 1.25; }
-.chat-head small { color: var(--muted); font-size: 13px; font-weight: 700; }
-.ai { font-size: 10px; font-weight: 1000; padding: 2px 6px; border-radius: 6px; background: var(--chat-tint, var(--coral-tint)); color: var(--chat-deep, var(--coral-deep)); vertical-align: 2px; }
-.replay { margin-left: auto; width: 38px; height: 38px; border-radius: 50%; border: 0; background: var(--ground2); color: var(--ink); font-size: 18px; font-weight: 900; cursor: pointer; }
-.chat-body { flex: 1; overflow: hidden; padding: 18px 16px; display: flex; flex-direction: column; gap: 10px; }
-/* the thread starts at the top of the phone (nothing empty above it); what no longer fits leaves at the top */
-.chat-input { margin: 0 14px 14px; height: 48px; border-radius: 24px; background: var(--card); display: flex; align-items: center; padding: 0 6px 0 18px; color: var(--muted); font-size: 15px; box-shadow: inset 0 0 0 1px var(--line); }
-.chat-input .mic { margin-left: auto; width: 36px; height: 36px; border-radius: 50%; background: var(--chat-main, var(--coral)); }
 .msg { max-width: 86%; animation: pop-in .45s cubic-bezier(.25, 1.4, .4, 1) both; font-size: 15.5px; line-height: 1.45; }
 @keyframes pop-in { from { opacity: 0; transform: translateY(12px) scale(.96); } }
-.msg.you { align-self: flex-end; background: var(--ink); color: var(--ground); padding: 10px 16px; border-radius: 22px 22px 6px 22px; font-weight: 700; }
-.msg.bot { align-self: flex-start; display: flex; gap: 9px; }
-.msg.bot .av { flex: 0 0 30px; height: 30px; border-radius: 50%; background: var(--chat-tint, var(--coral-tint)); display: grid; place-items: center; margin-top: 2px; }
-.msg.bot .av svg { width: 26px; height: 26px; }
-.msg.bot .txt { color: var(--ink); font-weight: 600; }
-.msg.bot .txt b { font-weight: 900; }
-.tool { align-self: flex-start; display: flex; align-items: center; gap: 10px; padding: 9px 14px 9px 10px; border-radius: 16px; background: var(--card); box-shadow: inset 0 0 0 1px var(--line); font-size: 14px; max-width: 92%; animation: pop-in .4s both; }
-.tool .ic { flex: 0 0 28px; height: 28px; border-radius: 9px; display: grid; place-items: center; font-size: 15px; background: var(--ground2); }
-.tool b { font-weight: 900; font-size: 13px; color: var(--ink2); display: block; line-height: 1.2; }
-.tool span { color: var(--muted); font-weight: 700; font-size: 13px; }
-.tool .st { margin-left: 4px; width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid var(--line); border-top-color: var(--chat-main, var(--coral)); animation: spin .8s linear infinite; flex: 0 0 18px; }
-.tool.done .st { animation: none; border: 0; background: var(--green); position: relative; }
-.tool.done .st::after { content: "✓"; position: absolute; inset: 0; display: grid; place-items: center; color: var(--on-pale); font-size: 11px; font-weight: 1000; }
-@keyframes spin { to { transform: rotate(360deg); } }
-/* The working line while the agent works (the apps' WorkingLine): its Bip and what it does now, a light sweeping
-   across the words, the Bip thinking or busy; nothing of the work stays under the reply (as in the app). */
-.working { align-self: flex-start; display: flex; align-items: center; gap: 8px; max-width: 92%; font-size: 14px; font-weight: 700; color: var(--muted); animation: pop-in .3s both; }
-.working .av { flex: 0 0 24px; height: 24px; display: grid; place-items: center; }
-.working .av svg { width: 24px; height: 24px; overflow: visible; }
-.working .el { flex: none; font-size: 13px; font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
-.working .el:empty { display: none; }
-.working .ph { background: linear-gradient(100deg, var(--muted) 35%, var(--ink) 50%, var(--muted) 65%) 0 0 / 300% 100%;
-  -webkit-background-clip: text; background-clip: text; color: transparent; animation: sweep 1.8s linear infinite; }
-@keyframes sweep { from { background-position: 100% 0; } to { background-position: 0 0; } }
-@media (prefers-reduced-motion: reduce) { .working, .working .ph { animation: none; } .working .ph { color: var(--muted); background: none; } }
-.card-q, .card-a { align-self: stretch; border-radius: 22px; background: var(--card); box-shadow: var(--shadow); padding: 16px; animation: pop-in .45s both; }
-.card-q p, .card-a p { font-weight: 900; margin-bottom: 12px; }
-.card-q .opts { display: grid; gap: 8px; }
-.card-q .opt { padding: 11px 14px; border-radius: 14px; background: var(--ground2); font-weight: 800; font-size: 14.5px; transition: background .3s, color .3s, transform .3s; }
-.card-q .opt.chosen { background: var(--chat-main, var(--coral)); color: var(--on-pale); transform: scale(1.02); }
-.card-a { border: 2px solid var(--chat-main, var(--coral)); }
-.card-a code { display: block; white-space: pre-wrap; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; background: var(--ground2); padding: 10px 12px; border-radius: 12px; margin-bottom: 12px; color: var(--ink2); }
-.card-a .btns { display: flex; gap: 8px; flex-wrap: wrap; }
-.card-a .btns span { flex: 1; text-align: center; padding: 10px 8px; border-radius: 999px; font-weight: 900; font-size: 13.5px; background: var(--ground2); transition: all .3s; white-space: nowrap; }
-.card-a .btns span.chosen { background: var(--ink); color: var(--ground); transform: scale(1.04); }
-.typing { align-self: flex-start; display: flex; gap: 5px; padding: 12px 16px; border-radius: 18px; background: var(--card); box-shadow: inset 0 0 0 1px var(--line); }
-.typing i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); animation: dot 1.2s infinite; }
-.typing i:nth-child(2) { animation-delay: .15s; } .typing i:nth-child(3) { animation-delay: .3s; }
-@keyframes dot { 30% { transform: translateY(-5px); opacity: .5; } }
 
 /* -- Install --------------------------------------------------------------------------------------------------- */
 .windows { max-width: 940px; margin: 16px auto 0; color: var(--ink2); font-size: 15px; text-align: center; }
@@ -492,7 +421,7 @@ h1 { font-size: clamp(38px, 4.7vw, 70px); line-height: 1; letter-spacing: -.04em
 .foot-fine { margin-top: 40px; color: var(--muted); font-size: 13.5px; font-weight: 700; line-height: 1.6; }
 
 /* ================================================================================================================
-   Selling the offer: buy buttons, store badges, the day with the Bips, the pages in the chat, the plan picker.
+   Selling the offer: buy buttons, store badges, the day with the Bips, the plan picker.
    ================================================================================================================ */
 mark.todo { background: #FFE58A; color: #5A4300; border-radius: 4px; padding: 0 3px; font-weight: 900; }
 
@@ -511,27 +440,6 @@ a.store:hover { transform: translateY(-2px); }
 .progress i { display: block; height: 100%; transform-origin: left; transform: scaleX(0);
   background: linear-gradient(90deg, var(--coral), var(--gold), var(--green), var(--teal), var(--violet)); }
 
-/* -- Pages in the chat: the walk's map, the page kit's page ------------------------------------------------------ */
-.page-card { align-self: stretch; margin-left: 39px; border-radius: 20px; background: var(--card); box-shadow: var(--shadow); padding: 12px; animation: pop-in .5s both; flex: none; }
-.pc-title { font-weight: 1000; font-size: 16px; }
-.pc-sub, .pc-src { font-size: 12.5px; color: var(--muted); font-weight: 700; }
-.pc-tip { font-size: 13px; font-weight: 700; color: var(--ink2); margin-top: 8px; }
-.map { position: relative; margin-top: 8px; border-radius: 14px; overflow: hidden; aspect-ratio: 3 / 2; background: var(--ground2); }
-.map img { width: 100%; height: 100%; object-fit: cover; }
-.pin { position: absolute; width: 30px; height: 30px; translate: -50% -50%; border-radius: 50%; border: 0; background: transparent; cursor: pointer; padding: 0; }
-.pin::after { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 3px solid var(--c); opacity: 0; transform: scale(.6); }
-.pin.on::after { animation: ping 1.4s ease-out infinite; }
-@keyframes ping { 0% { opacity: .9; transform: scale(.6); } 100% { opacity: 0; transform: scale(1.8); } }
-.stops { list-style: none; padding: 0; margin: 8px 0 0; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }
-.stops li { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 800; cursor: pointer; border-radius: 8px; padding: 2px 4px; }
-.stops li.on { background: var(--ground2); }
-.stops i { flex: none; width: 18px; height: 18px; border-radius: 50%; background: var(--c); color: #fff; font-style: normal; font-size: 11px; display: grid; place-items: center; font-weight: 1000; }
-.kit-card { padding: 0; overflow: hidden; }
-.frame { height: 330px; overflow: hidden; }
-.frame iframe { width: 100%; height: 100%; border: 0; display: block; background: #F3F4F7; }
-.pc-open { display: block; padding: 10px 14px; font-size: 13px; font-weight: 900; text-decoration: none; color: var(--chat-deep, var(--coral-deep)); border-top: 1px solid var(--line); }
-.chat { height: 680px; }
-@media (max-width: 520px) { .chat { height: 620px; } .page-card { margin-left: 0; } .frame { height: 300px; } }
 
 /* -- Pricing ---------------------------------------------------------------------------------------------------- */
 .pricing-section { position: relative; }
@@ -670,6 +578,28 @@ a.store:hover { transform: translateY(-2px); }
 .page-section { padding-top: 48px; }
 @media (min-width: 900px) { .page-section { padding-top: 72px; } }
 .page-h1 { font-size: clamp(34px, 5vw, 60px); line-height: 1.02; letter-spacing: -.035em; margin: 0; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* the demo: the real app, filmed, each clip in a plain phone (no brand's device), its Bip and what happens under it */
+.demo-head { max-width: 760px; }
+/* three on a row at most, the last ones centred */
+.clips { display: flex; flex-wrap: wrap; justify-content: center; gap: 56px clamp(24px, 4vw, 56px); margin-top: 48px; }
+.clip { margin: 0; flex: 0 1 300px; min-width: 0; display: grid; justify-items: center; align-content: start; gap: 22px; scroll-margin-top: calc(var(--top-h, 67px) + 20px); }
+.clip-phone { position: relative; isolation: isolate; width: min(270px, 100%); padding: 8px; border-radius: 44px; background: #1D1F24;
+  box-shadow: 0 30px 60px -34px rgba(29, 31, 36, .55), inset 0 0 0 2px #3A3D45; }
+.clip-phone::before { content: ""; position: absolute; inset: 9% -9% 5% 12%; z-index: -1; border-radius: 40px; background: var(--tint, var(--coral-tint)); transform: rotate(3deg); }
+.clip video { display: block; width: 100%; height: auto; border-radius: 36px; background: var(--ground); }
+/* play / pause: on the frame's edge, outside the screen, so it never reads as part of the app */
+.clip-play { position: absolute; right: -16px; bottom: 76px; width: 44px; height: 44px; border: 0; border-radius: 50%; cursor: pointer;
+  background: var(--card); box-shadow: var(--shadow-big), 0 0 0 1px var(--line); display: grid; place-items: center; }
+.clip-play::before { content: ""; margin-left: 4px; border-style: solid; border-width: 8px 0 8px 13px; border-color: transparent transparent transparent var(--ink); }
+.clip.playing .clip-play::before { margin: 0; width: 13px; height: 15px; border: 0; border-left: 4px solid var(--ink); border-right: 4px solid var(--ink); }
+.clip-play:focus-visible { outline: 3px solid var(--blue-deep); outline-offset: 3px; }
+.clip figcaption { position: relative; display: grid; grid-template-columns: 44px minmax(0, 1fr); column-gap: 12px; row-gap: 2px; max-width: 330px; width: 100%; }
+.clip figcaption i { grid-row: span 2; width: 44px; height: 44px; } .clip figcaption svg { width: 100%; height: 100%; display: block; }
+.clip figcaption span { font-weight: 800; font-size: 17px; line-height: 1.3; }
+.clip figcaption b { font-weight: 1000; }
+.clip figcaption small { font-size: 15px; line-height: 1.45; color: var(--ink2); font-weight: 700; }
+@media (prefers-color-scheme: dark) { .clip-phone { box-shadow: 0 30px 60px -34px rgba(0, 0, 0, .8), inset 0 0 0 2px #4A4E58; } }
 .install-more { max-width: 940px; margin: 26px auto 0; text-align: center; font-weight: 800; color: var(--ink2); }
 .install-more a { color: var(--ink); font-weight: 1000; }
 .page-cta { padding-bottom: 96px; }
@@ -780,28 +710,11 @@ html[data-region]:not([data-region="eu"]) [data-only="eu"] { display: none !impo
   .band-go { display: none; }
 }
 
-/* -- The home: the demo's window (the phone's chat moves into it), the end ----------------------------------------- */
-html:has(.v-demo[open]) { overflow: hidden; }
-.v-demo { width: min(1180px, calc(100% - 32px)); max-height: calc(100svh - 32px); padding: 0; border: 0; border-radius: 34px;
-  background: var(--ground); color: var(--ink); box-shadow: 0 40px 120px -30px rgba(0, 0, 0, .55); overflow: auto; overscroll-behavior: contain; }
-.v-demo::backdrop { background: rgba(24, 15, 18, .62); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
-.v-demo[open] { animation: v-pop .35s cubic-bezier(.2, .9, .3, 1.1); }
+/* -- The home: a window's close button (« See the details »), the end ------------------------------------------- */
 @keyframes v-pop { from { opacity: 0; transform: translateY(18px) scale(.97); } }
-.v-demo-in { padding: 40px 36px 36px; }
-.v-demo .reveal { opacity: 1; transform: none; }
-.v-demo .demo-grid { gap: 36px; }
-.v-demo .page-h1 { font-size: clamp(30px, 3.4vw, 46px); }
-.v-demo .chat { height: min(640px, calc(100svh - 120px)); }
 .v-demo-close { position: sticky; top: 14px; float: right; margin: 14px 14px -58px 0; z-index: 3; width: 44px; height: 44px; border-radius: 50%;
   border: 0; background: var(--ink); color: var(--ground); font: inherit; font-size: 26px; font-weight: 900; line-height: 1; cursor: pointer; }
-@media (max-width: 640px) {
-  .v-demo { width: 100%; max-width: 100%; height: 100%; max-height: 100%; border-radius: 0; margin: 0; }
-  .v-demo-in { padding: 22px 16px 24px; }
-  .v-demo .chat { height: 560px; }
-}
-@media (prefers-reduced-motion: reduce) { .v-demo[open] { animation: none; } }
 
-.v-demo-slot { min-width: 0; }
 .v-end .section-head { margin-bottom: 26px; }
 .v-self { text-align: center; margin-top: 22px; font-weight: 800; color: var(--ink2); }
 .v-self a { color: var(--ink); font-weight: 1000; }
@@ -812,61 +725,8 @@ html:has(.v-demo[open]) { overflow: hidden; }
 .way-open i { width: 7px; height: 7px; border-right: 2.5px solid currentColor; border-bottom: 2.5px solid currentColor; transform: translateY(-2px) rotate(45deg); transition: transform .25s; }
 .way-open[aria-expanded="true"] i { transform: translateY(2px) rotate(-135deg); }
 @keyframes v-bob { 50% { translate: 0 -8px; } }
-@keyframes vb-notif { 0%, 48% { opacity: 0; transform: translateY(-10px); } 56%, 92% { opacity: 1; transform: none; } 100% { opacity: 0; } }
 
-/* -- The tour: one section, a phone, three tabs (the demo plays in the phone) --------------------------------------- */
-.vc-sec { position: relative; }
-.vc-grid { display: grid; gap: 28px; max-width: 1120px; margin: 0 auto; align-items: start; }
-.vc-side, .vc-phone-wrap { min-width: 0; }
-@media (min-width: 960px) { .vc-grid { grid-template-columns: minmax(0, 1fr) 380px; gap: 64px; } }
-/* a phone: the tabs, the screen, then the words */
-@media (max-width: 959px) {
-  .vc-grid { gap: 0; }
-  .vc-side { display: contents; }
-  .vc-tabs { order: 1; } .vc-phone-wrap { order: 2; margin-top: 22px; } .vc-panel { order: 3; }
-}
-.vc-tabs { display: flex; gap: 6px; padding: 6px; border-radius: 999px; background: var(--ground2); overflow-x: auto; scrollbar-width: none; }
-.vc-tabs::-webkit-scrollbar { display: none; }
-.vc-tab { flex: 1 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 46px; padding: 0 16px; border: 0;
-  border-radius: 999px; background: none; color: var(--ink2); font: inherit; font-weight: 900; font-size: 15px; cursor: pointer; white-space: nowrap; }
-.vc-tab i { font-style: normal; }
-.vc-tab:hover { color: var(--ink); background: var(--card); }
-.vc-tab[aria-selected="true"] { background: var(--ink); color: var(--ground); }
-@media (max-width: 959px) { .vc-tabs { position: sticky; top: calc(var(--top-h, 67px) + 8px); z-index: 20; box-shadow: 0 8px 20px -14px rgba(0, 0, 0, .3); } }
-@media (max-width: 520px) { .vc-tab { padding: 0 12px; font-size: 14px; } .vc-tab i { display: none; } }
-.vc-panel { margin-top: 28px; animation: pop-in .4s ease-out both; }
-.vc-panel[hidden], .vc-screen[hidden] { display: none; }
-.vc-h { font-size: clamp(26px, 2.8vw, 36px); line-height: 1.1; letter-spacing: -.025em; }
-.vc-sub { margin-top: 12px; color: var(--ink2); font-weight: 700; font-size: 17px; line-height: 1.5; }
-.vc-panel .tabs { margin-top: 16px; gap: 8px; }
-.vc-panel .tab { height: 44px; font-size: 14px; padding: 0 14px 0 6px; }
-.vc-panel .tab-bip { width: 30px; height: 30px; }
-.vc-panel .checks { margin-top: 20px; }
-.vc-panel .fam-tiles { margin-top: 20px; }
-.vc-panel .fam-tiles h4 { margin: 0 0 2px; font-weight: 1000; }
 
-.vc-phone-wrap { display: flex; justify-content: center; }
-@media (min-width: 960px) { .vc-phone-wrap { position: sticky; top: calc(var(--top-h, 67px) + 24px); } }
-.vc-phone { position: relative; width: min(370px, 100%); height: 720px; border-radius: 52px; padding: 12px; background: #1D1F24;
-  box-shadow: 0 40px 80px -40px rgba(29, 31, 36, .55), inset 0 0 0 2px #3A3D45; }
-.vc-phone::before { content: ""; position: absolute; left: 50%; top: 22px; width: 92px; height: 26px; margin-left: -46px; border-radius: 14px; background: #1D1F24; z-index: 5; }
-.vc-screen { height: 100%; border-radius: 41px; overflow: hidden; background: var(--ground); animation: pop-in .35s ease-out both; }
-@media (max-width: 959px) { .vc-phone { height: auto; } .vc-screen { min-height: 420px; } .vc-s-do .chat { height: 580px; } }
-@media (max-width: 520px) { .vc-phone { border-radius: 46px; } .vc-screen { border-radius: 35px; } }
-  animation: pop-in .45s ease-out both; }
-.vc-s-do.chat-wrap::before { display: none; }
-.vc-s-do .chat { height: 100%; border-radius: 0; box-shadow: none; }
-.vc-s-do .chat-head { padding-top: 48px; }
-.vc-s-nb { overflow: auto; }
-.vc-s-nb .nb-shot { display: block; }
-.vc-s-nb .nbs { width: 100%; min-height: 100%; border-radius: 0; box-shadow: none; padding-top: 52px; }
-.vc-s-fam { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 56px 14px 18px; background: var(--green-tint); }
-.vc-fam-bips { display: flex; }
-.vc-fam-bips i { width: 62px; height: 62px; margin: 0 -6px; animation: v-bob 4s ease-in-out infinite; }
-.vc-fam-bips i:nth-child(2) { animation-delay: -1.3s; } .vc-fam-bips i:nth-child(3) { animation-delay: -2.6s; }
-.vc-fam-bips svg { width: 100%; height: 100%; }
-.vc-s-fam .fam-notif { animation: vb-notif 6s ease-in-out infinite; }
-@media (prefers-reduced-motion: reduce) { .vc-fam-bips i, .vc-s-fam .fam-notif { animation: none; } }
 
 
 /* -- Private, right under the room: the apps' picture (a usual assistant's servers against your space, the same you
@@ -948,37 +808,9 @@ html:has(.pv-detail[open]) { overflow: hidden; }
 
 /* ================================================================================================================
    The home, « less is more » (2026-11-09): one big line, one picture, one action per screen; the rest is behind a
-   link. The first screen says the value and shows the demo already answered; then privacy, the family, the price.
+   link. The first screen says the value; then privacy, the family, the price.
    ================================================================================================================ */
-.first { max-width: 1180px; margin: 0 auto; padding: clamp(14px, 3svh, 44px) 20px 0; display: grid; gap: 18px;
-  grid-template-areas: "text" "tabs" "demo"; justify-items: center; }
-.first-text { grid-area: text; text-align: center; min-width: 0; }
-.first h1 { font-size: clamp(32px, 4.6vw, 62px); line-height: 1.04; margin: 0 0 12px; text-wrap: balance; }
-.first .lede { margin: 0 auto; font-size: clamp(16.5px, 1.6vw, 21px); text-wrap: balance; }
-/* the page's one job: get the app (the beta's page until the stores have it) */
-.first-text .pill { margin-top: 18px; height: 50px; }
 .note-mark { text-decoration: none; color: var(--muted); font-weight: 900; padding: 0 2px; }
-.first-demo { grid-area: demo; min-width: 0; width: 100%; display: grid; justify-items: center; }
-.first .vc-phone { height: auto; }
-.first .vc-screen { min-height: 0; }
-.first .vc-s-do .chat { height: clamp(430px, calc(100svh - 330px), 560px); }
-/* the examples: one quiet row, which slides sideways where it does not fit */
-.first-tabs { grid-area: tabs; margin: 0; flex-wrap: nowrap; gap: 6px; max-width: 100%; overflow-x: auto; padding: 4px 2px;
-  scrollbar-width: none; scroll-snap-type: x proximity; }
-.first-tabs::-webkit-scrollbar { display: none; }
-.first-tabs .tab { flex: none; height: 38px; padding: 0 12px 0 5px; gap: 5px; font-size: 13.5px; scroll-snap-align: start; }
-.first-tabs .tab-bip { width: 24px; height: 24px; }
-@media (min-width: 960px) {
-  .first { grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); grid-template-areas: "text demo" "tabs tabs";
-    column-gap: 56px; row-gap: 20px; align-items: center; min-height: calc(100svh - 68px); padding-bottom: 18px; }
-  .first-text { text-align: left; justify-self: start; }
-  .first .lede { margin: 0; max-width: 520px; }
-  .first-text .pill { margin-top: 26px; height: 58px; }
-  .first .vc-phone { height: clamp(460px, calc(100svh - 210px), 640px); }
-  .first .vc-screen { height: 100%; }
-  .first .vc-s-do .chat { height: 100%; }
-  .first-tabs { justify-self: center; }
-}
 
 /* a screen: its headline, one line, its picture */
 .screen { max-width: 1080px; margin: 0 auto; padding: clamp(88px, 13vw, 168px) 20px 0; text-align: center; }
@@ -1142,9 +974,11 @@ html:has(.pv-detail[open]) { overflow: hidden; }
 .rule-list i { grid-row: span 2; width: 48px; height: 48px; border-radius: 15px; display: grid; place-items: center; background: var(--c); color: var(--on-pale); font-style: normal; font-weight: 1000; font-size: 24px; }
 .rule-list b { font-size: clamp(20px, 1.8vw, 23px); font-weight: 1000; letter-spacing: -.02em; line-height: 1.18; }
 .rule-list span { margin-top: 3px; font-size: 16px; line-height: 1.4; color: var(--ink2); }
-.rule-list .rule-limit { background: var(--gold-tint); box-shadow: none; outline: 2px dashed color-mix(in srgb, var(--gold-deep) 45%, transparent); outline-offset: -2px; }
-.rule-limit i { background: var(--card); color: var(--ink); box-shadow: var(--shadow); }
 .rules-side .more { margin: 18px 0 0 6px; }
+/* under « Build your team », a quiet link to the demo page */
+.pick-demo { margin-top: 18px; text-align: center; }
+.pick-demo .more { margin-top: 0; font-size: 16px; font-weight: 800; color: var(--ink2); }
+.pick-demo .more:hover { color: var(--ink); }
 @media (min-width: 900px) {
   .rules { grid-template-columns: minmax(0, 4fr) minmax(0, 7fr); gap: clamp(30px, 4vw, 56px); margin-top: 40px; }
   .house { position: sticky; top: calc(var(--top-h, 67px) + 24px); }
@@ -1220,29 +1054,12 @@ body[data-checkout="off"] .sec .plan::after { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .dock { transition: none; } .dock-bench i { animation: none; } }
 
-/* the family's phone: its three examples above it, the chat already answered */
-.fam-tabs { margin: 34px 0 0; justify-content: center; gap: 8px; }
-.fam-tabs .tab { height: 44px; padding: 0 16px 0 6px; font-size: 15px; }
-.fam-tabs .tab-bip { width: 30px; height: 30px; }
-.fam-demo { margin-top: 26px; display: grid; justify-items: center; text-align: left; }
-.fam .vc-phone { height: auto; }
-.fam .vc-screen { min-height: 0; }
-.fam .vc-s-do .chat { height: clamp(520px, 80svh, 680px); }
-/* in a phone on the home, a page the agent made is shorter, so the reply after it stays in view */
-.first .frame, .fam .frame { height: 250px; }
-/* the thread scrolls like a chat (nothing is taken out of it), without a scrollbar drawn in the phone */
-.chat-body { overflow-y: auto; scrollbar-width: none; }
-.chat-body::-webkit-scrollbar { display: none; }
-.chat-body > * { flex-shrink: 0; }
 /* the living room is the first screen again: every Bip's task is written beside it at once on a computer (one
    glance), in turn on a phone, where only two are in view */
 .hero .note-mark { color: rgba(255, 255, 255, .72); }
 @media (min-width: 900px) {
   .hero .salon-stage.live .salon-tag { opacity: 1; transform: translate(-50%, calc(-100% - 10px)) scale(1); }
 }
-/* the demo, now a screen of its own under it */
-.first { padding-top: clamp(64px, 9vw, 120px); }
-.first h2 { font-size: clamp(32px, 4.6vw, 62px); line-height: 1.04; margin: 0; text-wrap: balance; }
 
 /* ---- The first screen, one simple picture (2026-11-09): the promise on the left, four Bips on the right, each with
    the task it just finished above it; an evening ground, nothing else. ---- */

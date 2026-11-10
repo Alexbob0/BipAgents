@@ -72,35 +72,40 @@
     "get": "Laden im"
   },
   "demo": {
-    "kicker": "In Aktion",
+    "kicker": "Die echte App",
     "title": "Du fragst. Er kümmert sich. Du entscheidest.",
-    "sub": "Das ist die Demo der App, unverändert: Dein Agent denkt nach, nutzt seine Werkzeuge, legt eine Karte oder eine Mini-App in seine Antwort und wartet auf dein Okay, bevor er zahlt oder sendet.",
-    "tabs": "Demo-Szenarien",
-    "point1": "Jeder Schritt sichtbar",
-    "point2": "Karten und Mini-Apps direkt in der Antwort",
-    "point3": "Dein Okay, bevor er zahlt oder sendet",
-    "chatSub": "Unterhaltung",
-    "chatLabel": "Die laufende Demo",
-    "replay": "Nochmal",
-    "placeholder": "Nachricht …",
-    "open": "Öffnen",
+    "sub": "Auf einem iPhone gefilmt: Die App spielt ihre eingebaute Demo, mit Beispiel-Agenten und denselben Bildschirmen wie bei dir. Nichts wird gesendet.",
+    "play": "Abspielen",
+    "pause": "Pausieren",
     "ctaTitle": "Deine Bips, ganz echt.",
-    "work": "Arbeitsdetails",
-    "tab1": "E-Mails",
-    "tab2": "Termine",
-    "tab3": "Mein Budget",
-    "tab4": "Abos",
-    "tab5": "Abendessen",
-    "tab6": "Unterlagen",
-    "tab7": "Bester Preis",
-    "tab8": "Reisen",
-    "tab9": "Schlaf",
-    "tab10": "Mein Morgen"
+    "book_table": {
+      "title": "reserviert einen Tisch",
+      "cap": "Drei Restaurants mit freien Tischen: Du wählst, er fragt, bevor er in deinem Namen reserviert.",
+      "alt": "Bildschirmaufnahme der App. Du schreibst „Reservier einen Tisch für Freitagabend“. Der Agent Alltag öffnet eine Reservierungsseite mit drei italienischen Restaurants mit freien Tischen und fragt, welches er reservieren soll. Da Vinci um 20 Uhr wird gewählt. Eine Karte bittet um dein OK, die Reservierung in deinem Namen zu senden, und es wird gegeben. Der Agent antwortet, dass Da Vinci für Freitag, für 2, reserviert und in deinem Kalender eingetragen ist."
+    },
+    "sleep_week": {
+      "title": "fasst deine Schlafwoche zusammen",
+      "cap": "Er liest deine Schlafdaten, zeichnet die Grafik und schlägt eine Sache für heute Abend vor.",
+      "alt": "Bildschirmaufnahme der App. Du fragst „Wie habe ich diese Woche geschlafen?“. Der Agent Coach liest deine letzten 7 Nächte und zeigt die Grafik der Woche. Er antwortet: im Schnitt 7 h 12, 25 Minuten mehr als letzte Woche; in den Nächten, in denen du nach Mitternacht ins Bett gehst, verlierst du über eine Stunde Schlaf; heute Bildschirm aus um 22:30?"
+    },
+    "subscriptions": {
+      "title": "kündigt vergessene Abos",
+      "cap": "Er findet zwei, die du nicht mehr öffnest, du wählst, und nichts geht ohne dein OK raus.",
+      "alt": "Bildschirmaufnahme der App. Du schreibst „Kündige die Abos, die ich nicht nutze“. Der Agent Budget findet CinePlus (13,99 € im Monat, seit Juli nicht geöffnet) und FitApp Premium (9,99 € im Monat, letztes Training im Juni) und fragt, welche er kündigen soll; beide werden gewählt. Eine Karte bittet um dein OK, die Kündigung in deinem Namen zu senden, und es wird gegeben. Der Agent bestätigt beide Kündigungen: bis zu 288 € Ersparnis im Jahr."
+    },
+    "dinner": {
+      "title": "findet das Abendessen",
+      "cap": "Mit dem, was noch im Kühlschrank ist: ein Rezept in 20 Minuten und was für die Liste fehlt.",
+      "alt": "Bildschirmaufnahme der App. Du fragst „Was essen wir heute Abend?“. Der Agent Zuhause schaut, was vom Einkauf am Dienstag übrig ist, sucht ein schnelles Rezept und schlägt Pasta mit Zucchini, Feta und Zitrone für 4 vor, in 20 Minuten, mit den drei Schritten. Es fehlen nur Basilikum und Parmesan: Er bietet an, sie auf die Einkaufsliste zu setzen."
+    },
+    "weekend_lisbon": {
+      "title": "plant ein Wochenende mit Freunden",
+      "cap": "Mit drei Freunden geteilt: Sie stimmen über ihren Link auf seinen Karten ab, erst übers Datum, dann über die Wohnung.",
+      "alt": "Bildschirmaufnahme der App. Ein Agent, geteilt mit drei Freunden: Léa, Sam und Inès. Du schreibst „Lissabon mit Léa, Sam und Inès: lass uns abstimmen“. Der Agent postet eine Abstimmungskarte „Welches Wochenende?“; die Stimmen der Freunde kommen an, und das Wochenende vom 21. November gewinnt. Er sucht Wohnungen und startet eine zweite Abstimmung: Alfama, Terrasse, 92 € pro Nacht, oder Bairro Alto, Dachterrasse, 105 € pro Nacht, und die Stimmen kommen an."
+    }
   },
-  "ai": "KI",
   "control": {
     "once": "Einmal",
-    "session": "Diese Sitzung",
     "deny": "Ablehnen"
   },
   "private": {
@@ -389,7 +394,7 @@
   "page": {
     "demo": {
       "title": "Die Demo — BipAgents",
-      "description": "Die Demo der App BipAgents, unverändert: vier Szenarien, in denen dein Agent nachdenkt, seine Werkzeuge nutzt und auf dein Okay wartet, bevor es ernst wird."
+      "description": "Die BipAgents-App, auf einem Handy gefilmt, mit ihrer eigenen Demo: fünf kurze Beispiele, in denen deine Bips suchen, vorschlagen und auf dein OK warten."
     },
     "faq": {
       "title": "Fragen — BipAgents",
@@ -485,12 +490,7 @@
       "at": "Bei Sam",
       "notif": "Camille: Die Schule hat angerufen: Léa hat Fieber, ich hole sie ab."
     },
-    "line": "Teile einen mit deiner Familie, Freunden oder anderen Eltern, nur wenn du es willst. Sie folgen kostenlos.",
-    "tab1": "Die Woche",
-    "tab2": "Das Geld",
-    "tab3": "Der Einkauf",
-    "tabs": "Die Beispiele der Familie",
-    "tab4": "Andere Eltern"
+    "line": "Teile einen mit deiner Familie, Freunden oder anderen Eltern, nur wenn du es willst. Sie folgen kostenlos."
   },
   "pick": {
     "title": "Stell dein Team zusammen.",
@@ -501,7 +501,8 @@
     "add": "Ins Team holen",
     "added": "Im Team",
     "see": "In Aktion ansehen",
-    "roster": "Die Bips"
+    "roster": "Die Bips",
+    "demo": "Die App in Aktion sehen"
   },
   "bips": {
     "daily": {
@@ -622,16 +623,14 @@
     "alt": "Dein Bereich: ein Haus, in dem deine Bips wohnen, unter der Europaflagge.",
     "r1t": "Sie fragen, bevor sie zahlen oder senden.",
     "r1": "Eine Reservierung, eine Mail, eine Kündigung: Sie warten auf dein Ja.",
-    "r2t": "Niemand liest ihnen über die Schulter.",
+    "r2t": "Wir lesen ihnen nicht über die Schulter.",
     "r2": "Kerfy Studio liest deinen Bereich nicht und trainiert keine KI damit.",
     "r3t": "Keine Werbung, kein Tracking.",
     "r3": "Weder in der App noch auf dieser Website: keine Cookies, keine Tracker.",
     "r4t": "Die KI läuft in Europa.",
     "r4": "Sie erhält nur, was dein Agent ihr schickt, über EUrouter, einen europäischen KI-Router. Die Hersteller des Modells erhalten deine Nachrichten nie.",
     "r5t": "Alles gehört dir.",
-    "r5": "Du gehst, wann du willst, mit deinen Agenten, ihrem Gedächtnis und deinem Notizbuch.",
-    "r6t": "Und was wir nicht versprechen können.",
-    "r6": "Wie bei jedem gemieteten Server könnten der Hoster und wir technisch hinein. Unsere Software tut es nicht, und wir täten es nur, wenn das Gesetz es verlangt."
+    "r5": "Du gehst, wann du willst, mit deinen Agenten, ihrem Gedächtnis und deinem Notizbuch."
   },
   "dock": {
     "label": "Dein Team",
@@ -647,12 +646,7 @@
     "and": "und"
   },
   "home": {
-    "tour": "Schau dich um.",
-    "pick": "Was du sehen willst",
-    "doPick": "Wähl ein Beispiel:",
-    "friends": "Unter Freunden",
     "close": "Schließen",
-    "dialog": "Die Demo der App",
     "self": "Oder auf deinem Computer:"
   },
   "compare": {

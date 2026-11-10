@@ -1,16 +1,12 @@
 // bipagents.com: « See more » on privacy, the agents' cards, the comparison, the
-// two ways and the plan picker; on their own pages, the agent at work (the app's own demo scenarios, with its map and its pages) and the
-// install. One script for every page: each part runs where its elements are. No framework, no network but this site.
-import { Bip, CATEGORIES, REDUCED, iconSVG, nextEpisode, pixelSVG, staticBip, thinkingNow, thinkingVariant } from "./bips.js";
+// two ways and the plan picker; on their own pages, the demo's clips (the real app, recorded) and the install. One
+// script for every page: each part runs where its elements are. No framework, no network but this site.
+import { Bip, REDUCED, iconSVG, staticBip } from "./bips.js";
 
 const data = JSON.parse(document.getElementById("site-data").textContent);
 const $ = (s, root = document) => root.querySelector(s);
 const $$ = (s, root = document) => [...root.querySelectorAll(s)];
-// The demo's pauses: a third of the apps' own pace and never more than half a second, so an example reaches its answer in
-// a few seconds (the example drawn on arrival has none at all: each player's own `pause`).
-const SPEED = 0.3, LONGEST = 500;
-const wait = ms => new Promise(r => setTimeout(r, REDUCED ? Math.min(ms, 120) : Math.min(ms * SPEED, LONGEST)));
-const TONE = { daily: "coral", wellness: "green", finance: "gold", home: "teal", work: "blue", learning: "violet", creative: "pink", tech: "blue" };
+const wait = ms => new Promise(r => setTimeout(r, ms));
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const once = (el, fn, threshold = 0.3) => new IntersectionObserver((entries, io) => {
   if (entries[0].isIntersecting) { io.disconnect(); fn(); }
@@ -48,432 +44,31 @@ const revealer = new IntersectionObserver(entries => {
 }, { threshold: 0.12 });
 $$(".reveal").forEach(el => revealer.observe(el));
 
-// -- An agent at work: the app's demo scenarios, played in a chat --------------------------------------------------
-// Tool rows in plain words, as the apps word them (ToolLabel.swift / ToolLabel.kt; the wording comes from
-// scripts/tool-labels.py): never a tool's own name. The working line under the thread says what the agent does now.
-const TOOLS = data.tools ?? { list: [], words: {}, extra: {} };
-const ANY_KEYS = ["query", "words", "page", "title", "name", "subject", "path", "file", "url", "urls", "target", "agent",
-                  "to", "text", "message", "prompt", "goal", "question", "command", "place", "destination"];
-
-// `mcp__<server>__<tool>` (earlier `mcp_<server>_<tool>`) → the tool's own name.
-function plainTool(tool) {
-  if (tool.startsWith("mcp__")) {
-    const rest = tool.slice(5), cut = rest.indexOf("__");
-    return cut < 0 ? [null, rest] : [rest.slice(0, cut), rest.slice(cut + 2)];
-  }
-  for (const server of ["bipagents_files", "bipagents_pay", "bipagents", "stealth"]) {
-    if (tool.startsWith(`mcp_${server}_`)) return [server, tool.slice(server.length + 5)];
-  }
-  return [null, tool];
-}
-
-// Hermes' `tool_call` wraps the real call: {"calls": [{"name", "arguments"}]}, {"name", "arguments"}, or a label
-// (« Bipagents · notebook note +2 »). The first call stands for the row.
-function unwrapCall(tool, args) {
-  if (tool !== "tool_call" || !args) return [tool, args];
-  try {
-    const json = JSON.parse(args);
-    let calls = json?.calls;
-    if (typeof calls === "string") calls = JSON.parse(calls);
-    if (!calls && json?.name) calls = json;
-    const first = [].concat(calls ?? []).find(c => c && typeof c.name === "string" && c.name.trim());
-    if (first) return [first.name.trim(), first.arguments == null ? null : typeof first.arguments === "string" ? first.arguments : JSON.stringify(first.arguments)];
-  } catch {
-    if (!/^[{[]/.test(args.trim())) {
-      const label = args.trim().replace(/\s+\+\d+$/, "").split(" · ").pop();
-      return [label.toLowerCase().split(/[ -]+/).join("_"), null];
-    }
-  }
-  return [tool, null];
-}
-
-function kindOf(name, server) {
-  name = name.toLowerCase();
-  const row = TOOLS.list.find(k => k.names.includes(name)) ?? TOOLS.list.find(k => k.prefixes.some(p => name.startsWith(p)));
-  if (row) return row;
-  return server === "stealth" || name.includes("browser") ? TOOLS.list.find(k => k.id === "browser") : { id: "unknown", keys: ANY_KEYS };
-}
-
-// One short line: a path's file name, a link without « https://www. », an agent without its place.
-function shown(value, key) {
-  let text = String(value).split(/\r?\n/)[0].trim();
-  if (["path", "file", "file_path", "files", "text_name", "target", "agent"].includes(key)) text = text.split("/").filter(Boolean).pop() ?? text;
-  if (key === "url" || key === "urls") text = text.replace(/^[a-z]+:\/\//, "").replace(/^www\./, "").replace(/\/$/, "");
-  text = text.replace(/\s+/g, " ");
-  if (!text) return null;
-  return text.length > 80 ? text.slice(0, 79) + "…" : text;
-}
-
-// The host of a call's page (WorkingStep.site): its url, any web address, or a bare host.
-function siteIn(args) {
-  const text = (args ?? "").trim();
-  for (const re of [/"urls?"\s*:\s*\[?\s*"(?:[a-zA-Z][a-zA-Z0-9+.-]*:\/\/)?([^/"?#\s:]+)/, /https?:\/\/([^/"?#\s:]+)/,
-                    /^(?:www\.)?([a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+)(?:[/?#]\S*)?$/]) {
-    const m = text.match(re);
-    if (!m) continue;
-    const host = m[1].toLowerCase().replace(/^www\./, "");
-    if (host.includes(".") && !host.endsWith(".") && /[a-z]/.test(host)) return host;
-  }
-  return null;
-}
-
-// A call → { kind, detail, title, site }: the row's first line in words, what it works on.
-function toolLabel(rawTool, rawArgs) {
-  const [tool, args] = unwrapCall(rawTool, rawArgs);
-  const [server, name] = plainTool(tool);
-  const row = kindOf(name, server), kind = row.id;
-  const text = (args ?? "").trim();
-  let detail = null, file = null;
-  if (text && kind === "compute") {
-    // A small program saving a file reads by the file's name (ToolLabel.fileWritten).
-    let code = text;
-    try { code = JSON.parse(text)?.code ?? text; } catch { code = text; }
-    if (/\.save\(|\.to_(?:csv|excel|json|html)\(|savefig\(|\.write\(|open\([^)]*['"][wa]b?['"]/.test(code)) {
-      file = code.match(/['"]([^'"\/\n]*\/)?([^'"\/\n]+\.(?:xlsx|xls|csv|pdf|docx|pptx|odt|ods|png|jpe?g|svg|gif|md|txt|json|html|zip|mp3|wav|ics))['"]/)?.[2] ?? null;
-    }
-  }
-  if (text && kind !== "compute") {
-    let object = null;
-    if (text.startsWith("{")) { try { object = JSON.parse(text); } catch { object = null; } }
-    if (object && typeof object === "object") {
-      for (const key of row.keys) {
-        const v = object[key], value = Array.isArray(v) ? v.find(x => typeof x === "string" && x.trim()) : v;
-        if (typeof value === "string" && (detail = shown(value, key))) break;
-      }
-    } else if (kind === "messageAgent") {
-      // The recipient is worded (« J’écris à Léa… »): a plain preview names it only as a bare handle, never the message.
-      if (/^@?[\p{L}\p{N}_.\-]+(\/[\p{L}\p{N}_.\-@]+)?$/u.test(text)) detail = shown(text.replace(/^@/, ""), "target");
-    } else if (!text.startsWith("{") && !text.startsWith("[")) {
-      detail = shown(text, "");
-    }
-  }
-  const words = TOOLS.words[kind] ?? {};
-  const shownKind = kind === "compute" && file ? "prepareFile" : kind;
-  return { kind: shownKind, detail: detail ?? file, title: words.one ?? TOOLS.words.tool?.one ?? "", site: siteIn(args),
-           target: target(TOOLS.list.find(k => k.id === shownKind) ?? row, text, file),
-           use: (TOOLS.list.find(k => k.id === shownKind) ?? row).use ?? (kind === "unknown" ? TOOLS.lexicon?.unknownUse : null) };
-}
-
-// What the call works on, from its own arguments (WorkingStep.target in the apps): a few readable words, never a
-// link, an address, a key, a path, JSON or a command; ≤ 40 characters.
-function target(row, text, file) {
-  const keys = row.target ?? [];
-  let found = null;
-  if (keys.length && text) {
-    if (text.startsWith("{")) {
-      let object = null;
-      try { object = JSON.parse(text); } catch { object = null; }
-      for (const key of object && typeof object === "object" ? keys : []) {
-        const v = object[key], value = Array.isArray(v) ? v.find(x => typeof x === "string" && x.trim()) : v;
-        if (typeof value === "string" && (found = shown(value, key))) break;
-      }
-    } else if (row.preview && !text.startsWith("[")) {
-      found = shown(text, keys[0]);
-    }
-  }
-  if (!found && row.id === "prepareFile") found = file;
-  if (row.id === "calendarRead") return found?.match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? null;
-  if (!found || !readable(found)) return null;
-  return shortened(found, 40);
-}
-
-function readable(value) {
-  if (!/\p{L}/u.test(value) || value.includes("://") || /^[{[$/~<`]/.test(value)) return false;
-  if (/[\w.+-]+@[\w-]+\.[\w.-]+/.test(value)) return false;
-  return !value.split(/[^\p{L}\p{N}\-_+/=.]+/u).some(run => run.length >= 24 && /\d/.test(run));
-}
-
-function shortened(value, length) {
-  const text = value.replace(/…$/, "");
-  if (text.length <= length) return text;
-  const cut = text.slice(0, length - 1), space = cut.lastIndexOf(" ");
-  return (space > length / 2 ? cut.slice(0, space) : cut) + "…";
-}
-
-// The person's message's topic and mood (WorkingTopic in the apps, scripts/working-topics.json): the longest word
-// or phrase found wins; a question looks, a statement about themselves notes, else handle.
-function tokens(text) {
-  return (text ?? "").toLowerCase().replaceAll("ß", "ss").replaceAll("œ", "oe").replaceAll("æ", "ae")
-    .normalize("NFD").replace(/\p{Mn}+/gu, "").split(/[^\p{L}\p{N}]+/u).filter(Boolean);
-}
-function found(entry, words, atStart = false) {
-  const prefix = entry.endsWith("*"), parts = entry.replace(/\*$/, "").split(" ");
-  for (let start = 0; start <= (atStart ? 0 : words.length - parts.length); start++) {
-    if (start + parts.length > words.length) break;
-    if (parts.every((p, i) => words[start + i] === p || (i === parts.length - 1 && prefix && words[start + i].startsWith(p)))) return true;
-  }
-  return false;
-}
-function topicOf(message) {
-  const words = tokens(message);
-  let best = null, longest = 0;
-  for (const [topic, entries] of TOOLS.lexicon?.topics ?? []) {
-    for (const e of entries) {
-      const length = e.replace(/\*$/, "").length;
-      if (length > longest && found(e, words)) { best = topic; longest = length; }
-    }
-  }
-  return best;
-}
-function moodOf(message) {
-  const text = (message ?? "").trim(), words = tokens(text), lex = TOOLS.lexicon ?? {};
-  if (!words.length) return "handle";
-  if (/[?？]$/.test(text) || text.startsWith("¿") || (lex.question ?? []).some(e => found(e, words, true))
-      || (lex.look ?? []).some(e => found(e, words))) return "look";
-  return (lex.note ?? []).some(e => found(e, words)) ? "note" : "handle";
-}
-
-// The working line's words for the call running now (null: the agent thinks); `prompt`: the person's message.
-function workingPhrase(label, site, prompt) {
-  const extra = TOOLS.extra;
-  if (!label) return extra.toolrow_now_thinking;
-  if (label.kind === "browser" && site) return extra.toolrow_now_browsing.replace("{}", site);
-  if (label.kind === "webRead" && site) return extra.toolrow_now_reading.replace("{}", site);
-  if (label.kind === "messageAgent" && label.detail) return extra.toolrow_now_writing_to.replace("{}", label.detail);
-  const words = TOOLS.words[label.kind] ?? TOOLS.words.unknown;
-  if (label.target && words.target) {
-    const day = label.kind === "calendarRead"
-      ? new Intl.DateTimeFormat(data.lang, { day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(label.target + "T00:00:00Z"))
-      : label.target;
-    return words.target.replace("{}", day);
-  }
-  if (label.use) {
-    const verb = label.use === "mood" ? moodOf(prompt) : label.use, topic = topicOf(prompt);
-    if (topic && TOOLS.topics?.[topic]?.[verb]) return TOOLS.topics[topic][verb];
-    // a connector's call with no topic: its own phrase (« J’utilise un service connecté… »), as in the apps
-    if (label.use === "mood" && label.kind !== "unknown" && TOOLS.generic?.[verb]) return TOOLS.generic[verb];
-  }
-  return words.now;
-}
-
-const md = s => esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/\n\n/g, "<br><br>").replace(/\n/g, "<br>");
-
-// A page may hold several phones (the home: the first screen's, the family's): each `[data-demo]` part is a player
-// of its own, with its chat, its examples' buttons and its own turn.
-function demoUnit(unit) {
-  const chat = $(".chat", unit), body = chat && $(".chat-body", chat), tabs = $$(".tab", unit);
-  if (!chat) return;
-  let run = 0, instant = false;
-  const pause = ms => instant ? Promise.resolve() : wait(ms);   // none for the example drawn on arrival
-  // The working line stays under the thread while the agent works (WorkingLine in the apps).
-  let workingLine = null;
-  function add(html, cls, tag = "div") {
-    const el = document.createElement(tag);
-    el.className = cls;
-    el.innerHTML = html;
-    if (workingLine?.isConnected) body.insertBefore(el, workingLine); else body.append(el);
-    // A real thread: nothing leaves it. While a turn plays, the newest line stays in view; the example drawn on
-    // arrival stays at its top (the question, then its answer), and the visitor scrolls like in any chat.
-    body.scrollTop = instant ? 0 : body.scrollHeight;
-    return el;
-  }
-  const avatar = category => `<span class="av">${staticBip(category)}</span>`;
-
-  // A page the agent made, as the app shows it under the reply: the map of the walk, or the page kit's real page.
-  function pageCard(name) {
-    const page = data.pages[name];
-    if (name === "walk") {
-      const pins = page.stops.map((s, i) => `<button type="button" class="pin" style="left:${s.x}%;top:${s.y}%;--c:${s.color}" aria-label="${esc(s.name)}" data-i="${i}"></button>`).join("");
-      const list = page.stops.map((s, i) => `<li data-i="${i}" style="--c:${s.color}"><i>${i + 1}</i>${esc(s.name)}</li>`).join("");
-      const el = add(`<p class="pc-title">🌳 ${esc(page.title)}</p><p class="pc-sub">${esc(page.subtitle)}</p>`
-        + `<div class="map"><img src="${page.src}" alt="${esc(page.alt)}" width="600" height="400" loading="lazy">${pins}</div>`
-        + `<ol class="stops">${list}</ol><p class="pc-tip">${esc(page.tip)}</p><p class="pc-src">${esc(page.source)}</p>`, "page-card map-card");
-      const pick = i => {
-        $$(".pin", el).forEach(p => p.classList.toggle("on", +p.dataset.i === i));
-        $$(".stops li", el).forEach(p => p.classList.toggle("on", +p.dataset.i === i));
-      };
-      $$(".pin, .stops li", el).forEach(p => p.addEventListener("click", () => pick(+p.dataset.i)));
-      return el;
-    }
-    return add(`<div class="frame"><iframe src="${page.src}" title="${esc(page.title)}" loading="lazy"></iframe></div>`
-      + `<a class="pc-open" href="${page.src}" target="_blank" rel="noopener">${esc(page.title)} · ${esc(data.labels.open)} ↗</a>`, "page-card kit-card");
-  }
-
-  async function play(id, atOnce = false) {
-    const mine = ++run;
-    instant = atOnce;
-    const scenario = data.scenarios[id], category = scenario.category, c = CATEGORIES[category];
-    for (const el of [chat, chat.closest(".chat-wrap")]) el.style.setProperty("--chat-tint", `var(--${TONE[category]}-tint)`);
-    chat.style.setProperty("--chat-main", c.main);
-    chat.style.setProperty("--chat-deep", `var(--${TONE[category]}-deep)`);   // the text-safe shade (site.css)
-    $(".chat-avatar", chat).innerHTML = staticBip(category);
-    $(".chat-name", chat).textContent = scenario.agent;
-    body.innerHTML = "";
-    const alive = () => mine === run;
-    add(esc(scenario.prompt), "msg you");
-    // The turn's start: past 20 s the working line ends with how long it has run (« · 45 s », « · 2 min »); a scenario
-    // can show its turn as running for a while already (demo.json's `elapsed`).
-    const started = Date.now() - (scenario.elapsed ?? 0) * 1000;
-    let answer = "", madePage = null, site = null;
-    const fill = s => s.replaceAll("{answer}", answer);
-    workingLine = null;
-    // « Je réfléchis… », « Je navigue sur pastamia.fr… »: one line, a light sweeping across it, the Bip alive beside
-    // it (WorkingLine in the apps). No call running (`label` null): the thinking phrases rotate every 2.5 s, from a
-    // random one, never the same twice in a row. Nothing of the work stays under the reply.
-    const THINKING = TOOLS.thinking?.length ? TOOLS.thinking : [workingPhrase(null)];
-    let thinkingAt = Math.floor(Math.random() * THINKING.length), rotation = null, busy = false, bipFrame = null;
-    const nextThinking = () => {
-      const pick = Math.floor(Math.random() * (THINKING.length - 1));
-      thinkingAt = THINKING.length < 2 ? 0 : pick >= thinkingAt ? pick + 1 : pick;
-    };
-    function bip(now) {
-      if (!alive() || !workingLine?.isConnected) { bipFrame = null; return; }
-      // Busy with a tool: the apps' « work » state (eyes scanning, a light passing); else « think ».
-      // Each turn the next thinking animation of the rotation, among those readable small, then the next ones in turn
-      // while it lasts (at most 30 frames a second).
-      if (now - (workingLine.drawnAt || 0) >= 32) {
-        workingLine.drawnAt = now;
-        workingLine.variantAt ??= now;
-        const [motion, mt] = thinkingNow(workingLine.episode, (now - workingLine.variantAt) / 1000, true);
-        $(".av", workingLine).innerHTML = pixelSVG({ category, mood: busy ? "work" : "think", t: now / 1000, size: 30, motion, mt });
-      }
-      bipFrame = requestAnimationFrame(bip);
-    }
-    let clock = null;
-    function elapsed() {
-      const el = workingLine?.isConnected && $(".el", workingLine);
-      if (!alive() || !el) { clearInterval(clock); clock = null; return; }
-      const s = Math.floor((Date.now() - started) / 1000);
-      el.textContent = s < 20 ? "" : s < 60 ? `· ${s} s` : `· ${Math.floor(s / 60)} ${document.documentElement.lang.startsWith("de") ? "Min." : "min"}`;
-    }
-    function working(label = null) {
-      if (!alive()) return;
-      if (!workingLine?.isConnected) {
-        workingLine = add(`<span class="av">${staticBip(category, "thinking")}</span><span class="ph"></span><span class="el"></span>`, "working");
-        workingLine.setAttribute("role", "status");
-        workingLine.episode = nextEpisode(category);
-        if (REDUCED) $(".av", workingLine).innerHTML = pixelSVG({ category, mood: "think", size: 30,
-          motion: thinkingVariant(workingLine.episode, true) });
-      }
-      elapsed();
-      if (!clock) clock = setInterval(elapsed, 1000);
-      busy = !!label;
-      if (!REDUCED && bipFrame == null) bipFrame = requestAnimationFrame(bip);
-      const ph = $(".ph", workingLine);
-      if (label) {
-        clearInterval(rotation); rotation = null;
-        ph.textContent = workingPhrase(label, site, scenario.prompt);
-      } else {
-        ph.textContent = THINKING[thinkingAt];
-        if (!rotation) rotation = setInterval(() => {
-          if (!alive() || !workingLine?.isConnected) { clearInterval(rotation); rotation = null; return; }
-          nextThinking();
-          $(".ph", workingLine).textContent = THINKING[thinkingAt];
-        }, 2500);
-      }
-    }
-    function rest() {
-      if (!alive()) return;
-      clearInterval(rotation); rotation = null;
-      workingLine?.remove(); workingLine = null;
-    }
-
-    async function say(text) {
-      working();
-      await pause(1000); rest();
-      if (!alive()) return;
-      add(`${avatar(category)}<span class="txt">${md(text)}</span>`, "msg bot");
-      await pause(1100);
-    }
-
-    async function steps(list) {
-      for (const step of list) {
-        if (!alive()) return false;
-        if (step.think) {
-          // Its reasoning stays its own: the thinking phrases while it thinks.
-          working();
-          await pause(2400);
-        } else if (step.tool || step.page) {
-          // In plain words as the app shows it: what it does now on the working line.
-          const label = toolLabel(step.tool ?? "create_page", fill(step.arguments ?? step.preview ?? ""));
-          if (label.kind === "browser" || label.kind === "webRead") site = label.site ?? (label.kind === "browser" ? site : null);
-          working(label);
-          await pause(Math.max(700, (step.seconds ?? 1) * 1000));
-          if (!alive()) return false;
-          if (step.page) madePage = step.page;
-          await pause(250);
-        } else if (instant && (step.ask || step.approve)) {
-          // drawn at once (on arrival): the question and the answer only; the cards in between are for the played turn
-          if (step.ask) answer = step.ask.choices[Math.min(1, step.ask.choices.length - 1)].replace(/ · ★.*$/, "");
-          if (step.then && !(await steps(step.then))) return false;
-        } else if (step.ask) {
-          rest();
-          const card = add(`<p>${esc(step.ask.question)}</p><div class="opts">${step.ask.choices.map(o => `<span class="opt">${esc(o)}</span>`).join("")}</div>`, "card-q");
-          await pause(1700); if (!alive()) return false;
-          const choice = $$(".opt", card)[Math.min(1, step.ask.choices.length - 1)];
-          choice.classList.add("chosen");
-          answer = choice.textContent.replace(/ · ★.*$/, "");
-          await pause(900);
-          if (step.then && !(await steps(step.then))) return false;
-        } else if (step.approve) {
-          rest();
-          const card = add(`<p>${esc(fill(step.approve.description))}</p><code>${esc(fill(step.approve.command))}</code>`
-            + `<div class="btns"><span>${esc(data.labels.once)}</span><span>${esc(data.labels.session)}</span><span>${esc(data.labels.deny)}</span></div>`, "card-a");
-          await pause(1900); if (!alive()) return false;
-          $(".btns span", card).classList.add("chosen");
-          await pause(800);
-          if (step.then && !(await steps(step.then))) return false;
-        } else if (step.say) {
-          await say(fill(step.say));
-        } else if (step.show) {
-          // a file placed in the reply (demo.json's `show`): the page the agent made, where the app shows it
-          if (madePage && step.show.startsWith(`/demo/page/${madePage}/`) && data.pages[madePage]) {
-            pageCard(madePage); await pause(2200);
-          } else if (step.show.startsWith("/demo/card/")) {
-            // a vote the friends of a shared agent answer from their link: the card, then the choice that wins
-            const vote = data.cards?.[step.show.slice(11)];
-            if (vote) {
-              const card = add("<p>" + esc(vote.title) + '</p><div class="opts">'
-                + vote.options.map(o => '<span class="opt">' + esc(o) + "</span>").join("") + "</div>", "card-q");
-              await pause(1700); if (!alive()) return false;
-              const last = {};   // each friend's last vote counts
-              for (const v of vote.votes) last[v.who] = v.option;
-              const counts = vote.options.map((_, i) => Object.values(last).filter(o => o === i).length);
-              $$(".opt", card)[counts.indexOf(Math.max(...counts))].classList.add("chosen");
-            }
-          }
-        } else if (step.pause) {
-          await pause(step.pause * 1000);
-        }
-      }
-      return true;
-    }
-    await steps(scenario.steps);
-    if (alive()) { rest(); instant = false; }
-  }
-
-  let current = tabs[0]?.dataset.scenario;   // the first example's
-  // The scenarios' tabs (the home has two rows of them, beside the phone and in the demo's window): the one playing is
-  // selected in both; the arrows move within a row (WAI-ARIA tabs).
-  const pick = id => {
-    current = id;
-    for (const t of tabs) { const on = t.dataset.scenario === id; t.classList.toggle("active", on); t.setAttribute("aria-selected", String(on)); t.tabIndex = on ? 0 : -1; }
+// -- The demo's clips: the real app, recorded. A clip plays while it is in view and stops when it leaves; with reduced
+// motion nothing starts by itself (its poster, a play button). The button plays or pauses it either way.
+for (const clip of $$(".clip")) {
+  const video = $("video", clip), button = $(".clip-play", clip), box = clip.closest("[data-clips]");
+  let seen = false;
+  const show = () => {
+    const on = !video.paused;
+    button.setAttribute("aria-pressed", on ? "true" : "false");
+    button.firstElementChild.textContent = on ? box.dataset.pause : box.dataset.play;
+    clip.classList.toggle("playing", on);
   };
-  tabs.forEach(tab => {
-    tab.addEventListener("click", () => { pick(tab.dataset.scenario); play(current); });
-    tab.addEventListener("keydown", e => {
-      const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
-      if (!step) return;
-      e.preventDefault();
-      const row = $$(".tab", tab.parentElement), next = row[(row.indexOf(tab) + step + row.length) % row.length];
-      next.focus(); next.click();
-    });
+  const play = () => video.play().catch(() => {});
+  video.addEventListener("play", show);
+  video.addEventListener("pause", show);
+  button.hidden = false;
+  button.addEventListener("click", () => {
+    if (video.paused) { clip.dataset.held = ""; play(); } else { clip.dataset.held = "paused"; video.pause(); }
   });
-  if (tabs.length) pick(current);
-  // /demo/#walk opens on that scenario: chosen before it first plays.
-  const tabFor = h => tabs.find(t => "#" + t.dataset.scenario === h);
-  const fromAddress = tabFor(location.hash);
-  if (fromAddress) {
-    pick(fromAddress.dataset.scenario);
-    // on a phone the chat is under the tabs: brought into view so it plays at once
-    if (chat) addEventListener("load", () => chat.scrollIntoView({ block: "nearest", behavior: "instant" }), { once: true });
-  }
-  addEventListener("hashchange", () => tabFor(location.hash)?.click());
-  $(".replay", chat)?.addEventListener("click", () => play(current));
-  // On arrival the first example is there at once, its question and its answer: nothing to wait for, nothing empty.
-  if (current) play(current, true);
+  new IntersectionObserver(([entry]) => {
+    seen = entry.isIntersecting;
+    if (!seen) video.pause();
+    else if (!REDUCED && clip.dataset.held !== "paused") play();
+  }, { threshold: 0.5 }).observe(video);
+  addEventListener("visibilitychange", () => { if (document.hidden) video.pause(); else if (seen && !REDUCED && clip.dataset.held !== "paused") play(); });
 }
-$$("[data-demo]").forEach(demoUnit);
 
 
 // -- Private: « See the details » opens where the data is, who reads it and our limit in a window (#private-detail
@@ -788,8 +383,8 @@ if (selfOpen) disclosure(selfOpen, { hash: "#install" });
   if (!term) return;
   const typed = $(".typed", term), command = typed.dataset.command, outs = $$(".out", term);
   once(term, async () => {
-    for (let i = 1; i <= command.length; i++) { typed.textContent = command.slice(0, i); await wait(REDUCED ? 0 : 18); }
-    for (const out of outs) { await wait(600); out.classList.add("show"); }
+    for (let i = 1; i <= command.length; i++) { typed.textContent = command.slice(0, i); await wait(REDUCED ? 0 : 5); }
+    for (const out of outs) { await wait(REDUCED ? 120 : 180); out.classList.add("show"); }
   }, 0.4);
   const copy = $(".copy", term);
   copy.addEventListener("click", async () => {

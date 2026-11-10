@@ -70,6 +70,7 @@ AddDefaultCharset utf-8
 <IfModule mod_mime.c>
   AddType application/json .json
   AddType audio/mp4 .m4a
+  AddType video/mp4 .mp4
   AddType font/ttf .ttf
   AddType image/svg+xml .svg
   AddType text/plain .txt
@@ -118,7 +119,7 @@ AddDefaultCharset utf-8
     Header set Cache-Control "public, max-age=31536000, immutable" env=REDIRECT_VERSIONED
   </FilesMatch>
   # Fonts, pictures, recordings: not versioned by name, so a week.
-  <FilesMatch "\\.(png|jpe?g|webp|gif|svg|ico|ttf|woff2?|m4a|mp3)$">
+  <FilesMatch "\\.(png|jpe?g|webp|gif|svg|ico|ttf|woff2?|m4a|mp3|mp4)$">
     Header set Cache-Control "public, max-age=604800"
   </FilesMatch>
 </IfModule>

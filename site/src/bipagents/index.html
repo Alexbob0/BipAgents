@@ -10,7 +10,7 @@
 <!-- ============================================================ BUILD YOUR TEAM: the Bips one can pick (build.py BIPS,
      texts in bips.*). A stage shows the picked one, alive, saying its line; its tile is on, its card says what it
      does, what it asks before and its tools; « Add to the team » puts it in the bar at the bottom (site.js). Without
-     the script the first Bip's card shows. -->
+     the script the first Bip's card shows. Under it, a small link to the demo page (the real app, filmed). -->
 <section class="sec pick" id="bips" aria-labelledby="pick-h">
   <div class="sec-head reveal">
     <h2 id="pick-h">{{pick.title}}</h2>
@@ -29,6 +29,7 @@
       <button type="button" class="pill pill-buy fiche-add" aria-pressed="false" data-add="{{pick.add}}" data-added="{{pick.added}}"><span>{{pick.add}}</span><i aria-hidden="true"></i></button>
     </div>
   </div>
+  <p class="pick-demo reveal"><a class="more" href="{{demohref}}">{{pick.demo}} <span aria-hidden="true">›</span></a></p>
 </section>
 
 <!-- ============================================================ TOGETHER: several Bips in one conversation, each
@@ -59,8 +60,9 @@
 
 <!-- ============================================================ THE HOUSE RULES (privacy). The Bips live at your
      place: a house of squares under the European flag (your space: a private server in the EU, or your own computer),
-     and what holds there, as five rules and the one we can't promise (private.who3's limit). « See the details »
-     opens where the data is, who reads it and our limit (docs/legal/offer.en.md §9, privacy.en.md §5.4,
+     and what holds there, as five rules, each a thing we do (rule 2: we don't read, not « nobody can »). Our limit
+     (private.who3) is said once, in « See the details », which opens where the data is, who reads it and that limit
+     (docs/legal/offer.en.md §9, privacy.en.md §5.4,
      docs/privacy-compare.md); without the script the link shows them under the rules (:target). -->
 <section class="sec pv-rules" id="private" aria-labelledby="pv-h">
   <div class="sec-head reveal">
@@ -86,9 +88,7 @@
         <li class="reveal" style="--c:var(--green)"><i aria-hidden="true">2</i><b>{{rules.r2t}}</b><span>{{rules.r2}}</span></li>
         <li class="reveal" style="--c:var(--gold)"><i aria-hidden="true">3</i><b>{{rules.r3t}}</b><span>{{rules.r3}}</span></li>
         <li class="reveal" style="--c:var(--teal)"><i aria-hidden="true">4</i><b>{{rules.r4t}}</b><span>{{rules.r4}}</span></li>
-        <li class="reveal" style="--c:var(--violet)"><i aria-hidden="true">5</i><b>{{rules.r5t}}</b><span>{{rules.r5}}</span></li>
-        <li class="reveal rule-limit"><i aria-hidden="true">!</i><b>{{rules.r6t}}</b><span>{{rules.r6}}</span></li>
-      </ol>
+        <li class="reveal" style="--c:var(--violet)"><i aria-hidden="true">5</i><b>{{rules.r5t}}</b><span>{{rules.r5}}</span></li>      </ol>
       <a class="more" href="#private-detail" aria-haspopup="dialog">{{private.detail}} <span aria-hidden="true">›</span></a>
     </div>
   </div>

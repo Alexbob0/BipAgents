@@ -72,35 +72,40 @@
     "get": "Download on"
   },
   "demo": {
-    "kicker": "In action",
+    "kicker": "The real app",
     "title": "You ask. It handles it. You decide.",
-    "sub": "This is the app’s own demo, as is: your agent thinks, uses its tools, drops a map or a mini app into its reply, and waits for your OK before paying or sending.",
-    "tabs": "Demo scenarios",
-    "point1": "Every step in plain sight",
-    "point2": "Maps and mini apps right in its replies",
-    "point3": "Your OK before paying or sending",
-    "chatSub": "Chat",
-    "chatLabel": "The demo playing",
-    "replay": "Replay",
-    "placeholder": "Message…",
-    "open": "Open",
+    "sub": "Filmed on an iPhone: the app playing its built-in demo, with sample agents and the same screens you’ll have. Nothing is sent.",
+    "play": "Play",
+    "pause": "Pause",
     "ctaTitle": "Your Bips, for real.",
-    "work": "Work details",
-    "tab1": "Email",
-    "tab2": "Appointments",
-    "tab3": "My budget",
-    "tab4": "Subscriptions",
-    "tab5": "Dinner",
-    "tab6": "Papers",
-    "tab7": "Best price",
-    "tab8": "Trips",
-    "tab9": "Sleep",
-    "tab10": "My morning"
+    "book_table": {
+      "title": "books a table",
+      "cap": "Three restaurants with room: you pick one, it asks before booking in your name.",
+      "alt": "Screen recording of the app. You write “Book a table for Friday night”. The Daily agent opens a booking site showing three Italian restaurants with free tables and asks which one to book. Da Vinci at 8 pm is chosen. A card asks for your OK to send the booking in your name, and it is given. The agent answers that Da Vinci is booked for Friday, for 2, and added to your calendar."
+    },
+    "sleep_week": {
+      "title": "sums up your week of sleep",
+      "cap": "It reads your sleep data, draws the chart and suggests one thing to try tonight.",
+      "alt": "Screen recording of the app. You ask “How did I sleep this week?”. The Coach agent reads your last 7 nights of sleep and shows a chart of the week. It answers: 7 h 12 on average, 25 minutes more than last week; on the nights you go to bed after midnight you lose over an hour of sleep; tonight, screens off at 10:30 pm?"
+    },
+    "subscriptions": {
+      "title": "cancels the subscriptions you forgot",
+      "cap": "It finds two you no longer open, you choose, and nothing is sent without your OK.",
+      "alt": "Screen recording of the app. You write “Cancel the subscriptions I don’t use”. The Budget agent finds CinePlus (€13.99 a month, not opened since July) and FitApp Premium (€9.99 a month, last workout in June) and asks which ones to cancel; both are chosen. A card asks for your OK to send the cancellation in your name, and it is given. The agent confirms both cancellations: up to €288 saved a year."
+    },
+    "dinner": {
+      "title": "finds tonight’s dinner",
+      "cap": "With what’s left in the fridge: a 20-minute recipe, and what’s missing for the list.",
+      "alt": "Screen recording of the app. You ask “What’s for dinner tonight?”. The Home agent checks what’s left from Tuesday’s shopping, looks up a quick recipe and suggests courgette, feta and lemon pasta for 4, in 20 minutes, with its three steps. Only basil and parmesan are missing: it offers to add them to the shopping list."
+    },
+    "weekend_lisbon": {
+      "title": "plans a weekend with friends",
+      "cap": "Shared with three friends: they vote on its cards from their link, for the date, then the flat.",
+      "alt": "Screen recording of the app. An agent shared with three friends, Léa, Sam and Inès. You write “Lisbon with Léa, Sam and Inès: get us voting”. The agent posts a vote card, “Which weekend?”; the friends’ votes come in and the weekend of 21 November wins. It looks for flats and posts a second vote: Alfama, terrace, €92 a night, or Bairro Alto, rooftop, €105 a night, and the votes come in."
+    }
   },
-  "ai": "AI",
   "control": {
     "once": "Once",
-    "session": "This session",
     "deny": "Deny"
   },
   "private": {
@@ -389,7 +394,7 @@
   "page": {
     "demo": {
       "title": "The demo — BipAgents",
-      "description": "The BipAgents app’s own demo, as is: four scenarios where your agent thinks, uses its tools and waits for your OK before paying or sending."
+      "description": "The BipAgents app, filmed on a phone playing its own demo: five short examples where your Bips search, suggest and wait for your OK."
     },
     "faq": {
       "title": "Questions — BipAgents",
@@ -485,12 +490,7 @@
       "at": "At Sam’s",
       "notif": "Camille: The school called: Léa has a fever, I’m picking her up."
     },
-    "line": "Share one with your family, your friends or other parents, only when you choose. They follow for free.",
-    "tab1": "The week",
-    "tab2": "The money",
-    "tab3": "The shopping",
-    "tabs": "The family’s examples",
-    "tab4": "Other parents"
+    "line": "Share one with your family, your friends or other parents, only when you choose. They follow for free."
   },
   "pick": {
     "title": "Build your team.",
@@ -501,7 +501,8 @@
     "add": "Add to the team",
     "added": "In the team",
     "see": "See it at work",
-    "roster": "The Bips"
+    "roster": "The Bips",
+    "demo": "See the app in action"
   },
   "bips": {
     "daily": {
@@ -622,16 +623,14 @@
     "alt": "Your space: a house where your Bips live, under the European flag.",
     "r1t": "They ask before paying or sending.",
     "r1": "A booking, an email, a cancellation: they wait for your yes.",
-    "r2t": "Nobody reads over their shoulder.",
+    "r2t": "We don’t read over their shoulder.",
     "r2": "Kerfy Studio doesn’t read your space, and trains no AI on it.",
     "r3t": "No ads, no tracking.",
     "r3": "Not in the app, not on this site: no cookies, no trackers.",
     "r4t": "The AI runs in Europe.",
     "r4": "It only receives what your agent sends it, through EUrouter, a European AI router. The model’s makers never receive your messages.",
     "r5t": "Everything is yours.",
-    "r5": "Leave whenever you want, with your agents, their memory and your Notebook.",
-    "r6t": "And what we can’t promise.",
-    "r6": "As with any rented server, the host and we could technically get in. Our software doesn’t, and we only would if the law required it."
+    "r5": "Leave whenever you want, with your agents, their memory and your Notebook."
   },
   "dock": {
     "label": "Your team",
@@ -647,12 +646,7 @@
     "and": "and"
   },
   "home": {
-    "tour": "Take the tour.",
-    "pick": "What you want to see",
-    "doPick": "Pick an example:",
-    "friends": "With friends",
     "close": "Close",
-    "dialog": "The app’s demo",
     "self": "Or on your computer:"
   },
   "compare": {
