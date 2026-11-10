@@ -2,7 +2,7 @@ English · [Français](offer.fr.md) · [Deutsch](offer.de.md) · [Español](offe
 
 # Terms of sale of the all-included offer
 
-> Last updated: 9 November 2026.
+> Last updated: 10 November 2026.
 
 ## 1. Purpose
 
@@ -261,7 +261,7 @@ section 6); the services you connect to your agents and their own subscriptions.
   OVHcloud and Hetzner have physical access to their servers.
 - **Backups**: your place backs itself up a few minutes after each activity, and at least once a day, encrypted on the place before it leaves, with a key
   that stays on your place and on your devices (plus the encrypted copy that your recovery code opens, section 7).
-  Kerfy Studio keeps these backups on its backup server, unreadable without that key: those of the last 2 hours, then one per hour for 48 hours, one per day for 30 days, nothing older. Settings ›
+  Kerfy Studio keeps these backups on its backup server, unreadable without that key: those of the last 2 hours, then one per hour for 48 hours, one per day for 21 days, nothing older. Settings ›
   All-included plan › Backups shows the latest one and starts one at once.
 - **OVHcloud's daily image**: on its servers, OVHcloud also makes, on its side, a daily image of the whole server,
   which it keeps on its premises (one restore point per day, not encrypted by Kerfy Studio). When a place is

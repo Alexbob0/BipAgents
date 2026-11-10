@@ -479,8 +479,8 @@ Studio cannot open. On the all-included offer the place is on a server Kerfy Stu
 technically the host as well as Kerfy Studio could access it; our software reads neither your place nor its backups,
 and we would only do so if the law required it. Kerfy Studio keeps these
 backups at **Scaleway** (Scaleway SAS, France; object storage in Paris, region fr-par) without being able to read them:
-those of the last 2 hours, then one per hour for 48 hours, one per day for 30 days, nothing older. They are erased with your place. What a place deletes from its backups is first set aside 30 days by the guichet (against a malicious deletion), then
-erased; at Scaleway, a replaced or deleted version of a file is kept 1 day, then erased. The data stays in the European Union.
+those of the last 2 hours, then one per hour for 48 hours, one per day for 21 days, nothing older. They are erased with your place. What a place deletes from its backups is first set aside 6 days by the guichet (against a malicious deletion), then
+erased; at Scaleway, a replaced or deleted version of a file is kept 1 day, then erased. So what you delete or ask an agent to forget has left the backups, every copy of them included, **within 30 days**. The data stays in the European Union.
 
 **The guichet's backups.** The guichet (your account, your subscription, the places' technical data) is backed up at
 Scaleway too, in copies Kerfy Studio encrypts before they leave; old versions are erased after 30 days.
@@ -765,8 +765,8 @@ safeguard will be stated here before it goes into service. You can ask us for a 
 | Campaign name (section 5.11) | 13 months after it was recorded, or with the account or the subscription |
 | IP address when a free week is reserved | Never stored; in memory, as a fingerprint, 15 minutes at most |
 | Content of your place | During the subscription, then 30 days (3 days after a free week that was not continued) |
-| Backups | 2 hours (all), then 48 hours (hourly), 30 days (daily), nothing older; erased with the place |
-| Backup files a place deletes, set aside by the guichet | 30 days |
+| Backups | 2 hours (all), then 48 hours (hourly), 21 days (daily), nothing older; erased with the place; what you delete is gone from them within 30 days, every copy included |
+| Backup files a place deletes, set aside by the guichet | 6 days |
 | Replaced or deleted versions at Scaleway (the places' backups, encrypted copies of the guichet's database) | 1 day |
 | OVHcloud's daily image | One point per day, replaced within about a day after the place is reinstalled |
 | Servers' technical data | Latest values only |

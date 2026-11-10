@@ -450,7 +450,7 @@ def test_the_units_look_every_5_minutes_at_their_own_minute_and_the_button_still
     assert "FixedRandomDelay=true\n" in timer and "Unit=bipagents-backup-check.service\n" in timer
     assert "hourly" not in timer and "Persistent" not in timer
     assert "--keep-within" in backup.KEEP and backup.KEEP[backup.KEEP.index("--keep-within") + 1] == "2h"
-    assert backup.KEEP[2:] == ["--keep-within-hourly", "48h", "--keep-within-daily", "30d"]
+    assert backup.KEEP[2:] == ["--keep-within-hourly", "48h", "--keep-within-daily", "21d"]
 
 
 def test_the_history_is_thinned_once_a_day_and_at_once_under_a_new_rule():
@@ -463,18 +463,26 @@ def test_the_history_is_thinned_once_a_day_and_at_once_under_a_new_rule():
 
 
 def test_no_backup_rule_keeps_anything_past_30_days():
-    """« Oublie ça » says « Disparaît aussi des sauvegardes sous 60 jours » (30 days of snapshots here + 30 days of
-    replaced versions kept by the storage provider): no restic rule may keep a snapshot longer than 30
-    in calendar days, even on a place that was off for a while: --keep-within-* rules only (never --keep-daily N,
-    which counts days that have a snapshot, nor weekly, monthly, yearly or --keep-last)."""
+    """« Oublie ça » says « Disparaît aussi des sauvegardes sous 30 jours », every copy counted (Alex 10/11, option B):
+    the last snapshot holding it 21 days, the next daily thinning, the guichet's trash 6 days (`backup_trash_days`,
+    purged hourly), the bucket's old versions 1 day (guichet `backups versions --apply`). No restic rule may keep a
+    snapshot longer than 21 calendar days, even on a place that was off for a while: --keep-within-* rules only (never
+    --keep-daily N, which counts days that have a snapshot, nor weekly, monthly, yearly or --keep-last); and the prune
+    leaves no unused piece in a pack still partly used (--max-unused 0)."""
     rules = dict(zip(backup.KEEP[0::2], backup.KEEP[1::2]))
     assert set(rules) == {"--keep-within", "--keep-within-hourly", "--keep-within-daily"}
     assert all(r.startswith("--keep-within") for r in rules)
 
     def hours(span):
         return int(span[:-1]) * {"h": 1, "d": 24}[span[-1]]
-    assert all(hours(v) <= 24 * backup.KEEP_DAYS for v in rules.values()) and backup.KEEP_DAYS == 30
-    assert hours(rules["--keep-within-daily"]) == 24 * 30
+    assert all(hours(v) <= 24 * backup.KEEP_DAYS for v in rules.values()) and backup.KEEP_DAYS == 21
+    assert hours(rules["--keep-within-daily"]) == 24 * 21
+    assert backup.PRUNE == ["--max-unused", "0"]
+    # the next thinning: at most a day and a timer's look after (a quiet place backs up once a day)
+    thinning = (max(backup.PRUNE_EVERY, backup.SAFETY) + 5 * MIN) / 86400
+    trash_days, trash_round, versions_days = 6, 1 / 24, 1   # the guichet's backup_trash_days, its hourly purge, the bucket
+    worst = backup.KEEP_DAYS + thinning + trash_days + trash_round + versions_days
+    assert worst <= 30, worst
 
 
 def _seat_agent():

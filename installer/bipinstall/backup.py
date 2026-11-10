@@ -46,14 +46,24 @@ SETTINGS = Path(".config") / "bipagents" / "backup.json"
 STATE = Path(".local") / "state" / "bipagents" / "backup.json"
 STAGE = Path(".local") / "state" / "bipagents" / "backup-stage"
 HOST = "place"                      # the same on every server the place lives on: restic finds its last backup
-# Carnet v2 (Alex, 9/11): nothing older than 30 days, so « Oublie ça » can say « Disparaît aussi des sauvegardes sous
-# 30 jours » (bridge-rs notebook/forget.rs). `RETENTION` is the rule's version: a place whose last thinning was made
-# under another one thins at its next backup, without waiting a day. Calendar-bounded rules only (--keep-within-*,
-# restic >= 0.13; Ubuntu 24.04 has 0.16, Debian 13 0.18): « the last 30 days that have a snapshot » would keep older
-# ones on a place that was off or moving for some days.
-KEEP = ["--keep-within", "2h", "--keep-within-hourly", "48h", "--keep-within-daily", "30d"]
-KEEP_DAYS = 30
-RETENTION = 3
+# « Oublie ça » says « Disparaît aussi des sauvegardes sous 30 jours » (bridge-rs notebook/forget.rs; Alex 10/11,
+# option B: really within 30 days, every copy counted). What a place forgets leaves its backups in four steps:
+#   its last snapshot holding it, kept 21 days (KEEP_DAYS)                                          21 d
+#   the next thinning, at a backup once a day (PRUNE_EVERY; a quiet place backs up once a day)      + 1 d 5 min
+#   the guichet's trash for what a place deletes (guichet `backup_trash_days` 6, purged hourly)     + 6 d 1 h
+#   the bucket's replaced or deleted versions (guichet `backups versions --apply`: 1 day)           + 1 d
+#   worst case, the place running                                                                     29 d 1 h 5 min
+# `RETENTION` is the rule's version: a place whose last thinning was made under another one thins at its next backup,
+# without waiting a day. Calendar-bounded rules only (--keep-within-*, restic >= 0.13; Ubuntu 24.04 has 0.16, Debian 13
+# 0.18): « the last 21 days that have a snapshot » would keep older ones on a place that was off or moving for some
+# days. `PRUNE` (--max-unused 0): the prune repacks every pack holding anything no snapshot needs any more (restic's
+# default leaves up to 5 % unused, so a forgotten piece could stay, with no bound in time, in a pack still partly
+# used). Its price: each daily thinning downloads and uploads again the still-used part of those packs (mostly the
+# packs written on the day that just left the 21 days; more after a day of big changes).
+KEEP = ["--keep-within", "2h", "--keep-within-hourly", "48h", "--keep-within-daily", "21d"]
+KEEP_DAYS = 21
+PRUNE = ["--max-unused", "0"]
+RETENTION = 4
 PRUNE_EVERY = 23 * 3600            # once a day: a quiet place's daily backup comes a minute early, never a day late
 SQLITE = b"SQLite format 3\x00"
 UNIT = "bipagents-backup"          # .service: a backup now (the app's button, `bipagents backup`)
@@ -575,7 +585,7 @@ def run(base: Optional[Path] = None, config: Optional[Path] = None, now: Optiona
         looked["backed"] = {"sum": found["sum"], "areas": found["areas"], "at": now}
         write_private(base / CHECK, looked)
         if thin_due(state, now):
-            thinned = restic(["forget", "--host", HOST, "--prune", *KEEP], env)
+            thinned = restic(["forget", "--host", HOST, "--prune", *PRUNE, *KEEP], env)
             if thinned.returncode == 0:
                 state["pruned"] = now
                 state["retention"] = RETENTION

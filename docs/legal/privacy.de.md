@@ -528,10 +528,10 @@ liegt der Platz auf einem von Kerfy Studio gemieteten Server: Der Schlüssel ist
 technisch könnten der Hoster wie Kerfy Studio darauf zugreifen; unsere Software liest weder deinen Platz noch seine
 Sicherungen, und wir täten es nur, wenn das Gesetz uns dazu verpflichtet. Kerfy Studio bewahrt diese Sicherungen bei
 **Scaleway** auf (Scaleway SAS, Frankreich; Objektspeicher in Paris, Region fr-par), ohne sie lesen zu können: die der
-letzten 2 Stunden, dann eine pro Stunde für 48 Stunden, eine pro Tag für 30 Tage, nichts Älteres. Sie werden mit deinem Platz gelöscht.
-Was ein Platz aus seinen Sicherungen löscht, legt der Guichet zuerst 30 Tage beiseite (gegen ein böswilliges Löschen),
-dann wird es gelöscht; bei Scaleway wird eine ersetzte oder gelöschte Version einer Datei 1 Tag aufbewahrt und dann gelöscht. Die Daten
-bleiben in der Europäischen Union.
+letzten 2 Stunden, dann eine pro Stunde für 48 Stunden, eine pro Tag für 21 Tage, nichts Älteres. Sie werden mit deinem Platz gelöscht.
+Was ein Platz aus seinen Sicherungen löscht, legt der Guichet zuerst 6 Tage beiseite (gegen ein böswilliges Löschen),
+dann wird es gelöscht; bei Scaleway wird eine ersetzte oder gelöschte Version einer Datei 1 Tag aufbewahrt und dann gelöscht. So ist, was du löschst oder einen Agenten vergessen lässt, **innerhalb von 30 Tagen**
+aus den Sicherungen verschwunden, alle ihre Kopien eingeschlossen. Die Daten bleiben in der Europäischen Union.
 
 **Die Sicherungen des Guichets.** Der Guichet (dein Konto, dein Abo, die technischen Daten der Plätze) wird ebenfalls
 bei Scaleway gesichert, in Kopien, die Kerfy Studio vor dem Versand verschlüsselt; alte Versionen werden nach 30 Tagen
@@ -826,8 +826,8 @@ und die geltende Garantie werden hier vor der Inbetriebnahme angegeben. Du kanns
 | Kampagnenname (Abschnitt 5.11) | 13 Monate nach der Aufzeichnung, oder mit dem Konto oder dem Abo |
 | IP-Adresse bei der Reservierung einer kostenlosen Woche | Nie gespeichert; im Arbeitsspeicher, als Fingerabdruck, höchstens 15 Minuten |
 | Inhalt deines Platzes | Während des Abos, dann 30 Tage (3 Tage nach einer nicht fortgesetzten kostenlosen Woche) |
-| Sicherungen | 2 Stunden (alle), dann 48 Stunden (stündlich), 30 Tage (täglich), nichts Älteres; mit dem Platz gelöscht |
-| Sicherungsdateien, die ein Platz löscht, vom Guichet beiseitegelegt | 30 Tage |
+| Sicherungen | 2 Stunden (alle), dann 48 Stunden (stündlich), 21 Tage (täglich), nichts Älteres; mit dem Platz gelöscht; was du löschst, ist innerhalb von 30 Tagen daraus verschwunden, alle Kopien eingeschlossen |
+| Sicherungsdateien, die ein Platz löscht, vom Guichet beiseitegelegt | 6 Tage |
 | Ersetzte oder gelöschte Versionen bei Scaleway (Sicherungen der Plätze, verschlüsselte Kopien der Datenbank des Guichets) | 1 Tag |
 | Tägliches Abbild von OVHcloud | Ein Punkt pro Tag, innerhalb von etwa einem Tag nach der Neuinstallation des Platzes ersetzt |
 | Technische Daten der Server | Nur die letzten Werte |
