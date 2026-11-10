@@ -504,7 +504,7 @@ pub fn files_of(name: &str, raw: &[u8]) -> anyhow::Result<(Vec<File>, usize)> {
     for index in 0..archive.len() {
         let (is_dir, size, filename) = {
             let file = archive.by_index_raw(index)?;
-            (file.is_dir(), file.size(), file.name().to_string())
+            (file.is_dir(), file.size(), file.name()?.into_owned())
         };
         if is_dir {
             continue;
