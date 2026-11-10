@@ -54,7 +54,10 @@ def test_a_shared_project_thread_is_its_persons_with_pages_marked_for_the_group(
         assert closed["isError"] is True
 
         # the person's turn gives the file they ask for, as in their own conversations, the map made before too
-        uploads = next(p for p in bridge.state_dir.parent.rglob(old_picture.rsplit("/", 1)[1]) if p.is_file()).parent.parent
+        # its received files' folder on this machine: the picture's copy under `cartes/` (the bridge keeps another
+        # one in its data, agent-maps/<agent>/, which rglob may list first: the public CI's runner did, 9/11)
+        uploads = next(p for p in bridge.state_dir.parent.rglob(old_picture.rsplit("/", 1)[1])
+                       if p.is_file() and p.parent.name == "cartes").parent.parent
         (uploads / "2026-10").mkdir(exist_ok=True)
         (uploads / "2026-10" / "0123456789ab-programme.pdf").write_bytes(b"%PDF programme")
         personal = f"{old_picture.rsplit('/cartes/', 1)[0]}/2026-10/0123456789ab-programme.pdf"

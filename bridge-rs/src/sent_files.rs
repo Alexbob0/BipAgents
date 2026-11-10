@@ -800,4 +800,45 @@ mod tests {
         assert!(capture(&config, &agent, "/fichiers/2026-10/0123456789ab-facture.pdf").is_ok());
         assert!(capture(&config, &agent, "/workspace/x.png").is_err()); // no Hermes profile: no workspace
     }
+
+    /// An install without the isolated sandbox (no podman: the public CI, a Mac): the person's upload is in the
+    /// agent's Hermes profile, `<home>/.hermes/profiles/<agent>/uploads`, and the agent names it by that path. It is
+    /// given (the dot-folder above the profile is not part of the path looked at); hidden files and vaults under the
+    /// profile stay refused, and a missing one is just missing.
+    #[test]
+    fn an_upload_in_the_profile_without_the_sandbox() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::with_key("k");
+        config.outbox.db_path = dir.path().join("data/outbox.db").to_string_lossy().into_owned();
+        config.sandbox.isolate = "off".into();
+        config.hermes.bin = "/opt/hermes".into();
+        config.hermes.hub_url = "http://127.0.0.1:8642".into();
+        config.hermes.home = dir.path().join(".hermes").to_string_lossy().into_owned();
+        let profile = dir.path().join(".hermes/profiles/queens");
+        let uploads = profile.join("uploads");
+        std::fs::create_dir_all(uploads.join("2026-10")).unwrap();
+        std::fs::create_dir_all(profile.join("vault")).unwrap();
+        let mut agent = AgentConfig {
+            name: "queens".into(),
+            hermes_url: "http://127.0.0.1:8642/p/queens".into(),
+            upload_dir_host: Some(uploads.to_string_lossy().into_owned()),
+            ..AgentConfig::default()
+        };
+        agent.upload_dir_container = None;
+        config.agents.insert(agent.name.clone(), agent.clone());
+        std::fs::write(uploads.join("2026-10/0123456789ab-programme.pdf"), b"%PDF").unwrap();
+        std::fs::write(uploads.join("2026-10/.env"), b"KEY=1").unwrap();
+        std::fs::write(profile.join("vault/x.pdf"), b"%PDF").unwrap();
+        let at = |rest: &str| format!("{}/{rest}", profile.to_string_lossy());
+
+        let (seen, _) = open_own(&config, &agent, &at("uploads/2026-10/0123456789ab-programme.pdf")).unwrap();
+        assert_eq!(seen, at("uploads/2026-10/0123456789ab-programme.pdf"));
+        assert!(capture(&config, &agent, &at("uploads/2026-10/0123456789ab-programme.pdf")).is_ok());
+        for refused in ["uploads/2026-10/.env", "vault/x.pdf", "config.yaml"] {
+            let why = open_own(&config, &agent, &at(refused)).unwrap_err();
+            assert!(why.contains("secret-looking"), "{refused}: {why}");
+        }
+        let why = open_own(&config, &agent, &at("uploads/2026-10/missing.pdf")).unwrap_err();
+        assert!(why.contains("no such file"), "{why}");
+    }
 }
