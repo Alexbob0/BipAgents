@@ -364,6 +364,10 @@ async fn check_model(http: &reqwest::Client, preset: &Preset, base_url: &str, mo
     let send = |content: Value| {
         let mut body = json!({"model": model, "messages": [{"role": "user", "content": content}]});
         body[limit] = json!(tokens);
+        // EUrouter: no training, zero retention, on this test call too (model_route::privacy)
+        if let Some(provider) = crate::model_route::routing(&[], base_url, model) {
+            body["provider"] = provider;
+        }
         let mut request = http.post(&url).json(&body).timeout(Duration::from_secs(55));
         if let Some(key) = key {
             request = request.bearer_auth(key);

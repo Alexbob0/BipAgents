@@ -2,7 +2,7 @@
 
 # Política de privacidad de BipAgents
 
-> Última actualización: 9 de noviembre de 2026.
+> Última actualización: 10 de noviembre de 2026.
 
 ## En resumen
 
@@ -472,7 +472,9 @@ GLM-5.3 Flash (fabricante: Z.ai); si se retirara, el modelo de sustitución prev
 (fabricante: DeepSeek). EUrouter indica que los hace funcionar solo en sus proveedores de alojamiento asociados
 establecidos en la Unión Europea, en servidores de la Unión; los fabricantes de esos modelos no reciben tus mensajes.
 No ofreceremos otro modelo en la oferta sin actualizar antes esta sección. EUrouter indica que por defecto no guarda ni las solicitudes ni las respuestas, y
-que guarda sus metadatos (hora, modelo, número de tokens, coste, dirección IP) hasta 12 meses. Actúan por cuenta de
+que guarda sus metadatos (hora, modelo, número de tokens, coste, dirección IP) hasta 12 meses. En cada solicitud de la
+oferta, tu plaza pide además a EUrouter que **no se entrene** ningún modelo con tus mensajes y que **no se guarden**:
+EUrouter solo la confía entonces a un proveedor que, según EUrouter, cumple ambas reglas. Actúan por cuenta de
 Kerfy Studio. **Antes del primer mensaje, la app nombra el enrutador y el fabricante del modelo y te pide tu
 acuerdo**. **Para Salud**, solo un modelo que funciona en la Unión
 Europea: tu plaza se niega a dar tus datos de salud a un agente cuyo modelo no está marcado así, aunque el modelo haya
@@ -494,8 +496,8 @@ Studio: la clave también está allí y,
 técnicamente, el proveedor y Kerfy Studio podrían acceder a ella; nuestro software no lee ni tu plaza ni sus copias, y
 solo lo haríamos si la ley nos obligara. Kerfy Studio guarda estas copias en **Scaleway** (Scaleway SAS, Francia;
 almacenamiento de objetos en París, región fr-par) sin poder leerlas: las de las 2 últimas horas, luego una por hora durante 48 horas, una por día durante
-30 días, nada más antiguo. Se borran con tu plaza. En Scaleway, una versión sustituida o borrada de
-un archivo se guarda 30 días y luego se borra. Los datos se quedan en la Unión Europea.
+21 días, nada más antiguo. Se borran con tu plaza. Lo que una plaza borra de sus copias, el guichet lo aparta primero 5 días (contra un borrado malintencionado) y
+luego se borra; en Scaleway, una versión sustituida o borrada de un archivo se guarda 1 día y luego se borra. Así, lo que borras o pides a un agente que olvide ha salido de las copias de seguridad, todas sus copias incluidas, **en 30 días**. Los datos se quedan en la Unión Europea.
 
 **Las copias de seguridad del guichet.** El guichet (tu cuenta, tu suscripción, los datos técnicos de las plazas)
 también se guarda en Scaleway, en copias que Kerfy Studio cifra antes de enviarlas; las versiones antiguas se borran
@@ -584,7 +586,7 @@ no borra nada en él y Kerfy Studio no guarda nada de él.
 | Hetzner Online GmbH (Gunzenhausen, Alemania) | Aloja parte de los servidores de las plazas y el servidor de correo de los agentes | Contenido de las plazas; buzones de los agentes y registros de seguridad del servidor de correo | Alemania, Finlandia |
 | EUrouter B.V. (Ámsterdam, Países Bajos) | Enrutador de IA | Mensajes enviados al modelo, metadatos | Unión Europea |
 | Proveedores de alojamiento de los modelos, socios de EUrouter | Hacen funcionar el modelo (hoy GLM-5.3 Flash) | Mensajes enviados al modelo, con los archivos y las fotos que ve | Unión Europea, según EUrouter |
-| Scaleway SAS (París, Francia) | Almacenamiento de objetos de las copias de seguridad (región fr-par, París) | Copias de seguridad cifradas de las plazas, ilegibles para él y para Kerfy Studio; copias cifradas de la base de datos del guichet; una versión sustituida o borrada se guarda 30 días | Unión Europea (Francia) |
+| Scaleway SAS (París, Francia) | Almacenamiento de objetos de las copias de seguridad (región fr-par, París) | Copias de seguridad cifradas de las plazas, ilegibles para él y para Kerfy Studio; copias cifradas de la base de datos del guichet; una versión sustituida o borrada se guarda 1 día | Unión Europea (Francia) |
 | OVHcloud (OVH SAS, Roubaix, Francia) | Aloja el servidor del guichet y del relé | Cuenta, suscripción, datos técnicos, tokens sellados | Unión Europea |
 | Proveedor de envío de correos: todavía no en servicio; se indicará aquí antes de su puesta en servicio | Envía los códigos, los avisos de seguridad, las invitaciones, la confirmación de compra, el acuse de desistimiento y los avisos de eliminación | Dirección de correo, contenido de esos correos | Se indicará con él |
 | Stripe Payments Europe, Ltd. (Dublín, Irlanda) | Pago de las compras en el sitio bipagents.com, cálculo de impuestos, controles contra el fraude, facturas | Dirección de correo, dirección o país de facturación, datos de tarjeta, dirección IP | Unión Europea; posiblemente fuera de la Unión (sección 11) |
@@ -779,8 +781,9 @@ de correos: todavía no en servicio; su país y la garantía aplicable se indica
 | Nombre de campaña (sección 5.11) | 13 meses después de su registro, o con la cuenta o la suscripción |
 | Dirección IP al reservar una semana gratis | Nunca se guarda; en memoria, como huella, 15 minutos como máximo |
 | Contenido de tu plaza | Durante la suscripción y después 30 días (3 días después de una semana gratis que no continuó) |
-| Copias de seguridad | 2 horas (todas), luego 48 horas (por hora), 30 días (diarias), nada más antiguo; se borran con la plaza |
-| Versiones sustituidas o borradas en Scaleway (copias de seguridad de las plazas, copias cifradas de la base de datos del guichet) | 30 días |
+| Copias de seguridad | 2 horas (todas), luego 48 horas (por hora), 21 días (diarias), nada más antiguo; se borran con la plaza; lo que borras ha salido de ellas en 30 días, todas las copias incluidas |
+| Archivos de copia que una plaza borra, apartados por el guichet | 5 días |
+| Versiones sustituidas o borradas en Scaleway (copias de seguridad de las plazas, copias cifradas de la base de datos del guichet) | 1 día |
 | Imagen diaria de OVHcloud | Un punto por día, sustituido en un día aproximadamente después de reinstalar la plaza |
 | Datos técnicos de los servidores | Solo los últimos valores |
 | Registro de eventos del guichet | 12 meses |

@@ -2,7 +2,7 @@
 
 # Datenschutzerklärung von BipAgents
 
-> Zuletzt aktualisiert: 9. November 2026.
+> Zuletzt aktualisiert: 10. November 2026.
 
 ## Kurz gesagt
 
@@ -503,7 +503,9 @@ Angebots, dann über den Hoster, der das Modell betreibt. Heute nutzt das Angebo
 EUrouter gibt an, sie nur bei seinen Partner-Hostern mit Sitz in der Europäischen Union zu betreiben, auf Servern in der
 Union; die Hersteller dieser Modelle erhalten deine Nachrichten nicht. Wir bieten kein anderes Modell im Angebot an,
 ohne zuvor diesen Abschnitt zu aktualisieren. EUrouter gibt an, standardmäßig weder die Anfragen noch die Antworten aufzubewahren und
-ihre Metadaten (Uhrzeit, Modell, Zahl der Tokens, Kosten, IP-Adresse) bis zu 12 Monate aufzubewahren. Sie handeln im
+ihre Metadaten (Uhrzeit, Modell, Zahl der Tokens, Kosten, IP-Adresse) bis zu 12 Monate aufzubewahren. Bei jeder Anfrage
+des Angebots verlangt dein Platz von EUrouter außerdem, dass **kein Modell** mit deinen Nachrichten **trainiert** und
+**nichts davon aufbewahrt** wird: EUrouter gibt sie dann nur einem Anbieter, der laut EUrouter beide Regeln einhält. Sie handeln im
 Auftrag von Kerfy Studio. **Vor der ersten Nachricht nennt dir die App den Router und den Hersteller des Modells und
 fragt nach deinem Einverständnis**. **Für Gesundheit** nur
 ein Modell, das in der Europäischen Union läuft: Dein Platz gibt deine Gesundheitsdaten keinem Agenten, dessen Modell
@@ -526,9 +528,10 @@ liegt der Platz auf einem von Kerfy Studio gemieteten Server: Der Schlüssel ist
 technisch könnten der Hoster wie Kerfy Studio darauf zugreifen; unsere Software liest weder deinen Platz noch seine
 Sicherungen, und wir täten es nur, wenn das Gesetz uns dazu verpflichtet. Kerfy Studio bewahrt diese Sicherungen bei
 **Scaleway** auf (Scaleway SAS, Frankreich; Objektspeicher in Paris, Region fr-par), ohne sie lesen zu können: die der
-letzten 2 Stunden, dann eine pro Stunde für 48 Stunden, eine pro Tag für 30 Tage, nichts Älteres. Sie werden mit deinem Platz gelöscht.
-Bei Scaleway wird eine ersetzte oder gelöschte Version einer Datei 30 Tage aufbewahrt und dann gelöscht. Die Daten
-bleiben in der Europäischen Union.
+letzten 2 Stunden, dann eine pro Stunde für 48 Stunden, eine pro Tag für 21 Tage, nichts Älteres. Sie werden mit deinem Platz gelöscht.
+Was ein Platz aus seinen Sicherungen löscht, legt der Guichet zuerst 5 Tage beiseite (gegen ein böswilliges Löschen),
+dann wird es gelöscht; bei Scaleway wird eine ersetzte oder gelöschte Version einer Datei 1 Tag aufbewahrt und dann gelöscht. So ist, was du löschst oder einen Agenten vergessen lässt, **innerhalb von 30 Tagen**
+aus den Sicherungen verschwunden, alle ihre Kopien eingeschlossen. Die Daten bleiben in der Europäischen Union.
 
 **Die Sicherungen des Guichets.** Der Guichet (dein Konto, dein Abo, die technischen Daten der Plätze) wird ebenfalls
 bei Scaleway gesichert, in Kopien, die Kerfy Studio vor dem Versand verschlüsselt; alte Versionen werden nach 30 Tagen
@@ -621,7 +624,7 @@ dieses Anbieters, BipAgents löscht darin nichts, und Kerfy Studio bewahrt nicht
 | Hetzner Online GmbH (Gunzenhausen, Deutschland) | Hostet einen Teil der Server der Plätze und den Mailserver der Agenten | Inhalt der Plätze; Postfächer der Agenten und Sicherheitsprotokolle des Mailservers | Deutschland, Finnland |
 | EUrouter B.V. (Amsterdam, Niederlande) | KI-Router | An das Modell geschickte Nachrichten, Metadaten | Europäische Union |
 | Hoster der Modelle, Partner von EUrouter | Betreiben das Modell (heute GLM-5.3 Flash) | An das Modell geschickte Nachrichten, mit den Dateien und Fotos, die es sieht | Europäische Union, laut EUrouter |
-| Scaleway SAS (Paris, Frankreich) | Objektspeicher für die Sicherungen (Region fr-par, Paris) | Verschlüsselte Sicherungen der Plätze, für ihn und für Kerfy Studio unlesbar; verschlüsselte Kopien der Datenbank des Guichets; eine ersetzte oder gelöschte Version wird 30 Tage aufbewahrt | Europäische Union (Frankreich) |
+| Scaleway SAS (Paris, Frankreich) | Objektspeicher für die Sicherungen (Region fr-par, Paris) | Verschlüsselte Sicherungen der Plätze, für ihn und für Kerfy Studio unlesbar; verschlüsselte Kopien der Datenbank des Guichets; eine ersetzte oder gelöschte Version wird 1 Tag aufbewahrt | Europäische Union (Frankreich) |
 | OVHcloud (OVH SAS, Roubaix, Frankreich) | Hostet den Server des Guichets und des Relays | Konto, Abo, technische Daten, versiegelte Tokens | Europäische Union |
 | Anbieter für den E-Mail-Versand: noch nicht in Betrieb; er wird hier vor der Inbetriebnahme genannt | Verschickt die Codes, die Sicherheitshinweise, die Einladungen, die Kaufbestätigung, die Eingangsbestätigung eines Widerrufs und die Hinweise zur Löschung | E-Mail-Adresse, Inhalt dieser E-Mails | Mit ihm angegeben |
 | Stripe Payments Europe, Ltd. (Dublin, Irland) | Zahlung der Käufe auf der Website bipagents.com, Steuerberechnung, Betrugsprüfung, Rechnungen | E-Mail-Adresse, Rechnungsadresse oder -land, Kartendaten, IP-Adresse | Europäische Union; möglicherweise außerhalb der Union (Abschnitt 11) |
@@ -823,8 +826,9 @@ und die geltende Garantie werden hier vor der Inbetriebnahme angegeben. Du kanns
 | Kampagnenname (Abschnitt 5.11) | 13 Monate nach der Aufzeichnung, oder mit dem Konto oder dem Abo |
 | IP-Adresse bei der Reservierung einer kostenlosen Woche | Nie gespeichert; im Arbeitsspeicher, als Fingerabdruck, höchstens 15 Minuten |
 | Inhalt deines Platzes | Während des Abos, dann 30 Tage (3 Tage nach einer nicht fortgesetzten kostenlosen Woche) |
-| Sicherungen | 2 Stunden (alle), dann 48 Stunden (stündlich), 30 Tage (täglich), nichts Älteres; mit dem Platz gelöscht |
-| Ersetzte oder gelöschte Versionen bei Scaleway (Sicherungen der Plätze, verschlüsselte Kopien der Datenbank des Guichets) | 30 Tage |
+| Sicherungen | 2 Stunden (alle), dann 48 Stunden (stündlich), 21 Tage (täglich), nichts Älteres; mit dem Platz gelöscht; was du löschst, ist innerhalb von 30 Tagen daraus verschwunden, alle Kopien eingeschlossen |
+| Sicherungsdateien, die ein Platz löscht, vom Guichet beiseitegelegt | 5 Tage |
+| Ersetzte oder gelöschte Versionen bei Scaleway (Sicherungen der Plätze, verschlüsselte Kopien der Datenbank des Guichets) | 1 Tag |
 | Tägliches Abbild von OVHcloud | Ein Punkt pro Tag, innerhalb von etwa einem Tag nach der Neuinstallation des Platzes ersetzt |
 | Technische Daten der Server | Nur die letzten Werte |
 | Ereignisprotokoll des Guichet | 12 Monate |

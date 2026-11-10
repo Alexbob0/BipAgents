@@ -141,7 +141,7 @@ async fn call(
 ) -> Result<(u16, Value), String> {
     let (agent, household) = split(id).ok_or("not a guest")?;
     let entry = households(config).get(&household).ok_or("their household is no longer linked")?;
-    let url = format!("{}/family/r/{agent}/{path}", entry.get("url").map(py::py_str).unwrap_or_default());
+    let url = format!("{}/family/r/{agent}/{path}", crate::family_relay::reach_url(&entry));
     let key = entry.get("key_out").map(py::py_str).unwrap_or_default();
     let http = crate::door_tls::household_client(http, &entry);
     let mut request = http.request(method, url).bearer_auth(key).timeout(Duration::from_secs(20));

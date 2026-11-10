@@ -58,7 +58,7 @@ ring = "0.17"
 rcgen = { version = "0.13", default-features = false, features = ["crypto", "pem", "ring"] }
 regex = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "http2", "stream", "multipart", "gzip", "brotli", "deflate", "zstd"] }
-rusqlite = { version = "0.32", features = ["bundled", "backup"] }
+rusqlite = { version = "0.41", features = ["bundled", "backup"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 serde = { version = "1", features = ["derive"] }
 # float_roundtrip: a float written then read back is the same float (the default parser can be one bit off, as
@@ -84,7 +84,7 @@ uuid = { version = "1", features = ["v4"] }
 zeroize = { version = "1", features = ["derive"] }
 # tools-knowledge: mail parsing, zip imports (notes), NFKD slugs, IMAP over rustls
 mail-parser = { version = "0.11", features = ["full_encoding"] }
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 unicode-normalization = "0.1"
 encoding_rs = "0.8"
 webpki-roots = "1"

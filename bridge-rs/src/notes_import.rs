@@ -167,13 +167,13 @@ pub fn notes_of(name: &str, raw: &[u8]) -> anyhow::Result<(Vec<Note>, usize)> {
         for index in 0..archive.len() {
             let file = archive.by_index_raw(index)?;
             if !file.is_dir() {
-                names.push(file.name().to_string());
+                names.push(file.name()?.into_owned());
             }
         }
         for index in 0..archive.len() {
             let (is_dir, size, filename) = {
                 let file = archive.by_index_raw(index)?;
-                (file.is_dir(), file.size(), file.name().to_string())
+                (file.is_dir(), file.size(), file.name()?.into_owned())
             };
             if is_dir || size > 5 * (1 << 20) || found.len() >= MAX_NOTES {
                 continue;

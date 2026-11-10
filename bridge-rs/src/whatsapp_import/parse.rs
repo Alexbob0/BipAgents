@@ -360,7 +360,11 @@ pub fn text_of(file_name: &str, raw: &[u8]) -> Result<String, NotAnExport> {
     let bytes = if raw.starts_with(b"PK\x03\x04") {
         let mut archive = zip::ZipArchive::new(std::io::Cursor::new(raw))
             .map_err(|_| NotAnExport("this zip can't be opened".into()))?;
-        let names: Vec<String> = archive.file_names().map(str::to_string).collect();
+        let names: Vec<String> = archive
+            .file_names()
+            .map(|name| name.map(std::borrow::Cow::into_owned))
+            .collect::<Result<_, _>>()
+            .map_err(|_| NotAnExport("this zip can't be opened".into()))?;
         let pick = names
             .iter()
             .find(|n| n.rsplit('/').next() == Some("_chat.txt"))

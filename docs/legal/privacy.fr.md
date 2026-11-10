@@ -2,7 +2,7 @@
 
 # Politique de confidentialité de BipAgents
 
-> Dernière mise à jour : 9 novembre 2026.
+> Dernière mise à jour : 10 novembre 2026.
 
 ## En bref
 
@@ -480,7 +480,9 @@ l'offre, puis par l'hébergeur qui fait tourner le modèle. Aujourd'hui, l'offre
 DeepSeek). EUrouter indique les faire tourner uniquement chez ses hébergeurs partenaires établis dans l'Union
 européenne, sur des serveurs dans l'Union ; les fabricants de ces modèles ne reçoivent pas tes messages. Nous ne
 proposerons pas d'autre modèle sur l'offre sans avoir d'abord mis à jour cette section. EUrouter indique ne garder par défaut ni les requêtes ni les réponses, et garder leurs
-métadonnées (heure, modèle, nombre de jetons, coût, adresse IP) jusqu'à 12 mois. Ils agissent pour le compte de Kerfy
+métadonnées (heure, modèle, nombre de jetons, coût, adresse IP) jusqu'à 12 mois. Sur chaque requête de l'offre, ta place
+demande en plus à EUrouter **aucun entraînement** d'un modèle avec tes messages et **aucune conservation** de ceux-ci :
+EUrouter ne la confie alors qu'à un hébergeur qu'il indique conforme à ces deux règles. Ils agissent pour le compte de Kerfy
 Studio. **Avant le premier message, l'app nomme le routeur et le fabricant du modèle et te demande ton accord**. **Pour « Santé »**, seulement un modèle qui tourne dans l'Union
 européenne : ta place refuse de donner tes données de santé à un agent dont le modèle n'est pas marqué comme tel, même
 si le modèle a changé après que tu as activé « Santé » (section 3).
@@ -501,8 +503,8 @@ Kerfy Studio : la clé y est donc présente, et
 techniquement l'hébergeur comme Kerfy Studio pourraient y accéder ; notre logiciel ne lit ni ta place ni ses
 sauvegardes, et nous ne le ferions que si la loi nous y oblige.
 Kerfy Studio garde ces sauvegardes chez **Scaleway** (Scaleway SAS, France ; stockage objet à Paris, région fr-par)
-sans pouvoir les lire : celles des 2 dernières heures, puis une par heure pendant 48 heures, une par jour pendant 30 jours, rien au-delà. Elles sont effacées avec ta place. Chez Scaleway, une version remplacée ou effacée d'un fichier est
-gardée 30 jours, puis effacée. Les données restent dans l'Union européenne.
+sans pouvoir les lire : celles des 2 dernières heures, puis une par heure pendant 48 heures, une par jour pendant 21 jours, rien au-delà. Elles sont effacées avec ta place. Ce qu'une place efface de ses sauvegardes est d'abord mis de côté 5 jours par le guichet (contre un effacement
+malveillant), puis effacé ; chez Scaleway, une version remplacée ou effacée d'un fichier est gardée 1 jour, puis effacée. Ainsi, ce que tu effaces ou demandes à un agent d'oublier a quitté les sauvegardes, toutes leurs copies comprises, **sous 30 jours**. Les données restent dans l'Union européenne.
 
 **Les sauvegardes du guichet.** Le guichet (ton compte, ton abonnement, les données techniques des places) est
 sauvegardé lui aussi chez Scaleway, en copies chiffrées par Kerfy Studio avant de partir ; les anciennes versions sont
@@ -595,7 +597,7 @@ BipAgents n'y efface rien et Kerfy Studio n'en garde rien.
 | Hetzner Online GmbH (Gunzenhausen, Allemagne) | Héberge des serveurs de places et le serveur de messagerie des agents | Contenu des places ; boîtes e-mail des agents et journaux de sécurité du serveur de messagerie | Allemagne, Finlande |
 | EUrouter B.V. (Amsterdam, Pays-Bas) | Routeur d'IA | Messages envoyés au modèle, métadonnées | Union européenne |
 | Hébergeurs des modèles, partenaires d'EUrouter | Font tourner le modèle (aujourd'hui GLM-5.3 Flash) | Messages envoyés au modèle, avec les fichiers et les photos qu'il voit | Union européenne, selon EUrouter |
-| Scaleway SAS (Paris, France) | Stockage objet des sauvegardes (région fr-par, Paris) | Sauvegardes chiffrées des places, illisibles pour lui et pour Kerfy Studio ; copies chiffrées de la base du guichet ; une version remplacée ou effacée est gardée 30 jours | Union européenne (France) |
+| Scaleway SAS (Paris, France) | Stockage objet des sauvegardes (région fr-par, Paris) | Sauvegardes chiffrées des places, illisibles pour lui et pour Kerfy Studio ; copies chiffrées de la base du guichet ; une version remplacée ou effacée est gardée 1 jour | Union européenne (France) |
 | OVHcloud (OVH SAS, Roubaix, France) | Héberge le serveur du guichet et du relais | Compte, abonnement, données techniques, jetons scellés | Union européenne |
 | Prestataire d'envoi des e-mails : pas encore en service ; il sera indiqué ici avant sa mise en service | Envoie les codes, les avis de sécurité, les invitations, la confirmation d'achat, l'accusé de rétractation et les avis de suppression | Adresse e-mail, contenu de ces e-mails | Indiqué avec lui |
 | Stripe Payments Europe, Ltd. (Dublin, Irlande) | Paiement des achats sur le site bipagents.com, calcul des taxes, contrôles contre la fraude, factures | Adresse e-mail, adresse ou pays de facturation, données de carte, adresse IP | Union européenne ; possiblement hors de l'Union (section 11) |
@@ -802,8 +804,9 @@ service ; son pays et la garantie applicable seront indiqués ici avant sa mise 
 | Nom de campagne (section 5.11) | 13 mois après son enregistrement, ou avec le compte ou l'abonnement |
 | Adresse IP à la réservation d'une semaine gratuite | Jamais enregistrée ; en mémoire, sous forme d'empreinte, 15 minutes au plus |
 | Contenu de ta place | Pendant l'abonnement, puis 30 jours (3 jours après une semaine gratuite non poursuivie) |
-| Sauvegardes | 2 heures (toutes), puis 48 heures (horaires), 30 jours (quotidiennes), rien au-delà ; effacées avec la place |
-| Versions remplacées ou effacées chez Scaleway (sauvegardes des places, copies chiffrées de la base du guichet) | 30 jours |
+| Sauvegardes | 2 heures (toutes), puis 48 heures (horaires), 21 jours (quotidiennes), rien au-delà ; effacées avec la place ; ce que tu effaces en est parti sous 30 jours, toutes copies comprises |
+| Fichiers de sauvegarde qu'une place efface, mis de côté par le guichet | 5 jours |
+| Versions remplacées ou effacées chez Scaleway (sauvegardes des places, copies chiffrées de la base du guichet) | 1 jour |
 | Image quotidienne d'OVHcloud | Un point par jour, remplacé dans la journée environ après la réinstallation de la place |
 | Données techniques des serveurs | Dernières valeurs seulement |
 | Journal des événements du guichet | 12 mois |

@@ -174,7 +174,7 @@ pub async fn announce(http: &reqwest::Client, config: &Config, households: &crat
     let Some(entries) = linked.get("households").and_then(Value::as_object) else { return };
     for (id, entry) in entries {
         let Some(entry) = entry.as_object() else { continue };
-        let url = entry.get("url").and_then(Value::as_str).unwrap_or_default();
+        let url = crate::family_relay::reach_url(entry);
         let key = entry.get("key_out").and_then(Value::as_str).unwrap_or_default();
         let answer = household_client(http, entry)
             .post(format!("{url}/family/door"))
