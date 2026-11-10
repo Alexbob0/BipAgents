@@ -455,8 +455,15 @@ pub fn segment_items(
     skip: &HashSet<String>,
     turn: &mut String,
 ) -> Vec<Item> {
-    let results: HashMap<&str, &Row> =
-        rows.iter().filter(|r| r.role == "tool").filter_map(|r| r.tool_call_id.as_deref().map(|id| (id, r))).collect();
+    // a call's result: its newest shown copy, else its newest copy (one a summary absorbed). Not a compaction's
+    // shortened stub of it while the archived original is shown (source.rs `later_tool_copy_sql`, Hermes #144938).
+    let mut results: HashMap<&str, &Row> = HashMap::new();
+    for r in rows.iter().filter(|r| r.role == "tool") {
+        let Some(id) = r.tool_call_id.as_deref() else { continue };
+        if !results.get(id).is_some_and(|kept| kept.shown && !r.shown) {
+            results.insert(id, r);
+        }
+    }
     let mut items = Vec::new();
     for (place, shown) in in_place_compaction(rows) {
         let (row, place) = (&rows[shown], &rows[place]);
