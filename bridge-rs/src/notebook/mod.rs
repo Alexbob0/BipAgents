@@ -2372,7 +2372,7 @@ pub fn unsorted(config: &Config, limit: usize) -> Vec<Unsorted> {
                 continue;
             }
             for fact in facts {
-                if fact.text.is_empty() || tried.contains(&fold(&fact.text)) {
+                if fact.text.is_empty() || tried.contains(&tried_key(&fact.text)) {
                     continue;
                 }
                 out.push(Unsorted { page: page.title.clone(), kind: kind.clone(), fact: fact.text });
@@ -2385,15 +2385,21 @@ pub fn unsorted(config: &Config, limit: usize) -> Vec<Unsorted> {
     out
 }
 
+/// How `refile_tried` keeps a line: its fingerprint, never its text.
+fn tried_key(fact: &str) -> String {
+    forget::hash(&fold(fact))
+}
+
 /// The « Autres » lines the model was shown, not sent again (placed or not).
 pub(crate) fn mark_tried(config: &Config, facts: &[Unsorted]) -> std::io::Result<()> {
     if facts.is_empty() {
         return Ok(());
     }
     update_state(config, |s| {
-        let mut tried = strings(s.get("refile_tried"));
+        // fingerprints only (« Oublie ça » leaves no text in state.json): an older raw entry is dropped
+        let mut tried: Vec<String> = strings(s.get("refile_tried")).into_iter().filter(|t| forget::is_print(t)).collect();
         for f in facts {
-            let key = fold(&f.fact);
+            let key = tried_key(&f.fact);
             if !tried.contains(&key) {
                 tried.push(key);
             }

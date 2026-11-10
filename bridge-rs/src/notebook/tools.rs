@@ -86,11 +86,11 @@ answer: 6 a turn at most.",
         json!({
             "name": WRITE,
             "description": "Write on a Carnet page, found by name, nickname, contact id, e-mail or phone (made if missing; \
-several match: you get their names, ask which). One section per call, one short fact per item, « Label : value » when \
+several match: ask which). One section per call, one short fact per item, « Label : value » when \
 short (« Pointure : 36 »): a label already there is replaced, nothing is repeated. Close family and friends get a person \
 page; others are one line on their group's area page. fix corrects; forget only shows the person what would be erased \
-(they confirm in the app). ask: one question for a missing fact of this page, never health or money unless they raised \
-it. Never passwords, codes or ID numbers.",
+(they confirm in the app). ask (not clarify): one question for a fact this page lacks, never health or money unless they \
+raised it. Never passwords, codes or ID numbers.",
             "inputSchema": {"type": "object", "properties": {
                 "page": {"type": "string", "description": "« Léa Martin », « Rénovation cuisine », « Maison »"},
                 "kind": {"type": "string", "description": "for a new page; self: « Toi »; trip: one journey, « Kyoto, avr. 2026 »", "enum": kinds},
