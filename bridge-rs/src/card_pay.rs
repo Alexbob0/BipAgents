@@ -36,7 +36,9 @@
 //!    browser given back. If the bank asks for a confirmation (3-D Secure, « confirm in your banking app »), the agent
 //!    tells the person to confirm in their bank's app and waits; after 5 minutes without the page moving on, the
 //!    fields are emptied and the browser given back anyway. `cancel_payment` does the same at once, and so does
-//!    « Suspendre tous les paiements » in the app. Given back, the tab shows an empty page (the document the card was
+//!    « Suspendre tous les paiements » in the app. A bank that asks in the page (a code sent by SMS): the person takes
+//!    the browser over in the app's live view and types it; the payment's hold stays for the agent meanwhile
+//!    (`person_holds`), and the time limit is then their own hold's (15 minutes). Given back, the tab shows an empty page (the document the card was
 //!    typed into is gone), except when the page moved on to a new document by itself (the shop's confirmation);
 //! 6. each step goes to the journal (cards.rs, without any number) and the payment is kept on the card: « dépensé
 //!    par tes agents » in the app; a single-use card is then used, and the app proposes to enter its new numbers.
@@ -89,6 +91,9 @@ const ASK_TIMEOUT: Duration = Duration::from_secs(330);
 const CODE_WAIT: Duration = Duration::from_secs(20);
 /// A held browser is given back after this, its card fields emptied, whatever the page does.
 const HOLD_LIMIT: Duration = Duration::from_secs(300);
+/// The same while the person holds the browser in the app (a 3-D Secure code typed by them): their own hold's limit
+/// (browser/hold_gate.py `LIMIT`).
+const PERSON_HOLD_LIMIT: Duration = Duration::from_secs(900);
 /// After the click, how long the bridge watches the page before answering the agent.
 const AFTER_CLICK: Duration = Duration::from_secs(15);
 const KEEPALIVE: Duration = Duration::from_secs(10);
@@ -323,6 +328,55 @@ fn held() -> std::sync::MutexGuard<'static, HashMap<String, Held>> {
     HELD.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// A card payment holds `agent`'s browser (its card typed, or about to be).
+pub fn holding(agent: &str) -> bool {
+    held().contains_key(agent)
+}
+
+/// The agents whose browser the person holds in the app (desktop.rs `control`, kept here for `release`).
+static PERSON: LazyLock<Mutex<std::collections::HashSet<String>>> = LazyLock::new(Default::default);
+
+fn person_in(agent: &str) -> bool {
+    PERSON.lock().unwrap_or_else(|e| e.into_inner()).contains(agent)
+}
+
+/// The person takes over `agent`'s browser in the app, or hands it back (desktop.rs `control`, before the hold's
+/// flag is touched). Returns whether a card payment holds that browser now.
+///
+/// Taking over during a payment (security check 11/11, N1) is how the person answers a bank that asks them in the
+/// page (a 3-D Secure code, a confirmation page): their input goes through the live view, which reaches the page with
+/// the payment's token (`person_view_token`), while the payment's hold stays as it is: the agent's tools are refused
+/// and its DevTools connections closed. The payment ends as always (the page moved on, cancel, suspend, the time
+/// limit: `release`, the card's fields emptied, the page left, the history forgotten), and only then does the hold
+/// become the person's, until they hand it back. Handing back during the payment leaves the payment's hold.
+pub fn person_holds(agent: &str, on: bool) -> bool {
+    let mut people = PERSON.lock().unwrap_or_else(|e| e.into_inner());
+    if on {
+        people.insert(agent.to_string());
+    } else {
+        people.remove(agent);
+    }
+    holding(agent)
+}
+
+/// The payment's hold was just set over no flag: whatever take-over the app never gave back (killed, offline) is over
+/// (its flag lapsed, or its container restarted), so the person does not hold the browser now (fix review 11/11, 3rd
+/// check, P2: the payment would otherwise get the person's 15 minutes and end by handing the hold to nobody). A
+/// take-over during the payment sets it again (desktop.rs `control`).
+fn nobody_holds(state: &AppState, agent: &str) {
+    person_holds(agent, false);
+    state.desktop_control.lock().unwrap_or_else(|e| e.into_inner()).insert(agent.to_string(), false);
+}
+
+/// The token the person's live view shows to reach the page while a payment holds the browser and they took it
+/// over (desktop_page.rs); None otherwise. The bridge's own view, never the agent's.
+pub fn person_view_token(agent: &str) -> Option<String> {
+    if !person_in(agent) {
+        return None;
+    }
+    held().get(agent).map(|e| e.token.clone())
+}
+
 /// The payment `token` still holds `agent`'s browser and nobody asked it to stop: it may go on typing.
 fn still_ours(agent: &str, token: &str) -> bool {
     held().get(agent).is_some_and(|e| e.token == token && e.stop.is_none())
@@ -381,8 +435,45 @@ fn page_of(url: &str) -> &str {
 /// in). A one-page checkout that only changed its address is still the document typed into: left on an empty page
 /// too. Either way the tab's history is forgotten once typing began, so « back » never brings the typed-into document
 /// again. Returns whether it was left on an empty page.
+///
+/// Run in a task of its own (fix review 11/11, 3rd check, P1): a caller in a request's task (cancel_payment,
+/// confirm_payment, give_up in pay, « Suspendre ») that is dropped half-way (Hermes closed its stream, the app its
+/// connection) no longer stops it after the entry is gone, with the card typed and the hold left for nobody.
 async fn release(config: &Config, agent: &str, outcome: &str) -> bool {
     let Some(entry) = held().remove(agent) else { return false };
+    let marked = Releasing::mark(agent);
+    let (config, agent, outcome) = (Arc::new(config.clone()), agent.to_string(), outcome.to_string());
+    let done = tokio::spawn(async move {
+        let _marked = marked;
+        release_entry(&config, &agent, &outcome, entry).await
+    });
+    done.await.unwrap_or(false)
+}
+
+/// The agents whose payment is being given back right now (`release`'s task, which may outlive its caller and the
+/// agent's lock): the sweep leaves them alone.
+static RELEASING: LazyLock<Mutex<std::collections::HashSet<String>>> = LazyLock::new(Default::default);
+
+struct Releasing(String);
+
+impl Releasing {
+    fn mark(agent: &str) -> Releasing {
+        RELEASING.lock().unwrap_or_else(|e| e.into_inner()).insert(agent.to_string());
+        Releasing(agent.to_string())
+    }
+
+    fn now(agent: &str) -> bool {
+        RELEASING.lock().unwrap_or_else(|e| e.into_inner()).contains(agent)
+    }
+}
+
+impl Drop for Releasing {
+    fn drop(&mut self) {
+        RELEASING.lock().unwrap_or_else(|e| e.into_inner()).remove(&self.0);
+    }
+}
+
+async fn release_entry(config: &Config, agent: &str, outcome: &str, entry: Held) -> bool {
     let mut blanked = false;
     let mut tab = Page::attach(entry.port, Some(&entry.token), &entry.target).await;
     if matches!(tab, Err(FillError::Unreachable | FillError::Protocol(_))) {
@@ -420,7 +511,13 @@ async fn release(config: &Config, agent: &str, outcome: &str) -> bool {
         Err(FillError::NoPage) => {} // the tab is closed: nothing of it is given back
         Err(exc) => tracing::warn!(agent = %agent, exc = %exc, "card payment: payment page not reached to leave it"),
     }
-    crate::browsers::hold_for_payment(config, agent, None).await;
+    // The person took the browser over during the payment: the hold becomes theirs (the page is clean now). Handed back
+    // meanwhile: their hold goes too (it never touches a payment's).
+    let person = person_in(agent);
+    crate::browsers::end_payment_hold(config, agent, person).await;
+    if person && !person_in(agent) {
+        crate::browsers::hold(config, agent, false).await;
+    }
     if let Some(folder) = &entry.lease {
         let _ = crate::desktop::set_lease(folder, false, "");
     }
@@ -437,7 +534,9 @@ fn watch(state: AppState, agent: String, payment: String) {
             tokio::time::sleep(Duration::from_secs(2)).await;
             let Some(entry) = held().get(&agent).filter(|e| e.payment == payment).cloned() else { return };
             let config = state.config();
-            let outcome = if entry.since.elapsed() > HOLD_LIMIT {
+            // The person answering the bank in the page (they took the browser over) gets longer, as their own hold.
+            let limit = if person_in(&agent) { PERSON_HOLD_LIMIT } else { HOLD_LIMIT };
+            let outcome = if entry.since.elapsed() > limit {
                 "timed_out"
             } else {
                 let moved = match Page::open(entry.port, Some(&entry.token)).await {
@@ -459,6 +558,44 @@ fn watch(state: AppState, agent: String, payment: String) {
     });
 }
 
+/// How a payment that holds the browser ends, whatever way `pay` (or `pay_with_values`) is left (security check
+/// 11/11, N3): the card typed and the agent told (`typed`), its page is watched until it moves on (`watch`); any other
+/// way out (an error after the hold was set, the call's task aborted when Hermes closed its stream, a panic) gives the
+/// browser back at once, under the agent's lock, its fields emptied and the page left (`release`). A payment already
+/// given back (`give_up`) is not given back again.
+struct Ending {
+    state: AppState,
+    agent: String,
+    payment: String,
+    typed: bool,
+}
+
+impl Ending {
+    fn new(state: &AppState, agent: &str, payment: &str) -> Ending {
+        Ending { state: state.clone(), agent: agent.to_string(), payment: payment.to_string(), typed: false }
+    }
+}
+
+impl Drop for Ending {
+    fn drop(&mut self) {
+        let Ok(runtime) = tokio::runtime::Handle::try_current() else { return };
+        let _inside = runtime.enter();
+        let (state, agent, payment) =
+            (self.state.clone(), std::mem::take(&mut self.agent), std::mem::take(&mut self.payment));
+        if self.typed {
+            watch(state, agent, payment);
+            return;
+        }
+        tokio::spawn(async move {
+            let _one_at_a_time = lock_of(&agent).lock_owned().await;
+            if held().get(&agent).is_some_and(|e| e.payment == payment) {
+                tracing::warn!(agent = %agent, "card payment: ended before its answer, browser given back");
+                release(&state.config(), &agent, "failed").await;
+            }
+        });
+    }
+}
+
 /// Every payment stopped: those asked are refused, the held browsers given back (« Suspendre tous les paiements »).
 /// A payment still reloading its page or typing is asked to stop first, then given back once it has (its lock).
 pub async fn stop_all(config: &Config) {
@@ -478,12 +615,69 @@ pub async fn stop_all(config: &Config) {
     }
 }
 
+/// At start: the payments' (and vault fills') holds a stopped bridge left in the agents' browsers (security check
+/// 11/11, N2). Nobody would end them (the held payments are memory only), and the card may still be typed in a tab:
+/// as nothing here knows which tab or fields any more, every tab is left on an empty page with its history forgotten
+/// (the browser's container restarted when that can't be done), and only then is the hold lifted. The browser's gate
+/// keeps the agent out meanwhile (a payment's hold never lapses, browser/hold_gate.py).
+///
+/// Also run every `STALE_SWEEP` (fix review 11/11, 3rd check, P1): a hold whose owner was cut off without a bridge
+/// restart (a request aborted during the hold's own command, a lift that failed, a probe that failed at start) would
+/// otherwise keep the agent's browser until the next restart. A hold in use is never taken for a leftover: payments
+/// and the vault's fills hold the agent's lock (`lock_of`) from before their hold to after its lift, and a release
+/// running on is marked (`Releasing`).
+pub async fn end_stale_holds(config: Arc<Config>) {
+    for agent in config.agents.values() {
+        let name = agent.name.as_str();
+        let Some(port) = crate::browsers::ports_of(&config, name).and_then(|p| p.get("cdp").copied()) else {
+            continue;
+        };
+        let _one_at_a_time = lock_of(name).lock_owned().await;
+        if held().contains_key(name) || Releasing::now(name) {
+            continue; // a payment of this run
+        }
+        let token = py::uuid4_hex();
+        if !crate::browsers::stale_payment_hold(&config, name, &token).await {
+            continue;
+        }
+        tracing::warn!(agent = %name, "card payment: a hold left by a stopped bridge, its tabs left");
+        let left = match Page::leave_every_tab(port, &token).await {
+            Ok(tabs) => {
+                tracing::info!(agent = %name, tabs = tabs, "card payment: every tab left");
+                true
+            }
+            Err(exc) => {
+                tracing::warn!(agent = %name, exc = %exc, "card payment: tabs not left, browser restarted");
+                crate::browsers::restart(&config, name).await
+            }
+        };
+        // Neither left nor restarted (fix review 11/11, 3rd check, P3): the card may still be typed in a tab, so the
+        // hold stays (the gate keeps the agent out) until the next sweep.
+        if !left {
+            tracing::warn!(agent = %name, "card payment: browser neither left nor restarted, its hold kept");
+            continue;
+        }
+        crate::browsers::hold_for_payment(&config, name, None).await;
+    }
+}
+
+/// How often `end_stale_holds` looks again after the start.
+const STALE_SWEEP: Duration = Duration::from_secs(180);
+
+/// `end_stale_holds` at start, then every `STALE_SWEEP`.
+pub async fn end_stale_holds_forever(config: crate::config::SharedConfig) {
+    loop {
+        end_stale_holds(config.get()).await;
+        tokio::time::sleep(STALE_SWEEP).await;
+    }
+}
+
 // --- the tools -----------------------------------------------------------------------------------------------------
 
-/// One payment at a time per agent.
+/// One payment at a time per agent (and no vault fill meanwhile, vault_logins.rs: they share the browser's hold).
 static PAYING: LazyLock<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>> = LazyLock::new(Default::default);
 
-fn lock_of(agent: &str) -> Arc<tokio::sync::Mutex<()>> {
+pub(crate) fn lock_of(agent: &str) -> Arc<tokio::sync::Mutex<()>> {
     PAYING.lock().unwrap_or_else(|e| e.into_inner()).entry(agent.to_string()).or_default().clone()
 }
 
@@ -714,6 +908,9 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
         return Ok(refused);
     }
     drop(page);
+    if let Some(refused) = browser_cannot_pay(&config, &agent.name).await {
+        return Ok(refused);
+    }
     let message = cards::approval_message(&entry.payment, cents, &currency, &host, &card.label, &last4, &merchant);
     journal(&config, &entry, &agent.name, "asked");
     let message = if on_phone {
@@ -761,7 +958,11 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
             "Your browser could not be paused for the payment (the person may hold it): nothing was typed.",
         ));
     }
+    nobody_holds(state, &agent.name);
+    // The hold's time limit counts from the hold, not from the question (the person may take minutes to answer).
+    entry.since = Instant::now();
     held().insert(agent.name.clone(), entry.clone());
+    let mut ending = Ending::new(state, &agent.name, &entry.payment);
     let (agent_name, token) = (agent.name.as_str(), entry.token.as_str());
     let still = || still_ours(agent_name, token);
     let (mut page, fields) = match fresh_page(&config, &agent.name, &entry, &still).await {
@@ -788,7 +989,7 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
     crate::vault_contacts::note_mark(state, &agent.name, PAY, &crate::vault_contacts::mark(&card.id, &card.label));
     journal(&config, &entry, &agent.name, "typed");
     tracing::info!(agent = %agent.name, site = %host, fields = %filled.join(","), "card payment: card typed");
-    watch(state.clone(), agent.name.clone(), entry.payment.clone());
+    ending.typed = true; // watched from here until the page moves on (`Ending`)
     let mut answer = format!(
         "The person approved {} {currency} on {host}. The card « {} » is typed into the page ({}). Your browser is \
          paused until the payment ends (nobody may read the card). If the total you read before was {} {currency}, \
@@ -833,6 +1034,8 @@ async fn form_on(page: &mut Page, rule: &card_fill::Frames, host: &str) -> Resul
 }
 
 const HAND_IT_OVER: &str = "Don't pay yourself: hand the payment over to the person with hand_over_payment.";
+const HAND_IT_OVER_AFTER: &str = "hand the payment over to the person with hand_over_payment (they pay themselves). \
+Never ask them for the card's numbers or its security code in the chat.";
 
 /// The agent's browser tool calls that got through before the hold (hold_gate.py counts them).
 #[derive(Debug, PartialEq)]
@@ -852,9 +1055,10 @@ async fn calls_done(config: &Config, agent: &str) -> Calls {
     let host = crate::browsers::Host::real(config);
     let Some(engine) = host.runtime.clone() else { return Calls::Unknown };
     let check = format!(
-        "grep -q bipagents-calls /opt/stealth/hold_gate.py || exit 5; for f in {CALLS_DIR}/*; do [ -f \"$f\" ] || \
-         continue; [ -d \"/proc/${{f##*/}}\" ] || {{ rm -f \"$f\"; continue; }}; [ \"$(cat \"$f\")\" = 0 ] || exit 4; \
-         done; exit 0"
+        // an image with the gate whose payment holds never lapse too (fix review 11/11, 3rd check, P6)
+        "grep -q bipagents-calls /opt/stealth/hold_gate.py && grep -q 'paying() or' /opt/stealth/hold_gate.py || \
+         exit 5; for f in {CALLS_DIR}/*; do [ -f \"$f\" ] || continue; [ -d \"/proc/${{f##*/}}\" ] || {{ rm -f \"$f\"; \
+         continue; }}; [ \"$(cat \"$f\")\" = 0 ] || exit 4; done; exit 0"
     );
     let command = vec![engine, "exec".into(), crate::browsers::container(agent), "sh".into(), "-c".into(), check];
     match (host.exec)(command).await {
@@ -868,6 +1072,13 @@ async fn calls_done(config: &Config, agent: &str) -> Calls {
         }
         _ => Calls::Running,
     }
+}
+
+/// The agent's browser image can't protect a payment (R3: its gate counts no tool calls): the refusal, given before
+/// the person is asked (security check 11/11, N5: nobody approves, nor sends a phone's card, for a payment that
+/// can't then be typed). The same look runs again under the hold.
+pub(crate) async fn browser_cannot_pay(config: &Config, agent: &str) -> Option<Dict> {
+    (calls_done(config, agent).await == Calls::Unknown).then(|| refusal(&format!("{OLD_BROWSER} {HAND_IT_OVER}")))
 }
 
 const OLD_BROWSER: &str = "Your browser must be updated before the bridge can pay with a card in it (BipAgents updates \
@@ -1062,10 +1273,11 @@ async fn confirm(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> any
     let clicked = match page.click_pay(&wanted, &digits, &rule).await {
         Ok(Some(button)) => button,
         Ok(None) => {
-            return Ok(refusal(
-                "No pay button found on the page. Give the button's text exactly as you read it, or call \
-                 cancel_payment and tell the person.",
-            ))
+            // Not worth another try (security check 11/11, N4): a pay button outside the card's form is never pressed.
+            return Ok(refusal(&format!(
+                "No pay button of the card's form was found on the page: don't try again. Call cancel_payment, then \
+                 {HAND_IT_OVER_AFTER}"
+            )));
         }
         Err(exc) => return Ok(refusal(&unreachable_text(&exc))),
     };
@@ -1081,9 +1293,10 @@ async fn confirm(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> any
                 } else if page.bank_asks().await {
                     return Ok(text(&format!(
                         "Clicked « {clicked} ». The bank asks the person to confirm the payment: tell them « Confirme le \
-                         paiement dans ton app bancaire » (in their language) and wait. Don't type any code yourself. \
-                         Your browser stays paused until the page moves on (5 minutes at most); then check that the \
-                         payment went through."
+                         paiement dans ton app bancaire » (in their language) and wait. Don't type any code yourself: \
+                         if the page asks for a code (sent by SMS), tell them to open your browser in the BipAgents \
+                         app, take it over (« Prendre la main ») and type it there. Your browser stays paused until \
+                         the page moves on (5 minutes at most); then check that the payment went through."
                     )));
                 } else {
                     false
@@ -1185,7 +1398,9 @@ pub(crate) async fn pay_with_values(
             "Your browser could not be paused for the payment (the person may hold it): nothing was typed.",
         );
     }
+    nobody_holds(state, &agent.name);
     held().insert(agent.name.clone(), entry.clone());
+    let mut ending = Ending::new(state, &agent.name, &entry.payment);
     journal(&config, &entry, &agent.name, "approved");
     let (agent_name, token) = (agent.name.as_str(), entry.token.as_str());
     let still = || still_ours(agent_name, token);
@@ -1209,7 +1424,7 @@ pub(crate) async fn pay_with_values(
     };
     journal(&config, &entry, &agent.name, "typed");
     tracing::info!(agent = %agent.name, site = %host, fields = %filled.join(","), "one-time card typed");
-    watch(state.clone(), agent.name.clone(), entry.payment.clone());
+    ending.typed = true; // watched from here until the page moves on (`Ending`)
     text(&format!(
         "The one-time card « {label} » is typed into the page ({}). Your browser is paused until the payment ends \
          (nobody may read the card). If the total on the page is still {} {currency}, call confirm_payment with the \
@@ -1425,7 +1640,8 @@ pub async fn serve(
     }
 }
 
-/// Stops the payment's tool when its client goes away (a payment approved then is still given back by the watch).
+/// Stops the payment's tool when its client goes away (a payment holding the browser then is still given back, by
+/// its `Ending`).
 struct AbortOnDrop(tokio::task::AbortHandle);
 
 impl Drop for AbortOnDrop {

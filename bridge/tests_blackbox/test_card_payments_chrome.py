@@ -29,7 +29,9 @@ from websockets.sync.client import connect
 
 from bbkit.common import AUTH
 from bbkit.servers import free_port
-from test_card_payments import ARGS, CARD, CODE, NUMBER, pay, pay_bridge, tool, turn_on
+from bbkit.ws import open_ws
+from test_card_payments import ARGS, CARD, CODE, NUMBER, control, lifted, pay, pay_bridge, tool, turn_on, with_desktop
+from test_desktop_page import recv_until
 
 FIXTURES = Path(__file__).parent / "fixtures" / "checkout"
 CANDIDATES = [os.environ.get("BIP_CHROME", ""),
@@ -235,6 +237,37 @@ def back_finds_nothing(browser, shown):
     values = json.dumps(browser.values())
     return (len(browser.pages()) == 1 and shown in browser.pages()[0]
             and NUMBER[-4:] not in values and "4242 4242" not in values and CODE not in values)
+
+
+def test_the_person_takes_over_during_a_payment_and_the_card_goes_only_with_the_payment(bridges, fakes):
+    # Security check 11/11, N1: the person opens the live view during the payment (a bank's code to type): they see
+    # and reach the page as it is (not rendered as a phone, which reloads it), the payment's hold is not lifted by
+    # their take-over nor their hand-back, and the card leaves the tab with the payment's release only.
+    shop = site()
+    browser = Browser(f"http://127.0.0.1:{shop.server_port}/selects.html")
+    try:
+        bridge = pay_bridge(bridges, fakes, browser, change=with_desktop)
+        turn_on(bridge)
+        bridge.post("/v1/vault", headers=AUTH, json={**CARD, "sites": ["127.0.0.1"]})
+        result, _ = pay(bridge, ARGS)
+        assert result["isError"] is False, result
+        data = bridge.post("/v1/agents/vie/desktop", headers=AUTH).json()
+        with open_ws(bridge.ws_url("/" + data["page_path"] + "ws?mobile=1&w=390&h=700&dpr=2")) as ws:
+            recv_until(ws, lambda m: isinstance(m, bytes))
+            assert control(bridge, True).json()["you_hold"] is True
+            seen = recv_until(ws, lambda m: isinstance(m, dict) and m.get("holding") is True and m.get("state") == "live")
+            assert seen[-1]["mobile"] is False
+            recv_until(ws, lambda m: isinstance(m, bytes))   # the page reaches the person's phone
+            assert browser.values()["selects.html"]["numero"] == NUMBER   # the page as it was: not reloaded
+            assert control(bridge, False).json()["you_hold"] is False
+        assert browser.values()["selects.html"]["numero"] == NUMBER     # still the payment's, still held
+        assert not any(lifted(c[-1]) for c in bridge.commands.of("podman"))
+        assert tool(bridge, "cancel_payment")["content"][0]["text"].startswith("The payment is given up")
+        assert browser.pages() == ["about:blank"]
+        assert back_finds_nothing(browser, "about:blank")
+    finally:
+        browser.stop()
+        shop.shutdown()
 
 
 def test_confirm_presses_the_card_form_s_button_never_a_link_and_back_brings_nothing(bridges, fakes):
