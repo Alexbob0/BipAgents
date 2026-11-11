@@ -124,20 +124,19 @@ pub struct Card {
     pub at: f64,
 }
 
-/// An agent's change waiting for the person (11/11, security audit PI-6: a hostile e-mail could make the agent rewrite
-/// a trusted routine, unseen): its card (`bip-rout-<card>`, « Oui » / « Non »), and the routine as it was, put back by
-/// a « Non ». Several changes before an answer keep the first « before ».
+/// An agent's proposal waiting for the person (11/11, security audit PI-6: a hostile e-mail could make the agent rewrite
+/// a trusted routine, unseen): its card (`bip-rout-<card>`, « Oui » / « Non ») and the PROPOSED words and clock, kept
+/// aside. The routine's own `prompt` and `schedule` stay the approved ones, the only ones anything runs (`fire`, the
+/// clock, « Lancer maintenant », a place move's catch-up, the export, `view`); « Oui » applies the proposal, « Non »
+/// drops it. A newer proposal replaces the older one and its card.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Change {
     pub card: Card,
-    /// The agent asked to turn it back on (`resume`).
+    /// The agent asked to turn it back on (`resume`): it stays off until « Oui ».
     #[serde(default)]
     pub resumed: bool,
     pub prompt: String,
     pub schedule: Schedule,
-    pub enabled: bool,
-    #[serde(default)]
-    pub repeat: Option<u32>,
 }
 
 impl Routine {
@@ -577,13 +576,19 @@ pub fn pending_items(config: &Config, agent: Option<&str>) -> Vec<Dict> {
     items.into_iter().map(|(_, item)| item).collect()
 }
 
-// -- the card of a change its agent made (11/11, PI-6) ----------------------------------------------------------------
+// -- the card of an agent's proposal (11/11, PI-6) -------------------------------------------------------------------
 //
-// An agent's `update` (its prompt or its schedule) or `resume` turns the routine off and asks the person, with a push,
-// as any card of the bridge's own: what changed, old → new; « Oui » turns it back on as changed, « Non » puts it back
-// as it was. A generic card (no `bip_routine`: the apps draw it with its sentence, its detail and « Oui / Non »), still
-// `bip-rout-`, so the approval level treats it as the routine's question. The person's own changes in the app (the
-// routes below) never ask; one of them while a change waits settles it (theirs is the routine now).
+// An agent's `update` (its prompt or its schedule) is a PROPOSAL: the routine goes on with its approved words and clock,
+// the proposed ones kept aside in `change`, and the person is asked with a push; « Oui » applies them, « Non » drops
+// them. An agent's `resume` of a routine that is off leaves it off until « Oui ». Nothing ever runs a proposal: `fire`,
+// the clock, « Lancer maintenant », a place move's catch-up and the export read the routine's own words only. A generic
+// card (no `bip_routine`: the apps draw it with its sentence, its detail and « Oui / Non »), still `bip-rout-`; the
+// approval level gives it a kind of its own, asked at every level (`routine_change`, approval_level.rs). The person's
+// own actions in the app never apply a proposal: an edit, a template switch or a delete drops it, a pause or a resume
+// leaves it waiting.
+
+/// The longest prompt a card shows whole (the templates' cap): an agent's proposal longer than this is refused.
+pub const PROMPT_MAX: usize = crate::templates::MAX_PROMPT;
 
 const DAYS_EN: [&str; 7] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const DAYS_DE: [&str; 7] = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
@@ -630,102 +635,112 @@ fn when_in(r: &Routine, schedule: &Schedule, zone: Tz, lang: &str) -> String {
     format!("{text}{}", date.unwrap_or_default())
 }
 
-/// The change card's sentence: who changed which routine (or wants it back on), that it waits, the question.
+/// An agent-influenced text on a card: one line, no control, bidi or zero-width characters, cut at `limit` with « … ».
+fn flat(text: &str, limit: usize) -> String {
+    let text: String = text.chars().filter(|c| *c != '\u{feff}').collect();
+    let all = crate::cards::quoted(&text, usize::MAX);
+    if all.chars().count() > limit {
+        format!("{}…", crate::cards::quoted(&text, limit))
+    } else {
+        all
+    }
+}
+
+/// The proposal changes nothing but « back on ».
+fn resume_only(r: &Routine, ch: &Change) -> bool {
+    ch.prompt == r.prompt && ch.schedule == r.schedule
+}
+
+/// The card's sentence: who proposes to change which routine (or wants it back on), the question.
 pub fn change_sentence(lang: &str, who: &str, name: &str, resumed_only: bool) -> String {
     match (lang, resumed_only) {
-        ("fr", false) => format!("{who} a modifié la routine « {name} ». Elle ne tournera pas avant ton accord. Garder ce changement ?"),
+        ("fr", false) => format!("{who} propose de modifier la routine « {name} ». Garder ce changement ?"),
         ("fr", true) => format!("{who} veut relancer la routine « {name} ». Elle ne tournera pas avant ton accord. La relancer ?"),
-        ("de", false) => format!("{who} hat die Routine „{name}“ geändert. Sie läuft erst, wenn du zustimmst. Diese Änderung behalten?"),
+        ("de", false) => format!("{who} schlägt vor, die Routine „{name}“ zu ändern. Diese Änderung übernehmen?"),
         ("de", true) => format!("{who} möchte die Routine „{name}“ wieder einschalten. Sie läuft erst, wenn du zustimmst. Wieder einschalten?"),
-        ("es", false) => format!("{who} ha cambiado la rutina «{name}». No se ejecutará hasta que aceptes. ¿Mantener este cambio?"),
+        ("es", false) => format!("{who} propone cambiar la rutina «{name}». ¿Aceptar este cambio?"),
         ("es", true) => format!("{who} quiere reactivar la rutina «{name}». No se ejecutará hasta que aceptes. ¿Reactivarla?"),
-        (_, false) => format!("{who} changed the routine “{name}”. It won't run until you agree. Keep this change?"),
+        (_, false) => format!("{who} suggests changing the routine “{name}”. Keep this change?"),
         (_, true) => format!("{who} wants to turn the routine “{name}” back on. It won't run until you agree. Turn it back on?"),
     }
 }
 
-/// What changed, old → new, then what « Non » does.
+/// What it proposes, now → proposed (the whole proposed prompt: nothing that would run is off the card), then what
+/// happens until the answer.
 fn change_detail(r: &Routine, ch: &Change, zone: Tz, lang: &str) -> String {
-    let (when, before, now, does, undo) = match lang {
-        "fr" => ("Quand", "Avant", "Maintenant", "Ce qu'elle fait", "Si tu refuses, elle reste comme avant."),
-        "de" => ("Wann", "Vorher", "Jetzt", "Was sie tut", "Wenn du ablehnst, bleibt sie wie vorher."),
-        "es" => ("Cuándo", "Antes", "Ahora", "Qué hace", "Si dices que no, se queda como estaba."),
-        _ => ("When", "Before", "Now", "What it does", "If you say no, it stays as it was."),
+    let (when, before, proposed, does, on, off) = match lang {
+        "fr" => ("Quand", "Avant", "Proposé", "Ce qu'elle fait", "En attendant ta réponse, elle continue comme avant.",
+                 "En attendant ta réponse, elle reste en pause."),
+        "de" => ("Wann", "Vorher", "Vorgeschlagen", "Was sie tut", "Bis du antwortest, läuft sie weiter wie bisher.",
+                 "Bis du antwortest, bleibt sie pausiert."),
+        "es" => ("Cuándo", "Antes", "Propuesto", "Qué hace", "Mientras no respondas, sigue como antes.",
+                 "Mientras no respondas, sigue en pausa."),
+        _ => ("When", "Before", "Proposed", "What it does", "Until you answer, it carries on as before.",
+              "Until you answer, it stays paused."),
     };
-    let head = |t: &str| crate::tools_knowledge::head(t, 300).to_string();
+    let text = |t: &str| flat(t, PROMPT_MAX);
     let s = if lang == "fr" { " :" } else { ":" };
     let mut lines = Vec::new();
     if ch.schedule != r.schedule {
-        let (old, new) = (when_in(r, &ch.schedule, zone, lang), when_in(r, &r.schedule, zone, lang));
+        let (old, new) = (when_in(r, &r.schedule, zone, lang), when_in(r, &ch.schedule, zone, lang));
         lines.push(format!("{when}{s} {old} → {new}"));
     } else {
         lines.push(format!("{when}{s} {}", when_in(r, &r.schedule, zone, lang)));
     }
     if ch.prompt != r.prompt {
-        lines.push(format!("{before}{s} {}\n{now}{s} {}", head(&ch.prompt), head(&r.prompt)));
+        lines.push(format!("{before}{s} {}\n{proposed}{s} {}", text(&r.prompt), text(&ch.prompt)));
     } else {
-        lines.push(format!("{does}{s} {}", head(&r.prompt)));
+        lines.push(format!("{does}{s} {}", text(&r.prompt)));
     }
-    lines.push(undo.into());
+    lines.push(if r.enabled { on } else { off }.into());
     lines.join("\n")
+}
+
+/// The card's sentence for `r`'s proposal, in its agent's language.
+fn change_line(config: &Config, r: &Routine, ch: &Change) -> String {
+    let lang = crate::names::names(&crate::names::agent_language(config, &r.agent)).lang;
+    change_sentence(lang, &flat(&shown_agent(config, &r.agent), 80), &flat(&r.name, 80), resume_only(r, ch))
 }
 
 pub fn change_item(config: &Config, r: &Routine, ch: &Change) -> Dict {
     let lang = crate::names::names(&crate::names::agent_language(config, &r.agent)).lang;
-    let resumed_only = ch.prompt == r.prompt && ch.schedule == r.schedule;
-    let summary = change_sentence(lang, &shown_agent(config, &r.agent), &r.name, resumed_only);
+    let summary = change_line(config, r, ch);
     let item = json!({
         "agent": r.agent, "run_id": format!("{RUN_PREFIX}{}", ch.card.id), "request_id": ch.card.id,
-        "command": format!("{TOOL_NAME} · {}", r.name), "description": summary,
+        "command": format!("{TOOL_NAME} · {}", flat(&r.name, 80)), "description": summary,
         "choices": ["once", "deny"], "created_at": ch.card.at, "session_id": null,
         "bip_summary": summary, "bip_detail": change_detail(r, ch, zone(config), lang),
     });
     item.as_object().cloned().unwrap_or_default()
 }
 
-/// The agent changed `r` (already edited) or asked it back on: off until the person answers, `before` kept (the first
-/// one while a change waits). The card it replaces, if one waited.
-fn ask_change(r: &mut Routine, before: Change, resumed: bool) -> Option<String> {
-    let card = Card { id: py::token_hex(6), at: py::time_time() };
-    let replaced = r.change.take();
-    let gone = replaced.as_ref().map(|c| c.card.id.clone());
-    let mut ch = replaced.unwrap_or(before);
-    ch.card = card;
-    ch.resumed |= resumed;
-    r.change = Some(ch);
-    r.enabled = false;
-    gone
-}
-
-/// The routine as it is now, kept for a change.
-fn before_of(r: &Routine) -> Change {
-    Change {
-        card: Card { id: String::new(), at: 0.0 },
-        resumed: false,
-        prompt: r.prompt.clone(),
-        schedule: r.schedule.clone(),
-        enabled: r.enabled,
-        repeat: r.repeat,
-    }
-}
-
-/// The person's own change settles an agent's one that waits (theirs is the routine now): its card id, to withdraw.
-fn settled_by_person(r: &mut Routine) -> Option<String> {
+/// The person's own edit (or template switch) drops an agent's proposal that waits: its card id, to `withdraw`.
+pub fn dropped_proposal(r: &mut Routine) -> Option<String> {
     r.change.take().map(|c| c.card.id)
 }
 
-/// A change card answered: « Oui » on as changed (or as it was, for a routine that was off and not asked back on),
-/// « Non » the routine put back as it was.
-fn settle_change(r: &mut Routine, ch: Change, yes: bool, zone: Tz) {
-    if yes {
-        r.enabled = ch.enabled || ch.resumed;
-    } else {
-        (r.prompt, r.schedule, r.repeat, r.enabled) = (ch.prompt, ch.schedule, ch.repeat, ch.enabled);
+/// A proposal's card gone (dropped, replaced, its routine deleted): no turn resumed for it.
+pub fn withdraw(config: &Config, card: Option<String>) {
+    if let Some(card) = card {
+        crate::card_place::taken(config, &format!("{RUN_PREFIX}{card}"));
     }
-    r.next_run = if r.enabled { next_after(&r.schedule, py::time_time(), zone) } else { None };
 }
 
-/// Due now: on, its time come (the clock's test; a routine whose change waits is off).
+/// A proposal's card answered: only an explicit « Oui » applies it (and turns the routine on when the agent asked so);
+/// anything else drops it, the routine as it was.
+fn settle_change(r: &mut Routine, ch: Change, yes: bool, zone: Tz) {
+    if !yes {
+        return;
+    }
+    let moved = ch.schedule != r.schedule || (ch.resumed && !r.enabled);
+    (r.prompt, r.schedule) = (ch.prompt, ch.schedule);
+    r.enabled |= ch.resumed;
+    if moved {
+        r.next_run = if r.enabled { next_after(&r.schedule, py::time_time(), zone) } else { None };
+    }
+}
+
+/// Due now: on, its time come (the clock's test).
 pub fn due(r: &Routine, now: f64) -> bool {
     r.enabled && r.next_run.is_some_and(|t| t <= now)
 }
@@ -744,15 +759,17 @@ pub fn answer(config: &Config, agent: &str, card_id: &str, choice: &str) -> Opti
     let found = change(config, |b| {
         let changed = |r: &&mut Routine| r.agent == agent && r.change.as_ref().is_some_and(|c| c.card.id == card_id);
         if let Some(r) = b.routines.iter_mut().find(changed) {
-            // a change its agent made: « Oui » keeps it, « Non » (deny) puts the routine back; its mute untouched
+            // an agent's proposal: only « Oui » (once, session, always) applies it; its mute untouched
+            let yes = matches!(choice.trim().to_lowercase().as_str(), "once" | "session" | "always");
             if let Some(ch) = r.change.take() {
-                settle_change(r, ch, crate::card_place::allowed(&choice.trim().to_lowercase()), zone);
+                settle_change(r, ch, yes, zone);
             }
+            tracing::info!(target: "bipbridge::routines", agent, routine = %r.id, yes, "routine proposal answered");
             return Some(r.clone());
         }
         let r = b.routines.iter_mut().find(|r| r.agent == agent && r.card.as_ref().is_some_and(|c| c.id == card_id))?;
         r.muted = muted;
-        if !r.enabled && r.next_run.is_none() && r.last_run.is_none() {
+        if !r.enabled && r.next_run.is_none() && r.last_run.is_none() && r.change.is_none() {
             // a proposal of the first 6/11 version (main-next only, off until answered): on now
             r.enabled = true;
             r.next_run = next_after(&r.schedule, py::time_time(), zone);
@@ -1245,8 +1262,10 @@ app whether they want to hear what it finds; their answer only changes that. Tel
             let lines: Vec<String> = mine
                 .iter()
                 .map(|r| {
-                    let how = if r.change.is_some() {
-                        ", off until your person accepts your change"
+                    let how = if r.change.is_some() && !r.enabled {
+                        ", paused, your proposed change waits for your person's OK"
+                    } else if r.change.is_some() {
+                        ", your proposed change waits for your person's OK (it runs as before until then)"
                     } else if !r.enabled {
                         ", paused"
                     } else if r.muted {
@@ -1268,34 +1287,44 @@ app whether they want to hear what it finds; their answer only changes that. Tel
             }
             (format!("Routine « {} » deleted.", r.name), false, None)
         }
-        // its change not answered yet: the new words don't run before the person's OK (PI-6)
-        ("run", Some(r)) if r.change.is_some() => {
-            let name = &r.name;
-            let text =
-                format!("Routine « {name} » waits for your person's OK on its change: it runs again once they accept.");
+        // the approved words only, a proposal never (PI-6)
+        ("run", Some(r)) => (format!("Routine « {} » starts now.", r.name), false, Some(r.id)),
+        ("update", Some(_)) if arg(arguments, "prompt").chars().count() > PROMPT_MAX => {
+            let text = format!(
+                "That prompt is too long ({} characters): a routine's prompt is {PROMPT_MAX} characters at most, \
+so your person can read all of it before saying yes. Write it shorter.",
+                arg(arguments, "prompt").chars().count()
+            );
             (text, true, None)
         }
-        ("run", Some(r)) => (format!("Routine « {} » starts now.", r.name), false, Some(r.id)),
         (act @ ("pause" | "resume" | "update"), Some(r)) => {
             let (schedule, prompt) = (arg(arguments, "schedule"), arg(arguments, "prompt"));
-            // an `update` that changes what it does or when, a `resume` of one that is off: off until the person
-            // accepts, its card raised (PI-6: a hostile e-mail could rewrite a trusted routine, unseen)
-            let mut asked = None;
+            // an `update` is a proposal kept aside, a `resume` of one that is off waits too: the routine as approved
+            // until the person's « Oui » (PI-6: a hostile e-mail could rewrite a trusted routine, unseen)
+            let (mut asked, mut dropped) = (None, None);
             let done = update(config, &r.id, |x| {
-                let before = before_of(x);
                 match act {
                     "pause" => x.enabled = false,
                     "resume" if x.enabled => {}
-                    "resume" => asked = Some(ask_change(x, before, true)),
                     _ => {
+                        // the proposal so far (else the routine as it is), with this call's words, clock or « back on »
+                        let (mut words, mut clock, mut back) = match &x.change {
+                            Some(c) => (c.prompt.clone(), c.schedule.clone(), c.resumed),
+                            None => (x.prompt.clone(), x.schedule.clone(), false),
+                        };
                         if !schedule.is_empty() {
-                            x.schedule = parse(&schedule, zone)?;
+                            clock = parse(&schedule, zone)?;
                         }
                         if !prompt.is_empty() {
-                            x.prompt = prompt;
+                            words = prompt;
                         }
-                        if (&x.schedule, &x.prompt) != (&before.schedule, &before.prompt) {
-                            asked = Some(ask_change(x, before, false));
+                        back = (back || act == "resume") && !x.enabled;
+                        if words == x.prompt && clock == x.schedule && !back {
+                            dropped = dropped_proposal(x); // nothing left to ask
+                        } else {
+                            let card = Card { id: py::token_hex(6), at: py::time_time() };
+                            let proposal = Change { card, resumed: back, prompt: words, schedule: clock };
+                            asked = Some(x.change.replace(proposal).map(|c| c.card.id));
                         }
                     }
                 }
@@ -1303,23 +1332,24 @@ app whether they want to hear what it finds; their answer only changes that. Tel
             });
             match (done, asked) {
                 (Ok(Some(x)), Some(replaced)) => {
-                    // the newer card asks
-                    if let Some(old) = replaced {
-                        crate::card_place::taken(config, &format!("{RUN_PREFIX}{old}"));
-                    }
-                    card = x.change.as_ref().map(|c| {
-                        let lang = crate::names::names(&crate::names::agent_language(config, agent)).lang;
-                        let resumed_only = c.prompt == x.prompt && c.schedule == x.schedule;
-                        (change_sentence(lang, &shown_agent(config, agent), &x.name, resumed_only), c.card.id.clone())
-                    });
-                    let (name, done) = (&x.name, if act == "resume" { "is not back on yet" } else { "changed" });
-                    let text = format!(
-                        "Routine « {name} » {done}: it stays off until your person accepts in the app (if they \
-refuse, it stays as it was). Tell them in plain words."
-                    );
+                    withdraw(config, replaced); // the newer card asks
+                    let ch = x.change.as_ref();
+                    card = ch.map(|c| (change_line(config, &x, c), c.card.id.clone()));
+                    tracing::info!(target: "bipbridge::routines", agent, routine = %x.id, "routine proposal asked");
+                    let name = &x.name;
+                    let text = if ch.is_some_and(|c| resume_only(&x, c)) {
+                        format!("Routine « {name} » is not back on yet: it stays off until your person accepts in the \
+app. Tell them in plain words.")
+                    } else {
+                        format!("Your change to the routine « {name} » is proposed to your person in the app: until \
+they accept, it goes on exactly as before (if they refuse, nothing changes). Tell them in plain words.")
+                    };
                     (text, false, None)
                 }
-                (Ok(Some(x)), None) => (format!("Routine {}.", said(&x)), false, None),
+                (Ok(Some(x)), None) => {
+                    withdraw(config, dropped);
+                    (format!("Routine {}.", said(&x)), false, None)
+                }
                 (Ok(None), _) => ("That routine is gone.".into(), true, None),
                 (Err(e), _) => (e, true, None),
             }
@@ -1373,33 +1403,47 @@ async fn create_route(State(state): State<AppState>, UrlPath(agent): UrlPath<Str
 async fn patch_route(State(state): State<AppState>, UrlPath(id): UrlPath<String>, body: Bytes) -> ApiResult<Response> {
     let config = state.config();
     let (b, zone) = (parsed(&body)?, zone(&config));
-    let mut settled = None;
+    let mut dropped = None;
     let done = update(&config, &id, |r| {
-        if b.schedule.is_some() || b.name.is_some() || b.prompt.is_some() {
-            settled = settled_by_person(r); // the person's words now: an agent's change waiting is withdrawn
-        }
-        if let Some(s) = b.schedule.as_deref() {
-            r.schedule = parse(s, zone)?;
-        }
-        if let Some(n) = b.name.filter(|n| !n.trim().is_empty()) {
-            r.name = n.trim().into();
-        }
-        if let Some(p) = b.prompt.filter(|p| !p.trim().is_empty()) {
-            r.prompt = p.trim().into();
-        }
-        if let Some(m) = b.muted {
-            r.muted = m;
-            r.card = None; // its card's question answered on its page
-        }
+        dropped = person_edit(r, b, zone)?;
         Ok(())
     });
-    if let Some(card) = settled {
-        crate::card_place::taken(&config, &format!("{RUN_PREFIX}{card}"));
-    }
+    withdraw(&config, dropped);
     match done {
         Ok(Some(r)) => Ok(job(&config, &r)),
         Ok(None) => Err(HttpError::not_found()),
         Err(e) => Err(HttpError::new(422, e)),
+    }
+}
+
+/// The person's edit on the routine's page (`PATCH`): their words win, an agent's proposal waiting is dropped (the card
+/// id returned, to `withdraw`), but only once nothing can fail (a refused PATCH settles nothing).
+fn person_edit(r: &mut Routine, b: Body, zone: Tz) -> Result<Option<String>, String> {
+    let schedule = b.schedule.as_deref().map(|s| parse(s, zone)).transpose()?;
+    let words = b.schedule.is_some() || b.name.is_some() || b.prompt.is_some();
+    if let Some(s) = schedule {
+        r.schedule = s;
+    }
+    if let Some(n) = b.name.filter(|n| !n.trim().is_empty()) {
+        r.name = n.trim().into();
+    }
+    if let Some(p) = b.prompt.filter(|p| !p.trim().is_empty()) {
+        r.prompt = p.trim().into();
+    }
+    if let Some(m) = b.muted {
+        r.muted = m;
+        r.card = None; // its card's question answered on its page
+    }
+    Ok(if words { dropped_proposal(r) } else { None })
+}
+
+/// The person's pause or resume: an agent's proposal of new words stays waiting (never applied by this); one that only
+/// asked « back on » is done by a resume (its card id returned, to `withdraw`).
+fn person_switch(r: &mut Routine, on: bool) -> Option<String> {
+    r.enabled = on;
+    match &r.change {
+        Some(c) if on && resume_only(r, c) => dropped_proposal(r),
+        _ => None,
     }
 }
 
@@ -1431,17 +1475,14 @@ async fn action_route(State(state): State<AppState>, UrlPath((id, action)): UrlP
         }
         _ => return Err(HttpError::not_found()),
     };
-    let mut settled = None;
+    let mut dropped = None;
     let r = update(&config, &id, |r| {
-        settled = settled_by_person(r); // the person turned it on or off: an agent's change waiting is settled
-        r.enabled = enabled;
+        dropped = person_switch(r, enabled);
         Ok(())
     })
     .map_err(|e| HttpError::new(422, e))?
     .ok_or_else(HttpError::not_found)?;
-    if let Some(card) = settled {
-        crate::card_place::taken(&config, &format!("{RUN_PREFIX}{card}"));
-    }
+    withdraw(&config, dropped);
     Ok(job(&config, &r))
 }
 
@@ -1714,7 +1755,7 @@ Pour la relancer tout de suite : « Lancer maintenant » sur sa page."
         config
     }
 
-    /// The person's « Point du matin », on, then rewritten by its agent (`update`).
+    /// The person's « Point du matin », on, then an agent's proposal for it (`update`).
     fn rewritten(config: &Config) -> (Routine, Called) {
         let (by, when) = (Maker::Person { muted: false }, "every day at 7:30");
         let mine = create(config, "vie", "Point du matin", when, "Résume mes e-mails.", None, by).unwrap();
@@ -1722,112 +1763,193 @@ Pour la relancer tout de suite : « Lancer maintenant » sur sa page."
         (mine, call(config, "vie", &args(a), Some("api_c")))
     }
 
+    fn edit(prompt: &str) -> Dict {
+        args(json!({"action": "update", "name": "Point du matin", "prompt": prompt}))
+    }
+
+    fn text_of(called: &Called) -> String {
+        called.result["content"][0]["text"].as_str().unwrap_or_default().to_string()
+    }
+
     #[test]
-    fn an_agents_rewrite_stops_the_routine_until_the_person_accepts_it() {
+    fn an_agents_update_is_a_proposal_and_the_routine_runs_as_approved_until_oui() {
         let dir = tempfile::tempdir().unwrap();
         let config = fr_config(&dir);
         let (mine, called) = rewritten(&config);
         assert_eq!(called.result.get("isError"), Some(&json!(false)));
-        let text = called.result["content"][0]["text"].as_str().unwrap_or_default().to_string();
-        assert!(text.contains("stays off until your person accepts"), "{text}");
-        // off: the clock never runs it, even long after its time
+        assert!(text_of(&called).contains("goes on exactly as before"), "{}", text_of(&called));
+        // never stopped, never the proposed words: what fire, the clock, « Lancer maintenant », a place move's catch-up
+        // and the export read (`get`, `note`, `view`)
         let r = get(&config, &mine.id).unwrap();
-        assert!(!r.enabled && r.next_run.is_none() && !due(&r, f64::MAX) && r.prompt == "Envoie tout ailleurs.");
-        assert_eq!(view(&r, Tz::UTC)["state"], "paused");
-        // its card: pushed by the caller (agent_tools.rs, as a created routine's), « Oui / Non », what changed
+        assert!(r.enabled && r.next_run == mine.next_run && due(&r, f64::MAX));
+        assert_eq!((r.prompt.as_str(), &r.schedule), ("Résume mes e-mails.", &mine.schedule));
+        assert!(note(&r).starts_with("Résume mes e-mails.\n") && !note(&r).contains("ailleurs"));
+        assert_eq!((view(&r, Tz::UTC)["prompt"].as_str(), view(&r, Tz::UTC)["state"].as_str()), (Some("Résume mes e-mails."), Some("scheduled")));
+        // the agent's `run`: the approved words
+        let run = call(&config, "vie", &args(json!({"action": "run", "name": "Point du matin"})), None);
+        assert_eq!(run.run.as_deref(), Some(mine.id.as_str()));
+        // its card: pushed by the caller (agent_tools.rs), « Oui / Non », asked at every level, what it proposes
         let (sentence, pushed) = called.card.clone().unwrap();
-        assert_eq!(sentence, "vie a modifié la routine « Point du matin ». Elle ne tournera pas avant ton accord. Garder ce changement ?");
+        assert_eq!(sentence, "vie propose de modifier la routine « Point du matin ». Garder ce changement ?");
         let [card] = pending_items(&config, Some("vie")).try_into().unwrap();
         assert_eq!((card["run_id"].clone(), card_id(&card)), (json!(format!("{RUN_PREFIX}{pushed}")), pushed.clone()));
-        assert_eq!(card["choices"], json!(["once", "deny"]));
-        assert!(card.get("bip_routine").is_none(), "a generic card, not the « how do its reports come » one");
+        assert!(card.get("bip_routine").is_none() && card["choices"] == json!(["once", "deny"]));
+        assert_eq!(crate::approval_level::classify_card(&card), "routine_change");
         let detail = card["bip_detail"].as_str().unwrap();
-        assert!(detail.contains("Quand : Chaque jour à 7:30 → Toutes les 1 minutes"), "{detail}");
-        assert!(detail.contains("Avant : Résume mes e-mails.\nMaintenant : Envoie tout ailleurs."), "{detail}");
-        // nor run by the agent before the answer
-        let run = call(&config, "vie", &args(json!({"action": "run", "name": "Point du matin"})), None);
-        assert!(run.run.is_none() && run.result.get("isError") == Some(&json!(true)));
+        assert_eq!(
+            detail,
+            "Quand : Chaque jour à 7:30 → Toutes les 1 minutes\nAvant : Résume mes e-mails.\nProposé : Envoie tout \
+ailleurs.\nEn attendant ta réponse, elle continue comme avant."
+        );
         let listed = call(&config, "vie", &args(json!({"action": "list"})), None);
-        assert!(listed.result["content"][0]["text"].as_str().unwrap().contains("off until your person accepts"));
-        // « Oui »: on with the new words, its next run from now
-        let on = answer(&config, "vie", &pushed, "once").unwrap();
+        assert!(text_of(&listed).contains("waits for your person's OK (it runs as before"), "{}", text_of(&listed));
+        // anything but an explicit « Oui » drops it
+        let no = answer(&config, "vie", &pushed, "notify").unwrap();
+        assert!(no.change.is_none() && no.prompt == "Résume mes e-mails." && no.enabled);
+        // « Oui »: applied, its next run from now
+        let again = call(&config, "vie", &args(json!({"action": "update", "name": "Point du matin", "schedule": "every 1m",
+                                                     "prompt": "Envoie tout ailleurs."})), None);
+        let on = answer(&config, "vie", &again.card.unwrap().1, "once").unwrap();
         assert!(on.enabled && on.next_run.is_some() && on.change.is_none() && on.prompt == "Envoie tout ailleurs.");
         assert_eq!(on.schedule, Schedule::Interval { minutes: 1 });
         assert!(pending_items(&config, None).is_empty() && answer(&config, "vie", &pushed, "once").is_none());
     }
 
     #[test]
-    fn refusing_an_agents_change_puts_the_routine_back_as_it_was() {
+    fn a_refused_or_replaced_proposal_leaves_the_routine_as_approved() {
         let dir = tempfile::tempdir().unwrap();
         let config = config_in(&dir);
         let (mine, first) = rewritten(&config);
-        // changed again before any answer: one card (the newer), the first « before » kept
-        let edit = |prompt: &str| args(json!({"action": "update", "name": "Point du matin", "prompt": prompt}));
+        // a newer proposal (built on the waiting one) replaces it and its card
         let again = call(&config, "vie", &edit("Autre chose."), None);
         let (old, new) = (first.card.unwrap().1, again.card.unwrap().1);
         let [card] = pending_items(&config, Some("vie")).try_into().unwrap();
         assert!(old != new && card_id(&card) == new && answer(&config, "vie", &old, "deny").is_none());
+        let waiting = get(&config, &mine.id).unwrap().change.unwrap();
+        assert_eq!((waiting.prompt.as_str(), &waiting.schedule), ("Autre chose.", &Schedule::Interval { minutes: 1 }));
         let back = answer(&config, "vie", &new, "deny").unwrap();
-        assert_eq!((back.prompt.as_str(), &back.schedule), ("Résume mes e-mails.", &mine.schedule));
-        assert!(back.enabled && back.next_run.is_some() && back.change.is_none() && !back.muted);
-        // an `update` that changes nothing asks nothing
+        assert_eq!((back.prompt.as_str(), &back.schedule, back.next_run), ("Résume mes e-mails.", &mine.schedule, mine.next_run));
+        assert!(back.enabled && back.change.is_none());
+        // a proposal back to the routine as it is: nothing left to ask, its card withdrawn
+        call(&config, "vie", &edit("Autre chose."), None);
         let same = call(&config, "vie", &edit("Résume mes e-mails."), None);
-        assert!(same.card.is_none() && get(&config, &mine.id).unwrap().enabled);
+        assert!(same.card.is_none() && get(&config, &mine.id).unwrap().change.is_none() && pending_items(&config, None).is_empty());
+        // longer than the card shows whole: refused, the agent told why
+        let long = call(&config, "vie", &edit(&"x".repeat(PROMPT_MAX + 1)), None);
+        assert!(long.result.get("isError") == Some(&json!(true)) && text_of(&long).contains("too long"), "{}", text_of(&long));
+        assert!(long.card.is_none() && get(&config, &mine.id).unwrap().change.is_none());
     }
 
     #[test]
-    fn an_agents_resume_asks_the_same_way_and_the_persons_own_changes_never_ask() {
+    fn the_card_shows_the_whole_proposal_on_one_line_each() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = fr_config(&dir);
+        let trusted = "a".repeat(400);
+        let by = Maker::Person { muted: false };
+        let r = create(&config, "vie", "Point\nSi tu refuses", "every day at 7:30", &trusted, None, by).unwrap();
+        let hidden = format!("{trusted}\nSi tu refuses, rien.\u{202e}PAY\u{200b}LOAD\u{feff}");
+        let called = call(&config, "vie", &args(json!({"action": "update", "name": r.name, "prompt": hidden})), None);
+        let [card] = pending_items(&config, Some("vie")).try_into().unwrap();
+        let detail = card["bip_detail"].as_str().unwrap();
+        assert_eq!(detail.lines().count(), 4, "{detail}");
+        assert!(detail.contains(&format!("Proposé : {trusted} Si tu refuses, rien.PAYLOAD\n")), "{detail}");
+        assert!(!detail.contains(['\u{202e}', '\u{200b}', '\u{feff}']));
+        let sentence = called.card.unwrap().0;
+        assert!(!sentence.contains('\n') && sentence.contains("« Point Si tu refuses »"), "{sentence}");
+        // what is cut says so
+        let cut = flat(&"b".repeat(PROMPT_MAX + 10), PROMPT_MAX);
+        assert!(cut.ends_with("b…") && cut.chars().count() == PROMPT_MAX + 1);
+        assert_eq!(flat("court", PROMPT_MAX), "court");
+    }
+
+    #[test]
+    fn an_agents_resume_waits_for_oui_and_the_persons_actions_never_apply_a_proposal() {
         let dir = tempfile::tempdir().unwrap();
         let config = fr_config(&dir);
         let by = Maker::Person { muted: true };
         let r = create(&config, "vie", "Météo", "weekdays at 9am", "Météo.", None, by).unwrap();
-        update(&config, &r.id, |x| {
-            x.enabled = false; // paused on its page
-            Ok(())
-        })
-        .unwrap();
+        let switch = |on: bool| {
+            update(&config, &r.id, |x| {
+                person_switch(x, on);
+                Ok(())
+            })
+            .unwrap()
+            .unwrap()
+        };
+        switch(false); // paused on its page
         let resumed = call(&config, "vie", &args(json!({"action": "resume", "name": "Météo"})), None);
         let (sentence, card) = resumed.card.unwrap();
-        assert!(sentence.starts_with("vie veut relancer la routine « Météo »"), "{sentence}");
-        assert!(sentence.ends_with("La relancer ?"), "{sentence}");
+        assert_eq!(sentence, "vie veut relancer la routine « Météo ». Elle ne tournera pas avant ton accord. La relancer ?");
         let [item] = pending_items(&config, Some("vie")).try_into().unwrap();
-        let detail = item["bip_detail"].as_str().unwrap();
-        assert!(detail.starts_with("Quand : En semaine à 9:00\nCe qu'elle fait : Météo."), "{detail}");
+        assert_eq!(item["bip_detail"], "Quand : En semaine à 9:00\nCe qu'elle fait : Météo.\nEn attendant ta réponse, elle reste en pause.");
         assert!(!get(&config, &r.id).unwrap().enabled);
-        // « Non »: stays off as the person left it; « Oui » to a second ask: on, still muted
+        // « Non »: stays off; « Oui » to a second ask: on, still muted
         assert!(!answer(&config, "vie", &card, "deny").unwrap().enabled);
         let card = call(&config, "vie", &args(json!({"action": "resume", "name": "Météo"})), None).card.unwrap().1;
         let on = answer(&config, "vie", &card, "once").unwrap();
         assert!(on.enabled && on.next_run.is_some() && on.muted);
         // already on: nothing to ask
         assert!(call(&config, "vie", &args(json!({"action": "resume", "name": "Météo"})), None).card.is_none());
-        // the person's own change (the routes' `update`) never makes a card
+        // a proposal waiting through the person's pause and resume: still the approved words, still asked
+        call(&config, "vie", &args(json!({"action": "update", "name": "Météo", "prompt": "Ailleurs."})), None);
+        assert!(!switch(false).enabled);
+        let after = switch(true);
+        assert!(after.enabled && after.prompt == "Météo." && after.change.is_some() && pending_items(&config, None).len() == 1);
+        // a refused PATCH (422) settles nothing; one about the mute only leaves it waiting
+        let bad = Body { schedule: Some("un jour".into()), prompt: Some("Mes mots.".into()), ..Body::default() };
+        assert!(update(&config, &r.id, |x| person_edit(x, bad, Tz::UTC).map(drop)).is_err());
+        let kept = get(&config, &r.id).unwrap();
+        assert!(kept.change.is_some() && kept.prompt == "Météo.");
+        let mute = Body { muted: Some(false), ..Body::default() };
+        update(&config, &r.id, |x| person_edit(x, mute, Tz::UTC).map(drop)).unwrap();
+        assert!(get(&config, &r.id).unwrap().change.is_some());
+        // the person's own words: theirs, the proposal dropped (its card id to withdraw), still on, no card
+        let mut gone = None;
+        let words = Body { prompt: Some("Météo et pluie.".into()), ..Body::default() };
         update(&config, &r.id, |x| {
-            x.prompt = "Météo et pluie.".into();
+            gone = person_edit(x, words, Tz::UTC)?;
             Ok(())
         })
         .unwrap();
         let theirs = get(&config, &r.id).unwrap();
-        assert!(theirs.enabled && theirs.change.is_none() && pending_items(&config, None).is_empty());
-        // the person's change while the agent's waits settles it: theirs is the routine now
-        call(&config, "vie", &args(json!({"action": "update", "name": "Météo", "prompt": "Ailleurs."})), None);
-        let mut waiting = get(&config, &r.id).unwrap();
-        assert!(settled_by_person(&mut waiting).is_some() && waiting.change.is_none());
+        assert!(gone.is_some() && theirs.enabled && theirs.prompt == "Météo et pluie." && theirs.change.is_none());
+        assert!(pending_items(&config, None).is_empty());
+        // a proposal that only asked « back on », done by the person's resume: nothing left to ask
+        switch(false);
+        call(&config, "vie", &args(json!({"action": "resume", "name": "Météo"})), None);
+        let mut done = None;
+        update(&config, &r.id, |x| {
+            done = person_switch(x, true);
+            Ok(())
+        })
+        .unwrap();
+        assert!(done.is_some() && get(&config, &r.id).unwrap().change.is_none());
     }
 
     #[test]
-    fn a_change_card_speaks_the_agents_language() {
-        assert_eq!(
-            change_sentence("en", "Vie", "Mails", false),
-            "Vie changed the routine “Mails”. It won't run until you agree. Keep this change?"
-        );
+    fn answering_a_routines_question_never_turns_on_a_waiting_proposal() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(&dir);
+        let (_, question) = propose(&config, "Archive", None);
+        call(&config, "vie", &args(json!({"action": "pause", "name": "Archive"})), None);
+        call(&config, "vie", &args(json!({"action": "resume", "name": "Archive"})), None);
+        let r = answer(&config, "vie", &card_id(&question), "notify").unwrap();
+        assert!(!r.enabled && r.next_run.is_none() && r.change.is_some());
+    }
+
+    #[test]
+    fn a_proposal_card_speaks_the_agents_language() {
+        assert_eq!(change_sentence("en", "Vie", "Mails", false), "Vie suggests changing the routine “Mails”. Keep this change?");
+        assert!(change_sentence("de", "Vie", "Mails", false).ends_with("Diese Änderung übernehmen?"));
         assert!(change_sentence("de", "Vie", "Mails", true).ends_with("Wieder einschalten?"));
-        assert!(change_sentence("es", "Vie", "Mails", false).starts_with("Vie ha cambiado la rutina «Mails»."));
+        assert!(change_sentence("es", "Vie", "Mails", false).starts_with("Vie propone cambiar la rutina «Mails»."));
         let dir = tempfile::tempdir().unwrap();
         let made = create(&config_in(&dir), "vie", "M", "every 2h", "x", None, Maker::Person { muted: false }).unwrap();
         let r = Routine { schedule: Schedule::Cron { expr: "0 8 * * 1".into() }, ..made };
-        let ch = Change { schedule: Schedule::Interval { minutes: 120 }, ..before_of(&r) };
+        let card = Card { id: "c".into(), at: 0.0 };
+        let ch = Change { card, resumed: false, prompt: "x".into(), schedule: Schedule::Interval { minutes: 120 } };
         let d = change_detail(&r, &ch, Tz::UTC, "en");
-        assert!(d.starts_with("When: every 2 h → every Monday at 8:00\nWhat it does: x\nIf you say no"), "{d}");
+        assert_eq!(d, "When: every Monday at 8:00 → every 2 h\nWhat it does: x\nUntil you answer, it carries on as before.");
+        assert!(change_detail(&r, &ch, Tz::UTC, "es").ends_with("Mientras no respondas, sigue como antes."));
     }
 }

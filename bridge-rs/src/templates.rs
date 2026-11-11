@@ -1042,12 +1042,15 @@ async fn routine_switch(
     if !ours.contains(&job) {
         return Err(HttpError::new(404, "unknown job"));
     }
+    let mut dropped = None;
     let found = crate::routines::update(&config, &job, |r| {
+        dropped = crate::routines::dropped_proposal(r); // the person's switch: an agent's proposal never applied
         r.enabled = on;
         Ok(())
     })
     .map_err(|e| HttpError::new(422, e))?
     .is_some();
+    crate::routines::withdraw(&config, dropped);
     if !found {
         return Err(HttpError::new(404, "unknown job"));
     }

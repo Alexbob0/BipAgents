@@ -112,6 +112,7 @@ pub const TABLE: &[Rule] = &[
     rule("plugin_rule", true, false, "Hermes: a plugin's rule", "a rule the person or a plugin set to always ask"),
     rule("computer_use", true, false, "Hermes: cua:", "acts on the person's computer screen"),
     rule("trigger", true, false, "bip-trig-", "lets an e-mail or a link from outside start the agent"),
+    rule("routine_change", true, false, "bip-rout- (no bip_routine)", "the agent proposes new words or a new time for a routine, or wants it back on: it then runs unattended with all its tools (PI-6, 11/11)"),
     rule("phone_exit", true, false, "bip-exit-", "uses the person's phone and home connection"),
     rule("agent_hops", true, false, "bip-hops-", "agents went on writing to each other past the cap (« Continuer l'échange ? »): more model calls, no person in the loop"),
     rule("task_large", true, false, "propose_task (> 0,50 €)", "a big part of the month's credit"),
@@ -154,6 +155,9 @@ pub fn classify_card(item: &Dict) -> &'static str {
         let action = field(item, "bip_mail_rule", "action");
         let known = action.split('+').all(|a| a == "archive" || a == "mark_read" || a.starts_with("move:"));
         return if known && !action.is_empty() { "mail_rule" } else { "mail_rule_trash" };
+    }
+    if run.starts_with(crate::routines::RUN_PREFIX) && item.get("bip_routine").is_none() {
+        return "routine_change"; // an agent's proposal for a routine (routines.rs): asked at every level
     }
     const PREFIXES: [(&str, &str); 11] = [
         (crate::routines::RUN_PREFIX, "routine_way"),
@@ -909,7 +913,8 @@ mod tests {
         assert_eq!(kinds.len(), n, "a kind twice");
         // what Alex named critical
         for kind in ["payment", "secret", "vault_login", "held_mail", "family_send", "mail_trash", "files_delete",
-                     "connector", "meet", "command", "phone_exit", "agent_hops", "task_more", "guide_proposal"] {
+                     "connector", "meet", "command", "phone_exit", "agent_hops", "task_more", "guide_proposal",
+                     "routine_change"] {
             assert!(rule_of(kind).critical, "{kind}");
         }
         for kind in ["mail_archive", "mail_move", "mail_mark_read", "mail_rule", "routine_way", "task_start", "files_write",
@@ -931,7 +936,9 @@ mod tests {
         assert_eq!((rule("move:Serveurs"), rule("archive+mark_read"), rule("mark_read"), rule("trash"), rule("trash+mark_read")),
                    ("mail_rule", "mail_rule", "mail_rule", "mail_rule_trash", "mail_rule_trash"));
         let kind = |r: &str| classify_card(&item(json!({"run_id": r})));
-        assert_eq!(kind("bip-rout-x"), "routine_way");
+        // a routine's question (its `bip_routine`); any other `bip-rout-` card is an agent's proposal, always asked
+        let routine = item(json!({"run_id": "bip-rout-x", "bip_routine": {"id": "r1"}}));
+        assert_eq!((classify_card(&routine), kind("bip-rout-x")), ("routine_way", "routine_change"));
         assert_eq!(kind("bip-site-x"), "site_send");
         assert_eq!(kind("bip-secret-x"), "secret");
         assert_eq!(kind("bip-login-x"), "vault_login");
@@ -974,10 +981,12 @@ mod tests {
         let config = config_in(&dir);
         assert_eq!((person_level(&config), level_for(&config, "vie")), (ALL, ALL));
         assert_eq!(view(&config)["chosen"], false);
-        assert!(!auto_for(&config, "vie", "mail_archive"));
+        assert!(!auto_for(&config, "vie", "mail_archive") && !auto_for(&config, "vie", "routine_change"));
         set_level(&config, "critical").unwrap();
         assert_eq!(view(&config)["chosen"], true);
         assert!(auto_for(&config, "vie", "mail_archive") && !auto_for(&config, "vie", "mail_trash"));
+        // an agent's proposal for a routine: asked at both levels (PI-6); the routine's question goes alone
+        assert!(!auto_for(&config, "vie", "routine_change") && auto_for(&config, "vie", "routine_way"));
         assert!(!auto_for(&config, "vie", "payment") && !auto_for(&config, "vie", "unknown"));
         set_agent_level(&config, "coach", Some("all")).unwrap();
         assert!(!auto_for(&config, "coach", "mail_archive") && auto_for(&config, "vie", "mail_archive"));
