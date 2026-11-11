@@ -45,24 +45,32 @@ def test_each_machine_gets_its_archive():
     assert rustbridge.asset("Windows", "AMD64") is None
 
 
-def test_binaries_are_checked_against_the_release_then_kept_two_versions(tmp_path):
+def signed_release(signer, sums: bytes, archive: bytes, asked=None):
+    """A release's opener: its SHA256SUMS signed by the pinned key, the archive for anything else."""
+    def opener(url):
+        if asked is not None:
+            asked.append(url)
+        if url.endswith("/SHA256SUMS"):
+            return sums
+        if url.endswith("/SHA256SUMS.minisig"):
+            return signer.sign(sums)
+        return archive
+    return opener
+
+
+def test_binaries_are_checked_against_the_release_then_kept_two_versions(tmp_path, signer):
     name = "bipbridge-linux-x86_64.tar.gz"
     good = archive({"bipbridge": b"\x7fELF bridge", "bip-browser-mcp": b"\x7fELF mcp", "../evil": b"no"})
     asked = []
-
-    def opener(url):
-        asked.append(url)
-        if url.endswith("SHA256SUMS"):
-            return f"{hashlib.sha256(good).hexdigest()}  {name}\n".encode()
-        return good
+    opener = signed_release(signer, f"{hashlib.sha256(good).hexdigest()}  {name}\n".encode(), good, asked)
 
     path = rustbridge.fetch(tmp_path, "abc123def456", name, opener)
     assert path.read_bytes() == b"\x7fELF bridge" and path.stat().st_mode & 0o111
     assert (path.parent / "bip-browser-mcp").exists() and not (tmp_path / "evil").exists()
     assert asked[0] == "https://github.com/Alexbob0/BipAgents/releases/download/bridge-abc123def456/SHA256SUMS"
-    with pytest.raises(rustbridge.RustBridgeError, match="doesn't match"):
-        rustbridge.fetch(tmp_path, "000000000002", name, lambda url: b"0" * 64 + f"  {name}".encode()
-                         if url.endswith("SUMS") else good)
+    assert asked[2] == "https://github.com/Alexbob0/BipAgents/releases/download/bridge-abc123def456/SHA256SUMS.minisig"
+    with pytest.raises(rustbridge.RustBridgeError, match="doesn't match"):   # signed sums, another archive
+        rustbridge.fetch(tmp_path, "000000000002", name, signed_release(signer, b"0" * 64 + f"  {name}".encode(), good))
     with pytest.raises(rustbridge.RustBridgeError, match="isn't out yet"):
         rustbridge.fetch(tmp_path, "000000000003", name, lambda url: (_ for _ in ()).throw(OSError("404")))
     for release in ("000000000004", "000000000005"):

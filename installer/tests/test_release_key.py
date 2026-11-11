@@ -1,42 +1,16 @@
 """Release integrity (audit 2026-10-27, finding 22): a release's SHA256SUMS are trusted only once signed with minisign
-by BipAgents' release key, pinned in the checkout. The keys here are throwaway ones made by the test itself."""
+by BipAgents' release key, pinned in the checkout. The keys here are throwaway ones made by the test itself
+(release_signing.py, the `signer` fixture)."""
 import base64
 import hashlib
-import os
 import shutil
+import subprocess
 
-import httpx
 import pytest
 
 from bipinstall import hermes, release_key, rustbridge, shared_hermes, voices
+from release_signing import Key
 from test_rustbridge import archive
-
-ed25519 = pytest.importorskip("cryptography.hazmat.primitives.asymmetric.ed25519")
-
-
-class Key:
-    """A throwaway minisign key pair: its public line (as in a .pub) and a signer writing .minisig files."""
-
-    def __init__(self):
-        self.secret = ed25519.Ed25519PrivateKey.generate()
-        self.id = os.urandom(8)
-        raw = self.secret.public_key().public_bytes_raw()
-        self.public = base64.b64encode(b"Ed" + self.id + raw).decode()
-
-    def sign(self, data: bytes, prehashed=True, comment="timestamp:1761600000\tfile:SHA256SUMS\thashed") -> bytes:
-        message = hashlib.blake2b(data, digest_size=64).digest() if prehashed else data
-        sig = self.secret.sign(message)
-        whole = self.secret.sign(sig + comment.encode())
-        line = base64.b64encode((b"ED" if prehashed else b"Ed") + self.id + sig).decode()
-        return (f"untrusted comment: signature from minisign secret key\n{line}\n"
-                f"trusted comment: {comment}\n{base64.b64encode(whole).decode()}\n").encode()
-
-
-@pytest.fixture
-def key(monkeypatch):
-    made = Key()
-    monkeypatch.setattr(release_key, "PUBLIC_KEY", made.public)
-    return made
 
 
 def test_rfc8032_vector():
@@ -47,21 +21,37 @@ def test_rfc8032_vector():
     assert not release_key.ed25519_verify(public, b"x", sig)
 
 
-def test_a_signature_is_checked_against_the_pinned_key(key):
+def test_a_signature_is_checked_against_the_pinned_key(signer):
     sums = b"ab" * 32 + b"  bipbridge-linux-x86_64.tar.gz\n"
-    release_key.check(sums, key.sign(sums))                      # minisign's default (prehashed)
-    release_key.check(sums, key.sign(sums, prehashed=False))     # legacy
+    release_key.check(sums, signer.sign(sums))                   # minisign's default (prehashed)
+    release_key.check(sums, signer.sign(sums, prehashed=False))  # legacy
     with pytest.raises(release_key.ReleaseSignatureError, match="aren't signed"):
-        release_key.check(sums.replace(b"ab", b"cd", 1), key.sign(sums))          # tampered sums
+        release_key.check(sums.replace(b"ab", b"cd", 1), signer.sign(sums))       # tampered sums
     with pytest.raises(release_key.ReleaseSignatureError, match="aren't signed"):
-        release_key.check(sums, Key().sign(sums))                                  # another key
-    forged = key.sign(sums).replace(b"hashed", b"hashez")
+        release_key.check(sums, Key().sign(sums))                                 # another key
+    forged = signer.sign(sums).replace(b"hashed", b"hashez")
     with pytest.raises(release_key.ReleaseSignatureError, match="aren't signed"):
-        release_key.check(sums, forged)                                            # trusted comment changed
+        release_key.check(sums, forged)                                           # trusted comment changed
     with pytest.raises(release_key.ReleaseSignatureError, match="no SHA256SUMS.minisig"):
         release_key.check(sums, None)
     with pytest.raises(release_key.ReleaseSignatureError, match="can't be read"):
         release_key.check(sums, b"<html>Not Found</html>")
+
+
+@pytest.mark.skipif(not shutil.which("minisign"), reason="the minisign program signs here as the workflows do")
+def test_what_the_minisign_program_signs_is_accepted(tmp_path):
+    """The release workflows and scripts/sign-release-sums.sh sign with the minisign program itself, not this file's
+    throwaway signer: its output must pass the installer's own check."""
+    run = lambda *args: subprocess.run(["minisign", *args], cwd=tmp_path, stdin=subprocess.DEVNULL,
+                                       capture_output=True, check=True)
+    run("-G", "-W", "-p", "release.pub", "-s", "release.key")
+    sums = b"ab" * 32 + b"  bipbridge-linux-x86_64.tar.gz\n"
+    (tmp_path / "SHA256SUMS").write_bytes(sums)
+    run("-S", "-s", "release.key", "-m", "SHA256SUMS", "-t", "BipAgents bridge-000000000001 built from 64d7755e0346")
+    public = (tmp_path / "release.pub").read_text()
+    release_key.check(sums, (tmp_path / "SHA256SUMS.minisig").read_bytes(), key=public)
+    with pytest.raises(release_key.ReleaseSignatureError, match="aren't signed"):
+        release_key.check(sums.replace(b"ab", b"cd", 1), (tmp_path / "SHA256SUMS.minisig").read_bytes(), key=public)
 
 
 def test_the_placeholder_key_keeps_the_old_behaviour_with_a_warning():
@@ -97,11 +87,11 @@ def bridge_release(key, signed=True, sign_what=None):
     return name, files, opener
 
 
-def test_the_bridge_is_installed_only_from_signed_sums(tmp_path, key):
-    name, _, opener = bridge_release(key)
+def test_the_bridge_is_installed_only_from_signed_sums(tmp_path, signer):
+    name, _, opener = bridge_release(signer)
     assert rustbridge.fetch(tmp_path, "000000000001", name, opener).read_bytes() == b"\x7fELF bridge"
     # Someone holding the workflow's token swaps the archive and its sum together: the old signature no longer fits.
-    name, files, opener = bridge_release(key)
+    name, files, opener = bridge_release(signer)
     evil = archive({"bipbridge": b"evil"})
     signature = files["SHA256SUMS.minisig"]
     files[name] = evil
@@ -109,28 +99,30 @@ def test_the_bridge_is_installed_only_from_signed_sums(tmp_path, key):
     files["SHA256SUMS.minisig"] = signature
     with pytest.raises(rustbridge.RustBridgeError, match="aren't signed"):
         rustbridge.fetch(tmp_path, "000000000002", name, opener)
-    name, _, opener = bridge_release(key, signed=False)
+    name, _, opener = bridge_release(signer, signed=False)
     with pytest.raises(rustbridge.RustBridgeError, match="no SHA256SUMS.minisig"):
         rustbridge.fetch(tmp_path, "000000000003", name, opener)
     assert not rustbridge.binary(tmp_path, "000000000002").exists()
     assert not rustbridge.binary(tmp_path, "000000000003").exists()
 
 
-def test_without_a_pinned_key_the_bridge_is_still_installed_from_its_sums(tmp_path):
+def test_without_a_pinned_key_the_bridge_is_still_installed_from_its_sums(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(release_key, "PUBLIC_KEY", release_key.PLACEHOLDER)   # a checkout from before the key
     name, _, opener = bridge_release(None, signed=False)
     assert rustbridge.fetch(tmp_path, "000000000001", name, opener).exists()
+    assert "no release key pinned" in capsys.readouterr().err
 
 
 # -- the shared Hermes ----------------------------------------------------------------------------------------------
 
 @pytest.mark.skipif(not shutil.which("zstd"), reason="zstd packs and unpacks the release archive")
 @pytest.mark.parametrize("signature", ["good", "missing", "other key"])
-def test_the_shared_hermes_is_used_only_from_signed_sums(tmp_path, monkeypatch, key, signature):
+def test_the_shared_hermes_is_used_only_from_signed_sums(tmp_path, monkeypatch, signer, signature):
     from test_shared_hermes import OnlyRemoves, released
     archive, fetch, _ = released(tmp_path)
     sums = (tmp_path / "release" / "SHA256SUMS").read_bytes()
     if signature != "missing":
-        (tmp_path / "release" / "SHA256SUMS.minisig").write_bytes((key if signature == "good" else Key()).sign(sums))
+        (tmp_path / "release" / "SHA256SUMS.minisig").write_bytes((signer if signature == "good" else Key()).sign(sums))
     base = tmp_path / "opt"
     monkeypatch.setattr(shared_hermes, "DEFAULT_ROOT", base)
     monkeypatch.setattr(shared_hermes.platform, "machine", lambda: "x86_64")
@@ -144,7 +136,7 @@ def test_the_shared_hermes_is_used_only_from_signed_sums(tmp_path, monkeypatch, 
 
 # -- the Bips' voices -----------------------------------------------------------------------------------------------
 
-def test_the_voices_are_used_only_from_signed_sums(tmp_path, monkeypatch, key):
+def test_the_voices_are_used_only_from_signed_sums(tmp_path, monkeypatch, signer):
     import test_voices_release as tvr
     tvr.build(tmp_path / "voices")
     name = tvr.release.pack(tmp_path / "voices", tmp_path / "assets")
@@ -154,7 +146,7 @@ def test_the_voices_are_used_only_from_signed_sums(tmp_path, monkeypatch, key):
     assert voices.install(["fr"], tmp_path / "a", hermes.Runner(dry=False), said.append,
                           transport=github.transport()) is None   # no signature published
     assert "no SHA256SUMS.minisig" in said[-1]
-    (tmp_path / "assets" / "SHA256SUMS.minisig").write_bytes(key.sign((tmp_path / "assets" / "SHA256SUMS").read_bytes()))
+    signer.sign_release(tmp_path / "assets")
     said = []
     assert voices.install(["fr"], tmp_path / "b", hermes.Runner(dry=False), said.append,
                           transport=github.transport()) is not None and not said

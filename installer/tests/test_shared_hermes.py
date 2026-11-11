@@ -203,8 +203,9 @@ class OnlyRemoves(hermes.Runner):
         return ""
 
 
-def released(tmp_path, version="v1"):
-    """A sealed tree packed the way the workflow packs it, and a fetch that serves it and its SHA256SUMS."""
+def released(tmp_path, version="v1", signer=None):
+    """A sealed tree packed the way the workflow packs it, and a fetch that serves it and its SHA256SUMS (signed by
+    `signer`, the pinned test key, when given)."""
     built = tmp_path / "ci"
     (built / version / "hermes-agent").mkdir(parents=True)
     (built / version / "hermes-agent" / "run.py").write_text("print(1)\n")
@@ -213,6 +214,8 @@ def released(tmp_path, version="v1"):
     archive = shared_hermes.pack(built, version, tmp_path / "release", machine="x86_64")
     (tmp_path / "release" / "SHA256SUMS").write_text(
         f"{hashlib.sha256(archive.read_bytes()).hexdigest()}  {archive.name}\n")
+    if signer is not None:
+        signer.sign_release(tmp_path / "release")
     asked = []
 
     def fetch(url, path):
@@ -235,8 +238,8 @@ def test_the_release_archive_is_named_after_the_version_and_the_processor():
 
 
 @needs_zstd
-def test_a_ready_made_version_is_fetched_checked_and_unpacked_instead_of_built(tmp_path, monkeypatch):
-    archive, fetch, asked = released(tmp_path)
+def test_a_ready_made_version_is_fetched_checked_and_unpacked_instead_of_built(tmp_path, monkeypatch, signer):
+    archive, fetch, asked = released(tmp_path, signer=signer)
     base = tmp_path / "opt"
     monkeypatch.setattr(shared_hermes, "DEFAULT_ROOT", base)
     monkeypatch.setattr(shared_hermes.platform, "machine", lambda: "x86_64")
@@ -245,16 +248,18 @@ def test_a_ready_made_version_is_fetched_checked_and_unpacked_instead_of_built(t
     assert target == base / "v1" and shared_hermes.ready(base, "v1")
     assert (target / "hermes-agent" / "run.py").read_text() == "print(1)\n"
     assert json.loads((target / shared_hermes.COMPLETE).read_text())["source"].endswith(archive.name)
-    assert asked[0].endswith("/hermes-v1/SHA256SUMS") and asked[1].endswith(f"/hermes-v1/{archive.name}")
+    assert all("/hermes-v1/" in url for url in asked)
+    assert [url.rsplit("/", 1)[1] for url in asked] == ["SHA256SUMS", "SHA256SUMS.minisig", archive.name]
     assert not any("install.sh" in line for line in runner.log)   # nothing built
     assert f"chown -R root:root {target}" in runner.log
     assert [p.name for p in base.iterdir()] == ["v1"]   # the download and its unpacking gone
 
 
 @needs_zstd
-def test_a_ready_made_version_that_does_not_match_its_sums_is_not_used(tmp_path, monkeypatch):
+def test_a_ready_made_version_that_does_not_match_its_sums_is_not_used(tmp_path, monkeypatch, signer):
     archive, fetch, _ = released(tmp_path)
     (tmp_path / "release" / "SHA256SUMS").write_text(f"{'0' * 64}  {archive.name}\n")
+    signer.sign_release(tmp_path / "release")   # signed sums, another archive
     base = tmp_path / "opt"
     monkeypatch.setattr(shared_hermes, "DEFAULT_ROOT", base)
     monkeypatch.setattr(shared_hermes.platform, "machine", lambda: "x86_64")
@@ -298,7 +303,7 @@ def test_a_dry_run_says_it_would_fetch_the_ready_made_version(tmp_path, monkeypa
     assert any("install.sh" in line for line in runner.log)
 
 
-def test_a_server_of_the_offer_waits_for_a_release_not_out_yet(tmp_path, monkeypatch):
+def test_a_server_of_the_offer_waits_for_a_release_not_out_yet(tmp_path, monkeypatch, signer):
     """2026-10-30: a server bootstrapped 4 min after a public push asked for the ready-made Hermes 3 min before the
     workflow published it, and built everything here instead. On a server of the offer it is waited for."""
     base = tmp_path / "opt"
@@ -320,10 +325,13 @@ def test_a_server_of_the_offer_waits_for_a_release_not_out_yet(tmp_path, monkeyp
         asked.append(url)
         if now[0] < 180:
             raise OSError("HTTP Error 404: Not Found")
-        path.write_text("")   # published (empty sums: the usual checks stop it below)
+        # published (empty sums, signed: the usual checks stop it below)
+        path.write_bytes(signer.sign(b"") if url.endswith(".minisig") else b"")
     assert not shared_hermes.prebuilt(OnlyRemoves(), base, "v1", fetch=out_after_3_minutes, wait=35, sleep=sleep)
     assert slept == [60, 60, 60] and "waiting up to 35 min" in said[0]
-    assert len(asked) == 5 and "not in the release's SHA256SUMS" in said[-1]   # once out, the usual download
+    # once out, the usual download: the sums, their signature
+    assert [url.rsplit("/", 1)[1] for url in asked] == ["SHA256SUMS"] * 5 + ["SHA256SUMS.minisig"]
+    assert "not in the release's SHA256SUMS" in said[-1]
     # never out: given up after the wait, then built here
     said.clear(), slept.clear()
     now[0] = 0.0

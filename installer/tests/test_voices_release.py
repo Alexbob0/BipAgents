@@ -104,9 +104,12 @@ class GitHub:
 
 
 @pytest.fixture
-def published(tmp_path):
+def published(tmp_path, signer):
+    """The latest voices release, signed by the pinned test key as scripts/publish-voices.sh signs the real one, among
+    the bridge's releases and other voices releases."""
     build(tmp_path / "voices")
     name = release.pack(tmp_path / "voices", tmp_path / "assets")
+    signer.sign_release(tmp_path / "assets")
     bridges = [release_entry(f"bridge-{i:012x}", f"2026-10-2{i % 10}T00:00:00Z") for i in range(100)]
     listing = [bridges, [release_entry("voices-3.3.0-old", "2026-10-30T00:00:00Z"),       # another Pocket: not this one
                          release_entry("voices-4.0.1-draft", "2026-10-31T00:00:00Z", draft=True),
@@ -132,7 +135,8 @@ def test_an_own_install_fetches_its_languages_from_the_latest_release(tmp_path, 
     assert github.asked[:2] == ["api.github.com/repos/Alexbob0/BipAgents/releases?page=1",
                                 "api.github.com/repos/Alexbob0/BipAgents/releases?page=2"]
     fetched = sorted(a.rsplit("/", 1)[1] for a in github.asked[2:])
-    assert fetched == ["SHA256SUMS", "dutch-dut.tar.gz", "french-fre.tar.gz", "index.json", "mimi-aaa.tar.gz"]
+    assert fetched == ["SHA256SUMS", "SHA256SUMS.minisig", "dutch-dut.tar.gz", "french-fre.tar.gz", "index.json",
+                       "mimi-aaa.tar.gz"]
 
 
 def test_a_given_release_or_pocket_decides_which(published):
@@ -157,8 +161,9 @@ def test_a_tampered_asset_is_refused_and_nothing_kept(tmp_path, published, monke
         and not list(target.glob(".*.part")) and not (target / "index.json").exists()
 
 
-def evil_release(tmp_path, member: tarfile.TarInfo, data: bytes = b"x"):
-    """A release whose French archive carries `member` (its SHA256SUMS right: a release made by someone else)."""
+def evil_release(tmp_path, signer, member: tarfile.TarInfo, data: bytes = b"x"):
+    """A release whose French archive carries `member`, its SHA256SUMS right and signed by the pinned key: past the
+    signature, the archive's own checks still stop it."""
     build(tmp_path / "voices", languages=("french",))
     out = tmp_path / "evil"
     release.pack(tmp_path / "voices", out)
@@ -170,13 +175,14 @@ def evil_release(tmp_path, member: tarfile.TarInfo, data: bytes = b"x"):
     lines = [line for line in (out / "SHA256SUMS").read_text().splitlines() if not line.endswith("french-fre.tar.gz")]
     lines.append(f"{hashlib.sha256(buffer.getvalue()).hexdigest()}  french-fre.tar.gz")
     (out / "SHA256SUMS").write_text("\n".join(lines) + "\n")
+    signer.sign_release(out)
     return GitHub([[release_entry("voices-4.0.1-evil", "2026-10-26T00:00:00Z")]], {"voices-4.0.1-evil": out})
 
 
 @pytest.mark.parametrize("member", [tarfile.TarInfo("french-fre/../../escaped"), tarfile.TarInfo("other/manifest.json"),
                                     tarfile.TarInfo("/etc/passwd")])
-def test_an_archive_writing_outside_its_folder_is_refused(tmp_path, monkeypatch, member):
-    github = evil_release(tmp_path, member)
+def test_an_archive_writing_outside_its_folder_is_refused(tmp_path, monkeypatch, signer, member):
+    github = evil_release(tmp_path, signer, member)
     monkeypatch.setattr(voices, "source", lambda home: (None, None))
     said = []
     assert voices.install(["fr"], tmp_path / "home", hermes.Runner(dry=False), said.append,
@@ -185,10 +191,10 @@ def test_an_archive_writing_outside_its_folder_is_refused(tmp_path, monkeypatch,
     assert not (tmp_path / "home" / ".local" / "escaped").exists() and not (tmp_path / "escaped").exists()
 
 
-def test_a_link_in_an_archive_is_refused(tmp_path, monkeypatch):
+def test_a_link_in_an_archive_is_refused(tmp_path, monkeypatch, signer):
     link = tarfile.TarInfo("french-fre/manifest.json")
     link.type, link.linkname = tarfile.SYMTYPE, "/etc/passwd"
-    github = evil_release(tmp_path, link)
+    github = evil_release(tmp_path, signer, link)
     monkeypatch.setattr(voices, "source", lambda home: (None, None))
     said = []
     assert voices.install(["fr"], tmp_path / "home", hermes.Runner(dry=False), said.append,
@@ -196,7 +202,7 @@ def test_a_link_in_an_archive_is_refused(tmp_path, monkeypatch):
     assert "isn't a file" in said[-1]
 
 
-def test_the_light_voices_follow_a_newer_release(tmp_path, published, monkeypatch):
+def test_the_light_voices_follow_a_newer_release(tmp_path, published, monkeypatch, signer):
     name, github = published
     monkeypatch.setattr(voices, "source", lambda home: (None, None))
     home = tmp_path / "home"
@@ -205,6 +211,7 @@ def test_the_light_voices_follow_a_newer_release(tmp_path, published, monkeypatc
     assert not voices.refresh(home, runner, [].append, transport=github.transport())          # nothing new
     build(tmp_path / "newer", bump="2")                                                         # new Bips' voices
     newer = release.pack(tmp_path / "newer", tmp_path / "newer-assets")
+    signer.sign_release(tmp_path / "newer-assets")
     github.listing[1].insert(0, release_entry(newer, "2026-11-02T00:00:00Z"))
     github.releases[newer] = tmp_path / "newer-assets"
     assert voices.refresh(home, runner, [].append, transport=github.transport())
