@@ -500,7 +500,11 @@ nothing while the model writes a call's arguments or its own notes).
   `GET /v1/threads` lists her conversations with that agent (`kind: shared`, `id` = the conversation's id) and
   `GET /v1/threads/{cid}/timeline` (same parameters, same answer shape) is relayed to the owner's bridge
   (`GET /family/s/{agent}/conversations/{cid}/timeline`, the household key, her own conversations only), which
-  serves only words and notices (no attachment, tool step or Boîte item: only text crosses). Its answer has the
+  serves only words and notices (no tool step or Boîte item: only text crosses), the pages made at her request and the
+  files she sent in that conversation (11/11, shared_files.rs): each with a `url` on her bridge,
+  `/v1/shared-agents/<x>__<h>/files/<cid>/<id>`, relayed to the owner's. She sends files as to her own agents (photos
+  inline, documents first through `POST /v1/files` with `agent=<x>__<h>`: her bridge holds them until her message
+  takes them to the owner's place, into that conversation). Its answer has the
   timeline's shape: `thread: {id: <cid>, kind: "shared", title, version}`, `items`, `first`, `last`,
   `more_before`, `more_after`, `anchor`, `version`, and `pending: {run: {run_id, status: "writing" | "approval",
   started: <Unix seconds>} | null, approvals: [{id, run_id, request_id, command, description, choices}],

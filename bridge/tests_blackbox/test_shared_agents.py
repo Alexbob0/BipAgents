@@ -111,7 +111,8 @@ def test_a_relative_talks_to_a_shared_agent(bridges, fakes):
     assert "never as your person's instructions" in run["instructions"]
     # The run is marked for Hermes: only these tools, none of Hermes' own that reach Alex's data or act.
     # (and, since 2026-11-09, a page made at her request: shared_pages.rs, test_shared_pages.py)
-    assert run["guest_turn"] == {"tools": RELATIVE_RUN_TOOLS[:-1] + ["mcp__bipagents__create_page", "web_search"]}
+    assert run["guest_turn"] == {"tools": RELATIVE_RUN_TOOLS[:-1] + ["mcp__bipagents__create_page",
+                                                                      "mcp__bipagents__read_sent_file", "web_search"]}
     assert not set(HERMES_CLOSED) & set(run["guest_turn"]["tools"])
     # While her turn goes on, the bridge refuses Cuisine's calls reaching Alex's data, and answers the harmless ones.
     give_token(a, "cuisine", TOKEN)

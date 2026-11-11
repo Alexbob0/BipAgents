@@ -34,8 +34,9 @@
 //!     GET    /family/s/{agent}/conversations/{cid}/events    SSE: `thread` {thread: cid, version} at each change
 //!     GET    /family/s/{agent}/conversations/{cid}/runs/{run}/events   SSE: the turn's words as they come (text,
 //!                                                            approvals and the end only: no tool step crosses)
-//!     POST   /family/s/{agent}/conversations/{cid}/messages  {text, person?, client_id?}  → {run_id}  (409 while a
-//!                                                            turn goes on)
+//!     POST   /family/s/{agent}/conversations/{cid}/messages  {text, person?, client_id?, files?}  → {run_id}  (409
+//!                                                            while a turn goes on; `files`: ids sent first,
+//!                                                            shared_files.rs)
 //!     POST   /family/s/{agent}/conversations/{cid}/stop      {ok}
 //!     DELETE /family/s/{agent}/conversations/{cid}           {ok}
 //!     POST   /family/s/{agent}/approval                      {run_id, choice | answer, request_id?}  → Hermes' answer
@@ -74,7 +75,8 @@
 //!     Hermes nothing is shared and no relative's turn runs (`guest_turns_closed`, audit 11/11 BA-2).
 //! - Approvals belong to the person talking: the relative's are left out of the owner's Boîte and `/v1/approve`
 //!   refuses them (403); she answers through her bridge.
-//! - Only text crosses: `MEDIA:` lines are taken out of the replies (rooms.rs `room_text`).
+//! - Only text crosses: `MEDIA:` lines are taken out of the replies (rooms.rs `room_text`). Her own files go the other
+//!   way, into her conversation only (shared_files.rs: stored on this place, read by the agent in her turns only).
 //! - Credit: the turn runs with the owner's agent, its model and the owner's key: with a Famille plan that key draws
 //!   from the family's pool (credit-pool, the guichet), else it is the owner's credit. The tokens are counted per
 //!   relative here (`tokens` in the share view) so the payer can see them.
@@ -195,9 +197,10 @@ deinem Computer „bipagents hermes-update --fixes-only“ aus."
 /// `code` of that refusal.
 pub const GUEST_TURNS_OPEN: &str = "hermes_guest_turns_open";
 
-/// What a relative's turn makes besides `RELATIVE_TOOLS` (Alex, 2026-11-09): a page, from what is said in her
-/// conversation, seen only by her, marked as made at her request, a few a day (shared_pages.rs).
-pub const FRIEND_TOOLS: [&str; 1] = [crate::agent_tools::CREATE_PAGE];
+/// What a relative's turn has besides `RELATIVE_TOOLS`: a page, from what is said in her conversation, seen only by
+/// her, marked as made at her request, a few a day (shared_pages.rs, Alex 2026-11-09); the files she sent in that
+/// conversation, read in her own turns only (shared_files.rs, Alex 11/11).
+pub const FRIEND_TOOLS: [&str; 2] = [crate::agent_tools::CREATE_PAGE, crate::shared_files::TOOL_NAME];
 
 /// A relative's turn with `agent`: the family's agent keeps its family tools (family_agent.rs `TOOLS`), any other
 /// shared agent `RELATIVE_TOOLS` and `FRIEND_TOOLS`.
@@ -228,7 +231,7 @@ fn str_of(value: &Value, key: &str) -> String {
 
 // -- the files ------------------------------------------------------------------------------------------------------
 
-fn owner_path(config: &Config) -> PathBuf {
+pub(crate) fn owner_path(config: &Config) -> PathBuf {
     PathBuf::from(config.data_dir()).join("agent-shares.json")
 }
 
@@ -262,7 +265,7 @@ fn save(path: &PathBuf, data: &Dict) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn update<R>(path: &PathBuf, change: impl FnOnce(&mut Dict) -> R) -> anyhow::Result<R> {
+pub(crate) fn update<R>(path: &PathBuf, change: impl FnOnce(&mut Dict) -> R) -> anyhow::Result<R> {
     let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut data = load(path);
     let out = change(&mut data);
@@ -270,12 +273,12 @@ fn update<R>(path: &PathBuf, change: impl FnOnce(&mut Dict) -> R) -> anyhow::Res
     Ok(out)
 }
 
-fn read(path: &PathBuf) -> Dict {
+pub(crate) fn read(path: &PathBuf) -> Dict {
     let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     load(path)
 }
 
-fn object_mut<'a>(data: &'a mut Dict, key: &str) -> &'a mut Map<String, Value> {
+pub(crate) fn object_mut<'a>(data: &'a mut Dict, key: &str) -> &'a mut Map<String, Value> {
     if !matches!(data.get(key), Some(Value::Object(_))) {
         data.insert(key.into(), json!({}));
     }
@@ -285,7 +288,7 @@ fn object_mut<'a>(data: &'a mut Dict, key: &str) -> &'a mut Map<String, Value> {
     }
 }
 
-fn object<'a>(data: &'a Dict, key: &str) -> Option<&'a Map<String, Value>> {
+pub(crate) fn object<'a>(data: &'a Dict, key: &str) -> Option<&'a Map<String, Value>> {
     data.get(key).and_then(Value::as_object)
 }
 
@@ -430,13 +433,23 @@ pub fn set_shared(config: &Config, agent: &str, wanted: &[String]) -> anyhow::Re
             kept.push(h.clone());
         }
     }
-    update(&owner_path(config), |data| {
+    let ended = update(&owner_path(config), |data| {
         object_mut(data, "shared").insert(agent.to_string(), json!(kept));
         // a relative no longer shared with: their conversations go (the hidden sessions are left to Hermes)
         let gone: Vec<String> = before.iter().filter(|h| !kept.contains(h)).cloned().collect();
-        object_mut(data, "conversations")
-            .retain(|_, c| !(str_of(c, "agent") == agent && gone.contains(&str_of(c, "household"))));
+        let conversations = object_mut(data, "conversations");
+        let ended: Vec<String> = conversations
+            .iter()
+            .filter(|(_, c)| str_of(c, "agent") == agent && gone.contains(&str_of(c, "household")))
+            .map(|(cid, _)| cid.clone())
+            .collect();
+        conversations.retain(|cid, _| !ended.contains(cid));
+        ended
     })?;
+    // and the files they sent in them (shared_files.rs)
+    for cid in &ended {
+        crate::shared_files::forget_conversation(config, agent, cid);
+    }
     let added = kept.iter().filter(|h| !before.contains(*h)).cloned().collect();
     let removed = before.into_iter().filter(|h| !kept.contains(h)).collect();
     Ok((added, removed))
@@ -547,6 +560,15 @@ conversations; what you learnt about the family in general may help. Actions tha
 create_page from what is said in this conversation only: it shows here, to {person} only, marked as made at their \
 request, a few a day. {}",
         crate::souls::CONTENT_RULE
+    ) + &format!(" {}", sent_files_rule(person))
+}
+
+/// What a relative's turn is told of the files they send (shared_files.rs): theirs, read in their own turns.
+pub fn sent_files_rule(person: &str) -> String {
+    format!(
+        "Files {person} sends you here are theirs: their photos come with their message; read a document with \
+read_sent_file (the path of its « Pièce jointe » line). Never pass them or what they say on to anyone else, unless \
+{person} asks you to (the family Carnet, a page)."
     )
 }
 
@@ -572,7 +594,7 @@ fn household_of(state: &AppState, headers: &HeaderMap) -> ApiResult<String> {
 }
 
 /// The agent the calling household may use (404 for an agent not shared with them: they can't tell it exists).
-fn shared_agent(state: &AppState, headers: &HeaderMap, agent: &str) -> ApiResult<(String, AgentConfig)> {
+pub(crate) fn shared_agent(state: &AppState, headers: &HeaderMap, agent: &str) -> ApiResult<(String, AgentConfig)> {
     let household = household_of(state, headers)?;
     let config = state.config();
     let found = config.agent(Some(agent)).cloned().filter(|a| shared_with(&config, &a.name).contains(&household));
@@ -583,7 +605,7 @@ fn shared_agent(state: &AppState, headers: &HeaderMap, agent: &str) -> ApiResult
 }
 
 /// This household's conversation `cid` with `agent`.
-fn conversation(config: &Config, household: &str, agent: &str, cid: &str) -> ApiResult<Value> {
+pub(crate) fn conversation(config: &Config, household: &str, agent: &str, cid: &str) -> ApiResult<Value> {
     let data = read(&owner_path(config));
     object(&data, "conversations")
         .and_then(|all| all.get(cid))
@@ -709,7 +731,7 @@ async fn served_timeline(
         .into_iter()
         .filter(|i| matches!(i.kind(), "message" | "notice"))
         .map(|mut i| {
-            let pages = their_pages(i.body.remove("attachments"), &agent.name, &theirs);
+            let pages = their_pages(i.body.remove("attachments"), &agent.name, &theirs, &cid);
             if !pages.is_empty() {
                 i.body.insert("attachments".into(), Value::Array(pages));
             }
@@ -738,15 +760,17 @@ async fn served_timeline(
     Ok(web::ok(page.answer(shown, thread.version, pending, false)))
 }
 
-/// Of a message's attachments, the pages of `agent` made for this household (`theirs`), path and kind only.
-fn their_pages(attachments: Option<Value>, agent: &str, theirs: &[String]) -> Vec<Value> {
+/// Of a message's attachments, the pages of `agent` made for this household (`theirs`) and the files she sent in this
+/// conversation `cid` (shared_files.rs), path and kind only.
+fn their_pages(attachments: Option<Value>, agent: &str, theirs: &[String], cid: &str) -> Vec<Value> {
     let prefix = format!("{}/{agent}/", crate::pages::PREFIX);
     let Some(Value::Array(all)) = attachments else { return Vec::new() };
     all.into_iter()
         .filter_map(|a| {
             let path = str_of(&a, "path");
-            let page = path.strip_prefix(&prefix)?.strip_suffix(".html")?;
-            if !theirs.iter().any(|t| t == page) {
+            let hers = crate::shared_files::in_conversation(&path, cid);
+            let page = path.strip_prefix(&prefix).and_then(|p| p.strip_suffix(".html"));
+            if !hers && !page.is_some_and(|page| theirs.iter().any(|t| t == page)) {
                 return None;
             }
             let mut kept = Map::new();
@@ -962,7 +986,8 @@ pub async fn relay_thread(state: &AppState, agent: &str, what: &str, q: &web::Qu
             if let Some(Value::Object(thread)) = page.get_mut("thread") {
                 thread.insert("tip".into(), json!(cid));
             }
-            Ok(relayed((status, pages_under(agent, &owner_agent, page))))
+            // her files with a url on this bridge (shared_files.rs), her pages under her own id for the agent
+            Ok(relayed((status, crate::shared_files::urls_under(agent, pages_under(agent, &owner_agent, page)))))
         }
         .await,
         // ended by her: its words deleted on the owner's side
@@ -1061,6 +1086,8 @@ async fn follow_turn(
     }
     // her turn's reply stored: her conversation read again (its cached rows forgotten), her screen told to read it
     crate::threads::threads_of(&state).touch(&agent.name, Some(&session), "ended").await;
+    // Hermes' own copies of her photos, out of the owner's turns' reach (shared_files.rs)
+    crate::shared_files::forget_hermes_copies(&state, &agent, &session).await;
     tracing::info!(agent = %agent.name, household = %household, tokens = used.0 + used.1, "shared agent: turn ended");
 }
 
@@ -1073,8 +1100,13 @@ async fn served_post(
     let (household, agent) = shared_agent(&state, &headers, &agent)?;
     let body = body_json(&body)?;
     let text = tk::strip(&tk::str_or_empty(body.get("text"))).to_string();
-    if text.is_empty() || text.chars().count() > TEXT_MAX {
-        return Err(HttpError::new(422, format!("a message of 1 to {TEXT_MAX} characters")));
+    // her files, sent first into this conversation (shared_files.rs): their ids
+    let file_ids: Vec<String> = match body.get("files") {
+        Some(Value::Array(ids)) => ids.iter().map(py::py_str).collect(),
+        _ => Vec::new(),
+    };
+    if (text.is_empty() && file_ids.is_empty()) || text.chars().count() > TEXT_MAX {
+        return Err(HttpError::new(422, format!("a message of 1 to {TEXT_MAX} characters, or files")));
     }
     let config = state.config();
     let c = conversation(&config, &household, &agent.name, &cid)?;
@@ -1083,6 +1115,7 @@ async fn served_post(
         // app says « your relative's agents don't answer for now »)
         return Ok(guest_turns_refused(&config, 503));
     }
+    let attachments = crate::shared_files::claim(&config, &agent.name, &cid, &file_ids)?;
     // one run per shared conversation: reserved in the same locked write as the test, before Hermes is called
     let Some(reserved) = reserve_turn(&owner_path(&config), &cid)? else {
         return Err(HttpError::new(409, "the agent is still answering"));
@@ -1111,19 +1144,22 @@ async fn served_post(
     };
     let session = str_of(&c, "session");
     let base = state.hermes.session(&agent, &session).await.map(|s| counters_of(&s)).unwrap_or((0, 0));
-    let input = crate::dates::now::stamped(&config, &agent, &framed(&person, &shown, &text));
+    let words = crate::dates::now::stamped(&config, &agent, &framed(&person, &shown, &text));
+    // her photos as image parts, her documents as one line each (threads/send.rs, as for one's own agents)
+    let input = crate::threads::send::input_of(None, &words, &attachments);
     let tools = relative_guest_tools(&config, &agent.name);
-    let started = state.hermes.start_guest_run(&agent, &input, &session, Some(&rules), &tools).await;
+    let started = state.hermes.start_guest_run(&agent, input, &session, Some(&rules), &tools).await;
     let run_id = started.as_ref().ok().cloned();
     settle_turn(&owner_path(&config), &cid, &reserved, run_id.as_deref())?;
     let run_id = run_id.ok_or_else(|| HttpError::new(502, "the agent can't be reached"))?;
-    tracing::info!(agent = %agent.name, household = %household, "shared agent: a relative's turn");
-    // her app's id for the message: its item carries it once Hermes has it (threads/send.rs)
+    crate::shared_files::mark_sent(&config, &cid, &file_ids)?;
+    tracing::info!(agent = %agent.name, household = %household, files = file_ids.len(), "shared agent: a relative's turn");
+    // her app's id for the message: its item carries it once Hermes has it (threads/send.rs), with its files
     let client_id = tk::str_or_empty(body.get("client_id"));
     if crate::threads::send::CLIENT_ID.is_match(&client_id) {
         let threads = crate::threads::threads_of(&state);
         if let Ok(Some(thread)) = threads.resolve(&agent, &session).await {
-            crate::threads::send::keep(&threads, &agent.name, &thread.id, &client_id, &text, &[]).await?;
+            crate::threads::send::keep(&threads, &agent.name, &thread.id, &client_id, &text, &attachments).await?;
             threads.bump(&thread, "sent").await?;
         }
     }
@@ -1153,7 +1189,9 @@ async fn end_conversation(state: &AppState, agent: &AgentConfig, cid: &str, c: &
     }
     update(&owner_path(&state.config()), |data| {
         object_mut(data, "conversations").shift_remove(cid);
-    })
+    })?;
+    crate::shared_files::forget_conversation(&state.config(), &agent.name, cid); // the files she sent in it
+    Ok(())
 }
 
 async fn served_delete(
@@ -1303,6 +1341,7 @@ pub fn household_router() -> Router<AppState> {
         .route("/family/s/{agent}/conversations/{cid}/stop", post(served_stop))
         .route("/family/s/{agent}/approval", post(served_approval))
         .route("/family/s/{agent}/pages/{page}", get(served_page))
+        .merge(crate::shared_files::household_router()) // the files she sends in her conversations
 }
 
 // -- the owner's app ------------------------------------------------------------------------------------------------
@@ -1458,6 +1497,8 @@ async fn add_mine(State(state): State<AppState>, UrlPath(id): UrlPath<String>) -
 async fn drop_mine(State(state): State<AppState>, UrlPath(id): UrlPath<String>) -> ApiResult<Response> {
     let config = state.config();
     mine(&config, &id, false)?;
+    // the files she sent it go with her (shared_files.rs): asked of its owner's bridge while she still may
+    crate::shared_files::forget_mine(&state, &id).await;
     update(&mine_path(&config), |data| {
         object_mut(data, "agents").shift_remove(&id);
     })?;
@@ -1472,6 +1513,19 @@ async fn to_owner(
     path: &str,
     body: Option<Value>,
 ) -> ApiResult<(u16, Value)> {
+    let mut request = owner_request(state, id, method, path)?;
+    if let Some(body) = body {
+        request = request.json(&body);
+    }
+    let resp = request.send().await.map_err(|_| HttpError::new(502, "their side does not answer right now: try again later"))?;
+    let status = resp.status().as_u16();
+    let payload = resp.json::<Value>().await.unwrap_or(Value::Null);
+    Ok((status, payload))
+}
+
+/// A request to the owner's bridge for one of the agents shared with this person (`…/family/s/<agent>/<path>`, her
+/// household's key, 20 s unless the caller sets its own).
+pub(crate) fn owner_request(state: &AppState, id: &str, method: reqwest::Method, path: &str) -> ApiResult<reqwest::RequestBuilder> {
     let config = state.config();
     let shared = mine(&config, id, true)?;
     let household = str_of(&shared, "household");
@@ -1483,14 +1537,7 @@ async fn to_owner(
     );
     let key = entry.get("key_out").map(py::py_str).unwrap_or_default();
     let http = crate::door_tls::household_client(&state.http, &entry);
-    let mut request = http.request(method, url).timeout(Duration::from_secs(20)).bearer_auth(key);
-    if let Some(body) = body {
-        request = request.json(&body);
-    }
-    let resp = request.send().await.map_err(|_| HttpError::new(502, "their side does not answer right now: try again later"))?;
-    let status = resp.status().as_u16();
-    let payload = resp.json::<Value>().await.unwrap_or(Value::Null);
-    Ok((status, payload))
+    Ok(http.request(method, url).timeout(Duration::from_secs(20)).bearer_auth(key))
 }
 
 fn relayed((status, payload): (u16, Value)) -> Response {
@@ -1585,13 +1632,17 @@ pub async fn relay_send(
     let id = agent.filter(|a| a.contains(SEPARATOR))?.to_string();
     Some(async {
         let text = tk::strip(&body.text).to_string();
-        if text.is_empty() || text.chars().count() > TEXT_MAX {
-            return Err(HttpError::new(422, format!("a message of 1 to {TEXT_MAX} characters")));
+        if (text.is_empty() && body.attachments.is_empty()) || text.chars().count() > TEXT_MAX {
+            return Err(HttpError::new(422, format!("a message of 1 to {TEXT_MAX} characters, or files")));
         }
+        // her files (photos inline, documents held here: shared_files.rs), read before anything is made
+        let files = crate::shared_files::outgoing(&state.config(), &id, &body.attachments)?;
         let cid = conversation_of(state, &id, cid).await?.unwrap_or_else(|| "new".to_string());
         let cid = match cid.as_str() {
             "new" => {
-                let title: String = text.chars().take(TITLE_MAX).collect();
+                // titled with her first words, else her first file's name
+                let first = if text.is_empty() { body.attachments[0].name.clone().unwrap_or_default() } else { text.clone() };
+                let title: String = first.chars().take(TITLE_MAX).collect();
                 let (status, made) = to_owner(state, &id, reqwest::Method::POST, "conversations", Some(json!({"title": title}))).await?;
                 if status != 200 {
                     return Ok(relayed((status, made)));
@@ -1600,12 +1651,27 @@ pub async fn relay_send(
             }
             cid => cid.to_string(),
         };
+        // her files first, into her conversation on the owner's side; then the message naming them
+        let ids = match crate::shared_files::send_files(state, &id, &cid, &files).await? {
+            Ok(ids) => ids,
+            Err(refused) => return Ok(relayed(refused)),
+        };
         let person = state.households.name();
-        let sent = json!({"text": text, "person": person, "client_id": body.client_id});
-        let (status, answer) = to_owner(state, &id, reqwest::Method::POST, &format!("conversations/{cid}/messages"), Some(sent)).await?;
+        let sent = json!({"text": text, "person": person, "client_id": body.client_id, "files": ids});
+        let answer = to_owner(state, &id, reqwest::Method::POST, &format!("conversations/{cid}/messages"), Some(sent)).await;
+        let (status, answer) = match answer {
+            Ok(answer) => answer,
+            Err(err) => {
+                crate::shared_files::take_back(state, &id, &cid, &ids).await;
+                return Err(err);
+            }
+        };
         let Some(run_id) = answer.get("run_id").and_then(Value::as_str).filter(|_| status == 200).map(str::to_string) else {
+            // not taken (a turn still going on): the files it got taken back, the ones held here kept for a retry
+            crate::shared_files::take_back(state, &id, &cid, &ids).await;
             return Ok(relayed((status, answer)));
         };
+        crate::shared_files::sent(&files);
         state.spawn(follow_from_here(state.clone(), id.clone(), cid.clone(), run_id.clone()));
         Ok(web::ok(json!({"client_id": body.client_id, "thread": cid, "tip": cid, "state": "started", "run_id": run_id})))
     }
@@ -1722,7 +1788,7 @@ pub fn router() -> Router<AppState> {
         .route("/shared-agents", get(list_mine))
         .route("/shared-agents/{id}", delete(drop_mine))
         .route("/shared-agents/{id}/add", post(add_mine))
-
+        .merge(crate::shared_files::router()) // her conversation's files, from the owner's bridge
 }
 
 #[cfg(test)]
@@ -1774,9 +1840,13 @@ mod tests {
                 assert_eq!(closed_tool(name, friend).unwrap()["isError"], true, "{name}");
             }
         }
-        // a relative talking to a shared agent may have a page made (2026-11-09); another household's agent may not
-        assert!(closed_tool("create_page", true).is_none());
-        assert_eq!(closed_tool("create_page", false).unwrap()["isError"], true);
+        // a relative talking to a shared agent may have a page made (2026-11-09) and her files read (11/11); another
+        // household's agent may not
+        for name in ["create_page", "read_sent_file"] {
+            assert!(closed_tool(name, true).is_none(), "{name}");
+            assert_eq!(closed_tool(name, false).unwrap()["isError"], true, "{name}");
+        }
+        assert!(relative_instructions("Marie", "Marie").contains("read a document with read_sent_file"));
         let rules = relative_instructions("Marie", "Marie");
         assert!(rules.contains("never as your person's instructions") && rules.contains("stay closed"));
         assert!(rules.contains("create_page from what is said in this conversation only"));

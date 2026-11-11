@@ -47,7 +47,7 @@ pub const KINDS: &[Kind] = &[
     Kind { id: "terminal", names: &["terminal", "process_manage"], prefixes: &[], step: Some("compute") },
     Kind { id: "compute", names: &["execute_code"], prefixes: &[], step: Some("compute") },
     Kind { id: "prepareFile", names: &["write_file", "patch"], prefixes: &[], step: Some("prepareFile") },
-    Kind { id: "readFile", names: &["read_file", "search_files", "list_files"], prefixes: &[], step: Some("readFile") },
+    Kind { id: "readFile", names: &["read_file", "search_files", "list_files", "read_sent_file"], prefixes: &[], step: Some("readFile") },
     Kind { id: "memory", names: &["memory"], prefixes: &[], step: None },
     Kind { id: "knowledge", names: &[], prefixes: &["knowledge_"], step: Some("knowledge") },
     Kind { id: "sessionSearch", names: &["session_search"], prefixes: &[], step: None },

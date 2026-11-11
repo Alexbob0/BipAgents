@@ -421,6 +421,13 @@ async fn purge_loop(state: AppState) {
                     tracing::info!(removed = removed, "files the agents sent purged");
                 }
             }
+            // the files relatives sent to the shared agents, and the ones held here for a relative's agent
+            let c = config.clone();
+            let removed =
+                tokio::task::spawn_blocking(move || crate::shared_files::purge(&c, crate::py::time_time())).await?;
+            if removed > 0 {
+                tracing::info!(removed = removed, "files sent to shared agents purged");
+            }
             let (c, days) = (config.clone(), config.outbox.retention_days);
             let removed = tokio::task::spawn_blocking(move || crate::agent_tools::purge_audio(&c, days, None)).await?;
             if removed > 0 {

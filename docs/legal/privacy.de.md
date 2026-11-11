@@ -81,6 +81,14 @@ Mit deinem eigenen Computer oder deinem eigenen Server:
   (Abschnitt 5.10).
 - **Mehrere Personen auf einem Server** (Familienfunktion): Jede Person hat ihre eigene Installation, getrennt von den
   anderen. Wer den Server verwaltet, ist den anderen gegenüber dafür verantwortlich.
+- **Ein Agent, den ein Angehöriger mit dir teilt** (auch der Familienagent), läuft bei diesem Angehörigen. Deine
+  Nachrichten und die Dateien, die du ihm schickst (Fotos, Dokumente), werden auf seinem Server (oder seinem Platz)
+  aufbewahrt, in deiner Unterhaltung: Der Agent liest sie nur, wenn du ihm schreibst, und die App zeigt sie niemand
+  anderem, auch nicht deinem Angehörigen, außer du bittest den Agenten, sie zu teilen (zum Beispiel im Carnet der
+  Familie). Dein eigener Server behält eine Datei nur, solange sie gesendet wird. Sie werden gelöscht, wenn die
+  Unterhaltung gelöscht wird, wenn du den Agenten nicht mehr nutzt, wenn dein Angehöriger ihn nicht mehr teilt, und
+  spätestens nach der Frist, die auf seinem Server für Dateien gewählt ist (standardmäßig 30 Tage). Wie bei allem, was
+  über seinen Server läuft, kann die Person, die ihn verwaltet, technisch darauf zugreifen.
 
 **Mit dem Alles-inklusive-Angebot** tritt dein Platz an die Stelle deines Servers, und Kerfy Studio wählt den Hoster
 und den KI-Router: Abschnitt 5 sagt, wer was sieht.
@@ -898,6 +906,7 @@ des Guichets und des Relays: OVHcloud, in Frankreich. Hoster der Sicherungen: Sc
 | Fingerabdruck des Android-Geräts, mit einem geheimen Schlüssel gehasht (kostenlose Woche) | 24 Monate nach der ersten Markierung des Telefons; getrennt vom Konto aufbewahrt, nicht mit ihm gelöscht |
 | Einladung einer Familienverbindung | 7 Tage oder bis zur Antwort |
 | Teilen zum Lesen (verschlüsselte Kopie, eingeladene Personen) | Bis zum Enddatum, bis zum Beenden oder bis zur Löschung des Kontos |
+| Dateien, die an den Agenten eines Angehörigen gesendet werden | Auf seinem Server, bis die Unterhaltung gelöscht wird oder das Teilen endet; spätestens die dort für Dateien gewählte Frist (standardmäßig 30 Tage) |
 | Kampagnenname (Abschnitt 5.11) | 13 Monate nach der Aufzeichnung, oder mit dem Konto oder dem Abo |
 | IP-Adresse bei der Reservierung einer kostenlosen Woche | Nie im Klartext gespeichert; im Arbeitsspeicher, als Fingerabdruck, höchstens 15 Minuten |
 | Fingerabdruck der IP-Adresse (Beta-Codes, Kündigungsseite der Website, Meldungen geteilter Agenten) | Höchstens 2 Tage; bis zu 30 Tage in den verschlüsselten Kopien der Datenbank |

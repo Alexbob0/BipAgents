@@ -324,6 +324,21 @@ pub async fn handle_upload(state: AppState, request: Request) -> ApiResult<Value
         Some(FormItem::Field(text)) => Some(text.as_str()),
         _ => None,
     };
+    let shared = agent_name.filter(|a| config.agent(Some(a)).is_none() && crate::agent_shares::is_shared_with_me(&config, a));
+    if let Some(id) = shared.map(str::to_string) {
+        // an agent a relative shares with this person: held here until her message takes it to its owner's bridge
+        let Some(FormItem::File { filename, content_type, spooled }) = last("file") else {
+            return Err(HttpError::new(400, "missing 'file' part"));
+        };
+        let (source, filename, content_type) = (spooled.path.clone(), filename.clone(), content_type.clone());
+        let held = tokio::task::spawn_blocking(move || {
+            crate::shared_files::hold(&config, &id, &source, &filename, content_type.as_deref())
+        })
+        .await
+        .map_err(anyhow::Error::from)?;
+        drop(form);
+        return held;
+    }
     let Some(agent) = config.agent(agent_name).cloned() else {
         return Err(HttpError::new(404, "unknown agent"));
     };

@@ -444,6 +444,11 @@ fn own_tools(config: &Config, agent: &AgentConfig, offer: bool) -> Vec<Value> {
     if crate::agent_files::offered(config, &agent.name) {
         tools.push(crate::agent_files::tool());
     }
+    // shared with a relative: the files she sends, read in her own turns (shared_files.rs; behind the tool search in
+    // the owner's, in view in hers: patch 0018)
+    if !crate::agent_shares::shared_with(config, &agent.name).is_empty() {
+        tools.push(crate::shared_files::tool());
+    }
     if crate::agent_messages::offered(config, &agent.name) {
         tools.push(crate::agent_messages::tool()); // in any conversation, not only its Bot Chat (agent_messages.rs)
     }
@@ -2038,6 +2043,10 @@ async fn mcp(
                 tracing::info!(agent = %agent.name, tool = %name, "tool closed during a relative's turn");
                 return Ok(answer(closed));
             }
+            if name == crate::shared_files::TOOL_NAME {
+                // a file she sent: hers to have read, in her own turn only (shared_files.rs checks that run itself)
+                return Ok(answer(crate::shared_files::read_call(&state, &agent.name, &arguments).await));
+            }
             if name != CREATE_PAGE {
                 arguments
             } else {
@@ -2051,6 +2060,14 @@ async fn mcp(
             }
         }
         crate::shared_pages::Who::Owner => {
+            if name == crate::shared_files::TOOL_NAME {
+                // a relative's file is read in her own turns only, never in the owner's (shared_files.rs)
+                tracing::info!(agent = %agent.name, "read_sent_file in the owner's own turn: refused");
+                return Ok(answer(tool_text(
+                    "No relative is talking to you now: the files they sent are read in their own conversations only.",
+                    true,
+                )));
+            }
             // a page made in a conversation shown to friends: theirs to see, not to pass on (read_shares.rs)
             if name == CREATE_PAGE && crate::read_shares::shared_turn(&state, &agent.name) {
                 page_mark = Some(pages::Mark { group: true, asked_by: None, lang: lang.clone() });
