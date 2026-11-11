@@ -228,6 +228,11 @@ def test_an_agent_proposes_and_the_person_turns_it_on(bridges, fakes):
     # not on yet: no mailbox watched
     time.sleep(1)
     assert fakes.imap.idling == 0
+    # neither « Oui » nor « Non » (empty, misspelt, another card's word): 422, nothing started, nothing forgotten
+    for odd in ("", "alwyas", "never", "deny_always"):
+        assert bridge.post("/v1/approve", headers=AUTH, json={"agent": "coach", "run_id": card["run_id"],
+                                                              "choice": odd}).status_code == 422, odd
+    assert bridge.get("/v1/triggers", headers=AUTH, params={"agent": "coach"}).json()["items"][0]["state"] == "waiting"
     ok = bridge.post("/v1/approve", headers=AUTH, json={"agent": "coach", "run_id": card["run_id"], "choice": "once"})
     assert ok.status_code == 200, ok.text
     assert bridge.get("/v1/triggers", headers=AUTH).json()["items"][0]["state"] == "active"

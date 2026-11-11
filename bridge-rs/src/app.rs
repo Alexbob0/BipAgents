@@ -1176,9 +1176,14 @@ async fn bridge_card(
             None => Err(HttpError::new(404, "no such request (answered already?)")),
         }?));
     }
-    // a routine an agent proposed, started by an e-mail or a link (triggers.rs): on with « Oui »
+    // a routine an agent proposed, started by an e-mail or a link (triggers.rs): on with « Oui », forgotten with « Non »,
+    // as a routine's card (routines.rs): any other word (empty, unknown, another card's) changes nothing
     if let Some(id) = run_id.strip_prefix(crate::triggers::RUN_PREFIX) {
-        let allow = crate::card_place::allowed(&body.choice); // an unknown word: refused
+        let choice = body.choice.trim().to_lowercase();
+        let allow = matches!(choice.as_str(), "once" | "session" | "always");
+        if !allow && !crate::routines::refuses(&choice) {
+            return Err(HttpError::new(422, "choice: once or deny"));
+        }
         let (config, name, id) = (state.config(), agent.name.clone(), id.to_string());
         let answered = tokio::task::spawn_blocking(move || crate::triggers::answer(&config, &name, &id, allow))
             .await
