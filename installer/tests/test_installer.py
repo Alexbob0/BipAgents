@@ -121,6 +121,8 @@ def test_hermes_setup_commands(monkeypatch, tmp_path):
     assert "config set API_SERVER_PORT 8642" in log and "config set gateway.multiplex_profiles true" in log
     assert "config set approvals.mode manual" in log   # a risky command always asks the person
     assert "-p default tools enable clarify --platform api_server" in log   # the app's question card (cloned)
+    # its question waits an hour, in the two keys Hermes reads (0.23's migration v53 lowers only the first)
+    assert "config set agent.clarify_timeout 3600" in log and "config set clarify.timeout 3600" in log
     assert "profile create finance --clone-from default --no-alias" in log   # the hub's sandbox, as the app's agents
     assert f"-p finance config set API_SERVER_KEY {key}" in log
     assert "-p finance config set API_SERVER_ENABLED" not in log   # only the hub listens
@@ -984,3 +986,32 @@ def test_the_migrations_run_once_and_one_not_ready_waits(tmp_path, monkeypatch):
     assert migrations.pending() == ["b"]
     migrations.run(runner, tmp_path)
     assert calls == [tmp_path]   # done once
+
+
+def test_an_update_gives_every_hub_an_hour_for_a_question(tmp_path):
+    """2026-11-10, before Hermes 0.23 (90 s, and its config migration v53 lowers an hour to that): the hub of each
+    Hermes of the account (its own, a space's), which every agent is cloned from, gets both keys; the agents' profiles
+    are the bridge's. A second run writes the same; a failing command stops nothing; the runner's env stays as it was."""
+    from bipinstall import migrations
+    for folder in [tmp_path / ".hermes", tmp_path / ".hermes" / "profiles" / "vie",
+                   tmp_path / ".local" / "share" / "bipagents" / "spaces" / "lea"]:
+        folder.mkdir(parents=True)
+        (folder / "config.yaml").write_text("model:\n  default: x\n")
+    (tmp_path / ".local" / "share" / "bipagents" / "spaces" / "empty").mkdir()
+    runner = hermes.Runner()
+    runner.env = {"KEEP": "1"}
+    ran = []
+
+    def run(args, check=True, **kw):
+        ran.append((list(args[1:]), runner.env["HERMES_HOME"], check))
+        return ""
+    runner.run = run
+    said = migrations.clarify_hour(runner, tmp_path)
+    space = str(tmp_path / ".local" / "share" / "bipagents" / "spaces" / "lea")
+    keys = [["config", "set", "agent.clarify_timeout", "3600"], ["config", "set", "clarify.timeout", "3600"]]
+    assert [(a, h) for a, h, _ in ran] == [(k, str(tmp_path / ".hermes")) for k in keys] + [(k, space) for k in keys]
+    assert all(check is False for *_, check in ran) and runner.env == {"KEEP": "1"}
+    assert said.endswith("(2 Hermes)")
+    migrations.clarify_hour(runner, tmp_path)
+    assert ran[4:] == ran[:4]   # the same again
+    assert "2026-11-10-clarify-hour" in [mid for mid, _ in migrations.MIGRATIONS]

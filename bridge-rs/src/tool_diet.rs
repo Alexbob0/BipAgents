@@ -17,7 +17,8 @@
 //! - `agent.instructions_as_note`: a run's `instructions` come in a note on its message, not at the end of the
 //!   system prompt (Hermes patch 0023; prompt cache audit 2026-11-03, #3).
 //! - `clarify` in `platform_toolsets.api_server` (`with_clarify`): the app's question card needs it, Hermes 0.22.5's
-//!   API toolset leaves it out.
+//!   API toolset leaves it out; with it, an hour for a question's answer (`agent.clarify_timeout` and the legacy
+//!   `clarify.timeout`: Hermes 0.23 waits 90 s and its config migration v53 lowers an hour to that).
 //!
 //! - `tools.order_first` ([`COMMON_FIRST`]): the tools every agent has, first in the model's tool list, in one fixed
 //!   order (Hermes patch 0022), then the agent's own sorted. The list is fixed per kind of agent: nothing in it
@@ -663,6 +664,15 @@ pub fn with_diet(data: &Yaml, diet: &Diet) -> Option<Yaml> {
 /// each run; an existing conversation gets the new tool appended to its pinned tools[] (tools/mcp_tool_agent.py
 /// `restore_agent_tool_prefix`) and a Bot Chat rebuilds its prompt once (its capability epoch covers
 /// `platform_toolsets`).
+///
+/// A question waits an hour for its answer (Alex, 10/11: on a phone one rarely answers within 90 s). Hermes 0.22.5
+/// waits 3600 s by default; v0.23.x waits 90 s (#150916), and its config migration v53 rewrites an
+/// `agent.clarify_timeout` still at 3600 to 90. That step runs once per profile, at the first `hermes` start of the
+/// profile on the new code (hermes_cli/boot_bootstrap.py: the hub at the gateway's start, an agent at the first
+/// `hermes -p <agent> …` the bridge runs), so at any time after this bridge started. Hence two keys:
+/// `agent.clarify_timeout`, the one Hermes documents (put back here if v53 lowered it), and the legacy
+/// `clarify.timeout`, which `resolve_clarify_timeout` (tools/clarify_gateway.py) reads first in 0.22.5 as in 0.23.1
+/// and no migration of theirs touches: an agent waits an hour whatever v53 did in between.
 pub fn with_clarify(data: &mut Yaml) {
     let Some(platforms) = data.section("platform_toolsets") else { return };
     match platforms.get_mut(API_PLATFORM) {
@@ -673,12 +683,20 @@ pub fn with_clarify(data: &mut Yaml) {
         }
         _ => platforms.insert(API_PLATFORM, strings(&[API_DEFAULT_TOOLSET.to_string(), CLARIFY.to_string()])),
     }
+    for (section, key) in CLARIFY_TIMEOUT_KEYS {
+        if let Some(section) = data.section(section) {
+            section.insert(key, Yaml::Int(CLARIFY_TIMEOUT_SECONDS));
+        }
+    }
 }
 
 /// Hermes' platform of the apps' agents, its default toolset (hermes_cli/platforms.py), the question tool.
 pub const API_PLATFORM: &str = "api_server";
 pub const API_DEFAULT_TOOLSET: &str = "hermes-api-server";
 pub const CLARIFY: &str = "clarify";
+/// How long a question waits for the person's answer, and where Hermes reads it ([`with_clarify`]).
+pub const CLARIFY_TIMEOUT_SECONDS: i128 = 3600;
+pub const CLARIFY_TIMEOUT_KEYS: [(&str, &str); 2] = [("agent", "clarify_timeout"), ("clarify", "timeout")];
 /// Hermes' cron toolset (`cronjob`): the bridge keeps the routines.
 pub const CRON_TOOLSET: &str = "cronjob";
 
@@ -991,5 +1009,35 @@ mod tests {
         // a value that is no list (Hermes falls back to the default for it): the default plus clarify
         let odd = pyyaml::load("platform_toolsets:\n  api_server: null\n").unwrap();
         assert_eq!(api_list(&with_diet(&odd, &d).unwrap()), Some(names(&["hermes-api-server", "clarify"])));
+    }
+
+    fn waits(data: &Yaml) -> (Option<&Yaml>, Option<&Yaml>) {
+        (
+            data.get("agent").and_then(|a| a.get("clarify_timeout")),
+            data.get("clarify").and_then(|c| c.get("timeout")),
+        )
+    }
+
+    #[test]
+    fn a_question_waits_an_hour_whatever_hermes_0_23_migrated() {
+        let d = diet("daily", &[], false, false, false);
+        let an_hour = Yaml::Int(3600);
+        let hour = Some(&an_hour);
+        // a new profile: both keys (Hermes 0.23's own default would be 90 s)
+        let fresh = with_diet(&pyyaml::load("model:\n  default: x\n").unwrap(), &d).unwrap();
+        assert_eq!(waits(&fresh), (hour, hour));
+        // what Hermes 0.23.1's config migration v53 leaves (3600 → 90 in agent.clarify_timeout): put back, the
+        // agent's other settings and the stamp kept
+        let mut migrated = fresh.clone();
+        migrated.insert("_config_version", Yaml::Int(53));
+        let agent = migrated.section("agent").unwrap();
+        agent.insert("clarify_timeout", Yaml::Int(90));
+        agent.insert("max_turns", Yaml::Int(40));
+        let back = with_diet(&migrated, &d).unwrap();
+        assert_eq!(waits(&back), (hour, hour));
+        assert_eq!(back.get("agent").and_then(|a| a.get("max_turns")), Some(&Yaml::Int(40)));
+        assert_eq!(back.get("_config_version"), Some(&Yaml::Int(53)));
+        // idempotent: written once, the same again changes nothing
+        assert!(with_diet(&back, &d).is_none());
     }
 }
