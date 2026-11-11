@@ -8,11 +8,13 @@ BipAgents patch, documented in hermes/patches/README.md of the BipAgents reposit
 
 Bip-Patch: 0022-tool-order-common-first
 ---
- model_tools.py                 |  5 +++-
- tests/tools/test_tool_order.py | 44 ++++++++++++++++++++++++++++
- tools/mcp_tool_agent.py        | 25 ++++++++++------
- tools/tool_order.py            | 52 ++++++++++++++++++++++++++++++++++
- 4 files changed, 117 insertions(+), 9 deletions(-)
+ model_tools.py                                |  5 +-
+ tests/tools/test_refresh_agent_mcp_tools.py   | 22 ++++----
+ .../tools/test_tool_defs_memo_availability.py | 34 +++++++-----
+ tests/tools/test_tool_order.py                | 44 ++++++++++++++++
+ tools/mcp_tool_agent.py                       | 25 ++++++---
+ tools/tool_order.py                           | 52 +++++++++++++++++++
+ 6 files changed, 151 insertions(+), 31 deletions(-)
  create mode 100644 tests/tools/test_tool_order.py
  create mode 100644 tools/tool_order.py
 
@@ -32,6 +34,180 @@ index d45d4ea824d7da30cbd87736a069f0197851cd81..43f09e42bb219f1f5d7ac0fb5d21d0f4
  
  
  def _active_model_config() -> tuple[str, dict[str, Any]]:
+diff --git a/tests/tools/test_refresh_agent_mcp_tools.py b/tests/tools/test_refresh_agent_mcp_tools.py
+index 1b586aed0f0abd4c20e3cace73031603400a0308..4a8e6bf50bd230db7a75a64e76af2277f4e4b722 100644
+--- a/tests/tools/test_refresh_agent_mcp_tools.py
++++ b/tests/tools/test_refresh_agent_mcp_tools.py
+@@ -259,11 +259,13 @@ def test_preserve_prefix_carries_a_flapping_tool_forward(monkeypatch):
+     assert "browser_navigate" in agent.valid_tool_names
+ 
+ 
+-def test_preserve_prefix_appends_late_arrivals_at_the_tail(monkeypatch):
++def test_preserve_prefix_puts_late_arrivals_at_their_canonical_place(monkeypatch):
+     """``get_definitions`` sorts by name, so a late tool can splice in at 0.
+ 
+-    Under ``preserve_prefix`` the live order is authoritative and the new tool
+-    extends the array, leaving every earlier byte where the provider cached it.
++    BipAgents 0022: under ``preserve_prefix`` the tools already sent keep their
++    order and bytes, and the new tool takes its canonical place (``tools.order_first``,
++    then by name), not the tail: one break in this session, then its list is the one
++    every new session builds (and shares the cache with).
+     """
+     agent = _agent(["read_file", "terminal"])
+ 
+@@ -275,7 +277,7 @@ def test_preserve_prefix_appends_late_arrivals_at_the_tail(monkeypatch):
+ 
+     assert added == {"aaa_mcp_late"}
+     assert [t["function"]["name"] for t in agent.tools] == [
+-        "read_file", "terminal", "aaa_mcp_late",
++        "aaa_mcp_late", "read_file", "terminal",
+     ]
+ 
+ 
+@@ -285,7 +287,8 @@ def test_preserve_prefix_keeps_sent_tool_schemas_byte_identical(monkeypatch):
+     The chat template prints every tool schema before the conversation. A local
+     server reuses the previous prompt only when the next one starts with those
+     exact tokens, so a new description on a tool that was already sent makes the
+-    follow-up read the whole prompt again. New tools may append at the tail.
++    follow-up read the whole prompt again. New tools take their canonical place
++    (BipAgents 0022).
+     """
+     agent = _agent(["read_file"])
+     agent.tools[0]["function"]["description"] = "Read a file. schema v1"
+@@ -301,8 +304,8 @@ def test_preserve_prefix_keeps_sent_tool_schemas_byte_identical(monkeypatch):
+ 
+     _mcp_agent.refresh_agent_mcp_tools(agent, preserve_prefix=True)
+ 
+-    assert json.dumps(agent.tools[:1]) == sent
+-    assert [t["function"]["name"] for t in agent.tools] == ["read_file", "mcp_late"]
++    assert json.dumps([t for t in agent.tools if t["function"]["name"] == "read_file"]) == sent
++    assert [t["function"]["name"] for t in agent.tools] == ["mcp_late", "read_file"]
+ 
+ 
+ def test_explicit_reload_replaces_a_same_name_schema(monkeypatch):
+@@ -350,8 +353,9 @@ def test_preserve_prefix_keeps_the_bridge_tools_byte_identical(monkeypatch):
+     added = _mcp_agent.refresh_agent_mcp_tools(agent, preserve_prefix=True)
+ 
+     assert added == {"mcp_late_tool"}
+-    assert json.dumps(agent.tools[:3], sort_keys=True) == before
+-    assert [t["function"]["name"] for t in agent.tools][-1] == "mcp_late_tool"
++    kept = [t for t in agent.tools if t["function"]["name"] != "mcp_late_tool"]
++    assert json.dumps(kept, sort_keys=True) == before  # BipAgents 0022: the late tool at its place, the rest as sent
++    assert [t["function"]["name"] for t in agent.tools][0] == "mcp_late_tool"
+ 
+ 
+ def test_preserve_prefix_keeps_a_deactivated_bridge_tool_in_place(monkeypatch):
+diff --git a/tests/tools/test_tool_defs_memo_availability.py b/tests/tools/test_tool_defs_memo_availability.py
+index 5a3adf11ff83ad9207b76883b468f822614a5be9..9609ac077d67c46468222d2487817ff646a3bcab 100644
+--- a/tests/tools/test_tool_defs_memo_availability.py
++++ b/tests/tools/test_tool_defs_memo_availability.py
+@@ -31,6 +31,14 @@ def _names(defs):
+     return {d["function"]["name"] for d in defs}
+ 
+ 
++def _at_its_place(tools, sent, late):
++    """BipAgents 0022: a late tool takes its canonical place (here by name, no ``tools.order_first``), never the
++    tail; every tool already sent keeps its bytes and its order."""
++    names = [t["function"]["name"] for t in tools]
++    return ([t for t in tools if t["function"]["name"] != late] == sent and names.count(late) == 1
++            and names == sorted(names))
++
++
+ @pytest.fixture
+ def mail_state():
+     """A recovering MCP-style tool (mail) next to an always-healthy one (anchor)."""
+@@ -255,9 +263,9 @@ def test_direct_tool_list_stays_frozen_mid_session_and_a_new_session_sees_the_re
+     assert refresh_agent_mcp_tools(agent, quiet_mode=True) == {MAIL}
+ 
+ 
+-def test_direct_tool_list_still_appends_a_late_registration_at_the_tail(mail_state, clock, direct_tools):
++def test_direct_tool_list_still_takes_a_late_registration(mail_state, clock, direct_tools):
+     """The freeze holds back check_fn flips only: a server that registers mid-session (the
+-    registry generation moves) still lands at the tail between turns, as on main."""
++    registry generation moves) still lands between turns, at its canonical place (BipAgents 0022)."""
+     from tools.mcp_tool_agent import refresh_agent_mcp_tools
+ 
+     late = "mcp__probe_anchor__aaa_late"
+@@ -267,7 +275,7 @@ def test_direct_tool_list_still_appends_a_late_registration_at_the_tail(mail_sta
+                       handler=lambda args, **kw: "LATE_OK", check_fn=lambda: True)
+     try:
+         assert refresh_agent_mcp_tools(agent, quiet_mode=True, preserve_prefix=True) == {late}
+-        assert agent.tools[:-1] == sent and agent.tools[-1]["function"]["name"] == late
++        assert _at_its_place(agent.tools, sent, late)
+     finally:
+         registry.deregister(late)
+ 
+@@ -340,11 +348,11 @@ class _ApprovedLateAttempt:
+         return {"status": "approved", "error": None, "tools": [], "discovery_error": None}
+ 
+ 
+-def test_selection_widened_by_a_late_connection_appends_with_the_generation_unchanged(
++def test_selection_widened_by_a_late_connection_lands_with_the_generation_unchanged(
+         mail_state, clock, direct_tools, monkeypatch):
+     """``adopt_late_connections`` widens the selection to a server another session already
+     connected in this process: nothing registers, the generation stays put, and the server's
+-    tools must still append between turns, as on main."""
++    tools must still land between turns, as on main (at their canonical place, BipAgents 0022)."""
+     from hermes_constants import hermes_home_key
+     from tools.connectors import mcp as connectors_mcp
+     from tools.mcp_tool_agent import refresh_agent_mcp_tools
+@@ -365,12 +373,12 @@ def test_selection_widened_by_a_late_connection_appends_with_the_generation_unch
+         assert connectors_mcp.adopt_late_connections(agent) == ["probe_late"]
+         assert registry._generation == generation
+         assert refresh_agent_mcp_tools(agent, quiet_mode=True, preserve_prefix=True) == {late}
+-        assert agent.tools[:-1] == sent and agent.tools[-1]["function"]["name"] == late
++        assert _at_its_place(agent.tools, sent, late)
+     finally:
+         registry.deregister(late)
+ 
+ 
+-def test_registration_landing_during_the_refresh_build_appends_in_that_refresh(
++def test_registration_landing_during_the_refresh_build_lands_in_that_refresh(
+         mail_state, clock, direct_tools, monkeypatch):
+     """The hold decision reads the generation after the build: a server that registers while the
+     refresh is building is a late registration, not a check_fn flip, and lands this turn."""
+@@ -390,7 +398,7 @@ def test_registration_landing_during_the_refresh_build_appends_in_that_refresh(
+     monkeypatch.setattr(model_tools, "get_tool_definitions", build_while_a_server_registers)
+     try:
+         assert refresh_agent_mcp_tools(agent, quiet_mode=True, preserve_prefix=True) == {late}
+-        assert agent.tools[:-1] == sent and agent.tools[-1]["function"]["name"] == late
++        assert _at_its_place(agent.tools, sent, late)
+     finally:
+         registry.deregister(late)
+ 
+@@ -432,11 +440,11 @@ def test_pin_restore_in_the_same_process_holds_a_check_fn_flip(mail_state, clock
+     assert rebuilt.tools == pin["tools"]
+ 
+ 
+-def test_pin_restore_still_appends_a_late_registration_and_a_restore_in_a_new_process(
++def test_pin_restore_still_takes_a_late_registration_and_a_restore_in_a_new_process(
+         mail_state, clock, direct_tools, monkeypatch):
+-    """Guards for the hold above: a real registration since the pin still appends, and a process
++    """Guards for the hold above: a real registration since the pin still lands, and a process
+     that did not write the pin (``--resume`` in a new process, a fresh worker) cannot tell a flip
+-    from a registration, so it appends as on main."""
++    from a registration, so it takes the tool as on main (at its canonical place, BipAgents 0022)."""
+     from tools import mcp_tool_agent
+     from tools.mcp_tool_agent import persist_agent_tool_names, restore_agent_tool_prefix
+ 
+@@ -449,7 +457,7 @@ def test_pin_restore_still_appends_a_late_registration_and_a_restore_in_a_new_pr
+     try:
+         rebuilt = _session_agent(store, "pinned-session")
+         restore_agent_tool_prefix(rebuilt, pin)
+-        assert rebuilt.tools[:-1] == pin["tools"] and rebuilt.tools[-1]["function"]["name"] == late
++        assert _at_its_place(rebuilt.tools, pin["tools"], late)
+     finally:
+         registry.deregister(late)
+ 
+@@ -460,7 +468,7 @@ def test_pin_restore_still_appends_a_late_registration_and_a_restore_in_a_new_pr
+     monkeypatch.setattr(mcp_tool_agent, "_PINNED_SNAPSHOTS", OrderedDict(), raising=False)  # wrote no pin
+     rebuilt = _session_agent(store, "resumed-session")
+     restore_agent_tool_prefix(rebuilt, pin)
+-    assert rebuilt.tools[:-1] == pin["tools"] and rebuilt.tools[-1]["function"]["name"] == MAIL
++    assert _at_its_place(rebuilt.tools, pin["tools"], MAIL)
+ 
+ 
+ def test_pin_restore_in_the_same_process_keeps_the_pinned_bridge_through_an_outage(
 diff --git a/tests/tools/test_tool_order.py b/tests/tools/test_tool_order.py
 new file mode 100644
 index 0000000000000000000000000000000000000000..e53b17eb696407fbfed251b655cd5fb5f70c3f37
