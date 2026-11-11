@@ -9,7 +9,7 @@ import time
 from bbkit.common import AUTH, app_turn, follow_run, read_sse, sse, in_session
 from bbkit.mcp import call, give_token, media_of, text_of
 from bbkit.servers import wait_until
-from conftest import managed_install, profile
+from test_households_and_peers import give_peer_token, household
 
 
 def follow(bridge, run_id):
@@ -392,24 +392,26 @@ def test_a_rescue_turn_leaves_the_browser_to_another_run_of_the_agent(bridges, f
 
 
 def test_a_turn_nobody_follows_gets_no_rescue_turn(bridges, fakes):
-    # a run nobody follows (another agent's message, relayed by peers.rs): stopped as before, no rescue turn
-    bridge = bridges.new()
-    hub = managed_install(bridge, fakes, agents=("budget", "maison"))
-    for name in ("budget", "maison"):
-        profile(hub, name)
-    bridge.start()
-    links = [{"from": "budget", "to": "maison"}]
-    assert bridge.put("/v1/agent-links", headers=AUTH, json={"links": links}).status_code == 200
-    peer = {"Authorization": f"Bearer {(hub / '.env').read_text().split('HERMES_PEER_BIP_KEY=')[1].strip()}"}
-    opened = bridge.post("/peer/p/maison/api/sessions", headers=peer, json={"title": "Bot Chat", "source": "bot_peer_dm"})
-    assert opened.status_code == 201, opened.text
+    # a run nobody follows (another household's agent writing to Cuisine, relayed by peers.rs): stopped as before,
+    # no rescue turn
+    alex = household(bridges, fakes, "alex", ["vie"])
+    lea = household(bridges, fakes, "lea", ["cuisine"])
+    assert alex.put("/v1/family/name", headers=AUTH, json={"name": "Alex"}).status_code == 200
+    assert lea.put("/v1/family/name", headers=AUTH, json={"name": "Léa"}).status_code == 200
+    invitation = alex.post("/v1/family/invite", headers=AUTH).json()
+    joined = lea.post("/v1/family/join", headers=AUTH, json={"url": invitation["url"], "code": invitation["code"]})
+    assert joined.status_code == 200, joined.text
+    assert alex.put("/v1/agent-links", headers=AUTH, json={"links": [{"from": "vie", "to": "cuisine__lea"}]}).status_code == 200
+    assert lea.put("/v1/agent-links", headers=AUTH, json={"links": [{"from": "vie__alex", "to": "cuisine"}]}).status_code == 200
+    token = "vie-gateway-token-" + "z" * 20
+    give_peer_token(alex, "manual:vie", token)
+    fakes.hermes.add_session("bot-1", [], title="Bot Chat", agent="cuisine")   # what the other side calls its Bot Chat
     fakes.hermes.runs["r1"] = diagnosis("r1", 5)
-    message = {"input": "Message from Budget (@budget): tu as vu l'erreur de cette nuit ?",
-               "session_id": opened.json()["session"]["id"]}
-    sent = bridge.post("/peer/p/maison/v1/runs", headers=peer, json=message)
-    assert sent.status_code == 202, sent.text
-    assert wait_until(lambda: fakes.hermes.seen("/p/maison/v1/runs/r1/stop", "POST"))
-    assert wait_until(lambda: bridge.logged("going round in circles: run stopped"))
+    message = {"session_id": "bot-1", "input": "Message from Vie (@vie): tu as vu l'erreur de cette nuit ?"}
+    sent = alex.post("/peer/p/cuisine__lea/v1/runs", headers={"Authorization": f"Bearer {token}"}, json=message)
+    assert sent.status_code in (200, 202), sent.text
+    assert wait_until(lambda: fakes.hermes.seen("/p/cuisine/v1/runs/r1/stop", "POST"))
+    assert wait_until(lambda: lea.logged("going round in circles: run stopped"))
     assert list(fakes.hermes.started) == ["r1"], "no rescue turn started"
 
 
