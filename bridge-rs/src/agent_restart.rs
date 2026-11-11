@@ -10,10 +10,12 @@
 //! - **the bridge's programs**: its Hermes runs a program of an older bridge (the browser proxy `bip-browser-mcp`,
 //!   browsers::stale_proxies), checked each tick: after an update the gateway keeps the binary it started with
 //!   (9/11, the release's browser fixes never reached people). Acted on soon, whatever `gap_minutes`.
+//! - **its services**: the person connected, changed or removed one of its services ([`SERVICES`]: services.rs,
+//!   connections.rs). Acted on soon, whatever `gap_minutes`.
 //!
 //! « Soon » reasons: at most once per `gap_minutes` (an hour) per agent, except a new agent's tools
 //! ([`NEW_AGENT_TOOLS`]: agents_admin.rs `tools_loaded` restarts the hub's gateway itself as soon as it is calm, and
-//! hands it here only when it stays busy). Without a reason: no restart.
+//! hands it here only when it stays busy), the bridge's programs and its services. Without a reason: no restart.
 //!
 //! Only when the agent does nothing: no turn going on nor one ended in the last `quiet_after_turn_seconds` (30 s: the
 //! person reads the answer and writes again; 10/11 a restart the moment a turn ended made the next message fail), and
@@ -191,6 +193,15 @@ pub const NEW_AGENT_TOOLS: &str = "new agent without its tools";
 /// « tools » restart right after an update must not keep the old proxy for an hour), and done for an existing Hermes
 /// the person brought too: these are the bridge's own tools.
 pub const BRIDGE_PROGRAMS: &str = "the bridge's programs changed";
+
+/// The person connected, changed or removed a service of the agent (« Ses services », « Se connecter avec… »): its
+/// running Hermes is not relied on to pick that up. 11/11 (Alex, « Compta Kerfy », Hermes 0.22.5): the server was in
+/// the profile's config.yaml, the app's « Tester » reached it (32 tools), and a quarter of an hour later the agent
+/// still saw none of its tools; a restart of the gateway gave them at once. Hermes' own reconcile retries a server
+/// whose connect failed (his first address, 127.0.0.1, had) only after a backoff of up to 10 minutes, kept by name
+/// when the address changes, and keeps a live server's old address under the same name. Never held back by
+/// `gap_minutes` either: a new agent's restart has often just been done, and the person waits for the service now.
+pub const SERVICES: &str = "its services changed";
 
 /// The bridge's state, for [`group_calm`] (set when the loop starts; None in tests and before).
 static APP: std::sync::OnceLock<AppState> = std::sync::OnceLock::new();
@@ -458,7 +469,8 @@ pub fn reason(
     s: &Settings,
 ) -> Option<Reason> {
     let gap_ok = since_last.is_none_or(|t| t >= s.gap_minutes as f64 * 60.0);
-    let new_agent = requested.is_some_and(|r| r.split("; ").any(|one| one == NEW_AGENT_TOOLS || one == BRIDGE_PROGRAMS));
+    let new_agent = requested
+        .is_some_and(|r| r.split("; ").any(|one| one == NEW_AGENT_TOOLS || one == BRIDGE_PROGRAMS || one == SERVICES));
     if gap_ok || new_agent {
         let unhealthy = failures >= s.unhealthy_pings;
         if let Some(why) = requested {
@@ -973,6 +985,8 @@ mod tests {
             reason(Some(BRIDGE_PROGRAMS), 0, false, &small, Some(60.0), &s),
             Some(Reason::Requested(BRIDGE_PROGRAMS.into()))
         );
+        // its services changed (the person added one): whatever the last restart (the new agent's, minutes before)
+        assert_eq!(reason(Some(SERVICES), 0, false, &small, Some(60.0), &s), Some(Reason::Requested(SERVICES.into())));
         assert!(Reason::Unhealthy.soon() && !Reason::Memory(String::new()).soon());
         // several reasons merged: one restart naming them all; a new agent's among them still skips the gap
         assert_eq!(

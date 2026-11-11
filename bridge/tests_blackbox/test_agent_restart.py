@@ -224,3 +224,45 @@ def test_a_message_sent_while_the_bridge_restarts_its_gateway_waits_in_line(brid
     assert wait_until(lambda: any("Pour Testville" in str(r["input"]) for r in fakes.hermes.started.values()),
                       timeout=40)
     assert bridge.get("/v1/agents/wellness/queue", headers=AUTH).json()["items"] == []
+
+
+# -- its services (11/11, Alex's « Compta Kerfy »: a service added in « Ses services » never reached the running Hermes;
+# in its config.yaml, « Tester » reached it with 32 tools, the agent saw none until its gateway was restarted by hand)
+
+from conftest import managed_install, profile, servers, wait_registered  # noqa: E402
+
+
+def compta_last_restart(bridge):
+    return bridge.get("/v1/status", headers=AUTH).json()["agents"]["compta"].get("last_restart") or {}
+
+
+def test_a_service_added_or_changed_restarts_its_hermes_once_idle_even_within_the_hour(bridges, fakes):
+    bridge = bridges.new()
+    folder = profile(managed_install(bridge, fakes, agents=("compta",)), "compta")
+    bridge.config["agent_restart"] = dict(FAST)
+    # its gateway restarted a minute ago for the new agent's tools: the service doesn't wait for the hour's gap
+    bridge.state_dir.mkdir(parents=True, exist_ok=True)
+    (bridge.state_dir / "agent_restarts.json").write_text(json.dumps(
+        {"compta": {"at": time.time() - 60, "reason": "requested: new agent without its tools"}}))
+    bridge.start()
+    wait_registered(bridge, ["compta"])
+    time.sleep(1)
+    assert restarts(bridge) == []   # no reason yet: no restart
+    added = bridge.post("/v1/agents/compta/services", headers=AUTH,
+                        json={"catalog": "custom", "name": "compta", "address": "http://100.91.112.69:8740/mcp"})
+    assert added.status_code == 201, added.text
+    assert servers(folder)["compta"]["url"] == "http://100.91.112.69:8740/mcp"
+    assert wait_until(lambda: len(restarts(bridge)) == 1, timeout=15)
+    assert wait_until(lambda: compta_last_restart(bridge).get("reason") == "requested: its services changed",
+                      timeout=15)
+    time.sleep(1.5)
+    assert len(restarts(bridge)) == 1   # one restart for one change
+    # its address changed (removed, added again under the same name): each restarts it, the last one seconds ago
+    assert bridge.delete("/v1/agents/compta/services/compta", headers=AUTH).status_code == 204
+    assert wait_until(lambda: len(restarts(bridge)) == 2, timeout=15)
+    again = bridge.post("/v1/agents/compta/services", headers=AUTH,
+                        json={"catalog": "custom", "name": "compta", "address": "http://10.0.0.5:8740/mcp"})
+    assert again.status_code == 201, again.text
+    assert wait_until(lambda: len(restarts(bridge)) == 3, timeout=15)
+    time.sleep(1.5)
+    assert len(restarts(bridge)) == 3

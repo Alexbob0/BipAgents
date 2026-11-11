@@ -699,17 +699,26 @@ async fn wire(config: &Config, agent: &AgentConfig, conn: &Connection, _run: &Ru
     let name = conn.service.as_str();
     write_token_files(&tokens_dir(config, agent), name, conn)?;
     let entry = [("url", Yaml::str(&conn.server.mcp_url)), ("auth", Yaml::str("oauth")), ("trust", Yaml::str("untrusted"))];
-    crate::profile_files::edit(&profile_config(config, agent), |data| {
+    let written = crate::profile_files::edit(&profile_config(config, agent), |data| {
         crate::profile_files::set_server(data, name, Some(&entry))
     })?;
     tracing::info!(agent = %agent.name, service = %name, "connections: wired");
+    // the same entry (a new sign-in alone): Hermes takes a parked server's new tokens itself
+    if written {
+        crate::services::changed(agent);
+    }
     Ok(())
 }
 
 async fn unwire(config: &Config, agent: &AgentConfig, name: &str, _run: &Run) -> anyhow::Result<()> {
-    crate::profile_files::edit(&profile_config(config, agent), |data| crate::profile_files::set_server(data, name, None))?;
+    let written = crate::profile_files::edit(&profile_config(config, agent), |data| {
+        crate::profile_files::set_server(data, name, None)
+    })?;
     remove_token_files(&tokens_dir(config, agent), name);
     tracing::info!(agent = %agent.name, service = %name, "connections: unwired");
+    if written {
+        crate::services::changed(agent);
+    }
     Ok(())
 }
 
