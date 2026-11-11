@@ -240,10 +240,10 @@ def test_the_day_is_summed_up_in_one_boite_message(bridges, fakes):
                 "sans te demander" in m.get("text", "")]) == 1, "once a day"
 
 
-def test_sites_are_validated_for_the_person_under_critical_with_no_undo(bridges, fakes):
-    """Alex 6/11: data sent to a site never validated is not critical. Under « Seulement le critique » the site is
-    validated for that agent (the agent's own request, or the proxy's cut), a Boîte line with no « Annuler » (the data
-    has left), no notification; under « Tout valider » the card is asked and pushed as before."""
+def test_sites_are_asked_of_the_person_at_every_level(bridges, fakes):
+    """Alex 11/11 (security audit PI-7, BV-9; was « not critical » since 6/11): data sent to a site never validated is
+    critical. Under « Seulement le critique » too, the agent's request and the proxy's cut each make a card, pushed;
+    nothing validated by the bridge, no auto line."""
     from test_sandbox import call as sandbox_call, give_tokens, isolated, send_report, site_cards, started
     bridge, hub, _ = isolated(bridges, fakes, agents=("vie", "wellness"))
     bridge.seed_db([("INSERT INTO devices (token, environment, agent_ids, created_at, updated_at) VALUES (?,?,?,?,?)",
@@ -254,29 +254,17 @@ def test_sites_are_validated_for_the_person_under_critical_with_no_undo(bridges,
     def sites(agent):
         return [s["host"] for s in bridge.get(f"/v1/agents/{agent}/sandbox/sites", headers=AUTH).json()["sites"]]
 
-    # « Tout valider »: a card, pushed
-    text, error = sandbox_call(bridge, "wellness", "sandbox_sites_request", host="api.meteo.fr", reason="la pluie")
-    assert not error and "Approved at once" not in text, text
-    [card] = site_cards(bridge, "wellness")
-    assert wait_until(lambda: card_pushes(fakes, card["request_id"]), timeout=20)
-    assert sites("wellness") == [] and auto_lines(bridge) == []
-    # « Seulement le critique »: the agent's request validated at once, told so
-    level(bridge, "critical")
-    text, error = sandbox_call(bridge, "vie", "sandbox_sites_request", host="connect.garmin.example", reason="Garmin")
-    assert not error and "Approved at once" in text and "connect.garmin.example" in text, text
-    assert site_cards(bridge, "vie") == [] and sites("vie") == ["connect.garmin.example"]
-    [line] = auto_lines(bridge, "vie")
-    assert (line["kind"], line["undo"], line["undone"]) == ("site_send", False, False)
-    assert "connect.garmin.example" in line["summary"], line
-    undo = bridge.post(f"/v1/approvals/auto/{line['id']}/undo", headers=AUTH)
-    assert undo.status_code == 409 and undo.json()["code"] == "not_undoable"
-    # the proxy's cut of an upload: every host of the card validated, no card
-    send_report(bridge, ("vie", "upload.example.net", 2 * 1024 * 1024), ("vie", "files.example.org", 300000))
-    assert wait_until(lambda: {"upload.example.net", "files.example.org"} <= set(sites("vie")), timeout=15), sites("vie")
-    assert site_cards(bridge, "vie") == []
-    lines = auto_lines(bridge, "vie")
-    assert {entry["kind"] for entry in lines} == {"site_send"} and len(lines) >= 2, lines
-    time.sleep(1)
-    assert not [p for p in fakes.apns.payloads() if "garmin" in str(p) or "upload.example" in str(p)]
-    # the card asked before the switch still waits for the person
-    assert [c["run_id"] for c in site_cards(bridge, "wellness")] == [card["run_id"]]
+    for chosen, agent, host in [("all", "wellness", "api.meteo.fr"), ("critical", "vie", "connect.garmin.example")]:
+        level(bridge, chosen)
+        text, error = sandbox_call(bridge, agent, "sandbox_sites_request", host=host, reason="la pluie")
+        assert not error and "Approved at once" not in text, text
+        [card] = site_cards(bridge, agent)
+        assert wait_until(lambda: card_pushes(fakes, card["request_id"]), timeout=20)
+        assert sites(agent) == []
+    # the proxy's cut of an upload under « Seulement le critique »: asked too (its card), nothing validated
+    send_report(bridge, ("vie", "upload.example.net", 2 * 1024 * 1024))
+    assert wait_until(lambda: [c for c in site_cards(bridge, "vie") if "upload.example.net" in str(c)], timeout=15), \
+        site_cards(bridge, "vie")
+    assert "upload.example.net" not in sites("vie") and auto_lines(bridge) == []
+    kinds = {k["kind"]: k for k in bridge.get("/v1/approval-level", headers=AUTH).json()["kinds"]}
+    assert kinds["site_send"]["critical"] is True
