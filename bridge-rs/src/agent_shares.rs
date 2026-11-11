@@ -1577,6 +1577,7 @@ pub async fn relay_stream(state: &AppState, id: &str, cid: &str, path: &str) -> 
         return Err(HttpError::new(resp.status().as_u16(), "their side refused"));
     }
     let (state, id, cid) = (state.clone(), id.to_string(), cid.to_string());
+    let turn = path.starts_with("runs/");
     let mut chunks = resp.bytes_stream();
     let stream = async_stream::stream! {
         use futures::StreamExt;
@@ -1584,12 +1585,32 @@ pub async fn relay_stream(state: &AppState, id: &str, cid: &str, path: &str) -> 
         while let Some(chunk) = chunks.next().await {
             state.presence.touch(&id, &cid); // their keepalive every 10 s: still on screen
             match chunk {
-                Ok(bytes) => yield Ok::<_, std::io::Error>(bytes),
+                Ok(bytes) => {
+                    // her turn's end: passed on once the owner's side keeps it over (its reply stored), so the page
+                    // her app reads right after has the reply
+                    if turn && bytes.windows(11).any(|w| w == b"event: run.") {
+                        turn_kept(&state, &id, &cid).await;
+                    }
+                    yield Ok::<_, std::io::Error>(bytes)
+                }
                 Err(_) => break,
             }
         }
     };
     Ok(sse(stream))
+}
+
+/// Waits (at most 10 s) until the owner's side no longer lists her turn as going: it then kept its reply.
+async fn turn_kept(state: &AppState, id: &str, cid: &str) {
+    for _ in 0..20 {
+        let page = to_owner(state, id, reqwest::Method::GET, &format!("conversations/{cid}/timeline?limit=1"), None).await;
+        if let Ok((200, page)) = page {
+            if page.get("pending").and_then(|p| p.get("run")).is_none_or(Value::is_null) {
+                return;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
 }
 
 /// The person's answer to an approval or a question (`answer`) of her turn, relayed to the owner's bridge.
