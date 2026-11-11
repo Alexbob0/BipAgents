@@ -467,8 +467,7 @@ Nous ne gardons aucune donnée de ta carte : elle est saisie chez Stripe et ne p
   adresse, le guichet n'en garde qu'une empreinte calculée avec une clé secrète, en mémoire seulement, le temps de la
   réservation d'une place d'essai (15 minutes au plus) ; elle est perdue au redémarrage. Pour limiter les essais de
   codes bêta, sur la page de résiliation du site et pour les signalements d'agents partagés comme modèle, il en garde
-  de même une empreinte, jamais l'adresse, 2 jours au plus ; elle reste ensuite jusqu'à 30 jours dans les copies
-  chiffrées de sa base.
+  de même une empreinte, jamais l'adresse, 2 jours au plus.
 
 **Les codes bêta.** Un code bêta utilisé devient l'identifiant de ton abonnement bêta, gardé avec ton compte comme tout
 abonnement (ci-dessous), et le journal du guichet note « code utilisé » avec ton compte (12 mois). Un seul code par
@@ -489,8 +488,9 @@ intérêt légitime (article 6.1.f) ; factures et pièces comptables, obligation
 en archive, pour la preuve du contrat (article 2224 du Code civil). Factures et pièces de paiement : 10 ans
 (article L123-22 du Code de commerce) ; Stripe garde les factures. Empreinte de l'appareil Android : 24 mois à compter du premier marquage du téléphone (sa
 semaine gratuite, ou le premier abonnement pris depuis lui), gardée à part de ton compte. Adresse IP : jamais enregistrée en clair ; son empreinte, en
-mémoire, 15 minutes au plus pour la semaine gratuite, 2 jours au plus pour les autres limites (30 jours dans les copies
-de la base). Les bits de DeviceCheck sont gardés par Apple.
+mémoire, 15 minutes au plus pour la semaine gratuite, 2 jours au plus pour les autres limites. L'empreinte gardée 2 jours, celle d'un téléphone Android qui a
+utilisé un code bêta et les mesures de chaque place (section 5.12) restent ensuite jusqu'à 30 jours dans les copies
+chiffrées de la base. Les bits de DeviceCheck sont gardés par Apple.
 
 ### 5.4 Ta place et le modèle d'IA
 
@@ -868,7 +868,7 @@ l'Union. Tu peux nous demander une copie des garanties applicables.
 | Factures et pièces de paiement d'un achat sur le site | 10 ans (article L123-22 du Code de commerce) ; factures gardées par Stripe |
 | Code bêta jamais utilisé | Jusqu'à ce qu'il ne puisse plus servir |
 | Code bêta utilisé et son lien à ton compte | Jusqu'à la fin de ta place bêta ou son passage à un abonnement payant |
-| Empreinte d'un téléphone Android qui a utilisé un code bêta (gardée à part du code et du compte) | Tant que des codes bêta peuvent encore servir |
+| Empreinte d'un téléphone Android qui a utilisé un code bêta (gardée à part du code et du compte) | Tant que des codes bêta peuvent encore servir ; puis jusqu'à 30 jours dans les copies chiffrées de la base |
 | Empreinte de l'appareil Android, hachée avec une clé secrète (semaine gratuite) | 24 mois après le premier marquage du téléphone ; gardée à part du compte, pas effacée avec lui |
 | Invitation d'un lien famille | 7 jours, ou jusqu'à la réponse |
 | Partage en lecture (copie chiffrée, personnes invitées) | Jusqu'à sa date de fin, son arrêt ou l'effacement du compte |
@@ -883,7 +883,7 @@ l'Union. Tu peux nous demander une copie des garanties applicables.
 | Versions remplacées ou effacées chez Scaleway (sauvegardes des places, copies chiffrées de la base du guichet) | 1 jour |
 | Image quotidienne d'OVHcloud | Un point par jour, remplacé dans la journée environ après la réinstallation de la place |
 | Données techniques des serveurs | Dernières valeurs ; mémoire de chaque place, heure par heure : 7 jours |
-| Mesures des premiers jours d'une place (section 5.12) | Par place, 11 jours au plus ; puis totaux par jour, sans personne : 2 ans |
+| Mesures des premiers jours d'une place (section 5.12) | Par place, 11 jours au plus, puis jusqu'à 30 jours dans les copies chiffrées de la base ; totaux par jour, sans personne : 2 ans |
 | Journal des événements du guichet (dont « code bêta utilisé », avec ton compte) | 12 mois |
 | Métadonnées chez EUrouter | Jusqu'à 12 mois, selon EUrouter |
 | E-mails de tes agents (offre tout compris) | 90 jours par e-mail (durée qui peut être raccourcie) ; la boîte entière d'un coup quand tu supprimes l'adresse ou l'agent, quand la place est effacée ou quand le compte est effacé |

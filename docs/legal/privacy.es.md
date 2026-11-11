@@ -459,7 +459,7 @@ servidores.
   guichet solo conserva una huella calculada con una clave secreta, únicamente en memoria, mientras dura la reserva de
   una plaza de prueba (15 minutos como máximo); se pierde al reiniciarse. Para limitar los intentos de códigos beta, en
   la página de baja del sitio y en las denuncias de agentes compartidos como plantilla, guarda del mismo modo una
-  huella, nunca la dirección, 2 días como máximo; después queda hasta 30 días en las copias cifradas de su base.
+  huella, nunca la dirección, 2 días como máximo.
 
 **Los códigos beta.** Un código beta usado se convierte en el identificador de tu suscripción beta, que se guarda con
 tu cuenta como cualquier suscripción (abajo), y el registro del guichet anota «código usado» con tu cuenta (12 meses).
@@ -481,7 +481,7 @@ fraude, interés legítimo (artículo 6.1.f); facturas y documentos contables, o
 10 años (artículo L123-22 del Código de Comercio francés); Stripe guarda las facturas. Huella del dispositivo Android:
 24 meses desde la primera marca del teléfono (su semana gratis, o la primera suscripción hecha desde él), guardada
 aparte de tu cuenta. Dirección IP: nunca se guarda en claro; su huella, en memoria, 15 minutos como
-máximo para la semana gratis, 2 días como máximo para los demás límites (30 días en las copias de la base). Los bits de DeviceCheck los guarda Apple.
+máximo para la semana gratis, 2 días como máximo para los demás límites. La huella guardada 2 días, la de un teléfono Android que usó un código beta y las mediciones de cada plaza (sección 5.12) quedan después hasta 30 días en las copias cifradas de la base. Los bits de DeviceCheck los guarda Apple.
 
 ### 5.4 Tu plaza y el modelo de IA
 
@@ -843,7 +843,7 @@ Scaleway, en Francia, sin transferencia fuera de la Unión. Puedes pedirnos una 
 | Facturas y justificantes de pago de una compra en el sitio | 10 años (artículo L123-22 del Código de Comercio francés); facturas guardadas por Stripe |
 | Código beta nunca usado | Hasta que ya no pueda usarse |
 | Código beta usado y su vínculo a tu cuenta | Hasta el final de tu plaza beta o su paso a una suscripción de pago |
-| Huella de un teléfono Android que usó un código beta (guardada aparte del código y de la cuenta) | Mientras aún se puedan usar códigos beta |
+| Huella de un teléfono Android que usó un código beta (guardada aparte del código y de la cuenta) | Mientras aún se puedan usar códigos beta; luego hasta 30 días en las copias cifradas de la base |
 | Huella del dispositivo Android, calculada con una clave secreta (semana gratis) | 24 meses desde la primera marca del teléfono; guardada aparte de la cuenta, no se borra con ella |
 | Invitación de un vínculo familiar | 7 días, o hasta la respuesta |
 | Compartir en lectura (copia cifrada, personas invitadas) | Hasta su fecha de fin, hasta que se detiene o hasta que se borra la cuenta |
@@ -858,7 +858,7 @@ Scaleway, en Francia, sin transferencia fuera de la Unión. Puedes pedirnos una 
 | Versiones sustituidas o borradas en Scaleway (copias de seguridad de las plazas, copias cifradas de la base de datos del guichet) | 1 día |
 | Imagen diaria de OVHcloud | Un punto por día, sustituido en un día aproximadamente después de reinstalar la plaza |
 | Datos técnicos de los servidores | Los últimos valores; memoria de cada plaza, hora a hora: 7 días |
-| Mediciones de los primeros días de una plaza (sección 5.12) | Por plaza, 11 días como máximo; luego totales por día, sin nadie: 2 años |
+| Mediciones de los primeros días de una plaza (sección 5.12) | Por plaza, 11 días como máximo, luego hasta 30 días en las copias cifradas de la base; totales por día, sin nadie: 2 años |
 | Registro de eventos del guichet (incluido «código beta usado», con tu cuenta) | 12 meses |
 | Metadatos en EUrouter | Hasta 12 meses, según EUrouter |
 | Correos de tus agentes (oferta todo incluido) | 90 días por correo (puede acortarse); el buzón entero de una vez cuando quitas la dirección o el agente, cuando se borra la plaza o cuando se borra la cuenta |

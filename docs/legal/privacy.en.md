@@ -445,7 +445,7 @@ subscriptions. We keep no data of your card: it is entered at Stripe and never g
   guichet keeps only a fingerprint of it computed with a secret key, in memory only, for as long as a trial place is
   reserved (15 minutes at most); it is lost when the guichet restarts. To limit tries of beta codes, on the website's
   cancellation page and for reports of agents shared as templates, it likewise keeps a fingerprint, never the address,
-  2 days at most; it then stays up to 30 days in the encrypted copies of its database.
+  2 days at most.
 
 **Beta codes.** A used beta code becomes the identifier of your beta subscription, kept with your account like any
 subscription (below), and the guichet's log notes "code used" with your account (12 months). One code per phone: on
@@ -467,7 +467,8 @@ then 5 years in archive, as proof of the contract (article 2224 of the French Ci
 10 years (article L123-22 of the French Commercial Code); Stripe keeps the invoices. Android device fingerprint:
 24 months from when the phone was first marked (its free week, or the first subscription taken from it), kept apart
 from your account. IP address: never stored in clear; its fingerprint, in memory, 15 minutes at most for the free week, 2 days at most
-for the other limits (30 days in the database copies). The DeviceCheck bits are kept by Apple.
+for the other limits. The fingerprint kept 2 days, that of an Android phone that used a beta code and each place's
+measures (section 5.12) then stay up to 30 days in the encrypted copies of the database. The DeviceCheck bits are kept by Apple.
 
 ### 5.4 Your place and the AI model
 
@@ -824,7 +825,7 @@ of the applicable safeguards.
 | Invoices and payment records of a purchase on the website | 10 years (article L123-22 of the French Commercial Code); invoices kept by Stripe |
 | Beta code never used | Until it can no longer be redeemed |
 | Used beta code and its link to your account | Until your beta place ends or moves to a paid subscription |
-| Fingerprint of an Android phone that used a beta code (kept apart from the code and the account) | As long as beta codes can still be redeemed |
+| Fingerprint of an Android phone that used a beta code (kept apart from the code and the account) | As long as beta codes can still be redeemed; then up to 30 days in the encrypted copies of the database |
 | Keyed fingerprint of the Android device (free week) | 24 months after the phone was first marked; kept apart from the account, not erased with it |
 | Family-link invitation | 7 days, or until answered |
 | Read-only share (encrypted copy, people invited) | Until its end date, until it is stopped, or until the account is erased |
@@ -839,7 +840,7 @@ of the applicable safeguards.
 | Replaced or deleted versions at Scaleway (the places' backups, encrypted copies of the guichet's database) | 1 day |
 | OVHcloud's daily image | One point per day, replaced within about a day after the place is reinstalled |
 | Servers' technical data | Latest values; each place's memory, hour by hour: 7 days |
-| Measures of a place's first days (section 5.12) | Per place, 11 days at most; then totals per day, with no one in them: 2 years |
+| Measures of a place's first days (section 5.12) | Per place, 11 days at most, then up to 30 days in the encrypted copies of the database; totals per day, with no one in them: 2 years |
 | The guichet's event log (including "beta code used", with your account) | 12 months |
 | Metadata at EUrouter | Up to 12 months, according to EUrouter |
 | Your agents' e-mail (all-included offer) | 90 days per mail (may be shortened); the whole mailbox at once when you remove the address or the agent, when the place is erased or when the account is erased |

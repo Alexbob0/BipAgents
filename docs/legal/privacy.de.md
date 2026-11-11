@@ -491,8 +491,7 @@ früheren Abos. Wir speichern keine Daten deiner Karte: Sie wird bei Stripe eing
   begrenzen, behält der Guichet nur einen mit einem geheimen Schlüssel berechneten Fingerabdruck davon, nur im
   Arbeitsspeicher, so lange ein Testplatz reserviert ist (höchstens 15 Minuten); bei einem Neustart geht er verloren.
   Um die Versuche mit Beta-Codes, auf der Kündigungsseite der Website und bei Meldungen von als Vorlage geteilten
-  Agenten zu begrenzen, bewahrt er ebenso einen Fingerabdruck auf, nie die Adresse, höchstens 2 Tage; danach bleibt er
-  bis zu 30 Tage in den verschlüsselten Kopien seiner Datenbank.
+  Agenten zu begrenzen, bewahrt er ebenso einen Fingerabdruck auf, nie die Adresse, höchstens 2 Tage.
 
 **Die Beta-Codes.** Ein eingelöster Beta-Code wird zur Kennung deines Beta-Abos, das mit deinem Konto wie jedes Abo
 aufbewahrt wird (unten), und das Protokoll des Guichets vermerkt „Code eingelöst“ mit deinem Konto (12 Monate). Ein
@@ -515,8 +514,9 @@ Nachweis des Vertrags (Art. 2224 des französischen Zivilgesetzbuchs). Rechnunge
 (Art. L123-22 des französischen Handelsgesetzbuchs); die Rechnungen bewahrt Stripe auf. Fingerabdruck des
 Android-Geräts: 24 Monate ab der ersten Markierung des Telefons (seine kostenlose Woche oder das erste von ihm aus
 abgeschlossene Abo), getrennt von deinem Konto aufbewahrt. IP-Adresse: nie im Klartext gespeichert; ihr Fingerabdruck im
-Arbeitsspeicher höchstens 15 Minuten für die kostenlose Woche, höchstens 2 Tage für die anderen Grenzen (30 Tage in den
-Kopien der Datenbank). Die DeviceCheck-Bits bewahrt Apple auf.
+Arbeitsspeicher höchstens 15 Minuten für die kostenlose Woche, höchstens 2 Tage für die anderen Grenzen. Der 2 Tage aufbewahrte Fingerabdruck, der eines Android-Telefons, das einen
+Beta-Code eingelöst hat, und die Messwerte jedes Platzes (Abschnitt 5.12) bleiben danach bis zu 30 Tage in den
+verschlüsselten Kopien der Datenbank. Die DeviceCheck-Bits bewahrt Apple auf.
 
 ### 5.4 Dein Platz und das KI-Modell
 
@@ -894,7 +894,7 @@ des Guichets und des Relays: OVHcloud, in Frankreich. Hoster der Sicherungen: Sc
 | Rechnungen und Zahlungsbelege eines Kaufs auf der Website | 10 Jahre (Art. L123-22 des französischen Handelsgesetzbuchs); Rechnungen bei Stripe aufbewahrt |
 | Nie eingelöster Beta-Code | Bis er nicht mehr eingelöst werden kann |
 | Eingelöster Beta-Code und seine Verknüpfung zu deinem Konto | Bis dein Beta-Platz endet oder in ein bezahltes Abo übergeht |
-| Fingerabdruck eines Android-Telefons, das einen Beta-Code eingelöst hat (getrennt von Code und Konto aufbewahrt) | Solange noch Beta-Codes eingelöst werden können |
+| Fingerabdruck eines Android-Telefons, das einen Beta-Code eingelöst hat (getrennt von Code und Konto aufbewahrt) | Solange noch Beta-Codes eingelöst werden können; danach bis zu 30 Tage in den verschlüsselten Kopien der Datenbank |
 | Fingerabdruck des Android-Geräts, mit einem geheimen Schlüssel gehasht (kostenlose Woche) | 24 Monate nach der ersten Markierung des Telefons; getrennt vom Konto aufbewahrt, nicht mit ihm gelöscht |
 | Einladung einer Familienverbindung | 7 Tage oder bis zur Antwort |
 | Teilen zum Lesen (verschlüsselte Kopie, eingeladene Personen) | Bis zum Enddatum, bis zum Beenden oder bis zur Löschung des Kontos |
@@ -909,7 +909,7 @@ des Guichets und des Relays: OVHcloud, in Frankreich. Hoster der Sicherungen: Sc
 | Ersetzte oder gelöschte Versionen bei Scaleway (Sicherungen der Plätze, verschlüsselte Kopien der Datenbank des Guichets) | 1 Tag |
 | Tägliches Abbild von OVHcloud | Ein Punkt pro Tag, innerhalb von etwa einem Tag nach der Neuinstallation des Platzes ersetzt |
 | Technische Daten der Server | Die letzten Werte; Arbeitsspeicher jedes Platzes, Stunde für Stunde: 7 Tage |
-| Messwerte der ersten Tage eines Platzes (Abschnitt 5.12) | Pro Platz höchstens 11 Tage; dann Summen pro Tag, ohne Personen: 2 Jahre |
+| Messwerte der ersten Tage eines Platzes (Abschnitt 5.12) | Pro Platz höchstens 11 Tage, danach bis zu 30 Tage in den verschlüsselten Kopien der Datenbank; Summen pro Tag, ohne Personen: 2 Jahre |
 | Ereignisprotokoll des Guichet (darunter „Beta-Code eingelöst“, mit deinem Konto) | 12 Monate |
 | Metadaten bei EUrouter | Bis zu 12 Monate, laut EUrouter |
 | E-Mails deiner Agenten (Alles-inklusive-Angebot) | 90 Tage pro E-Mail (kann verkürzt werden); das ganze Postfach auf einmal, wenn du die Adresse oder den Agenten entfernst, wenn der Platz gelöscht wird oder wenn das Konto gelöscht wird |
