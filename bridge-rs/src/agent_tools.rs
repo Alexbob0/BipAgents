@@ -2144,6 +2144,10 @@ async fn mcp(
             let state = state.clone();
             tokio::spawn(async move { crate::routines::fire(&state, &id).await });
         }
+        if let Some((routine, done)) = &called.notice {
+            // its pause or delete, one line in the Boîte, not pushed (audit PI-6 O3)
+            crate::routines::tell_done(&state, &agent, routine, *done, origin.as_deref()).await;
+        }
         if let Some((line, card)) = called.card {
             // its question: in this turn's conversation (card_place.rs) and pushed, as routine_trigger's; the agent
             // knows the routine is on, so no turn resumes to tell it the answer (`taken`); under « Seulement le

@@ -414,8 +414,9 @@ pub fn view(r: &Routine, zone: Tz) -> Value {
 pub enum Maker {
     /// The person (in the app): on at once, silent or not as they chose.
     Person { muted: bool },
-    /// Its agent (`routine_schedule`): on at once, silent if the agent suggested so (else not), and a card asking the
-    /// person whether they want to hear what it finds (the suggestion pre-selected).
+    /// Its agent (`routine_schedule`): OFF until the person answers its card (Alex 11/11, security audit PI-6: one
+    /// hostile e-mail must not get a standing unattended routine), silent if the agent suggested so (else not); the
+    /// card asks whether they want to hear what it finds (the suggestion pre-selected), its answer turns it on.
     Agent { suggested_silent: Option<bool> },
 }
 
@@ -436,7 +437,7 @@ pub fn create(
     let schedule = parse(schedule, zone)?;
     let now = py::time_time();
     let proposed = matches!(by, Maker::Agent { .. });
-    let next_run = next_after(&schedule, now, zone);
+    let next_run = if proposed { None } else { next_after(&schedule, now, zone) };
     let routine = Routine {
         id: py::uuid4_hex()[..12].to_string(),
         agent: agent.to_string(),
@@ -445,7 +446,7 @@ pub fn create(
         repeat: matches!(schedule, Schedule::Once { .. }).then_some(1),
         schedule,
         skills: Vec::new(),
-        enabled: true,
+        enabled: !proposed,
         // the agent's suggestion until the person answers its card (none given: not silent)
         muted: matches!(by, Maker::Person { muted: true } | Maker::Agent { suggested_silent: Some(true) }),
         notify: true,
@@ -492,18 +493,20 @@ pub fn delete(config: &Config, id: &str) -> bool {
 //
 // Alex, 6/11 morning: « Pour les routines muettes ou non, il faut demander lorsque c'est mis en place par l'agent ou
 // l'utilisateur. » Then, 6/11 later: « On crée la routine avant de demander. Est-ce que tu veux être au courant des
-// infos retournées par la routine ? » So the routine is made ON at once, silent if its agent suggested so (else not),
-// and its card only asks « Veux-tu être au courant de ce que cette routine trouve ? »: « Oui, préviens-moi » /
-// « Non, garde-le sur sa page », the suggestion pre-selected. No answer deletes it (its page and its swipe do).
-// Unanswered, it keeps the suggestion. Its answers (`POST /v1/approve`, run id `bip-rout-<card>`) only change `muted`:
+// infos retournées par la routine ? » Then Alex, 11/11 (security audit PI-6, reversing « on at once »): a routine its
+// agent made does not run before the person answers its card. So it is made OFF, silent if its agent suggested so
+// (else not), and its card asks « Veux-tu être au courant de ce que cette routine trouve ? »: « Oui, préviens-moi » /
+// « Non, garde-le sur sa page », the suggestion pre-selected; either way is the person's OK: it is turned on. Its
+// answers (`POST /v1/approve`, run id `bip-rout-<card>`):
 //
-//     notify | once (an older app's « Oui »)     told each time: each report in the conversation and pushed
-//     silent | deny (an older app's « Non »)     silent: results only on its page
+//     notify | once | session | always    on, told each time: each report in the conversation and pushed
+//     silent                              on, silent: results only on its page
+//     deny (an older app's « Non »)       stays off, silent; never deleted (its page and its swipe do)
 //
-// A `PATCH /v1/routines/{id}` with `muted` (its page's switch) answers it too. A low-stakes card: with « Seulement le
-// critique » (approval_level.rs) it is answered with the suggestion at once and shown in the Boîte's auto lines.
-// `choices` stays `["once", "deny"]` (what every app knows); `bip_choices` and `bip_routine` are for the newer apps.
-// A proposal of the first 6/11 version (main-next only: off until answered, never run) is turned on by any answer.
+// A `PATCH /v1/routines/{id}` with `muted` (its page's switch) answers its question too, and the person's own
+// « Reprendre » turns it on (their own tap). Never answered by the bridge: since 11/11 `routine_way` is critical in
+// approval_level.rs (it was answered with the suggestion under « Seulement le critique »). `choices` stays
+// `["once", "deny"]` (what every app knows); `bip_choices` and `bip_routine` are for the newer apps.
 
 /// The card of a routine its agent made (`/v1/approvals`, `/v1/approve`).
 pub const RUN_PREFIX: &str = "bip-rout-";
@@ -520,20 +523,34 @@ fn when_of(r: &Routine, zone: Tz) -> Value {
     crate::autonomous::routine_when(&job)
 }
 
-/// The routine as its card names it: « Coach a créé la routine « Archive du soir » : tous les jours à 23:00. »
+/// The routine as its card names it, and that it starts after the answer: « Coach a créé la routine « Archive du soir » :
+/// chaque jour à 23:00. Elle démarrera après ta réponse. » (the agent's language: fr, en, de, es).
 pub fn made_sentence(config: &Config, r: &Routine) -> String {
-    let when = when_of(r, zone(config));
-    let when = when["text"].as_str().unwrap_or("").to_lowercase();
-    let when = if when.is_empty() { String::new() } else { format!(" : {when}") };
-    format!("{} a créé la routine « {} »{when}.", shown_agent(config, &r.agent), r.name)
+    let lang = crate::names::names(&crate::names::agent_language(config, &r.agent)).lang;
+    let (who, name) = (shown_agent(config, &r.agent), &r.name);
+    let when = when_in(r, &r.schedule, zone(config), lang);
+    match lang {
+        "fr" => format!("{who} a créé la routine « {name} » : {}. Elle démarrera après ta réponse.", when.to_lowercase()),
+        "de" => format!("{who} hat die Routine „{name}“ erstellt: {when}. Sie startet nach deiner Antwort."),
+        "es" => format!("{who} ha creado la rutina «{name}»: {when}. Empezará cuando respondas."),
+        _ => format!("{who} created the routine “{name}”: {when}. It will start once you answer."),
+    }
 }
 
 /// The card's question.
 pub const QUESTION: &str = "Veux-tu être au courant de ce que cette routine trouve ?";
 
-/// The card's sentence (what an older app shows above its « Oui / Non »): what was made, then the question.
+/// The card's sentence (what an older app shows above its « Oui / Non », and the push): what was made, then the
+/// question (`QUESTION` in French, the `bip_routine` field the apps read).
 pub fn card_sentence(config: &Config, r: &Routine) -> String {
-    format!("{} {QUESTION}", made_sentence(config, r))
+    let lang = crate::names::names(&crate::names::agent_language(config, &r.agent)).lang;
+    let question = match lang {
+        "fr" => QUESTION,
+        "de" => "Möchtest du erfahren, was diese Routine findet?",
+        "es" => "¿Quieres enterarte de lo que encuentre esta rutina?",
+        _ => "Do you want to hear what this routine finds?",
+    };
+    format!("{} {question}", made_sentence(config, r))
 }
 
 /// The suggested way: silent when the agent said so, else told each time.
@@ -769,8 +786,10 @@ pub fn answer(config: &Config, agent: &str, card_id: &str, choice: &str) -> Opti
         }
         let r = b.routines.iter_mut().find(|r| r.agent == agent && r.card.as_ref().is_some_and(|c| c.id == card_id))?;
         r.muted = muted;
-        if !r.enabled && r.next_run.is_none() && r.last_run.is_none() && r.change.is_none() {
-            // a proposal of the first 6/11 version (main-next only, off until answered): on now
+        let refused = !crate::card_place::allowed(&choice.trim().to_lowercase());
+        if !r.enabled && r.last_run.is_none() && !refused {
+            // made by its agent, off until this answer (11/11): on now, with the words this card showed (a proposal of
+            // its agent's made since stays a proposal, kept aside: `change`)
             r.enabled = true;
             r.next_run = next_after(&r.schedule, py::time_time(), zone);
         }
@@ -1184,11 +1203,11 @@ pub fn tool() -> Value {
 weekday at 9, every 2 hours, once tomorrow at 18:00). `create` (name, schedule, prompt: what to do each time, in your \
 person's words), `list`, `update` (name: the routine's; schedule and/or prompt), `pause`, `resume`, `run` (now, \
 once), `delete`. A schedule: a cron expression (`30 7 * * 1-5`), `every 2h`, `every day at 7:30`, `weekdays at 9am`, \
-`every monday 18h`, or a date and time (`2026-11-04T18:00`). `create` makes it and turns it on at once; your person \
-is then asked in the app whether each report comes to them (in the conversation, with a notification) or stays \
-silent (only on the routine's page). Say which you suggest with `silent`: true for a background chore whose result \
+`every monday 18h`, or a date and time (`2026-11-04T18:00`). `create` makes it; it starts once your person says yes \
+in the app, where they also choose whether each report comes to them (in the conversation, with a notification) or \
+stays silent (only on the routine's page). Say which you suggest with `silent`: true for a background chore whose result \
 they don't need to read each time (a nightly archive, a clean-up, a sync), false for what they want to read (a \
-morning brief, a reminder, a digest); until they answer, your suggestion applies. For something that should react to an e-mail or a link, use routine_trigger \
+morning brief, a reminder, a digest); it is pre-selected for them. For something that should react to an e-mail or a link, use routine_trigger \
 instead.",
         "inputSchema": {"type": "object", "properties": {
             "action": {"type": "string", "enum": ["create", "list", "update", "pause", "resume", "run", "delete"]},
@@ -1212,6 +1231,57 @@ pub struct Called {
     pub run: Option<String>,
     /// (its sentence, its card id: the push's reference, as routine_trigger's)
     pub card: Option<(String, String)>,
+    /// What the agent did that the person reads in the Boîte (`tell_done`): a routine paused or deleted.
+    pub notice: Option<(Routine, Done)>,
+}
+
+/// Made by its agent and never accepted yet: off, its creation card waiting, never ran.
+fn waits_for_ok(r: &Routine) -> bool {
+    r.card.is_some() && !r.enabled && r.last_run.is_none()
+}
+
+/// An agent's act on a routine the person reads in the Boîte (Alex 11/11, audit PI-6 O3): no card, no push.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Done {
+    Paused,
+    Deleted,
+}
+
+/// Its line: « Vie a mis en pause la routine « Point du matin ». » (fr, en, de, es; another: English).
+pub fn done_line(lang: &str, who: &str, name: &str, done: Done) -> String {
+    match (lang, done) {
+        ("fr", Done::Paused) => format!("{who} a mis en pause la routine « {name} »."),
+        ("fr", Done::Deleted) => format!("{who} a supprimé la routine « {name} »."),
+        ("de", Done::Paused) => format!("{who} hat die Routine „{name}“ pausiert."),
+        ("de", Done::Deleted) => format!("{who} hat die Routine „{name}“ gelöscht."),
+        ("es", Done::Paused) => format!("{who} ha pausado la rutina «{name}»."),
+        ("es", Done::Deleted) => format!("{who} ha eliminado la rutina «{name}»."),
+        (_, Done::Paused) => format!("{who} paused the routine “{name}”."),
+        (_, Done::Deleted) => format!("{who} deleted the routine “{name}”."),
+    }
+}
+
+/// The line of an agent's pause or delete, where the routine's reports land (`report_home`, else `asked_in`: the
+/// conversation the agent was in), a Boîte message in the bridge's words, not pushed.
+pub async fn tell_done(state: &AppState, agent: &AgentConfig, r: &Routine, done: Done, asked_in: Option<&str>) -> bool {
+    let config = state.config();
+    let pipeline = Pipeline::of(state);
+    let lang = crate::names::names(&crate::handback::language_of(&config, agent)).lang;
+    let text = done_line(lang, &flat(&shown_agent(&config, &agent.name), 80), &flat(&r.name, 80), done);
+    let (home, _) = report_home(state, &pipeline, agent, r, asked_in.unwrap_or("main")).await;
+    let what = if done == Done::Paused { "paused" } else { "deleted" };
+    let delivery = Delivery {
+        agent: agent.clone(),
+        session: home,
+        key: format!("routine:{}:{what}:{}", r.id, py::time_time() as i64),
+        title: r.name.clone(),
+        text,
+        as_written: false,
+        run_id: None,
+        notify: false,
+        files: Vec::new(),
+    };
+    pipeline.deliver(&delivery).await
 }
 
 /// The agent's `silent` (a boolean, or its words).
@@ -1238,7 +1308,7 @@ pub fn call(config: &Config, agent: &str, arguments: &Dict, origin: Option<&str>
         format!("« {} » ({}), next run {}", r.name, v["schedule_display"].as_str().unwrap_or(""), v["next_run_at"])
     };
     let action = arg(arguments, "action");
-    let mut card = None;
+    let (mut card, mut notice) = (None, None);
     let (text, error, run) = match (action.as_str(), named) {
         ("create", _) => {
             let by = Maker::Agent { suggested_silent: suggestion(arguments) };
@@ -1251,8 +1321,9 @@ pub fn call(config: &Config, agent: &str, arguments: &Dict, origin: Option<&str>
                     } else {
                         "each report coming to them in the conversation"
                     };
-                    (format!("Routine made and on: « {} » ({when}), {how} as you suggested. Your person is asked in the \
-app whether they want to hear what it finds; their answer only changes that. Tell them it is set up, in plain words.",
+                    (format!("Routine made: « {} » ({when}). It starts once your person answers its card in the app, \
+where they also choose whether each report comes to them (until then: {how}, as you suggested). Tell them it waits \
+for their OK, in plain words.",
                         r.name), false, None)
                 }
                 Err(e) => (e, true, None),
@@ -1262,7 +1333,11 @@ app whether they want to hear what it finds; their answer only changes that. Tel
             let lines: Vec<String> = mine
                 .iter()
                 .map(|r| {
-                    let how = if r.change.is_some() && !r.enabled {
+                    let how = if waits_for_ok(r) && r.muted {
+                        ", waits for your person's OK on its card, then silent (reports only on its page)"
+                    } else if waits_for_ok(r) {
+                        ", waits for your person's OK on its card"
+                    } else if r.change.is_some() && !r.enabled {
                         ", paused, your proposed change waits for your person's OK"
                     } else if r.change.is_some() {
                         ", your proposed change waits for your person's OK (it runs as before until then)"
@@ -1281,11 +1356,17 @@ app whether they want to hear what it finds; their answer only changes that. Tel
         (_, None) => (format!("No routine named « {name} » (list shows yours)."), true, None),
         ("delete", Some(r)) => {
             delete(config, &r.id);
+            notice = Some((r.clone(), Done::Deleted));
             // its cards gone with it
             for c in r.card.iter().chain(r.change.as_ref().map(|c| &c.card)) {
                 crate::card_place::taken(config, &format!("{RUN_PREFIX}{}", c.id));
             }
             (format!("Routine « {} » deleted.", r.name), false, None)
+        }
+        // made by the agent, never accepted yet: nothing runs before the person's OK (11/11)
+        ("run" | "resume", Some(r)) if waits_for_ok(&r) => {
+            let text = format!("Routine « {} » starts once your person answers its card in the app.", r.name);
+            (text, action == "run", None)
         }
         // the approved words only, a proposal never (PI-6)
         ("run", Some(r)) => (format!("Routine « {} » starts now.", r.name), false, Some(r.id)),
@@ -1301,10 +1382,15 @@ so your person can read all of it before saying yes. Write it shorter.",
             let (schedule, prompt) = (arg(arguments, "schedule"), arg(arguments, "prompt"));
             // an `update` is a proposal kept aside, a `resume` of one that is off waits too: the routine as approved
             // until the person's « Oui » (PI-6: a hostile e-mail could rewrite a trusted routine, unseen)
-            let (mut asked, mut dropped) = (None, None);
+            let (mut asked, mut dropped, mut paused) = (None, None, false);
             let done = update(config, &r.id, |x| {
                 match act {
-                    "pause" => x.enabled = false,
+                    "pause" => {
+                        if x.enabled {
+                            paused = true;
+                        }
+                        x.enabled = false;
+                    }
                     "resume" if x.enabled => {}
                     _ => {
                         // the proposal so far (else the routine as it is), with this call's words, clock or « back on »
@@ -1348,6 +1434,9 @@ they accept, it goes on exactly as before (if they refuse, nothing changes). Tel
                 }
                 (Ok(Some(x)), None) => {
                     withdraw(config, dropped);
+                    if paused {
+                        notice = Some((x.clone(), Done::Paused));
+                    }
                     (format!("Routine {}.", said(&x)), false, None)
                 }
                 (Ok(None), _) => ("That routine is gone.".into(), true, None),
@@ -1356,7 +1445,7 @@ they accept, it goes on exactly as before (if they refuse, nothing changes). Tel
         }
         (other, _) => (format!("Unknown action « {other} »."), true, None),
     };
-    Called { result: tool_text(&text, error), run, card }
+    Called { result: tool_text(&text, error), run, card, notice }
 }
 
 // -- routes -------------------------------------------------------------------------------------------------------------
@@ -1432,7 +1521,11 @@ fn person_edit(r: &mut Routine, b: Body, zone: Tz) -> Result<Option<String>, Str
     }
     if let Some(m) = b.muted {
         r.muted = m;
-        r.card = None; // its card's question answered on its page
+        // its card's question answered on its page; one made by its agent and never started keeps it: the card is
+        // also its start (11/11)
+        if !waits_for_ok(r) {
+            r.card = None;
+        }
     }
     Ok(if words { dropped_proposal(r) } else { None })
 }
@@ -1661,36 +1754,54 @@ Pour la relancer tout de suite : « Lancer maintenant » sur sa page."
     }
 
     #[test]
-    fn an_agents_routine_is_on_at_once_with_its_suggestion_and_one_question() {
+    fn an_agents_routine_waits_for_the_persons_answer_with_its_suggestion() {
         let dir = tempfile::tempdir().unwrap();
-        let config = config_in(&dir);
+        let config = fr_config(&dir);
         let (called, card) = propose(&config, "Archive du soir", Some(true));
         assert!(called.run.is_none() && called.result.get("isError") == Some(&json!(false)));
         let text = called.result["content"][0]["text"].as_str().unwrap_or_default().to_string();
-        assert!(text.contains("Routine made and on") && text.contains("silent"), "{text}");
+        assert!(text.contains("It starts once your person answers") && text.contains("silent"), "{text}");
         let (sentence, pushed) = called.card.clone().unwrap();
         assert_eq!(pushed, card_id(&card));
-        assert!(sentence.contains("a créé la routine « Archive du soir »") && sentence.ends_with(QUESTION), "{sentence}");
+        assert_eq!(
+            sentence,
+            "vie a créé la routine « Archive du soir » : chaque jour à 23:00. Elle démarrera après ta réponse. \
+Veux-tu être au courant de ce que cette routine trouve ?"
+        );
         assert_eq!(card["run_id"], json!(format!("{RUN_PREFIX}{pushed}")));
+        assert_eq!(crate::approval_level::classify_card(&card), "routine_way");
         // an older app's « Oui / Non »; the newer apps' two ways, no « Non » that deletes
         assert_eq!((card["choices"].clone(), card["bip_choices"].clone()), (json!(["once", "deny"]), json!(["notify", "silent"])));
         assert_eq!((card["bip_routine"]["suggested"].as_str(), card["bip_routine"]["muted"].as_bool()), (Some("silent"), Some(true)));
         assert_eq!((card["bip_routine"]["when"]["kind"].as_str(), card["bip_routine"]["when"]["hour"].as_u64()), (Some("daily"), Some(23)));
         assert_eq!(card["bip_routine"]["question"], QUESTION);
-        // on, listed, due, silent as suggested before any answer
+        // listed, silent as suggested, but OFF before the answer (Alex 11/11): the clock never runs it
         let r = list(&config, Some("vie")).pop().unwrap();
-        assert!(r.enabled && r.next_run.is_some() && r.muted && r.asks() && r.origin == "api_c");
-        assert_eq!(view(&r, Tz::UTC)["state"], "scheduled");
-        // the agent pauses it at once; back on only with the person's OK (PI-6), then it runs it like any other
-        let paused = call(&config, "vie", &args(json!({"action": "pause", "name": "Archive du soir"})), None);
-        assert_eq!(paused.result.get("isError"), Some(&json!(false)));
-        assert!(!get(&config, &r.id).unwrap().enabled && pending_items(&config, None).len() == 1);
+        assert!(!r.enabled && r.next_run.is_none() && !due(&r, f64::MAX) && r.muted && r.asks() && r.origin == "api_c");
+        assert_eq!(view(&r, Tz::UTC)["state"], "paused");
+        // nor by the agent, run or resume: both wait for the answer
+        let run = call(&config, "vie", &args(json!({"action": "run", "name": "Archive du soir"})), None);
+        assert!(run.run.is_none() && run.result.get("isError") == Some(&json!(true)));
         let resumed = call(&config, "vie", &args(json!({"action": "resume", "name": "Archive du soir"})), None);
-        assert!(!get(&config, &r.id).unwrap().enabled && pending_items(&config, None).len() == 2);
+        assert!(resumed.card.is_none() && !get(&config, &r.id).unwrap().enabled && pending_items(&config, None).len() == 1);
+        // its mute switch on its page answers the question, not the start: the card stays
+        let mute = Body { muted: Some(true), ..Body::default() };
+        update(&config, &r.id, |x| person_edit(x, mute, Tz::UTC).map(drop)).unwrap();
+        assert!(get(&config, &r.id).unwrap().asks());
+        // the answer, either way: on
+        let on = answer(&config, "vie", &pushed, "silent").unwrap();
+        assert!(on.enabled && on.next_run.is_some() && on.muted && !on.asks());
+        // then the agent pauses it (a Boîte line), resumes it only with the person's OK (PI-6), runs it
+        let paused = call(&config, "vie", &args(json!({"action": "pause", "name": "Archive du soir"})), None);
+        assert_eq!(paused.notice.as_ref().map(|(r, d)| (r.id.as_str(), *d)), Some((on.id.as_str(), Done::Paused)));
+        let again = call(&config, "vie", &args(json!({"action": "pause", "name": "Archive du soir"})), None);
+        assert!(again.notice.is_none(), "already paused: nothing to tell");
+        let resumed = call(&config, "vie", &args(json!({"action": "resume", "name": "Archive du soir"})), None);
         answer(&config, "vie", &resumed.card.unwrap().1, "once");
-        let on = get(&config, &r.id).unwrap();
-        assert!(on.enabled && on.muted && on.asks(), "its own question still waits, its mute untouched");
+        assert!(get(&config, &r.id).unwrap().enabled);
         assert!(call(&config, "vie", &args(json!({"action": "run", "name": "Archive du soir"})), None).run.is_some());
+        let deleted = call(&config, "vie", &args(json!({"action": "delete", "name": "Archive du soir"})), None);
+        assert_eq!(deleted.notice.map(|(r, d)| (r.name, d)), Some(("Archive du soir".to_string(), Done::Deleted)));
         // suggestions: false and none → told each time; words
         let (_, told) = propose(&config, "Brief", Some(false));
         assert_eq!((told["bip_routine"]["suggested"].as_str(), told["bip_routine"]["muted"].as_bool()), (Some("notify"), Some(false)));
@@ -1700,7 +1811,7 @@ Pour la relancer tout de suite : « Lancer maintenant » sur sa page."
     }
 
     #[test]
-    fn each_answer_only_changes_its_mute_and_never_deletes() {
+    fn each_answer_starts_it_but_a_refusal_and_never_deletes() {
         let dir = tempfile::tempdir().unwrap();
         let config = config_in(&dir);
         let answered = |name: &str, silent: Option<bool>, choice: &str| {
@@ -1709,10 +1820,12 @@ Pour la relancer tout de suite : « Lancer maintenant » sur sa page."
         };
         let silent = answered("A", Some(false), "silent").unwrap();
         assert!(silent.muted && silent.enabled && silent.card.is_none() && silent.next_run.is_some());
-        assert!(!answered("B", Some(true), "notify").unwrap().muted);
-        // an older app's « Oui »: told each time; its « Non »: silent, never deleted
+        let told = answered("B", Some(true), "notify").unwrap();
+        assert!(!told.muted && told.enabled);
+        // an older app's « Oui »: on, told each time; its « Non »: silent, still off, never deleted
         assert!(!answered("C", Some(true), "once").unwrap().muted);
-        assert!(answered("D", Some(false), "deny").unwrap().muted);
+        let no = answered("D", Some(false), "deny").unwrap();
+        assert!(no.muted && !no.enabled && no.next_run.is_none());
         // answered twice or by another agent: no such card
         let (_, card) = propose(&config, "E", None);
         assert_eq!(answer(&config, "autre", &card_id(&card), "once"), None);
@@ -1721,15 +1834,20 @@ Pour la relancer tout de suite : « Lancer maintenant » sur sa page."
         let names: Vec<String> = list(&config, Some("vie")).iter().map(|r| r.name.clone()).collect();
         assert_eq!(names, ["A", "B", "C", "D", "E"]);
         assert!(pending_items(&config, None).is_empty());
-        // a proposal of the first 6/11 version (off, never run): on with any answer
-        let (_, card) = propose(&config, "F", Some(true));
-        let id = card["bip_routine"]["id"].as_str().unwrap().to_string();
-        change(&config, |b| {
-            let r = b.routines.iter_mut().find(|r| r.id == id).unwrap();
-            (r.enabled, r.next_run) = (false, None);
-        });
-        let on = answer(&config, "vie", &card_id(&card), "notify").unwrap();
-        assert!(on.enabled && on.next_run.is_some() && !on.muted);
+    }
+
+    #[test]
+    fn the_agents_lines_for_a_pause_or_a_delete() {
+        assert_eq!(done_line("fr", "Vie", "Point du matin", Done::Paused), "Vie a mis en pause la routine « Point du matin ».");
+        assert_eq!(done_line("fr", "Vie", "Point du matin", Done::Deleted), "Vie a supprimé la routine « Point du matin ».");
+        assert_eq!(done_line("en", "Vie", "Mails", Done::Paused), "Vie paused the routine “Mails”.");
+        assert_eq!(done_line("de", "Vie", "Mails", Done::Deleted), "Vie hat die Routine „Mails“ gelöscht.");
+        assert_eq!(done_line("es", "Vie", "Mails", Done::Paused), "Vie ha pausado la rutina «Mails».");
+        // the person's own pause and resume tell nothing (the routes never build a notice): only `call` does
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(&dir);
+        let r = create(&config, "vie", "M", "every 2h", "x", None, Maker::Person { muted: false }).unwrap();
+        assert!(r.enabled && r.card.is_none());
     }
 
     #[test]
@@ -1927,14 +2045,14 @@ ailleurs.\nEn attendant ta réponse, elle continue comme avant."
     }
 
     #[test]
-    fn answering_a_routines_question_never_turns_on_a_waiting_proposal() {
+    fn answering_a_routines_question_starts_the_words_it_showed_never_a_proposal() {
         let dir = tempfile::tempdir().unwrap();
         let config = config_in(&dir);
         let (_, question) = propose(&config, "Archive", None);
-        call(&config, "vie", &args(json!({"action": "pause", "name": "Archive"})), None);
-        call(&config, "vie", &args(json!({"action": "resume", "name": "Archive"})), None);
+        call(&config, "vie", &args(json!({"action": "update", "name": "Archive", "prompt": "Ailleurs."})), None);
         let r = answer(&config, "vie", &card_id(&question), "notify").unwrap();
-        assert!(!r.enabled && r.next_run.is_none() && r.change.is_some());
+        assert!(r.enabled && r.next_run.is_some() && r.prompt == "Archive." && r.change.is_some());
+        assert_eq!(pending_items(&config, None).len(), 1, "the proposal still asks");
     }
 
     #[test]

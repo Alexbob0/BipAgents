@@ -64,7 +64,10 @@ def test_the_level_is_everything_until_a_newer_app_sets_it_and_an_agent_may_diff
     assert bridge.get("/v1/approval-level").status_code in (401, 403)   # the bridge key
 
 
-def test_a_routines_question_is_asked_or_answered_with_its_suggestion(bridges, fakes):
+def test_a_routine_its_agent_made_is_asked_at_every_level(bridges, fakes):
+    """Alex 11/11 (audit PI-6, reversing 6/11): a routine its agent made starts only with the person's answer, so its
+    card (`routine_way`) is critical: under « Seulement le critique » too it waits, pushed, the routine off, no auto
+    line."""
     bridge = with_device(bridges).start()
     give_token(bridge)
 
@@ -74,32 +77,17 @@ def test_a_routines_question_is_asked_or_answered_with_its_suggestion(bridges, f
         assert not result["isError"], text_of(result)
         return result
 
-    # « Tout valider »: its card waits and is pushed
-    made("Archive", True)
-    [card] = cards(bridge, "bip-rout-", "wellness")
-    assert wait_until(lambda: card_pushes(fakes, card["request_id"]), timeout=20)
+    for chosen, name in [("all", "Archive"), ("critical", "Nettoyage")]:
+        level(bridge, chosen)
+        result = made(name, True)
+        assert "Approved at once" not in text_of(result), text_of(result)
+        [card] = [c for c in cards(bridge, "bip-rout-", "wellness") if c["bip_routine"]["name"] == name]
+        assert wait_until(lambda: card_pushes(fakes, card["request_id"]), timeout=20)
+        jobs = {j["name"]: j for j in bridge.get("/v1/agents/wellness/routines", headers=AUTH).json()["jobs"]}
+        assert (jobs[name]["state"], jobs[name]["muted"]) == ("paused", True), jobs[name]
     assert auto_lines(bridge) == []
-    # « Seulement le critique »: answered with the suggestion, not pushed, a line in the Boîte
-    level(bridge, "critical")
-    result = made("Nettoyage", True)
-    assert "Approved at once" in text_of(result), text_of(result)
-    jobs = {j["name"]: j for j in bridge.get("/v1/agents/wellness/routines", headers=AUTH).json()["jobs"]}
-    assert jobs["Nettoyage"]["muted"] is True
-    made("Brief", False)
-    jobs = {j["name"]: j for j in bridge.get("/v1/agents/wellness/routines", headers=AUTH).json()["jobs"]}
-    assert jobs["Brief"]["muted"] is False
-    assert [c["bip_routine"]["name"] for c in cards(bridge, "bip-rout-", "wellness")] == ["Archive"]
-    lines = auto_lines(bridge, "wellness")
-    assert [(l["kind"], l["undo"]) for l in lines] == [("routine_way", False), ("routine_way", False)]
-    assert "a créé la routine « Brief »" in lines[0]["summary"]
-    time.sleep(1.5)
-    assert not [p for p in fakes.apns.payloads() if "Nettoyage" in str(p) or "Brief" in str(p)]
-    undo = bridge.post(f"/v1/approvals/auto/{lines[0]['id']}/undo", headers=AUTH)
-    assert undo.status_code == 409 and undo.json()["code"] == "not_undoable"
-    # back to « Tout valider »: the next one is asked at once
-    level(bridge, "all")
-    made("Encore", True)
-    assert {c["bip_routine"]["name"] for c in cards(bridge, "bip-rout-", "wellness")} == {"Archive", "Encore"}
+    kinds = {k["kind"]: k for k in bridge.get("/v1/approval-level", headers=AUTH).json()["kinds"]}
+    assert kinds["routine_way"]["critical"] is True
 
 
 def test_an_agents_proposal_for_a_routine_is_asked_at_every_level(bridges, fakes):
@@ -120,7 +108,7 @@ def test_an_agents_proposal_for_a_routine_is_asked_at_every_level(bridges, fakes
     [job] = bridge.get("/v1/agents/wellness/routines", headers=AUTH).json()["jobs"]
     assert (job["prompt"], job["state"]) == ("Résume mes e-mails.", "scheduled")
     kinds = {k["kind"]: k for k in bridge.get("/v1/approval-level", headers=AUTH).json()["kinds"]}
-    assert kinds["routine_change"]["critical"] is True and kinds["routine_way"]["critical"] is False
+    assert kinds["routine_change"]["critical"] is True
 
 
 def test_mail_moves_and_rules_go_alone_with_an_undo_and_a_trash_is_asked(bridges, fakes):
@@ -238,15 +226,15 @@ def test_the_day_is_summed_up_in_one_boite_message(bridges, fakes):
     bridge = with_device(bridges, BIPAGENTS_APPROVAL_DIGEST_HOUR="0", BIPAGENTS_APPROVAL_DIGEST_EVERY="1").start()
     give_token(bridge)
     level(bridge, "critical")
-    for name in ["Archive", "Nettoyage"]:
-        call(bridge, "routine_schedule", {"action": "create", "name": name, "schedule": "every day at 23:00",
-                                          "prompt": "Fais-le.", "silent": True})
+    # (a small background task: the routines' cards are asked at every level since 11/11, PI-6)
+    small = call(bridge, "propose_task", {"title": "Dossier location", "prompt": "Prépare le dossier.", "budget": "small"})
+    assert not small["isError"] and text_of(small).startswith("Started at once"), small
     assert wait_until(lambda: [m for m in boite_items(bridge) if "auto-digest" in str(m) or
                                "sans te demander" in m.get("text", "") or "without asking" in m.get("text", "")],
                       timeout=15), boite_items(bridge)
     [digest] = [m for m in boite_items(bridge) if "without asking" in m.get("text", "") or
                 "sans te demander" in m.get("text", "")]
-    assert "Archive" in digest["text"] and "Nettoyage" in digest["text"]
+    assert "Dossier location" in digest["text"], digest
     time.sleep(2.5)
     assert len([m for m in boite_items(bridge) if "without asking" in m.get("text", "") or
                 "sans te demander" in m.get("text", "")]) == 1, "once a day"

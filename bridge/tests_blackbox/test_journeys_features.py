@@ -139,8 +139,9 @@ def test_j40_only_the_critical_a_critical_card_is_still_asked(journey):
 # -- a routine, then one question ------------------------------------------------------------------------------------
 
 def test_j41_a_routine_is_made_first_then_one_question(journey):
-    """The agent makes a routine: it is on at once (listed, scheduled), and its card in the conversation asks one
-    thing: « Veux-tu être au courant de ce que cette routine trouve ? »; « Oui, préviens-moi » keeps it on, told."""
+    """The agent makes a routine: listed, off until the person answers (Alex 11/11, PI-6), and its card in the
+    conversation asks one thing: « Veux-tu être au courant de ce que cette routine trouve ? »; « Oui, préviens-moi »
+    starts it, told."""
     journey.model.calls["routine"] = lambda run: mcp_as(journey.bridge, journey.token, "/v1/agent-tools/mcp",
                                                         "routine_schedule", {
         "action": "create", "name": "Le point du soir", "schedule": "every day at 19:00",
@@ -148,7 +149,7 @@ def test_j41_a_routine_is_made_first_then_one_question(journey):
     assert journey.send(cid(41), "Fais-moi le point chaque soir #routine").status_code == 200
     page = reply_done(journey, "la routine « Le point du soir » est créée")
     routines = {j["name"]: j for j in journey.bridge.get(f"/v1/agents/{AGENT}/routines", headers=AUTH).json()["jobs"]}
-    assert routines["Le point du soir"]["state"] == "scheduled", routines   # on before any answer
+    assert routines["Le point du soir"]["state"] == "paused", routines   # off until the answer (Alex 11/11, PI-6)
     cards = [c for c in page["pending"].get("approvals") or [] if c["run_id"].startswith("bip-rout-")]
     assert len(cards) == 1, page["pending"]   # one question, in the conversation it was made in
     card = cards[0]
