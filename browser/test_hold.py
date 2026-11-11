@@ -150,3 +150,25 @@ def test_a_call_running_when_the_hold_starts_stays_counted_and_new_ones_are_refu
     send.close()
     gate.join(10)
     assert done == [0] and not (tmp_path / "calls" / str(os.getpid())).exists()
+
+
+def test_a_gate_that_cannot_count_refuses_tool_calls(monkeypatch, tmp_path):
+    # Fix review 11/11, R3: a gate that can't write its count would leave the bridge reading none, and typing a card
+    # while one of its calls runs. Its tool calls are refused instead (the person restarts the browser).
+    use_flag(monkeypatch, tmp_path, None)
+    taken = tmp_path / "not-a-folder"
+    taken.write_text("")
+    calls = hold_gate.Calls(str(taken))
+    assert calls.counting is False and calls.path is None
+    refused = json.loads(hold_gate.refusal({"id": 4}, hold_gate.UNCOUNTED))
+    assert refused["id"] == 4 and refused["result"]["isError"] is True
+    assert "restarted" in refused["result"]["content"][0]["text"]
+    # One that could, until its folder could no longer be written: the same.
+    counted = hold_gate.Calls(str(tmp_path / "calls"))
+    assert counted.counting is True
+    (tmp_path / "calls").chmod(0o500)
+    try:
+        counted.start(1)
+        assert counted.counting is (os.geteuid() == 0)   # root writes anyway
+    finally:
+        (tmp_path / "calls").chmod(0o700)

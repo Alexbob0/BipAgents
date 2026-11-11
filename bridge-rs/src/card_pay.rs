@@ -830,18 +830,44 @@ async fn form_on(page: &mut Page, rule: &card_fill::Frames, host: &str) -> Resul
 
 const HAND_IT_OVER: &str = "Don't pay yourself: hand the payment over to the person with hand_over_payment.";
 
-/// Whether the agent's browser tool calls that got through before the hold have all ended (hold_gate.py counts
-/// them; a gate that is gone counts for nothing). A browser image from before that count knows none.
-async fn calls_done(config: &Config, agent: &str) -> bool {
+/// The agent's browser tool calls that got through before the hold (hold_gate.py counts them).
+#[derive(Debug, PartialEq)]
+enum Calls {
+    /// All ended (a gate that is gone counts for nothing).
+    Done,
+    Running,
+    /// Nobody counts them: a browser image from before the count (no `bipagents-calls` in its gate), or no container
+    /// engine to ask. Nothing is typed then (fix review 11/11, R3): a call in flight could span the reload.
+    Unknown,
+}
+
+/// Logged once per bridge run: an agent's browser image is too old for card payments.
+static OLD_IMAGE_SAID: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+async fn calls_done(config: &Config, agent: &str) -> Calls {
     let host = crate::browsers::Host::real(config);
-    let Some(engine) = host.runtime.clone() else { return true };
+    let Some(engine) = host.runtime.clone() else { return Calls::Unknown };
     let check = format!(
-        "for f in {CALLS_DIR}/*; do [ -f \"$f\" ] || continue; [ -d \"/proc/${{f##*/}}\" ] || {{ rm -f \"$f\"; \
-         continue; }}; [ \"$(cat \"$f\")\" = 0 ] || exit 4; done; exit 0"
+        "grep -q bipagents-calls /opt/stealth/hold_gate.py || exit 5; for f in {CALLS_DIR}/*; do [ -f \"$f\" ] || \
+         continue; [ -d \"/proc/${{f##*/}}\" ] || {{ rm -f \"$f\"; continue; }}; [ \"$(cat \"$f\")\" = 0 ] || exit 4; \
+         done; exit 0"
     );
     let command = vec![engine, "exec".into(), crate::browsers::container(agent), "sh".into(), "-c".into(), check];
-    (host.exec)(command).await == 0
+    match (host.exec)(command).await {
+        0 => Calls::Done,
+        5 => {
+            if !OLD_IMAGE_SAID.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                tracing::warn!(agent = %agent, "card payment refused: the browser image counts no tool calls \
+                    (browser/hold_gate.py): the browser image must be updated");
+            }
+            Calls::Unknown
+        }
+        _ => Calls::Running,
+    }
 }
+
+const OLD_BROWSER: &str = "Your browser must be updated before the bridge can pay with a card in it (BipAgents updates \
+it, usually overnight): nothing was typed.";
 
 /// Under the hold, before anything is typed: the payment page as a document the agent never touched (card_fill.rs
 /// `fresh`), checked again (the page and site the person approved, https, a card number field in a frame the card
@@ -855,7 +881,12 @@ async fn fresh_page(
 ) -> Result<(Page, Vec<card_fill::Field>), String> {
     tokio::time::sleep(RELAY_CLOSES).await;
     let deadline = Instant::now() + CALLS_WAIT;
-    while !calls_done(config, agent).await {
+    loop {
+        match calls_done(config, agent).await {
+            Calls::Done => break,
+            Calls::Unknown => return Err(format!("{OLD_BROWSER} {HAND_IT_OVER}")),
+            Calls::Running => {}
+        }
         if !still() {
             return Err(STOPPED.into());
         }

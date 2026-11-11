@@ -31,8 +31,9 @@ CARD = {"kind": "card", "label": "Petits achats", "number": "4242 4242 4242 4242
 TOKEN = "agent-token-for-vie-0123456789abcdef"
 PAY = "/v1/agent-tools/pay"
 # The bridge's look at the browser's MCP gates (browser/hold_gate.py): their tool calls still running, under the hold.
-CALLS_CHECK = ('for f in /tmp/bipagents-calls/*; do [ -f "$f" ] || continue; [ -d "/proc/${f##*/}" ] || '
-               '{ rm -f "$f"; continue; }; [ "$(cat "$f")" = 0 ] || exit 4; done; exit 0')
+CALLS_CHECK = ('grep -q bipagents-calls /opt/stealth/hold_gate.py || exit 5; for f in /tmp/bipagents-calls/*; do '
+               '[ -f "$f" ] || continue; [ -d "/proc/${f##*/}" ] || { rm -f "$f"; continue; }; [ "$(cat "$f")" = 0 ] '
+               '|| exit 4; done; exit 0')
 
 
 class FakeChrome:
@@ -458,6 +459,28 @@ def test_suspending_gives_the_browser_back_with_the_card_erased(bridges, fakes):
 
 
 HOLD_LIFTED = "rm -f /tmp/bipagents-hold; exit 0"
+
+
+def test_a_browser_image_that_counts_no_calls_is_never_typed_into(bridges, fakes):
+    # Fix review 11/11, R3: an image from before hold_gate.py counted the calls in flight (no `bipagents-calls` in it)
+    # used to be typed into as if none ran. Now nothing is typed: the payment is handed over, the image to update.
+    chrome = FakeChrome()
+    try:
+        bridge = pay_bridge(bridges, fakes, chrome)
+        turn_on(bridge)
+        bridge.post("/v1/vault", headers=AUTH, json=CARD)
+        bridge.commands.rule("podman", ["exec", "bipagents-browser-vie", "sh", "-c", CALLS_CHECK], exit=5)
+        result, asked = pay(bridge, ARGS)
+        assert asked and result["isError"] is True
+        text = result["content"][0]["text"]
+        assert "must be updated" in text and "hand_over_payment" in text and "nothing was typed" in text
+        assert chrome.typed == [] and chrome.reloads == 0 and chrome.navigated == []
+        assert bridge.commands.of("podman")[-1][-1] == HOLD_LIFTED
+        again, _ = pay(bridge, ARGS)
+        assert again["isError"] is True and chrome.typed == []
+        assert bridge.log_path.read_text().count("the browser image must be updated") == 1   # said once
+    finally:
+        chrome.stop()
 
 
 @pytest.mark.parametrize("how", ["cancel_payment", "suspend"])

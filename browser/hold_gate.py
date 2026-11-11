@@ -32,6 +32,8 @@ WAIT = ("The person has taken over this browser in the BipAgents app (to log in,
 
 PAYING = ("A card payment is going on in this browser: the bridge typed the card into the page, and nobody may read "
           "it. Your browser tools wait until it ends: use confirm_payment (or cancel_payment) from the BipAgents tools.")
+UNCOUNTED = ("This browser can't keep track of its tool calls (its /tmp is not writable), so its tools are refused: "
+             "tell the person their browser must be restarted from the BipAgents app.")
 
 
 def paying() -> bool:
@@ -54,16 +56,20 @@ CALLS = "/tmp/bipagents-calls"
 
 class Calls:
     """The tool calls let through and not answered yet (by their JSON-RPC id), their number kept in this gate's file.
-    One older than `LIMIT` is no longer counted (an answer lost would otherwise stop every payment)."""
+    One older than `LIMIT` is no longer counted (an answer lost would otherwise stop every payment). When the file
+    can't be written (`counting` false), the gate refuses tool calls instead: the bridge would read a count that is
+    not this gate's and type a card while a call runs (fix review 11/11, R3)."""
 
     def __init__(self, folder: str = CALLS) -> None:
         self.running: dict = {}
         self.lock = threading.Lock()
         self.path = os.path.join(folder, str(os.getpid()))
+        self.counting = True
         try:
             os.makedirs(folder, mode=0o700, exist_ok=True)
         except OSError:
             self.path = None
+            self.counting = False
         self._write()
 
     def _write(self) -> None:
@@ -78,7 +84,7 @@ class Calls:
                 file.write(str(len(self.running)))
             os.replace(temporary, self.path)
         except OSError:
-            pass
+            self.counting = False
 
     def start(self, request_id) -> None:
         with self.lock:
@@ -114,10 +120,10 @@ def answered(calls: Calls, line: bytes) -> None:
         calls.end(message["id"])
 
 
-def refusal(message: dict) -> bytes:
+def refusal(message: dict, text: str | None = None) -> bytes:
+    text = text or (PAYING if paying() else WAIT)
     return (json.dumps({"jsonrpc": "2.0", "id": message.get("id"),
-                        "result": {"content": [{"type": "text", "text": PAYING if paying() else WAIT}],
-                                   "isError": True}}) + "\n").encode()
+                        "result": {"content": [{"type": "text", "text": text}], "isError": True}}) + "\n").encode()
 
 
 def main(command: list, calls: Calls | None = None) -> int:
@@ -144,6 +150,12 @@ def main(command: list, calls: Calls | None = None) -> int:
             message = None
         if isinstance(message, dict) and message.get("method") == "tools/call" and "id" in message:
             calls.start(message["id"])   # counted before the hold is read: the bridge never misses a call let through
+            if not calls.counting:
+                calls.end(message["id"])
+                with lock:
+                    out.write(refusal(message, UNCOUNTED))
+                    out.flush()
+                continue
             if held():
                 calls.end(message["id"])
                 with lock:
