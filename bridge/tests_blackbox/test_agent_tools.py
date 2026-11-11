@@ -67,7 +67,7 @@ def test_the_protocol_and_the_tokens(bridge):
     invalid = bridge.post("/v1/agent-tools/mcp", json={"method": "ping", "id": 1}, headers={"Authorization": f"Bearer {TOKEN}"})
     assert invalid.status_code == 400 and invalid.json()["error"]["code"] == -32600
     get = bridge.get("/v1/agent-tools/mcp", headers={"Authorization": f"Bearer {TOKEN}"})
-    assert get.status_code == 405 and get.headers["allow"] == "POST"
+    assert get.status_code == 405 and "POST" in get.headers["allow"]
     assert bridge.delete("/v1/agent-tools/mcp", headers={"Authorization": f"Bearer {TOKEN}"}).status_code == 200
     assert bridge.get("/v1/agent-tools/mcp").status_code == 401
     # The query string Hermes is given (`?v=` the tools' version) changes nothing.

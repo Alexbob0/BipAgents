@@ -8,12 +8,11 @@ import threading
 
 from cryptography.fernet import Fernet
 
-from bbkit.common import AUTH, HERMES_KEY, read_sse, sse
+from bbkit.common import AUTH, app_turn, follow_run, sse
 from bbkit.mcp import TOKEN, give_token
 from bbkit.servers import wait_until
 from conftest import wait_registered
 
-HERMES_AUTH = {"Authorization": f"Bearer {HERMES_KEY}"}
 
 VIE = "agent-token-for-vie-0123456789abcdef"
 COACH = "agent-token-for-coach-0123456789abcd"
@@ -209,9 +208,7 @@ def test_the_reply_of_the_turn_carries_the_entrys_chip(bridges, fakes):
                                    preview="{}"),
                                gate, sse("message.delta", run_id="r1", delta=reply),
                                sse("run.completed", run_id="r1", output=reply)]
-    posted = bridge.post("/hermes/wellness/v1/runs", json={"input": "Garde mon adresse pro", "session_id": "api_c"},
-                         headers=HERMES_AUTH)
-    assert posted.status_code == 202, posted.text
+    app_turn(bridge, fakes, "Garde mon adresse pro", "api_c")
     assert wait_until(lambda: fakes.hermes.event_requests)
     said, error = tool(bridge, TOKEN, "vault_save_contact_details",
                        {"label": "Kerfy Studio (pro)", "full_name": "Camille Exemple", "emails": ["pro@example.org"]})
@@ -219,8 +216,7 @@ def test_the_reply_of_the_turn_carries_the_entrys_chip(bridges, fakes):
     [item] = bridge.get("/v1/vault", headers=AUTH).json()["items"]
     mark = f"<!--bip:vault {item['id']} Kerfy Studio (pro)-->"
     gate.set()
-    with bridge.stream("GET", "/hermes/wellness/v1/runs/r1/events", headers=HERMES_AUTH) as resp:
-        events = read_sse(resp)
+    events = follow_run(bridge, "r1")
     end = events[-1][1]
     assert events[-1][0] == "run.completed" and end["output"] == f"{reply}\n{mark}"
     streamed = "".join(d.get("delta", "") for n, d in events if n == "message.delta")
@@ -240,15 +236,12 @@ def turn_with_a_listing(bridge, fakes, run_id, reply):
                                  gate, sse("message.delta", run_id=run_id, delta=reply),
                                  sse("run.completed", run_id=run_id, output=reply)]
     seen = len(fakes.hermes.event_requests)
-    posted = bridge.post("/hermes/wellness/v1/runs", json={"input": "Écris une lettre", "session_id": f"api_{run_id}"},
-                         headers=HERMES_AUTH)
-    assert posted.status_code == 202, posted.text
+    assert app_turn(bridge, fakes, "Écris une lettre", f"api_{run_id}") == run_id
     assert wait_until(lambda: len(fakes.hermes.event_requests) > seen)
     listed, error = tool(bridge, TOKEN, "vault_contact_details", {})
     assert not error and "<!--bip:vault" not in listed, listed     # the listing itself carries no chip
     gate.set()
-    with bridge.stream("GET", f"/hermes/wellness/v1/runs/{run_id}/events", headers=HERMES_AUTH) as resp:
-        events = read_sse(resp)
+    events = follow_run(bridge, run_id)
     assert events[-1][0] == "run.completed"
     return events[-1][1]["output"]
 

@@ -32,7 +32,8 @@ async fn drain_refuses_the_apps_writes_and_resume_catches_the_routines_up() {
     assert_eq!(drained.json()["postponed"], json!([{"agent": agent, "id": soon, "due": drained.json()["postponed"][0]["due"]}]));
 
     // The apps' writes wait; their reads and the agents' tools go on.
-    let refused = app.send_json("POST", &format!("/hermes/{agent}/v1/runs"), &key, &json!({"input": "hi"})).await;
+    let message = json!({"agent": agent, "client_id": "C1D00000-0000-4000-8000-000000000001", "text": "hi"});
+    let refused = app.send_json("POST", "/v1/threads/main/messages", &key, &message).await;
     assert_eq!(refused.status, 503);
     assert_eq!(refused.header("retry-after").as_deref(), Some("50"));
     assert_eq!(refused.json(), json!({"detail": "moving", "moving": {"state": "draining", "back_in": 50}}));
@@ -50,8 +51,8 @@ async fn drain_refuses_the_apps_writes_and_resume_catches_the_routines_up() {
     assert_eq!(resumed["routines_resumed"], 1);
     assert_eq!(resumed["caught_up"], json!([]), "not due yet: the clock runs it at its time");
     assert!(!file.exists());
-    let after = app.send_json("POST", &format!("/hermes/{agent}/v1/runs"), &key, &json!({"input": "hi"})).await;
-    assert_ne!(after.status, 503);
+    let after = app.send_json("POST", "/v1/threads/main/messages", &key, &message).await;
+    assert!(after.header("retry-after").is_none() && !after.text().contains("\"moving\""), "{}", after.text());
 
     // A routine whose time passed during the switch runs as soon as the place is back.
     std::fs::write(&file, json!({"state": "switching", "postponed": [{"agent": agent, "id": soon, "due": 1000.0}]}).to_string())

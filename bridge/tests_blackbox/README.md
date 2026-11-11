@@ -211,7 +211,6 @@ The suite makes about 800 requests in 28 files.
 | `POST /v1/triggers/{id}/link` | triggers | triggers (1) |
 | `POST /v1/triggers/{id}/run` | triggers | triggers (1) |
 | `POST /hook/{token}` (no key: the token is the key) | triggers | triggers (2) |
-| `GET POST PUT PATCH DELETE /hermes/{agent}/{path:path}` | lan | lan (4), console (1) |
 | `GET /v1/live/brief` | live_brief | live_brief (2) |
 | `POST /v1/live/calls` | live_brief | live_brief (2) |
 | `POST /v1/live/calls/start` | live_brief | live_brief (2) |

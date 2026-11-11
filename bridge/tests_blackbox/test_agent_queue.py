@@ -8,19 +8,16 @@ import threading
 import time
 import uuid
 
-from bbkit.common import AUTH, HERMES_KEY, read_sse, sse, in_session
+from bbkit.common import AUTH, app_turn, sse, in_session, words_of
 from bbkit.servers import wait_until
 
-HERMES_AUTH = {"Authorization": f"Bearer {HERMES_KEY}"}
 SESSION = "api_q"
 TOKEN = "f" * 64
 
 
-def start(bridge, text="Compare trois écoles", session=SESSION):
-    """A turn the app starts, through the door's Hermes relay (the hub follows it)."""
-    posted = bridge.post("/hermes/wellness/v1/runs", json={"input": text, "session_id": session}, headers=HERMES_AUTH)
-    assert posted.status_code == 202, posted.text
-    return posted.json()["run_id"]
+def start(bridge, fakes, text="Compare trois écoles", session=SESSION):
+    """A turn the app starts (the hub follows it)."""
+    return app_turn(bridge, fakes, text, session)
 
 
 def queue(bridge):
@@ -54,7 +51,7 @@ def texts(snapshot):
 
 
 def started_inputs(fakes):
-    return [run["input"] for run in fakes.hermes.started.values()]
+    return [words_of(run["input"]) for run in fakes.hermes.started.values()]
 
 
 def turn(run_id, gate=None, end="run.completed", **end_data):
@@ -71,7 +68,7 @@ def test_a_message_for_after_waits_for_the_turn_then_starts(bridges, fakes):
     gate = threading.Event()
     fakes.hermes.runs["r1"] = turn("r1", gate, output="Voici les trois écoles.")
     fakes.hermes.runs["r2"] = turn("r2", output="Rangé.")
-    run_id = start(bridge)
+    run_id = start(bridge, fakes)
     assert run_id == "r1"
     snapshot = add(bridge, "  Ensuite range le Carnet  ", run_id="r1")
     assert texts(snapshot) == ["Ensuite range le Carnet"] and snapshot["paused"] is False
@@ -87,7 +84,7 @@ def test_a_message_for_after_waits_for_the_turn_then_starts(bridges, fakes):
     gate.set()
     assert wait_until(lambda: len(fakes.hermes.started) == 2, timeout=15)
     second = fakes.hermes.started["r2"]
-    assert second["input"] == "Ensuite range le Carnet" and second["session_id"] == SESSION
+    assert words_of(second["input"]) == "Ensuite range le Carnet" and second["session_id"] == SESSION
     assert wait_until(lambda: queue(bridge)["items"] == [] and queue(bridge)["running"] is None, timeout=15)
     assert bridge.logged("queue: next message started")
     # the turn the bridge started is followed like the app's (one Hermes subscription)
@@ -108,7 +105,7 @@ def test_words_steered_reach_the_running_turn(bridges, fakes):
     fakes.hermes.rounds = 1000
     gate = threading.Event()
     fakes.hermes.runs["r1"] = turn("r1", gate, output="Fini.")
-    start(bridge)
+    start(bridge, fakes)
     assert wait_until(lambda: bridge.post("/v1/watch", headers=AUTH,
                                           json={"agent": "wellness", "run_id": "r1"}).status_code == 200)
     answer = send(bridge, "Seulement les publiques")
@@ -137,23 +134,11 @@ def test_words_the_turn_did_not_take_come_back_first(bridges, fakes):
     # Hermes hands back what came after the agent's last tool calls (`pending_steer` on the run's end)
     fakes.hermes.runs["r1"] = turn("r1", gate, output="Fini.", pending_steer="Et en bio")
     fakes.hermes.runs["r2"] = turn("r2", output="Bio.")
-    start(bridge)
+    start(bridge, fakes)
     assert send(bridge, "Et en bio").json()["state"] == "steered"
     gate.set()
     assert wait_until(lambda: started_inputs(fakes)[1:] == ["Et en bio"], timeout=15)
     assert fakes.hermes.started["r2"]["session_id"] == SESSION
-
-
-def test_words_steered_by_an_older_app_are_left_to_it(bridges, fakes):
-    """An app that steers Hermes itself (through the relay) sends what the turn didn't take on its own."""
-    bridge = bridges.new().start()
-    fakes.hermes.rounds = 1000
-    fakes.hermes.runs["r1"] = turn("r1", output="Fini.", pending_steer="Et en bio")
-    start(bridge)
-    with bridge.stream("GET", "/hermes/wellness/v1/runs/r1/events", headers=HERMES_AUTH) as resp:
-        assert read_sse(resp)[-1][0] == "run.completed"
-    time.sleep(1.0)
-    assert len(fakes.hermes.started) == 1 and queue(bridge)["items"] == []
 
 
 def test_reorder_cancel_pause_send_now_and_resume(bridges, fakes):
@@ -161,7 +146,7 @@ def test_reorder_cancel_pause_send_now_and_resume(bridges, fakes):
     fakes.hermes.rounds = 1000
     gate = threading.Event()
     fakes.hermes.runs["r1"] = turn("r1", gate, output="Un.")
-    start(bridge)
+    start(bridge, fakes)
     for text in ("A", "B", "C"):
         add(bridge, text, run_id="r1")
     ids = {item["text"]: item["id"] for item in queue(bridge)["items"]}
@@ -203,7 +188,7 @@ def test_a_turn_the_person_stopped_pauses_what_waits(bridges, fakes):
     fakes.hermes.rounds = 1000
     gate = threading.Event()
     fakes.hermes.runs["r1"] = turn("r1", gate, end="run.cancelled")
-    start(bridge)
+    start(bridge, fakes)
     add(bridge, "Puis l'autre", run_id="r1")
     gate.set()
     assert wait_until(lambda: queue(bridge)["paused"] is True, timeout=10)
@@ -217,7 +202,7 @@ def test_the_queue_survives_a_bridge_restart(bridges, fakes):
     gate = threading.Event()
     fakes.hermes.runs["r1"] = turn("r1", gate, output="Un.")
     fakes.hermes.runs["r2"] = turn("r2", output="Deux.")
-    start(bridge)
+    start(bridge, fakes)
     add(bridge, "Après le redémarrage", run_id="r1")
     add(bridge, "Et encore", run_id="r1")
     before = queue(bridge)
@@ -240,7 +225,7 @@ def test_every_device_follows_the_queue_live(bridges, fakes):
     fakes.hermes.rounds = 1000
     gate = threading.Event()
     fakes.hermes.runs["r1"] = turn("r1", gate, output="Un.")
-    start(bridge)
+    start(bridge, fakes)
     events = []
 
     def listen():
@@ -274,7 +259,7 @@ def test_reply_ready_is_pushed_once_at_the_end_of_the_queue(bridges, fakes):
     gate = threading.Event()
     fakes.hermes.runs["r1"] = turn("r1", gate, output="Voici les écoles.")
     fakes.hermes.runs["r2"] = turn("r2", output="Carnet rangé.")
-    start(bridge)
+    start(bridge, fakes)
     # the app followed its turn, then left (screen locked): its end would be pushed
     assert bridge.post("/v1/watch", headers=AUTH, json={"agent": "wellness", "run_id": "r1",
                                                         "session_id": SESSION}).status_code == 200
@@ -292,7 +277,7 @@ def test_the_queue_answers_for_known_agents_only_and_keeps_its_limits(bridges, f
     fakes.hermes.rounds = 1000
     gate = threading.Event()
     fakes.hermes.runs["r1"] = turn("r1", gate)
-    start(bridge)
+    start(bridge, fakes)
     assert bridge.get("/v1/agents/nope/queue", headers=AUTH).status_code == 404
     assert bridge.get("/v1/agents/wellness/queue").status_code == 401
     assert send(bridge, "x" * 20_001, after=True).status_code == 422
@@ -325,7 +310,7 @@ def test_a_photo_pushed_into_a_running_turn_is_told_to_it_and_goes_right_after(b
     gate = threading.Event()
     fakes.hermes.runs["r1"] = turn("r1", gate, end="run.cancelled")
     fakes.hermes.runs["r2"] = turn("r2", output="Sur ta photo : la verte.")
-    start(bridge, text="(note vocale) Laquelle je prends ?")
+    start(bridge, fakes, text="(note vocale) Laquelle je prends ?")
     assert wait_until(lambda: bridge.post("/v1/watch", headers=AUTH,
                                           json={"agent": "wellness", "run_id": "r1"}).status_code == 200)
     sent = send(bridge, "", attachments=[PHOTO], kinds=["image"])
@@ -363,7 +348,7 @@ def test_a_turn_that_does_not_wrap_up_for_a_pushed_photo_is_stopped(bridges, fak
     fakes.hermes.rounds = 1000
     gate = threading.Event()
     fakes.hermes.runs["r1"] = turn("r1", gate)
-    start(bridge)
+    start(bridge, fakes)
     assert wait_until(lambda: bridge.post("/v1/watch", headers=AUTH,
                                           json={"agent": "wellness", "run_id": "r1"}).status_code == 200)
     assert send(bridge, "Et celle-ci ?", attachments=[PHOTO], kinds=["image"]).json()["state"] == "queued"
@@ -380,7 +365,7 @@ def test_a_photo_pushed_when_the_turn_takes_no_more_words_still_goes_next(bridge
     gate = threading.Event()
     fakes.hermes.runs["r1"] = turn("r1", gate, output="Fini.")
     fakes.hermes.runs["r2"] = turn("r2", output="Vu.")
-    start(bridge)
+    start(bridge, fakes)
     assert wait_until(lambda: bridge.post("/v1/watch", headers=AUTH,
                                           json={"agent": "wellness", "run_id": "r1"}).status_code == 200)
     add(bridge, "Avant", run_id="r1")

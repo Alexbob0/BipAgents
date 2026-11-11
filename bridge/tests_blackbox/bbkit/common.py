@@ -5,7 +5,9 @@ import contextlib
 import json
 import struct
 import threading
+import re
 import time
+import uuid
 from typing import Any
 
 import httpx
@@ -69,6 +71,32 @@ def on_screen(bridge, agent: str = "wellness", thread: str = "main"):
         yield
     finally:
         stop.set()
+
+
+def app_turn(bridge, fakes, text: str, session: str, agent: str = "wellness", hermes_agent: str = "") -> str:
+    """A turn the app starts in the conversation holding `session` (its one sending route,
+    `POST /v1/threads/{id}/messages`): the bridge starts it on Hermes and follows it (the run hub). The session is
+    made in the fake Hermes when it has none of that name. The run's id."""
+    if session not in fakes.hermes.sessions.get(hermes_agent, {}):
+        fakes.hermes.add_session(session, [], agent=hermes_agent)
+    thread = bridge.get("/v1/threads/resolve", headers=AUTH, params={"agent": agent, "session_id": session})
+    assert thread.status_code == 200, thread.text
+    sent = bridge.post(f"/v1/threads/{thread.json()['thread']['id']}/messages", headers=AUTH,
+                       json={"agent": agent, "client_id": str(uuid.uuid4()), "text": text})
+    assert sent.status_code == 200 and sent.json()["state"] == "started", sent.text
+    return sent.json()["run_id"]
+
+
+def follow_run(bridge, run_id: str, agent: str = "wellness") -> list:
+    """The run's events as an app follows them (`GET /v1/runs/{id}/events`), until its end."""
+    with bridge.stream("GET", f"/v1/runs/{run_id}/events", params={"agent": agent}, headers=AUTH) as resp:
+        assert resp.status_code == 200, resp.read()
+        return read_sse(resp)
+
+
+def words_of(run_input) -> Any:
+    """What the person wrote, without the notes the bridge puts before it (`<!--bip:now …-->`, threads/send.rs)."""
+    return re.sub(r"^(?:<!--.*?-->\s*)+", "", run_input, flags=re.S) if isinstance(run_input, str) else run_input
 
 
 def in_session(bridge, payload, session: str) -> bool:

@@ -4,7 +4,7 @@
 //! files, vault included. Moving an agent gives it:
 //!
 //! - its own HERMES_HOME (`<spaces root>/<agent>`) and gateway, on a local port of its own; the app reaches it
-//!   through the bridge (`/hermes/<agent>/`), so no new port is published on the tailnet;
+//!   through the bridge's routes, so no new port is published on the tailnet;
 //! - with podman, its terminal, files, code and browser in a sandbox container (Hermes' `docker` terminal backend,
 //!   which runs podman), and attachments limited to its own files (`gateway.strict`);
 //! - its conversations, memory, routines, personality and settings, copied from the hub (the database through

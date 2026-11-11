@@ -82,14 +82,13 @@ pub fn moving(config: &Config) -> bool {
     flag(config).load(Ordering::SeqCst)
 }
 
-/// A request the move refuses: the apps' writes (their turns through the Hermes proxy, files, settings), never the
+/// A request the move refuses: the apps' writes (their turns, files, settings), never the
 /// agents' own tools (a turn finishing during the drain still uses them) nor this module's routes.
 pub fn refused(method: &str, path: &str) -> bool {
     if matches!(method, "GET" | "HEAD" | "OPTIONS") {
         return false;
     }
-    let app = path.starts_with("/v1/") || path.starts_with("/hermes/");
-    app && !path.starts_with("/v1/agent-tools/") && !path.starts_with("/v1/place/move")
+    path.starts_with("/v1/") && !path.starts_with("/v1/agent-tools/") && !path.starts_with("/v1/place/move")
 }
 
 /// The apps' answer while moving: 503, `Retry-After`, what to say (« Ton espace déménage, de retour dans une minute »).
@@ -309,12 +308,12 @@ mod tests {
 
     #[test]
     fn only_the_apps_writes_wait() {
-        assert!(refused("POST", "/hermes/vie/v1/runs"));
+        assert!(refused("POST", "/v1/threads/main/messages"));
         assert!(refused("POST", "/v1/files"));
         assert!(refused("DELETE", "/v1/jobs/t0123456789ab"));
         assert!(refused("PUT", "/v1/agents/vie"));
         assert!(!refused("GET", "/v1/agents"));
-        assert!(!refused("GET", "/hermes/vie/api/sessions"));
+        assert!(!refused("GET", "/v1/threads"));
         assert!(!refused("POST", "/v1/agent-tools/mcp"));
         assert!(!refused("POST", "/v1/place/move/resume"));
         assert!(!refused("POST", "/peer/p/chi/v1/runs"));

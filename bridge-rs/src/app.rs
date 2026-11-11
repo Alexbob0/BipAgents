@@ -1491,24 +1491,9 @@ async fn not_found(routes: Router, request: Request) -> Response {
     HttpError::new(404, "Not Found").into_response()
 }
 
-/// The paths served by a static folder (Starlette's StaticFiles answers HEAD; FastAPI's routes don't).
-const STATIC_PREFIXES: [&str; 2] = ["/console/static/", "/desktop/static/novnc/"];
-
-/// An HTTP method no route has: a HEAD request to an API route goes through as this one, to get FastAPI's 405.
-const HEAD_ELSEWHERE: &str = "X-BIP-HEAD";
-
-/// FastAPI's routes answer no HEAD (axum's `get` would run the GET handler): it reaches the router as
-/// [`HEAD_ELSEWHERE`]. axum answers a known path with a wrong method by an empty 405: FastAPI's has a JSON detail
-/// and `Allow: GET, POST` (no HEAD).
-async fn method_not_allowed_detail(mut request: Request, next: Next) -> Response {
-    if request.method() == axum::http::Method::HEAD
-        && !STATIC_PREFIXES.iter().any(|p| request.uri().path().starts_with(p))
-    {
-        if let Ok(method) = axum::http::Method::from_bytes(HEAD_ELSEWHERE.as_bytes()) {
-            *request.method_mut() = method;
-        }
-    }
-    let path = request.uri().path().to_string();
+/// axum answers a known path with a wrong method by an empty 405: ours says it in JSON, as every other error, with
+/// axum's `Allow`.
+async fn method_not_allowed_detail(request: Request, next: Next) -> Response {
     let mut response = next.run(request).await;
     if response.status() != StatusCode::METHOD_NOT_ALLOWED {
         // axum's method fallbacks add `Allow` to what they answer (DELETE /v1/family/name → the unlink's 404)
@@ -1516,167 +1501,14 @@ async fn method_not_allowed_detail(mut request: Request, next: Next) -> Response
         return response;
     }
     if !response.headers().contains_key("content-type") {
-        let allow = match first_route_methods(&path) {
-            Some(methods) if !methods.is_empty() => Some(methods.to_string()),
-            _ => response.headers().get("allow").and_then(|v| v.to_str().ok()).map(|v| {
-                v.split(',').map(str::trim).filter(|m| !m.is_empty() && *m != "HEAD").collect::<Vec<_>>().join(", ")
-            }),
-        };
+        let allow = response.headers().get("allow").cloned();
         let mut json = HttpError::new(405, "Method Not Allowed").into_response();
-        if let Some(allow) = allow.and_then(|a| HeaderValue::from_str(&a).ok()) {
+        if let Some(allow) = allow {
             json.headers_mut().insert("allow", allow);
         }
         return json;
     }
     response
-}
-
-/// Starlette answers a wrong method with the `Allow` of the FIRST route whose path matches, in declaration order
-/// (one route per decorator: `@router.get("/vault")` then `@router.post("/vault")` gives `Allow: GET`); axum lists
-/// every method of the path. Python's routes in `app.routes` order (its openapi order), each with that first route's
-/// methods, as `HEAD` on the Python bridge answers them; "" = several methods in a Python set, axum's list kept.
-const FIRST_ROUTE_METHODS: &[(&str, &str)] = &[
-    ("/health", "GET"),
-    ("/v1/agents", "GET"),
-    ("/v1/tts/sentence", "POST"),
-    ("/v1/tts/prepare", "POST"),
-    ("/v1/tts/message", "POST"),
-    ("/v1/tts/stream", "POST"),
-    ("/v1/files", "POST"),
-    ("/v1/devices", "POST"),
-    ("/v1/devices/{token}", "DELETE"),
-    ("/v1/outbox/{item_id}/audio", "GET"),
-    ("/v1/media", "GET"),
-    ("/v1/pages", "GET"),
-    ("/v1/pages/{page}", "DELETE"),
-    ("/v1/status", "GET"),
-    ("/v1/pairing", "GET"),
-    ("/v1/cron-jobs", "GET"),
-    ("/v1/cron-jobs/{agent}/{job}", "PUT"),
-    ("/v1/watch", "POST"),
-    ("/v1/runs/{run_id}/events", "GET"),
-    ("/v1/approve", "POST"),
-    ("/v1/approvals", "GET"),
-    ("/v1/agent-kinds", "GET"),
-    ("/v1/agents/claim", "POST"),
-    ("/v1/agents/{agent_id}/settings", "GET"),
-    ("/v1/agents/{agent_id}/language", "PUT"),
-    ("/v1/agents/{agent_id}/thinking", "GET"),
-    ("/v1/agents/{agent_id}/model", "PUT"),
-    ("/v1/agent-links", "GET"),
-    ("/v1/agent-shares", "GET"),
-    ("/v1/tool-catalog", "GET"),
-    ("/v1/agents/{agent_id}/services", "POST"),
-    ("/v1/agents/{agent_id}/services/{name}", "DELETE"),
-    ("/v1/agents/{agent_id}/services/{name}/test", "POST"),
-    ("/v1/agents/{agent_id}", "DELETE"),
-    ("/v1/vault", "GET"),
-    ("/v1/vault/{item_id}", "PATCH"),
-    ("/v1/backup", "GET"),
-    ("/v1/backup/now", "POST"),
-    ("/v1/place/move", "GET"),
-    ("/v1/place/move/drain", "POST"),
-    ("/v1/place/move/resume", "POST"),
-    ("/v1/import", "POST"),
-    ("/v1/import/hello", "GET"),
-    ("/v1/import/archive", "PUT"),
-    ("/v1/ssh", "GET"),
-    ("/v1/ssh/keys", "POST"),
-    ("/v1/device-keys", "GET"),
-    ("/v1/device-keys/{device}", "DELETE"),
-    ("/v1/agents/{agent_id}/memory", "GET"),
-    ("/v1/agents/{agent_id}/memory/{which}", "PUT"),
-    ("/v1/agents/{agent_id}/memory/pages/{path:path}", "GET"),
-    ("/v1/mail/providers", "GET"),
-    ("/v1/mail/accounts", "GET"),
-    ("/v1/mail/accounts/{account_id}", "PATCH"),
-    ("/v1/agents/{agent_id}/mail-scan", "GET"),
-    ("/v1/agents/{agent_id}/mail-scan/step", "POST"),
-    ("/v1/agents/{agent_id}/mail-scan/pause", "POST"),
-    ("/v1/agents/{agent_id}/mail-scan/resume", "POST"),
-    ("/v1/jobs", "GET"),
-    ("/v1/agents/{agent_id}/jobs", "POST"),
-    ("/v1/jobs/{job_id}/start", "POST"),
-    ("/v1/jobs/{job_id}/pause", "POST"),
-    ("/v1/jobs/{job_id}/resume", "POST"),
-    ("/v1/jobs/{job_id}", "DELETE"),
-    ("/v1/agents/{agent_id}/memory/import", "PUT"),
-    ("/v1/reminders", "GET"),
-    ("/v1/reminders/agents", "PUT"),
-    ("/v1/reminders/queue", "GET"),
-    ("/v1/reminders/queue/{op_id}", "POST"),
-    ("/v1/health-data", "GET"),
-    ("/v1/health-data/days", "PUT"),
-    ("/v1/voices", "GET"),
-    ("/v1/voices/uses", "PUT"),
-    ("/v1/agents/{agent_id}/voices", "PUT"),
-    ("/v1/agents/{agent_id}/appearance", "PUT"),
-    ("/v1/live/brief", "GET"),
-    ("/v1/live/calls", ""),
-    ("/v1/live/calls/start", "POST"),
-    ("/v1/voice/escalate", "POST"),
-    ("/v1/favicon/{host}", "GET"),
-    ("/v1/console/pairings/{code}", "POST"),
-    ("/v1/console/devices", "GET"),
-    ("/v1/console/devices/{device}", "DELETE"),
-    ("/v1/search/messages", "GET"),
-    ("/console", "GET"),
-    ("/console/", "GET"),
-    ("/console/api/login", "POST"),
-    ("/console/api/pairing", "POST"),
-    ("/console/api/pairing/wait", "POST"),
-    ("/console/api/me", "GET"),
-    ("/console/api/logout", "POST"),
-    ("/v1/setup", "GET"),
-    ("/v1/setup/claim", "POST"),
-    ("/hermes/{agent}/{path:path}", ""),
-    ("/peer/p/{target}/{path:path}", ""),
-    ("/v1/agent-tools/mcp", "POST"),
-    ("/v1/agent-tools/files", "POST"),
-    ("/family/accept", "POST"),
-    ("/family/agents", "GET"),
-    ("/family/p/{target}/{path:path}", ""),
-    ("/v1/family", "GET"),
-    ("/v1/family/name", "PUT"),
-    ("/v1/family/invite", "POST"),
-    ("/v1/family/join", "POST"),
-    ("/v1/family/{household}", "DELETE"),
-    ("/family/tell", "POST"),
-    ("/v1/family/news", "GET"),
-    ("/v1/family/proposals/{id}/send", "POST"),
-    ("/v1/family/proposals/{id}", "DELETE"),
-    ("/v1/family/received/{id}/seen", "POST"),
-    ("/v1/agents/{agent_id}/desktop", "POST"),
-    ("/v1/agents/{agent_id}/desktop/control", "POST"),
-    ("/v1/agents/{agent_id}/desktop/state", "GET"),
-    ("/v1/agents/{agent_id}/desktop/open", "POST"),
-    ("/desktop/{ticket}/", "GET"),
-    ("/desktop/{ticket}/page/", "GET"),
-];
-
-/// Starlette's path match: `{x}` one non-empty segment, a final `{x:path}` the rest.
-fn template_matches(template: &str, path: &str) -> bool {
-    let mut parts = path.split('/');
-    for segment in template.split('/') {
-        if segment.starts_with('{') && segment.ends_with(":path}") {
-            return true;
-        }
-        match parts.next() {
-            Some(part) if segment.starts_with('{') => {
-                if part.is_empty() {
-                    return false;
-                }
-            }
-            Some(part) if part == segment => {}
-            _ => return false,
-        }
-    }
-    parts.next().is_none()
-}
-
-/// The methods Starlette's 405 lists for `path` (None: no Python route has it).
-fn first_route_methods(path: &str) -> Option<&'static str> {
-    FIRST_ROUTE_METHODS.iter().find(|(template, _)| template_matches(template, path)).map(|(_, methods)| *methods)
 }
 
 /// What `create_app` takes besides the configuration.
@@ -1827,7 +1659,6 @@ fn assemble(state: &AppState, config: &Config) -> Router {
         .merge(Router::new().nest("/v1", open))
         // The agents' Hermes through the bridge: on the LAN door, and for agents in their own space (their gateway
         // listens on a local port only). Hermes checks each agent's own key.
-        .merge(crate::lan::hermes_proxy())
         .merge(crate::peers::peer_router()) // agents' own tokens, checked against the links the person allowed
         .merge(crate::sandbox::router()) // the agents' file tools (shared folders), same tokens
         .merge(crate::card_pay::router()) // the agents' card payment tools, same tokens

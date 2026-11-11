@@ -5,7 +5,7 @@
 //! - `POST /v1/files`: `[limits] upload_max_mb`, by its own middleware (files.rs `upload_size_limit`);
 //! - `PUT /v1/import/archive`: a whole install sent from a computer, streamed to the disk, up to the size it announced
 //!   with its proofs (place_import.rs);
-//! - `/hermes/<agent>/…`: the apps' turns carry their photos inline (64 MB), streamed to the agent's Hermes (lan.rs);
+//! - `/family/relay/answer/…`: a home's answer to a call its place kept for it, a shared file in it (64 MB);
 //! - the imports the app sends in one body (notes, WhatsApp, another assistant: 60 MB base64-encoded) and the health
 //!   days, behind the bridge key.
 //!
@@ -20,8 +20,8 @@ use axum::response::Response;
 
 /// Every route but the ones below.
 pub const DEFAULT_BYTES: u64 = 4 << 20;
-/// The apps' turns with their photos (`/hermes/…`).
-pub const HERMES_BYTES: u64 = 64 << 20;
+/// A home's answer relayed by its place (family_relay.rs).
+pub const RELAY_ANSWER_BYTES: u64 = 64 << 20;
 /// The imports sent in one body: 60 MB of files, base64-encoded in JSON (notes_import.rs, whatsapp_import, assistant_import).
 pub const IMPORT_BYTES: u64 = 96 << 20;
 /// The health days the phone sends (health.rs).
@@ -33,8 +33,8 @@ pub fn limit_for(path: &str) -> Option<u64> {
         return None;
     }
     // a home's answer to a call its place kept for it (family_relay.rs): a shared file can be in it
-    if path.starts_with("/hermes/") || path.starts_with("/family/relay/answer/") {
-        return Some(HERMES_BYTES);
+    if path.starts_with("/family/relay/answer/") {
+        return Some(RELAY_ANSWER_BYTES);
     }
     let import = path.starts_with("/v1/import/whatsapp/")
         || path.starts_with("/v1/assistant-import/")
@@ -104,6 +104,7 @@ mod tests {
         assert_eq!(limit_for("/v1/agents/vie/memory/import"), Some(IMPORT_BYTES));
         assert_eq!(limit_for("/v1/agents/vie/memory"), Some(DEFAULT_BYTES));
         assert_eq!(limit_for("/v1/import/whatsapp/parse"), Some(IMPORT_BYTES));
-        assert_eq!(limit_for("/hermes/vie/v1/runs"), Some(HERMES_BYTES));
+        assert_eq!(limit_for("/family/relay/answer/x"), Some(RELAY_ANSWER_BYTES));
+        assert_eq!(limit_for("/hermes/vie/v1/runs"), Some(DEFAULT_BYTES));
     }
 }

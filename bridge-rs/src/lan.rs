@@ -1,43 +1,20 @@
 //! The local-network door: when Tailscale is down (no Internet at home, the VPN off), the app reaches the bridge
 //! on the LAN, over HTTPS with a self-signed certificate it pins (the SHA-256 of the certificate travels in the pairing
-//! QR code), and Hermes through the bridge under `/hermes/<agent>/…`. Off unless `[lan] enabled = true`.
+//! QR code). Off unless `[lan] enabled = true`.
 //!
 //! Also builds the pairing payload (what the QR code carries) and the LAN details the app refreshes on its own
 //! (`GET /v1/pairing`) so a new IP address needs no new QR code while the tailnet works.
 
 use std::net::{IpAddr, UdpSocket};
 
-use axum::body::{Body, Bytes};
-use axum::extract::{Path, State};
-use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, Uri};
-use axum::response::Response;
-use axum::routing::on;
-use axum::Router;
-use futures::StreamExt;
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 
-use crate::app::AppState;
-use crate::auth::ClientAddr;
 use crate::config::{AgentConfig, Config};
 use crate::py;
-use crate::web::{ApiResult, HttpError};
 
 pub const CERT_NAME: &str = "bridge-lan.pem";
 pub const KEY_NAME: &str = "bridge-lan.key";
-/// Headers that belong to one connection, not to the request being relayed.
-pub const HOP: [&str; 10] = [
-    "connection",
-    "keep-alive",
-    "proxy-authenticate",
-    "proxy-authorization",
-    "te",
-    "trailers",
-    "transfer-encoding",
-    "upgrade",
-    "host",
-    "content-length",
-];
 
 pub fn certificate_paths(config: &Config) -> (String, String) {
     (py::join(&config.lan.cert_dir, CERT_NAME), py::join(&config.lan.cert_dir, KEY_NAME))
@@ -157,255 +134,9 @@ pub fn install_payload(config: &Config) -> Result<Value, String> {
     Ok(Value::Object(payload))
 }
 
-fn is_hop(name: &str) -> bool {
-    HOP.contains(&name.to_ascii_lowercase().as_str())
-}
-
-/// `/hermes/<agent>/<path>` → the agent's Hermes, streamed both ways (SSE included). Hermes checks its own key:
-/// the app sends it as on the tailnet. Mounted at the root.
-pub fn hermes_proxy() -> Router<AppState> {
-    let methods = || {
-        on(axum::routing::MethodFilter::GET, relay)
-            .on(axum::routing::MethodFilter::POST, relay)
-            .on(axum::routing::MethodFilter::PUT, relay)
-            .on(axum::routing::MethodFilter::PATCH, relay)
-            .on(axum::routing::MethodFilter::DELETE, relay)
-    };
-    Router::new()
-        .route("/hermes/{agent}/{*path}", methods())
-        .route("/hermes/{agent}/", methods_empty())
-        .layer(compressed_json())
-}
-
-/// Hermes' JSON answers gzipped for a client that asks for it (every app does: URLSession and OkHttp send
-/// `Accept-Encoding: gzip` and decode it on their own). A long conversation's history is megabytes of plain JSON (its
-/// tools' results) and shrinks about tenfold, which is most of the time it takes to open it on a phone's network. JSON
-/// only: an event stream (a run's, a turn's) is never held back in a compressor's buffer. Hermes itself answers
-/// uncompressed (the client's Accept-Encoding is not passed on).
-fn compressed_json() -> tower_http::compression::CompressionLayer<impl tower_http::compression::Predicate> {
-    use tower_http::compression::predicate::{DefaultPredicate, Predicate};
-    let json = |_: axum::http::StatusCode, _: axum::http::Version, headers: &HeaderMap, _: &axum::http::Extensions| {
-        headers
-            .get(axum::http::header::CONTENT_TYPE)
-            .and_then(|v| v.to_str().ok())
-            .is_some_and(|v| v.trim_start().to_ascii_lowercase().starts_with("application/json"))
-    };
-    tower_http::compression::CompressionLayer::new().gzip(true).compress_when(DefaultPredicate::new().and(json))
-}
-
-fn methods_empty() -> axum::routing::MethodRouter<AppState> {
-    let empty = |state: State<AppState>,
-                 addr: ClientAddr,
-                 Path(agent): Path<String>,
-                 method: Method,
-                 uri: Uri,
-                 headers: HeaderMap,
-                 body: Body| async move {
-        relay(state, addr, Path((agent, String::new())), method, uri, headers, body).await
-    };
-    on(axum::routing::MethodFilter::GET, empty)
-        .on(axum::routing::MethodFilter::POST, empty)
-        .on(axum::routing::MethodFilter::PUT, empty)
-        .on(axum::routing::MethodFilter::PATCH, empty)
-        .on(axum::routing::MethodFilter::DELETE, empty)
-}
-
-async fn relay(
-    State(state): State<AppState>,
-    ClientAddr(address): ClientAddr,
-    Path((agent, path)): Path<(String, String)>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-    body: Body,
-) -> ApiResult<Response> {
-    // the body is not read before these checks, and then streamed to Hermes (body_limit.rs caps it)
-    if state.guard.blocked(address.as_deref()) {
-        return Err(HttpError::new(429, "too many wrong keys, try again later"));
-    }
-    if crate::console::is_console(&state, &headers) {
-        // the web console goes through the bridge's own routes, never to Hermes (it never holds an agent's key)
-        return Err(HttpError::new(403, "not for the console"));
-    }
-    let config = state.config();
-    let allowed = path.starts_with("v1/") || path.starts_with("api/") || path == "health" || path == "v1/capabilities";
-    let target = match config.agent(Some(&agent)) {
-        Some(t) if allowed => t.clone(),
-        _ => return Err(HttpError::new(404, "not found")),
-    };
-    // Just claimed: its gateway restarting, or the agent still being made (cloud_setup.rs). Waited for, not failed.
-    crate::cloud_setup::READINESS.wait(&target.name, crate::cloud_setup::READY_WAIT).await;
-    if method == Method::POST && path == "v1/runs" {
-        // a new agent's first turn, with its tools (agents_admin.rs `tools_loaded`)
-        crate::mcp_sessions::SESSIONS.first_turn(&target.name, crate::mcp_sessions::FIRST_TURN_WAIT).await;
-    }
-    // dict(request.headers): one value per name (the last), hop-by-hop ones dropped. Accept-Encoding is left to
-    // the client here, which decodes the body (httpx does too: content-encoding is not passed on).
-    let mut forwarded: Vec<(HeaderName, HeaderValue)> = Vec::new();
-    for (name, value) in headers.iter() {
-        if is_hop(name.as_str()) || name.as_str() == "accept-encoding" {
-            continue;
-        }
-        forwarded.retain(|(n, _)| n != name);
-        forwarded.push((name.clone(), value.clone()));
-    }
-    // A run's events come from the run hub, which holds the single Hermes subscription (Hermes' event buffer has one
-    // reader) and counts its tools for the brake (loop_brake.rs): the lab and the apps' direct fallbacks follow runs
-    // here. Hermes still checks the key, and says first whether the run is there (its own 404).
-    let events_of = RUN_EVENTS.captures(&path).map(|c| c[1].to_string()).filter(|r| crate::app::RUN_ID.is_match(r));
-    if let (true, Some(run_id)) = (method == Method::GET, events_of) {
-        let check = || {
-            let mut check = state.http.get(format!("{}/v1/runs/{run_id}", target.hermes_url));
-            for (name, value) in forwarded.iter().filter(|(n, _)| !matches!(n.as_str(), "accept" | "content-length")) {
-                check = check.header(name.clone(), value.clone());
-            }
-            check.timeout(std::time::Duration::from_secs(30))
-        };
-        let mut waited = 0;
-        let status = loop {
-            match check().send().await {
-                Ok(r) => {
-                    let status = r.status().as_u16();
-                    // Hermes asking for a moment (its store busy, the profile draining or parked): asked again
-                    match crate::hermes::retry_after(status, r.headers()).filter(|_| waited < CHECK_RETRIES) {
-                        Some(wait) => {
-                            waited += 1;
-                            tokio::time::sleep(std::time::Duration::from_secs_f64(wait.min(CHECK_WAIT_MAX))).await;
-                        }
-                        None => break status,
-                    }
-                }
-                Err(exc) => {
-                    tracing::info!(agent = %target.name, error = crate::hermes::httpx_error_name(&exc), "LAN relay failed");
-                    return Err(HttpError::new(502, "your agent isn't answering right now: try again in a moment"));
-                }
-            }
-        };
-        if status == 401 {
-            state.guard.fail(address.as_deref(), "agent key");
-        }
-        if !(200..300).contains(&status) {
-            return Err(HttpError::new(status, if status == 404 { "run not found" } else { "your agent refused this request" }));
-        }
-        let listener = state.hub.subscribe(&target, &run_id, "app", false);
-        state.hub.keep(&target, &run_id, None);
-        return Ok(crate::app::listener_events(listener));
-    }
-    let starts_run = method == Method::POST && path == "v1/runs";
-    // A run started with the agent's key is read whole, to follow the run it starts;
-    // anything else goes to Hermes as it comes, and Hermes checks the key.
-    let presented = forwarded
-        .iter()
-        .find(|(n, _)| n.as_str() == "authorization")
-        .and_then(|(_, v)| crate::auth::extract_bearer(v.to_str().ok()));
-    let keyed = crate::auth::key_matches(&target.hermes_key, presented.as_deref());
-    let (request_body, body) = if starts_run && keyed {
-        let bytes = axum::body::to_bytes(body, usize::MAX).await.map_err(|e| {
-            if crate::body_limit::is_too_large(&e) {
-                HttpError::new(413, "request body too large")
-            } else {
-                HttpError::new(400, "There was an error parsing the body")
-            }
-        })?;
-        (bytes.clone(), reqwest::Body::from(bytes))
-    } else if axum::body::HttpBody::is_end_stream(&body) {
-        (Bytes::new(), reqwest::Body::from(Bytes::new())) // a GET: no body at all, not an empty chunked one
-    } else {
-        (Bytes::new(), reqwest::Body::wrap_stream(body.into_data_stream()))
-    };
-    let starts_run = starts_run && keyed;
-    let mut url = format!("{}/{}", target.hermes_url, path);
-    if let Some(query) = uri.query().filter(|q| !q.is_empty()) {
-        url.push('?');
-        url.push_str(query);
-    }
-    let mut request = state.http.request(method, &url).body(body);
-    for (name, value) in forwarded {
-        request = request.header(name, value);
-    }
-    // SSE: no read timeout.
-    let upstream = match request.send().await {
-        Ok(r) => r,
-        Err(exc) => {
-            tracing::info!(agent = %target.name, error = crate::hermes::httpx_error_name(&exc), "LAN relay failed");
-            return Err(HttpError::new(502, "your agent isn't answering right now: try again in a moment"));
-        }
-    };
-    if upstream.status().as_u16() == 401 {
-        // a wrong agent key, through the door
-        state.guard.fail(address.as_deref(), "agent key");
-    }
-    let status = upstream.status();
-    let mut response_headers = HeaderMap::new();
-    for (name, value) in upstream.headers().iter() {
-        if is_hop(name.as_str()) || name.as_str() == "content-encoding" {
-            continue;
-        }
-        response_headers.insert(name.clone(), value.clone());
-    }
-    let stream = upstream.bytes_stream().map(|chunk| chunk.map_err(std::io::Error::other));
-    let mut response = Response::new(Body::from_stream(stream));
-    *response.status_mut() = status;
-    *response.headers_mut() = response_headers;
-    if starts_run {
-        if status.is_success() {
-            // the person wrote to the agent: its welcome stays in that conversation only (welcome.rs)
-            let session = serde_json::from_slice::<serde_json::Value>(&request_body)
-                .ok()
-                .and_then(|b| b.get("session_id").and_then(serde_json::Value::as_str).map(str::to_string));
-            crate::welcome::done(&state.config(), &target.name, session.as_deref());
-            crate::welcome::adopt_soon(&state, &target.name); // and that conversation is its one thread
-        }
-        // the run it started followed by the hub whoever looks at it (the brake, loop_brake.rs)
-        return Ok(crate::runs::keep_started(&state.hub, &target, &request_body, response).await);
-    }
-    Ok(response)
-}
-
-/// A run's status asked again at most this many times when Hermes asks for a moment (503 and `Retry-After`) before its
-/// events are followed, at most `CHECK_WAIT_MAX` seconds apart.
-const CHECK_RETRIES: u32 = 2;
-const CHECK_WAIT_MAX: f64 = 5.0;
-
-/// `v1/runs/<id>/events`.
-static RUN_EVENTS: std::sync::LazyLock<regex::Regex> =
-    std::sync::LazyLock::new(|| regex::Regex::new(r"^v1/runs/([^/]+)/events/?\z").expect("valid regex"));
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Hermes' JSON gzipped for a client that asks; never an event stream, never a client that doesn't ask.
-    #[tokio::test]
-    async fn json_is_gzipped_streams_are_not() {
-        use tower::ServiceExt;
-        let big = "x".repeat(4000);
-        let app = Router::new()
-            .route("/json", axum::routing::get(move || async move { axum::Json(json!({"data": big})) }))
-            .route(
-                "/sse",
-                axum::routing::get(|| async {
-                    ([(axum::http::header::CONTENT_TYPE, "text/event-stream")], "data: 1\n\n".repeat(200))
-                }),
-            )
-            .layer(compressed_json());
-        let ask = |path: &str, gzip: bool| {
-            let mut request = axum::http::Request::builder().uri(path);
-            if gzip {
-                request = request.header("accept-encoding", "gzip, deflate, br");
-            }
-            request.body(Body::empty()).unwrap()
-        };
-        let encoding = |r: &Response| r.headers().get("content-encoding").map(|v| v.to_str().unwrap().to_string());
-        let json = app.clone().oneshot(ask("/json", true)).await.unwrap();
-        assert_eq!(encoding(&json).as_deref(), Some("gzip"));
-        let bytes = axum::body::to_bytes(json.into_body(), usize::MAX).await.unwrap();
-        let mut plain = String::new();
-        std::io::Read::read_to_string(&mut flate2::read::GzDecoder::new(&bytes[..]), &mut plain).unwrap();
-        assert!(bytes.len() < 200 && plain.contains(&"x".repeat(4000)));
-        assert_eq!(encoding(&app.clone().oneshot(ask("/json", false)).await.unwrap()), None);
-        assert_eq!(encoding(&app.oneshot(ask("/sse", true)).await.unwrap()), None);
-    }
 
     fn lan_config(dir: &std::path::Path) -> Config {
         let mut config = Config::with_key("k".repeat(40));

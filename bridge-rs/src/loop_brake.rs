@@ -33,10 +33,9 @@
 //!   mistake can't spread everywhere), what it changed, what is left, what happens next; never « the bridge » or a turn.
 //!
 //! Every run the bridge starts or relays is followed by the hub, whoever looks at it (2026-10-27 evening, the token
-//! lab's bench): the app's runs through the bridge's `GET /v1/runs/{id}/events`, but also those started and followed
-//! through the door's Hermes relay (`/hermes/<agent>/v1/runs`, lan.rs: the lab, the apps' direct fallbacks), peers'
-//! messages (peers.rs), Live, rooms, relatives, background tasks. Before, the relay's runs were invisible to the hub:
-//! no stop at all, and their writes counted per agent across conversations (a reminder refused at the first write).
+//! lab's bench): the app's runs through the bridge's `GET /v1/runs/{id}/events`, but also peers' messages (peers.rs),
+//! Live, rooms, relatives, background tasks. Before, relayed runs were invisible to the hub: no stop at all, and their
+//! writes counted per agent across conversations (a reminder refused at the first write).
 //!
 //! Background tasks (jobs.rs, « Tâches de fond »: work with a budget, many calls by design) have their own, higher
 //! limits (`task_*`); they are stopped the same way, the task then ends as stopped. The mail scan (mail_scan.rs) makes

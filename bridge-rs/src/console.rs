@@ -9,7 +9,7 @@
 //! - **Calling the bridge**: the cookie plus an `X-Bip-Console: 1` header (a page from elsewhere cannot send it without the
 //!   browser asking first) stands for the bridge key (`auth.require_bridge_key`).
 //! - **Never Hermes**: conversations go through the bridge's routes (threads, runs, `/v1/approve`, docs/conversations.md
-//!   §6); `/hermes/<agent>/…` refuses a console, and no Hermes key ever reaches the browser (`/v1/agents` leaves them out).
+//!   §6), and no Hermes key ever reaches the browser (`/v1/agents` leaves them out).
 
 use std::path::PathBuf;
 use std::sync::Mutex;
