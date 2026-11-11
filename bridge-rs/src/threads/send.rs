@@ -482,7 +482,7 @@ pub async fn keep_photos(state: &AppState, agent: &AgentConfig, attachments: Vec
 }
 
 /// A photo's bytes from its base64 (a `data:` URL too).
-fn photo_bytes(data: &str) -> Option<Vec<u8>> {
+pub fn photo_bytes(data: &str) -> Option<Vec<u8>> {
     use base64::Engine;
     let b64 = data.strip_prefix("data:").and_then(|d| d.split_once(',')).map(|(_, b)| b).unwrap_or(data);
     let clean: String = b64.chars().filter(|c| !c.is_whitespace()).collect();

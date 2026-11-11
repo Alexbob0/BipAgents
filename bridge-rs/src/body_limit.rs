@@ -6,6 +6,8 @@
 //! - `PUT /v1/import/archive`: a whole install sent from a computer, streamed to the disk, up to the size it announced
 //!   with its proofs (place_import.rs);
 //! - `/family/relay/answer/…`: a home's answer to a call its place kept for it, a shared file in it (64 MB);
+//! - `/family/s/{agent}/conversations/{cid}/files`: a relative's file for her conversation (64 MB here, held to
+//!   `upload_max_mb` by its handler, shared_files.rs);
 //! - the imports the app sends in one body (notes, WhatsApp, another assistant: 60 MB base64-encoded) and the health
 //!   days, behind the bridge key.
 //!
@@ -32,8 +34,9 @@ pub fn limit_for(path: &str) -> Option<u64> {
     if path == crate::files::UPLOAD_PATH || path == "/v1/import/archive" {
         return None;
     }
-    // a home's answer to a call its place kept for it (family_relay.rs): a shared file can be in it
-    if path.starts_with("/family/relay/answer/") {
+    // a home's answer to a call its place kept for it (family_relay.rs): a shared file can be in it; a relative's file
+    // for her conversation with a shared agent (shared_files.rs, its handler holds it to `upload_max_mb`)
+    if path.starts_with("/family/relay/answer/") || crate::shared_files::is_upload_path(path) {
         return Some(RELAY_ANSWER_BYTES);
     }
     let import = path.starts_with("/v1/import/whatsapp/")

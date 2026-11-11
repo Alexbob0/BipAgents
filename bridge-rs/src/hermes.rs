@@ -936,15 +936,16 @@ impl HermesClient {
     /// family's agent, a relative's discussion): Hermes offers it only `tools` and none of its own tools that reach
     /// the person's data or act, and leaves the person's profile (USER.md) out of its prompt (patch 0018,
     /// `guest_turn`). A Hermes without the patch ignores the field: the bridge's own closures still hold.
+    /// `input` as Hermes takes it: a string, or a list of messages (a relative's photos, shared_files.rs).
     pub async fn start_guest_run(
         &self,
         agent: &AgentConfig,
-        text: &str,
+        input: Value,
         session_id: &str,
         instructions: Option<&str>,
         tools: &[String],
     ) -> Result<String, HermesError> {
-        self.start_run_body(agent, Value::String(text.to_string()), session_id, instructions, None, Some(tools)).await
+        self.start_run_body(agent, input, session_id, instructions, None, Some(tools)).await
     }
 
     async fn start_run_body(

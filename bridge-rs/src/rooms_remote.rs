@@ -336,7 +336,7 @@ async fn guest_turn(
     let tools = crate::agent_shares::guest_tools(&crate::agent_shares::RELATIVE_TOOLS);
     let run_id = state
         .hermes
-        .start_guest_run(&agent, &input, &session, Some(&rules), &tools)
+        .start_guest_run(&agent, Value::String(input), &session, Some(&rules), &tools)
         .await
         .map_err(|_| HttpError::new(502, "the agent can't be reached"))?;
     // approvals and questions are pushed to this person and listed in her Boîte, as for any of her agents' runs

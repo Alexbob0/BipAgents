@@ -82,7 +82,7 @@ pub const NOTEBOOK_READ: &str = "family_notebook_read";
 pub const NOTEBOOK_WRITE: &str = "family_notebook_write";
 pub const TOOL_NAMES: [&str; 2] = [NOTEBOOK_READ, NOTEBOOK_WRITE];
 /// The bridge's MCP tools the family's agent may use, in every turn (its creator's too).
-pub const TOOLS: [&str; 8] = [
+pub const TOOLS: [&str; 9] = [
     crate::agent_tools::KNOWLEDGE_READ,
     crate::agent_tools::KNOWLEDGE_SEARCH,
     crate::weather::TOOL_NAME,
@@ -91,6 +91,8 @@ pub const TOOLS: [&str; 8] = [
     NOTEBOOK_READ,
     NOTEBOOK_WRITE,
     crate::give_file::TOOL_NAME,
+    // a file a member sent, read in that member's own turns only (shared_files.rs)
+    crate::shared_files::TOOL_NAME,
 ];
 /// The kinds of tools of an agent's settings that stay off for it.
 pub const CLOSED_SETTINGS: [&str; 4] = crate::agents_admin::DISK_TOOLS;
@@ -228,6 +230,7 @@ pub fn tools(config: &Config) -> Vec<Value> {
         .collect();
     out.push(crate::weather::weather_tool());
     out.extend([read_tool(), write_tool()]);
+    out.push(crate::shared_files::tool());
     out
 }
 
@@ -269,8 +272,9 @@ notebook, archives, files, vault or logins are open to you: don't use the termin
 kindly that it isn't possible if asked. Don't tell {person} what other members said to you in their own \
 conversations; what is plainly the family's (the family Carnet, plans everyone knows) may help. Actions that need \
 approval are asked to {person}, who decides. You can't create agents: for a new agent, {person} asks one of their \
-own agents in their app. Reply with text only. {}",
-        crate::souls::CONTENT_RULE
+own agents in their app. Reply with text only. {} {}",
+        crate::souls::CONTENT_RULE,
+        crate::agent_shares::sent_files_rule(person)
     )
 }
 
