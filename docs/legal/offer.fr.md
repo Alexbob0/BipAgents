@@ -2,7 +2,7 @@
 
 # Conditions générales de vente de l'offre tout compris
 
-> Dernière mise à jour : 10 novembre 2026.
+> Dernière mise à jour : 11 novembre 2026.
 
 ## 1. Objet
 
@@ -95,7 +95,7 @@ Pour chaque personne du forfait :
 
 **Le crédit d'IA du forfait** : 5,00 € (Solo), 9,00 € (Duo) ou 16,00 € (Famille) d'utilisation du modèle d'IA chaque
 mois, partagé par toutes les personnes du forfait, affiché dans l'app en nombre estimé de messages : environ 7 000,
-13 000 ou 24 000 messages par mois avec le modèle par défaut (section 6).
+13 000 ou 24 000 messages par mois avec le modèle de l'offre (section 6).
 
 **Où.** Les serveurs sont loués à OVHcloud d'abord (centres de données dans l'Union européenne), puis à Hetzner
 (Allemagne ou Finlande), puis à OVHcloud pour des serveurs plus petits, selon ce qui est disponible. Ils sont tous
@@ -173,8 +173,8 @@ crédit (tu peux en ajouter, section 6) ; les services que tu relies à tes agen
   l'utilisation du modèle comptée au prix que le fournisseur facture à Kerfy Studio. Sur un Duo ou une Famille, ce
   crédit est **celui de toutes les personnes du forfait** : leurs agents l'utilisent ensemble, sans part fixe pour
   chacun.
-- **En messages** : l'app affiche le crédit en **nombre estimé de messages** avec le modèle choisi. À titre indicatif, avec le
-  modèle par défaut et arrondi vers le bas : **environ 7 000 messages par mois pour Solo, 13 000 pour
+- **En messages** : l'app affiche le crédit en **nombre estimé de messages** avec le modèle de l'offre. À titre indicatif, avec le
+  modèle d'aujourd'hui et arrondi vers le bas : **environ 7 000 messages par mois pour Solo, 13 000 pour
   Duo et 24 000 pour toute la famille**. C'est une estimation, pas une promesse : le coût d'un message dépend de sa
   longueur, des fichiers joints et du modèle. Un message, ici, c'est un échange simple : une **tâche dans le
   navigateur** ou une **tâche de fond** enchaîne de nombreux appels au modèle et compte pour bien plus, souvent
@@ -184,8 +184,8 @@ crédit (tu peux en ajouter, section 6) ; les services que tu relies à tes agen
   coup), avec le même report.
 - **Crédit en plus** : tu peux en acheter dans l'app (Réglages › Offre tout compris › Ajouter du crédit d'IA), en
   deux recharges : **2 € TTC pour 1,40 € de crédit** et **5 € TTC pour 3,50 € de crédit** (la TVA et la commission du
-  magasin d'applications prennent environ 30 %) ; l'app indique pour chacune le nombre estimé de messages avec ton
-  modèle (même estimation que plus haut), et le magasin son prix. Il s'ajoute au crédit du forfait, pour toutes ses personnes. **Il ne périme jamais** :
+  magasin d'applications prennent environ 30 %) ; l'app indique pour chacune le nombre estimé de messages avec le
+  modèle de l'offre (même estimation que plus haut), et le magasin son prix. Il s'ajoute au crédit du forfait, pour toutes ses personnes. **Il ne périme jamais** :
   s'il en reste quand l'abonnement prend fin, il est gardé sur ton compte et revient avec ton prochain abonnement. Il
   n'est perdu que si tu supprimes ton compte.
 - **Crédit du mois utilisé** : les discussions continuent, sur une marge de 20 % du crédit mensuel du forfait,
@@ -201,12 +201,11 @@ crédit (tu peux en ajouter, section 6) ; les services que tu relies à tes agen
   modèle d'IA jusqu'au mois suivant ; le reste du crédit reste aux autres. La personne voit sa limite dans son app.
 - Le crédit n'est pas de l'argent : il ne sert qu'à utiliser le modèle d'IA dans l'offre, ne se transfère pas et ne se
   rembourse pas, sous réserve des droits que la loi te donne (sections 12 et 13).
-- **Le modèle** : tu le choisis dans une liste (GLM-5.3 Flash par défaut, d'autres comme DeepSeek), avec son prix par
-  million de jetons. Un modèle plus cher use le crédit plus vite. La liste peut changer, par exemple quand un
-  fournisseur retire un modèle ou qu'un nouveau arrive ; si le tien n'est plus proposé, l'app te le dit et te propose
-  DeepSeek V4.1 Flash en attendant que tu en choisisses un autre.
+- **Le modèle** : Kerfy Studio le choisit, le même pour toutes les personnes de l'offre (aujourd'hui GLM-5.3 Flash) ;
+  tu ne peux pas en choisir un autre. S'il était retiré, le modèle de remplacement prévu est DeepSeek V4.1 Flash
+  ([politique de confidentialité](privacy.fr.md), section 5.4).
 - Les messages que tes agents envoient au modèle passent par un routeur d'IA, **EUrouter** (Union européenne), puis par
-  le fournisseur qui fait tourner le modèle choisi, pour toutes les personnes de l'offre, où qu'elles vivent. Ils les
+  le fournisseur qui fait tourner le modèle de l'offre, pour toutes les personnes de l'offre, où qu'elles vivent. Ils les
   traitent pour répondre ([politique de confidentialité](privacy.fr.md), section 5.4). **Avant le premier message,
   l'app nomme le routeur et le fabricant du modèle et te demande ton accord.**
 
@@ -290,8 +289,10 @@ crédit (tu peux en ajouter, section 6) ; les services que tu relies à tes agen
 - **Mises à jour** : Kerfy Studio met à jour le logiciel des places (BipAgents, Hermes Agent) par vagues, et peut
   revenir à la version d'avant si une vague se passe mal. Une mise à jour peut remplacer les modifications que tu
   aurais faites, par SSH, aux fichiers installés par BipAgents.
-- **Surveillance technique** : les serveurs envoient à Kerfy Studio seulement des données techniques (mémoire, disque,
-  charge, si le logiciel de chaque place tourne, sa version, l'heure de sa dernière sauvegarde), jamais de contenu.
+- **Surveillance technique** : les serveurs envoient à Kerfy Studio des données techniques (mémoire, disque, charge, si
+  le logiciel de chaque place tourne et s'il est en pleine tâche, sa version, l'heure de sa dernière sauvegarde, ton
+  fuseau horaire) et, les premiers jours d'une place, quelques mesures d'usage ([politique de
+  confidentialité](privacy.fr.md), sections 5.6 et 5.12), jamais de contenu.
 - Garde une copie de ce qui compte pour toi : l'accès SSH te permet de récupérer tes fichiers à tout moment.
 
 ## 10. Usage acceptable

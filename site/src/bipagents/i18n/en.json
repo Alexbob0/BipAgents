@@ -4,7 +4,7 @@
     "name": "English"
   },
   "meta": {
-    "title": "BipAgents — Personal agents that never share your data.",
+    "title": "BipAgents — Personal agents that never sell your data.",
     "description": "Personal AI agents for everyone in the family: private, in your own space in Europe or at home, and cheaper than one seat elsewhere. Built on Hermes Agent."
   },
   "a11y": {
@@ -23,7 +23,7 @@
     "family": "Together"
   },
   "hero": {
-    "slogan": "Personal agents that never share your data.",
+    "slogan": "Personal agents that never sell your data.",
     "sub": "Free for the whole family, or cheaper than a ChatGPT or Claude subscription.",
     "eu": "Servers in the EU, or at home",
     "badge": "Built on Hermes Agent",
@@ -329,7 +329,7 @@
     },
     "11": {
       "q": "Which AI model, and is it any good?",
-      "a": "GLM-5.3 Flash by default. You can pick another one in the app, such as DeepSeek, with its price shown. For everyday tasks (email, calendar, searches, bookings), it comes very close to the top models. A more powerful model uses up your AI credit faster. Before your first message, the app names the router and the model’s maker. On your own computer, you bring the model of your choice."
+      "a": "With the subscription, GLM-5.3 Flash, the same for everyone, picked by Kerfy Studio. For everyday tasks (email, calendar, searches, bookings), it comes very close to the top models. Before your first message, the app names the router and the model’s maker. On your own computer, you bring the model of your choice."
     },
     "all": "All questions →",
     "more": "Another question? Write to us:"
@@ -627,12 +627,12 @@
     "line": "Your Bips live at your place: in your own space, separate from everyone else’s.",
     "where": "A private server in Europe, ready in a minute. Or your own computer.",
     "alt": "Your space: a house where your Bips live, under the European flag.",
-    "r1t": "They ask before paying or sending.",
-    "r1": "A booking, an email, a cancellation: they wait for your yes.",
+    "r1t": "They ask before paying or writing to someone new.",
+    "r1": "A payment, an email to a new address, a message to your family: they wait for your yes.",
     "r2t": "We don’t read over their shoulder.",
     "r2": "Kerfy Studio doesn’t read your space, and trains no AI on it.",
     "r3t": "No ads, no tracking.",
-    "r3": "Not in the app, not on this site: no cookies, no trackers.",
+    "r3": "No cookies or trackers on this site, and no ads in the app.",
     "r4t": "The AI runs in Europe.",
     "r4": "It only receives what your agent sends it, through EUrouter, a European AI router. The model’s makers never receive your messages.",
     "r5t": "Everything is yours.",

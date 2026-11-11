@@ -21,7 +21,7 @@ its test, [`AccountCryptoTest.kt`](../android/app/src/test/java/io/github/bipage
 is a reading of the code, not a capture of network traffic. The agent e-mail address (§1) was added on 2026-10-22 from
 the bridge's interface contract, before the apps' code for it.
 
-## 0. Libraries: no trackers
+## 0. Libraries: no trackers of Kerfy Studio's
 
 - **iOS** (`BipAgents.xcodeproj/.../Package.resolved`, `Packages/*/Package.swift`): one outside package,
   `onnxruntime-swift-package-manager` 1.24.2 (it runs the Bips' voices on the phone). There are no analytics, crash,
@@ -30,7 +30,7 @@ the bridge's interface contract, before the apps' code for it.
 - **Android** (`android/app/build.gradle.kts`, `android/gradle/libs.versions.toml`): AndroidX/Compose, OkHttp,
   kotlinx-serialization, CameraX, Media3, Glance, ZXing, ONNX Runtime, Health Connect client, and these Google
   libraries: Play Billing, Play Asset Delivery, Play Integrity, Play Install Referrer (`installreferrer`, read once,
-  below), Credential Manager + Google ID, ML Kit document scanner
+  below), Credential Manager + Google ID, ML Kit document scanner and text recognition
   (Play services), Play services location (the geofences of reminders by place), the **Google Maps SDK**
   (`maps-compose`: the map cards in replies, drawn only when the build has a Maps key, which release builds have) and **Firebase Cloud Messaging only** (`firebase-messaging`; no Analytics, no Crashlytics, no
   `google-services` plugin).
@@ -117,10 +117,12 @@ their place on the all-included offer. Everything personal goes here, with that 
   Studio address, the place's bridge itself asks the guichet for the mailbox, with the place's backup token; the
   guichet gives the password once to the bridge, which keeps it in the agent's settings: **the phone never sees it**.
   A held mail triggers a notification (`email_held`).
-- **Push registration:** the APNs or Firebase token (or a relay token instead, see §3), with the agents' ids
-  (`/v1/devices`). The notification extension (`NotificationService/NotificationService.swift`) and the Android
-  service (`push/BipMessagingService.kt`) then fetch the reply text, the approval command and the audio from the bridge
-  (`/v1/replies`, `/v1/outbox`, `/v1/approvals`). Notification content does not come through Apple or Google.
+- **Push registration:** the APNs or Firebase token (or a relay token instead, see §3), with the agents' ids and the
+  phone's public notification key (`/v1/devices`). The bridge encrypts the agent's name and the start of its reply for
+  that phone alone (`bridge-rs/src/push_runs/seal.rs`); the notification extension
+  (`NotificationService/NotificationService.swift`) and the Android service (`push/BipMessagingService.kt`) open them
+  on the phone, and fetch the approval command and the audio from the bridge (`/v1/replies`, `/v1/outbox`,
+  `/v1/approvals`). Notification content does not come through Apple or Google in clear.
 - **Speech:** the agents' replies go to the bridge to be spoken (`/v1/tts/*`) when the phone does not speak them
   itself.
 - **Site icons** before links: requested from the bridge (`/v1/favicon/<host>`), which asks DuckDuckGo's icon service
@@ -135,6 +137,10 @@ their place on the all-included offer. Everything personal goes here, with that 
   route is a Google Maps directions link in the reply; the iPhone app opens it as an Apple Maps link
   (`ChatText.appleMaps`), the Android app in Google Maps. With `[maps] google_key` on the bridge, the route's places,
   mode and times go to Google's Routes API for its duration and distance; nothing is kept.
+- **Maps and routes** (`bridge-rs/src/maps.rs`, `map_route.rs`): to draw a map in a reply or a page, the bridge also
+  looks the places up at Nominatim (the names or addresses the agent maps, which can be a home address), fetches the
+  images from OpenStreetMap (`tile.openstreetmap.org`, cached 30 days) and the way by the streets from FOSSGIS
+  (`routing.openstreetmap.de`, the stops' coordinates to 5 decimals). The phone contacts none of these services.
 - **The agent's visible browser** (`App/Features/Agents/DesktopView.swift`): a web view of the bridge's viewer page,
   with no stored website data.
 - **The phone exit** (`docs/phone-exit.md`; Android `phoneexit/`, iOS `App/Features/PhoneExit/`): for a site the person
@@ -284,13 +290,17 @@ Used only when the build sets a relay host (`BIPPushRelayHost` / `push.relayHost
   voice already goes: nowhere with on-device recognition, with the voice to Apple or Google with online dictation.
   The accurate dictation (Parakeet) takes no hints; the phone puts the person's names right in its text afterwards.
 - **Android ML Kit document scanner** (Play services): the scan is done on the phone, and the PDF is attached like any
-  file. Google says ML Kit may send usage and diagnostic data. The app does not change this.
+  file; for a Carnet paper, its text is read on the phone with ML Kit text recognition (`ui/NotebookPapers.kt`). Google
+  says ML Kit may send usage and diagnostic data. The app does not change this.
 - **Android map cards** (`ui/NativeMaps.kt`, `ui/LinkPreviewCard.kt`): the Google Maps SDK draws the places and routes of
   a reply (no « My location »: the person's position is never on these maps). Google's Play disclosure for the SDK:
   device and request metadata, IP address, an SDK identifier, crash stack traces, and map pan/zoom events when the
   camera APIs are used (the app moves the camera to frame the points). The iPhone draws them with MapKit. The maps of
   agents' pages come from the bridge (`/v1/maps/…`, OpenFreeMap behind it); a read-only share's viewer fetches them
-  from OpenFreeMap directly (`readshares/ReadShareMaps.kt`).
+  from OpenFreeMap directly (`readshares/ReadShareMaps.kt`). To place a reply's places, the phone sends their names to
+  Android's `Geocoder` (usually Google's service; `ui/NativeMaps.kt`) or, on iPhone, to Apple Maps (`MKLocalSearch`,
+  `NativeMaps.swift`). A Google Maps link in a reply becomes a map made from the link alone; no other link an agent
+  wrote is opened by the phone (`LinkPreviewCard`).
 - Apple's and Google's own crash and usage reports (shared with developers if the person allowed it in the system
   settings) are a system setting, not code in the app.
 
@@ -321,8 +331,16 @@ The apps play no part in it.
   not fetch them.
 - **Pages the agents make** (`AgentPages.swift`): shown in a locked web view. Every `http(s)`, `ws(s)`, `ftp` and
   `file` load is blocked, along with navigation, pop-ups and stored data.
-- **E-mail to support** (person-initiated): a diagnostic with versions, settings and each agent's state; no
-  conversation, name, address or key (`Support.swift`, `ui/Support.kt`).
+- **E-mail to support** (person-initiated, without the offer): a diagnostic with versions, settings and each agent's
+  state; no conversation, name, address or key (`Support.swift`, `ui/Support.kt`).
+- **Support and feedback with the offer** (`SupportDesk.swift`, `cloud/SupportDesk.kt`): `GET /v1/support/code` (the
+  help code) and `POST /v1/support/message` to the guichet, with the message, the reply address if the person types
+  one, the app's version and language; the guichet adds the help code, the plan and the places' state, and e-mails it
+  to support.
+- **The model that helps Live know when the person has finished speaking** (`VoiceDeciderPackage.swift`, Android
+  `voice/decider/VoiceDeciderPackage.kt`): about 35 MB downloaded from a GitHub release of the public repository, on
+  Wi-Fi, when the app opens or a Live call starts, as long as it is not on the phone. GitHub sees the phone's IP
+  address.
 - **Debug-only test addresses** (a local guichet, local voice packages): the overrides (`guichetURL` on iOS and
   Android, `voicePackagesURL` on Android) are read only in debug builds, so store builds always use
   `guichet.bipagents.com`.

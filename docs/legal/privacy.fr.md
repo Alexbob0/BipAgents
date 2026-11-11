@@ -2,7 +2,7 @@
 
 # Politique de confidentialité de BipAgents
 
-> Dernière mise à jour : 10 novembre 2026.
+> Dernière mise à jour : 11 novembre 2026.
 
 ## En bref
 
@@ -12,12 +12,13 @@
   sur ce serveur et chez le fournisseur de modèle d'IA qui leur répond. **Kerfy Studio, l'éditeur de l'app, ne les lit
   pas.**
 - Pas de publicité, pas de pistage entre apps ou sites. Nous comptons seulement d'où viennent nos abonnés, par campagne
-  et par semaine (section 5.11). Sur Android, les services Google intégrés à l'app (cartes, scanner de documents)
+  et par semaine (section 5.11), et, avec l'offre tout compris, quelques mesures des premiers jours d'une place, sans
+  aucun contenu (section 5.12). Sur Android, les services Google intégrés à l'app (cartes, scanner de documents)
   envoient à Google leurs propres données techniques (section 7). Pas de compte avec ton propre serveur ; un compte pour
   l'offre tout compris.
 - Avec ton propre serveur, Kerfy Studio ne peut recevoir que trois choses :
   1. de quoi acheminer tes **notifications** par son relais : un jeton d'appareil scellé, jamais le texte de tes
-     messages ;
+     messages en clair ;
   2. ce que tu choisis de nous envoyer : un **e-mail** au support, ou le **signalement** d'une réponse depuis l'app ;
   3. des **rapports de plantage**, seulement si tu as activé leur partage dans les réglages de ton téléphone.
 - Avec l'offre tout compris, Kerfy Studio traite aussi ton compte, l'état de ton abonnement, des données techniques
@@ -262,9 +263,10 @@ oublie tout.
 - le jeton d'appareil, la plateforme (Apple ou Google) et l'environnement (test ou production) ;
 - l'**adresse IP** de ton téléphone (à l'inscription) ou de ton serveur (à chaque notification), uniquement pour
   limiter les abus : elle est transformée en empreinte, gardée en mémoire une heure au plus, jamais écrite ;
-- le contenu de la notification, réduit au **nom de l'agent** (le titre), à un **texte générique** comme « Nouveau
-  message » (tout autre texte est remplacé) et à des **identifiants techniques** (agent, conversation, tâche, type de
-  notification). **Jamais le texte de tes messages** : l'app va le chercher elle-même sur ton serveur.
+- le contenu de la notification : un **texte générique** comme « Nouveau message » (tout autre texte est remplacé), des
+  **identifiants techniques** (agent, conversation, tâche, type de notification), le nombre à afficher sur l'icône et,
+  **chiffrés par ton serveur pour ton téléphone seul**, le nom de l'agent et le début de sa réponse. Ni le relais, ni
+  Apple, ni Google ne peuvent les lire.
 
 **Ce qui est conservé.** Le relais n'a pas de base de données. Le jeton scellé est conservé sur ton téléphone et sur
 ton serveur ; avec l'offre tout compris, le guichet de Kerfy Studio le garde aussi, toujours scellé (section 5.6). Les
@@ -289,7 +291,13 @@ l'oublie. Si tu compiles l'app toi-même avec ton propre compte Apple, le relais
 
 ### 4.2 Le support et les signalements
 
-- **Réglages › Contacter le support** prépare un e-mail à support@bipagents.com avec un diagnostic que tu peux lire
+- **Avec l'offre tout compris**, **Réglages › Contacter le support** et **Donner ton avis** envoient ton message depuis
+  l'app, par le guichet de Kerfy Studio (section 5), à la boîte du support. Le guichet y joint ton **code d'aide** (que
+  l'app te montre), ton forfait et son état, l'état de tes places (numéro, serveur, nom sous bipagents.com, reliée ou
+  non à ton téléphone), ta façon de te connecter (Apple, Google ou e-mail), la version et la langue de l'app, et, pour
+  te répondre, l'adresse e-mail que tu donnes, sinon celle de ton compte. **Aucune conversation, aucune clé.** Le
+  guichet garde ton code d'aide tant que dure l'abonnement ; son journal note qu'un message est parti, sans son texte.
+- **Avec ton propre serveur**, **Réglages › Contacter le support** prépare un e-mail à support@bipagents.com avec un diagnostic que tu peux lire
   avant l'envoi : version de l'app, modèle et version du téléphone, langue, style d'affichage, mode démo ou non, état
   des notifications et, pour chaque agent, sa catégorie, s'il répond, s'il a un bridge et une porte sur le réseau
   local, et sa voix. **Aucune conversation, aucun nom d'agent, aucune adresse, aucune clé.** Rien ne part tant que tu
@@ -312,8 +320,9 @@ dans les précisions que ce qui est utile. Nous effaçons ce qui ne sert pas à 
 **Bases légales.** Répondre à tes messages et traiter tes signalements : intérêt légitime de Kerfy Studio à te
 répondre et à rendre l'app plus sûre (article 6.1.f du RGPD). Répondre à une demande d'exercice de tes droits :
 obligation légale (article 6.1.c ; articles 12 à 22 du RGPD).
-**Durée.** Support : 2 ans après le dernier échange. Signalements : 1 an après leur traitement.
-**Destinataires.** Kerfy Studio et ses sous-traitants : son prestataire de messagerie (Proton AG, Suisse) et l'hébergeur du relais, par lequel passent les signalements.
+**Durée.** Support : 2 ans après le dernier échange ; code d'aide (offre) : tant que dure l'abonnement. Signalements :
+1 an après leur traitement.
+**Destinataires.** Kerfy Studio et ses sous-traitants : son prestataire de messagerie (Proton AG, Suisse) et l'hébergeur du relais et du guichet, par lesquels passent les signalements et les messages envoyés depuis l'app.
 
 ### 4.3 Les rapports de plantage
 
@@ -397,7 +406,7 @@ s'arrêtent dès la demande, et tu peux changer d'avis jusque-là), avec ses pla
 loi oblige à garder : comme hébergeur, Kerfy Studio garde à part, et seulement pour répondre aux autorités judiciaires,
 ton adresse e-mail 5 ans et ton identifiant Apple ou Google 1 an après la fin du contrat (loi pour la confiance dans
 l'économie numérique, article 6, II ; décret n° 2021-1362, articles 2, 3 et 8). L'empreinte de ton appareil Android
-(section 5.3) n'est pas reliée à ton compte : elle n'est pas effacée avec lui et reste jusqu'à la fin de ses 24 mois,
+(section 5.3) est gardée à part de ton compte : elle n'est pas effacée avec lui et reste jusqu'à la fin de ses 24 mois,
 pour empêcher d'enchaîner les semaines gratuites. Codes à usage unique : le temps de leur validité. Invitation non
 acceptée : 30 jours ; invitation d'un lien famille : 7 jours, ou jusqu'à la réponse. Partage en lecture : effacé à sa
 date de fin, quand tu l'arrêtes ou avec ton compte.
@@ -422,6 +431,11 @@ responsable de traitement indépendant, selon sa politique de confidentialité (
 Kerfy Studio garde l'adresse e-mail donnée au paiement, les identifiants de client et d'abonnement chez Stripe, le
 forfait et sa période (mois ou année), le pays de facturation et la langue.
 
+**Résilier sur le site sans te connecter** (bouton « Verträge hier kündigen ») : la page demande l'adresse e-mail de
+l'achat et, si tu veux, le numéro de l'abonnement, la date de fin voulue et, pour une résiliation extraordinaire, son
+motif. Le guichet garde cette déclaration, avec sa date et son heure, 3 ans, pour en garder la preuve. Pour limiter les
+essais, il garde aussi l'adresse e-mail tapée, en clair, et une empreinte de l'adresse IP (ci-dessous), 2 jours au plus.
+
 **Ton contrat.** La date de début, celle de l'e-mail de confirmation et, si tu renonces au contrat, la date et l'heure
 de ta rétractation.
 
@@ -443,15 +457,24 @@ Nous ne gardons aucune donnée de ta carte : elle est saisie chez Stripe et ne p
 **Une seule semaine gratuite par appareil.**
 
 - **Sur iPhone**, l'app utilise DeviceCheck d'Apple : Apple garde deux bits par appareil pour Kerfy Studio (« a déjà eu
-  une semaine gratuite »). Kerfy Studio ne reçoit aucun identifiant de l'appareil : l'app lui donne un jeton à usage
+  une semaine gratuite », « a déjà utilisé un code bêta »). Kerfy Studio ne reçoit aucun identifiant de l'appareil : l'app lui donne un jeton à usage
   unique qu'il transmet à Apple.
 - **Sur Android**, l'app envoie un jeton Google Play Integrity (Google confirme que l'app est authentique et tourne sur
   un vrai appareil) et une empreinte de l'identifiant Android de l'appareil, calculée sur le téléphone (SHA-256), puis
   hachée à nouveau par le guichet avec une clé secrète avant d'être enregistrée. Kerfy Studio ne garde que cette
-  seconde empreinte, et seulement pour cette limite.
-- **L'adresse IP** de ton téléphone n'est jamais enregistrée. Pour limiter le nombre de réservations par adresse, le
-  guichet n'en garde qu'une empreinte calculée avec une clé secrète, en mémoire seulement, le temps de la réservation
-  d'une place d'essai (15 minutes au plus) ; elle est perdue au redémarrage.
+  seconde empreinte, seulement pour cette limite et pour celle des codes bêta (ci-dessous).
+- **L'adresse IP** de ton téléphone n'est jamais enregistrée en clair. Pour limiter le nombre de réservations par
+  adresse, le guichet n'en garde qu'une empreinte calculée avec une clé secrète, en mémoire seulement, le temps de la
+  réservation d'une place d'essai (15 minutes au plus) ; elle est perdue au redémarrage. Pour limiter les essais de
+  codes bêta, sur la page de résiliation du site et pour les signalements d'agents partagés comme modèle, il en garde
+  de même une empreinte, jamais l'adresse, 2 jours au plus.
+
+**Les codes bêta.** Un code bêta utilisé devient l'identifiant de ton abonnement bêta, gardé avec ton compte comme tout
+abonnement (ci-dessous), et le journal du guichet note « code utilisé » avec ton compte (12 mois). Un seul code par
+téléphone : sur iPhone, Apple garde pour cela le second bit DeviceCheck ; sur Android, le guichet garde une
+empreinte de l'appareil, à part de ton code et de ton compte, tant que des codes peuvent encore servir. Un code
+jamais utilisé est effacé dès qu'il ne peut plus servir ; un code utilisé, avec son lien à ton compte, quand ta place
+bêta prend fin ou passe à un abonnement payant.
 
 **Finalités et bases légales.** Fournir et gérer ton abonnement, tes places et ton crédit : exécution du contrat
 (article 6.1.b du RGPD). Empêcher qu'une même personne enchaîne les semaines gratuites : intérêt légitime de Kerfy
@@ -464,8 +487,10 @@ intérêt légitime (article 6.1.f) ; factures et pièces comptables, obligation
 **Durée.** Données d'abonnement et d'achat, y compris celles d'un achat sur le site : pendant l'abonnement, puis 5 ans
 en archive, pour la preuve du contrat (article 2224 du Code civil). Factures et pièces de paiement : 10 ans
 (article L123-22 du Code de commerce) ; Stripe garde les factures. Empreinte de l'appareil Android : 24 mois à compter du premier marquage du téléphone (sa
-semaine gratuite, ou le premier abonnement pris depuis lui), sans lien avec ton compte. Adresse IP : jamais enregistrée ; son empreinte, en
-mémoire, 15 minutes au plus. Les bits de DeviceCheck sont gardés par Apple.
+semaine gratuite, ou le premier abonnement pris depuis lui), gardée à part de ton compte. Adresse IP : jamais enregistrée en clair ; son empreinte, en
+mémoire, 15 minutes au plus pour la semaine gratuite, 2 jours au plus pour les autres limites. L'empreinte gardée 2 jours, celle d'un téléphone Android qui a
+utilisé un code bêta et les mesures de chaque place (section 5.12) restent ensuite jusqu'à 30 jours dans les copies
+chiffrées de la base. Les bits de DeviceCheck sont gardés par Apple.
 
 ### 5.4 Ta place et le modèle d'IA
 
@@ -490,7 +515,7 @@ Studio. **Avant le premier message, l'app nomme le routeur et le fabricant du mo
 européenne : ta place refuse de donner tes données de santé à un agent dont le modèle n'est pas marqué comme tel, même
 si le modèle a changé après que tu as activé « Santé » (section 3).
 
-**La mise en veille.** Ta place note elle-même la dernière demande de l'app ; le guichet sait seulement qu'elle dort.
+**La mise en veille.** Ta place note elle-même la dernière demande de l'app ; le guichet sait qu'elle dort (section 5.6).
 
 **Base légale.** Exécution du contrat (article 6.1.b du RGPD).
 **Durée.** Pendant l'abonnement. Quand il prend fin, ta place est gardée 30 jours (3 jours après une semaine gratuite
@@ -522,17 +547,22 @@ réinstallée pour quelqu'un d'autre, l'image qui la contenait est remplacée da
 ### 5.6 La surveillance technique et les pannes
 
 Toutes les deux minutes, chaque serveur envoie au guichet : sa mémoire, son disque et sa charge, et pour chaque place,
-si son bridge répond, si son Hermes Agent tourne ou dort, sa version de BipAgents et l'heure de sa dernière
-sauvegarde réussie. **Jamais de contenu.** Ces données servent à repérer une panne, à déplacer les places, à faire les
-mises à jour par vagues et à prévenir Kerfy Studio.
+si son bridge répond, si son Hermes Agent tourne ou dort, sa version de BipAgents, l'heure de sa dernière
+sauvegarde réussie, la mémoire qu'elle utilise, si une tâche y est en cours, le nombre de ses agents qui ont leur
+propre espace et ton fuseau horaire (l'heure de sa dernière demande de l'app et de sa prochaine routine partent
+aussi, mais le guichet ne les garde pas). **Jamais de contenu.** Ces données servent
+à repérer une panne, à déplacer les places (pendant ta nuit, jamais en pleine tâche), à faire les mises à jour par
+vagues et à prévenir Kerfy Studio.
 
 Quand le serveur de ta place tombe en panne, est déplacé ou revient, tes téléphones sont prévenus par le relais de
 notifications, avec un texte générique : pour cela, le guichet garde les jetons scellés de tes téléphones liés à ta
 place.
 
 **Base légale.** Exécution du contrat (article 6.1.b du RGPD).
-**Durée.** Seules les dernières valeurs sont gardées, remplacées à chaque envoi. Journal des événements (pannes,
-déplacements, mises à jour) : 12 mois. Jetons scellés : tant que
+**Durée.** Les dernières valeurs, remplacées à chaque envoi, sauf la mémoire de chaque place : sa plus haute valeur de
+chaque heure, sur 7 jours (168 valeurs), pour répartir les places entre les serveurs. Journal des événements (pannes,
+déplacements, mises à jour, événements de ton compte et de ton abonnement avec leurs identifiants, jamais de
+contenu) : 12 mois. Jetons scellés : tant que
 l'appareil est relié à ta place.
 
 ### 5.7 Les signalements d'abus et les demandes des autorités
@@ -656,10 +686,26 @@ d'Apple sur ton téléphone sert uniquement à cette mesure d'audience. **Durée
 moins si ton compte ou ton abonnement est effacé avant. **T'y opposer.** Écris à privacy@bipagents.com : nous effaçons
 le tien et n'en enregistrons plus pour ton compte et tes abonnements.
 
+### 5.12 Les mesures des premiers jours d'une place
+
+Pour savoir si les débuts dans l'app se passent bien, ta place compte quelques gestes, **sans aucun contenu** (ni
+message, ni nom, ni agent) : l'heure de ton premier message à l'assistant qui t'aide à tout mettre en place, de la
+première de ses propositions que tu acceptes et de la première routine reçue, le nombre d'équipes proposées,
+acceptées ou refusées et d'agents créés ainsi, et les heures où tu as écrit (arrondies à l'heure). Elle les envoie au guichet avec la surveillance technique (section 5.6).
+Le guichet les garde **par place** (et donc reliées à ton abonnement), sans les heures : seulement si tu as écrit le
+lendemain et une semaine après. Cela vaut pour toutes les places de l'offre (code bêta, semaine gratuite, abonnement
+payé). Avec ton propre serveur, rien de cela ne part.
+
+**Base légale.** Intérêt légitime de Kerfy Studio à améliorer les débuts dans l'app (article 6.1.f du RGPD).
+**Durée.** Par place, pendant ses premiers jours (11 jours au plus après que la place t'a été donnée), puis seulement
+ajoutées aux totaux du jour, où personne n'apparaît, gardés 2 ans. Effacées aussitôt quand la place est réinstallée, retirée ou donnée à quelqu'un
+d'autre.
+
 ## 6. Ce que Kerfy Studio ne fait pas
 
 - Pas de publicité, pas d'identifiant publicitaire, pas de pistage entre apps ou sites. Pas d'outil de statistiques
-  dans l'app : seulement le décompte de nos campagnes (section 5.11). Pas de compte, sauf pour l'offre tout compris.
+  dans l'app : seulement le décompte de nos campagnes (section 5.11) et, avec l'offre, les mesures des premiers jours
+  d'une place (section 5.12). Pas de compte, sauf pour l'offre tout compris.
 - Pas de vente ni de location de données.
 - Pas d'entraînement de modèles d'IA sur tes données par Kerfy Studio.
 - Pas d'accès à ton serveur, au contenu de ta place, à tes conversations ni à tes fichiers.
@@ -689,7 +735,13 @@ est ensuite responsable de ce qu'il en fait.
   Android. Quand une telle carte s'affiche sur Android, Google reçoit des informations sur l'appareil et la requête,
   l'adresse IP, un identifiant propre au SDK, les rapports de plantage du SDK et, quand la carte bouge ou zoome, ces
   événements ; Google indique s'en servir pour faire fonctionner et améliorer ses services. Ces cartes montrent les
-  lieux de la réponse, jamais ta position. Google LLC peut traiter ces données aux États-Unis.
+  lieux de la réponse, jamais ta position. Google LLC peut traiter ces données aux États-Unis. Pour placer les lieux
+  d'une réponse sur ces cartes, ton téléphone envoie leurs noms à Plans d'Apple (iPhone) ou au service de géocodage du
+  téléphone, en général celui de Google (Android). Pour dessiner une carte ou un trajet dans une réponse ou une page,
+  ton serveur (ou ta place) demande aussi les lieux à OpenStreetMap (Nominatim, qui reçoit les noms ou adresses des
+  lieux), les images de la carte à OpenStreetMap (qui reçoit la zone de la carte) et le trajet par les rues à FOSSGIS
+  (Allemagne, qui reçoit les coordonnées des étapes) : ils voient l'adresse de ton serveur, pas celle de ton téléphone
+  ni ton message.
 - **Reconnaissance vocale.** Les notes vocales et le Live utilisent la reconnaissance vocale de ton téléphone. L'app
   demande la reconnaissance sur l'appareil quand ton téléphone la propose pour ta langue. Sinon, Apple ou Google (sur
   Android, le service de reconnaissance du système, souvent celui de Google) traitent l'audio sur leurs serveurs, sous
@@ -699,7 +751,8 @@ est ensuite responsable de ce qu'il en fait.
   répond pas), elle utilise le moteur de synthèse de ton téléphone, selon ses réglages.
 - **Sur Android, la lecture des QR codes** se fait sur le téléphone, avec une bibliothèque intégrée à l'app, sans
   service Google.
-- **Sur Android, le scanner de documents** est une fonction des services Google Play (Google ML Kit). Google indique
+- **Sur Android, le scanner de documents**, et la lecture sur le téléphone du texte d'un papier scanné, sont des
+  fonctions des services Google Play (Google ML Kit). Google indique
   que ML Kit lui envoie des informations sur l'appareil et l'app, des identifiants d'installation et des mesures
   d'usage et de performance, pour le diagnostic et ses statistiques. L'app te le dit et te demande ton accord avant
   la première utilisation du scanner ; sans cet accord, le scanner ne s'ouvre pas, et tu peux toujours joindre une
@@ -707,7 +760,9 @@ est ensuite responsable de ce qu'il en fait.
 - **Apple et Google** pour les notifications (section 4.1).
 - **Tailscale**, si tu l'utilises : une app distincte, avec son propre compte et sa propre politique de
   confidentialité.
-- **Les liens que tu ouvres** (sites cités par tes agents, page de Hermes Agent) s'ouvrent dans ton navigateur.
+- **Les liens que tu ouvres** (sites cités par tes agents, page de Hermes Agent) s'ouvrent dans ton navigateur. Ton
+  téléphone n'ouvre jamais de lui-même un lien écrit par un agent : seul un lien Google Maps devient une petite carte,
+  faite à partir du lien lui-même, comme les cartes des réponses (ci-dessus).
 
 ## 8. La démo
 
@@ -722,6 +777,10 @@ Les voix des Bips sont synthétisées **sur ton téléphone** quand il le permet
 depuis l'App Store ou Google Play, et ton serveur (ou ta place) lui envoie le texte à lire, préparé. Sinon, elles sont
 synthétisées sur ton serveur ou sur ta place. Si tu branches ton propre modèle de voix, c'est un serveur que tu fais
 tourner toi-même. Kerfy Studio ne reçoit rien de ce que lisent les voix.
+
+Le petit modèle qui aide le Live à savoir quand tu as fini de parler (environ 35 Mo) est téléchargé par ton téléphone,
+en Wi-Fi, depuis GitHub (GitHub, Inc., filiale de Microsoft), tant qu'il n'est pas sur le téléphone : GitHub voit
+l'adresse IP de ton téléphone, rien d'autre.
 
 ## 10. Liens partenaires (hébergement, plus tard)
 
@@ -775,6 +834,10 @@ contractuelles, et régime juridique du pays de destination) et ne fait le trans
 protection adéquate (article 17 de la Loi sur la protection des renseignements personnels dans le secteur privé). Tu
 peux nous demander un résumé de cette évaluation.
 
+Le modèle du Live est téléchargé depuis GitHub (GitHub, Inc., États-Unis), certifiée au « EU-U.S. Data Privacy
+Framework » (section 9). Les images des cartes et Nominatim sont servis par la Fondation OpenStreetMap, au Royaume-Uni,
+pays que la Commission européenne reconnaît comme offrant une protection adéquate (section 7).
+
 Prestataire de messagerie, qui envoie aussi les e-mails du guichet (codes, avis de sécurité, invitations,
 confirmations, avis de suppression) : Proton AG, en Suisse, pays que la Commission européenne reconnaît comme offrant
 une protection adéquate (décision 2000/518/CE, maintenue par l'article 45, paragraphe 9, du RGPD). Hébergeur du
@@ -794,6 +857,7 @@ l'Union. Tu peux nous demander une copie des garanties applicables.
 | Adresse IP au relais | En mémoire, une heure au plus, sous forme d'empreinte |
 | Journaux techniques du relais | 6 mois au plus |
 | E-mails de support | 2 ans après le dernier échange |
+| Code d'aide (offre tout compris) | Tant que dure l'abonnement |
 | Signalements | 1 an après leur traitement |
 | Rapports de plantage | 1 an après réception (côté Kerfy Studio) |
 | Compte de l'offre (identifiants, e-mail, appareils, invitations, crédit gardé) | Tant que le compte existe ; effacé 30 jours après une demande de suppression |
@@ -802,18 +866,25 @@ l'Union. Tu peux nous demander une copie des garanties applicables.
 | Abonnement et achats | Pendant l'abonnement, puis 5 ans en archive |
 | Achat sur le site (adresse e-mail donnée au paiement, identifiants Stripe, forfait et période, pays de facturation, langue) | Pendant l'abonnement, puis 5 ans en archive |
 | Factures et pièces de paiement d'un achat sur le site | 10 ans (article L123-22 du Code de commerce) ; factures gardées par Stripe |
-| Empreinte de l'appareil Android, hachée avec une clé secrète (semaine gratuite) | 24 mois après le premier marquage du téléphone ; pas effacée avec le compte, auquel elle n'est pas reliée |
+| Code bêta jamais utilisé | Jusqu'à ce qu'il ne puisse plus servir |
+| Code bêta utilisé et son lien à ton compte | Jusqu'à la fin de ta place bêta ou son passage à un abonnement payant |
+| Empreinte d'un téléphone Android qui a utilisé un code bêta (gardée à part du code et du compte) | Tant que des codes bêta peuvent encore servir ; puis jusqu'à 30 jours dans les copies chiffrées de la base |
+| Empreinte de l'appareil Android, hachée avec une clé secrète (semaine gratuite) | 24 mois après le premier marquage du téléphone ; gardée à part du compte, pas effacée avec lui |
 | Invitation d'un lien famille | 7 jours, ou jusqu'à la réponse |
 | Partage en lecture (copie chiffrée, personnes invitées) | Jusqu'à sa date de fin, son arrêt ou l'effacement du compte |
 | Nom de campagne (section 5.11) | 13 mois après son enregistrement, ou avec le compte ou l'abonnement |
-| Adresse IP à la réservation d'une semaine gratuite | Jamais enregistrée ; en mémoire, sous forme d'empreinte, 15 minutes au plus |
+| Adresse IP à la réservation d'une semaine gratuite | Jamais enregistrée en clair ; en mémoire, sous forme d'empreinte, 15 minutes au plus |
+| Empreinte de l'adresse IP (codes bêta, page de résiliation du site, signalements d'agents partagés) | 2 jours au plus ; jusqu'à 30 jours dans les copies chiffrées de la base |
+| Résiliation sur le site : la déclaration (e-mail, numéro, motif, date de fin, date et heure) | 3 ans |
+| Résiliation sur le site : l'adresse e-mail tapée, pour limiter les essais | 2 jours au plus |
 | Contenu de ta place | Pendant l'abonnement, puis 30 jours (3 jours après une semaine gratuite non poursuivie) |
 | Sauvegardes | 2 heures (toutes), puis 48 heures (horaires), 21 jours (quotidiennes), rien au-delà ; effacées avec la place ; ce que tu effaces en est parti sous 30 jours, toutes copies comprises |
 | Fichiers de sauvegarde qu'une place efface, mis de côté par le guichet | 5 jours |
 | Versions remplacées ou effacées chez Scaleway (sauvegardes des places, copies chiffrées de la base du guichet) | 1 jour |
 | Image quotidienne d'OVHcloud | Un point par jour, remplacé dans la journée environ après la réinstallation de la place |
-| Données techniques des serveurs | Dernières valeurs seulement |
-| Journal des événements du guichet | 12 mois |
+| Données techniques des serveurs | Dernières valeurs ; mémoire de chaque place, heure par heure : 7 jours |
+| Mesures des premiers jours d'une place (section 5.12) | Par place, 11 jours au plus, puis jusqu'à 30 jours dans les copies chiffrées de la base ; totaux par jour, sans personne : 2 ans |
+| Journal des événements du guichet (dont « code bêta utilisé », avec ton compte) | 12 mois |
 | Métadonnées chez EUrouter | Jusqu'à 12 mois, selon EUrouter |
 | E-mails de tes agents (offre tout compris) | 90 jours par e-mail (durée qui peut être raccourcie) ; la boîte entière d'un coup quand tu supprimes l'adresse ou l'agent, quand la place est effacée ou quand le compte est effacé |
 | Journaux de sécurité du serveur de messagerie des agents | 30 jours |
@@ -849,7 +920,7 @@ portabilité, et donner des directives sur le sort de tes données après ton d�
 
 **Droit d'opposition.** Tu peux t'opposer à tout moment, pour des raisons tenant à ta situation particulière, aux
 traitements fondés sur notre intérêt légitime (limitation des abus, e-mails, signalements, rapports de plantage,
-limite des semaines gratuites, mesure de nos campagnes).
+limite des semaines gratuites, mesure de nos campagnes, mesures des premiers jours d'une place).
 
 **Retirer ton consentement.** Pour Santé, Calendrier, Contacts, Rappels, la localisation des rappels par lieu et le
 scanner de documents d'Android, tu retires ton accord quand tu veux, aussi simplement que tu l'as donné : désactive

@@ -4,7 +4,7 @@
     "name": "Español"
   },
   "meta": {
-    "title": "BipAgents — Agentes personales que nunca comparten tus datos.",
+    "title": "BipAgents — Agentes personales que nunca venden tus datos.",
     "description": "Agentes de IA personales para toda la familia: privados, en tu propio espacio en Europa o en casa, y más baratos que una sola plaza en otro sitio. Construido sobre Hermes Agent."
   },
   "a11y": {
@@ -23,7 +23,7 @@
     "family": "Juntos"
   },
   "hero": {
-    "slogan": "Agentes personales que nunca comparten tus datos.",
+    "slogan": "Agentes personales que nunca venden tus datos.",
     "sub": "Gratis para toda la familia, o más barato que una suscripción a ChatGPT o Claude.",
     "eu": "Servidores en la UE, o en tu casa",
     "badge": "Construido sobre Hermes Agent",
@@ -329,7 +329,7 @@
     },
     "11": {
       "q": "¿Qué modelo de IA, y es bueno?",
-      "a": "GLM-5.3 Flash por defecto. Puedes elegir otro en la app, como DeepSeek, con su precio a la vista. Para las tareas de cada día (correo, agenda, búsquedas, reservas), se acerca mucho a los mejores modelos. Un modelo más potente gasta tu crédito de IA más rápido. Antes de tu primer mensaje, la app te nombra el enrutador y la empresa del modelo. En tu propio ordenador, usas el modelo que elijas."
+      "a": "Con la suscripción, GLM-5.3 Flash, el mismo para todos, elegido por Kerfy Studio. Para las tareas de cada día (correo, agenda, búsquedas, reservas), se acerca mucho a los mejores modelos. Antes de tu primer mensaje, la app te nombra el enrutador y la empresa del modelo. En tu propio ordenador, usas el modelo que elijas."
     },
     "all": "Todas las preguntas →",
     "more": "¿Otra pregunta? Escríbenos:"
@@ -627,12 +627,12 @@
     "line": "Tus Bips viven en tu casa: en tu propio espacio, separado del de los demás.",
     "where": "Un servidor privado en Europa, listo en un minuto. O tu propio ordenador.",
     "alt": "Tu espacio: una casa donde viven tus Bips, bajo la bandera europea.",
-    "r1t": "Preguntan antes de pagar o enviar.",
-    "r1": "Una reserva, un correo, una baja: esperan a que digas que sí.",
+    "r1t": "Preguntan antes de pagar o de escribir a alguien nuevo.",
+    "r1": "Un pago, un correo a una dirección nueva, un mensaje a tu familia: esperan a que digas que sí.",
     "r2t": "No leemos por encima de su hombro.",
     "r2": "Kerfy Studio no lee tu espacio ni entrena ninguna IA con él.",
     "r3t": "Sin publicidad, sin rastreo.",
-    "r3": "Ni en la app ni en este sitio: ninguna cookie, ningún rastreador.",
+    "r3": "Ninguna cookie ni rastreador en este sitio, y ninguna publicidad en la app.",
     "r4t": "La IA funciona en Europa.",
     "r4": "Solo recibe lo que tu agente le envía, a través de EUrouter, un enrutador de IA europeo. Los fabricantes del modelo nunca reciben tus mensajes.",
     "r5t": "Todo es tuyo.",

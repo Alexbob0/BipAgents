@@ -4,7 +4,7 @@
     "name": "Deutsch"
   },
   "meta": {
-    "title": "BipAgents — Persönliche Agenten, die deine Daten nie weitergeben.",
+    "title": "BipAgents — Persönliche Agenten, die deine Daten nie verkaufen.",
     "description": "Persönliche KI-Agenten für die ganze Familie: privat, in deinem eigenen Bereich in Europa oder bei dir zu Hause, und günstiger als ein einziger Platz anderswo. Gebaut auf Hermes Agent."
   },
   "a11y": {
@@ -23,7 +23,7 @@
     "family": "Zusammen"
   },
   "hero": {
-    "slogan": "Persönliche Agenten, die deine Daten nie weitergeben.",
+    "slogan": "Persönliche Agenten, die deine Daten nie verkaufen.",
     "sub": "Kostenlos für die ganze Familie, oder günstiger als ein ChatGPT- oder Claude-Abo.",
     "eu": "Server in der EU oder bei dir zu Hause",
     "badge": "Gebaut auf Hermes Agent",
@@ -329,7 +329,7 @@
     },
     "11": {
       "q": "Welches KI-Modell, und ist es gut?",
-      "a": "Standardmäßig GLM-5.3 Flash. In der App kannst du ein anderes wählen, etwa DeepSeek, mit angezeigtem Preis. Für Alltagsaufgaben (Mails, Kalender, Recherchen, Reservierungen) kommt es den besten Modellen sehr nahe. Ein stärkeres Modell verbraucht dein KI-Guthaben schneller. Vor deiner ersten Nachricht nennt dir die App den Router und den Anbieter des Modells. Auf deinem eigenen Computer bringst du das Modell deiner Wahl mit."
+      "a": "Mit dem Abo GLM-5.3 Flash, dasselbe für alle, von Kerfy Studio gewählt. Für Alltagsaufgaben (Mails, Kalender, Recherchen, Reservierungen) kommt es den besten Modellen sehr nahe. Vor deiner ersten Nachricht nennt dir die App den Router und den Anbieter des Modells. Auf deinem eigenen Computer bringst du das Modell deiner Wahl mit."
     },
     "all": "Alle Fragen →",
     "more": "Noch eine Frage? Schreib uns:"
@@ -627,12 +627,12 @@
     "line": "Deine Bips wohnen bei dir: in deinem eigenen Bereich, getrennt von dem der anderen.",
     "where": "Ein privater Server in Europa, in einer Minute bereit. Oder dein eigener Computer.",
     "alt": "Dein Bereich: ein Haus, in dem deine Bips wohnen, unter der Europaflagge.",
-    "r1t": "Sie fragen, bevor sie zahlen oder senden.",
-    "r1": "Eine Reservierung, eine Mail, eine Kündigung: Sie warten auf dein Ja.",
+    "r1t": "Sie fragen, bevor sie zahlen oder jemand Neuem schreiben.",
+    "r1": "Eine Zahlung, eine Mail an eine neue Adresse, eine Nachricht an deine Familie: Sie warten auf dein Ja.",
     "r2t": "Wir lesen ihnen nicht über die Schulter.",
     "r2": "Kerfy Studio liest deinen Bereich nicht und trainiert keine KI damit.",
     "r3t": "Keine Werbung, kein Tracking.",
-    "r3": "Weder in der App noch auf dieser Website: keine Cookies, keine Tracker.",
+    "r3": "Keine Cookies und keine Tracker auf dieser Website, keine Werbung in der App.",
     "r4t": "Die KI läuft in Europa.",
     "r4": "Sie erhält nur, was dein Agent ihr schickt, über EUrouter, einen europäischen KI-Router. Die Hersteller des Modells erhalten deine Nachrichten nie.",
     "r5t": "Alles gehört dir.",
