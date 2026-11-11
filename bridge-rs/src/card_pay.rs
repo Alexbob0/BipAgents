@@ -512,6 +512,44 @@ fn watch(state: AppState, agent: String, payment: String) {
     });
 }
 
+/// How a payment that holds the browser ends, whatever way `pay` (or `pay_with_values`) is left (security check
+/// 11/11, N3): the card typed and the agent told (`typed`), its page is watched until it moves on (`watch`); any other
+/// way out (an error after the hold was set, the call's task aborted when Hermes closed its stream, a panic) gives the
+/// browser back at once, under the agent's lock, its fields emptied and the page left (`release`). A payment already
+/// given back (`give_up`) is not given back again.
+struct Ending {
+    state: AppState,
+    agent: String,
+    payment: String,
+    typed: bool,
+}
+
+impl Ending {
+    fn new(state: &AppState, agent: &str, payment: &str) -> Ending {
+        Ending { state: state.clone(), agent: agent.to_string(), payment: payment.to_string(), typed: false }
+    }
+}
+
+impl Drop for Ending {
+    fn drop(&mut self) {
+        let Ok(runtime) = tokio::runtime::Handle::try_current() else { return };
+        let _inside = runtime.enter();
+        let (state, agent, payment) =
+            (self.state.clone(), std::mem::take(&mut self.agent), std::mem::take(&mut self.payment));
+        if self.typed {
+            watch(state, agent, payment);
+            return;
+        }
+        tokio::spawn(async move {
+            let _one_at_a_time = lock_of(&agent).lock_owned().await;
+            if held().get(&agent).is_some_and(|e| e.payment == payment) {
+                tracing::warn!(agent = %agent, "card payment: ended before its answer, browser given back");
+                release(&state.config(), &agent, "failed").await;
+            }
+        });
+    }
+}
+
 /// Every payment stopped: those asked are refused, the held browsers given back (« Suspendre tous les paiements »).
 /// A payment still reloading its page or typing is asked to stop first, then given back once it has (its lock).
 pub async fn stop_all(config: &Config) {
@@ -848,6 +886,7 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
     // The hold's time limit counts from the hold, not from the question (the person may take minutes to answer).
     entry.since = Instant::now();
     held().insert(agent.name.clone(), entry.clone());
+    let mut ending = Ending::new(state, &agent.name, &entry.payment);
     let (agent_name, token) = (agent.name.as_str(), entry.token.as_str());
     let still = || still_ours(agent_name, token);
     let (mut page, fields) = match fresh_page(&config, &agent.name, &entry, &still).await {
@@ -874,7 +913,7 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
     crate::vault_contacts::note_mark(state, &agent.name, PAY, &crate::vault_contacts::mark(&card.id, &card.label));
     journal(&config, &entry, &agent.name, "typed");
     tracing::info!(agent = %agent.name, site = %host, fields = %filled.join(","), "card payment: card typed");
-    watch(state.clone(), agent.name.clone(), entry.payment.clone());
+    ending.typed = true; // watched from here until the page moves on (`Ending`)
     let mut answer = format!(
         "The person approved {} {currency} on {host}. The card « {} » is typed into the page ({}). Your browser is \
          paused until the payment ends (nobody may read the card). If the total you read before was {} {currency}, \
@@ -1273,6 +1312,7 @@ pub(crate) async fn pay_with_values(
         );
     }
     held().insert(agent.name.clone(), entry.clone());
+    let mut ending = Ending::new(state, &agent.name, &entry.payment);
     journal(&config, &entry, &agent.name, "approved");
     let (agent_name, token) = (agent.name.as_str(), entry.token.as_str());
     let still = || still_ours(agent_name, token);
@@ -1296,7 +1336,7 @@ pub(crate) async fn pay_with_values(
     };
     journal(&config, &entry, &agent.name, "typed");
     tracing::info!(agent = %agent.name, site = %host, fields = %filled.join(","), "one-time card typed");
-    watch(state.clone(), agent.name.clone(), entry.payment.clone());
+    ending.typed = true; // watched from here until the page moves on (`Ending`)
     text(&format!(
         "The one-time card « {label} » is typed into the page ({}). Your browser is paused until the payment ends \
          (nobody may read the card). If the total on the page is still {} {currency}, call confirm_payment with the \
@@ -1512,7 +1552,8 @@ pub async fn serve(
     }
 }
 
-/// Stops the payment's tool when its client goes away (a payment approved then is still given back by the watch).
+/// Stops the payment's tool when its client goes away (a payment holding the browser then is still given back, by
+/// its `Ending`).
 struct AbortOnDrop(tokio::task::AbortHandle);
 
 impl Drop for AbortOnDrop {

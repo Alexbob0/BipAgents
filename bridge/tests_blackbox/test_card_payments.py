@@ -64,6 +64,9 @@ class FakeChrome:
         self.reload_delay = 0   # seconds Page.reload takes to answer
         self.reloading = False  # a Page.reload was asked (before its answer)
         self.focus_trap = False  # something of the page keeps the keyboard's focus: DOM.focus moves nothing
+        self.slow = None        # a step held up once (8 s): "reload", "detect" (the card form, after it), "type"
+        self.slowed = False     # that step was reached
+        self.button = "payer 12,50 €"   # the pay button found (None: none)
         self.split = False      # after a reload, the provider's expiry and code appear one look after its number
         self.looks = 0          # the provider frame's card fields looked for since the last reload
         self.others = []        # other tabs (their target ids)
@@ -113,11 +116,24 @@ class FakeChrome:
             if method == "Page.reload":
                 self.reloading = True
                 await asyncio.sleep(self.reload_delay)
+            if self._held_up(method, params):
+                self.slowed = True
+                await asyncio.sleep(8)   # under the bridge's 10 s for one call
             try:
                 result = self._answer(method, params, session)
                 await ws.send(json.dumps({"id": message["id"], "result": result, **({"sessionId": session} if session else {})}))
             except LookupError as exc:
                 await ws.send(json.dumps({"id": message["id"], "error": {"code": -32000, "message": str(exc)}}))
+
+    def _held_up(self, method, params):
+        if self.slowed or not self.slow:
+            return False
+        if self.slow == "reload":
+            return method == "Page.reload"
+        if self.slow == "detect":
+            return (method == "Runtime.evaluate" and "__bipPay.detect" in params.get("expression", "")
+                    and self.reloads > 0)
+        return method == "Input.insertText" and len(self.typed) == 2   # the name and the number typed
 
     def _events(self, method, session):
         if method == "Target.setAutoAttach" and session == "S-page":
@@ -241,7 +257,7 @@ class FakeChrome:
                 self.values[(frame, first)] = ""
                 value = True
             elif name == "findButton":
-                value = "payer 12,50 €"
+                value = self.button
             elif name == "clickButton":
                 self.clicks.append(self.url)
                 self.url = self.after_click
@@ -923,3 +939,57 @@ def test_a_payments_hold_left_in_a_browser_that_cannot_be_reached_restarts_it(br
     entries = [(e["cmd"], e["argv"]) for e in bridge.commands.all() if e["cmd"] in ("podman", "systemctl")]
     restart = entries.index(("systemctl", ["--user", "restart", "bipagents-browser-vie"]))
     assert [i for i, (cmd, argv) in enumerate(entries) if cmd == "podman" and lifted(argv[-1])][0] > restart
+
+
+# -- pay_with_card left before its answer (security check 11/11, N3) ---------------------------------------------------
+
+def pay_and_leave(bridge, chrome):
+    """pay_with_card as Hermes calls it, the stream closed (the run stopped, Hermes restarted) once the fake browser
+    is held up at its slow step (`chrome.slow`): the call's task is aborted there."""
+    body = {"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {"name": "pay_with_card", "arguments": ARGS}}
+    headers = {"Authorization": f"Bearer {TOKEN}", "Accept": "application/json, text/event-stream"}
+    with httpx.Client(timeout=90) as client, client.stream("POST", bridge.url + PAY, json=body, headers=headers) as resp:
+        for line in resp.iter_lines():
+            if not line.startswith("data: "):
+                continue
+            message = json.loads(line[6:])
+            if message.get("method") == "elicitation/create":
+                payment = re.search(r"Card payment (pay_[0-9a-f]{12}):", message["params"]["message"]).group(1)
+                sent = bridge.post(f"/v1/vault/payments/{payment}/approve", headers=AUTH, json={"code": CODE})
+                assert sent.status_code == 204, sent.text
+                answer = {"jsonrpc": "2.0", "id": message["id"], "result": {"action": "accept", "content": {}}}
+                assert client.post(bridge.url + PAY, json=answer, headers=headers).status_code == 202
+                assert wait_until(lambda: chrome.slowed, timeout=60), "the slow step was never reached"
+                return   # the stream closed here
+            if message.get("id") == 7:
+                raise AssertionError(f"answered before the slow step: {message}")
+
+
+@pytest.mark.parametrize("step", ["reload", "detect", "type"])
+def test_a_payment_left_at_any_step_after_its_hold_is_given_back_once(bridges, fakes, step):
+    # `watch`, the only way back for a typed card, started after the typing and after recording the payment: a call
+    # aborted (Hermes closed its stream) or failing in between left a held entry nobody watched, the card typed.
+    chrome = FakeChrome()
+    try:
+        bridge = pay_bridge(bridges, fakes, chrome)
+        turn_on(bridge)
+        bridge.post("/v1/vault", headers=AUTH, json=CARD)
+        chrome.slow = step
+        pay_and_leave(bridge, chrome)
+        assert wait_until(lambda: any(lifted(c[-1]) for c in bridge.commands.of("podman")), timeout=40)
+        time.sleep(10)   # the step held up has answered meanwhile: nothing more happens
+        podman = [c[-1] for c in bridge.commands.of("podman")]
+        assert sum(map(lifted, podman)) == 1
+        assert bridge.get("/v1/vault/payments", headers=AUTH).json()["active"] == []
+        outcomes = [e["outcome"] for e in bridge.get("/v1/vault/payments", headers=AUTH).json()["journal"]]
+        assert outcomes.count("failed") == 1 and "typed" not in outcomes, outcomes
+        assert "ended before its answer" in bridge.log_path.read_text()
+        if step == "type":
+            # Typing began: the document the card went into is gone (empty page), and out of the tab's history.
+            assert ("F-psp", "number", NUMBER) in chrome.typed and len(chrome.typed) <= 3
+            assert chrome.navigated == ["about:blank"] and chrome.resets == ["about:blank"]
+        else:
+            assert chrome.typed == [] and chrome.navigated == []
+        assert bridge.get("/v1/vault", headers=AUTH).json()["items"][0]["card"]["spent"] == {}
+    finally:
+        chrome.stop()
