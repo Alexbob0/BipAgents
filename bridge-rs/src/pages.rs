@@ -26,17 +26,24 @@ pub const MAX_PAGES: usize = 100;
 /// One door for the interactive maps (map_tiles.rs, 2026-10-23): `bipmap:` (the iPhone's web view serves it) and
 /// `https://bipmap.invalid` (Android's web view answers it before any network: `.invalid` never resolves anywhere
 /// else), for the map library the apps ship and the files the bridge keeps for it; MapLibre's worker is a blob. Outside
-/// the apps neither answers and the page keeps the map's picture.
+/// the apps neither answers and the page keeps the map's picture. No WebRTC (security audit of 11/11, IO-1 / AN-2): a
+/// peer connection to a STUN/TURN server is no fetch, `connect-src` doesn't cover it; `webrtc 'block'` stops it in
+/// Chromium (Android's web view), WebKit ignores it (the iPhone takes the constructors away itself).
 pub const POLICY: &str =
     "default-src 'none'; script-src 'unsafe-inline' bipmap: https://bipmap.invalid; style-src 'unsafe-inline'; \
 img-src data: blob:; font-src data:; media-src data: blob:; connect-src bipmap: https://bipmap.invalid; \
-form-action 'none'; base-uri 'none'; frame-src 'none'; worker-src blob:; child-src blob:; object-src 'none'";
+form-action 'none'; base-uri 'none'; frame-src 'none'; worker-src blob:; child-src blob:; object-src 'none'; \
+webrtc 'block'";
+/// No DNS look-up ahead of time for the names a page mentions (`<link rel=dns-prefetch>`, links): a name can carry data
+/// and no CSP directive covers it. Sent as a header with the pages served over HTTP, and as a `<meta>` in the page
+/// (the apps load it from a string, without headers).
+pub const DNS_PREFETCH: (&str, &str) = ("x-dns-prefetch-control", "off");
 
 /// What goes first in every page's head.
 pub static HEAD: LazyLock<String> = LazyLock::new(|| {
     format!(
-        "<meta http-equiv=\"Content-Security-Policy\" content=\"{POLICY}\"><meta charset=\"utf-8\">\
-<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta name=\"color-scheme\" content=\"light dark\">"
+        "<meta http-equiv=\"Content-Security-Policy\" content=\"{POLICY}\"><meta http-equiv=\"x-dns-prefetch-control\" \
+content=\"off\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta name=\"color-scheme\" content=\"light dark\">"
     )
 });
 /// A page id (Python's `re.match` with `$`: a final newline passes too).

@@ -914,6 +914,7 @@ async fn get_media(State(state): State<AppState>, q: QueryMap, headers: HeaderMa
         // A page an agent made (or an .html file from its sandbox): never a document of this origin, even opened by
         // hand; kept by the app but asked again each time (its ETag: a new version shows, the same one is a 304).
         extra.push(("content-security-policy", format!("sandbox allow-scripts; {}", crate::pages::POLICY)));
+        extra.push((crate::pages::DNS_PREFETCH.0, crate::pages::DNS_PREFETCH.1.into()));
         extra.push(("cache-control", "no-cache".into()));
     } else if crate::media::is_document(&host) {
         extra.push(("content-security-policy", "sandbox; default-src 'none'".into()));
