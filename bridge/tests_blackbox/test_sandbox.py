@@ -420,7 +420,7 @@ def test_a_send_cut_asks_the_person_once_and_autoriser_validates_the_site(bridge
     assert wait_until(lambda: len(site_cards(bridge, "vie")) == 1, timeout=10)
     assert wait_until(lambda: not reports.exists(), timeout=5)
     card = site_cards(bridge, "vie")[0]
-    assert card["bip_site"] == "upload.example.net" and card["choices"] == ["always", "deny"]
+    assert card["bip_site"] == "upload.example.net" and card["choices"] == ["always", "deny", "deny_always"]
     # in the agent's language (here the place's, English: 2026-11-02, API readers got French whatever the language)
     assert card["description"] == "Vie wants to send data to upload.example.net (about 2 MB)"
     assert card["bip_site_kind"] == "send" and card["bip_site_send_bytes"] == 2 * 1024 * 1024
@@ -469,6 +469,8 @@ def test_a_send_cut_asks_the_person_once_and_autoriser_validates_the_site(bridge
     # The app's list: the registries always validated, the sites with their date, one added by hand, one removed.
     view = bridge.get("/v1/agents/vie/sandbox/sites", headers=AUTH).json()
     assert "pypi.org" in view["registries"] and view["effective"] is True and view["why"] is None
+    # the refusal listed for the person (« Refuser »: 24 hours)
+    assert [(r["host"], r["always"]) for r in view["refused"]] == [("api.meteo.fr", False)]
     assert bridge.post("/v1/agents/vie/sandbox/sites", json={"host": "*.ouraring.com"}, headers=AUTH).status_code == 200
     for bad in ("localhost", "*.com", "192.168.1.1", "nas.local"):
         assert bridge.post("/v1/agents/vie/sandbox/sites", json={"host": bad}, headers=AUTH).status_code == 422, bad

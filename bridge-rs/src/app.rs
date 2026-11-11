@@ -1092,7 +1092,11 @@ async fn bridge_card(
     // a card of the bridge's own (a site for the agent's programs, sandbox_sites.rs), answered here
     if let Some(id) = run_id.strip_prefix(crate::sandbox_sites::RUN_PREFIX) {
         let decision = crate::sandbox_sites::decision_of_choice(&body.choice);
-        let choice = if decision == crate::sandbox_sites::Decision::DenyAll { "deny" } else { "always" };
+        let choice = match decision {
+            crate::sandbox_sites::Decision::DenyAll => "deny",
+            crate::sandbox_sites::Decision::Always(_) => "deny_always",
+            _ => "always",
+        };
         return Ok(Some(match crate::sandbox_sites::answer(&state.config(), &agent.name, id, decision, "notification")
             .map_err(anyhow::Error::from)?
         {
