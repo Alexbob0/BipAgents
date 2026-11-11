@@ -443,11 +443,19 @@ pub async fn end_payment_hold(config: &Config, agent: &str, person: bool) -> boo
     if !has_ports(config, agent) {
         return false;
     }
-    let token = crate::py::token_hex(16);
-    let token_file = folder(config, agent).join(HOLD_TOKEN);
-    if crate::py::write_with_mode(&token_file.to_string_lossy(), token.as_bytes(), 0o600).is_err() {
-        tracing::warn!(agent = %agent, "browser hold token not kept");
-    }
+    // A token already kept (a take-over meeting this end, fix review 11/11, 3rd check, P5) is the one used: the page
+    // view and the flag never disagree.
+    let token = match hold_token(config, agent) {
+        Some(kept) => kept,
+        None => {
+            let token = crate::py::token_hex(16);
+            let token_file = folder(config, agent).join(HOLD_TOKEN);
+            if crate::py::write_with_mode(&token_file.to_string_lossy(), token.as_bytes(), 0o600).is_err() {
+                tracing::warn!(agent = %agent, "browser hold token not kept");
+            }
+            token
+        }
+    };
     let command = payment_to_person_command(&token);
     let code = (host.exec)(vec![engine, "exec".into(), container(agent), "sh".into(), "-c".into(), command]).await;
     if code != 0 {
@@ -548,10 +556,12 @@ pub async fn stale_payment_hold(config: &Config, agent: &str, token: &str) -> bo
 }
 
 /// The agent's browser container started again (`--rm`: Chrome, its pages and the hold's flag go with the old one).
-pub async fn restart(config: &Config, agent: &str) {
+/// Whether it was.
+pub async fn restart(config: &Config, agent: &str) -> bool {
     let host = Host::real(config);
     let code = (host.exec)(vec!["systemctl".into(), "--user".into(), "restart".into(), container(agent)]).await;
     tracing::info!(agent = %agent, code = code, "browser restarted");
+    code == 0
 }
 
 /// The command that turns a payment's hold into the person's (`end_payment_hold`): only a « card » flag changes.
