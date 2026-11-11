@@ -998,7 +998,10 @@ async fn prepare_profile(
         )
         .await?;
     }
-    run(strings(&[&hermes, "-p", &profile, "config", "set", "API_SERVER_KEY", "--", &agent.hermes_key]), env.clone()).await?;
+    // Its key straight into the profile's `.env` (0600, atomic), where `hermes config set` would put it: never on a
+    // command line, which every account of a shared server reads in /proc (audit 11/11, BV-6).
+    std::fs::create_dir_all(&folder)?;
+    crate::cloud_setup::set_env(&folder.join(".env"), "API_SERVER_KEY", &agent.hermes_key)?;
     // The family's agent (family_agent.rs): never anything that reads the place's disk or drives a browser with
     // someone's logins, sandboxed or not.
     // A project agent (project_agent.rs) the same: shown to friends, it reaches nobody's files.
@@ -1289,13 +1292,13 @@ pub async fn claim_profile(
     }
     check_room(&config)?;
     let install = &config.hermes;
-    let env = hermes_env(&config);
     let folder = PathBuf::from(install_home(&config)).join("profiles").join(name);
     let key = match profile_key(&folder) {
         Some(key) if !key.is_empty() => key,
         _ => {
             let key = crate::py::token_urlsafe(32);
-            run(strings(&[&install.bin, "-p", name, "config", "set", "API_SERVER_KEY", "--", &key]), env.clone()).await?;
+            // In its `.env`, never on a command line (see prepare_profile).
+            crate::cloud_setup::set_env(&folder.join(".env"), "API_SERVER_KEY", &key)?;
             key
         }
     };

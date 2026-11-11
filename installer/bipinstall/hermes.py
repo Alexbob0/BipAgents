@@ -194,6 +194,25 @@ def _config(runner: Runner, profile: str, key: str, value: str) -> None:
     runner.run(args)
 
 
+def write_env(runner: Runner, profile: str, key: str, value: str) -> None:
+    """A secret `KEY=value` in the profile's .env, where `hermes config set KEY value` puts it, but never on a command
+    line: every account of a shared server reads the others' in /proc (audit 11/11, BV-6). Created 0600, then moved
+    over the old file: never readable by others, even for a moment."""
+    path = profile_dir(profile) / ".env"
+    runner.log.append(f"write {path}: {key}")   # never the value
+    if runner.dry:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    lines = [line for line in lines if line.split("=", 1)[0].strip().removeprefix("export ").strip() != key]
+    tmp = path.with_name(".env.bip-tmp")
+    tmp.unlink(missing_ok=True)
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines + [f"{key}={value}"]) + "\n")
+    os.replace(tmp, path)
+
+
 # A local server reads a prompt it has not cached at ~1–2k tokens/s, and Hermes compresses at half of the window it
 # detects (a million tokens for some models): a discussion grows to 185k tokens and a lost cache costs two minutes.
 # Compress at this size instead. After a compaction the prompt is back to ~60k (system prompt, summary, recent turns).
@@ -213,7 +232,7 @@ def set_model(runner: Runner, profile: str, model: Model) -> None:
     if model.provider in ("custom",) and model.api_key:
         _config(runner, profile, "model.key_env", model.key_env or "CUSTOM_MODEL_API_KEY")
     if model.api_key and model.key_env:
-        _config(runner, profile, model.key_env, model.api_key)   # UPPER_SNAKE: written to the profile's .env
+        write_env(runner, profile, model.key_env, model.api_key)   # in the profile's .env, not on a command line
     _config(runner, profile, "model.supports_vision", "true" if model.vision else "false")
     if model.base_url and is_local(model.base_url):
         _config(runner, profile, "compression.threshold_tokens", str(LOCAL_COMPRESSION_TOKENS))
@@ -312,7 +331,7 @@ def setup_hub(runner: Runner, port: int, model: Model, sandbox: Optional[str] = 
     _config(runner, HUB_PROFILE, "API_SERVER_ENABLED", "true")
     _config(runner, HUB_PROFILE, "API_SERVER_HOST", "127.0.0.1")
     _config(runner, HUB_PROFILE, "API_SERVER_PORT", str(port))
-    _config(runner, HUB_PROFILE, "API_SERVER_KEY", key)
+    write_env(runner, HUB_PROFILE, "API_SERVER_KEY", key)
     _config(runner, HUB_PROFILE, "gateway.multiplex_profiles", "true")
     from .detect import local_timezone
     timezone = local_timezone()
@@ -330,7 +349,7 @@ def create_agent(runner: Runner, name: str, *, description: str, soul: str, mode
         runner.run([hermes_bin(), "profile", "create", name, "--clone-from", HUB_PROFILE, "--no-alias",
                     "--description", description])
     key = new_key()
-    _config(runner, name, "API_SERVER_KEY", key)       # its own key; only the hub enables the api_server
+    write_env(runner, name, "API_SERVER_KEY", key)       # its own key; only the hub enables the api_server
     set_model(runner, name, model)
     if not runner.dry:
         folder = profile_dir(name)
