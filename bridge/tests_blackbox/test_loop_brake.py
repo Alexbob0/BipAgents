@@ -408,7 +408,7 @@ def test_a_turn_nobody_follows_gets_no_rescue_turn(bridges, fakes):
                "session_id": opened.json()["session"]["id"]}
     sent = bridge.post("/peer/p/maison/v1/runs", headers=peer, json=message)
     assert sent.status_code == 202, sent.text
-    assert wait_until(lambda: fakes.hermes.seen("/v1/runs/r1/stop", "POST"))
+    assert wait_until(lambda: fakes.hermes.seen("/p/maison/v1/runs/r1/stop", "POST"))
     assert wait_until(lambda: bridge.logged("going round in circles: run stopped"))
     assert list(fakes.hermes.started) == ["r1"], "no rescue turn started"
 
