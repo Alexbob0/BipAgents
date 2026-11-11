@@ -63,7 +63,7 @@ def test_an_agents_routine_starts_with_the_persons_oui_to_its_card(bridges, fake
     assert "It is not running" in text_of(made)
     # listed, not silent, OFF before any answer: nothing runs, not even through the agent
     job = jobs(bridge)["Archive du soir"]
-    assert (job["state"], job["muted"], job["next_run_at"]) == ("paused", False, None), job
+    assert (job["state"], job["muted"], job["next_run_at"], job["waits_for_answer"]) == ("paused", False, None, True), job
     assert call(bridge, "routine_schedule", {"action": "run", "name": "Archive du soir"})["isError"]
     assert call(bridge, "routine_schedule", {"action": "resume", "name": "Archive du soir"})["isError"]
     assert jobs(bridge)["Archive du soir"]["state"] == "paused" and len(routine_cards(bridge)) == 1
@@ -80,7 +80,7 @@ def test_an_agents_routine_starts_with_the_persons_oui_to_its_card(bridges, fake
     ok = bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": card["run_id"], "choice": "once"})
     assert ok.status_code == 200 and ok.json()["muted"] is False, ok.text
     job = jobs(bridge)["Archive du soir"]
-    assert (job["muted"], job["state"]) == (False, "scheduled") and job["next_run_at"], job
+    assert (job["muted"], job["state"], job["waits_for_answer"]) == (False, "scheduled", False) and job["next_run_at"], job
     assert not routine_cards(bridge)
     assert bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": card["run_id"],
                                                           "choice": "once"}).status_code == 404

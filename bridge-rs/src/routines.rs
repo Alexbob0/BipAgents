@@ -18,7 +18,7 @@
 //! (Alex 11/11, below); an agent's change is a proposal with a card of its own. The apps make them with these routes
 //! (the bridge key), in Hermes' job shape so their models stay; their form asks whether it is silent (`muted`):
 //!
-//!     GET    /v1/agents/{agent}/routines          {jobs}
+//!     GET    /v1/agents/{agent}/routines          {jobs}  (each `waits_for_answer`: its start or a proposal waits)
 //!     POST   /v1/agents/{agent}/routines          {name, schedule, prompt, muted?}  -> {job}   (no muted: not silent)
 //!     PATCH  /v1/routines/{id}                    {name?, schedule?, prompt?, muted?} -> {job}
 //!     DELETE /v1/routines/{id}
@@ -408,7 +408,10 @@ pub fn view(r: &Routine, zone: Tz) -> Value {
            "last_status": if r.last_status.is_empty() { Value::Null } else { json!(r.last_status) },
            "origin_session_id": if r.origin.is_empty() { Value::Null } else { json!(r.origin) },
            "last_session_id": if r.last_session.is_empty() { Value::Null } else { json!(r.last_session) },
-           "repeat": r.repeat, "skills": r.skills, "deliver": "local"})
+           "repeat": r.repeat, "skills": r.skills, "deliver": "local",
+           // a card waits for the person: its start (made by its agent) or its agent's proposal (S6, for the apps'
+           // routines list and page; current app builds ignore it)
+           "waits_for_answer": r.awaits_start || r.change.is_some()})
 }
 
 // -- making and changing ------------------------------------------------------------------------------------------------
@@ -1919,7 +1922,7 @@ Pour la relancer tout de suite : « Lancer maintenant » sur sa page."
         // listed, not silent, OFF before the answer (Alex 11/11): the clock never runs it
         let r = list(&config, Some("vie")).pop().unwrap();
         assert!(!r.enabled && r.next_run.is_none() && !due(&r, f64::MAX) && !r.muted && r.asks() && r.origin == "api_c");
-        assert!(r.awaits_start && view(&r, Tz::UTC)["state"] == "paused");
+        assert!(r.awaits_start && view(&r, Tz::UTC)["state"] == "paused" && view(&r, Tz::UTC)["waits_for_answer"] == true);
         // nor by the agent, run or resume: both refused
         let run = call(&config, "vie", &args(json!({"action": "run", "name": "Archive du soir"})), None);
         assert!(run.run.is_none() && run.result.get("isError") == Some(&json!(true)));
@@ -1932,6 +1935,7 @@ Pour la relancer tout de suite : « Lancer maintenant » sur sa page."
         assert!(get(&config, &r.id).unwrap().asks());
         let on = answer(&config, "vie", &pushed, "once").unwrap();
         assert!(on.enabled && on.next_run.is_some() && on.muted && !on.asks() && !on.awaits_start);
+        assert_eq!(view(&on, Tz::UTC)["waits_for_answer"], false);
         // then the agent pauses it (a Boîte line), resumes it only with the person's OK (PI-6), runs it
         let paused = call(&config, "vie", &args(json!({"action": "pause", "name": "Archive du soir"})), None);
         assert_eq!(paused.notice.as_ref().map(|(r, d)| (r.id.as_str(), *d)), Some((on.id.as_str(), Done::Paused)));
@@ -2144,6 +2148,7 @@ Pour la relancer tout de suite : « Lancer maintenant » sur sa page."
         assert_eq!((r.prompt.as_str(), &r.schedule), ("Résume mes e-mails.", &mine.schedule));
         assert!(note(&r).starts_with("Résume mes e-mails.\n") && !note(&r).contains("ailleurs"));
         assert_eq!((view(&r, Tz::UTC)["prompt"].as_str(), view(&r, Tz::UTC)["state"].as_str()), (Some("Résume mes e-mails."), Some("scheduled")));
+        assert_eq!(view(&r, Tz::UTC)["waits_for_answer"], true);
         // the agent's `run`: the approved words
         let run = call(&config, "vie", &args(json!({"action": "run", "name": "Point du matin"})), None);
         assert_eq!(run.run.as_deref(), Some(mine.id.as_str()));
