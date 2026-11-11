@@ -143,9 +143,11 @@ jobs:
           MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
         run: |
           sha256sum bipbridge-*.tar.gz > SHA256SUMS
+          # Unsigned, nothing is published: installs refuse a release without SHA256SUMS.minisig, and a published one
+          # isn't built again; while it is missing, new installs take the version before and updates keep their own.
           if [ -z "$MINISIGN_SECRET_KEY" ]; then
-            echo "::warning::No MINISIGN_SECRET_KEY secret: SHA256SUMS published unsigned (installs with a pinned release key refuse it)."
-            exit 0
+            echo "::error::No MINISIGN_SECRET_KEY secret: not published (installs refuse an unsigned release). Set it, then re-run this job."
+            exit 1
           fi
           sudo apt-get update -q >/dev/null && sudo apt-get install -y -q minisign >/dev/null
           umask 077
@@ -158,8 +160,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          signature=; [ -f SHA256SUMS.minisig ] && signature=SHA256SUMS.minisig
-          gh release create "bridge-${{ needs.key.outputs.key }}" bipbridge-*.tar.gz SHA256SUMS $signature \
+          gh release create "bridge-${{ needs.key.outputs.key }}" bipbridge-*.tar.gz SHA256SUMS SHA256SUMS.minisig \
             -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
             --title "Bridge ${{ needs.key.outputs.key }}" \
             --notes "The bridge in Rust, built from ${GITHUB_SHA::12} (${GITHUB_REF_NAME}). Installs of this version fetch it by themselves (\`bipagents update\`, \`bipagents bridge rust\` again)."
