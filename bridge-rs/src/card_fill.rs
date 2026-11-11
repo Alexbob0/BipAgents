@@ -10,6 +10,13 @@
 //! text typed (`Input.insertText`, as a person typing: the providers' own formatting runs), else set the way a
 //! framework sees it; a select (the expiry's month and year) gets its option. Nothing is clicked: the agent presses
 //! « Pay » itself once the card is in.
+//!
+//! The card is never typed into the document the agent prepared (security audit 2026-11-11, BV-1): an agent misled by
+//! a page could have run script in it before asking (a listener copying what is typed, fields of its own found first).
+//! Under the payment's hold, `fresh` closes every other tab, removes the site's service workers and reloads the page
+//! from the network; the fields are looked for in that new document only, and only in frames of the page's own site,
+//! of the card's sites or of a known payment provider (`Frames`). After the payment the tab is left on an empty page
+//! (`blank`) unless the page moved on to a new document by itself.
 
 use std::collections::VecDeque;
 use std::time::Duration;
@@ -25,6 +32,78 @@ const ATTACH_WAIT: Duration = Duration::from_millis(300);
 const MAX_SESSIONS: usize = 30;
 /// What the relay looks for while a payment holds the browser.
 pub const HOLD_HEADER: &str = "x-bip-card";
+/// How often a page being reloaded or left is looked at.
+const POLL: Duration = Duration::from_millis(200);
+
+/// The payment providers whose frames hold a card form inside a shop's page (hosted fields: Stripe Elements, Adyen,
+/// Checkout.com Frames, Mollie, PayPlug, Braintree, PayPal, Square, Shopify, Lyra/PayZen/SystemPay, Stancer,
+/// Worldline, Recurly, Chargebee): a frame on one of these sites (or below one) may get the card. Any other frame of
+/// another site than the page's own and the card's is left alone; a page whose card form is only there ends as a
+/// hand-over to the person (card_pay.rs).
+pub const PROVIDERS: &[&str] = &[
+    "js.stripe.com",
+    "adyen.com",
+    "checkout.com",
+    "mollie.com",
+    "payplug.com",
+    "braintreegateway.com",
+    "paypal.com",
+    "squarecdn.com",
+    "squareup.com",
+    "pci.shopifyinc.com",
+    "lyra.com",
+    "payzen.eu",
+    "systempay.fr",
+    "stancer.com",
+    "worldline-solutions.com",
+    "recurly.com",
+    "chargebee.com",
+];
+
+/// Which frames' fields a card may be typed into: the page's own site (its host, a subdomain of it, `www.` aside),
+/// one of the card's sites (none: no more than the page's own), a known payment provider (`PROVIDERS`). Only https
+/// frames (or a test page on this machine), never one without a web address (about:blank, data:, blob:).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Frames {
+    top: String,
+    sites: Vec<String>,
+}
+
+fn at_or_below(host: &str, site: &str) -> bool {
+    !site.is_empty() && (host == site || host.ends_with(&format!(".{site}")))
+}
+
+impl Frames {
+    /// The rule for the page at `top_url` and a card for `sites`.
+    pub fn new(top_url: &str, sites: &[String]) -> Frames {
+        let top = origin_of(top_url).map(|(_, host)| host).unwrap_or_default();
+        let sites = sites.iter().map(|s| s.trim().trim_end_matches('.').to_lowercase()).filter(|s| !s.is_empty());
+        Frames { top, sites: sites.collect() }
+    }
+
+    pub fn allows(&self, frame_url: &str) -> bool {
+        let Some((scheme, host)) = origin_of(frame_url) else { return false };
+        if !secure(&scheme, &host) {
+            return false;
+        }
+        let own = self.top.strip_prefix("www.").unwrap_or(&self.top);
+        at_or_below(&host, own)
+            || self.sites.iter().any(|s| at_or_below(&host, s))
+            || PROVIDERS.iter().any(|p| at_or_below(&host, p))
+    }
+}
+
+/// One field of each kind, from the frames `rule` allows (all of them when None): the first found, the page's own
+/// before a frame's.
+pub fn pick(found: &[Field], rule: Option<&Frames>) -> Vec<Field> {
+    let mut out: Vec<Field> = Vec::new();
+    for field in found.iter().filter(|f| rule.is_none_or(|r| r.allows(&f.frame_url))) {
+        if !out.iter().any(|f| f.kind == field.kind) {
+            out.push(field.clone());
+        }
+    }
+    out
+}
 
 type Ws = tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 type WsMessage = tokio_tungstenite::tungstenite::Message;
@@ -111,6 +190,9 @@ pub struct Cdp {
     ws: Ws,
     next: u64,
     events: VecDeque<Value>,
+    /// While the bridge reloads or leaves the payment page: a page's « leave this page? » is answered yes (a person
+    /// who reloads would answer it too), so it can't hold the reload or the blank page up.
+    leave: bool,
 }
 
 impl Cdp {
@@ -153,7 +235,29 @@ impl Cdp {
             .await
             .map_err(|_| FillError::Unreachable)?
             .map_err(|_| FillError::Unreachable)?;
-        Ok(Cdp { ws, next: 0, events: VecDeque::new() })
+        Ok(Cdp { ws, next: 0, events: VecDeque::new(), leave: false })
+    }
+
+    /// An event read while waiting: a « leave this page? » answered when `leave`, everything else kept for `frames`.
+    async fn note(&mut self, event: Value) -> Result<(), FillError> {
+        let method = event.get("method").and_then(Value::as_str).unwrap_or("");
+        if method == "Page.javascriptDialogOpening" {
+            let kind = event.get("params").and_then(|p| p.get("type")).and_then(Value::as_str);
+            if self.leave && kind == Some("beforeunload") {
+                self.next += 1;
+                let mut answer =
+                    json!({"id": self.next, "method": "Page.handleJavaScriptDialog", "params": {"accept": true}});
+                if let Some(session) = event.get("sessionId") {
+                    answer["sessionId"] = session.clone();
+                }
+                self.ws.send(WsMessage::text(answer.to_string())).await.map_err(|_| FillError::Unreachable)?;
+            }
+            return Ok(());
+        }
+        if method.starts_with("Target.") {
+            self.events.push_back(event);
+        }
+        Ok(())
     }
 
     async fn read_one(&mut self, deadline: tokio::time::Instant) -> Result<Option<Value>, FillError> {
@@ -196,7 +300,7 @@ impl Cdp {
                 return Ok(answer.get("result").cloned().unwrap_or(json!({})));
             }
             if answer.get("method").is_some() {
-                self.events.push_back(answer);
+                self.note(answer).await?;
             }
         }
     }
@@ -206,7 +310,7 @@ impl Cdp {
         let deadline = tokio::time::Instant::now() + wait;
         while let Some(event) = self.read_one(deadline).await? {
             if event.get("method").is_some() {
-                self.events.push_back(event);
+                self.note(event).await?;
             }
         }
         Ok(())
@@ -233,6 +337,8 @@ impl Cdp {
 pub struct Page {
     pub cdp: Cdp,
     pub session: String,
+    /// The tab's target id (the same across reloads and navigations).
+    pub target: String,
 }
 
 fn frames_of(tree: &Value, out: &mut Vec<(String, String)>) {
@@ -270,13 +376,13 @@ impl Page {
                     .collect()
             })
             .unwrap_or_default();
-        let mut chosen: Option<String> = None;
+        let mut chosen: Option<(String, String)> = None;
         for target in &pages {
             let attached =
                 cdp.call("Target.attachToTarget", json!({"targetId": target, "flatten": true}), None).await?;
             let session = attached.get("sessionId").and_then(Value::as_str).unwrap_or("").to_string();
             if pages.len() == 1 {
-                chosen = Some(session);
+                chosen = Some((session, target.clone()));
                 break;
             }
             let visible = cdp
@@ -289,13 +395,138 @@ impl Page {
                 .ok()
                 .and_then(|r| r.get("result").and_then(|r| r.get("value")).and_then(Value::as_str).map(str::to_string));
             if chosen.is_none() && visible.as_deref() == Some("visible") {
-                chosen = Some(session);
+                chosen = Some((session, target.clone()));
             } else {
                 let _ = cdp.call("Target.detachFromTarget", json!({"sessionId": session}), None).await;
             }
         }
-        let session = chosen.ok_or(FillError::NoPage)?;
-        Ok(Page { cdp, session })
+        let (session, target) = chosen.ok_or(FillError::NoPage)?;
+        Ok(Page { cdp, session, target })
+    }
+
+    /// The tab `target` (the one a card was typed into), whatever it shows now; `NoPage` when it is closed.
+    pub async fn attach(port: u16, hold: Option<&str>, target: &str) -> Result<Page, FillError> {
+        let mut cdp = Cdp::connect(port, hold).await?;
+        let attached = cdp
+            .call("Target.attachToTarget", json!({"targetId": target, "flatten": true}), None)
+            .await
+            .map_err(|_| FillError::NoPage)?;
+        let session = attached.get("sessionId").and_then(Value::as_str).unwrap_or("").to_string();
+        if session.is_empty() {
+            return Err(FillError::NoPage);
+        }
+        Ok(Page { cdp, session, target: target.to_string() })
+    }
+
+    /// The main frame's document: its loader id changes with each new document (a reload, a navigation), not when a
+    /// one-page site only changes its address.
+    pub async fn loader(&mut self) -> Result<String, FillError> {
+        let session = self.session.clone();
+        let tree = self.cdp.call("Page.getFrameTree", json!({}), Some(&session)).await?;
+        Ok(tree
+            .get("frameTree")
+            .and_then(|t| t.get("frame"))
+            .and_then(|f| f.get("loaderId"))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string())
+    }
+
+    /// A document the agent never touched, for the payment (only under the payment's hold, card_pay.rs). Every other
+    /// tab is closed first (an opener, a popup or a sibling of the same site could reach into the reloaded page and
+    /// plant its script again), the site's service workers are removed (one registered from the agent's script could
+    /// answer the reload, or the payment's own request, with what it likes), then the page is reloaded bypassing the
+    /// cache and its new document waited for (`wait` at most). Its address once loaded.
+    ///
+    /// Nothing of the agent's runs in it: scripts are per document, so what the agent ran in the old one is gone; the
+    /// agent's tools can't register a script for every new document (the browser's MCP server runs without its
+    /// cdp-functions and dynamic-hooks sections, browser/mcp.sh), and what a DevTools connection registered dies with
+    /// it (the relay closed them all when the hold started); its tool calls wait (hold_gate.py), and card_pay.rs waits
+    /// for those already running before calling this.
+    pub async fn fresh(&mut self, wait: Duration) -> Result<String, FillError> {
+        for other in self.other_tabs().await? {
+            let _ = self.cdp.call("Target.closeTarget", json!({"targetId": other}), None).await;
+        }
+        let mut tries = 0;
+        while !self.other_tabs().await?.is_empty() {
+            tries += 1;
+            if tries > 15 {
+                return Err(protocol("another tab would not close"));
+            }
+            self.cdp.drain(POLL).await?;
+        }
+        let url = self.url().await?;
+        let origin = url::Url::parse(&url).map(|u| u.origin().ascii_serialization()).map_err(|_| protocol("no origin"))?;
+        let session = self.session.clone();
+        let clear = json!({"origin": origin, "storageTypes": "service_workers"});
+        self.cdp.call("Storage.clearDataForOrigin", clear, Some(&session)).await?;
+        self.cdp.leave = true;
+        self.cdp.call("Page.enable", json!({}), Some(&session)).await?;
+        let before = self.loader().await?;
+        self.cdp.call("Page.reload", json!({"ignoreCache": true}), Some(&session)).await?;
+        let deadline = tokio::time::Instant::now() + wait;
+        loop {
+            if self.loader().await.is_ok_and(|now| now != before) {
+                let state = self
+                    .cdp
+                    .call(
+                        "Runtime.evaluate",
+                        json!({"expression": "document.readyState", "returnByValue": true}),
+                        Some(&session),
+                    )
+                    .await
+                    .ok()
+                    .and_then(|r| r.get("result")?.get("value")?.as_str().map(str::to_string));
+                if matches!(state.as_deref(), Some("interactive" | "complete")) {
+                    break;
+                }
+            }
+            if tokio::time::Instant::now() >= deadline {
+                self.cdp.leave = false;
+                return Err(protocol("the page did not load again"));
+            }
+            self.cdp.drain(POLL).await?;
+        }
+        self.cdp.leave = false;
+        self.url().await
+    }
+
+    /// The browser's other tabs (and windows, popups): their target ids.
+    async fn other_tabs(&mut self) -> Result<Vec<String>, FillError> {
+        let targets = self.cdp.call("Target.getTargets", json!({}), None).await?;
+        Ok(targets
+            .get("targetInfos")
+            .and_then(Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter(|t| t.get("type").and_then(Value::as_str) == Some("page"))
+                    .filter_map(|t| t.get("targetId").and_then(Value::as_str))
+                    .filter(|id| *id != self.target)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default())
+    }
+
+    /// The tab left on an empty page: the document the card was typed into is gone for good (its fields emptied
+    /// first, `clear`). When the page won't leave, the tab is closed.
+    pub async fn blank(&mut self) -> Result<(), FillError> {
+        let session = self.session.clone();
+        self.cdp.leave = true;
+        let _ = self.cdp.call("Page.enable", json!({}), Some(&session)).await;
+        let navigated = self.cdp.call("Page.navigate", json!({"url": "about:blank"}), Some(&session)).await.is_ok();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        while navigated && tokio::time::Instant::now() < deadline {
+            if self.url().await.is_ok_and(|u| u == "about:blank") {
+                self.cdp.leave = false;
+                return Ok(());
+            }
+            self.cdp.drain(POLL).await?;
+        }
+        self.cdp.leave = false;
+        let target = self.target.clone();
+        self.cdp.call("Target.closeTarget", json!({"targetId": target}), None).await.map(|_| ())
     }
 
     /// The page's address as Chrome knows it (its main frame), not as the page or the agent says.
@@ -343,8 +574,18 @@ impl Page {
         Ok(out)
     }
 
-    /// The card's fields, frame by frame (a frame seen twice keeps the reading that found the most).
+    /// The card's fields, one of each kind (`pick`), from every frame (to look for them, or empty them).
     pub async fn fields(&mut self) -> Result<Vec<Field>, FillError> {
+        Ok(pick(&self.found().await?, None))
+    }
+
+    /// The card's fields a card may be typed into: one of each kind from the frames `rule` allows.
+    pub async fn fields_in(&mut self, rule: &Frames) -> Result<Vec<Field>, FillError> {
+        Ok(pick(&self.found().await?, Some(rule)))
+    }
+
+    /// Every card field of every frame, frame by frame (a frame seen twice keeps the reading that found the most).
+    pub async fn found(&mut self) -> Result<Vec<Field>, FillError> {
         let mut found: Vec<(String, Vec<Field>)> = Vec::new();
         for (session, frame_id, frame_url) in self.frames().await? {
             let world = json!({"frameId": frame_id, "worldName": WORLD, "grantUniveralAccess": false});
@@ -373,14 +614,7 @@ impl Page {
                 None => found.push((frame_id, fields)),
             }
         }
-        // One field of each kind: the first found (the page's own before a frame's).
-        let mut out: Vec<Field> = Vec::new();
-        for field in found.into_iter().flat_map(|(_, f)| f) {
-            if !out.iter().any(|f| f.kind == field.kind) {
-                out.push(field);
-            }
-        }
-        Ok(out)
+        Ok(found.into_iter().flat_map(|(_, f)| f).collect())
     }
 
     async fn object(&mut self, field: &Field) -> Option<String> {
@@ -573,6 +807,57 @@ mod tests {
         assert_eq!(card.text_for(&field("given_name", "")).as_deref(), Some("Alex"));
         assert_eq!(card.text_for(&field("family_name", "")).as_deref(), Some("Martin Dupont"));
         assert_eq!(card.text_for(&field("postal", "")), None);
+    }
+
+    fn in_frame(kind: &str, frame_url: &str) -> Field {
+        Field { frame_url: frame_url.into(), ..field(kind, "") }
+    }
+
+    #[test]
+    fn a_card_goes_only_to_the_page_s_site_the_card_s_sites_and_known_providers() {
+        let shop = Frames::new("https://www.shop.example/checkout?step=pay", &["Shop.example.".into()]);
+        assert!(shop.allows("https://www.shop.example/checkout"));
+        assert!(shop.allows("https://pay.shop.example/frame")); // below the page's own site, `www.` aside
+        assert!(shop.allows("https://js.stripe.com/v3/elements-inner-card.html"));
+        assert!(shop.allows("https://checkoutshopper-live.adyen.com/checkoutshopper/securedfields/x.html"));
+        assert!(!shop.allows("https://js.psp.example/f")); // a provider nobody knows
+        assert!(!shop.allows("https://evil-stripe.com/f") && !shop.allows("https://stripe.com.evil.example/f"));
+        assert!(!shop.allows("http://js.stripe.com/f")); // no https
+        for no_address in ["about:blank", "about:srcdoc", "data:text/html,<input>", "blob:https://www.shop.example/1"] {
+            assert!(!shop.allows(no_address), "{no_address}");
+        }
+        // The card's sites count too; a card for any site adds none.
+        let other = Frames::new("https://tickets.example/pay", &["tickets.example".into(), "pay-tickets.example".into()]);
+        assert!(other.allows("https://secure.pay-tickets.example/card"));
+        assert!(!Frames::new("https://tickets.example/pay", &[]).allows("https://secure.pay-tickets.example/card"));
+        // A test page on this machine: its own host and the card's sites.
+        let local = Frames::new("http://127.0.0.1:8123/elements.html", &["localhost".into()]);
+        assert!(local.allows("http://127.0.0.1:8123/x") && local.allows("http://localhost:9000/provider.html"));
+        assert!(!Frames::new("http://127.0.0.1:8123/elements.html", &[]).allows("http://localhost:9000/provider.html"));
+    }
+
+    #[test]
+    fn one_field_of_each_kind_from_the_frames_allowed() {
+        let rule = Frames::new("https://shop.example/pay", &[]);
+        let found = vec![
+            in_frame("number", "https://js.psp.example/f"), // a frame of a site nobody knows, found first
+            in_frame("name", "https://shop.example/pay"),
+            in_frame("number", "https://js.stripe.com/v3/card"),
+            in_frame("csc", "https://js.psp.example/f"),
+            in_frame("name", "https://js.stripe.com/v3/card"),
+        ];
+        let kept: Vec<(String, String)> =
+            pick(&found, Some(&rule)).into_iter().map(|f| (f.kind, f.frame_url)).collect();
+        assert_eq!(
+            kept,
+            vec![
+                ("name".to_string(), "https://shop.example/pay".to_string()),
+                ("number".to_string(), "https://js.stripe.com/v3/card".to_string())
+            ]
+        );
+        // Without a rule (to empty the fields): every frame, the first of each kind.
+        let all: Vec<String> = pick(&found, None).into_iter().map(|f| f.frame_url).collect();
+        assert_eq!(all, vec!["https://js.psp.example/f", "https://shop.example/pay", "https://js.psp.example/f"]);
     }
 
     #[test]

@@ -8,6 +8,11 @@ reads the page while the person types a password into it. A card payment holds i
 the card's fields nor take a screenshot of them until the page has moved on. Everything else passes through, line by line (MCP's
 stdio framing: one JSON message per line).
 
+It also counts the tool calls it let through that have not been answered yet, in `/tmp/bipagents-calls/<its pid>`: a
+call already running when a card payment's hold starts is not refused, so the bridge waits until every gate's count
+is 0 before it reloads the payment page and types the card (bridge-rs/src/card_pay.rs `calls_done`): nothing the
+agent asked before the hold then runs in that page (security audit 2026-11-11, BV-1).
+
     python3.11 -I hold_gate.py <the server's command…>
 """
 from __future__ import annotations
@@ -44,16 +49,82 @@ def held() -> bool:
         return False
 
 
+CALLS = "/tmp/bipagents-calls"
+
+
+class Calls:
+    """The tool calls let through and not answered yet (by their JSON-RPC id), their number kept in this gate's file.
+    One older than `LIMIT` is no longer counted (an answer lost would otherwise stop every payment)."""
+
+    def __init__(self, folder: str = CALLS) -> None:
+        self.running: dict = {}
+        self.lock = threading.Lock()
+        self.path = os.path.join(folder, str(os.getpid()))
+        try:
+            os.makedirs(folder, mode=0o700, exist_ok=True)
+        except OSError:
+            self.path = None
+        self._write()
+
+    def _write(self) -> None:
+        if self.path is None:
+            return
+        now = time.time()
+        for key in [k for k, since in self.running.items() if now - since > LIMIT]:
+            del self.running[key]
+        temporary = os.path.join(os.path.dirname(self.path), "." + os.path.basename(self.path))
+        try:
+            with open(temporary, "w") as file:
+                file.write(str(len(self.running)))
+            os.replace(temporary, self.path)
+        except OSError:
+            pass
+
+    def start(self, request_id) -> None:
+        with self.lock:
+            self.running[json.dumps(request_id)] = time.time()
+            self._write()
+
+    def end(self, request_id) -> None:
+        with self.lock:
+            if self.running.pop(json.dumps(request_id), None) is not None:
+                self._write()
+
+    def count(self) -> int:
+        with self.lock:
+            return len(self.running)
+
+    def close(self) -> None:
+        if self.path is not None:
+            try:
+                os.remove(self.path)
+            except OSError:
+                pass
+
+
+def answered(calls: Calls, line: bytes) -> None:
+    """A line from the server: the answer to a call ends it."""
+    if b'"id"' not in line:
+        return
+    try:
+        message = json.loads(line)
+    except ValueError:
+        return
+    if isinstance(message, dict) and "id" in message and "method" not in message:
+        calls.end(message["id"])
+
+
 def refusal(message: dict) -> bytes:
     return (json.dumps({"jsonrpc": "2.0", "id": message.get("id"),
                         "result": {"content": [{"type": "text", "text": PAYING if paying() else WAIT}],
                                    "isError": True}}) + "\n").encode()
 
 
-def main(command: list) -> int:
+def main(command: list, calls: Calls | None = None) -> int:
     child = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
     out = sys.stdout.buffer
     lock = threading.Lock()
+    calls = calls or Calls()
 
     def answers() -> None:
         assert child.stdout is not None
@@ -61,6 +132,7 @@ def main(command: list) -> int:
             with lock:
                 out.write(line)
                 out.flush()
+            answered(calls, line)
 
     reader = threading.Thread(target=answers, daemon=True)
     reader.start()
@@ -70,11 +142,16 @@ def main(command: list) -> int:
             message = json.loads(line)
         except ValueError:
             message = None
-        if isinstance(message, dict) and message.get("method") == "tools/call" and "id" in message and held():
-            with lock:
-                out.write(refusal(message))
-                out.flush()
-            continue
+        if isinstance(message, dict) and message.get("method") == "tools/call" and "id" in message:
+            calls.start(message["id"])   # counted before the hold is read: the bridge never misses a call let through
+            if held():
+                calls.end(message["id"])
+                with lock:
+                    out.write(refusal(message))
+                    out.flush()
+                continue
+        elif isinstance(message, dict) and message.get("method") == "notifications/cancelled":
+            calls.end((message.get("params") or {}).get("requestId"))   # the server drops it without an answer
         try:
             child.stdin.write(line)
             child.stdin.flush()
@@ -86,6 +163,7 @@ def main(command: list) -> int:
         pass
     code = child.wait()
     reader.join(timeout=5)   # its last answers out before this process ends
+    calls.close()
     return code
 
 

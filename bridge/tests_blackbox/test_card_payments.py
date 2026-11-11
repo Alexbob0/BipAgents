@@ -2,7 +2,10 @@
 `/v1/agent-tools/pay`): the card kept encrypted by the bridge only, never shown back, no security code kept; payments
 off until the person turns them on, never on a place of the offer; each payment approved through an MCP elicitation
 and the app's approval with the code; the card typed by the bridge into a fake Chrome (its DevTools protocol, a page
-with a payment provider's out-of-process frame) on the page's real site only, the browser held meanwhile.
+with a payment provider's out-of-process frame) on the page's real site only, the browser held meanwhile, into the
+page reloaded under the hold (other tabs closed, the site's service workers removed), never into a frame of an
+unknown site, the tab left on an empty page unless the page moved on by itself. test_card_payments_chrome.py does the
+same in a real Chromium, with a page an agent prepared.
 
 Only the payment networks' published test numbers are used."""
 import asyncio
@@ -26,6 +29,9 @@ CARD = {"kind": "card", "label": "Petits achats", "number": "4242 4242 4242 4242
         "name": "Alex Martin", "postal_code": "75011", "sites": ["shop.example"], "agents": ["vie"]}
 TOKEN = "agent-token-for-vie-0123456789abcdef"
 PAY = "/v1/agent-tools/pay"
+# The bridge's look at the browser's MCP gates (browser/hold_gate.py): their tool calls still running, under the hold.
+CALLS_CHECK = ('for f in /tmp/bipagents-calls/*; do [ -f "$f" ] || continue; [ -d "/proc/${f##*/}" ] || '
+               '{ rm -f "$f"; continue; }; [ "$(cat "$f")" = 0 ] || exit 4; done; exit 0')
 
 
 class FakeChrome:
@@ -33,14 +39,25 @@ class FakeChrome:
     pay button, a payment provider's out-of-process frame (its own session) with the number, expiry and code. It
     answers the card script's calls by name and records what was typed where."""
 
-    def __init__(self, url="https://shop.example/checkout"):
+    PSP = "https://js.stripe.com/v3/elements-inner-card.html"
+
+    def __init__(self, url="https://shop.example/checkout", psp=PSP):
         self.url = url
+        self.psp = psp
         self.port = free_port()
         self.typed = []        # (frame, kind, text)
         self.headers = []      # x-bip-card of each connection
         self.clicks = []
         self.after_click = "https://shop.example/done"
         self.bank_asks = False
+        self.loader = 1         # the main frame's document: a new one on each reload or navigation
+        self.reloads = 0
+        self.reload_to = None   # the address a reload ends on (a redirect), else the same
+        self.lose_form = False  # a reload brings the page back without its card form
+        self.others = []        # other tabs (their target ids)
+        self.closed = []
+        self.cleared = []       # Storage.clearDataForOrigin's parameters
+        self.navigated = []
         self.fields = {"F-main": [{"i": 0, "kind": "name", "tag": "input", "fmt": "", "empty": True}],
                        "F-psp": [{"i": 0, "kind": "number", "tag": "input", "fmt": "", "empty": True},
                                  {"i": 1, "kind": "exp", "tag": "input", "fmt": "MM/YY", "empty": True},
@@ -88,20 +105,43 @@ class FakeChrome:
     def _events(self, method, session):
         if method == "Target.setAutoAttach" and session == "S-page":
             return [{"method": "Target.attachedToTarget", "sessionId": "S-page",
-                     "params": {"sessionId": "S-psp", "targetInfo": {"type": "iframe", "url": "https://js.psp.example/f"}}}]
+                     "params": {"sessionId": "S-psp", "targetInfo": {"type": "iframe", "url": self.psp}}}]
         return []
 
     def _answer(self, method, params, session):
         if method == "Target.getTargets":
-            return {"targetInfos": [{"targetId": "T1", "type": "page", "url": self.url},
+            others = [{"targetId": t, "type": "page", "url": "https://shop.example/cart"} for t in self.others]
+            return {"targetInfos": [{"targetId": "T1", "type": "page", "url": self.url}, *others,
                                     {"targetId": "T0", "type": "service_worker", "url": "https://x.example/sw.js"}]}
         if method == "Target.attachToTarget":
+            if params["targetId"] not in ("T1", *self.others):
+                raise LookupError("No target with given id found")
             return {"sessionId": "S-page"}
+        if method == "Target.closeTarget":
+            self.others.remove(params["targetId"])
+            self.closed.append(params["targetId"])
+            return {"success": True}
+        if method == "Storage.clearDataForOrigin":
+            self.cleared.append(params)
+            return {}
+        if method == "Page.reload":
+            self.reloads += 1
+            self.loader += 1
+            self.url = self.reload_to or self.url
+            self.values = {}
+            if self.lose_form:
+                self.fields = {"F-main": self.fields["F-main"], "F-psp": []}
+            return {}
+        if method == "Page.navigate":
+            self.navigated.append(params["url"])
+            self.url = params["url"]
+            self.loader += 1
+            return {"frameId": "F-main", "loaderId": f"L{self.loader}"}
         if method == "Page.getFrameTree":
             if session == "S-psp":
-                return {"frameTree": {"frame": {"id": "F-psp", "url": "https://js.psp.example/f"}}}
-            return {"frameTree": {"frame": {"id": "F-main", "url": self.url},
-                                  "childFrames": [{"frame": {"id": "F-psp", "url": "https://js.psp.example/f"}}]}}
+                return {"frameTree": {"frame": {"id": "F-psp", "url": self.psp}}}
+            return {"frameTree": {"frame": {"id": "F-main", "url": self.url, "loaderId": f"L{self.loader}"},
+                                  "childFrames": [{"frame": {"id": "F-psp", "url": self.psp}}]}}
         if method == "Page.createIsolatedWorld":
             if self.SESSIONS.get(session) != params["frameId"]:
                 raise LookupError("No frame for given id found")
@@ -129,6 +169,8 @@ class FakeChrome:
         call = re.search(r"__bipPay\.(\w+)\(([^)]*)\)\s*$", expression)
         if expression == "document.visibilityState":
             value = "visible"
+        elif expression == "document.readyState":
+            value = "complete"
         elif call:
             name, args = call.group(1), call.group(2)
             first = int(args.split(",")[0]) if args and args.split(",")[0].strip().isdigit() else None
@@ -147,6 +189,7 @@ class FakeChrome:
             elif name == "clickButton":
                 self.clicks.append(self.url)
                 self.url = self.after_click
+                self.loader += 1
                 value = True
             elif name == "bankAsks":
                 value = self.bank_asks
@@ -281,8 +324,17 @@ def test_a_payment_approved_is_typed_on_the_real_site_then_the_bridge_clicks(bri
         item = bridge.post("/v1/vault", headers=AUTH, json=CARD).json()
         listed = tool(bridge, "list_cards")["content"][0]["text"]
         assert "« Petits achats » (ending 4242): shop.example; ready" in listed and NUMBER not in listed
+        chrome.others = ["T2"]   # another tab of the agent's
+        # Under the hold, the agent's browser tool calls still running are waited for (busy twice, then none).
+        bridge.commands.rule("podman", ["exec", "bipagents-browser-vie", "sh", "-c", CALLS_CHECK], exit=4, times=2)
         result, asked = pay(bridge, ARGS)
         assert result["isError"] is False, result
+        # Typed into a fresh document: the other tab closed, the site's service workers removed, the page reloaded.
+        assert chrome.closed == ["T2"] and chrome.reloads == 1
+        assert chrome.cleared == [{"origin": "https://shop.example", "storageTypes": "service_workers"}]
+        podman = [c[-1] for c in bridge.commands.of("podman")]
+        assert [c for c in podman if c == CALLS_CHECK] == [CALLS_CHECK] * 3
+        assert "printf 'card %s'" in podman[podman.index(CALLS_CHECK) - 1]
         assert re.fullmatch(r"Card payment pay_[0-9a-f]{12}: 12\.50 EUR on shop\.example with card \"Petits achats\" "
                             r"ending 4242, for \"Billet Paris-Lyon\"\. Approve in the BipAgents app with the card's "
                             r"security code\.", asked)
@@ -303,6 +355,9 @@ def test_a_payment_approved_is_typed_on_the_real_site_then_the_bridge_clicks(bri
         confirmed = tool(bridge, "confirm_payment", {"button": "Payer 12,50 €"})
         assert confirmed["isError"] is False and "moved on" in confirmed["content"][0]["text"]
         assert chrome.clicks == ["https://shop.example/checkout"]
+        # The shop's confirmation is a new document: the agent keeps it (and can look at it).
+        assert chrome.navigated == [] and chrome.url == "https://shop.example/done"
+        assert "empty page" not in confirmed["content"][0]["text"]
         assert bridge.commands.of("podman")[-1][-1].endswith("rm -f /tmp/bipagents-hold; exit 0")
         card = bridge.get("/v1/vault", headers=AUTH).json()["items"][0]["card"]
         assert card["spent"] == {"EUR": 1250}
@@ -351,6 +406,7 @@ def test_a_single_use_card_waits_for_its_new_numbers(bridges, fakes):
         result, _ = pay(bridge, ARGS)
         assert result["isError"] is False and "single-use" in result["content"][0]["text"]
         assert tool(bridge, "cancel_payment")["content"][0]["text"].startswith("The payment is given up")
+        assert chrome.navigated == ["about:blank"]   # given up: the page the card was typed into is gone
         assert bridge.get("/v1/vault", headers=AUTH).json()["items"][0]["card"]["used"] is True
         again = tool(bridge, "pay_with_card", ARGS)
         assert again["isError"] is True and "already used" in again["content"][0]["text"]
@@ -372,8 +428,53 @@ def test_suspending_gives_the_browser_back_with_the_card_erased(bridges, fakes):
         suspended = bridge.post("/v1/vault/payments", headers=AUTH, json={"enabled": False}).json()
         assert suspended["active"] == [] and suspended["enabled"] is False
         assert chrome.values[("F-psp", 0)] == "" and chrome.values[("F-psp", 2)] == ""
+        assert chrome.navigated == ["about:blank"]   # then the tab left on an empty page, before the hold is lifted
         assert bridge.commands.of("podman")[-1][-1].endswith("rm -f /tmp/bipagents-hold; exit 0")
         assert "No payment is waiting" in tool(bridge, "confirm_payment", {"button": "Payer"})["content"][0]["text"]
+    finally:
+        chrome.stop()
+
+
+def test_a_page_that_comes_back_without_its_form_or_elsewhere_is_handed_over(bridges, fakes):
+    chrome = FakeChrome()
+    try:
+        bridge = pay_bridge(bridges, fakes, chrome)
+        turn_on(bridge)
+        bridge.post("/v1/vault", headers=AUTH, json=CARD)
+        form = dict(chrome.fields)
+        # A one-page checkout that loses its state when reloaded: nothing typed, the person pays.
+        chrome.lose_form = True
+        lost, asked = pay(bridge, ARGS)
+        assert asked and lost["isError"] is True
+        text = lost["content"][0]["text"]
+        assert "without its card form" in text and "hand_over_payment" in text and "nothing was typed" in text
+        assert chrome.typed == [] and chrome.reloads == 1
+        assert chrome.navigated == []   # nothing typed: the page stays as it came back
+        assert bridge.commands.of("podman")[-1][-1].endswith("rm -f /tmp/bipagents-hold; exit 0")
+        # A reload that ends on another site (a redirect): not the payment the person approved.
+        chrome.lose_form, chrome.fields = False, form
+        chrome.reload_to = "https://evil.example/checkout"
+        moved, _ = pay(bridge, ARGS)
+        assert moved["isError"] is True and "another address" in moved["content"][0]["text"]
+        assert "hand_over_payment" in moved["content"][0]["text"] and chrome.typed == []
+        assert bridge.get("/v1/vault", headers=AUTH).json()["items"][0]["card"]["spent"] == {}
+        outcomes = [e["outcome"] for e in bridge.get("/v1/vault/payments", headers=AUTH).json()["journal"]]
+        assert outcomes[:6] == ["failed", "approved", "asked", "failed", "approved", "asked"]
+    finally:
+        chrome.stop()
+
+
+def test_a_card_form_in_a_frame_of_an_unknown_site_is_handed_over(bridges, fakes):
+    chrome = FakeChrome(psp="https://js.psp.example/f")
+    try:
+        bridge = pay_bridge(bridges, fakes, chrome)
+        turn_on(bridge)
+        bridge.post("/v1/vault", headers=AUTH, json=CARD)
+        refused, asked = pay(bridge, ARGS)
+        assert asked is None and refused["isError"] is True   # nobody asked: the card could not go there
+        text = refused["content"][0]["text"]
+        assert "frame of a payment service" in text and "hand_over_payment" in text
+        assert chrome.typed == [] and not [c for c in bridge.commands.of("podman") if "printf" in c[-1]]
     finally:
         chrome.stop()
 
