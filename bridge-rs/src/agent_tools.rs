@@ -2144,10 +2144,14 @@ async fn mcp(
             let state = state.clone();
             tokio::spawn(async move { crate::routines::fire(&state, &id).await });
         }
+        if let Some((routine, done)) = &called.notice {
+            // its pause or delete, one line in the Boîte, not pushed (audit PI-6 O3)
+            crate::routines::tell_done(&state, &agent, routine, *done, origin.as_deref()).await;
+        }
         if let Some((line, card)) = called.card {
-            // its question: in this turn's conversation (card_place.rs) and pushed, as routine_trigger's; the agent
-            // knows the routine is on, so no turn resumes to tell it the answer (`taken`); under « Seulement le
-            // critique » answered with the suggestion at once (approval_level.rs), nothing pushed
+            // its card (a routine to start, a proposal): in this turn's conversation (card_place.rs) and pushed, as
+            // routine_trigger's; the agent was told it waits, so no turn resumes to tell it the answer (`taken`);
+            // critical at every level (approval_level.rs), so `settle_new` answers none of them
             crate::card_place::place_new(&state, &agent, &cards_before, turn_run.as_deref()).await;
             let run_id = format!("{}{card}", crate::routines::RUN_PREFIX);
             crate::card_place::taken(&state.config(), &run_id);

@@ -4,8 +4,8 @@ bbkit/displayable.py):
 
 - « Seulement le critique »: a choice that is not critical is made for the person (« Validé pour toi » in the Boîte,
   « Annuler »), a critical one is still asked;
-- a routine the agent makes is on at once, then one question: « Veux-tu être au courant de ce que cette routine
-  trouve ? »;
+- a routine the agent makes is off until one question: « … a créé la routine « X » : … La démarrer ? », all it will
+  run behind « i »;
 - « Étapes »: built from the agent's actions while it works, then its own list wins;
 - the hop cap: agents writing to each other stop at the 5th message, one « Continuer l'échange ? » card, « Oui » starts
   the count over;
@@ -139,31 +139,32 @@ def test_j40_only_the_critical_a_critical_card_is_still_asked(journey):
 # -- a routine, then one question ------------------------------------------------------------------------------------
 
 def test_j41_a_routine_is_made_first_then_one_question(journey):
-    """The agent makes a routine: it is on at once (listed, scheduled), and its card in the conversation asks one
-    thing: « Veux-tu être au courant de ce que cette routine trouve ? »; « Oui, préviens-moi » keeps it on, told."""
+    """The agent makes a routine: listed, off until the person answers (Alex 11/11, PI-6), and its card in the
+    conversation asks one thing: « … a créé la routine « Le point du soir » : chaque jour à 19:00. La démarrer ? »,
+    all it will run behind « i »; « Oui » starts it, told each time (O-1 a)."""
     journey.model.calls["routine"] = lambda run: mcp_as(journey.bridge, journey.token, "/v1/agent-tools/mcp",
                                                         "routine_schedule", {
         "action": "create", "name": "Le point du soir", "schedule": "every day at 19:00",
-        "prompt": "Fais le point de la journée.", "silent": True})
+        "prompt": "Fais le point de la journée."})
     assert journey.send(cid(41), "Fais-moi le point chaque soir #routine").status_code == 200
     page = reply_done(journey, "la routine « Le point du soir » est créée")
     routines = {j["name"]: j for j in journey.bridge.get(f"/v1/agents/{AGENT}/routines", headers=AUTH).json()["jobs"]}
-    assert routines["Le point du soir"]["state"] == "scheduled", routines   # on before any answer
+    assert routines["Le point du soir"]["state"] == "paused", routines   # off until the answer (Alex 11/11, PI-6)
     cards = [c for c in page["pending"].get("approvals") or [] if c["run_id"].startswith("bip-rout-")]
     assert len(cards) == 1, page["pending"]   # one question, in the conversation it was made in
     card = cards[0]
     assert not shown.routine_card_problems(card), shown.routine_card_problems(card)
-    assert card["bip_routine"]["name"] == "Le point du soir"
-    assert "au courant" in (card["bip_routine"].get("question") or card.get("bip_summary") or ""), card
+    assert "« Le point du soir »" in card["bip_summary"], card
+    assert card["bip_detail"] == "Ce qu'elle fera : Fais le point de la journée.", card
     shown.check_page(journey.bridge, page, AGENT)
     answered = journey.bridge.post("/v1/approve", headers=AUTH, json={"agent": AGENT, "run_id": card["run_id"],
-                                                                      "choice": "notify"})
+                                                                      "choice": "once"})
     assert answered.status_code == 200 and answered.json()["muted"] is False, answered.text
     assert not [c for c in journey.page()["pending"].get("approvals") or [] if c["run_id"].startswith("bip-rout-")]
     routines = {j["name"]: j for j in journey.bridge.get(f"/v1/agents/{AGENT}/routines", headers=AUTH).json()["jobs"]}
     assert (routines["Le point du soir"]["state"], routines["Le point du soir"]["muted"]) == ("scheduled", False)
     assert journey.bridge.post("/v1/approve", headers=AUTH, json={
-        "agent": AGENT, "run_id": card["run_id"], "choice": "notify"}).status_code == 404   # asked once
+        "agent": AGENT, "run_id": card["run_id"], "choice": "once"}).status_code == 404   # asked once
 
 
 # -- « Étapes » -------------------------------------------------------------------------------------------------------

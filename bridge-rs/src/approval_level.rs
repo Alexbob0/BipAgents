@@ -89,11 +89,9 @@ pub const TABLE: &[Rule] = &[
     rule("mail_mark_read", false, true, "bip-mail- mark_read", "only a flag; undone by marking them unread"),
     rule("mail_move", false, true, "bip-mail- move", "moved to a folder, nothing deleted; undone by moving them back"),
     rule("mail_rule", false, true, "bip-mailrule- (not trash)", "a sort rule that files or marks read, never deletes; stopped and its last run put back"),
-    rule("routine_way", false, false, "bip-rout-", "the routine runs anyway; only whether its reports are pushed (the agent's suggestion kept, changed on its page)"),
     rule("task_start", false, true, "propose_task (≤ 0,50 €)", "a background task within a small budget of the month's credit; paused from its line"),
     rule("service_write", false, false, "Hermes: MCP tool that creates or changes, on a service the person connected", "writes in the person's own service (a Notion page, a note): nothing sent to anyone, nothing deleted"),
     rule("files_write", false, false, "Hermes: bipagents_files (not delete)", "files in the agent's own space"),
-    rule("site_send", false, false, "bip-site- (the proxy's cut, or the agent's sandbox_sites_request)", "Alex 6/11: not critical: data sent to a site the agent's work needs (an API, an upload); the site validated for that agent, a Boîte line; no « Annuler », the data has left (the site can be removed in « Sites autorisés »); reading sites never asks"),
     // -- critical: always asked
     rule("payment", true, false, "Hermes: card_pay, Link, hand-over elicitations", "spends money or uses a payment card"),
     rule("secret", true, false, "bip-secret-", "a password, key or code typed for the agent"),
@@ -112,6 +110,9 @@ pub const TABLE: &[Rule] = &[
     rule("plugin_rule", true, false, "Hermes: a plugin's rule", "a rule the person or a plugin set to always ask"),
     rule("computer_use", true, false, "Hermes: cua:", "acts on the person's computer screen"),
     rule("trigger", true, false, "bip-trig-", "lets an e-mail or a link from outside start the agent"),
+    rule("site_send", true, false, "bip-site- (the proxy's cut, or the agent's sandbox_sites_request)", "Alex 11/11 (was not critical since 6/11; security audit PI-7, BV-9): data sent to a site never validated for that agent; one tool call would have opened an attacker-named host for unlimited sending, no push, no undo; reading sites never asks"),
+    rule("routine_way", true, false, "bip-rout- (with bip_routine)", "Alex 11/11 (audit PI-6, was not critical since 6/11): a routine its agent made starts only with this answer, then runs unattended with all its tools"),
+    rule("routine_change", true, false, "bip-rout- (no bip_routine)", "the agent proposes new words or a new time for a routine, or wants it back on: it then runs unattended with all its tools (PI-6, 11/11)"),
     rule("phone_exit", true, false, "bip-exit-", "uses the person's phone and home connection"),
     rule("agent_hops", true, false, "bip-hops-", "agents went on writing to each other past the cap (« Continuer l'échange ? »): more model calls, no person in the loop"),
     rule("task_large", true, false, "propose_task (> 0,50 €)", "a big part of the month's credit"),
@@ -154,6 +155,9 @@ pub fn classify_card(item: &Dict) -> &'static str {
         let action = field(item, "bip_mail_rule", "action");
         let known = action.split('+').all(|a| a == "archive" || a == "mark_read" || a.starts_with("move:"));
         return if known && !action.is_empty() { "mail_rule" } else { "mail_rule_trash" };
+    }
+    if run.starts_with(crate::routines::RUN_PREFIX) && item.get("bip_routine").is_none() {
+        return "routine_change"; // an agent's proposal for a routine (routines.rs): asked at every level
     }
     const PREFIXES: [(&str, &str); 11] = [
         (crate::routines::RUN_PREFIX, "routine_way"),
@@ -909,11 +913,11 @@ mod tests {
         assert_eq!(kinds.len(), n, "a kind twice");
         // what Alex named critical
         for kind in ["payment", "secret", "vault_login", "held_mail", "family_send", "mail_trash", "files_delete",
-                     "connector", "meet", "command", "phone_exit", "agent_hops", "task_more", "guide_proposal"] {
+                     "connector", "meet", "command", "phone_exit", "agent_hops", "task_more", "guide_proposal",
+                     "routine_change", "routine_way", "site_send"] {
             assert!(rule_of(kind).critical, "{kind}");
         }
-        for kind in ["mail_archive", "mail_move", "mail_mark_read", "mail_rule", "routine_way", "task_start", "files_write",
-                     "site_send"] {
+        for kind in ["mail_archive", "mail_move", "mail_mark_read", "mail_rule", "task_start", "files_write"] {
             assert!(!rule_of(kind).critical, "{kind}");
         }
         assert!(rule_of("never heard of").critical);
@@ -931,7 +935,9 @@ mod tests {
         assert_eq!((rule("move:Serveurs"), rule("archive+mark_read"), rule("mark_read"), rule("trash"), rule("trash+mark_read")),
                    ("mail_rule", "mail_rule", "mail_rule", "mail_rule_trash", "mail_rule_trash"));
         let kind = |r: &str| classify_card(&item(json!({"run_id": r})));
-        assert_eq!(kind("bip-rout-x"), "routine_way");
+        // a routine's question (its `bip_routine`); any other `bip-rout-` card is an agent's proposal, always asked
+        let routine = item(json!({"run_id": "bip-rout-x", "bip_routine": {"id": "r1"}}));
+        assert_eq!((classify_card(&routine), kind("bip-rout-x")), ("routine_way", "routine_change"));
         assert_eq!(kind("bip-site-x"), "site_send");
         assert_eq!(kind("bip-secret-x"), "secret");
         assert_eq!(kind("bip-login-x"), "vault_login");
@@ -974,10 +980,14 @@ mod tests {
         let config = config_in(&dir);
         assert_eq!((person_level(&config), level_for(&config, "vie")), (ALL, ALL));
         assert_eq!(view(&config)["chosen"], false);
-        assert!(!auto_for(&config, "vie", "mail_archive"));
+        assert!(!auto_for(&config, "vie", "mail_archive") && !auto_for(&config, "vie", "routine_change"));
         set_level(&config, "critical").unwrap();
         assert_eq!(view(&config)["chosen"], true);
         assert!(auto_for(&config, "vie", "mail_archive") && !auto_for(&config, "vie", "mail_trash"));
+        // a routine its agent made, an agent's proposal for one: asked at both levels (PI-6, Alex 11/11)
+        assert!(!auto_for(&config, "vie", "routine_change") && !auto_for(&config, "vie", "routine_way"));
+        // data sent to a site: asked at both levels (Alex 11/11, audit PI-7)
+        assert!(!auto_for(&config, "vie", "site_send"));
         assert!(!auto_for(&config, "vie", "payment") && !auto_for(&config, "vie", "unknown"));
         set_agent_level(&config, "coach", Some("all")).unwrap();
         assert!(!auto_for(&config, "coach", "mail_archive") && auto_for(&config, "vie", "mail_archive"));

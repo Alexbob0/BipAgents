@@ -229,19 +229,19 @@ def auto_line_problems(line: Dict[str, Any]) -> List[str]:
 
 
 def routine_card_problems(card: Dict[str, Any]) -> List[str]:
-    """« Vie a créé une routine », its name and when, then « Veux-tu être au courant de ce que cette routine
-    trouve ? » with « Oui, préviens-moi » / « Non, garde-le sur sa page » (RoutineWay.swift, RoutineWay.kt)."""
+    """The creation card of a routine its agent made (routines.rs, 11/11, O-1 a): a generic card every app draws
+    (ApprovalCard.swift, ChatScreen.kt: no `bip_routine`), « Vie a créé la routine « X » : <quand>. La démarrer ? »,
+    all it will run behind « i » (« Ce qu'elle fera : … »), « Oui / Non » (`once` / `deny`)."""
     out = displayable.card_problems(card, "routine card")
-    routine = card.get("bip_routine")
-    if not isinstance(routine, dict):
-        return out + ["routine card: no `bip_routine`: drawn as a plain card"]
-    for k in ("id", "name", "schedule_display"):
-        if not _text(routine.get(k)):
-            out.append(f"routine card: `bip_routine.{k}` missing")
-    if not _text(routine.get("question")) and "au courant" not in str(card.get("bip_summary") or ""):
-        out.append("routine card: no question « Veux-tu être au courant… »")
-    if sorted(card.get("bip_choices") or []) != ["notify", "silent"]:
-        out.append(f"routine card: choices {card.get('bip_choices')!r}, not notify / silent")
+    if "bip_routine" in card:
+        out.append("routine card: `bip_routine`: drawn as the apps' own creation card, which starts it either way")
+    summary = str(card.get("bip_summary") or "")
+    if "a créé la routine" not in summary or not summary.endswith("La démarrer ?"):
+        out.append(f"routine card: sentence {summary!r}, not « … a créé la routine « X » : … La démarrer ? »")
+    if not str(card.get("bip_detail") or "").startswith("Ce qu'elle fera : "):
+        out.append(f"routine card: detail {card.get('bip_detail')!r}, not « Ce qu'elle fera : … »")
+    if card.get("choices") != ["once", "deny"]:
+        out.append(f"routine card: choices {card.get('choices')!r}, not once / deny")
     return out
 
 

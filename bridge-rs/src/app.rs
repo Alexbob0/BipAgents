@@ -1202,14 +1202,21 @@ async fn bridge_card(
             None => Err(HttpError::new(404, "no such request (answered already?)")),
         }?));
     }
-    // the question of a routine its agent made (routines.rs): « notify » / « silent » (an older app's « Oui » / « Non »)
-    // only change how its reports come; it is never deleted here
+    // the cards of a routine its agent made or wants changed (routines.rs `answer`): only a « Oui » starts it or applies
+    // the change; only a « Non » deletes one that never started or drops the change; any other answer changes nothing
     if let Some(id) = run_id.strip_prefix(crate::routines::RUN_PREFIX) {
         let choice = body.choice.trim().to_lowercase();
+        if !crate::routines::known_choice(&choice) {
+            return Err(HttpError::new(422, "choice: once or deny"));
+        }
         let (config, name, id, given) = (state.config(), agent.name.clone(), id.to_string(), choice.clone());
         let answered = tokio::task::spawn_blocking(move || crate::routines::answer(&config, &name, &id, &given))
             .await
             .map_err(anyhow::Error::from)?;
+        if let Some(r) = answered.as_ref().filter(|r| crate::routines::lapsed(r)) {
+            // a one-time routine started after its time: not run, one line in the Boîte (O-5)
+            crate::routines::tell_done(state, agent, r, crate::routines::Done::Lapsed, None).await;
+        }
         return Ok(Some(match answered {
             Some(r) => Ok(web::ok(json!({"ok": true, "choice": choice, "muted": r.muted}))),
             None => Err(HttpError::new(404, "no such request (answered already?)")),
