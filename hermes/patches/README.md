@@ -595,6 +595,33 @@ move to BipAgents' Hermes parks them in `git stash` instead of refusing them as 
 - `installer/tests`: 339 passed, 2 skipped; `scripts/hermes-patches.sh check` passes; `branch` then `export` gives the
   same bytes.
 
+**Release bench (11/11, real model GLM-5.3 Flash via EUrouter, lab places; `scripts/release-battery.sh --upgrade
+--hermes-move`, `release-battery/hermes_bench.py`).** A place at the public release (v0.22.5 + its set) brought to the
+candidate by a wave (root's shared Hermes built at v0.23.1, the place moved onto it), then the bench; beside it, the
+same bench on a v0.22.5 baseline place (main-next) to tell a regression from the bench's own fragility:
+- passed on v0.23.1, every run: the agents on 0.23.1, the main path in the Bot Chat and a conversation (streaming, a
+  tool, `model.usage`), a question answered after 100 s (the bridge's hour, past upstream's 90 s), the prompt cache
+  across conversations (third new conversation 100 % read from the cache; v0.22.5: 99.7 %), agent pairs and the hop
+  cap, the vault fill after the stealth browser restarted (0005), the old data read after the wave, the time budgets
+  (first words 1.8–2.5 s, Live 2.6–3.9 s);
+- found and fixed: **0027** (a refused turn locked API conversations: reproduced twice, fixed, then passed); the move
+  of a person's own Hermes (`--to-bipagents`, 517b5e10f → v0.23.1) rolled back on settings v0.23.1's own config
+  migrations retire (`browser.extension_control`, v52; `agent.clarify_timeout` 3600 → 90, v53): `to_bipagents.py`
+  `HERMES_RETIRED`/`HERMES_REWRITTEN`, then the variant all green;
+- the bench's own fragility, fixed in the bench (each failed on v0.22.5 too, or was the model's wording): the approval
+  is a vault fill (a SOUL.md write is never asked on a place), the compaction's tool turn names the weather tool, a
+  reply « Ok 12 » counts;
+- left, not Hermes: the room check (the bridge's own room router, a model call, sent « répondez-moi tous les deux »
+  to one agent of two on every seeded place: 3 of 3 candidate runs and the seeded v0.22.5 baseline alike; both
+  answered on unseeded places), one stale browser proxy after a wave (1 of 3 runs), one browser task at 50 s
+  (budget 45; 26–39 s in the other runs).
+
+**Prompt cache (token lab, the battery's scenario on GLM, `cache_breaks.py`).** Before (main-next, v0.22.5) and after
+(v0.23.1 + this set, the lab place on its own Hermes): no lost tokens in either, inside a conversation or across
+(prefix shared by a new conversation and a routine: 27.0k before, 26.9k after). Billed: 94.7 % of the input read from
+the cache before, 88.7 % after; the whole difference is the very first call (4 096 of 24 449 cached after, 18 432
+before): the provider's cache meets v0.23's rewritten tool descriptions once per prompt; every later step 98–99 %.
+
 ## Moving to v0.22.5 (2026-11-01)
 
 The series rebased from `517b5e10f` on v0.22.5 (`bf0203a794`), branch `bip/patches-v0.22.5`; the installer pins
