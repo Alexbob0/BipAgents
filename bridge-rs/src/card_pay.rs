@@ -958,6 +958,8 @@ async fn form_on(page: &mut Page, rule: &card_fill::Frames, host: &str) -> Resul
 }
 
 const HAND_IT_OVER: &str = "Don't pay yourself: hand the payment over to the person with hand_over_payment.";
+const HAND_IT_OVER_AFTER: &str = "hand the payment over to the person with hand_over_payment (they pay themselves). \
+Never ask them for the card's numbers or its security code in the chat.";
 
 /// The agent's browser tool calls that got through before the hold (hold_gate.py counts them).
 #[derive(Debug, PartialEq)]
@@ -1187,10 +1189,11 @@ async fn confirm(state: &AppState, agent: &AgentConfig, arguments: &Dict) -> any
     let clicked = match page.click_pay(&wanted, &digits, &rule).await {
         Ok(Some(button)) => button,
         Ok(None) => {
-            return Ok(refusal(
-                "No pay button found on the page. Give the button's text exactly as you read it, or call \
-                 cancel_payment and tell the person.",
-            ))
+            // Not worth another try (security check 11/11, N4): a pay button outside the card's form is never pressed.
+            return Ok(refusal(&format!(
+                "No pay button of the card's form was found on the page: don't try again. Call cancel_payment, then \
+                 {HAND_IT_OVER_AFTER}"
+            )))
         }
         Err(exc) => return Ok(refusal(&unreachable_text(&exc))),
     };

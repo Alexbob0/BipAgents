@@ -520,6 +520,25 @@ def lifted(command):
     return command.endswith(HOLD_LIFTED)
 
 
+def test_no_pay_button_hands_the_payment_over(bridges, fakes):
+    # Security check 11/11, N4: « No pay button found » told the agent to give the text again or cancel: a dead end
+    # (a pay button outside the card's form is never pressed), never a hand-over to the person.
+    chrome = FakeChrome()
+    try:
+        bridge = pay_bridge(bridges, fakes, chrome)
+        turn_on(bridge)
+        bridge.post("/v1/vault", headers=AUTH, json=CARD)
+        assert pay(bridge, ARGS)[0]["isError"] is False
+        chrome.button = None
+        refused = tool(bridge, "confirm_payment", {"button": "Payer 12,50 €"})
+        text = refused["content"][0]["text"]
+        assert refused["isError"] is True and "No pay button" in text and "don't try again" in text
+        assert "cancel_payment" in text and "hand_over_payment" in text and "card's numbers" in text
+        assert chrome.clicks == []
+    finally:
+        chrome.stop()
+
+
 def test_cancel_empties_exactly_the_fields_typed_into(bridges, fakes):
     # Fix review 11/11, R4: clear() used to empty the first field of each kind of any frame: with a second card form
     # in a frame of another site found first, that one was « emptied » and the provider's number stayed typed.
