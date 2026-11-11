@@ -5,8 +5,8 @@
 //! `POST /v1/runs/{id}/steer`: delivered as its own user message right after the agent's current tool calls, without
 //! stopping it; the apps mark it « Ajouté pendant la réponse »). « Après » puts it here instead: the bridge keeps it,
 //! per agent, on disk, and starts it as the next turn of its conversation once the turn going on there ends, one after
-//! another. Every device of the person reads the same list (`GET`, the run stream's `bridge.queue` events, the
-//! queue's own event stream, `session_state`), and changes it the same way:
+//! another. Every device of the person reads the same list (`GET`, the run stream's `bridge.queue` events,
+//! `session_state`), and changes it the same way:
 //!
 //!     GET    /v1/agents/{id}/queue                    the agent's queue (below)
 //!     POST   /v1/agents/{id}/queue/order              {ids: [...]}  those first, in that order; the rest after
@@ -15,8 +15,6 @@
 //!                                                     files (Hermes' steer takes words only): `pushed`, the turn
 //!                                                     told to wrap up, the message started the moment it ends
 //!     POST   /v1/agents/{id}/queue/pause | resume     paused, nothing new starts (the turn going on finishes)
-//!     GET    /v1/agents/{id}/queue/events             SSE: `queue` (the whole queue, at once and at each change),
-//!                                                     `queue.started` {run_id, session_id, item_id, text}
 //!
 //! Messages come in through the conversation's one sending route (threads/send.rs, `POST /v1/threads/{id}/messages`):
 //! into the turn going on (a steer), or here with « Après », or when the turn takes no words (files, a turn just
@@ -49,14 +47,12 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::Duration;
 
-use axum::body::Body;
 use axum::extract::{Path as UrlPath, State};
 use axum::response::Response;
 use axum::routing::{delete, get, post};
 use axum::Router;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tokio::sync::broadcast;
 
 use crate::app::AppState;
 use crate::config::{AgentConfig, SharedConfig};
@@ -345,20 +341,17 @@ pub struct Queues {
     state: Mutex<HashMap<String, AgentQueue>>,
     /// One look at the queues at a time (a run's end and a tick, two devices adding at once).
     advancing: tokio::sync::Mutex<()>,
-    events: broadcast::Sender<(String, String, Value)>,
     me: Weak<Queues>,
 }
 
 impl Queues {
     pub fn new(config: SharedConfig, hermes: HermesClient, hub: Arc<RunHub>) -> Arc<Queues> {
-        let (events, _) = broadcast::channel(256);
         Arc::new_cyclic(|me| Queues {
             config,
             hermes,
             hub,
             state: Mutex::new(HashMap::new()),
             advancing: tokio::sync::Mutex::new(()),
-            events,
             me: me.clone(),
         })
     }
@@ -427,16 +420,11 @@ impl Queues {
     }
 
     fn tell(&self, agent: &str, kind: &str, data: Value) {
-        let _ = self.events.send((agent.to_string(), kind.to_string(), data.clone()));
         if let Value::Object(map) = data {
             let mut map = map;
             map.insert("kind".into(), json!(kind));
             self.hub.tell_agent_live(agent, RUN_EVENT, map);
         }
-    }
-
-    pub fn subscribe(&self) -> broadcast::Receiver<(String, String, Value)> {
-        self.events.subscribe()
     }
 
     /// Looks at the agent's queue soon (a task of its own: never inside the hub's locks).
@@ -881,34 +869,6 @@ async fn resume(State(state): State<AppState>, UrlPath(agent_id): UrlPath<String
     Ok(web::ok(queues_of(&state).set_paused(&agent.name, false).snapshot(&agent.name)))
 }
 
-async fn queue_events(State(state): State<AppState>, UrlPath(agent_id): UrlPath<String>) -> ApiResult<Response> {
-    let agent = agent_of(&state, &agent_id)?;
-    let queues = queues_of(&state);
-    let mut events = queues.subscribe();
-    let first = queues.get(&agent.name).snapshot(&agent.name);
-    let name = agent.name.clone();
-    let line =
-        |kind: &str, data: &Value| bytes::Bytes::from(format!("event: {kind}\ndata: {}\n\n", crate::py::dumps(data)));
-    let stream = async_stream::stream! {
-        yield Ok::<_, std::io::Error>(line("queue", &first));
-        loop {
-            match tokio::time::timeout(Duration::from_secs_f64(crate::app::SSE_KEEPALIVE_SECONDS), events.recv()).await {
-                Err(_) => yield Ok(bytes::Bytes::from_static(b": keepalive\n\n")),
-                Ok(Ok((agent, kind, data))) if agent == name => yield Ok(line(&kind, &data)),
-                Ok(Ok(_)) => {}
-                Ok(Err(broadcast::error::RecvError::Lagged(_))) => {}
-                Ok(Err(broadcast::error::RecvError::Closed)) => break,
-            }
-        }
-    };
-    let mut response = Response::new(Body::from_stream(stream));
-    let headers = response.headers_mut();
-    headers.insert("content-type", axum::http::HeaderValue::from_static("text/event-stream; charset=utf-8"));
-    headers.insert("cache-control", axum::http::HeaderValue::from_static("no-store"));
-    headers.insert("x-accel-buffering", axum::http::HeaderValue::from_static("no"));
-    Ok(response)
-}
-
 /// Mounted under /v1 with the bridge key.
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -916,7 +876,6 @@ pub fn router() -> Router<AppState> {
         .route("/agents/{agent_id}/queue/order", post(order_items))
         .route("/agents/{agent_id}/queue/pause", post(pause))
         .route("/agents/{agent_id}/queue/resume", post(resume))
-        .route("/agents/{agent_id}/queue/events", get(queue_events))
         .route("/agents/{agent_id}/queue/{item_id}", delete(delete_item))
         .route("/agents/{agent_id}/queue/{item_id}/now", post(send_now))
 }
@@ -1106,10 +1065,8 @@ mod tests {
         let queues = Queues::new(shared.clone(), hermes.clone(), hub.clone());
         let agent = config.agents["maison"].clone();
         queues.add(&agent, "s1", "  puis range  ", Some("r1"), false, Sent::default()).unwrap();
-        let mut events = queues.subscribe();
         queues.add(&agent, "s1", "et appelle", None, true, Sent::default()).unwrap();
-        let (who, kind, data) = events.recv().await.unwrap();
-        assert_eq!((who.as_str(), kind.as_str()), ("maison", "queue"));
+        let data = queues.get("maison").snapshot("maison");
         assert_eq!(data["items"][0]["text"], "et appelle");
         assert_eq!(data["items"][1]["text"], "puis range");
         let path = dir.path().join("queue").join("maison.json");

@@ -76,7 +76,7 @@ def test_create_custom_agent(bridges, fakes):
     assert tokens["fougere"] == hashlib.sha256(token.encode()).hexdigest()
     assert oct(os.stat(bridge.state_dir / "agent-tools.json").st_mode & 0o777) == "0o600"
     listed = {a["id"]: a for a in bridge.get("/v1/agents", headers=AUTH).json()["agents"]}
-    assert "key" not in listed["fougere"] and listed["fougere"]["uploads"] is True
+    assert "key" not in listed["fougere"]
     assert bridge.logged("agent created")[0]["agent"] == "fougere" and bridge.logged("agent created")[0]["kind"] == "custom"
     # It survives a restart, with its key and its tools (nothing to register again).
     bridge.commands.clear()

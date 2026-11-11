@@ -329,37 +329,29 @@ def test_an_old_browser_image_asks_for_an_update(bridges, fakes, chrome):
 
 def test_the_reader_view_reads_the_page_without_touching_it(bridges, fakes, chrome):
     bridge, folder = browser_bridge(bridges, fakes, chrome.port)
-    answer = bridge.get("/v1/agents/vie/desktop/reader", headers=AUTH)
+    # The page view's « Lecture », with its ticket.
+    data = bridge.post("/v1/agents/vie/desktop", headers=AUTH).json()
+    reader = "/" + data["page_path"] + "reader"
+    before = len(chrome.methods())
+    answer = bridge.get(reader)
     assert answer.status_code == 200, answer.text
     assert answer.json() == {
         "site": "lemonde.fr", "url": "https://www.lemonde.fr/economie/", "title": "Le Monde", "lang": "fr",
         "blocks": [{"t": "h", "level": 1, "text": "Économie"}, {"t": "p", "text": "Les prix baissent enfin."},
                    {"t": "li", "depth": 1, "text": "Énergie"}]}
     # One snapshot of the DOM, with the styles that tell what shows: no script run, nothing changed in the page.
-    assert [c[1] for c in chrome.methods()] == ["DOMSnapshot.captureSnapshot"]
-    assert chrome.methods()[0][2] == {"computedStyles": ["display", "visibility"]}
-    # The page view's own « Lecture », with its ticket.
-    data = bridge.post("/v1/agents/vie/desktop", headers=AUTH).json()
-    by_ticket = bridge.get("/" + data["page_path"] + "reader")
-    assert by_ticket.status_code == 200 and by_ticket.json()["blocks"][0]["text"] == "Économie"
+    assert [c[1] for c in chrome.methods()[before:]] == ["DOMSnapshot.captureSnapshot"]
+    assert chrome.methods()[before][2] == {"computedStyles": ["display", "visibility"]}
     assert bridge.get("/desktop/nope/page/reader").status_code == 404
-    assert bridge.get("/v1/agents/vie/desktop/reader").status_code == 401
     chrome.tabs[:] = [{"id": "NEW", "url": "chrome://newtab/", "title": "Nouvel onglet"}]
-    blank = bridge.get("/v1/agents/vie/desktop/reader", headers=AUTH)
+    blank = bridge.get(reader)
     assert blank.status_code == 409 and blank.json() == {"detail": {"code": "no_page"}}
 
 
-def test_the_reader_and_focus_need_the_agents_own_browser(bridges, fakes):
-    bridge = bridges.new()
-    bridge.config["agents"]["Vue"] = {"hermes_url": fakes.down.url, "hermes_key": "v" * 32,
-                                      "desktop_url": "https://vue.tailnet.ts.net/vnc.html"}
-    bridge.start()
-    for route in ("reader",):
-        answer = bridge.get(f"/v1/agents/vue/desktop/{route}", headers=AUTH)
-        assert answer.status_code == 409 and answer.json() == {"detail": {"code": "no_page_view"}}
-        assert bridge.get(f"/v1/agents/nobody/desktop/{route}", headers=AUTH).status_code == 404
+def test_the_reader_of_a_stopped_browser_says_so(bridges, fakes):
     stopped, folder = browser_bridge(bridges, fakes, free_port())
-    answer = stopped.get("/v1/agents/vie/desktop/reader", headers=AUTH)
+    data = stopped.post("/v1/agents/vie/desktop", headers=AUTH).json()
+    answer = stopped.get("/" + data["page_path"] + "reader")
     assert answer.status_code == 409 and answer.json() == {"detail": {"code": "not_running"}}
 
 

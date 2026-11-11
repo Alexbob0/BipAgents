@@ -73,7 +73,8 @@ def page_counters(port):
 
 def test_a_real_page_read_and_followed_without_being_touched(bridges, fakes, chromium):
     bridge, folder = browser_bridge(bridges, fakes, chromium)
-    reader = bridge.get("/v1/agents/vie/desktop/reader", headers=AUTH)
+    data = bridge.post("/v1/agents/vie/desktop", headers=AUTH).json()
+    reader = bridge.get("/" + data["page_path"] + "reader")
     assert reader.status_code == 200, reader.text
     body = reader.json()
     assert body["lang"] == "fr"

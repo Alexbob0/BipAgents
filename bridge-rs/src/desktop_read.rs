@@ -12,9 +12,8 @@
 //!   them are rendered and their `display`/`visibility`. The text is put together here (`reader`), headings,
 //!   paragraphs, list items, quotes and images' descriptions, from the page's main content when it has one.
 //!
-//! Routes: `GET /v1/agents/{id}/desktop/focus`, `GET /v1/agents/{id}/desktop/reader` (bridge key) and
-//! `GET /desktop/{ticket}/page/reader` (the page view's ticket). The page view's WebSocket also pushes the focus while
-//! the phone follows the agent (desktop_page.rs).
+//! Route: `GET /desktop/{ticket}/page/reader` (the page view's ticket). The page view's WebSocket also pushes the focus
+//! while the phone follows the agent (desktop_page.rs).
 
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
@@ -471,12 +470,6 @@ async fn reader_of(state: &AppState, agent: &str) -> ApiResult<Response> {
     let answer = read(&mut cdp, &tab).await;
     cdp.close().await;
     answer.map(web::ok).map_err(|_| HttpError::json(503, json!({"code": "busy"})))
-}
-
-/// `GET /v1/agents/{id}/desktop/reader`.
-pub async fn reader_route(State(state): State<AppState>, UrlPath(agent_id): UrlPath<String>) -> ApiResult<Response> {
-    let agent = own_browser(&state, &agent_id)?;
-    reader_of(&state, &agent).await
 }
 
 /// `GET /desktop/{ticket}/page/reader`: the page view's « Lecture ».

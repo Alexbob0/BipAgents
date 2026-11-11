@@ -412,10 +412,7 @@ def test_a_send_cut_asks_the_person_once_and_autoriser_validates_the_site(bridge
     bridge, hub, volumes = isolated(bridges, fakes, agents=("vie", "wellness"))
     started(bridge, hub, ["vie", "wellness"])
     view = bridge.get("/v1/agents/vie/sandbox/sites", headers=AUTH).json()
-    assert view["reading_open"] is True and view["all_sites"] is True and view["sites"] == []
-    # an older app's « Tous les sites » switch: accepted, nothing to change (reading is open)
-    off = bridge.patch("/v1/agents/vie/sandbox/sites", json={"all_sites": False}, headers=AUTH)
-    assert off.status_code == 200 and off.json()["all_sites"] is True, off.text
+    assert view["reading_open"] is True and "all_sites" not in view and view["sites"] == []
     reports = bridge.state_dir / "sandbox-proxy" / "reports" / "sends.jsonl"
     assert reports.parent.is_dir()
     send_report(bridge, ("vie", "upload.example.net", 2 * 1024 * 1024), ("vie", "upload.example.net", 2 * 1024 * 1024),

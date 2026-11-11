@@ -274,7 +274,6 @@ The suite makes about 800 requests in 28 files.
 | `POST /v1/agents/{agent_id}/queue/{item_id}/now` | msg_queue | agent_queue (2) |
 | `POST /v1/agents/{agent_id}/queue/pause` | msg_queue | agent_queue (1) |
 | `POST /v1/agents/{agent_id}/queue/resume` | msg_queue | agent_queue (1) |
-| `GET /v1/agents/{agent_id}/queue/events` | msg_queue | agent_queue (1) |
 | `POST /v1/agents/{agent_id}/steer` | msg_queue | agent_queue (3) |
 | `GET /console/static/…` (mount) | console | console (1) |
 | `GET /desktop/static/novnc/…` (mount) | desktop | desktop (1) |

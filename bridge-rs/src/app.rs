@@ -602,7 +602,6 @@ async fn list_agents(State(state): State<AppState>) -> ApiResult<Response> {
                 "outfit": a.outfit.clone().unwrap_or_default(), "costumes": a.costumes.unwrap_or(true),
                 // the language it writes first in, from its record (the apps keep no copy of it)
                 "language": crate::profile_files::settings(&agents_admin::profile_folder(&config, a)).language,
-                "uploads": a.upload_dir_host.as_deref().map(|u| !u.is_empty()).unwrap_or(false),
                 "url": a.public_url,
                 "family": crate::family_agent::is_family(&config, &a.name),
                 "project": crate::project_agent::listing_mark(&config, &a.name),
@@ -1399,7 +1398,6 @@ pub fn build_router() -> Router<AppState> {
 }
 
 async fn health(State(state): State<AppState>) -> ApiResult<Response> {
-    let config = state.config();
     let tts = &state.tts;
     let (pocket_ok, server_ok) = tokio::join!(
         async {
@@ -1415,12 +1413,10 @@ async fn health(State(state): State<AppState>) -> ApiResult<Response> {
             }
         },
     );
-    // « voice_server »: the person's own voice model (null: none; false: set up, down for now). « drama »: the same
-    // for the apps that offered Drama 3's voices by name, only when that server is Drama 3.
-    let drama = config.voice_server.as_ref().map(|v| v.model.starts_with("drama")).unwrap_or(false);
+    // « voice_server »: the person's own voice model (null: none; false: set up, down for now).
     let mut body = json!({
         "ok": true, "version": VERSION, "pocket": pocket_ok,
-        "voice_server": server_ok, "drama": if drama { json!(server_ok) } else { Value::Null },
+        "voice_server": server_ok,
         "apns": state.apns.is_some(), "push": state.push_mode,
         // The app registers with the publisher's relay and sends the relay token (environment « relay »).
         "push_relay": state.push_service.is_some(), "fcm": state.fcm.is_some(),

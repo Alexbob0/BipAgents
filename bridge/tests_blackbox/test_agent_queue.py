@@ -1,8 +1,8 @@
 """An agent's waiting messages (bridge-rs/src/msg_queue.rs, 2026-11-02), through the one sending route
 (`POST /v1/threads/{id}/messages`, threads/send.rs): words steered into the turn going on (Hermes'
 `POST /v1/runs/{id}/steer`), « Après » kept by the bridge per agent and started as the next turns one after another,
-reordered, cancelled, sent now, paused and resumed; the same list for every device (the timeline's `pending.queue`, the queue's
-own event stream), kept across a restart; « reply ready » pushed once, at the end of the queue."""
+reordered, cancelled, sent now, paused and resumed; the same list for every device (the timeline's `pending.queue`, the run
+stream's `bridge.queue` events), kept across a restart; « reply ready » pushed once, at the end of the queue."""
 import json
 import threading
 import time
@@ -234,6 +234,8 @@ def test_the_queue_survives_a_bridge_restart(bridges, fakes):
 
 
 def test_every_device_follows_the_queue_live(bridges, fakes):
+    """An app following the turn hears each change of the queue in the run's stream (`bridge.queue`, live, not
+    replayed)."""
     bridge = bridges.new().start()
     fakes.hermes.rounds = 1000
     gate = threading.Event()
@@ -242,26 +244,25 @@ def test_every_device_follows_the_queue_live(bridges, fakes):
     events = []
 
     def listen():
-        with bridge.stream("GET", "/v1/agents/wellness/queue/events", headers=AUTH) as resp:
+        with bridge.stream("GET", "/v1/runs/r1/events?agent=wellness", headers=AUTH) as resp:
             name = None
             for line in resp.iter_lines():
                 if line.startswith("event: "):
                     name = line[len("event: "):]
                 elif line.startswith("data: "):
                     events.append((name, json.loads(line[len("data: "):])))
-                    if len(events) >= 3:
+                    if len([n for n, _ in events if n == "bridge.queue"]) >= 2:
                         return
 
     listener = threading.Thread(target=listen, daemon=True)
     listener.start()
-    assert wait_until(lambda: len(events) >= 1, timeout=10)
-    assert events[0][0] == "queue" and events[0][1]["items"] == []
+    assert wait_until(lambda: any(name == "run.started" for name, _ in events), timeout=10)
     add(bridge, "Un", run_id="r1")
     add(bridge, "Deux", run_id="r1")
     listener.join(15)
-    assert [name for name, _ in events] == ["queue", "queue", "queue"]
-    assert texts(events[2][1]) == ["Un", "Deux"] and events[2][1]["version"] > events[1][1]["version"]
-    # an app following the turn hears it in the run's stream too (live, not replayed)
+    told = [data for name, data in events if name == "bridge.queue"]
+    assert len(told) == 2 and all(data["kind"] == "queue" for data in told)
+    assert texts(told[1]) == ["Un", "Deux"] and told[1]["version"] > told[0]["version"]
     gate.set()
 
 

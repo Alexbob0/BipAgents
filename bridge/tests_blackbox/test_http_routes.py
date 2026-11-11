@@ -21,7 +21,7 @@ def test_health_is_public_and_reports_reachability(bridge):
                                                     "threads", "notifications", "push_seal"])   # Rust
     assert body.pop("space", "off") == "off"   # Rust: the space's encryption (space.rs), off here
     assert body == {"ok": True, "version": body["version"], "pocket": True, "voice_server": None,
-                    "drama": None, "apns": True, "push": "apns", "push_relay": False, "fcm": False,
+                    "apns": True, "push": "apns", "push_relay": False, "fcm": False,
                     "tts_queue": 0}
 
 
@@ -53,8 +53,7 @@ def test_agents_listing(bridge):
     assert all(a.pop("language") is None for a in listing["agents"])   # its record's language (none: no profile here)
     assert listing == {"bridge": {"url": None, "lan": None},
                            "agents": [{"id": "wellness", "name": "Wellness", "voice": "pocket:colibri", "server_voice": None,
-                                       "category": None, "color": None, "uploads": True,
-                                       "url": None}],
+                                       "category": None, "color": None, "url": None}],
                            "unclaimed": []}
 
 

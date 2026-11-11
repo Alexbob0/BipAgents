@@ -32,7 +32,6 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 # the person's time zone: DST transitions and wall clocks from the tz database built in (dates/)
 chrono-tz = "0.10"
 des = "0.8"
-fancy-regex = "0.14"
 fernet = { version = "0.2", default-features = false, features = ["rustcrypto"] }
 futures = "0.3"
 glob = "0.3"

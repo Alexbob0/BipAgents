@@ -451,8 +451,8 @@ event: lagged         data: {}                    (the app missed events: refetc
 row), Hermes continued it in a new session (`segment`), and words steered into a turn that stopped without taking
 them become « Pas envoyé » (`lost`: 11 s after the send, nothing running, the message not stored; a turn that ends
 later says it with its own `run`). A deleted thread forgets its messages not stored (`thread_sends`): the main thread
-starts again under the same id without them. The agent's queue keeps its own stream
-(`/v1/agents/{id}/queue/events`, msg_queue.rs); the timeline's `pending.queue` gives its state at each read.
+starts again under the same id without them. The agent's queue is told in the run's stream
+(`bridge.queue`, msg_queue.rs); the timeline's `pending.queue` gives its state at each read.
 
 **Presence**: `GET /v1/threads/events?agent=<a>&thread=<id|main>` means « this conversation is on screen » for as
 long as the stream is open: a notification for that thread is journaled, marked read, and not pushed
