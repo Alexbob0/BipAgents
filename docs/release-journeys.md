@@ -228,9 +228,13 @@ J45 contre un autre pont (un vrai modèle, ses mots imprévisibles) : `TEST_RUNN
 "message": "…"}'` et `-only-testing:BipAgentsUITests/ReleaseJourneysTurnTests` ; seules les quatre vérifications de
 l'écran tournent (sans `#jours` : la conversation de l'agent telle qu'elle est).
 
-Le pont est construit et servi sur le serveur de build (`JOURNEYS_REMOTE`, par défaut `build@100.91.112.69`), dans
-son propre dossier effacé après ; Android y tourne aussi ; le Mac ne fait que l'iPhone (un simulateur temporaire,
-effacé après, sous les créneaux iOS du Mac). Résultats et journaux : `.build/release-journeys/<date>/`.
+Le pont est construit et servi sur le serveur de build (`JOURNEYS_REMOTE`, par défaut celui de
+`~/.config/bipagents-dev/build-server.json`), dans son propre dossier effacé après ; Android y tourne aussi ; le Mac ne
+fait que l'iPhone (un simulateur temporaire, effacé après, sous les créneaux iOS du Mac). Résultats et journaux :
+`.build/release-journeys/<date>/`. Dans la batterie, rien n'est fait deux fois : le pont release qu'elle vient de
+compiler est servi tel quel (`JOURNEYS_BRIDGE`), la colonne Pont est lue dans le junit de sa boîte noire complète
+(`JOURNEYS_PONT_JUNIT`), et Android part dès la fin de la partie serveur ; seul l'iPhone attend la fin des tests UI
+(`JOURNEYS_IOS_AFTER`).
 
 Le simulateur joint le pont par un tunnel ssh sur le `127.0.0.1` du Mac : lancé depuis Claude Code, le script doit
 tourner HORS du bac à sable de Claude (le simulateur n'atteint pas un port ouvert dans le bac à sable : la requête
