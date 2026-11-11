@@ -169,7 +169,7 @@ async fn never_shared_nor_run_for_a_relative_on_a_hermes_without_the_guest_turn_
     let fake = Fake { seen: Arc::new(Mutex::new(Seen::default())), approved: Flag::new() };
     let hermes_url = common::spawn_fake(Router::new().fallback(hermes).with_state(fake.clone())).await;
     let dir = tempfile::tempdir().unwrap();
-    let code = dir.path().join("hermes-agent"); // Alex's Hermes, without the patch's file
+    let code = dir.path().join("alex").join("hermes-agent"); // Alex's Hermes, without the patch
     std::fs::create_dir_all(code.join("agent")).unwrap();
     let extra = json!({"hermes": {"root": s(&code)}});
     let (_, a) = serve_bridge_with(dir.path(), "a", &["cuisine"], &hermes_url, extra).await;
@@ -200,7 +200,7 @@ async fn never_shared_nor_run_for_a_relative_on_a_hermes_without_the_guest_turn_
     assert_eq!(b.get("/v1/shared-agents", &h).await.json()["agents"], json!([]));
 
     // The patch there: shared, and Marie talks to it.
-    std::fs::write(code.join("agent/guest_turn.py"), "# patch 0018\n").unwrap();
+    common::patched_hermes(&dir.path().join("alex"));
     assert!(bipbridge::agent_shares::guest_turns_closed(&a.app.state.config(), None));
     let shared = a.send_json("PUT", "/v1/agents/cuisine/shares", &h, &json!({"households": ["marie"]})).await;
     assert_eq!(shared.status, 200, "{}", shared.text());
@@ -228,7 +228,7 @@ async fn no_family_agent_on_a_hermes_without_the_guest_turn_patch() {
     let mut config = common::config(dir.path(), &Urls::default());
     config.hermes.bin = "/opt/hermes".into();
     config.hermes.hub_url = "http://127.0.0.1:9".into();
-    config.hermes.root = s(&dir.path().join("hermes-agent"));
+    config.hermes.root = s(&dir.path().join("unpatched"));
     let app = TestApp::new(config);
     let (k, v) = auth();
     let h = [(k, v.as_str())];
@@ -250,14 +250,33 @@ fn the_offer_s_places_always_close_a_relative_s_turn() {
     d["cloud"] = json!(true);
     assert!(bipbridge::agent_shares::guest_turns_closed(&parse_config(&d, None).unwrap(), None));
     // an agent in its own space: its own Hermes code is the one checked
-    let own = dir.path().join("space-code");
-    std::fs::create_dir_all(own.join("agent")).unwrap();
-    std::fs::write(own.join("agent/guest_turn.py"), "").unwrap();
+    let own = dir.path().join("space");
+    let own_root = common::patched_hermes(&own);
     d["cloud"] = json!(false);
     let config = parse_config(&d, None).unwrap();
     let mut agent = config.agent(Some("wellness")).unwrap().clone();
-    agent.hermes_root = Some(s(&own));
+    agent.hermes_root = Some(own_root.clone());
     assert!(bipbridge::agent_shares::guest_turns_closed(&config, Some(&agent)));
+    // the patch's new file left behind (untracked: a `git reset --hard` or a stash keeps it) while its wiring in the
+    // run API is gone: open
+    let (wired, _) = bipbridge::agent_shares::GUEST_TURN_WIRING;
+    std::fs::write(Path::new(&own_root).join(wired), "# stock Hermes\n").unwrap();
+    assert!(!bipbridge::agent_shares::guest_turns_closed(&config, Some(&agent)));
+}
+
+#[test]
+fn a_hermes_whose_code_folder_is_unknown_counts_as_open() {
+    // Owner's decision (11/11): when the bridge cannot tell, relatives' turns are refused, not run open.
+    let dir = tempfile::tempdir().unwrap();
+    let mut d = config_dict(dir.path(), &Urls::default());
+    d["hermes"] = json!({}); // set up by hand, or Hermes in a container: no root, no home
+    assert!(!bipbridge::agent_shares::guest_turns_closed(&parse_config(&d, None).unwrap(), None));
+    // its home known: the official install's folder `<home>/hermes-agent` is the one looked at
+    let home = dir.path().join(".hermes");
+    d["hermes"] = json!({"home": s(&home)});
+    assert!(!bipbridge::agent_shares::guest_turns_closed(&parse_config(&d, None).unwrap(), None));
+    common::patched_hermes(&home);
+    assert!(bipbridge::agent_shares::guest_turns_closed(&parse_config(&d, None).unwrap(), None));
 }
 
 #[tokio::test]

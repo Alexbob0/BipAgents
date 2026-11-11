@@ -138,19 +138,33 @@ pub fn guest_tools(names: &[&str]) -> Vec<String> {
 /// (the owner's terminal, files, `session_search`, USER.md).
 pub const GUEST_TURN_FILE: &str = "agent/guest_turn.py";
 
+/// A file the patch changes (tracked in Hermes' checkout) and what it adds there: `GUEST_TURN_FILE` is new, hence
+/// untracked, and outlives a `git reset --hard` or a stash that takes the patch's other hunks off.
+pub const GUEST_TURN_WIRING: (&str, &str) = ("gateway/platforms/api_server_runs.py", "agent.guest_turn");
+
 /// Whether this install's Hermes closes a relative's turn (patch 0018), checked on disk, never by sending a turn (an
 /// unpatched Hermes would simply run it) (audit 11/11, BA-2). The offer's places run the shared Hermes built with
-/// every patch (a failed one stops the build): yes. A self-install: only when the patch's file is in the code the
-/// agent runs (its own space's, else the hub's): a person who declined the fixes, runs another Hermes version, or ran
-/// a plain `hermes update` has not. A Hermes whose code folder is unknown to the bridge (in a container, set up by
-/// hand) is not checked.
+/// every patch (a failed one stops the build): yes. A self-install: only when the code the agent runs (its own
+/// space's, else the hub's `[hermes] root`, else `<home>/hermes-agent`, the official install's folder) has both the
+/// patch's file and its wiring in the run API: a person who declined the fixes, runs another Hermes version, or ran
+/// a plain `hermes update` has not. A Hermes whose code folder the bridge cannot find (in a container, set up by
+/// hand) counts as open: a relative getting the owner's tools is worse than a share refused (owner's decision 11/11).
 pub fn guest_turns_closed(config: &Config, agent: Option<&AgentConfig>) -> bool {
     if config.cloud {
         return true;
     }
-    let own = agent.and_then(|a| a.hermes_root.as_deref()).filter(|r| !r.is_empty());
-    let root = own.unwrap_or(&config.hermes.root);
-    root.is_empty() || std::path::Path::new(root).join(GUEST_TURN_FILE).is_file()
+    let own = agent.and_then(|a| a.hermes_root.clone()).filter(|r| !r.is_empty());
+    let root = own
+        .or_else(|| Some(config.hermes.root.clone()).filter(|r| !r.is_empty()))
+        .or_else(|| Some(config.hermes.home.clone()).filter(|h| !h.is_empty()).map(|h| py::join(&h, "hermes-agent")));
+    let Some(root) = root else {
+        tracing::warn!("shared agent: this Hermes' code folder is unknown ([hermes] root): relatives' turns refused");
+        return false;
+    };
+    let root = std::path::Path::new(&root);
+    let (wired, mark) = GUEST_TURN_WIRING;
+    root.join(GUEST_TURN_FILE).is_file()
+        && std::fs::read_to_string(root.join(wired)).is_ok_and(|text| text.contains(mark))
 }
 
 /// The refusal while `guest_turns_closed` is false, in the place's language: a plain sentence both apps show
