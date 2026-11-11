@@ -316,7 +316,13 @@ pub async fn members(http: &reqwest::Client, config: &Config) -> Vec<Member> {
                 .get("agents")
                 .and_then(Value::as_array)
                 .map(|items| {
-                    items.iter().map(|a| (str_of(a, "id"), str_of(a, "name"))).filter(|(i, _)| !i.is_empty()).collect()
+                    items
+                        .iter()
+                        // only those its bridge takes news for (`tell`; an older bridge says nothing: kept)
+                        .filter(|a| a.get("tell").and_then(Value::as_bool) != Some(false))
+                        .map(|a| (str_of(a, "id"), str_of(a, "name")))
+                        .filter(|(i, _)| !i.is_empty())
+                        .collect()
                 })
                 .unwrap_or_default();
             Member { id, name, agents }

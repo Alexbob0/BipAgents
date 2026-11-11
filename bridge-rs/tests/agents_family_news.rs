@@ -266,6 +266,19 @@ async fn a_household_s_message_reaches_only_the_agents_it_may_address() {
     assert_eq!((nobody.status.as_u16(), nobody.json()), (404, json!({"detail": "no agent here"})));
     assert_eq!(received("budget").await, json!([]));
     assert_eq!(common::without_now(&common::notes(&b, "budget", "s1", "").await), "", "nothing noted for its turn");
+    // the list Alex's bridge reads says which ones take its news (all listed: the pairing screen shows them all)
+    let tell = |listed: Value| -> Vec<(String, bool)> {
+        listed["agents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|a| (a["id"].as_str().unwrap().into(), a["tell"] == true))
+            .collect()
+    };
+    let listed = b.get("/family/agents", &theirs).await.json();
+    assert_eq!(tell(listed), [("cuisine".to_string(), true), ("budget".to_string(), false)]);
+    let members = family_news::members(&reqwest::Client::new(), &a.app.state.config()).await;
+    assert_eq!(members[0].agents, [("cuisine".to_string(), "Cuisine".to_string())], "tell_family offers no other");
 
     // shared with Alex's household: it may be told
     let shared = b.send_json("PUT", "/v1/agents/budget/shares", &h, &json!({"households": ["alex"]})).await;
@@ -273,6 +286,8 @@ async fn a_household_s_message_reaches_only_the_agents_it_may_address() {
     let now = b.send_json("POST", "/family/tell", &theirs, &json!({"agent": "budget", "text": "Loyer payé"})).await;
     assert_eq!(now.status, 200, "{}", now.text());
     assert_eq!(received("budget").await[0]["text"], "Loyer payé");
+    let listed = b.get("/family/agents", &theirs).await.json();
+    assert_eq!(tell(listed), [("cuisine".to_string(), true), ("budget".to_string(), true)]);
 }
 
 #[test]
