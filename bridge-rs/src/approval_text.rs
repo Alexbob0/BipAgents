@@ -551,7 +551,7 @@ mod tests {
         assert_eq!(d.summary, "Vie demande ta confirmation : « Allowtxt.exe? »");
         let gate = json!({"command": format!("MCP tool 'look{sneaky}up' on UNTRUSTED server 'finary' wants to run."),
                           "pattern_key": "mcp_elicitation"});
-        let last = LastTool { name: "look_up".into(), preview: format!("note\u{2066}.pdf\u{2069}") };
+        let last = LastTool { name: "look_up".into(), preview: "note\u{2066}.pdf\u{2069}".into() };
         let d = describe("Vie", "fr", &data(gate), Some(&last), Place::Own).unwrap();
         assert_eq!(seen(&d), 0, "{d:?}");
         assert_eq!(d.summary, "Vie veut utiliser lookup de Finary : « note.pdf »");
