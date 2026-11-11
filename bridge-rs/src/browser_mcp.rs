@@ -1527,7 +1527,9 @@ out of your reach";
     fn the_skill_gives_the_same_script() {
         let skill = crate::browsers::skill();
         assert!(skill.contains(&format!("`{AROUND_A_WORD}`")), "visible-browser/SKILL.md § 2 and AROUND_A_WORD");
-        assert!(skill.contains("version: 1.11.0"));
+        assert!(skill.contains("version: 1.11.1"));
+        // never an argument the relay takes off (tame_call): the agent would say it quit the browser, and it did not
+        assert!(!skill.contains("quit_browser:") && !skill.contains("browser_args"), "visible-browser/SKILL.md");
     }
 
     #[test]

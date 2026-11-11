@@ -25,7 +25,8 @@ te le demande, il ne le résout jamais.
   `stealth`. Le serveur tourne dans le conteneur, à côté de Chrome ; Hermes le lance avec `podman exec`. Chrome n'est
   jamais l'enfant du serveur : `spawn_browser` le lance à part (`open_browser.sh`) et s'y connecte, il survit donc au
   serveur quand Hermes le redémarre, et l'instance de l'agent garde le même identifiant (et sa page). `close_instance`
-  ferme les pages et laisse Chrome ; seul `quit_browser` le quitte.
+  ferme les pages et laisse Chrome ; seul `quit_browser` le quitte (le relais du bridge ne le transmet jamais
+  de la part d'un agent).
 - **Le coffre** remplit les mots de passe dans ce même Chrome : Hermes joint son port DevTools (`browser.cdp_url`) et
   remplit le champ sur le site exact de l'identifiant, sans que l'agent voie jamais le mot de passe. Le gestionnaire
   de mots de passe et la saisie automatique de Chrome sont coupés (règles dans l'image) : c'est le coffre qui les garde.
