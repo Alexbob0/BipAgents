@@ -124,6 +124,23 @@ def test_a_site_refused_from_the_boite_while_other_tools_run_resumes_once(bridge
     assert "REFUSED" in told and "connect.garmin.example" in told, told
 
 
+def test_refuser_toujours_from_the_boite_tells_the_agent_refused(bridges, fakes):
+    """11/11 review B-1: « Refuser toujours » (`deny_always`) answered from the Boîte must reach the resumed turn as
+    REFUSED, not ALLOWED."""
+    gate = threading.Event()
+    bridge, card = site_in_a_turn(bridges, fakes, "api_da", "run_da", [
+        sse("tool.completed", run_id="run_da", tool=SITES_TOOL),
+        sse("tool.started", run_id="run_da", tool="terminal", preview="curl upload"), gate,
+        sse("tool.completed", run_id="run_da", tool="terminal"),
+        sse("run.completed", run_id="run_da", output="fait")])
+    answered = bridge.post("/v1/approve", headers=AUTH, json={"agent": "vie", "run_id": card["run_id"],
+                                                              "request_id": card["request_id"], "choice": "deny_always"})
+    assert answered.status_code == 200 and answered.json()["choice"] == "deny_always", answered.text
+    gate.set()
+    told = once(fakes, "api_da")
+    assert "REFUSED" in told and "ALLOWED" not in told, told
+
+
 @pytest.mark.parametrize("route", ["own_route", "boite"])
 def test_a_site_answered_the_instant_it_is_made_resumes_once(bridges, fakes, route):
     """The main-next battery (GLM lab, 6/11): a sites card answered less than a second after it appeared, before the

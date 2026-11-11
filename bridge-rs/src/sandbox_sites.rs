@@ -1060,14 +1060,16 @@ impl Answer {
 }
 
 /// A card answered through `/v1/approve` (a notification, or an app that answers Hermes' way): `deny` (all its
-/// hosts, 24 hours), `deny_always` (all its hosts, for good), an older app's `all_sites` (all of them allowed), else
-/// « Autoriser » (the first host, what older apps show).
+/// hosts, 24 hours), `deny_always` (all its hosts, for good), an older app's `all_sites` (all of them allowed),
+/// `always` / `once` « Autoriser » (the first host, what older apps show); any other word: « Refuser » (11/11 review
+/// B-1: an unknown word is never a yes).
 pub fn decision_of_choice(choice: &str) -> Decision {
     match choice.trim().to_lowercase().as_str() {
         "all_sites" => Decision::AllSites,
         "deny" => Decision::DenyAll,
         "deny_always" => Decision::Always(None),
-        _ => Decision::First(true),
+        "always" | "once" | "session" => Decision::First(true),
+        _ => Decision::DenyAll,
     }
 }
 

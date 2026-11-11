@@ -1106,7 +1106,7 @@ async fn bridge_card(
     }
     // a card of the vault's (an account to create with a vault password, vault_logins.rs), answered here
     if let Some(id) = run_id.strip_prefix(crate::vault_logins::RUN_PREFIX) {
-        let allow = body.choice.trim().to_lowercase() != "deny";
+        let allow = crate::card_place::allowed(&body.choice); // an unknown word: refused
         return Ok(Some(if crate::vault_logins::answer(&state.config(), &agent.name, id, allow, "notification") {
             Ok(web::ok(json!({"ok": true, "choice": if allow { "once" } else { "deny" }})))
         } else {
@@ -1126,7 +1126,7 @@ async fn bridge_card(
     }
     // a connector's approval card (connectors.rs)
     if let Some(id) = run_id.strip_prefix(crate::connectors::RUN_PREFIX) {
-        let allow = body.choice.trim().to_lowercase() != "deny";
+        let allow = crate::card_place::allowed(&body.choice); // an unknown word: refused
         return Ok(Some(crate::connectors::answered_response(
             crate::connectors::answer(state, id, allow, "notification").await,
             allow,
@@ -1138,7 +1138,7 @@ async fn bridge_card(
     }
     // a standing mail rule's card (mail_rules.rs): on with « Oui », the mails already there filed by the bridge
     if let Some(id) = run_id.strip_prefix(crate::mail_rules::RUN_PREFIX) {
-        let allow = body.choice.trim().to_lowercase() != "deny";
+        let allow = crate::card_place::allowed(&body.choice); // an unknown word: refused
         let (config, name, id) = (state.config(), agent.name.clone(), id.to_string());
         let rule = tokio::task::spawn_blocking(move || -> anyhow::Result<Option<crate::mail_rules::Rule>> {
             let rule = crate::mail_rules::answer(&config, &name, &id, allow, "app")?;
@@ -1158,7 +1158,7 @@ async fn bridge_card(
     }
     // a mail tidy card (archive, mark read, move or trash many e-mails, mail_tidy.rs): done by the bridge on « Oui »
     if let Some(id) = run_id.strip_prefix(crate::mail_tidy::RUN_PREFIX) {
-        let allow = body.choice.trim().to_lowercase() != "deny";
+        let allow = crate::card_place::allowed(&body.choice); // an unknown word: refused
         let (config, name, id) = (state.config(), agent.name.clone(), id.to_string());
         let job = tokio::task::spawn_blocking(move || -> anyhow::Result<Option<crate::mail_tidy::Job>> {
             let job = crate::mail_tidy::answer(&config, &name, &id, allow, "app")?;
@@ -1178,7 +1178,7 @@ async fn bridge_card(
     }
     // a routine an agent proposed, started by an e-mail or a link (triggers.rs): on with « Oui »
     if let Some(id) = run_id.strip_prefix(crate::triggers::RUN_PREFIX) {
-        let allow = body.choice.trim().to_lowercase() != "deny";
+        let allow = crate::card_place::allowed(&body.choice); // an unknown word: refused
         let (config, name, id) = (state.config(), agent.name.clone(), id.to_string());
         let answered = tokio::task::spawn_blocking(move || crate::triggers::answer(&config, &name, &id, allow))
             .await

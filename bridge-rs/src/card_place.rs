@@ -697,9 +697,27 @@ pub fn resume_in(place: &Place) -> String {
     place.session.clone().or_else(|| place.report.clone()).unwrap_or_else(|| "main".to_string())
 }
 
-/// Allowed (`once`, `always`…) or refused (`deny`).
+/// Allowed (`once`, `always`…) or refused (`deny`, `deny_always`…). Only the words a card offers for going on are
+/// allowed (Hermes' approvals, the bridge's own cards: routines, space, tips); any other word, unknown, new or
+/// misspelt, is refused (11/11 review B-1: « Refuser toujours », `deny_always`, was told to the agent as ALLOWED).
 pub fn allowed(choice: &str) -> bool {
-    !matches!(choice, "deny" | "denied" | "refuse" | "refused" | "no")
+    let word = choice.trim().to_lowercase();
+    let word = word.split(':').next().unwrap_or_default();
+    const GO_ON: [&str; 12] = [
+        "once",
+        "session",
+        "always",
+        "notify",
+        "silent",
+        "keep_last",
+        "archive",
+        "send",
+        "delete",
+        "try",
+        "later",
+        "never",
+    ];
+    GO_ON.contains(&word)
 }
 
 /// What the resumed turn reads (a hidden note: not in the conversation's timeline).
@@ -985,6 +1003,9 @@ mod tests {
         assert_eq!(resume_in(&place(Some("s_side"), Some("s_side"))), "s_side");
         assert_eq!(resume_in(&place(None, None)), "main");
         assert!(allowed("once") && allowed("always") && !allowed("deny"));
+        // a word no card offers for going on is refused: « Refuser toujours », a new or misspelt word
+        assert!(!allowed("deny_always") && !allowed("refused") && !allowed("alwyas") && !allowed(""));
+        assert!(allowed(" Always ") && allowed("keep_last") && allowed("notify"));
         let note = resume_note(&[("Vie veut envoyer des données à connect.garmin.com".into(), true), (String::new(), false)]);
         assert!(note.starts_with("<!--bip:card\n") && note.ends_with("-->"));
         assert!(note.contains("your turn ended before you were told"));

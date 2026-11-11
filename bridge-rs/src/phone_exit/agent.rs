@@ -79,8 +79,8 @@ pub fn ask(config: &Config, agent: &str, raw: &str, reason: &str) -> std::io::Re
 pub fn answer(config: &Config, agent: &str, id: &str, choice: &str, via: &str) -> anyhow::Result<Option<Option<Session>>> {
     let choice = match choice.trim().to_lowercase().as_str() {
         "always" => "always",
-        "deny" | "denied" | "no" | "refuse" | "refused" => "deny",
-        _ => "once",
+        "once" | "session" => "once",
+        _ => "deny", // `deny`, or a word this card does not offer: refused (11/11 review B-1)
     };
     let answered = store::change(config, |s| {
         let i = s.cards.iter().position(|c| c.agent == agent && c.id == id)?;
