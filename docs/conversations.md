@@ -515,6 +515,12 @@ nothing while the model writes a call's arguments or its own notes).
   `answer`) through `POST /v1/approve` with `agent=<x>__<h>` (the owner's `/family/s/{agent}/approval`); her bridge
   pushes a question like an approval while her app isn't looking. Her own person's
   words come unframed. The `/v1/shared-agents/{id}/conversations…` routes are gone.
+  The apps open a shared agent in the conversation screen of their own agents (11/11), so `main` works as for one's
+  own agent: her latest conversation with it (the page, the events, a turn's words, stop, delete), before her first
+  message an empty page `{thread: {id: main, kind: shared, tip: null}}` (nothing to follow: events 404), her first
+  message to `main` makes it. The thread's `tip` and a send's `tip` are the conversation's id (the apps key a turn by
+  it). A catch-up (`after=`) is answered with the latest page (`reset: true`): her words only, whose cursors move as
+  Hermes stores her turn.
 
 ### 6.7 Sending, stopping, answering (step 4)
 
