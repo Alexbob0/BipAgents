@@ -197,3 +197,57 @@ def test_a_shared_agent_s_question_reaches_the_relative_and_her_answer_goes_back
                                         "body": {"request_id": "q-1", "execution_generation": 2, "answer": "4"}}
     assert wait(lambda: page()["pending"]["questions"] == [])
     gate.set()
+
+
+def test_a_shared_agent_opens_on_main_like_one_s_own(bridges, fakes):
+    """The apps open a shared agent in the conversation screen of their own agents, on `main`: before her first message
+    an empty page (`main`, nothing to follow); her first message to `main` makes her conversation; then `main` is her
+    latest one, its id as the thread's tip (the apps key a turn by it), for the page, the turn's words, stop and delete."""
+    a = household(bridges, fakes, "alex", ["cuisine"])
+    b = household(bridges, fakes, "marie", ["vie"])
+    link(a, b)
+    assert a.put("/v1/agents/cuisine/shares", headers=AUTH, json={"households": ["marie"]}).status_code == 200
+    assert b.post("/v1/shared-agents/cuisine__alex/add", headers=AUTH).status_code == 200
+    shared = {"agent": "cuisine__alex"}
+    empty = b.get("/v1/threads/main/timeline", headers=AUTH, params=shared)
+    assert empty.status_code == 200, empty.text
+    page = empty.json()
+    assert page["thread"]["id"] == "main" and page["thread"]["tip"] is None and page["items"] == []
+    assert page["pending"] == {"run": None, "approvals": [], "questions": []}
+    assert b.get("/v1/threads/events", headers=AUTH, params={**shared, "thread": "main"}).status_code == 404
+    assert b.post("/v1/threads/main/stop", headers=AUTH, json=shared).json() == {"stopped": False}
+
+    gate = threading.Event()
+    fakes.hermes.runs["r1"] = [sse("message.delta", run_id="r1", delta="Des crêpes"), gate,
+                               sse("run.completed", output="Des crêpes !")]
+    first = {**shared, "client_id": "C0FFEE00-0000-4000-8000-0000000000A1", "text": "Une idée pour dimanche ?"}
+    sent = b.post("/v1/threads/main/messages", headers=AUTH, json=first)
+    assert sent.status_code == 200, sent.text
+    cid = sent.json()["thread"]
+    assert cid not in ("main", "new") and sent.json()["tip"] == cid and sent.json()["run_id"] == "r1"
+    page = b.get("/v1/threads/main/timeline", headers=AUTH, params=shared).json()
+    assert page["thread"]["id"] == cid and page["thread"]["tip"] == cid
+    assert [i["text"] for i in page["items"]] == ["Une idée pour dimanche ?"]
+    with httpx.Client(base_url=b.url, headers=AUTH, timeout=10) as client:
+        with client.stream("GET", "/v1/runs/r1/events", params={**shared, "thread": "main"}) as live:
+            assert live.status_code == 200
+            event = next(json.loads(line[6:]) for line in live.iter_lines() if line.startswith("data: "))
+    assert event["event"] == "message.delta"
+    assert b.post("/v1/threads/main/stop", headers=AUTH, json=shared).status_code == 200
+    gate.set()
+    fakes.hermes.started["r1"]["status"] = "completed"
+    assert wait(lambda: b.get(f"/v1/threads/{cid}/timeline", headers=AUTH, params=shared).json()["pending"]["run"] is None)
+    # a catch-up after what the phone holds is the latest page, the window (`reset`): her words only, whose cursors move
+    # as Hermes stores her turn; never an empty page that would empty the phone's window
+    later = b.get(f"/v1/threads/{cid}/timeline", headers=AUTH, params={**shared, "after": page["last"]}).json()
+    assert later["reset"] is True and [i["text"] for i in later["items"]] == ["Une idée pour dimanche ?"], later
+
+    # a second conversation (« Nouvelle conversation »): `main` follows the latest
+    fakes.hermes.runs["r2"] = [sse("run.completed", output="Une soupe.")]
+    other = b.post("/v1/threads/new/messages", headers=AUTH,
+                   json={**shared, "client_id": "C0FFEE00-0000-4000-8000-0000000000A2", "text": "Et lundi ?"})
+    assert other.status_code == 200, other.text
+    assert other.json()["thread"] != cid
+    assert b.get("/v1/threads/main/timeline", headers=AUTH, params=shared).json()["thread"]["id"] == other.json()["thread"]
+    assert b.delete("/v1/threads/main", headers=AUTH, params=shared).status_code == 200
+    assert [t["id"] for t in b.get("/v1/threads", headers=AUTH, params=shared).json()["threads"]] == [cid]
