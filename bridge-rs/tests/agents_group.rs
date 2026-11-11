@@ -987,6 +987,23 @@ async fn two_households_write_to_each_other_only_where_both_allowed() {
         401
     );
 
+    // Léa's Hermes lost patch 0018 (a plain `hermes update`): Vie's message would be a turn with Cuisine's own tools
+    // and memory, so it is refused there and Hermes never sees it (audit 11/11, BA-2); back once the patch is.
+    let (wired, _) = bipbridge::agent_shares::GUEST_TURN_WIRING;
+    let wiring = dir.path().join("hermes-agent").join(wired);
+    let patched = std::fs::read_to_string(&wiring).unwrap();
+    std::fs::write(&wiring, "# stock Hermes\n").unwrap();
+    let before = runs().len();
+    let refused = b.send_json("POST", "/family/p/cuisine/v1/runs", &[], &message).await;
+    assert_eq!(refused.status, 401, "{}", refused.text()); // the household's key first, as always
+    let open = send().await;
+    assert_eq!(open.status, 503, "{}", open.text());
+    assert_eq!(open.json()["code"], bipbridge::agent_shares::GUEST_TURNS_OPEN);
+    assert_eq!(runs().len(), before, "nothing reached Léa's Hermes");
+    std::fs::write(&wiring, patched).unwrap();
+    assert_eq!(send().await.status, 200);
+    assert_eq!(runs().len(), before + 1);
+
     // Unlinking the household drops its links.
     assert_eq!(b.request("DELETE", "/v1/family/alex", &h, None).await.status, 204);
     assert_eq!(b.get("/v1/agent-links", &h).await.json()["links"], json!([]));

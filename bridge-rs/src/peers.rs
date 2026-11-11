@@ -1008,6 +1008,10 @@ async fn deliver(state: AppState, target: String, path: String, request: Request
             PairRoute::Forward { path, body, session } => (path, body, session),
         };
     let message = is_message(&parts.method, &path);
+    if message && !crate::agent_shares::guest_turns_closed(&config, Some(&agent)) {
+        // a turn another household drives, on a Hermes that would run it open (audit 11/11, BA-2)
+        return Ok(crate::agent_shares::guest_turns_refused(&config, 503));
+    }
     if message {
         body = Bytes::from(resign(&body, &sender, &name, &household_name));
         let (framed, said) = crate::agent_pairs::household_framed(&body, &shown, &remote);
