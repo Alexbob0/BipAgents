@@ -191,7 +191,10 @@ async fn never_shared_nor_run_for_a_relative_on_a_hermes_without_the_guest_turn_
     assert_eq!(refused.status, 503, "{}", refused.text());
     assert_eq!(refused.json()["code"], bipbridge::agent_shares::GUEST_TURNS_OPEN);
     let detail = refused.json()["detail"].as_str().unwrap().to_string();
-    assert!(detail.starts_with("Tes agents ne peuvent pas être partagés") && detail.contains("--fixes-only"), "{detail}");
+    assert!(
+        detail.starts_with("Tes agents ne peuvent pas être partagés") && detail.contains("--fixes-only"),
+        "{detail}"
+    );
     let view = a.get("/v1/agents/cuisine/shares", &h).await.json();
     assert_eq!(view["households"], json!([{"id": "marie", "name": "Marie", "shared": false}]));
     assert_eq!(b.get("/v1/shared-agents", &h).await.json()["agents"], json!([]));
@@ -212,7 +215,8 @@ async fn never_shared_nor_run_for_a_relative_on_a_hermes_without_the_guest_turn_
 
     // A plain `hermes update` took the patch off: her next turn is refused, no run started (not run open).
     std::fs::remove_file(code.join("agent/guest_turn.py")).unwrap();
-    let next = json!({"agent": "cuisine__alex", "client_id": "C0FFEE00-0000-4000-8000-000000000012", "text": "Encore ?"});
+    let next =
+        json!({"agent": "cuisine__alex", "client_id": "C0FFEE00-0000-4000-8000-000000000012", "text": "Encore ?"});
     let again = b.send_json("POST", &format!("/v1/threads/{cid}/messages"), &h, &next).await;
     assert_eq!(again.status, 503, "{}", again.text());
     assert_eq!(fake.seen.lock().unwrap().runs.len(), 1);

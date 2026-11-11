@@ -157,14 +157,22 @@ pub fn guest_turns_closed(config: &Config, agent: Option<&AgentConfig>) -> bool 
 /// (`detail`), and `code` for an app that learns to say it in its own words.
 pub fn guest_turns_refused(config: &Config, status: u16) -> Response {
     let text = match crate::notebook::place_language(config).as_deref().unwrap_or("fr") {
-        "en" => "Your agents can't be shared with your family until your Hermes is up to date: run bipagents \
-hermes-update --fixes-only on your computer.",
-        "de" => "Deine Agenten können erst mit deiner Familie geteilt werden, wenn dein Hermes aktuell ist: Führe auf \
-deinem Computer „bipagents hermes-update --fixes-only“ aus.",
-        "es" => "Tus agentes no se pueden compartir con tu familia hasta que tu Hermes esté al día: ejecuta \
-«bipagents hermes-update --fixes-only» en tu ordenador.",
-        _ => "Tes agents ne peuvent pas être partagés avec tes proches tant que ton Hermes n’est pas à jour : lance \
-« bipagents hermes-update --fixes-only » sur ton ordinateur.",
+        "en" => {
+            "Your agents can't be shared with your family until your Hermes is up to date: run bipagents \
+hermes-update --fixes-only on your computer."
+        }
+        "de" => {
+            "Deine Agenten können erst mit deiner Familie geteilt werden, wenn dein Hermes aktuell ist: Führe auf \
+deinem Computer „bipagents hermes-update --fixes-only“ aus."
+        }
+        "es" => {
+            "Tus agentes no se pueden compartir con tu familia hasta que tu Hermes esté al día: ejecuta \
+«bipagents hermes-update --fixes-only» en tu ordenador."
+        }
+        _ => {
+            "Tes agents ne peuvent pas être partagés avec tes proches tant que ton Hermes n’est pas à jour : lance \
+« bipagents hermes-update --fixes-only » sur ton ordinateur."
+        }
     };
     tracing::warn!("shared agent: refused, this Hermes lacks patch 0018 (relatives' turns would run open)");
     web::json_response(status, &json!({"detail": text, "code": GUEST_TURNS_OPEN}))
