@@ -527,7 +527,7 @@ fn when_of(r: &Routine, zone: Tz) -> Value {
 /// chaque jour à 23:00. Elle démarrera après ta réponse. » (the agent's language: fr, en, de, es).
 pub fn made_sentence(config: &Config, r: &Routine) -> String {
     let lang = crate::names::names(&crate::names::agent_language(config, &r.agent)).lang;
-    let (who, name) = (shown_agent(config, &r.agent), &r.name);
+    let (who, name) = (flat(&shown_agent(config, &r.agent), NAME_MAX), flat(&r.name, NAME_MAX));
     let when = when_in(r, &r.schedule, zone(config), lang);
     match lang {
         "fr" => format!("{who} a créé la routine « {name} » : {}. Elle démarrera après ta réponse.", when.to_lowercase()),
@@ -565,13 +565,15 @@ pub fn suggested(r: &Routine) -> &'static str {
 pub fn card_item(config: &Config, r: &Routine, card: &Card) -> Dict {
     let summary = card_sentence(config, r);
     let zone = zone(config);
+    // all it will run, on one line, the name on one line too (B-A: nothing that would run is off the card)
+    let (name, prompt) = (flat(&r.name, NAME_MAX), flat(&r.prompt, PROMPT_MAX));
     let item = json!({
         "agent": r.agent, "run_id": format!("{RUN_PREFIX}{}", card.id), "request_id": card.id,
-        "command": format!("{TOOL_NAME} · {}", r.name), "description": summary,
+        "command": format!("{TOOL_NAME} · {name}"), "description": summary,
         "choices": ["once", "deny"], "bip_choices": [NOTIFY, SILENT_CHOICE],
         "created_at": card.at, "session_id": null,
-        "bip_summary": summary, "bip_detail": crate::tools_knowledge::head(&r.prompt, 600),
-        "bip_routine": {"id": r.id, "name": r.name, "prompt": crate::tools_knowledge::head(&r.prompt, 600),
+        "bip_summary": summary, "bip_detail": prompt,
+        "bip_routine": {"id": r.id, "name": name, "prompt": prompt,
                         "schedule_display": view(r, zone)["schedule_display"], "when": when_of(r, zone),
                         "suggested": suggested(r), "muted": r.muted, "question": QUESTION},
     });
@@ -604,8 +606,39 @@ pub fn pending_items(config: &Config, agent: Option<&str>) -> Vec<Dict> {
 // own actions in the app never apply a proposal: an edit, a template switch or a delete drops it, a pause or a resume
 // leaves it waiting.
 
-/// The longest prompt a card shows whole (the templates' cap): an agent's proposal longer than this is refused.
+/// The longest prompt a card shows whole (the templates' cap): an agent's routine or proposal longer than this is
+/// refused.
 pub const PROMPT_MAX: usize = crate::templates::MAX_PROMPT;
+/// The longest name of a routine its agent makes (a few words; its cards show it whole).
+pub const NAME_MAX: usize = 80;
+
+/// Why an agent's prompt is refused: longer than its card shows whole.
+fn too_long(prompt: &str) -> Option<String> {
+    let n = prompt.chars().count();
+    (n > PROMPT_MAX).then(|| {
+        format!(
+            "That prompt is too long ({n} characters): a routine's prompt is {PROMPT_MAX} characters at most, so your \
+person can read all of it before saying yes. Write it shorter."
+        )
+    })
+}
+
+/// The name of a routine its agent makes, cleaned for its cards (one line, no hidden characters; none given: the start
+/// of its prompt), or why it is refused (too long, or its prompt too long).
+fn agent_made_name(name: &str, prompt: &str) -> Result<String, String> {
+    if let Some(why) = too_long(prompt) {
+        return Err(why);
+    }
+    let n = name.trim().chars().count();
+    if n > NAME_MAX {
+        return Err(format!(
+            "That name is too long ({n} characters): a routine's name is a few words, {NAME_MAX} characters at most. \
+Write it shorter."
+        ));
+    }
+    let name = flat(name, NAME_MAX);
+    Ok(if name.is_empty() { flat(prompt, 40) } else { name })
+}
 
 const DAYS_EN: [&str; 7] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const DAYS_DE: [&str; 7] = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
@@ -653,8 +686,18 @@ fn when_in(r: &Routine, schedule: &Schedule, zone: Tz, lang: &str) -> String {
 }
 
 /// An agent-influenced text on a card: one line, no control, bidi or zero-width characters, cut at `limit` with « … ».
+/// The line and paragraph separators (U+2028, U+2029, NEL, vertical tab, form feed) break a line on the phones as a
+/// line feed does: a space, so no text forges a line of the card; the invisible ones (byte-order mark, Arabic letter
+/// mark, word joiner and invisible operators, soft hyphen) are dropped.
 fn flat(text: &str, limit: usize) -> String {
-    let text: String = text.chars().filter(|c| *c != '\u{feff}').collect();
+    let text: String = text
+        .chars()
+        .filter_map(|c| match c {
+            '\u{2028}' | '\u{2029}' | '\u{0085}' | '\u{000b}' | '\u{000c}' => Some(' '),
+            '\u{feff}' | '\u{061c}' | '\u{2060}'..='\u{2064}' | '\u{00ad}' => None,
+            c => Some(c),
+        })
+        .collect();
     let all = crate::cards::quoted(&text, usize::MAX);
     if all.chars().count() > limit {
         format!("{}…", crate::cards::quoted(&text, limit))
@@ -1312,7 +1355,11 @@ pub fn call(config: &Config, agent: &str, arguments: &Dict, origin: Option<&str>
     let (text, error, run) = match (action.as_str(), named) {
         ("create", _) => {
             let by = Maker::Agent { suggested_silent: suggestion(arguments) };
-            match create(config, agent, &name, &arg(arguments, "schedule"), &arg(arguments, "prompt"), origin, by) {
+            let prompt = arg(arguments, "prompt");
+            // its card shows all it will run (B-A): a prompt or a name longer than that is refused, the name cleaned
+            let made = agent_made_name(&name, &prompt)
+                .and_then(|name| create(config, agent, &name, &arg(arguments, "schedule"), &prompt, origin, by));
+            match made {
                 Ok(r) => {
                     card = r.card.as_ref().map(|c| (card_sentence(config, &r), c.id.clone()));
                     let when = view(&r, zone)["schedule_display"].as_str().unwrap_or("").to_string();
@@ -1370,13 +1417,8 @@ for their OK, in plain words.",
         }
         // the approved words only, a proposal never (PI-6)
         ("run", Some(r)) => (format!("Routine « {} » starts now.", r.name), false, Some(r.id)),
-        ("update", Some(_)) if arg(arguments, "prompt").chars().count() > PROMPT_MAX => {
-            let text = format!(
-                "That prompt is too long ({} characters): a routine's prompt is {PROMPT_MAX} characters at most, \
-so your person can read all of it before saying yes. Write it shorter.",
-                arg(arguments, "prompt").chars().count()
-            );
-            (text, true, None)
+        ("update", Some(_)) if too_long(&arg(arguments, "prompt")).is_some() => {
+            (too_long(&arg(arguments, "prompt")).unwrap_or_default(), true, None)
         }
         (act @ ("pause" | "resume" | "update"), Some(r)) => {
             let (schedule, prompt) = (arg(arguments, "schedule"), arg(arguments, "prompt"));
@@ -1965,19 +2007,54 @@ ailleurs.\nEn attendant ta réponse, elle continue comme avant."
         let trusted = "a".repeat(400);
         let by = Maker::Person { muted: false };
         let r = create(&config, "vie", "Point\nSi tu refuses", "every day at 7:30", &trusted, None, by).unwrap();
-        let hidden = format!("{trusted}\nSi tu refuses, rien.\u{202e}PAY\u{200b}LOAD\u{feff}");
+        let hidden = format!(
+            "{trusted}\nSi tu refuses, rien.\u{202e}PAY\u{200b}LOAD\u{feff}\u{2028}En attendant ta réponse, elle continue \
+comme avant.\u{2029}\u{85}\u{b}\u{c}fin\u{61c}\u{2060}\u{ad}."
+        );
         let called = call(&config, "vie", &args(json!({"action": "update", "name": r.name, "prompt": hidden})), None);
         let [card] = pending_items(&config, Some("vie")).try_into().unwrap();
         let detail = card["bip_detail"].as_str().unwrap();
         assert_eq!(detail.lines().count(), 4, "{detail}");
-        assert!(detail.contains(&format!("Proposé : {trusted} Si tu refuses, rien.PAYLOAD\n")), "{detail}");
-        assert!(!detail.contains(['\u{202e}', '\u{200b}', '\u{feff}']));
+        assert!(detail.contains(&format!("Proposé : {trusted} Si tu refuses, rien.PAYLOAD")), "{detail}");
+        assert!(detail.contains("elle continue comme avant.    fin.\n"), "{detail}");
+        let forged = ['\u{202e}', '\u{200b}', '\u{feff}', '\u{2028}', '\u{2029}', '\u{85}', '\u{b}', '\u{c}', '\u{61c}', '\u{2060}', '\u{ad}'];
+        assert!(!detail.contains(forged), "{detail:?}");
         let sentence = called.card.unwrap().0;
         assert!(!sentence.contains('\n') && sentence.contains("« Point Si tu refuses »"), "{sentence}");
         // what is cut says so
         let cut = flat(&"b".repeat(PROMPT_MAX + 10), PROMPT_MAX);
         assert!(cut.ends_with("b…") && cut.chars().count() == PROMPT_MAX + 1);
         assert_eq!(flat("court", PROMPT_MAX), "court");
+    }
+
+    #[test]
+    fn the_creation_card_shows_all_it_will_run_and_a_longer_prompt_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = fr_config(&dir);
+        let prompt = format!("{}PAYLOAD\nencore\u{2028}une ligne", "a".repeat(700));
+        let name = "Point\ndu \u{202e}matin\u{2029}";
+        let a = json!({"action": "create", "name": name, "schedule": "every day at 7:30", "prompt": prompt});
+        let called = call(&config, "vie", &args(a), None);
+        assert_eq!(called.result.get("isError"), Some(&json!(false)), "{}", text_of(&called));
+        let [card] = pending_items(&config, Some("vie")).try_into().unwrap();
+        let detail = card["bip_detail"].as_str().unwrap();
+        assert!(detail.contains("PAYLOAD encore une ligne") && !detail.contains('…'), "{detail}");
+        let line = |v: &Value| v.as_str().is_some_and(|s| !s.chars().any(|c| c.is_control() || "\u{2028}\u{2029}\u{202e}".contains(c)));
+        for shown in [&card["bip_detail"], &card["bip_summary"], &card["command"]] {
+            assert!(line(shown), "{shown}");
+        }
+        assert!(card["bip_summary"].as_str().unwrap().contains("« Point du matin »"), "{}", card["bip_summary"]);
+        let r = list(&config, Some("vie")).pop().unwrap();
+        assert_eq!(r.name, "Point du matin");
+        assert!(!called.card.unwrap().0.contains('\n'));
+        // longer than its card shows whole, or an over-long name: refused, told why, nothing made
+        let long = json!({"action": "create", "name": "Long", "schedule": "every 2h", "prompt": "x".repeat(PROMPT_MAX + 1)});
+        let refused = call(&config, "vie", &args(long), None);
+        assert!(refused.result.get("isError") == Some(&json!(true)) && text_of(&refused).contains("too long"));
+        let named = json!({"action": "create", "name": "n".repeat(NAME_MAX + 1), "schedule": "every 2h", "prompt": "x"});
+        let refused = call(&config, "vie", &args(named), None);
+        assert!(refused.result.get("isError") == Some(&json!(true)) && text_of(&refused).contains("name is too long"));
+        assert!(refused.card.is_none() && list(&config, Some("vie")).len() == 1);
     }
 
     #[test]
