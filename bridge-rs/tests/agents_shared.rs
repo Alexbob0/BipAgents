@@ -24,9 +24,17 @@ fn s(p: &Path) -> String {
 }
 
 async fn serve_bridge(dir: &Path, name: &str, agents: &[&str], hermes: &str) -> (String, TestApp) {
+    serve_bridge_with(dir, name, agents, hermes, json!({})).await
+}
+
+/// The same, with `extra`'s top-level keys in its config.
+async fn serve_bridge_with(dir: &Path, name: &str, agents: &[&str], hermes: &str, extra: Value) -> (String, TestApp) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
     let mut d = config_dict(dir, &Urls::default());
+    for (key, value) in extra.as_object().cloned().unwrap_or_default() {
+        d[key] = value;
+    }
     d["public_url"] = json!(url);
     d["outbox"] = json!({"db_path": s(&dir.join(name).join("bridge.db"))});
     let mut table = serde_json::Map::new();
@@ -152,6 +160,100 @@ async fn wait_for(mut done: impl AsyncFnMut() -> bool) {
         tokio::time::sleep(Duration::from_millis(25)).await;
     }
     panic!("timed out");
+}
+
+#[tokio::test]
+async fn never_shared_nor_run_for_a_relative_on_a_hermes_without_the_guest_turn_patch() {
+    // Audit 11/11, BA-2: a relative's turn is closed only by Hermes patch 0018; a self-install on the person's own
+    // Hermes (fixes declined, another version, a plain `hermes update`) ran it open: the owner's terminal and files.
+    let fake = Fake { seen: Arc::new(Mutex::new(Seen::default())), approved: Flag::new() };
+    let hermes_url = common::spawn_fake(Router::new().fallback(hermes).with_state(fake.clone())).await;
+    let dir = tempfile::tempdir().unwrap();
+    let code = dir.path().join("hermes-agent"); // Alex's Hermes, without the patch's file
+    std::fs::create_dir_all(code.join("agent")).unwrap();
+    let extra = json!({"hermes": {"root": s(&code)}});
+    let (_, a) = serve_bridge_with(dir.path(), "a", &["cuisine"], &hermes_url, extra).await;
+    let (_, b) = serve_bridge(dir.path(), "b", &["vie"], &hermes_url).await;
+    let (k, v) = auth();
+    let h = [(k, v.as_str())];
+    assert_eq!(a.send_json("PUT", "/v1/family/name", &h, &json!({"name": "Alex"})).await.status, 200);
+    assert_eq!(b.send_json("PUT", "/v1/family/name", &h, &json!({"name": "Marie"})).await.status, 200);
+    let invitation = a.send_json("POST", "/v1/family/invite", &h, &json!({})).await.json();
+    let joined = b
+        .send_json("POST", "/v1/family/join", &h, &json!({"url": invitation["url"], "code": invitation["code"]}))
+        .await;
+    assert_eq!(joined.status, 200, "{}", joined.text());
+    let config = a.app.state.config();
+    assert!(!bipbridge::agent_shares::guest_turns_closed(&config, None));
+
+    // Refused (503, never the 409 the apps read as « confirm »), in a sentence both apps show; nothing shared.
+    let refused = a.send_json("PUT", "/v1/agents/cuisine/shares", &h, &json!({"households": ["marie"]})).await;
+    assert_eq!(refused.status, 503, "{}", refused.text());
+    assert_eq!(refused.json()["code"], bipbridge::agent_shares::GUEST_TURNS_OPEN);
+    let detail = refused.json()["detail"].as_str().unwrap().to_string();
+    assert!(detail.starts_with("Tes agents ne peuvent pas être partagés") && detail.contains("--fixes-only"), "{detail}");
+    let view = a.get("/v1/agents/cuisine/shares", &h).await.json();
+    assert_eq!(view["households"], json!([{"id": "marie", "name": "Marie", "shared": false}]));
+    assert_eq!(b.get("/v1/shared-agents", &h).await.json()["agents"], json!([]));
+
+    // The patch there: shared, and Marie talks to it.
+    std::fs::write(code.join("agent/guest_turn.py"), "# patch 0018\n").unwrap();
+    assert!(bipbridge::agent_shares::guest_turns_closed(&a.app.state.config(), None));
+    let shared = a.send_json("PUT", "/v1/agents/cuisine/shares", &h, &json!({"households": ["marie"]})).await;
+    assert_eq!(shared.status, 200, "{}", shared.text());
+    assert_eq!(b.request("POST", "/v1/shared-agents/cuisine__alex/add", &h, None).await.status, 200);
+    let first = json!({"agent": "cuisine__alex", "client_id": "C0FFEE00-0000-4000-8000-000000000011",
+                       "text": "Une idée de dîner ?"});
+    let sent = b.send_json("POST", "/v1/threads/new/messages", &h, &first).await;
+    assert_eq!(sent.status, 200, "{}", sent.text());
+    let cid = sent.json()["thread"].as_str().unwrap().to_string();
+    assert_eq!(fake.seen.lock().unwrap().runs.len(), 1);
+    assert!(!fake.seen.lock().unwrap().runs[0]["guest_turn"].is_null());
+
+    // A plain `hermes update` took the patch off: her next turn is refused, no run started (not run open).
+    std::fs::remove_file(code.join("agent/guest_turn.py")).unwrap();
+    let next = json!({"agent": "cuisine__alex", "client_id": "C0FFEE00-0000-4000-8000-000000000012", "text": "Encore ?"});
+    let again = b.send_json("POST", &format!("/v1/threads/{cid}/messages"), &h, &next).await;
+    assert_eq!(again.status, 503, "{}", again.text());
+    assert_eq!(fake.seen.lock().unwrap().runs.len(), 1);
+}
+
+#[tokio::test]
+async fn no_family_agent_on_a_hermes_without_the_guest_turn_patch() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = common::config(dir.path(), &Urls::default());
+    config.hermes.bin = "/opt/hermes".into();
+    config.hermes.hub_url = "http://127.0.0.1:9".into();
+    config.hermes.root = s(&dir.path().join("hermes-agent"));
+    let app = TestApp::new(config);
+    let (k, v) = auth();
+    let h = [(k, v.as_str())];
+    let got = app.send_json("POST", "/v1/family-agent", &h, &json!({"name": "Famille"})).await;
+    // 400 with a sentence: both apps show a family agent's refusal in the bridge's words (409 reads as « exists »)
+    assert_eq!(got.status, 400, "{}", got.text());
+    assert_eq!(got.json()["code"], bipbridge::agent_shares::GUEST_TURNS_OPEN);
+    assert!(got.json()["detail"].as_str().unwrap().ends_with("sur ton ordinateur."));
+    assert_eq!(app.app.state.config().agents.len(), 1);
+}
+
+#[test]
+fn the_offer_s_places_always_close_a_relative_s_turn() {
+    // The shared Hermes of the offer is built with every patch (a failed one stops the build): no file to look for.
+    let dir = tempfile::tempdir().unwrap();
+    let mut d = config_dict(dir.path(), &Urls::default());
+    d["hermes"] = json!({"root": s(&dir.path().join("nowhere"))});
+    assert!(!bipbridge::agent_shares::guest_turns_closed(&parse_config(&d, None).unwrap(), None));
+    d["cloud"] = json!(true);
+    assert!(bipbridge::agent_shares::guest_turns_closed(&parse_config(&d, None).unwrap(), None));
+    // an agent in its own space: its own Hermes code is the one checked
+    let own = dir.path().join("space-code");
+    std::fs::create_dir_all(own.join("agent")).unwrap();
+    std::fs::write(own.join("agent/guest_turn.py"), "").unwrap();
+    d["cloud"] = json!(false);
+    let config = parse_config(&d, None).unwrap();
+    let mut agent = config.agent(Some("wellness")).unwrap().clone();
+    agent.hermes_root = Some(s(&own));
+    assert!(bipbridge::agent_shares::guest_turns_closed(&config, Some(&agent)));
 }
 
 #[tokio::test]

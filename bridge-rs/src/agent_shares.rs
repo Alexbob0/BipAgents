@@ -70,8 +70,8 @@
 //!     conversations), memory writes, routines, messages to other agents, delegation, skills;
 //!   - the owner's profile: Hermes leaves the agent's USER.md (what it knows about its person) out of the turn's
 //!     prompt; MEMORY.md, the agent's own notes, stays (common by decision 3A), with its personality.
-//!   - the instructions say it too (belt and braces); a Hermes without patch 0018 ignores the mark: then only the
-//!     bridge's closure and the instructions hold, which is what `confirm` warned about.
+//!   - the instructions say it too (belt and braces); a Hermes without patch 0018 ignores the mark, so on such a
+//!     Hermes nothing is shared and no relative's turn runs (`guest_turns_closed`, audit 11/11 BA-2).
 //! - Approvals belong to the person talking: the relative's are left out of the owner's Boîte and `/v1/approve`
 //!   refuses them (403); she answers through her bridge.
 //! - Only text crosses: `MEDIA:` lines are taken out of the replies (rooms.rs `room_text`).
@@ -133,6 +133,45 @@ pub fn guest_tools(names: &[&str]) -> Vec<String> {
         .chain(GUEST_NATIVE_TOOLS.iter().map(|n| n.to_string()))
         .collect()
 }
+
+/// The file Hermes patch 0018 adds: without it Hermes ignores the `guest_turn` mark, and a relative's turn runs open
+/// (the owner's terminal, files, `session_search`, USER.md).
+pub const GUEST_TURN_FILE: &str = "agent/guest_turn.py";
+
+/// Whether this install's Hermes closes a relative's turn (patch 0018), checked on disk, never by sending a turn (an
+/// unpatched Hermes would simply run it) (audit 11/11, BA-2). The offer's places run the shared Hermes built with
+/// every patch (a failed one stops the build): yes. A self-install: only when the patch's file is in the code the
+/// agent runs (its own space's, else the hub's): a person who declined the fixes, runs another Hermes version, or ran
+/// a plain `hermes update` has not. A Hermes whose code folder is unknown to the bridge (in a container, set up by
+/// hand) is not checked.
+pub fn guest_turns_closed(config: &Config, agent: Option<&AgentConfig>) -> bool {
+    if config.cloud {
+        return true;
+    }
+    let own = agent.and_then(|a| a.hermes_root.as_deref()).filter(|r| !r.is_empty());
+    let root = own.unwrap_or(&config.hermes.root);
+    root.is_empty() || std::path::Path::new(root).join(GUEST_TURN_FILE).is_file()
+}
+
+/// The refusal while `guest_turns_closed` is false, in the place's language: a plain sentence both apps show
+/// (`detail`), and `code` for an app that learns to say it in its own words.
+pub fn guest_turns_refused(config: &Config, status: u16) -> Response {
+    let text = match crate::notebook::place_language(config).as_deref().unwrap_or("fr") {
+        "en" => "Your agents can't be shared with your family until your Hermes is up to date: run bipagents \
+hermes-update --fixes-only on your computer.",
+        "de" => "Deine Agenten können erst mit deiner Familie geteilt werden, wenn dein Hermes aktuell ist: Führe auf \
+deinem Computer „bipagents hermes-update --fixes-only“ aus.",
+        "es" => "Tus agentes no se pueden compartir con tu familia hasta que tu Hermes esté al día: ejecuta \
+«bipagents hermes-update --fixes-only» en tu ordenador.",
+        _ => "Tes agents ne peuvent pas être partagés avec tes proches tant que ton Hermes n’est pas à jour : lance \
+« bipagents hermes-update --fixes-only » sur ton ordinateur.",
+    };
+    tracing::warn!("shared agent: refused, this Hermes lacks patch 0018 (relatives' turns would run open)");
+    web::json_response(status, &json!({"detail": text, "code": GUEST_TURNS_OPEN}))
+}
+
+/// `code` of that refusal.
+pub const GUEST_TURNS_OPEN: &str = "hermes_guest_turns_open";
 
 /// What a relative's turn makes besides `RELATIVE_TOOLS` (Alex, 2026-11-09): a page, from what is said in her
 /// conversation, seen only by her, marked as made at her request, a few a day (shared_pages.rs).
@@ -976,6 +1015,11 @@ async fn served_post(
     }
     let config = state.config();
     let c = conversation(&config, &household, &agent.name, &cid)?;
+    if !guest_turns_closed(&config, Some(&agent)) {
+        // shared before, and its Hermes updated since without the patch: no turn rather than an open one (503: her
+        // app says « your relative's agents don't answer for now »)
+        return Ok(guest_turns_refused(&config, 503));
+    }
     // one run per shared conversation: reserved in the same locked write as the test, before Hermes is called
     let Some(reserved) = reserve_turn(&owner_path(&config), &cid)? else {
         return Err(HttpError::new(409, "the agent is still answering"));
@@ -1248,6 +1292,10 @@ async fn put_shares(
     }
     let before = shared_with(&config, &agent.name);
     let adds = wanted.iter().any(|h| !before.contains(h));
+    if adds && !guest_turns_closed(&config, Some(&agent)) {
+        // 503, not 409: the apps read a 409 here as « confirm sharing it »
+        return Ok(guest_turns_refused(&config, 503));
+    }
     let private = private_tools(&config, &agent.name);
     if adds && needs_confirm(&private) && !body.get("confirmed").map(py::truthy).unwrap_or(false) {
         let view = share_view(&config, &agent);
