@@ -158,7 +158,11 @@ fn kind_of(given: Option<&str>, mime: &str) -> &'static str {
 // -- the host: what her conversation holds ------------------------------------------------------------------------
 
 /// A change of conversation `cid`'s files (None: no such conversation any more).
-fn with_files<R>(config: &Config, cid: &str, change: impl FnOnce(&mut Map<String, Value>) -> R) -> anyhow::Result<Option<R>> {
+fn with_files<R>(
+    config: &Config,
+    cid: &str,
+    change: impl FnOnce(&mut Map<String, Value>) -> R,
+) -> anyhow::Result<Option<R>> {
     shares::update(&shares::owner_path(config), |data| {
         let Some(Value::Object(c)) = shares::object_mut(data, "conversations").get_mut(cid) else { return None };
         if !matches!(c.get("files"), Some(Value::Object(_))) {
@@ -242,7 +246,8 @@ async fn served_upload(
     let dir = conversation_dir(&config, &agent.name, &cid);
     let path = dir.join(&file);
     let size = write_stream(&dir, &path, body, config.limits.upload_max_bytes).await?;
-    let entry = json!({"file": file, "name": name, "mime": mime, "size": size, "kind": kind, "at": now(), "sent": false});
+    let entry =
+        json!({"file": file, "name": name, "mime": mime, "size": size, "kind": kind, "at": now(), "sent": false});
     let kept = with_files(&config, &cid, |files| {
         files.insert(key.clone(), entry.clone());
     })?;
@@ -251,7 +256,9 @@ async fn served_upload(
         return Err(HttpError::new(404, "no such conversation"));
     }
     tracing::info!(agent = %agent.name, household = %household, size = size, kind = kind, "shared agent: a file of a relative kept");
-    Ok(web::ok(json!({"id": key, "name": name, "mime": mime, "size": size, "kind": kind, "path": seen_path(&cid, &file)})))
+    Ok(web::ok(
+        json!({"id": key, "name": name, "mime": mime, "size": size, "kind": kind, "path": seen_path(&cid, &file)}),
+    ))
 }
 
 /// `GET /family/s/{agent}/conversations/{cid}/files/{id}`: one of her conversation's files, for her bridge.
@@ -269,8 +276,10 @@ async fn served_file(
     if !regular {
         return Err(HttpError::not_found());
     }
-    let extra = [("x-content-type-options", "nosniff".to_string()),
-                 ("content-security-policy", "sandbox; default-src 'none'".to_string())];
+    let extra = [
+        ("x-content-type-options", "nosniff".to_string()),
+        ("content-security-policy", "sandbox; default-src 'none'".to_string()),
+    ];
     let name = str_of(&entry, "name");
     Ok(web::file_response(&path.to_string_lossy(), &str_of(&entry, "mime"), Some(&name), &extra, &headers).await)
 }
@@ -300,7 +309,11 @@ async fn served_take_back(
 }
 
 /// `DELETE /family/s/{agent}/files`: she stopped using the agent: every file of her household with it goes.
-async fn served_forget(State(state): State<AppState>, headers: HeaderMap, UrlPath(agent): UrlPath<String>) -> ApiResult<Response> {
+async fn served_forget(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    UrlPath(agent): UrlPath<String>,
+) -> ApiResult<Response> {
     let (household, agent) = shares::shared_agent(&state, &headers, &agent)?;
     let config = state.config();
     let cids: Vec<String> = shares::object(&shares::read(&shares::owner_path(&config)), "conversations")
@@ -354,7 +367,8 @@ pub fn claim(config: &Config, agent: &str, cid: &str, ids: &[String]) -> ApiResu
         let image = str_of(&entry, "kind") == "image";
         let data = if image {
             use base64::Engine;
-            let bytes = std::fs::read(dir.join(&file)).map_err(|_| HttpError::new(422, "a file this conversation does not hold"))?;
+            let bytes = std::fs::read(dir.join(&file))
+                .map_err(|_| HttpError::new(422, "a file this conversation does not hold"))?;
             Some(base64::engine::general_purpose::STANDARD.encode(bytes))
         } else {
             None
@@ -453,8 +467,8 @@ pub fn tool() -> Value {
     json!({
         "name": TOOL_NAME,
         "description": "Read a file the person talking to you sent in this conversation (a relative or a family \
-member): give the path of their « [Pièce jointe : … → /proche/…] » line. Gives a PDF's or a text file's words; their \
-photos come with their message itself. Only for the files of the conversation you are in.",
+    member): give the path of their « [Pièce jointe : … → /proche/…] » line. Gives a PDF's or a text file's words; their \
+    photos come with their message itself. Only for the files of the conversation you are in.",
         "inputSchema": {"type": "object", "properties": {
             "path": {"type": "string", "description": "the path in their « Pièce jointe » line, e.g. /proche/c0123456789ab/0123456789ab-bulletin.pdf"}},
             "required": ["path"]},
@@ -532,11 +546,15 @@ pub async fn read_call(state: &AppState, agent: &str, arguments: &Dict) -> Dict 
             tk::tool_text(&format!("« {name} » ({mime}):\n{shown}{tail}"), false)
         }
         Read::NoText => tk::tool_text(
-            &format!("« {name} » has no text to read (a scan?): ask them to send a photo of it, which you can look at."),
+            &format!(
+                "« {name} » has no text to read (a scan?): ask them to send a photo of it, which you can look at."
+            ),
             false,
         ),
         Read::Unreadable => tk::tool_text(
-            &format!("« {name} » ({mime}) can't be read here: a PDF, a text file or a photo can. Ask them for one of those."),
+            &format!(
+                "« {name} » ({mime}) can't be read here: a PDF, a text file or a photo can. Ask them for one of those."
+            ),
             false,
         ),
     }
@@ -564,7 +582,8 @@ fn document_text(path: &Path, name: &str, mime: &str) -> Read {
         };
     }
     let text_like = mime.starts_with("text/")
-        || ["txt", "md", "markdown", "csv", "tsv", "json", "xml", "html", "htm", "eml", "ics", "vcf", "log"].contains(&ext.as_str());
+        || ["txt", "md", "markdown", "csv", "tsv", "json", "xml", "html", "htm", "eml", "ics", "vcf", "log"]
+            .contains(&ext.as_str());
     if !text_like {
         return Read::Unreadable;
     }
@@ -574,7 +593,11 @@ fn document_text(path: &Path, name: &str, mime: &str) -> Read {
         return Read::Unreadable;
     }
     let text = String::from_utf8_lossy(&bytes).into_owned();
-    let text = if ["html", "htm"].contains(&ext.as_str()) || mime == "text/html" { crate::mailbox::html_text(&text) } else { text };
+    let text = if ["html", "htm"].contains(&ext.as_str()) || mime == "text/html" {
+        crate::mailbox::html_text(&text)
+    } else {
+        text
+    };
     if text.trim().is_empty() {
         Read::NoText
     } else {
@@ -634,7 +657,8 @@ pub fn hold(config: &Config, id: &str, source: &Path, filename: &str, content_ty
             .mode(FILE_MODE)
             .open(&target)
             .map_err(anyhow::Error::from)?;
-        let size = std::io::copy(&mut std::io::Read::take(&mut input, max + 1), &mut out).map_err(anyhow::Error::from)?;
+        let size =
+            std::io::copy(&mut std::io::Read::take(&mut input, max + 1), &mut out).map_err(anyhow::Error::from)?;
         if size > max {
             return Err(HttpError::new(413, format!("file too large (max {max} bytes)")));
         }
@@ -687,12 +711,15 @@ pub fn outgoing(config: &Config, id: &str, attachments: &[Attachment]) -> ApiRes
                     Ok(Outgoing { kind: "image", name, mime, bytes: Some(bytes), held: None })
                 }
                 "document" => {
-                    let file = a.path.as_deref().and_then(|p| p.strip_prefix(HELD_PREFIX)).filter(|f| stored_key(f).is_some());
+                    let file =
+                        a.path.as_deref().and_then(|p| p.strip_prefix(HELD_PREFIX)).filter(|f| stored_key(f).is_some());
                     let path = file.map(|f| held_dir(config, id).join(f)).filter(|p| p.is_file() && !p.is_symlink());
                     let path = path.ok_or_else(|| HttpError::new(422, "this file is no longer here: add it again"))?;
-                    let name = a.name.clone().filter(|n| !n.trim().is_empty()).unwrap_or_else(|| {
-                        file.map(|f| f[13..].to_string()).unwrap_or_else(|| "fichier".into())
-                    });
+                    let name = a
+                        .name
+                        .clone()
+                        .filter(|n| !n.trim().is_empty())
+                        .unwrap_or_else(|| file.map(|f| f[13..].to_string()).unwrap_or_else(|| "fichier".into()));
                     Ok(Outgoing { kind: "document", name, mime, bytes: None, held: Some(path) })
                 }
                 _ => Err(HttpError::new(422, "photos with data, documents with a path")),
@@ -703,7 +730,12 @@ pub fn outgoing(config: &Config, id: &str, attachments: &[Attachment]) -> ApiRes
 
 /// Her files sent to the host into conversation `cid`, one request each: their ids there, or the host's refusal (the
 /// files it already took, taken back).
-pub async fn send_files(state: &AppState, id: &str, cid: &str, files: &[Outgoing]) -> ApiResult<Result<Vec<String>, (u16, Value)>> {
+pub async fn send_files(
+    state: &AppState,
+    id: &str,
+    cid: &str,
+    files: &[Outgoing],
+) -> ApiResult<Result<Vec<String>, (u16, Value)>> {
     let mut sent: Vec<String> = Vec::new();
     for f in files {
         let query = url::form_urlencoded::Serializer::new(String::new())
@@ -714,12 +746,15 @@ pub async fn send_files(state: &AppState, id: &str, cid: &str, files: &[Outgoing
         let body = match (&f.bytes, &f.held) {
             (Some(bytes), _) => reqwest::Body::from(bytes.clone()),
             (None, Some(path)) => {
-                let file = tokio::fs::File::open(path).await.map_err(|_| HttpError::new(422, "this file is no longer here: add it again"))?;
+                let file = tokio::fs::File::open(path)
+                    .await
+                    .map_err(|_| HttpError::new(422, "this file is no longer here: add it again"))?;
                 reqwest::Body::wrap_stream(tokio_util::io::ReaderStream::new(file))
             }
             _ => continue,
         };
-        let request = shares::owner_request(state, id, reqwest::Method::POST, &format!("conversations/{cid}/files?{query}"))?;
+        let request =
+            shares::owner_request(state, id, reqwest::Method::POST, &format!("conversations/{cid}/files?{query}"))?;
         let answer = request
             .timeout(Duration::from_secs(600))
             .header("content-type", "application/octet-stream")
@@ -752,7 +787,9 @@ pub async fn send_files(state: &AppState, id: &str, cid: &str, files: &[Outgoing
 /// Files the host took for a message that didn't go, taken back (best effort: else its purge, after an hour).
 pub async fn take_back(state: &AppState, id: &str, cid: &str, keys: &[String]) {
     for key in keys {
-        if let Ok(request) = shares::owner_request(state, id, reqwest::Method::DELETE, &format!("conversations/{cid}/files/{key}")) {
+        if let Ok(request) =
+            shares::owner_request(state, id, reqwest::Method::DELETE, &format!("conversations/{cid}/files/{key}"))
+        {
             let _ = request.timeout(Duration::from_secs(10)).send().await;
         }
     }
@@ -803,23 +840,34 @@ async fn relayed_file(
     if !CONVERSATION.is_match(&cid) || !KEY.is_match(&key) {
         return Err(HttpError::not_found());
     }
-    let mut request = shares::owner_request(&state, &id, reqwest::Method::GET, &format!("conversations/{cid}/files/{key}"))?
-        .timeout(Duration::from_secs(600));
+    let mut request =
+        shares::owner_request(&state, &id, reqwest::Method::GET, &format!("conversations/{cid}/files/{key}"))?
+            .timeout(Duration::from_secs(600));
     for name in ["if-none-match", "if-modified-since", "range"] {
         if let Some(v) = headers.get(name) {
             request = request.header(name, v.clone());
         }
     }
-    let resp = request.send().await.map_err(|_| HttpError::new(502, "their side does not answer right now: try again later"))?;
+    let resp = request
+        .send()
+        .await
+        .map_err(|_| HttpError::new(502, "their side does not answer right now: try again later"))?;
     let status = resp.status().as_u16();
     if !(resp.status().is_success() || status == 304) {
         return Err(HttpError::new(if status == 404 { 404 } else { 502 }, "this file can't be had right now"));
     }
-    let kept: Vec<(String, HeaderValue)> = ["content-type", "content-length", "content-disposition", "etag", "last-modified",
-                                            "accept-ranges", "content-range"]
-        .iter()
-        .filter_map(|n| resp.headers().get(*n).map(|v| (n.to_string(), v.clone())))
-        .collect();
+    let kept: Vec<(String, HeaderValue)> = [
+        "content-type",
+        "content-length",
+        "content-disposition",
+        "etag",
+        "last-modified",
+        "accept-ranges",
+        "content-range",
+    ]
+    .iter()
+    .filter_map(|n| resp.headers().get(*n).map(|v| (n.to_string(), v.clone())))
+    .collect();
     let mut response = Response::new(Body::from_stream(resp.bytes_stream()));
     *response.status_mut() = axum::http::StatusCode::from_u16(status).unwrap_or(axum::http::StatusCode::OK);
     let h = response.headers_mut();
@@ -878,7 +926,9 @@ pub fn purge(config: &Config, at: f64) -> usize {
         let conversations = shares::object(&data, "conversations").cloned().unwrap_or_default();
         for conv_dir in std::fs::read_dir(agent_dir.path()).into_iter().flatten().flatten() {
             let cid = conv_dir.file_name().to_string_lossy().into_owned();
-            let c = conversations.get(&cid).filter(|c| str_of(c, "agent") == agent && shared.contains(&str_of(c, "household")));
+            let c = conversations
+                .get(&cid)
+                .filter(|c| str_of(c, "agent") == agent && shared.contains(&str_of(c, "household")));
             let Some(c) = c else {
                 // its conversation gone, or its household no longer shared with (unlinked)
                 removed += std::fs::read_dir(conv_dir.path()).map(|d| d.count()).unwrap_or(0);
@@ -924,9 +974,13 @@ mod tests {
             Some(("c0123456789ab".into(), "0123456789ab-bulletin.pdf".into(), "0123456789ab".into()))
         );
         assert!(in_conversation(&path, "c0123456789ab") && !in_conversation(&path, "c0123456789ac"));
-        for bad in ["/proche/c0123456789ab/../x", "/proche/c01/0123456789ab-x.pdf", "/proche/c0123456789ab/notes.txt",
-                    "/fichiers/2026-11/0123456789ab-x.pdf", "/proche/c0123456789ab/0123456789ab-a/b"]
-        {
+        for bad in [
+            "/proche/c0123456789ab/../x",
+            "/proche/c01/0123456789ab-x.pdf",
+            "/proche/c0123456789ab/notes.txt",
+            "/fichiers/2026-11/0123456789ab-x.pdf",
+            "/proche/c0123456789ab/0123456789ab-a/b",
+        ] {
             assert_eq!(parse_seen(bad), None, "{bad}");
         }
     }
@@ -946,7 +1000,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let txt = dir.path().join("a.txt");
         std::fs::write(&txt, "Inscription au foot\n\n\n\nSamedi 10 h   \n").unwrap();
-        assert!(matches!(document_text(&txt, "inscription.txt", "text/plain"), Read::Text(t) if t == "Inscription au foot\n\nSamedi 10 h"));
+        assert!(
+            matches!(document_text(&txt, "inscription.txt", "text/plain"), Read::Text(t) if t == "Inscription au foot\n\nSamedi 10 h")
+        );
         let doc = dir.path().join("b.docx");
         std::fs::write(&doc, b"PK\x03\x04").unwrap();
         assert!(matches!(document_text(&doc, "fiche.docx", "application/octet-stream"), Read::Unreadable));
