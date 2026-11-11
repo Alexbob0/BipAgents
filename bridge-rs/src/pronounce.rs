@@ -8,9 +8,10 @@
 //!   adds « s » to a listed singular unless the word is a frequent one of the language's own (« pays »);
 //! - letters glued to digits are cut (« PS5 » -> « P S 5 » read « pé èsse cinq »); digits first (« 14h30 », « 1er »)
 //!   are the numbers' business;
-//! - acronyms in capitals are spelled with the language's letter names (« PDF » -> « pé dé èffe »: 4.x misreads
-//!   them in German and Spanish too), unless the lexicon says them as a word (NASA, PIN, OK) or they are a word of
-//!   the language in capitals (« MERCI », `common_<lang>.txt`).
+//! - acronyms in capitals of at most 5 letters are spelled with the language's letter names (« PDF » -> « pé dé
+//!   èffe »: 4.x misreads them in German and Spanish too), unless the lexicon says them as a word (NASA, PIN, OK) or
+//!   they are a word of the language in capitals (« MERCI », `common_<lang>.txt`: its words of 5 letters or fewer);
+//!   a longer word in capitals is read as a word (« ATTENTION », « UNICEF »).
 //!
 //! Names and English words are left as written, CamelCase included. Units after a number (« 2 GB », « 5 km »),
 //! e-mail addresses, links and @handles are left to the rules after this one. The lexicon's `words` and `exact`
@@ -76,16 +77,24 @@ static LEXICONS: LazyLock<HashMap<&'static str, Lexicon>> = LazyLock::new(|| {
         .collect()
 });
 
-/// Per language: its own frequent words -> their rank (1 = the most frequent).
+/// Per language: its own frequent words of at most [`SPELLED_MAX`] letters -> their rank (1 = the most frequent) in the
+/// whole list (« merci 85 »).
 static COMMON: LazyLock<HashMap<&'static str, HashMap<&'static str, u32>>> = LazyLock::new(|| {
     COMMON_TXT
         .iter()
         .map(|(lang, txt)| {
-            let ranks = txt.lines().filter(|l| !l.starts_with('#')).zip(1u32..).collect();
+            let ranks = txt
+                .lines()
+                .filter(|l| !l.starts_with('#'))
+                .filter_map(|l| l.split_once(' ').and_then(|(word, rank)| Some((word, rank.parse().ok()?))))
+                .collect();
             (*lang, ranks)
         })
         .collect()
 });
+
+/// The longest word in capitals spelled as an acronym (« ANSSI »); a longer one is read as a word.
+const SPELLED_MAX: usize = 5;
 
 /// Unit symbols the numbers' rules read after a number: left as they are there (« 2 GB », « 1 kWh »).
 const UNITS: &[&str] = &[
@@ -214,7 +223,7 @@ fn respell_word(word: &str, lang: &str, lexicon: &Lexicon, after_number: bool) -
     }
     let count = word.chars().count();
     if capitals {
-        if lexicon.letters.is_empty() || roman(word) {
+        if lexicon.letters.is_empty() || roman(word) || count > SPELLED_MAX {
             return None;
         }
         // a word in capitals (« MERCI », « OUI ») is not an acronym; short ones only when very common
@@ -368,7 +377,8 @@ mod tests {
                 assert_eq!(key, &key.to_lowercase(), "{lang}: {key}");
             }
         }
-        assert!(COMMON["fr"].len() > 15000);
+        assert!(COMMON["fr"].len() > 5000 && COMMON["fr"]["merci"] == 85);
+        assert!(COMMON.values().flat_map(|ranks| ranks.keys()).all(|w| w.chars().count() <= SPELLED_MAX));
     }
 
     /// Pocket ≥ 4: names and English words as written, only the reading rules and the exception list.
@@ -398,6 +408,18 @@ mod tests {
                 "Das Peh Deh Ef in der iCloud, die Deadline am Weekend.",
             ),
             ("es", "El PDF en iCloud y el GPS.", "El pe de efe en iCloud y el ge pe ese."),
+            // 5 letters at most are spelled, a word of the language in capitals never; longer ones read as words
+            (
+                "fr",
+                "MERCI ! La SNCF et l'ANSSI, ATTENTION au CHANGEMENT, l'UNICEF.",
+                "MERCI ! La èsse ène cé èffe et l'a ène èsse èsse i, ATTENTION au CHANGEMENT, l'UNICEF.",
+            ),
+            (
+                "de",
+                "DANKE! Die DSGVO gilt, ACHTUNG, auch für UNICEF.",
+                "DANKE! Die Deh Es Geh Fau Oh gilt, ACHTUNG, auch für UNICEF.",
+            ),
+            ("es", "GRACIAS. La DGT y UNICEF.", "GRACIAS. La de ge te y UNICEF."),
             (
                 "nl",
                 "De PDF staat in je iCloud, zet de GPS aan, de NS en de ANWB.",
