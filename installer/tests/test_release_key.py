@@ -64,11 +64,19 @@ def test_a_signature_is_checked_against_the_pinned_key(key):
         release_key.check(sums, b"<html>Not Found</html>")
 
 
-def test_the_placeholder_key_keeps_today_s_behaviour_with_a_warning():
-    assert not release_key.pinned()   # until Alex pastes the real key
+def test_the_placeholder_key_keeps_the_old_behaviour_with_a_warning():
+    placeholder = release_key.PLACEHOLDER + "-a-checkout-without-a-key"
+    assert not release_key.pinned(placeholder)
     said = []
-    release_key.check(b"anything", None, warn=said.append)
+    release_key.check(b"anything", None, key=placeholder, warn=said.append)
     assert "no release key pinned" in said[0]
+
+
+def test_bipagents_release_key_is_pinned():
+    # Alex's key, made 2026-11-11 (minisign -G): « Ed », the key id, then the 32-byte Ed25519 public key
+    assert release_key.pinned()
+    raw = base64.b64decode(release_key.PUBLIC_KEY)
+    assert len(raw) == 42 and raw[:2] == b"Ed" and raw[2:10].hex() == "f054eb0f5518d52e"
 
 
 # -- the bridge's binaries ------------------------------------------------------------------------------------------
