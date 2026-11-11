@@ -62,6 +62,9 @@ class FakeChrome:
         self.lose_form = False  # a reload brings the page back without its card form
         self.reload_delay = 0   # seconds Page.reload takes to answer
         self.reloading = False  # a Page.reload was asked (before its answer)
+        self.focus_trap = False  # something of the page keeps the keyboard's focus: DOM.focus moves nothing
+        self.split = False      # after a reload, the provider's expiry and code appear one look after its number
+        self.looks = 0          # the provider frame's card fields looked for since the last reload
         self.others = []        # other tabs (their target ids)
         self.closed = []
         self.cleared = []       # Storage.clearDataForOrigin's parameters
@@ -147,6 +150,7 @@ class FakeChrome:
             self.loader += 1
             self.url = self.reload_to or self.url
             self.values = {}
+            self.looks = 0
             if self.lose_form:
                 self.fields = {**self.fields, "F-psp": []}
             return {}
@@ -193,6 +197,8 @@ class FakeChrome:
             return {"executionContextId": context}
         if method == "Runtime.evaluate":
             return self._evaluate(params, session)
+        if method == "DOM.focus" and self.focus_trap:
+            return {}
         if method == "DOM.focus":
             _, context, i = params["objectId"].split("-")
             self.focused[session] = (self.contexts[int(context)], int(i))
@@ -219,6 +225,12 @@ class FakeChrome:
             first = int(args.split(",")[0]) if args and args.split(",")[0].strip().isdigit() else None
             if name == "detect":
                 value = self.fields[frame]
+                if frame == "F-psp" and self.reloads:
+                    self.looks += 1
+                    if self.split and self.looks == 1:
+                        value = [f for f in value if f["kind"] == "number"]
+            elif name == "focused":
+                value = self.focused.get(session) == (frame, first)
             elif name == "el":
                 return {"result": {"type": "object", "objectId": f"obj-{context}-{first}"}}
             elif name == "holds":
@@ -507,6 +519,46 @@ def test_cancel_empties_exactly_the_fields_typed_into(bridges, fakes):
 
 def podman_last(bridge):
     return bridge.commands.of("podman")[-1][-1]
+
+
+def test_nothing_is_typed_where_the_keyboard_s_focus_is_not_the_field(bridges, fakes):
+    # Fix review 11/11, R6: Input.insertText types into whatever has the focus (a dialog that traps it, a chat box in
+    # another frame). The focus is checked in the field and its frame first, focused again once, else nothing typed.
+    chrome = FakeChrome()
+    try:
+        bridge = pay_bridge(bridges, fakes, chrome)
+        turn_on(bridge)
+        bridge.post("/v1/vault", headers=AUTH, json=CARD)
+        chrome.focus_trap = True
+        result, asked = pay(bridge, ARGS)
+        assert asked and result["isError"] is True
+        assert "would not take the keyboard" in result["content"][0]["text"]
+        assert "hand_over_payment" in result["content"][0]["text"]
+        assert chrome.typed == [] and all(v == "" for v in chrome.values.values())
+        assert chrome.navigated == ["about:blank"] and podman_last(bridge) == HOLD_LIFTED
+        outcomes = [e["outcome"] for e in bridge.get("/v1/vault/payments", headers=AUTH).json()["journal"]]
+        assert outcomes[0] == "failed" and "typed" not in outcomes
+    finally:
+        chrome.stop()
+
+
+def test_typing_waits_until_the_card_form_has_finished_appearing(bridges, fakes):
+    # Fix review 11/11, R7: the first look that showed a number field started the typing; a provider whose expiry
+    # and code frames load a moment later got only the number. Now the fields must be the same in two looks in a row.
+    chrome = FakeChrome()
+    try:
+        bridge = pay_bridge(bridges, fakes, chrome)
+        turn_on(bridge)
+        bridge.post("/v1/vault", headers=AUTH, json=CARD)
+        chrome.split = True
+        result, _ = pay(bridge, ARGS)
+        assert result["isError"] is False, result
+        assert chrome.looks >= 3   # number alone, then all three, then the same again
+        assert chrome.typed == [("F-main", "name", "Alex Martin"), ("F-psp", "number", NUMBER),
+                                ("F-psp", "exp", "12/30"), ("F-psp", "csc", CODE)]
+        assert "were not found" not in result["content"][0]["text"]
+    finally:
+        chrome.stop()
 
 
 def test_a_browser_image_that_counts_no_calls_is_never_typed_into(bridges, fakes):

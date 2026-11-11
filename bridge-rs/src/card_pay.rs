@@ -944,15 +944,26 @@ async fn fresh_page(
     }
     let rule = card_fill::Frames::new(&url, &entry.sites);
     let deadline = Instant::now() + FORM_WAIT;
+    // Typed once the card's fields stop changing (fix review 11/11, R7): a provider's split fields (number, expiry,
+    // code in three frames) load one after the other, and the first look that shows a number may miss the others.
+    let mut seen: Option<Vec<(String, u64, String)>> = None;
     loop {
         if !still() {
             return Err(STOPPED.into());
         }
         let fields = page.fields_in(&rule).await.map_err(|e| unreachable_text(&e))?;
         if fields.iter().any(|f| f.kind == "number") {
-            return Ok((page, fields));
+            let now: Vec<(String, u64, String)> =
+                fields.iter().map(|f| (f.frame.clone(), f.index, f.kind.clone())).collect();
+            if seen.as_ref() == Some(&now) {
+                return Ok((page, fields)); // the same in two looks in a row
+            }
+            seen = Some(now);
         }
         if Instant::now() >= deadline {
+            if seen.is_some() {
+                tracing::info!(agent = %agent, "card payment: the card form kept changing");
+            }
             return Err(lost);
         }
         tokio::time::sleep(Duration::from_millis(500)).await;
@@ -1014,6 +1025,12 @@ fn filled_or_why(filled: Result<Vec<String>, FillError>) -> Result<Vec<String>, 
     let filled = match filled {
         Ok(filled) => filled,
         Err(FillError::Stopped) => return Err(STOPPED.into()),
+        Err(FillError::Focus) => {
+            return Err(format!(
+                "A card field of the page would not take the keyboard (a window or a box of the page keeps it): the \
+                 card was not typed, and what was typed is erased. {HAND_IT_OVER}"
+            ))
+        }
         Err(e) => return Err(format!("The card could not be typed ({e}). Don't pay; tell the person.")),
     };
     if !filled.iter().any(|k| k == "number") {

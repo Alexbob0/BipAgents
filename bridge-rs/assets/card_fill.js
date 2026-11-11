@@ -109,6 +109,14 @@
       try { el.select(); } catch (e) { /* type=number */ }
       return el.ownerDocument.activeElement === el || (el.getRootNode() && el.getRootNode().activeElement === el);
     },
+    // The keyboard's focus is in this field (through shadow roots) and in this frame (the page's focused frame is
+    // this one: an input holds no frame): what Input.insertText types goes into it, nowhere else.
+    focused(i) {
+      const el = this.els[i];
+      let active = el.ownerDocument.activeElement;
+      while (active && active.shadowRoot && active.shadowRoot.activeElement) active = active.shadowRoot.activeElement;
+      return active === el && el.ownerDocument.hasFocus();
+    },
     // What the field holds, reduced to compare with what was typed (digits only for numbers and dates).
     holds(i, digitsOnly) {
       const v = this.els[i].value || "";

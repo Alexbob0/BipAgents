@@ -124,6 +124,10 @@ pub enum FillError {
     /// The payment was stopped meanwhile (cancel_payment, payments suspended): nothing more was typed.
     #[error("the payment was stopped")]
     Stopped,
+    /// A card field would not keep the keyboard's focus (a dialog or a widget of the page took it): nothing was typed
+    /// into it, nor anywhere else.
+    #[error("a card field would not take the keyboard's focus")]
+    Focus,
 }
 
 /// Whether the payment typing the card still holds the browser (card_pay.rs): looked at before each step.
@@ -714,6 +718,17 @@ impl Page {
     /// Before each field, `still` says whether the payment still holds the browser: else `Stopped`, nothing more typed
     /// (cancel_payment or « Suspendre tous les paiements » came while the page was reloaded or typed into).
     pub async fn fill(&mut self, fields: &[Field], card: &CardValues, still: Still<'_>) -> Result<Vec<String>, FillError> {
+        // The page counts as the window in front (a browser on a screen nobody clicked can report no focus at all):
+        // `focused` then tells exactly which frame and field the keyboard is in. Only for this connection.
+        let mut sessions = vec![self.session.clone()];
+        for field in fields {
+            if !sessions.contains(&field.session) {
+                sessions.push(field.session.clone());
+            }
+        }
+        for session in &sessions {
+            let _ = self.cdp.call("Emulation.setFocusEmulationEnabled", json!({"enabled": true}), Some(session)).await;
+        }
         let mut filled = Vec::new();
         for field in fields {
             let Some(text) = card.text_for(field) else { continue };
@@ -729,13 +744,19 @@ impl Page {
                     format!("globalThis.__bipPay.choose({}, {}, {})", field.index, card.exp_month, card.exp_year);
                 self.cdp.evaluate(&field.session, field.context, &expression).await? == json!(true)
             } else {
-                self.type_into(field, &text).await?
+                self.type_into(field, &text, still).await?
             };
             if ok {
                 filled.push(field.kind.clone());
             }
         }
         Ok(filled)
+    }
+
+    /// The keyboard's focus is in `field` and its frame (`focused` in the card script).
+    async fn has_focus(&mut self, field: &Field) -> bool {
+        let expression = format!("globalThis.__bipPay.focused({})", field.index);
+        matches!(self.cdp.evaluate(&field.session, field.context, &expression).await, Ok(Value::Bool(true)))
     }
 
     /// A field about to be typed into, kept in `typed` (its node asked to Chrome) before anything goes into it.
@@ -869,14 +890,31 @@ impl Page {
         matches!(self.cdp.evaluate(&session, context, "globalThis.__bipPay.bankAsks()").await, Ok(Value::Bool(true)))
     }
 
-    async fn type_into(&mut self, field: &Field, text: &str) -> Result<bool, FillError> {
+    /// `text` typed into `field`, as a person would: only once the keyboard's focus is verified to be in that field
+    /// and its frame (focused, else focused again once, else `Focus` and nothing typed): `Input.insertText` types into
+    /// whatever has the focus, a dialog that traps it or a chat widget's box in another frame (fix review 11/11, R6).
+    async fn type_into(&mut self, field: &Field, text: &str, still: Still<'_>) -> Result<bool, FillError> {
         let prepare = format!("globalThis.__bipPay.prepare({})", field.index);
-        self.cdp.evaluate(&field.session, field.context, &prepare).await?;
         let object = self.object(field).await;
-        if let Some(object) = &object {
-            let _ = self.cdp.call("DOM.focus", json!({"objectId": object}), Some(&field.session)).await;
+        let mut focused = false;
+        for _ in 0..2 {
+            self.cdp.evaluate(&field.session, field.context, &prepare).await?;
+            if let Some(object) = &object {
+                let _ = self.cdp.call("DOM.focus", json!({"objectId": object}), Some(&field.session)).await;
+            }
+            if self.has_focus(field).await {
+                focused = true;
+                break;
+            }
         }
-        // Typed where the field lives (an out-of-process frame has its own input), else through the page.
+        if !focused {
+            return Err(FillError::Focus);
+        }
+        if !still() {
+            return Err(FillError::Stopped);
+        }
+        // Typed where the field lives (an out-of-process frame has its own input), else through the page (whose
+        // focused frame is the field's, just verified).
         let typed = self.cdp.call("Input.insertText", json!({"text": text}), Some(&field.session)).await;
         if typed.is_err() && field.session != self.session {
             let page = self.session.clone();
