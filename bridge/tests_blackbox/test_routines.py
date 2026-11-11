@@ -135,6 +135,14 @@ def test_an_agents_routine_shows_all_it_runs_and_a_non_deletes_it(bridges, fakes
     assert bridge.patch(f"/v1/routines/{left_id}", headers=AUTH, json={"muted": True}).status_code == 200
     assert jobs(bridge)["Sauvegarde"]["muted"] is True and jobs(bridge)["Sauvegarde"]["state"] == "paused"
     assert [c["run_id"] for c in routine_cards(bridge) if "Sauvegarde" in c["command"]] == [left["run_id"]]
+    # the person's « Reprendre » and « Lancer maintenant » from a list row show none of its words: its card first (O-2)
+    for act in ("resume", "run"):
+        refused = bridge.post(f"/v1/routines/{left_id}/{act}", headers=AUTH)
+        assert refused.status_code == 409 and refused.json()["detail"] in (
+            "Réponds d'abord à sa carte.", "Answer its card first.", "Beantworte zuerst ihre Karte.",
+            "Responde primero a su tarjeta."), refused.text
+    time.sleep(0.5)
+    assert jobs(bridge)["Sauvegarde"]["state"] == "paused" and not [t for t in turns(fakes) if "Sauvegarde" in t["input"]]
     bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": left["run_id"], "choice": "once"})
     assert (jobs(bridge)["Sauvegarde"]["muted"], jobs(bridge)["Sauvegarde"]["state"]) == (True, "scheduled")
 

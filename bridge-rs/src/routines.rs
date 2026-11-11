@@ -14,16 +14,16 @@
 //! message and no push. ONE control: the « Me prévenir » that only stopped the push (`notify`) is folded into it. While the month's AI credit is used up a due run is skipped (one note per agent, credit.rs).
 //!
 //! The agents make them with the bridge's tool `routine_schedule` (Hermes' `cronjob` toolset is turned off in their
-//! profiles, tool_diet.rs): on at once, silent or not as the agent suggested, and ONE card (`bip-rout-<card>`) asks the
-//! person whether they want to hear what it finds (Alex 6/11, below). The apps make them with these routes (the bridge
-//! key), in Hermes' job shape so their models stay; their form asks the same question (`muted`):
+//! profiles, tool_diet.rs): OFF until the person says « Oui » to ONE card (`bip-rout-<card>`) showing all it will run
+//! (Alex 11/11, below); an agent's change is a proposal with a card of its own. The apps make them with these routes
+//! (the bridge key), in Hermes' job shape so their models stay; their form asks whether it is silent (`muted`):
 //!
 //!     GET    /v1/agents/{agent}/routines          {jobs}
 //!     POST   /v1/agents/{agent}/routines          {name, schedule, prompt, muted?}  -> {job}   (no muted: not silent)
-//!     PATCH  /v1/routines/{id}                    {name?, schedule?, prompt?, muted?} -> {job}   (muted: its card
-//!                                                 answered too)
+//!     PATCH  /v1/routines/{id}                    {name?, schedule?, prompt?, muted?} -> {job}
 //!     DELETE /v1/routines/{id}
-//!     POST   /v1/routines/{id}/pause | resume | run      (409 for a proposal of before 6/11 noon still off)
+//!     POST   /v1/routines/{id}/pause | resume | run      (resume, run: 409 « Réponds d'abord à sa carte. » for a
+//!                                                 routine its agent made that the person has not started)
 //!     GET    /v1/cron-jobs[?agent=]  PUT /v1/cron-jobs/{agent}/{id} {notify}   the Boîte's « stop notifying »:
 //!                                                 notify false = muted
 //!
@@ -1646,8 +1646,25 @@ async fn delete_route(State(state): State<AppState>, UrlPath(id): UrlPath<String
     }
 }
 
+/// The person's « Reprendre » or « Lancer maintenant » on a routine its agent made that they never started (owner's
+/// decision O-2, 11/11): refused, its card first (a list row shows none of its words). In its agent's language.
+pub fn answer_first(lang: &str) -> &'static str {
+    match lang {
+        "fr" => "Réponds d'abord à sa carte.",
+        "de" => "Beantworte zuerst ihre Karte.",
+        "es" => "Responde primero a su tarjeta.",
+        _ => "Answer its card first.",
+    }
+}
+
 async fn action_route(State(state): State<AppState>, UrlPath((id, action)): UrlPath<(String, String)>) -> ApiResult<Response> {
     let config = state.config();
+    if matches!(action.as_str(), "resume" | "run") {
+        if let Some(r) = get(&config, &id).filter(waits_for_ok) {
+            let lang = crate::names::names(&crate::names::agent_language(&config, &r.agent)).lang;
+            return Err(HttpError::new(409, answer_first(lang)));
+        }
+    }
     let enabled = match action.as_str() {
         "pause" => false,
         "resume" => true,
@@ -1964,6 +1981,22 @@ Pour la relancer tout de suite : « Lancer maintenant » sur sa page."
         assert_eq!(crate::approval_level::classify_card(&way), "routine_way");
         let kept = answer(&config, "vie", &card_id(&card), "deny").unwrap();
         assert!(kept.enabled && kept.muted && kept.card.is_none() && get(&config, &id).is_some());
+    }
+
+    #[test]
+    fn the_persons_resume_of_a_routine_not_started_says_to_answer_its_card_first() {
+        assert_eq!(answer_first("fr"), "Réponds d'abord à sa carte.");
+        assert_eq!((answer_first("en"), answer_first("it")), ("Answer its card first.", "Answer its card first."));
+        assert_eq!((answer_first("de"), answer_first("es")), ("Beantworte zuerst ihre Karte.", "Responde primero a su tarjeta."));
+        // which routines: one its agent made, not started yet; not the person's, not one accepted
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(&dir);
+        let (_, card) = propose(&config, "Agent");
+        let agents = list(&config, Some("vie")).pop().unwrap();
+        let mine = create(&config, "vie", "Moi", "every 2h", "x", None, Maker::Person { muted: false }).unwrap();
+        assert!(waits_for_ok(&agents) && !waits_for_ok(&mine));
+        answer(&config, "vie", &card_id(&card), "once");
+        assert!(!waits_for_ok(&get(&config, &agents.id).unwrap()));
     }
 
     #[test]
