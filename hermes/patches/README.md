@@ -14,7 +14,7 @@ until equivalent changes land upstream.
 
 **Upstream.** 0005 is proposed as NousResearch/hermes-agent#136660: since v0.23.1 the patch is that PR's head
 (`7d21b3b98a`) as is. The autumn clock change fix of the old 0008 is proposed as #146444 (open). Candidates for small
-upstream PRs: 0025, 0020, 0026, 0011, 0017, 0009's `!name`, 0013.
+upstream PRs: 0027, 0025, 0020, 0026, 0011, 0017, 0009's `!name`, 0013.
 
 | Patch | Files touched (v0.23.1) |
 |---|---|
@@ -36,6 +36,7 @@ upstream PRs: 0025, 0020, 0026, 0011, 0017, 0009's `!name`, 0013.
 | 0024 tools refused for one turn (`model_options.closed_tools`) | `agent/closed_tools.py` (new), `agent/agent_runtime_helpers.py`, `agent/tool_executor.py`, `gateway/platforms/api_server.py`, `gateway/run_turn_runner.py` |
 | 0025 a colon mid-sentence no longer holds back a streamed reply | `agent/chat_completion_helpers.py` |
 | 0026 Runs API: `todo.updated`, the agent's task list (backport) | `gateway/platforms/api_server_runs.py` |
+| 0027 a safety-refused API turn no longer locks its conversation | `gateway/run_turn_runner.py` |
 
 ## How the patches are kept
 
@@ -544,7 +545,8 @@ made afterwards (a spare taken: `clarify` written when it got its tools).
 
 The series rebased from v0.22.5 (`bf0203a794`) on v0.23.1 (`3b42157858`), branch `bip/patches-v0.23.1`, the installer
 pins v0.23.1 (`HERMES_COMMIT`). Analysis and Alex's decisions: BipAgents-reprise `hermes-0.23-final.md` (§3, §6 3-4).
-18 patches, every one applies with `git apply` on `3b42157858`, in order (`scripts/hermes-patches.sh check`).
+19 patches, every one applies with `git apply` on `3b42157858`, in order (`scripts/hermes-patches.sh check`):
+18 rebased, and 0027, new on v0.23.1 (found by the release bench, 11/11).
 
 | Patch | On v0.23.1 |
 |---|---|
@@ -562,6 +564,7 @@ pins v0.23.1 (`HERMES_COMMIT`). Analysis and Alex's decisions: BipAgents-reprise
 | 0021 API Bot Chat stays API | rebased: `displaceable_bot_chat` takes a `subject` and checks hand-offs (#143286), `_kept_local_history` decides on the tip; `api_bot_chat` still returns first; #144300's archived check (`_bot_chat_creation_id`) untouched |
 | 0022 canonical tool order | rebased: v0.23.1 holds back a tool new only because its `check_fn` flipped (`held`); both merges keep that and insert the others at their canonical place (not the tail) |
 | 0024 closed tools | applies after 0018 |
+| 0027 refused API turn | **new**: v0.23.1's cleanup of a safety-refused turn (#149708) missed every API conversation (the bench: the next message refused too, for good) |
 
 **Retired files.** A Hermes patched by an older BipAgents keeps those patches' files changed; they are listed in
 `installer/bipinstall/to_bipagents.py` `EARLIER_FIX_FILES` (the 2026-11-01 switch did the same for 0001/0004), so a
@@ -808,3 +811,27 @@ empty store send nothing more, the legacy name).
 `tests/tui_gateway`: 9 failures with and without the patch (this server's environment), 2811 passed. Checked against
 a real gateway with a fake model: `todo.updated` after each of three `todo_list` calls, direct and through `tool_call`.
 
+## 0027 — a safety-refused API turn no longer locks its conversation
+
+**Problem.** v0.23.1 (#149708) takes a turn the provider's safety filter refused out of the model's context, owner-side
+(`_hmwa_retain_content_policy_refused_turn`): the agent flushed the turn's user row at its start, and a refused turn
+left in the transcript re-trips the filter on every later message. The precise target is the refused run's durable
+boundary row, which the agent returns as `refused_turn_boundary_row_id`; without it the cleanup guesses the newest
+user-originated turn. The gateway's TurnRunner builds its own projection of the agent's result and leaves that key
+out, so the guess always runs, and an API turn's user row (every BipAgents message) is an `internal_notification`
+row, which the guess skips: « rewind found none », the refused row stays, the alternation repair merges the next
+message into it, and the provider refuses that one too, and every one after. Found by the release bench on a lab
+place (11/11): after a refused turn, « Tu es toujours là ? » was refused as well; v0.22.5 closed the refused turn
+with a `failed_turn` row instead and the next turn answered.
+
+**What the patch does.** The TurnRunner's projection carries `refused_turn_boundary_row_id` when the agent gave one,
+beside `current_turn_user_idx`: the cleanup rewinds exactly the refused run, keeps the person's message shown
+(`content_refused`, compacted) and the next turn answers. Nothing changes for another result.
+
+**Files.** `gateway/run_turn_runner.py`; new `tests/gateway/test_refused_api_turn_unlocks.py` (the projection hands
+the row on; an `internal_notification` refused row is retained by its boundary, never by the guess).
+
+**Tests.** The new file with `test_failure_writer_ownership.py`, `test_runner_compressed_receipt.py` and
+`test_compression_failure_session_sync.py`: 17 passed. The agent core alone (a fake model refusing a marked message,
+a real `SessionDB`) already returned the boundary and retained the turn with the series applied: the gap is only in
+the gateway's projection. Candidate for a small upstream PR.

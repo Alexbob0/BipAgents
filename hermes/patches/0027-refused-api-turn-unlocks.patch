@@ -1,0 +1,93 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: steps <steps@local>
+Date: Wed, 11 Nov 2026 09:01:10 +0100
+Subject: A safety-refused API turn no longer locks its conversation
+
+v0.23.1 (#149708) takes a turn the provider's safety filter refused out of the model's context, owner-side, by the
+refused run's durable boundary row. The TurnRunner's projection of the agent's result does not carry that row id, so
+the gateway's cleanup falls back to the newest user-originated turn; an API or internal turn's user row is an
+internal_notification row, so nothing is rewound ("rewind found none"), the next message is merged into the refused
+one by the alternation repair and refused again, for good. The projection now carries refused_turn_boundary_row_id.
+
+Bip-Patch: 0027-refused-api-turn-unlocks
+---
+ gateway/run_turn_runner.py                    |  6 +++
+ .../gateway/test_refused_api_turn_unlocks.py  | 52 +++++++++++++++++++
+ 2 files changed, 58 insertions(+)
+ create mode 100644 tests/gateway/test_refused_api_turn_unlocks.py
+
+diff --git a/gateway/run_turn_runner.py b/gateway/run_turn_runner.py
+index d4b7c4a4aee79a13d39ca6bc59ed3478dc493e4c..4a8e0627dd806e7693886219b3efa6cf73c4794a 100644
+--- a/gateway/run_turn_runner.py
++++ b/gateway/run_turn_runner.py
+@@ -1474,6 +1474,12 @@ class TurnRunner(GatewayTurnProgressMixin, GatewaySessionAgentMixin):
+             # The loop's proven current-turn row (``export_current_turn_boundary``) for the same `messages`: the
+             # stored receipt cuts there instead of re-guessing from text (multimodal or rewritten input + a nudge).
+             **({"current_turn_user_idx": result["current_turn_user_idx"]} if "current_turn_user_idx" in result else {}),
++            # BipAgents 0027: a safety refusal's durable boundary row, for the owner's cleanup
++            # (``_hmwa_retain_content_policy_refused_turn``). Without it the cleanup guesses the newest user-originated
++            # turn, which an API or internal turn (``internal_notification`` row) is not: nothing is rewound, the next
++            # message is merged into the refused one and refused again, for good.
++            **({"refused_turn_boundary_row_id": result["refused_turn_boundary_row_id"]}
++               if "refused_turn_boundary_row_id" in result else {}),
+             **usage,
+             **({"persisted_turn": persisted_turn} if persisted_turn else {}),
+         }
+diff --git a/tests/gateway/test_refused_api_turn_unlocks.py b/tests/gateway/test_refused_api_turn_unlocks.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..22fab0d81a7146655741662df69c0ec6dd9f6ec8
+--- /dev/null
++++ b/tests/gateway/test_refused_api_turn_unlocks.py
+@@ -0,0 +1,52 @@
++"""BipAgents 0027: a safety-refused API (or internal) turn no longer locks its conversation.
++
++The agent hands the refused run's durable boundary row (``refused_turn_boundary_row_id``) with its result; the
++TurnRunner's projection has to carry it to the owner's cleanup (``_hmwa_retain_content_policy_refused_turn``).
++Without it the cleanup guesses the newest user-originated turn, and an API turn's user row is an
++``internal_notification`` row: nothing is rewound, the next message is merged into the refused one by the
++alternation repair, and the provider refuses every later turn (the Hermes bench on v0.23.1, 11/11).
++"""
++
++from tests.gateway.test_compression_failure_session_sync import (
++    _CompressionThenFailureAgent, _install_compression_failure_agent, _run_compression_failure_turn, _runner,
++    _SessionStore)
++from gateway.config import Platform
++from gateway.session import SessionSource
++
++
++class _RefusedAgent(_CompressionThenFailureAgent):
++    def run_conversation(self, user_message, conversation_history=None, task_id=None, **_kwargs):
++        return {'final_response': '', 'failed': True, 'completed': False, 'api_calls': 1,
++                'failure_reason': 'content_policy_blocked', 'failure_retryable': False,
++                'error': 'content_policy_blocked: model declined (content_filter)',
++                'messages': list(conversation_history or []), 'refused_turn_boundary_row_id': 42}
++
++
++def test_the_runner_hands_the_refused_turns_boundary_row_to_the_cleanup(monkeypatch):
++    _install_compression_failure_agent(monkeypatch, _RefusedAgent)
++    source = SessionSource(platform=Platform.TELEGRAM, chat_id='12345', chat_type='dm', user_id='user-1')
++    result = _run_compression_failure_turn(_runner(_SessionStore()), source)
++    assert result['failure_reason'] == 'content_policy_blocked'
++    assert result['refused_turn_boundary_row_id'] == 42
++
++
++def test_an_internal_refused_row_is_retained_by_its_boundary_not_by_the_guess(tmp_path):
++    from agent.turn_failure_copy import CONTENT_REFUSED_DISPLAY_KIND, CONTENT_REFUSED_NOTICE
++    from gateway.config import GatewayConfig
++    from gateway.session import SessionStore
++
++    store = SessionStore(tmp_path / "sessions", GatewayConfig())
++    source = SessionSource(platform=Platform.API_SERVER, chat_id="api-refused", user_id="u")
++    sid = store.get_or_create_session(source).session_id
++    db = store._db_for_session_id(sid)
++    db.append_message(sid, "user", "hello", display_kind="internal_notification")
++    db.append_message(sid, "assistant", "ok")
++    refused = db.append_message(sid, "user", "the request the filter blocked", display_kind="internal_notification")
++    # The newest-user-turn guess skips an internal row: this is what locked API conversations.
++    assert not db.retain_refused_turn_for_display(sid, notice=CONTENT_REFUSED_NOTICE)
++    assert db.retain_refused_turn_for_display(sid, notice=CONTENT_REFUSED_NOTICE, boundary_row_id=refused)
++    assert [m["content"] for m in db.get_messages(sid) if m["role"] == "user"] == ["hello"]
++    shown = [m for m in db.get_messages(sid, include_compacted=True) if m["role"] == "user"]
++    assert shown[-1]["content"] == "the request the filter blocked"
++    assert shown[-1]["display_kind"] == CONTENT_REFUSED_DISPLAY_KIND
++    db.close()

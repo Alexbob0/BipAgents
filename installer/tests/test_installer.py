@@ -195,7 +195,7 @@ def test_hermes_is_pinned_and_patched(tmp_path, monkeypatch):
         "0021-api-bot-chat-stays-api.patch", "0022-tool-order-common-first.patch",
         "0023-prompt-cache-stable-across-conversations.patch", "0024-closed-tools-per-turn.patch",
         "0025-stream-colon-mid-sentence.patch",
-        "0026-runs-todo-updated.patch"]
+        "0026-runs-todo-updated.patch", "0027-refused-api-turn-unlocks.patch"]
 
 
 def test_bot_mode_marker(tmp_path):
