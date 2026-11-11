@@ -613,13 +613,15 @@ def test_a_browser_image_that_counts_no_calls_is_never_typed_into(bridges, fakes
         bridge.post("/v1/vault", headers=AUTH, json=CARD)
         bridge.commands.rule("podman", ["exec", "bipagents-browser-vie", "sh", "-c", CALLS_CHECK], exit=5)
         result, asked = pay(bridge, ARGS)
-        assert asked and result["isError"] is True
+        # Security check 11/11, N5: found before the person is asked, so nobody approves a payment that can't be typed.
+        assert asked is None and result["isError"] is True
         text = result["content"][0]["text"]
         assert "must be updated" in text and "hand_over_payment" in text and "nothing was typed" in text
         assert chrome.typed == [] and chrome.reloads == 0 and chrome.navigated == []
-        assert lifted(podman_last(bridge))
-        again, _ = pay(bridge, ARGS)
-        assert again["isError"] is True and chrome.typed == []
+        assert not [c for c in bridge.commands.of("podman") if "printf 'card" in c[-1] or lifted(c[-1])]   # no hold
+        assert "asked" not in [e["outcome"] for e in bridge.get("/v1/vault/payments", headers=AUTH).json()["journal"]]
+        again, asked = pay(bridge, ARGS)
+        assert asked is None and again["isError"] is True and chrome.typed == []
         assert bridge.log_path.read_text().count("the browser image must be updated") == 1   # said once
     finally:
         chrome.stop()

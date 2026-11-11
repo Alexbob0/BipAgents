@@ -836,6 +836,9 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
         return Ok(refused);
     }
     drop(page);
+    if let Some(refused) = browser_cannot_pay(&config, &agent.name).await {
+        return Ok(refused);
+    }
     let message = cards::approval_message(&entry.payment, cents, &currency, &host, &card.label, &last4, &merchant);
     journal(&config, &entry, &agent.name, "asked");
     let message = if on_phone {
@@ -997,7 +1000,14 @@ async fn calls_done(config: &Config, agent: &str) -> Calls {
     }
 }
 
-const OLD_BROWSER: &str = "Your browser must be updated before the bridge can pay with a card in it (BipAgents updates \
+/// The agent's browser image can't protect a payment (R3: its gate counts no tool calls): the refusal, given before
+/// the person is asked (security check 11/11, N5: nobody approves, nor sends a phone's card, for a payment that
+/// can't then be typed). The same look runs again under the hold.
+pub(crate) async fn browser_cannot_pay(config: &Config, agent: &str) -> Option<Dict> {
+    (calls_done(config, agent).await == Calls::Unknown).then(|| refusal(&format!("{OLD_BROWSER} {HAND_IT_OVER}")))
+}
+
+const OLD_BROWSER: &str ="Your browser must be updated before the bridge can pay with a card in it (BipAgents updates \
 it, usually overnight): nothing was typed.";
 
 /// Under the hold, before anything is typed: the payment page as a document the agent never touched (card_fill.rs
