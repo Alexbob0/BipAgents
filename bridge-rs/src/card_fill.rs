@@ -129,6 +129,21 @@ pub enum FillError {
 /// Whether the payment typing the card still holds the browser (card_pay.rs): looked at before each step.
 pub type Still<'a> = &'a (dyn Fn() -> bool + Sync);
 
+/// A field the card was typed into: its frame and its node (Chrome's backend node id, the same for every DevTools
+/// connection while its document lives; 0 when Chrome did not say), to empty exactly it afterwards (`clear`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Typed {
+    pub frame: String,
+    pub node: i64,
+}
+
+/// Empties the field it is called on, the way a framework sees it; a select goes back to its first option.
+const EMPTY_FIELD: &str = "function () { if (this.tagName === 'SELECT') { this.selectedIndex = 0; } else { \
+const proto = this instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; \
+Object.getOwnPropertyDescriptor(proto, 'value').set.call(this, ''); } \
+this.dispatchEvent(new Event('input', {bubbles: true})); this.dispatchEvent(new Event('change', {bubbles: true})); \
+return true; }";
+
 fn protocol(text: impl Into<String>) -> FillError {
     FillError::Protocol(text.into())
 }
@@ -353,6 +368,8 @@ pub struct Page {
     /// The out-of-process frames' sessions found so far: Chrome reports each one once per connection, and a page is
     /// looked at several times while its form appears (card_pay.rs).
     children: Vec<String>,
+    /// The fields `fill` typed into (or began to), in order: what `clear` empties afterwards.
+    pub typed: Vec<Typed>,
 }
 
 fn frames_of(tree: &Value, out: &mut Vec<(String, String)>) {
@@ -415,7 +432,7 @@ impl Page {
             }
         }
         let (session, target) = chosen.ok_or(FillError::NoPage)?;
-        Ok(Page { cdp, session, target, children: Vec::new() })
+        Ok(Page { cdp, session, target, children: Vec::new(), typed: Vec::new() })
     }
 
     /// The tab `target` (the one a card was typed into), whatever it shows now; `NoPage` when it is closed.
@@ -429,7 +446,7 @@ impl Page {
         if session.is_empty() {
             return Err(FillError::NoPage);
         }
-        Ok(Page { cdp, session, target: target.to_string(), children: Vec::new() })
+        Ok(Page { cdp, session, target: target.to_string(), children: Vec::new(), typed: Vec::new() })
     }
 
     /// The main frame's document: its loader id changes with each new document (a reload, a navigation), not when a
@@ -706,6 +723,7 @@ impl Page {
             if !still() {
                 return Err(FillError::Stopped);
             }
+            self.remember(field).await;
             let ok = if field.tag == "select" {
                 let expression =
                     format!("globalThis.__bipPay.choose({}, {}, {})", field.index, card.exp_month, card.exp_year);
@@ -720,13 +738,47 @@ impl Page {
         Ok(filled)
     }
 
-    /// The card's fields emptied (a payment given up, or left unfinished): nothing of the card stays in the page.
-    pub async fn clear(&mut self) -> Result<usize, FillError> {
-        let fields = self.fields().await?;
+    /// A field about to be typed into, kept in `typed` (its node asked to Chrome) before anything goes into it.
+    async fn remember(&mut self, field: &Field) {
+        let mut node = 0;
+        if let Some(object) = self.object(field).await {
+            let described = self.cdp.call("DOM.describeNode", json!({"objectId": object}), Some(&field.session)).await;
+            node = described.ok().and_then(|d| d.get("node")?.get("backendNodeId")?.as_i64()).unwrap_or(0);
+        }
+        self.typed.push(Typed { frame: field.frame.clone(), node });
+    }
+
+    /// The fields the card was typed into (`typed`, kept by `fill`) emptied, selects back to their first option: a
+    /// payment given up, or left unfinished. Exactly those, found again by their frame and node in whatever
+    /// connection this is (fix review 11/11, R4: one field of each kind from any frame was emptied, not always the one
+    /// typed into). A field whose node Chrome did not give: every card field of the page emptied instead. Gone fields
+    /// (the page moved on) are left. How many were emptied.
+    pub async fn clear(&mut self, typed: &[Typed]) -> Result<usize, FillError> {
+        if typed.is_empty() {
+            return Ok(0);
+        }
         let mut cleared = 0;
-        for field in fields.iter().filter(|f| f.tag != "select") {
-            let set = format!("globalThis.__bipPay.set({}, '')", field.index);
-            if self.cdp.evaluate(&field.session, field.context, &set).await.is_ok() {
+        if typed.iter().any(|t| t.node == 0) {
+            for field in self.found().await? {
+                let set = format!("globalThis.__bipPay.set({}, '')", field.index);
+                if field.tag != "select" && self.cdp.evaluate(&field.session, field.context, &set).await.is_ok() {
+                    cleared += 1;
+                }
+            }
+        }
+        let frames = self.frames().await?;
+        for field in typed.iter().filter(|t| t.node != 0) {
+            let Some((session, _, _)) = frames.iter().find(|(_, id, _)| *id == field.frame) else { continue };
+            let world = json!({"frameId": field.frame, "worldName": WORLD, "grantUniveralAccess": false});
+            let Ok(created) = self.cdp.call("Page.createIsolatedWorld", world, Some(session)).await else { continue };
+            let Some(context) = created.get("executionContextId").and_then(Value::as_i64) else { continue };
+            let resolve = json!({"backendNodeId": field.node, "executionContextId": context});
+            let Ok(resolved) = self.cdp.call("DOM.resolveNode", resolve, Some(session)).await else { continue };
+            let Some(object) = resolved.get("object").and_then(|o| o.get("objectId")).and_then(Value::as_str) else {
+                continue;
+            };
+            let empty = json!({"objectId": object, "functionDeclaration": EMPTY_FIELD, "returnByValue": true});
+            if self.cdp.call("Runtime.callFunctionOn", empty, Some(session)).await.is_ok() {
                 cleared += 1;
             }
         }

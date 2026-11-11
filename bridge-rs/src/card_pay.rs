@@ -313,6 +313,8 @@ struct Held {
     /// Asked to stop (`cancelled` by cancel_payment, `suspended` by « Suspendre tous les paiements »): a payment still
     /// reloading the page or typing sees it before its next step, types nothing more and ends with that outcome.
     stop: Option<&'static str>,
+    /// The fields the card was typed into (their frame and node): what `release` empties.
+    fields: Vec<card_fill::Typed>,
 }
 
 static HELD: LazyLock<Mutex<HashMap<String, Held>>> = LazyLock::new(Default::default);
@@ -389,7 +391,7 @@ async fn release(config: &Config, agent: &str, outcome: &str) -> bool {
     }
     match tab {
         Ok(mut page) => {
-            if let Ok(n) = page.clear().await {
+            if let Ok(n) = page.clear(&entry.fields).await {
                 if n > 0 {
                     tracing::info!(agent = %agent, fields = n, "card payment: card fields emptied");
                 }
@@ -694,6 +696,7 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
         typed: false,
         loader: String::new(),
         stop: None,
+        fields: Vec::new(),
     };
     if let Some(why) = cards::over_cap(&meta, &card.label, cents, &currency) {
         journal(&config, &entry, &agent.name, "refused_cap");
@@ -773,6 +776,7 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
         return Ok(give_up(&config, &agent.name, token, "failed", STOPPED).await);
     }
     let typed = type_card(&card, code, &mut page, &fields, &still).await;
+    kept_typed(&agent.name, token, &mut page);
     drop(page);
     let filled = match typed {
         Ok(filled) => filled,
@@ -969,6 +973,14 @@ async fn typing_into(agent: &str, token: &str, page: &mut Page) -> bool {
     }
 }
 
+/// The fields `fill` typed into (or began to), kept with the payment `token`'s hold for `release` to empty.
+fn kept_typed(agent: &str, token: &str, page: &mut Page) {
+    let typed = std::mem::take(&mut page.typed);
+    if let Some(entry) = held().get_mut(agent).filter(|e| e.token == token) {
+        entry.fields = typed;
+    }
+}
+
 /// The card typed into the fresh page's fields; the code wiped with the values when done.
 async fn type_card(
     card: &crate::vault::CardFound,
@@ -1138,6 +1150,7 @@ pub(crate) async fn pay_with_values(
         typed: false,
         loader: String::new(),
         stop: None,
+        fields: Vec::new(),
     };
     if let Some(folder) = crate::desktop::desktop_dir(&config, agent).filter(|f| f.is_dir()) {
         if crate::desktop::app_holds(&folder) {
@@ -1171,6 +1184,7 @@ pub(crate) async fn pay_with_values(
         return give_up(&config, &agent.name, token, "failed", STOPPED).await;
     }
     let typed = type_values(values, &mut page, &fields, &still).await;
+    kept_typed(&agent.name, token, &mut page);
     drop(page);
     let filled = match typed {
         Ok(filled) => filled,

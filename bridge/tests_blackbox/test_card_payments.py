@@ -38,14 +38,18 @@ CALLS_CHECK = ('grep -q bipagents-calls /opt/stealth/hold_gate.py || exit 5; for
 
 class FakeChrome:
     """Chrome's DevTools as the bridge uses them: one page on `url`, its main frame with the cardholder's name and a
-    pay button, a payment provider's out-of-process frame (its own session) with the number, expiry and code. It
-    answers the card script's calls by name and records what was typed where."""
+    pay button, a payment provider's out-of-process frame (its own session) with the number, expiry and code, and
+    (`other`) a frame of another site found before it, with a card number field of its own. It answers the card
+    script's calls by name and records what was typed where."""
 
     PSP = "https://js.stripe.com/v3/elements-inner-card.html"
 
-    def __init__(self, url="https://shop.example/checkout", psp=PSP):
+    def __init__(self, url="https://shop.example/checkout", psp=PSP, other=None):
         self.url = url
         self.psp = psp
+        self.sessions = {"S-page": "F-main", **({"S-other": "F-other"} if other else {}), "S-psp": "F-psp"}
+        self.frame_urls = {"F-other": other, "F-psp": psp}
+        self.emptied = []      # (frame, i) emptied by their node (card_fill.rs `clear`)
         self.port = free_port()
         self.typed = []        # (frame, kind, text)
         self.headers = []      # x-bip-card of each connection
@@ -68,6 +72,8 @@ class FakeChrome:
                        "F-psp": [{"i": 0, "kind": "number", "tag": "input", "fmt": "", "empty": True},
                                  {"i": 1, "kind": "exp", "tag": "input", "fmt": "MM/YY", "empty": True},
                                  {"i": 2, "kind": "csc", "tag": "input", "fmt": "", "empty": True}]}
+        if other:
+            self.fields["F-other"] = [{"i": 0, "kind": "number", "tag": "input", "fmt": "", "empty": True}]
         self.values = {}       # (frame, i) -> text
         self.focused = {}      # session -> (frame, i)
         self.contexts = {}     # context id -> frame
@@ -94,8 +100,6 @@ class FakeChrome:
             return connection.respond(200, body)
         return None
 
-    SESSIONS = {"S-page": "F-main", "S-psp": "F-psp"}
-
     async def _session(self, ws):
         async for raw in ws:
             message = json.loads(raw)
@@ -114,8 +118,13 @@ class FakeChrome:
     def _events(self, method, session):
         if method == "Target.setAutoAttach" and session == "S-page":
             return [{"method": "Target.attachedToTarget", "sessionId": "S-page",
-                     "params": {"sessionId": "S-psp", "targetInfo": {"type": "iframe", "url": self.psp}}}]
+                     "params": {"sessionId": child, "targetInfo": {"type": "iframe", "url": self.frame_urls[frame]}}}
+                    for child, frame in self.sessions.items() if child != "S-page"]
         return []
+
+    def _node(self, frame, i):
+        """The backend node id of field `i` of `frame` (the same for every connection)."""
+        return 100 * list(self.sessions.values()).index(frame) + i + 1
 
     def _answer(self, method, params, session):
         if method == "Target.getTargets":
@@ -139,7 +148,7 @@ class FakeChrome:
             self.url = self.reload_to or self.url
             self.values = {}
             if self.lose_form:
-                self.fields = {"F-main": self.fields["F-main"], "F-psp": []}
+                self.fields = {**self.fields, "F-psp": []}
             return {}
         if method == "Page.navigate":
             self.navigated.append(params["url"])
@@ -150,19 +159,34 @@ class FakeChrome:
             self.resets.append(self.url)
             return {}
         if method == "DOM.getFrameOwner":
-            return {"backendNodeId": 500 + list(self.SESSIONS.values()).index(params["frameId"])}
+            return {"backendNodeId": 500 + list(self.sessions.values()).index(params["frameId"])}
         if method == "DOM.resolveNode" and "backendNodeId" in params and params["backendNodeId"] >= 500:
             return {"object": {"objectId": f"owner-{params['backendNodeId']}"}}
         if method == "Runtime.callFunctionOn" and params["objectId"].startswith("owner-"):
-            self.anchored.append(list(self.SESSIONS.values())[int(params["objectId"][6:]) - 500])
+            self.anchored.append(list(self.sessions.values())[int(params["objectId"][6:]) - 500])
+            return {"result": {"type": "boolean", "value": True}}
+        if method == "DOM.describeNode":
+            _, context, i = params["objectId"].split("-")
+            return {"node": {"backendNodeId": self._node(self.contexts[int(context)], int(i))}}
+        if method == "DOM.resolveNode":
+            frame = list(self.sessions.values())[(params["backendNodeId"] - 1) // 100]
+            if self.contexts.get(params.get("executionContextId")) != frame:
+                raise LookupError("Node with given id does not belong to the document")
+            return {"object": {"objectId": f"obj-{params['executionContextId']}-{(params['backendNodeId'] - 1) % 100}"}}
+        if method == "Runtime.callFunctionOn" and "selectedIndex" in params["functionDeclaration"]:
+            _, context, i = params["objectId"].split("-")
+            self.values[(self.contexts[int(context)], int(i))] = ""
+            self.emptied.append((self.contexts[int(context)], int(i)))
             return {"result": {"type": "boolean", "value": True}}
         if method == "Page.getFrameTree":
-            if session == "S-psp":
-                return {"frameTree": {"frame": {"id": "F-psp", "url": self.psp}}}
+            if session != "S-page":
+                frame = self.sessions[session]
+                return {"frameTree": {"frame": {"id": frame, "url": self.frame_urls[frame]}}}
+            children = [{"frame": {"id": f, "url": self.frame_urls[f]}} for f in self.sessions.values() if f != "F-main"]
             return {"frameTree": {"frame": {"id": "F-main", "url": self.url, "loaderId": f"L{self.loader}"},
-                                  "childFrames": [{"frame": {"id": "F-psp", "url": self.psp}}]}}
+                                  "childFrames": children}}
         if method == "Page.createIsolatedWorld":
-            if self.SESSIONS.get(session) != params["frameId"]:
+            if self.sessions.get(session) != params["frameId"]:
                 raise LookupError("No frame for given id found")
             context = len(self.contexts) + 1
             self.contexts[context] = params["frameId"]
@@ -459,6 +483,30 @@ def test_suspending_gives_the_browser_back_with_the_card_erased(bridges, fakes):
 
 
 HOLD_LIFTED = "rm -f /tmp/bipagents-hold; exit 0"
+
+
+def test_cancel_empties_exactly_the_fields_typed_into(bridges, fakes):
+    # Fix review 11/11, R4: clear() used to empty the first field of each kind of any frame: with a second card form
+    # in a frame of another site found first, that one was « emptied » and the provider's number stayed typed.
+    chrome = FakeChrome(other="https://js.psp.example/f")
+    try:
+        bridge = pay_bridge(bridges, fakes, chrome)
+        turn_on(bridge)
+        bridge.post("/v1/vault", headers=AUTH, json=CARD)
+        result, _ = pay(bridge, ARGS)
+        assert result["isError"] is False, result
+        assert ("F-other", "number", NUMBER) not in chrome.typed and ("F-psp", "number", NUMBER) in chrome.typed
+        assert tool(bridge, "cancel_payment")["content"][0]["text"].startswith("The payment is given up")
+        assert chrome.values[("F-psp", 0)] == "" and chrome.values[("F-psp", 2)] == ""
+        assert sorted(chrome.emptied) == [("F-main", 0), ("F-psp", 0), ("F-psp", 1), ("F-psp", 2)]
+        assert ("F-other", 0) not in chrome.values
+        assert chrome.navigated == ["about:blank"] and podman_last(bridge) == HOLD_LIFTED
+    finally:
+        chrome.stop()
+
+
+def podman_last(bridge):
+    return bridge.commands.of("podman")[-1][-1]
 
 
 def test_a_browser_image_that_counts_no_calls_is_never_typed_into(bridges, fakes):
