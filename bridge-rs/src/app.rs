@@ -1203,9 +1203,12 @@ async fn bridge_card(
         }?));
     }
     // the cards of a routine its agent made or wants changed (routines.rs `answer`): only a « Oui » starts it or applies
-    // the change; « Non » to one that never started deletes it
+    // the change; only a « Non » deletes one that never started or drops the change; any other answer changes nothing
     if let Some(id) = run_id.strip_prefix(crate::routines::RUN_PREFIX) {
         let choice = body.choice.trim().to_lowercase();
+        if !crate::routines::known_choice(&choice) {
+            return Err(HttpError::new(422, "choice: once or deny"));
+        }
         let (config, name, id, given) = (state.config(), agent.name.clone(), id.to_string(), choice.clone());
         let answered = tokio::task::spawn_blocking(move || crate::routines::answer(&config, &name, &id, &given))
             .await

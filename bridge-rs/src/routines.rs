@@ -507,7 +507,8 @@ pub fn delete(config: &Config, id: &str) -> bool {
 //
 //     once (and notify, silent, session, always)   on; silent only with `silent` (else as it is: told each time,
 //                                                    unless the person made it silent on its page meanwhile)
-//     anything else (deny, empty, unknown)          deleted: it never ran (O-3, 11/11), a proposal waiting with it
+//     deny, denied, refuse, refused, no             deleted: it never ran (O-3, 11/11), a proposal waiting with it
+//     anything else (empty, unknown)                nothing: the card keeps asking (422 from the approval route)
 //
 // A `PATCH /v1/routines/{id}` with `muted` (its page's switch) sets how its reports come and keeps the card. The
 // person's « Reprendre » and « Lancer maintenant » are refused until the card is answered (O-2). A routine its agent
@@ -888,11 +889,24 @@ pub fn silent_for(choice: &str) -> bool {
     choice == SILENT_CHOICE || !crate::card_place::allowed(&choice)
 }
 
-/// The answers that start a routine its agent made (S2: only these; anything else, an empty or unknown one included,
-/// is a « Non »). `session` and `always` are never offered by its card (`choices` is `once` / `deny`) but mean « Oui »
-/// as on a proposal's card: nothing is stored for later cards either way.
+/// The answers that start a routine its agent made (S2: only these). `session` and `always` are never offered by its
+/// card (`choices` is `once` / `deny`) but mean « Oui » as on a proposal's card: nothing is stored for later cards
+/// either way.
 fn starts(choice: &str) -> bool {
     matches!(choice, NOTIFY | SILENT_CHOICE | "once" | "session" | "always")
+}
+
+/// The explicit refusals (`card_place::allowed`'s: deny, denied, refuse, refused, no): the only answers that delete a
+/// routine its agent made or drop its proposal (review PI-6-3, C3).
+fn refuses(choice: &str) -> bool {
+    !crate::card_place::allowed(choice)
+}
+
+/// An answer a routine's card knows: a start or « Oui », or a refusal. Any other (empty, unknown, a word of a later
+/// app) changes nothing: the card and the routine stay as they are, the approval route says 422 (C3).
+pub fn known_choice(choice: &str) -> bool {
+    let choice = choice.trim().to_lowercase();
+    starts(&choice) || refuses(&choice)
 }
 
 /// The `last_status` of a one-time routine started after its time: it never ran (O-5).
@@ -912,8 +926,13 @@ pub fn answer(config: &Config, agent: &str, card_id: &str, choice: &str) -> Opti
     let found = change(config, |b| {
         let changed = |r: &&mut Routine| r.agent == agent && r.change.as_ref().is_some_and(|c| c.card.id == card_id);
         if let Some(r) = b.routines.iter_mut().find(changed) {
-            // an agent's proposal: only « Oui » (once, session, always) applies it; its mute untouched
-            let yes = matches!(choice.trim().to_lowercase().as_str(), "once" | "session" | "always");
+            // an agent's proposal: only « Oui » (once, session, always) applies it, only a refusal drops it, any other
+            // answer leaves it waiting (C3); its mute untouched
+            let choice = choice.trim().to_lowercase();
+            let yes = matches!(choice.as_str(), "once" | "session" | "always");
+            if !yes && !refuses(&choice) {
+                return None;
+            }
             if let Some(ch) = r.change.take() {
                 settle_change(r, ch, yes, zone);
             }
@@ -921,7 +940,12 @@ pub fn answer(config: &Config, agent: &str, card_id: &str, choice: &str) -> Opti
             return Some(r.clone());
         }
         let at = b.routines.iter().position(|r| r.agent == agent && r.card.as_ref().is_some_and(|c| c.id == card_id))?;
-        if b.routines[at].awaits_start && !starts(&choice.trim().to_lowercase()) {
+        let said = choice.trim().to_lowercase();
+        if b.routines[at].awaits_start && !starts(&said) && !refuses(&said) {
+            // neither a start nor a refusal (empty, unknown): nothing changes, the card keeps asking (C3)
+            return None;
+        }
+        if b.routines[at].awaits_start && refuses(&said) {
             // « Non » to a routine its agent made that never ran (owner's decision O-3, 11/11): deleted, a proposal
             // of its agent's made since with it; nothing left to run, resume or list
             let gone = b.routines.remove(at);
@@ -2008,8 +2032,16 @@ Pour la relancer tout de suite : « Lancer maintenant » sur sa page."
             let on = answered(name, yes).unwrap();
             assert!(on.enabled && !on.muted, "{yes}");
         }
-        // « Non », and an empty or unknown answer (S2): deleted (O-3), so the agent has nothing to run or resume (B-B)
-        for (name, no) in [("D", "deny"), ("D2", ""), ("D3", "peut-être"), ("D4", "no")] {
+        // an empty or unknown answer: nothing changes, it keeps waiting with its card (C3), never started (S2)
+        for (name, odd) in [("U", ""), ("U2", "start"), ("U3", "peut-être")] {
+            let (_, card) = propose(&config, name);
+            assert!(!known_choice(odd) && answer(&config, "vie", &card_id(&card), odd).is_none(), "{odd:?}");
+            let kept = list(&config, Some("vie")).into_iter().find(|r| r.name == name).unwrap();
+            assert!(kept.awaits_start && !kept.enabled && kept.asks(), "{odd:?}");
+            delete(&config, &kept.id);
+        }
+        // « Non » (deny, and the other refusals): deleted (O-3), so the agent has nothing to run or resume (B-B)
+        for (name, no) in [("D", "deny"), ("D4", "no"), ("D5", "Refused")] {
             let (_, card) = propose(&config, name);
             let gone = answer(&config, "vie", &card_id(&card), no).unwrap();
             assert!(!gone.enabled && get(&config, &gone.id).is_none(), "{no:?}");
@@ -2232,8 +2264,10 @@ ailleurs.\nEn attendant ta réponse, elle continue comme avant."
         );
         let listed = call(&config, "vie", &args(json!({"action": "list"})), None);
         assert!(text_of(&listed).contains("waits for your person's OK (it runs as before"), "{}", text_of(&listed));
-        // anything but an explicit « Oui » drops it
-        let no = answer(&config, "vie", &pushed, "notify").unwrap();
+        // an unknown answer leaves it waiting (C3); only a refusal drops it
+        assert!(answer(&config, "vie", &pushed, "notify").is_none() && answer(&config, "vie", &pushed, "").is_none());
+        assert!(get(&config, &mine.id).unwrap().change.is_some());
+        let no = answer(&config, "vie", &pushed, "deny").unwrap();
         assert!(no.change.is_none() && no.prompt == "Résume mes e-mails." && no.enabled);
         // « Oui »: applied, its next run from now
         let again = call(&config, "vie", &args(json!({"action": "update", "name": "Point du matin", "schedule": "every 1m",

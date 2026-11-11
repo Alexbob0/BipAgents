@@ -116,15 +116,21 @@ def test_an_agents_routine_shows_all_it_runs_and_a_non_deletes_it(bridges, fakes
                                                  "prompt": "x" * 4001})
     assert too_long["isError"] and "too long" in text_of(too_long) and "Trop" not in jobs(bridge)
 
-    # « Non »: deleted (O-3), so its agent cannot run the refused words (B-B); an empty answer is a « Non » (S2)
+    # « Non »: deleted (O-3), so its agent cannot run the refused words (B-B)
     _, plain = propose(bridge, "Sans avis")
     no = bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": plain["run_id"], "choice": "deny"})
     assert no.status_code == 200, no.text
     assert "Sans avis" not in jobs(bridge)
     assert call(bridge, "routine_schedule", {"action": "run", "name": "Sans avis"})["isError"]
+    # an empty or unknown answer changes nothing (C3): 422, the routine still waiting with its card
     _, empty = propose(bridge, "Vide")
+    for odd in ("", "start"):
+        assert bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": empty["run_id"],
+                                                              "choice": odd}).status_code == 422
+    assert jobs(bridge)["Vide"]["state"] == "paused" and jobs(bridge)["Vide"]["waits_for_answer"] is True
+    assert [c for c in routine_cards(bridge) if c["run_id"] == empty["run_id"]]
     assert bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": empty["run_id"],
-                                                          "choice": ""}).status_code == 200
+                                                          "choice": "deny"}).status_code == 200
     assert "Vide" not in jobs(bridge)
     time.sleep(0.5)
     assert not [t for t in turns(fakes) if "Sans avis" in t["input"] or "Vide" in t["input"]]
