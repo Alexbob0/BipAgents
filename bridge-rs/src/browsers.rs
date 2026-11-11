@@ -387,7 +387,9 @@ pub fn human_hold_command(token: &str) -> String {
 /// The command that lifts the person's hold: a payment's flag is left alone (only the payment's own release, its
 /// fields emptied and its page left, removes it).
 pub fn human_release_command() -> String {
-    format!("[ \"$(head -c 4 {HOLD_FLAG} 2>/dev/null)\" = card ] || rm -f {HOLD_FLAG}")
+    // no flag, nothing to do (fix review 11/11, 5th check): never a `rm` that could meet a payment's hold set between
+    // the read and it (the payment's own look before typing refuses then, card_pay.rs `calls_check_command`)
+    format!("[ -e {HOLD_FLAG} ] || exit 0; [ \"$(head -c 4 {HOLD_FLAG} 2>/dev/null)\" = card ] || rm -f {HOLD_FLAG}")
 }
 
 /// The person takes over the agent's browser (or hands it back): its MCP tools and its DevTools wait meanwhile.
@@ -511,7 +513,13 @@ pub async fn lift_payment_hold(config: &Config, agent: &str, token: &str) -> boo
     run_hold_command(config, agent, token, payment_release_command, "payment hold not lifted").await
 }
 
-async fn run_hold_command(config: &Config, agent: &str, token: &str, command: fn(&str) -> String, failed: &str) -> bool {
+async fn run_hold_command(
+    config: &Config,
+    agent: &str,
+    token: &str,
+    command: fn(&str) -> String,
+    failed: &str,
+) -> bool {
     let host = Host::real(config);
     let Some(engine) = host.runtime.clone() else { return false };
     if !has_ports(config, agent) || !alnum(token) {
@@ -563,7 +571,8 @@ pub async fn stale_payment_hold(config: &Config, agent: &str, token: &str) -> bo
     // Each look bounded (fix review 11/11, 4th check, problem 2): a podman that blocks (its storage locked by an image
     // pull) never keeps the agent's lock, which cancel_payment, confirm_payment and « Suspendre » need.
     let run = |command: String| {
-        let exec = (host.exec)(vec![engine.clone(), "exec".into(), container(agent), "sh".into(), "-c".into(), command]);
+        let exec =
+            (host.exec)(vec![engine.clone(), "exec".into(), container(agent), "sh".into(), "-c".into(), command]);
         async move { tokio::time::timeout(STALE_LOOK, exec).await.unwrap_or(-1) }
     };
     run(stale_check_command()).await == STALE_HOLD && run(rekey_hold_command(token)).await == 0

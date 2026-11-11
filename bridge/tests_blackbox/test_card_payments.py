@@ -33,7 +33,8 @@ TOKEN = "agent-token-for-vie-0123456789abcdef"
 PAY = "/v1/agent-tools/pay"
 # The bridge's look at the browser's MCP gates (browser/hold_gate.py): their tool calls still running, under the hold.
 CALLS_CHECK = ('grep -q bipagents-calls /opt/stealth/hold_gate.py && grep -q \'paying() or\' /opt/stealth/hold_gate.py '
-               '|| exit 5; for f in /tmp/bipagents-calls/*; do '
+               '|| exit 5; if [ -n "$1" ]; then [ "$(cat /tmp/bipagents-hold 2>/dev/null)" = "card $1" ] || exit 6; fi; '
+               'for f in /tmp/bipagents-calls/*; do '
                '[ -f "$f" ] || continue; [ -d "/proc/${f##*/}" ] || { rm -f "$f"; continue; }; [ "$(cat "$f")" = 0 ] '
                '|| exit 4; done; exit 0')
 
@@ -412,10 +413,15 @@ def test_a_payment_approved_is_typed_on_the_real_site_then_the_bridge_clicks(bri
         # Typed into a fresh document: the other tab closed, the site's service workers removed, the page reloaded.
         assert chrome.closed == ["T2"] and chrome.reloads == 1
         assert chrome.cleared == [{"origin": "https://shop.example", "storageTypes": "service_workers"}]
-        podman = [c[-1] for c in bridge.commands.of("podman")]
+        commands = bridge.commands.of("podman")
+        podman = [c[4] if len(c) > 4 else c[-1] for c in commands]   # the script (its token, if any, comes after)
         assert [c for c in podman if c == CALLS_CHECK] == [CALLS_CHECK] * 4
         hold_at = next(i for i, c in enumerate(podman) if "printf 'card %s'" in c)
         assert podman.index(CALLS_CHECK) < hold_at and podman[hold_at + 1:hold_at + 4] == [CALLS_CHECK] * 3
+        # before asking: no token; under the hold: the hold's own, so nothing is typed once the flag is not its own
+        hold_token = re.search(r"printf 'card %s' ([0-9a-f]+) >", podman[hold_at]).group(1)
+        assert commands[podman.index(CALLS_CHECK)][5:] == []
+        assert all(c[5:] == ["sh", hold_token] for c in commands[hold_at + 1:hold_at + 4])
         assert re.fullmatch(r"Card payment pay_[0-9a-f]{12}: 12\.50 EUR on shop\.example with card \"Petits achats\" "
                             r"ending 4242, for \"Billet Paris-Lyon\"\. Approve in the BipAgents app with the card's "
                             r"security code\.", asked)
@@ -826,8 +832,8 @@ def flag_kinds(bridge, tmp_path):
     flag.unlink(missing_ok=True)
     kinds = []
     for argv in bridge.commands.of("podman"):
-        if (argv[:4] != ["exec", "bipagents-browser-vie", "sh", "-c"] or "/tmp/bipagents-hold" not in argv[-1]
-                or argv[-1] == STALE_CHECK):   # the start-up look, which changes nothing
+        if (argv[:4] != ["exec", "bipagents-browser-vie", "sh", "-c"] or "/tmp/bipagents-hold" not in argv[4]
+                or argv[4] in (STALE_CHECK, CALLS_CHECK)):   # the looks, which change nothing
             continue
         subprocess.run(["sh", "-c", argv[-1].replace("/tmp/bipagents-hold", str(flag))], check=False)
         kinds.append(flag.read_text().split(" ")[0] if flag.exists() else None)
@@ -1166,8 +1172,9 @@ def test_the_timer_leaves_a_payment_in_use_alone(bridges, fakes):
         bridge = pay_bridge(bridges, fakes, chrome, prepare=quick_sweep)
         turn_on(bridge)
         bridge.post("/v1/vault", headers=AUTH, json=CARD)
-        bridge.commands.rule("podman", ["exec", "bipagents-browser-vie", "sh", "-c", STALE_CHECK], exit=7)   # its flag
         assert pay(bridge, ARGS)[0]["isError"] is False
+        # its flag, from now on (set before `pay`, a pass landing before it took the lock would end a hold nobody had)
+        bridge.commands.rule("podman", ["exec", "bipagents-browser-vie", "sh", "-c", STALE_CHECK], exit=7)
         passes = len([c for c in bridge.commands.of("podman") if c[-1] == STALE_CHECK])
         time.sleep(5)
         podman = [c[-1] for c in bridge.commands.of("podman")]

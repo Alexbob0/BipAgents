@@ -681,13 +681,16 @@ pub async fn end_stale_holds(config: Arc<Config>) {
 /// How often `end_stale_holds` looks again after the start (the tests shorten it: `BIP_TEST_STALE_SWEEP_SECONDS`).
 const STALE_SWEEP: Duration = Duration::from_secs(180);
 
+/// Only ever shorter, 1 to 180 seconds (fix review 11/11, 5th check: a huge value would switch the timer off), and
+/// said in the log when set.
 fn stale_sweep() -> Duration {
-    std::env::var("BIP_TEST_STALE_SWEEP_SECONDS")
-        .ok()
-        .and_then(|s| s.parse::<u64>().ok())
-        .filter(|s| *s > 0)
-        .map(Duration::from_secs)
-        .unwrap_or(STALE_SWEEP)
+    let Some(seconds) = std::env::var("BIP_TEST_STALE_SWEEP_SECONDS").ok().and_then(|s| s.trim().parse::<u64>().ok())
+    else {
+        return STALE_SWEEP;
+    };
+    let every = Duration::from_secs(seconds.clamp(1, STALE_SWEEP.as_secs()));
+    tracing::warn!(seconds = every.as_secs(), "card payment: leftover holds swept at a test interval");
+    every
 }
 
 /// `end_stale_holds` at start, then every `STALE_SWEEP`.
@@ -1073,23 +1076,39 @@ enum Calls {
     /// Nobody counts them: a browser image from before the count (no `bipagents-calls` in its gate), or no container
     /// engine to ask. Nothing is typed then (fix review 11/11, R3): a call in flight could span the reload.
     Unknown,
+    /// Under the hold: the flag is no longer this payment's (`card <its token>`): nothing may be typed (fix review
+    /// 11/11, 5th check: a hand-back that removed it in the same millisecond as the hold was set).
+    NotHeld,
 }
 
 /// Logged once per bridge run: an agent's browser image is too old for card payments.
 static OLD_IMAGE_SAID: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-async fn calls_done(config: &Config, agent: &str) -> Calls {
-    let host = crate::browsers::Host::real(config);
-    let Some(engine) = host.runtime.clone() else { return Calls::Unknown };
-    let check = format!(
+/// The look at the gates' counts (exit 0 all ended, 4 one runs, 5 an image that can't protect a payment), run with
+/// the hold's token as `$1` under the hold: then also 6 when the flag is not exactly `card <token>`.
+pub fn calls_check_command() -> String {
+    format!(
         // an image with the gate whose payment holds never lapse too (fix review 11/11, 3rd check, P6)
         "grep -q bipagents-calls /opt/stealth/hold_gate.py && grep -q 'paying() or' /opt/stealth/hold_gate.py || \
-         exit 5; for f in {CALLS_DIR}/*; do [ -f \"$f\" ] || continue; [ -d \"/proc/${{f##*/}}\" ] || {{ rm -f \"$f\"; \
-         continue; }}; [ \"$(cat \"$f\")\" = 0 ] || exit 4; done; exit 0"
-    );
-    let command = vec![engine, "exec".into(), crate::browsers::container(agent), "sh".into(), "-c".into(), check];
+         exit 5; if [ -n \"$1\" ]; then [ \"$(cat {HOLD_FLAG} 2>/dev/null)\" = \"card $1\" ] || exit 6; fi; \
+         for f in {CALLS_DIR}/*; do [ -f \"$f\" ] || continue; [ -d \"/proc/${{f##*/}}\" ] || {{ rm -f \"$f\"; \
+         continue; }}; [ \"$(cat \"$f\")\" = 0 ] || exit 4; done; exit 0",
+        HOLD_FLAG = crate::browsers::HOLD_FLAG
+    )
+}
+
+/// `own`: the hold's token, under the hold (None: before asking the person).
+async fn calls_done(config: &Config, agent: &str, own: Option<&str>) -> Calls {
+    let host = crate::browsers::Host::real(config);
+    let Some(engine) = host.runtime.clone() else { return Calls::Unknown };
+    let mut command =
+        vec![engine, "exec".into(), crate::browsers::container(agent), "sh".into(), "-c".into(), calls_check_command()];
+    if let Some(token) = own {
+        command.extend(["sh".to_string(), token.to_string()]);
+    }
     match (host.exec)(command).await {
         0 => Calls::Done,
+        6 if own.is_some() => Calls::NotHeld,
         5 => {
             if !OLD_IMAGE_SAID.swap(true, std::sync::atomic::Ordering::SeqCst) {
                 tracing::warn!(agent = %agent, "card payment refused: the browser image counts no tool calls \
@@ -1105,7 +1124,7 @@ async fn calls_done(config: &Config, agent: &str) -> Calls {
 /// the person is asked (security check 11/11, N5: nobody approves, nor sends a phone's card, for a payment that
 /// can't then be typed). The same look runs again under the hold.
 pub(crate) async fn browser_cannot_pay(config: &Config, agent: &str) -> Option<Dict> {
-    (calls_done(config, agent).await == Calls::Unknown).then(|| refusal(&format!("{OLD_BROWSER} {HAND_IT_OVER}")))
+    (calls_done(config, agent, None).await == Calls::Unknown).then(|| refusal(&format!("{OLD_BROWSER} {HAND_IT_OVER}")))
 }
 
 const OLD_BROWSER: &str = "Your browser must be updated before the bridge can pay with a card in it (BipAgents updates \
@@ -1124,9 +1143,15 @@ async fn fresh_page(
     tokio::time::sleep(RELAY_CLOSES).await;
     let deadline = Instant::now() + CALLS_WAIT;
     loop {
-        match calls_done(config, agent).await {
+        match calls_done(config, agent, Some(&entry.token)).await {
             Calls::Done => break,
             Calls::Unknown => return Err(format!("{OLD_BROWSER} {HAND_IT_OVER}")),
+            Calls::NotHeld => {
+                tracing::warn!(agent = %agent, "card payment: the hold was not this payment's any more, nothing typed");
+                return Err("Your browser could not stay paused for the payment (someone took or gave back the \
+                            browser at that moment): nothing was typed. Don't pay; tell the person."
+                    .into());
+            }
             Calls::Running => {}
         }
         if !still() {
@@ -1815,6 +1840,59 @@ pub fn app_router() -> Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_test_interval_of_the_sweep_is_only_ever_shorter() {
+        // one test for the variable: the process environment is shared by the tests running at once
+        let at = |value: &str| {
+            std::env::set_var("BIP_TEST_STALE_SWEEP_SECONDS", value);
+            stale_sweep().as_secs()
+        };
+        assert_eq!((at("2"), at("0"), at("99999999999"), at(" 5 ")), (2, 1, 180, 5));
+        assert_eq!(at("x"), 180);
+        std::env::remove_var("BIP_TEST_STALE_SWEEP_SECONDS");
+        assert_eq!(stale_sweep(), STALE_SWEEP);
+    }
+
+    #[test]
+    fn nothing_is_typed_once_the_hold_is_not_this_payments() {
+        // Fix review 11/11, 5th check: the person's hand-back could remove the flag right after the payment's hold
+        // was set, and nothing looked at the flag again before typing. The last look under the hold now does.
+        let dir = tempfile::tempdir().unwrap();
+        let (gate, calls, flag) = (dir.path().join("gate.py"), dir.path().join("calls"), dir.path().join("hold"));
+        std::fs::write(&gate, "def held():\n    return paying() or 0  # bipagents-calls\n").unwrap();
+        std::fs::create_dir(&calls).unwrap();
+        let script = calls_check_command()
+            .replace("/opt/stealth/hold_gate.py", &gate.to_string_lossy())
+            .replace(CALLS_DIR, &calls.to_string_lossy())
+            .replace(crate::browsers::HOLD_FLAG, &flag.to_string_lossy());
+        let run = |flag_text: Option<&str>, token: Option<&str>| {
+            match flag_text {
+                Some(text) => std::fs::write(&flag, text).unwrap(),
+                None => {
+                    let _ = std::fs::remove_file(&flag);
+                }
+            }
+            let mut sh = std::process::Command::new("sh");
+            sh.args(["-c", &script]);
+            if let Some(token) = token {
+                sh.args(["sh", token]);
+            }
+            sh.status().unwrap().code().unwrap_or(-1)
+        };
+        // Under the hold: its own flag only.
+        assert_eq!(run(Some("card 0123abcd"), Some("0123abcd")), 0);
+        assert_eq!(run(Some("card 0123abce"), Some("0123abcd")), 6);
+        assert_eq!(run(Some("human 0123abcd"), Some("0123abcd")), 6);
+        assert_eq!(run(None, Some("0123abcd")), 6);
+        // Before asking the person: no flag to look at.
+        assert_eq!(run(None, None), 0);
+        // A call still running in a live gate: 4; an image that can't protect a payment: 5.
+        std::fs::write(calls.join(std::process::id().to_string()), "1").unwrap();
+        assert_eq!(run(Some("card 0123abcd"), Some("0123abcd")), 4);
+        std::fs::write(&gate, "def held():\n    return time.time()  # bipagents-calls\n").unwrap();
+        assert_eq!(run(Some("card 0123abcd"), Some("0123abcd")), 5);
+    }
 
     #[test]
     fn answers_go_only_to_the_agent_asked() {
