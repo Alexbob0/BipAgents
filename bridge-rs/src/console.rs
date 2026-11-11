@@ -460,11 +460,22 @@ pub fn console_router() -> Router<AppState> {
         .route("/console/api/logout", post(logout))
 }
 
+/// A console approves no other console and revokes none: only the app does (audit 11/11 BA-6: a console approving a
+/// second one of its own would outlive its revocation). Listing them stays open to it.
+fn from_the_app(caller: &crate::auth::Caller) -> Result<(), HttpError> {
+    if caller.console {
+        return Err(HttpError::new(403, "consoles are approved and removed from the app"));
+    }
+    Ok(())
+}
+
 async fn approve(
     State(state): State<AppState>,
+    caller: crate::auth::Caller,
     Path(code): Path<String>,
     Json(body): Json<Approval>,
 ) -> ApiResult<Response> {
+    from_the_app(&caller)?;
     if !state.console.approve(&code, &body.name) {
         return Err(HttpError::new(404, "no console waits with this code"));
     }
@@ -476,7 +487,9 @@ async fn devices(State(state): State<AppState>) -> Response {
     web::ok(json!({"devices": devices}))
 }
 
-async fn revoke(State(state): State<AppState>, Path(device): Path<String>) -> ApiResult<Response> {
+async fn revoke(State(state): State<AppState>, caller: crate::auth::Caller, Path(device): Path<String>)
+    -> ApiResult<Response> {
+    from_the_app(&caller)?;
     if !state.console.revoke(&device) {
         return Err(HttpError::new(404, "unknown device"));
     }
@@ -562,6 +575,14 @@ mod tests {
         store.save(&data).unwrap();
         assert!(store.new_pairing().unwrap().is_some());
         assert!(store.new_pairing().unwrap().is_none());
+    }
+
+    #[test]
+    fn a_console_approves_and_revokes_no_console() {
+        use crate::auth::Caller;
+        assert_eq!(from_the_app(&Caller { console: true, device: None }).unwrap_err().status.as_u16(), 403);
+        assert!(from_the_app(&Caller { console: false, device: None }).is_ok());
+        assert!(from_the_app(&Caller { console: false, device: Some("abc".into()) }).is_ok());
     }
 
     #[test]
