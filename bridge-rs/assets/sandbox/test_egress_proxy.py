@@ -121,7 +121,9 @@ def record(kind, size):
     return bytes([kind, 3, 3]) + size.to_bytes(2, "big") + b"x" * size
 
 
-def test_tls_counts_the_application_data_only(tmp_path, monkeypatch):
+def test_tls_counts_every_record_type(tmp_path, monkeypatch):
+    """Every record's content counts, whatever its type (BV-4, 11/11: data framed as handshake records was free); a
+    browser's first 4 KB of each record stay free."""
     proxy, _, _ = load(tmp_path, monkeypatch)
     hello = record(22, 512)
     data = record(23, 700) + record(20, 1) + record(23, 300)
@@ -129,14 +131,26 @@ def test_tls_counts_the_application_data_only(tmp_path, monkeypatch):
     stream = hello + data
     # in any slicing (a header split across reads included)
     counted = sum(tls.count(stream[i:i + 7]) for i in range(0, len(stream), 7))
-    assert counted == 1000
+    assert counted == 512 + 1000 + 1
     assert proxy.Tls().count(b"GET / HTTP/1.1\r\nHost: x\r\n\r\n") == 27   # not TLS: every byte
-    # a browser's: the first 4 KB of each record free (its requests), an upload's full records counted past them
+    # a browser's: the first 4 KB of each record free (its hello, its requests), an upload's full records counted past
     browser = proxy.Tls(4096)
     requests = hello + b"".join(record(23, 1500) for _ in range(200))
     assert sum(browser.count(requests[i:i + 5000]) for i in range(0, len(requests), 5000)) == 0
     upload = b"".join(record(23, 16384) for _ in range(128))           # 2 MB
     assert browser.count(upload) == 128 * (16384 - 4096)
+    # handshake-typed records are no way around it
+    handshakes = proxy.Tls(4096)
+    assert handshakes.count(b"".join(record(22, 16384) for _ in range(128))) == 128 * (16384 - 4096)
+
+
+def test_a_programs_every_byte_counts(tmp_path, monkeypatch):
+    """A sandbox program frames its bytes as it likes: N bytes framed as handshake records count N (and their record
+    headers too)."""
+    proxy, _, _ = load(tmp_path, monkeypatch, AGENTS, LIMITS)
+    guard = proxy.Guard("budget", "x.example.net", True)
+    stream = b"".join(record(22, 1000) for _ in range(10))
+    assert guard.sending(stream) and guard.app == len(stream) == 10 * 1005
 
 
 class Site:
@@ -200,9 +214,9 @@ async def tunnel(port, host, auth=None):
     return head.split(b"\r\n")[0].decode(), reader, writer
 
 
-async def send_tls(port, host, auth, app_bytes, chunk=16000):
-    """A TLS-looking stream: a handshake, then `app_bytes` of application data. Returns (status, bytes written before
-    the proxy stopped taking them, whether the tunnel was closed on us)."""
+async def send_tls(port, host, auth, app_bytes, chunk=16000, kind=23):
+    """A TLS-looking stream: a handshake, then `app_bytes` in records of `kind` (application data). Returns (status,
+    bytes written before the proxy stopped taking them, whether the tunnel was closed on us)."""
     status, reader, writer = await tunnel(port, host, auth)
     if not status.startswith("HTTP/1.1 200"):
         writer.close()
@@ -213,7 +227,7 @@ async def send_tls(port, host, auth, app_bytes, chunk=16000):
         left = app_bytes
         while left > 0:
             size = min(chunk, left)
-            writer.write(record(23, size))
+            writer.write(record(kind, size))
             await writer.drain()
             written += size
             left -= size
@@ -259,6 +273,23 @@ def test_a_big_upload_is_cut_with_one_report_a_validated_site_passes(tmp_path, m
     # and the validated megabyte whole
     assert site.received >= 1024 * 1024 + 6000
     assert site.received < 1024 * 1024 + 6000 + 64 * 1024 + 3000 + 16 * 1024 + 6 * 1024
+
+
+def test_data_framed_as_handshake_records_is_cut_and_reported(tmp_path, monkeypatch):
+    """BV-4 (11/11): a program writing 1 MB as TLS handshake records (type 22) to a site nobody validated is counted,
+    cut past the hour's budget and reported once, like any upload."""
+    proxy, _, reports = load(tmp_path, monkeypatch, AGENTS, LIMITS)
+    site = Site()
+
+    async def steps(port):
+        return await send_tls(port, "drop.example.net", VIE, 1024 * 1024, kind=22)
+
+    status, _, closed = asyncio.run(through(proxy, monkeypatch, site, steps))
+    assert status.startswith("HTTP/1.1 200") and closed
+    lines = reports_of(reports)
+    assert [(l["agent"], l["host"]) for l in lines] == [("vie", "drop.example.net")], lines
+    assert lines[0]["bytes"] >= 900 * 1024
+    assert site.received <= 64 * 1024
 
 
 def test_downloads_of_any_size_pass(tmp_path, monkeypatch):

@@ -16,8 +16,8 @@ abuse complaint can be traced to an agent.
   100.64/10) or reserved address; the connection goes to the address checked, never resolved again. The
   `Proxy-Authorization` header is never passed on.
 - **Sending is guarded**: the tunnel is opaque (never any TLS interception), so the proxy counts what the client sends
-  the site: in a TLS stream, the application data records only (the handshake is not the agent's data), else every
-  byte. To a host its person did not validate (the registries count as validated), past `send_site_hour` bytes per
+  the site: a program's every byte (its TLS handshake too: a program frames data in any record type it likes), the
+  browser's TLS records past their first `browser_record_free` bytes each, whatever their type. To a host its person did not validate (the registries count as validated), past `send_site_hour` bytes per
   host per hour, or `send_day` bytes per agent per day across such hosts (a slow leak), the tunnel is cut: nothing more
   reaches the site, the proxy keeps reading what the client still sends for a few seconds to know its size, then
   appends one line `{"kind": "send", "agent", "host", "bytes"}` to `BIP_REPORTS` (the bridge reads it and asks the
@@ -361,10 +361,11 @@ def download_over(agent):
 
 
 class Tls:
-    """What a client sends in a TLS stream, record by record: the application data records' lengths are counted, the
-    handshake's are not. A stream that does not start as TLS counts whole. `free`: the first bytes of each record (of
-    each read, out of TLS) not counted — a browser's requests are small records, an upload's full ones (16 KB); never
-    for the sandboxes' programs, which choose their own record sizes."""
+    """What a browser sends in a TLS stream, record by record: every record's content counts (whatever its type: a
+    client chooses the type it frames its bytes in), but the first `free` bytes of each (of each read, out of TLS) —
+    a browser's requests are small records, an upload's full ones (16 KB). A stream that does not start as TLS counts
+    whole. The sandboxes' programs never go through this: they choose their own record sizes and types, every byte
+    they send counts (`Guard`)."""
 
     def __init__(self, free=0):
         self.mode = None   # None (first byte not seen), "tls" or "raw"
@@ -383,10 +384,9 @@ class Tls:
         while at < len(data):
             if self.left:
                 take = min(self.left, len(data) - at)
-                if self.kind == 23:
-                    spared = min(self.free_left, take)
-                    self.free_left -= spared
-                    counted += take - spared
+                spared = min(self.free_left, take)
+                self.free_left -= spared
+                counted += take - spared
                 self.left -= take
                 at += take
                 continue
@@ -411,7 +411,9 @@ class Guard:
 
     def __init__(self, agent, host, counted, browser=False):
         self.agent, self.host, self.counted = agent, host, counted
-        self.tls = Tls(limit("browser_record_free") if browser else 0)
+        # a program: every byte (TLS record headers and handshakes included: a program frames what it likes in them,
+        # 2026-11-11 audit BV-4); the browser: its records past their free first bytes
+        self.tls = Tls(limit("browser_record_free")) if browser else None
         self.up = 0          # every byte the client sent through (the log's figure)
         self.down = 0
         self.app = 0         # what counted against the budgets in this tunnel
@@ -426,7 +428,7 @@ class Guard:
         if not self.counted:
             day["sent"] += len(data)
             return True
-        size = self.tls.count(data)
+        size = self.tls.count(data) if self.tls is not None else len(data)
         if not size:
             day["sent"] += len(data)
             return True

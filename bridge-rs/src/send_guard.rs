@@ -7,9 +7,11 @@
 //!   cuts the tunnel and the person gets ONE card (sandbox_sites.rs). Measured on 2026-10-28 through the proxy (TLS
 //!   application data, the handshake left out): an HTTPS GET with curl ≈ 160–260 bytes, a `pip download requests`
 //!   ≈ 3 KB per host, a shallow `git clone` ≈ 0.9 KB, a form post of 6 KB of text ≈ 8.8 KB. A page load, an API call,
-//!   an install, a login or a form of a few KB never comes near; a file, a mailbox or an export does. Slow leaks: about
-//!   1 000 small requests a day to sites nobody validated reach the day's total (a card, then the person validates an
-//!   API the agent keeps using). The browser's requests are small TLS records whose first 4 KB are not counted (its
+//!   an install, a login or a form of a few KB never comes near; a file, a mailbox or an export does. Since 11/11 a
+//!   program's every byte counts, its handshake too (data framed as handshake records was free, audit BV-4): a fresh
+//!   connection adds its ClientHello (≈ 0.5 KB with curl, up to ≈ 1.8 KB with a recent OpenSSL, estimates). Slow
+//!   leaks: a few hundred fresh connections a day to sites nobody validated reach the day's total (a card, then the
+//!   person validates an API the agent keeps using). The browser's requests are small TLS records whose first 4 KB are not counted (its
 //!   pages make many), an upload's 16 KB records are.
 //! - **The offer** (`config.cloud`, a place Kerfy hosts): a download limit per agent per day (2 GB), new connections
 //!   per agent per minute (300), `--cpus` per sandbox (1.5), the blocklist. A self-install keeps none of them unless
