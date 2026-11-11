@@ -425,7 +425,7 @@ Plätze halten ab dem Antrag an, und bis dahin kannst du es dir anders überlege
 Sicherungen, außer dem, was das Gesetz aufzubewahren verlangt: Als Hoster bewahrt Kerfy Studio getrennt, und nur um
 Justizbehörden zu antworten, deine E-Mail-Adresse 5 Jahre und deine Apple- oder Google-Kennung 1 Jahr nach dem Ende des
 Vertrags auf (französisches Gesetz über das Vertrauen in die digitale Wirtschaft, Art. 6 II; Dekret Nr. 2021-1362,
-Art. 2, 3 und 8). Der Fingerabdruck deines Android-Geräts (Abschnitt 5.3) ist nicht mit deinem Konto verknüpft: Er wird
+Art. 2, 3 und 8). Der Fingerabdruck deines Android-Geräts (Abschnitt 5.3) wird getrennt von deinem Konto aufbewahrt: Er wird
 nicht mit ihm gelöscht und bleibt bis zum Ende seiner 24 Monate, damit niemand kostenlose Wochen aneinanderreiht.
 Einmalcodes: solange sie gültig sind. Nicht angenommene Einladung: 30 Tage; Einladung einer Familienverbindung: 7 Tage
 oder bis zur Antwort. Teilen zum Lesen: gelöscht zum Enddatum, wenn du es beendest, oder mit deinem Konto.
@@ -497,7 +497,7 @@ früheren Abos. Wir speichern keine Daten deiner Karte: Sie wird bei Stripe eing
 **Die Beta-Codes.** Ein eingelöster Beta-Code wird zur Kennung deines Beta-Abos, das mit deinem Konto wie jedes Abo
 aufbewahrt wird (unten), und das Protokoll des Guichets vermerkt „Code eingelöst“ mit deinem Konto (12 Monate). Ein
 Code pro Telefon: Auf dem iPhone bewahrt Apple dafür das zweite DeviceCheck-Bit auf; auf Android bewahrt der Guichet
-getrennt einen Fingerabdruck des Geräts auf, ohne Verknüpfung mit deinem Code oder deinem Konto, solange noch Codes
+einen Fingerabdruck des Geräts getrennt von deinem Code und deinem Konto auf, solange noch Codes
 eingelöst werden können. Ein nie eingelöster Code wird gelöscht, sobald er nicht mehr eingelöst werden kann; ein
 eingelöster Code mit seiner Verknüpfung zu deinem Konto, wenn dein Beta-Platz endet oder in ein bezahltes Abo übergeht.
 
@@ -514,7 +514,7 @@ und die Steuern berechnen, Erfüllung des Vertrags (Art. 6 Abs. 1 lit. b DSGVO);
 Nachweis des Vertrags (Art. 2224 des französischen Zivilgesetzbuchs). Rechnungen und Zahlungsbelege: 10 Jahre
 (Art. L123-22 des französischen Handelsgesetzbuchs); die Rechnungen bewahrt Stripe auf. Fingerabdruck des
 Android-Geräts: 24 Monate ab der ersten Markierung des Telefons (seine kostenlose Woche oder das erste von ihm aus
-abgeschlossene Abo), ohne Verknüpfung mit deinem Konto. IP-Adresse: nie im Klartext gespeichert; ihr Fingerabdruck im
+abgeschlossene Abo), getrennt von deinem Konto aufbewahrt. IP-Adresse: nie im Klartext gespeichert; ihr Fingerabdruck im
 Arbeitsspeicher höchstens 15 Minuten für die kostenlose Woche, höchstens 2 Tage für die anderen Grenzen (30 Tage in den
 Kopien der Datenbank). Die DeviceCheck-Bits bewahrt Apple auf.
 
@@ -894,8 +894,8 @@ des Guichets und des Relays: OVHcloud, in Frankreich. Hoster der Sicherungen: Sc
 | Rechnungen und Zahlungsbelege eines Kaufs auf der Website | 10 Jahre (Art. L123-22 des französischen Handelsgesetzbuchs); Rechnungen bei Stripe aufbewahrt |
 | Nie eingelöster Beta-Code | Bis er nicht mehr eingelöst werden kann |
 | Eingelöster Beta-Code und seine Verknüpfung zu deinem Konto | Bis dein Beta-Platz endet oder in ein bezahltes Abo übergeht |
-| Fingerabdruck eines Android-Telefons, das einen Beta-Code eingelöst hat (ohne Code und Konto) | Solange noch Beta-Codes eingelöst werden können |
-| Fingerabdruck des Android-Geräts, mit einem geheimen Schlüssel gehasht (kostenlose Woche) | 24 Monate nach der ersten Markierung des Telefons; nicht mit dem Konto gelöscht, mit dem er nicht verknüpft ist |
+| Fingerabdruck eines Android-Telefons, das einen Beta-Code eingelöst hat (getrennt von Code und Konto aufbewahrt) | Solange noch Beta-Codes eingelöst werden können |
+| Fingerabdruck des Android-Geräts, mit einem geheimen Schlüssel gehasht (kostenlose Woche) | 24 Monate nach der ersten Markierung des Telefons; getrennt vom Konto aufbewahrt, nicht mit ihm gelöscht |
 | Einladung einer Familienverbindung | 7 Tage oder bis zur Antwort |
 | Teilen zum Lesen (verschlüsselte Kopie, eingeladene Personen) | Bis zum Enddatum, bis zum Beenden oder bis zur Löschung des Kontos |
 | Kampagnenname (Abschnitt 5.11) | 13 Monate nach der Aufzeichnung, oder mit dem Konto oder dem Abo |

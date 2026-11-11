@@ -396,7 +396,7 @@ detienen desde la solicitud, y puedes cambiar de opinión hasta entonces), con s
 salvo lo que la ley obliga a conservar: como proveedor de alojamiento, Kerfy Studio conserva aparte, y solo para
 responder a las autoridades judiciales, tu dirección de correo 5 años y tu identificador de Apple o de Google 1 año
 después del fin del contrato (ley francesa para la confianza en la economía digital, artículo 6, II; decreto
-n.º 2021-1362, artículos 2, 3 y 8). La huella de tu dispositivo Android (sección 5.3) no está vinculada a tu cuenta: no se borra con ella y se queda hasta
+n.º 2021-1362, artículos 2, 3 y 8). La huella de tu dispositivo Android (sección 5.3) se guarda aparte de tu cuenta: no se borra con ella y se queda hasta
 el final de sus 24 meses, para impedir encadenar semanas gratis. Códigos de un solo uso: el tiempo de su validez.
 Invitación no aceptada: 30 días; invitación de un vínculo familiar: 7 días, o hasta la respuesta. Compartir en lectura:
 se borra en su fecha de fin, cuando lo detienes o con tu cuenta.
@@ -464,7 +464,7 @@ servidores.
 **Los códigos beta.** Un código beta usado se convierte en el identificador de tu suscripción beta, que se guarda con
 tu cuenta como cualquier suscripción (abajo), y el registro del guichet anota «código usado» con tu cuenta (12 meses).
 Un solo código por teléfono: en iPhone, Apple guarda para ello el segundo bit de DeviceCheck; en Android, el guichet
-guarda aparte una huella del dispositivo, sin vínculo con tu código ni con tu cuenta, mientras aún se puedan usar
+guarda una huella del dispositivo, aparte de tu código y de tu cuenta, mientras aún se puedan usar
 códigos. Un código nunca usado se borra en cuanto ya no puede usarse; un código usado, con su vínculo a tu cuenta,
 cuando tu plaza beta termina o pasa a una suscripción de pago.
 
@@ -479,8 +479,8 @@ fraude, interés legítimo (artículo 6.1.f); facturas y documentos contables, o
 **Plazo.** Datos de suscripción y de compra, incluidos los de una compra en el sitio: durante la suscripción y después
 5 años archivados, como prueba del contrato (artículo 2224 del Código Civil francés). Facturas y justificantes de pago:
 10 años (artículo L123-22 del Código de Comercio francés); Stripe guarda las facturas. Huella del dispositivo Android:
-24 meses desde la primera marca del teléfono (su semana gratis, o la primera suscripción hecha desde él), sin vínculo
-con tu cuenta. Dirección IP: nunca se guarda en claro; su huella, en memoria, 15 minutos como
+24 meses desde la primera marca del teléfono (su semana gratis, o la primera suscripción hecha desde él), guardada
+aparte de tu cuenta. Dirección IP: nunca se guarda en claro; su huella, en memoria, 15 minutos como
 máximo para la semana gratis, 2 días como máximo para los demás límites (30 días en las copias de la base). Los bits de DeviceCheck los guarda Apple.
 
 ### 5.4 Tu plaza y el modelo de IA
@@ -843,8 +843,8 @@ Scaleway, en Francia, sin transferencia fuera de la Unión. Puedes pedirnos una 
 | Facturas y justificantes de pago de una compra en el sitio | 10 años (artículo L123-22 del Código de Comercio francés); facturas guardadas por Stripe |
 | Código beta nunca usado | Hasta que ya no pueda usarse |
 | Código beta usado y su vínculo a tu cuenta | Hasta el final de tu plaza beta o su paso a una suscripción de pago |
-| Huella de un teléfono Android que usó un código beta (sin código ni cuenta) | Mientras aún se puedan usar códigos beta |
-| Huella del dispositivo Android, calculada con una clave secreta (semana gratis) | 24 meses desde la primera marca del teléfono; no se borra con la cuenta, a la que no está vinculada |
+| Huella de un teléfono Android que usó un código beta (guardada aparte del código y de la cuenta) | Mientras aún se puedan usar códigos beta |
+| Huella del dispositivo Android, calculada con una clave secreta (semana gratis) | 24 meses desde la primera marca del teléfono; guardada aparte de la cuenta, no se borra con ella |
 | Invitación de un vínculo familiar | 7 días, o hasta la respuesta |
 | Compartir en lectura (copia cifrada, personas invitadas) | Hasta su fecha de fin, hasta que se detiene o hasta que se borra la cuenta |
 | Nombre de campaña (sección 5.11) | 13 meses después de su registro, o con la cuenta o la suscripción |

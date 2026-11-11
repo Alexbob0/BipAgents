@@ -406,7 +406,7 @@ s'arrêtent dès la demande, et tu peux changer d'avis jusque-là), avec ses pla
 loi oblige à garder : comme hébergeur, Kerfy Studio garde à part, et seulement pour répondre aux autorités judiciaires,
 ton adresse e-mail 5 ans et ton identifiant Apple ou Google 1 an après la fin du contrat (loi pour la confiance dans
 l'économie numérique, article 6, II ; décret n° 2021-1362, articles 2, 3 et 8). L'empreinte de ton appareil Android
-(section 5.3) n'est pas reliée à ton compte : elle n'est pas effacée avec lui et reste jusqu'à la fin de ses 24 mois,
+(section 5.3) est gardée à part de ton compte : elle n'est pas effacée avec lui et reste jusqu'à la fin de ses 24 mois,
 pour empêcher d'enchaîner les semaines gratuites. Codes à usage unique : le temps de leur validité. Invitation non
 acceptée : 30 jours ; invitation d'un lien famille : 7 jours, ou jusqu'à la réponse. Partage en lecture : effacé à sa
 date de fin, quand tu l'arrêtes ou avec ton compte.
@@ -472,8 +472,8 @@ Nous ne gardons aucune donnée de ta carte : elle est saisie chez Stripe et ne p
 
 **Les codes bêta.** Un code bêta utilisé devient l'identifiant de ton abonnement bêta, gardé avec ton compte comme tout
 abonnement (ci-dessous), et le journal du guichet note « code utilisé » avec ton compte (12 mois). Un seul code par
-téléphone : sur iPhone, Apple garde pour cela le second bit DeviceCheck ; sur Android, le guichet garde à part une
-empreinte de l'appareil, sans lien avec ton code ni ton compte, tant que des codes peuvent encore servir. Un code
+téléphone : sur iPhone, Apple garde pour cela le second bit DeviceCheck ; sur Android, le guichet garde une
+empreinte de l'appareil, à part de ton code et de ton compte, tant que des codes peuvent encore servir. Un code
 jamais utilisé est effacé dès qu'il ne peut plus servir ; un code utilisé, avec son lien à ton compte, quand ta place
 bêta prend fin ou passe à un abonnement payant.
 
@@ -488,7 +488,7 @@ intérêt légitime (article 6.1.f) ; factures et pièces comptables, obligation
 **Durée.** Données d'abonnement et d'achat, y compris celles d'un achat sur le site : pendant l'abonnement, puis 5 ans
 en archive, pour la preuve du contrat (article 2224 du Code civil). Factures et pièces de paiement : 10 ans
 (article L123-22 du Code de commerce) ; Stripe garde les factures. Empreinte de l'appareil Android : 24 mois à compter du premier marquage du téléphone (sa
-semaine gratuite, ou le premier abonnement pris depuis lui), sans lien avec ton compte. Adresse IP : jamais enregistrée en clair ; son empreinte, en
+semaine gratuite, ou le premier abonnement pris depuis lui), gardée à part de ton compte. Adresse IP : jamais enregistrée en clair ; son empreinte, en
 mémoire, 15 minutes au plus pour la semaine gratuite, 2 jours au plus pour les autres limites (30 jours dans les copies
 de la base). Les bits de DeviceCheck sont gardés par Apple.
 
@@ -868,8 +868,8 @@ l'Union. Tu peux nous demander une copie des garanties applicables.
 | Factures et pièces de paiement d'un achat sur le site | 10 ans (article L123-22 du Code de commerce) ; factures gardées par Stripe |
 | Code bêta jamais utilisé | Jusqu'à ce qu'il ne puisse plus servir |
 | Code bêta utilisé et son lien à ton compte | Jusqu'à la fin de ta place bêta ou son passage à un abonnement payant |
-| Empreinte d'un téléphone Android qui a utilisé un code bêta (sans code ni compte) | Tant que des codes bêta peuvent encore servir |
-| Empreinte de l'appareil Android, hachée avec une clé secrète (semaine gratuite) | 24 mois après le premier marquage du téléphone ; pas effacée avec le compte, auquel elle n'est pas reliée |
+| Empreinte d'un téléphone Android qui a utilisé un code bêta (gardée à part du code et du compte) | Tant que des codes bêta peuvent encore servir |
+| Empreinte de l'appareil Android, hachée avec une clé secrète (semaine gratuite) | 24 mois après le premier marquage du téléphone ; gardée à part du compte, pas effacée avec lui |
 | Invitation d'un lien famille | 7 jours, ou jusqu'à la réponse |
 | Partage en lecture (copie chiffrée, personnes invitées) | Jusqu'à sa date de fin, son arrêt ou l'effacement du compte |
 | Nom de campagne (section 5.11) | 13 mois après son enregistrement, ou avec le compte ou l'abonnement |

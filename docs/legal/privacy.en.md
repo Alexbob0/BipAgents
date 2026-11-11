@@ -384,7 +384,7 @@ places stop as soon as you ask, and you can change your mind until then), with i
 what the law requires us to keep: as a hosting provider, Kerfy Studio keeps apart, and only to answer judicial
 authorities, your email address for 5 years and your Apple or Google identifier for 1 year after the end of the
 contract (French law on confidence in the digital economy, article 6, II; decree no. 2021-1362, articles 2, 3 and 8).
-Your Android device's fingerprint (section 5.3) is not linked to your account: it is not erased with it and stays until
+Your Android device's fingerprint (section 5.3) is kept apart from your account: it is not erased with it and stays until
 the end of its 24 months, to prevent chaining free weeks. One-time codes: as long as they are valid. Invitation not
 accepted: 30 days; family-link invitation: 7 days, or until answered. Read-only share: erased at its end date, when you
 stop it or with your account.
@@ -450,7 +450,7 @@ subscriptions. We keep no data of your card: it is entered at Stripe and never g
 **Beta codes.** A used beta code becomes the identifier of your beta subscription, kept with your account like any
 subscription (below), and the guichet's log notes "code used" with your account (12 months). One code per phone: on
 iPhone, Apple keeps the second DeviceCheck bit for this; on Android, the guichet keeps a fingerprint of the device
-apart, with no link to your code or your account, as long as codes can still be redeemed. A code never used is erased
+apart from your code and your account, as long as codes can still be redeemed. A code never used is erased
 as soon as it can no longer be redeemed; a used code, with its link to your account, when your beta place ends or
 moves to a paid subscription.
 
@@ -465,8 +465,8 @@ payment and calculating the taxes, performance of the contract (article 6(1)(b))
 **Retention.** Subscription and purchase data, including those of a purchase on the website: during the subscription,
 then 5 years in archive, as proof of the contract (article 2224 of the French Civil Code). Invoices and payment records:
 10 years (article L123-22 of the French Commercial Code); Stripe keeps the invoices. Android device fingerprint:
-24 months from when the phone was first marked (its free week, or the first subscription taken from it), not linked to
-your account. IP address: never stored in clear; its fingerprint, in memory, 15 minutes at most for the free week, 2 days at most
+24 months from when the phone was first marked (its free week, or the first subscription taken from it), kept apart
+from your account. IP address: never stored in clear; its fingerprint, in memory, 15 minutes at most for the free week, 2 days at most
 for the other limits (30 days in the database copies). The DeviceCheck bits are kept by Apple.
 
 ### 5.4 Your place and the AI model
@@ -824,8 +824,8 @@ of the applicable safeguards.
 | Invoices and payment records of a purchase on the website | 10 years (article L123-22 of the French Commercial Code); invoices kept by Stripe |
 | Beta code never used | Until it can no longer be redeemed |
 | Used beta code and its link to your account | Until your beta place ends or moves to a paid subscription |
-| Fingerprint of an Android phone that used a beta code (no code, no account) | As long as beta codes can still be redeemed |
-| Keyed fingerprint of the Android device (free week) | 24 months after the phone was first marked; not erased with the account, to which it is not linked |
+| Fingerprint of an Android phone that used a beta code (kept apart from the code and the account) | As long as beta codes can still be redeemed |
+| Keyed fingerprint of the Android device (free week) | 24 months after the phone was first marked; kept apart from the account, not erased with it |
 | Family-link invitation | 7 days, or until answered |
 | Read-only share (encrypted copy, people invited) | Until its end date, until it is stopped, or until the account is erased |
 | Campaign name (section 5.11) | 13 months after it was recorded, or with the account or the subscription |
