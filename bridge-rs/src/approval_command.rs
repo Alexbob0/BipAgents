@@ -117,6 +117,14 @@ static REMOTE_PATH: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^(?:[A-Za-z0-9._-]+@)?([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+):").expect("valid regex"));
 static VERSION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[\[<>=!~;@ ].*$").expect("valid regex"));
 
+/// Whether a `#` after `prev` starts a comment: at a word's start, outside quotes (`$#`, `${#x}`, `a#b` are not).
+fn comment_start(prev: Option<char>) -> bool {
+    match prev {
+        None => true,
+        Some(p) => p.is_whitespace() || ";&|()".contains(p),
+    }
+}
+
 /// The command without its heredoc bodies and line continuations. Only a `<<` outside quotes starts a heredoc
 /// (`echo '<<EOF'` does not hide the lines after it), and `<<<` is a here-string.
 fn without_heredocs(command: &str) -> String {
@@ -144,6 +152,9 @@ fn without_heredocs(command: &str) -> String {
                 single = true;
             } else if c == '"' {
                 double = true;
+            } else if c == '#' && comment_start(line[..i].chars().next_back()) {
+                // a comment (« # Création de l'index »): its apostrophe opens no quote
+                break;
             } else if rest.starts_with("<<<") {
                 i += 3;
                 continue;
@@ -201,6 +212,11 @@ fn steps(command: &str) -> Vec<Step> {
         } else if c == '"' {
             double = true;
             current.push(c);
+        } else if c == '#' && comment_start(prev) {
+            // a comment, up to the end of its line
+            while chars.get(i + 1).is_some_and(|n| *n != '\n') {
+                i += 1;
+            }
         } else if (c == '&' && next == Some('&')) || (c == '|' && next == Some('|')) {
             flush(&mut current, false, &mut out);
             i += 1;
@@ -473,6 +489,10 @@ fn never_harmless(effects: Vec<Effect>) -> Vec<Effect> {
 /// The effects of the command a step runs.
 fn command_of(text: &str, sudo: &mut bool, depth: u8) -> Vec<Effect> {
     let Some(words) = words(text) else { return vec![Effect::Unknown] };
+    // `PATH=…`, `export LD_PRELOAD=…`: what the next steps run changes
+    if words.iter().take_while(|w| ASSIGNMENT.is_match(w) || base(w) == "export").any(|w| steers(w)) {
+        return vec![Effect::Unknown];
+    }
     let words = unwrap_prefixes(words, sudo);
     let Some(first) = words.first() else { return vec![Effect::Harmless] };
     let cmd = base(first).to_string();
@@ -690,6 +710,52 @@ fn remote_host(word: &str) -> Option<String> {
     REMOTE_PATH.captures(word).map(|c| c[1].to_lowercase())
 }
 
+/// sed's `w`/`W` (write a file) and `e` (run a command), as a command or as `s///`'s flag.
+static SED_WRITES: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?:^|[;{}\n0-9$/!,]\s*)[wWe](?:\s|$)").expect("valid regex"));
+
+/// A variable that changes what later commands run or load.
+fn steers(word: &str) -> bool {
+    ["PATH=", "LD_PRELOAD=", "LD_LIBRARY_PATH=", "DYLD_INSERT_LIBRARIES=", "PYTHONPATH=", "PYTHONSTARTUP=", "BASH_ENV=",
+     "ENV=", "PROMPT_COMMAND=", "NODE_OPTIONS="]
+        .iter()
+        .any(|v| word.starts_with(v))
+}
+
+/// The file a harmless tool writes when told so: `sort -o F`, `uniq IN OUT`, `tree -o F`.
+fn written_by_option(cmd: &str, args: &[String]) -> Option<Effect> {
+    let after = |flag: &str, long: &str| {
+        args.iter().enumerate().find_map(|(i, a)| {
+            if a == flag || a == long {
+                args.get(i + 1).cloned()
+            } else if let Some(v) = a.strip_prefix(&format!("{long}=")) {
+                Some(v.to_string())
+            } else {
+                a.strip_prefix(flag).filter(|v| !v.is_empty() && !a.starts_with("--")).map(str::to_string)
+            }
+        })
+    };
+    let file = match cmd {
+        "sort" => after("-o", "--output"),
+        "tree" => after("-o", "-o"),
+        "uniq" => {
+            // its options' values are not files: -f N, -s N, -w N
+            let mut files = Vec::new();
+            let mut iter = args.iter();
+            while let Some(a) = iter.next() {
+                if ["-f", "-s", "-w"].contains(&a.as_str()) {
+                    iter.next();
+                } else if !is_flag(a) {
+                    files.push(a.clone());
+                }
+            }
+            files.get(1).cloned()
+        }
+        _ => None,
+    }?;
+    write_to(&file)
+}
+
 /// `find`'s options that run a command.
 fn runs(option: &str) -> bool {
     ["-exec", "-execdir", "-ok", "-okdir"].contains(&option)
@@ -701,6 +767,10 @@ fn effect_of(cmd: &str, args: &[String]) -> Effect {
         let pos = args.iter().position(|a| !is_flag(a)).map(|p| p + 1).unwrap_or(args.len());
         args[pos..].to_vec()
     };
+    // harmless tools told to write a file
+    if let Some(effect) = written_by_option(cmd, args) {
+        return effect;
+    }
     if HARMLESS.contains(&cmd) {
         return Effect::Harmless;
     }
@@ -727,7 +797,10 @@ fn effect_of(cmd: &str, args: &[String]) -> Effect {
         // what `-exec` runs and what `-fprint` writes: not read
         "find" if args.iter().any(|a| runs(a) || a.starts_with("-fprint") || a == "-fls") => Effect::Unknown,
         "find" => Effect::Harmless,
-        "sed" if !args.iter().any(|a| a.starts_with("-i") || a == "--in-place") => Effect::Harmless,
+        // `w file` and `e` in its script write a file or run a command
+        "sed" if !args.iter().any(|a| a.starts_with("-i") || a == "--in-place" || SED_WRITES.is_match(a)) => {
+            Effect::Harmless
+        }
         "pip" | "pip3" | "pipx" | "conda" | "mamba" | "poetry" | "uv" => {
             // `uv pip install x`, `uv add x`, `poetry add x`
             let (sub, rest) = if (cmd == "uv" && sub == "pip") || sub == "pip" {
@@ -1229,7 +1302,8 @@ pub fn describe(name: &str, lang: &str, command: &str, place: Place) -> Option<S
     let top = acting.iter().filter(|e| ***e != Effect::Unknown).max_by_key(|e| e.rank()).copied();
     let mut text = match top {
         Some(top) => sentence(name, lang, place, top),
-        None if !files.is_empty() => writes_files(name, lang, place, &files),
+        // a file written beside a step not read (`dd of=/dev/sda 2>log`): the caller's card with the command's lines
+        None if !files.is_empty() && !acting.contains(&&Effect::Unknown) => writes_files(name, lang, place, &files),
         None => return None,
     };
     if text.is_empty() {
@@ -1418,6 +1492,40 @@ mod tests {
         assert_eq!(fr("cat <<<EOF\nmkfs /dev/sdb\nEOF").as_deref(), None);
         assert_eq!(fr("pip install pypdf && cat <<<EOF\nmkfs /dev/sdb\nEOF").as_deref(),
                    Some("Wellness veut installer un outil : pypdf, pour lire les PDF, et d’autres actions"));
+    }
+
+    #[test]
+    fn a_write_beside_a_step_not_read_leaves_the_card_to_the_command() {
+        // the caller then shows « veut lancer une commande » and the command's lines, `2>/tmp/dd.log` included
+        assert_eq!(describe("Wellness", "fr", "dd if=/dev/zero of=/dev/sda 2>/tmp/dd.log", Place::Machine), None);
+        assert_eq!(fr("make > build.log 2>&1"), None);
+        assert_eq!(fr("ls > /tmp/x").as_deref(), Some("Wellness veut écrire dans le fichier « /tmp/x »"));
+    }
+
+    #[test]
+    fn comments_open_no_quote_and_hide_no_heredoc() {
+        assert_eq!(fr("# Création de l'index\ncat > idx.sql <<'EOF'\nrm -rf build\nEOF").as_deref(),
+                   Some("Wellness veut écrire dans le fichier « idx.sql »"));
+        assert_eq!(fr("ls # c'est rapide\nrm a").as_deref(), Some("Wellness veut supprimer le fichier « a »"));
+        assert_eq!(fr("rm a#b").as_deref(), Some("Wellness veut supprimer le fichier « a#b »"));
+    }
+
+    #[test]
+    fn harmless_tools_told_to_write_or_to_change_what_runs() {
+        assert_eq!(fr("sort -o out.txt in.txt").as_deref(), Some("Wellness veut écrire dans le fichier « out.txt »"));
+        assert_eq!(fr("sort --output=/dev/null in.txt"), None);
+        assert_eq!(fr("uniq -f 1 in.txt out.txt").as_deref(), Some("Wellness veut écrire dans le fichier « out.txt »"));
+        assert_eq!(fr("uniq in.txt"), None);
+        assert_eq!(fr("tree -o list.txt").as_deref(), Some("Wellness veut écrire dans le fichier « list.txt »"));
+        let more = "Wellness veut installer un outil : x, et d’autres actions";
+        for hidden in ["sed -n '1w /tmp/leak' ~/.ssh/id_rsa", "sed 's/a/b/w out' f", "sed 's/a/b/e' f",
+                       "export PATH=/tmp/evil:$PATH", "LD_PRELOAD=/tmp/x.so ls", "export LD_PRELOAD=/tmp/x.so"] {
+            assert_eq!(fr(&format!("pip install x && {hidden}")).as_deref(), Some(more), "{hidden}");
+        }
+        for plain in ["sed 's/world/x/g' f", "sed -n '/x/p' f", "export LANG=C", "LC_ALL=C sort f"] {
+            assert_eq!(fr(&format!("pip install x && {plain}")).as_deref(), Some("Wellness veut installer un outil : x"),
+                       "{plain}");
+        }
     }
 
     #[test]

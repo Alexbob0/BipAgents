@@ -317,7 +317,8 @@ fn described(name: &str, lang: &str, data: &Map<String, Value>, last: Option<&La
     let effect = match &code {
         Some(_) => None,
         None => crate::approval_command::describe(name, lang, command, place)
-            .filter(|s| *s != crate::approval_command::small_program(name, lang, place)),
+            // « a small program », with or without what follows (« , et écrire dans … »): the script's own card
+            .filter(|s| !s.starts_with(&crate::approval_command::small_program(name, lang, place))),
     };
     if script && effect.is_none() {
         let detail = code.unwrap_or_else(|| command.to_string());
@@ -478,6 +479,10 @@ mod tests {
         let flag = json!({"command": "python3 -c 'print(3)'", "description": "script execution via -e/-c flag"});
         assert_eq!(describe("Wellness", "en", &data(flag), None, Place::Machine).map(|d| d.summary).as_deref(),
                    Some("Wellness wants to run a small program on your machine, with access to your files:\npython3 -c 'print(3)'"));
+        // its output written to a file: still the script's card, its lines shown
+        let written = json!({"command": "python3 -c 'print(3)' > out.json", "description": "script execution via -e/-c flag"});
+        assert_eq!(describe("Wellness", "en", &data(written), None, Place::Machine).map(|d| d.summary).as_deref(),
+                   Some("Wellness wants to run a small program on your machine, with access to your files:\npython3 -c 'print(3)' > out.json"));
     }
 
     #[test]
