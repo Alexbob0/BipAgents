@@ -146,7 +146,7 @@ fn invisible(c: char) -> bool {
 
 /// `text` without its invisible characters, its other control characters (but line breaks and tabs) as spaces: what an
 /// agent, a tool or an MCP server wrote, before it reaches a card.
-fn visible(text: &str) -> String {
+pub(crate) fn visible(text: &str) -> String {
     text.chars()
         .filter(|c| !invisible(*c))
         .map(|c| if c.is_control() && c != '\n' && c != '\t' { ' ' } else { c })
