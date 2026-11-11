@@ -933,6 +933,10 @@ pub fn answer(config: &Config, agent: &str, card_id: &str, choice: &str) -> Opti
             if !yes && !refuses(&choice) {
                 return None;
             }
+            if r.last_status == LAPSED {
+                // the lapse was told once, at its start (C4): not again for each card answered later
+                r.last_status.clear();
+            }
             if let Some(ch) = r.change.take() {
                 settle_change(r, ch, yes, zone);
             }
@@ -2152,6 +2156,10 @@ Pour la relancer tout de suite : « Lancer maintenant » sur sa page."
         let late = answer(&config, "vie", &past, "once").unwrap();
         assert!(lapsed(&late) && late.next_run.is_none() && !due(&late, f64::MAX) && late.last_run.is_none());
         assert_eq!(view(&late, Tz::UTC)["state"], "completed");
+        // its agent proposes a new time, the person says « Oui »: scheduled, and the lapse is not told again (C4)
+        let a = json!({"action": "update", "name": "Pain", "schedule": "2099-01-01T08:00"});
+        let again = answer(&config, "vie", &call(&config, "vie", &args(a), None).card.unwrap().1, "once").unwrap();
+        assert!(!lapsed(&again) && again.last_status.is_empty() && again.next_run.is_some());
         // one still to come runs at its time, nothing said
         let future = made("Plus tard", "2099-01-01T08:00");
         let on = answer(&config, "vie", &future, "once").unwrap();
