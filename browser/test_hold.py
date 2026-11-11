@@ -152,6 +152,45 @@ def test_a_call_running_when_the_hold_starts_stays_counted_and_new_ones_are_refu
     assert done == [0] and not (tmp_path / "calls" / str(os.getpid())).exists()
 
 
+def test_while_held_no_resource_is_read_nor_listed(monkeypatch, tmp_path):
+    """Fix review 11/11, R5: the server serves the page's recorded traffic as the resource browser://<id>/network
+    (and its console, state, cookies). While held, only the handshake, ping and the tool and prompt lists reach it."""
+    import io
+    import threading
+
+    flag = use_flag(monkeypatch, tmp_path, b"card 0123abcd")
+    calls = hold_gate.Calls(str(tmp_path / "calls"))
+    server = tmp_path / "server.py"
+    server.write_text(
+        "import sys, json\n"
+        "for line in sys.stdin:\n"
+        "    m = json.loads(line)\n"
+        "    if 'id' in m:\n"
+        "        print(json.dumps({'jsonrpc': '2.0', 'id': m['id'], 'result': {'served': m['method']}}), flush=True)\n")
+    reader_in, writer_in = os.pipe()
+    reader_out, writer_out = os.pipe()
+    monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(os.fdopen(reader_in, "rb")))
+    monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(os.fdopen(writer_out, "wb")))
+    gate = threading.Thread(target=lambda: hold_gate.main([sys.executable, str(server)], calls), daemon=True)
+    gate.start()
+    send = os.fdopen(writer_in, "wb", buffering=0)
+    answers = os.fdopen(reader_out, "rb")
+
+    def ask(n, method, params=None):
+        send.write((json.dumps({"jsonrpc": "2.0", "id": n, "method": method, "params": params or {}}) + "\n").encode())
+        return json.loads(answers.readline())
+
+    for n, method in enumerate(["resources/read", "resources/list", "resources/templates/list", "prompts/get"], 1):
+        answer = ask(n, method, {"uri": "browser://abc/network"})
+        assert answer["id"] == n and "card payment" in answer["error"]["message"] and "result" not in answer, method
+    for n, method in enumerate(["initialize", "ping", "tools/list", "prompts/list"], 10):
+        assert ask(n, method)["result"] == {"served": method}
+    flag.unlink()   # the hold over: resources pass again (the bridge's relay never offers them, browser_mcp.rs)
+    assert ask(20, "resources/read", {"uri": "browser://abc/network"})["result"] == {"served": "resources/read"}
+    send.close()
+    gate.join(10)
+
+
 def test_a_gate_that_cannot_count_refuses_tool_calls(monkeypatch, tmp_path):
     # Fix review 11/11, R3: a gate that can't write its count would leave the bridge reading none, and typing a card
     # while one of its calls runs. Its tool calls are refused instead (the person restarts the browser).

@@ -5,8 +5,9 @@ Hermes talks to the browser's MCP server over stdio (`mcp.sh`); this sits in bet
 every tool call gets « the person has the browser, wait » instead of reaching Chrome: the agent neither clicks nor
 reads the page while the person types a password into it. A card payment holds it the same way (the flag then reads
 « card <token> »): the bridge types the card into the page and clicks « Pay » itself, and the agent can neither read
-the card's fields nor take a screenshot of them until the page has moved on. Everything else passes through, line by line (MCP's
-stdio framing: one JSON message per line).
+the card's fields nor take a screenshot of them until the page has moved on. Nor, while held, read the server's
+resources (the page's recorded traffic, console, state) or ask anything but its handshake and lists. Everything else
+passes through, line by line (MCP's stdio framing: one JSON message per line).
 
 It also counts the tool calls it let through that have not been answered yet, in `/tmp/bipagents-calls/<its pid>`: a
 call already running when a card payment's hold starts is not refused, so the bridge waits until every gate's count
@@ -120,6 +121,18 @@ def answered(calls: Calls, line: bytes) -> None:
         calls.end(message["id"])
 
 
+# What still reaches the server while the browser is held: the handshake and the lists of what it offers. Never a
+# resource read (`browser://<id>/network`, `/console`, `/state`, `/cookies`: the page's traffic, its console and its
+# state, a card payment's own request among them; fix review 11/11, R5), a resource list or a prompt.
+HELD_PASS = {"initialize", "ping", "tools/list", "prompts/list"}
+
+
+def refused_while_held(message: dict) -> bytes:
+    """A request other than a tool call, while held: a JSON-RPC error."""
+    return (json.dumps({"jsonrpc": "2.0", "id": message.get("id"),
+                        "error": {"code": -32002, "message": PAYING if paying() else WAIT}}) + "\n").encode()
+
+
 def refusal(message: dict, text: str | None = None) -> bytes:
     text = text or (PAYING if paying() else WAIT)
     return (json.dumps({"jsonrpc": "2.0", "id": message.get("id"),
@@ -162,6 +175,12 @@ def main(command: list, calls: Calls | None = None) -> int:
                     out.write(refusal(message))
                     out.flush()
                 continue
+        elif (isinstance(message, dict) and "id" in message and isinstance(message.get("method"), str)
+              and message["method"] not in HELD_PASS and held()):
+            with lock:
+                out.write(refused_while_held(message))
+                out.flush()
+            continue
         elif isinstance(message, dict) and message.get("method") == "notifications/cancelled":
             calls.end((message.get("params") or {}).get("requestId"))   # the server drops it without an answer
         try:
