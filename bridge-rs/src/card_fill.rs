@@ -789,21 +789,29 @@ impl Page {
         }
         let frames = self.frames().await?;
         for field in typed.iter().filter(|t| t.node != 0) {
-            let Some((session, _, _)) = frames.iter().find(|(_, id, _)| *id == field.frame) else { continue };
-            let world = json!({"frameId": field.frame, "worldName": WORLD, "grantUniveralAccess": false});
-            let Ok(created) = self.cdp.call("Page.createIsolatedWorld", world, Some(session)).await else { continue };
-            let Some(context) = created.get("executionContextId").and_then(Value::as_i64) else { continue };
-            let resolve = json!({"backendNodeId": field.node, "executionContextId": context});
-            let Ok(resolved) = self.cdp.call("DOM.resolveNode", resolve, Some(session)).await else { continue };
-            let Some(object) = resolved.get("object").and_then(|o| o.get("objectId")).and_then(Value::as_str) else {
-                continue;
-            };
-            let empty = json!({"objectId": object, "functionDeclaration": EMPTY_FIELD, "returnByValue": true});
-            if self.cdp.call("Runtime.callFunctionOn", empty, Some(session)).await.is_ok() {
-                cleared += 1;
+            // A frame is reported by its parent's session and, out of process, by its own: the one that reaches it.
+            for (session, _, _) in frames.iter().filter(|(_, id, _)| *id == field.frame) {
+                if self.empty_node(session, field).await {
+                    cleared += 1;
+                    break;
+                }
             }
         }
         Ok(cleared)
+    }
+
+    /// The field `field` emptied through `session`, in a world of its frame: whether it was.
+    async fn empty_node(&mut self, session: &str, field: &Typed) -> bool {
+        let world = json!({"frameId": field.frame, "worldName": WORLD, "grantUniveralAccess": false});
+        let Ok(created) = self.cdp.call("Page.createIsolatedWorld", world, Some(session)).await else { return false };
+        let Some(context) = created.get("executionContextId").and_then(Value::as_i64) else { return false };
+        let resolve = json!({"backendNodeId": field.node, "executionContextId": context});
+        let Ok(resolved) = self.cdp.call("DOM.resolveNode", resolve, Some(session)).await else { return false };
+        let Some(object) = resolved.get("object").and_then(|o| o.get("objectId")).and_then(Value::as_str) else {
+            return false;
+        };
+        let empty = json!({"objectId": object, "functionDeclaration": EMPTY_FIELD, "returnByValue": true});
+        self.cdp.call("Runtime.callFunctionOn", empty, Some(session)).await.is_ok()
     }
 
     /// An isolated world in the page's main frame, with the script loaded.
