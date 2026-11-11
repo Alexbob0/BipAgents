@@ -133,7 +133,11 @@ de l’offre tout compris. Tout ce qui est personnel va ici, avec la clé de ce 
 - **Voix :** les réponses des agents sont envoyées au bridge pour être lues (`/v1/tts/*`) quand le téléphone ne les lit
   pas lui-même.
 - **Icônes des sites** devant les liens : demandées au bridge (`/v1/favicon/<hôte>`), qui interroge le service d’icônes
-  de DuckDuckGo. Le téléphone ne contacte jamais ce service ni le site.
+  de DuckDuckGo pour le seul domaine du site (`a.b.exemple.fr` → `exemple.fr`). Le téléphone ne contacte jamais ce
+  service ni le site. **Les liens des réponses** ne sont jamais chargés par l’app (pas d’aperçu) : un toucher les
+  ouvre. Un lien Google Maps reçoit une carte faite à partir du lien seul : un nom de lieu sans position est cherché
+  avec la recherche d’Apple (iPhone) ou le Geocoder d’Android (celui de Google sur la plupart des téléphones), et la
+  position part chez Apple (MapKit) ou Google (Maps SDK) pour dessiner la carte.
 - **Météo et itinéraires** (`bridge-rs/src/weather.rs`, `routes.rs`) : l’interrupteur « Météo » est un réglage de
   l’agent (`PATCH /v1/agents/{id}/settings {"weather": bool}`). C’est le bridge, pas le téléphone, qui demande le lieu
   à Nominatim (OpenStreetMap) et les prévisions à MET Norway, avec seulement le nom du lieu et ses coordonnées

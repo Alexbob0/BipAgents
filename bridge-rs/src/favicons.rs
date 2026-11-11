@@ -67,9 +67,21 @@ fn valid_host(host: &str) -> bool {
 /// The site whose icon is asked: its registrable domain only (`a1b2c3.x.evil.example` → `evil.example`). A link in a
 /// reply may come from a mail or a page the agent read; its host's labels could carry data out to the name server of
 /// whoever owns the domain once the icon service looks the name up (security 11/11).
+/// Three labels are kept only under a fixed list of real two-part suffixes (not `mail_tidy::registrable`'s rule, which
+/// keeps them for any `gouv.<cc>`-style pair): a wrong guess costs an icon, never data.
 fn icon_site(host: &str) -> String {
-    crate::mail_tidy::registrable(host)
+    let labels: Vec<&str> = host.split('.').filter(|l| !l.is_empty()).collect();
+    let n = labels.len();
+    let keep = if n >= 3 && TWO_PART_SUFFIXES.contains(&labels[n - 2..].join(".").as_str()) { 3 } else { 2 };
+    labels[n.saturating_sub(keep)..].join(".")
 }
+
+/// Two-part public suffixes under which people commonly have sites.
+const TWO_PART_SUFFIXES: [&str; 32] = [
+    "co.uk", "org.uk", "ac.uk", "gov.uk", "me.uk", "com.au", "net.au", "org.au", "gov.au", "edu.au", "co.nz", "org.nz",
+    "co.jp", "ne.jp", "or.jp", "com.br", "com.mx", "com.ar", "co.za", "co.in", "co.il", "org.il", "co.kr", "com.tr",
+    "com.cn", "com.hk", "com.sg", "com.tw", "gouv.fr", "asso.fr", "gc.ca", "gv.at",
+];
 
 /// Seconds since the file last changed (None: no such file).
 fn file_age(path: &std::path::Path, now: f64) -> Option<f64> {
@@ -143,5 +155,9 @@ mod tests {
         assert_eq!(icon_site("www.lemonde.fr"), "lemonde.fr");
         assert_eq!(icon_site("news.bbc.co.uk"), "bbc.co.uk");
         assert_eq!(icon_site("example.com"), "example.com");
+        // a pair that only looks like a public suffix keeps two labels: no data in the third
+        assert_eq!(icon_site(&format!("{}.gouv.io", "a".repeat(63))), "gouv.io");
+        assert_eq!(icon_site("x.co.de"), "co.de");
+        assert_eq!(icon_site("www.service-public.gouv.fr"), "service-public.gouv.fr");
     }
 }
