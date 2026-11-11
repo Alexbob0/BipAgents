@@ -90,32 +90,52 @@ def test_root_pulls_both_images_once_under_the_places_names_and_keeps_the_one_be
     assert oct(setting.stat().st_mode & 0o777) == "0o644"
 
 
-def test_an_image_the_registry_still_gives_is_not_pulled_again_and_the_store_not_even_read(tmp_path, setting):
+@pytest.mark.parametrize("agent_key", [None, "s9"])   # a copy without .git has no tree key; a git checkout has one
+def test_an_image_the_registry_still_gives_is_not_pulled_again_and_the_store_not_even_read(tmp_path, setting,
+                                                                                         monkeypatch, agent_key):
     # Any podman command on the store (a pull of an unchanged image, even an inspect) disturbs the places reading it
     # through their views: their containers then fail to start (lab 2026-11-11, 3 places on a CAX11). The registry's
-    # digest is asked first; the one of the last pull (the setting): nothing run on the store.
+    # digest is asked first; the one of the last pull (the setting): nothing run on the store. An image the registry
+    # doesn't have (this checkout's agents' sandbox not built yet: 404) isn't tried either.
+    monkeypatch.setattr(shared_images, "tree_key", lambda folder, repo=None: agent_key if folder == "sandbox" else None)
     index, other = "sha256:" + "c" * 64, "sha256:" + "e" * 64
     store = tmp_path / "store"
     podman = Podman()
-    assert shared_images.pull(store=store, run=podman, digest=lambda source: index) == 0
+
+    def registry(run, changed=None):
+        return lambda s: (changed or {}).get(s, index) if s in run.registry else shared_images.MISSING
+    assert shared_images.pull(store=store, run=podman, digest=registry(podman)) == 0
     data = json.loads(setting.read_text())
     assert data["browser"] == {"key": "k1", "id": "b2", "digest": index, "source": shared_images.browser_ref("k1")}
     assert data["sandbox"] == {"id": "s1", "digest": index, "source": shared_images.SANDBOX_SOURCES[0]}
+    assert "agent_sandbox" not in data and not podman.did("pull", "--quiet", shared_images.agent_sandbox_ref("s9"))
     asked = []
+    again = Podman(images=dict(podman.images))
 
     def digest(source):
         asked.append(source)
-        return index
-    again = Podman(images=dict(podman.images))
+        return registry(again)(source)
     assert shared_images.pull(store=store, run=again, digest=digest) == 0
     assert not [a for a in again.ran if "--root" in a]                 # the store untouched: no pull, no inspect
-    assert asked == [shared_images.browser_ref("k1"), shared_images.SANDBOX_SOURCES[0]]
+    assert asked == [shared_images.browser_ref("k1"), shared_images.SANDBOX_SOURCES[0]] + (
+        [shared_images.agent_sandbox_ref(agent_key)] if agent_key else [])
     assert json.loads(setting.read_text())["browser"] == data["browser"]
+    if agent_key:   # built since: pulled once, then kept the same way
+        built = Podman(images=dict(podman.images))
+        built.registry[shared_images.agent_sandbox_ref(agent_key)] = "a1"
+        assert shared_images.pull(store=store, run=built, digest=registry(built)) == 0
+        assert built.did("pull", "--quiet", shared_images.agent_sandbox_ref(agent_key))
+        kept = Podman(images=dict(built.images))
+        kept.registry = dict(built.registry)
+        assert shared_images.pull(store=store, run=kept, digest=registry(kept)) == 0
+        assert not [a for a in kept.ran if "--root" in a]
+        podman = built
     # a new digest pulls (and prunes) as before; the sandbox, unchanged, still isn't pulled
     newer = Podman(images=dict(podman.images))
+    newer.registry.update(podman.registry)
     newer.registry[shared_images.browser_ref("k1")] = "b3"
     assert shared_images.pull(store=store, run=newer,
-                              digest=lambda s: other if s == shared_images.browser_ref("k1") else index) == 0
+                              digest=registry(newer, {shared_images.browser_ref("k1"): other})) == 0
     assert newer.images[shared_images.BROWSER] == "b3" and not newer.did("pull", "--quiet", shared_images.SANDBOX_SOURCES[0])
     assert newer.did("image", "prune", "--force")
     assert json.loads(setting.read_text())["browser"]["digest"] == other
@@ -156,6 +176,15 @@ def test_the_registry_digest_is_read_with_the_anonymous_token_its_challenge_name
     manifest = "https://registry-1.docker.io/v2/nousresearch/hermes-sandbox/manifests/desktop"
     assert seen[0] == (manifest, "") and seen[-1] == (manifest, "Bearer t0")
     assert REGISTRY_DIGEST("no-tag-here") is None
+
+    def no_such_tag(request, timeout=0):
+        url = request if isinstance(request, str) else request.full_url
+        if url.startswith("https://auth.docker.io/token?"):
+            return Answer(json.dumps({"token": "t0"}).encode())
+        auth = request.get_header("Authorization", "")
+        raise urllib.error.HTTPError(url, 404 if auth else 401, "no", {"WWW-Authenticate": challenge}, None)
+    monkeypatch.setattr(urllib.request, "urlopen", no_such_tag)
+    assert REGISTRY_DIGEST(shared_images.SANDBOX) == shared_images.MISSING
 
     def unreachable(request, timeout=0):
         raise urllib.error.URLError("no network")

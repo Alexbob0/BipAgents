@@ -135,11 +135,13 @@ MANIFESTS = ", ".join(("application/vnd.oci.image.index.v1+json",
                        "application/vnd.docker.distribution.manifest.v2+json"))
 Digest = Callable[[str], Optional[str]]
 NOT_PULLED = "(unchanged, not pulled)"
+MISSING = "missing"   # registry_digest: the registry has no such tag (404), so a pull could only fail
 
 
 def registry_digest(source: str, timeout: float = 20) -> Optional[str]:
     """The digest the registry gives `source`'s tag now (a HEAD of its manifest, the anonymous token its
-    WWW-Authenticate names: GHCR, Docker Hub), None when it can't tell (then the image is pulled as before)."""
+    WWW-Authenticate names: GHCR, Docker Hub), MISSING when it has no such tag, None when it can't tell (then the
+    image is pulled as before)."""
     import urllib.error
     import urllib.parse
     import urllib.request
@@ -158,6 +160,8 @@ def registry_digest(source: str, timeout: float = 20) -> Optional[str]:
         try:
             resp = head({})
         except urllib.error.HTTPError as exc:
+            if exc.code == 404:
+                return MISSING
             challenge = exc.headers.get("WWW-Authenticate", "")
             if exc.code != 401 or not challenge.lower().startswith("bearer "):
                 return None
@@ -167,7 +171,10 @@ def registry_digest(source: str, timeout: float = 20) -> Optional[str]:
             query = urllib.parse.urlencode({k: v for k, v in fields.items() if k in ("service", "scope")})
             with urllib.request.urlopen(f"{fields['realm']}?{query}", timeout=timeout) as answer:
                 token = json.loads(answer.read()).get("token") or ""
-            resp = head({"Authorization": f"Bearer {token}"})
+            try:
+                resp = head({"Authorization": f"Bearer {token}"})
+            except urllib.error.HTTPError as refused:
+                return MISSING if refused.code == 404 else None
         with resp:
             digest = resp.headers.get("Docker-Content-Digest", "")
     except (OSError, ValueError):
@@ -191,6 +198,9 @@ def pull_one(podman: List[str], sources: Sequence[str], name: str, run: Run, dig
     known = known or {}
     for source in sources:
         now = digest(source)
+        if now == MISSING:   # not built (yet) for this checkout: a pull would only touch the store to fail
+            said = f"{source}: not in the registry"
+            continue
         if now and known.get("id") and now == known.get("digest") and source == known.get("source", source):
             return str(known["id"]), f"{name} from {source} {NOT_PULLED}", now, source
         code, out = run(podman + ["pull", "--quiet", source], 3600)
@@ -353,7 +363,7 @@ def pull(repo: Path = REPO, store: Path = STORE, run: Run = browser_refresh.run,
         if any(known.get(k) != v for k, v in extra.items()):
             known = {}   # another key: another image
         got, said, now, source = pull_one(podman, sources, name, run, digest, known)
-        wrote = wrote or not said.endswith(NOT_PULLED)
+        wrote = wrote or said.endswith("(new)")   # only a replaced image leaves one to prune
         if got:
             found[label] = {**extra, "id": got}
             if now:
