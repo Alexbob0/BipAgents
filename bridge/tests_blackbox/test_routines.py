@@ -147,6 +147,28 @@ def test_an_agents_routine_shows_all_it_runs_and_a_non_deletes_it(bridges, fakes
     assert (jobs(bridge)["Sauvegarde"]["muted"], jobs(bridge)["Sauvegarde"]["state"]) == (True, "scheduled")
 
 
+def test_a_one_time_routine_started_after_its_time_lapses_with_one_line(bridges, fakes):
+    """Owner's decision O-5 (11/11): a one-time routine whose card is answered « Oui » after its time does not run
+    late; one line in the Boîte says so."""
+    bridge = bridges.new()
+    bridge.start()
+    give_token(bridge)
+    made = call(bridge, "routine_schedule", {"action": "create", "name": "Pain", "schedule": "2026-01-01T08:00",
+                                             "prompt": "Rappelle-moi le pain."})
+    assert not made["isError"], text_of(made)
+    [card] = routine_cards(bridge)
+    assert bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": card["run_id"],
+                                                          "choice": "once"}).status_code == 200
+    job = jobs(bridge)["Pain"]
+    assert (job["state"], job["last_status"], job["next_run_at"]) == ("completed", "lapsed", None), job
+    assert wait_until(lambda: [i for i in boite(bridge) if "Pain" in (i.get("text") or "")], timeout=20)
+    [line] = [i for i in boite(bridge) if "Pain" in (i.get("text") or "")]
+    assert any(w in line["text"] for w in ("son heure était passée", "its time had passed", "Zeit war schon vorbei",
+                                           "su hora ya había pasado")), line
+    time.sleep(0.5)
+    assert not turns(fakes)
+
+
 def test_an_agents_pause_or_delete_leaves_a_line_in_the_boite_and_the_persons_none(bridges, fakes):
     """Alex 11/11 (audit PI-6, O3): an agent that stops or removes a routine says so in the Boîte, one plain line, no
     card, no push; the person's own pause or delete in the app leaves none."""

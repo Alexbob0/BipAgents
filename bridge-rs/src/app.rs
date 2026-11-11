@@ -1210,6 +1210,10 @@ async fn bridge_card(
         let answered = tokio::task::spawn_blocking(move || crate::routines::answer(&config, &name, &id, &given))
             .await
             .map_err(anyhow::Error::from)?;
+        if let Some(r) = answered.as_ref().filter(|r| crate::routines::lapsed(r)) {
+            // a one-time routine started after its time: not run, one line in the Boîte (O-5)
+            crate::routines::tell_done(state, agent, r, crate::routines::Done::Lapsed, None).await;
+        }
         return Ok(Some(match answered {
             Some(r) => Ok(web::ok(json!({"ok": true, "choice": choice, "muted": r.muted}))),
             None => Err(HttpError::new(404, "no such request (answered already?)")),

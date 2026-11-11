@@ -856,6 +856,14 @@ fn starts(choice: &str) -> bool {
     matches!(choice, NOTIFY | SILENT_CHOICE | "once" | "session" | "always")
 }
 
+/// The `last_status` of a one-time routine started after its time: it never ran (O-5).
+pub const LAPSED: &str = "lapsed";
+
+/// A routine `answer` just started that lapsed instead (its time had passed): the caller tells it in the Boîte.
+pub fn lapsed(r: &Routine) -> bool {
+    r.last_status == LAPSED && r.last_run.is_none() && !r.awaits_start
+}
+
 /// The person answered card `card_id` with `choice` (above). The routine as it is now (a refused one made by its
 /// agent: as it was, now deleted), None: no such card.
 pub fn answer(config: &Config, agent: &str, card_id: &str, choice: &str) -> Option<Routine> {
@@ -898,7 +906,13 @@ pub fn answer(config: &Config, agent: &str, card_id: &str, choice: &str) -> Opti
         }
         r.awaits_start = false;
         r.enabled = true;
-        r.next_run = next_after(&r.schedule, py::time_time(), zone);
+        let now = py::time_time();
+        r.next_run = next_after(&r.schedule, now, zone);
+        if matches!(r.schedule, Schedule::Once { at } if at <= now) {
+            // a one-time routine whose time passed before the answer: it lapses, never run late (O-5); one Boîte line
+            // (`lapsed`, told by the caller)
+            r.last_status = LAPSED.into();
+        }
         r.card = None;
         Some(r.clone())
     });
@@ -1354,6 +1368,8 @@ pub fn waits_for_ok(r: &Routine) -> bool {
 pub enum Done {
     Paused,
     Deleted,
+    /// A one-time routine started after its time: not run (O-5).
+    Lapsed,
 }
 
 /// Its line: « Vie a mis en pause la routine « Point du matin ». » (fr, en, de, es; another: English).
@@ -1367,10 +1383,14 @@ pub fn done_line(lang: &str, who: &str, name: &str, done: Done) -> String {
         ("es", Done::Deleted) => format!("{who} ha eliminado la rutina «{name}»."),
         (_, Done::Paused) => format!("{who} paused the routine “{name}”."),
         (_, Done::Deleted) => format!("{who} deleted the routine “{name}”."),
+        ("fr", Done::Lapsed) => format!("La routine « {name} » n'a pas été lancée : son heure était passée."),
+        ("de", Done::Lapsed) => format!("Die Routine „{name}“ wurde nicht gestartet: Ihre Zeit war schon vorbei."),
+        ("es", Done::Lapsed) => format!("La rutina «{name}» no se ha puesto en marcha: su hora ya había pasado."),
+        (_, Done::Lapsed) => format!("The routine “{name}” was not started: its time had passed."),
     }
 }
 
-/// The line of an agent's pause or delete, where the routine's reports land (`report_home`, else `asked_in`: the
+/// The line of an agent's pause or delete (or of a routine that lapsed at the person's answer), where the routine's reports land (`report_home`, else `asked_in`: the
 /// conversation the agent was in), a Boîte message in the bridge's words, not pushed.
 pub async fn tell_done(state: &AppState, agent: &AgentConfig, r: &Routine, done: Done, asked_in: Option<&str>) -> bool {
     let config = state.config();
@@ -1378,7 +1398,11 @@ pub async fn tell_done(state: &AppState, agent: &AgentConfig, r: &Routine, done:
     let lang = crate::names::names(&crate::handback::language_of(&config, agent)).lang;
     let text = done_line(lang, &flat(&shown_agent(&config, &agent.name), 80), &flat(&r.name, 80), done);
     let (home, _) = report_home(state, &pipeline, agent, r, asked_in.unwrap_or("main")).await;
-    let what = if done == Done::Paused { "paused" } else { "deleted" };
+    let what = match done {
+        Done::Paused => "paused",
+        Done::Deleted => "deleted",
+        Done::Lapsed => "lapsed",
+    };
     let delivery = Delivery {
         agent: agent.clone(),
         session: home,
@@ -1981,6 +2005,28 @@ Pour la relancer tout de suite : « Lancer maintenant » sur sa page."
         assert_eq!(crate::approval_level::classify_card(&way), "routine_way");
         let kept = answer(&config, "vie", &card_id(&card), "deny").unwrap();
         assert!(kept.enabled && kept.muted && kept.card.is_none() && get(&config, &id).is_some());
+    }
+
+    #[test]
+    fn a_one_time_routine_answered_after_its_time_lapses_and_never_runs_late() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(&dir);
+        let made = |name: &str, when: &str| {
+            let a = json!({"action": "create", "name": name, "schedule": when, "prompt": "Rappelle-moi le pain."});
+            call(&config, "vie", &args(a), None).card.unwrap().1
+        };
+        let past = made("Pain", "2026-01-01T08:00");
+        let late = answer(&config, "vie", &past, "once").unwrap();
+        assert!(lapsed(&late) && late.next_run.is_none() && !due(&late, f64::MAX) && late.last_run.is_none());
+        assert_eq!(view(&late, Tz::UTC)["state"], "completed");
+        // one still to come runs at its time, nothing said
+        let future = made("Plus tard", "2099-01-01T08:00");
+        let on = answer(&config, "vie", &future, "once").unwrap();
+        assert!(!lapsed(&on) && on.next_run.is_some());
+        assert_eq!(done_line("fr", "Vie", "Pain", Done::Lapsed), "La routine « Pain » n'a pas été lancée : son heure était passée.");
+        assert_eq!(done_line("en", "Vie", "Pain", Done::Lapsed), "The routine “Pain” was not started: its time had passed.");
+        assert!(done_line("de", "Vie", "Pain", Done::Lapsed).ends_with("Ihre Zeit war schon vorbei."));
+        assert!(done_line("es", "Vie", "Pain", Done::Lapsed).ends_with("su hora ya había pasado."));
     }
 
     #[test]
