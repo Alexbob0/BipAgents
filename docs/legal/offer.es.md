@@ -2,7 +2,7 @@
 
 # Condiciones generales de venta de la oferta todo incluido
 
-> Última actualización: 10 de noviembre de 2026.
+> Última actualización: 11 de noviembre de 2026.
 
 ## 1. Objeto
 
@@ -95,7 +95,7 @@ Para cada persona del plan:
 
 **El crédito de IA del plan**: 5,00 € (Solo), 9,00 € (Duo) o 16,00 € (Familia) de uso del modelo de IA cada mes,
 compartido por todas las personas del plan, que la app muestra como un número estimado de mensajes: unos 7.000, 13.000
-o 24.000 mensajes al mes con el modelo por defecto (sección 6).
+o 24.000 mensajes al mes con el modelo de la oferta (sección 6).
 
 **Dónde.** Los servidores se alquilan primero a OVHcloud (centros de datos en la Unión Europea), después a Hetzner
 (Alemania o Finlandia) y después a OVHcloud para servidores más pequeños, según lo que esté disponible. Todos están en
@@ -170,8 +170,8 @@ enseguida. Las reglas propias de las personas que viven fuera de la Unión está
 - Cada plan tiene un **crédito de IA al mes: 5,00 € para Solo, 9,00 € para Duo, 16,00 € para Familia**: uso del modelo
   contado al precio que el proveedor factura a Kerfy Studio. En un Duo o una Familia, este crédito **es de todas las
   personas del plan**: sus agentes lo usan juntos, sin una parte fija para cada una.
-- **En mensajes**: la app muestra el crédito como un **número estimado de mensajes** con el modelo elegido. A título orientativo,
-  con el modelo por defecto y redondeado a la baja: **unos 7.000 mensajes al mes para Solo, 13.000
+- **En mensajes**: la app muestra el crédito como un **número estimado de mensajes** con el modelo de la oferta. A título orientativo,
+  con el modelo actual y redondeado a la baja: **unos 7.000 mensajes al mes para Solo, 13.000
   para Duo y 24.000 para toda la familia**. Es una estimación, no una promesa: el coste de un mensaje depende de su
   longitud, de los archivos adjuntos y del modelo. Aquí, un mensaje es un intercambio sencillo: una **tarea en el
   navegador** o una **tarea en segundo plano** encadena muchas llamadas al modelo y cuenta mucho más, a menudo lo
@@ -182,7 +182,7 @@ enseguida. Las reglas propias de las personas que viven fuera de la Unión está
 - **Crédito adicional**: puedes comprarlo en la app (Ajustes › Plan todo incluido › Añadir crédito de IA), en dos
   recargas: **2 € IVA incluido por 1,40 € de crédito** y **5 € IVA incluido por 3,50 € de crédito** (el IVA y la
   comisión de la tienda de aplicaciones se llevan alrededor del 30 %); la app indica para cada una el número estimado
-  de mensajes con tu modelo (la misma estimación que arriba), y la tienda su precio. Se añade al crédito del plan, para todas sus personas. **Nunca caduca**: si queda
+  de mensajes con el modelo de la oferta (la misma estimación que arriba), y la tienda su precio. Se añade al crédito del plan, para todas sus personas. **Nunca caduca**: si queda
   cuando la suscripción termina, se conserva en tu cuenta y vuelve con tu próxima suscripción. Solo se pierde si
   eliminas tu cuenta.
 - **Crédito del mes usado**: las conversaciones siguen, con un margen del 20 % del crédito mensual del plan,
@@ -197,12 +197,11 @@ enseguida. Las reglas propias de las personas que viven fuera de la Unión está
   el mes siguiente; el resto del crédito queda para los demás. La persona ve su límite en su app.
 - El crédito no es dinero: solo sirve para usar el modelo de IA dentro de la oferta, no se transfiere y no se
   reembolsa, sin perjuicio de los derechos que te da la ley (secciones 12 y 13).
-- **El modelo**: lo eliges de una lista (GLM-5.3 Flash por defecto, otros como DeepSeek), con su precio por millón de
-  tokens. Un modelo más caro gasta el crédito más deprisa. La lista puede cambiar, por ejemplo cuando un proveedor
-  retira un modelo o llega uno nuevo; si el tuyo deja de ofrecerse, la app te lo dice y te propone DeepSeek V4.1
-  Flash hasta que elijas otro.
+- **El modelo**: lo elige Kerfy Studio, el mismo para todas las personas de la oferta (hoy GLM-5.3 Flash); no puedes
+  elegir otro. Si se retirara, el modelo de sustitución previsto es DeepSeek V4.1 Flash
+  ([política de privacidad](privacy.es.md), sección 5.4).
 - Los mensajes que tus agentes envían al modelo pasan por un enrutador de IA, **EUrouter** (Unión Europea), y después
-  por el proveedor que hace funcionar el modelo elegido, para todas las personas de la oferta, vivan donde vivan. Los
+  por el proveedor que hace funcionar el modelo de la oferta, para todas las personas de la oferta, vivan donde vivan. Los
   tratan para responder ([política de privacidad](privacy.es.md), sección 5.4). **Antes del primer mensaje, la app
   nombra el enrutador y el fabricante del modelo y te pide tu acuerdo.**
 
@@ -282,8 +281,10 @@ enseguida. Las reglas propias de las personas que viven fuera de la Unión está
 - **Actualizaciones**: Kerfy Studio actualiza el software de las plazas (BipAgents, Hermes Agent) por oleadas, y puede
   volver a la versión anterior si una oleada sale mal. Una actualización puede sustituir los cambios que hayas hecho,
   por SSH, en los archivos que instala BipAgents.
-- **Supervisión técnica**: los servidores solo envían a Kerfy Studio datos técnicos (memoria, disco, carga, si el
-  software de cada plaza funciona, su versión, la hora de su última copia de seguridad), nunca contenido.
+- **Supervisión técnica**: los servidores envían a Kerfy Studio datos técnicos (memoria, disco, carga, si el software
+  de cada plaza funciona y si está en plena tarea, su versión, la hora de su última copia de seguridad, tu zona
+  horaria) y, en los primeros días de una plaza, algunas mediciones de uso ([política de privacidad](privacy.es.md),
+  secciones 5.6 y 5.12), nunca contenido.
 - Guarda una copia de lo que te importa: el acceso SSH te permite recuperar tus archivos en cualquier momento.
 
 ## 10. Uso aceptable

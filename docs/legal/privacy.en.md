@@ -2,7 +2,7 @@ English · [Français](privacy.fr.md) · [Deutsch](privacy.de.md) · [Español](
 
 # BipAgents privacy policy
 
-> Last updated: 10 November 2026.
+> Last updated: 11 November 2026.
 
 ## In short
 
@@ -11,11 +11,12 @@ English · [Français](privacy.fr.md) · [Deutsch](privacy.de.md) · [Español](
   from a hosting partner. Your conversations, files, voice and your agents' memory stay on that server and with the AI
   model provider that answers them. **Kerfy Studio, the app's publisher, does not read them.**
 - No ads, no tracking across apps or websites. We only count where our subscribers come from, per campaign and per
-  week (section 5.11). On Android, the Google services built into the app (maps, document scanner) send Google their
+  week (section 5.11), and, with the all-included offer, a few measures of a place's first days, without any content
+  (section 5.12). On Android, the Google services built into the app (maps, document scanner) send Google their
   own technical data (section 7). No account with your own server; an account for the all-included offer.
 - With your own server, Kerfy Studio can receive only three things:
   1. what it takes to deliver your **notifications** through its relay: a sealed device token, never the text of your
-     messages;
+     messages in clear;
   2. what you choose to send us: an **email** to support, or a **report** of a reply from the app;
   3. **crash reports**, only if you turned on sharing them in your phone's settings.
 - With the all-included offer, Kerfy Studio also processes your account, the state of your subscription, technical
@@ -246,9 +247,10 @@ everything.
 - the device token, the platform (Apple or Google) and the environment (test or production);
 - the **IP address** of your phone (when registering) or of your server (with each notification), only to limit
   abuse: it is turned into a fingerprint, kept in memory for one hour at most, never written down;
-- the notification's content, reduced to the **agent's name** (the title), a **generic text** such as "New message"
-  (any other text is replaced) and **technical identifiers** (agent, conversation, task, notification type).
-  **Never the text of your messages**: the app fetches it from your server itself.
+- the notification's content: a **generic text** such as "New message" (any other text is replaced), **technical
+  identifiers** (agent, conversation, task, notification type), the number to show on the icon and, **encrypted by
+  your server for your phone alone**, the agent's name and the start of its reply. Neither the relay, nor Apple, nor
+  Google can read them.
 
 **What is kept.** The relay has no database. The sealed token is kept on your phone and on your server; with the
 all-included offer, Kerfy Studio's guichet keeps it too, still sealed (section 5.6).
@@ -271,7 +273,14 @@ the app yourself with your own Apple account, Kerfy Studio's relay is not used.
 
 ### 4.2 Support and reports
 
-- **Settings › Contact support** prepares an email to support@bipagents.com with a diagnostic you can read before
+- **With the all-included offer**, **Settings › Contact support** and **Give feedback** send your message from
+  the app, through Kerfy Studio's guichet (section 5), to the support mailbox. The guichet adds your **help code**
+  (which the app shows you), your plan and its state, the state of your places (number, server, name under
+  bipagents.com, linked to your phone or not), how you sign in (Apple, Google or email), the app's version and
+  language, and, to answer you, the email address you give, otherwise your account's. **No conversation, no key.** The
+  guichet keeps your help code as long as the subscription lasts; its log notes that a message was sent, without its
+  text.
+- **With your own server**, **Settings › Contact support** prepares an email to support@bipagents.com with a diagnostic you can read before
   sending: app version, phone model and system version, language, display style, demo mode or not, notification
   status and, for each agent, its category, whether it answers, whether it has a bridge and a local-network door, and
   its voice. **No conversation, no agent name, no address, no key.** Nothing is sent until you tap "Send" in your
@@ -293,9 +302,10 @@ only write what is useful in the details. We delete whatever is not needed to ha
 **Legal bases.** Answering your messages and handling your reports: Kerfy Studio's legitimate interest in answering
 you and making the app safer (GDPR article 6(1)(f)). Answering a request to exercise your rights: legal obligation
 (article 6(1)(c); GDPR articles 12 to 22).
-**Retention.** Support: 2 years after the last exchange. Reports: 1 year after they were handled.
-**Recipients.** Kerfy Studio and its processors: its email provider (Proton AG, Switzerland) and the relay's
-hosting provider, through which reports travel.
+**Retention.** Support: 2 years after the last exchange; help code (offer): as long as the subscription lasts.
+Reports: 1 year after they were handled.
+**Recipients.** Kerfy Studio and its processors: its email provider (Proton AG, Switzerland) and the hosting provider
+of the relay and the guichet, through which reports and the messages sent from the app travel.
 
 ### 4.3 Crash reports
 
@@ -420,15 +430,22 @@ subscriptions. We keep no data of your card: it is entered at Stripe and never g
 **Only one free week per device.**
 
 - **On iPhone**, the app uses Apple's DeviceCheck: Apple keeps two bits per device for Kerfy Studio ("already had a
-  free week"). Kerfy Studio receives no identifier of the device: the app gives it a single-use token that it passes
+  free week", "already used a beta code"). Kerfy Studio receives no identifier of the device: the app gives it a single-use token that it passes
   on to Apple.
 - **On Android**, the app sends a Google Play Integrity token (Google confirms that the app is genuine and runs on a
   real device) and a fingerprint of the device's Android identifier, computed on the phone (SHA-256), then hashed again
-  by the guichet with a secret key before being stored. Kerfy Studio only keeps this keyed fingerprint, and only for
-  this limit.
+  by the guichet with a secret key before being stored. Kerfy Studio only keeps this keyed fingerprint, only for
+  this limit and for the beta codes' one (below).
 - **The IP address** of your phone is never stored. To limit the number of reservations per address, the guichet keeps
   only a fingerprint of it computed with a secret key, in memory only, for as long as a trial place is reserved
   (15 minutes at most); it is lost when the guichet restarts.
+
+**Beta codes.** A used beta code becomes the identifier of your beta subscription, kept with your account like any
+subscription (below), and the guichet's log notes "code used" with your account (12 months). One code per phone: on
+iPhone, Apple keeps the second DeviceCheck bit for this; on Android, the guichet keeps a fingerprint of the device
+apart, with no link to your code or your account, as long as codes can still be redeemed. A code never used is erased
+as soon as it can no longer be redeemed; a used code, with its link to your account, when your beta place ends or
+moves to a paid subscription.
 
 **Purposes and legal bases.** Providing and managing your subscription, your places and your credit: performance of the
 contract (GDPR article 6(1)(b)). Preventing the same person from chaining free weeks: Kerfy Studio's legitimate interest
@@ -466,7 +483,7 @@ hosting provider it states follows both rules. They act on Kerfy Studio's behalf
 message, the app names the router and the model's maker and asks for your agreement**. **For Health**, only a model that runs in the European Union: your place refuses to give your health data
 to an agent whose model is not marked as such, even if the model changed after you turned Health on (section 3).
 
-**Sleep.** Your place itself notes the app's latest request; the guichet only knows that it is asleep.
+**Sleep.** Your place itself notes the app's latest request; the guichet knows that it is asleep (section 5.6).
 
 **Legal basis.** Performance of the contract (GDPR article 6(1)(b)).
 **Retention.** During the subscription. When it ends, your place is kept for 30 days (3 days after a free week that
@@ -496,16 +513,19 @@ the image that held it is replaced within about a day.
 ### 5.6 Technical monitoring and outages
 
 Every two minutes, each server sends the guichet: its memory, its disk and its load, and for each place, whether its
-bridge answers, whether its Hermes Agent runs or sleeps, its BipAgents version and the time of its latest successful
-backup. **Never any content.** This data is used to spot an outage, move places, roll out updates in waves and alert
-Kerfy Studio.
+bridge answers, whether its Hermes Agent runs or sleeps, its BipAgents version, the time of its latest successful
+backup, the memory it uses, whether a task is running in it, the number of its agents that have their own space and
+your time zone (the time of its latest request from the app and of its next routine are sent too, but the guichet
+does not keep them). **Never any content.** This data is used to spot an outage, move places (during your night,
+never in the middle of a task), roll out updates in waves and alert Kerfy Studio.
 
 When your place's server goes down, is moved or comes back, your phones are told through the notification relay, with
 a generic text: for this, the guichet keeps your phones' sealed tokens linked to your place.
 
 **Legal basis.** Performance of the contract (GDPR article 6(1)(b)).
-**Retention.** Only the latest values are kept, replaced with each report. Event log (outages, moves, updates):
-12 months. Sealed tokens: as long as the device is linked to your place.
+**Retention.** The latest values, replaced with each report, except each place's memory: its highest value of each
+hour, over 7 days (168 values), to spread the places across the servers. Event log (outages, moves, updates, events
+of your account and your subscription with their identifiers, never any content): 12 months. Sealed tokens: as long as the device is linked to your place.
 
 ### 5.7 Abuse reports and requests from authorities
 
@@ -624,10 +644,25 @@ only serve this audience measurement. **Retention.** 13 months after it was reco
 subscription is erased before. **Objecting.** Write to privacy@bipagents.com: we erase yours and record none again for
 your account and your subscriptions.
 
+### 5.12 Measures of a place's first days
+
+To know whether the first steps in the app go well, your place counts a few actions, **without any content** (no
+message, no name, no agent): the time of your first message to the assistant that helps you set everything up, of the
+first of its suggestions you accept and of the first routine you receive, the number of teams suggested, accepted or
+refused and of agents made that way, and the hours you wrote in (rounded to the hour). It sends them to the guichet with the technical monitoring
+(section 5.6). The guichet keeps them **per place** (and so linked to your subscription), without the hours: only
+whether you wrote the next day and a week later. This applies to every place of the offer (beta code, free week, paid
+subscription). With your own server, none of this leaves.
+
+**Legal basis.** Kerfy Studio's legitimate interest in improving the first steps in the app (GDPR article 6(1)(f)).
+**Retention.** Per place, during its first days (11 days at most after the place was given to you), then only added
+to the day's totals, in which no one appears, kept 2 years. Erased at once when the place is reinstalled, removed or
+given to someone else.
+
 ## 6. What Kerfy Studio does not do
 
 - No ads, no advertising identifier, no tracking across apps or websites. No analytics tool in the app: only the count
-  of our campaigns (section 5.11). No account, except for the all-included offer.
+  of our campaigns (section 5.11) and, with the offer, the measures of a place's first days (section 5.12). No account, except for the all-included offer.
 - No selling or renting of data.
 - No training of AI models on your data by Kerfy Studio.
 - No access to your server, to the content of your place, to your conversations or to your files.
@@ -655,7 +690,12 @@ then responsible for what it does with it.
   Maps (MapKit) on the iPhone and the Google Maps SDK on Android. When such a map shows on Android, Google receives
   device and request information, the IP address, an SDK-specific identifier, the SDK's crash reports and, when the map
   is moved or zoomed, these events; Google states that it uses them to run and improve its services. These maps show
-  the reply's places, never your position. Google LLC may process this data in the United States.
+  the reply's places, never your position. Google LLC may process this data in the United States. To put a reply's
+  places on these maps, your phone sends their names to Apple Maps (iPhone) or to the phone's geocoding service,
+  usually Google's (Android). To draw a map or a route in a reply or a page, your server (or your place) also asks
+  OpenStreetMap for the places (Nominatim, which receives the places' names or addresses), OpenStreetMap for the map's
+  images (which receives the map's area) and FOSSGIS (Germany) for the way by the streets (which receives the stops'
+  coordinates): they see your server's address, not your phone's nor your message.
 - **Speech recognition.** Voice notes and Live use your phone's speech recognition. The app asks for on-device
   recognition when your phone offers it for your language. Otherwise, Apple or Google (on Android, the system's
   recognition service, often Google's) process the audio on their servers, under their own responsibility. It is the
@@ -663,14 +703,17 @@ then responsible for what it does with it.
 - **The phone's text-to-speech.** When the phone's voice reads a text (in the demo, or when your server does not
   answer), it uses your phone's speech engine, according to its settings.
 - **On Android, QR codes** are read on the phone, with a library built into the app, without any Google service.
-- **On Android, the document scanner** is a Google Play services feature (Google ML Kit). Google states that ML Kit
+- **On Android, the document scanner**, and reading on the phone the text of a scanned paper, are Google Play
+  services features (Google ML Kit). Google states that ML Kit
   sends it information about the device and the app, installation identifiers and usage and performance metrics, for
   diagnostics and its own statistics. The app tells you so and asks for your agreement before the scanner's first
   use; without that agreement, the scanner does not open, and you can still attach a photo or a file. You can change
   your mind at any time in Settings.
 - **Apple and Google** for notifications (section 4.1).
 - **Tailscale**, if you use it: a separate app, with its own account and its own privacy policy.
-- **Links you open** (websites your agents mention, the Hermes Agent page) open in your browser.
+- **Links you open** (websites your agents mention, the Hermes Agent page) open in your browser. Your phone never
+  opens a link an agent wrote by itself: only a Google Maps link becomes a small map, made from the link itself, like
+  the maps in replies (above).
 
 ## 8. The demo
 
@@ -685,6 +728,10 @@ The Bips' voices are synthesized **on your phone** when it can: the app download
 the App Store or Google Play, and your server (or your place) sends it the text to read, prepared. Otherwise, they are
 synthesized on your server or on your place. If you plug in your own voice model, it is a server you run yourself.
 Kerfy Studio receives nothing of what the voices read.
+
+The small model that helps Live know when you have finished speaking (about 35 MB) is downloaded by your phone, on
+Wi-Fi, from GitHub (GitHub, Inc., a Microsoft subsidiary), as long as it is not on the phone: GitHub sees your phone's
+IP address, nothing else.
 
 ## 10. Partner links (hosting, later)
 
@@ -735,6 +782,10 @@ legal framework of the country of destination) and makes the transfer only if th
 protection (section 17 of the Act respecting the protection of personal information in the private sector). You can
 ask us for a summary of this assessment.
 
+The Live model is downloaded from GitHub (GitHub, Inc., United States), certified under the EU-U.S. Data Privacy
+Framework (section 9). The map images and Nominatim are served by the OpenStreetMap Foundation, in the United Kingdom,
+a country the European Commission recognises as providing adequate protection (section 7).
+
 Email provider, which also sends the guichet's emails (codes, security notices, invitations, confirmations, deletion
 notices): Proton AG, in Switzerland, a country the European Commission recognises as providing adequate protection
 (decision 2000/518/EC, kept in force by GDPR article 45(9)). Hosting provider of the guichet and the relay: OVHcloud,
@@ -754,6 +805,7 @@ of the applicable safeguards.
 | IP address at the relay | In memory, one hour at most, as a fingerprint |
 | Relay technical logs | 6 months at most |
 | Support emails | 2 years after the last exchange |
+| Help code (all-included offer) | As long as the subscription lasts |
 | Reports | 1 year after they were handled |
 | Crash reports | 1 year after receipt (at Kerfy Studio) |
 | Account of the offer (identifiers, email, devices, invitations, kept credit) | As long as the account exists; erased 30 days after a deletion request |
@@ -762,6 +814,9 @@ of the applicable safeguards.
 | Subscription and purchases | During the subscription, then 5 years in archive |
 | Purchase on the website (email address given at payment, Stripe identifiers, plan and period, billing country, language) | During the subscription, then 5 years in archive |
 | Invoices and payment records of a purchase on the website | 10 years (article L123-22 of the French Commercial Code); invoices kept by Stripe |
+| Beta code never used | Until it can no longer be redeemed |
+| Used beta code and its link to your account | Until your beta place ends or moves to a paid subscription |
+| Fingerprint of an Android phone that used a beta code (no code, no account) | As long as beta codes can still be redeemed |
 | Keyed fingerprint of the Android device (free week) | 24 months after the phone was first marked; not erased with the account, to which it is not linked |
 | Family-link invitation | 7 days, or until answered |
 | Read-only share (encrypted copy, people invited) | Until its end date, until it is stopped, or until the account is erased |
@@ -772,8 +827,9 @@ of the applicable safeguards.
 | Backup files a place deletes, set aside by the guichet | 5 days |
 | Replaced or deleted versions at Scaleway (the places' backups, encrypted copies of the guichet's database) | 1 day |
 | OVHcloud's daily image | One point per day, replaced within about a day after the place is reinstalled |
-| Servers' technical data | Latest values only |
-| The guichet's event log | 12 months |
+| Servers' technical data | Latest values; each place's memory, hour by hour: 7 days |
+| Measures of a place's first days (section 5.12) | Per place, 11 days at most; then totals per day, with no one in them: 2 years |
+| The guichet's event log (including "beta code used", with your account) | 12 months |
 | Metadata at EUrouter | Up to 12 months, according to EUrouter |
 | Your agents' e-mail (all-included offer) | 90 days per mail (may be shortened); the whole mailbox at once when you remove the address or the agent, when the place is erased or when the account is erased |
 | Security logs of the agents' mail server | 30 days |
@@ -806,7 +862,7 @@ You can ask for access to your data, its correction, its erasure, the restrictio
 portability, and give instructions about your data after your death (French law).
 
 **Right to object.** You can object at any time, on grounds relating to your particular situation, to processing
-based on our legitimate interest (limiting abuse, emails, reports, crash reports, limiting free weeks, measuring our campaigns).
+based on our legitimate interest (limiting abuse, emails, reports, crash reports, limiting free weeks, measuring our campaigns, measures of a place's first days).
 
 **Withdrawing your consent.** For Health, Calendar, Contacts, Reminders, the location of reminders by place and
 Android's document scanner, you withdraw your consent whenever you like, as easily as you gave it: turn the tool off on

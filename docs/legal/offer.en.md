@@ -2,7 +2,7 @@ English · [Français](offer.fr.md) · [Deutsch](offer.de.md) · [Español](offe
 
 # Terms of sale of the all-included offer
 
-> Last updated: 10 November 2026.
+> Last updated: 11 November 2026.
 
 ## 1. Purpose
 
@@ -90,7 +90,7 @@ For each person in the plan:
 
 **The plan's AI credit**: €5.00 (Solo), €9.00 (Duo) or €16.00 (Family) of AI model use each month, shared by everyone
 in the plan, shown in the app as an estimated number of messages: about 7,000, 13,000 or 24,000 messages a month with
-the default model (section 6).
+the offer's model (section 6).
 
 **Where.** The servers are rented from OVHcloud first (data centres in the European Union), then from Hetzner (Germany
 or Finland), then from OVHcloud for smaller servers, depending on what is available. They are all in the European
@@ -163,8 +163,8 @@ section 6); the services you connect to your agents and their own subscriptions.
 - Each plan has an **AI credit per month: €5.00 for Solo, €9.00 for Duo, €16.00 for Family**: AI model use counted at
   the price the provider charges Kerfy Studio. On a Duo or a Family plan, this credit **belongs to everyone in the
   plan**: their agents use it together, with no fixed share for each person.
-- **As messages**: the app shows the credit as an **estimated number of messages** with the chosen model. As a guide, with the
-  default model and rounded down: **about 7,000 messages a month for Solo, 13,000 for Duo and 24,000 for
+- **As messages**: the app shows the credit as an **estimated number of messages** with the offer's model. As a guide, with the
+  current model and rounded down: **about 7,000 messages a month for Solo, 13,000 for Duo and 24,000 for
   the whole family**. It is an estimate, not a promise: the cost of a message depends on its length, on the attached
   files and on the model. A message, here, is a simple exchange: a **task in the browser** or a
   **background task** chains many calls to the model and counts for much more, often as much as several dozen
@@ -174,7 +174,7 @@ section 6); the services you connect to your agents and their own subscriptions.
   with the same carry-over.
 - **Extra credit**: you can buy some in the app (Settings › All-included plan › Add AI credit), in two packs:
   **€2 VAT included for €1.40 of credit** and **€5 VAT included for €3.50 of credit** (VAT and the app store's
-  commission take about 30 %); the app shows for each the estimated number of messages with your model (the same
+  commission take about 30 %); the app shows for each the estimated number of messages with the offer's model (the same
   estimate as above), and the store its price. It is added to the plan's credit, for everyone in it. **It never expires**: if some is
   left when the subscription ends, it is kept on your account and comes back with your next subscription. It is only
   lost if you delete your account.
@@ -190,12 +190,11 @@ section 6); the services you connect to your agents and their own subscriptions.
   month; the rest of the credit stays for the others. The person sees their limit in their app.
 - The credit is not money: it can only be used for AI model use within the offer, cannot be transferred and is not
   refunded, subject to the rights the law gives you (sections 12 and 13).
-- **The model**: you pick it from a list (GLM-5.3 Flash by default, others such as DeepSeek), with its price per
-  million tokens. A more expensive model uses up the credit faster. The list may change, for instance when a provider
-  withdraws a model or a new one arrives; if yours is no longer offered, the app tells you and offers you DeepSeek
-  V4.1 Flash until you pick another one.
+- **The model**: Kerfy Studio picks it, the same for everyone in the offer (today GLM-5.3 Flash); you cannot pick
+  another one. If it were withdrawn, the planned replacement is DeepSeek V4.1 Flash
+  ([privacy policy](privacy.en.md), section 5.4).
 - The messages your agents send to the model go through an AI router, **EUrouter** (European Union), then through the
-  provider that runs the chosen model, for everyone in the offer, wherever they live. They process them to answer
+  provider that runs the offer's model, for everyone in the offer, wherever they live. They process them to answer
   ([privacy policy](privacy.en.md), section 5.4). **Before the first message, the app names the router and the
   model's maker and asks for your agreement.**
 
@@ -276,8 +275,10 @@ section 6); the services you connect to your agents and their own subscriptions.
 - **Updates**: Kerfy Studio updates the places' software (BipAgents, Hermes Agent) in waves, and can go back to the
   previous version if a wave goes wrong. An update may replace changes you made, over SSH, to the files BipAgents
   installs.
-- **Technical monitoring**: the servers send Kerfy Studio only technical data (memory, disk, load, whether each
-  place's software runs, its version, the time of its latest backup), never any content.
+- **Technical monitoring**: the servers send Kerfy Studio technical data (memory, disk, load, whether each place's
+  software runs and whether it is in the middle of a task, its version, the time of its latest backup, your time zone)
+  and, in a place's first days, a few usage measures ([privacy policy](privacy.en.md), sections 5.6 and 5.12), never
+  any content.
 - Keep a copy of what matters to you: SSH access lets you get your files back at any time.
 
 ## 10. Acceptable use

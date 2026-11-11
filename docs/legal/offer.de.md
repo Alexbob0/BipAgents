@@ -2,7 +2,7 @@
 
 # Allgemeine Verkaufsbedingungen des Alles-inklusive-Angebots
 
-> Zuletzt aktualisiert: 10. November 2026.
+> Zuletzt aktualisiert: 11. November 2026.
 
 ## 1. Gegenstand
 
@@ -97,7 +97,7 @@ Für jede Person des Tarifs:
 
 **Das KI-Guthaben des Tarifs**: 5,00 € (Solo), 9,00 € (Duo) oder 16,00 € (Familie) Nutzung des KI-Modells pro Monat,
 geteilt von allen Personen des Tarifs, in der App als geschätzte Zahl von Nachrichten angezeigt: etwa 7.000, 13.000
-oder 24.000 Nachrichten pro Monat mit dem Standardmodell (Abschnitt 6).
+oder 24.000 Nachrichten pro Monat mit dem Modell des Angebots (Abschnitt 6).
 
 **Wo.** Die Server werden zuerst bei OVHcloud gemietet (Rechenzentren in der Europäischen Union), dann bei Hetzner
 (Deutschland oder Finnland), dann bei OVHcloud für kleinere Server, je nachdem, was verfügbar ist. Sie stehen alle in
@@ -174,8 +174,8 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
 - Jeder Tarif hat ein **KI-Guthaben pro Monat: 5,00 € für Solo, 9,00 € für Duo, 16,00 € für Familie**: Nutzung des
   Modells, berechnet zu dem Preis, den der Anbieter Kerfy Studio in Rechnung stellt. Bei Duo oder Familie **gehört
   dieses Guthaben allen Personen des Tarifs**: Ihre Agenten nutzen es gemeinsam, ohne festen Anteil für jede Person.
-- **In Nachrichten**: Die App zeigt das Guthaben als **geschätzte Zahl von Nachrichten** mit dem gewählten Modell. Als Anhaltspunkt,
-  mit dem Standardmodell und abgerundet: **etwa 7.000 Nachrichten pro Monat für Solo, 13.000 für Duo und
+- **In Nachrichten**: Die App zeigt das Guthaben als **geschätzte Zahl von Nachrichten** mit dem Modell des Angebots. Als Anhaltspunkt,
+  mit dem heutigen Modell und abgerundet: **etwa 7.000 Nachrichten pro Monat für Solo, 13.000 für Duo und
   24.000 für die ganze Familie**. Es ist eine Schätzung, kein Versprechen: Was eine Nachricht kostet, hängt von ihrer
   Länge, den angehängten Dateien und dem Modell ab. Eine Nachricht ist hier ein einfacher Austausch: Eine **Aufgabe im
   Browser** oder eine **Hintergrundaufgabe** reiht viele Aufrufe des Modells aneinander und zählt viel mehr, oft so
@@ -187,7 +187,7 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
 - **Zusätzliches Guthaben**: Du kannst in der App welches kaufen (Einstellungen › Alles-inklusive-Angebot ›
   KI-Guthaben hinzufügen), in zwei Paketen: **2 € inkl. MwSt. für 1,40 € Guthaben** und **5 € inkl. MwSt. für
   3,50 € Guthaben** (MwSt. und die Provision des App-Stores machen etwa 30 % aus); die App zeigt für jedes die
-  geschätzte Zahl der Nachrichten mit deinem Modell (dieselbe Schätzung wie oben), der Store seinen Preis. Es kommt zum Guthaben des Tarifs hinzu, für alle seine Personen. **Es verfällt nie**: Ist beim Ende des Abos noch welches übrig, bleibt es auf deinem Konto
+  geschätzte Zahl der Nachrichten mit dem Modell des Angebots (dieselbe Schätzung wie oben), der Store seinen Preis. Es kommt zum Guthaben des Tarifs hinzu, für alle seine Personen. **Es verfällt nie**: Ist beim Ende des Abos noch welches übrig, bleibt es auf deinem Konto
   und kommt mit deinem nächsten Abo zurück. Es geht nur verloren, wenn du dein Konto löschst.
 - **Guthaben des Monats verbraucht**: Die Gespräche gehen weiter, auf einem Spielraum von 20 % des monatlichen
   Guthabens des Tarifs, geteilt wie das Guthaben; Routinen, der Browser der Agenten und Hintergrundaufgaben pausieren.
@@ -203,12 +203,11 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
   App.
 - Das Guthaben ist kein Geld: Es dient nur der Nutzung des KI-Modells im Angebot, ist nicht übertragbar und wird nicht
   erstattet, vorbehaltlich der Rechte, die dir das Gesetz gibt (Abschnitte 12 und 13).
-- **Das Modell**: Du wählst es aus einer Liste (standardmäßig GLM-5.3 Flash, andere wie DeepSeek), mit seinem Preis pro
-  Million Tokens. Ein teureres Modell verbraucht das Guthaben schneller. Die Liste kann sich ändern, zum Beispiel wenn
-  ein Anbieter ein Modell zurückzieht oder ein neues hinzukommt; wird deins nicht mehr angeboten, sagt es dir die App
-  und schlägt dir DeepSeek V4.1 Flash vor, bis du ein anderes wählst.
+- **Das Modell**: Kerfy Studio wählt es, dasselbe für alle Personen des Angebots (heute GLM-5.3 Flash); du kannst kein
+  anderes wählen. Würde es zurückgezogen, ist als Ersatz DeepSeek V4.1 Flash vorgesehen
+  ([Datenschutzerklärung](privacy.de.md), Abschnitt 5.4).
 - Die Nachrichten, die deine Agenten an das Modell schicken, laufen über einen KI-Router, **EUrouter** (Europäische
-  Union), dann über den Anbieter, der das gewählte Modell betreibt, für alle Personen des Angebots, wo auch immer sie
+  Union), dann über den Anbieter, der das Modell des Angebots betreibt, für alle Personen des Angebots, wo auch immer sie
   leben. Sie verarbeiten sie, um zu antworten ([Datenschutzerklärung](privacy.de.md), Abschnitt 5.4). **Vor der ersten
   Nachricht nennt dir die App den Router und den Hersteller des Modells und fragt nach deinem Einverständnis.**
 
@@ -296,8 +295,10 @@ kannst welches hinzufügen, Abschnitt 6); die Dienste, die du mit deinen Agenten
 - **Updates**: Kerfy Studio aktualisiert die Software der Plätze (BipAgents, Hermes Agent) in Wellen und kann zur
   vorherigen Version zurückkehren, wenn eine Welle schiefgeht. Ein Update kann Änderungen ersetzen, die du per SSH an
   den von BipAgents installierten Dateien vorgenommen hast.
-- **Technische Überwachung**: Die Server schicken Kerfy Studio nur technische Daten (Arbeitsspeicher, Festplatte,
-  Last, ob die Software jedes Platzes läuft, ihre Version, die Uhrzeit ihrer letzten Sicherung), nie Inhalte.
+- **Technische Überwachung**: Die Server schicken Kerfy Studio technische Daten (Arbeitsspeicher, Festplatte, Last, ob
+  die Software jedes Platzes läuft und ob sie gerade eine Aufgabe erledigt, ihre Version, die Uhrzeit ihrer letzten
+  Sicherung, deine Zeitzone) und, in den ersten Tagen eines Platzes, einige Nutzungsmesswerte
+  ([Datenschutzerklärung](privacy.de.md), Abschnitte 5.6 und 5.12), nie Inhalte.
 - Bewahre eine Kopie dessen auf, was dir wichtig ist: Mit dem SSH-Zugang kannst du deine Dateien jederzeit
   herunterladen.
 
