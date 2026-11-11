@@ -387,7 +387,9 @@ pub fn human_hold_command(token: &str) -> String {
 /// The command that lifts the person's hold: a payment's flag is left alone (only the payment's own release, its
 /// fields emptied and its page left, removes it).
 pub fn human_release_command() -> String {
-    format!("[ \"$(head -c 4 {HOLD_FLAG} 2>/dev/null)\" = card ] || rm -f {HOLD_FLAG}")
+    // no flag, nothing to do (fix review 11/11, 5th check): never a `rm` that could meet a payment's hold set between
+    // the read and it (the payment's own look before typing refuses then, card_pay.rs `calls_check_command`)
+    format!("[ -e {HOLD_FLAG} ] || exit 0; [ \"$(head -c 4 {HOLD_FLAG} 2>/dev/null)\" = card ] || rm -f {HOLD_FLAG}")
 }
 
 /// The person takes over the agent's browser (or hands it back): its MCP tools and its DevTools wait meanwhile.
@@ -433,14 +435,14 @@ pub async fn hold_with(host: &Host, config: &Config, agent: &str, on: bool) -> H
 /// A payment's hold ended (card_pay.rs `release`, after the card's fields were emptied and the page left): the flag
 /// removed, or, while the person holds the browser in the app (`person`, they took it over during the payment),
 /// turned into the person's hold with a new token, so the agent's tools wait until they hand it back. Only a payment's
-/// flag (« card ») is touched.
-pub async fn end_payment_hold(config: &Config, agent: &str, person: bool) -> bool {
+/// flag (« card ») is touched, and only the one this payment set (`own`: its token, fix review 11/11, 4th check).
+pub async fn end_payment_hold(config: &Config, agent: &str, own: &str, person: bool) -> bool {
     if !person {
-        return hold_for_payment(config, agent, None).await;
+        return lift_payment_hold(config, agent, own).await;
     }
     let host = Host::real(config);
     let Some(engine) = host.runtime.clone() else { return false };
-    if !has_ports(config, agent) {
+    if !has_ports(config, agent) || !alnum(own) {
         return false;
     }
     // A token already kept (a take-over meeting this end, fix review 11/11, 3rd check, P5) is the one used: the page
@@ -456,12 +458,16 @@ pub async fn end_payment_hold(config: &Config, agent: &str, person: bool) -> boo
             token
         }
     };
-    let command = payment_to_person_command(&token);
+    let command = payment_to_person_command(own, &token);
     let code = (host.exec)(vec![engine, "exec".into(), container(agent), "sh".into(), "-c".into(), command]).await;
     if code != 0 {
         tracing::warn!(agent = %agent, code = code, "payment hold not handed to the person");
     }
     code == 0
+}
+
+fn alnum(token: &str) -> bool {
+    !token.is_empty() && token.bytes().all(|b| b.is_ascii_alphanumeric())
 }
 
 /// Where the person's hold keeps its token (`<browser root>/<agent>/hold.token`, the bridge's alone).
@@ -495,21 +501,34 @@ pub const OPEN_BROWSER: &str = "/opt/stealth/open_browser.sh";
 
 /// A card payment holds the agent's browser (card_pay.rs): its MCP tools and its DevTools wait as for the person's
 /// hold, except the bridge's own DevTools connections, which show `token` (`X-Bip-Card`, browser/devtools_relay.py).
-/// `Some(token)`: taken, unless the person holds it already (false). `None`: given back, only if a payment held it.
-pub async fn hold_for_payment(config: &Config, agent: &str, token: Option<&str>) -> bool {
+/// Taken, unless anything holds it already (false). Given back by `lift_payment_hold` with the same token.
+pub async fn hold_for_payment(config: &Config, agent: &str, token: &str) -> bool {
+    run_hold_command(config, agent, token, payment_hold_command, "payment hold not set").await
+}
+
+/// The hold `token` set (a payment's, a vault fill's, or the sweep's re-key) given back: only that one. A late or
+/// queued lift (a vault fill's guard after the sweep ended its hold and a payment took the browser, a release that
+/// ran on) never ends a hold it did not set (fix review 11/11, 4th check, problem 1).
+pub async fn lift_payment_hold(config: &Config, agent: &str, token: &str) -> bool {
+    run_hold_command(config, agent, token, payment_release_command, "payment hold not lifted").await
+}
+
+async fn run_hold_command(
+    config: &Config,
+    agent: &str,
+    token: &str,
+    command: fn(&str) -> String,
+    failed: &str,
+) -> bool {
     let host = Host::real(config);
     let Some(engine) = host.runtime.clone() else { return false };
-    if !has_ports(config, agent) {
+    if !has_ports(config, agent) || !alnum(token) {
         return false;
     }
-    let command = match token {
-        Some(token) if token.bytes().all(|b| b.is_ascii_alphanumeric()) => payment_hold_command(token),
-        Some(_) => return false,
-        None => payment_release_command(),
-    };
+    let command = command(token);
     let code = (host.exec)(vec![engine, "exec".into(), container(agent), "sh".into(), "-c".into(), command]).await;
     if code != 0 {
-        tracing::warn!(agent = %agent, on = token.is_some(), code = code, "payment hold not set");
+        tracing::warn!(agent = %agent, code = code, "{failed}");
     }
     code == 0
 }
@@ -519,9 +538,9 @@ pub fn payment_hold_command(token: &str) -> String {
     format!("[ -e {HOLD_FLAG} ] && exit 3; umask 077; printf 'card %s' {token} > {HOLD_FLAG}")
 }
 
-/// The command that lifts a payment's hold: only a « card » flag goes.
-pub fn payment_release_command() -> String {
-    format!("[ \"$(head -c 4 {HOLD_FLAG} 2>/dev/null)\" = card ] && rm -f {HOLD_FLAG}; exit 0")
+/// The command that lifts the hold `token` set: the flag goes only when it is exactly that one.
+pub fn payment_release_command(token: &str) -> String {
+    format!("[ \"$(cat {HOLD_FLAG} 2>/dev/null)\" = 'card {token}' ] && rm -f {HOLD_FLAG}; exit 0")
 }
 
 /// `STALE_CHECK`'s answer when the browser carries a payment's flag.
@@ -549,11 +568,18 @@ pub async fn stale_payment_hold(config: &Config, agent: &str, token: &str) -> bo
     if !has_ports(config, agent) || !token.bytes().all(|b| b.is_ascii_alphanumeric()) {
         return false;
     }
+    // Each look bounded (fix review 11/11, 4th check, problem 2): a podman that blocks (its storage locked by an image
+    // pull) never keeps the agent's lock, which cancel_payment, confirm_payment and « Suspendre » need.
     let run = |command: String| {
-        (host.exec)(vec![engine.clone(), "exec".into(), container(agent), "sh".into(), "-c".into(), command])
+        let exec =
+            (host.exec)(vec![engine.clone(), "exec".into(), container(agent), "sh".into(), "-c".into(), command]);
+        async move { tokio::time::timeout(STALE_LOOK, exec).await.unwrap_or(-1) }
     };
     run(stale_check_command()).await == STALE_HOLD && run(rekey_hold_command(token)).await == 0
 }
+
+/// How long one of the sweep's looks into a browser container may take.
+const STALE_LOOK: Duration = Duration::from_secs(20);
 
 /// The agent's browser container started again (`--rm`: Chrome, its pages and the hold's flag go with the old one).
 /// Whether it was.
@@ -564,11 +590,12 @@ pub async fn restart(config: &Config, agent: &str) -> bool {
     code == 0
 }
 
-/// The command that turns a payment's hold into the person's (`end_payment_hold`): only a « card » flag changes.
-pub fn payment_to_person_command(token: &str) -> String {
+/// The command that turns the payment `own`'s hold into the person's (`end_payment_hold`, their `token`): only that
+/// payment's flag changes.
+pub fn payment_to_person_command(own: &str, token: &str) -> String {
     format!(
-        "[ \"$(head -c 4 {HOLD_FLAG} 2>/dev/null)\" = card ] && {{ umask 077; printf 'human %s' {token} > {HOLD_FLAG}; \
-         }}; exit 0"
+        "[ \"$(cat {HOLD_FLAG} 2>/dev/null)\" = 'card {own}' ] && {{ umask 077; printf 'human %s' {token} > \
+         {HOLD_FLAG}; }}; exit 0"
     )
 }
 
@@ -1364,16 +1391,33 @@ mod tests {
         assert_eq!(run_on(&flag, Some("human 77aa"), &human_release_command()), (0, None));
         assert_eq!(run_on(&flag, Some(""), &human_release_command()), (0, None));
         assert_eq!(run_on(&flag, None, &human_release_command()).0, 0);
-        // A payment's hold: never over the person's; its release lifts only a « card » flag.
+        // A payment's hold: never over the person's; its release lifts only its own flag.
         assert_eq!(run_on(&flag, Some("human 77aa"), &payment_hold_command("0123abcd")), (3, human()));
         assert_eq!(run_on(&flag, None, &payment_hold_command("0123abcd")), (0, card()));
-        assert_eq!(run_on(&flag, Some("human 77aa"), &payment_release_command()), (0, human()));
-        assert_eq!(run_on(&flag, Some("card 0123abcd"), &payment_release_command()), (0, None));
-        // Ended while the person holds the browser: theirs from then on, only in place of a payment's.
-        let to_person = payment_to_person_command("99ff");
+        assert_eq!(run_on(&flag, Some("human 77aa"), &payment_release_command("0123abcd")), (0, human()));
+        assert_eq!(run_on(&flag, Some("card 0123abcd"), &payment_release_command("0123abcd")), (0, None));
+        // Ended while the person holds the browser: theirs from then on, only in place of this payment's.
+        let to_person = payment_to_person_command("0123abcd", "99ff");
         assert_eq!(run_on(&flag, Some("card 0123abcd"), &to_person), (0, Some("human 99ff".into())));
         assert_eq!(run_on(&flag, None, &to_person), (0, None));
         assert_eq!(run_on(&flag, Some("human 77aa"), &to_person), (0, human()));
+        assert_eq!(run_on(&flag, Some("card 5e5e"), &to_person), (0, Some("card 5e5e".into())));
+    }
+
+    #[test]
+    fn a_late_lift_never_ends_a_hold_it_did_not_set() {
+        // Fix review 11/11, 4th check, problem 1: an aborted vault fill's guard, queued behind the sweep and a
+        // payment, removed whatever « card » flag was there, the payment's with the card typed in the page.
+        let dir = tempfile::tempdir().unwrap();
+        let flag = dir.path().join("hold");
+        let fill = payment_release_command("f111");
+        // The payment's hold (or the sweep's re-key) is not the fill's: it stays.
+        assert_eq!(run_on(&flag, Some("card 0123abcd"), &fill), (0, Some("card 0123abcd".into())));
+        assert_eq!(run_on(&flag, Some("card f1112"), &fill), (0, Some("card f1112".into())));
+        assert_eq!(run_on(&flag, Some("card"), &fill), (0, Some("card".into())));
+        assert_eq!(run_on(&flag, Some("human f111"), &fill), (0, Some("human f111".into())));
+        // Its own: lifted.
+        assert_eq!(run_on(&flag, Some("card f111"), &fill), (0, None));
     }
 
     #[test]

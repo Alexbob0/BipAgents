@@ -296,6 +296,7 @@ def test_a_phone_watches_the_page_then_takes_it_over_as_a_phone(bridges, fakes, 
         assert chrome.methods("Emulation.setTouchEmulationEnabled")[-1][2] == {"enabled": False}
         assert len(chrome.methods("Page.reload")) == reloads + 1
         assert bridge.commands.of("podman")[-1] == ["exec", "bipagents-browser-vie", "sh", "-c",
+                                                    '[ -e /tmp/bipagents-hold ] || exit 0; '
                                                     '[ "$(head -c 4 /tmp/bipagents-hold 2>/dev/null)" = card ] || rm -f '
                                                     '/tmp/bipagents-hold']
         assert not (folder / "hold.token").exists()

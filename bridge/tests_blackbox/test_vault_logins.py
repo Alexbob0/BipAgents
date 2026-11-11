@@ -436,5 +436,9 @@ def test_a_fill_left_half_way_still_gives_the_browser_back(bridges, fakes):
         time.sleep(10)   # the keystrokes held up have answered meanwhile: nothing more happens
         assert len(lifted()) == 1
         assert "fill left before its end" in bridge.log_path.read_text()
+        # 4th check, problem 1: the guard lifts only the fill's own hold (it may run after a payment took the browser).
+        hold = next(c[-1] for c in bridge.commands.of("podman") if "printf 'card %s'" in c[-1])
+        token = re.search(r"printf 'card %s' ([0-9a-f]+) >", hold).group(1)
+        assert f"= 'card {token}' ]" in lifted()[0][-1]
     finally:
         chrome.stop()

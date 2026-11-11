@@ -480,7 +480,8 @@ async fn taking_over_the_browser_makes_the_agents_tools_wait() {
     browsers::hold_with(&host, &s.config, "budget", false).await;
     assert_eq!(
         ran.lock().unwrap().last().unwrap().last().unwrap(),
-        "[ \"$(head -c 4 /tmp/bipagents-hold 2>/dev/null)\" = card ] || rm -f /tmp/bipagents-hold"
+        "[ -e /tmp/bipagents-hold ] || exit 0; [ \"$(head -c 4 /tmp/bipagents-hold 2>/dev/null)\" = card ] || rm -f \
+         /tmp/bipagents-hold"
     );
     assert!(browsers::hold_token(&s.config, "budget").is_none());
     // no browser of its own

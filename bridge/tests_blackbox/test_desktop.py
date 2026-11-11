@@ -265,5 +265,5 @@ def test_the_agents_own_browser_is_woken_and_held(bridges, fakes):
             f"{guard} && exit 3; umask 077; printf 'human %s' {token} > /tmp/bipagents-hold"] in bridge.commands.of("podman")
     bridge.post("/v1/agents/vie/desktop/control", headers=AUTH, json={"take": False})
     assert bridge.commands.of("podman")[-1] == ["exec", "bipagents-browser-vie", "sh", "-c",
-                                                f"{guard} || rm -f /tmp/bipagents-hold"]
+                                                f"[ -e /tmp/bipagents-hold ] || exit 0; {guard} || rm -f /tmp/bipagents-hold"]
     desktop.close()
