@@ -798,6 +798,7 @@ pub async fn relay_page(state: &AppState, path: &str) -> Option<ApiResult<Respon
         h.insert("content-type", axum::http::HeaderValue::from_static("text/html; charset=utf-8"));
         h.insert("x-content-type-options", axum::http::HeaderValue::from_static("nosniff"));
         h.insert("cache-control", axum::http::HeaderValue::from_static("no-cache"));
+        h.insert(crate::pages::DNS_PREFETCH.0, axum::http::HeaderValue::from_static(crate::pages::DNS_PREFETCH.1));
         let policy = format!("sandbox allow-scripts; {}", crate::pages::POLICY);
         if let Ok(v) = axum::http::HeaderValue::from_str(&policy) {
             h.insert("content-security-policy", v);

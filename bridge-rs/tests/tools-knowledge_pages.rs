@@ -113,6 +113,13 @@ async fn an_agent_makes_a_page_and_the_app_gets_it_locked() {
     assert_eq!(page.status, 200);
     assert!(page.header("content-type").unwrap().starts_with("text/html"));
     assert!(page.header("content-security-policy").unwrap().starts_with("sandbox allow-scripts; default-src 'none'"));
+    // No WebRTC (Chromium honours the directive) and no DNS look-ups ahead, as a header and in the page itself.
+    assert!(page.header("content-security-policy").unwrap().ends_with("; object-src 'none'; webrtc 'block'"));
+    assert_eq!(page.header("x-dns-prefetch-control").as_deref(), Some("off"));
+    let text = page.text();
+    let policy = text.find("<meta http-equiv=\"Content-Security-Policy\"").unwrap();
+    assert!(text[policy..].starts_with(&format!("<meta http-equiv=\"Content-Security-Policy\" content=\"{}\"><meta http-equiv=\"x-dns-prefetch-control\" content=\"off\">", bipbridge::pages::POLICY)));
+    assert!(bipbridge::pages::POLICY.contains("frame-src 'none'") && bipbridge::pages::POLICY.contains("webrtc 'block'"));
     assert_eq!(page.header("cache-control").as_deref(), Some("no-cache"));
     // Kept by the app and asked again with its ETag: unchanged, a 304 without the body (policy still on it).
     let etag = page.header("etag").unwrap();
