@@ -264,7 +264,9 @@ def _walk(inv, root: Path) -> Iterator[Path]:
 NOISE = {".tick.lock", "sleep.json", "ticker_heartbeat", "ticker_last_success", "gateway.heartbeat",
          "channel_directory.json", ".curator_state"}
 NOISE_SUFFIXES = (".lock", ".pid", "-shm")
-NOISE_PATHS = ("/bipagents/storage.json", "/sandbox-proxy/reports/usage.json")
+# counts.json: the proxy's counts kept for its own restarts (written only when they moved); a restored place starting
+# them from zero is fine, they are a day's allowances, not the person's data.
+NOISE_PATHS = ("/bipagents/storage.json", "/sandbox-proxy/reports/usage.json", "/sandbox-proxy/reports/counts.json")
 
 
 def noise(path: str, st: os.stat_result) -> bool:

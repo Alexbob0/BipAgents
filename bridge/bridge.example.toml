@@ -156,7 +156,8 @@ port = 8650
 # send_site_kb_hour = 64      # per site per hour
 # send_day_kb = 256           # per agent per day, all such sites together (slow leaks)
 # While a card waits (or for a site the person refused) the site stays readable within a small allowance; the
-# registries and the browser's small requests have ceilings of their own (never a card). Defaults in the proxy:
+# registries and the browser's small requests have ceilings of their own (never a card). Defaults in the proxy;
+# 0 for these six lets nothing pass (it is not « no limit »):
 # send_held_site_kb_hour = 16 # per held site per hour
 # send_held_kb_hour = 64      # all held sites of an agent together, per hour
 # registry_send_mb_hour = 6   # sent (not downloaded) to the package registries, per sandbox

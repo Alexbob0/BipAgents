@@ -367,7 +367,9 @@ def test_a_held_day_reads_on_each_hour(tmp_path, monkeypatch):
 
     results, held, validated, later = asyncio.run(through(proxy, monkeypatch, site, steps))
     assert held <= 64 * 1024, held
-    assert results[-1][0].startswith("HTTP/1.1 403 Sending paused")
+    # the day's hold is no card to answer: a plain « limited for the rest of the hour » (S-2)
+    assert results[-1][0] == ("HTTP/1.1 403 Sending limited for the rest of the hour - today's small sends are used "
+                              "up, retry within the hour")
     assert validated[0].startswith("HTTP/1.1 200") and validated[1] == 100 * 1024
     assert later[0].startswith("HTTP/1.1 200")
 
@@ -409,7 +411,7 @@ def test_many_distinct_names_reach_the_days_total(tmp_path, monkeypatch):
     [line] = reports_of(reports)
     assert line["day"] is True and line["host"].endswith(".leak.example")
     # the held hour spent: any new host not validated is refused, until the hour turns
-    assert again.startswith("HTTP/1.1 403 Sending paused")
+    assert again.startswith("HTTP/1.1 403 Sending limited for the rest of the hour")
     assert proxy.day_of("vie")["unvalidated"] <= 20 * 1024
 
 
@@ -669,6 +671,184 @@ def test_a_restart_keeps_the_counts(tmp_path, monkeypatch):
     third, _, _ = load(tmp_path, monkeypatch, AGENTS, LIMITS)
     third.load_counts()
     assert third._days == {} and third._registries == {}
+
+
+class _FakeWriter:
+    def close(self):
+        pass
+
+
+def test_the_browser_reads_a_held_day(tmp_path, monkeypatch):
+    """S-4 (11/11 review): once the day is on hold and the agent's held hour is spent, a program's CONNECT to a site
+    not validated is refused, but the browser's is not (reading is never cut): its name comes from its pool."""
+    # a program (no BIP_BROWSERS): its CONNECT is refused once the held hour is spent
+    prog, _, _ = load(tmp_path, monkeypatch, AGENTS, dict(LIMITS, held_hour=1))
+    prog.day_of("vie")["held"] = True
+
+    async def program_steps(port):
+        return (await tunnel(port, "a.example.net", VIE))[0]
+
+    program = asyncio.run(through(prog, monkeypatch, Site(), program_steps))
+    assert program.startswith("HTTP/1.1 403 Sending limited"), program
+
+    # the browser (its address): its CONNECT still passes, its name taken from its pool
+    other = tmp_path / "br"
+    other.mkdir()
+    proxy, _, _ = load(other, monkeypatch, AGENTS, dict(LIMITS, held_hour=1),
+                       browsers={"127.0.0.1": "vie"}, env={"BIP_BROWSERS": "127.0.0.1"})
+    proxy.day_of("vie")["held"] = True
+
+    async def browser_steps(port):
+        before = proxy.day_of("vie")["free"]
+        status = (await tunnel(port, "b.example.net"))[0]
+        return status, proxy.day_of("vie")["free"] - before
+
+    browser, free_grew = asyncio.run(through(proxy, monkeypatch, Site(), browser_steps))
+    assert browser.startswith("HTTP/1.1 200")
+    assert free_grew == len("b.example.net")
+
+
+def test_a_name_the_bridge_cannot_card_is_refused(tmp_path, monkeypatch):
+    """A host the bridge could never put on a card (an underscore, a label too long) can never be allowed and used to
+    carry the day's total with no card: the proxy refuses it at CONNECT, unless the person already validated it."""
+    proxy, _, _ = load(tmp_path, monkeypatch,
+                       {**AGENTS, "vie": {**AGENTS["vie"], "hosts": ["ok_underscore.example"]}})
+    site = Site()
+
+    async def steps(port):
+        bad = (await tunnel(port, "a_b.evil.example", VIE))[0]
+        badlabel = (await tunnel(port, ("x" * 64) + ".evil.example", VIE))[0]
+        good = (await tunnel(port, "www.lemonde.fr", VIE))[0]
+        validated = (await tunnel(port, "ok_underscore.example", VIE))[0]
+        registry = (await tunnel(port, "pypi.org", VIE))[0]
+        return bad, badlabel, good, validated, registry
+
+    bad, badlabel, good, validated, registry = asyncio.run(through(proxy, monkeypatch, site, steps))
+    assert bad == "HTTP/1.1 403 Site name not allowed - only names with letters, digits and dashes are reachable"
+    assert badlabel.startswith("HTTP/1.1 403 Site name not allowed")
+    assert good.startswith("HTTP/1.1 200") and validated.startswith("HTTP/1.1 200")
+    assert registry.startswith("HTTP/1.1 200")
+
+
+def test_a_flooding_site_with_a_non_reading_client_stays_bounded(tmp_path, monkeypatch):
+    """B-3 (11/11 review): a site that writes without stopping to a client that never reads cannot grow the proxy's
+    memory: the per-tunnel write buffers are small, so the proxy stops reading from the site instead of buffering."""
+    proxy, _, _ = load(tmp_path, monkeypatch, AGENTS, LIMITS)
+    monkeypatch.setattr(proxy, "WRITE_BUFFER", 8 * 1024)
+    flood = Site(serve=64 * 1024 * 1024)
+
+    async def steps(port):
+        status, reader, writer = await tunnel(port, "stream.example.net", VIE)
+        writer.write(record(22, 517) + record(23, 300))
+        await writer.drain()
+        await asyncio.sleep(1.0)                                            # never read from `reader`
+        buffered = [t[3].transport.get_write_buffer_size() for t in proxy._open_tunnels if t[1] == "stream.example.net"]
+        writer.close()
+        return status, buffered
+
+    status, buffered = asyncio.run(through(proxy, monkeypatch, flood, steps))
+    assert status.startswith("HTTP/1.1 200")
+    assert buffered and all(b <= 8 * 1024 + 64 * 1024 for b in buffered), buffered
+
+
+def test_a_total_cap_on_open_connections(tmp_path, monkeypatch):
+    """B-3: a cap on the proxy's open connections in all, not only per address."""
+    proxy, _, _ = load(tmp_path, monkeypatch, AGENTS, LIMITS)
+    monkeypatch.setattr(proxy, "MAX_OPEN_TOTAL", 8)
+
+    async def steps(port):
+        held = []
+        for _ in range(8):
+            reader, writer = await asyncio.open_connection("127.0.0.1", port)
+            writer.write(b"CONNECT a.example.net:443 HTTP/1.1\r\nX-Pad: " + b"p" * 500)
+            await writer.drain()
+            held.append(writer)
+        await asyncio.sleep(0.2)
+        status, _, w = await tunnel(port, "www.lemonde.fr", VIE)
+        w.close()
+        for writer in held:
+            writer.close()
+        return status
+
+    status = asyncio.run(through(proxy, monkeypatch, Site(), steps))
+    assert status == "HTTP/1.1 429 Too many connections open at once - close some, then retry"
+
+
+def test_counts_are_written_only_when_they_moved_and_saved_with_a_tunnel(tmp_path, monkeypatch):
+    """B-2: an idle proxy does not rewrite counts.json (the backups watch its folder). S-1: save_counts runs with an
+    open tunnel present (the clean stop no longer waits for it)."""
+    proxy, _, _ = load(tmp_path, monkeypatch, AGENTS, LIMITS)
+    counts = tmp_path / "counts.json"
+    proxy._open_tunnels.append(["vie", "x.example.net", False, _FakeWriter(), _FakeWriter()])
+    proxy.day_of("vie")["unvalidated"] = 100
+    proxy.save_counts()
+    assert json.loads(counts.read_text())["days"]["vie"]["unvalidated"] == 100
+    inode = counts.stat().st_ino
+    proxy.save_counts()
+    proxy.save_counts()
+    assert counts.stat().st_ino == inode                                   # nothing moved: not rewritten
+    proxy.day_of("vie")["unvalidated"] = 200
+    proxy.save_counts()
+    assert json.loads(counts.read_text())["days"]["vie"]["unvalidated"] == 200
+
+
+STOPPABLE = """
+import asyncio, importlib.util, os, sys
+spec = importlib.util.spec_from_file_location("egress", sys.argv[1])
+proxy = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(proxy)
+site = int(os.environ["TEST_SITE_PORT"])
+async def resolve(host, port):
+    return ["127.0.0.1"]
+async def connect(addresses, port):
+    return await asyncio.open_connection("127.0.0.1", site)
+proxy.resolve, proxy.connect = resolve, connect
+asyncio.run(proxy.main())
+"""
+
+
+def test_sigterm_with_a_tunnel_open_saves_and_stops(tmp_path):
+    """S-1 (11/11 review): SIGTERM while a tunnel is open (a browser's keep-alive) saves the counts at once and the
+    proxy stops within a moment, instead of waiting for the tunnel (Python 3.12's `wait_closed`)."""
+    import signal
+    import socket
+    import subprocess
+    import time
+    hold = socket.socket()
+    hold.bind(("127.0.0.1", 0))
+    hold.listen(4)                                          # a site that accepts and never answers
+    probe = socket.socket()
+    probe.bind(("127.0.0.1", 0))
+    port = probe.getsockname()[1]
+    probe.close()
+    policy = tmp_path / "sites.json"
+    policy.write_text(json.dumps({"agents": AGENTS, "limits": LIMITS}))
+    env = {"BIP_POLICY": str(policy), "BIP_REPORTS": str(tmp_path / "reports.jsonl"),
+           "BIP_USAGE": str(tmp_path / "usage.json"), "BIP_PORT": str(port), "BIP_ALLOW": "pypi.org",
+           "TEST_SITE_PORT": str(hold.getsockname()[1]), "PATH": "/usr/bin:/bin"}
+    proc = subprocess.Popen([sys.executable, "-I", "-u", "-c", STOPPABLE, str(HERE / "egress_proxy.py")], env=env,
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    try:
+        for _ in range(100):
+            try:
+                client = socket.create_connection(("127.0.0.1", port), timeout=0.2)
+                break
+            except OSError:
+                time.sleep(0.1)
+        client.sendall(f"CONNECT up.example.net:443 HTTP/1.1\r\nProxy-Authorization: {VIE}\r\n\r\n".encode())
+        assert client.recv(100).startswith(b"HTTP/1.1 200")
+        client.sendall(record(22, 517) + record(23, 3000))  # counted: the counts move
+        time.sleep(0.3)
+        proc.send_signal(signal.SIGTERM)
+        started = time.time()
+        proc.wait(timeout=5)
+        assert time.time() - started < 3                    # did not wait for the open tunnel
+        saved = json.loads((tmp_path / "counts.json").read_text())
+        assert saved["days"]["vie"]["unvalidated"] >= 3000
+        client.close()
+    finally:
+        proc.kill()
+        hold.close()
 
 
 def test_downloads_of_any_size_pass(tmp_path, monkeypatch):

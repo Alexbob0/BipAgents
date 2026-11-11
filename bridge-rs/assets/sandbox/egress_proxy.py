@@ -22,8 +22,8 @@ abuse complaint can be traced to an agent.
   name of each host not validated it connects to, once a day per name (data can be spelt in names). To a host its
   person did not validate (the registries count as validated: they have their own ceiling, `registry_hour` and
   `registry_day` per agent, never a card), past `send_site_hour` bytes per host per hour, or `send_day` bytes per
-  agent per day across such hosts (a slow leak), the tunnel is cut: nothing more
-  reaches the site, the proxy keeps reading what the client still sends for a few seconds to know its size, then
+  agent per day across such hosts (a slow leak), the tunnel is cut: nothing more reaches the site, the proxy keeps
+  reading what the client still sends for a few seconds to know its size, then
   appends one line `{"kind": "send", "agent", "host", "bytes"}` to `BIP_REPORTS` (the bridge reads it and asks the
   person on ONE card per agent). Until the person answers, that host (or, past the day's total, every host not
   validated) is held: it still opens for reading, within small allowances that come back every hour, shared by all
@@ -36,10 +36,12 @@ abuse complaint can be traced to an agent.
   the day's `send_day` (256 KB), then `held_hour` (64 KB) an hour for the rest of the day: at most 256 KB + 24 x 64 KB
   = 1.75 MB (the first card is raised at the 256 KB). On top of it the browser's free small records (its pool) and
   what goes to the package registries (their ceiling), each said where it is set.
-- **Where the counts live**: in this process's memory, written to `counts.json` next to `BIP_USAGE` every few
-  seconds, at each cut and at a clean stop, and read back at start the same day: a restart of the proxy hands out no
-  new allowance (11/11 audit R-1). Each client address holds at most `MAX_OPEN_PER_CLIENT` connections, and a request
-  head is at most `HEADER_LIMIT` bytes, so one sandbox cannot run the proxy out of memory.
+- **Where the counts live**: in this process's memory, written to `counts.json` next to `BIP_USAGE` when they moved
+  (every few seconds at most, at each cut and at a clean stop), and read back at start the same day: a restart of the
+  proxy hands out no new allowance (11/11 audit R-1). At most `MAX_OPEN_PER_CLIENT` connections per client address and
+  `MAX_OPEN_TOTAL` in all, a request head of at most `HEADER_LIMIT` bytes, and a per-tunnel write buffer of at most
+  `WRITE_BUFFER` (the proxy stops reading one side when the other does not read), so a sandbox or a flooding site
+  cannot run the proxy out of memory.
 - **On the offer's servers** (limits the bridge sets, 0 = none): `download_day` bytes received per agent per day,
   `connections_minute` new connections per agent per minute, and `BIP_BLOCKLIST` (piracy and torrent trackers' names,
   one per line, refused with their subdomains). Each refusal says so plainly.
@@ -109,7 +111,10 @@ COUNTS_EVERY = 10
 COUNTS = os.path.join(os.path.dirname(USAGE), "counts.json") if USAGE else ""
 # one client address: so many connections open at once at most; a request head of at most so many bytes
 MAX_OPEN_PER_CLIENT = 128
+MAX_OPEN_TOTAL = 384
 HEADER_LIMIT = 16 * 1024
+# a tunnel's side that does not read: at most so much waits in the proxy for it (asyncio's write buffer)
+WRITE_BUFFER = 16 * 1024
 # names of hosts not validated an agent connected to today, each charged once (`charge_name`); past so many, each time
 NAMES_SEEN = 4096
 EXIT_SOCK = os.environ.get("BIP_EXIT_SOCK", "")
@@ -282,6 +287,19 @@ def blocked_name(host):
 
 
 LOCAL_SUFFIXES = ("localhost", "local", "internal", "lan", "home", "arpa", "test", "invalid", "localdomain")
+
+
+def nameable(host):
+    """A name the bridge can put on a card (sandbox_sites.rs `clean_host`): labels of letters, digits and dashes, not
+    starting or ending with a dash, at most 63 each, 253 in all, two at least (11/11 review: a send to any other name
+    could never raise a card)."""
+    labels = host.split(".")
+    return len(host) <= 253 and len(labels) >= 2 and all(
+        0 < len(label) <= 63 and all(c in NAME_CHARS for c in label) and label[0] != "-" and label[-1] != "-"
+        for label in labels)
+
+
+NAME_CHARS = frozenset("abcdefghijklmnopqrstuvwxyz0123456789-")
 
 
 def local_name(host):
@@ -532,7 +550,7 @@ def free_over(agent, host, spared, day):
     return spared - taken
 
 
-def charge_name(agent, host):
+def charge_name(agent, host, browser=False):
     """A new connection (a CONNECT, a plain-HTTP request) to a host not validated: its name's length counts as sent,
     before it is looked up — data can be spelt in names (11/11 audit PI-5), many distinct ones reach the day's total
     like any slow leak (one report, then the held hours). A name costs its length once a day, then 2 bytes at each
@@ -549,8 +567,12 @@ def charge_name(agent, host):
             agent)
     if hold_of(agent, host, day):
         if held_hour(day)["held_sent"] + size > limit("held_hour"):
-            return False
-        day["held_sent"] += size
+            # the browser keeps reading: its name then comes from its pool of free bytes (the bound it has anyway);
+            # a program, or a browser past its pool too, is refused until the hour turns
+            if not browser or free_over(agent, host, size, day):
+                return False
+        else:
+            day["held_sent"] += size
     else:
         day["unvalidated"] += size
     if len(seen) < NAMES_SEEN:
@@ -802,6 +824,8 @@ REFUSED = "Sending to this site refused by your person - it stays readable, retr
 REGISTRY_HOUR = "Package registries paused - too much was sent to them, retry within the hour"
 REGISTRY_DAY = "Package registries paused - too much was sent to them today, retry tomorrow"
 PAUSED = "Sending paused - your person has a card to answer about this site, retry within the hour"
+PAUSED_TODAY = "Sending limited for the rest of the hour - today's small sends are used up, retry within the hour"
+UNNAMED = "Site name not allowed - only names with letters, digits and dashes are reachable"
 TOO_MANY_OPEN = "Too many connections open at once - close some, then retry"
 BODIES = {
     REGISTRY_HOUR: "What your programs send to the package registries is limited per hour and per day, and the "
@@ -812,6 +836,10 @@ BODIES = {
                   "their work.",
     REFUSED: "Your person refused sending to this site. It stays readable with a small allowance an hour, which is "
              "used up: retry within the hour, and do without sending to it.",
+    PAUSED_TODAY: "Your programs sent today what sites not validated may take without your person: a small amount "
+                  "passes each hour, this hour's is used up. Retry within the hour; if your person's work needs "
+                  "this site, ask them to allow it (sandbox_sites_request).",
+    UNNAMED: "Sites are reached by their name (letters, digits and dashes, like data.gouv.fr).",
     PAUSED: "You sent this site more than a small amount: your person has a card to answer. Reading goes on with a "
             "small allowance an hour, which is used up: retry within the hour, or wait for their answer.",
     TOO_MANY_OPEN: "Your programs hold too many connections to the proxy open at once: close some, then retry.",
@@ -928,7 +956,7 @@ async def connect(addresses, port):
     last = None
     for address in addresses:
         try:
-            return await asyncio.wait_for(asyncio.open_connection(address, port), WAIT)
+            return await asyncio.wait_for(asyncio.open_connection(address, port, limit=HEADER_LIMIT), WAIT)
         except Exception as exc:
             last = exc
     raise last or OSError("no address")
@@ -949,7 +977,7 @@ async def serve(reader, writer):
     hundreds of unfinished request heads could otherwise run the proxy out of memory, and a restart used to reset
     every count, 11/11 review R-1)."""
     _, peer = ends(writer)
-    if _open_by_client.get(peer, 0) >= MAX_OPEN_PER_CLIENT:
+    if _open_by_client.get(peer, 0) >= MAX_OPEN_PER_CLIENT or sum(_open_by_client.values()) >= MAX_OPEN_TOTAL:
         log("blocked (too many connections open)", "-", peer)
         return await answer(writer, 429, TOO_MANY_OPEN)
     _open_by_client[peer] = _open_by_client.get(peer, 0) + 1
@@ -1030,8 +1058,13 @@ async def handle(reader, writer):
         log("blocked (download limit)", method, target, agent)
         return await answer(writer, 403, DOWNLOADS)
     if counted and not validated(agent, host):
-        if (not browser and held_spent(agent, host)) or not charge_name(agent, host):
-            reason = REFUSED if refused(agent, host) else PAUSED
+        if not nameable(host):
+            # a send to it could never be asked about (the bridge's cards take these names only): not reachable
+            log("blocked (not a site's name)", method, target, agent)
+            return await answer(writer, 403, UNNAMED)
+        if (not browser and held_spent(agent, host)) or not charge_name(agent, host, browser):
+            reason = REFUSED if refused(agent, host) else PAUSED if _held.get((agent, host), 0) > time.time() \
+                else PAUSED_TODAY
             log("blocked (held: the hour's small allowance went)", method, target, agent)
             return await answer(writer, 403, reason)
     if agent is not None and too_many_connections(agent):
@@ -1074,6 +1107,11 @@ async def tunnel(reader, writer, up_reader, up_writer, method, target, agent, ho
     registry = senders if senders and normal(host) in REGISTRIES and not connector(agent) else None
     guard = Guard(agent if counted else None, host, counted and not validated(agent, host), browser, registry) \
         if counted or registry else None
+    for side in (writer, up_writer):
+        try:
+            side.transport.set_write_buffer_limits(high=WRITE_BUFFER)
+        except Exception:
+            pass
     entry = [agent, normal(host), phone_exit(host, agent), writer, up_writer]
     _open_tunnels.append(entry)
     try:
@@ -1171,8 +1209,18 @@ def counts_state():
             "registries": {s: w for s, w in _registries.items() if w[2] == day}}
 
 
+_saved = {"body": None}
+
+
 def save_counts():
-    write_json(COUNTS, counts_state())
+    """Written only when something moved since the last write (an idle place does not touch the file: the backups
+    look at it, 11/11 review B-2)."""
+    state = counts_state()
+    body = json.dumps({k: v for k, v in state.items() if k != "at"}, sort_keys=True)
+    if body == _saved["body"]:
+        return
+    _saved["body"] = body
+    write_json(COUNTS, state)
 
 
 def same_kind(value, default):
@@ -1239,7 +1287,11 @@ async def main():
         loop.add_signal_handler(sig, lambda: stopped.done() or stopped.set_result(None))
     async with server:
         await stopped
-    save_counts()   # a clean stop (podman stop): the counts kept for the next start
+        # a clean stop (podman stop): the counts kept for the next start, at once, then out — leaving the block would
+        # wait for every open connection since Python 3.12 (11/11 review S-1), until podman's SIGKILL
+        save_counts()
+        write_usage()
+        os._exit(0)
 
 
 if __name__ == "__main__":
