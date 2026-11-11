@@ -38,8 +38,8 @@
 //!    fields are emptied and the browser given back anyway. `cancel_payment` does the same at once, and so does
 //!    « Suspendre tous les paiements » in the app. A bank that asks in the page (a code sent by SMS): the person takes
 //!    the browser over in the app's live view and types it; the payment's hold stays for the agent meanwhile
-//!    (`person_holds`), and the time limit is then their own hold's (15 minutes). Given back, the tab shows an empty page (the document the card was
-//!    typed into is gone), except when the page moved on to a new document by itself (the shop's confirmation);
+//!    (`person_holds`), and the time limit is then their own hold's (15 minutes). Given back, the tab shows an empty
+//!    page (the document the card was typed into is gone), except when the page moved on to a new document by itself (the shop's confirmation);
 //! 6. each step goes to the journal (cards.rs, without any number) and the payment is kept on the card: « dépensé
 //!    par tes agents » in the app; a single-use card is then used, and the app proposes to enter its new numbers.
 //!
@@ -366,6 +366,8 @@ pub fn person_holds(agent: &str, on: bool) -> bool {
 fn nobody_holds(state: &AppState, agent: &str) {
     person_holds(agent, false);
     state.desktop_control.lock().unwrap_or_else(|e| e.into_inner()).insert(agent.to_string(), false);
+    // its token too (fix review 11/11, 4th check): never reused for the person's hold at this payment's end
+    let _ = std::fs::remove_file(crate::browsers::folder(&state.config(), agent).join(crate::browsers::HOLD_TOKEN));
 }
 
 /// The token the person's live view shows to reach the page while a payment holds the browser and they took it
@@ -514,7 +516,7 @@ async fn release_entry(config: &Config, agent: &str, outcome: &str, entry: Held)
     // The person took the browser over during the payment: the hold becomes theirs (the page is clean now). Handed back
     // meanwhile: their hold goes too (it never touches a payment's).
     let person = person_in(agent);
-    crate::browsers::end_payment_hold(config, agent, person).await;
+    crate::browsers::end_payment_hold(config, agent, &entry.token, person).await;
     if person && !person_in(agent) {
         crate::browsers::hold(config, agent, false).await;
     }
@@ -609,10 +611,16 @@ pub async fn stop_all(config: &Config) {
     for agent in &agents {
         ask_stop(agent, "suspended");
     }
-    for agent in agents {
-        let _one_at_a_time = lock_of(&agent).lock_owned().await;
-        release(config, &agent, "suspended").await;
-    }
+    // In a task of its own (fix review 11/11, 4th check): the app's request cut off after the first agent no longer
+    // leaves the others stopped but held.
+    let config = Arc::new(config.clone());
+    let all = tokio::spawn(async move {
+        for agent in agents {
+            let _one_at_a_time = lock_of(&agent).lock_owned().await;
+            release(&config, &agent, "suspended").await;
+        }
+    });
+    let _ = all.await;
 }
 
 /// At start: the payments' (and vault fills') holds a stopped bridge left in the agents' browsers (security check
@@ -625,14 +633,16 @@ pub async fn stop_all(config: &Config) {
 /// restart (a request aborted during the hold's own command, a lift that failed, a probe that failed at start) would
 /// otherwise keep the agent's browser until the next restart. A hold in use is never taken for a leftover: payments
 /// and the vault's fills hold the agent's lock (`lock_of`) from before their hold to after its lift, and a release
-/// running on is marked (`Releasing`).
+/// running on is marked (`Releasing`). An agent whose lock is taken is in use: skipped, never waited for (fix review
+/// 11/11, 4th check, problem 2: a payment waiting for the person holds it for minutes, and a sweep queued behind it
+/// would end a hold set after it).
 pub async fn end_stale_holds(config: Arc<Config>) {
     for agent in config.agents.values() {
         let name = agent.name.as_str();
         let Some(port) = crate::browsers::ports_of(&config, name).and_then(|p| p.get("cdp").copied()) else {
             continue;
         };
-        let _one_at_a_time = lock_of(name).lock_owned().await;
+        let Ok(_one_at_a_time) = lock_of(name).try_lock_owned() else { continue };
         if held().contains_key(name) || Releasing::now(name) {
             continue; // a payment of this run
         }
@@ -640,7 +650,7 @@ pub async fn end_stale_holds(config: Arc<Config>) {
         if !crate::browsers::stale_payment_hold(&config, name, &token).await {
             continue;
         }
-        tracing::warn!(agent = %name, "card payment: a hold left by a stopped bridge, its tabs left");
+        tracing::warn!(agent = %name, "card payment: a hold nobody ends (a stopped bridge, a call cut off), tabs left");
         let left = match Page::leave_every_tab(port, &token).await {
             Ok(tabs) => {
                 tracing::info!(agent = %name, tabs = tabs, "card payment: every tab left");
@@ -657,18 +667,35 @@ pub async fn end_stale_holds(config: Arc<Config>) {
             tracing::warn!(agent = %name, "card payment: browser neither left nor restarted, its hold kept");
             continue;
         }
-        crate::browsers::hold_for_payment(&config, name, None).await;
+        crate::browsers::lift_payment_hold(&config, name, &token).await;
+        // Hermes' desktop lease taken for that payment or fill (cut off before giving it back) goes with it.
+        if let Some(folder) = crate::desktop::desktop_dir(&config, agent).filter(|f| f.is_dir()) {
+            let lease = crate::desktop::read_lease(&folder);
+            if matches!(lease.get("reason").and_then(Value::as_str), Some("card payment" | "vault password")) {
+                let _ = crate::desktop::set_lease(&folder, false, "");
+            }
+        }
     }
 }
 
-/// How often `end_stale_holds` looks again after the start.
+/// How often `end_stale_holds` looks again after the start (the tests shorten it: `BIP_TEST_STALE_SWEEP_SECONDS`).
 const STALE_SWEEP: Duration = Duration::from_secs(180);
+
+fn stale_sweep() -> Duration {
+    std::env::var("BIP_TEST_STALE_SWEEP_SECONDS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .filter(|s| *s > 0)
+        .map(Duration::from_secs)
+        .unwrap_or(STALE_SWEEP)
+}
 
 /// `end_stale_holds` at start, then every `STALE_SWEEP`.
 pub async fn end_stale_holds_forever(config: crate::config::SharedConfig) {
+    let every = stale_sweep();
     loop {
         end_stale_holds(config.get()).await;
-        tokio::time::sleep(STALE_SWEEP).await;
+        tokio::time::sleep(every).await;
     }
 }
 
@@ -950,7 +977,7 @@ async fn pay(state: &AppState, agent: &AgentConfig, arguments: &Dict, asker: &As
             entry.lease = Some(folder);
         }
     }
-    if !crate::browsers::hold_for_payment(&config, &agent.name, Some(&entry.token)).await {
+    if !crate::browsers::hold_for_payment(&config, &agent.name, &entry.token).await {
         if let Some(folder) = &entry.lease {
             let _ = crate::desktop::set_lease(folder, false, "");
         }
@@ -1390,7 +1417,7 @@ pub(crate) async fn pay_with_values(
             entry.lease = Some(folder);
         }
     }
-    if !crate::browsers::hold_for_payment(&config, &agent.name, Some(&entry.token)).await {
+    if !crate::browsers::hold_for_payment(&config, &agent.name, &entry.token).await {
         if let Some(folder) = &entry.lease {
             let _ = crate::desktop::set_lease(folder, false, "");
         }
