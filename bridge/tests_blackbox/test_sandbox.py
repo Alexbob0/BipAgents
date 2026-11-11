@@ -198,6 +198,32 @@ def test_an_isolated_sandbox_mounts_no_folder_and_reaches_only_the_registries(br
     assert not any("terminal." in " ".join(a) for a in bridge.commands.of("hermes"))
 
 
+def test_a_profile_without_a_sandbox_of_its_own_gets_the_hubs(bridges, fakes):
+    """Hermes gives each profile of its gateway its own terminal settings over Hermes' defaults (`local`), never the
+    hub's (tools/terminal_scope.py): Wellness, moved in by hand, wrote its files on this machine while the bridge sent
+    it to /workspace (« Failed to write file: Permission denied: /workspace », 11/11). The bridge writes the hub's
+    sandbox into such a profile, once; a profile that sets its own is left as it is."""
+    bridge, hub, _ = isolated(bridges, fakes)
+    (hub / "config.yaml").write_text(yaml.safe_dump({"terminal": {"backend": "docker"}}))
+    folder = profile(hub, "wellness")
+    data = yaml.safe_load((folder / "config.yaml").read_text())
+    del data["terminal"]["backend"]
+    (folder / "config.yaml").write_text(yaml.safe_dump(data))
+    started(bridge, hub, ["vie", "wellness"])
+    assert terminal(hub, "wellness")["backend"] == "docker"
+    sets = [e for e in bridge.commands.entries("hermes") if "terminal.backend" in e["argv"]]
+    assert [e["argv"] for e in sets] == [["-p", "wellness", "config", "set", "terminal.backend", "docker"]]
+    assert sets[0]["hermes_home"] == str(hub)
+    assert wait_until(lambda: "now in the hub's sandbox" in bridge.log_tail(2000), timeout=10)
+    # started again: its own now, nothing written
+    bridge.stop()
+    bridge.commands.clear()
+    bridge.start()
+    assert wait_until(lambda: sum(a[:2] == ["volume", "inspect"] for a in bridge.commands.of("podman")) == 4, timeout=10)
+    time.sleep(1)
+    assert not any("terminal.backend" in a for a in bridge.commands.of("hermes"))
+
+
 def test_without_the_registries_proxy_the_sandbox_gets_no_network_at_all(bridges, fakes):
     bridge, hub, _ = isolated(bridges, fakes, agents=("vie",), proxy_ok=False)
     started(bridge, hub, ["vie"])

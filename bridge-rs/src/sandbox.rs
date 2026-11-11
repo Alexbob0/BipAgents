@@ -241,6 +241,39 @@ pub fn engine(config: &Config) -> Option<String> {
     crate::browsers::pyx::which("podman")
 }
 
+/// Where the kernel says whether SELinux enforces (`1`): Fedora, RHEL, aibox.
+const SELINUX_ENFORCE: &str = "/sys/fs/selinux/enforce";
+/// The label a folder every container may write in carries (what podman's `:z` sets).
+const CONTAINER_LABEL: &str = "container_file_t";
+
+/// Hermes' own folders of an agent's sandbox, `<profile>/sandboxes` (its `/workspace` and `/root`, bind-mounted from
+/// there without a label: tools/environments/docker.py, `container_persistent`), made the containers' where SELinux
+/// enforces. Without it the sandbox can't write its own /workspace (« bash: …/workspace/.hermes-tmp.19: Permission
+/// denied », lab on aibox 11/11, the same podman as Alex's place). The folder itself and what is in it, once:
+/// what Hermes makes in it afterwards takes its label. Never fails the start: a refusal is logged.
+pub async fn label_hermes_folders(profile: &Path, run: &Run) {
+    if std::fs::read_to_string(SELINUX_ENFORCE).map(|t| t.trim() == "1").unwrap_or(false) {
+        label_for_containers(&profile.join("sandboxes"), run).await;
+    }
+}
+
+async fn label_for_containers(dir: &Path, run: &Run) {
+    if std::fs::create_dir_all(dir).is_err() {
+        return;
+    }
+    let shown = dir.to_string_lossy().into_owned();
+    let label = run(args(&["stat", "-c", "%C", &shown]), BTreeMap::new()).await.unwrap_or_default();
+    if label.contains(&format!(":{CONTAINER_LABEL}:")) {
+        return;
+    }
+    match run(args(&["chcon", "-R", "-t", CONTAINER_LABEL, &shown]), BTreeMap::new()).await {
+        Ok(_) => tracing::info!(target: "bipbridge::sandbox", folder = %shown, before = %label.trim(),
+            "the sandbox's own folders labelled for its containers (SELinux): its /workspace writable"),
+        Err(exc) => tracing::warn!(target: "bipbridge::sandbox", folder = %shown, error = %format!("{exc:#}"),
+            "the sandbox's own folders not labelled: its /workspace stays read-only under SELinux"),
+    }
+}
+
 /// Whether the bridge isolates this agent's sandbox: an agent it manages, whose tools run in Hermes' docker sandbox,
 /// on an install that isolates. Agents set up by hand (`shares = "external"`) keep their own mounts.
 pub fn isolates(config: &Config, agent: &AgentConfig) -> bool {
