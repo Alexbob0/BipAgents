@@ -100,6 +100,13 @@ async fn the_page_runs_only_its_own_scripts() {
     for name in ["app.js", "api.js", "markdown.js", "bips.js", "style.css"] {
         assert_eq!(app.get(&format!("/console/static/{name}"), &[]).await.status, 200, "{name}");
     }
+    // a card's detail (a routine's whole prompt, a proposal's before / after) is drawn, as text, before its buttons
+    // (security review PI-6-3, C1: « Autoriser une fois » started a routine with none of its words shown)
+    let script = app.get("/console/static/app.js", &[]).await.text();
+    assert!(script.contains(r#"${request.bip_detail && html`<p class="detail">${request.bip_detail}</p>`}"#));
+    assert!(!script.contains("innerHTML"), "every card text goes in as text");
+    let style = app.get("/console/static/style.css", &[]).await.text();
+    assert!(style.contains(".approval .detail { white-space: pre-wrap; overflow-wrap: anywhere; }"));
     let to_page = app.get("/console", &[]).await;
     assert_eq!(to_page.status, 307);
     assert_eq!(to_page.header("location").as_deref(), Some("/console/"));

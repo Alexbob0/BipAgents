@@ -210,6 +210,7 @@ function Approval({ request, onChoose }) {
     <h4>${T.approvalTitle}</h4>
     ${request.description && html`<p>${request.description}</p>`}
     ${request.command && html`<pre><code>${request.command}</code></pre>`}
+    ${request.bip_detail && html`<p class="detail">${request.bip_detail}</p>`}
     <div class="row">${choices.map(c => html`<button key=${c} class=${c === "deny" ? "" : "primary"} onClick=${() => onChoose(c)}>${label[c] || c}</button>`)}</div>
   </div>`;
 }
