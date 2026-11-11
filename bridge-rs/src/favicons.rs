@@ -1,5 +1,6 @@
 //! Site icons for the apps, fetched here rather than by the phone: the links in the agents' replies show their site's
-//! icon, and DuckDuckGo's icon service (which serves them) sees this server's address, never the phone's.
+//! icon, and DuckDuckGo's icon service (which serves them) sees this server's address, never the phone's, and only the
+//! site's registrable domain (`icon_site`).
 //!
 //! - `GET /v1/favicon/{host}` -> the icon (kept 30 days on disk), 404 when the site has none
 
@@ -63,6 +64,13 @@ fn valid_host(host: &str) -> bool {
     (1..=253).contains(&length) && HOST.is_match(host)
 }
 
+/// The site whose icon is asked: its registrable domain only (`a1b2c3.x.evil.example` → `evil.example`). A link in a
+/// reply may come from a mail or a page the agent read; its host's labels could carry data out to the name server of
+/// whoever owns the domain once the icon service looks the name up (security 11/11).
+fn icon_site(host: &str) -> String {
+    crate::mail_tidy::registrable(host)
+}
+
 /// Seconds since the file last changed (None: no such file).
 fn file_age(path: &std::path::Path, now: f64) -> Option<f64> {
     tk::mtime(path).map(|m| now - m)
@@ -73,6 +81,7 @@ async fn favicon(State(state): State<AppState>, Path(host): Path<String>) -> Api
     if !valid_host(&host) {
         return Err(HttpError::new(400, "not a site name"));
     }
+    let host = icon_site(&host);
     let cache = folder(&state.config());
     let (icon, missing) = (cache.join(format!("{host}.icon")), cache.join(format!("{host}.missing")));
     let now = py::time_time();
@@ -126,5 +135,13 @@ mod tests {
         assert!(!valid_host(&format!("{}.com", "a".repeat(260))));
         assert_eq!(image_type(b"\x89PNG\r\n"), "image/png");
         assert_eq!(image_type(b"<html>"), "");
+    }
+
+    #[test]
+    fn only_the_registrable_domain_is_asked() {
+        assert_eq!(icon_site("a1b2c3.x.evil.example"), "evil.example");
+        assert_eq!(icon_site("www.lemonde.fr"), "lemonde.fr");
+        assert_eq!(icon_site("news.bbc.co.uk"), "bbc.co.uk");
+        assert_eq!(icon_site("example.com"), "example.com");
     }
 }

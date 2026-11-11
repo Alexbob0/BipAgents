@@ -123,8 +123,10 @@ their place on the all-included offer. Everything personal goes here, with that 
   (`/v1/replies`, `/v1/outbox`, `/v1/approvals`). Notification content does not come through Apple or Google.
 - **Speech:** the agents' replies go to the bridge to be spoken (`/v1/tts/*`) when the phone does not speak them
   itself.
-- **Site icons** before links: requested from the bridge (`/v1/favicon/<host>`), which asks DuckDuckGo's icon service.
-  The phone never contacts the icon service or the site.
+- **Site icons** before links: requested from the bridge (`/v1/favicon/<host>`), which asks DuckDuckGo's icon service
+  for the site's registrable domain only (`a.b.example.fr` → `example.fr`). The phone never contacts the icon service
+  or the site. **Links in replies** are never fetched by the app (no preview): a tap opens them. A Google Maps link
+  gets a card made from the link alone (a map of its place: MapKit on the iPhone, the Maps SDK on Android).
 - **Weather and routes** (`bridge-rs/src/weather.rs`, `routes.rs`): the « Météo » switch is an agent setting
   (`PATCH /v1/agents/{id}/settings {"weather": bool}`). The bridge, not the phone, asks OpenStreetMap's Nominatim for
   the place and MET Norway for the forecast, with only the place's name and its coordinates rounded to 2 decimals. A
