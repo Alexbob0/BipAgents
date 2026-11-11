@@ -636,6 +636,8 @@ async fn served_timeline(
     let want = crate::threads::want_of(&q)?;
     let threads = crate::threads::threads_of(&state);
     let unreachable = |_| HttpError::new(502, "the agent can't be reached");
+    // read as Hermes keeps it now: a relative's turn is a guest run, whose end does not refresh the owner's copy
+    threads.source(&agent).forget(&str_of(&c, "session"));
     let thread = threads.resolve(&agent, &str_of(&c, "session")).await.map_err(unreachable)?.ok_or_else(HttpError::not_found)?;
     let segments = threads.line(&agent, &thread).await.map_err(unreachable)?;
     let theirs = crate::shared_pages::pages_for(&state.config(), &agent.name, &household);
