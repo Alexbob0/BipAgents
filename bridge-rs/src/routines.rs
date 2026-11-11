@@ -1434,7 +1434,18 @@ pub fn call(config: &Config, agent: &str, arguments: &Dict, origin: Option<&str>
             let by = Maker::Agent;
             let prompt = arg(arguments, "prompt");
             // its card shows all it will run (B-A): a prompt or a name longer than that is refused, the name cleaned
+            // and one of its own already has that name: refused (S5: two « Point du matin » the person cannot tell
+            // apart, one of them a look-alike)
+            let same = |a: &str, b: &str| flat(a, NAME_MAX).to_lowercase() == flat(b, NAME_MAX).to_lowercase();
             let made = agent_made_name(&name, &prompt)
+                .and_then(|name| match mine.iter().find(|r| same(&r.name, &name)) {
+                    Some(r) => Err(format!(
+                        "You already have a routine named « {} »: change that one with `update`, or choose another \
+name for this one.",
+                        r.name
+                    )),
+                    None => Ok(name),
+                })
                 .and_then(|name| create(config, agent, &name, &arg(arguments, "schedule"), &prompt, origin, by));
             match made {
                 Ok(r) => {
@@ -2005,6 +2016,27 @@ Pour la relancer tout de suite : « Lancer maintenant » sur sa page."
         assert_eq!(crate::approval_level::classify_card(&way), "routine_way");
         let kept = answer(&config, "vie", &card_id(&card), "deny").unwrap();
         assert!(kept.enabled && kept.muted && kept.card.is_none() && get(&config, &id).is_some());
+    }
+
+    #[test]
+    fn an_agent_cannot_make_a_second_routine_of_the_same_name_the_person_can() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(&dir);
+        let by = Maker::Person { muted: false };
+        create(&config, "vie", "Point du matin", "every day at 7:30", "Résume mes e-mails.", None, by).unwrap();
+        for twin in ["Point du matin", "point DU matin", " Point\ndu matin\u{200b}"] {
+            let a = json!({"action": "create", "name": twin, "schedule": "every 2h", "prompt": "Ailleurs."});
+            let refused = call(&config, "vie", &args(a), None);
+            assert!(refused.result.get("isError") == Some(&json!(true)) && refused.card.is_none(), "{twin:?}");
+            assert!(text_of(&refused).contains("already have a routine named « Point du matin »"), "{}", text_of(&refused));
+        }
+        // another agent's of that name, or another name: fine; the person's own twin too
+        let a = json!({"action": "create", "name": "Point du matin", "schedule": "every 2h", "prompt": "x"});
+        assert_eq!(call(&config, "autre", &args(a), None).result.get("isError"), Some(&json!(false)));
+        let a = json!({"action": "create", "name": "Point du soir", "schedule": "every 2h", "prompt": "x"});
+        assert_eq!(call(&config, "vie", &args(a), None).result.get("isError"), Some(&json!(false)));
+        assert!(create(&config, "vie", "Point du matin", "every 2h", "y", None, by).is_ok());
+        assert_eq!(list(&config, Some("vie")).len(), 3);
     }
 
     #[test]
