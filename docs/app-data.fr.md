@@ -22,7 +22,7 @@ son test, [`AccountCryptoTest.kt`](../android/app/src/test/java/io/github/bipage
 C’est une lecture du code, pas une capture du trafic réseau. L’adresse e-mail d’agent (§1) a été ajoutée le 22/10/2026
 d’après le contrat d’interface du bridge, avant le code des apps qui s’en sert.
 
-## 0. Bibliothèques : aucun traceur
+## 0. Bibliothèques : aucun traceur de Kerfy Studio
 
 - **iOS** (`BipAgents.xcodeproj/.../Package.resolved`, `Packages/*/Package.swift`) : un seul paquet externe,
   `onnxruntime-swift-package-manager` 1.24.2, qui fait tourner les voix des Bips sur le téléphone. Aucun SDK de mesure
@@ -32,7 +32,7 @@ d’après le contrat d’interface du bridge, avant le code des apps qui s’en
 - **Android** (`android/app/build.gradle.kts`, `android/gradle/libs.versions.toml`) : AndroidX/Compose, OkHttp,
   kotlinx-serialization, CameraX, Media3, Glance, ZXing, ONNX Runtime, le client Health Connect, et ces bibliothèques
   Google : Play Billing, Play Asset Delivery, Play Integrity, Play Install Referrer (`installreferrer`, lu une fois,
-  ci-dessous), Credential Manager + Google ID, le scanner de documents
+  ci-dessous), Credential Manager + Google ID, le scanner de documents et la lecture de texte
   ML Kit (services Play), la localisation des services Play (les geofences des rappels par lieu), le **SDK Google Maps**
   (`maps-compose` : les cartes des réponses, dessinées seulement si le build a une clé Maps, ce qu’ont les builds de
   publication) et **Firebase Cloud Messaging seul** (`firebase-messaging` ; ni Analytics, ni Crashlytics, ni
@@ -126,10 +126,11 @@ de l’offre tout compris. Tout ce qui est personnel va ici, avec la clé de ce 
   seule fois au bridge, qui le garde dans les réglages de l’agent : **le téléphone ne le voit jamais**. Un e-mail en
   attente déclenche une notification (`email_held`).
 - **Inscription aux notifications :** le jeton APNs ou Firebase (ou, à la place, un jeton de relais, voir §3), avec les
-  identifiants des agents (`/v1/devices`). L’extension de notification (`NotificationService/NotificationService.swift`)
-  et le service Android (`push/BipMessagingService.kt`) vont ensuite chercher sur le bridge le texte de la réponse, la
-  commande à approuver et l’audio (`/v1/replies`, `/v1/outbox`, `/v1/approvals`). Le contenu des notifications ne passe
-  pas par Apple ni par Google.
+  identifiants des agents et la clé publique de notification du téléphone (`/v1/devices`). Le bridge chiffre pour ce
+  téléphone seul le nom de l’agent et le début de sa réponse (`bridge-rs/src/push_runs/seal.rs`) ; l’extension de
+  notification (`NotificationService/NotificationService.swift`) et le service Android (`push/BipMessagingService.kt`)
+  les ouvrent sur le téléphone, et vont chercher sur le bridge la commande à approuver et l’audio (`/v1/replies`,
+  `/v1/outbox`, `/v1/approvals`). Le contenu des notifications ne passe pas en clair par Apple ni par Google.
 - **Voix :** les réponses des agents sont envoyées au bridge pour être lues (`/v1/tts/*`) quand le téléphone ne les lit
   pas lui-même.
 - **Icônes des sites** devant les liens : demandées au bridge (`/v1/favicon/<hôte>`), qui interroge le service d’icônes
@@ -141,6 +142,11 @@ de l’offre tout compris. Tout ce qui est personnel va ici, avec la clé de ce 
   Plans (`ChatText.appleMaps`), l’app Android dans Google Maps. Avec `[maps] google_key` sur le bridge, les lieux, le
   mode et les heures de l’itinéraire partent vers l’API Routes de Google pour sa durée et sa distance ; rien n’en est
   gardé.
+- **Cartes et trajets** (`bridge-rs/src/maps.rs`, `map_route.rs`) : pour dessiner une carte dans une réponse ou une
+  page, c’est aussi le bridge qui cherche les lieux chez Nominatim (les noms ou adresses que l’agent place, ce qui peut
+  être une adresse personnelle), prend les images chez OpenStreetMap (`tile.openstreetmap.org`, gardées 30 jours en
+  cache) et le trajet par les rues chez FOSSGIS (`routing.openstreetmap.de`, les coordonnées des étapes à 5 décimales).
+  Le téléphone ne contacte aucun de ces services.
 - **Le navigateur visible de l’agent** (`App/Features/Agents/DesktopView.swift`) : une vue web de la page de
   visualisation du bridge, sans données de site conservées.
 - **Le passage par le téléphone** (`docs/phone-exit.md` ; Android `phoneexit/`, iOS `App/Features/PhoneExit/`) : pour un
@@ -300,15 +306,19 @@ Il n’est utilisé que si la version de l’app définit un hôte de relais (`B
   Google avec la dictée en ligne. La dictée précise (Parakeet) ne prend pas d’indices : le téléphone remet ensuite les
   noms de la personne dans son texte.
 - **Scanner de documents ML Kit sur Android** (services Play) : la numérisation se fait sur le téléphone, et le PDF est
-  joint comme n’importe quel fichier. Selon Google, ML Kit peut envoyer des données d’usage et de diagnostic. L’app ne
-  modifie pas ce comportement.
+  joint comme n’importe quel fichier ; pour un papier du Carnet, son texte est lu sur le téléphone avec la
+  reconnaissance de texte ML Kit (`ui/NotebookPapers.kt`). Selon Google, ML Kit peut envoyer des données d’usage et de
+  diagnostic. L’app ne modifie pas ce comportement.
 - **Cartes des réponses sur Android** (`ui/NativeMaps.kt`, `ui/LinkPreviewCard.kt`) : le SDK Google Maps dessine les
   lieux et itinéraires d’une réponse (pas de « Ma position » : la position de la personne n’est jamais sur ces cartes).
   Ce que Google déclare pour ce SDK : métadonnées de l’appareil et de la requête, adresse IP, un identifiant du SDK,
   traces de plantage, et les déplacements et zooms de la carte quand les API de caméra servent (l’app cadre la carte
   sur les points). L’iPhone les dessine avec MapKit. Les cartes des pages des agents viennent du bridge (`/v1/maps/…`,
   OpenFreeMap derrière) ; la personne qui lit un partage en lecture les demande directement à OpenFreeMap
-  (`readshares/ReadShareMaps.kt`).
+  (`readshares/ReadShareMaps.kt`). Pour placer les lieux d’une réponse, le téléphone envoie leurs noms au `Geocoder`
+  d’Android (en général le service de Google ; `ui/NativeMaps.kt`) ou, sur iPhone, à Plans d’Apple (`MKLocalSearch`,
+  `NativeMaps.swift`). Un lien Google Maps d’une réponse devient une carte faite à partir du lien seul ; aucun autre
+  lien écrit par un agent n’est ouvert par le téléphone (`LinkPreviewCard`).
 - Les rapports de plantage et d’usage d’Apple et de Google (partagés avec les développeurs si la personne l’a accepté
   dans les réglages du système) dépendent d’un réglage du système, pas d’un code de l’app.
 
@@ -342,8 +352,16 @@ fournisseur des agents (ou `[notebook] base_url`), sous un plafond mensuel. Jama
 - **Pages créées par les agents** (`AgentPages.swift`) : affichées dans une vue web verrouillée. Tout chargement
   `http(s)`, `ws(s)`, `ftp` ou `file` est bloqué, de même que la navigation, les fenêtres surgissantes et les données
   conservées.
-- **E-mail au support** (à l’initiative de la personne) : un diagnostic avec les versions, les réglages et l’état de
-  chaque agent ; ni conversation, ni nom, ni adresse, ni clé (`Support.swift`, `ui/Support.kt`).
+- **E-mail au support** (à l’initiative de la personne, sans l’offre) : un diagnostic avec les versions, les réglages
+  et l’état de chaque agent ; ni conversation, ni nom, ni adresse, ni clé (`Support.swift`, `ui/Support.kt`).
+- **Support et avis avec l’offre** (`SupportDesk.swift`, `cloud/SupportDesk.kt`) : `GET /v1/support/code` (le code
+  d’aide) et `POST /v1/support/message` au guichet, avec le message, l’adresse de réponse si la personne la tape, la
+  version et la langue de l’app ; le guichet y joint le code d’aide, le forfait et l’état des places, et l’envoie par
+  e-mail au support.
+- **Le modèle qui aide le Live à savoir quand la personne a fini de parler** (`VoiceDeciderPackage.swift`, Android
+  `voice/decider/VoiceDeciderPackage.kt`) : environ 35 Mo téléchargés depuis une release GitHub du dépôt public, en
+  Wi-Fi, à l’ouverture de l’app ou au début d’un Live tant qu’il n’est pas sur le téléphone. GitHub voit l’adresse IP
+  du téléphone.
 - **Adresses de test réservées au débogage** (un guichet local, des paquets de voix locaux) : les réglages qui les
   définissent (`guichetURL` sur iOS et Android, `voicePackagesURL` sur Android) ne sont lus que dans les versions de
   débogage ; les versions publiées utilisent toujours `guichet.bipagents.com`.
