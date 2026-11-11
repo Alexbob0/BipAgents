@@ -422,6 +422,11 @@ responsable del tratamiento independiente, según su política de privacidad (ht
 Kerfy Studio guarda la dirección de correo que diste al pagar, los identificadores de cliente y de suscripción en
 Stripe, el plan y su periodo (mes o año), el país de facturación y el idioma.
 
+**Darte de baja en el sitio sin iniciar sesión** (botón «Verträge hier kündigen»): la página pide la dirección de correo
+de la compra y, si quieres, el número de la suscripción, la fecha de fin que deseas y, para una baja extraordinaria, su
+motivo. El guichet guarda esta declaración, con su fecha y hora, 3 años, como prueba. Para limitar los intentos,
+guarda también la dirección de correo escrita, en claro, y una huella de la dirección IP (abajo), 2 días como máximo.
+
 **Tu contrato.** La fecha de inicio, la del correo de confirmación y, si desistes del contrato, la fecha y la hora de
 tu desistimiento.
 
@@ -450,9 +455,11 @@ servidores.
   un dispositivo real) y una huella del identificador Android del dispositivo, calculada en el teléfono (SHA-256) y
   después vuelta a calcular por el guichet con una clave secreta antes de guardarla. Kerfy Studio solo conserva esta
   segunda huella, solo para este límite y para el de los códigos beta (abajo).
-- **La dirección IP** de tu teléfono nunca se guarda. Para limitar el número de reservas por dirección, el guichet solo
-  conserva una huella calculada con una clave secreta, únicamente en memoria, mientras dura la reserva de una plaza de
-  prueba (15 minutos como máximo); se pierde al reiniciarse.
+- **La dirección IP** de tu teléfono nunca se guarda en claro. Para limitar el número de reservas por dirección, el
+  guichet solo conserva una huella calculada con una clave secreta, únicamente en memoria, mientras dura la reserva de
+  una plaza de prueba (15 minutos como máximo); se pierde al reiniciarse. Para limitar los intentos de códigos beta, en
+  la página de baja del sitio y en las denuncias de agentes compartidos como plantilla, guarda del mismo modo una
+  huella, nunca la dirección, 2 días como máximo; después queda hasta 30 días en las copias cifradas de su base.
 
 **Los códigos beta.** Un código beta usado se convierte en el identificador de tu suscripción beta, que se guarda con
 tu cuenta como cualquier suscripción (abajo), y el registro del guichet anota «código usado» con tu cuenta (12 meses).
@@ -473,8 +480,8 @@ fraude, interés legítimo (artículo 6.1.f); facturas y documentos contables, o
 5 años archivados, como prueba del contrato (artículo 2224 del Código Civil francés). Facturas y justificantes de pago:
 10 años (artículo L123-22 del Código de Comercio francés); Stripe guarda las facturas. Huella del dispositivo Android:
 24 meses desde la primera marca del teléfono (su semana gratis, o la primera suscripción hecha desde él), sin vínculo
-con tu cuenta. Dirección IP: nunca se guarda; su huella, en memoria, 15 minutos como
-máximo. Los bits de DeviceCheck los guarda Apple.
+con tu cuenta. Dirección IP: nunca se guarda en claro; su huella, en memoria, 15 minutos como
+máximo para la semana gratis, 2 días como máximo para los demás límites (30 días en las copias de la base). Los bits de DeviceCheck los guarda Apple.
 
 ### 5.4 Tu plaza y el modelo de IA
 
@@ -841,7 +848,10 @@ Scaleway, en Francia, sin transferencia fuera de la Unión. Puedes pedirnos una 
 | Invitación de un vínculo familiar | 7 días, o hasta la respuesta |
 | Compartir en lectura (copia cifrada, personas invitadas) | Hasta su fecha de fin, hasta que se detiene o hasta que se borra la cuenta |
 | Nombre de campaña (sección 5.11) | 13 meses después de su registro, o con la cuenta o la suscripción |
-| Dirección IP al reservar una semana gratis | Nunca se guarda; en memoria, como huella, 15 minutos como máximo |
+| Dirección IP al reservar una semana gratis | Nunca se guarda en claro; en memoria, como huella, 15 minutos como máximo |
+| Huella de la dirección IP (códigos beta, página de baja del sitio, denuncias de agentes compartidos) | 2 días como máximo; hasta 30 días en las copias cifradas de la base |
+| Baja en el sitio: la declaración (correo, número, motivo, fecha de fin, fecha y hora) | 3 años |
+| Baja en el sitio: la dirección de correo escrita, para limitar los intentos | 2 días como máximo |
 | Contenido de tu plaza | Durante la suscripción y después 30 días (3 días después de una semana gratis que no continuó) |
 | Copias de seguridad | 2 horas (todas), luego 48 horas (por hora), 21 días (diarias), nada más antiguo; se borran con la plaza; lo que borras ha salido de ellas en 30 días, todas las copias incluidas |
 | Archivos de copia que una plaza borra, apartados por el guichet | 5 días |

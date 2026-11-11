@@ -409,6 +409,11 @@ obligations (anti-money laundering, fraud), Stripe may act as an independent con
 (https://stripe.com/privacy). Kerfy Studio's guichet keeps the email address given at payment, the customer and
 subscription identifiers at Stripe, the plan and its period (month or year), the billing country and the language.
 
+**Cancelling on the website without signing in** (the « Verträge hier kündigen » button): the page asks for the
+purchase's email address and, if you wish, the subscription's number, the end date you want and, for an extraordinary
+cancellation, its reason. The guichet keeps this declaration, with its date and time, for 3 years, as proof. To limit
+tries, it also keeps the email address typed, in clear, and a fingerprint of the IP address (below), 2 days at most.
+
 **Your contract.** The start date, the date of the confirmation email and, if you withdraw from the contract, the date
 and time of your withdrawal.
 
@@ -436,9 +441,11 @@ subscriptions. We keep no data of your card: it is entered at Stripe and never g
   real device) and a fingerprint of the device's Android identifier, computed on the phone (SHA-256), then hashed again
   by the guichet with a secret key before being stored. Kerfy Studio only keeps this keyed fingerprint, only for
   this limit and for the beta codes' one (below).
-- **The IP address** of your phone is never stored. To limit the number of reservations per address, the guichet keeps
-  only a fingerprint of it computed with a secret key, in memory only, for as long as a trial place is reserved
-  (15 minutes at most); it is lost when the guichet restarts.
+- **The IP address** of your phone is never stored in clear. To limit the number of reservations per address, the
+  guichet keeps only a fingerprint of it computed with a secret key, in memory only, for as long as a trial place is
+  reserved (15 minutes at most); it is lost when the guichet restarts. To limit tries of beta codes, on the website's
+  cancellation page and for reports of agents shared as templates, it likewise keeps a fingerprint, never the address,
+  2 days at most; it then stays up to 30 days in the encrypted copies of its database.
 
 **Beta codes.** A used beta code becomes the identifier of your beta subscription, kept with your account like any
 subscription (below), and the guichet's log notes "code used" with your account (12 months). One code per phone: on
@@ -459,7 +466,8 @@ payment and calculating the taxes, performance of the contract (article 6(1)(b))
 then 5 years in archive, as proof of the contract (article 2224 of the French Civil Code). Invoices and payment records:
 10 years (article L123-22 of the French Commercial Code); Stripe keeps the invoices. Android device fingerprint:
 24 months from when the phone was first marked (its free week, or the first subscription taken from it), not linked to
-your account. IP address: never stored; its fingerprint, in memory, 15 minutes at most. The DeviceCheck bits are kept by Apple.
+your account. IP address: never stored in clear; its fingerprint, in memory, 15 minutes at most for the free week, 2 days at most
+for the other limits (30 days in the database copies). The DeviceCheck bits are kept by Apple.
 
 ### 5.4 Your place and the AI model
 
@@ -821,7 +829,10 @@ of the applicable safeguards.
 | Family-link invitation | 7 days, or until answered |
 | Read-only share (encrypted copy, people invited) | Until its end date, until it is stopped, or until the account is erased |
 | Campaign name (section 5.11) | 13 months after it was recorded, or with the account or the subscription |
-| IP address when a free week is reserved | Never stored; in memory, as a fingerprint, 15 minutes at most |
+| IP address when a free week is reserved | Never stored in clear; in memory, as a fingerprint, 15 minutes at most |
+| Fingerprint of the IP address (beta codes, the website's cancellation page, reports of shared agents) | 2 days at most; up to 30 days in the encrypted copies of the database |
+| Cancellation on the website: the declaration (email, number, reason, end date, date and time) | 3 years |
+| Cancellation on the website: the email address typed, to limit tries | 2 days at most |
 | Content of your place | During the subscription, then 30 days (3 days after a free week that was not continued) |
 | Backups | 2 hours (all), then 48 hours (hourly), 21 days (daily), nothing older; erased with the place; what you delete is gone from them within 30 days, every copy included |
 | Backup files a place deletes, set aside by the guichet | 5 days |

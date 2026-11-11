@@ -453,6 +453,12 @@ Betrugsbekämpfung) kann Stripe als eigenständiger Verantwortlicher handeln, na
 Kunden- und Abo-Kennungen bei Stripe, den Tarif und seinen Zeitraum (Monat oder Jahr), das Rechnungsland und die Sprache
 auf.
 
+**Auf der Website kündigen, ohne dich anzumelden** (Schaltfläche „Verträge hier kündigen“): Die Seite fragt nach der
+E-Mail-Adresse des Kaufs und, wenn du willst, nach der Nummer des Abos, dem gewünschten Ende und, bei einer
+außerordentlichen Kündigung, ihrem Grund. Der Guichet bewahrt diese Erklärung mit Datum und Uhrzeit 3 Jahre als
+Nachweis auf. Um die Versuche zu begrenzen, bewahrt er außerdem die eingegebene E-Mail-Adresse im Klartext und einen
+Fingerabdruck der IP-Adresse (unten) höchstens 2 Tage auf.
+
 **Dein Vertrag.** Das Datum des Beginns, das Datum der Bestätigungs-E-Mail und, wenn du den Vertrag widerrufst, Datum
 und Uhrzeit deines Widerrufs.
 
@@ -481,9 +487,12 @@ früheren Abos. Wir speichern keine Daten deiner Karte: Sie wird bei Stripe eing
   echten Gerät läuft) und einen Fingerabdruck der Android-Kennung des Geräts, auf dem Telefon berechnet (SHA-256) und
   dann vom Guichet vor dem Speichern mit einem geheimen Schlüssel erneut gehasht. Kerfy Studio bewahrt nur diesen
   zweiten Fingerabdruck auf, nur für diese Begrenzung und für die der Beta-Codes (unten).
-- **Die IP-Adresse** deines Telefons wird nie gespeichert. Um die Zahl der Reservierungen pro Adresse zu begrenzen,
-  behält der Guichet nur einen mit einem geheimen Schlüssel berechneten Fingerabdruck davon, nur im Arbeitsspeicher, so
-  lange ein Testplatz reserviert ist (höchstens 15 Minuten); bei einem Neustart geht er verloren.
+- **Die IP-Adresse** deines Telefons wird nie im Klartext gespeichert. Um die Zahl der Reservierungen pro Adresse zu
+  begrenzen, behält der Guichet nur einen mit einem geheimen Schlüssel berechneten Fingerabdruck davon, nur im
+  Arbeitsspeicher, so lange ein Testplatz reserviert ist (höchstens 15 Minuten); bei einem Neustart geht er verloren.
+  Um die Versuche mit Beta-Codes, auf der Kündigungsseite der Website und bei Meldungen von als Vorlage geteilten
+  Agenten zu begrenzen, bewahrt er ebenso einen Fingerabdruck auf, nie die Adresse, höchstens 2 Tage; danach bleibt er
+  bis zu 30 Tage in den verschlüsselten Kopien seiner Datenbank.
 
 **Die Beta-Codes.** Ein eingelöster Beta-Code wird zur Kennung deines Beta-Abos, das mit deinem Konto wie jedes Abo
 aufbewahrt wird (unten), und das Protokoll des Guichets vermerkt „Code eingelöst“ mit deinem Konto (12 Monate). Ein
@@ -505,8 +514,9 @@ und die Steuern berechnen, Erfüllung des Vertrags (Art. 6 Abs. 1 lit. b DSGVO);
 Nachweis des Vertrags (Art. 2224 des französischen Zivilgesetzbuchs). Rechnungen und Zahlungsbelege: 10 Jahre
 (Art. L123-22 des französischen Handelsgesetzbuchs); die Rechnungen bewahrt Stripe auf. Fingerabdruck des
 Android-Geräts: 24 Monate ab der ersten Markierung des Telefons (seine kostenlose Woche oder das erste von ihm aus
-abgeschlossene Abo), ohne Verknüpfung mit deinem Konto. IP-Adresse: nie gespeichert; ihr Fingerabdruck im
-Arbeitsspeicher höchstens 15 Minuten. Die DeviceCheck-Bits bewahrt Apple auf.
+abgeschlossene Abo), ohne Verknüpfung mit deinem Konto. IP-Adresse: nie im Klartext gespeichert; ihr Fingerabdruck im
+Arbeitsspeicher höchstens 15 Minuten für die kostenlose Woche, höchstens 2 Tage für die anderen Grenzen (30 Tage in den
+Kopien der Datenbank). Die DeviceCheck-Bits bewahrt Apple auf.
 
 ### 5.4 Dein Platz und das KI-Modell
 
@@ -889,7 +899,10 @@ des Guichets und des Relays: OVHcloud, in Frankreich. Hoster der Sicherungen: Sc
 | Einladung einer Familienverbindung | 7 Tage oder bis zur Antwort |
 | Teilen zum Lesen (verschlüsselte Kopie, eingeladene Personen) | Bis zum Enddatum, bis zum Beenden oder bis zur Löschung des Kontos |
 | Kampagnenname (Abschnitt 5.11) | 13 Monate nach der Aufzeichnung, oder mit dem Konto oder dem Abo |
-| IP-Adresse bei der Reservierung einer kostenlosen Woche | Nie gespeichert; im Arbeitsspeicher, als Fingerabdruck, höchstens 15 Minuten |
+| IP-Adresse bei der Reservierung einer kostenlosen Woche | Nie im Klartext gespeichert; im Arbeitsspeicher, als Fingerabdruck, höchstens 15 Minuten |
+| Fingerabdruck der IP-Adresse (Beta-Codes, Kündigungsseite der Website, Meldungen geteilter Agenten) | Höchstens 2 Tage; bis zu 30 Tage in den verschlüsselten Kopien der Datenbank |
+| Kündigung auf der Website: die Erklärung (E-Mail, Nummer, Grund, gewünschtes Ende, Datum und Uhrzeit) | 3 Jahre |
+| Kündigung auf der Website: die eingegebene E-Mail-Adresse, um die Versuche zu begrenzen | Höchstens 2 Tage |
 | Inhalt deines Platzes | Während des Abos, dann 30 Tage (3 Tage nach einer nicht fortgesetzten kostenlosen Woche) |
 | Sicherungen | 2 Stunden (alle), dann 48 Stunden (stündlich), 21 Tage (täglich), nichts Älteres; mit dem Platz gelöscht; was du löschst, ist innerhalb von 30 Tagen daraus verschwunden, alle Kopien eingeschlossen |
 | Sicherungsdateien, die ein Platz löscht, vom Guichet beiseitegelegt | 5 Tage |

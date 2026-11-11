@@ -431,6 +431,11 @@ responsable de traitement indépendant, selon sa politique de confidentialité (
 Kerfy Studio garde l'adresse e-mail donnée au paiement, les identifiants de client et d'abonnement chez Stripe, le
 forfait et sa période (mois ou année), le pays de facturation et la langue.
 
+**Résilier sur le site sans te connecter** (bouton « Verträge hier kündigen ») : la page demande l'adresse e-mail de
+l'achat et, si tu veux, le numéro de l'abonnement, la date de fin voulue et, pour une résiliation extraordinaire, son
+motif. Le guichet garde cette déclaration, avec sa date et son heure, 3 ans, pour en garder la preuve. Pour limiter les
+essais, il garde aussi l'adresse e-mail tapée, en clair, et une empreinte de l'adresse IP (ci-dessous), 2 jours au plus.
+
 **Ton contrat.** La date de début, celle de l'e-mail de confirmation et, si tu renonces au contrat, la date et l'heure
 de ta rétractation.
 
@@ -458,9 +463,12 @@ Nous ne gardons aucune donnée de ta carte : elle est saisie chez Stripe et ne p
   un vrai appareil) et une empreinte de l'identifiant Android de l'appareil, calculée sur le téléphone (SHA-256), puis
   hachée à nouveau par le guichet avec une clé secrète avant d'être enregistrée. Kerfy Studio ne garde que cette
   seconde empreinte, seulement pour cette limite et pour celle des codes bêta (ci-dessous).
-- **L'adresse IP** de ton téléphone n'est jamais enregistrée. Pour limiter le nombre de réservations par adresse, le
-  guichet n'en garde qu'une empreinte calculée avec une clé secrète, en mémoire seulement, le temps de la réservation
-  d'une place d'essai (15 minutes au plus) ; elle est perdue au redémarrage.
+- **L'adresse IP** de ton téléphone n'est jamais enregistrée en clair. Pour limiter le nombre de réservations par
+  adresse, le guichet n'en garde qu'une empreinte calculée avec une clé secrète, en mémoire seulement, le temps de la
+  réservation d'une place d'essai (15 minutes au plus) ; elle est perdue au redémarrage. Pour limiter les essais de
+  codes bêta, sur la page de résiliation du site et pour les signalements d'agents partagés comme modèle, il en garde
+  de même une empreinte, jamais l'adresse, 2 jours au plus ; elle reste ensuite jusqu'à 30 jours dans les copies
+  chiffrées de sa base.
 
 **Les codes bêta.** Un code bêta utilisé devient l'identifiant de ton abonnement bêta, gardé avec ton compte comme tout
 abonnement (ci-dessous), et le journal du guichet note « code utilisé » avec ton compte (12 mois). Un seul code par
@@ -480,8 +488,9 @@ intérêt légitime (article 6.1.f) ; factures et pièces comptables, obligation
 **Durée.** Données d'abonnement et d'achat, y compris celles d'un achat sur le site : pendant l'abonnement, puis 5 ans
 en archive, pour la preuve du contrat (article 2224 du Code civil). Factures et pièces de paiement : 10 ans
 (article L123-22 du Code de commerce) ; Stripe garde les factures. Empreinte de l'appareil Android : 24 mois à compter du premier marquage du téléphone (sa
-semaine gratuite, ou le premier abonnement pris depuis lui), sans lien avec ton compte. Adresse IP : jamais enregistrée ; son empreinte, en
-mémoire, 15 minutes au plus. Les bits de DeviceCheck sont gardés par Apple.
+semaine gratuite, ou le premier abonnement pris depuis lui), sans lien avec ton compte. Adresse IP : jamais enregistrée en clair ; son empreinte, en
+mémoire, 15 minutes au plus pour la semaine gratuite, 2 jours au plus pour les autres limites (30 jours dans les copies
+de la base). Les bits de DeviceCheck sont gardés par Apple.
 
 ### 5.4 Ta place et le modèle d'IA
 
@@ -864,7 +873,10 @@ l'Union. Tu peux nous demander une copie des garanties applicables.
 | Invitation d'un lien famille | 7 jours, ou jusqu'à la réponse |
 | Partage en lecture (copie chiffrée, personnes invitées) | Jusqu'à sa date de fin, son arrêt ou l'effacement du compte |
 | Nom de campagne (section 5.11) | 13 mois après son enregistrement, ou avec le compte ou l'abonnement |
-| Adresse IP à la réservation d'une semaine gratuite | Jamais enregistrée ; en mémoire, sous forme d'empreinte, 15 minutes au plus |
+| Adresse IP à la réservation d'une semaine gratuite | Jamais enregistrée en clair ; en mémoire, sous forme d'empreinte, 15 minutes au plus |
+| Empreinte de l'adresse IP (codes bêta, page de résiliation du site, signalements d'agents partagés) | 2 jours au plus ; jusqu'à 30 jours dans les copies chiffrées de la base |
+| Résiliation sur le site : la déclaration (e-mail, numéro, motif, date de fin, date et heure) | 3 ans |
+| Résiliation sur le site : l'adresse e-mail tapée, pour limiter les essais | 2 jours au plus |
 | Contenu de ta place | Pendant l'abonnement, puis 30 jours (3 jours après une semaine gratuite non poursuivie) |
 | Sauvegardes | 2 heures (toutes), puis 48 heures (horaires), 21 jours (quotidiennes), rien au-delà ; effacées avec la place ; ce que tu effaces en est parti sous 30 jours, toutes copies comprises |
 | Fichiers de sauvegarde qu'une place efface, mis de côté par le guichet | 5 jours |
