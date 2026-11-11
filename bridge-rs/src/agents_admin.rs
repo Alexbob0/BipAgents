@@ -509,7 +509,8 @@ fn load_yaml_file(path: &Path) -> anyhow::Result<Yaml> {
     Ok(pyyaml::load(&text)?)
 }
 
-/// Bot Mode: the agents of an install can message each other in their « Bot Chat ».
+/// Hermes' Bot Mode mark on a profile (`ui_meta.hermes-bots`): only for an agent that writes to another household
+/// (peers.rs `mark_bots`).
 pub fn mark_as_bot(folder: &Path) -> anyhow::Result<()> {
     crate::profile_files::try_edit(&folder.join("profile.yaml"), |data| {
         let meta = data.entry_map("ui_meta").filter(|m| m.is_map());
@@ -826,7 +827,6 @@ pub async fn from_spare(
     crate::profile_files::edit(&folder.join("profile.yaml"), |data| {
         data.insert("description", Yaml::str(&planned.description))
     })?;
-    mark_as_bot(&folder)?;
     let agent = spare.agent(&config, &planned.name);
     wait_served(http, &agent, true).await?;
     reserve_agent(shared, &agent)?;
@@ -861,7 +861,7 @@ pub async fn make_spares(
         .collect();
     let mut preparing: Vec<BoxFuture<'_, anyhow::Result<()>>> = Vec::new();
     for (planned, agent) in &items {
-        preparing.push(Box::pin(prepare_profile(shared, planned, agent, run, false, false)));
+        preparing.push(Box::pin(prepare_profile(shared, planned, agent, run, false)));
     }
     let prepared: Vec<anyhow::Result<()>> =
         futures::stream::iter(preparing).buffered(PREPARED_TOGETHER).collect().await;
@@ -916,7 +916,7 @@ pub async fn make_profile(
     run: &Run,
     resume: bool,
 ) -> anyhow::Result<AgentConfig> {
-    prepare_profile(shared, planned, &agent, run, resume, true).await?;
+    prepare_profile(shared, planned, &agent, run, resume).await?;
     // The gateway picks new profiles up within 30 s; its permanent « Bot Chat » is opened as soon as it answers.
     wait_served(http, &agent, true).await?;
     let agent = finish_profile(shared, planned, agent, run).await?;
@@ -939,7 +939,7 @@ pub async fn make_profiles(
     // the `hermes` commands of a few profiles side by side (each its own folder; `--no-alias` writes no shared file)
     let mut preparing: Vec<BoxFuture<'_, anyhow::Result<()>>> = Vec::new();
     for (planned, agent) in &items {
-        preparing.push(Box::pin(prepare_profile(shared, planned, agent, run, false, true)));
+        preparing.push(Box::pin(prepare_profile(shared, planned, agent, run, false)));
     }
     let prepared: Vec<anyhow::Result<()>> =
         futures::stream::iter(preparing).buffered(PREPARED_TOGETHER).collect().await;
@@ -971,7 +971,6 @@ async fn prepare_profile(
     agent: &AgentConfig,
     run: &Run,
     resume: bool,
-    bot: bool,
 ) -> anyhow::Result<()> {
     let config = shared.get();
     let install = &config.hermes;
@@ -1019,9 +1018,6 @@ async fn prepare_profile(
     // memory instead of using propose_profile). Given again below, once it is saved (its guide blocks, its browser).
     give_tools(&shared.get(), agent, run).await?;
     crate::profile_files::new_soul(&folder, &planned.soul)?;
-    if bot {
-        mark_as_bot(&folder)?; // a spare only once taken: never in the other agents' roster before
-    }
     Ok(())
 }
 
@@ -1321,7 +1317,6 @@ pub async fn claim_profile(
         public_url: public_agent_url(&config, name),
         ..AgentConfig::default()
     };
-    mark_as_bot(&folder)?;
     wait_served(http, &agent, true).await?;
     agent = with_browser(&config, agent, run).await;
     agent = mount_uploads(shared, &agent, run, false).await?;

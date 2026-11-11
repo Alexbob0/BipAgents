@@ -567,12 +567,12 @@ async fn browser(config: Config, args: &Args) -> i32 {
 }
 
 /// After an export was put into this place (installer/bipinstall/to_place.py): each agent it brought served as
-/// the place's own are (Bot Mode, its files where its sandbox sees them, the bridge's tools), and each profile no
+/// the place's own are (its files where its sandbox sees them, the bridge's tools), and each profile no
 /// agent serves yet (a Hermes alone's) claimed. Run it with the gateway up and the bridge stopped, or restart the
 /// bridge after: it rewrites the agents' sections of the config file.
 async fn adopt(config: Config) -> i32 {
     use crate::agents_admin::{
-        claim_profile, default_run, give_tools, managed, mark_as_bot, mount_uploads, unclaimed_profiles,
+        claim_profile, default_run, give_tools, managed, mount_uploads, unclaimed_profiles,
     };
     let shared = SharedConfig::new(config);
     let run = default_run();
@@ -583,12 +583,6 @@ async fn adopt(config: Config) -> i32 {
             continue;
         }
         let result: anyhow::Result<()> = async {
-            let config = shared.get();
-            if let Some(folder) = crate::shares::profile_dir(&config, &agent) {
-                if folder.is_dir() {
-                    mark_as_bot(&folder)?;
-                }
-            }
             let agent = mount_uploads(&shared, &agent, &run, true).await?;
             shared.put_agent(agent.clone());
             give_tools(&shared.get(), &agent, &run).await?;

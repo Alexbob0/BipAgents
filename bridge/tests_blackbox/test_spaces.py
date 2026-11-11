@@ -12,7 +12,7 @@ import yaml
 
 from bbkit.common import AUTH
 from bbkit.servers import free_port, wait_until
-from conftest import managed_install, profile, wait_registered
+from conftest import managed_install, marked, profile, wait_registered
 
 
 def with_spaces(bridges, fakes):
@@ -90,7 +90,8 @@ def test_adopt_serves_what_an_export_brought(bridges, fakes):
     assert out.returncode == 0, out.stderr
     printed = [line for line in out.stdout.splitlines() if not line.startswith("{")]   # its JSON logs go there too
     assert printed == ["coach: ready", "jardin: claimed"]
-    assert "hermes-bots" in yaml.safe_load((hub / "profiles" / "coach" / "profile.yaml").read_text())["ui_meta"]
+    # no Bot Mode mark: Hermes' own message_agent stays out between agents of this household (peers.rs)
+    assert not marked(hub / "profiles" / "coach")
     agents = tomllib.loads(bridge.toml_text())["agents"]
     assert agents["jardin"]["hermes_url"] == f"{fakes.hermes.url}/p/jardin"
     tokens = json.loads((bridge.state_dir / "agent-tools.json").read_text())["tokens"]

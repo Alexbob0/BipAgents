@@ -1,14 +1,15 @@
-//! Messages between agents, through the bridge, only where the person allowed them.
+//! Messages between agents of two households, through the bridge, only where both people allowed them.
 //!
 //! Hermes' Bot Mode lets an agent message another one (`message_agent`) on a « peer »: an address and a key in
 //! its config (`bot_peers`). Giving an agent another agent's key would let it do anything with that agent. So
 //! the bridge is the only peer: each gateway gets a token of its own, which says who is calling and nothing more,
-//! and the bridge forwards to the target with the target's key, but only along a link the person turned on in
-//! the app (« Qui peut écrire à qui »). The target answers in its permanent « Bot Chat », as with any peer.
+//! and the bridge forwards to the other household's bridge (`to_household`), but only along a link the person turned
+//! on in the app (« Qui peut écrire à qui »).
 //!
-//! A peer only reaches the target's « Bot Chat »: finding or opening it, writing in it, following or stopping a run
-//! there (`only_bot_chat`). Its other conversations, its approvals and its runs elsewhere stay out of reach, whatever
-//! an agent tricked by what it read would try with its token.
+//! Between agents of this household Bot Mode is off (Alex, 2026-11-10): no Bot Mode mark on a profile, no peer, no
+//! token for an agent that writes only to its own household's (`set_tokens`), and the relay refuses a local target.
+//! Hermes' Bot Mode wrote into the target's Bot Chat, the person's main conversation with it, with no cap; the
+//! bridge's `message_agent` (agent_messages.rs) asks in the two agents' own conversation, counted by agent_hops.rs.
 //!
 //! Another household's agent (`deliver`, since 2026-10-29) doesn't reach the Bot Chat itself: the « Bot Chat » it
 //! finds or opens is the two agents' own conversation (« Vie (Alex) ⇄ Cuisine », agent_pairs.rs, a hidden Hermes
@@ -19,7 +20,7 @@
 //! Hermes delivers these messages as the gateway (`hermes -p default peer dm`): the token says which gateway
 //! calls, and the message's signature (« Message from … (@agent): ») which of its agents. An agent in its own
 //! space is alone in its gateway, so it is known for sure; in the shared hub, an agent could sign as another hub
-//! agent (same person, nothing secret there). Agents of the hub can also message each other directly.
+//! agent (same person, nothing secret there).
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
@@ -202,8 +203,8 @@ pub fn peer_url(config: &Config) -> String {
     }
 }
 
-/// The person's links. The gateway of each sender gets its token and the bridge as its peer; a gateway with no
-/// sender left loses its token. Returns `{"manual": {agent: ""}}`: the agents set up by hand that need their token
+/// The person's links: the skills that list them ([`write_contacts`]), and Bot Mode for the senders to another
+/// household ([`set_tokens`]). Returns `{"manual": {agent: ""}}`: the agents set up by hand that need their token
 /// from the administrator. `InvalidLink` (Python's `ValueError`) for a link that cannot be.
 pub fn apply(
     config: &Config,
@@ -232,15 +233,35 @@ pub fn apply(
         }
     }
     let mut data = links.load();
+    let unique: BTreeSet<(String, String)> = wanted.iter().cloned().collect();
+    let pairs: Vec<(String, String)> = unique.into_iter().collect();
+    let manual = set_tokens(config, &mut data, &pairs)?;
+    data.insert("links".into(), pairs_value(&pairs));
+    links.save(&data)?;
+    write_contacts(config, &pairs, households);
+    tracing::info!(links = pairs.len(), "agent links set");
+    let mut out = Dict::new();
+    out.insert("manual".into(), Value::Object(manual));
+    Ok(out)
+}
+
+/// Hermes' Bot Mode (the profile's mark, `bot_peers.bip` and its key) only for our agents that write to another
+/// household's agent, and their gateways: between agents of this household it is off, the bridge's `message_agent`
+/// is the one way (agent_messages.rs: in the two agents' own conversation, capped). A gateway with no such sender
+/// left loses its token and its peer. Returns the agents set up by hand that need their token from the administrator.
+fn set_tokens(config: &Config, data: &mut Dict, pairs: &[(String, String)]) -> anyhow::Result<Dict> {
     let mut sending: BTreeMap<String, AgentConfig> = BTreeMap::new();
-    for (sender, _) in wanted {
-        if split(sender).is_some() {
+    let mut bots = BTreeSet::new();
+    for (sender, target) in pairs {
+        if split(sender).is_some() || split(target).is_none() {
             continue;
         }
         if let Some(agent) = config.agent(Some(sender)) {
             sending.insert(gateway_of(config, agent), agent.clone());
+            bots.insert(agent.name.clone());
         }
     }
+    mark_bots(config, &bots);
     let mut tokens = data.get("tokens").and_then(Value::as_object).cloned().unwrap_or_default();
     let mut manual = Dict::new();
     let key_env = format!("HERMES_PEER_{}_KEY", PEER_NAME.to_uppercase());
@@ -258,33 +279,78 @@ pub fn apply(
             &Path::new(gateway).join("config.yaml"),
             &[
                 (&format!("bot_peers.{PEER_NAME}.url"), Yaml::str(peer_url(config))),
-                (&format!("bot_peers.{PEER_NAME}.note"), Yaml::str("Tes autres agents, par BipAgents (cible : bip/<agent>)")),
+                (&format!("bot_peers.{PEER_NAME}.note"), Yaml::str(PEER_NOTE)),
             ],
         )?;
         crate::services::set_env(&Path::new(gateway).join(".env"), &key_env, Some(&token))?;
         tokens.insert(gateway.clone(), json!(digest(&token)));
     }
-    // A gateway that sends nothing any more loses its token, when the bridge can give it a new one by itself. An agent
-    // set up by hand keeps it: only its administrator could put a new one in, and without a link it is refused anyway.
+    // A gateway that sends nothing any more loses its token and its peer, when the bridge can give them again by
+    // itself. An agent set up by hand keeps its token: only its administrator could put a new one in, and without a
+    // link it is refused anyway.
     let stale: Vec<String> =
         tokens.keys().filter(|g| !sending.contains_key(*g) && !g.starts_with("manual:")).cloned().collect();
     for gateway in stale {
-        if Path::new(&gateway).is_dir() {
-            crate::services::set_env(&Path::new(&gateway).join(".env"), &key_env, None)?;
+        let folder = Path::new(&gateway);
+        if folder.is_dir() {
+            crate::services::set_env(&folder.join(".env"), &key_env, None)?;
+            let peers_file = folder.join("config.yaml");
+            if peers_file.exists() {
+                crate::profile_files::edit(&peers_file, |yaml| {
+                    if let Some(peers) = yaml.get_mut("bot_peers").filter(|p| p.is_map()) {
+                        peers.remove(PEER_NAME);
+                    }
+                })?;
+            }
         }
         tokens.shift_remove(&gateway);
     }
-    let unique: BTreeSet<(String, String)> = wanted.iter().cloned().collect();
-    let pairs: Vec<(String, String)> = unique.into_iter().collect();
-    data.insert("links".into(), pairs_value(&pairs));
     data.insert("tokens".into(), Value::Object(tokens));
-    links.save(&data)?;
-    write_contacts(config, &pairs, households);
-    tracing::info!(links = pairs.len(), gateways = sending.len(), "agent links set");
-    let mut out = Dict::new();
-    out.insert("manual".into(), Value::Object(manual));
-    Ok(out)
+    Ok(manual)
 }
+
+/// Hermes turns Bot Mode on for an install where a profile is marked (`ui_meta.hermes-bots` in its profile.yaml):
+/// then each agent's Bot Chat, its main conversation, gets Hermes' `message_agent` with the install's other profiles
+/// as its roster, whatever links the person set (lab of 2026-11-11: Prof, linked to nobody, had it). Only the agents
+/// that write to another household are marked; every other profile this bridge manages loses the mark.
+fn mark_bots(config: &Config, bots: &BTreeSet<String>) {
+    for agent in config.agents.values() {
+        let Some(folder) = crate::shares::profile_dir(config, agent).filter(|f| f.is_dir()) else { continue };
+        let done = if bots.contains(&agent.name) {
+            crate::agents_admin::mark_as_bot(&folder)
+        } else {
+            crate::profile_files::edit(&folder.join("profile.yaml"), |data| {
+                if let Some(meta) = data.get_mut("ui_meta").filter(|m| m.is_map()) {
+                    meta.remove("hermes-bots");
+                }
+            })
+            .map(|_| ())
+        };
+        if let Err(exc) = done {
+            tracing::warn!(agent = %agent.name, error = %exc, "Bot Mode mark not set");
+        }
+    }
+}
+
+/// At start, the tokens and peers [`set_tokens`] gives for the links kept: a place set up while Bot Mode still ran
+/// between its own agents loses them there.
+pub fn heal_tokens(config: &Config, links: &Links) {
+    let mut data = links.load();
+    let before = data.get("tokens").cloned();
+    let pairs = links_of(&data);
+    match set_tokens(config, &mut data, &pairs) {
+        Ok(_) if data.get("tokens") != before.as_ref() => {
+            if let Err(exc) = links.save(&data) {
+                tracing::warn!(error = %exc, "agent peers not healed");
+            }
+        }
+        Ok(_) => {}
+        Err(exc) => tracing::warn!(error = %exc, "agent peers not healed"),
+    }
+}
+
+/// What a gateway's agents read about the bridge as their peer: only other households' agents are reached there.
+const PEER_NOTE: &str = "Les agents des autres foyers, par BipAgents (cible : bip/<agent>__<foyer>)";
 
 const CONTACTS: &str = "---
 name: agent-contacts
@@ -300,8 +366,9 @@ Use `message_agent` with one of these targets (the person allowed exactly these;
 
 {lines}
 
-An answer arrives in your « Bot Chat ». A message from another household's agent is signed with its household,
-for example « Message from Vie (Alex) (@vie__alex) »: answer it at `bip/vie__alex`.
+Your person's own agents answer in the same call. Another household's agent answers in your « Bot Chat »; a
+message from one is signed with its household, for example « Message from Vie (Alex) (@vie__alex) »: answer it at
+`bip/vie__alex`.
 
 Another agent never sees your files, your shared folder /partage included, nor a path of yours you write to it. To
 give files to one of your person's agents, use `send_files_to_agent` (it says the path that agent reads them at),
@@ -449,67 +516,6 @@ fn id_of(row: &Dict) -> String {
 
 static CHAT_PATH: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^api/sessions/([^/]+)/chat\z").expect("valid regex"));
 static RUN_PATH: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^v1/runs/([^/]+)(/stop)?\z").expect("valid regex"));
-
-/// What a peer may do with `agent`: the calls of `hermes peer` (dm, send, status, stop), on its Bot Chat only.
-/// Returns the answer when the bridge gives it itself (the Bot Chat's listing, never the others'), None to forward
-/// the call; anything else is refused.
-async fn only_bot_chat(
-    state: &AppState,
-    agent: &AgentConfig,
-    method: &Method,
-    path: &str,
-    query: &QueryMap,
-    body: &[u8],
-) -> ApiResult<Option<Response>> {
-    let refuse = || HttpError::new(403, format!("only {}'s Bot Chat is reachable", agent.name));
-    if *method == Method::GET && path == "v1/capabilities" {
-        return Ok(None);
-    }
-    if *method == Method::GET && path == "api/sessions" {
-        if query.get("title") != Some(BOT_CHAT_TITLE) {
-            return Err(refuse());
-        }
-        let row = bot_chat(state, agent).await;
-        let data: Vec<Value> = row.into_iter().map(Value::Object).collect();
-        return Ok(Some(web::ok(json!({"object": "list", "data": data}))));
-    }
-    if *method == Method::POST && path == "api/sessions" {
-        if json_dict(body).get("title") != Some(&json!(BOT_CHAT_TITLE)) {
-            return Err(refuse());
-        }
-        return Ok(None);
-    }
-    let chat = CHAT_PATH.captures(path);
-    if *method == Method::POST && (chat.is_some() || path == "v1/runs") {
-        let wanted = match &chat {
-            Some(c) => unquote(&c[1]),
-            None => json_dict(body)
-                .get("session_id")
-                .filter(|v| crate::py::truthy(v))
-                .map(crate::py::py_str)
-                .unwrap_or_default(),
-        };
-        let row = bot_chat(state, agent).await;
-        match row {
-            Some(row) if !wanted.is_empty() && wanted == id_of(&row) => return Ok(None),
-            _ => return Err(refuse()),
-        }
-    }
-    if let Some(run) = RUN_PATH.captures(path) {
-        if (*method == Method::GET) == run.get(2).is_none() {
-            let status = from_target(state, agent, &format!("v1/runs/{}", &run[1]), &[]).await;
-            let row = bot_chat(state, agent).await;
-            let session = status.as_ref().and_then(Value::as_object).map(|s| {
-                s.get("session_id").filter(|v| crate::py::truthy(v)).map(crate::py::py_str).unwrap_or_default()
-            });
-            match (session, row) {
-                (Some(session), Some(row)) if session == id_of(&row) => return Ok(None),
-                _ => return Err(refuse()),
-            }
-        }
-    }
-    Err(refuse())
-}
 
 /// Where a household request about the target's « Bot Chat » goes.
 enum PairRoute {
@@ -682,7 +688,9 @@ async fn forward_with(
     Ok(response)
 }
 
-/// `/peer/p/<target>/<path>`.
+/// `/peer/p/<target>/<path>`: an agent of ours writing to another household's agent (`to_household`). Our own
+/// agents write to each other with the bridge's `message_agent` (agent_messages.rs), never through Bot Mode: a local
+/// target is refused.
 async fn relay(state: AppState, target: String, path: String, request: Request) -> ApiResult<Response> {
     let config = state.config();
     let token = bearer(request.headers());
@@ -691,9 +699,14 @@ async fn relay(state: AppState, target: String, path: String, request: Request) 
         return Err(HttpError::new(401, "unknown agent"));
     };
     let remote = split(&target);
-    let agent = if remote.is_none() { config.agent(Some(&target)).cloned() } else { None };
     let household = remote.as_ref().and_then(|(_, h)| state.households.get(h));
-    if (agent.is_none() && household.is_none()) || !ALLOWED_PATHS.iter().any(|p| path.starts_with(p)) {
+    let (Some(household), Some((remote_agent, _))) = (household, remote) else {
+        if config.agent(Some(&target)).is_some() {
+            return Err(HttpError::new(403, format!("write to {target} with the bridge's message_agent")));
+        }
+        return Err(HttpError::new(404, "not found"));
+    };
+    if !ALLOWED_PATHS.iter().any(|p| path.starts_with(p)) {
         return Err(HttpError::new(404, "not found"));
     }
     let (parts, body) = request.into_parts();
@@ -702,74 +715,24 @@ async fn relay(state: AppState, target: String, path: String, request: Request) 
         .map_err(|_| HttpError::new(400, "There was an error parsing the body"))?;
     let query = QueryMap::parse(parts.uri.query());
     let links = links_of(&state.links.load());
-    let linked = |s: &str, t: &str| links.iter().any(|(a, b)| a == s && b == t);
     let mine: BTreeSet<String> =
         config.agents.values().filter(|a| gateway_of(&config, a) == gateway).map(|a| a.name.clone()).collect();
-    if let (Some(household), Some((remote_agent, _))) = (household, remote) {
-        return to_household(
-            &state,
-            &config,
-            &gateway,
-            &mine,
-            &links,
-            &target,
-            &remote_agent,
-            &household,
-            &path,
-            &parts.method,
-            &parts.headers,
-            &query,
-            body,
-        )
-        .await;
-    }
-    let agent = agent.expect("a local agent");
-    let (sender, allowed) = if is_message(&parts.method, &path) {
-        let sender = sender_of(&config, &gateway, &body).or_else(|| {
-            if mine.len() == 1 {
-                mine.iter().next().cloned()
-            } else {
-                None
-            }
-        });
-        let allowed = sender.as_deref().map(|s| linked(s, &agent.name)).unwrap_or(false);
-        (sender, allowed)
-    } else {
-        // finding or opening the target's Bot Chat: some agent of this gateway may write to it
-        (None, mine.iter().any(|name| linked(name, &agent.name)))
-    };
-    if !allowed {
-        tracing::info!(sender = %sender.clone().unwrap_or_else(|| gateway.clone()), target = %agent.name, "agent message refused");
-        return Err(HttpError::new(403, format!("not allowed to write to {} (ask the person)", agent.name)));
-    }
-    if let Some(answer) = only_bot_chat(&state, &agent, &parts.method, &path, &query, &body).await? {
-        return Ok(answer);
-    }
-    let body = if is_message(&parts.method, &path) {
-        Bytes::from(crate::dates::now::stamped_body_for(&config, &agent, &body))
-    } else if parts.method == Method::POST && path == "api/sessions" {
-        // a peer opening the target's Bot Chat (`hermes peer dm`'s create-if-missing, `source: bot_peer_dm`): made as
-        // the bridge makes it, a plain API conversation the apps' runs stream in (Hermes patch 0021), never the local
-        // one v0.22.5 mints for a peer's create (its turns would go to Hermes' peer queue)
-        Bytes::from(json!({"title": BOT_CHAT_TITLE}).to_string())
-    } else {
-        body
-    };
-    let mut headers = forwarded_headers(&parts.headers, false);
-    if let Ok(value) = HeaderValue::from_str(&format!("Bearer {}", agent.hermes_key)) {
-        headers.insert("authorization", value);
-    }
-    let url = format!("{}/{path}", agent.hermes_url);
-    let starts_run = parts.method == Method::POST && path == "v1/runs";
-    let response = forward(&state, &parts.method, &url, &query, body.clone(), headers).await?;
-    if let Some(sender) = sender {
-        tracing::info!(sender = %sender, target = %agent.name, "agent message");
-    }
-    if starts_run {
-        // the turn it started followed by the hub, for the brake (loop_brake.rs)
-        return Ok(crate::runs::keep_started(&state.hub, &agent, &body, response).await);
-    }
-    Ok(response)
+    to_household(
+        &state,
+        &config,
+        &gateway,
+        &mine,
+        &links,
+        &target,
+        &remote_agent,
+        &household,
+        &path,
+        &parts.method,
+        &parts.headers,
+        &query,
+        body,
+    )
+    .await
 }
 
 /// One of our agents writes to an agent of a linked household: our link checked here, theirs on their bridge.

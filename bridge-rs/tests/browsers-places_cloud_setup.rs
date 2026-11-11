@@ -609,7 +609,7 @@ async fn spare_agents_make_new_agents_files_only() {
         assert!(commands.lock().unwrap().iter().any(|c| is_create(c, id)));
         assert!(!snapshot.agents.contains_key(id)); // not in the apps' list
         assert!(home.join("profiles").join(id).join("config.yaml").is_file());
-        // never in another agent's roster before it is taken
+        // no Hermes Bot Mode mark (peers.rs)
         assert!(!std::fs::read_to_string(home.join("profiles").join(id).join("profile.yaml"))
             .unwrap_or_default()
             .contains("hermes-bots"));
@@ -647,7 +647,7 @@ async fn spare_agents_make_new_agents_files_only() {
     let maison = home.join("profiles").join(&ids[1]);
     assert!(std::fs::read_to_string(maison.join(".env")).unwrap().contains("CUSTOM_MODEL_API_KEY=sk-eu-person\n"));
     assert!(std::fs::read_to_string(maison.join("SOUL.md")).unwrap().contains("Maison"));
-    assert!(std::fs::read_to_string(maison.join("profile.yaml")).unwrap().contains("hermes-bots"));
+    assert!(!std::fs::read_to_string(maison.join("profile.yaml")).unwrap_or_default().contains("hermes-bots"));
     let toml = std::fs::read_to_string(config.source_path.clone().unwrap()).unwrap();
     assert!(toml.contains(&format!("[agents.{}]", ids[1])) && toml.contains("display_name = \"Maison\""), "{toml}");
     // Cuisine made after, the pool refilled after it, in the background

@@ -196,14 +196,6 @@ def test_hermes_is_pinned_and_patched(tmp_path, monkeypatch):
         "0026-runs-todo-updated.patch"]
 
 
-def test_bot_mode_marker(tmp_path):
-    (tmp_path / "profile.yaml").write_text("description: Budget\n")
-    hermes.mark_as_bot(tmp_path)
-    hermes.mark_as_bot(tmp_path)  # idempotent
-    import yaml
-    assert yaml.safe_load((tmp_path / "profile.yaml").read_text()) == {"description": "Budget", "ui_meta": {"hermes-bots": {}}}
-
-
 def bridge_check(tmp_path: Path, text: str) -> str:
     """The bridge's own reading of a config (`bipbridge check`, the Rust release build: $CARGO_TARGET_DIR or
     bridge-rs/target); skipped without one."""

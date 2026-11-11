@@ -1722,6 +1722,7 @@ pub fn create_app(config: Config, options: AppOptions) -> anyhow::Result<App> {
     crate::guide::refresh(&config); // the guide's list of agents and the setup blocks, as this bridge writes them
                                     // The skills about other agents as this bridge writes them (an update may have changed their words).
     crate::peers::write_contacts(&config, &crate::peers::links_of(&state.links.load()), Some(&state.households));
+    crate::peers::heal_tokens(&config, &state.links); // Bot Mode only towards other households
     crate::shares::heal_skills(&config);
     if options.start_background {
         state.start_background();

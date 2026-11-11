@@ -617,41 +617,93 @@ fn peers_setup(tmp: &Path) -> PeersSetup {
     PeersSetup { config: parse_config(&d, None).unwrap(), links: Links::new(&s(&links_path)), links_path, hub, space }
 }
 
-fn env_token(path: &Path) -> String {
-    std::fs::read_to_string(path).unwrap().split("HERMES_PEER_BIP_KEY=").nth(1).unwrap().trim().to_string()
+fn env_token(path: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(path).unwrap_or_default();
+    text.split("HERMES_PEER_BIP_KEY=").nth(1).map(|t| t.lines().next().unwrap_or("").trim().to_string())
+}
+
+/// Whether a profile has Hermes' Bot Mode mark (`ui_meta.hermes-bots`).
+fn marked(profile: &Path) -> bool {
+    std::fs::read_to_string(profile.join("profile.yaml")).unwrap_or_default().contains("hermes-bots")
+}
+
+/// Léa's household linked to this one (households.json as `join` leaves it).
+fn lea(tmp: &Path) -> Households {
+    let households = Households::new(&s(&tmp.join("households.json")));
+    let mut data = households.load();
+    data.insert("households".into(), json!({"lea": {"name": "Léa", "url": "https://b.ts.net", "key_out": "o".repeat(40)}}));
+    households.save(&data).unwrap();
+    households
 }
 
 #[test]
-fn each_sending_gateway_gets_a_token_in_its_own_env() {
+fn bot_mode_only_for_the_agents_that_write_to_another_household() {
     let dir = tempfile::tempdir().unwrap();
     let p = peers_setup(dir.path());
-    let result = peers::apply(&p.config, &p.links, &pairs(&[("budget", "jardin"), ("jardin", "wellness")]), None)
-        .unwrap();
+    let households = lea(dir.path());
+    let (budget, maison, jardin) =
+        (p.hub.join("profiles/budget"), p.hub.join("profiles/maison"), p.space.join("profiles/jardin"));
+    // a place made before: every profile marked, the hub with the bridge as its peer
+    for profile in [&budget, &maison, &jardin] {
+        std::fs::write(profile.join("profile.yaml"), "description: x\nui_meta:\n  hermes-bots: {}\n").unwrap();
+    }
+    // Within this household only: no mark, no peer, no token anywhere.
+    let local = pairs(&[("budget", "jardin"), ("jardin", "budget"), ("budget", "maison")]);
+    let result = peers::apply(&p.config, &p.links, &local, Some(&households)).unwrap();
     assert_eq!(result["manual"], json!({}));
-    let hub_token = env_token(&p.hub.join(".env"));
-    let space_token = env_token(&p.space.join(".env"));
-    assert_eq!(p.links.caller(&hub_token), Some(s(&p.hub)));
+    assert!(!marked(&budget) && !marked(&maison) && !marked(&jardin));
+    assert_eq!(std::fs::read_to_string(budget.join("profile.yaml")).unwrap(), "description: x\nui_meta: {}\n");
+    assert!(env_token(&p.hub.join(".env")).is_none() && env_token(&p.space.join(".env")).is_none());
+    assert!(!p.space.join("config.yaml").exists());
+    assert!(p.links.allowed("budget", "jardin"));
+    // Jardin also writes to Léa's Cuisine: its space alone gets Bot Mode.
+    let mut both = local.clone();
+    both.push(("jardin".into(), "cuisine__lea".into()));
+    peers::apply(&p.config, &p.links, &both, Some(&households)).unwrap();
+    assert!(marked(&jardin) && !marked(&budget) && !marked(&maison));
+    let space_token = env_token(&p.space.join(".env")).unwrap();
     assert_eq!(p.links.caller(&space_token), Some(s(&p.space)));
-    assert!(!std::fs::read_to_string(&p.links_path).unwrap().contains(&hub_token)); // only digests are kept
+    assert!(env_token(&p.hub.join(".env")).is_none());
+    assert!(!std::fs::read_to_string(&p.links_path).unwrap().contains(&space_token)); // only digests are kept
     let peer = std::fs::read_to_string(p.space.join("config.yaml")).unwrap(); // written by the bridge, no `hermes`
-    assert!(peer.contains("bot_peers:\n  bip:\n    url: http://127.0.0.1:8643/peer\n    note: 'Tes autres agents"), "{peer}");
-    assert!(p.links.allowed("jardin", "wellness") && !p.links.allowed("wellness", "jardin"));
-    // Wellness (set up by hand) sends: the administrator gives it a token; the hub sends nothing any more.
-    let result = peers::apply(&p.config, &p.links, &pairs(&[("wellness", "budget")]), None).unwrap();
+    assert!(peer.contains("bot_peers:\n  bip:\n    url: http://127.0.0.1:8643/peer\n    note: 'Les agents des autres"), "{peer}");
+    // Back to this household only: the space loses its mark, its peer and its token.
+    peers::apply(&p.config, &p.links, &local, Some(&households)).unwrap();
+    assert!(!marked(&jardin) && env_token(&p.space.join(".env")).is_none() && p.links.caller(&space_token).is_none());
+    assert!(!std::fs::read_to_string(p.space.join("config.yaml")).unwrap().contains("bip"));
+    // Wellness (set up by hand) to another household: the administrator gives it a token; to this one, none.
+    let result = peers::apply(&p.config, &p.links, &pairs(&[("wellness", "budget")]), Some(&households)).unwrap();
+    assert_eq!(result["manual"], json!({}));
+    let result = peers::apply(&p.config, &p.links, &pairs(&[("wellness", "cuisine__lea")]), Some(&households)).unwrap();
     assert_eq!(result["manual"], json!({"wellness": ""}));
-    assert!(
-        !std::fs::read_to_string(p.hub.join(".env")).unwrap().contains("HERMES_PEER_BIP_KEY")
-            && p.links.caller(&hub_token).is_none()
-    );
     let token = peers::manual_token(&p.config, &p.links, "wellness").unwrap();
     assert_eq!(p.links.caller(&token).as_deref(), Some("manual:wellness"));
     assert_eq!(peers::gateway_of(&p.config, p.config.agent(Some("wellness")).unwrap()), "manual:wellness");
     // Turning its last link off keeps its token; it is refused anyway.
-    peers::apply(&p.config, &p.links, &pairs(&[("budget", "jardin")]), None).unwrap();
+    peers::apply(&p.config, &p.links, &pairs(&[("budget", "jardin")]), Some(&households)).unwrap();
     assert_eq!(p.links.caller(&token).as_deref(), Some("manual:wellness"));
-    assert!(!p.links.allowed("wellness", "budget"));
     let err = peers::apply(&p.config, &p.links, &pairs(&[("budget", "budget")]), None).unwrap_err();
     assert!(err.downcast_ref::<peers::InvalidLink>().is_some());
+}
+
+#[test]
+fn at_start_a_place_loses_bot_mode_between_its_own_agents() {
+    let dir = tempfile::tempdir().unwrap();
+    let p = peers_setup(dir.path());
+    let budget = p.hub.join("profiles/budget");
+    std::fs::write(budget.join("profile.yaml"), "ui_meta:\n  hermes-bots: {}\n").unwrap();
+    std::fs::write(p.hub.join("config.yaml"), "bot_peers:\n  bip:\n    url: http://127.0.0.1:1/peer\n").unwrap();
+    std::fs::write(p.hub.join(".env"), "HERMES_PEER_BIP_KEY=old\n").unwrap();
+    let digest = {
+        use sha2::Digest;
+        hex::encode(sha2::Sha256::digest(b"old"))
+    };
+    std::fs::write(&p.links_path, json!({"links": [["budget", "maison"]], "tokens": {s(&p.hub): digest}}).to_string())
+        .unwrap();
+    peers::heal_tokens(&p.config, &p.links);
+    assert!(!marked(&budget) && env_token(&p.hub.join(".env")).is_none() && p.links.caller("old").is_none());
+    assert!(!std::fs::read_to_string(p.hub.join("config.yaml")).unwrap().contains("bip"));
+    assert!(p.links.allowed("budget", "maison"));
 }
 
 #[test]

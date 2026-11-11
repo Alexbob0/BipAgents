@@ -14,7 +14,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence
 
-import yaml  # PyYAML, installed with the installer
 
 from . import routing
 
@@ -336,17 +335,7 @@ def create_agent(runner: Runner, name: str, *, description: str, soul: str, mode
     if not runner.dry:
         folder = profile_dir(name)
         (folder / "SOUL.md").write_text(soul, encoding="utf-8")
-        mark_as_bot(folder)
     return key
-
-
-def mark_as_bot(folder: Path) -> None:
-    """Bot Mode: the agents of an install can message each other (`message_agent`) in their « Bot Chat »."""
-    path = folder / "profile.yaml"
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else None
-    data = data if isinstance(data, dict) else {}
-    data.setdefault("ui_meta", {}).setdefault("hermes-bots", {})
-    path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
 
 
 def install_service(runner: Runner) -> None:
