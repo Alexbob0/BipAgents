@@ -3,31 +3,32 @@
 Patches for [Hermes Agent](https://github.com/NousResearch/hermes-agent) that the BipAgents app relies on,
 until equivalent changes land upstream.
 
-- **Hermes base:** the stable release **v0.22.5** (`bf0203a794`, 2026-10-22), in `BASE`; the installer pins it
+- **Hermes base:** the stable release **v0.23.1** (`3b42157858`, 2026-11-10), in `BASE`; the installer pins it
   (`HERMES_COMMIT`, installer/bipinstall/hermes.py). Every patch applies cleanly there, in order.
 - **Apply** from the root of a Hermes checkout at that commit: `git apply hermes/patches/<patch>`, in order.
 - Until 2026-11-01 the base was `517b5e10f` (upstream `main` of 2026-10-08): that set, its `next/` variants and the
   sections of the patches dropped since (0001, 0004, 0012; 0014 on 2026-11-04) are in git history (`git show 7618e0a1:hermes/patches/`).
+- From 2026-11-01 to the move to v0.23.1 the base was v0.22.5 (`bf0203a794`): that set (20 patches, 0006, 0019 and
+  the routine parts of 0008 and 0015 included) is in git history (`git show a2a5659f1:hermes/patches/`). Retired on
+  the move: see « Moving to v0.23.1 » below.
 
-**Upstream.** 0005 is proposed as NousResearch/hermes-agent#136660 (its head is written for main's later browser
-modules; the patch here is the same behaviour on v0.22.5's). Candidates for small upstream PRs: 0011, 0019's
-labels, 0008's fall-back fix, 0017, 0009's `!name`, 0013.
+**Upstream.** 0005 is proposed as NousResearch/hermes-agent#136660: since v0.23.1 the patch is that PR's head
+(`7d21b3b98a`) as is. The autumn clock change fix of the old 0008 is proposed as #146444 (open). Candidates for small
+upstream PRs: 0025, 0020, 0026, 0011, 0017, 0009's `!name`, 0013.
 
-| Patch | Files touched (v0.22.5) |
+| Patch | Files touched (v0.23.1) |
 |---|---|
 | 0005 vault fills after the browser restarted | `tools/browser_vault_tool.py` |
-| 0006 synchronous peer reply | `tools/bot_mode_dm.py` |
 | 0007 `browser.vault_only` | `model_tools.py` |
-| 0008 time zone, routines, wall clock | `hermes_time.py`, `cron/jobs.py`, `tools/environments/base.py`, `hermes_cli/config_defaults.py` |
-| 0009 tool search `!name`, compact skill categories | `tools/tool_search.py`, `agent/prompt_builder.py` |
+| 0008 time zone: in the terminal, followed without a restart | `hermes_time.py`, `tools/environments/base.py` |
+| 0009 tool search `!name`, compact skill categories | `tools/tool_search.py`, `tools/tool_search_catalog.py`, `agent/prompt_builder.py` |
 | 0010 empty replies: changed retries, tool calls written as text | `agent/leaked_tool_calls.py` (new), `agent/turn_*.py`, `agent/chat_completion_helpers.py` |
 | 0011 titles with GLM: thinking floored to low | `agent/auxiliary_reasoning_floor.py` |
 | 0013 MCP results: vault passwords scrubbed | `tools/mcp_tool_handlers.py` |
-| 0015 time anchor: the time with each message | `agent/prompt_builder.py`, `agent/system_prompt.py`, `cron/scheduler_prompt.py`, `hermes_state_common.py` |
+| 0015 time anchor: the time with each message | `agent/prompt_builder.py`, `agent/system_prompt.py`, `hermes_state_common.py` |
 | 0016 one `message_agent`, the bridge's (0012 folded in) | `tools/bot_mode_dm.py`, `tools/mcp_tool_agent.py` |
 | 0017 address items with name, phone, e-mail | `agent/vault_store.py`, `agent/vault_login_classifier.py` |
 | 0018 guest turns: closed tools, no USER.md | `agent/guest_turn.py` (new), `agent/*`, `gateway/platforms/api_server*.py`, `gateway/session_api_turn.py`, `gateway/session_execution.py`, `gateway/run_turn_runner.py` |
-| 0019 routines report to their conversation | `tools/tool_labels.py`, `cron/jobs.py`, `tools/cronjob_*.py`, `gateway/platforms/api_server.py` |
 | 0020 Runs API: each model call's usage (`model.usage`) | `agent/turn_usage.py`, `gateway/platforms/api_server_runs.py`, `gateway/session_api_turn.py`, `gateway/run_turn_runner.py` |
 | 0021 an API client's own Bot Chat stays an API conversation | `gateway/platforms/api_server_bot_chat.py`, `gateway/session_bot.py` |
 | 0022 tools in one canonical order (`tools.order_first`) | `tools/tool_order.py` (new), `model_tools.py`, `tools/mcp_tool_agent.py` |
@@ -44,9 +45,9 @@ name>` trailer, which names the file (stable numbers: a dropped patch leaves a g
 NousResearch/hermes-agent (`git clone --filter=blob:none` is enough):
 
 ```sh
-scripts/hermes-patches.sh branch  ~/src/hermes hermes/patches                    # bip/patches-v0.22.5 from the files
+scripts/hermes-patches.sh branch  ~/src/hermes hermes/patches                    # bip/patches-v0.23.1 from the files
 # … fix, test, commit (git commit --fixup=<commit> + git rebase -i --autosquash for a change to one patch) …
-scripts/hermes-patches.sh export  ~/src/hermes bip/patches-v0.22.5 hermes/patches
+scripts/hermes-patches.sh export  ~/src/hermes bip/patches-v0.23.1 hermes/patches
 scripts/hermes-patches.sh check   ~/src/hermes hermes/patches                    # the installer's own apply, on BASE
 ```
 
@@ -77,28 +78,22 @@ server starts on demand (BipAgents' visible browser), that is any conversation t
 **What the patch does.** With a configured browser (`browser.cdp_url` or `BROWSER_CDP_URL`) and no live supervisor,
 `_ensure_supervisor` attaches to that browser again, its endpoint resolved afresh (a restarted Chromium has a new
 browser id). The origin read (`_eval_js`) goes through the same attach before falling back to the CLI. Without a
-configured browser nothing changes.
+configured browser nothing changes. Since v0.23.1 (where `_eval_js` already goes through `_ensure_supervisor`, and
+upstream attaches only to the task's own `browser_exec` session) the patch is the head of #136660 as is: the configured
+endpoint first (`get_cdp_override`, resolved afresh), then the session's.
 
-**Files.** `tools/browser_vault_tool.py`.
+**Files.** `tools/browser_vault_tool.py`, `tests/tools/test_browser_vault.py`.
 
-**Tests.** Checked end to end against a live gateway: in one conversation, a fill, the browser closed, then started
-again and a second fill. Proposed upstream with three tests: NousResearch/hermes-agent#136660.
+**Tests.** Checked end to end against a live gateway on v0.22.5: in one conversation, a fill, the browser closed, then
+started again and a second fill. Proposed upstream with three tests: NousResearch/hermes-agent#136660. On v0.23.1: the
+PR's tests in `tests/tools/test_browser_vault.py`; the fill after a restart of the visible browser is for the bench.
 
-## 0006 — a peer's reply comes back to an api_server session
+## 0006 — a peer's reply comes back to an api_server session (retired on v0.23.1)
 
-**Problem.** An agent of the app (an api_server session) that messages an agent on a peer (`message_agent` to
-`bip/<agent>`: the bridge, for an agent in its own space) gets « delivered » and is told the reply will come
-later. An api_server session has no asynchronous delivery: the agent polls the delivery while the peer answers
-into that same busy session, and both wait on each other until the timeouts (10 minutes seen).
-
-**What the patch does.** When the session has no asynchronous delivery (`async_delivery_supported()` false), the
-peer message runs `hermes peer dm --json` inline (600 s at most) and returns the peer's reply as the tool result,
-asking the peer to answer in text in that turn. A peer that does not answer in time keeps the message in its Bot
-Chat and the agent is told not to send it again. Sessions with asynchronous delivery (messaging platforms) are
-unchanged.
-
-**Tests.** `tests/tools/test_bot_mode_dm_sync_peer.py` (reply handed back, timeout); the Bot Mode suites still
-pass (115).
+Retired on the move to v0.23.1 (2026-11-10, Alex's decision): 0016 hides Hermes' built-in `message_agent` wherever the
+bridge's MCP `message_agent` is offered (every BipAgents place), and the bridge caps the hops itself
+(`agent_messages.rs` `MAX_HOPS`), so the built-in's synchronous path no longer runs. The text is in git history
+(`git show a2a5659f1:hermes/patches/0006-bot-mode-sync-peer-reply.patch`).
 
 ## 0007 — `browser.vault_only`: the vault without Hermes' own browser
 
@@ -114,45 +109,37 @@ not what the person sees started from « Bureau ».
 off. Without the key nothing changes. The bridge sets it for every agent whose visible browser is on (at its setup,
 and at the bridge's start for those set up before).
 
-**Files.** `model_tools.py` (`_select_tool_names`).
+**Files.** `model_tools.py` (`_select_tool_names`); new `tests/tools/test_browser_vault_only.py`.
 
-**Tests.** None upstream; checked with `patch --dry-run` on `517b5e10f` and `97a9ae8ee`.
+**Tests.** `tests/tools/test_browser_vault_only.py` (3). v0.23.x's `browser` toolset is `browser_exec`, `browser_cdp`,
+`browser_dialog` and `browser_vault` (the `browser_navigate`… tools are gone): the test names those since v0.23.1.
 
-## 0008 — the person's time zone: terminal, routines kept at home time, one run per wall-clock time
+## 0008 — the person's time zone: in the terminal, and followed without a restart
 
-**Problems.** (1) The configured `timezone` reaches the prompts, cron and `execute_code`, but not the terminal: `date`
-or a script run with the terminal tool tells the server's time (or the container's UTC). (2) Hermes caches the zone per
+**Problems.** (1) The configured `timezone` reaches the prompts and `execute_code`, but not the terminal: `date` or a
+script run with the terminal tool tells the server's time (or the container's UTC). (2) Hermes caches the zone per
 config path: a bridge that rewrites `timezone` (the person's phone moved to another zone) is not followed until the
-gateway restarts. (3) One zone for everything: someone who travels gets either their routines moved silently, or a
-« now » that stays at home time. (4) The autumn clock change ran some routines twice. Europe leaves summer time on
-Sunday 25 October 2026 (03:00 CEST → 02:00 CET): a routine at `30 2 * * *` whose run ended in the repeated hour, or
-`59 2 * * *` even with a one-minute run, got 02:30 / 02:59 *winter* time the same night, because `compute_next_run`
-takes the second fold of the wall clock when the first one is already past (any recompute from « now » in the
-repeated hour does the same: the end of a run, `advance`, a restart). Measured with a 30-second tick simulation on
-`517b5e10f`: `30 2` (45-minute run) and `59 2` fired twice; `0 2`, `0 3` and `0 1` once. US: the same on 1 November
-2026 at 01:xx.
+gateway restarts.
 
 **What the patch does.**
-- `cron.timezone` (new key, `""` by default = the profile's `timezone`): the zone cron schedules are read in
-  (`hermes_time.get_cron_timezone()`), used by `compute_next_run` and by the stale-schedule check.
-- `compute_next_run`: a job pinned to given hours (hour field not a wildcard) runs once per wall-clock time — the
-  repeated hour's second pass is never chosen for it; a job whose hour field is a wildcard (`*/15 * * * *`) keeps
-  running in the second pass, as cron does. The spring gap is unchanged (02:30 that does not exist runs at 03:30).
-- The zone cache is keyed by the config file's modification time: a rewritten `timezone` or `cron.timezone` applies
-  at the next call, without a restart.
+- The zone cache is keyed by the config's version as well as its path (`config_backend.config_version_or_none`, the
+  file backend's leads with its modification time): a rewritten `timezone` applies at the next call, without a
+  restart.
 - Terminal commands (every backend: local, docker, ssh…) run after `export TZ=<the profile's zone>` when one is
   configured (not on Windows); an inline `TZ=… cmd` still wins.
 
-**Files.** `hermes_time.py`, `cron/jobs.py`, `tools/environments/base.py`, `hermes_cli/config_defaults.py`; new
-`tests/cron/test_cron_wall_clock_once_and_zone.py` (fall-back runs once with 1- and 45-minute runs, a base in the
-second pass, hour-wildcard jobs, the spring gap, `cron.timezone`, a rewritten zone without restart, the terminal TZ).
+**Files.** `hermes_time.py`, `tools/environments/base.py`; new `tests/tools/test_profile_timezone_followed.py` (a
+rewritten zone read without a restart, the terminal's `TZ`).
 
-**Tests.** The new file, and `tests/cron/` plus the timezone, system prompt, timestamp and environment suites: 1648
-passed, 55 skipped (Python 3.14). Applies with `patch --dry-run` on `517b5e10f` and `97a9ae8ee`.
+**Retired on v0.23.1** (2026-11-10, Alex's decision): the routine half of the patch, `cron.timezone` (routines kept at
+home time) and one run per wall-clock time across the autumn change in `compute_next_run`. BipAgents' routines run on
+the bridge, Hermes' `cronjob` toolset is off (`tool_diet.rs`), so nothing of it ran. The clock change fix is proposed
+upstream as #146444. The text and its tests (`tests/cron/test_cron_wall_clock_once_and_zone.py`) are in git history
+(`git show a2a5659f1:hermes/patches/0008-timezone-routines-wall-clock.patch`); the patch file is renamed
+`0008-timezone-terminal-followed`.
 
-**Bridge side.** The bridge writes `timezone` (the phone's zone, at once) and `cron.timezone` (the routines' zone, which
-changes only when the person answers the travel question) in each agent's profile; without this patch it restarts the
-agent's gateway instead so `timezone` is read again, and `cron.timezone` is ignored (routines follow `timezone`).
+**Bridge side.** The bridge writes `timezone` (the phone's zone, at once) in each agent's profile; without this patch
+it restarts the agent's gateway instead so `timezone` is read again. The `cron.timezone` it may still write is ignored.
 
 ## 0009 — tool search: some MCP tools kept direct, rarely needed skill categories by name only
 
@@ -174,7 +161,9 @@ music generation's included, with no setting to shorten it short of disabling sk
   the MCP servers' state (82/83/84 on 3 November), and each change cost the prompt cache everything after that tool,
   the whole system prompt (≈ 11k tokens). A tool more or less still changes the listing from its line on.
 
-**Files.** `tools/tool_search.py`, `tools/tool_search_catalog.py`, `agent/prompt_builder.py`.
+**Files.** `tools/tool_search.py`, `tools/tool_search_catalog.py`, `agent/prompt_builder.py`; since v0.23.1 also
+upstream's `tests/tools/test_tool_search_listing_layout.py` (its group heading without the count; v0.23.1 builds the
+heading at the end and drops it for a one-tool group, which the patch keeps).
 
 **Bridge side** (bridge-rs/src/tool_diet.rs). Per kind of agent, the bridge writes the defer list (Hermes' defaults, the
 core tools the kind rarely needs, `!mcp__bipagents__<tool>` for its most used cheap tools) and the compact categories.
@@ -306,18 +295,16 @@ map). (b) The « as of the last context rebuild » line is replaced by one const
 message starts with a `bip:now` line, that line is the current date and time, trust the latest one, don't check the
 clock with a tool; without one (a messenger's or the CLI's turn on the same Hermes: no bridge put it), check the clock
 with a tool when the exact time matters (review 2026-11-03, H8). It never changes, so the prompt stays byte-stable for
-the whole conversation. (c) Each routine run's prompt gets
-the same line after the cron hint, in the routines' zone (`cron.timezone` of patch 0008, else the profile's), e.g.
-`<!--bip:now Sunday, October 25, 2026, 02:30, Europe/Paris (UTC+01:00)-->`. The conversations' lines come from the
-bridge and the apps (bridge-rs/src/dates/now.rs): in the new user message, never in the system prompt, so the cache
-holds; the apps hide every `<!--bip:…-->` note. (d) A session's preview (the head of its first user message, 60
-characters) skips a leading now line, else every conversation's preview would be the line.
+the whole conversation. The conversations' lines come from the bridge and the apps (bridge-rs/src/dates/now.rs): in
+the new user message, never in the system prompt, so the cache holds; the apps hide every `<!--bip:…-->` note.
+(c) **Retired on v0.23.1** (2026-11-10, Alex's decision): a now line in each Hermes routine run's prompt. BipAgents'
+routines run on the bridge, and upstream's own `[CURRENT RUN TIME]` (#82826) is in v0.23.x. (d) A session's preview
+(the head of its first user message, 60 characters) skips a leading now line, else every conversation's preview would
+be the line.
 
-**Files.** `agent/prompt_builder.py`, `agent/system_prompt.py`, `cron/scheduler_prompt.py` (`now_line`),
-`hermes_state_common.py` (`_PREVIEW_CONTENT_SQL`), `tests/agent/test_system_prompt.py` (the two tests that expected
-the old line); new `tests/agent/test_now_line.py` (7 tests: the routine's zone while the profile's is another, both
-passes of the repeated hour on 2026-10-25 in Europe/Paris, before and after the jump on 2026-03-08 in
-America/New_York, no terminal-time hint, the preview).
+**Files.** `agent/prompt_builder.py`, `agent/system_prompt.py`, `hermes_state_common.py` (`_PREVIEW_CONTENT_SQL`),
+`tests/agent/test_system_prompt.py` (the two tests that expected the old line); new `tests/agent/test_now_line.py`
+(no terminal-time hint, the preview; the 5 routine tests went with (c)).
 
 **Tests.** The new file with `test_system_prompt.py`, `test_system_prompt_switch_invalidation.py`,
 `test_prompt_builder.py`, `test_cron_wall_clock_once_and_zone.py`, `test_cron_prompt_injection.py`,
@@ -435,47 +422,12 @@ with 0001–0018): the two new files, 26 passed; with `test_system_prompt*.py`, 
 `test_rooms_guests.py`, `test_households_and_peers.py` (the mark on each path). The real-model check is in
 internal/next/relative-turns.md.
 
-## 0019 — routines made in a conversation report to it; plain results; longer instructions; labels for `calls` as text
+## 0019 — routines made in a conversation report to it (retired on v0.23.1)
 
-**Problem.** Seen 2026-10-31: Alex asked his agent, in the app, « mets un schedule ce soir à 23h pour corriger tout le
-carnet ». Three things went wrong on Hermes' side.
-- The routine tool (`cronjob_manage`, behind the tool search) went through `tool_call`. The dispatcher runs a `calls`
-  sent as a JSON string or as one object (`normalize_tool_call_entries`), but `tools/tool_labels.py` read only a list:
-  the `tool.started` preview, which the apps show, was « Unnamed call ».
-- A Runs API session has no push channel, so `_origin_from_env` drops its origin and an omitted `deliver` makes a
-  local-only job. The create result then told the model « This is a local-only cron job … recreate or update the job
-  with deliver set to … deliver='telegram' or deliver='all' ». The model did so and told Alex about it (« Le job est
-  créé mais en livraison locale uniquement »), though the bridge delivers every routine's report anyway.
-- A job's instructions had two limits: none in the tool, 5 000 characters in the Jobs API (`/api/jobs`, which the
-  apps' Routines use to edit a job the agent made). 5 000 is short for a long multi-step instruction.
-
-**What the patch does.**
-- `labels_for_call` reads a `tool_call`'s entries in every shape the dispatcher runs: a list, a JSON string of one, a
-  single object, the legacy `{name, arguments}`, with `arguments` as a JSON string too. An entry with no name keeps
-  « Unnamed call » (the apps word that as a plain tool call).
-- `_origin_session_from_env`: in an api_server session that resumes server history
-  (`session_history_delivery_supported()`, the declaration async `delegate_task` results rely on), with
-  `cron.session_reports: true` in the profile's config (the bridge writes it, tool_diet.rs), a job created with no
-  `deliver` or with `origin` gets the session id as `origin_session_id`. `deliver` stays `local`: Hermes posts
-  nothing, the bridge's cron watcher posts the run's report in that conversation. The create result says « Its report
-  comes back to this conversation each time it runs. », and `deliver` reads `this conversation` in the create, update
-  and list results, with no « local-only » notice; an update asking for `origin` again keeps it so. Without the
-  config key, or in any other session, nothing changes.
-- One limit for a job's instructions, `cron.jobs.MAX_PROMPT_CHARS = 20_000` characters. A long multi-step instruction
-  (what to go through, the rules, what to check, how to report) is 2 000 to 8 000 characters; 20 000 (about 5 000
-  tokens) leaves room for that and more, and still refuses a pasted document, which belongs in a file the job reads.
-  The cronjob tool now checks it on create and update, with a plain error (« These instructions are too long for a
-  scheduled task (N characters, at most 20,000) … Nothing was saved. »); the Jobs API checks the same number.
-
-**Files.** `tools/tool_labels.py`, `cron/jobs.py`, `tools/cronjob_job_args.py`, `tools/cronjob_tools.py`,
-`gateway/platforms/api_server.py`; `tests/gateway/test_api_server_jobs.py` (the API's limit tests at 20 001
-characters); new `tests/tools/test_cronjob_session_reports.py` (12 tests; 6 fail without the patch: a stringified
-`calls` labelled « Unnamed call », no origin session, a 20 001-character prompt accepted).
-
-**Tests.** On the Mac (2026-11-01, Python 3.14, `517b5e10f` with 0001–0019): the new file with
-`tests/tools/test_cron*.py`, `test_cronjob*.py`, `test_delegate_cron_sync_fallback.py`, `tests/agent/test_display.py`,
-`tests/gateway/test_api_server_jobs.py` and `tests/cron/`: 1688 passed, 11 skipped. The bridge's side: `push-runs_cronwatch.rs`
-(a routine's report in the conversation it was made in, or under its run when that one is gone) and `tool_diet.rs`.
+Retired on the move to v0.23.1 (2026-11-10, Alex's decision): routines run on the bridge, which no longer writes
+`cron.session_reports` and keeps Hermes' `cronjob` toolset off, so none of it ran (its `tool_call` labels, origin
+session, 20 000-character limit). The text is in git history
+(`git show a2a5659f1:hermes/patches/0019-routines-report-to-their-conversation.patch`).
 
 ## 0020 — the Runs API reports each model call's usage as it ends (`model.usage`)
 
@@ -587,6 +539,52 @@ v0.22.5 with this branch's bridge (`lab.py hermes` + `local --commit 6961a432 --
 `clarify.settled` → « Tu as choisi le train de 14 h. ») in that same main conversation (same id, from before the
 upgrade), in a new side conversation, in a second agent's main conversation, and in the main conversation of an agent
 made afterwards (a spare taken: `clarify` written when it got its tools).
+
+## Moving to v0.23.1 (2026-11-10)
+
+The series rebased from v0.22.5 (`bf0203a794`) on v0.23.1 (`3b42157858`), branch `bip/patches-v0.23.1`, the installer
+pins v0.23.1 (`HERMES_COMMIT`). Analysis and Alex's decisions: BipAgents-reprise `hermes-0.23-final.md` (§3, §6 3-4).
+18 patches, every one applies with `git apply` on `3b42157858`, in order (`scripts/hermes-patches.sh check`).
+
+| Patch | On v0.23.1 |
+|---|---|
+| 0005 vault fills after the browser restarted | **rebased on #136660's head** (`7d21b3b98a`, written for these modules): applies as is |
+| 0006 synchronous peer reply | **retired** (0016 + the bridge's hop cap) |
+| 0007 `browser.vault_only` | kept; its test names v0.23's browser tools (`browser_exec`, `browser_cdp`) |
+| 0008 time zone | **routine half retired** (`cron.timezone`, one run per wall-clock time; #146444 upstream); terminal `TZ` and the zone followed without a restart kept, keyed by `config_backend`'s version; file renamed `0008-timezone-terminal-followed` |
+| 0009 `!name`, compact categories | rebased: v0.23.1 builds the group heading at the end (none for a one-tool group); the count dropped there, upstream's layout test follows |
+| 0010 empty replies | rebased: `apply_one_shot_changes` beside v0.23.1's `_apply_user_turn_request_headers`; the request builder is now `build_request_payload` (also used by `ctx.side_question`) |
+| 0011 titles with GLM | applies as is; upstream's new wire snapshot (`tests/fixtures/provider_wire_snapshot_variants.json`, `aux:zai` « off ») follows the floor |
+| 0013, 0016, 0017, 0020, 0023, 0025, 0026 | apply as is (0023 needs 0018's `agent/guest_turn.py`) |
+| 0015 time anchor | **(c) retired** (routine prompts; upstream's `[CURRENT RUN TIME]`); (a), (b), (d) kept |
+| 0018 guest turns | rebased: v0.23.1 removed `browser_control` from `prepare_api_execution` (still accepted in a stored admission); `guest_tools` added there alone |
+| 0019 routines report to their conversation | **retired** (the bridge no longer writes `cron.session_reports`) |
+| 0021 API Bot Chat stays API | rebased: `displaceable_bot_chat` takes a `subject` and checks hand-offs (#143286), `_kept_local_history` decides on the tip; `api_bot_chat` still returns first; #144300's archived check (`_bot_chat_creation_id`) untouched |
+| 0022 canonical tool order | rebased: v0.23.1 holds back a tool new only because its `check_fn` flipped (`held`); both merges keep that and insert the others at their canonical place (not the tail) |
+| 0024 closed tools | applies after 0018 |
+
+**Retired files.** A Hermes patched by an older BipAgents keeps those patches' files changed; they are listed in
+`installer/bipinstall/to_bipagents.py` `EARLIER_FIX_FILES` (the 2026-11-01 switch did the same for 0001/0004), so a
+move to BipAgents' Hermes parks them in `git stash` instead of refusing them as the person's own changes.
+
+**Tests (v0.23.1).** (2026-11-10, build server, Python 3.14.8, `uv sync --frozen --extra messaging --extra anthropic
+--extra mcp --extra cron --extra web --group dev` on `3b42157858` with the set; `scripts/run_tests.sh -j 4`, `nice 19`):
+- the patches' own tests (23 files): all pass (588 passed, 4 skipped once `anthropic` is installed);
+- `tests/tools` + the patches' files: 11 924 passed, 11 failed, 7 errors. Unpatched v0.23.1 fails the same
+  `test_search_*` (4 + 1), `test_plugin_guard.py` (6 errors, « requires real uv ») and `test_fal_sdk.py` (no SDK).
+  **Open:** 6 failures come from 0022 itself: upstream's new `test_refresh_agent_mcp_tools.py` (3) and
+  `test_tool_defs_memo_availability.py` (3) assert that a late tool is appended at the tail, which 0022 replaces by
+  its canonical place. To do: decide (keep 0022's rule and adapt those tests in the patch) before the bench;
+- `tests/agent`, `tests/cron`, the gateway's Runs API / session / TurnRunner / agent cache / Bot Chat / peer suites
+  and the first part of `tests/hermes_state` (run stopped at 57 % for the day's end): 17 781 passed; 10 files
+  failing: 6 the same on unpatched v0.23.1 (`test_conversation_compression_manual`, `test_vault_key_storage` without
+  `keyring`, `test_session_client_env`, `test_session_edit_policy`, `test_session_mutation_model`,
+  `test_session_policy_refusal_fields`), `test_shell_hooks_tree_kill` (a 5 s signal deadline under load; passes
+  alone unpatched, to rerun alone patched), and `test_provider_wire_snapshot_variants` (`aux:zai` « off »: 0011's
+  floor, by design; the snapshot fixture is updated in 0011 since);
+- not run yet: the rest of `tests/hermes_state`, and the two order test files again after the decision;
+- `installer/tests`: 339 passed, 2 skipped; `scripts/hermes-patches.sh check` passes; `branch` then `export` gives the
+  same bytes.
 
 ## Moving to v0.22.5 (2026-11-01)
 

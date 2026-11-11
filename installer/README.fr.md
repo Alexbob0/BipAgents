@@ -29,7 +29,7 @@ Ajouter `--dry-run` pour voir chaque étape et chaque commande sans rien modifie
    | Costaud | Serveur Linux ≥ 64 Go | ailleurs | Pocket + ton modèle de voix (s'il tourne déjà) | permanent, un par personne |
 
    Sur un Mac mini 16 Go avec le modèle ailleurs : environ 1 Go par personne plus les voix, une famille y tient.
-4. **Installe Hermes** avec son installateur officiel, dans la version testée avec BipAgents (v0.22.5, `bf0203a794`), y applique
+4. **Installe Hermes** avec son installateur officiel, dans la version testée avec BipAgents (v0.23.1, `3b42157858`), y applique
    les patches de `hermes/patches/` (questions de l'agent dans l'app, photos gardées pour les questions de suivi), en **une gateway par personne** (mode multiplex d'Hermes) :
    chaque agent est un profil joint à `/p/<agent>/` avec sa propre clé. Les nouveaux agents sont pris en compte sans
    redémarrage.

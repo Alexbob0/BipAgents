@@ -25,10 +25,10 @@ Bip-Patch: 0023-prompt-cache-stable-across-conversations
  create mode 100644 tests/agent/test_prompt_cache_stable.py
 
 diff --git a/agent/agent_init.py b/agent/agent_init.py
-index 59006475ded77decfdcfa887506667d3f48ae411..a5d82bcca5dd7320b890ddc53e07aa2216691783 100644
+index 50cb0f1b3a49add4ab0df9a37508de335d7ae5cb..331128eba1c8e5ca9827d344fc68510095e3afb8 100644
 --- a/agent/agent_init.py
 +++ b/agent/agent_init.py
-@@ -1337,6 +1337,8 @@ def _init_memory(agent, _agent_cfg, skip_memory, platform, memory_manager=None):
+@@ -1198,6 +1198,8 @@ def _init_memory(agent, _agent_cfg, skip_memory, platform, memory_manager=None):
                      user_char_limit=mem_config.get("user_char_limit", 1375),
                      memory_enabled=agent._memory_enabled,
                      user_profile_enabled=agent._user_profile_enabled,
@@ -240,10 +240,10 @@ index 0000000000000000000000000000000000000000..403bdf0dc7ef391a6823643b043108bc
 +    agent._instructions_note = ""
 +    return note if isinstance(note, str) else ""
 diff --git a/agent/system_prompt.py b/agent/system_prompt.py
-index f614d05ffedc314be8d68220f075278167bde94a..9455b18906bee6c3d279e45520e0c5b262adb4f6 100644
+index 21c96673478dc6d160fa7b5ad0bf889854024d6c..b87526e2f468dd2da20fd122b22a981d77122947 100644
 --- a/agent/system_prompt.py
 +++ b/agent/system_prompt.py
-@@ -706,7 +706,7 @@ def _coding_parts(agent: Any) -> tuple[list[str], list[str], list[str]]:
+@@ -721,7 +721,7 @@ def _coding_parts(agent: Any) -> tuple[list[str], list[str], list[str]]:
  def _post_workspace_parts(agent: Any) -> list[str]:
      """Blocks that follow the worktree-specific context: environment probe
      (config.yaml agent.environment_probe; one line, nothing when clean, skipped
@@ -252,7 +252,7 @@ index f614d05ffedc314be8d68220f075278167bde94a..9455b18906bee6c3d279e45520e0c5b2
      parts: list[str] = []
      if getattr(agent, "_environment_probe", True):
          try:
-@@ -714,8 +714,8 @@ def _post_workspace_parts(agent: Any) -> list[str]:
+@@ -729,8 +729,8 @@ def _post_workspace_parts(agent: Any) -> list[str]:
              parts.append(get_environment_probe_line())
          except Exception:
              pass  # Probe failure must never block prompt build.
@@ -263,7 +263,7 @@ index f614d05ffedc314be8d68220f075278167bde94a..9455b18906bee6c3d279e45520e0c5b2
      parts.append(platform_hint(agent))
      return parts
  
-@@ -797,6 +797,10 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None)
+@@ -812,6 +812,10 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None)
      # The profile line names this home's path, so it rides in the volatile tier: the stable
      # prefix then stays byte-identical across every profile (and home) on the host.
      volatile_parts.append(_active_profile_line(agent))
@@ -275,10 +275,10 @@ index f614d05ffedc314be8d68220f075278167bde94a..9455b18906bee6c3d279e45520e0c5b2
      # Keep the renderer-owned runtime anchor after all user/plugin prose so quoted
      # host examples cannot shadow it during persisted-prompt validation.
 diff --git a/agent/turn_context.py b/agent/turn_context.py
-index c2786a27fc1aa7a57264993e4d4dc31e99f9ecd9..cc299bd7bb38421da82dbf8f9ad7698e9ac14709 100644
+index 0bc725e42017a7814a7f3d806833944b2f8aade2..dfb0fcb62ac4ee307704fdab09ae9a18e98925a3 100644
 --- a/agent/turn_context.py
 +++ b/agent/turn_context.py
-@@ -862,10 +862,11 @@ def _merge_gateway_notes(
+@@ -976,10 +976,11 @@ def _merge_gateway_notes(
      tool result carried, then the surface-switch correction. Multimodal (list) content can't take the
      string sidecar — append a durable text part instead."""
      forward_lsp_verdicts(agent)  # late LSP verdicts on last turn's edits ride the plugin-notice queue
@@ -293,7 +293,7 @@ index c2786a27fc1aa7a57264993e4d4dc31e99f9ecd9..cc299bd7bb38421da82dbf8f9ad7698e
      )
      if not _turn_notes:
          return plugin_user_context
-@@ -1188,6 +1189,12 @@ def build_turn_context(
+@@ -1361,6 +1362,12 @@ def build_turn_context(
      # Every turn, not only on a prompt restore: a long-lived agent (CLI, TUI, Desktop) keeps its
      # prompt in memory for the whole conversation and would never re-check its skills index.
      stage_skills_index_note(agent, active_system_prompt, messages)
@@ -498,10 +498,10 @@ index 0000000000000000000000000000000000000000..97a05015ccfe355d1103660f83e876e4
 +    assert merged.index("[System: I]") < merged.index("[System: M]")
 +    assert agent._instructions_note == "" and agent._memory_note == ""
 diff --git a/tools/memory_tool_store.py b/tools/memory_tool_store.py
-index 3666bf9fd564873f29e6ce76f1508fa9007b1418..c830108c831dc3b2651f759a796cfd5e9c5af1a7 100644
+index 03e84ff1b89489dcbb1d684b80924eaed00618e7..a21710b94898b9e8a973660231ef1bfa0b7de256 100644
 --- a/tools/memory_tool_store.py
 +++ b/tools/memory_tool_store.py
-@@ -184,12 +184,16 @@ class MemoryStore:
+@@ -186,12 +186,16 @@ class MemoryStore:
      _MAX_CONSOLIDATION_FAILURES_PER_TURN = 3
  
      def __init__(self, memory_char_limit: int = 2200, user_char_limit: int = 1375, *,
@@ -519,7 +519,7 @@ index 3666bf9fd564873f29e6ce76f1508fa9007b1418..c830108c831dc3b2651f759a796cfd5e
          self._consolidation_failures = 0  # per turn; reset by reset_consolidation_failures()
  
      # Per-turn counter of failed at-capacity consolidation attempts; reset at each turn boundary by
-@@ -235,13 +239,18 @@ class MemoryStore:
+@@ -237,13 +241,18 @@ class MemoryStore:
                      f"Removed from system prompt; use memory(action=remove, target='{_store_target(filename)}') "
                      f"to delete the original.]")
  
@@ -539,7 +539,7 @@ index 3666bf9fd564873f29e6ce76f1508fa9007b1418..c830108c831dc3b2651f759a796cfd5e
              self._set_entries(target, entries)
              # External writers (MCP bridges, hand edits) can exceed the cap; the limit only fires on
              # add/replace, so the oversized block would silently ride in the prompt while every later
-@@ -250,7 +259,28 @@ class MemoryStore:
+@@ -252,7 +261,28 @@ class MemoryStore:
                  logger.warning("%s exceeds its char limit on load: %d/%d chars. Entries stay loaded; "
                                 "further additions are blocked until it is back under the limit.",
                                 path.name, count, limit)

@@ -19,9 +19,9 @@ import yaml  # PyYAML, installed with the installer
 from . import routing
 
 INSTALL_URL = "https://hermes-agent.nousresearch.com/install.sh"
-# The Hermes version BipAgents is tested with, v0.22.5: its patches (hermes/patches/, base in hermes/patches/BASE) apply
+# The Hermes version BipAgents is tested with, v0.23.1: its patches (hermes/patches/, base in hermes/patches/BASE) apply
 # cleanly there. Override with BIPAGENTS_HERMES_COMMIT (empty = Hermes' own default, without guarantee for the patches).
-HERMES_COMMIT = os.environ.get("BIPAGENTS_HERMES_COMMIT", "bf0203a794")
+HERMES_COMMIT = os.environ.get("BIPAGENTS_HERMES_COMMIT", "3b42157858")
 HUB_PROFILE = "default"
 
 

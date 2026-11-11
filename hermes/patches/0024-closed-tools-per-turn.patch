@@ -25,10 +25,10 @@ Bip-Patch: 0024-closed-tools-per-turn
  create mode 100644 tests/agent/test_closed_tools.py
 
 diff --git a/agent/agent_runtime_helpers.py b/agent/agent_runtime_helpers.py
-index 45300b6a50d5f999f8ccee6b6206d93afd4449a9..e13096b4a4d1f3cad87c1b0444ffcaba7f91d8d0 100644
+index 4506c5a1f8d01e801ca5ad3d7053cbdfeeac874d..11c3bff3272fe9162ffeebc5e30c8143df951d43 100644
 --- a/agent/agent_runtime_helpers.py
 +++ b/agent/agent_runtime_helpers.py
-@@ -2523,6 +2523,11 @@ def invoke_tool(agent, function_name: str, function_args: dict, effective_task_i
+@@ -2487,6 +2487,11 @@ def invoke_tool(agent, function_name: str, function_args: dict, effective_task_i
      guest_refused = _guest_refusal_result(agent, function_name)
      if guest_refused is not None:
          return guest_refused
@@ -120,10 +120,10 @@ index 0000000000000000000000000000000000000000..d48342f9ae5289037e96e9fd091c19e7
 +    message = refusal(agent, name)
 +    return None if message is None else json.dumps({"error": message}, ensure_ascii=False)
 diff --git a/agent/tool_executor.py b/agent/tool_executor.py
-index e9666fc5e49673ebe4e8ac292c6949ca7dbffd3d..182db646ad428d11abe356a0573e0706a536e904 100644
+index fd2358bc49cb9a9483ef351aaa1bcf02dc25a397..aad56bd4683644ee9d13d3a9def0828bd4619f7a 100644
 --- a/agent/tool_executor.py
 +++ b/agent/tool_executor.py
-@@ -713,6 +713,10 @@ def _dispatch_authorized_once(
+@@ -704,6 +704,10 @@ def _dispatch_authorized_once(
          # A guest turn runs only its own tools (patch 0018), before any plugin may rewrite the call.
          from agent.guest_turn import refusal as _guest_refusal
          block_message, block_error_type = _guest_refusal(agent, ref.name), "guest_turn_block"
@@ -135,10 +135,10 @@ index e9666fc5e49673ebe4e8ac292c6949ca7dbffd3d..182db646ad428d11abe356a0573e0706
          block_error_type = "plugin_block"
          resolve = lambda: _pre_tool_block(agent, ref)
 diff --git a/gateway/platforms/api_server.py b/gateway/platforms/api_server.py
-index d5ed09e0eb63da768806292abfa335aafb936967..95c7d2a818833a46f0f3c1588ce7d802714b2feb 100644
+index 8ebf9309529b9d4e9563a477fb167847c8a6bf0c..a24b47ade14e1c10a1703644afb6916ddf2e1d1b 100644
 --- a/gateway/platforms/api_server.py
 +++ b/gateway/platforms/api_server.py
-@@ -2358,6 +2358,9 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
+@@ -2257,6 +2257,9 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
          if guest_tools is not None:
              from agent.guest_turn import apply as _apply_guest_turn
              _apply_guest_turn(agent, guest_tools)
@@ -149,10 +149,10 @@ index d5ed09e0eb63da768806292abfa335aafb936967..95c7d2a818833a46f0f3c1588ce7d802
              "session_model_lock" if confirmed_runtime_lock
              else "session_model_override" if session_override
 diff --git a/gateway/run_turn_runner.py b/gateway/run_turn_runner.py
-index ddf2476adb58f5bc96c400a7164f64042756062c..3228d8c8c190cae4c470fc7976ad503d4c7102e9 100644
+index 4fdbb17725534fcd3e6dc7630549f5ce18a7b86d..d4b7c4a4aee79a13d39ca6bc59ed3478dc493e4c 100644
 --- a/gateway/run_turn_runner.py
 +++ b/gateway/run_turn_runner.py
-@@ -1307,6 +1307,10 @@ class TurnRunner(GatewayTurnProgressMixin, GatewaySessionAgentMixin):
+@@ -1386,6 +1386,10 @@ class TurnRunner(GatewayTurnProgressMixin, GatewaySessionAgentMixin):
          agent, reused_cached_agent = self._resolve_turn_agent(
              turn_route, platform_key, combined_ephemeral, max_iterations, reasoning_config, pr,
          )

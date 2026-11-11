@@ -13,10 +13,10 @@ Bip-Patch: 0007-browser-vault-only
  create mode 100644 tests/tools/test_browser_vault_only.py
 
 diff --git a/model_tools.py b/model_tools.py
-index 011d32dc90c4bb24ac10d722aa98bba897177b17..1a4d469891223591757aa8c664c8cb073ab62114 100644
+index 22b293f050b28323510fda3387177b533a76cc56..d45d4ea824d7da30cbd87736a069f0197851cd81 100644
 --- a/model_tools.py
 +++ b/model_tools.py
-@@ -313,6 +313,19 @@ def _apply_toolset_selection(tools: set, names: list[str], quiet_mode: bool, *,
+@@ -330,6 +330,19 @@ def _apply_toolset_selection(tools: set, names: list[str], quiet_mode: bool, *,
              print(f"{icon} {label} '{name}': {', '.join(resolved) if resolved else 'no tools'}")
  
  
@@ -36,7 +36,7 @@ index 011d32dc90c4bb24ac10d722aa98bba897177b17..1a4d469891223591757aa8c664c8cb07
  def _select_tool_names(enabled_toolsets: Optional[list[str]], disabled_toolsets: Optional[list[str]], quiet_mode: bool) -> set:
      """Tool names requested by the toolset selection (before check_fn filtering)."""
      tools: set = set()
-@@ -335,6 +348,8 @@ def _select_tool_names(enabled_toolsets: Optional[list[str]], disabled_toolsets:
+@@ -352,6 +365,8 @@ def _select_tool_names(enabled_toolsets: Optional[list[str]], disabled_toolsets:
      # disabled toolset are strictly stripped out. See issue #17309.
      if disabled_toolsets:
          _apply_toolset_selection(tools, disabled_toolsets, quiet_mode, disable=True)
@@ -47,7 +47,7 @@ index 011d32dc90c4bb24ac10d722aa98bba897177b17..1a4d469891223591757aa8c664c8cb07
  
 diff --git a/tests/tools/test_browser_vault_only.py b/tests/tools/test_browser_vault_only.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..1b9a63acd3de62154648d78cf6cb3ea6464702cb
+index 0000000000000000000000000000000000000000..09733bc612f0e4d31db57ed791edce30091020d9
 --- /dev/null
 +++ b/tests/tools/test_browser_vault_only.py
 @@ -0,0 +1,30 @@
@@ -76,8 +76,8 @@ index 0000000000000000000000000000000000000000..1b9a63acd3de62154648d78cf6cb3ea6
 +def test_without_the_key_the_browser_toolset_is_whole(monkeypatch):
 +    for cfg in ({}, {"vault_only": False}, {"vault_only": "off"}):
 +        tools = _select(monkeypatch, cfg)
-+        assert {"browser_vault", "browser_navigate", "browser_snapshot"} <= tools
++        assert {"browser_vault", "browser_exec", "browser_cdp"} <= tools
 +
 +
 +def test_a_string_true_counts(monkeypatch):
-+    assert "browser_navigate" not in _select(monkeypatch, {"vault_only": "true"})
++    assert "browser_exec" not in _select(monkeypatch, {"vault_only": "true"})
