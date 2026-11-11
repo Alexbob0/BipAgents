@@ -29,10 +29,14 @@ RUN echo "packages of ${BROWSER_REFRESH}" && dnf -y upgrade --refresh && dnf -y 
        fi \
     && dnf clean all
 
-# Chrome keeps no passwords, cards or addresses of its own: the vault fills them, and they stay in it.
+# Chrome's managed policies (policies.json): it keeps no passwords, cards or addresses of its own (the vault fills
+# them, and they stay in it), and opens no file:// page, page source, chrome:// page (its new tab aside) nor DevTools
+# page: the container's own files are the browser's secrets (/run/bipagents: the screen's password, the DevTools
+# secret), its profile's session files hold what was typed in its tabs, and Chrome's own pages install extensions or
+# open DevTools (security audit 11/11). The bridge refuses those addresses too (browser_mcp.rs).
+COPY policies.json /opt/stealth/policies.json
 RUN for dir in /etc/opt/chrome/policies/managed /etc/chromium/policies/managed; do \
-        mkdir -p "$dir" && printf '%s\n' '{"PasswordManagerEnabled": false, "AutofillAddressEnabled": false, "AutofillCreditCardEnabled": false, "PasswordLeakDetectionEnabled": false}' \
-            > "$dir/bipagents.json"; \
+        mkdir -p "$dir" && cp /opt/stealth/policies.json "$dir/bipagents.json"; \
     done
 
 COPY requirements.txt stealth.patch /opt/stealth/

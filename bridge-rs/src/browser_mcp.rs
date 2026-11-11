@@ -389,6 +389,30 @@ pub fn never_relayed(method: &str, params: Option<&Value>) -> Option<Value> {
     }
 }
 
+/// Addresses the agent's browser never opens for it (security audit 11/11): a file of the container
+/// (`file:///run/bipagents/…` holds the screen's password and the DevTools secret), a page's source, Chrome's own
+/// pages and DevTools, an extension's page. Chrome's managed policy blocks them too (browser/policies.json).
+pub const REFUSED_SCHEMES: [&str; 6] =
+    ["file:", "view-source:", "chrome:", "devtools:", "chrome-devtools:", "chrome-extension:"];
+
+/// A tool's call to an address of `REFUSED_SCHEMES` (its `url` argument: `navigate`, `new_tab`; Chrome drops tabs,
+/// newlines and spaces from an address, so they are dropped here too): the refusal for the agent, else None.
+pub fn refused_address(tool: &str, args: &Dict) -> Option<Dict> {
+    let url = args.get("url").and_then(Value::as_str)?;
+    let plain: String = url.chars().filter(|c| !c.is_ascii_whitespace() && !c.is_ascii_control()).collect();
+    let plain = plain.to_ascii_lowercase();
+    if !REFUSED_SCHEMES.iter().any(|s| plain.starts_with(s)) {
+        return None;
+    }
+    let text = format!(
+        "{tool} refused: your browser opens web pages only (https or http), never a file of its machine, a page's \
+         source, nor the browser's own pages."
+    );
+    json!({"jsonrpc": "2.0", "result": {"isError": true, "content": [{"type": "text", "text": text}]}})
+        .as_object()
+        .cloned()
+}
+
 /// What Hermes asks while connecting, answered without starting anything once the real server has said it (the
 /// others, never asked while it ran, as empty).
 fn empty(method: &str) -> Option<Value> {
@@ -728,6 +752,11 @@ impl Proxy {
     async fn call_tool(&self, tool: &str, params: Option<&Value>) -> Result<Dict, String> {
         let args = params.and_then(|p| p.get("arguments")).and_then(Value::as_object).cloned().unwrap_or_default();
         let instance = args.get("instance_id").and_then(Value::as_str).unwrap_or("").to_string();
+
+        if let Some(refused) = refused_address(tool, &args) {
+            log(&format!("{tool}: an address of the container itself refused"));
+            return Ok(refused);
+        }
         if tool == "get_page_content"
             && !instance.is_empty()
             && !crate::py::truthy(args.get("include_frames").unwrap_or(&Value::Null))
@@ -1593,5 +1622,32 @@ out of your reach";
         assert!(never_relayed("tools/call", Some(&json!({"name": "take_screenshot"}))).is_none());
         assert!(never_relayed("tools/call", Some(&json!({"name": "execute_script"}))).is_none());
         assert!(never_relayed("tools/list", None).is_none() && never_relayed("prompts/list", None).is_none());
+    }
+
+    #[test]
+    fn the_browser_never_opens_a_file_of_its_container_nor_its_own_pages() {
+        // Security audit 11/11: navigate("file:///run/bipagents/vnc.pass") then get_page_content read the screen's
+        // password (and the DevTools secret beside it).
+        let args = |url: &str| json!({"instance_id": "abc", "url": url}).as_object().unwrap().clone();
+        for url in [
+            "file:///run/bipagents/vnc.pass",
+            "FILE:///run/bipagents/cdp.token",
+            "  fi\tle:///etc/passwd",
+            "view-source:https://shop.example/",
+            "chrome://extensions",
+            "chrome://inspect/#devices",
+            "devtools://devtools/bundled/inspector.html",
+            "chrome-devtools://devtools/x",
+            "chrome-extension://abcdef/page.html",
+        ] {
+            let refused = refused_address("navigate", &args(url)).unwrap_or_else(|| panic!("{url} not refused"));
+            assert_eq!(refused["result"]["isError"], json!(true));
+            assert!(refused["result"]["content"][0]["text"].as_str().unwrap().starts_with("navigate refused"));
+        }
+        assert!(refused_address("new_tab", &args("file:///run/bipagents/vnc.pass")).is_some());
+        for url in ["https://shop.example/file:///x", "http://localhost:8080/", "about:blank", "https://chrome.com/"] {
+            assert!(refused_address("navigate", &args(url)).is_none(), "{url}");
+        }
+        assert!(refused_address("click_element", json!({"selector": "a"}).as_object().unwrap()).is_none());
     }
 }
