@@ -185,6 +185,8 @@ def restore(runner: Runner, record: Path) -> Optional[dict]:
         profile = [] if item["profile"] == HUB_PROFILE else ["-p", item["profile"]]
         if item.get("before") is None:
             runner.run([hermes_bin()] + profile + ["config", "unset", item["key"]], check=False)
+        elif item["key"] == "API_SERVER_KEY":   # the key of before: in the .env too, never on a command line (BV-6)
+            write_env(runner, item["profile"], item["key"], item["before"])
         else:
             runner.run([hermes_bin()] + profile + ["config", "set", item["key"], item["before"]], check=False)
     for patch in reversed(data.get("patched", [])):

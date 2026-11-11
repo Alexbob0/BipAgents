@@ -465,12 +465,15 @@ def test_uninstall_puts_an_existing_hermes_back(tmp_path, monkeypatch):
     (config / "bridge.toml").write_text('bridge_key = "x"\nport = 9203\n')
     runner = hermes.Runner()
     monkeypatch.setattr(runner, "run", lambda args, **k: runner.log.append(" ".join(args)) or "")
-    changes = [("default", "API_SERVER_ENABLED", "true", None), ("default", "API_SERVER_PORT", "9202", "8642")]
+    changes = [("default", "API_SERVER_ENABLED", "true", None), ("default", "API_SERVER_PORT", "9202", "8642"),
+               ("cuisine", "API_SERVER_KEY", "new-key", "old-key")]
     existing.apply_changes(runner, changes, config / existing.RECORD, "service", ["/repo/hermes/patches/0004.patch"])
     runner = hermes.Runner(dry=True)
     uninstall(runner, everything=True, home=tmp_path, system="linux", tailscale=None)
     log = "\n".join(runner.log)
     assert "config unset API_SERVER_ENABLED" in log and "config set API_SERVER_PORT 8642" in log
+    # the key of before comes back in its .env, never on a command line (audit 11/11, BV-6)
+    assert "/profiles/cuisine/.env: API_SERVER_KEY" in log and "old-key" not in log and "new-key" not in log
     assert "gateway restart" in log and "gateway uninstall" not in log
     assert "apply --reverse /repo/hermes/patches/0004.patch" in log   # our patches come back off its code
     assert f"keep {tmp_path}/.hermes" in log and f"remove {tmp_path}/.hermes\n" not in log + "\n"
