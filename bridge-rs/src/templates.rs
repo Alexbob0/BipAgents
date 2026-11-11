@@ -791,6 +791,7 @@ fn template_routine(agent: &str, routine: &Value, skills: &BTreeSet<String>) -> 
         created: py::time_time(),
         card: None,
         suggested_silent: None,
+        change: None,
     })
 }
 

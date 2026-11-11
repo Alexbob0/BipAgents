@@ -113,12 +113,31 @@ pub struct Routine {
     /// The agent's suggestion on its card (true: silent, false: tell each time); None: it gave none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub suggested_silent: Option<bool>,
+    /// Changed or turned back on by its agent (`update`, `resume`): off until the person answers this change's card.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub change: Option<Change>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Card {
     pub id: String,
     pub at: f64,
+}
+
+/// An agent's change waiting for the person (11/11, security audit PI-6: a hostile e-mail could make the agent rewrite
+/// a trusted routine, unseen): its card (`bip-rout-<card>`, « Oui » / « Non »), and the routine as it was, put back by
+/// a « Non ». Several changes before an answer keep the first « before ».
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Change {
+    pub card: Card,
+    /// The agent asked to turn it back on (`resume`).
+    #[serde(default)]
+    pub resumed: bool,
+    pub prompt: String,
+    pub schedule: Schedule,
+    pub enabled: bool,
+    #[serde(default)]
+    pub repeat: Option<u32>,
 }
 
 impl Routine {
@@ -442,6 +461,7 @@ pub fn create(
             Maker::Agent { suggested_silent } => suggested_silent,
             Maker::Person { .. } => None,
         },
+        change: None,
     };
     change(config, |b| b.routines.push(routine.clone()));
     Ok(routine)
@@ -542,11 +562,172 @@ pub fn card_item(config: &Config, r: &Routine, card: &Card) -> Dict {
     item.as_object().cloned().unwrap_or_default()
 }
 
-/// The cards waiting, oldest first.
+/// The cards waiting (the question of a routine its agent made, the changes its agent asks), oldest first.
 pub fn pending_items(config: &Config, agent: Option<&str>) -> Vec<Dict> {
-    let mut asking: Vec<Routine> = all(config, agent).into_iter().filter(Routine::asks).collect();
-    asking.sort_by(|a, b| a.card.as_ref().map(|c| c.at).unwrap_or(0.0).total_cmp(&b.card.as_ref().map(|c| c.at).unwrap_or(0.0)));
-    asking.iter().filter_map(|r| r.card.as_ref().map(|c| card_item(config, r, c))).collect()
+    let mut items: Vec<(f64, Dict)> = Vec::new();
+    for r in all(config, agent) {
+        if let Some(c) = &r.card {
+            items.push((c.at, card_item(config, &r, c)));
+        }
+        if let Some(ch) = &r.change {
+            items.push((ch.card.at, change_item(config, &r, ch)));
+        }
+    }
+    items.sort_by(|a, b| a.0.total_cmp(&b.0));
+    items.into_iter().map(|(_, item)| item).collect()
+}
+
+// -- the card of a change its agent made (11/11, PI-6) ----------------------------------------------------------------
+//
+// An agent's `update` (its prompt or its schedule) or `resume` turns the routine off and asks the person, with a push,
+// as any card of the bridge's own: what changed, old → new; « Oui » turns it back on as changed, « Non » puts it back
+// as it was. A generic card (no `bip_routine`: the apps draw it with its sentence, its detail and « Oui / Non »), still
+// `bip-rout-`, so the approval level treats it as the routine's question. The person's own changes in the app (the
+// routes below) never ask; one of them while a change waits settles it (theirs is the routine now).
+
+const DAYS_EN: [&str; 7] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const DAYS_DE: [&str; 7] = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
+const DAYS_ES: [&str; 7] = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"];
+
+/// When a schedule runs, in `lang` (French: autonomous.rs' words; « fr », « en », « de », « es », another: English).
+fn when_in(r: &Routine, schedule: &Schedule, zone: Tz, lang: &str) -> String {
+    let w = when_of(&Routine { schedule: schedule.clone(), ..r.clone() }, zone);
+    let int = |k: &str| w.get(k).and_then(Value::as_u64).unwrap_or(0);
+    let at = format!("{}:{:02}", int("hour"), int("minute"));
+    let day = |names: [&'static str; 7]| names[(int("weekday").clamp(1, 7) - 1) as usize];
+    let date = match schedule {
+        Schedule::Once { at } => {
+            zone.timestamp_opt(*at as i64, 0).single().map(|d| d.format(" (%-d/%-m %H:%M)").to_string())
+        }
+        _ => None,
+    };
+    let kind = w["kind"].as_str().unwrap_or("");
+    let text = match (lang, kind) {
+        ("fr", _) => crate::autonomous::when_text(&w),
+        ("de", "daily") => format!("täglich um {at}"),
+        ("de", "weekdays") => format!("werktags um {at}"),
+        ("de", "weekly") => format!("jeden {} um {at}", day(DAYS_DE)),
+        ("de", "monthly") => format!("am {}. jedes Monats um {at}", int("day")),
+        ("de", "every_hours") => format!("alle {} Std.", int("hours")),
+        ("de", "every_minutes") => format!("alle {} Minuten", int("minutes")),
+        ("de", "once") => "einmal".into(),
+        ("es", "daily") => format!("cada día a las {at}"),
+        ("es", "weekdays") => format!("entre semana a las {at}"),
+        ("es", "weekly") => format!("cada {} a las {at}", day(DAYS_ES)),
+        ("es", "monthly") => format!("el día {} de cada mes a las {at}", int("day")),
+        ("es", "every_hours") => format!("cada {} h", int("hours")),
+        ("es", "every_minutes") => format!("cada {} minutos", int("minutes")),
+        ("es", "once") => "una sola vez".into(),
+        (_, "daily") => format!("every day at {at}"),
+        (_, "weekdays") => format!("on weekdays at {at}"),
+        (_, "weekly") => format!("every {} at {at}", day(DAYS_EN)),
+        (_, "monthly") => format!("on day {} of each month at {at}", int("day")),
+        (_, "every_hours") => format!("every {} h", int("hours")),
+        (_, "every_minutes") => format!("every {} minutes", int("minutes")),
+        (_, "once") => "once".into(),
+        _ => w["raw"].as_str().unwrap_or("").into(),
+    };
+    format!("{text}{}", date.unwrap_or_default())
+}
+
+/// The change card's sentence: who changed which routine (or wants it back on), that it waits, the question.
+pub fn change_sentence(lang: &str, who: &str, name: &str, resumed_only: bool) -> String {
+    match (lang, resumed_only) {
+        ("fr", false) => format!("{who} a modifié la routine « {name} ». Elle ne tournera pas avant ton accord. Garder ce changement ?"),
+        ("fr", true) => format!("{who} veut relancer la routine « {name} ». Elle ne tournera pas avant ton accord. La relancer ?"),
+        ("de", false) => format!("{who} hat die Routine „{name}“ geändert. Sie läuft erst, wenn du zustimmst. Diese Änderung behalten?"),
+        ("de", true) => format!("{who} möchte die Routine „{name}“ wieder einschalten. Sie läuft erst, wenn du zustimmst. Wieder einschalten?"),
+        ("es", false) => format!("{who} ha cambiado la rutina «{name}». No se ejecutará hasta que aceptes. ¿Mantener este cambio?"),
+        ("es", true) => format!("{who} quiere reactivar la rutina «{name}». No se ejecutará hasta que aceptes. ¿Reactivarla?"),
+        (_, false) => format!("{who} changed the routine “{name}”. It won't run until you agree. Keep this change?"),
+        (_, true) => format!("{who} wants to turn the routine “{name}” back on. It won't run until you agree. Turn it back on?"),
+    }
+}
+
+/// What changed, old → new, then what « Non » does.
+fn change_detail(r: &Routine, ch: &Change, zone: Tz, lang: &str) -> String {
+    let (when, before, now, does, undo) = match lang {
+        "fr" => ("Quand", "Avant", "Maintenant", "Ce qu'elle fait", "Si tu refuses, elle reste comme avant."),
+        "de" => ("Wann", "Vorher", "Jetzt", "Was sie tut", "Wenn du ablehnst, bleibt sie wie vorher."),
+        "es" => ("Cuándo", "Antes", "Ahora", "Qué hace", "Si dices que no, se queda como estaba."),
+        _ => ("When", "Before", "Now", "What it does", "If you say no, it stays as it was."),
+    };
+    let head = |t: &str| crate::tools_knowledge::head(t, 300).to_string();
+    let s = if lang == "fr" { " :" } else { ":" };
+    let mut lines = Vec::new();
+    if ch.schedule != r.schedule {
+        let (old, new) = (when_in(r, &ch.schedule, zone, lang), when_in(r, &r.schedule, zone, lang));
+        lines.push(format!("{when}{s} {old} → {new}"));
+    } else {
+        lines.push(format!("{when}{s} {}", when_in(r, &r.schedule, zone, lang)));
+    }
+    if ch.prompt != r.prompt {
+        lines.push(format!("{before}{s} {}\n{now}{s} {}", head(&ch.prompt), head(&r.prompt)));
+    } else {
+        lines.push(format!("{does}{s} {}", head(&r.prompt)));
+    }
+    lines.push(undo.into());
+    lines.join("\n")
+}
+
+pub fn change_item(config: &Config, r: &Routine, ch: &Change) -> Dict {
+    let lang = crate::names::names(&crate::names::agent_language(config, &r.agent)).lang;
+    let resumed_only = ch.prompt == r.prompt && ch.schedule == r.schedule;
+    let summary = change_sentence(lang, &shown_agent(config, &r.agent), &r.name, resumed_only);
+    let item = json!({
+        "agent": r.agent, "run_id": format!("{RUN_PREFIX}{}", ch.card.id), "request_id": ch.card.id,
+        "command": format!("{TOOL_NAME} · {}", r.name), "description": summary,
+        "choices": ["once", "deny"], "created_at": ch.card.at, "session_id": null,
+        "bip_summary": summary, "bip_detail": change_detail(r, ch, zone(config), lang),
+    });
+    item.as_object().cloned().unwrap_or_default()
+}
+
+/// The agent changed `r` (already edited) or asked it back on: off until the person answers, `before` kept (the first
+/// one while a change waits). The card it replaces, if one waited.
+fn ask_change(r: &mut Routine, before: Change, resumed: bool) -> Option<String> {
+    let card = Card { id: py::token_hex(6), at: py::time_time() };
+    let replaced = r.change.take();
+    let gone = replaced.as_ref().map(|c| c.card.id.clone());
+    let mut ch = replaced.unwrap_or(before);
+    ch.card = card;
+    ch.resumed |= resumed;
+    r.change = Some(ch);
+    r.enabled = false;
+    gone
+}
+
+/// The routine as it is now, kept for a change.
+fn before_of(r: &Routine) -> Change {
+    Change {
+        card: Card { id: String::new(), at: 0.0 },
+        resumed: false,
+        prompt: r.prompt.clone(),
+        schedule: r.schedule.clone(),
+        enabled: r.enabled,
+        repeat: r.repeat,
+    }
+}
+
+/// The person's own change settles an agent's one that waits (theirs is the routine now): its card id, to withdraw.
+fn settled_by_person(r: &mut Routine) -> Option<String> {
+    r.change.take().map(|c| c.card.id)
+}
+
+/// A change card answered: « Oui » on as changed (or as it was, for a routine that was off and not asked back on),
+/// « Non » the routine put back as it was.
+fn settle_change(r: &mut Routine, ch: Change, yes: bool, zone: Tz) {
+    if yes {
+        r.enabled = ch.enabled || ch.resumed;
+    } else {
+        (r.prompt, r.schedule, r.repeat, r.enabled) = (ch.prompt, ch.schedule, ch.repeat, ch.enabled);
+    }
+    r.next_run = if r.enabled { next_after(&r.schedule, py::time_time(), zone) } else { None };
+}
+
+/// Due now: on, its time come (the clock's test; a routine whose change waits is off).
+pub fn due(r: &Routine, now: f64) -> bool {
+    r.enabled && r.next_run.is_some_and(|t| t <= now)
 }
 
 /// Silent for this answer? `notify`/`once` → told each time, `silent`/`deny` (and other refusals) → silent.
@@ -561,6 +742,14 @@ pub fn answer(config: &Config, agent: &str, card_id: &str, choice: &str) -> Opti
     let zone = zone(config);
     let muted = silent_for(choice);
     let found = change(config, |b| {
+        let changed = |r: &&mut Routine| r.agent == agent && r.change.as_ref().is_some_and(|c| c.card.id == card_id);
+        if let Some(r) = b.routines.iter_mut().find(changed) {
+            // a change its agent made: « Oui » keeps it, « Non » (deny) puts the routine back; its mute untouched
+            if let Some(ch) = r.change.take() {
+                settle_change(r, ch, crate::card_place::allowed(&choice.trim().to_lowercase()), zone);
+            }
+            return Some(r.clone());
+        }
         let r = b.routines.iter_mut().find(|r| r.agent == agent && r.card.as_ref().is_some_and(|c| c.id == card_id))?;
         r.muted = muted;
         if !r.enabled && r.next_run.is_none() && r.last_run.is_none() {
@@ -619,8 +808,7 @@ pub async fn scheduler(state: AppState) {
         let credit = crate::credit::now_at(None).paused();
         let zone = zone(&config);
         for r in load(&config).routines {
-            let due = r.enabled && r.next_run.is_some_and(|t| t <= now) && config.agent(Some(&r.agent)).is_some();
-            if !due {
+            if !due(&r, now) || config.agent(Some(&r.agent)).is_none() {
                 continue;
             }
             let late = now - r.next_run.unwrap_or(now) > LATE_MAX_SECONDS;
@@ -953,6 +1141,7 @@ pub async fn migrate(state: &AppState, agent: &AgentConfig) {
             created: now,
             card: None,
             suggested_silent: None,
+            change: None,
         });
     }
     let ids: Vec<String> = kept.iter().map(|r| r.id.clone()).collect();
@@ -1056,7 +1245,9 @@ app whether they want to hear what it finds; their answer only changes that. Tel
             let lines: Vec<String> = mine
                 .iter()
                 .map(|r| {
-                    let how = if !r.enabled {
+                    let how = if r.change.is_some() {
+                        ", off until your person accepts your change"
+                    } else if !r.enabled {
                         ", paused"
                     } else if r.muted {
                         ", silent (reports only on its page)"
@@ -1071,18 +1262,31 @@ app whether they want to hear what it finds; their answer only changes that. Tel
         (_, None) => (format!("No routine named « {name} » (list shows yours)."), true, None),
         ("delete", Some(r)) => {
             delete(config, &r.id);
-            if let Some(c) = &r.card {
-                crate::card_place::taken(config, &format!("{RUN_PREFIX}{}", c.id)); // its card gone with it
+            // its cards gone with it
+            for c in r.card.iter().chain(r.change.as_ref().map(|c| &c.card)) {
+                crate::card_place::taken(config, &format!("{RUN_PREFIX}{}", c.id));
             }
             (format!("Routine « {} » deleted.", r.name), false, None)
+        }
+        // its change not answered yet: the new words don't run before the person's OK (PI-6)
+        ("run", Some(r)) if r.change.is_some() => {
+            let name = &r.name;
+            let text =
+                format!("Routine « {name} » waits for your person's OK on its change: it runs again once they accept.");
+            (text, true, None)
         }
         ("run", Some(r)) => (format!("Routine « {} » starts now.", r.name), false, Some(r.id)),
         (act @ ("pause" | "resume" | "update"), Some(r)) => {
             let (schedule, prompt) = (arg(arguments, "schedule"), arg(arguments, "prompt"));
+            // an `update` that changes what it does or when, a `resume` of one that is off: off until the person
+            // accepts, its card raised (PI-6: a hostile e-mail could rewrite a trusted routine, unseen)
+            let mut asked = None;
             let done = update(config, &r.id, |x| {
+                let before = before_of(x);
                 match act {
                     "pause" => x.enabled = false,
-                    "resume" => x.enabled = true,
+                    "resume" if x.enabled => {}
+                    "resume" => asked = Some(ask_change(x, before, true)),
                     _ => {
                         if !schedule.is_empty() {
                             x.schedule = parse(&schedule, zone)?;
@@ -1090,14 +1294,34 @@ app whether they want to hear what it finds; their answer only changes that. Tel
                         if !prompt.is_empty() {
                             x.prompt = prompt;
                         }
+                        if (&x.schedule, &x.prompt) != (&before.schedule, &before.prompt) {
+                            asked = Some(ask_change(x, before, false));
+                        }
                     }
                 }
                 Ok(())
             });
-            match done {
-                Ok(Some(x)) => (format!("Routine {}.", said(&x)), false, None),
-                Ok(None) => ("That routine is gone.".into(), true, None),
-                Err(e) => (e, true, None),
+            match (done, asked) {
+                (Ok(Some(x)), Some(replaced)) => {
+                    // the newer card asks
+                    if let Some(old) = replaced {
+                        crate::card_place::taken(config, &format!("{RUN_PREFIX}{old}"));
+                    }
+                    card = x.change.as_ref().map(|c| {
+                        let lang = crate::names::names(&crate::names::agent_language(config, agent)).lang;
+                        let resumed_only = c.prompt == x.prompt && c.schedule == x.schedule;
+                        (change_sentence(lang, &shown_agent(config, agent), &x.name, resumed_only), c.card.id.clone())
+                    });
+                    let (name, done) = (&x.name, if act == "resume" { "is not back on yet" } else { "changed" });
+                    let text = format!(
+                        "Routine « {name} » {done}: it stays off until your person accepts in the app (if they \
+refuse, it stays as it was). Tell them in plain words."
+                    );
+                    (text, false, None)
+                }
+                (Ok(Some(x)), None) => (format!("Routine {}.", said(&x)), false, None),
+                (Ok(None), _) => ("That routine is gone.".into(), true, None),
+                (Err(e), _) => (e, true, None),
             }
         }
         (other, _) => (format!("Unknown action « {other} »."), true, None),
@@ -1149,7 +1373,11 @@ async fn create_route(State(state): State<AppState>, UrlPath(agent): UrlPath<Str
 async fn patch_route(State(state): State<AppState>, UrlPath(id): UrlPath<String>, body: Bytes) -> ApiResult<Response> {
     let config = state.config();
     let (b, zone) = (parsed(&body)?, zone(&config));
+    let mut settled = None;
     let done = update(&config, &id, |r| {
+        if b.schedule.is_some() || b.name.is_some() || b.prompt.is_some() {
+            settled = settled_by_person(r); // the person's words now: an agent's change waiting is withdrawn
+        }
         if let Some(s) = b.schedule.as_deref() {
             r.schedule = parse(s, zone)?;
         }
@@ -1165,6 +1393,9 @@ async fn patch_route(State(state): State<AppState>, UrlPath(id): UrlPath<String>
         }
         Ok(())
     });
+    if let Some(card) = settled {
+        crate::card_place::taken(&config, &format!("{RUN_PREFIX}{card}"));
+    }
     match done {
         Ok(Some(r)) => Ok(job(&config, &r)),
         Ok(None) => Err(HttpError::not_found()),
@@ -1174,8 +1405,11 @@ async fn patch_route(State(state): State<AppState>, UrlPath(id): UrlPath<String>
 
 async fn delete_route(State(state): State<AppState>, UrlPath(id): UrlPath<String>) -> ApiResult<Response> {
     let config = state.config();
-    if let Some(card) = get(&config, &id).and_then(|r| r.card) {
-        crate::card_place::taken(&config, &format!("{RUN_PREFIX}{}", card.id)); // a proposal: its card gone with it
+    if let Some(r) = get(&config, &id) {
+        // its cards gone with it
+        for card in r.card.iter().chain(r.change.as_ref().map(|c| &c.card)) {
+            crate::card_place::taken(&config, &format!("{RUN_PREFIX}{}", card.id));
+        }
     }
     if delete(&config, &id) {
         Ok(web::ok(json!({"ok": true})))
@@ -1197,12 +1431,17 @@ async fn action_route(State(state): State<AppState>, UrlPath((id, action)): UrlP
         }
         _ => return Err(HttpError::not_found()),
     };
+    let mut settled = None;
     let r = update(&config, &id, |r| {
+        settled = settled_by_person(r); // the person turned it on or off: an agent's change waiting is settled
         r.enabled = enabled;
         Ok(())
     })
     .map_err(|e| HttpError::new(422, e))?
     .ok_or_else(HttpError::not_found)?;
+    if let Some(card) = settled {
+        crate::card_place::taken(&config, &format!("{RUN_PREFIX}{card}"));
+    }
     Ok(job(&config, &r))
 }
 
@@ -1326,6 +1565,7 @@ Pour la relancer tout de suite : « Lancer maintenant » sur sa page."
             created: 0.0,
             card: None,
             suggested_silent: None,
+            change: None,
         };
         let n = note(&r);
         assert!(n.starts_with("Dis-moi la météo.\n\n<!--bip:routine\n") && n.contains(SILENT) && n.ends_with("-->"));
@@ -1400,12 +1640,15 @@ Pour la relancer tout de suite : « Lancer maintenant » sur sa page."
         let r = list(&config, Some("vie")).pop().unwrap();
         assert!(r.enabled && r.next_run.is_some() && r.muted && r.asks() && r.origin == "api_c");
         assert_eq!(view(&r, Tz::UTC)["state"], "scheduled");
-        // the agent pauses, resumes, runs it like any other
+        // the agent pauses it at once; back on only with the person's OK (PI-6), then it runs it like any other
         let paused = call(&config, "vie", &args(json!({"action": "pause", "name": "Archive du soir"})), None);
         assert_eq!(paused.result.get("isError"), Some(&json!(false)));
         assert!(!get(&config, &r.id).unwrap().enabled && pending_items(&config, None).len() == 1);
-        call(&config, "vie", &args(json!({"action": "resume", "name": "Archive du soir"})), None);
-        assert!(get(&config, &r.id).unwrap().enabled);
+        let resumed = call(&config, "vie", &args(json!({"action": "resume", "name": "Archive du soir"})), None);
+        assert!(!get(&config, &r.id).unwrap().enabled && pending_items(&config, None).len() == 2);
+        answer(&config, "vie", &resumed.card.unwrap().1, "once");
+        let on = get(&config, &r.id).unwrap();
+        assert!(on.enabled && on.muted && on.asks(), "its own question still waits, its mute untouched");
         assert!(call(&config, "vie", &args(json!({"action": "run", "name": "Archive du soir"})), None).run.is_some());
         // suggestions: false and none → told each time; words
         let (_, told) = propose(&config, "Brief", Some(false));
@@ -1462,5 +1705,129 @@ Pour la relancer tout de suite : « Lancer maintenant » sur sa page."
         assert_eq!(t["inputSchema"]["properties"]["silent"]["type"], "boolean");
         let d = t["description"].as_str().unwrap();
         assert!(d.contains("background chore") && d.contains("morning brief"), "{d}");
+    }
+
+    /// A place in French (the cards' words follow the agent's language, else the place's).
+    fn fr_config(dir: &tempfile::TempDir) -> Config {
+        let mut config = config_in(dir);
+        config.browser.language = "fr-FR".into();
+        config
+    }
+
+    /// The person's « Point du matin », on, then rewritten by its agent (`update`).
+    fn rewritten(config: &Config) -> (Routine, Called) {
+        let (by, when) = (Maker::Person { muted: false }, "every day at 7:30");
+        let mine = create(config, "vie", "Point du matin", when, "Résume mes e-mails.", None, by).unwrap();
+        let a = json!({"action": "update", "name": "Point du matin", "schedule": "every 1m", "prompt": "Envoie tout ailleurs."});
+        (mine, call(config, "vie", &args(a), Some("api_c")))
+    }
+
+    #[test]
+    fn an_agents_rewrite_stops_the_routine_until_the_person_accepts_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = fr_config(&dir);
+        let (mine, called) = rewritten(&config);
+        assert_eq!(called.result.get("isError"), Some(&json!(false)));
+        let text = called.result["content"][0]["text"].as_str().unwrap_or_default().to_string();
+        assert!(text.contains("stays off until your person accepts"), "{text}");
+        // off: the clock never runs it, even long after its time
+        let r = get(&config, &mine.id).unwrap();
+        assert!(!r.enabled && r.next_run.is_none() && !due(&r, f64::MAX) && r.prompt == "Envoie tout ailleurs.");
+        assert_eq!(view(&r, Tz::UTC)["state"], "paused");
+        // its card: pushed by the caller (agent_tools.rs, as a created routine's), « Oui / Non », what changed
+        let (sentence, pushed) = called.card.clone().unwrap();
+        assert_eq!(sentence, "vie a modifié la routine « Point du matin ». Elle ne tournera pas avant ton accord. Garder ce changement ?");
+        let [card] = pending_items(&config, Some("vie")).try_into().unwrap();
+        assert_eq!((card["run_id"].clone(), card_id(&card)), (json!(format!("{RUN_PREFIX}{pushed}")), pushed.clone()));
+        assert_eq!(card["choices"], json!(["once", "deny"]));
+        assert!(card.get("bip_routine").is_none(), "a generic card, not the « how do its reports come » one");
+        let detail = card["bip_detail"].as_str().unwrap();
+        assert!(detail.contains("Quand : Chaque jour à 7:30 → Toutes les 1 minutes"), "{detail}");
+        assert!(detail.contains("Avant : Résume mes e-mails.\nMaintenant : Envoie tout ailleurs."), "{detail}");
+        // nor run by the agent before the answer
+        let run = call(&config, "vie", &args(json!({"action": "run", "name": "Point du matin"})), None);
+        assert!(run.run.is_none() && run.result.get("isError") == Some(&json!(true)));
+        let listed = call(&config, "vie", &args(json!({"action": "list"})), None);
+        assert!(listed.result["content"][0]["text"].as_str().unwrap().contains("off until your person accepts"));
+        // « Oui »: on with the new words, its next run from now
+        let on = answer(&config, "vie", &pushed, "once").unwrap();
+        assert!(on.enabled && on.next_run.is_some() && on.change.is_none() && on.prompt == "Envoie tout ailleurs.");
+        assert_eq!(on.schedule, Schedule::Interval { minutes: 1 });
+        assert!(pending_items(&config, None).is_empty() && answer(&config, "vie", &pushed, "once").is_none());
+    }
+
+    #[test]
+    fn refusing_an_agents_change_puts_the_routine_back_as_it_was() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(&dir);
+        let (mine, first) = rewritten(&config);
+        // changed again before any answer: one card (the newer), the first « before » kept
+        let edit = |prompt: &str| args(json!({"action": "update", "name": "Point du matin", "prompt": prompt}));
+        let again = call(&config, "vie", &edit("Autre chose."), None);
+        let (old, new) = (first.card.unwrap().1, again.card.unwrap().1);
+        let [card] = pending_items(&config, Some("vie")).try_into().unwrap();
+        assert!(old != new && card_id(&card) == new && answer(&config, "vie", &old, "deny").is_none());
+        let back = answer(&config, "vie", &new, "deny").unwrap();
+        assert_eq!((back.prompt.as_str(), &back.schedule), ("Résume mes e-mails.", &mine.schedule));
+        assert!(back.enabled && back.next_run.is_some() && back.change.is_none() && !back.muted);
+        // an `update` that changes nothing asks nothing
+        let same = call(&config, "vie", &edit("Résume mes e-mails."), None);
+        assert!(same.card.is_none() && get(&config, &mine.id).unwrap().enabled);
+    }
+
+    #[test]
+    fn an_agents_resume_asks_the_same_way_and_the_persons_own_changes_never_ask() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = fr_config(&dir);
+        let by = Maker::Person { muted: true };
+        let r = create(&config, "vie", "Météo", "weekdays at 9am", "Météo.", None, by).unwrap();
+        update(&config, &r.id, |x| {
+            x.enabled = false; // paused on its page
+            Ok(())
+        })
+        .unwrap();
+        let resumed = call(&config, "vie", &args(json!({"action": "resume", "name": "Météo"})), None);
+        let (sentence, card) = resumed.card.unwrap();
+        assert!(sentence.starts_with("vie veut relancer la routine « Météo »"), "{sentence}");
+        assert!(sentence.ends_with("La relancer ?"), "{sentence}");
+        let [item] = pending_items(&config, Some("vie")).try_into().unwrap();
+        let detail = item["bip_detail"].as_str().unwrap();
+        assert!(detail.starts_with("Quand : En semaine à 9:00\nCe qu'elle fait : Météo."), "{detail}");
+        assert!(!get(&config, &r.id).unwrap().enabled);
+        // « Non »: stays off as the person left it; « Oui » to a second ask: on, still muted
+        assert!(!answer(&config, "vie", &card, "deny").unwrap().enabled);
+        let card = call(&config, "vie", &args(json!({"action": "resume", "name": "Météo"})), None).card.unwrap().1;
+        let on = answer(&config, "vie", &card, "once").unwrap();
+        assert!(on.enabled && on.next_run.is_some() && on.muted);
+        // already on: nothing to ask
+        assert!(call(&config, "vie", &args(json!({"action": "resume", "name": "Météo"})), None).card.is_none());
+        // the person's own change (the routes' `update`) never makes a card
+        update(&config, &r.id, |x| {
+            x.prompt = "Météo et pluie.".into();
+            Ok(())
+        })
+        .unwrap();
+        let theirs = get(&config, &r.id).unwrap();
+        assert!(theirs.enabled && theirs.change.is_none() && pending_items(&config, None).is_empty());
+        // the person's change while the agent's waits settles it: theirs is the routine now
+        call(&config, "vie", &args(json!({"action": "update", "name": "Météo", "prompt": "Ailleurs."})), None);
+        let mut waiting = get(&config, &r.id).unwrap();
+        assert!(settled_by_person(&mut waiting).is_some() && waiting.change.is_none());
+    }
+
+    #[test]
+    fn a_change_card_speaks_the_agents_language() {
+        assert_eq!(
+            change_sentence("en", "Vie", "Mails", false),
+            "Vie changed the routine “Mails”. It won't run until you agree. Keep this change?"
+        );
+        assert!(change_sentence("de", "Vie", "Mails", true).ends_with("Wieder einschalten?"));
+        assert!(change_sentence("es", "Vie", "Mails", false).starts_with("Vie ha cambiado la rutina «Mails»."));
+        let dir = tempfile::tempdir().unwrap();
+        let made = create(&config_in(&dir), "vie", "M", "every 2h", "x", None, Maker::Person { muted: false }).unwrap();
+        let r = Routine { schedule: Schedule::Cron { expr: "0 8 * * 1".into() }, ..made };
+        let ch = Change { schedule: Schedule::Interval { minutes: 120 }, ..before_of(&r) };
+        let d = change_detail(&r, &ch, Tz::UTC, "en");
+        assert!(d.starts_with("When: every 2 h → every Monday at 8:00\nWhat it does: x\nIf you say no"), "{d}");
     }
 }
