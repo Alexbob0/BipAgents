@@ -37,80 +37,87 @@ def propose(bridge, name, **extra):
     made = call(bridge, "routine_schedule", {"action": "create", "name": name, "schedule": "every day at 23:00",
                                              "prompt": f"{name} : fais-le.", **extra})
     assert not made["isError"], text_of(made)
-    return made, next(c for c in routine_cards(bridge) if c.get("bip_routine", {}).get("name") == name)
+    return made, [c for c in routine_cards(bridge) if c["command"] == f"routine_schedule · {name}"][-1]
 
 
-def test_an_agents_routine_starts_with_the_persons_answer_to_its_card(bridges, fakes):
-    """Alex 6/11: « Est-ce que tu veux être au courant des infos retournées par la routine ? », then Alex 11/11 (security
-    audit PI-6): a routine its agent made does not run before the person answers its card. The card asks whether they
-    want to hear what it finds; either way starts it; an older app's « Oui » / « Non » = on, told / off, silent."""
+START = ("La démarrer ?", "Start it?", "Starten?", "¿Ponerla en marcha?")
+DETAIL = ("Ce qu'elle fera : ", "What it will do: ", "Was sie tun wird: ", "Qué hará: ")
+
+
+def test_an_agents_routine_starts_with_the_persons_oui_to_its_card(bridges, fakes):
+    """Alex 11/11 (security audit PI-6): a routine its agent made does not run before the person says « Oui » to its
+    card, which shows all it will run. Until the apps draw a creation card of their own, it is a generic card (no
+    `bip_routine`: « Oui / Non », the whole prompt behind « i », owner's decision O-1 a); « Non » deletes it (O-3)."""
     bridge = bridges.new()
     bridge.seed_db([("INSERT INTO devices (token, environment, agent_ids, created_at, updated_at) VALUES (?,?,?,?,?)",
                      (TOKEN, "sandbox", "[]", NOW, NOW))])
     bridge.start()
     give_token(bridge)
-    # the tool tells the agent to suggest one
+    # the tool says it waits for the person's yes; no `silent` suggestion any more
     tools = call_tools(bridge)
     schedule = next(t for t in tools if t["name"] == "routine_schedule")
-    assert schedule["inputSchema"]["properties"]["silent"]["type"] == "boolean"
-    assert "background chore" in schedule["description"] and "starts once your person says yes" in schedule["description"]
+    assert "silent" not in schedule["inputSchema"]["properties"]
+    assert "does not run until your person says yes" in schedule["description"]
 
     made, card = propose(bridge, "Archive du soir", silent=True)
-    assert "It starts once your person answers" in text_of(made) and "silent" in text_of(made)
-    # listed, silent as suggested, OFF before any answer: nothing runs, not even through the agent
+    assert "It is not running" in text_of(made)
+    # listed, not silent, OFF before any answer: nothing runs, not even through the agent
     job = jobs(bridge)["Archive du soir"]
-    assert (job["state"], job["muted"], job["next_run_at"]) == ("paused", True, None), job
+    assert (job["state"], job["muted"], job["next_run_at"]) == ("paused", False, None), job
     assert call(bridge, "routine_schedule", {"action": "run", "name": "Archive du soir"})["isError"]
-    call(bridge, "routine_schedule", {"action": "resume", "name": "Archive du soir"})
+    assert call(bridge, "routine_schedule", {"action": "resume", "name": "Archive du soir"})["isError"]
     assert jobs(bridge)["Archive du soir"]["state"] == "paused" and len(routine_cards(bridge)) == 1
     time.sleep(0.5)
     assert not turns(fakes)
-    # the card: an older app's « Oui / Non », the newer apps' two ways (no « Non » that deletes), the suggestion
-    assert card["choices"] == ["once", "deny"] and card["bip_choices"] == ["notify", "silent"]
-    assert card["bip_routine"]["suggested"] == "silent" and card["bip_routine"]["muted"] is True
-    assert card["bip_routine"]["question"] == "Veux-tu être au courant de ce que cette routine trouve ?"
-    assert card["bip_routine"]["when"]["kind"] == "daily" and card["bip_routine"]["when"]["hour"] == 23
+    # the card: generic « Oui / Non », its sentence asks to start it, its detail all it will run
+    assert "bip_routine" not in card and "bip_choices" not in card and card["choices"] == ["once", "deny"]
     summary = card["bip_summary"]
-    assert "Archive du soir" in summary and ("démarrera après ta réponse" in summary or "start once you answer" in summary
-                                            or "nach deiner Antwort" in summary or "cuando respondas" in summary), summary
+    assert "Archive du soir" in summary and summary.endswith(START), summary
+    assert card["bip_detail"].startswith(DETAIL) and card["bip_detail"].endswith("Archive du soir : fais-le."), card
     # pushed, like every card of the bridge's own
     assert wait_until(lambda: [p for p in fakes.apns.payloads() if card["request_id"] in str(p)], timeout=20)
-    # « Oui, préviens-moi »: on, told each time, card gone
-    ok = bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": card["run_id"], "choice": "notify"})
+    # « Oui »: on, told each time, card gone
+    ok = bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": card["run_id"], "choice": "once"})
     assert ok.status_code == 200 and ok.json()["muted"] is False, ok.text
     job = jobs(bridge)["Archive du soir"]
     assert (job["muted"], job["state"]) == (False, "scheduled") and job["next_run_at"], job
     assert not routine_cards(bridge)
     assert bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": card["run_id"],
-                                                          "choice": "silent"}).status_code == 404
+                                                          "choice": "once"}).status_code == 404
     # then the app and the agent use it
-    routine = card["bip_routine"]["id"]
+    routine = job["id"]
     assert bridge.post(f"/v1/routines/{routine}/pause", headers=AUTH).status_code == 200
     assert bridge.post(f"/v1/routines/{routine}/resume", headers=AUTH).status_code == 200
     assert not call(bridge, "routine_schedule", {"action": "pause", "name": "Archive du soir"})["isError"]
     assert "paused" in text_of(call(bridge, "routine_schedule", {"action": "list"}))
     # back on by the agent: only with the person's OK (PI-6), a card of its own
     call(bridge, "routine_schedule", {"action": "resume", "name": "Archive du soir"})
-    [back] = [c for c in routine_cards(bridge) if "bip_routine" not in c]
+    [back] = routine_cards(bridge)
     assert bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": back["run_id"],
                                                           "choice": "once"}).status_code == 200
     assert jobs(bridge)["Archive du soir"]["state"] == "scheduled"
 
-    # « Non, garde-le sur sa page » though the agent suggested telling: on, silent
-    _, card = propose(bridge, "Point du matin", silent=False)
-    assert card["bip_routine"]["suggested"] == "notify" and jobs(bridge)["Point du matin"]["muted"] is False
-    bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": card["run_id"], "choice": "silent"})
-    assert (jobs(bridge)["Point du matin"]["muted"], jobs(bridge)["Point du matin"]["state"]) == (True, "scheduled")
 
-    # no suggestion: told each time
+def test_an_agents_routine_shows_all_it_runs_and_a_non_deletes_it(bridges, fakes):
+    """Review PI-6-2 (11/11): the creation card shows the whole prompt (B-A); « Non », or any answer that is not a
+    « Oui », deletes the routine that never ran (S2, O-3), so its agent cannot run the refused words (B-B); its page's
+    mute switch is kept by « Oui »."""
+    bridge = bridges.new()
+    bridge.start()
+    give_token(bridge)
+    long_prompt = "a" * 700 + " PAYLOAD"
+    # all of a long prompt on the card; one longer than it shows whole is refused
+    made = call(bridge, "routine_schedule", {"action": "create", "name": "Longue", "schedule": "every 2h",
+                                             "prompt": long_prompt})
+    assert not made["isError"], text_of(made)
+    [longue] = [c for c in routine_cards(bridge) if c["command"] == "routine_schedule · Longue"]
+    assert longue["bip_detail"].endswith("PAYLOAD"), longue["bip_detail"]
+    too_long = call(bridge, "routine_schedule", {"action": "create", "name": "Trop", "schedule": "every 2h",
+                                                 "prompt": "x" * 4001})
+    assert too_long["isError"] and "too long" in text_of(too_long) and "Trop" not in jobs(bridge)
+
+    # « Non »: deleted (O-3), so its agent cannot run the refused words (B-B); an empty answer is a « Non » (S2)
     _, plain = propose(bridge, "Sans avis")
-    assert plain["bip_routine"]["suggested"] == "notify" and jobs(bridge)["Sans avis"]["muted"] is False
-
-    # « Oui » (`once`) = on, told each time; « Non » (`deny`), or an empty answer: deleted (O-3), so its agent cannot run
-    # the refused words (B-B)
-    _, old = propose(bridge, "Nettoyage", silent=True)
-    bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": old["run_id"], "choice": "once"})
-    assert (jobs(bridge)["Nettoyage"]["muted"], jobs(bridge)["Nettoyage"]["state"]) == (False, "scheduled")
     no = bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": plain["run_id"], "choice": "deny"})
     assert no.status_code == 200, no.text
     assert "Sans avis" not in jobs(bridge)
@@ -122,14 +129,14 @@ def test_an_agents_routine_starts_with_the_persons_answer_to_its_card(bridges, f
     time.sleep(0.5)
     assert not [t for t in turns(fakes) if "Sans avis" in t["input"] or "Vide" in t["input"]]
 
-    # unanswered: the suggestion stays; its page's mute switch answers that, not the start: the card stays
-    _, left = propose(bridge, "Sauvegarde", silent=True)
-    assert jobs(bridge)["Sauvegarde"]["muted"] is True
-    assert bridge.patch(f"/v1/routines/{left['bip_routine']['id']}", headers=AUTH, json={"muted": False}).status_code == 200
-    assert jobs(bridge)["Sauvegarde"]["muted"] is False and jobs(bridge)["Sauvegarde"]["state"] == "paused"
-    assert [c["run_id"] for c in routine_cards(bridge)] == [left["run_id"]]
-    # the person's own « Reprendre » is their OK
-    assert bridge.post(f"/v1/routines/{left['bip_routine']['id']}/resume", headers=AUTH).json()["job"]["state"] == "scheduled"
+    # unanswered: its page's mute switch sets how its reports come, not the start: the card stays, « Oui » keeps it
+    _, left = propose(bridge, "Sauvegarde")
+    left_id = jobs(bridge)["Sauvegarde"]["id"]
+    assert bridge.patch(f"/v1/routines/{left_id}", headers=AUTH, json={"muted": True}).status_code == 200
+    assert jobs(bridge)["Sauvegarde"]["muted"] is True and jobs(bridge)["Sauvegarde"]["state"] == "paused"
+    assert [c["run_id"] for c in routine_cards(bridge) if "Sauvegarde" in c["command"]] == [left["run_id"]]
+    bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": left["run_id"], "choice": "once"})
+    assert (jobs(bridge)["Sauvegarde"]["muted"], jobs(bridge)["Sauvegarde"]["state"]) == (True, "scheduled")
 
 
 def test_an_agents_pause_or_delete_leaves_a_line_in_the_boite_and_the_persons_none(bridges, fakes):
@@ -169,15 +176,18 @@ def test_a_routine_withdrawn_takes_its_card_and_a_silent_one_says_so(bridges, fa
     bridge = bridges.new()
     bridge.start()
     give_token(bridge)
-    _, card = propose(bridge, "Archive du soir", silent=True)
+    _, card = propose(bridge, "Archive du soir")
     # deleted by the agent (or on its page): its card gone too
     propose(bridge, "Retirée")
     call(bridge, "routine_schedule", {"action": "delete", "name": "Retirée"})
-    assert [c["bip_routine"]["name"] for c in routine_cards(bridge)] == ["Archive du soir"]
-    other = propose(bridge, "Effacée")[1]
-    assert bridge.delete(f"/v1/routines/{other['bip_routine']['id']}", headers=AUTH).status_code == 200
-    assert [c["bip_routine"]["name"] for c in routine_cards(bridge)] == ["Archive du soir"]
-    # the silent one says so to its agent
+    assert [c["command"] for c in routine_cards(bridge)] == ["routine_schedule · Archive du soir"]
+    propose(bridge, "Effacée")
+    assert bridge.delete(f"/v1/routines/{jobs(bridge)['Effacée']['id']}", headers=AUTH).status_code == 200
+    assert [c["command"] for c in routine_cards(bridge)] == ["routine_schedule · Archive du soir"]
+    # the one waiting says so to its agent; once silent on its page, it says that
+    listed = text_of(call(bridge, "routine_schedule", {"action": "list"}))
+    assert "waits for your person's OK" in [line for line in listed.splitlines() if "Archive du soir" in line][0]
+    bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": card["run_id"], "choice": "silent"})
     listed = text_of(call(bridge, "routine_schedule", {"action": "list"}))
     assert "silent" in [line for line in listed.splitlines() if "Archive du soir" in line][0]
 

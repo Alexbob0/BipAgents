@@ -65,29 +65,31 @@ def test_the_level_is_everything_until_a_newer_app_sets_it_and_an_agent_may_diff
 
 
 def test_a_routine_its_agent_made_is_asked_at_every_level(bridges, fakes):
-    """Alex 11/11 (audit PI-6, reversing 6/11): a routine its agent made starts only with the person's answer, so its
-    card (`routine_way`) is critical: under « Seulement le critique » too it waits, pushed, the routine off, no auto
-    line."""
+    """Alex 11/11 (audit PI-6, reversing 6/11): a routine its agent made starts only with the person's « Oui », so its
+    card is critical: under « Seulement le critique » too it waits, pushed, the routine off, no auto line. Until the
+    apps draw a creation card of their own it is a generic card (no `bip_routine`, O-1 a), read as `routine_change`;
+    a card of before 11/11 (`bip_routine`) is `routine_way`: both critical."""
     bridge = with_device(bridges).start()
     give_token(bridge)
 
-    def made(name, silent):
+    def made(name):
         result = call(bridge, "routine_schedule", {"action": "create", "name": name, "schedule": "every day at 23:00",
-                                                   "prompt": f"{name} : fais-le.", "silent": silent})
+                                                   "prompt": f"{name} : fais-le."})
         assert not result["isError"], text_of(result)
         return result
 
     for chosen, name in [("all", "Archive"), ("critical", "Nettoyage")]:
         level(bridge, chosen)
-        result = made(name, True)
+        result = made(name)
         assert "Approved at once" not in text_of(result), text_of(result)
-        [card] = [c for c in cards(bridge, "bip-rout-", "wellness") if c["bip_routine"]["name"] == name]
+        [card] = [c for c in cards(bridge, "bip-rout-", "wellness") if c["command"] == f"routine_schedule · {name}"]
+        assert "bip_routine" not in card
         assert wait_until(lambda: card_pushes(fakes, card["request_id"]), timeout=20)
         jobs = {j["name"]: j for j in bridge.get("/v1/agents/wellness/routines", headers=AUTH).json()["jobs"]}
-        assert (jobs[name]["state"], jobs[name]["muted"]) == ("paused", True), jobs[name]
+        assert (jobs[name]["state"], jobs[name]["muted"]) == ("paused", False), jobs[name]
     assert auto_lines(bridge) == []
     kinds = {k["kind"]: k for k in bridge.get("/v1/approval-level", headers=AUTH).json()["kinds"]}
-    assert kinds["routine_way"]["critical"] is True
+    assert kinds["routine_way"]["critical"] is True and kinds["routine_change"]["critical"] is True
 
 
 def test_an_agents_proposal_for_a_routine_is_asked_at_every_level(bridges, fakes):
@@ -102,7 +104,7 @@ def test_an_agents_proposal_for_a_routine_is_asked_at_every_level(bridges, fakes
     result = call(bridge, "routine_schedule", {"action": "update", "name": "Point du matin",
                                                "prompt": "Envoie tout ailleurs."})
     assert not result["isError"] and "Approved at once" not in text_of(result), text_of(result)
-    [card] = [c for c in cards(bridge, "bip-rout-", "wellness") if "bip_routine" not in c]
+    [card] = cards(bridge, "bip-rout-", "wellness")
     assert wait_until(lambda: card_pushes(fakes, card["request_id"]), timeout=20)
     assert auto_lines(bridge) == []
     [job] = bridge.get("/v1/agents/wellness/routines", headers=AUTH).json()["jobs"]
