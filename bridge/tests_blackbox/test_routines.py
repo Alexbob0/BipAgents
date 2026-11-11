@@ -106,13 +106,21 @@ def test_an_agents_routine_starts_with_the_persons_answer_to_its_card(bridges, f
     _, plain = propose(bridge, "Sans avis")
     assert plain["bip_routine"]["suggested"] == "notify" and jobs(bridge)["Sans avis"]["muted"] is False
 
-    # an app from before 6/11: « Oui » (`once`) = on, told each time; « Non » (`deny`) = silent, still off, never deleted
+    # « Oui » (`once`) = on, told each time; « Non » (`deny`), or an empty answer: deleted (O-3), so its agent cannot run
+    # the refused words (B-B)
     _, old = propose(bridge, "Nettoyage", silent=True)
     bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": old["run_id"], "choice": "once"})
     assert (jobs(bridge)["Nettoyage"]["muted"], jobs(bridge)["Nettoyage"]["state"]) == (False, "scheduled")
     no = bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": plain["run_id"], "choice": "deny"})
-    assert no.status_code == 200 and no.json()["muted"] is True, no.text
-    assert jobs(bridge)["Sans avis"]["muted"] is True and jobs(bridge)["Sans avis"]["state"] == "paused"
+    assert no.status_code == 200, no.text
+    assert "Sans avis" not in jobs(bridge)
+    assert call(bridge, "routine_schedule", {"action": "run", "name": "Sans avis"})["isError"]
+    _, empty = propose(bridge, "Vide")
+    assert bridge.post("/v1/approve", headers=AUTH, json={"agent": "wellness", "run_id": empty["run_id"],
+                                                          "choice": ""}).status_code == 200
+    assert "Vide" not in jobs(bridge)
+    time.sleep(0.5)
+    assert not [t for t in turns(fakes) if "Sans avis" in t["input"] or "Vide" in t["input"]]
 
     # unanswered: the suggestion stays; its page's mute switch answers that, not the start: the card stays
     _, left = propose(bridge, "Sauvegarde", silent=True)

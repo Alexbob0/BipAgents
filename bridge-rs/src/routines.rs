@@ -113,6 +113,10 @@ pub struct Routine {
     /// The agent's suggestion on its card (true: silent, false: tell each time); None: it gave none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub suggested_silent: Option<bool>,
+    /// Made by its agent and never started by the person (11/11, PI-6): off, and nothing starts it but a « Oui » to its
+    /// creation card (« Non » deletes it); its agent's `run` and `resume` are refused, `fire` runs nothing.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub awaits_start: bool,
     /// Changed or turned back on by its agent (`update`, `resume`): off until the person answers this change's card.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub change: Option<Change>,
@@ -462,6 +466,7 @@ pub fn create(
             Maker::Person { .. } => None,
         },
         change: None,
+        awaits_start: proposed,
     };
     change(config, |b| b.routines.push(routine.clone()));
     Ok(routine)
@@ -501,7 +506,7 @@ pub fn delete(config: &Config, id: &str) -> bool {
 //
 //     notify | once | session | always    on, told each time: each report in the conversation and pushed
 //     silent                              on, silent: results only on its page
-//     deny (an older app's « Non »)       stays off, silent; never deleted (its page and its swipe do)
+//     anything else (deny, empty, unknown) deleted: it never ran (O-3, 11/11), a proposal waiting with it
 //
 // A `PATCH /v1/routines/{id}` with `muted` (its page's switch) answers its question too, and the person's own
 // « Reprendre » turns it on (their own tap). Never answered by the bridge: since 11/11 `routine_way` is critical in
@@ -811,11 +816,19 @@ pub fn silent_for(choice: &str) -> bool {
     choice == SILENT_CHOICE || !crate::card_place::allowed(&choice)
 }
 
-/// The person answered card `card_id` with `choice` (above). The routine as it is now (never deleted), None: no such
-/// card.
+/// The answers that start a routine its agent made (S2: only these; anything else, an empty or unknown one included,
+/// is a « Non »). `session` and `always` are never offered by its card (`choices` is `once` / `deny`) but mean « Oui »
+/// as on a proposal's card: nothing is stored for later cards either way.
+fn starts(choice: &str) -> bool {
+    matches!(choice, NOTIFY | SILENT_CHOICE | "once" | "session" | "always")
+}
+
+/// The person answered card `card_id` with `choice` (above). The routine as it is now (a refused one made by its
+/// agent: as it was, now deleted), None: no such card.
 pub fn answer(config: &Config, agent: &str, card_id: &str, choice: &str) -> Option<Routine> {
     let zone = zone(config);
     let muted = silent_for(choice);
+    let mut withdrawn = None;
     let found = change(config, |b| {
         let changed = |r: &&mut Routine| r.agent == agent && r.change.as_ref().is_some_and(|c| c.card.id == card_id);
         if let Some(r) = b.routines.iter_mut().find(changed) {
@@ -827,18 +840,31 @@ pub fn answer(config: &Config, agent: &str, card_id: &str, choice: &str) -> Opti
             tracing::info!(target: "bipbridge::routines", agent, routine = %r.id, yes, "routine proposal answered");
             return Some(r.clone());
         }
-        let r = b.routines.iter_mut().find(|r| r.agent == agent && r.card.as_ref().is_some_and(|c| c.id == card_id))?;
-        r.muted = muted;
-        let refused = !crate::card_place::allowed(&choice.trim().to_lowercase());
-        if !r.enabled && r.last_run.is_none() && !refused {
-            // made by its agent, off until this answer (11/11): on now, with the words this card showed (a proposal of
-            // its agent's made since stays a proposal, kept aside: `change`)
-            r.enabled = true;
-            r.next_run = next_after(&r.schedule, py::time_time(), zone);
+        let at = b.routines.iter().position(|r| r.agent == agent && r.card.as_ref().is_some_and(|c| c.id == card_id))?;
+        if b.routines[at].awaits_start && !starts(&choice.trim().to_lowercase()) {
+            // « Non » to a routine its agent made that never ran (owner's decision O-3, 11/11): deleted, a proposal
+            // of its agent's made since with it; nothing left to run, resume or list
+            let gone = b.routines.remove(at);
+            withdrawn = gone.change.as_ref().map(|c| c.card.id.clone());
+            return Some(gone);
         }
+        let r = &mut b.routines[at];
+        if !r.awaits_start {
+            // made before 11/11 (on at once): its card only asks how its reports come
+            r.muted = muted;
+            r.card = None;
+            return Some(r.clone());
+        }
+        // on now, with the words this card showed (a proposal of its agent's made since stays a proposal, kept
+        // aside: `change`)
+        r.muted = muted;
+        r.awaits_start = false;
+        r.enabled = true;
+        r.next_run = next_after(&r.schedule, py::time_time(), zone);
         r.card = None;
         Some(r.clone())
     });
+    withdraw(config, withdrawn);
     if let Some(r) = &found {
         tracing::info!(target: "bipbridge::routines", agent, card = card_id, choice = %choice, muted = r.muted, "routine card answered");
     }
@@ -919,6 +945,11 @@ pub async fn scheduler(state: AppState) {
 pub async fn fire(state: &AppState, id: &str) {
     let config = state.config();
     let Some(r) = get(&config, id) else { return };
+    if r.awaits_start {
+        // never started by the person: its words never run (every caller refuses it already)
+        tracing::warn!(target: "bipbridge::routines", routine = %r.id, "a routine its agent made, not started yet: not run");
+        return;
+    }
     let Some(agent) = config.agent(Some(&r.agent)).cloned() else { return };
     let zone = zone(&config);
     let now = py::time_time();
@@ -1220,6 +1251,7 @@ pub async fn migrate(state: &AppState, agent: &AgentConfig) {
             created: now,
             card: None,
             suggested_silent: None,
+            awaits_start: false,
             change: None,
         });
     }
@@ -1278,9 +1310,9 @@ pub struct Called {
     pub notice: Option<(Routine, Done)>,
 }
 
-/// Made by its agent and never accepted yet: off, its creation card waiting, never ran.
-fn waits_for_ok(r: &Routine) -> bool {
-    r.card.is_some() && !r.enabled && r.last_run.is_none()
+/// Made by its agent and never accepted yet: off until « Oui » to its creation card.
+pub fn waits_for_ok(r: &Routine) -> bool {
+    r.awaits_start
 }
 
 /// An agent's act on a routine the person reads in the Boîte (Alex 11/11, audit PI-6 O3): no card, no push.
@@ -1410,10 +1442,14 @@ for their OK, in plain words.",
             }
             (format!("Routine « {} » deleted.", r.name), false, None)
         }
-        // made by the agent, never accepted yet: nothing runs before the person's OK (11/11)
+        // made by the agent, never accepted yet: nothing runs before the person's OK (11/11), refused
         ("run" | "resume", Some(r)) if waits_for_ok(&r) => {
-            let text = format!("Routine « {} » starts once your person answers its card in the app.", r.name);
-            (text, action == "run", None)
+            let text = format!(
+                "Routine « {} » has not been started by your person yet: it starts only when they say yes on its card \
+in the app. Do not try to run it.",
+                r.name
+            );
+            (text, true, None)
         }
         // the approved words only, a proposal never (PI-6)
         ("run", Some(r)) => (format!("Routine « {} » starts now.", r.name), false, Some(r.id)),
@@ -1741,6 +1777,7 @@ Pour la relancer tout de suite : « Lancer maintenant » sur sa page."
             created: 0.0,
             card: None,
             suggested_silent: None,
+            awaits_start: false,
             change: None,
         };
         let n = note(&r);
@@ -1825,7 +1862,8 @@ Veux-tu être au courant de ce que cette routine trouve ?"
         let run = call(&config, "vie", &args(json!({"action": "run", "name": "Archive du soir"})), None);
         assert!(run.run.is_none() && run.result.get("isError") == Some(&json!(true)));
         let resumed = call(&config, "vie", &args(json!({"action": "resume", "name": "Archive du soir"})), None);
-        assert!(resumed.card.is_none() && !get(&config, &r.id).unwrap().enabled && pending_items(&config, None).len() == 1);
+        assert!(resumed.card.is_none() && resumed.result.get("isError") == Some(&json!(true)));
+        assert!(!get(&config, &r.id).unwrap().enabled && pending_items(&config, None).len() == 1);
         // its mute switch on its page answers the question, not the start: the card stays
         let mute = Body { muted: Some(true), ..Body::default() };
         update(&config, &r.id, |x| person_edit(x, mute, Tz::UTC).map(drop)).unwrap();
@@ -1853,7 +1891,7 @@ Veux-tu être au courant de ce que cette routine trouve ?"
     }
 
     #[test]
-    fn each_answer_starts_it_but_a_refusal_and_never_deletes() {
+    fn only_a_yes_starts_it_and_a_refusal_deletes_it_so_nothing_runs_the_refused_words() {
         let dir = tempfile::tempdir().unwrap();
         let config = config_in(&dir);
         let answered = |name: &str, silent: Option<bool>, choice: &str| {
@@ -1861,21 +1899,52 @@ Veux-tu être au courant de ce que cette routine trouve ?"
             answer(&config, "vie", &card_id(&card), choice)
         };
         let silent = answered("A", Some(false), "silent").unwrap();
-        assert!(silent.muted && silent.enabled && silent.card.is_none() && silent.next_run.is_some());
+        assert!(silent.muted && silent.enabled && silent.card.is_none() && silent.next_run.is_some() && !silent.awaits_start);
         let told = answered("B", Some(true), "notify").unwrap();
         assert!(!told.muted && told.enabled);
-        // an older app's « Oui »: on, told each time; its « Non »: silent, still off, never deleted
-        assert!(!answered("C", Some(true), "once").unwrap().muted);
-        let no = answered("D", Some(false), "deny").unwrap();
-        assert!(no.muted && !no.enabled && no.next_run.is_none());
+        for (name, yes) in [("C", "once"), ("C2", "session"), ("C3", "always")] {
+            assert!(answered(name, None, yes).unwrap().enabled, "{yes}");
+        }
+        // « Non », and an empty or unknown answer (S2): deleted (O-3), so the agent has nothing to run or resume (B-B)
+        for (name, no) in [("D", "deny"), ("D2", ""), ("D3", "peut-être"), ("D4", "no")] {
+            let (_, card) = propose(&config, name, None);
+            let gone = answer(&config, "vie", &card_id(&card), no).unwrap();
+            assert!(!gone.enabled && get(&config, &gone.id).is_none(), "{no:?}");
+            let run = call(&config, "vie", &args(json!({"action": "run", "name": name})), None);
+            assert!(run.run.is_none() && run.result.get("isError") == Some(&json!(true)));
+            let resume = call(&config, "vie", &args(json!({"action": "resume", "name": name})), None);
+            assert!(resume.card.is_none() && resume.result.get("isError") == Some(&json!(true)));
+        }
+        // a proposal its agent made meanwhile goes with it
+        let (_, card) = propose(&config, "F", None);
+        call(&config, "vie", &args(json!({"action": "update", "name": "F", "prompt": "Ailleurs."})), None);
+        assert_eq!(pending_items(&config, None).len(), 2);
+        answer(&config, "vie", &card_id(&card), "deny").unwrap();
+        assert!(pending_items(&config, None).is_empty());
         // answered twice or by another agent: no such card
         let (_, card) = propose(&config, "E", None);
         assert_eq!(answer(&config, "autre", &card_id(&card), "once"), None);
         assert!(answer(&config, "vie", &card_id(&card), "silent").is_some());
         assert_eq!(answer(&config, "vie", &card_id(&card), "once"), None);
         let names: Vec<String> = list(&config, Some("vie")).iter().map(|r| r.name.clone()).collect();
-        assert_eq!(names, ["A", "B", "C", "D", "E"]);
+        assert_eq!(names, ["A", "B", "C", "C2", "C3", "E"]);
         assert!(pending_items(&config, None).is_empty());
+    }
+
+    #[test]
+    fn a_routine_its_agent_made_before_11_11_keeps_its_way_card() {
+        // on at once then, its card only asks how its reports come: any answer sets that, nothing deleted
+        let dir = tempfile::tempdir().unwrap();
+        let config = config_in(&dir);
+        let (_, card) = propose(&config, "Ancienne", None);
+        let id = list(&config, Some("vie")).pop().unwrap().id;
+        update(&config, &id, |r| {
+            (r.awaits_start, r.enabled) = (false, true);
+            Ok(())
+        })
+        .unwrap();
+        let kept = answer(&config, "vie", &card_id(&card), "deny").unwrap();
+        assert!(kept.enabled && kept.muted && kept.card.is_none() && get(&config, &id).is_some());
     }
 
     #[test]

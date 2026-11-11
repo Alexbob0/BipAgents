@@ -1202,8 +1202,8 @@ async fn bridge_card(
             None => Err(HttpError::new(404, "no such request (answered already?)")),
         }?));
     }
-    // the question of a routine its agent made (routines.rs): « notify » / « silent » (an older app's « Oui » / « Non »)
-    // only change how its reports come; it is never deleted here
+    // the cards of a routine its agent made or wants changed (routines.rs `answer`): only a « Oui » starts it or applies
+    // the change; « Non » to one that never started deletes it
     if let Some(id) = run_id.strip_prefix(crate::routines::RUN_PREFIX) {
         let choice = body.choice.trim().to_lowercase();
         let (config, name, id, given) = (state.config(), agent.name.clone(), id.to_string(), choice.clone());
