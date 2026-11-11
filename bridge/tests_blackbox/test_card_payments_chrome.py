@@ -172,6 +172,9 @@ def test_a_providers_frame_on_another_site(bridges, fakes):
         browser.call("Target.createTarget", {"url": f"http://127.0.0.1:{shop.server_port}/done.html?other",
                                              "background": True})
         time.sleep(1)
+        targets = browser.call("Target.getTargets")["targetInfos"]
+        agents_tab = next(t["targetId"] for t in targets if t["type"] == "page" and "elements.html" in t["url"])
+        browser.call("Target.activateTarget", {"targetId": agents_tab})   # the agent's tab is the one shown
         assert len(browser.pages()) == 2
         result, asked = pay(bridge, ARGS)
         assert result["isError"] is False, result

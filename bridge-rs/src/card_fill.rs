@@ -339,6 +339,9 @@ pub struct Page {
     pub session: String,
     /// The tab's target id (the same across reloads and navigations).
     pub target: String,
+    /// The out-of-process frames' sessions found so far: Chrome reports each one once per connection, and a page is
+    /// looked at several times while its form appears (card_pay.rs).
+    children: Vec<String>,
 }
 
 fn frames_of(tree: &Value, out: &mut Vec<(String, String)>) {
@@ -401,7 +404,7 @@ impl Page {
             }
         }
         let (session, target) = chosen.ok_or(FillError::NoPage)?;
-        Ok(Page { cdp, session, target })
+        Ok(Page { cdp, session, target, children: Vec::new() })
     }
 
     /// The tab `target` (the one a card was typed into), whatever it shows now; `NoPage` when it is closed.
@@ -415,7 +418,7 @@ impl Page {
         if session.is_empty() {
             return Err(FillError::NoPage);
         }
-        Ok(Page { cdp, session, target: target.to_string() })
+        Ok(Page { cdp, session, target: target.to_string(), children: Vec::new() })
     }
 
     /// The main frame's document: its loader id changes with each new document (a reload, a navigation), not when a
@@ -544,12 +547,17 @@ impl Page {
     /// Every frame of the page, with the session that reaches it: the page's own, then each out-of-process frame's.
     pub async fn frames(&mut self) -> Result<Vec<(String, String, String)>, FillError> {
         let mut sessions = vec![self.session.clone()];
+        sessions.extend(self.children.iter().cloned());
+        let mut gone = Vec::new();
         let mut out = Vec::new();
         let mut index = 0;
         while index < sessions.len() && index < MAX_SESSIONS {
             let session = sessions[index].clone();
             index += 1;
-            let Ok(tree) = self.cdp.call("Page.getFrameTree", json!({}), Some(&session)).await else { continue };
+            let Ok(tree) = self.cdp.call("Page.getFrameTree", json!({}), Some(&session)).await else {
+                gone.push(session); // a frame closed or navigated away: its session ended
+                continue;
+            };
             let mut frames = Vec::new();
             frames_of(tree.get("frameTree").unwrap_or(&Value::Null), &mut frames);
             out.extend(frames.into_iter().map(|(id, url)| (session.clone(), id, url)));
@@ -571,6 +579,8 @@ impl Page {
                 }
             }
         }
+        let main = self.session.clone();
+        self.children = sessions.into_iter().filter(|s| *s != main && !gone.contains(s)).collect();
         Ok(out)
     }
 
