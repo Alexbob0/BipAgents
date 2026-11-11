@@ -2,7 +2,7 @@ English · [Français](privacy.fr.md) · [Deutsch](privacy.de.md) · [Español](
 
 # BipAgents privacy policy
 
-> Last updated: 10 November 2026.
+> Last updated: 11 November 2026.
 
 ## In short
 
@@ -76,6 +76,13 @@ With your own computer or your own server:
   Kerfy Studio receives none of it. With the all-included offer, the card stays on your phone (section 5.10).
 - **Several people on one server** (the family feature): each person has their own install, separate from the
   others. Whoever administers the server is responsible towards the others.
+- **An agent a relative shares with you** (the family agent included) runs at that relative's. Your messages and the
+  files you send it (photos, documents) are kept on their server (or place), in your conversation: the agent reads them
+  only when you are the one writing to it, and the app shows them to no one else, that relative included, unless you
+  ask the agent to share them (for example in the family Carnet). Your own server only holds a file while it is being
+  sent. They are deleted when the conversation is deleted, when you stop using the agent, when your relative stops
+  sharing it, and at the latest after the time chosen on their server for files (30 days by default). As with anything
+  on their server, the person who runs it can technically reach them.
 
 **With the all-included offer**, your place takes the place of your server, and Kerfy Studio chooses the hosting
 provider and the AI router: section 5 says who sees what.
@@ -765,6 +772,7 @@ of the applicable safeguards.
 | Keyed fingerprint of the Android device (free week) | 24 months after the phone was first marked; not erased with the account, to which it is not linked |
 | Family-link invitation | 7 days, or until answered |
 | Read-only share (encrypted copy, people invited) | Until its end date, until it is stopped, or until the account is erased |
+| Files sent to a relative's agent | On their server, until the conversation is deleted or the sharing ends; at the latest the time chosen there for files (30 days by default) |
 | Campaign name (section 5.11) | 13 months after it was recorded, or with the account or the subscription |
 | IP address when a free week is reserved | Never stored; in memory, as a fingerprint, 15 minutes at most |
 | Content of your place | During the subscription, then 30 days (3 days after a free week that was not continued) |

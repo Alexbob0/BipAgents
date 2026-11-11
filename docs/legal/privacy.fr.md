@@ -2,7 +2,7 @@
 
 # Politique de confidentialité de BipAgents
 
-> Dernière mise à jour : 10 novembre 2026.
+> Dernière mise à jour : 11 novembre 2026.
 
 ## En bref
 
@@ -79,6 +79,14 @@ Avec ton propre ordinateur ou ton propre serveur :
   tout compris, la carte reste sur ton téléphone (section 5.10).
 - **Plusieurs personnes sur un même serveur** (fonction famille) : chaque personne a sa propre installation, séparée
   des autres. La personne qui administre le serveur en est responsable vis-à-vis des autres.
+- **Un agent qu'un proche partage avec toi** (dont l'agent de la famille) fonctionne chez ce proche. Tes messages et
+  les fichiers que tu lui envoies (photos, documents) sont gardés sur son serveur (ou sa place), dans ta conversation :
+  l'agent ne les lit que quand c'est toi qui lui écris, et l'app ne les montre à personne d'autre, ton proche compris,
+  sauf si tu demandes à l'agent de les partager (par exemple dans le Carnet de la famille). Ton propre serveur ne garde
+  un fichier que le temps de l'envoyer. Ils sont effacés quand la conversation est supprimée, quand tu arrêtes
+  d'utiliser l'agent, quand ton proche arrête de le partager, et au plus tard au bout de la durée choisie sur son
+  serveur pour les fichiers (30 jours par défaut). Comme pour tout ce qui passe par son serveur, la personne qui
+  l'administre peut techniquement y accéder.
 
 **Avec l'offre tout compris**, ta place remplace ton serveur, et Kerfy Studio choisit l'hébergeur et le routeur d'IA :
 la section 5 dit qui voit quoi.
@@ -805,6 +813,7 @@ l'Union. Tu peux nous demander une copie des garanties applicables.
 | Empreinte de l'appareil Android, hachée avec une clé secrète (semaine gratuite) | 24 mois après le premier marquage du téléphone ; pas effacée avec le compte, auquel elle n'est pas reliée |
 | Invitation d'un lien famille | 7 jours, ou jusqu'à la réponse |
 | Partage en lecture (copie chiffrée, personnes invitées) | Jusqu'à sa date de fin, son arrêt ou l'effacement du compte |
+| Fichiers envoyés à l'agent d'un proche | Sur son serveur, jusqu'à la suppression de la conversation ou la fin du partage ; au plus tard la durée choisie là-bas pour les fichiers (30 jours par défaut) |
 | Nom de campagne (section 5.11) | 13 mois après son enregistrement, ou avec le compte ou l'abonnement |
 | Adresse IP à la réservation d'une semaine gratuite | Jamais enregistrée ; en mémoire, sous forme d'empreinte, 15 minutes au plus |
 | Contenu de ta place | Pendant l'abonnement, puis 30 jours (3 jours après une semaine gratuite non poursuivie) |

@@ -2,7 +2,7 @@
 
 # Política de privacidad de BipAgents
 
-> Última actualización: 10 de noviembre de 2026.
+> Última actualización: 11 de noviembre de 2026.
 
 ## En resumen
 
@@ -77,6 +77,14 @@ Con tu propio ordenador o tu propio servidor:
   la tarjeta se queda en tu teléfono (sección 5.10).
 - **Varias personas en un mismo servidor** (función familia): cada persona tiene su propia instalación, separada de
   las demás. Quien administra el servidor es responsable frente a las demás.
+- **Un agente que un familiar comparte contigo** (incluido el agente de la familia) funciona en casa de ese familiar.
+  Tus mensajes y los archivos que le envías (fotos, documentos) se guardan en su servidor (o su plaza), en tu
+  conversación: el agente solo los lee cuando eres tú quien le escribe, y la app no se los muestra a nadie más, ni
+  siquiera a tu familiar, salvo si le pides al agente que los comparta (por ejemplo en el Carnet de la familia). Tu
+  propio servidor solo guarda un archivo el tiempo de enviarlo. Se borran cuando se elimina la conversación, cuando
+  dejas de usar el agente, cuando tu familiar deja de compartirlo y, como muy tarde, al final del plazo elegido en su
+  servidor para los archivos (30 días por defecto). Como con todo lo que pasa por su servidor, la persona que lo
+  administra puede acceder a ellos técnicamente.
 
 **Con la oferta todo incluido**, tu plaza ocupa el lugar de tu servidor, y Kerfy Studio elige el proveedor de
 alojamiento y el enrutador de IA: la sección 5 dice quién ve qué.
@@ -782,6 +790,7 @@ Scaleway, en Francia, sin transferencia fuera de la Unión. Puedes pedirnos una 
 | Huella del dispositivo Android, calculada con una clave secreta (semana gratis) | 24 meses desde la primera marca del teléfono; no se borra con la cuenta, a la que no está vinculada |
 | Invitación de un vínculo familiar | 7 días, o hasta la respuesta |
 | Compartir en lectura (copia cifrada, personas invitadas) | Hasta su fecha de fin, hasta que se detiene o hasta que se borra la cuenta |
+| Archivos enviados al agente de un familiar | En su servidor, hasta que se elimina la conversación o termina el uso compartido; como muy tarde, el plazo elegido allí para los archivos (30 días por defecto) |
 | Nombre de campaña (sección 5.11) | 13 meses después de su registro, o con la cuenta o la suscripción |
 | Dirección IP al reservar una semana gratis | Nunca se guarda; en memoria, como huella, 15 minutos como máximo |
 | Contenido de tu plaza | Durante la suscripción y después 30 días (3 días después de una semana gratis que no continuó) |
