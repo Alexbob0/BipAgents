@@ -16,14 +16,32 @@ abuse complaint can be traced to an agent.
   100.64/10) or reserved address; the connection goes to the address checked, never resolved again. The
   `Proxy-Authorization` header is never passed on.
 - **Sending is guarded**: the tunnel is opaque (never any TLS interception), so the proxy counts what the client sends
-  the site: in a TLS stream, the application data records only (the handshake is not the agent's data), else every
-  byte. To a host its person did not validate (the registries count as validated), past `send_site_hour` bytes per
-  host per hour, or `send_day` bytes per agent per day across such hosts (a slow leak), the tunnel is cut: nothing more
-  reaches the site, the proxy keeps reading what the client still sends for a few seconds to know its size, then
+  the site: a program's every byte (its TLS handshake too: a program frames data in any record type it likes), the
+  browser's TLS records past their first `browser_record_free` bytes each, whatever their type (those free bytes
+  within a pool, `browser_free_site_hour` per host and `browser_free_day` per agent: past it they count); and the
+  name of each host not validated it connects to, once a day per name (data can be spelt in names). To a host its
+  person did not validate (the registries count as validated: they have their own ceiling, `registry_hour` and
+  `registry_day` per agent, never a card), past `send_site_hour` bytes per host per hour, or `send_day` bytes per
+  agent per day across such hosts (a slow leak), the tunnel is cut: nothing more reaches the site, the proxy keeps
+  reading what the client still sends for a few seconds to know its size, then
   appends one line `{"kind": "send", "agent", "host", "bytes"}` to `BIP_REPORTS` (the bridge reads it and asks the
   person on ONE card per agent). Until the person answers, that host (or, past the day's total, every host not
-  validated) still opens for reading, each tunnel cut past `held_tunnel` bytes. The policy's `reset` (the person's
-  last « Autoriser ») clears an agent's counts.
+  validated) is held: it still opens for reading, within small allowances that come back every hour, shared by all
+  its tunnels: `held_site` bytes per host and `held_hour` bytes per agent across held hosts; past one, the tunnel is
+  cut and a program's new tunnels to it are refused (403) until the hour turns. A host the person refused (the
+  policy's `refused`, host → until when: « Refuser », 24 hours; `refused_always`: « Refuser toujours ») is held the
+  same way, never reported: readable, never refused outright. The policy's `reset` (the person's last « Autoriser »)
+  clears an agent's counts.
+- **Worst case with no card**, per agent per UTC day, for its programs and its browser's counted bytes together:
+  the day's `send_day` (256 KB), then `held_hour` (64 KB) an hour for the rest of the day: at most 256 KB + 24 x 64 KB
+  = 1.75 MB (the first card is raised at the 256 KB). On top of it the browser's free small records (its pool) and
+  what goes to the package registries (their ceiling), each said where it is set.
+- **Where the counts live**: in this process's memory, written to `counts.json` next to `BIP_USAGE` when they moved
+  (every few seconds at most, at each cut and at a clean stop), and read back at start the same day: a restart of the
+  proxy hands out no new allowance (11/11 audit R-1). At most `MAX_OPEN_PER_CLIENT` connections per client address and
+  `MAX_OPEN_TOTAL` in all, a request head of at most `HEADER_LIMIT` bytes, and a per-tunnel write buffer of at most
+  `WRITE_BUFFER` (the proxy stops reading one side when the other does not read), so a sandbox or a flooding site
+  cannot run the proxy out of memory.
 - **On the offer's servers** (limits the bridge sets, 0 = none): `download_day` bytes received per agent per day,
   `connections_minute` new connections per agent per minute, and `BIP_BLOCKLIST` (piracy and torrent trackers' names,
   one per line, refused with their subdomains). Each refusal says so plainly.
@@ -54,6 +72,7 @@ import hmac
 import ipaddress
 import json
 import os
+import signal
 import socket
 import time
 
@@ -69,13 +88,35 @@ WAIT = 30
 HOUR = 3600
 REPORTS_MAX = 256 * 1024
 # What the bridge does not set: the guard's starting points (send_guard.rs has the same).
-LIMITS = {"send_site_hour": 64 * 1024, "send_day": 256 * 1024, "held_tunnel": 16 * 1024, "browser_record_free": 4096,
-          "download_day": 0, "connections_minute": 0}
+LIMITS = {"send_site_hour": 64 * 1024, "send_day": 256 * 1024, "browser_record_free": 4096,
+          "download_day": 0, "connections_minute": 0,
+          # a held host (a card waits, the day's total was reached, or the person refused it): what may still go, in
+          # all, per held host per hour and per agent per hour across held hosts (11/11 audit PI-2: it was 16 KB per
+          # tunnel, again for every new tunnel; D-1: the agent's allowance comes back every hour, reading goes on)
+          "held_site": 16 * 1024, "held_hour": 64 * 1024,
+          # what may be SENT to the package registries, per sandbox (its agent and its address together), per hour
+          # and per day: installing never raises a card, but npm's registry also takes publishes (11/11 audit PI-3).
+          # A cold `npm install` of ~2 500 packages sends about 3 MB of requests (estimate, see the commit)
+          "registry_hour": 6 * 1024 * 1024, "registry_day": 24 * 1024 * 1024,
+          # the browser's free first bytes of each record (its requests), in all: per host per hour, per agent per day;
+          # past them they count like a program's (11/11 audit PI-4: no total, any volume in small records)
+          "browser_free_site_hour": 4 * 1024 * 1024, "browser_free_day": 32 * 1024 * 1024}
 # A tunnel cut: what the client still sends is read (never passed on) for so long, to say how much it wanted to send.
 SINK_IDLE = 3.0
 SINK_SECONDS = 30.0
 SINK_MAX = 1 << 30
 USAGE_EVERY = 60
+# the counts written for a restart (`save_counts`) at most so often, and at each cut
+COUNTS_EVERY = 10
+COUNTS = os.path.join(os.path.dirname(USAGE), "counts.json") if USAGE else ""
+# one client address: so many connections open at once at most; a request head of at most so many bytes
+MAX_OPEN_PER_CLIENT = 128
+MAX_OPEN_TOTAL = 384
+HEADER_LIMIT = 16 * 1024
+# a tunnel's side that does not read: at most so much waits in the proxy for it (asyncio's write buffer)
+WRITE_BUFFER = 16 * 1024
+# names of hosts not validated an agent connected to today, each charged once (`charge_name`); past so many, each time
+NAMES_SEEN = 4096
 EXIT_SOCK = os.environ.get("BIP_EXIT_SOCK", "")
 # the first label under a routed site that marks static files (bridge-rs phone_exit/checks.rs STATIC_LABELS)
 STATIC_LABELS = frozenset(("assets", "static", "statics", "cdn", "img", "images", "image", "media", "medias", "fonts",
@@ -85,12 +126,20 @@ _policy = {"stamp": None, "agents": {}, "browsers": {}, "limits": dict(LIMITS)}
 _blocklist = {"stamp": None, "names": frozenset()}
 # (agent, host) -> [window start, bytes sent this hour] to hosts not validated
 _sent = {}
-# (agent, host) -> until when its tunnels are held (cut past held_tunnel), a card being asked
+# (agent, host) -> until when its tunnels are held, a card being asked
 _held = {}
+# (agent, host) -> [hour start, bytes]: what passed to a held host this hour (at most held_site)
+_held_used = {}
+# (agent, host) -> [window start, bytes]: the browser's free bytes to hosts not validated this hour
+_free = {}
 # agent -> today's counts
 _days = {}
 # agent -> [minute start, new connections]
 _minutes = {}
+# agent, and "@" + the client's address -> [hour start, bytes, day, bytes] sent to registries
+_registries = {}
+# client address -> connections open now
+_open_by_client = {}
 
 
 def normal(host):
@@ -240,6 +289,19 @@ def blocked_name(host):
 LOCAL_SUFFIXES = ("localhost", "local", "internal", "lan", "home", "arpa", "test", "invalid", "localdomain")
 
 
+def nameable(host):
+    """A name the bridge can put on a card (sandbox_sites.rs `clean_host`): labels of letters, digits and dashes, not
+    starting or ending with a dash, at most 63 each, 253 in all, two at least (11/11 review: a send to any other name
+    could never raise a card)."""
+    labels = host.split(".")
+    return len(host) <= 253 and len(labels) >= 2 and all(
+        0 < len(label) <= 63 and all(c in NAME_CHARS for c in label) and label[0] != "-" and label[-1] != "-"
+        for label in labels)
+
+
+NAME_CHARS = frozenset("abcdefghijklmnopqrstuvwxyz0123456789-")
+
+
 def local_name(host):
     """An address, or a name of this machine or its networks (never opened to reading)."""
     last = host.rsplit(".", 1)[-1]
@@ -316,6 +378,12 @@ def append_report(row):
 
 # --- the counts ----------------------------------------------------------------------------------------------------
 
+def new_day(day, since):
+    return {"day": day, "since": since, "sent": 0, "received": 0, "unvalidated": 0, "connections": 0, "held": False,
+            "held_start": 0, "held_sent": 0, "download_logged": False, "names": set(), "free": 0,
+            "free_logged": False}
+
+
 def day_of(agent):
     """The agent's counts for today (new ones at midnight UTC, or after its person's « Autoriser »)."""
     now, day = time.time(), today()
@@ -327,11 +395,14 @@ def day_of(agent):
             del _sent[key]
         for key in [k for k in _held if k[0] == agent]:
             del _held[key]
-        entry.update(since=now, unvalidated=0, held=False)
+        for key in [k for k in _held_used if k[0] == agent]:
+            del _held_used[key]
+        for key in [k for k in _free if k[0] == agent]:
+            del _free[key]
+        entry.update(since=now, unvalidated=0, held=False, held_start=0, held_sent=0, free=0)
     if entry is None or entry["day"] != day:
         kept = entry or {}
-        entry = {"day": day, "since": max(now, kept.get("since", 0)), "sent": 0, "received": 0, "unvalidated": 0,
-                 "connections": 0, "held": False, "download_logged": False}
+        entry = new_day(day, max(now, kept.get("since", 0)))
         _days[agent] = entry
         if len(_days) > 4096:
             _days.clear()
@@ -360,11 +431,161 @@ def download_over(agent):
     return bool(most) and day_of(agent)["received"] >= most
 
 
+def registry_window(sender):
+    """[hour start, bytes this hour, day, bytes today] sent to the registries by `sender`."""
+    now, day = time.time(), today()
+    window = _registries.get(sender)
+    if window is None:
+        window = [now, 0, day, 0]
+        if len(_registries) > 4096:
+            _registries.clear()
+        _registries[sender] = window
+    if now - window[0] >= HOUR:
+        window[0], window[1] = now, 0
+    if window[2] != day:
+        window[2], window[3] = day, 0
+    return window
+
+
+def registry_over(senders):
+    """Whether `senders` (a sandbox's agent and its address: ONE budget, whether it shows its credentials or not)
+    sent the registries all they may: "day", "hour", or None."""
+    windows = [registry_window(s) for s in senders]
+    if any(w[3] >= limit("registry_day") for w in windows):
+        return "day"
+    if any(w[1] >= limit("registry_hour") for w in windows):
+        return "hour"
+    return None
+
+
+def registry_take(senders, size):
+    """`size` more bytes to a registry: True within the ceilings (counted for each of `senders`), else False (and the
+    ceiling marked reached, so new connections are refused until the window passes)."""
+    windows = [registry_window(s) for s in senders]
+    hour, day = limit("registry_hour"), limit("registry_day")
+    if any(w[1] + size > hour or w[3] + size > day for w in windows):
+        for w in windows:
+            if w[1] + size > hour:
+                w[1] = max(w[1], hour)
+            if w[3] + size > day:
+                w[3] = max(w[3], day)
+        return False
+    for w in windows:
+        w[1] += size
+        w[3] += size
+    return True
+
+
+def refused(agent, host):
+    """A host the agent's person refused on its card: « Refuser » (the policy's `refused`, host → until when, 24 hours,
+    sandbox_sites.rs QUIET_AFTER_NO) or « Refuser toujours » (`refused_always`). It stays readable: it is held
+    (`hold_of`), with the hour's small allowance, and never reported."""
+    entry = policy().get(agent) if agent else None
+    if not isinstance(entry, dict):
+        return False
+    host = normal(host)
+    always = entry.get("refused_always")
+    if isinstance(always, list) and host in always:
+        return True
+    marks = entry.get("refused")
+    until = marks.get(host) if isinstance(marks, dict) else None
+    return isinstance(until, (int, float)) and not isinstance(until, bool) and until > time.time()
+
+
+def hold_of(agent, host, day):
+    """Whether this agent's sends to this host are held: a card waits for it, the day's total was reached (every
+    host not validated, until midnight UTC), or the person refused it."""
+    return _held.get((agent, host), 0) > time.time() or day["held"] or refused(agent, host)
+
+
+def held_site(agent, host):
+    """[hour start, bytes]: what went to this held host this hour, all its tunnels together."""
+    key, now = (agent, host), time.time()
+    used = _held_used.get(key)
+    if used is None or now - used[0] >= HOUR:
+        used = [now, 0]
+        if len(_held_used) > 16384:
+            _held_used.clear()
+        _held_used[key] = used
+    return used
+
+
+def held_hour(day):
+    """The agent's held allowance this hour (`day["held_sent"]` since `day["held_start"]`), back every hour."""
+    now = time.time()
+    if now - day["held_start"] >= HOUR:
+        day["held_start"], day["held_sent"] = now, 0
+    return day
+
+
+def held_spent(agent, host):
+    """A program's new connection to a held host whose allowance for the hour went (the host's, or the agent's
+    across held hosts): refused until the hour turns. The browser is never refused for it: its small records are
+    free (its pool), and what it would send past the allowance is cut in the tunnel."""
+    day = day_of(agent)
+    if not hold_of(agent, host, day):
+        return False
+    used = held_site(agent, host)
+    return used[1] >= limit("held_site") or held_hour(day)["held_sent"] >= limit("held_hour")
+
+
+def free_over(agent, host, spared, day):
+    """The browser's free bytes (`spared`) taken from its pools (per host per hour, per agent per day); what does not
+    fit, returned, counts like a program's bytes. The first time a pool is full in a day, one log line."""
+    key, now = (agent, host), time.time()
+    window = _free.get(key)
+    if window is None or now - window[0] >= HOUR:
+        window = [now, 0]
+        if len(_free) > 16384:
+            _free.clear()
+        _free[key] = window
+    room = max(0, min(limit("browser_free_site_hour") - window[1], limit("browser_free_day") - day["free"]))
+    taken = min(spared, room)
+    window[1] += taken
+    day["free"] += taken
+    if taken < spared and not day["free_logged"]:
+        day["free_logged"] = True
+        log(f"browser's free bytes pool reached ({window[1]} bytes this hour to this host, {day['free']} today): "
+            "counted from now", "SEND", host, agent)
+    return spared - taken
+
+
+def charge_name(agent, host, browser=False):
+    """A new connection (a CONNECT, a plain-HTTP request) to a host not validated: its name's length counts as sent,
+    before it is looked up — data can be spelt in names (11/11 audit PI-5), many distinct ones reach the day's total
+    like any slow leak (one report, then the held hours). A name costs its length once a day, then 2 bytes at each
+    new connection (which of the names already charged is chosen carries up to 12 bits: 11/11 review C-3), up to
+    NAMES_SEEN names, then its length every time. False: refused (the held hour's allowance went)."""
+    day = day_of(agent)
+    seen = day["names"]
+    size = 2 if host in seen else len(host)
+    if not hold_of(agent, host, day) and day["unvalidated"] + size > limit("send_day"):
+        day["held"] = True
+        append_report({"kind": "send", "agent": agent, "host": host[:253], "bytes": int(day["unvalidated"] + size),
+                       "day": True, "at": int(time.time())})
+        log(f"cut (send: the day's total reached, {day['unvalidated'] + size} bytes, names included)", "NAME", host,
+            agent)
+    if hold_of(agent, host, day):
+        if held_hour(day)["held_sent"] + size > limit("held_hour"):
+            # the browser keeps reading: its name then comes from its pool of free bytes (the bound it has anyway);
+            # a program, or a browser past its pool too, is refused until the hour turns
+            if not browser or free_over(agent, host, size, day):
+                return False
+        else:
+            day["held_sent"] += size
+    else:
+        day["unvalidated"] += size
+    if len(seen) < NAMES_SEEN:
+        seen.add(host)
+    return True
+
+
 class Tls:
-    """What a client sends in a TLS stream, record by record: the application data records' lengths are counted, the
-    handshake's are not. A stream that does not start as TLS counts whole. `free`: the first bytes of each record (of
-    each read, out of TLS) not counted — a browser's requests are small records, an upload's full ones (16 KB); never
-    for the sandboxes' programs, which choose their own record sizes."""
+    """What a browser sends in a TLS stream, record by record: every record's content counts (whatever its type: a
+    client chooses the type it frames its bytes in), but the first `free` bytes of each (of each read, out of TLS) —
+    a browser's requests are small records, an upload's full ones (16 KB). A stream that does not start as TLS counts
+    whole. The sandboxes' programs never go through this: they choose their own record sizes and types, every byte
+    they send counts (`Guard`)."""
 
     def __init__(self, free=0):
         self.mode = None   # None (first byte not seen), "tls" or "raw"
@@ -373,20 +594,23 @@ class Tls:
         self.kind = 0
         self.free = free
         self.free_left = 0
+        self.spared = 0    # the free bytes of the last `count`
 
     def count(self, data):
         if self.mode is None and data:
             self.mode = "tls" if data[0] == 0x16 else "raw"
         if self.mode == "raw":
-            return max(0, len(data) - self.free)
+            self.spared = min(len(data), self.free)
+            return len(data) - self.spared
         counted, at = 0, 0
+        self.spared = 0
         while at < len(data):
             if self.left:
                 take = min(self.left, len(data) - at)
-                if self.kind == 23:
-                    spared = min(self.free_left, take)
-                    self.free_left -= spared
-                    counted += take - spared
+                spared = min(self.free_left, take)
+                self.free_left -= spared
+                self.spared += spared
+                counted += take - spared
                 self.left -= take
                 at += take
                 continue
@@ -407,36 +631,63 @@ class Tls:
 
 class Guard:
     """One tunnel of a known agent: its bytes counted for the day; its sends counted against the budgets when the host
-    is not validated for it (`counted`), the tunnel cut past them."""
+    is not validated for it (`counted`), the tunnel cut past them. To a registry (`registry`: who sends, an agent or a
+    client address without credentials, then `agent` is None): what it sends counted against the registries' ceiling,
+    with no card."""
 
-    def __init__(self, agent, host, counted, browser=False):
+    def __init__(self, agent, host, counted, browser=False, registry=None):
         self.agent, self.host, self.counted = agent, host, counted
-        self.tls = Tls(limit("browser_record_free") if browser else 0)
+        self.registry = registry
+        # a program: every byte (TLS record headers and handshakes included: a program frames what it likes in them,
+        # 2026-11-11 audit BV-4); the browser: its records past their free first bytes
+        self.tls = Tls(limit("browser_record_free")) if browser else None
         self.up = 0          # every byte the client sent through (the log's figure)
         self.down = 0
         self.app = 0         # what counted against the budgets in this tunnel
         self.pending = 0     # the chunk that went over (never passed on)
         self.sunk = 0        # what the client still sent once cut (never passed on)
-        self.cut = None      # why the tunnel was cut: "send", "held", "download"
+        self.cut = None      # why the tunnel was cut: "send", "held", "download", "registry"
 
     def sending(self, data):
         """`data` the client sends: True to pass it on, False to cut the tunnel (`self.cut` says why)."""
         self.up += len(data)
+        if self.registry is not None and not registry_take(self.registry, len(data)):
+            self.cut = "registry"
+            log(f"cut (registry: sending limit reached, {self.up} bytes in this tunnel)", "SEND", self.host,
+                self.agent or self.registry[-1])
+            save_counts()
+            return False
+        if self.agent is None:
+            return True   # no credentials: a registry, nothing else to count
         day = day_of(self.agent)
         if not self.counted:
             day["sent"] += len(data)
             return True
-        size = self.tls.count(data)
+        size = self.tls.count(data) if self.tls is not None else len(data)
+        if self.tls is not None and self.tls.spared:
+            size += free_over(self.agent, self.host, self.tls.spared, day)
         if not size:
             day["sent"] += len(data)
             return True
         key = (self.agent, self.host)
         now = time.time()
-        if day["held"] or _held.get(key, 0) > now:
-            # a card waits: reading still opens, each tunnel cut past a request's size
-            if self.app + size > limit("held_tunnel"):
+        if hold_of(self.agent, self.host, day):
+            # held (a card waits, the day's total went, or the person refused it): reading still opens, within ONE
+            # allowance an hour for the host and one for the agent, whatever the number of tunnels; past it, cut. The
+            # browser's free small records do not come from it (its pool): no better off than a fresh host.
+            used, hour = held_site(self.agent, self.host), held_hour(day)
+            over_site = used[1] + size > limit("held_site")
+            over_hour = hour["held_sent"] + size > limit("held_hour")
+            if over_site or over_hour:
+                # a chunk that does not fit spends the host's allowance; the agent's only when what is left of it
+                # would not open a connection (11/11 review C-2: one retried chunk burnt every held host's hour)
+                used[1] = max(used[1], limit("held_site"))
+                if limit("held_hour") - hour["held_sent"] < 2048:
+                    hour["held_sent"] = limit("held_hour")
                 self.cut = "held"
                 return False
+            used[1] += size
+            day["held_sent"] += size
             self.app += size
             day["sent"] += len(data)
             return True
@@ -463,6 +714,8 @@ class Guard:
 
     def receiving(self, data):
         self.down += len(data)
+        if self.agent is None:
+            return True
         day = day_of(self.agent)
         day["received"] += len(data)
         if download_over(self.agent):
@@ -513,6 +766,8 @@ async def pipe_up(reader, up_writer, writer, guard):
         if guard is not None and guard.cut in ("send", "held"):
             await sink(reader, guard)
             close(writer)
+        elif guard is not None and guard.cut == "registry":
+            close(writer)
 
 
 async def pipe_down(up_reader, writer, up_writer, guard):
@@ -548,6 +803,7 @@ async def sink(reader, guard):
     except Exception:
         pass
     guard.report()
+    save_counts()
     log(f"cut ({guard.cut}: about {guard.tried()} bytes sent or tried this hour)", "SEND", guard.host, guard.agent)
 
 
@@ -564,7 +820,29 @@ PHONE_REFUSED = "Site refused by the phone exit"
 PHONE_FAILED = "Bad Gateway (the phone could not reach the site)"
 CONNECTIONS = "Too many new connections - wait a minute"
 UNKNOWN_BROWSER = "Unknown browser"
+REFUSED = "Sending to this site refused by your person - it stays readable, retry within the hour"
+REGISTRY_HOUR = "Package registries paused - too much was sent to them, retry within the hour"
+REGISTRY_DAY = "Package registries paused - too much was sent to them today, retry tomorrow"
+PAUSED = "Sending paused - your person has a card to answer about this site, retry within the hour"
+PAUSED_TODAY = "Sending limited for the rest of the hour - today's small sends are used up, retry within the hour"
+UNNAMED = "Site name not allowed - only names with letters, digits and dashes are reachable"
+TOO_MANY_OPEN = "Too many connections open at once - close some, then retry"
 BODIES = {
+    REGISTRY_HOUR: "What your programs send to the package registries is limited per hour and per day, and the "
+                   "hour's limit was reached: installs wait until it clears, within the hour. Tell your person if it "
+                   "blocks their work.",
+    REGISTRY_DAY: "What your programs send to the package registries is limited per hour and per day, and today's "
+                  "limit was reached: installs wait until tomorrow (midnight UTC). Tell your person if it blocks "
+                  "their work.",
+    REFUSED: "Your person refused sending to this site. It stays readable with a small allowance an hour, which is "
+             "used up: retry within the hour, and do without sending to it.",
+    PAUSED_TODAY: "Your programs sent today what sites not validated may take without your person: a small amount "
+                  "passes each hour, this hour's is used up. Retry within the hour; if your person's work needs "
+                  "this site, ask them to allow it (sandbox_sites_request).",
+    UNNAMED: "Sites are reached by their name (letters, digits and dashes, like data.gouv.fr).",
+    PAUSED: "You sent this site more than a small amount: your person has a card to answer. Reading goes on with a "
+            "small allowance an hour, which is used up: retry within the hour, or wait for their answer.",
+    TOO_MANY_OPEN: "Your programs hold too many connections to the proxy open at once: close some, then retry.",
     NOT_CONNECTOR: "This connector may only reach the sites your person approved with it.",
     NOT_OPEN: "Only the package registries can be reached without your own access.",
     NOT_HTTPS: "Your programs reach sites over HTTPS only.",
@@ -678,7 +956,7 @@ async def connect(addresses, port):
     last = None
     for address in addresses:
         try:
-            return await asyncio.wait_for(asyncio.open_connection(address, port), WAIT)
+            return await asyncio.wait_for(asyncio.open_connection(address, port, limit=HEADER_LIMIT), WAIT)
         except Exception as exc:
             last = exc
     raise last or OSError("no address")
@@ -692,6 +970,28 @@ def ends(writer):
     except Exception:
         local, peer = "", ""
     return local, peer
+
+
+async def serve(reader, writer):
+    """One connection, within its client address's share: at most MAX_OPEN_PER_CLIENT open at once (a sandbox holding
+    hundreds of unfinished request heads could otherwise run the proxy out of memory, and a restart used to reset
+    every count, 11/11 review R-1)."""
+    _, peer = ends(writer)
+    if _open_by_client.get(peer, 0) >= MAX_OPEN_PER_CLIENT or sum(_open_by_client.values()) >= MAX_OPEN_TOTAL:
+        log("blocked (too many connections open)", "-", peer)
+        return await answer(writer, 429, TOO_MANY_OPEN)
+    _open_by_client[peer] = _open_by_client.get(peer, 0) + 1
+    try:
+        await handle(reader, writer)
+    finally:
+        _open_by_client[peer] -= 1
+        if _open_by_client[peer] <= 0:
+            del _open_by_client[peer]
+
+
+async def start(host="0.0.0.0", port=None):
+    """The proxy's server: each request head at most HEADER_LIMIT bytes (asyncio's stream limit)."""
+    return await asyncio.start_server(serve, host, PORT if port is None else port, limit=HEADER_LIMIT)
 
 
 async def handle(reader, writer):
@@ -727,9 +1027,12 @@ async def handle(reader, writer):
         authority, _, path = target[7:].partition("/")
         host, port = split_authority(authority, 80)
         wanted = 80
+        # the Host line is the requested host's, never the client's own (RFC 9112 §3.2.2; 27/10 audit: a registry
+        # name in the request line, another site in Host, on a shared front)
         kept = b"".join(line + b"\r\n" for name, line in headers if name not in ("proxy-authorization",
-                                                                                   "proxy-connection"))
-        request = f"{method} /{path} {version}\r\n".encode("latin-1") + kept + b"\r\n"
+                                                                                   "proxy-connection", "host"))
+        named = normal(host) + (f":{port}" if port != 80 else "")
+        request = f"{method} /{path} {version}\r\nHost: {named}\r\n".encode("latin-1") + kept + b"\r\n"
     else:
         return await answer(writer, 400, "Bad Request")
     host = normal(host)
@@ -742,12 +1045,28 @@ async def handle(reader, writer):
         log("blocked", method, target, agent)
         return await answer(writer, 403, refusal(agent, strict, wanted, port))
     counted = agent is not None and not connector(agent)
+    # the registries' budget is the sandbox's, credentials or not: its agent's and its address's together
+    senders = (agent, "@" + peer) if agent is not None else ("@" + peer,)
+    over = registry_over(senders) if host in REGISTRIES else None
+    if over:
+        log(f"blocked (registry sending limit, {over})", method, target, agent or senders[-1])
+        return await answer(writer, 403, REGISTRY_DAY if over == "day" else REGISTRY_HOUR)
     if counted and host not in REGISTRIES and blocked_name(host):
         log("blocked (blocklist)", method, target, agent)
         return await answer(writer, 403, BLOCKED)
     if counted and download_over(agent):
         log("blocked (download limit)", method, target, agent)
         return await answer(writer, 403, DOWNLOADS)
+    if counted and not validated(agent, host):
+        if not nameable(host):
+            # a send to it could never be asked about (the bridge's cards take these names only): not reachable
+            log("blocked (not a site's name)", method, target, agent)
+            return await answer(writer, 403, UNNAMED)
+        if (not browser and held_spent(agent, host)) or not charge_name(agent, host, browser):
+            reason = REFUSED if refused(agent, host) else PAUSED if _held.get((agent, host), 0) > time.time() \
+                else PAUSED_TODAY
+            log("blocked (held: the hour's small allowance went)", method, target, agent)
+            return await answer(writer, 403, reason)
     if agent is not None and too_many_connections(agent):
         log("blocked (connections per minute)", method, target, agent)
         return await answer(writer, 429, CONNECTIONS)
@@ -762,7 +1081,8 @@ async def handle(reader, writer):
             log(f"blocked (phone exit: {exc})", method, target, agent)
             return await answer(writer, status, reason)
         log("allowed (phone exit)", method, target, agent)
-        return await tunnel(reader, writer, up_reader, up_writer, method, target, agent, host, b"", counted, browser)
+        return await tunnel(reader, writer, up_reader, up_writer, method, target, agent, host, b"", counted, browser,
+                            senders)
     addresses = await resolve(host, port)
     if addresses == []:
         log("blocked-address", method, target, agent)
@@ -777,12 +1097,21 @@ async def handle(reader, writer):
         log(f"failed ({type(exc).__name__}: {str(exc)[:120]})", method, target, agent)
         return await answer(writer, 502, "Bad Gateway (site unreachable)")
     log("allowed", method, target, agent)
-    return await tunnel(reader, writer, up_reader, up_writer, method, target, agent, host, request, counted, browser)
+    return await tunnel(reader, writer, up_reader, up_writer, method, target, agent, host, request, counted, browser,
+                        senders)
 
 
-async def tunnel(reader, writer, up_reader, up_writer, method, target, agent, host, request, counted, browser):
+async def tunnel(reader, writer, up_reader, up_writer, method, target, agent, host, request, counted, browser,
+                 senders=None):
     """The client's stream to the site (or the phone exit's), counted and guarded."""
-    guard = Guard(agent, host, not validated(agent, host), browser) if counted else None
+    registry = senders if senders and normal(host) in REGISTRIES and not connector(agent) else None
+    guard = Guard(agent if counted else None, host, counted and not validated(agent, host), browser, registry) \
+        if counted or registry else None
+    for side in (writer, up_writer):
+        try:
+            side.transport.set_write_buffer_limits(high=WRITE_BUFFER)
+        except Exception:
+            pass
     entry = [agent, normal(host), phone_exit(host, agent), writer, up_writer]
     _open_tunnels.append(entry)
     try:
@@ -815,7 +1144,11 @@ async def keep_switching():
 
 async def carry(reader, writer, up_reader, up_writer, method, target, agent, request, guard):
     if request:
-        if guard is not None and not guard.sending(request):
+        if guard is not None and not guard.sending(request) and guard.cut == "registry":
+            close(up_writer)
+            over = registry_over(guard.registry)
+            return await answer(writer, 403, REGISTRY_DAY if over == "day" else REGISTRY_HOUR)
+        if guard is not None and guard.cut:
             guard.pending = len(request)
             close(up_writer)
             await sink(reader, guard)
@@ -837,15 +1170,15 @@ def usage():
     """Today's counts per agent, for the bridge."""
     day = today()
     agents = {name: {"sent": e["sent"], "received": e["received"], "unvalidated": e["unvalidated"],
-                     "connections": e["connections"], "held": e["held"]}
+                     "connections": e["connections"], "held": e["held"], "browser_free": e.get("free", 0)}
               for name, e in _days.items() if e["day"] == day}
     return {"day": day, "at": int(time.time()), "agents": agents}
 
 
-def write_usage():
-    if not USAGE:
+def write_json(path, value):
+    if not path:
         return
-    tmp = USAGE + ".part"
+    tmp = path + ".part"
     try:
         try:
             os.unlink(tmp)
@@ -853,12 +1186,84 @@ def write_usage():
             pass
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
         try:
-            os.write(fd, (json.dumps(usage()) + "\n").encode("utf-8"))
+            os.write(fd, (json.dumps(value) + "\n").encode("utf-8"))
         finally:
             os.close(fd)
-        os.replace(tmp, USAGE)
+        os.replace(tmp, path)
     except OSError:
         pass
+
+
+def write_usage():
+    write_json(USAGE, usage())
+
+
+def counts_state():
+    """What a restart must not forget: today's totals per agent, the hour windows still running, the holds."""
+    now, day = time.time(), today()
+    rows = lambda table: [[a, h, *w] for (a, h), w in table.items() if now - w[0] < HOUR]  # noqa: E731
+    return {"v": 1, "day": day, "at": int(now),
+            "days": {a: dict(e, names=sorted(e["names"])) for a, e in _days.items() if e["day"] == day},
+            "sent": rows(_sent), "held_used": rows(_held_used), "free": rows(_free),
+            "held": [[a, h, until] for (a, h), until in _held.items() if until > now],
+            "registries": {s: w for s, w in _registries.items() if w[2] == day}}
+
+
+_saved = {"body": None}
+
+
+def save_counts():
+    """Written only when something moved since the last write (an idle place does not touch the file: the backups
+    look at it, 11/11 review B-2)."""
+    state = counts_state()
+    body = json.dumps({k: v for k, v in state.items() if k != "at"}, sort_keys=True)
+    if body == _saved["body"]:
+        return
+    _saved["body"] = body
+    write_json(COUNTS, state)
+
+
+def same_kind(value, default):
+    """A saved value of the field's kind (a number for a number, a flag for a flag, a day for a day)."""
+    if isinstance(default, bool) or isinstance(value, bool):
+        return isinstance(default, bool) and isinstance(value, bool)
+    if isinstance(default, (int, float)):
+        return isinstance(value, (int, float))
+    return type(value) is type(default)
+
+
+def load_counts():
+    """The counts a previous run of the proxy wrote today, if any (a broken file: none)."""
+    try:
+        with open(COUNTS, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return
+    if not isinstance(data, dict) or data.get("v") != 1 or data.get("day") != today():
+        return
+    for agent, saved in (data.get("days") or {}).items():
+        if isinstance(saved, dict):
+            entry = new_day(today(), time.time())
+            entry.update({k: v for k, v in saved.items() if k in entry and same_kind(v, entry[k])})
+            entry["names"] = {n for n in saved.get("names") or [] if isinstance(n, str)}
+            _days[agent] = entry
+    for table, name in ((_sent, "sent"), (_held_used, "held_used"), (_free, "free")):
+        for row in data.get(name) or []:
+            if isinstance(row, list) and len(row) == 4:
+                table[(row[0], row[1])] = [row[2], row[3]]
+    for row in data.get("held") or []:
+        if isinstance(row, list) and len(row) == 3:
+            _held[(row[0], row[1])] = row[2]
+    for sender, window in (data.get("registries") or {}).items():
+        if isinstance(window, list) and len(window) == 4:
+            _registries[sender] = window
+    log(f"counts restored ({len(_days)} agents, written at {data.get('at')})", "START", COUNTS)
+
+
+async def keep_counts():
+    while True:
+        await asyncio.sleep(COUNTS_EVERY)
+        save_counts()
 
 
 async def keep_usage():
@@ -868,14 +1273,25 @@ async def keep_usage():
 
 
 async def main():
-    server = await asyncio.start_server(handle, "0.0.0.0", PORT)
+    load_counts()
+    server = await start()
     print(f"agents' proxy on :{PORT}, registries: {', '.join(sorted(REGISTRIES))}; agents from "
           f"{POLICY or 'nowhere'}; reading open, sending guarded", flush=True)
-    asyncio.get_running_loop().create_task(keep_usage())
+    loop = asyncio.get_running_loop()
+    loop.create_task(keep_usage())
+    loop.create_task(keep_counts())
     if EXIT_SOCK:
-        asyncio.get_running_loop().create_task(keep_switching())
+        loop.create_task(keep_switching())
+    stopped = loop.create_future()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, lambda: stopped.done() or stopped.set_result(None))
     async with server:
-        await server.serve_forever()
+        await stopped
+        # a clean stop (podman stop): the counts kept for the next start, at once, then out — leaving the block would
+        # wait for every open connection since Python 3.12 (11/11 review S-1), until podman's SIGKILL
+        save_counts()
+        write_usage()
+        os._exit(0)
 
 
 if __name__ == "__main__":

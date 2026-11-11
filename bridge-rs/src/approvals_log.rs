@@ -18,8 +18,21 @@ use crate::config::Config;
 /// Per agent.
 pub const KEEP: usize = 1000;
 /// Hermes' words, the space cards' (storage_watch.rs) and the tip cards' (feature_tips.rs).
-const CHOICES: [&str; 11] =
-    ["once", "session", "always", "deny", "keep_last", "archive", "send", "delete", "try", "later", "never"];
+/// `deny_always`: a send card's « Refuser toujours » (sandbox_sites.rs, 11/11).
+const CHOICES: [&str; 12] = [
+    "once",
+    "session",
+    "always",
+    "deny",
+    "deny_always",
+    "keep_last",
+    "archive",
+    "send",
+    "delete",
+    "try",
+    "later",
+    "never",
+];
 static WRITING: Mutex<()> = Mutex::new(());
 
 fn file(config: &Config, agent: &str) -> PathBuf {

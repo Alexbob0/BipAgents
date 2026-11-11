@@ -320,6 +320,16 @@ pub struct SandboxConfig {
     /// day across such sites (None: the defaults, 64 and 256).
     pub send_site_kb_hour: Option<u64>,
     pub send_day_kb: Option<u64>,
+    /// The send guard's other limits (None: the proxy's own defaults; 0 lets nothing pass): KB a held site (a card
+    /// waits, or refused) may still take per hour, and all held sites of an agent together; MB sent to the package
+    /// registries per agent per hour and per day; MB of the browser's free small records per site per hour and per
+    /// agent per day (11/11 audit: to calibrate from the proxy's `usage.json` without a release).
+    pub send_held_site_kb_hour: Option<u64>,
+    pub send_held_kb_hour: Option<u64>,
+    pub registry_send_mb_hour: Option<u64>,
+    pub registry_send_mb_day: Option<u64>,
+    pub browser_free_mb_site_hour: Option<u64>,
+    pub browser_free_mb_day: Option<u64>,
     /// The offer's limits (None: on for an offer place, off on a self-install; 0: off): MB an agent may download per
     /// day, new connections per agent per minute, CPUs per sandbox (podman `--cpus`), the piracy/tracker blocklist.
     pub download_day_mb: Option<u64>,
@@ -339,6 +349,12 @@ impl Default for SandboxConfig {
             image: String::new(),
             send_site_kb_hour: None,
             send_day_kb: None,
+            send_held_site_kb_hour: None,
+            send_held_kb_hour: None,
+            registry_send_mb_hour: None,
+            registry_send_mb_day: None,
+            browser_free_mb_site_hour: None,
+            browser_free_mb_day: None,
             download_day_mb: None,
             connections_per_minute: None,
             cpus: None,
@@ -1668,6 +1684,12 @@ pub fn parse_config(data: &Value, source_path: Option<&str>) -> Result<Config> {
         image: s(sandbox_t, "image", ""),
         send_site_kb_hour: opt_u(sandbox_t, "send_site_kb_hour")?,
         send_day_kb: opt_u(sandbox_t, "send_day_kb")?,
+        send_held_site_kb_hour: opt_u(sandbox_t, "send_held_site_kb_hour")?,
+        send_held_kb_hour: opt_u(sandbox_t, "send_held_kb_hour")?,
+        registry_send_mb_hour: opt_u(sandbox_t, "registry_send_mb_hour")?,
+        registry_send_mb_day: opt_u(sandbox_t, "registry_send_mb_day")?,
+        browser_free_mb_site_hour: opt_u(sandbox_t, "browser_free_mb_site_hour")?,
+        browser_free_mb_day: opt_u(sandbox_t, "browser_free_mb_day")?,
         download_day_mb: opt_u(sandbox_t, "download_day_mb")?,
         connections_per_minute: opt_u(sandbox_t, "connections_per_minute")?,
         cpus: match get(sandbox_t, "cpus") {

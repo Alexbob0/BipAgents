@@ -155,6 +155,15 @@ port = 8650
 # past these, the upload is cut and the person gets one card (« Autoriser » validates the site for that agent).
 # send_site_kb_hour = 64      # per site per hour
 # send_day_kb = 256           # per agent per day, all such sites together (slow leaks)
+# While a card waits (or for a site the person refused) the site stays readable within a small allowance; the
+# registries and the browser's small requests have ceilings of their own (never a card). Defaults in the proxy;
+# 0 for these six lets nothing pass (it is not « no limit »):
+# send_held_site_kb_hour = 16 # per held site per hour
+# send_held_kb_hour = 64      # all held sites of an agent together, per hour
+# registry_send_mb_hour = 6   # sent (not downloaded) to the package registries, per sandbox
+# registry_send_mb_day = 24
+# browser_free_mb_site_hour = 4   # the browser's small requests, per site per hour
+# browser_free_mb_day = 32        # ...and per agent per day; past them they count like any send
 # The offer's limits: on by default where `cloud = true`, off on a self-install (0 turns one off).
 # download_day_mb = 2048      # what an agent may download per day (registries and browser included)
 # connections_per_minute = 300
